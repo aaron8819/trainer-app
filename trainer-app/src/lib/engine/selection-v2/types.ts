@@ -79,6 +79,12 @@ export interface SelectionObjective {
   slotPreselectionDemands?: SlotPreselectionDemand[];
 
   /**
+   * Projection-only lane coverage plan promoted before local exercise selection.
+   * No-op for normal runtime generation and seeded replay.
+   */
+  slotLanePlan?: SlotLanePlanLane[];
+
+  /**
    * Training goals (for rep range estimation and set-count multiplier)
    */
   goals?: Goals;
@@ -104,6 +110,49 @@ export type SlotPreselectionDemand = {
   preferredEffectiveSets?: number;
   minEffectiveSets?: number;
   source: "shadow_owned_promotion" | "weekly_obligation" | "authored_slot_support";
+};
+
+export type SlotLaneExerciseClass =
+  | "horizontal_press"
+  | "slight_incline_press"
+  | "machine_press"
+  | "cable_press"
+  | "chest_fly"
+  | "chest_supported_row"
+  | "cable_row"
+  | "t_bar_row"
+  | "pulldown"
+  | "assisted_pullup"
+  | "rear_delt_fly"
+  | "reverse_pec_deck"
+  | "triceps_isolation"
+  | "overhead_press"
+  | "machine_shoulder_press"
+  | "lateral_raise"
+  | "biceps_curl"
+  | "back_squat"
+  | "hack_squat"
+  | "leg_press"
+  | "goblet_squat"
+  | "split_squat"
+  | "leg_extension"
+  | "seated_leg_curl"
+  | "lying_leg_curl"
+  | "nordic_curl"
+  | "rdl"
+  | "sldl"
+  | "light_hinge"
+  | "calf_raise";
+
+export type SlotLanePlanLane = {
+  slotId: string;
+  laneId: string;
+  preferredClasses: SlotLaneExerciseClass[];
+  minSets: number;
+  preferredSets: number;
+  optional?: boolean;
+  avoidExerciseIds?: string[];
+  source: "hypertrophy_upper_lower_slot_lane_plan";
 };
 
 /**

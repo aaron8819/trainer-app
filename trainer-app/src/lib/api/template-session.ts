@@ -2313,6 +2313,7 @@ export function composeIntentSessionFromMappedContext(
     sessionSlotId,
     projectionRepairMuscles: input.projectionRepairMuscles,
     slotPreselectionDemands: input.slotPreselectionDemands,
+    slotLanePlan: input.slotLanePlan,
   });
   const isDeloadSession = mapped.effectivePeriodization.isDeload;
   const planningInventoryKind = getSessionPlanningInventoryKind(input);

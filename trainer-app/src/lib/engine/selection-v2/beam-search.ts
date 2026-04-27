@@ -35,6 +35,7 @@ import {
   isExerciseAllowedForCompoundLaneSatisfaction,
   type SessionSlotCompoundLaneKey,
 } from "@/lib/planning/session-slot-profile";
+import { exerciseMatchesSlotLane } from "./slot-lane-plan";
 
 function isMainLiftCandidate(
   candidate: SelectionCandidate,
@@ -383,6 +384,106 @@ function getSatisfiedSessionShapePatterns(
   return satisfied;
 }
 
+function getRequiredSlotLaneIds(objective: SelectionObjective): string[] {
+  return (
+    objective.slotLanePlan
+      ?.filter((lane) => lane.optional !== true)
+      .map((lane) => lane.laneId) ?? []
+  );
+}
+
+function getSatisfiedSlotLaneIds(
+  selected: SelectionCandidate[],
+  objective: SelectionObjective,
+): Set<string> {
+  const satisfied = new Set<string>();
+  const usedExerciseIds = new Set<string>();
+
+  for (const lane of objective.slotLanePlan ?? []) {
+    if (lane.optional === true) {
+      continue;
+    }
+    const match = selected.find(
+      (candidate) =>
+        !usedExerciseIds.has(candidate.exercise.id) &&
+        exerciseMatchesSlotLane(candidate.exercise, lane),
+    );
+    if (!match) {
+      continue;
+    }
+    satisfied.add(lane.laneId);
+    usedExerciseIds.add(match.exercise.id);
+  }
+
+  return satisfied;
+}
+
+function fillsMissingSlotLaneRequirement(
+  state: BeamState,
+  candidate: SelectionCandidate,
+  objective: SelectionObjective,
+): boolean {
+  const satisfiedLaneIds = getSatisfiedSlotLaneIds(state.selected, objective);
+  return (objective.slotLanePlan ?? []).some(
+    (lane) =>
+      lane.optional !== true &&
+      !satisfiedLaneIds.has(lane.laneId) &&
+      exerciseMatchesSlotLane(candidate.exercise, lane),
+  );
+}
+
+function wouldPreserveSlotLaneProgress(
+  state: BeamState,
+  candidate: SelectionCandidate,
+  objective: SelectionObjective,
+): boolean {
+  const requiredLaneIds = getRequiredSlotLaneIds(objective);
+  if (requiredLaneIds.length === 0) {
+    return true;
+  }
+
+  const nextSelected = [...state.selected, candidate];
+  const unresolvedLaneCount = requiredLaneIds.filter(
+    (laneId) => !getSatisfiedSlotLaneIds(nextSelected, objective).has(laneId),
+  ).length;
+  const remainingSlots = objective.constraints.maxExercises - nextSelected.length;
+  return remainingSlots >= unresolvedLaneCount;
+}
+
+function hasRemainingSlotLaneOption(
+  state: BeamState,
+  candidates: SelectionCandidate[],
+  objective: SelectionObjective,
+  excludedCandidateId: string,
+): boolean {
+  const requiredLaneIds = getRequiredSlotLaneIds(objective);
+  if (requiredLaneIds.length === 0 || state.selected.length >= objective.constraints.maxExercises) {
+    return false;
+  }
+
+  const satisfiedLaneIds = getSatisfiedSlotLaneIds(state.selected, objective);
+  const selectedIds = new Set(state.selected.map((candidate) => candidate.exercise.id));
+  for (const candidate of candidates) {
+    if (candidate.exercise.id === excludedCandidateId) continue;
+    if (selectedIds.has(candidate.exercise.id)) continue;
+    const fillsMissingLane = (objective.slotLanePlan ?? []).some(
+      (lane) =>
+        lane.optional !== true &&
+        !satisfiedLaneIds.has(lane.laneId) &&
+        exerciseMatchesSlotLane(candidate.exercise, lane),
+    );
+    if (!fillsMissingLane) continue;
+    if (!wouldSatisfyStructure(state, candidate, objective)) continue;
+
+    const mergedVolume = mergeVolume(state.volumeFilled, candidate.volumeContribution);
+    if (exceedsCeiling(mergedVolume, objective.constraints.volumeCeiling)) continue;
+
+    return true;
+  }
+
+  return false;
+}
+
 function fillsMissingSessionShapeRequirement(
   state: BeamState,
   candidate: SelectionCandidate,
@@ -594,6 +695,10 @@ export function beamSearch(
           rejectedMap.set(candidate.exercise.id, "structure_constraint_violated");
           continue;
         }
+        if (!wouldPreserveSlotLaneProgress(state, candidate, objective)) {
+          rejectedMap.set(candidate.exercise.id, "structure_constraint_violated");
+          continue;
+        }
 
         if (shouldRejectLowSetAccessory(state, candidate, candidates, objective)) {
           rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
@@ -617,11 +722,17 @@ export function beamSearch(
           objective,
           candidates
         );
+        const fillsSlotLaneRequirement = fillsMissingSlotLaneRequirement(
+          state,
+          candidate,
+          objective,
+        );
         const candidateHasDeficit =
           candidate.scores.deficitFill > 0 ||
           fillsMainLiftRequirement ||
           fillsCompoundLaneRequirement ||
-          fillsSessionShapeRequirement;
+          fillsSessionShapeRequirement ||
+          fillsSlotLaneRequirement;
         if (!candidateHasDeficit && state.selected.length >= objective.constraints.minExercises) {
           rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
           continue;
@@ -648,6 +759,13 @@ export function beamSearch(
             objective,
             candidate.exercise.id
           )
+        ) {
+          rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
+          continue;
+        }
+        if (
+          !fillsSlotLaneRequirement &&
+          hasRemainingSlotLaneOption(state, candidates, objective, candidate.exercise.id)
         ) {
           rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
           continue;

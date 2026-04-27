@@ -6,7 +6,10 @@ import type { SraWarning } from "@/lib/engine/sra";
 import type { SubstitutionSuggestion } from "@/lib/engine/template-session";
 import type { FilteredExerciseSummary } from "@/lib/engine/explainability";
 import type { VolumePlanByMuscle } from "@/lib/engine/volume";
-import type { SlotPreselectionDemand } from "@/lib/engine/selection-v2";
+import type {
+  SlotLanePlanLane,
+  SlotPreselectionDemand,
+} from "@/lib/engine/selection-v2";
 import type { SaveableSelectionMetadata } from "@/lib/ui/selection-metadata";
 import type {
   DeloadTransformationTrace,
@@ -46,6 +49,7 @@ export type GenerateIntentSessionInput = {
   targetMuscles?: string[];
   projectionRepairMuscles?: string[];
   slotPreselectionDemands?: SlotPreselectionDemand[];
+  slotLanePlan?: SlotLanePlanLane[];
   anchorWeek?: number;
   weekCloseId?: string;
   optionalGapFillContext?: {

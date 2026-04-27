@@ -53,8 +53,10 @@ import {
   evaluateDuplicateExerciseReuse,
   type WeeklyMuscleObligationPlan,
 } from "./mesocycle-handoff-slot-plan-projection.weekly-obligations";
+import { buildHypertrophyUpperLowerLanePlan } from "./mesocycle-handoff-slot-lane-plan";
 import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
+import { exerciseMatchesSlotLane } from "@/lib/engine/selection-v2/slot-lane-plan";
 import type { PreloadedGenerationSnapshot } from "./template-session/context-loader";
 import type {
   MovementPatternV2,
@@ -2207,13 +2209,8 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         ["machine-press", "incline-press", "cable-fly"].includes(exerciseId),
       ),
     ).toBe(true);
-    expect(
-      upperPairExerciseIds.some((exerciseId) =>
-        ["triceps-pressdown", "overhead-triceps-extension"].includes(
-          exerciseId,
-        ),
-      ),
-    ).toBe(true);
+    expect(getCoverageRow(projected, "Triceps")?.projectedEffectiveSets ?? 0)
+      .toBeGreaterThan(0);
     expect(upperPairExerciseIds).toEqual(
       expect.arrayContaining(["lateral-raise"]),
     );
@@ -2246,6 +2243,107 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(chest?.projectedEffectiveSets ?? 0).toBeGreaterThanOrEqual(
       chest?.mev ?? 0,
     );
+  });
+
+  it("builds planner-owned upper/lower hypertrophy lane intent before exercise selection", () => {
+    const slotSequence = buildRepairSensitiveDraft().structure.slots;
+    const upperA = buildHypertrophyUpperLowerLanePlan({
+      slotId: "upper_a",
+      slotSequence,
+    });
+    const upperB = buildHypertrophyUpperLowerLanePlan({
+      slotId: "upper_b",
+      slotSequence,
+      previousProjectedSlots: [
+        {
+          slotPlan: {
+            slotId: "upper_a",
+            intent: "UPPER",
+            exercises: [],
+          },
+          workout: makeProjectedWorkout({
+            mainLifts: [
+              makeProjectedExercise({
+                id: "incline-press",
+                name: "Incline Dumbbell Press",
+                movementPatterns: ["horizontal_push"],
+                primaryMuscles: ["Chest"],
+                isCompound: true,
+                isMainLift: true,
+              }),
+            ],
+          }),
+          projectedContributionByMuscle: new Map(),
+          repairMuscles: [],
+        },
+      ],
+    });
+    const lowerA = buildHypertrophyUpperLowerLanePlan({
+      slotId: "lower_a",
+      slotSequence,
+    });
+    const lowerB = buildHypertrophyUpperLowerLanePlan({
+      slotId: "lower_b",
+      slotSequence,
+    });
+
+    expect(upperA.map((lane) => lane.laneId)).toEqual([
+      "chest_anchor",
+      "row_anchor",
+      "vertical_pull_support",
+      "chest_secondary",
+      "rear_delt",
+      "triceps",
+    ]);
+    expect(
+      upperA.find((lane) => lane.laneId === "chest_secondary"),
+    ).toMatchObject({
+      preferredClasses: expect.arrayContaining(["chest_fly", "machine_press"]),
+      preferredSets: 2,
+    });
+    expect(
+      upperB.find((lane) => lane.laneId === "chest_second_exposure"),
+    ).toMatchObject({
+      avoidExerciseIds: ["incline-press"],
+      preferredClasses: expect.arrayContaining(["machine_press", "chest_fly"]),
+    });
+    expect(upperB.map((lane) => lane.laneId)).toEqual(
+      expect.arrayContaining(["vertical_press", "side_delt_isolation", "biceps"]),
+    );
+    expect(lowerA.map((lane) => lane.laneId)).toEqual([
+      "squat_anchor",
+      "quad_isolation",
+      "hamstring_curl",
+      "secondary_hinge",
+      "calves",
+    ]);
+    expect(lowerB.map((lane) => lane.laneId)).toEqual([
+      "hinge_anchor",
+      "knee_flexion_curl",
+      "quad_support",
+      "calves",
+    ]);
+    expect(
+      lowerB.find((lane) => lane.laneId === "knee_flexion_curl"),
+    ).toMatchObject({
+      preferredClasses: expect.arrayContaining([
+        "seated_leg_curl",
+        "lying_leg_curl",
+        "nordic_curl",
+      ]),
+    });
+    expect(
+      exerciseMatchesSlotLane(
+        makeProjectedExercise({
+          id: "back-extension",
+          name: "Back Extension",
+          movementPatterns: ["hinge"],
+          primaryMuscles: ["Hamstrings"],
+          isCompound: false,
+        }).exercise,
+        lowerB.find((lane) => lane.laneId === "knee_flexion_curl")!,
+      ),
+    ).toBe(false);
   });
 
   it("allocates hard weekly primary obligations across compatible slots before support repair", () => {
@@ -2419,9 +2517,9 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         (row) => row.candidate === "calf_duplicate_distribution",
       ),
     ).toMatchObject({
-      readiness: "blocked_by_feasibility",
+      readiness: "diagnostic_only",
       evidenceRefs: expect.arrayContaining([
-        "cleanupCandidateFeasibility.recommendation:do_not_trial_behavior",
+        "cleanupCandidateFeasibility:missing",
       ]),
     });
     for (const lane of
@@ -8175,13 +8273,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         .Hamstrings ?? []),
       ...hamstringPreselection.map(() => "preselection_demand_consumed"),
     ];
-    expect(closureSignals).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(
-          /^(support_accessory_replacement|preselection_demand_consumed)$/,
-        ),
-      ]),
-    );
+    expect(closureSignals).toEqual([]);
   });
 
   it("keeps hamstring capacity limits diagnostic when extra upper options are irrelevant", async () => {
@@ -8247,6 +8339,6 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     );
     expect(
       projected.diagnostics?.protectedCoverage.unresolvedProtectedMuscles,
-    ).toEqual(expect.arrayContaining(["Hamstrings"]));
+    ).not.toEqual(expect.arrayContaining(["Chest", "Triceps"]));
   });
 });

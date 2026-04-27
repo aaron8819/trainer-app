@@ -25,6 +25,7 @@ export type {
   BeamState,
   BeamSearchConfig,
   SlotPreselectionDemand,
+  SlotLanePlanLane,
 } from "./types";
 
 export {

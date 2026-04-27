@@ -23,6 +23,7 @@ import {
   scoreCompoundSlotProfileAlignment,
   scoreSessionShapeAlignment,
 } from "./scoring";
+import { getSlotLaneSetTargetForExercise } from "./slot-lane-plan";
 import { getGoalRepRanges, getGoalSetMultiplier } from "../rules";
 import { getRestSeconds, REST_SECONDS } from "../prescription";
 
@@ -283,10 +284,25 @@ export function computeProposedSets(
   const supplementalSetCap = resolveSupplementalSetCap();
 
   if (lifecycleSetTarget !== undefined) {
+    const laneSetTarget = getSlotLaneSetTargetForExercise(
+      exercise,
+      objective.slotLanePlan,
+    );
+    if (laneSetTarget !== undefined) {
+      return Math.max(MIN_SETS, laneSetTarget);
+    }
     if (supplementalPlannerProfile) {
       return Math.max(1, Math.min(supplementalSetCap ?? lifecycleSetTarget, lifecycleSetTarget));
     }
     return Math.max(MIN_SETS, lifecycleSetTarget);
+  }
+
+  const laneSetTarget = getSlotLaneSetTargetForExercise(
+    exercise,
+    objective.slotLanePlan,
+  );
+  if (laneSetTarget !== undefined) {
+    return Math.max(MIN_SETS, laneSetTarget);
   }
 
   // Find largest deficit among primary muscles

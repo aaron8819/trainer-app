@@ -244,6 +244,7 @@ export function buildSelectionObjective(
     sessionSlotId?: string;
     projectionRepairMuscles?: string[];
     slotPreselectionDemands?: SelectionObjective["slotPreselectionDemands"];
+    slotLanePlan?: SelectionObjective["slotLanePlan"];
   }
 ): SelectionObjective {
   const fatigueState = deriveFatigueState(mapped.history, mapped.mappedCheckIn);
@@ -283,6 +284,9 @@ export function buildSelectionObjective(
       demand.slotId === (options?.sessionSlotId ?? "") &&
       (demand.role === "primary" || demand.role === "support") &&
       (demand.targetStatus === "hard" || demand.targetStatus === "soft")
+  );
+  const slotLanePlan = (options?.slotLanePlan ?? []).filter(
+    (lane) => lane.slotId === (options?.sessionSlotId ?? "")
   );
   const projectionRepairMuscleSet = new Set(
     [
@@ -378,7 +382,7 @@ export function buildSelectionObjective(
   }
 
   for (const demand of slotPreselectionDemands) {
-    if (demand.muscle !== "Side Delts" || !matchesIntentMuscle(demand.muscle)) {
+    if (!matchesIntentMuscle(demand.muscle)) {
       continue;
     }
     const targetSets = demand.preferredEffectiveSets ?? demand.minEffectiveSets ?? 0;
@@ -510,6 +514,7 @@ export function buildSelectionObjective(
     lifecycleWeek: mapped.lifecycleWeek,
     projectionRepairMuscles: projectionRepairMuscleSet,
     slotPreselectionDemands,
+    slotLanePlan,
   };
 }
 

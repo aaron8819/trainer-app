@@ -82,6 +82,7 @@ import {
   type SlotObligationEvaluation,
   type WeeklyMuscleObligationPlan,
 } from "./mesocycle-handoff-slot-plan-projection.weekly-obligations";
+import { buildHypertrophyUpperLowerLanePlan } from "./mesocycle-handoff-slot-lane-plan";
 
 export {
   evaluateLowerPatternPrimacy,
@@ -289,6 +290,11 @@ function projectSlotPlansPass(input: {
       slotPolicy,
       slotWeeklyObligations,
     });
+    const slotLanePlan = buildHypertrophyUpperLowerLanePlan({
+      slotId: slot.slotId,
+      slotSequence,
+      previousProjectedSlots: projectedSlots,
+    });
     const prioritizedPreselectionMuscles = Array.from(
       new Set([
         ...projectionRepairMuscles,
@@ -319,6 +325,7 @@ function projectSlotPlansPass(input: {
         ...(slotPreselectionDemands.length > 0
           ? { slotPreselectionDemands }
           : {}),
+        ...(slotLanePlan.length > 0 ? { slotLanePlan } : {}),
       },
     );
     if ("error" in composed) {
@@ -345,6 +352,7 @@ function projectSlotPlansPass(input: {
           ...(slotPreselectionDemands.length > 0
             ? { slotPreselectionDemands }
             : {}),
+          ...(slotLanePlan.length > 0 ? { slotLanePlan } : {}),
           targetMuscles: preferredSupportTargetMuscles,
         },
       );
@@ -366,6 +374,7 @@ function projectSlotPlansPass(input: {
           ...(slotPreselectionDemands.length > 0
             ? { slotPreselectionDemands }
             : {}),
+          ...(slotLanePlan.length > 0 ? { slotLanePlan } : {}),
           targetMuscles: obligationTargetMuscles,
         },
       );
@@ -385,6 +394,7 @@ function projectSlotPlansPass(input: {
           ...(slotPreselectionDemands.length > 0
             ? { slotPreselectionDemands }
             : {}),
+          ...(slotLanePlan.length > 0 ? { slotLanePlan } : {}),
           targetMuscles: softPreferredSupportTargetMuscles,
         });
       if (!("error" in softPreferredSupportComposed)) {
@@ -404,6 +414,7 @@ function projectSlotPlansPass(input: {
           ...(slotPreselectionDemands.length > 0
             ? { slotPreselectionDemands }
             : {}),
+          ...(slotLanePlan.length > 0 ? { slotLanePlan } : {}),
           targetMuscles: primaryPreferredTargetMuscles,
         },
       );
@@ -423,6 +434,7 @@ function projectSlotPlansPass(input: {
           roleListIncomplete: true,
           projectionRepairMuscles: [demand.muscle],
           slotPreselectionDemands,
+          ...(slotLanePlan.length > 0 ? { slotLanePlan } : {}),
           targetMuscles: [demand.muscle],
         },
       );
@@ -444,6 +456,7 @@ function projectSlotPlansPass(input: {
           ...(slotPreselectionDemands.length > 0
             ? { slotPreselectionDemands }
             : {}),
+          ...(slotLanePlan.length > 0 ? { slotLanePlan } : {}),
           targetMuscles: projectionRepairMuscles,
         },
       );
@@ -465,6 +478,7 @@ function projectSlotPlansPass(input: {
           ...(slotPreselectionDemands.length > 0
             ? { slotPreselectionDemands }
             : {}),
+          ...(slotLanePlan.length > 0 ? { slotLanePlan } : {}),
           targetMuscles: [muscle],
         },
       );

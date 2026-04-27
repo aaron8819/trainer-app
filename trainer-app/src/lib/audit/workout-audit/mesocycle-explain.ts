@@ -58,6 +58,8 @@ import type {
   MesocycleExplainProjectionDiagnosticRow,
   MesocycleExplainProjectionDiagnostics,
   MesocycleExplainPlannerOnlyDryRun,
+  MesocycleExplainProjectionComparisonSnapshot,
+  MesocycleExplainProjectionMetricDelta,
   MesocycleExplainRealityWorkout,
   MesocycleExplainReasonSource,
   MesocycleExplainSlotRow,
@@ -1047,19 +1049,38 @@ function buildMaterialityEstimate(input: {
 
 function buildCalvesFourFourCandidate(input: {
   planningReality: PlanningRealityDiagnostic;
+  overridePlanningReality?: PlanningRealityDiagnostic;
+  projectionComparisons?: NonNullable<
+    MesocycleExplainPlannerOnlyDryRun["projectionComparisons"]
+  >;
   slotComparisons: MesocycleExplainPlannerOnlyDryRun["slotComparisons"];
   repairDependencies: MesocycleExplainPlannerOnlyDryRun["repairDependencies"];
 }): CalvesFourFourCandidate {
   const lowerA = getSlotById(input.planningReality.initialSlotComposition, "lower_a");
   const lowerB = getSlotById(input.planningReality.initialSlotComposition, "lower_b");
+  const overrideLowerA = input.overridePlanningReality
+    ? getSlotById(input.overridePlanningReality.initialSlotComposition, "lower_a")
+    : undefined;
+  const overrideLowerB = input.overridePlanningReality
+    ? getSlotById(input.overridePlanningReality.initialSlotComposition, "lower_b")
+    : undefined;
   const currentLowerAShape = buildCalfShape(lowerA);
   const currentLowerBShape = buildCalfShape(lowerB);
+  const overrideLowerBShape = buildCalfShape(overrideLowerB);
   const proposedLowerAShape = buildProposedCalfShape(currentLowerAShape, "lower_a");
   const proposedLowerBShape = buildProposedCalfShape(currentLowerBShape, "lower_b");
   const lowerAProjectedCalfSets =
-    proposedLowerAShape.length > 0 ? proposedLowerAShape[0].proposedSets : null;
+    overrideLowerA
+      ? getSlotMuscleStimulus(overrideLowerA, "Calves")
+      : proposedLowerAShape.length > 0
+        ? proposedLowerAShape[0].proposedSets
+        : null;
   const lowerBProjectedCalfSets =
-    proposedLowerBShape.length > 0 ? proposedLowerBShape[0].proposedSets : null;
+    overrideLowerB
+      ? getSlotMuscleStimulus(overrideLowerB, "Calves")
+      : proposedLowerBShape.length > 0
+        ? proposedLowerBShape[0].proposedSets
+        : null;
   const weeklyProjectedCalfEffectiveSets =
     lowerAProjectedCalfSets != null && lowerBProjectedCalfSets != null
       ? roundOne(lowerAProjectedCalfSets + lowerBProjectedCalfSets)
@@ -1093,14 +1114,14 @@ function buildCalvesFourFourCandidate(input: {
     lowerA && lowerASetDelta != null ? roundOne(lowerA.totalSets + lowerASetDelta) : null;
   const lowerBTotalAfter =
     lowerB && lowerBSetDelta != null ? roundOne(lowerB.totalSets + lowerBSetDelta) : null;
-  const wouldIncreaseCapTrimRows =
+  let wouldIncreaseCapTrimRows =
     lowerATotalAfter == null || lowerBTotalAfter == null
       ? null
       : lowerACap == null || lowerBCap == null
         ? null
         : lowerATotalAfter > lowerACap || lowerBTotalAfter > lowerBCap;
   const repairedLowerB =
-    getSlotById(input.planningReality.finalSlotPlan, "lower_b") ?? lowerB;
+    overrideLowerB ?? getSlotById(input.planningReality.finalSlotPlan, "lower_b") ?? lowerB;
   const preservesLowerBHingeCurlRoute = slotHasHamstringsHingeAndCurl(repairedLowerB);
   const supportRows = input.repairDependencies.find(
     (dependency) => dependency.path === "support-floor closure"
@@ -1115,7 +1136,10 @@ function buildCalvesFourFourCandidate(input: {
     ? parseRepairDependencyCount(setBumpRows.consequenceWithoutRepair, "set_bumps")
     : 0;
   const wouldReduceSupportFloorClosureRows =
-    weeklyProjectedCalfEffectiveSets == null
+    input.projectionComparisons
+      ? input.projectionComparisons.deltas.overrideVsBaselineRepaired
+          .supportFloorClosureRowCount < 0
+      : weeklyProjectedCalfEffectiveSets == null
       ? null
       : lowerACalfUnresolved || supportFloorClosureCount > 0
         ? (lowerACalfUnresolved &&
@@ -1124,13 +1148,20 @@ function buildCalvesFourFourCandidate(input: {
           weeklyProjectedCalfEffectiveSets >= 8
         : false;
   const wouldReduceSetBumps =
-    weeklyProjectedCalfEffectiveSets == null
+    input.projectionComparisons
+      ? input.projectionComparisons.deltas.overrideVsBaselineRepaired
+          .setBumpRowCount < 0
+      : weeklyProjectedCalfEffectiveSets == null
       ? null
       : setBumpCount > 0
         ? weeklyProjectedCalfEffectiveSets <= currentWeeklyEffective
         : false;
   const wouldRemoveLowerBSameSessionCalfDuplicate =
-    currentLowerBShape.length === 0 ? null : lowerBDuplicate;
+    currentLowerBShape.length === 0
+      ? null
+      : input.overridePlanningReality
+        ? lowerBDuplicate && overrideLowerBShape.length <= 1
+        : lowerBDuplicate;
   const lowerASafety = buildLowerASafety({
     planningReality: input.planningReality,
     lowerA,
@@ -1146,6 +1177,55 @@ function buildCalvesFourFourCandidate(input: {
     wouldReduceSetBumps,
     wouldIncreaseCapTrimRows,
   });
+  if (input.projectionComparisons) {
+    const delta = input.projectionComparisons.deltas.overrideVsBaselineRepaired;
+    const stillUnknown = materialityEstimate.stillUnknown.filter(
+      (entry) => entry !== "exact_repair_reclassification_requires_full_generation"
+    );
+    const hasWorseningDelta =
+      delta.materialRepairCount > 0 ||
+      delta.majorRepairCount > 0 ||
+      delta.suspiciousRepairCount > 0 ||
+      delta.highExerciseConcentrationCount > 0 ||
+      delta.weakPreselectionConsumptionCount > 0 ||
+      delta.forbiddenFinalPrimaryViolationCount > 0 ||
+      delta.capTrimRowCount > 0;
+    const hasImprovingDelta =
+      delta.materialRepairCount < 0 ||
+      delta.majorRepairCount < 0 ||
+      delta.suspiciousRepairCount < 0 ||
+      delta.supportFloorClosureRowCount < 0 ||
+      delta.setBumpRowCount < 0 ||
+      delta.duplicateRowCount < 0;
+    materialityEstimate.status = hasWorseningDelta
+      ? "worsens"
+      : hasImprovingDelta
+        ? "improves"
+        : "flat";
+    materialityEstimate.expectedMaterialRepairDelta =
+      delta.materialRepairCount;
+    materialityEstimate.expectedMajorRepairDelta = delta.majorRepairCount;
+    materialityEstimate.expectedSuspiciousRepairDelta =
+      delta.suspiciousRepairCount;
+    materialityEstimate.wouldReduceSupportFloorClosureRows =
+      delta.supportFloorClosureRowCount < 0;
+    materialityEstimate.wouldReduceSetBumps = delta.setBumpRowCount < 0;
+    materialityEstimate.wouldIncreaseCapTrimRows = delta.capTrimRowCount > 0;
+    wouldIncreaseCapTrimRows = delta.capTrimRowCount > 0;
+    materialityEstimate.stillUnknown = stillUnknown;
+    materialityEstimate.evidence = uniqueSorted([
+      ...materialityEstimate.evidence.filter(
+        (row) => row !== "exact_repair_counter_delta_unknown_without_reprojection"
+      ),
+      `actual_materialRepairCount_delta:${delta.materialRepairCount}`,
+      `actual_majorRepairCount_delta:${delta.majorRepairCount}`,
+      `actual_suspiciousRepairCount_delta:${delta.suspiciousRepairCount}`,
+      `actual_highExerciseConcentrationCount_delta:${delta.highExerciseConcentrationCount}`,
+      `actual_weakPreselectionConsumptionCount_delta:${delta.weakPreselectionConsumptionCount}`,
+      `actual_forbiddenFinalPrimaryViolationCount_delta:${delta.forbiddenFinalPrimaryViolationCount}`,
+      `actual_capTrimRowCount_delta:${delta.capTrimRowCount}`,
+    ]);
+  }
   const weeksTwoToFourUnprojected = hasWeeksTwoToFourUnprojected(input.planningReality);
   const blockedReasons = new Set<CalvesFourFourCandidate["blockedReasons"][number]>();
 
@@ -1204,10 +1284,38 @@ function buildCalvesFourFourCandidate(input: {
     weeklyProjectedCalfEffectiveSets >= 8 &&
     preservesLowerBHingeCurlRoute === true &&
     lowerASafety.wouldDisplaceHardPrimary === false;
+  const overrideSnapshot =
+    input.projectionComparisons?.plannerOnlyWithOverride;
+  const baselineSnapshot =
+    input.projectionComparisons?.baselineRepaired;
+  const hardPrimaryTargetsMet =
+    !overrideSnapshot ||
+    input.planningReality.shadowWeeklyDemand
+      .filter((row) => row.priority === "primary")
+      .every((row) => {
+        const minimum = row.minEffectiveSets ?? row.preferredEffectiveSets;
+        if (minimum == null) {
+          return true;
+        }
+        return (overrideSnapshot.weeklyMuscleTotals[row.muscle] ?? 0) >= minimum;
+      });
+  const overrideMetricsSafe =
+    !overrideSnapshot ||
+    !baselineSnapshot ||
+    (overrideSnapshot.materialRepairCount <= baselineSnapshot.materialRepairCount &&
+      overrideSnapshot.majorRepairCount <= baselineSnapshot.majorRepairCount &&
+      overrideSnapshot.suspiciousRepairCount <= baselineSnapshot.suspiciousRepairCount &&
+      overrideSnapshot.highExerciseConcentrationCount <=
+        baselineSnapshot.highExerciseConcentrationCount &&
+      overrideSnapshot.weakPreselectionConsumptionCount === 0 &&
+      overrideSnapshot.forbiddenFinalPrimaryViolationCount === 0 &&
+      overrideSnapshot.keyAcceptance.fail <= baselineSnapshot.keyAcceptance.fail &&
+      hardPrimaryTargetsMet);
   const gatePasses =
     calfDemandDecreases &&
     duplicateBecomesAvoidable &&
     weekOneShapeSafe &&
+    overrideMetricsSafe &&
     wouldReduceSupportFloorClosureRows === true &&
     wouldReduceSetBumps !== null &&
     wouldIncreaseCapTrimRows === false &&
@@ -1730,6 +1838,204 @@ function buildPlannerOnlyAcceptanceChecks(
   ];
 }
 
+function buildPlanningRealityForSnapshot(
+  planningReality: PlanningRealityDiagnostic,
+  slots: ReadonlyArray<SlotCompositionSnapshot>
+): PlanningRealityDiagnostic {
+  return {
+    ...planningReality,
+    initialSlotComposition: slots.map((slot) => ({
+      ...slot,
+      exercises: slot.exercises.map((exercise) => ({ ...exercise })),
+      projectedEffectiveStimulusByMuscle: {
+        ...slot.projectedEffectiveStimulusByMuscle,
+      },
+    })),
+  };
+}
+
+function countForbiddenFinalPrimaryViolations(
+  planningReality: PlanningRealityDiagnostic,
+  slots: ReadonlyArray<SlotCompositionSnapshot>
+): number {
+  const forbiddenBySlot = new Map<string, Set<string>>();
+  for (const intent of planningReality.slotPrescriptionIntents) {
+    const forbidden = new Set(
+      intent.musclePrescriptions
+        .filter(
+          (prescription) =>
+            prescription.targetStatus === "forbidden" ||
+            prescription.demandType === "do_not_train_here"
+        )
+        .map((prescription) => prescription.muscle)
+    );
+    if (forbidden.size > 0) {
+      forbiddenBySlot.set(intent.slotId, forbidden);
+    }
+  }
+
+  return slots.reduce((count, slot) => {
+    const forbidden = forbiddenBySlot.get(slot.slotId);
+    if (!forbidden) {
+      return count;
+    }
+    return (
+      count +
+      slot.exercises.filter((exercise) =>
+        exercise.primaryMuscles.some((muscle) => forbidden.has(muscle))
+      ).length
+    );
+  }, 0);
+}
+
+function getMaterialRepairCount(
+  planningReality: PlanningRealityDiagnostic
+): number {
+  return (
+    planningReality.shadowRepairSummary?.materialRepairCount ??
+    planningReality.summary.materialRepairCount
+  );
+}
+
+function getMajorRepairCount(
+  planningReality: PlanningRealityDiagnostic
+): number {
+  return (
+    planningReality.shadowRepairSummary?.majorRepairCount ??
+    planningReality.summary.majorRepairCount
+  );
+}
+
+function getRepairRowsForMetric(
+  planningReality: PlanningRealityDiagnostic
+): PlanningRealityDiagnostic["repairMateriality"] {
+  return planningReality.repairMateriality;
+}
+
+function buildProjectionComparisonSnapshot(input: {
+  planningReality: PlanningRealityDiagnostic;
+  slots: ReadonlyArray<SlotCompositionSnapshot>;
+}): MesocycleExplainProjectionComparisonSnapshot {
+  const snapshotReality = buildPlanningRealityForSnapshot(
+    input.planningReality,
+    input.slots
+  );
+  const weeklyMuscleComparison =
+    buildPlannerOnlyWeeklyMuscleComparison(snapshotReality);
+  const acceptanceChecks = buildPlannerOnlyAcceptanceChecks(
+    snapshotReality,
+    weeklyMuscleComparison
+  );
+  const repairRows = getRepairRowsForMetric(input.planningReality);
+  const countByStatus = (
+    status: MesocycleExplainPlannerOnlyDryRun["acceptanceChecks"][number]["status"]
+  ) => acceptanceChecks.filter((check) => check.status === status).length;
+
+  return {
+    slotExercisesBySlot: Object.fromEntries(
+      input.slots.map((slot) => [
+        slot.slotId,
+        slot.exercises.map(formatSnapshotExercise),
+      ])
+    ),
+    weeklyMuscleTotals: Object.fromEntries(
+      Array.from(sumSlotStimulusByMuscle(input.slots).entries()).sort(
+        ([left], [right]) => left.localeCompare(right)
+      )
+    ),
+    materialRepairCount: getMaterialRepairCount(input.planningReality),
+    majorRepairCount: getMajorRepairCount(input.planningReality),
+    suspiciousRepairCount:
+      input.planningReality.suspiciousRepairsNotEligibleForPromotion?.length ??
+      0,
+    highExerciseConcentrationCount:
+      input.planningReality.summary.highExerciseConcentrationCount ?? 0,
+    weakPreselectionConsumptionCount:
+      input.planningReality.weakPreselectionConsumption?.length ?? 0,
+    forbiddenFinalPrimaryViolationCount:
+      countForbiddenFinalPrimaryViolations(input.planningReality, input.slots),
+    supportFloorClosureRowCount: repairRows.filter(isSupportFloorRepairRow)
+      .length,
+    setBumpRowCount: repairRows.filter(isSetBumpRepairRow).length,
+    capTrimRowCount: repairRows.filter(isCapTrimRepairRow).length,
+    duplicateRowCount:
+      input.planningReality.duplicateContinuityJustification?.summary
+        .totalDuplicates ?? 0,
+    keyAcceptance: {
+      pass: countByStatus("pass"),
+      fail: countByStatus("fail"),
+      partial: countByStatus("partial"),
+      unknown: countByStatus("unknown"),
+    },
+  };
+}
+
+function buildProjectionMetricDelta(input: {
+  before: MesocycleExplainProjectionComparisonSnapshot;
+  after: MesocycleExplainProjectionComparisonSnapshot;
+}): MesocycleExplainProjectionMetricDelta {
+  return {
+    materialRepairCount:
+      input.after.materialRepairCount - input.before.materialRepairCount,
+    majorRepairCount:
+      input.after.majorRepairCount - input.before.majorRepairCount,
+    suspiciousRepairCount:
+      input.after.suspiciousRepairCount - input.before.suspiciousRepairCount,
+    highExerciseConcentrationCount:
+      input.after.highExerciseConcentrationCount -
+      input.before.highExerciseConcentrationCount,
+    weakPreselectionConsumptionCount:
+      input.after.weakPreselectionConsumptionCount -
+      input.before.weakPreselectionConsumptionCount,
+    forbiddenFinalPrimaryViolationCount:
+      input.after.forbiddenFinalPrimaryViolationCount -
+      input.before.forbiddenFinalPrimaryViolationCount,
+    supportFloorClosureRowCount:
+      input.after.supportFloorClosureRowCount -
+      input.before.supportFloorClosureRowCount,
+    setBumpRowCount: input.after.setBumpRowCount - input.before.setBumpRowCount,
+    capTrimRowCount: input.after.capTrimRowCount - input.before.capTrimRowCount,
+    duplicateRowCount:
+      input.after.duplicateRowCount - input.before.duplicateRowCount,
+    keyAcceptanceFailCount:
+      input.after.keyAcceptance.fail - input.before.keyAcceptance.fail,
+  };
+}
+
+function buildProjectionComparisons(input: {
+  baselinePlanningReality: PlanningRealityDiagnostic;
+  overridePlanningReality: PlanningRealityDiagnostic;
+}): NonNullable<MesocycleExplainPlannerOnlyDryRun["projectionComparisons"]> {
+  const baselineRepaired = buildProjectionComparisonSnapshot({
+    planningReality: input.baselinePlanningReality,
+    slots: input.baselinePlanningReality.finalSlotPlan,
+  });
+  const plannerOnlyBase = buildProjectionComparisonSnapshot({
+    planningReality: input.baselinePlanningReality,
+    slots: input.baselinePlanningReality.initialSlotComposition,
+  });
+  const plannerOnlyWithOverride = buildProjectionComparisonSnapshot({
+    planningReality: input.overridePlanningReality,
+    slots: input.overridePlanningReality.initialSlotComposition,
+  });
+
+  return {
+    baselineRepaired,
+    plannerOnlyBase,
+    plannerOnlyWithOverride,
+    deltas: {
+      overrideVsBaselineRepaired: buildProjectionMetricDelta({
+        before: baselineRepaired,
+        after: plannerOnlyWithOverride,
+      }),
+      overrideVsPlannerOnlyBase: buildProjectionMetricDelta({
+        before: plannerOnlyBase,
+        after: plannerOnlyWithOverride,
+      }),
+    },
+  };
+}
+
 function repairRowsMatching(
   planningReality: PlanningRealityDiagnostic,
   predicate: (row: PlanningRealityDiagnostic["repairMateriality"][number]) => boolean
@@ -1897,7 +2203,8 @@ function buildPlannerOnlyRepairDependencies(
 export function buildPlannerOnlyDryRunComparison(
   planningReality: PlanningRealityDiagnostic | undefined,
   compareRepaired: boolean,
-  plannerOnlyPolicyOverride?: PlannerOnlyPolicyOverride
+  plannerOnlyPolicyOverride?: PlannerOnlyPolicyOverride,
+  overridePlanningReality?: PlanningRealityDiagnostic
 ): MesocycleExplainPlannerOnlyDryRun {
   if (!planningReality) {
     return {
@@ -1944,8 +2251,17 @@ export function buildPlannerOnlyDryRunComparison(
     weeklyMuscleComparison
   );
   const repairDependencies = buildPlannerOnlyRepairDependencies(planningReality);
+  const projectionComparisons =
+    plannerOnlyPolicyOverride && overridePlanningReality
+      ? buildProjectionComparisons({
+          baselinePlanningReality: planningReality,
+          overridePlanningReality,
+        })
+      : undefined;
   const calvesFourFourCandidate = buildCalvesFourFourCandidate({
     planningReality,
+    overridePlanningReality,
+    projectionComparisons,
     slotComparisons,
     repairDependencies,
   });
@@ -1981,11 +2297,12 @@ export function buildPlannerOnlyDryRunComparison(
             id: plannerOnlyPolicyOverride.id,
             readOnly: true,
             appliesOnlyTo: plannerOnlyPolicyOverride.appliesOnlyTo,
-            status: "inactive_noop",
+            status: projectionComparisons ? "active" : "inactive_noop",
             affectsScoringOrGeneration: false,
           },
         }
       : {}),
+    ...(projectionComparisons ? { projectionComparisons } : {}),
     canReplaceRepairedProjection,
     summary: {
       status,
@@ -2859,12 +3176,25 @@ export async function buildMesocycleExplainAuditPayload(input: {
     source: sourceProjection,
     design: previewArtifacts.artifacts.recommendedDesign,
     snapshot: sourceSnapshot,
-    ...(plannerOnlyPolicyOverride ? { plannerOnlyPolicyOverride } : {}),
   });
+  const plannerOnlyOverrideProjection = plannerOnlyPolicyOverride
+    ? projectSuccessorSlotPlansFromSnapshot({
+        userId: input.userId,
+        source: sourceProjection,
+        design: previewArtifacts.artifacts.recommendedDesign,
+        snapshot: sourceSnapshot,
+        plannerOnlyPolicyOverride,
+      })
+    : undefined;
 
   if ("error" in slotPlanProjection) {
     limitations.push(
       `Preview slot-plan projection could not fully materialize through the canonical handoff projection seam: ${slotPlanProjection.error}`
+    );
+  }
+  if (plannerOnlyOverrideProjection && "error" in plannerOnlyOverrideProjection) {
+    limitations.push(
+      `Planner-only override projection could not fully materialize through the canonical handoff projection seam: ${plannerOnlyOverrideProjection.error}`
     );
   }
 
@@ -3055,12 +3385,16 @@ export async function buildMesocycleExplainAuditPayload(input: {
     );
   }
   const projectionDiagnostics = buildProjectionDiagnostics(slotPlanProjection.diagnostics);
+  const plannerOnlyOverrideDiagnostics = plannerOnlyOverrideProjection
+    ? buildProjectionDiagnostics(plannerOnlyOverrideProjection.diagnostics)
+    : undefined;
   const plannerOnlyDryRun =
     input.plannerOnlyDryRun?.enabled && input.plannerOnlyDryRun.compareRepaired
       ? buildPlannerOnlyDryRunComparison(
           projectionDiagnostics.planningReality,
           input.plannerOnlyDryRun.compareRepaired,
-          plannerOnlyPolicyOverride
+          plannerOnlyPolicyOverride,
+          plannerOnlyOverrideDiagnostics?.planningReality
         )
       : undefined;
 

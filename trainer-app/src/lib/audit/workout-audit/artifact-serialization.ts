@@ -564,6 +564,9 @@ function compactPlannerOnlyDryRun(value: unknown): unknown {
     weeklyMuscleComparison: notableMuscles,
     acceptanceChecks: failedOrPartialChecks,
     repairDependencies: activeRepairDependencies,
+    ...(dryRun.projectionComparisons
+      ? { projectionComparisons: dryRun.projectionComparisons }
+      : {}),
     calvesFourFourCandidate: dryRun.calvesFourFourCandidate,
   };
 }

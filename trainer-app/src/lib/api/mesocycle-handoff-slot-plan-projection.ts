@@ -85,6 +85,8 @@ import {
 } from "./mesocycle-handoff-slot-plan-projection.weekly-obligations";
 import { buildHypertrophyUpperLowerLanePlan } from "./mesocycle-handoff-slot-lane-plan";
 
+type SlotLanePlan = ReturnType<typeof buildHypertrophyUpperLowerLanePlan>;
+
 export {
   evaluateLowerPatternPrimacy,
   evaluateUpperProtectedSupportQuality,
@@ -287,16 +289,25 @@ function projectSlotPlansPass(input: {
     const obligationTargetMuscles = slotWeeklyObligations.map(
       (obligation) => obligation.muscle,
     );
-    const slotPreselectionDemands = buildSlotPreselectionDemands({
+    const baseSlotPreselectionDemands = buildSlotPreselectionDemands({
       slotId: slot.slotId,
       slotPolicy,
       slotWeeklyObligations,
     });
-    const slotLanePlan = buildHypertrophyUpperLowerLanePlan({
+    const baseSlotLanePlan = buildHypertrophyUpperLowerLanePlan({
       slotId: slot.slotId,
       slotSequence,
       previousProjectedSlots: projectedSlots,
     });
+    const overrideAdjustedSlotPlan = buildPlannerOnlyOverrideAdjustedSlotPlan({
+      slotId: slot.slotId,
+      slotPreselectionDemands: baseSlotPreselectionDemands,
+      slotLanePlan: baseSlotLanePlan,
+      plannerOnlyPolicyOverride: input.plannerOnlyPolicyOverride,
+    });
+    const slotPreselectionDemands =
+      overrideAdjustedSlotPlan.slotPreselectionDemands;
+    const slotLanePlan = overrideAdjustedSlotPlan.slotLanePlan;
     const prioritizedPreselectionMuscles = Array.from(
       new Set([
         ...projectionRepairMuscles,
@@ -522,6 +533,11 @@ function projectSlotPlansPass(input: {
       workout: selectedWorkout,
       slotPolicy,
     });
+    selectedWorkout = applyPlannerOnlyPolicyOverrideToSelectedWorkout({
+      workout: selectedWorkout,
+      slotId: slot.slotId,
+      plannerOnlyPolicyOverride: input.plannerOnlyPolicyOverride,
+    });
     const supportFloorBumpResult = applyExistingAccessorySupportFloorBumps({
       workout: selectedWorkout,
       slotPolicy,
@@ -588,6 +604,11 @@ function projectSlotPlansPass(input: {
         accessoryLaneInsertionCount += 1;
       }
     }
+    selectedWorkout = applyPlannerOnlyPolicyOverrideToSelectedWorkout({
+      workout: selectedWorkout,
+      slotId: slot.slotId,
+      plannerOnlyPolicyOverride: input.plannerOnlyPolicyOverride,
+    });
 
     const candidateProjectedSlot: ProjectedSlotWorkout = {
       slotPlan: mapProjectedWorkoutToSlotPlan({
@@ -814,6 +835,201 @@ function projectSlotPlansPass(input: {
 const PRESELECTION_ACCESSORY_SET_CAP = 4;
 const SOFT_SUPPORT_PRESELECTION_EFFECTIVE_SET_FLOOR = 2;
 
+function isCalvesFourFourPlannerOnlyOverride(
+  override: PlannerOnlyPolicyOverride | undefined,
+): override is PlannerOnlyPolicyOverride {
+  return (
+    override?.readOnly === true &&
+    override.appliesOnlyTo === "planner_only_dry_run" &&
+    override.id === "calves_4_4_lower_slot_allocation"
+  );
+}
+
+function getPlannerOnlyCalvesOverrideSlot(
+  override: PlannerOnlyPolicyOverride | undefined,
+  slotId: string,
+): PlannerOnlyPolicyOverride["slots"][number] | undefined {
+  if (!isCalvesFourFourPlannerOnlyOverride(override)) {
+    return undefined;
+  }
+  return override.slots.find((slot) => slot.slotId === slotId);
+}
+
+function cloneSlotPreselectionDemand(
+  demand: SlotPreselectionDemand,
+): SlotPreselectionDemand {
+  return { ...demand };
+}
+
+function buildPlannerOnlyOverrideAdjustedSlotPlan(input: {
+  slotId: string;
+  slotPreselectionDemands: ReadonlyArray<SlotPreselectionDemand>;
+  slotLanePlan: Readonly<SlotLanePlan>;
+  plannerOnlyPolicyOverride?: PlannerOnlyPolicyOverride;
+}): {
+  slotPreselectionDemands: SlotPreselectionDemand[];
+  slotLanePlan: SlotLanePlan;
+} {
+  const overrideSlot = getPlannerOnlyCalvesOverrideSlot(
+    input.plannerOnlyPolicyOverride,
+    input.slotId,
+  );
+  const slotPreselectionDemands = input.slotPreselectionDemands.map(
+    cloneSlotPreselectionDemand,
+  );
+  const slotLanePlan = input.slotLanePlan.map((lane) => ({
+    ...lane,
+    preferredClasses: [...lane.preferredClasses],
+    ...(lane.avoidExerciseIds
+      ? { avoidExerciseIds: [...lane.avoidExerciseIds] }
+      : {}),
+  }));
+
+  if (!overrideSlot) {
+    return { slotPreselectionDemands, slotLanePlan };
+  }
+
+  upsertSlotPreselectionDemand(slotPreselectionDemands, {
+    slotId: input.slotId,
+    muscle: overrideSlot.muscle,
+    role: "support",
+    targetStatus: "hard",
+    minEffectiveSets: overrideSlot.targetEffectiveSets,
+    preferredEffectiveSets: overrideSlot.targetEffectiveSets,
+    source: "shadow_owned_promotion",
+  });
+
+  const calfLaneIndex = slotLanePlan.findIndex((lane) =>
+    lane.preferredClasses.includes(overrideSlot.preferredExerciseClass),
+  );
+  if (calfLaneIndex >= 0) {
+    slotLanePlan[calfLaneIndex] = {
+      ...slotLanePlan[calfLaneIndex],
+      minSets: Math.max(
+        slotLanePlan[calfLaneIndex].minSets,
+        overrideSlot.targetEffectiveSets,
+      ),
+      preferredSets: Math.max(
+        slotLanePlan[calfLaneIndex].preferredSets,
+        overrideSlot.targetEffectiveSets,
+      ),
+    };
+  } else {
+    slotLanePlan.push({
+      slotId: input.slotId,
+      laneId: "planner_only_calves_4_4",
+      preferredClasses: [overrideSlot.preferredExerciseClass],
+      minSets: overrideSlot.targetEffectiveSets,
+      preferredSets: overrideSlot.targetEffectiveSets,
+      source: "hypertrophy_upper_lower_slot_lane_plan",
+    });
+  }
+
+  return {
+    slotPreselectionDemands: slotPreselectionDemands.sort(
+      (left, right) =>
+        left.slotId.localeCompare(right.slotId) ||
+        left.muscle.localeCompare(right.muscle),
+    ),
+    slotLanePlan,
+  };
+}
+
+function isDirectCalfRaiseExercise(
+  exercise: WorkoutPlan["accessories"][number],
+): boolean {
+  const name = exercise.exercise.name.trim().toLowerCase();
+  return (
+    name.includes("calf raise") &&
+    (exercise.exercise.primaryMuscles ?? []).includes("Calves")
+  );
+}
+
+function resizeWorkoutExerciseSets(
+  exercise: WorkoutPlan["accessories"][number],
+  setCount: number,
+): WorkoutPlan["accessories"][number] {
+  const safeSetCount = Math.max(1, Math.floor(setCount));
+  const templateSet =
+    exercise.sets.at(-1) ?? ({ targetReps: 10, role: "accessory" } as const);
+  return {
+    ...exercise,
+    sets: Array.from({ length: safeSetCount }, (_, index) => ({
+      ...templateSet,
+      ...(exercise.sets[index] ?? {}),
+      setIndex: index + 1,
+    })),
+  };
+}
+
+function applyPlannerOnlyPolicyOverrideToSelectedWorkout(input: {
+  workout: WorkoutPlan;
+  slotId: string;
+  plannerOnlyPolicyOverride?: PlannerOnlyPolicyOverride;
+}): WorkoutPlan {
+  const overrideSlot = getPlannerOnlyCalvesOverrideSlot(
+    input.plannerOnlyPolicyOverride,
+    input.slotId,
+  );
+  if (!overrideSlot) {
+    return input.workout;
+  }
+
+  const calfAccessories = input.workout.accessories.filter(
+    isDirectCalfRaiseExercise,
+  );
+  if (calfAccessories.length === 0) {
+    return input.workout;
+  }
+
+  const retainedCalf = calfAccessories
+    .slice()
+    .sort(
+      (left, right) =>
+        right.sets.length - left.sets.length ||
+        left.exercise.name.localeCompare(right.exercise.name),
+    )[0];
+  const retainedCalfId = retainedCalf.exercise.id;
+
+  return {
+    ...input.workout,
+    warmup: input.workout.warmup.map((exercise) => ({
+      ...exercise,
+      sets: exercise.sets.map((set) => ({ ...set })),
+      ...(exercise.warmupSets
+        ? { warmupSets: exercise.warmupSets.map((set) => ({ ...set })) }
+        : {}),
+    })),
+    mainLifts: input.workout.mainLifts.map((exercise) => ({
+      ...exercise,
+      sets: exercise.sets.map((set) => ({ ...set })),
+      ...(exercise.warmupSets
+        ? { warmupSets: exercise.warmupSets.map((set) => ({ ...set })) }
+        : {}),
+    })),
+    accessories: input.workout.accessories.flatMap((exercise) => {
+      if (!isDirectCalfRaiseExercise(exercise)) {
+        return [{
+          ...exercise,
+          sets: exercise.sets.map((set) => ({ ...set })),
+        }];
+      }
+      if (exercise.exercise.id !== retainedCalfId) {
+        return [];
+      }
+      return [
+        resizeWorkoutExerciseSets(
+          exercise,
+          Math.min(
+            overrideSlot.targetEffectiveSets,
+            PRESELECTION_ACCESSORY_SET_CAP,
+          ),
+        ),
+      ];
+    }),
+  };
+}
+
 function appendWorkingSet(
   exercise: ProjectedSlotWorkout["workout"]["accessories"][number],
 ): ProjectedSlotWorkout["workout"]["accessories"][number] {
@@ -845,6 +1061,10 @@ function applySlotPreselectionDemandSetBumps(input: {
       !(
         (demand.muscle === "Side Delts" || demand.muscle === "Rear Delts") &&
         demand.targetStatus === "soft"
+      ) &&
+      !(
+        demand.source === "shadow_owned_promotion" &&
+        demand.targetStatus === "hard"
       )
     ) {
       continue;

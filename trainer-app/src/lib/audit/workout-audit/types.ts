@@ -730,6 +730,41 @@ export type MesocycleExplainProjectionDiagnostics = {
   planningReality?: SlotPlanPlanningRealityDiagnostic;
 };
 
+export type MesocycleExplainProjectionComparisonSnapshot = {
+  slotExercisesBySlot: Record<string, string[]>;
+  weeklyMuscleTotals: Record<string, number>;
+  materialRepairCount: number;
+  majorRepairCount: number;
+  suspiciousRepairCount: number;
+  highExerciseConcentrationCount: number;
+  weakPreselectionConsumptionCount: number;
+  forbiddenFinalPrimaryViolationCount: number;
+  supportFloorClosureRowCount: number;
+  setBumpRowCount: number;
+  capTrimRowCount: number;
+  duplicateRowCount: number;
+  keyAcceptance: {
+    pass: number;
+    fail: number;
+    partial: number;
+    unknown: number;
+  };
+};
+
+export type MesocycleExplainProjectionMetricDelta = {
+  materialRepairCount: number;
+  majorRepairCount: number;
+  suspiciousRepairCount: number;
+  highExerciseConcentrationCount: number;
+  weakPreselectionConsumptionCount: number;
+  forbiddenFinalPrimaryViolationCount: number;
+  supportFloorClosureRowCount: number;
+  setBumpRowCount: number;
+  capTrimRowCount: number;
+  duplicateRowCount: number;
+  keyAcceptanceFailCount: number;
+};
+
 export type MesocycleExplainPlannerOnlyDryRun = {
   enabled: true;
   compareRepaired: boolean;
@@ -739,8 +774,17 @@ export type MesocycleExplainPlannerOnlyDryRun = {
     id: PlannerOnlyPolicyOverride["id"];
     readOnly: true;
     appliesOnlyTo: PlannerOnlyPolicyOverride["appliesOnlyTo"];
-    status: "inactive_noop";
+    status: "inactive_noop" | "active";
     affectsScoringOrGeneration: false;
+  };
+  projectionComparisons?: {
+    baselineRepaired: MesocycleExplainProjectionComparisonSnapshot;
+    plannerOnlyBase: MesocycleExplainProjectionComparisonSnapshot;
+    plannerOnlyWithOverride: MesocycleExplainProjectionComparisonSnapshot;
+    deltas: {
+      overrideVsBaselineRepaired: MesocycleExplainProjectionMetricDelta;
+      overrideVsPlannerOnlyBase: MesocycleExplainProjectionMetricDelta;
+    };
   };
   canReplaceRepairedProjection: boolean;
   summary: {

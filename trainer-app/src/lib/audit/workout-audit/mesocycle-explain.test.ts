@@ -2164,7 +2164,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
         id: "calves_4_4_lower_slot_allocation",
         readOnly: true,
         appliesOnlyTo: "planner_only_dry_run",
-        status: "inactive_noop",
+        status: "active",
         affectsScoringOrGeneration: false,
       },
       canReplaceRepairedProjection: false,
@@ -2172,6 +2172,15 @@ describe("buildMesocycleExplainAuditPayload", () => {
         status: "fail",
         unresolvedDemandCount: expect.any(Number),
         disabledRepairDependencyCount: expect.any(Number),
+      },
+    });
+    expect(payload.plannerOnlyDryRun?.projectionComparisons).toMatchObject({
+      baselineRepaired: expect.any(Object),
+      plannerOnlyBase: expect.any(Object),
+      plannerOnlyWithOverride: expect.any(Object),
+      deltas: {
+        overrideVsBaselineRepaired: expect.any(Object),
+        overrideVsPlannerOnlyBase: expect.any(Object),
       },
     });
     expect(payload.plannerOnlyDryRun?.slotComparisons[0]).toMatchObject({
@@ -2219,8 +2228,11 @@ describe("buildMesocycleExplainAuditPayload", () => {
         }),
       ]),
     );
-    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(1);
-    expect(mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[0]?.[0]).toMatchObject({
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(2);
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[0]?.[0]).not.toHaveProperty(
+      "plannerOnlyPolicyOverride",
+    );
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[1]?.[0]).toMatchObject({
       plannerOnlyPolicyOverride: {
         id: "calves_4_4_lower_slot_allocation",
         readOnly: true,
@@ -2252,11 +2264,14 @@ describe("buildMesocycleExplainAuditPayload", () => {
         "weeks_2_to_4_unprojected",
         "insufficient_candidate_evidence",
         "would_risk_lower_b_hamstrings_route",
-        "cap_trim_risk_unknown",
-        "materiality_delta_unknown",
       ]),
     });
-    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(1);
+    expect(payload.plannerOnlyDryRun?.calvesFourFourCandidate?.materialityEstimate.evidence).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("actual_materialRepairCount_delta:"),
+      ]),
+    );
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(2);
     expect(mocks.buildMesocycleSlotPlanSeed).toHaveBeenCalledTimes(1);
   });
 

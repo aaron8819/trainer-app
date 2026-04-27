@@ -1944,7 +1944,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(first).toEqual(second);
   });
 
-  it("leaves projection output unchanged when a planner-only override is threaded as a no-op", () => {
+  it("keeps normal projection deterministic and applies Calves 4+4 only when explicitly threaded", () => {
     const input = {
       userId: "user-1",
       source: buildSource(),
@@ -1954,12 +1954,36 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     };
 
     const withoutOverride = projectSuccessorSlotPlansFromSnapshot(input);
+    const repeatedWithoutOverride = projectSuccessorSlotPlansFromSnapshot(input);
     const withOverride = projectSuccessorSlotPlansFromSnapshot({
       ...input,
       plannerOnlyPolicyOverride: createCalvesFourFourPlannerOnlyPolicyOverride(),
     });
+    const overrideSlots = getProjectedSlotPlans(withOverride);
+    const lowerA = overrideSlots.find((slot) => slot.slotId === "lower_a");
+    const lowerB = overrideSlots.find((slot) => slot.slotId === "lower_b");
+    const lowerACalfExercises =
+      lowerA?.exercises.filter((exercise) => exercise.name.includes("Calf Raise")) ?? [];
+    const lowerBCalfExercises =
+      lowerB?.exercises.filter((exercise) => exercise.name.includes("Calf Raise")) ?? [];
+    const lowerBInitialExercises =
+      withOverride.diagnostics?.planningReality?.initialSlotComposition.find(
+        (slot) => slot.slotId === "lower_b",
+      )?.exercises ?? [];
+    const lowerBInitialNames = lowerBInitialExercises.map(
+      (exercise) => exercise.exerciseName,
+    );
 
-    expect(withOverride).toEqual(withoutOverride);
+    expect(repeatedWithoutOverride).toEqual(withoutOverride);
+    expect(withOverride).not.toEqual(withoutOverride);
+    expect(lowerACalfExercises).toHaveLength(1);
+    expect(lowerBCalfExercises).toHaveLength(1);
+    expect(lowerACalfExercises[0]?.setCount).toBe(4);
+    expect(lowerBCalfExercises[0]?.setCount).toBe(4);
+    expect(lowerBInitialNames.some((name) => name.includes("Deadlift"))).toBe(true);
+    expect(lowerBInitialNames.some((name) => name.includes("Curl"))).toBe(true);
+    expect(getCoverageRow(withOverride, "Calves")?.projectedEffectiveSets ?? 0)
+      .toBeGreaterThanOrEqual(8);
   });
 
   it("keeps active mesocycle reseed projection callsite override-free", () => {

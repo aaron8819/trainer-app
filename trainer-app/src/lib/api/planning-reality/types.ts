@@ -585,6 +585,27 @@ export type PreselectionDistributionPolicyByWeek = {
     | "keep_diagnostic_only";
 };
 
+export type WeeklyDemandCurveResolvedMuscle = {
+  muscle: string;
+  targetTier: MuscleTargetTier | "IMPLICIT";
+  targetStatus: "hard" | "soft" | "diagnostic";
+  role: "primary" | "support" | "secondary" | "implicit";
+  minEffectiveSets: number | null;
+  preferredEffectiveSets: number | null;
+  maxEffectiveSets: number | null;
+  currentEvidenceEffectiveSets: number | null;
+  desiredExposureCount: number | null;
+  progressionIntent:
+    | "hold"
+    | "increase"
+    | "peak"
+    | "reduce"
+    | "deload"
+    | "diagnostic_only";
+  source: string[];
+  limitations: string[];
+};
+
 export type WeeklyDemandCurve = {
   mesocycleId: string | null;
   source: "diagnostic_shadow_planner";
@@ -598,6 +619,19 @@ export type WeeklyDemandCurve = {
     splitType: string | null;
     sessionsPerWeek: number | null;
   };
+  sourceCatalog: Record<string, string>;
+  limitationCatalog: Record<string, string>;
+  muscleCatalog: Record<
+    string,
+    Pick<
+      WeeklyDemandCurveResolvedMuscle,
+      | "muscle"
+      | "targetTier"
+      | "targetStatus"
+      | "role"
+      | "desiredExposureCount"
+    >
+  >;
   weeks: Array<{
     week: number;
     phase: "entry" | "accumulation" | "peak" | "deload" | "unknown";
@@ -606,24 +640,14 @@ export type WeeklyDemandCurve = {
       | "partially_projected_from_week_1"
       | "not_projected_missing_policy";
     muscles: Array<{
-      muscle: string;
-      targetTier: MuscleTargetTier | "IMPLICIT";
-      targetStatus: "hard" | "soft" | "diagnostic";
-      role: "primary" | "support" | "secondary" | "implicit";
+      muscleRef: string;
       minEffectiveSets: number | null;
       preferredEffectiveSets: number | null;
       maxEffectiveSets: number | null;
       currentEvidenceEffectiveSets: number | null;
-      desiredExposureCount: number | null;
-      progressionIntent:
-        | "hold"
-        | "increase"
-        | "peak"
-        | "reduce"
-        | "deload"
-        | "diagnostic_only";
-      source: string[];
-      limitations: string[];
+      progressionIntent: WeeklyDemandCurveResolvedMuscle["progressionIntent"];
+      sourceRefs: string[];
+      limitationRefs: string[];
     }>;
     weekLevelLimitations: string[];
   }>;

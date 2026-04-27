@@ -1590,6 +1590,9 @@ describe("buildPlanningRealitySummary", () => {
                     splitType: "UPPER_LOWER",
                     sessionsPerWeek: 4,
                   },
+                  sourceCatalog: {},
+                  limitationCatalog: {},
+                  muscleCatalog: {},
                   weeks: [
                     {
                       week: 1,

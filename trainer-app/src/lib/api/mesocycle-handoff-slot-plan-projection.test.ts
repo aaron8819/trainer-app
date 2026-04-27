@@ -62,6 +62,7 @@ import type {
   WorkoutPlan,
 } from "@/lib/engine/types";
 import { findFinalSlotForbiddenPrescriptionViolations } from "../audit/workout-audit/planning-reality-invariants.test-helper";
+import { resolveWeeklyDemandCurveMuscleRows } from "./planning-reality/planner-intent";
 
 function makeRawExercise(input: {
   id: string;
@@ -2924,6 +2925,9 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         ]),
       },
     });
+    expect(
+      Buffer.byteLength(JSON.stringify(weeklyDemandCurve, null, 2), "utf8"),
+    ).toBeLessThan(60000);
     expect(weeklyDemandCurve?.weeks.map((week) => week.week)).toEqual([
       1, 2, 3, 4, 5,
     ]);
@@ -2931,7 +2935,32 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       week: 1,
       phase: "entry",
       projectionStatus: "partially_projected_from_week_1",
-      muscles: expect.arrayContaining([
+    });
+    expect(weeklyDemandCurve?.sourceCatalog).toBeDefined();
+    expect(weeklyDemandCurve?.limitationCatalog).toBeDefined();
+    expect(weeklyDemandCurve?.muscleCatalog).toBeDefined();
+    expect(weeklyDemandCurve?.weeks[0]?.muscles[0]).toEqual(
+      expect.objectContaining({
+        muscleRef: expect.any(String),
+        sourceRefs: expect.any(Array),
+        limitationRefs: expect.any(Array),
+      }),
+    );
+    expect(weeklyDemandCurve?.weeks[0]?.muscles[0]).not.toHaveProperty(
+      "source",
+    );
+    expect(weeklyDemandCurve?.weeks[0]?.muscles[0]).not.toHaveProperty(
+      "limitations",
+    );
+    const weekOneDemandRows =
+      weeklyDemandCurve && weeklyDemandCurve.weeks[0]
+        ? resolveWeeklyDemandCurveMuscleRows({
+            curve: weeklyDemandCurve,
+            week: weeklyDemandCurve.weeks[0],
+          })
+        : [];
+    expect(weekOneDemandRows).toEqual(
+      expect.arrayContaining([
         expect.objectContaining({
           muscle: "Chest",
           targetTier: "A_PRIMARY",
@@ -2943,7 +2972,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
           ]),
         }),
       ]),
-    });
+    );
     expect(weeklyDemandCurve?.weeks.filter((week) => [2, 3, 4].includes(week.week))).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -2970,14 +2999,31 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         "missing_deload_identity_preservation_policy",
         "missing_deload_set_reduction_projection",
       ]),
-      muscles: expect.arrayContaining([
+    });
+    const deloadWeek = weeklyDemandCurve?.weeks.find(
+      (week) => week.phase === "deload",
+    );
+    expect(
+      weeklyDemandCurve && deloadWeek
+        ? resolveWeeklyDemandCurveMuscleRows({
+            curve: weeklyDemandCurve,
+            week: deloadWeek,
+          })
+        : [],
+    ).toEqual(
+      expect.arrayContaining([
         expect.objectContaining({
           muscle: "Chest",
           progressionIntent: "deload",
           preferredEffectiveSets: null,
+          limitations: expect.arrayContaining([
+            "missing_deload_demand_curve",
+            "missing_deload_identity_preservation_policy",
+            "missing_deload_set_reduction_projection",
+          ]),
         }),
       ]),
-    });
+    );
     const slotDemandAllocationByWeek =
       diagnostic?.slotDemandAllocationByWeek;
     expect(slotDemandAllocationByWeek).toMatchObject({
@@ -3162,7 +3208,10 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     ]) {
       const collateralRows =
         weeklyDemandCurve?.weeks.flatMap((week) =>
-          week.muscles.filter((row) => row.muscle === collateralMuscle),
+          resolveWeeklyDemandCurveMuscleRows({
+            curve: weeklyDemandCurve,
+            week,
+          }).filter((row) => row.muscle === collateralMuscle),
         ) ?? [];
       for (const row of collateralRows) {
         expect(row.targetStatus).toBe("diagnostic");
@@ -3561,13 +3610,19 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     });
 
     const curve = diagnostic.weeklyDemandCurve;
-    const weekOneChest = curve.weeks[0]?.muscles.find(
+    const weekOneRows = curve.weeks[0]
+      ? resolveWeeklyDemandCurveMuscleRows({
+          curve,
+          week: curve.weeks[0],
+        })
+      : [];
+    const weekOneChest = weekOneRows.find(
       (row) => row.muscle === "Chest",
     );
-    const weekOneHamstrings = curve.weeks[0]?.muscles.find(
+    const weekOneHamstrings = weekOneRows.find(
       (row) => row.muscle === "Hamstrings",
     );
-    const weekOneSideDelts = curve.weeks[0]?.muscles.find(
+    const weekOneSideDelts = weekOneRows.find(
       (row) => row.muscle === "Side Delts",
     );
 
@@ -3865,7 +3920,7 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       "Upper Back",
     ]) {
       expect(
-        curve.weeks[0]?.muscles.find((row) => row.muscle === muscle),
+        weekOneRows.find((row) => row.muscle === muscle),
       ).toMatchObject({
         targetStatus: "diagnostic",
         limitations: expect.arrayContaining([

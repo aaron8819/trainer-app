@@ -39,6 +39,7 @@ import type {
   SlotSequenceEntry,
   SuspiciousRepairNotEligibleForPromotion,
   WeeklyDemandCurve,
+  WeeklyDemandCurveResolvedMuscle,
 } from "./types";
 import { getAllocationFatigueBudget, normalizeMuscle } from "./shared-evidence";
 export type MusclePrescription = SlotPrescriptionIntent["musclePrescriptions"][number];
@@ -1447,7 +1448,7 @@ export function getDiagnosticNumberField(
 
 export function toWeeklyDemandRole(
   priority: ShadowWeeklyMuscleDemand["priority"],
-): WeeklyDemandCurve["weeks"][number]["muscles"][number]["role"] {
+): WeeklyDemandCurveResolvedMuscle["role"] {
   return priority === "primary" ||
     priority === "support" ||
     priority === "secondary"
@@ -1477,7 +1478,7 @@ export function getWeeklyDemandCurvePhase(input: {
 export function getWeeklyDemandCurveProgressionIntent(input: {
   phase: WeeklyDemandCurve["weeks"][number]["phase"];
   targetStatus: ShadowWeeklyMuscleDemand["targetStatus"];
-}): WeeklyDemandCurve["weeks"][number]["muscles"][number]["progressionIntent"] {
+}): WeeklyDemandCurveResolvedMuscle["progressionIntent"] {
   if (input.targetStatus === "diagnostic") {
     return "diagnostic_only";
   }
@@ -1528,6 +1529,159 @@ export function getWeeklyDemandCurveProjectionStatus(
     return "not_projected_missing_policy";
   }
   return "partially_projected_from_week_1";
+}
+
+type ExpandedWeeklyDemandCurveWeek = Omit<
+  WeeklyDemandCurve["weeks"][number],
+  "muscles"
+> & {
+  muscles: WeeklyDemandCurveResolvedMuscle[];
+};
+
+function toWeeklyDemandCatalogKey(prefix: string, index: number): string {
+  return `${prefix}${index + 1}`;
+}
+
+function toWeeklyDemandMuscleRef(muscle: string): string {
+  const slug = normalizeMuscle(muscle)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return `m:${slug || "unknown"}`;
+}
+
+function buildWeeklyDemandStringCatalog(
+  values: ReadonlyArray<string>,
+  prefix: string,
+): {
+  catalog: Record<string, string>;
+  refByValue: Map<string, string>;
+} {
+  const catalog: Record<string, string> = {};
+  const refByValue = new Map<string, string>();
+
+  uniqueSorted(values).forEach((value, index) => {
+    const key = toWeeklyDemandCatalogKey(prefix, index);
+    catalog[key] = value;
+    refByValue.set(value, key);
+  });
+
+  return { catalog, refByValue };
+}
+
+function requireWeeklyDemandRef(
+  refByValue: ReadonlyMap<string, string>,
+  value: string,
+): string {
+  const ref = refByValue.get(value);
+  if (!ref) {
+    throw new Error(`Missing weeklyDemandCurve catalog ref for ${value}`);
+  }
+  return ref;
+}
+
+export function compactWeeklyDemandCurveWeeks(
+  weeks: ReadonlyArray<ExpandedWeeklyDemandCurveWeek>,
+): Pick<
+  WeeklyDemandCurve,
+  "sourceCatalog" | "limitationCatalog" | "muscleCatalog" | "weeks"
+> {
+  const { catalog: sourceCatalog, refByValue: sourceRefByValue } =
+    buildWeeklyDemandStringCatalog(
+      weeks.flatMap((week) => week.muscles.flatMap((muscle) => muscle.source)),
+      "s",
+    );
+  const { catalog: limitationCatalog, refByValue: limitationRefByValue } =
+    buildWeeklyDemandStringCatalog(
+      weeks.flatMap((week) =>
+        week.muscles.flatMap((muscle) => muscle.limitations),
+      ),
+      "l",
+    );
+  const muscleCatalog: WeeklyDemandCurve["muscleCatalog"] = {};
+
+  for (const muscle of weeks.flatMap((week) => week.muscles)) {
+    const muscleRef = toWeeklyDemandMuscleRef(muscle.muscle);
+    muscleCatalog[muscleRef] ??= {
+      muscle: muscle.muscle,
+      targetTier: muscle.targetTier,
+      targetStatus: muscle.targetStatus,
+      role: muscle.role,
+      desiredExposureCount: muscle.desiredExposureCount,
+    };
+  }
+
+  return {
+    sourceCatalog,
+    limitationCatalog,
+    muscleCatalog: Object.fromEntries(
+      Object.entries(muscleCatalog).sort(([left], [right]) =>
+        left.localeCompare(right),
+      ),
+    ),
+    weeks: weeks.map((week) => ({
+      week: week.week,
+      phase: week.phase,
+      projectionStatus: week.projectionStatus,
+      muscles: week.muscles.map((muscle) => ({
+        muscleRef: toWeeklyDemandMuscleRef(muscle.muscle),
+        minEffectiveSets: muscle.minEffectiveSets,
+        preferredEffectiveSets: muscle.preferredEffectiveSets,
+        maxEffectiveSets: muscle.maxEffectiveSets,
+        currentEvidenceEffectiveSets: muscle.currentEvidenceEffectiveSets,
+        progressionIntent: muscle.progressionIntent,
+        sourceRefs: muscle.source.map((source) =>
+          requireWeeklyDemandRef(sourceRefByValue, source),
+        ),
+        limitationRefs: muscle.limitations
+          .filter((limitation) => !week.weekLevelLimitations.includes(limitation))
+          .map((limitation) =>
+            requireWeeklyDemandRef(limitationRefByValue, limitation),
+          ),
+      })),
+      weekLevelLimitations: week.weekLevelLimitations,
+    })),
+  };
+}
+
+export function resolveWeeklyDemandCurveMuscleRows(input: {
+  curve: WeeklyDemandCurve;
+  week: WeeklyDemandCurve["weeks"][number];
+}): WeeklyDemandCurveResolvedMuscle[] {
+  return input.week.muscles.map((row) => {
+    const catalogEntry = input.curve.muscleCatalog[row.muscleRef];
+    const limitationRefs = [
+      ...row.limitationRefs,
+      ...input.week.weekLevelLimitations
+        .map((limitation) =>
+          Object.entries(input.curve.limitationCatalog).find(
+            ([, value]) => value === limitation,
+          )?.[0],
+        )
+        .filter((ref): ref is string => ref != null),
+    ];
+
+    return {
+      muscle: catalogEntry?.muscle ?? row.muscleRef,
+      targetTier: catalogEntry?.targetTier ?? "IMPLICIT",
+      targetStatus: catalogEntry?.targetStatus ?? "diagnostic",
+      role: catalogEntry?.role ?? "implicit",
+      minEffectiveSets: row.minEffectiveSets,
+      preferredEffectiveSets: row.preferredEffectiveSets,
+      maxEffectiveSets: row.maxEffectiveSets,
+      currentEvidenceEffectiveSets: row.currentEvidenceEffectiveSets,
+      desiredExposureCount: catalogEntry?.desiredExposureCount ?? null,
+      progressionIntent: row.progressionIntent,
+      source: row.sourceRefs.map(
+        (ref) => input.curve.sourceCatalog[ref] ?? ref,
+      ),
+      limitations: uniqueSorted(
+        limitationRefs.map(
+          (ref) => input.curve.limitationCatalog[ref] ?? ref,
+        ),
+      ),
+    };
+  });
 }
 
 export function getPolicyTargetForCurve(input: {
@@ -1776,21 +1930,9 @@ export function buildWeeklyDemandCurve(input: {
     projectedDelivery: input.projectedDelivery,
     exerciseConcentration: input.exerciseConcentration,
   });
-
-  return {
-    mesocycleId: getDiagnosticMesocycleId(input.activeMesocycle),
-    source: "diagnostic_shadow_planner",
-    readOnly: true,
-    affectsScoringOrGeneration: false,
-    designBasis: {
-      durationWeeks,
-      intensityBias: getDiagnosticStringField(input.activeMesocycle, "intensityBias"),
-      focus: getDiagnosticStringField(input.activeMesocycle, "focus"),
-      volumeTarget: getDiagnosticStringField(input.activeMesocycle, "volumeTarget"),
-      splitType: getDiagnosticStringField(input.activeMesocycle, "splitType"),
-      sessionsPerWeek: getDiagnosticNumberField(input.activeMesocycle, "sessionsPerWeek"),
-    },
-    weeks: Array.from({ length: durationWeeks }, (_, index) => {
+  const weeks: ExpandedWeeklyDemandCurveWeek[] = Array.from(
+    { length: durationWeeks },
+    (_, index) => {
       const week = index + 1;
       const phase = getWeeklyDemandCurvePhase({ week, durationWeeks });
       const weekLevelLimitations = getWeekLevelLimitations(phase);
@@ -1835,7 +1977,24 @@ export function buildWeeklyDemandCurve(input: {
         }),
         weekLevelLimitations,
       };
-    }),
+    },
+  );
+  const compactWeeks = compactWeeklyDemandCurveWeeks(weeks);
+
+  return {
+    mesocycleId: getDiagnosticMesocycleId(input.activeMesocycle),
+    source: "diagnostic_shadow_planner",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    designBasis: {
+      durationWeeks,
+      intensityBias: getDiagnosticStringField(input.activeMesocycle, "intensityBias"),
+      focus: getDiagnosticStringField(input.activeMesocycle, "focus"),
+      volumeTarget: getDiagnosticStringField(input.activeMesocycle, "volumeTarget"),
+      splitType: getDiagnosticStringField(input.activeMesocycle, "splitType"),
+      sessionsPerWeek: getDiagnosticNumberField(input.activeMesocycle, "sessionsPerWeek"),
+    },
+    ...compactWeeks,
     crossWeekWarnings: warnings,
     candidateBehaviorGate: {
       status: "blocked_until_weekly_curve_is_visible",
@@ -2334,6 +2493,7 @@ export function buildDuplicateProjectionEvidence(input: {
 }
 
 export function buildAccumulationProjectionMuscles(input: {
+  weeklyDemandCurve: WeeklyDemandCurve;
   week: WeeklyDemandCurve["weeks"][number];
   projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
 }): AccumulationProjectedMuscle[] {
@@ -2341,7 +2501,10 @@ export function buildAccumulationProjectionMuscles(input: {
     input.projectedDelivery.map((row) => [row.muscle, row]),
   );
 
-  return input.week.muscles.map((muscle) => {
+  return resolveWeeklyDemandCurveMuscleRows({
+    curve: input.weeklyDemandCurve,
+    week: input.week,
+  }).map((muscle) => {
     const delivery = deliveryByMuscle.get(muscle.muscle);
     const projectedEffectiveSets =
       delivery?.projectedEffectiveStimulusAfterRepairAndFinalShaping ?? null;
@@ -2726,6 +2889,7 @@ export function buildAccumulationWeekProjection(input: {
       phase: toAccumulationProjectionPhase(week.phase),
       projectionStatus: getAccumulationProjectionStatus(week.phase),
       projectedMuscles: buildAccumulationProjectionMuscles({
+        weeklyDemandCurve: input.weeklyDemandCurve,
         week,
         projectedDelivery: input.projectedDelivery,
       }),

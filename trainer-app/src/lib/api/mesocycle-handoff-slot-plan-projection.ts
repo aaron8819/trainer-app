@@ -108,6 +108,28 @@ function markSlotLanePlanStrict(slotLanePlan: SlotLanePlan): SlotLanePlan {
   }));
 }
 
+const PLANNER_ONLY_NO_REPAIR_SET_TARGETS: Record<string, number> = {
+  "upper_a:chest_secondary": 3,
+  "upper_b:chest_second_exposure": 4,
+  "lower_a:calves": 4,
+};
+
+function applyPlannerOnlyNoRepairSetBalancing(
+  slotLanePlan: SlotLanePlan,
+): SlotLanePlan {
+  return slotLanePlan.map((lane) => {
+    const target = PLANNER_ONLY_NO_REPAIR_SET_TARGETS[`${lane.slotId}:${lane.laneId}`];
+    if (target == null) {
+      return lane;
+    }
+    return {
+      ...lane,
+      minSets: Math.max(lane.minSets, target),
+      preferredSets: Math.max(lane.preferredSets, target),
+    };
+  });
+}
+
 function buildPlannerOnlyLaneSkeletonWorkout(input: {
   slotId: string;
   intent: WorkoutSessionIntent;
@@ -436,7 +458,9 @@ function projectSlotPlansPass(input: {
       previousProjectedSlots: projectedSlots,
     });
     const effectiveBaseSlotLanePlan = repairDisabled
-      ? markSlotLanePlanStrict(baseSlotLanePlan)
+      ? markSlotLanePlanStrict(
+          applyPlannerOnlyNoRepairSetBalancing(baseSlotLanePlan),
+        )
       : baseSlotLanePlan;
     const overrideAdjustedSlotPlan = buildPlannerOnlyOverrideAdjustedSlotPlan({
       slotId: slot.slotId,

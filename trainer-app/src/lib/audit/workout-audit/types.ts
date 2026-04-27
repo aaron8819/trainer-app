@@ -970,6 +970,24 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
     targetPreferred: number | null;
     status: "below" | "within" | "above" | "diagnostic";
   }>;
+  setAllocationChanges: Array<{
+    slotId: string;
+    lane: string;
+    exerciseName: string;
+    setsBefore: number;
+    setsAfter: number;
+    effectiveStimulusDeltaByMuscle: Record<string, number>;
+  }>;
+  weeklyMuscleTotalChanges: Array<{
+    muscle: string;
+    beforeEffectiveSets: number;
+    afterEffectiveSets: number;
+    deltaEffectiveSets: number;
+    targetMin: number | null;
+    targetPreferred: number | null;
+    statusBefore: "below" | "within" | "above" | "diagnostic";
+    statusAfter: "below" | "within" | "above" | "diagnostic";
+  }>;
   acceptanceChecks: Array<{
     check: string;
     status: "pass" | "fail" | "partial" | "unknown";

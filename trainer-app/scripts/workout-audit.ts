@@ -2014,6 +2014,20 @@ export function buildPlannerOnlyNoRepairSummary(input: {
     )
     .slice(0, 6)
     .join("; ") || "none";
+  const setAllocationChanges =
+    noRepair.setAllocationChanges
+      ?.map(
+        (change) =>
+          `${change.slotId}:${change.lane}:${change.exerciseName} ${change.setsBefore}->${change.setsAfter}`
+      )
+      .join("; ") || "none";
+  const weeklyTotalChanges =
+    noRepair.weeklyMuscleTotalChanges
+      ?.map(
+        (change) =>
+          `${change.muscle} ${change.beforeEffectiveSets}->${change.afterEffectiveSets} (min ${change.targetMin ?? "unknown"})`
+      )
+      .join("; ") || "none";
   const comparison = noRepair.comparisonToRepaired
     ? ` repaired_passes=${formatBooleanFlag(noRepair.comparisonToRepaired.repairedPasses)} no_repair_passes=${formatBooleanFlag(noRepair.comparisonToRepaired.noRepairPasses)}`
     : "";
@@ -2023,6 +2037,8 @@ export function buildPlannerOnlyNoRepairSummary(input: {
     `[workout-audit:planner-only-no-repair] missing_lanes=${missingLanes}`,
     `[workout-audit:planner-only-no-repair] unresolved_demand=${unresolved}`,
     `[workout-audit:planner-only-no-repair] acceptance_failures=${failingChecks}`,
+    `[workout-audit:planner-only-no-repair] set_allocation_changes=${setAllocationChanges}`,
+    `[workout-audit:planner-only-no-repair] weekly_total_changes=${weeklyTotalChanges}`,
   ];
 }
 

@@ -364,6 +364,7 @@ npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner 
 - Disabled in this experimental pass: support-floor closure, weekly obligation closure, program-quality identity changes, late set bumping, isolation injection/accessory-lane rescue, clean-curl repair preference, duplicate/program-quality repair shaping, cap trim, MAV trim, forbidden cleanup mutation, and seed/runtime persistence.
 - Kept as validation/reporting only: forbidden-slot checks, cap/concentration checks, duplicate checks, unresolved demand reporting, lane satisfaction, weekly muscle totals, and acceptance checks.
 - The payload reports unresolved demand and validation failures instead of fixing them. It must not update accepted mesocycles, `slotPlanSeedJson`, receipts, runtime replay, planned workouts, or performed workouts.
+- The payload and CLI also report compact planner-owned set-allocation changes plus before/after weekly total changes for the flagged no-repair pass. These fields are diagnostic readouts only and must not imply downstream repair was enabled.
 
 Optional targeting:
 

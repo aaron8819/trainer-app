@@ -2612,6 +2612,28 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                 status: "below",
               },
             ],
+            setAllocationChanges: [
+              {
+                slotId: "upper_a",
+                lane: "chest_secondary",
+                exerciseName: "Cable Crossover",
+                setsBefore: 2,
+                setsAfter: 3,
+                effectiveStimulusDeltaByMuscle: { Chest: 1 },
+              },
+            ],
+            weeklyMuscleTotalChanges: [
+              {
+                muscle: "Chest",
+                beforeEffectiveSets: 5,
+                afterEffectiveSets: 6,
+                deltaEffectiveSets: 1,
+                targetMin: 10,
+                targetPreferred: 10,
+                statusBefore: "below",
+                statusAfter: "below",
+              },
+            ],
             acceptanceChecks: [
               {
                 check: "primary muscles above minimum",
@@ -2638,6 +2660,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
       "[workout-audit:planner-only-no-repair] missing_lanes=upper_a:chest_secondary:missing",
       "[workout-audit:planner-only-no-repair] unresolved_demand=upper_a:Chest:shortfall_4",
       "[workout-audit:planner-only-no-repair] acceptance_failures=primary muscles above minimum:fail",
+      "[workout-audit:planner-only-no-repair] set_allocation_changes=upper_a:chest_secondary:Cable Crossover 2->3",
+      "[workout-audit:planner-only-no-repair] weekly_total_changes=Chest 5->6 (min 10)",
     ]);
   });
 });

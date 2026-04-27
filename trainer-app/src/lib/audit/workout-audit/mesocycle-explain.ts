@@ -2420,6 +2420,128 @@ function buildNoRepairWeeklyMuscleTotals(
   });
 }
 
+function getNoRepairSetAllocationBaseline(input: {
+  slotId: string;
+  exercise: PlanningRealityDiagnostic["finalSlotPlan"][number]["exercises"][number];
+  classified: ReturnType<typeof classifyPlannerOnlyExercise>;
+}): { lane: string; setsBefore: number } | null {
+  const primaryMuscles = input.exercise.primaryMuscles.map((muscle) =>
+    muscle.trim().toLowerCase()
+  );
+  const name = input.exercise.exerciseName.trim().toLowerCase();
+  if (
+    input.slotId === "upper_a" &&
+    input.classified.lane === "chest_secondary" &&
+    primaryMuscles.includes("chest")
+  ) {
+    return { lane: "chest_secondary", setsBefore: 2 };
+  }
+  if (
+    input.slotId === "upper_b" &&
+    primaryMuscles.includes("chest") &&
+    (input.classified.exerciseClass === "chest_isolation" ||
+      input.classified.exerciseClass === "chest_press")
+  ) {
+    return { lane: "chest_second_exposure", setsBefore: 3 };
+  }
+  if (
+    input.slotId === "lower_a" &&
+    (primaryMuscles.includes("calves") || name.includes("calf raise"))
+  ) {
+    return { lane: "calves", setsBefore: 3 };
+  }
+  return null;
+}
+
+function buildNoRepairSetAllocationChanges(
+  planningReality: PlanningRealityDiagnostic
+): MesocycleExplainPlannerOnlyNoRepair["setAllocationChanges"] {
+  return planningReality.finalSlotPlan.flatMap((slot) =>
+    slot.exercises.flatMap((exercise) => {
+      const classified = classifyPlannerOnlyExercise({ exercise });
+      const baseline = getNoRepairSetAllocationBaseline({
+        slotId: slot.slotId,
+        exercise,
+        classified,
+      });
+      if (!baseline || exercise.setCount <= baseline.setsBefore) {
+        return [];
+      }
+      const setDelta = exercise.setCount - baseline.setsBefore;
+      const effectiveStimulusDeltaEntries: Array<[string, number]> = [];
+      for (const [muscle, stimulus] of Object.entries(
+        exercise.effectiveStimulusByMuscle
+      )) {
+        const stimulusDelta = roundOne((stimulus / exercise.setCount) * setDelta);
+        if (stimulusDelta > 0) {
+          effectiveStimulusDeltaEntries.push([muscle, stimulusDelta]);
+        }
+      }
+      const effectiveStimulusDeltaByMuscle = Object.fromEntries(
+        effectiveStimulusDeltaEntries
+      );
+      return [
+        {
+          slotId: slot.slotId,
+          lane: baseline.lane,
+          exerciseName: exercise.exerciseName,
+          setsBefore: baseline.setsBefore,
+          setsAfter: exercise.setCount,
+          effectiveStimulusDeltaByMuscle,
+        },
+      ];
+    })
+  );
+}
+
+function classifyNoRepairWeeklyStatus(input: {
+  projectedEffectiveSets: number;
+  targetMin: number | null;
+}): MesocycleExplainPlannerOnlyNoRepair["weeklyMuscleTotalChanges"][number]["statusBefore"] {
+  if (input.targetMin == null) {
+    return "diagnostic";
+  }
+  return input.projectedEffectiveSets < input.targetMin ? "below" : "within";
+}
+
+function buildNoRepairWeeklyMuscleTotalChanges(input: {
+  weeklyMuscleTotals: MesocycleExplainPlannerOnlyNoRepair["weeklyMuscleTotals"];
+  setAllocationChanges: MesocycleExplainPlannerOnlyNoRepair["setAllocationChanges"];
+}): MesocycleExplainPlannerOnlyNoRepair["weeklyMuscleTotalChanges"] {
+  const deltaByMuscle = new Map<string, number>();
+  for (const change of input.setAllocationChanges) {
+    for (const [muscle, delta] of Object.entries(
+      change.effectiveStimulusDeltaByMuscle
+    )) {
+      deltaByMuscle.set(muscle, roundOne((deltaByMuscle.get(muscle) ?? 0) + delta));
+    }
+  }
+
+  const totalByMuscle = new Map(
+    input.weeklyMuscleTotals.map((row) => [row.muscle, row])
+  );
+  return Array.from(deltaByMuscle.entries())
+    .map(([muscle, deltaEffectiveSets]) => {
+      const total = totalByMuscle.get(muscle);
+      const afterEffectiveSets = total?.projectedEffectiveSets ?? deltaEffectiveSets;
+      const beforeEffectiveSets = roundOne(afterEffectiveSets - deltaEffectiveSets);
+      return {
+        muscle,
+        beforeEffectiveSets,
+        afterEffectiveSets,
+        deltaEffectiveSets,
+        targetMin: total?.targetMin ?? null,
+        targetPreferred: total?.targetPreferred ?? null,
+        statusBefore: classifyNoRepairWeeklyStatus({
+          projectedEffectiveSets: beforeEffectiveSets,
+          targetMin: total?.targetMin ?? null,
+        }),
+        statusAfter: total?.status ?? "diagnostic",
+      };
+    })
+    .sort((left, right) => left.muscle.localeCompare(right.muscle));
+}
+
 function buildNoRepairAcceptanceChecks(
   planningReality: PlanningRealityDiagnostic,
   weeklyMuscleTotals: MesocycleExplainPlannerOnlyNoRepair["weeklyMuscleTotals"]
@@ -2557,6 +2679,8 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       },
       slotPlans: [],
       weeklyMuscleTotals: [],
+      setAllocationChanges: [],
+      weeklyMuscleTotalChanges: [],
       acceptanceChecks: [
         {
           check: "planner-only no-repair planningReality available",
@@ -2580,6 +2704,11 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   const noRepair = input.noRepairPlanningReality;
   const slotPlans = buildNoRepairSlotPlans(noRepair);
   const weeklyMuscleTotals = buildNoRepairWeeklyMuscleTotals(noRepair);
+  const setAllocationChanges = buildNoRepairSetAllocationChanges(noRepair);
+  const weeklyMuscleTotalChanges = buildNoRepairWeeklyMuscleTotalChanges({
+    weeklyMuscleTotals,
+    setAllocationChanges,
+  });
   const acceptanceChecks = buildNoRepairAcceptanceChecks(
     noRepair,
     weeklyMuscleTotals
@@ -2626,6 +2755,8 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     },
     slotPlans,
     weeklyMuscleTotals,
+    setAllocationChanges,
+    weeklyMuscleTotalChanges,
     acceptanceChecks,
     repairDependenciesDisabled,
     ...(input.compareRepaired

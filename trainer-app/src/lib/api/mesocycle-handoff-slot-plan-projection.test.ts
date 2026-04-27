@@ -2005,6 +2005,37 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     );
 
     expect(slotPlans).toHaveLength(4);
+    expect(
+      diagnostic?.finalSlotPlan
+        .find((slot) => slot.slotId === "upper_a")
+        ?.exercises.find(
+          (exercise) =>
+            exercise.primaryMuscles.includes("Chest") &&
+            exercise.role === "accessory" &&
+            exercise.setCount === 3,
+        )
+        ?.setCount,
+    ).toBe(3);
+    expect(
+      diagnostic?.finalSlotPlan
+        .find((slot) => slot.slotId === "upper_b")
+        ?.exercises.find(
+          (exercise) =>
+            exercise.primaryMuscles.includes("Chest") &&
+            exercise.setCount === 4,
+        )
+        ?.setCount,
+    ).toBe(4);
+    expect(
+      diagnostic?.finalSlotPlan
+        .find((slot) => slot.slotId === "lower_a")
+        ?.exercises.find(
+          (exercise) =>
+            exercise.primaryMuscles.includes("Calves") &&
+            exercise.setCount === 4,
+        )
+        ?.setCount,
+    ).toBe(4);
     expect(diagnostic?.finalSlotPlan).toEqual(diagnostic?.initialSlotComposition);
     expect(
       diagnostic?.repairMateriality.filter((row) => row.materiality !== "none"),

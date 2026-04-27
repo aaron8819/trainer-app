@@ -153,6 +153,27 @@ describe("buildWorkoutAuditContext", () => {
     expect(context.mesocycleExplain?.plannerOnlyDryRun).toEqual({
       enabled: true,
       compareRepaired: true,
+      plannerOnlyPolicyOverride: {
+        id: "calves_4_4_lower_slot_allocation",
+        readOnly: true,
+        appliesOnlyTo: "planner_only_dry_run",
+        slots: [
+          {
+            slotId: "lower_a",
+            muscle: "Calves",
+            targetEffectiveSets: 4,
+            maxDirectExercises: 1,
+            preferredExerciseClass: "calf_raise",
+          },
+          {
+            slotId: "lower_b",
+            muscle: "Calves",
+            targetEffectiveSets: 4,
+            maxDirectExercises: 1,
+            preferredExerciseClass: "calf_raise",
+          },
+        ],
+      },
     });
     expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
   });

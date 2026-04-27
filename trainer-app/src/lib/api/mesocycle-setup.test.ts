@@ -239,6 +239,9 @@ describe("mesocycle setup preview", () => {
       "meso-1"
     );
     expect(mocks.toHandoffProjectionSource).toHaveBeenCalledTimes(1);
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[0]?.[0]).not.toHaveProperty(
+      "plannerOnlyPolicyOverride",
+    );
   });
 
   it("embeds the canonical preview in the setup read model", async () => {

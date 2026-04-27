@@ -5,6 +5,7 @@ import type {
   ProjectedWeekVolumeMuscleRow,
   ProjectedWeekVolumeSessionSummary,
 } from "@/lib/api/projected-week-volume";
+import type { PlannerOnlyPolicyOverride } from "@/lib/api/planner-only-policy-override";
 import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection.diagnostics";
 import type { SlotPreselectionDemandDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection";
 import type { SessionGenerationResult } from "@/lib/api/template-session/types";
@@ -116,6 +117,7 @@ export type WorkoutAuditContext = {
     plannerOnlyDryRun?: {
       enabled: true;
       compareRepaired: true;
+      plannerOnlyPolicyOverride: PlannerOnlyPolicyOverride;
     };
   };
 };
@@ -733,6 +735,13 @@ export type MesocycleExplainPlannerOnlyDryRun = {
   compareRepaired: boolean;
   readOnly: true;
   affectsScoringOrGeneration: false;
+  policyOverride?: {
+    id: PlannerOnlyPolicyOverride["id"];
+    readOnly: true;
+    appliesOnlyTo: PlannerOnlyPolicyOverride["appliesOnlyTo"];
+    status: "inactive_noop";
+    affectsScoringOrGeneration: false;
+  };
   canReplaceRepairedProjection: boolean;
   summary: {
     status: "pass" | "partial" | "fail";

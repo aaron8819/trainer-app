@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { buildMesocycleSlotPlanSeed } from "../mesocycle-handoff-slot-plan-projection";
 import { resolveRequiredSeededSlotPlan } from "./slot-plan-seed";
 import type { MappedGenerationContext } from "./types";
 
@@ -37,6 +38,40 @@ function makeMapped(slotPlanSeedJson: unknown): MappedGenerationContext {
 }
 
 describe("resolveRequiredSeededSlotPlan", () => {
+  it("does not serialize planner-only override data into slotPlanSeedJson", () => {
+    const seed = buildMesocycleSlotPlanSeed({
+      slotSequence: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [{ slotId: "upper_a", intent: "UPPER" }],
+      },
+      slotPlans: [
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          plannerOnlyPolicyOverride: {
+            id: "calves_4_4_lower_slot_allocation",
+          },
+          exercises: [
+            {
+              exerciseId: "bench",
+              name: "Bench Press",
+              role: "CORE_COMPOUND",
+              setCount: 5,
+              plannerOnlyPolicyOverride: {
+                id: "calves_4_4_lower_slot_allocation",
+              },
+            },
+          ],
+        },
+      ] as never,
+    });
+
+    expect(JSON.stringify(seed)).not.toContain("plannerOnlyPolicyOverride");
+    expect(JSON.stringify(seed)).not.toContain("calves_4_4_lower_slot_allocation");
+  });
+
   it("returns explicit set-count overrides for set-aware seeds", () => {
     const resolved = resolveRequiredSeededSlotPlan({
       mapped: makeMapped({

@@ -1150,6 +1150,9 @@ describe("handoff draft persistence", () => {
     expect(createData.slotPlanSeedJson?.slots[0]).not.toHaveProperty("intent");
     expect(createData.slotPlanSeedJson?.slots[0]?.exercises[0]).not.toHaveProperty("exerciseName");
     expect(createData.slotPlanSeedJson?.slots[0]?.exercises[0]).not.toHaveProperty("name");
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[0]?.[0]).not.toHaveProperty(
+      "plannerOnlyPolicyOverride",
+    );
     expect(exerciseRoleCreateMany).not.toHaveBeenCalled();
     expect(constraintsUpsert).toHaveBeenCalledWith(
       expect.objectContaining({

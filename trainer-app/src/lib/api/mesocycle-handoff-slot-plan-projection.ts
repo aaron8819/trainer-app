@@ -15,6 +15,7 @@ import type { SuccessorMesocycleProjectionSource } from "./mesocycle-handoff-pro
 import { SESSION_CAPS } from "./template-session/selection-adapter";
 import { getWeekOneSupportFloor } from "./template-session/role-budgeting";
 import { selectAccessoryLaneInsertion } from "@/lib/planning/accessory-lane";
+import type { PlannerOnlyPolicyOverride } from "./planner-only-policy-override";
 import type { PreloadedGenerationSnapshot } from "./template-session/context-loader";
 import type { MappedGenerationContext } from "./template-session/types";
 import {
@@ -173,6 +174,7 @@ function projectSlotPlansPass(input: {
   design: NextMesocycleDesign;
   snapshot: PreloadedGenerationSnapshot;
   projectionNow: Date;
+  plannerOnlyPolicyOverride?: PlannerOnlyPolicyOverride;
 }):
   | {
       projectedSlots: ProjectedSlotWorkout[];
@@ -1156,6 +1158,7 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
   design: NextMesocycleDesign;
   snapshot: PreloadedGenerationSnapshot;
   now?: Date;
+  plannerOnlyPolicyOverride?: PlannerOnlyPolicyOverride;
 }): SuccessorSlotPlanProjection | FailedSuccessorSlotPlanProjection {
   const projectionNow = input.now ?? new Date();
   const pass = projectSlotPlansPass({
@@ -1164,6 +1167,9 @@ export function projectSuccessorSlotPlansFromSnapshot(input: {
     design: input.design,
     snapshot: input.snapshot,
     projectionNow,
+    ...(input.plannerOnlyPolicyOverride
+      ? { plannerOnlyPolicyOverride: input.plannerOnlyPolicyOverride }
+      : {}),
   });
   if ("error" in pass) {
     return pass;

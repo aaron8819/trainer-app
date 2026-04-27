@@ -2135,6 +2135,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ]),
     );
     expect(payload.plannerOnlyDryRun).toBeUndefined();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(1);
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[0]?.[0]).not.toHaveProperty(
+      "plannerOnlyPolicyOverride",
+    );
   });
 
   it("emits a compact read-only planner-only comparison only when both dry-run flags are enabled", async () => {
@@ -2156,6 +2160,13 @@ describe("buildMesocycleExplainAuditPayload", () => {
       compareRepaired: true,
       readOnly: true,
       affectsScoringOrGeneration: false,
+      policyOverride: {
+        id: "calves_4_4_lower_slot_allocation",
+        readOnly: true,
+        appliesOnlyTo: "planner_only_dry_run",
+        status: "inactive_noop",
+        affectsScoringOrGeneration: false,
+      },
       canReplaceRepairedProjection: false,
       summary: {
         status: "fail",
@@ -2209,6 +2220,13 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ]),
     );
     expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(1);
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[0]?.[0]).toMatchObject({
+      plannerOnlyPolicyOverride: {
+        id: "calves_4_4_lower_slot_allocation",
+        readOnly: true,
+        appliesOnlyTo: "planner_only_dry_run",
+      },
+    });
     expect(mocks.buildMesocycleSlotPlanSeed).toHaveBeenCalledTimes(1);
   });
 

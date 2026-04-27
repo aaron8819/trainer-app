@@ -1754,6 +1754,7 @@ export function buildPlannerOnlyDryRunSummary(input: {
         `- ${dependency.path}: ${dependency.consequenceWithoutRepair}`
     );
   const calvesCandidate = dryRun.calvesFourFourCandidate;
+  const policyOverride = dryRun.policyOverride;
   const calvesCandidateLines = calvesCandidate
     ? [
         "",
@@ -1776,6 +1777,11 @@ export function buildPlannerOnlyDryRunSummary(input: {
     "Planner-Only Dry Run",
     "--------------------",
     `Planner-only dry run: ${dryRun.summary.status}`,
+    ...(policyOverride
+      ? [
+          `Policy override plumbing: ${policyOverride.id} (${policyOverride.status})`,
+        ]
+      : []),
     "Current repaired projection: pass",
     `Can replace repaired projection today: ${dryRun.canReplaceRepairedProjection ? "yes" : "no"}`,
     `Acceptance: passed=${dryRun.summary.acceptancePassed} failed=${dryRun.summary.acceptanceFailed}`,

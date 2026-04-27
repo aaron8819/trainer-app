@@ -20,6 +20,10 @@ import {
   projectSuccessorSlotPlansFromSnapshot,
   type SuccessorSlotPlanProjection,
 } from "@/lib/api/mesocycle-handoff-slot-plan-projection";
+import {
+  createCalvesFourFourPlannerOnlyPolicyOverride,
+  type PlannerOnlyPolicyOverride,
+} from "@/lib/api/planner-only-policy-override";
 import { resolveMesocycleSlotContract } from "@/lib/api/mesocycle-slot-contract";
 import { parseSlotPlanSeedJson } from "@/lib/api/slot-plan-seed-parser";
 import {
@@ -1892,7 +1896,8 @@ function buildPlannerOnlyRepairDependencies(
 
 export function buildPlannerOnlyDryRunComparison(
   planningReality: PlanningRealityDiagnostic | undefined,
-  compareRepaired: boolean
+  compareRepaired: boolean,
+  plannerOnlyPolicyOverride?: PlannerOnlyPolicyOverride
 ): MesocycleExplainPlannerOnlyDryRun {
   if (!planningReality) {
     return {
@@ -1900,6 +1905,17 @@ export function buildPlannerOnlyDryRunComparison(
       compareRepaired,
       readOnly: true,
       affectsScoringOrGeneration: false,
+      ...(plannerOnlyPolicyOverride
+        ? {
+            policyOverride: {
+              id: plannerOnlyPolicyOverride.id,
+              readOnly: true,
+              appliesOnlyTo: plannerOnlyPolicyOverride.appliesOnlyTo,
+              status: "inactive_noop",
+              affectsScoringOrGeneration: false,
+            },
+          }
+        : {}),
       canReplaceRepairedProjection: false,
       summary: {
         status: "fail",
@@ -1959,6 +1975,17 @@ export function buildPlannerOnlyDryRunComparison(
     compareRepaired,
     readOnly: true,
     affectsScoringOrGeneration: false,
+    ...(plannerOnlyPolicyOverride
+      ? {
+          policyOverride: {
+            id: plannerOnlyPolicyOverride.id,
+            readOnly: true,
+            appliesOnlyTo: plannerOnlyPolicyOverride.appliesOnlyTo,
+            status: "inactive_noop",
+            affectsScoringOrGeneration: false,
+          },
+        }
+      : {}),
     canReplaceRepairedProjection,
     summary: {
       status,
@@ -2793,6 +2820,7 @@ export async function buildMesocycleExplainAuditPayload(input: {
   plannerOnlyDryRun?: {
     enabled: true;
     compareRepaired: true;
+    plannerOnlyPolicyOverride?: PlannerOnlyPolicyOverride;
   };
 }): Promise<MesocycleExplainAuditPayload> {
   const sourceMesocycleId = input.sourceMesocycleId ?? (await resolveSourceMesocycleId(input.userId));
@@ -2821,11 +2849,17 @@ export async function buildMesocycleExplainAuditPayload(input: {
   const sourceSnapshot = await loadPreloadedGenerationSnapshot(input.userId, {
     activeMesocycle: sourceMesocycle,
   });
+  const plannerOnlyPolicyOverride =
+    input.plannerOnlyDryRun?.enabled && input.plannerOnlyDryRun.compareRepaired
+      ? input.plannerOnlyDryRun.plannerOnlyPolicyOverride ??
+        createCalvesFourFourPlannerOnlyPolicyOverride()
+      : undefined;
   const slotPlanProjection = projectSuccessorSlotPlansFromSnapshot({
     userId: input.userId,
     source: sourceProjection,
     design: previewArtifacts.artifacts.recommendedDesign,
     snapshot: sourceSnapshot,
+    ...(plannerOnlyPolicyOverride ? { plannerOnlyPolicyOverride } : {}),
   });
 
   if ("error" in slotPlanProjection) {
@@ -3025,7 +3059,8 @@ export async function buildMesocycleExplainAuditPayload(input: {
     input.plannerOnlyDryRun?.enabled && input.plannerOnlyDryRun.compareRepaired
       ? buildPlannerOnlyDryRunComparison(
           projectionDiagnostics.planningReality,
-          input.plannerOnlyDryRun.compareRepaired
+          input.plannerOnlyDryRun.compareRepaired,
+          plannerOnlyPolicyOverride
         )
       : undefined;
 

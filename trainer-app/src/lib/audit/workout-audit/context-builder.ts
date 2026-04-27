@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { loadNextWorkoutContext } from "@/lib/api/next-session";
+import { createCalvesFourFourPlannerOnlyPolicyOverride } from "@/lib/api/planner-only-policy-override";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import type {
   WorkoutAuditContext,
@@ -125,6 +126,8 @@ export async function buildWorkoutAuditContext(
               plannerOnlyDryRun: {
                 enabled: true,
                 compareRepaired: true,
+                plannerOnlyPolicyOverride:
+                  createCalvesFourFourPlannerOnlyPolicyOverride(),
               },
             }
           : {}),

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 const composeIntentSessionFromMappedContextSpy = vi.fn();
@@ -55,6 +56,7 @@ import {
 } from "./mesocycle-handoff-slot-plan-projection.weekly-obligations";
 import { buildHypertrophyUpperLowerLanePlan } from "./mesocycle-handoff-slot-lane-plan";
 import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
+import { createCalvesFourFourPlannerOnlyPolicyOverride } from "./planner-only-policy-override";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { exerciseMatchesSlotLane } from "@/lib/engine/selection-v2/slot-lane-plan";
 import type { PreloadedGenerationSnapshot } from "./template-session/context-loader";
@@ -1940,6 +1942,40 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     const second = projectSuccessorSlotPlansFromSnapshot(input);
 
     expect(first).toEqual(second);
+  });
+
+  it("leaves projection output unchanged when a planner-only override is threaded as a no-op", () => {
+    const input = {
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(),
+      snapshot: buildSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+    };
+
+    const withoutOverride = projectSuccessorSlotPlansFromSnapshot(input);
+    const withOverride = projectSuccessorSlotPlansFromSnapshot({
+      ...input,
+      plannerOnlyPolicyOverride: createCalvesFourFourPlannerOnlyPolicyOverride(),
+    });
+
+    expect(withOverride).toEqual(withoutOverride);
+  });
+
+  it("keeps active mesocycle reseed projection callsite override-free", () => {
+    const source = readFileSync(
+      "src/lib/audit/workout-audit/active-mesocycle-slot-reseed.ts",
+      "utf8",
+    );
+    const callStart = source.indexOf(
+      "const projection = projectSuccessorSlotPlansFromSnapshot({",
+    );
+    const callEnd = source.indexOf("  });", callStart);
+
+    expect(callStart).toBeGreaterThanOrEqual(0);
+    expect(source.slice(callStart, callEnd)).not.toContain(
+      "plannerOnlyPolicyOverride",
+    );
   });
 
   it("keeps projected slot-plan seeds minimal while preserving final set counts", () => {

@@ -545,6 +545,7 @@ function compactPlannerOnlyDryRun(value: unknown): unknown {
     compareRepaired: dryRun.compareRepaired,
     readOnly: true,
     affectsScoringOrGeneration: false,
+    ...(dryRun.policyOverride ? { policyOverride: dryRun.policyOverride } : {}),
     canReplaceRepairedProjection: dryRun.canReplaceRepairedProjection,
     summary: dryRun.summary,
     compactSummary: {

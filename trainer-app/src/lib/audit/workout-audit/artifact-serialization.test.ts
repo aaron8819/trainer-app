@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildArtifactDiffSummary,
+  buildSerializedTopLevelSizeBreakdown,
+  getSerializedJsonSizeBytes,
   serializeStableJson,
 } from "./artifact-serialization";
 
@@ -43,5 +45,41 @@ describe("artifact serialization helpers", () => {
     expect(diff).toEqual({
       changedTopLevelKeys: ["beta", "gamma"],
     });
+  });
+
+  it("computes serialized JSON byte sizes with the stable artifact serializer", () => {
+    const value = {
+      z: "wide",
+      a: [1, 2],
+    };
+
+    expect(getSerializedJsonSizeBytes(value)).toBe(
+      Buffer.byteLength(serializeStableJson(value), "utf8")
+    );
+  });
+
+  it("reports top-level section sizes sorted by serialized byte size", () => {
+    const value = {
+      smallest: true,
+      largest: [{ id: "alpha", notes: ["one", "two", "three"] }],
+      middle: { label: "compact" },
+    };
+
+    const breakdown = buildSerializedTopLevelSizeBreakdown(value);
+
+    expect(breakdown).toEqual([
+      {
+        field: "largest",
+        bytes: getSerializedJsonSizeBytes(value.largest),
+      },
+      {
+        field: "middle",
+        bytes: getSerializedJsonSizeBytes(value.middle),
+      },
+      {
+        field: "smallest",
+        bytes: getSerializedJsonSizeBytes(value.smallest),
+      },
+    ]);
   });
 });

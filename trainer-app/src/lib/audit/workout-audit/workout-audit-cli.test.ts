@@ -4,9 +4,11 @@ import {
   buildActiveMesocycleSlotReseedSummary,
   buildCurrentWeekAuditOperatorSummary,
   buildPlanningRealitySummary,
+  buildPlanningRealitySizeBudgetSummary,
   buildProjectedWeekDebugSummary,
   buildProjectedWeekOperatorSummary,
   buildWeeklyRetroOperatorSummary,
+  computePlanningRealitySizeBudget,
   normalizeAuditIntentArg,
 } from "../../../../scripts/workout-audit";
 
@@ -323,6 +325,141 @@ describe("buildProjectedWeekDebugSummary", () => {
       "[workout-audit:week:debug] semantic_warning=none",
       "[workout-audit:week:debug] background_warning=none",
     ]);
+  });
+});
+
+describe("planningReality size budget summary", () => {
+  const planningReality = {
+    label: "weekly demand / slot allocation diagnostics",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    summary: {
+      planningShape: "mostly_repair_shaped",
+      materialRepairCount: 2,
+      majorRepairCount: 1,
+    },
+    repairMateriality: [
+      {
+        slotId: "upper_a",
+        muscle: "Chest",
+        exerciseName: "Incline DB Bench",
+        notes: ["added late", "material identity change"],
+      },
+      {
+        slotId: "upper_b",
+        muscle: "Side Delts",
+        exerciseName: "Cable Lateral Raise",
+        notes: ["support floor closed late"],
+      },
+    ],
+    exerciseClassAlignment: [
+      {
+        slotId: "upper_a",
+        muscle: "Chest",
+        intendedClass: "press",
+        evidence: [
+          "initial selection missed distinct class intent",
+          "final repair improved class alignment",
+        ],
+      },
+    ],
+  } as unknown as NonNullable<
+    Parameters<typeof computePlanningRealitySizeBudget>[0]["planningReality"]
+  >;
+
+  const artifact: Parameters<
+    typeof buildPlanningRealitySizeBudgetSummary
+  >[0]["artifact"] = {
+    mesocycleExplain: {
+      preview: {
+        projectionDiagnostics: {
+          planningReality,
+        },
+      },
+    },
+  };
+
+  it("computes total and top-level planningReality section sizes", () => {
+    const budget = computePlanningRealitySizeBudget({
+      planningReality,
+      largestSectionLimit: 2,
+    });
+
+    expect(budget?.totalBytes).toBeGreaterThan(0);
+    expect(budget?.largestSections).toEqual([
+      {
+        field: "repairMateriality",
+        bytes: expect.any(Number),
+      },
+      {
+        field: "exerciseClassAlignment",
+        bytes: expect.any(Number),
+      },
+    ]);
+  });
+
+  it("prints the breakdown when the configured artifact limit is exceeded", () => {
+    const summary = buildPlanningRealitySizeBudgetSummary({
+      artifact,
+      sizeBytes: 110,
+      thresholdBytes: 100,
+      largestSectionLimit: 2,
+    });
+
+    expect(summary).toEqual([
+      "planningReality size breakdown",
+      "-------------------------------",
+      "artifact bytes: 110",
+      "artifact limit bytes: 100",
+      "artifact budget status: exceeded",
+      `total planningReality bytes: ${computePlanningRealitySizeBudget({ planningReality })?.totalBytes}`,
+      "largest sections:",
+      `- repairMateriality: ${computePlanningRealitySizeBudget({ planningReality })?.largestSections[0]?.bytes}`,
+      `- exerciseClassAlignment: ${computePlanningRealitySizeBudget({ planningReality })?.largestSections[1]?.bytes}`,
+    ]);
+  });
+
+  it("prints the breakdown when the artifact approaches the configured limit", () => {
+    const summary = buildPlanningRealitySizeBudgetSummary({
+      artifact,
+      sizeBytes: 90,
+      thresholdBytes: 100,
+      largestSectionLimit: 1,
+    });
+
+    expect(summary).toContain("artifact budget status: approaching");
+    expect(summary).toContain("largest sections:");
+  });
+
+  it("does not print for small artifacts unless operator debug asks for it", () => {
+    expect(
+      buildPlanningRealitySizeBudgetSummary({
+        artifact,
+        sizeBytes: 30,
+        thresholdBytes: 100,
+      })
+    ).toBeNull();
+
+    expect(
+      buildPlanningRealitySizeBudgetSummary({
+        artifact,
+        sizeBytes: 30,
+        thresholdBytes: 100,
+        operatorDebug: true,
+      })
+    ).toContain("artifact budget status: operator_debug");
+  });
+
+  it("leaves existing planningReality diagnostics unchanged", () => {
+    const before = JSON.stringify(artifact);
+
+    buildPlanningRealitySizeBudgetSummary({
+      artifact,
+      sizeBytes: 110,
+      thresholdBytes: 100,
+    });
+
+    expect(JSON.stringify(artifact)).toBe(before);
   });
 });
 

@@ -16,6 +16,10 @@ import type {
   WorkoutAuditArtifact,
   WorkoutAuditRequest,
 } from "@/lib/audit/workout-audit/types";
+import {
+  buildSerializedTopLevelSizeBreakdown,
+  getSerializedJsonSizeBytes,
+} from "@/lib/audit/workout-audit/artifact-serialization";
 import { WORKOUT_AUDIT_SIZE_LIMIT_BYTES } from "@/lib/audit/workout-audit/constants";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import {
@@ -221,6 +225,9 @@ type PlanningRealitySummaryArtifact = {
     } | null;
   } | null;
 };
+
+const PLANNING_REALITY_SIZE_BUDGET_APPROACH_RATIO = 0.9;
+const PLANNING_REALITY_SIZE_BUDGET_SECTION_LIMIT = 8;
 
 function asArray<T>(value: readonly T[] | null | undefined): T[] {
   return Array.isArray(value) ? [...value] : [];
@@ -1111,6 +1118,87 @@ function formatSlotAllocationStatus(input: {
   return "explicit demand not fully satisfied locally";
 }
 
+export function computePlanningRealitySizeBudget(input: {
+  planningReality: PartialPlanningRealityDiagnostic | null | undefined;
+  largestSectionLimit?: number;
+}): {
+  totalBytes: number;
+  largestSections: Array<{ field: string; bytes: number }>;
+} | null {
+  if (!input.planningReality) {
+    return null;
+  }
+
+  const largestSectionLimit =
+    input.largestSectionLimit ?? PLANNING_REALITY_SIZE_BUDGET_SECTION_LIMIT;
+  const sectionSizes = buildSerializedTopLevelSizeBreakdown(
+    input.planningReality
+  );
+
+  return {
+    totalBytes: getSerializedJsonSizeBytes(input.planningReality),
+    largestSections: sectionSizes.slice(0, largestSectionLimit),
+  };
+}
+
+export function buildPlanningRealitySizeBudgetSummary(input: {
+  artifact: PlanningRealitySummaryArtifact;
+  sizeBytes: number;
+  thresholdBytes?: number;
+  operatorDebug?: boolean;
+  largestSectionLimit?: number;
+}): string[] | null {
+  const planningReality =
+    input.artifact.mesocycleExplain?.preview?.projectionDiagnostics?.planningReality ?? undefined;
+  if (!planningReality) {
+    return null;
+  }
+
+  const thresholdBytes =
+    input.thresholdBytes ?? WORKOUT_AUDIT_SIZE_LIMIT_BYTES;
+  const approachThresholdBytes = Math.floor(
+    thresholdBytes * PLANNING_REALITY_SIZE_BUDGET_APPROACH_RATIO
+  );
+  const exceeded = input.sizeBytes > thresholdBytes;
+  const approaching = input.sizeBytes >= approachThresholdBytes;
+  if (!exceeded && !approaching && input.operatorDebug !== true) {
+    return null;
+  }
+
+  const budget = computePlanningRealitySizeBudget({
+    planningReality,
+    largestSectionLimit: input.largestSectionLimit,
+  });
+  if (!budget) {
+    return null;
+  }
+
+  const status = exceeded
+    ? "exceeded"
+    : approaching
+      ? "approaching"
+      : "operator_debug";
+  const lines = [
+    "planningReality size breakdown",
+    "-------------------------------",
+    `artifact bytes: ${input.sizeBytes}`,
+    `artifact limit bytes: ${thresholdBytes}`,
+    `artifact budget status: ${status}`,
+    `total planningReality bytes: ${budget.totalBytes}`,
+    "largest sections:",
+  ];
+
+  if (budget.largestSections.length === 0) {
+    lines.push("- none");
+  } else {
+    for (const section of budget.largestSections) {
+      lines.push(`- ${section.field}: ${section.bytes}`);
+    }
+  }
+
+  return lines;
+}
+
 export function buildPlanningRealitySummary(input: {
   artifact: PlanningRealitySummaryArtifact;
   outputPath?: string;
@@ -1987,6 +2075,17 @@ async function main(): Promise<void> {
     }
   }
   console.log(`[workout-audit] size_bytes=${sizeBytes}`);
+  const planningRealitySizeBudgetSummary = buildPlanningRealitySizeBudgetSummary({
+    artifact,
+    sizeBytes,
+    thresholdBytes: WORKOUT_AUDIT_SIZE_LIMIT_BYTES,
+    operatorDebug: args["operator-debug"] === true,
+  });
+  if (planningRealitySizeBudgetSummary) {
+    for (const line of planningRealitySizeBudgetSummary) {
+      console.log(line);
+    }
+  }
   console.log(`[workout-audit:conclusions] ${JSON.stringify(artifact.conclusions)}`);
   printWarningSummary("workout-audit", artifact.warningSummary);
   if (sizeBytes > WORKOUT_AUDIT_SIZE_LIMIT_BYTES) {

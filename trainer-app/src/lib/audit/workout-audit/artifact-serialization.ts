@@ -22,6 +22,34 @@ export function getSerializedArtifactSizeBytes(serialized: string): number {
   return Buffer.byteLength(serialized, "utf8");
 }
 
+export type SerializedTopLevelSectionSize = {
+  field: string;
+  bytes: number;
+};
+
+export function getSerializedJsonSizeBytes(value: unknown): number {
+  const serialized = serializeStableJson(value) ?? "null";
+  return getSerializedArtifactSizeBytes(serialized);
+}
+
+export function buildSerializedTopLevelSizeBreakdown(
+  value: unknown
+): SerializedTopLevelSectionSize[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+
+  return Object.entries(value as Record<string, unknown>)
+    .map(([field, section]) => ({
+      field,
+      bytes: getSerializedJsonSizeBytes(section),
+    }))
+    .sort(
+      (left, right) =>
+        right.bytes - left.bytes || left.field.localeCompare(right.field)
+    );
+}
+
 export function buildArtifactDiffSummary(previous: unknown, next: unknown): {
   changedTopLevelKeys: string[];
 } {

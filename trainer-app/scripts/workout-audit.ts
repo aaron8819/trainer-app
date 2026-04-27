@@ -2144,7 +2144,7 @@ async function main(): Promise<void> {
   const output = serializer.createWorkoutAuditArtifactOutput(request, run, {
     capturedWarnings: warnings,
   });
-  const { artifact, serialized, sizeBytes } = output;
+  const { artifact, serializedArtifact, serialized, sizeBytes } = output;
 
   const timestamp = artifact.generatedAt.replace(/[:.]/g, "-");
   const intentSlug = context.generationInput?.intent ? `-${slug(context.generationInput.intent)}` : "";
@@ -2281,7 +2281,7 @@ async function main(): Promise<void> {
   }
   console.log(`[workout-audit] size_bytes=${sizeBytes}`);
   const planningRealitySizeBudgetSummary = buildPlanningRealitySizeBudgetSummary({
-    artifact,
+    artifact: serializedArtifact,
     sizeBytes,
     thresholdBytes: WORKOUT_AUDIT_SIZE_LIMIT_BYTES,
     operatorDebug: args["operator-debug"] === true,

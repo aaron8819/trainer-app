@@ -5,6 +5,7 @@ import {
   WORKOUT_AUDIT_ARTIFACT_VERSION,
 } from "./constants";
 import {
+  compactWorkoutAuditArtifactForSerialization,
   getSerializedArtifactSizeBytes,
   serializeStableJson,
 } from "./artifact-serialization";
@@ -92,7 +93,7 @@ export function buildWorkoutAuditArtifact(
 export function serializeWorkoutAuditArtifact(
   artifact: WorkoutAuditArtifact
 ): string {
-  return serializeStableJson(artifact);
+  return serializeStableJson(compactWorkoutAuditArtifactForSerialization(artifact));
 }
 
 export function createWorkoutAuditArtifactOutput(
@@ -101,13 +102,16 @@ export function createWorkoutAuditArtifactOutput(
   options?: Parameters<typeof buildWorkoutAuditArtifact>[2]
 ): {
   artifact: WorkoutAuditArtifact;
+  serializedArtifact: WorkoutAuditArtifact;
   serialized: string;
   sizeBytes: number;
 } {
   const artifact = buildWorkoutAuditArtifact(request, run, options);
-  const serialized = serializeWorkoutAuditArtifact(artifact);
+  const serializedArtifact = compactWorkoutAuditArtifactForSerialization(artifact);
+  const serialized = serializeStableJson(serializedArtifact);
   return {
     artifact,
+    serializedArtifact,
     serialized,
     sizeBytes: getSerializedArtifactSizeBytes(serialized),
   };

@@ -150,6 +150,7 @@ export type SlotLanePlanLane = {
   preferredClasses: SlotLaneExerciseClass[];
   minSets: number;
   preferredSets: number;
+  strict?: boolean;
   optional?: boolean;
   avoidExerciseIds?: string[];
   source: "hypertrophy_upper_lower_slot_lane_plan";

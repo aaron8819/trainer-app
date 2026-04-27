@@ -2525,6 +2525,19 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   compareRepaired: boolean;
   repairedProjectionAvailable: boolean;
 }): MesocycleExplainPlannerOnlyNoRepair {
+  const repairDependenciesDisabled = [
+    "support-floor closure",
+    "weekly obligation closure",
+    "program-quality identity repair",
+    "late set bumping",
+    "isolation injection/accessory-lane rescue",
+    "clean-curl repair preference",
+    "duplicate/program-quality repair shaping",
+    "cap trim",
+    "MAV trim",
+    "forbidden cleanup mutation",
+    "seed/runtime persistence",
+  ];
   const repairedPasses =
     input.repairedProjectionAvailable &&
     ((input.repairedPlanningReality?.finalSlotPlan.length ?? 0) > 0 ||
@@ -2551,6 +2564,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
           evidence: ["planningReality_missing"],
         },
       ],
+      repairDependenciesDisabled,
       ...(input.compareRepaired
         ? {
             comparisonToRepaired: {
@@ -2613,6 +2627,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     slotPlans,
     weeklyMuscleTotals,
     acceptanceChecks,
+    repairDependenciesDisabled,
     ...(input.compareRepaired
       ? {
           comparisonToRepaired: {

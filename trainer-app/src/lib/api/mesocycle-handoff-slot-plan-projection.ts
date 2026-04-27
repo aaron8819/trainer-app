@@ -1,5 +1,7 @@
-import type { WorkoutPlan } from "@/lib/engine/types";
+import type { WorkoutSessionIntent } from "@prisma/client";
+import type { Exercise, WorkoutPlan } from "@/lib/engine/types";
 import type { SlotPreselectionDemand } from "@/lib/engine/selection-v2";
+import { exerciseMatchesSlotLane } from "@/lib/engine/selection-v2/slot-lane-plan";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import {
   getProjectionPreferredSupportMuscles,
@@ -86,6 +88,131 @@ import {
 import { buildHypertrophyUpperLowerLanePlan } from "./mesocycle-handoff-slot-lane-plan";
 
 type SlotLanePlan = ReturnType<typeof buildHypertrophyUpperLowerLanePlan>;
+
+function emptyMesocycleRoleMap(): MappedGenerationContext["mesocycleRoleMapByIntent"] {
+  return {
+    push: new Map(),
+    pull: new Map(),
+    legs: new Map(),
+    upper: new Map(),
+    lower: new Map(),
+    full_body: new Map(),
+    body_part: new Map(),
+  };
+}
+
+function markSlotLanePlanStrict(slotLanePlan: SlotLanePlan): SlotLanePlan {
+  return slotLanePlan.map((lane) => ({
+    ...lane,
+    strict: true,
+  }));
+}
+
+function buildPlannerOnlyLaneSkeletonWorkout(input: {
+  slotId: string;
+  intent: WorkoutSessionIntent;
+  slotLanePlan: SlotLanePlan;
+  exerciseLibrary: MappedGenerationContext["exerciseLibrary"];
+  previousProjectedSlots: readonly ProjectedSlotWorkout[];
+}): WorkoutPlan | null {
+  const requiredLanes = input.slotLanePlan.filter((lane) => lane.optional !== true);
+  if (requiredLanes.length === 0) {
+    return null;
+  }
+
+  const previouslySelectedIds = new Set(
+    input.previousProjectedSlots.flatMap((slot) =>
+      [...slot.workout.mainLifts, ...slot.workout.accessories].map(
+        (exercise) => exercise.exercise.id,
+      ),
+    ),
+  );
+  const selectedIds = new Set<string>();
+  const selected: Array<{
+    laneId: string;
+    exercise: Exercise;
+    setCount: number;
+  }> = [];
+
+  for (const lane of requiredLanes) {
+    const candidates = input.exerciseLibrary
+      .filter((exercise) => !selectedIds.has(exercise.id))
+      .filter((exercise) => exerciseMatchesSlotLane(exercise, lane))
+      .sort((left, right) => {
+        const leftNovel = previouslySelectedIds.has(left.id) ? 0 : 1;
+        const rightNovel = previouslySelectedIds.has(right.id) ? 0 : 1;
+        if (leftNovel !== rightNovel) {
+          return rightNovel - leftNovel;
+        }
+        const leftFatigue = left.fatigueCost ?? 3;
+        const rightFatigue = right.fatigueCost ?? 3;
+        if (leftFatigue !== rightFatigue) {
+          return leftFatigue - rightFatigue;
+        }
+        return left.name.localeCompare(right.name);
+      });
+    const exercise = candidates[0];
+    if (!exercise) {
+      continue;
+    }
+
+    selectedIds.add(exercise.id);
+    selected.push({
+      laneId: lane.laneId,
+      exercise,
+      setCount: Math.max(lane.minSets, lane.preferredSets),
+    });
+  }
+
+  if (selected.length === 0) {
+    return null;
+  }
+
+  const toWorkoutExercise = (
+    entry: (typeof selected)[number],
+    orderIndex: number,
+    isMainLift: boolean,
+  ): WorkoutPlan["mainLifts"][number] => ({
+    id: `${input.slotId}:${entry.exercise.id}`,
+    exercise: entry.exercise,
+    orderIndex,
+    isMainLift,
+    role: isMainLift ? "main" : "accessory",
+    sets: Array.from({ length: entry.setCount }, (_, index) => ({
+      setIndex: index + 1,
+      targetReps: isMainLift ? 6 : 10,
+      role: isMainLift ? "main" : "accessory",
+    })),
+  });
+
+  const mainEntries = selected.filter(
+    (entry) => entry.exercise.isMainLiftEligible === true,
+  );
+  const accessoryEntries = selected.filter(
+    (entry) => entry.exercise.isMainLiftEligible !== true,
+  );
+  const mainLifts = mainEntries.map((entry, index) =>
+    toWorkoutExercise(entry, index, true),
+  );
+  const accessories = accessoryEntries.map((entry, index) =>
+    toWorkoutExercise(entry, mainLifts.length + index, false),
+  );
+
+  return {
+    id: `planner-only-no-repair:${input.slotId}`,
+    scheduledDate: new Date(0).toISOString(),
+    warmup: [],
+    mainLifts,
+    accessories,
+    estimatedMinutes: Math.max(
+      30,
+      [...mainLifts, ...accessories].reduce(
+        (sum, exercise) => sum + exercise.sets.length * 3,
+        0,
+      ),
+    ),
+  };
+}
 
 export {
   evaluateLowerPatternPrimacy,
@@ -219,6 +346,9 @@ function projectSlotPlansPass(input: {
   > = {};
   const slotSequenceEntries = buildSlotSequenceEntries(slotSequence);
   const repairDisabled = input.experimentalPlannerOnlyNoRepair === true;
+  if (repairDisabled) {
+    projectionContext.mapped.mesocycleRoleMapByIntent = emptyMesocycleRoleMap();
+  }
   const accessoryLaneWeeklyTargets =
     repairDisabled
       ? new Map<string, number>()
@@ -305,10 +435,13 @@ function projectSlotPlansPass(input: {
       slotSequence,
       previousProjectedSlots: projectedSlots,
     });
+    const effectiveBaseSlotLanePlan = repairDisabled
+      ? markSlotLanePlanStrict(baseSlotLanePlan)
+      : baseSlotLanePlan;
     const overrideAdjustedSlotPlan = buildPlannerOnlyOverrideAdjustedSlotPlan({
       slotId: slot.slotId,
       slotPreselectionDemands: baseSlotPreselectionDemands,
-      slotLanePlan: baseSlotLanePlan,
+      slotLanePlan: effectiveBaseSlotLanePlan,
       plannerOnlyPolicyOverride: input.plannerOnlyPolicyOverride,
     });
     const slotPreselectionDemands = repairDisabled
@@ -521,6 +654,18 @@ function projectSlotPlansPass(input: {
         weeklyObligationPlan,
         exerciseLibrary: projectionContext.mapped.exerciseLibrary,
       });
+    const plannerOnlyLaneSkeleton = repairDisabled
+      ? buildPlannerOnlyLaneSkeletonWorkout({
+          slotId: slot.slotId,
+          intent: slot.intent,
+          slotLanePlan,
+          exerciseLibrary: projectionContext.mapped.exerciseLibrary,
+          previousProjectedSlots: projectedSlots,
+        })
+      : null;
+    if (plannerOnlyLaneSkeleton) {
+      selectedWorkout = plannerOnlyLaneSkeleton;
+    }
     if (!repairDisabled) {
       selectedWorkout = rebalanceUpperSupportProjection({
         workout: selectedWorkout,

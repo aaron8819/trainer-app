@@ -2619,6 +2619,10 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                 evidence: ["Chest:below_min_10"],
               },
             ],
+            repairDependenciesDisabled: [
+              "support-floor closure",
+              "weekly obligation closure",
+            ],
             comparisonToRepaired: {
               repairedPasses: true,
               noRepairPasses: false,

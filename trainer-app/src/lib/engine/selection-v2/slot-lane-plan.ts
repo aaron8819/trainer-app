@@ -18,8 +18,9 @@ function hasPrimaryMuscle(
   exercise: Pick<Exercise, "primaryMuscles">,
   muscle: string,
 ): boolean {
+  const normalizedMuscle = muscle.trim().toLowerCase();
   return (exercise.primaryMuscles ?? []).some(
-    (entry) => entry.trim().toLowerCase() === muscle,
+    (entry) => entry.trim().toLowerCase() === normalizedMuscle,
   );
 }
 

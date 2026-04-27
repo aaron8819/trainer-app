@@ -392,6 +392,14 @@ function getRequiredSlotLaneIds(objective: SelectionObjective): string[] {
   );
 }
 
+function getStrictSlotLanes(objective: SelectionObjective) {
+  return (
+    objective.slotLanePlan?.filter(
+      (lane) => lane.strict === true && lane.optional !== true,
+    ) ?? []
+  );
+}
+
 function getSatisfiedSlotLaneIds(
   selected: SelectionCandidate[],
   objective: SelectionObjective,
@@ -406,6 +414,30 @@ function getSatisfiedSlotLaneIds(
     const match = selected.find(
       (candidate) =>
         !usedExerciseIds.has(candidate.exercise.id) &&
+        exerciseMatchesSlotLane(candidate.exercise, lane),
+    );
+    if (!match) {
+      continue;
+    }
+    satisfied.add(lane.laneId);
+    usedExerciseIds.add(match.exercise.id);
+  }
+
+  return satisfied;
+}
+
+function getSatisfiedStrictSlotLaneIds(
+  selected: SelectionCandidate[],
+  objective: SelectionObjective,
+): Set<string> {
+  const satisfied = new Set<string>();
+  const usedExerciseIds = new Set<string>();
+
+  for (const lane of getStrictSlotLanes(objective)) {
+    const match = selected.find(
+      (candidate) =>
+        !usedExerciseIds.has(candidate.exercise.id) &&
+        candidate.proposedSets >= lane.minSets &&
         exerciseMatchesSlotLane(candidate.exercise, lane),
     );
     if (!match) {
@@ -482,6 +514,38 @@ function hasRemainingSlotLaneOption(
   }
 
   return false;
+}
+
+function fillsMissingStrictSlotLaneRequirement(
+  state: BeamState,
+  candidate: SelectionCandidate,
+  objective: SelectionObjective,
+): boolean {
+  const satisfiedLaneIds = getSatisfiedStrictSlotLaneIds(state.selected, objective);
+  return getStrictSlotLanes(objective).some(
+    (lane) =>
+      !satisfiedLaneIds.has(lane.laneId) &&
+      candidate.proposedSets >= lane.minSets &&
+      exerciseMatchesSlotLane(candidate.exercise, lane),
+  );
+}
+
+function wouldPreserveStrictSlotLaneProgress(
+  state: BeamState,
+  candidate: SelectionCandidate,
+  objective: SelectionObjective,
+): boolean {
+  const strictLanes = getStrictSlotLanes(objective);
+  if (strictLanes.length === 0) {
+    return true;
+  }
+
+  const nextSelected = [...state.selected, candidate];
+  const unresolvedLaneCount = strictLanes.filter(
+    (lane) => !getSatisfiedStrictSlotLaneIds(nextSelected, objective).has(lane.laneId),
+  ).length;
+  const remainingSlots = objective.constraints.maxExercises - nextSelected.length;
+  return remainingSlots >= unresolvedLaneCount;
 }
 
 function fillsMissingSessionShapeRequirement(
@@ -978,6 +1042,10 @@ export function beamSearch(
   // Enforce continuity from most-recent same-intent performed session when feasible.
   finalBeam = enforceContinuityExercises(finalBeam, candidates, objective, rejectedMap);
 
+  // The experimental planner-only no-repair path marks its class lanes strict:
+  // each required lane must own one matching exercise at its set floor.
+  finalBeam = enforceStrictSlotLaneSatisfaction(finalBeam, candidates, objective, rejectedMap);
+
   // Build final result
   return buildResult(finalBeam, candidates, objective, rejectedMap);
 }
@@ -1443,6 +1511,150 @@ function trySwapForSessionShapePattern(
   return false;
 }
 
+function enforceStrictSlotLaneSatisfaction(
+  beam: BeamState,
+  candidates: SelectionCandidate[],
+  objective: SelectionObjective,
+  rejectedMap: Map<string, RejectionReason>,
+): BeamState {
+  const strictLanes = getStrictSlotLanes(objective);
+  if (strictLanes.length === 0) {
+    return beam;
+  }
+
+  const augmentedBeam: BeamState = {
+    selected: [...beam.selected],
+    volumeFilled: new Map(beam.volumeFilled),
+    timeUsed: beam.timeUsed,
+    score: beam.score,
+    favoritesCount: beam.favoritesCount,
+  };
+
+  for (const lane of strictLanes) {
+    if (getSatisfiedStrictSlotLaneIds(augmentedBeam.selected, objective).has(lane.laneId)) {
+      continue;
+    }
+
+    const selectedIds = new Set(augmentedBeam.selected.map((selected) => selected.exercise.id));
+    const laneCandidates = candidates
+      .filter((candidate) => !selectedIds.has(candidate.exercise.id))
+      .filter(
+        (candidate) =>
+          candidate.proposedSets >= lane.minSets &&
+          exerciseMatchesSlotLane(candidate.exercise, lane),
+      )
+      .sort((a, b) => b.totalScore - a.totalScore);
+
+    for (const candidate of laneCandidates) {
+      if (
+        canAddCandidate(augmentedBeam, candidate, candidates, objective, rejectedMap, {
+          allowNonDeficitCandidate: true,
+        })
+      ) {
+        addCandidateToBeam(augmentedBeam, candidate);
+        break;
+      }
+
+      if (
+        trySwapForStrictSlotLane(
+          augmentedBeam,
+          candidate,
+          lane.laneId,
+          candidates,
+          objective,
+          rejectedMap,
+        )
+      ) {
+        break;
+      }
+    }
+  }
+
+  return augmentedBeam;
+}
+
+function trySwapForStrictSlotLane(
+  beam: BeamState,
+  laneCandidate: SelectionCandidate,
+  laneId: string,
+  candidates: SelectionCandidate[],
+  objective: SelectionObjective,
+  rejectedMap: Map<string, RejectionReason>,
+): boolean {
+  const strictLanes = getStrictSlotLanes(objective);
+  const satisfiedBefore = getSatisfiedStrictSlotLaneIds(beam.selected, objective);
+  const selectedByScore = [...beam.selected].sort((a, b) => a.totalScore - b.totalScore);
+
+  const rebuildBeam = (selected: SelectionCandidate[]): BeamState => {
+    const rebuilt: BeamState = {
+      selected,
+      volumeFilled: new Map(),
+      timeUsed: 0,
+      score: 0,
+      favoritesCount: 0,
+    };
+    for (const candidate of selected) {
+      rebuilt.volumeFilled = mergeVolume(rebuilt.volumeFilled, candidate.volumeContribution);
+      rebuilt.timeUsed += candidate.timeContribution;
+      rebuilt.score += candidate.totalScore;
+      if (objective.preferences.favoriteExerciseIds.has(candidate.exercise.id)) {
+        rebuilt.favoritesCount += 1;
+      }
+    }
+    return rebuilt;
+  };
+
+  for (const selected of selectedByScore) {
+    const nextSelected = beam.selected.filter(
+      (candidate) => candidate.exercise.id !== selected.exercise.id,
+    );
+    const nextWithCandidate = [...nextSelected, laneCandidate];
+    const nextSatisfied = getSatisfiedStrictSlotLaneIds(nextWithCandidate, objective);
+    const preservesSatisfiedStrictLanes = strictLanes.every(
+      (lane) =>
+        lane.laneId === laneId ||
+        !satisfiedBefore.has(lane.laneId) ||
+        nextSatisfied.has(lane.laneId),
+    );
+    if (!preservesSatisfiedStrictLanes || !nextSatisfied.has(laneId)) {
+      continue;
+    }
+
+    const mainLiftCount = nextWithCandidate.filter((candidate) =>
+      isMainLiftCandidate(candidate, objective)
+    ).length;
+    const accessoryCount = nextWithCandidate.filter(
+      (candidate) => !isMainLiftCandidate(candidate, objective)
+    ).length;
+    if (mainLiftCount < (objective.constraints.minMainLifts ?? 0)) {
+      continue;
+    }
+    if (accessoryCount < (objective.constraints.minAccessories ?? 0)) {
+      continue;
+    }
+
+    const tempBeam = rebuildBeam(nextSelected);
+    if (
+      !canAddCandidate(tempBeam, laneCandidate, candidates, objective, rejectedMap, {
+        allowNonDeficitCandidate: true,
+      })
+    ) {
+      continue;
+    }
+
+    addCandidateToBeam(tempBeam, laneCandidate);
+    beam.selected = tempBeam.selected;
+    beam.volumeFilled = tempBeam.volumeFilled;
+    beam.timeUsed = tempBeam.timeUsed;
+    beam.score = tempBeam.score;
+    beam.favoritesCount = tempBeam.favoritesCount;
+    rejectedMap.set(selected.exercise.id, "dominated_by_better_option");
+    return true;
+  }
+
+  return false;
+}
+
 function enforceContinuityExercises(
   beam: BeamState,
   candidates: SelectionCandidate[],
@@ -1621,6 +1833,10 @@ function canAddCandidate(
     rejectedMap.set(candidate.exercise.id, "structure_constraint_violated");
     return false;
   }
+  if (!wouldPreserveStrictSlotLaneProgress(beam, candidate, objective)) {
+    rejectedMap.set(candidate.exercise.id, "structure_constraint_violated");
+    return false;
+  }
 
   // Merge volume
   const newVolumeFilled = mergeVolume(beam.volumeFilled, candidate.volumeContribution);
@@ -1653,11 +1869,17 @@ function canAddCandidate(
     objective,
     candidates
   );
+  const fillsStrictSlotLaneRequirement = fillsMissingStrictSlotLaneRequirement(
+    beam,
+    candidate,
+    objective,
+  );
   if (
     !options?.allowNonDeficitCandidate &&
     !hasDeficit &&
     !fillsCompoundLaneRequirement &&
     !fillsSessionShapeRequirement &&
+    !fillsStrictSlotLaneRequirement &&
     hasRemainingDeficitFillingOption(beam, candidates, objective, candidate.exercise.id)
   ) {
     rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
@@ -1673,6 +1895,23 @@ function canAddCandidate(
   if (
     !fillsSessionShapeRequirement &&
     hasRemainingSessionShapeCoverageOption(beam, candidates, objective, candidate.exercise.id)
+  ) {
+    rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
+    return false;
+  }
+  if (
+    !fillsStrictSlotLaneRequirement &&
+    getStrictSlotLanes(objective).some(
+      (lane) =>
+        !getSatisfiedStrictSlotLaneIds(beam.selected, objective).has(lane.laneId) &&
+        candidates.some(
+          (entry) =>
+            entry.exercise.id !== candidate.exercise.id &&
+            !beam.selected.some((selected) => selected.exercise.id === entry.exercise.id) &&
+            entry.proposedSets >= lane.minSets &&
+            exerciseMatchesSlotLane(entry.exercise, lane),
+        ),
+    )
   ) {
     rejectedMap.set(candidate.exercise.id, "dominated_by_better_option");
     return false;
@@ -1821,12 +2060,16 @@ function buildResult(
   const meetsSessionShapeConstraints = getRequiredSessionShapePatterns(objective, allCandidates).every(
     (pattern) => getSatisfiedSessionShapePatterns(selected, [pattern]).has(pattern)
   );
+  const meetsStrictSlotLaneConstraints = getStrictSlotLanes(objective).every((lane) =>
+    getSatisfiedStrictSlotLaneIds(selected, objective).has(lane.laneId)
+  );
   const constraintsSatisfied =
     meetsMinExercises &&
     meetsVolumeFloor &&
     meetsStructuralConstraints &&
     meetsCompoundLaneConstraints &&
-    meetsSessionShapeConstraints;
+    meetsSessionShapeConstraints &&
+    meetsStrictSlotLaneConstraints;
 
   // Annotate selected candidates with marginal deficitFill for rationale.
   // Simulate sequential selection so each exercise shows what it contributed

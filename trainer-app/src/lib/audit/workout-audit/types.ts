@@ -975,6 +975,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
     status: "pass" | "fail" | "partial" | "unknown";
     evidence: string[];
   }>;
+  repairDependenciesDisabled: string[];
   comparisonToRepaired?: {
     repairedPasses: boolean;
     noRepairPasses: boolean;

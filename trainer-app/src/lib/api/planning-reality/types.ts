@@ -929,6 +929,51 @@ export type DuplicateContinuityJustification = {
   };
 };
 
+export type CleanupCandidateFeasibility = {
+  candidate: "lower_b_calf_duplicate_cleanup" | string;
+  slotId: string;
+  muscle: string;
+  currentShape: Array<{
+    exerciseName: string;
+    setCount: number;
+    effectiveSets: number;
+    exerciseClass: string | null;
+  }>;
+  proposedCleanerShape: Array<{
+    exerciseName: string;
+    proposedSetCount: number;
+    projectedEffectiveSets: number;
+    reason: string;
+  }>;
+  target: {
+    minEffectiveSets: number | null;
+    preferredEffectiveSets: number | null;
+    targetStatus: "hard" | "soft" | "diagnostic";
+  };
+  caps: {
+    maxSetsPerExercise: number | null;
+    maxDirectExercises: number | null;
+    maxTotalSlotSets: number | null;
+  };
+  feasibility:
+    | "feasible"
+    | "not_feasible_under_current_caps"
+    | "ambiguous_needs_policy_decision";
+  blockingReasons: Array<
+    | "single_exercise_cannot_meet_floor"
+    | "would_exceed_set_cap"
+    | "would_reduce_below_support_floor"
+    | "would_require_lower_a_mutation"
+    | "would_require_specialization_policy"
+    | "insufficient_inventory"
+  >;
+  recommendation:
+    | "safe_to_trial"
+    | "do_not_trial_behavior"
+    | "requires_policy_decision";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+};
 export type AccumulationWeekProjection = {
   mesocycleId: string | null;
   source: "diagnostic_shadow_planner";
@@ -1057,6 +1102,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   exerciseClassAlignment: ExerciseClassAlignment;
   exerciseClassUnresolvedCauses: ExerciseClassUnresolvedCause[];
   duplicateContinuityJustification: DuplicateContinuityJustification;
+  cleanupCandidateFeasibility: CleanupCandidateFeasibility[];
   accumulationWeekProjection: AccumulationWeekProjection;
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
   rearDeltCollateralSummary?: RearDeltCollateralSummary;

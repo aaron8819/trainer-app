@@ -298,6 +298,14 @@ function getClassCause(
   );
 }
 
+function getLowerBCalfCleanupFeasibility(
+  diagnostic: ReturnType<typeof buildWeeklyDemandSlotAllocationDiagnostic>,
+) {
+  return diagnostic.cleanupCandidateFeasibility.find(
+    (row) => row.candidate === "lower_b_calf_duplicate_cleanup",
+  );
+}
+
 function buildSnapshot(): PreloadedGenerationSnapshot {
   return {
     context: {
@@ -2335,9 +2343,13 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       }),
     });
     expect(diagnostic?.exerciseClassUnresolvedCauses).toEqual(expect.any(Array));
+    expect(diagnostic?.cleanupCandidateFeasibility).toEqual(expect.any(Array));
     expect(JSON.stringify(diagnostic?.exerciseClassAlignment).length).toBeLessThan(30000);
     expect(JSON.stringify(projected.slotPlans)).not.toContain(
       "exerciseClassAlignment",
+    );
+    expect(JSON.stringify(projected.slotPlans)).not.toContain(
+      "cleanupCandidateFeasibility",
     );
     const slotPrescriptionIntents = diagnostic?.slotPrescriptionIntents ?? [];
     const setDistributionIntents = diagnostic?.setDistributionIntents ?? [];
@@ -4967,6 +4979,265 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     expect(getClassCause(diagnostic, "lower_b", "Calves")).toMatchObject({
       owningCause: "duplicate_continuity_conflict",
       recommendedOwner: "duplicate_continuity_policy",
+    });
+  });
+
+  it("blocks lower_b calf duplicate cleanup when one retained isolation cannot preserve the support floor under current caps", () => {
+    const slotSequence = [
+      { slotId: "lower_a", intent: "LOWER" as const },
+      { slotId: "lower_b", intent: "LOWER" as const },
+    ];
+    const lowerAStandingCalfRaise = makeProjectedExercise({
+      id: "standing-calf-raise",
+      name: "Standing Calf Raise",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Calves"],
+      sets: 2,
+      isMainLift: false,
+      isCompound: false,
+      stimulusProfile: { calves: 1 },
+    });
+    const seatedCalfRaise = makeProjectedExercise({
+      id: "seated-calf-raise",
+      name: "Seated Calf Raise",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Calves"],
+      sets: 3,
+      isMainLift: false,
+      isCompound: false,
+      stimulusProfile: { calves: 1 },
+    });
+    const legPressCalfRaise = makeProjectedExercise({
+      id: "leg-press-calf-raise",
+      name: "Leg Press Calf Raise",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Calves"],
+      sets: 3,
+      isMainLift: false,
+      isCompound: false,
+      stimulusProfile: { calves: 1 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_a",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({
+            accessories: [lowerAStandingCalfRaise],
+          }),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({
+            accessories: [seatedCalfRaise, legPressCalfRaise],
+          }),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_a",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({
+            accessories: [lowerAStandingCalfRaise],
+          }),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({
+            accessories: [seatedCalfRaise, legPressCalfRaise],
+          }),
+        }),
+      ],
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+    });
+
+    expect(getLowerBCalfCleanupFeasibility(diagnostic)).toMatchObject({
+      candidate: "lower_b_calf_duplicate_cleanup",
+      slotId: "lower_b",
+      muscle: "Calves",
+      currentShape: [
+        {
+          exerciseName: "Seated Calf Raise",
+          setCount: 3,
+          effectiveSets: 3,
+          exerciseClass: "seated_calf_raise",
+        },
+        {
+          exerciseName: "Leg Press Calf Raise",
+          setCount: 3,
+          effectiveSets: 3,
+          exerciseClass: "calf_raise",
+        },
+      ],
+      target: {
+        minEffectiveSets: 8,
+        preferredEffectiveSets: 8,
+        targetStatus: "soft",
+      },
+      caps: {
+        maxSetsPerExercise: 4,
+        maxDirectExercises: 1,
+      },
+      feasibility: "not_feasible_under_current_caps",
+      blockingReasons: expect.arrayContaining([
+        "single_exercise_cannot_meet_floor",
+        "would_exceed_set_cap",
+        "would_reduce_below_support_floor",
+        "would_require_lower_a_mutation",
+        "would_require_specialization_policy",
+      ]),
+      recommendation: "do_not_trial_behavior",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+    });
+    expect(
+      getLowerBCalfCleanupFeasibility(diagnostic)?.proposedCleanerShape,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          exerciseName: "Seated Calf Raise",
+          proposedSetCount: 4,
+          projectedEffectiveSets: 4,
+          reason:
+            "needs_6_sets_to_preserve_Calves_floor_but_maxSetsPerExercise_is_4",
+        }),
+        expect.objectContaining({
+          exerciseName: "Leg Press Calf Raise",
+          proposedSetCount: 4,
+          projectedEffectiveSets: 4,
+          reason:
+            "needs_6_sets_to_preserve_Calves_floor_but_maxSetsPerExercise_is_4",
+        }),
+      ]),
+    );
+  });
+
+  it("allows lower_b calf duplicate cleanup trial when one retained isolation can preserve the support floor within caps", () => {
+    const slotSequence = [
+      { slotId: "lower_a", intent: "LOWER" as const },
+      { slotId: "lower_b", intent: "LOWER" as const },
+    ];
+    const lowerAStandingCalfRaise = makeProjectedExercise({
+      id: "standing-calf-raise",
+      name: "Standing Calf Raise",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Calves"],
+      sets: 4,
+      isMainLift: false,
+      isCompound: false,
+      stimulusProfile: { calves: 1 },
+    });
+    const seatedCalfRaise = makeProjectedExercise({
+      id: "seated-calf-raise",
+      name: "Seated Calf Raise",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Calves"],
+      sets: 2,
+      isMainLift: false,
+      isCompound: false,
+      stimulusProfile: { calves: 1 },
+    });
+    const legPressCalfRaise = makeProjectedExercise({
+      id: "leg-press-calf-raise",
+      name: "Leg Press Calf Raise",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Calves"],
+      sets: 2,
+      isMainLift: false,
+      isCompound: false,
+      stimulusProfile: { calves: 1 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_a",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({
+            accessories: [lowerAStandingCalfRaise],
+          }),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({
+            accessories: [seatedCalfRaise, legPressCalfRaise],
+          }),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_a",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({
+            accessories: [lowerAStandingCalfRaise],
+          }),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({
+            accessories: [seatedCalfRaise, legPressCalfRaise],
+          }),
+        }),
+      ],
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+    });
+
+    expect(getLowerBCalfCleanupFeasibility(diagnostic)).toMatchObject({
+      candidate: "lower_b_calf_duplicate_cleanup",
+      feasibility: "feasible",
+      blockingReasons: [],
+      recommendation: "safe_to_trial",
+      proposedCleanerShape: expect.arrayContaining([
+        expect.objectContaining({
+          exerciseName: "Seated Calf Raise",
+          proposedSetCount: 4,
+          projectedEffectiveSets: 4,
+        }),
+        expect.objectContaining({
+          exerciseName: "Leg Press Calf Raise",
+          proposedSetCount: 4,
+          projectedEffectiveSets: 4,
+        }),
+      ]),
+      readOnly: true,
+      affectsScoringOrGeneration: false,
     });
   });
 

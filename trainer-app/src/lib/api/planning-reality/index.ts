@@ -63,6 +63,7 @@ import {
   buildExerciseClassAlignment,
   buildExerciseClassDistributionBySlot,
 } from "./selection-alignment";
+import { buildCleanupCandidateFeasibility } from "./cleanup-feasibility";
 
 export type * from "./types";
 function classifyPlanningShape(input: {
@@ -334,6 +335,12 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
       projectedDelivery,
       accumulationWeekProjection,
     });
+  const cleanupCandidateFeasibility = buildCleanupCandidateFeasibility({
+    finalSlotPlan,
+    projectedDelivery,
+    shadowWeeklyDemand,
+    setDistributionIntents,
+  });
   const materialRepairCount = repairMateriality.filter(
     (row) => row.materiality === "moderate" || row.materiality === "major"
   ).length;
@@ -391,6 +398,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     exerciseClassAlignment,
     exerciseClassUnresolvedCauses,
     duplicateContinuityJustification,
+    cleanupCandidateFeasibility,
     accumulationWeekProjection,
     ...(input.forbiddenCleanupReroute
       ? { forbiddenCleanupReroute: input.forbiddenCleanupReroute }

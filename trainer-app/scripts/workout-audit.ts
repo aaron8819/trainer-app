@@ -1053,6 +1053,71 @@ function buildCleanPreselectionFeasibilitySummaryLines(
   return lines;
 }
 
+function buildCleanupCandidateFeasibilitySummaryLines(
+  rows:
+    | PlanningRealityDiagnostic["cleanupCandidateFeasibility"]
+    | null
+    | undefined
+): string[] | null {
+  const feasibilityRows = asArray(rows);
+  if (feasibilityRows.length === 0) {
+    return null;
+  }
+
+  const lines = [
+    "Cleanup Candidate Feasibility",
+    "-----------------------------",
+  ];
+  for (const row of feasibilityRows.slice(0, 6)) {
+    const label =
+      row.candidate === "lower_b_calf_duplicate_cleanup"
+        ? "lower_b Calves duplicate cleanup"
+        : row.candidate;
+    const status =
+      row.feasibility === "feasible"
+        ? "feasible"
+        : row.feasibility === "not_feasible_under_current_caps"
+          ? "not feasible"
+          : "ambiguous";
+    const currentSets = asArray(row.currentShape).reduce(
+      (sum, exercise) => sum + (exercise.setCount ?? 0),
+      0
+    );
+    const currentEffectiveSets = asArray(row.currentShape).reduce(
+      (sum, exercise) => sum + (exercise.effectiveSets ?? 0),
+      0
+    );
+    const currentShape = asArray(row.currentShape)
+      .map((exercise) => `${exercise.exerciseName} ${exercise.setCount}`)
+      .join(" + ");
+    const proposedShape = asArray(row.proposedCleanerShape)
+      .map(
+        (exercise) =>
+          `${exercise.exerciseName} ${exercise.proposedSetCount} sets -> ${formatPlanningRealityNumber(exercise.projectedEffectiveSets)} effective`
+      )
+      .join("; ");
+    const target =
+      row.target.minEffectiveSets ?? row.target.preferredEffectiveSets;
+    lines.push(`${label}: ${status}`);
+    lines.push(
+      `Current: ${currentShape || "none"} = ${formatPlanningRealityNumber(currentEffectiveSets)} ${row.slotId} ${row.muscle} effective sets (${currentSets} raw sets).`
+    );
+    lines.push(
+      `Target floor: ${formatPlanningRealityNumber(target)} (${row.target.targetStatus}).`
+    );
+    lines.push(
+      `Caps: maxSetsPerExercise=${formatPlanningRealityNumber(row.caps.maxSetsPerExercise)}, maxDirectExercises=${formatPlanningRealityNumber(row.caps.maxDirectExercises)}, maxTotalSlotSets=${formatPlanningRealityNumber(row.caps.maxTotalSlotSets)}.`
+    );
+    lines.push(`Proposed cleaner shape: ${proposedShape || "none"}.`);
+    lines.push(`Blocking: ${formatNameList(row.blockingReasons, 8)}.`);
+    lines.push(`Recommendation: ${row.recommendation}.`);
+  }
+  const remaining = feasibilityRows.length - 6;
+  if (remaining > 0) {
+    lines.push(`+${remaining} more`);
+  }
+  return lines;
+}
 function formatPlanningRealityArchitectureImplication(
   planningShape: string | null | undefined,
   shadowRepairSignal?: {
@@ -1457,6 +1522,13 @@ export function buildPlanningRealitySummary(input: {
   );
   if (cleanFeasibilitySummary) {
     lines.push("", ...cleanFeasibilitySummary);
+  }
+  const cleanupFeasibilitySummary =
+    buildCleanupCandidateFeasibilitySummaryLines(
+      planningReality.cleanupCandidateFeasibility
+    );
+  if (cleanupFeasibilitySummary) {
+    lines.push("", ...cleanupFeasibilitySummary);
   }
   if (planningReality.rearDeltCollateralSummary) {
     const rearDelt = planningReality.rearDeltCollateralSummary;

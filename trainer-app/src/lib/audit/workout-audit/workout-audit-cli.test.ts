@@ -1143,6 +1143,95 @@ describe("buildPlanningRealitySummary", () => {
     );
   });
 
+  it("prints cleanup candidate feasibility with blocking math when planningReality includes it", () => {
+    const summary = buildPlanningRealitySummary({
+      artifact: {
+        mesocycleExplain: {
+          preview: {
+            projectionDiagnostics: {
+              planningReality: {
+                summary: {
+                  planningShape: "mostly_repair_shaped",
+                  explicitWeeklyDemandMuscles: 4,
+                  inferredDemandMuscles: 3,
+                  slotsWithExplicitWeeklyDemand: 2,
+                  slotsWithOnlyLocalOrInferredSemantics: 1,
+                  materialRepairCount: 22,
+                  majorRepairCount: 14,
+                  highExerciseConcentrationCount: 4,
+                  warningCodes: [],
+                },
+                cleanupCandidateFeasibility: [
+                  {
+                    candidate: "lower_b_calf_duplicate_cleanup",
+                    slotId: "lower_b",
+                    muscle: "Calves",
+                    currentShape: [
+                      {
+                        exerciseName: "Seated Calf Raise",
+                        setCount: 3,
+                        effectiveSets: 3,
+                        exerciseClass: "seated_calf_raise",
+                      },
+                      {
+                        exerciseName: "Leg Press Calf Raise",
+                        setCount: 3,
+                        effectiveSets: 3,
+                        exerciseClass: "calf_raise",
+                      },
+                    ],
+                    proposedCleanerShape: [
+                      {
+                        exerciseName: "Seated Calf Raise",
+                        proposedSetCount: 4,
+                        projectedEffectiveSets: 4,
+                        reason:
+                          "needs_6_sets_to_preserve_Calves_floor_but_maxSetsPerExercise_is_4",
+                      },
+                    ],
+                    target: {
+                      minEffectiveSets: 8,
+                      preferredEffectiveSets: 8,
+                      targetStatus: "soft",
+                    },
+                    caps: {
+                      maxSetsPerExercise: 4,
+                      maxDirectExercises: 1,
+                      maxTotalSlotSets: 24,
+                    },
+                    feasibility: "not_feasible_under_current_caps",
+                    blockingReasons: [
+                      "single_exercise_cannot_meet_floor",
+                      "would_exceed_set_cap",
+                      "would_reduce_below_support_floor",
+                    ],
+                    recommendation: "do_not_trial_behavior",
+                    readOnly: true,
+                    affectsScoringOrGeneration: false,
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Cleanup Candidate Feasibility",
+        "-----------------------------",
+        "lower_b Calves duplicate cleanup: not feasible",
+        "Current: Seated Calf Raise 3 + Leg Press Calf Raise 3 = 6 lower_b Calves effective sets (6 raw sets).",
+        "Target floor: 8 (soft).",
+        "Caps: maxSetsPerExercise=4, maxDirectExercises=1, maxTotalSlotSets=24.",
+        "Proposed cleaner shape: Seated Calf Raise 4 sets -> 4 effective.",
+        "Blocking: single_exercise_cannot_meet_floor, would_exceed_set_cap, would_reduce_below_support_floor.",
+        "Recommendation: do_not_trial_behavior.",
+      ])
+    );
+  });
+
   it("prints compact set distribution intent evidence when present", () => {
     const summary = buildPlanningRealitySummary({
       artifact: {

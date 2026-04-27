@@ -74,6 +74,8 @@ export type WorkoutAuditRequest = {
   exerciseId?: string;
   projectionArtifactPath?: string;
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;
+  plannerOnlyDryRun?: boolean;
+  compareRepaired?: boolean;
   sanitizationLevel?: "none" | "pii-safe";
 };
 
@@ -111,6 +113,10 @@ export type WorkoutAuditContext = {
   mesocycleExplain?: {
     sourceMesocycleId?: string;
     retrospectiveMesocycleId?: string;
+    plannerOnlyDryRun?: {
+      enabled: true;
+      compareRepaired: true;
+    };
   };
 };
 
@@ -722,6 +728,48 @@ export type MesocycleExplainProjectionDiagnostics = {
   planningReality?: SlotPlanPlanningRealityDiagnostic;
 };
 
+export type MesocycleExplainPlannerOnlyDryRun = {
+  enabled: true;
+  compareRepaired: boolean;
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  canReplaceRepairedProjection: boolean;
+  summary: {
+    status: "pass" | "partial" | "fail";
+    acceptancePassed: number;
+    acceptanceFailed: number;
+    unresolvedDemandCount: number;
+    disabledRepairDependencyCount: number;
+  };
+  slotComparisons: Array<{
+    slotId: string;
+    repairedExercises: string[];
+    plannerOnlyExercises: string[];
+    laneStatus: "matched" | "partial" | "missing" | "failed";
+    unresolvedDemand: string[];
+    duplicateViolations: string[];
+    setDistributionViolations: string[];
+  }>;
+  weeklyMuscleComparison: Array<{
+    muscle: string;
+    repairedEffectiveSets: number | null;
+    plannerOnlyEffectiveSets: number | null;
+    targetStatus: "below" | "within" | "above" | "unknown";
+    evidence: string[];
+  }>;
+  acceptanceChecks: Array<{
+    check: string;
+    status: "pass" | "fail" | "partial" | "unknown";
+    evidence: string[];
+  }>;
+  repairDependencies: Array<{
+    path: string;
+    wouldHaveActed: boolean;
+    consequenceWithoutRepair: string;
+    plannerOwnerRequired: string;
+  }>;
+};
+
 export type MesocycleExplainAuditPayload = {
   version: typeof MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION;
   ownerEmail?: string;
@@ -786,6 +834,7 @@ export type MesocycleExplainAuditPayload = {
     };
   };
   limitations: string[];
+  plannerOnlyDryRun?: MesocycleExplainPlannerOnlyDryRun;
 };
 
 export type WorkoutAuditRun = {

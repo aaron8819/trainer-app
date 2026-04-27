@@ -622,19 +622,120 @@ describe("buildMesocycleExplainAuditPayload", () => {
               ],
             },
           ],
-          initialSlotComposition: [],
-          finalSlotPlan: [],
-          allocationVsInitialDelta: [],
+          initialSlotComposition: [
+            {
+              slotId: "upper_a",
+              slotIndex: 0,
+              intent: "upper",
+              exerciseCount: 1,
+              totalSets: 6,
+              projectedEffectiveStimulusByMuscle: {
+                Chest: 6,
+              },
+              exercises: [
+                {
+                  exerciseId: "ex-1",
+                  exerciseName: "Incline Dumbbell Press",
+                  role: "main",
+                  setCount: 6,
+                  primaryMuscles: ["Chest"],
+                  movementPatterns: ["horizontal_push"],
+                  effectiveStimulusByMuscle: {
+                    Chest: 6,
+                  },
+                },
+              ],
+            },
+          ],
+          finalSlotPlan: [
+            {
+              slotId: "upper_a",
+              slotIndex: 0,
+              intent: "upper",
+              exerciseCount: 2,
+              totalSets: 8,
+              projectedEffectiveStimulusByMuscle: {
+                Chest: 6,
+                "Side Delts": 2,
+              },
+              exercises: [
+                {
+                  exerciseId: "ex-1",
+                  exerciseName: "Incline Dumbbell Press",
+                  role: "main",
+                  setCount: 5,
+                  primaryMuscles: ["Chest"],
+                  movementPatterns: ["horizontal_push"],
+                  effectiveStimulusByMuscle: {
+                    Chest: 6,
+                  },
+                },
+                {
+                  exerciseId: "ex-3",
+                  exerciseName: "Cable Lateral Raise",
+                  role: "accessory",
+                  setCount: 3,
+                  primaryMuscles: ["Side Delts"],
+                  movementPatterns: ["isolation"],
+                  effectiveStimulusByMuscle: {
+                    "Side Delts": 2,
+                  },
+                },
+              ],
+            },
+          ],
+          allocationVsInitialDelta: [
+            {
+              slotId: "upper_a",
+              slotIndex: 0,
+              comparison: "allocation_vs_initial",
+              responsibilityLoad: "clear",
+              underAllocatedMuscles: [
+                {
+                  muscle: "Chest",
+                  role: "primary",
+                  targetStatus: "hard",
+                  expectedEffectiveSets: 10,
+                  actualEffectiveSets: 6,
+                  shortfall: 4,
+                },
+              ],
+              unallocatedStimulusMuscles: [],
+              notes: ["planner-only dry-run leaves hard Chest demand unresolved"],
+            },
+          ],
           allocationVsFinalDelta: [],
-          repairMaterialityAfterShadowAllocation: [],
+          repairMaterialityAfterShadowAllocation: [
+            {
+              repairMechanism: "support_floor_closure",
+              materiality: "major",
+              muscle: "Side Delts",
+              slotId: "upper_a",
+              exerciseId: "ex-3",
+              exerciseName: "Cable Lateral Raise",
+              action: "added",
+              effectiveStimulusAdded: 2,
+              effectiveStimulusDelta: 2,
+              rawSetsAdded: 3,
+              rawSetDelta: 3,
+              changedExerciseIdentity: true,
+              changedSlotShapeMaterially: true,
+              behaviorClass: "program_shaping",
+              source: "support_floor_closure",
+              rationale: "support floor closed after planner-only selection",
+              likelyAvoidableWithShadowAllocation: true,
+              shadowAllocationBasis: "slot_owned_muscle_before_selection",
+              shadowRationale: ["repair_would_be_needed_here"],
+            },
+          ],
           shadowRepairSummary: {
-            materialRepairCount: 0,
-            majorRepairCount: 0,
-            likelyAvoidableMaterialRepairCount: 0,
+            materialRepairCount: 1,
+            majorRepairCount: 1,
+            likelyAvoidableMaterialRepairCount: 1,
             remainingMaterialRepairCount: 0,
-            likelyAvoidableMajorRepairCount: 0,
+            likelyAvoidableMajorRepairCount: 1,
             remainingMajorRepairCount: 0,
-            likelyAvoidableByMuscle: {},
+            likelyAvoidableByMuscle: { "Side Delts": 1 },
             remainingByMuscle: {},
           },
           suspiciousRepairsNotEligibleForPromotion: [],
@@ -1048,7 +1149,26 @@ describe("buildMesocycleExplainAuditPayload", () => {
             ],
           },
           projectedDelivery: [],
-          repairMateriality: [],
+          repairMateriality: [
+            {
+              repairMechanism: "support_floor_closure",
+              materiality: "major",
+              muscle: "Side Delts",
+              slotId: "upper_a",
+              exerciseId: "ex-3",
+              exerciseName: "Cable Lateral Raise",
+              action: "added",
+              effectiveStimulusAdded: 2,
+              effectiveStimulusDelta: 2,
+              rawSetsAdded: 3,
+              rawSetDelta: 3,
+              changedExerciseIdentity: true,
+              changedSlotShapeMaterially: true,
+              behaviorClass: "program_shaping",
+              source: "support_floor_closure",
+              rationale: "support floor closed after planner-only selection",
+            },
+          ],
           exerciseConcentration: [],
           warnings: [
             {
@@ -1569,5 +1689,81 @@ describe("buildMesocycleExplainAuditPayload", () => {
         expect.stringContaining("fresh reprojections"),
       ]),
     );
+    expect(payload.plannerOnlyDryRun).toBeUndefined();
+  });
+
+  it("emits a compact read-only planner-only comparison only when both dry-run flags are enabled", async () => {
+    const payload = await buildMesocycleExplainAuditPayload({
+      userId: "user-1",
+      ownerEmail: "aaron8819@gmail.com",
+      sourceMesocycleId: "meso-1",
+      retrospectiveMesocycleId: "meso-1",
+      plannerDiagnosticsMode: "debug",
+      plannerOnlyDryRun: {
+        enabled: true,
+        compareRepaired: true,
+      },
+    });
+
+    expect(payload.preview.slotPlans).toHaveLength(1);
+    expect(payload.plannerOnlyDryRun).toMatchObject({
+      enabled: true,
+      compareRepaired: true,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      canReplaceRepairedProjection: false,
+      summary: {
+        status: "fail",
+        unresolvedDemandCount: expect.any(Number),
+        disabledRepairDependencyCount: expect.any(Number),
+      },
+    });
+    expect(payload.plannerOnlyDryRun?.slotComparisons[0]).toMatchObject({
+      slotId: "upper_a",
+      repairedExercises: expect.arrayContaining([
+        expect.stringContaining("Cable Lateral Raise"),
+      ]),
+      plannerOnlyExercises: expect.arrayContaining([
+        expect.stringContaining("Incline Dumbbell Press"),
+      ]),
+      unresolvedDemand: expect.arrayContaining([
+        expect.stringContaining("repair_would_be_needed_here:Chest"),
+      ]),
+      setDistributionViolations: expect.arrayContaining([
+        expect.stringContaining("set_count_gt_5"),
+      ]),
+    });
+    expect(payload.plannerOnlyDryRun?.weeklyMuscleComparison).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Chest",
+          repairedEffectiveSets: 6,
+          plannerOnlyEffectiveSets: 6,
+          targetStatus: "below",
+        }),
+      ]),
+    );
+    expect(payload.plannerOnlyDryRun?.acceptanceChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          check: "materialRepairCount = 0 for basic shape",
+          status: "fail",
+          evidence: ["materialRepairCount:1"],
+        }),
+      ]),
+    );
+    expect(payload.plannerOnlyDryRun?.repairDependencies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "support-floor closure",
+          wouldHaveActed: true,
+          consequenceWithoutRepair: expect.stringContaining(
+            "repair_would_be_needed_here",
+          ),
+        }),
+      ]),
+    );
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(1);
+    expect(mocks.buildMesocycleSlotPlanSeed).toHaveBeenCalledTimes(1);
   });
 });

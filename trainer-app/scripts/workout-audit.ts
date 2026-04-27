@@ -226,6 +226,14 @@ type PlanningRealitySummaryArtifact = {
   } | null;
 };
 
+type PlannerOnlyDryRunSummaryArtifact = {
+  mesocycleExplain?: {
+    plannerOnlyDryRun?:
+      | NonNullable<NonNullable<WorkoutAuditArtifact["mesocycleExplain"]>["plannerOnlyDryRun"]>
+      | null;
+  } | null;
+};
+
 const PLANNING_REALITY_SIZE_BUDGET_APPROACH_RATIO = 0.9;
 const PLANNING_REALITY_SIZE_BUDGET_SECTION_LIMIT = 8;
 
@@ -1718,6 +1726,51 @@ export function buildPlanningRealitySummary(input: {
   return lines;
 }
 
+export function buildPlannerOnlyDryRunSummary(input: {
+  artifact: PlannerOnlyDryRunSummaryArtifact;
+}): string[] | null {
+  const dryRun = input.artifact.mesocycleExplain?.plannerOnlyDryRun;
+  if (!dryRun?.enabled) {
+    return null;
+  }
+
+  const failedChecks = dryRun.acceptanceChecks
+    .filter((check) => check.status === "fail")
+    .slice(0, 5)
+    .map((check) => `- ${check.check}: ${check.evidence.slice(0, 3).join("; ") || "no evidence"}`);
+  const unresolvedSlots = dryRun.slotComparisons
+    .filter((slot) => slot.unresolvedDemand.length > 0)
+    .slice(0, 5)
+    .map((slot) => `- ${slot.slotId}: ${slot.unresolvedDemand.slice(0, 3).join("; ")}`);
+  const activeDependencies = dryRun.repairDependencies
+    .filter((dependency) => dependency.wouldHaveActed)
+    .slice(0, 8)
+    .map(
+      (dependency) =>
+        `- ${dependency.path}: ${dependency.consequenceWithoutRepair}`
+    );
+
+  return [
+    "Planner-Only Dry Run",
+    "--------------------",
+    `Planner-only dry run: ${dryRun.summary.status}`,
+    "Current repaired projection: pass",
+    `Can replace repaired projection today: ${dryRun.canReplaceRepairedProjection ? "yes" : "no"}`,
+    `Acceptance: passed=${dryRun.summary.acceptancePassed} failed=${dryRun.summary.acceptanceFailed}`,
+    `Unresolved demand count: ${dryRun.summary.unresolvedDemandCount}`,
+    `Disabled repair dependency count: ${dryRun.summary.disabledRepairDependencyCount}`,
+    "",
+    "Failed acceptance checks:",
+    ...(failedChecks.length > 0 ? failedChecks : ["- none"]),
+    "",
+    "Top unresolved demand:",
+    ...(unresolvedSlots.length > 0 ? unresolvedSlots : ["- none"]),
+    "",
+    "Repair dependencies still required:",
+    ...(activeDependencies.length > 0 ? activeDependencies : ["- none"]),
+  ];
+}
+
 export function buildActiveMesocycleSlotReseedSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "activeMesocycleSlotReseed">;
   outputPath: string;
@@ -1981,6 +2034,11 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const shouldApplyBoundedReseed = args["apply-bounded-reseed"] === true;
   const shouldAcceptSlotPlanUpgrade = args["accept-slot-plan-upgrade"] === true;
+  const shouldRunPlannerOnlyDryRun = args["planner-only-dry-run"] === true;
+  const shouldCompareRepaired = args["compare-repaired"] === true;
+  if (shouldRunPlannerOnlyDryRun && !shouldCompareRepaired) {
+    throw new Error("--planner-only-dry-run currently requires --compare-repaired");
+  }
   const env = loadAuditEnv(typeof args["env-file"] === "string" ? args["env-file"] : undefined);
   const normalizedIntent = normalizeAuditIntentArg(
     typeof args.intent === "string" ? args.intent : undefined
@@ -2039,6 +2097,8 @@ async function main(): Promise<void> {
         ? args["projection-artifact"]
         : undefined,
     plannerDiagnosticsMode: args.debug === true ? ("debug" as const) : ("standard" as const),
+    plannerOnlyDryRun: shouldRunPlannerOnlyDryRun ? true : undefined,
+    compareRepaired: shouldCompareRepaired ? true : undefined,
     sanitizationLevel: args.sanitization === "pii-safe" ? ("pii-safe" as const) : ("none" as const),
   };
   if (shouldApplyBoundedReseed && request.mode !== "active-mesocycle-slot-reseed") {
@@ -2127,6 +2187,14 @@ async function main(): Promise<void> {
   });
   if (planningRealitySummary) {
     for (const line of planningRealitySummary) {
+      console.log(line);
+    }
+  }
+  const plannerOnlyDryRunSummary = buildPlannerOnlyDryRunSummary({
+    artifact,
+  });
+  if (plannerOnlyDryRunSummary) {
+    for (const line of plannerOnlyDryRunSummary) {
       console.log(line);
     }
   }

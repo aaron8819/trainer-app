@@ -5,6 +5,7 @@ import {
   buildCurrentWeekAuditOperatorSummary,
   buildPlanningRealitySummary,
   buildPlanningRealitySizeBudgetSummary,
+  buildPlannerOnlyDryRunSummary,
   buildProjectedWeekDebugSummary,
   buildProjectedWeekOperatorSummary,
   buildWeeklyRetroOperatorSummary,
@@ -2370,6 +2371,79 @@ describe("buildPlanningRealitySummary", () => {
         },
       })
     ).toBeNull();
+  });
+});
+
+describe("buildPlannerOnlyDryRunSummary", () => {
+  it("prints a compact planner-only dry-run comparison verdict", () => {
+    const summary = buildPlannerOnlyDryRunSummary({
+      artifact: {
+        mesocycleExplain: {
+          plannerOnlyDryRun: {
+            enabled: true,
+            compareRepaired: true,
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            canReplaceRepairedProjection: false,
+            summary: {
+              status: "fail",
+              acceptancePassed: 9,
+              acceptanceFailed: 4,
+              unresolvedDemandCount: 2,
+              disabledRepairDependencyCount: 3,
+            },
+            slotComparisons: [
+              {
+                slotId: "upper_a",
+                repairedExercises: ["Incline Dumbbell Press (5 sets)"],
+                plannerOnlyExercises: ["Incline Dumbbell Press (6 sets)"],
+                laneStatus: "failed",
+                unresolvedDemand: ["repair_would_be_needed_here:Chest:shortfall_4"],
+                duplicateViolations: [],
+                setDistributionViolations: ["Incline Dumbbell Press:set_count_gt_5:6"],
+              },
+            ],
+            weeklyMuscleComparison: [],
+            acceptanceChecks: [
+              {
+                check: "materialRepairCount = 0 for basic shape",
+                status: "fail",
+                evidence: ["materialRepairCount:1"],
+              },
+            ],
+            repairDependencies: [
+              {
+                path: "support-floor closure",
+                wouldHaveActed: true,
+                consequenceWithoutRepair:
+                  "repair_would_be_needed_here:1_support_rows",
+                plannerOwnerRequired: "Support demand planner",
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(summary).toEqual([
+      "Planner-Only Dry Run",
+      "--------------------",
+      "Planner-only dry run: fail",
+      "Current repaired projection: pass",
+      "Can replace repaired projection today: no",
+      "Acceptance: passed=9 failed=4",
+      "Unresolved demand count: 2",
+      "Disabled repair dependency count: 3",
+      "",
+      "Failed acceptance checks:",
+      "- materialRepairCount = 0 for basic shape: materialRepairCount:1",
+      "",
+      "Top unresolved demand:",
+      "- upper_a: repair_would_be_needed_here:Chest:shortfall_4",
+      "",
+      "Repair dependencies still required:",
+      "- support-floor closure: repair_would_be_needed_here:1_support_rows",
+    ]);
   });
 });
 

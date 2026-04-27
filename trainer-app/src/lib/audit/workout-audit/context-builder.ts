@@ -34,6 +34,15 @@ export async function buildWorkoutAuditContext(
   const identity = await resolveWorkoutAuditIdentity(request);
   const plannerDiagnosticsMode = request.plannerDiagnosticsMode ?? "standard";
   const mode = request.mode;
+  if (request.plannerOnlyDryRun && mode !== "mesocycle-explain") {
+    throw new Error("--planner-only-dry-run requires --mode mesocycle-explain");
+  }
+  if (request.compareRepaired && mode !== "mesocycle-explain") {
+    throw new Error("--compare-repaired requires --mode mesocycle-explain");
+  }
+  if (request.plannerOnlyDryRun && !request.compareRepaired) {
+    throw new Error("--planner-only-dry-run currently requires --compare-repaired");
+  }
   const shouldLoadNextSession =
     mode === "future-week" || mode === "deload";
 
@@ -111,6 +120,14 @@ export async function buildWorkoutAuditContext(
       mesocycleExplain: {
         sourceMesocycleId: request.sourceMesocycleId,
         retrospectiveMesocycleId: request.retrospectiveMesocycleId,
+        ...(request.plannerOnlyDryRun && request.compareRepaired
+          ? {
+              plannerOnlyDryRun: {
+                enabled: true,
+                compareRepaired: true,
+              },
+            }
+          : {}),
       },
     };
   }

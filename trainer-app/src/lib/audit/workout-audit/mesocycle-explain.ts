@@ -53,6 +53,7 @@ import type {
   MesocycleExplainProjectionDiagnosticCategory,
   MesocycleExplainProjectionDiagnosticRow,
   MesocycleExplainProjectionDiagnostics,
+  MesocycleExplainPlannerOnlyDryRun,
   MesocycleExplainRealityWorkout,
   MesocycleExplainReasonSource,
   MesocycleExplainSlotRow,
@@ -149,6 +150,10 @@ type ComparisonSlotShape = {
 };
 
 type SlotPlanProjectionDiagnostics = SuccessorSlotPlanProjection["diagnostics"];
+type PlanningRealityDiagnostic = NonNullable<
+  NonNullable<SlotPlanProjectionDiagnostics>["planningReality"]
+>;
+type SlotCompositionSnapshot = PlanningRealityDiagnostic["initialSlotComposition"][number];
 type ProgramQualityDiagnostic = NonNullable<
   NonNullable<SlotPlanProjectionDiagnostics>["programQuality"]
 >["evaluation"]["diagnostics"][number];
@@ -405,6 +410,727 @@ function buildProjectionDiagnostics(
     ...(diagnostics?.planningReality
       ? { planningReality: diagnostics.planningReality }
       : {}),
+  };
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return Array.from(
+    new Set(values.filter((value) => value.trim().length > 0))
+  ).sort((left, right) => left.localeCompare(right));
+}
+
+function roundOne(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function sumSlotStimulusByMuscle(
+  slots: ReadonlyArray<SlotCompositionSnapshot>
+): Map<string, number> {
+  const totals = new Map<string, number>();
+  for (const slot of slots) {
+    for (const [muscle, value] of Object.entries(slot.projectedEffectiveStimulusByMuscle)) {
+      totals.set(muscle, roundOne((totals.get(muscle) ?? 0) + value));
+    }
+  }
+  return totals;
+}
+
+function formatSnapshotExercise(
+  exercise: SlotCompositionSnapshot["exercises"][number]
+): string {
+  return `${exercise.exerciseName} (${exercise.setCount} sets)`;
+}
+
+function getSlotById(
+  slots: ReadonlyArray<SlotCompositionSnapshot>,
+  slotId: string
+): SlotCompositionSnapshot | undefined {
+  return slots.find((slot) => slot.slotId === slotId);
+}
+
+function getSlotMuscleStimulus(
+  slot: SlotCompositionSnapshot | undefined,
+  muscle: string
+): number {
+  return roundOne(slot?.projectedEffectiveStimulusByMuscle[muscle] ?? 0);
+}
+
+function buildPlannerOnlyWeeklyMuscleComparison(
+  planningReality: PlanningRealityDiagnostic
+): MesocycleExplainPlannerOnlyDryRun["weeklyMuscleComparison"] {
+  const repairedTotals = sumSlotStimulusByMuscle(planningReality.finalSlotPlan);
+  const plannerTotals = sumSlotStimulusByMuscle(planningReality.initialSlotComposition);
+  const targetByMuscle = new Map(
+    planningReality.shadowWeeklyDemand.map((row) => [row.muscle, row])
+  );
+  const fallbackTargetByMuscle = new Map(
+    planningReality.weeklyMuscleDemand.map((row) => [row.muscle, row])
+  );
+  const muscles = uniqueSorted([
+    ...Array.from(repairedTotals.keys()),
+    ...Array.from(plannerTotals.keys()),
+    ...Array.from(targetByMuscle.keys()),
+    ...Array.from(fallbackTargetByMuscle.keys()),
+  ]);
+
+  return muscles.map((muscle) => {
+    const repairedEffectiveSets = repairedTotals.get(muscle) ?? null;
+    const plannerOnlyEffectiveSets = plannerTotals.get(muscle) ?? null;
+    const target = targetByMuscle.get(muscle);
+    const fallback = fallbackTargetByMuscle.get(muscle);
+    const min = target?.minEffectiveSets ?? fallback?.mev ?? null;
+    const preferred = target?.preferredEffectiveSets ?? fallback?.preferredTarget ?? null;
+    const max = target?.maxEffectiveSets ?? fallback?.mav ?? null;
+    const targetStatus =
+      plannerOnlyEffectiveSets == null || (min == null && max == null)
+        ? "unknown"
+        : min != null && plannerOnlyEffectiveSets < min
+          ? "below"
+          : max != null && plannerOnlyEffectiveSets > max
+            ? "above"
+            : "within";
+
+    return {
+      muscle,
+      repairedEffectiveSets,
+      plannerOnlyEffectiveSets,
+      targetStatus,
+      evidence: uniqueSorted([
+        `planner:${plannerOnlyEffectiveSets ?? "unknown"}`,
+        `repaired:${repairedEffectiveSets ?? "unknown"}`,
+        `min:${min ?? "unknown"}`,
+        `preferred:${preferred ?? "unknown"}`,
+        `max:${max ?? "unknown"}`,
+      ]),
+    };
+  });
+}
+
+function buildPlannerOnlyDuplicateViolations(
+  planningReality: PlanningRealityDiagnostic,
+  slotId: string
+): string[] {
+  const duplicateRows =
+    planningReality.duplicateContinuityJustification?.duplicates ?? [];
+  return duplicateRows
+    .filter((row) => row.duplicatedInSlots.includes(slotId))
+    .filter(
+      (row) =>
+        row.justification === "unjustified" ||
+        row.justification === "unknown" ||
+        row.compatibleAlternativeExists === true ||
+        row.risk === "high"
+    )
+    .map(
+      (row) =>
+        `${row.exerciseName}: duplicate_${row.duplicateType}:justification_${row.justification}:risk_${row.risk}`
+    );
+}
+
+function buildPlannerOnlySetDistributionViolations(
+  planningReality: PlanningRealityDiagnostic,
+  slot: SlotCompositionSnapshot | undefined
+): string[] {
+  if (!slot) {
+    return [];
+  }
+  const policies = planningReality.setDistributionIntents.filter(
+    (intent) => intent.slotId === slot.slotId
+  );
+  const policyByMuscle = new Map(
+    policies.flatMap((intent) =>
+      intent.musclePolicies.map((policy) => [
+        `${intent.slotId}:${policy.muscle}`,
+        policy,
+      ] as const)
+    )
+  );
+  const totals = sumSlotStimulusByMuscle([slot]);
+  const violations: string[] = [];
+
+  for (const exercise of slot.exercises) {
+    if (exercise.setCount > 5) {
+      violations.push(`${exercise.exerciseName}:set_count_gt_5:${exercise.setCount}`);
+    }
+    for (const [muscle, value] of Object.entries(exercise.effectiveStimulusByMuscle)) {
+      const total = totals.get(muscle) ?? 0;
+      if (total <= 0 || value <= 0) {
+        continue;
+      }
+      const policy = policyByMuscle.get(`${slot.slotId}:${muscle}`);
+      const share = value / total;
+      if (policy?.maxSingleExerciseShare != null && share > policy.maxSingleExerciseShare) {
+        violations.push(
+          `${exercise.exerciseName}:${muscle}:single_exercise_share_${roundOne(share * 100)}%_gt_${roundOne(policy.maxSingleExerciseShare * 100)}%`
+        );
+      } else if (share > 0.6) {
+        violations.push(
+          `${exercise.exerciseName}:${muscle}:single_exercise_share_${roundOne(share * 100)}%`
+        );
+      }
+    }
+  }
+
+  for (const intent of policies) {
+    violations.push(...intent.evidence.concentrationRows);
+    violations.push(...intent.evidence.capCleanupRows);
+  }
+
+  return uniqueSorted(violations);
+}
+
+function buildPlannerOnlySlotComparisons(
+  planningReality: PlanningRealityDiagnostic
+): MesocycleExplainPlannerOnlyDryRun["slotComparisons"] {
+  const slotIds = uniqueSorted([
+    ...planningReality.finalSlotPlan.map((slot) => slot.slotId),
+    ...planningReality.initialSlotComposition.map((slot) => slot.slotId),
+    ...planningReality.shadowSlotDemandAllocation.map((slot) => slot.slotId),
+  ]);
+  const allocationDeltaBySlot = new Map(
+    planningReality.allocationVsInitialDelta.map((delta) => [delta.slotId, delta])
+  );
+  const unresolvedCausesBySlot = new Map<string, string[]>();
+  for (const row of planningReality.exerciseClassUnresolvedCauses ?? []) {
+    if (
+      row.initialAlignment !== "missing" &&
+      row.initialAlignment !== "partial" &&
+      row.initialAlignment !== "violated"
+    ) {
+      continue;
+    }
+    const existing = unresolvedCausesBySlot.get(row.slotId) ?? [];
+    existing.push(
+      `${row.muscle}:${row.initialAlignment}:${row.recommendedOwner}:${row.behaviorReadiness}`
+    );
+    unresolvedCausesBySlot.set(row.slotId, existing);
+  }
+
+  return slotIds.map((slotId) => {
+    const repaired = getSlotById(planningReality.finalSlotPlan, slotId);
+    const plannerOnly = getSlotById(planningReality.initialSlotComposition, slotId);
+    const allocationDelta = allocationDeltaBySlot.get(slotId);
+    const unresolvedDemand = uniqueSorted([
+      ...(allocationDelta?.underAllocatedMuscles ?? []).map((row) => {
+        const shortfall =
+          row.shortfall == null ? "unknown" : roundOne(row.shortfall);
+        return `repair_would_be_needed_here:${row.muscle}:shortfall_${shortfall}`;
+      }),
+      ...(unresolvedCausesBySlot.get(slotId) ?? []),
+    ]);
+    const duplicateViolations = uniqueSorted(
+      buildPlannerOnlyDuplicateViolations(planningReality, slotId)
+    );
+    const setDistributionViolations = buildPlannerOnlySetDistributionViolations(
+      planningReality,
+      plannerOnly
+    );
+    const laneStatus =
+      duplicateViolations.length > 0 || setDistributionViolations.length > 0
+        ? "failed"
+        : unresolvedDemand.length === 0
+          ? "matched"
+          : plannerOnly && plannerOnly.exercises.length > 0
+            ? "partial"
+            : "missing";
+
+    return {
+      slotId,
+      repairedExercises: repaired?.exercises.map(formatSnapshotExercise) ?? [],
+      plannerOnlyExercises: plannerOnly?.exercises.map(formatSnapshotExercise) ?? [],
+      laneStatus,
+      unresolvedDemand,
+      duplicateViolations,
+      setDistributionViolations,
+    };
+  });
+}
+
+function statusFromBoolean(
+  passed: boolean,
+  partial = false
+): "pass" | "fail" | "partial" {
+  return passed ? "pass" : partial ? "partial" : "fail";
+}
+
+function buildPlannerOnlyAcceptanceChecks(
+  planningReality: PlanningRealityDiagnostic,
+  weeklyMuscleComparison: MesocycleExplainPlannerOnlyDryRun["weeklyMuscleComparison"]
+): MesocycleExplainPlannerOnlyDryRun["acceptanceChecks"] {
+  const plannerSlots = planningReality.initialSlotComposition;
+  const plannerExercises = plannerSlots.flatMap((slot) =>
+    slot.exercises.map((exercise) => ({ slot, exercise }))
+  );
+  const primaryRows = planningReality.shadowWeeklyDemand.filter(
+    (row) => row.priority === "primary"
+  );
+  const primaryBelowMinimum = primaryRows.filter((row) => {
+    const total =
+      weeklyMuscleComparison.find((muscle) => muscle.muscle === row.muscle)
+        ?.plannerOnlyEffectiveSets ?? 0;
+    return row.minEffectiveSets != null && total < row.minEffectiveSets;
+  });
+  const chestUpperExposures = plannerSlots.filter(
+    (slot) =>
+      slot.intent.toLowerCase() === "upper" &&
+      getSlotMuscleStimulus(slot, "Chest") > 0
+  );
+  const hamstringExercises = plannerExercises.filter(
+    ({ exercise }) =>
+      (exercise.effectiveStimulusByMuscle["Hamstrings"] ?? 0) > 0 ||
+      exercise.primaryMuscles.includes("Hamstrings")
+  );
+  const hasHamstringHinge = hamstringExercises.some(({ exercise }) =>
+    exercise.movementPatterns.some((pattern) => pattern.toLowerCase().includes("hinge"))
+  );
+  const hasHamstringCurl = hamstringExercises.some(({ exercise }) => {
+    const name = exercise.exerciseName.toLowerCase();
+    return (
+      name.includes("curl") ||
+      exercise.movementPatterns.some((pattern) => {
+        const normalized = pattern.toLowerCase();
+        return normalized.includes("knee_flexion") || normalized.includes("flexion");
+      })
+    );
+  });
+  const sideDeltDirect = plannerExercises.filter(({ exercise }) =>
+    exercise.primaryMuscles.includes("Side Delts")
+  );
+  const lowerSlots = plannerSlots.filter((slot) => slot.intent.toLowerCase() === "lower");
+  const calfLowerSlots = lowerSlots.filter((slot) => getSlotMuscleStimulus(slot, "Calves") > 0);
+  const forbiddenBySlot = new Map<string, Set<string>>();
+  for (const intent of planningReality.slotPrescriptionIntents) {
+    for (const prescription of intent.musclePrescriptions) {
+      if (
+        prescription.targetStatus !== "forbidden" &&
+        prescription.demandType !== "do_not_train_here"
+      ) {
+        continue;
+      }
+      const set = forbiddenBySlot.get(intent.slotId) ?? new Set<string>();
+      set.add(prescription.muscle);
+      forbiddenBySlot.set(intent.slotId, set);
+    }
+  }
+  const forbiddenPrimary = plannerExercises.filter(({ slot, exercise }) =>
+    exercise.primaryMuscles.some((muscle) => forbiddenBySlot.get(slot.slotId)?.has(muscle))
+  );
+  const backExtensionHamstrings = plannerExercises.filter(
+    ({ exercise }) =>
+      exercise.exerciseName.toLowerCase().includes("back extension") &&
+      (exercise.effectiveStimulusByMuscle["Hamstrings"] ?? 0) > 0
+  );
+  const duplicateRows =
+    planningReality.duplicateContinuityJustification?.duplicates ?? [];
+  const unjustifiedDuplicates = duplicateRows.filter(
+    (row) =>
+      row.justification === "unjustified" ||
+      row.justification === "unknown" ||
+      row.compatibleAlternativeExists === true ||
+      row.risk === "high"
+  );
+  const overFiveSetExercises = plannerExercises.filter(
+    ({ exercise }) => exercise.setCount > 5
+  );
+  const weeklyTotals = sumSlotStimulusByMuscle(plannerSlots);
+  const highShareExercises = plannerExercises.flatMap(({ slot, exercise }) =>
+    Object.entries(exercise.effectiveStimulusByMuscle).flatMap(([muscle, value]) => {
+      const total = weeklyTotals.get(muscle) ?? 0;
+      if (total <= 0 || value <= 0) {
+        return [];
+      }
+      const share = value / total;
+      return share > 0.6
+        ? [`${slot.slotId}:${exercise.exerciseName}:${muscle}:${roundOne(share * 100)}%`]
+        : [];
+    })
+  );
+  const moderateShareExercises = plannerExercises.flatMap(({ slot, exercise }) =>
+    Object.entries(exercise.effectiveStimulusByMuscle).flatMap(([muscle, value]) => {
+      const total = weeklyTotals.get(muscle) ?? 0;
+      if (total <= 0 || value <= 0) {
+        return [];
+      }
+      const share = value / total;
+      return share > 0.5 && share <= 0.6
+        ? [`${slot.slotId}:${exercise.exerciseName}:${muscle}:${roundOne(share * 100)}%`]
+        : [];
+    })
+  );
+  const materialRepairCount =
+    planningReality.shadowRepairSummary?.materialRepairCount ??
+    planningReality.summary.materialRepairCount;
+  const majorRepairCount =
+    planningReality.shadowRepairSummary?.majorRepairCount ??
+    planningReality.summary.majorRepairCount;
+  const suspiciousRepairCount =
+    planningReality.suspiciousRepairsNotEligibleForPromotion?.length ?? 0;
+  const missingSeedFields = plannerExercises.filter(
+    ({ slot, exercise }) =>
+      !slot.slotId ||
+      !exercise.exerciseId ||
+      !Number.isFinite(exercise.setCount) ||
+      exercise.setCount <= 0
+  );
+
+  return [
+    {
+      check: "primary muscles above minimum",
+      status: statusFromBoolean(primaryBelowMinimum.length === 0),
+      evidence:
+        primaryBelowMinimum.length === 0
+          ? ["all primary planner-only totals meet visible minimums"]
+          : primaryBelowMinimum.map(
+              (row) => `${row.muscle}:below_min_${row.minEffectiveSets ?? "unknown"}`
+            ),
+    },
+    {
+      check: "Chest has two upper-slot exposures",
+      status: statusFromBoolean(chestUpperExposures.length >= 2, chestUpperExposures.length === 1),
+      evidence: [`upper_chest_exposures:${chestUpperExposures.map((slot) => slot.slotId).join(",") || "none"}`],
+    },
+    {
+      check: "Hamstrings have hinge + curl distribution",
+      status: statusFromBoolean(hasHamstringHinge && hasHamstringCurl, hasHamstringHinge || hasHamstringCurl),
+      evidence: [
+        `hinge:${hasHamstringHinge ? "yes" : "no"}`,
+        `curl:${hasHamstringCurl ? "yes" : "no"}`,
+      ],
+    },
+    {
+      check: "Side Delts get direct low-collateral work",
+      status: statusFromBoolean(sideDeltDirect.length > 0),
+      evidence: sideDeltDirect.map(({ slot, exercise }) => `${slot.slotId}:${exercise.exerciseName}`),
+    },
+    {
+      check: "Calves distributed across lower slots if feasible",
+      status:
+        lowerSlots.length < 2
+          ? "unknown"
+          : statusFromBoolean(calfLowerSlots.length >= 2, calfLowerSlots.length === 1),
+      evidence: [`lower_calf_slots:${calfLowerSlots.map((slot) => slot.slotId).join(",") || "none"}`],
+    },
+    {
+      check: "no primary muscle solved by forbidden slot",
+      status: statusFromBoolean(forbiddenPrimary.length === 0),
+      evidence:
+        forbiddenPrimary.length === 0
+          ? ["no planner-only primary exercises violate forbidden slot prescriptions"]
+          : forbiddenPrimary.map(
+              ({ slot, exercise }) => `${slot.slotId}:${exercise.exerciseName}`
+            ),
+    },
+    {
+      check: "no Back Extension as clean Hamstrings closure",
+      status: statusFromBoolean(backExtensionHamstrings.length === 0),
+      evidence:
+        backExtensionHamstrings.length === 0
+          ? ["none"]
+          : backExtensionHamstrings.map(
+              ({ slot, exercise }) => `${slot.slotId}:${exercise.exerciseName}`
+            ),
+    },
+    {
+      check: "no duplicate main lift when clean alternative exists unless justified",
+      status: statusFromBoolean(unjustifiedDuplicates.length === 0),
+      evidence:
+        unjustifiedDuplicates.length === 0
+          ? ["no unjustified duplicate rows"]
+          : unjustifiedDuplicates.map(
+              (row) => `${row.exerciseName}:${row.justification}:alternative_${row.compatibleAlternativeExists ?? "unknown"}`
+            ),
+    },
+    {
+      check: "no exercise above 5 sets unless justified",
+      status: statusFromBoolean(overFiveSetExercises.length === 0),
+      evidence:
+        overFiveSetExercises.length === 0
+          ? ["none"]
+          : overFiveSetExercises.map(
+              ({ slot, exercise }) => `${slot.slotId}:${exercise.exerciseName}:${exercise.setCount}`
+            ),
+    },
+    {
+      check: "no single exercise supplies >50-60% of primary muscle unless intentional",
+      status:
+        highShareExercises.length > 0
+          ? "fail"
+          : moderateShareExercises.length > 0
+            ? "partial"
+            : "pass",
+      evidence:
+        highShareExercises.length > 0 || moderateShareExercises.length > 0
+          ? [...highShareExercises, ...moderateShareExercises]
+          : ["none"],
+    },
+    {
+      check: "materialRepairCount = 0 for basic shape",
+      status: statusFromBoolean(materialRepairCount === 0),
+      evidence: [`materialRepairCount:${materialRepairCount}`],
+    },
+    {
+      check: "majorRepairCount = 0",
+      status: statusFromBoolean(majorRepairCount === 0),
+      evidence: [`majorRepairCount:${majorRepairCount}`],
+    },
+    {
+      check: "suspicious repairs do not increase",
+      status: statusFromBoolean(suspiciousRepairCount === 0),
+      evidence: [`suspiciousRepairsNotEligibleForPromotion:${suspiciousRepairCount}`],
+    },
+    {
+      check: "slotPlanSeedJson would replay without reselection",
+      status: statusFromBoolean(missingSeedFields.length === 0),
+      evidence:
+        missingSeedFields.length === 0
+          ? ["planner-only snapshot has exercise ids and set counts; dry-run did not persist it"]
+          : missingSeedFields.map(
+              ({ slot, exercise }) => `${slot.slotId}:${exercise.exerciseName}:missing_seed_field`
+            ),
+    },
+  ];
+}
+
+function repairRowsMatching(
+  planningReality: PlanningRealityDiagnostic,
+  predicate: (row: PlanningRealityDiagnostic["repairMateriality"][number]) => boolean
+): PlanningRealityDiagnostic["repairMateriality"] {
+  return planningReality.repairMateriality.filter(predicate);
+}
+
+function hasWarning(
+  planningReality: PlanningRealityDiagnostic,
+  code: string
+): boolean {
+  return planningReality.warnings.some((warning) => warning.code === code);
+}
+
+function buildPlannerOnlyRepairDependencies(
+  planningReality: PlanningRealityDiagnostic
+): MesocycleExplainPlannerOnlyDryRun["repairDependencies"] {
+  const materialRows = planningReality.repairMaterialityAfterShadowAllocation.filter(
+    (row) => row.materiality === "moderate" || row.materiality === "major"
+  );
+  const supportFloorRows = repairRowsMatching(
+    planningReality,
+    (row) =>
+      row.repairMechanism.includes("support") ||
+      row.source.includes("support") ||
+      row.rationale.includes("support")
+  );
+  const weeklyRows = repairRowsMatching(
+    planningReality,
+    (row) =>
+      row.repairMechanism.includes("weekly") ||
+      row.source.includes("weekly") ||
+      row.rationale.includes("weekly")
+  );
+  const identityRows = repairRowsMatching(
+    planningReality,
+    (row) => row.changedExerciseIdentity
+  );
+  const setBumpRows = repairRowsMatching(
+    planningReality,
+    (row) => row.action === "set_bumped" || row.rawSetDelta > 0
+  );
+  const capTrimRows = repairRowsMatching(
+    planningReality,
+    (row) => row.action === "set_trimmed" || row.action === "removed" || row.rawSetDelta < 0
+  );
+  const duplicateRows =
+    planningReality.duplicateContinuityJustification?.duplicates ?? [];
+  const isolationRows = repairRowsMatching(
+    planningReality,
+    (row) =>
+      row.repairMechanism.includes("isolation") ||
+      row.source.includes("isolation") ||
+      row.rationale.includes("isolation")
+  );
+  const forbiddenRemoved =
+    planningReality.forbiddenCleanupReroute?.removedExercises ?? [];
+  const distributionActions = planningReality.distributionGuardActions ?? [];
+  const cleanCurlRows = planningReality.preselectionFeasibility.filter(
+    (row) => row.muscle === "Hamstrings" && row.slotId === "lower_b"
+  );
+  const lowerBHamstringRepairs = materialRows.filter(
+    (row) => row.slotId === "lower_b" && row.muscle === "Hamstrings"
+  );
+
+  return [
+    {
+      path: "support-floor closure",
+      wouldHaveActed:
+        supportFloorRows.length > 0 || hasWarning(planningReality, "SUPPORT_FLOOR_CLOSED_LATE"),
+      consequenceWithoutRepair:
+        supportFloorRows.length > 0
+          ? `repair_would_be_needed_here:${supportFloorRows.length}_support_rows`
+          : "no support-floor repair action observed in current projection",
+      plannerOwnerRequired: "Support demand must be allocated before selection or left as explicit unresolved demand.",
+    },
+    {
+      path: "weekly obligation closure",
+      wouldHaveActed:
+        weeklyRows.length > 0 ||
+        planningReality.allocationVsInitialDelta.some((delta) => delta.underAllocatedMuscles.length > 0),
+      consequenceWithoutRepair:
+        weeklyRows.length > 0
+          ? `repair_would_be_needed_here:${weeklyRows.length}_weekly_obligation_rows`
+          : "planner-only shape must surface any allocation shortfalls instead of closing them late",
+      plannerOwnerRequired: "Weekly demand and slot allocation must own hard target closure before selection.",
+    },
+    {
+      path: "program-quality identity changes",
+      wouldHaveActed: identityRows.length > 0,
+      consequenceWithoutRepair:
+        identityRows.length > 0
+          ? `repair_would_be_needed_here:${identityRows.length}_identity_changes`
+          : "no program-quality identity changes observed",
+      plannerOwnerRequired: "Exercise-class distribution and selection objective must choose clean identities up front.",
+    },
+    {
+      path: "set bumping",
+      wouldHaveActed: setBumpRows.length > 0,
+      consequenceWithoutRepair:
+        setBumpRows.length > 0
+          ? `repair_would_be_needed_here:${setBumpRows.length}_set_bumps`
+          : "no late set bumping observed",
+      plannerOwnerRequired: "SetDistributionPlan must assign required sets before final shaping.",
+    },
+    {
+      path: "cap trim",
+      wouldHaveActed:
+        capTrimRows.length > 0 || hasWarning(planningReality, "FINAL_CAP_TRIM_REQUIRED"),
+      consequenceWithoutRepair:
+        capTrimRows.length > 0
+          ? `repair_would_be_needed_here:${capTrimRows.length}_trim_or_removal_rows`
+          : "no final cap trim observed",
+      plannerOwnerRequired: "Selection and set distribution must respect exercise/session caps before repair.",
+    },
+    {
+      path: "duplicate penalties",
+      wouldHaveActed: duplicateRows.length > 0,
+      consequenceWithoutRepair:
+        duplicateRows.length > 0
+          ? `repair_would_be_needed_here:${duplicateRows.length}_duplicate_rows`
+          : "no duplicate penalty repair dependency observed",
+      plannerOwnerRequired: "Duplicate policy must be part of exercise-class selection, with justification when duplicates remain.",
+    },
+    {
+      path: "isolation injection",
+      wouldHaveActed:
+        isolationRows.length > 0 || hasWarning(planningReality, "REPAIR_ADDED_EXERCISE_IDENTITY"),
+      consequenceWithoutRepair:
+        isolationRows.length > 0
+          ? `repair_would_be_needed_here:${isolationRows.length}_isolation_rows`
+          : "no isolation injection observed",
+      plannerOwnerRequired: "Direct isolation demand must be represented in class/lane intent before selection.",
+    },
+    {
+      path: "forbidden cleanup",
+      wouldHaveActed: forbiddenRemoved.length > 0,
+      consequenceWithoutRepair:
+        forbiddenRemoved.length > 0
+          ? `repair_would_be_needed_here:${forbiddenRemoved.length}_forbidden_removed`
+          : "no forbidden cleanup observed",
+      plannerOwnerRequired: "Forbidden slot/muscle constraints must block invalid primary solutions during selection.",
+    },
+    {
+      path: "distribution guard",
+      wouldHaveActed: distributionActions.length > 0,
+      consequenceWithoutRepair:
+        distributionActions.length > 0
+          ? `repair_would_be_needed_here:${distributionActions.length}_distribution_guard_actions`
+          : "no distribution guard action observed",
+      plannerOwnerRequired: "Set distribution policy must prefer clean alternatives or leave demand unresolved at the limit.",
+    },
+    {
+      path: "clean-curl repair preference",
+      wouldHaveActed: cleanCurlRows.length > 0 || lowerBHamstringRepairs.length > 0,
+      consequenceWithoutRepair:
+        cleanCurlRows.length > 0 || lowerBHamstringRepairs.length > 0
+          ? `repair_would_be_needed_here:lower_b_hamstrings_clean_curl_policy`
+          : "no lower_b Hamstrings clean-curl repair dependency observed",
+      plannerOwnerRequired: "Hamstrings lower_b class intent must choose hinge plus knee-flexion curl before repair.",
+    },
+  ];
+}
+
+function buildPlannerOnlyDryRunComparison(
+  planningReality: PlanningRealityDiagnostic | undefined,
+  compareRepaired: boolean
+): MesocycleExplainPlannerOnlyDryRun {
+  if (!planningReality) {
+    return {
+      enabled: true,
+      compareRepaired,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      canReplaceRepairedProjection: false,
+      summary: {
+        status: "fail",
+        acceptancePassed: 0,
+        acceptanceFailed: 1,
+        unresolvedDemandCount: 1,
+        disabledRepairDependencyCount: 0,
+      },
+      slotComparisons: [],
+      weeklyMuscleComparison: [],
+      acceptanceChecks: [
+        {
+          check: "planningReality available for planner-only dry-run",
+          status: "fail",
+          evidence: ["planningReality_missing"],
+        },
+      ],
+      repairDependencies: [],
+    };
+  }
+
+  const slotComparisons = buildPlannerOnlySlotComparisons(planningReality);
+  const weeklyMuscleComparison = buildPlannerOnlyWeeklyMuscleComparison(planningReality);
+  const acceptanceChecks = buildPlannerOnlyAcceptanceChecks(
+    planningReality,
+    weeklyMuscleComparison
+  );
+  const repairDependencies = buildPlannerOnlyRepairDependencies(planningReality);
+  const acceptancePassed = acceptanceChecks.filter((check) => check.status === "pass").length;
+  const acceptanceFailed = acceptanceChecks.filter((check) => check.status === "fail").length;
+  const unresolvedDemandCount = slotComparisons.reduce(
+    (sum, slot) => sum + slot.unresolvedDemand.length,
+    0
+  );
+  const disabledRepairDependencyCount = repairDependencies.filter(
+    (dependency) => dependency.wouldHaveActed
+  ).length;
+  const canReplaceRepairedProjection =
+    acceptanceFailed === 0 &&
+    acceptanceChecks.every((check) => check.status === "pass") &&
+    unresolvedDemandCount === 0 &&
+    disabledRepairDependencyCount === 0;
+  const status =
+    canReplaceRepairedProjection
+      ? "pass"
+      : acceptanceFailed > 0 || unresolvedDemandCount > 0
+        ? "fail"
+        : "partial";
+
+  return {
+    enabled: true,
+    compareRepaired,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    canReplaceRepairedProjection,
+    summary: {
+      status,
+      acceptancePassed,
+      acceptanceFailed,
+      unresolvedDemandCount,
+      disabledRepairDependencyCount,
+    },
+    slotComparisons,
+    weeklyMuscleComparison,
+    acceptanceChecks,
+    repairDependencies,
   };
 }
 
@@ -1223,6 +1949,10 @@ export async function buildMesocycleExplainAuditPayload(input: {
   sourceMesocycleId?: string;
   retrospectiveMesocycleId?: string;
   plannerDiagnosticsMode: "standard" | "debug";
+  plannerOnlyDryRun?: {
+    enabled: true;
+    compareRepaired: true;
+  };
 }): Promise<MesocycleExplainAuditPayload> {
   const sourceMesocycleId = input.sourceMesocycleId ?? (await resolveSourceMesocycleId(input.userId));
   const retrospectiveMesocycleId = input.retrospectiveMesocycleId ?? sourceMesocycleId;
@@ -1449,6 +2179,14 @@ export async function buildMesocycleExplainAuditPayload(input: {
       "Some retrospective workouts were missing canonical slot identity, so seed-vs-reality drift falls back to unavailable for those sessions."
     );
   }
+  const projectionDiagnostics = buildProjectionDiagnostics(slotPlanProjection.diagnostics);
+  const plannerOnlyDryRun =
+    input.plannerOnlyDryRun?.enabled && input.plannerOnlyDryRun.compareRepaired
+      ? buildPlannerOnlyDryRunComparison(
+          projectionDiagnostics.planningReality,
+          input.plannerOnlyDryRun.compareRepaired
+        )
+      : undefined;
 
   return {
     version: MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION,
@@ -1482,7 +2220,7 @@ export async function buildMesocycleExplainAuditPayload(input: {
       })),
       slotPlans: previewSlotPlans,
       projectedSessions: previewProjectedSessions,
-      projectionDiagnostics: buildProjectionDiagnostics(slotPlanProjection.diagnostics),
+      projectionDiagnostics,
       exerciseRationale: buildPreviewExerciseRationale({
         previewSlots: previewSlotPlans,
         design: previewArtifacts.artifacts.recommendedDesign,
@@ -1550,5 +2288,6 @@ export async function buildMesocycleExplainAuditPayload(input: {
       },
     },
     limitations: Array.from(new Set(limitations)),
+    ...(plannerOnlyDryRun ? { plannerOnlyDryRun } : {}),
   };
 }

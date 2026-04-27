@@ -141,4 +141,29 @@ describe("buildWorkoutAuditContext", () => {
     });
     expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
   });
+
+  it("passes planner-only dry-run comparison flags only for mesocycle-explain", async () => {
+    const context = await buildWorkoutAuditContext({
+      mode: "mesocycle-explain",
+      userId: "user-1",
+      plannerOnlyDryRun: true,
+      compareRepaired: true,
+    });
+
+    expect(context.mesocycleExplain?.plannerOnlyDryRun).toEqual({
+      enabled: true,
+      compareRepaired: true,
+    });
+    expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
+  });
+
+  it("requires compare-repaired for the first planner-only dry-run implementation", async () => {
+    await expect(
+      buildWorkoutAuditContext({
+        mode: "mesocycle-explain",
+        userId: "user-1",
+        plannerOnlyDryRun: true,
+      }),
+    ).rejects.toThrow("--planner-only-dry-run currently requires --compare-repaired");
+  });
 });

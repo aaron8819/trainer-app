@@ -44,6 +44,16 @@ Mesocycle explainability preview vs seed vs reality:
 npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com
 ```
 
+Read-only planner-only dry-run comparison for mesocycle explain:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com --operator-debug --planner-only-dry-run --compare-repaired
+```
+
+- `--planner-only-dry-run` currently requires `--compare-repaired`.
+- The artifact adds `mesocycleExplain.plannerOnlyDryRun` only for flagged runs.
+- This path is diagnostic-only and must not write accepted seeds, planned workouts, receipts, replay data, or performed workouts.
+
 Projected current week volume:
 
 ```powershell

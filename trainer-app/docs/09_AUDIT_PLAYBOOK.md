@@ -319,6 +319,9 @@ Primary questions it answers:
 - how preview slot plans differ from a target mesocycle's accepted seed
 - where generated-vs-saved and seed-vs-reality drift occurred during execution
 
+Maintainer note:
+- For read-only audit diagnostic refactors, especially `planningReality` modularization, follow the `Read-Only Diagnostic Refactor Checklist` in `.codex/skills/audit-workflow/SKILL.md`: baseline artifact, serialized diagnostic equality, summary equality, section byte-size equality, CLI summary equality, then focused/broad verification as warranted. Do not accept TypeScript/tests alone as proof because artifact shape or meaning can drift while tests still pass.
+
 Command pattern:
 
 ```powershell
@@ -334,6 +337,18 @@ npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner 
 - Prints `Planning Reality Summary` from `mesocycleExplain.preview.projectionDiagnostics.planningReality`.
 - Prints a CLI-only `planningReality size breakdown` when the artifact exceeds or approaches the configured audit artifact-size limit, or whenever `--operator-debug` asks for the extra readout. Use the largest-section list to identify which top-level diagnostic fields are driving payload growth before adding more read-only diagnostics.
 - Use this first for architecture audits before opening the full JSON.
+
+Planner-only dry-run comparison:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com --operator-debug --planner-only-dry-run --compare-repaired
+```
+
+- This first implementation requires both `--planner-only-dry-run` and `--compare-repaired`.
+- Adds `mesocycleExplain.plannerOnlyDryRun` only for flagged runs.
+- Compares the current repaired projection against the pre-final planner-owned shape already captured in `planningReality.initialSlotComposition`.
+- The comparison is read-only, non-generative, and does not mutate `slotPlanSeedJson`, accepted mesocycles, receipts, runtime replay, planned workouts, or performed workouts.
+- Disabled downstream repair paths are reported as repair dependencies instead of being treated as planner success.
 
 Optional targeting:
 

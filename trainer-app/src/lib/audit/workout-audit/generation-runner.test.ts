@@ -576,6 +576,7 @@ describe("runWorkoutAuditGeneration", () => {
       sourceMesocycleId: "meso-source",
       retrospectiveMesocycleId: "meso-retro",
       plannerDiagnosticsMode: "debug",
+      plannerOnlyDryRun: undefined,
     });
     expect(run.mesocycleExplain?.sourceMesocycleId).toBe("meso-source");
     expect(run.generationResult).toBeUndefined();

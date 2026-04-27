@@ -2262,12 +2262,124 @@ describe("buildMesocycleExplainAuditPayload", () => {
       wouldReduceSupportFloorClosureRows: true,
       wouldIncreaseCapTrimRows: false,
       preservesLowerBHingeCurlRoute: true,
+      lowerASafety: {
+        status: "pass",
+        currentTotalSets: 2,
+        projectedTotalSets: 4,
+        slotSetCap: 25,
+        wouldExceedSlotCap: false,
+        wouldDisplaceHardPrimary: false,
+      },
+      materialityEstimate: {
+        status: "unknown",
+        expectedMaterialRepairDelta: null,
+        expectedMajorRepairDelta: null,
+        expectedSuspiciousRepairDelta: null,
+        wouldReduceSupportFloorClosureRows: true,
+        wouldIncreaseCapTrimRows: false,
+      },
+      policyReadiness: {
+        behaviorReadiness: "needs_more_projection",
+        remainingBlockers: expect.arrayContaining([
+          "weeks_2_to_4_unprojected",
+          "materiality_delta_unknown",
+        ]),
+      },
       recommendation: "needs_more_projection",
       blockedReasons: expect.arrayContaining([
         "weeks_2_to_4_unprojected",
-        "would_mutate_lower_a_without_policy",
         "materiality_delta_unknown",
       ]),
+    });
+  });
+
+  it("does not mark behavior safe when Lower A safety is unknown", () => {
+    const dryRun = buildPlannerOnlyDryRunComparison(
+      makeCalfPlanningReality({
+        lowerAFourSetAllocation: true,
+        weeksProjected: true,
+        materialRepairCount: 0,
+        majorRepairCount: 0,
+        suspiciousRepairCount: 0,
+        capKnown: false,
+      }),
+      true,
+    );
+
+    expect(dryRun.calvesFourFourCandidate).toMatchObject({
+      status: "blocked",
+      lowerASafety: {
+        status: "unknown",
+        currentTotalSets: 2,
+        projectedTotalSets: 4,
+        slotSetCap: null,
+        wouldExceedSlotCap: null,
+        wouldDisplaceHardPrimary: null,
+      },
+      policyReadiness: {
+        behaviorReadiness: "blocked_by_lower_a_safety",
+        remainingBlockers: expect.arrayContaining(["cap_trim_risk_unknown"]),
+      },
+      recommendation: expect.not.stringMatching("safe_to_trial_behavior"),
+    });
+  });
+
+  it("does not mark behavior safe when materiality delta is unknown", () => {
+    const dryRun = buildPlannerOnlyDryRunComparison(
+      makeCalfPlanningReality({
+        lowerAFourSetAllocation: true,
+        weeksProjected: true,
+        materialRepairCount: 19,
+        majorRepairCount: 8,
+        suspiciousRepairCount: 6,
+      }),
+      true,
+    );
+
+    expect(dryRun.calvesFourFourCandidate).toMatchObject({
+      status: "blocked",
+      lowerASafety: { status: "pass" },
+      materialityEstimate: {
+        status: "unknown",
+        expectedMaterialRepairDelta: null,
+        expectedMajorRepairDelta: null,
+        expectedSuspiciousRepairDelta: null,
+      },
+      policyReadiness: {
+        behaviorReadiness: "needs_more_projection",
+        remainingBlockers: expect.arrayContaining(["materiality_delta_unknown"]),
+      },
+      recommendation: expect.not.stringMatching("safe_to_trial_behavior"),
+    });
+  });
+
+  it("can mark Week 1 safe while accumulation weeks remain unprojected", () => {
+    const dryRun = buildPlannerOnlyDryRunComparison(
+      makeCalfPlanningReality({
+        lowerAFourSetAllocation: true,
+        weeksProjected: false,
+        materialRepairCount: 0,
+        majorRepairCount: 0,
+        suspiciousRepairCount: 0,
+      }),
+      true,
+    );
+
+    expect(dryRun.calvesFourFourCandidate).toMatchObject({
+      status: "blocked",
+      lowerASafety: { status: "pass" },
+      materialityEstimate: {
+        status: "improves",
+        expectedMaterialRepairDelta: 0,
+        expectedMajorRepairDelta: 0,
+        expectedSuspiciousRepairDelta: 0,
+      },
+      policyReadiness: {
+        behaviorReadiness: "needs_more_projection",
+        remainingBlockers: ["weeks_2_to_4_unprojected"],
+      },
+      recommendation: "needs_more_projection",
+      blockedReasons: ["weeks_2_to_4_unprojected"],
     });
   });
 
@@ -2298,6 +2410,24 @@ describe("buildMesocycleExplainAuditPayload", () => {
       wouldChangeMajorRepairCount: "flat",
       wouldChangeSuspiciousRepairCount: "flat",
       preservesLowerBHingeCurlRoute: true,
+      lowerASafety: {
+        status: "pass",
+        currentTotalSets: 2,
+        projectedTotalSets: 4,
+        slotSetCap: 25,
+        wouldExceedSlotCap: false,
+        wouldDisplaceHardPrimary: false,
+      },
+      materialityEstimate: {
+        status: "improves",
+        expectedMaterialRepairDelta: 0,
+        expectedMajorRepairDelta: 0,
+        expectedSuspiciousRepairDelta: 0,
+      },
+      policyReadiness: {
+        behaviorReadiness: "safe_to_trial_behavior",
+        remainingBlockers: [],
+      },
       blockedReasons: [],
       recommendation: "safe_to_trial_behavior",
     });

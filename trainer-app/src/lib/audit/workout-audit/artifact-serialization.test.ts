@@ -405,6 +405,30 @@ describe("artifact serialization helpers", () => {
             status: "blocked",
             blockedReasons: ["weeks_2_to_4_unprojected"],
             recommendation: "needs_more_projection",
+            lowerASafety: {
+              status: "pass",
+              currentTotalSets: 12,
+              projectedTotalSets: 14,
+              slotSetCap: 16,
+              wouldExceedSlotCap: false,
+              wouldDisplaceHardPrimary: false,
+              affectedExercises: ["Standing Calf Raise"],
+              evidence: ["lower_a_projected_total_sets:14"],
+            },
+            materialityEstimate: {
+              status: "flat",
+              expectedMaterialRepairDelta: 0,
+              expectedMajorRepairDelta: 0,
+              expectedSuspiciousRepairDelta: 0,
+              wouldReduceSupportFloorClosureRows: false,
+              wouldReduceSetBumps: false,
+              wouldIncreaseCapTrimRows: false,
+              evidence: ["current_materialRepairCount:0"],
+            },
+            policyReadiness: {
+              behaviorReadiness: "needs_more_projection",
+              remainingBlockers: ["weeks_2_to_4_unprojected"],
+            },
           },
         },
       },
@@ -428,7 +452,12 @@ describe("artifact serialization helpers", () => {
     expect(dryRun.calvesFourFourCandidate).toMatchObject({
       status: "blocked",
       blockedReasons: ["weeks_2_to_4_unprojected"],
+      lowerASafety: { status: "pass" },
+      materialityEstimate: { status: "flat" },
     });
+    expect(getSerializedJsonSizeBytes(compact)).toBeLessThan(
+      getSerializedJsonSizeBytes(artifact)
+    );
   });
 
   it("leaves unrelated audit artifacts unchanged", () => {

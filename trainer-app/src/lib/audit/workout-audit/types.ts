@@ -803,6 +803,35 @@ export type MesocycleExplainPlannerOnlyDryRun = {
     wouldChangeMajorRepairCount: "decrease" | "flat" | "increase" | "unknown";
     wouldChangeSuspiciousRepairCount: "decrease" | "flat" | "increase" | "unknown";
     preservesLowerBHingeCurlRoute: boolean | null;
+    lowerASafety: {
+      status: "pass" | "fail" | "unknown";
+      currentTotalSets: number | null;
+      projectedTotalSets: number | null;
+      slotSetCap: number | null;
+      wouldExceedSlotCap: boolean | null;
+      wouldDisplaceHardPrimary: boolean | null;
+      affectedExercises: string[];
+      evidence: string[];
+    };
+    materialityEstimate: {
+      status: "improves" | "flat" | "worsens" | "unknown";
+      expectedMaterialRepairDelta: number | null;
+      expectedMajorRepairDelta: number | null;
+      expectedSuspiciousRepairDelta: number | null;
+      wouldReduceSupportFloorClosureRows: boolean | null;
+      wouldReduceSetBumps: boolean | null;
+      wouldIncreaseCapTrimRows: boolean | null;
+      evidence: string[];
+    };
+    policyReadiness: {
+      behaviorReadiness:
+        | "safe_to_trial_behavior"
+        | "needs_more_projection"
+        | "blocked_by_lower_a_safety"
+        | "blocked_by_materiality_risk"
+        | "blocked_by_accumulation_projection";
+      remainingBlockers: string[];
+    };
     blockedReasons: Array<
       | "weeks_2_to_4_unprojected"
       | "requires_specialization_cap_override"

@@ -491,6 +491,16 @@ function getSlotSetBudget(
   );
 }
 
+function getSlotPreferredSetBudget(
+  planningReality: PlanningRealityDiagnostic,
+  slotId: string
+): number | null {
+  return (
+    planningReality.setDistributionIntents.find((intent) => intent.slotId === slotId)
+      ?.slotBudget.preferredTotalSets ?? null
+  );
+}
+
 function hasWeeksTwoToFourUnprojected(
   planningReality: PlanningRealityDiagnostic
 ): boolean {
@@ -548,6 +558,12 @@ function parseRepairDependencyCount(
   return match ? Number(match[1]) : 0;
 }
 
+function sumCalfDirectSets(
+  shape: CalvesFourFourCandidate["currentLowerAShape"]
+): number {
+  return roundOne(shape.reduce((sum, row) => sum + row.sets, 0));
+}
+
 function buildProposedCalfShape(
   currentShape: CalvesFourFourCandidate["currentLowerAShape"],
   slotLabel: "lower_a" | "lower_b"
@@ -578,6 +594,209 @@ function hasExplicitFourSetCalfAllocation(
     .find((slot) => slot.slotId === slotId)
     ?.allocatedMuscles.find((muscle) => muscle.muscle === "Calves");
   return row?.minEffectiveSets === 4 || row?.preferredEffectiveSets === 4;
+}
+
+function isLowerHardPrimaryExercise(
+  exercise: SlotCompositionSnapshot["exercises"][number],
+  hardPrimaryMuscles: Set<string>
+): boolean {
+  if (isCalfExercise(exercise)) {
+    return false;
+  }
+  if (exercise.primaryMuscles.some((muscle) => hardPrimaryMuscles.has(muscle))) {
+    return true;
+  }
+  return (
+    exercise.role === "main" &&
+    exercise.movementPatterns.some((pattern) => {
+      const normalized = pattern.toLowerCase();
+      return normalized.includes("squat") || normalized.includes("hinge");
+    })
+  );
+}
+
+function buildLowerASafety(input: {
+  planningReality: PlanningRealityDiagnostic;
+  lowerA: SlotCompositionSnapshot | undefined;
+  currentLowerAShape: CalvesFourFourCandidate["currentLowerAShape"];
+  lowerAProjectedCalfSets: number | null;
+}): CalvesFourFourCandidate["lowerASafety"] {
+  const currentTotalSets = input.lowerA?.totalSets ?? null;
+  const currentCalfDirectSets = sumCalfDirectSets(input.currentLowerAShape);
+  const projectedTotalSets =
+    currentTotalSets != null && input.lowerAProjectedCalfSets != null
+      ? roundOne(currentTotalSets - currentCalfDirectSets + input.lowerAProjectedCalfSets)
+      : null;
+  const slotSetCap = getSlotSetBudget(input.planningReality, "lower_a");
+  const preferredSetBudget = getSlotPreferredSetBudget(input.planningReality, "lower_a");
+  const wouldExceedSlotCap =
+    projectedTotalSets == null || slotSetCap == null
+      ? null
+      : projectedTotalSets > slotSetCap;
+  const hardPrimaryMuscles = new Set(
+    input.planningReality.shadowSlotDemandAllocation
+      .find((slot) => slot.slotId === "lower_a")
+      ?.allocatedMuscles.filter(
+        (muscle) => muscle.role === "primary" || muscle.targetStatus === "hard"
+      )
+      .map((muscle) => muscle.muscle) ?? []
+  );
+  const hardPrimaryExercises =
+    input.lowerA?.exercises.filter((exercise) =>
+      isLowerHardPrimaryExercise(exercise, hardPrimaryMuscles)
+    ) ?? [];
+  const displacedExerciseNames =
+    wouldExceedSlotCap === true
+      ? hardPrimaryExercises.map((exercise) => exercise.exerciseName)
+      : [];
+  const wouldDisplaceHardPrimary =
+    wouldExceedSlotCap == null
+      ? null
+      : wouldExceedSlotCap && displacedExerciseNames.length > 0;
+  const affectedExercises = uniqueSorted([
+    ...input.currentLowerAShape.map((row) => row.exerciseName),
+    ...displacedExerciseNames,
+  ]);
+  const evidence = [
+    `lower_a_current_total_sets:${currentTotalSets ?? "unknown"}`,
+    `lower_a_current_calf_direct_sets:${currentCalfDirectSets}`,
+    `lower_a_projected_total_sets:${projectedTotalSets ?? "unknown"}`,
+    `lower_a_preferred_total_sets:${preferredSetBudget ?? "unknown"}`,
+    `lower_a_slot_set_cap:${slotSetCap ?? "unknown"}`,
+    `would_exceed_slot_cap:${wouldExceedSlotCap ?? "unknown"}`,
+    `would_displace_hard_primary:${wouldDisplaceHardPrimary ?? "unknown"}`,
+  ];
+  const status: CalvesFourFourCandidate["lowerASafety"]["status"] =
+    currentTotalSets == null ||
+    projectedTotalSets == null ||
+    slotSetCap == null ||
+    wouldExceedSlotCap == null ||
+    wouldDisplaceHardPrimary == null
+      ? "unknown"
+      : wouldExceedSlotCap || wouldDisplaceHardPrimary
+        ? "fail"
+        : "pass";
+
+  return {
+    status,
+    currentTotalSets,
+    projectedTotalSets,
+    slotSetCap,
+    wouldExceedSlotCap,
+    wouldDisplaceHardPrimary,
+    affectedExercises,
+    evidence,
+  };
+}
+
+function repairDeltaFromCurrentCount(input: {
+  count: number;
+  addressedRows: number;
+}): number | null {
+  if (input.count === 0) {
+    return 0;
+  }
+  if (input.addressedRows > 0 && input.addressedRows === input.count) {
+    return -input.addressedRows;
+  }
+  return null;
+}
+
+function buildMaterialityEstimate(input: {
+  planningReality: PlanningRealityDiagnostic;
+  lowerASafety: CalvesFourFourCandidate["lowerASafety"];
+  wouldRemoveLowerBSameSessionCalfDuplicate: boolean | null;
+  wouldReduceSupportFloorClosureRows: boolean | null;
+  wouldReduceSetBumps: boolean | null;
+  wouldIncreaseCapTrimRows: boolean | null;
+}): CalvesFourFourCandidate["materialityEstimate"] {
+  const materialRepairCount =
+    input.planningReality.shadowRepairSummary?.materialRepairCount ??
+    input.planningReality.summary.materialRepairCount;
+  const majorRepairCount =
+    input.planningReality.shadowRepairSummary?.majorRepairCount ??
+    input.planningReality.summary.majorRepairCount;
+  const suspiciousRepairCount =
+    input.planningReality.suspiciousRepairsNotEligibleForPromotion?.length ?? 0;
+  const repairRows = input.planningReality.repairMaterialityAfterShadowAllocation.length > 0
+    ? input.planningReality.repairMaterialityAfterShadowAllocation
+    : input.planningReality.repairMateriality;
+  const addressedCalfRows = repairRows.filter((row) => {
+    const mechanism = row.repairMechanism.toLowerCase();
+    return (
+      row.muscle === "Calves" &&
+      (mechanism.includes("support") ||
+        mechanism.includes("set_bump") ||
+        row.action === "set_bumped" ||
+        row.action === "added")
+    );
+  });
+  const addressedMaterialRows = addressedCalfRows.filter(
+    (row) => row.materiality === "moderate" || row.materiality === "major"
+  ).length;
+  const addressedMajorRows = addressedCalfRows.filter(
+    (row) => row.materiality === "major"
+  ).length;
+  const expectedMaterialRepairDelta = repairDeltaFromCurrentCount({
+    count: materialRepairCount,
+    addressedRows: addressedMaterialRows,
+  });
+  const expectedMajorRepairDelta = repairDeltaFromCurrentCount({
+    count: majorRepairCount,
+    addressedRows: addressedMajorRows,
+  });
+  const expectedSuspiciousRepairDelta =
+    suspiciousRepairCount === 0 ? 0 : null;
+  const hasPositiveDelta =
+    (expectedMaterialRepairDelta ?? 0) > 0 ||
+    (expectedMajorRepairDelta ?? 0) > 0 ||
+    (expectedSuspiciousRepairDelta ?? 0) > 0;
+  const hasUnknownDelta =
+    expectedMaterialRepairDelta == null ||
+    expectedMajorRepairDelta == null ||
+    expectedSuspiciousRepairDelta == null;
+  const hasReducingEvidence =
+    input.wouldReduceSupportFloorClosureRows === true ||
+    input.wouldReduceSetBumps === true ||
+    input.wouldRemoveLowerBSameSessionCalfDuplicate === true ||
+    (expectedMaterialRepairDelta != null && expectedMaterialRepairDelta < 0) ||
+    (expectedMajorRepairDelta != null && expectedMajorRepairDelta < 0);
+  const wouldWorsen =
+    input.wouldIncreaseCapTrimRows === true ||
+    input.lowerASafety.wouldDisplaceHardPrimary === true ||
+    hasPositiveDelta;
+  const status: CalvesFourFourCandidate["materialityEstimate"]["status"] =
+    wouldWorsen
+      ? "worsens"
+      : hasUnknownDelta
+        ? "unknown"
+        : hasReducingEvidence
+          ? "improves"
+          : "flat";
+  const evidence = [
+    `current_materialRepairCount:${materialRepairCount}`,
+    `current_majorRepairCount:${majorRepairCount}`,
+    `current_suspiciousRepairCount:${suspiciousRepairCount}`,
+    `addressed_calf_repair_rows:${addressedCalfRows.length}`,
+    `would_remove_lower_b_duplicate:${input.wouldRemoveLowerBSameSessionCalfDuplicate ?? "unknown"}`,
+    `would_reduce_support_floor_closure_rows:${input.wouldReduceSupportFloorClosureRows ?? "unknown"}`,
+    `would_reduce_set_bumps:${input.wouldReduceSetBumps ?? "unknown"}`,
+    `would_increase_cap_trim_rows:${input.wouldIncreaseCapTrimRows ?? "unknown"}`,
+    ...(hasUnknownDelta
+      ? ["exact_repair_counter_delta_unknown_without_reprojection"]
+      : []),
+  ];
+
+  return {
+    status,
+    expectedMaterialRepairDelta,
+    expectedMajorRepairDelta,
+    expectedSuspiciousRepairDelta,
+    wouldReduceSupportFloorClosureRows: input.wouldReduceSupportFloorClosureRows,
+    wouldReduceSetBumps: input.wouldReduceSetBumps,
+    wouldIncreaseCapTrimRows: input.wouldIncreaseCapTrimRows,
+    evidence,
+  };
 }
 
 function buildCalvesFourFourCandidate(input: {
@@ -634,14 +853,6 @@ function buildCalvesFourFourCandidate(input: {
       : lowerACap == null || lowerBCap == null
         ? null
         : lowerATotalAfter > lowerACap || lowerBTotalAfter > lowerBCap;
-  const materialRepairCount =
-    input.planningReality.shadowRepairSummary?.materialRepairCount ??
-    input.planningReality.summary.materialRepairCount;
-  const majorRepairCount =
-    input.planningReality.shadowRepairSummary?.majorRepairCount ??
-    input.planningReality.summary.majorRepairCount;
-  const suspiciousRepairCount =
-    input.planningReality.suspiciousRepairsNotEligibleForPromotion?.length ?? 0;
   const repairedLowerB =
     getSlotById(input.planningReality.finalSlotPlan, "lower_b") ?? lowerB;
   const preservesLowerBHingeCurlRoute = slotHasHamstringsHingeAndCurl(repairedLowerB);
@@ -672,9 +883,26 @@ function buildCalvesFourFourCandidate(input: {
       : setBumpCount > 0
         ? weeklyProjectedCalfEffectiveSets <= currentWeeklyEffective
         : false;
+  const wouldRemoveLowerBSameSessionCalfDuplicate =
+    currentLowerBShape.length === 0 ? null : lowerBDuplicate;
+  const lowerASafety = buildLowerASafety({
+    planningReality: input.planningReality,
+    lowerA,
+    currentLowerAShape,
+    lowerAProjectedCalfSets,
+  });
+  const materialityEstimate = buildMaterialityEstimate({
+    planningReality: input.planningReality,
+    lowerASafety,
+    wouldRemoveLowerBSameSessionCalfDuplicate,
+    wouldReduceSupportFloorClosureRows,
+    wouldReduceSetBumps,
+    wouldIncreaseCapTrimRows,
+  });
+  const weeksTwoToFourUnprojected = hasWeeksTwoToFourUnprojected(input.planningReality);
   const blockedReasons = new Set<CalvesFourFourCandidate["blockedReasons"][number]>();
 
-  if (hasWeeksTwoToFourUnprojected(input.planningReality)) {
+  if (weeksTwoToFourUnprojected) {
     blockedReasons.add("weeks_2_to_4_unprojected");
   }
   if (
@@ -685,7 +913,10 @@ function buildCalvesFourFourCandidate(input: {
     blockedReasons.add("insufficient_candidate_evidence");
   }
   if (lowerASetDelta != null && Math.abs(lowerASetDelta) > 0.1) {
-    if (!hasExplicitFourSetCalfAllocation(input.planningReality, "lower_a")) {
+    if (
+      lowerASafety.status !== "pass" &&
+      !hasExplicitFourSetCalfAllocation(input.planningReality, "lower_a")
+    ) {
       blockedReasons.add("would_mutate_lower_a_without_policy");
     }
   }
@@ -701,7 +932,7 @@ function buildCalvesFourFourCandidate(input: {
   if (wouldIncreaseCapTrimRows == null) {
     blockedReasons.add("cap_trim_risk_unknown");
   }
-  if (materialRepairCount > 0 || majorRepairCount > 0 || suspiciousRepairCount > 0) {
+  if (materialityEstimate.status === "unknown") {
     blockedReasons.add("materiality_delta_unknown");
   }
 
@@ -710,16 +941,29 @@ function buildCalvesFourFourCandidate(input: {
     lowerAProjectedCalfSets != null &&
     lowerAProjectedCalfSets > currentLowerAEffective;
   const duplicateBecomesAvoidable = lowerBDuplicate && currentLowerBShape.length > 1;
-  const materialitySafe =
-    materialRepairCount === 0 && majorRepairCount === 0 && suspiciousRepairCount === 0;
+  const expectedDeltasNonPositive =
+    materialityEstimate.expectedMaterialRepairDelta != null &&
+    materialityEstimate.expectedMajorRepairDelta != null &&
+    materialityEstimate.expectedSuspiciousRepairDelta != null &&
+    materialityEstimate.expectedMaterialRepairDelta <= 0 &&
+    materialityEstimate.expectedMajorRepairDelta <= 0 &&
+    materialityEstimate.expectedSuspiciousRepairDelta <= 0;
+  const weekOneShapeSafe =
+    lowerASafety.status === "pass" &&
+    (materialityEstimate.status === "improves" || materialityEstimate.status === "flat") &&
+    expectedDeltasNonPositive &&
+    wouldRemoveLowerBSameSessionCalfDuplicate === true &&
+    weeklyProjectedCalfEffectiveSets != null &&
+    weeklyProjectedCalfEffectiveSets >= 8 &&
+    preservesLowerBHingeCurlRoute === true &&
+    lowerASafety.wouldDisplaceHardPrimary === false;
   const gatePasses =
     calfDemandDecreases &&
     duplicateBecomesAvoidable &&
+    weekOneShapeSafe &&
     wouldReduceSupportFloorClosureRows === true &&
     wouldReduceSetBumps !== null &&
     wouldIncreaseCapTrimRows === false &&
-    materialitySafe &&
-    preservesLowerBHingeCurlRoute === true &&
     blockedReasons.size === 0;
   const status: CalvesFourFourCandidate["status"] =
     gatePasses
@@ -738,6 +982,21 @@ function buildCalvesFourFourCandidate(input: {
       : hardDoNotTrial
         ? "do_not_trial_behavior"
         : "needs_more_projection";
+  const policyRemainingBlockers = Array.from(blockedReasons).sort((left, right) =>
+    left.localeCompare(right)
+  );
+  const behaviorReadiness: CalvesFourFourCandidate["policyReadiness"]["behaviorReadiness"] =
+    lowerASafety.status !== "pass"
+      ? "blocked_by_lower_a_safety"
+      : materialityEstimate.status === "worsens"
+        ? "blocked_by_materiality_risk"
+        : materialityEstimate.status === "unknown"
+          ? "needs_more_projection"
+          : weekOneShapeSafe && !weeksTwoToFourUnprojected
+            ? "safe_to_trial_behavior"
+            : weeksTwoToFourUnprojected && !weekOneShapeSafe
+              ? "blocked_by_accumulation_projection"
+              : "needs_more_projection";
 
   return {
     status,
@@ -750,18 +1009,42 @@ function buildCalvesFourFourCandidate(input: {
     currentLowerBShape,
     proposedLowerAShape,
     proposedLowerBShape,
-    wouldRemoveLowerBSameSessionCalfDuplicate:
-      currentLowerBShape.length === 0 ? null : lowerBDuplicate,
+    wouldRemoveLowerBSameSessionCalfDuplicate,
     wouldReduceSupportFloorClosureRows,
     wouldReduceSetBumps,
     wouldIncreaseCapTrimRows,
-    wouldChangeMaterialRepairCount: materialRepairCount === 0 ? "flat" : "unknown",
-    wouldChangeMajorRepairCount: majorRepairCount === 0 ? "flat" : "unknown",
-    wouldChangeSuspiciousRepairCount: suspiciousRepairCount === 0 ? "flat" : "unknown",
+    wouldChangeMaterialRepairCount:
+      materialityEstimate.expectedMaterialRepairDelta == null
+        ? "unknown"
+        : materialityEstimate.expectedMaterialRepairDelta < 0
+          ? "decrease"
+          : materialityEstimate.expectedMaterialRepairDelta > 0
+            ? "increase"
+            : "flat",
+    wouldChangeMajorRepairCount:
+      materialityEstimate.expectedMajorRepairDelta == null
+        ? "unknown"
+        : materialityEstimate.expectedMajorRepairDelta < 0
+          ? "decrease"
+          : materialityEstimate.expectedMajorRepairDelta > 0
+            ? "increase"
+            : "flat",
+    wouldChangeSuspiciousRepairCount:
+      materialityEstimate.expectedSuspiciousRepairDelta == null
+        ? "unknown"
+        : materialityEstimate.expectedSuspiciousRepairDelta < 0
+          ? "decrease"
+          : materialityEstimate.expectedSuspiciousRepairDelta > 0
+            ? "increase"
+            : "flat",
     preservesLowerBHingeCurlRoute,
-    blockedReasons: Array.from(blockedReasons).sort((left, right) =>
-      left.localeCompare(right)
-    ),
+    lowerASafety,
+    materialityEstimate,
+    policyReadiness: {
+      behaviorReadiness,
+      remainingBlockers: policyRemainingBlockers,
+    },
+    blockedReasons: policyRemainingBlockers,
     recommendation,
   };
 }

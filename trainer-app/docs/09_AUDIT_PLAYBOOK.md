@@ -349,7 +349,7 @@ npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner 
 - Compares the current repaired projection against the pre-final planner-owned shape already captured in `planningReality.initialSlotComposition`.
 - The comparison is read-only, non-generative, and does not mutate `slotPlanSeedJson`, accepted mesocycles, receipts, runtime replay, planned workouts, or performed workouts.
 - Disabled downstream repair paths are reported as repair dependencies instead of being treated as planner success.
-- The flagged comparison also includes a compact read-only `calvesFourFourCandidate` diagnostic. It models a future Lower A 4 direct Calves sets plus Lower B 4 direct Calves sets policy from existing planningReality evidence only. Treat `weeks_2_to_4_unprojected`, materiality/cap uncertainty, lower_a ownership gaps, or Hamstrings-route risk as blockers; this field must not be read as behavior approval unless it reports `recommendation="safe_to_trial_behavior"`.
+- The flagged comparison also includes a compact read-only `calvesFourFourCandidate` diagnostic. It models a future Lower A 4 direct Calves sets plus Lower B 4 direct Calves sets policy from existing planningReality evidence only. Its `lowerASafety`, `materialityEstimate`, and `policyReadiness` fields separate Week 1 slot safety from materiality uncertainty and accumulation-week projection gaps. Treat `weeks_2_to_4_unprojected`, materiality/cap uncertainty, lower_a safety failures, or Hamstrings-route risk as blockers; this field must not be read as behavior approval unless it reports `recommendation="safe_to_trial_behavior"` and no remaining blockers.
 
 Optional targeting:
 

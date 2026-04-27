@@ -2468,6 +2468,39 @@ describe("buildPlannerOnlyDryRunSummary", () => {
               wouldChangeMajorRepairCount: "unknown",
               wouldChangeSuspiciousRepairCount: "unknown",
               preservesLowerBHingeCurlRoute: true,
+              lowerASafety: {
+                status: "pass",
+                currentTotalSets: 2,
+                projectedTotalSets: 4,
+                slotSetCap: 25,
+                wouldExceedSlotCap: false,
+                wouldDisplaceHardPrimary: false,
+                affectedExercises: ["Standing Calf Raise"],
+                evidence: [
+                  "lower_a_current_total_sets:2",
+                  "lower_a_projected_total_sets:4",
+                ],
+              },
+              materialityEstimate: {
+                status: "unknown",
+                expectedMaterialRepairDelta: null,
+                expectedMajorRepairDelta: null,
+                expectedSuspiciousRepairDelta: null,
+                wouldReduceSupportFloorClosureRows: true,
+                wouldReduceSetBumps: false,
+                wouldIncreaseCapTrimRows: false,
+                evidence: [
+                  "current_materialRepairCount:2",
+                  "exact_repair_counter_delta_unknown_without_reprojection",
+                ],
+              },
+              policyReadiness: {
+                behaviorReadiness: "needs_more_projection",
+                remainingBlockers: [
+                  "materiality_delta_unknown",
+                  "weeks_2_to_4_unprojected",
+                ],
+              },
               blockedReasons: [
                 "materiality_delta_unknown",
                 "weeks_2_to_4_unprojected",
@@ -2505,8 +2538,10 @@ describe("buildPlannerOnlyDryRunSummary", () => {
       "Lower B projected calf sets: 4",
       "Weekly projected calf sets: 8",
       "Would remove lower_b duplicate: yes",
+      "Lower A safety: pass",
+      "Materiality estimate: unknown",
       "Recommendation: needs_more_projection",
-      "Blocked reasons: materiality_delta_unknown, weeks_2_to_4_unprojected",
+      "Remaining blockers: materiality_delta_unknown, weeks_2_to_4_unprojected",
     ]);
   });
 });

@@ -1764,8 +1764,10 @@ export function buildPlannerOnlyDryRunSummary(input: {
         `Lower B projected calf sets: ${formatPlanningRealityNumber(calvesCandidate.lowerBProjectedCalfSets)}`,
         `Weekly projected calf sets: ${formatPlanningRealityNumber(calvesCandidate.weeklyProjectedCalfEffectiveSets)}`,
         `Would remove lower_b duplicate: ${formatPlannerOnlyNullableBoolean(calvesCandidate.wouldRemoveLowerBSameSessionCalfDuplicate)}`,
+        `Lower A safety: ${calvesCandidate.lowerASafety?.status ?? "unknown"}`,
+        `Materiality estimate: ${calvesCandidate.materialityEstimate?.status ?? "unknown"}`,
         `Recommendation: ${calvesCandidate.recommendation}`,
-        `Blocked reasons: ${calvesCandidate.blockedReasons.join(", ") || "none"}`,
+        `Remaining blockers: ${calvesCandidate.policyReadiness?.remainingBlockers?.join(", ") || "none"}`,
       ]
     : [];
 

@@ -136,6 +136,7 @@ export type SlotCompositionSnapshotDiagnostic = {
     role: "main" | "accessory";
     setCount: number;
     primaryMuscles: string[];
+    movementPatterns: string[];
     effectiveStimulusByMuscle: Record<string, number>;
   }>;
 };
@@ -918,6 +919,59 @@ export type ExerciseClassAlignment = {
   };
 };
 
+export type DuplicateContinuityJustification = {
+  version: 1;
+  source: "diagnostic_shadow_planner";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  duplicates: Array<{
+    exerciseId: string;
+    exerciseName: string;
+    duplicatedInSlots: string[];
+    roleBySlot: Record<string, string>;
+    setCountBySlot: Record<string, number>;
+    primaryMuscles: string[];
+    movementPatterns: string[];
+    exerciseClass: string | null;
+    duplicateType:
+      | "same_exercise_cross_slot"
+      | "same_class_cross_slot"
+      | "same_pattern_cross_slot"
+      | "same_session_variant";
+    justification:
+      | "continuity_anchor"
+      | "limited_inventory"
+      | "exact_demand_fit"
+      | "user_preference"
+      | "no_clean_alternative"
+      | "deload_skill_preservation"
+      | "unjustified"
+      | "unknown";
+    compatibleAlternativeExists: boolean | null;
+    compatibleAlternatives: Array<{
+      exerciseName: string;
+      exerciseClass: string | null;
+      primaryMuscles: string[];
+      reasonAvailableOrBlocked: string[];
+    }>;
+    policyRecommendation:
+      | "allow_duplicate"
+      | "discourage_duplicate"
+      | "block_if_clean_alternative_exists"
+      | "requires_planner_decision";
+    risk: "low" | "moderate" | "high";
+    evidence: string[];
+    limitations: string[];
+  }>;
+  summary: {
+    totalDuplicates: number;
+    justifiedDuplicates: number;
+    unjustifiedOrUnknown: number;
+    cleanAlternativeAvailable: number;
+    highRiskDuplicates: number;
+  };
+};
+
 export type AccumulationWeekProjection = {
   mesocycleId: string | null;
   source: "diagnostic_shadow_planner";
@@ -1045,6 +1099,7 @@ export type SlotPlanPlanningRealityDiagnostic = {
   exerciseClassDistributionBySlot: ExerciseClassDistributionBySlot[];
   exerciseClassAlignment: ExerciseClassAlignment;
   exerciseClassUnresolvedCauses: ExerciseClassUnresolvedCause[];
+  duplicateContinuityJustification: DuplicateContinuityJustification;
   accumulationWeekProjection: AccumulationWeekProjection;
   forbiddenCleanupReroute?: ForbiddenCleanupRerouteDiagnostic;
   rearDeltCollateralSummary?: RearDeltCollateralSummary;
@@ -1724,6 +1779,9 @@ function buildSlotCompositionSnapshots(input: {
         role: row.role,
         setCount: row.setCount,
         primaryMuscles: [...(row.exercise.exercise.primaryMuscles ?? [])].map(normalizeMuscle),
+        movementPatterns: sortPrescriptionStrings(
+          row.exercise.exercise.movementPatterns ?? [],
+        ),
         effectiveStimulusByMuscle: row.contributionByMuscle,
       })),
     };
@@ -4553,7 +4611,11 @@ function getExerciseClassDuplicateJustifications(input: {
   if (
     input.prescription.muscle === "Chest" &&
     input.slotId === "upper_a" &&
-    input.selectedExerciseEvidence.some((row) => row.includes("Incline DB Bench"))
+    input.selectedExerciseEvidence.some(
+      (row) =>
+        row.includes("Incline") &&
+        (row.includes("Bench") || row.includes("Press")),
+    )
   ) {
     justifications.add("continuity_anchor");
   }
@@ -5978,6 +6040,570 @@ function buildExerciseClassAlignment(input: {
         left.muscle.localeCompare(right.muscle) ||
         left.owningCause.localeCompare(right.owningCause),
     ),
+  };
+}
+
+type DuplicateContinuityRow =
+  DuplicateContinuityJustification["duplicates"][number];
+
+type DuplicateContinuityCandidate = {
+  duplicateType: DuplicateContinuityRow["duplicateType"];
+  exerciseId: string;
+  exerciseName: string;
+  duplicatedInSlots: string[];
+  roleBySlot: Record<string, string>;
+  setCountBySlot: Record<string, number>;
+  primaryMuscles: string[];
+  movementPatterns: string[];
+  exerciseClass: string | null;
+};
+
+function getSnapshotExerciseClass(
+  exercise: SlotCompositionSnapshotDiagnostic["exercises"][number],
+): string | null {
+  const muscle = exercise.primaryMuscles[0] ?? Object.keys(exercise.effectiveStimulusByMuscle)[0];
+  return muscle
+    ? classifySelectedExerciseClass({ exercise, muscle })
+    : null;
+}
+
+function toDuplicateClassFamily(exerciseClass: string | null): string | null {
+  return exerciseClass ? toDuplicatePolicyClass(exerciseClass) : null;
+}
+
+function buildCrossSlotDuplicateCandidates(
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>,
+): DuplicateContinuityCandidate[] {
+  const byExercise = new Map<
+    string,
+    {
+      exerciseId: string;
+      exerciseName: string;
+      slots: Set<string>;
+      roleBySlot: Record<string, string>;
+      setCountBySlot: Record<string, number>;
+      primaryMuscles: Set<string>;
+      movementPatterns: Set<string>;
+      exerciseClasses: Set<string>;
+    }
+  >();
+
+  for (const slot of finalSlotPlan) {
+    for (const exercise of slot.exercises) {
+      const key = exercise.exerciseId || exercise.exerciseName;
+      const existing =
+        byExercise.get(key) ?? {
+          exerciseId: exercise.exerciseId,
+          exerciseName: exercise.exerciseName,
+          slots: new Set<string>(),
+          roleBySlot: {},
+          setCountBySlot: {},
+          primaryMuscles: new Set<string>(),
+          movementPatterns: new Set<string>(),
+          exerciseClasses: new Set<string>(),
+        };
+      existing.slots.add(slot.slotId);
+      existing.roleBySlot[slot.slotId] = exercise.role;
+      existing.setCountBySlot[slot.slotId] =
+        (existing.setCountBySlot[slot.slotId] ?? 0) + exercise.setCount;
+      for (const muscle of exercise.primaryMuscles) {
+        existing.primaryMuscles.add(muscle);
+      }
+      for (const pattern of exercise.movementPatterns) {
+        existing.movementPatterns.add(pattern);
+      }
+      const exerciseClass = getSnapshotExerciseClass(exercise);
+      if (exerciseClass) {
+        existing.exerciseClasses.add(exerciseClass);
+      }
+      byExercise.set(key, existing);
+    }
+  }
+
+  return Array.from(byExercise.values())
+    .filter((row) => row.slots.size > 1)
+    .map((row) => ({
+      duplicateType: "same_exercise_cross_slot" as const,
+      exerciseId: row.exerciseId,
+      exerciseName: row.exerciseName,
+      duplicatedInSlots: Array.from(row.slots).sort((left, right) =>
+        left.localeCompare(right),
+      ),
+      roleBySlot: Object.fromEntries(
+        Object.entries(row.roleBySlot).sort(([left], [right]) =>
+          left.localeCompare(right),
+        ),
+      ),
+      setCountBySlot: Object.fromEntries(
+        Object.entries(row.setCountBySlot).sort(([left], [right]) =>
+          left.localeCompare(right),
+        ),
+      ),
+      primaryMuscles: Array.from(row.primaryMuscles).sort((left, right) =>
+        left.localeCompare(right),
+      ),
+      movementPatterns: Array.from(row.movementPatterns).sort((left, right) =>
+        left.localeCompare(right),
+      ),
+      exerciseClass:
+        Array.from(row.exerciseClasses).sort((left, right) =>
+          left.localeCompare(right),
+        )[0] ?? null,
+    }));
+}
+
+function buildSameSessionVariantCandidates(
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>,
+): DuplicateContinuityCandidate[] {
+  return finalSlotPlan.flatMap((slot) => {
+    const calfExercises = slot.exercises.filter((exercise) => {
+      const exerciseClass = toDuplicateClassFamily(getSnapshotExerciseClass(exercise));
+      return (
+        exerciseClass === "calf_raise" &&
+        exercise.primaryMuscles.includes("Calves")
+      );
+    });
+    if (calfExercises.length <= 1) {
+      return [];
+    }
+    const exerciseClasses = uniqueSorted(
+      calfExercises
+        .map((exercise) => getSnapshotExerciseClass(exercise))
+        .filter((value): value is string => value != null),
+    );
+    const exerciseName = calfExercises
+      .map((exercise) => exercise.exerciseName)
+      .sort((left, right) => left.localeCompare(right))
+      .join(" + ");
+    return [{
+      duplicateType: "same_session_variant" as const,
+      exerciseId: calfExercises
+        .map((exercise) => exercise.exerciseId)
+        .sort((left, right) => left.localeCompare(right))
+        .join("+"),
+      exerciseName,
+      duplicatedInSlots: [slot.slotId],
+      roleBySlot: {
+        [slot.slotId]: uniqueSorted(calfExercises.map((exercise) => exercise.role)).join("+"),
+      },
+      setCountBySlot: {
+        [slot.slotId]: calfExercises.reduce(
+          (sum, exercise) => sum + exercise.setCount,
+          0,
+        ),
+      },
+      primaryMuscles: ["Calves"],
+      movementPatterns: uniqueSorted(
+        calfExercises.flatMap((exercise) => exercise.movementPatterns),
+      ),
+      exerciseClass: exerciseClasses.length === 1 ? exerciseClasses[0] : "calf_raise",
+    }];
+  });
+}
+
+function classifyDiagnosticExerciseForDuplicate(input: {
+  exercise: DiagnosticExercise;
+  muscle: string;
+}): string | null {
+  const snapshotExercise: SlotCompositionSnapshotDiagnostic["exercises"][number] = {
+    exerciseId: input.exercise.id,
+    exerciseName: input.exercise.name,
+    role: input.exercise.isMainLiftEligible ? "main" : "accessory",
+    setCount: 1,
+    primaryMuscles: normalizeExerciseMuscles(input.exercise.primaryMuscles),
+    movementPatterns: sortPrescriptionStrings(input.exercise.movementPatterns ?? []),
+    effectiveStimulusByMuscle: {},
+  };
+  return classifySelectedExerciseClass({
+    exercise: snapshotExercise,
+    muscle: input.muscle,
+  });
+}
+
+function buildCompatibleDuplicateAlternatives(input: {
+  duplicate: DuplicateContinuityCandidate;
+  exerciseLibrary: ReadonlyArray<DiagnosticExercise> | undefined;
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  preselectionFeasibility: ReadonlyArray<CleanPreselectionFeasibility>;
+}): DuplicateContinuityRow["compatibleAlternatives"] {
+  const selectedIds = new Set(
+    input.finalSlotPlan.flatMap((slot) =>
+      slot.exercises.map((exercise) => exercise.exerciseId),
+    ),
+  );
+  const primaryMuscles = new Set(input.duplicate.primaryMuscles);
+  const duplicateClassFamily = toDuplicateClassFamily(input.duplicate.exerciseClass);
+  const roleRequiresMain = Object.values(input.duplicate.roleBySlot).some((role) =>
+    role.includes("main"),
+  );
+  const fromLibrary = (input.exerciseLibrary ?? [])
+    .filter((exercise) => exercise.id !== input.duplicate.exerciseId)
+    .filter((exercise) =>
+      normalizeExerciseMuscles(exercise.primaryMuscles).some((muscle) =>
+        primaryMuscles.has(muscle),
+      ),
+    )
+    .filter((exercise) =>
+      roleRequiresMain
+        ? Boolean(exercise.isMainLiftEligible)
+        : !Boolean(exercise.isMainLiftEligible),
+    )
+    .filter((exercise) => !selectedIds.has(exercise.id))
+    .map((exercise) => {
+      const primary = normalizeExerciseMuscles(exercise.primaryMuscles);
+      const muscle = primary.find((value) => primaryMuscles.has(value)) ?? primary[0] ?? "";
+      const exerciseClass = muscle
+        ? classifyDiagnosticExerciseForDuplicate({ exercise, muscle })
+        : null;
+      const classFamily = toDuplicateClassFamily(exerciseClass);
+      return {
+        exerciseName: exercise.name,
+        exerciseClass,
+        primaryMuscles: primary,
+        reasonAvailableOrBlocked: uniqueSorted([
+          "primary_muscle_overlap",
+          roleRequiresMain ? "main_lift_role_compatible" : "accessory_role_compatible",
+          classFamily && classFamily === duplicateClassFamily
+            ? "same_class_available"
+            : "distinct_class_available",
+        ]),
+      };
+    });
+
+  const fromCandidateInventory = input.preselectionFeasibility
+    .filter((row) =>
+      input.duplicate.duplicatedInSlots.includes(row.slotId) &&
+      primaryMuscles.has(row.muscle),
+    )
+    .flatMap((row) =>
+      row.candidateInventory
+        .filter((candidate) =>
+          candidate.availability === "clean_available" ||
+          candidate.availability === "available_but_already_used_elsewhere",
+        )
+        .filter((candidate) => candidate.exerciseId !== input.duplicate.exerciseId)
+        .map((candidate) => ({
+          exerciseName: candidate.exerciseName,
+          exerciseClass: candidate.candidateClass,
+          primaryMuscles: candidate.primaryMuscles,
+          reasonAvailableOrBlocked: uniqueSorted([
+            `candidate_inventory:${candidate.availability}`,
+            ...candidate.reasons.slice(0, 2),
+          ]),
+        })),
+    );
+
+  const byName = new Map<string, DuplicateContinuityRow["compatibleAlternatives"][number]>();
+  for (const alternative of [...fromLibrary, ...fromCandidateInventory]) {
+    if (!byName.has(alternative.exerciseName)) {
+      byName.set(alternative.exerciseName, alternative);
+    }
+  }
+  return Array.from(byName.values())
+    .sort((left, right) => left.exerciseName.localeCompare(right.exerciseName))
+    .slice(0, 5);
+}
+
+function matchingDuplicateRows(input: {
+  duplicate: DuplicateContinuityCandidate;
+  duplicateExerciseReuse: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+}): DuplicateExerciseReuseDiagnostic[] {
+  return input.duplicateExerciseReuse.filter(
+    (row) =>
+      row.exerciseId === input.duplicate.exerciseId ||
+      row.name === input.duplicate.exerciseName,
+  );
+}
+
+function matchingClassDemands(input: {
+  duplicate: DuplicateContinuityCandidate;
+  exerciseClassDistributionBySlot: ReadonlyArray<ExerciseClassDistributionBySlot>;
+}): ExerciseClassDistributionMuscle[] {
+  const muscles = new Set(input.duplicate.primaryMuscles);
+  return input.exerciseClassDistributionBySlot
+    .filter(
+      (slot) =>
+        slot.week === 1 &&
+        input.duplicate.duplicatedInSlots.includes(slot.slotId),
+    )
+    .flatMap((slot) =>
+      slot.muscleDemands.filter((demand) => muscles.has(demand.muscle)),
+    );
+}
+
+function chooseDuplicateJustification(input: {
+  duplicate: DuplicateContinuityCandidate;
+  duplicateRows: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+  classDemands: ReadonlyArray<ExerciseClassDistributionMuscle>;
+  compatibleAlternativeExists: boolean | null;
+}): DuplicateContinuityRow["justification"] {
+  const demandJustifications = input.classDemands.flatMap(
+    (demand) => demand.duplicateJustifications,
+  );
+  if (demandJustifications.includes("deload_skill_preservation")) {
+    return "deload_skill_preservation";
+  }
+  if (demandJustifications.includes("user_preference")) {
+    return "user_preference";
+  }
+  if (
+    demandJustifications.includes("no_clean_alternative") ||
+    input.duplicateRows.some(
+      (row) => !row.hasCompatibleAlternative && row.reason !== "limited_inventory",
+    )
+  ) {
+    return "no_clean_alternative";
+  }
+  if (
+    demandJustifications.includes("limited_inventory") ||
+    input.duplicateRows.some((row) => row.reason === "limited_inventory")
+  ) {
+    return "limited_inventory";
+  }
+  if (
+    demandJustifications.includes("continuity_anchor") ||
+    input.duplicateRows.some((row) => row.reason === "main_lift_continuity_allowed")
+  ) {
+    return "continuity_anchor";
+  }
+  if (
+    demandJustifications.includes("exact_demand_fit") ||
+    (input.duplicate.exerciseClass === "stiff_leg_deadlift" &&
+      input.duplicate.duplicatedInSlots.includes("lower_b"))
+  ) {
+    return "exact_demand_fit";
+  }
+  if (input.duplicate.duplicateType === "same_session_variant") {
+    return "unjustified";
+  }
+  return input.compatibleAlternativeExists === true ? "unjustified" : "unknown";
+}
+
+function chooseDuplicatePolicyRecommendation(input: {
+  duplicate: DuplicateContinuityCandidate;
+  justification: DuplicateContinuityRow["justification"];
+  compatibleAlternativeExists: boolean | null;
+}): DuplicateContinuityRow["policyRecommendation"] {
+  if (
+    input.justification === "limited_inventory" ||
+    input.justification === "no_clean_alternative" ||
+    input.justification === "deload_skill_preservation"
+  ) {
+    return input.compatibleAlternativeExists === true
+      ? "requires_planner_decision"
+      : "allow_duplicate";
+  }
+  if (input.duplicate.duplicateType === "same_session_variant") {
+    return "discourage_duplicate";
+  }
+  if (
+    input.compatibleAlternativeExists === true &&
+    input.duplicate.exerciseName.toLowerCase().includes("incline")
+  ) {
+    return "block_if_clean_alternative_exists";
+  }
+  if (
+    input.compatibleAlternativeExists === true &&
+    input.duplicate.exerciseName.toLowerCase().includes("sldl")
+  ) {
+    return "requires_planner_decision";
+  }
+  if (
+    input.duplicate.exerciseName.toLowerCase().includes("lat pulldown") ||
+    input.duplicate.exerciseName.toLowerCase().includes("back squat")
+  ) {
+    return "discourage_duplicate";
+  }
+  return input.compatibleAlternativeExists === true
+    ? "requires_planner_decision"
+    : "discourage_duplicate";
+}
+
+function chooseDuplicateRisk(input: {
+  duplicate: DuplicateContinuityCandidate;
+  compatibleAlternativeExists: boolean | null;
+  projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
+}): DuplicateContinuityRow["risk"] {
+  const name = input.duplicate.exerciseName.toLowerCase();
+  const projectedMuscles = input.projectedDelivery.filter((row) =>
+    input.duplicate.primaryMuscles.includes(row.muscle),
+  );
+  const underTarget = projectedMuscles.some(
+    (row) =>
+      row.preferredTarget != null &&
+      row.projectedEffectiveStimulusAfterRepairAndFinalShaping + 1e-9 <
+        row.preferredTarget,
+  );
+  const overTarget = projectedMuscles.some(
+    (row) =>
+      row.preferredTarget != null &&
+      row.projectedEffectiveStimulusAfterRepairAndFinalShaping >
+        row.preferredTarget + 1e-9,
+  );
+  if (
+    name.includes("incline") &&
+    (underTarget || input.compatibleAlternativeExists === true)
+  ) {
+    return "high";
+  }
+  if (name.includes("sldl") && overTarget) {
+    return "high";
+  }
+  if (input.duplicate.duplicateType === "same_session_variant") {
+    return input.compatibleAlternativeExists === true ? "moderate" : "low";
+  }
+  return Object.values(input.duplicate.roleBySlot).some((role) => role.includes("main")) ||
+    input.compatibleAlternativeExists === true
+    ? "moderate"
+    : "low";
+}
+
+function buildDuplicateEvidence(input: {
+  duplicate: DuplicateContinuityCandidate;
+  duplicateRows: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+  classDemands: ReadonlyArray<ExerciseClassDistributionMuscle>;
+  unresolvedCauses: ReadonlyArray<ExerciseClassUnresolvedCause>;
+  projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
+  accumulationWeekProjection: AccumulationWeekProjection | null;
+}): string[] {
+  const muscles = new Set(input.duplicate.primaryMuscles);
+  const deliveryEvidence = input.projectedDelivery
+    .filter((row) => muscles.has(row.muscle))
+    .map(
+      (row) =>
+        `${row.muscle}:final=${row.projectedEffectiveStimulusAfterRepairAndFinalShaping}:preferred=${formatNullableNumber(row.preferredTarget)}`,
+    );
+  const accumulationEvidence = (input.accumulationWeekProjection?.crossWeekWarnings ?? [])
+    .filter((warning) =>
+      warning.code.includes("DUPLICATE") ||
+      (warning.muscle != null && muscles.has(warning.muscle)),
+    )
+    .flatMap((warning) => warning.evidence.map((row) => `${warning.code}:${row}`));
+  return compactDiagnosticStrings(
+    [
+      `duplicate_type:${input.duplicate.duplicateType}`,
+      `slots:${input.duplicate.duplicatedInSlots.join("+")}`,
+      ...input.duplicateRows.map(
+        (row) =>
+          `duplicate_reuse:${row.name}:${row.reason}:alternative=${row.hasCompatibleAlternative}`,
+      ),
+      ...input.classDemands.flatMap((demand) => [
+        `${demand.muscle}:duplicate_policy=${demand.duplicatePolicy}`,
+        ...demand.inventoryEvidence.filter((row) => row.startsWith("duplicate:")),
+        ...demand.limitations.filter((row) => row.includes("duplicate")),
+      ]),
+      ...input.unresolvedCauses
+        .filter((cause) => muscles.has(cause.muscle))
+        .map((cause) => `${cause.muscle}:${cause.owningCause}`),
+      ...deliveryEvidence,
+      ...accumulationEvidence,
+    ],
+    8,
+  );
+}
+
+function buildDuplicateContinuityJustification(input: {
+  finalSlotPlan: ReadonlyArray<SlotCompositionSnapshotDiagnostic>;
+  exerciseLibrary?: ReadonlyArray<DiagnosticExercise>;
+  duplicateExerciseReuse: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
+  exerciseClassDistributionBySlot: ReadonlyArray<ExerciseClassDistributionBySlot>;
+  exerciseClassUnresolvedCauses: ReadonlyArray<ExerciseClassUnresolvedCause>;
+  preselectionFeasibility: ReadonlyArray<CleanPreselectionFeasibility>;
+  projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
+  accumulationWeekProjection: AccumulationWeekProjection | null;
+}): DuplicateContinuityJustification {
+  const candidates = [
+    ...buildCrossSlotDuplicateCandidates(input.finalSlotPlan),
+    ...buildSameSessionVariantCandidates(input.finalSlotPlan),
+  ];
+  const duplicates = candidates.map((duplicate) => {
+    const duplicateRows = matchingDuplicateRows({
+      duplicate,
+      duplicateExerciseReuse: input.duplicateExerciseReuse,
+    });
+    const classDemands = matchingClassDemands({
+      duplicate,
+      exerciseClassDistributionBySlot: input.exerciseClassDistributionBySlot,
+    });
+    const compatibleAlternatives = buildCompatibleDuplicateAlternatives({
+      duplicate,
+      exerciseLibrary: input.exerciseLibrary,
+      finalSlotPlan: input.finalSlotPlan,
+      preselectionFeasibility: input.preselectionFeasibility,
+    });
+    const compatibleAlternativeExists =
+      duplicateRows.some((row) => row.hasCompatibleAlternative) ||
+      compatibleAlternatives.length > 0
+        ? true
+        : duplicateRows.some((row) => !row.hasCompatibleAlternative)
+          ? false
+          : input.exerciseLibrary
+            ? false
+            : null;
+    const justification = chooseDuplicateJustification({
+      duplicate,
+      duplicateRows,
+      classDemands,
+      compatibleAlternativeExists,
+    });
+    const policyRecommendation = chooseDuplicatePolicyRecommendation({
+      duplicate,
+      justification,
+      compatibleAlternativeExists,
+    });
+    const risk = chooseDuplicateRisk({
+      duplicate,
+      compatibleAlternativeExists,
+      projectedDelivery: input.projectedDelivery,
+    });
+
+    return {
+      ...duplicate,
+      justification,
+      compatibleAlternativeExists,
+      compatibleAlternatives,
+      policyRecommendation,
+      risk,
+      evidence: buildDuplicateEvidence({
+        duplicate,
+        duplicateRows,
+        classDemands,
+        unresolvedCauses: input.exerciseClassUnresolvedCauses,
+        projectedDelivery: input.projectedDelivery,
+        accumulationWeekProjection: input.accumulationWeekProjection,
+      }),
+      limitations: [
+        "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
+        "uses_existing_planningReality_rows_only",
+        "does_not_replay_candidate_ranking_or_selection_trials",
+        "compatible_alternatives_are_compact_visibility_not_full_inventory",
+      ],
+    };
+  }).sort(
+    (left, right) =>
+      left.risk.localeCompare(right.risk) ||
+      left.exerciseName.localeCompare(right.exerciseName),
+  );
+
+  return {
+    version: 1,
+    source: "diagnostic_shadow_planner",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    duplicates,
+    summary: {
+      totalDuplicates: duplicates.length,
+      justifiedDuplicates: duplicates.filter(
+        (row) => row.justification !== "unjustified" && row.justification !== "unknown",
+      ).length,
+      unjustifiedOrUnknown: duplicates.filter(
+        (row) => row.justification === "unjustified" || row.justification === "unknown",
+      ).length,
+      cleanAlternativeAvailable: duplicates.filter(
+        (row) => row.compatibleAlternativeExists === true,
+      ).length,
+      highRiskDuplicates: duplicates.filter((row) => row.risk === "high").length,
+    },
   };
 }
 
@@ -8512,6 +9138,17 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     duplicateExerciseReuse: input.duplicateExerciseReuse ?? [],
     exerciseConcentration,
   });
+  const duplicateContinuityJustification =
+    buildDuplicateContinuityJustification({
+      finalSlotPlan,
+      exerciseLibrary: input.exerciseLibrary,
+      duplicateExerciseReuse: input.duplicateExerciseReuse ?? [],
+      exerciseClassDistributionBySlot,
+      exerciseClassUnresolvedCauses,
+      preselectionFeasibility,
+      projectedDelivery,
+      accumulationWeekProjection,
+    });
   const materialRepairCount = repairMateriality.filter(
     (row) => row.materiality === "moderate" || row.materiality === "major"
   ).length;
@@ -8568,6 +9205,7 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     exerciseClassDistributionBySlot,
     exerciseClassAlignment,
     exerciseClassUnresolvedCauses,
+    duplicateContinuityJustification,
     accumulationWeekProjection,
     ...(input.forbiddenCleanupReroute
       ? { forbiddenCleanupReroute: input.forbiddenCleanupReroute }

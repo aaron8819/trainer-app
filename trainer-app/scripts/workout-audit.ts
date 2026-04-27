@@ -874,6 +874,73 @@ function buildExerciseClassUnresolvedCauseSummaryLines(
   ];
 }
 
+function buildDuplicateContinuityJustificationSummaryLines(
+  diagnostic:
+    | PlanningRealityDiagnostic["duplicateContinuityJustification"]
+    | null
+    | undefined
+): string[] | null {
+  if (!diagnostic) {
+    return null;
+  }
+
+  const duplicates = asArray(diagnostic.duplicates);
+  const summary = diagnostic.summary ?? {
+    totalDuplicates: duplicates.length,
+    unjustifiedOrUnknown: duplicates.filter(
+      (row) => row.justification === "unjustified" || row.justification === "unknown"
+    ).length,
+    cleanAlternativeAvailable: duplicates.filter(
+      (row) => row.compatibleAlternativeExists === true
+    ).length,
+    highRiskDuplicates: duplicates.filter((row) => row.risk === "high").length,
+  };
+  const findDuplicate = (needle: string) =>
+    duplicates.find((row) =>
+      String(row.exerciseName ?? "").toLowerCase().includes(needle)
+    );
+  const notable: string[] = [];
+  const incline = findDuplicate("incline");
+  if (incline) {
+    notable.push(
+      `Incline DB Bench: duplicate, Chest hard primary, ${incline.compatibleAlternativeExists ? "clean alternative visible" : "clean alternative needed"}`
+    );
+  }
+  const pulldown = findDuplicate("lat pulldown");
+  if (pulldown) {
+    notable.push("Lat Pulldown: duplicate, Lats adequate, discourage");
+  }
+  const sldl = findDuplicate("sldl") ?? findDuplicate("stiff-legged");
+  if (sldl) {
+    notable.push("SLDL: duplicate, Hamstrings high, planner decision needed");
+  }
+  const calves = duplicates.find(
+    (row) =>
+      row.duplicateType === "same_session_variant" &&
+      asArray(row.primaryMuscles).includes("Calves")
+  );
+  if (calves) {
+    notable.push("Calves: same-session variant, discourage unless specialization");
+  }
+
+  return [
+    "Duplicate / Continuity Justification",
+    "------------------------------------",
+    `Total duplicates: ${summary.totalDuplicates}`,
+    `Unknown/unjustified: ${summary.unjustifiedOrUnknown}`,
+    `Clean alternatives visible: ${summary.cleanAlternativeAvailable}`,
+    `High risk: ${summary.highRiskDuplicates}`,
+    "",
+    "Notable:",
+    ...(notable.length > 0
+      ? notable.map((line) => `- ${line}`)
+      : duplicates.slice(0, 5).map(
+          (row) =>
+            `- ${row.exerciseName}: ${row.duplicateType}, ${row.policyRecommendation}`
+        )),
+  ];
+}
+
 function buildAccumulationWeekProjectionSummaryLines(
   projection:
     | PlanningRealityDiagnostic["accumulationWeekProjection"]
@@ -1406,6 +1473,14 @@ export function buildPlanningRealitySummary(input: {
     );
   if (exerciseClassUnresolvedCauseSummary) {
     lines.push("", ...exerciseClassUnresolvedCauseSummary);
+  }
+
+  const duplicateContinuityJustificationSummary =
+    buildDuplicateContinuityJustificationSummaryLines(
+      planningReality.duplicateContinuityJustification
+    );
+  if (duplicateContinuityJustificationSummary) {
+    lines.push("", ...duplicateContinuityJustificationSummary);
   }
 
   const accumulationWeekProjectionSummary =

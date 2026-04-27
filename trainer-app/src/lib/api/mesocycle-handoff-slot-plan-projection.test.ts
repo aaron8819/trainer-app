@@ -5696,10 +5696,56 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       isMainLift: true,
       stimulusProfile: { quads: 1, glutes: 0.5, core: 0.3 },
     });
+    const machinePress = makeProjectedExercise({
+      id: "machine-chest-press",
+      name: "Machine Chest Press",
+      movementPatterns: ["horizontal_push"],
+      primaryMuscles: ["Chest"],
+      sets: 3,
+      isMainLift: true,
+      stimulusProfile: { chest: 1 },
+    });
+    const seatedRow = makeProjectedExercise({
+      id: "seated-cable-row",
+      name: "Seated Cable Row",
+      movementPatterns: ["horizontal_pull"],
+      primaryMuscles: ["Lats"],
+      sets: 3,
+      isCompound: false,
+      stimulusProfile: { lats: 1 },
+    });
+    const legPress = makeProjectedExercise({
+      id: "leg-press",
+      name: "Leg Press",
+      movementPatterns: ["squat"],
+      primaryMuscles: ["Quads"],
+      sets: 3,
+      isMainLift: true,
+      stimulusProfile: { quads: 1 },
+    });
+    const romanianDeadlift = makeProjectedExercise({
+      id: "romanian-deadlift",
+      name: "Romanian Deadlift",
+      movementPatterns: ["hinge"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 3,
+      isMainLift: true,
+      stimulusProfile: { hamstrings: 1, glutes: 0.5, lower_back: 0.3 },
+    });
 
     const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
       activeMesocycle: buildSource() as never,
       slotSequence,
+      exerciseLibrary: [
+        incline.exercise,
+        latPulldown.exercise,
+        sldl.exercise,
+        backSquat.exercise,
+        machinePress.exercise,
+        seatedRow.exercise,
+        legPress.exercise,
+        romanianDeadlift.exercise,
+      ] as never,
       initialProjectedSlots: [
         makeProjectedSlotWithContributions({
           slotId: "upper_a",
@@ -5882,6 +5928,230 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         expect.stringContaining("Barbell Back Squat"),
       ]),
     );
+
+    const duplicateDiagnostic = diagnostic.duplicateContinuityJustification;
+    const duplicateByName = (name: string) =>
+      duplicateDiagnostic.duplicates.find((row) => row.exerciseName === name);
+
+    expect(duplicateDiagnostic).toMatchObject({
+      version: 1,
+      source: "diagnostic_shadow_planner",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      summary: expect.objectContaining({
+        totalDuplicates: 4,
+        cleanAlternativeAvailable: 4,
+      }),
+    });
+    expect(duplicateByName("Incline DB Bench")).toMatchObject({
+      duplicateType: "same_exercise_cross_slot",
+      duplicatedInSlots: ["upper_a", "upper_b"],
+      roleBySlot: { upper_a: "main", upper_b: "main" },
+      setCountBySlot: { upper_a: 3, upper_b: 3 },
+      primaryMuscles: ["Chest"],
+      movementPatterns: ["horizontal_push"],
+      exerciseClass: "incline_press",
+      justification: "continuity_anchor",
+      compatibleAlternativeExists: true,
+      policyRecommendation: "block_if_clean_alternative_exists",
+      risk: "high",
+      compatibleAlternatives: expect.arrayContaining([
+        expect.objectContaining({ exerciseName: "Machine Chest Press" }),
+      ]),
+    });
+    expect(duplicateByName("Lat Pulldown")).toMatchObject({
+      duplicateType: "same_exercise_cross_slot",
+      duplicatedInSlots: ["upper_a", "upper_b"],
+      justification: "unjustified",
+      compatibleAlternativeExists: true,
+      policyRecommendation: "discourage_duplicate",
+      risk: "moderate",
+    });
+    expect(duplicateByName("SLDL")).toMatchObject({
+      duplicateType: "same_exercise_cross_slot",
+      duplicatedInSlots: ["lower_a", "lower_b"],
+      exerciseClass: "stiff_leg_deadlift",
+      justification: "exact_demand_fit",
+      compatibleAlternativeExists: true,
+      policyRecommendation: "requires_planner_decision",
+    });
+    expect(duplicateByName("Barbell Back Squat")).toMatchObject({
+      duplicateType: "same_exercise_cross_slot",
+      duplicatedInSlots: ["lower_a", "lower_b"],
+      justification: "unjustified",
+      compatibleAlternativeExists: true,
+      policyRecommendation: "discourage_duplicate",
+    });
+    expect(JSON.stringify(duplicateDiagnostic).length).toBeLessThan(20000);
+    expect(JSON.stringify(diagnostic.finalSlotPlan)).not.toContain(
+      "duplicateContinuityJustification",
+    );
+  });
+
+  it("detects same-session calf variants as duplicate continuity pressure", () => {
+    const slotSequence = [{ slotId: "lower_b", intent: "LOWER" as const }];
+    const standingCalfRaise = makeProjectedExercise({
+      id: "standing-calf-raise",
+      name: "Standing Calf Raise",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Calves"],
+      sets: 2,
+      isCompound: false,
+      stimulusProfile: { calves: 1 },
+    });
+    const seatedCalfRaise = makeProjectedExercise({
+      id: "seated-calf-raise",
+      name: "Seated Calf Raise",
+      movementPatterns: ["isolation"],
+      primaryMuscles: ["Calves"],
+      sets: 2,
+      isCompound: false,
+      stimulusProfile: { calves: 1 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      exerciseLibrary: [
+        standingCalfRaise.exercise,
+        seatedCalfRaise.exercise,
+      ] as never,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({
+            accessories: [standingCalfRaise, seatedCalfRaise],
+          }),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({
+            accessories: [standingCalfRaise, seatedCalfRaise],
+          }),
+        }),
+      ],
+      weeklyObligationPlan: emptyWeeklyObligationPlan(),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+    });
+
+    expect(diagnostic.duplicateContinuityJustification.duplicates).toContainEqual(
+      expect.objectContaining({
+        duplicateType: "same_session_variant",
+        exerciseName: "Seated Calf Raise + Standing Calf Raise",
+        duplicatedInSlots: ["lower_b"],
+        primaryMuscles: ["Calves"],
+        exerciseClass: "calf_raise",
+        justification: "unjustified",
+        policyRecommendation: "discourage_duplicate",
+      }),
+    );
+  });
+
+  it("marks duplicate continuity justified when explicit continuity evidence has no clean alternative", () => {
+    const slotSequence = [
+      { slotId: "lower_a", intent: "LOWER" as const },
+      { slotId: "lower_b", intent: "LOWER" as const },
+    ];
+    const sldl = makeProjectedExercise({
+      id: "sldl",
+      name: "SLDL",
+      movementPatterns: ["hinge"],
+      primaryMuscles: ["Hamstrings"],
+      sets: 3,
+      isMainLift: true,
+      stimulusProfile: { hamstrings: 1 },
+    });
+
+    const diagnostic = buildWeeklyDemandSlotAllocationDiagnostic({
+      activeMesocycle: buildSource() as never,
+      slotSequence,
+      exerciseLibrary: [sldl.exercise] as never,
+      initialProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_a",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [sldl] }),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [sldl] }),
+        }),
+      ],
+      finalProjectedSlots: [
+        makeProjectedSlotWithContributions({
+          slotId: "lower_a",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [sldl] }),
+        }),
+        makeProjectedSlotWithContributions({
+          slotId: "lower_b",
+          intent: "LOWER",
+          workout: makeProjectedWorkout({ mainLifts: [sldl] }),
+        }),
+      ],
+      weeklyObligationPlan: weeklyObligationPlan({
+        Hamstrings: {
+          targetSets: 6,
+          allocatedSlots: [
+            { slotId: "lower_a", minEffectiveSets: 3, priority: "primary" },
+            { slotId: "lower_b", minEffectiveSets: 3, priority: "primary" },
+          ],
+        },
+      }),
+      weeklyObligationEvaluations: [],
+      protectedCoverage: {
+        muscles: [],
+        deficitsBelowMev: [],
+        deficitsBelowPracticalFloor: [],
+        unresolvedProtectedMuscles: [],
+      },
+      supportFloorRepairReasons: {},
+      programQualityAppliedDiagnostics: [],
+      programQualityEvaluation: {
+        totalPenalty: 0,
+        diagnostics: [],
+        constraintCounts: {},
+      },
+      duplicateExerciseReuse: [
+        {
+          exerciseId: "sldl",
+          name: "SLDL",
+          repeatedInSlotId: "lower_b",
+          previousSlotIds: ["lower_a"],
+          role: "main",
+          hasCompatibleAlternative: false,
+          reason: "main_lift_continuity_allowed",
+        },
+      ],
+    });
+
+    expect(
+      diagnostic.duplicateContinuityJustification.duplicates.find(
+        (row) => row.exerciseName === "SLDL",
+      ),
+    ).toMatchObject({
+      justification: "no_clean_alternative",
+      compatibleAlternativeExists: false,
+      policyRecommendation: "allow_duplicate",
+    });
   });
 
   it("forwards protected repair muscles into upper-slot projection candidates", () => {

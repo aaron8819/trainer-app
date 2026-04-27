@@ -423,6 +423,9 @@ describe("artifact serialization helpers", () => {
               wouldReduceSupportFloorClosureRows: false,
               wouldReduceSetBumps: false,
               wouldIncreaseCapTrimRows: false,
+              removableRows: [],
+              potentialNewRows: [],
+              stillUnknown: ["weeks_2_to_4_unprojected"],
               evidence: ["current_materialRepairCount:0"],
             },
             policyReadiness: {

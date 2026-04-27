@@ -1766,6 +1766,7 @@ export function buildPlannerOnlyDryRunSummary(input: {
         `Would remove lower_b duplicate: ${formatPlannerOnlyNullableBoolean(calvesCandidate.wouldRemoveLowerBSameSessionCalfDuplicate)}`,
         `Lower A safety: ${calvesCandidate.lowerASafety?.status ?? "unknown"}`,
         `Materiality estimate: ${calvesCandidate.materialityEstimate?.status ?? "unknown"}`,
+        `Expected deltas: material ${formatPlanningRealityNumber(calvesCandidate.materialityEstimate?.expectedMaterialRepairDelta ?? null)}, major ${formatPlanningRealityNumber(calvesCandidate.materialityEstimate?.expectedMajorRepairDelta ?? null)}, suspicious ${formatPlanningRealityNumber(calvesCandidate.materialityEstimate?.expectedSuspiciousRepairDelta ?? null)}`,
         `Recommendation: ${calvesCandidate.recommendation}`,
         `Remaining blockers: ${calvesCandidate.policyReadiness?.remainingBlockers?.join(", ") || "none"}`,
       ]

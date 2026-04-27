@@ -689,27 +689,92 @@ function buildLowerASafety(input: {
   };
 }
 
-function repairDeltaFromCurrentCount(input: {
-  count: number;
-  addressedRows: number;
+type CalvesMaterialityEstimate = CalvesFourFourCandidate["materialityEstimate"];
+type CalvesMaterialityRemovableRow = CalvesMaterialityEstimate["removableRows"][number];
+type CalvesMaterialityPotentialNewRow = CalvesMaterialityEstimate["potentialNewRows"][number];
+type CalvesMaterialityUnknown = CalvesMaterialityEstimate["stillUnknown"][number];
+type CalvesRepairRow = PlanningRealityDiagnostic["repairMateriality"][number];
+
+function repairDeltaFromKnownRemovals(input: {
+  currentCount: number;
+  removableRows: number;
 }): number | null {
-  if (input.count === 0) {
+  if (input.currentCount === 0) {
     return 0;
   }
-  if (input.addressedRows > 0 && input.addressedRows === input.count) {
-    return -input.addressedRows;
+  if (input.removableRows > 0) {
+    return -Math.min(input.removableRows, input.currentCount);
   }
   return null;
+}
+
+function buildRepairRowKey(row: Pick<CalvesRepairRow, "slotId" | "muscle" | "exerciseId" | "exerciseName" | "repairMechanism" | "action">): string {
+  return [
+    row.slotId ?? "unknown_slot",
+    row.muscle ?? "unknown_muscle",
+    row.exerciseId ?? row.exerciseName ?? "unknown_exercise",
+    row.repairMechanism,
+    row.action,
+  ].join("|");
+}
+
+function isCalvesRepairRow(row: CalvesRepairRow): boolean {
+  return row.muscle === "Calves";
+}
+
+function isSupportFloorRepairRow(row: CalvesRepairRow): boolean {
+  const text = `${row.repairMechanism} ${row.source} ${row.rationale}`.toLowerCase();
+  return text.includes("support") || text.includes("floor");
+}
+
+function isSetBumpRepairRow(row: CalvesRepairRow): boolean {
+  return row.action === "set_bumped" || row.rawSetDelta > 0;
+}
+
+function isCapTrimRepairRow(row: CalvesRepairRow): boolean {
+  return row.action === "set_trimmed" || row.action === "removed" || row.rawSetDelta < 0;
+}
+
+function addRemovableRow(
+  rows: CalvesMaterialityRemovableRow[],
+  seen: Set<string>,
+  key: string,
+  row: CalvesMaterialityRemovableRow
+): void {
+  if (seen.has(key)) {
+    return;
+  }
+  seen.add(key);
+  rows.push(row);
+}
+
+function addPotentialNewRow(
+  rows: CalvesMaterialityPotentialNewRow[],
+  row: CalvesMaterialityPotentialNewRow
+): void {
+  if (
+    rows.some(
+      (existing) =>
+        existing.category === row.category &&
+        existing.slotId === row.slotId &&
+        existing.muscle === row.muscle &&
+        existing.exerciseName === row.exerciseName
+    )
+  ) {
+    return;
+  }
+  rows.push(row);
 }
 
 function buildMaterialityEstimate(input: {
   planningReality: PlanningRealityDiagnostic;
   lowerASafety: CalvesFourFourCandidate["lowerASafety"];
+  currentLowerBShape: CalvesFourFourCandidate["currentLowerBShape"];
   wouldRemoveLowerBSameSessionCalfDuplicate: boolean | null;
   wouldReduceSupportFloorClosureRows: boolean | null;
   wouldReduceSetBumps: boolean | null;
   wouldIncreaseCapTrimRows: boolean | null;
-}): CalvesFourFourCandidate["materialityEstimate"] {
+}): CalvesMaterialityEstimate {
   const materialRepairCount =
     input.planningReality.shadowRepairSummary?.materialRepairCount ??
     input.planningReality.summary.materialRepairCount;
@@ -721,32 +786,196 @@ function buildMaterialityEstimate(input: {
   const repairRows = input.planningReality.repairMaterialityAfterShadowAllocation.length > 0
     ? input.planningReality.repairMaterialityAfterShadowAllocation
     : input.planningReality.repairMateriality;
-  const addressedCalfRows = repairRows.filter((row) => {
-    const mechanism = row.repairMechanism.toLowerCase();
-    return (
-      row.muscle === "Calves" &&
-      (mechanism.includes("support") ||
-        mechanism.includes("set_bump") ||
-        row.action === "set_bumped" ||
-        row.action === "added")
+  const calfRepairRows = repairRows.filter(isCalvesRepairRow);
+  const supportFloorRows = calfRepairRows.filter(isSupportFloorRepairRow);
+  const setBumpRows = calfRepairRows.filter(isSetBumpRepairRow);
+  const capTrimRows = calfRepairRows.filter(isCapTrimRepairRow);
+  const removableRows: CalvesMaterialityRemovableRow[] = [];
+  const removableRowKeys = new Set<string>();
+  const removableRepairRowKeys = new Set<string>();
+
+  for (const row of supportFloorRows) {
+    const repairKey = buildRepairRowKey(row);
+    removableRepairRowKeys.add(repairKey);
+    addRemovableRow(removableRows, removableRowKeys, `support|${repairKey}`, {
+      category: "support_floor_closure",
+      slotId: row.slotId ?? "unknown",
+      muscle: row.muscle ?? "unknown",
+      exerciseName: row.exerciseName,
+      reason: row.rationale || row.repairMechanism,
+    });
+  }
+  for (const row of setBumpRows) {
+    const repairKey = buildRepairRowKey(row);
+    removableRepairRowKeys.add(repairKey);
+    addRemovableRow(removableRows, removableRowKeys, `set_bump|${repairKey}`, {
+      category: "set_bump",
+      slotId: row.slotId ?? "unknown",
+      muscle: row.muscle ?? "unknown",
+      exerciseName: row.exerciseName,
+      reason: row.rationale || row.repairMechanism,
+    });
+  }
+  for (const row of capTrimRows) {
+    const repairKey = buildRepairRowKey(row);
+    removableRepairRowKeys.add(repairKey);
+    addRemovableRow(removableRows, removableRowKeys, `cap_trim|${repairKey}`, {
+      category: "cap_trim",
+      slotId: row.slotId ?? "unknown",
+      muscle: row.muscle ?? "unknown",
+      exerciseName: row.exerciseName,
+      reason: row.rationale || row.repairMechanism,
+    });
+  }
+
+  const duplicateRows =
+    input.planningReality.duplicateContinuityJustification?.duplicates ?? [];
+  const lowerBDuplicateRows = duplicateRows.filter(
+    (row) =>
+      row.duplicateType === "same_session_variant" &&
+      row.duplicatedInSlots.includes("lower_b") &&
+      (row.primaryMuscles.includes("Calves") ||
+        (row.exerciseClass ?? "").toLowerCase().includes("calf"))
+  );
+  if (input.wouldRemoveLowerBSameSessionCalfDuplicate === true) {
+    const duplicateNames =
+      lowerBDuplicateRows.length > 0
+        ? lowerBDuplicateRows.map((row) => row.exerciseName)
+        : [
+            input.currentLowerBShape
+              .map((row) => row.exerciseName)
+              .join(" + "),
+          ].filter((name) => name.length > 0);
+    for (const exerciseName of duplicateNames) {
+      addRemovableRow(
+        removableRows,
+        removableRowKeys,
+        `duplicate|lower_b|${exerciseName}`,
+        {
+          category: "duplicate_variant",
+          slotId: "lower_b",
+          muscle: "Calves",
+          exerciseName,
+          reason: "lower_b_single_calf_identity_four_set_candidate_removes_same_session_variant_duplicate",
+        }
+      );
+    }
+  }
+
+  const materialRemovableKeys = new Set<string>();
+  const majorRemovableKeys = new Set<string>();
+  for (const row of calfRepairRows) {
+    const repairKey = buildRepairRowKey(row);
+    if (!removableRepairRowKeys.has(repairKey)) {
+      continue;
+    }
+    if (row.materiality === "moderate" || row.materiality === "major") {
+      materialRemovableKeys.add(repairKey);
+      addRemovableRow(removableRows, removableRowKeys, `material|${repairKey}`, {
+        category: "material_repair",
+        slotId: row.slotId ?? "unknown",
+        muscle: row.muscle ?? "unknown",
+        exerciseName: row.exerciseName,
+        reason: row.rationale || row.repairMechanism,
+      });
+    }
+    if (row.materiality === "major") {
+      majorRemovableKeys.add(repairKey);
+      addRemovableRow(removableRows, removableRowKeys, `major|${repairKey}`, {
+        category: "major_repair",
+        slotId: row.slotId ?? "unknown",
+        muscle: row.muscle ?? "unknown",
+        exerciseName: row.exerciseName,
+        reason: row.rationale || row.repairMechanism,
+      });
+    }
+  }
+
+  const suspiciousCalfRows =
+    input.planningReality.suspiciousRepairsNotEligibleForPromotion?.filter(
+      (row) => row.muscle === "Calves"
+    ) ?? [];
+  for (const row of suspiciousCalfRows) {
+    addRemovableRow(
+      removableRows,
+      removableRowKeys,
+      `suspicious|${row.slotId}|${row.muscle}|${row.exerciseName ?? "unknown"}|${row.repairMechanism}`,
+      {
+        category: "suspicious_repair",
+        slotId: row.slotId,
+        muscle: row.muscle,
+        exerciseName: row.exerciseName,
+        reason: row.reason,
+      }
     );
+  }
+
+  const expectedMaterialRepairDelta = repairDeltaFromKnownRemovals({
+    currentCount: materialRepairCount,
+    removableRows: materialRemovableKeys.size,
   });
-  const addressedMaterialRows = addressedCalfRows.filter(
-    (row) => row.materiality === "moderate" || row.materiality === "major"
-  ).length;
-  const addressedMajorRows = addressedCalfRows.filter(
-    (row) => row.materiality === "major"
-  ).length;
-  const expectedMaterialRepairDelta = repairDeltaFromCurrentCount({
-    count: materialRepairCount,
-    addressedRows: addressedMaterialRows,
+  const expectedMajorRepairDelta = repairDeltaFromKnownRemovals({
+    currentCount: majorRepairCount,
+    removableRows: majorRemovableKeys.size,
   });
-  const expectedMajorRepairDelta = repairDeltaFromCurrentCount({
-    count: majorRepairCount,
-    addressedRows: addressedMajorRows,
+  const expectedSuspiciousRepairDelta = repairDeltaFromKnownRemovals({
+    currentCount: suspiciousRepairCount,
+    removableRows: suspiciousCalfRows.length,
   });
-  const expectedSuspiciousRepairDelta =
-    suspiciousRepairCount === 0 ? 0 : null;
+  const potentialNewRows: CalvesMaterialityPotentialNewRow[] = [];
+  if (input.wouldIncreaseCapTrimRows !== false) {
+    addPotentialNewRow(potentialNewRows, {
+      category: "cap_trim",
+      slotId: "lower_a/lower_b",
+      muscle: "Calves",
+      exerciseName: null,
+      risk: input.wouldIncreaseCapTrimRows === true ? "high" : "unknown",
+      reason:
+        input.wouldIncreaseCapTrimRows === true
+          ? "simulated calf sets exceed a known lower-slot cap"
+          : "lower-slot cap trim risk cannot be resolved from available slot budgets",
+    });
+  }
+  if (input.lowerASafety.wouldDisplaceHardPrimary !== false) {
+    addPotentialNewRow(potentialNewRows, {
+      category: "hard_primary_regression",
+      slotId: "lower_a",
+      muscle: "hard_primary",
+      exerciseName: input.lowerASafety.affectedExercises[0] ?? null,
+      risk: input.lowerASafety.wouldDisplaceHardPrimary === true ? "high" : "unknown",
+      reason:
+        input.lowerASafety.wouldDisplaceHardPrimary === true
+          ? "simulated Lower A calf sets would exceed cap and displace a hard primary exercise"
+          : "Lower A hard-primary displacement cannot be fully classified from available safety evidence",
+    });
+  }
+
+  const weeksTwoToFourUnprojected = hasWeeksTwoToFourUnprojected(input.planningReality);
+  const fullRepairReclassificationRequired =
+    (materialRepairCount > 0 && materialRemovableKeys.size < materialRepairCount) ||
+    (majorRepairCount > 0 && majorRemovableKeys.size < majorRepairCount) ||
+    (suspiciousRepairCount > 0 && suspiciousCalfRows.length < suspiciousRepairCount) ||
+    potentialNewRows.some((row) => row.risk === "unknown");
+  const stillUnknown = new Set<CalvesMaterialityUnknown>();
+  if (fullRepairReclassificationRequired) {
+    stillUnknown.add("exact_repair_reclassification_requires_full_generation");
+  }
+  if (weeksTwoToFourUnprojected) {
+    stillUnknown.add("weeks_2_to_4_unprojected");
+    stillUnknown.add("cross_week_progression_unknown");
+  }
+  if (
+    input.planningReality.accumulationWeekProjection?.crossWeekWarnings?.some(
+      (warning) =>
+        warning.code === "DELOAD_PRESERVATION_STILL_UNPROJECTED"
+    ) ||
+    input.planningReality.slotDemandAllocationByWeek?.crossWeekAllocationWarnings?.some(
+      (warning) => warning.code === "DELOAD_SLOT_ALLOCATION_UNPROJECTED"
+    )
+  ) {
+    stillUnknown.add("deload_preservation_unknown");
+  }
+
   const hasPositiveDelta =
     (expectedMaterialRepairDelta ?? 0) > 0 ||
     (expectedMajorRepairDelta ?? 0) > 0 ||
@@ -765,10 +994,15 @@ function buildMaterialityEstimate(input: {
     input.wouldIncreaseCapTrimRows === true ||
     input.lowerASafety.wouldDisplaceHardPrimary === true ||
     hasPositiveDelta;
-  const status: CalvesFourFourCandidate["materialityEstimate"]["status"] =
+  const hasExactRepairUnknown = stillUnknown.has(
+    "exact_repair_reclassification_requires_full_generation"
+  );
+  const status: CalvesMaterialityEstimate["status"] =
     wouldWorsen
       ? "worsens"
-      : hasUnknownDelta
+      : hasExactRepairUnknown && hasReducingEvidence
+        ? "partial"
+        : hasUnknownDelta
         ? "unknown"
         : hasReducingEvidence
           ? "improves"
@@ -777,7 +1011,10 @@ function buildMaterialityEstimate(input: {
     `current_materialRepairCount:${materialRepairCount}`,
     `current_majorRepairCount:${majorRepairCount}`,
     `current_suspiciousRepairCount:${suspiciousRepairCount}`,
-    `addressed_calf_repair_rows:${addressedCalfRows.length}`,
+    `removable_calf_repair_rows:${removableRepairRowKeys.size}`,
+    `removable_material_repair_rows:${materialRemovableKeys.size}`,
+    `removable_major_repair_rows:${majorRemovableKeys.size}`,
+    `removable_suspicious_repair_rows:${suspiciousCalfRows.length}`,
     `would_remove_lower_b_duplicate:${input.wouldRemoveLowerBSameSessionCalfDuplicate ?? "unknown"}`,
     `would_reduce_support_floor_closure_rows:${input.wouldReduceSupportFloorClosureRows ?? "unknown"}`,
     `would_reduce_set_bumps:${input.wouldReduceSetBumps ?? "unknown"}`,
@@ -795,6 +1032,11 @@ function buildMaterialityEstimate(input: {
     wouldReduceSupportFloorClosureRows: input.wouldReduceSupportFloorClosureRows,
     wouldReduceSetBumps: input.wouldReduceSetBumps,
     wouldIncreaseCapTrimRows: input.wouldIncreaseCapTrimRows,
+    removableRows: removableRows.slice(0, 12),
+    potentialNewRows: potentialNewRows.slice(0, 8),
+    stillUnknown: Array.from(stillUnknown).sort((left, right) =>
+      left.localeCompare(right)
+    ),
     evidence,
   };
 }
@@ -894,6 +1136,7 @@ function buildCalvesFourFourCandidate(input: {
   const materialityEstimate = buildMaterialityEstimate({
     planningReality: input.planningReality,
     lowerASafety,
+    currentLowerBShape,
     wouldRemoveLowerBSameSessionCalfDuplicate,
     wouldReduceSupportFloorClosureRows,
     wouldReduceSetBumps,
@@ -932,7 +1175,7 @@ function buildCalvesFourFourCandidate(input: {
   if (wouldIncreaseCapTrimRows == null) {
     blockedReasons.add("cap_trim_risk_unknown");
   }
-  if (materialityEstimate.status === "unknown") {
+  if (materialityEstimate.status === "unknown" || materialityEstimate.status === "partial") {
     blockedReasons.add("materiality_delta_unknown");
   }
 
@@ -990,13 +1233,11 @@ function buildCalvesFourFourCandidate(input: {
       ? "blocked_by_lower_a_safety"
       : materialityEstimate.status === "worsens"
         ? "blocked_by_materiality_risk"
-        : materialityEstimate.status === "unknown"
+        : materialityEstimate.status === "unknown" || materialityEstimate.status === "partial"
           ? "needs_more_projection"
           : weekOneShapeSafe && !weeksTwoToFourUnprojected
             ? "safe_to_trial_behavior"
-            : weeksTwoToFourUnprojected && !weekOneShapeSafe
-              ? "blocked_by_accumulation_projection"
-              : "needs_more_projection";
+            : "needs_more_projection";
 
   return {
     status,

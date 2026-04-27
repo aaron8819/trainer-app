@@ -2482,13 +2482,33 @@ describe("buildPlannerOnlyDryRunSummary", () => {
                 ],
               },
               materialityEstimate: {
-                status: "unknown",
+                status: "partial",
                 expectedMaterialRepairDelta: null,
                 expectedMajorRepairDelta: null,
                 expectedSuspiciousRepairDelta: null,
                 wouldReduceSupportFloorClosureRows: true,
                 wouldReduceSetBumps: false,
                 wouldIncreaseCapTrimRows: false,
+                removableRows: [
+                  {
+                    category: "support_floor_closure",
+                    slotId: "lower_a",
+                    muscle: "Calves",
+                    exerciseName: "Standing Calf Raise",
+                    reason: "support floor closure",
+                  },
+                  {
+                    category: "duplicate_variant",
+                    slotId: "lower_b",
+                    muscle: "Calves",
+                    exerciseName: "Leg Press Calf Raise + Seated Calf Raise",
+                    reason: "lower_b_single_calf_identity_four_set_candidate_removes_same_session_variant_duplicate",
+                  },
+                ],
+                potentialNewRows: [],
+                stillUnknown: [
+                  "exact_repair_reclassification_requires_full_generation",
+                ],
                 evidence: [
                   "current_materialRepairCount:2",
                   "exact_repair_counter_delta_unknown_without_reprojection",
@@ -2539,7 +2559,8 @@ describe("buildPlannerOnlyDryRunSummary", () => {
       "Weekly projected calf sets: 8",
       "Would remove lower_b duplicate: yes",
       "Lower A safety: pass",
-      "Materiality estimate: unknown",
+      "Materiality estimate: partial",
+      "Expected deltas: material unknown, major unknown, suspicious unknown",
       "Recommendation: needs_more_projection",
       "Remaining blockers: materiality_delta_unknown, weeks_2_to_4_unprojected",
     ]);

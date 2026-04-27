@@ -2271,12 +2271,35 @@ describe("buildMesocycleExplainAuditPayload", () => {
         wouldDisplaceHardPrimary: false,
       },
       materialityEstimate: {
-        status: "unknown",
+        status: "partial",
         expectedMaterialRepairDelta: null,
         expectedMajorRepairDelta: null,
-        expectedSuspiciousRepairDelta: null,
+        expectedSuspiciousRepairDelta: -6,
         wouldReduceSupportFloorClosureRows: true,
         wouldIncreaseCapTrimRows: false,
+        removableRows: expect.arrayContaining([
+          expect.objectContaining({
+            category: "support_floor_closure",
+            slotId: "lower_a",
+            muscle: "Calves",
+            exerciseName: "Standing Calf Raise",
+          }),
+          expect.objectContaining({
+            category: "set_bump",
+            slotId: "lower_a",
+            muscle: "Calves",
+            exerciseName: "Standing Calf Raise",
+          }),
+          expect.objectContaining({
+            category: "duplicate_variant",
+            slotId: "lower_b",
+            muscle: "Calves",
+          }),
+        ]),
+        stillUnknown: expect.arrayContaining([
+          "exact_repair_reclassification_requires_full_generation",
+          "weeks_2_to_4_unprojected",
+        ]),
       },
       policyReadiness: {
         behaviorReadiness: "needs_more_projection",
@@ -2340,10 +2363,13 @@ describe("buildMesocycleExplainAuditPayload", () => {
       status: "blocked",
       lowerASafety: { status: "pass" },
       materialityEstimate: {
-        status: "unknown",
+        status: "partial",
         expectedMaterialRepairDelta: null,
         expectedMajorRepairDelta: null,
-        expectedSuspiciousRepairDelta: null,
+        expectedSuspiciousRepairDelta: -6,
+        stillUnknown: expect.arrayContaining([
+          "exact_repair_reclassification_requires_full_generation",
+        ]),
       },
       policyReadiness: {
         behaviorReadiness: "needs_more_projection",
@@ -2373,6 +2399,16 @@ describe("buildMesocycleExplainAuditPayload", () => {
         expectedMaterialRepairDelta: 0,
         expectedMajorRepairDelta: 0,
         expectedSuspiciousRepairDelta: 0,
+        removableRows: expect.arrayContaining([
+          expect.objectContaining({ category: "support_floor_closure" }),
+          expect.objectContaining({ category: "set_bump" }),
+          expect.objectContaining({ category: "duplicate_variant" }),
+        ]),
+        potentialNewRows: [],
+        stillUnknown: expect.arrayContaining([
+          "weeks_2_to_4_unprojected",
+          "cross_week_progression_unknown",
+        ]),
       },
       policyReadiness: {
         behaviorReadiness: "needs_more_projection",
@@ -2423,6 +2459,13 @@ describe("buildMesocycleExplainAuditPayload", () => {
         expectedMaterialRepairDelta: 0,
         expectedMajorRepairDelta: 0,
         expectedSuspiciousRepairDelta: 0,
+        removableRows: expect.arrayContaining([
+          expect.objectContaining({ category: "support_floor_closure" }),
+          expect.objectContaining({ category: "set_bump" }),
+          expect.objectContaining({ category: "duplicate_variant" }),
+        ]),
+        potentialNewRows: [],
+        stillUnknown: [],
       },
       policyReadiness: {
         behaviorReadiness: "safe_to_trial_behavior",

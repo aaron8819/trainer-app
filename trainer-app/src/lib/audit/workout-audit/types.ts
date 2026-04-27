@@ -814,13 +814,46 @@ export type MesocycleExplainPlannerOnlyDryRun = {
       evidence: string[];
     };
     materialityEstimate: {
-      status: "improves" | "flat" | "worsens" | "unknown";
+      status: "improves" | "flat" | "worsens" | "partial" | "unknown";
       expectedMaterialRepairDelta: number | null;
       expectedMajorRepairDelta: number | null;
       expectedSuspiciousRepairDelta: number | null;
       wouldReduceSupportFloorClosureRows: boolean | null;
       wouldReduceSetBumps: boolean | null;
       wouldIncreaseCapTrimRows: boolean | null;
+      removableRows: Array<{
+        category:
+          | "support_floor_closure"
+          | "set_bump"
+          | "duplicate_variant"
+          | "cap_trim"
+          | "material_repair"
+          | "major_repair"
+          | "suspicious_repair";
+        slotId: string;
+        muscle: string;
+        exerciseName: string | null;
+        reason: string;
+      }>;
+      potentialNewRows: Array<{
+        category:
+          | "cap_trim"
+          | "material_repair"
+          | "major_repair"
+          | "suspicious_repair"
+          | "hard_primary_regression";
+        slotId: string;
+        muscle: string;
+        exerciseName: string | null;
+        risk: "low" | "moderate" | "high" | "unknown";
+        reason: string;
+      }>;
+      stillUnknown: Array<
+        | "exact_repair_reclassification_requires_full_generation"
+        | "weeks_2_to_4_unprojected"
+        | "cross_week_progression_unknown"
+        | "deload_preservation_unknown"
+      >;
       evidence: string[];
     };
     policyReadiness: {

@@ -1286,6 +1286,23 @@ describe("buildPlanningRealitySummary", () => {
                     "missing_accumulation_progression_policy",
                     "deload_distribution_not_projected",
                   ],
+                  limitationCatalog: {
+                    L1: "week_1_evidence_only",
+                    L2: "diagnostic_shadow_policy_not_behavior",
+                  },
+                  evidenceCatalog: {
+                    E1: "upper_a:Chest:hard:direct_required",
+                  },
+                  affectsCatalog: {
+                    A1: {
+                      volumeProgression: true,
+                      exerciseContinuity: true,
+                      setDistribution: true,
+                      fatigueManagement: false,
+                      deloadPreservation: true,
+                      runtimeAdaptation: false,
+                    },
+                  },
                   weeks: [
                     {
                       week: 1,

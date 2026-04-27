@@ -2621,6 +2621,9 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       affectsScoringOrGeneration: false,
       recommendedNextStep: "add_weekly_demand_curve_diagnostic",
     });
+    expect(policy?.limitationCatalog).toEqual(expect.any(Object));
+    expect(policy?.evidenceCatalog).toEqual(expect.any(Object));
+    expect(policy?.affectsCatalog).toEqual(expect.any(Object));
     expect(policy?.limitations).toEqual(
       expect.arrayContaining([
         "weeks_2_to_4_unprojected",
@@ -2633,6 +2636,9 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
         "missing_deload_set_reduction_projection",
       ]),
     );
+    if (!policy) {
+      throw new Error("Expected preselectionDistributionPolicyByWeek");
+    }
     const policyWeekOne = policy?.weeks.find((week) => week.week === 1);
     expect(policyWeekOne).toMatchObject({
       phase: "accumulation",
@@ -2641,6 +2647,30 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
     });
     const weekOneMusclePolicies =
       policyWeekOne?.slots.flatMap((slot) => slot.muscleDistributions) ?? [];
+    for (const row of weekOneMusclePolicies) {
+      expect(policy.affectsCatalog[row.affectsRef]).toEqual(expect.any(Object));
+      for (const ref of row.evidenceRefs) {
+        expect(policy.evidenceCatalog[ref]).toEqual(expect.any(String));
+      }
+      for (const ref of row.limitationRefs) {
+        expect(policy.limitationCatalog[ref]).toEqual(expect.any(String));
+      }
+    }
+    const resolveAffects = (
+      row: (typeof weekOneMusclePolicies)[number] | undefined,
+    ) => (row ? policy.affectsCatalog[row.affectsRef] : undefined);
+    const resolveEvidence = (
+      row: (typeof weekOneMusclePolicies)[number] | undefined,
+    ) => row?.evidenceRefs.map((ref) => policy.evidenceCatalog[ref]) ?? [];
+    const resolveLimitations = (
+      row: (typeof weekOneMusclePolicies)[number] | undefined,
+    ) => row?.limitationRefs.map((ref) => policy.limitationCatalog[ref]) ?? [];
+    const chestPolicy = weekOneMusclePolicies.find(
+      (row) => row.muscle === "Chest" && row.targetStatus === "hard",
+    );
+    const hamstringsPolicy = weekOneMusclePolicies.find(
+      (row) => row.muscle === "Hamstrings" && row.targetStatus === "hard",
+    );
     expect(weekOneMusclePolicies).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -2649,11 +2679,9 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
           role: "primary",
           demandType: "direct_required",
           preferredSetSplit: "two_distinct_exercises",
-          affects: expect.objectContaining({
-            volumeProgression: true,
-            setDistribution: true,
-            runtimeAdaptation: false,
-          }),
+          affectsRef: expect.any(String),
+          evidenceRefs: expect.any(Array),
+          limitationRefs: expect.any(Array),
         }),
         expect.objectContaining({
           muscle: "Hamstrings",
@@ -2661,9 +2689,9 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
           role: "primary",
           demandType: "direct_required",
           preferredSetSplit: "two_distinct_exercises",
-          affects: expect.objectContaining({
-            fatigueManagement: true,
-          }),
+          affectsRef: expect.any(String),
+          evidenceRefs: expect.any(Array),
+          limitationRefs: expect.any(Array),
         }),
         expect.objectContaining({
           muscle: "Side Delts",
@@ -2675,6 +2703,30 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
           muscle: "Calves",
           targetStatus: "soft",
         }),
+      ]),
+    );
+    expect(resolveAffects(chestPolicy)).toEqual(
+      expect.objectContaining({
+        volumeProgression: true,
+        setDistribution: true,
+        runtimeAdaptation: false,
+      }),
+    );
+    expect(resolveAffects(hamstringsPolicy)).toEqual(
+      expect.objectContaining({
+        fatigueManagement: true,
+      }),
+    );
+    expect(resolveEvidence(chestPolicy)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("projectedDelivery:Chest"),
+      ]),
+    );
+    expect(resolveLimitations(chestPolicy)).toEqual(
+      expect.arrayContaining([
+        "week_1_evidence_only",
+        "diagnostic_shadow_policy_not_behavior",
+        "does_not_affect_scoring_generation_repair_seed_or_runtime",
       ]),
     );
     expect(policy?.weeks.filter((week) => [2, 3, 4].includes(week.week))).toEqual(

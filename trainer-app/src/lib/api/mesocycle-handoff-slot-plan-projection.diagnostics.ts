@@ -539,6 +539,19 @@ export type PreselectionDistributionPolicyByWeek = {
   readOnly: true;
   affectsScoringOrGeneration: false;
   limitations: string[];
+  limitationCatalog: Record<string, string>;
+  evidenceCatalog: Record<string, string>;
+  affectsCatalog: Record<
+    string,
+    {
+      volumeProgression: boolean;
+      exerciseContinuity: boolean;
+      setDistribution: boolean;
+      fatigueManagement: boolean;
+      deloadPreservation: boolean;
+      runtimeAdaptation: boolean;
+    }
+  >;
   weeks: Array<{
     week: number;
     phase: "accumulation" | "peak" | "deload" | "unknown";
@@ -587,16 +600,9 @@ export type PreselectionDistributionPolicyByWeek = {
           | "discourage_if_alternative_exists"
           | "block_duplicate_if_alternative_exists";
         unresolvedBehavior: "leave_unresolved" | "allow_repair_safety_net";
-        affects: {
-          volumeProgression: boolean;
-          exerciseContinuity: boolean;
-          setDistribution: boolean;
-          fatigueManagement: boolean;
-          deloadPreservation: boolean;
-          runtimeAdaptation: boolean;
-        };
-        evidence: string[];
-        limitations: string[];
+        affectsRef: string;
+        evidenceRefs: string[];
+        limitationRefs: string[];
       }>;
     }>;
     weekLevelWarnings: string[];
@@ -3104,6 +3110,25 @@ type DistributionPolicyWeek =
 type DistributionPolicySlot = DistributionPolicyWeek["slots"][number];
 type DistributionPolicyMuscle =
   DistributionPolicySlot["muscleDistributions"][number];
+type DistributionPolicyAffects =
+  PreselectionDistributionPolicyByWeek["affectsCatalog"][string];
+type ExpandedDistributionPolicyMuscle = Omit<
+  DistributionPolicyMuscle,
+  "affectsRef" | "evidenceRefs" | "limitationRefs"
+> & {
+  affects: DistributionPolicyAffects;
+  evidence: string[];
+  limitations: string[];
+};
+type ExpandedDistributionPolicySlot = Omit<
+  DistributionPolicySlot,
+  "muscleDistributions"
+> & {
+  muscleDistributions: ExpandedDistributionPolicyMuscle[];
+};
+type ExpandedDistributionPolicyWeek = Omit<DistributionPolicyWeek, "slots"> & {
+  slots: ExpandedDistributionPolicySlot[];
+};
 type SlotMusclePrescription =
   SlotPrescriptionIntent["musclePrescriptions"][number];
 type SetDistributionPolicy = SetDistributionIntent["musclePolicies"][number];
@@ -3263,7 +3288,7 @@ function buildWeekOnePolicySlots(input: {
   projectedDelivery: ReadonlyArray<ProjectedDeliveryDiagnostic>;
   duplicateExerciseReuse: ReadonlyArray<DuplicateExerciseReuseDiagnostic>;
   warnings: SlotPlanPlanningRealityDiagnostic["warnings"];
-}): DistributionPolicySlot[] {
+}): ExpandedDistributionPolicySlot[] {
   const prescriptionBySlotId = new Map(
     input.slotPrescriptionIntents.map((slot) => [slot.slotId, slot]),
   );
@@ -3404,7 +3429,7 @@ function buildUnprojectedWeek(input: {
   projectionStatus: DistributionPolicyWeek["projectionStatus"];
   weekScope: DistributionPolicyWeek["weekScope"];
   warnings: string[];
-}): DistributionPolicyWeek {
+}): ExpandedDistributionPolicyWeek {
   return {
     week: input.week,
     phase: input.phase,
@@ -3412,6 +3437,91 @@ function buildUnprojectedWeek(input: {
     weekScope: input.weekScope,
     slots: [],
     weekLevelWarnings: input.warnings,
+  };
+}
+
+function buildStringCatalog(prefix: string, values: ReadonlyArray<string>): {
+  catalog: Record<string, string>;
+  refsByValue: Map<string, string>;
+} {
+  const catalog: Record<string, string> = {};
+  const refsByValue = new Map<string, string>();
+
+  for (const value of values) {
+    if (value.trim().length === 0 || refsByValue.has(value)) {
+      continue;
+    }
+    const ref = `${prefix}${refsByValue.size + 1}`;
+    refsByValue.set(value, ref);
+    catalog[ref] = value;
+  }
+
+  return { catalog, refsByValue };
+}
+
+function getAffectsCatalogKey(affects: DistributionPolicyAffects): string {
+  return [
+    affects.volumeProgression,
+    affects.exerciseContinuity,
+    affects.setDistribution,
+    affects.fatigueManagement,
+    affects.deloadPreservation,
+    affects.runtimeAdaptation,
+  ].map((value) => (value ? "1" : "0")).join("");
+}
+
+function compactDistributionPolicyWeeks(
+  weeks: ReadonlyArray<ExpandedDistributionPolicyWeek>,
+): Pick<
+  PreselectionDistributionPolicyByWeek,
+  "weeks" | "limitationCatalog" | "evidenceCatalog" | "affectsCatalog"
+> {
+  const muscleRows = weeks.flatMap((week) =>
+    week.slots.flatMap((slot) => slot.muscleDistributions),
+  );
+  const { catalog: limitationCatalog, refsByValue: limitationRefsByValue } =
+    buildStringCatalog(
+      "L",
+      muscleRows.flatMap((row) => row.limitations),
+    );
+  const { catalog: evidenceCatalog, refsByValue: evidenceRefsByValue } =
+    buildStringCatalog(
+      "E",
+      muscleRows.flatMap((row) => row.evidence),
+    );
+  const affectsCatalog: PreselectionDistributionPolicyByWeek["affectsCatalog"] =
+    {};
+  const affectsRefsByKey = new Map<string, string>();
+
+  for (const row of muscleRows) {
+    const key = getAffectsCatalogKey(row.affects);
+    if (affectsRefsByKey.has(key)) {
+      continue;
+    }
+    const ref = `A${affectsRefsByKey.size + 1}`;
+    affectsRefsByKey.set(key, ref);
+    affectsCatalog[ref] = row.affects;
+  }
+
+  return {
+    limitationCatalog,
+    evidenceCatalog,
+    affectsCatalog,
+    weeks: weeks.map((week) => ({
+      ...week,
+      slots: week.slots.map((slot) => ({
+        ...slot,
+        muscleDistributions: slot.muscleDistributions.map((row) => {
+          const { affects, evidence, limitations, ...rest } = row;
+          return {
+            ...rest,
+            affectsRef: affectsRefsByKey.get(getAffectsCatalogKey(affects))!,
+            evidenceRefs: evidence.map((entry) => evidenceRefsByValue.get(entry)!),
+            limitationRefs: limitations.map((entry) => limitationRefsByValue.get(entry)!),
+          };
+        }),
+      })),
+    })),
   };
 }
 
@@ -7188,7 +7298,7 @@ function buildPreselectionDistributionPolicyByWeek(input: {
     "missing_deload_set_reduction_projection",
   ];
 
-  const weeks: DistributionPolicyWeek[] = [
+  const weeks: ExpandedDistributionPolicyWeek[] = [
     {
       week: 1,
       phase: "accumulation",
@@ -7223,6 +7333,7 @@ function buildPreselectionDistributionPolicyByWeek(input: {
       warnings: deloadWarnings,
     }),
   );
+  const compactPolicy = compactDistributionPolicyWeeks(weeks);
 
   return {
     mesocycleId: getDiagnosticMesocycleId(input.activeMesocycle),
@@ -7241,7 +7352,10 @@ function buildPreselectionDistributionPolicyByWeek(input: {
       "missing_deload_identity_preservation_policy",
       "missing_deload_set_reduction_projection",
     ],
-    weeks,
+    limitationCatalog: compactPolicy.limitationCatalog,
+    evidenceCatalog: compactPolicy.evidenceCatalog,
+    affectsCatalog: compactPolicy.affectsCatalog,
+    weeks: compactPolicy.weeks,
     candidateBehaviorSlices: buildCandidateBehaviorSlices(),
     recommendedNextStep: "add_weekly_demand_curve_diagnostic",
   };

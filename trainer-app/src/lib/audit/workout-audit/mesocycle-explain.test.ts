@@ -764,6 +764,24 @@ describe("buildMesocycleExplainAuditPayload", () => {
               "missing_deload_identity_preservation_policy",
               "missing_deload_set_reduction_projection",
             ],
+            limitationCatalog: {
+              L1: "week_1_evidence_only",
+              L2: "diagnostic_shadow_policy_not_behavior",
+            },
+            evidenceCatalog: {
+              E1: "upper_a:Chest:hard:direct_required",
+              E2: "upper_a:Incline Dumbbell Press:Chest:57.1%",
+            },
+            affectsCatalog: {
+              A1: {
+                volumeProgression: true,
+                exerciseContinuity: true,
+                setDistribution: true,
+                fatigueManagement: false,
+                deloadPreservation: true,
+                runtimeAdaptation: false,
+              },
+            },
             weeks: [
               {
                 week: 1,
@@ -789,22 +807,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
                         preferredSetSplit: "two_distinct_exercises",
                         duplicatePolicy: "discourage_if_alternative_exists",
                         unresolvedBehavior: "allow_repair_safety_net",
-                        affects: {
-                          volumeProgression: true,
-                          exerciseContinuity: true,
-                          setDistribution: true,
-                          fatigueManagement: false,
-                          deloadPreservation: true,
-                          runtimeAdaptation: false,
-                        },
-                        evidence: [
-                          "upper_a:Chest:hard:direct_required",
-                          "upper_a:Incline Dumbbell Press:Chest:57.1%",
-                        ],
-                        limitations: [
-                          "week_1_evidence_only",
-                          "diagnostic_shadow_policy_not_behavior",
-                        ],
+                        affectsRef: "A1",
+                        evidenceRefs: ["E1", "E2"],
+                        limitationRefs: ["L1", "L2"],
                       },
                     ],
                   },

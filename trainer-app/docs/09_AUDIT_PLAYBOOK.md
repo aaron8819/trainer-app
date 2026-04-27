@@ -353,6 +353,18 @@ npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner 
 - `plannerOnlyDryRun.projectionComparisons` is the compact comparison block for this rerun. Read `baselineRepaired`, `plannerOnlyBase`, `plannerOnlyWithOverride`, `deltas.overrideVsBaselineRepaired`, and `deltas.overrideVsPlannerOnlyBase` for the actual material/major/suspicious, concentration, cap-trim, duplicate, support-floor, set-bump, weak-preselection, forbidden-primary, and key-acceptance impact.
 - The flagged comparison also includes a compact read-only `calvesFourFourCandidate` diagnostic backed by the override rerun. Its `lowerASafety`, `materialityEstimate`, and `policyReadiness` fields separate Week 1 slot safety from actual repair-materiality deltas and accumulation-week projection gaps. Treat `weeks_2_to_4_unprojected`, worsened material/major/suspicious/cap/concentration metrics, lower_a safety failures, or Hamstrings-route risk as blockers; this field must not be read as behavior approval unless it reports `recommendation="safe_to_trial_behavior"` and no remaining blockers.
 
+Experimental planner-only no-repair comparison:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com --operator-debug --planner-only-no-repair --compare-repaired
+```
+
+- Adds `mesocycleExplain.plannerOnlyNoRepair` only for flagged runs.
+- Runs a second read-only projection pass from the first-principles upper/lower lane plan with downstream repair/shaping disabled.
+- Disabled in this experimental pass: support-floor closure, weekly obligation closure, program-quality identity changes, late set bumping, isolation injection/accessory-lane rescue, clean-curl repair preference, duplicate/program-quality repair shaping, cap trim, MAV trim, forbidden cleanup mutation, and seed/runtime persistence.
+- Kept as validation/reporting only: forbidden-slot checks, cap/concentration checks, duplicate checks, unresolved demand reporting, lane satisfaction, weekly muscle totals, and acceptance checks.
+- The payload reports unresolved demand and validation failures instead of fixing them. It must not update accepted mesocycles, `slotPlanSeedJson`, receipts, runtime replay, planned workouts, or performed workouts.
+
 Optional targeting:
 
 ```powershell

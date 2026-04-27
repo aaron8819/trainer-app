@@ -1986,6 +1986,49 @@ describe("projectSuccessorSlotPlansFromSnapshot", () => {
       .toBeGreaterThanOrEqual(8);
   });
 
+  it("runs experimental planner-only no-repair without downstream repair shaping", () => {
+    composeIntentSessionFromMappedContextSpy.mockClear();
+
+    const projected = projectSuccessorSlotPlansFromSnapshot({
+      userId: "user-1",
+      source: buildSource(),
+      design: buildDesign(buildRepairSensitiveDraft()),
+      snapshot: buildRepairSensitiveSnapshot(),
+      now: new Date("2026-03-19T12:00:00.000Z"),
+      experimentalPlannerOnlyNoRepair: true,
+    });
+
+    const slotPlans = getProjectedSlotPlans(projected);
+    const diagnostic = projected.diagnostics?.planningReality;
+    const composeInputs = composeIntentSessionFromMappedContextSpy.mock.calls.map(
+      ([, input]) => input,
+    );
+
+    expect(slotPlans).toHaveLength(4);
+    expect(diagnostic?.finalSlotPlan).toEqual(diagnostic?.initialSlotComposition);
+    expect(
+      diagnostic?.repairMateriality.filter((row) => row.materiality !== "none"),
+    ).toEqual([]);
+    expect(
+      diagnostic?.repairMaterialityAfterShadowAllocation.filter(
+        (row) => row.materiality !== "none",
+      ),
+    ).toEqual([]);
+    expect(projected.diagnostics?.programQuality?.appliedDiagnostics).toEqual([]);
+    expect(
+      composeInputs.some(
+        (input) =>
+          Array.isArray(input.projectionRepairMuscles) &&
+          input.projectionRepairMuscles.length > 0,
+      ),
+    ).toBe(false);
+    expect(
+      diagnostic?.allocationVsFinalDelta.some(
+        (row) => row.underAllocatedMuscles.length > 0,
+      ),
+    ).toBe(true);
+  });
+
   it("keeps active mesocycle reseed projection callsite override-free", () => {
     const source = readFileSync(
       "src/lib/audit/workout-audit/active-mesocycle-slot-reseed.ts",

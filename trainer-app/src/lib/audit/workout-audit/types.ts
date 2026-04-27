@@ -76,6 +76,7 @@ export type WorkoutAuditRequest = {
   projectionArtifactPath?: string;
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;
   plannerOnlyDryRun?: boolean;
+  plannerOnlyNoRepair?: boolean;
   compareRepaired?: boolean;
   sanitizationLevel?: "none" | "pii-safe";
 };
@@ -118,6 +119,10 @@ export type WorkoutAuditContext = {
       enabled: true;
       compareRepaired: true;
       plannerOnlyPolicyOverride: PlannerOnlyPolicyOverride;
+    };
+    plannerOnlyNoRepair?: {
+      enabled: true;
+      compareRepaired: boolean;
     };
   };
 };
@@ -934,6 +939,49 @@ export type MesocycleExplainPlannerOnlyDryRun = {
   };
 };
 
+export type MesocycleExplainPlannerOnlyNoRepair = {
+  enabled: true;
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  canReplaceRepairedProjection: boolean;
+  summary: {
+    status: "pass" | "partial" | "fail";
+    targetLanesSatisfied: number;
+    targetLanesMissing: number;
+    unresolvedDemandCount: number;
+    validationFailureCount: number;
+  };
+  slotPlans: Array<{
+    slotId: string;
+    exercises: Array<{
+      exerciseName: string;
+      lane: string;
+      exerciseClass: string;
+      sets: number;
+    }>;
+    missingLanes: string[];
+    unresolvedDemand: string[];
+    validationFailures: string[];
+  }>;
+  weeklyMuscleTotals: Array<{
+    muscle: string;
+    projectedEffectiveSets: number;
+    targetMin: number | null;
+    targetPreferred: number | null;
+    status: "below" | "within" | "above" | "diagnostic";
+  }>;
+  acceptanceChecks: Array<{
+    check: string;
+    status: "pass" | "fail" | "partial" | "unknown";
+    evidence: string[];
+  }>;
+  comparisonToRepaired?: {
+    repairedPasses: boolean;
+    noRepairPasses: boolean;
+    mainGaps: string[];
+  };
+};
+
 export type MesocycleExplainAuditPayload = {
   version: typeof MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION;
   ownerEmail?: string;
@@ -999,6 +1047,7 @@ export type MesocycleExplainAuditPayload = {
   };
   limitations: string[];
   plannerOnlyDryRun?: MesocycleExplainPlannerOnlyDryRun;
+  plannerOnlyNoRepair?: MesocycleExplainPlannerOnlyNoRepair;
 };
 
 export type WorkoutAuditRun = {

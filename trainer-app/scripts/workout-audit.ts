@@ -231,6 +231,9 @@ type PlannerOnlyDryRunSummaryArtifact = {
     plannerOnlyDryRun?:
       | NonNullable<NonNullable<WorkoutAuditArtifact["mesocycleExplain"]>["plannerOnlyDryRun"]>
       | null;
+    plannerOnlyNoRepair?:
+      | NonNullable<NonNullable<WorkoutAuditArtifact["mesocycleExplain"]>["plannerOnlyNoRepair"]>
+      | null;
   } | null;
 };
 
@@ -1986,6 +1989,43 @@ export function buildProjectedWeekDebugSummary(input: {
   return lines;
 }
 
+export function buildPlannerOnlyNoRepairSummary(input: {
+  artifact: PlannerOnlyDryRunSummaryArtifact;
+}): string[] | null {
+  const noRepair = input.artifact.mesocycleExplain?.plannerOnlyNoRepair;
+  if (!noRepair) {
+    return null;
+  }
+
+  const failingChecks = noRepair.acceptanceChecks
+    .filter((check) => check.status === "fail" || check.status === "partial")
+    .slice(0, 4)
+    .map((check) => `${check.check}:${check.status}`)
+    .join("; ") || "none";
+  const unresolved = noRepair.slotPlans
+    .flatMap((slot) =>
+      slot.unresolvedDemand.slice(0, 2).map((row) => `${slot.slotId}:${row}`)
+    )
+    .slice(0, 6)
+    .join("; ") || "none";
+  const missingLanes = noRepair.slotPlans
+    .flatMap((slot) =>
+      slot.missingLanes.slice(0, 2).map((row) => `${slot.slotId}:${row}`)
+    )
+    .slice(0, 6)
+    .join("; ") || "none";
+  const comparison = noRepair.comparisonToRepaired
+    ? ` repaired_passes=${formatBooleanFlag(noRepair.comparisonToRepaired.repairedPasses)} no_repair_passes=${formatBooleanFlag(noRepair.comparisonToRepaired.noRepairPasses)}`
+    : "";
+
+  return [
+    `[workout-audit:planner-only-no-repair] status=${noRepair.summary.status} can_replace=${formatBooleanFlag(noRepair.canReplaceRepairedProjection)} lanes_satisfied=${noRepair.summary.targetLanesSatisfied} lanes_missing=${noRepair.summary.targetLanesMissing} unresolved=${noRepair.summary.unresolvedDemandCount} validation_failures=${noRepair.summary.validationFailureCount}${comparison}`,
+    `[workout-audit:planner-only-no-repair] missing_lanes=${missingLanes}`,
+    `[workout-audit:planner-only-no-repair] unresolved_demand=${unresolved}`,
+    `[workout-audit:planner-only-no-repair] acceptance_failures=${failingChecks}`,
+  ];
+}
+
 export function buildCurrentWeekAuditOperatorSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "projectedWeekVolume">;
 }): string[] | null {
@@ -2064,6 +2104,7 @@ async function main(): Promise<void> {
   const shouldApplyBoundedReseed = args["apply-bounded-reseed"] === true;
   const shouldAcceptSlotPlanUpgrade = args["accept-slot-plan-upgrade"] === true;
   const shouldRunPlannerOnlyDryRun = args["planner-only-dry-run"] === true;
+  const shouldRunPlannerOnlyNoRepair = args["planner-only-no-repair"] === true;
   const shouldCompareRepaired = args["compare-repaired"] === true;
   if (shouldRunPlannerOnlyDryRun && !shouldCompareRepaired) {
     throw new Error("--planner-only-dry-run currently requires --compare-repaired");
@@ -2127,6 +2168,7 @@ async function main(): Promise<void> {
         : undefined,
     plannerDiagnosticsMode: args.debug === true ? ("debug" as const) : ("standard" as const),
     plannerOnlyDryRun: shouldRunPlannerOnlyDryRun ? true : undefined,
+    plannerOnlyNoRepair: shouldRunPlannerOnlyNoRepair ? true : undefined,
     compareRepaired: shouldCompareRepaired ? true : undefined,
     sanitizationLevel: args.sanitization === "pii-safe" ? ("pii-safe" as const) : ("none" as const),
   };
@@ -2224,6 +2266,14 @@ async function main(): Promise<void> {
   });
   if (plannerOnlyDryRunSummary) {
     for (const line of plannerOnlyDryRunSummary) {
+      console.log(line);
+    }
+  }
+  const plannerOnlyNoRepairSummary = buildPlannerOnlyNoRepairSummary({
+    artifact,
+  });
+  if (plannerOnlyNoRepairSummary) {
+    for (const line of plannerOnlyNoRepairSummary) {
       console.log(line);
     }
   }

@@ -130,6 +130,7 @@ export async function runWorkoutAuditGeneration(
         retrospectiveMesocycleId: context.mesocycleExplain?.retrospectiveMesocycleId,
         plannerDiagnosticsMode: context.plannerDiagnosticsMode,
         plannerOnlyDryRun: context.mesocycleExplain?.plannerOnlyDryRun,
+        plannerOnlyNoRepair: context.mesocycleExplain?.plannerOnlyNoRepair,
       }),
     };
   }

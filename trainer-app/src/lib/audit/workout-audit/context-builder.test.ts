@@ -187,4 +187,33 @@ describe("buildWorkoutAuditContext", () => {
       }),
     ).rejects.toThrow("--planner-only-dry-run currently requires --compare-repaired");
   });
+
+  it("passes planner-only no-repair only for flagged mesocycle-explain runs", async () => {
+    const normalContext = await buildWorkoutAuditContext({
+      mode: "mesocycle-explain",
+      userId: "user-1",
+    });
+    const flaggedContext = await buildWorkoutAuditContext({
+      mode: "mesocycle-explain",
+      userId: "user-1",
+      plannerOnlyNoRepair: true,
+      compareRepaired: true,
+    });
+
+    expect(normalContext.mesocycleExplain?.plannerOnlyNoRepair).toBeUndefined();
+    expect(flaggedContext.mesocycleExplain?.plannerOnlyNoRepair).toEqual({
+      enabled: true,
+      compareRepaired: true,
+    });
+  });
+
+  it("rejects planner-only no-repair outside mesocycle-explain", async () => {
+    await expect(
+      buildWorkoutAuditContext({
+        mode: "future-week",
+        userId: "user-1",
+        plannerOnlyNoRepair: true,
+      }),
+    ).rejects.toThrow("--planner-only-no-repair requires --mode mesocycle-explain");
+  });
 });

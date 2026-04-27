@@ -60,6 +60,7 @@ import type {
   MesocycleExplainPlannerOnlyDryRun,
   MesocycleExplainProjectionComparisonSnapshot,
   MesocycleExplainProjectionMetricDelta,
+  MesocycleExplainPlannerOnlyNoRepair,
   MesocycleExplainRealityWorkout,
   MesocycleExplainReasonSource,
   MesocycleExplainSlotRow,
@@ -2319,6 +2320,311 @@ export function buildPlannerOnlyDryRunComparison(
   };
 }
 
+function classifyPlannerOnlyExercise(input: {
+  exercise: SlotCompositionSnapshot["exercises"][number];
+}): { lane: string; exerciseClass: string } {
+  const exercise = input.exercise;
+  const name = exercise.exerciseName.toLowerCase();
+  const patterns = exercise.movementPatterns.map((pattern) =>
+    pattern.toLowerCase()
+  );
+  const primaryMuscles = exercise.primaryMuscles.map((muscle) =>
+    muscle.toLowerCase()
+  );
+
+  if (name.includes("calf")) {
+    return { lane: "calves", exerciseClass: "calf_raise" };
+  }
+  if (name.includes("leg curl") || name.includes("hamstring curl") || name.includes("nordic")) {
+    return { lane: "knee_flexion_curl", exerciseClass: "knee_flexion_curl" };
+  }
+  if (patterns.some((pattern) => pattern.includes("hinge")) || name.includes("deadlift") || name.includes("rdl")) {
+    return { lane: "hinge_anchor", exerciseClass: "hinge" };
+  }
+  if (name.includes("leg extension")) {
+    return { lane: "quad_isolation", exerciseClass: "leg_extension" };
+  }
+  if (patterns.some((pattern) => pattern.includes("squat")) || name.includes("squat") || name.includes("leg press")) {
+    return { lane: "squat_anchor", exerciseClass: "squat_or_quad_support" };
+  }
+  if (name.includes("lateral raise")) {
+    return { lane: "side_delt_isolation", exerciseClass: "lateral_raise" };
+  }
+  if (name.includes("rear delt") || name.includes("reverse") || name.includes("face pull")) {
+    return { lane: "rear_delt", exerciseClass: "rear_delt_isolation" };
+  }
+  if (name.includes("triceps") || name.includes("pressdown")) {
+    return { lane: "triceps", exerciseClass: "triceps_isolation" };
+  }
+  if (name.includes("curl") && primaryMuscles.includes("biceps")) {
+    return { lane: "biceps", exerciseClass: "biceps_curl" };
+  }
+  if (patterns.some((pattern) => pattern.includes("vertical_pull")) || name.includes("pulldown") || name.includes("pull-up")) {
+    return { lane: "vertical_pull", exerciseClass: "vertical_pull" };
+  }
+  if (patterns.some((pattern) => pattern.includes("horizontal_pull")) || name.includes("row")) {
+    return { lane: "row_anchor", exerciseClass: "row" };
+  }
+  if (patterns.some((pattern) => pattern.includes("vertical_push")) || name.includes("shoulder press") || name.includes("overhead press")) {
+    return { lane: "vertical_press", exerciseClass: "vertical_press" };
+  }
+  if (name.includes("fly") || name.includes("crossover")) {
+    return { lane: "chest_secondary", exerciseClass: "chest_isolation" };
+  }
+  if (primaryMuscles.includes("chest") || name.includes("press") || name.includes("bench")) {
+    return { lane: "chest_anchor", exerciseClass: "chest_press" };
+  }
+  return { lane: "unclassified", exerciseClass: "unclassified" };
+}
+
+function buildNoRepairWeeklyMuscleTotals(
+  planningReality: PlanningRealityDiagnostic
+): MesocycleExplainPlannerOnlyNoRepair["weeklyMuscleTotals"] {
+  const totals = sumSlotStimulusByMuscle(planningReality.finalSlotPlan);
+  const targetByMuscle = new Map(
+    planningReality.shadowWeeklyDemand.map((row) => [row.muscle, row])
+  );
+  const fallbackTargetByMuscle = new Map(
+    planningReality.weeklyMuscleDemand.map((row) => [row.muscle, row])
+  );
+  const muscles = uniqueSorted([
+    ...Array.from(totals.keys()),
+    ...Array.from(targetByMuscle.keys()),
+    ...Array.from(fallbackTargetByMuscle.keys()),
+  ]);
+
+  return muscles.map((muscle) => {
+    const projectedEffectiveSets = roundOne(totals.get(muscle) ?? 0);
+    const target = targetByMuscle.get(muscle);
+    const fallback = fallbackTargetByMuscle.get(muscle);
+    const targetMin = target?.minEffectiveSets ?? fallback?.mev ?? null;
+    const targetPreferred =
+      target?.preferredEffectiveSets ?? fallback?.preferredTarget ?? null;
+    const targetMax = target?.maxEffectiveSets ?? fallback?.mav ?? null;
+    const status =
+      targetMin == null && targetPreferred == null && targetMax == null
+        ? "diagnostic"
+        : targetMin != null && projectedEffectiveSets < targetMin
+          ? "below"
+          : targetMax != null && projectedEffectiveSets > targetMax
+            ? "above"
+            : "within";
+
+    return {
+      muscle,
+      projectedEffectiveSets,
+      targetMin,
+      targetPreferred,
+      status,
+    };
+  });
+}
+
+function buildNoRepairAcceptanceChecks(
+  planningReality: PlanningRealityDiagnostic,
+  weeklyMuscleTotals: MesocycleExplainPlannerOnlyNoRepair["weeklyMuscleTotals"]
+): MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"] {
+  const comparisonRows = weeklyMuscleTotals.map((row) => ({
+    muscle: row.muscle,
+    repairedEffectiveSets: null,
+    plannerOnlyEffectiveSets: row.projectedEffectiveSets,
+    targetStatus:
+      row.status === "diagnostic" ? ("unknown" as const) : row.status,
+    evidence: [
+      `planner:${row.projectedEffectiveSets}`,
+      `min:${row.targetMin ?? "unknown"}`,
+      `preferred:${row.targetPreferred ?? "unknown"}`,
+    ],
+  }));
+  return buildPlannerOnlyAcceptanceChecks(planningReality, comparisonRows);
+}
+
+function buildNoRepairSlotPlans(
+  planningReality: PlanningRealityDiagnostic
+): MesocycleExplainPlannerOnlyNoRepair["slotPlans"] {
+  const topDownSlots = new Map(
+    planningReality.topDownMesocyclePlan?.slotTargets.map((slot) => [
+      slot.slotId,
+      slot,
+    ]) ?? []
+  );
+  const allocationDeltaBySlot = new Map(
+    planningReality.allocationVsFinalDelta.map((delta) => [delta.slotId, delta])
+  );
+  const unresolvedCausesBySlot = new Map<string, string[]>();
+  for (const row of planningReality.exerciseClassUnresolvedCauses ?? []) {
+    if (row.finalAlignment !== "missing" && row.finalAlignment !== "partial" && row.finalAlignment !== "violated") {
+      continue;
+    }
+    const existing = unresolvedCausesBySlot.get(row.slotId) ?? [];
+    existing.push(
+      `${row.muscle}:${row.finalAlignment}:${row.recommendedOwner}:${row.behaviorReadiness}`
+    );
+    unresolvedCausesBySlot.set(row.slotId, existing);
+  }
+
+  return planningReality.finalSlotPlan.map((slot) => {
+    const target = topDownSlots.get(slot.slotId);
+    const missingLanes =
+      target?.requiredClassLanes
+        .filter((lane) => lane.currentStatus !== "matched")
+        .map((lane) => `${lane.lane}:${lane.currentStatus}`) ?? [];
+    const allocationDelta = allocationDeltaBySlot.get(slot.slotId);
+    const unresolvedDemand = uniqueSorted([
+      ...(allocationDelta?.underAllocatedMuscles ?? []).map((row) => {
+        const shortfall = row.shortfall == null ? "unknown" : roundOne(row.shortfall);
+        return `${row.muscle}:shortfall_${shortfall}`;
+      }),
+      ...(unresolvedCausesBySlot.get(slot.slotId) ?? []),
+      ...missingLanes.map((lane) => `missing_lane:${lane}`),
+    ]);
+    const validationFailures = uniqueSorted([
+      ...buildPlannerOnlyDuplicateViolations(planningReality, slot.slotId),
+      ...buildPlannerOnlySetDistributionViolations(planningReality, slot),
+    ]);
+
+    return {
+      slotId: slot.slotId,
+      exercises: slot.exercises.map((exercise) => {
+        const classified = classifyPlannerOnlyExercise({ exercise });
+        return {
+          exerciseName: exercise.exerciseName,
+          lane: classified.lane,
+          exerciseClass: classified.exerciseClass,
+          sets: exercise.setCount,
+        };
+      }),
+      missingLanes,
+      unresolvedDemand,
+      validationFailures,
+    };
+  });
+}
+
+function mainNoRepairGaps(input: {
+  slotPlans: MesocycleExplainPlannerOnlyNoRepair["slotPlans"];
+  acceptanceChecks: MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"];
+}): string[] {
+  return uniqueSorted([
+    ...input.slotPlans.flatMap((slot) =>
+      [
+        ...slot.missingLanes.map((row) => `${slot.slotId}:missing:${row}`),
+        ...slot.unresolvedDemand.map((row) => `${slot.slotId}:unresolved:${row}`),
+        ...slot.validationFailures.map((row) => `${slot.slotId}:validation:${row}`),
+      ]
+    ),
+    ...input.acceptanceChecks
+      .filter((check) => check.status === "fail" || check.status === "partial")
+      .map((check) => `${check.check}:${check.status}`),
+  ]).slice(0, 12);
+}
+
+export function buildPlannerOnlyNoRepairComparison(input: {
+  noRepairPlanningReality: PlanningRealityDiagnostic | undefined;
+  repairedPlanningReality?: PlanningRealityDiagnostic;
+  compareRepaired: boolean;
+  repairedProjectionAvailable: boolean;
+}): MesocycleExplainPlannerOnlyNoRepair {
+  const repairedPasses =
+    input.repairedProjectionAvailable &&
+    ((input.repairedPlanningReality?.finalSlotPlan.length ?? 0) > 0 ||
+      input.repairedPlanningReality == null);
+  if (!input.noRepairPlanningReality) {
+    return {
+      enabled: true,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      canReplaceRepairedProjection: false,
+      summary: {
+        status: "fail",
+        targetLanesSatisfied: 0,
+        targetLanesMissing: 1,
+        unresolvedDemandCount: 1,
+        validationFailureCount: 1,
+      },
+      slotPlans: [],
+      weeklyMuscleTotals: [],
+      acceptanceChecks: [
+        {
+          check: "planner-only no-repair planningReality available",
+          status: "fail",
+          evidence: ["planningReality_missing"],
+        },
+      ],
+      ...(input.compareRepaired
+        ? {
+            comparisonToRepaired: {
+              repairedPasses,
+              noRepairPasses: false,
+              mainGaps: ["planningReality_missing"],
+            },
+          }
+        : {}),
+    };
+  }
+
+  const noRepair = input.noRepairPlanningReality;
+  const slotPlans = buildNoRepairSlotPlans(noRepair);
+  const weeklyMuscleTotals = buildNoRepairWeeklyMuscleTotals(noRepair);
+  const acceptanceChecks = buildNoRepairAcceptanceChecks(
+    noRepair,
+    weeklyMuscleTotals
+  );
+  const targetLanesSatisfied =
+    noRepair.topDownMesocyclePlan?.summary.matchedTargetLanes ??
+    slotPlans.reduce((sum, slot) => sum + Math.max(0, slot.exercises.length - slot.missingLanes.length), 0);
+  const explicitMissing =
+    (noRepair.topDownMesocyclePlan?.summary.missingTargetLanes ?? 0) +
+    (noRepair.topDownMesocyclePlan?.summary.partialTargetLanes ?? 0) +
+    slotPlans.reduce((sum, slot) => sum + slot.missingLanes.length, 0);
+  const targetLanesMissing = Math.max(0, explicitMissing);
+  const unresolvedDemandCount = slotPlans.reduce(
+    (sum, slot) => sum + slot.unresolvedDemand.length,
+    0
+  );
+  const validationFailureCount =
+    slotPlans.reduce((sum, slot) => sum + slot.validationFailures.length, 0) +
+    acceptanceChecks.filter((check) => check.status === "fail").length;
+  const canReplaceRepairedProjection =
+    targetLanesMissing === 0 &&
+    unresolvedDemandCount === 0 &&
+    validationFailureCount === 0 &&
+    acceptanceChecks.every((check) => check.status === "pass");
+  const status =
+    canReplaceRepairedProjection
+      ? "pass"
+      : targetLanesSatisfied > 0 && targetLanesMissing > 0
+        ? "partial"
+        : "fail";
+  const gaps = mainNoRepairGaps({ slotPlans, acceptanceChecks });
+
+  return {
+    enabled: true,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    canReplaceRepairedProjection,
+    summary: {
+      status,
+      targetLanesSatisfied,
+      targetLanesMissing,
+      unresolvedDemandCount,
+      validationFailureCount,
+    },
+    slotPlans,
+    weeklyMuscleTotals,
+    acceptanceChecks,
+    ...(input.compareRepaired
+      ? {
+          comparisonToRepaired: {
+            repairedPasses,
+            noRepairPasses: canReplaceRepairedProjection,
+            mainGaps: gaps,
+          },
+        }
+      : {}),
+  };
+}
+
 function buildComparisonKey(slotIndex: number | null, slotId: string | null): string {
   if (slotIndex != null) {
     return `index:${slotIndex}`;
@@ -3139,6 +3445,10 @@ export async function buildMesocycleExplainAuditPayload(input: {
     compareRepaired: true;
     plannerOnlyPolicyOverride?: PlannerOnlyPolicyOverride;
   };
+  plannerOnlyNoRepair?: {
+    enabled: true;
+    compareRepaired: boolean;
+  };
 }): Promise<MesocycleExplainAuditPayload> {
   const sourceMesocycleId = input.sourceMesocycleId ?? (await resolveSourceMesocycleId(input.userId));
   const retrospectiveMesocycleId = input.retrospectiveMesocycleId ?? sourceMesocycleId;
@@ -3186,6 +3496,15 @@ export async function buildMesocycleExplainAuditPayload(input: {
         plannerOnlyPolicyOverride,
       })
     : undefined;
+  const plannerOnlyNoRepairProjection = input.plannerOnlyNoRepair?.enabled
+    ? projectSuccessorSlotPlansFromSnapshot({
+        userId: input.userId,
+        source: sourceProjection,
+        design: previewArtifacts.artifacts.recommendedDesign,
+        snapshot: sourceSnapshot,
+        experimentalPlannerOnlyNoRepair: true,
+      })
+    : undefined;
 
   if ("error" in slotPlanProjection) {
     limitations.push(
@@ -3195,6 +3514,11 @@ export async function buildMesocycleExplainAuditPayload(input: {
   if (plannerOnlyOverrideProjection && "error" in plannerOnlyOverrideProjection) {
     limitations.push(
       `Planner-only override projection could not fully materialize through the canonical handoff projection seam: ${plannerOnlyOverrideProjection.error}`
+    );
+  }
+  if (plannerOnlyNoRepairProjection && "error" in plannerOnlyNoRepairProjection) {
+    limitations.push(
+      `Planner-only no-repair projection reported unresolved demand without repair: ${plannerOnlyNoRepairProjection.error}`
     );
   }
 
@@ -3388,6 +3712,9 @@ export async function buildMesocycleExplainAuditPayload(input: {
   const plannerOnlyOverrideDiagnostics = plannerOnlyOverrideProjection
     ? buildProjectionDiagnostics(plannerOnlyOverrideProjection.diagnostics)
     : undefined;
+  const plannerOnlyNoRepairDiagnostics = plannerOnlyNoRepairProjection
+    ? buildProjectionDiagnostics(plannerOnlyNoRepairProjection.diagnostics)
+    : undefined;
   const plannerOnlyDryRun =
     input.plannerOnlyDryRun?.enabled && input.plannerOnlyDryRun.compareRepaired
       ? buildPlannerOnlyDryRunComparison(
@@ -3397,6 +3724,14 @@ export async function buildMesocycleExplainAuditPayload(input: {
           plannerOnlyOverrideDiagnostics?.planningReality
         )
       : undefined;
+  const plannerOnlyNoRepair = input.plannerOnlyNoRepair?.enabled
+    ? buildPlannerOnlyNoRepairComparison({
+        noRepairPlanningReality: plannerOnlyNoRepairDiagnostics?.planningReality,
+        repairedPlanningReality: projectionDiagnostics.planningReality,
+        compareRepaired: input.plannerOnlyNoRepair.compareRepaired,
+        repairedProjectionAvailable: !("error" in slotPlanProjection),
+      })
+    : undefined;
 
   return {
     version: MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION,
@@ -3499,5 +3834,6 @@ export async function buildMesocycleExplainAuditPayload(input: {
     },
     limitations: Array.from(new Set(limitations)),
     ...(plannerOnlyDryRun ? { plannerOnlyDryRun } : {}),
+    ...(plannerOnlyNoRepair ? { plannerOnlyNoRepair } : {}),
   };
 }

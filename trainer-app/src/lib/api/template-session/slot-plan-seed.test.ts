@@ -72,6 +72,78 @@ describe("resolveRequiredSeededSlotPlan", () => {
     expect(JSON.stringify(seed)).not.toContain("calves_4_4_lower_slot_allocation");
   });
 
+  it("does not serialize planner-only no-repair audit markers into slotPlanSeedJson", () => {
+    const seed = buildMesocycleSlotPlanSeed({
+      slotSequence: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [{ slotId: "upper_a", intent: "UPPER" }],
+      },
+      slotPlans: [
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          experimentalPlannerOnlyNoRepair: true,
+          exercises: [
+            {
+              exerciseId: "bench",
+              name: "Bench Press",
+              role: "CORE_COMPOUND",
+              setCount: 5,
+              experimentalPlannerOnlyNoRepair: true,
+            },
+          ],
+        },
+      ] as never,
+    });
+
+    expect(JSON.stringify(seed)).not.toContain("experimentalPlannerOnlyNoRepair");
+    expect(seed.slots[0]?.exercises[0]).toEqual({
+      exerciseId: "bench",
+      role: "CORE_COMPOUND",
+      setCount: 5,
+    });
+  });
+
+  it("keeps seeded runtime replay deterministic for planner-only no-repair-shaped input", () => {
+    const seed = buildMesocycleSlotPlanSeed({
+      slotSequence: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [{ slotId: "upper_a", intent: "UPPER" }],
+      },
+      slotPlans: [
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          exercises: [
+            {
+              exerciseId: "bench",
+              name: "Bench Press",
+              role: "CORE_COMPOUND",
+              setCount: 5,
+            },
+          ],
+        },
+      ],
+    });
+
+    const first = resolveRequiredSeededSlotPlan({
+      mapped: makeMapped(seed),
+      sessionIntent: "upper",
+      slotId: "upper_a",
+    });
+    const second = resolveRequiredSeededSlotPlan({
+      mapped: makeMapped(seed),
+      sessionIntent: "upper",
+      slotId: "upper_a",
+    });
+
+    expect(first).toEqual(second);
+  });
+
   it("returns explicit set-count overrides for set-aware seeds", () => {
     const resolved = resolveRequiredSeededSlotPlan({
       mapped: makeMapped({

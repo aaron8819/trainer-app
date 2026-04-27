@@ -2275,6 +2275,161 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(mocks.buildMesocycleSlotPlanSeed).toHaveBeenCalledTimes(1);
   });
 
+  it("emits planner-only no-repair only when flagged and leaves normal preview unchanged", async () => {
+    const repairedProjection = mocks.projectSuccessorSlotPlansFromSnapshot();
+    const repairedReality = repairedProjection.diagnostics.planningReality;
+    const noRepairSlots = repairedReality.initialSlotComposition as Array<{
+      slotId: string;
+      intent: string;
+      exercises: Array<{
+        exerciseId: string;
+        exerciseName: string;
+        setCount: number;
+      }>;
+    }>;
+    const noRepairReality = {
+      ...repairedReality,
+      summary: {
+        ...repairedReality.summary,
+        materialRepairCount: 0,
+        majorRepairCount: 0,
+      },
+      finalSlotPlan: repairedReality.initialSlotComposition,
+      allocationVsFinalDelta: repairedReality.allocationVsInitialDelta,
+      repairMateriality: [],
+      repairMaterialityAfterShadowAllocation: [],
+      shadowRepairSummary: {
+        materialRepairCount: 0,
+        majorRepairCount: 0,
+        likelyAvoidableMaterialRepairCount: 0,
+        remainingMaterialRepairCount: 0,
+        likelyAvoidableMajorRepairCount: 0,
+        remainingMajorRepairCount: 0,
+        likelyAvoidableByMuscle: {},
+        remainingByMuscle: {},
+      },
+      topDownMesocyclePlan: {
+        summary: {
+          matchedTargetLanes: 0,
+          partialTargetLanes: 1,
+          missingTargetLanes: 1,
+          repairShapedTargetLanes: 0,
+          blockedMigrationCandidates: 0,
+          readyMigrationCandidates: 0,
+        },
+        slotTargets: [
+          {
+            slotId: "upper_a",
+            targetIntent: "upper_horizontal",
+            slotStatus: "partial",
+            requiredClassLanes: [
+              {
+                lane: "chest_anchor",
+                preferredClasses: ["press"],
+                targetSets: "3-4",
+                currentStatus: "partial",
+                evidenceRefs: ["stim:upper_a:Chest=6"],
+                limitations: [],
+              },
+              {
+                lane: "chest_secondary",
+                preferredClasses: ["fly_press"],
+                targetSets: "2-3",
+                currentStatus: "missing",
+                evidenceRefs: [],
+                limitations: [],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot
+      .mockReturnValueOnce(repairedProjection)
+      .mockReturnValueOnce({
+        ...repairedProjection,
+        slotPlans: noRepairSlots.map((slot) => ({
+          slotId: slot.slotId,
+          intent: slot.intent.toUpperCase(),
+          exercises: slot.exercises.map((exercise) => ({
+            exerciseId: exercise.exerciseId,
+            name: exercise.exerciseName,
+            role: "CORE_COMPOUND",
+            setCount: exercise.setCount,
+          })),
+        })),
+        diagnostics: {
+          ...repairedProjection.diagnostics,
+          planningReality: noRepairReality,
+        },
+      });
+
+    const payload = await buildMesocycleExplainAuditPayload({
+      userId: "user-1",
+      ownerEmail: "aaron8819@gmail.com",
+      sourceMesocycleId: "meso-1",
+      retrospectiveMesocycleId: "meso-1",
+      plannerDiagnosticsMode: "debug",
+      plannerOnlyNoRepair: {
+        enabled: true,
+        compareRepaired: true,
+      },
+    });
+
+    expect(payload.plannerOnlyDryRun).toBeUndefined();
+    expect(payload.plannerOnlyNoRepair).toMatchObject({
+      enabled: true,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      canReplaceRepairedProjection: false,
+      summary: {
+        status: "fail",
+        targetLanesSatisfied: 0,
+        unresolvedDemandCount: expect.any(Number),
+        validationFailureCount: expect.any(Number),
+      },
+      comparisonToRepaired: {
+        repairedPasses: true,
+        noRepairPasses: false,
+      },
+    });
+    expect(payload.plannerOnlyNoRepair?.slotPlans[0]).toMatchObject({
+      slotId: "upper_a",
+      exercises: [
+        {
+          exerciseName: "Incline Dumbbell Press",
+          lane: "chest_anchor",
+          exerciseClass: "chest_press",
+          sets: 6,
+        },
+      ],
+      missingLanes: expect.arrayContaining([
+        "chest_anchor:partial",
+        "chest_secondary:missing",
+      ]),
+      unresolvedDemand: expect.arrayContaining([
+        expect.stringContaining("Chest:shortfall_4"),
+      ]),
+    });
+    expect(payload.plannerOnlyNoRepair?.acceptanceChecks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          check: "primary muscles above minimum",
+          status: "fail",
+        }),
+      ]),
+    );
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(2);
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[0]?.[0]).not.toHaveProperty(
+      "experimentalPlannerOnlyNoRepair",
+    );
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[1]?.[0]).toMatchObject({
+      experimentalPlannerOnlyNoRepair: true,
+    });
+    expect(mocks.buildMesocycleSlotPlanSeed).toHaveBeenCalledTimes(1);
+  });
+
   it("reports blocked when one-slot calf cleanup cannot satisfy the floor without lower_a policy", () => {
     const dryRun = buildPlannerOnlyDryRunComparison(
       makeCalfPlanningReality({

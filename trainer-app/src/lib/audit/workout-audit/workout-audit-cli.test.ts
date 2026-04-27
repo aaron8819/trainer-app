@@ -6,6 +6,7 @@ import {
   buildPlanningRealitySummary,
   buildPlanningRealitySizeBudgetSummary,
   buildPlannerOnlyDryRunSummary,
+  buildPlannerOnlyNoRepairSummary,
   buildProjectedWeekDebugSummary,
   buildProjectedWeekOperatorSummary,
   buildWeeklyRetroOperatorSummary,
@@ -2563,6 +2564,76 @@ describe("buildPlannerOnlyDryRunSummary", () => {
       "Expected deltas: material unknown, major unknown, suspicious unknown",
       "Recommendation: needs_more_projection",
       "Remaining blockers: materiality_delta_unknown, weeks_2_to_4_unprojected",
+    ]);
+  });
+});
+
+describe("buildPlannerOnlyNoRepairSummary", () => {
+  it("prints a compact planner-only no-repair verdict", () => {
+    const summary = buildPlannerOnlyNoRepairSummary({
+      artifact: {
+        mesocycleExplain: {
+          plannerOnlyNoRepair: {
+            enabled: true,
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            canReplaceRepairedProjection: false,
+            summary: {
+              status: "fail",
+              targetLanesSatisfied: 4,
+              targetLanesMissing: 2,
+              unresolvedDemandCount: 1,
+              validationFailureCount: 1,
+            },
+            slotPlans: [
+              {
+                slotId: "upper_a",
+                exercises: [
+                  {
+                    exerciseName: "Incline Dumbbell Press",
+                    lane: "chest_anchor",
+                    exerciseClass: "chest_press",
+                    sets: 6,
+                  },
+                ],
+                missingLanes: ["chest_secondary:missing"],
+                unresolvedDemand: ["Chest:shortfall_4"],
+                validationFailures: [
+                  "Incline Dumbbell Press:set_count_gt_5:6",
+                ],
+              },
+            ],
+            weeklyMuscleTotals: [
+              {
+                muscle: "Chest",
+                projectedEffectiveSets: 6,
+                targetMin: 10,
+                targetPreferred: 10,
+                status: "below",
+              },
+            ],
+            acceptanceChecks: [
+              {
+                check: "primary muscles above minimum",
+                status: "fail",
+                evidence: ["Chest:below_min_10"],
+              },
+            ],
+            comparisonToRepaired: {
+              repairedPasses: true,
+              noRepairPasses: false,
+              mainGaps: ["upper_a:unresolved:Chest:shortfall_4"],
+            },
+          },
+        },
+      },
+    });
+
+    expect(summary).toEqual([
+      "[workout-audit:planner-only-no-repair] status=fail can_replace=no lanes_satisfied=4 lanes_missing=2 unresolved=1 validation_failures=1 repaired_passes=yes no_repair_passes=no",
+      "[workout-audit:planner-only-no-repair] missing_lanes=upper_a:chest_secondary:missing",
+      "[workout-audit:planner-only-no-repair] unresolved_demand=upper_a:Chest:shortfall_4",
+      "[workout-audit:planner-only-no-repair] acceptance_failures=primary muscles above minimum:fail",
     ]);
   });
 });

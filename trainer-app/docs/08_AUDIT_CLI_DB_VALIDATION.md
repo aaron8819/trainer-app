@@ -57,6 +57,17 @@ npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner 
 - Read `plannerOnlyDryRun.projectionComparisons` before recommending behavior. It compares `baselineRepaired`, `plannerOnlyBase`, and `plannerOnlyWithOverride`, then reports override deltas for repair counters, suspicious/concentration/cap/duplicate rows, forbidden-primary violations, weak preselection consumption, support-floor rows, set-bump rows, and key acceptance failures.
 - The flagged payload may include `plannerOnlyDryRun.calvesFourFourCandidate`, a read-only Calves 4+4 lower-slot classifier backed by that override rerun. It is evidence for future implementation planning only; worsened materiality, major, suspicious, concentration, cap, cross-week, lower_a safety, or Hamstrings-route checks must keep behavior unapproved. Read `lowerASafety`, `materialityEstimate.expected*Delta`, `materialityEstimate.evidence`, `materialityEstimate.stillUnknown`, and `policyReadiness.remainingBlockers` before treating a Week 1 shape as trial-ready.
 
+Experimental planner-only no-repair comparison for mesocycle explain:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com --operator-debug --planner-only-no-repair --compare-repaired
+```
+
+- The artifact adds `mesocycleExplain.plannerOnlyNoRepair` only for flagged runs.
+- This path is read-only and disables downstream repair/shaping instead of patching planner gaps.
+- The payload is compact: slot plans, missing lanes, unresolved demand, validation failures, weekly muscle totals, acceptance checks, and optional comparison to the repaired projection.
+- It must not write accepted seeds, `slotPlanSeedJson`, receipts, planned workouts, runtime replay data, or performed workouts.
+
 Projected current week volume:
 
 ```powershell

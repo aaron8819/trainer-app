@@ -38,6 +38,9 @@ export async function buildWorkoutAuditContext(
   if (request.plannerOnlyDryRun && mode !== "mesocycle-explain") {
     throw new Error("--planner-only-dry-run requires --mode mesocycle-explain");
   }
+  if (request.plannerOnlyNoRepair && mode !== "mesocycle-explain") {
+    throw new Error("--planner-only-no-repair requires --mode mesocycle-explain");
+  }
   if (request.compareRepaired && mode !== "mesocycle-explain") {
     throw new Error("--compare-repaired requires --mode mesocycle-explain");
   }
@@ -128,6 +131,14 @@ export async function buildWorkoutAuditContext(
                 compareRepaired: true,
                 plannerOnlyPolicyOverride:
                   createCalvesFourFourPlannerOnlyPolicyOverride(),
+              },
+            }
+          : {}),
+        ...(request.plannerOnlyNoRepair
+          ? {
+              plannerOnlyNoRepair: {
+                enabled: true,
+                compareRepaired: request.compareRepaired === true,
               },
             }
           : {}),

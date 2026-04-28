@@ -88,8 +88,6 @@ describe("GenerateFromTemplateCard", () => {
       },
     });
 
-    const calledUrls = fetchMock.mock.calls.map((call) => call[0]);
-    expect(calledUrls).not.toContain("/api/session-checkins");
     expect(fetchMock.mock.calls[1][0]).toBe("/api/workouts/generate-from-template");
     expect(screen.getByText("Bench Press")).toBeInTheDocument();
   });

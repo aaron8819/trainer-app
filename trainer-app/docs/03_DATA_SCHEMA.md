@@ -23,7 +23,7 @@ Sources of truth:
 - `trainer-app/src/app/api/logs/set/route.ts`
 
 ## Core runtime models
-- User context: `User`, `Profile`, `Goals`, `Constraints`, `Injury`, `UserPreference`, `SessionCheckIn`
+- User context: `User`, `Profile`, `Goals`, `Constraints`, `Injury`, `UserPreference`
 - Workout execution: `Workout`, `WorkoutExercise`, `WorkoutSet`, `SetLog`, `FilteredExercise`
 - Catalog/template: `Exercise`, `Muscle`, `Equipment`, `WorkoutTemplate`, `WorkoutTemplateExercise`
 - Adaptive systems: `ReadinessSignal`, `ExerciseExposure`, `MacroCycle`, `Mesocycle`, `TrainingBlock`, `MesocycleExerciseRole`
@@ -46,6 +46,7 @@ Canonical machine-readable values in `docs/contracts/runtime-contracts.json` cur
 - Structural workout mutations also advance that revision. Planned workout rewrites and add-exercise mutations both persist updated reconciliation state and increment `Workout.revision`.
 - Exercise ordering is deterministic per workout via unique index `WorkoutExercise(workoutId, orderIndex)` in `prisma/schema.prisma` (materialized in baseline migration `prisma/migrations/20260222_baseline/migration.sql`).
 - Workouts tied to a non-active mesocycle remain readable, but save/log/resume is fenced at the route/workflow layer when the parent mesocycle is `AWAITING_HANDOFF` or `COMPLETED` (`src/app/api/workouts/save/lifecycle-contract.ts`, `src/app/api/logs/set/route.ts`, `src/lib/workout-workflow.ts`).
+- `SessionCheckIn` remains in `prisma/schema.prisma` as historical/compatibility persistence only. Current readiness writes and reads use `ReadinessSignal` through `src/app/api/readiness/submit/route.ts` and `src/lib/api/readiness.ts`.
 
 ## Mesocycle lifecycle fields
 - `Mesocycle.state` (`MesocycleState`)

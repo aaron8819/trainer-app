@@ -1,6 +1,6 @@
 /**
- * Protects: Readiness canonicalized to ReadinessSignal; session-checkins is a compatibility shim.
- * Why it matters: Legacy check-in compatibility must not leak stale readiness into decisions.
+ * Protects: Readiness canonicalized to ReadinessSignal while preserving the engine check-in shape.
+ * Why it matters: Stale readiness must not leak into generation decisions.
  */
 import { describe, expect, it } from "vitest";
 import {

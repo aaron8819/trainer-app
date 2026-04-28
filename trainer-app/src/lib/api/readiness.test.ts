@@ -1,5 +1,5 @@
 /**
- * Protects: Readiness canonicalized to ReadinessSignal; session-checkins is a compatibility shim.
+ * Protects: Readiness canonicalized to ReadinessSignal.
  * Why it matters: Autoregulation should consume one canonical readiness source and preserve performed-status semantics.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";

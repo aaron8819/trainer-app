@@ -5153,6 +5153,29 @@ function recommendV2Migration(input: {
   };
 }
 
+function normalizeOptionalV2MigrationRecommendation(input: {
+  lane: V2Lane | V2Slot["lanes"][number];
+  diagnostics: string[];
+  recommendation: Pick<
+    V2TargetVsNoRepairLaneDiff,
+    "migrationRecommendation" | "severity"
+  >;
+}): Pick<V2TargetVsNoRepairLaneDiff, "migrationRecommendation" | "severity"> {
+  if (
+    input.lane.role !== "optional" ||
+    input.recommendation.migrationRecommendation === "no_action" ||
+    input.recommendation.severity === "hard_blocker" ||
+    hasV2TrueHardBlockerDiagnostic(input.diagnostics)
+  ) {
+    return input.recommendation;
+  }
+
+  return {
+    migrationRecommendation: "keep_diagnostic_only",
+    severity: "diagnostic_only",
+  };
+}
+
 function buildV2LaneDiff(input: {
   noRepair?: PlanningRealityDiagnostic;
   repaired?: PlanningRealityDiagnostic;
@@ -5202,11 +5225,15 @@ function buildV2LaneDiff(input: {
     setPolicyStatus: setPolicy.status,
   });
   const gapCause = inferV2GapCause({ status: currentStatus, diagnostics });
-  const recommendation = recommendV2Migration({
-    status: currentStatus,
-    gapCause,
+  const recommendation = normalizeOptionalV2MigrationRecommendation({
+    lane: input.lane,
     diagnostics,
-    setPolicyStatus: setPolicy.status,
+    recommendation: recommendV2Migration({
+      status: currentStatus,
+      gapCause,
+      diagnostics,
+      setPolicyStatus: setPolicy.status,
+    }),
   });
 
   return {
@@ -5231,24 +5258,58 @@ function buildV2LaneDiff(input: {
 function nextBestV2MigrationSlice(
   laneDiffs: V2TargetVsNoRepairLaneDiff[]
 ): string | null {
-  const candidate =
-    laneDiffs.find((lane) => lane.severity === "migration_candidate") ??
-    laneDiffs.find(
-      (lane) =>
-        lane.migrationRecommendation === "needs_set_budget_justification" ||
-        lane.migrationRecommendation === "needs_concentration_justification"
-    ) ??
-    laneDiffs.find(
-      (lane) => lane.migrationRecommendation === "needs_set_distribution_policy"
-    ) ??
-    laneDiffs.find(
-      (lane) =>
-        lane.migrationRecommendation === "needs_classification_review" ||
-        lane.migrationRecommendation === "needs_inventory_review"
-    );
+  let candidate: V2TargetVsNoRepairLaneDiff | null = null;
+  let candidatePriority = 0;
+  for (const lane of laneDiffs) {
+    const priority = v2MigrationSlicePriority(lane);
+    if (priority > candidatePriority) {
+      candidate = lane;
+      candidatePriority = priority;
+    }
+  }
   return candidate
     ? `${candidate.laneId}:${candidate.migrationRecommendation}`
     : null;
+}
+
+function v2MigrationSlicePriority(lane: V2TargetVsNoRepairLaneDiff): number {
+  if (lane.severity === "hard_blocker") {
+    return 100;
+  }
+  if (lane.migrationRecommendation === "blocked_do_not_promote") {
+    return 90;
+  }
+  if (lane.targetRole === "optional") {
+    return 0;
+  }
+  if (lane.severity === "migration_candidate") {
+    return 80;
+  }
+  const diagnostics = lane.currentEvidence.relevantDiagnostics;
+  const belowTarget = diagnostics.includes("target_delivery:below_min");
+  if (
+    belowTarget &&
+    (lane.migrationRecommendation === "needs_set_budget_justification" ||
+      lane.migrationRecommendation === "needs_set_distribution_policy")
+  ) {
+    return 70;
+  }
+  if (lane.migrationRecommendation === "needs_set_budget_justification") {
+    return 60;
+  }
+  if (lane.migrationRecommendation === "needs_concentration_justification") {
+    return 55;
+  }
+  if (lane.migrationRecommendation === "needs_set_distribution_policy") {
+    return 50;
+  }
+  if (
+    lane.migrationRecommendation === "needs_classification_review" ||
+    lane.migrationRecommendation === "needs_inventory_review"
+  ) {
+    return 40;
+  }
+  return 0;
 }
 
 function buildV2TargetVsNoRepairDiff(input: {

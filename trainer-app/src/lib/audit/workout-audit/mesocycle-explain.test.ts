@@ -5086,6 +5086,172 @@ describe("buildMesocycleExplainAuditPayload", () => {
     );
   });
 
+  it("does not select a non-blocking optional lane ahead of underdelivered biceps", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Close-Grip Lat Pulldown",
+            setCount: 3,
+            primaryMuscles: ["Lats"],
+            movementPatterns: ["vertical_pull"],
+            stimulus: { Lats: 3, Biceps: 2.4 },
+            percentages: { Lats: 40, Biceps: 46.2 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Close-Grip Seated Cable Row",
+            setCount: 2,
+            primaryMuscles: ["Upper Back", "Lats"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { "Upper Back": 2, Lats: 2, Biceps: 0.8 },
+            percentages: { "Upper Back": 40, Lats: 35, Biceps: 15.4 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Barbell Curl",
+            setCount: 2,
+            primaryMuscles: ["Biceps"],
+            movementPatterns: ["isolation"],
+            stimulus: { Biceps: 2 },
+            percentages: { Biceps: 38.5 },
+          },
+          {
+            slotId: "lower_b",
+            exerciseName: "Glute Bridge",
+            setCount: 3,
+            primaryMuscles: ["Glutes"],
+            movementPatterns: ["hinge"],
+            stimulus: { Glutes: 3 },
+            percentages: { Glutes: 40 },
+          },
+          {
+            slotId: "lower_b",
+            exerciseName: "Goblet Squat",
+            setCount: 2,
+            primaryMuscles: ["Quads", "Glutes"],
+            movementPatterns: ["squat"],
+            stimulus: { Glutes: 2, Core: 2 },
+            percentages: { Core: 100, Glutes: 26.7 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Biceps",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 6,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 14,
+          },
+          {
+            muscle: "Glutes",
+            priority: "secondary",
+            targetStatus: "diagnostic",
+            minEffectiveSets: 6,
+            preferredEffectiveSets: 8,
+            maxEffectiveSets: 16,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const upperB = noRepair.v2TargetVsNoRepairDiff.slotDiffs.find(
+      (slot) => slot.slotId === "upper_b",
+    );
+    const lowerB = noRepair.v2TargetVsNoRepairDiff.slotDiffs.find(
+      (slot) => slot.slotId === "lower_b",
+    );
+    const biceps = upperB?.laneDiffs.find((row) => row.laneId === "biceps");
+    const optionalGluteCore = lowerB?.laneDiffs.find(
+      (row) => row.laneId === "optional_glute_core_if_recoverable",
+    );
+
+    expect(biceps).toMatchObject({
+      currentStatus: "partial",
+      gapCause: "set_distribution_gap",
+      migrationRecommendation: "needs_set_distribution_policy",
+      severity: "quality_warning",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "target_delivery:below_min",
+        ]),
+      },
+    });
+    expect(optionalGluteCore).toMatchObject({
+      currentStatus: "partial",
+      gapCause: "set_distribution_gap",
+      migrationRecommendation: "keep_diagnostic_only",
+      severity: "diagnostic_only",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:requires_justification",
+          "setBudget:requires_justification",
+        ]),
+      },
+    });
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
+        .nextBestMigrationSlice,
+    ).toBe("biceps:needs_set_distribution_policy");
+  });
+
+  it("can still select an optional lane when it has a true hard blocker", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "lower_b",
+            exerciseName: "Cable Crunch",
+            setCount: 6,
+            primaryMuscles: ["Core"],
+            movementPatterns: ["isolation"],
+            stimulus: { Core: 6 },
+            percentages: { Core: 100 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Core",
+            priority: "secondary",
+            targetStatus: "diagnostic",
+            minEffectiveSets: 4,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 16,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const optionalGluteCore = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "lower_b")
+      ?.laneDiffs.find(
+        (row) => row.laneId === "optional_glute_core_if_recoverable",
+      );
+
+    expect(optionalGluteCore).toMatchObject({
+      currentStatus: "blocked",
+      gapCause: "capacity_gap",
+      migrationRecommendation: "needs_set_budget_justification",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:hard_blocker",
+          "setPolicyReason:gt_5_sets",
+        ]),
+      },
+    });
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
+        .nextBestMigrationSlice,
+    ).toBe("optional_glute_core_if_recoverable:needs_set_budget_justification");
+  });
+
   it("does not let pulling collateral directly solve biceps lane evidence", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({

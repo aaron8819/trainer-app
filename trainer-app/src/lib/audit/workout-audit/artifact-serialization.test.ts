@@ -1253,6 +1253,96 @@ describe("artifact serialization helpers", () => {
     expect(noRepair).toHaveProperty("v2SetDistributionIntent");
   });
 
+  it("preserves compact chest-second concentration diagnostics through flagged serialization", () => {
+    const artifact = {
+      mode: "mesocycle-explain",
+      mesocycleExplain: {
+        preview: {
+          projectionDiagnostics: {
+            planningReality: {},
+          },
+        },
+        plannerOnlyNoRepair: {
+          v2TargetVsNoRepairDiff: {
+            version: 1,
+            source: "v2_planner_no_repair_experimental",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            summary: {},
+            slotDiffs: [
+              {
+                slotId: "upper_b",
+                laneDiffs: [
+                  {
+                    laneId: "chest_second_exposure",
+                    targetRole: "support",
+                    currentStatus: "partial",
+                    severity: "quality_warning",
+                    currentEvidence: {
+                      selectedExercises: [
+                        {
+                          name: "Cable Fly",
+                          sets: 4,
+                          matchedClass: "chest_isolation",
+                          role: "accessory",
+                        },
+                      ],
+                      relevantDiagnostics: [
+                        "setPolicy:quality_warning",
+                        "setBudget:within_preferred",
+                        "concentration:chest_primary",
+                        "concentration:second_exposure",
+                        "concentration:quality_warning",
+                        "concentration:class_distinct",
+                        "concentration:exercise_distinct",
+                        "justification:second_chest_exposure",
+                        "justification:weekly_target_met",
+                        "justification:upper_slot_distribution",
+                      ],
+                    },
+                    gapCause: "concentration_policy_gap",
+                    migrationRecommendation: "keep_diagnostic_only",
+                  },
+                ],
+              },
+            ],
+            replacementReadinessImpact: {
+              canReplaceRepairedProjection: false,
+              blockers: [],
+              nextBestMigrationSlice: null,
+            },
+          },
+        },
+      },
+    } as unknown as WorkoutAuditArtifact;
+
+    const compact = compactWorkoutAuditArtifactForSerialization(artifact);
+    const serialized = serializeStableJson(compact);
+    const reparsed = JSON.parse(serialized) as WorkoutAuditArtifact;
+    const targetDiff = reparsed.mesocycleExplain?.plannerOnlyNoRepair
+      ?.v2TargetVsNoRepairDiff as unknown as Record<string, unknown>;
+    const lane = (
+      (targetDiff.slotDiffs as Array<Record<string, unknown>>)[0]
+        .laneDiffs as Array<Record<string, unknown>>
+    )[0];
+    const evidence = lane.currentEvidence as Record<string, unknown>;
+    const diagnostics = resolveCompactV2Refs(
+      targetDiff,
+      evidence.relevantDiagnosticRefs,
+      "diagnosticStrings"
+    );
+
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      "concentration:chest_primary",
+      "concentration:second_exposure",
+      "concentration:class_distinct",
+      "concentration:exercise_distinct",
+      "justification:second_chest_exposure",
+      "justification:weekly_target_met",
+    ]));
+    expect(serialized).not.toContain("hard_blocker");
+  });
+
   it("leaves unrelated audit artifacts unchanged", () => {
     const artifact = {
       mode: "future-week",

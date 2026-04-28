@@ -625,6 +625,8 @@ function makeNoRepairConcentrationPlanningReality(input: {
     maxEffectiveSets?: number | null;
   }>;
   setDistributionRows?: string[];
+  setDistributionRowsBySlot?: Record<string, string[]>;
+  validationFailuresBySlot?: Record<string, string[]>;
 }): PlannerOnlyPlanningReality {
   const base = makeCalfPlanningReality({
     lowerBCalfShapes: [],
@@ -665,6 +667,7 @@ function makeNoRepairConcentrationPlanningReality(input: {
         movementPatterns: exercise.movementPatterns ?? ["isolation"],
         effectiveStimulusByMuscle: exercise.stimulus,
       })),
+      validationFailures: input.validationFailuresBySlot?.[slotId] ?? [],
     }),
   );
   const defaultDemands = [
@@ -708,17 +711,17 @@ function makeNoRepairConcentrationPlanningReality(input: {
       source: ["test"],
       rationale: ["test"],
     })),
-    setDistributionIntents: [
-      {
-        ...base.setDistributionIntents[0],
-        slotId: input.exercises[0]?.slotId ?? "upper_a",
-        evidence: {
-          concentrationRows: input.setDistributionRows ?? [],
-          capCleanupRows: [],
-          repairRowsStillRepairOwned: [],
-        },
+    setDistributionIntents: Array.from(exercisesBySlot.keys()).map((slotId) => ({
+      ...base.setDistributionIntents[0],
+      slotId,
+      evidence: {
+        concentrationRows:
+          input.setDistributionRowsBySlot?.[slotId] ??
+          (slotId === input.exercises[0]?.slotId ? input.setDistributionRows ?? [] : []),
+        capCleanupRows: [],
+        repairRowsStillRepairOwned: [],
       },
-    ],
+    })),
     duplicateContinuityJustification: {
       ...base.duplicateContinuityJustification,
       summary: {
@@ -3317,7 +3320,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(
       noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
         .nextBestMigrationSlice,
-    ).toBeNull();
+    ).not.toBe("chest_second_exposure:needs_concentration_justification");
   });
 
   it("keeps primary-anchor over-60 concentration actionable without second exposure", () => {
@@ -4081,6 +4084,404 @@ describe("buildMesocycleExplainAuditPayload", () => {
           "setPolicyReason:over_60_share",
         ]),
       },
+    });
+  });
+
+  it("classifies chest-second exposure with strict lane-owned chest evidence only", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Deficit Push-Up",
+            setCount: 3,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_push"],
+            stimulus: { Chest: 3 },
+            percentages: { Chest: 42.9 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Cable Fly",
+            setCount: 4,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["isolation"],
+            stimulus: { Chest: 4 },
+            percentages: { Chest: 57.1 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Shoulder Press",
+            setCount: 3,
+            primaryMuscles: ["Side Delts", "Front Delts"],
+            movementPatterns: ["vertical_press"],
+            stimulus: { Chest: 2, "Side Delts": 3 },
+            percentages: { Chest: 100, "Side Delts": 100 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Chest",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 7,
+            preferredEffectiveSets: 10,
+            maxEffectiveSets: 16,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "chest_second_exposure");
+
+    expect(lane).toMatchObject({
+      currentStatus: "partial",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "keep_diagnostic_only",
+      severity: "quality_warning",
+      currentEvidence: {
+        selectedExercises: [
+          expect.objectContaining({
+            name: "Cable Fly",
+            sets: 4,
+            matchedClass: "chest_isolation",
+          }),
+        ],
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:quality_warning",
+          "setBudget:within_preferred",
+          "concentration:chest_primary",
+          "concentration:second_exposure",
+          "concentration:quality_warning",
+          "concentration:class_distinct",
+          "concentration:exercise_distinct",
+          "justification:second_chest_exposure",
+          "justification:weekly_target_met",
+          "justification:upper_slot_distribution",
+        ]),
+      },
+    });
+    expect(lane?.currentEvidence.selectedExercises).toHaveLength(1);
+    expect(lane?.currentEvidence.selectedExercises).toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({ name: "Machine Shoulder Press" }),
+      ]),
+    );
+    expect(noRepair.weeklyMuscleTotals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Chest",
+          projectedEffectiveSets: 9,
+          status: "within",
+        }),
+      ]),
+    );
+  });
+
+  it("keeps chest-second primary concentration actionable above 60 percent when distinct exposure is not justified", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Deficit Push-Up",
+            setCount: 3,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_push"],
+            stimulus: { Chest: 3 },
+            percentages: { Chest: 30 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Chest Press",
+            setCount: 4,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_push"],
+            stimulus: { Chest: 7 },
+            percentages: { Chest: 70 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Chest",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 10,
+            preferredEffectiveSets: 10,
+            maxEffectiveSets: 16,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "chest_second_exposure");
+
+    expect(lane).toMatchObject({
+      currentStatus: "blocked",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:hard_blocker",
+          "setPolicyReason:over_60_share",
+          "concentration:chest_primary",
+          "concentration:second_exposure",
+          "concentration:over_60_share",
+          "concentration:needs_distinct_exposure",
+          "concentration:true_blocker",
+        ]),
+      },
+    });
+  });
+
+  it("downgrades in-budget distinct chest-second exposure to a diagnostic quality warning", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Deficit Push-Up",
+            setCount: 3,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_push"],
+            stimulus: { Chest: 3 },
+            percentages: { Chest: 42.9 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Cable Fly",
+            setCount: 4,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["isolation"],
+            stimulus: { Chest: 4 },
+            percentages: { Chest: 57.1 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Chest",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 7,
+            preferredEffectiveSets: 10,
+            maxEffectiveSets: 16,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "chest_second_exposure");
+
+    expect(lane).toMatchObject({
+      currentStatus: "partial",
+      migrationRecommendation: "keep_diagnostic_only",
+      severity: "quality_warning",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:quality_warning",
+          "setBudget:within_preferred",
+          "concentration:class_distinct",
+          "concentration:exercise_distinct",
+          "justification:class_distinct",
+          "justification:second_chest_exposure",
+          "justification:weekly_target_met",
+        ]),
+      },
+    });
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
+        .nextBestMigrationSlice,
+    ).not.toBe("chest_second_exposure:needs_concentration_justification");
+  });
+
+  it("keeps duplicate or same-class chest-second exposure actionable when distinct exposure is required", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Deficit Push-Up",
+            setCount: 3,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_push"],
+            stimulus: { Chest: 3 },
+            percentages: { Chest: 45 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Chest Press",
+            setCount: 4,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_push"],
+            stimulus: { Chest: 4 },
+            percentages: { Chest: 55 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Chest",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 7,
+            preferredEffectiveSets: 10,
+            maxEffectiveSets: 16,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "chest_second_exposure");
+
+    expect(lane).toMatchObject({
+      currentStatus: "partial",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
+      severity: "quality_warning",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:quality_warning",
+          "concentration:needs_distinct_exposure",
+          "justification:none",
+        ]),
+      },
+    });
+  });
+
+  it("keeps dirty or forbidden chest-second evidence actionable", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Deficit Push-Up",
+            setCount: 3,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_push"],
+            stimulus: { Chest: 3 },
+            percentages: { Chest: 42.9 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Cable Fly",
+            setCount: 4,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["isolation"],
+            stimulus: { Chest: 4 },
+            percentages: { Chest: 57.1 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Chest",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 7,
+            preferredEffectiveSets: 10,
+            maxEffectiveSets: 16,
+          },
+        ],
+        setDistributionRowsBySlot: {
+          upper_b: ["forbidden_slot_primary_solution:Chest:upper_b"],
+        },
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "chest_second_exposure");
+
+    expect(lane).toMatchObject({
+      currentStatus: "blocked",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "forbidden_slot_primary_solution:Chest:upper_b",
+          "concentration:second_exposure",
+        ]),
+      },
+    });
+  });
+
+  it("does not use repaired projection as the chest-second target policy", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Deficit Push-Up",
+            setCount: 3,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_push"],
+            stimulus: { Chest: 3 },
+            percentages: { Chest: 100 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Chest",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 7,
+            preferredEffectiveSets: 10,
+            maxEffectiveSets: 16,
+          },
+        ],
+      }),
+      repairedPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Cable Fly",
+            setCount: 4,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["isolation"],
+            stimulus: { Chest: 4 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "chest_second_exposure");
+
+    expect(lane).toMatchObject({
+      currentStatus: "repair_dependent",
+      gapCause: "repair_dependency",
+      severity: "migration_candidate",
+      currentEvidence: {
+        selectedExercises: [],
+        relevantDiagnostics: expect.arrayContaining([
+          "repair_dependent:repaired_projection_has_lane",
+        ]),
+      },
+    });
+    expect(noRepair.v2SetDistributionIntent.guardrails).toMatchObject({
+      doesNotUseRepairedProjectionAsTarget: true,
+      doesNotUseAcceptedSeedAsTarget: true,
     });
   });
 

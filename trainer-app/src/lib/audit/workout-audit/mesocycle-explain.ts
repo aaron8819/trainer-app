@@ -3358,6 +3358,12 @@ function exerciseMatchesV2LaneClass(input: {
 }): boolean {
   const classified = classifyPlannerOnlyExercise({ exercise: input.exercise });
   if (
+    isChestSecondExposureV2Lane(input.lane) &&
+    !isDirectChestLaneExercise(input.exercise)
+  ) {
+    return false;
+  }
+  if (
     input.lane.laneId === "rear_delt" &&
     !isDirectRearDeltLaneExercise(input.exercise)
   ) {
@@ -3387,6 +3393,7 @@ function isStrictV2SetBudgetLane(lane: V2Lane | V2Slot["lanes"][number]): boolea
     lane.laneId === "squat_anchor" ||
     lane.laneId === "vertical_press" ||
     lane.laneId === "chest_secondary" ||
+    lane.laneId === "chest_second_exposure" ||
     lane.laneId === "rear_delt" ||
     isTricepsV2Lane(lane)
   );
@@ -3415,6 +3422,12 @@ function exerciseMatchesV2LaneSetPolicyClass(input: {
 }): boolean {
   const classified = classifyPlannerOnlyExercise({ exercise: input.exercise });
   if (
+    isChestSecondExposureV2Lane(input.lane) &&
+    !isDirectChestLaneExercise(input.exercise)
+  ) {
+    return false;
+  }
+  if (
     input.lane.laneId === "rear_delt" &&
     !isDirectRearDeltLaneExercise(input.exercise)
   ) {
@@ -3426,6 +3439,12 @@ function exerciseMatchesV2LaneSetPolicyClass(input: {
   const aliases = v2LaneAliases(input.lane);
   if (aliases.includes(classified.lane)) {
     return true;
+  }
+  if (isChestSecondExposureV2Lane(input.lane)) {
+    return (
+      classified.exerciseClass === "chest_press" ||
+      classified.exerciseClass === "chest_isolation"
+    );
   }
   if (isStrictV2SetBudgetLane(input.lane)) {
     return false;
@@ -3502,6 +3521,25 @@ function isVerticalPressV2Lane(lane: V2Lane | V2Slot["lanes"][number]): boolean 
   return lane.laneId === "vertical_press" || v2LaneAliases(lane).includes("vertical_press");
 }
 
+function isChestSecondExposureV2Lane(
+  lane: V2Lane | V2Slot["lanes"][number]
+): boolean {
+  return lane.laneId === "chest_second_exposure";
+}
+
+function isDirectChestLaneExercise(
+  exercise: SlotCompositionSnapshot["exercises"][number]
+): boolean {
+  const classified = classifyPlannerOnlyExercise({ exercise });
+  return (
+    exercise.primaryMuscles.some(
+      (muscle) => muscle.trim().toLowerCase() === "chest"
+    ) &&
+    (classified.exerciseClass === "chest_press" ||
+      classified.exerciseClass === "chest_isolation")
+  );
+}
+
 function isDirectTricepsLaneExercise(
   exercise: SlotCompositionSnapshot["exercises"][number]
 ): boolean {
@@ -3558,6 +3596,72 @@ function hasDirectSideDeltExposure(input: {
       )
     ) ?? false
   );
+}
+
+function normalizeExerciseIdentity(value: string | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function chestExposureClass(
+  exercise: SlotCompositionSnapshot["exercises"][number] | undefined
+): string | null {
+  if (!exercise || !isDirectChestLaneExercise(exercise)) {
+    return null;
+  }
+  return classifyPlannerOnlyExercise({ exercise }).exerciseClass;
+}
+
+function firstUpperAChestAnchor(
+  noRepair: PlanningRealityDiagnostic | undefined
+): SlotCompositionSnapshot["exercises"][number] | undefined {
+  return getSlotById(noRepair?.finalSlotPlan ?? [], "upper_a")?.exercises.find(
+    (exercise) => {
+      const classified = classifyPlannerOnlyExercise({ exercise });
+      return (
+        isDirectChestLaneExercise(exercise) &&
+        (classified.lane === "chest_anchor" ||
+          classified.exerciseClass === "chest_press" ||
+          exercise.role === "main")
+      );
+    }
+  );
+}
+
+function summarizeChestSecondExposureDistinctness(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  secondExposureExercises: SlotCompositionSnapshot["exercises"];
+}): {
+  hasUpperSlotDistribution: boolean;
+  hasSecondExposure: boolean;
+  exerciseDistinct: boolean;
+  classDistinct: boolean;
+  duplicateExposure: boolean;
+  sameClassExposure: boolean;
+} {
+  const upperAAnchor = firstUpperAChestAnchor(input.noRepair);
+  const upperBSecond = input.secondExposureExercises.find(isDirectChestLaneExercise);
+  const upperAClass = chestExposureClass(upperAAnchor);
+  const upperBClass = chestExposureClass(upperBSecond);
+  const upperAExerciseName = normalizeExerciseIdentity(upperAAnchor?.exerciseName);
+  const upperBExerciseName = normalizeExerciseIdentity(upperBSecond?.exerciseName);
+  const upperAExerciseId = normalizeExerciseIdentity(upperAAnchor?.exerciseId);
+  const upperBExerciseId = normalizeExerciseIdentity(upperBSecond?.exerciseId);
+  const sameExercise =
+    upperAAnchor != null &&
+    upperBSecond != null &&
+    ((upperAExerciseId !== "" && upperAExerciseId === upperBExerciseId) ||
+      (upperAExerciseName !== "" && upperAExerciseName === upperBExerciseName));
+  const sameClass =
+    upperAClass != null && upperBClass != null && upperAClass === upperBClass;
+
+  return {
+    hasUpperSlotDistribution: upperAAnchor != null && upperBSecond != null,
+    hasSecondExposure: upperBSecond != null,
+    exerciseDistinct: upperAAnchor != null && upperBSecond != null && !sameExercise,
+    classDistinct: upperAClass != null && upperBClass != null && !sameClass,
+    duplicateExposure: sameExercise,
+    sameClassExposure: sameClass,
+  };
 }
 
 function collectV2LaneExercises(input: {
@@ -4009,6 +4113,15 @@ function evaluateV2LaneSetPolicy(input: {
     input.lane.laneId === "squat_anchor" && primaryAnchorConcentration;
   const verticalPressAnchorConcentration =
     isVerticalPressV2Lane(input.lane) && primaryAnchorConcentration;
+  const chestSecondExposureConcentration =
+    isChestSecondExposureV2Lane(input.lane) && concentrationWarning;
+  const chestSecondExposureDistinctness =
+    chestSecondExposureConcentration
+      ? summarizeChestSecondExposureDistinctness({
+          noRepair: input.noRepair,
+          secondExposureExercises: policyExercises,
+        })
+      : null;
   const repairCreatedConcentration =
     concentrationEvidence.row?.producedOrIncreasedByRepair ?? false;
   const withinPlannedSetBudget =
@@ -4045,6 +4158,17 @@ function evaluateV2LaneSetPolicy(input: {
   const concentrationBlocker =
     concentration.appliesTo !== "diagnostic_only" &&
     concentrationShare > concentration.blockerShare &&
+    !(
+      chestSecondExposureDistinctness?.hasUpperSlotDistribution === true &&
+      chestSecondExposureDistinctness.exerciseDistinct &&
+      chestSecondExposureDistinctness.classDistinct &&
+      withinPlannedSetBudget &&
+      directTargetMet &&
+      !aboveFiveSets &&
+      !repairCreatedConcentration &&
+      !fatigueRisk.axial &&
+      !fatigueRisk.systemic
+    ) &&
     !anchorExpectedConcentration &&
     (laneHasPrimaryHardTarget ||
       !supportTierConcentration ||
@@ -4101,6 +4225,51 @@ function evaluateV2LaneSetPolicy(input: {
       ...(fatigueRisk.systemic ? ["risk:systemic_fatigue"] : [])
     );
   }
+  if (chestSecondExposureConcentration && chestSecondExposureDistinctness) {
+    const distinctJustified =
+      chestSecondExposureDistinctness.hasUpperSlotDistribution &&
+      chestSecondExposureDistinctness.exerciseDistinct &&
+      chestSecondExposureDistinctness.classDistinct &&
+      withinPlannedSetBudget &&
+      directTargetMet &&
+      !aboveFiveSets &&
+      !repairCreatedConcentration &&
+      !fatigueRisk.axial &&
+      !fatigueRisk.systemic;
+    concentrationDiagnostics.push(
+      "concentration:chest_primary",
+      "concentration:second_exposure",
+      ...(concentrationShare > concentration.blockerShare
+        ? ["concentration:over_60_share"]
+        : []),
+      ...(chestSecondExposureDistinctness.exerciseDistinct
+        ? ["concentration:exercise_distinct"]
+        : ["concentration:duplicate_exposure"]),
+      ...(chestSecondExposureDistinctness.classDistinct
+        ? ["concentration:class_distinct"]
+        : ["concentration:needs_distinct_exposure"]),
+      ...(distinctJustified
+        ? [
+            "concentration:quality_warning",
+            "justification:second_chest_exposure",
+            "justification:weekly_target_met",
+            "justification:upper_slot_distribution",
+            "justification:class_distinct",
+          ]
+        : [
+            ...(concentrationBlocker ? ["concentration:true_blocker"] : []),
+            ...(!chestSecondExposureDistinctness.hasUpperSlotDistribution ||
+            !chestSecondExposureDistinctness.classDistinct ||
+            !chestSecondExposureDistinctness.exerciseDistinct
+              ? ["concentration:needs_distinct_exposure"]
+              : []),
+            ...(directTargetMet ? ["justification:weekly_target_met"] : []),
+            "justification:none",
+          ]),
+      ...(fatigueRisk.axial ? ["risk:axial_fatigue", "risk:joint_fatigue"] : []),
+      ...(fatigueRisk.systemic ? ["risk:systemic_fatigue"] : [])
+    );
+  }
 
   let status: V2LaneSetPolicyStatus = "in_budget";
   let reason: string | null = null;
@@ -4145,7 +4314,7 @@ function evaluateV2LaneSetPolicy(input: {
       ...v2SetBudgetDiagnostics({ setCount, budget, status }),
       ...diagnosticJustifications,
       ...concentrationDiagnostics,
-    ], primaryAnchorConcentration ? 12 : 8),
+    ], chestSecondExposureConcentration ? 14 : primaryAnchorConcentration ? 12 : 8),
   };
 }
 
@@ -4256,6 +4425,70 @@ function strictDirectSupportConcentrationDiagnostics(input: {
   ];
 }
 
+function strictChestSecondExposureConcentrationDiagnostics(input: {
+  diagnostics: string[];
+  exercises: SlotCompositionSnapshot["exercises"];
+  lane: V2Lane | V2Slot["lanes"][number];
+  noRepair?: PlanningRealityDiagnostic;
+}): string[] {
+  if (
+    !isChestSecondExposureV2Lane(input.lane) ||
+    input.exercises.length === 0
+  ) {
+    return [];
+  }
+  const exerciseNames = new Set(
+    input.exercises.map((exercise) => exercise.exerciseName.toLowerCase())
+  );
+  const hasDirectShareWarning = input.diagnostics.some((diagnostic) => {
+    const normalized = diagnostic.toLowerCase();
+    return (
+      normalized.includes("single_exercise_share") &&
+      normalized.includes("chest") &&
+      Array.from(exerciseNames).some((name) => normalized.includes(name))
+    );
+  });
+  if (!hasDirectShareWarning) {
+    return [];
+  }
+  const distinctness = summarizeChestSecondExposureDistinctness({
+    noRepair: input.noRepair,
+    secondExposureExercises: input.exercises,
+  });
+  const targetMet = v2LanePrimaryTargetsMetWithDirectEvidence({
+    noRepair: input.noRepair,
+    lane: input.lane,
+  });
+  const distinctJustified =
+    targetMet &&
+    distinctness.hasUpperSlotDistribution &&
+    distinctness.exerciseDistinct &&
+    distinctness.classDistinct;
+
+  return [
+    "concentration:chest_primary",
+    "concentration:second_exposure",
+    ...(distinctness.exerciseDistinct
+      ? ["concentration:exercise_distinct"]
+      : ["concentration:duplicate_exposure"]),
+    ...(distinctness.classDistinct
+      ? ["concentration:class_distinct"]
+      : ["concentration:needs_distinct_exposure"]),
+    "concentration:quality_warning",
+    ...(distinctJustified
+      ? [
+          "justification:second_chest_exposure",
+          "justification:weekly_target_met",
+          "justification:upper_slot_distribution",
+          "justification:class_distinct",
+        ]
+      : [
+          ...(targetMet ? ["justification:weekly_target_met"] : []),
+          "justification:none",
+        ]),
+  ];
+}
+
 function collectV2LaneDiagnostics(input: {
   noRepair?: PlanningRealityDiagnostic;
   repaired?: PlanningRealityDiagnostic;
@@ -4296,16 +4529,26 @@ function collectV2LaneDiagnostics(input: {
     isStrictV2SetBudgetLane(input.lane) &&
     input.setPolicyDiagnostics.includes("setPolicy:in_budget")
   ) {
-    const explainedConcentrationDiagnostics =
-      strictDirectSupportConcentrationDiagnostics({
+    const strictExercises = strictLaneExerciseNamesFromFinalPlan({
+      noRepair,
+      slotId: input.slotId,
+      lane: input.lane,
+    });
+    const chestSecondExposureDiagnostics =
+      strictChestSecondExposureConcentrationDiagnostics({
         diagnostics,
-        exercises: strictLaneExerciseNamesFromFinalPlan({
-          noRepair,
-          slotId: input.slotId,
-          lane: input.lane,
-        }),
+        exercises: strictExercises,
         lane: input.lane,
+        noRepair,
       });
+    const explainedConcentrationDiagnostics =
+      chestSecondExposureDiagnostics.length > 0
+        ? chestSecondExposureDiagnostics
+        : strictDirectSupportConcentrationDiagnostics({
+            diagnostics,
+            exercises: strictExercises,
+            lane: input.lane,
+          });
     return compactV2LaneDiagnostics(
       explainedConcentrationDiagnostics.length > 0
         ? [
@@ -4316,7 +4559,11 @@ function collectV2LaneDiagnostics(input: {
             ...explainedConcentrationDiagnostics,
           ]
         : input.setPolicyDiagnostics,
-      explainedConcentrationDiagnostics.length > 0 ? 8 : 6
+      chestSecondExposureDiagnostics.length > 0
+        ? 14
+        : explainedConcentrationDiagnostics.length > 0
+          ? 8
+          : 6
     );
   }
 
@@ -4438,6 +4685,8 @@ function collectV2LaneDiagnostics(input: {
     finalDiagnostics,
     finalDiagnostics.includes("concentration:primary_anchor")
       ? 12
+      : finalDiagnostics.includes("concentration:second_exposure")
+        ? 14
       : finalDiagnostics.includes("concentration:support_tier")
         ? 8
         : 6
@@ -4459,6 +4708,12 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
     "concentration:quality_warning",
     "concentration:true_blocker",
     "concentration:over_60_share",
+    "concentration:chest_primary",
+    "concentration:second_exposure",
+    "concentration:needs_distinct_exposure",
+    "concentration:duplicate_exposure",
+    "concentration:class_distinct",
+    "concentration:exercise_distinct",
     "concentration:justified_direct_isolation",
     "concentration:dirty_collateral",
     "concentration:needs_diversification",
@@ -4476,12 +4731,25 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
       !row.startsWith("justification") &&
       !concentrationPolicyTokens.has(row)
   );
+  const blockerOther = other.filter((row) => {
+    const lower = row.toLowerCase();
+    return (
+      lower.includes("forbidden") ||
+      lower.includes("dirty") ||
+      lower.includes("hard_blocker") ||
+      lower.includes("gt_5") ||
+      lower.includes("systemic_fatigue") ||
+      lower.includes("axial_fatigue")
+    );
+  });
+  const nonBlockerOther = other.filter((row) => !blockerOther.includes(row));
   const compact = [
     ...setPolicy,
     ...setBudget,
+    ...blockerOther,
     ...justification,
     ...concentrationPolicy,
-    ...other,
+    ...nonBlockerOther,
   ].slice(0, limit);
   return compact.length > 0 ? compact : ["none"];
 }
@@ -4564,7 +4832,9 @@ function hasExplainedV2ConcentrationWarning(diagnostics: string[]): boolean {
     diagnostics.includes("concentration:quality_warning");
   const hasExplanation = diagnostics.some(
     (row) =>
-      (row.startsWith("justification:") && row !== "justification:none") ||
+      (row.startsWith("justification:") &&
+        row !== "justification:none" &&
+        row !== "justification:weekly_target_met") ||
       row === "concentration:justified_direct_isolation"
   );
   return (

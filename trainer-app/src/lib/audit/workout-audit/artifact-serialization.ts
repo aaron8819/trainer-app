@@ -755,6 +755,12 @@ function compactV2OperatorDiagnostics(
       entry.startsWith("concentration:quality_warning") ||
       entry.startsWith("concentration:true_blocker") ||
       entry.startsWith("concentration:over_60_share") ||
+      entry.startsWith("concentration:chest_primary") ||
+      entry.startsWith("concentration:second_exposure") ||
+      entry.startsWith("concentration:needs_distinct_exposure") ||
+      entry.startsWith("concentration:duplicate_exposure") ||
+      entry.startsWith("concentration:class_distinct") ||
+      entry.startsWith("concentration:exercise_distinct") ||
       entry.startsWith("concentration:justified_direct_isolation") ||
       entry.startsWith("concentration:dirty_collateral") ||
       entry.startsWith("concentration:needs_diversification") ||
@@ -773,8 +779,13 @@ function compactV2OperatorDiagnostics(
   const hasPrimaryAnchorConcentration = values.some(
     (entry) => entry === "concentration:primary_anchor"
   );
+  const hasSecondExposureConcentration = values.some(
+    (entry) => entry === "concentration:second_exposure"
+  );
   const limit = hasPrimaryAnchorConcentration
     ? 12
+    : hasSecondExposureConcentration
+      ? 14
     : severity === "hard_blocker" ||
         values.some((entry) => entry === "concentration:support_tier")
       ? 8

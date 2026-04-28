@@ -3176,12 +3176,34 @@ describe("buildMesocycleExplainAuditPayload", () => {
     ).toMatchObject({
       currentStatus: "partial",
       gapCause: "concentration_policy_gap",
-      migrationRecommendation: "needs_concentration_justification",
+      migrationRecommendation: "keep_diagnostic_only",
       severity: "quality_warning",
       currentEvidence: {
-        relevantDiagnostics: expect.arrayContaining(["setPolicy:quality_warning"]),
+        selectedExercises: [
+          expect.objectContaining({
+            name: "Hack Squat",
+            sets: 4,
+            matchedClass: "squat_or_quad_support",
+          }),
+        ],
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:quality_warning",
+          "setBudget:within_preferred",
+          "concentration:primary_anchor",
+          "concentration:anchor_expected",
+          "concentration:quality_warning",
+          "justification:squat_anchor",
+          "justification:second_quad_exposure",
+          "justification:weekly_target_met",
+        ]),
       },
     });
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.slotDiffs
+        .find((slot) => slot.slotId === "lower_a")
+        ?.laneDiffs.find((lane) => lane.laneId === "squat_anchor")?.currentEvidence
+        .selectedExercises,
+    ).toHaveLength(1);
     expect(
       noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
         .nextBestMigrationSlice,
@@ -3196,6 +3218,326 @@ describe("buildMesocycleExplainAuditPayload", () => {
         }),
       ]),
     );
+  });
+
+  it("keeps squat-anchor concentration strict to lane-owned squat evidence and downgrades only when justified", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "lower_a",
+            exerciseName: "Hack Squat",
+            isCompound: true,
+            role: "main",
+            setCount: 4,
+            primaryMuscles: ["Quads"],
+            movementPatterns: ["squat"],
+            stimulus: { Quads: 7 },
+            percentages: { Quads: 70 },
+          },
+          {
+            slotId: "lower_a",
+            exerciseName: "Leg Extension",
+            setCount: 2,
+            primaryMuscles: ["Quads"],
+            movementPatterns: ["isolation"],
+            stimulus: { Quads: 1.5 },
+            percentages: { Quads: 15 },
+          },
+          {
+            slotId: "lower_b",
+            exerciseName: "Goblet Squat",
+            isCompound: true,
+            setCount: 2,
+            primaryMuscles: ["Quads"],
+            movementPatterns: ["squat"],
+            stimulus: { Quads: 1.5 },
+            percentages: { Quads: 15 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Quads",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 10,
+            preferredEffectiveSets: 10,
+            maxEffectiveSets: 16,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "lower_a")
+      ?.laneDiffs.find((row) => row.laneId === "squat_anchor");
+
+    expect(lane).toMatchObject({
+      currentStatus: "partial",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "keep_diagnostic_only",
+      severity: "quality_warning",
+      currentEvidence: {
+        selectedExercises: [
+          expect.objectContaining({
+            name: "Hack Squat",
+            sets: 4,
+            matchedClass: "squat_or_quad_support",
+          }),
+        ],
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:quality_warning",
+          "concentration:primary_anchor",
+          "concentration:over_60_share",
+          "concentration:anchor_expected",
+          "concentration:quality_warning",
+          "justification:squat_anchor",
+          "justification:second_quad_exposure",
+          "justification:weekly_target_met",
+        ]),
+      },
+    });
+    expect(lane?.currentEvidence.selectedExercises).toHaveLength(1);
+    expect(lane?.currentEvidence.selectedExercises).toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({ name: "Leg Extension" }),
+        expect.objectContaining({ name: "Goblet Squat" }),
+      ]),
+    );
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
+        .nextBestMigrationSlice,
+    ).toBeNull();
+  });
+
+  it("keeps primary-anchor over-60 concentration actionable without second exposure", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "lower_a",
+            exerciseName: "Hack Squat",
+            isCompound: true,
+            role: "main",
+            setCount: 4,
+            primaryMuscles: ["Quads"],
+            movementPatterns: ["squat"],
+            stimulus: { Quads: 7 },
+            percentages: { Quads: 100 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Quads",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 7,
+            preferredEffectiveSets: 8,
+            maxEffectiveSets: 16,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "lower_a")
+      ?.laneDiffs.find((row) => row.laneId === "squat_anchor");
+
+    expect(lane).toMatchObject({
+      currentStatus: "blocked",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:hard_blocker",
+          "setPolicyReason:over_60_share",
+          "concentration:primary_anchor",
+          "concentration:over_60_share",
+          "concentration:true_blocker",
+          "concentration:needs_diversification",
+        ]),
+      },
+    });
+  });
+
+  it("keeps squat-anchor over-five and axial or systemic fatigue risk actionable", () => {
+    const overFive = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "lower_a",
+            exerciseName: "Hack Squat",
+            isCompound: true,
+            role: "main",
+            setCount: 6,
+            primaryMuscles: ["Quads"],
+            movementPatterns: ["squat"],
+            stimulus: { Quads: 6 },
+            percentages: { Quads: 60 },
+          },
+          {
+            slotId: "lower_b",
+            exerciseName: "Goblet Squat",
+            isCompound: true,
+            setCount: 2,
+            primaryMuscles: ["Quads"],
+            movementPatterns: ["squat"],
+            stimulus: { Quads: 2 },
+            percentages: { Quads: 40 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+    const axialRisk = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "lower_a",
+            exerciseName: "Hack Squat",
+            isCompound: true,
+            role: "main",
+            setCount: 4,
+            primaryMuscles: ["Quads"],
+            movementPatterns: ["squat", "axial_fatigue"],
+            stimulus: { Quads: 4 },
+            percentages: { Quads: 50 },
+          },
+          {
+            slotId: "lower_a",
+            exerciseName: "Leg Extension",
+            setCount: 2,
+            primaryMuscles: ["Quads"],
+            movementPatterns: ["isolation"],
+            stimulus: { Quads: 2 },
+            percentages: { Quads: 25 },
+          },
+          {
+            slotId: "lower_b",
+            exerciseName: "Goblet Squat",
+            isCompound: true,
+            setCount: 2,
+            primaryMuscles: ["Quads"],
+            movementPatterns: ["squat"],
+            stimulus: { Quads: 2 },
+            percentages: { Quads: 25 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const overFiveLane = overFive.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "lower_a")
+      ?.laneDiffs.find((row) => row.laneId === "squat_anchor");
+    const axialLane = axialRisk.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "lower_a")
+      ?.laneDiffs.find((row) => row.laneId === "squat_anchor");
+
+    expect(overFiveLane).toMatchObject({
+      currentStatus: "blocked",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:hard_blocker",
+          "setPolicyReason:gt_5_sets",
+        ]),
+      },
+    });
+    expect(axialLane).toMatchObject({
+      currentStatus: "blocked",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:hard_blocker",
+          "setPolicyReason:axial_fatigue",
+          "risk:axial_fatigue",
+        ]),
+      },
+    });
+  });
+
+  it("does not use repaired projection as squat-anchor target policy", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "lower_a",
+            exerciseName: "Hack Squat",
+            isCompound: true,
+            role: "main",
+            setCount: 4,
+            primaryMuscles: ["Quads"],
+            movementPatterns: ["squat"],
+            stimulus: { Quads: 7 },
+            percentages: { Quads: 100 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Quads",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 7,
+            preferredEffectiveSets: 8,
+            maxEffectiveSets: 16,
+          },
+        ],
+      }),
+      repairedPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "lower_a",
+            exerciseName: "Hack Squat",
+            isCompound: true,
+            role: "main",
+            setCount: 4,
+            primaryMuscles: ["Quads"],
+            movementPatterns: ["squat"],
+            stimulus: { Quads: 7 },
+            percentages: { Quads: 70 },
+          },
+          {
+            slotId: "lower_a",
+            exerciseName: "Leg Extension",
+            setCount: 2,
+            primaryMuscles: ["Quads"],
+            movementPatterns: ["isolation"],
+            stimulus: { Quads: 3 },
+            percentages: { Quads: 30 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "lower_a")
+      ?.laneDiffs.find((row) => row.laneId === "squat_anchor");
+
+    expect(lane).toMatchObject({
+      currentStatus: "blocked",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.not.arrayContaining([
+          "justification:second_quad_exposure",
+        ]),
+      },
+    });
+    expect(noRepair.v2SetDistributionIntent.guardrails).toMatchObject({
+      doesNotUseRepairedProjectionAsTarget: true,
+      doesNotUseAcceptedSeedAsTarget: true,
+    });
   });
 
   it("blocks primary hard targets above 60 percent even when the target is met", () => {

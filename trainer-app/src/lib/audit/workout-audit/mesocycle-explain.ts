@@ -3384,6 +3384,7 @@ function exerciseMatchesV2LaneClass(input: {
 
 function isStrictV2SetBudgetLane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
   return (
+    lane.laneId === "squat_anchor" ||
     lane.laneId === "chest_secondary" ||
     lane.laneId === "rear_delt" ||
     isTricepsV2Lane(lane)
@@ -3682,6 +3683,61 @@ function v2LaneHasSecondExposure(input: {
   return exposureCount > 0;
 }
 
+function v2LanePrimaryTargetsMetWithDirectEvidence(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  lane: V2Lane | V2Slot["lanes"][number];
+}): boolean {
+  if (!input.noRepair) {
+    return false;
+  }
+  const noRepair = input.noRepair;
+  const demandByMuscle = getNoRepairDemandByMuscle(noRepair);
+  return input.lane.primaryMuscles.every((muscle) => {
+    const demand = demandByMuscle.get(muscle);
+    if (demand?.minEffectiveSets == null) {
+      return true;
+    }
+    const directWeeklySets = noRepair.finalSlotPlan.reduce((sum, slot) => {
+      return sum + slot.exercises.reduce((slotSum, exercise) => {
+        return exercise.primaryMuscles.includes(muscle)
+          ? slotSum + (exercise.effectiveStimulusByMuscle[muscle] ?? 0)
+          : slotSum;
+      }, 0);
+    }, 0);
+    return directWeeklySets >= demand.minEffectiveSets;
+  });
+}
+
+function v2LaneFatigueRisk(
+  exercises: SlotCompositionSnapshot["exercises"]
+): { axial: boolean; systemic: boolean } {
+  return exercises.reduce<{ axial: boolean; systemic: boolean }>(
+    (risk, exercise) => {
+      const haystack = [
+        exercise.exerciseName,
+        exercise.role,
+        ...exercise.movementPatterns,
+      ]
+        .join(" ")
+        .toLowerCase();
+      return {
+        axial:
+          risk.axial ||
+          haystack.includes("axial_fatigue") ||
+          haystack.includes("axial fatigue") ||
+          haystack.includes("axial_loading") ||
+          haystack.includes("spinal_loading"),
+        systemic:
+          risk.systemic ||
+          haystack.includes("systemic_fatigue") ||
+          haystack.includes("systemic fatigue") ||
+          haystack.includes("excessive_systemic"),
+      };
+    },
+    { axial: false, systemic: false }
+  );
+}
+
 function isSmallV2TargetDenominator(input: {
   noRepair: PlanningRealityDiagnostic;
   muscle: string | null;
@@ -3842,7 +3898,12 @@ function evaluateV2LaneSetPolicy(input: {
     noRepair: input.noRepair,
     lane: input.lane,
   });
+  const directTargetMet = v2LanePrimaryTargetsMetWithDirectEvidence({
+    noRepair: input.noRepair,
+    lane: input.lane,
+  });
   const lowSystemicFatigueLane = isLowSystemicFatigueV2Lane(policyExercises);
+  const fatigueRisk = v2LaneFatigueRisk(policyExercises);
   const justifications = v2SetBudgetJustifications({
     setCount,
     budget,
@@ -3899,39 +3960,87 @@ function evaluateV2LaneSetPolicy(input: {
       muscle: concentrationEvidence.muscle,
       slotId: input.slotId,
     });
+  const concentrationWarning =
+    concentration.appliesTo !== "diagnostic_only" &&
+    concentrationShare >= concentration.warningShare;
+  const primaryAnchorConcentration =
+    concentration.appliesTo === "primary_target" && input.lane.role === "anchor";
+  const squatAnchorConcentration =
+    input.lane.laneId === "squat_anchor" && primaryAnchorConcentration;
+  const repairCreatedConcentration =
+    concentrationEvidence.row?.producedOrIncreasedByRepair ?? false;
+  const withinPlannedSetBudget =
+    setCount <= budget.max &&
+    maxExerciseSets <= cap.maxSetsPerExerciseWithoutJustification;
+  const anchorExpectedConcentration =
+    squatAnchorConcentration &&
+    concentrationWarning &&
+    directLaneOwnedExercise &&
+    directTargetMet &&
+    hasSecondExposure &&
+    withinPlannedSetBudget &&
+    !aboveFiveSets &&
+    !repairCreatedConcentration &&
+    !fatigueRisk.axial &&
+    !fatigueRisk.systemic;
   const concentrationBlocker =
     concentration.appliesTo !== "diagnostic_only" &&
     concentrationShare > concentration.blockerShare &&
+    !anchorExpectedConcentration &&
     (laneHasPrimaryHardTarget ||
       !supportTierConcentration ||
       (belowMinimum && !hasSecondExposure) ||
       !cleanDirectIsolation ||
       (!smallTargetDenominator && cleanAlternativeIgnored));
-  const concentrationWarning =
-    concentration.appliesTo !== "diagnostic_only" &&
-    concentrationShare >= concentration.warningShare;
   const concentratedUnderdelivery =
     concentrationWarning && setCount < budget.min && !targetMet;
-  const concentrationDiagnostics: string[] =
-    supportTierConcentration && concentrationWarning
-      ? [
-          "concentration:support_tier",
-          ...(smallTargetDenominator ? ["concentration:small_denominator"] : []),
-          ...(dirtyCollateral ? ["concentration:dirty_collateral"] : []),
-          ...(cleanDirectIsolation ? ["concentration:justified_direct_isolation"] : []),
-          ...(concentrationBlocker ? ["concentration:needs_diversification"] : []),
-          ...(cleanDirectIsolation ? ["justification:low_systemic_fatigue"] : []),
-          ...(cleanDirectIsolation && smallTargetDenominator
-            ? ["justification:small_target_denominator"]
-            : []),
-        ]
-      : [];
+  const concentrationDiagnostics: string[] = [];
+  if (supportTierConcentration && concentrationWarning) {
+    concentrationDiagnostics.push(
+      "concentration:support_tier",
+      ...(smallTargetDenominator ? ["concentration:small_denominator"] : []),
+      ...(dirtyCollateral ? ["concentration:dirty_collateral"] : []),
+      ...(cleanDirectIsolation ? ["concentration:justified_direct_isolation"] : []),
+      ...(concentrationBlocker ? ["concentration:needs_diversification"] : []),
+      ...(cleanDirectIsolation ? ["justification:low_systemic_fatigue"] : []),
+      ...(cleanDirectIsolation && smallTargetDenominator
+        ? ["justification:small_target_denominator"]
+        : [])
+    );
+  }
+  if (primaryAnchorConcentration && concentrationWarning) {
+    concentrationDiagnostics.push(
+      "concentration:primary_anchor",
+      ...(concentrationShare > concentration.blockerShare
+        ? ["concentration:over_60_share"]
+        : []),
+      ...(anchorExpectedConcentration
+        ? [
+            "concentration:anchor_expected",
+            "concentration:quality_warning",
+            "justification:squat_anchor",
+            "justification:second_quad_exposure",
+            "justification:weekly_target_met",
+          ]
+        : [
+            ...(concentrationBlocker ? ["concentration:true_blocker"] : []),
+            ...(!hasSecondExposure ? ["concentration:needs_diversification"] : []),
+            ...(directTargetMet ? ["justification:weekly_target_met"] : []),
+            "justification:none",
+          ]),
+      ...(fatigueRisk.axial ? ["risk:axial_fatigue"] : []),
+      ...(fatigueRisk.systemic ? ["risk:systemic_fatigue"] : [])
+    );
+  }
 
   let status: V2LaneSetPolicyStatus = "in_budget";
   let reason: string | null = null;
   if (aboveFiveSets) {
     status = "hard_blocker";
     reason = "gt_5_sets";
+  } else if (fatigueRisk.axial || fatigueRisk.systemic) {
+    status = "hard_blocker";
+    reason = fatigueRisk.axial ? "axial_fatigue" : "systemic_fatigue";
   } else if (concentrationBlocker) {
     status = "hard_blocker";
     reason = "over_60_share";
@@ -3967,7 +4076,7 @@ function evaluateV2LaneSetPolicy(input: {
       ...v2SetBudgetDiagnostics({ setCount, budget, status }),
       ...diagnosticJustifications,
       ...concentrationDiagnostics,
-    ], 8),
+    ], primaryAnchorConcentration ? 10 : 8),
   };
 }
 
@@ -4258,7 +4367,11 @@ function collectV2LaneDiagnostics(input: {
 
   return compactV2LaneDiagnostics(
     finalDiagnostics,
-    finalDiagnostics.includes("concentration:support_tier") ? 8 : 6
+    finalDiagnostics.includes("concentration:primary_anchor")
+      ? 10
+      : finalDiagnostics.includes("concentration:support_tier")
+        ? 8
+        : 6
   );
 }
 
@@ -4269,11 +4382,17 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
   const justification = unique.filter((row) => row.startsWith("justification"));
   const concentrationPolicyTokens = new Set<string>([
     "concentration:support_tier",
+    "concentration:primary_anchor",
+    "concentration:anchor_expected",
     "concentration:small_denominator",
     "concentration:quality_warning",
+    "concentration:true_blocker",
+    "concentration:over_60_share",
     "concentration:justified_direct_isolation",
     "concentration:dirty_collateral",
     "concentration:needs_diversification",
+    "risk:axial_fatigue",
+    "risk:systemic_fatigue",
   ]);
   const concentrationPolicy = unique.filter(
     (row) => concentrationPolicyTokens.has(row)

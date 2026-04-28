@@ -537,13 +537,18 @@ describe("artifact serialization helpers", () => {
                       ],
                       relevantDiagnostics: [
                         "setPolicy:quality_warning",
-                        "setBudget:within_planned_max",
-                        "justification:none",
+                        "setBudget:within_preferred",
+                        "concentration:primary_anchor",
+                        "concentration:anchor_expected",
+                        "concentration:quality_warning",
+                        "justification:squat_anchor",
+                        "justification:second_quad_exposure",
+                        "justification:weekly_target_met",
                         "concentration:Hack Squat:Quads:50%",
                       ],
                     },
                     gapCause: "concentration_policy_gap",
-                    migrationRecommendation: "needs_concentration_justification",
+                    migrationRecommendation: "keep_diagnostic_only",
                     severity: "quality_warning",
                   },
                 ],
@@ -553,7 +558,7 @@ describe("artifact serialization helpers", () => {
               canReplaceRepairedProjection: false,
               blockers: ["read_only_non_generative_artifact"],
               nextBestMigrationSlice:
-                "squat_anchor:needs_concentration_justification",
+                "row_anchor:needs_set_budget_justification",
             },
           },
           v2SetDistributionIntent: {
@@ -600,12 +605,13 @@ describe("artifact serialization helpers", () => {
     const compact = compactWorkoutAuditArtifactForSerialization(artifact);
     const serialized = JSON.stringify(compact);
 
-    expect(getSerializedJsonSizeBytes(compact)).toBeLessThan(
-      WORKOUT_AUDIT_SIZE_LIMIT_BYTES
-    );
+    const size = getSerializedJsonSizeBytes(compact);
+    expect(size).toBeLessThan(WORKOUT_AUDIT_SIZE_LIMIT_BYTES);
+    expect(WORKOUT_AUDIT_SIZE_LIMIT_BYTES - size).toBeGreaterThan(75_000);
     expect(serialized).toContain("setPolicy:quality_warning");
-    expect(serialized).toContain("setBudget:within_planned_max");
-    expect(serialized).toContain("justification:none");
+    expect(serialized).toContain("concentration:primary_anchor");
+    expect(serialized).toContain("concentration:anchor_expected");
+    expect(serialized).toContain("justification:second_quad_exposure");
   });
 
   it("preserves compact set-budget justification diagnostics without hard-blocker collision", () => {

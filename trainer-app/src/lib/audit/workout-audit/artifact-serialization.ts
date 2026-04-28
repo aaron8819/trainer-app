@@ -729,11 +729,17 @@ function compactV2OperatorDiagnostics(
       entry.startsWith("setBudget:") ||
       entry.startsWith("justification:") ||
       entry.startsWith("concentration:support_tier") ||
+      entry.startsWith("concentration:primary_anchor") ||
+      entry.startsWith("concentration:anchor_expected") ||
       entry.startsWith("concentration:small_denominator") ||
       entry.startsWith("concentration:quality_warning") ||
+      entry.startsWith("concentration:true_blocker") ||
+      entry.startsWith("concentration:over_60_share") ||
       entry.startsWith("concentration:justified_direct_isolation") ||
       entry.startsWith("concentration:dirty_collateral") ||
       entry.startsWith("concentration:needs_diversification") ||
+      entry.startsWith("risk:axial_fatigue") ||
+      entry.startsWith("risk:systemic_fatigue") ||
       entry.startsWith("target_status:") ||
       lower.includes("blocked") ||
       lower.includes("hard_blocker") ||
@@ -743,9 +749,13 @@ function compactV2OperatorDiagnostics(
       lower.includes("missing")
     );
   });
-  const limit =
-    severity === "hard_blocker" ||
-    values.some((entry) => entry === "concentration:support_tier")
+  const hasPrimaryAnchorConcentration = values.some(
+    (entry) => entry === "concentration:primary_anchor"
+  );
+  const limit = hasPrimaryAnchorConcentration
+    ? 10
+    : severity === "hard_blocker" ||
+        values.some((entry) => entry === "concentration:support_tier")
       ? 8
       : 4;
   return Array.from(new Set(important.length > 0 ? important : values)).slice(

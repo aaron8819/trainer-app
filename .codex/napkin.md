@@ -7,6 +7,7 @@
 | 2026-04-28 | self | Used `&&` command chaining in PowerShell while checking git status/diff and hit a parser error. | Run separate PowerShell commands or use `;` only when sequential shell semantics are intended. |
 | 2026-04-28 | self | Added a new typed planner-only artifact field and initially only fixed the focused mesocycle explain tests. | Update serializer, artifact serialization, and CLI fixtures together whenever `MesocycleExplainPlannerOnlyNoRepair` gains a required field. |
 | 2026-04-28 | self | In a V2 selection diagnostic, initially allowed same-muscle fallback to assign a Week 1 exercise to a lane whose existing lane evidence had no selected exercise. | Preserve identities only from explicit lane evidence; use inventory evidence for alternatives and mark missing generic inventory as not evaluated. |
+| 2026-04-28 | self | V2 `ExerciseSelectionPlanDiagnostic` can re-harden concentration artifacts already tier-downgraded by `v2TargetVsNoRepairDiff` / acceptance classification. | Reuse the tier-aware no-repair concentration classification for readout status; raw `exerciseConcentration` flags alone are too broad for blocker status. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

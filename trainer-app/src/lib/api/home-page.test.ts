@@ -661,6 +661,7 @@ describe("loadHomePageData", () => {
       actionLabel: "Open custom session",
       dismissActionHref: "/api/workouts/workout-closeout/dismiss-closeout",
       dismissActionLabel: "Dismiss optional session",
+      canDismiss: true,
     });
   });
 
@@ -736,6 +737,7 @@ describe("loadHomePageData", () => {
       actionMethod: "post",
       dismissActionHref: null,
       dismissActionLabel: null,
+      canDismiss: true,
     });
   });
 

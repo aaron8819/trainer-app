@@ -946,7 +946,7 @@ function buildProgramVolumeRows(input: {
         }),
         deltaLabel: formatTargetDeltaLabel({
           effectiveSets: data.effectiveSets,
-          target,
+          targetSets: target,
           targetKind: targetSemantics.targetKind,
           targetRange: targetSemantics.softTargetRange,
         }),

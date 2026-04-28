@@ -2750,6 +2750,72 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                 nextBestMigrationSlice: "chest_secondary:promote_to_planner_later",
               },
             },
+            v2SetDistributionIntent: {
+              version: 1,
+              source: "v2_planner_policy",
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              summary: {
+                weekCount: 1,
+                slotCount: 1,
+                laneCount: 1,
+                plannedTotalSetsByWeek: [
+                  {
+                    week: 1,
+                    totalSets: 4,
+                    volumeMultiplier: 1,
+                    phase: "entry_calibration",
+                  },
+                ],
+              },
+              weeks: [
+                {
+                  week: 1,
+                  phase: "entry_calibration",
+                  volumeMultiplier: 1,
+                  rirTarget: "3-4",
+                  slots: [
+                    {
+                      slotId: "upper_a",
+                      slotIntent: "horizontal push/pull + rear delt/triceps support",
+                      targetSessionSets: { min: 3, preferred: 4, max: 4 },
+                      lanes: [
+                        {
+                          laneId: "chest_anchor",
+                          role: "anchor",
+                          primaryMuscles: ["Chest"],
+                          preferredExerciseClasses: ["horizontal_press"],
+                          setBudget: {
+                            min: 3,
+                            preferred: 4,
+                            max: 4,
+                            basis: "target_lane",
+                          },
+                          capPolicy: {
+                            maxSetsPerExerciseWithoutJustification: 5,
+                            maxDirectExercises: 2,
+                            allowAboveFiveSetsOnlyWithJustification: true,
+                          },
+                          concentrationPolicy: {
+                            warningShare: 0.5,
+                            blockerShare: 0.6,
+                            appliesTo: "primary_target",
+                          },
+                          evidenceBasis: ["v2_target_skeleton"],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+              guardrails: {
+                doesNotUseRepairedProjectionAsTarget: true,
+                doesNotUseAcceptedSeedAsTarget: true,
+                doesNotAffectSelection: true,
+                doesNotAffectRepair: true,
+                doesNotAffectRuntimeReplay: true,
+              },
+            },
             slotPlans: [
               {
                 slotId: "upper_a",

@@ -2661,6 +2661,47 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(
       payload.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.summary.targetLaneCount,
     ).toBeGreaterThan(0);
+    expect(payload.plannerOnlyNoRepair?.v2SetDistributionIntent).toMatchObject({
+      version: 1,
+      source: "v2_planner_policy",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      summary: {
+        weekCount: 5,
+        slotCount: 4,
+        laneCount: expect.any(Number),
+      },
+      guardrails: {
+        doesNotUseRepairedProjectionAsTarget: true,
+        doesNotUseAcceptedSeedAsTarget: true,
+        doesNotAffectSelection: true,
+        doesNotAffectRepair: true,
+        doesNotAffectRuntimeReplay: true,
+      },
+    });
+    expect(
+      payload.plannerOnlyNoRepair?.v2SetDistributionIntent.weeks[1].slots.find(
+        (slot) => slot.slotId === "upper_a",
+      )?.lanes.find((lane) => lane.laneId === "chest_anchor"),
+    ).toMatchObject({
+      setBudget: {
+        min: 3,
+        preferred: 4,
+        max: 4,
+        basis: "target_lane",
+      },
+      capPolicy: {
+        maxSetsPerExerciseWithoutJustification: 5,
+      },
+      concentrationPolicy: {
+        warningShare: 0.5,
+        blockerShare: 0.6,
+        appliesTo: "primary_target",
+      },
+    });
+    expect(
+      payload.plannerOnlyNoRepair?.v2SetDistributionIntent.weeks[4].slots[0].lanes[0].setBudget.basis,
+    ).toBe("deload_transform");
     expect(
       payload.plannerOnlyNoRepair?.v2MesocyclePlan.validationRules.map(
         (rule) => rule.ruleId,
@@ -2694,6 +2735,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(
       JSON.stringify(payload.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff).length,
     ).toBeLessThan(16000);
+    expect(
+      JSON.stringify(payload.plannerOnlyNoRepair?.v2SetDistributionIntent).length,
+    ).toBeLessThan(80000);
     expect(payload.plannerOnlyNoRepair?.slotPlans[0]).toMatchObject({
       slotId: "upper_a",
       exercises: [

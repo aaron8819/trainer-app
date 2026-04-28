@@ -571,6 +571,91 @@ function compactPlannerOnlyDryRun(value: unknown): unknown {
   };
 }
 
+function compactV2SetDistributionIntent(value: unknown): unknown {
+  const intent = asRecord(value);
+  if (!intent) {
+    return value;
+  }
+
+  const catalog = createValueCatalog("V");
+  const rawWeeks = asRecordArray(intent.weeks);
+  const firstWeekSlots = asRecordArray(rawWeeks[0]?.slots);
+  const slotDefinitions = firstWeekSlots.map((slot) => ({
+    slotId: slot.slotId,
+    slotIntent: slot.slotIntent,
+    lanes: asRecordArray(slot.lanes).map((lane) => {
+      const compactLane: JsonRecord = { ...lane };
+      delete compactLane.setBudget;
+      for (const field of [
+        "primaryMuscles",
+        "preferredExerciseClasses",
+        "evidenceBasis",
+        "capPolicy",
+        "concentrationPolicy",
+      ]) {
+        const fieldValue = compactLane[field];
+        if (
+          (Array.isArray(fieldValue) && fieldValue.length > 0) ||
+          isRecord(fieldValue)
+        ) {
+          compactLane[`${field}Ref`] = catalog.ref(fieldValue);
+          delete compactLane[field];
+        }
+      }
+      return compactLane;
+    }),
+  }));
+  const weeks = rawWeeks.map((week) => ({
+    week: week.week,
+    phase: week.phase,
+    volumeMultiplier: week.volumeMultiplier,
+    rirTarget: week.rirTarget,
+    slots: asRecordArray(week.slots).map((slot) => ({
+      slotId: slot.slotId,
+      targetSessionSets: slot.targetSessionSets,
+      lanes: asRecordArray(slot.lanes).map((lane) => {
+        const compactLane: JsonRecord = { ...lane };
+        return {
+          laneId: compactLane.laneId,
+          setBudget: compactLane.setBudget,
+        };
+      }),
+    })),
+  }));
+
+  return {
+    version: intent.version,
+    source: intent.source,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    summary: intent.summary,
+    catalogs: {
+      policyValues: catalog.entries(),
+      slotDefinitions,
+    },
+    weeks,
+    guardrails: intent.guardrails,
+  };
+}
+
+function compactPlannerOnlyNoRepair(value: unknown): unknown {
+  const noRepair = asRecord(value);
+  if (!noRepair) {
+    return value;
+  }
+
+  return {
+    ...noRepair,
+    ...(noRepair.v2SetDistributionIntent
+      ? {
+          v2SetDistributionIntent: compactV2SetDistributionIntent(
+            noRepair.v2SetDistributionIntent
+          ),
+        }
+      : {}),
+  };
+}
+
 function compactPlanningReality(value: unknown): unknown {
   const planningReality = asRecord(value);
   if (!planningReality) {
@@ -611,7 +696,8 @@ export function compactWorkoutAuditArtifactForSerialization(
   const planningReality =
     mesocycleExplain?.preview.projectionDiagnostics.planningReality;
   const plannerOnlyDryRun = mesocycleExplain?.plannerOnlyDryRun;
-  if (!planningReality && !plannerOnlyDryRun) {
+  const plannerOnlyNoRepair = mesocycleExplain?.plannerOnlyNoRepair;
+  if (!planningReality && !plannerOnlyDryRun && !plannerOnlyNoRepair) {
     return artifact;
   }
 
@@ -638,6 +724,13 @@ export function compactWorkoutAuditArtifactForSerialization(
                 plannerOnlyDryRun: compactPlannerOnlyDryRun(
                   plannerOnlyDryRun
                 ) as typeof plannerOnlyDryRun,
+              }
+            : {}),
+          ...(plannerOnlyNoRepair
+            ? {
+                plannerOnlyNoRepair: compactPlannerOnlyNoRepair(
+                  plannerOnlyNoRepair
+                ) as typeof plannerOnlyNoRepair,
               }
             : {}),
         }

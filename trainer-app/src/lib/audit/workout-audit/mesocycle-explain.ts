@@ -43,6 +43,7 @@ import {
   resolvePersistedOrReconstructedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
 import { getMuscleTargetSemantics } from "@/lib/engine/volume-landmarks";
+import { buildV2SetDistributionIntent } from "@/lib/engine/planning/v2-set-distribution-intent";
 import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 import { MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION } from "./constants";
 import {
@@ -4623,6 +4624,10 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       acceptanceClassification,
       targetLanesMissing: 1,
     });
+    const v2SetDistributionIntent = buildV2SetDistributionIntent({
+      targetSkeleton: v2MesocyclePlan.skeleton,
+      weeklyProgressionModel: v2MesocyclePlan.weeklyProgressionModel,
+    });
     return {
       enabled: true,
       readOnly: true,
@@ -4643,6 +4648,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         slotPlans: [],
         acceptanceClassification,
       }),
+      v2SetDistributionIntent,
       slotPlans: [],
       weeklyMuscleTotals: [],
       setAllocationChanges: [],
@@ -4731,6 +4737,10 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     slotPlans,
     acceptanceClassification,
   });
+  const v2SetDistributionIntent = buildV2SetDistributionIntent({
+    targetSkeleton: v2MesocyclePlan.skeleton,
+    weeklyProgressionModel: v2MesocyclePlan.weeklyProgressionModel,
+  });
 
   return {
     enabled: true,
@@ -4747,6 +4757,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     acceptanceClassification,
     v2MesocyclePlan,
     v2TargetVsNoRepairDiff,
+    v2SetDistributionIntent,
     slotPlans,
     weeklyMuscleTotals,
     setAllocationChanges,

@@ -1,4 +1,5 @@
 import type { SessionIntent } from "@/lib/engine/session-types";
+import type { V2SetDistributionIntent } from "@/lib/engine/planning/v2-set-distribution-intent";
 import type { PlannerDiagnosticsMode, SessionSlotSnapshot } from "@/lib/evidence/types";
 import type { NextWorkoutContext } from "@/lib/api/next-session";
 import type {
@@ -1143,6 +1144,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
       nextBestMigrationSlice: string | null;
     };
   };
+  v2SetDistributionIntent: V2SetDistributionIntent;
   slotPlans: Array<{
     slotId: string;
     exercises: Array<{

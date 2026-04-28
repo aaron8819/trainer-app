@@ -3182,6 +3182,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
         relevantDiagnostics: expect.arrayContaining(["setPolicy:quality_warning"]),
       },
     });
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
+        .nextBestMigrationSlice,
+    ).toBe("row_anchor:needs_set_budget_justification");
     expect(noRepair.acceptanceClassification.diagnosticOnly).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -3271,6 +3275,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ]),
       },
     });
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
+        .nextBestMigrationSlice,
+    ).toBe("chest_anchor:needs_concentration_justification");
   });
 
   it("adds compact row-anchor set-budget evidence from V2 policy without using repaired projection as target", () => {
@@ -3931,6 +3939,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(overSixtyLane).toMatchObject({
       currentStatus: "partial",
       gapCause: "concentration_policy_gap",
+      migrationRecommendation: "keep_diagnostic_only",
       severity: "quality_warning",
       currentEvidence: {
         selectedExercises: [
@@ -3959,6 +3968,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
         entry.toLowerCase().includes("hard_blocker"),
       ),
     ).toBe(false);
+    expect(
+      overSixtyShare.v2TargetVsNoRepairDiff.replacementReadinessImpact
+        .nextBestMigrationSlice,
+    ).toBeNull();
   });
 
   it("still blocks dirty collateral concentration when it solves a support target", () => {
@@ -3998,6 +4011,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(lane).toMatchObject({
       currentStatus: "blocked",
       gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
       severity: "hard_blocker",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
@@ -4007,6 +4021,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ]),
       },
     });
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
+        .nextBestMigrationSlice,
+    ).toBe("vertical_press:needs_concentration_justification");
   });
 
   it("does not use repaired projection as the rear-delt target policy", () => {

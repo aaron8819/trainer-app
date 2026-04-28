@@ -4205,6 +4205,22 @@ function hasV2TrueHardBlockerDiagnostic(diagnostics: string[]): boolean {
   );
 }
 
+function hasExplainedV2ConcentrationWarning(diagnostics: string[]): boolean {
+  const hasQualityWarning =
+    diagnostics.includes("setPolicy:quality_warning") &&
+    diagnostics.includes("concentration:quality_warning");
+  const hasExplanation = diagnostics.some(
+    (row) =>
+      (row.startsWith("justification:") && row !== "justification:none") ||
+      row === "concentration:justified_direct_isolation"
+  );
+  return (
+    hasQualityWarning &&
+    hasExplanation &&
+    !hasV2TrueHardBlockerDiagnostic(diagnostics)
+  );
+}
+
 function classifyV2LaneStatus(input: {
   noRepair?: PlanningRealityDiagnostic;
   noRepairExercises: SlotCompositionSnapshot["exercises"];
@@ -4349,6 +4365,12 @@ function recommendV2Migration(input: {
     };
   }
   if (input.gapCause === "concentration_policy_gap") {
+    if (hasExplainedV2ConcentrationWarning(input.diagnostics)) {
+      return {
+        migrationRecommendation: "keep_diagnostic_only",
+        severity: "quality_warning",
+      };
+    }
     return {
       migrationRecommendation: "needs_concentration_justification",
       severity: "quality_warning",

@@ -2979,6 +2979,10 @@ type V2Slot = V2MesocyclePlan["skeleton"]["slots"][number];
 type V2Lane = V2Slot["lanes"][number] & {
   topDownLane?: string;
 };
+type V2TargetVsNoRepairDiff =
+  MesocycleExplainPlannerOnlyNoRepair["v2TargetVsNoRepairDiff"];
+type V2TargetVsNoRepairLaneDiff =
+  V2TargetVsNoRepairDiff["slotDiffs"][number]["laneDiffs"][number];
 
 const V2_SLOT_SEQUENCE: V2MesocyclePlan["skeleton"]["slotSequence"] = [
   "upper_a",
@@ -3304,6 +3308,570 @@ function buildV2Skeleton(input: {
         }),
       };
     }),
+  };
+}
+
+function v2LaneAliases(lane: V2Lane | V2Slot["lanes"][number]): string[] {
+  return uniqueSorted([
+    lane.laneId,
+    "topDownLane" in lane && typeof lane.topDownLane === "string"
+      ? lane.topDownLane
+      : "",
+  ]);
+}
+
+function getTopDownLane(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  slotId: string;
+  lane: V2Lane | V2Slot["lanes"][number];
+}): NonNullable<
+  NonNullable<PlanningRealityDiagnostic["topDownMesocyclePlan"]>["slotTargets"][number]["requiredClassLanes"][number]
+> | undefined {
+  const aliases = v2LaneAliases(input.lane);
+  return input.noRepair?.topDownMesocyclePlan?.slotTargets
+    .find((slot) => slot.slotId === input.slotId)
+    ?.requiredClassLanes.find((row) => aliases.includes(row.lane));
+}
+
+function exerciseMatchesV2LaneClass(input: {
+  exercise: SlotCompositionSnapshot["exercises"][number];
+  lane: V2Lane | V2Slot["lanes"][number];
+}): boolean {
+  const classified = classifyPlannerOnlyExercise({ exercise: input.exercise });
+  const aliases = v2LaneAliases(input.lane);
+  if (aliases.includes(classified.lane)) {
+    return true;
+  }
+  const exerciseClass = classified.exerciseClass.toLowerCase();
+  const targetClasses = input.lane.preferredExerciseClasses.map((value) =>
+    value.toLowerCase()
+  );
+  return targetClasses.some(
+    (targetClass) =>
+      targetClass.includes(exerciseClass) ||
+      exerciseClass.includes(targetClass) ||
+      targetClass.split("_").some((token) => token.length > 3 && exerciseClass.includes(token))
+  );
+}
+
+function exerciseSupportsV2Lane(input: {
+  exercise: SlotCompositionSnapshot["exercises"][number];
+  lane: V2Lane | V2Slot["lanes"][number];
+}): boolean {
+  if (exerciseMatchesV2LaneClass(input)) {
+    return true;
+  }
+  return input.lane.primaryMuscles.some(
+    (muscle) =>
+      input.exercise.primaryMuscles.includes(muscle) ||
+      (input.exercise.effectiveStimulusByMuscle[muscle] ?? 0) > 0
+  );
+}
+
+function collectV2LaneExercises(input: {
+  slot?: SlotCompositionSnapshot;
+  lane: V2Lane | V2Slot["lanes"][number];
+}): SlotCompositionSnapshot["exercises"] {
+  return (input.slot?.exercises ?? [])
+    .filter((exercise) => exerciseSupportsV2Lane({ exercise, lane: input.lane }))
+    .sort((left, right) => {
+      const leftClassMatch = exerciseMatchesV2LaneClass({
+        exercise: left,
+        lane: input.lane,
+      })
+        ? 1
+        : 0;
+      const rightClassMatch = exerciseMatchesV2LaneClass({
+        exercise: right,
+        lane: input.lane,
+      })
+        ? 1
+        : 0;
+      return (
+        rightClassMatch - leftClassMatch ||
+        right.setCount - left.setCount ||
+        left.exerciseName.localeCompare(right.exerciseName)
+      );
+    });
+}
+
+function formatV2SelectedExercises(input: {
+  exercises: SlotCompositionSnapshot["exercises"];
+  lane: V2Lane | V2Slot["lanes"][number];
+}): V2TargetVsNoRepairLaneDiff["currentEvidence"]["selectedExercises"] {
+  return input.exercises.slice(0, 3).map((exercise) => {
+    const classified = classifyPlannerOnlyExercise({ exercise });
+    return {
+      name: exercise.exerciseName,
+      sets: exercise.setCount,
+      ...(exerciseMatchesV2LaneClass({ exercise, lane: input.lane })
+        ? { matchedClass: classified.exerciseClass }
+        : {}),
+      role: exercise.role,
+    };
+  });
+}
+
+function includesAnyLaneToken(value: string, lane: V2Lane | V2Slot["lanes"][number]): boolean {
+  const normalized = value.toLowerCase();
+  return (
+    v2LaneAliases(lane).some((alias) => normalized.includes(alias.toLowerCase())) ||
+    lane.primaryMuscles.some((muscle) => normalized.includes(muscle.toLowerCase()))
+  );
+}
+
+function collectV2LaneDiagnostics(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  repaired?: PlanningRealityDiagnostic;
+  noRepairSlotPlan?: MesocycleExplainPlannerOnlyNoRepair["slotPlans"][number];
+  slotId: string;
+  lane: V2Lane | V2Slot["lanes"][number];
+  repairedCreatesLane: boolean;
+}): string[] {
+  const noRepair = input.noRepair;
+  const topDownLane = getTopDownLane({
+    noRepair,
+    slotId: input.slotId,
+    lane: input.lane,
+  });
+  const diagnostics: string[] = [
+    ...(topDownLane
+      ? [
+          `target_status:${topDownLane.currentStatus}`,
+          ...topDownLane.evidenceRefs,
+          ...topDownLane.limitations,
+        ]
+      : ["target_status:unknown"]),
+    ...(input.noRepairSlotPlan?.missingLanes.filter((row) =>
+      includesAnyLaneToken(row, input.lane)
+    ) ?? []),
+    ...(input.noRepairSlotPlan?.unresolvedDemand.filter((row) =>
+      includesAnyLaneToken(row, input.lane)
+    ) ?? []),
+    ...(input.noRepairSlotPlan?.validationFailures.filter((row) =>
+      includesAnyLaneToken(row, input.lane)
+    ) ?? []),
+    ...(input.repairedCreatesLane ? ["repair_dependent:repaired_projection_has_lane"] : []),
+  ];
+
+  if (!noRepair) {
+    return compactEvidence([...diagnostics, "planningReality_missing"], 6);
+  }
+
+  diagnostics.push(
+    ...(noRepair.exerciseClassUnresolvedCauses ?? [])
+      .filter(
+        (row) =>
+          row.slotId === input.slotId &&
+          input.lane.primaryMuscles.includes(row.muscle)
+      )
+      .map(
+        (row) =>
+          `class_cause:${row.muscle}:${row.owningCause}:${row.behaviorReadiness}`
+      )
+  );
+  diagnostics.push(
+    ...(noRepair.duplicateContinuityJustification?.duplicates ?? [])
+      .filter((row) => row.duplicatedInSlots.includes(input.slotId))
+      .filter(
+        (row) =>
+          row.primaryMuscles.some((muscle) =>
+            input.lane.primaryMuscles.includes(muscle)
+          ) ||
+          includesAnyLaneToken(row.exerciseClass ?? "", input.lane)
+      )
+      .map(
+        (row) =>
+          `duplicate:${row.exerciseName}:${row.justification}:${row.risk}`
+      )
+  );
+  diagnostics.push(
+    ...(noRepair.exerciseConcentration ?? [])
+      .filter((row) => row.slotId === input.slotId)
+      .filter((row) => row.flags.length > 0)
+      .flatMap((row) =>
+        Object.entries(row.percentageOfWeeklyProjectedStimulusByMuscle)
+          .filter(([muscle]) => input.lane.primaryMuscles.includes(muscle))
+          .map(
+            ([muscle, percentage]) =>
+              `concentration:${row.exerciseName}:${muscle}:${roundOne(percentage)}%`
+          )
+      )
+  );
+  diagnostics.push(
+    ...(noRepair.distributionGuardActions ?? [])
+      .filter(
+        (row) =>
+          row.slotId === input.slotId &&
+          input.lane.primaryMuscles.includes(row.muscle)
+      )
+      .map(
+        (row) =>
+          `distribution_guard:${row.exerciseName}:${row.attemptedAction}:${row.decision}`
+      )
+  );
+  diagnostics.push(
+    ...(noRepair.forbiddenCleanupReroute?.reroutedDemand ?? [])
+      .filter(
+        (row) =>
+          (row.fromSlotId === input.slotId || row.toSlotId === input.slotId) &&
+          input.lane.primaryMuscles.includes(row.muscle)
+      )
+      .map(
+        (row) =>
+          `forbidden_cleanup:${row.muscle}:${row.reason}`
+      )
+  );
+  diagnostics.push(
+    ...(input.repaired?.repairMaterialityAfterShadowAllocation ?? [])
+      .filter(
+        (row) =>
+          row.slotId === input.slotId &&
+          row.muscle != null &&
+          input.lane.primaryMuscles.includes(row.muscle) &&
+          (row.materiality === "moderate" || row.materiality === "major")
+      )
+      .map(
+        (row) =>
+          `repaired_repair:${row.muscle}:${row.exerciseName ?? "unknown"}:${row.materiality}`
+      )
+  );
+
+  return compactEvidence(diagnostics, 6);
+}
+
+function inferV2GapCause(input: {
+  status: V2TargetVsNoRepairLaneDiff["currentStatus"];
+  diagnostics: string[];
+}): V2TargetVsNoRepairLaneDiff["gapCause"] {
+  if (input.status === "satisfied") return "none";
+  if (input.status === "repair_dependent") return "repair_dependency";
+  const joined = input.diagnostics.join("|").toLowerCase();
+  if (joined.includes("inventory:") || joined.includes("inventory_gap")) {
+    return "inventory_gap";
+  }
+  if (
+    joined.includes("inventory_classification_gap") ||
+    joined.includes("classification")
+  ) {
+    return "classification_gap";
+  }
+  if (joined.includes("slot_capacity") || joined.includes("cap_")) {
+    return "capacity_gap";
+  }
+  if (joined.includes("duplicate")) {
+    return "duplicate_policy_gap";
+  }
+  if (joined.includes("distribution_guard") || joined.includes("set_count")) {
+    return "set_distribution_gap";
+  }
+  if (joined.includes("concentration") || joined.includes("share_")) {
+    return "concentration_policy_gap";
+  }
+  return "unknown";
+}
+
+function hasV2BlockedDiagnostic(diagnostics: string[]): boolean {
+  const joined = diagnostics.join("|").toLowerCase();
+  return (
+    joined.includes("target_status:blocked") ||
+    joined.includes("forbidden") ||
+    joined.includes("inventory_classification_gap") ||
+    joined.includes("slot_capacity_issue") ||
+    joined.includes("duplicate:") ||
+    joined.includes("concentration:") ||
+    joined.includes("set_count_gt_5") ||
+    joined.includes("distribution_guard")
+  );
+}
+
+function classifyV2LaneStatus(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  noRepairExercises: SlotCompositionSnapshot["exercises"];
+  repairedExercises: SlotCompositionSnapshot["exercises"];
+  lane: V2Lane | V2Slot["lanes"][number];
+  diagnostics: string[];
+}): V2TargetVsNoRepairLaneDiff["currentStatus"] {
+  if (!input.noRepair) {
+    return "unknown";
+  }
+
+  const classMatched = input.noRepairExercises.filter((exercise) =>
+    exerciseMatchesV2LaneClass({ exercise, lane: input.lane })
+  );
+  const hasClassMatch = classMatched.length > 0;
+  const hasMeaningfulNoRepairEvidence = input.noRepairExercises.length > 0;
+  const repairedCreatesLane =
+    !hasClassMatch &&
+    input.repairedExercises.some((exercise) =>
+      exerciseMatchesV2LaneClass({ exercise, lane: input.lane })
+    );
+  const setCount = (hasClassMatch ? classMatched : input.noRepairExercises)
+    .reduce((sum, exercise) => sum + exercise.setCount, 0);
+  const withinTarget =
+    setCount >= input.lane.targetSets.min && setCount <= input.lane.targetSets.max;
+  const withinTolerance =
+    setCount >= Math.max(0, input.lane.targetSets.min - 1) &&
+    setCount <= input.lane.targetSets.max + 1;
+  const blocked = hasV2BlockedDiagnostic(input.diagnostics);
+  const diagnosticStatus = input.diagnostics.find((row) =>
+    row.startsWith("target_status:")
+  );
+
+  if (hasClassMatch && (withinTarget || withinTolerance) && !blocked) {
+    return "satisfied";
+  }
+  if (!hasMeaningfulNoRepairEvidence && repairedCreatesLane) {
+    return "repair_dependent";
+  }
+  if (blocked || diagnosticStatus === "target_status:blocked") {
+    return "blocked";
+  }
+  if (
+    hasMeaningfulNoRepairEvidence ||
+    diagnosticStatus === "target_status:partial" ||
+    diagnosticStatus === "target_status:overdelivered"
+  ) {
+    return "partial";
+  }
+  return "missing";
+}
+
+function recommendV2Migration(input: {
+  status: V2TargetVsNoRepairLaneDiff["currentStatus"];
+  gapCause: V2TargetVsNoRepairLaneDiff["gapCause"];
+  diagnostics: string[];
+}): Pick<V2TargetVsNoRepairLaneDiff, "migrationRecommendation" | "severity"> {
+  if (input.status === "satisfied") {
+    return { migrationRecommendation: "no_action", severity: "pass" };
+  }
+  if (input.status === "unknown") {
+    return {
+      migrationRecommendation: "keep_diagnostic_only",
+      severity: "diagnostic_only",
+    };
+  }
+  if (input.status === "blocked") {
+    if (input.gapCause === "classification_gap") {
+      return {
+        migrationRecommendation: "needs_classification_review",
+        severity: "hard_blocker",
+      };
+    }
+    if (input.gapCause === "inventory_gap") {
+      return {
+        migrationRecommendation: "needs_inventory_review",
+        severity: "hard_blocker",
+      };
+    }
+    if (
+      input.gapCause === "capacity_gap" ||
+      input.gapCause === "set_distribution_gap"
+    ) {
+      return {
+        migrationRecommendation: "needs_set_distribution_policy",
+        severity: "hard_blocker",
+      };
+    }
+    return {
+      migrationRecommendation: "blocked_do_not_promote",
+      severity: "hard_blocker",
+    };
+  }
+  if (input.status === "repair_dependent") {
+    const suspicious = input.diagnostics.some((row) =>
+      row.toLowerCase().includes("suspicious")
+    );
+    return suspicious
+      ? {
+          migrationRecommendation: "blocked_do_not_promote",
+          severity: "diagnostic_only",
+        }
+      : {
+          migrationRecommendation: "promote_to_planner_later",
+          severity: "migration_candidate",
+        };
+  }
+  if (input.gapCause === "classification_gap") {
+    return {
+      migrationRecommendation: "needs_classification_review",
+      severity: "quality_warning",
+    };
+  }
+  if (input.gapCause === "inventory_gap") {
+    return {
+      migrationRecommendation: "needs_inventory_review",
+      severity: "quality_warning",
+    };
+  }
+  if (
+    input.gapCause === "capacity_gap" ||
+    input.gapCause === "set_distribution_gap"
+  ) {
+    return {
+      migrationRecommendation: "needs_set_distribution_policy",
+      severity: "quality_warning",
+    };
+  }
+  if (input.status === "partial") {
+    return {
+      migrationRecommendation: "keep_diagnostic_only",
+      severity: "quality_warning",
+    };
+  }
+  return {
+    migrationRecommendation: "keep_diagnostic_only",
+    severity: "diagnostic_only",
+  };
+}
+
+function buildV2LaneDiff(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  repaired?: PlanningRealityDiagnostic;
+  noRepairSlotPlan?: MesocycleExplainPlannerOnlyNoRepair["slotPlans"][number];
+  slotId: V2TargetVsNoRepairDiff["slotDiffs"][number]["slotId"];
+  lane: V2Lane | V2Slot["lanes"][number];
+}): V2TargetVsNoRepairLaneDiff {
+  const noRepairSlot = getSlotById(input.noRepair?.finalSlotPlan ?? [], input.slotId);
+  const repairedSlot = getSlotById(input.repaired?.finalSlotPlan ?? [], input.slotId);
+  const noRepairExercises = collectV2LaneExercises({
+    slot: noRepairSlot,
+    lane: input.lane,
+  });
+  const repairedExercises = collectV2LaneExercises({
+    slot: repairedSlot,
+    lane: input.lane,
+  });
+  const repairedCreatesLane =
+    noRepairExercises.length === 0 && repairedExercises.length > 0;
+  const diagnostics = collectV2LaneDiagnostics({
+    noRepair: input.noRepair,
+    repaired: input.repaired,
+    noRepairSlotPlan: input.noRepairSlotPlan,
+    slotId: input.slotId,
+    lane: input.lane,
+    repairedCreatesLane,
+  });
+  const currentStatus = classifyV2LaneStatus({
+    noRepair: input.noRepair,
+    noRepairExercises,
+    repairedExercises,
+    lane: input.lane,
+    diagnostics,
+  });
+  const gapCause = inferV2GapCause({ status: currentStatus, diagnostics });
+  const recommendation = recommendV2Migration({
+    status: currentStatus,
+    gapCause,
+    diagnostics,
+  });
+
+  return {
+    laneId: input.lane.laneId,
+    targetRole: input.lane.role,
+    targetPrimaryMuscles: input.lane.primaryMuscles,
+    targetExerciseClasses: input.lane.preferredExerciseClasses,
+    targetSets: input.lane.targetSets,
+    currentStatus,
+    currentEvidence: {
+      selectedExercises: formatV2SelectedExercises({
+        exercises: noRepairExercises,
+        lane: input.lane,
+      }),
+      relevantDiagnostics: diagnostics,
+    },
+    gapCause,
+    ...recommendation,
+  };
+}
+
+function nextBestV2MigrationSlice(
+  laneDiffs: V2TargetVsNoRepairLaneDiff[]
+): string | null {
+  const candidate =
+    laneDiffs.find((lane) => lane.severity === "migration_candidate") ??
+    laneDiffs.find(
+      (lane) => lane.migrationRecommendation === "needs_set_distribution_policy"
+    ) ??
+    laneDiffs.find(
+      (lane) =>
+        lane.migrationRecommendation === "needs_classification_review" ||
+        lane.migrationRecommendation === "needs_inventory_review"
+    );
+  return candidate
+    ? `${candidate.laneId}:${candidate.migrationRecommendation}`
+    : null;
+}
+
+function buildV2TargetVsNoRepairDiff(input: {
+  v2Plan: V2MesocyclePlan;
+  noRepair?: PlanningRealityDiagnostic;
+  repaired?: PlanningRealityDiagnostic;
+  slotPlans: MesocycleExplainPlannerOnlyNoRepair["slotPlans"];
+  acceptanceClassification: NoRepairClassification;
+}): V2TargetVsNoRepairDiff {
+  const noRepairSlotPlans = new Map(
+    input.slotPlans.map((slot) => [slot.slotId, slot])
+  );
+  const slotDiffs = input.v2Plan.skeleton.slots.map((slot) => ({
+    slotId: slot.slotId,
+    laneDiffs: slot.lanes.map((lane) =>
+      buildV2LaneDiff({
+        noRepair: input.noRepair,
+        repaired: input.repaired,
+        noRepairSlotPlan: noRepairSlotPlans.get(slot.slotId),
+        slotId: slot.slotId,
+        lane,
+      })
+    ),
+  }));
+  const laneDiffs = slotDiffs.flatMap((slot) => slot.laneDiffs);
+  const migrationCandidateCount = laneDiffs.filter(
+    (lane) => lane.severity === "migration_candidate"
+  ).length;
+  const suspiciousOrBlockedCount =
+    laneDiffs.filter((lane) => lane.currentStatus === "blocked").length +
+    (input.repaired?.suspiciousRepairsNotEligibleForPromotion?.length ?? 0);
+  const blockers = compactEvidence(
+    [
+      ...input.acceptanceClassification.hardBlockers.map(
+        (row) => row.code
+      ),
+      ...input.acceptanceClassification.diagnosticOnly.map(
+        (row) => row.code
+      ),
+      ...input.acceptanceClassification.sessionShaping.map(
+        (row) => row.code
+      ),
+      `missing_lanes:${laneDiffs.filter((lane) => lane.currentStatus === "missing").length}`,
+      `blocked_lanes:${laneDiffs.filter((lane) => lane.currentStatus === "blocked").length}`,
+      `repair_dependent_lanes:${laneDiffs.filter((lane) => lane.currentStatus === "repair_dependent").length}`,
+      "read_only_non_generative_artifact",
+    ],
+    10
+  );
+
+  return {
+    version: 1,
+    source: "v2_planner_no_repair_experimental",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    summary: {
+      targetLaneCount: laneDiffs.length,
+      satisfiedLaneCount: laneDiffs.filter((lane) => lane.currentStatus === "satisfied").length,
+      partialLaneCount: laneDiffs.filter((lane) => lane.currentStatus === "partial").length,
+      missingLaneCount: laneDiffs.filter((lane) => lane.currentStatus === "missing").length,
+      blockedLaneCount: laneDiffs.filter((lane) => lane.currentStatus === "blocked").length,
+      repairDependentLaneCount: laneDiffs.filter((lane) => lane.currentStatus === "repair_dependent").length,
+      migrationCandidateCount,
+      suspiciousOrBlockedCount,
+    },
+    slotDiffs,
+    replacementReadinessImpact: {
+      canReplaceRepairedProjection: false,
+      blockers,
+      nextBestMigrationSlice: nextBestV2MigrationSlice(laneDiffs),
+    },
   };
 }
 
@@ -4049,6 +4617,12 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         evidence: ["planningReality_missing"],
       },
     ];
+    const v2MesocyclePlan = buildV2MesocyclePlan({
+      slotPlans: [],
+      acceptanceChecks,
+      acceptanceClassification,
+      targetLanesMissing: 1,
+    });
     return {
       enabled: true,
       readOnly: true,
@@ -4062,11 +4636,12 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         validationFailureCount: 1,
       },
       acceptanceClassification,
-      v2MesocyclePlan: buildV2MesocyclePlan({
+      v2MesocyclePlan,
+      v2TargetVsNoRepairDiff: buildV2TargetVsNoRepairDiff({
+        v2Plan: v2MesocyclePlan,
+        repaired: input.repairedPlanningReality,
         slotPlans: [],
-        acceptanceChecks,
         acceptanceClassification,
-        targetLanesMissing: 1,
       }),
       slotPlans: [],
       weeklyMuscleTotals: [],
@@ -4142,6 +4717,20 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     slotPlans,
   });
   const gaps = mainNoRepairGaps({ slotPlans, acceptanceChecks });
+  const v2MesocyclePlan = buildV2MesocyclePlan({
+    noRepair,
+    slotPlans,
+    acceptanceChecks,
+    acceptanceClassification,
+    targetLanesMissing,
+  });
+  const v2TargetVsNoRepairDiff = buildV2TargetVsNoRepairDiff({
+    v2Plan: v2MesocyclePlan,
+    noRepair,
+    repaired: input.repairedPlanningReality,
+    slotPlans,
+    acceptanceClassification,
+  });
 
   return {
     enabled: true,
@@ -4156,13 +4745,8 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       validationFailureCount,
     },
     acceptanceClassification,
-    v2MesocyclePlan: buildV2MesocyclePlan({
-      noRepair,
-      slotPlans,
-      acceptanceChecks,
-      acceptanceClassification,
-      targetLanesMissing,
-    }),
+    v2MesocyclePlan,
+    v2TargetVsNoRepairDiff,
     slotPlans,
     weeklyMuscleTotals,
     setAllocationChanges,

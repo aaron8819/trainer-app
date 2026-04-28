@@ -2649,6 +2649,18 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ]),
       },
     });
+    expect(payload.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff).toMatchObject({
+      version: 1,
+      source: "v2_planner_no_repair_experimental",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      replacementReadinessImpact: {
+        canReplaceRepairedProjection: false,
+      },
+    });
+    expect(
+      payload.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.summary.targetLaneCount,
+    ).toBeGreaterThan(0);
     expect(
       payload.plannerOnlyNoRepair?.v2MesocyclePlan.validationRules.map(
         (rule) => rule.ruleId,
@@ -2679,6 +2691,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(
       JSON.stringify(payload.plannerOnlyNoRepair?.v2MesocyclePlan).length,
     ).toBeLessThan(12000);
+    expect(
+      JSON.stringify(payload.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff).length,
+    ).toBeLessThan(16000);
     expect(payload.plannerOnlyNoRepair?.slotPlans[0]).toMatchObject({
       slotId: "upper_a",
       exercises: [
@@ -3377,6 +3392,113 @@ describe("buildMesocycleExplainAuditPayload", () => {
       week1Status: "pass_with_warning",
       fullMesocycleStatus: "limited",
     });
+  });
+
+  it("classifies V2 target lanes against no-repair output without optimizing toward repaired projection", () => {
+    const noRepairReality = makeNoRepairConcentrationPlanningReality({
+      exercises: [
+        {
+          slotId: "upper_a",
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          role: "main",
+          isCompound: true,
+          setCount: 4,
+          primaryMuscles: ["Chest"],
+          movementPatterns: ["horizontal_push"],
+          stimulus: { Chest: 4 },
+        },
+      ],
+      demands: [
+        {
+          muscle: "Chest",
+          priority: "primary",
+          targetStatus: "hard",
+          minEffectiveSets: 4,
+          preferredEffectiveSets: 4,
+          maxEffectiveSets: 8,
+        },
+      ],
+    });
+    const repairedReality = makeNoRepairConcentrationPlanningReality({
+      exercises: [
+        {
+          slotId: "upper_a",
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          role: "main",
+          isCompound: true,
+          setCount: 4,
+          primaryMuscles: ["Chest"],
+          movementPatterns: ["horizontal_push"],
+          stimulus: { Chest: 4 },
+        },
+        {
+          slotId: "upper_a",
+          exerciseId: "reverse-pec-deck",
+          exerciseName: "Reverse Pec Deck",
+          setCount: 3,
+          primaryMuscles: ["Rear Delts"],
+          movementPatterns: ["isolation"],
+          stimulus: { "Rear Delts": 3 },
+        },
+      ],
+      demands: [
+        {
+          muscle: "Chest",
+          priority: "primary",
+          targetStatus: "hard",
+          minEffectiveSets: 4,
+          preferredEffectiveSets: 4,
+          maxEffectiveSets: 8,
+        },
+      ],
+    });
+
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: noRepairReality,
+      repairedPlanningReality: repairedReality,
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+    const upperA = noRepair.v2TargetVsNoRepairDiff.slotDiffs.find(
+      (slot) => slot.slotId === "upper_a",
+    );
+
+    expect(noRepair.v2TargetVsNoRepairDiff).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      replacementReadinessImpact: {
+        canReplaceRepairedProjection: false,
+      },
+    });
+    expect(upperA?.laneDiffs.find((lane) => lane.laneId === "chest_anchor")).toMatchObject({
+      currentStatus: "satisfied",
+      gapCause: "none",
+      migrationRecommendation: "no_action",
+      severity: "pass",
+      currentEvidence: {
+        selectedExercises: [
+          expect.objectContaining({
+            name: "Bench Press",
+            sets: 4,
+          }),
+        ],
+      },
+    });
+    expect(upperA?.laneDiffs.find((lane) => lane.laneId === "rear_delt")).toMatchObject({
+      currentStatus: "repair_dependent",
+      gapCause: "repair_dependency",
+      severity: "migration_candidate",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "repair_dependent:repaired_projection_has_lane",
+        ]),
+      },
+    });
+    expect(noRepair.v2TargetVsNoRepairDiff.summary.satisfiedLaneCount).toBeGreaterThan(0);
+    expect(noRepair.v2TargetVsNoRepairDiff.summary.repairDependentLaneCount).toBeGreaterThan(0);
+    expect(noRepair.v2TargetVsNoRepairDiff.summary.migrationCandidateCount).toBeGreaterThan(0);
   });
 
   it("hard-fails required lanes, dirty Back Extension closure, and runtime replay failure", () => {

@@ -2034,6 +2034,17 @@ export function buildPlannerOnlyNoRepairSummary(input: {
   if (!v2Plan) {
     return baseLines;
   }
+  const diff = noRepair.v2TargetVsNoRepairDiff;
+  const diffLines = diff
+    ? [
+        "V2 Target vs No-Repair Diff",
+        "----------------------------",
+        `Lane status: satisfied=${diff.summary.satisfiedLaneCount} partial=${diff.summary.partialLaneCount} missing=${diff.summary.missingLaneCount} blocked=${diff.summary.blockedLaneCount} repair-dependent=${diff.summary.repairDependentLaneCount}`,
+        `Migration candidates: ${diff.summary.migrationCandidateCount}`,
+        `Suspicious or blocked: ${diff.summary.suspiciousOrBlockedCount}`,
+        `Next migration slice: ${diff.replacementReadinessImpact.nextBestMigrationSlice ?? "none"}`,
+      ]
+    : [];
 
   return [
     ...baseLines,
@@ -2047,6 +2058,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
       ? "Deload: transform defined, not production-projected"
       : `Deload: ${formatStatus(v2Plan.deloadTransform.projectionStatus)}`,
     `Replacement readiness: ${formatStatus(classification.replacementReadinessStatus)}`,
+    ...diffLines,
   ];
 }
 

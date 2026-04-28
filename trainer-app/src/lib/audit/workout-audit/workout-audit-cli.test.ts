@@ -2728,6 +2728,28 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                 reason: ["hard_blockers:1"],
               },
             },
+            v2TargetVsNoRepairDiff: {
+              version: 1,
+              source: "v2_planner_no_repair_experimental",
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              summary: {
+                targetLaneCount: 2,
+                satisfiedLaneCount: 1,
+                partialLaneCount: 0,
+                missingLaneCount: 0,
+                blockedLaneCount: 0,
+                repairDependentLaneCount: 1,
+                migrationCandidateCount: 1,
+                suspiciousOrBlockedCount: 0,
+              },
+              slotDiffs: [],
+              replacementReadinessImpact: {
+                canReplaceRepairedProjection: false,
+                blockers: ["hard_blockers:1"],
+                nextBestMigrationSlice: "chest_secondary:promote_to_planner_later",
+              },
+            },
             slotPlans: [
               {
                 slotId: "upper_a",
@@ -2874,6 +2896,12 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
       "Weeks 2-4: derived progression model, limited projection",
       "Deload: transform defined, not production-projected",
       "Replacement readiness: blocked",
+      "V2 Target vs No-Repair Diff",
+      "----------------------------",
+      "Lane status: satisfied=1 partial=0 missing=0 blocked=0 repair-dependent=1",
+      "Migration candidates: 1",
+      "Suspicious or blocked: 0",
+      "Next migration slice: chest_secondary:promote_to_planner_later",
     ]);
   });
 });

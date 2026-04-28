@@ -1072,6 +1072,77 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
       reason: string[];
     };
   };
+  v2TargetVsNoRepairDiff: {
+    version: 1;
+    source: "v2_planner_no_repair_experimental";
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    summary: {
+      targetLaneCount: number;
+      satisfiedLaneCount: number;
+      partialLaneCount: number;
+      missingLaneCount: number;
+      blockedLaneCount: number;
+      repairDependentLaneCount: number;
+      migrationCandidateCount: number;
+      suspiciousOrBlockedCount: number;
+    };
+    slotDiffs: Array<{
+      slotId: "upper_a" | "lower_a" | "upper_b" | "lower_b";
+      laneDiffs: Array<{
+        laneId: string;
+        targetRole: "anchor" | "support" | "accessory" | "optional";
+        targetPrimaryMuscles: string[];
+        targetExerciseClasses: string[];
+        targetSets: { min: number; preferred: number; max: number };
+        currentStatus:
+          | "satisfied"
+          | "partial"
+          | "missing"
+          | "blocked"
+          | "repair_dependent"
+          | "unknown";
+        currentEvidence: {
+          selectedExercises: Array<{
+            name: string;
+            sets: number;
+            matchedClass?: string;
+            role?: string;
+          }>;
+          relevantDiagnostics: string[];
+        };
+        gapCause:
+          | "none"
+          | "inventory_gap"
+          | "classification_gap"
+          | "capacity_gap"
+          | "duplicate_policy_gap"
+          | "set_distribution_gap"
+          | "concentration_policy_gap"
+          | "repair_dependency"
+          | "unknown";
+        migrationRecommendation:
+          | "no_action"
+          | "promote_to_planner_later"
+          | "needs_classification_review"
+          | "needs_inventory_review"
+          | "needs_set_distribution_policy"
+          | "keep_diagnostic_only"
+          | "blocked_do_not_promote";
+        severity:
+          | "pass"
+          | "quality_warning"
+          | "migration_candidate"
+          | "hard_blocker"
+          | "diagnostic_only";
+      }>;
+    }>;
+    replacementReadinessImpact: {
+      canReplaceRepairedProjection: false;
+      blockers: string[];
+      nextBestMigrationSlice: string | null;
+    };
+  };
   slotPlans: Array<{
     slotId: string;
     exercises: Array<{

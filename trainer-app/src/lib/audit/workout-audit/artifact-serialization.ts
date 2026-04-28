@@ -84,6 +84,7 @@ export const V2_PLANNER_NO_REPAIR_DEBUG_CONTAINS = [
   "crossWeekProjectionGate",
   "v2MesocyclePlan",
   "v2SetDistributionIntent",
+  "plannerOwnedAccumulationProjection",
   "v2TargetVsNoRepairDiff",
   "slotPlans",
   "weeklyMuscleTotals",

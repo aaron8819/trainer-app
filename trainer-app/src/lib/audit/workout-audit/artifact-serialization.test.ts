@@ -508,15 +508,15 @@ describe("artifact serialization helpers", () => {
               basis: ["week_1_no_repair_shape_only"],
             },
             accumulationWeeksStatus: {
-              status: "diagnostic_projection_only",
+              status: "projected_with_limitations",
               weeks: [
                 {
                   week: 2,
                   phase: "accumulation",
                   volumeMultiplier: 1,
                   rirTarget: "2-3",
-                  projectionBasis: "scaled_v2_set_distribution_intent",
-                  limitations: ["planner_owned_week_allocation_missing"],
+                  projectionBasis: "planner_owned_read_only_projection",
+                  limitations: ["planner_owned_week_projection_exists_but_is_diagnostic_only"],
                   safeForBehaviorPromotion: false,
                 },
                 {
@@ -524,8 +524,8 @@ describe("artifact serialization helpers", () => {
                   phase: "hard_accumulation",
                   volumeMultiplier: 1.075,
                   rirTarget: "1-2",
-                  projectionBasis: "scaled_v2_set_distribution_intent",
-                  limitations: ["planner_owned_week_allocation_missing"],
+                  projectionBasis: "planner_owned_read_only_projection",
+                  limitations: ["planner_owned_week_projection_exists_but_is_diagnostic_only"],
                   safeForBehaviorPromotion: false,
                 },
                 {
@@ -533,8 +533,8 @@ describe("artifact serialization helpers", () => {
                   phase: "peak_overreach_lite",
                   volumeMultiplier: 1.125,
                   rirTarget: "0-1",
-                  projectionBasis: "scaled_v2_set_distribution_intent",
-                  limitations: ["planner_owned_week_allocation_missing"],
+                  projectionBasis: "planner_owned_read_only_projection",
+                  limitations: ["planner_owned_week_projection_exists_but_is_diagnostic_only"],
                   safeForBehaviorPromotion: false,
                 },
               ],
@@ -550,8 +550,8 @@ describe("artifact serialization helpers", () => {
             },
             replacementReadinessStatus: "not_ready",
             blockers: ["weeks_2_to_4_planner_owned_projection_missing"],
-            warnings: ["scaled_v2_set_distribution_intent_is_diagnostic_only"],
-            missingInputs: ["slotDemandAllocationByWeek:week_2:not_allocated_missing_weekly_projection"],
+            warnings: ["planner_owned_weeks_2_to_4_projection_is_read_only"],
+            missingInputs: [],
             projectedWeekSummaries: [
               {
                 week: 1,
@@ -717,10 +717,10 @@ describe("artifact serialization helpers", () => {
         affectsScoringOrGeneration: false,
         week1Status: { status: "pass_with_warnings", basisCount: 1 },
         accumulationWeeksStatus: {
-          status: "diagnostic_projection_only",
+          status: "projected_with_limitations",
           weekCount: 3,
           projectionBasisCounts: {
-            scaled_v2_set_distribution_intent: 3,
+            planner_owned_read_only_projection: 3,
           },
         },
         deloadStatus: {
@@ -732,7 +732,7 @@ describe("artifact serialization helpers", () => {
         safeToPromoteBehavior: false,
         blockerCount: 1,
         warningCount: 1,
-        missingInputCount: 1,
+        missingInputCount: 0,
         projectedWeekSummaryCount: 1,
       },
       debugArtifact: {
@@ -744,6 +744,7 @@ describe("artifact serialization helpers", () => {
     expect(noRepair).not.toHaveProperty("v2MesocyclePlan");
     expect(noRepair).not.toHaveProperty("v2TargetVsNoRepairDiff");
     expect(noRepair).not.toHaveProperty("v2SetDistributionIntent");
+    expect(noRepair).not.toHaveProperty("plannerOwnedAccumulationProjection");
     expect(
       (noRepair.crossWeekProjectionGate as Record<string, unknown>)
         .accumulationWeeksStatus,
@@ -1281,6 +1282,7 @@ describe("artifact serialization helpers", () => {
         contains: expect.arrayContaining([
           "v2MesocyclePlan",
           "v2SetDistributionIntent",
+          "plannerOwnedAccumulationProjection",
           "v2TargetVsNoRepairDiff",
         ]),
       },
@@ -1288,6 +1290,7 @@ describe("artifact serialization helpers", () => {
     expect(noRepair).not.toHaveProperty("v2MesocyclePlan");
     expect(noRepair).not.toHaveProperty("v2TargetVsNoRepairDiff");
     expect(noRepair).not.toHaveProperty("v2SetDistributionIntent");
+    expect(noRepair).not.toHaveProperty("plannerOwnedAccumulationProjection");
   });
 
   it("links planner-only no-repair main artifact to a written sidecar manifest", () => {
@@ -1376,6 +1379,7 @@ describe("artifact serialization helpers", () => {
       contains: expect.arrayContaining([
         "v2MesocyclePlan",
         "v2SetDistributionIntent",
+        "plannerOwnedAccumulationProjection",
         "v2TargetVsNoRepairDiff",
       ]),
     });

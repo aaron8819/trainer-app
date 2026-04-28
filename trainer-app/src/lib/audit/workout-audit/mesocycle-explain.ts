@@ -47,6 +47,7 @@ import {
   buildV2SetDistributionIntent,
   type V2SetDistributionIntent,
 } from "@/lib/engine/planning/v2-set-distribution-intent";
+import { buildPlannerOwnedAccumulationProjection } from "@/lib/api/planning-reality";
 import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 import { MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION } from "./constants";
 import {
@@ -5829,9 +5830,13 @@ function buildCrossWeekAccumulationStatus(input: {
   noRepair?: PlanningRealityDiagnostic;
   v2MesocyclePlan: V2MesocyclePlan;
   v2SetDistributionIntent: V2SetDistributionIntent;
+  plannerOwnedAccumulationProjection: MesocycleExplainPlannerOnlyNoRepair["plannerOwnedAccumulationProjection"];
 }): CrossWeekProjectionGate["accumulationWeeksStatus"] {
   const rows = ([2, 3, 4] as const).map((weekNumber) => {
     const progressionWeek = input.v2MesocyclePlan.weeklyProgressionModel.weeks.find(
+      (week) => week.week === weekNumber
+    );
+    const plannerOwnedWeek = input.plannerOwnedAccumulationProjection.weeks.find(
       (week) => week.week === weekNumber
     );
     const intentWeek = input.v2SetDistributionIntent.weeks.find(
@@ -5854,6 +5859,8 @@ function buildCrossWeekAccumulationStatus(input: {
     const plannerOwned =
       isPlannerOwnedProjectionStatus(allocationStatus) &&
       isPlannerOwnedProjectionStatus(preselectionStatus);
+    const plannerOwnedReadOnly =
+      plannerOwnedWeek?.projectionStatus === "planner_owned_read_only";
     const hasV2ScaledIntent = intentWeek != null;
     const hasDiagnosticWeekEvidence =
       isDiagnosticProjectedStatus(allocationStatus) ||
@@ -5862,6 +5869,8 @@ function buildCrossWeekAccumulationStatus(input: {
     const projectionBasis: CrossWeekProjectionGate["accumulationWeeksStatus"]["weeks"][number]["projectionBasis"] =
       plannerOwned
         ? "planner_owned_week_projection"
+        : plannerOwnedReadOnly
+          ? "planner_owned_read_only_projection"
         : hasV2ScaledIntent
           ? "scaled_v2_set_distribution_intent"
           : hasDiagnosticWeekEvidence
@@ -5872,29 +5881,47 @@ function buildCrossWeekAccumulationStatus(input: {
       ...(allocationWeek?.weekLevelWarnings ?? []),
       ...(preselectionWeek?.weekLevelWarnings ?? []),
       ...(weeklyDemandWeek?.weekLevelLimitations ?? []),
-      ...collectMissingProjectionInputs({
-        prefix: "weeklyDemandCurve",
-        week: weekNumber,
-        status: weeklyDemandStatus,
-      }),
-      ...collectMissingProjectionInputs({
-        prefix: "slotDemandAllocationByWeek",
-        week: weekNumber,
-        status: allocationStatus,
-      }),
-      ...collectMissingProjectionInputs({
-        prefix: "preselectionDistributionPolicyByWeek",
-        week: weekNumber,
-        status: preselectionStatus,
-      }),
+      ...(plannerOwnedReadOnly
+        ? [
+            ...plannerOwnedWeek.validation.missingInputs,
+            ...plannerOwnedWeek.validation.unresolvedDemand,
+            ...plannerOwnedWeek.validation.concentrationWarnings,
+            ...plannerOwnedWeek.validation.duplicateWarnings,
+            "planner_owned_projection_read_only_not_selection_seed_or_runtime_input",
+            "safe_for_behavior_promotion_false",
+          ]
+        : [
+            ...collectMissingProjectionInputs({
+              prefix: "weeklyDemandCurve",
+              week: weekNumber,
+              status: weeklyDemandStatus,
+            }),
+            ...collectMissingProjectionInputs({
+              prefix: "slotDemandAllocationByWeek",
+              week: weekNumber,
+              status: allocationStatus,
+            }),
+            ...collectMissingProjectionInputs({
+              prefix: "preselectionDistributionPolicyByWeek",
+              week: weekNumber,
+              status: preselectionStatus,
+            }),
+          ]),
       ...(plannerOwned
         ? []
-        : [
+        : plannerOwnedReadOnly
+          ? [
+              "planner_owned_week_projection_exists_but_is_diagnostic_only",
+              "accepted_seed_runtime_consumption_missing",
+            ]
+          : [
             "planner_owned_week_allocation_missing",
             "repeated_week_1_diagnostic_projection_not_true_cross_week_projection",
           ]),
       ...(hasV2ScaledIntent && !plannerOwned
-        ? ["scaled_v2_set_distribution_intent_is_read_only"]
+        ? plannerOwnedReadOnly
+          ? ["v2_set_distribution_intent_used_as_lane_budget_policy_only"]
+          : ["scaled_v2_set_distribution_intent_is_read_only"]
         : []),
     ]);
 
@@ -5913,6 +5940,8 @@ function buildCrossWeekAccumulationStatus(input: {
   const status: CrossWeekProjectionGate["accumulationWeeksStatus"]["status"] =
     rows.every((week) => week.projectionBasis === "planner_owned_week_projection")
       ? "ready"
+      : rows.every((week) => week.projectionBasis === "planner_owned_read_only_projection")
+        ? "projected_with_limitations"
       : rows.some((week) => week.projectionBasis === "scaled_v2_set_distribution_intent")
         ? "diagnostic_projection_only"
         : rows.some((week) => week.projectionBasis === "repeat_week_1_shape")
@@ -6001,6 +6030,7 @@ function buildCrossWeekProjectionGate(input: {
   acceptanceClassification: NoRepairClassification;
   v2MesocyclePlan: V2MesocyclePlan;
   v2SetDistributionIntent: V2SetDistributionIntent;
+  plannerOwnedAccumulationProjection: MesocycleExplainPlannerOnlyNoRepair["plannerOwnedAccumulationProjection"];
   v2TargetVsNoRepairDiff: V2TargetVsNoRepairDiff;
 }): CrossWeekProjectionGate {
   const week1Status = {
@@ -6019,6 +6049,7 @@ function buildCrossWeekProjectionGate(input: {
     noRepair: input.noRepair,
     v2MesocyclePlan: input.v2MesocyclePlan,
     v2SetDistributionIntent: input.v2SetDistributionIntent,
+    plannerOwnedAccumulationProjection: input.plannerOwnedAccumulationProjection,
   });
   const deloadStatus = buildCrossWeekDeloadStatus({
     noRepair: input.noRepair,
@@ -6037,7 +6068,9 @@ function buildCrossWeekProjectionGate(input: {
     ...input.v2TargetVsNoRepairDiff.replacementReadinessImpact.blockers,
     ...(accumulationWeeksStatus.status === "ready"
       ? []
-      : ["weeks_2_to_4_planner_owned_projection_missing"]),
+      : accumulationWeeksStatus.status === "projected_with_limitations"
+        ? ["weeks_2_to_4_planner_owned_projection_read_only_not_consumed"]
+        : ["weeks_2_to_4_planner_owned_projection_missing"]),
     ...(deloadStatus.status === "ready"
       ? []
       : ["deload_seed_runtime_projection_missing"]),
@@ -6057,6 +6090,9 @@ function buildCrossWeekProjectionGate(input: {
       (week) => week.projectionBasis === "scaled_v2_set_distribution_intent"
     )
       ? ["scaled_v2_set_distribution_intent_is_diagnostic_only"]
+      : []),
+    ...(accumulationWeeksStatus.status === "projected_with_limitations"
+      ? ["planner_owned_weeks_2_to_4_projection_is_read_only"]
       : []),
     ...(deloadStatus.projectionBasis === "v2_deload_transform_read_only"
       ? ["v2_deload_transform_not_applied_to_seed_or_runtime"]
@@ -6597,6 +6633,11 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       targetSkeleton: v2MesocyclePlan.skeleton,
       weeklyProgressionModel: v2MesocyclePlan.weeklyProgressionModel,
     });
+    const plannerOwnedAccumulationProjection =
+      buildPlannerOwnedAccumulationProjection({
+        weeklyDemandCurve: undefined,
+        v2SetDistributionIntent,
+      });
     const v2TargetVsNoRepairDiff = buildV2TargetVsNoRepairDiff({
       v2Plan: v2MesocyclePlan,
       v2SetDistributionIntent,
@@ -6608,6 +6649,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       acceptanceClassification,
       v2MesocyclePlan,
       v2SetDistributionIntent,
+      plannerOwnedAccumulationProjection,
       v2TargetVsNoRepairDiff,
     });
     return {
@@ -6627,6 +6669,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       crossWeekProjectionGate,
       v2TargetVsNoRepairDiff,
       v2SetDistributionIntent,
+      plannerOwnedAccumulationProjection,
       slotPlans: [],
       weeklyMuscleTotals: [],
       setAllocationChanges: [],
@@ -6712,6 +6755,11 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     targetSkeleton: v2MesocyclePlan.skeleton,
     weeklyProgressionModel: v2MesocyclePlan.weeklyProgressionModel,
   });
+  const plannerOwnedAccumulationProjection =
+    buildPlannerOwnedAccumulationProjection({
+      weeklyDemandCurve: noRepair.weeklyDemandCurve,
+      v2SetDistributionIntent,
+    });
   const v2TargetVsNoRepairDiff = buildV2TargetVsNoRepairDiff({
     v2Plan: v2MesocyclePlan,
     v2SetDistributionIntent,
@@ -6725,6 +6773,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     acceptanceClassification,
     v2MesocyclePlan,
     v2SetDistributionIntent,
+    plannerOwnedAccumulationProjection,
     v2TargetVsNoRepairDiff,
   });
 
@@ -6745,6 +6794,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     v2MesocyclePlan,
     v2TargetVsNoRepairDiff,
     v2SetDistributionIntent,
+    plannerOwnedAccumulationProjection,
     slotPlans,
     weeklyMuscleTotals,
     setAllocationChanges,

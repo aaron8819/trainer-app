@@ -6489,7 +6489,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
   });
 
-  it("labels Weeks 2-4 as diagnostic-only when planner-owned allocation is missing", () => {
+  it("labels Weeks 2-4 as planner-owned read-only projection with limitations", () => {
     const planningReality = makeNoRepairConcentrationPlanningReality({
       exercises: [
         {
@@ -6517,39 +6517,67 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
 
     expect(noRepair.crossWeekProjectionGate.accumulationWeeksStatus).toMatchObject({
-      status: "diagnostic_projection_only",
+      status: "projected_with_limitations",
       weeks: [
         expect.objectContaining({
           week: 2,
-          projectionBasis: "scaled_v2_set_distribution_intent",
+          projectionBasis: "planner_owned_read_only_projection",
           safeForBehaviorPromotion: false,
           limitations: expect.arrayContaining([
-            "slotDemandAllocationByWeek:week_2:not_allocated_missing_weekly_projection",
-            "preselectionDistributionPolicyByWeek:week_2:not_projected_missing_weekly_demand_curve",
-            "planner_owned_week_allocation_missing",
-            "repeated_week_1_diagnostic_projection_not_true_cross_week_projection",
+            "planner_owned_week_projection_exists_but_is_diagnostic_only",
+            "accepted_seed_runtime_consumption_missing",
+            "v2_set_distribution_intent_used_as_lane_budget_policy_only",
           ]),
         }),
         expect.objectContaining({
           week: 3,
-          projectionBasis: "scaled_v2_set_distribution_intent",
+          projectionBasis: "planner_owned_read_only_projection",
           limitations: expect.arrayContaining([
-            "preselectionDistributionPolicyByWeek:week_3:not_projected_missing_accumulation_policy",
+            "planner_owned_week_projection_exists_but_is_diagnostic_only",
           ]),
         }),
         expect.objectContaining({
           week: 4,
-          projectionBasis: "scaled_v2_set_distribution_intent",
+          projectionBasis: "planner_owned_read_only_projection",
           limitations: expect.arrayContaining([
-            "preselectionDistributionPolicyByWeek:week_4:not_projected_missing_accumulation_policy",
+            "planner_owned_week_projection_exists_but_is_diagnostic_only",
           ]),
         }),
       ],
     });
     expect(noRepair.crossWeekProjectionGate.blockers).toEqual(
-      expect.arrayContaining(["weeks_2_to_4_planner_owned_projection_missing"]),
+      expect.arrayContaining(["weeks_2_to_4_planner_owned_projection_read_only_not_consumed"]),
     );
     expect(noRepair.crossWeekProjectionGate.safeToPromoteBehavior).toBe(false);
+    expect(noRepair.plannerOwnedAccumulationProjection).toMatchObject({
+      version: 1,
+      source: "v2_planner_policy",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      weeks: expect.arrayContaining([
+        expect.objectContaining({
+          week: 2,
+          projectionStatus: "planner_owned_read_only",
+          safeForBehaviorPromotion: false,
+          slots: expect.arrayContaining([
+            expect.objectContaining({
+              slotId: "upper_a",
+              classLanes: expect.arrayContaining([
+                expect.objectContaining({
+                  laneId: "chest_anchor",
+                  setBudget: expect.objectContaining({ preferred: expect.any(Number) }),
+                }),
+              ]),
+            }),
+          ]),
+        }),
+      ]),
+    });
+    expect(
+      noRepair.plannerOwnedAccumulationProjection.weeks.map((week) =>
+        week.validation.missingInputs.includes("repair_output_as_target"),
+      ),
+    ).toEqual([false, false, false]);
   });
 
   it("labels deload transform as diagnostic-only until seed/runtime consumption exists", () => {

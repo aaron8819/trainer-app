@@ -26,6 +26,7 @@ import type {
   ExerciseConcentrationDiagnostic,
   PreselectionDistributionPolicyByWeek,
   ProjectedDeliveryDiagnostic,
+  PlannerOwnedAccumulationProjection,
   PromotionCandidate,
   SetDistributionIntent,
   ShadowRepairMaterialityDiagnostic,
@@ -2932,6 +2933,269 @@ export function buildAccumulationWeekProjection(input: {
   };
 }
 
+type PlannerOwnedWeek = PlannerOwnedAccumulationProjection["weeks"][number];
+type PlannerOwnedSlot = PlannerOwnedWeek["slots"][number];
+type PlannerOwnedAllocatedMuscle = PlannerOwnedSlot["allocatedMuscles"][number];
+type PlannerOwnedClassLane = PlannerOwnedSlot["classLanes"][number];
+type V2IntentWeek = V2SetDistributionIntent["weeks"][number];
+type V2IntentLane = V2IntentWeek["slots"][number]["lanes"][number];
+
+function toPlannerOwnedAccumulationPhase(
+  phase: V2IntentWeek["phase"],
+): PlannerOwnedWeek["phase"] {
+  if (phase === "hard_accumulation") {
+    return "hard_accumulation";
+  }
+  if (phase === "peak_overreach_lite") {
+    return "peak_overreach_lite";
+  }
+  return "accumulation";
+}
+
+function toPlannerOwnedRole(role: V2IntentLane["role"]): PlannerOwnedAllocatedMuscle["role"] {
+  if (role === "anchor") {
+    return "primary";
+  }
+  if (role === "support" || role === "accessory") {
+    return "support";
+  }
+  return "secondary";
+}
+
+function plannerOwnedRolePriority(role: PlannerOwnedAllocatedMuscle["role"]): number {
+  return role === "primary" ? 0 : role === "support" ? 1 : 2;
+}
+
+function duplicatePolicyForLane(
+  lane: Pick<V2IntentLane, "role" | "laneId">,
+): PlannerOwnedClassLane["duplicatePolicy"] {
+  if (lane.role === "optional") {
+    return "allow_with_justification";
+  }
+  if (
+    lane.role === "anchor" ||
+    lane.laneId.includes("anchor") ||
+    lane.laneId.includes("secondary")
+  ) {
+    return "discourage_if_alternative_exists";
+  }
+  return "block_if_clean_alternative_exists";
+}
+
+function divideNullableTarget(value: number | null, divisor: number): number | null {
+  return value == null ? null : roundToTenth(value / Math.max(1, divisor));
+}
+
+function buildPlannerOwnedDemandIndex(input: {
+  weeklyDemandCurve: WeeklyDemandCurve;
+  week: WeeklyDemandCurve["weeks"][number] | undefined;
+}): Map<string, WeeklyDemandCurveResolvedMuscle> {
+  if (!input.week) {
+    return new Map();
+  }
+  return new Map(
+    resolveWeeklyDemandCurveMuscleRows({
+      curve: input.weeklyDemandCurve,
+      week: input.week,
+    }).map((row) => [row.muscle, row]),
+  );
+}
+
+function countLaneOccurrencesByMuscle(week: V2IntentWeek | undefined): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const lane of week?.slots.flatMap((slot) => slot.lanes) ?? []) {
+    for (const muscle of lane.primaryMuscles) {
+      counts.set(muscle, (counts.get(muscle) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+function buildPlannerOwnedAllocatedMuscles(input: {
+  lane: V2IntentLane;
+  demandByMuscle: ReadonlyMap<string, WeeklyDemandCurveResolvedMuscle>;
+  laneOccurrencesByMuscle: ReadonlyMap<string, number>;
+  missingInputs: string[];
+}): PlannerOwnedAllocatedMuscle[] {
+  return input.lane.primaryMuscles
+    .map((muscle): PlannerOwnedAllocatedMuscle => {
+      const demand = input.demandByMuscle.get(muscle);
+      const divisor = input.laneOccurrencesByMuscle.get(muscle) ?? 1;
+      if (!demand) {
+        input.missingInputs.push(`weeklyDemandCurve:${muscle}:missing`);
+      }
+      return {
+        muscle,
+        role: toPlannerOwnedRole(input.lane.role),
+        targetStatus: demand?.targetStatus ?? "diagnostic",
+        minEffectiveSets: divideNullableTarget(demand?.minEffectiveSets ?? null, divisor),
+        preferredEffectiveSets: divideNullableTarget(
+          demand?.preferredEffectiveSets ?? null,
+          divisor,
+        ),
+        maxEffectiveSets: divideNullableTarget(demand?.maxEffectiveSets ?? null, divisor),
+      };
+    })
+    .sort(
+      (left, right) =>
+        left.role.localeCompare(right.role) ||
+        left.muscle.localeCompare(right.muscle),
+    );
+}
+
+function buildPlannerOwnedClassLane(lane: V2IntentLane): PlannerOwnedClassLane {
+  return {
+    laneId: lane.laneId,
+    preferredExerciseClasses: [...lane.preferredExerciseClasses].sort((left, right) =>
+      left.localeCompare(right),
+    ),
+    setBudget: {
+      min: lane.setBudget.min,
+      preferred: lane.setBudget.preferred,
+      max: lane.setBudget.max,
+    },
+    duplicatePolicy: duplicatePolicyForLane(lane),
+    concentrationPolicy: {
+      warningShare: lane.concentrationPolicy.warningShare,
+      blockerShare: lane.concentrationPolicy.blockerShare,
+      maxSetsPerExercise: lane.capPolicy.maxSetsPerExerciseWithoutJustification,
+    },
+  };
+}
+
+function buildPlannerOwnedWeekValidation(input: {
+  week: 2 | 3 | 4;
+  demandByMuscle: ReadonlyMap<string, WeeklyDemandCurveResolvedMuscle>;
+  slots: ReadonlyArray<PlannerOwnedSlot>;
+  missingInputs: ReadonlyArray<string>;
+}): PlannerOwnedWeek["validation"] {
+  const representedMuscles = new Set(
+    input.slots.flatMap((slot) =>
+      slot.allocatedMuscles.map((allocation) => allocation.muscle),
+    ),
+  );
+  const unresolvedDemand = Array.from(input.demandByMuscle.values())
+    .filter(
+      (demand) =>
+        demand.targetStatus !== "diagnostic" &&
+        (demand.preferredEffectiveSets ?? demand.minEffectiveSets ?? 0) > 0 &&
+        !representedMuscles.has(demand.muscle),
+    )
+    .map((demand) => `week_${input.week}:${demand.muscle}:not_allocated_to_v2_lane`);
+  const concentrationWarnings = input.slots.flatMap((slot) =>
+    slot.classLanes.flatMap((lane) =>
+      lane.setBudget.preferred > lane.concentrationPolicy.maxSetsPerExercise
+        ? [
+            `week_${input.week}:${slot.slotId}:${lane.laneId}:preferred_budget_exceeds_single_exercise_cap`,
+          ]
+        : [],
+    ),
+  );
+  const laneIdsBySlotCount = input.slots
+    .flatMap((slot) => slot.classLanes.map((lane) => lane.laneId))
+    .reduce<Map<string, number>>((counts, laneId) => {
+      counts.set(laneId, (counts.get(laneId) ?? 0) + 1);
+      return counts;
+    }, new Map());
+  const duplicateWarnings = input.slots.flatMap((slot) =>
+    slot.classLanes.flatMap((lane) =>
+      (laneIdsBySlotCount.get(lane.laneId) ?? 0) > 1 &&
+      lane.duplicatePolicy !== "allow_with_justification"
+        ? [`week_${input.week}:${lane.laneId}:repeated_lane_requires_duplicate_justification`]
+        : [],
+    ),
+  );
+
+  return {
+    unresolvedDemand: uniqueSorted(unresolvedDemand),
+    concentrationWarnings: uniqueSorted(concentrationWarnings),
+    duplicateWarnings: uniqueSorted(duplicateWarnings),
+    missingInputs: uniqueSorted([...input.missingInputs]),
+  };
+}
+
+export function buildPlannerOwnedAccumulationProjection(input: {
+  weeklyDemandCurve: WeeklyDemandCurve | undefined;
+  v2SetDistributionIntent: V2SetDistributionIntent;
+}): PlannerOwnedAccumulationProjection {
+  const weeks = ([2, 3, 4] as const).map((weekNumber) => {
+    const intentWeek = input.v2SetDistributionIntent.weeks.find(
+      (week) => week.week === weekNumber,
+    );
+    const demandWeek = input.weeklyDemandCurve?.weeks.find(
+      (week) => week.week === weekNumber,
+    );
+    const missingInputs: string[] = [];
+    if (!intentWeek) {
+      missingInputs.push(`v2SetDistributionIntent:week_${weekNumber}:missing`);
+    }
+    if (!demandWeek) {
+      missingInputs.push(`weeklyDemandCurve:week_${weekNumber}:missing`);
+    }
+    const demandByMuscle = input.weeklyDemandCurve
+      ? buildPlannerOwnedDemandIndex({
+          weeklyDemandCurve: input.weeklyDemandCurve,
+          week: demandWeek,
+        })
+      : new Map<string, WeeklyDemandCurveResolvedMuscle>();
+    const laneOccurrencesByMuscle = countLaneOccurrencesByMuscle(intentWeek);
+    const slots: PlannerOwnedSlot[] = (intentWeek?.slots ?? [])
+      .map((slot) => {
+        const allocatedByMuscle = new Map<string, PlannerOwnedAllocatedMuscle>();
+        for (const lane of slot.lanes) {
+          for (const allocation of buildPlannerOwnedAllocatedMuscles({
+            lane,
+            demandByMuscle,
+            laneOccurrencesByMuscle,
+            missingInputs,
+          })) {
+            const existing = allocatedByMuscle.get(allocation.muscle);
+            if (
+              !existing ||
+              plannerOwnedRolePriority(allocation.role) <
+                plannerOwnedRolePriority(existing.role)
+            ) {
+              allocatedByMuscle.set(allocation.muscle, allocation);
+            }
+          }
+        }
+        return {
+          slotId: slot.slotId,
+          allocatedMuscles: Array.from(allocatedByMuscle.values()).sort(
+            (left, right) => left.muscle.localeCompare(right.muscle),
+          ),
+          classLanes: slot.lanes
+            .map(buildPlannerOwnedClassLane)
+            .sort((left, right) => left.laneId.localeCompare(right.laneId)),
+        };
+      })
+      .sort((left, right) => left.slotId.localeCompare(right.slotId));
+
+    return {
+      week: weekNumber,
+      phase: toPlannerOwnedAccumulationPhase(intentWeek?.phase ?? "accumulation"),
+      volumeMultiplier: intentWeek?.volumeMultiplier ?? 1,
+      projectionStatus: "planner_owned_read_only" as const,
+      safeForBehaviorPromotion: false as const,
+      slots,
+      validation: buildPlannerOwnedWeekValidation({
+        week: weekNumber,
+        demandByMuscle,
+        slots,
+        missingInputs,
+      }),
+    };
+  });
+
+  return {
+    version: 1,
+    source: "v2_planner_policy",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    weeks,
+  };
+}
+
 export function buildPreselectionDistributionPolicyByWeek(input: {
   activeMesocycle: ActiveMesocycleForDiagnostics;
   slotPrescriptionIntents: ReadonlyArray<SlotPrescriptionIntent>;
@@ -3024,3 +3288,4 @@ export function buildPreselectionDistributionPolicyByWeek(input: {
   };
 }
 
+import type { V2SetDistributionIntent } from "@/lib/engine/planning/v2-set-distribution-intent";

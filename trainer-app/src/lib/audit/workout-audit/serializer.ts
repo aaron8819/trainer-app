@@ -213,6 +213,8 @@ function buildV2DebugSidecarPayload(input: {
       crossWeekProjectionGate: noRepair.crossWeekProjectionGate,
       v2MesocyclePlan: noRepair.v2MesocyclePlan,
       v2SetDistributionIntent: noRepair.v2SetDistributionIntent,
+      plannerOwnedAccumulationProjection:
+        noRepair.plannerOwnedAccumulationProjection,
       v2TargetVsNoRepairDiff: noRepair.v2TargetVsNoRepairDiff,
       slotPlans: noRepair.slotPlans,
       weeklyMuscleTotals: noRepair.weeklyMuscleTotals,

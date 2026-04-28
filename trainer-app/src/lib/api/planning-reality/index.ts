@@ -67,6 +67,7 @@ import { buildCleanupCandidateFeasibility } from "./cleanup-feasibility";
 import { buildTopDownMesocyclePlan } from "./top-down-mesocycle-plan";
 
 export type * from "./types";
+export { buildPlannerOwnedAccumulationProjection } from "./planner-intent";
 function classifyPlanningShape(input: {
   weeklyMuscleDemand: WeeklyMuscleDemandDiagnostic[];
   slotDemandAllocation: SlotDemandAllocationDiagnostic[];

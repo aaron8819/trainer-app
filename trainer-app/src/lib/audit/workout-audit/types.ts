@@ -11,6 +11,7 @@ import type {
   ProjectedWeekVolumeSessionSummary,
 } from "@/lib/api/projected-week-volume";
 import type { PlannerOnlyPolicyOverride } from "@/lib/api/planner-only-policy-override";
+import type { PlannerOwnedAccumulationProjection } from "@/lib/api/planning-reality";
 import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection.diagnostics";
 import type { SlotPreselectionDemandDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection";
 import type { SessionGenerationResult } from "@/lib/api/template-session/types";
@@ -1021,6 +1022,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
           | "missing"
           | "repeat_week_1_shape"
           | "scaled_v2_set_distribution_intent"
+          | "planner_owned_read_only_projection"
           | "planner_owned_week_projection";
         limitations: string[];
         safeForBehaviorPromotion: false;
@@ -1227,6 +1229,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
     };
   };
   v2SetDistributionIntent: V2SetDistributionIntent;
+  plannerOwnedAccumulationProjection: PlannerOwnedAccumulationProjection;
   slotPlans: Array<{
     slotId: string;
     exercises: Array<{
@@ -1315,6 +1318,7 @@ export type MesocycleExplainPlannerOnlyNoRepairDebugArtifact = {
     | "crossWeekProjectionGate"
     | "v2MesocyclePlan"
     | "v2SetDistributionIntent"
+    | "plannerOwnedAccumulationProjection"
     | "v2TargetVsNoRepairDiff"
     | "slotPlans"
     | "weeklyMuscleTotals"

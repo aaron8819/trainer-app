@@ -1192,6 +1192,55 @@ export type AccumulationWeekProjection = {
   }>;
 };
 
+export type PlannerOwnedAccumulationProjection = {
+  version: 1;
+  source: "v2_planner_policy";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  weeks: Array<{
+    week: 2 | 3 | 4;
+    phase: "accumulation" | "hard_accumulation" | "peak_overreach_lite";
+    volumeMultiplier: number;
+    projectionStatus: "planner_owned_read_only";
+    safeForBehaviorPromotion: false;
+    slots: Array<{
+      slotId: "upper_a" | "lower_a" | "upper_b" | "lower_b";
+      allocatedMuscles: Array<{
+        muscle: string;
+        role: "primary" | "support" | "secondary";
+        targetStatus: "hard" | "soft" | "diagnostic";
+        minEffectiveSets: number | null;
+        preferredEffectiveSets: number | null;
+        maxEffectiveSets: number | null;
+      }>;
+      classLanes: Array<{
+        laneId: string;
+        preferredExerciseClasses: string[];
+        setBudget: {
+          min: number;
+          preferred: number;
+          max: number;
+        };
+        duplicatePolicy:
+          | "allow_with_justification"
+          | "discourage_if_alternative_exists"
+          | "block_if_clean_alternative_exists";
+        concentrationPolicy: {
+          warningShare: number;
+          blockerShare: number;
+          maxSetsPerExercise: number;
+        };
+      }>;
+    }>;
+    validation: {
+      unresolvedDemand: string[];
+      concentrationWarnings: string[];
+      duplicateWarnings: string[];
+      missingInputs: string[];
+    };
+  }>;
+};
+
 export type SlotPlanPlanningRealityDiagnostic = {
   label: "weekly demand / slot allocation diagnostics";
   readOnly: true;

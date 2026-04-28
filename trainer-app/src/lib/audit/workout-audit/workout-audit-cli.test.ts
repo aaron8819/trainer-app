@@ -15,6 +15,34 @@ import {
   normalizeAuditIntentArg,
 } from "../../../../scripts/workout-audit";
 
+function makePlannerOwnedAccumulationProjection() {
+  return {
+    version: 1 as const,
+    source: "v2_planner_policy" as const,
+    readOnly: true as const,
+    affectsScoringOrGeneration: false as const,
+    weeks: ([2, 3, 4] as const).map((week) => ({
+      week,
+      phase:
+        week === 4
+          ? "peak_overreach_lite" as const
+          : week === 3
+            ? "hard_accumulation" as const
+            : "accumulation" as const,
+      volumeMultiplier: week === 4 ? 1.125 : week === 3 ? 1.075 : 1,
+      projectionStatus: "planner_owned_read_only" as const,
+      safeForBehaviorPromotion: false as const,
+      slots: [],
+      validation: {
+        unresolvedDemand: [],
+        concentrationWarnings: [],
+        duplicateWarnings: [],
+        missingInputs: [],
+      },
+    })),
+  };
+}
+
 describe("normalizeAuditIntentArg", () => {
   it("normalizes uppercase explicit intents into canonical lower-case session intents", () => {
     expect(normalizeAuditIntentArg("UPPER")).toBe("upper");
@@ -2650,15 +2678,15 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                 basis: ["basicMesocycleShapeStatus:fail"],
               },
               accumulationWeeksStatus: {
-                status: "diagnostic_projection_only",
+                status: "projected_with_limitations",
                 weeks: [
                   {
                     week: 2,
                     phase: "accumulation",
                     volumeMultiplier: 1,
                     rirTarget: "2-3",
-                    projectionBasis: "scaled_v2_set_distribution_intent",
-                    limitations: ["planner_owned_week_allocation_missing"],
+                    projectionBasis: "planner_owned_read_only_projection",
+                    limitations: ["planner_owned_week_projection_exists_but_is_diagnostic_only"],
                     safeForBehaviorPromotion: false,
                   },
                   {
@@ -2666,8 +2694,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                     phase: "hard_accumulation",
                     volumeMultiplier: 1.075,
                     rirTarget: "1-2",
-                    projectionBasis: "scaled_v2_set_distribution_intent",
-                    limitations: ["planner_owned_week_allocation_missing"],
+                    projectionBasis: "planner_owned_read_only_projection",
+                    limitations: ["planner_owned_week_projection_exists_but_is_diagnostic_only"],
                     safeForBehaviorPromotion: false,
                   },
                   {
@@ -2675,8 +2703,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                     phase: "peak_overreach_lite",
                     volumeMultiplier: 1.125,
                     rirTarget: "0-1",
-                    projectionBasis: "scaled_v2_set_distribution_intent",
-                    limitations: ["planner_owned_week_allocation_missing"],
+                    projectionBasis: "planner_owned_read_only_projection",
+                    limitations: ["planner_owned_week_projection_exists_but_is_diagnostic_only"],
                     safeForBehaviorPromotion: false,
                   },
                 ],
@@ -2692,10 +2720,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
               },
               replacementReadinessStatus: "not_ready",
               blockers: ["hard_blockers:1"],
-              warnings: ["scaled_v2_set_distribution_intent_is_diagnostic_only"],
-              missingInputs: [
-                "slotDemandAllocationByWeek:week_2:not_allocated_missing_weekly_projection",
-              ],
+              warnings: ["planner_owned_weeks_2_to_4_projection_is_read_only"],
+              missingInputs: [],
               projectedWeekSummaries: [
                 {
                   week: 1,
@@ -2905,6 +2931,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                 doesNotAffectRuntimeReplay: true,
               },
             },
+            plannerOwnedAccumulationProjection:
+              makePlannerOwnedAccumulationProjection(),
             slotPlans: [
               {
                 slotId: "upper_a",

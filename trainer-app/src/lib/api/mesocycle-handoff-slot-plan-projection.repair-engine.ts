@@ -796,14 +796,6 @@ function findExistingSupportExercises(input: {
     });
 }
 
-function findExistingSupportExercise(input: {
-  workout: WorkoutPlan;
-  muscle: ProtectedWeekOneCoverageMuscle;
-  includeMainLifts?: boolean;
-}): WorkoutExercise | undefined {
-  return findExistingSupportExercises(input)[0];
-}
-
 function accessoryTargetsProtectedMuscle(
   exercise: WorkoutExercise,
   protectedMuscles: ReadonlySet<string>,

@@ -2737,9 +2737,260 @@ describe("buildMesocycleExplainAuditPayload", () => {
         expect.stringContaining("Hack Squat:Adductors"),
       ]),
     );
+    expect(noRepair.acceptanceClassification).toMatchObject({
+      basicMesocycleShapeStatus: "pass_with_warnings",
+      replacementReadinessStatus: "not_ready",
+      hardBlockers: [],
+      migrationScoreboard: {
+        canReplaceRepairedProjection: false,
+      },
+    });
+    expect(noRepair.summary.status).toBe("pass_with_warnings");
   });
 
-  it("keeps true no-repair concentration blockers as acceptance failures", () => {
+  it("classifies the current artifact-like no-repair shape as basic pass-with-warnings and replacement not-ready", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Incline Dumbbell Press",
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_press"],
+            stimulus: { Chest: 5 },
+          },
+          {
+            slotId: "upper_a",
+            exerciseName: "Lat Pulldown",
+            primaryMuscles: ["Lats"],
+            movementPatterns: ["vertical_pull"],
+            stimulus: { Lats: 4.5 },
+          },
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Rear Delt Fly",
+            primaryMuscles: ["Rear Delts"],
+            stimulus: { "Rear Delts": 4 },
+            percentages: { "Rear Delts": 64.5 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Chest Press",
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_press"],
+            stimulus: { Chest: 5 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Seated Cable Row",
+            primaryMuscles: ["Lats"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { Lats: 4.4 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Shoulder Press",
+            isCompound: true,
+            primaryMuscles: ["Side Delts"],
+            movementPatterns: ["vertical_press"],
+            stimulus: { "Side Delts": 4, "Front Delts": 3.5 },
+            percentages: { "Front Delts": 70 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Barbell Curl",
+            primaryMuscles: ["Biceps"],
+            stimulus: { Forearms: 1 },
+            percentages: { Forearms: 100 },
+          },
+          {
+            slotId: "lower_a",
+            exerciseName: "Hack Squat",
+            isCompound: true,
+            primaryMuscles: ["Quads"],
+            movementPatterns: ["squat"],
+            setCount: 4,
+            stimulus: { Quads: 4, Adductors: 3 },
+            percentages: { Quads: 50, Adductors: 54.5 },
+          },
+          {
+            slotId: "lower_a",
+            exerciseName: "Leg Extension",
+            primaryMuscles: ["Quads"],
+            movementPatterns: ["isolation"],
+            setCount: 2,
+            stimulus: { Quads: 2 },
+            percentages: { Quads: 25 },
+          },
+          {
+            slotId: "lower_a",
+            exerciseName: "Standing Calf Raise",
+            primaryMuscles: ["Calves"],
+            stimulus: { Calves: 4 },
+          },
+          {
+            slotId: "lower_b",
+            exerciseName: "Romanian Deadlift",
+            primaryMuscles: ["Hamstrings"],
+            movementPatterns: ["hinge"],
+            stimulus: { Hamstrings: 3.3 },
+          },
+          {
+            slotId: "lower_b",
+            exerciseName: "Seated Leg Curl",
+            primaryMuscles: ["Hamstrings"],
+            movementPatterns: ["knee_flexion"],
+            stimulus: { Hamstrings: 3 },
+          },
+          {
+            slotId: "lower_b",
+            exerciseName: "Seated Calf Raise",
+            primaryMuscles: ["Calves"],
+            stimulus: { Calves: 4 },
+          },
+          {
+            slotId: "lower_b",
+            exerciseName: "Goblet Squat",
+            isCompound: true,
+            primaryMuscles: ["Quads"],
+            movementPatterns: ["squat"],
+            stimulus: { Quads: 2, Core: 1 },
+            percentages: { Quads: 25, Core: 100 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Chest",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 10,
+            preferredEffectiveSets: 10,
+            maxEffectiveSets: 16,
+          },
+          {
+            muscle: "Hamstrings",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 6,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 16,
+          },
+          {
+            muscle: "Lats",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 8,
+            preferredEffectiveSets: 8,
+            maxEffectiveSets: 16,
+          },
+          {
+            muscle: "Quads",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 8,
+            preferredEffectiveSets: 8,
+            maxEffectiveSets: 16,
+          },
+          {
+            muscle: "Side Delts",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 4,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 19,
+          },
+          {
+            muscle: "Calves",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 8,
+            preferredEffectiveSets: 8,
+            maxEffectiveSets: 16,
+          },
+          {
+            muscle: "Rear Delts",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 4,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 12,
+          },
+          {
+            muscle: "Front Delts",
+            priority: "implicit",
+            targetStatus: "diagnostic",
+            minEffectiveSets: null,
+          },
+          {
+            muscle: "Forearms",
+            priority: "secondary",
+            targetStatus: "diagnostic",
+            minEffectiveSets: 2,
+            maxEffectiveSets: 6,
+          },
+          {
+            muscle: "Core",
+            priority: "secondary",
+            targetStatus: "diagnostic",
+            minEffectiveSets: 4,
+            maxEffectiveSets: 12,
+          },
+          {
+            muscle: "Adductors",
+            priority: "secondary",
+            targetStatus: "diagnostic",
+            minEffectiveSets: 2,
+            maxEffectiveSets: 8,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    expect(noRepair.acceptanceClassification).toMatchObject({
+      basicMesocycleShapeStatus: "pass_with_warnings",
+      replacementReadinessStatus: "not_ready",
+      hardBlockers: [],
+    });
+    expect(noRepair.acceptanceClassification.qualityWarnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "primary_hard_target_50_to_60_share_warning_threshold",
+          evidence: expect.arrayContaining([
+            expect.stringContaining("lower_a:Hack Squat:Quads:50%"),
+          ]),
+        }),
+        expect.objectContaining({
+          code: "support_direct_isolation_concentrated_but_clean_and_near_or_at_target",
+        }),
+      ]),
+    );
+    expect(noRepair.qualityWarnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: "quality_warning",
+          slotId: "lower_a",
+          exerciseName: "Hack Squat",
+          muscle: "Quads",
+          percentageOfWeeklyStimulus: 50,
+          reason: "primary_hard_target_50_to_60_share_warning_threshold",
+        }),
+      ]),
+    );
+    expect(noRepair.acceptanceClassification.diagnosticOnly).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "secondary_or_implicit_collateral_not_acceptance_target",
+        }),
+        expect.objectContaining({
+          code: "compound_or_curl_collateral_denominator_artifact",
+        }),
+      ]),
+    );
+  });
+
+  it("blocks primary hard targets above 60 percent even when the target is met", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
         exercises: [
@@ -2748,8 +2999,18 @@ describe("buildMesocycleExplainAuditPayload", () => {
             exerciseName: "Incline Dumbbell Press",
             isCompound: true,
             primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_press"],
             stimulus: { Chest: 7 },
             percentages: { Chest: 70 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Chest Press",
+            isCompound: true,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_press"],
+            stimulus: { Chest: 3 },
+            percentages: { Chest: 30 },
           },
         ],
         demands: [
@@ -2781,21 +3042,94 @@ describe("buildMesocycleExplainAuditPayload", () => {
         (check) => check.check === "no concentration acceptance blockers",
       ),
     ).toMatchObject({ status: "fail" });
+    expect(noRepair.acceptanceClassification).toMatchObject({
+      basicMesocycleShapeStatus: "fail",
+      replacementReadinessStatus: "blocked",
+      hardBlockers: expect.arrayContaining([
+        expect.objectContaining({
+          code: "primary_hard_target_excessive_single_exercise_share_unjustified",
+        }),
+      ]),
+    });
   });
 
-  it("blocks no-repair exercises above five sets and repair-created concentration", () => {
+  it("hard-blocks 50-60 percent primary concentration when the primary muscle is below minimum", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
         exercises: [
           {
             slotId: "upper_a",
-            exerciseName: "Barbell Curl",
-            primaryMuscles: ["Biceps"],
+            exerciseName: "Incline Dumbbell Press",
+            isCompound: true,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_press"],
+            stimulus: { Chest: 5.5 },
+            percentages: { Chest: 57.9 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Chest Press",
+            isCompound: true,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_press"],
+            stimulus: { Chest: 4 },
+            percentages: { Chest: 42.1 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Chest",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 10,
+            preferredEffectiveSets: 10,
+            maxEffectiveSets: 16,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    expect(noRepair.acceptanceFailures).toEqual([
+      expect.objectContaining({
+        severity: "acceptance_blocker",
+        slotId: "upper_a",
+        exerciseName: "Incline Dumbbell Press",
+        muscle: "Chest",
+        percentageOfWeeklyStimulus: 57.9,
+        reason: "primary_hard_target_excessive_single_exercise_share_unjustified",
+      }),
+    ]);
+    expect(noRepair.acceptanceClassification).toMatchObject({
+      basicMesocycleShapeStatus: "fail",
+      replacementReadinessStatus: "blocked",
+      hardBlockers: expect.arrayContaining([
+        expect.objectContaining({
+          code: "primary_hard_target_below_minimum",
+        }),
+        expect.objectContaining({
+          code: "primary_hard_target_excessive_single_exercise_share_unjustified",
+        }),
+      ]),
+    });
+  });
+
+  it("blocks no-repair compound/hinge/press exercises above five sets and repair-created concentration", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Machine Chest Press",
+            isCompound: true,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_press"],
             setCount: 6,
-            stimulus: { Biceps: 6 },
-            percentages: { Biceps: 60 },
+            stimulus: { Chest: 6 },
+            percentages: { Chest: 60 },
             flags: [
-              "ISOLATION_GT_5_SETS",
+              "COMPOUND_GT_5_SETS",
               "EXERCISE_SUPPLIES_OVER_60_PERCENT_WEEKLY_STIMULUS",
             ],
           },
@@ -2814,11 +3148,11 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ],
         demands: [
           {
-            muscle: "Biceps",
-            priority: "support",
-            targetStatus: "soft",
-            minEffectiveSets: 4,
-            maxEffectiveSets: 14,
+            muscle: "Chest",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 10,
+            maxEffectiveSets: 16,
           },
           {
             muscle: "Side Delts",
@@ -2836,14 +3170,157 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(noRepair.acceptanceFailures).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          exerciseName: "Barbell Curl",
-          muscle: "Biceps",
+          exerciseName: "Machine Chest Press",
+          muscle: "Chest",
           reason: "exercise_gt_5_sets_without_planner_justification",
         }),
         expect.objectContaining({
           exerciseName: "Cable Lateral Raise",
           muscle: "Side Delts",
           reason: "concentration_created_by_repair_or_set_bump",
+        }),
+      ]),
+    );
+    expect(noRepair.acceptanceClassification.hardBlockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "compound_hinge_or_press_gt_5_sets_without_justification",
+        }),
+      ]),
+    );
+  });
+
+  it("keeps migration repair scoreboards out of basic no-repair shape blockers", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Rear Delt Fly",
+            primaryMuscles: ["Rear Delts"],
+            stimulus: { "Rear Delts": 4 },
+            percentages: { "Rear Delts": 64.5 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Rear Delts",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 4,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 12,
+          },
+        ],
+      }),
+      repairedPlanningReality: makeCalfPlanningReality({
+        lowerBCalfShapes: [],
+        materialRepairCount: 2,
+        majorRepairCount: 1,
+        suspiciousRepairCount: 1,
+      }) as unknown as PlannerOnlyPlanningReality,
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    expect(noRepair.acceptanceClassification).toMatchObject({
+      basicMesocycleShapeStatus: "pass_with_warnings",
+      replacementReadinessStatus: "not_ready",
+      hardBlockers: [],
+      migrationScoreboard: {
+        materialRepairCount: 2,
+        majorRepairCount: 1,
+        suspiciousRepairs: 1,
+        canReplaceRepairedProjection: false,
+      },
+    });
+  });
+
+  it("hard-fails required lanes, dirty Back Extension closure, and runtime replay failure", () => {
+    const missingLane = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Incline Dumbbell Press",
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_press"],
+            stimulus: { Chest: 10 },
+            percentages: { Chest: 100 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Chest",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 10,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+    expect(missingLane.acceptanceClassification.hardBlockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "required_chest_upper_exposures_missing",
+        }),
+      ]),
+    );
+
+    const backExtension = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "lower_b",
+            exerciseName: "Back Extension (45 Degree)",
+            primaryMuscles: ["Hamstrings"],
+            movementPatterns: ["hinge"],
+            stimulus: { Hamstrings: 8 },
+            percentages: { Hamstrings: 100 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Hamstrings",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 6,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+    expect(backExtension.acceptanceClassification.hardBlockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "back_extension_hamstrings_closure",
+        }),
+      ]),
+    );
+
+    const replayFailure = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseId: "",
+            exerciseName: "Cable Rear Delt Fly",
+            primaryMuscles: ["Rear Delts"],
+            stimulus: { "Rear Delts": 4 },
+            percentages: { "Rear Delts": 64.5 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+    expect(replayFailure.acceptanceClassification.hardBlockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "runtime_seed_replay_failure",
         }),
       ]),
     );

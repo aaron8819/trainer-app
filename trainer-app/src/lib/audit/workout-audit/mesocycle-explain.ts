@@ -2680,12 +2680,15 @@ function classifyNoRepairConcentrationRow(input: {
     isFatigueSensitiveCollateral(input.muscle) &&
     maxEffectiveSets != null &&
     input.weeklyEffectiveSets > maxEffectiveSets;
-  const excessiveShare = input.percentage >= 50;
+  const warningThresholdShare = input.percentage >= 50;
+  const highShare = input.percentage > 60;
   const cleanAlternativeExists = hasExplicitCleanAlternativeSignal({
     planningReality: input.planningReality,
     muscle: input.muscle,
     slotId: input.row.slotId,
   });
+  const cleanAlternativeIgnoredWhileUnderDistributed =
+    cleanAlternativeExists && belowMinimum;
 
   const base = {
     slotId: input.row.slotId,
@@ -2708,6 +2711,16 @@ function classifyNoRepairConcentrationRow(input: {
   };
 
   if (gtFive) {
+    if (
+      !input.row.isCompound &&
+      !input.row.flags.includes("COMPOUND_GT_5_SETS")
+    ) {
+      return {
+        ...base,
+        severity: "quality_warning",
+        reason: "isolation_gt_5_sets_session_shaping_review",
+      };
+    }
     return {
       ...base,
       severity: "acceptance_blocker",
@@ -2774,15 +2787,18 @@ function classifyNoRepairConcentrationRow(input: {
         : "support_target_high_single_exercise_share_non_blocking",
     };
   }
-  if (
-    priority === "primary" &&
-    excessiveShare &&
-    (belowMinimum || nearMinimum || cleanAlternativeExists)
-  ) {
+  if (priority === "primary" && warningThresholdShare) {
+    if (belowMinimum || highShare || cleanAlternativeIgnoredWhileUnderDistributed) {
+      return {
+        ...base,
+        severity: "acceptance_blocker",
+        reason: "primary_hard_target_excessive_single_exercise_share_unjustified",
+      };
+    }
     return {
       ...base,
-      severity: "acceptance_blocker",
-      reason: "primary_hard_target_excessive_single_exercise_share_unjustified",
+      severity: "quality_warning",
+      reason: "primary_hard_target_50_to_60_share_warning_threshold",
     };
   }
 
@@ -2955,6 +2971,424 @@ function mainNoRepairGaps(input: {
   ]).slice(0, 12);
 }
 
+type NoRepairClassification =
+  MesocycleExplainPlannerOnlyNoRepair["acceptanceClassification"];
+type NoRepairFinding = NoRepairClassification["hardBlockers"][number];
+
+function compactEvidence(evidence: string[], limit = 6): string[] {
+  const compact = uniqueSorted(evidence.filter(Boolean)).slice(0, limit);
+  return compact.length > 0 ? compact : ["none"];
+}
+
+function noRepairFinding(
+  code: string,
+  evidence: string[],
+  limit?: number
+): NoRepairFinding {
+  return { code, evidence: compactEvidence(evidence, limit) };
+}
+
+function noRepairConcentrationFindings(
+  rows: MesocycleExplainPlannerOnlyNoRepairConcentrationRow[]
+): NoRepairFinding[] {
+  const byReason = new Map<string, string[]>();
+  for (const row of rows) {
+    byReason.set(row.reason, [
+      ...(byReason.get(row.reason) ?? []),
+      formatNoRepairConcentrationRow(row),
+    ]);
+  }
+  return Array.from(byReason.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([reason, evidence]) =>
+      noRepairFinding(reason, evidence, 6)
+    );
+}
+
+function noRepairCheckFinding(
+  code: string,
+  check: MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"][number]
+): NoRepairFinding {
+  return noRepairFinding(code, check.evidence);
+}
+
+function includesIncompleteProjectionStatus(status: string): boolean {
+  return (
+    status.includes("not_") ||
+    status.includes("missing") ||
+    status.includes("unprojected")
+  );
+}
+
+function hasDeloadProjectionIncomplete(
+  planningReality: PlanningRealityDiagnostic
+): boolean {
+  const preselectionDeload =
+    planningReality.preselectionDistributionPolicyByWeek?.weeks.some(
+      (week) =>
+        week.phase === "deload" &&
+        includesIncompleteProjectionStatus(week.projectionStatus)
+    ) ?? false;
+  const allocationDeload =
+    planningReality.slotDemandAllocationByWeek?.weeks.some(
+      (week) =>
+        week.phase === "deload" &&
+        includesIncompleteProjectionStatus(week.projectionStatus)
+    ) ?? false;
+  const warningDeload =
+    (planningReality.accumulationWeekProjection?.crossWeekWarnings?.some(
+      (warning) => warning.code === "DELOAD_PRESERVATION_STILL_UNPROJECTED"
+    ) ??
+      false) ||
+    (planningReality.slotDemandAllocationByWeek?.crossWeekAllocationWarnings?.some(
+      (warning) => warning.code === "DELOAD_SLOT_ALLOCATION_UNPROJECTED"
+    ) ??
+      false);
+  return preselectionDeload || allocationDeload || warningDeload;
+}
+
+function isCompoundHingeOrPressOverFiveExercise(input: {
+  exercise: SlotCompositionSnapshot["exercises"][number];
+}): boolean {
+  if (input.exercise.setCount <= 5) {
+    return false;
+  }
+  const patterns = input.exercise.movementPatterns
+    .map((pattern) => pattern.toLowerCase())
+    .join("|");
+  const name = input.exercise.exerciseName.toLowerCase();
+  return (
+    input.exercise.role === "main" ||
+    patterns.includes("hinge") ||
+    patterns.includes("press") ||
+    patterns.includes("squat") ||
+    name.includes("press") ||
+    name.includes("squat") ||
+    name.includes("deadlift")
+  );
+}
+
+function buildNoRepairCompoundOverFiveBlockers(
+  planningReality: PlanningRealityDiagnostic
+): string[] {
+  return planningReality.finalSlotPlan.flatMap((slot) =>
+    slot.exercises
+      .filter((exercise) => isCompoundHingeOrPressOverFiveExercise({ exercise }))
+      .map(
+        (exercise) =>
+          `${slot.slotId}:${exercise.exerciseName}:${exercise.setCount}`
+      )
+  );
+}
+
+function buildNoRepairMigrationScoreboard(input: {
+  noRepair: PlanningRealityDiagnostic;
+  repairedPlanningReality?: PlanningRealityDiagnostic;
+  canReplaceRepairedProjection: boolean;
+  repairedProjectionAvailable: boolean;
+  targetLanesMissing: number;
+  unresolvedDemandCount: number;
+  validationFailureCount: number;
+  hardBlockerCount: number;
+}): NoRepairClassification["migrationScoreboard"] {
+  const scoreboardReality = input.repairedPlanningReality ?? input.noRepair;
+  const materialRepairCount =
+    scoreboardReality.shadowRepairSummary?.materialRepairCount ??
+    scoreboardReality.summary.materialRepairCount ??
+    null;
+  const majorRepairCount =
+    scoreboardReality.shadowRepairSummary?.majorRepairCount ??
+    scoreboardReality.summary.majorRepairCount ??
+    null;
+  const suspiciousRepairs =
+    scoreboardReality.suspiciousRepairsNotEligibleForPromotion?.length ?? null;
+  const weeksTwoToFourUnprojected = hasWeeksTwoToFourUnprojected(input.noRepair);
+  const deloadProjectionIncomplete = hasDeloadProjectionIncomplete(input.noRepair);
+  const canReplaceRepairedProjection =
+    input.canReplaceRepairedProjection &&
+    input.repairedProjectionAvailable &&
+    input.hardBlockerCount === 0 &&
+    !weeksTwoToFourUnprojected &&
+    !deloadProjectionIncomplete &&
+    (materialRepairCount ?? 0) === 0 &&
+    (majorRepairCount ?? 0) === 0 &&
+    (suspiciousRepairs ?? 0) === 0;
+  const reasons: string[] = [];
+  if (!input.repairedProjectionAvailable) reasons.push("repaired_projection_unavailable");
+  if (input.hardBlockerCount > 0) reasons.push(`hard_blockers:${input.hardBlockerCount}`);
+  if (input.targetLanesMissing > 0) reasons.push(`target_lanes_missing:${input.targetLanesMissing}`);
+  if (input.unresolvedDemandCount > 0) reasons.push(`raw_unresolved_demand:${input.unresolvedDemandCount}`);
+  if (input.validationFailureCount > 0) reasons.push(`raw_validation_failures:${input.validationFailureCount}`);
+  if (weeksTwoToFourUnprojected) reasons.push("weeks_2_to_4_unprojected");
+  if (deloadProjectionIncomplete) reasons.push("deload_projection_incomplete");
+  if ((materialRepairCount ?? 0) > 0) reasons.push(`materialRepairCount:${materialRepairCount}`);
+  if ((majorRepairCount ?? 0) > 0) reasons.push(`majorRepairCount:${majorRepairCount}`);
+  if ((suspiciousRepairs ?? 0) > 0) reasons.push(`suspiciousRepairs:${suspiciousRepairs}`);
+
+  return {
+    materialRepairCount,
+    majorRepairCount,
+    suspiciousRepairs,
+    canReplaceRepairedProjection,
+    reason: canReplaceRepairedProjection ? "ready" : reasons.join("; ") || "not_ready",
+  };
+}
+
+function buildNoRepairAcceptanceClassification(input: {
+  noRepair: PlanningRealityDiagnostic;
+  repairedPlanningReality?: PlanningRealityDiagnostic;
+  repairedProjectionAvailable: boolean;
+  canReplaceRepairedProjection: boolean;
+  targetLanesMissing: number;
+  unresolvedDemandCount: number;
+  validationFailureCount: number;
+  acceptanceChecks: MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"];
+  concentrationClassification: NoRepairConcentrationClassification;
+  setAllocationChanges: MesocycleExplainPlannerOnlyNoRepair["setAllocationChanges"];
+  weeklyMuscleTotals: MesocycleExplainPlannerOnlyNoRepair["weeklyMuscleTotals"];
+  slotPlans: MesocycleExplainPlannerOnlyNoRepair["slotPlans"];
+}): NoRepairClassification {
+  const hardBlockers: NoRepairFinding[] = [
+    ...noRepairConcentrationFindings(
+      input.concentrationClassification.acceptanceFailures
+    ),
+  ];
+  const qualityWarnings: NoRepairFinding[] = [
+    ...noRepairConcentrationFindings(
+      input.concentrationClassification.qualityWarnings
+    ),
+  ];
+  const diagnosticOnly: NoRepairFinding[] = [
+    ...noRepairConcentrationFindings(
+      input.concentrationClassification.diagnosticRows
+    ),
+    ...noRepairConcentrationFindings(
+      input.concentrationClassification.ignoredRows
+    ),
+  ];
+  const sessionShaping: NoRepairFinding[] = [];
+  const hasTargetedDemand = (
+    muscle: string,
+    priorities: Array<PlanningRealityDiagnostic["shadowWeeklyDemand"][number]["priority"]>
+  ): boolean => {
+    const demand = input.noRepair.shadowWeeklyDemand.find(
+      (row) => row.muscle === muscle
+    );
+    return (
+      demand != null &&
+      priorities.includes(demand.priority) &&
+      demand.targetStatus !== "diagnostic"
+    );
+  };
+
+  const hardCheckCodes: Record<string, string> = {
+    "primary muscles above minimum": "primary_hard_target_below_minimum",
+    "no primary muscle solved by forbidden slot": "forbidden_slot_primary_solution",
+    "no Back Extension as clean Hamstrings closure": "back_extension_hamstrings_closure",
+    "slotPlanSeedJson would replay without reselection": "runtime_seed_replay_failure",
+  };
+
+  for (const check of input.acceptanceChecks) {
+    if (check.status === "pass") {
+      continue;
+    }
+    if (check.check === "no concentration acceptance blockers") {
+      continue;
+    }
+    if (
+      check.check === "materialRepairCount = 0 for basic shape" ||
+      check.check === "majorRepairCount = 0" ||
+      check.check === "suspicious repairs do not increase"
+    ) {
+      continue;
+    }
+    if (check.check === "no exercise above 5 sets unless justified") {
+      continue;
+    }
+    if (
+      check.check === "Chest has two upper-slot exposures" &&
+      hasTargetedDemand("Chest", ["primary"])
+    ) {
+      hardBlockers.push(
+        noRepairCheckFinding("required_chest_upper_exposures_missing", check)
+      );
+      continue;
+    }
+    if (
+      check.check === "Hamstrings have hinge + curl distribution" &&
+      hasTargetedDemand("Hamstrings", ["primary"])
+    ) {
+      hardBlockers.push(
+        noRepairCheckFinding("required_hamstrings_hinge_curl_missing", check)
+      );
+      continue;
+    }
+    if (
+      check.check === "Side Delts get direct low-collateral work" &&
+      hasTargetedDemand("Side Delts", ["support"])
+    ) {
+      hardBlockers.push(
+        noRepairCheckFinding("required_side_delts_direct_work_missing", check)
+      );
+      continue;
+    }
+    if (check.check === "Calves distributed across lower slots if feasible") {
+      const calvesTargeted = hasTargetedDemand("Calves", ["support", "primary"]);
+      const finding = noRepairCheckFinding(
+        check.status === "fail" && calvesTargeted
+          ? "required_calves_lower_slot_distribution_missing"
+          : "calf_split_session_shaping",
+        check
+      );
+      if (check.status === "fail" && calvesTargeted) {
+        hardBlockers.push(finding);
+      } else {
+        sessionShaping.push(finding);
+      }
+      continue;
+    }
+    if (
+      check.check ===
+      "no duplicate main lift when clean alternative exists unless justified"
+    ) {
+      qualityWarnings.push(
+        noRepairCheckFinding("duplicate_main_lift_needs_review", check)
+      );
+      continue;
+    }
+    const hardCode = hardCheckCodes[check.check];
+    if (hardCode) {
+      hardBlockers.push(noRepairCheckFinding(hardCode, check));
+    } else if (check.status === "unknown") {
+      diagnosticOnly.push(noRepairCheckFinding(`unknown_check:${check.check}`, check));
+    } else {
+      qualityWarnings.push(noRepairCheckFinding(`non_blocking_check:${check.check}`, check));
+    }
+  }
+
+  const compoundOverFiveBlockers =
+    buildNoRepairCompoundOverFiveBlockers(input.noRepair);
+  if (compoundOverFiveBlockers.length > 0) {
+    hardBlockers.push(
+      noRepairFinding(
+        "compound_hinge_or_press_gt_5_sets_without_justification",
+        compoundOverFiveBlockers
+      )
+    );
+  }
+
+  const supportBelowPreferred = input.weeklyMuscleTotals.filter((row) => {
+    const semantics = getMuscleTargetSemantics(row.muscle);
+    if (semantics.targetTier !== "B_SUPPORT") {
+      return false;
+    }
+    return (
+      row.targetPreferred != null &&
+      row.projectedEffectiveSets < row.targetPreferred &&
+      row.projectedEffectiveSets > 0
+    );
+  });
+  if (supportBelowPreferred.length > 0) {
+    qualityWarnings.push(
+      noRepairFinding(
+        "support_below_preferred_with_direct_work",
+        supportBelowPreferred.map(
+          (row) =>
+            `${row.muscle}:${row.projectedEffectiveSets}_of_${row.targetPreferred}`
+        )
+      )
+    );
+  }
+
+  const abovePreferred = input.weeklyMuscleTotals.filter(
+    (row) =>
+      row.status === "above" &&
+      getMuscleTargetSemantics(row.muscle).targetTier !== "A_PRIMARY"
+  );
+  if (abovePreferred.length > 0) {
+    qualityWarnings.push(
+      noRepairFinding(
+        "above_preferred_but_recoverable",
+        abovePreferred.map((row) => `${row.muscle}:${row.projectedEffectiveSets}`)
+      )
+    );
+  }
+
+  if (input.setAllocationChanges.length > 0) {
+    sessionShaping.push(
+      noRepairFinding(
+        "planner_owned_set_allocation_changes",
+        input.setAllocationChanges.map(
+          (row) =>
+            `${row.slotId}:${row.lane}:${row.exerciseName}:${row.setsBefore}->${row.setsAfter}`
+        )
+      )
+    );
+  }
+
+  const nonBlockingValidationRows = input.slotPlans.flatMap((slot) =>
+    slot.validationFailures.map((row) => `${slot.slotId}:${row}`)
+  );
+  if (nonBlockingValidationRows.length > 0) {
+    sessionShaping.push(
+      noRepairFinding("non_blocking_session_shaping_rows", nonBlockingValidationRows)
+    );
+  }
+
+  if (hasWeeksTwoToFourUnprojected(input.noRepair)) {
+    diagnosticOnly.push(
+      noRepairFinding("weeks_2_to_4_projection_incomplete", [
+        "weeks_2_to_4_unprojected",
+      ])
+    );
+  }
+  if (hasDeloadProjectionIncomplete(input.noRepair)) {
+    diagnosticOnly.push(
+      noRepairFinding("deload_projection_incomplete", [
+        "deload_projection_incomplete",
+      ])
+    );
+  }
+
+  const migrationScoreboard = buildNoRepairMigrationScoreboard({
+    noRepair: input.noRepair,
+    repairedPlanningReality: input.repairedPlanningReality,
+    canReplaceRepairedProjection: input.canReplaceRepairedProjection,
+    repairedProjectionAvailable: input.repairedProjectionAvailable,
+    targetLanesMissing: input.targetLanesMissing,
+    unresolvedDemandCount: input.unresolvedDemandCount,
+    validationFailureCount: input.validationFailureCount,
+    hardBlockerCount: hardBlockers.length,
+  });
+
+  const hasWarnings =
+    qualityWarnings.length > 0 ||
+    diagnosticOnly.length > 0 ||
+    sessionShaping.length > 0;
+  const basicMesocycleShapeStatus =
+    hardBlockers.length > 0
+      ? "fail"
+      : hasWarnings
+        ? "pass_with_warnings"
+        : "pass";
+  const replacementReadinessStatus =
+    hardBlockers.length > 0
+      ? "blocked"
+      : migrationScoreboard.canReplaceRepairedProjection
+        ? "ready"
+        : "not_ready";
+
+  return {
+    basicMesocycleShapeStatus,
+    replacementReadinessStatus,
+    hardBlockers,
+    qualityWarnings,
+    diagnosticOnly,
+    sessionShaping,
+    migrationScoreboard,
+  };
+}
+
 export function buildPlannerOnlyNoRepairComparison(input: {
   noRepairPlanningReality: PlanningRealityDiagnostic | undefined;
   repairedPlanningReality?: PlanningRealityDiagnostic;
@@ -2979,6 +3413,30 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     ((input.repairedPlanningReality?.finalSlotPlan.length ?? 0) > 0 ||
       input.repairedPlanningReality == null);
   if (!input.noRepairPlanningReality) {
+    const acceptanceClassification: NoRepairClassification = {
+      basicMesocycleShapeStatus: "fail",
+      replacementReadinessStatus: "blocked",
+      hardBlockers: [
+        noRepairFinding("runtime_seed_replay_failure", ["planningReality_missing"]),
+      ],
+      qualityWarnings: [],
+      diagnosticOnly: [],
+      sessionShaping: [],
+      migrationScoreboard: {
+        materialRepairCount: input.repairedPlanningReality
+          ? getMaterialRepairCount(input.repairedPlanningReality)
+          : null,
+        majorRepairCount: input.repairedPlanningReality
+          ? getMajorRepairCount(input.repairedPlanningReality)
+          : null,
+        suspiciousRepairs: input.repairedPlanningReality
+          ? input.repairedPlanningReality.suspiciousRepairsNotEligibleForPromotion
+              ?.length ?? 0
+          : null,
+        canReplaceRepairedProjection: false,
+        reason: "planningReality_missing",
+      },
+    };
     return {
       enabled: true,
       readOnly: true,
@@ -2991,6 +3449,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         unresolvedDemandCount: 1,
         validationFailureCount: 1,
       },
+      acceptanceClassification,
       slotPlans: [],
       weeklyMuscleTotals: [],
       setAllocationChanges: [],
@@ -3056,12 +3515,20 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     unresolvedDemandCount === 0 &&
     validationFailureCount === 0 &&
     acceptanceChecks.every((check) => check.status === "pass");
-  const status =
-    canReplaceRepairedProjection
-      ? "pass"
-      : targetLanesSatisfied > 0 && targetLanesMissing > 0
-        ? "partial"
-        : "fail";
+  const acceptanceClassification = buildNoRepairAcceptanceClassification({
+    noRepair,
+    repairedPlanningReality: input.repairedPlanningReality,
+    repairedProjectionAvailable: input.repairedProjectionAvailable,
+    canReplaceRepairedProjection,
+    targetLanesMissing,
+    unresolvedDemandCount,
+    validationFailureCount,
+    acceptanceChecks,
+    concentrationClassification,
+    setAllocationChanges,
+    weeklyMuscleTotals,
+    slotPlans,
+  });
   const gaps = mainNoRepairGaps({ slotPlans, acceptanceChecks });
 
   return {
@@ -3070,12 +3537,13 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     affectsScoringOrGeneration: false,
     canReplaceRepairedProjection,
     summary: {
-      status,
+      status: acceptanceClassification.basicMesocycleShapeStatus,
       targetLanesSatisfied,
       targetLanesMissing,
       unresolvedDemandCount,
       validationFailureCount,
     },
+    acceptanceClassification,
     slotPlans,
     weeklyMuscleTotals,
     setAllocationChanges,

@@ -1997,64 +1997,38 @@ export function buildPlannerOnlyNoRepairSummary(input: {
     return null;
   }
 
-  const failingChecks = noRepair.acceptanceChecks
-    .filter((check) => check.status === "fail" || check.status === "partial")
-    .slice(0, 4)
-    .map((check) => `${check.check}:${check.status}`)
-    .join("; ") || "none";
-  const unresolved = noRepair.slotPlans
-    .flatMap((slot) =>
-      slot.unresolvedDemand.slice(0, 2).map((row) => `${slot.slotId}:${row}`)
-    )
-    .slice(0, 6)
-    .join("; ") || "none";
-  const missingLanes = noRepair.slotPlans
-    .flatMap((slot) =>
-      slot.missingLanes.slice(0, 2).map((row) => `${slot.slotId}:${row}`)
-    )
-    .slice(0, 6)
-    .join("; ") || "none";
-  const setAllocationChanges =
-    noRepair.setAllocationChanges
-      ?.map(
-        (change) =>
-          `${change.slotId}:${change.lane}:${change.exerciseName} ${change.setsBefore}->${change.setsAfter}`
-      )
-      .join("; ") || "none";
-  const weeklyTotalChanges =
-    noRepair.weeklyMuscleTotalChanges
-      ?.map(
-        (change) =>
-          `${change.muscle} ${change.beforeEffectiveSets}->${change.afterEffectiveSets} (min ${change.targetMin ?? "unknown"})`
-      )
-      .join("; ") || "none";
-  const comparison = noRepair.comparisonToRepaired
-    ? ` repaired_passes=${formatBooleanFlag(noRepair.comparisonToRepaired.repairedPasses)} no_repair_passes=${formatBooleanFlag(noRepair.comparisonToRepaired.noRepairPasses)}`
-    : "";
-  const formatSeverityRows = (
-    rows: typeof noRepair.acceptanceFailures | undefined
+  const classification = noRepair.acceptanceClassification;
+  const formatStatus = (status: string): string =>
+    status.replaceAll("_", "-");
+  const migrationStatus = classification.migrationScoreboard
+    .canReplaceRepairedProjection
+    ? "ready"
+    : "not-ready";
+  const formatFindings = (
+    findings: typeof classification.hardBlockers
   ): string =>
-    rows && rows.length > 0
-      ? rows
+    findings.length > 0
+      ? findings
           .slice(0, 6)
           .map(
-            (row) =>
-              `${row.slotId}:${row.exerciseName}:${row.muscle}:${row.percentageOfWeeklyStimulus}%:${row.reason}`
+            (finding) =>
+              `${finding.code}: ${finding.evidence.slice(0, 3).join("; ")}`
           )
-          .join("; ")
+          .join(" | ")
       : "none";
 
   return [
-    `[workout-audit:planner-only-no-repair] status=${noRepair.summary.status} can_replace=${formatBooleanFlag(noRepair.canReplaceRepairedProjection)} lanes_satisfied=${noRepair.summary.targetLanesSatisfied} lanes_missing=${noRepair.summary.targetLanesMissing} unresolved=${noRepair.summary.unresolvedDemandCount} validation_failures=${noRepair.summary.validationFailureCount}${comparison}`,
-    `[workout-audit:planner-only-no-repair] missing_lanes=${missingLanes}`,
-    `[workout-audit:planner-only-no-repair] unresolved_demand=${unresolved}`,
-    `[workout-audit:planner-only-no-repair] acceptance_checks_failed=${failingChecks}`,
-    `[workout-audit:planner-only-no-repair] acceptance_failures_true_blockers=${formatSeverityRows(noRepair.acceptanceFailures)}`,
-    `[workout-audit:planner-only-no-repair] quality_warnings_non_blocking=${formatSeverityRows(noRepair.qualityWarnings)}`,
-    `[workout-audit:planner-only-no-repair] diagnostic_rows_readout_only=${formatSeverityRows(noRepair.diagnosticRows)}`,
-    `[workout-audit:planner-only-no-repair] ignored_rows_for_acceptance=${formatSeverityRows(noRepair.ignoredRows)}`,
-    `[workout-audit:planner-only-no-repair] set_allocation_changes=${setAllocationChanges}`,
-    `[workout-audit:planner-only-no-repair] weekly_total_changes=${weeklyTotalChanges}`,
+    "Planner-Only No-Repair Acceptance",
+    "---------------------------------",
+    `Basic shape: ${formatStatus(classification.basicMesocycleShapeStatus)}`,
+    `Replacement readiness: ${formatStatus(classification.replacementReadinessStatus)}`,
+    `Hard blockers: ${classification.hardBlockers.length}`,
+    `Hard blocker details: ${formatFindings(classification.hardBlockers)}`,
+    `Quality warnings: ${classification.qualityWarnings.length}`,
+    `Quality warning details: ${formatFindings(classification.qualityWarnings)}`,
+    `Diagnostic rows: ${classification.diagnosticOnly.length}`,
+    `Session-shaping rows: ${classification.sessionShaping.length}`,
+    `Migration scoreboard: ${migrationStatus}`,
   ];
 }
 

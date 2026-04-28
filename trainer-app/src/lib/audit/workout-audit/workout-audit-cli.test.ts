@@ -2585,6 +2585,47 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
               unresolvedDemandCount: 1,
               validationFailureCount: 1,
             },
+            acceptanceClassification: {
+              basicMesocycleShapeStatus: "fail",
+              replacementReadinessStatus: "blocked",
+              hardBlockers: [
+                {
+                  code: "primary_hard_target_below_minimum",
+                  evidence: ["Chest:below_min_10"],
+                },
+              ],
+              qualityWarnings: [
+                {
+                  code: "support_direct_isolation_concentrated_but_clean_and_near_or_at_target",
+                  evidence: [
+                    "upper_a:Cable Rear Delt Fly:Rear Delts:64.5%:support_direct_isolation_concentrated_but_clean_and_near_or_at_target",
+                  ],
+                },
+              ],
+              diagnosticOnly: [
+                {
+                  code: "secondary_or_implicit_collateral_not_acceptance_target",
+                  evidence: [
+                    "upper_b:Machine Shoulder Press:Front Delts:70%:secondary_or_implicit_collateral_not_acceptance_target",
+                  ],
+                },
+              ],
+              sessionShaping: [
+                {
+                  code: "planner_owned_set_allocation_changes",
+                  evidence: [
+                    "upper_a:chest_secondary:Cable Crossover:2->3",
+                  ],
+                },
+              ],
+              migrationScoreboard: {
+                materialRepairCount: 1,
+                majorRepairCount: 0,
+                suspiciousRepairs: 0,
+                canReplaceRepairedProjection: false,
+                reason: "hard_blockers:1",
+              },
+            },
             slotPlans: [
               {
                 slotId: "upper_a",
@@ -2712,16 +2753,17 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
     });
 
     expect(summary).toEqual([
-      "[workout-audit:planner-only-no-repair] status=fail can_replace=no lanes_satisfied=4 lanes_missing=2 unresolved=1 validation_failures=1 repaired_passes=yes no_repair_passes=no",
-      "[workout-audit:planner-only-no-repair] missing_lanes=upper_a:chest_secondary:missing",
-      "[workout-audit:planner-only-no-repair] unresolved_demand=upper_a:Chest:shortfall_4",
-      "[workout-audit:planner-only-no-repair] acceptance_checks_failed=primary muscles above minimum:fail",
-      "[workout-audit:planner-only-no-repair] acceptance_failures_true_blockers=upper_a:Incline Dumbbell Press:Chest:70%:primary_hard_target_excessive_single_exercise_share_unjustified",
-      "[workout-audit:planner-only-no-repair] quality_warnings_non_blocking=upper_a:Cable Rear Delt Fly:Rear Delts:64.5%:support_direct_isolation_concentrated_but_clean_and_near_or_at_target",
-      "[workout-audit:planner-only-no-repair] diagnostic_rows_readout_only=upper_b:Machine Shoulder Press:Front Delts:70%:secondary_or_implicit_collateral_not_acceptance_target",
-      "[workout-audit:planner-only-no-repair] ignored_rows_for_acceptance=upper_b:Barbell Curl:Forearms:100%:compound_or_curl_collateral_denominator_artifact",
-      "[workout-audit:planner-only-no-repair] set_allocation_changes=upper_a:chest_secondary:Cable Crossover 2->3",
-      "[workout-audit:planner-only-no-repair] weekly_total_changes=Chest 5->6 (min 10)",
+      "Planner-Only No-Repair Acceptance",
+      "---------------------------------",
+      "Basic shape: fail",
+      "Replacement readiness: blocked",
+      "Hard blockers: 1",
+      "Hard blocker details: primary_hard_target_below_minimum: Chest:below_min_10",
+      "Quality warnings: 1",
+      "Quality warning details: support_direct_isolation_concentrated_but_clean_and_near_or_at_target: upper_a:Cable Rear Delt Fly:Rear Delts:64.5%:support_direct_isolation_concentrated_but_clean_and_near_or_at_target",
+      "Diagnostic rows: 1",
+      "Session-shaping rows: 1",
+      "Migration scoreboard: not-ready",
     ]);
   });
 });

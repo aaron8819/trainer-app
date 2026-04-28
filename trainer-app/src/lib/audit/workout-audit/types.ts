@@ -945,11 +945,42 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
   affectsScoringOrGeneration: false;
   canReplaceRepairedProjection: boolean;
   summary: {
-    status: "pass" | "partial" | "fail";
+    status: "pass" | "pass_with_warnings" | "partial" | "fail";
     targetLanesSatisfied: number;
     targetLanesMissing: number;
     unresolvedDemandCount: number;
     validationFailureCount: number;
+  };
+  acceptanceClassification: {
+    basicMesocycleShapeStatus:
+      | "pass"
+      | "pass_with_warnings"
+      | "partial"
+      | "fail";
+    replacementReadinessStatus: "ready" | "not_ready" | "blocked";
+    hardBlockers: Array<{
+      code: string;
+      evidence: string[];
+    }>;
+    qualityWarnings: Array<{
+      code: string;
+      evidence: string[];
+    }>;
+    diagnosticOnly: Array<{
+      code: string;
+      evidence: string[];
+    }>;
+    sessionShaping: Array<{
+      code: string;
+      evidence: string[];
+    }>;
+    migrationScoreboard: {
+      materialRepairCount: number | null;
+      majorRepairCount: number | null;
+      suspiciousRepairs: number | null;
+      canReplaceRepairedProjection: boolean;
+      reason: string;
+    };
   };
   slotPlans: Array<{
     slotId: string;

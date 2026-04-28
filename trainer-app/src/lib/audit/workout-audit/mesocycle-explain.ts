@@ -3373,6 +3373,10 @@ function exerciseMatchesV2LaneClass(input: {
   );
 }
 
+function isStrictV2SetBudgetLane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
+  return lane.laneId === "chest_secondary";
+}
+
 const V2_SET_POLICY_CLASS_TOKENS = new Set([
   "bench",
   "biceps",
@@ -3398,6 +3402,9 @@ function exerciseMatchesV2LaneSetPolicyClass(input: {
   const aliases = v2LaneAliases(input.lane);
   if (aliases.includes(classified.lane)) {
     return true;
+  }
+  if (isStrictV2SetBudgetLane(input.lane)) {
+    return false;
   }
 
   const exerciseClass = classified.exerciseClass.toLowerCase();
@@ -3439,8 +3446,11 @@ function collectV2LaneExercises(input: {
   slot?: SlotCompositionSnapshot;
   lane: V2Lane | V2Slot["lanes"][number];
 }): SlotCompositionSnapshot["exercises"] {
+  const laneMatcher = isStrictV2SetBudgetLane(input.lane)
+    ? exerciseMatchesV2LaneSetPolicyClass
+    : exerciseSupportsV2Lane;
   return (input.slot?.exercises ?? [])
-    .filter((exercise) => exerciseSupportsV2Lane({ exercise, lane: input.lane }))
+    .filter((exercise) => laneMatcher({ exercise, lane: input.lane }))
     .sort((left, right) => {
       const leftClassMatch = exerciseMatchesV2LaneClass({
         exercise: left,
@@ -3744,9 +3754,21 @@ function formatV2SelectedExercises(input: {
 
 function includesAnyLaneToken(value: string, lane: V2Lane | V2Slot["lanes"][number]): boolean {
   const normalized = value.toLowerCase();
+  const tokens = normalized
+    .split(/[:|,]/)
+    .map((token) => token.trim())
+    .filter(Boolean);
   return (
     v2LaneAliases(lane).some((alias) => normalized.includes(alias.toLowerCase())) ||
-    lane.primaryMuscles.some((muscle) => normalized.includes(muscle.toLowerCase()))
+    lane.primaryMuscles.some((muscle) => {
+      const normalizedMuscle = muscle.toLowerCase();
+      return tokens.some(
+        (token) =>
+          token === normalizedMuscle ||
+          token.startsWith(`${normalizedMuscle}=`) ||
+          token.startsWith(`${normalizedMuscle}:`)
+      );
+    })
   );
 }
 
@@ -3785,6 +3807,13 @@ function collectV2LaneDiagnostics(input: {
     ) ?? []),
     ...(input.repairedCreatesLane ? ["repair_dependent:repaired_projection_has_lane"] : []),
   ];
+
+  if (
+    isStrictV2SetBudgetLane(input.lane) &&
+    input.setPolicyDiagnostics.includes("setPolicy:in_budget")
+  ) {
+    return compactV2LaneDiagnostics(input.setPolicyDiagnostics, 6);
+  }
 
   if (!noRepair) {
     return compactV2LaneDiagnostics([...diagnostics, "planningReality_missing"], 6);

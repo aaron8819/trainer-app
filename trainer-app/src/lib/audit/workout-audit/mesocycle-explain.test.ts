@@ -3460,6 +3460,272 @@ describe("buildMesocycleExplainAuditPayload", () => {
     ).not.toBe("blocked");
   });
 
+  it("classifies chest-secondary set budget with strict lane-owned evidence only", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Crossover",
+            setCount: 3,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["isolation"],
+            stimulus: { Chest: 3 },
+            percentages: { Chest: 33 },
+          },
+          {
+            slotId: "upper_a",
+            exerciseName: "Deficit Push-Up",
+            setCount: 3,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_push"],
+            stimulus: { Chest: 3 },
+            percentages: { Chest: 33 },
+          },
+          {
+            slotId: "upper_a",
+            exerciseName: "Chest-Supported T-Bar Row",
+            setCount: 2,
+            primaryMuscles: ["Biceps"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { Biceps: 2 },
+            percentages: { Biceps: 100 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Chest",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 6,
+            preferredEffectiveSets: 8,
+            maxEffectiveSets: 12,
+          },
+        ],
+      }),
+      repairedPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Deficit Push-Up",
+            setCount: 5,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_push"],
+            stimulus: { Chest: 5 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "chest_secondary");
+
+    expect(lane).toMatchObject({
+      currentStatus: "satisfied",
+      gapCause: "none",
+      migrationRecommendation: "no_action",
+      severity: "pass",
+      currentEvidence: {
+        selectedExercises: [
+          expect.objectContaining({
+            name: "Cable Crossover",
+            sets: 3,
+            matchedClass: "chest_isolation",
+          }),
+        ],
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:in_budget",
+          "setBudget:within_preferred",
+          "justification:none",
+        ]),
+      },
+    });
+    expect(lane?.currentEvidence.selectedExercises).toHaveLength(1);
+    expect(lane?.currentEvidence.relevantDiagnostics).not.toContain(
+      "setPolicy:requires_justification",
+    );
+    expect(lane?.currentEvidence.relevantDiagnostics).toEqual([
+      "setPolicy:in_budget",
+      "setBudget:within_preferred",
+      "justification:none",
+    ]);
+    expect(
+      lane?.currentEvidence.relevantDiagnostics.some((row) =>
+        row.includes("Biceps")
+      )
+    ).toBe(false);
+  });
+
+  it("classifies chest-secondary above preferred as requiring justification rather than hard blocking", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Crossover",
+            role: "main",
+            setCount: 5,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_push"],
+            stimulus: { Chest: 5 },
+            percentages: { Chest: 45 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Chest",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 5,
+            preferredEffectiveSets: 8,
+            maxEffectiveSets: 12,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "chest_secondary");
+
+    expect(lane).toMatchObject({
+      currentStatus: "partial",
+      gapCause: "set_distribution_gap",
+      migrationRecommendation: "needs_set_budget_justification",
+      severity: "quality_warning",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:requires_justification",
+          "setPolicyReason:over_role_cap",
+          "setBudget:requires_justification",
+          "justification:none",
+        ]),
+      },
+    });
+    expect(lane?.currentStatus).not.toBe("blocked");
+    expect(lane?.currentEvidence.relevantDiagnostics).not.toContain(
+      "setPolicy:hard_blocker",
+    );
+  });
+
+  it("allows justified chest-secondary overage as a warning/partial lane instead of blocking it", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Crossover",
+            role: "accessory",
+            setCount: 4,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["isolation"],
+            stimulus: { Chest: 4 },
+            percentages: { Chest: 45 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Chest",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 4,
+            preferredEffectiveSets: 8,
+            maxEffectiveSets: 12,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "chest_secondary");
+
+    expect(lane).toMatchObject({
+      currentStatus: "partial",
+      severity: "quality_warning",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:allowed_expansion",
+          "setBudget:allowed_expansion",
+          "justification:low_systemic_fatigue",
+        ]),
+      },
+    });
+    expect(lane?.currentStatus).not.toBe("blocked");
+  });
+
+  it("keeps true chest-secondary set and share blockers blocked", () => {
+    const overFive = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Crossover",
+            setCount: 6,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["isolation"],
+            stimulus: { Chest: 6 },
+            percentages: { Chest: 55 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+    const overSixtyShare = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Crossover",
+            setCount: 4,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["isolation"],
+            stimulus: { Chest: 4 },
+            percentages: { Chest: 64 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const overFiveLane = overFive.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "chest_secondary");
+    const overSixtyLane = overSixtyShare.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "chest_secondary");
+
+    expect(overFiveLane).toMatchObject({
+      currentStatus: "blocked",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:hard_blocker",
+          "setPolicyReason:gt_5_sets",
+        ]),
+      },
+    });
+    expect(overSixtyLane).toMatchObject({
+      currentStatus: "blocked",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:hard_blocker",
+          "setPolicyReason:over_60_share",
+        ]),
+      },
+    });
+  });
+
   it("hard-blocks 50-60 percent primary concentration when the primary muscle is below minimum", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({

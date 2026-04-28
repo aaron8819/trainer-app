@@ -608,6 +608,109 @@ describe("artifact serialization helpers", () => {
     expect(serialized).toContain("justification:none");
   });
 
+  it("preserves compact set-budget justification diagnostics without hard-blocker collision", () => {
+    const artifact = {
+      mode: "mesocycle-explain",
+      mesocycleExplain: {
+        preview: {
+          projectionDiagnostics: {
+            planningReality: {},
+          },
+        },
+        plannerOnlyNoRepair: {
+          enabled: true,
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          v2TargetVsNoRepairDiff: {
+            version: 1,
+            source: "v2_planner_no_repair_experimental",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            summary: {
+              targetLaneCount: 1,
+              satisfiedLaneCount: 0,
+              partialLaneCount: 1,
+              missingLaneCount: 0,
+              blockedLaneCount: 0,
+              repairDependentLaneCount: 0,
+              migrationCandidateCount: 0,
+              suspiciousOrBlockedCount: 0,
+            },
+            slotDiffs: [
+              {
+                slotId: "upper_a",
+                laneDiffs: [
+                  {
+                    laneId: "chest_secondary",
+                    targetRole: "support",
+                    currentStatus: "partial",
+                    currentEvidence: {
+                      selectedExercises: [
+                        {
+                          name: "Cable Crossover",
+                          sets: 5,
+                          matchedClass: "chest_isolation",
+                        },
+                      ],
+                      relevantDiagnostics: [
+                        "setPolicy:requires_justification",
+                        "setPolicyReason:over_role_cap",
+                        "setBudget:requires_justification",
+                        "justification:none",
+                        "operator_note:trimmed",
+                      ],
+                    },
+                    gapCause: "capacity_gap",
+                    migrationRecommendation: "needs_set_budget_justification",
+                    severity: "quality_warning",
+                  },
+                ],
+              },
+            ],
+            replacementReadinessImpact: {
+              canReplaceRepairedProjection: false,
+              blockers: ["read_only_non_generative_artifact"],
+              nextBestMigrationSlice:
+                "chest_secondary:needs_set_budget_justification",
+            },
+          },
+        },
+      },
+    } as unknown as WorkoutAuditArtifact;
+
+    const compact = compactWorkoutAuditArtifactForSerialization(artifact);
+    const serialized = serializeStableJson(compact);
+    const lane = (
+      compact as {
+        mesocycleExplain?: {
+          plannerOnlyNoRepair?: {
+            v2TargetVsNoRepairDiff?: {
+              slotDiffs?: Array<{
+                laneDiffs?: Array<{
+                  currentEvidence?: { relevantDiagnostics?: string[] };
+                }>;
+              }>;
+            };
+          };
+        };
+      }
+    ).mesocycleExplain?.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff
+      ?.slotDiffs?.[0]?.laneDiffs?.[0];
+
+    expect(serialized).toContain("setBudget:requires_justification");
+    expect(lane?.currentEvidence?.relevantDiagnostics).toEqual([
+      "setPolicy:requires_justification",
+      "setPolicyReason:over_role_cap",
+      "setBudget:requires_justification",
+      "justification:none",
+    ]);
+    expect(
+      lane?.currentEvidence?.relevantDiagnostics?.some((entry) =>
+        entry.toLowerCase().includes("hard_blocker")
+      )
+    ).toBe(false);
+  });
+
   it("compacts flagged planner-only no-repair V2 diagnostics with parseable headroom and blocker evidence", () => {
     const laneIds = [
       "chest_anchor",

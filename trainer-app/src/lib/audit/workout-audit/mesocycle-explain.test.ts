@@ -5086,6 +5086,87 @@ describe("buildMesocycleExplainAuditPayload", () => {
     );
   });
 
+  it("clears biceps set-distribution action when direct curl rises to three sets and weekly target is met", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Close-Grip Lat Pulldown",
+            setCount: 3,
+            primaryMuscles: ["Lats"],
+            movementPatterns: ["vertical_pull"],
+            stimulus: { Lats: 3, Biceps: 2.4 },
+            percentages: { Lats: 65, Biceps: 38.7 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Close-Grip Seated Cable Row",
+            setCount: 2,
+            primaryMuscles: ["Upper Back", "Lats"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { "Upper Back": 2, Lats: 2, Biceps: 0.8 },
+            percentages: { "Upper Back": 65, Lats: 35, Biceps: 12.9 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Barbell Curl",
+            setCount: 3,
+            primaryMuscles: ["Biceps"],
+            movementPatterns: ["isolation"],
+            stimulus: { Biceps: 3 },
+            percentages: { Biceps: 48.4 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Biceps",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 6,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 14,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "biceps");
+
+    expect(lane).toMatchObject({
+      currentStatus: "satisfied",
+      gapCause: "none",
+      migrationRecommendation: "no_action",
+      severity: "pass",
+      currentEvidence: {
+        selectedExercises: [
+          expect.objectContaining({
+            name: "Barbell Curl",
+            sets: 3,
+            matchedClass: "biceps_curl",
+          }),
+        ],
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:in_budget",
+          "setBudget:within_preferred",
+          "exposure:single_direct_curl",
+          "concentration:pulling_collateral",
+        ]),
+      },
+    });
+    expect(lane?.currentEvidence.relevantDiagnostics).not.toContain(
+      "target_delivery:below_min",
+    );
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
+        .nextBestMigrationSlice,
+    ).not.toBe("biceps:needs_set_distribution_policy");
+  });
+
   it("does not select a non-blocking optional lane ahead of underdelivered biceps", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({

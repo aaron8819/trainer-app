@@ -103,7 +103,7 @@ export function buildHypertrophyUpperLowerLanePlan(input: {
         ),
         lane("upper_b", "row_support", ["cable_row", "chest_supported_row"], 2),
         lane("upper_b", "side_delt_isolation", ["lateral_raise"], 3),
-        lane("upper_b", "biceps", ["biceps_curl"], 2),
+        lane("upper_b", "biceps", ["biceps_curl"], 3),
         lane("upper_b", "optional_triceps", ["triceps_isolation"], 0, {
           minSets: 0,
           optional: true,

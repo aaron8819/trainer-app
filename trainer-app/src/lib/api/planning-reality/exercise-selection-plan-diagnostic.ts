@@ -1,4 +1,4 @@
-import type { V2SetDistributionIntent } from "@/lib/engine/planning/v2-set-distribution-intent";
+import type { V2SetDistributionIntent } from "@/lib/engine/planning/v2/set-distribution-intent";
 import { classSatisfiesIntent, classifySelectedExerciseClass } from "./selection-alignment";
 import { normalizeMuscle } from "./shared-evidence";
 import { uniqueSorted } from "./planner-intent";

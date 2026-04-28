@@ -3288,4 +3288,4 @@ export function buildPreselectionDistributionPolicyByWeek(input: {
   };
 }
 
-import type { V2SetDistributionIntent } from "@/lib/engine/planning/v2-set-distribution-intent";
+import type { V2SetDistributionIntent } from "@/lib/engine/planning/v2/set-distribution-intent";

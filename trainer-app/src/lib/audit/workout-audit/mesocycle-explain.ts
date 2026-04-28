@@ -46,7 +46,8 @@ import { getMuscleTargetSemantics } from "@/lib/engine/volume-landmarks";
 import {
   buildV2SetDistributionIntent,
   type V2SetDistributionIntent,
-} from "@/lib/engine/planning/v2-set-distribution-intent";
+} from "@/lib/engine/planning/v2/set-distribution-intent";
+import { buildV2PlannerMesocyclePolicy } from "@/lib/engine/planning/v2";
 import {
   buildPlannerOwnedAccumulationProjection,
   buildV2ExerciseSelectionPlanDiagnostic,
@@ -2985,7 +2986,7 @@ type NoRepairFinding = NoRepairClassification["hardBlockers"][number];
 type V2MesocyclePlan = MesocycleExplainPlannerOnlyNoRepair["v2MesocyclePlan"];
 type V2Slot = V2MesocyclePlan["skeleton"]["slots"][number];
 type V2Lane = V2Slot["lanes"][number] & {
-  topDownLane?: string;
+  targetLaneId?: string;
 };
 type V2TargetVsNoRepairDiff =
   MesocycleExplainPlannerOnlyNoRepair["v2TargetVsNoRepairDiff"];
@@ -3011,261 +3012,6 @@ type V2LaneSetPolicyStatus =
   | "hard_blocker"
   | "unknown";
 
-const V2_SLOT_SEQUENCE: V2MesocyclePlan["skeleton"]["slotSequence"] = [
-  "upper_a",
-  "lower_a",
-  "upper_b",
-  "lower_b",
-];
-
-const V2_SLOT_SKELETON: Array<
-  Omit<V2Slot, "lanes"> & { lanes: V2Lane[] }
-> = [
-  {
-    slotId: "upper_a",
-    intent: "horizontal push/pull + rear delt/triceps support",
-    targetSessionSets: { min: 15, max: 20 },
-    lanes: [
-      {
-        laneId: "chest_anchor",
-        required: true,
-        role: "anchor",
-        primaryMuscles: ["Chest"],
-        preferredExerciseClasses: ["horizontal_press", "slight_incline_press"],
-        targetSets: { min: 3, preferred: 4, max: 4 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "row_anchor",
-        required: true,
-        role: "anchor",
-        primaryMuscles: ["Upper Back", "Lats"],
-        preferredExerciseClasses: ["chest_supported_row", "cable_row", "t_bar_row"],
-        targetSets: { min: 3, preferred: 4, max: 4 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "vertical_pull_support",
-        topDownLane: "vertical_pull",
-        required: true,
-        role: "support",
-        primaryMuscles: ["Lats"],
-        preferredExerciseClasses: ["vertical_pull"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "chest_secondary",
-        required: true,
-        role: "support",
-        primaryMuscles: ["Chest"],
-        preferredExerciseClasses: ["fly", "machine_press", "cable_press"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "rear_delt",
-        required: true,
-        role: "accessory",
-        primaryMuscles: ["Rear Delts"],
-        preferredExerciseClasses: ["rear_delt_isolation"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "triceps",
-        required: true,
-        role: "accessory",
-        primaryMuscles: ["Triceps"],
-        preferredExerciseClasses: ["triceps_isolation", "pressdown"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
-        currentWeek1Status: "missing",
-      },
-    ],
-  },
-  {
-    slotId: "lower_a",
-    intent: "squat-dominant + hamstring support",
-    targetSessionSets: { min: 12, max: 18 },
-    lanes: [
-      {
-        laneId: "squat_anchor",
-        required: true,
-        role: "anchor",
-        primaryMuscles: ["Quads"],
-        preferredExerciseClasses: ["squat_pattern"],
-        targetSets: { min: 3, preferred: 4, max: 4 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "quad_isolation",
-        required: true,
-        role: "support",
-        primaryMuscles: ["Quads"],
-        preferredExerciseClasses: ["leg_extension"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "hamstring_curl",
-        topDownLane: "knee_flexion_curl",
-        required: true,
-        role: "support",
-        primaryMuscles: ["Hamstrings"],
-        preferredExerciseClasses: ["knee_flexion_curl"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "secondary_hinge",
-        topDownLane: "hinge_anchor",
-        required: true,
-        role: "support",
-        primaryMuscles: ["Hamstrings", "Glutes"],
-        preferredExerciseClasses: ["low_dose_hinge"],
-        targetSets: { min: 2, preferred: 2, max: 2 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "calves",
-        required: true,
-        role: "accessory",
-        primaryMuscles: ["Calves"],
-        preferredExerciseClasses: ["calf_isolation"],
-        targetSets: { min: 3, preferred: 4, max: 4 },
-        currentWeek1Status: "missing",
-      },
-    ],
-  },
-  {
-    slotId: "upper_b",
-    intent: "vertical push/pull + side delts/arms + second chest exposure",
-    targetSessionSets: { min: 15, max: 21 },
-    lanes: [
-      {
-        laneId: "vertical_press",
-        required: true,
-        role: "anchor",
-        primaryMuscles: ["Front Delts", "Side Delts"],
-        preferredExerciseClasses: ["vertical_press"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "vertical_pull_anchor",
-        topDownLane: "vertical_pull",
-        required: true,
-        role: "anchor",
-        primaryMuscles: ["Lats"],
-        preferredExerciseClasses: ["vertical_pull"],
-        targetSets: { min: 3, preferred: 4, max: 4 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "chest_second_exposure",
-        topDownLane: "chest_secondary",
-        required: true,
-        role: "support",
-        primaryMuscles: ["Chest"],
-        preferredExerciseClasses: ["distinct_chest_press_or_fly"],
-        targetSets: { min: 3, preferred: 4, max: 4 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "row_support",
-        topDownLane: "row_anchor",
-        required: true,
-        role: "support",
-        primaryMuscles: ["Upper Back", "Lats"],
-        preferredExerciseClasses: ["horizontal_pull_support"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "side_delt_isolation",
-        required: true,
-        role: "accessory",
-        primaryMuscles: ["Side Delts"],
-        preferredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
-        targetSets: { min: 3, preferred: 4, max: 4 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "biceps",
-        required: true,
-        role: "accessory",
-        primaryMuscles: ["Biceps"],
-        preferredExerciseClasses: ["biceps_isolation"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "optional_triceps_if_under_target",
-        topDownLane: "triceps",
-        required: false,
-        role: "optional",
-        primaryMuscles: ["Triceps"],
-        preferredExerciseClasses: ["triceps_isolation"],
-        targetSets: { min: 0, preferred: 1, max: 2 },
-        currentWeek1Status: "warning",
-      },
-    ],
-  },
-  {
-    slotId: "lower_b",
-    intent: "hinge-dominant + quad support + calves",
-    targetSessionSets: { min: 10, max: 16 },
-    lanes: [
-      {
-        laneId: "hinge_anchor",
-        required: true,
-        role: "anchor",
-        primaryMuscles: ["Hamstrings", "Glutes"],
-        preferredExerciseClasses: ["hinge_compound"],
-        targetSets: { min: 3, preferred: 3, max: 3 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "knee_flexion_curl",
-        required: true,
-        role: "support",
-        primaryMuscles: ["Hamstrings"],
-        preferredExerciseClasses: ["hamstring_curl"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "quad_support",
-        required: true,
-        role: "support",
-        primaryMuscles: ["Quads"],
-        preferredExerciseClasses: ["squat", "leg_press", "lunge", "quad_isolation"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "calves",
-        required: true,
-        role: "accessory",
-        primaryMuscles: ["Calves"],
-        preferredExerciseClasses: ["calf_isolation"],
-        targetSets: { min: 3, preferred: 4, max: 4 },
-        currentWeek1Status: "missing",
-      },
-      {
-        laneId: "optional_glute_core_if_recoverable",
-        topDownLane: "optional_core_adductor_glute",
-        required: false,
-        role: "optional",
-        primaryMuscles: ["Glutes", "Core"],
-        preferredExerciseClasses: ["glute_or_core_accessory"],
-        targetSets: { min: 0, preferred: 1, max: 2 },
-        currentWeek1Status: "warning",
-      },
-    ],
-  },
-];
-
 function toV2LaneWeek1Status(
   status?: string
 ): V2Lane["currentWeek1Status"] {
@@ -3279,6 +3025,7 @@ function buildV2Skeleton(input: {
   noRepair?: PlanningRealityDiagnostic;
   slotPlans: MesocycleExplainPlannerOnlyNoRepair["slotPlans"];
 }): V2MesocyclePlan["skeleton"] {
+  const targetSkeleton = buildV2PlannerMesocyclePolicy().targetSkeleton;
   const topDownBySlot = new Map(
     input.noRepair?.topDownMesocyclePlan?.slotTargets.map((slot) => [
       slot.slotId,
@@ -3290,10 +3037,10 @@ function buildV2Skeleton(input: {
   );
 
   return {
-    split: "upper_lower_4x",
-    weeks: 5,
-    slotSequence: V2_SLOT_SEQUENCE,
-    slots: V2_SLOT_SKELETON.map((slot) => {
+    split: targetSkeleton.split,
+    weeks: targetSkeleton.weeks,
+    slotSequence: targetSkeleton.slotSequence,
+    slots: targetSkeleton.slots.map((slot) => {
       const topDownSlot = topDownBySlot.get(slot.slotId);
       const noRepairSlot = noRepairSlotPlans.get(slot.slotId);
       return {
@@ -3301,7 +3048,7 @@ function buildV2Skeleton(input: {
         intent: slot.intent,
         targetSessionSets: slot.targetSessionSets,
         lanes: slot.lanes.map((lane) => {
-          const topDownLaneId = lane.topDownLane ?? lane.laneId;
+          const topDownLaneId = lane.targetLaneId ?? lane.laneId;
           const topDownLane = topDownSlot?.requiredClassLanes.find(
             (row) => row.lane === topDownLaneId
           );
@@ -3341,8 +3088,8 @@ function buildV2Skeleton(input: {
 function v2LaneAliases(lane: V2Lane | V2Slot["lanes"][number]): string[] {
   return uniqueSorted([
     lane.laneId,
-    "topDownLane" in lane && typeof lane.topDownLane === "string"
-      ? lane.topDownLane
+    "targetLaneId" in lane && typeof lane.targetLaneId === "string"
+      ? lane.targetLaneId
       : "",
   ]);
 }
@@ -5688,6 +5435,7 @@ function buildV2MesocyclePlan(input: {
   acceptanceClassification: NoRepairClassification;
   targetLanesMissing: number;
 }): V2MesocyclePlan {
+  const plannerPolicy = buildV2PlannerMesocyclePolicy();
   const basicStatus = input.acceptanceClassification.basicMesocycleShapeStatus;
   const planStatus: V2MesocyclePlan["planStatus"] =
     basicStatus === "pass" || basicStatus === "pass_with_warnings"
@@ -5715,66 +5463,8 @@ function buildV2MesocyclePlan(input: {
       noRepair: input.noRepair,
       slotPlans: input.slotPlans,
     }),
-    weeklyProgressionModel: {
-      weeks: [
-        {
-          week: 1,
-          phase: "entry_calibration",
-          volumeMultiplier: 0.875,
-          rirTarget: "3-4",
-          progressionIntent: "establish_anchors",
-          limitations: ["week_1_uses_flagged_no_repair_evidence"],
-        },
-        {
-          week: 2,
-          phase: "accumulation",
-          volumeMultiplier: 1,
-          rirTarget: "2-3",
-          progressionIntent: "productive_volume",
-          limitations: ["derived_from_stable_skeleton_not_independent_plan"],
-        },
-        {
-          week: 3,
-          phase: "hard_accumulation",
-          volumeMultiplier: 1.075,
-          rirTarget: "1-2",
-          progressionIntent: "push_stimulus",
-          limitations: ["derived_from_stable_skeleton_not_independent_plan"],
-        },
-        {
-          week: 4,
-          phase: "peak_overreach_lite",
-          volumeMultiplier: 1.125,
-          rirTarget: "0-1 isolations; 1-2 compounds",
-          progressionIntent: "peak_effort",
-          limitations: [
-            "derived_from_stable_skeleton_not_independent_plan",
-            "fatigue_and_concentration_progression_not_fully_projected",
-          ],
-        },
-        {
-          week: 5,
-          phase: "deload",
-          volumeMultiplier: 0.5,
-          rirTarget: "4-5",
-          progressionIntent: "reduce_fatigue",
-          limitations: ["deload_transform_defined_not_production_projected"],
-        },
-      ],
-    },
-    deloadTransform: {
-      preserveExerciseIdentities: true,
-      targetVolumeReductionPercent: { min: 40, max: 60 },
-      targetRir: "4-5",
-      removeRedundantAccessories: true,
-      introduceNewMovements: false,
-      projectionStatus: "partially_modeled",
-      limitations: [
-        "transform_defined_from_target_spec",
-        "not_applied_to_slotPlanSeedJson",
-        "not_used_by_runtime_replay",
-      ],
-    },
+    weeklyProgressionModel: plannerPolicy.weeklyProgressionModel,
+    deloadTransform: plannerPolicy.deloadTransform,
     validationRules: buildV2ValidationRules({
       classification: input.acceptanceClassification,
       acceptanceChecks: input.acceptanceChecks,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildV2SetDistributionIntent } from "./v2-set-distribution-intent";
+import { buildV2SetDistributionIntent } from "./v2/set-distribution-intent";
 
 const targetSkeleton = {
   weeks: 5,

@@ -5002,6 +5002,289 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
   });
 
+  it("classifies biceps from strict lane-owned curl evidence, not pulling collateral", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Close-Grip Lat Pulldown",
+            setCount: 3,
+            primaryMuscles: ["Lats"],
+            movementPatterns: ["vertical_pull"],
+            stimulus: { Lats: 3, Biceps: 2.4 },
+            percentages: { Lats: 65, Biceps: 46.2 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Close-Grip Seated Cable Row",
+            setCount: 2,
+            primaryMuscles: ["Upper Back", "Lats"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { "Upper Back": 2, Lats: 2, Biceps: 0.8 },
+            percentages: { "Upper Back": 65, Lats: 35, Biceps: 15.4 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Barbell Curl",
+            setCount: 2,
+            primaryMuscles: ["Biceps"],
+            movementPatterns: ["isolation"],
+            stimulus: { Biceps: 2 },
+            percentages: { Biceps: 38.5 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Biceps",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 6,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 14,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "biceps");
+
+    expect(lane).toMatchObject({
+      currentStatus: "partial",
+      gapCause: "set_distribution_gap",
+      migrationRecommendation: "needs_set_distribution_policy",
+      severity: "quality_warning",
+      currentEvidence: {
+        selectedExercises: [
+          expect.objectContaining({
+            name: "Barbell Curl",
+            sets: 2,
+            matchedClass: "biceps_curl",
+          }),
+        ],
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:in_budget",
+          "setBudget:within_preferred",
+          "target_delivery:below_min",
+          "exposure:single_direct_curl",
+          "concentration:pulling_collateral",
+        ]),
+      },
+    });
+    expect(lane?.currentEvidence.selectedExercises).toHaveLength(1);
+    expect(
+      lane?.currentEvidence.selectedExercises.some((exercise) =>
+        exercise.name.includes("Pulldown") || exercise.name.includes("Row")
+      )
+    ).toBe(false);
+    expect(lane?.currentEvidence.relevantDiagnostics).not.toContain(
+      "concentration:dirty_collateral",
+    );
+  });
+
+  it("does not let pulling collateral directly solve biceps lane evidence", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Close-Grip Lat Pulldown",
+            setCount: 3,
+            primaryMuscles: ["Lats"],
+            movementPatterns: ["vertical_pull"],
+            stimulus: { Lats: 3, Biceps: 3 },
+            percentages: { Lats: 60, Biceps: 100 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Biceps",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 2,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 14,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "biceps");
+
+    expect(lane).toMatchObject({
+      currentStatus: "missing",
+      gapCause: "set_distribution_gap",
+      migrationRecommendation: "needs_set_distribution_policy",
+      severity: "quality_warning",
+      currentEvidence: {
+        selectedExercises: [],
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:under_budget",
+          "exposure:missing_direct_curl",
+          "concentration:pulling_collateral",
+        ]),
+      },
+    });
+  });
+
+  it("downgrades explained biceps support isolation concentration to diagnostic-only", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Barbell Curl",
+            setCount: 2,
+            primaryMuscles: ["Biceps"],
+            movementPatterns: ["isolation"],
+            stimulus: { Biceps: 2 },
+            percentages: { Biceps: 69 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Biceps",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 2,
+            preferredEffectiveSets: 4,
+            maxEffectiveSets: 14,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "biceps");
+
+    expect(lane).toMatchObject({
+      currentStatus: "partial",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "keep_diagnostic_only",
+      severity: "quality_warning",
+      currentEvidence: {
+        selectedExercises: [
+          expect.objectContaining({
+            name: "Barbell Curl",
+            sets: 2,
+            matchedClass: "biceps_curl",
+          }),
+        ],
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:quality_warning",
+          "setBudget:within_preferred",
+          "concentration:support_tier",
+          "concentration:small_denominator",
+          "concentration:quality_warning",
+          "concentration:justified_direct_isolation",
+          "justification:low_systemic_fatigue",
+          "justification:small_target_denominator",
+        ]),
+      },
+    });
+    expect(
+      lane?.currentEvidence.relevantDiagnostics.some((entry) =>
+        entry.toLowerCase().includes("hard_blocker")
+      )
+    ).toBe(false);
+  });
+
+  it("keeps biceps missing direct exposure, over-five sets, and repaired-only evidence actionable", () => {
+    const repairedOnly = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Close-Grip Lat Pulldown",
+            setCount: 3,
+            primaryMuscles: ["Lats"],
+            movementPatterns: ["vertical_pull"],
+            stimulus: { Lats: 3, Biceps: 1 },
+            percentages: { Lats: 60, Biceps: 100 },
+          },
+        ],
+      }),
+      repairedPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Barbell Curl",
+            setCount: 2,
+            primaryMuscles: ["Biceps"],
+            movementPatterns: ["isolation"],
+            stimulus: { Biceps: 2 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+    const overFive = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Barbell Curl",
+            setCount: 6,
+            primaryMuscles: ["Biceps"],
+            movementPatterns: ["isolation"],
+            stimulus: { Biceps: 6 },
+            percentages: { Biceps: 100 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const repairedOnlyLane = repairedOnly.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "biceps");
+    const overFiveLane = overFive.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "biceps");
+
+    expect(repairedOnlyLane).toMatchObject({
+      currentStatus: "repair_dependent",
+      gapCause: "repair_dependency",
+      severity: "migration_candidate",
+      currentEvidence: {
+        selectedExercises: [],
+        relevantDiagnostics: expect.arrayContaining([
+          "repair_dependent:repaired_projection_has_lane",
+          "exposure:missing_direct_curl",
+        ]),
+      },
+    });
+    expect(overFiveLane).toMatchObject({
+      currentStatus: "blocked",
+      gapCause: "capacity_gap",
+      migrationRecommendation: "needs_set_budget_justification",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:hard_blocker",
+          "setPolicyReason:gt_5_sets",
+        ]),
+      },
+    });
+    expect(repairedOnly.v2SetDistributionIntent.guardrails).toMatchObject({
+      doesNotUseRepairedProjectionAsTarget: true,
+      doesNotUseAcceptedSeedAsTarget: true,
+    });
+  });
+
   it("classifies vertical press concentration from strict lane-owned pressing evidence", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({

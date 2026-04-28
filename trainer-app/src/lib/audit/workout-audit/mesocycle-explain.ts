@@ -3369,6 +3369,9 @@ function exerciseMatchesV2LaneClass(input: {
   ) {
     return false;
   }
+  if (isBicepsV2Lane(input.lane) && !isDirectBicepsLaneExercise(input.exercise)) {
+    return false;
+  }
   if (isTricepsV2Lane(input.lane) && !isDirectTricepsLaneExercise(input.exercise)) {
     return false;
   }
@@ -3395,6 +3398,7 @@ function isStrictV2SetBudgetLane(lane: V2Lane | V2Slot["lanes"][number]): boolea
     lane.laneId === "chest_secondary" ||
     lane.laneId === "chest_second_exposure" ||
     lane.laneId === "rear_delt" ||
+    isBicepsV2Lane(lane) ||
     isTricepsV2Lane(lane)
   );
 }
@@ -3431,6 +3435,9 @@ function exerciseMatchesV2LaneSetPolicyClass(input: {
     input.lane.laneId === "rear_delt" &&
     !isDirectRearDeltLaneExercise(input.exercise)
   ) {
+    return false;
+  }
+  if (isBicepsV2Lane(input.lane) && !isDirectBicepsLaneExercise(input.exercise)) {
     return false;
   }
   if (isTricepsV2Lane(input.lane) && !isDirectTricepsLaneExercise(input.exercise)) {
@@ -3517,6 +3524,10 @@ function isTricepsV2Lane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
   );
 }
 
+function isBicepsV2Lane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
+  return lane.laneId === "biceps" || v2LaneAliases(lane).includes("biceps");
+}
+
 function isVerticalPressV2Lane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
   return lane.laneId === "vertical_press" || v2LaneAliases(lane).includes("vertical_press");
 }
@@ -3566,6 +3577,31 @@ function isDirectTricepsLaneExercise(
     (name.includes("press") && !name.includes("pressdown"));
 
   return hasTricepsPrimary && directName && !broadPressName;
+}
+
+function isDirectBicepsLaneExercise(
+  exercise: SlotCompositionSnapshot["exercises"][number]
+): boolean {
+  const name = exercise.exerciseName.toLowerCase();
+  const primaryMuscles = exercise.primaryMuscles.map((muscle) =>
+    muscle.toLowerCase()
+  );
+  const hasBicepsPrimary = primaryMuscles.includes("biceps");
+  const directName =
+    name.includes("curl") ||
+    name.includes("biceps") ||
+    name.includes("preacher") ||
+    name.includes("hammer");
+  const broadPullName =
+    name.includes("row") ||
+    name.includes("pulldown") ||
+    name.includes("pull-down") ||
+    name.includes("pull-up") ||
+    name.includes("pullup") ||
+    name.includes("chin-up") ||
+    name.includes("chinup");
+
+  return hasBicepsPrimary && directName && !broadPullName;
 }
 
 function isDirectSideDeltIsolationExercise(
@@ -3838,13 +3874,95 @@ function v2LanePrimaryTargetsMetWithDirectEvidence(input: {
     }
     const directWeeklySets = noRepair.finalSlotPlan.reduce((sum, slot) => {
       return sum + slot.exercises.reduce((slotSum, exercise) => {
-        return exercise.primaryMuscles.includes(muscle)
+        const directLaneEvidence = isBicepsV2Lane(input.lane)
+          ? isDirectBicepsLaneExercise(exercise)
+          : exercise.primaryMuscles.includes(muscle);
+        return directLaneEvidence
           ? slotSum + (exercise.effectiveStimulusByMuscle[muscle] ?? 0)
           : slotSum;
       }, 0);
     }, 0);
     return directWeeklySets >= demand.minEffectiveSets;
   });
+}
+
+function hasBicepsPullingCollateral(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  slotId: string;
+}): boolean {
+  return (
+    getSlotById(input.noRepair?.finalSlotPlan ?? [], input.slotId)?.exercises.some(
+      (exercise) => {
+        const name = exercise.exerciseName.toLowerCase();
+        const patterns = exercise.movementPatterns.map((pattern) =>
+          pattern.toLowerCase()
+        );
+        const isPulling =
+          name.includes("row") ||
+          name.includes("pulldown") ||
+          name.includes("pull-up") ||
+          name.includes("pullup") ||
+          patterns.some(
+            (pattern) =>
+              pattern.includes("horizontal_pull") ||
+              pattern.includes("vertical_pull")
+          );
+        return (
+          isPulling &&
+          !isDirectBicepsLaneExercise(exercise) &&
+          (exercise.effectiveStimulusByMuscle["Biceps"] ?? 0) > 0
+        );
+      }
+    ) ?? false
+  );
+}
+
+function v2BicepsLaneDiagnosticAddenda(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  slotId: string;
+  lane: V2Lane | V2Slot["lanes"][number];
+}): string[] {
+  if (!input.noRepair || !isBicepsV2Lane(input.lane)) {
+    return [];
+  }
+
+  const weeklyTotals = sumSlotStimulusByMuscle(input.noRepair.finalSlotPlan);
+  const demandByMuscle = getNoRepairDemandByMuscle(input.noRepair);
+  const bicepsDemand = demandByMuscle.get("Biceps");
+  const delivered = weeklyTotals.get("Biceps") ?? 0;
+  const hasPullingCollateral = hasBicepsPullingCollateral({
+    noRepair: input.noRepair,
+    slotId: input.slotId,
+  });
+  const directExposureCount = input.noRepair.finalSlotPlan.reduce((count, slot) => {
+    return (
+      count +
+      (slot.exercises.some(
+        (exercise) =>
+          isDirectBicepsLaneExercise(exercise) &&
+          (exercise.effectiveStimulusByMuscle["Biceps"] ?? 0) > 0
+      )
+        ? 1
+        : 0)
+    );
+  }, 0);
+  const belowMinimum =
+    bicepsDemand?.minEffectiveSets != null &&
+    delivered < bicepsDemand.minEffectiveSets;
+
+  if (!bicepsDemand && delivered <= 0 && !hasPullingCollateral && directExposureCount === 0) {
+    return [];
+  }
+
+  return [
+    ...(belowMinimum ? ["target_delivery:below_min"] : []),
+    ...(directExposureCount === 0
+      ? ["exposure:missing_direct_curl"]
+      : directExposureCount === 1
+        ? ["exposure:single_direct_curl"]
+        : ["exposure:multiple_direct_curls"]),
+    ...(hasPullingCollateral ? ["concentration:pulling_collateral"] : []),
+  ];
 }
 
 function v2LaneFatigueRisk(
@@ -4534,6 +4652,11 @@ function collectV2LaneDiagnostics(input: {
       slotId: input.slotId,
       lane: input.lane,
     });
+    const bicepsAddenda = v2BicepsLaneDiagnosticAddenda({
+      noRepair,
+      slotId: input.slotId,
+      lane: input.lane,
+    });
     const chestSecondExposureDiagnostics =
       strictChestSecondExposureConcentrationDiagnostics({
         diagnostics,
@@ -4557,8 +4680,9 @@ function collectV2LaneDiagnostics(input: {
             ),
             "setPolicy:quality_warning",
             ...explainedConcentrationDiagnostics,
+            ...bicepsAddenda,
           ]
-        : input.setPolicyDiagnostics,
+        : [...input.setPolicyDiagnostics, ...bicepsAddenda],
       chestSecondExposureDiagnostics.length > 0
         ? 14
         : explainedConcentrationDiagnostics.length > 0
@@ -4662,6 +4786,13 @@ function collectV2LaneDiagnostics(input: {
           `repaired_repair:${row.muscle}:${row.exerciseName ?? "unknown"}:${row.materiality}`
       )
   );
+  diagnostics.push(
+    ...v2BicepsLaneDiagnosticAddenda({
+      noRepair,
+      slotId: input.slotId,
+      lane: input.lane,
+    })
+  );
 
   const explainedConcentrationDiagnostics =
     strictDirectSupportConcentrationDiagnostics({
@@ -4717,6 +4848,7 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
     "concentration:justified_direct_isolation",
     "concentration:dirty_collateral",
     "concentration:needs_diversification",
+    "concentration:pulling_collateral",
     "risk:axial_fatigue",
     "risk:joint_fatigue",
     "risk:systemic_fatigue",
@@ -4789,6 +4921,8 @@ function inferV2GapCause(input: {
   }
   if (
     joined.includes("distribution_guard") ||
+    joined.includes("target_delivery:below_min") ||
+    joined.includes("exposure:missing_direct_curl") ||
     joined.includes("set_count") ||
     joined.includes("setbudget:requires_justification") ||
     joined.includes("setpolicyreason:over_planned_max") ||
@@ -4880,6 +5014,9 @@ function classifyV2LaneStatus(input: {
   const hasQualityWarningDiagnostics = input.diagnostics.includes(
     "concentration:quality_warning"
   );
+  const hasTargetUnderdeliveryDiagnostics = input.diagnostics.includes(
+    "target_delivery:below_min"
+  );
 
   if (!hasMeaningfulNoRepairEvidence && repairedCreatesLane) {
     return "repair_dependent";
@@ -4891,7 +5028,8 @@ function classifyV2LaneStatus(input: {
     hasClassMatch &&
     (withinTarget || withinTolerance) &&
     input.setPolicyStatus === "in_budget" &&
-    !hasQualityWarningDiagnostics
+    !hasQualityWarningDiagnostics &&
+    !hasTargetUnderdeliveryDiagnostics
   ) {
     return "satisfied";
   }

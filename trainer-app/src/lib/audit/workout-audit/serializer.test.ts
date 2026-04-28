@@ -1226,6 +1226,36 @@ describe("buildWorkoutAuditArtifact", () => {
   });
 
   it("returns a linked V2 no-repair debug sidecar only when the explicit sidecar flag is enabled", () => {
+    const mesocycleExplain = makeMesocycleExplainNoRepairPayload();
+    mesocycleExplain!.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.slotDiffs[0]?.laneDiffs.push({
+      laneId: "biceps",
+      targetRole: "accessory",
+      targetPrimaryMuscles: ["Biceps"],
+      targetExerciseClasses: ["biceps_isolation"],
+      targetSets: { min: 2, preferred: 3, max: 3 },
+      currentStatus: "partial",
+      currentEvidence: {
+        selectedExercises: [
+          {
+            name: "Barbell Curl",
+            sets: 2,
+            matchedClass: "biceps_curl",
+            role: "accessory",
+          },
+        ],
+        relevantDiagnostics: [
+          "setPolicy:in_budget",
+          "setBudget:within_preferred",
+          "target_delivery:below_min",
+          "exposure:single_direct_curl",
+          "concentration:pulling_collateral",
+        ],
+      },
+      gapCause: "set_distribution_gap",
+      migrationRecommendation: "needs_set_distribution_policy",
+      severity: "quality_warning",
+    });
+
     const output = createWorkoutAuditArtifactOutput(
       {
         mode: "mesocycle-explain",
@@ -1254,7 +1284,7 @@ describe("buildWorkoutAuditArtifact", () => {
           },
         },
         generationResult: undefined,
-        mesocycleExplain: makeMesocycleExplainNoRepairPayload(),
+        mesocycleExplain,
       },
       {
         artifactFileName: "parent.json",
@@ -1304,14 +1334,35 @@ describe("buildWorkoutAuditArtifact", () => {
         v2MesocyclePlan: expect.any(Object),
         v2SetDistributionIntent: expect.any(Object),
         v2TargetVsNoRepairDiff: expect.any(Object),
-        laneEvidence: [
+        laneEvidence: expect.arrayContaining([
           expect.objectContaining({
             slotId: "upper_a",
             laneId: "chest_anchor",
           }),
-        ],
+        ]),
       },
     });
+    expect(
+      output.v2DebugArtifact?.artifact.plannerOnlyNoRepair.v2TargetVsNoRepairDiff.slotDiffs[0]?.laneDiffs,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          laneId: "biceps",
+          currentEvidence: expect.objectContaining({
+            selectedExercises: [
+              expect.objectContaining({
+                name: "Barbell Curl",
+                matchedClass: "biceps_curl",
+              }),
+            ],
+            relevantDiagnostics: expect.arrayContaining([
+              "target_delivery:below_min",
+              "concentration:pulling_collateral",
+            ]),
+          }),
+        }),
+      ]),
+    );
     expect(output.sizeBytes).toBeLessThan(1_048_576);
   });
 });

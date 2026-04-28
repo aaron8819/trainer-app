@@ -16,3 +16,4 @@
 
 ## Domain Notes
 - V2 target path: MesocycleDemand -> WeeklyDemandCurve -> SlotDemandAllocationByWeek -> ExerciseClassDistributionBySlot -> SetDistributionIntent -> ExerciseSelectionPlan -> Accepted Seed -> Runtime Replay.
+- V2 cross-week readiness distinction: `accumulationWeekProjection` may repeat Week 1 shape for diagnostic Weeks 2-4, but replacement readiness still treats Weeks 2-4 as unprojected while `slotDemandAllocationByWeek` / `preselectionDistributionPolicyByWeek` have missing per-week slot distribution, fatigue carryover, continuity, and identity policy.

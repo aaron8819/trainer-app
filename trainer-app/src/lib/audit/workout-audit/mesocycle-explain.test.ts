@@ -2298,6 +2298,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ]),
     );
     expect(payload.plannerOnlyDryRun).toBeUndefined();
+    expect(payload.plannerOnlyNoRepair).toBeUndefined();
     expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(1);
     expect(mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[0]?.[0]).not.toHaveProperty(
       "plannerOnlyPolicyOverride",
@@ -2557,6 +2558,127 @@ describe("buildMesocycleExplainAuditPayload", () => {
         noRepairPasses: false,
       },
     });
+    expect(payload.plannerOnlyNoRepair?.v2MesocyclePlan).toMatchObject({
+      version: 1,
+      source: "v2_planner_no_repair_experimental",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      planStatus: "experimental",
+      skeleton: {
+        split: "upper_lower_4x",
+        weeks: 5,
+        slotSequence: ["upper_a", "lower_a", "upper_b", "lower_b"],
+        slots: expect.arrayContaining([
+          expect.objectContaining({
+            slotId: "upper_a",
+            intent: "horizontal push/pull + rear delt/triceps support",
+            lanes: expect.arrayContaining([
+              expect.objectContaining({
+                laneId: "chest_anchor",
+                required: true,
+                role: "anchor",
+                currentWeek1Status: "partial",
+              }),
+              expect.objectContaining({
+                laneId: "chest_secondary",
+                currentWeek1Status: "missing",
+              }),
+            ]),
+          }),
+          expect.objectContaining({
+            slotId: "lower_b",
+            intent: "hinge-dominant + quad support + calves",
+            lanes: expect.arrayContaining([
+              expect.objectContaining({ laneId: "hinge_anchor" }),
+              expect.objectContaining({ laneId: "knee_flexion_curl" }),
+              expect.objectContaining({
+                laneId: "optional_glute_core_if_recoverable",
+                required: false,
+              }),
+            ]),
+          }),
+        ]),
+      },
+      weeklyProgressionModel: {
+        weeks: [
+          expect.objectContaining({
+            week: 1,
+            phase: "entry_calibration",
+            volumeMultiplier: 0.875,
+            rirTarget: "3-4",
+          }),
+          expect.objectContaining({
+            week: 2,
+            phase: "accumulation",
+            volumeMultiplier: 1,
+            limitations: expect.arrayContaining([
+              "derived_from_stable_skeleton_not_independent_plan",
+            ]),
+          }),
+          expect.objectContaining({
+            week: 3,
+            phase: "hard_accumulation",
+            volumeMultiplier: 1.075,
+          }),
+          expect.objectContaining({
+            week: 4,
+            phase: "peak_overreach_lite",
+            rirTarget: "0-1 isolations; 1-2 compounds",
+          }),
+          expect.objectContaining({
+            week: 5,
+            phase: "deload",
+            volumeMultiplier: 0.5,
+            progressionIntent: "reduce_fatigue",
+          }),
+        ],
+      },
+      deloadTransform: {
+        preserveExerciseIdentities: true,
+        targetVolumeReductionPercent: { min: 40, max: 60 },
+        targetRir: "4-5",
+        introduceNewMovements: false,
+        projectionStatus: "partially_modeled",
+      },
+      replacementReadiness: {
+        canReplaceRepairedProjection: false,
+        reason: expect.arrayContaining([
+          "weeks_2_to_4_derived_not_fully_projected",
+          "deload_transform_not_production_projected",
+          "read_only_non_generative_artifact",
+        ]),
+      },
+    });
+    expect(
+      payload.plannerOnlyNoRepair?.v2MesocyclePlan.validationRules.map(
+        (rule) => rule.ruleId,
+      ),
+    ).toEqual([
+      "primary_muscles_above_minimum",
+      "required_lanes_present",
+      "required_class_intent_satisfied",
+      "no_forbidden_slot_primary_solution",
+      "no_back_extension_as_clean_hamstrings_closure",
+      "no_unjustified_gt_5_sets",
+      "no_unjustified_primary_concentration",
+      "no_unjustified_duplicate_main_lift",
+      "runtime_seed_replay_deterministic",
+      "repair_not_required_for_basic_shape",
+      "full_mesocycle_progression_projected",
+      "deload_transform_projected",
+    ]);
+    expect(
+      payload.plannerOnlyNoRepair?.v2MesocyclePlan.validationRules.find(
+        (rule) => rule.ruleId === "full_mesocycle_progression_projected",
+      ),
+    ).toMatchObject({
+      severity: "migration_scoreboard",
+      week1Status: "not_applicable",
+      fullMesocycleStatus: "limited",
+    });
+    expect(
+      JSON.stringify(payload.plannerOnlyNoRepair?.v2MesocyclePlan).length,
+    ).toBeLessThan(12000);
     expect(payload.plannerOnlyNoRepair?.slotPlans[0]).toMatchObject({
       slotId: "upper_a",
       exercises: [
@@ -3233,6 +3355,27 @@ describe("buildMesocycleExplainAuditPayload", () => {
         suspiciousRepairs: 1,
         canReplaceRepairedProjection: false,
       },
+    });
+    expect(noRepair.v2MesocyclePlan).toMatchObject({
+      planStatus: "full_mesocycle_limited",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      replacementReadiness: {
+        canReplaceRepairedProjection: false,
+        reason: expect.arrayContaining([
+          "week_1_basic_shape_valid",
+          "weeks_2_to_4_derived_not_fully_projected",
+          "deload_transform_not_production_projected",
+        ]),
+      },
+    });
+    expect(
+      noRepair.v2MesocyclePlan.validationRules.find(
+        (rule) => rule.ruleId === "repair_not_required_for_basic_shape",
+      ),
+    ).toMatchObject({
+      week1Status: "pass_with_warning",
+      fullMesocycleStatus: "limited",
     });
   });
 

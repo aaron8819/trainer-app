@@ -2017,7 +2017,8 @@ export function buildPlannerOnlyNoRepairSummary(input: {
           .join(" | ")
       : "none";
 
-  return [
+  const v2Plan = noRepair.v2MesocyclePlan;
+  const baseLines = [
     "Planner-Only No-Repair Acceptance",
     "---------------------------------",
     `Basic shape: ${formatStatus(classification.basicMesocycleShapeStatus)}`,
@@ -2029,6 +2030,23 @@ export function buildPlannerOnlyNoRepairSummary(input: {
     `Diagnostic rows: ${classification.diagnosticOnly.length}`,
     `Session-shaping rows: ${classification.sessionShaping.length}`,
     `Migration scoreboard: ${migrationStatus}`,
+  ];
+  if (!v2Plan) {
+    return baseLines;
+  }
+
+  return [
+    ...baseLines,
+    "V2 Mesocycle Plan",
+    "-----------------",
+    `Status: ${formatStatus(v2Plan.planStatus)}`,
+    "Skeleton: upper/lower 4x",
+    `Week 1: ${formatStatus(classification.basicMesocycleShapeStatus)}`,
+    "Weeks 2-4: derived progression model, limited projection",
+    v2Plan.deloadTransform.projectionStatus === "partially_modeled"
+      ? "Deload: transform defined, not production-projected"
+      : `Deload: ${formatStatus(v2Plan.deloadTransform.projectionStatus)}`,
+    `Replacement readiness: ${formatStatus(classification.replacementReadinessStatus)}`,
   ];
 }
 

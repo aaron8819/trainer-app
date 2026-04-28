@@ -65,8 +65,9 @@ npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner 
 
 - The artifact adds `mesocycleExplain.plannerOnlyNoRepair` only for flagged runs.
 - This path is read-only and disables downstream repair/shaping instead of patching planner gaps.
-- The payload is compact: slot plans, missing lanes, unresolved demand, validation failures, weekly muscle totals, acceptance checks, and optional comparison to the repaired projection.
+- The payload is compact: slot plans, missing lanes, unresolved demand, validation failures, weekly muscle totals, acceptance checks, `v2MesocyclePlan`, and optional comparison to the repaired projection.
 - The payload includes `plannerOnlyNoRepair.acceptanceClassification`, which separates basic Week 1 no-repair shape validity from replacement readiness. Diagnostic/collateral concentration and migration scoreboards are readout unless promoted into explicit hard blockers by target, cap, forbidden-slot, set-count, or seed-replay policy.
+- `plannerOnlyNoRepair.v2MesocyclePlan` summarizes the stable upper/lower 4x skeleton, Weeks 1-5 progression modifiers, deload transform intent, validation-rule statuses, and replacement-readiness blockers. It is flagged-only, read-only, and non-generative.
 - It must not write accepted seeds, `slotPlanSeedJson`, receipts, planned workouts, runtime replay data, or performed workouts.
 
 Projected current week volume:

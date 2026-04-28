@@ -982,6 +982,96 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
       reason: string;
     };
   };
+  v2MesocyclePlan: {
+    version: 1;
+    source: "v2_planner_no_repair_experimental";
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    planStatus:
+      | "experimental"
+      | "week_1_shape_valid"
+      | "full_mesocycle_limited"
+      | "replacement_not_ready";
+    skeleton: {
+      split: "upper_lower_4x";
+      weeks: 5;
+      slotSequence: Array<"upper_a" | "lower_a" | "upper_b" | "lower_b">;
+      slots: Array<{
+        slotId: "upper_a" | "lower_a" | "upper_b" | "lower_b";
+        intent: string;
+        targetSessionSets: {
+          min: number;
+          max: number;
+        };
+        lanes: Array<{
+          laneId: string;
+          required: boolean;
+          role: "anchor" | "support" | "accessory" | "optional";
+          primaryMuscles: string[];
+          preferredExerciseClasses: string[];
+          targetSets: {
+            min: number;
+            preferred: number;
+            max: number;
+          };
+          currentWeek1Status: "satisfied" | "partial" | "missing" | "warning";
+        }>;
+      }>;
+    };
+    weeklyProgressionModel: {
+      weeks: Array<{
+        week: number;
+        phase:
+          | "entry_calibration"
+          | "accumulation"
+          | "hard_accumulation"
+          | "peak_overreach_lite"
+          | "deload";
+        volumeMultiplier: number | null;
+        rirTarget: string;
+        progressionIntent:
+          | "establish_anchors"
+          | "productive_volume"
+          | "push_stimulus"
+          | "peak_effort"
+          | "reduce_fatigue";
+        limitations: string[];
+      }>;
+    };
+    deloadTransform: {
+      preserveExerciseIdentities: boolean;
+      targetVolumeReductionPercent: {
+        min: number;
+        max: number;
+      };
+      targetRir: string;
+      removeRedundantAccessories: boolean;
+      introduceNewMovements: false;
+      projectionStatus: "modeled" | "partially_modeled" | "not_yet_projected";
+      limitations: string[];
+    };
+    validationRules: Array<{
+      ruleId: string;
+      severity:
+        | "hard_blocker"
+        | "quality_warning"
+        | "diagnostic_only"
+        | "session_shaping"
+        | "migration_scoreboard";
+      description: string;
+      week1Status:
+        | "pass"
+        | "pass_with_warning"
+        | "fail"
+        | "not_applicable"
+        | "unknown";
+      fullMesocycleStatus: "pass" | "limited" | "fail" | "unknown";
+    }>;
+    replacementReadiness: {
+      canReplaceRepairedProjection: false;
+      reason: string[];
+    };
+  };
   slotPlans: Array<{
     slotId: string;
     exercises: Array<{

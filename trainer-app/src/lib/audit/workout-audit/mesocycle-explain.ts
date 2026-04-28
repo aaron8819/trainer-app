@@ -2974,6 +2974,611 @@ function mainNoRepairGaps(input: {
 type NoRepairClassification =
   MesocycleExplainPlannerOnlyNoRepair["acceptanceClassification"];
 type NoRepairFinding = NoRepairClassification["hardBlockers"][number];
+type V2MesocyclePlan = MesocycleExplainPlannerOnlyNoRepair["v2MesocyclePlan"];
+type V2Slot = V2MesocyclePlan["skeleton"]["slots"][number];
+type V2Lane = V2Slot["lanes"][number] & {
+  topDownLane?: string;
+};
+
+const V2_SLOT_SEQUENCE: V2MesocyclePlan["skeleton"]["slotSequence"] = [
+  "upper_a",
+  "lower_a",
+  "upper_b",
+  "lower_b",
+];
+
+const V2_SLOT_SKELETON: Array<
+  Omit<V2Slot, "lanes"> & { lanes: V2Lane[] }
+> = [
+  {
+    slotId: "upper_a",
+    intent: "horizontal push/pull + rear delt/triceps support",
+    targetSessionSets: { min: 15, max: 20 },
+    lanes: [
+      {
+        laneId: "chest_anchor",
+        required: true,
+        role: "anchor",
+        primaryMuscles: ["Chest"],
+        preferredExerciseClasses: ["horizontal_press", "slight_incline_press"],
+        targetSets: { min: 3, preferred: 4, max: 4 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "row_anchor",
+        required: true,
+        role: "anchor",
+        primaryMuscles: ["Upper Back", "Lats"],
+        preferredExerciseClasses: ["chest_supported_row", "cable_row", "t_bar_row"],
+        targetSets: { min: 3, preferred: 4, max: 4 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "vertical_pull_support",
+        topDownLane: "vertical_pull",
+        required: true,
+        role: "support",
+        primaryMuscles: ["Lats"],
+        preferredExerciseClasses: ["vertical_pull"],
+        targetSets: { min: 2, preferred: 3, max: 3 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "chest_secondary",
+        required: true,
+        role: "support",
+        primaryMuscles: ["Chest"],
+        preferredExerciseClasses: ["fly", "machine_press", "cable_press"],
+        targetSets: { min: 2, preferred: 3, max: 3 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "rear_delt",
+        required: true,
+        role: "accessory",
+        primaryMuscles: ["Rear Delts"],
+        preferredExerciseClasses: ["rear_delt_isolation"],
+        targetSets: { min: 2, preferred: 3, max: 3 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "triceps",
+        required: true,
+        role: "accessory",
+        primaryMuscles: ["Triceps"],
+        preferredExerciseClasses: ["triceps_isolation", "pressdown"],
+        targetSets: { min: 2, preferred: 3, max: 3 },
+        currentWeek1Status: "missing",
+      },
+    ],
+  },
+  {
+    slotId: "lower_a",
+    intent: "squat-dominant + hamstring support",
+    targetSessionSets: { min: 12, max: 18 },
+    lanes: [
+      {
+        laneId: "squat_anchor",
+        required: true,
+        role: "anchor",
+        primaryMuscles: ["Quads"],
+        preferredExerciseClasses: ["squat_pattern"],
+        targetSets: { min: 3, preferred: 4, max: 4 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "quad_isolation",
+        required: true,
+        role: "support",
+        primaryMuscles: ["Quads"],
+        preferredExerciseClasses: ["leg_extension"],
+        targetSets: { min: 2, preferred: 3, max: 3 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "hamstring_curl",
+        topDownLane: "knee_flexion_curl",
+        required: true,
+        role: "support",
+        primaryMuscles: ["Hamstrings"],
+        preferredExerciseClasses: ["knee_flexion_curl"],
+        targetSets: { min: 2, preferred: 3, max: 3 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "secondary_hinge",
+        topDownLane: "hinge_anchor",
+        required: true,
+        role: "support",
+        primaryMuscles: ["Hamstrings", "Glutes"],
+        preferredExerciseClasses: ["low_dose_hinge"],
+        targetSets: { min: 2, preferred: 2, max: 2 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "calves",
+        required: true,
+        role: "accessory",
+        primaryMuscles: ["Calves"],
+        preferredExerciseClasses: ["calf_isolation"],
+        targetSets: { min: 3, preferred: 4, max: 4 },
+        currentWeek1Status: "missing",
+      },
+    ],
+  },
+  {
+    slotId: "upper_b",
+    intent: "vertical push/pull + side delts/arms + second chest exposure",
+    targetSessionSets: { min: 15, max: 21 },
+    lanes: [
+      {
+        laneId: "vertical_press",
+        required: true,
+        role: "anchor",
+        primaryMuscles: ["Front Delts", "Side Delts"],
+        preferredExerciseClasses: ["vertical_press"],
+        targetSets: { min: 2, preferred: 3, max: 3 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "vertical_pull_anchor",
+        topDownLane: "vertical_pull",
+        required: true,
+        role: "anchor",
+        primaryMuscles: ["Lats"],
+        preferredExerciseClasses: ["vertical_pull"],
+        targetSets: { min: 3, preferred: 4, max: 4 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "chest_second_exposure",
+        topDownLane: "chest_secondary",
+        required: true,
+        role: "support",
+        primaryMuscles: ["Chest"],
+        preferredExerciseClasses: ["distinct_chest_press_or_fly"],
+        targetSets: { min: 3, preferred: 4, max: 4 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "row_support",
+        topDownLane: "row_anchor",
+        required: true,
+        role: "support",
+        primaryMuscles: ["Upper Back", "Lats"],
+        preferredExerciseClasses: ["horizontal_pull_support"],
+        targetSets: { min: 2, preferred: 3, max: 3 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "side_delt_isolation",
+        required: true,
+        role: "accessory",
+        primaryMuscles: ["Side Delts"],
+        preferredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
+        targetSets: { min: 3, preferred: 4, max: 4 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "biceps",
+        required: true,
+        role: "accessory",
+        primaryMuscles: ["Biceps"],
+        preferredExerciseClasses: ["biceps_isolation"],
+        targetSets: { min: 2, preferred: 3, max: 3 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "optional_triceps_if_under_target",
+        topDownLane: "triceps",
+        required: false,
+        role: "optional",
+        primaryMuscles: ["Triceps"],
+        preferredExerciseClasses: ["triceps_isolation"],
+        targetSets: { min: 0, preferred: 1, max: 2 },
+        currentWeek1Status: "warning",
+      },
+    ],
+  },
+  {
+    slotId: "lower_b",
+    intent: "hinge-dominant + quad support + calves",
+    targetSessionSets: { min: 10, max: 16 },
+    lanes: [
+      {
+        laneId: "hinge_anchor",
+        required: true,
+        role: "anchor",
+        primaryMuscles: ["Hamstrings", "Glutes"],
+        preferredExerciseClasses: ["hinge_compound"],
+        targetSets: { min: 3, preferred: 3, max: 3 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "knee_flexion_curl",
+        required: true,
+        role: "support",
+        primaryMuscles: ["Hamstrings"],
+        preferredExerciseClasses: ["hamstring_curl"],
+        targetSets: { min: 2, preferred: 3, max: 3 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "quad_support",
+        required: true,
+        role: "support",
+        primaryMuscles: ["Quads"],
+        preferredExerciseClasses: ["squat", "leg_press", "lunge", "quad_isolation"],
+        targetSets: { min: 2, preferred: 3, max: 3 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "calves",
+        required: true,
+        role: "accessory",
+        primaryMuscles: ["Calves"],
+        preferredExerciseClasses: ["calf_isolation"],
+        targetSets: { min: 3, preferred: 4, max: 4 },
+        currentWeek1Status: "missing",
+      },
+      {
+        laneId: "optional_glute_core_if_recoverable",
+        topDownLane: "optional_core_adductor_glute",
+        required: false,
+        role: "optional",
+        primaryMuscles: ["Glutes", "Core"],
+        preferredExerciseClasses: ["glute_or_core_accessory"],
+        targetSets: { min: 0, preferred: 1, max: 2 },
+        currentWeek1Status: "warning",
+      },
+    ],
+  },
+];
+
+function toV2LaneWeek1Status(
+  status?: string
+): V2Lane["currentWeek1Status"] {
+  if (status === "matched") return "satisfied";
+  if (status === "partial") return "partial";
+  if (status === "missing") return "missing";
+  return "warning";
+}
+
+function buildV2Skeleton(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  slotPlans: MesocycleExplainPlannerOnlyNoRepair["slotPlans"];
+}): V2MesocyclePlan["skeleton"] {
+  const topDownBySlot = new Map(
+    input.noRepair?.topDownMesocyclePlan?.slotTargets.map((slot) => [
+      slot.slotId,
+      slot,
+    ]) ?? []
+  );
+  const noRepairSlotPlans = new Map(
+    input.slotPlans.map((slot) => [slot.slotId, slot])
+  );
+
+  return {
+    split: "upper_lower_4x",
+    weeks: 5,
+    slotSequence: V2_SLOT_SEQUENCE,
+    slots: V2_SLOT_SKELETON.map((slot) => {
+      const topDownSlot = topDownBySlot.get(slot.slotId);
+      const noRepairSlot = noRepairSlotPlans.get(slot.slotId);
+      return {
+        slotId: slot.slotId,
+        intent: slot.intent,
+        targetSessionSets: slot.targetSessionSets,
+        lanes: slot.lanes.map((lane) => {
+          const topDownLaneId = lane.topDownLane ?? lane.laneId;
+          const topDownLane = topDownSlot?.requiredClassLanes.find(
+            (row) => row.lane === topDownLaneId
+          );
+          const missingLane = noRepairSlot?.missingLanes.find((row) =>
+            row.includes(lane.laneId) || row.includes(topDownLaneId)
+          );
+          const exerciseMatched = noRepairSlot?.exercises.some(
+            (exercise) =>
+              exercise.lane === lane.laneId || exercise.lane === topDownLaneId
+          );
+          const currentWeek1Status = topDownLane
+            ? toV2LaneWeek1Status(topDownLane.currentStatus)
+            : missingLane?.includes("partial")
+              ? "partial"
+              : missingLane?.includes("missing")
+                ? "missing"
+                : exerciseMatched
+                  ? "satisfied"
+                  : lane.required
+                    ? "missing"
+                    : "warning";
+          return {
+            laneId: lane.laneId,
+            required: lane.required,
+            role: lane.role,
+            primaryMuscles: lane.primaryMuscles,
+            preferredExerciseClasses: lane.preferredExerciseClasses,
+            targetSets: lane.targetSets,
+            currentWeek1Status,
+          };
+        }),
+      };
+    }),
+  };
+}
+
+function checkStatusByName(
+  checks: MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"],
+  check: string
+): V2MesocyclePlan["validationRules"][number]["week1Status"] {
+  const found = checks.find((row) => row.check === check);
+  if (!found) return "unknown";
+  if (found.status === "pass") return "pass";
+  if (found.status === "fail") return "fail";
+  if (found.status === "partial") return "pass_with_warning";
+  return "unknown";
+}
+
+function hasNoRepairFinding(
+  findings: NoRepairFinding[],
+  code: string
+): boolean {
+  return findings.some((finding) => finding.code === code);
+}
+
+function buildV2ValidationRules(input: {
+  classification: NoRepairClassification;
+  acceptanceChecks: MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"];
+  targetLanesMissing: number;
+}): V2MesocyclePlan["validationRules"] {
+  const hardBlockers = input.classification.hardBlockers;
+  const duplicateStatus = checkStatusByName(
+    input.acceptanceChecks,
+    "no duplicate main lift when clean alternative exists unless justified"
+  );
+  const gt5Status =
+    hasNoRepairFinding(
+      hardBlockers,
+      "compound_hinge_or_press_gt_5_sets_without_justification"
+    ) ||
+    input.classification.hardBlockers.some((row) =>
+      row.code.includes("gt_5_sets")
+    )
+      ? "fail"
+      : checkStatusByName(
+          input.acceptanceChecks,
+          "no exercise above 5 sets unless justified"
+        );
+  const requiredLaneStatus =
+    input.targetLanesMissing === 0
+      ? "pass"
+      : hardBlockers.some((row) => row.code.startsWith("required_"))
+        ? "fail"
+        : "pass_with_warning";
+  const progressionLimited: V2MesocyclePlan["validationRules"][number]["fullMesocycleStatus"] =
+    "limited";
+
+  return [
+    {
+      ruleId: "primary_muscles_above_minimum",
+      severity: "hard_blocker",
+      description: "Primary hard-target muscles must meet Week 1 minimums.",
+      week1Status: checkStatusByName(
+        input.acceptanceChecks,
+        "primary muscles above minimum"
+      ),
+      fullMesocycleStatus: progressionLimited,
+    },
+    {
+      ruleId: "required_lanes_present",
+      severity: "hard_blocker",
+      description: "Each required slot lane from the target skeleton is present.",
+      week1Status: requiredLaneStatus,
+      fullMesocycleStatus: progressionLimited,
+    },
+    {
+      ruleId: "required_class_intent_satisfied",
+      severity: "hard_blocker",
+      description: "Required lanes are satisfied by the intended exercise classes.",
+      week1Status: requiredLaneStatus,
+      fullMesocycleStatus: progressionLimited,
+    },
+    {
+      ruleId: "no_forbidden_slot_primary_solution",
+      severity: "hard_blocker",
+      description: "A forbidden slot must not solve a primary target muscle.",
+      week1Status: checkStatusByName(
+        input.acceptanceChecks,
+        "no primary muscle solved by forbidden slot"
+      ),
+      fullMesocycleStatus: progressionLimited,
+    },
+    {
+      ruleId: "no_back_extension_as_clean_hamstrings_closure",
+      severity: "hard_blocker",
+      description: "Back Extension does not count as clean Hamstrings closure.",
+      week1Status: checkStatusByName(
+        input.acceptanceChecks,
+        "no Back Extension as clean Hamstrings closure"
+      ),
+      fullMesocycleStatus: progressionLimited,
+    },
+    {
+      ruleId: "no_unjustified_gt_5_sets",
+      severity: "hard_blocker",
+      description: "Exercises above five hard sets need explicit planner justification.",
+      week1Status: gt5Status,
+      fullMesocycleStatus: progressionLimited,
+    },
+    {
+      ruleId: "no_unjustified_primary_concentration",
+      severity: "hard_blocker",
+      description: "Primary hard-target stimulus cannot be over-concentrated without intent.",
+      week1Status: hasNoRepairFinding(
+        hardBlockers,
+        "primary_hard_target_excessive_single_exercise_share_unjustified"
+      )
+        ? "fail"
+        : input.classification.qualityWarnings.some((row) =>
+              row.code.includes("primary_hard_target_50_to_60")
+            )
+          ? "pass_with_warning"
+          : "pass",
+      fullMesocycleStatus: progressionLimited,
+    },
+    {
+      ruleId: "no_unjustified_duplicate_main_lift",
+      severity: "quality_warning",
+      description: "Repeated main lifts need clean continuity or inventory justification.",
+      week1Status: duplicateStatus,
+      fullMesocycleStatus: progressionLimited,
+    },
+    {
+      ruleId: "runtime_seed_replay_deterministic",
+      severity: "hard_blocker",
+      description: "The resulting seed shape must replay without reselection.",
+      week1Status: checkStatusByName(
+        input.acceptanceChecks,
+        "slotPlanSeedJson would replay without reselection"
+      ),
+      fullMesocycleStatus: "pass",
+    },
+    {
+      ruleId: "repair_not_required_for_basic_shape",
+      severity: "migration_scoreboard",
+      description: "Basic Week 1 shape is evaluated separately from repaired-projection replacement.",
+      week1Status:
+        input.classification.basicMesocycleShapeStatus === "pass"
+          ? "pass"
+          : input.classification.basicMesocycleShapeStatus === "pass_with_warnings"
+            ? "pass_with_warning"
+            : input.classification.basicMesocycleShapeStatus === "fail"
+              ? "fail"
+              : "unknown",
+      fullMesocycleStatus: progressionLimited,
+    },
+    {
+      ruleId: "full_mesocycle_progression_projected",
+      severity: "migration_scoreboard",
+      description: "Weeks 2-4 are derived progression views of the stable skeleton, not independent plans.",
+      week1Status: "not_applicable",
+      fullMesocycleStatus: progressionLimited,
+    },
+    {
+      ruleId: "deload_transform_projected",
+      severity: "migration_scoreboard",
+      description: "Week 5 deload transform is defined but not production-projected.",
+      week1Status: "not_applicable",
+      fullMesocycleStatus: progressionLimited,
+    },
+  ];
+}
+
+function buildV2MesocyclePlan(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  slotPlans: MesocycleExplainPlannerOnlyNoRepair["slotPlans"];
+  acceptanceChecks: MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"];
+  acceptanceClassification: NoRepairClassification;
+  targetLanesMissing: number;
+}): V2MesocyclePlan {
+  const basicStatus = input.acceptanceClassification.basicMesocycleShapeStatus;
+  const planStatus: V2MesocyclePlan["planStatus"] =
+    basicStatus === "pass" || basicStatus === "pass_with_warnings"
+      ? "full_mesocycle_limited"
+      : input.noRepair
+        ? "experimental"
+        : "replacement_not_ready";
+  const readinessReasons = uniqueSorted([
+    input.acceptanceClassification.migrationScoreboard.reason || "not_ready",
+    ...(basicStatus === "pass" || basicStatus === "pass_with_warnings"
+      ? ["week_1_basic_shape_valid"]
+      : [`week_1_basic_shape:${basicStatus}`]),
+    "weeks_2_to_4_derived_not_fully_projected",
+    "deload_transform_not_production_projected",
+    "read_only_non_generative_artifact",
+  ]);
+
+  return {
+    version: 1,
+    source: "v2_planner_no_repair_experimental",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    planStatus,
+    skeleton: buildV2Skeleton({
+      noRepair: input.noRepair,
+      slotPlans: input.slotPlans,
+    }),
+    weeklyProgressionModel: {
+      weeks: [
+        {
+          week: 1,
+          phase: "entry_calibration",
+          volumeMultiplier: 0.875,
+          rirTarget: "3-4",
+          progressionIntent: "establish_anchors",
+          limitations: ["week_1_uses_flagged_no_repair_evidence"],
+        },
+        {
+          week: 2,
+          phase: "accumulation",
+          volumeMultiplier: 1,
+          rirTarget: "2-3",
+          progressionIntent: "productive_volume",
+          limitations: ["derived_from_stable_skeleton_not_independent_plan"],
+        },
+        {
+          week: 3,
+          phase: "hard_accumulation",
+          volumeMultiplier: 1.075,
+          rirTarget: "1-2",
+          progressionIntent: "push_stimulus",
+          limitations: ["derived_from_stable_skeleton_not_independent_plan"],
+        },
+        {
+          week: 4,
+          phase: "peak_overreach_lite",
+          volumeMultiplier: 1.125,
+          rirTarget: "0-1 isolations; 1-2 compounds",
+          progressionIntent: "peak_effort",
+          limitations: [
+            "derived_from_stable_skeleton_not_independent_plan",
+            "fatigue_and_concentration_progression_not_fully_projected",
+          ],
+        },
+        {
+          week: 5,
+          phase: "deload",
+          volumeMultiplier: 0.5,
+          rirTarget: "4-5",
+          progressionIntent: "reduce_fatigue",
+          limitations: ["deload_transform_defined_not_production_projected"],
+        },
+      ],
+    },
+    deloadTransform: {
+      preserveExerciseIdentities: true,
+      targetVolumeReductionPercent: { min: 40, max: 60 },
+      targetRir: "4-5",
+      removeRedundantAccessories: true,
+      introduceNewMovements: false,
+      projectionStatus: "partially_modeled",
+      limitations: [
+        "transform_defined_from_target_spec",
+        "not_applied_to_slotPlanSeedJson",
+        "not_used_by_runtime_replay",
+      ],
+    },
+    validationRules: buildV2ValidationRules({
+      classification: input.acceptanceClassification,
+      acceptanceChecks: input.acceptanceChecks,
+      targetLanesMissing: input.targetLanesMissing,
+    }),
+    replacementReadiness: {
+      canReplaceRepairedProjection: false,
+      reason: readinessReasons,
+    },
+  };
+}
 
 function compactEvidence(evidence: string[], limit = 6): string[] {
   const compact = uniqueSorted(evidence.filter(Boolean)).slice(0, limit);
@@ -3437,6 +4042,13 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         reason: "planningReality_missing",
       },
     };
+    const acceptanceChecks: MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"] = [
+      {
+        check: "planner-only no-repair planningReality available",
+        status: "fail",
+        evidence: ["planningReality_missing"],
+      },
+    ];
     return {
       enabled: true,
       readOnly: true,
@@ -3450,17 +4062,17 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         validationFailureCount: 1,
       },
       acceptanceClassification,
+      v2MesocyclePlan: buildV2MesocyclePlan({
+        slotPlans: [],
+        acceptanceChecks,
+        acceptanceClassification,
+        targetLanesMissing: 1,
+      }),
       slotPlans: [],
       weeklyMuscleTotals: [],
       setAllocationChanges: [],
       weeklyMuscleTotalChanges: [],
-      acceptanceChecks: [
-        {
-          check: "planner-only no-repair planningReality available",
-          status: "fail",
-          evidence: ["planningReality_missing"],
-        },
-      ],
+      acceptanceChecks,
       acceptanceFailures: [],
       qualityWarnings: [],
       diagnosticRows: [],
@@ -3544,6 +4156,13 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       validationFailureCount,
     },
     acceptanceClassification,
+    v2MesocyclePlan: buildV2MesocyclePlan({
+      noRepair,
+      slotPlans,
+      acceptanceChecks,
+      acceptanceClassification,
+      targetLanesMissing,
+    }),
     slotPlans,
     weeklyMuscleTotals,
     setAllocationChanges,

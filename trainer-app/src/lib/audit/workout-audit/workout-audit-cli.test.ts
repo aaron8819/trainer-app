@@ -2626,6 +2626,108 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                 reason: "hard_blockers:1",
               },
             },
+            v2MesocyclePlan: {
+              version: 1,
+              source: "v2_planner_no_repair_experimental",
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              planStatus: "experimental",
+              skeleton: {
+                split: "upper_lower_4x",
+                weeks: 5,
+                slotSequence: ["upper_a", "lower_a", "upper_b", "lower_b"],
+                slots: [
+                  {
+                    slotId: "upper_a",
+                    intent: "horizontal push/pull + rear delt/triceps support",
+                    targetSessionSets: { min: 15, max: 20 },
+                    lanes: [
+                      {
+                        laneId: "chest_anchor",
+                        required: true,
+                        role: "anchor",
+                        primaryMuscles: ["Chest"],
+                        preferredExerciseClasses: ["horizontal_press"],
+                        targetSets: { min: 3, preferred: 4, max: 4 },
+                        currentWeek1Status: "missing",
+                      },
+                    ],
+                  },
+                ],
+              },
+              weeklyProgressionModel: {
+                weeks: [
+                  {
+                    week: 1,
+                    phase: "entry_calibration",
+                    volumeMultiplier: 0.875,
+                    rirTarget: "3-4",
+                    progressionIntent: "establish_anchors",
+                    limitations: ["week_1_uses_flagged_no_repair_evidence"],
+                  },
+                  {
+                    week: 2,
+                    phase: "accumulation",
+                    volumeMultiplier: 1,
+                    rirTarget: "2-3",
+                    progressionIntent: "productive_volume",
+                    limitations: [
+                      "derived_from_stable_skeleton_not_independent_plan",
+                    ],
+                  },
+                  {
+                    week: 3,
+                    phase: "hard_accumulation",
+                    volumeMultiplier: 1.075,
+                    rirTarget: "1-2",
+                    progressionIntent: "push_stimulus",
+                    limitations: [
+                      "derived_from_stable_skeleton_not_independent_plan",
+                    ],
+                  },
+                  {
+                    week: 4,
+                    phase: "peak_overreach_lite",
+                    volumeMultiplier: 1.125,
+                    rirTarget: "0-1 isolations; 1-2 compounds",
+                    progressionIntent: "peak_effort",
+                    limitations: [
+                      "derived_from_stable_skeleton_not_independent_plan",
+                    ],
+                  },
+                  {
+                    week: 5,
+                    phase: "deload",
+                    volumeMultiplier: 0.5,
+                    rirTarget: "4-5",
+                    progressionIntent: "reduce_fatigue",
+                    limitations: ["deload_transform_defined_not_production_projected"],
+                  },
+                ],
+              },
+              deloadTransform: {
+                preserveExerciseIdentities: true,
+                targetVolumeReductionPercent: { min: 40, max: 60 },
+                targetRir: "4-5",
+                removeRedundantAccessories: true,
+                introduceNewMovements: false,
+                projectionStatus: "partially_modeled",
+                limitations: ["not_used_by_runtime_replay"],
+              },
+              validationRules: [
+                {
+                  ruleId: "primary_muscles_above_minimum",
+                  severity: "hard_blocker",
+                  description: "Primary hard-target muscles must meet Week 1 minimums.",
+                  week1Status: "fail",
+                  fullMesocycleStatus: "limited",
+                },
+              ],
+              replacementReadiness: {
+                canReplaceRepairedProjection: false,
+                reason: ["hard_blockers:1"],
+              },
+            },
             slotPlans: [
               {
                 slotId: "upper_a",
@@ -2764,6 +2866,14 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
       "Diagnostic rows: 1",
       "Session-shaping rows: 1",
       "Migration scoreboard: not-ready",
+      "V2 Mesocycle Plan",
+      "-----------------",
+      "Status: experimental",
+      "Skeleton: upper/lower 4x",
+      "Week 1: fail",
+      "Weeks 2-4: derived progression model, limited projection",
+      "Deload: transform defined, not production-projected",
+      "Replacement readiness: blocked",
     ]);
   });
 });

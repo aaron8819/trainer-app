@@ -6453,6 +6453,206 @@ describe("buildMesocycleExplainAuditPayload", () => {
     );
   });
 
+  it("separates Week 1 basic shape from cross-week replacement readiness", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Rear Delt Fly",
+            primaryMuscles: ["Rear Delts"],
+            stimulus: { "Rear Delts": 4 },
+            percentages: { "Rear Delts": 64.5 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    expect(noRepair.crossWeekProjectionGate).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      week1Status: {
+        status: "pass_with_warnings",
+        basis: expect.arrayContaining([
+          "basicMesocycleShapeStatus:pass_with_warnings",
+          "does_not_imply_replacement_readiness",
+        ]),
+      },
+      replacementReadinessStatus: "not_ready",
+      safeToPromoteBehavior: false,
+    });
+    expect(noRepair.acceptanceClassification).toMatchObject({
+      basicMesocycleShapeStatus: "pass_with_warnings",
+      replacementReadinessStatus: "not_ready",
+    });
+  });
+
+  it("labels Weeks 2-4 as diagnostic-only when planner-owned allocation is missing", () => {
+    const planningReality = makeNoRepairConcentrationPlanningReality({
+      exercises: [
+        {
+          slotId: "upper_a",
+          exerciseName: "Cable Rear Delt Fly",
+          primaryMuscles: ["Rear Delts"],
+          stimulus: { "Rear Delts": 4 },
+          percentages: { "Rear Delts": 64.5 },
+        },
+      ],
+    });
+    planningReality.preselectionDistributionPolicyByWeek.weeks[2] = {
+      ...planningReality.preselectionDistributionPolicyByWeek.weeks[2],
+      projectionStatus: "not_projected_missing_accumulation_policy",
+    };
+    planningReality.preselectionDistributionPolicyByWeek.weeks[3] = {
+      ...planningReality.preselectionDistributionPolicyByWeek.weeks[3],
+      projectionStatus: "not_projected_missing_accumulation_policy",
+    };
+
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: planningReality,
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    expect(noRepair.crossWeekProjectionGate.accumulationWeeksStatus).toMatchObject({
+      status: "diagnostic_projection_only",
+      weeks: [
+        expect.objectContaining({
+          week: 2,
+          projectionBasis: "scaled_v2_set_distribution_intent",
+          safeForBehaviorPromotion: false,
+          limitations: expect.arrayContaining([
+            "slotDemandAllocationByWeek:week_2:not_allocated_missing_weekly_projection",
+            "preselectionDistributionPolicyByWeek:week_2:not_projected_missing_weekly_demand_curve",
+            "planner_owned_week_allocation_missing",
+            "repeated_week_1_diagnostic_projection_not_true_cross_week_projection",
+          ]),
+        }),
+        expect.objectContaining({
+          week: 3,
+          projectionBasis: "scaled_v2_set_distribution_intent",
+          limitations: expect.arrayContaining([
+            "preselectionDistributionPolicyByWeek:week_3:not_projected_missing_accumulation_policy",
+          ]),
+        }),
+        expect.objectContaining({
+          week: 4,
+          projectionBasis: "scaled_v2_set_distribution_intent",
+          limitations: expect.arrayContaining([
+            "preselectionDistributionPolicyByWeek:week_4:not_projected_missing_accumulation_policy",
+          ]),
+        }),
+      ],
+    });
+    expect(noRepair.crossWeekProjectionGate.blockers).toEqual(
+      expect.arrayContaining(["weeks_2_to_4_planner_owned_projection_missing"]),
+    );
+    expect(noRepair.crossWeekProjectionGate.safeToPromoteBehavior).toBe(false);
+  });
+
+  it("labels deload transform as diagnostic-only until seed/runtime consumption exists", () => {
+    const planningReality = makeNoRepairConcentrationPlanningReality({
+      exercises: [
+        {
+          slotId: "upper_a",
+          exerciseName: "Cable Rear Delt Fly",
+          primaryMuscles: ["Rear Delts"],
+          stimulus: { "Rear Delts": 4 },
+          percentages: { "Rear Delts": 64.5 },
+        },
+      ],
+    });
+    planningReality.weeklyDemandCurve = {
+      mesocycleId: "meso-1",
+      source: "diagnostic_shadow_planner",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      designBasis: {
+        durationWeeks: 5,
+        intensityBias: "MODERATE",
+        focus: "Hypertrophy",
+        volumeTarget: "MEDIUM",
+        splitType: "UPPER_LOWER",
+        sessionsPerWeek: 4,
+      },
+      sourceCatalog: {},
+      limitationCatalog: {},
+      muscleCatalog: {},
+      weeks: [
+        {
+          week: 5,
+          phase: "deload",
+          projectionStatus: "not_projected_missing_policy",
+          muscles: [],
+          weekLevelLimitations: ["missing_deload_identity_set_reduction_policy"],
+        },
+      ],
+      crossWeekWarnings: [],
+      candidateBehaviorGate: {
+        status: "blocked_until_weekly_curve_is_visible",
+        likelyBestFutureBehavior: "chest_upper_slot_distinct_exercise_distribution",
+        requiredQuestions: [
+          "would_this_improve_weeks_1_to_4_not_just_week_1",
+          "would_this_preserve_deload_quality",
+          "would_this_increase_fatigue_concentration",
+        ],
+        evidence: [],
+      },
+    };
+    planningReality.slotDemandAllocationByWeek.weeks.push({
+      week: 5,
+      phase: "deload",
+      projectionStatus: "not_allocated_missing_deload_policy",
+      slots: [],
+      weekLevelWarnings: [],
+    });
+    planningReality.preselectionDistributionPolicyByWeek.weeks.push({
+      week: 5,
+      phase: "deload",
+      projectionStatus: "not_projected_missing_deload_policy",
+      weekScope: "deload_week",
+      slots: [],
+      weekLevelWarnings: [],
+    });
+
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: planningReality,
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    expect(noRepair.crossWeekProjectionGate.deloadStatus).toMatchObject({
+      status: "diagnostic_projection_only",
+      projectionBasis: "v2_deload_transform_read_only",
+      preserveIdentities: true,
+      targetVolumeReductionPercent: { min: 40, max: 60 },
+      targetRir: "4-5",
+      safeForBehaviorPromotion: false,
+      limitations: expect.arrayContaining([
+        "not_applied_to_slotPlanSeedJson",
+        "not_used_by_runtime_replay",
+        "weeklyDemandCurve:week_5:not_projected_missing_policy",
+        "slotDemandAllocationByWeek:week_5:not_allocated_missing_deload_policy",
+        "preselectionDistributionPolicyByWeek:week_5:not_projected_missing_deload_policy",
+        "accepted_seed_identity_set_reduction_projection_missing",
+        "runtime_replay_consumption_path_missing",
+      ]),
+    });
+    expect(noRepair.crossWeekProjectionGate.deloadSummary).toMatchObject({
+      preserveExerciseIdentities: true,
+      introducesNewMovements: false,
+      projectionBasis: "v2_deload_transform_read_only",
+    });
+    expect(noRepair.crossWeekProjectionGate.blockers).toEqual(
+      expect.arrayContaining(["deload_seed_runtime_projection_missing"]),
+    );
+    expect(noRepair.crossWeekProjectionGate.replacementReadinessStatus).toBe(
+      "not_ready",
+    );
+  });
+
   it("hard-fails required lanes, dirty Back Extension closure, and runtime replay failure", () => {
     const missingLane = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({

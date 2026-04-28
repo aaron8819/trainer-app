@@ -1204,6 +1204,7 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(fullNoRepair?.v2MesocyclePlan).toBeTruthy();
     expect(fullNoRepair?.v2SetDistributionIntent).toBeTruthy();
     expect(fullNoRepair?.v2TargetVsNoRepairDiff).toBeTruthy();
+    expect(fullNoRepair?.crossWeekProjectionGate.accumulationWeeksStatus.weeks).toHaveLength(3);
     expect(serializedNoRepair).toMatchObject({
       summary: {
         status: "fail",
@@ -1218,10 +1219,30 @@ describe("buildWorkoutAuditArtifact", () => {
         created: false,
         enableWith: "--v2-debug-artifact",
       },
+      crossWeekProjectionGate: {
+        accumulationWeeksStatus: {
+          status: "diagnostic_projection_only",
+          weekCount: 3,
+          projectionBasisCounts: {
+            scaled_v2_set_distribution_intent: 3,
+          },
+        },
+        deloadStatus: {
+          status: "diagnostic_projection_only",
+          projectionBasis: "v2_deload_transform_read_only",
+        },
+        replacementReadinessStatus: "not_ready",
+        safeToPromoteBehavior: false,
+        blockerCount: 1,
+      },
     });
     expect(serializedNoRepair).not.toHaveProperty("v2MesocyclePlan");
     expect(serializedNoRepair).not.toHaveProperty("v2SetDistributionIntent");
     expect(serializedNoRepair).not.toHaveProperty("v2TargetVsNoRepairDiff");
+    expect(
+      (serializedNoRepair.crossWeekProjectionGate as Record<string, unknown>)
+        .accumulationWeeksStatus,
+    ).not.toHaveProperty("weeks");
     expect(output.v2DebugArtifact).toBeUndefined();
   });
 
@@ -1331,6 +1352,22 @@ describe("buildWorkoutAuditArtifact", () => {
       readOnly: true,
       affectsScoringOrGeneration: false,
       plannerOnlyNoRepair: {
+        crossWeekProjectionGate: {
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          accumulationWeeksStatus: {
+            weeks: expect.arrayContaining([
+              expect.objectContaining({
+                week: 2,
+                safeForBehaviorPromotion: false,
+              }),
+            ]),
+          },
+          deloadStatus: {
+            safeForBehaviorPromotion: false,
+          },
+          safeToPromoteBehavior: false,
+        },
         v2MesocyclePlan: expect.any(Object),
         v2SetDistributionIntent: expect.any(Object),
         v2TargetVsNoRepairDiff: expect.any(Object),
@@ -1469,6 +1506,77 @@ function makeMesocycleExplainNoRepairPayload() {
           canReplaceRepairedProjection: false,
           reason: "blocked",
         },
+      },
+      crossWeekProjectionGate: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        week1Status: {
+          status: "fail",
+          basis: ["basicMesocycleShapeStatus:fail"],
+        },
+        accumulationWeeksStatus: {
+          status: "diagnostic_projection_only",
+          weeks: [
+            {
+              week: 2,
+              phase: "accumulation",
+              volumeMultiplier: 1,
+              rirTarget: "2-3",
+              projectionBasis: "scaled_v2_set_distribution_intent",
+              limitations: ["planner_owned_week_allocation_missing"],
+              safeForBehaviorPromotion: false,
+            },
+            {
+              week: 3,
+              phase: "hard_accumulation",
+              volumeMultiplier: 1.075,
+              rirTarget: "1-2",
+              projectionBasis: "scaled_v2_set_distribution_intent",
+              limitations: ["planner_owned_week_allocation_missing"],
+              safeForBehaviorPromotion: false,
+            },
+            {
+              week: 4,
+              phase: "peak_overreach_lite",
+              volumeMultiplier: 1.125,
+              rirTarget: "0-1",
+              projectionBasis: "scaled_v2_set_distribution_intent",
+              limitations: ["planner_owned_week_allocation_missing"],
+              safeForBehaviorPromotion: false,
+            },
+          ],
+        },
+        deloadStatus: {
+          status: "diagnostic_projection_only",
+          projectionBasis: "v2_deload_transform_read_only",
+          preserveIdentities: true,
+          targetVolumeReductionPercent: { min: 40, max: 60 },
+          targetRir: "4-5",
+          limitations: ["runtime_replay_consumption_path_missing"],
+          safeForBehaviorPromotion: false,
+        },
+        replacementReadinessStatus: "not_ready",
+        blockers: ["required_lane_missing"],
+        warnings: ["scaled_v2_set_distribution_intent_is_diagnostic_only"],
+        missingInputs: ["slotDemandAllocationByWeek:week_2:not_allocated_missing_weekly_projection"],
+        projectedWeekSummaries: [
+          {
+            week: 1,
+            phase: "entry_calibration",
+            volumeMultiplier: 1,
+            totalPlannedSets: 12,
+            projectionBasis: "week_1_no_repair_shape",
+            limitations: ["week_1_no_repair_shape_only"],
+          },
+        ],
+        deloadSummary: {
+          targetVolumeReductionPercent: { min: 40, max: 60 },
+          preserveExerciseIdentities: true,
+          introducesNewMovements: false,
+          projectionBasis: "v2_deload_transform_read_only",
+          limitations: ["runtime_replay_consumption_path_missing"],
+        },
+        safeToPromoteBehavior: false,
       },
       v2MesocyclePlan: {
         version: 1,

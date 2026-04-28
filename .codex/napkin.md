@@ -4,6 +4,7 @@
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
 | 2026-04-28 | self | Used bash-style `node - <<'NODE'` heredoc in PowerShell and hit parser errors. | Use a PowerShell here-string piped to `node` for inline Node scripts. |
+| 2026-04-28 | self | Used `&&` command chaining in PowerShell while checking git status/diff and hit a parser error. | Run separate PowerShell commands or use `;` only when sequential shell semantics are intended. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

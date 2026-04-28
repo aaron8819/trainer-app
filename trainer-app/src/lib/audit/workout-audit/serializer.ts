@@ -210,6 +210,7 @@ function buildV2DebugSidecarPayload(input: {
     plannerOnlyNoRepair: {
       summary: noRepair.summary,
       acceptanceClassification: noRepair.acceptanceClassification,
+      crossWeekProjectionGate: noRepair.crossWeekProjectionGate,
       v2MesocyclePlan: noRepair.v2MesocyclePlan,
       v2SetDistributionIntent: noRepair.v2SetDistributionIntent,
       v2TargetVsNoRepairDiff: noRepair.v2TargetVsNoRepairDiff,

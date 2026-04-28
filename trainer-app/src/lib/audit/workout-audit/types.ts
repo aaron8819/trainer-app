@@ -999,6 +999,70 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
       reason: string;
     };
   };
+  crossWeekProjectionGate: {
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    week1Status: {
+      status: "pass_with_warnings" | "pass" | "fail" | "unknown";
+      basis: string[];
+    };
+    accumulationWeeksStatus: {
+      status:
+        | "not_projected"
+        | "diagnostic_projection_only"
+        | "projected_with_limitations"
+        | "ready";
+      weeks: Array<{
+        week: 2 | 3 | 4;
+        phase: string;
+        volumeMultiplier: number;
+        rirTarget: string;
+        projectionBasis:
+          | "missing"
+          | "repeat_week_1_shape"
+          | "scaled_v2_set_distribution_intent"
+          | "planner_owned_week_projection";
+        limitations: string[];
+        safeForBehaviorPromotion: false;
+      }>;
+    };
+    deloadStatus: {
+      status:
+        | "not_projected"
+        | "diagnostic_projection_only"
+        | "projected_with_limitations"
+        | "ready";
+      projectionBasis:
+        | "missing"
+        | "v2_deload_transform_read_only"
+        | "planner_owned_deload_projection";
+      preserveIdentities: boolean;
+      targetVolumeReductionPercent?: { min: number; max: number };
+      targetRir?: string;
+      limitations: string[];
+      safeForBehaviorPromotion: false;
+    };
+    replacementReadinessStatus: "not_ready" | "limited" | "ready";
+    blockers: string[];
+    warnings: string[];
+    missingInputs: string[];
+    projectedWeekSummaries: Array<{
+      week: number;
+      phase: string;
+      volumeMultiplier: number;
+      totalPlannedSets: number | null;
+      projectionBasis: string;
+      limitations: string[];
+    }>;
+    deloadSummary: {
+      targetVolumeReductionPercent?: { min: number; max: number };
+      preserveExerciseIdentities: boolean;
+      introducesNewMovements: false;
+      projectionBasis: string;
+      limitations: string[];
+    };
+    safeToPromoteBehavior: false;
+  };
   v2MesocyclePlan: {
     version: 1;
     source: "v2_planner_no_repair_experimental";
@@ -1248,6 +1312,7 @@ export type MesocycleExplainPlannerOnlyNoRepairDebugArtifact = {
     MesocycleExplainPlannerOnlyNoRepair,
     | "summary"
     | "acceptanceClassification"
+    | "crossWeekProjectionGate"
     | "v2MesocyclePlan"
     | "v2SetDistributionIntent"
     | "v2TargetVsNoRepairDiff"

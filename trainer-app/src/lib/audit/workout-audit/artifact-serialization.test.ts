@@ -500,6 +500,77 @@ describe("artifact serialization helpers", () => {
               reason: "not_ready",
             },
           },
+          crossWeekProjectionGate: {
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            week1Status: {
+              status: "pass_with_warnings",
+              basis: ["week_1_no_repair_shape_only"],
+            },
+            accumulationWeeksStatus: {
+              status: "diagnostic_projection_only",
+              weeks: [
+                {
+                  week: 2,
+                  phase: "accumulation",
+                  volumeMultiplier: 1,
+                  rirTarget: "2-3",
+                  projectionBasis: "scaled_v2_set_distribution_intent",
+                  limitations: ["planner_owned_week_allocation_missing"],
+                  safeForBehaviorPromotion: false,
+                },
+                {
+                  week: 3,
+                  phase: "hard_accumulation",
+                  volumeMultiplier: 1.075,
+                  rirTarget: "1-2",
+                  projectionBasis: "scaled_v2_set_distribution_intent",
+                  limitations: ["planner_owned_week_allocation_missing"],
+                  safeForBehaviorPromotion: false,
+                },
+                {
+                  week: 4,
+                  phase: "peak_overreach_lite",
+                  volumeMultiplier: 1.125,
+                  rirTarget: "0-1",
+                  projectionBasis: "scaled_v2_set_distribution_intent",
+                  limitations: ["planner_owned_week_allocation_missing"],
+                  safeForBehaviorPromotion: false,
+                },
+              ],
+            },
+            deloadStatus: {
+              status: "diagnostic_projection_only",
+              projectionBasis: "v2_deload_transform_read_only",
+              preserveIdentities: true,
+              targetVolumeReductionPercent: { min: 40, max: 60 },
+              targetRir: "4-5",
+              limitations: ["runtime_replay_consumption_path_missing"],
+              safeForBehaviorPromotion: false,
+            },
+            replacementReadinessStatus: "not_ready",
+            blockers: ["weeks_2_to_4_planner_owned_projection_missing"],
+            warnings: ["scaled_v2_set_distribution_intent_is_diagnostic_only"],
+            missingInputs: ["slotDemandAllocationByWeek:week_2:not_allocated_missing_weekly_projection"],
+            projectedWeekSummaries: [
+              {
+                week: 1,
+                phase: "entry_calibration",
+                volumeMultiplier: 0.875,
+                totalPlannedSets: 18,
+                projectionBasis: "week_1_no_repair_shape",
+                limitations: ["week_1_no_repair_shape_only"],
+              },
+            ],
+            deloadSummary: {
+              targetVolumeReductionPercent: { min: 40, max: 60 },
+              preserveExerciseIdentities: true,
+              introducesNewMovements: false,
+              projectionBasis: "v2_deload_transform_read_only",
+              limitations: ["runtime_replay_consumption_path_missing"],
+            },
+            safeToPromoteBehavior: false,
+          },
           v2MesocyclePlan: {},
           v2TargetVsNoRepairDiff: {
             version: 1,
@@ -641,6 +712,29 @@ describe("artifact serialization helpers", () => {
           missing: 0,
         },
       },
+      crossWeekProjectionGate: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        week1Status: { status: "pass_with_warnings", basisCount: 1 },
+        accumulationWeeksStatus: {
+          status: "diagnostic_projection_only",
+          weekCount: 3,
+          projectionBasisCounts: {
+            scaled_v2_set_distribution_intent: 3,
+          },
+        },
+        deloadStatus: {
+          status: "diagnostic_projection_only",
+          projectionBasis: "v2_deload_transform_read_only",
+          preserveIdentities: true,
+        },
+        replacementReadinessStatus: "not_ready",
+        safeToPromoteBehavior: false,
+        blockerCount: 1,
+        warningCount: 1,
+        missingInputCount: 1,
+        projectedWeekSummaryCount: 1,
+      },
       debugArtifact: {
         kind: "v2_planner_no_repair_debug",
         created: false,
@@ -650,6 +744,13 @@ describe("artifact serialization helpers", () => {
     expect(noRepair).not.toHaveProperty("v2MesocyclePlan");
     expect(noRepair).not.toHaveProperty("v2TargetVsNoRepairDiff");
     expect(noRepair).not.toHaveProperty("v2SetDistributionIntent");
+    expect(
+      (noRepair.crossWeekProjectionGate as Record<string, unknown>)
+        .accumulationWeeksStatus,
+    ).not.toHaveProperty("weeks");
+    expect(noRepair.crossWeekProjectionGate).not.toHaveProperty(
+      "projectedWeekSummaries",
+    );
     expect(serialized).not.toContain("concentration:primary_anchor");
   });
 

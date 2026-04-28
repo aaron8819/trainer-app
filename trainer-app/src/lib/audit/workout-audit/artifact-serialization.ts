@@ -81,6 +81,7 @@ type JsonRecord = Record<string, unknown>;
 export const V2_PLANNER_NO_REPAIR_DEBUG_CONTAINS = [
   "summary",
   "acceptanceClassification",
+  "crossWeekProjectionGate",
   "v2MesocyclePlan",
   "v2SetDistributionIntent",
   "v2TargetVsNoRepairDiff",
@@ -699,6 +700,60 @@ function buildNoRepairDebugArtifactManifest(
   };
 }
 
+function compactCrossWeekProjectionGate(value: unknown): unknown {
+  const gate = asRecord(value);
+  if (!gate) {
+    return undefined;
+  }
+  const week1Status = asRecord(gate.week1Status);
+  const accumulationWeeksStatus = asRecord(gate.accumulationWeeksStatus);
+  const accumulationWeeks = asRecordArray(accumulationWeeksStatus?.weeks);
+  const deloadStatus = asRecord(gate.deloadStatus);
+  const blockers = Array.isArray(gate.blockers) ? gate.blockers : [];
+  const warnings = Array.isArray(gate.warnings) ? gate.warnings : [];
+  const missingInputs = Array.isArray(gate.missingInputs)
+    ? gate.missingInputs
+    : [];
+  const projectedWeekSummaries = asRecordArray(gate.projectedWeekSummaries);
+
+  return {
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    week1Status: {
+      status: week1Status?.status ?? "unknown",
+      basisCount: Array.isArray(week1Status?.basis)
+        ? week1Status.basis.length
+        : 0,
+    },
+    accumulationWeeksStatus: {
+      status: accumulationWeeksStatus?.status ?? "not_projected",
+      weekCount: accumulationWeeks.length,
+      projectionBasisCounts: accumulationWeeks.reduce<Record<string, number>>(
+        (counts, week) => {
+          const key =
+            typeof week.projectionBasis === "string"
+              ? week.projectionBasis
+              : "unknown";
+          counts[key] = (counts[key] ?? 0) + 1;
+          return counts;
+        },
+        {}
+      ),
+    },
+    deloadStatus: {
+      status: deloadStatus?.status ?? "not_projected",
+      projectionBasis: deloadStatus?.projectionBasis ?? "missing",
+      preserveIdentities: deloadStatus?.preserveIdentities === true,
+    },
+    replacementReadinessStatus: gate.replacementReadinessStatus ?? "not_ready",
+    safeToPromoteBehavior: false,
+    blockerCount: blockers.length,
+    warningCount: warnings.length,
+    missingInputCount: missingInputs.length,
+    projectedWeekSummaryCount: projectedWeekSummaries.length,
+  };
+}
+
 function compactPlannerOnlyNoRepair(
   value: unknown,
   debugArtifact?: PlannerOnlyNoRepairDebugArtifactLink
@@ -785,6 +840,9 @@ function compactPlannerOnlyNoRepair(
       targetVsNoRepairSummary: v2DiffSummary ?? {},
       migrationScoreboard: migrationScoreboard ?? {},
     },
+    crossWeekProjectionGate: compactCrossWeekProjectionGate(
+      noRepair.crossWeekProjectionGate
+    ),
     operatorFindings: buildNoRepairOperatorFindings(noRepair),
     debugArtifact: buildNoRepairDebugArtifactManifest(debugArtifact),
   };

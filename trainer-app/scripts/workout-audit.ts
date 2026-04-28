@@ -2031,12 +2031,28 @@ export function buildPlannerOnlyNoRepairSummary(input: {
   const comparison = noRepair.comparisonToRepaired
     ? ` repaired_passes=${formatBooleanFlag(noRepair.comparisonToRepaired.repairedPasses)} no_repair_passes=${formatBooleanFlag(noRepair.comparisonToRepaired.noRepairPasses)}`
     : "";
+  const formatSeverityRows = (
+    rows: typeof noRepair.acceptanceFailures | undefined
+  ): string =>
+    rows && rows.length > 0
+      ? rows
+          .slice(0, 6)
+          .map(
+            (row) =>
+              `${row.slotId}:${row.exerciseName}:${row.muscle}:${row.percentageOfWeeklyStimulus}%:${row.reason}`
+          )
+          .join("; ")
+      : "none";
 
   return [
     `[workout-audit:planner-only-no-repair] status=${noRepair.summary.status} can_replace=${formatBooleanFlag(noRepair.canReplaceRepairedProjection)} lanes_satisfied=${noRepair.summary.targetLanesSatisfied} lanes_missing=${noRepair.summary.targetLanesMissing} unresolved=${noRepair.summary.unresolvedDemandCount} validation_failures=${noRepair.summary.validationFailureCount}${comparison}`,
     `[workout-audit:planner-only-no-repair] missing_lanes=${missingLanes}`,
     `[workout-audit:planner-only-no-repair] unresolved_demand=${unresolved}`,
-    `[workout-audit:planner-only-no-repair] acceptance_failures=${failingChecks}`,
+    `[workout-audit:planner-only-no-repair] acceptance_checks_failed=${failingChecks}`,
+    `[workout-audit:planner-only-no-repair] acceptance_failures_true_blockers=${formatSeverityRows(noRepair.acceptanceFailures)}`,
+    `[workout-audit:planner-only-no-repair] quality_warnings_non_blocking=${formatSeverityRows(noRepair.qualityWarnings)}`,
+    `[workout-audit:planner-only-no-repair] diagnostic_rows_readout_only=${formatSeverityRows(noRepair.diagnosticRows)}`,
+    `[workout-audit:planner-only-no-repair] ignored_rows_for_acceptance=${formatSeverityRows(noRepair.ignoredRows)}`,
     `[workout-audit:planner-only-no-repair] set_allocation_changes=${setAllocationChanges}`,
     `[workout-audit:planner-only-no-repair] weekly_total_changes=${weeklyTotalChanges}`,
   ];

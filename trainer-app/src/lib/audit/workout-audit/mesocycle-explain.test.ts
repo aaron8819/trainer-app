@@ -146,6 +146,7 @@ vi.mock("@/lib/api/mesocycle-slot-contract", () => ({
 import {
   buildMesocycleExplainAuditPayload,
   buildPlannerOnlyDryRunComparison,
+  buildPlannerOnlyNoRepairComparison,
 } from "./mesocycle-explain";
 
 type PlannerOnlyPlanningReality = NonNullable<
@@ -587,6 +588,168 @@ function makeCalfPlanningReality(overrides: {
     exerciseConcentration: [],
     warnings: [],
     limitations: [],
+  } as unknown as PlannerOnlyPlanningReality;
+}
+
+type TestNoRepairExercise = {
+  slotId: string;
+  intent?: string;
+  exerciseId?: string;
+  exerciseName: string;
+  setCount?: number;
+  role?: "main" | "accessory";
+  isCompound?: boolean;
+  primaryMuscles: string[];
+  movementPatterns?: string[];
+  stimulus: Record<string, number>;
+  percentages?: Record<string, number>;
+  producedOrIncreasedByRepair?: boolean;
+  flags?: Array<
+    | "COMPOUND_GT_5_SETS"
+    | "ISOLATION_GT_5_SETS"
+    | "EXERCISE_SUPPLIES_OVER_50_PERCENT_WEEKLY_STIMULUS"
+    | "EXERCISE_SUPPLIES_OVER_60_PERCENT_WEEKLY_STIMULUS"
+    | "EXERCISE_ADDED_BY_REPAIR"
+    | "SET_COUNT_INCREASED_BY_REPAIR"
+  >;
+};
+
+function makeNoRepairConcentrationPlanningReality(input: {
+  exercises: TestNoRepairExercise[];
+  demands?: Array<{
+    muscle: string;
+    priority: "primary" | "support" | "secondary" | "implicit";
+    targetStatus: "hard" | "soft" | "diagnostic";
+    minEffectiveSets: number | null;
+    preferredEffectiveSets?: number | null;
+    maxEffectiveSets?: number | null;
+  }>;
+  setDistributionRows?: string[];
+}): PlannerOnlyPlanningReality {
+  const base = makeCalfPlanningReality({
+    lowerBCalfShapes: [],
+    lowerACalfUnresolved: false,
+    materialRepairCount: 0,
+    majorRepairCount: 0,
+    suspiciousRepairCount: 0,
+  });
+  const exercisesBySlot = new Map<string, TestNoRepairExercise[]>();
+  for (const exercise of input.exercises) {
+    exercisesBySlot.set(exercise.slotId, [
+      ...(exercisesBySlot.get(exercise.slotId) ?? []),
+      exercise,
+    ]);
+  }
+  const slots = Array.from(exercisesBySlot.entries()).map(
+    ([slotId, exercises], index) => ({
+      slotId,
+      slotIndex: index,
+      intent: exercises[0]?.intent ?? (slotId.startsWith("lower") ? "lower" : "upper"),
+      exerciseCount: exercises.length,
+      totalSets: exercises.reduce((sum, exercise) => sum + (exercise.setCount ?? 3), 0),
+      projectedEffectiveStimulusByMuscle: exercises.reduce<Record<string, number>>(
+        (totals, exercise) => {
+          for (const [muscle, value] of Object.entries(exercise.stimulus)) {
+            totals[muscle] = Math.round(((totals[muscle] ?? 0) + value) * 10) / 10;
+          }
+          return totals;
+        },
+        {},
+      ),
+      exercises: exercises.map((exercise, exerciseIndex) => ({
+        exerciseId: exercise.exerciseId ?? `${slotId}-${exerciseIndex}`,
+        exerciseName: exercise.exerciseName,
+        role: exercise.role ?? "accessory",
+        setCount: exercise.setCount ?? 3,
+        primaryMuscles: exercise.primaryMuscles,
+        movementPatterns: exercise.movementPatterns ?? ["isolation"],
+        effectiveStimulusByMuscle: exercise.stimulus,
+      })),
+    }),
+  );
+  const defaultDemands = [
+    {
+      muscle: "Rear Delts",
+      priority: "support" as const,
+      targetStatus: "soft" as const,
+      minEffectiveSets: 4,
+      preferredEffectiveSets: 6,
+      maxEffectiveSets: 12,
+    },
+  ];
+
+  return {
+    ...base,
+    summary: {
+      ...base.summary,
+      materialRepairCount: 0,
+      majorRepairCount: 0,
+    },
+    initialSlotComposition: slots,
+    finalSlotPlan: slots,
+    allocationVsInitialDelta: [],
+    allocationVsFinalDelta: [],
+    shadowWeeklyDemand: (input.demands ?? defaultDemands).map((demand) => ({
+      muscle: demand.muscle,
+      targetTier:
+        demand.priority === "primary"
+          ? "A_PRIMARY"
+          : demand.priority === "support"
+            ? "B_SUPPORT"
+            : demand.priority === "secondary"
+              ? "C_SECONDARY"
+              : "IMPLICIT",
+      targetStatus: demand.targetStatus,
+      minEffectiveSets: demand.minEffectiveSets,
+      preferredEffectiveSets: demand.preferredEffectiveSets ?? demand.minEffectiveSets,
+      maxEffectiveSets: demand.maxEffectiveSets ?? null,
+      desiredExposureCount: null,
+      priority: demand.priority,
+      source: ["test"],
+      rationale: ["test"],
+    })),
+    setDistributionIntents: [
+      {
+        ...base.setDistributionIntents[0],
+        slotId: input.exercises[0]?.slotId ?? "upper_a",
+        evidence: {
+          concentrationRows: input.setDistributionRows ?? [],
+          capCleanupRows: [],
+          repairRowsStillRepairOwned: [],
+        },
+      },
+    ],
+    duplicateContinuityJustification: {
+      ...base.duplicateContinuityJustification,
+      summary: {
+        totalDuplicates: 0,
+        justifiedDuplicates: 0,
+        unjustifiedOrUnknown: 0,
+        cleanAlternativeAvailable: 0,
+        highRiskDuplicates: 0,
+      },
+      duplicates: [],
+    },
+    exerciseConcentration: input.exercises.map((exercise, index) => ({
+      slotId: exercise.slotId,
+      intent: exercise.intent ?? (exercise.slotId.startsWith("lower") ? "lower" : "upper"),
+      exerciseId: exercise.exerciseId ?? `${exercise.slotId}-${index}`,
+      exerciseName: exercise.exerciseName,
+      setCount: exercise.setCount ?? 3,
+      role: exercise.role ?? "accessory",
+      isCompound: exercise.isCompound ?? false,
+      primaryMuscles: exercise.primaryMuscles,
+      effectiveStimulusContributionByMuscle: exercise.stimulus,
+      percentageOfWeeklyProjectedStimulusByMuscle: exercise.percentages ?? exercise.stimulus,
+      producedOrIncreasedByRepair: exercise.producedOrIncreasedByRepair ?? false,
+      flags:
+        exercise.flags ??
+        (Object.values(exercise.percentages ?? {}).some((value) => value >= 60)
+          ? ["EXERCISE_SUPPLIES_OVER_60_PERCENT_WEEKLY_STIMULUS"]
+          : Object.values(exercise.percentages ?? {}).some((value) => value >= 50)
+            ? ["EXERCISE_SUPPLIES_OVER_50_PERCENT_WEEKLY_STIMULUS"]
+            : []),
+    })),
   } as unknown as PlannerOnlyPlanningReality;
 }
 
@@ -2428,6 +2591,262 @@ describe("buildMesocycleExplainAuditPayload", () => {
       experimentalPlannerOnlyNoRepair: true,
     });
     expect(mocks.buildMesocycleSlotPlanSeed).toHaveBeenCalledTimes(1);
+  });
+
+  it("classifies diagnostic and collateral concentration rows without failing no-repair acceptance", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Rear Delt Fly",
+            primaryMuscles: ["Rear Delts"],
+            stimulus: { "Rear Delts": 4 },
+            percentages: { "Rear Delts": 64.5 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Shoulder Press",
+            isCompound: true,
+            primaryMuscles: ["Side Delts"],
+            stimulus: { "Front Delts": 3.5 },
+            percentages: { "Front Delts": 70 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Barbell Curl",
+            primaryMuscles: ["Biceps"],
+            stimulus: { Forearms: 1 },
+            percentages: { Forearms: 100 },
+          },
+          {
+            slotId: "lower_b",
+            exerciseName: "Goblet Squat",
+            isCompound: true,
+            primaryMuscles: ["Quads"],
+            stimulus: { Core: 1 },
+            percentages: { Core: 100 },
+          },
+          {
+            slotId: "lower_a",
+            exerciseName: "Hack Squat",
+            isCompound: true,
+            primaryMuscles: ["Quads"],
+            stimulus: { Adductors: 3 },
+            percentages: { Adductors: 54.5 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Rear Delts",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 4,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 12,
+          },
+          {
+            muscle: "Front Delts",
+            priority: "implicit",
+            targetStatus: "diagnostic",
+            minEffectiveSets: null,
+          },
+          {
+            muscle: "Forearms",
+            priority: "secondary",
+            targetStatus: "diagnostic",
+            minEffectiveSets: 2,
+            maxEffectiveSets: 6,
+          },
+          {
+            muscle: "Core",
+            priority: "secondary",
+            targetStatus: "diagnostic",
+            minEffectiveSets: 4,
+            maxEffectiveSets: 12,
+          },
+          {
+            muscle: "Adductors",
+            priority: "secondary",
+            targetStatus: "diagnostic",
+            minEffectiveSets: 2,
+            maxEffectiveSets: 8,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    expect(noRepair.acceptanceFailures).toEqual([]);
+    expect(noRepair.qualityWarnings).toEqual([
+      expect.objectContaining({
+        severity: "quality_warning",
+        slotId: "upper_a",
+        exerciseName: "Cable Rear Delt Fly",
+        muscle: "Rear Delts",
+        reason: "support_direct_isolation_concentrated_but_clean_and_near_or_at_target",
+      }),
+    ]);
+    expect(noRepair.diagnosticRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: "diagnostic_only",
+          slotId: "upper_b",
+          exerciseName: "Machine Shoulder Press",
+          muscle: "Front Delts",
+        }),
+        expect.objectContaining({
+          severity: "diagnostic_only",
+          slotId: "lower_a",
+          exerciseName: "Hack Squat",
+          muscle: "Adductors",
+        }),
+      ]),
+    );
+    expect(noRepair.ignoredRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          severity: "ignored_for_acceptance",
+          slotId: "upper_b",
+          exerciseName: "Barbell Curl",
+          muscle: "Forearms",
+        }),
+        expect.objectContaining({
+          severity: "ignored_for_acceptance",
+          slotId: "lower_b",
+          exerciseName: "Goblet Squat",
+          muscle: "Core",
+        }),
+      ]),
+    );
+    expect(
+      noRepair.acceptanceChecks.find(
+        (check) => check.check === "no concentration acceptance blockers",
+      ),
+    ).toMatchObject({
+      status: "pass",
+      evidence: ["quality_warnings:1", "diagnostic_rows:2", "ignored_rows:2"],
+    });
+    expect(noRepair.slotPlans.flatMap((slot) => slot.validationFailures)).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Cable Rear Delt Fly:Rear Delts"),
+        expect.stringContaining("Machine Shoulder Press:Front Delts"),
+        expect.stringContaining("Barbell Curl:Forearms"),
+        expect.stringContaining("Goblet Squat:Core"),
+        expect.stringContaining("Hack Squat:Adductors"),
+      ]),
+    );
+  });
+
+  it("keeps true no-repair concentration blockers as acceptance failures", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Incline Dumbbell Press",
+            isCompound: true,
+            primaryMuscles: ["Chest"],
+            stimulus: { Chest: 7 },
+            percentages: { Chest: 70 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Chest",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 10,
+            preferredEffectiveSets: 10,
+            maxEffectiveSets: 16,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    expect(noRepair.acceptanceFailures).toEqual([
+      expect.objectContaining({
+        severity: "acceptance_blocker",
+        slotId: "upper_a",
+        exerciseName: "Incline Dumbbell Press",
+        muscle: "Chest",
+        reason: "primary_hard_target_excessive_single_exercise_share_unjustified",
+      }),
+    ]);
+    expect(
+      noRepair.acceptanceChecks.find(
+        (check) => check.check === "no concentration acceptance blockers",
+      ),
+    ).toMatchObject({ status: "fail" });
+  });
+
+  it("blocks no-repair exercises above five sets and repair-created concentration", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Barbell Curl",
+            primaryMuscles: ["Biceps"],
+            setCount: 6,
+            stimulus: { Biceps: 6 },
+            percentages: { Biceps: 60 },
+            flags: [
+              "ISOLATION_GT_5_SETS",
+              "EXERCISE_SUPPLIES_OVER_60_PERCENT_WEEKLY_STIMULUS",
+            ],
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Cable Lateral Raise",
+            primaryMuscles: ["Side Delts"],
+            stimulus: { "Side Delts": 4 },
+            percentages: { "Side Delts": 66.7 },
+            producedOrIncreasedByRepair: true,
+            flags: [
+              "EXERCISE_SUPPLIES_OVER_60_PERCENT_WEEKLY_STIMULUS",
+              "SET_COUNT_INCREASED_BY_REPAIR",
+            ],
+          },
+        ],
+        demands: [
+          {
+            muscle: "Biceps",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 4,
+            maxEffectiveSets: 14,
+          },
+          {
+            muscle: "Side Delts",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 4,
+            maxEffectiveSets: 19,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    expect(noRepair.acceptanceFailures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          exerciseName: "Barbell Curl",
+          muscle: "Biceps",
+          reason: "exercise_gt_5_sets_without_planner_justification",
+        }),
+        expect.objectContaining({
+          exerciseName: "Cable Lateral Raise",
+          muscle: "Side Delts",
+          reason: "concentration_created_by_repair_or_set_bump",
+        }),
+      ]),
+    );
   });
 
   it("reports blocked when one-slot calf cleanup cannot satisfy the floor without lower_a policy", () => {

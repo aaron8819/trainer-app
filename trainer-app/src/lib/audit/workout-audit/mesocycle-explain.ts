@@ -42,6 +42,7 @@ import {
   buildSessionAuditMutationSummary,
   resolvePersistedOrReconstructedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
+import { getMuscleTargetSemantics } from "@/lib/engine/volume-landmarks";
 import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 import { MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION } from "./constants";
 import {
@@ -58,6 +59,7 @@ import type {
   MesocycleExplainProjectionDiagnosticRow,
   MesocycleExplainProjectionDiagnostics,
   MesocycleExplainPlannerOnlyDryRun,
+  MesocycleExplainPlannerOnlyNoRepairConcentrationRow,
   MesocycleExplainProjectionComparisonSnapshot,
   MesocycleExplainProjectionMetricDelta,
   MesocycleExplainPlannerOnlyNoRepair,
@@ -2544,7 +2546,8 @@ function buildNoRepairWeeklyMuscleTotalChanges(input: {
 
 function buildNoRepairAcceptanceChecks(
   planningReality: PlanningRealityDiagnostic,
-  weeklyMuscleTotals: MesocycleExplainPlannerOnlyNoRepair["weeklyMuscleTotals"]
+  weeklyMuscleTotals: MesocycleExplainPlannerOnlyNoRepair["weeklyMuscleTotals"],
+  concentrationClassification: NoRepairConcentrationClassification
 ): MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"] {
   const comparisonRows = weeklyMuscleTotals.map((row) => ({
     muscle: row.muscle,
@@ -2558,11 +2561,316 @@ function buildNoRepairAcceptanceChecks(
       `preferred:${row.targetPreferred ?? "unknown"}`,
     ],
   }));
-  return buildPlannerOnlyAcceptanceChecks(planningReality, comparisonRows);
+  const baseChecks = buildPlannerOnlyAcceptanceChecks(
+    planningReality,
+    comparisonRows
+  ).filter(
+    (check) =>
+      check.check !==
+      "no single exercise supplies >50-60% of primary muscle unless intentional"
+  );
+  return [
+    ...baseChecks,
+    {
+      check: "no concentration acceptance blockers",
+      status: statusFromBoolean(
+        concentrationClassification.acceptanceFailures.length === 0
+      ),
+      evidence:
+        concentrationClassification.acceptanceFailures.length === 0
+          ? [
+              `quality_warnings:${concentrationClassification.qualityWarnings.length}`,
+              `diagnostic_rows:${concentrationClassification.diagnosticRows.length}`,
+              `ignored_rows:${concentrationClassification.ignoredRows.length}`,
+            ]
+          : concentrationClassification.acceptanceFailures.map(
+              formatNoRepairConcentrationRow
+            ),
+    },
+  ];
+}
+
+type NoRepairConcentrationClassification = {
+  acceptanceFailures: MesocycleExplainPlannerOnlyNoRepairConcentrationRow[];
+  qualityWarnings: MesocycleExplainPlannerOnlyNoRepairConcentrationRow[];
+  diagnosticRows: MesocycleExplainPlannerOnlyNoRepairConcentrationRow[];
+  ignoredRows: MesocycleExplainPlannerOnlyNoRepairConcentrationRow[];
+};
+
+function formatNoRepairConcentrationRow(
+  row: MesocycleExplainPlannerOnlyNoRepairConcentrationRow
+): string {
+  return `${row.slotId}:${row.exerciseName}:${row.muscle}:${row.percentageOfWeeklyStimulus}%:${row.reason}`;
+}
+
+function isTinyDiagnosticDenominator(input: {
+  muscle: string;
+  weeklyEffectiveSets: number;
+  explicitlyTargeted: boolean;
+}): boolean {
+  return !input.explicitlyTargeted && input.weeklyEffectiveSets <= 2;
+}
+
+function isCollateralArtifactMuscle(muscle: string): boolean {
+  return muscle === "Forearms" || muscle === "Core";
+}
+
+function isFatigueSensitiveCollateral(muscle: string): boolean {
+  return muscle === "Lower Back" || muscle === "Glutes";
+}
+
+function getNoRepairDemandByMuscle(
+  planningReality: PlanningRealityDiagnostic
+): Map<string, PlanningRealityDiagnostic["shadowWeeklyDemand"][number]> {
+  return new Map(
+    planningReality.shadowWeeklyDemand.map((row) => [row.muscle, row])
+  );
+}
+
+function hasExplicitCleanAlternativeSignal(input: {
+  planningReality: PlanningRealityDiagnostic;
+  muscle: string;
+  slotId: string;
+}): boolean {
+  return (
+    input.planningReality.exerciseClassUnresolvedCauses?.some(
+      (row) =>
+        row.slotId === input.slotId &&
+        row.muscle === input.muscle &&
+        row.behaviorReadiness === "ready_for_bounded_trial"
+    ) ?? false
+  );
+}
+
+function classifyNoRepairConcentrationRow(input: {
+  row: PlanningRealityDiagnostic["exerciseConcentration"][number];
+  muscle: string;
+  percentage: number;
+  weeklyEffectiveSets: number;
+  demand?: PlanningRealityDiagnostic["shadowWeeklyDemand"][number];
+  planningReality: PlanningRealityDiagnostic;
+}): MesocycleExplainPlannerOnlyNoRepairConcentrationRow {
+  const semantics = getMuscleTargetSemantics(input.muscle);
+  const priority =
+    input.demand?.priority ??
+    (semantics.targetTier === "A_PRIMARY"
+      ? "primary"
+      : semantics.targetTier === "B_SUPPORT"
+        ? "support"
+        : semantics.targetTier === "C_SECONDARY"
+          ? "secondary"
+          : "implicit");
+  const targetStatus = input.demand?.targetStatus ?? "diagnostic";
+  const explicitlyTargeted =
+    (priority === "primary" || priority === "support") &&
+    targetStatus !== "diagnostic";
+  const isDirect = input.row.primaryMuscles.includes(input.muscle);
+  const isCleanDirect = isDirect && !input.row.isCompound;
+  const minEffectiveSets = input.demand?.minEffectiveSets ?? null;
+  const maxEffectiveSets = input.demand?.maxEffectiveSets ?? null;
+  const belowMinimum =
+    minEffectiveSets != null && input.weeklyEffectiveSets < minEffectiveSets;
+  const nearMinimum =
+    minEffectiveSets != null && input.weeklyEffectiveSets <= minEffectiveSets + 1;
+  const gtFive =
+    input.row.flags.includes("COMPOUND_GT_5_SETS") ||
+    input.row.flags.includes("ISOLATION_GT_5_SETS") ||
+    input.row.setCount > 5;
+  const overExplicitFatigueCap =
+    isFatigueSensitiveCollateral(input.muscle) &&
+    maxEffectiveSets != null &&
+    input.weeklyEffectiveSets > maxEffectiveSets;
+  const excessiveShare = input.percentage >= 50;
+  const cleanAlternativeExists = hasExplicitCleanAlternativeSignal({
+    planningReality: input.planningReality,
+    muscle: input.muscle,
+    slotId: input.row.slotId,
+  });
+
+  const base = {
+    slotId: input.row.slotId,
+    exerciseName: input.row.exerciseName,
+    muscle: input.muscle,
+    percentageOfWeeklyStimulus: input.percentage,
+    weeklyEffectiveSets: input.weeklyEffectiveSets,
+    setCount: input.row.setCount,
+    producedOrIncreasedByRepair: input.row.producedOrIncreasedByRepair,
+    evidence: [
+      `priority:${priority}`,
+      `target_status:${targetStatus}`,
+      `direct:${isDirect ? "yes" : "no"}`,
+      `clean_direct:${isCleanDirect ? "yes" : "no"}`,
+      `weekly_effective_sets:${input.weeklyEffectiveSets}`,
+      `min:${minEffectiveSets ?? "unknown"}`,
+      `max:${maxEffectiveSets ?? "unknown"}`,
+      `flags:${input.row.flags.join(",") || "none"}`,
+    ],
+  };
+
+  if (gtFive) {
+    return {
+      ...base,
+      severity: "acceptance_blocker",
+      reason: "exercise_gt_5_sets_without_planner_justification",
+    };
+  }
+  if (input.row.producedOrIncreasedByRepair) {
+    return {
+      ...base,
+      severity: "acceptance_blocker",
+      reason: "concentration_created_by_repair_or_set_bump",
+    };
+  }
+  if (overExplicitFatigueCap) {
+    return {
+      ...base,
+      severity: "acceptance_blocker",
+      reason: "fatigue_sensitive_collateral_above_explicit_cap",
+    };
+  }
+  if (
+    isCollateralArtifactMuscle(input.muscle) ||
+    isTinyDiagnosticDenominator({
+      muscle: input.muscle,
+      weeklyEffectiveSets: input.weeklyEffectiveSets,
+      explicitlyTargeted,
+    })
+  ) {
+    return {
+      ...base,
+      severity: "ignored_for_acceptance",
+      reason: isCollateralArtifactMuscle(input.muscle)
+        ? "compound_or_curl_collateral_denominator_artifact"
+        : "tiny_diagnostic_denominator_artifact",
+    };
+  }
+  if (!explicitlyTargeted) {
+    return {
+      ...base,
+      severity: "diagnostic_only",
+      reason: "secondary_or_implicit_collateral_not_acceptance_target",
+    };
+  }
+  if (priority === "support") {
+    if (!isDirect && belowMinimum) {
+      return {
+        ...base,
+        severity: "acceptance_blocker",
+        reason: "support_target_missing_clean_direct_work_and_substituted_by_collateral",
+      };
+    }
+    if (isDirect && belowMinimum && !nearMinimum) {
+      return {
+        ...base,
+        severity: "acceptance_blocker",
+        reason: "support_direct_work_concentrated_while_below_minimum",
+      };
+    }
+    return {
+      ...base,
+      severity: "quality_warning",
+      reason: isCleanDirect
+        ? "support_direct_isolation_concentrated_but_clean_and_near_or_at_target"
+        : "support_target_high_single_exercise_share_non_blocking",
+    };
+  }
+  if (
+    priority === "primary" &&
+    excessiveShare &&
+    (belowMinimum || nearMinimum || cleanAlternativeExists)
+  ) {
+    return {
+      ...base,
+      severity: "acceptance_blocker",
+      reason: "primary_hard_target_excessive_single_exercise_share_unjustified",
+    };
+  }
+
+  return {
+    ...base,
+    severity: "quality_warning",
+    reason: "high_single_exercise_share_non_blocking_programming_note",
+  };
+}
+
+function classifyNoRepairConcentrationRows(
+  planningReality: PlanningRealityDiagnostic
+): NoRepairConcentrationClassification {
+  const weeklyTotals = sumSlotStimulusByMuscle(planningReality.finalSlotPlan);
+  const demandByMuscle = getNoRepairDemandByMuscle(planningReality);
+  const rows = planningReality.exerciseConcentration.flatMap((row) =>
+    Object.entries(row.percentageOfWeeklyProjectedStimulusByMuscle)
+      .filter(([muscle, percentage]) => {
+        const effectiveSets = row.effectiveStimulusContributionByMuscle[muscle] ?? 0;
+        return (
+          effectiveSets > 0 &&
+          (percentage >= 50 ||
+            row.setCount > 5 ||
+            row.producedOrIncreasedByRepair)
+        );
+      })
+      .map(([muscle, percentage]) =>
+        classifyNoRepairConcentrationRow({
+          row,
+          muscle,
+          percentage,
+          weeklyEffectiveSets: weeklyTotals.get(muscle) ?? 0,
+          demand: demandByMuscle.get(muscle),
+          planningReality,
+        })
+      )
+  );
+
+  return {
+    acceptanceFailures: rows
+      .filter((row) => row.severity === "acceptance_blocker")
+      .sort(compareNoRepairConcentrationRows),
+    qualityWarnings: rows
+      .filter((row) => row.severity === "quality_warning")
+      .sort(compareNoRepairConcentrationRows),
+    diagnosticRows: rows
+      .filter((row) => row.severity === "diagnostic_only")
+      .sort(compareNoRepairConcentrationRows),
+    ignoredRows: rows
+      .filter((row) => row.severity === "ignored_for_acceptance")
+      .sort(compareNoRepairConcentrationRows),
+  };
+}
+
+function compareNoRepairConcentrationRows(
+  left: MesocycleExplainPlannerOnlyNoRepairConcentrationRow,
+  right: MesocycleExplainPlannerOnlyNoRepairConcentrationRow
+): number {
+  return (
+    left.slotId.localeCompare(right.slotId) ||
+    left.muscle.localeCompare(right.muscle) ||
+    right.percentageOfWeeklyStimulus - left.percentageOfWeeklyStimulus ||
+    left.exerciseName.localeCompare(right.exerciseName)
+  );
+}
+
+function isNoRepairNonBlockingConcentrationViolation(
+  violation: string,
+  classification: NoRepairConcentrationClassification
+): boolean {
+  const nonBlockingRows = [
+    ...classification.qualityWarnings,
+    ...classification.diagnosticRows,
+    ...classification.ignoredRows,
+  ];
+  return nonBlockingRows.some(
+    (row) =>
+      violation.includes(row.exerciseName) &&
+      violation.includes(row.muscle) &&
+      (violation.includes("single_exercise_share") ||
+        violation.includes(`${row.slotId}:`) ||
+        violation.includes(`${row.muscle}:`))
+  );
 }
 
 function buildNoRepairSlotPlans(
-  planningReality: PlanningRealityDiagnostic
+  planningReality: PlanningRealityDiagnostic,
+  concentrationClassification: NoRepairConcentrationClassification
 ): MesocycleExplainPlannerOnlyNoRepair["slotPlans"] {
   const topDownSlots = new Map(
     planningReality.topDownMesocyclePlan?.slotTargets.map((slot) => [
@@ -2602,7 +2910,13 @@ function buildNoRepairSlotPlans(
     ]);
     const validationFailures = uniqueSorted([
       ...buildPlannerOnlyDuplicateViolations(planningReality, slot.slotId),
-      ...buildPlannerOnlySetDistributionViolations(planningReality, slot),
+      ...buildPlannerOnlySetDistributionViolations(planningReality, slot).filter(
+        (violation) =>
+          !isNoRepairNonBlockingConcentrationViolation(
+            violation,
+            concentrationClassification
+          )
+      ),
     ]);
 
     return {
@@ -2688,6 +3002,10 @@ export function buildPlannerOnlyNoRepairComparison(input: {
           evidence: ["planningReality_missing"],
         },
       ],
+      acceptanceFailures: [],
+      qualityWarnings: [],
+      diagnosticRows: [],
+      ignoredRows: [],
       repairDependenciesDisabled,
       ...(input.compareRepaired
         ? {
@@ -2702,7 +3020,11 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   }
 
   const noRepair = input.noRepairPlanningReality;
-  const slotPlans = buildNoRepairSlotPlans(noRepair);
+  const concentrationClassification = classifyNoRepairConcentrationRows(noRepair);
+  const slotPlans = buildNoRepairSlotPlans(
+    noRepair,
+    concentrationClassification
+  );
   const weeklyMuscleTotals = buildNoRepairWeeklyMuscleTotals(noRepair);
   const setAllocationChanges = buildNoRepairSetAllocationChanges(noRepair);
   const weeklyMuscleTotalChanges = buildNoRepairWeeklyMuscleTotalChanges({
@@ -2711,7 +3033,8 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   });
   const acceptanceChecks = buildNoRepairAcceptanceChecks(
     noRepair,
-    weeklyMuscleTotals
+    weeklyMuscleTotals,
+    concentrationClassification
   );
   const targetLanesSatisfied =
     noRepair.topDownMesocyclePlan?.summary.matchedTargetLanes ??
@@ -2758,6 +3081,10 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     setAllocationChanges,
     weeklyMuscleTotalChanges,
     acceptanceChecks,
+    acceptanceFailures: concentrationClassification.acceptanceFailures,
+    qualityWarnings: concentrationClassification.qualityWarnings,
+    diagnosticRows: concentrationClassification.diagnosticRows,
+    ignoredRows: concentrationClassification.ignoredRows,
     repairDependenciesDisabled,
     ...(input.compareRepaired
       ? {

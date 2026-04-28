@@ -993,12 +993,35 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
     status: "pass" | "fail" | "partial" | "unknown";
     evidence: string[];
   }>;
+  acceptanceFailures: MesocycleExplainPlannerOnlyNoRepairConcentrationRow[];
+  qualityWarnings: MesocycleExplainPlannerOnlyNoRepairConcentrationRow[];
+  diagnosticRows: MesocycleExplainPlannerOnlyNoRepairConcentrationRow[];
+  ignoredRows: MesocycleExplainPlannerOnlyNoRepairConcentrationRow[];
   repairDependenciesDisabled: string[];
   comparisonToRepaired?: {
     repairedPasses: boolean;
     noRepairPasses: boolean;
     mainGaps: string[];
   };
+};
+
+export type MesocycleExplainPlannerOnlyNoRepairConcentrationSeverity =
+  | "acceptance_blocker"
+  | "quality_warning"
+  | "diagnostic_only"
+  | "ignored_for_acceptance";
+
+export type MesocycleExplainPlannerOnlyNoRepairConcentrationRow = {
+  severity: MesocycleExplainPlannerOnlyNoRepairConcentrationSeverity;
+  slotId: string;
+  exerciseName: string;
+  muscle: string;
+  percentageOfWeeklyStimulus: number;
+  weeklyEffectiveSets: number;
+  setCount: number;
+  producedOrIncreasedByRepair: boolean;
+  reason: string;
+  evidence: string[];
 };
 
 export type MesocycleExplainAuditPayload = {

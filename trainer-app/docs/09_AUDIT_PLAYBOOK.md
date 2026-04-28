@@ -365,6 +365,7 @@ npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner 
 - Kept as validation/reporting only: forbidden-slot checks, cap/concentration checks, duplicate checks, unresolved demand reporting, lane satisfaction, weekly muscle totals, and acceptance checks.
 - The payload reports unresolved demand and validation failures instead of fixing them. It must not update accepted mesocycles, `slotPlanSeedJson`, receipts, runtime replay, planned workouts, or performed workouts.
 - The payload and CLI also report compact planner-owned set-allocation changes plus before/after weekly total changes for the flagged no-repair pass. These fields are diagnostic readouts only and must not imply downstream repair was enabled.
+- No-repair concentration rows are severity-bucketed as `acceptanceFailures`, `qualityWarnings`, `diagnosticRows`, and `ignoredRows`. Acceptance failures are true blockers only; clean support/direct-work concentration is a non-blocking quality warning, secondary or implicit collateral is diagnostic-only, and tiny denominator artifacts such as Forearms/Core/Adductors collateral are ignored for acceptance unless a fatigue cap or explicit target policy is exceeded.
 
 Optional targeting:
 

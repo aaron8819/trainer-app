@@ -726,6 +726,8 @@ function compactV2OperatorDiagnostics(
     return (
       entry.startsWith("setPolicy:") ||
       entry.startsWith("setPolicyReason:") ||
+      entry.startsWith("setBudget:") ||
+      entry.startsWith("justification:") ||
       entry.startsWith("target_status:") ||
       lower.includes("blocked") ||
       lower.includes("hard_blocker") ||

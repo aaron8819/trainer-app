@@ -537,6 +537,8 @@ describe("artifact serialization helpers", () => {
                       ],
                       relevantDiagnostics: [
                         "setPolicy:quality_warning",
+                        "setBudget:within_planned_max",
+                        "justification:none",
                         "concentration:Hack Squat:Quads:50%",
                       ],
                     },
@@ -602,7 +604,8 @@ describe("artifact serialization helpers", () => {
       WORKOUT_AUDIT_SIZE_LIMIT_BYTES
     );
     expect(serialized).toContain("setPolicy:quality_warning");
-    expect(serialized).not.toContain("setBudget");
+    expect(serialized).toContain("setBudget:within_planned_max");
+    expect(serialized).toContain("justification:none");
   });
 
   it("compacts flagged planner-only no-repair V2 diagnostics with parseable headroom and blocker evidence", () => {
@@ -618,6 +621,8 @@ describe("artifact serialization helpers", () => {
     const repeatedDiagnostics = [
       "setPolicy:hard_blocker",
       "setPolicyReason:over_60_share",
+      "setBudget:hard_blocker",
+      "justification:none",
       "target_status:blocked",
       "classification:duplicate_continuity_policy:needs_duplicate_policy",
       "program_quality:hard_blocker:forbidden_slot_primary_solution",

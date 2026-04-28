@@ -2989,6 +2989,11 @@ type V2TargetVsNoRepairLaneDiff =
   V2TargetVsNoRepairDiff["slotDiffs"][number]["laneDiffs"][number];
 type V2SetDistributionIntentLane =
   V2SetDistributionIntent["weeks"][number]["slots"][number]["lanes"][number];
+type V2SetDistributionIntentPolicyLane = {
+  week: number;
+  phase: V2SetDistributionIntent["weeks"][number]["phase"];
+  lane: V2SetDistributionIntentLane;
+};
 type V2LaneSetPolicyStatus =
   | "in_budget"
   | "under_budget"
@@ -3368,6 +3373,54 @@ function exerciseMatchesV2LaneClass(input: {
   );
 }
 
+const V2_SET_POLICY_CLASS_TOKENS = new Set([
+  "bench",
+  "biceps",
+  "calf",
+  "curl",
+  "delt",
+  "extension",
+  "fly",
+  "hinge",
+  "press",
+  "pull",
+  "raise",
+  "row",
+  "squat",
+  "triceps",
+]);
+
+function exerciseMatchesV2LaneSetPolicyClass(input: {
+  exercise: SlotCompositionSnapshot["exercises"][number];
+  lane: V2Lane | V2Slot["lanes"][number];
+}): boolean {
+  const classified = classifyPlannerOnlyExercise({ exercise: input.exercise });
+  const aliases = v2LaneAliases(input.lane);
+  if (aliases.includes(classified.lane)) {
+    return true;
+  }
+
+  const exerciseClass = classified.exerciseClass.toLowerCase();
+  const targetClasses = input.lane.preferredExerciseClasses.map((value) =>
+    value.toLowerCase()
+  );
+  if (
+    targetClasses.some(
+      (targetClass) =>
+        targetClass.includes(exerciseClass) || exerciseClass.includes(targetClass)
+    )
+  ) {
+    return true;
+  }
+
+  return targetClasses.some((targetClass) =>
+    targetClass
+      .split("_")
+      .filter((token) => V2_SET_POLICY_CLASS_TOKENS.has(token))
+      .some((token) => exerciseClass.includes(token))
+  );
+}
+
 function exerciseSupportsV2Lane(input: {
   exercise: SlotCompositionSnapshot["exercises"][number];
   lane: V2Lane | V2Slot["lanes"][number];
@@ -3409,16 +3462,20 @@ function collectV2LaneExercises(input: {
     });
 }
 
-function getV2SetDistributionPolicyLane(input: {
+function getV2SetDistributionPolicyLanes(input: {
   intent?: V2SetDistributionIntent;
   slotId: string;
   lane: V2Lane | V2Slot["lanes"][number];
-}): V2SetDistributionIntentLane | undefined {
-  const weekOne = input.intent?.weeks.find((week) => week.week === 1) ?? input.intent?.weeks[0];
+}): V2SetDistributionIntentPolicyLane[] {
   const aliases = v2LaneAliases(input.lane);
-  return weekOne?.slots
-    .find((slot) => slot.slotId === input.slotId)
-    ?.lanes.find((lane) => aliases.includes(lane.laneId));
+  return (
+    input.intent?.weeks.flatMap((week) => {
+      const lane = week.slots
+        .find((slot) => slot.slotId === input.slotId)
+        ?.lanes.find((row) => aliases.includes(row.laneId));
+      return lane ? [{ week: week.week, phase: week.phase, lane }] : [];
+    }) ?? []
+  );
 }
 
 function shareToRatio(value: number): number {
@@ -3463,9 +3520,93 @@ function v2LanePrimaryTargetsMet(input: {
   });
 }
 
+function isLowSystemicFatigueV2Lane(
+  exercises: SlotCompositionSnapshot["exercises"]
+): boolean {
+  if (exercises.length === 0) {
+    return false;
+  }
+  return exercises.every((exercise) => {
+    const name = exercise.exerciseName.toLowerCase();
+    const patterns = exercise.movementPatterns.map((pattern) =>
+      pattern.toLowerCase()
+    );
+    return (
+      exercise.role !== "main" &&
+      !name.includes("deadlift") &&
+      !name.includes("squat") &&
+      !name.includes("good morning") &&
+      !patterns.some(
+        (pattern) =>
+          pattern.includes("hinge") ||
+          pattern.includes("squat") ||
+          pattern.includes("axial")
+      )
+    );
+  });
+}
+
+function v2SetBudgetDiagnostics(input: {
+  setCount: number;
+  budget: V2SetDistributionIntentLane["setBudget"];
+  status: V2LaneSetPolicyStatus;
+}): string[] {
+  if (input.status === "hard_blocker") {
+    return ["setBudget:hard_blocker"];
+  }
+  if (input.setCount < input.budget.min) {
+    return [];
+  }
+  if (input.setCount <= input.budget.preferred) {
+    return ["setBudget:within_preferred"];
+  }
+  if (input.setCount <= input.budget.max) {
+    return ["setBudget:above_preferred", "setBudget:within_planned_max"];
+  }
+  return input.status === "allowed_expansion"
+    ? ["setBudget:above_preferred", "setBudget:allowed_expansion"]
+    : ["setBudget:above_preferred", "setBudget:requires_justification"];
+}
+
+function v2SetBudgetJustifications(input: {
+  setCount: number;
+  budget: V2SetDistributionIntentLane["setBudget"];
+  policyLane: V2SetDistributionIntentLane;
+  policyLanes: V2SetDistributionIntentPolicyLane[];
+  targetMet: boolean;
+  lowSystemicFatigueLane: boolean;
+}): string[] {
+  if (input.setCount <= input.budget.max) {
+    return ["justification:none"];
+  }
+
+  const justifications: string[] = [];
+  const phaseExpansion = input.policyLanes.some(
+    (policy) =>
+      (policy.phase === "hard_accumulation" ||
+        policy.phase === "peak_overreach_lite") &&
+      input.setCount <= policy.lane.setBudget.max
+  );
+  if (input.policyLane.role === "anchor") {
+    justifications.push("justification:slot_anchor");
+  }
+  if (phaseExpansion) {
+    justifications.push("justification:phase_expansion");
+  }
+  if (!input.targetMet) {
+    justifications.push("justification:target_underdelivery");
+  }
+  if (input.lowSystemicFatigueLane) {
+    justifications.push("justification:low_systemic_fatigue");
+  }
+  return justifications.length > 0
+    ? uniqueSorted(justifications)
+    : ["justification:none"];
+}
+
 function evaluateV2LaneSetPolicy(input: {
   noRepair?: PlanningRealityDiagnostic;
-  policyLane?: V2SetDistributionIntentLane;
+  policyLanes: V2SetDistributionIntentPolicyLane[];
   slotId: string;
   lane: V2Lane | V2Slot["lanes"][number];
   noRepairExercises: SlotCompositionSnapshot["exercises"];
@@ -3473,7 +3614,9 @@ function evaluateV2LaneSetPolicy(input: {
   status: V2LaneSetPolicyStatus;
   diagnostics: string[];
 } {
-  if (!input.noRepair || !input.policyLane) {
+  const policyLane = input.policyLanes.find((policy) => policy.week === 1)?.lane ??
+    input.policyLanes[0]?.lane;
+  if (!input.noRepair || !policyLane) {
     return {
       status: "unknown",
       diagnostics: ["setPolicy:unknown"],
@@ -3481,7 +3624,7 @@ function evaluateV2LaneSetPolicy(input: {
   }
 
   const classMatched = input.noRepairExercises.filter((exercise) =>
-    exerciseMatchesV2LaneClass({ exercise, lane: input.lane })
+    exerciseMatchesV2LaneSetPolicyClass({ exercise, lane: input.lane })
   );
   const policyExercises = classMatched.length > 0
     ? classMatched
@@ -3494,11 +3637,21 @@ function evaluateV2LaneSetPolicy(input: {
     0,
     ...policyExercises.map((exercise) => exercise.setCount)
   );
-  const budget = input.policyLane.setBudget;
-  const cap = input.policyLane.capPolicy;
-  const concentration = input.policyLane.concentrationPolicy;
-  const allowedExpansionMax = Math.min(
+  const budget = policyLane.setBudget;
+  const cap = policyLane.capPolicy;
+  const concentration = policyLane.concentrationPolicy;
+  const phaseExpansionMax = Math.max(
     budget.max + 1,
+    ...input.policyLanes
+      .filter(
+        (policy) =>
+          policy.phase === "hard_accumulation" ||
+          policy.phase === "peak_overreach_lite"
+      )
+      .map((policy) => policy.lane.setBudget.max)
+  );
+  const allowedExpansionMax = Math.min(
+    phaseExpansionMax,
     cap.maxSetsPerExerciseWithoutJustification * Math.max(1, cap.maxDirectExercises)
   );
   const concentrationShare = maxV2LaneConcentrationShare({
@@ -3511,6 +3664,17 @@ function evaluateV2LaneSetPolicy(input: {
     noRepair: input.noRepair,
     lane: input.lane,
   });
+  const justifications = v2SetBudgetJustifications({
+    setCount,
+    budget,
+    policyLane,
+    policyLanes: input.policyLanes,
+    targetMet,
+    lowSystemicFatigueLane: isLowSystemicFatigueV2Lane(policyExercises),
+  });
+  const hasJustification = justifications.some(
+    (row) => row !== "justification:none"
+  );
   const aboveFiveSets = maxExerciseSets > 5;
   const overRoleCap =
     maxExerciseSets > cap.maxSetsPerExerciseWithoutJustification &&
@@ -3537,10 +3701,13 @@ function evaluateV2LaneSetPolicy(input: {
     reason = "underdelivery_hidden_by_concentration";
   } else if (setCount < budget.min) {
     status = "under_budget";
-  } else if (overRoleCap || setCount > allowedExpansionMax) {
+  } else if ((overRoleCap || setCount > budget.max) && !hasJustification) {
     status = "requires_justification";
-    reason = overRoleCap ? "over_role_cap" : "over_allowed_expansion";
-  } else if (setCount > budget.max) {
+    reason = overRoleCap ? "over_role_cap" : "over_planned_max";
+  } else if (setCount > allowedExpansionMax) {
+    status = "requires_justification";
+    reason = "over_allowed_expansion";
+  } else if (setCount > budget.max || overRoleCap) {
     status = "allowed_expansion";
   } else if (concentrationWarning) {
     status = "quality_warning";
@@ -3552,7 +3719,9 @@ function evaluateV2LaneSetPolicy(input: {
     diagnostics: compactV2LaneDiagnostics([
       `setPolicy:${status}`,
       ...(reason ? [`setPolicyReason:${reason}`] : []),
-    ], 2),
+      ...v2SetBudgetDiagnostics({ setCount, budget, status }),
+      ...justifications,
+    ], 6),
   };
 }
 
@@ -3706,8 +3875,15 @@ function collectV2LaneDiagnostics(input: {
 function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
   const unique = uniqueSorted(evidence.filter(Boolean));
   const setPolicy = unique.filter((row) => row.startsWith("setPolicy"));
-  const other = unique.filter((row) => !row.startsWith("setPolicy"));
-  const compact = [...setPolicy, ...other].slice(0, limit);
+  const setBudget = unique.filter((row) => row.startsWith("setBudget"));
+  const justification = unique.filter((row) => row.startsWith("justification"));
+  const other = unique.filter(
+    (row) =>
+      !row.startsWith("setPolicy") &&
+      !row.startsWith("setBudget") &&
+      !row.startsWith("justification")
+  );
+  const compact = [...setPolicy, ...setBudget, ...justification, ...other].slice(0, limit);
   return compact.length > 0 ? compact : ["none"];
 }
 
@@ -3738,7 +3914,13 @@ function inferV2GapCause(input: {
   if (joined.includes("duplicate")) {
     return "duplicate_policy_gap";
   }
-  if (joined.includes("distribution_guard") || joined.includes("set_count")) {
+  if (
+    joined.includes("distribution_guard") ||
+    joined.includes("set_count") ||
+    joined.includes("setbudget:requires_justification") ||
+    joined.includes("setpolicyreason:over_planned_max") ||
+    joined.includes("setpolicyreason:over_allowed_expansion")
+  ) {
     return "set_distribution_gap";
   }
   if (
@@ -3763,7 +3945,8 @@ function hasV2TrueHardBlockerDiagnostic(diagnostics: string[]): boolean {
     joined.includes("back_extension") ||
     joined.includes("deload_conflict") ||
     joined.includes("axial") ||
-    joined.includes("systemic") ||
+    joined.includes("excessive_systemic") ||
+    joined.includes("systemic_fatigue_risk") ||
     joined.includes("fatigue_sensitive") ||
     joined.includes("set_count_gt_5") ||
     joined.includes("compound_gt_5") ||
@@ -3954,7 +4137,7 @@ function buildV2LaneDiff(input: {
     noRepairExercises.length === 0 && repairedExercises.length > 0;
   const setPolicy = evaluateV2LaneSetPolicy({
     noRepair: input.noRepair,
-    policyLane: getV2SetDistributionPolicyLane({
+    policyLanes: getV2SetDistributionPolicyLanes({
       intent: input.v2SetDistributionIntent,
       slotId: input.slotId,
       lane: input.lane,

@@ -3273,6 +3273,193 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
   });
 
+  it("adds compact row-anchor set-budget evidence from V2 policy without using repaired projection as target", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Chest-Supported T-Bar Row",
+            isCompound: true,
+            setCount: 3,
+            primaryMuscles: ["Lats", "Upper Back"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { Lats: 3, "Upper Back": 3 },
+            percentages: { Lats: 37.5, "Upper Back": 37.5 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Lats",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 3,
+            preferredEffectiveSets: 4,
+            maxEffectiveSets: 8,
+          },
+        ],
+      }),
+      repairedPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Chest-Supported T-Bar Row",
+            isCompound: true,
+            setCount: 6,
+            primaryMuscles: ["Lats", "Upper Back"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { Lats: 6, "Upper Back": 6 },
+            percentages: { Lats: 75, "Upper Back": 75 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.slotDiffs
+        .find((slot) => slot.slotId === "upper_a")
+        ?.laneDiffs.find((lane) => lane.laneId === "row_anchor"),
+    ).toMatchObject({
+      currentStatus: "satisfied",
+      gapCause: "none",
+      migrationRecommendation: "no_action",
+      severity: "pass",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:in_budget",
+          "setBudget:within_preferred",
+          "justification:none",
+        ]),
+      },
+    });
+    expect(noRepair.v2SetDistributionIntent.guardrails).toMatchObject({
+      doesNotUseRepairedProjectionAsTarget: true,
+      doesNotUseAcceptedSeedAsTarget: true,
+    });
+  });
+
+  it("classifies row-anchor over allowed expansion as requiring justification rather than a hard blocker", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Chest-Supported T-Bar Row",
+            setCount: 3,
+            primaryMuscles: ["Lats", "Upper Back"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { Lats: 3, "Upper Back": 3 },
+            percentages: { Lats: 34, "Upper Back": 34 },
+          },
+          {
+            slotId: "upper_a",
+            exerciseName: "Seated Cable Row",
+            setCount: 3,
+            primaryMuscles: ["Lats", "Upper Back"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { Lats: 3, "Upper Back": 3 },
+            percentages: { Lats: 33, "Upper Back": 33 },
+          },
+          {
+            slotId: "upper_a",
+            exerciseName: "Machine Row",
+            setCount: 3,
+            primaryMuscles: ["Lats", "Upper Back"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { Lats: 3, "Upper Back": 3 },
+            percentages: { Lats: 33, "Upper Back": 33 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Lats",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 6,
+            preferredEffectiveSets: 8,
+            maxEffectiveSets: 12,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.slotDiffs
+        .find((slot) => slot.slotId === "upper_a")
+        ?.laneDiffs.find((lane) => lane.laneId === "row_anchor"),
+    ).toMatchObject({
+      currentStatus: "partial",
+      gapCause: "set_distribution_gap",
+      migrationRecommendation: "needs_set_budget_justification",
+      severity: "quality_warning",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:requires_justification",
+          "setPolicyReason:over_allowed_expansion",
+          "setBudget:requires_justification",
+          "justification:slot_anchor",
+        ]),
+      },
+    });
+  });
+
+  it("allows justified row-anchor overage as a warning/partial lane instead of blocking it", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Chest-Supported T-Bar Row",
+            isCompound: true,
+            setCount: 5,
+            primaryMuscles: ["Lats", "Upper Back"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { Lats: 5, "Upper Back": 5 },
+            percentages: { Lats: 50, "Upper Back": 50 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Lats",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 5,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 10,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.slotDiffs
+        .find((slot) => slot.slotId === "upper_a")
+        ?.laneDiffs.find((lane) => lane.laneId === "row_anchor"),
+    ).toMatchObject({
+      currentStatus: "partial",
+      severity: "quality_warning",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:allowed_expansion",
+          "setBudget:allowed_expansion",
+          "justification:phase_expansion",
+          "justification:slot_anchor",
+        ]),
+      },
+    });
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.slotDiffs
+        .find((slot) => slot.slotId === "upper_a")
+        ?.laneDiffs.find((lane) => lane.laneId === "row_anchor")?.currentStatus,
+    ).not.toBe("blocked");
+  });
+
   it("hard-blocks 50-60 percent primary concentration when the primary muscle is below minimum", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({

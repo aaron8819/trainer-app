@@ -41,11 +41,17 @@ import type {
   PlannerTradeoffDiagnostic,
 } from "@/lib/planner-diagnostics/types";
 import {
+  ACCESSORY_MAX_WORKING_SETS,
   buildRemainingRoleFixturesByAnchor,
+  getAdaptiveCollateralAllowance,
+  getNonAnchorOvershootTolerance,
+  hasMaterialDeficit,
+  MAIN_LIFT_MAX_WORKING_SETS,
   removeRemainingRoleFixture,
   resolveSlotAwareRoleMap,
   resolveRoleFixtureSetTarget,
   roleOrderedIds,
+  roundPlannerValue,
   type RoleFixtureBudgetDecision,
 } from "./template-session/role-budgeting";
 import {
@@ -254,14 +260,6 @@ function sortPinnedFirst(
   return [...pinned, ...unpinned];
 }
 
-// Hard cap on working sets for CORE_COMPOUND main lifts.
-// Prevents the continuity ramp from exceeding what's prescribed by resolveSetCount.
-const MAIN_LIFT_MAX_WORKING_SETS = 5;
-const ACCESSORY_MAX_WORKING_SETS = 6;
-const MIN_NON_ANCHOR_OVERSHOOT_TOLERANCE = 1.0;
-const NON_ANCHOR_OVERSHOOT_TOLERANCE_FRACTION = 0.1;
-const MAX_ADAPTIVE_COLLATERAL_ALLOWANCE_FRACTION = 0.6;
-const COLLATERAL_COUPLING_ALLOWANCE_FACTOR = 1.0;
 const CLOSURE_ACTION_SCORE_EPSILON = 1e-6;
 const CLOSURE_MIN_ACCEPTABLE_SCORE = 0;
 const CLOSURE_REDUNDANT_ACCESSORY_PENALTY_WEIGHT = 75;
@@ -282,10 +280,6 @@ function recordAssignedSessionVolume(
       (assignedEffectiveByMuscleInSession.get(muscle) ?? 0) + effectiveSets
     );
   }
-}
-
-function roundPlannerValue(value: number): number {
-  return Math.round(value * 1000) / 1000;
 }
 
 function mapStimulusVector(exercise: EngineExercise): Record<string, number> {
@@ -424,49 +418,6 @@ function reconcilePlannerExerciseDiagnosticsWithFinalSelection(params: {
     delete params.diagnostics[exerciseId];
   }
   Object.assign(params.diagnostics, rebuiltDiagnostics);
-}
-
-function getNonAnchorOvershootTolerance(weeklyTarget: number): number {
-  return Math.max(
-    MIN_NON_ANCHOR_OVERSHOOT_TOLERANCE,
-    weeklyTarget * NON_ANCHOR_OVERSHOOT_TOLERANCE_FRACTION
-  );
-}
-
-function getAdaptiveCollateralAllowance(params: {
-  anchorRemaining: number;
-  anchorContributionPerSet: number;
-  collateralContributionPerSet: number;
-  collateralWeeklyTarget: number;
-}): number {
-  const {
-    anchorRemaining,
-    anchorContributionPerSet,
-    collateralContributionPerSet,
-    collateralWeeklyTarget,
-  } = params;
-  if (
-    anchorRemaining <= 0 ||
-    anchorContributionPerSet <= 0 ||
-    collateralContributionPerSet <= 0 ||
-    collateralWeeklyTarget <= 0
-  ) {
-    return 0;
-  }
-
-  const anchorSetsRemaining = anchorRemaining / anchorContributionPerSet;
-  if (anchorSetsRemaining <= 0) {
-    return 0;
-  }
-
-  const expectedCollateralToResolveAnchor = anchorSetsRemaining * collateralContributionPerSet;
-  const adaptiveAllowance = expectedCollateralToResolveAnchor * COLLATERAL_COUPLING_ALLOWANCE_FACTOR;
-  const cappedAllowance = collateralWeeklyTarget * MAX_ADAPTIVE_COLLATERAL_ALLOWANCE_FRACTION;
-  return Math.max(0, Math.min(adaptiveAllowance, cappedAllowance));
-}
-
-function hasMaterialDeficit(remainingDeficit: number, tolerance: number): boolean {
-  return remainingDeficit > Math.max(tolerance * 1.5, tolerance + 0.5);
 }
 
 function buildClosureSoftCaps(weeklySchedule?: string[]): Partial<Record<Muscle, number>> {

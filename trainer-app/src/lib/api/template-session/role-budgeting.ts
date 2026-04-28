@@ -19,7 +19,10 @@ import type {
 import type { GenerateIntentSessionInput } from "./types";
 import type { buildSelectionObjective } from "./selection-adapter";
 
-const MAIN_LIFT_MAX_WORKING_SETS = 5;
+// Hard cap on working sets for CORE_COMPOUND main lifts.
+// Prevents the continuity ramp from exceeding what's prescribed by resolveSetCount.
+export const MAIN_LIFT_MAX_WORKING_SETS = 5;
+export const ACCESSORY_MAX_WORKING_SETS = 6;
 const MIN_NON_ANCHOR_OVERSHOOT_TOLERANCE = 1.0;
 const NON_ANCHOR_OVERSHOOT_TOLERANCE_FRACTION = 0.1;
 const MAX_ADAPTIVE_COLLATERAL_ALLOWANCE_FRACTION = 0.6;
@@ -188,7 +191,7 @@ function getEffectiveWeeklyTargetForMuscle(
   );
 }
 
-function roundPlannerValue(value: number): number {
+export function roundPlannerValue(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
 
@@ -208,7 +211,7 @@ function isWeekOneSupportFloorActive(objective: SelectionObjective): boolean {
   return objective.lifecycleWeek === 1 || objective.blockContext?.weekInMeso === 1;
 }
 
-function getNonAnchorOvershootTolerance(weeklyTarget: number): number {
+export function getNonAnchorOvershootTolerance(weeklyTarget: number): number {
   return Math.max(
     MIN_NON_ANCHOR_OVERSHOOT_TOLERANCE,
     weeklyTarget * NON_ANCHOR_OVERSHOOT_TOLERANCE_FRACTION
@@ -256,7 +259,7 @@ function getCollateralOvershootTarget(input: {
   return Math.min(weeklyTarget, VOLUME_LANDMARKS.Glutes?.mav ?? weeklyTarget);
 }
 
-function getAdaptiveCollateralAllowance(params: {
+export function getAdaptiveCollateralAllowance(params: {
   anchorRemaining: number;
   anchorContributionPerSet: number;
   collateralContributionPerSet: number;
@@ -288,7 +291,7 @@ function getAdaptiveCollateralAllowance(params: {
   return Math.max(0, Math.min(adaptiveAllowance, cappedAllowance));
 }
 
-function hasMaterialDeficit(remainingDeficit: number, tolerance: number): boolean {
+export function hasMaterialDeficit(remainingDeficit: number, tolerance: number): boolean {
   return remainingDeficit > Math.max(tolerance * 1.5, tolerance + 0.5);
 }
 

@@ -75,6 +75,14 @@ type SessionCheckInPayload = {
   notes?: string;
 };
 
+type ReadinessSubmitPayload = {
+  subjective: {
+    readiness: number;
+    motivation: number;
+    soreness: Record<string, 1 | 2>;
+  };
+};
+
 type GenerateFromTemplateCardProps = {
   templates: TemplateSummary[];
   blockPhase?: ActiveBlockPhase;
@@ -185,6 +193,18 @@ function normalizeBlockPhaseType(blockType: string | null | undefined): string {
   return blockType.toLowerCase();
 }
 
+function toReadinessSubmitPayload(payload: SessionCheckInPayload): ReadinessSubmitPayload {
+  return {
+    subjective: {
+      readiness: payload.readiness,
+      motivation: payload.readiness,
+      soreness: Object.fromEntries(
+        Object.entries(payload.painFlags).map(([key, value]) => [key, value > 0 ? 2 : 1])
+      ) as Record<string, 1 | 2>,
+    },
+  };
+}
+
 export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFromTemplateCardProps) {
   const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id ?? "");
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
@@ -272,10 +292,10 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
     setError(null);
     setSavedId(null);
 
-    const response = await fetch("/api/session-checkins", {
+    const response = await fetch("/api/readiness/submit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(toReadinessSubmitPayload(payload)),
     });
 
     if (!response.ok) {

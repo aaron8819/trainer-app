@@ -2993,6 +2993,8 @@ type V2TargetVsNoRepairLaneDiff =
   V2TargetVsNoRepairDiff["slotDiffs"][number]["laneDiffs"][number];
 type CrossWeekProjectionGate =
   MesocycleExplainPlannerOnlyNoRepair["crossWeekProjectionGate"];
+type V2DeloadProjectionDiagnostic =
+  MesocycleExplainPlannerOnlyNoRepair["v2DeloadProjectionDiagnostic"];
 type V2SetDistributionIntentLane =
   V2SetDistributionIntent["weeks"][number]["slots"][number]["lanes"][number];
 type V2SetDistributionIntentPolicyLane = {
@@ -5957,6 +5959,7 @@ function buildCrossWeekAccumulationStatus(input: {
 function buildCrossWeekDeloadStatus(input: {
   noRepair?: PlanningRealityDiagnostic;
   v2MesocyclePlan: V2MesocyclePlan;
+  v2DeloadProjectionDiagnostic: V2DeloadProjectionDiagnostic;
 }): CrossWeekProjectionGate["deloadStatus"] {
   const deloadWeek = input.v2MesocyclePlan.weeklyProgressionModel.weeks.find(
     (week) => week.phase === "deload"
@@ -5973,6 +5976,11 @@ function buildCrossWeekDeloadStatus(input: {
     (week) => week.phase === "deload" || week.week === 5
   );
   const transform = input.v2MesocyclePlan.deloadTransform;
+  const diagnosticProjected =
+    input.v2DeloadProjectionDiagnostic.status === "projected_with_limitations" &&
+    input.v2DeloadProjectionDiagnostic.summary.identitiesPreservedCount > 0 &&
+    input.v2DeloadProjectionDiagnostic.summary.movementsIntroducedCount === 0 &&
+    input.v2DeloadProjectionDiagnostic.blockers.length === 0;
   const plannerOwned =
     isPlannerOwnedProjectionStatus(allocationWeek?.projectionStatus) &&
     isPlannerOwnedProjectionStatus(preselectionWeek?.projectionStatus);
@@ -6006,13 +6014,17 @@ function buildCrossWeekDeloadStatus(input: {
     ...(plannerOwned
       ? []
       : [
-          "accepted_seed_identity_set_reduction_projection_missing",
+          ...(diagnosticProjected
+            ? ["deload_projection_read_only_not_consumed"]
+            : ["accepted_seed_identity_set_reduction_projection_missing"]),
           "runtime_replay_consumption_path_missing",
           "safe_for_behavior_promotion_false",
         ]),
   ]);
   const status: CrossWeekProjectionGate["deloadStatus"]["status"] = plannerOwned
     ? "ready"
+    : diagnosticProjected
+      ? "projected_with_limitations"
     : projectionBasis === "v2_deload_transform_read_only"
       ? "diagnostic_projection_only"
       : "not_projected";
@@ -6028,6 +6040,178 @@ function buildCrossWeekDeloadStatus(input: {
   };
 }
 
+function roundPercent(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function buildV2DeloadProjectionDiagnostic(input: {
+  v2MesocyclePlan: V2MesocyclePlan;
+  v2SetDistributionIntent: V2SetDistributionIntent;
+  v2ExerciseSelectionPlanDiagnostic: MesocycleExplainPlannerOnlyNoRepair["v2ExerciseSelectionPlanDiagnostic"];
+}): V2DeloadProjectionDiagnostic {
+  const transform = input.v2MesocyclePlan.deloadTransform;
+  const deloadIntentWeek = input.v2SetDistributionIntent.weeks.find(
+    (week) => week.phase === "deload" || week.week === 5
+  );
+  const week1IdentitySlots =
+    input.v2ExerciseSelectionPlanDiagnostic.weeks.find((week) => week.week === 1)
+      ?.slots ?? [];
+  const week1IdentityByLane = new Map(
+    week1IdentitySlots.flatMap((slot) =>
+      slot.lanes.map((lane) => [`${slot.slotId}:${lane.laneId}`, lane] as const)
+    )
+  );
+  const missingInputs = uniqueSorted([
+    ...(!deloadIntentWeek ? ["v2SetDistributionIntent:week_5:missing"] : []),
+    ...(week1IdentitySlots.length === 0
+      ? ["v2ExerciseSelectionPlanDiagnostic:week_1:missing"]
+      : []),
+  ]);
+  const blockers = uniqueSorted([
+    ...(!transform.preserveExerciseIdentities
+      ? ["v2_deload_transform:preserveExerciseIdentities:false"]
+      : []),
+    ...(transform.introduceNewMovements
+      ? ["v2_deload_transform:introduceNewMovements:true"]
+      : []),
+    ...(deloadIntentWeek ? [] : ["v2_deload_set_distribution_intent_missing"]),
+  ]);
+
+  const slots =
+    deloadIntentWeek?.slots.map((slot) => ({
+      slotId: slot.slotId,
+      lanes: slot.lanes.map((lane) => {
+        const identityLane = week1IdentityByLane.get(
+          `${slot.slotId}:${lane.laneId}`
+        );
+        const selected = identityLane?.selectedIdentity;
+        const laneLimitations = uniqueSorted([
+          "diagnostic_only_not_runtime_consumed",
+          "no_new_movement_substitution_attempted",
+          ...(identityLane?.limitations ?? []),
+          ...(selected ? [] : ["week_1_selected_identity_missing"]),
+        ]);
+        if (!selected || selected.setCount <= 0) {
+          return {
+            laneId: lane.laneId,
+            status: "not_evaluated" as const,
+            limitations: laneLimitations,
+            exercises: [],
+          };
+        }
+
+        const week1Sets = selected.setCount;
+        const deloadProjectedSets = Math.max(1, Math.floor(week1Sets * 0.5));
+        const setReductionPercent = roundPercent(
+          ((week1Sets - deloadProjectedSets) / week1Sets) * 100
+        );
+        const reductionInTargetRange =
+          setReductionPercent >= transform.targetVolumeReductionPercent.min &&
+          setReductionPercent <= transform.targetVolumeReductionPercent.max;
+        const exerciseLimitations = uniqueSorted([
+          "diagnostic_only_not_runtime_consumed",
+          "preserves_week_1_identity",
+          ...(reductionInTargetRange
+            ? []
+            : ["set_reduction_outside_40_60_integer_rounding"]),
+        ]);
+
+        return {
+          laneId: lane.laneId,
+          status: "projected_with_limitations" as const,
+          limitations: uniqueSorted([
+            ...laneLimitations,
+            ...(reductionInTargetRange
+              ? []
+              : ["set_reduction_outside_40_60_integer_rounding"]),
+          ]),
+          exercises: [
+            {
+              preservedIdentity: {
+                exerciseId: selected.exerciseId,
+                exerciseName: selected.exerciseName,
+                sourceWeek: 1 as const,
+              },
+              week1Sets,
+              deloadProjectedSets,
+              setReductionPercent,
+              targetRir: transform.targetRir,
+              introducesNewMovement: false as const,
+              status: reductionInTargetRange
+                ? ("projected" as const)
+                : ("projected_with_warning" as const),
+              limitations: exerciseLimitations,
+            },
+          ],
+        };
+      }),
+    })) ?? [];
+
+  const lanes = slots.flatMap((slot) => slot.lanes);
+  const exercises = lanes.flatMap((lane) => lane.exercises);
+  const warnings = uniqueSorted([
+    ...lanes.flatMap((lane) =>
+      lane.status === "not_evaluated"
+        ? [`${lane.laneId}:week_1_identity_not_evaluated`]
+        : []
+    ),
+    ...slots.flatMap((slot) =>
+      slot.lanes.flatMap((lane) =>
+        lane.exercises
+          .filter((exercise) => exercise.status === "projected_with_warning")
+          .map(
+            (exercise) =>
+              `${slot.slotId}:${lane.laneId}:${exercise.preservedIdentity.exerciseName}:set_reduction_outside_40_60`
+          )
+      )
+    ),
+  ]);
+  const totalWeek1Sets = exercises.reduce(
+    (sum, exercise) => sum + exercise.week1Sets,
+    0
+  );
+  const totalDeloadProjectedSets = exercises.reduce(
+    (sum, exercise) => sum + exercise.deloadProjectedSets,
+    0
+  );
+  const volumeReductionPercent =
+    totalWeek1Sets > 0
+      ? roundPercent(
+          ((totalWeek1Sets - totalDeloadProjectedSets) / totalWeek1Sets) * 100
+        )
+      : null;
+  const status: V2DeloadProjectionDiagnostic["status"] =
+    blockers.length > 0
+      ? "blocked"
+      : exercises.length > 0
+        ? "projected_with_limitations"
+        : "not_evaluated";
+
+  return {
+    version: 1,
+    source: "v2_deload_projection_diagnostic",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    status,
+    identityBasis: "week_1_selected_identities",
+    projectionBasis: "v2_deload_transform_read_only",
+    slots,
+    summary: {
+      identitiesPreservedCount: exercises.length,
+      movementsIntroducedCount: 0,
+      totalWeek1Sets,
+      totalDeloadProjectedSets,
+      volumeReductionPercent,
+      blockedLaneCount: blockers.length > 0 ? Math.max(1, lanes.length) : 0,
+      warningCount: warnings.length,
+    },
+    blockers,
+    warnings,
+    missingInputs,
+    safeForBehaviorPromotion: false,
+  };
+}
+
 function buildCrossWeekProjectionGate(input: {
   noRepair?: PlanningRealityDiagnostic;
   acceptanceClassification: NoRepairClassification;
@@ -6036,6 +6220,7 @@ function buildCrossWeekProjectionGate(input: {
   plannerOwnedAccumulationProjection: MesocycleExplainPlannerOnlyNoRepair["plannerOwnedAccumulationProjection"];
   v2TargetVsNoRepairDiff: V2TargetVsNoRepairDiff;
   v2ExerciseSelectionPlanDiagnostic: MesocycleExplainPlannerOnlyNoRepair["v2ExerciseSelectionPlanDiagnostic"];
+  v2DeloadProjectionDiagnostic: V2DeloadProjectionDiagnostic;
 }): CrossWeekProjectionGate {
   const week1Status = {
     status: normalizeWeek1GateStatus(
@@ -6058,7 +6243,13 @@ function buildCrossWeekProjectionGate(input: {
   const deloadStatus = buildCrossWeekDeloadStatus({
     noRepair: input.noRepair,
     v2MesocyclePlan: input.v2MesocyclePlan,
+    v2DeloadProjectionDiagnostic: input.v2DeloadProjectionDiagnostic,
   });
+  const deloadReadOnlyProjectionExists =
+    input.v2DeloadProjectionDiagnostic.status === "projected_with_limitations" &&
+    input.v2DeloadProjectionDiagnostic.summary.identitiesPreservedCount > 0 &&
+    input.v2DeloadProjectionDiagnostic.summary.movementsIntroducedCount === 0 &&
+    input.v2DeloadProjectionDiagnostic.blockers.length === 0;
   const plannedSetsByWeek = getV2PlannedSetsByWeek(input.v2SetDistributionIntent);
   const missingInputs = uniqueSorted([
     ...accumulationWeeksStatus.weeks.flatMap((week) =>
@@ -6080,7 +6271,9 @@ function buildCrossWeekProjectionGate(input: {
         : ["weeks_2_to_4_planner_owned_projection_missing"]),
     ...(deloadStatus.status === "ready"
       ? []
-      : ["deload_seed_runtime_projection_missing"]),
+      : deloadReadOnlyProjectionExists
+        ? ["deload_projection_read_only_not_consumed"]
+        : ["deload_seed_runtime_projection_missing"]),
     "accepted_seed_runtime_consumption_path_undefined_for_gate",
     "repair_dependency_must_not_worsen_before_promotion",
   ]);
@@ -6103,6 +6296,9 @@ function buildCrossWeekProjectionGate(input: {
       : []),
     ...(deloadStatus.projectionBasis === "v2_deload_transform_read_only"
       ? ["v2_deload_transform_not_applied_to_seed_or_runtime"]
+      : []),
+    ...(deloadReadOnlyProjectionExists
+      ? ["v2_deload_projection_is_read_only_not_runtime_consumed"]
       : []),
   ]);
   const replacementReadinessStatus: CrossWeekProjectionGate["replacementReadinessStatus"] =
@@ -6659,6 +6855,11 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         v2SetDistributionIntent,
         v2TargetVsNoRepairDiff,
       });
+    const v2DeloadProjectionDiagnostic = buildV2DeloadProjectionDiagnostic({
+      v2MesocyclePlan,
+      v2SetDistributionIntent,
+      v2ExerciseSelectionPlanDiagnostic,
+    });
     const crossWeekProjectionGate = buildCrossWeekProjectionGate({
       acceptanceClassification,
       v2MesocyclePlan,
@@ -6666,6 +6867,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       plannerOwnedAccumulationProjection,
       v2TargetVsNoRepairDiff,
       v2ExerciseSelectionPlanDiagnostic,
+      v2DeloadProjectionDiagnostic,
     });
     return {
       enabled: true,
@@ -6681,6 +6883,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       },
       acceptanceClassification,
       v2MesocyclePlan,
+      v2DeloadProjectionDiagnostic,
       crossWeekProjectionGate,
       v2TargetVsNoRepairDiff,
       v2SetDistributionIntent,
@@ -6796,6 +6999,11 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       duplicateContinuityJustification: noRepair.duplicateContinuityJustification,
       exerciseConcentration: noRepair.exerciseConcentration,
     });
+  const v2DeloadProjectionDiagnostic = buildV2DeloadProjectionDiagnostic({
+    v2MesocyclePlan,
+    v2SetDistributionIntent,
+    v2ExerciseSelectionPlanDiagnostic,
+  });
   const crossWeekProjectionGate = buildCrossWeekProjectionGate({
     noRepair,
     acceptanceClassification,
@@ -6804,6 +7012,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     plannerOwnedAccumulationProjection,
     v2TargetVsNoRepairDiff,
     v2ExerciseSelectionPlanDiagnostic,
+    v2DeloadProjectionDiagnostic,
   });
 
   return {
@@ -6821,6 +7030,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     acceptanceClassification,
     crossWeekProjectionGate,
     v2MesocyclePlan,
+    v2DeloadProjectionDiagnostic,
     v2TargetVsNoRepairDiff,
     v2SetDistributionIntent,
     plannerOwnedAccumulationProjection,

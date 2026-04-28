@@ -82,6 +82,7 @@ export const V2_PLANNER_NO_REPAIR_DEBUG_CONTAINS = [
   "summary",
   "acceptanceClassification",
   "crossWeekProjectionGate",
+  "v2DeloadProjectionDiagnostic",
   "v2MesocyclePlan",
   "v2SetDistributionIntent",
   "plannerOwnedAccumulationProjection",
@@ -778,6 +779,12 @@ function compactPlannerOnlyNoRepair(
   const v2ExerciseSelectionSummary = asRecord(
     v2ExerciseSelectionPlanDiagnostic?.summary
   );
+  const v2DeloadProjectionDiagnostic = asRecord(
+    noRepair.v2DeloadProjectionDiagnostic
+  );
+  const v2DeloadProjectionSummary = asRecord(
+    v2DeloadProjectionDiagnostic?.summary
+  );
   const validationRules = asRecordArray(v2Plan?.validationRules);
   const migrationScoreboard = asRecord(
     acceptanceClassification?.migrationScoreboard
@@ -860,6 +867,21 @@ function compactPlannerOnlyNoRepair(
           v2ExerciseSelectionPlanDiagnostic?.missingInputs
         )
           ? v2ExerciseSelectionPlanDiagnostic.missingInputs.length
+          : 0,
+      },
+      deloadProjectionDiagnostic: {
+        status: v2DeloadProjectionDiagnostic?.status ?? "not_evaluated",
+        summary: v2DeloadProjectionSummary ?? {},
+        blockerCount: Array.isArray(v2DeloadProjectionDiagnostic?.blockers)
+          ? v2DeloadProjectionDiagnostic.blockers.length
+          : 0,
+        warningCount: Array.isArray(v2DeloadProjectionDiagnostic?.warnings)
+          ? v2DeloadProjectionDiagnostic.warnings.length
+          : 0,
+        missingInputCount: Array.isArray(
+          v2DeloadProjectionDiagnostic?.missingInputs
+        )
+          ? v2DeloadProjectionDiagnostic.missingInputs.length
           : 0,
       },
       migrationScoreboard: migrationScoreboard ?? {},

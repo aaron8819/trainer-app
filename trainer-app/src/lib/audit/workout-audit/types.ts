@@ -1068,6 +1068,54 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
     };
     safeToPromoteBehavior: false;
   };
+  v2DeloadProjectionDiagnostic: {
+    version: 1;
+    source: "v2_deload_projection_diagnostic";
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    status: "not_evaluated" | "projected_with_limitations" | "blocked";
+    identityBasis: "week_1_selected_identities";
+    projectionBasis: "v2_deload_transform_read_only";
+    slots: Array<{
+      slotId: string;
+      lanes: Array<{
+        laneId: string;
+        status: "not_evaluated" | "projected_with_limitations" | "blocked";
+        limitations: string[];
+        exercises: Array<{
+          preservedIdentity: {
+            exerciseId: string | null;
+            exerciseName: string;
+            sourceWeek: 1;
+          };
+          week1Sets: number;
+          deloadProjectedSets: number;
+          setReductionPercent: number;
+          targetRir: string;
+          introducesNewMovement: false;
+          status:
+            | "projected"
+            | "projected_with_warning"
+            | "not_evaluated"
+            | "blocked";
+          limitations: string[];
+        }>;
+      }>;
+    }>;
+    summary: {
+      identitiesPreservedCount: number;
+      movementsIntroducedCount: number;
+      totalWeek1Sets: number;
+      totalDeloadProjectedSets: number;
+      volumeReductionPercent: number | null;
+      blockedLaneCount: number;
+      warningCount: number;
+    };
+    blockers: string[];
+    warnings: string[];
+    missingInputs: string[];
+    safeForBehaviorPromotion: false;
+  };
   v2MesocyclePlan: {
     version: 1;
     source: "v2_planner_no_repair_experimental";
@@ -1320,6 +1368,7 @@ export type MesocycleExplainPlannerOnlyNoRepairDebugArtifact = {
     | "summary"
     | "acceptanceClassification"
     | "crossWeekProjectionGate"
+    | "v2DeloadProjectionDiagnostic"
     | "v2MesocyclePlan"
     | "v2SetDistributionIntent"
     | "plannerOwnedAccumulationProjection"

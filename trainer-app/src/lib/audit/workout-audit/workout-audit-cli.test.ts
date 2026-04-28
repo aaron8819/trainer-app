@@ -2962,6 +2962,29 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
             },
             plannerOwnedAccumulationProjection:
               makePlannerOwnedAccumulationProjection(),
+            v2DeloadProjectionDiagnostic: {
+              version: 1,
+              source: "v2_deload_projection_diagnostic",
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              status: "projected_with_limitations",
+              identityBasis: "week_1_selected_identities",
+              projectionBasis: "v2_deload_transform_read_only",
+              slots: [],
+              summary: {
+                identitiesPreservedCount: 1,
+                movementsIntroducedCount: 0,
+                totalWeek1Sets: 4,
+                totalDeloadProjectedSets: 2,
+                volumeReductionPercent: 50,
+                blockedLaneCount: 0,
+                warningCount: 0,
+              },
+              blockers: [],
+              warnings: [],
+              missingInputs: [],
+              safeForBehaviorPromotion: false,
+            },
             v2ExerciseSelectionPlanDiagnostic:
               makeV2ExerciseSelectionPlanDiagnostic(),
             slotPlans: [

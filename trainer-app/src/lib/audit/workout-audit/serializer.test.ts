@@ -140,6 +140,62 @@ function makeV2ExerciseSelectionPlanDiagnostic() {
   };
 }
 
+function makeV2DeloadProjectionDiagnostic() {
+  return {
+    version: 1 as const,
+    source: "v2_deload_projection_diagnostic" as const,
+    readOnly: true as const,
+    affectsScoringOrGeneration: false as const,
+    status: "projected_with_limitations" as const,
+    identityBasis: "week_1_selected_identities" as const,
+    projectionBasis: "v2_deload_transform_read_only" as const,
+    slots: [
+      {
+        slotId: "upper_a",
+        lanes: [
+          {
+            laneId: "chest_anchor",
+            status: "projected_with_limitations" as const,
+            limitations: ["diagnostic_only_not_runtime_consumed"],
+            exercises: [
+              {
+                preservedIdentity: {
+                  exerciseId: "bench",
+                  exerciseName: "Bench Press",
+                  sourceWeek: 1 as const,
+                },
+                week1Sets: 4,
+                deloadProjectedSets: 2,
+                setReductionPercent: 50,
+                targetRir: "4-5",
+                introducesNewMovement: false as const,
+                status: "projected" as const,
+                limitations: [
+                  "diagnostic_only_not_runtime_consumed",
+                  "preserves_week_1_identity",
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    summary: {
+      identitiesPreservedCount: 1,
+      movementsIntroducedCount: 0,
+      totalWeek1Sets: 4,
+      totalDeloadProjectedSets: 2,
+      volumeReductionPercent: 50,
+      blockedLaneCount: 0,
+      warningCount: 0,
+    },
+    blockers: [],
+    warnings: [],
+    missingInputs: [],
+    safeForBehaviorPromotion: false as const,
+  };
+}
+
 describe("buildWorkoutAuditArtifact", () => {
   it("keeps identity fields in live mode", () => {
     const artifact = buildWorkoutAuditArtifact(
@@ -1298,6 +1354,19 @@ describe("buildWorkoutAuditArtifact", () => {
       identityBasis: "week_1_selected_identities",
       safeForBehaviorPromotion: false,
     });
+    expect(fullNoRepair?.v2DeloadProjectionDiagnostic).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "projected_with_limitations",
+      identityBasis: "week_1_selected_identities",
+      projectionBasis: "v2_deload_transform_read_only",
+      summary: {
+        identitiesPreservedCount: 1,
+        movementsIntroducedCount: 0,
+        volumeReductionPercent: 50,
+      },
+      safeForBehaviorPromotion: false,
+    });
     expect(fullNoRepair?.v2TargetVsNoRepairDiff).toBeTruthy();
     expect(fullNoRepair?.crossWeekProjectionGate.accumulationWeeksStatus.weeks).toHaveLength(3);
     expect(serializedNoRepair).toMatchObject({
@@ -1315,6 +1384,16 @@ describe("buildWorkoutAuditArtifact", () => {
             preservedIdentityCount: 0,
             missingCandidateCount: 1,
           }),
+        },
+        deloadProjectionDiagnostic: {
+          status: "projected_with_limitations",
+          summary: expect.objectContaining({
+            identitiesPreservedCount: 1,
+            movementsIntroducedCount: 0,
+            volumeReductionPercent: 50,
+          }),
+          blockerCount: 0,
+          warningCount: 0,
         },
       },
       debugArtifact: {
@@ -1342,6 +1421,7 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(serializedNoRepair).not.toHaveProperty("v2SetDistributionIntent");
     expect(serializedNoRepair).not.toHaveProperty("plannerOwnedAccumulationProjection");
     expect(serializedNoRepair).not.toHaveProperty("v2ExerciseSelectionPlanDiagnostic");
+    expect(serializedNoRepair).not.toHaveProperty("v2DeloadProjectionDiagnostic");
     expect(serializedNoRepair).not.toHaveProperty("v2TargetVsNoRepairDiff");
     expect(
       (serializedNoRepair.crossWeekProjectionGate as Record<string, unknown>)
@@ -1504,6 +1584,36 @@ describe("buildWorkoutAuditArtifact", () => {
                       identityStatus: "missing_candidate",
                       inventoryStatus: "not_evaluated",
                       cleanAlternatives: [],
+                    }),
+                  ]),
+                }),
+              ]),
+            }),
+          ]),
+        }),
+        v2DeloadProjectionDiagnostic: expect.objectContaining({
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          identityBasis: "week_1_selected_identities",
+          projectionBasis: "v2_deload_transform_read_only",
+          status: "projected_with_limitations",
+          slots: expect.arrayContaining([
+            expect.objectContaining({
+              slotId: "upper_a",
+              lanes: expect.arrayContaining([
+                expect.objectContaining({
+                  laneId: "chest_anchor",
+                  exercises: expect.arrayContaining([
+                    expect.objectContaining({
+                      preservedIdentity: expect.objectContaining({
+                        exerciseName: "Bench Press",
+                        sourceWeek: 1,
+                      }),
+                      week1Sets: 4,
+                      deloadProjectedSets: 2,
+                      setReductionPercent: 50,
+                      targetRir: "4-5",
+                      introducesNewMovement: false,
                     }),
                   ]),
                 }),
@@ -1854,6 +1964,7 @@ function makeMesocycleExplainNoRepairPayload() {
         },
       },
       plannerOwnedAccumulationProjection: makePlannerOwnedAccumulationProjection(),
+      v2DeloadProjectionDiagnostic: makeV2DeloadProjectionDiagnostic(),
       v2ExerciseSelectionPlanDiagnostic: makeV2ExerciseSelectionPlanDiagnostic(),
       slotPlans: [
         {

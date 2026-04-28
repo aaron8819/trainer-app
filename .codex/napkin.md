@@ -9,6 +9,7 @@
 | 2026-04-28 | self | In a V2 selection diagnostic, initially allowed same-muscle fallback to assign a Week 1 exercise to a lane whose existing lane evidence had no selected exercise. | Preserve identities only from explicit lane evidence; use inventory evidence for alternatives and mark missing generic inventory as not evaluated. |
 | 2026-04-28 | self | V2 `ExerciseSelectionPlanDiagnostic` can re-harden concentration artifacts already tier-downgraded by `v2TargetVsNoRepairDiff` / acceptance classification. | Reuse the tier-aware no-repair concentration classification for readout status; raw `exerciseConcentration` flags alone are too broad for blocker status. |
 | 2026-04-28 | self | The V2 diagnostic also treated `squat_compound` / `squat_or_quad_support` as class mismatches against lower quad-support planned classes, inflating readout blockers and class mismatch counts. | Keep class aliases diagnostic-only and satisfy lower quad-support planned classes through the diagnostic matcher without touching selection or generation. |
+| 2026-04-28 | self | Adding a new planner-only sidecar diagnostic requires updates in three places: in-memory type/builders, compact main-artifact summary, and explicit debug sidecar payload. | For future V2 diagnostic fields, test all three surfaces in the same focused loop before running the live audit. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

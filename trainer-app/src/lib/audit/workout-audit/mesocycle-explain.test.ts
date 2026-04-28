@@ -6703,7 +6703,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
 
     expect(noRepair.crossWeekProjectionGate.deloadStatus).toMatchObject({
-      status: "diagnostic_projection_only",
+      status: "projected_with_limitations",
       projectionBasis: "v2_deload_transform_read_only",
       preserveIdentities: true,
       targetVolumeReductionPercent: { min: 40, max: 60 },
@@ -6715,16 +6715,66 @@ describe("buildMesocycleExplainAuditPayload", () => {
         "weeklyDemandCurve:week_5:not_projected_missing_policy",
         "slotDemandAllocationByWeek:week_5:not_allocated_missing_deload_policy",
         "preselectionDistributionPolicyByWeek:week_5:not_projected_missing_deload_policy",
-        "accepted_seed_identity_set_reduction_projection_missing",
+        "deload_projection_read_only_not_consumed",
         "runtime_replay_consumption_path_missing",
       ]),
     });
+    const deloadExercises = noRepair.v2DeloadProjectionDiagnostic.slots.flatMap(
+      (slot) => slot.lanes.flatMap((lane) => lane.exercises),
+    );
+    expect(noRepair.v2DeloadProjectionDiagnostic).toMatchObject({
+      version: 1,
+      source: "v2_deload_projection_diagnostic",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "projected_with_limitations",
+      identityBasis: "week_1_selected_identities",
+      projectionBasis: "v2_deload_transform_read_only",
+      summary: {
+        identitiesPreservedCount: expect.any(Number),
+        movementsIntroducedCount: 0,
+        totalWeek1Sets: expect.any(Number),
+        totalDeloadProjectedSets: expect.any(Number),
+        volumeReductionPercent: expect.any(Number),
+        blockedLaneCount: 0,
+        warningCount: expect.any(Number),
+      },
+      safeForBehaviorPromotion: false,
+    });
+    expect(
+      noRepair.v2DeloadProjectionDiagnostic.summary.identitiesPreservedCount,
+    ).toBeGreaterThan(0);
+    expect(deloadExercises).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          preservedIdentity: expect.objectContaining({
+            exerciseName: "Cable Rear Delt Fly",
+            sourceWeek: 1,
+          }),
+          week1Sets: 3,
+          deloadProjectedSets: 1,
+          setReductionPercent: 66.7,
+          targetRir: "4-5",
+          introducesNewMovement: false,
+          status: "projected_with_warning",
+          limitations: expect.arrayContaining([
+            "set_reduction_outside_40_60_integer_rounding",
+          ]),
+        }),
+      ]),
+    );
+    expect(deloadExercises.every((exercise) => !exercise.introducesNewMovement)).toBe(
+      true,
+    );
     expect(noRepair.crossWeekProjectionGate.deloadSummary).toMatchObject({
       preserveExerciseIdentities: true,
       introducesNewMovements: false,
       projectionBasis: "v2_deload_transform_read_only",
     });
     expect(noRepair.crossWeekProjectionGate.blockers).toEqual(
+      expect.arrayContaining(["deload_projection_read_only_not_consumed"]),
+    );
+    expect(noRepair.crossWeekProjectionGate.blockers).not.toEqual(
       expect.arrayContaining(["deload_seed_runtime_projection_missing"]),
     );
     expect(noRepair.crossWeekProjectionGate.replacementReadinessStatus).toBe(

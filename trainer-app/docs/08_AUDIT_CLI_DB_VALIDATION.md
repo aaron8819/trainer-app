@@ -85,6 +85,7 @@ npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner 
 - The main artifact links to the sidecar through `mesocycleExplain.plannerOnlyNoRepair.debugArtifact`; the sidecar links back to the parent artifact through `parent.fileName` and `parent.relativePath`.
 - The sidecar contains the full `summary`, `acceptanceClassification`, `crossWeekProjectionGate`, `v2MesocyclePlan`, `v2SetDistributionIntent`, `plannerOwnedAccumulationProjection`, `v2ExerciseSelectionPlanDiagnostic`, `v2DeloadProjectionDiagnostic`, `v2TargetVsNoRepairDiff`, slot plans, weekly totals, allocation changes, acceptance checks/failures, repaired comparison, lane evidence, diagnostic catalogs, and classification details. Both main and sidecar remain read-only and `affectsScoringOrGeneration=false`.
 - It must not write accepted seeds, `slotPlanSeedJson`, receipts, planned workouts, runtime replay data, or performed workouts.
+- `--operator-debug` also prints CLI-only `[workout-audit:timing]` spans for preflight, context build, audit generation, serialization, writes, summary formatting, total measured work, and teardown. These lines are not written into the JSON artifacts. The audit CLI explicitly closes its Prisma adapter pool at process end so the command does not wait for the Postgres pool idle timeout.
 
 Projected current week volume:
 

@@ -240,6 +240,136 @@ type PlannerOnlyDryRunSummaryArtifact = {
 const PLANNING_REALITY_SIZE_BUDGET_APPROACH_RATIO = 0.9;
 const PLANNING_REALITY_SIZE_BUDGET_SECTION_LIMIT = 8;
 
+type AuditCliTimingSpan =
+  | "argument_parsing"
+  | "preflight"
+  | "owner_context_resolution"
+  | "context_build"
+  | "audit_generation"
+  | "artifact_serialization"
+  | "artifact_write"
+  | "sidecar_write"
+  | "cli_summary_formatting"
+  | "total_measured_work"
+  | "teardown";
+
+type AuditCliTimingRecord = {
+  span: AuditCliTimingSpan;
+  ms: number;
+};
+
+type AuditCliTiming = {
+  start(span: AuditCliTimingSpan): () => void;
+  record(span: AuditCliTimingSpan, ms: number): void;
+  records(): AuditCliTimingRecord[];
+};
+
+type AuditCliTeardown = () => Promise<void>;
+
+let activeAuditCliTeardown: AuditCliTeardown | null = null;
+let shouldPrintTimingReadout = false;
+
+const AUDIT_CLI_TIMING_LABELS: Record<AuditCliTimingSpan, string> = {
+  argument_parsing: "argument_parsing_preflight",
+  preflight: "preflight",
+  owner_context_resolution: "owner_context_resolution",
+  context_build: "context_build",
+  audit_generation: "audit_generation",
+  artifact_serialization: "artifact_serialization",
+  artifact_write: "artifact_write",
+  sidecar_write: "sidecar_write",
+  cli_summary_formatting: "cli_summary_formatting",
+  total_measured_work: "total_measured_work",
+  teardown: "teardown",
+};
+
+export function shouldPrintAuditTimingReadout(args: Record<string, unknown>): boolean {
+  return args["operator-debug"] === true || args.debug === true;
+}
+
+export function createAuditCliTiming(input?: {
+  now?: () => number;
+}): AuditCliTiming {
+  const now = input?.now ?? (() => performance.now());
+  const timings: AuditCliTimingRecord[] = [];
+
+  return {
+    start(span) {
+      const startedAt = now();
+      return () => {
+        timings.push({ span, ms: Math.max(0, now() - startedAt) });
+      };
+    },
+    record(span, ms) {
+      timings.push({ span, ms: Math.max(0, ms) });
+    },
+    records() {
+      return [...timings];
+    },
+  };
+}
+
+export function buildAuditTimingSummaryLines(input: {
+  enabled: boolean;
+  records: AuditCliTimingRecord[];
+}): string[] | null {
+  if (!input.enabled) {
+    return null;
+  }
+
+  return input.records.map((record) => {
+    const label = AUDIT_CLI_TIMING_LABELS[record.span];
+    return `[workout-audit:timing] ${label}_ms=${record.ms.toFixed(1)}`;
+  });
+}
+
+export async function runAuditCliWithTeardown(input: {
+  run: () => Promise<void>;
+  teardown: () => Promise<void>;
+  timing: AuditCliTiming;
+  printTiming: () => boolean;
+  logTimingLine?: (line: string) => void;
+  logTeardownError?: (message: string) => void;
+}): Promise<void> {
+  let originalError: unknown;
+  let teardownError: unknown;
+
+  try {
+    await input.run();
+  } catch (error) {
+    originalError = error;
+  } finally {
+    const endTeardown = input.timing.start("teardown");
+    try {
+      await input.teardown();
+    } catch (error) {
+      teardownError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      input.logTeardownError?.(`[workout-audit] teardown failed: ${message}`);
+    } finally {
+      endTeardown();
+    }
+
+    const timingLines = buildAuditTimingSummaryLines({
+      enabled: input.printTiming(),
+      records: input.timing.records(),
+    });
+    if (timingLines) {
+      const logTimingLine = input.logTimingLine ?? console.log;
+      for (const line of timingLines) {
+        logTimingLine(line);
+      }
+    }
+  }
+
+  if (originalError) {
+    throw originalError;
+  }
+  if (teardownError) {
+    throw teardownError;
+  }
+}
+
 function asArray<T>(value: readonly T[] | null | undefined): T[] {
   return Array.isArray(value) ? [...value] : [];
 }
@@ -2146,102 +2276,159 @@ export function buildWeeklyRetroOperatorSummary(input: {
   return lines;
 }
 
-async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-  const shouldApplyBoundedReseed = args["apply-bounded-reseed"] === true;
-  const shouldAcceptSlotPlanUpgrade = args["accept-slot-plan-upgrade"] === true;
-  const shouldRunPlannerOnlyDryRun = args["planner-only-dry-run"] === true;
-  const shouldRunPlannerOnlyNoRepair = args["planner-only-no-repair"] === true;
-  const shouldWriteV2DebugArtifact = args["v2-debug-artifact"] === true;
-  const shouldCompareRepaired = args["compare-repaired"] === true;
-  const requestedMode =
-    (args.mode as WorkoutAuditRequest["mode"] | undefined) ?? "future-week";
-  if (shouldRunPlannerOnlyDryRun && !shouldCompareRepaired) {
-    throw new Error("--planner-only-dry-run currently requires --compare-repaired");
-  }
-  if (shouldWriteV2DebugArtifact && requestedMode !== "mesocycle-explain") {
-    throw new Error("--v2-debug-artifact requires --mode mesocycle-explain");
-  }
-  if (shouldWriteV2DebugArtifact && !shouldRunPlannerOnlyNoRepair) {
-    throw new Error("--v2-debug-artifact requires --planner-only-no-repair");
-  }
-  const env = loadAuditEnv(typeof args["env-file"] === "string" ? args["env-file"] : undefined);
-  const normalizedIntent = normalizeAuditIntentArg(
-    typeof args.intent === "string" ? args.intent : undefined
-  );
+async function main(input?: {
+  argv?: string[];
+  timing?: AuditCliTiming;
+}): Promise<void> {
+  const timing = input?.timing ?? createAuditCliTiming();
+  const endTotal = timing.start("total_measured_work");
+  activeAuditCliTeardown = null;
+  shouldPrintTimingReadout = false;
 
-  const [{ resolveWorkoutAuditIdentity, buildWorkoutAuditContext }, { prisma }, generationRunner, serializer] =
+  try {
+  const endArgumentParsing = timing.start("argument_parsing");
+  let args!: ReturnType<typeof parseArgs>;
+  let shouldApplyBoundedReseed!: boolean;
+  let shouldAcceptSlotPlanUpgrade!: boolean;
+  let shouldRunPlannerOnlyDryRun!: boolean;
+  let shouldRunPlannerOnlyNoRepair!: boolean;
+  let shouldWriteV2DebugArtifact!: boolean;
+  let shouldCompareRepaired!: boolean;
+  let requestedMode!: WorkoutAuditRequest["mode"];
+  let env!: ReturnType<typeof loadAuditEnv>;
+  let normalizedIntent: SessionIntent | undefined;
+  try {
+    args = parseArgs(input?.argv ?? process.argv.slice(2));
+    shouldPrintTimingReadout = shouldPrintAuditTimingReadout(args);
+    shouldApplyBoundedReseed = args["apply-bounded-reseed"] === true;
+    shouldAcceptSlotPlanUpgrade = args["accept-slot-plan-upgrade"] === true;
+    shouldRunPlannerOnlyDryRun = args["planner-only-dry-run"] === true;
+    shouldRunPlannerOnlyNoRepair = args["planner-only-no-repair"] === true;
+    shouldWriteV2DebugArtifact = args["v2-debug-artifact"] === true;
+    shouldCompareRepaired = args["compare-repaired"] === true;
+    requestedMode =
+      (args.mode as WorkoutAuditRequest["mode"] | undefined) ?? "future-week";
+    if (shouldRunPlannerOnlyDryRun && !shouldCompareRepaired) {
+      throw new Error("--planner-only-dry-run currently requires --compare-repaired");
+    }
+    if (shouldWriteV2DebugArtifact && requestedMode !== "mesocycle-explain") {
+      throw new Error("--v2-debug-artifact requires --mode mesocycle-explain");
+    }
+    if (shouldWriteV2DebugArtifact && !shouldRunPlannerOnlyNoRepair) {
+      throw new Error("--v2-debug-artifact requires --planner-only-no-repair");
+    }
+    env = loadAuditEnv(typeof args["env-file"] === "string" ? args["env-file"] : undefined);
+    normalizedIntent = normalizeAuditIntentArg(
+      typeof args.intent === "string" ? args.intent : undefined
+    );
+  } finally {
+    endArgumentParsing();
+  }
+
+  const [
+    { resolveWorkoutAuditIdentity, buildWorkoutAuditContext },
+    { prisma, closePrismaResourcesForAuditCli },
+    generationRunner,
+    serializer,
+  ] =
     await Promise.all([
       import("@/lib/audit/workout-audit/context-builder"),
       import("@/lib/db/prisma"),
       import("@/lib/audit/workout-audit/generation-runner"),
       import("@/lib/audit/workout-audit/serializer"),
     ]);
+  activeAuditCliTeardown = closePrismaResourcesForAuditCli;
 
-  const preflight = await runAuditPreflight({
-    args,
-    resolveIdentity: resolveWorkoutAuditIdentity,
-    checkDb: async () => {
-      await prisma.$queryRawUnsafe("SELECT 1");
-    },
-  });
-  preflight.envFilePath = env.envFilePath;
-  preflight.status.env_loaded = env.envLoaded;
-  printAuditPreflight("workout-audit", preflight);
-  assertAuditPreflight("workout-audit", preflight);
-  const identityRequest = buildResolvedAuditIdentityRequest(args, preflight);
+  const endPreflight = timing.start("preflight");
+  let preflight!: Awaited<ReturnType<typeof runAuditPreflight>>;
+  try {
+    preflight = await runAuditPreflight({
+      args,
+      resolveIdentity: resolveWorkoutAuditIdentity,
+      checkDb: async () => {
+        await prisma.$queryRawUnsafe("SELECT 1");
+      },
+    });
+    preflight.envFilePath = env.envFilePath;
+    preflight.status.env_loaded = env.envLoaded;
+    printAuditPreflight("workout-audit", preflight);
+    assertAuditPreflight("workout-audit", preflight);
+  } finally {
+    endPreflight();
+  }
 
-  const request: WorkoutAuditRequest = {
-    mode: requestedMode,
-    ...identityRequest,
-    intent: normalizedIntent,
-    targetMuscles:
-      typeof args["target-muscles"] === "string"
-        ? args["target-muscles"]
-            .split(",")
-            .map((entry) => entry.trim())
-            .filter((entry) => entry.length > 0)
-        : undefined,
-    week:
-      typeof args.week === "string" && Number.isFinite(Number(args.week))
-        ? Number(args.week)
-        : undefined,
-    mesocycleId: typeof args["mesocycle-id"] === "string" ? args["mesocycle-id"] : undefined,
-    sourceMesocycleId:
-      typeof args["source-mesocycle-id"] === "string"
-        ? args["source-mesocycle-id"]
-        : undefined,
-    retrospectiveMesocycleId:
-      typeof args["retrospective-mesocycle-id"] === "string"
-        ? args["retrospective-mesocycle-id"]
-        : undefined,
-    workoutId: typeof args["workout-id"] === "string" ? args["workout-id"] : undefined,
-    exerciseId: typeof args["exercise-id"] === "string" ? args["exercise-id"] : undefined,
-    projectionArtifactPath:
-      typeof args["projection-artifact"] === "string"
-        ? args["projection-artifact"]
-        : undefined,
-    plannerDiagnosticsMode: args.debug === true ? ("debug" as const) : ("standard" as const),
-    plannerOnlyDryRun: shouldRunPlannerOnlyDryRun ? true : undefined,
-    plannerOnlyNoRepair: shouldRunPlannerOnlyNoRepair ? true : undefined,
-    v2DebugArtifact: shouldWriteV2DebugArtifact ? true : undefined,
-    compareRepaired: shouldCompareRepaired ? true : undefined,
-    sanitizationLevel: args.sanitization === "pii-safe" ? ("pii-safe" as const) : ("none" as const),
-  };
-  if (shouldApplyBoundedReseed && request.mode !== "active-mesocycle-slot-reseed") {
-    throw new Error("--apply-bounded-reseed requires --mode active-mesocycle-slot-reseed");
-  }
-  if (shouldAcceptSlotPlanUpgrade && request.mode !== "active-mesocycle-slot-reseed") {
-    throw new Error("--accept-slot-plan-upgrade requires --mode active-mesocycle-slot-reseed");
-  }
-  if (shouldApplyBoundedReseed && shouldAcceptSlotPlanUpgrade) {
-    throw new Error("Use only one reseed apply flag: --apply-bounded-reseed or --accept-slot-plan-upgrade");
+  const endOwnerContextResolution = timing.start("owner_context_resolution");
+  let request!: WorkoutAuditRequest;
+  try {
+    const identityRequest = buildResolvedAuditIdentityRequest(args, preflight);
+
+    request = {
+      mode: requestedMode,
+      ...identityRequest,
+      intent: normalizedIntent,
+      targetMuscles:
+        typeof args["target-muscles"] === "string"
+          ? args["target-muscles"]
+              .split(",")
+              .map((entry) => entry.trim())
+              .filter((entry) => entry.length > 0)
+          : undefined,
+      week:
+        typeof args.week === "string" && Number.isFinite(Number(args.week))
+          ? Number(args.week)
+          : undefined,
+      mesocycleId: typeof args["mesocycle-id"] === "string" ? args["mesocycle-id"] : undefined,
+      sourceMesocycleId:
+        typeof args["source-mesocycle-id"] === "string"
+          ? args["source-mesocycle-id"]
+          : undefined,
+      retrospectiveMesocycleId:
+        typeof args["retrospective-mesocycle-id"] === "string"
+          ? args["retrospective-mesocycle-id"]
+          : undefined,
+      workoutId: typeof args["workout-id"] === "string" ? args["workout-id"] : undefined,
+      exerciseId: typeof args["exercise-id"] === "string" ? args["exercise-id"] : undefined,
+      projectionArtifactPath:
+        typeof args["projection-artifact"] === "string"
+          ? args["projection-artifact"]
+          : undefined,
+      plannerDiagnosticsMode: args.debug === true ? ("debug" as const) : ("standard" as const),
+      plannerOnlyDryRun: shouldRunPlannerOnlyDryRun ? true : undefined,
+      plannerOnlyNoRepair: shouldRunPlannerOnlyNoRepair ? true : undefined,
+      v2DebugArtifact: shouldWriteV2DebugArtifact ? true : undefined,
+      compareRepaired: shouldCompareRepaired ? true : undefined,
+      sanitizationLevel: args.sanitization === "pii-safe" ? ("pii-safe" as const) : ("none" as const),
+    };
+    if (shouldApplyBoundedReseed && request.mode !== "active-mesocycle-slot-reseed") {
+      throw new Error("--apply-bounded-reseed requires --mode active-mesocycle-slot-reseed");
+    }
+    if (shouldAcceptSlotPlanUpgrade && request.mode !== "active-mesocycle-slot-reseed") {
+      throw new Error("--accept-slot-plan-upgrade requires --mode active-mesocycle-slot-reseed");
+    }
+    if (shouldApplyBoundedReseed && shouldAcceptSlotPlanUpgrade) {
+      throw new Error("Use only one reseed apply flag: --apply-bounded-reseed or --accept-slot-plan-upgrade");
+    }
+  } finally {
+    endOwnerContextResolution();
   }
 
   const { result, warnings } = await captureAuditWarnings(
     async () => {
-      const context = await buildWorkoutAuditContext(request);
-      const run = await generationRunner.runWorkoutAuditGeneration(context);
+      const endContextBuild = timing.start("context_build");
+      let context!: Awaited<ReturnType<typeof buildWorkoutAuditContext>>;
+      try {
+        context = await buildWorkoutAuditContext(request);
+      } finally {
+        endContextBuild();
+      }
+
+      const endAuditGeneration = timing.start("audit_generation");
+      let run!: Awaited<ReturnType<typeof generationRunner.runWorkoutAuditGeneration>>;
+      try {
+        run = await generationRunner.runWorkoutAuditGeneration(context);
+      } finally {
+        endAuditGeneration();
+      }
       return { context, run };
     },
     { debug: args.debug === true }
@@ -2255,25 +2442,43 @@ async function main(): Promise<void> {
   const relativePath = ["artifacts", "audits", fileName].join("/");
   const v2DebugFileName = `${timestamp}-${request.mode}${intentSlug}-v2-no-repair-debug.json`;
   const v2DebugRelativePath = ["artifacts", "audits", v2DebugFileName].join("/");
-  const output = serializer.createWorkoutAuditArtifactOutput(request, run, {
-    capturedWarnings: warnings,
-    artifactFileName: fileName,
-    artifactRelativePath: relativePath,
-    v2DebugArtifactFileName: v2DebugFileName,
-    v2DebugArtifactRelativePath: v2DebugRelativePath,
-  });
+  const endArtifactSerialization = timing.start("artifact_serialization");
+  let output!: ReturnType<typeof serializer.createWorkoutAuditArtifactOutput>;
+  try {
+    output = serializer.createWorkoutAuditArtifactOutput(request, run, {
+      capturedWarnings: warnings,
+      artifactFileName: fileName,
+      artifactRelativePath: relativePath,
+      v2DebugArtifactFileName: v2DebugFileName,
+      v2DebugArtifactRelativePath: v2DebugRelativePath,
+    });
+  } finally {
+    endArtifactSerialization();
+  }
   const { artifact, serializedArtifact, serialized, sizeBytes, v2DebugArtifact } = output;
 
   await mkdir(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, fileName);
-  await writeFile(outputPath, serialized, "utf8");
+  const endArtifactWrite = timing.start("artifact_write");
+  try {
+    await writeFile(outputPath, serialized, "utf8");
+  } finally {
+    endArtifactWrite();
+  }
   const v2DebugOutputPath = v2DebugArtifact
     ? path.join(outputDir, v2DebugArtifact.fileName)
     : null;
-  if (v2DebugArtifact && v2DebugOutputPath) {
-    await writeFile(v2DebugOutputPath, v2DebugArtifact.serialized, "utf8");
+  const endSidecarWrite = timing.start("sidecar_write");
+  try {
+    if (v2DebugArtifact && v2DebugOutputPath) {
+      await writeFile(v2DebugOutputPath, v2DebugArtifact.serialized, "utf8");
+    }
+  } finally {
+    endSidecarWrite();
   }
 
+  const endCliSummaryFormatting = timing.start("cli_summary_formatting");
+  try {
   const summary = run.historicalWeek
     ? `week=${run.historicalWeek.week} sessions=${run.historicalWeek.summary.sessionCount}`
     : run.weeklyRetro
@@ -2435,13 +2640,32 @@ async function main(): Promise<void> {
       `[workout-audit] artifact_size_exceeded size_bytes=${sizeBytes} limit_bytes=${WORKOUT_AUDIT_SIZE_LIMIT_BYTES}`
     );
   }
+  } finally {
+    endCliSummaryFormatting();
+  }
+  } finally {
+    endTotal();
+  }
 }
 
 const isMainModule =
   Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]!).href;
 
 if (isMainModule) {
-  main().catch((error) => {
+  const timing = createAuditCliTiming();
+  runAuditCliWithTeardown({
+    run: () => main({ timing }),
+    teardown: async () => {
+      if (activeAuditCliTeardown) {
+        await activeAuditCliTeardown();
+      }
+    },
+    timing,
+    printTiming: () => shouldPrintTimingReadout,
+    logTeardownError: (message) => {
+      console.error(message);
+    },
+  }).catch((error) => {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[workout-audit] ${message}`);
     process.exitCode = 1;

@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  buildAuditTimingSummaryLines,
   buildActiveMesocycleSlotReseedApplySummary,
   buildActiveMesocycleSlotReseedSummary,
   buildCurrentWeekAuditOperatorSummary,
@@ -12,7 +13,10 @@ import {
   buildV2DebugArtifactSummary,
   buildWeeklyRetroOperatorSummary,
   computePlanningRealitySizeBudget,
+  createAuditCliTiming,
   normalizeAuditIntentArg,
+  runAuditCliWithTeardown,
+  shouldPrintAuditTimingReadout,
 } from "../../../../scripts/workout-audit";
 
 function makePlannerOwnedAccumulationProjection() {
@@ -81,6 +85,68 @@ describe("normalizeAuditIntentArg", () => {
   it("fails fast with a clear error for invalid explicit intents", () => {
     expect(() => normalizeAuditIntentArg("TORSO")).toThrow(
       'Invalid --intent value "TORSO". Expected one of: push, pull, legs, upper, lower, full_body, body_part.'
+    );
+  });
+});
+
+describe("audit CLI timing and teardown", () => {
+  it("prints timing readout only for operator-debug or debug runs", () => {
+    expect(shouldPrintAuditTimingReadout({})).toBe(false);
+    expect(shouldPrintAuditTimingReadout({ "operator-debug": true })).toBe(true);
+    expect(shouldPrintAuditTimingReadout({ debug: true })).toBe(true);
+
+    expect(
+      buildAuditTimingSummaryLines({
+        enabled: false,
+        records: [{ span: "audit_generation", ms: 12.34 }],
+      })
+    ).toBeNull();
+    expect(
+      buildAuditTimingSummaryLines({
+        enabled: true,
+        records: [{ span: "audit_generation", ms: 12.34 }],
+      })
+    ).toEqual(["[workout-audit:timing] audit_generation_ms=12.3"]);
+  });
+
+  it("invokes teardown after a successful CLI run", async () => {
+    let now = 0;
+    const timing = createAuditCliTiming({ now: () => now++ });
+    const run = vi.fn().mockResolvedValue(undefined);
+    const teardown = vi.fn().mockResolvedValue(undefined);
+
+    await runAuditCliWithTeardown({
+      run,
+      teardown,
+      timing,
+      printTiming: () => false,
+    });
+
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(teardown).toHaveBeenCalledTimes(1);
+    expect(timing.records().map((record) => record.span)).toContain("teardown");
+  });
+
+  it("invokes teardown after a failed CLI run and preserves the original error", async () => {
+    const timing = createAuditCliTiming({ now: () => 0 });
+    const originalError = new Error("audit failed");
+    const teardownError = new Error("teardown failed");
+    const teardown = vi.fn().mockRejectedValue(teardownError);
+    const teardownLog = vi.fn();
+
+    await expect(
+      runAuditCliWithTeardown({
+        run: vi.fn().mockRejectedValue(originalError),
+        teardown,
+        timing,
+        printTiming: () => false,
+        logTeardownError: teardownLog,
+      })
+    ).rejects.toBe(originalError);
+
+    expect(teardown).toHaveBeenCalledTimes(1);
+    expect(teardownLog).toHaveBeenCalledWith(
+      "[workout-audit] teardown failed: teardown failed"
     );
   });
 });

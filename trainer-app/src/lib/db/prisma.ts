@@ -36,6 +36,7 @@ pool.on("error", (error) => {
   console.error("[prisma-pg-pool] unexpected error", error);
 });
 const adapter = new PrismaPg(pool);
+let poolEnded = false;
 
 export const prisma =
   globalThis.prisma ??
@@ -46,4 +47,12 @@ export const prisma =
 
 if (process.env.NODE_ENV !== "production") {
   globalThis.prisma = prisma;
+}
+
+export async function closePrismaResourcesForAuditCli(): Promise<void> {
+  await prisma.$disconnect();
+  if (!poolEnded) {
+    poolEnded = true;
+    await pool.end();
+  }
 }

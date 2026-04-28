@@ -224,6 +224,21 @@ describe("buildWorkoutAuditArtifact", () => {
     });
   });
 
+  it("keeps CLI timing readout out of serialized artifacts", () => {
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "future-week",
+        userId: "user-1",
+        ownerEmail: "owner@test.local",
+      },
+      baseRun
+    );
+    const serialized = JSON.parse(serializeWorkoutAuditArtifact(artifact));
+
+    expect(serialized).not.toHaveProperty("timing");
+    expect(JSON.stringify(serialized)).not.toContain("workout-audit:timing");
+  });
+
   it("redacts identity fields in pii-safe mode", () => {
     const artifact = buildWorkoutAuditArtifact(
       {

@@ -320,18 +320,18 @@ describe("deload-session generation", () => {
           slots: [
             {
               slotId: "push_a",
-              exercises: [{ exerciseId: "row", role: "CORE_COMPOUND" }],
+              exercises: [{ exerciseId: "row", role: "CORE_COMPOUND", setCount: 4 }],
             },
             {
               slotId: "pull_a",
               exercises: [
-                { exerciseId: "lat-pulldown", role: "CORE_COMPOUND" },
-                { exerciseId: "rear-delt-fly", role: "ACCESSORY" },
+                { exerciseId: "lat-pulldown", role: "CORE_COMPOUND", setCount: 4 },
+                { exerciseId: "rear-delt-fly", role: "ACCESSORY", setCount: 3 },
               ],
             },
             {
               slotId: "legs_a",
-              exercises: [{ exerciseId: "curl", role: "ACCESSORY" }],
+              exercises: [{ exerciseId: "curl", role: "ACCESSORY", setCount: 3 }],
             },
           ],
         },
@@ -348,6 +348,7 @@ describe("deload-session generation", () => {
     expect(result.workout.accessories.map((entry) => entry.exercise.id)).toEqual([
       "rear-delt-fly",
     ]);
+    expect(result.compositionSource).toBe("deload_seed_replay");
     expect(result.workout.mainLifts.map((entry) => entry.exercise.id)).not.toContain("row");
     expect(result.workout.accessories.map((entry) => entry.exercise.id)).not.toContain("curl");
     expect(result.trace.exercises.find((entry) => entry.exerciseId === "lat-pulldown")).toMatchObject({

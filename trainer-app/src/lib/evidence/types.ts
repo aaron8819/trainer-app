@@ -21,6 +21,18 @@ export type SessionSlotSnapshot = {
   source: "mesocycle_slot_sequence" | "legacy_weekly_schedule";
 };
 
+export type SessionCompositionSource =
+  | "persisted_slot_plan_seed"
+  | "runtime_selection"
+  | "deload_seed_replay"
+  | "legacy_fallback"
+  | "unknown";
+
+export type SessionDecisionProvenance = {
+  mesocycleId?: string | null;
+  compositionSource?: SessionCompositionSource;
+};
+
 export type DeloadDecisionMode = "none" | "scheduled" | "reactive" | "readiness";
 
 export type DeloadDecisionAppliedTo = "none" | "volume" | "load" | "both";
@@ -67,6 +79,7 @@ export type PlannerDiagnosticsMode = "standard" | "debug";
 export type SessionDecisionReceipt = {
   version: 1;
   cycleContext: CycleContextSnapshot;
+  sessionProvenance?: SessionDecisionProvenance;
   sessionSlot?: SessionSlotSnapshot;
   targetMuscles?: string[];
   lifecycleRirTarget?: LifecycleRirTarget;

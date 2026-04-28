@@ -148,6 +148,10 @@ describe("POST /api/workouts/generate-from-template", () => {
             isDeload: false,
             source: "computed",
           },
+          sessionProvenance: {
+            mesocycleId: null,
+            compositionSource: "runtime_selection",
+          },
           lifecycleVolume: {
             source: "unknown",
           },
@@ -193,6 +197,10 @@ describe("POST /api/workouts/generate-from-template", () => {
       intent: "push",
       sequenceIndex: 0,
       source: "mesocycle_slot_sequence",
+    });
+    expect(body.selectionMetadata.sessionDecisionReceipt.sessionProvenance).toEqual({
+      mesocycleId: null,
+      compositionSource: "runtime_selection",
     });
   });
 });

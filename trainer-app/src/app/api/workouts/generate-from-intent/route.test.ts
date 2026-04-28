@@ -207,6 +207,10 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
             isDeload: false,
             source: "computed",
           },
+          sessionProvenance: {
+            mesocycleId: "meso-1",
+            compositionSource: "persisted_slot_plan_seed",
+          },
           lifecycleVolume: {
             source: "unknown",
           },
@@ -264,6 +268,10 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       intent: "push",
       sequenceIndex: 0,
       source: "mesocycle_slot_sequence",
+    });
+    expect(body.selectionMetadata.sessionDecisionReceipt.sessionProvenance).toEqual({
+      mesocycleId: "meso-1",
+      compositionSource: "persisted_slot_plan_seed",
     });
   });
 

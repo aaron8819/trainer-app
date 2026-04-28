@@ -20,6 +20,7 @@ import type {
   DeloadDecision,
   SessionDecisionReceipt,
   PlannerDiagnosticsMode,
+  SessionCompositionSource,
   SessionSlotSnapshot,
 } from "@/lib/evidence/types";
 import type {
@@ -99,6 +100,7 @@ export type PreLoadSessionGenerationResult = {
 
 export type IntentSessionCompositionResult = {
   generation: PreLoadSessionGenerationResult;
+  compositionSource: SessionCompositionSource;
   filteredExercises: FilteredExerciseSummary[];
   intentionallyDroppedAccessoryRoleIds: string[];
 };

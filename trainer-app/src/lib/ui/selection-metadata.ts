@@ -978,6 +978,7 @@ export function attachCloseoutSessionMetadata(
     ...(input.weekCloseId ? { weekCloseId: input.weekCloseId } : {}),
     sessionDecisionReceipt: buildSessionDecisionReceipt({
       cycleContext: receipt.cycleContext,
+      sessionProvenance: receipt.sessionProvenance,
       targetMuscles: receipt.targetMuscles,
       lifecycleRirTarget: receipt.lifecycleRirTarget,
       lifecycleVolumeTargets: receipt.lifecycleVolume.targets,
@@ -1025,6 +1026,7 @@ export function attachSessionSlotMetadata(
     ...selectionMetadata,
     sessionDecisionReceipt: buildSessionDecisionReceipt({
       cycleContext: receipt.cycleContext,
+      sessionProvenance: receipt.sessionProvenance,
       sessionSlot,
       targetMuscles: receipt.targetMuscles,
       lifecycleRirTarget: receipt.lifecycleRirTarget,
@@ -1058,6 +1060,7 @@ export function buildCanonicalSelectionMetadata(
       sessionDecisionReceipt: priorReceipt
         ? buildSessionDecisionReceipt({
             cycleContext: priorReceipt.cycleContext,
+            sessionProvenance: priorReceipt.sessionProvenance,
             sessionSlot: priorReceipt.sessionSlot,
             targetMuscles: priorReceipt.targetMuscles,
             lifecycleRirTarget: priorReceipt.lifecycleRirTarget,

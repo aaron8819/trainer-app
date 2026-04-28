@@ -254,6 +254,7 @@ function buildCloseoutCycleContext(input: {
 
 function buildCloseoutSelectionMetadata(input: {
   cycleContext: CycleContextSnapshot;
+  mesocycleId: string;
   weekCloseId: string;
 }) {
   return attachCloseoutSessionMetadata(
@@ -261,6 +262,10 @@ function buildCloseoutSelectionMetadata(input: {
       weekCloseId: input.weekCloseId,
       sessionDecisionReceipt: buildSessionDecisionReceipt({
         cycleContext: input.cycleContext,
+        sessionProvenance: {
+          mesocycleId: input.mesocycleId,
+          compositionSource: "unknown",
+        },
         sorenessSuppressedMuscles: [],
         deloadDecision: {
           mode: "none",
@@ -845,6 +850,7 @@ export async function createCloseoutSessionForWeek(
       sessionIntent: null,
       selectionMetadata: buildCloseoutSelectionMetadata({
         cycleContext,
+        mesocycleId: activeMesocycle.id,
         weekCloseId: weekClose.id,
       }) as Prisma.InputJsonValue,
       advancesSplit: false,

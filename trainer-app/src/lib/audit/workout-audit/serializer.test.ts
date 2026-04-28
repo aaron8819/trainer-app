@@ -480,6 +480,11 @@ describe("buildWorkoutAuditArtifact", () => {
   });
 
   it("persists merged captured warnings and generation path metadata", () => {
+    const baseGenerationResult = baseRun.generationResult;
+    if (!baseGenerationResult || "error" in baseGenerationResult) {
+      throw new Error("expected base generation result");
+    }
+
     const artifact = buildWorkoutAuditArtifact(
       {
         mode: "future-week",
@@ -499,7 +504,47 @@ describe("buildWorkoutAuditArtifact", () => {
           reason: "active_mesocycle_state_active_deload",
         },
         generationResult: {
-          ...baseRun.generationResult!,
+          ...baseGenerationResult,
+          selection: {
+            ...baseGenerationResult.selection,
+            sessionDecisionReceipt: {
+              version: 1,
+              cycleContext: {
+                weekInMeso: 2,
+                weekInBlock: 2,
+                phase: "accumulation",
+                blockType: "accumulation",
+                isDeload: false,
+                source: "computed",
+              },
+              sessionProvenance: {
+                mesocycleId: "meso-1",
+                compositionSource: "persisted_slot_plan_seed",
+              },
+              lifecycleVolume: {
+                source: "unknown",
+              },
+              sorenessSuppressedMuscles: [],
+              deloadDecision: {
+                mode: "none",
+                reason: [],
+                reductionPercent: 0,
+                appliedTo: "none",
+              },
+              readiness: {
+                wasAutoregulated: false,
+                signalAgeHours: null,
+                fatigueScoreOverall: null,
+                intensityScaling: {
+                  applied: false,
+                  exerciseIds: [],
+                  scaledUpCount: 0,
+                  scaledDownCount: 0,
+                },
+              },
+              exceptions: [],
+            },
+          },
           sraWarnings: [
             {
               muscle: "Chest",
@@ -529,6 +574,14 @@ describe("buildWorkoutAuditArtifact", () => {
       generator: "generateDeloadSessionFromIntent",
       reason: "active_mesocycle_state_active_deload",
     });
+    const generation = expectSuccessfulGeneration(artifact);
+    expect(generation.selection.sessionDecisionReceipt?.sessionProvenance).toEqual({
+      mesocycleId: "meso-1",
+      compositionSource: "persisted_slot_plan_seed",
+    });
+    expect(
+      (generation.selection.sessionDecisionReceipt as Record<string, unknown>).generationPath
+    ).toBeUndefined();
     expect(artifact.warningSummary.semanticWarnings).toEqual([
       "Chest: recovery=62% last_trained_hours=36",
       "[template-session] Section/role mismatch detected for bench",

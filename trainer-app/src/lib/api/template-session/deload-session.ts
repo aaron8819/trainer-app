@@ -12,6 +12,7 @@ import {
   resolveCanonicalDeloadSetCount,
 } from "@/lib/deload/semantics";
 import type { DeloadTransformationTrace } from "@/lib/evidence/session-audit-types";
+import type { SessionCompositionSource } from "@/lib/evidence/types";
 import type { MappedGenerationContext } from "./types";
 import { resolveRequiredSeededSlotPlan } from "./slot-plan-seed";
 
@@ -100,7 +101,13 @@ export async function generateDeloadSessionFromIntentContext(
   mapped: MappedGenerationContext,
   sessionIntent: SessionIntent
 ): Promise<
-  | { workout: WorkoutPlan; selection: SelectionOutput; note: string; trace: DeloadTransformationTrace }
+  | {
+      workout: WorkoutPlan;
+      selection: SelectionOutput;
+      note: string;
+      trace: DeloadTransformationTrace;
+      compositionSource: SessionCompositionSource;
+    }
   | { error: string }
 > {
   const activeMesocycle = mapped.activeMesocycle;
@@ -168,6 +175,11 @@ export async function generateDeloadSessionFromIntentContext(
     seededSlotPlan && !("error" in seededSlotPlan)
       ? seededSlotPlan.exercises
       : null;
+  const compositionSource: SessionCompositionSource = seededSlotPlan
+    ? seededSlotPlan.usesLegacySetCountFallback
+      ? "legacy_fallback"
+      : "deload_seed_replay"
+    : "legacy_fallback";
   const seededRoleById = new Map(
     (orderedSeedExercises ?? []).map((exercise) => [exercise.exerciseId, exercise.role] as const)
   );
@@ -377,5 +389,6 @@ export async function generateDeloadSessionFromIntentContext(
     selection,
     note,
     trace,
+    compositionSource,
   };
 }

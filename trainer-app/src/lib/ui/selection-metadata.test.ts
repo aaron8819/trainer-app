@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   attachCloseoutDismissalMetadata,
   attachCloseoutSessionMetadata,
+  attachSessionSlotMetadata,
   attachSupplementalSessionMetadata,
   buildWorkoutStructureState,
   buildCanonicalSelectionMetadata,
@@ -35,6 +36,10 @@ describe("sanitizeSelectionMetadataForSave", () => {
           blockType: "accumulation",
           isDeload: false,
           source: "computed",
+        },
+        sessionProvenance: {
+          mesocycleId: "meso-1",
+          compositionSource: "runtime_selection",
         },
         lifecycleVolume: {
           source: "unknown",
@@ -84,6 +89,10 @@ describe("sanitizeSelectionMetadataForSave", () => {
       closeoutDismissedAt: "2026-04-09T12:00:00.000Z",
       sessionDecisionReceipt: expect.objectContaining({
         version: 1,
+        sessionProvenance: {
+          mesocycleId: "meso-1",
+          compositionSource: "runtime_selection",
+        },
       }),
     });
   });
@@ -118,6 +127,10 @@ describe("buildCanonicalSelectionMetadata", () => {
             blockType: "accumulation",
             isDeload: false,
             source: "computed",
+          },
+          sessionProvenance: {
+            mesocycleId: "meso-1",
+            compositionSource: "persisted_slot_plan_seed",
           },
           lifecycleVolume: {
             source: "unknown",
@@ -182,7 +195,67 @@ describe("buildCanonicalSelectionMetadata", () => {
       },
       rationale: "Scaled session from recent readiness (signal 3.0h old)",
     });
+    expect(result.sessionDecisionReceipt?.sessionProvenance).toEqual({
+      mesocycleId: "meso-1",
+      compositionSource: "persisted_slot_plan_seed",
+    });
     expect((result as Record<string, unknown>).autoregulation).toBeUndefined();
+  });
+
+  it("preserves provenance when stamping a runtime slot", () => {
+    const result = attachSessionSlotMetadata(
+      {
+        sessionDecisionReceipt: {
+          version: 1,
+          cycleContext: {
+            weekInMeso: 2,
+            weekInBlock: 2,
+            phase: "accumulation",
+            blockType: "accumulation",
+            isDeload: false,
+            source: "computed",
+          },
+          sessionProvenance: {
+            mesocycleId: "meso-1",
+            compositionSource: "persisted_slot_plan_seed",
+          },
+          lifecycleVolume: {
+            source: "unknown",
+          },
+          sorenessSuppressedMuscles: [],
+          deloadDecision: {
+            mode: "none",
+            reason: [],
+            reductionPercent: 0,
+            appliedTo: "none",
+          },
+          readiness: {
+            wasAutoregulated: false,
+            signalAgeHours: null,
+            fatigueScoreOverall: null,
+            intensityScaling: {
+              applied: false,
+              exerciseIds: [],
+              scaledUpCount: 0,
+              scaledDownCount: 0,
+            },
+          },
+          exceptions: [],
+        },
+      },
+      {
+        slotId: "upper_a",
+        intent: "upper",
+        sequenceIndex: 0,
+        source: "mesocycle_slot_sequence",
+      }
+    );
+
+    expect(result.sessionDecisionReceipt?.sessionProvenance).toEqual({
+      mesocycleId: "meso-1",
+      compositionSource: "persisted_slot_plan_seed",
+    });
+    expect(result.sessionDecisionReceipt?.sessionSlot?.slotId).toBe("upper_a");
   });
 });
 
@@ -577,6 +650,10 @@ describe("attachCloseoutSessionMetadata", () => {
             isDeload: false,
             source: "computed",
           },
+          sessionProvenance: {
+            mesocycleId: "meso-1",
+            compositionSource: "persisted_slot_plan_seed",
+          },
           sessionSlot: {
             slotId: "upper_b",
             intent: "upper",
@@ -619,6 +696,10 @@ describe("attachCloseoutSessionMetadata", () => {
     );
 
     expect(result.weekCloseId).toBe("week-close-1");
+    expect(result.sessionDecisionReceipt?.sessionProvenance).toEqual({
+      mesocycleId: "meso-1",
+      compositionSource: "persisted_slot_plan_seed",
+    });
     expect(result.sessionDecisionReceipt?.sessionSlot).toBeUndefined();
     expect(result.sessionDecisionReceipt?.exceptions).toEqual([
       {

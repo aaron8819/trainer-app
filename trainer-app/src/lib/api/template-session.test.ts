@@ -2049,7 +2049,10 @@ describe("generateSessionFromIntent", () => {
         "incline-db-press": 5,
         "lat-pulldown": 4,
       });
-      expect(result.selection.sessionDecisionReceipt).toBeDefined();
+      expect(result.selection.sessionDecisionReceipt?.sessionProvenance).toEqual({
+        mesocycleId: "meso-1",
+        compositionSource: "persisted_slot_plan_seed",
+      });
       expect(result.audit?.progressionTraces).toBeDefined();
     } finally {
       selectSpy.mockRestore();
@@ -2135,6 +2138,10 @@ describe("generateSessionFromIntent", () => {
 
       expect(selectSpy).toHaveBeenCalled();
       expect(result.selection.intentDiagnostics?.intent).toBe("body_part");
+      expect(result.selection.sessionDecisionReceipt?.sessionProvenance).toEqual({
+        mesocycleId: "meso-1",
+        compositionSource: "legacy_fallback",
+      });
     } finally {
       selectSpy.mockRestore();
     }
@@ -2158,6 +2165,10 @@ describe("generateSessionFromIntent", () => {
 
       expect(selectSpy).toHaveBeenCalled();
       expect(result.selection.intentDiagnostics?.intent).toBe("push");
+      expect(result.selection.sessionDecisionReceipt?.sessionProvenance).toEqual({
+        mesocycleId: "meso-1",
+        compositionSource: "legacy_fallback",
+      });
     } finally {
       selectSpy.mockRestore();
     }
@@ -2252,6 +2263,10 @@ describe("generateSessionFromIntent", () => {
     expect(result.selection.sessionDecisionReceipt?.deloadDecision.mode).toBe("scheduled");
     expect(result.selection.sessionDecisionReceipt?.deloadDecision.reductionPercent).toBe(50);
     expect(result.selection.sessionDecisionReceipt?.deloadDecision.appliedTo).toBe("both");
+    expect(result.selection.sessionDecisionReceipt?.sessionProvenance).toEqual({
+      mesocycleId: "meso-1",
+      compositionSource: "legacy_fallback",
+    });
   });
 
   it("applies lifecycle RIR bands to session RPE progression (week 1 -> 2 -> 4)", async () => {

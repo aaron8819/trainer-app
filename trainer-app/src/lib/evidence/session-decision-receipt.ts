@@ -6,6 +6,8 @@ import type {
   DeloadDecision,
   LifecycleRirTarget,
   PlannerDiagnosticsMode,
+  SessionCompositionSource,
+  SessionDecisionProvenance,
   SessionSlotSnapshot,
   SessionDecisionException,
   SessionDecisionReadinessScaling,
@@ -78,6 +80,34 @@ function parseSessionSlotSnapshot(value: unknown): SessionSlotSnapshot | undefin
         ? record.sequenceLength
         : undefined,
     source: record.source,
+  };
+}
+
+function parseSessionCompositionSource(value: unknown): SessionCompositionSource | undefined {
+  return value === "persisted_slot_plan_seed" ||
+    value === "runtime_selection" ||
+    value === "deload_seed_replay" ||
+    value === "legacy_fallback" ||
+    value === "unknown"
+    ? value
+    : undefined;
+}
+
+function parseSessionDecisionProvenance(value: unknown): SessionDecisionProvenance | undefined {
+  const record = toObject(value);
+  if (!record) {
+    return undefined;
+  }
+
+  const hasMesocycleId = typeof record.mesocycleId === "string" || record.mesocycleId === null;
+  const compositionSource = parseSessionCompositionSource(record.compositionSource);
+  if (!hasMesocycleId && !compositionSource) {
+    return undefined;
+  }
+
+  return {
+    ...(hasMesocycleId ? { mesocycleId: record.mesocycleId as string | null } : {}),
+    ...(compositionSource ? { compositionSource } : {}),
   };
 }
 
@@ -870,6 +900,7 @@ function buildExceptions(input: {
 
 export function buildSessionDecisionReceipt(input: {
   cycleContext: CycleContextSnapshot;
+  sessionProvenance?: SessionDecisionProvenance;
   sessionSlot?: SessionSlotSnapshot;
   targetMuscles?: string[];
   lifecycleRirTarget?: LifecycleRirTarget;
@@ -894,10 +925,12 @@ export function buildSessionDecisionReceipt(input: {
         : "lifecycle"
       : "unknown";
   const plannerDiagnosticsMode = input.plannerDiagnosticsMode ?? "standard";
+  const sessionProvenance = parseSessionDecisionProvenance(input.sessionProvenance);
 
   return {
     version: 1,
     cycleContext: input.cycleContext,
+    ...(sessionProvenance ? { sessionProvenance } : {}),
     sessionSlot: input.sessionSlot,
     targetMuscles: parseOptionalStringArray(input.targetMuscles),
     lifecycleRirTarget: input.lifecycleRirTarget,
@@ -942,10 +975,12 @@ function parsePersistedReceipt(value: unknown): SessionDecisionReceipt | undefin
   if (!cycleContext || !deloadDecision || !readinessRecord || !intensityScalingRecord) {
     return undefined;
   }
+  const sessionProvenance = parseSessionDecisionProvenance(record.sessionProvenance);
 
   return {
     version: 1,
     cycleContext,
+    ...(sessionProvenance ? { sessionProvenance } : {}),
     sessionSlot: parseSessionSlotSnapshot(record.sessionSlot),
     targetMuscles: parseOptionalStringArray(record.targetMuscles),
     lifecycleRirTarget: parseLifecycleRirTarget(record.lifecycleRirTarget),
@@ -1028,6 +1063,7 @@ export function normalizeSelectionMetadataWithReceipt(input: {
     ...record,
     sessionDecisionReceipt: buildSessionDecisionReceipt({
       cycleContext: input.cycleContext,
+      sessionProvenance: existingReceipt?.sessionProvenance,
       sessionSlot: existingReceipt?.sessionSlot,
       targetMuscles: existingReceipt?.targetMuscles,
       lifecycleRirTarget: existingReceipt?.lifecycleRirTarget,

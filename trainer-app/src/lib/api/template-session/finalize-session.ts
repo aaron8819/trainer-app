@@ -7,7 +7,12 @@ import type { FilteredExerciseSummary } from "@/lib/engine/explainability";
 import { applyLoadsWithAudit } from "@/lib/engine/apply-loads";
 import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import type { DeloadTransformationTrace } from "@/lib/evidence/session-audit-types";
-import type { PlannerDiagnosticsMode, SessionSlotSnapshot } from "@/lib/evidence/types";
+import type {
+  PlannerDiagnosticsMode,
+  SessionCompositionSource,
+  SessionDecisionProvenance,
+  SessionSlotSnapshot,
+} from "@/lib/evidence/types";
 import { buildCanonicalDeloadDecision } from "@/lib/deload/semantics";
 import type { MappedGenerationContext, SessionGenerationResult } from "./types";
 
@@ -81,6 +86,16 @@ function buildPostLoadVolumePlan(
   );
 }
 
+function buildSessionProvenance(
+  mapped: MappedGenerationContext,
+  compositionSource: SessionCompositionSource
+): SessionDecisionProvenance {
+  return {
+    mesocycleId: mapped.activeMesocycle?.id ?? null,
+    compositionSource,
+  };
+}
+
 function attachResolvedLoadsToDeloadTrace(
   trace: DeloadTransformationTrace | undefined,
   audit: ReturnType<typeof applyLoadsWithAudit>["audit"]
@@ -140,7 +155,8 @@ export function finalizePostLoadResult(
   mapped: MappedGenerationContext,
   filteredExercises?: FilteredExerciseSummary[],
   plannerDiagnosticsMode: PlannerDiagnosticsMode = "standard",
-  sessionSlot?: SessionSlotSnapshot
+  sessionSlot?: SessionSlotSnapshot,
+  compositionSource: SessionCompositionSource = "runtime_selection"
 ): SessionGenerationResult {
   const exerciseById = Object.fromEntries(
     mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise])
@@ -170,6 +186,7 @@ export function finalizePostLoadResult(
     : withLoads;
   const sessionDecisionReceipt = buildSessionDecisionReceipt({
     cycleContext: mapped.cycleContext,
+    sessionProvenance: buildSessionProvenance(mapped, compositionSource),
     sessionSlot,
     lifecycleRirTarget: mapped.lifecycleRirTarget,
     lifecycleVolumeTargets: mapped.lifecycleVolumeTargets,
@@ -207,6 +224,7 @@ export function finalizeDeloadSessionResult(input: {
   note: string;
   deloadTrace: DeloadTransformationTrace;
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;
+  compositionSource?: SessionCompositionSource;
 }): SessionGenerationResult {
   const exerciseById = Object.fromEntries(
     input.mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise])
@@ -239,6 +257,10 @@ export function finalizeDeloadSessionResult(input: {
       ...input.selection,
       sessionDecisionReceipt: buildSessionDecisionReceipt({
         cycleContext: input.mapped.cycleContext,
+        sessionProvenance: buildSessionProvenance(
+          input.mapped,
+          input.compositionSource ?? "runtime_selection"
+        ),
         lifecycleRirTarget: input.mapped.lifecycleRirTarget,
         lifecycleVolumeTargets: input.mapped.lifecycleVolumeTargets,
         sorenessSuppressedMuscles: input.mapped.sorenessSuppressedMuscles,

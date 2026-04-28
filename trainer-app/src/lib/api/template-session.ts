@@ -79,7 +79,7 @@ import {
   isExerciseAllowedForAnyCompoundLaneSatisfaction,
 } from "@/lib/planning/session-slot-profile";
 import { resolveMesocycleSlotContract } from "./mesocycle-slot-contract";
-import type { SessionSlotSnapshot } from "@/lib/evidence/types";
+import type { SessionCompositionSource, SessionSlotSnapshot } from "@/lib/evidence/types";
 
 export type { GenerateIntentSessionInput } from "./template-session/types";
 
@@ -224,9 +224,25 @@ function composeSeededIntentSessionFromMappedContext(
         targetMuscles: input.targetMuscles,
       }),
     },
+    compositionSource: seededSlotPlan.usesLegacySetCountFallback
+      ? "legacy_fallback"
+      : "persisted_slot_plan_seed",
     filteredExercises: [],
     intentionallyDroppedAccessoryRoleIds: [],
   };
+}
+
+function resolveRuntimeSelectionCompositionSource(
+  mapped: MappedGenerationContext,
+  input: GenerateIntentSessionInput
+): SessionCompositionSource {
+  if (input.intent === "body_part") {
+    return "legacy_fallback";
+  }
+  if (mapped.activeMesocycle && !mapped.activeMesocycle.slotPlanSeedJson) {
+    return "legacy_fallback";
+  }
+  return "runtime_selection";
 }
 
 function sortPinnedFirst(
@@ -2267,6 +2283,7 @@ export async function generateDeloadSessionFromTemplate(
     templateId,
     note: deload.note,
     deloadTrace: deload.trace,
+    compositionSource: deload.compositionSource,
   });
 }
 
@@ -3158,6 +3175,7 @@ export function composeIntentSessionFromMappedContext(
 
   return {
     generation: result,
+    compositionSource: resolveRuntimeSelectionCompositionSource(mapped, input),
     filteredExercises,
     intentionallyDroppedAccessoryRoleIds: Array.from(pinnedRoleIds).filter(
       (exerciseId) =>
@@ -3213,7 +3231,8 @@ export function generateSessionFromMappedContext(
     mapped,
     filteredExercises,
     input.plannerDiagnosticsMode ?? "standard",
-    resolvedSessionSlot
+    resolvedSessionSlot,
+    composed.compositionSource
   );
 }
 
@@ -3245,5 +3264,6 @@ export async function generateDeloadSessionFromIntent(
     note: deload.note,
     deloadTrace: deload.trace,
     plannerDiagnosticsMode: input.plannerDiagnosticsMode,
+    compositionSource: deload.compositionSource,
   });
 }

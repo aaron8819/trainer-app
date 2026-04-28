@@ -38,6 +38,10 @@ describe("readSessionDecisionReceipt", () => {
           isDeload: false,
           source: "computed",
         },
+        sessionProvenance: {
+          mesocycleId: "meso-1",
+          compositionSource: "persisted_slot_plan_seed",
+        },
         sessionSlot: {
           slotId: "upper_b",
           intent: "upper",
@@ -288,6 +292,10 @@ describe("readSessionDecisionReceipt", () => {
     });
 
     expect(receipt?.cycleContext.weekInMeso).toBe(4);
+    expect(receipt?.sessionProvenance).toEqual({
+      mesocycleId: "meso-1",
+      compositionSource: "persisted_slot_plan_seed",
+    });
     expect(receipt?.sessionSlot).toEqual({
       slotId: "upper_b",
       intent: "upper",
@@ -329,6 +337,47 @@ describe("readSessionDecisionReceipt", () => {
     });
 
     expect(receipt).toBeUndefined();
+  });
+
+  it("parses old receipts without provenance safely", () => {
+    const receipt = readSessionDecisionReceipt({
+      sessionDecisionReceipt: {
+        version: 1,
+        cycleContext: {
+          weekInMeso: 2,
+          weekInBlock: 2,
+          phase: "accumulation",
+          blockType: "accumulation",
+          isDeload: false,
+          source: "computed",
+        },
+        lifecycleVolume: {
+          source: "unknown",
+        },
+        sorenessSuppressedMuscles: [],
+        deloadDecision: {
+          mode: "none",
+          reason: [],
+          reductionPercent: 0,
+          appliedTo: "none",
+        },
+        readiness: {
+          wasAutoregulated: false,
+          signalAgeHours: null,
+          fatigueScoreOverall: null,
+          intensityScaling: {
+            applied: false,
+            exerciseIds: [],
+            scaledUpCount: 0,
+            scaledDownCount: 0,
+          },
+        },
+        exceptions: [],
+      },
+    });
+
+    expect(receipt?.sessionProvenance).toBeUndefined();
+    expect(receipt?.cycleContext.weekInMeso).toBe(2);
   });
 
   it("defaults to standard diagnostics mode and strips closure candidate trace", () => {
@@ -507,6 +556,10 @@ describe("readSessionDecisionReceipt", () => {
             isDeload: false,
             source: "computed",
           },
+          sessionProvenance: {
+            mesocycleId: "meso-1",
+            compositionSource: "runtime_selection",
+          },
           lifecycleVolume: {
             source: "unknown",
           },
@@ -563,6 +616,10 @@ describe("readSessionDecisionReceipt", () => {
         readSessionDecisionReceipt(normalized)?.exceptions.map((entry) => entry.code) ?? []
       )
     ).toEqual(["optional_gap_fill", "supplemental_deficit_session", "closeout_session"]);
+    expect(readSessionDecisionReceipt(normalized)?.sessionProvenance).toEqual({
+      mesocycleId: "meso-1",
+      compositionSource: "runtime_selection",
+    });
   });
 
   it("round-trips the closeout exception marker safely", () => {

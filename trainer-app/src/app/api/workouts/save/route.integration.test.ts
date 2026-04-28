@@ -531,6 +531,10 @@ describe("POST /api/workouts/save", () => {
         isDeload: false,
         source: "computed",
       },
+      sessionProvenance: {
+        mesocycleId: "meso-1",
+        compositionSource: "persisted_slot_plan_seed",
+      },
       lifecycleRirTarget: { min: 1, max: 2 },
       lifecycleVolume: {
         targets: { Chest: 16 },
@@ -623,6 +627,10 @@ describe("POST /api/workouts/save", () => {
         source: "computed",
       })
     );
+    expect(receipt.sessionProvenance).toEqual({
+      mesocycleId: "meso-1",
+      compositionSource: "persisted_slot_plan_seed",
+    });
     expect(receipt.lifecycleRirTarget).toEqual({ min: 1, max: 2 });
     expect((lifecycleVolume.targets as Record<string, unknown>).Chest).toBe(16);
     expect(readiness.wasAutoregulated).toBe(true);

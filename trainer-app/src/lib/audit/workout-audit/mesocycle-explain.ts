@@ -4672,7 +4672,7 @@ function collectV2LaneDiagnostics(input: {
             exercises: strictExercises,
             lane: input.lane,
           });
-    return compactV2LaneDiagnostics(
+    const compactDiagnostics =
       explainedConcentrationDiagnostics.length > 0
         ? [
             ...input.setPolicyDiagnostics.filter(
@@ -4682,7 +4682,14 @@ function collectV2LaneDiagnostics(input: {
             ...explainedConcentrationDiagnostics,
             ...bicepsAddenda,
           ]
-        : [...input.setPolicyDiagnostics, ...bicepsAddenda],
+        : [...input.setPolicyDiagnostics, ...bicepsAddenda];
+    return compactV2LaneDiagnostics(
+      relabelStaleCalvesShortfallDiagnostics({
+        noRepair,
+        slotId: input.slotId,
+        lane: input.lane,
+        diagnostics: compactDiagnostics,
+      }),
       chestSecondExposureDiagnostics.length > 0
         ? 14
         : explainedConcentrationDiagnostics.length > 0
@@ -4813,7 +4820,12 @@ function collectV2LaneDiagnostics(input: {
       : diagnostics;
 
   return compactV2LaneDiagnostics(
-    finalDiagnostics,
+    relabelStaleCalvesShortfallDiagnostics({
+      noRepair,
+      slotId: input.slotId,
+      lane: input.lane,
+      diagnostics: finalDiagnostics,
+    }),
     finalDiagnostics.includes("concentration:primary_anchor")
       ? 12
       : finalDiagnostics.includes("concentration:second_exposure")
@@ -4824,11 +4836,95 @@ function collectV2LaneDiagnostics(input: {
   );
 }
 
+function isCalvesV2Lane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
+  return lane.primaryMuscles.includes("Calves") || lane.laneId === "calves";
+}
+
+function calvesLaneWorkSatisfiesTarget(input: {
+  noRepair: PlanningRealityDiagnostic;
+  slotId: string;
+  lane: V2Lane | V2Slot["lanes"][number];
+}): boolean {
+  const calfExercises = collectV2LaneExercises({
+    slot: getSlotById(input.noRepair.finalSlotPlan, input.slotId),
+    lane: input.lane,
+  }).filter(
+    (exercise) =>
+      exercise.primaryMuscles.includes("Calves") ||
+      (exercise.effectiveStimulusByMuscle.Calves ?? 0) > 0
+  );
+  const calfSets = calfExercises.reduce(
+    (sum, exercise) => sum + (exercise.effectiveStimulusByMuscle.Calves ?? 0),
+    0
+  );
+  return roundOne(calfSets) >= input.lane.targetSets.min;
+}
+
+function weeklyCalvesWithinTarget(noRepair: PlanningRealityDiagnostic): boolean {
+  const weeklyCalves = buildNoRepairWeeklyMuscleTotals(noRepair).find(
+    (row) => row.muscle === "Calves"
+  );
+  return (
+    weeklyCalves?.status === "within" &&
+    weeklyCalves.targetMin != null &&
+    weeklyCalves.projectedEffectiveSets >= weeklyCalves.targetMin
+  );
+}
+
+function isStaleCalvesShortfallDiagnostic(diagnostic: string): boolean {
+  const normalized = diagnostic.toLowerCase();
+  return (
+    normalized === "target_delivery:below_min" ||
+    (normalized.includes("calves") &&
+      (normalized.includes("below") ||
+        normalized.includes("missing") ||
+        normalized.includes("shortfall") ||
+        normalized.includes("unresolved") ||
+        normalized.includes("repair_would_be_needed_here")))
+  );
+}
+
+function relabelStaleCalvesShortfallDiagnostics(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  slotId: string;
+  lane: V2Lane | V2Slot["lanes"][number];
+  diagnostics: string[];
+}): string[] {
+  if (
+    !input.noRepair ||
+    !isCalvesV2Lane(input.lane) ||
+    !weeklyCalvesWithinTarget(input.noRepair) ||
+    !calvesLaneWorkSatisfiesTarget({
+      noRepair: input.noRepair,
+      slotId: input.slotId,
+      lane: input.lane,
+    })
+  ) {
+    return input.diagnostics;
+  }
+
+  let relabelled = false;
+  const diagnostics = input.diagnostics.flatMap((diagnostic) => {
+    if (!isStaleCalvesShortfallDiagnostic(diagnostic)) {
+      return [diagnostic];
+    }
+    relabelled = true;
+    return [];
+  });
+  return relabelled
+    ? [
+        ...diagnostics,
+        "readout_note:stale_calves_shortfall_suppressed_weekly_within_lane_satisfied",
+      ]
+    : diagnostics;
+}
+
 function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
   const unique = uniqueSorted(evidence.filter(Boolean));
   const setPolicy = unique.filter((row) => row.startsWith("setPolicy"));
   const setBudget = unique.filter((row) => row.startsWith("setBudget"));
   const justification = unique.filter((row) => row.startsWith("justification"));
+  const readoutNotes = unique.filter((row) => row.startsWith("readout_note:"));
   const concentrationPolicyTokens = new Set<string>([
     "concentration:support_tier",
     "concentration:vertical_press",
@@ -4861,6 +4957,7 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
       !row.startsWith("setPolicy") &&
       !row.startsWith("setBudget") &&
       !row.startsWith("justification") &&
+      !row.startsWith("readout_note:") &&
       !concentrationPolicyTokens.has(row)
   );
   const blockerOther = other.filter((row) => {
@@ -4880,6 +4977,7 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
     ...setBudget,
     ...blockerOther,
     ...justification,
+    ...readoutNotes,
     ...concentrationPolicy,
     ...nonBlockerOther,
   ].slice(0, limit);
@@ -5260,7 +5358,7 @@ function nextBestV2MigrationSlice(
 ): string | null {
   let candidate: V2TargetVsNoRepairLaneDiff | null = null;
   let candidatePriority = 0;
-  for (const lane of laneDiffs) {
+  for (const lane of laneDiffs.filter(isTrueActionableV2Lane)) {
     const priority = v2MigrationSlicePriority(lane);
     if (priority > candidatePriority) {
       candidate = lane;
@@ -5270,6 +5368,20 @@ function nextBestV2MigrationSlice(
   return candidate
     ? `${candidate.laneId}:${candidate.migrationRecommendation}`
     : null;
+}
+
+function isTrueActionableV2Lane(lane: V2TargetVsNoRepairLaneDiff): boolean {
+  return (
+    lane.severity === "hard_blocker" ||
+    lane.severity === "migration_candidate" ||
+    lane.migrationRecommendation === "blocked_do_not_promote"
+  );
+}
+
+function formatV2ActionableLaneBlocker(
+  lane: V2TargetVsNoRepairLaneDiff
+): string {
+  return `${lane.laneId}:${lane.migrationRecommendation}`;
 }
 
 function v2MigrationSlicePriority(lane: V2TargetVsNoRepairLaneDiff): number {
@@ -5312,6 +5424,28 @@ function v2MigrationSlicePriority(lane: V2TargetVsNoRepairLaneDiff): number {
   return 0;
 }
 
+function buildReplacementReadinessBlockers(input: {
+  acceptanceClassification: NoRepairClassification;
+  laneDiffs: V2TargetVsNoRepairLaneDiff[];
+}): string[] {
+  const blockedLaneCount = input.laneDiffs.filter(
+    (lane) => lane.currentStatus === "blocked"
+  ).length;
+  const repairDependentLaneCount = input.laneDiffs.filter(
+    (lane) => lane.currentStatus === "repair_dependent"
+  ).length;
+  return uniqueSorted([
+    ...input.acceptanceClassification.hardBlockers.map((row) => row.code),
+    ...(blockedLaneCount > 0 ? [`blocked_lanes:${blockedLaneCount}`] : []),
+    ...(repairDependentLaneCount > 0
+      ? [`repair_dependent_lanes:${repairDependentLaneCount}`]
+      : []),
+    ...input.laneDiffs
+      .filter(isTrueActionableV2Lane)
+      .map(formatV2ActionableLaneBlocker),
+  ]).slice(0, 10);
+}
+
 function buildV2TargetVsNoRepairDiff(input: {
   v2Plan: V2MesocyclePlan;
   v2SetDistributionIntent?: V2SetDistributionIntent;
@@ -5343,24 +5477,10 @@ function buildV2TargetVsNoRepairDiff(input: {
   const suspiciousOrBlockedCount =
     laneDiffs.filter((lane) => lane.currentStatus === "blocked").length +
     (input.repaired?.suspiciousRepairsNotEligibleForPromotion?.length ?? 0);
-  const blockers = compactEvidence(
-    [
-      ...input.acceptanceClassification.hardBlockers.map(
-        (row) => row.code
-      ),
-      ...input.acceptanceClassification.diagnosticOnly.map(
-        (row) => row.code
-      ),
-      ...input.acceptanceClassification.sessionShaping.map(
-        (row) => row.code
-      ),
-      `missing_lanes:${laneDiffs.filter((lane) => lane.currentStatus === "missing").length}`,
-      `blocked_lanes:${laneDiffs.filter((lane) => lane.currentStatus === "blocked").length}`,
-      `repair_dependent_lanes:${laneDiffs.filter((lane) => lane.currentStatus === "repair_dependent").length}`,
-      "read_only_non_generative_artifact",
-    ],
-    10
-  );
+  const blockers = buildReplacementReadinessBlockers({
+    acceptanceClassification: input.acceptanceClassification,
+    laneDiffs,
+  });
 
   return {
     version: 1,

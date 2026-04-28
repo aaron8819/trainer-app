@@ -2939,6 +2939,17 @@ describe("buildMesocycleExplainAuditPayload", () => {
         canReplaceRepairedProjection: false,
       },
     });
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact.blockers,
+    ).not.toEqual(
+      expect.arrayContaining([
+        "secondary_or_implicit_collateral_not_acceptance_target",
+        "compound_or_curl_collateral_denominator_artifact",
+        "read_only_non_generative_artifact",
+        "blocked_lanes:0",
+        "repair_dependent_lanes:0",
+      ]),
+    );
     expect(noRepair.summary.status).toBe("pass_with_warnings");
   });
 
@@ -3218,7 +3229,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(
       noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
         .nextBestMigrationSlice,
-    ).toBe("row_anchor:needs_set_budget_justification");
+    ).toBeNull();
     expect(noRepair.acceptanceClassification.diagnosticOnly).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -5167,7 +5178,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     ).not.toBe("biceps:needs_set_distribution_policy");
   });
 
-  it("does not select a non-blocking optional lane ahead of underdelivered biceps", () => {
+  it("does not select quality-warning or optional diagnostic rows as next migration slice", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
         exercises: [
@@ -5274,10 +5285,14 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ]),
       },
     });
+    expect(noRepair.v2TargetVsNoRepairDiff.summary.migrationCandidateCount).toBe(0);
     expect(
       noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
         .nextBestMigrationSlice,
-    ).toBe("biceps:needs_set_distribution_policy");
+    ).toBeNull();
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact.blockers,
+    ).toEqual([]);
   });
 
   it("can still select an optional lane when it has a true hard blocker", () => {
@@ -5331,6 +5346,14 @@ describe("buildMesocycleExplainAuditPayload", () => {
       noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
         .nextBestMigrationSlice,
     ).toBe("optional_glute_core_if_recoverable:needs_set_budget_justification");
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact.blockers,
+    ).toEqual(
+      expect.arrayContaining([
+        "blocked_lanes:1",
+        "optional_glute_core_if_recoverable:needs_set_budget_justification",
+      ]),
+    );
   });
 
   it("does not let pulling collateral directly solve biceps lane evidence", () => {
@@ -5380,6 +5403,108 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ]),
       },
     });
+  });
+
+  it("relabels stale Calves shortfall diagnostics when weekly and lane targets are satisfied", () => {
+    const planningReality = makeNoRepairConcentrationPlanningReality({
+      exercises: [
+        {
+          slotId: "lower_a",
+          exerciseName: "Standing Calf Raise",
+          setCount: 4,
+          primaryMuscles: ["Calves"],
+          movementPatterns: ["isolation"],
+          stimulus: { Calves: 4 },
+          percentages: { Calves: 49 },
+        },
+        {
+          slotId: "lower_b",
+          exerciseName: "Seated Calf Raise",
+          setCount: 4,
+          primaryMuscles: ["Calves"],
+          movementPatterns: ["isolation"],
+          stimulus: { Calves: 4 },
+          percentages: { Calves: 49 },
+        },
+      ],
+      demands: [
+        {
+          muscle: "Calves",
+          priority: "support",
+          targetStatus: "soft",
+          minEffectiveSets: 8,
+          preferredEffectiveSets: 8,
+          maxEffectiveSets: 14,
+        },
+      ],
+    });
+    planningReality.allocationVsFinalDelta = [
+      {
+        slotId: "lower_a",
+        slotIndex: 0,
+        comparison: "allocation_vs_final",
+        responsibilityLoad: "clear",
+        underAllocatedMuscles: [
+          {
+            muscle: "Calves",
+            role: "support",
+            targetStatus: "soft",
+            expectedEffectiveSets: 8,
+            actualEffectiveSets: 4,
+            shortfall: 4,
+          },
+        ],
+        unallocatedStimulusMuscles: [],
+        notes: [],
+      },
+    ] as PlannerOnlyPlanningReality["allocationVsFinalDelta"];
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: planningReality,
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const calvesLane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "lower_a")
+      ?.laneDiffs.find((row) => row.laneId === "calves");
+
+    expect(noRepair.weeklyMuscleTotals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Calves",
+          projectedEffectiveSets: 8,
+          targetMin: 8,
+          status: "within",
+        }),
+      ]),
+    );
+    expect(calvesLane).toMatchObject({
+      currentStatus: "satisfied",
+      gapCause: "none",
+      migrationRecommendation: "no_action",
+      severity: "pass",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "readout_note:stale_calves_shortfall_suppressed_weekly_within_lane_satisfied",
+        ]),
+      },
+    });
+    expect(calvesLane?.currentEvidence.relevantDiagnostics).not.toEqual(
+      expect.arrayContaining([
+        "Calves:shortfall_4",
+        "Calves:repair_would_be_needed_here",
+        "target_delivery:below_min",
+      ]),
+    );
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact.blockers,
+    ).not.toEqual(
+      expect.arrayContaining([
+        "required_calves_lower_slot_distribution_missing",
+        "non_blocking_session_shaping_rows",
+        "calves:needs_set_distribution_policy",
+      ]),
+    );
   });
 
   it("downgrades explained biceps support isolation concentration to diagnostic-only", () => {
@@ -6262,9 +6387,70 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ]),
       },
     });
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
+        .nextBestMigrationSlice,
+    ).toBe("rear_delt:promote_to_planner_later");
     expect(noRepair.v2TargetVsNoRepairDiff.summary.satisfiedLaneCount).toBeGreaterThan(0);
     expect(noRepair.v2TargetVsNoRepairDiff.summary.repairDependentLaneCount).toBeGreaterThan(0);
     expect(noRepair.v2TargetVsNoRepairDiff.summary.migrationCandidateCount).toBeGreaterThan(0);
+  });
+
+  it("keeps session-shaping rows visible without promoting them into replacement blockers", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "lower_a",
+            exerciseName: "Standing Calf Raise",
+            setCount: 4,
+            primaryMuscles: ["Calves"],
+            movementPatterns: ["isolation"],
+            stimulus: { Calves: 4 },
+            percentages: { Calves: 50 },
+          },
+          {
+            slotId: "lower_b",
+            exerciseName: "Seated Calf Raise",
+            setCount: 4,
+            primaryMuscles: ["Calves"],
+            movementPatterns: ["isolation"],
+            stimulus: { Calves: 4 },
+            percentages: { Calves: 50 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Calves",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 8,
+            preferredEffectiveSets: 8,
+            maxEffectiveSets: 14,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    expect(noRepair.acceptanceClassification.sessionShaping).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: "planner_owned_set_allocation_changes",
+        }),
+      ]),
+    );
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact.blockers,
+    ).not.toEqual(
+      expect.arrayContaining([
+        "planner_owned_set_allocation_changes",
+        "non_blocking_session_shaping_rows",
+        "blocked_lanes:0",
+        "repair_dependent_lanes:0",
+      ]),
+    );
   });
 
   it("hard-fails required lanes, dirty Back Extension closure, and runtime replay failure", () => {

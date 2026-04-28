@@ -605,6 +605,335 @@ describe("artifact serialization helpers", () => {
     expect(serialized).not.toContain("setBudget");
   });
 
+  it("compacts flagged planner-only no-repair V2 diagnostics with parseable headroom and blocker evidence", () => {
+    const laneIds = [
+      "chest_anchor",
+      "row_anchor",
+      "vertical_pull_support",
+      "chest_secondary",
+      "rear_delt",
+      "triceps",
+    ];
+    const slots = ["upper_a", "lower_a", "upper_b", "lower_b"];
+    const repeatedDiagnostics = [
+      "setPolicy:hard_blocker",
+      "setPolicyReason:over_60_share",
+      "target_status:blocked",
+      "classification:duplicate_continuity_policy:needs_duplicate_policy",
+      "program_quality:hard_blocker:forbidden_slot_primary_solution",
+      "operator_note:retain_one_clear_reason_per_lane",
+    ];
+    const setBudget = {
+      min: 3,
+      preferred: 4,
+      max: 4,
+      basis: "target_lane",
+    };
+    const capPolicy = {
+      maxSetsPerExerciseWithoutJustification: 5,
+      maxDirectExercises: 1,
+      basis: "v2_lane_policy",
+    };
+    const concentrationPolicy = {
+      warningShare: 0.5,
+      blockerShare: 0.6,
+      appliesTo: "primary_target",
+    };
+    const v2Slots = slots.map((slotId) => ({
+      slotId,
+      intent: `${slotId} long diagnostic intent`,
+      targetSessionSets: { min: 12, max: 20 },
+      lanes: laneIds.map((laneId, index) => ({
+        laneId,
+        required: index < 5,
+        role: index === 0 ? "anchor" : "support",
+        primaryMuscles: ["Chest", "Lats"],
+        preferredExerciseClasses: [
+          "horizontal_press",
+          "slight_incline_press",
+          "cable_row",
+        ],
+        targetSets: setBudget,
+        currentWeek1Status: index === 0 ? "partial" : "satisfied",
+      })),
+    }));
+    const artifact = {
+      mode: "mesocycle-explain",
+      mesocycleExplain: {
+        preview: {
+          projectionDiagnostics: {
+            planningReality: {},
+          },
+        },
+        plannerOnlyNoRepair: {
+          enabled: true,
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          canReplaceRepairedProjection: false,
+          summary: {
+            status: "fail",
+            targetLanesSatisfied: 12,
+            targetLanesMissing: 0,
+            unresolvedDemandCount: 4,
+            validationFailureCount: 2,
+          },
+          acceptanceClassification: {
+            basicMesocycleShapeStatus: "fail",
+            replacementReadinessStatus: "blocked",
+            hardBlockers: [
+              {
+                code: "primary_hard_target_excessive_single_exercise_share_unjustified",
+                evidence: ["upper_a:Deficit Push-Up:Chest:64%:over_60_share"],
+              },
+            ],
+            qualityWarnings: [
+              {
+                code: "support_target_high_single_exercise_share_non_blocking",
+                evidence: repeatedDiagnostics,
+              },
+            ],
+            diagnosticOnly: [],
+            sessionShaping: [
+              {
+                code: "planner_owned_set_allocation_changes",
+                evidence: ["upper_a:chest_secondary:Cable Crossover:2->3"],
+              },
+            ],
+            migrationScoreboard: {
+              materialRepairCount: 1,
+              majorRepairCount: 0,
+              suspiciousRepairs: 0,
+              canReplaceRepairedProjection: false,
+              reason: "hard_blockers:1",
+            },
+          },
+          v2MesocyclePlan: {
+            version: 1,
+            source: "v2_planner_no_repair_experimental",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            planStatus: "replacement_not_ready",
+            skeleton: {
+              split: "upper_lower_4x",
+              weeks: 5,
+              slotSequence: ["upper_a", "lower_a", "upper_b", "lower_b"],
+              slots: v2Slots,
+            },
+            weeklyProgressionModel: {
+              weeks: [1, 2, 3, 4, 5].map((week) => ({
+                week,
+                phase: week === 5 ? "deload" : "accumulation",
+                volumeMultiplier: week === 5 ? 0.5 : 1,
+                rirTarget: week === 5 ? "4-5" : "2-3",
+                progressionIntent:
+                  week === 5 ? "reduce_fatigue" : "productive_volume",
+                limitations: [
+                  "derived_from_stable_skeleton_not_independent_plan",
+                  "does_not_affect_scoring_generation_repair_seed_or_runtime",
+                ],
+              })),
+            },
+            deloadTransform: {
+              preserveExerciseIdentities: true,
+              targetVolumeReductionPercent: { min: 40, max: 60 },
+              targetRir: "4-5",
+              removeRedundantAccessories: true,
+              introduceNewMovements: false,
+              projectionStatus: "partially_modeled",
+              limitations: ["not_used_by_runtime_replay"],
+            },
+            validationRules: Array.from({ length: 12 }, (_, index) => ({
+              ruleId: `rule_${index}`,
+              severity: index < 4 ? "hard_blocker" : "migration_scoreboard",
+              description:
+                "Long validation description retained in in-memory diagnostics only.",
+              week1Status: index === 0 ? "fail" : "pass",
+              fullMesocycleStatus: index === 0 ? "fail" : "limited",
+            })),
+            replacementReadiness: {
+              canReplaceRepairedProjection: false,
+              reason: [
+                "read_only_non_generative_artifact",
+                "weeks_2_to_4_derived_not_fully_projected",
+              ],
+            },
+          },
+          v2TargetVsNoRepairDiff: {
+            version: 1,
+            source: "v2_planner_no_repair_experimental",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            summary: {
+              targetLaneCount: 24,
+              satisfiedLaneCount: 12,
+              partialLaneCount: 10,
+              missingLaneCount: 0,
+              blockedLaneCount: 2,
+              repairDependentLaneCount: 0,
+              migrationCandidateCount: 1,
+              suspiciousOrBlockedCount: 2,
+            },
+            slotDiffs: v2Slots.map((slot) => ({
+              slotId: slot.slotId,
+              laneDiffs: slot.lanes.map((lane, index) => ({
+                laneId: lane.laneId,
+                targetRole: lane.role,
+                targetPrimaryMuscles: lane.primaryMuscles,
+                targetExerciseClasses: lane.preferredExerciseClasses,
+                targetSets: lane.targetSets,
+                currentStatus: index === 0 ? "blocked" : "partial",
+                currentEvidence: {
+                  selectedExercises: [
+                    {
+                      name: "Deficit Push-Up",
+                      sets: 6,
+                      matchedClass: "horizontal_press",
+                      role: "accessory",
+                    },
+                  ],
+                  relevantDiagnostics: repeatedDiagnostics,
+                },
+                gapCause: "concentration_policy_gap",
+                migrationRecommendation: "needs_concentration_justification",
+                severity: index === 0 ? "hard_blocker" : "quality_warning",
+              })),
+            })),
+            replacementReadinessImpact: {
+              canReplaceRepairedProjection: false,
+              blockers: ["read_only_non_generative_artifact"],
+              nextBestMigrationSlice:
+                "chest_anchor:needs_concentration_justification",
+            },
+          },
+          v2SetDistributionIntent: {
+            version: 1,
+            source: "v2_planner_policy",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            summary: {
+              weekCount: 5,
+              slotCount: 4,
+              laneCount: 24,
+              plannedTotalSetsByWeek: [1, 2, 3, 4, 5].map((week) => ({
+                week,
+                totalSets: 80,
+                volumeMultiplier: week === 5 ? 0.5 : 1,
+                phase: week === 5 ? "deload" : "accumulation",
+              })),
+            },
+            weeks: [1, 2, 3, 4, 5].map((week) => ({
+              week,
+              phase: week === 5 ? "deload" : "accumulation",
+              volumeMultiplier: week === 5 ? 0.5 : 1,
+              rirTarget: week === 5 ? "4-5" : "2-3",
+              slots: v2Slots.map((slot) => ({
+                slotId: slot.slotId,
+                slotIntent: slot.intent,
+                targetSessionSets: slot.targetSessionSets,
+                lanes: slot.lanes.map((lane) => ({
+                  laneId: lane.laneId,
+                  primaryMuscles: lane.primaryMuscles,
+                  preferredExerciseClasses: lane.preferredExerciseClasses,
+                  evidenceBasis: repeatedDiagnostics,
+                  capPolicy,
+                  concentrationPolicy,
+                  setBudget,
+                })),
+              })),
+            })),
+            guardrails: {
+              doesNotUseRepairedProjectionAsTarget: true,
+              doesNotUseAcceptedSeedAsTarget: true,
+              doesNotAffectSelection: true,
+              doesNotAffectRepair: true,
+              doesNotAffectRuntimeReplay: true,
+            },
+          },
+          slotPlans: v2Slots.map((slot) => ({
+            slotId: slot.slotId,
+            exercises: [
+              {
+                exerciseName: "Deficit Push-Up",
+                lane: "chest_anchor",
+                exerciseClass: "horizontal_press",
+                sets: 6,
+              },
+            ],
+            missingLanes: ["chest_anchor:partial"],
+            unresolvedDemand: repeatedDiagnostics,
+            validationFailures: repeatedDiagnostics,
+          })),
+          weeklyMuscleTotals: [],
+          setAllocationChanges: [],
+          weeklyMuscleTotalChanges: [],
+          acceptanceChecks: [
+            {
+              check: "primary muscles above minimum",
+              status: "fail",
+              evidence: repeatedDiagnostics,
+            },
+          ],
+          acceptanceFailures: [],
+          qualityWarnings: [],
+          diagnosticRows: [],
+          ignoredRows: [],
+          repairDependenciesDisabled: [
+            "support-floor closure",
+            "cap trim",
+            "MAV trim",
+          ],
+        },
+      },
+    } as unknown as WorkoutAuditArtifact;
+
+    const compact = compactWorkoutAuditArtifactForSerialization(artifact);
+    const serialized = serializeStableJson(compact);
+    const reparsed = JSON.parse(serialized) as WorkoutAuditArtifact;
+    const noRepair = reparsed.mesocycleExplain
+      ?.plannerOnlyNoRepair as unknown as Record<string, unknown>;
+    const targetDiff = noRepair.v2TargetVsNoRepairDiff as Record<string, unknown>;
+    const plan = noRepair.v2MesocyclePlan as Record<string, unknown>;
+    const intent = noRepair.v2SetDistributionIntent as Record<string, unknown>;
+    const classification = noRepair.acceptanceClassification as Record<string, unknown>;
+    const hardBlockers = classification.hardBlockers as Array<Record<string, unknown>>;
+
+    expect(WORKOUT_AUDIT_SIZE_LIMIT_BYTES - getSerializedJsonSizeBytes(compact)).toBeGreaterThan(
+      100_000
+    );
+    expect(serialized).toContain("setPolicyReason:over_60_share");
+    expect(hardBlockers[0]).toMatchObject({
+      code: "primary_hard_target_excessive_single_exercise_share_unjustified",
+      evidence: ["upper_a:Deficit Push-Up:Chest:64%:over_60_share"],
+    });
+    expect(targetDiff).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      replacementReadinessImpact: {
+        nextBestMigrationSlice:
+          "chest_anchor:needs_concentration_justification",
+      },
+    });
+    expect(plan).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      skeleton: {
+        targetDescriptorSource:
+          "plannerOnlyNoRepair.v2SetDistributionIntent.catalogs.slotDefinitions",
+      },
+    });
+    expect(intent).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      catalogs: {
+        slotDefinitions: expect.any(Array),
+      },
+      weekSetBudgetGrid: expect.any(Array),
+    });
+    expect(noRepair).toHaveProperty("v2MesocyclePlan");
+    expect(noRepair).toHaveProperty("v2TargetVsNoRepairDiff");
+    expect(noRepair).toHaveProperty("v2SetDistributionIntent");
+  });
+
   it("leaves unrelated audit artifacts unchanged", () => {
     const artifact = {
       mode: "future-week",

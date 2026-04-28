@@ -70,6 +70,7 @@ npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner 
 - `plannerOnlyNoRepair.v2MesocyclePlan` summarizes the stable upper/lower 4x skeleton, Weeks 1-5 progression modifiers, deload transform intent, validation-rule statuses, and replacement-readiness blockers. It is flagged-only, read-only, and non-generative.
 - `plannerOnlyNoRepair.v2SetDistributionIntent` summarizes lane-level min/preferred/max set budgets from the V2 target skeleton and weekly progression multipliers. Cap and concentration policy are validation metadata, not set-budget source truth, and the field is flagged-only, read-only, and non-generative.
 - `plannerOnlyNoRepair.v2TargetVsNoRepairDiff` summarizes V2 target-skeleton alignment against the experimental no-repair output. Repaired projection is used only to mark repair-dependent lanes or legacy rescue evidence.
+- The written artifact may serialize these V2 fields through compact catalogs, target-descriptor references, week set-budget grids, and bounded evidence rows. The in-memory diagnostic remains the full operator-summary source; compaction is artifact-size control only.
 - It must not write accepted seeds, `slotPlanSeedJson`, receipts, planned workouts, runtime replay data, or performed workouts.
 
 Projected current week volume:

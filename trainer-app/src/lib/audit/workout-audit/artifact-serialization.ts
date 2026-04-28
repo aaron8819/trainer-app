@@ -580,16 +580,21 @@ function compactV2SetDistributionIntent(value: unknown): unknown {
   const catalog = createValueCatalog("V");
   const rawWeeks = asRecordArray(intent.weeks);
   const firstWeekSlots = asRecordArray(rawWeeks[0]?.slots);
+  const firstEvidenceBasis = asRecordArray(firstWeekSlots[0]?.lanes)[0]?.evidenceBasis;
+  const commonEvidenceBasisRef =
+    Array.isArray(firstEvidenceBasis) && firstEvidenceBasis.length > 0
+      ? catalog.ref(firstEvidenceBasis)
+      : undefined;
   const slotDefinitions = firstWeekSlots.map((slot) => ({
     slotId: slot.slotId,
     slotIntent: slot.slotIntent,
+    targetSessionSets: slot.targetSessionSets,
     lanes: asRecordArray(slot.lanes).map((lane) => {
       const compactLane: JsonRecord = { ...lane };
       delete compactLane.setBudget;
       for (const field of [
         "primaryMuscles",
         "preferredExerciseClasses",
-        "evidenceBasis",
         "capPolicy",
         "concentrationPolicy",
       ]) {
@@ -602,23 +607,30 @@ function compactV2SetDistributionIntent(value: unknown): unknown {
           delete compactLane[field];
         }
       }
+      if (
+        Array.isArray(compactLane.evidenceBasis) &&
+        JSON.stringify(compactLane.evidenceBasis) !==
+          JSON.stringify(firstEvidenceBasis)
+      ) {
+        compactLane.evidenceBasisRef = catalog.ref(compactLane.evidenceBasis);
+      }
+      delete compactLane.evidenceBasis;
       return compactLane;
     }),
   }));
-  const weeks = rawWeeks.map((week) => ({
+  const weeklyProgression = rawWeeks.map((week) => ({
     week: week.week,
     phase: week.phase,
     volumeMultiplier: week.volumeMultiplier,
     rirTarget: week.rirTarget,
+  }));
+  const weekSetBudgetGrid = rawWeeks.map((week) => ({
+    week: week.week,
     slots: asRecordArray(week.slots).map((slot) => ({
       slotId: slot.slotId,
-      targetSessionSets: slot.targetSessionSets,
-      lanes: asRecordArray(slot.lanes).map((lane) => {
+      setBudgetRefs: asRecordArray(slot.lanes).map((lane) => {
         const compactLane: JsonRecord = { ...lane };
-        return {
-          laneId: compactLane.laneId,
-          setBudget: compactLane.setBudget,
-        };
+        return catalog.ref(compactLane.setBudget);
       }),
     })),
   }));
@@ -631,11 +643,237 @@ function compactV2SetDistributionIntent(value: unknown): unknown {
     summary: intent.summary,
     catalogs: {
       policyValues: catalog.entries(),
+      ...(commonEvidenceBasisRef ? { commonEvidenceBasisRef } : {}),
       slotDefinitions,
     },
-    weeks,
+    weeklyProgression,
+    weekSetBudgetGrid,
     guardrails: intent.guardrails,
   };
+}
+
+function compactV2MesocyclePlan(value: unknown): unknown {
+  const plan = asRecord(value);
+  if (!plan) {
+    return value;
+  }
+
+  const catalog = createValueCatalog("M");
+  const skeleton = asRecord(plan.skeleton);
+  const weeklyProgressionModel = asRecord(plan.weeklyProgressionModel);
+  const deloadTransform = asRecord(plan.deloadTransform);
+
+  return {
+    version: plan.version,
+    source: plan.source,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    planStatus: plan.planStatus,
+    catalogs: {
+      diagnosticValues: catalog.entries(),
+    },
+    skeleton: skeleton
+      ? {
+          split: skeleton.split,
+          weeks: skeleton.weeks,
+          slotSequence: skeleton.slotSequence,
+          targetDescriptorSource:
+            "plannerOnlyNoRepair.v2SetDistributionIntent.catalogs.slotDefinitions",
+          slots: asRecordArray(skeleton.slots).map((slot) => ({
+            slotId: slot.slotId,
+            lanes: asRecordArray(slot.lanes).map((lane) => ({
+              laneId: lane.laneId,
+              required: lane.required,
+              role: lane.role,
+              currentWeek1Status: lane.currentWeek1Status,
+            })),
+          })),
+        }
+      : plan.skeleton,
+    weeklyProgressionModel: weeklyProgressionModel
+      ? {
+          weeks: asRecordArray(weeklyProgressionModel.weeks).map((week) =>
+            compactWholeArrayRefs(week, ["limitations"], catalog)
+          ),
+        }
+      : plan.weeklyProgressionModel,
+    deloadTransform: deloadTransform
+      ? compactWholeArrayRefs(deloadTransform, ["limitations"], catalog)
+      : plan.deloadTransform,
+    validationRules: asRecordArray(plan.validationRules).map((rule) => ({
+      ruleId: rule.ruleId,
+      severity: rule.severity,
+      week1Status: rule.week1Status,
+      fullMesocycleStatus: rule.fullMesocycleStatus,
+    })),
+    replacementReadiness: plan.replacementReadiness,
+  };
+}
+
+function compactV2OperatorDiagnostics(
+  diagnostics: unknown,
+  severity: unknown
+): string[] {
+  if (!Array.isArray(diagnostics)) {
+    return [];
+  }
+
+  const values = diagnostics.filter(
+    (entry): entry is string => typeof entry === "string" && entry.length > 0
+  );
+  const important = values.filter((entry) => {
+    const lower = entry.toLowerCase();
+    return (
+      entry.startsWith("setPolicy:") ||
+      entry.startsWith("setPolicyReason:") ||
+      entry.startsWith("target_status:") ||
+      lower.includes("blocked") ||
+      lower.includes("hard_blocker") ||
+      lower.includes("forbidden") ||
+      lower.includes("gt_5") ||
+      lower.includes("over_60") ||
+      lower.includes("missing")
+    );
+  });
+  const limit = severity === "hard_blocker" ? 6 : 4;
+  return Array.from(new Set(important.length > 0 ? important : values)).slice(
+    0,
+    limit
+  );
+}
+
+function compactV2TargetVsNoRepairDiff(value: unknown): unknown {
+  const diff = asRecord(value);
+  if (!diff) {
+    return value;
+  }
+
+  return {
+    version: diff.version,
+    source: diff.source,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    summary: diff.summary,
+    targetDescriptorSource:
+      "plannerOnlyNoRepair.v2SetDistributionIntent.catalogs.slotDefinitions",
+    slotDiffs: asRecordArray(diff.slotDiffs).map((slot) => ({
+      slotId: slot.slotId,
+      laneDiffs: asRecordArray(slot.laneDiffs).map((lane) => {
+        const evidence = asRecord(lane.currentEvidence) ?? {};
+        const diagnostics = Array.isArray(evidence.relevantDiagnostics)
+          ? evidence.relevantDiagnostics
+          : [];
+        return {
+          laneId: lane.laneId,
+          targetRole: lane.targetRole,
+          currentStatus: lane.currentStatus,
+          currentEvidence: {
+            selectedExercises: asRecordArray(evidence.selectedExercises).map(
+              (exercise) =>
+                [
+                  exercise.name,
+                  exercise.sets,
+                  exercise.matchedClass,
+                  exercise.role,
+                ]
+                  .filter((entry) => entry !== undefined && entry !== "")
+                  .join(":")
+            ),
+            relevantDiagnostics: compactV2OperatorDiagnostics(
+              diagnostics,
+              lane.severity
+            ),
+          },
+          gapCause: lane.gapCause,
+          migrationRecommendation: lane.migrationRecommendation,
+          severity: lane.severity,
+        };
+      }),
+    })),
+    replacementReadinessImpact: diff.replacementReadinessImpact,
+  };
+}
+
+function compactNoRepairEvidenceArray(value: unknown, limit: number): {
+  evidence: string[];
+  omittedEvidenceCount?: number;
+} {
+  const evidence = Array.isArray(value)
+    ? value.filter(
+        (entry): entry is string =>
+          typeof entry === "string" && entry.length > 0
+      )
+    : [];
+  return {
+    evidence: evidence.slice(0, limit),
+    ...(evidence.length > limit
+      ? { omittedEvidenceCount: evidence.length - limit }
+      : {}),
+  };
+}
+
+function compactNoRepairFindingGroups(
+  value: unknown,
+  preserveEvidence: boolean
+): unknown {
+  return asRecordArray(value).map((row) => ({
+    ...row,
+    ...(preserveEvidence
+      ? { evidence: row.evidence }
+      : compactNoRepairEvidenceArray(row.evidence, 4)),
+  }));
+}
+
+function compactNoRepairConcentrationRows(value: unknown): unknown {
+  return asRecordArray(value).map((row) => ({
+    ...row,
+    ...compactNoRepairEvidenceArray(row.evidence, 5),
+  }));
+}
+
+function compactNoRepairSlotPlans(value: unknown): unknown {
+  return asRecordArray(value).map((slot) => {
+    const unresolvedDemand = compactNoRepairEvidenceArray(
+      slot.unresolvedDemand,
+      6
+    );
+    const validationFailures = compactNoRepairEvidenceArray(
+      slot.validationFailures,
+      5
+    );
+    return {
+      slotId: slot.slotId,
+      exercises: asRecordArray(slot.exercises).map((exercise) =>
+        [
+          exercise.exerciseName,
+          exercise.lane,
+          exercise.exerciseClass,
+          exercise.sets,
+        ]
+          .filter((entry) => entry !== undefined && entry !== "")
+          .join(":")
+      ),
+      missingLanes: slot.missingLanes,
+      unresolvedDemand: unresolvedDemand.evidence,
+      ...(unresolvedDemand.omittedEvidenceCount
+        ? { omittedUnresolvedDemandCount: unresolvedDemand.omittedEvidenceCount }
+        : {}),
+      validationFailures: validationFailures.evidence,
+      ...(validationFailures.omittedEvidenceCount
+        ? {
+            omittedValidationFailureCount:
+              validationFailures.omittedEvidenceCount,
+          }
+        : {}),
+    };
+  });
+}
+
+function compactNoRepairAcceptanceChecks(value: unknown): unknown {
+  return asRecordArray(value).map((check) => ({
+    ...check,
+    ...compactNoRepairEvidenceArray(check.evidence, 6),
+  }));
 }
 
 function compactPlannerOnlyNoRepair(value: unknown): unknown {
@@ -644,8 +882,45 @@ function compactPlannerOnlyNoRepair(value: unknown): unknown {
     return value;
   }
 
+  const acceptanceClassification = asRecord(noRepair.acceptanceClassification);
+
   return {
     ...noRepair,
+    ...(acceptanceClassification
+      ? {
+          acceptanceClassification: {
+            ...acceptanceClassification,
+            hardBlockers: compactNoRepairFindingGroups(
+              acceptanceClassification.hardBlockers,
+              true
+            ),
+            qualityWarnings: compactNoRepairFindingGroups(
+              acceptanceClassification.qualityWarnings,
+              false
+            ),
+            diagnosticOnly: compactNoRepairFindingGroups(
+              acceptanceClassification.diagnosticOnly,
+              false
+            ),
+            sessionShaping: compactNoRepairFindingGroups(
+              acceptanceClassification.sessionShaping,
+              false
+            ),
+          },
+        }
+      : {}),
+    ...(noRepair.v2MesocyclePlan
+      ? {
+          v2MesocyclePlan: compactV2MesocyclePlan(noRepair.v2MesocyclePlan),
+        }
+      : {}),
+    ...(noRepair.v2TargetVsNoRepairDiff
+      ? {
+          v2TargetVsNoRepairDiff: compactV2TargetVsNoRepairDiff(
+            noRepair.v2TargetVsNoRepairDiff
+          ),
+        }
+      : {}),
     ...(noRepair.v2SetDistributionIntent
       ? {
           v2SetDistributionIntent: compactV2SetDistributionIntent(
@@ -653,6 +928,18 @@ function compactPlannerOnlyNoRepair(value: unknown): unknown {
           ),
         }
       : {}),
+    slotPlans: compactNoRepairSlotPlans(noRepair.slotPlans),
+    acceptanceChecks: compactNoRepairAcceptanceChecks(
+      noRepair.acceptanceChecks
+    ),
+    acceptanceFailures: compactNoRepairConcentrationRows(
+      noRepair.acceptanceFailures
+    ),
+    qualityWarnings: compactNoRepairConcentrationRows(
+      noRepair.qualityWarnings
+    ),
+    diagnosticRows: compactNoRepairConcentrationRows(noRepair.diagnosticRows),
+    ignoredRows: compactNoRepairConcentrationRows(noRepair.ignoredRows),
   };
 }
 

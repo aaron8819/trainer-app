@@ -5,7 +5,6 @@ import {
   formatWorkoutListIntentLabel,
   formatWorkoutListLoggedSetsLabel,
   getWorkoutListDisplayStatusLabel,
-  getWorkoutListDebugLabel,
   getWorkoutListPrimaryLabel,
   getWorkoutListSecondaryLabel,
   getWorkoutListStatusClasses,
@@ -369,7 +368,6 @@ describe("buildWorkoutListSurfaceSummary", () => {
     expect(summary.sessionSlotId).toBe("upper_b");
     expect(summary.sessionTechnicalLabel).toBeNull();
     expect(getWorkoutListPrimaryLabel(summary)).toBe("Upper 2");
-    expect(getWorkoutListDebugLabel(summary)).toBeNull();
   });
 
   it("marks strict supplemental deficit sessions without changing body-part primary labeling", () => {

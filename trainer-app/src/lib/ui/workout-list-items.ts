@@ -162,12 +162,6 @@ export function getWorkoutListSecondaryLabel(
   return formatGapFillMuscleList(workout.gapFillTargetMuscles);
 }
 
-export function getWorkoutListDebugLabel(
-  workout: Pick<WorkoutListSurfaceSummary, "sessionTechnicalLabel">
-): string | null {
-  return null;
-}
-
 export function getWorkoutListStatusLabel(status: string): string {
   return WORKOUT_LIST_STATUS_LABELS[status] ?? status;
 }

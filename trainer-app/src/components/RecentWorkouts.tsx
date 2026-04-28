@@ -8,7 +8,6 @@ import {
   formatWorkoutListExerciseLabel,
   getWorkoutListDisplayStatusClasses,
   getWorkoutListDisplayStatusLabel,
-  getWorkoutListDebugLabel,
   getWorkoutListPrimaryLabel,
   getWorkoutListSecondaryLabel,
   type WorkoutListSurfaceSummary,
@@ -62,7 +61,6 @@ export default function RecentWorkouts({
               workout.sessionSnapshot
             );
             const secondaryLabel = getWorkoutListSecondaryLabel(workout);
-            const debugLabel = getWorkoutListDebugLabel(workout);
 
             return (
               <div
@@ -90,9 +88,6 @@ export default function RecentWorkouts({
                   </p>
                   {secondaryLabel ? (
                     <p className="mt-1 text-xs text-slate-600">{secondaryLabel}</p>
-                  ) : null}
-                  {debugLabel ? (
-                    <p className="mt-1 text-xs text-slate-500">{debugLabel}</p>
                   ) : null}
                   <p className="mt-1 text-xs text-slate-500">
                     {new Date(workout.scheduledDate).toLocaleDateString()} |{" "}

@@ -207,6 +207,22 @@ describe("buildWorkoutAuditContext", () => {
     });
   });
 
+  it("passes v2 debug artifact only with planner-only no-repair mesocycle-explain", async () => {
+    const context = await buildWorkoutAuditContext({
+      mode: "mesocycle-explain",
+      userId: "user-1",
+      plannerOnlyNoRepair: true,
+      compareRepaired: true,
+      v2DebugArtifact: true,
+    });
+
+    expect(context.mesocycleExplain?.plannerOnlyNoRepair).toEqual({
+      enabled: true,
+      compareRepaired: true,
+      v2DebugArtifact: true,
+    });
+  });
+
   it("rejects planner-only no-repair outside mesocycle-explain", async () => {
     await expect(
       buildWorkoutAuditContext({
@@ -215,5 +231,26 @@ describe("buildWorkoutAuditContext", () => {
         plannerOnlyNoRepair: true,
       }),
     ).rejects.toThrow("--planner-only-no-repair requires --mode mesocycle-explain");
+  });
+
+  it("rejects v2 debug artifact outside mesocycle-explain", async () => {
+    await expect(
+      buildWorkoutAuditContext({
+        mode: "future-week",
+        userId: "user-1",
+        plannerOnlyNoRepair: true,
+        v2DebugArtifact: true,
+      }),
+    ).rejects.toThrow("--v2-debug-artifact requires --mode mesocycle-explain");
+  });
+
+  it("rejects v2 debug artifact without planner-only no-repair", async () => {
+    await expect(
+      buildWorkoutAuditContext({
+        mode: "mesocycle-explain",
+        userId: "user-1",
+        v2DebugArtifact: true,
+      }),
+    ).rejects.toThrow("--v2-debug-artifact requires --planner-only-no-repair");
   });
 });

@@ -9,6 +9,7 @@ import {
   buildPlannerOnlyNoRepairSummary,
   buildProjectedWeekDebugSummary,
   buildProjectedWeekOperatorSummary,
+  buildV2DebugArtifactSummary,
   buildWeeklyRetroOperatorSummary,
   computePlanningRealitySizeBudget,
   normalizeAuditIntentArg,
@@ -24,6 +25,21 @@ describe("normalizeAuditIntentArg", () => {
     expect(() => normalizeAuditIntentArg("TORSO")).toThrow(
       'Invalid --intent value "TORSO". Expected one of: push, pull, legs, upper, lower, full_body, body_part.'
     );
+  });
+});
+
+describe("buildV2DebugArtifactSummary", () => {
+  it("prints the sidecar path, size, and hash for CLI readout", () => {
+    expect(
+      buildV2DebugArtifactSummary({
+        filePath: "C:\\repo\\trainer-app\\artifacts\\audits\\parent-v2-no-repair-debug.json",
+        sizeBytes: 1234,
+        sha256: "a".repeat(64),
+      })
+    ).toEqual([
+      "[workout-audit:v2-debug] artifact=C:\\repo\\trainer-app\\artifacts\\audits\\parent-v2-no-repair-debug.json",
+      `[workout-audit:v2-debug] size_bytes=1234 sha256=${"a".repeat(64)}`,
+    ]);
   });
 });
 

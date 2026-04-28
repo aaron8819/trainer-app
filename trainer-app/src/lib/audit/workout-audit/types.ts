@@ -82,6 +82,7 @@ export type WorkoutAuditRequest = {
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;
   plannerOnlyDryRun?: boolean;
   plannerOnlyNoRepair?: boolean;
+  v2DebugArtifact?: boolean;
   compareRepaired?: boolean;
   sanitizationLevel?: "none" | "pii-safe";
 };
@@ -128,6 +129,7 @@ export type WorkoutAuditContext = {
     plannerOnlyNoRepair?: {
       enabled: true;
       compareRepaired: boolean;
+      v2DebugArtifact?: boolean;
     };
   };
 };
@@ -1212,6 +1214,80 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
     repairedPasses: boolean;
     noRepairPasses: boolean;
     mainGaps: string[];
+  };
+  debugArtifact?: MesocycleExplainPlannerOnlyNoRepairDebugArtifactManifest;
+};
+
+export type MesocycleExplainPlannerOnlyNoRepairDebugArtifactManifest = {
+  kind: "v2_planner_no_repair_debug";
+  created: boolean;
+  fileName?: string;
+  relativePath?: string;
+  sizeBytes?: number;
+  sha256?: string;
+  enableWith?: "--v2-debug-artifact";
+  contains: string[];
+};
+
+export type MesocycleExplainPlannerOnlyNoRepairDebugArtifact = {
+  version: 1;
+  kind: "v2_planner_no_repair_debug";
+  generatedAt: string;
+  parent: {
+    fileName: string;
+    relativePath: string;
+    mode: "mesocycle-explain";
+    sourceMesocycleId?: string;
+    retrospectiveMesocycleId?: string;
+    requestFlags: string[];
+    parentSha256?: string;
+  };
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  plannerOnlyNoRepair: Pick<
+    MesocycleExplainPlannerOnlyNoRepair,
+    | "summary"
+    | "acceptanceClassification"
+    | "v2MesocyclePlan"
+    | "v2SetDistributionIntent"
+    | "v2TargetVsNoRepairDiff"
+    | "slotPlans"
+    | "weeklyMuscleTotals"
+    | "setAllocationChanges"
+    | "weeklyMuscleTotalChanges"
+    | "acceptanceChecks"
+    | "acceptanceFailures"
+    | "qualityWarnings"
+    | "diagnosticRows"
+    | "ignoredRows"
+    | "repairDependenciesDisabled"
+    | "comparisonToRepaired"
+  > & {
+    laneEvidence: Array<{
+      slotId: string;
+      laneId: string;
+      currentStatus: string;
+      severity: string;
+      selectedExercises: Array<{
+        name: string;
+        sets: number;
+        matchedClass?: string;
+        role?: string;
+      }>;
+      relevantDiagnostics: string[];
+    }>;
+    diagnosticCatalogs: {
+      laneStatusCounts: Record<string, number>;
+      severityCounts: Record<string, number>;
+      migrationRecommendationCounts: Record<string, number>;
+      gapCauseCounts: Record<string, number>;
+    };
+    classificationDetails: {
+      hardBlockerCount: number;
+      qualityWarningCount: number;
+      diagnosticOnlyCount: number;
+      sessionShapingCount: number;
+    };
   };
 };
 

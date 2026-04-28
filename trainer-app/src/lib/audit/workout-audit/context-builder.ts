@@ -38,6 +38,12 @@ export async function buildWorkoutAuditContext(
   if (request.plannerOnlyDryRun && mode !== "mesocycle-explain") {
     throw new Error("--planner-only-dry-run requires --mode mesocycle-explain");
   }
+  if (request.v2DebugArtifact && mode !== "mesocycle-explain") {
+    throw new Error("--v2-debug-artifact requires --mode mesocycle-explain");
+  }
+  if (request.v2DebugArtifact && !request.plannerOnlyNoRepair) {
+    throw new Error("--v2-debug-artifact requires --planner-only-no-repair");
+  }
   if (request.plannerOnlyNoRepair && mode !== "mesocycle-explain") {
     throw new Error("--planner-only-no-repair requires --mode mesocycle-explain");
   }
@@ -139,6 +145,9 @@ export async function buildWorkoutAuditContext(
               plannerOnlyNoRepair: {
                 enabled: true,
                 compareRepaired: request.compareRepaired === true,
+                ...(request.v2DebugArtifact
+                  ? { v2DebugArtifact: true }
+                  : {}),
               },
             }
           : {}),

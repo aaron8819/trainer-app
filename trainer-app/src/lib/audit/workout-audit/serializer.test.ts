@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { AUDIT_RECONSTRUCTION_GUARDRAIL } from "./constants";
-import { buildWorkoutAuditArtifact, serializeWorkoutAuditArtifact } from "./serializer";
+import {
+  buildWorkoutAuditArtifact,
+  createWorkoutAuditArtifactOutput,
+  serializeWorkoutAuditArtifact,
+} from "./serializer";
 import type { WorkoutAuditRun } from "./types";
 
 const baseRun: WorkoutAuditRun = {
@@ -1160,4 +1164,424 @@ describe("buildWorkoutAuditArtifact", () => {
       limitations: ["historical ranking unavailable"],
     });
   });
+
+  it("keeps full no-repair diagnostics in memory while serializing the main artifact as an operator summary", () => {
+    const output = createWorkoutAuditArtifactOutput(
+      {
+        mode: "mesocycle-explain",
+        userId: "user-1",
+        ownerEmail: "owner@test.local",
+        plannerOnlyNoRepair: true,
+        compareRepaired: true,
+      },
+      {
+        ...baseRun,
+        context: {
+          mode: "mesocycle-explain",
+          requestedMode: "mesocycle-explain",
+          userId: "user-1",
+          ownerEmail: "owner@test.local",
+          plannerDiagnosticsMode: "standard",
+          mesocycleExplain: {
+            plannerOnlyNoRepair: {
+              enabled: true,
+              compareRepaired: true,
+            },
+          },
+        },
+        generationResult: undefined,
+        mesocycleExplain: makeMesocycleExplainNoRepairPayload(),
+      }
+    );
+
+    const fullNoRepair = output.artifact.mesocycleExplain?.plannerOnlyNoRepair;
+    const serializedNoRepair =
+      output.serializedArtifact.mesocycleExplain?.plannerOnlyNoRepair as unknown as Record<
+        string,
+        unknown
+      >;
+
+    expect(fullNoRepair?.v2MesocyclePlan).toBeTruthy();
+    expect(fullNoRepair?.v2SetDistributionIntent).toBeTruthy();
+    expect(fullNoRepair?.v2TargetVsNoRepairDiff).toBeTruthy();
+    expect(serializedNoRepair).toMatchObject({
+      summary: {
+        status: "fail",
+        replacementReadinessStatus: "blocked",
+      },
+      v2Summary: {
+        split: "upper_lower_4x",
+        weekCount: 5,
+        slotCount: 1,
+      },
+      debugArtifact: {
+        created: false,
+        enableWith: "--v2-debug-artifact",
+      },
+    });
+    expect(serializedNoRepair).not.toHaveProperty("v2MesocyclePlan");
+    expect(serializedNoRepair).not.toHaveProperty("v2SetDistributionIntent");
+    expect(serializedNoRepair).not.toHaveProperty("v2TargetVsNoRepairDiff");
+    expect(output.v2DebugArtifact).toBeUndefined();
+  });
+
+  it("returns a linked V2 no-repair debug sidecar only when the explicit sidecar flag is enabled", () => {
+    const output = createWorkoutAuditArtifactOutput(
+      {
+        mode: "mesocycle-explain",
+        userId: "user-1",
+        ownerEmail: "owner@test.local",
+        plannerOnlyNoRepair: true,
+        compareRepaired: true,
+        v2DebugArtifact: true,
+      },
+      {
+        ...baseRun,
+        context: {
+          mode: "mesocycle-explain",
+          requestedMode: "mesocycle-explain",
+          userId: "user-1",
+          ownerEmail: "owner@test.local",
+          plannerDiagnosticsMode: "standard",
+          mesocycleExplain: {
+            sourceMesocycleId: "meso-source",
+            retrospectiveMesocycleId: "meso-retro",
+            plannerOnlyNoRepair: {
+              enabled: true,
+              compareRepaired: true,
+              v2DebugArtifact: true,
+            },
+          },
+        },
+        generationResult: undefined,
+        mesocycleExplain: makeMesocycleExplainNoRepairPayload(),
+      },
+      {
+        artifactFileName: "parent.json",
+        artifactRelativePath: "artifacts/audits/parent.json",
+        v2DebugArtifactFileName: "parent-v2-no-repair-debug.json",
+        v2DebugArtifactRelativePath:
+          "artifacts/audits/parent-v2-no-repair-debug.json",
+      }
+    );
+    const mainNoRepair =
+      output.serializedArtifact.mesocycleExplain?.plannerOnlyNoRepair as unknown as Record<
+        string,
+        unknown
+      >;
+
+    expect(output.v2DebugArtifact).toMatchObject({
+      fileName: "parent-v2-no-repair-debug.json",
+      relativePath: "artifacts/audits/parent-v2-no-repair-debug.json",
+      sizeBytes: expect.any(Number),
+      sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(mainNoRepair.debugArtifact).toMatchObject({
+      kind: "v2_planner_no_repair_debug",
+      created: true,
+      fileName: "parent-v2-no-repair-debug.json",
+      relativePath: "artifacts/audits/parent-v2-no-repair-debug.json",
+      sizeBytes: output.v2DebugArtifact?.sizeBytes,
+      sha256: output.v2DebugArtifact?.sha256,
+    });
+    expect(output.v2DebugArtifact?.artifact.parent).toMatchObject({
+      fileName: "parent.json",
+      relativePath: "artifacts/audits/parent.json",
+      mode: "mesocycle-explain",
+      sourceMesocycleId: "meso-source",
+      retrospectiveMesocycleId: "meso-retro",
+      requestFlags: [
+        "--mode mesocycle-explain",
+        "--planner-only-no-repair",
+        "--compare-repaired",
+        "--v2-debug-artifact",
+      ],
+    });
+    expect(output.v2DebugArtifact?.artifact).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      plannerOnlyNoRepair: {
+        v2MesocyclePlan: expect.any(Object),
+        v2SetDistributionIntent: expect.any(Object),
+        v2TargetVsNoRepairDiff: expect.any(Object),
+        laneEvidence: [
+          expect.objectContaining({
+            slotId: "upper_a",
+            laneId: "chest_anchor",
+          }),
+        ],
+      },
+    });
+    expect(output.sizeBytes).toBeLessThan(1_048_576);
+  });
 });
+
+function makeMesocycleExplainNoRepairPayload() {
+  return {
+    version: 1,
+    sourceMesocycleId: "meso-source",
+    retrospectiveMesocycleId: "meso-retro",
+    preview: {
+      sourceMesocycleId: "meso-source",
+      rationaleBasis: "reconstructed_now",
+      designBasis: {
+        focus: "hypertrophy",
+        splitType: "UPPER_LOWER",
+        sessionsPerWeek: 4,
+        daysPerWeek: 4,
+        durationWeeks: 5,
+        volumeTarget: "MEDIUM",
+        intensityBias: "MODERATE",
+        profileReasonCodes: [],
+        structureReasonCodes: [],
+        startingPointReasonCodes: [],
+      },
+      carryForwardReasons: [],
+      slotPlans: [],
+      projectedSessions: [],
+      projectionDiagnostics: {
+        label: "projection diagnostics",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        summary: {
+          setStackingPressure: 0,
+          duplicateExercisePressure: 0,
+          diversityPenalties: 0,
+          hingeSquatBalance: 0,
+          isolationInjectionTriggers: 0,
+          softCapsOverriddenByP0: 0,
+        },
+        constraintsTriggered: [],
+        tradeoffs: [],
+        softCapOverridesByP0: [],
+      },
+      exerciseRationale: [],
+    },
+    seed: {
+      mesocycleId: "meso-retro",
+      available: false,
+      slotPlans: [],
+      exerciseRationale: [],
+    },
+    reality: {
+      mesocycleId: "meso-retro",
+      workoutCount: 0,
+      generatedVsSaved: [],
+      runtimeDrift: [],
+      exerciseRationale: [],
+    },
+    comparison: {
+      previewVsSeed: {
+        comparable: false,
+        comparisonBasis: "none",
+        slotDiffs: [],
+      },
+      seedVsReality: {
+        comparable: false,
+        workoutDrift: [],
+      },
+      previewVsReality: {
+        comparable: false,
+        comparisonBasis: "none",
+        slotDiffs: [],
+      },
+    },
+    limitations: [],
+    plannerOnlyNoRepair: {
+      enabled: true,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      canReplaceRepairedProjection: false,
+      summary: {
+        status: "fail",
+        targetLanesSatisfied: 0,
+        targetLanesMissing: 1,
+        unresolvedDemandCount: 1,
+        validationFailureCount: 1,
+      },
+      acceptanceClassification: {
+        basicMesocycleShapeStatus: "fail",
+        replacementReadinessStatus: "blocked",
+        hardBlockers: [
+          {
+            code: "primary_hard_target_below_minimum",
+            evidence: ["upper_a:Chest:below_minimum"],
+          },
+        ],
+        qualityWarnings: [],
+        diagnosticOnly: [],
+        sessionShaping: [],
+        migrationScoreboard: {
+          materialRepairCount: 1,
+          majorRepairCount: 0,
+          suspiciousRepairs: 0,
+          canReplaceRepairedProjection: false,
+          reason: "blocked",
+        },
+      },
+      v2MesocyclePlan: {
+        version: 1,
+        source: "v2_planner_no_repair_experimental",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        planStatus: "replacement_not_ready",
+        skeleton: {
+          split: "upper_lower_4x",
+          weeks: 5,
+          slotSequence: ["upper_a", "lower_a", "upper_b", "lower_b"],
+          slots: [
+            {
+              slotId: "upper_a",
+              intent: "upper",
+              targetSessionSets: { min: 12, max: 18 },
+              lanes: [
+                {
+                  laneId: "chest_anchor",
+                  required: true,
+                  role: "anchor",
+                  primaryMuscles: ["Chest"],
+                  preferredExerciseClasses: ["horizontal_press"],
+                  targetSets: { min: 3, preferred: 4, max: 5 },
+                  currentWeek1Status: "missing",
+                },
+              ],
+            },
+          ],
+        },
+        weeklyProgressionModel: {
+          weeks: [
+            {
+              week: 1,
+              phase: "entry_calibration",
+              volumeMultiplier: 1,
+              rirTarget: "3-4",
+              progressionIntent: "establish_anchors",
+              limitations: [],
+            },
+          ],
+        },
+        deloadTransform: {
+          preserveExerciseIdentities: true,
+          targetVolumeReductionPercent: { min: 40, max: 60 },
+          targetRir: "4-5",
+          removeRedundantAccessories: true,
+          introduceNewMovements: false,
+          projectionStatus: "partially_modeled",
+          limitations: [],
+        },
+        validationRules: [
+          {
+            ruleId: "required_lanes_present",
+            severity: "hard_blocker",
+            description: "Required lanes must be present.",
+            week1Status: "fail",
+            fullMesocycleStatus: "fail",
+          },
+        ],
+        replacementReadiness: {
+          canReplaceRepairedProjection: false,
+          reason: ["hard_blockers_present"],
+        },
+      },
+      v2TargetVsNoRepairDiff: {
+        version: 1,
+        source: "v2_planner_no_repair_experimental",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        summary: {
+          targetLaneCount: 1,
+          satisfiedLaneCount: 0,
+          partialLaneCount: 0,
+          missingLaneCount: 1,
+          blockedLaneCount: 0,
+          repairDependentLaneCount: 0,
+          migrationCandidateCount: 1,
+          suspiciousOrBlockedCount: 0,
+        },
+        slotDiffs: [
+          {
+            slotId: "upper_a",
+            laneDiffs: [
+              {
+                laneId: "chest_anchor",
+                targetRole: "anchor",
+                targetPrimaryMuscles: ["Chest"],
+                targetExerciseClasses: ["horizontal_press"],
+                targetSets: { min: 3, preferred: 4, max: 5 },
+                currentStatus: "missing",
+                currentEvidence: {
+                  selectedExercises: [],
+                  relevantDiagnostics: ["target_status:missing"],
+                },
+                gapCause: "capacity_gap",
+                migrationRecommendation: "promote_to_planner_later",
+                severity: "hard_blocker",
+              },
+            ],
+          },
+        ],
+        replacementReadinessImpact: {
+          canReplaceRepairedProjection: false,
+          blockers: ["required_lane_missing"],
+          nextBestMigrationSlice: "upper_a:chest_anchor",
+        },
+      },
+      v2SetDistributionIntent: {
+        version: 1,
+        source: "v2_planner_policy",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        summary: {
+          weekCount: 5,
+          slotCount: 1,
+          laneCount: 1,
+          plannedTotalSetsByWeek: [
+            {
+              week: 1,
+              totalSets: 12,
+              volumeMultiplier: 1,
+              phase: "entry_calibration",
+            },
+          ],
+        },
+        weeks: [],
+        guardrails: {
+          doesNotUseRepairedProjectionAsTarget: true,
+          doesNotUseAcceptedSeedAsTarget: true,
+          doesNotAffectSelection: true,
+          doesNotAffectRepair: true,
+          doesNotAffectRuntimeReplay: true,
+        },
+      },
+      slotPlans: [
+        {
+          slotId: "upper_a",
+          exercises: [],
+          missingLanes: ["chest_anchor"],
+          unresolvedDemand: ["Chest below minimum"],
+          validationFailures: ["required lane missing"],
+        },
+      ],
+      weeklyMuscleTotals: [],
+      setAllocationChanges: [],
+      weeklyMuscleTotalChanges: [],
+      acceptanceChecks: [
+        {
+          check: "required lanes present",
+          status: "fail",
+          evidence: ["upper_a:chest_anchor:missing"],
+        },
+      ],
+      acceptanceFailures: [],
+      qualityWarnings: [],
+      diagnosticRows: [],
+      ignoredRows: [],
+      repairDependenciesDisabled: ["support-floor closure"],
+      comparisonToRepaired: {
+        repairedPasses: true,
+        noRepairPasses: false,
+        mainGaps: ["required_lane_missing"],
+      },
+    },
+  } as WorkoutAuditRun["mesocycleExplain"];
+}

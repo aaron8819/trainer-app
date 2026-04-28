@@ -2062,6 +2062,17 @@ export function buildPlannerOnlyNoRepairSummary(input: {
   ];
 }
 
+export function buildV2DebugArtifactSummary(input: {
+  filePath: string;
+  sizeBytes: number;
+  sha256: string;
+}): string[] {
+  return [
+    `[workout-audit:v2-debug] artifact=${input.filePath}`,
+    `[workout-audit:v2-debug] size_bytes=${input.sizeBytes} sha256=${input.sha256}`,
+  ];
+}
+
 export function buildCurrentWeekAuditOperatorSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "projectedWeekVolume">;
 }): string[] | null {
@@ -2141,9 +2152,18 @@ async function main(): Promise<void> {
   const shouldAcceptSlotPlanUpgrade = args["accept-slot-plan-upgrade"] === true;
   const shouldRunPlannerOnlyDryRun = args["planner-only-dry-run"] === true;
   const shouldRunPlannerOnlyNoRepair = args["planner-only-no-repair"] === true;
+  const shouldWriteV2DebugArtifact = args["v2-debug-artifact"] === true;
   const shouldCompareRepaired = args["compare-repaired"] === true;
+  const requestedMode =
+    (args.mode as WorkoutAuditRequest["mode"] | undefined) ?? "future-week";
   if (shouldRunPlannerOnlyDryRun && !shouldCompareRepaired) {
     throw new Error("--planner-only-dry-run currently requires --compare-repaired");
+  }
+  if (shouldWriteV2DebugArtifact && requestedMode !== "mesocycle-explain") {
+    throw new Error("--v2-debug-artifact requires --mode mesocycle-explain");
+  }
+  if (shouldWriteV2DebugArtifact && !shouldRunPlannerOnlyNoRepair) {
+    throw new Error("--v2-debug-artifact requires --planner-only-no-repair");
   }
   const env = loadAuditEnv(typeof args["env-file"] === "string" ? args["env-file"] : undefined);
   const normalizedIntent = normalizeAuditIntentArg(
@@ -2172,8 +2192,7 @@ async function main(): Promise<void> {
   const identityRequest = buildResolvedAuditIdentityRequest(args, preflight);
 
   const request: WorkoutAuditRequest = {
-    mode:
-      (args.mode as WorkoutAuditRequest["mode"] | undefined) ?? "future-week",
+    mode: requestedMode,
     ...identityRequest,
     intent: normalizedIntent,
     targetMuscles:
@@ -2205,6 +2224,7 @@ async function main(): Promise<void> {
     plannerDiagnosticsMode: args.debug === true ? ("debug" as const) : ("standard" as const),
     plannerOnlyDryRun: shouldRunPlannerOnlyDryRun ? true : undefined,
     plannerOnlyNoRepair: shouldRunPlannerOnlyNoRepair ? true : undefined,
+    v2DebugArtifact: shouldWriteV2DebugArtifact ? true : undefined,
     compareRepaired: shouldCompareRepaired ? true : undefined,
     sanitizationLevel: args.sanitization === "pii-safe" ? ("pii-safe" as const) : ("none" as const),
   };
@@ -2228,18 +2248,31 @@ async function main(): Promise<void> {
   );
 
   const { context, run } = result;
-  const output = serializer.createWorkoutAuditArtifactOutput(request, run, {
-    capturedWarnings: warnings,
-  });
-  const { artifact, serializedArtifact, serialized, sizeBytes } = output;
-
-  const timestamp = artifact.generatedAt.replace(/[:.]/g, "-");
+  const timestamp = run.generatedAt.replace(/[:.]/g, "-");
   const intentSlug = context.generationInput?.intent ? `-${slug(context.generationInput.intent)}` : "";
   const fileName = `${timestamp}-${request.mode}${intentSlug}.json`;
   const outputDir = path.join(process.cwd(), "artifacts", "audits");
+  const relativePath = ["artifacts", "audits", fileName].join("/");
+  const v2DebugFileName = `${timestamp}-${request.mode}${intentSlug}-v2-no-repair-debug.json`;
+  const v2DebugRelativePath = ["artifacts", "audits", v2DebugFileName].join("/");
+  const output = serializer.createWorkoutAuditArtifactOutput(request, run, {
+    capturedWarnings: warnings,
+    artifactFileName: fileName,
+    artifactRelativePath: relativePath,
+    v2DebugArtifactFileName: v2DebugFileName,
+    v2DebugArtifactRelativePath: v2DebugRelativePath,
+  });
+  const { artifact, serializedArtifact, serialized, sizeBytes, v2DebugArtifact } = output;
+
   await mkdir(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, fileName);
   await writeFile(outputPath, serialized, "utf8");
+  const v2DebugOutputPath = v2DebugArtifact
+    ? path.join(outputDir, v2DebugArtifact.fileName)
+    : null;
+  if (v2DebugArtifact && v2DebugOutputPath) {
+    await writeFile(v2DebugOutputPath, v2DebugArtifact.serialized, "utf8");
+  }
 
   const summary = run.historicalWeek
     ? `week=${run.historicalWeek.week} sessions=${run.historicalWeek.summary.sessionCount}`
@@ -2310,6 +2343,15 @@ async function main(): Promise<void> {
   });
   if (plannerOnlyNoRepairSummary) {
     for (const line of plannerOnlyNoRepairSummary) {
+      console.log(line);
+    }
+  }
+  if (v2DebugArtifact && v2DebugOutputPath) {
+    for (const line of buildV2DebugArtifactSummary({
+      filePath: v2DebugOutputPath,
+      sizeBytes: v2DebugArtifact.sizeBytes,
+      sha256: v2DebugArtifact.sha256,
+    })) {
       console.log(line);
     }
   }

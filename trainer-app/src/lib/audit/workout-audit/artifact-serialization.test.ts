@@ -9,20 +9,6 @@ import {
 import { WORKOUT_AUDIT_SIZE_LIMIT_BYTES } from "./constants";
 import type { WorkoutAuditArtifact } from "./types";
 
-function resolveCompactV2Refs(
-  diff: Record<string, unknown>,
-  refs: unknown,
-  catalogName: "diagnosticStrings" | "selectedExercises"
-): string[] {
-  const catalogs = diff.catalogs as
-    | Record<string, Record<string, string>>
-    | undefined;
-  const catalog = catalogs?.[catalogName] ?? {};
-  return Array.isArray(refs)
-    ? refs.map((ref) => catalog[String(ref)] ?? String(ref))
-    : [];
-}
-
 describe("artifact serialization helpers", () => {
   it("sorts object keys without reordering arrays", () => {
     const serialized = serializeStableJson({
@@ -478,7 +464,7 @@ describe("artifact serialization helpers", () => {
     );
   });
 
-  it("keeps compact planner-only no-repair set-policy diagnostics under the audit artifact limit", () => {
+  it("keeps planner-only no-repair main artifact to operator summary only", () => {
     const artifact = {
       mode: "mesocycle-explain",
       mesocycleExplain: {
@@ -623,20 +609,51 @@ describe("artifact serialization helpers", () => {
 
     const compact = compactWorkoutAuditArtifactForSerialization(artifact);
     const serialized = JSON.stringify(compact);
+    const noRepair = compact.mesocycleExplain
+      ?.plannerOnlyNoRepair as unknown as Record<string, unknown>;
 
     const size = getSerializedJsonSizeBytes(compact);
     expect(size).toBeLessThan(WORKOUT_AUDIT_SIZE_LIMIT_BYTES);
     expect(WORKOUT_AUDIT_SIZE_LIMIT_BYTES - size).toBeGreaterThan(75_000);
-    expect(serialized).toContain("setPolicy:quality_warning");
-    expect(serialized).toContain("concentration:primary_anchor");
-    expect(serialized).toContain("concentration:vertical_press");
-    expect(serialized).toContain("concentration:pressing_collateral");
-    expect(serialized).toContain("concentration:anchor_expected");
-    expect(serialized).toContain("justification:second_quad_exposure");
-    expect(serialized).toContain("justification:front_delt_collateral_expected");
+    expect(noRepair).toMatchObject({
+      enabled: true,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      summary: {
+        status: "pass_with_warnings",
+        targetLanesSatisfied: 1,
+        targetLanesMissing: 0,
+        replacementReadinessStatus: "not_ready",
+        basicMesocycleShapeStatus: "pass_with_warnings",
+        hardBlockerCount: 0,
+        warningCount: 0,
+        diagnosticRowCount: 0,
+        nextBestMigrationSlice: "row_anchor:needs_set_budget_justification",
+      },
+      v2Summary: {
+        planStatus: undefined,
+        split: undefined,
+        weekCount: 1,
+        slotCount: 1,
+        laneCounts: {
+          target: 1,
+          partial: 1,
+          missing: 0,
+        },
+      },
+      debugArtifact: {
+        kind: "v2_planner_no_repair_debug",
+        created: false,
+        enableWith: "--v2-debug-artifact",
+      },
+    });
+    expect(noRepair).not.toHaveProperty("v2MesocyclePlan");
+    expect(noRepair).not.toHaveProperty("v2TargetVsNoRepairDiff");
+    expect(noRepair).not.toHaveProperty("v2SetDistributionIntent");
+    expect(serialized).not.toContain("concentration:primary_anchor");
   });
 
-  it("preserves compact set-budget justification diagnostics without hard-blocker collision", () => {
+  it("summarizes set-budget justification rows without serializing full lane diagnostics", () => {
     const artifact = {
       mode: "mesocycle-explain",
       mesocycleExplain: {
@@ -708,55 +725,21 @@ describe("artifact serialization helpers", () => {
 
     const compact = compactWorkoutAuditArtifactForSerialization(artifact);
     const serialized = serializeStableJson(compact);
-    const targetDiff = (
-      compact as {
-        mesocycleExplain?: {
-          plannerOnlyNoRepair?: {
-            v2TargetVsNoRepairDiff?: Record<string, unknown>;
-          };
-        };
-      }
-    ).mesocycleExplain?.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff;
-    const lane = (
-      compact as {
-        mesocycleExplain?: {
-          plannerOnlyNoRepair?: {
-            v2TargetVsNoRepairDiff?: {
-              slotDiffs?: Array<{
-                laneDiffs?: Array<{
-                  currentEvidence?: {
-                    relevantDiagnosticRefs?: string[];
-                    relevantDiagnostics?: string[];
-                  };
-                }>;
-              }>;
-            };
-          };
-        };
-      }
-    ).mesocycleExplain?.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff
-      ?.slotDiffs?.[0]?.laneDiffs?.[0];
-    const diagnostics = resolveCompactV2Refs(
-      targetDiff ?? {},
-      lane?.currentEvidence?.relevantDiagnosticRefs,
-      "diagnosticStrings"
-    );
+    const noRepair = compact.mesocycleExplain
+      ?.plannerOnlyNoRepair as unknown as Record<string, unknown>;
 
-    expect(serialized).toContain("setBudget:requires_justification");
-    expect(diagnostics).toEqual([
-      "setPolicy:requires_justification",
-      "setPolicyReason:over_role_cap",
-      "setBudget:requires_justification",
-      "justification:none",
-    ]);
-    expect(
-      diagnostics.some((entry) =>
-        entry.toLowerCase().includes("hard_blocker")
-      )
-    ).toBe(false);
+    expect(noRepair.v2Summary).toMatchObject({
+      targetVsNoRepairSummary: {
+        partialLaneCount: 1,
+        missingLaneCount: 0,
+      },
+    });
+    expect(noRepair).not.toHaveProperty("v2TargetVsNoRepairDiff");
+    expect(serialized).not.toContain("setBudget:requires_justification");
+    expect(serialized).not.toContain("hard_blocker");
   });
 
-  it("preserves compact explained concentration strings without blocker collisions", () => {
+  it("keeps explained concentration details out of the main no-repair artifact", () => {
     const artifact = {
       mode: "mesocycle-explain",
       mesocycleExplain: {
@@ -830,56 +813,17 @@ describe("artifact serialization helpers", () => {
 
     const compact = compactWorkoutAuditArtifactForSerialization(artifact);
     const serialized = serializeStableJson(compact);
-    const targetDiff = (
-      compact as {
-        mesocycleExplain?: {
-          plannerOnlyNoRepair?: {
-            v2TargetVsNoRepairDiff?: Record<string, unknown>;
-          };
-        };
-      }
-    ).mesocycleExplain?.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff;
-    const lane = (
-      compact as {
-        mesocycleExplain?: {
-          plannerOnlyNoRepair?: {
-            v2TargetVsNoRepairDiff?: {
-              slotDiffs?: Array<{
-                laneDiffs?: Array<{
-                  currentEvidence?: {
-                    relevantDiagnosticRefs?: string[];
-                    relevantDiagnostics?: string[];
-                  };
-                }>;
-              }>;
-            };
-          };
-        };
-      }
-    ).mesocycleExplain?.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff
-      ?.slotDiffs?.[0]?.laneDiffs?.[0];
-    const diagnostics = resolveCompactV2Refs(
-      targetDiff ?? {},
-      lane?.currentEvidence?.relevantDiagnosticRefs,
-      "diagnosticStrings"
-    );
+    const noRepair = compact.mesocycleExplain
+      ?.plannerOnlyNoRepair as unknown as Record<string, unknown>;
 
-    expect(serialized).toContain("concentration:quality_warning");
-    expect(diagnostics).toEqual([
-      "setPolicy:quality_warning",
-      "setBudget:within_preferred",
-      "concentration:support_tier",
-      "concentration:small_denominator",
-      "concentration:quality_warning",
-      "concentration:justified_direct_isolation",
-      "justification:low_systemic_fatigue",
-      "justification:small_target_denominator",
-    ]);
-    expect(
-      diagnostics.some((entry) =>
-        entry.toLowerCase().includes("hard_blocker")
-      )
-    ).toBe(false);
+    expect(noRepair.v2Summary).toMatchObject({
+      targetVsNoRepairSummary: {
+        partialLaneCount: 1,
+      },
+    });
+    expect(noRepair).not.toHaveProperty("v2TargetVsNoRepairDiff");
+    expect(serialized).not.toContain("concentration:quality_warning");
+    expect(serialized).not.toContain("hard_blocker");
   });
 
   it("compacts flagged planner-only no-repair V2 diagnostics with parseable headroom and blocker evidence", () => {
@@ -1172,88 +1116,80 @@ describe("artifact serialization helpers", () => {
     const reparsed = JSON.parse(serialized) as WorkoutAuditArtifact;
     const noRepair = reparsed.mesocycleExplain
       ?.plannerOnlyNoRepair as unknown as Record<string, unknown>;
-    const targetDiff = noRepair.v2TargetVsNoRepairDiff as Record<string, unknown>;
-    const plan = noRepair.v2MesocyclePlan as Record<string, unknown>;
-    const intent = noRepair.v2SetDistributionIntent as Record<string, unknown>;
-    const classification = noRepair.acceptanceClassification as Record<string, unknown>;
-    const hardBlockers = classification.hardBlockers as Array<Record<string, unknown>>;
-    const firstLane = (
-      (targetDiff.slotDiffs as Array<Record<string, unknown>>)[0]
-        .laneDiffs as Array<Record<string, unknown>>
-    )[0];
-    const firstEvidence = firstLane.currentEvidence as Record<string, unknown>;
-    const firstLaneDiagnostics = resolveCompactV2Refs(
-      targetDiff,
-      firstEvidence.relevantDiagnosticRefs,
-      "diagnosticStrings"
-    );
-    const firstLaneSelectedExercises = resolveCompactV2Refs(
-      targetDiff,
-      firstEvidence.selectedExerciseRefs,
-      "selectedExercises"
-    );
+    const operatorFindings = noRepair.operatorFindings as Record<string, unknown>;
+    const hardBlockers =
+      operatorFindings.hardBlockers as Array<Record<string, unknown>>;
 
     expect(compactSize).toBeLessThan(originalSize);
     expect(originalSize - compactSize).toBeGreaterThanOrEqual(2_000);
     expect(WORKOUT_AUDIT_SIZE_LIMIT_BYTES - compactSize).toBeGreaterThan(
       100_000
     );
-    expect(serialized).toContain("setPolicyReason:over_60_share");
     expect(hardBlockers[0]).toMatchObject({
       code: "primary_hard_target_excessive_single_exercise_share_unjustified",
       evidence: ["upper_a:Deficit Push-Up:Chest:64%:over_60_share"],
     });
-    expect(firstLaneDiagnostics).toEqual(expect.arrayContaining([
-      "setPolicy:hard_blocker",
-      "setPolicyReason:over_60_share",
-      "setBudget:within_preferred",
-      "justification:none",
-      "target_status:blocked",
-      "program_quality:hard_blocker:forbidden_slot_primary_solution",
-    ]));
-    expect(firstLaneSelectedExercises).toEqual([
-      "Deficit Push-Up:6:horizontal_press:accessory",
-    ]);
-    expect(targetDiff).toMatchObject({
+    expect(noRepair).toMatchObject({
+      enabled: true,
       readOnly: true,
       affectsScoringOrGeneration: false,
-      catalogs: {
-        diagnosticStrings: expect.any(Object),
-        selectedExercises: expect.any(Object),
-      },
-      replacementReadinessImpact: {
+      summary: {
+        status: "fail",
+        replacementReadinessStatus: "blocked",
+        basicMesocycleShapeStatus: "fail",
+        hardBlockerCount: 1,
+        warningCount: 1,
+        diagnosticRowCount: 1,
         nextBestMigrationSlice:
           "chest_second_exposure:needs_concentration_justification",
       },
-    });
-    expect(plan).toMatchObject({
-      readOnly: true,
-      affectsScoringOrGeneration: false,
-      skeleton: {
-        targetDescriptorSource:
-          "plannerOnlyNoRepair.v2SetDistributionIntent.catalogs.slotDefinitions",
+      replacementReadiness: {
+        canReplaceRepairedProjection: false,
+        reasons: [
+          "read_only_non_generative_artifact",
+          "weeks_2_to_4_derived_not_fully_projected",
+        ],
+        blockers: ["read_only_non_generative_artifact"],
+      },
+      v2Summary: {
+        planStatus: "replacement_not_ready",
+        split: "upper_lower_4x",
+        weekCount: 5,
+        slotCount: 4,
+        laneCounts: {
+          target: 24,
+          satisfied: 12,
+          partial: 10,
+          missing: 0,
+          blocked: 2,
+          repairDependent: 0,
+          migrationCandidates: 1,
+          suspiciousOrBlocked: 2,
+        },
+        validationRuleSummary: {
+          total: 12,
+          bySeverity: {
+            hard_blocker: 4,
+            migration_scoreboard: 8,
+          },
+        },
+      },
+      debugArtifact: {
+        created: false,
+        enableWith: "--v2-debug-artifact",
+        contains: expect.arrayContaining([
+          "v2MesocyclePlan",
+          "v2SetDistributionIntent",
+          "v2TargetVsNoRepairDiff",
+        ]),
       },
     });
-    expect(intent).toMatchObject({
-      readOnly: true,
-      affectsScoringOrGeneration: false,
-      catalogs: {
-        slotDefinitions: expect.any(Array),
-      },
-      weekSetBudgetGridGroups: expect.any(Array),
-    });
-    expect(
-      (intent.weekSetBudgetGridGroups as Array<Record<string, unknown>>)[0]
-    ).toMatchObject({
-      weeks: [1, 2, 3, 4, 5],
-      slots: expect.any(Array),
-    });
-    expect(noRepair).toHaveProperty("v2MesocyclePlan");
-    expect(noRepair).toHaveProperty("v2TargetVsNoRepairDiff");
-    expect(noRepair).toHaveProperty("v2SetDistributionIntent");
+    expect(noRepair).not.toHaveProperty("v2MesocyclePlan");
+    expect(noRepair).not.toHaveProperty("v2TargetVsNoRepairDiff");
+    expect(noRepair).not.toHaveProperty("v2SetDistributionIntent");
   });
 
-  it("preserves compact chest-second concentration diagnostics through flagged serialization", () => {
+  it("links planner-only no-repair main artifact to a written sidecar manifest", () => {
     const artifact = {
       mode: "mesocycle-explain",
       mesocycleExplain: {
@@ -1316,31 +1252,34 @@ describe("artifact serialization helpers", () => {
       },
     } as unknown as WorkoutAuditArtifact;
 
-    const compact = compactWorkoutAuditArtifactForSerialization(artifact);
+    const compact = compactWorkoutAuditArtifactForSerialization(artifact, {
+      plannerOnlyNoRepairDebugArtifact: {
+        fileName: "parent-v2-no-repair-debug.json",
+        relativePath: "artifacts/audits/parent-v2-no-repair-debug.json",
+        sizeBytes: 1234,
+        sha256: "abc123",
+      },
+    });
     const serialized = serializeStableJson(compact);
     const reparsed = JSON.parse(serialized) as WorkoutAuditArtifact;
-    const targetDiff = reparsed.mesocycleExplain?.plannerOnlyNoRepair
-      ?.v2TargetVsNoRepairDiff as unknown as Record<string, unknown>;
-    const lane = (
-      (targetDiff.slotDiffs as Array<Record<string, unknown>>)[0]
-        .laneDiffs as Array<Record<string, unknown>>
-    )[0];
-    const evidence = lane.currentEvidence as Record<string, unknown>;
-    const diagnostics = resolveCompactV2Refs(
-      targetDiff,
-      evidence.relevantDiagnosticRefs,
-      "diagnosticStrings"
-    );
+    const noRepair = reparsed.mesocycleExplain
+      ?.plannerOnlyNoRepair as unknown as Record<string, unknown>;
 
-    expect(diagnostics).toEqual(expect.arrayContaining([
-      "concentration:chest_primary",
-      "concentration:second_exposure",
-      "concentration:class_distinct",
-      "concentration:exercise_distinct",
-      "justification:second_chest_exposure",
-      "justification:weekly_target_met",
-    ]));
-    expect(serialized).not.toContain("hard_blocker");
+    expect(noRepair.debugArtifact).toMatchObject({
+      kind: "v2_planner_no_repair_debug",
+      created: true,
+      fileName: "parent-v2-no-repair-debug.json",
+      relativePath: "artifacts/audits/parent-v2-no-repair-debug.json",
+      sizeBytes: 1234,
+      sha256: "abc123",
+      contains: expect.arrayContaining([
+        "v2MesocyclePlan",
+        "v2SetDistributionIntent",
+        "v2TargetVsNoRepairDiff",
+      ]),
+    });
+    expect(noRepair.debugArtifact).not.toHaveProperty("enableWith");
+    expect(serialized).not.toContain("concentration:chest_primary");
   });
 
   it("leaves unrelated audit artifacts unchanged", () => {

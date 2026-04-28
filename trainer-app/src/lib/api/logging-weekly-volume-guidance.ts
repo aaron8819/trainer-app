@@ -30,6 +30,11 @@ import {
   loadPreloadedGenerationSnapshot,
 } from "./projected-week-volume-shared";
 import {
+  computeMesoWeekStartDate,
+  mergeContributionTotals,
+  roundToTenth,
+} from "./volume-read-model-helpers";
+import {
   buildRemainingFutureSlotsFromRuntime,
   deriveNextRuntimeSlotSession,
 } from "./mesocycle-slot-runtime";
@@ -155,25 +160,6 @@ export type LoggingWeeklyVolumeGuidance = {
   rows: LoggingWeeklyVolumeGuidanceRow[];
 };
 
-function roundToTenth(value: number): number {
-  return Math.round(value * 10) / 10;
-}
-
-function computeMesoWeekStartDate(mesoStartDate: Date, week: number): Date {
-  const date = new Date(mesoStartDate);
-  date.setDate(date.getDate() + (week - 1) * 7);
-  return date;
-}
-
-function mergeContributionTotals(
-  totals: Map<string, number>,
-  contribution: Record<string, number>
-): void {
-  for (const [muscle, effectiveSets] of Object.entries(contribution)) {
-    totals.set(muscle, roundToTenth((totals.get(muscle) ?? 0) + effectiveSets));
-  }
-}
-
 function computeCheckpointShouldShow(workout: WorkoutForGuidance): boolean {
   const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(workout.selectionMetadata);
   const runtimeAddedSetIds = readRuntimeAddedSetIds(workout.selectionMetadata);
@@ -197,6 +183,8 @@ function computeCheckpointShouldShow(workout: WorkoutForGuidance): boolean {
   return plannedSetCount > 0 && resolvedPlannedSetCount === plannedSetCount;
 }
 
+// Persisted workout actuals use set-log classification, unlike projected plans
+// where every planned set contributes through computeWorkoutContributionByMuscle().
 function computeWorkoutActualContributionByMuscle(
   workout: WorkoutForGuidance
 ): Record<string, number> {

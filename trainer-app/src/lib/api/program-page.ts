@@ -46,6 +46,14 @@ import type {
   VolumeSoftTargetRange,
   VolumeTargetKind,
 } from "@/lib/engine/volume-landmarks";
+import {
+  buildVolumeLandmarkContext,
+  formatSetCount,
+  formatTargetDeltaLabel,
+  formatTargetDisplayLabel,
+  formatWeightedSetsLabel,
+  type VolumeReadModelLandmarkContext,
+} from "./volume-read-model-helpers";
 
 type ActiveProgramPageMesocycle = {
   id: string;
@@ -210,13 +218,7 @@ export type ProgramVolumeDisplayRow = {
   badges: ProgramVolumeDisplayBadge[];
 };
 
-export type ProgramVolumeLandmarkContext = {
-  mevLabel: string;
-  mavLabel: string;
-  mrvLabel: string;
-  rangeSummaryLabel: string;
-  positionLabel: string;
-};
+export type ProgramVolumeLandmarkContext = VolumeReadModelLandmarkContext;
 
 export type ProgramPageData = {
   overview: ProgramPageOverview | null;
@@ -307,26 +309,11 @@ function buildOutcomeSummary(
   );
 }
 
-function formatSetCount(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
-
 function formatSignedCompactSets(value: number): string {
   return `+${formatSetCount(value)}`;
 }
 
-function formatSignedSetDelta(value: number): string {
-  if (value === 0) {
-    return "on target";
-  }
-
-  return `${value > 0 ? "+" : "-"}${formatSetCount(Math.abs(value))} sets`;
-}
-
-function formatWeightedSetsLabel(value: number): string {
-  return `${formatSetCount(value)} weighted sets`;
-}
-
+// Compact comparison copy intentionally differs from dashboard display labels.
 function formatTargetLabel(input: {
   targetSets: number;
   targetKind?: VolumeTargetKind;
@@ -339,73 +326,6 @@ function formatTargetLabel(input: {
   }
 
   return `${formatSetCount(input.targetSets)} target`;
-}
-
-function formatTargetDisplayLabel(input: {
-  targetSets: number;
-  targetKind?: VolumeTargetKind;
-  targetRange?: VolumeSoftTargetRange | null;
-}): string {
-  if (input.targetKind === "soft" && input.targetRange) {
-    return `Soft target: ${formatSetCount(input.targetRange.min)}-${formatSetCount(
-      input.targetRange.max
-    )} weighted sets`;
-  }
-
-  return `Target: ${formatWeightedSetsLabel(input.targetSets)}`;
-}
-
-function formatTargetDeltaLabel(input: {
-  projectedFullWeekEffectiveSets: number;
-  targetSets: number;
-  targetKind?: VolumeTargetKind;
-  targetRange?: VolumeSoftTargetRange | null;
-}): string {
-  if (input.targetKind === "soft" && input.targetRange) {
-    if (input.projectedFullWeekEffectiveSets < input.targetRange.min) {
-      return formatSignedSetDelta(
-        input.projectedFullWeekEffectiveSets - input.targetRange.min
-      );
-    }
-    if (input.projectedFullWeekEffectiveSets > input.targetRange.max) {
-      return formatSignedSetDelta(
-        input.projectedFullWeekEffectiveSets - input.targetRange.max
-      );
-    }
-    return "in soft range";
-  }
-
-  return formatSignedSetDelta(input.projectedFullWeekEffectiveSets - input.targetSets);
-}
-
-function buildVolumeLandmarkContext(input: {
-  effectiveSets: number;
-  mev: number;
-  mav: number;
-  mrv: number;
-}): ProgramVolumeLandmarkContext {
-  const mevLabel = `MEV ${formatSetCount(input.mev)}`;
-  const mavLabel = `MAV ${formatSetCount(input.mav)}`;
-  const mrvLabel = `MRV ${formatSetCount(input.mrv)}`;
-  let positionLabel = "Current: within MEV-MAV";
-
-  if (input.effectiveSets < input.mev) {
-    positionLabel = "Current: below MEV";
-  } else if (input.effectiveSets === input.mev) {
-    positionLabel = "Current: at MEV";
-  } else if (input.effectiveSets > input.mav && input.effectiveSets < input.mrv) {
-    positionLabel = "Current: above MAV";
-  } else if (input.effectiveSets >= input.mrv) {
-    positionLabel = "Current: at or above MRV";
-  }
-
-  return {
-    mevLabel,
-    mavLabel,
-    mrvLabel,
-    rangeSummaryLabel: `${mevLabel} · ${mavLabel} · ${mrvLabel}`,
-    positionLabel,
-  };
 }
 
 function formatOutcomeStatusLabel(status: MuscleOutcomeStatus): string {
@@ -565,7 +485,7 @@ function buildProgramVolumeDisplayRow(input: {
         ? `${projectedLabel} is still below MEV after the planned week.`
         : `${projectedLabel} vs ${targetLabel}; ${completedLabel} so far.`,
     deltaLabel: formatTargetDeltaLabel({
-      projectedFullWeekEffectiveSets: input.projectedFullWeekEffectiveSets,
+      effectiveSets: input.projectedFullWeekEffectiveSets,
       targetSets: input.targetSets,
       targetKind: input.targetKind,
       targetRange: input.targetRange,

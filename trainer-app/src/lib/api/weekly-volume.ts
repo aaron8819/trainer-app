@@ -5,6 +5,7 @@ import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { normalizeExposedMuscle } from "@/lib/engine/volume-landmarks";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
+import { roundToTenth } from "./volume-read-model-helpers";
 
 type WorkoutReader = Pick<Prisma.TransactionClient, "workout"> | Pick<typeof prisma, "workout">;
 
@@ -38,10 +39,6 @@ type WeeklyMuscleExerciseContributionAccumulator = {
 type WeeklyMuscleVolumeAccumulator = WeeklyMuscleVolumeRow & {
   contributionMap?: Map<string, WeeklyMuscleExerciseContributionAccumulator>;
 };
-
-function roundToTenth(value: number): number {
-  return Math.round(value * 10) / 10;
-}
 
 export function countCompletedSets(
   sets: Array<{ logs: Array<{ wasSkipped: boolean }> }>

@@ -38,6 +38,11 @@ import {
 import { buildSlotSequenceEntries } from "./mesocycle-handoff-slot-plan-projection.coverage-evaluation";
 import { applyFinalMinimumViableSetRedistribution } from "./mesocycle-handoff-slot-plan-projection.repair-engine";
 import { loadMesocycleWeekMuscleVolume } from "./weekly-volume";
+import {
+  computeMesoWeekStartDate,
+  mergeContributionTotals,
+  roundToTenth,
+} from "./volume-read-model-helpers";
 
 type ProjectedWeekVolumeByMuscle = {
   directSets: number;
@@ -108,16 +113,6 @@ type ActiveMesocycleForProjection = Prisma.MesocycleGetPayload<{
     };
   };
 }>;
-
-function roundToTenth(value: number): number {
-  return Math.round(value * 10) / 10;
-}
-
-function computeMesoWeekStartDate(mesoStartDate: Date, week: number): Date {
-  const date = new Date(mesoStartDate);
-  date.setDate(date.getDate() + (week - 1) * 7);
-  return date;
-}
 
 function countWorkoutExercises(workout: WorkoutPlan): number {
   return workout.mainLifts.length + workout.accessories.length;
@@ -211,15 +206,6 @@ function toProjectedWeekVolumeByMuscle(
       },
     ])
   );
-}
-
-function mergeContributionTotals(
-  totals: Map<string, number>,
-  contribution: Record<string, number>
-): void {
-  for (const [muscle, effectiveSets] of Object.entries(contribution)) {
-    totals.set(muscle, roundToTenth((totals.get(muscle) ?? 0) + effectiveSets));
-  }
 }
 
 function buildFullWeekRows(input: {

@@ -48,6 +48,15 @@ import {
   getWeeklyMuscleStatus,
   type WeeklyMuscleDisplayGroup,
 } from "@/lib/ui/weekly-muscle-status";
+import {
+  buildVolumeLandmarkContext,
+  computeMesoWeekStartDate as computeMesoWeekStart,
+  formatSetCount,
+  formatTargetDeltaLabel,
+  formatTargetDisplayLabel,
+  formatWeightedSetsLabel,
+  type VolumeReadModelLandmarkContext,
+} from "./volume-read-model-helpers";
 
 export type ProgramMesoBlock = {
   blockType: string;
@@ -100,13 +109,7 @@ export type ProgramVolumeDisplayBadge = {
   activeDescription?: string;
 };
 
-export type ProgramVolumeLandmarkContext = {
-  mevLabel: string;
-  mavLabel: string;
-  mrvLabel: string;
-  rangeSummaryLabel: string;
-  positionLabel: string;
-};
+export type ProgramVolumeLandmarkContext = VolumeReadModelLandmarkContext;
 
 export type ProgramMuscleContribution = WeeklyMuscleExerciseContribution;
 
@@ -353,36 +356,6 @@ function formatRirTarget(rirTarget: { min: number; max: number } | null | undefi
   return `${rirTarget.min}-${rirTarget.max} RIR`;
 }
 
-function formatSetCount(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
-
-function formatWeightedSetsLabel(value: number): string {
-  return `${formatSetCount(value)} weighted sets`;
-}
-
-function formatSignedSetDelta(value: number): string {
-  if (value === 0) {
-    return "on target";
-  }
-
-  return `${value > 0 ? "+" : "-"}${formatSetCount(Math.abs(value))} sets`;
-}
-
-function formatTargetLabel(input: {
-  target: number;
-  targetKind: VolumeTargetKind;
-  targetRange: VolumeSoftTargetRange | null;
-}): string {
-  if (input.targetKind === "soft" && input.targetRange) {
-    return `Soft target: ${formatSetCount(input.targetRange.min)}-${formatSetCount(
-      input.targetRange.max
-    )} weighted sets`;
-  }
-
-  return `Target: ${formatWeightedSetsLabel(input.target)}`;
-}
-
 function formatTargetStatusDescription(input: {
   effectiveSets: number;
   target: number;
@@ -400,55 +373,6 @@ function formatTargetStatusDescription(input: {
   return `${formatSetCount(input.effectiveSets)} weighted sets against ${formatSetCount(
     input.target
   )} target.`;
-}
-
-function formatTargetDeltaLabel(input: {
-  effectiveSets: number;
-  target: number;
-  targetKind: VolumeTargetKind;
-  targetRange: VolumeSoftTargetRange | null;
-}): string {
-  if (input.targetKind === "soft" && input.targetRange) {
-    if (input.effectiveSets < input.targetRange.min) {
-      return formatSignedSetDelta(input.effectiveSets - input.targetRange.min);
-    }
-    if (input.effectiveSets > input.targetRange.max) {
-      return formatSignedSetDelta(input.effectiveSets - input.targetRange.max);
-    }
-    return "in soft range";
-  }
-
-  return formatSignedSetDelta(input.effectiveSets - input.target);
-}
-
-function buildVolumeLandmarkContext(input: {
-  effectiveSets: number;
-  mev: number;
-  mav: number;
-  mrv: number;
-}): ProgramVolumeLandmarkContext {
-  const mevLabel = `MEV ${formatSetCount(input.mev)}`;
-  const mavLabel = `MAV ${formatSetCount(input.mav)}`;
-  const mrvLabel = `MRV ${formatSetCount(input.mrv)}`;
-  let positionLabel = "Current: within MEV-MAV";
-
-  if (input.effectiveSets < input.mev) {
-    positionLabel = "Current: below MEV";
-  } else if (input.effectiveSets === input.mev) {
-    positionLabel = "Current: at MEV";
-  } else if (input.effectiveSets > input.mav && input.effectiveSets < input.mrv) {
-    positionLabel = "Current: above MAV";
-  } else if (input.effectiveSets >= input.mrv) {
-    positionLabel = "Current: at or above MRV";
-  }
-
-  return {
-    mevLabel,
-    mavLabel,
-    mrvLabel,
-    rangeSummaryLabel: `${mevLabel} · ${mavLabel} · ${mrvLabel}`,
-    positionLabel,
-  };
 }
 
 function getDescriptiveCoachingCueForBlockType(
@@ -530,11 +454,7 @@ export async function loadActiveBlockPhase(userId: string): Promise<ActiveBlockP
   };
 }
 
-export function computeMesoWeekStart(mesoStartDate: Date, currentWeek: number): Date {
-  const date = new Date(mesoStartDate);
-  date.setDate(date.getDate() + (currentWeek - 1) * 7);
-  return date;
-}
+export { computeMesoWeekStart };
 
 async function loadMesoWeekMuscleVolume(
   userId: string,
@@ -1011,8 +931,8 @@ function buildProgramVolumeRows(input: {
         mav: landmarks.mav,
         mrv: landmarks.mrv,
         weightedSetsLabel: formatWeightedSetsLabel(data.effectiveSets),
-        targetLabel: formatTargetLabel({
-          target,
+        targetLabel: formatTargetDisplayLabel({
+          targetSets: target,
           targetKind: targetSemantics.targetKind,
           targetRange: targetSemantics.softTargetRange,
         }),

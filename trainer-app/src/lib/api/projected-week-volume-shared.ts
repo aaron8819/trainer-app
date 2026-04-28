@@ -13,6 +13,7 @@ import type {
   MappedGenerationContext,
   SessionGenerationResult,
 } from "./template-session/types";
+import { roundToTenth } from "./volume-read-model-helpers";
 
 type WorkoutHistoryEntryStatus =
   | "PLANNED"
@@ -20,10 +21,6 @@ type WorkoutHistoryEntryStatus =
   | "PARTIAL"
   | "COMPLETED"
   | "SKIPPED";
-
-function roundToTenth(value: number): number {
-  return Math.round(value * 10) / 10;
-}
 
 export function computeWorkoutContributionByMuscle(
   workout: WorkoutPlan

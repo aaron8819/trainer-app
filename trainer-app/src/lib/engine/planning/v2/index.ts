@@ -1,21 +1,36 @@
 export { buildV2DeloadTransformPolicy } from "./deload-transform";
+export { buildV2ExerciseClassDistributionBySlot } from "./exercise-class-distribution";
+export { buildV2MesocycleDemand } from "./mesocycle-demand";
 export { buildV2PlannerMesocyclePolicy } from "./mesocycle-policy";
 export { buildV2SetDistributionIntent } from "./set-distribution-intent";
+export { buildV2SlotDemandAllocationByWeek } from "./slot-demand-allocation";
 export { buildV2TargetSkeleton } from "./target-skeleton";
+export { buildV2WeeklyDemandCurve } from "./weekly-demand-curve";
 export { buildV2WeeklyProgressionModel } from "./weekly-progression";
 export type {
+  ExerciseClassDistributionBySlot,
+  MesocycleDemand,
+  SlotDemandAllocationByWeek,
   V2DeloadTransformPolicy,
+  V2ExerciseClassDistributionBySlot,
+  V2MesocycleDemand,
+  V2PlannerDemandRole,
   V2PlannerLaneDefinition,
   V2PlannerLaneRole,
   V2PlannerMesocyclePolicy,
   V2PlannerPhase,
   V2PlannerProgressionIntent,
+  V2PlannerSetRange,
   V2PlannerSlotDefinition,
   V2PlannerSlotId,
   V2PlannerSplit,
+  V2PlannerTargetStatus,
+  V2SlotDemandAllocationByWeek,
   V2TargetSkeleton,
+  V2WeeklyDemandCurve,
   V2WeeklyProgressionModel,
   V2WeeklyProgressionWeek,
+  WeeklyDemandCurve,
 } from "./types";
 export type {
   V2SetDistributionIntent,

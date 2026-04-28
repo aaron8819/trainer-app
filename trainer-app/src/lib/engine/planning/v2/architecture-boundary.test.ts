@@ -38,8 +38,12 @@ const diagnosticReadoutKeys = [
 ];
 
 const acceptedPlannerIntentCandidateWhitelist: string[] = [
+  "mesocycleDemand",
   "targetSkeleton",
   "weeklyProgressionModel",
+  "weeklyDemandCurve",
+  "slotDemandAllocationByWeek",
+  "exerciseClassDistributionBySlot",
   "deloadTransform",
   "v2SetDistributionIntent",
 ];
@@ -89,6 +93,27 @@ describe("V2 planner policy module boundary", () => {
           ? [`${path.relative(process.cwd(), file)} contains diagnostic key ${key}`]
           : []
       )
+    );
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps upstream pure V2 policy objects first-class", () => {
+    const exportedText = readPolicyFiles()
+      .map(({ text }) => text)
+      .join("\n");
+
+    expect(exportedText).toContain("V2MesocycleDemand");
+    expect(exportedText).toContain("V2WeeklyDemandCurve");
+    expect(exportedText).toContain("V2SlotDemandAllocationByWeek");
+    expect(exportedText).toContain("V2ExerciseClassDistributionBySlot");
+  });
+
+  it("does not introduce acceptedPlannerIntent persistence in pure policy modules", () => {
+    const violations = readPolicyFiles().flatMap(({ file, text }) =>
+      text.includes("acceptedPlannerIntent")
+        ? [`${path.relative(process.cwd(), file)} references acceptedPlannerIntent`]
+        : []
     );
 
     expect(violations).toEqual([]);

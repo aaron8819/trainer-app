@@ -1,3 +1,6 @@
+import type { MuscleTargetTier } from "@/lib/engine/volume-landmarks";
+import type { V2SetDistributionIntent } from "./set-distribution-intent";
+
 export type V2PlannerSlotId = "upper_a" | "lower_a" | "upper_b" | "lower_b";
 
 export type V2PlannerSplit = "upper_lower_4x";
@@ -79,4 +82,168 @@ export type V2PlannerMesocyclePolicy = {
   targetSkeleton: V2TargetSkeleton;
   weeklyProgressionModel: V2WeeklyProgressionModel;
   deloadTransform: V2DeloadTransformPolicy;
+  mesocycleDemand: V2MesocycleDemand;
+  weeklyDemandCurve: V2WeeklyDemandCurve;
+  slotDemandAllocationByWeek: V2SlotDemandAllocationByWeek;
+  exerciseClassDistributionBySlot: V2ExerciseClassDistributionBySlot;
+  v2SetDistributionIntent: V2SetDistributionIntent;
 };
+
+export type V2PlannerTargetStatus = "hard" | "soft" | "diagnostic";
+
+export type V2PlannerDemandRole =
+  | "primary"
+  | "support"
+  | "secondary"
+  | "implicit";
+
+export type V2PlannerSetRange = {
+  min: number;
+  preferred: number;
+  max: number;
+};
+
+export type V2MesocycleDemand = {
+  version: 1;
+  source: "v2_planner_policy";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  split: V2PlannerSplit;
+  weekCount: number;
+  designBasis: {
+    targetSkeleton: "upper_lower_4x_v2";
+    evidencePolicy: "volume_landmarks_and_target_tiers";
+    allocationTiming: "before_exercise_selection";
+  };
+  muscles: Array<{
+    muscle: string;
+    targetTier: MuscleTargetTier | null;
+    role: V2PlannerDemandRole;
+    targetStatus: V2PlannerTargetStatus;
+    landmark: {
+      mv: number;
+      mev: number;
+      mav: number;
+      mrv: number;
+    } | null;
+    baselineSetRange: V2PlannerSetRange;
+    exposureCount: number;
+    source: string[];
+    limitations: string[];
+  }>;
+  guardrails: {
+    doesNotUsePlanningReality: true;
+    doesNotUseNoRepairOutput: true;
+    doesNotUseRepairedProjection: true;
+    doesNotUseAcceptedSeed: true;
+    doesNotUseRuntimeReplay: true;
+  };
+};
+
+export type V2WeeklyDemandCurve = {
+  version: 1;
+  source: "v2_planner_policy";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  weeks: Array<{
+    week: number;
+    phase: V2PlannerPhase;
+    volumeMultiplier: number;
+    rirTarget: string;
+    progressionIntent: V2PlannerProgressionIntent;
+    projectionStatus:
+      | "projected_from_mesocycle_demand"
+      | "projected_from_deload_policy";
+    muscles: Array<{
+      muscle: string;
+      targetTier: MuscleTargetTier | null;
+      role: V2PlannerDemandRole;
+      targetStatus: V2PlannerTargetStatus;
+      targetSetRange: V2PlannerSetRange;
+      exposureCount: number;
+      source: string[];
+      limitations: string[];
+    }>;
+  }>;
+  guardrails: V2MesocycleDemand["guardrails"];
+};
+
+export type V2SlotDemandAllocationByWeek = {
+  version: 1;
+  source: "v2_planner_policy";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  allocationTiming: "before_exercise_selection";
+  weeks: Array<{
+    week: number;
+    phase: V2PlannerPhase;
+    projectionStatus: "allocated_from_v2_policy";
+    slots: Array<{
+      slotId: V2PlannerSlotId;
+      slotIndex: number;
+      intent: string;
+      targetSessionSets: V2PlannerSetRange;
+      lanes: Array<{
+        laneId: string;
+        required: boolean;
+        role: V2PlannerLaneRole;
+        primaryMuscles: string[];
+        preferredExerciseClasses: string[];
+        setBudget: V2PlannerSetRange;
+        allocatedMuscles: Array<{
+          muscle: string;
+          role: V2PlannerDemandRole;
+          targetStatus: V2PlannerTargetStatus;
+          targetSetRange: V2PlannerSetRange;
+          allocationBasis:
+            | "target_lane"
+            | "slot_role_policy"
+            | "weekly_demand_curve"
+            | "deload_transform";
+        }>;
+      }>;
+    }>;
+  }>;
+  guardrails: V2MesocycleDemand["guardrails"];
+};
+
+export type V2ExerciseClassDistributionBySlot = {
+  version: 1;
+  source: "v2_planner_policy";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  distributionTiming: "before_exercise_selection";
+  weeks: Array<{
+    week: number;
+    phase: V2PlannerPhase;
+    slots: Array<{
+      slotId: V2PlannerSlotId;
+      slotIndex: number;
+      intent: string;
+      classLanes: Array<{
+        laneId: string;
+        role: V2PlannerLaneRole;
+        primaryMuscles: string[];
+        requiredExerciseClasses: string[];
+        preferredExerciseClasses: string[];
+        setBudget: V2PlannerSetRange;
+        preferredSetSplit:
+          | "single_anchor"
+          | "anchor_plus_support"
+          | "direct_accessory"
+          | "optional_if_recoverable";
+        duplicatePolicy:
+          | "discourage_if_alternative_exists"
+          | "block_if_clean_alternative_exists"
+          | "allow_with_justification";
+        source: string[];
+      }>;
+    }>;
+  }>;
+  guardrails: V2MesocycleDemand["guardrails"];
+};
+
+export type MesocycleDemand = V2MesocycleDemand;
+export type WeeklyDemandCurve = V2WeeklyDemandCurve;
+export type SlotDemandAllocationByWeek = V2SlotDemandAllocationByWeek;
+export type ExerciseClassDistributionBySlot = V2ExerciseClassDistributionBySlot;

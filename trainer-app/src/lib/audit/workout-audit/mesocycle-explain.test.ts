@@ -2661,6 +2661,16 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(
       payload.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.summary.targetLaneCount,
     ).toBeGreaterThan(0);
+    expect(
+      payload.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.slotDiffs
+        .find((slot) => slot.slotId === "upper_a")
+        ?.laneDiffs.find((lane) => lane.laneId === "chest_anchor"),
+    ).toMatchObject({
+      currentStatus: "blocked",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining(["setPolicy:hard_blocker"]),
+      },
+    });
     expect(payload.plannerOnlyNoRepair?.v2SetDistributionIntent).toMatchObject({
       version: 1,
       source: "v2_planner_policy",
@@ -3159,6 +3169,19 @@ describe("buildMesocycleExplainAuditPayload", () => {
         }),
       ]),
     );
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.slotDiffs
+        .find((slot) => slot.slotId === "lower_a")
+        ?.laneDiffs.find((lane) => lane.laneId === "squat_anchor"),
+    ).toMatchObject({
+      currentStatus: "partial",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
+      severity: "quality_warning",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining(["setPolicy:quality_warning"]),
+      },
+    });
     expect(noRepair.acceptanceClassification.diagnosticOnly).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -3231,6 +3254,22 @@ describe("buildMesocycleExplainAuditPayload", () => {
           code: "primary_hard_target_excessive_single_exercise_share_unjustified",
         }),
       ]),
+    });
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.slotDiffs
+        .find((slot) => slot.slotId === "upper_a")
+        ?.laneDiffs.find((lane) => lane.laneId === "chest_anchor"),
+    ).toMatchObject({
+      currentStatus: "blocked",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:hard_blocker",
+          "setPolicyReason:over_60_share",
+        ]),
+      },
     });
   });
 
@@ -3369,6 +3408,22 @@ describe("buildMesocycleExplainAuditPayload", () => {
         }),
       ]),
     );
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.slotDiffs
+        .find((slot) => slot.slotId === "upper_a")
+        ?.laneDiffs.find((lane) => lane.laneId === "chest_anchor"),
+    ).toMatchObject({
+      currentStatus: "blocked",
+      gapCause: "capacity_gap",
+      migrationRecommendation: "needs_set_budget_justification",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:hard_blocker",
+          "setPolicyReason:gt_5_sets",
+        ]),
+      },
+    });
   });
 
   it("keeps migration repair scoreboards out of basic no-repair shape blockers", () => {

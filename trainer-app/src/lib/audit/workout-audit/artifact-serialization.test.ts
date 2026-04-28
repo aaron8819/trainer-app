@@ -6,6 +6,7 @@ import {
   getSerializedJsonSizeBytes,
   serializeStableJson,
 } from "./artifact-serialization";
+import { WORKOUT_AUDIT_SIZE_LIMIT_BYTES } from "./constants";
 import type { WorkoutAuditArtifact } from "./types";
 
 describe("artifact serialization helpers", () => {
@@ -461,6 +462,147 @@ describe("artifact serialization helpers", () => {
     expect(getSerializedJsonSizeBytes(compact)).toBeLessThan(
       getSerializedJsonSizeBytes(artifact)
     );
+  });
+
+  it("keeps compact planner-only no-repair set-policy diagnostics under the audit artifact limit", () => {
+    const artifact = {
+      mode: "mesocycle-explain",
+      mesocycleExplain: {
+        preview: {
+          projectionDiagnostics: {
+            planningReality: {},
+          },
+        },
+        plannerOnlyNoRepair: {
+          enabled: true,
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          canReplaceRepairedProjection: false,
+          summary: {
+            status: "pass_with_warnings",
+            targetLanesSatisfied: 1,
+            targetLanesMissing: 0,
+            unresolvedDemandCount: 0,
+            validationFailureCount: 0,
+          },
+          acceptanceClassification: {
+            basicMesocycleShapeStatus: "pass_with_warnings",
+            replacementReadinessStatus: "not_ready",
+            hardBlockers: [],
+            qualityWarnings: [],
+            diagnosticOnly: [],
+            sessionShaping: [],
+            migrationScoreboard: {
+              materialRepairCount: 0,
+              majorRepairCount: 0,
+              suspiciousRepairs: 0,
+              canReplaceRepairedProjection: false,
+              reason: "not_ready",
+            },
+          },
+          v2MesocyclePlan: {},
+          v2TargetVsNoRepairDiff: {
+            version: 1,
+            source: "v2_planner_no_repair_experimental",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            summary: {
+              targetLaneCount: 1,
+              satisfiedLaneCount: 0,
+              partialLaneCount: 1,
+              missingLaneCount: 0,
+              blockedLaneCount: 0,
+              repairDependentLaneCount: 0,
+              migrationCandidateCount: 0,
+              suspiciousOrBlockedCount: 0,
+            },
+            slotDiffs: [
+              {
+                slotId: "lower_a",
+                laneDiffs: [
+                  {
+                    laneId: "squat_anchor",
+                    targetRole: "anchor",
+                    targetPrimaryMuscles: ["Quads"],
+                    targetExerciseClasses: ["squat_pattern"],
+                    targetSets: { min: 3, preferred: 4, max: 4 },
+                    currentStatus: "partial",
+                    currentEvidence: {
+                      selectedExercises: [
+                        {
+                          name: "Hack Squat",
+                          sets: 4,
+                          matchedClass: "squat_pattern",
+                        },
+                      ],
+                      relevantDiagnostics: [
+                        "setPolicy:quality_warning",
+                        "concentration:Hack Squat:Quads:50%",
+                      ],
+                    },
+                    gapCause: "concentration_policy_gap",
+                    migrationRecommendation: "needs_concentration_justification",
+                    severity: "quality_warning",
+                  },
+                ],
+              },
+            ],
+            replacementReadinessImpact: {
+              canReplaceRepairedProjection: false,
+              blockers: ["read_only_non_generative_artifact"],
+              nextBestMigrationSlice:
+                "squat_anchor:needs_concentration_justification",
+            },
+          },
+          v2SetDistributionIntent: {
+            version: 1,
+            source: "v2_planner_policy",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            summary: {
+              weekCount: 1,
+              slotCount: 1,
+              laneCount: 1,
+              plannedTotalSetsByWeek: [
+                {
+                  week: 1,
+                  totalSets: 4,
+                  volumeMultiplier: 1,
+                  phase: "entry_calibration",
+                },
+              ],
+            },
+            weeks: [],
+            guardrails: {
+              doesNotUseRepairedProjectionAsTarget: true,
+              doesNotUseAcceptedSeedAsTarget: true,
+              doesNotAffectSelection: true,
+              doesNotAffectRepair: true,
+              doesNotAffectRuntimeReplay: true,
+            },
+          },
+          slotPlans: [],
+          weeklyMuscleTotals: [],
+          setAllocationChanges: [],
+          weeklyMuscleTotalChanges: [],
+          acceptanceChecks: [],
+          acceptanceFailures: [],
+          qualityWarnings: [],
+          diagnosticRows: [],
+          ignoredRows: [],
+          repairDependenciesDisabled: [],
+        },
+      },
+    } as unknown as WorkoutAuditArtifact;
+
+    const compact = compactWorkoutAuditArtifactForSerialization(artifact);
+    const serialized = JSON.stringify(compact);
+
+    expect(getSerializedJsonSizeBytes(compact)).toBeLessThan(
+      WORKOUT_AUDIT_SIZE_LIMIT_BYTES
+    );
+    expect(serialized).toContain("setPolicy:quality_warning");
+    expect(serialized).not.toContain("setBudget");
   });
 
   it("leaves unrelated audit artifacts unchanged", () => {

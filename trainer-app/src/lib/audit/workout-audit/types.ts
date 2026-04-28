@@ -1128,6 +1128,8 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
           | "needs_classification_review"
           | "needs_inventory_review"
           | "needs_set_distribution_policy"
+          | "needs_set_budget_justification"
+          | "needs_concentration_justification"
           | "keep_diagnostic_only"
           | "blocked_do_not_promote";
         severity:

@@ -43,7 +43,10 @@ import {
   resolvePersistedOrReconstructedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
 import { getMuscleTargetSemantics } from "@/lib/engine/volume-landmarks";
-import { buildV2SetDistributionIntent } from "@/lib/engine/planning/v2-set-distribution-intent";
+import {
+  buildV2SetDistributionIntent,
+  type V2SetDistributionIntent,
+} from "@/lib/engine/planning/v2-set-distribution-intent";
 import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 import { MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION } from "./constants";
 import {
@@ -2984,6 +2987,16 @@ type V2TargetVsNoRepairDiff =
   MesocycleExplainPlannerOnlyNoRepair["v2TargetVsNoRepairDiff"];
 type V2TargetVsNoRepairLaneDiff =
   V2TargetVsNoRepairDiff["slotDiffs"][number]["laneDiffs"][number];
+type V2SetDistributionIntentLane =
+  V2SetDistributionIntent["weeks"][number]["slots"][number]["lanes"][number];
+type V2LaneSetPolicyStatus =
+  | "in_budget"
+  | "under_budget"
+  | "allowed_expansion"
+  | "quality_warning"
+  | "requires_justification"
+  | "hard_blocker"
+  | "unknown";
 
 const V2_SLOT_SEQUENCE: V2MesocyclePlan["skeleton"]["slotSequence"] = [
   "upper_a",
@@ -3396,6 +3409,153 @@ function collectV2LaneExercises(input: {
     });
 }
 
+function getV2SetDistributionPolicyLane(input: {
+  intent?: V2SetDistributionIntent;
+  slotId: string;
+  lane: V2Lane | V2Slot["lanes"][number];
+}): V2SetDistributionIntentLane | undefined {
+  const weekOne = input.intent?.weeks.find((week) => week.week === 1) ?? input.intent?.weeks[0];
+  const aliases = v2LaneAliases(input.lane);
+  return weekOne?.slots
+    .find((slot) => slot.slotId === input.slotId)
+    ?.lanes.find((lane) => aliases.includes(lane.laneId));
+}
+
+function shareToRatio(value: number): number {
+  return value > 1 ? value / 100 : value;
+}
+
+function maxV2LaneConcentrationShare(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  slotId: string;
+  lane: V2Lane | V2Slot["lanes"][number];
+  exercises: SlotCompositionSnapshot["exercises"];
+}): number {
+  const exerciseNames = new Set(input.exercises.map((exercise) => exercise.exerciseName));
+  return Math.max(
+    0,
+    ...(input.noRepair?.exerciseConcentration ?? [])
+      .filter((row) => row.slotId === input.slotId)
+      .filter((row) => exerciseNames.size === 0 || exerciseNames.has(row.exerciseName))
+      .flatMap((row) =>
+        Object.entries(row.percentageOfWeeklyProjectedStimulusByMuscle)
+          .filter(([muscle]) => input.lane.primaryMuscles.includes(muscle))
+          .map(([, percentage]) => shareToRatio(percentage))
+      )
+  );
+}
+
+function v2LanePrimaryTargetsMet(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  lane: V2Lane | V2Slot["lanes"][number];
+}): boolean {
+  if (!input.noRepair) {
+    return false;
+  }
+  const weeklyTotals = sumSlotStimulusByMuscle(input.noRepair.finalSlotPlan);
+  const demandByMuscle = getNoRepairDemandByMuscle(input.noRepair);
+  return input.lane.primaryMuscles.every((muscle) => {
+    const demand = demandByMuscle.get(muscle);
+    if (demand?.minEffectiveSets == null) {
+      return true;
+    }
+    return (weeklyTotals.get(muscle) ?? 0) >= demand.minEffectiveSets;
+  });
+}
+
+function evaluateV2LaneSetPolicy(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  policyLane?: V2SetDistributionIntentLane;
+  slotId: string;
+  lane: V2Lane | V2Slot["lanes"][number];
+  noRepairExercises: SlotCompositionSnapshot["exercises"];
+}): {
+  status: V2LaneSetPolicyStatus;
+  diagnostics: string[];
+} {
+  if (!input.noRepair || !input.policyLane) {
+    return {
+      status: "unknown",
+      diagnostics: ["setPolicy:unknown"],
+    };
+  }
+
+  const classMatched = input.noRepairExercises.filter((exercise) =>
+    exerciseMatchesV2LaneClass({ exercise, lane: input.lane })
+  );
+  const policyExercises = classMatched.length > 0
+    ? classMatched
+    : input.noRepairExercises;
+  const setCount = policyExercises.reduce(
+    (sum, exercise) => sum + exercise.setCount,
+    0
+  );
+  const maxExerciseSets = Math.max(
+    0,
+    ...policyExercises.map((exercise) => exercise.setCount)
+  );
+  const budget = input.policyLane.setBudget;
+  const cap = input.policyLane.capPolicy;
+  const concentration = input.policyLane.concentrationPolicy;
+  const allowedExpansionMax = Math.min(
+    budget.max + 1,
+    cap.maxSetsPerExerciseWithoutJustification * Math.max(1, cap.maxDirectExercises)
+  );
+  const concentrationShare = maxV2LaneConcentrationShare({
+    noRepair: input.noRepair,
+    slotId: input.slotId,
+    lane: input.lane,
+    exercises: policyExercises,
+  });
+  const targetMet = v2LanePrimaryTargetsMet({
+    noRepair: input.noRepair,
+    lane: input.lane,
+  });
+  const aboveFiveSets = maxExerciseSets > 5;
+  const overRoleCap =
+    maxExerciseSets > cap.maxSetsPerExerciseWithoutJustification &&
+    maxExerciseSets <= 5;
+  const concentrationBlocker =
+    concentration.appliesTo !== "diagnostic_only" &&
+    concentrationShare > concentration.blockerShare;
+  const concentrationWarning =
+    concentration.appliesTo !== "diagnostic_only" &&
+    concentrationShare >= concentration.warningShare;
+  const concentratedUnderdelivery =
+    concentrationWarning && setCount < budget.min && !targetMet;
+
+  let status: V2LaneSetPolicyStatus = "in_budget";
+  let reason: string | null = null;
+  if (aboveFiveSets) {
+    status = "hard_blocker";
+    reason = "gt_5_sets";
+  } else if (concentrationBlocker) {
+    status = "hard_blocker";
+    reason = "over_60_share";
+  } else if (concentratedUnderdelivery) {
+    status = "hard_blocker";
+    reason = "underdelivery_hidden_by_concentration";
+  } else if (setCount < budget.min) {
+    status = "under_budget";
+  } else if (overRoleCap || setCount > allowedExpansionMax) {
+    status = "requires_justification";
+    reason = overRoleCap ? "over_role_cap" : "over_allowed_expansion";
+  } else if (setCount > budget.max) {
+    status = "allowed_expansion";
+  } else if (concentrationWarning) {
+    status = "quality_warning";
+    reason = "warning_share";
+  }
+
+  return {
+    status,
+    diagnostics: compactV2LaneDiagnostics([
+      `setPolicy:${status}`,
+      ...(reason ? [`setPolicyReason:${reason}`] : []),
+    ], 2),
+  };
+}
+
 function formatV2SelectedExercises(input: {
   exercises: SlotCompositionSnapshot["exercises"];
   lane: V2Lane | V2Slot["lanes"][number];
@@ -3428,6 +3588,7 @@ function collectV2LaneDiagnostics(input: {
   slotId: string;
   lane: V2Lane | V2Slot["lanes"][number];
   repairedCreatesLane: boolean;
+  setPolicyDiagnostics: string[];
 }): string[] {
   const noRepair = input.noRepair;
   const topDownLane = getTopDownLane({
@@ -3436,6 +3597,7 @@ function collectV2LaneDiagnostics(input: {
     lane: input.lane,
   });
   const diagnostics: string[] = [
+    ...input.setPolicyDiagnostics,
     ...(topDownLane
       ? [
           `target_status:${topDownLane.currentStatus}`,
@@ -3456,7 +3618,7 @@ function collectV2LaneDiagnostics(input: {
   ];
 
   if (!noRepair) {
-    return compactEvidence([...diagnostics, "planningReality_missing"], 6);
+    return compactV2LaneDiagnostics([...diagnostics, "planningReality_missing"], 6);
   }
 
   diagnostics.push(
@@ -3538,7 +3700,15 @@ function collectV2LaneDiagnostics(input: {
       )
   );
 
-  return compactEvidence(diagnostics, 6);
+  return compactV2LaneDiagnostics(diagnostics, 6);
+}
+
+function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
+  const unique = uniqueSorted(evidence.filter(Boolean));
+  const setPolicy = unique.filter((row) => row.startsWith("setPolicy"));
+  const other = unique.filter((row) => !row.startsWith("setPolicy"));
+  const compact = [...setPolicy, ...other].slice(0, limit);
+  return compact.length > 0 ? compact : ["none"];
 }
 
 function inferV2GapCause(input: {
@@ -3557,7 +3727,12 @@ function inferV2GapCause(input: {
   ) {
     return "classification_gap";
   }
-  if (joined.includes("slot_capacity") || joined.includes("cap_")) {
+  if (
+    joined.includes("slot_capacity") ||
+    joined.includes("cap_") ||
+    joined.includes("setpolicyreason:gt_5_sets") ||
+    joined.includes("set_count_gt_5")
+  ) {
     return "capacity_gap";
   }
   if (joined.includes("duplicate")) {
@@ -3566,23 +3741,33 @@ function inferV2GapCause(input: {
   if (joined.includes("distribution_guard") || joined.includes("set_count")) {
     return "set_distribution_gap";
   }
-  if (joined.includes("concentration") || joined.includes("share_")) {
+  if (
+    joined.includes("concentration") ||
+    joined.includes("share_") ||
+    joined.includes("setpolicyreason:over_60_share") ||
+    joined.includes("setpolicyreason:underdelivery_hidden_by_concentration")
+  ) {
     return "concentration_policy_gap";
   }
   return "unknown";
 }
 
-function hasV2BlockedDiagnostic(diagnostics: string[]): boolean {
+function hasV2TrueHardBlockerDiagnostic(diagnostics: string[]): boolean {
   const joined = diagnostics.join("|").toLowerCase();
   return (
+    joined.includes("setpolicy:hard_blocker") ||
     joined.includes("target_status:blocked") ||
     joined.includes("forbidden") ||
-    joined.includes("inventory_classification_gap") ||
-    joined.includes("slot_capacity_issue") ||
-    joined.includes("duplicate:") ||
-    joined.includes("concentration:") ||
+    joined.includes("dirty") ||
+    joined.includes("back extension") ||
+    joined.includes("back_extension") ||
+    joined.includes("deload_conflict") ||
+    joined.includes("axial") ||
+    joined.includes("systemic") ||
+    joined.includes("fatigue_sensitive") ||
     joined.includes("set_count_gt_5") ||
-    joined.includes("distribution_guard")
+    joined.includes("compound_gt_5") ||
+    joined.includes("isolation_gt_5")
   );
 }
 
@@ -3592,6 +3777,7 @@ function classifyV2LaneStatus(input: {
   repairedExercises: SlotCompositionSnapshot["exercises"];
   lane: V2Lane | V2Slot["lanes"][number];
   diagnostics: string[];
+  setPolicyStatus: V2LaneSetPolicyStatus;
 }): V2TargetVsNoRepairLaneDiff["currentStatus"] {
   if (!input.noRepair) {
     return "unknown";
@@ -3614,19 +3800,23 @@ function classifyV2LaneStatus(input: {
   const withinTolerance =
     setCount >= Math.max(0, input.lane.targetSets.min - 1) &&
     setCount <= input.lane.targetSets.max + 1;
-  const blocked = hasV2BlockedDiagnostic(input.diagnostics);
+  const blocked = hasV2TrueHardBlockerDiagnostic(input.diagnostics);
   const diagnosticStatus = input.diagnostics.find((row) =>
     row.startsWith("target_status:")
   );
 
-  if (hasClassMatch && (withinTarget || withinTolerance) && !blocked) {
-    return "satisfied";
-  }
   if (!hasMeaningfulNoRepairEvidence && repairedCreatesLane) {
     return "repair_dependent";
   }
   if (blocked || diagnosticStatus === "target_status:blocked") {
     return "blocked";
+  }
+  if (
+    hasClassMatch &&
+    (withinTarget || withinTolerance) &&
+    input.setPolicyStatus === "in_budget"
+  ) {
+    return "satisfied";
   }
   if (
     hasMeaningfulNoRepairEvidence ||
@@ -3642,6 +3832,7 @@ function recommendV2Migration(input: {
   status: V2TargetVsNoRepairLaneDiff["currentStatus"];
   gapCause: V2TargetVsNoRepairLaneDiff["gapCause"];
   diagnostics: string[];
+  setPolicyStatus: V2LaneSetPolicyStatus;
 }): Pick<V2TargetVsNoRepairLaneDiff, "migrationRecommendation" | "severity"> {
   if (input.status === "satisfied") {
     return { migrationRecommendation: "no_action", severity: "pass" };
@@ -3653,6 +3844,12 @@ function recommendV2Migration(input: {
     };
   }
   if (input.status === "blocked") {
+    if (input.gapCause === "concentration_policy_gap") {
+      return {
+        migrationRecommendation: "needs_concentration_justification",
+        severity: "hard_blocker",
+      };
+    }
     if (input.gapCause === "classification_gap") {
       return {
         migrationRecommendation: "needs_classification_review",
@@ -3670,7 +3867,7 @@ function recommendV2Migration(input: {
       input.gapCause === "set_distribution_gap"
     ) {
       return {
-        migrationRecommendation: "needs_set_distribution_policy",
+        migrationRecommendation: "needs_set_budget_justification",
         severity: "hard_blocker",
       };
     }
@@ -3710,7 +3907,16 @@ function recommendV2Migration(input: {
     input.gapCause === "set_distribution_gap"
   ) {
     return {
-      migrationRecommendation: "needs_set_distribution_policy",
+      migrationRecommendation:
+        input.setPolicyStatus === "requires_justification"
+          ? "needs_set_budget_justification"
+          : "needs_set_distribution_policy",
+      severity: "quality_warning",
+    };
+  }
+  if (input.gapCause === "concentration_policy_gap") {
+    return {
+      migrationRecommendation: "needs_concentration_justification",
       severity: "quality_warning",
     };
   }
@@ -3730,6 +3936,7 @@ function buildV2LaneDiff(input: {
   noRepair?: PlanningRealityDiagnostic;
   repaired?: PlanningRealityDiagnostic;
   noRepairSlotPlan?: MesocycleExplainPlannerOnlyNoRepair["slotPlans"][number];
+  v2SetDistributionIntent?: V2SetDistributionIntent;
   slotId: V2TargetVsNoRepairDiff["slotDiffs"][number]["slotId"];
   lane: V2Lane | V2Slot["lanes"][number];
 }): V2TargetVsNoRepairLaneDiff {
@@ -3745,6 +3952,17 @@ function buildV2LaneDiff(input: {
   });
   const repairedCreatesLane =
     noRepairExercises.length === 0 && repairedExercises.length > 0;
+  const setPolicy = evaluateV2LaneSetPolicy({
+    noRepair: input.noRepair,
+    policyLane: getV2SetDistributionPolicyLane({
+      intent: input.v2SetDistributionIntent,
+      slotId: input.slotId,
+      lane: input.lane,
+    }),
+    slotId: input.slotId,
+    lane: input.lane,
+    noRepairExercises,
+  });
   const diagnostics = collectV2LaneDiagnostics({
     noRepair: input.noRepair,
     repaired: input.repaired,
@@ -3752,6 +3970,7 @@ function buildV2LaneDiff(input: {
     slotId: input.slotId,
     lane: input.lane,
     repairedCreatesLane,
+    setPolicyDiagnostics: setPolicy.diagnostics,
   });
   const currentStatus = classifyV2LaneStatus({
     noRepair: input.noRepair,
@@ -3759,12 +3978,14 @@ function buildV2LaneDiff(input: {
     repairedExercises,
     lane: input.lane,
     diagnostics,
+    setPolicyStatus: setPolicy.status,
   });
   const gapCause = inferV2GapCause({ status: currentStatus, diagnostics });
   const recommendation = recommendV2Migration({
     status: currentStatus,
     gapCause,
     diagnostics,
+    setPolicyStatus: setPolicy.status,
   });
 
   return {
@@ -3792,6 +4013,11 @@ function nextBestV2MigrationSlice(
   const candidate =
     laneDiffs.find((lane) => lane.severity === "migration_candidate") ??
     laneDiffs.find(
+      (lane) =>
+        lane.migrationRecommendation === "needs_set_budget_justification" ||
+        lane.migrationRecommendation === "needs_concentration_justification"
+    ) ??
+    laneDiffs.find(
       (lane) => lane.migrationRecommendation === "needs_set_distribution_policy"
     ) ??
     laneDiffs.find(
@@ -3806,6 +4032,7 @@ function nextBestV2MigrationSlice(
 
 function buildV2TargetVsNoRepairDiff(input: {
   v2Plan: V2MesocyclePlan;
+  v2SetDistributionIntent?: V2SetDistributionIntent;
   noRepair?: PlanningRealityDiagnostic;
   repaired?: PlanningRealityDiagnostic;
   slotPlans: MesocycleExplainPlannerOnlyNoRepair["slotPlans"];
@@ -3821,6 +4048,7 @@ function buildV2TargetVsNoRepairDiff(input: {
         noRepair: input.noRepair,
         repaired: input.repaired,
         noRepairSlotPlan: noRepairSlotPlans.get(slot.slotId),
+        v2SetDistributionIntent: input.v2SetDistributionIntent,
         slotId: slot.slotId,
         lane,
       })
@@ -4644,6 +4872,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       v2MesocyclePlan,
       v2TargetVsNoRepairDiff: buildV2TargetVsNoRepairDiff({
         v2Plan: v2MesocyclePlan,
+        v2SetDistributionIntent,
         repaired: input.repairedPlanningReality,
         slotPlans: [],
         acceptanceClassification,
@@ -4730,16 +4959,17 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     acceptanceClassification,
     targetLanesMissing,
   });
+  const v2SetDistributionIntent = buildV2SetDistributionIntent({
+    targetSkeleton: v2MesocyclePlan.skeleton,
+    weeklyProgressionModel: v2MesocyclePlan.weeklyProgressionModel,
+  });
   const v2TargetVsNoRepairDiff = buildV2TargetVsNoRepairDiff({
     v2Plan: v2MesocyclePlan,
+    v2SetDistributionIntent,
     noRepair,
     repaired: input.repairedPlanningReality,
     slotPlans,
     acceptanceClassification,
-  });
-  const v2SetDistributionIntent = buildV2SetDistributionIntent({
-    targetSkeleton: v2MesocyclePlan.skeleton,
-    weeklyProgressionModel: v2MesocyclePlan.weeklyProgressionModel,
   });
 
   return {

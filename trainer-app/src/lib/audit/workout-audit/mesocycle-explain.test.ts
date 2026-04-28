@@ -148,6 +148,7 @@ import {
   buildPlannerOnlyDryRunComparison,
   buildPlannerOnlyNoRepairComparison,
 } from "./mesocycle-explain";
+import { buildV2PlannerMesocyclePolicy } from "@/lib/engine/planning/v2";
 
 type PlannerOnlyPlanningReality = NonNullable<
   Parameters<typeof buildPlannerOnlyDryRunComparison>[0]
@@ -2692,6 +2693,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
         doesNotAffectRuntimeReplay: true,
       },
     });
+    expect(payload.plannerOnlyNoRepair?.v2SetDistributionIntent).toEqual(
+      buildV2PlannerMesocyclePolicy().v2SetDistributionIntent,
+    );
+    expect(JSON.stringify(payload)).not.toContain("acceptedPlannerIntent");
     expect(payload.plannerOnlyNoRepair?.v2ExerciseSelectionPlanDiagnostic).toMatchObject({
       version: 1,
       source: "v2_planner_policy",

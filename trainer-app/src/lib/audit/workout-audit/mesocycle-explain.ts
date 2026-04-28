@@ -44,10 +44,9 @@ import {
 } from "@/lib/evidence/session-audit-snapshot";
 import { getMuscleTargetSemantics } from "@/lib/engine/volume-landmarks";
 import {
-  buildV2SetDistributionIntent,
+  buildV2PlannerMesocyclePolicy,
   type V2SetDistributionIntent,
-} from "@/lib/engine/planning/v2/set-distribution-intent";
-import { buildV2PlannerMesocyclePolicy } from "@/lib/engine/planning/v2";
+} from "@/lib/engine/planning/v2";
 import {
   buildPlannerOwnedAccumulationProjection,
   buildV2ExerciseSelectionPlanDiagnostic,
@@ -5521,6 +5520,10 @@ function getV2PlannedSetsByWeek(
   );
 }
 
+function getPureV2SetDistributionIntent(): V2SetDistributionIntent {
+  return buildV2PlannerMesocyclePolicy().v2SetDistributionIntent;
+}
+
 function buildCrossWeekAccumulationStatus(input: {
   noRepair?: PlanningRealityDiagnostic;
   v2MesocyclePlan: V2MesocyclePlan;
@@ -6522,10 +6525,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       acceptanceClassification,
       targetLanesMissing: 1,
     });
-    const v2SetDistributionIntent = buildV2SetDistributionIntent({
-      targetSkeleton: v2MesocyclePlan.skeleton,
-      weeklyProgressionModel: v2MesocyclePlan.weeklyProgressionModel,
-    });
+    const v2SetDistributionIntent = getPureV2SetDistributionIntent();
     const plannerOwnedAccumulationProjection =
       buildPlannerOwnedAccumulationProjection({
         weeklyDemandCurve: undefined,
@@ -6660,10 +6660,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     acceptanceClassification,
     targetLanesMissing,
   });
-  const v2SetDistributionIntent = buildV2SetDistributionIntent({
-    targetSkeleton: v2MesocyclePlan.skeleton,
-    weeklyProgressionModel: v2MesocyclePlan.weeklyProgressionModel,
-  });
+  const v2SetDistributionIntent = getPureV2SetDistributionIntent();
   const plannerOwnedAccumulationProjection =
     buildPlannerOwnedAccumulationProjection({
       weeklyDemandCurve: noRepair.weeklyDemandCurve,

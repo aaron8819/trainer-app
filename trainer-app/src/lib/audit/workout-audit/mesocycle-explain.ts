@@ -3363,6 +3363,9 @@ function exerciseMatchesV2LaneClass(input: {
   ) {
     return false;
   }
+  if (isTricepsV2Lane(input.lane) && !isDirectTricepsLaneExercise(input.exercise)) {
+    return false;
+  }
   const aliases = v2LaneAliases(input.lane);
   if (aliases.includes(classified.lane)) {
     return true;
@@ -3380,7 +3383,11 @@ function exerciseMatchesV2LaneClass(input: {
 }
 
 function isStrictV2SetBudgetLane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
-  return lane.laneId === "chest_secondary" || lane.laneId === "rear_delt";
+  return (
+    lane.laneId === "chest_secondary" ||
+    lane.laneId === "rear_delt" ||
+    isTricepsV2Lane(lane)
+  );
 }
 
 const V2_SET_POLICY_CLASS_TOKENS = new Set([
@@ -3409,6 +3416,9 @@ function exerciseMatchesV2LaneSetPolicyClass(input: {
     input.lane.laneId === "rear_delt" &&
     !isDirectRearDeltLaneExercise(input.exercise)
   ) {
+    return false;
+  }
+  if (isTricepsV2Lane(input.lane) && !isDirectTricepsLaneExercise(input.exercise)) {
     return false;
   }
   const aliases = v2LaneAliases(input.lane);
@@ -3476,6 +3486,42 @@ function isDirectRearDeltLaneExercise(
     name.includes("pull-up");
 
   return directName && hasRearDeltPrimary && !broadPullOrRowName;
+}
+
+function isTricepsV2Lane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
+  return (
+    lane.laneId === "triceps" ||
+    lane.laneId === "optional_triceps_if_under_target" ||
+    v2LaneAliases(lane).includes("triceps")
+  );
+}
+
+function isDirectTricepsLaneExercise(
+  exercise: SlotCompositionSnapshot["exercises"][number]
+): boolean {
+  const name = exercise.exerciseName.toLowerCase();
+  const primaryMuscles = exercise.primaryMuscles.map((muscle) =>
+    muscle.toLowerCase()
+  );
+  const hasTricepsPrimary = primaryMuscles.includes("triceps");
+  const directName =
+    name.includes("triceps") ||
+    name.includes("pressdown") ||
+    name.includes("pushdown") ||
+    name.includes("skull crusher") ||
+    name.includes("extension") ||
+    name.includes("kickback");
+  const broadPressName =
+    name.includes("bench") ||
+    name.includes("push-up") ||
+    name.includes("push up") ||
+    name.includes("dip") ||
+    name.includes("chest press") ||
+    name.includes("shoulder press") ||
+    name.includes("overhead press") ||
+    (name.includes("press") && !name.includes("pressdown"));
+
+  return hasTricepsPrimary && directName && !broadPressName;
 }
 
 function collectV2LaneExercises(input: {
@@ -3832,6 +3878,11 @@ function evaluateV2LaneSetPolicy(input: {
     concentrationEvidence.row != null &&
     !concentrationEvidence.row.isCompound &&
     lowSystemicFatigueLane;
+  const dirtyCollateral =
+    supportTierConcentration &&
+    concentration.appliesTo !== "diagnostic_only" &&
+    concentrationShare >= concentration.warningShare &&
+    (concentrationEvidence.row?.isCompound ?? false);
   const belowMinimum = v2LaneMuscleBelowMinimum({
     noRepair: input.noRepair,
     muscle: concentrationEvidence.muscle,
@@ -3866,9 +3917,11 @@ function evaluateV2LaneSetPolicy(input: {
       ? [
           "concentration:support_tier",
           ...(smallTargetDenominator ? ["concentration:small_denominator"] : []),
+          ...(dirtyCollateral ? ["concentration:dirty_collateral"] : []),
           ...(cleanDirectIsolation ? ["concentration:justified_direct_isolation"] : []),
-          ...(lowSystemicFatigueLane ? ["justification:low_systemic_fatigue"] : []),
-          ...(smallTargetDenominator
+          ...(concentrationBlocker ? ["concentration:needs_diversification"] : []),
+          ...(cleanDirectIsolation ? ["justification:low_systemic_fatigue"] : []),
+          ...(cleanDirectIsolation && smallTargetDenominator
             ? ["justification:small_target_denominator"]
             : []),
         ]
@@ -3955,6 +4008,76 @@ function includesAnyLaneToken(value: string, lane: V2Lane | V2Slot["lanes"][numb
   );
 }
 
+function strictLaneExerciseNamesFromFinalPlan(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  slotId: string;
+  lane: V2Lane | V2Slot["lanes"][number];
+}): SlotCompositionSnapshot["exercises"] {
+  if (!input.noRepair || !isStrictV2SetBudgetLane(input.lane)) {
+    return [];
+  }
+  return (getSlotById(input.noRepair.finalSlotPlan, input.slotId)?.exercises ?? [])
+    .filter((exercise) =>
+      exerciseMatchesV2LaneSetPolicyClass({ exercise, lane: input.lane })
+    );
+}
+
+function strictDirectSupportConcentrationDiagnostics(input: {
+  diagnostics: string[];
+  exercises: SlotCompositionSnapshot["exercises"];
+  lane: V2Lane | V2Slot["lanes"][number];
+}): string[] {
+  if (
+    input.exercises.length === 0 ||
+    input.lane.role === "anchor" ||
+    input.lane.role === "optional"
+  ) {
+    return [];
+  }
+  const exerciseNames = new Set(
+    input.exercises.map((exercise) => exercise.exerciseName.toLowerCase())
+  );
+  const supportTierLane =
+    isTricepsV2Lane(input.lane) ||
+    input.lane.primaryMuscles.every(
+      (muscle) => getMuscleTargetSemantics(muscle).targetTier !== "A_PRIMARY"
+    );
+  if (!supportTierLane) {
+    return [];
+  }
+  const hasDirectShareWarning = input.diagnostics.some((diagnostic) => {
+    const normalized = diagnostic.toLowerCase();
+    return (
+      normalized.includes("single_exercise_share") &&
+      input.lane.primaryMuscles.some((muscle) =>
+        normalized.includes(muscle.toLowerCase())
+      ) &&
+      Array.from(exerciseNames).some((name) => normalized.includes(name))
+    );
+  });
+  if (
+    !(hasDirectShareWarning || input.diagnostics.includes("setPolicy:quality_warning")) ||
+    !(
+      isLowSystemicFatigueV2Lane(input.exercises) ||
+      (isTricepsV2Lane(input.lane) &&
+        input.exercises.every((exercise) => exercise.role !== "main"))
+    )
+  ) {
+    return [];
+  }
+  const smallTargetDenominator = input.lane.targetSets.preferred <= 3;
+  return [
+    "concentration:support_tier",
+    ...(smallTargetDenominator ? ["concentration:small_denominator"] : []),
+    "concentration:quality_warning",
+    "concentration:justified_direct_isolation",
+    "justification:low_systemic_fatigue",
+    ...(smallTargetDenominator
+      ? ["justification:small_target_denominator"]
+      : []),
+  ];
+}
+
 function collectV2LaneDiagnostics(input: {
   noRepair?: PlanningRealityDiagnostic;
   repaired?: PlanningRealityDiagnostic;
@@ -3995,7 +4118,28 @@ function collectV2LaneDiagnostics(input: {
     isStrictV2SetBudgetLane(input.lane) &&
     input.setPolicyDiagnostics.includes("setPolicy:in_budget")
   ) {
-    return compactV2LaneDiagnostics(input.setPolicyDiagnostics, 6);
+    const explainedConcentrationDiagnostics =
+      strictDirectSupportConcentrationDiagnostics({
+        diagnostics,
+        exercises: strictLaneExerciseNamesFromFinalPlan({
+          noRepair,
+          slotId: input.slotId,
+          lane: input.lane,
+        }),
+        lane: input.lane,
+      });
+    return compactV2LaneDiagnostics(
+      explainedConcentrationDiagnostics.length > 0
+        ? [
+            ...input.setPolicyDiagnostics.filter(
+              (row) => row !== "setPolicy:in_budget"
+            ),
+            "setPolicy:quality_warning",
+            ...explainedConcentrationDiagnostics,
+          ]
+        : input.setPolicyDiagnostics,
+      explainedConcentrationDiagnostics.length > 0 ? 8 : 6
+    );
   }
 
   if (!noRepair) {
@@ -4003,13 +4147,11 @@ function collectV2LaneDiagnostics(input: {
   }
 
   const strictLaneExerciseNames = new Set(
-    isStrictV2SetBudgetLane(input.lane)
-      ? (getSlotById(noRepair.finalSlotPlan, input.slotId)?.exercises ?? [])
-          .filter((exercise) =>
-            exerciseMatchesV2LaneSetPolicyClass({ exercise, lane: input.lane })
-          )
-          .map((exercise) => exercise.exerciseName)
-      : []
+    strictLaneExerciseNamesFromFinalPlan({
+      noRepair,
+      slotId: input.slotId,
+      lane: input.lane,
+    }).map((exercise) => exercise.exerciseName)
   );
 
   diagnostics.push(
@@ -4096,9 +4238,27 @@ function collectV2LaneDiagnostics(input: {
       )
   );
 
+  const explainedConcentrationDiagnostics =
+    strictDirectSupportConcentrationDiagnostics({
+      diagnostics,
+      exercises: strictLaneExerciseNamesFromFinalPlan({
+        noRepair,
+        slotId: input.slotId,
+        lane: input.lane,
+      }),
+      lane: input.lane,
+    });
+  const finalDiagnostics =
+    explainedConcentrationDiagnostics.length > 0
+      ? [
+          ...diagnostics.filter((row) => row !== "justification:none"),
+          ...explainedConcentrationDiagnostics,
+        ]
+      : diagnostics;
+
   return compactV2LaneDiagnostics(
-    diagnostics,
-    diagnostics.includes("concentration:support_tier") ? 8 : 6
+    finalDiagnostics,
+    finalDiagnostics.includes("concentration:support_tier") ? 8 : 6
   );
 }
 
@@ -4112,6 +4272,8 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
     "concentration:small_denominator",
     "concentration:quality_warning",
     "concentration:justified_direct_isolation",
+    "concentration:dirty_collateral",
+    "concentration:needs_diversification",
   ]);
   const concentrationPolicy = unique.filter(
     (row) => concentrationPolicyTokens.has(row)
@@ -4254,6 +4416,9 @@ function classifyV2LaneStatus(input: {
   const diagnosticStatus = input.diagnostics.find((row) =>
     row.startsWith("target_status:")
   );
+  const hasQualityWarningDiagnostics = input.diagnostics.includes(
+    "concentration:quality_warning"
+  );
 
   if (!hasMeaningfulNoRepairEvidence && repairedCreatesLane) {
     return "repair_dependent";
@@ -4264,7 +4429,8 @@ function classifyV2LaneStatus(input: {
   if (
     hasClassMatch &&
     (withinTarget || withinTolerance) &&
-    input.setPolicyStatus === "in_budget"
+    input.setPolicyStatus === "in_budget" &&
+    !hasQualityWarningDiagnostics
   ) {
     return "satisfied";
   }

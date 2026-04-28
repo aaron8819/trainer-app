@@ -711,6 +711,115 @@ describe("artifact serialization helpers", () => {
     ).toBe(false);
   });
 
+  it("preserves compact explained concentration strings without blocker collisions", () => {
+    const artifact = {
+      mode: "mesocycle-explain",
+      mesocycleExplain: {
+        preview: {
+          projectionDiagnostics: {
+            planningReality: {},
+          },
+        },
+        plannerOnlyNoRepair: {
+          enabled: true,
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          v2TargetVsNoRepairDiff: {
+            version: 1,
+            source: "v2_planner_no_repair_experimental",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            summary: {
+              targetLaneCount: 1,
+              satisfiedLaneCount: 0,
+              partialLaneCount: 1,
+              missingLaneCount: 0,
+              blockedLaneCount: 0,
+              repairDependentLaneCount: 0,
+              migrationCandidateCount: 0,
+              suspiciousOrBlockedCount: 0,
+            },
+            slotDiffs: [
+              {
+                slotId: "upper_a",
+                laneDiffs: [
+                  {
+                    laneId: "triceps",
+                    targetRole: "accessory",
+                    currentStatus: "partial",
+                    currentEvidence: {
+                      selectedExercises: [
+                        {
+                          name: "Cable Triceps Pushdown",
+                          sets: 2,
+                          matchedClass: "triceps_isolation",
+                        },
+                      ],
+                      relevantDiagnostics: [
+                        "setPolicy:quality_warning",
+                        "setBudget:within_preferred",
+                        "concentration:support_tier",
+                        "concentration:small_denominator",
+                        "concentration:quality_warning",
+                        "concentration:justified_direct_isolation",
+                        "justification:low_systemic_fatigue",
+                        "justification:small_target_denominator",
+                      ],
+                    },
+                    gapCause: "concentration_policy_gap",
+                    migrationRecommendation: "keep_diagnostic_only",
+                    severity: "quality_warning",
+                  },
+                ],
+              },
+            ],
+            replacementReadinessImpact: {
+              canReplaceRepairedProjection: false,
+              blockers: ["read_only_non_generative_artifact"],
+              nextBestMigrationSlice: null,
+            },
+          },
+        },
+      },
+    } as unknown as WorkoutAuditArtifact;
+
+    const compact = compactWorkoutAuditArtifactForSerialization(artifact);
+    const serialized = serializeStableJson(compact);
+    const lane = (
+      compact as {
+        mesocycleExplain?: {
+          plannerOnlyNoRepair?: {
+            v2TargetVsNoRepairDiff?: {
+              slotDiffs?: Array<{
+                laneDiffs?: Array<{
+                  currentEvidence?: { relevantDiagnostics?: string[] };
+                }>;
+              }>;
+            };
+          };
+        };
+      }
+    ).mesocycleExplain?.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff
+      ?.slotDiffs?.[0]?.laneDiffs?.[0];
+
+    expect(serialized).toContain("concentration:quality_warning");
+    expect(lane?.currentEvidence?.relevantDiagnostics).toEqual([
+      "setPolicy:quality_warning",
+      "setBudget:within_preferred",
+      "concentration:support_tier",
+      "concentration:small_denominator",
+      "concentration:quality_warning",
+      "concentration:justified_direct_isolation",
+      "justification:low_systemic_fatigue",
+      "justification:small_target_denominator",
+    ]);
+    expect(
+      lane?.currentEvidence?.relevantDiagnostics?.some((entry) =>
+        entry.toLowerCase().includes("hard_blocker")
+      )
+    ).toBe(false);
+  });
+
   it("compacts flagged planner-only no-repair V2 diagnostics with parseable headroom and blocker evidence", () => {
     const laneIds = [
       "chest_anchor",

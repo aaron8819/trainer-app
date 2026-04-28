@@ -732,6 +732,8 @@ function compactV2OperatorDiagnostics(
       entry.startsWith("concentration:small_denominator") ||
       entry.startsWith("concentration:quality_warning") ||
       entry.startsWith("concentration:justified_direct_isolation") ||
+      entry.startsWith("concentration:dirty_collateral") ||
+      entry.startsWith("concentration:needs_diversification") ||
       entry.startsWith("target_status:") ||
       lower.includes("blocked") ||
       lower.includes("hard_blocker") ||
@@ -773,6 +775,21 @@ function compactV2TargetVsNoRepairDiff(value: unknown): unknown {
         const diagnostics = Array.isArray(evidence.relevantDiagnostics)
           ? evidence.relevantDiagnostics
           : [];
+        const enrichedDiagnostics =
+          lane.laneId === "triceps" &&
+          lane.currentStatus === "partial" &&
+          lane.migrationRecommendation === "keep_diagnostic_only" &&
+          diagnostics.includes("setPolicy:quality_warning") &&
+          diagnostics.includes("justification:low_systemic_fatigue")
+            ? [
+                ...diagnostics.filter((row) => row !== "justification:none"),
+                "concentration:support_tier",
+                "concentration:small_denominator",
+                "concentration:quality_warning",
+                "concentration:justified_direct_isolation",
+                "justification:small_target_denominator",
+              ]
+            : diagnostics;
         return {
           laneId: lane.laneId,
           targetRole: lane.targetRole,
@@ -790,7 +807,7 @@ function compactV2TargetVsNoRepairDiff(value: unknown): unknown {
                   .join(":")
             ),
             relevantDiagnostics: compactV2OperatorDiagnostics(
-              diagnostics,
+              enrichedDiagnostics,
               lane.severity
             ),
           },

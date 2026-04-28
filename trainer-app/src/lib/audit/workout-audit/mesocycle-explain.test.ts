@@ -3974,6 +3974,283 @@ describe("buildMesocycleExplainAuditPayload", () => {
     ).toBeNull();
   });
 
+  it("classifies triceps concentration from lane-owned direct evidence, not pressing collateral", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Incline Dumbbell Bench Press",
+            isCompound: true,
+            setCount: 3,
+            primaryMuscles: ["Chest", "Triceps"],
+            movementPatterns: ["horizontal_push"],
+            stimulus: { Chest: 3, Triceps: 4 },
+            percentages: { Chest: 40, Triceps: 69 },
+          },
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Triceps Pushdown",
+            setCount: 2,
+            primaryMuscles: ["Triceps"],
+            movementPatterns: ["isolation"],
+            stimulus: { Triceps: 2 },
+            percentages: { Triceps: 31 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Triceps",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 2,
+            preferredEffectiveSets: 4,
+            maxEffectiveSets: 10,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "triceps");
+
+    expect(lane).toMatchObject({
+      currentStatus: "satisfied",
+      gapCause: "none",
+      migrationRecommendation: "no_action",
+      severity: "pass",
+      currentEvidence: {
+        selectedExercises: [
+          expect.objectContaining({
+            name: "Cable Triceps Pushdown",
+            sets: 2,
+            matchedClass: "triceps_isolation",
+          }),
+        ],
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:in_budget",
+          "setBudget:within_preferred",
+          "justification:none",
+        ]),
+      },
+    });
+    expect(lane?.currentEvidence.selectedExercises).toHaveLength(1);
+    expect(
+      lane?.currentEvidence.selectedExercises.some((exercise) =>
+        exercise.name.includes("Bench")
+      )
+    ).toBe(false);
+    expect(lane?.currentEvidence.relevantDiagnostics).not.toContain(
+      "concentration:quality_warning",
+    );
+  });
+
+  it("downgrades explained triceps support isolation concentration to diagnostic-only", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Triceps Pushdown",
+            setCount: 2,
+            primaryMuscles: ["Triceps"],
+            movementPatterns: ["isolation"],
+            stimulus: { Triceps: 2 },
+            percentages: { Triceps: 69 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Triceps",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 2,
+            preferredEffectiveSets: 4,
+            maxEffectiveSets: 10,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "triceps");
+
+    expect(lane).toMatchObject({
+      currentStatus: "partial",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "keep_diagnostic_only",
+      severity: "quality_warning",
+      currentEvidence: {
+        selectedExercises: [
+          expect.objectContaining({
+            name: "Cable Triceps Pushdown",
+            sets: 2,
+            matchedClass: "triceps_isolation",
+          }),
+        ],
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:quality_warning",
+          "setBudget:within_preferred",
+          "concentration:support_tier",
+          "concentration:small_denominator",
+          "concentration:quality_warning",
+          "concentration:justified_direct_isolation",
+          "justification:low_systemic_fatigue",
+          "justification:small_target_denominator",
+        ]),
+      },
+    });
+    expect(
+      lane?.currentEvidence.relevantDiagnostics.some((entry) =>
+        entry.toLowerCase().includes("hard_blocker")
+      )
+    ).toBe(false);
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
+        .nextBestMigrationSlice,
+    ).toBeNull();
+  });
+
+  it("keeps unexplained and true-hard-blocker triceps concentration actionable", () => {
+    const unexplained = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Triceps Pushdown",
+            role: "main",
+            setCount: 2,
+            primaryMuscles: ["Triceps"],
+            movementPatterns: ["isolation"],
+            stimulus: { Triceps: 2 },
+            percentages: { Triceps: 55 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Triceps",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 2,
+            preferredEffectiveSets: 4,
+            maxEffectiveSets: 10,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+    const overFive = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Triceps Pushdown",
+            setCount: 6,
+            primaryMuscles: ["Triceps"],
+            movementPatterns: ["isolation"],
+            stimulus: { Triceps: 6 },
+            percentages: { Triceps: 55 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const unexplainedLane = unexplained.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "triceps");
+    const overFiveLane = overFive.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "triceps");
+
+    expect(unexplainedLane).toMatchObject({
+      currentStatus: "partial",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
+      severity: "quality_warning",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:quality_warning",
+          "concentration:support_tier",
+          "concentration:quality_warning",
+          "justification:none",
+        ]),
+      },
+    });
+    expect(overFiveLane).toMatchObject({
+      currentStatus: "blocked",
+      gapCause: "capacity_gap",
+      migrationRecommendation: "needs_set_budget_justification",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:hard_blocker",
+          "setPolicyReason:gt_5_sets",
+        ]),
+      },
+    });
+  });
+
+  it("does not use repaired projection as the triceps target policy", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Deficit Push-Up",
+            setCount: 3,
+            primaryMuscles: ["Chest", "Triceps"],
+            movementPatterns: ["horizontal_push"],
+            stimulus: { Chest: 3, Triceps: 1 },
+            percentages: { Chest: 50, Triceps: 100 },
+          },
+        ],
+      }),
+      repairedPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Triceps Pushdown",
+            setCount: 2,
+            primaryMuscles: ["Triceps"],
+            movementPatterns: ["isolation"],
+            stimulus: { Triceps: 2 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "triceps");
+
+    expect(lane).toMatchObject({
+      currentStatus: "repair_dependent",
+      gapCause: "repair_dependency",
+      severity: "migration_candidate",
+      currentEvidence: {
+        selectedExercises: [],
+        relevantDiagnostics: expect.arrayContaining([
+          "repair_dependent:repaired_projection_has_lane",
+        ]),
+      },
+    });
+    expect(noRepair.v2SetDistributionIntent.guardrails).toMatchObject({
+      doesNotUseRepairedProjectionAsTarget: true,
+      doesNotUseAcceptedSeedAsTarget: true,
+    });
+  });
+
   it("still blocks dirty collateral concentration when it solves a support target", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({

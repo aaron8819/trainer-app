@@ -9,6 +9,20 @@ import {
 import { WORKOUT_AUDIT_SIZE_LIMIT_BYTES } from "./constants";
 import type { WorkoutAuditArtifact } from "./types";
 
+function resolveCompactV2Refs(
+  diff: Record<string, unknown>,
+  refs: unknown,
+  catalogName: "diagnosticStrings" | "selectedExercises"
+): string[] {
+  const catalogs = diff.catalogs as
+    | Record<string, Record<string, string>>
+    | undefined;
+  const catalog = catalogs?.[catalogName] ?? {};
+  return Array.isArray(refs)
+    ? refs.map((ref) => catalog[String(ref)] ?? String(ref))
+    : [];
+}
+
 describe("artifact serialization helpers", () => {
   it("sorts object keys without reordering arrays", () => {
     const serialized = serializeStableJson({
@@ -694,6 +708,15 @@ describe("artifact serialization helpers", () => {
 
     const compact = compactWorkoutAuditArtifactForSerialization(artifact);
     const serialized = serializeStableJson(compact);
+    const targetDiff = (
+      compact as {
+        mesocycleExplain?: {
+          plannerOnlyNoRepair?: {
+            v2TargetVsNoRepairDiff?: Record<string, unknown>;
+          };
+        };
+      }
+    ).mesocycleExplain?.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff;
     const lane = (
       compact as {
         mesocycleExplain?: {
@@ -701,7 +724,10 @@ describe("artifact serialization helpers", () => {
             v2TargetVsNoRepairDiff?: {
               slotDiffs?: Array<{
                 laneDiffs?: Array<{
-                  currentEvidence?: { relevantDiagnostics?: string[] };
+                  currentEvidence?: {
+                    relevantDiagnosticRefs?: string[];
+                    relevantDiagnostics?: string[];
+                  };
                 }>;
               }>;
             };
@@ -710,16 +736,21 @@ describe("artifact serialization helpers", () => {
       }
     ).mesocycleExplain?.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff
       ?.slotDiffs?.[0]?.laneDiffs?.[0];
+    const diagnostics = resolveCompactV2Refs(
+      targetDiff ?? {},
+      lane?.currentEvidence?.relevantDiagnosticRefs,
+      "diagnosticStrings"
+    );
 
     expect(serialized).toContain("setBudget:requires_justification");
-    expect(lane?.currentEvidence?.relevantDiagnostics).toEqual([
+    expect(diagnostics).toEqual([
       "setPolicy:requires_justification",
       "setPolicyReason:over_role_cap",
       "setBudget:requires_justification",
       "justification:none",
     ]);
     expect(
-      lane?.currentEvidence?.relevantDiagnostics?.some((entry) =>
+      diagnostics.some((entry) =>
         entry.toLowerCase().includes("hard_blocker")
       )
     ).toBe(false);
@@ -799,6 +830,15 @@ describe("artifact serialization helpers", () => {
 
     const compact = compactWorkoutAuditArtifactForSerialization(artifact);
     const serialized = serializeStableJson(compact);
+    const targetDiff = (
+      compact as {
+        mesocycleExplain?: {
+          plannerOnlyNoRepair?: {
+            v2TargetVsNoRepairDiff?: Record<string, unknown>;
+          };
+        };
+      }
+    ).mesocycleExplain?.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff;
     const lane = (
       compact as {
         mesocycleExplain?: {
@@ -806,7 +846,10 @@ describe("artifact serialization helpers", () => {
             v2TargetVsNoRepairDiff?: {
               slotDiffs?: Array<{
                 laneDiffs?: Array<{
-                  currentEvidence?: { relevantDiagnostics?: string[] };
+                  currentEvidence?: {
+                    relevantDiagnosticRefs?: string[];
+                    relevantDiagnostics?: string[];
+                  };
                 }>;
               }>;
             };
@@ -815,9 +858,14 @@ describe("artifact serialization helpers", () => {
       }
     ).mesocycleExplain?.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff
       ?.slotDiffs?.[0]?.laneDiffs?.[0];
+    const diagnostics = resolveCompactV2Refs(
+      targetDiff ?? {},
+      lane?.currentEvidence?.relevantDiagnosticRefs,
+      "diagnosticStrings"
+    );
 
     expect(serialized).toContain("concentration:quality_warning");
-    expect(lane?.currentEvidence?.relevantDiagnostics).toEqual([
+    expect(diagnostics).toEqual([
       "setPolicy:quality_warning",
       "setBudget:within_preferred",
       "concentration:support_tier",
@@ -828,7 +876,7 @@ describe("artifact serialization helpers", () => {
       "justification:small_target_denominator",
     ]);
     expect(
-      lane?.currentEvidence?.relevantDiagnostics?.some((entry) =>
+      diagnostics.some((entry) =>
         entry.toLowerCase().includes("hard_blocker")
       )
     ).toBe(false);
@@ -1033,7 +1081,7 @@ describe("artifact serialization helpers", () => {
               canReplaceRepairedProjection: false,
               blockers: ["read_only_non_generative_artifact"],
               nextBestMigrationSlice:
-                "chest_anchor:needs_concentration_justification",
+                "chest_second_exposure:needs_concentration_justification",
             },
           },
           v2SetDistributionIntent: {
@@ -1118,6 +1166,8 @@ describe("artifact serialization helpers", () => {
     } as unknown as WorkoutAuditArtifact;
 
     const compact = compactWorkoutAuditArtifactForSerialization(artifact);
+    const originalSize = getSerializedJsonSizeBytes(artifact);
+    const compactSize = getSerializedJsonSizeBytes(compact);
     const serialized = serializeStableJson(compact);
     const reparsed = JSON.parse(serialized) as WorkoutAuditArtifact;
     const noRepair = reparsed.mesocycleExplain
@@ -1127,8 +1177,25 @@ describe("artifact serialization helpers", () => {
     const intent = noRepair.v2SetDistributionIntent as Record<string, unknown>;
     const classification = noRepair.acceptanceClassification as Record<string, unknown>;
     const hardBlockers = classification.hardBlockers as Array<Record<string, unknown>>;
+    const firstLane = (
+      (targetDiff.slotDiffs as Array<Record<string, unknown>>)[0]
+        .laneDiffs as Array<Record<string, unknown>>
+    )[0];
+    const firstEvidence = firstLane.currentEvidence as Record<string, unknown>;
+    const firstLaneDiagnostics = resolveCompactV2Refs(
+      targetDiff,
+      firstEvidence.relevantDiagnosticRefs,
+      "diagnosticStrings"
+    );
+    const firstLaneSelectedExercises = resolveCompactV2Refs(
+      targetDiff,
+      firstEvidence.selectedExerciseRefs,
+      "selectedExercises"
+    );
 
-    expect(WORKOUT_AUDIT_SIZE_LIMIT_BYTES - getSerializedJsonSizeBytes(compact)).toBeGreaterThan(
+    expect(compactSize).toBeLessThan(originalSize);
+    expect(originalSize - compactSize).toBeGreaterThanOrEqual(2_000);
+    expect(WORKOUT_AUDIT_SIZE_LIMIT_BYTES - compactSize).toBeGreaterThan(
       100_000
     );
     expect(serialized).toContain("setPolicyReason:over_60_share");
@@ -1136,12 +1203,27 @@ describe("artifact serialization helpers", () => {
       code: "primary_hard_target_excessive_single_exercise_share_unjustified",
       evidence: ["upper_a:Deficit Push-Up:Chest:64%:over_60_share"],
     });
+    expect(firstLaneDiagnostics).toEqual(expect.arrayContaining([
+      "setPolicy:hard_blocker",
+      "setPolicyReason:over_60_share",
+      "setBudget:within_preferred",
+      "justification:none",
+      "target_status:blocked",
+      "program_quality:hard_blocker:forbidden_slot_primary_solution",
+    ]));
+    expect(firstLaneSelectedExercises).toEqual([
+      "Deficit Push-Up:6:horizontal_press:accessory",
+    ]);
     expect(targetDiff).toMatchObject({
       readOnly: true,
       affectsScoringOrGeneration: false,
+      catalogs: {
+        diagnosticStrings: expect.any(Object),
+        selectedExercises: expect.any(Object),
+      },
       replacementReadinessImpact: {
         nextBestMigrationSlice:
-          "chest_anchor:needs_concentration_justification",
+          "chest_second_exposure:needs_concentration_justification",
       },
     });
     expect(plan).toMatchObject({
@@ -1158,7 +1240,13 @@ describe("artifact serialization helpers", () => {
       catalogs: {
         slotDefinitions: expect.any(Array),
       },
-      weekSetBudgetGrid: expect.any(Array),
+      weekSetBudgetGridGroups: expect.any(Array),
+    });
+    expect(
+      (intent.weekSetBudgetGridGroups as Array<Record<string, unknown>>)[0]
+    ).toMatchObject({
+      weeks: [1, 2, 3, 4, 5],
+      slots: expect.any(Array),
     });
     expect(noRepair).toHaveProperty("v2MesocyclePlan");
     expect(noRepair).toHaveProperty("v2TargetVsNoRepairDiff");

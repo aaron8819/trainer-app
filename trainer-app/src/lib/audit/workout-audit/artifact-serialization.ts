@@ -647,7 +647,7 @@ function compactV2SetDistributionIntent(value: unknown): unknown {
       slotDefinitions,
     },
     weeklyProgression,
-    weekSetBudgetGrid,
+    weekSetBudgetGridGroups: compactV2WeekSetBudgetGrid(weekSetBudgetGrid),
     guardrails: intent.guardrails,
   };
 }
@@ -721,7 +721,25 @@ function compactV2OperatorDiagnostics(
   const values = diagnostics.filter(
     (entry): entry is string => typeof entry === "string" && entry.length > 0
   );
+  const requiresExplicitJustification = values.some(
+    (entry) =>
+      entry === "setPolicy:requires_justification" ||
+      entry === "setBudget:requires_justification" ||
+      entry === "setPolicy:hard_blocker"
+  );
+  const statusAlreadyImpliesNoJustification = values.some(
+    (entry) =>
+      entry === "setPolicy:in_budget" ||
+      entry === "setBudget:within_preferred"
+  );
   const important = values.filter((entry) => {
+    if (
+      entry === "justification:none" &&
+      statusAlreadyImpliesNoJustification &&
+      !requiresExplicitJustification
+    ) {
+      return false;
+    }
     const lower = entry.toLowerCase();
     return (
       entry.startsWith("setPolicy:") ||
@@ -767,11 +785,42 @@ function compactV2OperatorDiagnostics(
   );
 }
 
+function compactV2WeekSetBudgetGrid(weekSetBudgetGrid: JsonRecord[]): JsonRecord[] {
+  const groups: Array<{
+    weeks: unknown[];
+    slots: unknown;
+    serializedSlots: string;
+  }> = [];
+
+  for (const week of weekSetBudgetGrid) {
+    const slots = Array.isArray(week.slots) ? week.slots : [];
+    const serializedSlots = JSON.stringify(slots);
+    const existing = groups.find((group) => group.serializedSlots === serializedSlots);
+    if (existing) {
+      existing.weeks.push(week.week);
+      continue;
+    }
+    groups.push({
+      weeks: [week.week],
+      slots,
+      serializedSlots,
+    });
+  }
+
+  return groups.map((group) => ({
+    weeks: group.weeks,
+    slots: group.slots,
+  }));
+}
+
 function compactV2TargetVsNoRepairDiff(value: unknown): unknown {
   const diff = asRecord(value);
   if (!diff) {
     return value;
   }
+
+  const diagnosticCatalog = createValueCatalog("D");
+  const selectedExerciseCatalog = createValueCatalog("E");
 
   return {
     version: diff.version,
@@ -781,6 +830,10 @@ function compactV2TargetVsNoRepairDiff(value: unknown): unknown {
     summary: diff.summary,
     targetDescriptorSource:
       "plannerOnlyNoRepair.v2SetDistributionIntent.catalogs.slotDefinitions",
+    catalogs: {
+      diagnosticStrings: diagnosticCatalog.entries(),
+      selectedExercises: selectedExerciseCatalog.entries(),
+    },
     slotDiffs: asRecordArray(diff.slotDiffs).map((slot) => ({
       slotId: slot.slotId,
       laneDiffs: asRecordArray(slot.laneDiffs).map((lane) => {
@@ -808,21 +861,23 @@ function compactV2TargetVsNoRepairDiff(value: unknown): unknown {
           targetRole: lane.targetRole,
           currentStatus: lane.currentStatus,
           currentEvidence: {
-            selectedExercises: asRecordArray(evidence.selectedExercises).map(
+            selectedExerciseRefs: asRecordArray(evidence.selectedExercises).map(
               (exercise) =>
-                [
-                  exercise.name,
-                  exercise.sets,
-                  exercise.matchedClass,
-                  exercise.role,
-                ]
-                  .filter((entry) => entry !== undefined && entry !== "")
-                  .join(":")
+                selectedExerciseCatalog.ref(
+                  [
+                    exercise.name,
+                    exercise.sets,
+                    exercise.matchedClass,
+                    exercise.role,
+                  ]
+                    .filter((entry) => entry !== undefined && entry !== "")
+                    .join(":")
+                )
             ),
-            relevantDiagnostics: compactV2OperatorDiagnostics(
+            relevantDiagnosticRefs: compactV2OperatorDiagnostics(
               enrichedDiagnostics,
               lane.severity
-            ),
+            ).map((entry) => diagnosticCatalog.ref(entry)),
           },
           gapCause: lane.gapCause,
           migrationRecommendation: lane.migrationRecommendation,

@@ -234,8 +234,86 @@ function classSatisfiesDiagnosticIntent(
     horizontal_press: ["chest_press"],
     biceps_isolation: ["biceps_curl"],
     triceps_isolation_if_under_floor: ["triceps_isolation"],
+    squat: ["squat_compound", "squat_or_quad_support"],
+    leg_press: ["squat_or_quad_support"],
+    lunge: ["squat_or_quad_support"],
+    quad_isolation: ["squat_or_quad_support"],
   };
   return aliases[plannedClass]?.includes(exerciseClass) ?? false;
+}
+
+function laneDiffDiagnostics(laneDiff: V2LaneDiffEvidence | undefined): string[] {
+  return laneDiff?.currentEvidence.relevantDiagnostics ?? [];
+}
+
+function hasTrueHardLaneEvidence(
+  laneDiff: V2LaneDiffEvidence | undefined,
+): boolean {
+  if (
+    laneDiff?.currentStatus !== "blocked" ||
+    laneDiff.severity !== "hard_blocker"
+  ) {
+    return false;
+  }
+  const diagnostics = laneDiffDiagnostics(laneDiff).map((row) => row.toLowerCase());
+  const joined = diagnostics.join("|");
+  const hasDirtyCollateralSolvingTarget =
+    joined.includes("dirty") &&
+    (joined.includes("target_delivery:satisfied") ||
+      joined.includes("target_status:satisfied") ||
+      joined.includes("target_status:overdelivered") ||
+      joined.includes("solving_target"));
+
+  return (
+    diagnostics.includes("setpolicy:hard_blocker") ||
+    diagnostics.includes("target_status:blocked") ||
+    joined.includes("setpolicyreason:gt_5_sets") ||
+    joined.includes("forbidden") ||
+    hasDirtyCollateralSolvingTarget ||
+    joined.includes("fatigue_blocked") ||
+    joined.includes("risk:axial_fatigue") ||
+    joined.includes("risk:systemic_fatigue") ||
+    joined.includes("excessive_systemic") ||
+    joined.includes("systemic_fatigue_risk")
+  );
+}
+
+function isDowngradedConcentrationPolicyGap(
+  laneDiff: V2LaneDiffEvidence | undefined,
+): boolean {
+  return (
+    laneDiff?.severity === "quality_warning" &&
+    laneDiff.migrationRecommendation === "keep_diagnostic_only" &&
+    laneDiff.gapCause === "concentration_policy_gap"
+  );
+}
+
+function laneDiffHasConcentrationWarning(
+  laneDiff: V2LaneDiffEvidence | undefined,
+): boolean {
+  return (
+    isDowngradedConcentrationPolicyGap(laneDiff) ||
+    (laneDiff?.severity === "quality_warning" &&
+      laneDiffDiagnostics(laneDiff).some((row) =>
+        row.toLowerCase().includes("concentration"),
+      ))
+  );
+}
+
+function hasSetBudgetHardEvidence(
+  laneDiff: V2LaneDiffEvidence | undefined,
+): boolean {
+  if (!hasTrueHardLaneEvidence(laneDiff)) {
+    return false;
+  }
+  const joined = laneDiffDiagnostics(laneDiff).join("|").toLowerCase();
+  return (
+    joined.includes("setpolicy:hard_blocker") ||
+    joined.includes("setpolicyreason:gt_5_sets") ||
+    joined.includes("set_count_gt_5") ||
+    joined.includes("compound_gt_5") ||
+    joined.includes("isolation_gt_5")
+  );
 }
 
 function setBudgetStatus(input: {
@@ -244,10 +322,7 @@ function setBudgetStatus(input: {
   maxSetsPerExercise: number;
   laneDiff: V2LaneDiffEvidence | undefined;
 }): V2ExerciseSelectionPlanDiagnostic["weeks"][number]["slots"][number]["lanes"][number]["setBudgetStatus"] {
-  if (
-    input.laneDiff?.currentEvidence.relevantDiagnostics.includes("setPolicy:hard_blocker") ||
-    input.laneDiff?.currentStatus === "blocked"
-  ) {
+  if (hasSetBudgetHardEvidence(input.laneDiff)) {
     return "blocked";
   }
   if (!input.selectedIdentity) {
@@ -303,9 +378,16 @@ function concentrationStatus(input: {
   exerciseConcentration: ReadonlyArray<ExerciseConcentrationDiagnostic> | undefined;
   selectedIdentity: SelectedIdentity | undefined;
   slotId: string;
+  laneDiff: V2LaneDiffEvidence | undefined;
 }): V2ExerciseSelectionPlanDiagnostic["weeks"][number]["slots"][number]["lanes"][number]["concentrationStatus"] {
   if (!input.selectedIdentity) {
     return "pass";
+  }
+  if (hasTrueHardLaneEvidence(input.laneDiff)) {
+    return "blocked";
+  }
+  if (laneDiffHasConcentrationWarning(input.laneDiff)) {
+    return "quality_warning";
   }
   const rows = (input.exerciseConcentration ?? []).filter(
     (row) =>
@@ -318,7 +400,7 @@ function concentrationStatus(input: {
       row.flags.includes("EXERCISE_SUPPLIES_OVER_60_PERCENT_WEEKLY_STIMULUS"),
     )
   ) {
-    return "blocked";
+    return "quality_warning";
   }
   if (rows.some((row) => row.flags.length > 0)) {
     return "quality_warning";
@@ -332,10 +414,8 @@ function fatigueStatus(input: {
   limitations: ReadonlyArray<string>;
 }): V2ExerciseSelectionPlanDiagnostic["weeks"][number]["slots"][number]["lanes"][number]["fatigueStatus"] {
   if (
-    input.concentrationStatus === "blocked" ||
-    input.laneDiff?.currentEvidence.relevantDiagnostics.some((row) =>
-      row.includes("fatigue_blocked"),
-    )
+    input.concentrationStatus === "blocked" &&
+    hasTrueHardLaneEvidence(input.laneDiff)
   ) {
     return "blocked";
   }
@@ -528,6 +608,7 @@ function buildLane(input: {
     exerciseConcentration: input.exerciseConcentration,
     selectedIdentity,
     slotId: input.slotId,
+    laneDiff: input.laneDiff,
   });
   const alternatives = cleanAlternatives({
     classDemands: input.classDemands,

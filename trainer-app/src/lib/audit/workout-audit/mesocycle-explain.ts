@@ -3385,6 +3385,7 @@ function exerciseMatchesV2LaneClass(input: {
 function isStrictV2SetBudgetLane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
   return (
     lane.laneId === "squat_anchor" ||
+    lane.laneId === "vertical_press" ||
     lane.laneId === "chest_secondary" ||
     lane.laneId === "rear_delt" ||
     isTricepsV2Lane(lane)
@@ -3497,6 +3498,10 @@ function isTricepsV2Lane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
   );
 }
 
+function isVerticalPressV2Lane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
+  return lane.laneId === "vertical_press" || v2LaneAliases(lane).includes("vertical_press");
+}
+
 function isDirectTricepsLaneExercise(
   exercise: SlotCompositionSnapshot["exercises"][number]
 ): boolean {
@@ -3523,6 +3528,36 @@ function isDirectTricepsLaneExercise(
     (name.includes("press") && !name.includes("pressdown"));
 
   return hasTricepsPrimary && directName && !broadPressName;
+}
+
+function isDirectSideDeltIsolationExercise(
+  exercise: SlotCompositionSnapshot["exercises"][number]
+): boolean {
+  const name = exercise.exerciseName.toLowerCase();
+  const classified = classifyPlannerOnlyExercise({ exercise });
+  return (
+    classified.lane === "side_delt_isolation" ||
+    classified.exerciseClass === "lateral_raise" ||
+    (exercise.primaryMuscles.includes("Side Delts") &&
+      !("isCompound" in exercise && exercise.isCompound === true) &&
+      (name.includes("lateral raise") || name.includes("side delt")))
+  );
+}
+
+function hasDirectSideDeltExposure(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  excludeExerciseName?: string;
+}): boolean {
+  return (
+    input.noRepair?.finalSlotPlan.some((slot) =>
+      slot.exercises.some(
+        (exercise) =>
+          exercise.exerciseName !== input.excludeExerciseName &&
+          isDirectSideDeltIsolationExercise(exercise) &&
+          (exercise.effectiveStimulusByMuscle["Side Delts"] ?? 0) > 0
+      )
+    ) ?? false
+  );
 }
 
 function collectV2LaneExercises(input: {
@@ -3934,6 +3969,11 @@ function evaluateV2LaneSetPolicy(input: {
     concentrationEvidence.muscle != null &&
     (concentrationEvidence.row?.primaryMuscles.includes(concentrationEvidence.muscle) ??
       false);
+  const laneOwnedPolicyExercise =
+    concentrationEvidence.row != null &&
+    policyExercises.some(
+      (exercise) => exercise.exerciseName === concentrationEvidence.row?.exerciseName
+    );
   const cleanDirectIsolation =
     directLaneOwnedExercise &&
     concentrationEvidence.row != null &&
@@ -3967,12 +4007,14 @@ function evaluateV2LaneSetPolicy(input: {
     concentration.appliesTo === "primary_target" && input.lane.role === "anchor";
   const squatAnchorConcentration =
     input.lane.laneId === "squat_anchor" && primaryAnchorConcentration;
+  const verticalPressAnchorConcentration =
+    isVerticalPressV2Lane(input.lane) && primaryAnchorConcentration;
   const repairCreatedConcentration =
     concentrationEvidence.row?.producedOrIncreasedByRepair ?? false;
   const withinPlannedSetBudget =
     setCount <= budget.max &&
     maxExerciseSets <= cap.maxSetsPerExerciseWithoutJustification;
-  const anchorExpectedConcentration =
+  const squatAnchorExpectedConcentration =
     squatAnchorConcentration &&
     concentrationWarning &&
     directLaneOwnedExercise &&
@@ -3983,6 +4025,23 @@ function evaluateV2LaneSetPolicy(input: {
     !repairCreatedConcentration &&
     !fatigueRisk.axial &&
     !fatigueRisk.systemic;
+  const directSideDeltExposure = hasDirectSideDeltExposure({
+    noRepair: input.noRepair,
+    excludeExerciseName: concentrationEvidence.row?.exerciseName,
+  });
+  const verticalPressCollateralExpected =
+    verticalPressAnchorConcentration &&
+    concentrationWarning &&
+    laneOwnedPolicyExercise &&
+    withinPlannedSetBudget &&
+    directSideDeltExposure &&
+    concentrationEvidence.muscle === "Front Delts" &&
+    !aboveFiveSets &&
+    !repairCreatedConcentration &&
+    !fatigueRisk.axial &&
+    !fatigueRisk.systemic;
+  const anchorExpectedConcentration =
+    squatAnchorExpectedConcentration || verticalPressCollateralExpected;
   const concentrationBlocker =
     concentration.appliesTo !== "diagnostic_only" &&
     concentrationShare > concentration.blockerShare &&
@@ -4015,20 +4074,30 @@ function evaluateV2LaneSetPolicy(input: {
         ? ["concentration:over_60_share"]
         : []),
       ...(anchorExpectedConcentration
-        ? [
-            "concentration:anchor_expected",
-            "concentration:quality_warning",
-            "justification:squat_anchor",
-            "justification:second_quad_exposure",
-            "justification:weekly_target_met",
-          ]
+        ? squatAnchorExpectedConcentration
+          ? [
+              "concentration:anchor_expected",
+              "concentration:quality_warning",
+              "justification:squat_anchor",
+              "justification:second_quad_exposure",
+              "justification:weekly_target_met",
+            ]
+          : [
+              "concentration:vertical_press",
+              "concentration:pressing_collateral",
+              "concentration:quality_warning",
+              "justification:vertical_press_lane",
+              "justification:direct_side_delt_exposure",
+              "justification:front_delt_collateral_expected",
+              ...(targetMet ? ["justification:weekly_target_met"] : []),
+            ]
         : [
             ...(concentrationBlocker ? ["concentration:true_blocker"] : []),
             ...(!hasSecondExposure ? ["concentration:needs_diversification"] : []),
             ...(directTargetMet ? ["justification:weekly_target_met"] : []),
             "justification:none",
           ]),
-      ...(fatigueRisk.axial ? ["risk:axial_fatigue"] : []),
+      ...(fatigueRisk.axial ? ["risk:axial_fatigue", "risk:joint_fatigue"] : []),
       ...(fatigueRisk.systemic ? ["risk:systemic_fatigue"] : [])
     );
   }
@@ -4076,7 +4145,7 @@ function evaluateV2LaneSetPolicy(input: {
       ...v2SetBudgetDiagnostics({ setCount, budget, status }),
       ...diagnosticJustifications,
       ...concentrationDiagnostics,
-    ], primaryAnchorConcentration ? 10 : 8),
+    ], primaryAnchorConcentration ? 12 : 8),
   };
 }
 
@@ -4368,7 +4437,7 @@ function collectV2LaneDiagnostics(input: {
   return compactV2LaneDiagnostics(
     finalDiagnostics,
     finalDiagnostics.includes("concentration:primary_anchor")
-      ? 10
+      ? 12
       : finalDiagnostics.includes("concentration:support_tier")
         ? 8
         : 6
@@ -4382,6 +4451,8 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
   const justification = unique.filter((row) => row.startsWith("justification"));
   const concentrationPolicyTokens = new Set<string>([
     "concentration:support_tier",
+    "concentration:vertical_press",
+    "concentration:pressing_collateral",
     "concentration:primary_anchor",
     "concentration:anchor_expected",
     "concentration:small_denominator",
@@ -4392,6 +4463,7 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
     "concentration:dirty_collateral",
     "concentration:needs_diversification",
     "risk:axial_fatigue",
+    "risk:joint_fatigue",
     "risk:systemic_fatigue",
   ]);
   const concentrationPolicy = unique.filter(

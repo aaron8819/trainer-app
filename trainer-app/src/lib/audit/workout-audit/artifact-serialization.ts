@@ -729,6 +729,8 @@ function compactV2OperatorDiagnostics(
       entry.startsWith("setBudget:") ||
       entry.startsWith("justification:") ||
       entry.startsWith("concentration:support_tier") ||
+      entry.startsWith("concentration:vertical_press") ||
+      entry.startsWith("concentration:pressing_collateral") ||
       entry.startsWith("concentration:primary_anchor") ||
       entry.startsWith("concentration:anchor_expected") ||
       entry.startsWith("concentration:small_denominator") ||
@@ -739,6 +741,7 @@ function compactV2OperatorDiagnostics(
       entry.startsWith("concentration:dirty_collateral") ||
       entry.startsWith("concentration:needs_diversification") ||
       entry.startsWith("risk:axial_fatigue") ||
+      entry.startsWith("risk:joint_fatigue") ||
       entry.startsWith("risk:systemic_fatigue") ||
       entry.startsWith("target_status:") ||
       lower.includes("blocked") ||
@@ -753,7 +756,7 @@ function compactV2OperatorDiagnostics(
     (entry) => entry === "concentration:primary_anchor"
   );
   const limit = hasPrimaryAnchorConcentration
-    ? 10
+    ? 12
     : severity === "hard_blocker" ||
         values.some((entry) => entry === "concentration:support_tier")
       ? 8

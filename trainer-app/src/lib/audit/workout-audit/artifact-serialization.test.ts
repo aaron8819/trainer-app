@@ -539,9 +539,14 @@ describe("artifact serialization helpers", () => {
                         "setPolicy:quality_warning",
                         "setBudget:within_preferred",
                         "concentration:primary_anchor",
+                        "concentration:vertical_press",
+                        "concentration:pressing_collateral",
                         "concentration:anchor_expected",
                         "concentration:quality_warning",
                         "justification:squat_anchor",
+                        "justification:vertical_press_lane",
+                        "justification:direct_side_delt_exposure",
+                        "justification:front_delt_collateral_expected",
                         "justification:second_quad_exposure",
                         "justification:weekly_target_met",
                         "concentration:Hack Squat:Quads:50%",
@@ -610,8 +615,11 @@ describe("artifact serialization helpers", () => {
     expect(WORKOUT_AUDIT_SIZE_LIMIT_BYTES - size).toBeGreaterThan(75_000);
     expect(serialized).toContain("setPolicy:quality_warning");
     expect(serialized).toContain("concentration:primary_anchor");
+    expect(serialized).toContain("concentration:vertical_press");
+    expect(serialized).toContain("concentration:pressing_collateral");
     expect(serialized).toContain("concentration:anchor_expected");
     expect(serialized).toContain("justification:second_quad_exposure");
+    expect(serialized).toContain("justification:front_delt_collateral_expected");
   });
 
   it("preserves compact set-budget justification diagnostics without hard-blocker collision", () => {

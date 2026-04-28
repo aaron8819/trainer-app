@@ -2984,8 +2984,16 @@ describe("buildMesocycleExplainAuditPayload", () => {
             isCompound: true,
             primaryMuscles: ["Side Delts"],
             movementPatterns: ["vertical_press"],
-            stimulus: { "Side Delts": 4, "Front Delts": 3.5 },
+            stimulus: { "Side Delts": 3, "Front Delts": 3.5 },
             percentages: { "Front Delts": 70 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Lateral Raise",
+            primaryMuscles: ["Side Delts"],
+            movementPatterns: ["isolation"],
+            stimulus: { "Side Delts": 3 },
+            percentages: { "Side Delts": 50 },
           },
           {
             slotId: "upper_b",
@@ -4590,6 +4598,309 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(noRepair.v2SetDistributionIntent.guardrails).toMatchObject({
       doesNotUseRepairedProjectionAsTarget: true,
       doesNotUseAcceptedSeedAsTarget: true,
+    });
+  });
+
+  it("classifies vertical press concentration from strict lane-owned pressing evidence", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Shoulder Press",
+            isCompound: true,
+            setCount: 3,
+            primaryMuscles: ["Side Delts"],
+            movementPatterns: ["vertical_press"],
+            stimulus: { "Side Delts": 3, "Front Delts": 3 },
+            percentages: { "Side Delts": 50, "Front Delts": 70 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Close-Grip Lat Pulldown",
+            setCount: 3,
+            primaryMuscles: ["Lats"],
+            movementPatterns: ["vertical_pull"],
+            stimulus: { Lats: 3 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Lateral Raise",
+            setCount: 3,
+            primaryMuscles: ["Side Delts"],
+            movementPatterns: ["isolation"],
+            stimulus: { "Side Delts": 3 },
+            percentages: { "Side Delts": 50 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Side Delts",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 8,
+            preferredEffectiveSets: 8,
+            maxEffectiveSets: 19,
+          },
+          {
+            muscle: "Front Delts",
+            priority: "implicit",
+            targetStatus: "diagnostic",
+            minEffectiveSets: null,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "vertical_press");
+
+    expect(lane).toMatchObject({
+      currentStatus: "partial",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "keep_diagnostic_only",
+      severity: "quality_warning",
+      currentEvidence: {
+        selectedExercises: [
+          expect.objectContaining({
+            name: "Machine Shoulder Press",
+            sets: 3,
+            matchedClass: "vertical_press",
+          }),
+        ],
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:quality_warning",
+          "setBudget:within_preferred",
+          "concentration:vertical_press",
+          "concentration:pressing_collateral",
+          "concentration:primary_anchor",
+          "concentration:quality_warning",
+          "justification:vertical_press_lane",
+          "justification:direct_side_delt_exposure",
+          "justification:front_delt_collateral_expected",
+        ]),
+      },
+    });
+    expect(lane?.currentEvidence.selectedExercises).toHaveLength(1);
+    expect(
+      lane?.currentEvidence.selectedExercises.some((exercise) =>
+        exercise.name.includes("Pulldown") || exercise.name.includes("Lateral Raise")
+      )
+    ).toBe(false);
+    expect(
+      lane?.currentEvidence.relevantDiagnostics.some((entry) =>
+        entry.toLowerCase().includes("hard_blocker")
+      )
+    ).toBe(false);
+    expect(noRepair.weeklyMuscleTotals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Side Delts",
+          projectedEffectiveSets: 6,
+          status: "below",
+        }),
+        expect.objectContaining({
+          muscle: "Front Delts",
+          projectedEffectiveSets: 3,
+          status: "diagnostic",
+        }),
+      ]),
+    );
+  });
+
+  it("does not let pressing collateral directly solve side-delt or triceps lanes", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Shoulder Press",
+            isCompound: true,
+            setCount: 3,
+            primaryMuscles: ["Side Delts", "Front Delts"],
+            movementPatterns: ["vertical_press"],
+            stimulus: { "Side Delts": 3, "Front Delts": 3, Triceps: 2 },
+            percentages: { "Side Delts": 75, "Front Delts": 75, Triceps: 100 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Side Delts",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 3,
+            preferredEffectiveSets: 8,
+            maxEffectiveSets: 12,
+          },
+          {
+            muscle: "Triceps",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 2,
+            preferredEffectiveSets: 5,
+            maxEffectiveSets: 12,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const upperB = noRepair.v2TargetVsNoRepairDiff.slotDiffs.find(
+      (slot) => slot.slotId === "upper_b",
+    );
+    const sideDelt = upperB?.laneDiffs.find(
+      (row) => row.laneId === "side_delt_isolation",
+    );
+    const triceps = upperB?.laneDiffs.find(
+      (row) => row.laneId === "optional_triceps_if_under_target",
+    );
+
+    expect(sideDelt).toMatchObject({
+      currentStatus: "blocked",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
+      severity: "hard_blocker",
+    });
+    expect(triceps).toMatchObject({
+      currentStatus: "missing",
+      currentEvidence: {
+        selectedExercises: [],
+      },
+      migrationRecommendation: "keep_diagnostic_only",
+    });
+  });
+
+  it("does not use repaired projection as the vertical-press target policy", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Lateral Raise",
+            setCount: 3,
+            primaryMuscles: ["Side Delts"],
+            movementPatterns: ["isolation"],
+            stimulus: { "Side Delts": 3 },
+          },
+        ],
+      }),
+      repairedPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Shoulder Press",
+            setCount: 3,
+            primaryMuscles: ["Side Delts", "Front Delts"],
+            movementPatterns: ["vertical_press"],
+            stimulus: { "Side Delts": 3, "Front Delts": 3 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "vertical_press");
+
+    expect(lane).toMatchObject({
+      currentStatus: "repair_dependent",
+      gapCause: "repair_dependency",
+      severity: "migration_candidate",
+      currentEvidence: {
+        selectedExercises: [],
+        relevantDiagnostics: expect.arrayContaining([
+          "repair_dependent:repaired_projection_has_lane",
+        ]),
+      },
+    });
+    expect(noRepair.v2SetDistributionIntent.guardrails).toMatchObject({
+      doesNotUseRepairedProjectionAsTarget: true,
+      doesNotUseAcceptedSeedAsTarget: true,
+    });
+  });
+
+  it("keeps vertical-press over-five and fatigue risks actionable", () => {
+    const overFive = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Shoulder Press",
+            isCompound: true,
+            setCount: 6,
+            primaryMuscles: ["Side Delts", "Front Delts"],
+            movementPatterns: ["vertical_press"],
+            stimulus: { "Side Delts": 6, "Front Delts": 6 },
+            percentages: { "Side Delts": 75, "Front Delts": 75 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+    const systemicRisk = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Shoulder Press",
+            isCompound: true,
+            setCount: 3,
+            primaryMuscles: ["Side Delts", "Front Delts"],
+            movementPatterns: ["vertical_press", "systemic_fatigue"],
+            stimulus: { "Side Delts": 3, "Front Delts": 3 },
+            percentages: { "Side Delts": 50, "Front Delts": 70 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Lateral Raise",
+            setCount: 3,
+            primaryMuscles: ["Side Delts"],
+            movementPatterns: ["isolation"],
+            stimulus: { "Side Delts": 3 },
+            percentages: { "Side Delts": 50 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const overFiveLane = overFive.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "vertical_press");
+    const systemicLane = systemicRisk.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "vertical_press");
+
+    expect(overFiveLane).toMatchObject({
+      currentStatus: "blocked",
+      gapCause: "capacity_gap",
+      migrationRecommendation: "needs_set_budget_justification",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:hard_blocker",
+          "setPolicyReason:gt_5_sets",
+        ]),
+      },
+    });
+    expect(systemicLane).toMatchObject({
+      currentStatus: "blocked",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:hard_blocker",
+          "setPolicyReason:systemic_fatigue",
+          "risk:systemic_fatigue",
+        ]),
+      },
     });
   });
 

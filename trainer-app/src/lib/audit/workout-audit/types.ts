@@ -11,7 +11,10 @@ import type {
   ProjectedWeekVolumeSessionSummary,
 } from "@/lib/api/projected-week-volume";
 import type { PlannerOnlyPolicyOverride } from "@/lib/api/planner-only-policy-override";
-import type { PlannerOwnedAccumulationProjection } from "@/lib/api/planning-reality";
+import type {
+  PlannerOwnedAccumulationProjection,
+  V2ExerciseSelectionPlanDiagnostic,
+} from "@/lib/api/planning-reality";
 import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection.diagnostics";
 import type { SlotPreselectionDemandDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection";
 import type { SessionGenerationResult } from "@/lib/api/template-session/types";
@@ -1230,6 +1233,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
   };
   v2SetDistributionIntent: V2SetDistributionIntent;
   plannerOwnedAccumulationProjection: PlannerOwnedAccumulationProjection;
+  v2ExerciseSelectionPlanDiagnostic: V2ExerciseSelectionPlanDiagnostic;
   slotPlans: Array<{
     slotId: string;
     exercises: Array<{
@@ -1319,6 +1323,7 @@ export type MesocycleExplainPlannerOnlyNoRepairDebugArtifact = {
     | "v2MesocyclePlan"
     | "v2SetDistributionIntent"
     | "plannerOwnedAccumulationProjection"
+    | "v2ExerciseSelectionPlanDiagnostic"
     | "v2TargetVsNoRepairDiff"
     | "slotPlans"
     | "weeklyMuscleTotals"

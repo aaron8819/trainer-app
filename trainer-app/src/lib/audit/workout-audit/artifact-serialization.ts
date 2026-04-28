@@ -85,6 +85,7 @@ export const V2_PLANNER_NO_REPAIR_DEBUG_CONTAINS = [
   "v2MesocyclePlan",
   "v2SetDistributionIntent",
   "plannerOwnedAccumulationProjection",
+  "v2ExerciseSelectionPlanDiagnostic",
   "v2TargetVsNoRepairDiff",
   "slotPlans",
   "weeklyMuscleTotals",
@@ -771,6 +772,12 @@ function compactPlannerOnlyNoRepair(
   const v2DiffSummary = asRecord(v2Diff?.summary);
   const v2SetDistributionIntent = asRecord(noRepair.v2SetDistributionIntent);
   const v2SetDistributionSummary = asRecord(v2SetDistributionIntent?.summary);
+  const v2ExerciseSelectionPlanDiagnostic = asRecord(
+    noRepair.v2ExerciseSelectionPlanDiagnostic
+  );
+  const v2ExerciseSelectionSummary = asRecord(
+    v2ExerciseSelectionPlanDiagnostic?.summary
+  );
   const validationRules = asRecordArray(v2Plan?.validationRules);
   const migrationScoreboard = asRecord(
     acceptanceClassification?.migrationScoreboard
@@ -839,6 +846,22 @@ function compactPlannerOnlyNoRepair(
         v2SetDistributionSummary?.plannedTotalSetsByWeek ?? [],
       validationRuleSummary: summarizeValidationRules(validationRules),
       targetVsNoRepairSummary: v2DiffSummary ?? {},
+      exerciseSelectionPlanDiagnostic: {
+        status:
+          v2ExerciseSelectionPlanDiagnostic?.status ?? "diagnostic_only",
+        summary: v2ExerciseSelectionSummary ?? {},
+        blockerCount: Array.isArray(v2ExerciseSelectionPlanDiagnostic?.blockers)
+          ? v2ExerciseSelectionPlanDiagnostic.blockers.length
+          : 0,
+        warningCount: Array.isArray(v2ExerciseSelectionPlanDiagnostic?.warnings)
+          ? v2ExerciseSelectionPlanDiagnostic.warnings.length
+          : 0,
+        missingInputCount: Array.isArray(
+          v2ExerciseSelectionPlanDiagnostic?.missingInputs
+        )
+          ? v2ExerciseSelectionPlanDiagnostic.missingInputs.length
+          : 0,
+      },
       migrationScoreboard: migrationScoreboard ?? {},
     },
     crossWeekProjectionGate: compactCrossWeekProjectionGate(

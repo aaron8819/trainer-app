@@ -80,6 +80,66 @@ function makePlannerOwnedAccumulationProjection() {
   };
 }
 
+function makeV2ExerciseSelectionPlanDiagnostic() {
+  return {
+    version: 1 as const,
+    source: "v2_planner_policy" as const,
+    readOnly: true as const,
+    affectsScoringOrGeneration: false as const,
+    status: "projected_with_limitations" as const,
+    identityBasis: "week_1_selected_identities" as const,
+    projectionBasis:
+      "planner_owned_accumulation_projection_plus_week_1_identity_continuity" as const,
+    summary: {
+      weeksEvaluated: 4,
+      lanesEvaluated: 1,
+      preservedIdentityCount: 0,
+      candidateAvailableCount: 0,
+      missingCandidateCount: 1,
+      classMismatchCount: 0,
+      duplicateRequiresJustificationCount: 0,
+      concentrationWarningCount: 0,
+      blockedLaneCount: 0,
+    },
+    weeks: [
+      {
+        week: 1 as const,
+        slots: [
+          {
+            slotId: "upper_a",
+            lanes: [
+              {
+                laneId: "chest_anchor",
+                plannedClass: ["horizontal_press"],
+                primaryMuscles: ["Chest"],
+                identityStatus: "missing_candidate" as const,
+                laneClassStatus: "not_evaluated" as const,
+                setBudgetStatus: "within_budget" as const,
+                duplicateStatus: "pass" as const,
+                concentrationStatus: "pass" as const,
+                fatigueStatus: "not_evaluated" as const,
+                inventoryStatus: "not_evaluated" as const,
+                capacityStatus: "not_evaluated" as const,
+                cleanAlternatives: [],
+                unresolvedDemand: ["v2TargetVsNoRepairDiff:capacity_gap"],
+                evidenceRefs: ["target_status:missing"],
+                limitations: [
+                  "week_1_selected_identity_basis",
+                  "generic_per_lane_candidate_inventory_not_available",
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    blockers: [],
+    warnings: ["week_1:upper_a:chest_anchor:inventory_not_evaluated"],
+    missingInputs: [],
+    safeForBehaviorPromotion: false as const,
+  };
+}
+
 describe("buildWorkoutAuditArtifact", () => {
   it("keeps identity fields in live mode", () => {
     const artifact = buildWorkoutAuditArtifact(
@@ -1232,6 +1292,12 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(fullNoRepair?.v2MesocyclePlan).toBeTruthy();
     expect(fullNoRepair?.v2SetDistributionIntent).toBeTruthy();
     expect(fullNoRepair?.plannerOwnedAccumulationProjection).toBeTruthy();
+    expect(fullNoRepair?.v2ExerciseSelectionPlanDiagnostic).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      identityBasis: "week_1_selected_identities",
+      safeForBehaviorPromotion: false,
+    });
     expect(fullNoRepair?.v2TargetVsNoRepairDiff).toBeTruthy();
     expect(fullNoRepair?.crossWeekProjectionGate.accumulationWeeksStatus.weeks).toHaveLength(3);
     expect(serializedNoRepair).toMatchObject({
@@ -1243,6 +1309,13 @@ describe("buildWorkoutAuditArtifact", () => {
         split: "upper_lower_4x",
         weekCount: 5,
         slotCount: 1,
+        exerciseSelectionPlanDiagnostic: {
+          status: "projected_with_limitations",
+          summary: expect.objectContaining({
+            preservedIdentityCount: 0,
+            missingCandidateCount: 1,
+          }),
+        },
       },
       debugArtifact: {
         created: false,
@@ -1268,6 +1341,7 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(serializedNoRepair).not.toHaveProperty("v2MesocyclePlan");
     expect(serializedNoRepair).not.toHaveProperty("v2SetDistributionIntent");
     expect(serializedNoRepair).not.toHaveProperty("plannerOwnedAccumulationProjection");
+    expect(serializedNoRepair).not.toHaveProperty("v2ExerciseSelectionPlanDiagnostic");
     expect(serializedNoRepair).not.toHaveProperty("v2TargetVsNoRepairDiff");
     expect(
       (serializedNoRepair.crossWeekProjectionGate as Record<string, unknown>)
@@ -1408,6 +1482,32 @@ describe("buildWorkoutAuditArtifact", () => {
               week: 2,
               projectionStatus: "planner_owned_read_only",
               safeForBehaviorPromotion: false,
+            }),
+          ]),
+        }),
+        v2ExerciseSelectionPlanDiagnostic: expect.objectContaining({
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          identityBasis: "week_1_selected_identities",
+          projectionBasis:
+            "planner_owned_accumulation_projection_plus_week_1_identity_continuity",
+          safeForBehaviorPromotion: false,
+          weeks: expect.arrayContaining([
+            expect.objectContaining({
+              week: 1,
+              slots: expect.arrayContaining([
+                expect.objectContaining({
+                  slotId: "upper_a",
+                  lanes: expect.arrayContaining([
+                    expect.objectContaining({
+                      laneId: "chest_anchor",
+                      identityStatus: "missing_candidate",
+                      inventoryStatus: "not_evaluated",
+                      cleanAlternatives: [],
+                    }),
+                  ]),
+                }),
+              ]),
             }),
           ]),
         }),
@@ -1754,6 +1854,7 @@ function makeMesocycleExplainNoRepairPayload() {
         },
       },
       plannerOwnedAccumulationProjection: makePlannerOwnedAccumulationProjection(),
+      v2ExerciseSelectionPlanDiagnostic: makeV2ExerciseSelectionPlanDiagnostic(),
       slotPlans: [
         {
           slotId: "upper_a",

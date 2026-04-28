@@ -71,6 +71,7 @@ npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner 
 - `plannerOnlyNoRepair.v2MesocyclePlan` summarizes the stable upper/lower 4x skeleton, Weeks 1-5 progression modifiers, deload transform intent, validation-rule statuses, and replacement-readiness blockers. It is flagged-only, read-only, and non-generative.
 - `plannerOnlyNoRepair.v2SetDistributionIntent` summarizes lane-level min/preferred/max set budgets from the V2 target skeleton and weekly progression multipliers. Cap and concentration policy are validation metadata, not set-budget source truth, and the field is flagged-only, read-only, and non-generative.
 - `plannerOnlyNoRepair.plannerOwnedAccumulationProjection` is the flagged-sidecar-only Weeks 2-4 read-only projection. It derives weekly muscle demand and lane budgets from planner policy sources, keeps those concepts separate, and does not use repaired output, accepted seed, runtime replay, repair output, cleanup, or post-hoc set bumps as its target.
+- `plannerOnlyNoRepair.v2ExerciseSelectionPlanDiagnostic` is the flagged-sidecar-only read-only identity/class-lane diagnostic. It evaluates Week 1 no-repair selected identities against the planner-owned Weeks 2-4 projection using existing candidate, class, duplicate, concentration, inventory, fatigue, and capacity evidence; candidate alternatives are evidence only and missing generic inventory is reported as `not_evaluated` or `classification_gap`.
 - `plannerOnlyNoRepair.v2TargetVsNoRepairDiff` summarizes V2 target-skeleton alignment against the experimental no-repair output. Repaired projection is used only to mark repair-dependent lanes or legacy rescue evidence.
 - To write the full V2 evidence payload, add `--v2-debug-artifact`:
 
@@ -81,7 +82,7 @@ npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner 
 - `--v2-debug-artifact` is valid only with `--mode mesocycle-explain` and `--planner-only-no-repair`.
 - When enabled, the CLI writes a sibling `*-v2-no-repair-debug.json` sidecar and prints its path, size, and sha256.
 - The main artifact links to the sidecar through `mesocycleExplain.plannerOnlyNoRepair.debugArtifact`; the sidecar links back to the parent artifact through `parent.fileName` and `parent.relativePath`.
-- The sidecar contains the full `summary`, `acceptanceClassification`, `crossWeekProjectionGate`, `v2MesocyclePlan`, `v2SetDistributionIntent`, `plannerOwnedAccumulationProjection`, `v2TargetVsNoRepairDiff`, slot plans, weekly totals, allocation changes, acceptance checks/failures, repaired comparison, lane evidence, diagnostic catalogs, and classification details. Both main and sidecar remain read-only and `affectsScoringOrGeneration=false`.
+- The sidecar contains the full `summary`, `acceptanceClassification`, `crossWeekProjectionGate`, `v2MesocyclePlan`, `v2SetDistributionIntent`, `plannerOwnedAccumulationProjection`, `v2ExerciseSelectionPlanDiagnostic`, `v2TargetVsNoRepairDiff`, slot plans, weekly totals, allocation changes, acceptance checks/failures, repaired comparison, lane evidence, diagnostic catalogs, and classification details. Both main and sidecar remain read-only and `affectsScoringOrGeneration=false`.
 - It must not write accepted seeds, `slotPlanSeedJson`, receipts, planned workouts, runtime replay data, or performed workouts.
 
 Projected current week volume:

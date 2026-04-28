@@ -68,6 +68,10 @@ import { buildTopDownMesocyclePlan } from "./top-down-mesocycle-plan";
 
 export type * from "./types";
 export { buildPlannerOwnedAccumulationProjection } from "./planner-intent";
+export {
+  buildV2ExerciseSelectionPlanDiagnostic,
+  type V2ExerciseSelectionPlanDiagnostic,
+} from "./exercise-selection-plan-diagnostic";
 function classifyPlanningShape(input: {
   weeklyMuscleDemand: WeeklyMuscleDemandDiagnostic[];
   slotDemandAllocation: SlotDemandAllocationDiagnostic[];

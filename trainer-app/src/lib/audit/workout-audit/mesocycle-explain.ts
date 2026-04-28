@@ -47,7 +47,10 @@ import {
   buildV2SetDistributionIntent,
   type V2SetDistributionIntent,
 } from "@/lib/engine/planning/v2-set-distribution-intent";
-import { buildPlannerOwnedAccumulationProjection } from "@/lib/api/planning-reality";
+import {
+  buildPlannerOwnedAccumulationProjection,
+  buildV2ExerciseSelectionPlanDiagnostic,
+} from "@/lib/api/planning-reality";
 import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 import { MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION } from "./constants";
 import {
@@ -6032,6 +6035,7 @@ function buildCrossWeekProjectionGate(input: {
   v2SetDistributionIntent: V2SetDistributionIntent;
   plannerOwnedAccumulationProjection: MesocycleExplainPlannerOnlyNoRepair["plannerOwnedAccumulationProjection"];
   v2TargetVsNoRepairDiff: V2TargetVsNoRepairDiff;
+  v2ExerciseSelectionPlanDiagnostic: MesocycleExplainPlannerOnlyNoRepair["v2ExerciseSelectionPlanDiagnostic"];
 }): CrossWeekProjectionGate {
   const week1Status = {
     status: normalizeWeek1GateStatus(
@@ -6066,6 +6070,9 @@ function buildCrossWeekProjectionGate(input: {
   ]);
   const blockers = uniqueSorted([
     ...input.v2TargetVsNoRepairDiff.replacementReadinessImpact.blockers,
+    ...(input.v2ExerciseSelectionPlanDiagnostic.status === "blocked"
+      ? ["exercise_selection_plan_diagnostic_blocked"]
+      : []),
     ...(accumulationWeeksStatus.status === "ready"
       ? []
       : accumulationWeeksStatus.status === "projected_with_limitations"
@@ -6645,12 +6652,20 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       slotPlans: [],
       acceptanceClassification,
     });
+    const v2ExerciseSelectionPlanDiagnostic =
+      buildV2ExerciseSelectionPlanDiagnostic({
+        plannerOwnedAccumulationProjection,
+        week1SelectedIdentities: [],
+        v2SetDistributionIntent,
+        v2TargetVsNoRepairDiff,
+      });
     const crossWeekProjectionGate = buildCrossWeekProjectionGate({
       acceptanceClassification,
       v2MesocyclePlan,
       v2SetDistributionIntent,
       plannerOwnedAccumulationProjection,
       v2TargetVsNoRepairDiff,
+      v2ExerciseSelectionPlanDiagnostic,
     });
     return {
       enabled: true,
@@ -6670,6 +6685,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       v2TargetVsNoRepairDiff,
       v2SetDistributionIntent,
       plannerOwnedAccumulationProjection,
+      v2ExerciseSelectionPlanDiagnostic,
       slotPlans: [],
       weeklyMuscleTotals: [],
       setAllocationChanges: [],
@@ -6768,6 +6784,18 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     slotPlans,
     acceptanceClassification,
   });
+  const v2ExerciseSelectionPlanDiagnostic =
+    buildV2ExerciseSelectionPlanDiagnostic({
+      plannerOwnedAccumulationProjection,
+      week1SelectedIdentities: noRepair.finalSlotPlan,
+      v2SetDistributionIntent,
+      v2TargetVsNoRepairDiff,
+      exerciseClassDistributionBySlot: noRepair.exerciseClassDistributionBySlot,
+      exerciseClassAlignment: noRepair.exerciseClassAlignment,
+      exerciseClassUnresolvedCauses: noRepair.exerciseClassUnresolvedCauses,
+      duplicateContinuityJustification: noRepair.duplicateContinuityJustification,
+      exerciseConcentration: noRepair.exerciseConcentration,
+    });
   const crossWeekProjectionGate = buildCrossWeekProjectionGate({
     noRepair,
     acceptanceClassification,
@@ -6775,6 +6803,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     v2SetDistributionIntent,
     plannerOwnedAccumulationProjection,
     v2TargetVsNoRepairDiff,
+    v2ExerciseSelectionPlanDiagnostic,
   });
 
   return {
@@ -6795,6 +6824,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     v2TargetVsNoRepairDiff,
     v2SetDistributionIntent,
     plannerOwnedAccumulationProjection,
+    v2ExerciseSelectionPlanDiagnostic,
     slotPlans,
     weeklyMuscleTotals,
     setAllocationChanges,

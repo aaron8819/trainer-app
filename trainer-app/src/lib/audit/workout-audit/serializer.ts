@@ -215,6 +215,8 @@ function buildV2DebugSidecarPayload(input: {
       v2SetDistributionIntent: noRepair.v2SetDistributionIntent,
       plannerOwnedAccumulationProjection:
         noRepair.plannerOwnedAccumulationProjection,
+      v2ExerciseSelectionPlanDiagnostic:
+        noRepair.v2ExerciseSelectionPlanDiagnostic,
       v2TargetVsNoRepairDiff: noRepair.v2TargetVsNoRepairDiff,
       slotPlans: noRepair.slotPlans,
       weeklyMuscleTotals: noRepair.weeklyMuscleTotals,

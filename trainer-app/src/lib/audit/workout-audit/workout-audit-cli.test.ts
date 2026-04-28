@@ -43,6 +43,35 @@ function makePlannerOwnedAccumulationProjection() {
   };
 }
 
+function makeV2ExerciseSelectionPlanDiagnostic() {
+  return {
+    version: 1 as const,
+    source: "v2_planner_policy" as const,
+    readOnly: true as const,
+    affectsScoringOrGeneration: false as const,
+    status: "projected_with_limitations" as const,
+    identityBasis: "week_1_selected_identities" as const,
+    projectionBasis:
+      "planner_owned_accumulation_projection_plus_week_1_identity_continuity" as const,
+    summary: {
+      weeksEvaluated: 4,
+      lanesEvaluated: 1,
+      preservedIdentityCount: 1,
+      candidateAvailableCount: 0,
+      missingCandidateCount: 0,
+      classMismatchCount: 0,
+      duplicateRequiresJustificationCount: 0,
+      concentrationWarningCount: 1,
+      blockedLaneCount: 0,
+    },
+    weeks: [],
+    blockers: [],
+    warnings: ["week_1:upper_a:chest_anchor:concentration_quality_warning"],
+    missingInputs: [],
+    safeForBehaviorPromotion: false as const,
+  };
+}
+
 describe("normalizeAuditIntentArg", () => {
   it("normalizes uppercase explicit intents into canonical lower-case session intents", () => {
     expect(normalizeAuditIntentArg("UPPER")).toBe("upper");
@@ -2933,6 +2962,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
             },
             plannerOwnedAccumulationProjection:
               makePlannerOwnedAccumulationProjection(),
+            v2ExerciseSelectionPlanDiagnostic:
+              makeV2ExerciseSelectionPlanDiagnostic(),
             slotPlans: [
               {
                 slotId: "upper_a",

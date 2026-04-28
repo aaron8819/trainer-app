@@ -2692,6 +2692,57 @@ describe("buildMesocycleExplainAuditPayload", () => {
         doesNotAffectRuntimeReplay: true,
       },
     });
+    expect(payload.plannerOnlyNoRepair?.v2ExerciseSelectionPlanDiagnostic).toMatchObject({
+      version: 1,
+      source: "v2_planner_policy",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      identityBasis: "week_1_selected_identities",
+      projectionBasis:
+        "planner_owned_accumulation_projection_plus_week_1_identity_continuity",
+      safeForBehaviorPromotion: false,
+    });
+    expect(
+      payload.plannerOnlyNoRepair?.v2ExerciseSelectionPlanDiagnostic.status,
+    ).toBe("blocked");
+    const selectionDiagnosticLanes =
+      payload.plannerOnlyNoRepair?.v2ExerciseSelectionPlanDiagnostic.weeks.flatMap(
+        (week) =>
+          week.slots.flatMap((slot) =>
+            slot.lanes.map((lane) => ({ week: week.week, slotId: slot.slotId, lane })),
+          ),
+      ) ?? [];
+    expect(
+      selectionDiagnosticLanes.find(
+        (row) =>
+          row.week === 1 &&
+          row.slotId === "upper_a" &&
+          row.lane.laneId === "chest_anchor",
+      )?.lane,
+    ).toMatchObject({
+      selectedIdentity: {
+        exerciseName: "Incline Dumbbell Press",
+        sourceWeek: 1,
+        setCount: 6,
+      },
+      identityStatus: "preserved",
+      setBudgetStatus: "blocked",
+    });
+    expect(
+      selectionDiagnosticLanes.find(
+        (row) =>
+          row.week === 1 &&
+          row.slotId === "upper_a" &&
+          row.lane.laneId === "chest_secondary",
+      )?.lane,
+    ).toMatchObject({
+      identityStatus: "not_evaluated",
+      inventoryStatus: "not_evaluated",
+      cleanAlternatives: [],
+      limitations: expect.arrayContaining([
+        "generic_per_lane_candidate_inventory_not_available",
+      ]),
+    });
     expect(
       payload.plannerOnlyNoRepair?.v2SetDistributionIntent.weeks[1].slots.find(
         (slot) => slot.slotId === "upper_a",

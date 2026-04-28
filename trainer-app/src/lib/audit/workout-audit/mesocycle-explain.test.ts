@@ -3859,7 +3859,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     );
   });
 
-  it("keeps true rear-delt set and share blockers blocked", () => {
+  it("keeps rear-delt >5-set blockers blocked while downgrading clean low-denominator share", () => {
     const overFive = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
         exercises: [
@@ -3883,11 +3883,21 @@ describe("buildMesocycleExplainAuditPayload", () => {
           {
             slotId: "upper_a",
             exerciseName: "Cable Rear Delt Fly",
-            setCount: 4,
+            setCount: 2,
             primaryMuscles: ["Rear Delts"],
             movementPatterns: ["isolation"],
-            stimulus: { "Rear Delts": 4 },
+            stimulus: { "Rear Delts": 2 },
             percentages: { "Rear Delts": 64 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Rear Delts",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 2,
+            preferredEffectiveSets: 4,
+            maxEffectiveSets: 8,
           },
         ],
       }),
@@ -3919,19 +3929,81 @@ describe("buildMesocycleExplainAuditPayload", () => {
       },
     });
     expect(overSixtyLane).toMatchObject({
-      currentStatus: "blocked",
+      currentStatus: "partial",
       gapCause: "concentration_policy_gap",
-      severity: "hard_blocker",
+      severity: "quality_warning",
       currentEvidence: {
         selectedExercises: [
           expect.objectContaining({
             name: "Cable Rear Delt Fly",
-            sets: 4,
+            sets: 2,
           }),
         ],
         relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:quality_warning",
+          "setBudget:within_preferred",
+          "concentration:support_tier",
+          "concentration:small_denominator",
+          "concentration:quality_warning",
+          "concentration:justified_direct_isolation",
+          "justification:low_systemic_fatigue",
+          "justification:small_target_denominator",
+        ]),
+      },
+    });
+    expect(overSixtyLane?.currentEvidence.relevantDiagnostics).not.toEqual(
+      expect.arrayContaining(["setPolicy:hard_blocker", "setPolicyReason:over_60_share"]),
+    );
+    expect(
+      overSixtyLane?.currentEvidence.relevantDiagnostics.some((entry) =>
+        entry.toLowerCase().includes("hard_blocker"),
+      ),
+    ).toBe(false);
+  });
+
+  it("still blocks dirty collateral concentration when it solves a support target", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Shoulder Press",
+            isCompound: true,
+            setCount: 3,
+            primaryMuscles: ["Side Delts", "Front Delts"],
+            movementPatterns: ["vertical_push"],
+            stimulus: { "Side Delts": 3, "Front Delts": 3 },
+            percentages: { "Side Delts": 75, "Front Delts": 75 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Side Delts",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 3,
+            preferredEffectiveSets: 8,
+            maxEffectiveSets: 12,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_b")
+      ?.laneDiffs.find((row) => row.laneId === "side_delt_isolation");
+
+    expect(lane).toMatchObject({
+      currentStatus: "blocked",
+      gapCause: "concentration_policy_gap",
+      severity: "hard_blocker",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
           "setPolicy:hard_blocker",
           "setPolicyReason:over_60_share",
+          "concentration:support_tier",
         ]),
       },
     });

@@ -728,6 +728,10 @@ function compactV2OperatorDiagnostics(
       entry.startsWith("setPolicyReason:") ||
       entry.startsWith("setBudget:") ||
       entry.startsWith("justification:") ||
+      entry.startsWith("concentration:support_tier") ||
+      entry.startsWith("concentration:small_denominator") ||
+      entry.startsWith("concentration:quality_warning") ||
+      entry.startsWith("concentration:justified_direct_isolation") ||
       entry.startsWith("target_status:") ||
       lower.includes("blocked") ||
       lower.includes("hard_blocker") ||
@@ -737,7 +741,11 @@ function compactV2OperatorDiagnostics(
       lower.includes("missing")
     );
   });
-  const limit = severity === "hard_blocker" ? 6 : 4;
+  const limit =
+    severity === "hard_blocker" ||
+    values.some((entry) => entry === "concentration:support_tier")
+      ? 8
+      : 4;
   return Array.from(new Set(important.length > 0 ? important : values)).slice(
     0,
     limit

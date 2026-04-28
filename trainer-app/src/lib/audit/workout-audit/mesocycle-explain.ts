@@ -3528,27 +3528,42 @@ function shareToRatio(value: number): number {
   return value > 1 ? value / 100 : value;
 }
 
-function maxV2LaneConcentrationShare(input: {
+function maxV2LaneConcentrationEvidence(input: {
   noRepair?: PlanningRealityDiagnostic;
   slotId: string;
   lane: V2Lane | V2Slot["lanes"][number];
   exercises: SlotCompositionSnapshot["exercises"];
-}): number {
+}): {
+  share: number;
+  muscle: string | null;
+  row: PlanningRealityDiagnostic["exerciseConcentration"][number] | null;
+} {
   if (input.exercises.length === 0) {
-    return 0;
+    return { share: 0, muscle: null, row: null };
   }
   const exerciseNames = new Set(input.exercises.map((exercise) => exercise.exerciseName));
-  return Math.max(
-    0,
-    ...(input.noRepair?.exerciseConcentration ?? [])
-      .filter((row) => row.slotId === input.slotId)
-      .filter((row) => exerciseNames.size === 0 || exerciseNames.has(row.exerciseName))
-      .flatMap((row) =>
-        Object.entries(row.percentageOfWeeklyProjectedStimulusByMuscle)
-          .filter(([muscle]) => input.lane.primaryMuscles.includes(muscle))
-          .map(([, percentage]) => shareToRatio(percentage))
-      )
-  );
+  let best: {
+    share: number;
+    muscle: string | null;
+    row: PlanningRealityDiagnostic["exerciseConcentration"][number] | null;
+  } = { share: 0, muscle: null, row: null };
+  for (const row of input.noRepair?.exerciseConcentration ?? []) {
+    if (row.slotId !== input.slotId || !exerciseNames.has(row.exerciseName)) {
+      continue;
+    }
+    for (const [muscle, percentage] of Object.entries(
+      row.percentageOfWeeklyProjectedStimulusByMuscle
+    )) {
+      if (!input.lane.primaryMuscles.includes(muscle)) {
+        continue;
+      }
+      const share = shareToRatio(percentage);
+      if (share > best.share) {
+        best = { share, muscle, row };
+      }
+    }
+  }
+  return best;
 }
 
 function v2LanePrimaryTargetsMet(input: {
@@ -3567,6 +3582,76 @@ function v2LanePrimaryTargetsMet(input: {
     }
     return (weeklyTotals.get(muscle) ?? 0) >= demand.minEffectiveSets;
   });
+}
+
+function v2LaneHasPrimaryHardTarget(input: {
+  noRepair: PlanningRealityDiagnostic;
+  lane: V2Lane | V2Slot["lanes"][number];
+}): boolean {
+  const demandByMuscle = getNoRepairDemandByMuscle(input.noRepair);
+  return input.lane.primaryMuscles.some((muscle) => {
+    const demand = demandByMuscle.get(muscle);
+    const semantics = getMuscleTargetSemantics(muscle);
+    return (
+      (demand?.priority === "primary" && demand.targetStatus === "hard") ||
+      semantics.targetTier === "A_PRIMARY"
+    );
+  });
+}
+
+function v2LaneMuscleBelowMinimum(input: {
+  noRepair: PlanningRealityDiagnostic;
+  muscle: string | null;
+}): boolean {
+  if (!input.muscle) {
+    return false;
+  }
+  const demand = getNoRepairDemandByMuscle(input.noRepair).get(input.muscle);
+  if (demand?.minEffectiveSets == null) {
+    return false;
+  }
+  return (sumSlotStimulusByMuscle(input.noRepair.finalSlotPlan).get(input.muscle) ?? 0) <
+    demand.minEffectiveSets;
+}
+
+function v2LaneHasSecondExposure(input: {
+  noRepair: PlanningRealityDiagnostic;
+  muscle: string | null;
+  exerciseName?: string;
+}): boolean {
+  if (!input.muscle) {
+    return false;
+  }
+  let exposureCount = 0;
+  for (const slot of input.noRepair.finalSlotPlan) {
+    for (const exercise of slot.exercises) {
+      if (
+        exercise.exerciseName !== input.exerciseName &&
+        (exercise.effectiveStimulusByMuscle[input.muscle] ?? 0) > 0
+      ) {
+        exposureCount += 1;
+      }
+    }
+  }
+  return exposureCount > 0;
+}
+
+function isSmallV2TargetDenominator(input: {
+  noRepair: PlanningRealityDiagnostic;
+  muscle: string | null;
+  budget: V2SetDistributionIntentLane["setBudget"];
+}): boolean {
+  if (!input.muscle) {
+    return input.budget.preferred <= 3;
+  }
+  const demand = getNoRepairDemandByMuscle(input.noRepair).get(input.muscle);
+  const weeklyEffectiveSets =
+    sumSlotStimulusByMuscle(input.noRepair.finalSlotPlan).get(input.muscle) ?? 0;
+  return (
+    input.budget.preferred <= 3 ||
+    (demand?.preferredEffectiveSets != null && demand.preferredEffectiveSets <= 4) ||
+    weeklyEffectiveSets <= 4
+  );
 }
 
 function isLowSystemicFatigueV2Lane(
@@ -3700,23 +3785,25 @@ function evaluateV2LaneSetPolicy(input: {
     phaseExpansionMax,
     cap.maxSetsPerExerciseWithoutJustification * Math.max(1, cap.maxDirectExercises)
   );
-  const concentrationShare = maxV2LaneConcentrationShare({
+  const concentrationEvidence = maxV2LaneConcentrationEvidence({
     noRepair: input.noRepair,
     slotId: input.slotId,
     lane: input.lane,
     exercises: policyExercises,
   });
+  const concentrationShare = concentrationEvidence.share;
   const targetMet = v2LanePrimaryTargetsMet({
     noRepair: input.noRepair,
     lane: input.lane,
   });
+  const lowSystemicFatigueLane = isLowSystemicFatigueV2Lane(policyExercises);
   const justifications = v2SetBudgetJustifications({
     setCount,
     budget,
     policyLane,
     policyLanes: input.policyLanes,
     targetMet,
-    lowSystemicFatigueLane: isLowSystemicFatigueV2Lane(policyExercises),
+    lowSystemicFatigueLane,
   });
   const hasJustification = justifications.some(
     (row) => row !== "justification:none"
@@ -3725,14 +3812,67 @@ function evaluateV2LaneSetPolicy(input: {
   const overRoleCap =
     maxExerciseSets > cap.maxSetsPerExerciseWithoutJustification &&
     maxExerciseSets <= 5;
+  const laneHasPrimaryHardTarget = v2LaneHasPrimaryHardTarget({
+    noRepair: input.noRepair,
+    lane: input.lane,
+  });
+  const supportTierConcentration =
+    concentration.appliesTo === "support_target" && !laneHasPrimaryHardTarget;
+  const smallTargetDenominator = isSmallV2TargetDenominator({
+    noRepair: input.noRepair,
+    muscle: concentrationEvidence.muscle,
+    budget,
+  });
+  const directLaneOwnedExercise =
+    concentrationEvidence.muscle != null &&
+    (concentrationEvidence.row?.primaryMuscles.includes(concentrationEvidence.muscle) ??
+      false);
+  const cleanDirectIsolation =
+    directLaneOwnedExercise &&
+    concentrationEvidence.row != null &&
+    !concentrationEvidence.row.isCompound &&
+    lowSystemicFatigueLane;
+  const belowMinimum = v2LaneMuscleBelowMinimum({
+    noRepair: input.noRepair,
+    muscle: concentrationEvidence.muscle,
+  });
+  const hasSecondExposure = v2LaneHasSecondExposure({
+    noRepair: input.noRepair,
+    muscle: concentrationEvidence.muscle,
+    exerciseName: concentrationEvidence.row?.exerciseName,
+  });
+  const cleanAlternativeIgnored =
+    concentrationEvidence.muscle != null &&
+    hasExplicitCleanAlternativeSignal({
+      planningReality: input.noRepair,
+      muscle: concentrationEvidence.muscle,
+      slotId: input.slotId,
+    });
   const concentrationBlocker =
     concentration.appliesTo !== "diagnostic_only" &&
-    concentrationShare > concentration.blockerShare;
+    concentrationShare > concentration.blockerShare &&
+    (laneHasPrimaryHardTarget ||
+      !supportTierConcentration ||
+      (belowMinimum && !hasSecondExposure) ||
+      !cleanDirectIsolation ||
+      (!smallTargetDenominator && cleanAlternativeIgnored));
   const concentrationWarning =
     concentration.appliesTo !== "diagnostic_only" &&
     concentrationShare >= concentration.warningShare;
   const concentratedUnderdelivery =
     concentrationWarning && setCount < budget.min && !targetMet;
+  const concentrationDiagnostics: string[] =
+    supportTierConcentration && concentrationWarning
+      ? [
+          "concentration:support_tier",
+          ...(smallTargetDenominator ? ["concentration:small_denominator"] : []),
+          ...(cleanDirectIsolation ? ["concentration:justified_direct_isolation"] : []),
+          ...(lowSystemicFatigueLane ? ["justification:low_systemic_fatigue"] : []),
+          ...(smallTargetDenominator
+            ? ["justification:small_target_denominator"]
+            : []),
+        ]
+      : [];
 
   let status: V2LaneSetPolicyStatus = "in_budget";
   let reason: string | null = null;
@@ -3757,8 +3897,14 @@ function evaluateV2LaneSetPolicy(input: {
     status = "allowed_expansion";
   } else if (concentrationWarning) {
     status = "quality_warning";
-    reason = "warning_share";
+    reason = supportTierConcentration ? null : "warning_share";
+    concentrationDiagnostics.push("concentration:quality_warning");
   }
+
+  const diagnosticJustifications =
+    concentrationDiagnostics.some((row) => row.startsWith("justification:"))
+      ? justifications.filter((row) => row !== "justification:none")
+      : justifications;
 
   return {
     status,
@@ -3766,8 +3912,9 @@ function evaluateV2LaneSetPolicy(input: {
       `setPolicy:${status}`,
       ...(reason ? [`setPolicyReason:${reason}`] : []),
       ...v2SetBudgetDiagnostics({ setCount, budget, status }),
-      ...justifications,
-    ], 6),
+      ...diagnosticJustifications,
+      ...concentrationDiagnostics,
+    ], 8),
   };
 }
 
@@ -3949,7 +4096,10 @@ function collectV2LaneDiagnostics(input: {
       )
   );
 
-  return compactV2LaneDiagnostics(diagnostics, 6);
+  return compactV2LaneDiagnostics(
+    diagnostics,
+    diagnostics.includes("concentration:support_tier") ? 8 : 6
+  );
 }
 
 function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
@@ -3957,13 +4107,29 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
   const setPolicy = unique.filter((row) => row.startsWith("setPolicy"));
   const setBudget = unique.filter((row) => row.startsWith("setBudget"));
   const justification = unique.filter((row) => row.startsWith("justification"));
+  const concentrationPolicyTokens = new Set<string>([
+    "concentration:support_tier",
+    "concentration:small_denominator",
+    "concentration:quality_warning",
+    "concentration:justified_direct_isolation",
+  ]);
+  const concentrationPolicy = unique.filter(
+    (row) => concentrationPolicyTokens.has(row)
+  );
   const other = unique.filter(
     (row) =>
       !row.startsWith("setPolicy") &&
       !row.startsWith("setBudget") &&
-      !row.startsWith("justification")
+      !row.startsWith("justification") &&
+      !concentrationPolicyTokens.has(row)
   );
-  const compact = [...setPolicy, ...setBudget, ...justification, ...other].slice(0, limit);
+  const compact = [
+    ...setPolicy,
+    ...setBudget,
+    ...justification,
+    ...concentrationPolicy,
+    ...other,
+  ].slice(0, limit);
   return compact.length > 0 ? compact : ["none"];
 }
 

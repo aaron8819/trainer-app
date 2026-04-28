@@ -724,7 +724,7 @@ describe("artifact serialization helpers", () => {
     const repeatedDiagnostics = [
       "setPolicy:hard_blocker",
       "setPolicyReason:over_60_share",
-      "setBudget:hard_blocker",
+      "setBudget:within_preferred",
       "justification:none",
       "target_status:blocked",
       "classification:duplicate_continuity_policy:needs_duplicate_policy",

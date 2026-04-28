@@ -3726,6 +3726,269 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
   });
 
+  it("classifies rear-delt set budget with strict lane-owned evidence only", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Rear Delt Fly",
+            setCount: 2,
+            primaryMuscles: ["Rear Delts"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { "Rear Delts": 2 },
+            percentages: { "Rear Delts": 40 },
+          },
+          {
+            slotId: "upper_a",
+            exerciseName: "Chest-Supported Row",
+            setCount: 3,
+            primaryMuscles: ["Upper Back", "Lats"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { "Rear Delts": 1.5, "Upper Back": 3, Lats: 3 },
+            percentages: { "Rear Delts": 30, "Upper Back": 50, Lats: 50 },
+          },
+          {
+            slotId: "upper_a",
+            exerciseName: "Machine Shoulder Press",
+            setCount: 3,
+            primaryMuscles: ["Side Delts", "Front Delts"],
+            movementPatterns: ["vertical_push"],
+            stimulus: { "Rear Delts": 0.5, "Side Delts": 3 },
+            percentages: { "Rear Delts": 10, "Side Delts": 50 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Rear Delts",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 2,
+            preferredEffectiveSets: 4,
+            maxEffectiveSets: 8,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "rear_delt");
+
+    expect(lane).toMatchObject({
+      currentStatus: "satisfied",
+      gapCause: "none",
+      migrationRecommendation: "no_action",
+      severity: "pass",
+      currentEvidence: {
+        selectedExercises: [
+          expect.objectContaining({
+            name: "Cable Rear Delt Fly",
+            sets: 2,
+            matchedClass: "rear_delt_isolation",
+          }),
+        ],
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:in_budget",
+          "setBudget:within_preferred",
+          "justification:none",
+        ]),
+      },
+    });
+    expect(lane?.currentEvidence.selectedExercises).toHaveLength(1);
+    expect(
+      lane?.currentEvidence.selectedExercises.some((exercise) =>
+        exercise.name.includes("Row") || exercise.name.includes("Shoulder")
+      )
+    ).toBe(false);
+  });
+
+  it("classifies rear-delt above preferred as requiring justification rather than hard blocking", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Rear Delt Fly",
+            role: "main",
+            setCount: 5,
+            primaryMuscles: ["Rear Delts"],
+            movementPatterns: ["isolation"],
+            stimulus: { "Rear Delts": 5 },
+            percentages: { "Rear Delts": 45 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Rear Delts",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 5,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 10,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "rear_delt");
+
+    expect(lane).toMatchObject({
+      currentStatus: "partial",
+      gapCause: "set_distribution_gap",
+      migrationRecommendation: "needs_set_budget_justification",
+      severity: "quality_warning",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:requires_justification",
+          "setPolicyReason:over_role_cap",
+          "setBudget:requires_justification",
+          "justification:none",
+        ]),
+      },
+    });
+    expect(lane?.currentStatus).not.toBe("blocked");
+    expect(lane?.currentEvidence.relevantDiagnostics).not.toContain(
+      "setPolicy:hard_blocker",
+    );
+  });
+
+  it("keeps true rear-delt set and share blockers blocked", () => {
+    const overFive = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Rear Delt Fly",
+            setCount: 6,
+            primaryMuscles: ["Rear Delts"],
+            movementPatterns: ["isolation"],
+            stimulus: { "Rear Delts": 6 },
+            percentages: { "Rear Delts": 55 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+    const overSixtyShare = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Rear Delt Fly",
+            setCount: 4,
+            primaryMuscles: ["Rear Delts"],
+            movementPatterns: ["isolation"],
+            stimulus: { "Rear Delts": 4 },
+            percentages: { "Rear Delts": 64 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const overFiveLane = overFive.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "rear_delt");
+    const overSixtyLane = overSixtyShare.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "rear_delt");
+
+    expect(overFiveLane).toMatchObject({
+      currentStatus: "blocked",
+      severity: "hard_blocker",
+      currentEvidence: {
+        selectedExercises: [
+          expect.objectContaining({
+            name: "Cable Rear Delt Fly",
+            sets: 6,
+          }),
+        ],
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:hard_blocker",
+          "setPolicyReason:gt_5_sets",
+        ]),
+      },
+    });
+    expect(overSixtyLane).toMatchObject({
+      currentStatus: "blocked",
+      gapCause: "concentration_policy_gap",
+      severity: "hard_blocker",
+      currentEvidence: {
+        selectedExercises: [
+          expect.objectContaining({
+            name: "Cable Rear Delt Fly",
+            sets: 4,
+          }),
+        ],
+        relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:hard_blocker",
+          "setPolicyReason:over_60_share",
+        ]),
+      },
+    });
+  });
+
+  it("does not use repaired projection as the rear-delt target policy", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Chest-Supported Row",
+            setCount: 3,
+            primaryMuscles: ["Upper Back", "Lats"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { "Rear Delts": 1.5, "Upper Back": 3, Lats: 3 },
+            percentages: { "Rear Delts": 50, "Upper Back": 50, Lats: 50 },
+          },
+        ],
+      }),
+      repairedPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Rear Delt Fly",
+            setCount: 3,
+            primaryMuscles: ["Rear Delts"],
+            movementPatterns: ["isolation"],
+            stimulus: { "Rear Delts": 3 },
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "rear_delt");
+
+    expect(lane).toMatchObject({
+      currentStatus: "repair_dependent",
+      gapCause: "repair_dependency",
+      severity: "migration_candidate",
+      currentEvidence: {
+        selectedExercises: [],
+        relevantDiagnostics: expect.arrayContaining([
+          "repair_dependent:repaired_projection_has_lane",
+        ]),
+      },
+    });
+    expect(noRepair.v2SetDistributionIntent.guardrails).toMatchObject({
+      doesNotUseRepairedProjectionAsTarget: true,
+      doesNotUseAcceptedSeedAsTarget: true,
+    });
+  });
+
   it("hard-blocks 50-60 percent primary concentration when the primary muscle is below minimum", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({

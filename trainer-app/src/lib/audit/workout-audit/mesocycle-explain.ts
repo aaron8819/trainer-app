@@ -3357,6 +3357,12 @@ function exerciseMatchesV2LaneClass(input: {
   lane: V2Lane | V2Slot["lanes"][number];
 }): boolean {
   const classified = classifyPlannerOnlyExercise({ exercise: input.exercise });
+  if (
+    input.lane.laneId === "rear_delt" &&
+    !isDirectRearDeltLaneExercise(input.exercise)
+  ) {
+    return false;
+  }
   const aliases = v2LaneAliases(input.lane);
   if (aliases.includes(classified.lane)) {
     return true;
@@ -3374,7 +3380,7 @@ function exerciseMatchesV2LaneClass(input: {
 }
 
 function isStrictV2SetBudgetLane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
-  return lane.laneId === "chest_secondary";
+  return lane.laneId === "chest_secondary" || lane.laneId === "rear_delt";
 }
 
 const V2_SET_POLICY_CLASS_TOKENS = new Set([
@@ -3399,6 +3405,12 @@ function exerciseMatchesV2LaneSetPolicyClass(input: {
   lane: V2Lane | V2Slot["lanes"][number];
 }): boolean {
   const classified = classifyPlannerOnlyExercise({ exercise: input.exercise });
+  if (
+    input.lane.laneId === "rear_delt" &&
+    !isDirectRearDeltLaneExercise(input.exercise)
+  ) {
+    return false;
+  }
   const aliases = v2LaneAliases(input.lane);
   if (aliases.includes(classified.lane)) {
     return true;
@@ -3440,6 +3452,30 @@ function exerciseSupportsV2Lane(input: {
       input.exercise.primaryMuscles.includes(muscle) ||
       (input.exercise.effectiveStimulusByMuscle[muscle] ?? 0) > 0
   );
+}
+
+function isDirectRearDeltLaneExercise(
+  exercise: SlotCompositionSnapshot["exercises"][number]
+): boolean {
+  const name = exercise.exerciseName.toLowerCase();
+  const primaryMuscles = exercise.primaryMuscles.map((muscle) =>
+    muscle.toLowerCase()
+  );
+  const hasRearDeltPrimary =
+    primaryMuscles.includes("rear delts") ||
+    primaryMuscles.includes("rear delt") ||
+    primaryMuscles.includes("rear_delts");
+  const directName =
+    name.includes("rear delt") ||
+    name.includes("reverse pec deck") ||
+    name.includes("reverse fly") ||
+    name.includes("face pull");
+  const broadPullOrRowName =
+    name.includes("row") ||
+    name.includes("pulldown") ||
+    name.includes("pull-up");
+
+  return directName && hasRearDeltPrimary && !broadPullOrRowName;
 }
 
 function collectV2LaneExercises(input: {
@@ -3498,6 +3534,9 @@ function maxV2LaneConcentrationShare(input: {
   lane: V2Lane | V2Slot["lanes"][number];
   exercises: SlotCompositionSnapshot["exercises"];
 }): number {
+  if (input.exercises.length === 0) {
+    return 0;
+  }
   const exerciseNames = new Set(input.exercises.map((exercise) => exercise.exerciseName));
   return Math.max(
     0,
@@ -3561,9 +3600,6 @@ function v2SetBudgetDiagnostics(input: {
   budget: V2SetDistributionIntentLane["setBudget"];
   status: V2LaneSetPolicyStatus;
 }): string[] {
-  if (input.status === "hard_blocker") {
-    return ["setBudget:hard_blocker"];
-  }
   if (input.setCount < input.budget.min) {
     return [];
   }
@@ -3819,6 +3855,16 @@ function collectV2LaneDiagnostics(input: {
     return compactV2LaneDiagnostics([...diagnostics, "planningReality_missing"], 6);
   }
 
+  const strictLaneExerciseNames = new Set(
+    isStrictV2SetBudgetLane(input.lane)
+      ? (getSlotById(noRepair.finalSlotPlan, input.slotId)?.exercises ?? [])
+          .filter((exercise) =>
+            exerciseMatchesV2LaneSetPolicyClass({ exercise, lane: input.lane })
+          )
+          .map((exercise) => exercise.exerciseName)
+      : []
+  );
+
   diagnostics.push(
     ...(noRepair.exerciseClassUnresolvedCauses ?? [])
       .filter(
@@ -3850,6 +3896,11 @@ function collectV2LaneDiagnostics(input: {
     ...(noRepair.exerciseConcentration ?? [])
       .filter((row) => row.slotId === input.slotId)
       .filter((row) => row.flags.length > 0)
+      .filter(
+        (row) =>
+          !isStrictV2SetBudgetLane(input.lane) ||
+          strictLaneExerciseNames.has(row.exerciseName)
+      )
       .flatMap((row) =>
         Object.entries(row.percentageOfWeeklyProjectedStimulusByMuscle)
           .filter(([muscle]) => input.lane.primaryMuscles.includes(muscle))
@@ -3933,6 +3984,12 @@ function inferV2GapCause(input: {
     return "classification_gap";
   }
   if (
+    joined.includes("setpolicyreason:over_60_share") ||
+    joined.includes("setpolicyreason:underdelivery_hidden_by_concentration")
+  ) {
+    return "concentration_policy_gap";
+  }
+  if (
     joined.includes("slot_capacity") ||
     joined.includes("cap_") ||
     joined.includes("setpolicyreason:gt_5_sets") ||
@@ -3954,9 +4011,7 @@ function inferV2GapCause(input: {
   }
   if (
     joined.includes("concentration") ||
-    joined.includes("share_") ||
-    joined.includes("setpolicyreason:over_60_share") ||
-    joined.includes("setpolicyreason:underdelivery_hidden_by_concentration")
+    joined.includes("share_")
   ) {
     return "concentration_policy_gap";
   }
@@ -3964,10 +4019,11 @@ function inferV2GapCause(input: {
 }
 
 function hasV2TrueHardBlockerDiagnostic(diagnostics: string[]): boolean {
-  const joined = diagnostics.join("|").toLowerCase();
+  const normalized = diagnostics.map((row) => row.toLowerCase());
+  const joined = normalized.join("|");
   return (
-    joined.includes("setpolicy:hard_blocker") ||
-    joined.includes("target_status:blocked") ||
+    normalized.includes("setpolicy:hard_blocker") ||
+    normalized.includes("target_status:blocked") ||
     joined.includes("forbidden") ||
     joined.includes("dirty") ||
     joined.includes("back extension") ||

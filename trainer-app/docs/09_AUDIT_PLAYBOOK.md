@@ -688,6 +688,11 @@ Read these fields in this order unless the audit type says otherwise.
   - `active_deload_reroute`
 - Use this before interpreting the rest of a `future-week` or `deload` artifact.
 
+### `generationProvenance`
+- Present for generated-session artifacts when generation output or `generationPath` is available.
+- `receiptProvenance.mesocycleId` and `receiptProvenance.compositionSource` are copied from `generation.selection.sessionDecisionReceipt.sessionProvenance`.
+- `auditOnly.generationPath` mirrors the audit execution path beside the receipt fields for quick comparison. It remains audit-only and must not be treated as part of the saved receipt contract.
+
 ### `projectionNotes`
 - Present for `projected-week-volume` and `current-week-audit`.
 - Read this before trusting a full-week projection when runtime state contains incomplete workouts.

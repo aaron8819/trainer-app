@@ -1,5 +1,11 @@
 import { buildGenerationWarningSummary, WORKOUT_AUDIT_CONCLUSIONS } from "./conclusions";
-import type { WorkoutAuditArtifact, WorkoutAuditRequest, WorkoutAuditRun } from "./types";
+import type {
+  WorkoutAuditArtifact,
+  WorkoutAuditGenerationPath,
+  WorkoutAuditGenerationProvenanceSummary,
+  WorkoutAuditRequest,
+  WorkoutAuditRun,
+} from "./types";
 import {
   AUDIT_RECONSTRUCTION_GUARDRAIL,
   WORKOUT_AUDIT_ARTIFACT_VERSION,
@@ -11,6 +17,7 @@ import {
 } from "./artifact-serialization";
 import { resolveAuditCanonicalSemantics } from "./canonical-semantics";
 import {
+  type AuditSessionGenerationResult,
   normalizeExposedMuscleListForAudit,
   normalizeSessionGenerationResultForAudit,
 } from "./exposed-muscles";
@@ -33,6 +40,30 @@ function getArtifactGuardrailWarnings(run: WorkoutAuditRun): string[] {
   return warnings;
 }
 
+function buildGenerationProvenanceSummary(input: {
+  generation: AuditSessionGenerationResult | undefined;
+  generationPath: WorkoutAuditGenerationPath | undefined;
+}): WorkoutAuditGenerationProvenanceSummary | undefined {
+  if (!input.generation && !input.generationPath) {
+    return undefined;
+  }
+
+  const receiptProvenance =
+    input.generation && !("error" in input.generation)
+      ? input.generation.selection.sessionDecisionReceipt?.sessionProvenance
+      : undefined;
+
+  return {
+    receiptProvenance: {
+      mesocycleId: receiptProvenance?.mesocycleId ?? null,
+      compositionSource: receiptProvenance?.compositionSource ?? null,
+    },
+    auditOnly: {
+      generationPath: input.generationPath ?? null,
+    },
+  };
+}
+
 export function buildWorkoutAuditArtifact(
   request: WorkoutAuditRequest,
   run: WorkoutAuditRun,
@@ -46,6 +77,10 @@ export function buildWorkoutAuditArtifact(
 ): WorkoutAuditArtifact {
   const piiSafe = request.sanitizationLevel === "pii-safe";
   const normalizedGeneration = normalizeSessionGenerationResultForAudit(run.generationResult);
+  const generationProvenance = buildGenerationProvenanceSummary({
+    generation: normalizedGeneration,
+    generationPath: run.generationPath,
+  });
   const sanitizedRequest: WorkoutAuditRequest = {
     ...request,
     ...(piiSafe
@@ -76,6 +111,7 @@ export function buildWorkoutAuditArtifact(
     sessionSnapshot: run.sessionSnapshot,
     canonicalSemantics: resolveAuditCanonicalSemantics(run.sessionSnapshot),
     generationPath: run.generationPath,
+    generationProvenance,
     historicalWeek: run.historicalWeek,
     weeklyRetro: run.weeklyRetro,
     projectedWeekVolume: run.projectedWeekVolume,

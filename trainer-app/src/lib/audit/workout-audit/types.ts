@@ -1,6 +1,10 @@
 import type { SessionIntent } from "@/lib/engine/session-types";
 import type { V2SetDistributionIntent } from "@/lib/engine/planning/v2-set-distribution-intent";
-import type { PlannerDiagnosticsMode, SessionSlotSnapshot } from "@/lib/evidence/types";
+import type {
+  PlannerDiagnosticsMode,
+  SessionCompositionSource,
+  SessionSlotSnapshot,
+} from "@/lib/evidence/types";
 import type { NextWorkoutContext } from "@/lib/api/next-session";
 import type {
   ProjectedWeekVolumeMuscleRow,
@@ -139,6 +143,16 @@ export type WorkoutAuditGenerationPath = {
     | "standard_future_week_or_preview"
     | "explicit_deload_mode"
     | "active_mesocycle_state_active_deload";
+};
+
+export type WorkoutAuditGenerationProvenanceSummary = {
+  receiptProvenance: {
+    mesocycleId: string | null;
+    compositionSource: SessionCompositionSource | null;
+  };
+  auditOnly: {
+    generationPath: WorkoutAuditGenerationPath | null;
+  };
 };
 
 export type AuditCanonicalSemantics = {
@@ -1319,6 +1333,7 @@ export type WorkoutAuditArtifact = {
   sessionSnapshot?: SessionAuditSnapshot;
   canonicalSemantics?: AuditCanonicalSemantics;
   generationPath?: WorkoutAuditGenerationPath;
+  generationProvenance?: WorkoutAuditGenerationProvenanceSummary;
   historicalWeek?: HistoricalWeekAuditPayload;
   weeklyRetro?: WeeklyRetroAuditPayload;
   projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;

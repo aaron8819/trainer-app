@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AUDIT_RECONSTRUCTION_GUARDRAIL } from "./constants";
-import { buildWorkoutAuditArtifact } from "./serializer";
+import { buildWorkoutAuditArtifact, serializeWorkoutAuditArtifact } from "./serializer";
 import type { WorkoutAuditRun } from "./types";
 
 const baseRun: WorkoutAuditRun = {
@@ -574,6 +574,23 @@ describe("buildWorkoutAuditArtifact", () => {
       generator: "generateDeloadSessionFromIntent",
       reason: "active_mesocycle_state_active_deload",
     });
+    expect(artifact.generationProvenance).toEqual({
+      receiptProvenance: {
+        mesocycleId: "meso-1",
+        compositionSource: "persisted_slot_plan_seed",
+      },
+      auditOnly: {
+        generationPath: {
+          requestedMode: "future-week",
+          executionMode: "active_deload_reroute",
+          generator: "generateDeloadSessionFromIntent",
+          reason: "active_mesocycle_state_active_deload",
+        },
+      },
+    });
+    expect(
+      JSON.parse(serializeWorkoutAuditArtifact(artifact)).generationProvenance
+    ).toEqual(artifact.generationProvenance);
     const generation = expectSuccessfulGeneration(artifact);
     expect(generation.selection.sessionDecisionReceipt?.sessionProvenance).toEqual({
       mesocycleId: "meso-1",
@@ -594,6 +611,42 @@ describe("buildWorkoutAuditArtifact", () => {
       semanticWarnings: 2,
       backgroundWarnings: 1,
     });
+  });
+
+  it("summarizes missing legacy receipt provenance safely", () => {
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "future-week",
+        userId: "user-1",
+      },
+      {
+        ...baseRun,
+        generationPath: {
+          requestedMode: "future-week",
+          executionMode: "standard_generation",
+          generator: "generateSessionFromIntent",
+          reason: "standard_future_week_or_preview",
+        },
+      }
+    );
+
+    expect(artifact.generationProvenance).toEqual({
+      receiptProvenance: {
+        mesocycleId: null,
+        compositionSource: null,
+      },
+      auditOnly: {
+        generationPath: {
+          requestedMode: "future-week",
+          executionMode: "standard_generation",
+          generator: "generateSessionFromIntent",
+          reason: "standard_future_week_or_preview",
+        },
+      },
+    });
+    expect(artifact.generationPath).toEqual(
+      artifact.generationProvenance?.auditOnly.generationPath
+    );
   });
 
   it("adds do-not-reconstruct guardrails for saved-only legacy audit coverage", () => {

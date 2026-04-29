@@ -175,38 +175,39 @@ function makeCalfPlanningReality(overrides: {
     { name: "Seated Calf Raise", sets: 4 },
     { name: "Leg Press Calf Raise", sets: 4 },
   ];
-  const lowerBHamstringExercises = overrides.lowerBHingeCurl === false
-    ? [
-        {
-          exerciseId: "sldl",
-          exerciseName: "Stiff-Legged Deadlift",
-          role: "main",
-          setCount: 3,
-          primaryMuscles: ["Hamstrings"],
-          movementPatterns: ["hinge"],
-          effectiveStimulusByMuscle: { Hamstrings: 3 },
-        },
-      ]
-    : [
-        {
-          exerciseId: "sldl",
-          exerciseName: "Stiff-Legged Deadlift",
-          role: "main",
-          setCount: 3,
-          primaryMuscles: ["Hamstrings"],
-          movementPatterns: ["hinge"],
-          effectiveStimulusByMuscle: { Hamstrings: 3 },
-        },
-        {
-          exerciseId: "curl",
-          exerciseName: "Nordic Hamstring Curl",
-          role: "accessory",
-          setCount: 3,
-          primaryMuscles: ["Hamstrings"],
-          movementPatterns: ["flexion"],
-          effectiveStimulusByMuscle: { Hamstrings: 3 },
-        },
-      ];
+  const lowerBHamstringExercises =
+    overrides.lowerBHingeCurl === false
+      ? [
+          {
+            exerciseId: "sldl",
+            exerciseName: "Stiff-Legged Deadlift",
+            role: "main",
+            setCount: 3,
+            primaryMuscles: ["Hamstrings"],
+            movementPatterns: ["hinge"],
+            effectiveStimulusByMuscle: { Hamstrings: 3 },
+          },
+        ]
+      : [
+          {
+            exerciseId: "sldl",
+            exerciseName: "Stiff-Legged Deadlift",
+            role: "main",
+            setCount: 3,
+            primaryMuscles: ["Hamstrings"],
+            movementPatterns: ["hinge"],
+            effectiveStimulusByMuscle: { Hamstrings: 3 },
+          },
+          {
+            exerciseId: "curl",
+            exerciseName: "Nordic Hamstring Curl",
+            role: "accessory",
+            setCount: 3,
+            primaryMuscles: ["Hamstrings"],
+            movementPatterns: ["flexion"],
+            effectiveStimulusByMuscle: { Hamstrings: 3 },
+          },
+        ];
   const weekTwoStatus = overrides.weeksProjected
     ? "allocated_from_policy"
     : "not_allocated_missing_weekly_projection";
@@ -332,7 +333,8 @@ function makeCalfPlanningReality(overrides: {
         slotId: "lower_b",
         slotIndex: 1,
         intent: "lower",
-        exerciseCount: lowerBCalfShapes.length + lowerBHamstringExercises.length,
+        exerciseCount:
+          lowerBCalfShapes.length + lowerBHamstringExercises.length,
         totalSets:
           lowerBCalfShapes.reduce((sum, row) => sum + row.sets, 0) +
           lowerBHamstringExercises.reduce((sum, row) => sum + row.setCount, 0),
@@ -358,28 +360,29 @@ function makeCalfPlanningReality(overrides: {
       },
     ],
     finalSlotPlan: [],
-    allocationVsInitialDelta: overrides.lowerACalfUnresolved === false
-      ? []
-      : [
-          {
-            slotId: "lower_a",
-            slotIndex: 0,
-            comparison: "allocation_vs_initial",
-            responsibilityLoad: "clear",
-            underAllocatedMuscles: [
-              {
-                muscle: "Calves",
-                role: "support",
-                targetStatus: "soft",
-                expectedEffectiveSets: lowerATarget,
-                actualEffectiveSets: lowerACalfSets,
-                shortfall: Math.max(0, lowerATarget - lowerACalfSets),
-              },
-            ],
-            unallocatedStimulusMuscles: [],
-            notes: [],
-          },
-        ],
+    allocationVsInitialDelta:
+      overrides.lowerACalfUnresolved === false
+        ? []
+        : [
+            {
+              slotId: "lower_a",
+              slotIndex: 0,
+              comparison: "allocation_vs_initial",
+              responsibilityLoad: "clear",
+              underAllocatedMuscles: [
+                {
+                  muscle: "Calves",
+                  role: "support",
+                  targetStatus: "soft",
+                  expectedEffectiveSets: lowerATarget,
+                  actualEffectiveSets: lowerACalfSets,
+                  shortfall: Math.max(0, lowerATarget - lowerACalfSets),
+                },
+              ],
+              unallocatedStimulusMuscles: [],
+              notes: [],
+            },
+          ],
     allocationVsFinalDelta: [],
     repairMaterialityAfterShadowAllocation: [],
     shadowRepairSummary: {
@@ -484,10 +487,34 @@ function makeCalfPlanningReality(overrides: {
       affectsScoringOrGeneration: false,
       limitations: overrides.weeksProjected ? [] : ["weeks_2_to_4_unprojected"],
       weeks: [
-        { week: 1, phase: "accumulation", projectionStatus: "projected_from_current_week_evidence", slots: [], weekLevelWarnings: [] },
-        { week: 2, phase: "accumulation", projectionStatus: preselectionWeekTwoStatus, slots: [], weekLevelWarnings: [] },
-        { week: 3, phase: "accumulation", projectionStatus: preselectionWeekTwoStatus, slots: [], weekLevelWarnings: [] },
-        { week: 4, phase: "accumulation", projectionStatus: preselectionWeekTwoStatus, slots: [], weekLevelWarnings: [] },
+        {
+          week: 1,
+          phase: "accumulation",
+          projectionStatus: "projected_from_current_week_evidence",
+          slots: [],
+          weekLevelWarnings: [],
+        },
+        {
+          week: 2,
+          phase: "accumulation",
+          projectionStatus: preselectionWeekTwoStatus,
+          slots: [],
+          weekLevelWarnings: [],
+        },
+        {
+          week: 3,
+          phase: "accumulation",
+          projectionStatus: preselectionWeekTwoStatus,
+          slots: [],
+          weekLevelWarnings: [],
+        },
+        {
+          week: 4,
+          phase: "accumulation",
+          projectionStatus: preselectionWeekTwoStatus,
+          slots: [],
+          weekLevelWarnings: [],
+        },
       ],
       candidateBehaviorSlices: [],
       recommendedNextStep: "test",
@@ -527,9 +554,27 @@ function makeCalfPlanningReality(overrides: {
           ],
           weekLevelWarnings: [],
         },
-        { week: 2, phase: "accumulation", projectionStatus: weekTwoStatus, slots: [], weekLevelWarnings: [] },
-        { week: 3, phase: "accumulation", projectionStatus: weekTwoStatus, slots: [], weekLevelWarnings: [] },
-        { week: 4, phase: "accumulation", projectionStatus: weekTwoStatus, slots: [], weekLevelWarnings: [] },
+        {
+          week: 2,
+          phase: "accumulation",
+          projectionStatus: weekTwoStatus,
+          slots: [],
+          weekLevelWarnings: [],
+        },
+        {
+          week: 3,
+          phase: "accumulation",
+          projectionStatus: weekTwoStatus,
+          slots: [],
+          weekLevelWarnings: [],
+        },
+        {
+          week: 4,
+          phase: "accumulation",
+          projectionStatus: weekTwoStatus,
+          slots: [],
+          weekLevelWarnings: [],
+        },
       ],
       crossWeekAllocationWarnings: [],
     },
@@ -567,28 +612,29 @@ function makeCalfPlanningReality(overrides: {
         cleanAlternativeAvailable: 0,
         highRiskDuplicates: 0,
       },
-      duplicates: lowerBCalfShapes.length > 1
-        ? [
-            {
-              exerciseId: "calf-duplicate",
-              exerciseName: "Leg Press Calf Raise + Seated Calf Raise",
-              exerciseClass: "calf_raise",
-              movementPatterns: ["isolation"],
-              primaryMuscles: ["Calves"],
-              duplicateType: "same_session_variant",
-              duplicatedInSlots: ["lower_b"],
-              roleBySlot: { lower_b: "accessory" },
-              setCountBySlot: { lower_b: 8 },
-              compatibleAlternativeExists: false,
-              compatibleAlternatives: [],
-              justification: "unjustified",
-              policyRecommendation: "discourage_duplicate",
-              risk: "low",
-              evidence: [],
-              limitations: [],
-            },
-          ]
-        : [],
+      duplicates:
+        lowerBCalfShapes.length > 1
+          ? [
+              {
+                exerciseId: "calf-duplicate",
+                exerciseName: "Leg Press Calf Raise + Seated Calf Raise",
+                exerciseClass: "calf_raise",
+                movementPatterns: ["isolation"],
+                primaryMuscles: ["Calves"],
+                duplicateType: "same_session_variant",
+                duplicatedInSlots: ["lower_b"],
+                roleBySlot: { lower_b: "accessory" },
+                setCountBySlot: { lower_b: 8 },
+                compatibleAlternativeExists: false,
+                compatibleAlternatives: [],
+                justification: "unjustified",
+                policyRecommendation: "discourage_duplicate",
+                risk: "low",
+                evidence: [],
+                limitations: [],
+              },
+            ]
+          : [],
     },
     exerciseConcentration: [],
     warnings: [],
@@ -651,18 +697,23 @@ function makeNoRepairConcentrationPlanningReality(input: {
     ([slotId, exercises], index) => ({
       slotId,
       slotIndex: index,
-      intent: exercises[0]?.intent ?? (slotId.startsWith("lower") ? "lower" : "upper"),
+      intent:
+        exercises[0]?.intent ??
+        (slotId.startsWith("lower") ? "lower" : "upper"),
       exerciseCount: exercises.length,
-      totalSets: exercises.reduce((sum, exercise) => sum + (exercise.setCount ?? 3), 0),
-      projectedEffectiveStimulusByMuscle: exercises.reduce<Record<string, number>>(
-        (totals, exercise) => {
-          for (const [muscle, value] of Object.entries(exercise.stimulus)) {
-            totals[muscle] = Math.round(((totals[muscle] ?? 0) + value) * 10) / 10;
-          }
-          return totals;
-        },
-        {},
+      totalSets: exercises.reduce(
+        (sum, exercise) => sum + (exercise.setCount ?? 3),
+        0,
       ),
+      projectedEffectiveStimulusByMuscle: exercises.reduce<
+        Record<string, number>
+      >((totals, exercise) => {
+        for (const [muscle, value] of Object.entries(exercise.stimulus)) {
+          totals[muscle] =
+            Math.round(((totals[muscle] ?? 0) + value) * 10) / 10;
+        }
+        return totals;
+      }, {}),
       exercises: exercises.map((exercise, exerciseIndex) => ({
         exerciseId: exercise.exerciseId ?? `${slotId}-${exerciseIndex}`,
         exerciseName: exercise.exerciseName,
@@ -709,24 +760,29 @@ function makeNoRepairConcentrationPlanningReality(input: {
               : "IMPLICIT",
       targetStatus: demand.targetStatus,
       minEffectiveSets: demand.minEffectiveSets,
-      preferredEffectiveSets: demand.preferredEffectiveSets ?? demand.minEffectiveSets,
+      preferredEffectiveSets:
+        demand.preferredEffectiveSets ?? demand.minEffectiveSets,
       maxEffectiveSets: demand.maxEffectiveSets ?? null,
       desiredExposureCount: null,
       priority: demand.priority,
       source: ["test"],
       rationale: ["test"],
     })),
-    setDistributionIntents: Array.from(exercisesBySlot.keys()).map((slotId) => ({
-      ...base.setDistributionIntents[0],
-      slotId,
-      evidence: {
-        concentrationRows:
-          input.setDistributionRowsBySlot?.[slotId] ??
-          (slotId === input.exercises[0]?.slotId ? input.setDistributionRows ?? [] : []),
-        capCleanupRows: [],
-        repairRowsStillRepairOwned: [],
-      },
-    })),
+    setDistributionIntents: Array.from(exercisesBySlot.keys()).map(
+      (slotId) => ({
+        ...base.setDistributionIntents[0],
+        slotId,
+        evidence: {
+          concentrationRows:
+            input.setDistributionRowsBySlot?.[slotId] ??
+            (slotId === input.exercises[0]?.slotId
+              ? (input.setDistributionRows ?? [])
+              : []),
+          capCleanupRows: [],
+          repairRowsStillRepairOwned: [],
+        },
+      }),
+    ),
     duplicateContinuityJustification: {
       ...base.duplicateContinuityJustification,
       summary: {
@@ -740,7 +796,9 @@ function makeNoRepairConcentrationPlanningReality(input: {
     },
     exerciseConcentration: input.exercises.map((exercise, index) => ({
       slotId: exercise.slotId,
-      intent: exercise.intent ?? (exercise.slotId.startsWith("lower") ? "lower" : "upper"),
+      intent:
+        exercise.intent ??
+        (exercise.slotId.startsWith("lower") ? "lower" : "upper"),
       exerciseId: exercise.exerciseId ?? `${exercise.slotId}-${index}`,
       exerciseName: exercise.exerciseName,
       setCount: exercise.setCount ?? 3,
@@ -748,13 +806,17 @@ function makeNoRepairConcentrationPlanningReality(input: {
       isCompound: exercise.isCompound ?? false,
       primaryMuscles: exercise.primaryMuscles,
       effectiveStimulusContributionByMuscle: exercise.stimulus,
-      percentageOfWeeklyProjectedStimulusByMuscle: exercise.percentages ?? exercise.stimulus,
-      producedOrIncreasedByRepair: exercise.producedOrIncreasedByRepair ?? false,
+      percentageOfWeeklyProjectedStimulusByMuscle:
+        exercise.percentages ?? exercise.stimulus,
+      producedOrIncreasedByRepair:
+        exercise.producedOrIncreasedByRepair ?? false,
       flags:
         exercise.flags ??
         (Object.values(exercise.percentages ?? {}).some((value) => value >= 60)
           ? ["EXERCISE_SUPPLIES_OVER_60_PERCENT_WEEKLY_STIMULUS"]
-          : Object.values(exercise.percentages ?? {}).some((value) => value >= 50)
+          : Object.values(exercise.percentages ?? {}).some(
+                (value) => value >= 50,
+              )
             ? ["EXERCISE_SUPPLIES_OVER_50_PERCENT_WEEKLY_STIMULUS"]
             : []),
     })),
@@ -1317,7 +1379,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
                 },
               ],
               unallocatedStimulusMuscles: [],
-              notes: ["planner-only dry-run leaves hard Chest demand unresolved"],
+              notes: [
+                "planner-only dry-run leaves hard Chest demand unresolved",
+              ],
             },
           ],
           allocationVsFinalDelta: [],
@@ -1654,9 +1718,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
                     slotLevelWarnings: [],
                   },
                 ],
-                weekLevelWarnings: [
-                  "week_1_current_projection_evidence_only",
-                ],
+                weekLevelWarnings: ["week_1_current_projection_evidence_only"],
               },
               {
                 week: 2,
@@ -2307,10 +2369,12 @@ describe("buildMesocycleExplainAuditPayload", () => {
     );
     expect(payload.plannerOnlyDryRun).toBeUndefined();
     expect(payload.plannerOnlyNoRepair).toBeUndefined();
-    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(1);
-    expect(mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[0]?.[0]).not.toHaveProperty(
-      "plannerOnlyPolicyOverride",
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(
+      1,
     );
+    expect(
+      mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[0]?.[0],
+    ).not.toHaveProperty("plannerOnlyPolicyOverride");
   });
 
   it("emits a compact read-only planner-only comparison only when both dry-run flags are enabled", async () => {
@@ -2400,11 +2464,15 @@ describe("buildMesocycleExplainAuditPayload", () => {
         }),
       ]),
     );
-    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(2);
-    expect(mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[0]?.[0]).not.toHaveProperty(
-      "plannerOnlyPolicyOverride",
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(
+      2,
     );
-    expect(mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[1]?.[0]).toMatchObject({
+    expect(
+      mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[0]?.[0],
+    ).not.toHaveProperty("plannerOnlyPolicyOverride");
+    expect(
+      mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[1]?.[0],
+    ).toMatchObject({
       plannerOnlyPolicyOverride: {
         id: "calves_4_4_lower_slot_allocation",
         readOnly: true,
@@ -2438,12 +2506,17 @@ describe("buildMesocycleExplainAuditPayload", () => {
         "would_risk_lower_b_hamstrings_route",
       ]),
     });
-    expect(payload.plannerOnlyDryRun?.calvesFourFourCandidate?.materialityEstimate.evidence).toEqual(
+    expect(
+      payload.plannerOnlyDryRun?.calvesFourFourCandidate?.materialityEstimate
+        .evidence,
+    ).toEqual(
       expect.arrayContaining([
         expect.stringContaining("actual_materialRepairCount_delta:"),
       ]),
     );
-    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(2);
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(
+      2,
+    );
     expect(mocks.buildMesocycleSlotPlanSeed).toHaveBeenCalledTimes(1);
   });
 
@@ -2667,7 +2740,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
       },
     });
     expect(
-      payload.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.summary.targetLaneCount,
+      payload.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.summary
+        .targetLaneCount,
     ).toBeGreaterThan(0);
     expect(
       payload.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.slotDiffs
@@ -2714,7 +2788,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
       buildV2PlannerMesocyclePolicy().v2SupportLanePolicy,
     );
     expect(JSON.stringify(payload)).not.toContain("acceptedPlannerIntent");
-    expect(payload.plannerOnlyNoRepair?.v2ExerciseSelectionPlanDiagnostic).toMatchObject({
+    expect(
+      payload.plannerOnlyNoRepair?.v2ExerciseSelectionPlanDiagnostic,
+    ).toMatchObject({
       version: 1,
       source: "v2_planner_policy",
       readOnly: true,
@@ -2731,7 +2807,11 @@ describe("buildMesocycleExplainAuditPayload", () => {
       payload.plannerOnlyNoRepair?.v2ExerciseSelectionPlanDiagnostic.weeks.flatMap(
         (week) =>
           week.slots.flatMap((slot) =>
-            slot.lanes.map((lane) => ({ week: week.week, slotId: slot.slotId, lane })),
+            slot.lanes.map((lane) => ({
+              week: week.week,
+              slotId: slot.slotId,
+              lane,
+            })),
           ),
       ) ?? [];
     expect(
@@ -2766,9 +2846,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ]),
     });
     expect(
-      payload.plannerOnlyNoRepair?.v2SetDistributionIntent.weeks[1].slots.find(
-        (slot) => slot.slotId === "upper_a",
-      )?.lanes.find((lane) => lane.laneId === "chest_anchor"),
+      payload.plannerOnlyNoRepair?.v2SetDistributionIntent.weeks[1].slots
+        .find((slot) => slot.slotId === "upper_a")
+        ?.lanes.find((lane) => lane.laneId === "chest_anchor"),
     ).toMatchObject({
       setBudget: {
         min: 3,
@@ -2786,7 +2866,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
       },
     });
     expect(
-      payload.plannerOnlyNoRepair?.v2SetDistributionIntent.weeks[4].slots[0].lanes[0].setBudget.basis,
+      payload.plannerOnlyNoRepair?.v2SetDistributionIntent.weeks[4].slots[0]
+        .lanes[0].setBudget.basis,
     ).toBe("deload_transform");
     expect(
       payload.plannerOnlyNoRepair?.v2MesocyclePlan.validationRules.map(
@@ -2819,10 +2900,12 @@ describe("buildMesocycleExplainAuditPayload", () => {
       JSON.stringify(payload.plannerOnlyNoRepair?.v2MesocyclePlan).length,
     ).toBeLessThan(12000);
     expect(
-      JSON.stringify(payload.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff).length,
+      JSON.stringify(payload.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff)
+        .length,
     ).toBeLessThan(16000);
     expect(
-      JSON.stringify(payload.plannerOnlyNoRepair?.v2SetDistributionIntent).length,
+      JSON.stringify(payload.plannerOnlyNoRepair?.v2SetDistributionIntent)
+        .length,
     ).toBeLessThan(80000);
     expect(payload.plannerOnlyNoRepair?.slotPlans[0]).toMatchObject({
       slotId: "upper_a",
@@ -2850,11 +2933,15 @@ describe("buildMesocycleExplainAuditPayload", () => {
         }),
       ]),
     );
-    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(2);
-    expect(mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[0]?.[0]).not.toHaveProperty(
-      "experimentalPlannerOnlyNoRepair",
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledTimes(
+      2,
     );
-    expect(mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[1]?.[0]).toMatchObject({
+    expect(
+      mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[0]?.[0],
+    ).not.toHaveProperty("experimentalPlannerOnlyNoRepair");
+    expect(
+      mocks.projectSuccessorSlotPlansFromSnapshot.mock.calls[1]?.[0],
+    ).toMatchObject({
       experimentalPlannerOnlyNoRepair: true,
     });
     expect(mocks.buildMesocycleSlotPlanSeed).toHaveBeenCalledTimes(1);
@@ -2952,7 +3039,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
         slotId: "upper_a",
         exerciseName: "Cable Rear Delt Fly",
         muscle: "Rear Delts",
-        reason: "support_direct_isolation_concentrated_but_clean_and_near_or_at_target",
+        reason:
+          "support_direct_isolation_concentrated_but_clean_and_near_or_at_target",
       }),
     ]);
     expect(noRepair.diagnosticRows).toEqual(
@@ -2995,7 +3083,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
       status: "pass",
       evidence: ["quality_warnings:1", "diagnostic_rows:2", "ignored_rows:2"],
     });
-    expect(noRepair.slotPlans.flatMap((slot) => slot.validationFailures)).not.toEqual(
+    expect(
+      noRepair.slotPlans.flatMap((slot) => slot.validationFailures),
+    ).not.toEqual(
       expect.arrayContaining([
         expect.stringContaining("Cable Rear Delt Fly:Rear Delts"),
         expect.stringContaining("Machine Shoulder Press:Front Delts"),
@@ -3031,7 +3121,12 @@ describe("buildMesocycleExplainAuditPayload", () => {
       slotId?: string;
       muscle?: string;
       exerciseName?: string;
-      action: "added" | "set_bumped" | "set_trimmed" | "removed" | "diagnostic_only";
+      action:
+        | "added"
+        | "set_bumped"
+        | "set_trimmed"
+        | "removed"
+        | "diagnostic_only";
       materiality: "major" | "moderate" | "none";
       rawSetDelta: number;
       effectiveStimulusDelta: number;
@@ -3043,7 +3138,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
       repairMechanism?: string;
       changedExerciseIdentity?: boolean;
     }) => ({
-      repairMechanism: input.repairMechanism ?? "program_quality:session_composition",
+      repairMechanism:
+        input.repairMechanism ?? "program_quality:session_composition",
       materiality: input.materiality,
       muscle: input.muscle,
       slotId: input.slotId,
@@ -3054,7 +3150,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
       effectiveStimulusDelta: input.effectiveStimulusDelta,
       rawSetsAdded: Math.max(0, input.rawSetDelta),
       rawSetDelta: input.rawSetDelta,
-      changedExerciseIdentity: input.changedExerciseIdentity ?? input.action === "added",
+      changedExerciseIdentity:
+        input.changedExerciseIdentity ?? input.action === "added",
       changedSlotShapeMaterially: input.materiality !== "none",
       behaviorClass: "program_shaping",
       source: input.repairMechanism ?? "program_quality_application",
@@ -3450,7 +3547,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
       "src/lib/audit/workout-audit/mesocycle-explain-v2-repair-scoreboard.ts",
       {
         forbidSerializerImports: true,
-      }
+      },
     );
     expect(scoreboard?.rawRepairEvidence).toEqual({
       rawRowCount: 21,
@@ -3545,7 +3642,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
             "support_floor_design_needed",
           ]),
         }),
-      ])
+      ]),
     );
     expect(scoreboard?.promotionCandidates).not.toEqual(
       expect.arrayContaining([
@@ -3553,21 +3650,27 @@ describe("buildMesocycleExplainAuditPayload", () => {
         expect.objectContaining({ exerciseName: "Cable Pullover" }),
         expect.objectContaining({ muscle: "Forearms" }),
         expect.objectContaining({ muscle: "Front Delts" }),
-      ])
+      ]),
     );
     expect(scoreboard?.rawSuspiciousRows).toHaveLength(6);
     expect(scoreboard?.safetyNetRows).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ exerciseName: "SLDL", action: "set_trimmed" }),
-        expect.objectContaining({ exerciseName: "Cable Pullover", action: "removed" }),
-      ])
+        expect.objectContaining({
+          exerciseName: "SLDL",
+          action: "set_trimmed",
+        }),
+        expect.objectContaining({
+          exerciseName: "Cable Pullover",
+          action: "removed",
+        }),
+      ]),
     );
     expect(scoreboard?.collateralDiagnosticRows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ muscle: "Front Delts" }),
         expect.objectContaining({ muscle: "Upper Back" }),
         expect.objectContaining({ muscle: "Lower Back" }),
-      ])
+      ]),
     );
     expect(scoreboard?.diagnosticRows).toEqual(
       expect.arrayContaining([
@@ -3575,7 +3678,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
           materiality: "none",
           reason: "materiality_none_or_diagnostic_denominator_artifact",
         }),
-      ])
+      ]),
     );
     expect(noRepair).not.toHaveProperty("acceptedPlannerIntent");
   });
@@ -3850,8 +3953,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(
       noRepair.v2TargetVsNoRepairDiff.slotDiffs
         .find((slot) => slot.slotId === "lower_a")
-        ?.laneDiffs.find((lane) => lane.laneId === "squat_anchor")?.currentEvidence
-        .selectedExercises,
+        ?.laneDiffs.find((lane) => lane.laneId === "squat_anchor")
+        ?.currentEvidence.selectedExercises,
     ).toHaveLength(1);
     expect(
       noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
@@ -4233,7 +4336,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
         slotId: "upper_a",
         exerciseName: "Incline Dumbbell Press",
         muscle: "Chest",
-        reason: "primary_hard_target_excessive_single_exercise_share_unjustified",
+        reason:
+          "primary_hard_target_excessive_single_exercise_share_unjustified",
       }),
     ]);
     expect(
@@ -4553,8 +4657,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
     ]);
     expect(
       lane?.currentEvidence.relevantDiagnostics.some((row) =>
-        row.includes("Biceps")
-      )
+        row.includes("Biceps"),
+      ),
     ).toBe(false);
   });
 
@@ -5196,9 +5300,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
     expect(lane?.currentEvidence.selectedExercises).toHaveLength(1);
     expect(
-      lane?.currentEvidence.selectedExercises.some((exercise) =>
-        exercise.name.includes("Row") || exercise.name.includes("Shoulder")
-      )
+      lane?.currentEvidence.selectedExercises.some(
+        (exercise) =>
+          exercise.name.includes("Row") || exercise.name.includes("Shoulder"),
+      ),
     ).toBe(false);
   });
 
@@ -5350,7 +5455,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
       },
     });
     expect(overSixtyLane?.currentEvidence.relevantDiagnostics).not.toEqual(
-      expect.arrayContaining(["setPolicy:hard_blocker", "setPolicyReason:over_60_share"]),
+      expect.arrayContaining([
+        "setPolicy:hard_blocker",
+        "setPolicyReason:over_60_share",
+      ]),
     );
     expect(
       overSixtyLane?.currentEvidence.relevantDiagnostics.some((entry) =>
@@ -5429,8 +5537,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(lane?.currentEvidence.selectedExercises).toHaveLength(1);
     expect(
       lane?.currentEvidence.selectedExercises.some((exercise) =>
-        exercise.name.includes("Bench")
-      )
+        exercise.name.includes("Bench"),
+      ),
     ).toBe(false);
     expect(lane?.currentEvidence.relevantDiagnostics).not.toContain(
       "concentration:quality_warning",
@@ -5497,8 +5605,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
     expect(
       lane?.currentEvidence.relevantDiagnostics.some((entry) =>
-        entry.toLowerCase().includes("hard_blocker")
-      )
+        entry.toLowerCase().includes("hard_blocker"),
+      ),
     ).toBe(false);
     expect(
       noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
@@ -5715,9 +5823,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
     expect(lane?.currentEvidence.selectedExercises).toHaveLength(1);
     expect(
-      lane?.currentEvidence.selectedExercises.some((exercise) =>
-        exercise.name.includes("Pulldown") || exercise.name.includes("Row")
-      )
+      lane?.currentEvidence.selectedExercises.some(
+        (exercise) =>
+          exercise.name.includes("Pulldown") || exercise.name.includes("Row"),
+      ),
     ).toBe(false);
     expect(lane?.currentEvidence.relevantDiagnostics).not.toContain(
       "concentration:dirty_collateral",
@@ -5912,7 +6021,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ]),
       },
     });
-    expect(noRepair.v2TargetVsNoRepairDiff.summary.migrationCandidateCount).toBe(0);
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.summary.migrationCandidateCount,
+    ).toBe(0);
     expect(
       noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
         .nextBestMigrationSlice,
@@ -6194,8 +6305,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
     expect(
       lane?.currentEvidence.relevantDiagnostics.some((entry) =>
-        entry.toLowerCase().includes("hard_blocker")
-      )
+        entry.toLowerCase().includes("hard_blocker"),
+      ),
     ).toBe(false);
   });
 
@@ -6369,14 +6480,16 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
     expect(lane?.currentEvidence.selectedExercises).toHaveLength(1);
     expect(
-      lane?.currentEvidence.selectedExercises.some((exercise) =>
-        exercise.name.includes("Pulldown") || exercise.name.includes("Lateral Raise")
-      )
+      lane?.currentEvidence.selectedExercises.some(
+        (exercise) =>
+          exercise.name.includes("Pulldown") ||
+          exercise.name.includes("Lateral Raise"),
+      ),
     ).toBe(false);
     expect(
       lane?.currentEvidence.relevantDiagnostics.some((entry) =>
-        entry.toLowerCase().includes("hard_blocker")
-      )
+        entry.toLowerCase().includes("hard_blocker"),
+      ),
     ).toBe(false);
     expect(noRepair.weeklyMuscleTotals).toEqual(
       expect.arrayContaining([
@@ -6737,7 +6850,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
         exerciseName: "Incline Dumbbell Press",
         muscle: "Chest",
         percentageOfWeeklyStimulus: 57.9,
-        reason: "primary_hard_target_excessive_single_exercise_share_unjustified",
+        reason:
+          "primary_hard_target_excessive_single_exercise_share_unjustified",
       }),
     ]);
     expect(noRepair.acceptanceClassification).toMatchObject({
@@ -6990,7 +7104,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
         canReplaceRepairedProjection: false,
       },
     });
-    expect(upperA?.laneDiffs.find((lane) => lane.laneId === "chest_anchor")).toMatchObject({
+    expect(
+      upperA?.laneDiffs.find((lane) => lane.laneId === "chest_anchor"),
+    ).toMatchObject({
       currentStatus: "satisfied",
       gapCause: "none",
       migrationRecommendation: "no_action",
@@ -7004,7 +7120,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ],
       },
     });
-    expect(upperA?.laneDiffs.find((lane) => lane.laneId === "rear_delt")).toMatchObject({
+    expect(
+      upperA?.laneDiffs.find((lane) => lane.laneId === "rear_delt"),
+    ).toMatchObject({
       currentStatus: "repair_dependent",
       gapCause: "repair_dependency",
       severity: "migration_candidate",
@@ -7018,9 +7136,15 @@ describe("buildMesocycleExplainAuditPayload", () => {
       noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
         .nextBestMigrationSlice,
     ).toBe("rear_delt:promote_to_planner_later");
-    expect(noRepair.v2TargetVsNoRepairDiff.summary.satisfiedLaneCount).toBeGreaterThan(0);
-    expect(noRepair.v2TargetVsNoRepairDiff.summary.repairDependentLaneCount).toBeGreaterThan(0);
-    expect(noRepair.v2TargetVsNoRepairDiff.summary.migrationCandidateCount).toBeGreaterThan(0);
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.summary.satisfiedLaneCount,
+    ).toBeGreaterThan(0);
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.summary.repairDependentLaneCount,
+    ).toBeGreaterThan(0);
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.summary.migrationCandidateCount,
+    ).toBeGreaterThan(0);
   });
 
   it("keeps session-shaping rows visible without promoting them into replacement blockers", () => {
@@ -7143,7 +7267,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
       repairedProjectionAvailable: true,
     });
 
-    expect(noRepair.crossWeekProjectionGate.accumulationWeeksStatus).toMatchObject({
+    expect(
+      noRepair.crossWeekProjectionGate.accumulationWeeksStatus,
+    ).toMatchObject({
       status: "projected_with_limitations",
       weeks: [
         expect.objectContaining({
@@ -7173,7 +7299,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ],
     });
     expect(noRepair.crossWeekProjectionGate.blockers).toEqual(
-      expect.arrayContaining(["weeks_2_to_4_planner_owned_projection_read_only_not_consumed"]),
+      expect.arrayContaining([
+        "weeks_2_to_4_planner_owned_projection_read_only_not_consumed",
+      ]),
     );
     expect(noRepair.crossWeekProjectionGate.safeToPromoteBehavior).toBe(false);
     expect(noRepair.plannerOwnedAccumulationProjection).toMatchObject({
@@ -7192,7 +7320,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
               classLanes: expect.arrayContaining([
                 expect.objectContaining({
                   laneId: "chest_anchor",
-                  setBudget: expect.objectContaining({ preferred: expect.any(Number) }),
+                  setBudget: expect.objectContaining({
+                    preferred: expect.any(Number),
+                  }),
                 }),
               ]),
             }),
@@ -7205,6 +7335,150 @@ describe("buildMesocycleExplainAuditPayload", () => {
         week.validation.missingInputs.includes("repair_output_as_target"),
       ),
     ).toEqual([false, false, false]);
+  });
+
+  it("adds a read-only V2 support-lane projection diagnostic without counting collateral as direct floor", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Pressdown",
+            setCount: 2,
+            primaryMuscles: ["Triceps"],
+            movementPatterns: ["isolation"],
+            stimulus: { Triceps: 2 },
+          },
+          {
+            slotId: "upper_a",
+            exerciseName: "Bench Press",
+            setCount: 3,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_press"],
+            stimulus: { Chest: 6, Triceps: 1 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Dumbbell Overhead Press",
+            setCount: 3,
+            primaryMuscles: ["Front Delts"],
+            movementPatterns: ["vertical_press"],
+            stimulus: { "Side Delts": 1 },
+          },
+          {
+            slotId: "upper_a",
+            exerciseName: "T-Bar Row",
+            setCount: 3,
+            primaryMuscles: ["Upper Back", "Lats"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { "Rear Delts": 1, Biceps: 1, Lats: 4 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Lat Pulldown",
+            setCount: 3,
+            primaryMuscles: ["Lats"],
+            movementPatterns: ["vertical_pull"],
+            stimulus: { Biceps: 1, Lats: 4 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Triceps",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 4,
+            preferredEffectiveSets: 4,
+            maxEffectiveSets: 14,
+          },
+          {
+            muscle: "Side Delts",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 6,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 19,
+          },
+          {
+            muscle: "Rear Delts",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 4,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 12,
+          },
+          {
+            muscle: "Biceps",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 4,
+            preferredEffectiveSets: 4,
+            maxEffectiveSets: 14,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+    const diagnostic = noRepair.v2SupportLaneProjectionDiagnostic;
+    const byMuscle = new Map(
+      diagnostic.muscles.map((row) => [row.muscle, row]),
+    );
+
+    expect(diagnostic).toMatchObject({
+      version: 1,
+      source: "v2_planner_policy",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      safeForBehaviorPromotion: false,
+      summary: {
+        supportMusclesEvaluated: 4,
+        directFloorsMet: 1,
+        directFloorsBelow: 3,
+        optionalActivations: 1,
+        unrecoverableExpansions: expect.any(Number),
+      },
+    });
+    expect(byMuscle.get("Triceps")).toMatchObject({
+      currentDirectSets: 2,
+      collateralCreditUsed: 1,
+      directFloorStatus: "met",
+      optionalActivationStatus: "triggered_diagnostic_only",
+      rationale: expect.arrayContaining([
+        "collateral_credit_applies_to_weekly_total_only",
+        "optional_activation:still_under_support_floor_after_direct_floor_and_collateral",
+      ]),
+      limitations: expect.arrayContaining([
+        "optional_activation_does_not_create_hard_floor",
+      ]),
+    });
+    expect(byMuscle.get("Side Delts")).toMatchObject({
+      currentDirectSets: 0,
+      collateralCreditUsed: 1,
+      directFloorStatus: "below",
+      expansionStatus: "recommended_diagnostic_only",
+      rationale: expect.arrayContaining([
+        "second_exposure_remains_provisional_diagnostic_only",
+      ]),
+      limitations: expect.arrayContaining([
+        "delt_second_exposure_provisional_diagnostic_only",
+      ]),
+    });
+    expect(byMuscle.get("Rear Delts")).toMatchObject({
+      currentDirectSets: 0,
+      collateralCreditUsed: 1,
+      directFloorStatus: "below",
+      expansionStatus: "recommended_diagnostic_only",
+      limitations: expect.arrayContaining([
+        "second_rear_delt_exposure_until_full_block_projection_proves_need_and_recoverability",
+      ]),
+    });
+    expect(byMuscle.get("Biceps")).toMatchObject({
+      currentDirectSets: 0,
+      collateralCreditUsed: 2,
+      directFloorStatus: "below",
+      expansionStatus: "recommended_diagnostic_only",
+    });
   });
 
   it("labels deload transform as diagnostic-only until seed/runtime consumption exists", () => {
@@ -7241,13 +7515,16 @@ describe("buildMesocycleExplainAuditPayload", () => {
           phase: "deload",
           projectionStatus: "not_projected_missing_policy",
           muscles: [],
-          weekLevelLimitations: ["missing_deload_identity_set_reduction_policy"],
+          weekLevelLimitations: [
+            "missing_deload_identity_set_reduction_policy",
+          ],
         },
       ],
       crossWeekWarnings: [],
       candidateBehaviorGate: {
         status: "blocked_until_weekly_curve_is_visible",
-        likelyBestFutureBehavior: "chest_upper_slot_distinct_exercise_distribution",
+        likelyBestFutureBehavior:
+          "chest_upper_slot_distinct_exercise_distribution",
         requiredQuestions: [
           "would_this_improve_weeks_1_to_4_not_just_week_1",
           "would_this_preserve_deload_quality",
@@ -7339,9 +7616,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
         }),
       ]),
     );
-    expect(deloadExercises.every((exercise) => !exercise.introducesNewMovement)).toBe(
-      true,
-    );
+    expect(
+      deloadExercises.every((exercise) => !exercise.introducesNewMovement),
+    ).toBe(true);
     expect(noRepair.crossWeekProjectionGate.deloadSummary).toMatchObject({
       preserveExerciseIdentities: true,
       introducesNewMovements: false,
@@ -7579,7 +7856,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
       },
       policyReadiness: {
         behaviorReadiness: "needs_more_projection",
-        remainingBlockers: expect.arrayContaining(["materiality_delta_unknown"]),
+        remainingBlockers: expect.arrayContaining([
+          "materiality_delta_unknown",
+        ]),
       },
       recommendation: expect.not.stringMatching("safe_to_trial_behavior"),
     });

@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
-import { buildGenerationWarningSummary, WORKOUT_AUDIT_CONCLUSIONS } from "./conclusions";
+import {
+  buildGenerationWarningSummary,
+  WORKOUT_AUDIT_CONCLUSIONS,
+} from "./conclusions";
 import type {
   MesocycleExplainPlannerOnlyNoRepairDebugArtifact,
   WorkoutAuditArtifact,
@@ -27,15 +30,20 @@ import {
 function getArtifactGuardrailWarnings(run: WorkoutAuditRun): string[] {
   const warnings: string[] = [];
 
-  if (run.progressionAnchor?.sessionSnapshotSource === "reconstructed_saved_only") {
+  if (
+    run.progressionAnchor?.sessionSnapshotSource === "reconstructed_saved_only"
+  ) {
     warnings.push(
-      `${AUDIT_RECONSTRUCTION_GUARDRAIL} Progression-anchor coverage is using a saved-only reconstructed snapshot.`
+      `${AUDIT_RECONSTRUCTION_GUARDRAIL} Progression-anchor coverage is using a saved-only reconstructed snapshot.`,
     );
   }
 
-  if ((run.historicalWeek?.comparabilityCoverage.reconstructedSnapshotCount ?? 0) > 0) {
+  if (
+    (run.historicalWeek?.comparabilityCoverage.reconstructedSnapshotCount ??
+      0) > 0
+  ) {
     warnings.push(
-      `${AUDIT_RECONSTRUCTION_GUARDRAIL} Historical-week coverage includes saved-only reconstructed sessions.`
+      `${AUDIT_RECONSTRUCTION_GUARDRAIL} Historical-week coverage includes saved-only reconstructed sessions.`,
     );
   }
 
@@ -75,10 +83,12 @@ export function buildWorkoutAuditArtifact(
       semanticWarnings: string[];
       backgroundWarnings: string[];
     };
-  }
+  },
 ): WorkoutAuditArtifact {
   const piiSafe = request.sanitizationLevel === "pii-safe";
-  const normalizedGeneration = normalizeSessionGenerationResultForAudit(run.generationResult);
+  const normalizedGeneration = normalizeSessionGenerationResultForAudit(
+    run.generationResult,
+  );
   const generationProvenance = buildGenerationProvenanceSummary({
     generation: normalizedGeneration,
     generationPath: run.generationPath,
@@ -129,9 +139,11 @@ export function buildWorkoutAuditArtifact(
 }
 
 export function serializeWorkoutAuditArtifact(
-  artifact: WorkoutAuditArtifact
+  artifact: WorkoutAuditArtifact,
 ): string {
-  return serializeStableJson(compactWorkoutAuditArtifactForSerialization(artifact));
+  return serializeStableJson(
+    compactWorkoutAuditArtifactForSerialization(artifact),
+  );
 }
 
 function sha256Hex(value: string): string {
@@ -153,7 +165,8 @@ function buildRequestFlags(request: WorkoutAuditRequest): string[] {
 }
 
 function incrementCount(record: Record<string, number>, key: unknown): void {
-  const normalized = typeof key === "string" && key.length > 0 ? key : "unknown";
+  const normalized =
+    typeof key === "string" && key.length > 0 ? key : "unknown";
   record[normalized] = (record[normalized] ?? 0) + 1;
 }
 
@@ -173,24 +186,25 @@ function buildV2DebugSidecarPayload(input: {
   const severityCounts: Record<string, number> = {};
   const migrationRecommendationCounts: Record<string, number> = {};
   const gapCauseCounts: Record<string, number> = {};
-  const laneEvidence = noRepair.v2TargetVsNoRepairDiff.slotDiffs.flatMap((slot) =>
-    slot.laneDiffs.map((lane) => {
-      incrementCount(laneStatusCounts, lane.currentStatus);
-      incrementCount(severityCounts, lane.severity);
-      incrementCount(
-        migrationRecommendationCounts,
-        lane.migrationRecommendation
-      );
-      incrementCount(gapCauseCounts, lane.gapCause);
-      return {
-        slotId: slot.slotId,
-        laneId: lane.laneId,
-        currentStatus: lane.currentStatus,
-        severity: lane.severity,
-        selectedExercises: lane.currentEvidence.selectedExercises,
-        relevantDiagnostics: lane.currentEvidence.relevantDiagnostics,
-      };
-    })
+  const laneEvidence = noRepair.v2TargetVsNoRepairDiff.slotDiffs.flatMap(
+    (slot) =>
+      slot.laneDiffs.map((lane) => {
+        incrementCount(laneStatusCounts, lane.currentStatus);
+        incrementCount(severityCounts, lane.severity);
+        incrementCount(
+          migrationRecommendationCounts,
+          lane.migrationRecommendation,
+        );
+        incrementCount(gapCauseCounts, lane.gapCause);
+        return {
+          slotId: slot.slotId,
+          laneId: lane.laneId,
+          currentStatus: lane.currentStatus,
+          severity: lane.severity,
+          selectedExercises: lane.currentEvidence.selectedExercises,
+          relevantDiagnostics: lane.currentEvidence.relevantDiagnostics,
+        };
+      }),
   );
 
   return {
@@ -216,6 +230,8 @@ function buildV2DebugSidecarPayload(input: {
       v2MesocyclePlan: noRepair.v2MesocyclePlan,
       v2SetDistributionIntent: noRepair.v2SetDistributionIntent,
       v2SupportLanePolicy: noRepair.v2SupportLanePolicy,
+      v2SupportLaneProjectionDiagnostic:
+        noRepair.v2SupportLaneProjectionDiagnostic,
       plannerOwnedAccumulationProjection:
         noRepair.plannerOwnedAccumulationProjection,
       v2ExerciseSelectionPlanDiagnostic:
@@ -240,8 +256,7 @@ function buildV2DebugSidecarPayload(input: {
         gapCauseCounts,
       },
       classificationDetails: {
-        hardBlockerCount:
-          noRepair.acceptanceClassification.hardBlockers.length,
+        hardBlockerCount: noRepair.acceptanceClassification.hardBlockers.length,
         qualityWarningCount:
           noRepair.acceptanceClassification.qualityWarnings.length,
         diagnosticOnlyCount:
@@ -261,7 +276,7 @@ export function createWorkoutAuditArtifactOutput(
     artifactRelativePath?: string;
     v2DebugArtifactFileName?: string;
     v2DebugArtifactRelativePath?: string;
-  }
+  },
 ): {
   artifact: WorkoutAuditArtifact;
   serializedArtifact: WorkoutAuditArtifact;
@@ -285,7 +300,12 @@ export function createWorkoutAuditArtifactOutput(
     request.v2DebugArtifact === true &&
     request.mode === "mesocycle-explain" &&
     request.plannerOnlyNoRepair === true &&
-    Boolean(parentFileName && parentRelativePath && sidecarFileName && sidecarRelativePath);
+    Boolean(
+      parentFileName &&
+      parentRelativePath &&
+      sidecarFileName &&
+      sidecarRelativePath,
+    );
   const v2DebugPayload = shouldCreateV2DebugArtifact
     ? buildV2DebugSidecarPayload({
         artifact,
@@ -298,7 +318,10 @@ export function createWorkoutAuditArtifactOutput(
     ? serializeStableJson(v2DebugPayload)
     : undefined;
   const v2DebugArtifact =
-    v2DebugPayload && v2DebugSerialized && sidecarFileName && sidecarRelativePath
+    v2DebugPayload &&
+    v2DebugSerialized &&
+    sidecarFileName &&
+    sidecarRelativePath
       ? {
           artifact: v2DebugPayload,
           serialized: v2DebugSerialized,
@@ -319,7 +342,7 @@ export function createWorkoutAuditArtifactOutput(
             sha256: v2DebugArtifact.sha256,
           },
         }
-      : undefined
+      : undefined,
   );
   const serialized = serializeStableJson(serializedArtifact);
   return {

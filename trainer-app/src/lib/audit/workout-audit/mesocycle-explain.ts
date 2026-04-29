@@ -51,6 +51,7 @@ import {
 import {
   buildPlannerOwnedAccumulationProjection,
   buildV2ExerciseSelectionPlanDiagnostic,
+  buildV2SupportLaneProjectionDiagnostic,
 } from "@/lib/api/planning-reality";
 import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 import { MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION } from "./constants";
@@ -172,7 +173,8 @@ type SlotPlanProjectionDiagnostics = SuccessorSlotPlanProjection["diagnostics"];
 type PlanningRealityDiagnostic = NonNullable<
   NonNullable<SlotPlanProjectionDiagnostics>["planningReality"]
 >;
-type SlotCompositionSnapshot = PlanningRealityDiagnostic["initialSlotComposition"][number];
+type SlotCompositionSnapshot =
+  PlanningRealityDiagnostic["initialSlotComposition"][number];
 type ProgramQualityDiagnostic = NonNullable<
   NonNullable<SlotPlanProjectionDiagnostics>["programQuality"]
 >["evaluation"]["diagnostics"][number];
@@ -191,7 +193,11 @@ function countWorkoutExercises(workout: {
   mainLifts: unknown[];
   accessories: unknown[];
 }): number {
-  return workout.warmup.length + workout.mainLifts.length + workout.accessories.length;
+  return (
+    workout.warmup.length +
+    workout.mainLifts.length +
+    workout.accessories.length
+  );
 }
 
 function countWorkoutSets(workout: {
@@ -199,14 +205,17 @@ function countWorkoutSets(workout: {
   mainLifts: Array<{ sets: unknown[] }>;
   accessories: Array<{ sets: unknown[] }>;
 }): number {
-  return [...workout.warmup, ...workout.mainLifts, ...workout.accessories].reduce(
-    (sum, exercise) => sum + exercise.sets.length,
-    0
-  );
+  return [
+    ...workout.warmup,
+    ...workout.mainLifts,
+    ...workout.accessories,
+  ].reduce((sum, exercise) => sum + exercise.sets.length, 0);
 }
 
 function normalizeIntent(value: string | null | undefined): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value.toLowerCase() : null;
+  return typeof value === "string" && value.trim().length > 0
+    ? value.toLowerCase()
+    : null;
 }
 
 function normalizeReasonCodes(reasonCodes: string[]): string[] {
@@ -217,7 +226,10 @@ function normalizeReasonCodes(reasonCodes: string[]): string[] {
 }
 
 function categorizeProgramQualityDiagnostic(
-  diagnostic: Pick<ProgramQualityDiagnostic, "constraint" | "reason" | "pattern">
+  diagnostic: Pick<
+    ProgramQualityDiagnostic,
+    "constraint" | "reason" | "pattern"
+  >,
 ): MesocycleExplainProjectionDiagnosticCategory {
   if (
     diagnostic.constraint === "per_exercise_efficiency" &&
@@ -225,7 +237,10 @@ function categorizeProgramQualityDiagnostic(
   ) {
     return "set_stacking_pressure";
   }
-  if (diagnostic.constraint === "cross_slot_duplicate" || diagnostic.constraint === "redundancy") {
+  if (
+    diagnostic.constraint === "cross_slot_duplicate" ||
+    diagnostic.constraint === "redundancy"
+  ) {
     return "duplicate_exercise_pressure";
   }
   if (
@@ -234,7 +249,10 @@ function categorizeProgramQualityDiagnostic(
   ) {
     return "diversity_penalty";
   }
-  if (diagnostic.constraint === "session_composition" && diagnostic.reason === "same_pattern_count_exceeded") {
+  if (
+    diagnostic.constraint === "session_composition" &&
+    diagnostic.reason === "same_pattern_count_exceeded"
+  ) {
     return "diversity_penalty";
   }
   if (
@@ -256,7 +274,8 @@ function explainProjectionDiagnostic(input: {
   source: MesocycleExplainProjectionDiagnosticRow["source"];
 }): string {
   if (input.category === "set_stacking_pressure") {
-    return input.reason === "soft_cap_exceeded_higher_priority_or_capacity_bound"
+    return input.reason ===
+      "soft_cap_exceeded_higher_priority_or_capacity_bound"
       ? "A set-count soft cap remained exceeded because P0 weekly obligations, slot identity, or real slot capacity took precedence over further spreading."
       : "The projection detected pressure from stacking more sets on one exercise than the soft cap prefers.";
   }
@@ -285,14 +304,17 @@ function mapProgramQualityDiagnostic(input: {
   source: "program_quality_evaluation" | "program_quality_application";
   category?: MesocycleExplainProjectionDiagnosticCategory;
 }): MesocycleExplainProjectionDiagnosticRow {
-  const category = input.category ?? categorizeProgramQualityDiagnostic(input.diagnostic);
+  const category =
+    input.category ?? categorizeProgramQualityDiagnostic(input.diagnostic);
   return {
     label: "projection diagnostics",
     category,
     priority: input.diagnostic.priority,
     constraint: input.diagnostic.constraint,
     reason: input.diagnostic.reason,
-    ...(input.diagnostic.blockReason ? { blockReason: input.diagnostic.blockReason } : {}),
+    ...(input.diagnostic.blockReason
+      ? { blockReason: input.diagnostic.blockReason }
+      : {}),
     why: explainProjectionDiagnostic({
       category,
       reason: input.diagnostic.reason,
@@ -301,7 +323,9 @@ function mapProgramQualityDiagnostic(input: {
     }),
     source: input.source,
     ...(input.diagnostic.slotId ? { slotId: input.diagnostic.slotId } : {}),
-    ...(input.diagnostic.exerciseId ? { exerciseId: input.diagnostic.exerciseId } : {}),
+    ...(input.diagnostic.exerciseId
+      ? { exerciseId: input.diagnostic.exerciseId }
+      : {}),
     ...(input.diagnostic.name ? { exerciseName: input.diagnostic.name } : {}),
     ...(input.diagnostic.muscle ? { muscle: input.diagnostic.muscle } : {}),
     ...(input.diagnostic.pattern ? { pattern: input.diagnostic.pattern } : {}),
@@ -311,7 +335,7 @@ function mapProgramQualityDiagnostic(input: {
 }
 
 function mapDuplicateReuseDiagnostic(
-  diagnostic: DuplicateExerciseReuseDiagnostic
+  diagnostic: DuplicateExerciseReuseDiagnostic,
 ): MesocycleExplainProjectionDiagnosticRow {
   return {
     label: "projection diagnostics",
@@ -338,7 +362,7 @@ function mapDuplicateReuseDiagnostic(
 }
 
 function mapWeeklyObligationDiagnostic(
-  row: SlotObligationEvaluation
+  row: SlotObligationEvaluation,
 ): MesocycleExplainProjectionDiagnosticRow {
   return {
     label: "projection diagnostics",
@@ -360,7 +384,7 @@ function mapWeeklyObligationDiagnostic(
 }
 
 function buildProjectionDiagnostics(
-  diagnostics: SlotPlanProjectionDiagnostics
+  diagnostics: SlotPlanProjectionDiagnostics,
 ): MesocycleExplainProjectionDiagnostics {
   const programQuality = diagnostics?.programQuality;
   const evaluationRows =
@@ -368,24 +392,31 @@ function buildProjectionDiagnostics(
       mapProgramQualityDiagnostic({
         diagnostic,
         source: "program_quality_evaluation",
-      })
+      }),
     ) ?? [];
   const appliedRows =
     programQuality?.appliedDiagnostics.map((diagnostic) =>
       mapProgramQualityDiagnostic({
         diagnostic,
         source: "program_quality_application",
-      })
+      }),
     ) ?? [];
   const programDuplicateKeys = new Set(
     evaluationRows
       .filter((row) => row.constraint === "cross_slot_duplicate")
-      .map((row) => `${row.slotId ?? ""}:${row.exerciseId ?? ""}`)
+      .map((row) => `${row.slotId ?? ""}:${row.exerciseId ?? ""}`),
   );
   const duplicateRows = (diagnostics?.duplicateExerciseReuse ?? [])
     .map(mapDuplicateReuseDiagnostic)
-    .filter((row) => !programDuplicateKeys.has(`${row.slotId ?? ""}:${row.exerciseId ?? ""}`));
-  const weeklyObligationRows = (diagnostics?.weeklyObligations?.slotEvaluations ?? [])
+    .filter(
+      (row) =>
+        !programDuplicateKeys.has(
+          `${row.slotId ?? ""}:${row.exerciseId ?? ""}`,
+        ),
+    );
+  const weeklyObligationRows = (
+    diagnostics?.weeklyObligations?.slotEvaluations ?? []
+  )
     .filter((row) => row.shortfall > 0 || row.zeroContribution)
     .map(mapWeeklyObligationDiagnostic);
   const constraintsTriggered = [
@@ -397,7 +428,7 @@ function buildProjectionDiagnostics(
     .filter(
       (row) =>
         row.constraint === "per_exercise_efficiency" &&
-        row.reason === "soft_cap_exceeded_higher_priority_or_capacity_bound"
+        row.reason === "soft_cap_exceeded_higher_priority_or_capacity_bound",
     )
     .map((row) => ({
       ...row,
@@ -409,18 +440,32 @@ function buildProjectionDiagnostics(
         source: row.source,
       }),
     }));
-  const allRows = [...constraintsTriggered, ...appliedRows, ...softCapOverridesByP0];
+  const allRows = [
+    ...constraintsTriggered,
+    ...appliedRows,
+    ...softCapOverridesByP0,
+  ];
 
   return {
     label: "projection diagnostics",
     readOnly: true,
     affectsScoringOrGeneration: false,
     summary: {
-      setStackingPressure: allRows.filter((row) => row.category === "set_stacking_pressure").length,
-      duplicateExercisePressure: allRows.filter((row) => row.category === "duplicate_exercise_pressure").length,
-      diversityPenalties: allRows.filter((row) => row.category === "diversity_penalty").length,
-      hingeSquatBalance: allRows.filter((row) => row.category === "hinge_squat_balance").length,
-      isolationInjectionTriggers: allRows.filter((row) => row.category === "isolation_injection_trigger").length,
+      setStackingPressure: allRows.filter(
+        (row) => row.category === "set_stacking_pressure",
+      ).length,
+      duplicateExercisePressure: allRows.filter(
+        (row) => row.category === "duplicate_exercise_pressure",
+      ).length,
+      diversityPenalties: allRows.filter(
+        (row) => row.category === "diversity_penalty",
+      ).length,
+      hingeSquatBalance: allRows.filter(
+        (row) => row.category === "hinge_squat_balance",
+      ).length,
+      isolationInjectionTriggers: allRows.filter(
+        (row) => row.category === "isolation_injection_trigger",
+      ).length,
       softCapsOverriddenByP0: softCapOverridesByP0.length,
     },
     constraintsTriggered,
@@ -437,7 +482,7 @@ function buildProjectionDiagnostics(
 
 function uniqueSorted(values: string[]): string[] {
   return Array.from(
-    new Set(values.filter((value) => value.trim().length > 0))
+    new Set(values.filter((value) => value.trim().length > 0)),
   ).sort((left, right) => left.localeCompare(right));
 }
 
@@ -446,11 +491,13 @@ function roundOne(value: number): number {
 }
 
 function sumSlotStimulusByMuscle(
-  slots: ReadonlyArray<SlotCompositionSnapshot>
+  slots: ReadonlyArray<SlotCompositionSnapshot>,
 ): Map<string, number> {
   const totals = new Map<string, number>();
   for (const slot of slots) {
-    for (const [muscle, value] of Object.entries(slot.projectedEffectiveStimulusByMuscle)) {
+    for (const [muscle, value] of Object.entries(
+      slot.projectedEffectiveStimulusByMuscle,
+    )) {
       totals.set(muscle, roundOne((totals.get(muscle) ?? 0) + value));
     }
   }
@@ -458,27 +505,27 @@ function sumSlotStimulusByMuscle(
 }
 
 function formatSnapshotExercise(
-  exercise: SlotCompositionSnapshot["exercises"][number]
+  exercise: SlotCompositionSnapshot["exercises"][number],
 ): string {
   return `${exercise.exerciseName} (${exercise.setCount} sets)`;
 }
 
 function getSlotById(
   slots: ReadonlyArray<SlotCompositionSnapshot>,
-  slotId: string
+  slotId: string,
 ): SlotCompositionSnapshot | undefined {
   return slots.find((slot) => slot.slotId === slotId);
 }
 
 function getSlotMuscleStimulus(
   slot: SlotCompositionSnapshot | undefined,
-  muscle: string
+  muscle: string,
 ): number {
   return roundOne(slot?.projectedEffectiveStimulusByMuscle[muscle] ?? 0);
 }
 
 function isCalfExercise(
-  exercise: SlotCompositionSnapshot["exercises"][number]
+  exercise: SlotCompositionSnapshot["exercises"][number],
 ): boolean {
   return (
     exercise.primaryMuscles.includes("Calves") ||
@@ -487,59 +534,58 @@ function isCalfExercise(
 }
 
 function buildCalfShape(
-  slot: SlotCompositionSnapshot | undefined
+  slot: SlotCompositionSnapshot | undefined,
 ): CalvesFourFourCandidate["currentLowerAShape"] {
-  return (slot?.exercises ?? [])
-    .filter(isCalfExercise)
-    .map((exercise) => ({
-      exerciseName: exercise.exerciseName,
-      sets: exercise.setCount,
-      effectiveCalfSets: roundOne(
-        exercise.effectiveStimulusByMuscle.Calves ?? 0
-      ),
-    }));
+  return (slot?.exercises ?? []).filter(isCalfExercise).map((exercise) => ({
+    exerciseName: exercise.exerciseName,
+    sets: exercise.setCount,
+    effectiveCalfSets: roundOne(exercise.effectiveStimulusByMuscle.Calves ?? 0),
+  }));
 }
 
 function getSlotSetBudget(
   planningReality: PlanningRealityDiagnostic,
-  slotId: string
+  slotId: string,
 ): number | null {
   return (
-    planningReality.setDistributionIntents.find((intent) => intent.slotId === slotId)
-      ?.slotBudget.maxTotalSets ?? null
+    planningReality.setDistributionIntents.find(
+      (intent) => intent.slotId === slotId,
+    )?.slotBudget.maxTotalSets ?? null
   );
 }
 
 function getSlotPreferredSetBudget(
   planningReality: PlanningRealityDiagnostic,
-  slotId: string
+  slotId: string,
 ): number | null {
   return (
-    planningReality.setDistributionIntents.find((intent) => intent.slotId === slotId)
-      ?.slotBudget.preferredTotalSets ?? null
+    planningReality.setDistributionIntents.find(
+      (intent) => intent.slotId === slotId,
+    )?.slotBudget.preferredTotalSets ?? null
   );
 }
 
 function hasWeeksTwoToFourUnprojected(
-  planningReality: PlanningRealityDiagnostic
+  planningReality: PlanningRealityDiagnostic,
 ): boolean {
   const allocationWeeks =
     planningReality.slotDemandAllocationByWeek?.weeks.filter(
-      (week) => week.week >= 2 && week.week <= 4
+      (week) => week.week >= 2 && week.week <= 4,
     ) ?? [];
   const preselectionWeeks =
     planningReality.preselectionDistributionPolicyByWeek?.weeks.filter(
-      (week) => week.week >= 2 && week.week <= 4
+      (week) => week.week >= 2 && week.week <= 4,
     ) ?? [];
-  return [...allocationWeeks, ...preselectionWeeks].some((week) =>
-    week.projectionStatus.includes("not_") ||
-    week.projectionStatus.includes("missing") ||
-    week.projectionStatus.includes("unprojected")
+  return [...allocationWeeks, ...preselectionWeeks].some(
+    (week) =>
+      week.projectionStatus.includes("not_") ||
+      week.projectionStatus.includes("missing") ||
+      week.projectionStatus.includes("unprojected"),
   );
 }
 
 function slotHasHamstringsHingeAndCurl(
-  slot: SlotCompositionSnapshot | undefined
+  slot: SlotCompositionSnapshot | undefined,
 ): boolean | null {
   if (!slot) {
     return null;
@@ -547,12 +593,12 @@ function slotHasHamstringsHingeAndCurl(
   const hamstringExercises = slot.exercises.filter(
     (exercise) =>
       exercise.primaryMuscles.includes("Hamstrings") ||
-      (exercise.effectiveStimulusByMuscle.Hamstrings ?? 0) > 0
+      (exercise.effectiveStimulusByMuscle.Hamstrings ?? 0) > 0,
   );
   const hasHinge = hamstringExercises.some((exercise) =>
     exercise.movementPatterns.some((pattern) =>
-      pattern.toLowerCase().includes("hinge")
-    )
+      pattern.toLowerCase().includes("hinge"),
+    ),
   );
   const hasCurl = hamstringExercises.some((exercise) => {
     const name = exercise.exerciseName.toLowerCase();
@@ -560,7 +606,9 @@ function slotHasHamstringsHingeAndCurl(
       name.includes("curl") ||
       exercise.movementPatterns.some((pattern) => {
         const normalized = pattern.toLowerCase();
-        return normalized.includes("knee_flexion") || normalized.includes("flexion");
+        return (
+          normalized.includes("knee_flexion") || normalized.includes("flexion")
+        );
       })
     );
   });
@@ -569,23 +617,23 @@ function slotHasHamstringsHingeAndCurl(
 
 function parseRepairDependencyCount(
   consequence: string,
-  suffix: string
+  suffix: string,
 ): number {
   const match = consequence.match(
-    new RegExp(`repair_would_be_needed_here:(\\d+)_${suffix}`)
+    new RegExp(`repair_would_be_needed_here:(\\d+)_${suffix}`),
   );
   return match ? Number(match[1]) : 0;
 }
 
 function sumCalfDirectSets(
-  shape: CalvesFourFourCandidate["currentLowerAShape"]
+  shape: CalvesFourFourCandidate["currentLowerAShape"],
 ): number {
   return roundOne(shape.reduce((sum, row) => sum + row.sets, 0));
 }
 
 function buildProposedCalfShape(
   currentShape: CalvesFourFourCandidate["currentLowerAShape"],
-  slotLabel: "lower_a" | "lower_b"
+  slotLabel: "lower_a" | "lower_b",
 ): CalvesFourFourCandidate["proposedLowerAShape"] {
   if (currentShape.length === 0) {
     return [];
@@ -604,10 +652,10 @@ function buildProposedCalfShape(
 
 function hasExplicitFourSetCalfAllocation(
   planningReality: PlanningRealityDiagnostic,
-  slotId: "lower_a" | "lower_b"
+  slotId: "lower_a" | "lower_b",
 ): boolean {
   const weekOne = planningReality.slotDemandAllocationByWeek?.weeks.find(
-    (week) => week.week === 1
+    (week) => week.week === 1,
   );
   const row = weekOne?.slots
     .find((slot) => slot.slotId === slotId)
@@ -617,12 +665,14 @@ function hasExplicitFourSetCalfAllocation(
 
 function isLowerHardPrimaryExercise(
   exercise: SlotCompositionSnapshot["exercises"][number],
-  hardPrimaryMuscles: Set<string>
+  hardPrimaryMuscles: Set<string>,
 ): boolean {
   if (isCalfExercise(exercise)) {
     return false;
   }
-  if (exercise.primaryMuscles.some((muscle) => hardPrimaryMuscles.has(muscle))) {
+  if (
+    exercise.primaryMuscles.some((muscle) => hardPrimaryMuscles.has(muscle))
+  ) {
     return true;
   }
   return (
@@ -644,10 +694,17 @@ function buildLowerASafety(input: {
   const currentCalfDirectSets = sumCalfDirectSets(input.currentLowerAShape);
   const projectedTotalSets =
     currentTotalSets != null && input.lowerAProjectedCalfSets != null
-      ? roundOne(currentTotalSets - currentCalfDirectSets + input.lowerAProjectedCalfSets)
+      ? roundOne(
+          currentTotalSets -
+            currentCalfDirectSets +
+            input.lowerAProjectedCalfSets,
+        )
       : null;
   const slotSetCap = getSlotSetBudget(input.planningReality, "lower_a");
-  const preferredSetBudget = getSlotPreferredSetBudget(input.planningReality, "lower_a");
+  const preferredSetBudget = getSlotPreferredSetBudget(
+    input.planningReality,
+    "lower_a",
+  );
   const wouldExceedSlotCap =
     projectedTotalSets == null || slotSetCap == null
       ? null
@@ -656,13 +713,13 @@ function buildLowerASafety(input: {
     input.planningReality.shadowSlotDemandAllocation
       .find((slot) => slot.slotId === "lower_a")
       ?.allocatedMuscles.filter(
-        (muscle) => muscle.role === "primary" || muscle.targetStatus === "hard"
+        (muscle) => muscle.role === "primary" || muscle.targetStatus === "hard",
       )
-      .map((muscle) => muscle.muscle) ?? []
+      .map((muscle) => muscle.muscle) ?? [],
   );
   const hardPrimaryExercises =
     input.lowerA?.exercises.filter((exercise) =>
-      isLowerHardPrimaryExercise(exercise, hardPrimaryMuscles)
+      isLowerHardPrimaryExercise(exercise, hardPrimaryMuscles),
     ) ?? [];
   const displacedExerciseNames =
     wouldExceedSlotCap === true
@@ -709,9 +766,12 @@ function buildLowerASafety(input: {
 }
 
 type CalvesMaterialityEstimate = CalvesFourFourCandidate["materialityEstimate"];
-type CalvesMaterialityRemovableRow = CalvesMaterialityEstimate["removableRows"][number];
-type CalvesMaterialityPotentialNewRow = CalvesMaterialityEstimate["potentialNewRows"][number];
-type CalvesMaterialityUnknown = CalvesMaterialityEstimate["stillUnknown"][number];
+type CalvesMaterialityRemovableRow =
+  CalvesMaterialityEstimate["removableRows"][number];
+type CalvesMaterialityPotentialNewRow =
+  CalvesMaterialityEstimate["potentialNewRows"][number];
+type CalvesMaterialityUnknown =
+  CalvesMaterialityEstimate["stillUnknown"][number];
 type CalvesRepairRow = PlanningRealityDiagnostic["repairMateriality"][number];
 
 function repairDeltaFromKnownRemovals(input: {
@@ -727,7 +787,17 @@ function repairDeltaFromKnownRemovals(input: {
   return null;
 }
 
-function buildRepairRowKey(row: Pick<CalvesRepairRow, "slotId" | "muscle" | "exerciseId" | "exerciseName" | "repairMechanism" | "action">): string {
+function buildRepairRowKey(
+  row: Pick<
+    CalvesRepairRow,
+    | "slotId"
+    | "muscle"
+    | "exerciseId"
+    | "exerciseName"
+    | "repairMechanism"
+    | "action"
+  >,
+): string {
   return [
     row.slotId ?? "unknown_slot",
     row.muscle ?? "unknown_muscle",
@@ -742,7 +812,8 @@ function isCalvesRepairRow(row: CalvesRepairRow): boolean {
 }
 
 function isSupportFloorRepairRow(row: CalvesRepairRow): boolean {
-  const text = `${row.repairMechanism} ${row.source} ${row.rationale}`.toLowerCase();
+  const text =
+    `${row.repairMechanism} ${row.source} ${row.rationale}`.toLowerCase();
   return text.includes("support") || text.includes("floor");
 }
 
@@ -751,14 +822,18 @@ function isSetBumpRepairRow(row: CalvesRepairRow): boolean {
 }
 
 function isCapTrimRepairRow(row: CalvesRepairRow): boolean {
-  return row.action === "set_trimmed" || row.action === "removed" || row.rawSetDelta < 0;
+  return (
+    row.action === "set_trimmed" ||
+    row.action === "removed" ||
+    row.rawSetDelta < 0
+  );
 }
 
 function addRemovableRow(
   rows: CalvesMaterialityRemovableRow[],
   seen: Set<string>,
   key: string,
-  row: CalvesMaterialityRemovableRow
+  row: CalvesMaterialityRemovableRow,
 ): void {
   if (seen.has(key)) {
     return;
@@ -769,7 +844,7 @@ function addRemovableRow(
 
 function addPotentialNewRow(
   rows: CalvesMaterialityPotentialNewRow[],
-  row: CalvesMaterialityPotentialNewRow
+  row: CalvesMaterialityPotentialNewRow,
 ): void {
   if (
     rows.some(
@@ -777,7 +852,7 @@ function addPotentialNewRow(
         existing.category === row.category &&
         existing.slotId === row.slotId &&
         existing.muscle === row.muscle &&
-        existing.exerciseName === row.exerciseName
+        existing.exerciseName === row.exerciseName,
     )
   ) {
     return;
@@ -802,9 +877,10 @@ function buildMaterialityEstimate(input: {
     input.planningReality.summary.majorRepairCount;
   const suspiciousRepairCount =
     input.planningReality.suspiciousRepairsNotEligibleForPromotion?.length ?? 0;
-  const repairRows = input.planningReality.repairMaterialityAfterShadowAllocation.length > 0
-    ? input.planningReality.repairMaterialityAfterShadowAllocation
-    : input.planningReality.repairMateriality;
+  const repairRows =
+    input.planningReality.repairMaterialityAfterShadowAllocation.length > 0
+      ? input.planningReality.repairMaterialityAfterShadowAllocation
+      : input.planningReality.repairMateriality;
   const calfRepairRows = repairRows.filter(isCalvesRepairRow);
   const supportFloorRows = calfRepairRows.filter(isSupportFloorRepairRow);
   const setBumpRows = calfRepairRows.filter(isSetBumpRepairRow);
@@ -854,16 +930,14 @@ function buildMaterialityEstimate(input: {
       row.duplicateType === "same_session_variant" &&
       row.duplicatedInSlots.includes("lower_b") &&
       (row.primaryMuscles.includes("Calves") ||
-        (row.exerciseClass ?? "").toLowerCase().includes("calf"))
+        (row.exerciseClass ?? "").toLowerCase().includes("calf")),
   );
   if (input.wouldRemoveLowerBSameSessionCalfDuplicate === true) {
     const duplicateNames =
       lowerBDuplicateRows.length > 0
         ? lowerBDuplicateRows.map((row) => row.exerciseName)
         : [
-            input.currentLowerBShape
-              .map((row) => row.exerciseName)
-              .join(" + "),
+            input.currentLowerBShape.map((row) => row.exerciseName).join(" + "),
           ].filter((name) => name.length > 0);
     for (const exerciseName of duplicateNames) {
       addRemovableRow(
@@ -875,8 +949,9 @@ function buildMaterialityEstimate(input: {
           slotId: "lower_b",
           muscle: "Calves",
           exerciseName,
-          reason: "lower_b_single_calf_identity_four_set_candidate_removes_same_session_variant_duplicate",
-        }
+          reason:
+            "lower_b_single_calf_identity_four_set_candidate_removes_same_session_variant_duplicate",
+        },
       );
     }
   }
@@ -890,13 +965,18 @@ function buildMaterialityEstimate(input: {
     }
     if (row.materiality === "moderate" || row.materiality === "major") {
       materialRemovableKeys.add(repairKey);
-      addRemovableRow(removableRows, removableRowKeys, `material|${repairKey}`, {
-        category: "material_repair",
-        slotId: row.slotId ?? "unknown",
-        muscle: row.muscle ?? "unknown",
-        exerciseName: row.exerciseName,
-        reason: row.rationale || row.repairMechanism,
-      });
+      addRemovableRow(
+        removableRows,
+        removableRowKeys,
+        `material|${repairKey}`,
+        {
+          category: "material_repair",
+          slotId: row.slotId ?? "unknown",
+          muscle: row.muscle ?? "unknown",
+          exerciseName: row.exerciseName,
+          reason: row.rationale || row.repairMechanism,
+        },
+      );
     }
     if (row.materiality === "major") {
       majorRemovableKeys.add(repairKey);
@@ -912,7 +992,7 @@ function buildMaterialityEstimate(input: {
 
   const suspiciousCalfRows =
     input.planningReality.suspiciousRepairsNotEligibleForPromotion?.filter(
-      (row) => row.muscle === "Calves"
+      (row) => row.muscle === "Calves",
     ) ?? [];
   for (const row of suspiciousCalfRows) {
     addRemovableRow(
@@ -925,7 +1005,7 @@ function buildMaterialityEstimate(input: {
         muscle: row.muscle,
         exerciseName: row.exerciseName,
         reason: row.reason,
-      }
+      },
     );
   }
 
@@ -961,7 +1041,10 @@ function buildMaterialityEstimate(input: {
       slotId: "lower_a",
       muscle: "hard_primary",
       exerciseName: input.lowerASafety.affectedExercises[0] ?? null,
-      risk: input.lowerASafety.wouldDisplaceHardPrimary === true ? "high" : "unknown",
+      risk:
+        input.lowerASafety.wouldDisplaceHardPrimary === true
+          ? "high"
+          : "unknown",
       reason:
         input.lowerASafety.wouldDisplaceHardPrimary === true
           ? "simulated Lower A calf sets would exceed cap and displace a hard primary exercise"
@@ -969,11 +1052,15 @@ function buildMaterialityEstimate(input: {
     });
   }
 
-  const weeksTwoToFourUnprojected = hasWeeksTwoToFourUnprojected(input.planningReality);
+  const weeksTwoToFourUnprojected = hasWeeksTwoToFourUnprojected(
+    input.planningReality,
+  );
   const fullRepairReclassificationRequired =
-    (materialRepairCount > 0 && materialRemovableKeys.size < materialRepairCount) ||
+    (materialRepairCount > 0 &&
+      materialRemovableKeys.size < materialRepairCount) ||
     (majorRepairCount > 0 && majorRemovableKeys.size < majorRepairCount) ||
-    (suspiciousRepairCount > 0 && suspiciousCalfRows.length < suspiciousRepairCount) ||
+    (suspiciousRepairCount > 0 &&
+      suspiciousCalfRows.length < suspiciousRepairCount) ||
     potentialNewRows.some((row) => row.risk === "unknown");
   const stillUnknown = new Set<CalvesMaterialityUnknown>();
   if (fullRepairReclassificationRequired) {
@@ -985,11 +1072,10 @@ function buildMaterialityEstimate(input: {
   }
   if (
     input.planningReality.accumulationWeekProjection?.crossWeekWarnings?.some(
-      (warning) =>
-        warning.code === "DELOAD_PRESERVATION_STILL_UNPROJECTED"
+      (warning) => warning.code === "DELOAD_PRESERVATION_STILL_UNPROJECTED",
     ) ||
     input.planningReality.slotDemandAllocationByWeek?.crossWeekAllocationWarnings?.some(
-      (warning) => warning.code === "DELOAD_SLOT_ALLOCATION_UNPROJECTED"
+      (warning) => warning.code === "DELOAD_SLOT_ALLOCATION_UNPROJECTED",
     )
   ) {
     stillUnknown.add("deload_preservation_unknown");
@@ -1014,14 +1100,13 @@ function buildMaterialityEstimate(input: {
     input.lowerASafety.wouldDisplaceHardPrimary === true ||
     hasPositiveDelta;
   const hasExactRepairUnknown = stillUnknown.has(
-    "exact_repair_reclassification_requires_full_generation"
+    "exact_repair_reclassification_requires_full_generation",
   );
-  const status: CalvesMaterialityEstimate["status"] =
-    wouldWorsen
-      ? "worsens"
-      : hasExactRepairUnknown && hasReducingEvidence
-        ? "partial"
-        : hasUnknownDelta
+  const status: CalvesMaterialityEstimate["status"] = wouldWorsen
+    ? "worsens"
+    : hasExactRepairUnknown && hasReducingEvidence
+      ? "partial"
+      : hasUnknownDelta
         ? "unknown"
         : hasReducingEvidence
           ? "improves"
@@ -1048,13 +1133,14 @@ function buildMaterialityEstimate(input: {
     expectedMaterialRepairDelta,
     expectedMajorRepairDelta,
     expectedSuspiciousRepairDelta,
-    wouldReduceSupportFloorClosureRows: input.wouldReduceSupportFloorClosureRows,
+    wouldReduceSupportFloorClosureRows:
+      input.wouldReduceSupportFloorClosureRows,
     wouldReduceSetBumps: input.wouldReduceSetBumps,
     wouldIncreaseCapTrimRows: input.wouldIncreaseCapTrimRows,
     removableRows: removableRows.slice(0, 12),
     potentialNewRows: potentialNewRows.slice(0, 8),
     stillUnknown: Array.from(stillUnknown).sort((left, right) =>
-      left.localeCompare(right)
+      left.localeCompare(right),
     ),
     evidence,
   };
@@ -1069,64 +1155,91 @@ function buildCalvesFourFourCandidate(input: {
   slotComparisons: MesocycleExplainPlannerOnlyDryRun["slotComparisons"];
   repairDependencies: MesocycleExplainPlannerOnlyDryRun["repairDependencies"];
 }): CalvesFourFourCandidate {
-  const lowerA = getSlotById(input.planningReality.initialSlotComposition, "lower_a");
-  const lowerB = getSlotById(input.planningReality.initialSlotComposition, "lower_b");
+  const lowerA = getSlotById(
+    input.planningReality.initialSlotComposition,
+    "lower_a",
+  );
+  const lowerB = getSlotById(
+    input.planningReality.initialSlotComposition,
+    "lower_b",
+  );
   const overrideLowerA = input.overridePlanningReality
-    ? getSlotById(input.overridePlanningReality.initialSlotComposition, "lower_a")
+    ? getSlotById(
+        input.overridePlanningReality.initialSlotComposition,
+        "lower_a",
+      )
     : undefined;
   const overrideLowerB = input.overridePlanningReality
-    ? getSlotById(input.overridePlanningReality.initialSlotComposition, "lower_b")
+    ? getSlotById(
+        input.overridePlanningReality.initialSlotComposition,
+        "lower_b",
+      )
     : undefined;
   const currentLowerAShape = buildCalfShape(lowerA);
   const currentLowerBShape = buildCalfShape(lowerB);
   const overrideLowerBShape = buildCalfShape(overrideLowerB);
-  const proposedLowerAShape = buildProposedCalfShape(currentLowerAShape, "lower_a");
-  const proposedLowerBShape = buildProposedCalfShape(currentLowerBShape, "lower_b");
-  const lowerAProjectedCalfSets =
-    overrideLowerA
-      ? getSlotMuscleStimulus(overrideLowerA, "Calves")
-      : proposedLowerAShape.length > 0
-        ? proposedLowerAShape[0].proposedSets
-        : null;
-  const lowerBProjectedCalfSets =
-    overrideLowerB
-      ? getSlotMuscleStimulus(overrideLowerB, "Calves")
-      : proposedLowerBShape.length > 0
-        ? proposedLowerBShape[0].proposedSets
-        : null;
+  const proposedLowerAShape = buildProposedCalfShape(
+    currentLowerAShape,
+    "lower_a",
+  );
+  const proposedLowerBShape = buildProposedCalfShape(
+    currentLowerBShape,
+    "lower_b",
+  );
+  const lowerAProjectedCalfSets = overrideLowerA
+    ? getSlotMuscleStimulus(overrideLowerA, "Calves")
+    : proposedLowerAShape.length > 0
+      ? proposedLowerAShape[0].proposedSets
+      : null;
+  const lowerBProjectedCalfSets = overrideLowerB
+    ? getSlotMuscleStimulus(overrideLowerB, "Calves")
+    : proposedLowerBShape.length > 0
+      ? proposedLowerBShape[0].proposedSets
+      : null;
   const weeklyProjectedCalfEffectiveSets =
     lowerAProjectedCalfSets != null && lowerBProjectedCalfSets != null
       ? roundOne(lowerAProjectedCalfSets + lowerBProjectedCalfSets)
       : null;
   const currentLowerAEffective = roundOne(
-    currentLowerAShape.reduce((sum, row) => sum + row.effectiveCalfSets, 0)
+    currentLowerAShape.reduce((sum, row) => sum + row.effectiveCalfSets, 0),
   );
   const currentLowerBEffective = roundOne(
-    currentLowerBShape.reduce((sum, row) => sum + row.effectiveCalfSets, 0)
+    currentLowerBShape.reduce((sum, row) => sum + row.effectiveCalfSets, 0),
   );
-  const currentWeeklyEffective = roundOne(currentLowerAEffective + currentLowerBEffective);
+  const currentWeeklyEffective = roundOne(
+    currentLowerAEffective + currentLowerBEffective,
+  );
   const lowerACalfUnresolved =
     input.slotComparisons
       .find((slot) => slot.slotId === "lower_a")
       ?.unresolvedDemand.some(
         (row) =>
-          row.includes("Calves") && row.includes("repair_would_be_needed_here")
+          row.includes("Calves") && row.includes("repair_would_be_needed_here"),
       ) ?? false;
   const lowerBDuplicate =
     currentLowerBShape.length > 1 ||
     (input.slotComparisons
       .find((slot) => slot.slotId === "lower_b")
-      ?.duplicateViolations.some((row) => row.includes("Calf")) ?? false);
+      ?.duplicateViolations.some((row) => row.includes("Calf")) ??
+      false);
   const lowerASetDelta =
-    lowerAProjectedCalfSets == null ? null : lowerAProjectedCalfSets - currentLowerAEffective;
+    lowerAProjectedCalfSets == null
+      ? null
+      : lowerAProjectedCalfSets - currentLowerAEffective;
   const lowerBSetDelta =
-    lowerBProjectedCalfSets == null ? null : lowerBProjectedCalfSets - currentLowerBEffective;
+    lowerBProjectedCalfSets == null
+      ? null
+      : lowerBProjectedCalfSets - currentLowerBEffective;
   const lowerACap = getSlotSetBudget(input.planningReality, "lower_a");
   const lowerBCap = getSlotSetBudget(input.planningReality, "lower_b");
   const lowerATotalAfter =
-    lowerA && lowerASetDelta != null ? roundOne(lowerA.totalSets + lowerASetDelta) : null;
+    lowerA && lowerASetDelta != null
+      ? roundOne(lowerA.totalSets + lowerASetDelta)
+      : null;
   const lowerBTotalAfter =
-    lowerB && lowerBSetDelta != null ? roundOne(lowerB.totalSets + lowerBSetDelta) : null;
+    lowerB && lowerBSetDelta != null
+      ? roundOne(lowerB.totalSets + lowerBSetDelta)
+      : null;
   let wouldIncreaseCapTrimRows =
     lowerATotalAfter == null || lowerBTotalAfter == null
       ? null
@@ -1134,25 +1247,33 @@ function buildCalvesFourFourCandidate(input: {
         ? null
         : lowerATotalAfter > lowerACap || lowerBTotalAfter > lowerBCap;
   const repairedLowerB =
-    overrideLowerB ?? getSlotById(input.planningReality.finalSlotPlan, "lower_b") ?? lowerB;
-  const preservesLowerBHingeCurlRoute = slotHasHamstringsHingeAndCurl(repairedLowerB);
+    overrideLowerB ??
+    getSlotById(input.planningReality.finalSlotPlan, "lower_b") ??
+    lowerB;
+  const preservesLowerBHingeCurlRoute =
+    slotHasHamstringsHingeAndCurl(repairedLowerB);
   const supportRows = input.repairDependencies.find(
-    (dependency) => dependency.path === "support-floor closure"
+    (dependency) => dependency.path === "support-floor closure",
   );
   const setBumpRows = input.repairDependencies.find(
-    (dependency) => dependency.path === "set bumping"
+    (dependency) => dependency.path === "set bumping",
   );
   const supportFloorClosureCount = supportRows
-    ? parseRepairDependencyCount(supportRows.consequenceWithoutRepair, "support_rows")
+    ? parseRepairDependencyCount(
+        supportRows.consequenceWithoutRepair,
+        "support_rows",
+      )
     : 0;
   const setBumpCount = setBumpRows
-    ? parseRepairDependencyCount(setBumpRows.consequenceWithoutRepair, "set_bumps")
+    ? parseRepairDependencyCount(
+        setBumpRows.consequenceWithoutRepair,
+        "set_bumps",
+      )
     : 0;
-  const wouldReduceSupportFloorClosureRows =
-    input.projectionComparisons
-      ? input.projectionComparisons.deltas.overrideVsBaselineRepaired
-          .supportFloorClosureRowCount < 0
-      : weeklyProjectedCalfEffectiveSets == null
+  const wouldReduceSupportFloorClosureRows = input.projectionComparisons
+    ? input.projectionComparisons.deltas.overrideVsBaselineRepaired
+        .supportFloorClosureRowCount < 0
+    : weeklyProjectedCalfEffectiveSets == null
       ? null
       : lowerACalfUnresolved || supportFloorClosureCount > 0
         ? (lowerACalfUnresolved &&
@@ -1160,11 +1281,10 @@ function buildCalvesFourFourCandidate(input: {
             lowerAProjectedCalfSets > currentLowerAEffective) ||
           weeklyProjectedCalfEffectiveSets >= 8
         : false;
-  const wouldReduceSetBumps =
-    input.projectionComparisons
-      ? input.projectionComparisons.deltas.overrideVsBaselineRepaired
-          .setBumpRowCount < 0
-      : weeklyProjectedCalfEffectiveSets == null
+  const wouldReduceSetBumps = input.projectionComparisons
+    ? input.projectionComparisons.deltas.overrideVsBaselineRepaired
+        .setBumpRowCount < 0
+    : weeklyProjectedCalfEffectiveSets == null
       ? null
       : setBumpCount > 0
         ? weeklyProjectedCalfEffectiveSets <= currentWeeklyEffective
@@ -1193,7 +1313,8 @@ function buildCalvesFourFourCandidate(input: {
   if (input.projectionComparisons) {
     const delta = input.projectionComparisons.deltas.overrideVsBaselineRepaired;
     const stillUnknown = materialityEstimate.stillUnknown.filter(
-      (entry) => entry !== "exact_repair_reclassification_requires_full_generation"
+      (entry) =>
+        entry !== "exact_repair_reclassification_requires_full_generation",
     );
     const hasWorseningDelta =
       delta.materialRepairCount > 0 ||
@@ -1215,8 +1336,7 @@ function buildCalvesFourFourCandidate(input: {
       : hasImprovingDelta
         ? "improves"
         : "flat";
-    materialityEstimate.expectedMaterialRepairDelta =
-      delta.materialRepairCount;
+    materialityEstimate.expectedMaterialRepairDelta = delta.materialRepairCount;
     materialityEstimate.expectedMajorRepairDelta = delta.majorRepairCount;
     materialityEstimate.expectedSuspiciousRepairDelta =
       delta.suspiciousRepairCount;
@@ -1228,7 +1348,8 @@ function buildCalvesFourFourCandidate(input: {
     materialityEstimate.stillUnknown = stillUnknown;
     materialityEstimate.evidence = uniqueSorted([
       ...materialityEstimate.evidence.filter(
-        (row) => row !== "exact_repair_counter_delta_unknown_without_reprojection"
+        (row) =>
+          row !== "exact_repair_counter_delta_unknown_without_reprojection",
       ),
       `actual_materialRepairCount_delta:${delta.materialRepairCount}`,
       `actual_majorRepairCount_delta:${delta.majorRepairCount}`,
@@ -1239,8 +1360,12 @@ function buildCalvesFourFourCandidate(input: {
       `actual_capTrimRowCount_delta:${delta.capTrimRowCount}`,
     ]);
   }
-  const weeksTwoToFourUnprojected = hasWeeksTwoToFourUnprojected(input.planningReality);
-  const blockedReasons = new Set<CalvesFourFourCandidate["blockedReasons"][number]>();
+  const weeksTwoToFourUnprojected = hasWeeksTwoToFourUnprojected(
+    input.planningReality,
+  );
+  const blockedReasons = new Set<
+    CalvesFourFourCandidate["blockedReasons"][number]
+  >();
 
   if (weeksTwoToFourUnprojected) {
     blockedReasons.add("weeks_2_to_4_unprojected");
@@ -1272,7 +1397,10 @@ function buildCalvesFourFourCandidate(input: {
   if (wouldIncreaseCapTrimRows == null) {
     blockedReasons.add("cap_trim_risk_unknown");
   }
-  if (materialityEstimate.status === "unknown" || materialityEstimate.status === "partial") {
+  if (
+    materialityEstimate.status === "unknown" ||
+    materialityEstimate.status === "partial"
+  ) {
     blockedReasons.add("materiality_delta_unknown");
   }
 
@@ -1280,7 +1408,8 @@ function buildCalvesFourFourCandidate(input: {
     lowerACalfUnresolved &&
     lowerAProjectedCalfSets != null &&
     lowerAProjectedCalfSets > currentLowerAEffective;
-  const duplicateBecomesAvoidable = lowerBDuplicate && currentLowerBShape.length > 1;
+  const duplicateBecomesAvoidable =
+    lowerBDuplicate && currentLowerBShape.length > 1;
   const expectedDeltasNonPositive =
     materialityEstimate.expectedMaterialRepairDelta != null &&
     materialityEstimate.expectedMajorRepairDelta != null &&
@@ -1290,17 +1419,16 @@ function buildCalvesFourFourCandidate(input: {
     materialityEstimate.expectedSuspiciousRepairDelta <= 0;
   const weekOneShapeSafe =
     lowerASafety.status === "pass" &&
-    (materialityEstimate.status === "improves" || materialityEstimate.status === "flat") &&
+    (materialityEstimate.status === "improves" ||
+      materialityEstimate.status === "flat") &&
     expectedDeltasNonPositive &&
     wouldRemoveLowerBSameSessionCalfDuplicate === true &&
     weeklyProjectedCalfEffectiveSets != null &&
     weeklyProjectedCalfEffectiveSets >= 8 &&
     preservesLowerBHingeCurlRoute === true &&
     lowerASafety.wouldDisplaceHardPrimary === false;
-  const overrideSnapshot =
-    input.projectionComparisons?.plannerOnlyWithOverride;
-  const baselineSnapshot =
-    input.projectionComparisons?.baselineRepaired;
+  const overrideSnapshot = input.projectionComparisons?.plannerOnlyWithOverride;
+  const baselineSnapshot = input.projectionComparisons?.baselineRepaired;
   const hardPrimaryTargetsMet =
     !overrideSnapshot ||
     input.planningReality.shadowWeeklyDemand
@@ -1310,19 +1438,24 @@ function buildCalvesFourFourCandidate(input: {
         if (minimum == null) {
           return true;
         }
-        return (overrideSnapshot.weeklyMuscleTotals[row.muscle] ?? 0) >= minimum;
+        return (
+          (overrideSnapshot.weeklyMuscleTotals[row.muscle] ?? 0) >= minimum
+        );
       });
   const overrideMetricsSafe =
     !overrideSnapshot ||
     !baselineSnapshot ||
-    (overrideSnapshot.materialRepairCount <= baselineSnapshot.materialRepairCount &&
+    (overrideSnapshot.materialRepairCount <=
+      baselineSnapshot.materialRepairCount &&
       overrideSnapshot.majorRepairCount <= baselineSnapshot.majorRepairCount &&
-      overrideSnapshot.suspiciousRepairCount <= baselineSnapshot.suspiciousRepairCount &&
+      overrideSnapshot.suspiciousRepairCount <=
+        baselineSnapshot.suspiciousRepairCount &&
       overrideSnapshot.highExerciseConcentrationCount <=
         baselineSnapshot.highExerciseConcentrationCount &&
       overrideSnapshot.weakPreselectionConsumptionCount === 0 &&
       overrideSnapshot.forbiddenFinalPrimaryViolationCount === 0 &&
-      overrideSnapshot.keyAcceptance.fail <= baselineSnapshot.keyAcceptance.fail &&
+      overrideSnapshot.keyAcceptance.fail <=
+        baselineSnapshot.keyAcceptance.fail &&
       hardPrimaryTargetsMet);
   const gatePasses =
     calfDemandDecreases &&
@@ -1333,32 +1466,31 @@ function buildCalvesFourFourCandidate(input: {
     wouldReduceSetBumps !== null &&
     wouldIncreaseCapTrimRows === false &&
     blockedReasons.size === 0;
-  const status: CalvesFourFourCandidate["status"] =
-    gatePasses
-      ? "pass"
-      : blockedReasons.size > 0
-        ? "blocked"
-        : !calfDemandDecreases || !duplicateBecomesAvoidable
-          ? "fail"
-          : "ambiguous";
+  const status: CalvesFourFourCandidate["status"] = gatePasses
+    ? "pass"
+    : blockedReasons.size > 0
+      ? "blocked"
+      : !calfDemandDecreases || !duplicateBecomesAvoidable
+        ? "fail"
+        : "ambiguous";
   const hardDoNotTrial =
     blockedReasons.has("requires_specialization_cap_override") ||
     blockedReasons.has("would_risk_lower_b_hamstrings_route");
-  const recommendation: CalvesFourFourCandidate["recommendation"] =
-    gatePasses
-      ? "safe_to_trial_behavior"
-      : hardDoNotTrial
-        ? "do_not_trial_behavior"
-        : "needs_more_projection";
-  const policyRemainingBlockers = Array.from(blockedReasons).sort((left, right) =>
-    left.localeCompare(right)
+  const recommendation: CalvesFourFourCandidate["recommendation"] = gatePasses
+    ? "safe_to_trial_behavior"
+    : hardDoNotTrial
+      ? "do_not_trial_behavior"
+      : "needs_more_projection";
+  const policyRemainingBlockers = Array.from(blockedReasons).sort(
+    (left, right) => left.localeCompare(right),
   );
   const behaviorReadiness: CalvesFourFourCandidate["policyReadiness"]["behaviorReadiness"] =
     lowerASafety.status !== "pass"
       ? "blocked_by_lower_a_safety"
       : materialityEstimate.status === "worsens"
         ? "blocked_by_materiality_risk"
-        : materialityEstimate.status === "unknown" || materialityEstimate.status === "partial"
+        : materialityEstimate.status === "unknown" ||
+            materialityEstimate.status === "partial"
           ? "needs_more_projection"
           : weekOneShapeSafe && !weeksTwoToFourUnprojected
             ? "safe_to_trial_behavior"
@@ -1416,15 +1548,17 @@ function buildCalvesFourFourCandidate(input: {
 }
 
 function buildPlannerOnlyWeeklyMuscleComparison(
-  planningReality: PlanningRealityDiagnostic
+  planningReality: PlanningRealityDiagnostic,
 ): MesocycleExplainPlannerOnlyDryRun["weeklyMuscleComparison"] {
   const repairedTotals = sumSlotStimulusByMuscle(planningReality.finalSlotPlan);
-  const plannerTotals = sumSlotStimulusByMuscle(planningReality.initialSlotComposition);
+  const plannerTotals = sumSlotStimulusByMuscle(
+    planningReality.initialSlotComposition,
+  );
   const targetByMuscle = new Map(
-    planningReality.shadowWeeklyDemand.map((row) => [row.muscle, row])
+    planningReality.shadowWeeklyDemand.map((row) => [row.muscle, row]),
   );
   const fallbackTargetByMuscle = new Map(
-    planningReality.weeklyMuscleDemand.map((row) => [row.muscle, row])
+    planningReality.weeklyMuscleDemand.map((row) => [row.muscle, row]),
   );
   const muscles = uniqueSorted([
     ...Array.from(repairedTotals.keys()),
@@ -1439,7 +1573,8 @@ function buildPlannerOnlyWeeklyMuscleComparison(
     const target = targetByMuscle.get(muscle);
     const fallback = fallbackTargetByMuscle.get(muscle);
     const min = target?.minEffectiveSets ?? fallback?.mev ?? null;
-    const preferred = target?.preferredEffectiveSets ?? fallback?.preferredTarget ?? null;
+    const preferred =
+      target?.preferredEffectiveSets ?? fallback?.preferredTarget ?? null;
     const max = target?.maxEffectiveSets ?? fallback?.mav ?? null;
     const targetStatus =
       plannerOnlyEffectiveSets == null || (min == null && max == null)
@@ -1468,7 +1603,7 @@ function buildPlannerOnlyWeeklyMuscleComparison(
 
 function buildPlannerOnlyDuplicateViolations(
   planningReality: PlanningRealityDiagnostic,
-  slotId: string
+  slotId: string,
 ): string[] {
   const duplicateRows =
     planningReality.duplicateContinuityJustification?.duplicates ?? [];
@@ -1479,53 +1614,59 @@ function buildPlannerOnlyDuplicateViolations(
         row.justification === "unjustified" ||
         row.justification === "unknown" ||
         row.compatibleAlternativeExists === true ||
-        row.risk === "high"
+        row.risk === "high",
     )
     .map(
       (row) =>
-        `${row.exerciseName}: duplicate_${row.duplicateType}:justification_${row.justification}:risk_${row.risk}`
+        `${row.exerciseName}: duplicate_${row.duplicateType}:justification_${row.justification}:risk_${row.risk}`,
     );
 }
 
 function buildPlannerOnlySetDistributionViolations(
   planningReality: PlanningRealityDiagnostic,
-  slot: SlotCompositionSnapshot | undefined
+  slot: SlotCompositionSnapshot | undefined,
 ): string[] {
   if (!slot) {
     return [];
   }
   const policies = planningReality.setDistributionIntents.filter(
-    (intent) => intent.slotId === slot.slotId
+    (intent) => intent.slotId === slot.slotId,
   );
   const policyByMuscle = new Map(
     policies.flatMap((intent) =>
-      intent.musclePolicies.map((policy) => [
-        `${intent.slotId}:${policy.muscle}`,
-        policy,
-      ] as const)
-    )
+      intent.musclePolicies.map(
+        (policy) => [`${intent.slotId}:${policy.muscle}`, policy] as const,
+      ),
+    ),
   );
   const totals = sumSlotStimulusByMuscle([slot]);
   const violations: string[] = [];
 
   for (const exercise of slot.exercises) {
     if (exercise.setCount > 5) {
-      violations.push(`${exercise.exerciseName}:set_count_gt_5:${exercise.setCount}`);
+      violations.push(
+        `${exercise.exerciseName}:set_count_gt_5:${exercise.setCount}`,
+      );
     }
-    for (const [muscle, value] of Object.entries(exercise.effectiveStimulusByMuscle)) {
+    for (const [muscle, value] of Object.entries(
+      exercise.effectiveStimulusByMuscle,
+    )) {
       const total = totals.get(muscle) ?? 0;
       if (total <= 0 || value <= 0) {
         continue;
       }
       const policy = policyByMuscle.get(`${slot.slotId}:${muscle}`);
       const share = value / total;
-      if (policy?.maxSingleExerciseShare != null && share > policy.maxSingleExerciseShare) {
+      if (
+        policy?.maxSingleExerciseShare != null &&
+        share > policy.maxSingleExerciseShare
+      ) {
         violations.push(
-          `${exercise.exerciseName}:${muscle}:single_exercise_share_${roundOne(share * 100)}%_gt_${roundOne(policy.maxSingleExerciseShare * 100)}%`
+          `${exercise.exerciseName}:${muscle}:single_exercise_share_${roundOne(share * 100)}%_gt_${roundOne(policy.maxSingleExerciseShare * 100)}%`,
         );
       } else if (share > 0.6) {
         violations.push(
-          `${exercise.exerciseName}:${muscle}:single_exercise_share_${roundOne(share * 100)}%`
+          `${exercise.exerciseName}:${muscle}:single_exercise_share_${roundOne(share * 100)}%`,
         );
       }
     }
@@ -1540,7 +1681,7 @@ function buildPlannerOnlySetDistributionViolations(
 }
 
 function buildPlannerOnlySlotComparisons(
-  planningReality: PlanningRealityDiagnostic
+  planningReality: PlanningRealityDiagnostic,
 ): MesocycleExplainPlannerOnlyDryRun["slotComparisons"] {
   const slotIds = uniqueSorted([
     ...planningReality.finalSlotPlan.map((slot) => slot.slotId),
@@ -1548,7 +1689,10 @@ function buildPlannerOnlySlotComparisons(
     ...planningReality.shadowSlotDemandAllocation.map((slot) => slot.slotId),
   ]);
   const allocationDeltaBySlot = new Map(
-    planningReality.allocationVsInitialDelta.map((delta) => [delta.slotId, delta])
+    planningReality.allocationVsInitialDelta.map((delta) => [
+      delta.slotId,
+      delta,
+    ]),
   );
   const unresolvedCausesBySlot = new Map<string, string[]>();
   for (const row of planningReality.exerciseClassUnresolvedCauses ?? []) {
@@ -1561,14 +1705,17 @@ function buildPlannerOnlySlotComparisons(
     }
     const existing = unresolvedCausesBySlot.get(row.slotId) ?? [];
     existing.push(
-      `${row.muscle}:${row.initialAlignment}:${row.recommendedOwner}:${row.behaviorReadiness}`
+      `${row.muscle}:${row.initialAlignment}:${row.recommendedOwner}:${row.behaviorReadiness}`,
     );
     unresolvedCausesBySlot.set(row.slotId, existing);
   }
 
   return slotIds.map((slotId) => {
     const repaired = getSlotById(planningReality.finalSlotPlan, slotId);
-    const plannerOnly = getSlotById(planningReality.initialSlotComposition, slotId);
+    const plannerOnly = getSlotById(
+      planningReality.initialSlotComposition,
+      slotId,
+    );
     const allocationDelta = allocationDeltaBySlot.get(slotId);
     const unresolvedDemand = uniqueSorted([
       ...(allocationDelta?.underAllocatedMuscles ?? []).map((row) => {
@@ -1579,11 +1726,11 @@ function buildPlannerOnlySlotComparisons(
       ...(unresolvedCausesBySlot.get(slotId) ?? []),
     ]);
     const duplicateViolations = uniqueSorted(
-      buildPlannerOnlyDuplicateViolations(planningReality, slotId)
+      buildPlannerOnlyDuplicateViolations(planningReality, slotId),
     );
     const setDistributionViolations = buildPlannerOnlySetDistributionViolations(
       planningReality,
-      plannerOnly
+      plannerOnly,
     );
     const laneStatus =
       duplicateViolations.length > 0 || setDistributionViolations.length > 0
@@ -1597,7 +1744,8 @@ function buildPlannerOnlySlotComparisons(
     return {
       slotId,
       repairedExercises: repaired?.exercises.map(formatSnapshotExercise) ?? [],
-      plannerOnlyExercises: plannerOnly?.exercises.map(formatSnapshotExercise) ?? [],
+      plannerOnlyExercises:
+        plannerOnly?.exercises.map(formatSnapshotExercise) ?? [],
       laneStatus,
       unresolvedDemand,
       duplicateViolations,
@@ -1608,21 +1756,21 @@ function buildPlannerOnlySlotComparisons(
 
 function statusFromBoolean(
   passed: boolean,
-  partial = false
+  partial = false,
 ): "pass" | "fail" | "partial" {
   return passed ? "pass" : partial ? "partial" : "fail";
 }
 
 function buildPlannerOnlyAcceptanceChecks(
   planningReality: PlanningRealityDiagnostic,
-  weeklyMuscleComparison: MesocycleExplainPlannerOnlyDryRun["weeklyMuscleComparison"]
+  weeklyMuscleComparison: MesocycleExplainPlannerOnlyDryRun["weeklyMuscleComparison"],
 ): MesocycleExplainPlannerOnlyDryRun["acceptanceChecks"] {
   const plannerSlots = planningReality.initialSlotComposition;
   const plannerExercises = plannerSlots.flatMap((slot) =>
-    slot.exercises.map((exercise) => ({ slot, exercise }))
+    slot.exercises.map((exercise) => ({ slot, exercise })),
   );
   const primaryRows = planningReality.shadowWeeklyDemand.filter(
-    (row) => row.priority === "primary"
+    (row) => row.priority === "primary",
   );
   const primaryBelowMinimum = primaryRows.filter((row) => {
     const total =
@@ -1633,15 +1781,17 @@ function buildPlannerOnlyAcceptanceChecks(
   const chestUpperExposures = plannerSlots.filter(
     (slot) =>
       slot.intent.toLowerCase() === "upper" &&
-      getSlotMuscleStimulus(slot, "Chest") > 0
+      getSlotMuscleStimulus(slot, "Chest") > 0,
   );
   const hamstringExercises = plannerExercises.filter(
     ({ exercise }) =>
       (exercise.effectiveStimulusByMuscle["Hamstrings"] ?? 0) > 0 ||
-      exercise.primaryMuscles.includes("Hamstrings")
+      exercise.primaryMuscles.includes("Hamstrings"),
   );
   const hasHamstringHinge = hamstringExercises.some(({ exercise }) =>
-    exercise.movementPatterns.some((pattern) => pattern.toLowerCase().includes("hinge"))
+    exercise.movementPatterns.some((pattern) =>
+      pattern.toLowerCase().includes("hinge"),
+    ),
   );
   const hasHamstringCurl = hamstringExercises.some(({ exercise }) => {
     const name = exercise.exerciseName.toLowerCase();
@@ -1649,15 +1799,21 @@ function buildPlannerOnlyAcceptanceChecks(
       name.includes("curl") ||
       exercise.movementPatterns.some((pattern) => {
         const normalized = pattern.toLowerCase();
-        return normalized.includes("knee_flexion") || normalized.includes("flexion");
+        return (
+          normalized.includes("knee_flexion") || normalized.includes("flexion")
+        );
       })
     );
   });
   const sideDeltDirect = plannerExercises.filter(({ exercise }) =>
-    exercise.primaryMuscles.includes("Side Delts")
+    exercise.primaryMuscles.includes("Side Delts"),
   );
-  const lowerSlots = plannerSlots.filter((slot) => slot.intent.toLowerCase() === "lower");
-  const calfLowerSlots = lowerSlots.filter((slot) => getSlotMuscleStimulus(slot, "Calves") > 0);
+  const lowerSlots = plannerSlots.filter(
+    (slot) => slot.intent.toLowerCase() === "lower",
+  );
+  const calfLowerSlots = lowerSlots.filter(
+    (slot) => getSlotMuscleStimulus(slot, "Calves") > 0,
+  );
   const forbiddenBySlot = new Map<string, Set<string>>();
   for (const intent of planningReality.slotPrescriptionIntents) {
     for (const prescription of intent.musclePrescriptions) {
@@ -1673,12 +1829,14 @@ function buildPlannerOnlyAcceptanceChecks(
     }
   }
   const forbiddenPrimary = plannerExercises.filter(({ slot, exercise }) =>
-    exercise.primaryMuscles.some((muscle) => forbiddenBySlot.get(slot.slotId)?.has(muscle))
+    exercise.primaryMuscles.some((muscle) =>
+      forbiddenBySlot.get(slot.slotId)?.has(muscle),
+    ),
   );
   const backExtensionHamstrings = plannerExercises.filter(
     ({ exercise }) =>
       exercise.exerciseName.toLowerCase().includes("back extension") &&
-      (exercise.effectiveStimulusByMuscle["Hamstrings"] ?? 0) > 0
+      (exercise.effectiveStimulusByMuscle["Hamstrings"] ?? 0) > 0,
   );
   const duplicateRows =
     planningReality.duplicateContinuityJustification?.duplicates ?? [];
@@ -1687,35 +1845,44 @@ function buildPlannerOnlyAcceptanceChecks(
       row.justification === "unjustified" ||
       row.justification === "unknown" ||
       row.compatibleAlternativeExists === true ||
-      row.risk === "high"
+      row.risk === "high",
   );
   const overFiveSetExercises = plannerExercises.filter(
-    ({ exercise }) => exercise.setCount > 5
+    ({ exercise }) => exercise.setCount > 5,
   );
   const weeklyTotals = sumSlotStimulusByMuscle(plannerSlots);
   const highShareExercises = plannerExercises.flatMap(({ slot, exercise }) =>
-    Object.entries(exercise.effectiveStimulusByMuscle).flatMap(([muscle, value]) => {
-      const total = weeklyTotals.get(muscle) ?? 0;
-      if (total <= 0 || value <= 0) {
-        return [];
-      }
-      const share = value / total;
-      return share > 0.6
-        ? [`${slot.slotId}:${exercise.exerciseName}:${muscle}:${roundOne(share * 100)}%`]
-        : [];
-    })
+    Object.entries(exercise.effectiveStimulusByMuscle).flatMap(
+      ([muscle, value]) => {
+        const total = weeklyTotals.get(muscle) ?? 0;
+        if (total <= 0 || value <= 0) {
+          return [];
+        }
+        const share = value / total;
+        return share > 0.6
+          ? [
+              `${slot.slotId}:${exercise.exerciseName}:${muscle}:${roundOne(share * 100)}%`,
+            ]
+          : [];
+      },
+    ),
   );
-  const moderateShareExercises = plannerExercises.flatMap(({ slot, exercise }) =>
-    Object.entries(exercise.effectiveStimulusByMuscle).flatMap(([muscle, value]) => {
-      const total = weeklyTotals.get(muscle) ?? 0;
-      if (total <= 0 || value <= 0) {
-        return [];
-      }
-      const share = value / total;
-      return share > 0.5 && share <= 0.6
-        ? [`${slot.slotId}:${exercise.exerciseName}:${muscle}:${roundOne(share * 100)}%`]
-        : [];
-    })
+  const moderateShareExercises = plannerExercises.flatMap(
+    ({ slot, exercise }) =>
+      Object.entries(exercise.effectiveStimulusByMuscle).flatMap(
+        ([muscle, value]) => {
+          const total = weeklyTotals.get(muscle) ?? 0;
+          if (total <= 0 || value <= 0) {
+            return [];
+          }
+          const share = value / total;
+          return share > 0.5 && share <= 0.6
+            ? [
+                `${slot.slotId}:${exercise.exerciseName}:${muscle}:${roundOne(share * 100)}%`,
+              ]
+            : [];
+        },
+      ),
   );
   const materialRepairCount =
     planningReality.shadowRepairSummary?.materialRepairCount ??
@@ -1730,7 +1897,7 @@ function buildPlannerOnlyAcceptanceChecks(
       !slot.slotId ||
       !exercise.exerciseId ||
       !Number.isFinite(exercise.setCount) ||
-      exercise.setCount <= 0
+      exercise.setCount <= 0,
   );
 
   return [
@@ -1741,17 +1908,26 @@ function buildPlannerOnlyAcceptanceChecks(
         primaryBelowMinimum.length === 0
           ? ["all primary planner-only totals meet visible minimums"]
           : primaryBelowMinimum.map(
-              (row) => `${row.muscle}:below_min_${row.minEffectiveSets ?? "unknown"}`
+              (row) =>
+                `${row.muscle}:below_min_${row.minEffectiveSets ?? "unknown"}`,
             ),
     },
     {
       check: "Chest has two upper-slot exposures",
-      status: statusFromBoolean(chestUpperExposures.length >= 2, chestUpperExposures.length === 1),
-      evidence: [`upper_chest_exposures:${chestUpperExposures.map((slot) => slot.slotId).join(",") || "none"}`],
+      status: statusFromBoolean(
+        chestUpperExposures.length >= 2,
+        chestUpperExposures.length === 1,
+      ),
+      evidence: [
+        `upper_chest_exposures:${chestUpperExposures.map((slot) => slot.slotId).join(",") || "none"}`,
+      ],
     },
     {
       check: "Hamstrings have hinge + curl distribution",
-      status: statusFromBoolean(hasHamstringHinge && hasHamstringCurl, hasHamstringHinge || hasHamstringCurl),
+      status: statusFromBoolean(
+        hasHamstringHinge && hasHamstringCurl,
+        hasHamstringHinge || hasHamstringCurl,
+      ),
       evidence: [
         `hinge:${hasHamstringHinge ? "yes" : "no"}`,
         `curl:${hasHamstringCurl ? "yes" : "no"}`,
@@ -1760,24 +1936,33 @@ function buildPlannerOnlyAcceptanceChecks(
     {
       check: "Side Delts get direct low-collateral work",
       status: statusFromBoolean(sideDeltDirect.length > 0),
-      evidence: sideDeltDirect.map(({ slot, exercise }) => `${slot.slotId}:${exercise.exerciseName}`),
+      evidence: sideDeltDirect.map(
+        ({ slot, exercise }) => `${slot.slotId}:${exercise.exerciseName}`,
+      ),
     },
     {
       check: "Calves distributed across lower slots if feasible",
       status:
         lowerSlots.length < 2
           ? "unknown"
-          : statusFromBoolean(calfLowerSlots.length >= 2, calfLowerSlots.length === 1),
-      evidence: [`lower_calf_slots:${calfLowerSlots.map((slot) => slot.slotId).join(",") || "none"}`],
+          : statusFromBoolean(
+              calfLowerSlots.length >= 2,
+              calfLowerSlots.length === 1,
+            ),
+      evidence: [
+        `lower_calf_slots:${calfLowerSlots.map((slot) => slot.slotId).join(",") || "none"}`,
+      ],
     },
     {
       check: "no primary muscle solved by forbidden slot",
       status: statusFromBoolean(forbiddenPrimary.length === 0),
       evidence:
         forbiddenPrimary.length === 0
-          ? ["no planner-only primary exercises violate forbidden slot prescriptions"]
+          ? [
+              "no planner-only primary exercises violate forbidden slot prescriptions",
+            ]
           : forbiddenPrimary.map(
-              ({ slot, exercise }) => `${slot.slotId}:${exercise.exerciseName}`
+              ({ slot, exercise }) => `${slot.slotId}:${exercise.exerciseName}`,
             ),
     },
     {
@@ -1787,17 +1972,19 @@ function buildPlannerOnlyAcceptanceChecks(
         backExtensionHamstrings.length === 0
           ? ["none"]
           : backExtensionHamstrings.map(
-              ({ slot, exercise }) => `${slot.slotId}:${exercise.exerciseName}`
+              ({ slot, exercise }) => `${slot.slotId}:${exercise.exerciseName}`,
             ),
     },
     {
-      check: "no duplicate main lift when clean alternative exists unless justified",
+      check:
+        "no duplicate main lift when clean alternative exists unless justified",
       status: statusFromBoolean(unjustifiedDuplicates.length === 0),
       evidence:
         unjustifiedDuplicates.length === 0
           ? ["no unjustified duplicate rows"]
           : unjustifiedDuplicates.map(
-              (row) => `${row.exerciseName}:${row.justification}:alternative_${row.compatibleAlternativeExists ?? "unknown"}`
+              (row) =>
+                `${row.exerciseName}:${row.justification}:alternative_${row.compatibleAlternativeExists ?? "unknown"}`,
             ),
     },
     {
@@ -1807,11 +1994,13 @@ function buildPlannerOnlyAcceptanceChecks(
         overFiveSetExercises.length === 0
           ? ["none"]
           : overFiveSetExercises.map(
-              ({ slot, exercise }) => `${slot.slotId}:${exercise.exerciseName}:${exercise.setCount}`
+              ({ slot, exercise }) =>
+                `${slot.slotId}:${exercise.exerciseName}:${exercise.setCount}`,
             ),
     },
     {
-      check: "no single exercise supplies >50-60% of primary muscle unless intentional",
+      check:
+        "no single exercise supplies >50-60% of primary muscle unless intentional",
       status:
         highShareExercises.length > 0
           ? "fail"
@@ -1836,16 +2025,21 @@ function buildPlannerOnlyAcceptanceChecks(
     {
       check: "suspicious repairs do not increase",
       status: statusFromBoolean(suspiciousRepairCount === 0),
-      evidence: [`suspiciousRepairsNotEligibleForPromotion:${suspiciousRepairCount}`],
+      evidence: [
+        `suspiciousRepairsNotEligibleForPromotion:${suspiciousRepairCount}`,
+      ],
     },
     {
       check: "slotPlanSeedJson would replay without reselection",
       status: statusFromBoolean(missingSeedFields.length === 0),
       evidence:
         missingSeedFields.length === 0
-          ? ["planner-only snapshot has exercise ids and set counts; dry-run did not persist it"]
+          ? [
+              "planner-only snapshot has exercise ids and set counts; dry-run did not persist it",
+            ]
           : missingSeedFields.map(
-              ({ slot, exercise }) => `${slot.slotId}:${exercise.exerciseName}:missing_seed_field`
+              ({ slot, exercise }) =>
+                `${slot.slotId}:${exercise.exerciseName}:missing_seed_field`,
             ),
     },
   ];
@@ -1853,7 +2047,7 @@ function buildPlannerOnlyAcceptanceChecks(
 
 function buildPlanningRealityForSnapshot(
   planningReality: PlanningRealityDiagnostic,
-  slots: ReadonlyArray<SlotCompositionSnapshot>
+  slots: ReadonlyArray<SlotCompositionSnapshot>,
 ): PlanningRealityDiagnostic {
   return {
     ...planningReality,
@@ -1869,7 +2063,7 @@ function buildPlanningRealityForSnapshot(
 
 function countForbiddenFinalPrimaryViolations(
   planningReality: PlanningRealityDiagnostic,
-  slots: ReadonlyArray<SlotCompositionSnapshot>
+  slots: ReadonlyArray<SlotCompositionSnapshot>,
 ): number {
   const forbiddenBySlot = new Map<string, Set<string>>();
   for (const intent of planningReality.slotPrescriptionIntents) {
@@ -1878,9 +2072,9 @@ function countForbiddenFinalPrimaryViolations(
         .filter(
           (prescription) =>
             prescription.targetStatus === "forbidden" ||
-            prescription.demandType === "do_not_train_here"
+            prescription.demandType === "do_not_train_here",
         )
-        .map((prescription) => prescription.muscle)
+        .map((prescription) => prescription.muscle),
     );
     if (forbidden.size > 0) {
       forbiddenBySlot.set(intent.slotId, forbidden);
@@ -1895,14 +2089,14 @@ function countForbiddenFinalPrimaryViolations(
     return (
       count +
       slot.exercises.filter((exercise) =>
-        exercise.primaryMuscles.some((muscle) => forbidden.has(muscle))
+        exercise.primaryMuscles.some((muscle) => forbidden.has(muscle)),
       ).length
     );
   }, 0);
 }
 
 function getMaterialRepairCount(
-  planningReality: PlanningRealityDiagnostic
+  planningReality: PlanningRealityDiagnostic,
 ): number {
   return (
     planningReality.shadowRepairSummary?.materialRepairCount ??
@@ -1911,7 +2105,7 @@ function getMaterialRepairCount(
 }
 
 function getMajorRepairCount(
-  planningReality: PlanningRealityDiagnostic
+  planningReality: PlanningRealityDiagnostic,
 ): number {
   return (
     planningReality.shadowRepairSummary?.majorRepairCount ??
@@ -1920,7 +2114,7 @@ function getMajorRepairCount(
 }
 
 function getRepairRowsForMetric(
-  planningReality: PlanningRealityDiagnostic
+  planningReality: PlanningRealityDiagnostic,
 ): PlanningRealityDiagnostic["repairMateriality"] {
   return planningReality.repairMateriality;
 }
@@ -1931,17 +2125,17 @@ function buildProjectionComparisonSnapshot(input: {
 }): MesocycleExplainProjectionComparisonSnapshot {
   const snapshotReality = buildPlanningRealityForSnapshot(
     input.planningReality,
-    input.slots
+    input.slots,
   );
   const weeklyMuscleComparison =
     buildPlannerOnlyWeeklyMuscleComparison(snapshotReality);
   const acceptanceChecks = buildPlannerOnlyAcceptanceChecks(
     snapshotReality,
-    weeklyMuscleComparison
+    weeklyMuscleComparison,
   );
   const repairRows = getRepairRowsForMetric(input.planningReality);
   const countByStatus = (
-    status: MesocycleExplainPlannerOnlyDryRun["acceptanceChecks"][number]["status"]
+    status: MesocycleExplainPlannerOnlyDryRun["acceptanceChecks"][number]["status"],
   ) => acceptanceChecks.filter((check) => check.status === status).length;
 
   return {
@@ -1949,12 +2143,12 @@ function buildProjectionComparisonSnapshot(input: {
       input.slots.map((slot) => [
         slot.slotId,
         slot.exercises.map(formatSnapshotExercise),
-      ])
+      ]),
     ),
     weeklyMuscleTotals: Object.fromEntries(
       Array.from(sumSlotStimulusByMuscle(input.slots).entries()).sort(
-        ([left], [right]) => left.localeCompare(right)
-      )
+        ([left], [right]) => left.localeCompare(right),
+      ),
     ),
     materialRepairCount: getMaterialRepairCount(input.planningReality),
     majorRepairCount: getMajorRepairCount(input.planningReality),
@@ -1965,8 +2159,10 @@ function buildProjectionComparisonSnapshot(input: {
       input.planningReality.summary.highExerciseConcentrationCount ?? 0,
     weakPreselectionConsumptionCount:
       input.planningReality.weakPreselectionConsumption?.length ?? 0,
-    forbiddenFinalPrimaryViolationCount:
-      countForbiddenFinalPrimaryViolations(input.planningReality, input.slots),
+    forbiddenFinalPrimaryViolationCount: countForbiddenFinalPrimaryViolations(
+      input.planningReality,
+      input.slots,
+    ),
     supportFloorClosureRowCount: repairRows.filter(isSupportFloorRepairRow)
       .length,
     setBumpRowCount: repairRows.filter(isSetBumpRepairRow).length,
@@ -2051,49 +2247,55 @@ function buildProjectionComparisons(input: {
 
 function repairRowsMatching(
   planningReality: PlanningRealityDiagnostic,
-  predicate: (row: PlanningRealityDiagnostic["repairMateriality"][number]) => boolean
+  predicate: (
+    row: PlanningRealityDiagnostic["repairMateriality"][number],
+  ) => boolean,
 ): PlanningRealityDiagnostic["repairMateriality"] {
   return planningReality.repairMateriality.filter(predicate);
 }
 
 function hasWarning(
   planningReality: PlanningRealityDiagnostic,
-  code: string
+  code: string,
 ): boolean {
   return planningReality.warnings.some((warning) => warning.code === code);
 }
 
 function buildPlannerOnlyRepairDependencies(
-  planningReality: PlanningRealityDiagnostic
+  planningReality: PlanningRealityDiagnostic,
 ): MesocycleExplainPlannerOnlyDryRun["repairDependencies"] {
-  const materialRows = planningReality.repairMaterialityAfterShadowAllocation.filter(
-    (row) => row.materiality === "moderate" || row.materiality === "major"
-  );
+  const materialRows =
+    planningReality.repairMaterialityAfterShadowAllocation.filter(
+      (row) => row.materiality === "moderate" || row.materiality === "major",
+    );
   const supportFloorRows = repairRowsMatching(
     planningReality,
     (row) =>
       row.repairMechanism.includes("support") ||
       row.source.includes("support") ||
-      row.rationale.includes("support")
+      row.rationale.includes("support"),
   );
   const weeklyRows = repairRowsMatching(
     planningReality,
     (row) =>
       row.repairMechanism.includes("weekly") ||
       row.source.includes("weekly") ||
-      row.rationale.includes("weekly")
+      row.rationale.includes("weekly"),
   );
   const identityRows = repairRowsMatching(
     planningReality,
-    (row) => row.changedExerciseIdentity
+    (row) => row.changedExerciseIdentity,
   );
   const setBumpRows = repairRowsMatching(
     planningReality,
-    (row) => row.action === "set_bumped" || row.rawSetDelta > 0
+    (row) => row.action === "set_bumped" || row.rawSetDelta > 0,
   );
   const capTrimRows = repairRowsMatching(
     planningReality,
-    (row) => row.action === "set_trimmed" || row.action === "removed" || row.rawSetDelta < 0
+    (row) =>
+      row.action === "set_trimmed" ||
+      row.action === "removed" ||
+      row.rawSetDelta < 0,
   );
   const duplicateRows =
     planningReality.duplicateContinuityJustification?.duplicates ?? [];
@@ -2102,39 +2304,44 @@ function buildPlannerOnlyRepairDependencies(
     (row) =>
       row.repairMechanism.includes("isolation") ||
       row.source.includes("isolation") ||
-      row.rationale.includes("isolation")
+      row.rationale.includes("isolation"),
   );
   const forbiddenRemoved =
     planningReality.forbiddenCleanupReroute?.removedExercises ?? [];
   const distributionActions = planningReality.distributionGuardActions ?? [];
   const cleanCurlRows = planningReality.preselectionFeasibility.filter(
-    (row) => row.muscle === "Hamstrings" && row.slotId === "lower_b"
+    (row) => row.muscle === "Hamstrings" && row.slotId === "lower_b",
   );
   const lowerBHamstringRepairs = materialRows.filter(
-    (row) => row.slotId === "lower_b" && row.muscle === "Hamstrings"
+    (row) => row.slotId === "lower_b" && row.muscle === "Hamstrings",
   );
 
   return [
     {
       path: "support-floor closure",
       wouldHaveActed:
-        supportFloorRows.length > 0 || hasWarning(planningReality, "SUPPORT_FLOOR_CLOSED_LATE"),
+        supportFloorRows.length > 0 ||
+        hasWarning(planningReality, "SUPPORT_FLOOR_CLOSED_LATE"),
       consequenceWithoutRepair:
         supportFloorRows.length > 0
           ? `repair_would_be_needed_here:${supportFloorRows.length}_support_rows`
           : "no support-floor repair action observed in current projection",
-      plannerOwnerRequired: "Support demand must be allocated before selection or left as explicit unresolved demand.",
+      plannerOwnerRequired:
+        "Support demand must be allocated before selection or left as explicit unresolved demand.",
     },
     {
       path: "weekly obligation closure",
       wouldHaveActed:
         weeklyRows.length > 0 ||
-        planningReality.allocationVsInitialDelta.some((delta) => delta.underAllocatedMuscles.length > 0),
+        planningReality.allocationVsInitialDelta.some(
+          (delta) => delta.underAllocatedMuscles.length > 0,
+        ),
       consequenceWithoutRepair:
         weeklyRows.length > 0
           ? `repair_would_be_needed_here:${weeklyRows.length}_weekly_obligation_rows`
           : "planner-only shape must surface any allocation shortfalls instead of closing them late",
-      plannerOwnerRequired: "Weekly demand and slot allocation must own hard target closure before selection.",
+      plannerOwnerRequired:
+        "Weekly demand and slot allocation must own hard target closure before selection.",
     },
     {
       path: "program-quality identity changes",
@@ -2143,7 +2350,8 @@ function buildPlannerOnlyRepairDependencies(
         identityRows.length > 0
           ? `repair_would_be_needed_here:${identityRows.length}_identity_changes`
           : "no program-quality identity changes observed",
-      plannerOwnerRequired: "Exercise-class distribution and selection objective must choose clean identities up front.",
+      plannerOwnerRequired:
+        "Exercise-class distribution and selection objective must choose clean identities up front.",
     },
     {
       path: "set bumping",
@@ -2152,17 +2360,20 @@ function buildPlannerOnlyRepairDependencies(
         setBumpRows.length > 0
           ? `repair_would_be_needed_here:${setBumpRows.length}_set_bumps`
           : "no late set bumping observed",
-      plannerOwnerRequired: "SetDistributionPlan must assign required sets before final shaping.",
+      plannerOwnerRequired:
+        "SetDistributionPlan must assign required sets before final shaping.",
     },
     {
       path: "cap trim",
       wouldHaveActed:
-        capTrimRows.length > 0 || hasWarning(planningReality, "FINAL_CAP_TRIM_REQUIRED"),
+        capTrimRows.length > 0 ||
+        hasWarning(planningReality, "FINAL_CAP_TRIM_REQUIRED"),
       consequenceWithoutRepair:
         capTrimRows.length > 0
           ? `repair_would_be_needed_here:${capTrimRows.length}_trim_or_removal_rows`
           : "no final cap trim observed",
-      plannerOwnerRequired: "Selection and set distribution must respect exercise/session caps before repair.",
+      plannerOwnerRequired:
+        "Selection and set distribution must respect exercise/session caps before repair.",
     },
     {
       path: "duplicate penalties",
@@ -2171,17 +2382,20 @@ function buildPlannerOnlyRepairDependencies(
         duplicateRows.length > 0
           ? `repair_would_be_needed_here:${duplicateRows.length}_duplicate_rows`
           : "no duplicate penalty repair dependency observed",
-      plannerOwnerRequired: "Duplicate policy must be part of exercise-class selection, with justification when duplicates remain.",
+      plannerOwnerRequired:
+        "Duplicate policy must be part of exercise-class selection, with justification when duplicates remain.",
     },
     {
       path: "isolation injection",
       wouldHaveActed:
-        isolationRows.length > 0 || hasWarning(planningReality, "REPAIR_ADDED_EXERCISE_IDENTITY"),
+        isolationRows.length > 0 ||
+        hasWarning(planningReality, "REPAIR_ADDED_EXERCISE_IDENTITY"),
       consequenceWithoutRepair:
         isolationRows.length > 0
           ? `repair_would_be_needed_here:${isolationRows.length}_isolation_rows`
           : "no isolation injection observed",
-      plannerOwnerRequired: "Direct isolation demand must be represented in class/lane intent before selection.",
+      plannerOwnerRequired:
+        "Direct isolation demand must be represented in class/lane intent before selection.",
     },
     {
       path: "forbidden cleanup",
@@ -2190,7 +2404,8 @@ function buildPlannerOnlyRepairDependencies(
         forbiddenRemoved.length > 0
           ? `repair_would_be_needed_here:${forbiddenRemoved.length}_forbidden_removed`
           : "no forbidden cleanup observed",
-      plannerOwnerRequired: "Forbidden slot/muscle constraints must block invalid primary solutions during selection.",
+      plannerOwnerRequired:
+        "Forbidden slot/muscle constraints must block invalid primary solutions during selection.",
     },
     {
       path: "distribution guard",
@@ -2199,16 +2414,19 @@ function buildPlannerOnlyRepairDependencies(
         distributionActions.length > 0
           ? `repair_would_be_needed_here:${distributionActions.length}_distribution_guard_actions`
           : "no distribution guard action observed",
-      plannerOwnerRequired: "Set distribution policy must prefer clean alternatives or leave demand unresolved at the limit.",
+      plannerOwnerRequired:
+        "Set distribution policy must prefer clean alternatives or leave demand unresolved at the limit.",
     },
     {
       path: "clean-curl repair preference",
-      wouldHaveActed: cleanCurlRows.length > 0 || lowerBHamstringRepairs.length > 0,
+      wouldHaveActed:
+        cleanCurlRows.length > 0 || lowerBHamstringRepairs.length > 0,
       consequenceWithoutRepair:
         cleanCurlRows.length > 0 || lowerBHamstringRepairs.length > 0
           ? `repair_would_be_needed_here:lower_b_hamstrings_clean_curl_policy`
           : "no lower_b Hamstrings clean-curl repair dependency observed",
-      plannerOwnerRequired: "Hamstrings lower_b class intent must choose hinge plus knee-flexion curl before repair.",
+      plannerOwnerRequired:
+        "Hamstrings lower_b class intent must choose hinge plus knee-flexion curl before repair.",
     },
   ];
 }
@@ -2217,7 +2435,7 @@ export function buildPlannerOnlyDryRunComparison(
   planningReality: PlanningRealityDiagnostic | undefined,
   compareRepaired: boolean,
   plannerOnlyPolicyOverride?: PlannerOnlyPolicyOverride,
-  overridePlanningReality?: PlanningRealityDiagnostic
+  overridePlanningReality?: PlanningRealityDiagnostic,
 ): MesocycleExplainPlannerOnlyDryRun {
   if (!planningReality) {
     return {
@@ -2258,12 +2476,14 @@ export function buildPlannerOnlyDryRunComparison(
   }
 
   const slotComparisons = buildPlannerOnlySlotComparisons(planningReality);
-  const weeklyMuscleComparison = buildPlannerOnlyWeeklyMuscleComparison(planningReality);
+  const weeklyMuscleComparison =
+    buildPlannerOnlyWeeklyMuscleComparison(planningReality);
   const acceptanceChecks = buildPlannerOnlyAcceptanceChecks(
     planningReality,
-    weeklyMuscleComparison
+    weeklyMuscleComparison,
   );
-  const repairDependencies = buildPlannerOnlyRepairDependencies(planningReality);
+  const repairDependencies =
+    buildPlannerOnlyRepairDependencies(planningReality);
   const projectionComparisons =
     plannerOnlyPolicyOverride && overridePlanningReality
       ? buildProjectionComparisons({
@@ -2278,26 +2498,29 @@ export function buildPlannerOnlyDryRunComparison(
     slotComparisons,
     repairDependencies,
   });
-  const acceptancePassed = acceptanceChecks.filter((check) => check.status === "pass").length;
-  const acceptanceFailed = acceptanceChecks.filter((check) => check.status === "fail").length;
+  const acceptancePassed = acceptanceChecks.filter(
+    (check) => check.status === "pass",
+  ).length;
+  const acceptanceFailed = acceptanceChecks.filter(
+    (check) => check.status === "fail",
+  ).length;
   const unresolvedDemandCount = slotComparisons.reduce(
     (sum, slot) => sum + slot.unresolvedDemand.length,
-    0
+    0,
   );
   const disabledRepairDependencyCount = repairDependencies.filter(
-    (dependency) => dependency.wouldHaveActed
+    (dependency) => dependency.wouldHaveActed,
   ).length;
   const canReplaceRepairedProjection =
     acceptanceFailed === 0 &&
     acceptanceChecks.every((check) => check.status === "pass") &&
     unresolvedDemandCount === 0 &&
     disabledRepairDependencyCount === 0;
-  const status =
-    canReplaceRepairedProjection
-      ? "pass"
-      : acceptanceFailed > 0 || unresolvedDemandCount > 0
-        ? "fail"
-        : "partial";
+  const status = canReplaceRepairedProjection
+    ? "pass"
+    : acceptanceFailed > 0 || unresolvedDemandCount > 0
+      ? "fail"
+      : "partial";
 
   return {
     enabled: true,
@@ -2338,31 +2561,47 @@ function classifyPlannerOnlyExercise(input: {
   const exercise = input.exercise;
   const name = exercise.exerciseName.toLowerCase();
   const patterns = exercise.movementPatterns.map((pattern) =>
-    pattern.toLowerCase()
+    pattern.toLowerCase(),
   );
   const primaryMuscles = exercise.primaryMuscles.map((muscle) =>
-    muscle.toLowerCase()
+    muscle.toLowerCase(),
   );
 
   if (name.includes("calf")) {
     return { lane: "calves", exerciseClass: "calf_raise" };
   }
-  if (name.includes("leg curl") || name.includes("hamstring curl") || name.includes("nordic")) {
+  if (
+    name.includes("leg curl") ||
+    name.includes("hamstring curl") ||
+    name.includes("nordic")
+  ) {
     return { lane: "knee_flexion_curl", exerciseClass: "knee_flexion_curl" };
   }
-  if (patterns.some((pattern) => pattern.includes("hinge")) || name.includes("deadlift") || name.includes("rdl")) {
+  if (
+    patterns.some((pattern) => pattern.includes("hinge")) ||
+    name.includes("deadlift") ||
+    name.includes("rdl")
+  ) {
     return { lane: "hinge_anchor", exerciseClass: "hinge" };
   }
   if (name.includes("leg extension")) {
     return { lane: "quad_isolation", exerciseClass: "leg_extension" };
   }
-  if (patterns.some((pattern) => pattern.includes("squat")) || name.includes("squat") || name.includes("leg press")) {
+  if (
+    patterns.some((pattern) => pattern.includes("squat")) ||
+    name.includes("squat") ||
+    name.includes("leg press")
+  ) {
     return { lane: "squat_anchor", exerciseClass: "squat_or_quad_support" };
   }
   if (name.includes("lateral raise")) {
     return { lane: "side_delt_isolation", exerciseClass: "lateral_raise" };
   }
-  if (name.includes("rear delt") || name.includes("reverse") || name.includes("face pull")) {
+  if (
+    name.includes("rear delt") ||
+    name.includes("reverse") ||
+    name.includes("face pull")
+  ) {
     return { lane: "rear_delt", exerciseClass: "rear_delt_isolation" };
   }
   if (name.includes("triceps") || name.includes("pressdown")) {
@@ -2371,33 +2610,48 @@ function classifyPlannerOnlyExercise(input: {
   if (name.includes("curl") && primaryMuscles.includes("biceps")) {
     return { lane: "biceps", exerciseClass: "biceps_curl" };
   }
-  if (patterns.some((pattern) => pattern.includes("vertical_pull")) || name.includes("pulldown") || name.includes("pull-up")) {
+  if (
+    patterns.some((pattern) => pattern.includes("vertical_pull")) ||
+    name.includes("pulldown") ||
+    name.includes("pull-up")
+  ) {
     return { lane: "vertical_pull", exerciseClass: "vertical_pull" };
   }
-  if (patterns.some((pattern) => pattern.includes("horizontal_pull")) || name.includes("row")) {
+  if (
+    patterns.some((pattern) => pattern.includes("horizontal_pull")) ||
+    name.includes("row")
+  ) {
     return { lane: "row_anchor", exerciseClass: "row" };
   }
-  if (patterns.some((pattern) => pattern.includes("vertical_push")) || name.includes("shoulder press") || name.includes("overhead press")) {
+  if (
+    patterns.some((pattern) => pattern.includes("vertical_push")) ||
+    name.includes("shoulder press") ||
+    name.includes("overhead press")
+  ) {
     return { lane: "vertical_press", exerciseClass: "vertical_press" };
   }
   if (name.includes("fly") || name.includes("crossover")) {
     return { lane: "chest_secondary", exerciseClass: "chest_isolation" };
   }
-  if (primaryMuscles.includes("chest") || name.includes("press") || name.includes("bench")) {
+  if (
+    primaryMuscles.includes("chest") ||
+    name.includes("press") ||
+    name.includes("bench")
+  ) {
     return { lane: "chest_anchor", exerciseClass: "chest_press" };
   }
   return { lane: "unclassified", exerciseClass: "unclassified" };
 }
 
 function buildNoRepairWeeklyMuscleTotals(
-  planningReality: PlanningRealityDiagnostic
+  planningReality: PlanningRealityDiagnostic,
 ): MesocycleExplainPlannerOnlyNoRepair["weeklyMuscleTotals"] {
   const totals = sumSlotStimulusByMuscle(planningReality.finalSlotPlan);
   const targetByMuscle = new Map(
-    planningReality.shadowWeeklyDemand.map((row) => [row.muscle, row])
+    planningReality.shadowWeeklyDemand.map((row) => [row.muscle, row]),
   );
   const fallbackTargetByMuscle = new Map(
-    planningReality.weeklyMuscleDemand.map((row) => [row.muscle, row])
+    planningReality.weeklyMuscleDemand.map((row) => [row.muscle, row]),
   );
   const muscles = uniqueSorted([
     ...Array.from(totals.keys()),
@@ -2438,7 +2692,7 @@ function getNoRepairSetAllocationBaseline(input: {
   classified: ReturnType<typeof classifyPlannerOnlyExercise>;
 }): { lane: string; setsBefore: number } | null {
   const primaryMuscles = input.exercise.primaryMuscles.map((muscle) =>
-    muscle.trim().toLowerCase()
+    muscle.trim().toLowerCase(),
   );
   const name = input.exercise.exerciseName.trim().toLowerCase();
   if (
@@ -2466,7 +2720,7 @@ function getNoRepairSetAllocationBaseline(input: {
 }
 
 function buildNoRepairSetAllocationChanges(
-  planningReality: PlanningRealityDiagnostic
+  planningReality: PlanningRealityDiagnostic,
 ): MesocycleExplainPlannerOnlyNoRepair["setAllocationChanges"] {
   return planningReality.finalSlotPlan.flatMap((slot) =>
     slot.exercises.flatMap((exercise) => {
@@ -2482,15 +2736,17 @@ function buildNoRepairSetAllocationChanges(
       const setDelta = exercise.setCount - baseline.setsBefore;
       const effectiveStimulusDeltaEntries: Array<[string, number]> = [];
       for (const [muscle, stimulus] of Object.entries(
-        exercise.effectiveStimulusByMuscle
+        exercise.effectiveStimulusByMuscle,
       )) {
-        const stimulusDelta = roundOne((stimulus / exercise.setCount) * setDelta);
+        const stimulusDelta = roundOne(
+          (stimulus / exercise.setCount) * setDelta,
+        );
         if (stimulusDelta > 0) {
           effectiveStimulusDeltaEntries.push([muscle, stimulusDelta]);
         }
       }
       const effectiveStimulusDeltaByMuscle = Object.fromEntries(
-        effectiveStimulusDeltaEntries
+        effectiveStimulusDeltaEntries,
       );
       return [
         {
@@ -2502,7 +2758,7 @@ function buildNoRepairSetAllocationChanges(
           effectiveStimulusDeltaByMuscle,
         },
       ];
-    })
+    }),
   );
 }
 
@@ -2523,20 +2779,26 @@ function buildNoRepairWeeklyMuscleTotalChanges(input: {
   const deltaByMuscle = new Map<string, number>();
   for (const change of input.setAllocationChanges) {
     for (const [muscle, delta] of Object.entries(
-      change.effectiveStimulusDeltaByMuscle
+      change.effectiveStimulusDeltaByMuscle,
     )) {
-      deltaByMuscle.set(muscle, roundOne((deltaByMuscle.get(muscle) ?? 0) + delta));
+      deltaByMuscle.set(
+        muscle,
+        roundOne((deltaByMuscle.get(muscle) ?? 0) + delta),
+      );
     }
   }
 
   const totalByMuscle = new Map(
-    input.weeklyMuscleTotals.map((row) => [row.muscle, row])
+    input.weeklyMuscleTotals.map((row) => [row.muscle, row]),
   );
   return Array.from(deltaByMuscle.entries())
     .map(([muscle, deltaEffectiveSets]) => {
       const total = totalByMuscle.get(muscle);
-      const afterEffectiveSets = total?.projectedEffectiveSets ?? deltaEffectiveSets;
-      const beforeEffectiveSets = roundOne(afterEffectiveSets - deltaEffectiveSets);
+      const afterEffectiveSets =
+        total?.projectedEffectiveSets ?? deltaEffectiveSets;
+      const beforeEffectiveSets = roundOne(
+        afterEffectiveSets - deltaEffectiveSets,
+      );
       return {
         muscle,
         beforeEffectiveSets,
@@ -2557,7 +2819,7 @@ function buildNoRepairWeeklyMuscleTotalChanges(input: {
 function buildNoRepairAcceptanceChecks(
   planningReality: PlanningRealityDiagnostic,
   weeklyMuscleTotals: MesocycleExplainPlannerOnlyNoRepair["weeklyMuscleTotals"],
-  concentrationClassification: NoRepairConcentrationClassification
+  concentrationClassification: NoRepairConcentrationClassification,
 ): MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"] {
   const comparisonRows = weeklyMuscleTotals.map((row) => ({
     muscle: row.muscle,
@@ -2573,18 +2835,18 @@ function buildNoRepairAcceptanceChecks(
   }));
   const baseChecks = buildPlannerOnlyAcceptanceChecks(
     planningReality,
-    comparisonRows
+    comparisonRows,
   ).filter(
     (check) =>
       check.check !==
-      "no single exercise supplies >50-60% of primary muscle unless intentional"
+      "no single exercise supplies >50-60% of primary muscle unless intentional",
   );
   return [
     ...baseChecks,
     {
       check: "no concentration acceptance blockers",
       status: statusFromBoolean(
-        concentrationClassification.acceptanceFailures.length === 0
+        concentrationClassification.acceptanceFailures.length === 0,
       ),
       evidence:
         concentrationClassification.acceptanceFailures.length === 0
@@ -2594,7 +2856,7 @@ function buildNoRepairAcceptanceChecks(
               `ignored_rows:${concentrationClassification.ignoredRows.length}`,
             ]
           : concentrationClassification.acceptanceFailures.map(
-              formatNoRepairConcentrationRow
+              formatNoRepairConcentrationRow,
             ),
     },
   ];
@@ -2608,7 +2870,7 @@ type NoRepairConcentrationClassification = {
 };
 
 function formatNoRepairConcentrationRow(
-  row: MesocycleExplainPlannerOnlyNoRepairConcentrationRow
+  row: MesocycleExplainPlannerOnlyNoRepairConcentrationRow,
 ): string {
   return `${row.slotId}:${row.exerciseName}:${row.muscle}:${row.percentageOfWeeklyStimulus}%:${row.reason}`;
 }
@@ -2630,10 +2892,10 @@ function isFatigueSensitiveCollateral(muscle: string): boolean {
 }
 
 function getNoRepairDemandByMuscle(
-  planningReality: PlanningRealityDiagnostic
+  planningReality: PlanningRealityDiagnostic,
 ): Map<string, PlanningRealityDiagnostic["shadowWeeklyDemand"][number]> {
   return new Map(
-    planningReality.shadowWeeklyDemand.map((row) => [row.muscle, row])
+    planningReality.shadowWeeklyDemand.map((row) => [row.muscle, row]),
   );
 }
 
@@ -2647,7 +2909,7 @@ function hasExplicitCleanAlternativeSignal(input: {
       (row) =>
         row.slotId === input.slotId &&
         row.muscle === input.muscle &&
-        row.behaviorReadiness === "ready_for_bounded_trial"
+        row.behaviorReadiness === "ready_for_bounded_trial",
     ) ?? false
   );
 }
@@ -2681,7 +2943,8 @@ function classifyNoRepairConcentrationRow(input: {
   const belowMinimum =
     minEffectiveSets != null && input.weeklyEffectiveSets < minEffectiveSets;
   const nearMinimum =
-    minEffectiveSets != null && input.weeklyEffectiveSets <= minEffectiveSets + 1;
+    minEffectiveSets != null &&
+    input.weeklyEffectiveSets <= minEffectiveSets + 1;
   const gtFive =
     input.row.flags.includes("COMPOUND_GT_5_SETS") ||
     input.row.flags.includes("ISOLATION_GT_5_SETS") ||
@@ -2779,7 +3042,8 @@ function classifyNoRepairConcentrationRow(input: {
       return {
         ...base,
         severity: "acceptance_blocker",
-        reason: "support_target_missing_clean_direct_work_and_substituted_by_collateral",
+        reason:
+          "support_target_missing_clean_direct_work_and_substituted_by_collateral",
       };
     }
     if (isDirect && belowMinimum && !nearMinimum) {
@@ -2798,11 +3062,16 @@ function classifyNoRepairConcentrationRow(input: {
     };
   }
   if (priority === "primary" && warningThresholdShare) {
-    if (belowMinimum || highShare || cleanAlternativeIgnoredWhileUnderDistributed) {
+    if (
+      belowMinimum ||
+      highShare ||
+      cleanAlternativeIgnoredWhileUnderDistributed
+    ) {
       return {
         ...base,
         severity: "acceptance_blocker",
-        reason: "primary_hard_target_excessive_single_exercise_share_unjustified",
+        reason:
+          "primary_hard_target_excessive_single_exercise_share_unjustified",
       };
     }
     return {
@@ -2820,14 +3089,15 @@ function classifyNoRepairConcentrationRow(input: {
 }
 
 function classifyNoRepairConcentrationRows(
-  planningReality: PlanningRealityDiagnostic
+  planningReality: PlanningRealityDiagnostic,
 ): NoRepairConcentrationClassification {
   const weeklyTotals = sumSlotStimulusByMuscle(planningReality.finalSlotPlan);
   const demandByMuscle = getNoRepairDemandByMuscle(planningReality);
   const rows = planningReality.exerciseConcentration.flatMap((row) =>
     Object.entries(row.percentageOfWeeklyProjectedStimulusByMuscle)
       .filter(([muscle, percentage]) => {
-        const effectiveSets = row.effectiveStimulusContributionByMuscle[muscle] ?? 0;
+        const effectiveSets =
+          row.effectiveStimulusContributionByMuscle[muscle] ?? 0;
         return (
           effectiveSets > 0 &&
           (percentage >= 50 ||
@@ -2843,8 +3113,8 @@ function classifyNoRepairConcentrationRows(
           weeklyEffectiveSets: weeklyTotals.get(muscle) ?? 0,
           demand: demandByMuscle.get(muscle),
           planningReality,
-        })
-      )
+        }),
+      ),
   );
 
   return {
@@ -2865,7 +3135,7 @@ function classifyNoRepairConcentrationRows(
 
 function compareNoRepairConcentrationRows(
   left: MesocycleExplainPlannerOnlyNoRepairConcentrationRow,
-  right: MesocycleExplainPlannerOnlyNoRepairConcentrationRow
+  right: MesocycleExplainPlannerOnlyNoRepairConcentrationRow,
 ): number {
   return (
     left.slotId.localeCompare(right.slotId) ||
@@ -2877,7 +3147,7 @@ function compareNoRepairConcentrationRows(
 
 function isNoRepairNonBlockingConcentrationViolation(
   violation: string,
-  classification: NoRepairConcentrationClassification
+  classification: NoRepairConcentrationClassification,
 ): boolean {
   const nonBlockingRows = [
     ...classification.qualityWarnings,
@@ -2890,31 +3160,38 @@ function isNoRepairNonBlockingConcentrationViolation(
       violation.includes(row.muscle) &&
       (violation.includes("single_exercise_share") ||
         violation.includes(`${row.slotId}:`) ||
-        violation.includes(`${row.muscle}:`))
+        violation.includes(`${row.muscle}:`)),
   );
 }
 
 function buildNoRepairSlotPlans(
   planningReality: PlanningRealityDiagnostic,
-  concentrationClassification: NoRepairConcentrationClassification
+  concentrationClassification: NoRepairConcentrationClassification,
 ): MesocycleExplainPlannerOnlyNoRepair["slotPlans"] {
   const topDownSlots = new Map(
     planningReality.topDownMesocyclePlan?.slotTargets.map((slot) => [
       slot.slotId,
       slot,
-    ]) ?? []
+    ]) ?? [],
   );
   const allocationDeltaBySlot = new Map(
-    planningReality.allocationVsFinalDelta.map((delta) => [delta.slotId, delta])
+    planningReality.allocationVsFinalDelta.map((delta) => [
+      delta.slotId,
+      delta,
+    ]),
   );
   const unresolvedCausesBySlot = new Map<string, string[]>();
   for (const row of planningReality.exerciseClassUnresolvedCauses ?? []) {
-    if (row.finalAlignment !== "missing" && row.finalAlignment !== "partial" && row.finalAlignment !== "violated") {
+    if (
+      row.finalAlignment !== "missing" &&
+      row.finalAlignment !== "partial" &&
+      row.finalAlignment !== "violated"
+    ) {
       continue;
     }
     const existing = unresolvedCausesBySlot.get(row.slotId) ?? [];
     existing.push(
-      `${row.muscle}:${row.finalAlignment}:${row.recommendedOwner}:${row.behaviorReadiness}`
+      `${row.muscle}:${row.finalAlignment}:${row.recommendedOwner}:${row.behaviorReadiness}`,
     );
     unresolvedCausesBySlot.set(row.slotId, existing);
   }
@@ -2928,7 +3205,8 @@ function buildNoRepairSlotPlans(
     const allocationDelta = allocationDeltaBySlot.get(slot.slotId);
     const unresolvedDemand = uniqueSorted([
       ...(allocationDelta?.underAllocatedMuscles ?? []).map((row) => {
-        const shortfall = row.shortfall == null ? "unknown" : roundOne(row.shortfall);
+        const shortfall =
+          row.shortfall == null ? "unknown" : roundOne(row.shortfall);
         return `${row.muscle}:shortfall_${shortfall}`;
       }),
       ...(unresolvedCausesBySlot.get(slot.slotId) ?? []),
@@ -2936,12 +3214,15 @@ function buildNoRepairSlotPlans(
     ]);
     const validationFailures = uniqueSorted([
       ...buildPlannerOnlyDuplicateViolations(planningReality, slot.slotId),
-      ...buildPlannerOnlySetDistributionViolations(planningReality, slot).filter(
+      ...buildPlannerOnlySetDistributionViolations(
+        planningReality,
+        slot,
+      ).filter(
         (violation) =>
           !isNoRepairNonBlockingConcentrationViolation(
             violation,
-            concentrationClassification
-          )
+            concentrationClassification,
+          ),
       ),
     ]);
 
@@ -2968,13 +3249,13 @@ function mainNoRepairGaps(input: {
   acceptanceChecks: MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"];
 }): string[] {
   return uniqueSorted([
-    ...input.slotPlans.flatMap((slot) =>
-      [
-        ...slot.missingLanes.map((row) => `${slot.slotId}:missing:${row}`),
-        ...slot.unresolvedDemand.map((row) => `${slot.slotId}:unresolved:${row}`),
-        ...slot.validationFailures.map((row) => `${slot.slotId}:validation:${row}`),
-      ]
-    ),
+    ...input.slotPlans.flatMap((slot) => [
+      ...slot.missingLanes.map((row) => `${slot.slotId}:missing:${row}`),
+      ...slot.unresolvedDemand.map((row) => `${slot.slotId}:unresolved:${row}`),
+      ...slot.validationFailures.map(
+        (row) => `${slot.slotId}:validation:${row}`,
+      ),
+    ]),
     ...input.acceptanceChecks
       .filter((check) => check.status === "fail" || check.status === "partial")
       .map((check) => `${check.check}:${check.status}`),
@@ -3013,9 +3294,7 @@ type V2LaneSetPolicyStatus =
   | "hard_blocker"
   | "unknown";
 
-function toV2LaneWeek1Status(
-  status?: string
-): V2Lane["currentWeek1Status"] {
+function toV2LaneWeek1Status(status?: string): V2Lane["currentWeek1Status"] {
   if (status === "matched") return "satisfied";
   if (status === "partial") return "partial";
   if (status === "missing") return "missing";
@@ -3031,10 +3310,10 @@ function buildV2Skeleton(input: {
     input.noRepair?.topDownMesocyclePlan?.slotTargets.map((slot) => [
       slot.slotId,
       slot,
-    ]) ?? []
+    ]) ?? [],
   );
   const noRepairSlotPlans = new Map(
-    input.slotPlans.map((slot) => [slot.slotId, slot])
+    input.slotPlans.map((slot) => [slot.slotId, slot]),
   );
 
   return {
@@ -3051,14 +3330,14 @@ function buildV2Skeleton(input: {
         lanes: slot.lanes.map((lane) => {
           const topDownLaneId = lane.targetLaneId ?? lane.laneId;
           const topDownLane = topDownSlot?.requiredClassLanes.find(
-            (row) => row.lane === topDownLaneId
+            (row) => row.lane === topDownLaneId,
           );
-          const missingLane = noRepairSlot?.missingLanes.find((row) =>
-            row.includes(lane.laneId) || row.includes(topDownLaneId)
+          const missingLane = noRepairSlot?.missingLanes.find(
+            (row) => row.includes(lane.laneId) || row.includes(topDownLaneId),
           );
           const exerciseMatched = noRepairSlot?.exercises.some(
             (exercise) =>
-              exercise.lane === lane.laneId || exercise.lane === topDownLaneId
+              exercise.lane === lane.laneId || exercise.lane === topDownLaneId,
           );
           const currentWeek1Status = topDownLane
             ? toV2LaneWeek1Status(topDownLane.currentStatus)
@@ -3099,9 +3378,13 @@ function getTopDownLane(input: {
   noRepair?: PlanningRealityDiagnostic;
   slotId: string;
   lane: V2Lane | V2Slot["lanes"][number];
-}): NonNullable<
-  NonNullable<PlanningRealityDiagnostic["topDownMesocyclePlan"]>["slotTargets"][number]["requiredClassLanes"][number]
-> | undefined {
+}):
+  | NonNullable<
+      NonNullable<
+        PlanningRealityDiagnostic["topDownMesocyclePlan"]
+      >["slotTargets"][number]["requiredClassLanes"][number]
+    >
+  | undefined {
   const aliases = v2LaneAliases(input.lane);
   return input.noRepair?.topDownMesocyclePlan?.slotTargets
     .find((slot) => slot.slotId === input.slotId)
@@ -3125,10 +3408,16 @@ function exerciseMatchesV2LaneClass(input: {
   ) {
     return false;
   }
-  if (isBicepsV2Lane(input.lane) && !isDirectBicepsLaneExercise(input.exercise)) {
+  if (
+    isBicepsV2Lane(input.lane) &&
+    !isDirectBicepsLaneExercise(input.exercise)
+  ) {
     return false;
   }
-  if (isTricepsV2Lane(input.lane) && !isDirectTricepsLaneExercise(input.exercise)) {
+  if (
+    isTricepsV2Lane(input.lane) &&
+    !isDirectTricepsLaneExercise(input.exercise)
+  ) {
     return false;
   }
   const aliases = v2LaneAliases(input.lane);
@@ -3137,17 +3426,21 @@ function exerciseMatchesV2LaneClass(input: {
   }
   const exerciseClass = classified.exerciseClass.toLowerCase();
   const targetClasses = input.lane.preferredExerciseClasses.map((value) =>
-    value.toLowerCase()
+    value.toLowerCase(),
   );
   return targetClasses.some(
     (targetClass) =>
       targetClass.includes(exerciseClass) ||
       exerciseClass.includes(targetClass) ||
-      targetClass.split("_").some((token) => token.length > 3 && exerciseClass.includes(token))
+      targetClass
+        .split("_")
+        .some((token) => token.length > 3 && exerciseClass.includes(token)),
   );
 }
 
-function isStrictV2SetBudgetLane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
+function isStrictV2SetBudgetLane(
+  lane: V2Lane | V2Slot["lanes"][number],
+): boolean {
   return (
     lane.laneId === "squat_anchor" ||
     lane.laneId === "vertical_press" ||
@@ -3193,10 +3486,16 @@ function exerciseMatchesV2LaneSetPolicyClass(input: {
   ) {
     return false;
   }
-  if (isBicepsV2Lane(input.lane) && !isDirectBicepsLaneExercise(input.exercise)) {
+  if (
+    isBicepsV2Lane(input.lane) &&
+    !isDirectBicepsLaneExercise(input.exercise)
+  ) {
     return false;
   }
-  if (isTricepsV2Lane(input.lane) && !isDirectTricepsLaneExercise(input.exercise)) {
+  if (
+    isTricepsV2Lane(input.lane) &&
+    !isDirectTricepsLaneExercise(input.exercise)
+  ) {
     return false;
   }
   const aliases = v2LaneAliases(input.lane);
@@ -3215,12 +3514,13 @@ function exerciseMatchesV2LaneSetPolicyClass(input: {
 
   const exerciseClass = classified.exerciseClass.toLowerCase();
   const targetClasses = input.lane.preferredExerciseClasses.map((value) =>
-    value.toLowerCase()
+    value.toLowerCase(),
   );
   if (
     targetClasses.some(
       (targetClass) =>
-        targetClass.includes(exerciseClass) || exerciseClass.includes(targetClass)
+        targetClass.includes(exerciseClass) ||
+        exerciseClass.includes(targetClass),
     )
   ) {
     return true;
@@ -3230,7 +3530,7 @@ function exerciseMatchesV2LaneSetPolicyClass(input: {
     targetClass
       .split("_")
       .filter((token) => V2_SET_POLICY_CLASS_TOKENS.has(token))
-      .some((token) => exerciseClass.includes(token))
+      .some((token) => exerciseClass.includes(token)),
   );
 }
 
@@ -3244,16 +3544,16 @@ function exerciseSupportsV2Lane(input: {
   return input.lane.primaryMuscles.some(
     (muscle) =>
       input.exercise.primaryMuscles.includes(muscle) ||
-      (input.exercise.effectiveStimulusByMuscle[muscle] ?? 0) > 0
+      (input.exercise.effectiveStimulusByMuscle[muscle] ?? 0) > 0,
   );
 }
 
 function isDirectRearDeltLaneExercise(
-  exercise: SlotCompositionSnapshot["exercises"][number]
+  exercise: SlotCompositionSnapshot["exercises"][number],
 ): boolean {
   const name = exercise.exerciseName.toLowerCase();
   const primaryMuscles = exercise.primaryMuscles.map((muscle) =>
-    muscle.toLowerCase()
+    muscle.toLowerCase(),
   );
   const hasRearDeltPrimary =
     primaryMuscles.includes("rear delts") ||
@@ -3284,23 +3584,28 @@ function isBicepsV2Lane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
   return lane.laneId === "biceps" || v2LaneAliases(lane).includes("biceps");
 }
 
-function isVerticalPressV2Lane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
-  return lane.laneId === "vertical_press" || v2LaneAliases(lane).includes("vertical_press");
+function isVerticalPressV2Lane(
+  lane: V2Lane | V2Slot["lanes"][number],
+): boolean {
+  return (
+    lane.laneId === "vertical_press" ||
+    v2LaneAliases(lane).includes("vertical_press")
+  );
 }
 
 function isChestSecondExposureV2Lane(
-  lane: V2Lane | V2Slot["lanes"][number]
+  lane: V2Lane | V2Slot["lanes"][number],
 ): boolean {
   return lane.laneId === "chest_second_exposure";
 }
 
 function isDirectChestLaneExercise(
-  exercise: SlotCompositionSnapshot["exercises"][number]
+  exercise: SlotCompositionSnapshot["exercises"][number],
 ): boolean {
   const classified = classifyPlannerOnlyExercise({ exercise });
   return (
     exercise.primaryMuscles.some(
-      (muscle) => muscle.trim().toLowerCase() === "chest"
+      (muscle) => muscle.trim().toLowerCase() === "chest",
     ) &&
     (classified.exerciseClass === "chest_press" ||
       classified.exerciseClass === "chest_isolation")
@@ -3308,11 +3613,11 @@ function isDirectChestLaneExercise(
 }
 
 function isDirectTricepsLaneExercise(
-  exercise: SlotCompositionSnapshot["exercises"][number]
+  exercise: SlotCompositionSnapshot["exercises"][number],
 ): boolean {
   const name = exercise.exerciseName.toLowerCase();
   const primaryMuscles = exercise.primaryMuscles.map((muscle) =>
-    muscle.toLowerCase()
+    muscle.toLowerCase(),
   );
   const hasTricepsPrimary = primaryMuscles.includes("triceps");
   const directName =
@@ -3336,11 +3641,11 @@ function isDirectTricepsLaneExercise(
 }
 
 function isDirectBicepsLaneExercise(
-  exercise: SlotCompositionSnapshot["exercises"][number]
+  exercise: SlotCompositionSnapshot["exercises"][number],
 ): boolean {
   const name = exercise.exerciseName.toLowerCase();
   const primaryMuscles = exercise.primaryMuscles.map((muscle) =>
-    muscle.toLowerCase()
+    muscle.toLowerCase(),
   );
   const hasBicepsPrimary = primaryMuscles.includes("biceps");
   const directName =
@@ -3361,7 +3666,7 @@ function isDirectBicepsLaneExercise(
 }
 
 function isDirectSideDeltIsolationExercise(
-  exercise: SlotCompositionSnapshot["exercises"][number]
+  exercise: SlotCompositionSnapshot["exercises"][number],
 ): boolean {
   const name = exercise.exerciseName.toLowerCase();
   const classified = classifyPlannerOnlyExercise({ exercise });
@@ -3384,8 +3689,8 @@ function hasDirectSideDeltExposure(input: {
         (exercise) =>
           exercise.exerciseName !== input.excludeExerciseName &&
           isDirectSideDeltIsolationExercise(exercise) &&
-          (exercise.effectiveStimulusByMuscle["Side Delts"] ?? 0) > 0
-      )
+          (exercise.effectiveStimulusByMuscle["Side Delts"] ?? 0) > 0,
+      ),
     ) ?? false
   );
 }
@@ -3395,7 +3700,7 @@ function normalizeExerciseIdentity(value: string | undefined): string {
 }
 
 function chestExposureClass(
-  exercise: SlotCompositionSnapshot["exercises"][number] | undefined
+  exercise: SlotCompositionSnapshot["exercises"][number] | undefined,
 ): string | null {
   if (!exercise || !isDirectChestLaneExercise(exercise)) {
     return null;
@@ -3404,7 +3709,7 @@ function chestExposureClass(
 }
 
 function firstUpperAChestAnchor(
-  noRepair: PlanningRealityDiagnostic | undefined
+  noRepair: PlanningRealityDiagnostic | undefined,
 ): SlotCompositionSnapshot["exercises"][number] | undefined {
   return getSlotById(noRepair?.finalSlotPlan ?? [], "upper_a")?.exercises.find(
     (exercise) => {
@@ -3415,7 +3720,7 @@ function firstUpperAChestAnchor(
           classified.exerciseClass === "chest_press" ||
           exercise.role === "main")
       );
-    }
+    },
   );
 }
 
@@ -3431,11 +3736,17 @@ function summarizeChestSecondExposureDistinctness(input: {
   sameClassExposure: boolean;
 } {
   const upperAAnchor = firstUpperAChestAnchor(input.noRepair);
-  const upperBSecond = input.secondExposureExercises.find(isDirectChestLaneExercise);
+  const upperBSecond = input.secondExposureExercises.find(
+    isDirectChestLaneExercise,
+  );
   const upperAClass = chestExposureClass(upperAAnchor);
   const upperBClass = chestExposureClass(upperBSecond);
-  const upperAExerciseName = normalizeExerciseIdentity(upperAAnchor?.exerciseName);
-  const upperBExerciseName = normalizeExerciseIdentity(upperBSecond?.exerciseName);
+  const upperAExerciseName = normalizeExerciseIdentity(
+    upperAAnchor?.exerciseName,
+  );
+  const upperBExerciseName = normalizeExerciseIdentity(
+    upperBSecond?.exerciseName,
+  );
   const upperAExerciseId = normalizeExerciseIdentity(upperAAnchor?.exerciseId);
   const upperBExerciseId = normalizeExerciseIdentity(upperBSecond?.exerciseId);
   const sameExercise =
@@ -3449,7 +3760,8 @@ function summarizeChestSecondExposureDistinctness(input: {
   return {
     hasUpperSlotDistribution: upperAAnchor != null && upperBSecond != null,
     hasSecondExposure: upperBSecond != null,
-    exerciseDistinct: upperAAnchor != null && upperBSecond != null && !sameExercise,
+    exerciseDistinct:
+      upperAAnchor != null && upperBSecond != null && !sameExercise,
     classDistinct: upperAClass != null && upperBClass != null && !sameClass,
     duplicateExposure: sameExercise,
     sameClassExposure: sameClass,
@@ -3519,7 +3831,9 @@ function maxV2LaneConcentrationEvidence(input: {
   if (input.exercises.length === 0) {
     return { share: 0, muscle: null, row: null };
   }
-  const exerciseNames = new Set(input.exercises.map((exercise) => exercise.exerciseName));
+  const exerciseNames = new Set(
+    input.exercises.map((exercise) => exercise.exerciseName),
+  );
   let best: {
     share: number;
     muscle: string | null;
@@ -3530,7 +3844,7 @@ function maxV2LaneConcentrationEvidence(input: {
       continue;
     }
     for (const [muscle, percentage] of Object.entries(
-      row.percentageOfWeeklyProjectedStimulusByMuscle
+      row.percentageOfWeeklyProjectedStimulusByMuscle,
     )) {
       if (!input.lane.primaryMuscles.includes(muscle)) {
         continue;
@@ -3588,8 +3902,10 @@ function v2LaneMuscleBelowMinimum(input: {
   if (demand?.minEffectiveSets == null) {
     return false;
   }
-  return (sumSlotStimulusByMuscle(input.noRepair.finalSlotPlan).get(input.muscle) ?? 0) <
-    demand.minEffectiveSets;
+  return (
+    (sumSlotStimulusByMuscle(input.noRepair.finalSlotPlan).get(input.muscle) ??
+      0) < demand.minEffectiveSets
+  );
 }
 
 function v2LaneHasSecondExposure(input: {
@@ -3629,14 +3945,17 @@ function v2LanePrimaryTargetsMetWithDirectEvidence(input: {
       return true;
     }
     const directWeeklySets = noRepair.finalSlotPlan.reduce((sum, slot) => {
-      return sum + slot.exercises.reduce((slotSum, exercise) => {
-        const directLaneEvidence = isBicepsV2Lane(input.lane)
-          ? isDirectBicepsLaneExercise(exercise)
-          : exercise.primaryMuscles.includes(muscle);
-        return directLaneEvidence
-          ? slotSum + (exercise.effectiveStimulusByMuscle[muscle] ?? 0)
-          : slotSum;
-      }, 0);
+      return (
+        sum +
+        slot.exercises.reduce((slotSum, exercise) => {
+          const directLaneEvidence = isBicepsV2Lane(input.lane)
+            ? isDirectBicepsLaneExercise(exercise)
+            : exercise.primaryMuscles.includes(muscle);
+          return directLaneEvidence
+            ? slotSum + (exercise.effectiveStimulusByMuscle[muscle] ?? 0)
+            : slotSum;
+        }, 0)
+      );
     }, 0);
     return directWeeklySets >= demand.minEffectiveSets;
   });
@@ -3647,29 +3966,30 @@ function hasBicepsPullingCollateral(input: {
   slotId: string;
 }): boolean {
   return (
-    getSlotById(input.noRepair?.finalSlotPlan ?? [], input.slotId)?.exercises.some(
-      (exercise) => {
-        const name = exercise.exerciseName.toLowerCase();
-        const patterns = exercise.movementPatterns.map((pattern) =>
-          pattern.toLowerCase()
+    getSlotById(
+      input.noRepair?.finalSlotPlan ?? [],
+      input.slotId,
+    )?.exercises.some((exercise) => {
+      const name = exercise.exerciseName.toLowerCase();
+      const patterns = exercise.movementPatterns.map((pattern) =>
+        pattern.toLowerCase(),
+      );
+      const isPulling =
+        name.includes("row") ||
+        name.includes("pulldown") ||
+        name.includes("pull-up") ||
+        name.includes("pullup") ||
+        patterns.some(
+          (pattern) =>
+            pattern.includes("horizontal_pull") ||
+            pattern.includes("vertical_pull"),
         );
-        const isPulling =
-          name.includes("row") ||
-          name.includes("pulldown") ||
-          name.includes("pull-up") ||
-          name.includes("pullup") ||
-          patterns.some(
-            (pattern) =>
-              pattern.includes("horizontal_pull") ||
-              pattern.includes("vertical_pull")
-          );
-        return (
-          isPulling &&
-          !isDirectBicepsLaneExercise(exercise) &&
-          (exercise.effectiveStimulusByMuscle["Biceps"] ?? 0) > 0
-        );
-      }
-    ) ?? false
+      return (
+        isPulling &&
+        !isDirectBicepsLaneExercise(exercise) &&
+        (exercise.effectiveStimulusByMuscle["Biceps"] ?? 0) > 0
+      );
+    }) ?? false
   );
 }
 
@@ -3690,23 +4010,31 @@ function v2BicepsLaneDiagnosticAddenda(input: {
     noRepair: input.noRepair,
     slotId: input.slotId,
   });
-  const directExposureCount = input.noRepair.finalSlotPlan.reduce((count, slot) => {
-    return (
-      count +
-      (slot.exercises.some(
-        (exercise) =>
-          isDirectBicepsLaneExercise(exercise) &&
-          (exercise.effectiveStimulusByMuscle["Biceps"] ?? 0) > 0
-      )
-        ? 1
-        : 0)
-    );
-  }, 0);
+  const directExposureCount = input.noRepair.finalSlotPlan.reduce(
+    (count, slot) => {
+      return (
+        count +
+        (slot.exercises.some(
+          (exercise) =>
+            isDirectBicepsLaneExercise(exercise) &&
+            (exercise.effectiveStimulusByMuscle["Biceps"] ?? 0) > 0,
+        )
+          ? 1
+          : 0)
+      );
+    },
+    0,
+  );
   const belowMinimum =
     bicepsDemand?.minEffectiveSets != null &&
     delivered < bicepsDemand.minEffectiveSets;
 
-  if (!bicepsDemand && delivered <= 0 && !hasPullingCollateral && directExposureCount === 0) {
+  if (
+    !bicepsDemand &&
+    delivered <= 0 &&
+    !hasPullingCollateral &&
+    directExposureCount === 0
+  ) {
     return [];
   }
 
@@ -3721,9 +4049,10 @@ function v2BicepsLaneDiagnosticAddenda(input: {
   ];
 }
 
-function v2LaneFatigueRisk(
-  exercises: SlotCompositionSnapshot["exercises"]
-): { axial: boolean; systemic: boolean } {
+function v2LaneFatigueRisk(exercises: SlotCompositionSnapshot["exercises"]): {
+  axial: boolean;
+  systemic: boolean;
+} {
   return exercises.reduce<{ axial: boolean; systemic: boolean }>(
     (risk, exercise) => {
       const haystack = [
@@ -3747,7 +4076,7 @@ function v2LaneFatigueRisk(
           haystack.includes("excessive_systemic"),
       };
     },
-    { axial: false, systemic: false }
+    { axial: false, systemic: false },
   );
 }
 
@@ -3761,16 +4090,18 @@ function isSmallV2TargetDenominator(input: {
   }
   const demand = getNoRepairDemandByMuscle(input.noRepair).get(input.muscle);
   const weeklyEffectiveSets =
-    sumSlotStimulusByMuscle(input.noRepair.finalSlotPlan).get(input.muscle) ?? 0;
+    sumSlotStimulusByMuscle(input.noRepair.finalSlotPlan).get(input.muscle) ??
+    0;
   return (
     input.budget.preferred <= 3 ||
-    (demand?.preferredEffectiveSets != null && demand.preferredEffectiveSets <= 4) ||
+    (demand?.preferredEffectiveSets != null &&
+      demand.preferredEffectiveSets <= 4) ||
     weeklyEffectiveSets <= 4
   );
 }
 
 function isLowSystemicFatigueV2Lane(
-  exercises: SlotCompositionSnapshot["exercises"]
+  exercises: SlotCompositionSnapshot["exercises"],
 ): boolean {
   if (exercises.length === 0) {
     return false;
@@ -3778,7 +4109,7 @@ function isLowSystemicFatigueV2Lane(
   return exercises.every((exercise) => {
     const name = exercise.exerciseName.toLowerCase();
     const patterns = exercise.movementPatterns.map((pattern) =>
-      pattern.toLowerCase()
+      pattern.toLowerCase(),
     );
     return (
       exercise.role !== "main" &&
@@ -3789,7 +4120,7 @@ function isLowSystemicFatigueV2Lane(
         (pattern) =>
           pattern.includes("hinge") ||
           pattern.includes("squat") ||
-          pattern.includes("axial")
+          pattern.includes("axial"),
       )
     );
   });
@@ -3831,7 +4162,7 @@ function v2SetBudgetJustifications(input: {
     (policy) =>
       (policy.phase === "hard_accumulation" ||
         policy.phase === "peak_overreach_lite") &&
-      input.setCount <= policy.lane.setBudget.max
+      input.setCount <= policy.lane.setBudget.max,
   );
   if (input.policyLane.role === "anchor") {
     justifications.push("justification:slot_anchor");
@@ -3860,7 +4191,8 @@ function evaluateV2LaneSetPolicy(input: {
   status: V2LaneSetPolicyStatus;
   diagnostics: string[];
 } {
-  const policyLane = input.policyLanes.find((policy) => policy.week === 1)?.lane ??
+  const policyLane =
+    input.policyLanes.find((policy) => policy.week === 1)?.lane ??
     input.policyLanes[0]?.lane;
   if (!input.noRepair || !policyLane) {
     return {
@@ -3870,18 +4202,17 @@ function evaluateV2LaneSetPolicy(input: {
   }
 
   const classMatched = input.noRepairExercises.filter((exercise) =>
-    exerciseMatchesV2LaneSetPolicyClass({ exercise, lane: input.lane })
+    exerciseMatchesV2LaneSetPolicyClass({ exercise, lane: input.lane }),
   );
-  const policyExercises = classMatched.length > 0
-    ? classMatched
-    : input.noRepairExercises;
+  const policyExercises =
+    classMatched.length > 0 ? classMatched : input.noRepairExercises;
   const setCount = policyExercises.reduce(
     (sum, exercise) => sum + exercise.setCount,
-    0
+    0,
   );
   const maxExerciseSets = Math.max(
     0,
-    ...policyExercises.map((exercise) => exercise.setCount)
+    ...policyExercises.map((exercise) => exercise.setCount),
   );
   const budget = policyLane.setBudget;
   const cap = policyLane.capPolicy;
@@ -3892,13 +4223,14 @@ function evaluateV2LaneSetPolicy(input: {
       .filter(
         (policy) =>
           policy.phase === "hard_accumulation" ||
-          policy.phase === "peak_overreach_lite"
+          policy.phase === "peak_overreach_lite",
       )
-      .map((policy) => policy.lane.setBudget.max)
+      .map((policy) => policy.lane.setBudget.max),
   );
   const allowedExpansionMax = Math.min(
     phaseExpansionMax,
-    cap.maxSetsPerExerciseWithoutJustification * Math.max(1, cap.maxDirectExercises)
+    cap.maxSetsPerExerciseWithoutJustification *
+      Math.max(1, cap.maxDirectExercises),
   );
   const concentrationEvidence = maxV2LaneConcentrationEvidence({
     noRepair: input.noRepair,
@@ -3926,7 +4258,7 @@ function evaluateV2LaneSetPolicy(input: {
     lowSystemicFatigueLane,
   });
   const hasJustification = justifications.some(
-    (row) => row !== "justification:none"
+    (row) => row !== "justification:none",
   );
   const aboveFiveSets = maxExerciseSets > 5;
   const overRoleCap =
@@ -3945,12 +4277,15 @@ function evaluateV2LaneSetPolicy(input: {
   });
   const directLaneOwnedExercise =
     concentrationEvidence.muscle != null &&
-    (concentrationEvidence.row?.primaryMuscles.includes(concentrationEvidence.muscle) ??
+    (concentrationEvidence.row?.primaryMuscles.includes(
+      concentrationEvidence.muscle,
+    ) ??
       false);
   const laneOwnedPolicyExercise =
     concentrationEvidence.row != null &&
     policyExercises.some(
-      (exercise) => exercise.exerciseName === concentrationEvidence.row?.exerciseName
+      (exercise) =>
+        exercise.exerciseName === concentrationEvidence.row?.exerciseName,
     );
   const cleanDirectIsolation =
     directLaneOwnedExercise &&
@@ -3982,20 +4317,20 @@ function evaluateV2LaneSetPolicy(input: {
     concentration.appliesTo !== "diagnostic_only" &&
     concentrationShare >= concentration.warningShare;
   const primaryAnchorConcentration =
-    concentration.appliesTo === "primary_target" && input.lane.role === "anchor";
+    concentration.appliesTo === "primary_target" &&
+    input.lane.role === "anchor";
   const squatAnchorConcentration =
     input.lane.laneId === "squat_anchor" && primaryAnchorConcentration;
   const verticalPressAnchorConcentration =
     isVerticalPressV2Lane(input.lane) && primaryAnchorConcentration;
   const chestSecondExposureConcentration =
     isChestSecondExposureV2Lane(input.lane) && concentrationWarning;
-  const chestSecondExposureDistinctness =
-    chestSecondExposureConcentration
-      ? summarizeChestSecondExposureDistinctness({
-          noRepair: input.noRepair,
-          secondExposureExercises: policyExercises,
-        })
-      : null;
+  const chestSecondExposureDistinctness = chestSecondExposureConcentration
+    ? summarizeChestSecondExposureDistinctness({
+        noRepair: input.noRepair,
+        secondExposureExercises: policyExercises,
+      })
+    : null;
   const repairCreatedConcentration =
     concentrationEvidence.row?.producedOrIncreasedByRepair ?? false;
   const withinPlannedSetBudget =
@@ -4057,12 +4392,14 @@ function evaluateV2LaneSetPolicy(input: {
       "concentration:support_tier",
       ...(smallTargetDenominator ? ["concentration:small_denominator"] : []),
       ...(dirtyCollateral ? ["concentration:dirty_collateral"] : []),
-      ...(cleanDirectIsolation ? ["concentration:justified_direct_isolation"] : []),
+      ...(cleanDirectIsolation
+        ? ["concentration:justified_direct_isolation"]
+        : []),
       ...(concentrationBlocker ? ["concentration:needs_diversification"] : []),
       ...(cleanDirectIsolation ? ["justification:low_systemic_fatigue"] : []),
       ...(cleanDirectIsolation && smallTargetDenominator
         ? ["justification:small_target_denominator"]
-        : [])
+        : []),
     );
   }
   if (primaryAnchorConcentration && concentrationWarning) {
@@ -4091,12 +4428,16 @@ function evaluateV2LaneSetPolicy(input: {
             ]
         : [
             ...(concentrationBlocker ? ["concentration:true_blocker"] : []),
-            ...(!hasSecondExposure ? ["concentration:needs_diversification"] : []),
+            ...(!hasSecondExposure
+              ? ["concentration:needs_diversification"]
+              : []),
             ...(directTargetMet ? ["justification:weekly_target_met"] : []),
             "justification:none",
           ]),
-      ...(fatigueRisk.axial ? ["risk:axial_fatigue", "risk:joint_fatigue"] : []),
-      ...(fatigueRisk.systemic ? ["risk:systemic_fatigue"] : [])
+      ...(fatigueRisk.axial
+        ? ["risk:axial_fatigue", "risk:joint_fatigue"]
+        : []),
+      ...(fatigueRisk.systemic ? ["risk:systemic_fatigue"] : []),
     );
   }
   if (chestSecondExposureConcentration && chestSecondExposureDistinctness) {
@@ -4140,8 +4481,10 @@ function evaluateV2LaneSetPolicy(input: {
             ...(directTargetMet ? ["justification:weekly_target_met"] : []),
             "justification:none",
           ]),
-      ...(fatigueRisk.axial ? ["risk:axial_fatigue", "risk:joint_fatigue"] : []),
-      ...(fatigueRisk.systemic ? ["risk:systemic_fatigue"] : [])
+      ...(fatigueRisk.axial
+        ? ["risk:axial_fatigue", "risk:joint_fatigue"]
+        : []),
+      ...(fatigueRisk.systemic ? ["risk:systemic_fatigue"] : []),
     );
   }
 
@@ -4175,20 +4518,28 @@ function evaluateV2LaneSetPolicy(input: {
     concentrationDiagnostics.push("concentration:quality_warning");
   }
 
-  const diagnosticJustifications =
-    concentrationDiagnostics.some((row) => row.startsWith("justification:"))
-      ? justifications.filter((row) => row !== "justification:none")
-      : justifications;
+  const diagnosticJustifications = concentrationDiagnostics.some((row) =>
+    row.startsWith("justification:"),
+  )
+    ? justifications.filter((row) => row !== "justification:none")
+    : justifications;
 
   return {
     status,
-    diagnostics: compactV2LaneDiagnostics([
-      `setPolicy:${status}`,
-      ...(reason ? [`setPolicyReason:${reason}`] : []),
-      ...v2SetBudgetDiagnostics({ setCount, budget, status }),
-      ...diagnosticJustifications,
-      ...concentrationDiagnostics,
-    ], chestSecondExposureConcentration ? 14 : primaryAnchorConcentration ? 12 : 8),
+    diagnostics: compactV2LaneDiagnostics(
+      [
+        `setPolicy:${status}`,
+        ...(reason ? [`setPolicyReason:${reason}`] : []),
+        ...v2SetBudgetDiagnostics({ setCount, budget, status }),
+        ...diagnosticJustifications,
+        ...concentrationDiagnostics,
+      ],
+      chestSecondExposureConcentration
+        ? 14
+        : primaryAnchorConcentration
+          ? 12
+          : 8,
+    ),
   };
 }
 
@@ -4209,21 +4560,26 @@ function formatV2SelectedExercises(input: {
   });
 }
 
-function includesAnyLaneToken(value: string, lane: V2Lane | V2Slot["lanes"][number]): boolean {
+function includesAnyLaneToken(
+  value: string,
+  lane: V2Lane | V2Slot["lanes"][number],
+): boolean {
   const normalized = value.toLowerCase();
   const tokens = normalized
     .split(/[:|,]/)
     .map((token) => token.trim())
     .filter(Boolean);
   return (
-    v2LaneAliases(lane).some((alias) => normalized.includes(alias.toLowerCase())) ||
+    v2LaneAliases(lane).some((alias) =>
+      normalized.includes(alias.toLowerCase()),
+    ) ||
     lane.primaryMuscles.some((muscle) => {
       const normalizedMuscle = muscle.toLowerCase();
       return tokens.some(
         (token) =>
           token === normalizedMuscle ||
           token.startsWith(`${normalizedMuscle}=`) ||
-          token.startsWith(`${normalizedMuscle}:`)
+          token.startsWith(`${normalizedMuscle}:`),
       );
     })
   );
@@ -4237,10 +4593,11 @@ function strictLaneExerciseNamesFromFinalPlan(input: {
   if (!input.noRepair || !isStrictV2SetBudgetLane(input.lane)) {
     return [];
   }
-  return (getSlotById(input.noRepair.finalSlotPlan, input.slotId)?.exercises ?? [])
-    .filter((exercise) =>
-      exerciseMatchesV2LaneSetPolicyClass({ exercise, lane: input.lane })
-    );
+  return (
+    getSlotById(input.noRepair.finalSlotPlan, input.slotId)?.exercises ?? []
+  ).filter((exercise) =>
+    exerciseMatchesV2LaneSetPolicyClass({ exercise, lane: input.lane }),
+  );
 }
 
 function strictDirectSupportConcentrationDiagnostics(input: {
@@ -4256,12 +4613,12 @@ function strictDirectSupportConcentrationDiagnostics(input: {
     return [];
   }
   const exerciseNames = new Set(
-    input.exercises.map((exercise) => exercise.exerciseName.toLowerCase())
+    input.exercises.map((exercise) => exercise.exerciseName.toLowerCase()),
   );
   const supportTierLane =
     isTricepsV2Lane(input.lane) ||
     input.lane.primaryMuscles.every(
-      (muscle) => getMuscleTargetSemantics(muscle).targetTier !== "A_PRIMARY"
+      (muscle) => getMuscleTargetSemantics(muscle).targetTier !== "A_PRIMARY",
     );
   if (!supportTierLane) {
     return [];
@@ -4271,13 +4628,16 @@ function strictDirectSupportConcentrationDiagnostics(input: {
     return (
       normalized.includes("single_exercise_share") &&
       input.lane.primaryMuscles.some((muscle) =>
-        normalized.includes(muscle.toLowerCase())
+        normalized.includes(muscle.toLowerCase()),
       ) &&
       Array.from(exerciseNames).some((name) => normalized.includes(name))
     );
   });
   if (
-    !(hasDirectShareWarning || input.diagnostics.includes("setPolicy:quality_warning")) ||
+    !(
+      hasDirectShareWarning ||
+      input.diagnostics.includes("setPolicy:quality_warning")
+    ) ||
     !(
       isLowSystemicFatigueV2Lane(input.exercises) ||
       (isTricepsV2Lane(input.lane) &&
@@ -4312,7 +4672,7 @@ function strictChestSecondExposureConcentrationDiagnostics(input: {
     return [];
   }
   const exerciseNames = new Set(
-    input.exercises.map((exercise) => exercise.exerciseName.toLowerCase())
+    input.exercises.map((exercise) => exercise.exerciseName.toLowerCase()),
   );
   const hasDirectShareWarning = input.diagnostics.some((diagnostic) => {
     const normalized = diagnostic.toLowerCase();
@@ -4388,15 +4748,17 @@ function collectV2LaneDiagnostics(input: {
         ]
       : ["target_status:unknown"]),
     ...(input.noRepairSlotPlan?.missingLanes.filter((row) =>
-      includesAnyLaneToken(row, input.lane)
+      includesAnyLaneToken(row, input.lane),
     ) ?? []),
     ...(input.noRepairSlotPlan?.unresolvedDemand.filter((row) =>
-      includesAnyLaneToken(row, input.lane)
+      includesAnyLaneToken(row, input.lane),
     ) ?? []),
     ...(input.noRepairSlotPlan?.validationFailures.filter((row) =>
-      includesAnyLaneToken(row, input.lane)
+      includesAnyLaneToken(row, input.lane),
     ) ?? []),
-    ...(input.repairedCreatesLane ? ["repair_dependent:repaired_projection_has_lane"] : []),
+    ...(input.repairedCreatesLane
+      ? ["repair_dependent:repaired_projection_has_lane"]
+      : []),
   ];
 
   if (
@@ -4432,7 +4794,7 @@ function collectV2LaneDiagnostics(input: {
       explainedConcentrationDiagnostics.length > 0
         ? [
             ...input.setPolicyDiagnostics.filter(
-              (row) => row !== "setPolicy:in_budget"
+              (row) => row !== "setPolicy:in_budget",
             ),
             "setPolicy:quality_warning",
             ...explainedConcentrationDiagnostics,
@@ -4450,12 +4812,15 @@ function collectV2LaneDiagnostics(input: {
         ? 14
         : explainedConcentrationDiagnostics.length > 0
           ? 8
-          : 6
+          : 6,
     );
   }
 
   if (!noRepair) {
-    return compactV2LaneDiagnostics([...diagnostics, "planningReality_missing"], 6);
+    return compactV2LaneDiagnostics(
+      [...diagnostics, "planningReality_missing"],
+      6,
+    );
   }
 
   const strictLaneExerciseNames = new Set(
@@ -4463,7 +4828,7 @@ function collectV2LaneDiagnostics(input: {
       noRepair,
       slotId: input.slotId,
       lane: input.lane,
-    }).map((exercise) => exercise.exerciseName)
+    }).map((exercise) => exercise.exerciseName),
   );
 
   diagnostics.push(
@@ -4471,12 +4836,12 @@ function collectV2LaneDiagnostics(input: {
       .filter(
         (row) =>
           row.slotId === input.slotId &&
-          input.lane.primaryMuscles.includes(row.muscle)
+          input.lane.primaryMuscles.includes(row.muscle),
       )
       .map(
         (row) =>
-          `class_cause:${row.muscle}:${row.owningCause}:${row.behaviorReadiness}`
-      )
+          `class_cause:${row.muscle}:${row.owningCause}:${row.behaviorReadiness}`,
+      ),
   );
   diagnostics.push(
     ...(noRepair.duplicateContinuityJustification?.duplicates ?? [])
@@ -4484,14 +4849,13 @@ function collectV2LaneDiagnostics(input: {
       .filter(
         (row) =>
           row.primaryMuscles.some((muscle) =>
-            input.lane.primaryMuscles.includes(muscle)
-          ) ||
-          includesAnyLaneToken(row.exerciseClass ?? "", input.lane)
+            input.lane.primaryMuscles.includes(muscle),
+          ) || includesAnyLaneToken(row.exerciseClass ?? "", input.lane),
       )
       .map(
         (row) =>
-          `duplicate:${row.exerciseName}:${row.justification}:${row.risk}`
-      )
+          `duplicate:${row.exerciseName}:${row.justification}:${row.risk}`,
+      ),
   );
   diagnostics.push(
     ...(noRepair.exerciseConcentration ?? [])
@@ -4500,40 +4864,37 @@ function collectV2LaneDiagnostics(input: {
       .filter(
         (row) =>
           !isStrictV2SetBudgetLane(input.lane) ||
-          strictLaneExerciseNames.has(row.exerciseName)
+          strictLaneExerciseNames.has(row.exerciseName),
       )
       .flatMap((row) =>
         Object.entries(row.percentageOfWeeklyProjectedStimulusByMuscle)
           .filter(([muscle]) => input.lane.primaryMuscles.includes(muscle))
           .map(
             ([muscle, percentage]) =>
-              `concentration:${row.exerciseName}:${muscle}:${roundOne(percentage)}%`
-          )
-      )
+              `concentration:${row.exerciseName}:${muscle}:${roundOne(percentage)}%`,
+          ),
+      ),
   );
   diagnostics.push(
     ...(noRepair.distributionGuardActions ?? [])
       .filter(
         (row) =>
           row.slotId === input.slotId &&
-          input.lane.primaryMuscles.includes(row.muscle)
+          input.lane.primaryMuscles.includes(row.muscle),
       )
       .map(
         (row) =>
-          `distribution_guard:${row.exerciseName}:${row.attemptedAction}:${row.decision}`
-      )
+          `distribution_guard:${row.exerciseName}:${row.attemptedAction}:${row.decision}`,
+      ),
   );
   diagnostics.push(
     ...(noRepair.forbiddenCleanupReroute?.reroutedDemand ?? [])
       .filter(
         (row) =>
           (row.fromSlotId === input.slotId || row.toSlotId === input.slotId) &&
-          input.lane.primaryMuscles.includes(row.muscle)
+          input.lane.primaryMuscles.includes(row.muscle),
       )
-      .map(
-        (row) =>
-          `forbidden_cleanup:${row.muscle}:${row.reason}`
-      )
+      .map((row) => `forbidden_cleanup:${row.muscle}:${row.reason}`),
   );
   diagnostics.push(
     ...(input.repaired?.repairMaterialityAfterShadowAllocation ?? [])
@@ -4542,19 +4903,19 @@ function collectV2LaneDiagnostics(input: {
           row.slotId === input.slotId &&
           row.muscle != null &&
           input.lane.primaryMuscles.includes(row.muscle) &&
-          (row.materiality === "moderate" || row.materiality === "major")
+          (row.materiality === "moderate" || row.materiality === "major"),
       )
       .map(
         (row) =>
-          `repaired_repair:${row.muscle}:${row.exerciseName ?? "unknown"}:${row.materiality}`
-      )
+          `repaired_repair:${row.muscle}:${row.exerciseName ?? "unknown"}:${row.materiality}`,
+      ),
   );
   diagnostics.push(
     ...v2BicepsLaneDiagnosticAddenda({
       noRepair,
       slotId: input.slotId,
       lane: input.lane,
-    })
+    }),
   );
 
   const explainedConcentrationDiagnostics =
@@ -4586,9 +4947,9 @@ function collectV2LaneDiagnostics(input: {
       ? 12
       : finalDiagnostics.includes("concentration:second_exposure")
         ? 14
-      : finalDiagnostics.includes("concentration:support_tier")
-        ? 8
-        : 6
+        : finalDiagnostics.includes("concentration:support_tier")
+          ? 8
+          : 6,
   );
 }
 
@@ -4607,18 +4968,20 @@ function calvesLaneWorkSatisfiesTarget(input: {
   }).filter(
     (exercise) =>
       exercise.primaryMuscles.includes("Calves") ||
-      (exercise.effectiveStimulusByMuscle.Calves ?? 0) > 0
+      (exercise.effectiveStimulusByMuscle.Calves ?? 0) > 0,
   );
   const calfSets = calfExercises.reduce(
     (sum, exercise) => sum + (exercise.effectiveStimulusByMuscle.Calves ?? 0),
-    0
+    0,
   );
   return roundOne(calfSets) >= input.lane.targetSets.min;
 }
 
-function weeklyCalvesWithinTarget(noRepair: PlanningRealityDiagnostic): boolean {
+function weeklyCalvesWithinTarget(
+  noRepair: PlanningRealityDiagnostic,
+): boolean {
   const weeklyCalves = buildNoRepairWeeklyMuscleTotals(noRepair).find(
-    (row) => row.muscle === "Calves"
+    (row) => row.muscle === "Calves",
   );
   return (
     weeklyCalves?.status === "within" &&
@@ -4705,8 +5068,8 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
     "risk:joint_fatigue",
     "risk:systemic_fatigue",
   ]);
-  const concentrationPolicy = unique.filter(
-    (row) => concentrationPolicyTokens.has(row)
+  const concentrationPolicy = unique.filter((row) =>
+    concentrationPolicyTokens.has(row),
   );
   const other = unique.filter(
     (row) =>
@@ -4714,7 +5077,7 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
       !row.startsWith("setBudget") &&
       !row.startsWith("justification") &&
       !row.startsWith("readout_note:") &&
-      !concentrationPolicyTokens.has(row)
+      !concentrationPolicyTokens.has(row),
   );
   const blockerOther = other.filter((row) => {
     const lower = row.toLowerCase();
@@ -4784,10 +5147,7 @@ function inferV2GapCause(input: {
   ) {
     return "set_distribution_gap";
   }
-  if (
-    joined.includes("concentration") ||
-    joined.includes("share_")
-  ) {
+  if (joined.includes("concentration") || joined.includes("share_")) {
     return "concentration_policy_gap";
   }
   return "unknown";
@@ -4823,7 +5183,7 @@ function hasExplainedV2ConcentrationWarning(diagnostics: string[]): boolean {
       (row.startsWith("justification:") &&
         row !== "justification:none" &&
         row !== "justification:weekly_target_met") ||
-      row === "concentration:justified_direct_isolation"
+      row === "concentration:justified_direct_isolation",
   );
   return (
     hasQualityWarning &&
@@ -4845,31 +5205,33 @@ function classifyV2LaneStatus(input: {
   }
 
   const classMatched = input.noRepairExercises.filter((exercise) =>
-    exerciseMatchesV2LaneClass({ exercise, lane: input.lane })
+    exerciseMatchesV2LaneClass({ exercise, lane: input.lane }),
   );
   const hasClassMatch = classMatched.length > 0;
   const hasMeaningfulNoRepairEvidence = input.noRepairExercises.length > 0;
   const repairedCreatesLane =
     !hasClassMatch &&
     input.repairedExercises.some((exercise) =>
-      exerciseMatchesV2LaneClass({ exercise, lane: input.lane })
+      exerciseMatchesV2LaneClass({ exercise, lane: input.lane }),
     );
-  const setCount = (hasClassMatch ? classMatched : input.noRepairExercises)
-    .reduce((sum, exercise) => sum + exercise.setCount, 0);
+  const setCount = (
+    hasClassMatch ? classMatched : input.noRepairExercises
+  ).reduce((sum, exercise) => sum + exercise.setCount, 0);
   const withinTarget =
-    setCount >= input.lane.targetSets.min && setCount <= input.lane.targetSets.max;
+    setCount >= input.lane.targetSets.min &&
+    setCount <= input.lane.targetSets.max;
   const withinTolerance =
     setCount >= Math.max(0, input.lane.targetSets.min - 1) &&
     setCount <= input.lane.targetSets.max + 1;
   const blocked = hasV2TrueHardBlockerDiagnostic(input.diagnostics);
   const diagnosticStatus = input.diagnostics.find((row) =>
-    row.startsWith("target_status:")
+    row.startsWith("target_status:"),
   );
   const hasQualityWarningDiagnostics = input.diagnostics.includes(
-    "concentration:quality_warning"
+    "concentration:quality_warning",
   );
   const hasTargetUnderdeliveryDiagnostics = input.diagnostics.includes(
-    "target_delivery:below_min"
+    "target_delivery:below_min",
   );
 
   if (!hasMeaningfulNoRepairEvidence && repairedCreatesLane) {
@@ -4947,7 +5309,7 @@ function recommendV2Migration(input: {
   }
   if (input.status === "repair_dependent") {
     const suspicious = input.diagnostics.some((row) =>
-      row.toLowerCase().includes("suspicious")
+      row.toLowerCase().includes("suspicious"),
     );
     return suspicious
       ? {
@@ -5038,8 +5400,14 @@ function buildV2LaneDiff(input: {
   slotId: V2TargetVsNoRepairDiff["slotDiffs"][number]["slotId"];
   lane: V2Lane | V2Slot["lanes"][number];
 }): V2TargetVsNoRepairLaneDiff {
-  const noRepairSlot = getSlotById(input.noRepair?.finalSlotPlan ?? [], input.slotId);
-  const repairedSlot = getSlotById(input.repaired?.finalSlotPlan ?? [], input.slotId);
+  const noRepairSlot = getSlotById(
+    input.noRepair?.finalSlotPlan ?? [],
+    input.slotId,
+  );
+  const repairedSlot = getSlotById(
+    input.repaired?.finalSlotPlan ?? [],
+    input.slotId,
+  );
   const noRepairExercises = collectV2LaneExercises({
     slot: noRepairSlot,
     lane: input.lane,
@@ -5110,7 +5478,7 @@ function buildV2LaneDiff(input: {
 }
 
 function nextBestV2MigrationSlice(
-  laneDiffs: V2TargetVsNoRepairLaneDiff[]
+  laneDiffs: V2TargetVsNoRepairLaneDiff[],
 ): string | null {
   let candidate: V2TargetVsNoRepairLaneDiff | null = null;
   let candidatePriority = 0;
@@ -5135,7 +5503,7 @@ function isTrueActionableV2Lane(lane: V2TargetVsNoRepairLaneDiff): boolean {
 }
 
 function formatV2ActionableLaneBlocker(
-  lane: V2TargetVsNoRepairLaneDiff
+  lane: V2TargetVsNoRepairLaneDiff,
 ): string {
   return `${lane.laneId}:${lane.migrationRecommendation}`;
 }
@@ -5185,10 +5553,10 @@ function buildReplacementReadinessBlockers(input: {
   laneDiffs: V2TargetVsNoRepairLaneDiff[];
 }): string[] {
   const blockedLaneCount = input.laneDiffs.filter(
-    (lane) => lane.currentStatus === "blocked"
+    (lane) => lane.currentStatus === "blocked",
   ).length;
   const repairDependentLaneCount = input.laneDiffs.filter(
-    (lane) => lane.currentStatus === "repair_dependent"
+    (lane) => lane.currentStatus === "repair_dependent",
   ).length;
   return uniqueSorted([
     ...input.acceptanceClassification.hardBlockers.map((row) => row.code),
@@ -5211,7 +5579,7 @@ function buildV2TargetVsNoRepairDiff(input: {
   acceptanceClassification: NoRepairClassification;
 }): V2TargetVsNoRepairDiff {
   const noRepairSlotPlans = new Map(
-    input.slotPlans.map((slot) => [slot.slotId, slot])
+    input.slotPlans.map((slot) => [slot.slotId, slot]),
   );
   const slotDiffs = input.v2Plan.skeleton.slots.map((slot) => ({
     slotId: slot.slotId,
@@ -5223,12 +5591,12 @@ function buildV2TargetVsNoRepairDiff(input: {
         v2SetDistributionIntent: input.v2SetDistributionIntent,
         slotId: slot.slotId,
         lane,
-      })
+      }),
     ),
   }));
   const laneDiffs = slotDiffs.flatMap((slot) => slot.laneDiffs);
   const migrationCandidateCount = laneDiffs.filter(
-    (lane) => lane.severity === "migration_candidate"
+    (lane) => lane.severity === "migration_candidate",
   ).length;
   const suspiciousOrBlockedCount =
     laneDiffs.filter((lane) => lane.currentStatus === "blocked").length +
@@ -5245,11 +5613,21 @@ function buildV2TargetVsNoRepairDiff(input: {
     affectsScoringOrGeneration: false,
     summary: {
       targetLaneCount: laneDiffs.length,
-      satisfiedLaneCount: laneDiffs.filter((lane) => lane.currentStatus === "satisfied").length,
-      partialLaneCount: laneDiffs.filter((lane) => lane.currentStatus === "partial").length,
-      missingLaneCount: laneDiffs.filter((lane) => lane.currentStatus === "missing").length,
-      blockedLaneCount: laneDiffs.filter((lane) => lane.currentStatus === "blocked").length,
-      repairDependentLaneCount: laneDiffs.filter((lane) => lane.currentStatus === "repair_dependent").length,
+      satisfiedLaneCount: laneDiffs.filter(
+        (lane) => lane.currentStatus === "satisfied",
+      ).length,
+      partialLaneCount: laneDiffs.filter(
+        (lane) => lane.currentStatus === "partial",
+      ).length,
+      missingLaneCount: laneDiffs.filter(
+        (lane) => lane.currentStatus === "missing",
+      ).length,
+      blockedLaneCount: laneDiffs.filter(
+        (lane) => lane.currentStatus === "blocked",
+      ).length,
+      repairDependentLaneCount: laneDiffs.filter(
+        (lane) => lane.currentStatus === "repair_dependent",
+      ).length,
       migrationCandidateCount,
       suspiciousOrBlockedCount,
     },
@@ -5264,7 +5642,7 @@ function buildV2TargetVsNoRepairDiff(input: {
 
 function checkStatusByName(
   checks: MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"],
-  check: string
+  check: string,
 ): V2MesocyclePlan["validationRules"][number]["week1Status"] {
   const found = checks.find((row) => row.check === check);
   if (!found) return "unknown";
@@ -5276,7 +5654,7 @@ function checkStatusByName(
 
 function hasNoRepairFinding(
   findings: NoRepairFinding[],
-  code: string
+  code: string,
 ): boolean {
   return findings.some((finding) => finding.code === code);
 }
@@ -5289,20 +5667,20 @@ function buildV2ValidationRules(input: {
   const hardBlockers = input.classification.hardBlockers;
   const duplicateStatus = checkStatusByName(
     input.acceptanceChecks,
-    "no duplicate main lift when clean alternative exists unless justified"
+    "no duplicate main lift when clean alternative exists unless justified",
   );
   const gt5Status =
     hasNoRepairFinding(
       hardBlockers,
-      "compound_hinge_or_press_gt_5_sets_without_justification"
+      "compound_hinge_or_press_gt_5_sets_without_justification",
     ) ||
     input.classification.hardBlockers.some((row) =>
-      row.code.includes("gt_5_sets")
+      row.code.includes("gt_5_sets"),
     )
       ? "fail"
       : checkStatusByName(
           input.acceptanceChecks,
-          "no exercise above 5 sets unless justified"
+          "no exercise above 5 sets unless justified",
         );
   const requiredLaneStatus =
     input.targetLanesMissing === 0
@@ -5320,21 +5698,23 @@ function buildV2ValidationRules(input: {
       description: "Primary hard-target muscles must meet Week 1 minimums.",
       week1Status: checkStatusByName(
         input.acceptanceChecks,
-        "primary muscles above minimum"
+        "primary muscles above minimum",
       ),
       fullMesocycleStatus: progressionLimited,
     },
     {
       ruleId: "required_lanes_present",
       severity: "hard_blocker",
-      description: "Each required slot lane from the target skeleton is present.",
+      description:
+        "Each required slot lane from the target skeleton is present.",
       week1Status: requiredLaneStatus,
       fullMesocycleStatus: progressionLimited,
     },
     {
       ruleId: "required_class_intent_satisfied",
       severity: "hard_blocker",
-      description: "Required lanes are satisfied by the intended exercise classes.",
+      description:
+        "Required lanes are satisfied by the intended exercise classes.",
       week1Status: requiredLaneStatus,
       fullMesocycleStatus: progressionLimited,
     },
@@ -5344,7 +5724,7 @@ function buildV2ValidationRules(input: {
       description: "A forbidden slot must not solve a primary target muscle.",
       week1Status: checkStatusByName(
         input.acceptanceChecks,
-        "no primary muscle solved by forbidden slot"
+        "no primary muscle solved by forbidden slot",
       ),
       fullMesocycleStatus: progressionLimited,
     },
@@ -5354,28 +5734,30 @@ function buildV2ValidationRules(input: {
       description: "Back Extension does not count as clean Hamstrings closure.",
       week1Status: checkStatusByName(
         input.acceptanceChecks,
-        "no Back Extension as clean Hamstrings closure"
+        "no Back Extension as clean Hamstrings closure",
       ),
       fullMesocycleStatus: progressionLimited,
     },
     {
       ruleId: "no_unjustified_gt_5_sets",
       severity: "hard_blocker",
-      description: "Exercises above five hard sets need explicit planner justification.",
+      description:
+        "Exercises above five hard sets need explicit planner justification.",
       week1Status: gt5Status,
       fullMesocycleStatus: progressionLimited,
     },
     {
       ruleId: "no_unjustified_primary_concentration",
       severity: "hard_blocker",
-      description: "Primary hard-target stimulus cannot be over-concentrated without intent.",
+      description:
+        "Primary hard-target stimulus cannot be over-concentrated without intent.",
       week1Status: hasNoRepairFinding(
         hardBlockers,
-        "primary_hard_target_excessive_single_exercise_share_unjustified"
+        "primary_hard_target_excessive_single_exercise_share_unjustified",
       )
         ? "fail"
         : input.classification.qualityWarnings.some((row) =>
-              row.code.includes("primary_hard_target_50_to_60")
+              row.code.includes("primary_hard_target_50_to_60"),
             )
           ? "pass_with_warning"
           : "pass",
@@ -5384,7 +5766,8 @@ function buildV2ValidationRules(input: {
     {
       ruleId: "no_unjustified_duplicate_main_lift",
       severity: "quality_warning",
-      description: "Repeated main lifts need clean continuity or inventory justification.",
+      description:
+        "Repeated main lifts need clean continuity or inventory justification.",
       week1Status: duplicateStatus,
       fullMesocycleStatus: progressionLimited,
     },
@@ -5394,18 +5777,20 @@ function buildV2ValidationRules(input: {
       description: "The resulting seed shape must replay without reselection.",
       week1Status: checkStatusByName(
         input.acceptanceChecks,
-        "slotPlanSeedJson would replay without reselection"
+        "slotPlanSeedJson would replay without reselection",
       ),
       fullMesocycleStatus: "pass",
     },
     {
       ruleId: "repair_not_required_for_basic_shape",
       severity: "migration_scoreboard",
-      description: "Basic Week 1 shape is evaluated separately from repaired-projection replacement.",
+      description:
+        "Basic Week 1 shape is evaluated separately from repaired-projection replacement.",
       week1Status:
         input.classification.basicMesocycleShapeStatus === "pass"
           ? "pass"
-          : input.classification.basicMesocycleShapeStatus === "pass_with_warnings"
+          : input.classification.basicMesocycleShapeStatus ===
+              "pass_with_warnings"
             ? "pass_with_warning"
             : input.classification.basicMesocycleShapeStatus === "fail"
               ? "fail"
@@ -5415,14 +5800,16 @@ function buildV2ValidationRules(input: {
     {
       ruleId: "full_mesocycle_progression_projected",
       severity: "migration_scoreboard",
-      description: "Weeks 2-4 are derived progression views of the stable skeleton, not independent plans.",
+      description:
+        "Weeks 2-4 are derived progression views of the stable skeleton, not independent plans.",
       week1Status: "not_applicable",
       fullMesocycleStatus: progressionLimited,
     },
     {
       ruleId: "deload_transform_projected",
       severity: "migration_scoreboard",
-      description: "Week 5 deload transform is defined but not production-projected.",
+      description:
+        "Week 5 deload transform is defined but not production-projected.",
       week1Status: "not_applicable",
       fullMesocycleStatus: progressionLimited,
     },
@@ -5479,9 +5866,13 @@ function buildV2MesocyclePlan(input: {
 }
 
 function normalizeWeek1GateStatus(
-  status: NoRepairClassification["basicMesocycleShapeStatus"]
+  status: NoRepairClassification["basicMesocycleShapeStatus"],
 ): CrossWeekProjectionGate["week1Status"]["status"] {
-  if (status === "pass" || status === "pass_with_warnings" || status === "fail") {
+  if (
+    status === "pass" ||
+    status === "pass_with_warnings" ||
+    status === "fail"
+  ) {
     return status;
   }
   return "unknown";
@@ -5494,9 +5885,9 @@ function isPlannerOwnedProjectionStatus(status: string | undefined): boolean {
 function isDiagnosticProjectedStatus(status: string | undefined): boolean {
   return Boolean(
     status &&
-      (status.includes("projected") ||
-        status.includes("allocated") ||
-        status.includes("policy"))
+    (status.includes("projected") ||
+      status.includes("allocated") ||
+      status.includes("policy")),
   );
 }
 
@@ -5512,13 +5903,13 @@ function collectMissingProjectionInputs(input: {
 }
 
 function getV2PlannedSetsByWeek(
-  intent: V2SetDistributionIntent
+  intent: V2SetDistributionIntent,
 ): Map<number, number> {
   return new Map(
     intent.summary.plannedTotalSetsByWeek.map((week) => [
       week.week,
       week.totalSets,
-    ])
+    ]),
   );
 }
 
@@ -5537,25 +5928,27 @@ function buildCrossWeekAccumulationStatus(input: {
   plannerOwnedAccumulationProjection: MesocycleExplainPlannerOnlyNoRepair["plannerOwnedAccumulationProjection"];
 }): CrossWeekProjectionGate["accumulationWeeksStatus"] {
   const rows = ([2, 3, 4] as const).map((weekNumber) => {
-    const progressionWeek = input.v2MesocyclePlan.weeklyProgressionModel.weeks.find(
-      (week) => week.week === weekNumber
-    );
-    const plannerOwnedWeek = input.plannerOwnedAccumulationProjection.weeks.find(
-      (week) => week.week === weekNumber
-    );
+    const progressionWeek =
+      input.v2MesocyclePlan.weeklyProgressionModel.weeks.find(
+        (week) => week.week === weekNumber,
+      );
+    const plannerOwnedWeek =
+      input.plannerOwnedAccumulationProjection.weeks.find(
+        (week) => week.week === weekNumber,
+      );
     const intentWeek = input.v2SetDistributionIntent.weeks.find(
-      (week) => week.week === weekNumber
+      (week) => week.week === weekNumber,
     );
     const allocationWeek =
       input.noRepair?.slotDemandAllocationByWeek?.weeks.find(
-        (week) => week.week === weekNumber
+        (week) => week.week === weekNumber,
       );
     const preselectionWeek =
       input.noRepair?.preselectionDistributionPolicyByWeek?.weeks.find(
-        (week) => week.week === weekNumber
+        (week) => week.week === weekNumber,
       );
     const weeklyDemandWeek = input.noRepair?.weeklyDemandCurve?.weeks.find(
-      (week) => week.week === weekNumber
+      (week) => week.week === weekNumber,
     );
     const allocationStatus = allocationWeek?.projectionStatus;
     const preselectionStatus = preselectionWeek?.projectionStatus;
@@ -5575,11 +5968,11 @@ function buildCrossWeekAccumulationStatus(input: {
         ? "planner_owned_week_projection"
         : plannerOwnedReadOnly
           ? "planner_owned_read_only_projection"
-        : hasV2ScaledIntent
-          ? "scaled_v2_set_distribution_intent"
-          : hasDiagnosticWeekEvidence
-            ? "repeat_week_1_shape"
-            : "missing";
+          : hasV2ScaledIntent
+            ? "scaled_v2_set_distribution_intent"
+            : hasDiagnosticWeekEvidence
+              ? "repeat_week_1_shape"
+              : "missing";
     const limitations = uniqueSorted([
       ...(progressionWeek?.limitations ?? []),
       ...(allocationWeek?.weekLevelWarnings ?? []),
@@ -5619,9 +6012,9 @@ function buildCrossWeekAccumulationStatus(input: {
               "accepted_seed_runtime_consumption_missing",
             ]
           : [
-            "planner_owned_week_allocation_missing",
-            "repeated_week_1_diagnostic_projection_not_true_cross_week_projection",
-          ]),
+              "planner_owned_week_allocation_missing",
+              "repeated_week_1_diagnostic_projection_not_true_cross_week_projection",
+            ]),
       ...(hasV2ScaledIntent && !plannerOwned
         ? plannerOwnedReadOnly
           ? ["v2_set_distribution_intent_used_as_lane_budget_policy_only"]
@@ -5631,10 +6024,15 @@ function buildCrossWeekAccumulationStatus(input: {
 
     return {
       week: weekNumber,
-      phase: progressionWeek?.phase ?? intentWeek?.phase ?? allocationWeek?.phase ?? "unknown",
+      phase:
+        progressionWeek?.phase ??
+        intentWeek?.phase ??
+        allocationWeek?.phase ??
+        "unknown",
       volumeMultiplier:
         intentWeek?.volumeMultiplier ?? progressionWeek?.volumeMultiplier ?? 1,
-      rirTarget: progressionWeek?.rirTarget ?? intentWeek?.rirTarget ?? "unknown",
+      rirTarget:
+        progressionWeek?.rirTarget ?? intentWeek?.rirTarget ?? "unknown",
       projectionBasis,
       limitations,
       safeForBehaviorPromotion: false as const,
@@ -5642,15 +6040,23 @@ function buildCrossWeekAccumulationStatus(input: {
   });
 
   const status: CrossWeekProjectionGate["accumulationWeeksStatus"]["status"] =
-    rows.every((week) => week.projectionBasis === "planner_owned_week_projection")
+    rows.every(
+      (week) => week.projectionBasis === "planner_owned_week_projection",
+    )
       ? "ready"
-      : rows.every((week) => week.projectionBasis === "planner_owned_read_only_projection")
+      : rows.every(
+            (week) =>
+              week.projectionBasis === "planner_owned_read_only_projection",
+          )
         ? "projected_with_limitations"
-      : rows.some((week) => week.projectionBasis === "scaled_v2_set_distribution_intent")
-        ? "diagnostic_projection_only"
-        : rows.some((week) => week.projectionBasis === "repeat_week_1_shape")
-          ? "projected_with_limitations"
-          : "not_projected";
+        : rows.some(
+              (week) =>
+                week.projectionBasis === "scaled_v2_set_distribution_intent",
+            )
+          ? "diagnostic_projection_only"
+          : rows.some((week) => week.projectionBasis === "repeat_week_1_shape")
+            ? "projected_with_limitations"
+            : "not_projected";
 
   return { status, weeks: rows };
 }
@@ -5661,22 +6067,22 @@ function buildCrossWeekDeloadStatus(input: {
   v2DeloadProjectionDiagnostic: V2DeloadProjectionDiagnostic;
 }): CrossWeekProjectionGate["deloadStatus"] {
   const deloadWeek = input.v2MesocyclePlan.weeklyProgressionModel.weeks.find(
-    (week) => week.phase === "deload"
+    (week) => week.phase === "deload",
   );
-  const allocationWeek =
-    input.noRepair?.slotDemandAllocationByWeek?.weeks.find(
-      (week) => week.phase === "deload" || week.week === 5
-    );
+  const allocationWeek = input.noRepair?.slotDemandAllocationByWeek?.weeks.find(
+    (week) => week.phase === "deload" || week.week === 5,
+  );
   const preselectionWeek =
     input.noRepair?.preselectionDistributionPolicyByWeek?.weeks.find(
-      (week) => week.phase === "deload" || week.week === 5
+      (week) => week.phase === "deload" || week.week === 5,
     );
   const weeklyDemandWeek = input.noRepair?.weeklyDemandCurve?.weeks.find(
-    (week) => week.phase === "deload" || week.week === 5
+    (week) => week.phase === "deload" || week.week === 5,
   );
   const transform = input.v2MesocyclePlan.deloadTransform;
   const diagnosticProjected =
-    input.v2DeloadProjectionDiagnostic.status === "projected_with_limitations" &&
+    input.v2DeloadProjectionDiagnostic.status ===
+      "projected_with_limitations" &&
     input.v2DeloadProjectionDiagnostic.summary.identitiesPreservedCount > 0 &&
     input.v2DeloadProjectionDiagnostic.summary.movementsIntroducedCount === 0 &&
     input.v2DeloadProjectionDiagnostic.blockers.length === 0;
@@ -5724,9 +6130,9 @@ function buildCrossWeekDeloadStatus(input: {
     ? "ready"
     : diagnosticProjected
       ? "projected_with_limitations"
-    : projectionBasis === "v2_deload_transform_read_only"
-      ? "diagnostic_projection_only"
-      : "not_projected";
+      : projectionBasis === "v2_deload_transform_read_only"
+        ? "diagnostic_projection_only"
+        : "not_projected";
 
   return {
     status,
@@ -5750,15 +6156,18 @@ function buildV2DeloadProjectionDiagnostic(input: {
 }): V2DeloadProjectionDiagnostic {
   const transform = input.v2MesocyclePlan.deloadTransform;
   const deloadIntentWeek = input.v2SetDistributionIntent.weeks.find(
-    (week) => week.phase === "deload" || week.week === 5
+    (week) => week.phase === "deload" || week.week === 5,
   );
   const week1IdentitySlots =
-    input.v2ExerciseSelectionPlanDiagnostic.weeks.find((week) => week.week === 1)
-      ?.slots ?? [];
+    input.v2ExerciseSelectionPlanDiagnostic.weeks.find(
+      (week) => week.week === 1,
+    )?.slots ?? [];
   const week1IdentityByLane = new Map(
     week1IdentitySlots.flatMap((slot) =>
-      slot.lanes.map((lane) => [`${slot.slotId}:${lane.laneId}`, lane] as const)
-    )
+      slot.lanes.map(
+        (lane) => [`${slot.slotId}:${lane.laneId}`, lane] as const,
+      ),
+    ),
   );
   const missingInputs = uniqueSorted([
     ...(!deloadIntentWeek ? ["v2SetDistributionIntent:week_5:missing"] : []),
@@ -5781,7 +6190,7 @@ function buildV2DeloadProjectionDiagnostic(input: {
       slotId: slot.slotId,
       lanes: slot.lanes.map((lane) => {
         const identityLane = week1IdentityByLane.get(
-          `${slot.slotId}:${lane.laneId}`
+          `${slot.slotId}:${lane.laneId}`,
         );
         const selected = identityLane?.selectedIdentity;
         const laneLimitations = uniqueSorted([
@@ -5802,7 +6211,7 @@ function buildV2DeloadProjectionDiagnostic(input: {
         const week1Sets = selected.setCount;
         const deloadProjectedSets = Math.max(1, Math.floor(week1Sets * 0.5));
         const setReductionPercent = roundPercent(
-          ((week1Sets - deloadProjectedSets) / week1Sets) * 100
+          ((week1Sets - deloadProjectedSets) / week1Sets) * 100,
         );
         const reductionInTargetRange =
           setReductionPercent >= transform.targetVolumeReductionPercent.min &&
@@ -5852,7 +6261,7 @@ function buildV2DeloadProjectionDiagnostic(input: {
     ...lanes.flatMap((lane) =>
       lane.status === "not_evaluated"
         ? [`${lane.laneId}:week_1_identity_not_evaluated`]
-        : []
+        : [],
     ),
     ...slots.flatMap((slot) =>
       slot.lanes.flatMap((lane) =>
@@ -5860,23 +6269,23 @@ function buildV2DeloadProjectionDiagnostic(input: {
           .filter((exercise) => exercise.status === "projected_with_warning")
           .map(
             (exercise) =>
-              `${slot.slotId}:${lane.laneId}:${exercise.preservedIdentity.exerciseName}:set_reduction_outside_40_60`
-          )
-      )
+              `${slot.slotId}:${lane.laneId}:${exercise.preservedIdentity.exerciseName}:set_reduction_outside_40_60`,
+          ),
+      ),
     ),
   ]);
   const totalWeek1Sets = exercises.reduce(
     (sum, exercise) => sum + exercise.week1Sets,
-    0
+    0,
   );
   const totalDeloadProjectedSets = exercises.reduce(
     (sum, exercise) => sum + exercise.deloadProjectedSets,
-    0
+    0,
   );
   const volumeReductionPercent =
     totalWeek1Sets > 0
       ? roundPercent(
-          ((totalWeek1Sets - totalDeloadProjectedSets) / totalWeek1Sets) * 100
+          ((totalWeek1Sets - totalDeloadProjectedSets) / totalWeek1Sets) * 100,
         )
       : null;
   const status: V2DeloadProjectionDiagnostic["status"] =
@@ -5923,7 +6332,7 @@ function buildCrossWeekProjectionGate(input: {
 }): CrossWeekProjectionGate {
   const week1Status = {
     status: normalizeWeek1GateStatus(
-      input.acceptanceClassification.basicMesocycleShapeStatus
+      input.acceptanceClassification.basicMesocycleShapeStatus,
     ),
     basis: uniqueSorted([
       `basicMesocycleShapeStatus:${input.acceptanceClassification.basicMesocycleShapeStatus}`,
@@ -5937,7 +6346,8 @@ function buildCrossWeekProjectionGate(input: {
     noRepair: input.noRepair,
     v2MesocyclePlan: input.v2MesocyclePlan,
     v2SetDistributionIntent: input.v2SetDistributionIntent,
-    plannerOwnedAccumulationProjection: input.plannerOwnedAccumulationProjection,
+    plannerOwnedAccumulationProjection:
+      input.plannerOwnedAccumulationProjection,
   });
   const deloadStatus = buildCrossWeekDeloadStatus({
     noRepair: input.noRepair,
@@ -5945,17 +6355,20 @@ function buildCrossWeekProjectionGate(input: {
     v2DeloadProjectionDiagnostic: input.v2DeloadProjectionDiagnostic,
   });
   const deloadReadOnlyProjectionExists =
-    input.v2DeloadProjectionDiagnostic.status === "projected_with_limitations" &&
+    input.v2DeloadProjectionDiagnostic.status ===
+      "projected_with_limitations" &&
     input.v2DeloadProjectionDiagnostic.summary.identitiesPreservedCount > 0 &&
     input.v2DeloadProjectionDiagnostic.summary.movementsIntroducedCount === 0 &&
     input.v2DeloadProjectionDiagnostic.blockers.length === 0;
-  const plannedSetsByWeek = getV2PlannedSetsByWeek(input.v2SetDistributionIntent);
+  const plannedSetsByWeek = getV2PlannedSetsByWeek(
+    input.v2SetDistributionIntent,
+  );
   const missingInputs = uniqueSorted([
     ...accumulationWeeksStatus.weeks.flatMap((week) =>
-      week.limitations.filter((limitation) => limitation.includes("missing"))
+      week.limitations.filter((limitation) => limitation.includes("missing")),
     ),
     ...deloadStatus.limitations.filter((limitation) =>
-      limitation.includes("missing")
+      limitation.includes("missing"),
     ),
   ]);
   const blockers = uniqueSorted([
@@ -5981,12 +6394,12 @@ function buildCrossWeekProjectionGate(input: {
       ? ["week_1_basic_shape_passes_with_warnings_only"]
       : []),
     ...(accumulationWeeksStatus.weeks.some(
-      (week) => week.projectionBasis === "repeat_week_1_shape"
+      (week) => week.projectionBasis === "repeat_week_1_shape",
     )
       ? ["repeated_week_1_projection_is_diagnostic_only"]
       : []),
     ...(accumulationWeeksStatus.weeks.some(
-      (week) => week.projectionBasis === "scaled_v2_set_distribution_intent"
+      (week) => week.projectionBasis === "scaled_v2_set_distribution_intent",
     )
       ? ["scaled_v2_set_distribution_intent_is_diagnostic_only"]
       : []),
@@ -6013,7 +6426,7 @@ function buildCrossWeekProjectionGate(input: {
   const projectedWeekSummaries =
     input.v2MesocyclePlan.weeklyProgressionModel.weeks.map((week) => {
       const accumulationWeek = accumulationWeeksStatus.weeks.find(
-        (row) => row.week === week.week
+        (row) => row.week === week.week,
       );
       const isDeload = week.phase === "deload";
       return {
@@ -6064,13 +6477,13 @@ function compactEvidence(evidence: string[], limit = 6): string[] {
 function noRepairFinding(
   code: string,
   evidence: string[],
-  limit?: number
+  limit?: number,
 ): NoRepairFinding {
   return { code, evidence: compactEvidence(evidence, limit) };
 }
 
 function noRepairConcentrationFindings(
-  rows: MesocycleExplainPlannerOnlyNoRepairConcentrationRow[]
+  rows: MesocycleExplainPlannerOnlyNoRepairConcentrationRow[],
 ): NoRepairFinding[] {
   const byReason = new Map<string, string[]>();
   for (const row of rows) {
@@ -6081,14 +6494,12 @@ function noRepairConcentrationFindings(
   }
   return Array.from(byReason.entries())
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([reason, evidence]) =>
-      noRepairFinding(reason, evidence, 6)
-    );
+    .map(([reason, evidence]) => noRepairFinding(reason, evidence, 6));
 }
 
 function noRepairCheckFinding(
   code: string,
-  check: MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"][number]
+  check: MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"][number],
 ): NoRepairFinding {
   return noRepairFinding(code, check.evidence);
 }
@@ -6102,27 +6513,27 @@ function includesIncompleteProjectionStatus(status: string): boolean {
 }
 
 function hasDeloadProjectionIncomplete(
-  planningReality: PlanningRealityDiagnostic
+  planningReality: PlanningRealityDiagnostic,
 ): boolean {
   const preselectionDeload =
     planningReality.preselectionDistributionPolicyByWeek?.weeks.some(
       (week) =>
         week.phase === "deload" &&
-        includesIncompleteProjectionStatus(week.projectionStatus)
+        includesIncompleteProjectionStatus(week.projectionStatus),
     ) ?? false;
   const allocationDeload =
     planningReality.slotDemandAllocationByWeek?.weeks.some(
       (week) =>
         week.phase === "deload" &&
-        includesIncompleteProjectionStatus(week.projectionStatus)
+        includesIncompleteProjectionStatus(week.projectionStatus),
     ) ?? false;
   const warningDeload =
     (planningReality.accumulationWeekProjection?.crossWeekWarnings?.some(
-      (warning) => warning.code === "DELOAD_PRESERVATION_STILL_UNPROJECTED"
+      (warning) => warning.code === "DELOAD_PRESERVATION_STILL_UNPROJECTED",
     ) ??
       false) ||
     (planningReality.slotDemandAllocationByWeek?.crossWeekAllocationWarnings?.some(
-      (warning) => warning.code === "DELOAD_SLOT_ALLOCATION_UNPROJECTED"
+      (warning) => warning.code === "DELOAD_SLOT_ALLOCATION_UNPROJECTED",
     ) ??
       false);
   return preselectionDeload || allocationDeload || warningDeload;
@@ -6150,15 +6561,17 @@ function isCompoundHingeOrPressOverFiveExercise(input: {
 }
 
 function buildNoRepairCompoundOverFiveBlockers(
-  planningReality: PlanningRealityDiagnostic
+  planningReality: PlanningRealityDiagnostic,
 ): string[] {
   return planningReality.finalSlotPlan.flatMap((slot) =>
     slot.exercises
-      .filter((exercise) => isCompoundHingeOrPressOverFiveExercise({ exercise }))
+      .filter((exercise) =>
+        isCompoundHingeOrPressOverFiveExercise({ exercise }),
+      )
       .map(
         (exercise) =>
-          `${slot.slotId}:${exercise.exerciseName}:${exercise.setCount}`
-      )
+          `${slot.slotId}:${exercise.exerciseName}:${exercise.setCount}`,
+      ),
   );
 }
 
@@ -6183,8 +6596,12 @@ function buildNoRepairMigrationScoreboard(input: {
     null;
   const suspiciousRepairs =
     scoreboardReality.suspiciousRepairsNotEligibleForPromotion?.length ?? null;
-  const weeksTwoToFourUnprojected = hasWeeksTwoToFourUnprojected(input.noRepair);
-  const deloadProjectionIncomplete = hasDeloadProjectionIncomplete(input.noRepair);
+  const weeksTwoToFourUnprojected = hasWeeksTwoToFourUnprojected(
+    input.noRepair,
+  );
+  const deloadProjectionIncomplete = hasDeloadProjectionIncomplete(
+    input.noRepair,
+  );
   const canReplaceRepairedProjection =
     input.canReplaceRepairedProjection &&
     input.repairedProjectionAvailable &&
@@ -6195,23 +6612,33 @@ function buildNoRepairMigrationScoreboard(input: {
     (majorRepairCount ?? 0) === 0 &&
     (suspiciousRepairs ?? 0) === 0;
   const reasons: string[] = [];
-  if (!input.repairedProjectionAvailable) reasons.push("repaired_projection_unavailable");
-  if (input.hardBlockerCount > 0) reasons.push(`hard_blockers:${input.hardBlockerCount}`);
-  if (input.targetLanesMissing > 0) reasons.push(`target_lanes_missing:${input.targetLanesMissing}`);
-  if (input.unresolvedDemandCount > 0) reasons.push(`raw_unresolved_demand:${input.unresolvedDemandCount}`);
-  if (input.validationFailureCount > 0) reasons.push(`raw_validation_failures:${input.validationFailureCount}`);
+  if (!input.repairedProjectionAvailable)
+    reasons.push("repaired_projection_unavailable");
+  if (input.hardBlockerCount > 0)
+    reasons.push(`hard_blockers:${input.hardBlockerCount}`);
+  if (input.targetLanesMissing > 0)
+    reasons.push(`target_lanes_missing:${input.targetLanesMissing}`);
+  if (input.unresolvedDemandCount > 0)
+    reasons.push(`raw_unresolved_demand:${input.unresolvedDemandCount}`);
+  if (input.validationFailureCount > 0)
+    reasons.push(`raw_validation_failures:${input.validationFailureCount}`);
   if (weeksTwoToFourUnprojected) reasons.push("weeks_2_to_4_unprojected");
   if (deloadProjectionIncomplete) reasons.push("deload_projection_incomplete");
-  if ((materialRepairCount ?? 0) > 0) reasons.push(`materialRepairCount:${materialRepairCount}`);
-  if ((majorRepairCount ?? 0) > 0) reasons.push(`majorRepairCount:${majorRepairCount}`);
-  if ((suspiciousRepairs ?? 0) > 0) reasons.push(`suspiciousRepairs:${suspiciousRepairs}`);
+  if ((materialRepairCount ?? 0) > 0)
+    reasons.push(`materialRepairCount:${materialRepairCount}`);
+  if ((majorRepairCount ?? 0) > 0)
+    reasons.push(`majorRepairCount:${majorRepairCount}`);
+  if ((suspiciousRepairs ?? 0) > 0)
+    reasons.push(`suspiciousRepairs:${suspiciousRepairs}`);
 
   return {
     materialRepairCount,
     majorRepairCount,
     suspiciousRepairs,
     canReplaceRepairedProjection,
-    reason: canReplaceRepairedProjection ? "ready" : reasons.join("; ") || "not_ready",
+    reason: canReplaceRepairedProjection
+      ? "ready"
+      : reasons.join("; ") || "not_ready",
   };
 }
 
@@ -6231,29 +6658,31 @@ function buildNoRepairAcceptanceClassification(input: {
 }): NoRepairClassification {
   const hardBlockers: NoRepairFinding[] = [
     ...noRepairConcentrationFindings(
-      input.concentrationClassification.acceptanceFailures
+      input.concentrationClassification.acceptanceFailures,
     ),
   ];
   const qualityWarnings: NoRepairFinding[] = [
     ...noRepairConcentrationFindings(
-      input.concentrationClassification.qualityWarnings
+      input.concentrationClassification.qualityWarnings,
     ),
   ];
   const diagnosticOnly: NoRepairFinding[] = [
     ...noRepairConcentrationFindings(
-      input.concentrationClassification.diagnosticRows
+      input.concentrationClassification.diagnosticRows,
     ),
     ...noRepairConcentrationFindings(
-      input.concentrationClassification.ignoredRows
+      input.concentrationClassification.ignoredRows,
     ),
   ];
   const sessionShaping: NoRepairFinding[] = [];
   const hasTargetedDemand = (
     muscle: string,
-    priorities: Array<PlanningRealityDiagnostic["shadowWeeklyDemand"][number]["priority"]>
+    priorities: Array<
+      PlanningRealityDiagnostic["shadowWeeklyDemand"][number]["priority"]
+    >,
   ): boolean => {
     const demand = input.noRepair.shadowWeeklyDemand.find(
-      (row) => row.muscle === muscle
+      (row) => row.muscle === muscle,
     );
     return (
       demand != null &&
@@ -6264,9 +6693,12 @@ function buildNoRepairAcceptanceClassification(input: {
 
   const hardCheckCodes: Record<string, string> = {
     "primary muscles above minimum": "primary_hard_target_below_minimum",
-    "no primary muscle solved by forbidden slot": "forbidden_slot_primary_solution",
-    "no Back Extension as clean Hamstrings closure": "back_extension_hamstrings_closure",
-    "slotPlanSeedJson would replay without reselection": "runtime_seed_replay_failure",
+    "no primary muscle solved by forbidden slot":
+      "forbidden_slot_primary_solution",
+    "no Back Extension as clean Hamstrings closure":
+      "back_extension_hamstrings_closure",
+    "slotPlanSeedJson would replay without reselection":
+      "runtime_seed_replay_failure",
   };
 
   for (const check of input.acceptanceChecks) {
@@ -6291,7 +6723,7 @@ function buildNoRepairAcceptanceClassification(input: {
       hasTargetedDemand("Chest", ["primary"])
     ) {
       hardBlockers.push(
-        noRepairCheckFinding("required_chest_upper_exposures_missing", check)
+        noRepairCheckFinding("required_chest_upper_exposures_missing", check),
       );
       continue;
     }
@@ -6300,7 +6732,7 @@ function buildNoRepairAcceptanceClassification(input: {
       hasTargetedDemand("Hamstrings", ["primary"])
     ) {
       hardBlockers.push(
-        noRepairCheckFinding("required_hamstrings_hinge_curl_missing", check)
+        noRepairCheckFinding("required_hamstrings_hinge_curl_missing", check),
       );
       continue;
     }
@@ -6309,17 +6741,20 @@ function buildNoRepairAcceptanceClassification(input: {
       hasTargetedDemand("Side Delts", ["support"])
     ) {
       hardBlockers.push(
-        noRepairCheckFinding("required_side_delts_direct_work_missing", check)
+        noRepairCheckFinding("required_side_delts_direct_work_missing", check),
       );
       continue;
     }
     if (check.check === "Calves distributed across lower slots if feasible") {
-      const calvesTargeted = hasTargetedDemand("Calves", ["support", "primary"]);
+      const calvesTargeted = hasTargetedDemand("Calves", [
+        "support",
+        "primary",
+      ]);
       const finding = noRepairCheckFinding(
         check.status === "fail" && calvesTargeted
           ? "required_calves_lower_slot_distribution_missing"
           : "calf_split_session_shaping",
-        check
+        check,
       );
       if (check.status === "fail" && calvesTargeted) {
         hardBlockers.push(finding);
@@ -6333,7 +6768,7 @@ function buildNoRepairAcceptanceClassification(input: {
       "no duplicate main lift when clean alternative exists unless justified"
     ) {
       qualityWarnings.push(
-        noRepairCheckFinding("duplicate_main_lift_needs_review", check)
+        noRepairCheckFinding("duplicate_main_lift_needs_review", check),
       );
       continue;
     }
@@ -6341,20 +6776,25 @@ function buildNoRepairAcceptanceClassification(input: {
     if (hardCode) {
       hardBlockers.push(noRepairCheckFinding(hardCode, check));
     } else if (check.status === "unknown") {
-      diagnosticOnly.push(noRepairCheckFinding(`unknown_check:${check.check}`, check));
+      diagnosticOnly.push(
+        noRepairCheckFinding(`unknown_check:${check.check}`, check),
+      );
     } else {
-      qualityWarnings.push(noRepairCheckFinding(`non_blocking_check:${check.check}`, check));
+      qualityWarnings.push(
+        noRepairCheckFinding(`non_blocking_check:${check.check}`, check),
+      );
     }
   }
 
-  const compoundOverFiveBlockers =
-    buildNoRepairCompoundOverFiveBlockers(input.noRepair);
+  const compoundOverFiveBlockers = buildNoRepairCompoundOverFiveBlockers(
+    input.noRepair,
+  );
   if (compoundOverFiveBlockers.length > 0) {
     hardBlockers.push(
       noRepairFinding(
         "compound_hinge_or_press_gt_5_sets_without_justification",
-        compoundOverFiveBlockers
-      )
+        compoundOverFiveBlockers,
+      ),
     );
   }
 
@@ -6375,23 +6815,25 @@ function buildNoRepairAcceptanceClassification(input: {
         "support_below_preferred_with_direct_work",
         supportBelowPreferred.map(
           (row) =>
-            `${row.muscle}:${row.projectedEffectiveSets}_of_${row.targetPreferred}`
-        )
-      )
+            `${row.muscle}:${row.projectedEffectiveSets}_of_${row.targetPreferred}`,
+        ),
+      ),
     );
   }
 
   const abovePreferred = input.weeklyMuscleTotals.filter(
     (row) =>
       row.status === "above" &&
-      getMuscleTargetSemantics(row.muscle).targetTier !== "A_PRIMARY"
+      getMuscleTargetSemantics(row.muscle).targetTier !== "A_PRIMARY",
   );
   if (abovePreferred.length > 0) {
     qualityWarnings.push(
       noRepairFinding(
         "above_preferred_but_recoverable",
-        abovePreferred.map((row) => `${row.muscle}:${row.projectedEffectiveSets}`)
-      )
+        abovePreferred.map(
+          (row) => `${row.muscle}:${row.projectedEffectiveSets}`,
+        ),
+      ),
     );
   }
 
@@ -6401,18 +6843,21 @@ function buildNoRepairAcceptanceClassification(input: {
         "planner_owned_set_allocation_changes",
         input.setAllocationChanges.map(
           (row) =>
-            `${row.slotId}:${row.lane}:${row.exerciseName}:${row.setsBefore}->${row.setsAfter}`
-        )
-      )
+            `${row.slotId}:${row.lane}:${row.exerciseName}:${row.setsBefore}->${row.setsAfter}`,
+        ),
+      ),
     );
   }
 
   const nonBlockingValidationRows = input.slotPlans.flatMap((slot) =>
-    slot.validationFailures.map((row) => `${slot.slotId}:${row}`)
+    slot.validationFailures.map((row) => `${slot.slotId}:${row}`),
   );
   if (nonBlockingValidationRows.length > 0) {
     sessionShaping.push(
-      noRepairFinding("non_blocking_session_shaping_rows", nonBlockingValidationRows)
+      noRepairFinding(
+        "non_blocking_session_shaping_rows",
+        nonBlockingValidationRows,
+      ),
     );
   }
 
@@ -6420,14 +6865,14 @@ function buildNoRepairAcceptanceClassification(input: {
     diagnosticOnly.push(
       noRepairFinding("weeks_2_to_4_projection_incomplete", [
         "weeks_2_to_4_unprojected",
-      ])
+      ]),
     );
   }
   if (hasDeloadProjectionIncomplete(input.noRepair)) {
     diagnosticOnly.push(
       noRepairFinding("deload_projection_incomplete", [
         "deload_projection_incomplete",
-      ])
+      ]),
     );
   }
 
@@ -6495,13 +6940,15 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       input.repairedPlanningReality == null);
   if (!input.noRepairPlanningReality) {
     const repairPromotionScoreboard = buildRepairPromotionScoreboard(
-      input.repairedPlanningReality
+      input.repairedPlanningReality,
     );
     const acceptanceClassification: NoRepairClassification = {
       basicMesocycleShapeStatus: "fail",
       replacementReadinessStatus: "blocked",
       hardBlockers: [
-        noRepairFinding("runtime_seed_replay_failure", ["planningReality_missing"]),
+        noRepairFinding("runtime_seed_replay_failure", [
+          "planningReality_missing",
+        ]),
       ],
       qualityWarnings: [],
       diagnosticOnly: [],
@@ -6514,20 +6961,21 @@ export function buildPlannerOnlyNoRepairComparison(input: {
           ? getMajorRepairCount(input.repairedPlanningReality)
           : null,
         suspiciousRepairs: input.repairedPlanningReality
-          ? input.repairedPlanningReality.suspiciousRepairsNotEligibleForPromotion
-              ?.length ?? 0
+          ? (input.repairedPlanningReality
+              .suspiciousRepairsNotEligibleForPromotion?.length ?? 0)
           : null,
         canReplaceRepairedProjection: false,
         reason: "planningReality_missing",
       },
     };
-    const acceptanceChecks: MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"] = [
-      {
-        check: "planner-only no-repair planningReality available",
-        status: "fail",
-        evidence: ["planningReality_missing"],
-      },
-    ];
+    const acceptanceChecks: MesocycleExplainPlannerOnlyNoRepair["acceptanceChecks"] =
+      [
+        {
+          check: "planner-only no-repair planningReality available",
+          status: "fail",
+          evidence: ["planningReality_missing"],
+        },
+      ];
     const v2MesocyclePlan = buildV2MesocyclePlan({
       slotPlans: [],
       acceptanceChecks,
@@ -6554,6 +7002,16 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         week1SelectedIdentities: [],
         v2SetDistributionIntent,
         v2TargetVsNoRepairDiff,
+      });
+    const v2SupportLaneProjectionDiagnostic =
+      buildV2SupportLaneProjectionDiagnostic({
+        v2SupportLanePolicy,
+        plannerOwnedAccumulationProjection,
+        v2SetDistributionIntent,
+        v2TargetVsNoRepairDiff,
+        v2ExerciseSelectionPlanDiagnostic,
+        weeklyMuscleTotals: [],
+        week1SelectedIdentities: [],
       });
     const v2DeloadProjectionDiagnostic = buildV2DeloadProjectionDiagnostic({
       v2MesocyclePlan,
@@ -6589,6 +7047,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       v2TargetVsNoRepairDiff,
       v2SetDistributionIntent,
       v2SupportLanePolicy,
+      v2SupportLaneProjectionDiagnostic,
       plannerOwnedAccumulationProjection,
       v2ExerciseSelectionPlanDiagnostic,
       slotPlans: [],
@@ -6614,10 +7073,11 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   }
 
   const noRepair = input.noRepairPlanningReality;
-  const concentrationClassification = classifyNoRepairConcentrationRows(noRepair);
+  const concentrationClassification =
+    classifyNoRepairConcentrationRows(noRepair);
   const slotPlans = buildNoRepairSlotPlans(
     noRepair,
-    concentrationClassification
+    concentrationClassification,
   );
   const weeklyMuscleTotals = buildNoRepairWeeklyMuscleTotals(noRepair);
   const setAllocationChanges = buildNoRepairSetAllocationChanges(noRepair);
@@ -6628,11 +7088,15 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   const acceptanceChecks = buildNoRepairAcceptanceChecks(
     noRepair,
     weeklyMuscleTotals,
-    concentrationClassification
+    concentrationClassification,
   );
   const targetLanesSatisfied =
     noRepair.topDownMesocyclePlan?.summary.matchedTargetLanes ??
-    slotPlans.reduce((sum, slot) => sum + Math.max(0, slot.exercises.length - slot.missingLanes.length), 0);
+    slotPlans.reduce(
+      (sum, slot) =>
+        sum + Math.max(0, slot.exercises.length - slot.missingLanes.length),
+      0,
+    );
   const explicitMissing =
     (noRepair.topDownMesocyclePlan?.summary.missingTargetLanes ?? 0) +
     (noRepair.topDownMesocyclePlan?.summary.partialTargetLanes ?? 0) +
@@ -6640,7 +7104,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   const targetLanesMissing = Math.max(0, explicitMissing);
   const unresolvedDemandCount = slotPlans.reduce(
     (sum, slot) => sum + slot.unresolvedDemand.length,
-    0
+    0,
   );
   const validationFailureCount =
     slotPlans.reduce((sum, slot) => sum + slot.validationFailures.length, 0) +
@@ -6696,8 +7160,19 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       exerciseClassDistributionBySlot: noRepair.exerciseClassDistributionBySlot,
       exerciseClassAlignment: noRepair.exerciseClassAlignment,
       exerciseClassUnresolvedCauses: noRepair.exerciseClassUnresolvedCauses,
-      duplicateContinuityJustification: noRepair.duplicateContinuityJustification,
+      duplicateContinuityJustification:
+        noRepair.duplicateContinuityJustification,
       exerciseConcentration: noRepair.exerciseConcentration,
+    });
+  const v2SupportLaneProjectionDiagnostic =
+    buildV2SupportLaneProjectionDiagnostic({
+      v2SupportLanePolicy,
+      plannerOwnedAccumulationProjection,
+      v2SetDistributionIntent,
+      v2TargetVsNoRepairDiff,
+      v2ExerciseSelectionPlanDiagnostic,
+      weeklyMuscleTotals,
+      week1SelectedIdentities: noRepair.finalSlotPlan,
     });
   const v2DeloadProjectionDiagnostic = buildV2DeloadProjectionDiagnostic({
     v2MesocyclePlan,
@@ -6723,7 +7198,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       v2SetDistributionIntent,
       v2TargetVsNoRepairDiff,
       v2ExerciseSelectionPlanDiagnostic,
-    }
+    },
   );
 
   return {
@@ -6746,6 +7221,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     v2TargetVsNoRepairDiff,
     v2SetDistributionIntent,
     v2SupportLanePolicy,
+    v2SupportLaneProjectionDiagnostic,
     plannerOwnedAccumulationProjection,
     v2ExerciseSelectionPlanDiagnostic,
     slotPlans,
@@ -6770,7 +7246,10 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   };
 }
 
-function buildComparisonKey(slotIndex: number | null, slotId: string | null): string {
+function buildComparisonKey(
+  slotIndex: number | null,
+  slotId: string | null,
+): string {
   if (slotIndex != null) {
     return `index:${slotIndex}`;
   }
@@ -6806,9 +7285,12 @@ function buildSlotObligationSummary(input: {
     obligations.push(`slot_archetype:${slot.authoredSemantics.slotArchetype}`);
   }
   if (slot?.authoredSemantics?.continuityScope) {
-    obligations.push(`continuity_scope:${slot.authoredSemantics.continuityScope}`);
+    obligations.push(
+      `continuity_scope:${slot.authoredSemantics.continuityScope}`,
+    );
   }
-  const requiredPatterns = sessionPolicy?.sessionShape?.requiredMovementPatterns ?? [];
+  const requiredPatterns =
+    sessionPolicy?.sessionShape?.requiredMovementPatterns ?? [];
   if (requiredPatterns.length > 0) {
     obligations.push(`required_patterns:${requiredPatterns.join(",")}`);
   }
@@ -6865,7 +7347,9 @@ function normalizeSeedSlots(input: {
     slotSequenceJson: input.slotSequenceJson,
     weeklySchedule: input.weeklySchedule,
   }).slots;
-  const seedBySlotId = new Map(parsedSeed.slots.map((slot) => [slot.slotId, slot.exercises]));
+  const seedBySlotId = new Map(
+    parsedSeed.slots.map((slot) => [slot.slotId, slot.exercises]),
+  );
 
   return resolvedSlots.flatMap((slot, slotIndex) => {
     const exercises = seedBySlotId.get(slot.slotId);
@@ -6873,17 +7357,21 @@ function normalizeSeedSlots(input: {
       return [];
     }
 
-    return [{
-      slotId: slot.slotId,
-      slotIndex,
-      intent: slot.intent,
-      exercises: exercises.map((exercise) => ({
-        exerciseId: exercise.exerciseId,
-        exerciseName: input.exerciseNameById.get(exercise.exerciseId) ?? exercise.exerciseId,
-        role: exercise.role,
-        ...(exercise.setCount != null ? { setCount: exercise.setCount } : {}),
-      })),
-    }];
+    return [
+      {
+        slotId: slot.slotId,
+        slotIndex,
+        intent: slot.intent,
+        exercises: exercises.map((exercise) => ({
+          exerciseId: exercise.exerciseId,
+          exerciseName:
+            input.exerciseNameById.get(exercise.exerciseId) ??
+            exercise.exerciseId,
+          role: exercise.role,
+          ...(exercise.setCount != null ? { setCount: exercise.setCount } : {}),
+        })),
+      },
+    ];
   });
 }
 
@@ -6909,7 +7397,9 @@ async function loadExplainMesocycle(input: {
   });
 
   if (!mesocycle) {
-    throw new Error(`No mesocycle found for mesocycle-explain mesocycleId=${input.mesocycleId}.`);
+    throw new Error(
+      `No mesocycle found for mesocycle-explain mesocycleId=${input.mesocycleId}.`,
+    );
   }
 
   return mesocycle;
@@ -6944,21 +7434,30 @@ async function loadPreviewArtifacts(input: {
   rationaleBasis: "persisted_handoff_summary" | "reconstructed_now";
   artifacts: MaterializedHandoffArtifacts;
 }> {
-  const persistedSummary = readMesocycleHandoffSummary(input.sourceMesocycle.handoffSummaryJson);
-  if (persistedSummary?.recommendedDesign && persistedSummary.recommendedNextSeed) {
+  const persistedSummary = readMesocycleHandoffSummary(
+    input.sourceMesocycle.handoffSummaryJson,
+  );
+  if (
+    persistedSummary?.recommendedDesign &&
+    persistedSummary.recommendedNextSeed
+  ) {
     return {
       rationaleBasis: "persisted_handoff_summary",
       artifacts: {
         summary: persistedSummary,
         recommendedDesign: persistedSummary.recommendedDesign,
         recommendedNextSeed: persistedSummary.recommendedNextSeed,
-        carryForwardRecommendations: persistedSummary.carryForwardRecommendations,
+        carryForwardRecommendations:
+          persistedSummary.carryForwardRecommendations,
       },
     };
   }
 
-  const handoffSource = await loadHandoffSourceMesocycle(prisma, input.sourceMesocycle.id);
-  const roles = await prisma.mesocycleExerciseRole.findMany({
+  const handoffSource = await loadHandoffSourceMesocycle(
+    prisma,
+    input.sourceMesocycle.id,
+  );
+  const roles = (await prisma.mesocycleExerciseRole.findMany({
     where: { mesocycleId: input.sourceMesocycle.id },
     orderBy: [{ role: "asc" }, { createdAt: "asc" }],
     select: {
@@ -6971,8 +7470,10 @@ async function loadPreviewArtifacts(input: {
         },
       },
     },
-  }) satisfies HandoffArtifactRoleRow[];
-  const candidateExerciseIds = Array.from(new Set(roles.map((role) => role.exerciseId)));
+  })) satisfies HandoffArtifactRoleRow[];
+  const candidateExerciseIds = Array.from(
+    new Set(roles.map((role) => role.exerciseId)),
+  );
   const [constraints, workouts, latestReadiness] = await Promise.all([
     prisma.constraints.findUnique({
       where: { userId: input.sourceMesocycle.macroCycle.userId },
@@ -7002,7 +7503,10 @@ async function loadPreviewArtifacts(input: {
         },
       },
     }) as Promise<HandoffArtifactWorkoutRow[]>,
-    getLatestReadinessSignalForReader(prisma, input.sourceMesocycle.macroCycle.userId),
+    getLatestReadinessSignalForReader(
+      prisma,
+      input.sourceMesocycle.macroCycle.userId,
+    ),
   ]);
 
   return {
@@ -7037,7 +7541,8 @@ function buildPreviewSlotRows(input: {
     intent: slot.intent,
     exercises: slot.exercises.map((exercise) => ({
       exerciseId: exercise.exerciseId,
-      exerciseName: input.exerciseNameById.get(exercise.exerciseId) ?? exercise.exerciseId,
+      exerciseName:
+        input.exerciseNameById.get(exercise.exerciseId) ?? exercise.exerciseId,
       role: exercise.role,
       ...(exercise.setCount != null ? { setCount: exercise.setCount } : {}),
     })),
@@ -7067,7 +7572,8 @@ function buildSyntheticProjectedMesocycle(input: {
     sessionsPerWeek: input.projection.mesocycle.sessionsPerWeek,
     daysPerWeek: input.projection.mesocycle.daysPerWeek,
     splitType: input.projection.mesocycle.splitType,
-    slotSequenceJson: input.projection.mesocycle.slotSequence as Prisma.JsonValue,
+    slotSequenceJson: input.projection.mesocycle
+      .slotSequence as Prisma.JsonValue,
     slotPlanSeedJson: input.slotPlanSeedJson as Prisma.JsonValue,
     closedAt: null,
     handoffSummaryJson: null,
@@ -7106,13 +7612,20 @@ async function buildPreviewProjectedSessions(input: {
     activeMesocycle: syntheticMesocycle,
     forceAccumulation: true,
   });
-  const mapped = buildMappedGenerationContextFromSnapshot(input.userId, snapshot, {
-    forceAccumulation: true,
-  });
+  const mapped = buildMappedGenerationContextFromSnapshot(
+    input.userId,
+    snapshot,
+    {
+      forceAccumulation: true,
+    },
+  );
   const projectionStartTime = new Date();
   const sessions: MesocycleExplainPreviewProjectedSession[] = [];
 
-  for (const [slotIndex, slot] of input.projection.mesocycle.slotSequence.slots.entries()) {
+  for (const [
+    slotIndex,
+    slot,
+  ] of input.projection.mesocycle.slotSequence.slots.entries()) {
     const generation = await generateProjectedSession({
       userId: input.userId,
       mapped,
@@ -7122,7 +7635,7 @@ async function buildPreviewProjectedSessions(input: {
     });
     if ("error" in generation) {
       input.limitations.push(
-        `Preview projected session generation stopped at slot ${slot.slotId} because canonical seeded runtime generation failed: ${generation.error}`
+        `Preview projected session generation stopped at slot ${slot.slotId} because canonical seeded runtime generation failed: ${generation.error}`,
       );
       break;
     }
@@ -7134,12 +7647,15 @@ async function buildPreviewProjectedSessions(input: {
       intent: slot.intent,
       exerciseCount: countWorkoutExercises(generation.workout),
       totalSets: countWorkoutSets(generation.workout),
-      exerciseIds: [...generation.workout.mainLifts, ...generation.workout.accessories].map(
-        (exercise) => exercise.exercise.id
-      ),
+      exerciseIds: [
+        ...generation.workout.mainLifts,
+        ...generation.workout.accessories,
+      ].map((exercise) => exercise.exercise.id),
     });
 
-    const projectedAt = new Date(projectionStartTime.getTime() + slotIndex * 60_000);
+    const projectedAt = new Date(
+      projectionStartTime.getTime() + slotIndex * 60_000,
+    );
     appendWorkoutHistoryEntryToMappedContext({
       mapped,
       historyEntry: buildProjectedWorkoutHistoryEntry({
@@ -7172,7 +7688,10 @@ function buildPreviewExerciseRationale(input: {
     slot.exercises.map((exercise) => {
       const keepDecision =
         input.design.carryForward.decisions.find((decision) => {
-          if (decision.exerciseId !== exercise.exerciseId || decision.role !== exercise.role) {
+          if (
+            decision.exerciseId !== exercise.exerciseId ||
+            decision.role !== exercise.role
+          ) {
             return false;
           }
           if (decision.targetSlotId) {
@@ -7185,13 +7704,19 @@ function buildPreviewExerciseRationale(input: {
           (reason) =>
             reason.exerciseId === exercise.exerciseId &&
             reason.role === exercise.role &&
-            reason.recommendation === "keep"
+            reason.recommendation === "keep",
         ) ?? null;
       const constraints = [
         ...(keepDecision ? normalizeReasonCodes(keepDecision.reasonCodes) : []),
-        ...(carryForwardReason ? normalizeReasonCodes(carryForwardReason.reasonCodes) : []),
-        ...(input.repairedSlotIds.has(slot.slotId) ? ["protected_coverage_repair_applied"] : []),
-        ...(keepDecision || carryForwardReason ? [] : ["selected_via_canonical_slot_plan_projection"]),
+        ...(carryForwardReason
+          ? normalizeReasonCodes(carryForwardReason.reasonCodes)
+          : []),
+        ...(input.repairedSlotIds.has(slot.slotId)
+          ? ["protected_coverage_repair_applied"]
+          : []),
+        ...(keepDecision || carryForwardReason
+          ? []
+          : ["selected_via_canonical_slot_plan_projection"]),
       ];
 
       return {
@@ -7216,11 +7741,11 @@ function buildPreviewExerciseRationale(input: {
           [
             ...(keepDecision ? keepDecision.reasonCodes : []),
             ...(carryForwardReason ? carryForwardReason.reasonCodes : []),
-          ].filter((code) => code.includes("keep") || code.includes("continu"))
+          ].filter((code) => code.includes("keep") || code.includes("continu")),
         ),
         ranking: null,
       };
-    })
+    }),
   );
 }
 
@@ -7247,7 +7772,7 @@ function buildSeedExerciseRationale(input: {
       constraints: ["accepted_slot_plan_seed_membership"],
       continuity: [],
       ranking: null,
-    }))
+    })),
   );
 }
 
@@ -7260,7 +7785,8 @@ function resolveSeedSlotForWorkout(input: {
   comparisonBasis: "slot_id" | "slot_sequence_index" | "none";
 } {
   if (input.slotId) {
-    const bySlotId = input.seedSlots.find((slot) => slot.slotId === input.slotId) ?? null;
+    const bySlotId =
+      input.seedSlots.find((slot) => slot.slotId === input.slotId) ?? null;
     if (bySlotId) {
       return {
         seedSlot: bySlotId,
@@ -7270,7 +7796,9 @@ function resolveSeedSlotForWorkout(input: {
   }
 
   if (input.slotIndex != null) {
-    const byIndex = input.seedSlots.find((slot) => slot.slotIndex === input.slotIndex) ?? null;
+    const byIndex =
+      input.seedSlots.find((slot) => slot.slotIndex === input.slotIndex) ??
+      null;
     if (byIndex) {
       return {
         seedSlot: byIndex,
@@ -7286,7 +7814,7 @@ function resolveSeedSlotForWorkout(input: {
 }
 
 function buildRuntimeExerciseContexts(
-  workout: ExplainWorkoutRow
+  workout: ExplainWorkoutRow,
 ): RuntimeEditExerciseContext[] {
   return workout.exercises.map((workoutExercise) => ({
     exerciseId: workoutExercise.exerciseId,
@@ -7302,7 +7830,7 @@ function buildRuntimeExerciseContexts(
 }
 
 function buildRuntimeDriftLabels(
-  interpretations: MesocycleExplainRealityWorkout["runtimeInterpretations"]
+  interpretations: MesocycleExplainRealityWorkout["runtimeInterpretations"],
 ): string[] {
   return Array.from(
     new Set(
@@ -7323,8 +7851,8 @@ function buildRuntimeDriftLabels(
           return `runtime_${interpretation.intent}`;
         }
         return "runtime_unclassified_drift";
-      })
-    )
+      }),
+    ),
   ).sort((left, right) => left.localeCompare(right));
 }
 
@@ -7335,21 +7863,25 @@ function buildRealityRows(input: {
   rows: MesocycleExplainRealityWorkout[];
   latestRealityBySlot: ComparisonSlotShape[];
 } {
-  const latestRealityByKey = new Map<string, ComparisonSlotShape & { scheduledDate: string }>();
+  const latestRealityByKey = new Map<
+    string,
+    ComparisonSlotShape & { scheduledDate: string }
+  >();
   const rows = input.workouts.map((workout) => {
-    const { sessionSnapshot } = resolvePersistedOrReconstructedSessionAuditSnapshot({
-      selectionMetadata: workout.selectionMetadata,
-      workoutId: workout.id,
-      revision: workout.revision,
-      status: workout.status,
-      advancesSplit: workout.advancesSplit,
-      selectionMode: workout.selectionMode,
-      sessionIntent: workout.sessionIntent,
-      mesocycleId: workout.mesocycleId,
-      mesocycleWeekSnapshot: workout.mesocycleWeekSnapshot,
-      mesoSessionSnapshot: workout.mesoSessionSnapshot,
-      mesocyclePhaseSnapshot: workout.mesocyclePhaseSnapshot,
-    });
+    const { sessionSnapshot } =
+      resolvePersistedOrReconstructedSessionAuditSnapshot({
+        selectionMetadata: workout.selectionMetadata,
+        workoutId: workout.id,
+        revision: workout.revision,
+        status: workout.status,
+        advancesSplit: workout.advancesSplit,
+        selectionMode: workout.selectionMode,
+        sessionIntent: workout.sessionIntent,
+        mesocycleId: workout.mesocycleId,
+        mesocycleWeekSnapshot: workout.mesocycleWeekSnapshot,
+        mesoSessionSnapshot: workout.mesoSessionSnapshot,
+        mesocyclePhaseSnapshot: workout.mesocyclePhaseSnapshot,
+      });
     const generatedVsSaved = buildSessionAuditMutationSummary({
       snapshot: sessionSnapshot,
       savedSelectionMode: workout.selectionMode,
@@ -7357,15 +7889,21 @@ function buildRealityRows(input: {
       persistedExercises: workout.exercises,
     });
     const slotSnapshot = readSessionSlotSnapshot(workout.selectionMetadata);
-    const actualExerciseIds = workout.exercises.map((exercise) => exercise.exerciseId);
+    const actualExerciseIds = workout.exercises.map(
+      (exercise) => exercise.exerciseId,
+    );
     const resolvedSeed = resolveSeedSlotForWorkout({
       seedSlots: input.seedSlots,
       slotId: slotSnapshot?.slotId ?? null,
       slotIndex: slotSnapshot?.sequenceIndex ?? null,
     });
-    const seedExerciseIds = resolvedSeed.seedSlot?.exercises.map((exercise) => exercise.exerciseId) ?? [];
+    const seedExerciseIds =
+      resolvedSeed.seedSlot?.exercises.map((exercise) => exercise.exerciseId) ??
+      [];
     const runtimeInterpretations = interpretRuntimeEdits({
-      runtimeEditReconciliation: readRuntimeEditReconciliation(workout.selectionMetadata),
+      runtimeEditReconciliation: readRuntimeEditReconciliation(
+        workout.selectionMetadata,
+      ),
       exerciseContexts: buildRuntimeExerciseContexts(workout),
       legacyReconciliation: generatedVsSaved,
     });
@@ -7381,12 +7919,13 @@ function buildRealityRows(input: {
       seedDrift: {
         comparable: resolvedSeed.seedSlot != null,
         comparisonBasis: resolvedSeed.comparisonBasis,
-        addedExerciseIds: actualExerciseIds.filter((exerciseId) => !seedExerciseIds.includes(exerciseId)),
-        removedExerciseIds: seedExerciseIds.filter((exerciseId) => !actualExerciseIds.includes(exerciseId)),
-        notes:
-          resolvedSeed.seedSlot == null
-            ? ["no_matching_seed_slot"]
-            : [],
+        addedExerciseIds: actualExerciseIds.filter(
+          (exerciseId) => !seedExerciseIds.includes(exerciseId),
+        ),
+        removedExerciseIds: seedExerciseIds.filter(
+          (exerciseId) => !actualExerciseIds.includes(exerciseId),
+        ),
+        notes: resolvedSeed.seedSlot == null ? ["no_matching_seed_slot"] : [],
       },
       runtimeInterpretations,
       runtimeDriftLabels: buildRuntimeDriftLabels(runtimeInterpretations),
@@ -7415,12 +7954,14 @@ function buildRealityRows(input: {
 
   return {
     rows,
-    latestRealityBySlot: Array.from(latestRealityByKey.values()).map((entry) => ({
-      slotId: entry.slotId,
-      slotIndex: entry.slotIndex,
-      intent: entry.intent,
-      exercises: entry.exercises,
-    })),
+    latestRealityBySlot: Array.from(latestRealityByKey.values()).map(
+      (entry) => ({
+        slotId: entry.slotId,
+        slotIndex: entry.slotIndex,
+        intent: entry.intent,
+        exercises: entry.exercises,
+      }),
+    ),
   };
 }
 
@@ -7431,19 +7972,20 @@ function buildRealityExerciseRationale(input: {
   slotSequenceJson: unknown;
 }): MesocycleExplainExerciseRationale[] {
   return input.workouts.flatMap((workout) => {
-    const { sessionSnapshot } = resolvePersistedOrReconstructedSessionAuditSnapshot({
-      selectionMetadata: workout.selectionMetadata,
-      workoutId: workout.id,
-      revision: workout.revision,
-      status: workout.status,
-      advancesSplit: workout.advancesSplit,
-      selectionMode: workout.selectionMode,
-      sessionIntent: workout.sessionIntent,
-      mesocycleId: workout.mesocycleId,
-      mesocycleWeekSnapshot: workout.mesocycleWeekSnapshot,
-      mesoSessionSnapshot: workout.mesoSessionSnapshot,
-      mesocyclePhaseSnapshot: workout.mesocyclePhaseSnapshot,
-    });
+    const { sessionSnapshot } =
+      resolvePersistedOrReconstructedSessionAuditSnapshot({
+        selectionMetadata: workout.selectionMetadata,
+        workoutId: workout.id,
+        revision: workout.revision,
+        status: workout.status,
+        advancesSplit: workout.advancesSplit,
+        selectionMode: workout.selectionMode,
+        sessionIntent: workout.sessionIntent,
+        mesocycleId: workout.mesocycleId,
+        mesocycleWeekSnapshot: workout.mesocycleWeekSnapshot,
+        mesoSessionSnapshot: workout.mesoSessionSnapshot,
+        mesocyclePhaseSnapshot: workout.mesocyclePhaseSnapshot,
+      });
     const mutation = buildSessionAuditMutationSummary({
       snapshot: sessionSnapshot,
       savedSelectionMode: workout.selectionMode,
@@ -7451,7 +7993,9 @@ function buildRealityExerciseRationale(input: {
       persistedExercises: workout.exercises,
     });
     const runtimeInterpretations = interpretRuntimeEdits({
-      runtimeEditReconciliation: readRuntimeEditReconciliation(workout.selectionMetadata),
+      runtimeEditReconciliation: readRuntimeEditReconciliation(
+        workout.selectionMetadata,
+      ),
       exerciseContexts: buildRuntimeExerciseContexts(workout),
       legacyReconciliation: mutation,
     });
@@ -7462,17 +8006,23 @@ function buildRealityExerciseRationale(input: {
       slotIndex: slotSnapshot?.sequenceIndex ?? null,
     });
     const seedExerciseIds = new Set(
-      resolvedSeed.seedSlot?.exercises.map((exercise) => exercise.exerciseId) ?? []
+      resolvedSeed.seedSlot?.exercises.map((exercise) => exercise.exerciseId) ??
+        [],
     );
 
     return workout.exercises.map((exercise) => {
       const fromSeed = seedExerciseIds.has(exercise.exerciseId);
-      const runtimeAdded = mutation.addedExerciseIds.includes(exercise.exerciseId);
+      const runtimeAdded = mutation.addedExerciseIds.includes(
+        exercise.exerciseId,
+      );
       const runtimeIntent = runtimeInterpretations.find(
-        (interpretation) => interpretation.exerciseId === exercise.exerciseId
+        (interpretation) => interpretation.exerciseId === exercise.exerciseId,
       )?.intent;
-      const reasonSource: MesocycleExplainReasonSource =
-        fromSeed ? "persisted" : runtimeAdded ? "reconstructed" : "unavailable";
+      const reasonSource: MesocycleExplainReasonSource = fromSeed
+        ? "persisted"
+        : runtimeAdded
+          ? "reconstructed"
+          : "unavailable";
 
       return {
         exerciseId: exercise.exerciseId,
@@ -7508,28 +8058,42 @@ function buildComparisonSlotDiffs(input: {
   slotsComparable?: boolean;
 }): MesocycleExplainComparisonSlotDiff[] {
   const previewByKey = new Map(
-    input.previewSlots.map((slot) => [buildComparisonKey(slot.slotIndex, slot.slotId), slot])
+    input.previewSlots.map((slot) => [
+      buildComparisonKey(slot.slotIndex, slot.slotId),
+      slot,
+    ]),
   );
   const retrospectiveByKey = new Map(
-    input.retrospectiveSlots.map((slot) => [buildComparisonKey(slot.slotIndex, slot.slotId), slot])
+    input.retrospectiveSlots.map((slot) => [
+      buildComparisonKey(slot.slotIndex, slot.slotId),
+      slot,
+    ]),
   );
-  const keys = Array.from(new Set([...previewByKey.keys(), ...retrospectiveByKey.keys()])).sort();
+  const keys = Array.from(
+    new Set([...previewByKey.keys(), ...retrospectiveByKey.keys()]),
+  ).sort();
 
   return keys.map((key) => {
     const preview = previewByKey.get(key) ?? null;
     const retrospective = retrospectiveByKey.get(key) ?? null;
     const previewExercises = preview?.exercises ?? [];
     const retrospectiveExercises = retrospective?.exercises ?? [];
-    const previewExerciseIds = previewExercises.map((exercise) => exercise.exerciseId);
-    const retrospectiveExerciseIds = retrospectiveExercises.map((exercise) => exercise.exerciseId);
+    const previewExerciseIds = previewExercises.map(
+      (exercise) => exercise.exerciseId,
+    );
+    const retrospectiveExerciseIds = retrospectiveExercises.map(
+      (exercise) => exercise.exerciseId,
+    );
     const retrospectiveByExerciseId = new Map(
-      retrospectiveExercises.map((exercise) => [exercise.exerciseId, exercise])
+      retrospectiveExercises.map((exercise) => [exercise.exerciseId, exercise]),
     );
     const sharedExerciseIds = previewExerciseIds.filter((exerciseId) =>
-      retrospectiveExerciseIds.includes(exerciseId)
+      retrospectiveExerciseIds.includes(exerciseId),
     );
     const roleMismatches = sharedExerciseIds.flatMap((exerciseId) => {
-      const previewExercise = previewExercises.find((exercise) => exercise.exerciseId === exerciseId);
+      const previewExercise = previewExercises.find(
+        (exercise) => exercise.exerciseId === exerciseId,
+      );
       const retrospectiveExercise = retrospectiveByExerciseId.get(exerciseId);
       const previewRole = previewExercise?.role ?? null;
       const retrospectiveRole = retrospectiveExercise?.role ?? null;
@@ -7538,7 +8102,9 @@ function buildComparisonSlotDiffs(input: {
         : [];
     });
     const setCountMismatches = sharedExerciseIds.flatMap((exerciseId) => {
-      const previewExercise = previewExercises.find((exercise) => exercise.exerciseId === exerciseId);
+      const previewExercise = previewExercises.find(
+        (exercise) => exercise.exerciseId === exerciseId,
+      );
       const retrospectiveExercise = retrospectiveByExerciseId.get(exerciseId);
       const previewSetCount = previewExercise?.setCount ?? null;
       const retrospectiveSetCount = retrospectiveExercise?.setCount ?? null;
@@ -7548,11 +8114,14 @@ function buildComparisonSlotDiffs(input: {
     });
     const orderedExerciseIdsMatch =
       previewExerciseIds.length === retrospectiveExerciseIds.length &&
-      previewExerciseIds.every((exerciseId, index) => retrospectiveExerciseIds[index] === exerciseId);
+      previewExerciseIds.every(
+        (exerciseId, index) => retrospectiveExerciseIds[index] === exerciseId,
+      );
     const exactMatch =
       preview != null &&
       retrospective != null &&
-      normalizeIntent(preview.intent) === normalizeIntent(retrospective.intent) &&
+      normalizeIntent(preview.intent) ===
+        normalizeIntent(retrospective.intent) &&
       orderedExerciseIdsMatch &&
       roleMismatches.length === 0 &&
       setCountMismatches.length === 0;
@@ -7564,17 +8133,20 @@ function buildComparisonSlotDiffs(input: {
       previewIntent: preview?.intent ?? null,
       retrospectiveIntent: retrospective?.intent ?? null,
       previewOnlyExerciseIds: previewExerciseIds.filter(
-        (exerciseId) => !retrospectiveExerciseIds.includes(exerciseId)
+        (exerciseId) => !retrospectiveExerciseIds.includes(exerciseId),
       ),
       retrospectiveOnlyExerciseIds: retrospectiveExerciseIds.filter(
-        (exerciseId) => !previewExerciseIds.includes(exerciseId)
+        (exerciseId) => !previewExerciseIds.includes(exerciseId),
       ),
       sharedExerciseIds,
       orderedExerciseIdsMatch,
       roleMismatches,
       setCountMismatches,
       exactMatch,
-      comparable: input.slotsComparable !== false && preview != null && retrospective != null,
+      comparable:
+        input.slotsComparable !== false &&
+        preview != null &&
+        retrospective != null,
     };
   });
 }
@@ -7595,24 +8167,38 @@ export async function buildMesocycleExplainAuditPayload(input: {
     compareRepaired: boolean;
   };
 }): Promise<MesocycleExplainAuditPayload> {
-  const sourceMesocycleId = input.sourceMesocycleId ?? (await resolveSourceMesocycleId(input.userId));
-  const retrospectiveMesocycleId = input.retrospectiveMesocycleId ?? sourceMesocycleId;
-  const [sourceMesocycle, retrospectiveMesocycle, constraints] = await Promise.all([
-    loadExplainMesocycle({ userId: input.userId, mesocycleId: sourceMesocycleId }),
-    loadExplainMesocycle({ userId: input.userId, mesocycleId: retrospectiveMesocycleId }),
-    prisma.constraints.findUnique({
-      where: { userId: input.userId },
-      select: { weeklySchedule: true },
-    }),
-  ]);
-  const weeklySchedule = (constraints?.weeklySchedule ?? []).map((intent) => intent.toLowerCase());
+  const sourceMesocycleId =
+    input.sourceMesocycleId ?? (await resolveSourceMesocycleId(input.userId));
+  const retrospectiveMesocycleId =
+    input.retrospectiveMesocycleId ?? sourceMesocycleId;
+  const [sourceMesocycle, retrospectiveMesocycle, constraints] =
+    await Promise.all([
+      loadExplainMesocycle({
+        userId: input.userId,
+        mesocycleId: sourceMesocycleId,
+      }),
+      loadExplainMesocycle({
+        userId: input.userId,
+        mesocycleId: retrospectiveMesocycleId,
+      }),
+      prisma.constraints.findUnique({
+        where: { userId: input.userId },
+        select: { weeklySchedule: true },
+      }),
+    ]);
+  const weeklySchedule = (constraints?.weeklySchedule ?? []).map((intent) =>
+    intent.toLowerCase(),
+  );
   const limitations: string[] = [];
 
   const previewArtifacts = await loadPreviewArtifacts({
     sourceMesocycle,
   });
   const sourceProjection = toHandoffProjectionSource(
-    (await loadHandoffSourceMesocycle(prisma, sourceMesocycle.id)) as HandoffArtifactSource
+    (await loadHandoffSourceMesocycle(
+      prisma,
+      sourceMesocycle.id,
+    )) as HandoffArtifactSource,
   );
   const projectedMesocycle = projectSuccessorMesocycle({
     source: sourceProjection,
@@ -7623,8 +8209,8 @@ export async function buildMesocycleExplainAuditPayload(input: {
   });
   const plannerOnlyPolicyOverride =
     input.plannerOnlyDryRun?.enabled && input.plannerOnlyDryRun.compareRepaired
-      ? input.plannerOnlyDryRun.plannerOnlyPolicyOverride ??
-        createCalvesFourFourPlannerOnlyPolicyOverride()
+      ? (input.plannerOnlyDryRun.plannerOnlyPolicyOverride ??
+        createCalvesFourFourPlannerOnlyPolicyOverride())
       : undefined;
   const slotPlanProjection = projectSuccessorSlotPlansFromSnapshot({
     userId: input.userId,
@@ -7653,21 +8239,30 @@ export async function buildMesocycleExplainAuditPayload(input: {
 
   if ("error" in slotPlanProjection) {
     limitations.push(
-      `Preview slot-plan projection could not fully materialize through the canonical handoff projection seam: ${slotPlanProjection.error}`
+      `Preview slot-plan projection could not fully materialize through the canonical handoff projection seam: ${slotPlanProjection.error}`,
     );
   }
-  if (plannerOnlyOverrideProjection && "error" in plannerOnlyOverrideProjection) {
+  if (
+    plannerOnlyOverrideProjection &&
+    "error" in plannerOnlyOverrideProjection
+  ) {
     limitations.push(
-      `Planner-only override projection could not fully materialize through the canonical handoff projection seam: ${plannerOnlyOverrideProjection.error}`
+      `Planner-only override projection could not fully materialize through the canonical handoff projection seam: ${plannerOnlyOverrideProjection.error}`,
     );
   }
-  if (plannerOnlyNoRepairProjection && "error" in plannerOnlyNoRepairProjection) {
+  if (
+    plannerOnlyNoRepairProjection &&
+    "error" in plannerOnlyNoRepairProjection
+  ) {
     limitations.push(
-      `Planner-only no-repair projection reported unresolved demand without repair: ${plannerOnlyNoRepairProjection.error}`
+      `Planner-only no-repair projection reported unresolved demand without repair: ${plannerOnlyNoRepairProjection.error}`,
     );
   }
 
-  const previewSlotPlansRaw = "error" in slotPlanProjection ? (slotPlanProjection.slotPlans ?? []) : slotPlanProjection.slotPlans;
+  const previewSlotPlansRaw =
+    "error" in slotPlanProjection
+      ? (slotPlanProjection.slotPlans ?? [])
+      : slotPlanProjection.slotPlans;
   const seedWorkouts = await prisma.workout.findMany({
     where: {
       mesocycleId: retrospectiveMesocycle.id,
@@ -7737,7 +8332,10 @@ export async function buildMesocycleExplainAuditPayload(input: {
       exercises: slot.exercises,
     })),
     exerciseNameById: new Map(
-      previewArtifacts.artifacts.carryForwardRecommendations.map((row) => [row.exerciseId, row.exerciseName])
+      previewArtifacts.artifacts.carryForwardRecommendations.map((row) => [
+        row.exerciseId,
+        row.exerciseName,
+      ]),
     ),
   });
   const exerciseNameById = buildExerciseNameMap({
@@ -7770,7 +8368,7 @@ export async function buildMesocycleExplainAuditPayload(input: {
     });
   } else {
     limitations.push(
-      "Preview slot plans are unavailable because the canonical handoff slot-plan projection did not return any slot plans."
+      "Preview slot plans are unavailable because the canonical handoff slot-plan projection did not return any slot plans.",
     );
   }
 
@@ -7785,11 +8383,11 @@ export async function buildMesocycleExplainAuditPayload(input: {
       : [];
   if (retrospectiveMesocycle.slotPlanSeedJson == null) {
     limitations.push(
-      `Retrospective mesocycle ${retrospectiveMesocycle.id} has no persisted slotPlanSeedJson, so accepted-seed comparisons are unavailable.`
+      `Retrospective mesocycle ${retrospectiveMesocycle.id} has no persisted slotPlanSeedJson, so accepted-seed comparisons are unavailable.`,
     );
   } else if (seedSlots.length === 0) {
     limitations.push(
-      `Retrospective mesocycle ${retrospectiveMesocycle.id} has a persisted slotPlanSeedJson that could not be normalized against the canonical slot sequence.`
+      `Retrospective mesocycle ${retrospectiveMesocycle.id} has a persisted slotPlanSeedJson that could not be normalized against the canonical slot sequence.`,
     );
   }
 
@@ -7835,25 +8433,27 @@ export async function buildMesocycleExplainAuditPayload(input: {
   });
 
   limitations.push(
-    "Historical acceptance-time candidate ranking rationale is not persisted for accepted mesocycle seeds, so ranking remains unavailable in seed and retrospective comparisons."
+    "Historical acceptance-time candidate ranking rationale is not persisted for accepted mesocycle seeds, so ranking remains unavailable in seed and retrospective comparisons.",
   );
   limitations.push(
-    "Preview exercise rationale is strongest for slot obligation, carry-forward continuity, and protected-coverage reconstruction; per-candidate winner-over-alternative ranking is not claimed unless canonically persisted."
+    "Preview exercise rationale is strongest for slot obligation, carry-forward continuity, and protected-coverage reconstruction; per-candidate winner-over-alternative ranking is not claimed unless canonically persisted.",
   );
   limitations.push(
-    "Preview slot plans are fresh reprojections from the current canonical handoff projection seam, not persisted acceptance-time projection artifacts; preview-vs-seed diffs are diagnostic and are not marked comparable to the accepted seed."
+    "Preview slot plans are fresh reprojections from the current canonical handoff projection seam, not persisted acceptance-time projection artifacts; preview-vs-seed diffs are diagnostic and are not marked comparable to the accepted seed.",
   );
   if (sourceMesocycle.id !== retrospectiveMesocycle.id) {
     limitations.push(
-      `Preview is generated from source mesocycle ${sourceMesocycle.id} while seed/reality read from retrospective mesocycle ${retrospectiveMesocycle.id}; cross-mesocycle diffs are structural comparisons, not a one-to-one replay.`
+      `Preview is generated from source mesocycle ${sourceMesocycle.id} while seed/reality read from retrospective mesocycle ${retrospectiveMesocycle.id}; cross-mesocycle diffs are structural comparisons, not a one-to-one replay.`,
     );
   }
   if (reality.rows.some((row) => row.seedDrift.comparisonBasis === "none")) {
     limitations.push(
-      "Some retrospective workouts were missing canonical slot identity, so seed-vs-reality drift falls back to unavailable for those sessions."
+      "Some retrospective workouts were missing canonical slot identity, so seed-vs-reality drift falls back to unavailable for those sessions.",
     );
   }
-  const projectionDiagnostics = buildProjectionDiagnostics(slotPlanProjection.diagnostics);
+  const projectionDiagnostics = buildProjectionDiagnostics(
+    slotPlanProjection.diagnostics,
+  );
   const plannerOnlyOverrideDiagnostics = plannerOnlyOverrideProjection
     ? buildProjectionDiagnostics(plannerOnlyOverrideProjection.diagnostics)
     : undefined;
@@ -7866,12 +8466,13 @@ export async function buildMesocycleExplainAuditPayload(input: {
           projectionDiagnostics.planningReality,
           input.plannerOnlyDryRun.compareRepaired,
           plannerOnlyPolicyOverride,
-          plannerOnlyOverrideDiagnostics?.planningReality
+          plannerOnlyOverrideDiagnostics?.planningReality,
         )
       : undefined;
   const plannerOnlyNoRepair = input.plannerOnlyNoRepair?.enabled
     ? buildPlannerOnlyNoRepairComparison({
-        noRepairPlanningReality: plannerOnlyNoRepairDiagnostics?.planningReality,
+        noRepairPlanningReality:
+          plannerOnlyNoRepairDiagnostics?.planningReality,
         repairedPlanningReality: projectionDiagnostics.planningReality,
         compareRepaired: input.plannerOnlyNoRepair.compareRepaired,
         repairedProjectionAvailable: !("error" in slotPlanProjection),
@@ -7888,40 +8489,55 @@ export async function buildMesocycleExplainAuditPayload(input: {
       rationaleBasis: previewArtifacts.rationaleBasis,
       designBasis: {
         focus: previewArtifacts.artifacts.recommendedDesign.profile.focus,
-        splitType: previewArtifacts.artifacts.recommendedDesign.structure.splitType,
-        sessionsPerWeek: previewArtifacts.artifacts.recommendedDesign.structure.sessionsPerWeek,
-        daysPerWeek: previewArtifacts.artifacts.recommendedDesign.structure.daysPerWeek,
-        durationWeeks: previewArtifacts.artifacts.recommendedDesign.profile.durationWeeks,
-        volumeTarget: previewArtifacts.artifacts.recommendedDesign.profile.volumeTarget,
-        intensityBias: previewArtifacts.artifacts.recommendedDesign.profile.intensityBias,
-        profileReasonCodes: previewArtifacts.artifacts.recommendedDesign.explainability.profileReasonCodes,
-        structureReasonCodes: previewArtifacts.artifacts.recommendedDesign.explainability.structureReasonCodes,
+        splitType:
+          previewArtifacts.artifacts.recommendedDesign.structure.splitType,
+        sessionsPerWeek:
+          previewArtifacts.artifacts.recommendedDesign.structure
+            .sessionsPerWeek,
+        daysPerWeek:
+          previewArtifacts.artifacts.recommendedDesign.structure.daysPerWeek,
+        durationWeeks:
+          previewArtifacts.artifacts.recommendedDesign.profile.durationWeeks,
+        volumeTarget:
+          previewArtifacts.artifacts.recommendedDesign.profile.volumeTarget,
+        intensityBias:
+          previewArtifacts.artifacts.recommendedDesign.profile.intensityBias,
+        profileReasonCodes:
+          previewArtifacts.artifacts.recommendedDesign.explainability
+            .profileReasonCodes,
+        structureReasonCodes:
+          previewArtifacts.artifacts.recommendedDesign.explainability
+            .structureReasonCodes,
         startingPointReasonCodes:
-          previewArtifacts.artifacts.recommendedDesign.explainability.startingPointReasonCodes,
+          previewArtifacts.artifacts.recommendedDesign.explainability
+            .startingPointReasonCodes,
       },
-      carryForwardReasons: previewArtifacts.artifacts.carryForwardRecommendations.map((row) => ({
-        exerciseId: row.exerciseId,
-        exerciseName: row.exerciseName,
-        sessionIntent: row.sessionIntent,
-        role: row.role,
-        recommendation: row.recommendation,
-        signalQuality: row.signalQuality,
-        reasonCodes: row.reasonCodes,
-      })),
+      carryForwardReasons:
+        previewArtifacts.artifacts.carryForwardRecommendations.map((row) => ({
+          exerciseId: row.exerciseId,
+          exerciseName: row.exerciseName,
+          sessionIntent: row.sessionIntent,
+          role: row.role,
+          recommendation: row.recommendation,
+          signalQuality: row.signalQuality,
+          reasonCodes: row.reasonCodes,
+        })),
       slotPlans: previewSlotPlans,
       projectedSessions: previewProjectedSessions,
       projectionDiagnostics,
       exerciseRationale: buildPreviewExerciseRationale({
         previewSlots: previewSlotPlans,
         design: previewArtifacts.artifacts.recommendedDesign,
-        carryForwardReasons: previewArtifacts.artifacts.carryForwardRecommendations,
+        carryForwardReasons:
+          previewArtifacts.artifacts.carryForwardRecommendations,
         rationaleBasis: previewArtifacts.rationaleBasis,
         slotSequenceJson: projectedMesocycle.mesocycle.slotSequence,
         weeklySchedule,
         repairedSlotIds: new Set(
           ("error" in slotPlanProjection
             ? slotPlanProjection.diagnostics?.protectedCoverage.repairedSlotIds
-            : slotPlanProjection.diagnostics?.protectedCoverage.repairedSlotIds) ?? []
+            : slotPlanProjection.diagnostics?.protectedCoverage
+                .repairedSlotIds) ?? [],
         ),
       }),
     },
@@ -7948,7 +8564,7 @@ export async function buildMesocycleExplainAuditPayload(input: {
         (row) =>
           row.seedDrift.addedExerciseIds.length > 0 ||
           row.seedDrift.removedExerciseIds.length > 0 ||
-          row.generatedVsSaved.hasDrift
+          row.generatedVsSaved.hasDrift,
       ),
       exerciseRationale: buildRealityExerciseRationale({
         workouts: seedWorkouts,
@@ -7961,7 +8577,9 @@ export async function buildMesocycleExplainAuditPayload(input: {
       previewVsSeed: {
         comparable: false,
         comparisonBasis:
-          seedSlots.length > 0 && previewSlotPlans.length > 0 ? "fresh_reprojection" : "none",
+          seedSlots.length > 0 && previewSlotPlans.length > 0
+            ? "fresh_reprojection"
+            : "none",
         slotDiffs: previewVsSeed,
       },
       seedVsReality: {
@@ -7969,7 +8587,8 @@ export async function buildMesocycleExplainAuditPayload(input: {
         workoutDrift: reality.rows,
       },
       previewVsReality: {
-        comparable: previewSlotPlans.length > 0 && reality.latestRealityBySlot.length > 0,
+        comparable:
+          previewSlotPlans.length > 0 && reality.latestRealityBySlot.length > 0,
         comparisonBasis:
           previewSlotPlans.length > 0 && reality.latestRealityBySlot.length > 0
             ? "latest_saved_by_slot"

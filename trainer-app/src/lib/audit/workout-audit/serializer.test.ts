@@ -45,7 +45,7 @@ const baseRun: WorkoutAuditRun = {
 };
 
 function expectSuccessfulGeneration(
-  artifact: ReturnType<typeof buildWorkoutAuditArtifact>
+  artifact: ReturnType<typeof buildWorkoutAuditArtifact>,
 ) {
   const generation = artifact.generation;
   if (!generation || "error" in generation) {
@@ -64,10 +64,10 @@ function makePlannerOwnedAccumulationProjection() {
       week,
       phase:
         week === 4
-          ? "peak_overreach_lite" as const
+          ? ("peak_overreach_lite" as const)
           : week === 3
-            ? "hard_accumulation" as const
-            : "accumulation" as const,
+            ? ("hard_accumulation" as const)
+            : ("accumulation" as const),
       volumeMultiplier: week === 4 ? 1.125 : week === 3 ? 1.075 : 1,
       projectionStatus: "planner_owned_read_only" as const,
       safeForBehaviorPromotion: false as const,
@@ -142,6 +142,46 @@ function makeV2ExerciseSelectionPlanDiagnostic() {
   };
 }
 
+function makeV2SupportLaneProjectionDiagnostic() {
+  return {
+    version: 1 as const,
+    source: "v2_planner_policy" as const,
+    readOnly: true as const,
+    affectsScoringOrGeneration: false as const,
+    status: "projected_with_limitations" as const,
+    summary: {
+      supportMusclesEvaluated: 4,
+      directFloorsMet: 1,
+      directFloorsBelow: 3,
+      optionalActivations: 1,
+      expansionRecommendations: 3,
+      unrecoverableExpansions: 0,
+      diagnosticOnlyWarnings: 4,
+    },
+    muscles: [
+      {
+        muscle: "Triceps" as const,
+        ownerSlots: ["upper_a", "upper_b"],
+        directFloor: 2,
+        preferredDirectSets: 3,
+        currentDirectSets: 2,
+        collateralCreditUsed: 1,
+        collateralCreditLimit: 2,
+        weeklyTargetStatus: "below" as const,
+        directFloorStatus: "met" as const,
+        optionalActivationStatus: "triggered_diagnostic_only" as const,
+        expansionStatus: "recoverable" as const,
+        rationale: ["direct_floor_satisfaction_uses_direct_lane_sets_only"],
+        limitations: ["optional_activation_does_not_create_hard_floor"],
+      },
+    ],
+    blockers: [],
+    warnings: ["Triceps:optional_activation_triggered_diagnostic_only"],
+    missingInputs: [],
+    safeForBehaviorPromotion: false as const,
+  };
+}
+
 function makeV2DeloadProjectionDiagnostic() {
   return {
     version: 1 as const,
@@ -207,7 +247,7 @@ describe("buildWorkoutAuditArtifact", () => {
         ownerEmail: "owner@test.local",
         sanitizationLevel: "none",
       },
-      baseRun
+      baseRun,
     );
 
     expect(artifact.source).toBe("live");
@@ -217,7 +257,9 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(artifact.identity.ownerEmail).toBe("owner@test.local");
     expect(artifact.request.userId).toBe("user-1");
     expect(artifact.request.ownerEmail).toBe("owner@test.local");
-    expect(artifact.conclusions.next_session_basis.sourceFunction).toBe("loadNextWorkoutContext");
+    expect(artifact.conclusions.next_session_basis.sourceFunction).toBe(
+      "loadNextWorkoutContext",
+    );
     expect(artifact.warningSummary.blockingErrors).toEqual([]);
     expect(artifact.warningSummary.counts).toEqual({
       blockingErrors: 0,
@@ -233,7 +275,7 @@ describe("buildWorkoutAuditArtifact", () => {
         userId: "user-1",
         ownerEmail: "owner@test.local",
       },
-      baseRun
+      baseRun,
     );
     const serialized = JSON.parse(serializeWorkoutAuditArtifact(artifact));
 
@@ -249,7 +291,7 @@ describe("buildWorkoutAuditArtifact", () => {
         ownerEmail: "owner@test.local",
         sanitizationLevel: "pii-safe",
       },
-      baseRun
+      baseRun,
     );
 
     expect(artifact.source).toBe("pii-safe");
@@ -452,7 +494,7 @@ describe("buildWorkoutAuditArtifact", () => {
             },
           },
         },
-      }
+      },
     );
 
     const generation = expectSuccessfulGeneration(artifact);
@@ -466,7 +508,7 @@ describe("buildWorkoutAuditArtifact", () => {
       Core: 4,
     });
     expect(
-      generation.selection.sessionDecisionReceipt?.lifecycleVolume.targets
+      generation.selection.sessionDecisionReceipt?.lifecycleVolume.targets,
     ).toEqual({
       Chest: 14,
       Core: 15,
@@ -476,11 +518,11 @@ describe("buildWorkoutAuditArtifact", () => {
       "Chest",
     ]);
     expect(
-      generation.selection.sessionDecisionReceipt?.sorenessSuppressedMuscles
+      generation.selection.sessionDecisionReceipt?.sorenessSuppressedMuscles,
     ).toEqual(["Core"]);
     expect(
-      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.opportunity
-        ?.currentSessionMuscleOpportunity
+      generation.selection.sessionDecisionReceipt?.plannerDiagnostics
+        ?.opportunity?.currentSessionMuscleOpportunity,
     ).toEqual({
       Core: {
         sessionOpportunityWeight: 3,
@@ -495,7 +537,7 @@ describe("buildWorkoutAuditArtifact", () => {
       },
     });
     expect(
-      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.muscles
+      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.muscles,
     ).toEqual({
       Core: {
         weeklyTarget: 15,
@@ -509,21 +551,21 @@ describe("buildWorkoutAuditArtifact", () => {
       },
     });
     expect(
-      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.exercises.crunch
-        .stimulusVector
+      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.exercises
+        .crunch.stimulusVector,
     ).toEqual({
       Core: 3,
     });
     expect(
-      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.exercises.crunch
-        .anchorUsed
+      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.exercises
+        .crunch.anchorUsed,
     ).toEqual({
       kind: "muscle",
       muscle: "Core",
     });
     expect(
       generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
-        ?.startingDeficits
+        ?.startingDeficits,
     ).toEqual({
       Core: {
         weeklyTarget: 15,
@@ -535,7 +577,7 @@ describe("buildWorkoutAuditArtifact", () => {
     });
     expect(
       generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
-        ?.deficitsAfterClosure
+        ?.deficitsAfterClosure,
     ).toEqual({
       Core: {
         weeklyTarget: 15,
@@ -547,11 +589,11 @@ describe("buildWorkoutAuditArtifact", () => {
     });
     expect(
       generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
-        ?.unresolvedDeficits
+        ?.unresolvedDeficits,
     ).toEqual(["Core"]);
     expect(
       generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.outcome
-        ?.keyTradeoffs
+        ?.keyTradeoffs,
     ).toEqual([
       {
         layer: "closure",
@@ -561,7 +603,8 @@ describe("buildWorkoutAuditArtifact", () => {
       },
     ]);
     expect(
-      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.muscles.Abs
+      generation.selection.sessionDecisionReceipt?.plannerDiagnostics?.muscles
+        .Abs,
     ).toBeUndefined();
   });
 
@@ -574,10 +617,12 @@ describe("buildWorkoutAuditArtifact", () => {
       {
         ...baseRun,
         generationResult: { error: "generation exploded" },
-      }
+      },
     );
 
-    expect(artifact.warningSummary.blockingErrors).toEqual(["generation exploded"]);
+    expect(artifact.warningSummary.blockingErrors).toEqual([
+      "generation exploded",
+    ]);
     expect(artifact.warningSummary.semanticWarnings).toEqual([]);
     expect(artifact.warningSummary.counts.blockingErrors).toBe(1);
   });
@@ -631,7 +676,7 @@ describe("buildWorkoutAuditArtifact", () => {
             },
           },
         },
-      }
+      },
     );
 
     expect(artifact.canonicalSemantics).toEqual({
@@ -730,7 +775,7 @@ describe("buildWorkoutAuditArtifact", () => {
             "[stimulus-profile:fallback] Ab Wheel Rollout using centralized fallback mapper.",
           ],
         },
-      }
+      },
     );
 
     expect(artifact.generationPath).toEqual({
@@ -754,15 +799,18 @@ describe("buildWorkoutAuditArtifact", () => {
       },
     });
     expect(
-      JSON.parse(serializeWorkoutAuditArtifact(artifact)).generationProvenance
+      JSON.parse(serializeWorkoutAuditArtifact(artifact)).generationProvenance,
     ).toEqual(artifact.generationProvenance);
     const generation = expectSuccessfulGeneration(artifact);
-    expect(generation.selection.sessionDecisionReceipt?.sessionProvenance).toEqual({
+    expect(
+      generation.selection.sessionDecisionReceipt?.sessionProvenance,
+    ).toEqual({
       mesocycleId: "meso-1",
       compositionSource: "persisted_slot_plan_seed",
     });
     expect(
-      (generation.selection.sessionDecisionReceipt as Record<string, unknown>).generationPath
+      (generation.selection.sessionDecisionReceipt as Record<string, unknown>)
+        .generationPath,
     ).toBeUndefined();
     expect(artifact.warningSummary.semanticWarnings).toEqual([
       "Chest: recovery=62% last_trained_hours=36",
@@ -792,7 +840,7 @@ describe("buildWorkoutAuditArtifact", () => {
           generator: "generateSessionFromIntent",
           reason: "standard_future_week_or_preview",
         },
-      }
+      },
     );
 
     expect(artifact.generationProvenance).toEqual({
@@ -810,7 +858,7 @@ describe("buildWorkoutAuditArtifact", () => {
       },
     });
     expect(artifact.generationPath).toEqual(
-      artifact.generationProvenance?.auditOnly.generationPath
+      artifact.generationProvenance?.auditOnly.generationPath,
     );
   });
 
@@ -878,11 +926,11 @@ describe("buildWorkoutAuditArtifact", () => {
             decisionLog: [],
           },
         },
-      }
+      },
     );
 
     expect(artifact.warningSummary.semanticWarnings).toContain(
-      `${AUDIT_RECONSTRUCTION_GUARDRAIL} Progression-anchor coverage is using a saved-only reconstructed snapshot.`
+      `${AUDIT_RECONSTRUCTION_GUARDRAIL} Progression-anchor coverage is using a saved-only reconstructed snapshot.`,
     );
   });
 
@@ -917,7 +965,7 @@ describe("buildWorkoutAuditArtifact", () => {
           projectedSessions: [],
           fullWeekByMuscle: [],
         },
-      }
+      },
     );
 
     expect(artifact.mode).toBe("projected-week-volume");
@@ -1057,7 +1105,7 @@ describe("buildWorkoutAuditArtifact", () => {
           rootCauses: [],
           recommendedPriorities: [],
         },
-      }
+      },
     );
 
     expect(artifact.mode).toBe("weekly-retro");
@@ -1118,7 +1166,7 @@ describe("buildWorkoutAuditArtifact", () => {
           interventionHints: [],
           sessionRisks: [],
         },
-      }
+      },
     );
 
     expect(artifact.mode).toBe("current-week-audit");
@@ -1203,7 +1251,7 @@ describe("buildWorkoutAuditArtifact", () => {
             reasons: ["push support improved"],
           },
         },
-      }
+      },
     );
 
     expect(artifact.mode).toBe("active-mesocycle-slot-reseed");
@@ -1314,7 +1362,7 @@ describe("buildWorkoutAuditArtifact", () => {
           },
           limitations: ["historical ranking unavailable"],
         },
-      }
+      },
     );
 
     expect(artifact.mode).toBe("mesocycle-explain");
@@ -1352,15 +1400,12 @@ describe("buildWorkoutAuditArtifact", () => {
         },
         generationResult: undefined,
         mesocycleExplain: makeMesocycleExplainNoRepairPayload(),
-      }
+      },
     );
 
     const fullNoRepair = output.artifact.mesocycleExplain?.plannerOnlyNoRepair;
-    const serializedNoRepair =
-      output.serializedArtifact.mesocycleExplain?.plannerOnlyNoRepair as unknown as Record<
-        string,
-        unknown
-      >;
+    const serializedNoRepair = output.serializedArtifact.mesocycleExplain
+      ?.plannerOnlyNoRepair as unknown as Record<string, unknown>;
 
     expect(fullNoRepair?.v2MesocyclePlan).toBeTruthy();
     expect(fullNoRepair?.v2SetDistributionIntent).toBeTruthy();
@@ -1369,6 +1414,14 @@ describe("buildWorkoutAuditArtifact", () => {
       affectsScoringOrGeneration: false,
       summary: {
         policyCount: 4,
+      },
+    });
+    expect(fullNoRepair?.v2SupportLaneProjectionDiagnostic).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      safeForBehaviorPromotion: false,
+      summary: {
+        supportMusclesEvaluated: 4,
       },
     });
     expect(fullNoRepair?.plannerOwnedAccumulationProjection).toBeTruthy();
@@ -1392,7 +1445,9 @@ describe("buildWorkoutAuditArtifact", () => {
       safeForBehaviorPromotion: false,
     });
     expect(fullNoRepair?.v2TargetVsNoRepairDiff).toBeTruthy();
-    expect(fullNoRepair?.crossWeekProjectionGate.accumulationWeeksStatus.weeks).toHaveLength(3);
+    expect(
+      fullNoRepair?.crossWeekProjectionGate.accumulationWeeksStatus.weeks,
+    ).toHaveLength(3);
     expect(serializedNoRepair).toMatchObject({
       summary: {
         status: "fail",
@@ -1426,6 +1481,18 @@ describe("buildWorkoutAuditArtifact", () => {
             policyCount: 4,
           },
         },
+        supportLaneProjectionDiagnostic: {
+          status: "projected_with_limitations",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          summary: expect.objectContaining({
+            supportMusclesEvaluated: 4,
+            optionalActivations: 1,
+          }),
+          blockerCount: 0,
+          warningCount: 1,
+          missingInputCount: 0,
+        },
       },
       debugArtifact: {
         created: false,
@@ -1451,9 +1518,18 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(serializedNoRepair).not.toHaveProperty("v2MesocyclePlan");
     expect(serializedNoRepair).not.toHaveProperty("v2SetDistributionIntent");
     expect(serializedNoRepair).not.toHaveProperty("v2SupportLanePolicy");
-    expect(serializedNoRepair).not.toHaveProperty("plannerOwnedAccumulationProjection");
-    expect(serializedNoRepair).not.toHaveProperty("v2ExerciseSelectionPlanDiagnostic");
-    expect(serializedNoRepair).not.toHaveProperty("v2DeloadProjectionDiagnostic");
+    expect(serializedNoRepair).not.toHaveProperty(
+      "v2SupportLaneProjectionDiagnostic",
+    );
+    expect(serializedNoRepair).not.toHaveProperty(
+      "plannerOwnedAccumulationProjection",
+    );
+    expect(serializedNoRepair).not.toHaveProperty(
+      "v2ExerciseSelectionPlanDiagnostic",
+    );
+    expect(serializedNoRepair).not.toHaveProperty(
+      "v2DeloadProjectionDiagnostic",
+    );
     expect(serializedNoRepair).not.toHaveProperty("v2TargetVsNoRepairDiff");
     expect(
       (serializedNoRepair.crossWeekProjectionGate as Record<string, unknown>)
@@ -1464,34 +1540,36 @@ describe("buildWorkoutAuditArtifact", () => {
 
   it("returns a linked V2 no-repair debug sidecar only when the explicit sidecar flag is enabled", () => {
     const mesocycleExplain = makeMesocycleExplainNoRepairPayload();
-    mesocycleExplain!.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.slotDiffs[0]?.laneDiffs.push({
-      laneId: "biceps",
-      targetRole: "accessory",
-      targetPrimaryMuscles: ["Biceps"],
-      targetExerciseClasses: ["biceps_isolation"],
-      targetSets: { min: 2, preferred: 3, max: 3 },
-      currentStatus: "partial",
-      currentEvidence: {
-        selectedExercises: [
-          {
-            name: "Barbell Curl",
-            sets: 2,
-            matchedClass: "biceps_curl",
-            role: "accessory",
-          },
-        ],
-        relevantDiagnostics: [
-          "setPolicy:in_budget",
-          "setBudget:within_preferred",
-          "target_delivery:below_min",
-          "exposure:single_direct_curl",
-          "concentration:pulling_collateral",
-        ],
+    mesocycleExplain!.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.slotDiffs[0]?.laneDiffs.push(
+      {
+        laneId: "biceps",
+        targetRole: "accessory",
+        targetPrimaryMuscles: ["Biceps"],
+        targetExerciseClasses: ["biceps_isolation"],
+        targetSets: { min: 2, preferred: 3, max: 3 },
+        currentStatus: "partial",
+        currentEvidence: {
+          selectedExercises: [
+            {
+              name: "Barbell Curl",
+              sets: 2,
+              matchedClass: "biceps_curl",
+              role: "accessory",
+            },
+          ],
+          relevantDiagnostics: [
+            "setPolicy:in_budget",
+            "setBudget:within_preferred",
+            "target_delivery:below_min",
+            "exposure:single_direct_curl",
+            "concentration:pulling_collateral",
+          ],
+        },
+        gapCause: "set_distribution_gap",
+        migrationRecommendation: "needs_set_distribution_policy",
+        severity: "quality_warning",
       },
-      gapCause: "set_distribution_gap",
-      migrationRecommendation: "needs_set_distribution_policy",
-      severity: "quality_warning",
-    });
+    );
 
     const output = createWorkoutAuditArtifactOutput(
       {
@@ -1529,17 +1607,15 @@ describe("buildWorkoutAuditArtifact", () => {
         v2DebugArtifactFileName: "parent-v2-no-repair-debug.json",
         v2DebugArtifactRelativePath:
           "artifacts/audits/parent-v2-no-repair-debug.json",
-      }
+      },
     );
-    const mainNoRepair =
-      output.serializedArtifact.mesocycleExplain?.plannerOnlyNoRepair as unknown as Record<
-        string,
-        unknown
-      >;
+    const mainNoRepair = output.serializedArtifact.mesocycleExplain
+      ?.plannerOnlyNoRepair as unknown as Record<string, unknown>;
 
     expectStableArtifactSection(
       {
-        plannerOnlyNoRepair: output.artifact.mesocycleExplain?.plannerOnlyNoRepair,
+        plannerOnlyNoRepair:
+          output.artifact.mesocycleExplain?.plannerOnlyNoRepair,
       },
       output.v2DebugArtifact?.artifact,
       "plannerOnlyNoRepair.repairPromotionScoreboard",
@@ -1573,7 +1649,7 @@ describe("buildWorkoutAuditArtifact", () => {
       },
     });
     expect(JSON.stringify(mainNoRepair.v2Summary)).not.toContain(
-      "promotionCandidates"
+      "promotionCandidates",
     );
     expect(output.v2DebugArtifact?.artifact.parent).toMatchObject({
       fileName: "parent.json",
@@ -1638,6 +1714,17 @@ describe("buildWorkoutAuditArtifact", () => {
           summary: expect.objectContaining({
             policyCount: 4,
           }),
+        }),
+        v2SupportLaneProjectionDiagnostic: expect.objectContaining({
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          safeForBehaviorPromotion: false,
+          muscles: expect.arrayContaining([
+            expect.objectContaining({
+              muscle: "Triceps",
+              optionalActivationStatus: "triggered_diagnostic_only",
+            }),
+          ]),
         }),
         plannerOwnedAccumulationProjection: expect.objectContaining({
           readOnly: true,
@@ -1716,7 +1803,8 @@ describe("buildWorkoutAuditArtifact", () => {
       },
     });
     expect(
-      output.v2DebugArtifact?.artifact.plannerOnlyNoRepair.v2TargetVsNoRepairDiff.slotDiffs[0]?.laneDiffs,
+      output.v2DebugArtifact?.artifact.plannerOnlyNoRepair
+        .v2TargetVsNoRepairDiff.slotDiffs[0]?.laneDiffs,
     ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1872,7 +1960,9 @@ function makeMesocycleExplainNoRepairPayload() {
             materiality: "major",
             repairMechanism: "support_floor_closure",
             correctOwner: "SlotDemandAllocationByWeek",
-            evidence: ["shadowAllocationBasis:slot_owned_muscle_before_selection"],
+            evidence: [
+              "shadowAllocationBasis:slot_owned_muscle_before_selection",
+            ],
           },
         ],
         doNotPromoteRows: [
@@ -1959,7 +2049,9 @@ function makeMesocycleExplainNoRepairPayload() {
               volumeMultiplier: 1,
               rirTarget: "2-3",
               projectionBasis: "planner_owned_read_only_projection",
-              limitations: ["planner_owned_week_projection_exists_but_is_diagnostic_only"],
+              limitations: [
+                "planner_owned_week_projection_exists_but_is_diagnostic_only",
+              ],
               safeForBehaviorPromotion: false,
             },
             {
@@ -1968,7 +2060,9 @@ function makeMesocycleExplainNoRepairPayload() {
               volumeMultiplier: 1.075,
               rirTarget: "1-2",
               projectionBasis: "planner_owned_read_only_projection",
-              limitations: ["planner_owned_week_projection_exists_but_is_diagnostic_only"],
+              limitations: [
+                "planner_owned_week_projection_exists_but_is_diagnostic_only",
+              ],
               safeForBehaviorPromotion: false,
             },
             {
@@ -1977,7 +2071,9 @@ function makeMesocycleExplainNoRepairPayload() {
               volumeMultiplier: 1.125,
               rirTarget: "0-1",
               projectionBasis: "planner_owned_read_only_projection",
-              limitations: ["planner_owned_week_projection_exists_but_is_diagnostic_only"],
+              limitations: [
+                "planner_owned_week_projection_exists_but_is_diagnostic_only",
+              ],
               safeForBehaviorPromotion: false,
             },
           ],
@@ -2149,9 +2245,13 @@ function makeMesocycleExplainNoRepairPayload() {
         },
       },
       v2SupportLanePolicy: buildV2PlannerMesocyclePolicy().v2SupportLanePolicy,
-      plannerOwnedAccumulationProjection: makePlannerOwnedAccumulationProjection(),
+      v2SupportLaneProjectionDiagnostic:
+        makeV2SupportLaneProjectionDiagnostic(),
+      plannerOwnedAccumulationProjection:
+        makePlannerOwnedAccumulationProjection(),
       v2DeloadProjectionDiagnostic: makeV2DeloadProjectionDiagnostic(),
-      v2ExerciseSelectionPlanDiagnostic: makeV2ExerciseSelectionPlanDiagnostic(),
+      v2ExerciseSelectionPlanDiagnostic:
+        makeV2ExerciseSelectionPlanDiagnostic(),
       slotPlans: [
         {
           slotId: "upper_a",

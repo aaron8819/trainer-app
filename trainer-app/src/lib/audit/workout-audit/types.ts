@@ -17,6 +17,7 @@ import type { PlannerOnlyPolicyOverride } from "@/lib/api/planner-only-policy-ov
 import type {
   PlannerOwnedAccumulationProjection,
   V2ExerciseSelectionPlanDiagnostic,
+  V2SupportLaneProjectionDiagnostic,
 } from "@/lib/api/planning-reality";
 import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection.diagnostics";
 import type { SlotPreselectionDemandDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection";
@@ -190,7 +191,9 @@ export type HistoricalWeekAuditSession = {
   };
   weekClose?: {
     relevant: boolean;
-    relation: Array<"target_week" | "linked_selection_metadata" | "linked_optional_workout">;
+    relation: Array<
+      "target_week" | "linked_selection_metadata" | "linked_optional_workout"
+    >;
     weekCloseId: string;
     targetWeek: number;
     targetPhase: string;
@@ -296,7 +299,12 @@ export type RuntimeEditInterpretation = {
   exerciseId?: string;
   workoutExerciseId?: string;
   muscles: string[];
-  timing?: "early_session" | "mid_session" | "end_session" | "post_session" | "unknown";
+  timing?:
+    | "early_session"
+    | "mid_session"
+    | "end_session"
+    | "post_session"
+    | "unknown";
   evidence: string[];
 };
 
@@ -347,13 +355,21 @@ export type WeeklyRetroAuditSessionExecutionRow = {
   selectionMode?: string;
   sessionIntent?: string;
   snapshotSource: HistoricalWeekAuditSession["snapshotSource"];
-  semanticKind?: "advancing" | "gap_fill" | "supplemental" | "non_advancing_generic";
+  semanticKind?:
+    | "advancing"
+    | "gap_fill"
+    | "supplemental"
+    | "non_advancing_generic";
   consumesWeeklyScheduleIntent: boolean;
   isCloseout: boolean;
   isDeload: boolean;
   slot?: SessionSlotSnapshot;
-  mesocycleSnapshot?: NonNullable<HistoricalWeekAuditSession["sessionSnapshot"]["saved"]>["mesocycleSnapshot"];
-  cycleContext?: NonNullable<HistoricalWeekAuditSession["sessionSnapshot"]["generated"]>["cycleContext"];
+  mesocycleSnapshot?: NonNullable<
+    HistoricalWeekAuditSession["sessionSnapshot"]["saved"]
+  >["mesocycleSnapshot"];
+  cycleContext?: NonNullable<
+    HistoricalWeekAuditSession["sessionSnapshot"]["generated"]
+  >["cycleContext"];
   canonicalSemantics: HistoricalWeekAuditSession["canonicalSemantics"];
   progressionEvidence: HistoricalWeekAuditSession["progressionEvidence"];
   weekClose?: HistoricalWeekAuditSession["weekClose"];
@@ -625,7 +641,10 @@ export type ActiveMesocycleSlotReseedAuditPayload = {
   };
 };
 
-export type MesocycleExplainReasonSource = "persisted" | "reconstructed" | "unavailable";
+export type MesocycleExplainReasonSource =
+  | "persisted"
+  | "reconstructed"
+  | "unavailable";
 
 export type MesocycleExplainExerciseRow = {
   exerciseId: string;
@@ -881,9 +900,17 @@ export type MesocycleExplainPlannerOnlyDryRun = {
     wouldReduceSupportFloorClosureRows: boolean | null;
     wouldReduceSetBumps: boolean | null;
     wouldIncreaseCapTrimRows: boolean | null;
-    wouldChangeMaterialRepairCount: "decrease" | "flat" | "increase" | "unknown";
+    wouldChangeMaterialRepairCount:
+      | "decrease"
+      | "flat"
+      | "increase"
+      | "unknown";
     wouldChangeMajorRepairCount: "decrease" | "flat" | "increase" | "unknown";
-    wouldChangeSuspiciousRepairCount: "decrease" | "flat" | "increase" | "unknown";
+    wouldChangeSuspiciousRepairCount:
+      | "decrease"
+      | "flat"
+      | "increase"
+      | "unknown";
     preservesLowerBHingeCurlRoute: boolean | null;
     lowerASafety: {
       status: "pass" | "fail" | "unknown";
@@ -1049,10 +1076,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
       repairMechanism: string;
       reason: string;
       demotionReasons: string[];
-      bucket:
-        | "safety_net"
-        | "collateral_diagnostic"
-        | "diagnostic_only";
+      bucket: "safety_net" | "collateral_diagnostic" | "diagnostic_only";
       evidence: string[];
     }>;
     safetyNetRows: Array<{
@@ -1375,6 +1399,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
   };
   v2SetDistributionIntent: V2SetDistributionIntent;
   v2SupportLanePolicy?: V2SupportLanePolicy;
+  v2SupportLaneProjectionDiagnostic: V2SupportLaneProjectionDiagnostic;
   plannerOwnedAccumulationProjection: PlannerOwnedAccumulationProjection;
   v2ExerciseSelectionPlanDiagnostic: V2ExerciseSelectionPlanDiagnostic;
   slotPlans: Array<{
@@ -1468,6 +1493,7 @@ export type MesocycleExplainPlannerOnlyNoRepairDebugArtifact = {
     | "v2MesocyclePlan"
     | "v2SetDistributionIntent"
     | "v2SupportLanePolicy"
+    | "v2SupportLaneProjectionDiagnostic"
     | "plannerOwnedAccumulationProjection"
     | "v2ExerciseSelectionPlanDiagnostic"
     | "v2TargetVsNoRepairDiff"
@@ -1580,7 +1606,10 @@ export type MesocycleExplainAuditPayload = {
   comparison: {
     previewVsSeed: {
       comparable: boolean;
-      comparisonBasis: "fresh_reprojection" | "accepted_projection_artifact" | "none";
+      comparisonBasis:
+        | "fresh_reprojection"
+        | "accepted_projection_artifact"
+        | "none";
       slotDiffs: MesocycleExplainComparisonSlotDiff[];
     };
     seedVsReality: {

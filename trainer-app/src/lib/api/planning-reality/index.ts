@@ -72,27 +72,41 @@ export {
   buildV2ExerciseSelectionPlanDiagnostic,
   type V2ExerciseSelectionPlanDiagnostic,
 } from "./exercise-selection-plan-diagnostic";
+export {
+  buildV2SupportLaneProjectionDiagnostic,
+  type V2SupportLaneProjectionDiagnostic,
+} from "./support-lane-projection-diagnostic";
 function classifyPlanningShape(input: {
   weeklyMuscleDemand: WeeklyMuscleDemandDiagnostic[];
   slotDemandAllocation: SlotDemandAllocationDiagnostic[];
   repairMateriality: RepairMaterialityDiagnostic[];
 }): SlotPlanPlanningRealityDiagnostic["summary"]["planningShape"] {
-  const hardDemandCount = input.weeklyMuscleDemand.filter((row) => row.targetStatus === "hard").length;
+  const hardDemandCount = input.weeklyMuscleDemand.filter(
+    (row) => row.targetStatus === "hard",
+  ).length;
   const explicitSlotCount = input.slotDemandAllocation.filter(
-    (row) => row.allocationBasis === "explicit_weekly_demand"
+    (row) => row.allocationBasis === "explicit_weekly_demand",
   ).length;
   const materialRepairCount = input.repairMateriality.filter(
-    (row) => row.materiality === "moderate" || row.materiality === "major"
+    (row) => row.materiality === "moderate" || row.materiality === "major",
   ).length;
-  const majorRepairCount = input.repairMateriality.filter((row) => row.materiality === "major").length;
+  const majorRepairCount = input.repairMateriality.filter(
+    (row) => row.materiality === "major",
+  ).length;
 
   if (hardDemandCount === 0 && explicitSlotCount === 0) {
     return "unclear_due_to_missing_instrumentation";
   }
-  if (materialRepairCount === 0 && explicitSlotCount >= Math.max(1, input.slotDemandAllocation.length / 2)) {
+  if (
+    materialRepairCount === 0 &&
+    explicitSlotCount >= Math.max(1, input.slotDemandAllocation.length / 2)
+  ) {
     return "mostly_upstream_planned";
   }
-  if (majorRepairCount >= Math.max(1, hardDemandCount) || materialRepairCount > explicitSlotCount) {
+  if (
+    majorRepairCount >= Math.max(1, hardDemandCount) ||
+    materialRepairCount > explicitSlotCount
+  ) {
     return "mostly_repair_shaped";
   }
   return "mixed_upstream_plus_repair_shaped";
@@ -107,7 +121,9 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
   weeklyObligationPlan: WeeklyMuscleObligationPlan;
   weeklyObligationEvaluations: ReadonlyArray<SlotObligationEvaluation>;
   protectedCoverage: ProtectedWeekOneCoverageEvaluation;
-  supportFloorRepairReasons: Partial<Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>>;
+  supportFloorRepairReasons: Partial<
+    Record<ProtectedWeekOneCoverageMuscle, SupportFloorRepairReason[]>
+  >;
   programQualityAppliedDiagnostics: ReadonlyArray<ProgramQualityDiagnostic>;
   programQualityEvaluation: ProgramQualityEvaluation;
   preselectionDemands?: ReadonlyArray<PreselectionDemandDiagnosticLike>;
@@ -189,7 +205,9 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     shadowWeeklyDemand,
     shadowSlotDemandAllocation,
   });
-  const shadowRepairSummary = buildShadowRepairSummary(repairMaterialityAfterShadowAllocation);
+  const shadowRepairSummary = buildShadowRepairSummary(
+    repairMaterialityAfterShadowAllocation,
+  );
   const suspiciousRepairsNotEligibleForPromotion = buildSuspiciousRepairs({
     repairRows: repairMaterialityAfterShadowAllocation,
     shadowSlotDemandAllocation,
@@ -348,11 +366,13 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
     setDistributionIntents,
   });
   const materialRepairCount = repairMateriality.filter(
-    (row) => row.materiality === "moderate" || row.materiality === "major"
+    (row) => row.materiality === "moderate" || row.materiality === "major",
   ).length;
-  const majorRepairCount = repairMateriality.filter((row) => row.materiality === "major").length;
+  const majorRepairCount = repairMateriality.filter(
+    (row) => row.materiality === "major",
+  ).length;
   const highExerciseConcentrationCount = exerciseConcentration.filter((row) =>
-    row.flags.some((flag) => flag.includes("EXERCISE_SUPPLIES_OVER"))
+    row.flags.some((flag) => flag.includes("EXERCISE_SUPPLIES_OVER")),
   ).length;
   const summary: SlotPlanPlanningRealityDiagnostic["summary"] = {
     planningShape: classifyPlanningShape({
@@ -360,15 +380,19 @@ export function buildWeeklyDemandSlotAllocationDiagnostic(input: {
       slotDemandAllocation,
       repairMateriality,
     }),
-    explicitWeeklyDemandMuscles: weeklyMuscleDemand.filter((row) => row.explicitUpstream).length,
-    inferredDemandMuscles: weeklyMuscleDemand.filter((row) => row.inferredDownstream).length,
+    explicitWeeklyDemandMuscles: weeklyMuscleDemand.filter(
+      (row) => row.explicitUpstream,
+    ).length,
+    inferredDemandMuscles: weeklyMuscleDemand.filter(
+      (row) => row.inferredDownstream,
+    ).length,
     slotsWithExplicitWeeklyDemand: slotDemandAllocation.filter(
-      (row) => row.allocationBasis === "explicit_weekly_demand"
+      (row) => row.allocationBasis === "explicit_weekly_demand",
     ).length,
     slotsWithOnlyLocalOrInferredSemantics: slotDemandAllocation.filter(
       (row) =>
         row.allocationBasis === "local_movement_or_lane_semantics" ||
-        row.allocationBasis === "unclear"
+        row.allocationBasis === "unclear",
     ).length,
     materialRepairCount,
     majorRepairCount,

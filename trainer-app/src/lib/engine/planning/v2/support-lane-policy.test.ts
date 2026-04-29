@@ -88,8 +88,10 @@ describe("buildV2SupportLanePolicy", () => {
       directFloor: {
         minDirectSets: 3,
         requiredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
+        collateralCanSatisfyDirectFloor: false,
       },
       preferredDirectSets: { min: 3, preferred: 4, max: 4 },
+      collateralCanSatisfyDirectFloor: false,
     });
     expect(sideDelts.expansionPolicy.firstChoice).toContain("lateral_raise");
     expect(sideDelts.expansionPolicy.supplementalOnly).toContain(
@@ -109,8 +111,10 @@ describe("buildV2SupportLanePolicy", () => {
       directFloor: {
         minDirectSets: 2,
         requiredExerciseClasses: ["rear_delt_isolation"],
+        collateralCanSatisfyDirectFloor: false,
       },
       preferredDirectSets: { min: 2, preferred: 3, max: 3 },
+      collateralCanSatisfyDirectFloor: false,
     });
     expect(rearDelts.expansionPolicy.firstChoice).toBe(
       "upper_a_rear_delt_isolation",
@@ -134,8 +138,10 @@ describe("buildV2SupportLanePolicy", () => {
         laneId: "biceps",
         minDirectSets: 2,
         requiredExerciseClasses: ["biceps_isolation"],
+        collateralCanSatisfyDirectFloor: false,
       },
       preferredDirectSets: { min: 2, preferred: 3, max: 3 },
+      collateralCanSatisfyDirectFloor: false,
     });
     expect(biceps.expansionPolicy.provisionalOrDiagnosticOnly).toContain(
       "upper_a_biceps_not_a_hard_floor",

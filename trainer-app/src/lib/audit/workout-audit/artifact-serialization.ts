@@ -13,7 +13,7 @@ export function sortJsonKeys(value: unknown): unknown {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [key, sortJsonKeys(entry)] as const)
+        .map(([key, entry]) => [key, sortJsonKeys(entry)] as const),
     );
   }
   return value;
@@ -38,7 +38,7 @@ export function getSerializedJsonSizeBytes(value: unknown): number {
 }
 
 export function buildSerializedTopLevelSizeBreakdown(
-  value: unknown
+  value: unknown,
 ): SerializedTopLevelSectionSize[] {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return [];
@@ -51,11 +51,14 @@ export function buildSerializedTopLevelSizeBreakdown(
     }))
     .sort(
       (left, right) =>
-        right.bytes - left.bytes || left.field.localeCompare(right.field)
+        right.bytes - left.bytes || left.field.localeCompare(right.field),
     );
 }
 
-export function buildArtifactDiffSummary(previous: unknown, next: unknown): {
+export function buildArtifactDiffSummary(
+  previous: unknown,
+  next: unknown,
+): {
   changedTopLevelKeys: string[];
 } {
   const previousRecord =
@@ -70,7 +73,10 @@ export function buildArtifactDiffSummary(previous: unknown, next: unknown): {
   ]);
 
   const changedTopLevelKeys = Array.from(keys)
-    .filter((key) => JSON.stringify(previousRecord[key]) !== JSON.stringify(nextRecord[key]))
+    .filter(
+      (key) =>
+        JSON.stringify(previousRecord[key]) !== JSON.stringify(nextRecord[key]),
+    )
     .sort((left, right) => left.localeCompare(right));
 
   return { changedTopLevelKeys };
@@ -87,6 +93,7 @@ export const V2_PLANNER_NO_REPAIR_DEBUG_CONTAINS = [
   "v2MesocyclePlan",
   "v2SetDistributionIntent",
   "v2SupportLanePolicy",
+  "v2SupportLaneProjectionDiagnostic",
   "plannerOwnedAccumulationProjection",
   "v2ExerciseSelectionPlanDiagnostic",
   "v2TargetVsNoRepairDiff",
@@ -157,7 +164,7 @@ function createValueCatalog(prefix: string): ValueCatalog {
 function compactArrayFieldRefs(
   row: JsonRecord,
   fields: string[],
-  catalog: ValueCatalog
+  catalog: ValueCatalog,
 ): JsonRecord {
   const next: JsonRecord = { ...row };
   for (const field of fields) {
@@ -174,7 +181,7 @@ function compactArrayFieldRefs(
 function compactScalarFieldRefs(
   row: JsonRecord,
   fields: string[],
-  catalog: ValueCatalog
+  catalog: ValueCatalog,
 ): JsonRecord {
   const next: JsonRecord = { ...row };
   for (const field of fields) {
@@ -191,7 +198,7 @@ function compactScalarFieldRefs(
 function compactWholeArrayRefs(
   row: JsonRecord,
   fields: string[],
-  catalog: ValueCatalog
+  catalog: ValueCatalog,
 ): JsonRecord {
   const next: JsonRecord = { ...row };
   for (const field of fields) {
@@ -205,10 +212,7 @@ function compactWholeArrayRefs(
   return next;
 }
 
-function countBy(
-  rows: ReadonlyArray<JsonRecord>,
-  field: string
-): JsonRecord {
+function countBy(rows: ReadonlyArray<JsonRecord>, field: string): JsonRecord {
   return rows.reduce<JsonRecord>((counts, row) => {
     const key = typeof row[field] === "string" ? row[field] : "unknown";
     counts[key] = Number(counts[key] ?? 0) + 1;
@@ -227,15 +231,15 @@ function compactRepairRows(value: unknown): unknown {
     compactScalarFieldRefs(
       compactWholeArrayRefs(row, ["shadowRationale"], catalog),
       ["source", "rationale"],
-      catalog
-    )
+      catalog,
+    ),
   );
 
   return {
     summary: {
       totalRows: rows.length,
       materialRows: rows.filter(
-        (row) => row.materiality === "moderate" || row.materiality === "major"
+        (row) => row.materiality === "moderate" || row.materiality === "major",
       ).length,
       majorRows: rows.filter((row) => row.materiality === "major").length,
       byMateriality: countBy(rows, "materiality"),
@@ -271,21 +275,23 @@ function compactPreselectionFeasibility(value: unknown): unknown {
         Boolean(candidate.selectedInLowerBFinal)
       );
     });
-    const keptIds = new Set(keep.map((candidate) => String(candidate.exerciseId ?? "")));
+    const keptIds = new Set(
+      keep.map((candidate) => String(candidate.exerciseId ?? "")),
+    );
     const omitted = inventory.filter(
-      (candidate) => !keptIds.has(String(candidate.exerciseId ?? ""))
+      (candidate) => !keptIds.has(String(candidate.exerciseId ?? "")),
     );
 
     return {
       ...compactArrayFieldRefs(row, ["reasons"], catalog),
       preferredCleanPath: asRecordArray(row.preferredCleanPath).map((entry) =>
-        compactArrayFieldRefs(entry, ["evidence"], catalog)
+        compactArrayFieldRefs(entry, ["evidence"], catalog),
       ),
       dirtyClosureSignals: asRecordArray(row.dirtyClosureSignals).map((entry) =>
-        compactArrayFieldRefs(entry, ["evidence"], catalog)
+        compactArrayFieldRefs(entry, ["evidence"], catalog),
       ),
       candidateInventory: keep.map((candidate) =>
-        compactArrayFieldRefs(candidate, ["reasons"], catalog)
+        compactArrayFieldRefs(candidate, ["reasons"], catalog),
       ),
       candidateInventorySummary: {
         totalRows: inventory.length,
@@ -313,7 +319,7 @@ function compactSlotPrescriptionIntents(value: unknown): unknown {
       slotCount: rows.length,
       prescriptionCount: rows.reduce(
         (sum, row) => sum + asRecordArray(row.musclePrescriptions).length,
-        0
+        0,
       ),
     },
     catalogs: {
@@ -321,27 +327,38 @@ function compactSlotPrescriptionIntents(value: unknown): unknown {
     },
     rows: rows.map((row) => ({
       ...row,
-      musclePrescriptions: asRecordArray(row.musclePrescriptions).map((prescription) =>
-        compactWholeArrayRefs(
-          prescription,
-          [
-            "allowedPatterns",
-            "allowedExerciseClasses",
-            "forbiddenPatterns",
-            "forbiddenExerciseClasses",
-            "collateralLimits",
-            "reasons",
-          ],
-          catalog
-        )
+      musclePrescriptions: asRecordArray(row.musclePrescriptions).map(
+        (prescription) =>
+          compactWholeArrayRefs(
+            prescription,
+            [
+              "allowedPatterns",
+              "allowedExerciseClasses",
+              "forbiddenPatterns",
+              "forbiddenExerciseClasses",
+              "collateralLimits",
+              "reasons",
+            ],
+            catalog,
+          ),
       ),
-      movementLanePrescriptions: asRecordArray(row.movementLanePrescriptions).map((lane) =>
-        compactWholeArrayRefs(lane, ["preferredPatterns", "fallbackPatterns"], catalog)
+      movementLanePrescriptions: asRecordArray(
+        row.movementLanePrescriptions,
+      ).map((lane) =>
+        compactWholeArrayRefs(
+          lane,
+          ["preferredPatterns", "fallbackPatterns"],
+          catalog,
+        ),
       ),
       diagnostic: compactWholeArrayRefs(
         asRecord(row.diagnostic) ?? {},
-        ["priorRepairsPrevented", "priorRepairsStillRepairOwned", "blockedRepairs"],
-        catalog
+        [
+          "priorRepairsPrevented",
+          "priorRepairsStillRepairOwned",
+          "blockedRepairs",
+        ],
+        catalog,
       ),
     })),
     readOnly: true,
@@ -361,7 +378,7 @@ function compactSetDistributionIntents(value: unknown): unknown {
       slotCount: rows.length,
       policyCount: rows.reduce(
         (sum, row) => sum + asRecordArray(row.musclePolicies).length,
-        0
+        0,
       ),
     },
     catalogs: {
@@ -372,7 +389,7 @@ function compactSetDistributionIntents(value: unknown): unknown {
       evidence: compactArrayFieldRefs(
         asRecord(row.evidence) ?? {},
         ["concentrationRows", "capCleanupRows", "repairRowsStillRepairOwned"],
-        catalog
+        catalog,
       ),
     })),
     readOnly: true,
@@ -392,7 +409,7 @@ function compactExerciseClassDistribution(value: unknown): unknown {
       slotCount: rows.length,
       demandCount: rows.reduce(
         (sum, row) => sum + asRecordArray(row.muscleDemands).length,
-        0
+        0,
       ),
     },
     catalogs: {
@@ -415,8 +432,8 @@ function compactExerciseClassDistribution(value: unknown): unknown {
             "repairEvidence",
             "limitations",
           ],
-          catalog
-        )
+          catalog,
+        ),
       ),
     })),
     readOnly: true,
@@ -438,7 +455,7 @@ function compactExerciseClassAlignment(value: unknown): unknown {
         row.finalAlignment !== "satisfied" ||
         row.repairEffect !== "unchanged" ||
         row.targetStatus === "hard" ||
-        row.targetStatus === "forbidden"
+        row.targetStatus === "forbidden",
     );
     const allRows = asRecordArray(slot.muscleAlignments);
     return {
@@ -446,9 +463,14 @@ function compactExerciseClassAlignment(value: unknown): unknown {
       muscleAlignments: notableRows.map((row) =>
         compactWholeArrayRefs(
           compactArrayFieldRefs(row, ["evidence", "limitations"], catalog),
-          ["intendedClasses", "forbiddenClasses", "initialSelectedClasses", "finalSelectedClasses"],
-          catalog
-        )
+          [
+            "intendedClasses",
+            "forbiddenClasses",
+            "initialSelectedClasses",
+            "finalSelectedClasses",
+          ],
+          catalog,
+        ),
       ),
       omittedSatisfiedCount: allRows.length - notableRows.length,
     };
@@ -476,12 +498,14 @@ function compactAccumulationWeekProjection(value: unknown): unknown {
   const weeks = asRecordArray(projection.weeks);
   const representativeWeek = weeks[0];
   const catalog = createValueCatalog("W");
-  const projectedMuscles = asRecordArray(representativeWeek?.projectedMuscles).map((row) =>
-    compactArrayFieldRefs(row, ["evidence", "limitations"], catalog)
+  const projectedMuscles = asRecordArray(
+    representativeWeek?.projectedMuscles,
+  ).map((row) =>
+    compactArrayFieldRefs(row, ["evidence", "limitations"], catalog),
   );
-  const projectedSlotRisks = asRecordArray(representativeWeek?.projectedSlotRisks).map((row) =>
-    compactArrayFieldRefs(row, ["evidence"], catalog)
-  );
+  const projectedSlotRisks = asRecordArray(
+    representativeWeek?.projectedSlotRisks,
+  ).map((row) => compactArrayFieldRefs(row, ["evidence"], catalog));
 
   return {
     mesocycleId: projection.mesocycleId,
@@ -491,15 +515,18 @@ function compactAccumulationWeekProjection(value: unknown): unknown {
     projectionBasis: compactArrayFieldRefs(
       asRecord(projection.projectionBasis) ?? {},
       ["limitations"],
-      catalog
+      catalog,
     ),
     summary: {
       projectedWeeks: weeks.map((week) => week.week),
-      repeatedShapeBasis: "weeks_share_representative_projected_muscles_and_slot_risks",
+      repeatedShapeBasis:
+        "weeks_share_representative_projected_muscles_and_slot_risks",
       representativeProjectedMuscleCount: projectedMuscles.length,
       representativeProjectedSlotRiskCount: projectedSlotRisks.length,
       crossWeekWarningCount: asRecordArray(projection.crossWeekWarnings).length,
-      candidateReadinessCount: asRecordArray(projection.candidateBehaviorReadiness).length,
+      candidateReadinessCount: asRecordArray(
+        projection.candidateBehaviorReadiness,
+      ).length,
     },
     catalogs: {
       diagnosticStrings: catalog.entries(),
@@ -517,15 +544,15 @@ function compactAccumulationWeekProjection(value: unknown): unknown {
           weekLevelWarnings: week.weekLevelWarnings,
         },
         ["weekLevelWarnings"],
-        catalog
-      )
+        catalog,
+      ),
     ),
     crossWeekWarnings: asRecordArray(projection.crossWeekWarnings).map((row) =>
-      compactArrayFieldRefs(row, ["evidence"], catalog)
+      compactArrayFieldRefs(row, ["evidence"], catalog),
     ),
-    candidateBehaviorReadiness: asRecordArray(projection.candidateBehaviorReadiness).map((row) =>
-      compactArrayFieldRefs(row, ["requiredGuardrails"], catalog)
-    ),
+    candidateBehaviorReadiness: asRecordArray(
+      projection.candidateBehaviorReadiness,
+    ).map((row) => compactArrayFieldRefs(row, ["requiredGuardrails"], catalog)),
   };
 }
 
@@ -559,23 +586,24 @@ function compactPlannerOnlyDryRun(value: unknown): unknown {
       : 0,
     omittedUnresolvedDemandCount: Math.max(
       0,
-      (Array.isArray(row.unresolvedDemand) ? row.unresolvedDemand.length : 0) - 4
+      (Array.isArray(row.unresolvedDemand) ? row.unresolvedDemand.length : 0) -
+        4,
     ),
     omittedSetDistributionViolationCount: Math.max(
       0,
       (Array.isArray(row.setDistributionViolations)
         ? row.setDistributionViolations.length
-        : 0) - 4
+        : 0) - 4,
     ),
   }));
   const notableMuscles = weeklyMuscleComparison.filter(
-    (row) => row.targetStatus !== "within"
+    (row) => row.targetStatus !== "within",
   );
   const failedOrPartialChecks = acceptanceChecks.filter(
-    (row) => row.status !== "pass"
+    (row) => row.status !== "pass",
   );
   const activeRepairDependencies = repairDependencies.filter(
-    (row) => row.wouldHaveActed === true
+    (row) => row.wouldHaveActed === true,
   );
 
   return {
@@ -609,14 +637,17 @@ function compactPlannerOnlyDryRun(value: unknown): unknown {
   };
 }
 
-function compactNoRepairEvidenceArray(value: unknown, limit: number): {
+function compactNoRepairEvidenceArray(
+  value: unknown,
+  limit: number,
+): {
   evidence: string[];
   omittedEvidenceCount?: number;
 } {
   const evidence = Array.isArray(value)
     ? value.filter(
         (entry): entry is string =>
-          typeof entry === "string" && entry.length > 0
+          typeof entry === "string" && entry.length > 0,
       )
     : [];
   return {
@@ -629,7 +660,7 @@ function compactNoRepairEvidenceArray(value: unknown, limit: number): {
 
 function compactNoRepairFindingGroups(
   value: unknown,
-  preserveEvidence: boolean
+  preserveEvidence: boolean,
 ): unknown {
   return asRecordArray(value).map((row) => ({
     ...row,
@@ -674,28 +705,28 @@ function buildNoRepairOperatorFindings(noRepair: JsonRecord): JsonRecord {
             slotId: slot.slotId,
             demand: entry,
           }))
-        : []
+        : [],
     )
     .slice(0, 12);
 
   return {
     hardBlockers: compactNoRepairFindingGroups(
       classification.hardBlockers,
-      true
+      true,
     ),
     warnings: compactNoRepairFindingGroups(
       classification.qualityWarnings,
-      false
+      false,
     ),
     unresolvedDemandTop,
     acceptanceFailureTop: compactNoRepairConcentrationRows(
-      asRecordArray(noRepair.acceptanceFailures).slice(0, 12)
+      asRecordArray(noRepair.acceptanceFailures).slice(0, 12),
     ),
   };
 }
 
 function buildNoRepairDebugArtifactManifest(
-  link: PlannerOnlyNoRepairDebugArtifactLink | undefined
+  link: PlannerOnlyNoRepairDebugArtifactLink | undefined,
 ): MesocycleExplainPlannerOnlyNoRepairDebugArtifactManifest {
   return {
     kind: "v2_planner_no_repair_debug",
@@ -742,7 +773,7 @@ function compactCrossWeekProjectionGate(value: unknown): unknown {
           counts[key] = (counts[key] ?? 0) + 1;
           return counts;
         },
-        {}
+        {},
       ),
     },
     deloadStatus: {
@@ -761,7 +792,7 @@ function compactCrossWeekProjectionGate(value: unknown): unknown {
 
 function compactPlannerOnlyNoRepair(
   value: unknown,
-  debugArtifact?: PlannerOnlyNoRepairDebugArtifactLink
+  debugArtifact?: PlannerOnlyNoRepairDebugArtifactLink,
 ): unknown {
   const noRepair = asRecord(value);
   if (!noRepair) {
@@ -774,37 +805,41 @@ function compactPlannerOnlyNoRepair(
   const v2Diff = asRecord(noRepair.v2TargetVsNoRepairDiff);
   const v2DiffSummary = asRecord(v2Diff?.summary);
   const repairPromotionScoreboard = asRecord(
-    noRepair.repairPromotionScoreboard
+    noRepair.repairPromotionScoreboard,
   );
   const repairPromotionRawEvidence = asRecord(
-    repairPromotionScoreboard?.rawRepairEvidence
+    repairPromotionScoreboard?.rawRepairEvidence,
   );
-  const repairPromotionSummary = asRecord(
-    repairPromotionScoreboard?.summary
-  );
+  const repairPromotionSummary = asRecord(repairPromotionScoreboard?.summary);
   const v2SetDistributionIntent = asRecord(noRepair.v2SetDistributionIntent);
   const v2SetDistributionSummary = asRecord(v2SetDistributionIntent?.summary);
   const v2SupportLanePolicy = asRecord(noRepair.v2SupportLanePolicy);
   const v2SupportLaneSummary = asRecord(v2SupportLanePolicy?.summary);
+  const v2SupportLaneProjectionDiagnostic = asRecord(
+    noRepair.v2SupportLaneProjectionDiagnostic,
+  );
+  const v2SupportLaneProjectionSummary = asRecord(
+    v2SupportLaneProjectionDiagnostic?.summary,
+  );
   const v2ExerciseSelectionPlanDiagnostic = asRecord(
-    noRepair.v2ExerciseSelectionPlanDiagnostic
+    noRepair.v2ExerciseSelectionPlanDiagnostic,
   );
   const v2ExerciseSelectionSummary = asRecord(
-    v2ExerciseSelectionPlanDiagnostic?.summary
+    v2ExerciseSelectionPlanDiagnostic?.summary,
   );
   const v2DeloadProjectionDiagnostic = asRecord(
-    noRepair.v2DeloadProjectionDiagnostic
+    noRepair.v2DeloadProjectionDiagnostic,
   );
   const v2DeloadProjectionSummary = asRecord(
-    v2DeloadProjectionDiagnostic?.summary
+    v2DeloadProjectionDiagnostic?.summary,
   );
   const validationRules = asRecordArray(v2Plan?.validationRules);
   const migrationScoreboard = asRecord(
-    acceptanceClassification?.migrationScoreboard
+    acceptanceClassification?.migrationScoreboard,
   );
   const replacementReadiness = asRecord(v2Plan?.replacementReadiness);
   const replacementReadinessImpact = asRecord(
-    v2Diff?.replacementReadinessImpact
+    v2Diff?.replacementReadinessImpact,
   );
   const hardBlockers = asRecordArray(acceptanceClassification?.hardBlockers);
   const warnings = asRecordArray(acceptanceClassification?.qualityWarnings);
@@ -874,6 +909,34 @@ function compactPlannerOnlyNoRepair(
             summary: v2SupportLaneSummary ?? {},
           }
         : undefined,
+      supportLaneProjectionDiagnostic: v2SupportLaneProjectionDiagnostic
+        ? {
+            status:
+              v2SupportLaneProjectionDiagnostic.status ?? "diagnostic_only",
+            readOnly: v2SupportLaneProjectionDiagnostic.readOnly === true,
+            affectsScoringOrGeneration:
+              v2SupportLaneProjectionDiagnostic.affectsScoringOrGeneration ===
+              true
+                ? true
+                : false,
+            summary: v2SupportLaneProjectionSummary ?? {},
+            blockerCount: Array.isArray(
+              v2SupportLaneProjectionDiagnostic.blockers,
+            )
+              ? v2SupportLaneProjectionDiagnostic.blockers.length
+              : 0,
+            warningCount: Array.isArray(
+              v2SupportLaneProjectionDiagnostic.warnings,
+            )
+              ? v2SupportLaneProjectionDiagnostic.warnings.length
+              : 0,
+            missingInputCount: Array.isArray(
+              v2SupportLaneProjectionDiagnostic.missingInputs,
+            )
+              ? v2SupportLaneProjectionDiagnostic.missingInputs.length
+              : 0,
+          }
+        : undefined,
       validationRuleSummary: summarizeValidationRules(validationRules),
       targetVsNoRepairSummary: v2DiffSummary ?? {},
       repairPromotionScoreboard: repairPromotionScoreboard
@@ -883,8 +946,7 @@ function compactPlannerOnlyNoRepair(
           }
         : undefined,
       exerciseSelectionPlanDiagnostic: {
-        status:
-          v2ExerciseSelectionPlanDiagnostic?.status ?? "diagnostic_only",
+        status: v2ExerciseSelectionPlanDiagnostic?.status ?? "diagnostic_only",
         summary: v2ExerciseSelectionSummary ?? {},
         blockerCount: Array.isArray(v2ExerciseSelectionPlanDiagnostic?.blockers)
           ? v2ExerciseSelectionPlanDiagnostic.blockers.length
@@ -893,7 +955,7 @@ function compactPlannerOnlyNoRepair(
           ? v2ExerciseSelectionPlanDiagnostic.warnings.length
           : 0,
         missingInputCount: Array.isArray(
-          v2ExerciseSelectionPlanDiagnostic?.missingInputs
+          v2ExerciseSelectionPlanDiagnostic?.missingInputs,
         )
           ? v2ExerciseSelectionPlanDiagnostic.missingInputs.length
           : 0,
@@ -908,7 +970,7 @@ function compactPlannerOnlyNoRepair(
           ? v2DeloadProjectionDiagnostic.warnings.length
           : 0,
         missingInputCount: Array.isArray(
-          v2DeloadProjectionDiagnostic?.missingInputs
+          v2DeloadProjectionDiagnostic?.missingInputs,
         )
           ? v2DeloadProjectionDiagnostic.missingInputs.length
           : 0,
@@ -916,7 +978,7 @@ function compactPlannerOnlyNoRepair(
       migrationScoreboard: migrationScoreboard ?? {},
     },
     crossWeekProjectionGate: compactCrossWeekProjectionGate(
-      noRepair.crossWeekProjectionGate
+      noRepair.crossWeekProjectionGate,
     ),
     operatorFindings: buildNoRepairOperatorFindings(noRepair),
     debugArtifact: buildNoRepairDebugArtifactManifest(debugArtifact),
@@ -932,26 +994,26 @@ function compactPlanningReality(value: unknown): unknown {
   return {
     ...planningReality,
     slotPrescriptionIntents: compactSlotPrescriptionIntents(
-      planningReality.slotPrescriptionIntents
+      planningReality.slotPrescriptionIntents,
     ),
     setDistributionIntents: compactSetDistributionIntents(
-      planningReality.setDistributionIntents
+      planningReality.setDistributionIntents,
     ),
     preselectionFeasibility: compactPreselectionFeasibility(
-      planningReality.preselectionFeasibility
+      planningReality.preselectionFeasibility,
     ),
     repairMaterialityAfterShadowAllocation: compactRepairRows(
-      planningReality.repairMaterialityAfterShadowAllocation
+      planningReality.repairMaterialityAfterShadowAllocation,
     ),
     repairMateriality: compactRepairRows(planningReality.repairMateriality),
     exerciseClassDistributionBySlot: compactExerciseClassDistribution(
-      planningReality.exerciseClassDistributionBySlot
+      planningReality.exerciseClassDistributionBySlot,
     ),
     exerciseClassAlignment: compactExerciseClassAlignment(
-      planningReality.exerciseClassAlignment
+      planningReality.exerciseClassAlignment,
     ),
     accumulationWeekProjection: compactAccumulationWeekProjection(
-      planningReality.accumulationWeekProjection
+      planningReality.accumulationWeekProjection,
     ),
   };
 }
@@ -960,7 +1022,7 @@ export function compactWorkoutAuditArtifactForSerialization(
   artifact: WorkoutAuditArtifact,
   options?: {
     plannerOnlyNoRepairDebugArtifact?: PlannerOnlyNoRepairDebugArtifactLink;
-  }
+  },
 ): WorkoutAuditArtifact {
   const mesocycleExplain = artifact.mesocycleExplain;
   const planningReality =
@@ -983,7 +1045,7 @@ export function compactWorkoutAuditArtifactForSerialization(
               ...(planningReality
                 ? {
                     planningReality: compactPlanningReality(
-                      planningReality
+                      planningReality,
                     ) as typeof planningReality,
                   }
                 : {}),
@@ -992,7 +1054,7 @@ export function compactWorkoutAuditArtifactForSerialization(
           ...(plannerOnlyDryRun
             ? {
                 plannerOnlyDryRun: compactPlannerOnlyDryRun(
-                  plannerOnlyDryRun
+                  plannerOnlyDryRun,
                 ) as typeof plannerOnlyDryRun,
               }
             : {}),
@@ -1000,7 +1062,7 @@ export function compactWorkoutAuditArtifactForSerialization(
             ? {
                 plannerOnlyNoRepair: compactPlannerOnlyNoRepair(
                   plannerOnlyNoRepair,
-                  options?.plannerOnlyNoRepairDebugArtifact
+                  options?.plannerOnlyNoRepairDebugArtifact,
                 ) as typeof plannerOnlyNoRepair,
               }
             : {}),

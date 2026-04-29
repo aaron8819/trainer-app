@@ -29,10 +29,10 @@ function makePlannerOwnedAccumulationProjection() {
       week,
       phase:
         week === 4
-          ? "peak_overreach_lite" as const
+          ? ("peak_overreach_lite" as const)
           : week === 3
-            ? "hard_accumulation" as const
-            : "accumulation" as const,
+            ? ("hard_accumulation" as const)
+            : ("accumulation" as const),
       volumeMultiplier: week === 4 ? 1.125 : week === 3 ? 1.075 : 1,
       projectionStatus: "planner_owned_read_only" as const,
       safeForBehaviorPromotion: false as const,
@@ -76,6 +76,30 @@ function makeV2ExerciseSelectionPlanDiagnostic() {
   };
 }
 
+function makeV2SupportLaneProjectionDiagnostic() {
+  return {
+    version: 1 as const,
+    source: "v2_planner_policy" as const,
+    readOnly: true as const,
+    affectsScoringOrGeneration: false as const,
+    status: "projected_with_limitations" as const,
+    summary: {
+      supportMusclesEvaluated: 4,
+      directFloorsMet: 1,
+      directFloorsBelow: 3,
+      optionalActivations: 1,
+      expansionRecommendations: 3,
+      unrecoverableExpansions: 0,
+      diagnosticOnlyWarnings: 4,
+    },
+    muscles: [],
+    blockers: [],
+    warnings: ["Triceps:optional_activation_triggered_diagnostic_only"],
+    missingInputs: [],
+    safeForBehaviorPromotion: false as const,
+  };
+}
+
 describe("normalizeAuditIntentArg", () => {
   it("normalizes uppercase explicit intents into canonical lower-case session intents", () => {
     expect(normalizeAuditIntentArg("UPPER")).toBe("upper");
@@ -84,7 +108,7 @@ describe("normalizeAuditIntentArg", () => {
 
   it("fails fast with a clear error for invalid explicit intents", () => {
     expect(() => normalizeAuditIntentArg("TORSO")).toThrow(
-      'Invalid --intent value "TORSO". Expected one of: push, pull, legs, upper, lower, full_body, body_part.'
+      'Invalid --intent value "TORSO". Expected one of: push, pull, legs, upper, lower, full_body, body_part.',
     );
   });
 });
@@ -92,20 +116,22 @@ describe("normalizeAuditIntentArg", () => {
 describe("audit CLI timing and teardown", () => {
   it("prints timing readout only for operator-debug or debug runs", () => {
     expect(shouldPrintAuditTimingReadout({})).toBe(false);
-    expect(shouldPrintAuditTimingReadout({ "operator-debug": true })).toBe(true);
+    expect(shouldPrintAuditTimingReadout({ "operator-debug": true })).toBe(
+      true,
+    );
     expect(shouldPrintAuditTimingReadout({ debug: true })).toBe(true);
 
     expect(
       buildAuditTimingSummaryLines({
         enabled: false,
         records: [{ span: "audit_generation", ms: 12.34 }],
-      })
+      }),
     ).toBeNull();
     expect(
       buildAuditTimingSummaryLines({
         enabled: true,
         records: [{ span: "audit_generation", ms: 12.34 }],
-      })
+      }),
     ).toEqual(["[workout-audit:timing] audit_generation_ms=12.3"]);
   });
 
@@ -141,12 +167,12 @@ describe("audit CLI timing and teardown", () => {
         timing,
         printTiming: () => false,
         logTeardownError: teardownLog,
-      })
+      }),
     ).rejects.toBe(originalError);
 
     expect(teardown).toHaveBeenCalledTimes(1);
     expect(teardownLog).toHaveBeenCalledWith(
-      "[workout-audit] teardown failed: teardown failed"
+      "[workout-audit] teardown failed: teardown failed",
     );
   });
 });
@@ -155,10 +181,11 @@ describe("buildV2DebugArtifactSummary", () => {
   it("prints the sidecar path, size, and hash for CLI readout", () => {
     expect(
       buildV2DebugArtifactSummary({
-        filePath: "C:\\repo\\trainer-app\\artifacts\\audits\\parent-v2-no-repair-debug.json",
+        filePath:
+          "C:\\repo\\trainer-app\\artifacts\\audits\\parent-v2-no-repair-debug.json",
         sizeBytes: 1234,
         sha256: "a".repeat(64),
-      })
+      }),
     ).toEqual([
       "[workout-audit:v2-debug] artifact=C:\\repo\\trainer-app\\artifacts\\audits\\parent-v2-no-repair-debug.json",
       `[workout-audit:v2-debug] size_bytes=1234 sha256=${"a".repeat(64)}`,
@@ -320,7 +347,7 @@ describe("buildProjectedWeekOperatorSummary", () => {
     expect(summary?.[3]).toBe("[workout-audit:week] over_mav=none");
     expect(summary?.[4]).toBe("[workout-audit:week] over_target_only=none");
     expect(summary?.[7]).toBe(
-      "[workout-audit:week] recommendation=no_further_action reasons=none"
+      "[workout-audit:week] recommendation=no_further_action reasons=none",
     );
   });
 });
@@ -578,7 +605,7 @@ describe("planningReality size budget summary", () => {
         artifact,
         sizeBytes: 30,
         thresholdBytes: 100,
-      })
+      }),
     ).toBeNull();
 
     expect(
@@ -587,7 +614,7 @@ describe("planningReality size budget summary", () => {
         sizeBytes: 30,
         thresholdBytes: 100,
         operatorDebug: true,
-      })
+      }),
     ).toContain("artifact budget status: operator_debug");
   });
 
@@ -651,7 +678,9 @@ describe("buildPlanningRealitySummary", () => {
                       readiness: "blocked_by_repair_materiality",
                       reason: "repair materiality gate failed",
                       evidenceRefs: ["material:20"],
-                      gateMetricsRequired: ["materialRepairCount_non_increasing"],
+                      gateMetricsRequired: [
+                        "materialRepairCount_non_increasing",
+                      ],
                     },
                     {
                       candidate: "calf_duplicate_distribution",
@@ -936,7 +965,8 @@ describe("buildPlanningRealitySummary", () => {
                     muscle: "Chest",
                     exerciseName: "Cable Crossover",
                     repairMechanism: "support_floor:added",
-                    reason: "shadow allocation marks this muscle as weekly_demand_owned_elsewhere",
+                    reason:
+                      "shadow allocation marks this muscle as weekly_demand_owned_elsewhere",
                     recommendation: "Do not promote this repair upstream.",
                   },
                 ],
@@ -1152,7 +1182,7 @@ describe("buildPlanningRealitySummary", () => {
         "- suspiciousRepairDelta: 1",
         "- capTrimOrRemovalDelta: 0",
         "- reasons: consumed_preselection_demand_alone_is_not_success, REAR_DELT_COLLATERAL_UPPER_BACK_INCREASE, REAR_DELT_PRESELECTION_CONSUMED_BUT_PROGRAM_WORSE",
-      ])
+      ]),
     );
   });
 
@@ -1199,7 +1229,7 @@ describe("buildPlanningRealitySummary", () => {
       expect.arrayContaining([
         "Weak pre-selection consumption:",
         "- upper_b: Triceps selected 0.9 / target 5, targetMet=no",
-      ])
+      ]),
     );
   });
 
@@ -1326,7 +1356,9 @@ describe("buildPlanningRealitySummary", () => {
                         selectedInLowerBInitial: false,
                         selectedInLowerBFinal: true,
                         availability: "dirty_not_clean_candidate",
-                        reasons: ["not_clean_closure:extension_collateral_sensitive"],
+                        reasons: [
+                          "not_clean_closure:extension_collateral_sensitive",
+                        ],
                       },
                     ],
                     recommendation: "do_not_promote_yet",
@@ -1357,7 +1389,7 @@ describe("buildPlanningRealitySummary", () => {
         "- Lying Leg Curl: knee_flexion_curl, available_but_already_used_elsewhere, lower_b=yes, already selected in lower_a",
         "- Nordic Hamstring Curl: knee_flexion_curl, clean_available, lower_b=yes, not selected",
         "- Back Extension (45 Degree): dirty_extension, dirty_not_clean_candidate, lower_b=no, already selected in lower_b",
-      ])
+      ]),
     );
   });
 
@@ -1446,7 +1478,7 @@ describe("buildPlanningRealitySummary", () => {
         "Proposed cleaner shape: Seated Calf Raise 4 sets -> 4 effective.",
         "Blocking: single_exercise_cannot_meet_floor, would_exceed_set_cap, would_reduce_below_support_floor.",
         "Recommendation: do_not_trial_behavior.",
-      ])
+      ]),
     );
   });
 
@@ -1560,7 +1592,7 @@ describe("buildPlanningRealitySummary", () => {
         "- avoid set-bumping concentrated exercises",
         "- leave collateral or no-clean-path demand unresolved",
         "- prefer clean alternative before cap cleanup",
-      ])
+      ]),
     );
   });
 
@@ -1652,9 +1684,7 @@ describe("buildPlanningRealitySummary", () => {
                         "not_projected_missing_accumulation_policy",
                       weekScope: "accumulation_weeks",
                       slots: [],
-                      weekLevelWarnings: [
-                        "missing_per_week_slot_distribution",
-                      ],
+                      weekLevelWarnings: ["missing_per_week_slot_distribution"],
                     },
                     {
                       week: 5,
@@ -1672,8 +1702,7 @@ describe("buildPlanningRealitySummary", () => {
                       weekScope: "accumulation_weeks",
                       expectedBenefit:
                         "Chest is the safest future behavior once week projection exists.",
-                      risk:
-                        "Blocked from behavior now because no week-by-week projection exists.",
+                      risk: "Blocked from behavior now because no week-by-week projection exists.",
                       prereqs: ["week-by-week Chest demand"],
                       recommendation: "best_future_behavior",
                     },
@@ -1696,7 +1725,7 @@ describe("buildPlanningRealitySummary", () => {
         "Deload: not projected - missing deload preservation policy",
         "Best future behavior: Chest upper-slot distinct exercise distribution",
         "Blocked from behavior now: no week-by-week projection yet",
-      ])
+      ]),
     );
   });
 
@@ -1756,9 +1785,7 @@ describe("buildPlanningRealitySummary", () => {
                       phase: "accumulation",
                       projectionStatus: "partially_projected_from_week_1",
                       muscles: [],
-                      weekLevelLimitations: [
-                        "missing_fatigue_carryover_model",
-                      ],
+                      weekLevelLimitations: ["missing_fatigue_carryover_model"],
                     },
                     {
                       week: 4,
@@ -1774,9 +1801,7 @@ describe("buildPlanningRealitySummary", () => {
                       phase: "deload",
                       projectionStatus: "not_projected_missing_policy",
                       muscles: [],
-                      weekLevelLimitations: [
-                        "missing_deload_demand_curve",
-                      ],
+                      weekLevelLimitations: ["missing_deload_demand_curve"],
                     },
                   ],
                   crossWeekWarnings: [
@@ -1832,7 +1857,7 @@ describe("buildPlanningRealitySummary", () => {
         "- Hamstrings overdelivered if repeated",
         "- Side Delts under target",
         "Candidate gate: Chest upper-slot distinct exercise distribution blocked until weekly curve answers cross-week questions",
-      ])
+      ]),
     );
   });
 
@@ -1863,8 +1888,7 @@ describe("buildPlanningRealitySummary", () => {
                     {
                       week: 1,
                       phase: "entry",
-                      projectionStatus:
-                        "allocated_from_current_week_evidence",
+                      projectionStatus: "allocated_from_current_week_evidence",
                       slots: [
                         {
                           slotId: "upper_a",
@@ -1940,9 +1964,7 @@ describe("buildPlanningRealitySummary", () => {
                       projectionStatus:
                         "not_allocated_missing_weekly_projection",
                       slots: [],
-                      weekLevelWarnings: [
-                        "missing_per_week_slot_composition",
-                      ],
+                      weekLevelWarnings: ["missing_per_week_slot_composition"],
                     },
                     {
                       week: 3,
@@ -1950,9 +1972,7 @@ describe("buildPlanningRealitySummary", () => {
                       projectionStatus:
                         "not_allocated_missing_weekly_projection",
                       slots: [],
-                      weekLevelWarnings: [
-                        "missing_fatigue_carryover_model",
-                      ],
+                      weekLevelWarnings: ["missing_fatigue_carryover_model"],
                     },
                     {
                       week: 4,
@@ -1967,12 +1987,9 @@ describe("buildPlanningRealitySummary", () => {
                     {
                       week: 5,
                       phase: "deload",
-                      projectionStatus:
-                        "not_allocated_missing_deload_policy",
+                      projectionStatus: "not_allocated_missing_deload_policy",
                       slots: [],
-                      weekLevelWarnings: [
-                        "deload_slot_allocation_unprojected",
-                      ],
+                      weekLevelWarnings: ["deload_slot_allocation_unprojected"],
                     },
                   ],
                   crossWeekAllocationWarnings: [],
@@ -1995,7 +2012,7 @@ describe("buildPlanningRealitySummary", () => {
         "- Chest owned by upper_a but under-delivered",
         "- Hamstrings owned by lower_b but over-delivered",
         "- Side Delts support gap remains in upper_b",
-      ])
+      ]),
     );
   });
 
@@ -2025,9 +2042,7 @@ describe("buildPlanningRealitySummary", () => {
                   projectionBasis: {
                     sourceWeek: 1,
                     method: "repeat_week_1_final_shape",
-                    limitations: [
-                      "does_not_apply_true_progression_policy",
-                    ],
+                    limitations: ["does_not_apply_true_progression_policy"],
                   },
                   weeks: [],
                   crossWeekWarnings: [
@@ -2089,7 +2104,7 @@ describe("buildPlanningRealitySummary", () => {
         "- Duplicate main-lift reuse",
         "- Collateral fatigue risk",
         "Best bounded candidate: Chest upper-slot distinct exercise distribution",
-      ])
+      ]),
     );
   });
 
@@ -2225,38 +2240,38 @@ describe("buildPlanningRealitySummary", () => {
                   },
                 ],
                 exerciseClassUnresolvedCauses: [
-                    {
-                      slotId: "upper_b",
-                      muscle: "Chest",
-                      targetStatus: "hard",
-                      demandType: "direct_required",
-                      initialAlignment: "missing",
-                      finalAlignment: "partial",
-                      owningCause: "duplicate_continuity_conflict",
-                      recommendedOwner: "duplicate_continuity_policy",
-                      behaviorReadiness: "needs_duplicate_policy",
-                      evidence: ["duplicate:Incline DB Bench"],
-                      limitations: [
-                        "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
-                      ],
-                    },
-                    {
-                      slotId: "lower_b",
-                      muscle: "Calves",
-                      targetStatus: "soft",
-                      demandType: "soft_direct_allowed",
-                      initialAlignment: "satisfied",
-                      finalAlignment: "satisfied",
-                      owningCause: "duplicate_continuity_conflict",
-                      recommendedOwner: "duplicate_continuity_policy",
-                      behaviorReadiness: "needs_duplicate_policy",
-                      evidence: [
-                        "same_session_duplicate_class:Calves:calf_raise",
-                      ],
-                      limitations: [
-                        "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
-                      ],
-                    },
+                  {
+                    slotId: "upper_b",
+                    muscle: "Chest",
+                    targetStatus: "hard",
+                    demandType: "direct_required",
+                    initialAlignment: "missing",
+                    finalAlignment: "partial",
+                    owningCause: "duplicate_continuity_conflict",
+                    recommendedOwner: "duplicate_continuity_policy",
+                    behaviorReadiness: "needs_duplicate_policy",
+                    evidence: ["duplicate:Incline DB Bench"],
+                    limitations: [
+                      "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
+                    ],
+                  },
+                  {
+                    slotId: "lower_b",
+                    muscle: "Calves",
+                    targetStatus: "soft",
+                    demandType: "soft_direct_allowed",
+                    initialAlignment: "satisfied",
+                    finalAlignment: "satisfied",
+                    owningCause: "duplicate_continuity_conflict",
+                    recommendedOwner: "duplicate_continuity_policy",
+                    behaviorReadiness: "needs_duplicate_policy",
+                    evidence: [
+                      "same_session_duplicate_class:Calves:calf_raise",
+                    ],
+                    limitations: [
+                      "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
+                    ],
+                  },
                 ],
                 duplicateContinuityJustification: {
                   version: 1,
@@ -2281,12 +2296,16 @@ describe("buildPlanningRealitySummary", () => {
                           exerciseName: "Machine Chest Press",
                           exerciseClass: "machine_press",
                           primaryMuscles: ["Chest"],
-                          reasonAvailableOrBlocked: ["distinct_class_available"],
+                          reasonAvailableOrBlocked: [
+                            "distinct_class_available",
+                          ],
                         },
                       ],
                       policyRecommendation: "block_if_clean_alternative_exists",
                       risk: "high",
-                      evidence: ["Chest:duplicate_policy=block_if_clean_alternative_exists"],
+                      evidence: [
+                        "Chest:duplicate_policy=block_if_clean_alternative_exists",
+                      ],
                       limitations: [
                         "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
                       ],
@@ -2295,7 +2314,10 @@ describe("buildPlanningRealitySummary", () => {
                       exerciseId: "lat-pulldown",
                       exerciseName: "Lat Pulldown",
                       duplicatedInSlots: ["upper_a", "upper_b"],
-                      roleBySlot: { upper_a: "accessory", upper_b: "accessory" },
+                      roleBySlot: {
+                        upper_a: "accessory",
+                        upper_b: "accessory",
+                      },
                       setCountBySlot: { upper_a: 3, upper_b: 3 },
                       primaryMuscles: ["Lats"],
                       movementPatterns: ["vertical_pull"],
@@ -2306,7 +2328,9 @@ describe("buildPlanningRealitySummary", () => {
                       compatibleAlternatives: [],
                       policyRecommendation: "discourage_duplicate",
                       risk: "moderate",
-                      evidence: ["Lats:duplicate_policy=block_if_clean_alternative_exists"],
+                      evidence: [
+                        "Lats:duplicate_policy=block_if_clean_alternative_exists",
+                      ],
                       limitations: [
                         "diagnostic_read_only_no_generation_scoring_repair_seed_or_runtime_effect",
                       ],
@@ -2391,7 +2415,9 @@ describe("buildPlanningRealitySummary", () => {
                           initialAlignment: "missing",
                           finalAlignment: "partial",
                           repairEffect: "improved_alignment",
-                          evidence: ["final:Incline DB Bench:incline_press:3 sets"],
+                          evidence: [
+                            "final:Incline DB Bench:incline_press:3 sets",
+                          ],
                           limitations: [],
                         },
                       ],
@@ -2426,7 +2452,9 @@ describe("buildPlanningRealitySummary", () => {
                           targetStatus: "soft",
                           demandType: "soft_direct_allowed",
                           intendedClasses: ["calf_raise"],
-                          forbiddenClasses: ["same_session_duplicate_calf_isolation"],
+                          forbiddenClasses: [
+                            "same_session_duplicate_calf_isolation",
+                          ],
                           initialSelectedClasses: [],
                           finalSelectedClasses: [],
                           initialAlignment: "satisfied",
@@ -2495,7 +2523,7 @@ describe("buildPlanningRealitySummary", () => {
         "- Lat Pulldown: duplicate, Lats adequate, discourage",
         "- SLDL: duplicate, Hamstrings high, planner decision needed",
         "- Calves: same-session variant, discourage unless specialization",
-      ])
+      ]),
     );
   });
 
@@ -2509,7 +2537,7 @@ describe("buildPlanningRealitySummary", () => {
             },
           },
         },
-      })
+      }),
     ).toBeNull();
   });
 });
@@ -2538,9 +2566,13 @@ describe("buildPlannerOnlyDryRunSummary", () => {
                 repairedExercises: ["Incline Dumbbell Press (5 sets)"],
                 plannerOnlyExercises: ["Incline Dumbbell Press (6 sets)"],
                 laneStatus: "failed",
-                unresolvedDemand: ["repair_would_be_needed_here:Chest:shortfall_4"],
+                unresolvedDemand: [
+                  "repair_would_be_needed_here:Chest:shortfall_4",
+                ],
                 duplicateViolations: [],
-                setDistributionViolations: ["Incline Dumbbell Press:set_count_gt_5:6"],
+                setDistributionViolations: [
+                  "Incline Dumbbell Press:set_count_gt_5:6",
+                ],
               },
             ],
             weeklyMuscleComparison: [],
@@ -2642,7 +2674,8 @@ describe("buildPlannerOnlyDryRunSummary", () => {
                     slotId: "lower_b",
                     muscle: "Calves",
                     exerciseName: "Leg Press Calf Raise + Seated Calf Raise",
-                    reason: "lower_b_single_calf_identity_four_set_candidate_removes_same_session_variant_duplicate",
+                    reason:
+                      "lower_b_single_calf_identity_four_set_candidate_removes_same_session_variant_duplicate",
                   },
                 ],
                 potentialNewRows: [],
@@ -2752,9 +2785,7 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
               sessionShaping: [
                 {
                   code: "planner_owned_set_allocation_changes",
-                  evidence: [
-                    "upper_a:chest_secondary:Cable Crossover:2->3",
-                  ],
+                  evidence: ["upper_a:chest_secondary:Cable Crossover:2->3"],
                 },
               ],
               migrationScoreboard: {
@@ -2781,7 +2812,9 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                     volumeMultiplier: 1,
                     rirTarget: "2-3",
                     projectionBasis: "planner_owned_read_only_projection",
-                    limitations: ["planner_owned_week_projection_exists_but_is_diagnostic_only"],
+                    limitations: [
+                      "planner_owned_week_projection_exists_but_is_diagnostic_only",
+                    ],
                     safeForBehaviorPromotion: false,
                   },
                   {
@@ -2790,7 +2823,9 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                     volumeMultiplier: 1.075,
                     rirTarget: "1-2",
                     projectionBasis: "planner_owned_read_only_projection",
-                    limitations: ["planner_owned_week_projection_exists_but_is_diagnostic_only"],
+                    limitations: [
+                      "planner_owned_week_projection_exists_but_is_diagnostic_only",
+                    ],
                     safeForBehaviorPromotion: false,
                   },
                   {
@@ -2799,7 +2834,9 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                     volumeMultiplier: 1.125,
                     rirTarget: "0-1",
                     projectionBasis: "planner_owned_read_only_projection",
-                    limitations: ["planner_owned_week_projection_exists_but_is_diagnostic_only"],
+                    limitations: [
+                      "planner_owned_week_projection_exists_but_is_diagnostic_only",
+                    ],
                     safeForBehaviorPromotion: false,
                   },
                 ],
@@ -2911,7 +2948,9 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                     volumeMultiplier: 0.5,
                     rirTarget: "4-5",
                     progressionIntent: "reduce_fatigue",
-                    limitations: ["deload_transform_defined_not_production_projected"],
+                    limitations: [
+                      "deload_transform_defined_not_production_projected",
+                    ],
                   },
                 ],
               },
@@ -2928,7 +2967,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                 {
                   ruleId: "primary_muscles_above_minimum",
                   severity: "hard_blocker",
-                  description: "Primary hard-target muscles must meet Week 1 minimums.",
+                  description:
+                    "Primary hard-target muscles must meet Week 1 minimums.",
                   week1Status: "fail",
                   fullMesocycleStatus: "limited",
                 },
@@ -2957,7 +2997,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
               replacementReadinessImpact: {
                 canReplaceRepairedProjection: false,
                 blockers: ["hard_blockers:1"],
-                nextBestMigrationSlice: "chest_secondary:promote_to_planner_later",
+                nextBestMigrationSlice:
+                  "chest_secondary:promote_to_planner_later",
               },
             },
             v2SetDistributionIntent: {
@@ -2987,7 +3028,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                   slots: [
                     {
                       slotId: "upper_a",
-                      slotIntent: "horizontal push/pull + rear delt/triceps support",
+                      slotIntent:
+                        "horizontal push/pull + rear delt/triceps support",
                       targetSessionSets: { min: 3, preferred: 4, max: 4 },
                       lanes: [
                         {
@@ -3028,6 +3070,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
             },
             plannerOwnedAccumulationProjection:
               makePlannerOwnedAccumulationProjection(),
+            v2SupportLaneProjectionDiagnostic:
+              makeV2SupportLaneProjectionDiagnostic(),
             v2DeloadProjectionDiagnostic: {
               version: 1,
               source: "v2_deload_projection_diagnostic",
@@ -3066,9 +3110,7 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                 ],
                 missingLanes: ["chest_secondary:missing"],
                 unresolvedDemand: ["Chest:shortfall_4"],
-                validationFailures: [
-                  "Incline Dumbbell Press:set_count_gt_5:6",
-                ],
+                validationFailures: ["Incline Dumbbell Press:set_count_gt_5:6"],
               },
             ],
             weeklyMuscleTotals: [
@@ -3119,7 +3161,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                 weeklyEffectiveSets: 6,
                 setCount: 6,
                 producedOrIncreasedByRepair: false,
-                reason: "primary_hard_target_excessive_single_exercise_share_unjustified",
+                reason:
+                  "primary_hard_target_excessive_single_exercise_share_unjustified",
                 evidence: ["priority:primary"],
               },
             ],
@@ -3133,7 +3176,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                 weeklyEffectiveSets: 6.2,
                 setCount: 4,
                 producedOrIncreasedByRepair: false,
-                reason: "support_direct_isolation_concentrated_but_clean_and_near_or_at_target",
+                reason:
+                  "support_direct_isolation_concentrated_but_clean_and_near_or_at_target",
                 evidence: ["priority:support"],
               },
             ],
@@ -3147,7 +3191,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                 weeklyEffectiveSets: 5,
                 setCount: 4,
                 producedOrIncreasedByRepair: false,
-                reason: "secondary_or_implicit_collateral_not_acceptance_target",
+                reason:
+                  "secondary_or_implicit_collateral_not_acceptance_target",
                 evidence: ["priority:implicit"],
               },
             ],
@@ -3525,7 +3570,7 @@ describe("buildWeeklyRetroOperatorSummary", () => {
     });
 
     expect(summary?.at(-1)).toBe(
-      "[workout-audit:retro] projection_delivery_drift=comparable direction=underdelivery under=2 over=0 net=-5.5"
+      "[workout-audit:retro] projection_delivery_drift=comparable direction=underdelivery under=2 over=0 net=-5.5",
     );
   });
 
@@ -3668,8 +3713,20 @@ describe("buildActiveMesocycleSlotReseedSummary", () => {
               persistedSeedExercises: [],
               candidateSeedExercises: [],
               exerciseDiff: {
-                added: [{ exerciseId: "fly", exerciseName: "Cable Fly", role: "ACCESSORY" }],
-                removed: [{ exerciseId: "curl", exerciseName: "Cable Curl", role: "ACCESSORY" }],
+                added: [
+                  {
+                    exerciseId: "fly",
+                    exerciseName: "Cable Fly",
+                    role: "ACCESSORY",
+                  },
+                ],
+                removed: [
+                  {
+                    exerciseId: "curl",
+                    exerciseName: "Cable Curl",
+                    role: "ACCESSORY",
+                  },
+                ],
                 retained: [],
               },
               persistedSession: {
@@ -3681,7 +3738,10 @@ describe("buildActiveMesocycleSlotReseedSummary", () => {
                 characterization: {
                   slotArchetype: "upper_horizontal_balanced",
                   continuityScope: "slot",
-                  requiredMovementPatterns: ["vertical_pull", "horizontal_pull"],
+                  requiredMovementPatterns: [
+                    "vertical_pull",
+                    "horizontal_pull",
+                  ],
                   preferredAccessoryPrimaryMuscles: ["Chest", "Triceps"],
                   protectedCoverageMuscles: ["Chest", "Triceps"],
                   preservesSlotIdentity: true,
@@ -3698,7 +3758,10 @@ describe("buildActiveMesocycleSlotReseedSummary", () => {
                 characterization: {
                   slotArchetype: "upper_horizontal_balanced",
                   continuityScope: "slot",
-                  requiredMovementPatterns: ["vertical_pull", "horizontal_pull"],
+                  requiredMovementPatterns: [
+                    "vertical_pull",
+                    "horizontal_pull",
+                  ],
                   preferredAccessoryPrimaryMuscles: ["Chest", "Triceps"],
                   protectedCoverageMuscles: ["Chest", "Triceps"],
                   preservesSlotIdentity: true,
@@ -3778,6 +3841,8 @@ describe("buildActiveMesocycleSlotReseedApplySummary", () => {
   });
 
   it("returns null when no apply result is available", () => {
-    expect(buildActiveMesocycleSlotReseedApplySummary({ result: null })).toBeNull();
+    expect(
+      buildActiveMesocycleSlotReseedApplySummary({ result: null }),
+    ).toBeNull();
   });
 });

@@ -163,7 +163,35 @@ function findSelectedIdentity(input: {
   };
   laneDiff: V2LaneDiffEvidence | undefined;
 }): SelectedIdentity | undefined {
-  const diffExercise = input.laneDiff?.currentEvidence.selectedExercises[0];
+  const diffExercises = input.laneDiff?.currentEvidence.selectedExercises ?? [];
+  const diffExercise =
+    diffExercises.find((exercise) => {
+      const matchingExercise = input.slot?.exercises.find(
+        (candidate) => candidate.exerciseName === exercise.name,
+      );
+      const exerciseClass =
+        exercise.matchedClass ??
+        (matchingExercise
+          ? classifySelectedExerciseClass({
+              exercise: matchingExercise,
+              muscle:
+                input.lane.primaryMuscles.find((muscle) =>
+                  matchingExercise.primaryMuscles.map(normalizeMuscle).includes(muscle),
+                ) ??
+                input.lane.primaryMuscles[0] ??
+                "",
+            })
+          : undefined);
+      return exerciseClass
+        ? input.lane.preferredExerciseClasses.some((plannedClass) =>
+            classSatisfiesDiagnosticIntent({
+              exerciseClass,
+              plannedClass,
+              laneId: input.lane.laneId,
+            }),
+          )
+        : false;
+    }) ?? diffExercises[0];
   if (input.laneDiff && !diffExercise) {
     return undefined;
   }
@@ -184,7 +212,7 @@ function findSelectedIdentity(input: {
       matchingExercise?.primaryMuscles.map(normalizeMuscle).includes(muscle),
     ) ?? input.lane.primaryMuscles[0] ?? "";
   const exerciseClass =
-    input.laneDiff?.currentEvidence.selectedExercises[0]?.matchedClass ??
+    diffExercise?.matchedClass ??
     (matchingExercise
       ? classifySelectedExerciseClass({
           exercise: matchingExercise,
@@ -211,7 +239,11 @@ function laneClassStatus(input: {
   }
   if (
     input.plannedClass.some((planned) =>
-      classSatisfiesDiagnosticIntent(input.selectedIdentity!.exerciseClass, planned),
+      classSatisfiesDiagnosticIntent({
+        exerciseClass: input.selectedIdentity!.exerciseClass,
+        plannedClass: planned,
+        laneId: input.laneDiff?.laneId,
+      }),
     )
   ) {
     return "match";
@@ -222,16 +254,21 @@ function laneClassStatus(input: {
   return "mismatch";
 }
 
-function classSatisfiesDiagnosticIntent(
-  exerciseClass: string,
-  plannedClass: string,
-): boolean {
+function classSatisfiesDiagnosticIntent(input: {
+  exerciseClass: string;
+  plannedClass: string;
+  laneId?: string;
+}): boolean {
+  const { exerciseClass, plannedClass } = input;
   if (classSatisfiesIntent(exerciseClass, plannedClass)) {
     return true;
   }
   const aliases: Record<string, string[]> = {
     press: ["chest_press"],
     horizontal_press: ["chest_press"],
+    fly: ["chest_isolation", "cable_fly", "chest_fly"],
+    horizontal_pull_support: ["horizontal_pull", "cable_row"],
+    hamstring_curl: ["knee_flexion_curl", "leg_curl"],
     biceps_isolation: ["biceps_curl"],
     triceps_isolation_if_under_floor: ["triceps_isolation"],
     squat: ["squat_compound", "squat_or_quad_support"],
@@ -239,6 +276,13 @@ function classSatisfiesDiagnosticIntent(
     lunge: ["squat_or_quad_support"],
     quad_isolation: ["squat_or_quad_support"],
   };
+  if (
+    plannedClass === "low_dose_hinge" &&
+    input.laneId === "secondary_hinge" &&
+    ["hinge", "light_hinge"].includes(exerciseClass)
+  ) {
+    return true;
+  }
   return aliases[plannedClass]?.includes(exerciseClass) ?? false;
 }
 

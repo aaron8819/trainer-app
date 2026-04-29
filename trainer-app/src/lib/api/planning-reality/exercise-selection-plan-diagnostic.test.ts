@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { exerciseMatchesSlotLane } from "@/lib/engine/selection-v2/slot-lane-plan";
 import {
   buildV2ExerciseSelectionPlanDiagnostic,
   type V2ExerciseSelectionPlanDiagnostic,
@@ -255,5 +256,173 @@ describe("buildV2ExerciseSelectionPlanDiagnostic", () => {
     expect(lane.laneClassStatus).toBe("match");
     expect(lane.identityStatus).toBe("preserved");
     expect(diagnostic.summary.classMismatchCount).toBe(0);
+  });
+
+  it("matches chest_isolation to chest secondary fly lanes diagnostically", () => {
+    const diagnostic = buildV2ExerciseSelectionPlanDiagnostic(
+      makeInput({
+        laneId: "chest_secondary",
+        exerciseName: "Cable Crossover",
+        primaryMuscles: ["Chest"],
+        movementPatterns: ["horizontal_push"],
+        plannedClasses: ["fly", "machine_press", "cable_press"],
+        selectedClass: "chest_isolation",
+        concentrationFlags: [],
+        currentStatus: "satisfied",
+        gapCause: "none",
+        severity: "pass",
+        migrationRecommendation: "no_action",
+        relevantDiagnostics: ["setPolicy:in_budget"],
+      }),
+    );
+    const lane = onlyLane(diagnostic);
+
+    expect(lane.laneClassStatus).toBe("match");
+    expect(lane.identityStatus).toBe("preserved");
+    expect(diagnostic.summary.classMismatchCount).toBe(0);
+  });
+
+  it("matches knee_flexion_curl to hamstring_curl lanes diagnostically", () => {
+    const diagnostic = buildV2ExerciseSelectionPlanDiagnostic(
+      makeInput({
+        slotId: "lower_b",
+        laneId: "knee_flexion_curl",
+        exerciseName: "Seated Leg Curl",
+        primaryMuscles: ["Hamstrings"],
+        movementPatterns: ["flexion"],
+        plannedClasses: ["hamstring_curl"],
+        selectedClass: "knee_flexion_curl",
+        concentrationFlags: [],
+        currentStatus: "satisfied",
+        gapCause: "none",
+        severity: "pass",
+        migrationRecommendation: "no_action",
+        relevantDiagnostics: ["setPolicy:in_budget"],
+      }),
+    );
+    const lane = onlyLane(diagnostic);
+
+    expect(lane.laneClassStatus).toBe("match");
+    expect(lane.identityStatus).toBe("preserved");
+    expect(diagnostic.summary.classMismatchCount).toBe(0);
+  });
+
+  it("matches generic hinge to low-dose support hinge lanes only", () => {
+    const diagnostic = buildV2ExerciseSelectionPlanDiagnostic(
+      makeInput({
+        slotId: "lower_a",
+        laneId: "secondary_hinge",
+        exerciseName: "Cable Pull-Through",
+        primaryMuscles: ["Hamstrings", "Glutes"],
+        movementPatterns: ["hinge"],
+        plannedClasses: ["low_dose_hinge"],
+        selectedClass: "hinge",
+        concentrationFlags: [],
+        currentStatus: "satisfied",
+        gapCause: "none",
+        severity: "pass",
+        migrationRecommendation: "no_action",
+        relevantDiagnostics: ["setPolicy:in_budget"],
+      }),
+    );
+    const lane = onlyLane(diagnostic);
+
+    expect(lane.laneClassStatus).toBe("match");
+    expect(lane.identityStatus).toBe("preserved");
+    expect(diagnostic.summary.classMismatchCount).toBe(0);
+  });
+
+  it("keeps generic hinge mismatched against hinge_compound", () => {
+    const diagnostic = buildV2ExerciseSelectionPlanDiagnostic(
+      makeInput({
+        slotId: "lower_b",
+        laneId: "hinge_anchor",
+        exerciseName: "Glute Bridge",
+        primaryMuscles: ["Hamstrings", "Glutes"],
+        movementPatterns: ["hinge"],
+        plannedClasses: ["hinge_compound"],
+        selectedClass: "hinge",
+        concentrationFlags: [],
+        currentStatus: "satisfied",
+        gapCause: "none",
+        severity: "pass",
+        migrationRecommendation: "no_action",
+        relevantDiagnostics: ["setPolicy:in_budget"],
+      }),
+    );
+    const lane = onlyLane(diagnostic);
+
+    expect(lane.laneClassStatus).toBe("mismatch");
+    expect(lane.identityStatus).toBe("class_mismatch");
+    expect(diagnostic.summary.classMismatchCount).toBe(1);
+  });
+
+  it("binds row_support to row exercise evidence before vertical-pull evidence", () => {
+    const input = makeInput({
+      slotId: "upper_b",
+      laneId: "row_support",
+      exerciseName: "Close-Grip Lat Pulldown",
+      primaryMuscles: ["Upper Back", "Lats"],
+      movementPatterns: ["vertical_pull"],
+      plannedClasses: ["horizontal_pull_support"],
+      selectedClass: "vertical_pull",
+      concentrationFlags: [],
+      currentStatus: "satisfied",
+      gapCause: "none",
+      severity: "pass",
+      migrationRecommendation: "no_action",
+      relevantDiagnostics: ["setPolicy:in_budget"],
+    });
+    const slot = input.week1SelectedIdentities[0];
+    if (!slot) {
+      throw new Error("expected test slot");
+    }
+    slot.exercises.push({
+      exerciseId: "exercise-2",
+      exerciseName: "Close-Grip Seated Cable Row",
+      role: "accessory",
+      setCount: 2,
+      primaryMuscles: ["Upper Back", "Lats"],
+      movementPatterns: ["horizontal_pull"],
+      effectiveStimulusByMuscle: {
+        "Upper Back": 2,
+        Lats: 1,
+      },
+    });
+    input.v2TargetVsNoRepairDiff.slotDiffs[0]?.laneDiffs[0]?.currentEvidence.selectedExercises.push({
+      name: "Close-Grip Seated Cable Row",
+      sets: 2,
+      role: "accessory",
+    });
+
+    const diagnostic = buildV2ExerciseSelectionPlanDiagnostic(input);
+    const lane = onlyLane(diagnostic);
+
+    expect(lane.selectedIdentity?.exerciseName).toBe("Close-Grip Seated Cable Row");
+    expect(lane.laneClassStatus).toBe("match");
+    expect(lane.identityStatus).toBe("preserved");
+    expect(diagnostic.summary.classMismatchCount).toBe(0);
+  });
+
+  it("keeps diagnostic aliases out of production slot-lane matching", () => {
+    expect(
+      exerciseMatchesSlotLane(
+        {
+          id: "glute-bridge",
+          name: "Glute Bridge",
+          movementPatterns: ["hinge"],
+          primaryMuscles: ["Glutes", "Hamstrings"],
+          equipment: ["bodyweight"],
+        },
+        {
+          slotId: "lower_b",
+          laneId: "hinge_anchor",
+          preferredClasses: ["sldl"],
+          minSets: 3,
+          preferredSets: 3,
+          source: "hypertrophy_upper_lower_slot_lane_plan",
+        },
+      ),
+    ).toBe(false);
   });
 });

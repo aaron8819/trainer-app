@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildV2PlannerMesocyclePolicy } from "../mesocycle-policy";
 import { buildV2ExerciseMaterializationPlan } from "./materializer";
 import { DEFAULT_V2_EXERCISE_CLASS_TAXONOMY } from "./taxonomy";
 import type { V2ExerciseSelectionPlan } from "../types";
@@ -139,6 +140,179 @@ const fixtureInventory = [
     fatigueCost: 1,
   }),
 ];
+
+const representativeV2Inventory = [
+  exercise({
+    exerciseId: "machine-chest-press",
+    name: "Machine Chest Press",
+    primaryMuscles: ["Chest"],
+    secondaryMuscles: ["Front Delts", "Triceps"],
+    movementPatterns: ["horizontal_press"],
+    isCompound: true,
+    fatigueCost: 1,
+  }),
+  exercise({
+    exerciseId: "cable-fly",
+    name: "Cable Fly",
+    primaryMuscles: ["Chest"],
+    movementPatterns: ["fly"],
+    fatigueCost: 2,
+  }),
+  exercise({
+    exerciseId: "incline-machine-press",
+    name: "Slight Incline Machine Press",
+    primaryMuscles: ["Chest"],
+    secondaryMuscles: ["Front Delts", "Triceps"],
+    movementPatterns: ["horizontal_press"],
+    isCompound: true,
+    fatigueCost: 2,
+  }),
+  exercise({
+    exerciseId: "chest-supported-row",
+    name: "Chest Supported Row",
+    primaryMuscles: ["Upper Back", "Lats"],
+    movementPatterns: ["row"],
+    isCompound: true,
+    fatigueCost: 1,
+  }),
+  exercise({
+    exerciseId: "cable-row",
+    name: "Cable Row",
+    primaryMuscles: ["Upper Back", "Lats"],
+    movementPatterns: ["horizontal_pull"],
+    isCompound: true,
+    fatigueCost: 2,
+  }),
+  exercise({
+    exerciseId: "lat-pulldown",
+    name: "Neutral Grip Pulldown",
+    primaryMuscles: ["Lats"],
+    movementPatterns: ["vertical_pull"],
+    isCompound: true,
+    fatigueCost: 1,
+  }),
+  exercise({
+    exerciseId: "assisted-pull-up",
+    name: "Assisted Pull Up",
+    primaryMuscles: ["Lats"],
+    movementPatterns: ["vertical_pull"],
+    isCompound: true,
+    fatigueCost: 2,
+  }),
+  exercise({
+    exerciseId: "rear-delt-fly",
+    name: "Rear Delt Reverse Fly",
+    primaryMuscles: ["Rear Delts"],
+    movementPatterns: ["isolation"],
+    fatigueCost: 1,
+  }),
+  exercise({
+    exerciseId: "rope-pressdown",
+    name: "Rope Pressdown",
+    primaryMuscles: ["Triceps"],
+    fatigueCost: 1,
+  }),
+  exercise({
+    exerciseId: "machine-shoulder-press",
+    name: "Machine Shoulder Press",
+    aliases: ["OHP"],
+    primaryMuscles: ["Front Delts", "Side Delts"],
+    movementPatterns: ["vertical_press"],
+    isCompound: true,
+    fatigueCost: 1,
+  }),
+  exercise({
+    exerciseId: "cable-lateral-raise",
+    name: "Cable Lateral Raise",
+    primaryMuscles: ["Side Delts"],
+    movementPatterns: ["isolation"],
+    fatigueCost: 1,
+  }),
+  exercise({
+    exerciseId: "cable-curl",
+    name: "Cable Curl",
+    primaryMuscles: ["Biceps"],
+    fatigueCost: 1,
+  }),
+  exercise({
+    exerciseId: "hack-squat",
+    name: "Hack Squat",
+    primaryMuscles: ["Quads"],
+    movementPatterns: ["squat"],
+    isCompound: true,
+    fatigueCost: 1,
+  }),
+  exercise({
+    exerciseId: "leg-extension",
+    name: "Leg Extension",
+    primaryMuscles: ["Quads"],
+    movementPatterns: ["isolation"],
+    fatigueCost: 2,
+  }),
+  exercise({
+    exerciseId: "leg-press",
+    name: "Leg Press",
+    primaryMuscles: ["Quads"],
+    movementPatterns: ["leg_press"],
+    isCompound: true,
+    fatigueCost: 2,
+  }),
+  exercise({
+    exerciseId: "seated-leg-curl",
+    name: "Seated Leg Curl",
+    primaryMuscles: ["Hamstrings"],
+    movementPatterns: ["flexion", "isolation"],
+    fatigueCost: 1,
+  }),
+  exercise({
+    exerciseId: "lying-leg-curl",
+    name: "Lying Leg Curl",
+    primaryMuscles: ["Hamstrings"],
+    movementPatterns: ["flexion", "isolation"],
+    fatigueCost: 2,
+  }),
+  exercise({
+    exerciseId: "barbell-hip-thrust",
+    name: "Barbell Hip Thrust",
+    primaryMuscles: ["Glutes", "Hamstrings"],
+    stimulusByMusclePerSet: { "Lower Back": 0.25 },
+    isCompound: true,
+    fatigueCost: 2,
+  }),
+  exercise({
+    exerciseId: "romanian-deadlift",
+    name: "Romanian Deadlift",
+    primaryMuscles: ["Hamstrings", "Glutes"],
+    movementPatterns: ["hinge"],
+    isCompound: true,
+    isMainLiftEligible: true,
+    fatigueCost: 1,
+  }),
+  exercise({
+    exerciseId: "standing-calf-raise",
+    name: "Standing Calf Raise",
+    primaryMuscles: ["Calves"],
+    movementPatterns: ["isolation"],
+    fatigueCost: 1,
+  }),
+];
+
+function representativeRequiredLaneIds(plan: V2ExerciseSelectionPlan): string[] {
+  const seenSlots = new Set<string>();
+  return plan.weeks
+    .flatMap((week) =>
+      week.slots.flatMap((slot) => {
+        if (seenSlots.has(slot.slotId)) {
+          return [];
+        }
+        seenSlots.add(slot.slotId);
+        return slot.lanes
+          .filter((row) => row.requirement === "required")
+          .map((row) => `${slot.slotId}:${row.laneId}`);
+      }),
+    )
+    .sort();
+}
 
 describe("buildV2ExerciseMaterializationPlan", () => {
   it("materializes all required lanes from fixture inventory", () => {
@@ -431,6 +605,40 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     };
 
     expect(materialize(input)).toEqual(materialize(input));
+  });
+
+  it("dry-run materializes the full required V2 representative skeleton", () => {
+    const policy = buildV2PlannerMesocyclePolicy();
+    const input = {
+      plan: policy.exerciseSelectionPlan,
+      inventory: representativeV2Inventory,
+    };
+
+    const result = materialize(input);
+    const requiredLaneIds = representativeRequiredLaneIds(
+      policy.exerciseSelectionPlan,
+    );
+    const materializedLaneIds = result.slots
+      .flatMap((slot) =>
+        slot.exercises.flatMap((row) =>
+          row.laneIds.map((laneId) => `${slot.slotId}:${laneId}`),
+        ),
+      )
+      .sort();
+
+    expect(result.dryRunOnly).toBe(true);
+    expect(result.status).toBe("materialized");
+    expect(result.blockers).toEqual([]);
+    expect(materializedLaneIds).toEqual(requiredLaneIds);
+    expect(materializedLaneIds).toContain("upper_b:vertical_press");
+    expect(
+      result.omissions.find(
+        (row) =>
+          row.slotId === "lower_b" &&
+          row.laneId === "optional_glute_core_if_recoverable",
+      ),
+    ).toBeDefined();
+    expect(result).toEqual(materialize(input));
   });
 
   it("keeps exercise output seed-shaped", () => {

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
   matchV2ExerciseClasses,
+  resolveV2ExerciseClassIds,
 } from "./taxonomy";
 import type { V2MaterializationExercise } from "./types";
 
@@ -50,6 +51,17 @@ describe("V2 exercise class taxonomy", () => {
           name: "Machine Chest Press",
           primaryMuscles: ["Chest"],
           movementPatterns: ["press"],
+          isCompound: true,
+        }),
+      ],
+      [
+        "vertical_press",
+        exercise({
+          exerciseId: "shoulder-press",
+          name: "Machine Shoulder Press",
+          aliases: ["OHP"],
+          primaryMuscles: ["Front Delts", "Side Delts"],
+          movementPatterns: ["vertical_press"],
           isCompound: true,
         }),
       ],
@@ -200,6 +212,57 @@ describe("V2 exercise class taxonomy", () => {
         }),
       ),
     ).not.toContain("biceps_isolation");
+  });
+
+  it("resolves vertical press aliases to the canonical class", () => {
+    expect(
+      resolveV2ExerciseClassIds(DEFAULT_V2_EXERCISE_CLASS_TAXONOMY, [
+        "vertical_press",
+        "overhead_press",
+        "shoulder_press",
+        "ohp",
+      ]),
+    ).toEqual(["vertical_press"]);
+  });
+
+  it("keeps vertical press distinct from nearby press, pull, and isolation classes", () => {
+    const negativeFixtures = [
+      exercise({
+        exerciseId: "chest-press",
+        name: "Machine Chest Press",
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: ["Front Delts", "Triceps"],
+        movementPatterns: ["press"],
+        isCompound: true,
+      }),
+      exercise({
+        exerciseId: "pressdown",
+        name: "Rope Pressdown",
+        primaryMuscles: ["Triceps"],
+      }),
+      exercise({
+        exerciseId: "lateral-raise",
+        name: "Cable Lateral Raise",
+        primaryMuscles: ["Side Delts"],
+        movementPatterns: ["isolation"],
+      }),
+      exercise({
+        exerciseId: "pulldown",
+        name: "Neutral Grip Pulldown",
+        primaryMuscles: ["Lats"],
+        movementPatterns: ["vertical_pull"],
+        isCompound: true,
+      }),
+      exercise({
+        exerciseId: "triceps-extension",
+        name: "Overhead Triceps Extension",
+        primaryMuscles: ["Triceps"],
+      }),
+    ];
+
+    for (const fixture of negativeFixtures) {
+      expect(classIds(fixture)).not.toContain("vertical_press");
+    }
   });
 
   it("returns deterministic class and rank output", () => {

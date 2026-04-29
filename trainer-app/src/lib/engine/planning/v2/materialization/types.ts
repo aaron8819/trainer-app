@@ -17,6 +17,7 @@ export type V2MaterializationExercise = {
 export type V2ExerciseClassId =
   | "knee_flexion_curl"
   | "distinct_chest_press_or_fly"
+  | "vertical_press"
   | "low_axial_hip_extension_anchor"
   | "calf_isolation"
   | "lateral_raise"

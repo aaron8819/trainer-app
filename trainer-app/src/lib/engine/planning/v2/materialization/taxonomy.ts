@@ -8,6 +8,7 @@ import type {
 export const V2_EXERCISE_CLASS_ORDER: V2ExerciseClassId[] = [
   "knee_flexion_curl",
   "distinct_chest_press_or_fly",
+  "vertical_press",
   "low_axial_hip_extension_anchor",
   "calf_isolation",
   "lateral_raise",
@@ -34,6 +35,10 @@ export const DEFAULT_V2_EXERCISE_CLASS_TAXONOMY: V2ExerciseClassTaxonomy = {
     machine_press: ["distinct_chest_press_or_fly"],
     cable_press: ["distinct_chest_press_or_fly"],
     fly: ["distinct_chest_press_or_fly"],
+    vertical_press: ["vertical_press"],
+    overhead_press: ["vertical_press"],
+    shoulder_press: ["vertical_press"],
+    ohp: ["vertical_press"],
     low_axial_hip_extension_anchor: ["low_axial_hip_extension_anchor"],
     low_dose_hinge: [
       "low_axial_hip_extension_anchor",
@@ -126,6 +131,26 @@ function hasPrimaryMuscle(
   );
 }
 
+function stimulusForMuscle(
+  exercise: V2MaterializationExercise,
+  muscle: string,
+): number {
+  const normalizedMuscle = normalizeV2MaterializationText(muscle);
+  return (
+    Object.entries(exercise.stimulusByMusclePerSet).find(
+      ([entryMuscle]) =>
+        normalizeV2MaterializationText(entryMuscle) === normalizedMuscle,
+    )?.[1] ?? 0
+  );
+}
+
+function hasRelevantDirectMuscle(
+  exercise: V2MaterializationExercise,
+  muscle: string,
+): boolean {
+  return hasPrimaryMuscle(exercise, muscle) || stimulusForMuscle(exercise, muscle) >= 0.75;
+}
+
 function hasAnyText(text: string, patterns: string[]): boolean {
   return patterns.some((pattern) =>
     text.includes(normalizeV2MaterializationText(pattern)),
@@ -168,6 +193,39 @@ function matchesClass(
         hasPrimaryMuscle(exercise, "Chest") &&
         (hasAnyPattern(exercise, ["press", "fly", "horizontal_press"]) ||
           hasAnyText(text, ["press", "fly"]))
+      );
+    case "vertical_press":
+      return (
+        exercise.isCompound &&
+        (hasRelevantDirectMuscle(exercise, "Front Delts") ||
+          hasRelevantDirectMuscle(exercise, "Side Delts")) &&
+        (hasAnyPattern(exercise, [
+          "vertical_press",
+          "overhead_press",
+          "shoulder_press",
+        ]) ||
+          hasAnyText(text, [
+            "vertical press",
+            "overhead press",
+            "shoulder press",
+            "ohp",
+          ])) &&
+        !hasAnyText(text, [
+          "chest press",
+          "bench press",
+          "pressdown",
+          "pushdown",
+          "lateral raise",
+          "pulldown",
+          "pull down",
+          "pull up",
+          "pullup",
+          "chin up",
+          "chinup",
+          "triceps extension",
+          "skullcrusher",
+        ]) &&
+        !hasAnyPattern(exercise, ["vertical_pull", "isolation"])
       );
     case "low_axial_hip_extension_anchor":
       return (
@@ -246,6 +304,7 @@ function directMusclesForClass(
   const directByClass: Record<V2ExerciseClassId, string[]> = {
     knee_flexion_curl: ["Hamstrings"],
     distinct_chest_press_or_fly: ["Chest"],
+    vertical_press: ["Front Delts", "Side Delts"],
     low_axial_hip_extension_anchor: ["Glutes", "Hamstrings"],
     calf_isolation: ["Calves"],
     lateral_raise: ["Side Delts"],
@@ -258,9 +317,14 @@ function directMusclesForClass(
     squat_pattern: ["Quads"],
   };
   const primary = normalizedMuscles(exercise.primaryMuscles);
-  return directByClass[classId].filter((muscle) =>
-    primary.includes(normalizeV2MaterializationText(muscle)),
-  );
+  return directByClass[classId].filter((muscle) => {
+    const normalizedMuscle = normalizeV2MaterializationText(muscle);
+    return (
+      primary.includes(normalizedMuscle) ||
+      (classId === "vertical_press" &&
+        stimulusForMuscle(exercise, muscle) >= 0.75)
+    );
+  });
 }
 
 function duplicateFamilyForClass(

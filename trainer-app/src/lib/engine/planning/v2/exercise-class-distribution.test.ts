@@ -61,4 +61,38 @@ describe("buildV2ExerciseClassDistributionBySlot", () => {
       /exerciseId|exerciseName|selectedExercise|inventoryEvidence|repairEvidence|runtimeReplay/,
     );
   });
+
+  it("keeps Lower B hinge_compound narrow while exposing a low-axial hip-extension anchor alternative", () => {
+    const distribution = buildClassDistribution();
+    const week1LowerB = distribution.weeks[0].slots.find(
+      (slot) => slot.slotId === "lower_b",
+    );
+    const hingeAnchor = week1LowerB?.classLanes.find(
+      (lane) => lane.laneId === "hinge_anchor",
+    );
+    const kneeFlexionCurl = week1LowerB?.classLanes.find(
+      (lane) => lane.laneId === "knee_flexion_curl",
+    );
+
+    expect(hingeAnchor).toMatchObject({
+      role: "anchor",
+      requiredExerciseClasses: [
+        "hinge_compound",
+        "low_axial_hip_extension_anchor",
+      ],
+      preferredExerciseClasses: [
+        "hinge_compound",
+        "low_axial_hip_extension_anchor",
+      ],
+      primaryMuscles: ["Hamstrings", "Glutes"],
+      preferredSetSplit: "single_anchor",
+    });
+    expect(kneeFlexionCurl).toMatchObject({
+      role: "support",
+      requiredExerciseClasses: ["hamstring_curl"],
+      preferredExerciseClasses: ["hamstring_curl"],
+      primaryMuscles: ["Hamstrings"],
+      preferredSetSplit: "anchor_plus_support",
+    });
+  });
 });

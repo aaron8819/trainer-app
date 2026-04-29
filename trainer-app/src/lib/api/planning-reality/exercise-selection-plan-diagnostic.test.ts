@@ -357,6 +357,88 @@ describe("buildV2ExerciseSelectionPlanDiagnostic", () => {
     expect(diagnostic.summary.classMismatchCount).toBe(1);
   });
 
+  it("keeps Glute Bridge mismatched when the lane is strict hinge_compound-only", () => {
+    const diagnostic = buildV2ExerciseSelectionPlanDiagnostic(
+      makeInput({
+        slotId: "lower_b",
+        laneId: "hinge_anchor",
+        exerciseName: "Glute Bridge",
+        primaryMuscles: ["Hamstrings", "Glutes"],
+        movementPatterns: ["hinge"],
+        plannedClasses: ["hinge_compound"],
+        selectedClass: "low_axial_hip_extension_anchor",
+        concentrationFlags: [],
+        currentStatus: "satisfied",
+        gapCause: "none",
+        severity: "pass",
+        migrationRecommendation: "no_action",
+        relevantDiagnostics: ["setPolicy:in_budget"],
+      }),
+    );
+    const lane = onlyLane(diagnostic);
+
+    expect(lane.laneClassStatus).toBe("mismatch");
+    expect(lane.identityStatus).toBe("class_mismatch");
+    expect(diagnostic.summary.classMismatchCount).toBe(1);
+  });
+
+  it("accepts Glute Bridge as a low-axial hip-extension anchor only when policy allows that class", () => {
+    const diagnostic = buildV2ExerciseSelectionPlanDiagnostic(
+      makeInput({
+        slotId: "lower_b",
+        laneId: "hinge_anchor",
+        exerciseName: "Glute Bridge",
+        primaryMuscles: ["Hamstrings", "Glutes"],
+        movementPatterns: ["hinge"],
+        plannedClasses: [
+          "hinge_compound",
+          "low_axial_hip_extension_anchor",
+        ],
+        selectedClass: "low_axial_hip_extension_anchor",
+        concentrationFlags: [],
+        currentStatus: "satisfied",
+        gapCause: "none",
+        severity: "pass",
+        migrationRecommendation: "no_action",
+        relevantDiagnostics: ["setPolicy:in_budget"],
+      }),
+    );
+    const lane = onlyLane(diagnostic);
+
+    expect(lane.plannedClass).toEqual([
+      "hinge_compound",
+      "low_axial_hip_extension_anchor",
+    ]);
+    expect(lane.laneClassStatus).toBe("match");
+    expect(lane.identityStatus).toBe("preserved");
+    expect(diagnostic.summary.classMismatchCount).toBe(0);
+  });
+
+  it("accepts glute_bridge_anchor as a diagnostic alias for the low-axial hip-extension anchor", () => {
+    const diagnostic = buildV2ExerciseSelectionPlanDiagnostic(
+      makeInput({
+        slotId: "lower_b",
+        laneId: "hinge_anchor",
+        exerciseName: "Hip Thrust",
+        primaryMuscles: ["Glutes", "Hamstrings"],
+        movementPatterns: ["hinge"],
+        plannedClasses: ["low_axial_hip_extension_anchor"],
+        selectedClass: "glute_bridge_anchor",
+        concentrationFlags: [],
+        currentStatus: "satisfied",
+        gapCause: "none",
+        severity: "pass",
+        migrationRecommendation: "no_action",
+        relevantDiagnostics: ["setPolicy:in_budget"],
+      }),
+    );
+    const lane = onlyLane(diagnostic);
+
+    expect(lane.laneClassStatus).toBe("match");
+    expect(lane.identityStatus).toBe("preserved");
+    expect(diagnostic.summary.classMismatchCount).toBe(0);
+  });
+
   it("binds row_support to row exercise evidence before vertical-pull evidence", () => {
     const input = makeInput({
       slotId: "upper_b",

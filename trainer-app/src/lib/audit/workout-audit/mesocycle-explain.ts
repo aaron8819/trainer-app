@@ -2578,10 +2578,25 @@ function classifyPlannerOnlyExercise(input: {
     return { lane: "knee_flexion_curl", exerciseClass: "knee_flexion_curl" };
   }
   if (
-    patterns.some((pattern) => pattern.includes("hinge")) ||
+    name.includes("glute bridge") ||
+    name.includes("hip thrust") ||
+    name.includes("hip bridge")
+  ) {
+    return {
+      lane: "hinge_anchor",
+      exerciseClass: "low_axial_hip_extension_anchor",
+    };
+  }
+  if (
+    name.includes("stiff-legged") ||
+    name.includes("stiff leg") ||
+    name.includes("romanian deadlift") ||
     name.includes("deadlift") ||
     name.includes("rdl")
   ) {
+    return { lane: "hinge_anchor", exerciseClass: "hinge_compound" };
+  }
+  if (patterns.some((pattern) => pattern.includes("hinge"))) {
     return { lane: "hinge_anchor", exerciseClass: "hinge" };
   }
   if (name.includes("leg extension")) {
@@ -3391,6 +3406,31 @@ function getTopDownLane(input: {
     ?.requiredClassLanes.find((row) => aliases.includes(row.lane));
 }
 
+function v2ExerciseClassSatisfiesTarget(input: {
+  exerciseClass: string;
+  targetClass: string;
+  lane: V2Lane | V2Slot["lanes"][number];
+}): boolean {
+  const exerciseClass = input.exerciseClass.toLowerCase();
+  const targetClass = input.targetClass.toLowerCase();
+  if (exerciseClass === targetClass) {
+    return true;
+  }
+  if (input.lane.laneId === "hinge_anchor") {
+    return (
+      targetClass === "low_axial_hip_extension_anchor" &&
+      exerciseClass === "glute_bridge_anchor"
+    );
+  }
+  return (
+    targetClass.includes(exerciseClass) ||
+    exerciseClass.includes(targetClass) ||
+    targetClass
+      .split("_")
+      .some((token) => token.length > 3 && exerciseClass.includes(token))
+  );
+}
+
 function exerciseMatchesV2LaneClass(input: {
   exercise: SlotCompositionSnapshot["exercises"][number];
   lane: V2Lane | V2Slot["lanes"][number];
@@ -3428,13 +3468,12 @@ function exerciseMatchesV2LaneClass(input: {
   const targetClasses = input.lane.preferredExerciseClasses.map((value) =>
     value.toLowerCase(),
   );
-  return targetClasses.some(
-    (targetClass) =>
-      targetClass.includes(exerciseClass) ||
-      exerciseClass.includes(targetClass) ||
-      targetClass
-        .split("_")
-        .some((token) => token.length > 3 && exerciseClass.includes(token)),
+  return targetClasses.some((targetClass) =>
+    v2ExerciseClassSatisfiesTarget({
+      exerciseClass,
+      targetClass,
+      lane: input.lane,
+    }),
   );
 }
 
@@ -3516,14 +3555,15 @@ function exerciseMatchesV2LaneSetPolicyClass(input: {
   const targetClasses = input.lane.preferredExerciseClasses.map((value) =>
     value.toLowerCase(),
   );
-  if (
-    targetClasses.some(
-      (targetClass) =>
-        targetClass.includes(exerciseClass) ||
-        exerciseClass.includes(targetClass),
-    )
-  ) {
+  if (targetClasses.some((targetClass) => targetClass === exerciseClass)) {
     return true;
+  }
+  if (input.lane.laneId === "hinge_anchor") {
+    return targetClasses.some(
+      (targetClass) =>
+        targetClass === "low_axial_hip_extension_anchor" &&
+        exerciseClass === "glute_bridge_anchor",
+    );
   }
 
   return targetClasses.some((targetClass) =>

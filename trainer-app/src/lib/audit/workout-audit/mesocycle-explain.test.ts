@@ -6049,6 +6049,26 @@ describe("buildMesocycleExplainAuditPayload", () => {
     const optionalGluteCore = lowerB?.laneDiffs.find(
       (row) => row.laneId === "optional_glute_core_if_recoverable",
     );
+    const hingeAnchor = lowerB?.laneDiffs.find(
+      (row) => row.laneId === "hinge_anchor",
+    );
+    const hingeAnchorSelection =
+      noRepair.v2ExerciseSelectionPlanDiagnostic.weeks
+        .flatMap((week) =>
+          week.slots.flatMap((slot) =>
+            slot.lanes.map((lane) => ({
+              week: week.week,
+              slotId: slot.slotId,
+              lane,
+            })),
+          ),
+        )
+        .find(
+          (row) =>
+            row.week === 1 &&
+            row.slotId === "lower_b" &&
+            row.lane.laneId === "hinge_anchor",
+        )?.lane;
 
     expect(biceps).toMatchObject({
       currentStatus: "partial",
@@ -6060,6 +6080,36 @@ describe("buildMesocycleExplainAuditPayload", () => {
           "target_delivery:below_min",
         ]),
       },
+    });
+    expect(hingeAnchor).toMatchObject({
+      targetExerciseClasses: [
+        "hinge_compound",
+        "low_axial_hip_extension_anchor",
+      ],
+      currentEvidence: {
+        selectedExercises: expect.arrayContaining([
+          expect.objectContaining({
+            name: "Glute Bridge",
+            matchedClass: "low_axial_hip_extension_anchor",
+          }),
+        ]),
+      },
+    });
+    expect(
+      hingeAnchor?.currentEvidence.selectedExercises.find(
+        (exercise) => exercise.name === "Glute Bridge",
+      )?.matchedClass,
+    ).not.toBe("hinge_compound");
+    expect(hingeAnchorSelection).toMatchObject({
+      plannedClass: [
+        "hinge_compound",
+        "low_axial_hip_extension_anchor",
+      ],
+      selectedIdentity: {
+        exerciseName: "Glute Bridge",
+      },
+      identityStatus: "preserved",
+      laneClassStatus: "match",
     });
     expect(optionalGluteCore).toMatchObject({
       currentStatus: "partial",

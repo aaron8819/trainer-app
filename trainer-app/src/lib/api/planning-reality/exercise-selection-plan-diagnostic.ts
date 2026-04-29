@@ -275,6 +275,8 @@ function classSatisfiesDiagnosticIntent(input: {
     leg_press: ["squat_or_quad_support"],
     lunge: ["squat_or_quad_support"],
     quad_isolation: ["squat_or_quad_support"],
+    low_axial_hip_extension_anchor: ["glute_bridge_anchor"],
+    glute_bridge_anchor: ["low_axial_hip_extension_anchor"],
   };
   if (
     plannedClass === "low_dose_hinge" &&

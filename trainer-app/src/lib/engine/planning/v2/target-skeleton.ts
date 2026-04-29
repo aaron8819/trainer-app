@@ -190,7 +190,10 @@ export const V2_TARGET_SLOT_SKELETON: V2PlannerSlotDefinition[] = [
         required: true,
         role: "anchor",
         primaryMuscles: ["Hamstrings", "Glutes"],
-        preferredExerciseClasses: ["hinge_compound"],
+        preferredExerciseClasses: [
+          "hinge_compound",
+          "low_axial_hip_extension_anchor",
+        ],
         targetSets: { min: 3, preferred: 3, max: 3 },
       },
       {

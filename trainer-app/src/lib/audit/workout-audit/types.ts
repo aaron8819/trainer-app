@@ -1053,6 +1053,33 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
       collateralDiagnosticCount: number;
       diagnosticOnlyCount: number;
     };
+    interpretation: {
+      legacyRepairPressure: {
+        rawRowCount: number;
+        materialRepairCount: number;
+        majorRepairCount: number;
+        likelyAvoidableMaterialRepairCount: number;
+        remainingMaterialRepairCount: number;
+        suspiciousRepairCount: number;
+        note: "raw_legacy_repair_evidence_not_behavior_promotion_pressure";
+      };
+      currentV2PolicyGap: {
+        supportDirectFloorBlockerCount: number;
+        setDistributionCapacityGapCount: number;
+        concentrationQualityGapCount: number;
+        optionalDiagnosticLaneCount: number;
+        selectionBlockerCount: number;
+        classTaxonomyMismatchCount: number;
+      };
+      safetyNonRegressionRows: {
+        count: number;
+        includesSuspiciousRows: boolean;
+      };
+      staleRepairedProjectionArtifacts: {
+        count: number;
+        reasonCounts: Record<string, number>;
+      };
+    };
     promotionCandidates: Array<{
       slotId: string;
       muscle: string;

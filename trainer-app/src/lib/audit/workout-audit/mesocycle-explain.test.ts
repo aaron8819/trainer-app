@@ -3557,6 +3557,41 @@ describe("buildMesocycleExplainAuditPayload", () => {
       remainingMaterialRepairCount: 10,
       suspiciousRepairCount: 6,
     });
+    expect(scoreboard?.interpretation.legacyRepairPressure).toEqual({
+      ...scoreboard?.rawRepairEvidence,
+      note: "raw_legacy_repair_evidence_not_behavior_promotion_pressure",
+    });
+    const laneDiffs = noRepair.v2TargetVsNoRepairDiff.slotDiffs.flatMap(
+      (slot) => slot.laneDiffs,
+    );
+    expect(scoreboard?.interpretation.currentV2PolicyGap).toEqual({
+      supportDirectFloorBlockerCount:
+        noRepair.v2SupportLaneProjectionDiagnostic.summary.directFloorsBelow,
+      setDistributionCapacityGapCount: laneDiffs.filter(
+        (lane) =>
+          lane.targetRole !== "optional" &&
+          lane.severity !== "diagnostic_only" &&
+          (lane.gapCause === "capacity_gap" ||
+            lane.gapCause === "set_distribution_gap" ||
+            lane.migrationRecommendation === "needs_set_distribution_policy" ||
+            lane.migrationRecommendation === "needs_set_budget_justification"),
+      ).length,
+      concentrationQualityGapCount: laneDiffs.filter(
+        (lane) =>
+          lane.gapCause === "concentration_policy_gap" &&
+          lane.severity === "quality_warning",
+      ).length,
+      optionalDiagnosticLaneCount: laneDiffs.filter(
+        (lane) =>
+          lane.targetRole === "optional" &&
+          lane.currentStatus === "missing" &&
+          lane.severity === "diagnostic_only",
+      ).length,
+      selectionBlockerCount:
+        noRepair.v2ExerciseSelectionPlanDiagnostic.summary.blockedLaneCount,
+      classTaxonomyMismatchCount:
+        noRepair.v2ExerciseSelectionPlanDiagnostic.summary.classMismatchCount,
+    });
     expect(scoreboard?.summary.promotionCandidateCount).toBe(0);
     expect(scoreboard?.promotionCandidates).toEqual([]);
     expect(scoreboard?.doNotPromoteRows).toEqual(
@@ -3653,6 +3688,23 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ]),
     );
     expect(scoreboard?.rawSuspiciousRows).toHaveLength(6);
+    expect(scoreboard?.interpretation.safetyNonRegressionRows).toEqual({
+      count: scoreboard?.safetyNetRows.length,
+      includesSuspiciousRows: true,
+    });
+    expect(
+      scoreboard?.interpretation.staleRepairedProjectionArtifacts.count,
+    ).toBeGreaterThan(0);
+    expect(
+      scoreboard?.interpretation.staleRepairedProjectionArtifacts.reasonCounts,
+    ).toEqual(
+      expect.objectContaining({
+        v2_already_solved_differently: expect.any(Number),
+        collateral_support_accounting: expect.any(Number),
+        legacy_repaired_artifact: expect.any(Number),
+        support_floor_design_needed: expect.any(Number),
+      }),
+    );
     expect(scoreboard?.safetyNetRows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

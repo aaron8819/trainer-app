@@ -24,8 +24,16 @@ type V2RepairPromotionReadoutContext = {
   v2MesocyclePlan: V2MesocyclePlan;
   v2SetDistributionIntent: MesocycleExplainPlannerOnlyNoRepair["v2SetDistributionIntent"];
   v2TargetVsNoRepairDiff: V2TargetVsNoRepairDiff;
+  v2SupportLaneProjectionDiagnostic: MesocycleExplainPlannerOnlyNoRepair["v2SupportLaneProjectionDiagnostic"];
   v2ExerciseSelectionPlanDiagnostic: MesocycleExplainPlannerOnlyNoRepair["v2ExerciseSelectionPlanDiagnostic"];
 };
+
+const STALE_REPAIRED_PROJECTION_REASONS = [
+  "v2_already_solved_differently",
+  "collateral_support_accounting",
+  "legacy_repaired_artifact",
+  "support_floor_design_needed",
+] as const;
 
 function uniqueSorted(values: string[]): string[] {
   return Array.from(
@@ -567,6 +575,79 @@ function withoutDoNotPromoteBucket(
   };
 }
 
+function buildCurrentV2PolicyGap(
+  context?: V2RepairPromotionReadoutContext
+): V2RepairPromotionScoreboard["interpretation"]["currentV2PolicyGap"] {
+  if (!context) {
+    return {
+      supportDirectFloorBlockerCount: 0,
+      setDistributionCapacityGapCount: 0,
+      concentrationQualityGapCount: 0,
+      optionalDiagnosticLaneCount: 0,
+      selectionBlockerCount: 0,
+      classTaxonomyMismatchCount: 0,
+    };
+  }
+
+  const laneDiffs = context.v2TargetVsNoRepairDiff.slotDiffs.flatMap(
+    (slot) => slot.laneDiffs
+  );
+  return {
+    supportDirectFloorBlockerCount:
+      context.v2SupportLaneProjectionDiagnostic.summary.directFloorsBelow,
+    setDistributionCapacityGapCount: laneDiffs.filter(
+      (lane) =>
+        lane.targetRole !== "optional" &&
+        lane.severity !== "diagnostic_only" &&
+        (lane.gapCause === "capacity_gap" ||
+          lane.gapCause === "set_distribution_gap" ||
+          lane.migrationRecommendation === "needs_set_distribution_policy" ||
+          lane.migrationRecommendation === "needs_set_budget_justification")
+    ).length,
+    concentrationQualityGapCount: laneDiffs.filter(
+      (lane) =>
+        lane.gapCause === "concentration_policy_gap" &&
+        lane.severity === "quality_warning"
+    ).length,
+    optionalDiagnosticLaneCount: laneDiffs.filter(
+      (lane) =>
+        lane.targetRole === "optional" &&
+        lane.currentStatus === "missing" &&
+        lane.severity === "diagnostic_only"
+    ).length,
+    selectionBlockerCount:
+      context.v2ExerciseSelectionPlanDiagnostic.summary.blockedLaneCount,
+    classTaxonomyMismatchCount:
+      context.v2ExerciseSelectionPlanDiagnostic.summary.classMismatchCount,
+  };
+}
+
+function countStaleRepairedProjectionArtifacts(
+  rows: V2RepairDoNotPromoteRow[]
+): V2RepairPromotionScoreboard["interpretation"]["staleRepairedProjectionArtifacts"] {
+  const reasonCounts = Object.fromEntries(
+    STALE_REPAIRED_PROJECTION_REASONS.map((reason) => [reason, 0])
+  ) as Record<string, number>;
+  const staleRows = rows.filter((row) =>
+    STALE_REPAIRED_PROJECTION_REASONS.some((reason) =>
+      row.demotionReasons.includes(reason)
+    )
+  );
+
+  for (const row of rows) {
+    for (const reason of STALE_REPAIRED_PROJECTION_REASONS) {
+      if (row.demotionReasons.includes(reason)) {
+        reasonCounts[reason] += 1;
+      }
+    }
+  }
+
+  return {
+    count: staleRows.length,
+    reasonCounts,
+  };
+}
+
 export function buildRepairPromotionScoreboard(
   planningReality: PlanningRealityDiagnostic | undefined,
   v2Context?: V2RepairPromotionReadoutContext
@@ -648,36 +729,50 @@ export function buildRepairPromotionScoreboard(
     .filter((row) => row.bucket === "diagnostic_only")
     .map(withoutDoNotPromoteBucket);
   const materialRows = repairRows.filter(isRawMaterialRepair);
+  const rawRepairEvidence = {
+    rawRowCount: repairRows.length,
+    materialRepairCount:
+      planningReality.shadowRepairSummary?.materialRepairCount ??
+      materialRows.length,
+    majorRepairCount:
+      planningReality.shadowRepairSummary?.majorRepairCount ??
+      repairRows.filter((row) => row.materiality === "major").length,
+    likelyAvoidableMaterialRepairCount:
+      planningReality.shadowRepairSummary?.likelyAvoidableMaterialRepairCount ??
+      materialRows.filter((row) => row.likelyAvoidableWithShadowAllocation)
+        .length,
+    remainingMaterialRepairCount:
+      planningReality.shadowRepairSummary?.remainingMaterialRepairCount ??
+      materialRows.filter((row) => !row.likelyAvoidableWithShadowAllocation)
+        .length,
+    suspiciousRepairCount: rawSuspiciousRows.length,
+  };
 
   return {
     version: 1,
     readOnly: true,
     affectsScoringOrGeneration: false,
     source: "repaired_planning_reality",
-    rawRepairEvidence: {
-      rawRowCount: repairRows.length,
-      materialRepairCount:
-        planningReality.shadowRepairSummary?.materialRepairCount ??
-        materialRows.length,
-      majorRepairCount:
-        planningReality.shadowRepairSummary?.majorRepairCount ??
-        repairRows.filter((row) => row.materiality === "major").length,
-      likelyAvoidableMaterialRepairCount:
-        planningReality.shadowRepairSummary?.likelyAvoidableMaterialRepairCount ??
-        materialRows.filter((row) => row.likelyAvoidableWithShadowAllocation)
-          .length,
-      remainingMaterialRepairCount:
-        planningReality.shadowRepairSummary?.remainingMaterialRepairCount ??
-        materialRows.filter((row) => !row.likelyAvoidableWithShadowAllocation)
-          .length,
-      suspiciousRepairCount: rawSuspiciousRows.length,
-    },
+    rawRepairEvidence,
     summary: {
       promotionCandidateCount: promotionCandidates.length,
       doNotPromoteCount: doNotPromoteRows.length,
       safetyNetCount: safetyNetRows.length,
       collateralDiagnosticCount: collateralDiagnosticRows.length,
       diagnosticOnlyCount: diagnosticRows.length,
+    },
+    interpretation: {
+      legacyRepairPressure: {
+        ...rawRepairEvidence,
+        note: "raw_legacy_repair_evidence_not_behavior_promotion_pressure",
+      },
+      currentV2PolicyGap: buildCurrentV2PolicyGap(v2Context),
+      safetyNonRegressionRows: {
+        count: safetyNetRows.length,
+        includesSuspiciousRows: rawSuspiciousRows.length > 0,
+      },
+      staleRepairedProjectionArtifacts:
+        countStaleRepairedProjectionArtifacts(doNotPromoteRows),
     },
     promotionCandidates,
     doNotPromoteRows,

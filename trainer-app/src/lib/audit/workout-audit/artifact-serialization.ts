@@ -811,6 +811,9 @@ function compactPlannerOnlyNoRepair(
     repairPromotionScoreboard?.rawRepairEvidence,
   );
   const repairPromotionSummary = asRecord(repairPromotionScoreboard?.summary);
+  const repairPromotionInterpretation = asRecord(
+    repairPromotionScoreboard?.interpretation,
+  );
   const v2SetDistributionIntent = asRecord(noRepair.v2SetDistributionIntent);
   const v2SetDistributionSummary = asRecord(v2SetDistributionIntent?.summary);
   const v2SupportLanePolicy = asRecord(noRepair.v2SupportLanePolicy);
@@ -943,6 +946,7 @@ function compactPlannerOnlyNoRepair(
         ? {
             rawRepairEvidence: repairPromotionRawEvidence ?? {},
             summary: repairPromotionSummary ?? {},
+            interpretation: repairPromotionInterpretation ?? {},
           }
         : undefined,
       exerciseSelectionPlanDiagnostic: {

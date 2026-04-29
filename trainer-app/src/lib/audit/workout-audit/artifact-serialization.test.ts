@@ -500,6 +500,76 @@ describe("artifact serialization helpers", () => {
               reason: "not_ready",
             },
           },
+          repairPromotionScoreboard: {
+            version: 1,
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            source: "repaired_planning_reality",
+            rawRepairEvidence: {
+              rawRowCount: 48,
+              materialRepairCount: 19,
+              majorRepairCount: 8,
+              likelyAvoidableMaterialRepairCount: 9,
+              remainingMaterialRepairCount: 10,
+              suspiciousRepairCount: 6,
+            },
+            summary: {
+              promotionCandidateCount: 0,
+              doNotPromoteCount: 48,
+              safetyNetCount: 12,
+              collateralDiagnosticCount: 17,
+              diagnosticOnlyCount: 19,
+            },
+            interpretation: {
+              legacyRepairPressure: {
+                rawRowCount: 48,
+                materialRepairCount: 19,
+                majorRepairCount: 8,
+                likelyAvoidableMaterialRepairCount: 9,
+                remainingMaterialRepairCount: 10,
+                suspiciousRepairCount: 6,
+                note: "raw_legacy_repair_evidence_not_behavior_promotion_pressure",
+              },
+              currentV2PolicyGap: {
+                supportDirectFloorBlockerCount: 0,
+                setDistributionCapacityGapCount: 4,
+                concentrationQualityGapCount: 7,
+                optionalDiagnosticLaneCount: 1,
+                selectionBlockerCount: 0,
+                classTaxonomyMismatchCount: 20,
+              },
+              safetyNonRegressionRows: {
+                count: 12,
+                includesSuspiciousRows: true,
+              },
+              staleRepairedProjectionArtifacts: {
+                count: 9,
+                reasonCounts: {
+                  v2_already_solved_differently: 5,
+                  collateral_support_accounting: 4,
+                  legacy_repaired_artifact: 5,
+                  support_floor_design_needed: 4,
+                },
+              },
+            },
+            promotionCandidates: [
+              {
+                slotId: "upper_b",
+                muscle: "Chest",
+                exerciseName: "Incline DB Bench",
+                action: "set_bumped",
+                materiality: "major",
+                repairMechanism: "support_floor_closure",
+                correctOwner: "SlotDemandAllocationByWeek",
+                evidence: ["full_sidecar_only"],
+              },
+            ],
+            doNotPromoteRows: [],
+            safetyNetRows: [],
+            collateralDiagnosticRows: [],
+            diagnosticRows: [],
+            rawSuspiciousRows: [],
+          },
           crossWeekProjectionGate: {
             readOnly: true,
             affectsScoringOrGeneration: false,
@@ -711,6 +781,55 @@ describe("artifact serialization helpers", () => {
           partial: 1,
           missing: 0,
         },
+        repairPromotionScoreboard: {
+          rawRepairEvidence: {
+            rawRowCount: 48,
+            materialRepairCount: 19,
+            majorRepairCount: 8,
+            likelyAvoidableMaterialRepairCount: 9,
+            remainingMaterialRepairCount: 10,
+            suspiciousRepairCount: 6,
+          },
+          summary: {
+            promotionCandidateCount: 0,
+            doNotPromoteCount: 48,
+            safetyNetCount: 12,
+            collateralDiagnosticCount: 17,
+            diagnosticOnlyCount: 19,
+          },
+          interpretation: {
+            legacyRepairPressure: {
+              rawRowCount: 48,
+              materialRepairCount: 19,
+              majorRepairCount: 8,
+              likelyAvoidableMaterialRepairCount: 9,
+              remainingMaterialRepairCount: 10,
+              suspiciousRepairCount: 6,
+              note: "raw_legacy_repair_evidence_not_behavior_promotion_pressure",
+            },
+            currentV2PolicyGap: {
+              supportDirectFloorBlockerCount: 0,
+              setDistributionCapacityGapCount: 4,
+              concentrationQualityGapCount: 7,
+              optionalDiagnosticLaneCount: 1,
+              selectionBlockerCount: 0,
+              classTaxonomyMismatchCount: 20,
+            },
+            safetyNonRegressionRows: {
+              count: 12,
+              includesSuspiciousRows: true,
+            },
+            staleRepairedProjectionArtifacts: {
+              count: 9,
+              reasonCounts: {
+                v2_already_solved_differently: 5,
+                collateral_support_accounting: 4,
+                legacy_repaired_artifact: 5,
+                support_floor_design_needed: 4,
+              },
+            },
+          },
+        },
       },
       crossWeekProjectionGate: {
         readOnly: true,
@@ -742,6 +861,7 @@ describe("artifact serialization helpers", () => {
       },
     });
     expect(noRepair).not.toHaveProperty("v2MesocyclePlan");
+    expect(serialized).not.toContain("promotionCandidates");
     expect(noRepair).not.toHaveProperty("v2TargetVsNoRepairDiff");
     expect(noRepair).not.toHaveProperty("v2SetDistributionIntent");
     expect(noRepair).not.toHaveProperty("plannerOwnedAccumulationProjection");

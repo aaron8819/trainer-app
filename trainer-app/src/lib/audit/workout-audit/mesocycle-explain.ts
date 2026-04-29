@@ -6939,9 +6939,6 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     ((input.repairedPlanningReality?.finalSlotPlan.length ?? 0) > 0 ||
       input.repairedPlanningReality == null);
   if (!input.noRepairPlanningReality) {
-    const repairPromotionScoreboard = buildRepairPromotionScoreboard(
-      input.repairedPlanningReality,
-    );
     const acceptanceClassification: NoRepairClassification = {
       basicMesocycleShapeStatus: "fail",
       replacementReadinessStatus: "blocked",
@@ -7013,6 +7010,18 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         weeklyMuscleTotals: [],
         week1SelectedIdentities: [],
       });
+    const repairPromotionScoreboard = buildRepairPromotionScoreboard(
+      input.repairedPlanningReality,
+      {
+        weeklyMuscleTotals: [],
+        slotPlans: [],
+        v2MesocyclePlan,
+        v2SetDistributionIntent,
+        v2TargetVsNoRepairDiff,
+        v2SupportLaneProjectionDiagnostic,
+        v2ExerciseSelectionPlanDiagnostic,
+      },
+    );
     const v2DeloadProjectionDiagnostic = buildV2DeloadProjectionDiagnostic({
       v2MesocyclePlan,
       v2SetDistributionIntent,
@@ -7197,6 +7206,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       v2MesocyclePlan,
       v2SetDistributionIntent,
       v2TargetVsNoRepairDiff,
+      v2SupportLaneProjectionDiagnostic,
       v2ExerciseSelectionPlanDiagnostic,
     },
   );

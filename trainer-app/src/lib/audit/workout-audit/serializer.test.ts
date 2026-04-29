@@ -1646,6 +1646,33 @@ describe("buildWorkoutAuditArtifact", () => {
           safetyNetCount: 1,
           diagnosticOnlyCount: 1,
         },
+        interpretation: {
+          legacyRepairPressure: expect.objectContaining({
+            likelyAvoidableMaterialRepairCount: 1,
+            note: "raw_legacy_repair_evidence_not_behavior_promotion_pressure",
+          }),
+          currentV2PolicyGap: {
+            supportDirectFloorBlockerCount: 3,
+            setDistributionCapacityGapCount: 1,
+            concentrationQualityGapCount: 0,
+            optionalDiagnosticLaneCount: 0,
+            selectionBlockerCount: 0,
+            classTaxonomyMismatchCount: 0,
+          },
+          safetyNonRegressionRows: {
+            count: 1,
+            includesSuspiciousRows: true,
+          },
+          staleRepairedProjectionArtifacts: {
+            count: 0,
+            reasonCounts: {
+              v2_already_solved_differently: 0,
+              collateral_support_accounting: 0,
+              legacy_repaired_artifact: 0,
+              support_floor_design_needed: 0,
+            },
+          },
+        },
       },
     });
     expect(JSON.stringify(mainNoRepair.v2Summary)).not.toContain(
@@ -1950,6 +1977,38 @@ function makeMesocycleExplainNoRepairPayload() {
           safetyNetCount: 1,
           collateralDiagnosticCount: 0,
           diagnosticOnlyCount: 1,
+        },
+        interpretation: {
+          legacyRepairPressure: {
+            rawRowCount: 3,
+            materialRepairCount: 2,
+            majorRepairCount: 1,
+            likelyAvoidableMaterialRepairCount: 1,
+            remainingMaterialRepairCount: 1,
+            suspiciousRepairCount: 1,
+            note: "raw_legacy_repair_evidence_not_behavior_promotion_pressure",
+          },
+          currentV2PolicyGap: {
+            supportDirectFloorBlockerCount: 3,
+            setDistributionCapacityGapCount: 1,
+            concentrationQualityGapCount: 0,
+            optionalDiagnosticLaneCount: 0,
+            selectionBlockerCount: 0,
+            classTaxonomyMismatchCount: 0,
+          },
+          safetyNonRegressionRows: {
+            count: 1,
+            includesSuspiciousRows: true,
+          },
+          staleRepairedProjectionArtifacts: {
+            count: 0,
+            reasonCounts: {
+              v2_already_solved_differently: 0,
+              collateral_support_accounting: 0,
+              legacy_repaired_artifact: 0,
+              support_floor_design_needed: 0,
+            },
+          },
         },
         promotionCandidates: [
           {

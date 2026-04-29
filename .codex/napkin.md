@@ -31,6 +31,7 @@
 | 2026-04-29 | self | Repeated the PowerShell quote parsing mistake on a broad `rg` import search with mixed double/single quotes. | Use single-quoted patterns or split the search into simpler commands before adding alternation that contains quotes. |
 | 2026-04-29 | self | A dry-run V2 materialization output intentionally added `blockers`, which collided with the existing pure-policy boundary test's broad diagnostic key scan. | When adding dry-run planner artifacts with explicit blockers/omissions, narrow older readout-key boundary tests to the modules they were designed to police and add artifact-specific boundary tests. |
 | 2026-04-29 | self | Added a vertical-press negative guard for the token `chin` and accidentally matched the substring inside `machine`, blocking Machine Shoulder Press. | Avoid bare short substring guards in taxonomy text matching; prefer phrase tokens like `chin up` / `chinup` when using `includes()`. |
+| 2026-04-29 | self | Reused a double-quoted PowerShell `rg` pattern containing embedded quotes while tracing V2 materialization callsites and hit a parser error. | Use single-quoted `rg` patterns for import/callsite searches that contain quotes or regex alternation. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

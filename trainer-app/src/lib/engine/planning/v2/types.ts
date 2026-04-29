@@ -1,5 +1,6 @@
 import type { MuscleTargetTier } from "@/lib/engine/volume-landmarks";
 import type { V2SetDistributionIntent } from "./set-distribution-intent";
+import type { V2SupportLanePolicy } from "./support-lane-policy";
 
 export type V2PlannerSlotId = "upper_a" | "lower_a" | "upper_b" | "lower_b";
 
@@ -87,6 +88,7 @@ export type V2PlannerMesocyclePolicy = {
   slotDemandAllocationByWeek: V2SlotDemandAllocationByWeek;
   exerciseClassDistributionBySlot: V2ExerciseClassDistributionBySlot;
   v2SetDistributionIntent: V2SetDistributionIntent;
+  v2SupportLanePolicy: V2SupportLanePolicy;
 };
 
 export type V2PlannerTargetStatus = "hard" | "soft" | "diagnostic";

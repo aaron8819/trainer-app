@@ -1,5 +1,8 @@
 import type { SessionIntent } from "@/lib/engine/session-types";
-import type { V2SetDistributionIntent } from "@/lib/engine/planning/v2/set-distribution-intent";
+import type {
+  V2SetDistributionIntent,
+  V2SupportLanePolicy,
+} from "@/lib/engine/planning/v2";
 import type {
   PlannerDiagnosticsMode,
   SessionCompositionSource,
@@ -1371,6 +1374,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
     };
   };
   v2SetDistributionIntent: V2SetDistributionIntent;
+  v2SupportLanePolicy?: V2SupportLanePolicy;
   plannerOwnedAccumulationProjection: PlannerOwnedAccumulationProjection;
   v2ExerciseSelectionPlanDiagnostic: V2ExerciseSelectionPlanDiagnostic;
   slotPlans: Array<{
@@ -1463,6 +1467,7 @@ export type MesocycleExplainPlannerOnlyNoRepairDebugArtifact = {
     | "v2DeloadProjectionDiagnostic"
     | "v2MesocyclePlan"
     | "v2SetDistributionIntent"
+    | "v2SupportLanePolicy"
     | "plannerOwnedAccumulationProjection"
     | "v2ExerciseSelectionPlanDiagnostic"
     | "v2TargetVsNoRepairDiff"

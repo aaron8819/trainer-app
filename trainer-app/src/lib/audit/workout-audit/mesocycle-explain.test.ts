@@ -2700,6 +2700,19 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(payload.plannerOnlyNoRepair?.v2SetDistributionIntent).toEqual(
       buildV2PlannerMesocyclePolicy().v2SetDistributionIntent,
     );
+    expect(payload.plannerOnlyNoRepair?.v2SupportLanePolicy).toMatchObject({
+      version: 1,
+      source: "v2_planner_policy",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      summary: {
+        policyCount: 4,
+        optionalConditionalLaneCount: 1,
+      },
+    });
+    expect(payload.plannerOnlyNoRepair?.v2SupportLanePolicy).toEqual(
+      buildV2PlannerMesocyclePolicy().v2SupportLanePolicy,
+    );
     expect(JSON.stringify(payload)).not.toContain("acceptedPlannerIntent");
     expect(payload.plannerOnlyNoRepair?.v2ExerciseSelectionPlanDiagnostic).toMatchObject({
       version: 1,

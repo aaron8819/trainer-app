@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildV2PlannerMesocyclePolicy } from "@/lib/engine/planning/v2";
 import { AUDIT_RECONSTRUCTION_GUARDRAIL } from "./constants";
 import {
   buildWorkoutAuditArtifact,
@@ -1363,6 +1364,13 @@ describe("buildWorkoutAuditArtifact", () => {
 
     expect(fullNoRepair?.v2MesocyclePlan).toBeTruthy();
     expect(fullNoRepair?.v2SetDistributionIntent).toBeTruthy();
+    expect(fullNoRepair?.v2SupportLanePolicy).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      summary: {
+        policyCount: 4,
+      },
+    });
     expect(fullNoRepair?.plannerOwnedAccumulationProjection).toBeTruthy();
     expect(fullNoRepair?.v2ExerciseSelectionPlanDiagnostic).toMatchObject({
       readOnly: true,
@@ -1411,6 +1419,13 @@ describe("buildWorkoutAuditArtifact", () => {
           blockerCount: 0,
           warningCount: 0,
         },
+        supportLanePolicy: {
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          summary: {
+            policyCount: 4,
+          },
+        },
       },
       debugArtifact: {
         created: false,
@@ -1435,6 +1450,7 @@ describe("buildWorkoutAuditArtifact", () => {
     });
     expect(serializedNoRepair).not.toHaveProperty("v2MesocyclePlan");
     expect(serializedNoRepair).not.toHaveProperty("v2SetDistributionIntent");
+    expect(serializedNoRepair).not.toHaveProperty("v2SupportLanePolicy");
     expect(serializedNoRepair).not.toHaveProperty("plannerOwnedAccumulationProjection");
     expect(serializedNoRepair).not.toHaveProperty("v2ExerciseSelectionPlanDiagnostic");
     expect(serializedNoRepair).not.toHaveProperty("v2DeloadProjectionDiagnostic");
@@ -1616,6 +1632,13 @@ describe("buildWorkoutAuditArtifact", () => {
         },
         v2MesocyclePlan: expect.any(Object),
         v2SetDistributionIntent: expect.any(Object),
+        v2SupportLanePolicy: expect.objectContaining({
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          summary: expect.objectContaining({
+            policyCount: 4,
+          }),
+        }),
         plannerOwnedAccumulationProjection: expect.objectContaining({
           readOnly: true,
           affectsScoringOrGeneration: false,
@@ -2125,6 +2148,7 @@ function makeMesocycleExplainNoRepairPayload() {
           doesNotAffectRuntimeReplay: true,
         },
       },
+      v2SupportLanePolicy: buildV2PlannerMesocyclePolicy().v2SupportLanePolicy,
       plannerOwnedAccumulationProjection: makePlannerOwnedAccumulationProjection(),
       v2DeloadProjectionDiagnostic: makeV2DeloadProjectionDiagnostic(),
       v2ExerciseSelectionPlanDiagnostic: makeV2ExerciseSelectionPlanDiagnostic(),

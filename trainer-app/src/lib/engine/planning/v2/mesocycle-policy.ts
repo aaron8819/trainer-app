@@ -3,6 +3,7 @@ import { buildV2ExerciseClassDistributionBySlot } from "./exercise-class-distrib
 import { buildV2MesocycleDemand } from "./mesocycle-demand";
 import { buildV2SetDistributionIntent } from "./set-distribution-intent";
 import { buildV2SlotDemandAllocationByWeek } from "./slot-demand-allocation";
+import { buildV2SupportLanePolicy } from "./support-lane-policy";
 import { buildV2TargetSkeleton } from "./target-skeleton";
 import type { V2PlannerMesocyclePolicy } from "./types";
 import { buildV2WeeklyDemandCurve } from "./weekly-demand-curve";
@@ -28,6 +29,7 @@ export function buildV2PlannerMesocyclePolicy(): V2PlannerMesocyclePolicy {
     targetSkeleton,
     weeklyProgressionModel,
   });
+  const v2SupportLanePolicy = buildV2SupportLanePolicy({ targetSkeleton });
 
   return {
     targetSkeleton,
@@ -38,5 +40,6 @@ export function buildV2PlannerMesocyclePolicy(): V2PlannerMesocyclePolicy {
     slotDemandAllocationByWeek,
     exerciseClassDistributionBySlot,
     v2SetDistributionIntent,
+    v2SupportLanePolicy,
   };
 }

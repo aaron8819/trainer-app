@@ -86,6 +86,7 @@ export const V2_PLANNER_NO_REPAIR_DEBUG_CONTAINS = [
   "v2DeloadProjectionDiagnostic",
   "v2MesocyclePlan",
   "v2SetDistributionIntent",
+  "v2SupportLanePolicy",
   "plannerOwnedAccumulationProjection",
   "v2ExerciseSelectionPlanDiagnostic",
   "v2TargetVsNoRepairDiff",
@@ -783,6 +784,8 @@ function compactPlannerOnlyNoRepair(
   );
   const v2SetDistributionIntent = asRecord(noRepair.v2SetDistributionIntent);
   const v2SetDistributionSummary = asRecord(v2SetDistributionIntent?.summary);
+  const v2SupportLanePolicy = asRecord(noRepair.v2SupportLanePolicy);
+  const v2SupportLaneSummary = asRecord(v2SupportLanePolicy?.summary);
   const v2ExerciseSelectionPlanDiagnostic = asRecord(
     noRepair.v2ExerciseSelectionPlanDiagnostic
   );
@@ -861,6 +864,16 @@ function compactPlannerOnlyNoRepair(
       },
       plannedTotalSetsByWeek:
         v2SetDistributionSummary?.plannedTotalSetsByWeek ?? [],
+      supportLanePolicy: v2SupportLanePolicy
+        ? {
+            readOnly: v2SupportLanePolicy.readOnly === true,
+            affectsScoringOrGeneration:
+              v2SupportLanePolicy.affectsScoringOrGeneration === true
+                ? true
+                : false,
+            summary: v2SupportLaneSummary ?? {},
+          }
+        : undefined,
       validationRuleSummary: summarizeValidationRules(validationRules),
       targetVsNoRepairSummary: v2DiffSummary ?? {},
       repairPromotionScoreboard: repairPromotionScoreboard

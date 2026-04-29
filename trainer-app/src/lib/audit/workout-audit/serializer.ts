@@ -215,6 +215,7 @@ function buildV2DebugSidecarPayload(input: {
       v2DeloadProjectionDiagnostic: noRepair.v2DeloadProjectionDiagnostic,
       v2MesocyclePlan: noRepair.v2MesocyclePlan,
       v2SetDistributionIntent: noRepair.v2SetDistributionIntent,
+      v2SupportLanePolicy: noRepair.v2SupportLanePolicy,
       plannerOwnedAccumulationProjection:
         noRepair.plannerOwnedAccumulationProjection,
       v2ExerciseSelectionPlanDiagnostic:

@@ -4,6 +4,11 @@ export { buildV2MesocycleDemand } from "./mesocycle-demand";
 export { buildV2PlannerMesocyclePolicy } from "./mesocycle-policy";
 export { buildV2SetDistributionIntent } from "./set-distribution-intent";
 export { buildV2SlotDemandAllocationByWeek } from "./slot-demand-allocation";
+export {
+  buildV2SupportLanePolicy,
+  evaluateV2SupportLaneOptionalActivation,
+  resolveV2TierAwareConcentrationPolicy,
+} from "./support-lane-policy";
 export { buildV2TargetSkeleton } from "./target-skeleton";
 export { buildV2WeeklyDemandCurve } from "./weekly-demand-curve";
 export { buildV2WeeklyProgressionModel } from "./weekly-progression";
@@ -32,6 +37,15 @@ export type {
   V2WeeklyProgressionWeek,
   WeeklyDemandCurve,
 } from "./types";
+export type {
+  V2SupportLaneActivationEvaluation,
+  V2SupportLaneExpansionPolicy,
+  V2SupportLaneOptionalActivationRule,
+  V2SupportLanePolicy,
+  V2SupportLanePolicyRationaleLabel,
+  V2SupportLanePolicyRow,
+  V2SupportLaneTierAwareConcentrationPolicy,
+} from "./support-lane-policy";
 export type {
   V2SetDistributionIntent,
   V2SetDistributionIntentInput,

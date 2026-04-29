@@ -46,6 +46,7 @@ const acceptedPlannerIntentCandidateWhitelist: string[] = [
   "exerciseClassDistributionBySlot",
   "deloadTransform",
   "v2SetDistributionIntent",
+  "v2SupportLanePolicy",
 ];
 
 function listTypeScriptFiles(dir: string): string[] {
@@ -107,6 +108,7 @@ describe("V2 planner policy module boundary", () => {
     expect(exportedText).toContain("V2WeeklyDemandCurve");
     expect(exportedText).toContain("V2SlotDemandAllocationByWeek");
     expect(exportedText).toContain("V2ExerciseClassDistributionBySlot");
+    expect(exportedText).toContain("V2SupportLanePolicy");
   });
 
   it("does not introduce acceptedPlannerIntent persistence in pure policy modules", () => {

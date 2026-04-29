@@ -46,6 +46,7 @@ import { getMuscleTargetSemantics } from "@/lib/engine/volume-landmarks";
 import {
   buildV2PlannerMesocyclePolicy,
   type V2SetDistributionIntent,
+  type V2SupportLanePolicy,
 } from "@/lib/engine/planning/v2";
 import {
   buildPlannerOwnedAccumulationProjection,
@@ -5525,6 +5526,10 @@ function getPureV2SetDistributionIntent(): V2SetDistributionIntent {
   return buildV2PlannerMesocyclePolicy().v2SetDistributionIntent;
 }
 
+function getPureV2SupportLanePolicy(): V2SupportLanePolicy {
+  return buildV2PlannerMesocyclePolicy().v2SupportLanePolicy;
+}
+
 function buildCrossWeekAccumulationStatus(input: {
   noRepair?: PlanningRealityDiagnostic;
   v2MesocyclePlan: V2MesocyclePlan;
@@ -6530,6 +6535,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       targetLanesMissing: 1,
     });
     const v2SetDistributionIntent = getPureV2SetDistributionIntent();
+    const v2SupportLanePolicy = getPureV2SupportLanePolicy();
     const plannerOwnedAccumulationProjection =
       buildPlannerOwnedAccumulationProjection({
         weeklyDemandCurve: undefined,
@@ -6582,6 +6588,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       crossWeekProjectionGate,
       v2TargetVsNoRepairDiff,
       v2SetDistributionIntent,
+      v2SupportLanePolicy,
       plannerOwnedAccumulationProjection,
       v2ExerciseSelectionPlanDiagnostic,
       slotPlans: [],
@@ -6666,6 +6673,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     targetLanesMissing,
   });
   const v2SetDistributionIntent = getPureV2SetDistributionIntent();
+  const v2SupportLanePolicy = getPureV2SupportLanePolicy();
   const plannerOwnedAccumulationProjection =
     buildPlannerOwnedAccumulationProjection({
       weeklyDemandCurve: noRepair.weeklyDemandCurve,
@@ -6737,6 +6745,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     v2DeloadProjectionDiagnostic,
     v2TargetVsNoRepairDiff,
     v2SetDistributionIntent,
+    v2SupportLanePolicy,
     plannerOwnedAccumulationProjection,
     v2ExerciseSelectionPlanDiagnostic,
     slotPlans,

@@ -3,6 +3,10 @@ import {
   findDistributionGuardActionInvariantViolations,
   findFinalSlotForbiddenPrescriptionViolations,
 } from "./planning-reality-invariants.test-helper";
+import {
+  expectNoDbImports,
+  expectReadOnlyDiagnostic,
+} from "./test-helpers/audit-drift-assertions";
 
 const mocks = vi.hoisted(() => {
   const mesocycleFindFirst = vi.fn();
@@ -3428,6 +3432,13 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
     const scoreboard = noRepair.repairPromotionScoreboard;
 
+    expectReadOnlyDiagnostic(scoreboard);
+    expectNoDbImports(
+      "src/lib/audit/workout-audit/mesocycle-explain-v2-repair-scoreboard.ts",
+      {
+        forbidSerializerImports: true,
+      }
+    );
     expect(scoreboard?.rawRepairEvidence).toEqual({
       rawRowCount: 21,
       materialRepairCount: 19,

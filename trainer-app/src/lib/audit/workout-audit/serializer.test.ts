@@ -5,6 +5,7 @@ import {
   createWorkoutAuditArtifactOutput,
   serializeWorkoutAuditArtifact,
 } from "./serializer";
+import { expectStableArtifactSection } from "./test-helpers/audit-drift-assertions";
 import type { WorkoutAuditRun } from "./types";
 
 const baseRun: WorkoutAuditRun = {
@@ -1520,6 +1521,13 @@ describe("buildWorkoutAuditArtifact", () => {
         unknown
       >;
 
+    expectStableArtifactSection(
+      {
+        plannerOnlyNoRepair: output.artifact.mesocycleExplain?.plannerOnlyNoRepair,
+      },
+      output.v2DebugArtifact?.artifact,
+      "plannerOnlyNoRepair.repairPromotionScoreboard",
+    );
     expect(output.v2DebugArtifact).toMatchObject({
       fileName: "parent-v2-no-repair-debug.json",
       relativePath: "artifacts/audits/parent-v2-no-repair-debug.json",

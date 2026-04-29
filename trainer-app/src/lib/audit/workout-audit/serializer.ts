@@ -232,6 +232,8 @@ function buildV2DebugSidecarPayload(input: {
       v2SupportLanePolicy: noRepair.v2SupportLanePolicy,
       v2SupportLaneProjectionDiagnostic:
         noRepair.v2SupportLaneProjectionDiagnostic,
+      v2SelectionCapacityPlanDiagnostic:
+        noRepair.v2SelectionCapacityPlanDiagnostic,
       plannerOwnedAccumulationProjection:
         noRepair.plannerOwnedAccumulationProjection,
       v2ExerciseSelectionPlanDiagnostic:

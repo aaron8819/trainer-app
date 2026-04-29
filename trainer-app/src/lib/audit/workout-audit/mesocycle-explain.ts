@@ -51,6 +51,7 @@ import {
 import {
   buildPlannerOwnedAccumulationProjection,
   buildV2ExerciseSelectionPlanDiagnostic,
+  buildV2SelectionCapacityPlanDiagnostic,
   buildV2SupportLaneProjectionDiagnostic,
 } from "@/lib/api/planning-reality";
 import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
@@ -7675,6 +7676,14 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         weeklyMuscleTotals: [],
         week1SelectedIdentities: [],
       });
+    const v2SelectionCapacityPlanDiagnostic =
+      buildV2SelectionCapacityPlanDiagnostic({
+        v2SetDistributionIntent,
+        v2ExerciseSelectionPlanDiagnostic,
+        v2TargetVsNoRepairDiff,
+        week1SelectedIdentities: [],
+        weeklyMuscleTotals: [],
+      });
     const lowAxialHipExtensionLimitation =
       buildLowAxialHipExtensionLimitation({
         noRepair: undefined,
@@ -7729,6 +7738,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       v2SetDistributionIntent,
       v2SupportLanePolicy,
       v2SupportLaneProjectionDiagnostic,
+      v2SelectionCapacityPlanDiagnostic,
       plannerOwnedAccumulationProjection,
       v2ExerciseSelectionPlanDiagnostic,
       lowAxialHipExtensionLimitation,
@@ -7857,6 +7867,14 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       weeklyMuscleTotals,
       week1SelectedIdentities: noRepair.finalSlotPlan,
     });
+  const v2SelectionCapacityPlanDiagnostic =
+    buildV2SelectionCapacityPlanDiagnostic({
+      v2SetDistributionIntent,
+      v2ExerciseSelectionPlanDiagnostic,
+      v2TargetVsNoRepairDiff,
+      week1SelectedIdentities: noRepair.finalSlotPlan,
+      weeklyMuscleTotals,
+    });
   const lowAxialHipExtensionLimitation =
     buildLowAxialHipExtensionLimitation({
       noRepair,
@@ -7913,6 +7931,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     v2SetDistributionIntent,
     v2SupportLanePolicy,
     v2SupportLaneProjectionDiagnostic,
+    v2SelectionCapacityPlanDiagnostic,
     plannerOwnedAccumulationProjection,
     v2ExerciseSelectionPlanDiagnostic,
     lowAxialHipExtensionLimitation,

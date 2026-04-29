@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { buildV2PlannerMesocyclePolicy } from "@/lib/engine/planning/v2";
 import { exerciseMatchesSlotLane } from "@/lib/engine/selection-v2/slot-lane-plan";
 import {
   buildV2ExerciseSelectionPlanDiagnostic,
   type V2ExerciseSelectionPlanDiagnostic,
 } from "./exercise-selection-plan-diagnostic";
+import {
+  buildV2SelectionCapacityPlanDiagnostic,
+  type V2SelectionCapacityPlanDiagnostic,
+} from "./selection-capacity-plan-diagnostic";
 
 type BuilderInput = Parameters<typeof buildV2ExerciseSelectionPlanDiagnostic>[0];
 
@@ -632,5 +637,515 @@ describe("buildV2ExerciseSelectionPlanDiagnostic", () => {
         },
       ),
     ).toBe(false);
+  });
+});
+
+type CapacityBuilderInput = Parameters<
+  typeof buildV2SelectionCapacityPlanDiagnostic
+>[0];
+
+function makeSelectionCapacityLane(input: {
+  laneId: string;
+  primaryMuscles: string[];
+  selectedExercise?: string;
+  selectedSets?: number;
+  setBudgetStatus?: "within_budget" | "allowed_expansion" | "requires_justification" | "blocked";
+  capacityStatus?: "within_capacity" | "at_capacity" | "blocked" | "not_evaluated";
+  cleanAlternatives?: Array<{ exerciseName: string; exerciseClass: string }>;
+  concentrationStatus?: "pass" | "quality_warning" | "blocked";
+}): V2ExerciseSelectionPlanDiagnostic["weeks"][number]["slots"][number]["lanes"][number] {
+  return {
+    laneId: input.laneId,
+    plannedClass: [],
+    primaryMuscles: input.primaryMuscles,
+    ...(input.selectedExercise
+      ? {
+          selectedIdentity: {
+            exerciseId: `${input.laneId}-exercise`,
+            exerciseName: input.selectedExercise,
+            sourceWeek: 1 as const,
+            setCount: input.selectedSets ?? 0,
+          },
+        }
+      : {}),
+    identityStatus: input.selectedExercise ? "preserved" : "not_evaluated",
+    laneClassStatus: input.selectedExercise ? "match" : "not_evaluated",
+    setBudgetStatus: input.setBudgetStatus ?? "within_budget",
+    duplicateStatus: "pass",
+    concentrationStatus: input.concentrationStatus ?? "pass",
+    fatigueStatus:
+      input.concentrationStatus === "quality_warning" ? "quality_warning" : "pass",
+    inventoryStatus: input.cleanAlternatives ? "available" : "not_evaluated",
+    capacityStatus: input.capacityStatus ?? "within_capacity",
+    cleanAlternatives: (input.cleanAlternatives ?? []).map((alternative) => ({
+      exerciseId: null,
+      exerciseName: alternative.exerciseName,
+      exerciseClass: alternative.exerciseClass,
+      evidence: [`inventory:${alternative.exerciseName}:clean_available`],
+    })),
+    unresolvedDemand: [],
+    evidenceRefs: ["setPolicy:in_budget"],
+    limitations: ["week_1_selected_identity_basis"],
+  };
+}
+
+function makeCapacityDiagnosticInput(): CapacityBuilderInput {
+  const policy = buildV2PlannerMesocyclePolicy();
+  const v2SetDistributionIntent = policy.v2SetDistributionIntent;
+  const upperASelection = [
+    makeSelectionCapacityLane({
+      laneId: "row_anchor",
+      primaryMuscles: ["Upper Back", "Lats"],
+      selectedExercise: "Chest-Supported Row",
+      selectedSets: 4,
+      capacityStatus: "at_capacity",
+      concentrationStatus: "quality_warning",
+    }),
+    makeSelectionCapacityLane({
+      laneId: "chest_anchor",
+      primaryMuscles: ["Chest"],
+      selectedExercise: "Machine Chest Press",
+      selectedSets: 1,
+      capacityStatus: "at_capacity",
+    }),
+  ];
+  const lowerASelection = [
+    makeSelectionCapacityLane({
+      laneId: "calves",
+      primaryMuscles: ["Calves"],
+      selectedExercise: "Standing Calf Raise",
+      selectedSets: 4,
+      capacityStatus: "within_capacity",
+    }),
+  ];
+  const upperBSelection = [
+    makeSelectionCapacityLane({
+      laneId: "vertical_pull_anchor",
+      primaryMuscles: ["Lats"],
+      selectedExercise: "Lat Pulldown",
+      selectedSets: 4,
+      capacityStatus: "at_capacity",
+      concentrationStatus: "quality_warning",
+    }),
+    makeSelectionCapacityLane({
+      laneId: "optional_triceps_if_under_target",
+      primaryMuscles: ["Triceps"],
+      capacityStatus: "at_capacity",
+      cleanAlternatives: [],
+    }),
+  ];
+  const lowerBSelection = [
+    makeSelectionCapacityLane({
+      laneId: "calves",
+      primaryMuscles: ["Calves"],
+      selectedExercise: "Seated Calf Raise",
+      selectedSets: 4,
+      capacityStatus: "within_capacity",
+    }),
+  ];
+
+  return {
+    v2SetDistributionIntent,
+    v2ExerciseSelectionPlanDiagnostic: {
+      version: 1,
+      source: "v2_planner_policy",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "projected_with_limitations",
+      identityBasis: "week_1_selected_identities",
+      projectionBasis:
+        "planner_owned_accumulation_projection_plus_week_1_identity_continuity",
+      summary: {
+        weeksEvaluated: 1,
+        lanesEvaluated: 6,
+        preservedIdentityCount: 5,
+        candidateAvailableCount: 0,
+        missingCandidateCount: 0,
+        classMismatchCount: 0,
+        duplicateRequiresJustificationCount: 0,
+        concentrationWarningCount: 2,
+        blockedLaneCount: 0,
+      },
+      weeks: [
+        {
+          week: 1,
+          slots: [
+            { slotId: "upper_a", lanes: upperASelection },
+            { slotId: "lower_a", lanes: lowerASelection },
+            { slotId: "upper_b", lanes: upperBSelection },
+            { slotId: "lower_b", lanes: lowerBSelection },
+          ],
+        },
+      ],
+      blockers: [],
+      warnings: [],
+      missingInputs: [],
+      safeForBehaviorPromotion: false,
+    },
+    v2TargetVsNoRepairDiff: {
+      slotDiffs: [
+        {
+          slotId: "upper_a",
+          laneDiffs: [
+            {
+              laneId: "row_anchor",
+              currentStatus: "partial",
+              currentEvidence: {
+                selectedExercises: [
+                  {
+                    name: "Chest-Supported Row",
+                    sets: 4,
+                    matchedClass: "row",
+                    role: "main",
+                  },
+                ],
+                relevantDiagnostics: [
+                  "setPolicy:quality_warning",
+                  "setBudget:within_preferred",
+                  "selectionFeasibility:session_capacity_pressure",
+                  "capacityPressure:upper_pull_distribution",
+                  "concentration:quality_warning",
+                ],
+              },
+              gapCause: "selection_feasibility_pressure",
+              migrationRecommendation: "keep_diagnostic_only",
+              severity: "quality_warning",
+            },
+            {
+              laneId: "chest_anchor",
+              currentStatus: "partial",
+              currentEvidence: {
+                selectedExercises: [
+                  {
+                    name: "Machine Chest Press",
+                    sets: 1,
+                    matchedClass: "chest_press",
+                    role: "main",
+                  },
+                ],
+                relevantDiagnostics: ["target_delivery:below_min"],
+              },
+              gapCause: "set_distribution_gap",
+              migrationRecommendation: "needs_set_distribution_policy",
+              severity: "quality_warning",
+            },
+          ],
+        },
+        {
+          slotId: "upper_b",
+          laneDiffs: [
+            {
+              laneId: "vertical_pull_anchor",
+              currentStatus: "partial",
+              currentEvidence: {
+                selectedExercises: [
+                  {
+                    name: "Lat Pulldown",
+                    sets: 4,
+                    matchedClass: "vertical_pull",
+                    role: "main",
+                  },
+                ],
+                relevantDiagnostics: [
+                  "setPolicy:quality_warning",
+                  "setBudget:within_preferred",
+                  "selectionFeasibility:session_capacity_pressure",
+                  "capacityPressure:upper_pull_distribution",
+                ],
+              },
+              gapCause: "selection_feasibility_pressure",
+              migrationRecommendation: "keep_diagnostic_only",
+              severity: "quality_warning",
+            },
+            {
+              laneId: "optional_triceps_if_under_target",
+              currentStatus: "missing",
+              currentEvidence: {
+                selectedExercises: [],
+                relevantDiagnostics: ["optional_lane:target_met_or_no_headroom"],
+              },
+              gapCause: "unknown",
+              migrationRecommendation: "keep_diagnostic_only",
+              severity: "diagnostic_only",
+            },
+          ],
+        },
+        {
+          slotId: "lower_a",
+          laneDiffs: [
+            {
+              laneId: "calves",
+              currentStatus: "satisfied",
+              currentEvidence: {
+                selectedExercises: [
+                  {
+                    name: "Standing Calf Raise",
+                    sets: 4,
+                    matchedClass: "calf_raise",
+                    role: "accessory",
+                  },
+                ],
+                relevantDiagnostics: ["setPolicy:in_budget"],
+              },
+              gapCause: "none",
+              migrationRecommendation: "no_action",
+              severity: "pass",
+            },
+          ],
+        },
+        {
+          slotId: "lower_b",
+          laneDiffs: [
+            {
+              laneId: "calves",
+              currentStatus: "satisfied",
+              currentEvidence: {
+                selectedExercises: [
+                  {
+                    name: "Seated Calf Raise",
+                    sets: 4,
+                    matchedClass: "calf_raise",
+                    role: "accessory",
+                  },
+                ],
+                relevantDiagnostics: [
+                  "setPolicy:in_budget",
+                  "capAwareExpansion:preferred_exceeds_single_exercise_cap",
+                ],
+              },
+              gapCause: "cap_aware_expansion_limitation",
+              migrationRecommendation: "keep_diagnostic_only",
+              severity: "quality_warning",
+            },
+          ],
+        },
+      ],
+    },
+    week1SelectedIdentities: [
+      {
+        slotId: "upper_a",
+        slotIndex: 0,
+        intent: "upper",
+        exerciseCount: 6,
+        totalSets: 20,
+        projectedEffectiveStimulusByMuscle: {
+          Chest: 1,
+          Lats: 8,
+          "Upper Back": 7,
+        },
+        exercises: [
+          {
+            exerciseId: "row",
+            exerciseName: "Chest-Supported Row",
+            role: "main",
+            setCount: 4,
+            primaryMuscles: ["Upper Back", "Lats"],
+            movementPatterns: ["horizontal_pull"],
+            effectiveStimulusByMuscle: { "Upper Back": 4, Lats: 3 },
+          },
+        ],
+      },
+      {
+        slotId: "lower_a",
+        slotIndex: 1,
+        intent: "lower",
+        exerciseCount: 5,
+        totalSets: 16,
+        projectedEffectiveStimulusByMuscle: { Calves: 4 },
+        exercises: [
+          {
+            exerciseId: "standing-calf",
+            exerciseName: "Standing Calf Raise",
+            role: "accessory",
+            setCount: 4,
+            primaryMuscles: ["Calves"],
+            movementPatterns: ["isolation"],
+            effectiveStimulusByMuscle: { Calves: 4 },
+          },
+        ],
+      },
+      {
+        slotId: "upper_b",
+        slotIndex: 2,
+        intent: "upper",
+        exerciseCount: 6,
+        totalSets: 21,
+        projectedEffectiveStimulusByMuscle: { Lats: 8, Triceps: 6 },
+        exercises: [
+          {
+            exerciseId: "pulldown",
+            exerciseName: "Lat Pulldown",
+            role: "main",
+            setCount: 4,
+            primaryMuscles: ["Lats"],
+            movementPatterns: ["vertical_pull"],
+            effectiveStimulusByMuscle: { Lats: 4 },
+          },
+        ],
+      },
+      {
+        slotId: "lower_b",
+        slotIndex: 3,
+        intent: "lower",
+        exerciseCount: 4,
+        totalSets: 14,
+        projectedEffectiveStimulusByMuscle: { Calves: 4 },
+        exercises: [
+          {
+            exerciseId: "seated-calf",
+            exerciseName: "Seated Calf Raise",
+            role: "accessory",
+            setCount: 4,
+            primaryMuscles: ["Calves"],
+            movementPatterns: ["isolation"],
+            effectiveStimulusByMuscle: { Calves: 4 },
+          },
+        ],
+      },
+    ],
+    weeklyMuscleTotals: [
+      {
+        muscle: "Lats",
+        projectedEffectiveSets: 16,
+        targetMin: 8,
+        targetPreferred: 16,
+        status: "within",
+      },
+      {
+        muscle: "Upper Back",
+        projectedEffectiveSets: 7,
+        targetMin: 6,
+        targetPreferred: 14,
+        status: "within",
+      },
+      {
+        muscle: "Calves",
+        projectedEffectiveSets: 8,
+        targetMin: 8,
+        targetPreferred: 8,
+        status: "within",
+      },
+      {
+        muscle: "Triceps",
+        projectedEffectiveSets: 6,
+        targetMin: 4,
+        targetPreferred: 8,
+        status: "within",
+      },
+      {
+        muscle: "Chest",
+        projectedEffectiveSets: 1,
+        targetMin: 8,
+        targetPreferred: 12,
+        status: "below",
+      },
+    ],
+  } as unknown as CapacityBuilderInput;
+}
+
+function capacityLane(
+  diagnostic: V2SelectionCapacityPlanDiagnostic,
+  week: number,
+  slotId: string,
+  laneId: string,
+) {
+  const lane = diagnostic.weeks
+    .find((row) => row.week === week)
+    ?.slots.find((slot) => slot.slotId === slotId)
+    ?.lanes.find((row) => row.laneId === laneId);
+  if (!lane) {
+    throw new Error(`missing ${week}:${slotId}:${laneId}`);
+  }
+  return lane;
+}
+
+describe("buildV2SelectionCapacityPlanDiagnostic", () => {
+  it("is read-only and never affects scoring or behavior promotion", () => {
+    const diagnostic = buildV2SelectionCapacityPlanDiagnostic(
+      makeCapacityDiagnosticInput(),
+    );
+
+    expect(diagnostic.readOnly).toBe(true);
+    expect(diagnostic.affectsScoringOrGeneration).toBe(false);
+    expect(diagnostic.safeForBehaviorPromotion).toBe(false);
+  });
+
+  it("classifies upper pull target-met in-budget lanes as capacity pressure", () => {
+    const diagnostic = buildV2SelectionCapacityPlanDiagnostic(
+      makeCapacityDiagnosticInput(),
+    );
+
+    expect(capacityLane(diagnostic, 1, "upper_a", "row_anchor")).toMatchObject({
+      classification: "capacity_pressure",
+      weeklyTargetStatus: "within",
+      slotHeadroom: 0,
+      cleanAlternativeCount: null,
+    });
+    expect(capacityLane(diagnostic, 1, "upper_b", "vertical_pull_anchor")).toMatchObject({
+      classification: "capacity_pressure",
+      weeklyTargetStatus: "within",
+      slotHeadroom: 0,
+    });
+    expect(diagnostic.summary.capacityPressureCount).toBeGreaterThanOrEqual(2);
+  });
+
+  it("does not classify satisfied Week 1 calf lanes as blockers", () => {
+    const diagnostic = buildV2SelectionCapacityPlanDiagnostic(
+      makeCapacityDiagnosticInput(),
+    );
+
+    expect(capacityLane(diagnostic, 1, "lower_a", "calves").classification).not.toBe(
+      "blocker",
+    );
+    expect(capacityLane(diagnostic, 1, "lower_b", "calves").classification).not.toBe(
+      "blocker",
+    );
+  });
+
+  it("classifies Week 4 calves preferred-over-cap as cap-aware expansion needed", () => {
+    const diagnostic = buildV2SelectionCapacityPlanDiagnostic(
+      makeCapacityDiagnosticInput(),
+    );
+
+    expect(capacityLane(diagnostic, 4, "lower_a", "calves")).toMatchObject({
+      classification: "cap_aware_expansion_needed",
+      selectedExercise: "Standing Calf Raise",
+      selectedSets: 4,
+      perExerciseCap: 4,
+      weeklyTargetStatus: "within",
+    });
+    expect(capacityLane(diagnostic, 4, "lower_b", "calves")).toMatchObject({
+      classification: "cap_aware_expansion_needed",
+      selectedExercise: "Seated Calf Raise",
+      selectedSets: 4,
+      perExerciseCap: 4,
+      weeklyTargetStatus: "within",
+    });
+  });
+
+  it("classifies optional lanes with target met or no headroom as optional suppressed", () => {
+    const diagnostic = buildV2SelectionCapacityPlanDiagnostic(
+      makeCapacityDiagnosticInput(),
+    );
+
+    expect(
+      capacityLane(diagnostic, 1, "upper_b", "optional_triceps_if_under_target"),
+    ).toMatchObject({
+      classification: "optional_suppressed",
+      optionalEligibility: "suppressed",
+    });
+  });
+
+  it("classifies true below-min plus target-unmet lanes as blockers", () => {
+    const diagnostic = buildV2SelectionCapacityPlanDiagnostic(
+      makeCapacityDiagnosticInput(),
+    );
+
+    expect(capacityLane(diagnostic, 1, "upper_a", "chest_anchor")).toMatchObject({
+      classification: "blocker",
+      selectedSets: 1,
+      weeklyTargetStatus: "below",
+    });
+    expect(diagnostic.summary.blockerCount).toBeGreaterThanOrEqual(1);
   });
 });

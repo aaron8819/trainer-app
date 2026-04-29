@@ -100,6 +100,63 @@ function makeV2SupportLaneProjectionDiagnostic() {
   };
 }
 
+function makeV2SelectionCapacityPlanDiagnostic() {
+  return {
+    version: 1 as const,
+    source: "v2_planner_policy" as const,
+    readOnly: true as const,
+    affectsScoringOrGeneration: false as const,
+    status: "projected_with_limitations" as const,
+    summary: {
+      weeksEvaluated: 1,
+      slotsEvaluated: 1,
+      lanesEvaluated: 1,
+      targetMetNoActionCount: 0,
+      capacityPressureCount: 1,
+      capAwareExpansionNeededCount: 0,
+      optionalSuppressedCount: 0,
+      blockerCount: 0,
+    },
+    weeks: [
+      {
+        week: 1,
+        slots: [
+          {
+            slotId: "upper_a",
+            exerciseCount: 6,
+            maxExerciseCount: 6,
+            setCount: 18,
+            targetSessionSets: { min: 12, preferred: 16, max: 18 },
+            lanes: [
+              {
+                laneId: "row_anchor",
+                classification: "capacity_pressure" as const,
+                selectedExercise: "Chest-Supported Row",
+                selectedSets: 4,
+                setBudget: { min: 3, preferred: 4, max: 4 },
+                perExerciseCap: 5,
+                weeklyTargetStatus: "within" as const,
+                slotHeadroom: 0,
+                setHeadroom: 0,
+                cleanAlternativeCount: null,
+                optionalEligibility: "not_applicable" as const,
+                evidence: ["capacityPressure:upper_pull_distribution"],
+                limitations: [
+                  "slot_at_exercise_capacity_no_clean_additional_headroom",
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    blockers: [],
+    warnings: ["week_1:upper_a:row_anchor:capacity_pressure"],
+    missingInputs: [],
+    safeForBehaviorPromotion: false as const,
+  };
+}
+
 describe("normalizeAuditIntentArg", () => {
   it("normalizes uppercase explicit intents into canonical lower-case session intents", () => {
     expect(normalizeAuditIntentArg("UPPER")).toBe("upper");
@@ -3072,6 +3129,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
               makePlannerOwnedAccumulationProjection(),
             v2SupportLaneProjectionDiagnostic:
               makeV2SupportLaneProjectionDiagnostic(),
+            v2SelectionCapacityPlanDiagnostic:
+              makeV2SelectionCapacityPlanDiagnostic(),
             v2DeloadProjectionDiagnostic: {
               version: 1,
               source: "v2_deload_projection_diagnostic",

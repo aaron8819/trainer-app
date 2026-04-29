@@ -94,6 +94,7 @@ export const V2_PLANNER_NO_REPAIR_DEBUG_CONTAINS = [
   "v2SetDistributionIntent",
   "v2SupportLanePolicy",
   "v2SupportLaneProjectionDiagnostic",
+  "v2SelectionCapacityPlanDiagnostic",
   "plannerOwnedAccumulationProjection",
   "v2ExerciseSelectionPlanDiagnostic",
   "lowAxialHipExtensionLimitation",
@@ -831,6 +832,12 @@ function compactPlannerOnlyNoRepair(
   const v2ExerciseSelectionSummary = asRecord(
     v2ExerciseSelectionPlanDiagnostic?.summary,
   );
+  const v2SelectionCapacityPlanDiagnostic = asRecord(
+    noRepair.v2SelectionCapacityPlanDiagnostic,
+  );
+  const v2SelectionCapacitySummary = asRecord(
+    v2SelectionCapacityPlanDiagnostic?.summary,
+  );
   const lowAxialHipExtensionLimitation = asRecord(
     noRepair.lowAxialHipExtensionLimitation,
   );
@@ -973,6 +980,27 @@ function compactPlannerOnlyNoRepair(
         )
           ? v2ExerciseSelectionPlanDiagnostic.missingInputs.length
           : 0,
+      },
+      selectionCapacityPlanDiagnostic: {
+        status: v2SelectionCapacityPlanDiagnostic?.status ?? "diagnostic_only",
+        readOnly: v2SelectionCapacityPlanDiagnostic?.readOnly === true,
+        affectsScoringOrGeneration:
+          v2SelectionCapacityPlanDiagnostic?.affectsScoringOrGeneration === true
+            ? true
+            : false,
+        summary: v2SelectionCapacitySummary ?? {},
+        blockerCount: Array.isArray(v2SelectionCapacityPlanDiagnostic?.blockers)
+          ? v2SelectionCapacityPlanDiagnostic.blockers.length
+          : 0,
+        warningCount: Array.isArray(v2SelectionCapacityPlanDiagnostic?.warnings)
+          ? v2SelectionCapacityPlanDiagnostic.warnings.length
+          : 0,
+        missingInputCount: Array.isArray(
+          v2SelectionCapacityPlanDiagnostic?.missingInputs,
+        )
+          ? v2SelectionCapacityPlanDiagnostic.missingInputs.length
+          : 0,
+        safeForBehaviorPromotion: false,
       },
       lowAxialHipExtensionLimitation: lowAxialHipExtensionLimitation
         ? {

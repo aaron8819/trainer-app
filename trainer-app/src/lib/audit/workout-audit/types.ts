@@ -17,6 +17,7 @@ import type { PlannerOnlyPolicyOverride } from "@/lib/api/planner-only-policy-ov
 import type {
   PlannerOwnedAccumulationProjection,
   V2ExerciseSelectionPlanDiagnostic,
+  V2SelectionCapacityPlanDiagnostic,
   V2SupportLaneProjectionDiagnostic,
 } from "@/lib/api/planning-reality";
 import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection.diagnostics";
@@ -1434,6 +1435,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
   v2SetDistributionIntent: V2SetDistributionIntent;
   v2SupportLanePolicy?: V2SupportLanePolicy;
   v2SupportLaneProjectionDiagnostic: V2SupportLaneProjectionDiagnostic;
+  v2SelectionCapacityPlanDiagnostic: V2SelectionCapacityPlanDiagnostic;
   plannerOwnedAccumulationProjection: PlannerOwnedAccumulationProjection;
   v2ExerciseSelectionPlanDiagnostic: V2ExerciseSelectionPlanDiagnostic;
   lowAxialHipExtensionLimitation: {
@@ -1592,6 +1594,7 @@ export type MesocycleExplainPlannerOnlyNoRepairDebugArtifact = {
     | "v2SetDistributionIntent"
     | "v2SupportLanePolicy"
     | "v2SupportLaneProjectionDiagnostic"
+    | "v2SelectionCapacityPlanDiagnostic"
     | "plannerOwnedAccumulationProjection"
     | "v2ExerciseSelectionPlanDiagnostic"
     | "lowAxialHipExtensionLimitation"

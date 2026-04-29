@@ -76,6 +76,10 @@ export {
   buildV2SupportLaneProjectionDiagnostic,
   type V2SupportLaneProjectionDiagnostic,
 } from "./support-lane-projection-diagnostic";
+export {
+  buildV2SelectionCapacityPlanDiagnostic,
+  type V2SelectionCapacityPlanDiagnostic,
+} from "./selection-capacity-plan-diagnostic";
 function classifyPlanningShape(input: {
   weeklyMuscleDemand: WeeklyMuscleDemandDiagnostic[];
   slotDemandAllocation: SlotDemandAllocationDiagnostic[];

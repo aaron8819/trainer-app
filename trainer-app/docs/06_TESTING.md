@@ -23,6 +23,7 @@ Sources of truth:
 
 ## Commands
 - `npm test`: full Vitest run
+- `npm run lint`: ESLint with cache at `.eslintcache`; generated/local-only outputs such as `artifacts/`, `.tmp/`, `.vercel/`, `output/`, `playwright-report/`, and `test-results/` are ignored by ESLint
 - `npm run test:ui-audit`: Playwright core-route UI audit plus lightweight fixture-backed interaction checks against mobile and desktop projects
 - `npm run test:ui-audit:update`: update Playwright baseline screenshots after an intentional visual/UI baseline change
 - `npm run test:watch`: watch mode

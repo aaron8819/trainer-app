@@ -16,6 +16,13 @@ const eslintConfig = defineConfig([
     "coverage/**",
     "storybook-static/**",
     ".claude/**",
+    "artifacts/**",
+    ".tmp/**",
+    ".vercel/**",
+    "output/**",
+    "playwright-report/**",
+    "test-results/**",
+    ".eslintcache",
   ]),
 ]);
 

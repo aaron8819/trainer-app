@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { exampleExerciseLibrary, exampleGoals, exampleUser } from "../engine/sample-data";
 import * as selectionV2 from "@/lib/engine/selection-v2";
 import type { Exercise } from "@/lib/engine/types";
-import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
+import { getEffectiveStimulusByMuscle, toMuscleId } from "@/lib/engine/stimulus";
 
 const mesocycleRoleFindManyMock = vi.fn();
 vi.mock("@/lib/db/prisma", () => ({
@@ -74,6 +74,26 @@ vi.mock("@/lib/api/mesocycle-lifecycle", async (importOriginal) => {
 
 import { generateSessionFromIntent } from "./template-session";
 
+function buildTestStimulusProfile(
+  primaryMuscles: string[],
+  secondaryMuscles: string[]
+): Exercise["stimulusProfile"] {
+  const profile = new Map<string, number>();
+  for (const muscle of primaryMuscles) {
+    const muscleId = toMuscleId(muscle);
+    if (muscleId) {
+      profile.set(muscleId, 1);
+    }
+  }
+  for (const muscle of secondaryMuscles) {
+    const muscleId = toMuscleId(muscle);
+    if (muscleId && !profile.has(muscleId)) {
+      profile.set(muscleId, 0.3);
+    }
+  }
+  return Object.fromEntries(profile) as Exercise["stimulusProfile"];
+}
+
 function makeCustomExercise(input: {
   id: string;
   name: string;
@@ -101,7 +121,9 @@ function makeCustomExercise(input: {
     equipment: input.equipment ?? ["machine"],
     primaryMuscles: input.primaryMuscles,
     secondaryMuscles: input.secondaryMuscles ?? [],
-    stimulusProfile: input.stimulusProfile,
+    stimulusProfile:
+      input.stimulusProfile ??
+      buildTestStimulusProfile(input.primaryMuscles, input.secondaryMuscles ?? []),
     sfrScore: input.sfrScore ?? 4,
     lengthPositionScore: input.lengthPositionScore ?? 3,
   };
@@ -1939,6 +1961,10 @@ describe("generateSessionFromIntent", () => {
         equipment: ["machine"],
         primaryMuscles: ["Upper Back"],
         secondaryMuscles: ["Biceps"],
+        stimulusProfile: {
+          upper_back: 1,
+          biceps: 0.3,
+        },
         sfrScore: 4,
         lengthPositionScore: 3,
       },
@@ -1954,6 +1980,11 @@ describe("generateSessionFromIntent", () => {
         equipment: ["dumbbell"],
         primaryMuscles: ["Chest"],
         secondaryMuscles: ["Front Delts", "Triceps"],
+        stimulusProfile: {
+          chest: 1,
+          front_delts: 0.3,
+          triceps: 0.3,
+        },
         sfrScore: 4,
         lengthPositionScore: 4,
       },
@@ -3093,6 +3124,10 @@ describe("generateSessionFromIntent", () => {
         equipment: ["machine"],
         primaryMuscles: ["Hamstrings"],
         secondaryMuscles: ["Glutes"],
+        stimulusProfile: {
+          hamstrings: 1,
+          glutes: 0.3,
+        },
         sfrScore: 4,
         lengthPositionScore: 3,
       },

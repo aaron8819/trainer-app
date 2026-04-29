@@ -70,6 +70,9 @@ describe("candidate evidence guardrails", () => {
       equipment: ["cable"],
       primaryMuscles: ["Triceps"],
       secondaryMuscles: [],
+      stimulusProfile: {
+        triceps: 1,
+      },
     };
 
     const proposedSets = computeProposedSets(exercise, buildObjective());
@@ -107,6 +110,9 @@ describe("candidate evidence guardrails", () => {
       equipment: ["cable"],
       primaryMuscles: ["Triceps"],
       secondaryMuscles: [],
+      stimulusProfile: {
+        triceps: 1,
+      },
     };
     const objective = buildObjective({
       slotPolicy: {

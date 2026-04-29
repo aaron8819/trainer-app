@@ -27,6 +27,9 @@
 .DS_Store
 *.pem
 /artifacts/
+/.tmp/
+/output/
+.eslintcache
 
 # debug
 npm-debug.log*

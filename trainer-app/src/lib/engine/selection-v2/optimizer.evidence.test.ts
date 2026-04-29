@@ -89,6 +89,9 @@ describe("selection optimizer evidence guardrails", () => {
         equipment: ["barbell"],
         primaryMuscles: ["Triceps"],
         secondaryMuscles: [],
+        stimulusProfile: {
+          triceps: 1,
+        },
       },
       {
         id: "oh-tri-ext",
@@ -152,6 +155,11 @@ describe("selection optimizer evidence guardrails", () => {
         equipment: ["barbell"],
         primaryMuscles: ["Front Delts", "Chest"],
         secondaryMuscles: ["Triceps"],
+        stimulusProfile: {
+          front_delts: 1,
+          chest: 1,
+          triceps: 0.3,
+        },
       },
       {
         id: "lateral",

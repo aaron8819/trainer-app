@@ -6,11 +6,14 @@ import {
 import { buildV2PlannerMesocyclePolicy } from "../mesocycle-policy";
 import { buildV2MaterializationDryRunReport } from "./dry-run-report";
 import { buildV2ExerciseMaterializationPlan } from "./materializer";
+import { buildV2MaterializationPromotionReadiness } from "./promotion-readiness";
 import { DEFAULT_V2_EXERCISE_CLASS_TAXONOMY } from "./taxonomy";
 import type { V2ExerciseSelectionPlan } from "../types";
 import type {
   V2ExerciseClassTaxonomy,
   V2ExerciseMaterializationPlan,
+  V2MaterializationProductionWriteGates,
+  V2MaterializationRequiredLaneCoverage,
   V2MaterializationExercise,
 } from "./types";
 
@@ -152,6 +155,32 @@ function makeMaterializedPlan(
     ...overrides,
   };
 }
+
+function plannerPolicyWithEmptySelectionPlan() {
+  return {
+    ...buildV2PlannerMesocyclePolicy(),
+    exerciseSelectionPlan: plan([]),
+  };
+}
+
+const allProductionWriteGatesDesigned: V2MaterializationProductionWriteGates = {
+  acceptancePathDesigned: true,
+  slotPlanSeedJsonWriteGateDesigned: true,
+  receiptContractDesigned: true,
+  runtimeReplayContractVerified: true,
+  auditSerializationContractDesigned: true,
+  rollbackStrategyDefined: true,
+};
+
+const fullRequiredLaneCoverage: V2MaterializationRequiredLaneCoverage[] = [
+  {
+    slotId: "upper_a",
+    requiredLaneCount: 2,
+    materializedRequiredLaneCount: 2,
+    blockedRequiredLaneCount: 0,
+    missingRequiredLaneIds: [],
+  },
+];
 
 const fixtureInventory = [
   exercise({
@@ -1115,5 +1144,288 @@ describe("buildV2ExerciseMaterializationPlan", () => {
         "seed_shape_compatibility",
       ]),
     );
+  });
+
+  it("keeps a materialized seed-compatible dry run blocked until production write gates are explicit", () => {
+    const report = buildV2MaterializationDryRunReport({
+      plannerPolicy: plannerPolicyWithEmptySelectionPlan(),
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      inventory: fixtureInventory,
+      materializedPlan: makeMaterializedPlan(),
+    });
+    const readiness = buildV2MaterializationPromotionReadiness({
+      dryRunReport: report,
+      requiredLaneCoverageBySlot: fullRequiredLaneCoverage,
+      expectedSlotCount: 1,
+    });
+
+    expect(readiness).toMatchObject({
+      version: 1,
+      source: "v2_materialization_promotion_readiness",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "not_ready",
+      safeToPromoteToProductionWrite: false,
+      requiredMaterialization: {
+        status: "passed",
+        requiredLaneCoveragePassed: true,
+        materializerStatus: "materialized",
+        requiredBlockerCount: 0,
+      },
+      seedShape: {
+        compatible: true,
+        slotCountMatches: true,
+        noDuplicateExerciseIdsWithinSlot: true,
+        rolesValid: true,
+        setCountsValid: true,
+        namesAvailable: true,
+      },
+      productionWriteGates: {
+        acceptancePathDesigned: false,
+        slotPlanSeedJsonWriteGateDesigned: false,
+        receiptContractDesigned: false,
+        runtimeReplayContractVerified: false,
+        auditSerializationContractDesigned: false,
+        rollbackStrategyDefined: false,
+      },
+    });
+    expect(readiness.blockers.map((blocker) => blocker.category)).toEqual([
+      "production_write_gate",
+      "production_write_gate",
+      "receipt_contract",
+      "runtime_replay",
+      "audit_contract",
+      "rollback",
+    ]);
+  });
+
+  it("allows optional omissions without blocking guarded-write eligibility by themselves", () => {
+    const report = buildV2MaterializationDryRunReport({
+      plannerPolicy: plannerPolicyWithEmptySelectionPlan(),
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      inventory: fixtureInventory,
+      materializedPlan: makeMaterializedPlan({
+        omissions: [
+          {
+            slotId: "upper_a",
+            laneId: "optional_biceps",
+            reason: "optional_not_activated",
+          },
+        ],
+      }),
+    });
+    const readiness = buildV2MaterializationPromotionReadiness({
+      dryRunReport: report,
+      requiredLaneCoverageBySlot: fullRequiredLaneCoverage,
+      expectedSlotCount: 1,
+      productionWriteGates: allProductionWriteGatesDesigned,
+    });
+
+    expect(readiness.status).toBe("eligible_for_guarded_write");
+    expect(readiness.safeToPromoteToProductionWrite).toBe(true);
+    expect(readiness.optionalOmissions).toEqual({
+      count: 1,
+      affectsPromotion: false,
+      reasons: ["optional_not_activated"],
+    });
+    expect(readiness.nonBlockingOmissions).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "optional_biceps",
+        reason: "optional_not_activated",
+      },
+    ]);
+    expect(readiness.blockers).toEqual([]);
+  });
+
+  it("blocks promotion on required lane coverage failures", () => {
+    const report = buildV2MaterializationDryRunReport({
+      plannerPolicy: plannerPolicyWithEmptySelectionPlan(),
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      inventory: fixtureInventory,
+      materializedPlan: makeMaterializedPlan(),
+    });
+    const readiness = buildV2MaterializationPromotionReadiness({
+      dryRunReport: report,
+      requiredLaneCoverageBySlot: [
+        {
+          slotId: "upper_a",
+          requiredLaneCount: 2,
+          materializedRequiredLaneCount: 1,
+          blockedRequiredLaneCount: 1,
+          missingRequiredLaneIds: ["row_anchor"],
+        },
+      ],
+      expectedSlotCount: 1,
+      productionWriteGates: allProductionWriteGatesDesigned,
+    });
+
+    expect(readiness.status).toBe("blocked");
+    expect(readiness.requiredMaterialization).toMatchObject({
+      status: "blocked",
+      requiredLaneCoveragePassed: false,
+      requiredBlockerCount: 2,
+    });
+    expect(readiness.blockers).toEqual(
+      expect.arrayContaining([
+        {
+          category: "required_materialization",
+          reason: "upper_a:required_lane_coverage_incomplete",
+        },
+        {
+          category: "required_materialization",
+          reason: "upper_a:row_anchor:required_lane_not_materialized",
+        },
+      ]),
+    );
+  });
+
+  it("separates seed-shape incompatibility from required materialization blockers", () => {
+    const report = buildV2MaterializationDryRunReport({
+      plannerPolicy: plannerPolicyWithEmptySelectionPlan(),
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      inventory: fixtureInventory,
+      materializedPlan: makeMaterializedPlan({
+        slots: [
+          {
+            slotId: "upper_a",
+            exercises: [
+              {
+                exerciseId: "bench",
+                role: "CORE_COMPOUND",
+                setCount: 0,
+                laneIds: ["chest_anchor"],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const readiness = buildV2MaterializationPromotionReadiness({
+      dryRunReport: report,
+      requiredLaneCoverageBySlot: fullRequiredLaneCoverage,
+      expectedSlotCount: 1,
+      productionWriteGates: allProductionWriteGatesDesigned,
+    });
+
+    expect(readiness.status).toBe("blocked");
+    expect(readiness.requiredMaterialization.requiredBlockerCount).toBe(0);
+    expect(readiness.seedShape).toMatchObject({
+      compatible: false,
+      setCountsValid: false,
+    });
+    expect(readiness.blockers).toContainEqual({
+      category: "seed_shape",
+      reason: "invalid_seed_set_count",
+    });
+  });
+
+  it("blocks duplicate exercise IDs within a slot as seed shape, not materialization policy", () => {
+    const report = buildV2MaterializationDryRunReport({
+      plannerPolicy: plannerPolicyWithEmptySelectionPlan(),
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      inventory: fixtureInventory,
+      materializedPlan: makeMaterializedPlan({
+        slots: [
+          {
+            slotId: "upper_a",
+            exercises: [
+              {
+                exerciseId: "bench",
+                role: "CORE_COMPOUND",
+                setCount: 4,
+                laneIds: ["chest_anchor"],
+              },
+              {
+                exerciseId: "bench",
+                role: "ACCESSORY",
+                setCount: 3,
+                laneIds: ["secondary_chest"],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const readiness = buildV2MaterializationPromotionReadiness({
+      dryRunReport: report,
+      requiredLaneCoverageBySlot: fullRequiredLaneCoverage,
+      expectedSlotCount: 1,
+      productionWriteGates: allProductionWriteGatesDesigned,
+    });
+
+    expect(readiness.status).toBe("blocked");
+    expect(readiness.seedShape.noDuplicateExerciseIdsWithinSlot).toBe(false);
+    expect(readiness.blockers).toContainEqual({
+      category: "seed_shape",
+      reason: "duplicate_exercise_id_within_slot",
+    });
+  });
+
+  it("blocks missing names only when the seed serializer contract requires them", () => {
+    const report = buildV2MaterializationDryRunReport({
+      plannerPolicy: plannerPolicyWithEmptySelectionPlan(),
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      inventory: fixtureInventory,
+      materializedPlan: makeMaterializedPlan({
+        slots: [
+          {
+            slotId: "upper_a",
+            exercises: [
+              {
+                exerciseId: "not-in-inventory",
+                role: "CORE_COMPOUND",
+                setCount: 4,
+                laneIds: ["chest_anchor"],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    const requiredNames = buildV2MaterializationPromotionReadiness({
+      dryRunReport: report,
+      requiredLaneCoverageBySlot: fullRequiredLaneCoverage,
+      expectedSlotCount: 1,
+      productionWriteGates: allProductionWriteGatesDesigned,
+    });
+    const namesNotRequired = buildV2MaterializationPromotionReadiness({
+      dryRunReport: report,
+      requiredLaneCoverageBySlot: fullRequiredLaneCoverage,
+      expectedSlotCount: 1,
+      seedSerializerRequiresExerciseNames: false,
+      productionWriteGates: allProductionWriteGatesDesigned,
+    });
+
+    expect(requiredNames.status).toBe("blocked");
+    expect(requiredNames.seedShape.namesAvailable).toBe(false);
+    expect(requiredNames.blockers).toContainEqual({
+      category: "seed_shape",
+      reason: "missing_exercise_name",
+    });
+    expect(namesNotRequired.status).toBe("eligible_for_guarded_write");
+    expect(namesNotRequired.seedShape.namesAvailable).toBe(true);
+    expect(namesNotRequired.blockers).toEqual([]);
+  });
+
+  it("does not allow accidental eligibility without explicit lane coverage evidence", () => {
+    const report = buildV2MaterializationDryRunReport({
+      plannerPolicy: plannerPolicyWithEmptySelectionPlan(),
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      inventory: fixtureInventory,
+      materializedPlan: makeMaterializedPlan(),
+    });
+    const readiness = buildV2MaterializationPromotionReadiness({
+      dryRunReport: report,
+      expectedSlotCount: 1,
+      productionWriteGates: allProductionWriteGatesDesigned,
+    });
+
+    expect(readiness.status).toBe("blocked");
+    expect(readiness.safeToPromoteToProductionWrite).toBe(false);
+    expect(readiness.blockers).toContainEqual({
+      category: "required_materialization",
+      reason: "required_lane_coverage_evidence_missing",
+    });
   });
 });

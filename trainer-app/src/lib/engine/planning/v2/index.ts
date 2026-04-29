@@ -3,6 +3,7 @@ export { buildV2AcceptedPlannerIntentDto } from "./accepted-planner-intent-dto";
 export { buildV2ExerciseClassDistributionBySlot } from "./exercise-class-distribution";
 export { buildV2ExerciseSelectionPlan } from "./exercise-selection-plan";
 export { buildV2MaterializationDryRunReport } from "./materialization/dry-run-report";
+export { buildV2MaterializationPromotionReadiness } from "./materialization/promotion-readiness";
 export { buildV2ExerciseMaterializationPlan } from "./materialization/materializer";
 export { buildV2MesocycleDemand } from "./mesocycle-demand";
 export { buildV2PlannerMesocyclePolicy } from "./mesocycle-policy";
@@ -62,6 +63,14 @@ export type {
   V2ExerciseClassTaxonomy,
   V2ExerciseMaterializationInput,
   V2ExerciseMaterializationPlan,
+  V2MaterializationProductionWriteGates,
+  V2MaterializationPromotionBlocker,
+  V2MaterializationPromotionBlockerCategory,
+  V2MaterializationPromotionOmission,
+  V2MaterializationPromotionReadiness,
+  V2MaterializationPromotionReadinessInput,
+  V2MaterializationPromotionReadinessStatus,
+  V2MaterializationRequiredLaneCoverage,
   V2MaterializationDryRunReport,
   V2MaterializationDryRunReportInput,
   V2MaterializationDryRunReportPreviewSlot,

@@ -162,6 +162,87 @@ export type V2MaterializationDryRunReport = {
   };
 };
 
+export type V2MaterializationPromotionReadinessStatus =
+  | "not_ready"
+  | "eligible_for_guarded_write"
+  | "blocked";
+
+export type V2MaterializationProductionWriteGates = {
+  acceptancePathDesigned: boolean;
+  slotPlanSeedJsonWriteGateDesigned: boolean;
+  receiptContractDesigned: boolean;
+  runtimeReplayContractVerified: boolean;
+  auditSerializationContractDesigned: boolean;
+  rollbackStrategyDefined: boolean;
+};
+
+export type V2MaterializationPromotionBlockerCategory =
+  | "required_materialization"
+  | "seed_shape"
+  | "production_write_gate"
+  | "runtime_replay"
+  | "receipt_contract"
+  | "audit_contract"
+  | "rollback";
+
+export type V2MaterializationPromotionBlocker = {
+  category: V2MaterializationPromotionBlockerCategory;
+  reason: string;
+};
+
+export type V2MaterializationPromotionOmission = {
+  slotId?: string;
+  laneId?: string;
+  reason: string;
+};
+
+export type V2MaterializationRequiredLaneCoverage = {
+  slotId: string;
+  requiredLaneCount: number;
+  materializedRequiredLaneCount: number;
+  blockedRequiredLaneCount: number;
+  missingRequiredLaneIds: string[];
+};
+
+export type V2MaterializationPromotionReadiness = {
+  version: 1;
+  source: "v2_materialization_promotion_readiness";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  status: V2MaterializationPromotionReadinessStatus;
+  safeToPromoteToProductionWrite: boolean;
+  requiredMaterialization: {
+    status: "passed" | "blocked";
+    requiredLaneCoveragePassed: boolean;
+    materializerStatus: "materialized" | "blocked" | "partial";
+    requiredBlockerCount: number;
+  };
+  optionalOmissions: {
+    count: number;
+    affectsPromotion: boolean;
+    reasons: string[];
+  };
+  seedShape: {
+    compatible: boolean;
+    slotCountMatches: boolean;
+    noDuplicateExerciseIdsWithinSlot: boolean;
+    rolesValid: boolean;
+    setCountsValid: boolean;
+    namesAvailable: boolean;
+  };
+  productionWriteGates: V2MaterializationProductionWriteGates;
+  blockers: V2MaterializationPromotionBlocker[];
+  nonBlockingOmissions: V2MaterializationPromotionOmission[];
+};
+
+export type V2MaterializationPromotionReadinessInput = {
+  dryRunReport: V2MaterializationDryRunReport;
+  requiredLaneCoverageBySlot?: V2MaterializationRequiredLaneCoverage[];
+  expectedSlotCount?: number;
+  seedSerializerRequiresExerciseNames?: boolean;
+  productionWriteGates?: Partial<V2MaterializationProductionWriteGates>;
+};
+
 export type V2MaterializationDryRunReportInput = {
   plannerPolicy?: V2PlannerMesocyclePolicy | null;
   exerciseSelectionPlan?: V2ExerciseSelectionPlan | null;

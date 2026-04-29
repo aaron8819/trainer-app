@@ -36,6 +36,7 @@
 | 2026-04-29 | self | Reintroduced the Windows wildcard-path `rg` mistake while trying to search `trainer-app\src\lib\api\*.test.ts`. | Use `rg <pattern> <directory> -g "*.test.ts"` for PowerShell searches; do not pass wildcard paths directly. |
 | 2026-04-29 | self | Expected the full V2 dry-run harness to have `unsupportedClassCount=0`, but current policy intentionally surfaces optional unsupported class omissions while still producing a compatible required-lane preview. | For dry-run readiness tests, distinguish required blockers from optional unsupported omissions; assert compatibility/materializer status separately from the total unsupported-class count. |
 | 2026-04-29 | self | Inline `tsx` could not named-import the new TS debug harness from stdin and exposed only `default` / `module.exports`. | For ad hoc `tsx` stdin probes against this repo's TS modules, import the module default and destructure exports when named ESM imports fail. |
+| 2026-04-29 | self | Promotion-readiness tests initially supplied an isolated `exerciseSelectionPlan` and missed that the dry-run report treats missing full planner policy as a promotion blocker. | For V2 promotion contract fixtures, include planner-policy evidence explicitly when the scenario is meant to isolate write gates or seed-shape behavior. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

@@ -11,6 +11,16 @@ const liveContextDryRunHarness = path.join(
   "workout-audit",
   "v2-materialization-live-context-dry-run.ts",
 );
+const promotionReadinessContract = path.join(
+  process.cwd(),
+  "src",
+  "lib",
+  "engine",
+  "planning",
+  "v2",
+  "materialization",
+  "promotion-readiness.ts",
+);
 
 const forbiddenImportFragments = [
   "@/lib/audit/",
@@ -164,7 +174,20 @@ describe("V2 planner policy module boundary", () => {
     expect(exportedText).toContain("V2ExerciseSelectionPlan");
     expect(exportedText).toContain("V2ExerciseMaterializationPlan");
     expect(exportedText).toContain("V2MaterializationDryRunReport");
+    expect(exportedText).toContain("V2MaterializationPromotionReadiness");
     expect(exportedText).toContain("V2AcceptedPlannerIntentDto");
+  });
+
+  it("keeps promotion-readiness contract free of production write, receipt, UI, runtime, repair, and audit imports", () => {
+    const text = fs.readFileSync(promotionReadinessContract, "utf8");
+    const forbiddenImportPattern =
+      /from\s+["'][^"']*(db|prisma|app\/api|api\/template-session|slot-plan-seed|runtime|receipt|ui|repair|audit|workout-audit|serializer|artifact-serialization)[^"']*["']/;
+    const violations = text
+      .split(/\r?\n/)
+      .filter((line) => forbiddenImportPattern.test(line))
+      .map((line) => `promotion-readiness has forbidden import ${line.trim()}`);
+
+    expect(violations).toEqual([]);
   });
 
   it("does not introduce acceptedPlannerIntent persistence in pure policy modules", () => {

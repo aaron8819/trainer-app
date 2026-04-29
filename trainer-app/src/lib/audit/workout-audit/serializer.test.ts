@@ -1431,6 +1431,13 @@ describe("buildWorkoutAuditArtifact", () => {
       identityBasis: "week_1_selected_identities",
       safeForBehaviorPromotion: false,
     });
+    expect(fullNoRepair?.lowAxialHipExtensionLimitation).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "acceptable_with_limitations",
+      trueHingeExposureCount: 0,
+      safeForBehaviorPromotion: false,
+    });
     expect(fullNoRepair?.v2DeloadProjectionDiagnostic).toMatchObject({
       readOnly: true,
       affectsScoringOrGeneration: false,
@@ -1463,6 +1470,18 @@ describe("buildWorkoutAuditArtifact", () => {
             preservedIdentityCount: 0,
             missingCandidateCount: 1,
           }),
+        },
+        lowAxialHipExtensionLimitation: {
+          status: "acceptable_with_limitations",
+          trueHingeExposureCount: 0,
+          lowAxialHipExtensionAnchorCount: 1,
+          hamstringContribution: expect.objectContaining({
+            curlEffectiveSets: 2,
+            hipExtensionEffectiveSets: 1.1,
+            weeklyCurlEffectiveSets: 4,
+            weeklyHipExtensionEffectiveSets: 2.3,
+          }),
+          safeForBehaviorPromotion: false,
         },
         deloadProjectionDiagnostic: {
           status: "projected_with_limitations",
@@ -1789,6 +1808,15 @@ describe("buildWorkoutAuditArtifact", () => {
               ]),
             }),
           ]),
+        }),
+        lowAxialHipExtensionLimitation: expect.objectContaining({
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          status: "acceptable_with_limitations",
+          trueHingeExposureCount: 0,
+          limitationText: expect.stringContaining(
+            "not equivalent to hinge_compound",
+          ),
         }),
         v2DeloadProjectionDiagnostic: expect.objectContaining({
           readOnly: true,
@@ -2311,6 +2339,76 @@ function makeMesocycleExplainNoRepairPayload() {
       v2DeloadProjectionDiagnostic: makeV2DeloadProjectionDiagnostic(),
       v2ExerciseSelectionPlanDiagnostic:
         makeV2ExerciseSelectionPlanDiagnostic(),
+      lowAxialHipExtensionLimitation: {
+        version: 1,
+        source: "v2_planner_no_repair_diagnostic",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        slotId: "lower_b",
+        status: "acceptable_with_limitations",
+        limitationText:
+          "Low-axial hip extension is glute-biased, has lower hamstring-per-set than true hinge compounds, and is not equivalent to hinge_compound; it is acceptable only when the Lower B knee_flexion_curl direct floor and weekly Hamstrings target are met and lower-back/axial fatigue management favors low-axial work.",
+        acceptanceCriteria: {
+          lowerBKneeFlexionCurlDirectFloor: {
+            status: "met",
+            directSets: 2,
+            floor: 2,
+          },
+          weeklyHamstringsTarget: {
+            status: "met",
+            projectedEffectiveSets: 6.3,
+            targetMin: 6,
+            targetPreferred: 6,
+          },
+          axialFatigueManagement: {
+            status: "favors_low_axial",
+            evidence: ["low_axial_lower_back_effective_sets:0"],
+          },
+        },
+        hamstringContribution: {
+          lowerBEffectiveSets: 3.1,
+          weeklyEffectiveSets: 6.3,
+          curlEffectiveSets: 2,
+          hipExtensionEffectiveSets: 1.1,
+          trueHingeEffectiveSets: 0,
+          otherEffectiveSets: 0,
+          curlShareOfLowerBPercent: 64.5,
+          hipExtensionShareOfLowerBPercent: 35.5,
+          trueHingeShareOfLowerBPercent: 0,
+          weeklyCurlEffectiveSets: 4,
+          weeklyHipExtensionEffectiveSets: 2.3,
+          weeklyTrueHingeEffectiveSets: 0,
+          weeklyOtherEffectiveSets: 0,
+          curlShareOfWeeklyPercent: 63.5,
+          hipExtensionShareOfWeeklyPercent: 36.5,
+          trueHingeShareOfWeeklyPercent: 0,
+        },
+        trueHingeExposureCount: 0,
+        lowAxialHipExtensionAnchorCount: 1,
+        lowAxialExercises: [
+          {
+            exerciseName: "Glute Bridge",
+            sets: 3,
+            hamstringsEffectiveSets: 1.1,
+            glutesEffectiveSets: 3,
+            lowerBackEffectiveSets: 0,
+          },
+        ],
+        expansionGuidance: [
+          "weeks_3_to_4_guidance:prefer_curl_expansion_first_if_hamstrings_need_more",
+          "weeks_3_to_4_guidance:consider_true_hinge_exposure_only_if_curl_capacity_monotony_or_hamstring_target_pressure_demands_it_and_fatigue_budget_allows",
+          "weeks_3_to_4_guidance:do_not_add_glute_bridge_sets_for_hamstring_delivery_alone",
+        ],
+        evidence: [
+          "true_hinge_exposure_count:0",
+          "curl_share_of_lower_b_hamstrings:64.5%",
+        ],
+        limitations: [
+          "low_axial_hip_extension_anchor_is_not_equivalent_to_hinge_compound",
+          "valid_only_when_curl_floor_and_weekly_hamstrings_target_are_met",
+        ],
+        safeForBehaviorPromotion: false,
+      },
       slotPlans: [
         {
           slotId: "upper_a",

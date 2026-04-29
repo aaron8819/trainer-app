@@ -1429,6 +1429,70 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
   v2SupportLaneProjectionDiagnostic: V2SupportLaneProjectionDiagnostic;
   plannerOwnedAccumulationProjection: PlannerOwnedAccumulationProjection;
   v2ExerciseSelectionPlanDiagnostic: V2ExerciseSelectionPlanDiagnostic;
+  lowAxialHipExtensionLimitation: {
+    version: 1;
+    source: "v2_planner_no_repair_diagnostic";
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    slotId: "lower_b";
+    status:
+      | "acceptable_with_limitations"
+      | "not_acceptable"
+      | "not_present"
+      | "not_evaluated";
+    limitationText: string;
+    acceptanceCriteria: {
+      lowerBKneeFlexionCurlDirectFloor: {
+        status: "met" | "below" | "not_evaluated";
+        directSets: number;
+        floor: number | null;
+      };
+      weeklyHamstringsTarget: {
+        status: "met" | "below" | "unknown";
+        projectedEffectiveSets: number | null;
+        targetMin: number | null;
+        targetPreferred: number | null;
+      };
+      axialFatigueManagement: {
+        status:
+          | "favors_low_axial"
+          | "not_indicated"
+          | "not_evaluated";
+        evidence: string[];
+      };
+    };
+    hamstringContribution: {
+      lowerBEffectiveSets: number;
+      weeklyEffectiveSets: number | null;
+      curlEffectiveSets: number;
+      hipExtensionEffectiveSets: number;
+      trueHingeEffectiveSets: number;
+      otherEffectiveSets: number;
+      curlShareOfLowerBPercent: number | null;
+      hipExtensionShareOfLowerBPercent: number | null;
+      trueHingeShareOfLowerBPercent: number | null;
+      weeklyCurlEffectiveSets: number;
+      weeklyHipExtensionEffectiveSets: number;
+      weeklyTrueHingeEffectiveSets: number;
+      weeklyOtherEffectiveSets: number;
+      curlShareOfWeeklyPercent: number | null;
+      hipExtensionShareOfWeeklyPercent: number | null;
+      trueHingeShareOfWeeklyPercent: number | null;
+    };
+    trueHingeExposureCount: number;
+    lowAxialHipExtensionAnchorCount: number;
+    lowAxialExercises: Array<{
+      exerciseName: string;
+      sets: number;
+      hamstringsEffectiveSets: number;
+      glutesEffectiveSets: number;
+      lowerBackEffectiveSets: number;
+    }>;
+    expansionGuidance: string[];
+    evidence: string[];
+    limitations: string[];
+    safeForBehaviorPromotion: false;
+  };
   slotPlans: Array<{
     slotId: string;
     exercises: Array<{
@@ -1523,6 +1587,7 @@ export type MesocycleExplainPlannerOnlyNoRepairDebugArtifact = {
     | "v2SupportLaneProjectionDiagnostic"
     | "plannerOwnedAccumulationProjection"
     | "v2ExerciseSelectionPlanDiagnostic"
+    | "lowAxialHipExtensionLimitation"
     | "v2TargetVsNoRepairDiff"
     | "slotPlans"
     | "weeklyMuscleTotals"

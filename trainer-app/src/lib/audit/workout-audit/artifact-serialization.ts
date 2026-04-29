@@ -96,6 +96,7 @@ export const V2_PLANNER_NO_REPAIR_DEBUG_CONTAINS = [
   "v2SupportLaneProjectionDiagnostic",
   "plannerOwnedAccumulationProjection",
   "v2ExerciseSelectionPlanDiagnostic",
+  "lowAxialHipExtensionLimitation",
   "v2TargetVsNoRepairDiff",
   "slotPlans",
   "weeklyMuscleTotals",
@@ -830,6 +831,15 @@ function compactPlannerOnlyNoRepair(
   const v2ExerciseSelectionSummary = asRecord(
     v2ExerciseSelectionPlanDiagnostic?.summary,
   );
+  const lowAxialHipExtensionLimitation = asRecord(
+    noRepair.lowAxialHipExtensionLimitation,
+  );
+  const lowAxialContribution = asRecord(
+    lowAxialHipExtensionLimitation?.hamstringContribution,
+  );
+  const lowAxialCriteria = asRecord(
+    lowAxialHipExtensionLimitation?.acceptanceCriteria,
+  );
   const v2DeloadProjectionDiagnostic = asRecord(
     noRepair.v2DeloadProjectionDiagnostic,
   );
@@ -964,6 +974,52 @@ function compactPlannerOnlyNoRepair(
           ? v2ExerciseSelectionPlanDiagnostic.missingInputs.length
           : 0,
       },
+      lowAxialHipExtensionLimitation: lowAxialHipExtensionLimitation
+        ? {
+            status:
+              lowAxialHipExtensionLimitation.status ?? "not_evaluated",
+            slotId: lowAxialHipExtensionLimitation.slotId ?? "lower_b",
+            trueHingeExposureCount:
+              lowAxialHipExtensionLimitation.trueHingeExposureCount ?? 0,
+            lowAxialHipExtensionAnchorCount:
+              lowAxialHipExtensionLimitation.lowAxialHipExtensionAnchorCount ??
+              0,
+            hamstringContribution: {
+              curlEffectiveSets:
+                lowAxialContribution?.curlEffectiveSets ?? 0,
+              hipExtensionEffectiveSets:
+                lowAxialContribution?.hipExtensionEffectiveSets ?? 0,
+              trueHingeEffectiveSets:
+                lowAxialContribution?.trueHingeEffectiveSets ?? 0,
+              lowerBEffectiveSets:
+                lowAxialContribution?.lowerBEffectiveSets ?? 0,
+              weeklyCurlEffectiveSets:
+                lowAxialContribution?.weeklyCurlEffectiveSets ?? 0,
+              weeklyHipExtensionEffectiveSets:
+                lowAxialContribution?.weeklyHipExtensionEffectiveSets ?? 0,
+              curlShareOfWeeklyPercent:
+                lowAxialContribution?.curlShareOfWeeklyPercent ?? null,
+              hipExtensionShareOfWeeklyPercent:
+                lowAxialContribution?.hipExtensionShareOfWeeklyPercent ?? null,
+              curlShareOfLowerBPercent:
+                lowAxialContribution?.curlShareOfLowerBPercent ?? null,
+              hipExtensionShareOfLowerBPercent:
+                lowAxialContribution?.hipExtensionShareOfLowerBPercent ?? null,
+            },
+            acceptanceCriteria: lowAxialCriteria ?? {},
+            evidenceCount: Array.isArray(
+              lowAxialHipExtensionLimitation.evidence,
+            )
+              ? lowAxialHipExtensionLimitation.evidence.length
+              : 0,
+            limitationCount: Array.isArray(
+              lowAxialHipExtensionLimitation.limitations,
+            )
+              ? lowAxialHipExtensionLimitation.limitations.length
+              : 0,
+            safeForBehaviorPromotion: false,
+          }
+        : undefined,
       deloadProjectionDiagnostic: {
         status: v2DeloadProjectionDiagnostic?.status ?? "not_evaluated",
         summary: v2DeloadProjectionSummary ?? {},

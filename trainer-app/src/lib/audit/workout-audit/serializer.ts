@@ -236,6 +236,8 @@ function buildV2DebugSidecarPayload(input: {
         noRepair.plannerOwnedAccumulationProjection,
       v2ExerciseSelectionPlanDiagnostic:
         noRepair.v2ExerciseSelectionPlanDiagnostic,
+      lowAxialHipExtensionLimitation:
+        noRepair.lowAxialHipExtensionLimitation,
       v2TargetVsNoRepairDiff: noRepair.v2TargetVsNoRepairDiff,
       slotPlans: noRepair.slotPlans,
       weeklyMuscleTotals: noRepair.weeklyMuscleTotals,

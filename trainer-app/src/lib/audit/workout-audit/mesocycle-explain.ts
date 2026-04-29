@@ -3293,6 +3293,8 @@ type CrossWeekProjectionGate =
   MesocycleExplainPlannerOnlyNoRepair["crossWeekProjectionGate"];
 type V2DeloadProjectionDiagnostic =
   MesocycleExplainPlannerOnlyNoRepair["v2DeloadProjectionDiagnostic"];
+type LowAxialHipExtensionLimitation =
+  MesocycleExplainPlannerOnlyNoRepair["lowAxialHipExtensionLimitation"];
 type V2SetDistributionIntentLane =
   V2SetDistributionIntent["weeks"][number]["slots"][number]["lanes"][number];
 type V2SetDistributionIntentPolicyLane = {
@@ -6360,6 +6362,364 @@ function buildV2DeloadProjectionDiagnostic(input: {
   };
 }
 
+const LOW_AXIAL_HIP_EXTENSION_LIMITATION_TEXT =
+  "Low-axial hip extension is glute-biased, has lower hamstring-per-set than true hinge compounds, and is not equivalent to hinge_compound; it is acceptable only when the Lower B knee_flexion_curl direct floor and weekly Hamstrings target are met and lower-back/axial fatigue management favors low-axial work.";
+
+const LOW_AXIAL_WEEK_3_4_EXPANSION_GUIDANCE = [
+  "weeks_3_to_4_guidance:prefer_curl_expansion_first_if_hamstrings_need_more",
+  "weeks_3_to_4_guidance:consider_true_hinge_exposure_only_if_curl_capacity_monotony_or_hamstring_target_pressure_demands_it_and_fatigue_budget_allows",
+  "weeks_3_to_4_guidance:do_not_add_glute_bridge_sets_for_hamstring_delivery_alone",
+];
+
+function percentShare(numerator: number, denominator: number): number | null {
+  if (denominator <= 0) {
+    return null;
+  }
+  return roundPercent((numerator / denominator) * 100);
+}
+
+function lowAxialNotEvaluated(): LowAxialHipExtensionLimitation {
+  return {
+    version: 1,
+    source: "v2_planner_no_repair_diagnostic",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    slotId: "lower_b",
+    status: "not_evaluated",
+    limitationText: LOW_AXIAL_HIP_EXTENSION_LIMITATION_TEXT,
+    acceptanceCriteria: {
+      lowerBKneeFlexionCurlDirectFloor: {
+        status: "not_evaluated",
+        directSets: 0,
+        floor: null,
+      },
+      weeklyHamstringsTarget: {
+        status: "unknown",
+        projectedEffectiveSets: null,
+        targetMin: null,
+        targetPreferred: null,
+      },
+      axialFatigueManagement: {
+        status: "not_evaluated",
+        evidence: [],
+      },
+    },
+    hamstringContribution: {
+      lowerBEffectiveSets: 0,
+      weeklyEffectiveSets: null,
+      curlEffectiveSets: 0,
+      hipExtensionEffectiveSets: 0,
+      trueHingeEffectiveSets: 0,
+      otherEffectiveSets: 0,
+      curlShareOfLowerBPercent: null,
+      hipExtensionShareOfLowerBPercent: null,
+      trueHingeShareOfLowerBPercent: null,
+      weeklyCurlEffectiveSets: 0,
+      weeklyHipExtensionEffectiveSets: 0,
+      weeklyTrueHingeEffectiveSets: 0,
+      weeklyOtherEffectiveSets: 0,
+      curlShareOfWeeklyPercent: null,
+      hipExtensionShareOfWeeklyPercent: null,
+      trueHingeShareOfWeeklyPercent: null,
+    },
+    trueHingeExposureCount: 0,
+    lowAxialHipExtensionAnchorCount: 0,
+    lowAxialExercises: [],
+    expansionGuidance: [...LOW_AXIAL_WEEK_3_4_EXPANSION_GUIDANCE],
+    evidence: ["planningReality_missing_or_lower_b_not_visible"],
+    limitations: [
+      "diagnostic_only_not_selection_repair_seed_or_runtime_input",
+      "low_axial_acceptability_not_evaluated_without_lower_b_no_repair_evidence",
+    ],
+    safeForBehaviorPromotion: false,
+  };
+}
+
+function getLowerBKneeFlexionFloor(
+  v2SetDistributionIntent: V2SetDistributionIntent,
+): number | null {
+  return (
+    v2SetDistributionIntent.weeks
+      .find((week) => week.week === 1)
+      ?.slots.find((slot) => slot.slotId === "lower_b")
+      ?.lanes.find((lane) => lane.laneId === "knee_flexion_curl")?.setBudget
+      .min ?? null
+  );
+}
+
+function buildLowAxialHipExtensionLimitation(input: {
+  noRepair: PlanningRealityDiagnostic | undefined;
+  weeklyMuscleTotals: MesocycleExplainPlannerOnlyNoRepair["weeklyMuscleTotals"];
+  v2SetDistributionIntent: V2SetDistributionIntent;
+  v2ExerciseSelectionPlanDiagnostic: MesocycleExplainPlannerOnlyNoRepair["v2ExerciseSelectionPlanDiagnostic"];
+}): LowAxialHipExtensionLimitation {
+  if (!input.noRepair) {
+    return lowAxialNotEvaluated();
+  }
+
+  const lowerB = input.noRepair.finalSlotPlan.find(
+    (slot) => slot.slotId === "lower_b",
+  );
+  if (!lowerB) {
+    return {
+      ...lowAxialNotEvaluated(),
+      evidence: ["lower_b_final_slot_plan_missing"],
+      limitations: [
+        "diagnostic_only_not_selection_repair_seed_or_runtime_input",
+        "lower_b_no_repair_slot_not_visible",
+      ],
+    };
+  }
+
+  let curlEffectiveSets = 0;
+  let hipExtensionEffectiveSets = 0;
+  let trueHingeEffectiveSets = 0;
+  let otherEffectiveSets = 0;
+  let weeklyCurlEffectiveSets = 0;
+  let weeklyHipExtensionEffectiveSets = 0;
+  let weeklyTrueHingeEffectiveSets = 0;
+  let weeklyOtherEffectiveSets = 0;
+  let curlDirectSets = 0;
+  let trueHingeExposureCount = 0;
+  const lowAxialExercises: LowAxialHipExtensionLimitation["lowAxialExercises"] =
+    [];
+
+  for (const slot of input.noRepair.finalSlotPlan) {
+    for (const exercise of slot.exercises) {
+      const classified = classifyPlannerOnlyExercise({ exercise });
+      const hamstringsEffectiveSets = roundOne(
+        exercise.effectiveStimulusByMuscle.Hamstrings ?? 0,
+      );
+      if (hamstringsEffectiveSets <= 0) {
+        continue;
+      }
+
+      if (classified.exerciseClass === "knee_flexion_curl") {
+        weeklyCurlEffectiveSets = roundOne(
+          weeklyCurlEffectiveSets + hamstringsEffectiveSets,
+        );
+      } else if (classified.exerciseClass === "hinge_compound") {
+        weeklyTrueHingeEffectiveSets = roundOne(
+          weeklyTrueHingeEffectiveSets + hamstringsEffectiveSets,
+        );
+        weeklyHipExtensionEffectiveSets = roundOne(
+          weeklyHipExtensionEffectiveSets + hamstringsEffectiveSets,
+        );
+      } else if (
+        classified.exerciseClass === "low_axial_hip_extension_anchor" ||
+        classified.lane === "hinge_anchor"
+      ) {
+        weeklyHipExtensionEffectiveSets = roundOne(
+          weeklyHipExtensionEffectiveSets + hamstringsEffectiveSets,
+        );
+      } else {
+        weeklyOtherEffectiveSets = roundOne(
+          weeklyOtherEffectiveSets + hamstringsEffectiveSets,
+        );
+      }
+    }
+  }
+
+  for (const exercise of lowerB.exercises) {
+    const classified = classifyPlannerOnlyExercise({ exercise });
+    const hamstringsEffectiveSets = roundOne(
+      exercise.effectiveStimulusByMuscle.Hamstrings ?? 0,
+    );
+    if (hamstringsEffectiveSets <= 0) {
+      continue;
+    }
+
+    if (classified.exerciseClass === "knee_flexion_curl") {
+      curlEffectiveSets = roundOne(curlEffectiveSets + hamstringsEffectiveSets);
+      curlDirectSets += exercise.setCount;
+      continue;
+    }
+
+    if (classified.exerciseClass === "hinge_compound") {
+      trueHingeEffectiveSets = roundOne(
+        trueHingeEffectiveSets + hamstringsEffectiveSets,
+      );
+      hipExtensionEffectiveSets = roundOne(
+        hipExtensionEffectiveSets + hamstringsEffectiveSets,
+      );
+      trueHingeExposureCount += 1;
+      continue;
+    }
+
+    if (
+      classified.exerciseClass === "low_axial_hip_extension_anchor" ||
+      classified.lane === "hinge_anchor"
+    ) {
+      hipExtensionEffectiveSets = roundOne(
+        hipExtensionEffectiveSets + hamstringsEffectiveSets,
+      );
+      if (classified.exerciseClass === "low_axial_hip_extension_anchor") {
+        lowAxialExercises.push({
+          exerciseName: exercise.exerciseName,
+          sets: exercise.setCount,
+          hamstringsEffectiveSets,
+          glutesEffectiveSets: roundOne(
+            exercise.effectiveStimulusByMuscle.Glutes ?? 0,
+          ),
+          lowerBackEffectiveSets: roundOne(
+            exercise.effectiveStimulusByMuscle["Lower Back"] ?? 0,
+          ),
+        });
+      }
+      continue;
+    }
+
+    otherEffectiveSets = roundOne(otherEffectiveSets + hamstringsEffectiveSets);
+  }
+
+  const lowerBEffectiveSets = roundOne(
+    curlEffectiveSets + hipExtensionEffectiveSets + otherEffectiveSets,
+  );
+  const weeklyHamstrings = input.weeklyMuscleTotals.find(
+    (row) => row.muscle === "Hamstrings",
+  );
+  const floor = getLowerBKneeFlexionFloor(input.v2SetDistributionIntent);
+  const curlFloorStatus =
+    floor == null
+      ? "not_evaluated"
+      : curlDirectSets >= floor
+        ? "met"
+        : "below";
+  const weeklyTargetStatus =
+    weeklyHamstrings == null
+      ? "unknown"
+      : weeklyHamstrings.status === "below"
+        ? "below"
+        : "met";
+  const lowerBackFromLowAxial = roundOne(
+    lowAxialExercises.reduce(
+      (sum, exercise) => sum + exercise.lowerBackEffectiveSets,
+      0,
+    ),
+  );
+  const axialStatus =
+    lowAxialExercises.length === 0
+      ? "not_evaluated"
+      : lowerBackFromLowAxial <= 0.5
+        ? "favors_low_axial"
+        : "not_indicated";
+  const status =
+    lowAxialExercises.length === 0
+      ? "not_present"
+      : curlFloorStatus === "met" &&
+          weeklyTargetStatus === "met" &&
+          axialStatus === "favors_low_axial"
+        ? "acceptable_with_limitations"
+        : "not_acceptable";
+  const hingeLane = input.v2ExerciseSelectionPlanDiagnostic.weeks
+    .find((week) => week.week === 1)
+    ?.slots.find((slot) => slot.slotId === "lower_b")
+    ?.lanes.find((lane) => lane.laneId === "hinge_anchor");
+  const curlLane = input.v2ExerciseSelectionPlanDiagnostic.weeks
+    .find((week) => week.week === 1)
+    ?.slots.find((slot) => slot.slotId === "lower_b")
+    ?.lanes.find((lane) => lane.laneId === "knee_flexion_curl");
+
+  return {
+    version: 1,
+    source: "v2_planner_no_repair_diagnostic",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    slotId: "lower_b",
+    status,
+    limitationText: LOW_AXIAL_HIP_EXTENSION_LIMITATION_TEXT,
+    acceptanceCriteria: {
+      lowerBKneeFlexionCurlDirectFloor: {
+        status: curlFloorStatus,
+        directSets: curlDirectSets,
+        floor,
+      },
+      weeklyHamstringsTarget: {
+        status: weeklyTargetStatus,
+        projectedEffectiveSets:
+          weeklyHamstrings?.projectedEffectiveSets ?? null,
+        targetMin: weeklyHamstrings?.targetMin ?? null,
+        targetPreferred: weeklyHamstrings?.targetPreferred ?? null,
+      },
+      axialFatigueManagement: {
+        status: axialStatus,
+        evidence: uniqueSorted([
+          ...(lowAxialExercises.length > 0
+            ? ["low_axial_anchor_selected"]
+            : []),
+          `low_axial_lower_back_effective_sets:${lowerBackFromLowAxial}`,
+          "lower_back_axial_fatigue_management_favors_low_axial_when_direct_curl_and_weekly_target_are_met",
+        ]),
+      },
+    },
+    hamstringContribution: {
+      lowerBEffectiveSets,
+      weeklyEffectiveSets: weeklyHamstrings?.projectedEffectiveSets ?? null,
+      curlEffectiveSets,
+      hipExtensionEffectiveSets,
+      trueHingeEffectiveSets,
+      otherEffectiveSets,
+      curlShareOfLowerBPercent: percentShare(
+        curlEffectiveSets,
+        lowerBEffectiveSets,
+      ),
+      hipExtensionShareOfLowerBPercent: percentShare(
+        hipExtensionEffectiveSets,
+        lowerBEffectiveSets,
+      ),
+      trueHingeShareOfLowerBPercent: percentShare(
+        trueHingeEffectiveSets,
+        lowerBEffectiveSets,
+      ),
+      weeklyCurlEffectiveSets,
+      weeklyHipExtensionEffectiveSets,
+      weeklyTrueHingeEffectiveSets,
+      weeklyOtherEffectiveSets,
+      curlShareOfWeeklyPercent: percentShare(
+        weeklyCurlEffectiveSets,
+        weeklyHamstrings?.projectedEffectiveSets ?? 0,
+      ),
+      hipExtensionShareOfWeeklyPercent: percentShare(
+        weeklyHipExtensionEffectiveSets,
+        weeklyHamstrings?.projectedEffectiveSets ?? 0,
+      ),
+      trueHingeShareOfWeeklyPercent: percentShare(
+        weeklyTrueHingeEffectiveSets,
+        weeklyHamstrings?.projectedEffectiveSets ?? 0,
+      ),
+    },
+    trueHingeExposureCount,
+    lowAxialHipExtensionAnchorCount: lowAxialExercises.length,
+    lowAxialExercises,
+    expansionGuidance: [...LOW_AXIAL_WEEK_3_4_EXPANSION_GUIDANCE],
+    evidence: uniqueSorted([
+      `hinge_anchor_selected_class:${hingeLane?.selectedIdentity?.exerciseName ?? "none"}`,
+      `hinge_anchor_lane_status:${hingeLane?.laneClassStatus ?? "not_evaluated"}`,
+      `knee_flexion_curl_direct_sets:${curlDirectSets}`,
+      `knee_flexion_curl_floor:${floor ?? "unknown"}`,
+      `weekly_hamstrings:${weeklyHamstrings?.projectedEffectiveSets ?? "unknown"}_of_${weeklyHamstrings?.targetMin ?? "unknown"}`,
+      `curl_share_of_lower_b_hamstrings:${percentShare(curlEffectiveSets, lowerBEffectiveSets) ?? "unknown"}%`,
+      `hip_extension_share_of_lower_b_hamstrings:${percentShare(hipExtensionEffectiveSets, lowerBEffectiveSets) ?? "unknown"}%`,
+      `curl_share_of_weekly_hamstrings:${percentShare(weeklyCurlEffectiveSets, weeklyHamstrings?.projectedEffectiveSets ?? 0) ?? "unknown"}%`,
+      `hip_extension_share_of_weekly_hamstrings:${percentShare(weeklyHipExtensionEffectiveSets, weeklyHamstrings?.projectedEffectiveSets ?? 0) ?? "unknown"}%`,
+      `true_hinge_exposure_count:${trueHingeExposureCount}`,
+      `low_axial_anchor_count:${lowAxialExercises.length}`,
+      ...(curlLane?.selectedIdentity
+        ? [`knee_flexion_curl_identity:${curlLane.selectedIdentity.exerciseName}`]
+        : []),
+    ]),
+    limitations: uniqueSorted([
+      "diagnostic_only_not_selection_repair_seed_or_runtime_input",
+      "low_axial_hip_extension_anchor_is_glute_biased",
+      "low_axial_hip_extension_anchor_has_lower_hamstrings_per_set_than_true_hinge_compounds",
+      "low_axial_hip_extension_anchor_is_not_equivalent_to_hinge_compound",
+      "valid_only_when_curl_floor_and_weekly_hamstrings_target_are_met",
+      "do_not_add_glute_bridge_sets_for_hamstring_delivery_alone",
+    ]),
+    safeForBehaviorPromotion: false,
+  };
+}
+
 function buildCrossWeekProjectionGate(input: {
   noRepair?: PlanningRealityDiagnostic;
   acceptanceClassification: NoRepairClassification;
@@ -7050,6 +7410,13 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         weeklyMuscleTotals: [],
         week1SelectedIdentities: [],
       });
+    const lowAxialHipExtensionLimitation =
+      buildLowAxialHipExtensionLimitation({
+        noRepair: undefined,
+        weeklyMuscleTotals: [],
+        v2SetDistributionIntent,
+        v2ExerciseSelectionPlanDiagnostic,
+      });
     const repairPromotionScoreboard = buildRepairPromotionScoreboard(
       input.repairedPlanningReality,
       {
@@ -7099,6 +7466,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       v2SupportLaneProjectionDiagnostic,
       plannerOwnedAccumulationProjection,
       v2ExerciseSelectionPlanDiagnostic,
+      lowAxialHipExtensionLimitation,
       slotPlans: [],
       weeklyMuscleTotals: [],
       setAllocationChanges: [],
@@ -7223,6 +7591,13 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       weeklyMuscleTotals,
       week1SelectedIdentities: noRepair.finalSlotPlan,
     });
+  const lowAxialHipExtensionLimitation =
+    buildLowAxialHipExtensionLimitation({
+      noRepair,
+      weeklyMuscleTotals,
+      v2SetDistributionIntent,
+      v2ExerciseSelectionPlanDiagnostic,
+    });
   const v2DeloadProjectionDiagnostic = buildV2DeloadProjectionDiagnostic({
     v2MesocyclePlan,
     v2SetDistributionIntent,
@@ -7274,6 +7649,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     v2SupportLaneProjectionDiagnostic,
     plannerOwnedAccumulationProjection,
     v2ExerciseSelectionPlanDiagnostic,
+    lowAxialHipExtensionLimitation,
     slotPlans,
     weeklyMuscleTotals,
     setAllocationChanges,

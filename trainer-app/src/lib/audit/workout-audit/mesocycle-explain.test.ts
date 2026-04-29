@@ -6135,6 +6135,183 @@ describe("buildMesocycleExplainAuditPayload", () => {
     ).toEqual([]);
   });
 
+  it("reports the Lower B low-axial hip-extension limitation without treating Glute Bridge as a true hinge", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "lower_a",
+            exerciseName: "Lying Leg Curl",
+            setCount: 2,
+            primaryMuscles: ["Hamstrings"],
+            movementPatterns: ["flexion"],
+            stimulus: { Hamstrings: 2 },
+            percentages: { Hamstrings: 31.7 },
+          },
+          {
+            slotId: "lower_a",
+            exerciseName: "Cable Pull-Through",
+            setCount: 2,
+            primaryMuscles: ["Hamstrings", "Glutes"],
+            movementPatterns: ["hinge"],
+            stimulus: { Hamstrings: 1.5, Glutes: 2 },
+            percentages: { Hamstrings: 23.8, Glutes: 40 },
+          },
+          {
+            slotId: "lower_b",
+            exerciseName: "Glute Bridge",
+            setCount: 3,
+            primaryMuscles: ["Glutes", "Hamstrings"],
+            movementPatterns: ["hinge"],
+            stimulus: { Hamstrings: 0.8, Glutes: 3, "Lower Back": 0 },
+            percentages: { Hamstrings: 12.7, Glutes: 60 },
+          },
+          {
+            slotId: "lower_b",
+            exerciseName: "Seated Leg Curl",
+            setCount: 2,
+            primaryMuscles: ["Hamstrings"],
+            movementPatterns: ["flexion"],
+            stimulus: { Hamstrings: 2 },
+            percentages: { Hamstrings: 31.7 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Hamstrings",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 6,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 12,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    expect(noRepair.lowAxialHipExtensionLimitation).toMatchObject({
+      status: "acceptable_with_limitations",
+      limitationText: expect.stringContaining(
+        "not equivalent to hinge_compound",
+      ),
+      acceptanceCriteria: {
+        lowerBKneeFlexionCurlDirectFloor: {
+          status: "met",
+          directSets: 2,
+          floor: 2,
+        },
+        weeklyHamstringsTarget: {
+          status: "met",
+          projectedEffectiveSets: 6.3,
+          targetMin: 6,
+          targetPreferred: 6,
+        },
+        axialFatigueManagement: {
+          status: "favors_low_axial",
+        },
+      },
+      hamstringContribution: {
+        lowerBEffectiveSets: 2.8,
+        weeklyEffectiveSets: 6.3,
+        curlEffectiveSets: 2,
+        hipExtensionEffectiveSets: 0.8,
+        trueHingeEffectiveSets: 0,
+        otherEffectiveSets: 0,
+        curlShareOfLowerBPercent: 71.4,
+        hipExtensionShareOfLowerBPercent: 28.6,
+        trueHingeShareOfLowerBPercent: 0,
+        weeklyCurlEffectiveSets: 4,
+        weeklyHipExtensionEffectiveSets: 2.3,
+        weeklyTrueHingeEffectiveSets: 0,
+        weeklyOtherEffectiveSets: 0,
+        curlShareOfWeeklyPercent: 63.5,
+        hipExtensionShareOfWeeklyPercent: 36.5,
+        trueHingeShareOfWeeklyPercent: 0,
+      },
+      trueHingeExposureCount: 0,
+      lowAxialHipExtensionAnchorCount: 1,
+      lowAxialExercises: [
+        expect.objectContaining({
+          exerciseName: "Glute Bridge",
+          sets: 3,
+          hamstringsEffectiveSets: 0.8,
+        }),
+      ],
+      safeForBehaviorPromotion: false,
+    });
+    expect(noRepair.lowAxialHipExtensionLimitation.evidence).toEqual(
+      expect.arrayContaining([
+        "true_hinge_exposure_count:0",
+        "curl_share_of_lower_b_hamstrings:71.4%",
+        "hip_extension_share_of_lower_b_hamstrings:28.6%",
+        "curl_share_of_weekly_hamstrings:63.5%",
+        "hip_extension_share_of_weekly_hamstrings:36.5%",
+      ]),
+    );
+    expect(noRepair.lowAxialHipExtensionLimitation.limitations).toEqual(
+      expect.arrayContaining([
+        "low_axial_hip_extension_anchor_is_glute_biased",
+        "low_axial_hip_extension_anchor_has_lower_hamstrings_per_set_than_true_hinge_compounds",
+        "low_axial_hip_extension_anchor_is_not_equivalent_to_hinge_compound",
+      ]),
+    );
+    expect(noRepair.lowAxialHipExtensionLimitation.expansionGuidance).toEqual(
+      expect.arrayContaining([
+        "weeks_3_to_4_guidance:prefer_curl_expansion_first_if_hamstrings_need_more",
+        "weeks_3_to_4_guidance:consider_true_hinge_exposure_only_if_curl_capacity_monotony_or_hamstring_target_pressure_demands_it_and_fatigue_budget_allows",
+        "weeks_3_to_4_guidance:do_not_add_glute_bridge_sets_for_hamstring_delivery_alone",
+      ]),
+    );
+  });
+
+  it("marks low-axial hip extension not acceptable when the curl floor or weekly Hamstrings target is missed", () => {
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "lower_b",
+            exerciseName: "Glute Bridge",
+            setCount: 3,
+            primaryMuscles: ["Glutes", "Hamstrings"],
+            movementPatterns: ["hinge"],
+            stimulus: { Hamstrings: 1.1, Glutes: 3, "Lower Back": 0 },
+            percentages: { Hamstrings: 100, Glutes: 60 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Hamstrings",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 6,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 12,
+          },
+        ],
+      }),
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    expect(noRepair.lowAxialHipExtensionLimitation).toMatchObject({
+      status: "not_acceptable",
+      acceptanceCriteria: {
+        lowerBKneeFlexionCurlDirectFloor: {
+          status: "below",
+          directSets: 0,
+          floor: 2,
+        },
+        weeklyHamstringsTarget: {
+          status: "below",
+          projectedEffectiveSets: 1.1,
+          targetMin: 6,
+        },
+      },
+    });
+  });
+
   it("can still select an optional lane when it has a true hard blocker", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({

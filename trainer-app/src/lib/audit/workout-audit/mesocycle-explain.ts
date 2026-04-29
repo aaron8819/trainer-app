@@ -3197,6 +3197,9 @@ function buildNoRepairSlotPlans(
   );
   const unresolvedCausesBySlot = new Map<string, string[]>();
   for (const row of planningReality.exerciseClassUnresolvedCauses ?? []) {
+    if (isStaleDuplicateContinuityCause({ planningReality, cause: row })) {
+      continue;
+    }
     if (
       row.finalAlignment !== "missing" &&
       row.finalAlignment !== "partial" &&
@@ -3257,6 +3260,66 @@ function buildNoRepairSlotPlans(
       validationFailures,
     };
   });
+}
+
+function slotHasSelectedDuplicateContinuityEvidence(input: {
+  planningReality: PlanningRealityDiagnostic;
+  cause: NonNullable<PlanningRealityDiagnostic["exerciseClassUnresolvedCauses"]>[number];
+}): boolean {
+  const slot = getSlotById(
+    input.planningReality.finalSlotPlan,
+    input.cause.slotId,
+  );
+  if (!slot) {
+    return false;
+  }
+  const slotExercises = slot.exercises.map((exercise) => ({
+    exerciseId: normalizeExerciseIdentity(exercise.exerciseId),
+    exerciseName: normalizeExerciseIdentity(exercise.exerciseName),
+  }));
+  return (
+    input.planningReality.duplicateContinuityJustification?.duplicates.some(
+      (duplicate) => {
+        if (!duplicate.duplicatedInSlots.includes(input.cause.slotId)) {
+          return false;
+        }
+        if (
+          !duplicate.primaryMuscles.some(
+            (muscle) => muscle === input.cause.muscle,
+          )
+        ) {
+          return false;
+        }
+        const duplicateId = normalizeExerciseIdentity(duplicate.exerciseId);
+        const duplicateName = normalizeExerciseIdentity(duplicate.exerciseName);
+        return slotExercises.some(
+          (exercise) =>
+            (duplicateId !== "" && exercise.exerciseId === duplicateId) ||
+            (duplicateName !== "" &&
+              exercise.exerciseName === duplicateName),
+        );
+      },
+    ) ?? false
+  );
+}
+
+function isStaleDuplicateContinuityCause(input: {
+  planningReality: PlanningRealityDiagnostic;
+  cause: NonNullable<PlanningRealityDiagnostic["exerciseClassUnresolvedCauses"]>[number];
+}): boolean {
+  return (
+    input.cause.recommendedOwner === "duplicate_continuity_policy" &&
+    input.cause.behaviorReadiness === "needs_duplicate_policy" &&
+    !slotHasSelectedDuplicateContinuityEvidence(input)
+  );
+}
+
+function filterStaleDuplicateContinuityCauses(
+  planningReality: PlanningRealityDiagnostic,
+): NonNullable<PlanningRealityDiagnostic["exerciseClassUnresolvedCauses"]> {
+  return (planningReality.exerciseClassUnresolvedCauses ?? []).filter(
+    (cause) => !isStaleDuplicateContinuityCause({ planningReality, cause }),
+  );
 }
 
 function mainNoRepairGaps(input: {
@@ -3771,12 +3834,18 @@ function summarizeChestSecondExposureDistinctness(input: {
   secondExposureExercises: SlotCompositionSnapshot["exercises"];
 }): {
   hasUpperSlotDistribution: boolean;
+  hasUpperAChestPress: boolean;
+  hasUpperAChestIsolation: boolean;
   hasSecondExposure: boolean;
   exerciseDistinct: boolean;
   classDistinct: boolean;
   duplicateExposure: boolean;
   sameClassExposure: boolean;
 } {
+  const upperAChestExercises =
+    getSlotById(input.noRepair?.finalSlotPlan ?? [], "upper_a")?.exercises.filter(
+      isDirectChestLaneExercise,
+    ) ?? [];
   const upperAAnchor = firstUpperAChestAnchor(input.noRepair);
   const upperBSecond = input.secondExposureExercises.find(
     isDirectChestLaneExercise,
@@ -3801,6 +3870,16 @@ function summarizeChestSecondExposureDistinctness(input: {
 
   return {
     hasUpperSlotDistribution: upperAAnchor != null && upperBSecond != null,
+    hasUpperAChestPress: upperAChestExercises.some(
+      (exercise) =>
+        classifyPlannerOnlyExercise({ exercise }).exerciseClass ===
+        "chest_press",
+    ),
+    hasUpperAChestIsolation: upperAChestExercises.some(
+      (exercise) =>
+        classifyPlannerOnlyExercise({ exercise }).exerciseClass ===
+        "chest_isolation",
+    ),
     hasSecondExposure: upperBSecond != null,
     exerciseDistinct:
       upperAAnchor != null && upperBSecond != null && !sameExercise,
@@ -4493,6 +4572,10 @@ function evaluateV2LaneSetPolicy(input: {
       !repairCreatedConcentration &&
       !fatigueRisk.axial &&
       !fatigueRisk.systemic;
+    const cleanSecondExposureReadout =
+      distinctJustified &&
+      chestSecondExposureDistinctness.hasUpperAChestPress &&
+      chestSecondExposureDistinctness.hasUpperAChestIsolation;
     concentrationDiagnostics.push(
       "concentration:chest_primary",
       "concentration:second_exposure",
@@ -4507,7 +4590,9 @@ function evaluateV2LaneSetPolicy(input: {
         : ["concentration:needs_distinct_exposure"]),
       ...(distinctJustified
         ? [
-            "concentration:quality_warning",
+            ...(cleanSecondExposureReadout
+              ? ["readout_note:clean_chest_second_exposure"]
+              : ["concentration:quality_warning"]),
             "justification:second_chest_exposure",
             "justification:weekly_target_met",
             "justification:upper_slot_distribution",
@@ -4554,7 +4639,12 @@ function evaluateV2LaneSetPolicy(input: {
     reason = "over_allowed_expansion";
   } else if (setCount > budget.max || overRoleCap) {
     status = "allowed_expansion";
-  } else if (concentrationWarning) {
+  } else if (
+    concentrationWarning &&
+    !concentrationDiagnostics.includes(
+      "readout_note:clean_chest_second_exposure",
+    )
+  ) {
     status = "quality_warning";
     reason = supportTierConcentration ? null : "warning_share";
     concentrationDiagnostics.push("concentration:quality_warning");
@@ -4740,6 +4830,10 @@ function strictChestSecondExposureConcentrationDiagnostics(input: {
     distinctness.hasUpperSlotDistribution &&
     distinctness.exerciseDistinct &&
     distinctness.classDistinct;
+  const cleanSecondExposureReadout =
+    distinctJustified &&
+    distinctness.hasUpperAChestPress &&
+    distinctness.hasUpperAChestIsolation;
 
   return [
     "concentration:chest_primary",
@@ -4750,7 +4844,9 @@ function strictChestSecondExposureConcentrationDiagnostics(input: {
     ...(distinctness.classDistinct
       ? ["concentration:class_distinct"]
       : ["concentration:needs_distinct_exposure"]),
-    "concentration:quality_warning",
+    ...(cleanSecondExposureReadout
+      ? ["readout_note:clean_chest_second_exposure"]
+      : ["concentration:quality_warning"]),
     ...(distinctJustified
       ? [
           "justification:second_chest_exposure",
@@ -4832,16 +4928,26 @@ function collectV2LaneDiagnostics(input: {
             exercises: strictExercises,
             lane: input.lane,
           });
+    const cleanChestSecondExposureReadout =
+      chestSecondExposureDiagnostics.includes(
+        "readout_note:clean_chest_second_exposure",
+      );
     const compactDiagnostics =
       explainedConcentrationDiagnostics.length > 0
-        ? [
-            ...input.setPolicyDiagnostics.filter(
-              (row) => row !== "setPolicy:in_budget",
-            ),
-            "setPolicy:quality_warning",
-            ...explainedConcentrationDiagnostics,
-            ...bicepsAddenda,
-          ]
+        ? cleanChestSecondExposureReadout
+          ? [
+              ...input.setPolicyDiagnostics,
+              ...explainedConcentrationDiagnostics,
+              ...bicepsAddenda,
+            ]
+          : [
+              ...input.setPolicyDiagnostics.filter(
+                (row) => row !== "setPolicy:in_budget",
+              ),
+              "setPolicy:quality_warning",
+              ...explainedConcentrationDiagnostics,
+              ...bicepsAddenda,
+            ]
         : [...input.setPolicyDiagnostics, ...bicepsAddenda];
     return compactV2LaneDiagnostics(
       relabelStaleCalvesShortfallDiagnostics({
@@ -4874,7 +4980,7 @@ function collectV2LaneDiagnostics(input: {
   );
 
   diagnostics.push(
-    ...(noRepair.exerciseClassUnresolvedCauses ?? [])
+    ...filterStaleDuplicateContinuityCauses(noRepair)
       .filter(
         (row) =>
           row.slotId === input.slotId &&
@@ -7576,7 +7682,8 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       v2TargetVsNoRepairDiff,
       exerciseClassDistributionBySlot: noRepair.exerciseClassDistributionBySlot,
       exerciseClassAlignment: noRepair.exerciseClassAlignment,
-      exerciseClassUnresolvedCauses: noRepair.exerciseClassUnresolvedCauses,
+      exerciseClassUnresolvedCauses:
+        filterStaleDuplicateContinuityCauses(noRepair),
       duplicateContinuityJustification:
         noRepair.duplicateContinuityJustification,
       exerciseConcentration: noRepair.exerciseConcentration,

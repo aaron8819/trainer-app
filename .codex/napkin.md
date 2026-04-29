@@ -21,6 +21,7 @@
 | 2026-04-29 | self | In a V2 support-lane diagnostic, initially treated missing `matchedClass` as direct-floor evidence, so collateral pulls/presses could count as curls/isolation. | For support direct-floor diagnostics, require class match or a narrow direct-isolation name fallback; unknown class should not satisfy direct floors by default. |
 | 2026-04-29 | self | Asserted current live V2 policy-gap counts inside a narrower unit fixture and failed the focused mesocycle-explain test. | In unit tests, assert the interpretation derives from that fixture's diagnostics; reserve exact live scoreboard counts for the live audit artifact assertion/readout. |
 | 2026-04-29 | self | In a V2 diagnostic-only test, passed `equipment` as a string to a selection-v2 fixture and failed `tsc --noEmit`. | Selection-v2 exercise fixtures expect `equipment` as an array of equipment tags, e.g. `["bodyweight"]`. |
+| 2026-04-29 | self | Added a synthetic planning-reality duplicate-continuity fixture without the exact diagnostic metadata/type literals and failed `tsc --noEmit`. | When overriding typed diagnostic subobjects in tests, preserve the real `version` / `source` / `readOnly` / `affectsScoringOrGeneration` fields and literal union values, or cast through `unknown` only when intentionally partial. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

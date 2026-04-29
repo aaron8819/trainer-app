@@ -3,6 +3,14 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const v2PolicyDir = path.join(process.cwd(), "src", "lib", "engine", "planning", "v2");
+const liveContextDryRunHarness = path.join(
+  process.cwd(),
+  "src",
+  "lib",
+  "audit",
+  "workout-audit",
+  "v2-materialization-live-context-dry-run.ts",
+);
 
 const forbiddenImportFragments = [
   "@/lib/audit/",
@@ -302,6 +310,9 @@ describe("V2 planner policy module boundary", () => {
       if (file.includes(materializationSegment)) {
         return [];
       }
+      if (file === liveContextDryRunHarness) {
+        return [];
+      }
       const text = fs.readFileSync(file, "utf8");
       return /buildV2ExerciseMaterializationPlan\s*\(/.test(text)
         ? [`${path.relative(process.cwd(), file)} calls dry-run materializer`]
@@ -318,11 +329,43 @@ describe("V2 planner policy module boundary", () => {
       if (file.includes(materializationSegment)) {
         return [];
       }
+      if (file === liveContextDryRunHarness) {
+        return [];
+      }
       const text = fs.readFileSync(file, "utf8");
       return /buildV2MaterializationDryRunReport\s*\(/.test(text)
         ? [`${path.relative(process.cwd(), file)} calls dry-run materialization report`]
         : [];
     });
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps the live-context dry-run harness read-only and outside seed/runtime/receipt paths", () => {
+    const text = fs.readFileSync(liveContextDryRunHarness, "utf8");
+    const forbiddenPatterns = [
+      /buildMesocycleSlotPlanSeed/,
+      /parseSlotPlanSeedJson/,
+      /resolveSeededSlotPlan/,
+      /slotPlanSeedJson/,
+      /sessionDecisionReceipt/,
+      /workouts\/save/,
+      /save-workout/,
+      /runtimeReplay/,
+      /template-session\/slot-plan-seed/,
+      /\.create\s*\(/,
+      /\.createMany\s*\(/,
+      /\.update\s*\(/,
+      /\.updateMany\s*\(/,
+      /\.upsert\s*\(/,
+      /\.delete\s*\(/,
+      /\.deleteMany\s*\(/,
+    ];
+    const violations = forbiddenPatterns.flatMap((pattern) =>
+      pattern.test(text)
+        ? [`live-context dry-run harness matches ${String(pattern)}`]
+        : [],
+    );
 
     expect(violations).toEqual([]);
   });

@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import {
+  buildV2LiveContextMaterializationDryRunHarness,
+  normalizeLiveInventoryForV2Materialization,
+} from "@/lib/audit/workout-audit/v2-materialization-live-context-dry-run";
 import { buildV2PlannerMesocyclePolicy } from "../mesocycle-policy";
 import { buildV2MaterializationDryRunReport } from "./dry-run-report";
 import { buildV2ExerciseMaterializationPlan } from "./materializer";
@@ -926,6 +930,190 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     ]);
     expect(serializedPreview).not.toMatch(
       /laneIds|blockers|omissions|dryRunOnly|status/,
+    );
+  });
+
+  it("builds a compact live-context dry-run harness result from normalized inventory", () => {
+    const result = buildV2LiveContextMaterializationDryRunHarness({
+      ownerContext: { userId: "user-1", ownerEmail: "owner@test.local" },
+      mesocycleContext: {
+        id: "meso-1",
+        state: "ACTIVE_ACCUMULATION",
+        splitType: "UPPER_LOWER",
+        slotSequenceJson: {
+          version: 1,
+          source: "handoff_draft",
+          sequenceMode: "ordered_flexible",
+          slots: [
+            { slotId: "upper_a", intent: "UPPER" },
+            { slotId: "lower_a", intent: "LOWER" },
+            { slotId: "upper_b", intent: "UPPER" },
+            { slotId: "lower_b", intent: "LOWER" },
+          ],
+        },
+      },
+      inventory: representativeV2Inventory,
+      inventorySource: "live_normalized_inventory",
+    });
+
+    expect(result).toMatchObject({
+      version: 1,
+      source: "v2_live_context_materialization_dry_run",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      dryRunOnly: true,
+      context: {
+        ownerLoaded: true,
+        mesocycleLoaded: true,
+        userId: "user-1",
+        ownerEmail: "owner@test.local",
+        mesocycleId: "meso-1",
+        slotSequenceSource: "mesocycle_slot_sequence",
+        slotSequenceSlotCount: 4,
+      },
+      inventorySource: "live_normalized_inventory",
+      inventoryExerciseCount: representativeV2Inventory.length,
+      materializerStatus: "materialized",
+      safeToPromoteToProductionWrite: false,
+    });
+    expect(result.unsupportedClassCount).toBeGreaterThan(0);
+    expect(result.seedShapeCompatibility.compatible).toBe(true);
+    expect(result.executablePreviewCountBySlot).toEqual([
+      { slotId: "upper_a", exerciseCount: 6 },
+      { slotId: "lower_a", exerciseCount: 5 },
+      { slotId: "upper_b", exerciseCount: 6 },
+      { slotId: "lower_b", exerciseCount: 4 },
+    ]);
+    expect(result.requiredLaneCoverageBySlot).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          slotId: "upper_a",
+          requiredLaneCount: 6,
+          materializedRequiredLaneCount: 6,
+          blockedRequiredLaneCount: 0,
+          missingRequiredLaneIds: [],
+        }),
+      ]),
+    );
+    expect(result.blockersBeforePromotion).toEqual(
+      expect.arrayContaining([
+        "production_acceptance_write_path",
+        "slotPlanSeedJson_write_gate",
+        "runtime_replay_consumption",
+      ]),
+    );
+  });
+
+  it("normalizes live exercise rows into materializer inventory without seed fields", () => {
+    const inventory = normalizeLiveInventoryForV2Materialization([
+      {
+        id: "machine-chest-press",
+        name: "Machine Chest Press",
+        aliases: [{ alias: "Selectorized Chest Press" }],
+        movementPatterns: ["HORIZONTAL_PRESS"],
+        isCompound: true,
+        isMainLiftEligible: false,
+        fatigueCost: 2,
+        exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Chest" } },
+          { role: "SECONDARY", muscle: { name: "Triceps" } },
+        ],
+      },
+    ]);
+
+    expect(inventory).toEqual([
+      expect.objectContaining({
+        exerciseId: "machine-chest-press",
+        name: "Machine Chest Press",
+        aliases: ["Selectorized Chest Press"],
+        movementPatterns: ["horizontal_press"],
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: ["Triceps"],
+        equipment: ["machine"],
+        isCompound: true,
+        isMainLiftEligible: false,
+        fatigueCost: 2,
+      }),
+    ]);
+    expect(inventory[0]?.stimulusByMusclePerSet).toMatchObject({
+      Chest: 1,
+      Triceps: 0.45,
+    });
+    expect(JSON.stringify(inventory)).not.toMatch(
+      /slotPlanSeedJson|laneIds|dryRunOnly|sessionDecisionReceipt/,
+    );
+  });
+
+  it("surfaces missing live inventory as a blocker instead of fixture fallback", () => {
+    const result = buildV2LiveContextMaterializationDryRunHarness({
+      ownerContext: { userId: "user-1", ownerEmail: "owner@test.local" },
+      mesocycleContext: { id: "meso-1", state: "ACTIVE_ACCUMULATION" },
+      inventory: null,
+      inventorySource: "unavailable",
+    });
+
+    expect(result.inventorySource).toBe("unavailable");
+    expect(result.inventoryExerciseCount).toBe(0);
+    expect(result.materializerStatus).toBe("blocked");
+    expect(result.seedShapeCompatibility.compatible).toBe(false);
+    expect(result.blockersBeforePromotion).toEqual(
+      expect.arrayContaining([
+        "inventory_source_unavailable",
+        "inventory_unavailable",
+        "inventory_bridge_or_snapshot",
+      ]),
+    );
+    expect(result.executablePreviewCountBySlot).toEqual([]);
+    expect(result.safeToPromoteToProductionWrite).toBe(false);
+  });
+
+  it("surfaces unsupported taxonomy classes as blockers and omissions in the harness", () => {
+    const result = buildV2LiveContextMaterializationDryRunHarness({
+      ownerContext: { userId: "user-1" },
+      mesocycleContext: { id: "meso-1" },
+      inventory: fixtureInventory,
+      inventorySource: "live_normalized_inventory",
+      plannerPolicy: {
+        ...buildV2PlannerMesocyclePolicy(),
+        exerciseSelectionPlan: plan([
+          lane({
+            laneId: "required_unknown",
+            role: "anchor",
+            primaryMuscles: ["Chest"],
+            acceptableExerciseClasses: ["unknown_required_class"],
+          }),
+          lane({
+            laneId: "optional_unknown",
+            requirement: "optional",
+            role: "optional",
+            primaryMuscles: ["Biceps"],
+            acceptableExerciseClasses: ["unknown_optional_class"],
+          }),
+        ]),
+      },
+      taxonomy: {
+        ...DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+        classAliases: {},
+      },
+    });
+
+    expect(result.unsupportedClassCount).toBe(2);
+    expect(result.seedShapeCompatibility.compatible).toBe(false);
+    expect(result.requiredLaneCoverageBySlot).toEqual([
+      {
+        slotId: "upper_a",
+        requiredLaneCount: 1,
+        materializedRequiredLaneCount: 0,
+        blockedRequiredLaneCount: 1,
+        missingRequiredLaneIds: ["required_unknown"],
+      },
+    ]);
+    expect(result.blockersBeforePromotion).toEqual(
+      expect.arrayContaining([
+        "upper_a:required_unknown:unsupported_exercise_class",
+        "seed_shape_compatibility",
+      ]),
     );
   });
 });

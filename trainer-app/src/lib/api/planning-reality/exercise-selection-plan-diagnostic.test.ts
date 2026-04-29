@@ -282,6 +282,132 @@ describe("buildV2ExerciseSelectionPlanDiagnostic", () => {
     expect(diagnostic.summary.classMismatchCount).toBe(0);
   });
 
+  it("matches clean chest fly to distinct second-exposure intent when the target diff is satisfied", () => {
+    const diagnostic = buildV2ExerciseSelectionPlanDiagnostic(
+      makeInput({
+        slotId: "upper_b",
+        laneId: "chest_second_exposure",
+        exerciseName: "Cable Fly",
+        primaryMuscles: ["Chest"],
+        movementPatterns: ["isolation"],
+        plannedClasses: ["distinct_chest_press_or_fly"],
+        selectedClass: "chest_isolation",
+        concentrationFlags: [],
+        currentStatus: "satisfied",
+        gapCause: "none",
+        severity: "pass",
+        migrationRecommendation: "no_action",
+        relevantDiagnostics: [
+          "setPolicy:in_budget",
+          "setBudget:within_preferred",
+          "concentration:chest_primary",
+          "concentration:second_exposure",
+          "concentration:class_distinct",
+          "concentration:exercise_distinct",
+          "readout_note:clean_chest_second_exposure",
+        ],
+      }),
+    );
+    const lane = onlyLane(diagnostic);
+
+    expect(lane.selectedIdentity).toMatchObject({
+      exerciseName: "Cable Fly",
+      setCount: 2,
+    });
+    expect(lane.laneClassStatus).toBe("match");
+    expect(lane.identityStatus).toBe("preserved");
+    expect(diagnostic.summary.classMismatchCount).toBe(0);
+  });
+
+  it("keeps true chest second-exposure class mismatch counted", () => {
+    const diagnostic = buildV2ExerciseSelectionPlanDiagnostic(
+      makeInput({
+        slotId: "upper_b",
+        laneId: "chest_second_exposure",
+        exerciseName: "Machine Chest Press",
+        primaryMuscles: ["Chest"],
+        movementPatterns: ["horizontal_push"],
+        plannedClasses: ["distinct_chest_press_or_fly"],
+        selectedClass: "chest_press",
+        concentrationFlags: [],
+        currentStatus: "satisfied",
+        gapCause: "none",
+        severity: "pass",
+        migrationRecommendation: "no_action",
+        relevantDiagnostics: [
+          "setPolicy:in_budget",
+          "setBudget:within_preferred",
+        ],
+      }),
+    );
+    const lane = onlyLane(diagnostic);
+
+    expect(lane.laneClassStatus).toBe("mismatch");
+    expect(lane.identityStatus).toBe("class_mismatch");
+    expect(diagnostic.summary.classMismatchCount).toBe(1);
+  });
+
+  it("keeps duplicate chest press warnings when duplicate identity evidence exists", () => {
+    const input = makeInput({
+      slotId: "upper_b",
+      laneId: "chest_second_exposure",
+      exerciseName: "Deficit Push-Up",
+      primaryMuscles: ["Chest"],
+      movementPatterns: ["horizontal_push"],
+      plannedClasses: ["distinct_chest_press_or_fly"],
+      selectedClass: "chest_press",
+      concentrationFlags: [],
+      currentStatus: "partial",
+      gapCause: "duplicate_policy_gap",
+      severity: "quality_warning",
+      migrationRecommendation: "keep_diagnostic_only",
+      relevantDiagnostics: [
+        "setPolicy:quality_warning",
+        "concentration:duplicate_exposure",
+      ],
+    });
+    input.duplicateContinuityJustification = {
+      version: 1,
+      source: "diagnostic_shadow_planner",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      summary: {
+        totalDuplicates: 1,
+        justifiedDuplicates: 0,
+        unjustifiedOrUnknown: 1,
+        cleanAlternativeAvailable: 1,
+        highRiskDuplicates: 1,
+      },
+      duplicates: [
+        {
+          exerciseId: "exercise-1",
+          exerciseName: "Deficit Push-Up",
+          duplicateType: "same_exercise_cross_slot",
+          duplicatedInSlots: ["upper_a", "upper_b"],
+          roleBySlot: { upper_a: "main", upper_b: "accessory" },
+          setCountBySlot: { upper_a: 3, upper_b: 2 },
+          primaryMuscles: ["Chest"],
+          movementPatterns: ["horizontal_push"],
+          exerciseClass: "chest_press",
+          compatibleAlternativeExists: true,
+          compatibleAlternatives: [],
+          justification: "unjustified",
+          policyRecommendation: "requires_planner_decision",
+          risk: "high",
+          evidence: ["duplicate:Deficit Push-Up:unjustified"],
+          limitations: [],
+        },
+      ],
+    };
+
+    const diagnostic = buildV2ExerciseSelectionPlanDiagnostic(input);
+    const lane = onlyLane(diagnostic);
+
+    expect(lane.duplicateStatus).toBe("blocked");
+    expect(lane.identityStatus).toBe("duplicate_requires_justification");
+    expect(diagnostic.summary.duplicateRequiresJustificationCount).toBe(1);
+  });
+
   it("matches knee_flexion_curl to hamstring_curl lanes diagnostically", () => {
     const diagnostic = buildV2ExerciseSelectionPlanDiagnostic(
       makeInput({

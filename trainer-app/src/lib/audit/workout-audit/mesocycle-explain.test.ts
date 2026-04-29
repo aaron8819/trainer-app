@@ -5118,6 +5118,21 @@ describe("buildMesocycleExplainAuditPayload", () => {
       noRepair.repairPromotionScoreboard?.interpretation.currentV2PolicyGap
         .concentrationQualityGapCount ?? 0,
     ).toBe(0);
+    const selectionLane = noRepair.v2ExerciseSelectionPlanDiagnostic.weeks
+      .find((week) => week.week === 1)
+      ?.slots.find((slot) => slot.slotId === "upper_b")
+      ?.lanes.find((row) => row.laneId === "chest_second_exposure");
+    expect(selectionLane).toMatchObject({
+      laneClassStatus: "match",
+      identityStatus: "preserved",
+      selectedIdentity: {
+        exerciseName: "Cable Fly",
+        setCount: 4,
+      },
+    });
+    expect(
+      noRepair.v2ExerciseSelectionPlanDiagnostic.summary.classMismatchCount,
+    ).toBe(0);
     expect(noRepair.slotPlans).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

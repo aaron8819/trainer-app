@@ -128,6 +128,7 @@ type SelectedIdentity = {
   sourceWeek: 1;
   setCount: number;
   exerciseClass: string;
+  primaryMuscles: string[];
 };
 
 const MAX_SLOT_EXERCISES = 6;
@@ -226,7 +227,50 @@ function findSelectedIdentity(input: {
     sourceWeek: 1,
     setCount,
     exerciseClass,
+    primaryMuscles: matchingExercise?.primaryMuscles ?? input.lane.primaryMuscles,
   };
+}
+
+function hasDuplicateIdentityEvidence(
+  laneDiff: V2LaneDiffEvidence | undefined,
+): boolean {
+  return laneDiffDiagnostics(laneDiff).some((row) => {
+    const normalized = row.toLowerCase();
+    return (
+      normalized.startsWith("duplicate:") ||
+      normalized.includes("duplicate_exposure") ||
+      normalized.includes("duplicate_continuity")
+    );
+  });
+}
+
+function isCleanChestSecondExposureClassMatch(input: {
+  selectedIdentity: SelectedIdentity | undefined;
+  plannedClass: ReadonlyArray<string>;
+  laneDiff: V2LaneDiffEvidence | undefined;
+}): boolean {
+  if (
+    !input.selectedIdentity ||
+    input.laneDiff?.laneId !== "chest_second_exposure" ||
+    !input.plannedClass.includes("distinct_chest_press_or_fly") ||
+    input.laneDiff.currentStatus !== "satisfied" ||
+    input.laneDiff.migrationRecommendation !== "no_action" ||
+    input.laneDiff.severity !== "pass" ||
+    input.laneDiff.gapCause !== "none" ||
+    hasTrueHardLaneEvidence(input.laneDiff) ||
+    hasDuplicateIdentityEvidence(input.laneDiff)
+  ) {
+    return false;
+  }
+
+  return (
+    input.selectedIdentity.primaryMuscles.some(
+      (muscle) => normalizeMuscle(muscle) === "Chest",
+    ) &&
+    ["cable_fly", "chest_fly", "chest_isolation"].includes(
+      input.selectedIdentity.exerciseClass,
+    )
+  );
 }
 
 function laneClassStatus(input: {
@@ -236,6 +280,9 @@ function laneClassStatus(input: {
 }): V2ExerciseSelectionPlanDiagnostic["weeks"][number]["slots"][number]["lanes"][number]["laneClassStatus"] {
   if (!input.selectedIdentity) {
     return "not_evaluated";
+  }
+  if (isCleanChestSecondExposureClassMatch(input)) {
+    return "match";
   }
   if (
     input.plannedClass.some((planned) =>

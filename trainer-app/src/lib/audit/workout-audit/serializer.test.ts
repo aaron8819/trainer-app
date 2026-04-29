@@ -1673,6 +1673,10 @@ describe("buildWorkoutAuditArtifact", () => {
           currentV2PolicyGap: {
             supportDirectFloorBlockerCount: 3,
             setDistributionCapacityGapCount: 1,
+            setBudgetPolicyFailureCount: 1,
+            selectionFeasibilityCapacityPressureCount: 0,
+            staleWeek1ReadoutArtifactCount: 0,
+            capAwareExpansionLimitationCount: 0,
             concentrationQualityGapCount: 0,
             optionalDiagnosticLaneCount: 0,
             selectionBlockerCount: 0,
@@ -2019,6 +2023,10 @@ function makeMesocycleExplainNoRepairPayload() {
           currentV2PolicyGap: {
             supportDirectFloorBlockerCount: 3,
             setDistributionCapacityGapCount: 1,
+            setBudgetPolicyFailureCount: 1,
+            selectionFeasibilityCapacityPressureCount: 0,
+            staleWeek1ReadoutArtifactCount: 0,
+            capAwareExpansionLimitationCount: 0,
             concentrationQualityGapCount: 0,
             optionalDiagnosticLaneCount: 0,
             selectionBlockerCount: 0,

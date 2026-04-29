@@ -4302,6 +4302,28 @@ function v2SetBudgetJustifications(input: {
     : ["justification:none"];
 }
 
+function v2CapAwareExpansionDiagnostics(
+  policyLanes: V2SetDistributionIntentPolicyLane[],
+): string[] {
+  const preferredExceedsSingleExerciseCap = policyLanes.some(
+    (policy) =>
+      policy.week >= 2 &&
+      policy.week <= 4 &&
+      policy.phase !== "deload" &&
+      (policy.lane.role === "accessory" || policy.lane.role === "support") &&
+      policy.lane.capPolicy.maxDirectExercises === 1 &&
+      policy.lane.setBudget.preferred >
+        policy.lane.capPolicy.maxSetsPerExerciseWithoutJustification,
+  );
+
+  return preferredExceedsSingleExerciseCap
+    ? [
+        "capAwareExpansion:preferred_exceeds_single_exercise_cap",
+        "expansionStatus:requires_distribution_or_second_exposure",
+      ]
+    : [];
+}
+
 function evaluateV2LaneSetPolicy(input: {
   noRepair?: PlanningRealityDiagnostic;
   policyLanes: V2SetDistributionIntentPolicyLane[];
@@ -4655,6 +4677,10 @@ function evaluateV2LaneSetPolicy(input: {
   )
     ? justifications.filter((row) => row !== "justification:none")
     : justifications;
+  const capAwareExpansionDiagnostics =
+    status !== "hard_blocker" && isCalvesV2Lane(input.lane)
+      ? v2CapAwareExpansionDiagnostics(input.policyLanes)
+      : [];
 
   return {
     status,
@@ -4664,6 +4690,7 @@ function evaluateV2LaneSetPolicy(input: {
         ...(reason ? [`setPolicyReason:${reason}`] : []),
         ...v2SetBudgetDiagnostics({ setCount, budget, status }),
         ...diagnosticJustifications,
+        ...capAwareExpansionDiagnostics,
         ...concentrationDiagnostics,
       ],
       chestSecondExposureConcentration
@@ -4950,12 +4977,15 @@ function collectV2LaneDiagnostics(input: {
             ]
         : [...input.setPolicyDiagnostics, ...bicepsAddenda];
     return compactV2LaneDiagnostics(
-      relabelStaleCalvesShortfallDiagnostics({
-        noRepair,
-        slotId: input.slotId,
-        lane: input.lane,
-        diagnostics: compactDiagnostics,
-      }),
+      labelSelectionFeasibilityPressureDiagnostics(
+        relabelStaleCalvesShortfallDiagnostics({
+          noRepair,
+          slotId: input.slotId,
+          lane: input.lane,
+          diagnostics: compactDiagnostics,
+        }),
+        input.lane,
+      ),
       chestSecondExposureDiagnostics.length > 0
         ? 14
         : explainedConcentrationDiagnostics.length > 0
@@ -5085,12 +5115,15 @@ function collectV2LaneDiagnostics(input: {
       : diagnostics;
 
   return compactV2LaneDiagnostics(
-    relabelStaleCalvesShortfallDiagnostics({
-      noRepair,
-      slotId: input.slotId,
-      lane: input.lane,
-      diagnostics: finalDiagnostics,
-    }),
+      labelSelectionFeasibilityPressureDiagnostics(
+        relabelStaleCalvesShortfallDiagnostics({
+          noRepair,
+          slotId: input.slotId,
+          lane: input.lane,
+          diagnostics: finalDiagnostics,
+        }),
+        input.lane,
+      ),
     finalDiagnostics.includes("concentration:primary_anchor")
       ? 12
       : finalDiagnostics.includes("concentration:second_exposure")
@@ -5192,6 +5225,18 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
   const setBudget = unique.filter((row) => row.startsWith("setBudget"));
   const justification = unique.filter((row) => row.startsWith("justification"));
   const readoutNotes = unique.filter((row) => row.startsWith("readout_note:"));
+  const capAwareExpansion = unique.filter((row) =>
+    row.startsWith("capAwareExpansion:"),
+  );
+  const expansionStatus = unique.filter((row) =>
+    row.startsWith("expansionStatus:"),
+  );
+  const selectionFeasibility = unique.filter((row) =>
+    row.startsWith("selectionFeasibility:"),
+  );
+  const capacityPressure = unique.filter((row) =>
+    row.startsWith("capacityPressure:"),
+  );
   const concentrationPolicyTokens = new Set<string>([
     "concentration:support_tier",
     "concentration:vertical_press",
@@ -5225,6 +5270,10 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
       !row.startsWith("setBudget") &&
       !row.startsWith("justification") &&
       !row.startsWith("readout_note:") &&
+      !row.startsWith("capAwareExpansion:") &&
+      !row.startsWith("expansionStatus:") &&
+      !row.startsWith("selectionFeasibility:") &&
+      !row.startsWith("capacityPressure:") &&
       !concentrationPolicyTokens.has(row),
   );
   const blockerOther = other.filter((row) => {
@@ -5245,10 +5294,94 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
     ...blockerOther,
     ...justification,
     ...readoutNotes,
+    ...capAwareExpansion,
+    ...expansionStatus,
+    ...selectionFeasibility,
+    ...capacityPressure,
     ...concentrationPolicy,
     ...nonBlockerOther,
   ].slice(0, limit);
   return compact.length > 0 ? compact : ["none"];
+}
+
+function labelSelectionFeasibilityPressureDiagnostics(
+  diagnostics: string[],
+  lane: V2Lane | V2Slot["lanes"][number],
+): string[] {
+  if (!isUpperPullV2Lane(lane) || !hasSelectionFeasibilityCapacityPressure(diagnostics)) {
+    return diagnostics;
+  }
+  return uniqueSorted([
+    ...diagnostics,
+    "selectionFeasibility:session_capacity_pressure",
+    "capacityPressure:upper_pull_distribution",
+  ]);
+}
+
+function isUpperPullV2Lane(lane: V2Lane | V2Slot["lanes"][number]): boolean {
+  const aliases = v2LaneAliases(lane);
+  return (
+    aliases.includes("row_anchor") ||
+    aliases.includes("vertical_pull_anchor") ||
+    lane.primaryMuscles.includes("Lats") ||
+    lane.primaryMuscles.includes("Upper Back")
+  );
+}
+
+function hasActiveV2SetBudgetFailure(diagnostics: string[]): boolean {
+  const normalized = diagnostics.map((row) => row.toLowerCase());
+  const joined = normalized.join("|");
+  if (
+    joined.includes("setpolicyreason:gt_5_sets") ||
+    joined.includes("setpolicyreason:axial_fatigue") ||
+    joined.includes("setpolicyreason:systemic_fatigue")
+  ) {
+    return false;
+  }
+  return (
+    normalized.includes("setpolicy:under_budget") ||
+    normalized.includes("setpolicy:requires_justification") ||
+    normalized.includes("setbudget:requires_justification") ||
+    normalized.includes("target_delivery:below_min") ||
+    joined.includes("setpolicyreason:over_planned_max") ||
+    joined.includes("setpolicyreason:over_allowed_expansion") ||
+    joined.includes("setpolicyreason:over_role_cap")
+  );
+}
+
+function hasInRangeV2SetBudgetReadout(diagnostics: string[]): boolean {
+  const normalized = diagnostics.map((row) => row.toLowerCase());
+  return (
+    normalized.includes("setbudget:within_preferred") ||
+    normalized.includes("setbudget:within_planned_max") ||
+    normalized.includes("setbudget:allowed_expansion")
+  );
+}
+
+function hasSelectionFeasibilityCapacityPressure(
+  diagnostics: string[],
+): boolean {
+  const joined = diagnostics.join("|").toLowerCase();
+  return (
+    hasInRangeV2SetBudgetReadout(diagnostics) &&
+    !hasActiveV2SetBudgetFailure(diagnostics) &&
+    (joined.includes("slot_capacity_issue") ||
+      joined.includes("slot_capacity_policy") ||
+      joined.includes("selectionfeasibility:session_capacity_pressure") ||
+      joined.includes("capacitypressure:upper_pull_distribution"))
+  );
+}
+
+function hasStaleWeek1ReadoutArtifact(diagnostics: string[]): boolean {
+  return diagnostics.includes(
+    "readout_note:stale_calves_shortfall_suppressed_weekly_within_lane_satisfied",
+  );
+}
+
+function hasCapAwareExpansionLimitation(diagnostics: string[]): boolean {
+  return diagnostics.includes(
+    "capAwareExpansion:preferred_exceeds_single_exercise_cap",
+  );
 }
 
 function inferV2GapCause(input: {
@@ -5273,8 +5406,21 @@ function inferV2GapCause(input: {
   ) {
     return "concentration_policy_gap";
   }
+  if (hasActiveV2SetBudgetFailure(input.diagnostics)) {
+    return "set_distribution_gap";
+  }
+  if (hasCapAwareExpansionLimitation(input.diagnostics)) {
+    return "cap_aware_expansion_limitation";
+  }
+  if (hasStaleWeek1ReadoutArtifact(input.diagnostics)) {
+    return "stale_week1_readout_artifact";
+  }
   if (
-    joined.includes("slot_capacity") ||
+    input.diagnostics.includes("selectionFeasibility:session_capacity_pressure")
+  ) {
+    return "selection_feasibility_pressure";
+  }
+  if (
     joined.includes("cap_") ||
     joined.includes("setpolicyreason:gt_5_sets") ||
     joined.includes("set_count_gt_5")
@@ -5283,6 +5429,12 @@ function inferV2GapCause(input: {
   }
   if (joined.includes("duplicate")) {
     return "duplicate_policy_gap";
+  }
+  if (joined.includes("concentration") || joined.includes("share_")) {
+    return "concentration_policy_gap";
+  }
+  if (joined.includes("slot_capacity")) {
+    return "capacity_gap";
   }
   if (
     joined.includes("distribution_guard") ||
@@ -5294,9 +5446,6 @@ function inferV2GapCause(input: {
     joined.includes("setpolicyreason:over_allowed_expansion")
   ) {
     return "set_distribution_gap";
-  }
-  if (joined.includes("concentration") || joined.includes("share_")) {
-    return "concentration_policy_gap";
   }
   return "unknown";
 }
@@ -5490,6 +5639,16 @@ function recommendV2Migration(input: {
         input.setPolicyStatus === "requires_justification"
           ? "needs_set_budget_justification"
           : "needs_set_distribution_policy",
+      severity: "quality_warning",
+    };
+  }
+  if (
+    input.gapCause === "selection_feasibility_pressure" ||
+    input.gapCause === "stale_week1_readout_artifact" ||
+    input.gapCause === "cap_aware_expansion_limitation"
+  ) {
+    return {
+      migrationRecommendation: "keep_diagnostic_only",
       severity: "quality_warning",
     };
   }

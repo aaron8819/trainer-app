@@ -582,6 +582,10 @@ function buildCurrentV2PolicyGap(
     return {
       supportDirectFloorBlockerCount: 0,
       setDistributionCapacityGapCount: 0,
+      setBudgetPolicyFailureCount: 0,
+      selectionFeasibilityCapacityPressureCount: 0,
+      staleWeek1ReadoutArtifactCount: 0,
+      capAwareExpansionLimitationCount: 0,
       concentrationQualityGapCount: 0,
       optionalDiagnosticLaneCount: 0,
       selectionBlockerCount: 0,
@@ -592,18 +596,44 @@ function buildCurrentV2PolicyGap(
   const laneDiffs = context.v2TargetVsNoRepairDiff.slotDiffs.flatMap(
     (slot) => slot.laneDiffs
   );
+  const activeNonOptionalLanes = laneDiffs.filter(
+    (lane) => lane.targetRole !== "optional" && lane.severity !== "diagnostic_only"
+  );
+  const setBudgetPolicyFailureCount = activeNonOptionalLanes.filter(
+    (lane) =>
+      lane.gapCause === "set_distribution_gap" ||
+      lane.migrationRecommendation === "needs_set_budget_justification"
+  ).length;
+  const selectionFeasibilityCapacityPressureCount = activeNonOptionalLanes.filter(
+    (lane) => lane.gapCause === "selection_feasibility_pressure"
+  ).length;
+  const staleWeek1ReadoutArtifactCount = activeNonOptionalLanes.filter(
+    (lane) =>
+      lane.gapCause === "stale_week1_readout_artifact" ||
+      lane.currentEvidence.relevantDiagnostics.includes(
+        "readout_note:stale_calves_shortfall_suppressed_weekly_within_lane_satisfied"
+      )
+  ).length;
+  const capAwareExpansionLimitationCount = activeNonOptionalLanes.filter(
+    (lane) =>
+      lane.gapCause === "cap_aware_expansion_limitation" ||
+      lane.currentEvidence.relevantDiagnostics.includes(
+        "capAwareExpansion:preferred_exceeds_single_exercise_cap"
+      )
+  ).length;
   return {
     supportDirectFloorBlockerCount:
       context.v2SupportLaneProjectionDiagnostic.summary.directFloorsBelow,
-    setDistributionCapacityGapCount: laneDiffs.filter(
+    setDistributionCapacityGapCount: activeNonOptionalLanes.filter(
       (lane) =>
-        lane.targetRole !== "optional" &&
-        lane.severity !== "diagnostic_only" &&
-        (lane.gapCause === "capacity_gap" ||
-          lane.gapCause === "set_distribution_gap" ||
-          lane.migrationRecommendation === "needs_set_distribution_policy" ||
-          lane.migrationRecommendation === "needs_set_budget_justification")
+        lane.gapCause === "capacity_gap" ||
+        lane.gapCause === "set_distribution_gap" ||
+        lane.migrationRecommendation === "needs_set_budget_justification"
     ).length,
+    setBudgetPolicyFailureCount,
+    selectionFeasibilityCapacityPressureCount,
+    staleWeek1ReadoutArtifactCount,
+    capAwareExpansionLimitationCount,
     concentrationQualityGapCount: laneDiffs.filter(
       (lane) =>
         lane.gapCause === "concentration_policy_gap" &&

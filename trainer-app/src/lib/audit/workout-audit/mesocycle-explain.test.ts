@@ -3573,8 +3573,38 @@ describe("buildMesocycleExplainAuditPayload", () => {
           lane.severity !== "diagnostic_only" &&
           (lane.gapCause === "capacity_gap" ||
             lane.gapCause === "set_distribution_gap" ||
-            lane.migrationRecommendation === "needs_set_distribution_policy" ||
             lane.migrationRecommendation === "needs_set_budget_justification"),
+      ).length,
+      setBudgetPolicyFailureCount: laneDiffs.filter(
+        (lane) =>
+          lane.targetRole !== "optional" &&
+          lane.severity !== "diagnostic_only" &&
+          (lane.gapCause === "set_distribution_gap" ||
+            lane.migrationRecommendation === "needs_set_budget_justification"),
+      ).length,
+      selectionFeasibilityCapacityPressureCount: laneDiffs.filter(
+        (lane) =>
+          lane.targetRole !== "optional" &&
+          lane.severity !== "diagnostic_only" &&
+          lane.gapCause === "selection_feasibility_pressure",
+      ).length,
+      staleWeek1ReadoutArtifactCount: laneDiffs.filter(
+        (lane) =>
+          lane.targetRole !== "optional" &&
+          lane.severity !== "diagnostic_only" &&
+          (lane.gapCause === "stale_week1_readout_artifact" ||
+            lane.currentEvidence.relevantDiagnostics.includes(
+              "readout_note:stale_calves_shortfall_suppressed_weekly_within_lane_satisfied",
+            )),
+      ).length,
+      capAwareExpansionLimitationCount: laneDiffs.filter(
+        (lane) =>
+          lane.targetRole !== "optional" &&
+          lane.severity !== "diagnostic_only" &&
+          (lane.gapCause === "cap_aware_expansion_limitation" ||
+            lane.currentEvidence.relevantDiagnostics.includes(
+              "capAwareExpansion:preferred_exceeds_single_exercise_cap",
+            )),
       ).length,
       concentrationQualityGapCount: laneDiffs.filter(
         (lane) =>
@@ -3673,8 +3703,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
           muscle: "Side Delts",
           exerciseName: "Dumbbell Overhead Press",
           demotionReasons: expect.arrayContaining([
-            "readout_cleanup_needed",
-            "support_floor_design_needed",
+            "do_not_promote_repaired_row",
+            "set_distribution_design_needed",
           ]),
         }),
       ]),
@@ -4495,6 +4525,98 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
   });
 
+  it("labels in-budget upper pull pressure as selection feasibility, not set-budget failure", () => {
+    const planningReality = {
+      ...makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Chest-Supported T-Bar Row",
+            setCount: 3,
+            primaryMuscles: ["Lats", "Upper Back"],
+            movementPatterns: ["horizontal_pull"],
+            stimulus: { Lats: 3, "Upper Back": 3 },
+            percentages: { Lats: 50, "Upper Back": 50 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Lats",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 3,
+            preferredEffectiveSets: 4,
+            maxEffectiveSets: 8,
+          },
+          {
+            muscle: "Upper Back",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 3,
+            preferredEffectiveSets: 4,
+            maxEffectiveSets: 14,
+          },
+        ],
+      }),
+      exerciseClassUnresolvedCauses: [
+        {
+          slotId: "upper_a",
+          muscle: "Lats",
+          targetStatus: "hard",
+          demandType: "direct_required",
+          initialAlignment: "partial",
+          finalAlignment: "partial",
+          owningCause: "slot_capacity_issue",
+          recommendedOwner: "slot_capacity_policy",
+          behaviorReadiness: "needs_capacity_policy",
+          evidence: ["Lats:missing:slot_capacity_policy:needs_capacity_policy"],
+          limitations: [],
+        },
+      ],
+    } as PlannerOnlyPlanningReality;
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: planningReality,
+      repairedPlanningReality: planningReality,
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+
+    const lane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((row) => row.laneId === "row_anchor");
+
+    expect(noRepair.weeklyMuscleTotals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ muscle: "Lats", status: "within" }),
+        expect.objectContaining({ muscle: "Upper Back", status: "within" }),
+      ]),
+    );
+    expect(lane).toMatchObject({
+      gapCause: "selection_feasibility_pressure",
+      migrationRecommendation: "keep_diagnostic_only",
+      severity: "quality_warning",
+      currentEvidence: {
+        relevantDiagnostics: expect.arrayContaining([
+          "setBudget:within_preferred",
+          "selectionFeasibility:session_capacity_pressure",
+          "capacityPressure:upper_pull_distribution",
+        ]),
+      },
+    });
+    expect(lane?.gapCause).not.toBe("set_distribution_gap");
+    expect(lane?.migrationRecommendation).not.toBe(
+      "needs_set_budget_justification",
+    );
+    const selectionLane = noRepair.v2ExerciseSelectionPlanDiagnostic.weeks
+      .find((week) => week.week === 1)
+      ?.slots.find((slot) => slot.slotId === "upper_a")
+      ?.lanes.find((row) => row.laneId === "row_anchor");
+    expect(selectionLane).toMatchObject({
+      setBudgetStatus: "within_budget",
+      capacityStatus: "within_capacity",
+    });
+  });
+
   it("classifies row-anchor over allowed expansion as requiring justification rather than a hard blocker", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
@@ -5272,6 +5394,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     } as PlannerOnlyPlanningReality;
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: planningReality,
+      repairedPlanningReality: planningReality,
       compareRepaired: true,
       repairedProjectionAvailable: true,
     });
@@ -6800,6 +6923,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     ] as PlannerOnlyPlanningReality["allocationVsFinalDelta"];
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: planningReality,
+      repairedPlanningReality: planningReality,
       compareRepaired: true,
       repairedProjectionAvailable: true,
     });
@@ -6825,6 +6949,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
       severity: "pass",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
+          "setBudget:within_preferred",
+          "capAwareExpansion:preferred_exceeds_single_exercise_cap",
+          "expansionStatus:requires_distribution_or_second_exposure",
           "readout_note:stale_calves_shortfall_suppressed_weekly_within_lane_satisfied",
         ]),
       },
@@ -6845,6 +6972,34 @@ describe("buildMesocycleExplainAuditPayload", () => {
         "calves:needs_set_distribution_policy",
       ]),
     );
+    expect(
+      noRepair.repairPromotionScoreboard?.interpretation.currentV2PolicyGap
+        .staleWeek1ReadoutArtifactCount,
+    ).toBeGreaterThan(0);
+    expect(
+      noRepair.repairPromotionScoreboard?.interpretation.currentV2PolicyGap
+        .capAwareExpansionLimitationCount,
+    ).toBe(2);
+    expect(noRepair.slotPlans).toEqual([
+      expect.objectContaining({
+        slotId: "lower_a",
+        exercises: [
+          expect.objectContaining({
+            exerciseName: "Standing Calf Raise",
+            sets: 4,
+          }),
+        ],
+      }),
+      expect.objectContaining({
+        slotId: "lower_b",
+        exercises: [
+          expect.objectContaining({
+            exerciseName: "Seated Calf Raise",
+            sets: 4,
+          }),
+        ],
+      }),
+    ]);
   });
 
   it("downgrades explained biceps support isolation concentration to diagnostic-only", () => {

@@ -1066,6 +1066,10 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
       currentV2PolicyGap: {
         supportDirectFloorBlockerCount: number;
         setDistributionCapacityGapCount: number;
+        setBudgetPolicyFailureCount: number;
+        selectionFeasibilityCapacityPressureCount: number;
+        staleWeek1ReadoutArtifactCount: number;
+        capAwareExpansionLimitationCount: number;
         concentrationQualityGapCount: number;
         optionalDiagnosticLaneCount: number;
         selectionBlockerCount: number;
@@ -1395,6 +1399,9 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
           | "inventory_gap"
           | "classification_gap"
           | "capacity_gap"
+          | "selection_feasibility_pressure"
+          | "stale_week1_readout_artifact"
+          | "cap_aware_expansion_limitation"
           | "duplicate_policy_gap"
           | "set_distribution_gap"
           | "concentration_policy_gap"

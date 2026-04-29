@@ -1534,6 +1534,23 @@ describe("buildWorkoutAuditArtifact", () => {
       sizeBytes: output.v2DebugArtifact?.sizeBytes,
       sha256: output.v2DebugArtifact?.sha256,
     });
+    expect(mainNoRepair.v2Summary).toMatchObject({
+      repairPromotionScoreboard: {
+        rawRepairEvidence: {
+          materialRepairCount: 2,
+          majorRepairCount: 1,
+          suspiciousRepairCount: 1,
+        },
+        summary: {
+          promotionCandidateCount: 1,
+          safetyNetCount: 1,
+          diagnosticOnlyCount: 1,
+        },
+      },
+    });
+    expect(JSON.stringify(mainNoRepair.v2Summary)).not.toContain(
+      "promotionCandidates"
+    );
     expect(output.v2DebugArtifact?.artifact.parent).toMatchObject({
       fileName: "parent.json",
       relativePath: "artifacts/audits/parent.json",
@@ -1566,6 +1583,28 @@ describe("buildWorkoutAuditArtifact", () => {
             safeForBehaviorPromotion: false,
           },
           safeToPromoteBehavior: false,
+        },
+        repairPromotionScoreboard: {
+          promotionCandidates: [
+            expect.objectContaining({
+              slotId: "upper_b",
+              muscle: "Chest",
+              exerciseName: "Incline DB Bench",
+            }),
+          ],
+          rawSuspiciousRows: [
+            expect.objectContaining({
+              exerciseName: "Cable Pullover",
+            }),
+          ],
+          doNotPromoteRows: expect.arrayContaining([
+            expect.objectContaining({
+              reason: "raw_suspicious_do_not_promote",
+            }),
+            expect.objectContaining({
+              reason: "materiality_none_or_diagnostic_denominator_artifact",
+            }),
+          ]),
         },
         v2MesocyclePlan: expect.any(Object),
         v2SetDistributionIntent: expect.any(Object),
@@ -1772,6 +1811,98 @@ function makeMesocycleExplainNoRepairPayload() {
           canReplaceRepairedProjection: false,
           reason: "blocked",
         },
+      },
+      repairPromotionScoreboard: {
+        version: 1,
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        source: "repaired_planning_reality",
+        rawRepairEvidence: {
+          rawRowCount: 3,
+          materialRepairCount: 2,
+          majorRepairCount: 1,
+          likelyAvoidableMaterialRepairCount: 1,
+          remainingMaterialRepairCount: 1,
+          suspiciousRepairCount: 1,
+        },
+        summary: {
+          promotionCandidateCount: 1,
+          doNotPromoteCount: 2,
+          safetyNetCount: 1,
+          collateralDiagnosticCount: 0,
+          diagnosticOnlyCount: 1,
+        },
+        promotionCandidates: [
+          {
+            slotId: "upper_b",
+            muscle: "Chest",
+            exerciseName: "Incline DB Bench",
+            action: "set_bumped",
+            materiality: "major",
+            repairMechanism: "support_floor_closure",
+            correctOwner: "SlotDemandAllocationByWeek",
+            evidence: ["shadowAllocationBasis:slot_owned_muscle_before_selection"],
+          },
+        ],
+        doNotPromoteRows: [
+          {
+            slotId: "upper_a",
+            muscle: "Lats",
+            exerciseName: "Cable Pullover",
+            action: "removed",
+            materiality: "major",
+            repairMechanism: "forbidden_cleanup",
+            reason: "raw_suspicious_do_not_promote",
+            bucket: "safety_net",
+            evidence: ["action:removed"],
+          },
+          {
+            slotId: null,
+            muscle: "Chest",
+            exerciseName: null,
+            action: "diagnostic_only",
+            materiality: "none",
+            repairMechanism: "diagnostic_denominator",
+            reason: "materiality_none_or_diagnostic_denominator_artifact",
+            bucket: "diagnostic_only",
+            evidence: ["materiality:none"],
+          },
+        ],
+        safetyNetRows: [
+          {
+            slotId: "upper_a",
+            muscle: "Lats",
+            exerciseName: "Cable Pullover",
+            action: "removed",
+            materiality: "major",
+            repairMechanism: "forbidden_cleanup",
+            reason: "raw_suspicious_do_not_promote",
+            evidence: ["action:removed"],
+          },
+        ],
+        collateralDiagnosticRows: [],
+        diagnosticRows: [
+          {
+            slotId: null,
+            muscle: "Chest",
+            exerciseName: null,
+            action: "diagnostic_only",
+            materiality: "none",
+            repairMechanism: "diagnostic_denominator",
+            reason: "materiality_none_or_diagnostic_denominator_artifact",
+            evidence: ["materiality:none"],
+          },
+        ],
+        rawSuspiciousRows: [
+          {
+            slotId: "upper_a",
+            muscle: "Lats",
+            exerciseName: "Cable Pullover",
+            repairMechanism: "forbidden_cleanup",
+            reason: "do_not_promote",
+            recommendation: "Do not promote this repair upstream.",
+          },
+        ],
       },
       crossWeekProjectionGate: {
         readOnly: true,

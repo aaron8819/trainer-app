@@ -82,6 +82,7 @@ export const V2_PLANNER_NO_REPAIR_DEBUG_CONTAINS = [
   "summary",
   "acceptanceClassification",
   "crossWeekProjectionGate",
+  "repairPromotionScoreboard",
   "v2DeloadProjectionDiagnostic",
   "v2MesocyclePlan",
   "v2SetDistributionIntent",
@@ -771,6 +772,15 @@ function compactPlannerOnlyNoRepair(
   const v2PlanSkeleton = asRecord(v2Plan?.skeleton);
   const v2Diff = asRecord(noRepair.v2TargetVsNoRepairDiff);
   const v2DiffSummary = asRecord(v2Diff?.summary);
+  const repairPromotionScoreboard = asRecord(
+    noRepair.repairPromotionScoreboard
+  );
+  const repairPromotionRawEvidence = asRecord(
+    repairPromotionScoreboard?.rawRepairEvidence
+  );
+  const repairPromotionSummary = asRecord(
+    repairPromotionScoreboard?.summary
+  );
   const v2SetDistributionIntent = asRecord(noRepair.v2SetDistributionIntent);
   const v2SetDistributionSummary = asRecord(v2SetDistributionIntent?.summary);
   const v2ExerciseSelectionPlanDiagnostic = asRecord(
@@ -853,6 +863,12 @@ function compactPlannerOnlyNoRepair(
         v2SetDistributionSummary?.plannedTotalSetsByWeek ?? [],
       validationRuleSummary: summarizeValidationRules(validationRules),
       targetVsNoRepairSummary: v2DiffSummary ?? {},
+      repairPromotionScoreboard: repairPromotionScoreboard
+        ? {
+            rawRepairEvidence: repairPromotionRawEvidence ?? {},
+            summary: repairPromotionSummary ?? {},
+          }
+        : undefined,
       exerciseSelectionPlanDiagnostic: {
         status:
           v2ExerciseSelectionPlanDiagnostic?.status ?? "diagnostic_only",

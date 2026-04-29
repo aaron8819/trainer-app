@@ -2995,6 +2995,13 @@ type CrossWeekProjectionGate =
   MesocycleExplainPlannerOnlyNoRepair["crossWeekProjectionGate"];
 type V2DeloadProjectionDiagnostic =
   MesocycleExplainPlannerOnlyNoRepair["v2DeloadProjectionDiagnostic"];
+type V2RepairPromotionScoreboard = NonNullable<
+  MesocycleExplainPlannerOnlyNoRepair["repairPromotionScoreboard"]
+>;
+type V2RepairPromotionCandidate =
+  V2RepairPromotionScoreboard["promotionCandidates"][number];
+type V2RepairDoNotPromoteRow =
+  V2RepairPromotionScoreboard["doNotPromoteRows"][number];
 type V2SetDistributionIntentLane =
   V2SetDistributionIntent["weeks"][number]["slots"][number]["lanes"][number];
 type V2SetDistributionIntentPolicyLane = {
@@ -3010,6 +3017,265 @@ type V2LaneSetPolicyStatus =
   | "requires_justification"
   | "hard_blocker"
   | "unknown";
+
+function isRawMaterialRepair(row: {
+  materiality?: string | null;
+}): boolean {
+  return row.materiality === "moderate" || row.materiality === "major";
+}
+
+function isPositiveRepairRow(
+  row: PlanningRealityDiagnostic["repairMaterialityAfterShadowAllocation"][number]
+): boolean {
+  return (
+    row.action === "added" ||
+    row.action === "set_bumped" ||
+    row.rawSetDelta > 0 ||
+    row.effectiveStimulusDelta > 0 ||
+    row.effectiveStimulusAdded > 0
+  );
+}
+
+function repairRowKey(input: {
+  slotId?: string | null;
+  muscle?: string | null;
+  exerciseName?: string | null;
+  repairMechanism?: string | null;
+}): string {
+  return [
+    input.slotId ?? "",
+    input.muscle ?? "",
+    input.exerciseName ?? "",
+    input.repairMechanism ?? "",
+  ].join(":");
+}
+
+function correctPromotionOwner(
+  row: PlanningRealityDiagnostic["repairMaterialityAfterShadowAllocation"][number]
+): V2RepairPromotionCandidate["correctOwner"] {
+  if (row.action === "set_bumped") {
+    return row.muscle === "Chest" || row.muscle === "Hamstrings"
+      ? "SlotDemandAllocationByWeek"
+      : "SetDistributionIntent";
+  }
+  if (row.changedExerciseIdentity && row.muscle === "Hamstrings") {
+    return "ExerciseClassDistributionBySlot";
+  }
+  if (row.changedExerciseIdentity) {
+    return "ExerciseSelectionPlan";
+  }
+  return "SlotDemandAllocationByWeek";
+}
+
+function repairPromotionEvidence(
+  row: PlanningRealityDiagnostic["repairMaterialityAfterShadowAllocation"][number]
+): string[] {
+  return uniqueSorted([
+    `action:${row.action}`,
+    `materiality:${row.materiality}`,
+    `mechanism:${row.repairMechanism}`,
+    `shadowAllocationBasis:${row.shadowAllocationBasis}`,
+    ...row.shadowRationale,
+  ]);
+}
+
+function isPromotionCandidateRepairRow(input: {
+  row: PlanningRealityDiagnostic["repairMaterialityAfterShadowAllocation"][number];
+  suspiciousKeys: ReadonlySet<string>;
+}): boolean {
+  const row = input.row;
+  return Boolean(
+    row.slotId &&
+      row.muscle &&
+      isRawMaterialRepair(row) &&
+      row.likelyAvoidableWithShadowAllocation &&
+      row.shadowAllocationBasis === "slot_owned_muscle_before_selection" &&
+      isPositiveRepairRow(row) &&
+      !input.suspiciousKeys.has(repairRowKey(row))
+  );
+}
+
+function classifyDoNotPromoteRepairRow(
+  row: PlanningRealityDiagnostic["repairMaterialityAfterShadowAllocation"][number],
+  suspiciousKeys: ReadonlySet<string>
+): V2RepairDoNotPromoteRow {
+  const rowKey = repairRowKey(row);
+  const mechanism = row.repairMechanism.toLowerCase();
+  const source = row.source.toLowerCase();
+  const rationale = row.rationale.toLowerCase();
+  const evidence = repairPromotionEvidence(row);
+  if (row.materiality === "none" || row.action === "diagnostic_only") {
+    return {
+      slotId: row.slotId ?? null,
+      muscle: row.muscle ?? null,
+      exerciseName: row.exerciseName ?? null,
+      action: row.action,
+      materiality: row.materiality,
+      repairMechanism: row.repairMechanism,
+      reason: "materiality_none_or_diagnostic_denominator_artifact",
+      bucket: "diagnostic_only",
+      evidence,
+    };
+  }
+  if (
+    suspiciousKeys.has(rowKey) ||
+    row.action === "removed" ||
+    row.action === "set_trimmed" ||
+    row.rawSetDelta < 0 ||
+    row.effectiveStimulusDelta < 0 ||
+    row.shadowAllocationBasis === "diagnostic_or_cap_cleanup" ||
+    mechanism.includes("cap") ||
+    mechanism.includes("trim") ||
+    mechanism.includes("forbidden") ||
+    source.includes("forbidden") ||
+    rationale.includes("forbidden") ||
+    mechanism.includes("distribution_guard")
+  ) {
+    return {
+      slotId: row.slotId ?? null,
+      muscle: row.muscle ?? null,
+      exerciseName: row.exerciseName ?? null,
+      action: row.action,
+      materiality: row.materiality,
+      repairMechanism: row.repairMechanism,
+      reason: suspiciousKeys.has(rowKey)
+        ? "raw_suspicious_do_not_promote"
+        : "cap_trim_removal_or_safety_guard",
+      bucket: "safety_net",
+      evidence,
+    };
+  }
+  return {
+    slotId: row.slotId ?? null,
+    muscle: row.muscle ?? null,
+    exerciseName: row.exerciseName ?? null,
+    action: row.action,
+    materiality: row.materiality,
+    repairMechanism: row.repairMechanism,
+    reason:
+      row.shadowAllocationBasis === "weekly_demand_owned_elsewhere"
+        ? "collateral_or_non_owned_muscle"
+        : "diagnostic_or_collateral_only",
+    bucket: "collateral_diagnostic",
+    evidence,
+  };
+}
+
+function withoutDoNotPromoteBucket(
+  row: V2RepairDoNotPromoteRow
+): Omit<V2RepairDoNotPromoteRow, "bucket"> {
+  return {
+    slotId: row.slotId,
+    muscle: row.muscle,
+    exerciseName: row.exerciseName,
+    action: row.action,
+    materiality: row.materiality,
+    repairMechanism: row.repairMechanism,
+    reason: row.reason,
+    evidence: row.evidence,
+  };
+}
+
+function buildRepairPromotionScoreboard(
+  planningReality: PlanningRealityDiagnostic | undefined
+): V2RepairPromotionScoreboard | undefined {
+  if (!planningReality) {
+    return undefined;
+  }
+  const repairRows = planningReality.repairMaterialityAfterShadowAllocation;
+  const rawSuspiciousRows = planningReality.suspiciousRepairsNotEligibleForPromotion.map(
+    (row) => ({
+      slotId: row.slotId,
+      muscle: row.muscle,
+      exerciseName: row.exerciseName,
+      repairMechanism: row.repairMechanism,
+      reason: row.reason,
+      recommendation: row.recommendation,
+    })
+  );
+  const suspiciousKeys = new Set(rawSuspiciousRows.map(repairRowKey));
+  const promotionCandidates = repairRows
+    .filter((row) => isPromotionCandidateRepairRow({ row, suspiciousKeys }))
+    .map((row) => ({
+      slotId: row.slotId as string,
+      muscle: row.muscle as string,
+      exerciseName: row.exerciseName ?? null,
+      action: row.action,
+      materiality: row.materiality,
+      repairMechanism: row.repairMechanism,
+      correctOwner: correctPromotionOwner(row),
+      evidence: repairPromotionEvidence(row),
+    }))
+    .sort(
+      (left, right) =>
+        left.slotId.localeCompare(right.slotId) ||
+        left.muscle.localeCompare(right.muscle) ||
+        (left.exerciseName ?? "").localeCompare(right.exerciseName ?? "") ||
+        left.action.localeCompare(right.action)
+    );
+  const promotionKeys = new Set(
+    promotionCandidates.map((row) => repairRowKey(row))
+  );
+  const doNotPromoteRows = repairRows
+    .filter((row) => !promotionKeys.has(repairRowKey(row)))
+    .map((row) => classifyDoNotPromoteRepairRow(row, suspiciousKeys))
+    .sort(
+      (left, right) =>
+        (left.bucket ?? "").localeCompare(right.bucket ?? "") ||
+        (left.slotId ?? "").localeCompare(right.slotId ?? "") ||
+        (left.muscle ?? "").localeCompare(right.muscle ?? "") ||
+        (left.exerciseName ?? "").localeCompare(right.exerciseName ?? "") ||
+        left.action.localeCompare(right.action)
+    );
+  const safetyNetRows = doNotPromoteRows
+    .filter((row) => row.bucket === "safety_net")
+    .map(withoutDoNotPromoteBucket);
+  const collateralDiagnosticRows = doNotPromoteRows
+    .filter((row) => row.bucket === "collateral_diagnostic")
+    .map(withoutDoNotPromoteBucket);
+  const diagnosticRows = doNotPromoteRows
+    .filter((row) => row.bucket === "diagnostic_only")
+    .map(withoutDoNotPromoteBucket);
+  const materialRows = repairRows.filter(isRawMaterialRepair);
+
+  return {
+    version: 1,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    source: "repaired_planning_reality",
+    rawRepairEvidence: {
+      rawRowCount: repairRows.length,
+      materialRepairCount:
+        planningReality.shadowRepairSummary?.materialRepairCount ??
+        materialRows.length,
+      majorRepairCount:
+        planningReality.shadowRepairSummary?.majorRepairCount ??
+        repairRows.filter((row) => row.materiality === "major").length,
+      likelyAvoidableMaterialRepairCount:
+        planningReality.shadowRepairSummary?.likelyAvoidableMaterialRepairCount ??
+        materialRows.filter((row) => row.likelyAvoidableWithShadowAllocation)
+          .length,
+      remainingMaterialRepairCount:
+        planningReality.shadowRepairSummary?.remainingMaterialRepairCount ??
+        materialRows.filter((row) => !row.likelyAvoidableWithShadowAllocation)
+          .length,
+      suspiciousRepairCount: rawSuspiciousRows.length,
+    },
+    summary: {
+      promotionCandidateCount: promotionCandidates.length,
+      doNotPromoteCount: doNotPromoteRows.length,
+      safetyNetCount: safetyNetRows.length,
+      collateralDiagnosticCount: collateralDiagnosticRows.length,
+      diagnosticOnlyCount: diagnosticRows.length,
+    },
+    promotionCandidates,
+    doNotPromoteRows,
+    safetyNetRows,
+    collateralDiagnosticRows,
+    diagnosticRows,
+    rawSuspiciousRows,
+  };
+}
 
 function toV2LaneWeek1Status(
   status?: string
@@ -6488,6 +6754,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     ((input.repairedPlanningReality?.finalSlotPlan.length ?? 0) > 0 ||
       input.repairedPlanningReality == null);
   if (!input.noRepairPlanningReality) {
+    const repairPromotionScoreboard = buildRepairPromotionScoreboard(
+      input.repairedPlanningReality
+    );
     const acceptanceClassification: NoRepairClassification = {
       basicMesocycleShapeStatus: "fail",
       replacementReadinessStatus: "blocked",
@@ -6572,6 +6841,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         validationFailureCount: 1,
       },
       acceptanceClassification,
+      ...(repairPromotionScoreboard ? { repairPromotionScoreboard } : {}),
       v2MesocyclePlan,
       v2DeloadProjectionDiagnostic,
       crossWeekProjectionGate,
@@ -6652,6 +6922,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     weeklyMuscleTotals,
     slotPlans,
   });
+  const repairPromotionScoreboard = buildRepairPromotionScoreboard(
+    input.repairedPlanningReality
+  );
   const gaps = mainNoRepairGaps({ slotPlans, acceptanceChecks });
   const v2MesocyclePlan = buildV2MesocyclePlan({
     noRepair,
@@ -6715,6 +6988,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       validationFailureCount,
     },
     acceptanceClassification,
+    ...(repairPromotionScoreboard ? { repairPromotionScoreboard } : {}),
     crossWeekProjectionGate,
     v2MesocyclePlan,
     v2DeloadProjectionDiagnostic,

@@ -3009,6 +3009,385 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(noRepair.summary.status).toBe("pass_with_warnings");
   });
 
+  it("keeps raw repair evidence intact while splitting V2 promotion candidates from safety readout rows", () => {
+    const repairRow = (input: {
+      slotId?: string;
+      muscle?: string;
+      exerciseName?: string;
+      action: "added" | "set_bumped" | "set_trimmed" | "removed" | "diagnostic_only";
+      materiality: "major" | "moderate" | "none";
+      rawSetDelta: number;
+      effectiveStimulusDelta: number;
+      likelyAvoidableWithShadowAllocation: boolean;
+      shadowAllocationBasis:
+        | "slot_owned_muscle_before_selection"
+        | "weekly_demand_owned_elsewhere"
+        | "diagnostic_or_cap_cleanup";
+      repairMechanism?: string;
+      changedExerciseIdentity?: boolean;
+    }) => ({
+      repairMechanism: input.repairMechanism ?? "program_quality:session_composition",
+      materiality: input.materiality,
+      muscle: input.muscle,
+      slotId: input.slotId,
+      exerciseId: input.exerciseName?.toLowerCase().replaceAll(" ", "-"),
+      exerciseName: input.exerciseName,
+      action: input.action,
+      effectiveStimulusAdded: Math.max(0, input.effectiveStimulusDelta),
+      effectiveStimulusDelta: input.effectiveStimulusDelta,
+      rawSetsAdded: Math.max(0, input.rawSetDelta),
+      rawSetDelta: input.rawSetDelta,
+      changedExerciseIdentity: input.changedExerciseIdentity ?? input.action === "added",
+      changedSlotShapeMaterially: input.materiality !== "none",
+      behaviorClass: "program_shaping",
+      source: input.repairMechanism ?? "program_quality_application",
+      rationale: "test repair row",
+      likelyAvoidableWithShadowAllocation:
+        input.likelyAvoidableWithShadowAllocation,
+      shadowAllocationBasis: input.shadowAllocationBasis,
+      shadowRationale: [
+        input.shadowAllocationBasis === "slot_owned_muscle_before_selection"
+          ? "shadow_slot_allocation:support:soft"
+          : "repair remains cap cleanup, unowned stimulus, or unresolved by current shadow allocation",
+      ],
+    });
+    const promotionRows = [
+      repairRow({
+        slotId: "lower_b",
+        muscle: "Hamstrings",
+        exerciseName: "Nordic Hamstring Curl",
+        action: "added",
+        materiality: "major",
+        rawSetDelta: 3,
+        effectiveStimulusDelta: 3,
+        likelyAvoidableWithShadowAllocation: true,
+        shadowAllocationBasis: "slot_owned_muscle_before_selection",
+      }),
+      repairRow({
+        slotId: "upper_b",
+        muscle: "Chest",
+        exerciseName: "Incline DB Bench",
+        action: "set_bumped",
+        materiality: "moderate",
+        rawSetDelta: 3,
+        effectiveStimulusDelta: 3,
+        likelyAvoidableWithShadowAllocation: true,
+        shadowAllocationBasis: "slot_owned_muscle_before_selection",
+      }),
+      repairRow({
+        slotId: "upper_a",
+        muscle: "Lats",
+        exerciseName: "T-Bar Row",
+        action: "set_bumped",
+        materiality: "moderate",
+        rawSetDelta: 2,
+        effectiveStimulusDelta: 1.6,
+        likelyAvoidableWithShadowAllocation: true,
+        shadowAllocationBasis: "slot_owned_muscle_before_selection",
+      }),
+      repairRow({
+        slotId: "upper_a",
+        muscle: "Biceps",
+        exerciseName: "Barbell Curl",
+        action: "added",
+        materiality: "major",
+        rawSetDelta: 2,
+        effectiveStimulusDelta: 2,
+        likelyAvoidableWithShadowAllocation: true,
+        shadowAllocationBasis: "slot_owned_muscle_before_selection",
+      }),
+      repairRow({
+        slotId: "upper_a",
+        muscle: "Biceps",
+        exerciseName: "T-Bar Row",
+        action: "set_bumped",
+        materiality: "major",
+        rawSetDelta: 2,
+        effectiveStimulusDelta: 0.8,
+        likelyAvoidableWithShadowAllocation: true,
+        shadowAllocationBasis: "slot_owned_muscle_before_selection",
+      }),
+      repairRow({
+        slotId: "upper_b",
+        muscle: "Triceps",
+        exerciseName: "DB OHP",
+        action: "set_bumped",
+        materiality: "major",
+        rawSetDelta: 2,
+        effectiveStimulusDelta: 1,
+        likelyAvoidableWithShadowAllocation: true,
+        shadowAllocationBasis: "slot_owned_muscle_before_selection",
+      }),
+      repairRow({
+        slotId: "upper_b",
+        muscle: "Triceps",
+        exerciseName: "Incline DB Bench",
+        action: "set_bumped",
+        materiality: "major",
+        rawSetDelta: 3,
+        effectiveStimulusDelta: 1.2,
+        likelyAvoidableWithShadowAllocation: true,
+        shadowAllocationBasis: "slot_owned_muscle_before_selection",
+      }),
+      repairRow({
+        slotId: "upper_a",
+        muscle: "Rear Delts",
+        exerciseName: "T-Bar Row",
+        action: "set_bumped",
+        materiality: "moderate",
+        rawSetDelta: 2,
+        effectiveStimulusDelta: 0.5,
+        likelyAvoidableWithShadowAllocation: true,
+        shadowAllocationBasis: "slot_owned_muscle_before_selection",
+      }),
+      repairRow({
+        slotId: "upper_b",
+        muscle: "Side Delts",
+        exerciseName: "DB OHP",
+        action: "set_bumped",
+        materiality: "moderate",
+        rawSetDelta: 2,
+        effectiveStimulusDelta: 2,
+        likelyAvoidableWithShadowAllocation: true,
+        shadowAllocationBasis: "slot_owned_muscle_before_selection",
+      }),
+    ];
+    const suspiciousRows = [
+      repairRow({
+        slotId: "lower_b",
+        muscle: "Glutes",
+        exerciseName: "SLDL",
+        action: "set_trimmed",
+        materiality: "moderate",
+        rawSetDelta: -2,
+        effectiveStimulusDelta: -1.5,
+        likelyAvoidableWithShadowAllocation: false,
+        shadowAllocationBasis: "diagnostic_or_cap_cleanup",
+      }),
+      repairRow({
+        slotId: "lower_b",
+        muscle: "Hamstrings",
+        exerciseName: "SLDL",
+        action: "set_trimmed",
+        materiality: "moderate",
+        rawSetDelta: -2,
+        effectiveStimulusDelta: -2,
+        likelyAvoidableWithShadowAllocation: false,
+        shadowAllocationBasis: "diagnostic_or_cap_cleanup",
+      }),
+      repairRow({
+        slotId: "lower_b",
+        muscle: "Lower Back",
+        exerciseName: "SLDL",
+        action: "set_trimmed",
+        materiality: "moderate",
+        rawSetDelta: -2,
+        effectiveStimulusDelta: -0.9,
+        likelyAvoidableWithShadowAllocation: false,
+        shadowAllocationBasis: "diagnostic_or_cap_cleanup",
+      }),
+      repairRow({
+        slotId: "upper_a",
+        muscle: "Forearms",
+        exerciseName: "Barbell Curl",
+        action: "added",
+        materiality: "major",
+        rawSetDelta: 2,
+        effectiveStimulusDelta: 0.5,
+        likelyAvoidableWithShadowAllocation: false,
+        shadowAllocationBasis: "weekly_demand_owned_elsewhere",
+      }),
+      repairRow({
+        slotId: "upper_a",
+        muscle: "Lats",
+        exerciseName: "Cable Pullover",
+        action: "removed",
+        materiality: "major",
+        rawSetDelta: -2,
+        effectiveStimulusDelta: -2,
+        likelyAvoidableWithShadowAllocation: false,
+        shadowAllocationBasis: "diagnostic_or_cap_cleanup",
+      }),
+      repairRow({
+        slotId: "upper_a",
+        muscle: "Upper Back",
+        exerciseName: "Cable Pullover",
+        action: "removed",
+        materiality: "major",
+        rawSetDelta: -2,
+        effectiveStimulusDelta: -0.4,
+        likelyAvoidableWithShadowAllocation: false,
+        shadowAllocationBasis: "diagnostic_or_cap_cleanup",
+      }),
+    ];
+    const collateralRows = [
+      repairRow({
+        slotId: "upper_a",
+        muscle: "Lower Back",
+        exerciseName: "T-Bar Row",
+        action: "set_bumped",
+        materiality: "moderate",
+        rawSetDelta: 2,
+        effectiveStimulusDelta: 0.4,
+        likelyAvoidableWithShadowAllocation: false,
+        shadowAllocationBasis: "weekly_demand_owned_elsewhere",
+      }),
+      repairRow({
+        slotId: "upper_a",
+        muscle: "Upper Back",
+        exerciseName: "T-Bar Row",
+        action: "set_bumped",
+        materiality: "moderate",
+        rawSetDelta: 2,
+        effectiveStimulusDelta: 2,
+        likelyAvoidableWithShadowAllocation: false,
+        shadowAllocationBasis: "weekly_demand_owned_elsewhere",
+      }),
+      repairRow({
+        slotId: "upper_b",
+        muscle: "Front Delts",
+        exerciseName: "DB OHP",
+        action: "set_bumped",
+        materiality: "moderate",
+        rawSetDelta: 2,
+        effectiveStimulusDelta: 1.4,
+        likelyAvoidableWithShadowAllocation: false,
+        shadowAllocationBasis: "weekly_demand_owned_elsewhere",
+      }),
+      repairRow({
+        slotId: "upper_b",
+        muscle: "Front Delts",
+        exerciseName: "Incline DB Bench",
+        action: "set_bumped",
+        materiality: "moderate",
+        rawSetDelta: 3,
+        effectiveStimulusDelta: 1.3,
+        likelyAvoidableWithShadowAllocation: false,
+        shadowAllocationBasis: "weekly_demand_owned_elsewhere",
+      }),
+    ];
+    const diagnosticRows = [
+      repairRow({
+        muscle: "Chest",
+        action: "diagnostic_only",
+        materiality: "none",
+        rawSetDelta: 0,
+        effectiveStimulusDelta: 0,
+        likelyAvoidableWithShadowAllocation: false,
+        shadowAllocationBasis: "diagnostic_or_cap_cleanup",
+      }),
+      repairRow({
+        slotId: "lower_b",
+        muscle: "Calves",
+        exerciseName: "Seated Calf Raise",
+        action: "diagnostic_only",
+        materiality: "none",
+        rawSetDelta: 0,
+        effectiveStimulusDelta: 0,
+        likelyAvoidableWithShadowAllocation: false,
+        shadowAllocationBasis: "diagnostic_or_cap_cleanup",
+      }),
+    ];
+    const repairedPlanningReality = {
+      ...makeNoRepairConcentrationPlanningReality({ exercises: [] }),
+      repairMaterialityAfterShadowAllocation: [
+        ...promotionRows,
+        ...suspiciousRows,
+        ...collateralRows,
+        ...diagnosticRows,
+      ],
+      shadowRepairSummary: {
+        materialRepairCount: 19,
+        majorRepairCount: 8,
+        likelyAvoidableMaterialRepairCount: 9,
+        remainingMaterialRepairCount: 10,
+        likelyAvoidableMajorRepairCount: 5,
+        remainingMajorRepairCount: 3,
+        likelyAvoidableByMuscle: {},
+        remainingByMuscle: {},
+      },
+      suspiciousRepairsNotEligibleForPromotion: suspiciousRows.map((row) => ({
+        slotId: row.slotId as string,
+        muscle: row.muscle as string,
+        exerciseName: row.exerciseName ?? null,
+        repairMechanism: row.repairMechanism,
+        reason: "do_not_promote_test_row",
+        recommendation: "Do not promote this repair upstream.",
+      })),
+    } as PlannerOnlyPlanningReality;
+
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
+        exercises: [],
+      }),
+      repairedPlanningReality,
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+    });
+    const scoreboard = noRepair.repairPromotionScoreboard;
+
+    expect(scoreboard?.rawRepairEvidence).toEqual({
+      rawRowCount: 21,
+      materialRepairCount: 19,
+      majorRepairCount: 8,
+      likelyAvoidableMaterialRepairCount: 9,
+      remainingMaterialRepairCount: 10,
+      suspiciousRepairCount: 6,
+    });
+    expect(scoreboard?.promotionCandidates).toEqual([
+      expect.objectContaining({ slotId: "lower_b", muscle: "Hamstrings", exerciseName: "Nordic Hamstring Curl" }),
+      expect.objectContaining({ slotId: "upper_a", muscle: "Biceps", exerciseName: "Barbell Curl" }),
+      expect.objectContaining({ slotId: "upper_a", muscle: "Biceps", exerciseName: "T-Bar Row" }),
+      expect.objectContaining({ slotId: "upper_a", muscle: "Lats", exerciseName: "T-Bar Row" }),
+      expect.objectContaining({ slotId: "upper_a", muscle: "Rear Delts", exerciseName: "T-Bar Row" }),
+      expect.objectContaining({ slotId: "upper_b", muscle: "Chest", exerciseName: "Incline DB Bench" }),
+      expect.objectContaining({ slotId: "upper_b", muscle: "Side Delts", exerciseName: "DB OHP" }),
+      expect.objectContaining({ slotId: "upper_b", muscle: "Triceps", exerciseName: "DB OHP" }),
+      expect.objectContaining({ slotId: "upper_b", muscle: "Triceps", exerciseName: "Incline DB Bench" }),
+    ]);
+    expect(
+      scoreboard?.promotionCandidates.every((row) =>
+        [
+          "ExerciseClassDistributionBySlot",
+          "ExerciseSelectionPlan",
+          "SetDistributionIntent",
+          "SlotDemandAllocationByWeek",
+        ].includes(row.correctOwner)
+      )
+    ).toBe(true);
+    expect(scoreboard?.promotionCandidates).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ exerciseName: "SLDL" }),
+        expect.objectContaining({ exerciseName: "Cable Pullover" }),
+        expect.objectContaining({ muscle: "Forearms" }),
+        expect.objectContaining({ muscle: "Front Delts" }),
+      ])
+    );
+    expect(scoreboard?.rawSuspiciousRows).toHaveLength(6);
+    expect(scoreboard?.safetyNetRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ exerciseName: "SLDL", action: "set_trimmed" }),
+        expect.objectContaining({ exerciseName: "Cable Pullover", action: "removed" }),
+      ])
+    );
+    expect(scoreboard?.collateralDiagnosticRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ muscle: "Front Delts" }),
+        expect.objectContaining({ muscle: "Upper Back" }),
+        expect.objectContaining({ muscle: "Lower Back" }),
+      ])
+    );
+    expect(scoreboard?.diagnosticRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          materiality: "none",
+          reason: "materiality_none_or_diagnostic_denominator_artifact",
+        }),
+      ])
+    );
+    expect(noRepair).not.toHaveProperty("acceptedPlannerIntent");
+  });
+
   it("classifies the current artifact-like no-repair shape as basic pass-with-warnings and replacement not-ready", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({

@@ -2164,6 +2164,28 @@ export function buildPlannerOnlyNoRepairSummary(input: {
   if (!v2Plan) {
     return baseLines;
   }
+  const repairScoreboard = noRepair.repairPromotionScoreboard;
+  const repairScoreboardLines = repairScoreboard
+    ? [
+        "V2 Repair Promotion Scoreboard",
+        "------------------------------",
+        `Raw repair evidence: material=${repairScoreboard.rawRepairEvidence.materialRepairCount} major=${repairScoreboard.rawRepairEvidence.majorRepairCount} likely-avoidable=${repairScoreboard.rawRepairEvidence.likelyAvoidableMaterialRepairCount} remaining=${repairScoreboard.rawRepairEvidence.remainingMaterialRepairCount} suspicious=${repairScoreboard.rawRepairEvidence.suspiciousRepairCount}`,
+        `Promotion candidates: ${repairScoreboard.summary.promotionCandidateCount}`,
+        `Safety/do-not-promote: ${repairScoreboard.summary.safetyNetCount}`,
+        `Collateral/diagnostic: ${repairScoreboard.summary.collateralDiagnosticCount + repairScoreboard.summary.diagnosticOnlyCount}`,
+        `Candidate rows: ${
+          repairScoreboard.promotionCandidates.length > 0
+            ? repairScoreboard.promotionCandidates
+                .slice(0, 9)
+                .map(
+                  (row) =>
+                    `${row.slotId} ${row.muscle} via ${row.exerciseName ?? "unknown"} -> ${row.correctOwner}`
+                )
+                .join("; ")
+            : "none"
+        }`,
+      ]
+    : [];
   const diff = noRepair.v2TargetVsNoRepairDiff;
   const diffLines = diff
     ? [
@@ -2188,6 +2210,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
       ? "Deload: transform defined, not production-projected"
       : `Deload: ${formatStatus(v2Plan.deloadTransform.projectionStatus)}`,
     `Replacement readiness: ${formatStatus(classification.replacementReadinessStatus)}`,
+    ...repairScoreboardLines,
     ...diffLines,
   ];
 }

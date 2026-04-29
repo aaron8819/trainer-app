@@ -1003,6 +1003,93 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
       reason: string;
     };
   };
+  repairPromotionScoreboard?: {
+    version: 1;
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    source: "repaired_planning_reality";
+    rawRepairEvidence: {
+      rawRowCount: number;
+      materialRepairCount: number;
+      majorRepairCount: number;
+      likelyAvoidableMaterialRepairCount: number;
+      remainingMaterialRepairCount: number;
+      suspiciousRepairCount: number;
+    };
+    summary: {
+      promotionCandidateCount: number;
+      doNotPromoteCount: number;
+      safetyNetCount: number;
+      collateralDiagnosticCount: number;
+      diagnosticOnlyCount: number;
+    };
+    promotionCandidates: Array<{
+      slotId: string;
+      muscle: string;
+      exerciseName: string | null;
+      action: string;
+      materiality: string;
+      repairMechanism: string;
+      correctOwner:
+        | "ExerciseClassDistributionBySlot"
+        | "ExerciseSelectionPlan"
+        | "SetDistributionIntent"
+        | "SlotDemandAllocationByWeek";
+      evidence: string[];
+    }>;
+    doNotPromoteRows: Array<{
+      slotId: string | null;
+      muscle: string | null;
+      exerciseName: string | null;
+      action: string;
+      materiality: string;
+      repairMechanism: string;
+      reason: string;
+      bucket:
+        | "safety_net"
+        | "collateral_diagnostic"
+        | "diagnostic_only";
+      evidence: string[];
+    }>;
+    safetyNetRows: Array<{
+      slotId: string | null;
+      muscle: string | null;
+      exerciseName: string | null;
+      action: string;
+      materiality: string;
+      repairMechanism: string;
+      reason: string;
+      evidence: string[];
+    }>;
+    collateralDiagnosticRows: Array<{
+      slotId: string | null;
+      muscle: string | null;
+      exerciseName: string | null;
+      action: string;
+      materiality: string;
+      repairMechanism: string;
+      reason: string;
+      evidence: string[];
+    }>;
+    diagnosticRows: Array<{
+      slotId: string | null;
+      muscle: string | null;
+      exerciseName: string | null;
+      action: string;
+      materiality: string;
+      repairMechanism: string;
+      reason: string;
+      evidence: string[];
+    }>;
+    rawSuspiciousRows: Array<{
+      slotId: string;
+      muscle: string;
+      exerciseName: string | null;
+      repairMechanism: string;
+      reason: string;
+      recommendation: string;
+    }>;
+  };
   crossWeekProjectionGate: {
     readOnly: true;
     affectsScoringOrGeneration: false;
@@ -1367,6 +1454,7 @@ export type MesocycleExplainPlannerOnlyNoRepairDebugArtifact = {
     MesocycleExplainPlannerOnlyNoRepair,
     | "summary"
     | "acceptanceClassification"
+    | "repairPromotionScoreboard"
     | "crossWeekProjectionGate"
     | "v2DeloadProjectionDiagnostic"
     | "v2MesocyclePlan"

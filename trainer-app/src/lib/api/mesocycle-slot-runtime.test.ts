@@ -43,7 +43,7 @@ describe("mesocycle-slot-runtime", () => {
             primaryLaneContract: null,
             supportCoverageContract: {
               preferredAccessoryPrimaryMuscles: ["Chest", "Triceps", "Rear Delts"],
-              protectedWeekOneCoverageMuscles: ["Chest", "Triceps"],
+              protectedWeekOneCoverageMuscles: ["Chest", "Triceps", "Rear Delts"],
               requiredMovementPatterns: ["vertical_pull", "horizontal_pull"],
               avoidDuplicatePatterns: ["vertical_pull"],
               supportPenaltyPatterns: ["horizontal_pull", "vertical_pull"],

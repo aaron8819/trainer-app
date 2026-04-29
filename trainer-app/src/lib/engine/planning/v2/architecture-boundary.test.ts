@@ -71,6 +71,30 @@ function readPolicyFiles(): Array<{ file: string; text: string }> {
   }));
 }
 
+function readPolicyFilesExceptMaterialization(): Array<{
+  file: string;
+  text: string;
+}> {
+  const materializationSegment = `${path.sep}materialization${path.sep}`;
+  return readPolicyFiles().filter(
+    ({ file }) => !file.includes(materializationSegment),
+  );
+}
+
+function listSourceTypeScriptFiles(dir: string): string[] {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      return listSourceTypeScriptFiles(entryPath);
+    }
+    return (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) &&
+      !entry.name.endsWith(".test.ts") &&
+      !entry.name.endsWith(".test.tsx")
+      ? [entryPath]
+      : [];
+  });
+}
+
 describe("V2 planner policy module boundary", () => {
   it("does not import audit, planning-reality, repaired-projection, or readout modules", () => {
     const violations = readPolicyFiles().flatMap(({ file, text }) =>
@@ -107,7 +131,7 @@ describe("V2 planner policy module boundary", () => {
   });
 
   it("does not define diagnostic/readout objects inside pure policy modules", () => {
-    const violations = readPolicyFiles().flatMap(({ file, text }) =>
+    const violations = readPolicyFilesExceptMaterialization().flatMap(({ file, text }) =>
       diagnosticReadoutKeys.flatMap((key) =>
         text.includes(key)
           ? [`${path.relative(process.cwd(), file)} contains diagnostic key ${key}`]
@@ -130,6 +154,7 @@ describe("V2 planner policy module boundary", () => {
     expect(exportedText).toContain("V2SupportLanePolicy");
     expect(exportedText).toContain("V2SelectionCapacityPlan");
     expect(exportedText).toContain("V2ExerciseSelectionPlan");
+    expect(exportedText).toContain("V2ExerciseMaterializationPlan");
     expect(exportedText).toContain("V2AcceptedPlannerIntentDto");
   });
 
@@ -231,6 +256,54 @@ describe("V2 planner policy module boundary", () => {
       return /\bexerciseSelectionPlan\b/.test(text) ||
         /\bV2ExerciseSelectionPlan\b(?!Diagnostic)/.test(text)
         ? [`${path.relative(process.cwd(), file)} exposes exerciseSelectionPlan`]
+        : [];
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  it("does not add ExerciseMaterializationPlan to audit artifact or sidecar schemas", () => {
+    const artifactFiles = [
+      path.join(process.cwd(), "src", "lib", "audit", "workout-audit", "types.ts"),
+      path.join(
+        process.cwd(),
+        "src",
+        "lib",
+        "audit",
+        "workout-audit",
+        "serializer.ts",
+      ),
+      path.join(
+        process.cwd(),
+        "src",
+        "lib",
+        "audit",
+        "workout-audit",
+        "artifact-serialization.ts",
+      ),
+    ];
+    const violations = artifactFiles.flatMap((file) => {
+      const text = fs.readFileSync(file, "utf8");
+      return /exerciseMaterialization|V2ExerciseMaterialization|v2_exercise_materialization/.test(
+        text,
+      )
+        ? [`${path.relative(process.cwd(), file)} exposes exercise materialization`]
+        : [];
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  it("does not call the dry-run materializer from production modules", () => {
+    const sourceDir = path.join(process.cwd(), "src");
+    const materializationSegment = `${path.sep}engine${path.sep}planning${path.sep}v2${path.sep}materialization${path.sep}`;
+    const violations = listSourceTypeScriptFiles(sourceDir).flatMap((file) => {
+      if (file.includes(materializationSegment)) {
+        return [];
+      }
+      const text = fs.readFileSync(file, "utf8");
+      return /buildV2ExerciseMaterializationPlan\s*\(/.test(text)
+        ? [`${path.relative(process.cwd(), file)} calls dry-run materializer`]
         : [];
     });
 

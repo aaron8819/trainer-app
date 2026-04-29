@@ -1,0 +1,244 @@
+import fs from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+  matchV2ExerciseClasses,
+} from "./taxonomy";
+import type { V2MaterializationExercise } from "./types";
+
+function exercise(
+  input: Partial<V2MaterializationExercise> & {
+    exerciseId: string;
+    name: string;
+    primaryMuscles: string[];
+  },
+): V2MaterializationExercise {
+  return {
+    aliases: [],
+    movementPatterns: [],
+    secondaryMuscles: [],
+    equipment: [],
+    isCompound: false,
+    isMainLiftEligible: false,
+    fatigueCost: 1,
+    stimulusByMusclePerSet: {},
+    ...input,
+  };
+}
+
+function classIds(input: V2MaterializationExercise): string[] {
+  return matchV2ExerciseClasses(input).map((match) => match.classId);
+}
+
+describe("V2 exercise class taxonomy", () => {
+  it("matches one positive fixture per supported class", () => {
+    const fixtures: Array<[string, V2MaterializationExercise]> = [
+      [
+        "knee_flexion_curl",
+        exercise({
+          exerciseId: "leg-curl",
+          name: "Seated Leg Curl",
+          primaryMuscles: ["Hamstrings"],
+          movementPatterns: ["flexion", "isolation"],
+        }),
+      ],
+      [
+        "distinct_chest_press_or_fly",
+        exercise({
+          exerciseId: "machine-press",
+          name: "Machine Chest Press",
+          primaryMuscles: ["Chest"],
+          movementPatterns: ["press"],
+          isCompound: true,
+        }),
+      ],
+      [
+        "low_axial_hip_extension_anchor",
+        exercise({
+          exerciseId: "hip-thrust",
+          name: "Barbell Hip Thrust",
+          primaryMuscles: ["Glutes", "Hamstrings"],
+          stimulusByMusclePerSet: { "Lower Back": 0.25 },
+          isCompound: true,
+        }),
+      ],
+      [
+        "calf_isolation",
+        exercise({
+          exerciseId: "calf-raise",
+          name: "Standing Calf Raise",
+          primaryMuscles: ["Calves"],
+          movementPatterns: ["isolation"],
+        }),
+      ],
+      [
+        "lateral_raise",
+        exercise({
+          exerciseId: "lateral-raise",
+          name: "Cable Lateral Raise",
+          primaryMuscles: ["Side Delts"],
+          movementPatterns: ["isolation"],
+        }),
+      ],
+      [
+        "rear_delt_isolation",
+        exercise({
+          exerciseId: "rear-delt-fly",
+          name: "Rear Delt Reverse Fly",
+          primaryMuscles: ["Rear Delts"],
+          movementPatterns: ["isolation"],
+        }),
+      ],
+      [
+        "triceps_isolation",
+        exercise({
+          exerciseId: "pressdown",
+          name: "Rope Pressdown",
+          primaryMuscles: ["Triceps"],
+        }),
+      ],
+      [
+        "biceps_isolation",
+        exercise({
+          exerciseId: "curl",
+          name: "Incline Dumbbell Curl",
+          primaryMuscles: ["Biceps"],
+        }),
+      ],
+      [
+        "horizontal_pull_support",
+        exercise({
+          exerciseId: "supported-row",
+          name: "Chest Supported Row",
+          primaryMuscles: ["Upper Back", "Lats"],
+          movementPatterns: ["row"],
+          isCompound: true,
+        }),
+      ],
+      [
+        "vertical_pull",
+        exercise({
+          exerciseId: "pulldown",
+          name: "Neutral Grip Pulldown",
+          primaryMuscles: ["Lats"],
+          movementPatterns: ["vertical_pull"],
+          isCompound: true,
+        }),
+      ],
+      [
+        "hinge_compound",
+        exercise({
+          exerciseId: "rdl",
+          name: "Romanian Deadlift",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          movementPatterns: ["hinge"],
+          isCompound: true,
+          isMainLiftEligible: true,
+        }),
+      ],
+      [
+        "squat_pattern",
+        exercise({
+          exerciseId: "leg-press",
+          name: "Leg Press",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["leg_press"],
+          isCompound: true,
+        }),
+      ],
+    ];
+
+    for (const [classId, fixture] of fixtures) {
+      expect(classIds(fixture)).toContain(classId);
+    }
+  });
+
+  it("keeps explicit negative fixtures out of direct classes", () => {
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "back-extension",
+          name: "Back Extension",
+          primaryMuscles: ["Hamstrings", "Lower Back"],
+          movementPatterns: ["hinge"],
+          isCompound: true,
+        }),
+      ),
+    ).not.toContain("knee_flexion_curl");
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "glute-bridge",
+          name: "Glute Bridge",
+          primaryMuscles: ["Glutes", "Hamstrings"],
+          stimulusByMusclePerSet: { "Lower Back": 0.1 },
+          isCompound: true,
+        }),
+      ),
+    ).not.toContain("hinge_compound");
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "bench-press",
+          name: "Bench Press",
+          primaryMuscles: ["Chest"],
+          secondaryMuscles: ["Triceps"],
+          movementPatterns: ["press"],
+          isCompound: true,
+        }),
+      ),
+    ).not.toContain("triceps_isolation");
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "chin-up",
+          name: "Chin Up",
+          primaryMuscles: ["Biceps", "Lats"],
+          movementPatterns: ["vertical_pull"],
+          isCompound: true,
+        }),
+      ),
+    ).not.toContain("biceps_isolation");
+  });
+
+  it("returns deterministic class and rank output", () => {
+    const fixture = exercise({
+      exerciseId: "assisted-pullup",
+      name: "Assisted Pull Up",
+      primaryMuscles: ["Lats"],
+      movementPatterns: ["vertical_pull"],
+      isCompound: true,
+    });
+
+    expect(matchV2ExerciseClasses(fixture)).toEqual(
+      matchV2ExerciseClasses({ ...fixture, aliases: ["Pullup"] }),
+    );
+    expect(matchV2ExerciseClasses(fixture)).toEqual([
+      {
+        classId: "vertical_pull",
+        directMuscles: ["Lats"],
+        duplicateFamily: "vertical_pull:assisted pull up",
+        rank: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY.classOrder.indexOf("vertical_pull"),
+      },
+    ]);
+  });
+
+  it("keeps materialization modules free of forbidden imports", () => {
+    const dir = path.join(process.cwd(), "src", "lib", "engine", "planning", "v2", "materialization");
+    const forbidden =
+      /from\s+["'][^"']*(api|planning-reality|audit|workout-audit|repair|seed|runtime|Prisma|selection-v2|ui|receipt)[^"']*["']/i;
+    const violations = fs
+      .readdirSync(dir)
+      .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts"))
+      .flatMap((file) => {
+        const text = fs.readFileSync(path.join(dir, file), "utf8");
+        return text
+          .split(/\r?\n/)
+          .filter((line) => forbidden.test(line))
+          .map((line) => `${file}: ${line.trim()}`);
+      });
+
+    expect(violations).toEqual([]);
+  });
+});

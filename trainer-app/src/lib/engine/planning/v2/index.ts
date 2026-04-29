@@ -2,6 +2,7 @@ export { buildV2DeloadTransformPolicy } from "./deload-transform";
 export { buildV2AcceptedPlannerIntentDto } from "./accepted-planner-intent-dto";
 export { buildV2ExerciseClassDistributionBySlot } from "./exercise-class-distribution";
 export { buildV2ExerciseSelectionPlan } from "./exercise-selection-plan";
+export { buildV2ExerciseMaterializationPlan } from "./materialization/materializer";
 export { buildV2MesocycleDemand } from "./mesocycle-demand";
 export { buildV2PlannerMesocyclePolicy } from "./mesocycle-policy";
 export { buildV2SelectionCapacityPlan } from "./selection-capacity-plan";
@@ -15,6 +16,12 @@ export {
 export { buildV2TargetSkeleton } from "./target-skeleton";
 export { buildV2WeeklyDemandCurve } from "./weekly-demand-curve";
 export { buildV2WeeklyProgressionModel } from "./weekly-progression";
+export {
+  DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+  V2_EXERCISE_CLASS_ORDER,
+  matchV2ExerciseClasses,
+  resolveV2ExerciseClassIds,
+} from "./materialization/taxonomy";
 export type {
   V2AcceptedPlannerIntentDto,
 } from "./accepted-planner-intent-dto";
@@ -48,6 +55,15 @@ export type {
   WeeklyDemandCurve,
 } from "./types";
 export type { V2ExerciseSelectionPlanInput } from "./exercise-selection-plan";
+export type {
+  V2ExerciseClassId,
+  V2ExerciseClassMatch,
+  V2ExerciseClassTaxonomy,
+  V2ExerciseMaterializationInput,
+  V2ExerciseMaterializationPlan,
+  V2MaterializationExercise,
+  V2MaterializedSelection,
+} from "./materialization/types";
 export type { V2SelectionCapacityPlanInput } from "./selection-capacity-plan";
 export type {
   V2SupportLaneActivationEvaluation,

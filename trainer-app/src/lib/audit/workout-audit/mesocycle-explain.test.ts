@@ -3110,7 +3110,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
       repairRow({
         slotId: "upper_b",
         muscle: "Triceps",
-        exerciseName: "DB OHP",
+        exerciseName: "Dumbbell Overhead Press",
         action: "set_bumped",
         materiality: "major",
         rawSetDelta: 2,
@@ -3143,7 +3143,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
       repairRow({
         slotId: "upper_b",
         muscle: "Side Delts",
-        exerciseName: "DB OHP",
+        exerciseName: "Dumbbell Overhead Press",
         action: "set_bumped",
         materiality: "moderate",
         rawSetDelta: 2,
@@ -3246,7 +3246,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
       repairRow({
         slotId: "upper_b",
         muscle: "Front Delts",
-        exerciseName: "DB OHP",
+        exerciseName: "Dumbbell Overhead Press",
         action: "set_bumped",
         materiality: "moderate",
         rawSetDelta: 2,
@@ -3318,7 +3318,109 @@ describe("buildMesocycleExplainAuditPayload", () => {
 
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
-        exercises: [],
+        exercises: [
+          {
+            slotId: "lower_b",
+            exerciseName: "Seated Leg Curl",
+            primaryMuscles: ["Hamstrings"],
+            movementPatterns: ["knee_flexion"],
+            stimulus: { Hamstrings: 6 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Chest Press",
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_press"],
+            stimulus: { Chest: 10 },
+            percentages: { Chest: 100 },
+          },
+          {
+            slotId: "upper_a",
+            exerciseName: "Lat Pulldown",
+            primaryMuscles: ["Lats"],
+            movementPatterns: ["vertical_pull"],
+            setCount: 6,
+            stimulus: { Lats: 8 },
+          },
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Curl",
+            primaryMuscles: ["Biceps"],
+            stimulus: { Biceps: 4 },
+          },
+          {
+            slotId: "upper_a",
+            exerciseName: "Cable Rear Delt Fly",
+            primaryMuscles: ["Rear Delts"],
+            stimulus: { "Rear Delts": 4 },
+            percentages: { "Rear Delts": 65 },
+          },
+          {
+            slotId: "upper_b",
+            exerciseName: "Machine Lateral Raise",
+            primaryMuscles: ["Side Delts"],
+            stimulus: { "Side Delts": 3 },
+            percentages: { "Side Delts": 100 },
+          },
+        ],
+        demands: [
+          {
+            muscle: "Hamstrings",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 6,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 16,
+          },
+          {
+            muscle: "Chest",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 10,
+            preferredEffectiveSets: 10,
+            maxEffectiveSets: 16,
+          },
+          {
+            muscle: "Lats",
+            priority: "primary",
+            targetStatus: "hard",
+            minEffectiveSets: 8,
+            preferredEffectiveSets: 8,
+            maxEffectiveSets: 16,
+          },
+          {
+            muscle: "Biceps",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 4,
+            preferredEffectiveSets: 4,
+            maxEffectiveSets: 14,
+          },
+          {
+            muscle: "Rear Delts",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 4,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 12,
+          },
+          {
+            muscle: "Side Delts",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 6,
+            preferredEffectiveSets: 6,
+            maxEffectiveSets: 19,
+          },
+          {
+            muscle: "Triceps",
+            priority: "support",
+            targetStatus: "soft",
+            minEffectiveSets: 4,
+            preferredEffectiveSets: 4,
+            maxEffectiveSets: 14,
+          },
+        ],
       }),
       repairedPlanningReality,
       compareRepaired: true,
@@ -3334,27 +3436,93 @@ describe("buildMesocycleExplainAuditPayload", () => {
       remainingMaterialRepairCount: 10,
       suspiciousRepairCount: 6,
     });
-    expect(scoreboard?.promotionCandidates).toEqual([
-      expect.objectContaining({ slotId: "lower_b", muscle: "Hamstrings", exerciseName: "Nordic Hamstring Curl" }),
-      expect.objectContaining({ slotId: "upper_a", muscle: "Biceps", exerciseName: "Barbell Curl" }),
-      expect.objectContaining({ slotId: "upper_a", muscle: "Biceps", exerciseName: "T-Bar Row" }),
-      expect.objectContaining({ slotId: "upper_a", muscle: "Lats", exerciseName: "T-Bar Row" }),
-      expect.objectContaining({ slotId: "upper_a", muscle: "Rear Delts", exerciseName: "T-Bar Row" }),
-      expect.objectContaining({ slotId: "upper_b", muscle: "Chest", exerciseName: "Incline DB Bench" }),
-      expect.objectContaining({ slotId: "upper_b", muscle: "Side Delts", exerciseName: "DB OHP" }),
-      expect.objectContaining({ slotId: "upper_b", muscle: "Triceps", exerciseName: "DB OHP" }),
-      expect.objectContaining({ slotId: "upper_b", muscle: "Triceps", exerciseName: "Incline DB Bench" }),
-    ]);
-    expect(
-      scoreboard?.promotionCandidates.every((row) =>
-        [
-          "ExerciseClassDistributionBySlot",
-          "ExerciseSelectionPlan",
-          "SetDistributionIntent",
-          "SlotDemandAllocationByWeek",
-        ].includes(row.correctOwner)
-      )
-    ).toBe(true);
+    expect(scoreboard?.summary.promotionCandidateCount).toBe(0);
+    expect(scoreboard?.promotionCandidates).toEqual([]);
+    expect(scoreboard?.doNotPromoteRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          slotId: "lower_b",
+          muscle: "Hamstrings",
+          exerciseName: "Nordic Hamstring Curl",
+          demotionReasons: expect.arrayContaining([
+            "v2_already_solved_differently",
+            "taxonomy_bridge_needed",
+          ]),
+        }),
+        expect.objectContaining({
+          slotId: "upper_b",
+          muscle: "Chest",
+          exerciseName: "Incline DB Bench",
+          demotionReasons: expect.arrayContaining([
+            "v2_already_solved_differently",
+            "readout_cleanup_needed",
+          ]),
+        }),
+        expect.objectContaining({
+          slotId: "upper_a",
+          muscle: "Lats",
+          exerciseName: "T-Bar Row",
+          demotionReasons: expect.arrayContaining([
+            "v2_already_solved_differently",
+            "set_distribution_design_needed",
+          ]),
+        }),
+        expect.objectContaining({
+          slotId: "upper_a",
+          muscle: "Biceps",
+          exerciseName: "Barbell Curl",
+          demotionReasons: expect.arrayContaining([
+            "v2_already_solved_differently",
+            "do_not_promote_repaired_row",
+          ]),
+        }),
+        expect.objectContaining({
+          slotId: "upper_a",
+          muscle: "Biceps",
+          exerciseName: "T-Bar Row",
+          demotionReasons: expect.arrayContaining([
+            "v2_already_solved_differently",
+            "collateral_diagnostic",
+          ]),
+        }),
+        expect.objectContaining({
+          slotId: "upper_b",
+          muscle: "Triceps",
+          exerciseName: "Dumbbell Overhead Press",
+          demotionReasons: expect.arrayContaining([
+            "support_floor_design_needed",
+            "do_not_promote_repaired_row",
+          ]),
+        }),
+        expect.objectContaining({
+          slotId: "upper_b",
+          muscle: "Triceps",
+          exerciseName: "Incline DB Bench",
+          demotionReasons: expect.arrayContaining([
+            "support_floor_design_needed",
+            "do_not_promote_repaired_row",
+          ]),
+        }),
+        expect.objectContaining({
+          slotId: "upper_a",
+          muscle: "Rear Delts",
+          exerciseName: "T-Bar Row",
+          demotionReasons: expect.arrayContaining([
+            "collateral_diagnostic",
+            "readout_cleanup_needed",
+          ]),
+        }),
+        expect.objectContaining({
+          slotId: "upper_b",
+          muscle: "Side Delts",
+          exerciseName: "Dumbbell Overhead Press",
+          demotionReasons: expect.arrayContaining([
+            "readout_cleanup_needed",
+            "support_floor_design_needed",
+          ]),
+        }),
+      ])
+    );
     expect(scoreboard?.promotionCandidates).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ exerciseName: "SLDL" }),

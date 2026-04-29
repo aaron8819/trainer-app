@@ -1045,6 +1045,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
       materiality: string;
       repairMechanism: string;
       reason: string;
+      demotionReasons: string[];
       bucket:
         | "safety_net"
         | "collateral_diagnostic"
@@ -1059,6 +1060,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
       materiality: string;
       repairMechanism: string;
       reason: string;
+      demotionReasons: string[];
       evidence: string[];
     }>;
     collateralDiagnosticRows: Array<{
@@ -1069,6 +1071,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
       materiality: string;
       repairMechanism: string;
       reason: string;
+      demotionReasons: string[];
       evidence: string[];
     }>;
     diagnosticRows: Array<{
@@ -1079,6 +1082,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
       materiality: string;
       repairMechanism: string;
       reason: string;
+      demotionReasons: string[];
       evidence: string[];
     }>;
     rawSuspiciousRows: Array<{

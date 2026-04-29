@@ -1,5 +1,6 @@
 export { buildV2DeloadTransformPolicy } from "./deload-transform";
 export { buildV2ExerciseClassDistributionBySlot } from "./exercise-class-distribution";
+export { buildV2ExerciseSelectionPlan } from "./exercise-selection-plan";
 export { buildV2MesocycleDemand } from "./mesocycle-demand";
 export { buildV2PlannerMesocyclePolicy } from "./mesocycle-policy";
 export { buildV2SelectionCapacityPlan } from "./selection-capacity-plan";
@@ -15,11 +16,13 @@ export { buildV2WeeklyDemandCurve } from "./weekly-demand-curve";
 export { buildV2WeeklyProgressionModel } from "./weekly-progression";
 export type {
   ExerciseClassDistributionBySlot,
+  ExerciseSelectionPlan,
   MesocycleDemand,
   SlotDemandAllocationByWeek,
   SelectionCapacityPlan,
   V2DeloadTransformPolicy,
   V2ExerciseClassDistributionBySlot,
+  V2ExerciseSelectionPlan,
   V2MesocycleDemand,
   V2PlannerDemandRole,
   V2PlannerLaneDefinition,
@@ -40,6 +43,7 @@ export type {
   V2WeeklyProgressionWeek,
   WeeklyDemandCurve,
 } from "./types";
+export type { V2ExerciseSelectionPlanInput } from "./exercise-selection-plan";
 export type { V2SelectionCapacityPlanInput } from "./selection-capacity-plan";
 export type {
   V2SupportLaneActivationEvaluation,

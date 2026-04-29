@@ -25,6 +25,7 @@
 | 2026-04-29 | self | Asserted global V2 policy-gap counts in a minimal no-repair fixture and got failures from unrelated target-skeleton lanes. | For V2 target-diff unit tests, assert the lane under test unless the fixture populates the full skeleton enough to make global scoreboard counts meaningful. |
 | 2026-04-29 | self | New `v2SelectionCapacityPlanDiagnostic` initially trusted `v2ExerciseSelectionPlanDiagnostic.selectedIdentity` first and inherited its row-binding ambiguity for `upper_a/row_anchor`, reporting Cable Crossover instead of the row. | For capacity/headroom readouts, prefer lane-matched `v2TargetVsNoRepairDiff.currentEvidence.selectedExercises` for displayed identity/sets, then fall back to selection diagnostics; verify against `slotPlans` by lane aliases. |
 | 2026-04-29 | self | Adding a required planner-only sidecar field passed focused serializer tests but `tsc --noEmit` caught a typed CLI fixture missing the new field. | After adding required `MesocycleExplainPlannerOnlyNoRepair` fields, run `tsc --noEmit` before broad verify and patch every typed CLI/serializer fixture. |
+| 2026-04-29 | self | The requested Vitest command with `src/lib/engine/planning/v2/*.test.ts` reported only 3 files under PowerShell/Vitest, so it did not prove every V2 planning test ran. | For V2 planning verification on Windows, run the requested command and then an explicit file list for all `planning/v2` tests when exact coverage matters. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

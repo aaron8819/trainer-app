@@ -1,5 +1,6 @@
 import { buildV2DeloadTransformPolicy } from "./deload-transform";
 import { buildV2ExerciseClassDistributionBySlot } from "./exercise-class-distribution";
+import { buildV2ExerciseSelectionPlan } from "./exercise-selection-plan";
 import { buildV2MesocycleDemand } from "./mesocycle-demand";
 import { buildV2SelectionCapacityPlan } from "./selection-capacity-plan";
 import { buildV2SetDistributionIntent } from "./set-distribution-intent";
@@ -36,6 +37,11 @@ export function buildV2PlannerMesocyclePolicy(): V2PlannerMesocyclePolicy {
     v2SetDistributionIntent,
     v2SupportLanePolicy,
   });
+  const exerciseSelectionPlan = buildV2ExerciseSelectionPlan({
+    exerciseClassDistributionBySlot,
+    v2SupportLanePolicy,
+    selectionCapacityPlan,
+  });
 
   return {
     targetSkeleton,
@@ -48,5 +54,6 @@ export function buildV2PlannerMesocyclePolicy(): V2PlannerMesocyclePolicy {
     v2SetDistributionIntent,
     v2SupportLanePolicy,
     selectionCapacityPlan,
+    exerciseSelectionPlan,
   };
 }

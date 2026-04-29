@@ -90,6 +90,7 @@ export type V2PlannerMesocyclePolicy = {
   v2SetDistributionIntent: V2SetDistributionIntent;
   v2SupportLanePolicy: V2SupportLanePolicy;
   selectionCapacityPlan: V2SelectionCapacityPlan;
+  exerciseSelectionPlan: V2ExerciseSelectionPlan;
 };
 
 export type V2PlannerTargetStatus = "hard" | "soft" | "diagnostic";
@@ -302,8 +303,74 @@ export type V2SelectionCapacityPlan = {
   };
 };
 
+export type V2ExerciseSelectionPlan = {
+  version: 1;
+  source: "v2_planner_policy";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  selectionTiming: "before_inventory_selection";
+  weeks: Array<{
+    week: number;
+    phase: V2PlannerPhase;
+    slots: Array<{
+      slotId: V2PlannerSlotId;
+      slotIndex: number;
+      maxExerciseCount: number;
+      targetSessionSets: V2PlannerSetRange;
+      lanes: Array<{
+        laneId: string;
+        requirement: "required" | "conditional_optional" | "optional";
+        role: V2PlannerLaneRole;
+        primaryMuscles: string[];
+        acceptableExerciseClasses: string[];
+        preferredExerciseClasses: string[];
+        setBudget: V2PlannerSetRange;
+        directFloor?: {
+          muscle: string;
+          minDirectSets: number;
+          collateralCanSatisfy: false;
+        };
+        duplicatePolicy: {
+          scope: "same_slot" | "same_week" | "across_accumulation";
+          classDistinctness:
+            | "required_if_clean_alternative_exists"
+            | "preferred";
+          sameExerciseAllowedOnlyWithJustification: boolean;
+        };
+        cleanAlternativePolicy: {
+          requiredBeforeDuplicate: boolean;
+          evaluationTiming: "future_inventory_selection";
+        };
+        perExerciseCap: {
+          maxSetsWithoutJustification: number;
+          maxDirectExercises: number;
+          allowAboveFiveSetsOnlyWithJustification: boolean;
+        };
+        continuityPolicy: {
+          preserve: "lane_class" | "lane_role";
+          exactIdentityPolicy: "not_planned_until_inventory_selection";
+          crossWeekVariation:
+            | "stable_class_preferred"
+            | "variation_allowed_within_class";
+        };
+      }>;
+    }>;
+  }>;
+  guardrails: {
+    doesNotUseSelectedIdentities: true;
+    doesNotUseExerciseInventory: true;
+    doesNotUseNoRepairOutput: true;
+    doesNotUseRepairedProjection: true;
+    doesNotAffectSelection: true;
+    doesNotAffectRepair: true;
+    doesNotAffectSeedSerialization: true;
+    doesNotAffectRuntimeReplay: true;
+  };
+};
+
 export type MesocycleDemand = V2MesocycleDemand;
 export type WeeklyDemandCurve = V2WeeklyDemandCurve;
 export type SlotDemandAllocationByWeek = V2SlotDemandAllocationByWeek;
 export type ExerciseClassDistributionBySlot = V2ExerciseClassDistributionBySlot;
 export type SelectionCapacityPlan = V2SelectionCapacityPlan;
+export type ExerciseSelectionPlan = V2ExerciseSelectionPlan;

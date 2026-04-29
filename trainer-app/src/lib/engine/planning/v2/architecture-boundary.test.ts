@@ -48,6 +48,7 @@ const acceptedPlannerIntentCandidateWhitelist: string[] = [
   "v2SetDistributionIntent",
   "v2SupportLanePolicy",
   "selectionCapacityPlan",
+  "exerciseSelectionPlan",
 ];
 
 function listTypeScriptFiles(dir: string): string[] {
@@ -127,6 +128,7 @@ describe("V2 planner policy module boundary", () => {
     expect(exportedText).toContain("V2ExerciseClassDistributionBySlot");
     expect(exportedText).toContain("V2SupportLanePolicy");
     expect(exportedText).toContain("V2SelectionCapacityPlan");
+    expect(exportedText).toContain("V2ExerciseSelectionPlan");
   });
 
   it("does not introduce acceptedPlannerIntent persistence in pure policy modules", () => {
@@ -164,6 +166,37 @@ describe("V2 planner policy module boundary", () => {
       return /\bselectionCapacityPlan\b/.test(text) ||
         /\bV2SelectionCapacityPlan\b(?!Diagnostic)/.test(text)
         ? [`${path.relative(process.cwd(), file)} exposes selectionCapacityPlan`]
+        : [];
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  it("does not add ExerciseSelectionPlan to audit artifact or sidecar schemas", () => {
+    const artifactFiles = [
+      path.join(process.cwd(), "src", "lib", "audit", "workout-audit", "types.ts"),
+      path.join(
+        process.cwd(),
+        "src",
+        "lib",
+        "audit",
+        "workout-audit",
+        "serializer.ts",
+      ),
+      path.join(
+        process.cwd(),
+        "src",
+        "lib",
+        "audit",
+        "workout-audit",
+        "artifact-serialization.ts",
+      ),
+    ];
+    const violations = artifactFiles.flatMap((file) => {
+      const text = fs.readFileSync(file, "utf8");
+      return /\bexerciseSelectionPlan\b/.test(text) ||
+        /\bV2ExerciseSelectionPlan\b(?!Diagnostic)/.test(text)
+        ? [`${path.relative(process.cwd(), file)} exposes exerciseSelectionPlan`]
         : [];
     });
 

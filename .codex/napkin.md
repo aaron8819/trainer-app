@@ -32,6 +32,7 @@
 ## Patterns That Work
 - For V2 planner/repair questions, treat repaired projection as evidence of legacy downstream responsibility, not as the target architecture.
 - For V2 pure-policy extraction, add engine-owned builders first and leave planningReality adapters untouched unless equality/serialization evidence proves a safe no-drift adapter swap.
+- For V2 `SelectionCapacityPlan`, keep the pure engine plan in `src/lib/engine/planning/v2` and assert audit/workout sidecar schemas do not expose it until an explicit artifact slice is requested.
 - For no-drift diagnostic adapter swaps, `v2SetDistributionIntent` can be safely sourced from `buildV2PlannerMesocyclePolicy()` when the emitted sidecar object is structurally equal and main/sidecar artifacts diff clean after ignoring timestamps and artifact links.
 - For verify cleanup, remove stimulus fallback warning noise by adding explicit fixture-only `stimulusProfile` values that match the fallback math, while leaving `src/lib/engine/stimulus.test.ts` as the intentional fallback-warning coverage.
 

@@ -47,6 +47,7 @@ const acceptedPlannerIntentCandidateWhitelist: string[] = [
   "deloadTransform",
   "v2SetDistributionIntent",
   "v2SupportLanePolicy",
+  "selectionCapacityPlan",
 ];
 
 function listTypeScriptFiles(dir: string): string[] {
@@ -81,6 +82,22 @@ describe("V2 planner policy module boundary", () => {
     expect(violations).toEqual([]);
   });
 
+  it("does not import audit, planning-reality, repair, seed, runtime, or selection modules", () => {
+    const forbiddenImportPattern =
+      /from\s+["'][^"']*(audit|planning-reality|repair|seed|runtime|selection-v2)[^"']*["']/;
+    const violations = readPolicyFiles().flatMap(({ file, text }) =>
+      text
+        .split(/\r?\n/)
+        .filter((line) => forbiddenImportPattern.test(line))
+        .map(
+          (line) =>
+            `${path.relative(process.cwd(), file)} has forbidden import ${line.trim()}`,
+        ),
+    );
+
+    expect(violations).toEqual([]);
+  });
+
   it("keeps acceptedPlannerIntent candidates limited to pure planner policy keys", () => {
     for (const key of diagnosticReadoutKeys) {
       expect(acceptedPlannerIntentCandidateWhitelist).not.toContain(key);
@@ -109,6 +126,7 @@ describe("V2 planner policy module boundary", () => {
     expect(exportedText).toContain("V2SlotDemandAllocationByWeek");
     expect(exportedText).toContain("V2ExerciseClassDistributionBySlot");
     expect(exportedText).toContain("V2SupportLanePolicy");
+    expect(exportedText).toContain("V2SelectionCapacityPlan");
   });
 
   it("does not introduce acceptedPlannerIntent persistence in pure policy modules", () => {
@@ -117,6 +135,37 @@ describe("V2 planner policy module boundary", () => {
         ? [`${path.relative(process.cwd(), file)} references acceptedPlannerIntent`]
         : []
     );
+
+    expect(violations).toEqual([]);
+  });
+
+  it("does not add SelectionCapacityPlan to audit artifact or sidecar schemas", () => {
+    const artifactFiles = [
+      path.join(process.cwd(), "src", "lib", "audit", "workout-audit", "types.ts"),
+      path.join(
+        process.cwd(),
+        "src",
+        "lib",
+        "audit",
+        "workout-audit",
+        "serializer.ts",
+      ),
+      path.join(
+        process.cwd(),
+        "src",
+        "lib",
+        "audit",
+        "workout-audit",
+        "artifact-serialization.ts",
+      ),
+    ];
+    const violations = artifactFiles.flatMap((file) => {
+      const text = fs.readFileSync(file, "utf8");
+      return /\bselectionCapacityPlan\b/.test(text) ||
+        /\bV2SelectionCapacityPlan\b(?!Diagnostic)/.test(text)
+        ? [`${path.relative(process.cwd(), file)} exposes selectionCapacityPlan`]
+        : [];
+    });
 
     expect(violations).toEqual([]);
   });

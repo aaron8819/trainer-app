@@ -89,6 +89,7 @@ export type V2PlannerMesocyclePolicy = {
   exerciseClassDistributionBySlot: V2ExerciseClassDistributionBySlot;
   v2SetDistributionIntent: V2SetDistributionIntent;
   v2SupportLanePolicy: V2SupportLanePolicy;
+  selectionCapacityPlan: V2SelectionCapacityPlan;
 };
 
 export type V2PlannerTargetStatus = "hard" | "soft" | "diagnostic";
@@ -245,7 +246,64 @@ export type V2ExerciseClassDistributionBySlot = {
   guardrails: V2MesocycleDemand["guardrails"];
 };
 
+export type V2SelectionCapacityPlan = {
+  version: 1;
+  source: "v2_planner_policy";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  capacityTiming: "before_exercise_selection";
+  weeks: Array<{
+    week: number;
+    phase: V2PlannerPhase;
+    slots: Array<{
+      slotId: V2PlannerSlotId;
+      slotIndex: number;
+      maxExerciseCount: number;
+      targetSessionSets: V2PlannerSetRange;
+      lanes: Array<{
+        laneId: string;
+        role: V2PlannerLaneRole;
+        primaryMuscles: string[];
+        preferredExerciseClasses: string[];
+        targetWeeklySetRange: V2PlannerSetRange;
+        setBudget: V2PlannerSetRange;
+        perExerciseCap: {
+          maxSetsWithoutJustification: number;
+          maxDirectExercises: number;
+          allowAboveFiveSetsOnlyWithJustification: boolean;
+        };
+        laneHeadroomPolicy: {
+          preferredRequiresHeadroom: boolean;
+          cleanAlternativeRequiredForExpansion: boolean;
+          capAwareExpansion:
+            | "not_needed"
+            | "second_direct_exercise_allowed"
+            | "limited_by_max_direct_exercises";
+        };
+        optionalActivation:
+          | { type: "not_applicable" }
+          | {
+              type: "activate_only_if_weekly_target_below_range";
+              weeklyFloorSets: number;
+              requiresSlotExerciseHeadroom: true;
+              requiresCleanAlternative: true;
+              requiresRecoverability: true;
+            };
+      }>;
+    }>;
+  }>;
+  guardrails: {
+    doesNotUseSelectedIdentities: true;
+    doesNotUseNoRepairOutput: true;
+    doesNotUseRepairedProjection: true;
+    doesNotAffectSelection: true;
+    doesNotAffectRepair: true;
+    doesNotAffectRuntimeReplay: true;
+  };
+};
+
 export type MesocycleDemand = V2MesocycleDemand;
 export type WeeklyDemandCurve = V2WeeklyDemandCurve;
 export type SlotDemandAllocationByWeek = V2SlotDemandAllocationByWeek;
 export type ExerciseClassDistributionBySlot = V2ExerciseClassDistributionBySlot;
+export type SelectionCapacityPlan = V2SelectionCapacityPlan;

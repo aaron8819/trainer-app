@@ -1,4 +1,5 @@
 export { buildV2DeloadTransformPolicy } from "./deload-transform";
+export { buildV2AcceptedPlannerIntentDto } from "./accepted-planner-intent-dto";
 export { buildV2ExerciseClassDistributionBySlot } from "./exercise-class-distribution";
 export { buildV2ExerciseSelectionPlan } from "./exercise-selection-plan";
 export { buildV2MesocycleDemand } from "./mesocycle-demand";
@@ -14,6 +15,9 @@ export {
 export { buildV2TargetSkeleton } from "./target-skeleton";
 export { buildV2WeeklyDemandCurve } from "./weekly-demand-curve";
 export { buildV2WeeklyProgressionModel } from "./weekly-progression";
+export type {
+  V2AcceptedPlannerIntentDto,
+} from "./accepted-planner-intent-dto";
 export type {
   ExerciseClassDistributionBySlot,
   ExerciseSelectionPlan,

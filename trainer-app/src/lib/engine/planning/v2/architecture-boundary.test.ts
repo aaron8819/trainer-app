@@ -49,6 +49,7 @@ const acceptedPlannerIntentCandidateWhitelist: string[] = [
   "v2SupportLanePolicy",
   "selectionCapacityPlan",
   "exerciseSelectionPlan",
+  "acceptedPlannerIntentDto",
 ];
 
 function listTypeScriptFiles(dir: string): string[] {
@@ -129,6 +130,7 @@ describe("V2 planner policy module boundary", () => {
     expect(exportedText).toContain("V2SupportLanePolicy");
     expect(exportedText).toContain("V2SelectionCapacityPlan");
     expect(exportedText).toContain("V2ExerciseSelectionPlan");
+    expect(exportedText).toContain("V2AcceptedPlannerIntentDto");
   });
 
   it("does not introduce acceptedPlannerIntent persistence in pure policy modules", () => {
@@ -137,6 +139,38 @@ describe("V2 planner policy module boundary", () => {
         ? [`${path.relative(process.cwd(), file)} references acceptedPlannerIntent`]
         : []
     );
+
+    expect(violations).toEqual([]);
+  });
+
+  it("does not add acceptedPlannerIntent DTO to audit artifact or sidecar schemas", () => {
+    const artifactFiles = [
+      path.join(process.cwd(), "src", "lib", "audit", "workout-audit", "types.ts"),
+      path.join(
+        process.cwd(),
+        "src",
+        "lib",
+        "audit",
+        "workout-audit",
+        "serializer.ts",
+      ),
+      path.join(
+        process.cwd(),
+        "src",
+        "lib",
+        "audit",
+        "workout-audit",
+        "artifact-serialization.ts",
+      ),
+    ];
+    const violations = artifactFiles.flatMap((file) => {
+      const text = fs.readFileSync(file, "utf8");
+      return /acceptedPlannerIntent|V2AcceptedPlannerIntentDto|buildV2AcceptedPlannerIntentDto/.test(
+        text,
+      )
+        ? [`${path.relative(process.cwd(), file)} exposes acceptedPlannerIntent`]
+        : [];
+    });
 
     expect(violations).toEqual([]);
   });

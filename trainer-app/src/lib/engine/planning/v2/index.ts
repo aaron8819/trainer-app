@@ -2,6 +2,7 @@ export { buildV2DeloadTransformPolicy } from "./deload-transform";
 export { buildV2AcceptedPlannerIntentDto } from "./accepted-planner-intent-dto";
 export { buildV2ExerciseClassDistributionBySlot } from "./exercise-class-distribution";
 export { buildV2ExerciseSelectionPlan } from "./exercise-selection-plan";
+export { buildV2MaterializationDryRunReport } from "./materialization/dry-run-report";
 export { buildV2ExerciseMaterializationPlan } from "./materialization/materializer";
 export { buildV2MesocycleDemand } from "./mesocycle-demand";
 export { buildV2PlannerMesocyclePolicy } from "./mesocycle-policy";
@@ -61,6 +62,11 @@ export type {
   V2ExerciseClassTaxonomy,
   V2ExerciseMaterializationInput,
   V2ExerciseMaterializationPlan,
+  V2MaterializationDryRunReport,
+  V2MaterializationDryRunReportInput,
+  V2MaterializationDryRunReportPreviewSlot,
+  V2MaterializationDryRunReportReason,
+  V2MaterializationDryRunReportStatus,
   V2MaterializationExercise,
   V2MaterializedSelection,
 } from "./materialization/types";

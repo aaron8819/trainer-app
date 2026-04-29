@@ -155,6 +155,7 @@ describe("V2 planner policy module boundary", () => {
     expect(exportedText).toContain("V2SelectionCapacityPlan");
     expect(exportedText).toContain("V2ExerciseSelectionPlan");
     expect(exportedText).toContain("V2ExerciseMaterializationPlan");
+    expect(exportedText).toContain("V2MaterializationDryRunReport");
     expect(exportedText).toContain("V2AcceptedPlannerIntentDto");
   });
 
@@ -304,6 +305,22 @@ describe("V2 planner policy module boundary", () => {
       const text = fs.readFileSync(file, "utf8");
       return /buildV2ExerciseMaterializationPlan\s*\(/.test(text)
         ? [`${path.relative(process.cwd(), file)} calls dry-run materializer`]
+        : [];
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  it("does not call the dry-run materialization report from production modules", () => {
+    const sourceDir = path.join(process.cwd(), "src");
+    const materializationSegment = `${path.sep}engine${path.sep}planning${path.sep}v2${path.sep}materialization${path.sep}`;
+    const violations = listSourceTypeScriptFiles(sourceDir).flatMap((file) => {
+      if (file.includes(materializationSegment)) {
+        return [];
+      }
+      const text = fs.readFileSync(file, "utf8");
+      return /buildV2MaterializationDryRunReport\s*\(/.test(text)
+        ? [`${path.relative(process.cwd(), file)} calls dry-run materialization report`]
         : [];
     });
 

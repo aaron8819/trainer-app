@@ -32,6 +32,7 @@
 | 2026-04-29 | self | A dry-run V2 materialization output intentionally added `blockers`, which collided with the existing pure-policy boundary test's broad diagnostic key scan. | When adding dry-run planner artifacts with explicit blockers/omissions, narrow older readout-key boundary tests to the modules they were designed to police and add artifact-specific boundary tests. |
 | 2026-04-29 | self | Added a vertical-press negative guard for the token `chin` and accidentally matched the substring inside `machine`, blocking Machine Shoulder Press. | Avoid bare short substring guards in taxonomy text matching; prefer phrase tokens like `chin up` / `chinup` when using `includes()`. |
 | 2026-04-29 | self | Reused a double-quoted PowerShell `rg` pattern containing embedded quotes while tracing V2 materialization callsites and hit a parser error. | Use single-quoted `rg` patterns for import/callsite searches that contain quotes or regex alternation. |
+| 2026-04-29 | self | A new V2 materialization report test would have been easy to place in a new `dry-run-report.test.ts`, but the requested verification command did not include that file. | When the user provides an exact focused test command, put new diagnostic coverage in an included nearby test file or update/run an explicit extra test command. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

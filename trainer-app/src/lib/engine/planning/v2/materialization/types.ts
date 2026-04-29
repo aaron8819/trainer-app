@@ -1,4 +1,7 @@
-import type { V2ExerciseSelectionPlan } from "../types";
+import type {
+  V2ExerciseSelectionPlan,
+  V2PlannerMesocyclePolicy,
+} from "../types";
 
 export type V2MaterializationExercise = {
   exerciseId: string;
@@ -99,4 +102,74 @@ export type V2ExerciseMaterializationPlan = {
       | "optional_capacity_exhausted"
       | "optional_not_activated";
   }>;
+};
+
+export type V2MaterializationDryRunReportStatus =
+  | "materialized"
+  | "blocked"
+  | "partial";
+
+export type V2MaterializationDryRunReportReason = {
+  slotId?: string;
+  laneId?: string;
+  reason: string;
+};
+
+export type V2MaterializationDryRunReportPreviewSlot = {
+  slotId: string;
+  intent?: string;
+  exercises: Array<{
+    exerciseId: string;
+    name?: string;
+    role: "CORE_COMPOUND" | "ACCESSORY";
+    setCount: number;
+  }>;
+};
+
+export type V2MaterializationDryRunReport = {
+  version: 1;
+  source: "v2_exercise_materialization";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  dryRunOnly: true;
+  status: V2MaterializationDryRunReportStatus;
+  plannerPolicyAvailable: boolean;
+  exerciseSelectionPlanAvailable: boolean;
+  taxonomyAvailable: boolean;
+  inventoryAvailable: boolean;
+  materializer: {
+    status: "materialized" | "blocked";
+    blockerCount: number;
+    omissionCount: number;
+  };
+  seedShapeCompatibility: {
+    compatible: boolean;
+    slotCount: number;
+    exerciseCount: number;
+    missingNameCount: number;
+    duplicateExerciseIdWithinSlotCount: number;
+    invalidRoleCount: number;
+    invalidSetCount: number;
+    unsupportedClassCount: number;
+  };
+  executableSeedPreview: V2MaterializationDryRunReportPreviewSlot[];
+  strippedMaterializerFields: string[];
+  blockers: V2MaterializationDryRunReportReason[];
+  omissions: V2MaterializationDryRunReportReason[];
+  readiness: {
+    safeToPromoteToProductionWrite: false;
+    missingBeforePromotion: string[];
+  };
+};
+
+export type V2MaterializationDryRunReportInput = {
+  plannerPolicy?: V2PlannerMesocyclePolicy | null;
+  exerciseSelectionPlan?: V2ExerciseSelectionPlan | null;
+  taxonomy?: V2ExerciseClassTaxonomy | null;
+  inventory?: V2MaterializationExercise[] | null;
+  materializedPlan?: V2ExerciseMaterializationPlan | null;
+  constraints?: V2ExerciseMaterializationInput["constraints"];
+  continuity?: V2ExerciseMaterializationInput["continuity"];
+  exerciseNameById?: Record<string, string | undefined>;
+  slotIntentById?: Record<string, string | undefined>;
 };

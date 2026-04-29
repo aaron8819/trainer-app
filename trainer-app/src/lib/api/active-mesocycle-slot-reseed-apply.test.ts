@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildV2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 
 const mocks = vi.hoisted(() => {
   const txMesocycleFindFirst = vi.fn();
@@ -213,6 +214,45 @@ describe("applyActiveMesocycleBoundedUpperSlotReseed", () => {
       buildSlotPlanSeedUpgradeReplacement({ persistedSeedRecord, candidateSeedRecord })
     ).toEqual(
       buildSlotPlanSeedUpgradeReplacement({ persistedSeedRecord, candidateSeedRecord })
+    );
+  });
+
+  it("intentionally omits acceptedPlannerIntent from applied reseed replacements", () => {
+    const acceptedPlannerIntent = buildV2AcceptedPlannerIntentDto();
+    const persistedSeedRecord = {
+      version: 1 as const,
+      source: "handoff_slot_plan_projection",
+      acceptedPlannerIntent,
+      slots: [
+        {
+          slotId: "upper_a",
+          exercises: [{ exerciseId: "incline-db-bench", role: "CORE_COMPOUND" as const, setCount: 5, hasExplicitName: false, hasExplicitSetCount: true }],
+        },
+      ],
+    };
+    const candidateSeedRecord = {
+      version: 1 as const,
+      source: "handoff_slot_plan_projection",
+      acceptedPlannerIntent,
+      slots: [
+        {
+          slotId: "upper_a",
+          exercises: [
+            { exerciseId: "incline-db-bench", role: "CORE_COMPOUND" as const, setCount: 3, hasExplicitName: false, hasExplicitSetCount: true },
+            { exerciseId: "machine-press", role: "ACCESSORY" as const, setCount: 2, hasExplicitName: false, hasExplicitSetCount: true },
+          ],
+        },
+      ],
+    };
+
+    const replacement = buildSlotPlanSeedUpgradeReplacement({
+      persistedSeedRecord,
+      candidateSeedRecord,
+    });
+
+    expect(replacement.replacementSeed).not.toHaveProperty("acceptedPlannerIntent");
+    expect(JSON.stringify(replacement.replacementSeed)).not.toContain(
+      "acceptedPlannerIntent"
     );
   });
 

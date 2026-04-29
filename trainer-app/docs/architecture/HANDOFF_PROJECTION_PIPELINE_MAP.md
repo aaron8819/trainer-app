@@ -10,7 +10,7 @@
 
 Observed facts:
 - `acceptMesocycleHandoff()` prepares projection and seed material before the transaction, then persists the created successor in `acceptPreparedMesocycleHandoffInTransaction()`.
-- `buildMesocycleSlotPlanSeed()` serializes only `slotId -> exercises[{ exerciseId, role, setCount }]` and validates slot-order alignment and positive integer `setCount`.
+- `buildMesocycleSlotPlanSeed()` serializes executable `slotId -> exercises[{ exerciseId, role, setCount }]`, may include optional seed-safe `acceptedPlannerIntent` metadata only when explicitly provided, and validates slot-order alignment and positive integer `setCount`.
 - `projectSuccessorSlotPlansFromSnapshot()` returns final `slotPlans` plus diagnostics; acceptance rejects blocking protected coverage failures.
 - The requested flat file `src/lib/api/mesocycle-handoff-slot-plan-projection.planning-reality.ts` does not exist in this checkout. The current implementation is `src/lib/api/mesocycle-handoff-slot-plan-projection.diagnostics.ts`, which re-exports `src/lib/api/planning-reality/index.ts` and helpers under `src/lib/api/planning-reality/*`.
 

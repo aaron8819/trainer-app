@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { buildV2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 import { buildMesocycleSlotPlanSeed } from "../mesocycle-handoff-slot-plan-projection";
 import { resolveRequiredSeededSlotPlan } from "./slot-plan-seed";
 import type { MappedGenerationContext } from "./types";
@@ -38,6 +39,123 @@ function makeMapped(slotPlanSeedJson: unknown): MappedGenerationContext {
 }
 
 describe("resolveRequiredSeededSlotPlan", () => {
+  it("serializes acceptedPlannerIntent only when explicitly provided", () => {
+    const seedWithoutMetadata = buildMesocycleSlotPlanSeed({
+      slotSequence: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [{ slotId: "upper_a", intent: "UPPER" }],
+      },
+      slotPlans: [
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          exercises: [
+            {
+              exerciseId: "bench",
+              name: "Bench Press",
+              role: "CORE_COMPOUND",
+              setCount: 5,
+            },
+          ],
+        },
+      ],
+    });
+    const acceptedPlannerIntent = buildV2AcceptedPlannerIntentDto();
+    const seedWithMetadata = buildMesocycleSlotPlanSeed({
+      slotSequence: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [{ slotId: "upper_a", intent: "UPPER" }],
+      },
+      slotPlans: [
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          exercises: [
+            {
+              exerciseId: "bench",
+              name: "Bench Press",
+              role: "CORE_COMPOUND",
+              setCount: 5,
+            },
+          ],
+        },
+      ],
+      acceptedPlannerIntent,
+    });
+
+    expect(seedWithoutMetadata).not.toHaveProperty("acceptedPlannerIntent");
+    expect(seedWithMetadata.acceptedPlannerIntent).toEqual(acceptedPlannerIntent);
+  });
+
+  it("whitelists acceptedPlannerIntent and drops diagnostic/debug fields", () => {
+    const acceptedPlannerIntent = buildV2AcceptedPlannerIntentDto();
+    const rawPlannerObject = {
+      ...acceptedPlannerIntent,
+      planningReality: { status: "debug" },
+      debugArtifact: { path: "sidecar.json" },
+      noRepair: true,
+      repairedProjection: { slotPlans: [] },
+      sessionDecisionReceipt: { version: 1 },
+      weekPolicies: acceptedPlannerIntent.weekPolicies.map((week, weekIndex) =>
+        weekIndex === 0
+          ? {
+              ...week,
+              slots: week.slots.map((slot, slotIndex) =>
+                slotIndex === 0
+                  ? {
+                      ...slot,
+                      lanes: slot.lanes.map((lane, laneIndex) =>
+                        laneIndex === 0
+                          ? {
+                              ...lane,
+                              evidence: ["debug-only"],
+                              selectedExercise: { exerciseId: "not-seed-truth" },
+                            }
+                          : lane
+                      ),
+                    }
+                  : slot
+              ),
+            }
+          : week
+      ),
+    };
+
+    const seed = buildMesocycleSlotPlanSeed({
+      slotSequence: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [{ slotId: "upper_a", intent: "UPPER" }],
+      },
+      slotPlans: [
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          exercises: [
+            {
+              exerciseId: "bench",
+              name: "Bench Press",
+              role: "CORE_COMPOUND",
+              setCount: 5,
+            },
+          ],
+        },
+      ],
+      acceptedPlannerIntent: rawPlannerObject as typeof acceptedPlannerIntent,
+    });
+    const serialized = JSON.stringify(seed.acceptedPlannerIntent);
+
+    expect(seed.acceptedPlannerIntent).toEqual(acceptedPlannerIntent);
+    expect(serialized).not.toMatch(
+      /planningReality|debugArtifact|noRepair|repairedProjection|sessionDecisionReceipt|selectedExercise|not-seed-truth|debug-only/
+    );
+  });
+
   it("does not serialize planner-only override data into slotPlanSeedJson", () => {
     const seed = buildMesocycleSlotPlanSeed({
       slotSequence: {
@@ -142,6 +260,38 @@ describe("resolveRequiredSeededSlotPlan", () => {
     });
 
     expect(first).toEqual(second);
+  });
+
+  it("ignores acceptedPlannerIntent during seeded runtime replay", () => {
+    const seed = {
+      version: 1,
+      source: "handoff_slot_plan_projection",
+      acceptedPlannerIntent: buildV2AcceptedPlannerIntentDto(),
+      slots: [
+        {
+          slotId: "upper_a",
+          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND", setCount: 5 }],
+        },
+      ],
+    };
+
+    const resolvedWithMetadata = resolveRequiredSeededSlotPlan({
+      mapped: makeMapped(seed),
+      sessionIntent: "upper",
+      slotId: "upper_a",
+    });
+    const resolvedWithoutMetadata = resolveRequiredSeededSlotPlan({
+      mapped: makeMapped({ ...seed, acceptedPlannerIntent: undefined }),
+      sessionIntent: "upper",
+      slotId: "upper_a",
+    });
+
+    expect(resolvedWithMetadata).toEqual(resolvedWithoutMetadata);
+    expect(resolvedWithMetadata).toMatchObject({
+      slotId: "upper_a",
+      setCountOverrides: { bench: 5 },
+      usesLegacySetCountFallback: false,
+    });
   });
 
   it("returns explicit set-count overrides for set-aware seeds", () => {

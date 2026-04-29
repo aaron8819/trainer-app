@@ -27,6 +27,7 @@
 | 2026-04-29 | self | Adding a required planner-only sidecar field passed focused serializer tests but `tsc --noEmit` caught a typed CLI fixture missing the new field. | After adding required `MesocycleExplainPlannerOnlyNoRepair` fields, run `tsc --noEmit` before broad verify and patch every typed CLI/serializer fixture. |
 | 2026-04-29 | self | The requested Vitest command with `src/lib/engine/planning/v2/*.test.ts` reported only 3 files under PowerShell/Vitest, so it did not prove every V2 planning test ran. | For V2 planning verification on Windows, run the requested command and then an explicit file list for all `planning/v2` tests when exact coverage matters. |
 | 2026-04-29 | self | While building the seed-safe V2 accepted planner DTO, the first shape reused a raw policy concentration value `diagnostic_only`, which is readout language rather than future seed metadata. | Map diagnostic/readout-flavored pure policy markers into seed-safe intent terms such as `optional_lane`, and test DTO strings as well as keys for forbidden readout leakage. |
+| 2026-04-29 | self | The first slot-plan seed metadata sanitizer preserved only the obvious lane policy fields and dropped allowed DTO fields like duplicate class distinctness, clean-alternative requirements, and continuity variation. | When whitelisting a DTO for seed persistence, assert exact round-trip equality with the seed-safe DTO before asserting forbidden debug fields are stripped. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

@@ -4,6 +4,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { exampleExerciseLibrary, exampleGoals, exampleUser } from "../engine/sample-data";
+import { buildV2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 import * as selectionV2 from "@/lib/engine/selection-v2";
 import type { Exercise } from "@/lib/engine/types";
 import { getEffectiveStimulusByMuscle, toMuscleId } from "@/lib/engine/stimulus";
@@ -2025,6 +2026,7 @@ describe("generateSessionFromIntent", () => {
       slotPlanSeedJson: {
         version: 1,
         source: "handoff_slot_plan_projection",
+        acceptedPlannerIntent: buildV2AcceptedPlannerIntentDto(),
         slots: [
           {
             slotId: "upper_a",
@@ -2084,6 +2086,9 @@ describe("generateSessionFromIntent", () => {
         mesocycleId: "meso-1",
         compositionSource: "persisted_slot_plan_seed",
       });
+      expect(JSON.stringify(result.selection.sessionDecisionReceipt)).not.toContain(
+        "acceptedPlannerIntent"
+      );
       expect(result.audit?.progressionTraces).toBeDefined();
     } finally {
       selectSpy.mockRestore();

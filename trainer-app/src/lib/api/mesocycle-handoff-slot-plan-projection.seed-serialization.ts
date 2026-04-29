@@ -1,8 +1,10 @@
 import type { MesocycleExerciseRoleType, WorkoutSessionIntent } from "@prisma/client";
+import type { V2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 import type { WorkoutExercise, WorkoutPlan } from "@/lib/engine/types";
 import type { ProtectedWeekOneCoverageMuscle } from "@/lib/planning/session-slot-profile";
 import type { SupportFloorRepairReason } from "./mesocycle-handoff-slot-plan-projection.coverage-evaluation";
 import type { MesocycleSlotSequence } from "./mesocycle-slot-contract";
+import { sanitizeAcceptedPlannerIntent } from "./slot-plan-seed-parser";
 
 export type ProjectedSuccessorSlotPlanExercise = {
   exerciseId: string;
@@ -26,6 +28,7 @@ export type MesocycleSlotPlanSeedExercise = {
 export type MesocycleSlotPlanSeed = {
   version: 1;
   source: "handoff_slot_plan_projection";
+  acceptedPlannerIntent?: V2AcceptedPlannerIntentDto;
   slots: Array<{
     slotId: string;
     exercises: MesocycleSlotPlanSeedExercise[];
@@ -56,14 +59,18 @@ export function buildMesocycleSlotPlanSeed(input: {
   slotSequence: MesocycleSlotSequence;
   slotPlans: ReadonlyArray<ProjectedSuccessorSlotPlan>;
   diagnostics?: MesocycleSlotPlanSeed["diagnostics"];
+  acceptedPlannerIntent?: V2AcceptedPlannerIntentDto;
 }): MesocycleSlotPlanSeed {
   if (!slotIdsAlignWithSlotSequence(input)) {
     throw new Error("MESOCYCLE_SLOT_PLAN_SEED_ALIGNMENT_INVALID");
   }
 
+  const acceptedPlannerIntent = sanitizeAcceptedPlannerIntent(input.acceptedPlannerIntent);
+
   return {
     version: 1,
     source: "handoff_slot_plan_projection",
+    ...(acceptedPlannerIntent ? { acceptedPlannerIntent } : {}),
     slots: input.slotPlans.map((slotPlan) => ({
       slotId: slotPlan.slotId,
       exercises: slotPlan.exercises.map((exercise) => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { buildV2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 import {
   buildSessionDecisionReceipt,
   normalizeSelectionMetadataWithReceipt,
@@ -337,6 +338,58 @@ describe("readSessionDecisionReceipt", () => {
     });
 
     expect(receipt).toBeUndefined();
+  });
+
+  it("does not treat slot-plan acceptedPlannerIntent metadata as receipt truth", () => {
+    const receipt = readSessionDecisionReceipt({
+      slotPlanSeedJson: {
+        version: 1,
+        source: "handoff_slot_plan_projection",
+        acceptedPlannerIntent: buildV2AcceptedPlannerIntentDto(),
+        slots: [
+          {
+            slotId: "upper_a",
+            exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND", setCount: 4 }],
+          },
+        ],
+      },
+      sessionDecisionReceipt: {
+        version: 1,
+        cycleContext: {
+          weekInMeso: 2,
+          weekInBlock: 2,
+          phase: "accumulation",
+          blockType: "accumulation",
+          isDeload: false,
+          source: "computed",
+        },
+        lifecycleVolume: {
+          source: "unknown",
+        },
+        sorenessSuppressedMuscles: [],
+        deloadDecision: {
+          mode: "none",
+          reason: [],
+          reductionPercent: 0,
+          appliedTo: "none",
+        },
+        readiness: {
+          wasAutoregulated: false,
+          signalAgeHours: null,
+          fatigueScoreOverall: null,
+          intensityScaling: {
+            applied: false,
+            exerciseIds: [],
+            scaledUpCount: 0,
+            scaledDownCount: 0,
+          },
+        },
+        exceptions: [],
+      },
+    });
+
+    expect(receipt?.cycleContext.weekInMeso).toBe(2);
+    expect(JSON.stringify(receipt)).not.toContain("acceptedPlannerIntent");
   });
 
   it("parses old receipts without provenance safely", () => {

@@ -3,6 +3,7 @@ import {
   CANONICAL_DELOAD_SET_MULTIPLIER,
   getCanonicalDeloadTargetRpe,
 } from "@/lib/deload/semantics";
+import { buildV2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 import type { SessionIntent } from "@/lib/engine/session-types";
 
 const mocks = vi.hoisted(() => {
@@ -317,6 +318,7 @@ describe("deload-session generation", () => {
         slotPlanSeedJson: {
           version: 1,
           source: "handoff_slot_plan_projection",
+          acceptedPlannerIntent: buildV2AcceptedPlannerIntentDto(),
           slots: [
             {
               slotId: "push_a",

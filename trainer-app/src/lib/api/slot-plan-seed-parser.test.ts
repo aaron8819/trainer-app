@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { buildV2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
 
 describe("parseSlotPlanSeedJson", () => {
@@ -75,6 +76,50 @@ describe("parseSlotPlanSeedJson", () => {
     });
   });
 
+  it("parses and exposes valid optional accepted planner intent metadata", () => {
+    const acceptedPlannerIntent = buildV2AcceptedPlannerIntentDto();
+
+    expect(
+      parseSlotPlanSeedJson({
+        version: 1,
+        source: "handoff_slot_plan_projection",
+        acceptedPlannerIntent,
+        slots: [
+          {
+            slotId: "upper_a",
+            exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND", setCount: 4 }],
+          },
+        ],
+      })?.acceptedPlannerIntent
+    ).toEqual(acceptedPlannerIntent);
+  });
+
+  it("ignores malformed optional accepted planner intent metadata while parsing valid slots", () => {
+    const parsed = parseSlotPlanSeedJson({
+      version: 1,
+      source: "handoff_slot_plan_projection",
+      acceptedPlannerIntent: {
+        version: 1,
+        source: "v2_planner_policy",
+        targetSkeletonId: "upper_lower_4x_v2",
+        weekPolicies: "malformed",
+      },
+      slots: [
+        {
+          slotId: "upper_a",
+          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND", setCount: 4 }],
+        },
+      ],
+    });
+
+    expect(parsed?.slots[0]?.exercises[0]).toMatchObject({
+      exerciseId: "bench",
+      role: "CORE_COMPOUND",
+      setCount: 4,
+    });
+    expect(parsed?.acceptedPlannerIntent).toBeUndefined();
+  });
+
   it("rejects invalid version, slots, ids, and roles", () => {
     expect(parseSlotPlanSeedJson(null)).toBeNull();
     expect(parseSlotPlanSeedJson({ version: 2, slots: [] })).toBeNull();
@@ -88,6 +133,7 @@ describe("parseSlotPlanSeedJson", () => {
     expect(
       parseSlotPlanSeedJson({
         version: 1,
+        acceptedPlannerIntent: buildV2AcceptedPlannerIntentDto(),
         slots: [
           {
             slotId: "upper_a",

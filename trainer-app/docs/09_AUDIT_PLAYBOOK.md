@@ -386,6 +386,16 @@ npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner 
 - No-repair concentration rows remain severity-bucketed as `acceptanceFailures`, `qualityWarnings`, `diagnosticRows`, and `ignoredRows`, then roll up into `acceptanceClassification.hardBlockers`, `qualityWarnings`, `diagnosticOnly`, and `sessionShaping`. Acceptance failures are true blockers only. For intentionally trained primary hard targets, `<50%` single-exercise share is not reported, `50-60%` is a quality warning when the target is met and required lanes are present, and `>60%` remains an acceptance blocker unless explicitly justified; 50-60% also blocks when the primary target is below minimum, the row was repair/set-bump created, a fatigue/cap or required-lane defect exists, a clean alternative was ignored while the target remains under-distributed, or a compound/hinge/heavy press exceeds 5 sets. Clean support/direct-work concentration is a non-blocking quality warning, secondary or implicit collateral is diagnostic-only, and tiny denominator artifacts such as Forearms/Core/Adductors collateral are diagnostic/session-shaping readout unless a fatigue cap or explicit target policy is exceeded.
 - `acceptanceClassification.migrationScoreboard` carries `materialRepairCount`, `majorRepairCount`, suspicious repairs, repaired-vs-no-repair readiness, and the reason replacement is not ready. It gates replacement/promotion review, not basic no-repair Week 1 shape validity.
 
+Artifact-only before/after comparison:
+
+```powershell
+npm run audit:mesocycle-explain:compare -- --before <before-artifact.json> --after <after-artifact.json>
+```
+
+- Reads existing `mesocycle-explain` JSON files only; it does not run live audits, import DB/Prisma, mutate state, or alter artifact serialization.
+- Auto-detects a linked V2 sidecar from `mesocycleExplain.plannerOnlyNoRepair.debugArtifact.relativePath` and continues with main-only metrics if the sidecar is absent.
+- Use `--json` for machine-readable output, or `--include-sidecar false` to force main-artifact-only comparison.
+
 Optional targeting:
 
 ```powershell

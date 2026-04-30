@@ -43,6 +43,9 @@
 | 2026-04-30 | self | Reused a double-quoted PowerShell `rg` command containing escaped double quotes and hit the known terminator parser error. | Use a single-quoted PowerShell pattern for `rg` searches that include literal double quotes. |
 | 2026-04-30 | self | Tried a complex quoted `rg` regex for `describe(\".*accept...` in PowerShell and hit parser/escape issues twice. | Use simple literal searches first, and keep regex/path arguments clearly separated with single-quoted patterns. |
 | 2026-04-30 | self | Used a PowerShell double-quoted `Select-String -Pattern` containing Markdown backticks and broke string termination. | Use single-quoted patterns or avoid literal backticks in PowerShell search patterns. |
+| 2026-04-30 | self | Treated the mandatory Trainer pre-edit audit/plan as a final stopping point and made the user prompt me to continue. | After emitting required audit/plan, continue directly into implementation unless the user explicitly asked for plan-only. |
+| 2026-04-30 | self | Repeated the PowerShell quote parsing mistake with a double-quoted `rg` pattern containing escaped quotes while tracing audit tests. | Use single-quoted `rg` patterns or simpler literal searches whenever the search text contains quotes. |
+| 2026-04-30 | self | The first V2 strategy-input diagnostic change let the no-input path gain extra missing/limitation counts and assumed partial persisted handoff summaries had full lifecycle fields. | Preserve legacy no-input diagnostic counts, and make adapters tolerate partial read-model summaries by labeling missing fields instead of dereferencing them. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.
@@ -59,6 +62,7 @@
 
 ## Domain Notes
 - V2 target path: MesocycleDemand -> WeeklyDemandCurve -> SlotDemandAllocationByWeek -> ExerciseClassDistributionBySlot -> SetDistributionIntent -> ExerciseSelectionPlan -> Accepted Seed -> Runtime Replay.
+- V2 planner intelligence audit: current pure chain is still fixed-skeleton/muscle-lane derived; before promotion, add an upstream strategy layer for user profile, phase/macro intent, block objective, performed-history learning, and continuity/variation policy rather than treating pure V2 policy as elite by default.
 - V2 Lower B hinge-anchor readouts should keep `hinge_compound` narrow for RDL/SLDL/deadlift-like hinges; Glute Bridge / hip-thrust-like patterns belong in the explicit diagnostic class `low_axial_hip_extension_anchor`, and generic `hinge` must not satisfy `hinge_compound`.
 - V2 repair promotion readouts should keep `repairMaterialityAfterShadowAllocation` as raw evidence and put suspicious/cap-trim/removal/collateral/materiality-none rows into safety or diagnostic buckets; only positive slot-owned likely-avoidable rows should count as behavior-promotion candidates.
 - After V2 support-lane projection shows B-support direct floors met, `likelyAvoidableMaterialRepairCount` is legacy repair pressure, not behavior-promotion pressure; current blockers should be read from V2 set-distribution/concentration gaps, class/taxonomy gaps, safety non-regression rows, and accepted seed/runtime consumption gates.

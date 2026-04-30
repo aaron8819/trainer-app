@@ -28,6 +28,8 @@ export {
 export type {
   V2AcceptedPlannerIntentDto,
 } from "./accepted-planner-intent-dto";
+export type { V2MesocycleStrategyDiagnosticInput } from "./mesocycle-strategy";
+export type { V2PlannerMesocyclePolicyInput } from "./mesocycle-policy";
 export type {
   ExerciseClassDistributionBySlot,
   ExerciseSelectionPlan,
@@ -39,6 +41,9 @@ export type {
   V2ExerciseSelectionPlan,
   V2MesocycleDemand,
   V2MesocycleStrategyDiagnostic,
+  V2MesocycleStrategyConfidence,
+  V2MesocycleStrategyInput,
+  V2MesocycleStrategyInputGroup,
   V2MesocycleStrategyPhase,
   V2PlannerDemandRole,
   V2PlannerLaneDefinition,

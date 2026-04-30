@@ -2639,6 +2639,30 @@ describe("buildMesocycleExplainAuditPayload", () => {
         noRepairPasses: false,
       },
     });
+    expect(
+      payload.plannerOnlyNoRepair?.v2MesocycleStrategyDiagnostic,
+    ).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      phaseStrategy: {
+        proposedPhase: "unknown",
+        confidence: "low",
+      },
+      demandDerivationPlan: {
+        currentDemandSource: "fixed_skeleton_lanes",
+        targetDemandSource: "mesocycle_strategy",
+      },
+      strategyInputSummary: {
+        inputContractVersion: 1,
+        presentGroups: ["userProfile", "currentTrainingContext"],
+        missingGroups: [
+          "historicalMesocycles",
+          "readinessAndRecoverySignals",
+        ],
+        historicalMesocycleCount: 0,
+        ownerAgnostic: true,
+      },
+    });
     expect(payload.plannerOnlyNoRepair?.v2MesocyclePlan).toMatchObject({
       version: 1,
       source: "v2_planner_no_repair_experimental",

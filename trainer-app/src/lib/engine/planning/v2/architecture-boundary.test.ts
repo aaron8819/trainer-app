@@ -28,6 +28,18 @@ const promotionReadinessContract = path.join(
   "materialization",
   "promotion-readiness.ts",
 );
+const mesocycleStrategyFiles = [
+  path.join(process.cwd(), "src", "lib", "engine", "planning", "v2", "types.ts"),
+  path.join(
+    process.cwd(),
+    "src",
+    "lib",
+    "engine",
+    "planning",
+    "v2",
+    "mesocycle-strategy.ts",
+  ),
+];
 
 const forbiddenImportFragments = [
   "@/lib/audit/",
@@ -173,6 +185,7 @@ describe("V2 planner policy module boundary", () => {
       .join("\n");
 
     expect(exportedText).toContain("V2MesocycleDemand");
+    expect(exportedText).toContain("V2MesocycleStrategyInput");
     expect(exportedText).toContain("V2MesocycleStrategyDiagnostic");
     expect(exportedText).toContain("V2WeeklyDemandCurve");
     expect(exportedText).toContain("V2SlotDemandAllocationByWeek");
@@ -184,6 +197,23 @@ describe("V2 planner policy module boundary", () => {
     expect(exportedText).toContain("V2MaterializationDryRunReport");
     expect(exportedText).toContain("V2MaterializationPromotionReadiness");
     expect(exportedText).toContain("V2AcceptedPlannerIntentDto");
+  });
+
+  it("keeps V2 mesocycle strategy input and diagnostic free of DB/API/runtime/receipt/UI/repair/audit imports", () => {
+    const forbiddenImportPattern =
+      /from\s+["'][^"']*(db|prisma|@prisma\/client|app\/api|\/api\/|runtime|receipt|ui|repair|audit|workout-audit|serializer|artifact-serialization)[^"']*["']/;
+    const violations = mesocycleStrategyFiles.flatMap((file) => {
+      const text = fs.readFileSync(file, "utf8");
+      return text
+        .split(/\r?\n/)
+        .filter((line) => forbiddenImportPattern.test(line))
+        .map(
+          (line) =>
+            `${path.relative(process.cwd(), file)} has forbidden import ${line.trim()}`,
+        );
+    });
+
+    expect(violations).toEqual([]);
   });
 
   it("keeps promotion-readiness contract free of production write, receipt, UI, runtime, repair, and audit imports", () => {

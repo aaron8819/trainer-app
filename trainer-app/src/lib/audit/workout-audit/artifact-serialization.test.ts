@@ -794,6 +794,15 @@ describe("artifact serialization helpers", () => {
           targetDemandSource: "mesocycle_strategy",
           missingInputCount: 6,
           limitationCount: 3,
+          strategyInputPresentGroups: [],
+          strategyInputMissingGroups: [
+            "userProfile",
+            "currentTrainingContext",
+            "historicalMesocycles",
+            "readinessAndRecoverySignals",
+          ],
+          strategyInputHistoricalMesocycleCount: 0,
+          strategyInputConfidenceChange: "not_evaluated_no_input",
           northStarGapCount: 6,
         },
         repairPromotionScoreboard: {

@@ -105,6 +105,78 @@ export type V2MesocycleStrategyPhase =
   | "return_to_training"
   | "unknown";
 
+export type V2MesocycleStrategyConfidence = "low" | "medium" | "high";
+
+export type V2MesocycleStrategyInputGroup =
+  | "userProfile"
+  | "currentTrainingContext"
+  | "historicalMesocycles"
+  | "readinessAndRecoverySignals";
+
+export type V2MesocycleStrategyInput = {
+  version: 1;
+  userProfile: {
+    trainingGoal?: string;
+    trainingAge?: "unknown" | "beginner" | "intermediate" | "advanced";
+    availableTrainingDays?: number;
+    equipmentProfile?: string[];
+    constraints?: string[];
+    preferences?: string[];
+    painOrToleranceFlags?: string[];
+    confidence: V2MesocycleStrategyConfidence;
+  };
+  currentTrainingContext: {
+    split?: "upper_lower" | "unknown";
+    currentPhase?: string;
+    currentMesocycleStatus?: string;
+    weekCount?: number;
+    slotSequence?: string[];
+    volumeTarget?: string;
+    intensityBias?: string;
+  };
+  historicalMesocycles: Array<{
+    mesocycleId: string;
+    sourcePlanner: "legacy_projection" | "v2" | "unknown";
+    status?: string;
+    startedAt?: string;
+    completedAt?: string;
+    adherenceSummary?: {
+      plannedSessions?: number;
+      completedSessions?: number;
+      partialSessions?: number;
+      skippedSessions?: number;
+    };
+    performedVolumeSummary?: Array<{
+      muscle: string;
+      plannedSets?: number;
+      performedSets?: number;
+      targetRange?: string;
+      status?: "under" | "within" | "over" | "unknown";
+    }>;
+    performanceSignals?: Array<{
+      exerciseId?: string;
+      exerciseName?: string;
+      signal:
+        | "progressed"
+        | "stalled"
+        | "regressed"
+        | "skipped_often"
+        | "swapped_out"
+        | "pain_or_tolerance_issue"
+        | "unknown";
+      confidence: V2MesocycleStrategyConfidence;
+    }>;
+  }>;
+  readinessAndRecoverySignals: {
+    available: string[];
+    missing: string[];
+    fatigueFlags?: string[];
+    painFlags?: string[];
+    adherenceFlags?: string[];
+  };
+  evidenceLimitations: string[];
+};
+
 export type V2MesocycleStrategyDiagnostic = {
   version: 1;
   source: "v2_mesocycle_strategy";
@@ -118,11 +190,13 @@ export type V2MesocycleStrategyDiagnostic = {
   };
   phaseStrategy: {
     proposedPhase: V2MesocycleStrategyPhase;
+    classificationStatus: "unknown";
     rationale: string[];
-    confidence: "low" | "medium" | "high";
+    confidence: V2MesocycleStrategyConfidence;
   };
   mesocycleObjective: {
     objective: string;
+    classificationStatus: "unknown";
     specializationTargets: string[];
     maintenanceTargets: string[];
     recoveryBiases: string[];
@@ -143,6 +217,26 @@ export type V2MesocycleStrategyDiagnostic = {
     currentDemandSource: "fixed_skeleton_lanes" | "strategy_derived" | "mixed";
     targetDemandSource: "mesocycle_strategy";
     gapsBeforeStrategyDerivedDemand: string[];
+  };
+  strategyInputSummary: {
+    version: 1;
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    inputContractVersion: 1 | null;
+    presentGroups: V2MesocycleStrategyInputGroup[];
+    missingGroups: V2MesocycleStrategyInputGroup[];
+    historicalMesocycleCount: number;
+    historicalSourcePlanners: Array<
+      V2MesocycleStrategyInput["historicalMesocycles"][number]["sourcePlanner"]
+    >;
+    phaseClassificationStatus: "unknown";
+    objectiveClassificationStatus: "unknown";
+    confidenceChange:
+      | "not_evaluated_no_input"
+      | "stays_low_missing_evidence"
+      | "eligible_for_medium_evidence";
+    evidenceLimitations: string[];
+    ownerAgnostic: true;
   };
   currentStateVsNorthStarGaps: Array<{
     gap: string;

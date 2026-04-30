@@ -2173,6 +2173,8 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Phase: ${formatStatus(strategy.phaseStrategy.proposedPhase)} (${strategy.phaseStrategy.confidence} confidence)`,
         `Demand source: ${formatStatus(strategy.demandDerivationPlan.currentDemandSource)} -> ${formatStatus(strategy.demandDerivationPlan.targetDemandSource)}`,
         `Missing profile inputs: ${strategy.userTrainingProfileInputs.missing.length}`,
+        `Strategy input groups: present=${strategy.strategyInputSummary.presentGroups.join(",") || "none"} missing=${strategy.strategyInputSummary.missingGroups.join(",") || "none"}`,
+        `Strategy historical mesocycles: ${strategy.strategyInputSummary.historicalMesocycleCount}`,
         `North-star gaps: ${strategy.currentStateVsNorthStarGaps.length}`,
       ]
     : [];

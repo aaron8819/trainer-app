@@ -4,7 +4,85 @@ import {
   buildV2MesocycleStrategyDiagnostic,
   buildV2PlannerMesocyclePolicy,
   buildV2TargetSkeleton,
+  type V2MesocycleStrategyInput,
 } from "./index";
+
+function buildStrategyInput(): V2MesocycleStrategyInput {
+  return {
+    version: 1,
+    userProfile: {
+      trainingGoal: "hypertrophy",
+      trainingAge: "intermediate",
+      availableTrainingDays: 4,
+      equipmentProfile: ["barbell", "cable", "dumbbell"],
+      constraints: ["split:upper_lower", "sessions_per_week:4"],
+      preferences: ["favorite_exercise_count:2"],
+      painOrToleranceFlags: ["shoulder_history"],
+      confidence: "medium",
+    },
+    currentTrainingContext: {
+      split: "upper_lower",
+      currentPhase: "AWAITING_HANDOFF",
+      currentMesocycleStatus: "COMPLETED",
+      weekCount: 5,
+      slotSequence: ["upper_a", "lower_a", "upper_b", "lower_b"],
+      volumeTarget: "MODERATE",
+      intensityBias: "HYPERTROPHY",
+    },
+    historicalMesocycles: [
+      {
+        mesocycleId: "meso-any-1",
+        sourcePlanner: "legacy_projection",
+        status: "COMPLETED",
+        adherenceSummary: {
+          plannedSessions: 16,
+          completedSessions: 14,
+          partialSessions: 1,
+          skippedSessions: 1,
+        },
+        performedVolumeSummary: [
+          {
+            muscle: "Chest",
+            plannedSets: 40,
+            performedSets: 36,
+            targetRange: "target:40",
+            status: "within",
+          },
+        ],
+        performanceSignals: [
+          {
+            exerciseId: "incline-db-press",
+            exerciseName: "Incline Dumbbell Press",
+            signal: "progressed",
+            confidence: "medium",
+          },
+        ],
+      },
+      {
+        mesocycleId: "meso-any-2",
+        sourcePlanner: "legacy_projection",
+        status: "COMPLETED",
+        adherenceSummary: {
+          plannedSessions: 16,
+          completedSessions: 13,
+          partialSessions: 2,
+          skippedSessions: 1,
+        },
+      },
+    ],
+    readinessAndRecoverySignals: {
+      available: ["subjective_readiness", "performance_compliance"],
+      missing: ["wearable_recovery_signal"],
+      fatigueFlags: ["performance_stalls:1"],
+      painFlags: ["soreness:shoulder:2"],
+      adherenceFlags: ["historical_adherence_below_80_percent:meso-any-2"],
+    },
+    evidenceLimitations: [
+      "historical_mesocycles_are_validation_data_not_policy_targets",
+      "strategy_input_does_not_feed_mesocycle_demand",
+    ],
+  };
+}
 
 describe("buildV2MesocycleStrategyDiagnostic", () => {
   it("returns a read-only strategy diagnostic without generation authority", () => {
@@ -19,7 +97,21 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     });
     expect(diagnostic.phaseStrategy).toMatchObject({
       proposedPhase: "unknown",
+      classificationStatus: "unknown",
       confidence: "low",
+    });
+    expect(diagnostic.strategyInputSummary).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      inputContractVersion: null,
+      presentGroups: [],
+      missingGroups: [
+        "userProfile",
+        "currentTrainingContext",
+        "historicalMesocycles",
+        "readinessAndRecoverySignals",
+      ],
+      ownerAgnostic: true,
     });
   });
 
@@ -67,8 +159,54 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     );
   });
 
+  it("consumes strategy input as read-only evidence without claiming phase or objective classification", () => {
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+    });
+
+    expect(diagnostic).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "available_with_limitations",
+      phaseStrategy: {
+        proposedPhase: "unknown",
+        classificationStatus: "unknown",
+        confidence: "medium",
+      },
+      mesocycleObjective: {
+        classificationStatus: "unknown",
+        specializationTargets: [],
+        maintenanceTargets: [],
+        recoveryBiases: [],
+      },
+      demandDerivationPlan: {
+        currentDemandSource: "fixed_skeleton_lanes",
+        targetDemandSource: "mesocycle_strategy",
+      },
+      strategyInputSummary: {
+        inputContractVersion: 1,
+        presentGroups: [
+          "userProfile",
+          "currentTrainingContext",
+          "historicalMesocycles",
+          "readinessAndRecoverySignals",
+        ],
+        missingGroups: [],
+        historicalMesocycleCount: 2,
+        historicalSourcePlanners: ["legacy_projection"],
+        confidenceChange: "eligible_for_medium_evidence",
+        ownerAgnostic: true,
+      },
+    });
+    expect(diagnostic.userTrainingProfileInputs.missing).not.toContain(
+      "pure_v2_user_training_profile_input",
+    );
+  });
+
   it("is attached above MesocycleDemand without changing demand output", () => {
-    const policy = buildV2PlannerMesocyclePolicy();
+    const policy = buildV2PlannerMesocyclePolicy({
+      mesocycleStrategyInput: buildStrategyInput(),
+    });
     const standaloneDemand = buildV2MesocycleDemand({
       targetSkeleton: buildV2TargetSkeleton(),
     });

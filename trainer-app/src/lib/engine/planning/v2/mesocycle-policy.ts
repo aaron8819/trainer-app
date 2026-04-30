@@ -8,12 +8,23 @@ import { buildV2SetDistributionIntent } from "./set-distribution-intent";
 import { buildV2SlotDemandAllocationByWeek } from "./slot-demand-allocation";
 import { buildV2SupportLanePolicy } from "./support-lane-policy";
 import { buildV2TargetSkeleton } from "./target-skeleton";
-import type { V2PlannerMesocyclePolicy } from "./types";
+import type {
+  V2MesocycleStrategyInput,
+  V2PlannerMesocyclePolicy,
+} from "./types";
 import { buildV2WeeklyDemandCurve } from "./weekly-demand-curve";
 import { buildV2WeeklyProgressionModel } from "./weekly-progression";
 
-export function buildV2PlannerMesocyclePolicy(): V2PlannerMesocyclePolicy {
-  const mesocycleStrategyDiagnostic = buildV2MesocycleStrategyDiagnostic();
+export type V2PlannerMesocyclePolicyInput = {
+  mesocycleStrategyInput?: V2MesocycleStrategyInput;
+};
+
+export function buildV2PlannerMesocyclePolicy(
+  input: V2PlannerMesocyclePolicyInput = {},
+): V2PlannerMesocyclePolicy {
+  const mesocycleStrategyDiagnostic = buildV2MesocycleStrategyDiagnostic({
+    strategyInput: input.mesocycleStrategyInput,
+  });
   const targetSkeleton = buildV2TargetSkeleton();
   const weeklyProgressionModel = buildV2WeeklyProgressionModel();
   const deloadTransform = buildV2DeloadTransformPolicy();

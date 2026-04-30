@@ -3362,6 +3362,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
       "Phase: unknown (low confidence)",
       "Demand source: fixed-skeleton-lanes -> mesocycle-strategy",
       "Missing profile inputs: 6",
+      "Strategy input groups: present=none missing=userProfile,currentTrainingContext,historicalMesocycles,readinessAndRecoverySignals",
+      "Strategy historical mesocycles: 0",
       "North-star gaps: 6",
       "V2 Mesocycle Plan",
       "-----------------",

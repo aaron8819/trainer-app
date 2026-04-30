@@ -26,6 +26,7 @@ import {
 } from "@/lib/api/planner-only-policy-override";
 import { resolveMesocycleSlotContract } from "@/lib/api/mesocycle-slot-contract";
 import { parseSlotPlanSeedJson } from "@/lib/api/slot-plan-seed-parser";
+import { buildV2MesocycleStrategyInputFromReadModels } from "@/lib/api/v2-mesocycle-strategy-input-adapter";
 import {
   appendWorkoutHistoryEntryToMappedContext,
   buildProjectedWorkoutHistoryEntry,
@@ -45,6 +46,7 @@ import {
 import { getMuscleTargetSemantics } from "@/lib/engine/volume-landmarks";
 import {
   buildV2PlannerMesocyclePolicy,
+  type V2MesocycleStrategyInput,
   type V2SetDistributionIntent,
   type V2SupportLanePolicy,
 } from "@/lib/engine/planning/v2";
@@ -7582,6 +7584,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   repairedPlanningReality?: PlanningRealityDiagnostic;
   compareRepaired: boolean;
   repairedProjectionAvailable: boolean;
+  mesocycleStrategyInput?: V2MesocycleStrategyInput;
 }): MesocycleExplainPlannerOnlyNoRepair {
   const repairDependenciesDisabled = [
     "support-floor closure",
@@ -7641,7 +7644,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       acceptanceClassification,
       targetLanesMissing: 1,
     });
-    const plannerPolicy = buildV2PlannerMesocyclePolicy();
+    const plannerPolicy = buildV2PlannerMesocyclePolicy({
+      mesocycleStrategyInput: input.mesocycleStrategyInput,
+    });
     const v2MesocycleStrategyDiagnostic =
       plannerPolicy.mesocycleStrategyDiagnostic;
     const v2SetDistributionIntent = plannerPolicy.v2SetDistributionIntent;
@@ -7828,7 +7833,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     acceptanceClassification,
     targetLanesMissing,
   });
-  const plannerPolicy = buildV2PlannerMesocyclePolicy();
+  const plannerPolicy = buildV2PlannerMesocyclePolicy({
+    mesocycleStrategyInput: input.mesocycleStrategyInput,
+  });
   const v2MesocycleStrategyDiagnostic =
     plannerPolicy.mesocycleStrategyDiagnostic;
   const v2SetDistributionIntent = plannerPolicy.v2SetDistributionIntent;
@@ -8909,6 +8916,35 @@ export async function buildMesocycleExplainAuditPayload(input: {
   const previewArtifacts = await loadPreviewArtifacts({
     sourceMesocycle,
   });
+  const latestStrategyReadiness =
+    (await getLatestReadinessSignalForReader(prisma, input.userId)) ?? null;
+  const mesocycleStrategyInput = buildV2MesocycleStrategyInputFromReadModels({
+    userProfile: {
+      availableTrainingDays: sourceMesocycle.daysPerWeek,
+      constraints: [
+        `split:${sourceMesocycle.splitType}`,
+        `sessions_per_week:${sourceMesocycle.sessionsPerWeek}`,
+      ],
+    },
+    currentTrainingContext: {
+      splitType: sourceMesocycle.splitType,
+      currentPhase: sourceMesocycle.state,
+      currentMesocycleStatus: sourceMesocycle.state,
+      weekCount: sourceMesocycle.durationWeeks,
+      slotSequence:
+        previewArtifacts.artifacts.recommendedDesign.structure.slots.map(
+          (slot) => slot.slotId,
+        ),
+      volumeTarget: sourceMesocycle.volumeTarget,
+      intensityBias: sourceMesocycle.intensityBias,
+    },
+    handoffSummary: previewArtifacts.artifacts.summary,
+    readiness: latestStrategyReadiness,
+    evidenceLimitations: [
+      "mesocycle_explain_strategy_input_uses_current_handoff_preview_context",
+      "mesocycle_review_history_not_loaded_for_this_diagnostic_yet",
+    ],
+  });
   const sourceProjection = toHandoffProjectionSource(
     (await loadHandoffSourceMesocycle(
       prisma,
@@ -9191,6 +9227,7 @@ export async function buildMesocycleExplainAuditPayload(input: {
         repairedPlanningReality: projectionDiagnostics.planningReality,
         compareRepaired: input.plannerOnlyNoRepair.compareRepaired,
         repairedProjectionAvailable: !("error" in slotPlanProjection),
+        mesocycleStrategyInput,
       })
     : undefined;
 

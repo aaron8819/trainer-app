@@ -831,6 +831,9 @@ function compactPlannerOnlyNoRepair(
   const v2UserProfileInputs = asRecord(
     v2MesocycleStrategyDiagnostic?.userTrainingProfileInputs,
   );
+  const v2StrategyInputSummary = asRecord(
+    v2MesocycleStrategyDiagnostic?.strategyInputSummary,
+  );
   const v2SupportLanePolicy = asRecord(noRepair.v2SupportLanePolicy);
   const v2SupportLaneSummary = asRecord(v2SupportLanePolicy?.summary);
   const v2SupportLaneProjectionDiagnostic = asRecord(
@@ -954,6 +957,25 @@ function compactPlannerOnlyNoRepair(
             limitationCount: Array.isArray(v2UserProfileInputs?.limitations)
               ? v2UserProfileInputs.limitations.length
               : 0,
+            strategyInputPresentGroups: Array.isArray(
+              v2StrategyInputSummary?.presentGroups,
+            )
+              ? v2StrategyInputSummary.presentGroups
+              : [],
+            strategyInputMissingGroups: Array.isArray(
+              v2StrategyInputSummary?.missingGroups,
+            )
+              ? v2StrategyInputSummary.missingGroups
+              : [],
+            strategyInputHistoricalMesocycleCount:
+              typeof v2StrategyInputSummary?.historicalMesocycleCount ===
+              "number"
+                ? v2StrategyInputSummary.historicalMesocycleCount
+                : 0,
+            strategyInputConfidenceChange:
+              typeof v2StrategyInputSummary?.confidenceChange === "string"
+                ? v2StrategyInputSummary.confidenceChange
+                : "not_evaluated_no_input",
             northStarGapCount: Array.isArray(
               v2MesocycleStrategyDiagnostic.currentStateVsNorthStarGaps,
             )

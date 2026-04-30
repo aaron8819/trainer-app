@@ -112,6 +112,57 @@ export type V2MesocycleStrategyEvidenceStatus =
   | "available_with_limitations"
   | "available";
 
+export type V2MesocycleStrategyRecommendationHypothesisId =
+  | "protect_lagging_muscles_earlier"
+  | "cap_late_block_volume"
+  | "reduce_overlap_fatigue"
+  | "preserve_successful_progression"
+  | "improve_deload_execution"
+  | "rotate_low_confidence_or_stale_accessories"
+  | "maintain_balanced_hypertrophy"
+  | "unknown";
+
+export type V2MesocycleStrategyRecommendationInfluenceTarget =
+  | "MesocycleStrategy"
+  | "MesocycleDemand"
+  | "WeeklyDemandCurve"
+  | "SlotDemandAllocation"
+  | "ExerciseClassDistribution"
+  | "SetDistributionIntent"
+  | "ExerciseSelectionStrategy"
+  | "MaterializerRanking"
+  | "DeloadPlan";
+
+export type V2MesocycleStrategyRecommendationMustNotYetInfluence =
+  | "generation"
+  | "selection"
+  | "repair"
+  | "seed"
+  | "runtime"
+  | "receipts";
+
+export type V2MesocycleStrategyRecommendation = {
+  version: 1;
+  source: "v2_mesocycle_strategy_recommendation";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  status: V2MesocycleStrategyEvidenceStatus;
+  recommendedPhase: V2MesocycleStrategyPhase;
+  confidence: V2MesocycleStrategyConfidence;
+  hypotheses: Array<{
+    id: V2MesocycleStrategyRecommendationHypothesisId;
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    priority: "P0" | "P1" | "P2";
+    confidence: V2MesocycleStrategyConfidence;
+    evidence: string[];
+    wouldEventuallyInfluence: V2MesocycleStrategyRecommendationInfluenceTarget[];
+    mustNotYetInfluence: V2MesocycleStrategyRecommendationMustNotYetInfluence[];
+    promotionBlockers: string[];
+  }>;
+  limitations: string[];
+};
+
 export type V2ResponseTrend = "stable" | "rising" | "falling" | "unknown";
 
 export type V2BlockStrategyImplication =
@@ -321,6 +372,7 @@ export type V2MesocycleStrategyDiagnostic = {
     deloadExecutionSignals: string[];
     limitations: string[];
   };
+  strategyRecommendation: V2MesocycleStrategyRecommendation;
   demandDerivationPlan: {
     currentDemandSource: "fixed_skeleton_lanes" | "strategy_derived" | "mixed";
     targetDemandSource: "mesocycle_strategy";

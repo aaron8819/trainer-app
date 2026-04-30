@@ -2173,6 +2173,17 @@ export function buildPlannerOnlyNoRepairSummary(input: {
   const responseConfidence = strategyResponse?.confidenceDistribution;
   const continuityEvidence = strategy?.continuityVariationEvidence;
   const volumeFatigueEvidence = strategy?.volumeFatigueStrategyEvidence;
+  const strategyRecommendation = strategy?.strategyRecommendation;
+  const recommendationHypotheses = strategyRecommendation?.hypotheses ?? [];
+  const recommendationPriorityCounts = recommendationHypotheses.reduce<
+    Record<"P0" | "P1" | "P2", number>
+  >(
+    (counts, hypothesis) => {
+      counts[hypothesis.priority] += 1;
+      return counts;
+    },
+    { P0: 0, P1: 0, P2: 0 },
+  );
   const strategyLines = strategy
     ? [
         "V2 Mesocycle Strategy Diagnostic",
@@ -2196,6 +2207,12 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Continuity/variation evidence: ${formatStatus(continuityEvidence?.status ?? "not_available")} keep=${continuityEvidence?.keepCandidateCount ?? 0} rotate=${continuityEvidence?.rotateCandidateCount ?? 0} avoid=${continuityEvidence?.avoidCandidateCount ?? 0} low=${continuityEvidence?.lowConfidenceCount ?? 0}`,
         `Materializer ranking evidence usable: ${strategyResponse?.usableForFutureMaterializerRanking ? "yes" : "no"}`,
         `Volume/fatigue evidence: ${formatStatus(volumeFatigueEvidence?.status ?? "not_available")} protect=${volumeFatigueEvidence?.protectLaggingMuscleSignals.length ?? 0} over=${volumeFatigueEvidence?.overConcentrationSignals.length ?? 0} late=${volumeFatigueEvidence?.lateBlockFatigueSignals.length ?? 0} deload=${volumeFatigueEvidence?.deloadExecutionSignals.length ?? 0}`,
+        `Strategy recommendation: ${formatStatus(strategyRecommendation?.status ?? "not_available")} phase=${formatStatus(strategyRecommendation?.recommendedPhase ?? "unknown")} confidence=${strategyRecommendation?.confidence ?? "low"} hypotheses=${recommendationHypotheses.length}`,
+        `Recommendation hypotheses: ${formatNameList(recommendationHypotheses.map((hypothesis) => hypothesis.id), 8)}`,
+        `Recommendation priorities: P0=${recommendationPriorityCounts.P0} P1=${recommendationPriorityCounts.P1} P2=${recommendationPriorityCounts.P2}`,
+        `Recommendation evidence examples: ${formatNameList(recommendationHypotheses.flatMap((hypothesis) => hypothesis.evidence).slice(0, 6), 6)}`,
+        `Recommendation promotion blockers: ${formatNameList(recommendationHypotheses.flatMap((hypothesis) => hypothesis.promotionBlockers).slice(0, 6), 6)}`,
+        "Recommendations consumed by demand/materializer: no",
         `Performed history loaded: ${strategy.strategyInputSummary.performedHistoryEvidenceLoaded ? "yes" : "no"}`,
         `Old prescribed plan shape excluded: ${strategy.strategyInputSummary.prescribedPlanShapeExcludedFromStrategyPolicy ? "yes" : "no"}`,
         `North-star gaps: ${strategy.currentStateVsNorthStarGaps.length}`,

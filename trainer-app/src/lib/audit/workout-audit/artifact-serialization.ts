@@ -140,6 +140,12 @@ function asRecordArray(value: unknown): JsonRecord[] {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
 
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
 function createValueCatalog(prefix: string): ValueCatalog {
   const bySerialized = new Map<string, string>();
   const entries: JsonRecord = {};
@@ -843,6 +849,12 @@ function compactPlannerOnlyNoRepair(
   const v2VolumeFatigueStrategyEvidence = asRecord(
     v2MesocycleStrategyDiagnostic?.volumeFatigueStrategyEvidence,
   );
+  const v2StrategyRecommendation = asRecord(
+    v2MesocycleStrategyDiagnostic?.strategyRecommendation,
+  );
+  const v2StrategyRecommendationHypotheses = asRecordArray(
+    v2StrategyRecommendation?.hypotheses,
+  );
   const v2SupportLanePolicy = asRecord(noRepair.v2SupportLanePolicy);
   const v2SupportLaneSummary = asRecord(v2SupportLanePolicy?.summary);
   const v2SupportLaneProjectionDiagnostic = asRecord(
@@ -1087,6 +1099,52 @@ function compactPlannerOnlyNoRepair(
                   )
                     ? v2VolumeFatigueStrategyEvidence.limitations.length
                     : 0,
+                }
+              : undefined,
+            strategyRecommendation: v2StrategyRecommendation
+              ? {
+                  status:
+                    v2StrategyRecommendation.status ?? "not_available",
+                  readOnly: v2StrategyRecommendation.readOnly === true,
+                  affectsScoringOrGeneration:
+                    v2StrategyRecommendation.affectsScoringOrGeneration ===
+                    true
+                      ? true
+                      : false,
+                  recommendedPhase:
+                    v2StrategyRecommendation.recommendedPhase ?? "unknown",
+                  confidence: v2StrategyRecommendation.confidence ?? "low",
+                  hypothesisCount: v2StrategyRecommendationHypotheses.length,
+                  hypothesisIds: v2StrategyRecommendationHypotheses
+                    .map((hypothesis) => hypothesis.id)
+                    .filter((id): id is string => typeof id === "string"),
+                  priorityCounts: countBy(
+                    v2StrategyRecommendationHypotheses,
+                    "priority",
+                  ),
+                  topEvidenceExamples: v2StrategyRecommendationHypotheses
+                    .flatMap((hypothesis) =>
+                      asStringArray(hypothesis.evidence),
+                    )
+                    .slice(0, 6),
+                  promotionBlockers: v2StrategyRecommendationHypotheses
+                    .flatMap((hypothesis) =>
+                      asStringArray(hypothesis.promotionBlockers),
+                    )
+                    .filter(
+                      (blocker, index, blockers) =>
+                        blockers.indexOf(blocker) === index,
+                    )
+                    .slice(0, 8),
+                  mustNotYetInfluence: v2StrategyRecommendationHypotheses
+                    .flatMap((hypothesis) =>
+                      asStringArray(hypothesis.mustNotYetInfluence),
+                    )
+                    .filter(
+                      (target, index, targets) =>
+                        targets.indexOf(target) === index,
+                    ),
+                  consumedByDemandOrMaterializer: false,
                 }
               : undefined,
             northStarGapCount: Array.isArray(

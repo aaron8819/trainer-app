@@ -232,6 +232,16 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
       ],
       ownerAgnostic: true,
     });
+    expect(diagnostic.strategyRecommendation).toMatchObject({
+      version: 1,
+      source: "v2_mesocycle_strategy_recommendation",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "not_available",
+      recommendedPhase: "unknown",
+      confidence: "low",
+      hypotheses: [],
+    });
   });
 
   it("represents missing inputs and partial performed-history support honestly", () => {
@@ -393,9 +403,142 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
       lateBlockFatigueSignals: ["meso-any-2:late_block_skipped_sets_rising"],
       deloadExecutionSignals: ["meso-any-2:deload_not_executed"],
     });
+    expect(diagnostic.strategyRecommendation).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "available_with_limitations",
+      recommendedPhase: "unknown",
+      confidence: "low",
+      hypotheses: [
+        expect.objectContaining({
+          id: "improve_deload_execution",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          priority: "P0",
+          evidence: expect.arrayContaining(["meso-any-2:deload_not_executed"]),
+          mustNotYetInfluence: [
+            "generation",
+            "selection",
+            "repair",
+            "seed",
+            "runtime",
+            "receipts",
+          ],
+        }),
+        expect.objectContaining({
+          id: "protect_lagging_muscles_earlier",
+          priority: "P1",
+          confidence: "medium",
+          evidence: expect.arrayContaining([
+            "Side Delts:under_hit_in_2_performed_block_response",
+          ]),
+        }),
+        expect.objectContaining({
+          id: "cap_late_block_volume",
+          priority: "P1",
+          evidence: expect.arrayContaining([
+            "meso-any-2:skipped_set_trend_rising",
+          ]),
+        }),
+        expect.objectContaining({
+          id: "reduce_overlap_fatigue",
+          priority: "P1",
+          evidence: expect.arrayContaining([
+            "Glutes:overlap_or_concentration_in_2_performed_block_response",
+          ]),
+        }),
+        expect.objectContaining({
+          id: "preserve_successful_progression",
+          priority: "P2",
+          evidence: expect.arrayContaining([
+            expect.stringContaining("Incline Dumbbell Press:progressed"),
+          ]),
+        }),
+        expect.objectContaining({
+          id: "rotate_low_confidence_or_stale_accessories",
+          priority: "P2",
+          evidence: expect.arrayContaining([
+            expect.stringContaining("Standing Calf Raise:skipped_often"),
+          ]),
+        }),
+      ],
+      limitations: expect.arrayContaining([
+        "strategy_recommendation_is_read_only_and_non_binding",
+        "strategy_recommendation_not_consumed_by_mesocycle_demand",
+        "strategy_recommendation_not_consumed_by_materializer_ranking",
+        "old_prescribed_plan_shape_excluded_from_recommendation_policy",
+      ]),
+    });
+    expect(
+      diagnostic.strategyRecommendation.hypotheses.every(
+        (hypothesis) =>
+          hypothesis.readOnly === true &&
+          hypothesis.affectsScoringOrGeneration === false &&
+          hypothesis.promotionBlockers.includes(
+            "recommendation_is_evidence_backed_hypothesis_not_planner_instruction",
+          ),
+      ),
+    ).toBe(true);
     expect(diagnostic.demandDerivationPlan.currentDemandSource).toBe(
       "fixed_skeleton_lanes",
     );
+  });
+
+  it("keeps thin recommendation evidence low-confidence and non-binding", () => {
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: {
+        ...buildStrategyInput(),
+        historicalMesocycles: [
+          {
+            mesocycleId: "thin-history",
+            sourcePlanner: "legacy_projection",
+          },
+        ],
+        blockResponseSignals: [
+          {
+            mesocycleId: "thin-history",
+            sourcePlanner: "legacy_projection",
+            adherence: {},
+            effortProgression: {},
+            muscleDistribution: {},
+            fatigueDistribution: {
+              evidence: ["performed_workout_logs_read_only"],
+            },
+            strategyImplications: ["unknown"],
+            confidence: "low",
+          },
+        ],
+        exerciseResponseSignals: [],
+        readinessAndRecoverySignals: {
+          available: [],
+          missing: ["latest_readiness_signal"],
+        },
+      },
+    });
+
+    expect(diagnostic.strategyRecommendation).toMatchObject({
+      status: "available_with_limitations",
+      recommendedPhase: "unknown",
+      confidence: "low",
+      hypotheses: [
+        expect.objectContaining({
+          id: "unknown",
+          confidence: "low",
+          mustNotYetInfluence: [
+            "generation",
+            "selection",
+            "repair",
+            "seed",
+            "runtime",
+            "receipts",
+          ],
+        }),
+      ],
+      limitations: expect.arrayContaining([
+        "fewer_than_two_historical_mesocycles_keeps_confidence_low",
+        "missing_strategy_input_groups_keep_recommendation_limited",
+      ]),
+    });
   });
 
   it("is attached above MesocycleDemand without changing demand output", () => {
@@ -408,6 +551,10 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     const policyKeys = Object.keys(policy);
 
     expect(policy.mesocycleStrategyDiagnostic.readOnly).toBe(true);
+    expect(policy.mesocycleStrategyDiagnostic.strategyRecommendation).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+    });
     expect(policyKeys.indexOf("mesocycleStrategyDiagnostic")).toBeLessThan(
       policyKeys.indexOf("mesocycleDemand"),
     );

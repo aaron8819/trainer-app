@@ -60,6 +60,7 @@
 - For V2 `SelectionCapacityPlan`, keep the pure engine plan in `src/lib/engine/planning/v2` and assert audit/workout sidecar schemas do not expose it until an explicit artifact slice is requested.
 - For no-drift diagnostic adapter swaps, `v2SetDistributionIntent` can be safely sourced from `buildV2PlannerMesocyclePolicy()` when the emitted sidecar object is structurally equal and main/sidecar artifacts diff clean after ignoring timestamps and artifact links.
 - For verify cleanup, remove stimulus fallback warning noise by adding explicit fixture-only `stimulusProfile` values that match the fallback math, while leaving `src/lib/engine/stimulus.test.ts` as the intentional fallback-warning coverage.
+- For V2 strategy recommendation layers, keep ranking in pure `mesocycle-strategy.ts`, expose only compact status/count/evidence summaries through audit serialization/CLI, and assert demand/materializer/generation non-consumption in both pure and audit tests.
 
 ## Patterns That Don't Work
 - Do not promote suspicious downstream repair rows unless the owning V2 layer is clearly upstream and compatible with the target architecture.

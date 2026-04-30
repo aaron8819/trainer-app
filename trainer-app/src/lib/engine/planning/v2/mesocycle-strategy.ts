@@ -1,3 +1,4 @@
+import { getMuscleTargetSemantics } from "@/lib/engine/volume-landmarks";
 import type {
   V2BlockStrategyImplication,
   V2ExerciseResponseSignalType,
@@ -6,6 +7,10 @@ import type {
   V2MesocycleStrategyInput,
   V2MesocycleStrategyConfidence,
   V2MesocycleStrategyInputGroup,
+  V2MesocycleStrategyRecommendation,
+  V2MesocycleStrategyRecommendationHypothesisId,
+  V2MesocycleStrategyRecommendationInfluenceTarget,
+  V2MesocycleStrategyRecommendationMustNotYetInfluence,
 } from "./types";
 
 export type V2MesocycleStrategyDiagnosticInput = {
@@ -59,6 +64,92 @@ const STRATEGY_CONFIDENCE_LEVELS: V2MesocycleStrategyConfidence[] = [
   "high",
 ];
 
+const RECOMMENDATION_MUST_NOT_YET_INFLUENCE: V2MesocycleStrategyRecommendationMustNotYetInfluence[] =
+  ["generation", "selection", "repair", "seed", "runtime", "receipts"];
+
+const RECOMMENDATION_INFLUENCE_TARGETS: Record<
+  V2MesocycleStrategyRecommendationHypothesisId,
+  V2MesocycleStrategyRecommendationInfluenceTarget[]
+> = {
+  protect_lagging_muscles_earlier: [
+    "MesocycleStrategy",
+    "MesocycleDemand",
+    "WeeklyDemandCurve",
+    "SlotDemandAllocation",
+    "SetDistributionIntent",
+  ],
+  cap_late_block_volume: [
+    "MesocycleStrategy",
+    "WeeklyDemandCurve",
+    "SetDistributionIntent",
+    "DeloadPlan",
+  ],
+  reduce_overlap_fatigue: [
+    "MesocycleStrategy",
+    "SlotDemandAllocation",
+    "ExerciseClassDistribution",
+    "SetDistributionIntent",
+    "ExerciseSelectionStrategy",
+    "MaterializerRanking",
+  ],
+  preserve_successful_progression: [
+    "MesocycleStrategy",
+    "ExerciseSelectionStrategy",
+    "MaterializerRanking",
+  ],
+  improve_deload_execution: ["MesocycleStrategy", "DeloadPlan"],
+  rotate_low_confidence_or_stale_accessories: [
+    "MesocycleStrategy",
+    "ExerciseSelectionStrategy",
+    "MaterializerRanking",
+  ],
+  maintain_balanced_hypertrophy: ["MesocycleStrategy", "MesocycleDemand"],
+  unknown: ["MesocycleStrategy"],
+};
+
+const RECOMMENDATION_PROMOTION_BLOCKERS: Record<
+  V2MesocycleStrategyRecommendationHypothesisId,
+  string[]
+> = {
+  protect_lagging_muscles_earlier: [
+    "requires_strategy_to_demand_promotion_before_volume_changes",
+    "requires_week_by_week_demand_projection_and_recovery_validation",
+    "must_not_automatically_add_volume_from_under_hit_evidence",
+  ],
+  cap_late_block_volume: [
+    "requires_weekly_demand_curve_and_fatigue_carryover_policy",
+    "requires_no_regression_audit_before_any_late_block_volume_cap",
+    "must_not_automatically_reduce_planned_volume_from_skips",
+  ],
+  reduce_overlap_fatigue: [
+    "requires_overlap_fatigue_policy_and_slot_allocation_trial",
+    "requires_explicit_pain_evidence_before_pain_claims",
+    "must_not_change_exercise_choices_from_overlap_evidence",
+  ],
+  preserve_successful_progression: [
+    "requires_exercise_selection_strategy_or_materializer_ranking_promotion",
+    "must_not_preserve_every_old_prescribed_exercise",
+    "requires_recent_performed_progression_to_remain_visible",
+  ],
+  improve_deload_execution: [
+    "requires_deload_plan_promotion_and_runtime_replay_integration",
+    "must_not_treat_skipped_deload_as_hypertrophy_stimulus",
+  ],
+  rotate_low_confidence_or_stale_accessories: [
+    "requires_explicit_accessory_or_support_lane_classification",
+    "requires_clean_alternative_inventory_before_rotation_policy",
+    "must_not_rotate_all_accessories",
+  ],
+  maintain_balanced_hypertrophy: [
+    "requires_absence_of_meaningful_lag_fatigue_and_adherence_flags",
+    "requires_explicit_phase_strategy_before_balanced_phase_claim",
+  ],
+  unknown: [
+    "requires_more_normalized_performed_response_evidence",
+    "must_not_infer_strategy_from_old_prescribed_plan_shape",
+  ],
+};
+
 function unique(values: string[]): string[] {
   return Array.from(new Set(values));
 }
@@ -95,6 +186,106 @@ function repeatedExamples(values: string[], minimumCount = 2): string[] {
     )
     .slice(0, 8)
     .map(([value]) => value);
+}
+
+function confidenceRank(confidence: V2MesocycleStrategyConfidence): number {
+  if (confidence === "high") {
+    return 3;
+  }
+  if (confidence === "medium") {
+    return 2;
+  }
+  return 1;
+}
+
+function maxConfidence(
+  values: V2MesocycleStrategyConfidence[],
+): V2MesocycleStrategyConfidence {
+  return values.sort(
+    (left, right) => confidenceRank(right) - confidenceRank(left),
+  )[0] ?? "low";
+}
+
+function resolveHypothesisConfidence(input: {
+  evidenceCount: number;
+  contributingSignalConfidences: V2MesocycleStrategyConfidence[];
+}): V2MesocycleStrategyConfidence {
+  const highCount = input.contributingSignalConfidences.filter(
+    (confidence) => confidence === "high",
+  ).length;
+  const mediumOrHighCount = input.contributingSignalConfidences.filter(
+    (confidence) => confidence !== "low",
+  ).length;
+  if (highCount >= 3 && input.evidenceCount >= 3) {
+    return "high";
+  }
+  if (mediumOrHighCount >= 2 || input.evidenceCount >= 2) {
+    return "medium";
+  }
+  return "low";
+}
+
+function muscleNameFromFlag(flag: string): string {
+  return flag.split(":")[0]?.trim() ?? flag;
+}
+
+function isTargetTierMuscle(muscle: string): boolean {
+  const targetTier = getMuscleTargetSemantics(muscle).targetTier;
+  return targetTier === "A_PRIMARY" || targetTier === "B_SUPPORT";
+}
+
+function isAccessoryLikeExerciseSignal(
+  signal: V2MesocycleStrategyInput["exerciseResponseSignals"][number],
+): boolean {
+  if (
+    signal.evidence.notes?.some((note) =>
+      /accessory|support|stale/i.test(note),
+    )
+  ) {
+    return true;
+  }
+  const targetTiers = (signal.muscleTargets ?? [])
+    .map((muscle) => getMuscleTargetSemantics(muscle).targetTier)
+    .filter(Boolean);
+  return (
+    targetTiers.length > 0 &&
+    targetTiers.every((tier) => tier !== "A_PRIMARY")
+  );
+}
+
+type MuscleEvidenceEntry = {
+  muscle: string;
+  count: number;
+  mesocycleIds: string[];
+  confidences: V2MesocycleStrategyConfidence[];
+};
+
+function collectMuscleEvidence(
+  blockSignals: V2MesocycleStrategyInput["blockResponseSignals"],
+  getMuscles: (
+    signal: V2MesocycleStrategyInput["blockResponseSignals"][number],
+  ) => string[],
+): MuscleEvidenceEntry[] {
+  const byMuscle = new Map<string, MuscleEvidenceEntry>();
+  for (const signal of blockSignals) {
+    const muscles = unique(getMuscles(signal).filter(Boolean));
+    for (const muscle of muscles) {
+      const existing = byMuscle.get(muscle) ?? {
+        muscle,
+        count: 0,
+        mesocycleIds: [],
+        confidences: [],
+      };
+      existing.count += 1;
+      existing.mesocycleIds.push(signal.mesocycleId);
+      existing.confidences.push(signal.confidence);
+      byMuscle.set(muscle, existing);
+    }
+  }
+  return Array.from(byMuscle.values()).sort(
+    (left, right) =>
+      right.count - left.count || left.muscle.localeCompare(right.muscle),
+  );
 }
 
 function hasBlockResponseEvidence(
@@ -582,6 +773,348 @@ function buildVolumeFatigueStrategyEvidence(
   };
 }
 
+function buildRecommendationHypothesis(input: {
+  id: V2MesocycleStrategyRecommendationHypothesisId;
+  priority: "P0" | "P1" | "P2";
+  confidence: V2MesocycleStrategyConfidence;
+  evidence: string[];
+  extraPromotionBlockers?: string[];
+}): V2MesocycleStrategyRecommendation["hypotheses"][number] {
+  return {
+    id: input.id,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    priority: input.priority,
+    confidence: input.confidence,
+    evidence: unique(input.evidence).slice(0, 8),
+    wouldEventuallyInfluence: RECOMMENDATION_INFLUENCE_TARGETS[input.id],
+    mustNotYetInfluence: RECOMMENDATION_MUST_NOT_YET_INFLUENCE,
+    promotionBlockers: unique([
+      "recommendation_is_evidence_backed_hypothesis_not_planner_instruction",
+      "recommendation_not_consumed_by_mesocycle_demand_or_materializer",
+      "requires_explicit_promotion_slice_with_no_drift_verification",
+      "old_prescribed_plan_shape_excluded_from_recommendation_policy",
+      ...(RECOMMENDATION_PROMOTION_BLOCKERS[input.id] ?? []),
+      ...(input.extraPromotionBlockers ?? []),
+    ]),
+  };
+}
+
+function buildProtectLaggingMusclesHypothesis(
+  blockSignals: V2MesocycleStrategyInput["blockResponseSignals"],
+): V2MesocycleStrategyRecommendation["hypotheses"][number] | null {
+  const entries = collectMuscleEvidence(blockSignals, (signal) =>
+    [
+      ...(signal.muscleDistribution.recurringUnderHitMuscles ?? []),
+      ...(signal.muscleDistribution.belowMevFlags ?? []).map(muscleNameFromFlag),
+    ].filter(isTargetTierMuscle),
+  );
+  if (entries.length === 0) {
+    return null;
+  }
+  const evidence = entries.flatMap((entry) => [
+    `${entry.muscle}:under_hit_in_${entry.count}_performed_block_response`,
+    ...entry.mesocycleIds
+      .slice(0, 2)
+      .map((mesocycleId) => `${mesocycleId}:under_hit:${entry.muscle}`),
+  ]);
+  return buildRecommendationHypothesis({
+    id: "protect_lagging_muscles_earlier",
+    priority: "P1",
+    confidence: resolveHypothesisConfidence({
+      evidenceCount: entries.reduce((sum, entry) => sum + entry.count, 0),
+      contributingSignalConfidences: entries.flatMap(
+        (entry) => entry.confidences,
+      ),
+    }),
+    evidence,
+  });
+}
+
+function buildCapLateBlockVolumeHypothesis(
+  blockSignals: V2MesocycleStrategyInput["blockResponseSignals"],
+): V2MesocycleStrategyRecommendation["hypotheses"][number] | null {
+  const contributingSignals = blockSignals.filter(
+    (signal) =>
+      signal.adherence.skippedSetTrend === "rising" ||
+      signal.strategyImplications.includes("cap_late_block_volume"),
+  );
+  if (contributingSignals.length === 0) {
+    return null;
+  }
+  const evidence = contributingSignals.flatMap((signal) => {
+    const hardWeekRpe = Math.max(
+      0,
+      ...(signal.effortProgression.averageRpeByWeek ?? [])
+        .filter((row) => row.week >= 3)
+        .map((row) => row.averageRpe),
+    );
+    return [
+      signal.adherence.skippedSetTrend === "rising"
+        ? `${signal.mesocycleId}:skipped_set_trend_rising`
+        : "",
+      typeof signal.adherence.skippedSetCount === "number"
+        ? `${signal.mesocycleId}:skipped_sets:${signal.adherence.skippedSetCount}`
+        : "",
+      hardWeekRpe >= 8
+        ? `${signal.mesocycleId}:hard_week_average_rpe:${hardWeekRpe}`
+        : "",
+      ...signal.fatigueDistribution.evidence.filter((row) =>
+        /late_block|hard_week|skipped/i.test(row),
+      ),
+    ].filter(Boolean);
+  });
+  return buildRecommendationHypothesis({
+    id: "cap_late_block_volume",
+    priority: "P1",
+    confidence: resolveHypothesisConfidence({
+      evidenceCount: evidence.length,
+      contributingSignalConfidences: contributingSignals.map(
+        (signal) => signal.confidence,
+      ),
+    }),
+    evidence,
+  });
+}
+
+function buildReduceOverlapFatigueHypothesis(
+  blockSignals: V2MesocycleStrategyInput["blockResponseSignals"],
+): V2MesocycleStrategyRecommendation["hypotheses"][number] | null {
+  const entries = collectMuscleEvidence(blockSignals, (signal) => [
+    ...(signal.muscleDistribution.recurringOverConcentratedMuscles ?? []),
+    ...(signal.muscleDistribution.overMavFlags ?? []).map(muscleNameFromFlag),
+    ...(signal.fatigueDistribution.likelyFatigueDrivers ?? []),
+    ...signal.fatigueDistribution.evidence
+      .filter((row) => row.startsWith("overlap_fatigue_driver:"))
+      .map((row) => row.replace("overlap_fatigue_driver:", "")),
+  ]);
+  const supportedEntries = entries.filter((entry) => entry.count > 0);
+  if (supportedEntries.length === 0) {
+    return null;
+  }
+  const evidence = supportedEntries.flatMap((entry) => [
+    `${entry.muscle}:overlap_or_concentration_in_${entry.count}_performed_block_response`,
+    ...entry.mesocycleIds
+      .slice(0, 2)
+      .map((mesocycleId) => `${mesocycleId}:fatigue_driver:${entry.muscle}`),
+  ]);
+  return buildRecommendationHypothesis({
+    id: "reduce_overlap_fatigue",
+    priority: "P1",
+    confidence: resolveHypothesisConfidence({
+      evidenceCount: supportedEntries.reduce(
+        (sum, entry) => sum + entry.count,
+        0,
+      ),
+      contributingSignalConfidences: supportedEntries.flatMap(
+        (entry) => entry.confidences,
+      ),
+    }),
+    evidence,
+    extraPromotionBlockers: [
+      "overlap_fatigue_evidence_does_not_imply_pain_without_explicit_signal",
+    ],
+  });
+}
+
+function buildPreserveProgressionHypothesis(
+  exerciseSignals: V2MesocycleStrategyInput["exerciseResponseSignals"],
+): V2MesocycleStrategyRecommendation["hypotheses"][number] | null {
+  const progressedSignals = exerciseSignals.filter(
+    (signal) => signal.signal === "progressed",
+  );
+  if (progressedSignals.length === 0) {
+    return null;
+  }
+  const evidence = progressedSignals.map((signal) => {
+    const name = signal.exerciseName ?? signal.exerciseId ?? "unknown_exercise";
+    const mesocycleCount = signal.evidence.mesocycleIds.length;
+    const completed = signal.evidence.completedExposureCount ?? 0;
+    const trends = [
+      signal.evidence.loadTrend === "rising" ? "load_rising" : "",
+      signal.evidence.repTrend === "rising" ? "rep_rising" : "",
+      signal.evidence.rpeTrend === "stable" ? "rpe_stable" : "",
+    ].filter(Boolean);
+    return `${name}:progressed:mesocycles=${mesocycleCount}:completed_exposures=${completed}${trends.length > 0 ? `:${trends.join("+")}` : ""}`;
+  });
+  return buildRecommendationHypothesis({
+    id: "preserve_successful_progression",
+    priority: "P2",
+    confidence: resolveHypothesisConfidence({
+      evidenceCount: progressedSignals.reduce(
+        (sum, signal) =>
+          sum +
+          Math.max(
+            1,
+            signal.evidence.mesocycleIds.length,
+            (signal.evidence.completedExposureCount ?? 0) >= 2 ? 2 : 0,
+          ),
+        0,
+      ),
+      contributingSignalConfidences: progressedSignals.map(
+        (signal) => signal.confidence,
+      ),
+    }),
+    evidence,
+  });
+}
+
+function buildImproveDeloadExecutionHypothesis(
+  blockSignals: V2MesocycleStrategyInput["blockResponseSignals"],
+): V2MesocycleStrategyRecommendation["hypotheses"][number] | null {
+  const skippedDeloadSignals = blockSignals.filter(
+    (signal) => signal.effortProgression.deloadExecuted === false,
+  );
+  if (skippedDeloadSignals.length === 0) {
+    return null;
+  }
+  return buildRecommendationHypothesis({
+    id: "improve_deload_execution",
+    priority: "P0",
+    confidence: resolveHypothesisConfidence({
+      evidenceCount: skippedDeloadSignals.length,
+      contributingSignalConfidences: skippedDeloadSignals.map(
+        (signal) => signal.confidence,
+      ),
+    }),
+    evidence: skippedDeloadSignals.map(
+      (signal) => `${signal.mesocycleId}:deload_not_executed`,
+    ),
+  });
+}
+
+function buildRotateAccessoryHypothesis(
+  exerciseSignals: V2MesocycleStrategyInput["exerciseResponseSignals"],
+): V2MesocycleStrategyRecommendation["hypotheses"][number] | null {
+  const rotateSignals = exerciseSignals.filter(
+    (signal) =>
+      [
+        "stalled",
+        "regressed",
+        "skipped_often",
+        "swapped_out",
+        "low_confidence",
+      ].includes(signal.signal) && isAccessoryLikeExerciseSignal(signal),
+  );
+  if (rotateSignals.length === 0) {
+    return null;
+  }
+  const evidence = rotateSignals.map((signal) => {
+    const name = signal.exerciseName ?? signal.exerciseId ?? "unknown_exercise";
+    return `${name}:${signal.signal}:completed=${signal.evidence.completedExposureCount ?? 0}:skipped=${signal.evidence.skippedExposureCount ?? 0}:swapped=${signal.evidence.swappedExposureCount ?? 0}`;
+  });
+  return buildRecommendationHypothesis({
+    id: "rotate_low_confidence_or_stale_accessories",
+    priority: "P2",
+    confidence: resolveHypothesisConfidence({
+      evidenceCount: rotateSignals.reduce(
+        (sum, signal) =>
+          sum +
+          Math.max(
+            1,
+            signal.evidence.skippedExposureCount ?? 0,
+            signal.evidence.swappedExposureCount ?? 0,
+          ),
+        0,
+      ),
+      contributingSignalConfidences: rotateSignals.map(
+        (signal) => signal.confidence,
+      ),
+    }),
+    evidence,
+  });
+}
+
+function buildUnknownRecommendationHypothesis(input: {
+  blockSignals: V2MesocycleStrategyInput["blockResponseSignals"];
+  exerciseSignals: V2MesocycleStrategyInput["exerciseResponseSignals"];
+}): V2MesocycleStrategyRecommendation["hypotheses"][number] {
+  return buildRecommendationHypothesis({
+    id: "unknown",
+    priority: "P2",
+    confidence: maxConfidence([
+      ...input.blockSignals.map((signal) => signal.confidence),
+      ...input.exerciseSignals.map((signal) => signal.confidence),
+      "low",
+    ]),
+    evidence: [
+      `block_response_signals:${input.blockSignals.length}`,
+      `exercise_response_signals:${input.exerciseSignals.length}`,
+      "normalized_performed_response_evidence_did_not_map_to_specific_strategy_hypothesis",
+    ],
+  });
+}
+
+function buildStrategyRecommendation(
+  strategyInput: V2MesocycleStrategyInput | undefined,
+  summary: V2MesocycleStrategyDiagnostic["strategyInputSummary"],
+): V2MesocycleStrategyRecommendation {
+  const blockSignals = strategyInput?.blockResponseSignals ?? [];
+  const exerciseSignals = strategyInput?.exerciseResponseSignals ?? [];
+  const hasPerformedEvidence =
+    summary.performedHistoryEvidenceLoaded ||
+    blockSignals.some(hasBlockResponseEvidence) ||
+    exerciseSignals.some(hasExerciseResponseEvidence);
+  const hypotheses = [
+    buildImproveDeloadExecutionHypothesis(blockSignals),
+    buildProtectLaggingMusclesHypothesis(blockSignals),
+    buildCapLateBlockVolumeHypothesis(blockSignals),
+    buildReduceOverlapFatigueHypothesis(blockSignals),
+    buildPreserveProgressionHypothesis(exerciseSignals),
+    buildRotateAccessoryHypothesis(exerciseSignals),
+  ].filter(
+    (
+      hypothesis,
+    ): hypothesis is V2MesocycleStrategyRecommendation["hypotheses"][number] =>
+      Boolean(hypothesis),
+  );
+  const finalHypotheses =
+    hasPerformedEvidence && hypotheses.length === 0
+      ? [
+          buildUnknownRecommendationHypothesis({
+            blockSignals,
+            exerciseSignals,
+          }),
+        ]
+      : hypotheses;
+
+  const limitations = unique([
+    "strategy_recommendation_is_read_only_and_non_binding",
+    "strategy_recommendation_not_consumed_by_mesocycle_demand",
+    "strategy_recommendation_not_consumed_by_materializer_ranking",
+    "strategy_recommendation_not_consumed_by_generation_selection_repair_seed_runtime_or_receipts",
+    "recommended_phase_remains_unknown_until_macrocycle_phase_strategy_exists",
+    "old_prescribed_plan_shape_excluded_from_recommendation_policy",
+    ...(hasPerformedEvidence
+      ? []
+      : ["normalized_performed_response_evidence_not_available"]),
+    ...(summary.historicalMesocycleCount >= 2
+      ? []
+      : ["fewer_than_two_historical_mesocycles_keeps_confidence_low"]),
+    ...(summary.missingGroups.length === 0
+      ? []
+      : ["missing_strategy_input_groups_keep_recommendation_limited"]),
+    ...summary.evidenceLimitations,
+  ]);
+
+  return {
+    version: 1,
+    source: "v2_mesocycle_strategy_recommendation",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    status: !hasPerformedEvidence
+      ? "not_available"
+      : limitations.length > 0 ||
+          finalHypotheses.some((hypothesis) => hypothesis.confidence === "low")
+        ? "available_with_limitations"
+        : "available",
+    recommendedPhase: "unknown",
+    confidence: "low",
+    hypotheses: finalHypotheses,
+    limitations,
+  };
+}
+
 function resolvePhaseConfidence(
   summary: V2MesocycleStrategyDiagnostic["strategyInputSummary"],
 ): V2MesocycleStrategyDiagnostic["phaseStrategy"]["confidence"] {
@@ -603,6 +1136,10 @@ export function buildV2MesocycleStrategyDiagnostic(
   );
   const volumeFatigueStrategyEvidence = buildVolumeFatigueStrategyEvidence(
     input.strategyInput,
+  );
+  const strategyRecommendation = buildStrategyRecommendation(
+    input.strategyInput,
+    strategyInputSummary,
   );
   const phaseConfidence = resolvePhaseConfidence(strategyInputSummary);
 
@@ -673,6 +1210,7 @@ export function buildV2MesocycleStrategyDiagnostic(
     },
     continuityVariationEvidence,
     volumeFatigueStrategyEvidence,
+    strategyRecommendation,
     demandDerivationPlan: {
       currentDemandSource: "fixed_skeleton_lanes",
       targetDemandSource: "mesocycle_strategy",

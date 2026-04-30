@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildV2MesocycleStrategyDiagnostic } from "@/lib/engine/planning/v2";
 import type { ReadinessSignal } from "@/lib/engine/readiness/types";
 import type { MesocycleHandoffSummary } from "./mesocycle-handoff-contract";
 import type { MesocycleReviewData } from "./mesocycle-review";
@@ -545,6 +546,9 @@ describe("loadV2MesocycleStrategyHistoricalReviewEvidence", () => {
       historicalMesocycleReviews: loaded.historicalMesocycleReviews,
       evidenceLimitations: loaded.evidenceLimitations,
     });
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: input,
+    });
 
     expect(loaded.historicalMesocycleReviews).toHaveLength(2);
     expect(input.historicalMesocycles.map((row) => row.sourcePlanner)).toEqual([
@@ -602,6 +606,27 @@ describe("loadV2MesocycleStrategyHistoricalReviewEvidence", () => {
     expect(JSON.stringify(input)).toContain("performed-reality-press");
     expect(JSON.stringify(input)).not.toContain("old-prescribed-plan-only");
     expect(JSON.stringify(input)).not.toContain("aaron8819@gmail.com");
+    expect(JSON.stringify(diagnostic.strategyRecommendation)).toContain(
+      "Performed Reality Press",
+    );
+    expect(JSON.stringify(diagnostic.strategyRecommendation)).not.toContain(
+      "old-prescribed-plan-only",
+    );
+    expect(diagnostic.strategyRecommendation.hypotheses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "preserve_successful_progression",
+          mustNotYetInfluence: [
+            "generation",
+            "selection",
+            "repair",
+            "seed",
+            "runtime",
+            "receipts",
+          ],
+        }),
+      ]),
+    );
     expect(reader.mesocycle.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

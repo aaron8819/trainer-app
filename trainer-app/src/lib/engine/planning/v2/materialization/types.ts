@@ -152,6 +152,7 @@ export type V2MaterializationDryRunReport = {
     invalidSetCount: number;
     unsupportedClassCount: number;
   };
+  requiredLaneCoverageBySlot: V2MaterializationRequiredLaneCoverage[];
   executableSeedPreview: V2MaterializationDryRunReportPreviewSlot[];
   strippedMaterializerFields: string[];
   blockers: V2MaterializationDryRunReportReason[];

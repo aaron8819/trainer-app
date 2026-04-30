@@ -12,9 +12,13 @@ import {
   type V2MaterializationRequiredLaneCoverage,
 } from "@/lib/engine/planning/v2";
 import { DEFAULT_V2_EXERCISE_CLASS_TAXONOMY } from "@/lib/engine/planning/v2";
+import { runV2MaterializedSeedAcceptanceProbe } from "@/lib/audit/workout-audit/v2-materialization-live-context-dry-run";
 import { buildMesocycleSlotPlanSeed } from "./mesocycle-handoff-slot-plan-projection.seed-serialization";
 import { buildMesocycleSlotSequence } from "./mesocycle-slot-contract";
-import { buildV2MaterializedSeedForAcceptance } from "./mesocycle-handoff-v2-materialized-seed";
+import {
+  buildV2MaterializedSeedAcceptanceProbe,
+  buildV2MaterializedSeedForAcceptance,
+} from "./mesocycle-handoff-v2-materialized-seed";
 
 function makeSlotSequence() {
   return buildMesocycleSlotSequence([
@@ -402,5 +406,211 @@ describe("buildV2MaterializedSeedForAcceptance", () => {
     );
 
     expect(result.status).toBe("ready");
+  });
+});
+
+describe("buildV2MaterializedSeedAcceptanceProbe", () => {
+  it("keeps the helper disabled and never serializes seed JSON from the probe", () => {
+    const buildSlotPlanSeed = vi.fn(buildMesocycleSlotPlanSeed);
+    const probeInput = makeEligibleInput();
+
+    const result = buildV2MaterializedSeedAcceptanceProbe({
+      ...probeInput,
+      dependencies: { buildSlotPlanSeed },
+      ownerLoaded: true,
+      mesocycleLoaded: true,
+      liveNormalizedInventoryAvailable: true,
+    });
+
+    expect(result.helperResultWithOptInDisabled).toEqual({ status: "disabled" });
+    expect(result.safeToPromoteToProductionWrite).toBe(false);
+    expect(result.promotionReadiness.safeToPromoteToProductionWrite).toBe(false);
+    expect(buildSlotPlanSeed).not.toHaveBeenCalled();
+    expect(result).not.toHaveProperty("slotPlanSeedJson");
+  });
+
+  it("reports missing caller-owned evidence as blockers", () => {
+    const result = buildV2MaterializedSeedAcceptanceProbe({
+      slotSequence: makeSlotSequence(),
+      plannerPolicy: null,
+      exerciseSelectionPlan: null,
+      taxonomy: null,
+      inventory: null,
+      ownerLoaded: false,
+      mesocycleLoaded: false,
+      liveNormalizedInventoryAvailable: false,
+    });
+
+    expect(result.evidence.callerOwnedEvidence).toEqual(
+      expect.arrayContaining([
+        {
+          key: "planner_policy",
+          provided: false,
+          futureCallerMustProvide: true,
+        },
+        { key: "inventory", provided: false, futureCallerMustProvide: true },
+        { key: "taxonomy", provided: false, futureCallerMustProvide: true },
+        {
+          key: "lane_coverage",
+          provided: false,
+          futureCallerMustProvide: true,
+        },
+        {
+          key: "production_gates",
+          provided: false,
+          futureCallerMustProvide: true,
+        },
+      ]),
+    );
+    expect(result.blockersByCategory).toEqual(
+      expect.arrayContaining([
+        {
+          category: "required_materialization",
+          reasons: expect.arrayContaining([
+            "exercise_selection_plan_unavailable",
+            "inventory_unavailable",
+            "mesocycle_not_loaded",
+            "owner_not_loaded",
+            "planner_policy_unavailable",
+            "required_lane_coverage_evidence_missing",
+            "taxonomy_unavailable",
+          ]),
+        },
+      ]),
+    );
+  });
+
+  it("separates optional omissions from blockers", () => {
+    const result = buildV2MaterializedSeedAcceptanceProbe({
+      ...makeEligibleInput(
+        makeMaterializedPlan({
+          omissions: [
+            {
+              slotId: "upper_a",
+              laneId: "optional_biceps",
+              reason: "optional_not_activated",
+            },
+          ],
+        }),
+      ),
+      ownerLoaded: true,
+      mesocycleLoaded: true,
+      liveNormalizedInventoryAvailable: true,
+    });
+
+    expect(result.optionalOmissions).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "optional_biceps",
+        reason: "optional_not_activated",
+      },
+    ]);
+    expect(JSON.stringify(result.blockersByCategory)).not.toContain(
+      "optional_not_activated",
+    );
+  });
+
+  it("can report simulated materialized readiness without promoting it to write success", () => {
+    const probeInput = {
+      ...makeEligibleInput(),
+      productionWriteGates: undefined,
+    };
+
+    const result = buildV2MaterializedSeedAcceptanceProbe({
+      ...probeInput,
+      ownerLoaded: true,
+      mesocycleLoaded: true,
+      liveNormalizedInventoryAvailable: true,
+    });
+
+    expect(result.dryRunReport.status).toBe("materialized");
+    expect(result.dryRunReport.seedShapeCompatibility.compatible).toBe(true);
+    expect(result.promotionReadiness.status).toBe("not_ready");
+    expect(result.simulated_opt_in_readiness).toMatchObject({
+      label: "simulated_opt_in_readiness",
+      status: "ready",
+      promotionReadinessStatus: "eligible_for_guarded_write",
+      readinessWouldBeEligibleForGuardedWrite: true,
+      safeToPromoteToProductionWrite: false,
+      blockersByCategory: [],
+    });
+    expect(result.safeToPromoteToProductionWrite).toBe(false);
+    expect(result.seedPreviewCountsBySlot).toEqual([
+      { slotId: "upper_a", exerciseCount: 2 },
+      { slotId: "lower_a", exerciseCount: 1 },
+    ]);
+  });
+
+  it("runs the live acceptance probe through read-only DB methods", async () => {
+    const update = vi.fn();
+    const create = vi.fn();
+    const reader = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "user-1",
+          email: "owner@test.local",
+        }),
+      },
+      mesocycle: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "meso-1",
+          state: "AWAITING_HANDOFF",
+          splitType: "UPPER_LOWER",
+          slotSequenceJson: {
+            version: 1,
+            source: "handoff_draft",
+            sequenceMode: "ordered_flexible",
+            slots: [
+              { slotId: "upper_a", intent: "UPPER" },
+              { slotId: "lower_a", intent: "LOWER" },
+              { slotId: "upper_b", intent: "UPPER" },
+              { slotId: "lower_b", intent: "LOWER" },
+            ],
+          },
+        }),
+        update,
+        create,
+      },
+      exercise: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: "bench",
+            name: "Bench Press",
+            aliases: [],
+            movementPatterns: ["HORIZONTAL_PRESS"],
+            isCompound: true,
+            isMainLiftEligible: true,
+            fatigueCost: 2,
+            exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+            exerciseMuscles: [
+              { role: "PRIMARY", muscle: { name: "Chest" } },
+              { role: "SECONDARY", muscle: { name: "Triceps" } },
+            ],
+          },
+        ]),
+      },
+      userPreference: {
+        findUnique: vi.fn().mockResolvedValue({
+          avoidExerciseIds: [],
+          favoriteExerciseIds: [],
+        }),
+      },
+    };
+
+    const result = await runV2MaterializedSeedAcceptanceProbe({
+      ownerEmail: "owner@test.local",
+      reader: reader as never,
+    });
+
+    expect(result.context.ownerLoaded).toBe(true);
+    expect(result.context.mesocycleLoaded).toBe(true);
+    expect(result.helperResultWithOptInDisabled).toEqual({ status: "disabled" });
+    expect(reader.user.findUnique).toHaveBeenCalledOnce();
+    expect(reader.mesocycle.findFirst).toHaveBeenCalledOnce();
+    expect(reader.exercise.findMany).toHaveBeenCalledOnce();
+    expect(reader.userPreference.findUnique).toHaveBeenCalledOnce();
+    expect(update).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+    expect(result).not.toHaveProperty("slotPlanSeedJson");
   });
 });

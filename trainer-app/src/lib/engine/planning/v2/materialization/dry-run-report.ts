@@ -99,6 +99,11 @@ export function buildV2MaterializationDryRunReport(
     materializedPlan?.status === "materialized" &&
     materializerBlockers.length === 0 &&
     compatibility.summary.compatible;
+  const requiredLaneCoverageBySlot = summarizeRequiredLaneCoverage({
+    exerciseSelectionPlan,
+    materializedPlan,
+    blockers,
+  });
 
   return {
     version: 1,
@@ -121,6 +126,7 @@ export function buildV2MaterializationDryRunReport(
       omissionCount: omissions.length,
     },
     seedShapeCompatibility: compatibility.summary,
+    requiredLaneCoverageBySlot,
     executableSeedPreview: canPreview
       ? buildExecutableSeedPreview({
           materializedPlan,
@@ -142,6 +148,59 @@ export function buildV2MaterializationDryRunReport(
       }),
     },
   };
+}
+
+function summarizeRequiredLaneCoverage(input: {
+  exerciseSelectionPlan: V2ExerciseSelectionPlan | null;
+  materializedPlan: V2ExerciseMaterializationPlan | null;
+  blockers: V2MaterializationDryRunReportReason[];
+}): V2MaterializationDryRunReport["requiredLaneCoverageBySlot"] {
+  if (!input.exerciseSelectionPlan) {
+    return [];
+  }
+  const blockers = new Set(
+    input.blockers.map((blocker) =>
+      blocker.slotId && blocker.laneId ? `${blocker.slotId}:${blocker.laneId}` : "",
+    ),
+  );
+  const materialized = new Set(
+    (input.materializedPlan?.slots ?? []).flatMap((slot) =>
+      slot.exercises.flatMap((exercise) =>
+        exercise.laneIds.map((laneId) => `${slot.slotId}:${laneId}`),
+      ),
+    ),
+  );
+  const seenSlots = new Set<string>();
+
+  return input.exerciseSelectionPlan.weeks.flatMap((week) =>
+    week.slots.flatMap((slot) => {
+      if (seenSlots.has(slot.slotId)) {
+        return [];
+      }
+      seenSlots.add(slot.slotId);
+      const requiredLaneIds = slot.lanes
+        .filter((lane) => lane.requirement === "required")
+        .map((lane) => lane.laneId);
+      const materializedRequiredLaneIds = requiredLaneIds.filter((laneId) =>
+        materialized.has(`${slot.slotId}:${laneId}`),
+      );
+      const blockedRequiredLaneIds = requiredLaneIds.filter((laneId) =>
+        blockers.has(`${slot.slotId}:${laneId}`),
+      );
+
+      return [
+        {
+          slotId: slot.slotId,
+          requiredLaneCount: requiredLaneIds.length,
+          materializedRequiredLaneCount: materializedRequiredLaneIds.length,
+          blockedRequiredLaneCount: blockedRequiredLaneIds.length,
+          missingRequiredLaneIds: requiredLaneIds.filter(
+            (laneId) => !materialized.has(`${slot.slotId}:${laneId}`),
+          ),
+        },
+      ];
+    }),
+  );
 }
 
 function buildAvailabilityBlockers(input: {

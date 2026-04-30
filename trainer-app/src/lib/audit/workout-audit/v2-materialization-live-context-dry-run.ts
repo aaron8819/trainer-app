@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import type { WorkoutSessionIntent } from "@prisma/client";
 import {
   buildV2ExerciseMaterializationPlan,
   buildV2MaterializationDryRunReport,
@@ -6,14 +7,19 @@ import {
   DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
   type V2ExerciseClassTaxonomy,
   type V2ExerciseMaterializationInput,
-  type V2ExerciseMaterializationPlan,
-  type V2ExerciseSelectionPlan,
   type V2MaterializationDryRunReport,
   type V2MaterializationExercise,
   type V2PlannerMesocyclePolicy,
 } from "@/lib/engine/planning/v2";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
-import { resolveMesocycleSlotContract } from "@/lib/api/mesocycle-slot-contract";
+import {
+  buildMesocycleSlotSequence,
+  resolveMesocycleSlotContract,
+} from "@/lib/api/mesocycle-slot-contract";
+import {
+  buildV2MaterializedSeedAcceptanceProbe,
+  type BuildV2MaterializedSeedAcceptanceProbeResult,
+} from "@/lib/api/mesocycle-handoff-v2-materialized-seed";
 
 export type V2LiveContextInventorySource =
   | "live_normalized_inventory"
@@ -80,6 +86,32 @@ type LiveInventoryExerciseRow = {
   fatigueCost?: number | null;
   exerciseEquipment?: Array<{ equipment: { type: string } }>;
   exerciseMuscles?: Array<{ role: string; muscle: { name: string } }>;
+};
+
+export type V2MaterializedSeedAcceptanceProbeReader = {
+  user: {
+    findUnique(args: unknown): Promise<{
+      id: string;
+      email: string | null;
+    } | null>;
+  };
+  mesocycle: {
+    findFirst(args: unknown): Promise<{
+      id: string;
+      state: string;
+      splitType: string;
+      slotSequenceJson: unknown;
+    } | null>;
+  };
+  exercise: {
+    findMany(args: unknown): Promise<LiveInventoryExerciseRow[]>;
+  };
+  userPreference: {
+    findUnique(args: unknown): Promise<{
+      avoidExerciseIds: string[];
+      favoriteExerciseIds: string[];
+    } | null>;
+  };
 };
 
 export type V2LiveContextMaterializationDryRunInput = {
@@ -203,11 +235,7 @@ export function buildV2LiveContextMaterializationDryRunHarness(
     inventoryExerciseCount: inventory.length,
     unsupportedClassCount:
       dryRunReport.seedShapeCompatibility.unsupportedClassCount,
-    requiredLaneCoverageBySlot: summarizeRequiredLaneCoverage({
-      exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
-      materializedPlan,
-      dryRunReport,
-    }),
+    requiredLaneCoverageBySlot: dryRunReport.requiredLaneCoverageBySlot,
     materializerStatus: dryRunReport.materializer.status,
     seedShapeCompatibility: dryRunReport.seedShapeCompatibility,
     executablePreviewCountBySlot: dryRunReport.executableSeedPreview.map((slot) => ({
@@ -291,6 +319,89 @@ export async function runV2LiveContextMaterializationDryRunHarness(input: {
   });
 }
 
+export async function runV2MaterializedSeedAcceptanceProbe(input: {
+  userId?: string;
+  ownerEmail?: string;
+  mesocycleId?: string;
+  reader?: V2MaterializedSeedAcceptanceProbeReader;
+} = {}): Promise<BuildV2MaterializedSeedAcceptanceProbeResult> {
+  const reader = input.reader ?? prisma;
+  const ownerEmail =
+    input.ownerEmail ?? process.env.OWNER_EMAIL?.trim().toLowerCase() ?? "owner@local";
+  const user = input.userId
+    ? await reader.user.findUnique({ where: { id: input.userId } })
+    : await reader.user.findUnique({ where: { email: ownerEmail } });
+
+  if (!user) {
+    return buildV2MaterializedSeedAcceptanceProbe({
+      ownerLoaded: false,
+      mesocycleLoaded: false,
+      slotSequence: buildMesocycleSlotSequence([]),
+      plannerPolicy: null,
+      exerciseSelectionPlan: null,
+      taxonomy: null,
+      inventory: null,
+      liveNormalizedInventoryAvailable: false,
+    });
+  }
+
+  const [mesocycle, exercises, preferences] = await Promise.all([
+    reader.mesocycle.findFirst({
+      where: {
+        ...(input.mesocycleId ? { id: input.mesocycleId } : { isActive: true }),
+        macroCycle: { userId: user.id },
+      },
+      orderBy: input.mesocycleId ? undefined : [{ mesoNumber: "desc" }],
+      select: {
+        id: true,
+        state: true,
+        splitType: true,
+        slotSequenceJson: true,
+      },
+    }),
+    reader.exercise.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        aliases: true,
+        exerciseEquipment: { include: { equipment: true } },
+        exerciseMuscles: { include: { muscle: true } },
+      },
+    }),
+    reader.userPreference.findUnique({ where: { userId: user.id } }),
+  ]);
+  const slotContract = resolveMesocycleSlotContract({
+    slotSequenceJson: mesocycle?.slotSequenceJson,
+    weeklySchedule: [],
+  });
+  const slotSequence = buildMesocycleSlotSequence(
+    slotContract.slots.map((slot) => ({
+      slotId: slot.slotId,
+      intent: slot.intent.toUpperCase() as WorkoutSessionIntent,
+      ...(slot.authoredSemantics
+        ? { authoredSemantics: slot.authoredSemantics }
+        : {}),
+    })),
+  );
+  const plannerPolicy = buildV2PlannerMesocyclePolicy();
+  const inventory = normalizeLiveInventoryForV2Materialization(exercises);
+
+  return buildV2MaterializedSeedAcceptanceProbe({
+    ownerLoaded: true,
+    mesocycleLoaded: Boolean(mesocycle),
+    slotSequence,
+    plannerPolicy,
+    exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
+    taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+    inventory,
+    liveNormalizedInventoryAvailable: inventory.length > 0,
+    constraints: {
+      avoidExerciseIds: preferences?.avoidExerciseIds ?? [],
+      favoriteExerciseIds: preferences?.favoriteExerciseIds ?? [],
+      painConflictExerciseIds: [],
+    },
+  });
+}
+
 function musclesByRole(
   exercise: Pick<LiveInventoryExerciseRow, "exerciseMuscles">,
   role: "PRIMARY" | "SECONDARY",
@@ -299,56 +410,6 @@ function musclesByRole(
     .filter((entry) => entry.role === role)
     .map((entry) => entry.muscle.name)
     .sort((left, right) => left.localeCompare(right));
-}
-
-function summarizeRequiredLaneCoverage(input: {
-  exerciseSelectionPlan: V2ExerciseSelectionPlan;
-  materializedPlan: V2ExerciseMaterializationPlan | null;
-  dryRunReport: V2MaterializationDryRunReport;
-}): V2LiveContextMaterializationDryRunResult["requiredLaneCoverageBySlot"] {
-  const blockers = new Set(
-    input.dryRunReport.blockers.map((blocker) =>
-      blocker.slotId && blocker.laneId ? `${blocker.slotId}:${blocker.laneId}` : "",
-    ),
-  );
-  const materialized = new Set(
-    (input.materializedPlan?.slots ?? []).flatMap((slot) =>
-      slot.exercises.flatMap((exercise) =>
-        exercise.laneIds.map((laneId) => `${slot.slotId}:${laneId}`),
-      ),
-    ),
-  );
-  const seenSlots = new Set<string>();
-
-  return input.exerciseSelectionPlan.weeks.flatMap((week) =>
-    week.slots.flatMap((slot) => {
-      if (seenSlots.has(slot.slotId)) {
-        return [];
-      }
-      seenSlots.add(slot.slotId);
-      const requiredLaneIds = slot.lanes
-        .filter((lane) => lane.requirement === "required")
-        .map((lane) => lane.laneId);
-      const materializedRequiredLaneIds = requiredLaneIds.filter((laneId) =>
-        materialized.has(`${slot.slotId}:${laneId}`),
-      );
-      const blockedRequiredLaneIds = requiredLaneIds.filter((laneId) =>
-        blockers.has(`${slot.slotId}:${laneId}`),
-      );
-
-      return [
-        {
-          slotId: slot.slotId,
-          requiredLaneCount: requiredLaneIds.length,
-          materializedRequiredLaneCount: materializedRequiredLaneIds.length,
-          blockedRequiredLaneCount: blockedRequiredLaneIds.length,
-          missingRequiredLaneIds: requiredLaneIds.filter(
-            (laneId) => !materialized.has(`${slot.slotId}:${laneId}`),
-          ),
-        },
-      ];
-    }),
-  );
 }
 
 function summarizeBlockersBeforePromotion(input: {

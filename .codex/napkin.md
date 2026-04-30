@@ -40,6 +40,7 @@
 | 2026-04-29 | self | Tried `Get-Content trainer-app/src/app/api/mesocycles/[id]/...` and PowerShell treated `[id]` as a wildcard character class. | Use `Get-Content -LiteralPath` for Next.js App Router paths with bracketed route segments. |
 | 2026-04-29 | self | In the V2 materialized seed acceptance helper test, first treated a passed `materializedPlan` as enough for guarded-write readiness and forgot the dry-run report still blocks missing planner policy and inventory availability. | For V2 materialized-seed eligibility fixtures, provide explicit planner policy, exercise selection plan, taxonomy, inventory, lane coverage, and production gates; a seed-shaped plan alone is not promotion-ready evidence. |
 | 2026-04-30 | self | While adding the V2 acceptance probe, initially called `buildV2ExerciseMaterializationPlan()` directly from the API helper and tripped the architecture boundary test. | Keep dry-run materializer calls inside `src/lib/engine/planning/v2/materialization`; expose derived lane-coverage evidence from the dry-run report and let API probes summarize it. |
+| 2026-04-30 | self | Reused a double-quoted PowerShell `rg` command containing escaped double quotes and hit the known terminator parser error. | Use a single-quoted PowerShell pattern for `rg` searches that include literal double quotes. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

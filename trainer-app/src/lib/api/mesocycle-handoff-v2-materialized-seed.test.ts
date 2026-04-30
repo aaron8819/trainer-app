@@ -1,6 +1,9 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  buildV2AcceptedPlannerIntentDto,
   buildV2PlannerMesocyclePolicy,
   buildV2MaterializationDryRunReport,
   buildV2MaterializationPromotionReadiness,
@@ -187,6 +190,20 @@ const inventory: V2MaterializationExercise[] = [
   },
 ];
 
+function listSourceTypeScriptFiles(dir: string): string[] {
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      return listSourceTypeScriptFiles(entryPath);
+    }
+    return (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) &&
+      !entry.name.endsWith(".test.ts") &&
+      !entry.name.endsWith(".test.tsx")
+      ? [entryPath]
+      : [];
+  });
+}
+
 function makeEligibleInput(
   materializedPlan: V2ExerciseMaterializationPlan = makeMaterializedPlan(),
 ) {
@@ -247,7 +264,22 @@ describe("buildV2MaterializedSeedForAcceptance", () => {
       },
     });
 
-    expect(result).toEqual({ status: "disabled" });
+    expect(result).toMatchObject({
+      status: "disabled",
+      provenance: {
+        source: "v2_disabled",
+        readOnly: true,
+        dryRunOnly: true,
+        seedSerializer: "buildMesocycleSlotPlanSeed",
+        dbWriteOccurred: false,
+        runtimeReplayContractExpectedUnchanged: true,
+        executableSeedTruth: {
+          source: "slotPlanSeedJson",
+          runtimeConsumedFields: ["exerciseId", "role", "setCount"],
+          runtimeIgnoresPlannerMetadata: true,
+        },
+      },
+    });
     expect(buildDryRunReport).not.toHaveBeenCalled();
     expect(buildPromotionReadiness).not.toHaveBeenCalled();
   });
@@ -282,11 +314,26 @@ describe("buildV2MaterializedSeedForAcceptance", () => {
     expect(result).toMatchObject({
       status: "blocked",
       reason: "upper_a:required_lane_coverage_incomplete",
+      provenance: {
+        source: "v2_blocked_fail_closed",
+        readOnly: true,
+        dryRunOnly: true,
+        dryRunReportVersion: 1,
+        promotionReadinessVersion: 1,
+        blockerCategories: ["required_materialization"],
+        productionGates: {
+          acceptancePath: true,
+          seedWriteGate: true,
+          receiptContract: true,
+          runtimeReplayContract: true,
+          auditObservabilityContract: true,
+          rollbackStrategy: true,
+        },
+      },
     });
     expect(buildDryRunReport).toHaveBeenCalledOnce();
     expect(buildPromotionReadiness).toHaveBeenCalledOnce();
     expect(buildSlotPlanSeed).not.toHaveBeenCalled();
-    expect(result).not.toHaveProperty("provenance");
     expect(result).not.toHaveProperty("slotPlanSeedJson");
   });
 
@@ -305,8 +352,95 @@ describe("buildV2MaterializedSeedForAcceptance", () => {
         source: "v2_materialized_seed",
         dryRunReportVersion: 1,
         promotionReadinessVersion: 1,
+        readOnly: false,
+        dryRunOnly: false,
+        seedSerializer: "buildMesocycleSlotPlanSeed",
+        dbWriteOccurred: false,
+        runtimeReplayContractExpectedUnchanged: true,
+        executableSeedTruth: {
+          source: "slotPlanSeedJson",
+          runtimeConsumedFields: ["exerciseId", "role", "setCount"],
+          runtimeIgnoresPlannerMetadata: true,
+        },
       },
     });
+  });
+
+  it("keeps acceptance provenance compact and out of executable seed truth", () => {
+    const result = buildV2MaterializedSeedForAcceptance(
+      makeEligibleInput(
+        makeMaterializedPlan({
+          omissions: [
+            {
+              slotId: "upper_a",
+              laneId: "optional_biceps",
+              reason: "optional_not_activated",
+            },
+          ],
+          blockers: [],
+        }),
+      ),
+    );
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error("expected ready result");
+    }
+    expect(JSON.stringify(result.provenance)).not.toMatch(
+      /laneIds|"blockers"|"omissions"|"inventory"|executableSeedPreview|"dryRunReport"|materializedPlan|optional_biceps|Bench Press|Chest Supported Row|Leg Press/,
+    );
+    expect(JSON.stringify(result.slotPlanSeedJson)).not.toMatch(
+      /laneIds|blockers|omissions|inventory|executableSeedPreview|dryRunReport|materializedPlan|optional_biceps/,
+    );
+  });
+
+  it("serializes only sanitized accepted planner metadata when explicitly provided", () => {
+    const acceptedPlannerIntent = buildV2AcceptedPlannerIntentDto();
+    const result = buildV2MaterializedSeedForAcceptance({
+      ...makeEligibleInput(),
+      acceptedPlannerIntent: {
+        ...acceptedPlannerIntent,
+        laneIds: ["not-seed-truth"],
+        blockers: [{ reason: "debug" }],
+        omissions: [{ reason: "debug" }],
+        inventoryEvidence: [{ exerciseId: "debug" }],
+        debugArtifact: { path: "debug.json" },
+        weekPolicies: acceptedPlannerIntent.weekPolicies.map((week, weekIndex) =>
+          weekIndex === 0
+            ? {
+                ...week,
+                slots: week.slots.map((slot, slotIndex) =>
+                  slotIndex === 0
+                    ? {
+                        ...slot,
+                        lanes: slot.lanes.map((lane, laneIndex) =>
+                          laneIndex === 0
+                            ? {
+                                ...lane,
+                                selectedExercise: { exerciseId: "debug" },
+                                evidence: ["debug"],
+                              }
+                            : lane,
+                        ),
+                      }
+                    : slot,
+                ),
+              }
+            : week,
+        ),
+      } as typeof acceptedPlannerIntent,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error("expected ready result");
+    }
+    expect(result.slotPlanSeedJson.acceptedPlannerIntent).toEqual(
+      acceptedPlannerIntent,
+    );
+    expect(JSON.stringify(result.slotPlanSeedJson.acceptedPlannerIntent)).not.toMatch(
+      /laneIds|blockers|omissions|inventoryEvidence|debugArtifact|selectedExercise|debug/,
+    );
   });
 
   it("serializes only executable seed truth from eligible materialized output", () => {
@@ -422,11 +556,51 @@ describe("buildV2MaterializedSeedAcceptanceProbe", () => {
       liveNormalizedInventoryAvailable: true,
     });
 
-    expect(result.helperResultWithOptInDisabled).toEqual({ status: "disabled" });
+    expect(result.helperResultWithOptInDisabled).toMatchObject({
+      status: "disabled",
+      provenance: { source: "v2_disabled" },
+    });
+    expect(result.provenance).toMatchObject({
+      source: "v2_disabled",
+      readOnly: true,
+      dryRunOnly: true,
+      dryRunReportVersion: 1,
+      promotionReadinessVersion: 1,
+      seedSerializer: "buildMesocycleSlotPlanSeed",
+      dbWriteOccurred: false,
+      executableSeedTruth: {
+        source: "slotPlanSeedJson",
+        runtimeConsumedFields: ["exerciseId", "role", "setCount"],
+        runtimeIgnoresPlannerMetadata: true,
+      },
+    });
     expect(result.safeToPromoteToProductionWrite).toBe(false);
     expect(result.promotionReadiness.safeToPromoteToProductionWrite).toBe(false);
     expect(buildSlotPlanSeed).not.toHaveBeenCalled();
     expect(result).not.toHaveProperty("slotPlanSeedJson");
+  });
+
+  it("does not expose dry-run bulk evidence through probe provenance", () => {
+    const result = buildV2MaterializedSeedAcceptanceProbe({
+      ...makeEligibleInput(
+        makeMaterializedPlan({
+          omissions: [
+            {
+              slotId: "upper_a",
+              laneId: "optional_biceps",
+              reason: "optional_not_activated",
+            },
+          ],
+        }),
+      ),
+      ownerLoaded: true,
+      mesocycleLoaded: true,
+      liveNormalizedInventoryAvailable: true,
+    });
+
+    expect(JSON.stringify(result.provenance)).not.toMatch(
+      /laneIds|"blockers"|"omissions"|"inventory"|executableSeedPreview|"dryRunReport"|materializedPlan|optional_biceps|Bench Press|Chest Supported Row|Leg Press/,
+    );
   });
 
   it("reports missing caller-owned evidence as blockers", () => {
@@ -604,7 +778,10 @@ describe("buildV2MaterializedSeedAcceptanceProbe", () => {
 
     expect(result.context.ownerLoaded).toBe(true);
     expect(result.context.mesocycleLoaded).toBe(true);
-    expect(result.helperResultWithOptInDisabled).toEqual({ status: "disabled" });
+    expect(result.helperResultWithOptInDisabled).toMatchObject({
+      status: "disabled",
+      provenance: { source: "v2_disabled" },
+    });
     expect(reader.user.findUnique).toHaveBeenCalledOnce();
     expect(reader.mesocycle.findFirst).toHaveBeenCalledOnce();
     expect(reader.exercise.findMany).toHaveBeenCalledOnce();
@@ -612,5 +789,17 @@ describe("buildV2MaterializedSeedAcceptanceProbe", () => {
     expect(update).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
     expect(result).not.toHaveProperty("slotPlanSeedJson");
+  });
+
+  it("keeps live production callers from enabling V2 materialized seed writes", () => {
+    const sourceDir = path.join(process.cwd(), "src");
+    const violations = listSourceTypeScriptFiles(sourceDir).flatMap((file) => {
+      const text = fs.readFileSync(file, "utf8");
+      return /enableV2MaterializedSeedWrite\s*:\s*true/.test(text)
+        ? [path.relative(process.cwd(), file)]
+        : [];
+    });
+
+    expect(violations).toEqual([]);
   });
 });

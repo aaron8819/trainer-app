@@ -6,6 +6,7 @@ export { buildV2MaterializationDryRunReport } from "./materialization/dry-run-re
 export { buildV2MaterializationPromotionReadiness } from "./materialization/promotion-readiness";
 export { buildV2ExerciseMaterializationPlan } from "./materialization/materializer";
 export { buildV2MesocycleDemand } from "./mesocycle-demand";
+export { buildV2MesocycleStrategyDiagnostic } from "./mesocycle-strategy";
 export { buildV2PlannerMesocyclePolicy } from "./mesocycle-policy";
 export { buildV2SelectionCapacityPlan } from "./selection-capacity-plan";
 export { buildV2SetDistributionIntent } from "./set-distribution-intent";
@@ -37,6 +38,8 @@ export type {
   V2ExerciseClassDistributionBySlot,
   V2ExerciseSelectionPlan,
   V2MesocycleDemand,
+  V2MesocycleStrategyDiagnostic,
+  V2MesocycleStrategyPhase,
   V2PlannerDemandRole,
   V2PlannerLaneDefinition,
   V2PlannerLaneRole,

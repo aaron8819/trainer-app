@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildV2MesocycleStrategyDiagnostic } from "@/lib/engine/planning/v2";
 import {
   buildAuditTimingSummaryLines,
   buildActiveMesocycleSlotReseedApplySummary,
@@ -2930,6 +2931,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
               },
               safeToPromoteBehavior: false,
             },
+            v2MesocycleStrategyDiagnostic:
+              buildV2MesocycleStrategyDiagnostic(),
             v2MesocyclePlan: {
               version: 1,
               source: "v2_planner_no_repair_experimental",
@@ -3353,6 +3356,13 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
       "Diagnostic rows: 1",
       "Session-shaping rows: 1",
       "Migration scoreboard: not-ready",
+      "V2 Mesocycle Strategy Diagnostic",
+      "---------------------------------",
+      "Status: available-with-limitations",
+      "Phase: unknown (low confidence)",
+      "Demand source: fixed-skeleton-lanes -> mesocycle-strategy",
+      "Missing profile inputs: 6",
+      "North-star gaps: 6",
       "V2 Mesocycle Plan",
       "-----------------",
       "Status: experimental",

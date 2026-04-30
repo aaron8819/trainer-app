@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildV2MesocycleStrategyDiagnostic } from "@/lib/engine/planning/v2";
 import {
   buildArtifactDiffSummary,
   buildSerializedTopLevelSizeBreakdown,
@@ -641,6 +642,8 @@ describe("artifact serialization helpers", () => {
             },
             safeToPromoteBehavior: false,
           },
+          v2MesocycleStrategyDiagnostic:
+            buildV2MesocycleStrategyDiagnostic(),
           v2MesocyclePlan: {},
           v2TargetVsNoRepairDiff: {
             version: 1,
@@ -780,6 +783,18 @@ describe("artifact serialization helpers", () => {
           target: 1,
           partial: 1,
           missing: 0,
+        },
+        mesocycleStrategyDiagnostic: {
+          status: "available_with_limitations",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          proposedPhase: "unknown",
+          confidence: "low",
+          currentDemandSource: "fixed_skeleton_lanes",
+          targetDemandSource: "mesocycle_strategy",
+          missingInputCount: 6,
+          limitationCount: 3,
+          northStarGapCount: 6,
         },
         repairPromotionScoreboard: {
           rawRepairEvidence: {

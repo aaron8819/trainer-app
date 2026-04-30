@@ -96,6 +96,7 @@ describe("resolveRequiredSeededSlotPlan", () => {
     const rawPlannerObject = {
       ...acceptedPlannerIntent,
       planningReality: { status: "debug" },
+      mesocycleStrategyDiagnostic: { source: "v2_mesocycle_strategy" },
       debugArtifact: { path: "sidecar.json" },
       noRepair: true,
       repairedProjection: { slotPlans: [] },
@@ -152,7 +153,7 @@ describe("resolveRequiredSeededSlotPlan", () => {
 
     expect(seed.acceptedPlannerIntent).toEqual(acceptedPlannerIntent);
     expect(serialized).not.toMatch(
-      /planningReality|debugArtifact|noRepair|repairedProjection|sessionDecisionReceipt|selectedExercise|not-seed-truth|debug-only/
+      /planningReality|mesocycleStrategyDiagnostic|debugArtifact|noRepair|repairedProjection|sessionDecisionReceipt|selectedExercise|not-seed-truth|debug-only/
     );
   });
 

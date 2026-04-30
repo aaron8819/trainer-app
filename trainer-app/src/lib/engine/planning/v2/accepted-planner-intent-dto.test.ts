@@ -116,6 +116,7 @@ describe("buildV2AcceptedPlannerIntentDto", () => {
         "debugArtifact",
         "artifact",
         "planningReality",
+        "mesocycleStrategyDiagnostic",
         "v2TargetVsNoRepairDiff",
         "crossWeekProjectionGate",
         "v2ExerciseSelectionPlanDiagnostic",
@@ -134,7 +135,7 @@ describe("buildV2AcceptedPlannerIntentDto", () => {
       ]),
     );
     expect(strings).not.toMatch(
-      /audit|planningReality|noRepair|no-repair|repaired|runtime|receipt|artifact|sidecar|repairMateriality|guardrail/i,
+      /audit|planningReality|mesocycleStrategyDiagnostic|noRepair|no-repair|repaired|runtime|receipt|artifact|sidecar|repairMateriality|guardrail/i,
     );
   });
 

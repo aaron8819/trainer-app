@@ -173,6 +173,7 @@ describe("V2 planner policy module boundary", () => {
       .join("\n");
 
     expect(exportedText).toContain("V2MesocycleDemand");
+    expect(exportedText).toContain("V2MesocycleStrategyDiagnostic");
     expect(exportedText).toContain("V2WeeklyDemandCurve");
     expect(exportedText).toContain("V2SlotDemandAllocationByWeek");
     expect(exportedText).toContain("V2ExerciseClassDistributionBySlot");

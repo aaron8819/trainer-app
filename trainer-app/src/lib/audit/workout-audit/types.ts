@@ -1,5 +1,6 @@
 import type { SessionIntent } from "@/lib/engine/session-types";
 import type {
+  V2MesocycleStrategyDiagnostic,
   V2SetDistributionIntent,
   V2SupportLanePolicy,
 } from "@/lib/engine/planning/v2";
@@ -1034,6 +1035,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
       reason: string;
     };
   };
+  v2MesocycleStrategyDiagnostic: V2MesocycleStrategyDiagnostic;
   repairPromotionScoreboard?: {
     version: 1;
     readOnly: true;
@@ -1589,6 +1591,7 @@ export type MesocycleExplainPlannerOnlyNoRepairDebugArtifact = {
     | "acceptanceClassification"
     | "repairPromotionScoreboard"
     | "crossWeekProjectionGate"
+    | "v2MesocycleStrategyDiagnostic"
     | "v2DeloadProjectionDiagnostic"
     | "v2MesocyclePlan"
     | "v2SetDistributionIntent"

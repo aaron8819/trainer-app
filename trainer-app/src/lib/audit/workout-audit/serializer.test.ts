@@ -1465,6 +1465,15 @@ describe("buildWorkoutAuditArtifact", () => {
       ?.plannerOnlyNoRepair as unknown as Record<string, unknown>;
 
     expect(fullNoRepair?.v2MesocyclePlan).toBeTruthy();
+    expect(fullNoRepair?.v2MesocycleStrategyDiagnostic).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "available_with_limitations",
+      demandDerivationPlan: {
+        currentDemandSource: "fixed_skeleton_lanes",
+        targetDemandSource: "mesocycle_strategy",
+      },
+    });
     expect(fullNoRepair?.v2SetDistributionIntent).toBeTruthy();
     expect(fullNoRepair?.v2SupportLanePolicy).toMatchObject({
       readOnly: true,
@@ -1521,6 +1530,18 @@ describe("buildWorkoutAuditArtifact", () => {
         split: "upper_lower_4x",
         weekCount: 5,
         slotCount: 1,
+        mesocycleStrategyDiagnostic: {
+          status: "available_with_limitations",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          proposedPhase: "unknown",
+          confidence: "low",
+          currentDemandSource: "fixed_skeleton_lanes",
+          targetDemandSource: "mesocycle_strategy",
+          missingInputCount: 6,
+          limitationCount: 3,
+          northStarGapCount: 6,
+        },
         exerciseSelectionPlanDiagnostic: {
           status: "projected_with_limitations",
           summary: expect.objectContaining({
@@ -1592,6 +1613,9 @@ describe("buildWorkoutAuditArtifact", () => {
       },
     });
     expect(serializedNoRepair).not.toHaveProperty("v2MesocyclePlan");
+    expect(serializedNoRepair).not.toHaveProperty(
+      "v2MesocycleStrategyDiagnostic",
+    );
     expect(serializedNoRepair).not.toHaveProperty("v2SetDistributionIntent");
     expect(serializedNoRepair).not.toHaveProperty("v2SupportLanePolicy");
     expect(serializedNoRepair).not.toHaveProperty(
@@ -1816,6 +1840,14 @@ describe("buildWorkoutAuditArtifact", () => {
             }),
           ]),
         },
+        v2MesocycleStrategyDiagnostic: expect.objectContaining({
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          status: "available_with_limitations",
+          demandDerivationPlan: expect.objectContaining({
+            currentDemandSource: "fixed_skeleton_lanes",
+          }),
+        }),
         v2MesocyclePlan: expect.any(Object),
         v2SetDistributionIntent: expect.any(Object),
         v2SupportLanePolicy: expect.objectContaining({
@@ -2289,6 +2321,8 @@ function makeMesocycleExplainNoRepairPayload() {
         },
         safeToPromoteBehavior: false,
       },
+      v2MesocycleStrategyDiagnostic:
+        buildV2PlannerMesocyclePolicy().mesocycleStrategyDiagnostic,
       v2MesocyclePlan: {
         version: 1,
         source: "v2_planner_no_repair_experimental",

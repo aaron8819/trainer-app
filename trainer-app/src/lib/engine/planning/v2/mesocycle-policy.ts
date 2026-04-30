@@ -2,6 +2,7 @@ import { buildV2DeloadTransformPolicy } from "./deload-transform";
 import { buildV2ExerciseClassDistributionBySlot } from "./exercise-class-distribution";
 import { buildV2ExerciseSelectionPlan } from "./exercise-selection-plan";
 import { buildV2MesocycleDemand } from "./mesocycle-demand";
+import { buildV2MesocycleStrategyDiagnostic } from "./mesocycle-strategy";
 import { buildV2SelectionCapacityPlan } from "./selection-capacity-plan";
 import { buildV2SetDistributionIntent } from "./set-distribution-intent";
 import { buildV2SlotDemandAllocationByWeek } from "./slot-demand-allocation";
@@ -12,6 +13,7 @@ import { buildV2WeeklyDemandCurve } from "./weekly-demand-curve";
 import { buildV2WeeklyProgressionModel } from "./weekly-progression";
 
 export function buildV2PlannerMesocyclePolicy(): V2PlannerMesocyclePolicy {
+  const mesocycleStrategyDiagnostic = buildV2MesocycleStrategyDiagnostic();
   const targetSkeleton = buildV2TargetSkeleton();
   const weeklyProgressionModel = buildV2WeeklyProgressionModel();
   const deloadTransform = buildV2DeloadTransformPolicy();
@@ -44,6 +46,7 @@ export function buildV2PlannerMesocyclePolicy(): V2PlannerMesocyclePolicy {
   });
 
   return {
+    mesocycleStrategyDiagnostic,
     targetSkeleton,
     weeklyProgressionModel,
     deloadTransform,

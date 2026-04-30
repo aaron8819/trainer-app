@@ -90,6 +90,7 @@ export const V2_PLANNER_NO_REPAIR_DEBUG_CONTAINS = [
   "crossWeekProjectionGate",
   "repairPromotionScoreboard",
   "v2DeloadProjectionDiagnostic",
+  "v2MesocycleStrategyDiagnostic",
   "v2MesocyclePlan",
   "v2SetDistributionIntent",
   "v2SupportLanePolicy",
@@ -818,6 +819,18 @@ function compactPlannerOnlyNoRepair(
   );
   const v2SetDistributionIntent = asRecord(noRepair.v2SetDistributionIntent);
   const v2SetDistributionSummary = asRecord(v2SetDistributionIntent?.summary);
+  const v2MesocycleStrategyDiagnostic = asRecord(
+    noRepair.v2MesocycleStrategyDiagnostic,
+  );
+  const v2PhaseStrategy = asRecord(
+    v2MesocycleStrategyDiagnostic?.phaseStrategy,
+  );
+  const v2DemandDerivationPlan = asRecord(
+    v2MesocycleStrategyDiagnostic?.demandDerivationPlan,
+  );
+  const v2UserProfileInputs = asRecord(
+    v2MesocycleStrategyDiagnostic?.userTrainingProfileInputs,
+  );
   const v2SupportLanePolicy = asRecord(noRepair.v2SupportLanePolicy);
   const v2SupportLaneSummary = asRecord(v2SupportLanePolicy?.summary);
   const v2SupportLaneProjectionDiagnostic = asRecord(
@@ -919,6 +932,35 @@ function compactPlannerOnlyNoRepair(
       },
       plannedTotalSetsByWeek:
         v2SetDistributionSummary?.plannedTotalSetsByWeek ?? [],
+      mesocycleStrategyDiagnostic: v2MesocycleStrategyDiagnostic
+        ? {
+            status:
+              v2MesocycleStrategyDiagnostic.status ??
+              "available_with_limitations",
+            readOnly: v2MesocycleStrategyDiagnostic.readOnly === true,
+            affectsScoringOrGeneration:
+              v2MesocycleStrategyDiagnostic.affectsScoringOrGeneration === true
+                ? true
+                : false,
+            proposedPhase: v2PhaseStrategy?.proposedPhase ?? "unknown",
+            confidence: v2PhaseStrategy?.confidence ?? "low",
+            currentDemandSource:
+              v2DemandDerivationPlan?.currentDemandSource ?? "fixed_skeleton_lanes",
+            targetDemandSource:
+              v2DemandDerivationPlan?.targetDemandSource ?? "mesocycle_strategy",
+            missingInputCount: Array.isArray(v2UserProfileInputs?.missing)
+              ? v2UserProfileInputs.missing.length
+              : 0,
+            limitationCount: Array.isArray(v2UserProfileInputs?.limitations)
+              ? v2UserProfileInputs.limitations.length
+              : 0,
+            northStarGapCount: Array.isArray(
+              v2MesocycleStrategyDiagnostic.currentStateVsNorthStarGaps,
+            )
+              ? v2MesocycleStrategyDiagnostic.currentStateVsNorthStarGaps.length
+              : 0,
+          }
+        : undefined,
       supportLanePolicy: v2SupportLanePolicy
         ? {
             readOnly: v2SupportLanePolicy.readOnly === true,

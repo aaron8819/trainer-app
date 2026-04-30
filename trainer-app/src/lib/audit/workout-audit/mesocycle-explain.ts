@@ -6221,10 +6221,6 @@ function getV2PlannedSetsByWeek(
   );
 }
 
-function getPureV2SetDistributionIntent(): V2SetDistributionIntent {
-  return buildV2PlannerMesocyclePolicy().v2SetDistributionIntent;
-}
-
 function getPureV2SupportLanePolicy(): V2SupportLanePolicy {
   return buildV2PlannerMesocyclePolicy().v2SupportLanePolicy;
 }
@@ -7645,7 +7641,10 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       acceptanceClassification,
       targetLanesMissing: 1,
     });
-    const v2SetDistributionIntent = getPureV2SetDistributionIntent();
+    const plannerPolicy = buildV2PlannerMesocyclePolicy();
+    const v2MesocycleStrategyDiagnostic =
+      plannerPolicy.mesocycleStrategyDiagnostic;
+    const v2SetDistributionIntent = plannerPolicy.v2SetDistributionIntent;
     const v2SupportLanePolicy = getPureV2SupportLanePolicy();
     const plannerOwnedAccumulationProjection =
       buildPlannerOwnedAccumulationProjection({
@@ -7731,6 +7730,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       },
       acceptanceClassification,
       ...(repairPromotionScoreboard ? { repairPromotionScoreboard } : {}),
+      v2MesocycleStrategyDiagnostic,
       v2MesocyclePlan,
       v2DeloadProjectionDiagnostic,
       crossWeekProjectionGate,
@@ -7828,7 +7828,10 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     acceptanceClassification,
     targetLanesMissing,
   });
-  const v2SetDistributionIntent = getPureV2SetDistributionIntent();
+  const plannerPolicy = buildV2PlannerMesocyclePolicy();
+  const v2MesocycleStrategyDiagnostic =
+    plannerPolicy.mesocycleStrategyDiagnostic;
+  const v2SetDistributionIntent = plannerPolicy.v2SetDistributionIntent;
   const v2SupportLanePolicy = getPureV2SupportLanePolicy();
   const plannerOwnedAccumulationProjection =
     buildPlannerOwnedAccumulationProjection({
@@ -7924,6 +7927,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     },
     acceptanceClassification,
     ...(repairPromotionScoreboard ? { repairPromotionScoreboard } : {}),
+    v2MesocycleStrategyDiagnostic,
     crossWeekProjectionGate,
     v2MesocyclePlan,
     v2DeloadProjectionDiagnostic,

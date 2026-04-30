@@ -2164,6 +2164,18 @@ export function buildPlannerOnlyNoRepairSummary(input: {
   if (!v2Plan) {
     return baseLines;
   }
+  const strategy = noRepair.v2MesocycleStrategyDiagnostic;
+  const strategyLines = strategy
+    ? [
+        "V2 Mesocycle Strategy Diagnostic",
+        "---------------------------------",
+        `Status: ${formatStatus(strategy.status)}`,
+        `Phase: ${formatStatus(strategy.phaseStrategy.proposedPhase)} (${strategy.phaseStrategy.confidence} confidence)`,
+        `Demand source: ${formatStatus(strategy.demandDerivationPlan.currentDemandSource)} -> ${formatStatus(strategy.demandDerivationPlan.targetDemandSource)}`,
+        `Missing profile inputs: ${strategy.userTrainingProfileInputs.missing.length}`,
+        `North-star gaps: ${strategy.currentStateVsNorthStarGaps.length}`,
+      ]
+    : [];
   const repairScoreboard = noRepair.repairPromotionScoreboard;
   const repairScoreboardLines = repairScoreboard
     ? [
@@ -2200,6 +2212,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
 
   return [
     ...baseLines,
+    ...strategyLines,
     "V2 Mesocycle Plan",
     "-----------------",
     `Status: ${formatStatus(v2Plan.planStatus)}`,

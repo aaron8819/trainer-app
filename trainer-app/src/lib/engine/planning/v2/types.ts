@@ -80,6 +80,7 @@ export type V2DeloadTransformPolicy = {
 };
 
 export type V2PlannerMesocyclePolicy = {
+  mesocycleStrategyDiagnostic: V2MesocycleStrategyDiagnostic;
   targetSkeleton: V2TargetSkeleton;
   weeklyProgressionModel: V2WeeklyProgressionModel;
   deloadTransform: V2DeloadTransformPolicy;
@@ -91,6 +92,64 @@ export type V2PlannerMesocyclePolicy = {
   v2SupportLanePolicy: V2SupportLanePolicy;
   selectionCapacityPlan: V2SelectionCapacityPlan;
   exerciseSelectionPlan: V2ExerciseSelectionPlan;
+};
+
+export type V2MesocycleStrategyPhase =
+  | "balanced_hypertrophy"
+  | "accumulation"
+  | "specialization"
+  | "maintenance"
+  | "resensitization"
+  | "recovery_biased"
+  | "strength_biased_hypertrophy"
+  | "return_to_training"
+  | "unknown";
+
+export type V2MesocycleStrategyDiagnostic = {
+  version: 1;
+  source: "v2_mesocycle_strategy";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  status: "available_with_limitations" | "missing_inputs" | "not_available";
+  userTrainingProfileInputs: {
+    available: string[];
+    missing: string[];
+    limitations: string[];
+  };
+  phaseStrategy: {
+    proposedPhase: V2MesocycleStrategyPhase;
+    rationale: string[];
+    confidence: "low" | "medium" | "high";
+  };
+  mesocycleObjective: {
+    objective: string;
+    specializationTargets: string[];
+    maintenanceTargets: string[];
+    recoveryBiases: string[];
+    rationale: string[];
+  };
+  performedHistorySignals: {
+    available: string[];
+    missing: string[];
+    candidateFutureSignals: string[];
+  };
+  continuityVariationPolicy: {
+    currentSupport: "none" | "partial" | "available_with_limitations";
+    keepSignals: string[];
+    rotateSignals: string[];
+    missingSignals: string[];
+  };
+  demandDerivationPlan: {
+    currentDemandSource: "fixed_skeleton_lanes" | "strategy_derived" | "mixed";
+    targetDemandSource: "mesocycle_strategy";
+    gapsBeforeStrategyDerivedDemand: string[];
+  };
+  currentStateVsNorthStarGaps: Array<{
+    gap: string;
+    currentOwner?: string;
+    targetOwner: string;
+    priority: "P0" | "P1" | "P2";
+  }>;
 };
 
 export type V2PlannerTargetStatus = "hard" | "soft" | "diagnostic";

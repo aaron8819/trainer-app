@@ -11,6 +11,10 @@ import type {
   V2MesocycleStrategyRecommendationHypothesisId,
   V2MesocycleStrategyRecommendationInfluenceTarget,
   V2MesocycleStrategyRecommendationMustNotYetInfluence,
+  V2StrategyHypothesisPromotionReadiness,
+  V2StrategyHypothesisPromotionReadinessLevel,
+  V2StrategyHypothesisPromotionReadinessNextSafeAction,
+  V2StrategyHypothesisPromotionReadinessOwner,
 } from "./types";
 
 export type V2MesocycleStrategyDiagnosticInput = {
@@ -97,7 +101,7 @@ const RECOMMENDATION_INFLUENCE_TARGETS: Record<
     "ExerciseSelectionStrategy",
     "MaterializerRanking",
   ],
-  improve_deload_execution: ["MesocycleStrategy", "DeloadPlan"],
+  improve_deload_execution: ["MesocycleStrategy", "DeloadPlan", "RuntimeUX"],
   rotate_low_confidence_or_stale_accessories: [
     "MesocycleStrategy",
     "ExerciseSelectionStrategy",
@@ -105,6 +109,242 @@ const RECOMMENDATION_INFLUENCE_TARGETS: Record<
   ],
   maintain_balanced_hypertrophy: ["MesocycleStrategy", "MesocycleDemand"],
   unknown: ["MesocycleStrategy"],
+};
+
+type StrategyPromotionBlueprint = {
+  proposedOwner: V2StrategyHypothesisPromotionReadinessOwner;
+  boundedBehaviorScope: string;
+  requiredEvidence: string[];
+  requiredNonRegressionGates: string[];
+  knownRisks: string[];
+  rollbackCriteria: string[];
+};
+
+const PROMOTION_READINESS_BLUEPRINTS: Record<
+  V2MesocycleStrategyRecommendationHypothesisId,
+  StrategyPromotionBlueprint
+> = {
+  improve_deload_execution: {
+    proposedOwner: "RuntimeUX",
+    boundedBehaviorScope:
+      "Read-only comparison of DeloadPlan versus RuntimeUX adherence interventions; no muscle-demand changes.",
+    requiredEvidence: [
+      "skipped_deload_execution_evidence",
+      "owner_decision_between_plan_design_runtime_ux_reminders_and_logging_semantics",
+      "next_block_readiness_impact_after_skipped_deload",
+      "deload_design_choice_shorter_easier_optional_or_better_explained",
+    ],
+    requiredNonRegressionGates: [
+      "deload_sessions_remain_progression_excluded",
+      "scheduled_deload_runtime_replay_still_preserves_seed_identities_and_set_reduction_contract",
+      "no_accumulation_generation_selection_repair_seed_runtime_or_receipt_change_without_explicit_trial",
+      "audit_compares_deload_execution_and_next_block_readiness_before_and_after_trial",
+    ],
+    knownRisks: [
+      "skipped_deload_may_be_product_adherence_not_hypertrophy_demand_problem",
+      "shortening_or_relaxing_deload_could_reduce_recovery_if fatigue harm is real",
+      "forcing deload adherence could reduce user trust if explanation is poor",
+    ],
+    rollbackCriteria: [
+      "next_block_readiness_or_adherence_worsens",
+      "deload_sessions_start_counting_toward_progression_history",
+      "runtime_deload_output_drifts_from_accepted_seed_replay_contract",
+    ],
+  },
+  protect_lagging_muscles_earlier: {
+    proposedOwner: "MesocycleDemand",
+    boundedBehaviorScope:
+      "Read-only diff for protected target-tier set ownership before slot allocation; no demand consumption yet.",
+    requiredEvidence: [
+      "recurring_target_tier_under_hit_evidence",
+      "slot_owner_for_protected_sets",
+      "session_size_effect_estimate",
+      "over_concentration_non_worsening_evidence",
+      "repair_materiality_non_regression_evidence",
+      "dirty_collateral_non_regression_evidence",
+      "late_block_bloat_non_regression_evidence",
+    ],
+    requiredNonRegressionGates: [
+      "priority_target_coverage_preserved_or_improved",
+      "no_session_exceeds_size_or_set_budget_caps",
+      "no_over_concentration_increase",
+      "no_material_or_major_repair_increase",
+      "no_dirty_collateral_or_forbidden_slot_workaround",
+      "no_excessive_late_block_volume_bloat",
+    ],
+    knownRisks: [
+      "under_hit_evidence_can_reflect adherence or capacity rather than low demand",
+      "protected sets can crowd out other priority targets",
+      "late-block protection can increase fatigue and skipped work",
+    ],
+    rollbackCriteria: [
+      "target-tier under-hit count does not improve in read-only diff",
+      "session size, concentration, material repair, or dirty collateral worsens",
+      "lagging-muscle protection creates new late-block bloat",
+    ],
+  },
+  cap_late_block_volume: {
+    proposedOwner: "WeeklyDemandCurve",
+    boundedBehaviorScope:
+      "Read-only Week 3-4 volume-cap diff with priority target coverage preserved.",
+    requiredEvidence: [
+      "skipped_set_spike_threshold",
+      "hard_week_rpe_volume_skipped_work_relationship",
+      "priority_target_coverage_preservation",
+      "lagging_muscles_not_underdosed_further",
+      "deload_recovery_interaction_understood",
+    ],
+    requiredNonRegressionGates: [
+      "priority_target_coverage_preserved",
+      "lagging_target_tier_muscles_not_reduced_below_floor",
+      "late_block_skipped_sets_or_hard_week_fatigue_improves",
+      "deload_projection_remains_recovery_biased",
+      "no_material_or_major_repair_increase",
+    ],
+    knownRisks: [
+      "volume caps can hide demand gaps instead of fixing allocation",
+      "cutting late-block volume can underdose muscles already lagging",
+      "skipped sets may be caused by UX or schedule constraints rather than volume",
+    ],
+    rollbackCriteria: [
+      "priority target coverage regresses",
+      "lagging target-tier muscles are further underdosed",
+      "skipped work or hard-week fatigue does not improve",
+    ],
+  },
+  reduce_overlap_fatigue: {
+    proposedOwner: "SlotDemandAllocation",
+    boundedBehaviorScope:
+      "Read-only fatigue-overlap attribution and cleaner slot/class allocation diff.",
+    requiredEvidence: [
+      "overlap_fatigue_driver_attribution",
+      "muscle_or_class_collateral_source_identified",
+      "hamstring_glute_back_stimulus_preserved",
+      "repair_non_regression_evidence",
+      "no_forbidden_slot_workaround",
+    ],
+    requiredNonRegressionGates: [
+      "required_hamstring_glute_back_stimulus_preserved",
+      "no_suspicious_repair_increase",
+      "no_forbidden_slot_primary_solution",
+      "no_material_or_major_repair_increase",
+      "selection_class_distribution_still_satisfies_required_lanes",
+    ],
+    knownRisks: [
+      "fatigue attribution can be wrong without class-level evidence",
+      "reducing overlap can accidentally remove required posterior-chain stimulus",
+      "forbidden-slot workarounds can look cleaner while becoming less valid",
+    ],
+    rollbackCriteria: [
+      "required hamstring, glute, or back stimulus drops below target",
+      "suspicious repair or forbidden-slot cleanup increases",
+      "material repair increases in the compared artifact",
+    ],
+  },
+  preserve_successful_progression: {
+    proposedOwner: "ExerciseSelectionStrategy",
+    boundedBehaviorScope:
+      "Read-only continuity/materializer ranking diff for productive performed exercises only.",
+    requiredEvidence: [
+      "productive_continuity_classification",
+      "sufficient_completed_exposures",
+      "no_pain_or_tolerance_issue",
+      "no_duplicate_or_class_conflict",
+      "no_excessive_staleness",
+    ],
+    requiredNonRegressionGates: [
+      "productive_anchor_preserved_without_forcing_every_old_prescribed_exercise",
+      "duplicate_policy_and_class_distinctness_preserved",
+      "pain_or_tolerance_flags_block_preservation",
+      "materializer_ranking_diff_does_not_reduce_required_lane_coverage",
+    ],
+    knownRisks: [
+      "continuity can become stale if exact identities are over-preserved",
+      "preserving one exercise can create duplicate or class conflicts",
+      "old prescribed exercises must not be treated as productive without performed evidence",
+    ],
+    rollbackCriteria: [
+      "productive exercise preservation reduces required lane coverage",
+      "duplicate or class conflicts increase",
+      "pain, tolerance, or staleness evidence appears for preserved identities",
+    ],
+  },
+  rotate_low_confidence_or_stale_accessories: {
+    proposedOwner: "ExerciseSelectionStrategy",
+    boundedBehaviorScope:
+      "Read-only accessory rotation candidate diff only when stale/skipped/swapped evidence and clean alternatives exist.",
+    requiredEvidence: [
+      "clear_stale_skipped_stalled_or_swapped_evidence",
+      "clean_alternative_inventory_exists",
+      "rotation_preserves_lane_and_class_intent",
+      "no_loss_of_progression_anchor",
+      "no_random_novelty_policy",
+    ],
+    requiredNonRegressionGates: [
+      "rotation_preserves_required_lane_class_and_set_intent",
+      "productive_anchor_not_removed",
+      "clean_alternative_available_before_duplicate_or_rotation",
+      "no_random_novelty_without_evidence",
+      "materializer_ranking_diff_does_not_increase_omissions_or_blocking_rows",
+    ],
+    knownRisks: [
+      "stale accessory evidence can be thin or caused by schedule adherence",
+      "random novelty can replace useful low-risk accessories",
+      "rotation can remove a quiet progression anchor",
+    ],
+    rollbackCriteria: [
+      "rotation increases omissions, blocking rows, or material repair",
+      "progression anchor is lost without clear stale or tolerance evidence",
+      "replacement is novel but not cleaner for the lane/class intent",
+    ],
+  },
+  maintain_balanced_hypertrophy: {
+    proposedOwner: "MesocycleStrategy",
+    boundedBehaviorScope:
+      "Read-only balanced-phase hold decision after absence of lag, fatigue, adherence, and recovery risks is proven.",
+    requiredEvidence: [
+      "absence_of_meaningful_lagging_target_tier_muscles",
+      "absence_of_late_block_fatigue_or_skipped_set_spike",
+      "productive_progression_or_stable_performance_evidence",
+      "readiness_and_adherence_stable",
+    ],
+    requiredNonRegressionGates: [
+      "balanced_hold_does_not_preserve_known_under_hit_or_over_fatigue_pattern",
+      "target_tier_coverage_remains_within_expected_band",
+      "no_material_or_major_repair_increase",
+    ],
+    knownRisks: [
+      "balanced hold can become generic repetition if evidence gaps are ignored",
+      "absence of signals is not proof when history quality is low",
+    ],
+    rollbackCriteria: [
+      "new under-hit or over-fatigue pattern appears",
+      "balanced hold fails target-tier coverage",
+    ],
+  },
+  unknown: {
+    proposedOwner: "unknown",
+    boundedBehaviorScope:
+      "No behavior scope; unmapped evidence must be classified before promotion.",
+    requiredEvidence: [
+      "specific_strategy_hypothesis_classification",
+      "planner_owner_identified",
+      "bounded_behavior_scope_defined",
+      "non_regression_gate_set_defined",
+    ],
+    requiredNonRegressionGates: [
+      "do_not_promote_unknown_strategy_evidence",
+      "classification_added_before_any_behavior_trial",
+    ],
+    knownRisks: [
+      "unknown evidence can become arbitrary planner policy",
+      "owner ambiguity can scatter logic across demand, selection, repair, and runtime",
+    ],
+    rollbackCriteria: [
+      "unknown hypothesis reaches any behavior-consuming seam",
+      "classification remains ambiguous after read-only diff",
+    ],
+  },
 };
 
 const RECOMMENDATION_PROMOTION_BLOCKERS: Record<
@@ -1115,6 +1355,214 @@ function buildStrategyRecommendation(
   };
 }
 
+function evidenceContains(
+  hypothesis: V2MesocycleStrategyRecommendation["hypotheses"][number],
+  pattern: RegExp,
+): boolean {
+  return hypothesis.evidence.some((entry) => pattern.test(entry));
+}
+
+function hasSufficientCompletedExposureEvidence(
+  hypothesis: V2MesocycleStrategyRecommendation["hypotheses"][number],
+): boolean {
+  return hypothesis.evidence.some((entry) => {
+    const match = /completed_exposures=(\d+)/.exec(entry);
+    return match ? Number(match[1]) >= 2 : false;
+  });
+}
+
+function collectAvailablePromotionEvidence(input: {
+  hypothesis: V2MesocycleStrategyRecommendation["hypotheses"][number];
+  continuityVariationEvidence: V2MesocycleStrategyDiagnostic["continuityVariationEvidence"];
+  volumeFatigueStrategyEvidence: V2MesocycleStrategyDiagnostic["volumeFatigueStrategyEvidence"];
+}): string[] {
+  const { hypothesis } = input;
+  const available: string[] = [];
+
+  if (
+    hypothesis.id === "improve_deload_execution" &&
+    input.volumeFatigueStrategyEvidence.deloadExecutionSignals.length > 0
+  ) {
+    available.push("skipped_deload_execution_evidence");
+  }
+
+  if (
+    hypothesis.id === "protect_lagging_muscles_earlier" &&
+    input.volumeFatigueStrategyEvidence.protectLaggingMuscleSignals.length > 0
+  ) {
+    available.push("recurring_target_tier_under_hit_evidence");
+  }
+
+  if (hypothesis.id === "cap_late_block_volume") {
+    if (evidenceContains(hypothesis, /skipped_set_trend_rising|skipped_sets:/)) {
+      available.push("skipped_set_spike_threshold");
+    }
+    if (
+      evidenceContains(hypothesis, /hard_week_average_rpe:/) &&
+      evidenceContains(hypothesis, /skipped_set_trend_rising|skipped_sets:/)
+    ) {
+      available.push("hard_week_rpe_volume_skipped_work_relationship");
+    }
+  }
+
+  if (hypothesis.id === "reduce_overlap_fatigue") {
+    if (evidenceContains(hypothesis, /fatigue_driver|overlap_or_concentration/)) {
+      available.push("overlap_fatigue_driver_attribution");
+      available.push("muscle_or_class_collateral_source_identified");
+    }
+  }
+
+  if (hypothesis.id === "preserve_successful_progression") {
+    if (input.continuityVariationEvidence.keepCandidateCount > 0) {
+      available.push("productive_continuity_classification");
+    }
+    if (hasSufficientCompletedExposureEvidence(hypothesis)) {
+      available.push("sufficient_completed_exposures");
+    }
+  }
+
+  if (hypothesis.id === "rotate_low_confidence_or_stale_accessories") {
+    if (
+      evidenceContains(
+        hypothesis,
+        /stalled|regressed|skipped_often|swapped_out|low_confidence/,
+      )
+    ) {
+      available.push("clear_stale_skipped_stalled_or_swapped_evidence");
+    }
+  }
+
+  return unique(available);
+}
+
+function resolvePromotionReadinessLevel(input: {
+  hypothesis: V2MesocycleStrategyRecommendation["hypotheses"][number];
+  missingEvidence: string[];
+  availableEvidence: string[];
+}): V2StrategyHypothesisPromotionReadinessLevel {
+  const { hypothesis, missingEvidence, availableEvidence } = input;
+  if (hypothesis.id === "unknown") {
+    return "not_ready";
+  }
+  if (hypothesis.id === "improve_deload_execution") {
+    return availableEvidence.includes("skipped_deload_execution_evidence")
+      ? "needs_owner"
+      : "needs_more_evidence";
+  }
+  if (hypothesis.id === "rotate_low_confidence_or_stale_accessories") {
+    return "needs_more_evidence";
+  }
+  if (hypothesis.confidence === "low" || availableEvidence.length === 0) {
+    return "needs_more_evidence";
+  }
+  if (missingEvidence.length === 0) {
+    return "needs_non_regression_gates";
+  }
+  return "ready_for_read_only_diff";
+}
+
+function nextSafeActionForReadiness(
+  readiness: V2StrategyHypothesisPromotionReadinessLevel,
+): V2StrategyHypothesisPromotionReadinessNextSafeAction {
+  if (readiness === "ready_for_bounded_trial") {
+    return "run_bounded_trial";
+  }
+  if (readiness === "needs_non_regression_gates") {
+    return "add_audit_gate";
+  }
+  if (readiness === "ready_for_read_only_diff" || readiness === "needs_owner") {
+    return "add_read_only_diff";
+  }
+  if (readiness === "not_ready") {
+    return "do_not_promote";
+  }
+  return "collect_more_evidence";
+}
+
+function buildStrategyHypothesisPromotionReadiness(input: {
+  strategyRecommendation: V2MesocycleStrategyRecommendation;
+  strategyInputSummary: V2MesocycleStrategyDiagnostic["strategyInputSummary"];
+  continuityVariationEvidence: V2MesocycleStrategyDiagnostic["continuityVariationEvidence"];
+  volumeFatigueStrategyEvidence: V2MesocycleStrategyDiagnostic["volumeFatigueStrategyEvidence"];
+}): V2StrategyHypothesisPromotionReadiness {
+  const hypothesisReadiness = input.strategyRecommendation.hypotheses.map(
+    (hypothesis) => {
+      const blueprint = PROMOTION_READINESS_BLUEPRINTS[hypothesis.id];
+      const availableEvidence = collectAvailablePromotionEvidence({
+        hypothesis,
+        continuityVariationEvidence: input.continuityVariationEvidence,
+        volumeFatigueStrategyEvidence: input.volumeFatigueStrategyEvidence,
+      });
+      const missingEvidence = blueprint.requiredEvidence.filter(
+        (required) => !availableEvidence.includes(required),
+      );
+      const readiness = resolvePromotionReadinessLevel({
+        hypothesis,
+        missingEvidence,
+        availableEvidence,
+      });
+
+      return {
+        hypothesisId: hypothesis.id,
+        readiness,
+        proposedOwner: blueprint.proposedOwner,
+        boundedBehaviorScope: blueprint.boundedBehaviorScope,
+        requiredEvidence: blueprint.requiredEvidence,
+        missingEvidence,
+        requiredNonRegressionGates: blueprint.requiredNonRegressionGates,
+        knownRisks: blueprint.knownRisks,
+        rollbackCriteria: blueprint.rollbackCriteria,
+        nextSafeAction: nextSafeActionForReadiness(readiness),
+      };
+    },
+  );
+  const anyBoundedTrial = hypothesisReadiness.some(
+    (row) => row.readiness === "ready_for_bounded_trial",
+  );
+  const anyReadOnlyDiff = hypothesisReadiness.some(
+    (row) =>
+      row.readiness === "ready_for_read_only_diff" ||
+      row.readiness === "needs_owner" ||
+      row.readiness === "needs_non_regression_gates",
+  );
+
+  return {
+    version: 1,
+    source: "v2_strategy_hypothesis_promotion_readiness",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    status: anyBoundedTrial
+      ? "ready_for_bounded_trial"
+      : anyReadOnlyDiff
+        ? "partially_ready"
+        : "not_ready",
+    hypothesisReadiness,
+    globalBlockers: unique([
+      "promotion_readiness_is_diagnostic_only",
+      "strategy_hypotheses_are_not_planner_instructions",
+      "readiness_not_consumed_by_mesocycle_demand_or_materializer",
+      "readiness_must_not_influence_generation_selection_repair_seed_runtime_or_receipts",
+      "bounded_trials_require_explicit_follow_up_slice",
+      "non_regression_gates_not_yet_satisfied",
+      "audit_comparison_path_required_before_behavior",
+      ...(hypothesisReadiness.length > 0 ? [] : ["no_strategy_hypotheses_available"]),
+    ]),
+    limitations: unique([
+      "readiness_defines_requirements_but_does_not_satisfy_them",
+      "readiness_does_not_run_read_only_diffs_or_audit_gates_itself",
+      "readiness_is_owner_agnostic_and_must_not_hard_code_owner_specific_policy",
+      "old_prescribed_plan_shape_excluded_from_promotion_targets",
+      ...(input.strategyInputSummary.historicalMesocycleCount >= 2
+        ? []
+        : ["limited_by_fewer_than_two_historical_mesocycles"]),
+      ...(input.strategyInputSummary.missingGroups.length === 0
+        ? []
+        : ["limited_by_missing_strategy_input_groups"]),
+      ...input.strategyRecommendation.limitations,
+    ]),
+  };
+}
+
 function resolvePhaseConfidence(
   summary: V2MesocycleStrategyDiagnostic["strategyInputSummary"],
 ): V2MesocycleStrategyDiagnostic["phaseStrategy"]["confidence"] {
@@ -1141,6 +1589,13 @@ export function buildV2MesocycleStrategyDiagnostic(
     input.strategyInput,
     strategyInputSummary,
   );
+  const strategyHypothesisPromotionReadiness =
+    buildStrategyHypothesisPromotionReadiness({
+      strategyRecommendation,
+      strategyInputSummary,
+      continuityVariationEvidence,
+      volumeFatigueStrategyEvidence,
+    });
   const phaseConfidence = resolvePhaseConfidence(strategyInputSummary);
 
   return {
@@ -1211,6 +1666,7 @@ export function buildV2MesocycleStrategyDiagnostic(
     continuityVariationEvidence,
     volumeFatigueStrategyEvidence,
     strategyRecommendation,
+    strategyHypothesisPromotionReadiness,
     demandDerivationPlan: {
       currentDemandSource: "fixed_skeleton_lanes",
       targetDemandSource: "mesocycle_strategy",

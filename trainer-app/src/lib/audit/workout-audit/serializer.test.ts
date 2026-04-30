@@ -1563,6 +1563,22 @@ describe("buildWorkoutAuditArtifact", () => {
             mustNotYetInfluence: [],
             consumedByDemandOrMaterializer: false,
           },
+          strategyHypothesisPromotionReadiness: {
+            status: "not_ready",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            hypothesisCount: 0,
+            hypothesisIds: [],
+            readinessCounts: {},
+            proposedOwnerCounts: {},
+            nextSafeActionCounts: {},
+            topMissingEvidenceCategories: [],
+            globalBlockers: expect.arrayContaining([
+              "readiness_not_consumed_by_mesocycle_demand_or_materializer",
+              "no_strategy_hypotheses_available",
+            ]),
+            consumedByDemandOrMaterializer: false,
+          },
           northStarGapCount: 6,
         },
         exerciseSelectionPlanDiagnostic: {

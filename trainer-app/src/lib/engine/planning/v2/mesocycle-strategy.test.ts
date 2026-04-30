@@ -242,6 +242,14 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
       confidence: "low",
       hypotheses: [],
     });
+    expect(diagnostic.strategyHypothesisPromotionReadiness).toMatchObject({
+      version: 1,
+      source: "v2_strategy_hypothesis_promotion_readiness",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "not_ready",
+      hypothesisReadiness: [],
+    });
   });
 
   it("represents missing inputs and partial performed-history support honestly", () => {
@@ -484,6 +492,155 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     );
   });
 
+  it("derives promotion readiness from strategy hypotheses and evidence quality without promoting behavior", () => {
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+    });
+    const readiness = diagnostic.strategyHypothesisPromotionReadiness;
+    const rowById = Object.fromEntries(
+      readiness.hypothesisReadiness.map((row) => [row.hypothesisId, row]),
+    );
+
+    expect(readiness).toMatchObject({
+      version: 1,
+      source: "v2_strategy_hypothesis_promotion_readiness",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "partially_ready",
+      globalBlockers: expect.arrayContaining([
+        "readiness_not_consumed_by_mesocycle_demand_or_materializer",
+        "readiness_must_not_influence_generation_selection_repair_seed_runtime_or_receipts",
+        "non_regression_gates_not_yet_satisfied",
+      ]),
+      limitations: expect.arrayContaining([
+        "readiness_defines_requirements_but_does_not_satisfy_them",
+        "old_prescribed_plan_shape_excluded_from_promotion_targets",
+      ]),
+    });
+    expect(readiness.hypothesisReadiness).toHaveLength(
+      diagnostic.strategyRecommendation.hypotheses.length,
+    );
+    expect(
+      readiness.hypothesisReadiness.some(
+        (row) => row.readiness === "ready_for_bounded_trial",
+      ),
+    ).toBe(false);
+    expect(
+      readiness.hypothesisReadiness.every(
+        (row) =>
+          row.missingEvidence.length > 0 &&
+          row.nextSafeAction !== "run_bounded_trial",
+      ),
+    ).toBe(true);
+    expect(rowById.protect_lagging_muscles_earlier).toMatchObject({
+      readiness: "ready_for_read_only_diff",
+      proposedOwner: "MesocycleDemand",
+      nextSafeAction: "add_read_only_diff",
+      requiredEvidence: expect.arrayContaining([
+        "recurring_target_tier_under_hit_evidence",
+        "slot_owner_for_protected_sets",
+      ]),
+      missingEvidence: expect.arrayContaining([
+        "slot_owner_for_protected_sets",
+        "repair_materiality_non_regression_evidence",
+      ]),
+      requiredNonRegressionGates: expect.arrayContaining([
+        "priority_target_coverage_preserved_or_improved",
+        "no_material_or_major_repair_increase",
+      ]),
+    });
+  });
+
+  it("maps every recommendation hypothesis to the conservative promotion owner and next safe action", () => {
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+    });
+    const readinessById = new Map(
+      diagnostic.strategyHypothesisPromotionReadiness.hypothesisReadiness.map(
+        (row) => [row.hypothesisId, row],
+      ),
+    );
+
+    expect(readinessById.get("improve_deload_execution")).toMatchObject({
+      readiness: "needs_owner",
+      nextSafeAction: "add_read_only_diff",
+      requiredEvidence: expect.arrayContaining([
+        "owner_decision_between_plan_design_runtime_ux_reminders_and_logging_semantics",
+        "next_block_readiness_impact_after_skipped_deload",
+      ]),
+    });
+    expect(
+      ["DeloadPlan", "RuntimeUX"].includes(
+        readinessById.get("improve_deload_execution")?.proposedOwner ?? "",
+      ),
+    ).toBe(true);
+    expect(
+      readinessById.get("improve_deload_execution")?.proposedOwner,
+    ).not.toBe("MesocycleDemand");
+
+    expect(readinessById.get("cap_late_block_volume")).toMatchObject({
+      readiness: "ready_for_read_only_diff",
+      proposedOwner: "WeeklyDemandCurve",
+      requiredEvidence: expect.arrayContaining([
+        "priority_target_coverage_preservation",
+      ]),
+      missingEvidence: expect.arrayContaining([
+        "priority_target_coverage_preservation",
+      ]),
+      requiredNonRegressionGates: expect.arrayContaining([
+        "priority_target_coverage_preserved",
+        "lagging_target_tier_muscles_not_reduced_below_floor",
+      ]),
+    });
+
+    expect(readinessById.get("reduce_overlap_fatigue")).toMatchObject({
+      readiness: "ready_for_read_only_diff",
+      proposedOwner: "SlotDemandAllocation",
+      requiredEvidence: expect.arrayContaining([
+        "overlap_fatigue_driver_attribution",
+        "repair_non_regression_evidence",
+      ]),
+      requiredNonRegressionGates: expect.arrayContaining([
+        "no_suspicious_repair_increase",
+        "no_forbidden_slot_primary_solution",
+      ]),
+    });
+
+    expect(readinessById.get("preserve_successful_progression")).toMatchObject({
+      readiness: "ready_for_read_only_diff",
+      proposedOwner: "ExerciseSelectionStrategy",
+      requiredEvidence: expect.arrayContaining([
+        "productive_continuity_classification",
+        "sufficient_completed_exposures",
+      ]),
+      requiredNonRegressionGates: expect.arrayContaining([
+        "materializer_ranking_diff_does_not_reduce_required_lane_coverage",
+      ]),
+    });
+    expect(
+      readinessById.get("preserve_successful_progression")?.proposedOwner,
+    ).not.toBe("MesocycleDemand");
+
+    expect(
+      readinessById.get("rotate_low_confidence_or_stale_accessories"),
+    ).toMatchObject({
+      readiness: "needs_more_evidence",
+      proposedOwner: "ExerciseSelectionStrategy",
+      missingEvidence: expect.arrayContaining([
+        "clean_alternative_inventory_exists",
+        "no_random_novelty_policy",
+      ]),
+      requiredNonRegressionGates: expect.arrayContaining([
+        "no_random_novelty_without_evidence",
+        "productive_anchor_not_removed",
+      ]),
+      knownRisks: expect.arrayContaining([
+        "random novelty can replace useful low-risk accessories",
+      ]),
+      nextSafeAction: "collect_more_evidence",
+    });
+  });
+
   it("keeps thin recommendation evidence low-confidence and non-binding", () => {
     const diagnostic = buildV2MesocycleStrategyDiagnostic({
       strategyInput: {
@@ -554,6 +711,16 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     expect(policy.mesocycleStrategyDiagnostic.strategyRecommendation).toMatchObject({
       readOnly: true,
       affectsScoringOrGeneration: false,
+    });
+    expect(
+      policy.mesocycleStrategyDiagnostic.strategyHypothesisPromotionReadiness,
+    ).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "partially_ready",
+      globalBlockers: expect.arrayContaining([
+        "readiness_not_consumed_by_mesocycle_demand_or_materializer",
+      ]),
     });
     expect(policyKeys.indexOf("mesocycleStrategyDiagnostic")).toBeLessThan(
       policyKeys.indexOf("mesocycleDemand"),

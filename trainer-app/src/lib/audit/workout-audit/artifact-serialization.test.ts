@@ -817,6 +817,22 @@ describe("artifact serialization helpers", () => {
             mustNotYetInfluence: [],
             consumedByDemandOrMaterializer: false,
           },
+          strategyHypothesisPromotionReadiness: {
+            status: "not_ready",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            hypothesisCount: 0,
+            hypothesisIds: [],
+            readinessCounts: {},
+            proposedOwnerCounts: {},
+            nextSafeActionCounts: {},
+            topMissingEvidenceCategories: [],
+            globalBlockers: expect.arrayContaining([
+              "readiness_not_consumed_by_mesocycle_demand_or_materializer",
+              "no_strategy_hypotheses_available",
+            ]),
+            consumedByDemandOrMaterializer: false,
+          },
           northStarGapCount: 6,
         },
         repairPromotionScoreboard: {
@@ -1543,6 +1559,191 @@ describe("artifact serialization helpers", () => {
     });
     expect(noRepair.debugArtifact).not.toHaveProperty("enableWith");
     expect(serialized).not.toContain("concentration:chest_primary");
+  });
+
+  it("exposes compact strategy hypothesis promotion readiness without carrying full detail in the main artifact", () => {
+    const artifact = {
+      mode: "mesocycle-explain",
+      mesocycleExplain: {
+        preview: {
+          projectionDiagnostics: {},
+        },
+        plannerOnlyNoRepair: {
+          enabled: true,
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          canReplaceRepairedProjection: false,
+          summary: {
+            status: "pass_with_warnings",
+            targetLanesSatisfied: 1,
+            targetLanesMissing: 0,
+            unresolvedDemandCount: 0,
+            validationFailureCount: 0,
+          },
+          acceptanceClassification: {
+            basicMesocycleShapeStatus: "pass_with_warnings",
+            replacementReadinessStatus: "not_ready",
+            hardBlockers: [],
+            qualityWarnings: [],
+            diagnosticOnly: [],
+            sessionShaping: [],
+            migrationScoreboard: {
+              canReplaceRepairedProjection: false,
+            },
+          },
+          v2MesocycleStrategyDiagnostic: {
+            status: "available_with_limitations",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            phaseStrategy: {
+              proposedPhase: "unknown",
+              confidence: "low",
+            },
+            demandDerivationPlan: {
+              currentDemandSource: "fixed_skeleton_lanes",
+              targetDemandSource: "mesocycle_strategy",
+            },
+            userTrainingProfileInputs: {
+              missing: [],
+              limitations: [],
+            },
+            strategyInputSummary: {
+              presentGroups: [],
+              missingGroups: [],
+              historicalMesocycleCount: 2,
+              blockResponseSignalCount: 2,
+              exerciseResponseSignalCount: 0,
+              historicalSourcePlannerCounts: {
+                legacy_projection: 2,
+                v2: 0,
+                unknown: 0,
+              },
+              evidenceCategoriesAvailable: ["block_response"],
+              performedHistoryEvidenceLoaded: true,
+              prescribedPlanShapeExcludedFromStrategyPolicy: true,
+              confidenceChange: "eligible_for_medium_evidence",
+            },
+            responseEvidenceSummary: {
+              strategyImplicationCounts: {},
+              recurringUnderHitMuscleExamples: ["Side Delts"],
+              recurringOverConcentrationExamples: [],
+              exerciseSignalsByType: {},
+              confidenceDistribution: {},
+              evidenceLimitations: [],
+              usableForFutureContinuityVariation: false,
+              usableForFutureMaterializerRanking: false,
+              usableForFutureVolumeFatigueStrategy: true,
+            },
+            continuityVariationEvidence: {
+              status: "not_available",
+              keepCandidateCount: 0,
+              rotateCandidateCount: 0,
+              avoidCandidateCount: 0,
+              lowConfidenceCount: 0,
+              limitations: [],
+            },
+            volumeFatigueStrategyEvidence: {
+              status: "available_with_limitations",
+              protectLaggingMuscleSignals: ["Side Delts"],
+              overConcentrationSignals: [],
+              lateBlockFatigueSignals: ["meso-2:late_block_skipped_sets_rising"],
+              deloadExecutionSignals: [],
+              limitations: [],
+            },
+            strategyRecommendation: {
+              status: "available_with_limitations",
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              recommendedPhase: "unknown",
+              confidence: "low",
+              hypotheses: [
+                {
+                  id: "protect_lagging_muscles_earlier",
+                  priority: "P1",
+                  evidence: ["Side Delts:under_hit_in_2_performed_block_response"],
+                  promotionBlockers: [
+                    "recommendation_is_evidence_backed_hypothesis_not_planner_instruction",
+                  ],
+                  mustNotYetInfluence: ["generation", "selection"],
+                },
+                {
+                  id: "cap_late_block_volume",
+                  priority: "P1",
+                  evidence: ["meso-2:skipped_set_trend_rising"],
+                  promotionBlockers: [
+                    "recommendation_is_evidence_backed_hypothesis_not_planner_instruction",
+                  ],
+                  mustNotYetInfluence: ["generation", "selection"],
+                },
+              ],
+            },
+            strategyHypothesisPromotionReadiness: {
+              status: "partially_ready",
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              globalBlockers: [
+                "readiness_not_consumed_by_mesocycle_demand_or_materializer",
+              ],
+              hypothesisReadiness: [
+                {
+                  hypothesisId: "protect_lagging_muscles_earlier",
+                  readiness: "ready_for_read_only_diff",
+                  proposedOwner: "MesocycleDemand",
+                  nextSafeAction: "add_read_only_diff",
+                  missingEvidence: ["slot_owner_for_protected_sets"],
+                },
+                {
+                  hypothesisId: "cap_late_block_volume",
+                  readiness: "ready_for_read_only_diff",
+                  proposedOwner: "WeeklyDemandCurve",
+                  nextSafeAction: "add_read_only_diff",
+                  missingEvidence: [
+                    "priority_target_coverage_preservation",
+                  ],
+                },
+              ],
+            },
+            currentStateVsNorthStarGaps: [],
+          },
+        },
+      },
+    } as unknown as WorkoutAuditArtifact;
+
+    const compact = compactWorkoutAuditArtifactForSerialization(artifact);
+    const noRepair = compact.mesocycleExplain
+      ?.plannerOnlyNoRepair as unknown as Record<string, unknown>;
+    const strategy = ((noRepair.v2Summary as Record<string, unknown>)
+      .mesocycleStrategyDiagnostic ?? {}) as Record<string, unknown>;
+
+    expect(strategy.strategyHypothesisPromotionReadiness).toMatchObject({
+      status: "partially_ready",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      hypothesisCount: 2,
+      hypothesisIds: [
+        "protect_lagging_muscles_earlier",
+        "cap_late_block_volume",
+      ],
+      readinessCounts: {
+        ready_for_read_only_diff: 2,
+      },
+      proposedOwnerCounts: {
+        MesocycleDemand: 1,
+        WeeklyDemandCurve: 1,
+      },
+      nextSafeActionCounts: {
+        add_read_only_diff: 2,
+      },
+      topMissingEvidenceCategories: [
+        "slot_owner_for_protected_sets",
+        "priority_target_coverage_preservation",
+      ],
+      globalBlockers: [
+        "readiness_not_consumed_by_mesocycle_demand_or_materializer",
+      ],
+      consumedByDemandOrMaterializer: false,
+    });
+    expect(noRepair).not.toHaveProperty("v2MesocycleStrategyDiagnostic");
   });
 
   it("leaves unrelated audit artifacts unchanged", () => {

@@ -2175,6 +2175,10 @@ export function buildPlannerOnlyNoRepairSummary(input: {
   const volumeFatigueEvidence = strategy?.volumeFatigueStrategyEvidence;
   const strategyRecommendation = strategy?.strategyRecommendation;
   const recommendationHypotheses = strategyRecommendation?.hypotheses ?? [];
+  const strategyPromotionReadiness =
+    strategy?.strategyHypothesisPromotionReadiness;
+  const promotionReadinessRows =
+    strategyPromotionReadiness?.hypothesisReadiness ?? [];
   const recommendationPriorityCounts = recommendationHypotheses.reduce<
     Record<"P0" | "P1" | "P2", number>
   >(
@@ -2184,6 +2188,20 @@ export function buildPlannerOnlyNoRepairSummary(input: {
     },
     { P0: 0, P1: 0, P2: 0 },
   );
+  const countPromotionRowsBy = (
+    field: "readiness" | "proposedOwner" | "nextSafeAction",
+  ): Record<string, number> =>
+    promotionReadinessRows.reduce<Record<string, number>>((counts, row) => {
+      const key = row[field];
+      counts[key] = (counts[key] ?? 0) + 1;
+      return counts;
+    }, {});
+  const promotionReadinessCounts = countPromotionRowsBy("readiness");
+  const promotionOwnerCounts = countPromotionRowsBy("proposedOwner");
+  const promotionActionCounts = countPromotionRowsBy("nextSafeAction");
+  const promotionTopMissingEvidence = Array.from(
+    new Set(promotionReadinessRows.flatMap((row) => row.missingEvidence)),
+  ).slice(0, 6);
   const strategyLines = strategy
     ? [
         "V2 Mesocycle Strategy Diagnostic",
@@ -2213,6 +2231,13 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Recommendation evidence examples: ${formatNameList(recommendationHypotheses.flatMap((hypothesis) => hypothesis.evidence).slice(0, 6), 6)}`,
         `Recommendation promotion blockers: ${formatNameList(recommendationHypotheses.flatMap((hypothesis) => hypothesis.promotionBlockers).slice(0, 6), 6)}`,
         "Recommendations consumed by demand/materializer: no",
+        `Promotion readiness: ${formatStatus(strategyPromotionReadiness?.status ?? "not_ready")} hypotheses=${promotionReadinessRows.length}`,
+        `Promotion readiness counts: not_ready=${promotionReadinessCounts.not_ready ?? 0} needs_more_evidence=${promotionReadinessCounts.needs_more_evidence ?? 0} needs_owner=${promotionReadinessCounts.needs_owner ?? 0} needs_non_regression_gates=${promotionReadinessCounts.needs_non_regression_gates ?? 0} ready_for_read_only_diff=${promotionReadinessCounts.ready_for_read_only_diff ?? 0} ready_for_bounded_trial=${promotionReadinessCounts.ready_for_bounded_trial ?? 0}`,
+        `Promotion owner counts: MesocycleDemand=${promotionOwnerCounts.MesocycleDemand ?? 0} WeeklyDemandCurve=${promotionOwnerCounts.WeeklyDemandCurve ?? 0} SlotDemandAllocation=${promotionOwnerCounts.SlotDemandAllocation ?? 0} ExerciseSelectionStrategy=${promotionOwnerCounts.ExerciseSelectionStrategy ?? 0} MaterializerRanking=${promotionOwnerCounts.MaterializerRanking ?? 0} DeloadPlan=${promotionOwnerCounts.DeloadPlan ?? 0} RuntimeUX=${promotionOwnerCounts.RuntimeUX ?? 0} unknown=${promotionOwnerCounts.unknown ?? 0}`,
+        `Promotion next actions: collect=${promotionActionCounts.collect_more_evidence ?? 0} read_only_diff=${promotionActionCounts.add_read_only_diff ?? 0} audit_gate=${promotionActionCounts.add_audit_gate ?? 0} bounded_trial=${promotionActionCounts.run_bounded_trial ?? 0} do_not_promote=${promotionActionCounts.do_not_promote ?? 0}`,
+        `Promotion missing evidence: ${formatNameList(promotionTopMissingEvidence, 6)}`,
+        `Promotion global blockers: ${formatNameList(strategyPromotionReadiness?.globalBlockers ?? [], 6)}`,
+        "Promotion readiness consumed by demand/materializer: no",
         `Performed history loaded: ${strategy.strategyInputSummary.performedHistoryEvidenceLoaded ? "yes" : "no"}`,
         `Old prescribed plan shape excluded: ${strategy.strategyInputSummary.prescribedPlanShapeExcludedFromStrategyPolicy ? "yes" : "no"}`,
         `North-star gaps: ${strategy.currentStateVsNorthStarGaps.length}`,

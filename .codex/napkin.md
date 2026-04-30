@@ -50,6 +50,7 @@
 | 2026-04-30 | self | The first live historical source classification labeled one completed pre-V2 mesocycle `unknown` because it lacked parseable seed metadata. | For this migration, classify completed non-V2 historical mesocycles as `legacy_projection` while still using only performed/review evidence as strategy input, never old prescribed shape. |
 | 2026-04-30 | self | Added new V2 strategy DTO evidence types in `types.ts` but initially forgot to re-export them through `src/lib/engine/planning/v2/index.ts`, so adapter imports failed `tsc --noEmit`. | Any new public V2 strategy type consumed outside the pure file needs the index export in the same patch. |
 | 2026-04-30 | self | The first live block-response readout included low-priority secondary under-hit examples such as Abductors/Core, making the strategy evidence noisy. | Filter recurring under-hit block-response examples to A/B target-tier muscles; allow secondary/implicit muscles only as over-concentration or fatigue-driver evidence when relevant. |
+| 2026-04-30 | self | While adding strategy hypothesis promotion readiness, used lowercase readout wording `blockers` inside a pure V2 strategy file and tripped the architecture-boundary diagnostic-key scan. | Keep pure V2 strategy vocabulary away from reserved audit/readout keys; use terms like `globalBlockers` only as typed output fields and avoid lowercase readout-key strings in pure policy files. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.
@@ -61,6 +62,7 @@
 - For no-drift diagnostic adapter swaps, `v2SetDistributionIntent` can be safely sourced from `buildV2PlannerMesocyclePolicy()` when the emitted sidecar object is structurally equal and main/sidecar artifacts diff clean after ignoring timestamps and artifact links.
 - For verify cleanup, remove stimulus fallback warning noise by adding explicit fixture-only `stimulusProfile` values that match the fallback math, while leaving `src/lib/engine/stimulus.test.ts` as the intentional fallback-warning coverage.
 - For V2 strategy recommendation layers, keep ranking in pure `mesocycle-strategy.ts`, expose only compact status/count/evidence summaries through audit serialization/CLI, and assert demand/materializer/generation non-consumption in both pure and audit tests.
+- For V2 strategy promotion readiness, define the full evidence/owner/gate requirements in the pure strategy seam, but keep the main audit artifact to compact counts/top-missing summaries and leave full detail to the V2 sidecar.
 
 ## Patterns That Don't Work
 - Do not promote suspicious downstream repair rows unless the owning V2 layer is clearly upstream and compatible with the target architecture.

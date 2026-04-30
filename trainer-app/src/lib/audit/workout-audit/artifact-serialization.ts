@@ -855,6 +855,12 @@ function compactPlannerOnlyNoRepair(
   const v2StrategyRecommendationHypotheses = asRecordArray(
     v2StrategyRecommendation?.hypotheses,
   );
+  const v2StrategyPromotionReadiness = asRecord(
+    v2MesocycleStrategyDiagnostic?.strategyHypothesisPromotionReadiness,
+  );
+  const v2StrategyPromotionReadinessRows = asRecordArray(
+    v2StrategyPromotionReadiness?.hypothesisReadiness,
+  );
   const v2SupportLanePolicy = asRecord(noRepair.v2SupportLanePolicy);
   const v2SupportLaneSummary = asRecord(v2SupportLanePolicy?.summary);
   const v2SupportLaneProjectionDiagnostic = asRecord(
@@ -1144,6 +1150,46 @@ function compactPlannerOnlyNoRepair(
                       (target, index, targets) =>
                         targets.indexOf(target) === index,
                     ),
+                  consumedByDemandOrMaterializer: false,
+                }
+              : undefined,
+            strategyHypothesisPromotionReadiness: v2StrategyPromotionReadiness
+              ? {
+                  status:
+                    v2StrategyPromotionReadiness.status ?? "not_ready",
+                  readOnly: v2StrategyPromotionReadiness.readOnly === true,
+                  affectsScoringOrGeneration:
+                    v2StrategyPromotionReadiness
+                      .affectsScoringOrGeneration === true
+                      ? true
+                      : false,
+                  hypothesisCount: v2StrategyPromotionReadinessRows.length,
+                  hypothesisIds: v2StrategyPromotionReadinessRows
+                    .map((row) => row.hypothesisId)
+                    .filter((id): id is string => typeof id === "string"),
+                  readinessCounts: countBy(
+                    v2StrategyPromotionReadinessRows,
+                    "readiness",
+                  ),
+                  proposedOwnerCounts: countBy(
+                    v2StrategyPromotionReadinessRows,
+                    "proposedOwner",
+                  ),
+                  nextSafeActionCounts: countBy(
+                    v2StrategyPromotionReadinessRows,
+                    "nextSafeAction",
+                  ),
+                  topMissingEvidenceCategories:
+                    v2StrategyPromotionReadinessRows
+                      .flatMap((row) => asStringArray(row.missingEvidence))
+                      .filter(
+                        (evidence, index, rows) =>
+                          rows.indexOf(evidence) === index,
+                      )
+                      .slice(0, 8),
+                  globalBlockers: asStringArray(
+                    v2StrategyPromotionReadiness.globalBlockers,
+                  ).slice(0, 8),
                   consumedByDemandOrMaterializer: false,
                 }
               : undefined,

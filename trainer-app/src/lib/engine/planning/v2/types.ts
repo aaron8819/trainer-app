@@ -131,7 +131,8 @@ export type V2MesocycleStrategyRecommendationInfluenceTarget =
   | "SetDistributionIntent"
   | "ExerciseSelectionStrategy"
   | "MaterializerRanking"
-  | "DeloadPlan";
+  | "DeloadPlan"
+  | "RuntimeUX";
 
 export type V2MesocycleStrategyRecommendationMustNotYetInfluence =
   | "generation"
@@ -160,6 +161,52 @@ export type V2MesocycleStrategyRecommendation = {
     mustNotYetInfluence: V2MesocycleStrategyRecommendationMustNotYetInfluence[];
     promotionBlockers: string[];
   }>;
+  limitations: string[];
+};
+
+export type V2StrategyHypothesisPromotionReadinessStatus =
+  | "not_ready"
+  | "partially_ready"
+  | "ready_for_bounded_trial";
+
+export type V2StrategyHypothesisPromotionReadinessLevel =
+  | "not_ready"
+  | "needs_more_evidence"
+  | "needs_owner"
+  | "needs_non_regression_gates"
+  | "ready_for_read_only_diff"
+  | "ready_for_bounded_trial";
+
+export type V2StrategyHypothesisPromotionReadinessOwner =
+  | V2MesocycleStrategyRecommendationInfluenceTarget
+  | "unknown";
+
+export type V2StrategyHypothesisPromotionReadinessNextSafeAction =
+  | "collect_more_evidence"
+  | "add_read_only_diff"
+  | "add_audit_gate"
+  | "run_bounded_trial"
+  | "do_not_promote";
+
+export type V2StrategyHypothesisPromotionReadiness = {
+  version: 1;
+  source: "v2_strategy_hypothesis_promotion_readiness";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  status: V2StrategyHypothesisPromotionReadinessStatus;
+  hypothesisReadiness: Array<{
+    hypothesisId: V2MesocycleStrategyRecommendationHypothesisId;
+    readiness: V2StrategyHypothesisPromotionReadinessLevel;
+    proposedOwner: V2StrategyHypothesisPromotionReadinessOwner;
+    boundedBehaviorScope?: string;
+    requiredEvidence: string[];
+    missingEvidence: string[];
+    requiredNonRegressionGates: string[];
+    knownRisks: string[];
+    rollbackCriteria: string[];
+    nextSafeAction: V2StrategyHypothesisPromotionReadinessNextSafeAction;
+  }>;
+  globalBlockers: string[];
   limitations: string[];
 };
 
@@ -373,6 +420,7 @@ export type V2MesocycleStrategyDiagnostic = {
     limitations: string[];
   };
   strategyRecommendation: V2MesocycleStrategyRecommendation;
+  strategyHypothesisPromotionReadiness: V2StrategyHypothesisPromotionReadiness;
   demandDerivationPlan: {
     currentDemandSource: "fixed_skeleton_lanes" | "strategy_derived" | "mixed";
     targetDemandSource: "mesocycle_strategy";

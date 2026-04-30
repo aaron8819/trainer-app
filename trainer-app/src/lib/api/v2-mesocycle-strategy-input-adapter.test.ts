@@ -612,6 +612,9 @@ describe("loadV2MesocycleStrategyHistoricalReviewEvidence", () => {
     expect(JSON.stringify(diagnostic.strategyRecommendation)).not.toContain(
       "old-prescribed-plan-only",
     );
+    expect(
+      JSON.stringify(diagnostic.strategyHypothesisPromotionReadiness),
+    ).not.toContain("old-prescribed-plan-only");
     expect(diagnostic.strategyRecommendation.hypotheses).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -624,6 +627,18 @@ describe("loadV2MesocycleStrategyHistoricalReviewEvidence", () => {
             "runtime",
             "receipts",
           ],
+        }),
+      ]),
+    );
+    expect(
+      diagnostic.strategyHypothesisPromotionReadiness.hypothesisReadiness,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          hypothesisId: "preserve_successful_progression",
+          proposedOwner: "ExerciseSelectionStrategy",
+          readiness: "ready_for_read_only_diff",
+          nextSafeAction: "add_read_only_diff",
         }),
       ]),
     );

@@ -29,6 +29,7 @@
 - Use `workout-generation-audit` for any non-trivial change that can affect generated or projected training output.
 - Use `implementation-planner` before any non-trivial change that requires more than one edit step or touches multiple files, seams, tests, routes, docs, or verification commands.
 - Use `receipt-integrity` for any change that touches `selectionMetadata.sessionDecisionReceipt`, receipt-backed meaning, or consumers that depend on persisted session-decision context.
+- Use `seed-runtime-source-of-truth` for any task touching accepted seed shape, slot/runtime replay, template-session, deload replay, acceptedPlannerIntent/provenance, receipts, reseed/update paths, or audit claims about seed/runtime behavior.
 
 ## Session Retrospectives
 - Use `session-retrospective` before the final response of substantial implementation, debugging, audit, or validation sessions.

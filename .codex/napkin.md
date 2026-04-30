@@ -71,6 +71,7 @@
 - Do not promote suspicious downstream repair rows unless the owning V2 layer is clearly upstream and compatible with the target architecture.
 
 ## Domain Notes
+- Repo-local Codex skills live under `.codex/skills/<name>/SKILL.md`; there is no central skills index as of 2026-04-30, so a new practical guard skill can be added as a single `SKILL.md` unless UI metadata is explicitly needed.
 - V2 target path: MesocycleDemand -> WeeklyDemandCurve -> SlotDemandAllocationByWeek -> ExerciseClassDistributionBySlot -> SetDistributionIntent -> ExerciseSelectionPlan -> Accepted Seed -> Runtime Replay.
 - V2 planner intelligence audit: current pure chain is still fixed-skeleton/muscle-lane derived; before promotion, add an upstream strategy layer for user profile, phase/macro intent, block objective, performed-history learning, and continuity/variation policy rather than treating pure V2 policy as elite by default.
 - V2 Lower B hinge-anchor readouts should keep `hinge_compound` narrow for RDL/SLDL/deadlift-like hinges; Glute Bridge / hip-thrust-like patterns belong in the explicit diagnostic class `low_axial_hip_extension_anchor`, and generic `hinge` must not satisfy `hinge_compound`.

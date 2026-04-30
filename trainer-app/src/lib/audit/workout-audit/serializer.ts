@@ -1,10 +1,9 @@
-import { createHash } from "node:crypto";
 import {
   buildGenerationWarningSummary,
   WORKOUT_AUDIT_CONCLUSIONS,
 } from "./conclusions";
 import type {
-  MesocycleExplainPlannerOnlyNoRepairDebugArtifact,
+  V2DebugDetailLevel,
   WorkoutAuditArtifact,
   WorkoutAuditGenerationPath,
   WorkoutAuditGenerationProvenanceSummary,
@@ -26,6 +25,10 @@ import {
   normalizeExposedMuscleListForAudit,
   normalizeSessionGenerationResultForAudit,
 } from "./exposed-muscles";
+import {
+  buildV2DebugArtifacts,
+  type BuiltV2DebugArtifactOutput,
+} from "./v2-debug-artifacts";
 
 function getArtifactGuardrailWarnings(run: WorkoutAuditRun): string[] {
   const warnings: string[] = [];
@@ -146,134 +149,6 @@ export function serializeWorkoutAuditArtifact(
   );
 }
 
-function sha256Hex(value: string): string {
-  return createHash("sha256").update(value, "utf8").digest("hex");
-}
-
-function buildRequestFlags(request: WorkoutAuditRequest): string[] {
-  const flags = [`--mode ${request.mode}`];
-  if (request.plannerOnlyNoRepair) {
-    flags.push("--planner-only-no-repair");
-  }
-  if (request.compareRepaired) {
-    flags.push("--compare-repaired");
-  }
-  if (request.v2DebugArtifact) {
-    flags.push("--v2-debug-artifact");
-  }
-  return flags;
-}
-
-function incrementCount(record: Record<string, number>, key: unknown): void {
-  const normalized =
-    typeof key === "string" && key.length > 0 ? key : "unknown";
-  record[normalized] = (record[normalized] ?? 0) + 1;
-}
-
-function buildV2DebugSidecarPayload(input: {
-  artifact: WorkoutAuditArtifact;
-  request: WorkoutAuditRequest;
-  parentFileName: string;
-  parentRelativePath: string;
-}): MesocycleExplainPlannerOnlyNoRepairDebugArtifact | undefined {
-  const mesocycleExplain = input.artifact.mesocycleExplain;
-  const noRepair = mesocycleExplain?.plannerOnlyNoRepair;
-  if (!mesocycleExplain || !noRepair) {
-    return undefined;
-  }
-
-  const laneStatusCounts: Record<string, number> = {};
-  const severityCounts: Record<string, number> = {};
-  const migrationRecommendationCounts: Record<string, number> = {};
-  const gapCauseCounts: Record<string, number> = {};
-  const laneEvidence = noRepair.v2TargetVsNoRepairDiff.slotDiffs.flatMap(
-    (slot) =>
-      slot.laneDiffs.map((lane) => {
-        incrementCount(laneStatusCounts, lane.currentStatus);
-        incrementCount(severityCounts, lane.severity);
-        incrementCount(
-          migrationRecommendationCounts,
-          lane.migrationRecommendation,
-        );
-        incrementCount(gapCauseCounts, lane.gapCause);
-        return {
-          slotId: slot.slotId,
-          laneId: lane.laneId,
-          currentStatus: lane.currentStatus,
-          severity: lane.severity,
-          selectedExercises: lane.currentEvidence.selectedExercises,
-          relevantDiagnostics: lane.currentEvidence.relevantDiagnostics,
-        };
-      }),
-  );
-
-  return {
-    version: 1,
-    kind: "v2_planner_no_repair_debug",
-    generatedAt: input.artifact.generatedAt,
-    parent: {
-      fileName: input.parentFileName,
-      relativePath: input.parentRelativePath,
-      mode: "mesocycle-explain",
-      sourceMesocycleId: mesocycleExplain.sourceMesocycleId,
-      retrospectiveMesocycleId: mesocycleExplain.retrospectiveMesocycleId,
-      requestFlags: buildRequestFlags(input.request),
-    },
-    readOnly: true,
-    affectsScoringOrGeneration: false,
-    plannerOnlyNoRepair: {
-      summary: noRepair.summary,
-      acceptanceClassification: noRepair.acceptanceClassification,
-      repairPromotionScoreboard: noRepair.repairPromotionScoreboard,
-      crossWeekProjectionGate: noRepair.crossWeekProjectionGate,
-      v2MesocycleStrategyDiagnostic:
-        noRepair.v2MesocycleStrategyDiagnostic,
-      v2DeloadProjectionDiagnostic: noRepair.v2DeloadProjectionDiagnostic,
-      v2MesocyclePlan: noRepair.v2MesocyclePlan,
-      v2SetDistributionIntent: noRepair.v2SetDistributionIntent,
-      v2SupportLanePolicy: noRepair.v2SupportLanePolicy,
-      v2SupportLaneProjectionDiagnostic:
-        noRepair.v2SupportLaneProjectionDiagnostic,
-      v2SelectionCapacityPlanDiagnostic:
-        noRepair.v2SelectionCapacityPlanDiagnostic,
-      plannerOwnedAccumulationProjection:
-        noRepair.plannerOwnedAccumulationProjection,
-      v2ExerciseSelectionPlanDiagnostic:
-        noRepair.v2ExerciseSelectionPlanDiagnostic,
-      lowAxialHipExtensionLimitation:
-        noRepair.lowAxialHipExtensionLimitation,
-      v2TargetVsNoRepairDiff: noRepair.v2TargetVsNoRepairDiff,
-      slotPlans: noRepair.slotPlans,
-      weeklyMuscleTotals: noRepair.weeklyMuscleTotals,
-      setAllocationChanges: noRepair.setAllocationChanges,
-      weeklyMuscleTotalChanges: noRepair.weeklyMuscleTotalChanges,
-      acceptanceChecks: noRepair.acceptanceChecks,
-      acceptanceFailures: noRepair.acceptanceFailures,
-      qualityWarnings: noRepair.qualityWarnings,
-      diagnosticRows: noRepair.diagnosticRows,
-      ignoredRows: noRepair.ignoredRows,
-      repairDependenciesDisabled: noRepair.repairDependenciesDisabled,
-      comparisonToRepaired: noRepair.comparisonToRepaired,
-      laneEvidence,
-      diagnosticCatalogs: {
-        laneStatusCounts,
-        severityCounts,
-        migrationRecommendationCounts,
-        gapCauseCounts,
-      },
-      classificationDetails: {
-        hardBlockerCount: noRepair.acceptanceClassification.hardBlockers.length,
-        qualityWarningCount:
-          noRepair.acceptanceClassification.qualityWarnings.length,
-        diagnosticOnlyCount:
-          noRepair.acceptanceClassification.diagnosticOnly.length,
-        sessionShapingCount:
-          noRepair.acceptanceClassification.sessionShaping.length,
-      },
-    },
-  };
-}
-
 export function createWorkoutAuditArtifactOutput(
   request: WorkoutAuditRequest,
   run: WorkoutAuditRun,
@@ -282,20 +157,14 @@ export function createWorkoutAuditArtifactOutput(
     artifactRelativePath?: string;
     v2DebugArtifactFileName?: string;
     v2DebugArtifactRelativePath?: string;
+    v2DebugDetailLevel?: V2DebugDetailLevel;
   },
 ): {
   artifact: WorkoutAuditArtifact;
   serializedArtifact: WorkoutAuditArtifact;
   serialized: string;
   sizeBytes: number;
-  v2DebugArtifact?: {
-    artifact: MesocycleExplainPlannerOnlyNoRepairDebugArtifact;
-    serialized: string;
-    sizeBytes: number;
-    sha256: string;
-    fileName: string;
-    relativePath: string;
-  };
+  v2DebugArtifact?: BuiltV2DebugArtifactOutput;
 } {
   const artifact = buildWorkoutAuditArtifact(request, run, options);
   const parentFileName = options?.artifactFileName;
@@ -312,31 +181,17 @@ export function createWorkoutAuditArtifactOutput(
       sidecarFileName &&
       sidecarRelativePath,
     );
-  const v2DebugPayload = shouldCreateV2DebugArtifact
-    ? buildV2DebugSidecarPayload({
+  const v2DebugArtifact = shouldCreateV2DebugArtifact
+    ? buildV2DebugArtifacts({
         artifact,
         request,
         parentFileName: parentFileName as string,
         parentRelativePath: parentRelativePath as string,
+        indexFileName: sidecarFileName as string,
+        indexRelativePath: sidecarRelativePath as string,
+        detailLevel: options?.v2DebugDetailLevel ?? "compact",
       })
     : undefined;
-  const v2DebugSerialized = v2DebugPayload
-    ? serializeStableJson(v2DebugPayload)
-    : undefined;
-  const v2DebugArtifact =
-    v2DebugPayload &&
-    v2DebugSerialized &&
-    sidecarFileName &&
-    sidecarRelativePath
-      ? {
-          artifact: v2DebugPayload,
-          serialized: v2DebugSerialized,
-          sizeBytes: getSerializedArtifactSizeBytes(v2DebugSerialized),
-          sha256: sha256Hex(v2DebugSerialized),
-          fileName: sidecarFileName,
-          relativePath: sidecarRelativePath,
-        }
-      : undefined;
   const serializedArtifact = compactWorkoutAuditArtifactForSerialization(
     artifact,
     v2DebugArtifact
@@ -346,6 +201,7 @@ export function createWorkoutAuditArtifactOutput(
             relativePath: v2DebugArtifact.relativePath,
             sizeBytes: v2DebugArtifact.sizeBytes,
             sha256: v2DebugArtifact.sha256,
+            detailLevel: v2DebugArtifact.artifact.detailLevel,
           },
         }
       : undefined,

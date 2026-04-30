@@ -2299,10 +2299,23 @@ export function buildV2DebugArtifactSummary(input: {
   filePath: string;
   sizeBytes: number;
   sha256: string;
+  shards?: Array<{
+    id: string;
+    filePath: string;
+    detailLevel: string;
+    sizeBytes: number;
+    sha256: string;
+  }>;
 }): string[] {
   return [
-    `[workout-audit:v2-debug] artifact=${input.filePath}`,
-    `[workout-audit:v2-debug] size_bytes=${input.sizeBytes} sha256=${input.sha256}`,
+    `[workout-audit:v2-debug] index=${input.filePath}`,
+    `[workout-audit:v2-debug] index_size_bytes=${input.sizeBytes} sha256=${input.sha256}`,
+    ...(
+      input.shards?.map(
+        (shard) =>
+          `[workout-audit:v2-debug] shard=${shard.id} detail=${shard.detailLevel} artifact=${shard.filePath} size_bytes=${shard.sizeBytes} sha256=${shard.sha256}`,
+      ) ?? []
+    ),
   ];
 }
 
@@ -2543,7 +2556,7 @@ async function main(input?: {
   const fileName = `${timestamp}-${request.mode}${intentSlug}.json`;
   const outputDir = path.join(process.cwd(), "artifacts", "audits");
   const relativePath = ["artifacts", "audits", fileName].join("/");
-  const v2DebugFileName = `${timestamp}-${request.mode}${intentSlug}-v2-no-repair-debug.json`;
+  const v2DebugFileName = `${timestamp}-${request.mode}${intentSlug}-v2-debug-index.json`;
   const v2DebugRelativePath = ["artifacts", "audits", v2DebugFileName].join("/");
   const endArtifactSerialization = timing.start("artifact_serialization");
   let output!: ReturnType<typeof serializer.createWorkoutAuditArtifactOutput>;
@@ -2575,6 +2588,15 @@ async function main(input?: {
   try {
     if (v2DebugArtifact && v2DebugOutputPath) {
       await writeFile(v2DebugOutputPath, v2DebugArtifact.serialized, "utf8");
+      await Promise.all(
+        v2DebugArtifact.shards.map((shard) =>
+          writeFile(
+            path.join(outputDir, shard.fileName),
+            shard.serialized,
+            "utf8",
+          ),
+        ),
+      );
     }
   } finally {
     endSidecarWrite();
@@ -2659,6 +2681,13 @@ async function main(input?: {
       filePath: v2DebugOutputPath,
       sizeBytes: v2DebugArtifact.sizeBytes,
       sha256: v2DebugArtifact.sha256,
+      shards: v2DebugArtifact.shards.map((shard) => ({
+        id: shard.artifact.id,
+        filePath: path.join(outputDir, shard.fileName),
+        detailLevel: shard.artifact.detailLevel,
+        sizeBytes: shard.sizeBytes,
+        sha256: shard.sha256,
+      })),
     })) {
       console.log(line);
     }

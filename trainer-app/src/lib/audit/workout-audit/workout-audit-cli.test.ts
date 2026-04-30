@@ -236,17 +236,28 @@ describe("audit CLI timing and teardown", () => {
 });
 
 describe("buildV2DebugArtifactSummary", () => {
-  it("prints the sidecar path, size, and hash for CLI readout", () => {
+  it("prints the index and shard paths, sizes, and hashes for CLI readout", () => {
     expect(
       buildV2DebugArtifactSummary({
         filePath:
-          "C:\\repo\\trainer-app\\artifacts\\audits\\parent-v2-no-repair-debug.json",
+          "C:\\repo\\trainer-app\\artifacts\\audits\\parent-v2-debug-index.json",
         sizeBytes: 1234,
         sha256: "a".repeat(64),
+        shards: [
+          {
+            id: "strategy",
+            filePath:
+              "C:\\repo\\trainer-app\\artifacts\\audits\\parent-v2-strategy.json",
+            detailLevel: "compact",
+            sizeBytes: 456,
+            sha256: "b".repeat(64),
+          },
+        ],
       }),
     ).toEqual([
-      "[workout-audit:v2-debug] artifact=C:\\repo\\trainer-app\\artifacts\\audits\\parent-v2-no-repair-debug.json",
-      `[workout-audit:v2-debug] size_bytes=1234 sha256=${"a".repeat(64)}`,
+      "[workout-audit:v2-debug] index=C:\\repo\\trainer-app\\artifacts\\audits\\parent-v2-debug-index.json",
+      `[workout-audit:v2-debug] index_size_bytes=1234 sha256=${"a".repeat(64)}`,
+      `[workout-audit:v2-debug] shard=strategy detail=compact artifact=C:\\repo\\trainer-app\\artifacts\\audits\\parent-v2-strategy.json size_bytes=456 sha256=${"b".repeat(64)}`,
     ]);
   });
 });

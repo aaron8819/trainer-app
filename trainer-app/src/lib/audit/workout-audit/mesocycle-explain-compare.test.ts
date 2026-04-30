@@ -204,6 +204,55 @@ function makeSidecar(input?: {
   };
 }
 
+function makeDebugIndex(input?: {
+  selectionShardPath?: string;
+  exerciseStatus?: string;
+}) {
+  return {
+    kind: "v2_debug_index",
+    plannerOnlyNoRepair: {
+      acceptanceClassification: {
+        basicMesocycleShapeStatus: "pass_with_warnings",
+      },
+      crossWeekProjectionGate: {
+        week1Status: { status: "pass_with_warnings" },
+        accumulationWeeksStatus: {
+          status: "projected_with_limitations",
+        },
+        deloadStatus: {
+          status: "diagnostic_projection_only",
+        },
+        replacementReadinessStatus: "limited",
+        safeToPromoteBehavior: false,
+      },
+    },
+    shards: [
+      {
+        id: "selection-alignment",
+        relativePath:
+          input?.selectionShardPath ?? "v2-selection-alignment.json",
+        hash: "f".repeat(64),
+        bytes: 123,
+        detailLevel: "compact",
+        status: "written",
+      },
+    ],
+  };
+}
+
+function makeDebugShard(input?: { exerciseStatus?: string }) {
+  return {
+    kind: "v2_debug_shard",
+    id: "selection-alignment",
+    detailLevel: "compact",
+    data: {
+      v2ExerciseSelectionPlanDiagnostic: {
+        status: input?.exerciseStatus ?? "projected_with_limitations",
+      },
+    },
+  };
+}
+
 describe("mesocycle-explain artifact compare", () => {
   it("compares core repair counts", async () => {
     const dir = await makeTempDir();
@@ -310,6 +359,65 @@ describe("mesocycle-explain artifact compare", () => {
     expect(metric(summary, "canReplaceRepairedProjection").delta).toBe(
       "false -> true"
     );
+    expect(metric(summary, "v2ExerciseSelectionPlanDiagnosticStatus").delta).toBe(
+      "projected_with_limitations -> ready"
+    );
+  });
+
+  it("auto-detects a linked V2 debug index and reads focused shards", async () => {
+    const dir = await makeTempDir();
+    await writeJson(
+      path.join(dir, "before-v2-selection-alignment.json"),
+      makeDebugShard()
+    );
+    await writeJson(
+      path.join(dir, "after-v2-selection-alignment.json"),
+      makeDebugShard({ exerciseStatus: "ready" })
+    );
+    await writeJson(
+      path.join(dir, "before-v2-debug-index.json"),
+      makeDebugIndex({
+        selectionShardPath: "before-v2-selection-alignment.json",
+      })
+    );
+    await writeJson(
+      path.join(dir, "after-v2-debug-index.json"),
+      makeDebugIndex({
+        selectionShardPath: "after-v2-selection-alignment.json",
+      })
+    );
+    const before = await writeJson(
+      path.join(dir, "before.json"),
+      makeArtifact({
+        sidecar: {
+          relativePath: "before-v2-debug-index.json",
+          sha256: "abc123",
+        },
+      })
+    );
+    const after = await writeJson(
+      path.join(dir, "after.json"),
+      makeArtifact({
+        sidecar: {
+          relativePath: "after-v2-debug-index.json",
+          sha256: "def456",
+        },
+      })
+    );
+
+    const summary = await compareMesocycleExplainArtifacts({
+      beforePath: before,
+      afterPath: after,
+    });
+
+    expect(summary.before.sidecar).toMatchObject({
+      status: "loaded",
+      sha256: "abc123",
+    });
+    expect(metric(summary, "crossWeekWeek1Status").before).toEqual({
+      status: "value",
+      value: "pass_with_warnings",
+    });
     expect(metric(summary, "v2ExerciseSelectionPlanDiagnosticStatus").delta).toBe(
       "projected_with_limitations -> ready"
     );

@@ -85,35 +85,14 @@ export function buildArtifactDiffSummary(
 type JsonRecord = Record<string, unknown>;
 
 export const V2_PLANNER_NO_REPAIR_DEBUG_CONTAINS = [
-  "summary",
-  "acceptanceClassification",
-  "crossWeekProjectionGate",
-  "repairPromotionScoreboard",
-  "v2DeloadProjectionDiagnostic",
-  "v2MesocycleStrategyDiagnostic",
-  "v2MesocyclePlan",
-  "v2SetDistributionIntent",
-  "v2SupportLanePolicy",
-  "v2SupportLaneProjectionDiagnostic",
-  "v2SelectionCapacityPlanDiagnostic",
-  "plannerOwnedAccumulationProjection",
-  "v2ExerciseSelectionPlanDiagnostic",
-  "lowAxialHipExtensionLimitation",
-  "v2TargetVsNoRepairDiff",
-  "slotPlans",
-  "weeklyMuscleTotals",
-  "setAllocationChanges",
-  "weeklyMuscleTotalChanges",
-  "acceptanceChecks",
-  "acceptanceFailures",
-  "qualityWarnings",
-  "diagnosticRows",
-  "ignoredRows",
-  "repairDependenciesDisabled",
-  "comparisonToRepaired",
-  "laneEvidence",
-  "diagnosticCatalogs",
-  "classificationDetails",
+  "v2-debug-index",
+  "v2-strategy",
+  "v2-promotion-readiness",
+  "v2-promotion-diffs",
+  "v2-repair-evidence",
+  "v2-materialization",
+  "v2-cross-week-projection",
+  "v2-selection-alignment",
 ] as const;
 
 type PlannerOnlyNoRepairDebugArtifactLink = Required<
@@ -121,7 +100,8 @@ type PlannerOnlyNoRepairDebugArtifactLink = Required<
     MesocycleExplainPlannerOnlyNoRepairDebugArtifactManifest,
     "fileName" | "relativePath" | "sizeBytes" | "sha256"
   >
->;
+> &
+  Pick<MesocycleExplainPlannerOnlyNoRepairDebugArtifactManifest, "detailLevel">;
 
 type ValueCatalog = {
   ref(value: unknown): string;
@@ -738,9 +718,10 @@ function buildNoRepairDebugArtifactManifest(
   link: PlannerOnlyNoRepairDebugArtifactLink | undefined,
 ): MesocycleExplainPlannerOnlyNoRepairDebugArtifactManifest {
   return {
-    kind: "v2_planner_no_repair_debug",
+    kind: "v2_debug_index",
     created: Boolean(link),
     ...(link ?? { enableWith: "--v2-debug-artifact" as const }),
+    detailLevel: link?.detailLevel ?? "compact",
     contains: [...V2_PLANNER_NO_REPAIR_DEBUG_CONTAINS],
   };
 }

@@ -1560,19 +1560,65 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
 };
 
 export type MesocycleExplainPlannerOnlyNoRepairDebugArtifactManifest = {
-  kind: "v2_planner_no_repair_debug";
+  kind: "v2_debug_index" | "v2_planner_no_repair_debug";
   created: boolean;
   fileName?: string;
   relativePath?: string;
   sizeBytes?: number;
   sha256?: string;
+  detailLevel?: V2DebugDetailLevel;
   enableWith?: "--v2-debug-artifact";
   contains: string[];
 };
 
-export type MesocycleExplainPlannerOnlyNoRepairDebugArtifact = {
+export type V2DebugDetailLevel = "summary" | "compact" | "full";
+
+export type V2DebugShardStatus = "written" | "skipped" | "not_available";
+
+export type V2DebugShardMetadata = {
+  id: string;
+  relativePath: string;
+  hash: string;
+  bytes: number;
+  detailLevel: V2DebugDetailLevel;
+  status: V2DebugShardStatus;
+  budgetBytes?: number;
+  budgetStatus?: "within_budget" | "compacted_to_budget" | "exceeded";
+};
+
+export type V2DebugArtifactBudgets = {
+  mainArtifactBudgetBytes: number;
+  v2IndexBudgetBytes: number;
+  defaultShardBudgetBytes: number;
+  fullDetailShardBudgetBytes: number;
+  perArtifactLimitBytes: number;
+};
+
+export type MesocycleExplainPlannerOnlyNoRepairDebugShard = {
   version: 1;
-  kind: "v2_planner_no_repair_debug";
+  kind: "v2_debug_shard";
+  id: string;
+  generatedAt: string;
+  parent: {
+    fileName: string;
+    relativePath: string;
+    indexFileName: string;
+    indexRelativePath: string;
+    mode: "mesocycle-explain";
+    sourceMesocycleId?: string;
+    retrospectiveMesocycleId?: string;
+    requestFlags: string[];
+  };
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  detailLevel: V2DebugDetailLevel;
+  summary: Record<string, unknown>;
+  data: Record<string, unknown>;
+};
+
+export type MesocycleExplainPlannerOnlyNoRepairDebugIndex = {
+  version: 1;
+  kind: "v2_debug_index";
   generatedAt: string;
   parent: {
     fileName: string;
@@ -1581,66 +1627,18 @@ export type MesocycleExplainPlannerOnlyNoRepairDebugArtifact = {
     sourceMesocycleId?: string;
     retrospectiveMesocycleId?: string;
     requestFlags: string[];
-    parentSha256?: string;
   };
   readOnly: true;
   affectsScoringOrGeneration: false;
-  plannerOnlyNoRepair: Pick<
-    MesocycleExplainPlannerOnlyNoRepair,
-    | "summary"
-    | "acceptanceClassification"
-    | "repairPromotionScoreboard"
-    | "crossWeekProjectionGate"
-    | "v2MesocycleStrategyDiagnostic"
-    | "v2DeloadProjectionDiagnostic"
-    | "v2MesocyclePlan"
-    | "v2SetDistributionIntent"
-    | "v2SupportLanePolicy"
-    | "v2SupportLaneProjectionDiagnostic"
-    | "v2SelectionCapacityPlanDiagnostic"
-    | "plannerOwnedAccumulationProjection"
-    | "v2ExerciseSelectionPlanDiagnostic"
-    | "lowAxialHipExtensionLimitation"
-    | "v2TargetVsNoRepairDiff"
-    | "slotPlans"
-    | "weeklyMuscleTotals"
-    | "setAllocationChanges"
-    | "weeklyMuscleTotalChanges"
-    | "acceptanceChecks"
-    | "acceptanceFailures"
-    | "qualityWarnings"
-    | "diagnosticRows"
-    | "ignoredRows"
-    | "repairDependenciesDisabled"
-    | "comparisonToRepaired"
-  > & {
-    laneEvidence: Array<{
-      slotId: string;
-      laneId: string;
-      currentStatus: string;
-      severity: string;
-      selectedExercises: Array<{
-        name: string;
-        sets: number;
-        matchedClass?: string;
-        role?: string;
-      }>;
-      relevantDiagnostics: string[];
-    }>;
-    diagnosticCatalogs: {
-      laneStatusCounts: Record<string, number>;
-      severityCounts: Record<string, number>;
-      migrationRecommendationCounts: Record<string, number>;
-      gapCauseCounts: Record<string, number>;
-    };
-    classificationDetails: {
-      hardBlockerCount: number;
-      qualityWarningCount: number;
-      diagnosticOnlyCount: number;
-      sessionShapingCount: number;
-    };
-  };
+  detailLevel: V2DebugDetailLevel;
+  budgets: V2DebugArtifactBudgets;
+  summary: Record<string, unknown>;
+  plannerOnlyNoRepair: Record<string, unknown>;
+  shards: V2DebugShardMetadata[];
 };
+
+export type MesocycleExplainPlannerOnlyNoRepairDebugArtifact =
+  MesocycleExplainPlannerOnlyNoRepairDebugIndex;
 
 export type MesocycleExplainPlannerOnlyNoRepairConcentrationSeverity =
   | "acceptance_blocker"

@@ -909,8 +909,9 @@ describe("artifact serialization helpers", () => {
         projectedWeekSummaryCount: 1,
       },
       debugArtifact: {
-        kind: "v2_planner_no_repair_debug",
+        kind: "v2_debug_index",
         created: false,
+        detailLevel: "compact",
         enableWith: "--v2-debug-artifact",
       },
     });
@@ -1453,11 +1454,12 @@ describe("artifact serialization helpers", () => {
       debugArtifact: {
         created: false,
         enableWith: "--v2-debug-artifact",
+        detailLevel: "compact",
         contains: expect.arrayContaining([
-          "v2MesocyclePlan",
-          "v2SetDistributionIntent",
-          "plannerOwnedAccumulationProjection",
-          "v2TargetVsNoRepairDiff",
+          "v2-debug-index",
+          "v2-strategy",
+          "v2-promotion-diffs",
+          "v2-cross-week-projection",
         ]),
       },
     });
@@ -1532,10 +1534,11 @@ describe("artifact serialization helpers", () => {
 
     const compact = compactWorkoutAuditArtifactForSerialization(artifact, {
       plannerOnlyNoRepairDebugArtifact: {
-        fileName: "parent-v2-no-repair-debug.json",
-        relativePath: "artifacts/audits/parent-v2-no-repair-debug.json",
+        fileName: "parent-v2-debug-index.json",
+        relativePath: "artifacts/audits/parent-v2-debug-index.json",
         sizeBytes: 1234,
         sha256: "abc123",
+        detailLevel: "compact",
       },
     });
     const serialized = serializeStableJson(compact);
@@ -1544,17 +1547,18 @@ describe("artifact serialization helpers", () => {
       ?.plannerOnlyNoRepair as unknown as Record<string, unknown>;
 
     expect(noRepair.debugArtifact).toMatchObject({
-      kind: "v2_planner_no_repair_debug",
+      kind: "v2_debug_index",
       created: true,
-      fileName: "parent-v2-no-repair-debug.json",
-      relativePath: "artifacts/audits/parent-v2-no-repair-debug.json",
+      fileName: "parent-v2-debug-index.json",
+      relativePath: "artifacts/audits/parent-v2-debug-index.json",
       sizeBytes: 1234,
       sha256: "abc123",
+      detailLevel: "compact",
       contains: expect.arrayContaining([
-        "v2MesocyclePlan",
-        "v2SetDistributionIntent",
-        "plannerOwnedAccumulationProjection",
-        "v2TargetVsNoRepairDiff",
+        "v2-debug-index",
+        "v2-strategy",
+        "v2-promotion-diffs",
+        "v2-cross-week-projection",
       ]),
     });
     expect(noRepair.debugArtifact).not.toHaveProperty("enableWith");

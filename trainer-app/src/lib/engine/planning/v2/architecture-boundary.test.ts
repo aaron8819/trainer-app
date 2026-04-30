@@ -259,6 +259,14 @@ describe("V2 planner policy module boundary", () => {
         "workout-audit",
         "artifact-serialization.ts",
       ),
+      path.join(
+        process.cwd(),
+        "src",
+        "lib",
+        "audit",
+        "workout-audit",
+        "v2-debug-artifacts.ts",
+      ),
     ];
     const violations = artifactFiles.flatMap((file) => {
       const text = fs.readFileSync(file, "utf8");
@@ -291,6 +299,14 @@ describe("V2 planner policy module boundary", () => {
         "workout-audit",
         "artifact-serialization.ts",
       ),
+      path.join(
+        process.cwd(),
+        "src",
+        "lib",
+        "audit",
+        "workout-audit",
+        "v2-debug-artifacts.ts",
+      ),
     ];
     const violations = artifactFiles.flatMap((file) => {
       const text = fs.readFileSync(file, "utf8");
@@ -322,6 +338,14 @@ describe("V2 planner policy module boundary", () => {
         "workout-audit",
         "artifact-serialization.ts",
       ),
+      path.join(
+        process.cwd(),
+        "src",
+        "lib",
+        "audit",
+        "workout-audit",
+        "v2-debug-artifacts.ts",
+      ),
     ];
     const violations = artifactFiles.flatMap((file) => {
       const text = fs.readFileSync(file, "utf8");
@@ -352,6 +376,14 @@ describe("V2 planner policy module boundary", () => {
         "audit",
         "workout-audit",
         "artifact-serialization.ts",
+      ),
+      path.join(
+        process.cwd(),
+        "src",
+        "lib",
+        "audit",
+        "workout-audit",
+        "v2-debug-artifacts.ts",
       ),
     ];
     const violations = artifactFiles.flatMap((file) => {

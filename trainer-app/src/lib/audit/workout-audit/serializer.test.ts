@@ -6,7 +6,6 @@ import {
   createWorkoutAuditArtifactOutput,
   serializeWorkoutAuditArtifact,
 } from "./serializer";
-import { expectStableArtifactSection } from "./test-helpers/audit-drift-assertions";
 import type { WorkoutAuditRun } from "./types";
 
 const baseRun: WorkoutAuditRun = {
@@ -1680,7 +1679,7 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(output.v2DebugArtifact).toBeUndefined();
   });
 
-  it("returns a linked V2 no-repair debug sidecar only when the explicit sidecar flag is enabled", () => {
+  it("returns a linked V2 no-repair debug index and compact shards only when the explicit flag is enabled", () => {
     const mesocycleExplain = makeMesocycleExplainNoRepairPayload();
     mesocycleExplain!.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.slotDiffs[0]?.laneDiffs.push(
       {
@@ -1746,36 +1745,29 @@ describe("buildWorkoutAuditArtifact", () => {
       {
         artifactFileName: "parent.json",
         artifactRelativePath: "artifacts/audits/parent.json",
-        v2DebugArtifactFileName: "parent-v2-no-repair-debug.json",
+        v2DebugArtifactFileName: "parent-v2-debug-index.json",
         v2DebugArtifactRelativePath:
-          "artifacts/audits/parent-v2-no-repair-debug.json",
+          "artifacts/audits/parent-v2-debug-index.json",
       },
     );
     const mainNoRepair = output.serializedArtifact.mesocycleExplain
       ?.plannerOnlyNoRepair as unknown as Record<string, unknown>;
-
-    expectStableArtifactSection(
-      {
-        plannerOnlyNoRepair:
-          output.artifact.mesocycleExplain?.plannerOnlyNoRepair,
-      },
-      output.v2DebugArtifact?.artifact,
-      "plannerOnlyNoRepair.repairPromotionScoreboard",
-    );
     expect(output.v2DebugArtifact).toMatchObject({
-      fileName: "parent-v2-no-repair-debug.json",
-      relativePath: "artifacts/audits/parent-v2-no-repair-debug.json",
+      fileName: "parent-v2-debug-index.json",
+      relativePath: "artifacts/audits/parent-v2-debug-index.json",
       sizeBytes: expect.any(Number),
       sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
     expect(mainNoRepair.debugArtifact).toMatchObject({
-      kind: "v2_planner_no_repair_debug",
+      kind: "v2_debug_index",
       created: true,
-      fileName: "parent-v2-no-repair-debug.json",
-      relativePath: "artifacts/audits/parent-v2-no-repair-debug.json",
+      fileName: "parent-v2-debug-index.json",
+      relativePath: "artifacts/audits/parent-v2-debug-index.json",
       sizeBytes: output.v2DebugArtifact?.sizeBytes,
       sha256: output.v2DebugArtifact?.sha256,
+      detailLevel: "compact",
     });
+    expect(mainNoRepair.debugArtifact).toHaveProperty("contains");
     expect(mainNoRepair.v2Summary).toMatchObject({
       repairPromotionScoreboard: {
         rawRepairEvidence: {
@@ -1838,207 +1830,250 @@ describe("buildWorkoutAuditArtifact", () => {
       ],
     });
     expect(output.v2DebugArtifact?.artifact).toMatchObject({
+      kind: "v2_debug_index",
       readOnly: true,
       affectsScoringOrGeneration: false,
+      detailLevel: "compact",
+      budgets: {
+        mainArtifactBudgetBytes: 1_048_576,
+        v2IndexBudgetBytes: 131_072,
+        defaultShardBudgetBytes: 524_288,
+        fullDetailShardBudgetBytes: 1_048_576,
+        perArtifactLimitBytes: 1_048_576,
+      },
+      summary: {
+        writtenShardCount: 7,
+        skippedShardCount: 0,
+      },
+      shards: expect.arrayContaining([
+        expect.objectContaining({
+          id: "strategy",
+          relativePath: "artifacts/audits/parent-v2-strategy.json",
+          hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+          bytes: expect.any(Number),
+          detailLevel: "compact",
+          status: "written",
+        }),
+        expect.objectContaining({
+          id: "promotion-readiness",
+          relativePath:
+            "artifacts/audits/parent-v2-promotion-readiness.json",
+          hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+          bytes: expect.any(Number),
+          detailLevel: "compact",
+          status: "written",
+        }),
+        expect.objectContaining({
+          id: "promotion-diffs",
+          relativePath: "artifacts/audits/parent-v2-promotion-diffs.json",
+          status: "written",
+        }),
+      ]),
       plannerOnlyNoRepair: {
         crossWeekProjectionGate: {
           readOnly: true,
           affectsScoringOrGeneration: false,
           accumulationWeeksStatus: {
-            weeks: expect.arrayContaining([
-              expect.objectContaining({
-                week: 2,
-                safeForBehaviorPromotion: false,
-              }),
-            ]),
+            status: "projected_with_limitations",
+            weekCount: 3,
           },
           deloadStatus: {
-            safeForBehaviorPromotion: false,
+            status: "diagnostic_projection_only",
           },
           safeToPromoteBehavior: false,
         },
-        repairPromotionScoreboard: {
-          promotionCandidates: [
-            expect.objectContaining({
-              slotId: "upper_b",
-              muscle: "Chest",
-              exerciseName: "Incline DB Bench",
-            }),
-          ],
-          rawSuspiciousRows: [
-            expect.objectContaining({
-              exerciseName: "Cable Pullover",
-            }),
-          ],
-          doNotPromoteRows: expect.arrayContaining([
-            expect.objectContaining({
-              reason: "raw_suspicious_do_not_promote",
-            }),
-            expect.objectContaining({
-              reason: "materiality_none_or_diagnostic_denominator_artifact",
-            }),
-          ]),
+        v2ExerciseSelectionPlanDiagnostic: {
+          status: "projected_with_limitations",
         },
+        v2DeloadProjectionDiagnostic: {
+          status: "projected_with_limitations",
+        },
+      },
+    });
+
+    const findShard = (id: string) => {
+      const shard = output.v2DebugArtifact?.shards.find(
+        (entry) => entry.artifact.id === id,
+      );
+      if (!shard) {
+        throw new Error(`missing shard ${id}`);
+      }
+      return shard;
+    };
+    const strategyShard = findShard("strategy");
+    const promotionReadinessShard = findShard("promotion-readiness");
+    const promotionDiffsShard = findShard("promotion-diffs");
+    const repairEvidenceShard = findShard("repair-evidence");
+    const crossWeekShard = findShard("cross-week-projection");
+    const selectionShard = findShard("selection-alignment");
+
+    expect(strategyShard.artifact).toMatchObject({
+      kind: "v2_debug_shard",
+      detailLevel: "compact",
+      data: {
         v2MesocycleStrategyDiagnostic: expect.objectContaining({
-          readOnly: true,
-          affectsScoringOrGeneration: false,
           status: "available_with_limitations",
           demandDerivationPlan: expect.objectContaining({
             currentDemandSource: "fixed_skeleton_lanes",
           }),
         }),
-        v2MesocyclePlan: expect.any(Object),
-        v2SetDistributionIntent: expect.any(Object),
-        v2SupportLanePolicy: expect.objectContaining({
-          readOnly: true,
-          affectsScoringOrGeneration: false,
-          summary: expect.objectContaining({
-            policyCount: 4,
-          }),
-        }),
-        v2SupportLaneProjectionDiagnostic: expect.objectContaining({
-          readOnly: true,
-          affectsScoringOrGeneration: false,
-          safeForBehaviorPromotion: false,
-          muscles: expect.arrayContaining([
-            expect.objectContaining({
-              muscle: "Triceps",
-              optionalActivationStatus: "triggered_diagnostic_only",
-            }),
-          ]),
-        }),
-        v2SelectionCapacityPlanDiagnostic: expect.objectContaining({
-          readOnly: true,
-          affectsScoringOrGeneration: false,
-          safeForBehaviorPromotion: false,
-          summary: expect.objectContaining({
-            capacityPressureCount: 1,
-          }),
-          weeks: expect.arrayContaining([
-            expect.objectContaining({
-              week: 1,
-              slots: expect.arrayContaining([
-                expect.objectContaining({
-                  slotId: "upper_a",
-                  lanes: expect.arrayContaining([
-                    expect.objectContaining({
-                      laneId: "row_anchor",
-                      classification: "capacity_pressure",
-                    }),
-                  ]),
-                }),
-              ]),
-            }),
-          ]),
-        }),
-        plannerOwnedAccumulationProjection: expect.objectContaining({
-          readOnly: true,
-          affectsScoringOrGeneration: false,
-          weeks: expect.arrayContaining([
-            expect.objectContaining({
-              week: 2,
-              projectionStatus: "planner_owned_read_only",
-              safeForBehaviorPromotion: false,
-            }),
-          ]),
-        }),
-        v2ExerciseSelectionPlanDiagnostic: expect.objectContaining({
-          readOnly: true,
-          affectsScoringOrGeneration: false,
-          identityBasis: "week_1_selected_identities",
-          projectionBasis:
-            "planner_owned_accumulation_projection_plus_week_1_identity_continuity",
-          safeForBehaviorPromotion: false,
-          weeks: expect.arrayContaining([
-            expect.objectContaining({
-              week: 1,
-              slots: expect.arrayContaining([
-                expect.objectContaining({
-                  slotId: "upper_a",
-                  lanes: expect.arrayContaining([
-                    expect.objectContaining({
-                      laneId: "chest_anchor",
-                      identityStatus: "missing_candidate",
-                      inventoryStatus: "not_evaluated",
-                      cleanAlternatives: [],
-                    }),
-                  ]),
-                }),
-              ]),
-            }),
-          ]),
-        }),
-        lowAxialHipExtensionLimitation: expect.objectContaining({
-          readOnly: true,
-          affectsScoringOrGeneration: false,
-          status: "acceptable_with_limitations",
-          trueHingeExposureCount: 0,
-          limitationText: expect.stringContaining(
-            "not equivalent to hinge_compound",
-          ),
-        }),
-        v2DeloadProjectionDiagnostic: expect.objectContaining({
-          readOnly: true,
-          affectsScoringOrGeneration: false,
-          identityBasis: "week_1_selected_identities",
-          projectionBasis: "v2_deload_transform_read_only",
-          status: "projected_with_limitations",
-          slots: expect.arrayContaining([
-            expect.objectContaining({
-              slotId: "upper_a",
-              lanes: expect.arrayContaining([
-                expect.objectContaining({
-                  laneId: "chest_anchor",
-                  exercises: expect.arrayContaining([
-                    expect.objectContaining({
-                      preservedIdentity: expect.objectContaining({
-                        exerciseName: "Bench Press",
-                        sourceWeek: 1,
-                      }),
-                      week1Sets: 4,
-                      deloadProjectedSets: 2,
-                      setReductionPercent: 50,
-                      targetRir: "4-5",
-                      introducesNewMovement: false,
-                    }),
-                  ]),
-                }),
-              ]),
-            }),
-          ]),
-        }),
-        v2TargetVsNoRepairDiff: expect.any(Object),
-        laneEvidence: expect.arrayContaining([
-          expect.objectContaining({
-            slotId: "upper_a",
-            laneId: "chest_anchor",
-          }),
-        ]),
       },
     });
-    expect(
-      output.v2DebugArtifact?.artifact.plannerOnlyNoRepair
-        .v2TargetVsNoRepairDiff.slotDiffs[0]?.laneDiffs,
-    ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          laneId: "biceps",
-          currentEvidence: expect.objectContaining({
-            selectedExercises: [
-              expect.objectContaining({
-                name: "Barbell Curl",
-                matchedClass: "biceps_curl",
-              }),
-            ],
-            relevantDiagnostics: expect.arrayContaining([
-              "target_delivery:below_min",
-              "concentration:pulling_collateral",
+    expect(promotionReadinessShard.artifact.data).toMatchObject({
+      strategyHypothesisPromotionReadiness: expect.objectContaining({
+        status: "not_ready",
+        globalBlockers: expect.arrayContaining([
+          "readiness_not_consumed_by_mesocycle_demand_or_materializer",
+        ]),
+      }),
+    });
+    expect(promotionDiffsShard.artifact.data).toMatchObject({
+      v2TargetVsNoRepairDiff: {
+        summary: expect.objectContaining({
+          migrationCandidateCount: 1,
+        }),
+        replacementReadinessImpact: expect.objectContaining({
+          nextBestMigrationSlice: "upper_a:chest_anchor",
+        }),
+        diagnosticCatalogs: expect.objectContaining({
+          laneCount: 2,
+          laneStatusCounts: expect.objectContaining({
+            missing: 1,
+            partial: 1,
+          }),
+        }),
+      },
+    });
+    expect(repairEvidenceShard.artifact.data).toMatchObject({
+      repairPromotionScoreboard: expect.objectContaining({
+        promotionCandidatesTop: [
+          expect.objectContaining({
+            slotId: "upper_b",
+            muscle: "Chest",
+            evidenceRef: "e1",
+          }),
+        ],
+        evidenceCatalogs: expect.objectContaining({
+          promotionCandidates: expect.objectContaining({
+            e1: expect.arrayContaining([
+              "shadowAllocationBasis:slot_owned_muscle_before_selection",
             ]),
           }),
         }),
-      ]),
+      }),
+    });
+    expect(crossWeekShard.artifact.data).toMatchObject({
+      crossWeekProjectionGate: {
+        accumulationWeeksStatus: expect.objectContaining({
+          status: "projected_with_limitations",
+          weekCount: 3,
+        }),
+        deloadStatus: expect.objectContaining({
+          status: "diagnostic_projection_only",
+        }),
+      },
+      plannerOwnedAccumulationProjection: {
+        status: "available",
+        weekCount: 3,
+      },
+    });
+    expect(selectionShard.artifact.data).toMatchObject({
+      v2ExerciseSelectionPlanDiagnostic: expect.objectContaining({
+        status: "projected_with_limitations",
+        summary: expect.objectContaining({
+          missingCandidateCount: 1,
+        }),
+      }),
+      v2SelectionCapacityPlanDiagnostic: expect.objectContaining({
+        summary: expect.objectContaining({
+          capacityPressureCount: 1,
+        }),
+      }),
+    });
+    expect(promotionDiffsShard.serialized).not.toContain(
+      "concentration:pulling_collateral",
     );
+    expect(strategyShard.sizeBytes).toBeLessThan(524_288);
+    expect(promotionReadinessShard.sizeBytes).toBeLessThan(524_288);
     expect(output.sizeBytes).toBeLessThan(1_048_576);
+  });
+
+  it("keeps full V2 debug detail behind an explicit internal detail level", () => {
+    const mesocycleExplain = makeMesocycleExplainNoRepairPayload();
+    mesocycleExplain!.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.slotDiffs[0]?.laneDiffs.push(
+      {
+        laneId: "biceps",
+        targetRole: "accessory",
+        targetPrimaryMuscles: ["Biceps"],
+        targetExerciseClasses: ["biceps_isolation"],
+        targetSets: { min: 2, preferred: 3, max: 3 },
+        currentStatus: "partial",
+        currentEvidence: {
+          selectedExercises: [
+            {
+              name: "Barbell Curl",
+              sets: 2,
+              matchedClass: "biceps_curl",
+              role: "accessory",
+            },
+          ],
+          relevantDiagnostics: [
+            "target_delivery:below_min",
+            "concentration:pulling_collateral",
+          ],
+        },
+        gapCause: "set_distribution_gap",
+        migrationRecommendation: "needs_set_distribution_policy",
+        severity: "quality_warning",
+      },
+    );
+
+    const output = createWorkoutAuditArtifactOutput(
+      {
+        mode: "mesocycle-explain",
+        userId: "user-1",
+        ownerEmail: "owner@test.local",
+        plannerOnlyNoRepair: true,
+        compareRepaired: true,
+        v2DebugArtifact: true,
+      },
+      {
+        ...baseRun,
+        context: {
+          mode: "mesocycle-explain",
+          requestedMode: "mesocycle-explain",
+          userId: "user-1",
+          ownerEmail: "owner@test.local",
+          plannerDiagnosticsMode: "standard",
+          mesocycleExplain: {
+            plannerOnlyNoRepair: {
+              enabled: true,
+              compareRepaired: true,
+              v2DebugArtifact: true,
+            },
+          },
+        },
+        generationResult: undefined,
+        mesocycleExplain,
+      },
+      {
+        artifactFileName: "parent.json",
+        artifactRelativePath: "artifacts/audits/parent.json",
+        v2DebugArtifactFileName: "parent-v2-debug-index.json",
+        v2DebugArtifactRelativePath:
+          "artifacts/audits/parent-v2-debug-index.json",
+        v2DebugDetailLevel: "full",
+      },
+    );
+    const promotionDiffsShard = output.v2DebugArtifact?.shards.find(
+      (entry) => entry.artifact.id === "promotion-diffs",
+    );
+
+    expect(output.v2DebugArtifact?.artifact.detailLevel).toBe("full");
+    expect(promotionDiffsShard?.artifact.detailLevel).toBe("full");
+    expect(
+      JSON.stringify(promotionDiffsShard?.artifact.data),
+    ).toContain("concentration:pulling_collateral");
   });
 });
 

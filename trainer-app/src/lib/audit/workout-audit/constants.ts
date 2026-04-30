@@ -23,6 +23,12 @@ export const SEQUENCING_AUDIT_ARTIFACT_VERSION = 1 as const;
 export const ACCOUNTING_AUDIT_ARTIFACT_VERSION = 1 as const;
 
 export const WORKOUT_AUDIT_SIZE_LIMIT_BYTES = 1024 * 1024;
+export const WORKOUT_AUDIT_MAIN_ARTIFACT_BUDGET_BYTES =
+  WORKOUT_AUDIT_SIZE_LIMIT_BYTES;
+export const V2_DEBUG_INDEX_BUDGET_BYTES = 128 * 1024;
+export const V2_DEBUG_DEFAULT_SHARD_BUDGET_BYTES = 512 * 1024;
+export const V2_DEBUG_FULL_DETAIL_SHARD_BUDGET_BYTES =
+  WORKOUT_AUDIT_SIZE_LIMIT_BYTES;
 
 export const AUDIT_RECONSTRUCTION_GUARDRAIL =
   "[audit-guardrail:do-not-reconstruct] Do not reconstruct generated-layer truth from saved workout state; treat saved-only coverage as saved-state semantics only.";

@@ -614,6 +614,96 @@ async function readJsonArtifact(filePath: string): Promise<LoadedArtifact> {
   }
 }
 
+function mergeShardDataIntoNoRepair(
+  noRepair: JsonRecord,
+  data: JsonRecord,
+): void {
+  const directKeys = [
+    "crossWeekProjectionGate",
+    "plannerOwnedAccumulationProjection",
+    "repairPromotionScoreboard",
+    "v2DeloadProjectionDiagnostic",
+    "v2ExerciseSelectionPlanDiagnostic",
+    "v2MesocyclePlan",
+    "v2MesocycleStrategyDiagnostic",
+    "v2SelectionCapacityPlanDiagnostic",
+    "v2SetDistributionIntent",
+    "v2SupportLanePolicy",
+    "v2SupportLaneProjectionDiagnostic",
+    "v2TargetVsNoRepairDiff",
+    "lowAxialHipExtensionLimitation",
+  ];
+
+  for (const key of directKeys) {
+    if (key in data) {
+      noRepair[key] = data[key];
+    }
+  }
+
+  if ("strategyHypothesisPromotionReadiness" in data) {
+    const existingStrategy =
+      asRecord(noRepair.v2MesocycleStrategyDiagnostic) ?? {};
+    noRepair.v2MesocycleStrategyDiagnostic = {
+      ...existingStrategy,
+      strategyHypothesisPromotionReadiness:
+        data.strategyHypothesisPromotionReadiness,
+    };
+  }
+}
+
+async function loadV2DebugIndexAsSidecar(input: {
+  index: JsonRecord;
+  artifactPath: string;
+}): Promise<{ json: JsonRecord; warning?: string }> {
+  const noRepair = {
+    ...(asRecord(input.index.plannerOnlyNoRepair) ?? {}),
+  };
+  const missingShards: string[] = [];
+
+  for (const shard of asRecordArray(input.index.shards)) {
+    if (shard.status !== "written") {
+      continue;
+    }
+    const relativePath = shard.relativePath;
+    if (typeof relativePath !== "string" || relativePath.length === 0) {
+      continue;
+    }
+
+    const candidatePaths = resolveSidecarCandidatePaths(
+      input.artifactPath,
+      relativePath,
+    );
+    let existingPath: string | undefined;
+    for (const candidate of candidatePaths) {
+      if (await pathExists(candidate)) {
+        existingPath = candidate;
+        break;
+      }
+    }
+    if (!existingPath) {
+      missingShards.push(relativePath);
+      continue;
+    }
+
+    const loadedShard = await readJsonArtifact(existingPath);
+    const shardData = asRecord(loadedShard.json.data);
+    if (shardData) {
+      mergeShardDataIntoNoRepair(noRepair, shardData);
+    }
+  }
+
+  return {
+    json: {
+      ...input.index,
+      plannerOnlyNoRepair: noRepair,
+    },
+    warning:
+      missingShards.length > 0
+        ? `Missing linked V2 debug shard(s) for ${input.artifactPath}: ${missingShards.join(", ")}`
+        : undefined,
+  };
+}
+
 async function loadLinkedSidecar(input: {
   artifact: JsonRecord;
   artifactPath: string;
@@ -656,6 +746,14 @@ async function loadLinkedSidecar(input: {
   }
 
   const loaded = await readJsonArtifact(existingPath);
+  const loadedJson =
+    loaded.json.kind === "v2_debug_index"
+      ? await loadV2DebugIndexAsSidecar({
+          index: loaded.json,
+          artifactPath: input.artifactPath,
+        })
+      : { json: loaded.json, warning: undefined };
+
   return {
     status: "loaded",
     path: existingPath,
@@ -664,7 +762,8 @@ async function loadLinkedSidecar(input: {
       linkedSha256
         ? linkedSha256
         : createHash("sha256").update(loaded.raw, "utf8").digest("hex"),
-    json: loaded.json,
+    json: loadedJson.json,
+    warning: loadedJson.warning,
   };
 }
 

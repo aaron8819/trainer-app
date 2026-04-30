@@ -1,6 +1,10 @@
 import type {
+  V2BlockStrategyImplication,
+  V2ExerciseResponseSignalType,
   V2MesocycleStrategyDiagnostic,
+  V2MesocycleStrategyEvidenceStatus,
   V2MesocycleStrategyInput,
+  V2MesocycleStrategyConfidence,
   V2MesocycleStrategyInputGroup,
 } from "./types";
 
@@ -19,14 +23,95 @@ const STRATEGY_EVIDENCE_CATEGORIES = [
   "adherence",
   "performed_volume",
   "performance_signals",
+  "block_response",
+  "exercise_response",
+  "fatigue_distribution",
   "readiness",
   "fatigue_flags",
   "pain_or_tolerance",
   "historical_adherence_flags",
 ] as const;
 
+const BLOCK_STRATEGY_IMPLICATIONS: V2BlockStrategyImplication[] = [
+  "protect_lagging_muscles_earlier",
+  "cap_late_block_volume",
+  "reduce_axial_or_overlap_fatigue",
+  "preserve_successful_progression",
+  "improve_deload_execution",
+  "unknown",
+];
+
+const EXERCISE_RESPONSE_SIGNAL_TYPES: V2ExerciseResponseSignalType[] = [
+  "progressed",
+  "stalled",
+  "regressed",
+  "skipped_often",
+  "swapped_out",
+  "pain_or_tolerance_issue",
+  "high_fatigue_cost",
+  "low_confidence",
+  "unknown",
+];
+
+const STRATEGY_CONFIDENCE_LEVELS: V2MesocycleStrategyConfidence[] = [
+  "low",
+  "medium",
+  "high",
+];
+
 function unique(values: string[]): string[] {
   return Array.from(new Set(values));
+}
+
+function emptyCounts<T extends string>(keys: readonly T[]): Record<T, number> {
+  return Object.fromEntries(keys.map((key) => [key, 0])) as Record<T, number>;
+}
+
+function countValues<T extends string>(
+  keys: readonly T[],
+  values: readonly T[],
+): Record<T, number> {
+  const counts = emptyCounts(keys);
+  for (const value of values) {
+    counts[value] += 1;
+  }
+  return counts;
+}
+
+function countStrings(values: string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function repeatedExamples(values: string[], minimumCount = 2): string[] {
+  return Array.from(countStrings(values).entries())
+    .filter(([, count]) => count >= minimumCount)
+    .sort(
+      ([leftName, leftCount], [rightName, rightCount]) =>
+        rightCount - leftCount || leftName.localeCompare(rightName),
+    )
+    .slice(0, 8)
+    .map(([value]) => value);
+}
+
+function hasBlockResponseEvidence(
+  signal: V2MesocycleStrategyInput["blockResponseSignals"][number],
+): boolean {
+  return (
+    signal.strategyImplications.some((implication) => implication !== "unknown") ||
+    (signal.fatigueDistribution.evidence.length ?? 0) > 0 ||
+    (signal.muscleDistribution.recurringUnderHitMuscles?.length ?? 0) > 0 ||
+    (signal.muscleDistribution.recurringOverConcentratedMuscles?.length ?? 0) > 0
+  );
+}
+
+function hasExerciseResponseEvidence(
+  signal: V2MesocycleStrategyInput["exerciseResponseSignals"][number],
+): boolean {
+  return signal.signal !== "unknown" && signal.signal !== "low_confidence";
 }
 
 function hasUserProfileEvidence(input: V2MesocycleStrategyInput): boolean {
@@ -95,6 +180,17 @@ function collectEvidenceCategories(
         ? "performance_signals"
         : "",
     ]),
+    strategyInput.blockResponseSignals.some(hasBlockResponseEvidence)
+      ? "block_response"
+      : "",
+    strategyInput.exerciseResponseSignals.some(hasExerciseResponseEvidence)
+      ? "exercise_response"
+      : "",
+    strategyInput.blockResponseSignals.some(
+      (signal) => signal.fatigueDistribution.evidence.length > 0,
+    )
+      ? "fatigue_distribution"
+      : "",
     strategyInput.readinessAndRecoverySignals.available.length > 0
       ? "readiness"
       : "",
@@ -124,6 +220,8 @@ function summarizeStrategyInput(
       historicalMesocycleCount: 0,
       historicalSourcePlanners: [],
       historicalSourcePlannerCounts: buildHistoricalSourcePlannerCounts(undefined),
+      blockResponseSignalCount: 0,
+      exerciseResponseSignalCount: 0,
       evidenceCategoriesAvailable: [],
       evidenceCategoriesMissing: [...STRATEGY_EVIDENCE_CATEGORIES],
       performedHistoryEvidenceLoaded: false,
@@ -163,7 +261,9 @@ function summarizeStrategyInput(
       Boolean(mesocycle.adherenceSummary) ||
       (mesocycle.performedVolumeSummary?.length ?? 0) > 0 ||
       (mesocycle.performanceSignals?.length ?? 0) > 0,
-  );
+  ) ||
+    strategyInput.blockResponseSignals.some(hasBlockResponseEvidence) ||
+    strategyInput.exerciseResponseSignals.some(hasExerciseResponseEvidence);
   const evidenceCategoriesAvailable = collectEvidenceCategories(strategyInput);
   const evidenceCategoriesMissing = STRATEGY_EVIDENCE_CATEGORIES.filter(
     (category) => !evidenceCategoriesAvailable.includes(category),
@@ -185,6 +285,8 @@ function summarizeStrategyInput(
     historicalSourcePlanners,
     historicalSourcePlannerCounts:
       buildHistoricalSourcePlannerCounts(strategyInput),
+    blockResponseSignalCount: strategyInput.blockResponseSignals.length,
+    exerciseResponseSignalCount: strategyInput.exerciseResponseSignals.length,
     evidenceCategoriesAvailable,
     evidenceCategoriesMissing,
     performedHistoryEvidenceLoaded: hasHistoricalResponseEvidence,
@@ -243,6 +345,8 @@ function buildPerformedHistorySignals(
   summary: V2MesocycleStrategyDiagnostic["strategyInputSummary"],
 ): V2MesocycleStrategyDiagnostic["performedHistorySignals"] {
   const hasHistoricalInput = summary.historicalMesocycleCount > 0;
+  const hasBlockResponse = summary.blockResponseSignalCount > 0;
+  const hasExerciseResponse = summary.exerciseResponseSignalCount > 0;
   return {
     available: unique([
       "performed_workouts_and_logged_sets_exist_in_runtime_history",
@@ -257,6 +361,14 @@ function buildPerformedHistorySignals(
       ...(summary.performedHistoryEvidenceLoaded
         ? ["strategy_input:performed_history_evidence_loaded"]
         : []),
+      ...(hasBlockResponse
+        ? [`strategy_input:block_response_signals:${summary.blockResponseSignalCount}`]
+        : []),
+      ...(hasExerciseResponse
+        ? [
+            `strategy_input:exercise_response_signals:${summary.exerciseResponseSignalCount}`,
+          ]
+        : []),
       ...(summary.prescribedPlanShapeExcludedFromStrategyPolicy
         ? ["historical_prescribed_plan_shape_excluded_from_strategy_policy"]
         : []),
@@ -268,8 +380,14 @@ function buildPerformedHistorySignals(
       ...(summary.performedHistoryEvidenceLoaded
         ? []
         : ["strategy_ready_performed_history_evidence_not_loaded"]),
-      "muscle_level_response_trends_are_not_strategy_normalized",
-      "exercise_staleness_tolerance_sfr_and_pain_history_are_not_strategy_ranked",
+      ...(hasBlockResponse
+        ? []
+        : ["muscle_level_response_trends_are_not_strategy_normalized"]),
+      ...(hasExerciseResponse
+        ? []
+        : [
+            "exercise_staleness_tolerance_sfr_and_pain_history_are_not_strategy_ranked",
+          ]),
       "post_mesocycle_learning_loop_is_not_yet_v2_strategy_owner",
     ]),
     candidateFutureSignals: [
@@ -280,6 +398,187 @@ function buildPerformedHistorySignals(
       "exercise_staleness_and_swap_frequency",
       "session_duration_pressure",
     ],
+  };
+}
+
+function resolveEvidenceStatus(input: {
+  availableCount: number;
+  lowConfidenceCount: number;
+  limitationCount: number;
+}): V2MesocycleStrategyEvidenceStatus {
+  if (input.availableCount <= 0) {
+    return "not_available";
+  }
+  return input.lowConfidenceCount > 0 || input.limitationCount > 0
+    ? "available_with_limitations"
+    : "available";
+}
+
+function buildResponseEvidenceSummary(
+  strategyInput: V2MesocycleStrategyInput | undefined,
+  summary: V2MesocycleStrategyDiagnostic["strategyInputSummary"],
+): V2MesocycleStrategyDiagnostic["responseEvidenceSummary"] {
+  const blockSignals = strategyInput?.blockResponseSignals ?? [];
+  const exerciseSignals = strategyInput?.exerciseResponseSignals ?? [];
+  const implicationCounts = countValues(
+    BLOCK_STRATEGY_IMPLICATIONS,
+    blockSignals.flatMap((signal) => signal.strategyImplications),
+  );
+  const exerciseSignalsByType = countValues(
+    EXERCISE_RESPONSE_SIGNAL_TYPES,
+    exerciseSignals.map((signal) => signal.signal),
+  );
+  const confidenceDistribution = countValues(STRATEGY_CONFIDENCE_LEVELS, [
+    ...blockSignals.map((signal) => signal.confidence),
+    ...exerciseSignals.map((signal) => signal.confidence),
+  ]);
+  const recurringUnderHitMuscleExamples = repeatedExamples(
+    blockSignals.flatMap(
+      (signal) => signal.muscleDistribution.recurringUnderHitMuscles ?? [],
+    ),
+  );
+  const recurringOverConcentrationExamples = repeatedExamples(
+    blockSignals.flatMap(
+      (signal) =>
+        signal.muscleDistribution.recurringOverConcentratedMuscles ?? [],
+    ),
+  );
+
+  return {
+    blockResponseSignalCount: blockSignals.length,
+    strategyImplicationCounts: implicationCounts,
+    recurringUnderHitMuscleExamples,
+    recurringOverConcentrationExamples,
+    exerciseResponseSignalCount: exerciseSignals.length,
+    exerciseSignalsByType,
+    confidenceDistribution,
+    evidenceLimitations: summary.evidenceLimitations,
+    usableForFutureContinuityVariation: exerciseSignals.some(
+      (signal) =>
+        signal.signal !== "unknown" &&
+        signal.signal !== "low_confidence" &&
+        signal.confidence !== "low",
+    ),
+    usableForFutureMaterializerRanking: exerciseSignals.some(
+      (signal) =>
+        [
+          "progressed",
+          "stalled",
+          "regressed",
+          "skipped_often",
+          "swapped_out",
+          "pain_or_tolerance_issue",
+          "high_fatigue_cost",
+        ].includes(signal.signal) && signal.confidence !== "low",
+    ),
+    usableForFutureVolumeFatigueStrategy: blockSignals.some((signal) =>
+      signal.strategyImplications.some((implication) => implication !== "unknown"),
+    ),
+  };
+}
+
+function buildContinuityVariationEvidence(
+  strategyInput: V2MesocycleStrategyInput | undefined,
+): V2MesocycleStrategyDiagnostic["continuityVariationEvidence"] {
+  const exerciseSignals = strategyInput?.exerciseResponseSignals ?? [];
+  const keepCandidateCount = exerciseSignals.filter(
+    (signal) => signal.signal === "progressed" && signal.confidence !== "low",
+  ).length;
+  const rotateCandidateCount = exerciseSignals.filter((signal) =>
+    ["stalled", "regressed", "skipped_often", "swapped_out"].includes(
+      signal.signal,
+    ),
+  ).length;
+  const avoidCandidateCount = exerciseSignals.filter((signal) =>
+    ["pain_or_tolerance_issue", "high_fatigue_cost"].includes(signal.signal),
+  ).length;
+  const lowConfidenceCount = exerciseSignals.filter(
+    (signal) =>
+      signal.confidence === "low" ||
+      signal.signal === "low_confidence" ||
+      signal.signal === "unknown",
+  ).length;
+  const limitations = unique([
+    "continuity_variation_evidence_is_read_only",
+    "continuity_variation_evidence_not_consumed_by_selection_or_materializer",
+    exerciseSignals.some((signal) => signal.signal === "swapped_out")
+      ? null
+      : "swapped_out_only_available_when_explicitly_detectable",
+    exerciseSignals.some((signal) => signal.signal === "pain_or_tolerance_issue")
+      ? null
+      : "pain_or_tolerance_requires_explicit_evidence",
+  ].filter(Boolean) as string[]);
+
+  return {
+    status: resolveEvidenceStatus({
+      availableCount:
+        keepCandidateCount + rotateCandidateCount + avoidCandidateCount,
+      lowConfidenceCount,
+      limitationCount: limitations.length,
+    }),
+    keepCandidateCount,
+    rotateCandidateCount,
+    avoidCandidateCount,
+    lowConfidenceCount,
+    limitations,
+  };
+}
+
+function buildVolumeFatigueStrategyEvidence(
+  strategyInput: V2MesocycleStrategyInput | undefined,
+): V2MesocycleStrategyDiagnostic["volumeFatigueStrategyEvidence"] {
+  const blockSignals = strategyInput?.blockResponseSignals ?? [];
+  const protectLaggingMuscleSignals = repeatedExamples(
+    blockSignals.flatMap(
+      (signal) => signal.muscleDistribution.recurringUnderHitMuscles ?? [],
+    ),
+  );
+  const overConcentrationSignals = repeatedExamples(
+    blockSignals.flatMap(
+      (signal) =>
+        signal.muscleDistribution.recurringOverConcentratedMuscles ?? [],
+    ),
+  );
+  const lateBlockFatigueSignals = blockSignals.flatMap((signal) =>
+    signal.adherence.skippedSetTrend === "rising" ||
+    signal.strategyImplications.includes("cap_late_block_volume")
+      ? [`${signal.mesocycleId}:late_block_skipped_sets_rising`]
+      : [],
+  );
+  const deloadExecutionSignals = blockSignals.flatMap((signal) =>
+    signal.effortProgression.deloadExecuted === false
+      ? [`${signal.mesocycleId}:deload_not_executed`]
+      : [],
+  );
+  const lowConfidenceCount = blockSignals.filter(
+    (signal) => signal.confidence === "low",
+  ).length;
+  const limitations = unique([
+    "volume_fatigue_strategy_evidence_is_read_only",
+    "volume_fatigue_strategy_evidence_not_consumed_by_mesocycle_demand",
+    protectLaggingMuscleSignals.length > 0
+      ? null
+      : "recurring_lagging_muscle_evidence_not_available",
+    overConcentrationSignals.length > 0
+      ? null
+      : "recurring_over_concentration_evidence_not_available",
+  ].filter(Boolean) as string[]);
+
+  return {
+    status: resolveEvidenceStatus({
+      availableCount:
+        protectLaggingMuscleSignals.length +
+        overConcentrationSignals.length +
+        lateBlockFatigueSignals.length +
+        deloadExecutionSignals.length,
+      lowConfidenceCount,
+      limitationCount: limitations.length,
+    }),
+    protectLaggingMuscleSignals,
+    overConcentrationSignals,
+    lateBlockFatigueSignals,
+    deloadExecutionSignals,
+    limitations,
   };
 }
 
@@ -295,6 +594,16 @@ export function buildV2MesocycleStrategyDiagnostic(
   input: V2MesocycleStrategyDiagnosticInput = {},
 ): V2MesocycleStrategyDiagnostic {
   const strategyInputSummary = summarizeStrategyInput(input.strategyInput);
+  const responseEvidenceSummary = buildResponseEvidenceSummary(
+    input.strategyInput,
+    strategyInputSummary,
+  );
+  const continuityVariationEvidence = buildContinuityVariationEvidence(
+    input.strategyInput,
+  );
+  const volumeFatigueStrategyEvidence = buildVolumeFatigueStrategyEvidence(
+    input.strategyInput,
+  );
   const phaseConfidence = resolvePhaseConfidence(strategyInputSummary);
 
   return {
@@ -330,24 +639,40 @@ export function buildV2MesocycleStrategyDiagnostic(
       ],
     },
     performedHistorySignals: buildPerformedHistorySignals(strategyInputSummary),
+    responseEvidenceSummary,
     continuityVariationPolicy: {
-      currentSupport: "partial",
+      currentSupport:
+        continuityVariationEvidence.status === "not_available"
+          ? "partial"
+          : "available_with_limitations",
       keepSignals: [
         "carry_forward_recommendations_with_signal_quality",
         "accepted_seed_identity_continuity",
         "v2_materializer_continuity_hints",
+        ...(continuityVariationEvidence.keepCandidateCount > 0
+          ? ["strategy_input:response_ranked_keep_candidates"]
+          : []),
       ],
       rotateSignals: [
         "duplicate_policy_requires_clean_alternative_review",
         "materializer_can_express_class_level_variation_but_not_response_ranked_rotation",
+        ...(continuityVariationEvidence.rotateCandidateCount > 0
+          ? ["strategy_input:response_ranked_rotate_candidates"]
+          : []),
       ],
       missingSignals: [
-        "block_level_keep_rotate_replace_classification",
+        ...(continuityVariationEvidence.status === "not_available"
+          ? ["block_level_keep_rotate_replace_classification"]
+          : []),
         "staleness_and_tolerance_thresholds",
-        "performance_response_and_sfr_ranked_materializer_inputs",
+        ...(responseEvidenceSummary.usableForFutureMaterializerRanking
+          ? []
+          : ["performance_response_and_sfr_ranked_materializer_inputs"]),
         "strategy_derived_novelty_pressure_by_lane",
       ],
     },
+    continuityVariationEvidence,
+    volumeFatigueStrategyEvidence,
     demandDerivationPlan: {
       currentDemandSource: "fixed_skeleton_lanes",
       targetDemandSource: "mesocycle_strategy",

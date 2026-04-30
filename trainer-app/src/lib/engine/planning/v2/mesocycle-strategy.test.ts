@@ -70,6 +70,125 @@ function buildStrategyInput(): V2MesocycleStrategyInput {
         },
       },
     ],
+    blockResponseSignals: [
+      {
+        mesocycleId: "meso-any-1",
+        sourcePlanner: "legacy_projection",
+        adherence: {
+          completedSessions: 14,
+          partialSessions: 1,
+          skippedSessions: 1,
+          skippedSetCount: 2,
+          skippedSetTrend: "stable",
+        },
+        effortProgression: {
+          averageRpeByWeek: [
+            { week: 1, averageRpe: 7 },
+            { week: 4, averageRpe: 8.3 },
+          ],
+          hardWeekEffortReached: true,
+          deloadExecuted: true,
+        },
+        muscleDistribution: {
+          recurringUnderHitMuscles: ["Side Delts"],
+          recurringOverConcentratedMuscles: ["Glutes"],
+          belowMevFlags: ["Side Delts:below_target_or_mev_evidence"],
+          overMavFlags: ["Glutes:over_target_or_mav_evidence"],
+        },
+        fatigueDistribution: {
+          systemicFatigueFlag: false,
+          likelyFatigueDrivers: ["Glutes"],
+          evidence: ["hard_week_effort_reached", "overlap_fatigue_driver:Glutes"],
+        },
+        strategyImplications: [
+          "preserve_successful_progression",
+          "protect_lagging_muscles_earlier",
+          "reduce_axial_or_overlap_fatigue",
+        ],
+        confidence: "medium",
+      },
+      {
+        mesocycleId: "meso-any-2",
+        sourcePlanner: "legacy_projection",
+        adherence: {
+          completedSessions: 13,
+          partialSessions: 2,
+          skippedSessions: 1,
+          skippedSetCount: 6,
+          skippedSetTrend: "rising",
+        },
+        effortProgression: {
+          averageRpeByWeek: [
+            { week: 2, averageRpe: 7.4 },
+            { week: 4, averageRpe: 8.8 },
+          ],
+          hardWeekEffortReached: true,
+          deloadExecuted: false,
+        },
+        muscleDistribution: {
+          recurringUnderHitMuscles: ["Side Delts", "Calves"],
+          recurringOverConcentratedMuscles: ["Glutes", "Front Delts"],
+          belowMevFlags: [
+            "Side Delts:below_target_or_mev_evidence",
+            "Calves:below_target_or_mev_evidence",
+          ],
+          overMavFlags: [
+            "Glutes:over_target_or_mav_evidence",
+            "Front Delts:over_target_or_mav_evidence",
+          ],
+        },
+        fatigueDistribution: {
+          systemicFatigueFlag: true,
+          likelyFatigueDrivers: ["Glutes", "Front Delts"],
+          evidence: [
+            "late_block_skipped_sets_rising",
+            "hard_week_effort_reached",
+            "overlap_fatigue_driver:Glutes",
+          ],
+        },
+        strategyImplications: [
+          "cap_late_block_volume",
+          "protect_lagging_muscles_earlier",
+          "reduce_axial_or_overlap_fatigue",
+          "improve_deload_execution",
+        ],
+        confidence: "medium",
+      },
+    ],
+    exerciseResponseSignals: [
+      {
+        exerciseId: "incline-db-press",
+        exerciseName: "Incline Dumbbell Press",
+        muscleTargets: ["Chest"],
+        signal: "progressed",
+        evidence: {
+          mesocycleIds: ["meso-any-1", "meso-any-2"],
+          completedExposureCount: 6,
+          skippedExposureCount: 0,
+          loadTrend: "rising",
+          repTrend: "stable",
+          rpeTrend: "stable",
+          notes: ["derived_from_performed_logs_not_prescribed_plan_shape"],
+        },
+        confidence: "high",
+      },
+      {
+        exerciseId: "standing-calf-raise",
+        exerciseName: "Standing Calf Raise",
+        muscleTargets: ["Calves"],
+        signal: "skipped_often",
+        evidence: {
+          mesocycleIds: ["meso-any-1", "meso-any-2"],
+          completedExposureCount: 1,
+          skippedExposureCount: 3,
+          loadTrend: "unknown",
+          repTrend: "unknown",
+          rpeTrend: "unknown",
+          notes: ["derived_from_performed_logs_not_prescribed_plan_shape"],
+        },
+        confidence: "medium",
+      },
+    ],
     readinessAndRecoverySignals: {
       available: ["subjective_readiness", "performance_compliance"],
       missing: ["wearable_recovery_signal"],
@@ -193,6 +312,8 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
         ],
         missingGroups: [],
         historicalMesocycleCount: 2,
+        blockResponseSignalCount: 2,
+        exerciseResponseSignalCount: 2,
         historicalSourcePlanners: ["legacy_projection"],
         historicalSourcePlannerCounts: {
           legacy_projection: 2,
@@ -203,6 +324,9 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
           "adherence",
           "performed_volume",
           "performance_signals",
+          "block_response",
+          "exercise_response",
+          "fatigue_distribution",
           "readiness",
           "fatigue_flags",
           "pain_or_tolerance",
@@ -222,6 +346,55 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     );
     expect(diagnostic.userTrainingProfileInputs.missing).not.toContain(
       "pure_v2_user_training_profile_input",
+    );
+  });
+
+  it("summarizes normalized block and exercise response evidence without changing policy", () => {
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+    });
+
+    expect(diagnostic.responseEvidenceSummary).toMatchObject({
+      blockResponseSignalCount: 2,
+      exerciseResponseSignalCount: 2,
+      recurringUnderHitMuscleExamples: ["Side Delts"],
+      recurringOverConcentrationExamples: ["Glutes"],
+      usableForFutureContinuityVariation: true,
+      usableForFutureMaterializerRanking: true,
+      usableForFutureVolumeFatigueStrategy: true,
+    });
+    expect(
+      diagnostic.responseEvidenceSummary.strategyImplicationCounts,
+    ).toMatchObject({
+      protect_lagging_muscles_earlier: 2,
+      cap_late_block_volume: 1,
+      reduce_axial_or_overlap_fatigue: 2,
+      preserve_successful_progression: 1,
+      improve_deload_execution: 1,
+      unknown: 0,
+    });
+    expect(diagnostic.responseEvidenceSummary.exerciseSignalsByType).toMatchObject({
+      progressed: 1,
+      skipped_often: 1,
+      pain_or_tolerance_issue: 0,
+      unknown: 0,
+    });
+    expect(diagnostic.continuityVariationEvidence).toMatchObject({
+      status: "available_with_limitations",
+      keepCandidateCount: 1,
+      rotateCandidateCount: 1,
+      avoidCandidateCount: 0,
+      lowConfidenceCount: 0,
+    });
+    expect(diagnostic.volumeFatigueStrategyEvidence).toMatchObject({
+      status: "available_with_limitations",
+      protectLaggingMuscleSignals: ["Side Delts"],
+      overConcentrationSignals: ["Glutes"],
+      lateBlockFatigueSignals: ["meso-any-2:late_block_skipped_sets_rising"],
+      deloadExecutionSignals: ["meso-any-2:deload_not_executed"],
+    });
+    expect(diagnostic.demandDerivationPlan.currentDemandSource).toBe(
+      "fixed_skeleton_lanes",
     );
   });
 

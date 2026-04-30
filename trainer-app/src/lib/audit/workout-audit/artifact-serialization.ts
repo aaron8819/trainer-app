@@ -834,6 +834,15 @@ function compactPlannerOnlyNoRepair(
   const v2StrategyInputSummary = asRecord(
     v2MesocycleStrategyDiagnostic?.strategyInputSummary,
   );
+  const v2ResponseEvidenceSummary = asRecord(
+    v2MesocycleStrategyDiagnostic?.responseEvidenceSummary,
+  );
+  const v2ContinuityVariationEvidence = asRecord(
+    v2MesocycleStrategyDiagnostic?.continuityVariationEvidence,
+  );
+  const v2VolumeFatigueStrategyEvidence = asRecord(
+    v2MesocycleStrategyDiagnostic?.volumeFatigueStrategyEvidence,
+  );
   const v2SupportLanePolicy = asRecord(noRepair.v2SupportLanePolicy);
   const v2SupportLaneSummary = asRecord(v2SupportLanePolicy?.summary);
   const v2SupportLaneProjectionDiagnostic = asRecord(
@@ -972,6 +981,16 @@ function compactPlannerOnlyNoRepair(
               "number"
                 ? v2StrategyInputSummary.historicalMesocycleCount
                 : 0,
+            blockResponseSignalCount:
+              typeof v2StrategyInputSummary?.blockResponseSignalCount ===
+              "number"
+                ? v2StrategyInputSummary.blockResponseSignalCount
+                : 0,
+            exerciseResponseSignalCount:
+              typeof v2StrategyInputSummary?.exerciseResponseSignalCount ===
+              "number"
+                ? v2StrategyInputSummary.exerciseResponseSignalCount
+                : 0,
             strategyInputHistoricalSourcePlannerCounts:
               asRecord(v2StrategyInputSummary?.historicalSourcePlannerCounts) ??
               {},
@@ -989,6 +1008,87 @@ function compactPlannerOnlyNoRepair(
               typeof v2StrategyInputSummary?.confidenceChange === "string"
                 ? v2StrategyInputSummary.confidenceChange
                 : "not_evaluated_no_input",
+            strategyImplicationCounts:
+              asRecord(v2ResponseEvidenceSummary?.strategyImplicationCounts) ??
+              {},
+            recurringUnderHitMuscleExamples: Array.isArray(
+              v2ResponseEvidenceSummary?.recurringUnderHitMuscleExamples,
+            )
+              ? v2ResponseEvidenceSummary.recurringUnderHitMuscleExamples
+              : [],
+            recurringOverConcentrationExamples: Array.isArray(
+              v2ResponseEvidenceSummary?.recurringOverConcentrationExamples,
+            )
+              ? v2ResponseEvidenceSummary.recurringOverConcentrationExamples
+              : [],
+            exerciseSignalsByType:
+              asRecord(v2ResponseEvidenceSummary?.exerciseSignalsByType) ?? {},
+            confidenceDistribution:
+              asRecord(v2ResponseEvidenceSummary?.confidenceDistribution) ?? {},
+            evidenceLimitationCount: Array.isArray(
+              v2ResponseEvidenceSummary?.evidenceLimitations,
+            )
+              ? v2ResponseEvidenceSummary.evidenceLimitations.length
+              : 0,
+            usableForFutureContinuityVariation:
+              v2ResponseEvidenceSummary?.usableForFutureContinuityVariation ===
+              true,
+            usableForFutureMaterializerRanking:
+              v2ResponseEvidenceSummary?.usableForFutureMaterializerRanking ===
+              true,
+            usableForFutureVolumeFatigueStrategy:
+              v2ResponseEvidenceSummary?.usableForFutureVolumeFatigueStrategy ===
+              true,
+            continuityVariationEvidence: v2ContinuityVariationEvidence
+              ? {
+                  status:
+                    v2ContinuityVariationEvidence.status ?? "not_available",
+                  keepCandidateCount:
+                    v2ContinuityVariationEvidence.keepCandidateCount ?? 0,
+                  rotateCandidateCount:
+                    v2ContinuityVariationEvidence.rotateCandidateCount ?? 0,
+                  avoidCandidateCount:
+                    v2ContinuityVariationEvidence.avoidCandidateCount ?? 0,
+                  lowConfidenceCount:
+                    v2ContinuityVariationEvidence.lowConfidenceCount ?? 0,
+                  limitationCount: Array.isArray(
+                    v2ContinuityVariationEvidence.limitations,
+                  )
+                    ? v2ContinuityVariationEvidence.limitations.length
+                    : 0,
+                }
+              : undefined,
+            volumeFatigueStrategyEvidence: v2VolumeFatigueStrategyEvidence
+              ? {
+                  status:
+                    v2VolumeFatigueStrategyEvidence.status ?? "not_available",
+                  protectLaggingMuscleSignals: Array.isArray(
+                    v2VolumeFatigueStrategyEvidence.protectLaggingMuscleSignals,
+                  )
+                    ? v2VolumeFatigueStrategyEvidence.protectLaggingMuscleSignals
+                    : [],
+                  overConcentrationSignals: Array.isArray(
+                    v2VolumeFatigueStrategyEvidence.overConcentrationSignals,
+                  )
+                    ? v2VolumeFatigueStrategyEvidence.overConcentrationSignals
+                    : [],
+                  lateBlockFatigueSignals: Array.isArray(
+                    v2VolumeFatigueStrategyEvidence.lateBlockFatigueSignals,
+                  )
+                    ? v2VolumeFatigueStrategyEvidence.lateBlockFatigueSignals
+                    : [],
+                  deloadExecutionSignals: Array.isArray(
+                    v2VolumeFatigueStrategyEvidence.deloadExecutionSignals,
+                  )
+                    ? v2VolumeFatigueStrategyEvidence.deloadExecutionSignals
+                    : [],
+                  limitationCount: Array.isArray(
+                    v2VolumeFatigueStrategyEvidence.limitations,
+                  )
+                    ? v2VolumeFatigueStrategyEvidence.limitations.length
+                    : 0,
+                }
+              : undefined,
             northStarGapCount: Array.isArray(
               v2MesocycleStrategyDiagnostic.currentStateVsNorthStarGaps,
             )

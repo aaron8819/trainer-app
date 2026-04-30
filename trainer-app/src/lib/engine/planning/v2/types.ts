@@ -107,6 +107,81 @@ export type V2MesocycleStrategyPhase =
 
 export type V2MesocycleStrategyConfidence = "low" | "medium" | "high";
 
+export type V2MesocycleStrategyEvidenceStatus =
+  | "not_available"
+  | "available_with_limitations"
+  | "available";
+
+export type V2ResponseTrend = "stable" | "rising" | "falling" | "unknown";
+
+export type V2BlockStrategyImplication =
+  | "protect_lagging_muscles_earlier"
+  | "cap_late_block_volume"
+  | "reduce_axial_or_overlap_fatigue"
+  | "preserve_successful_progression"
+  | "improve_deload_execution"
+  | "unknown";
+
+export type V2BlockResponseSignal = {
+  mesocycleId: string;
+  sourcePlanner: "legacy_projection" | "v2" | "unknown";
+  adherence: {
+    completedSessions?: number;
+    partialSessions?: number;
+    skippedSessions?: number;
+    skippedSetCount?: number;
+    skippedSetTrend?: V2ResponseTrend;
+  };
+  effortProgression: {
+    averageRpeByWeek?: Array<{ week: number; averageRpe: number }>;
+    hardWeekEffortReached?: boolean;
+    deloadExecuted?: boolean;
+  };
+  muscleDistribution: {
+    recurringUnderHitMuscles?: string[];
+    recurringOverConcentratedMuscles?: string[];
+    belowMevFlags?: string[];
+    overMavFlags?: string[];
+  };
+  fatigueDistribution: {
+    systemicFatigueFlag?: boolean;
+    likelyFatigueDrivers?: string[];
+    evidence: string[];
+  };
+  strategyImplications: V2BlockStrategyImplication[];
+  confidence: V2MesocycleStrategyConfidence;
+};
+
+export type V2ExerciseResponseSignalType =
+  | "progressed"
+  | "stalled"
+  | "regressed"
+  | "skipped_often"
+  | "swapped_out"
+  | "pain_or_tolerance_issue"
+  | "high_fatigue_cost"
+  | "low_confidence"
+  | "unknown";
+
+export type V2ExerciseResponseSignal = {
+  exerciseId?: string;
+  exerciseName?: string;
+  muscleTargets?: string[];
+  slotIds?: string[];
+  signal: V2ExerciseResponseSignalType;
+  evidence: {
+    mesocycleIds: string[];
+    completedExposureCount?: number;
+    skippedExposureCount?: number;
+    swappedExposureCount?: number;
+    loadTrend?: V2ResponseTrend;
+    repTrend?: V2ResponseTrend;
+    rpeTrend?: V2ResponseTrend;
+    notes?: string[];
+  };
+  confidence: V2MesocycleStrategyConfidence;
+};
+
 export type V2MesocycleStrategyInputGroup =
   | "userProfile"
   | "currentTrainingContext"
@@ -163,10 +238,14 @@ export type V2MesocycleStrategyInput = {
         | "skipped_often"
         | "swapped_out"
         | "pain_or_tolerance_issue"
+        | "high_fatigue_cost"
+        | "low_confidence"
         | "unknown";
       confidence: V2MesocycleStrategyConfidence;
     }>;
   }>;
+  blockResponseSignals: V2BlockResponseSignal[];
+  exerciseResponseSignals: V2ExerciseResponseSignal[];
   readinessAndRecoverySignals: {
     available: string[];
     missing: string[];
@@ -207,11 +286,40 @@ export type V2MesocycleStrategyDiagnostic = {
     missing: string[];
     candidateFutureSignals: string[];
   };
+  responseEvidenceSummary: {
+    blockResponseSignalCount: number;
+    strategyImplicationCounts: Record<V2BlockStrategyImplication, number>;
+    recurringUnderHitMuscleExamples: string[];
+    recurringOverConcentrationExamples: string[];
+    exerciseResponseSignalCount: number;
+    exerciseSignalsByType: Record<V2ExerciseResponseSignalType, number>;
+    confidenceDistribution: Record<V2MesocycleStrategyConfidence, number>;
+    evidenceLimitations: string[];
+    usableForFutureContinuityVariation: boolean;
+    usableForFutureMaterializerRanking: boolean;
+    usableForFutureVolumeFatigueStrategy: boolean;
+  };
   continuityVariationPolicy: {
     currentSupport: "none" | "partial" | "available_with_limitations";
     keepSignals: string[];
     rotateSignals: string[];
     missingSignals: string[];
+  };
+  continuityVariationEvidence: {
+    status: V2MesocycleStrategyEvidenceStatus;
+    keepCandidateCount: number;
+    rotateCandidateCount: number;
+    avoidCandidateCount: number;
+    lowConfidenceCount: number;
+    limitations: string[];
+  };
+  volumeFatigueStrategyEvidence: {
+    status: V2MesocycleStrategyEvidenceStatus;
+    protectLaggingMuscleSignals: string[];
+    overConcentrationSignals: string[];
+    lateBlockFatigueSignals: string[];
+    deloadExecutionSignals: string[];
+    limitations: string[];
   };
   demandDerivationPlan: {
     currentDemandSource: "fixed_skeleton_lanes" | "strategy_derived" | "mixed";
@@ -233,6 +341,8 @@ export type V2MesocycleStrategyDiagnostic = {
       V2MesocycleStrategyInput["historicalMesocycles"][number]["sourcePlanner"],
       number
     >;
+    blockResponseSignalCount: number;
+    exerciseResponseSignalCount: number;
     evidenceCategoriesAvailable: string[];
     evidenceCategoriesMissing: string[];
     performedHistoryEvidenceLoaded: boolean;

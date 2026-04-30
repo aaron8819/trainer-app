@@ -263,7 +263,60 @@ function makeHistoricalWorkout(input: {
   scheduledDate: string;
   status: "COMPLETED" | "SKIPPED";
   load?: number;
+  reps?: number;
+  rpe?: number;
+  week?: number;
+  phase?: "ACCUMULATION" | "DELOAD";
+  skippedSetCount?: number;
+  exerciseId?: string;
+  exerciseName?: string;
+  primaryMuscles?: string[];
 }) {
+  const exerciseId = input.exerciseId ?? "performed-reality-press";
+  const exerciseName = input.exerciseName ?? "Performed Reality Press";
+  const primaryMuscles = input.primaryMuscles ?? ["Chest"];
+  const completedSets =
+    input.status === "COMPLETED"
+      ? [
+          {
+            setIndex: 0,
+            logs: [
+              {
+                wasSkipped: false,
+                actualReps: input.reps ?? 8,
+                actualLoad: input.load ?? 80,
+                actualRpe: input.rpe ?? 8,
+              },
+            ],
+          },
+          {
+            setIndex: 1,
+            logs: [
+              {
+                wasSkipped: false,
+                actualReps: input.reps ?? 8,
+                actualLoad: input.load ?? 80,
+                actualRpe: input.rpe ?? 8,
+              },
+            ],
+          },
+        ]
+      : [];
+  const skippedSets = Array.from(
+    { length: input.skippedSetCount ?? 0 },
+    (_, index) => ({
+      setIndex: completedSets.length + index,
+      logs: [
+        {
+          wasSkipped: true,
+          actualReps: null,
+          actualLoad: null,
+          actualRpe: null,
+        },
+      ],
+    }),
+  );
+
   return {
     id: input.id,
     scheduledDate: new Date(input.scheduledDate),
@@ -274,48 +327,23 @@ function makeHistoricalWorkout(input: {
     selectionMode: "INTENT",
     selectionMetadata: null,
     advancesSplit: true,
-    mesocyclePhaseSnapshot: "ACCUMULATION",
-    mesocycleWeekSnapshot: 1,
+    mesocyclePhaseSnapshot: input.phase ?? "ACCUMULATION",
+    mesocycleWeekSnapshot: input.week ?? 1,
     exercises:
-      input.status === "COMPLETED"
+      input.status === "COMPLETED" || skippedSets.length > 0
         ? [
             {
-              exerciseId: "performed-reality-press",
+              exerciseId,
               exercise: {
-                id: "performed-reality-press",
-                name: "Performed Reality Press",
+                id: exerciseId,
+                name: exerciseName,
                 aliases: [],
-                exerciseMuscles: [
-                  {
+                exerciseMuscles: primaryMuscles.map((muscle) => ({
                     role: "PRIMARY",
-                    muscle: { name: "Chest" },
-                  },
-                ],
+                    muscle: { name: muscle },
+                  })),
               },
-              sets: [
-                {
-                  setIndex: 0,
-                  logs: [
-                    {
-                      wasSkipped: false,
-                      actualReps: 8,
-                      actualLoad: input.load ?? 80,
-                      actualRpe: 8,
-                    },
-                  ],
-                },
-                {
-                  setIndex: 1,
-                  logs: [
-                    {
-                      wasSkipped: false,
-                      actualReps: 8,
-                      actualLoad: input.load ?? 80,
-                      actualRpe: 8,
-                    },
-                  ],
-                },
-              ],
+              sets: [...completedSets, ...skippedSets],
             },
           ]
         : [],
@@ -543,6 +571,27 @@ describe("loadV2MesocycleStrategyHistoricalReviewEvidence", () => {
         }),
       ]),
     );
+    expect(input.blockResponseSignals[0]).toMatchObject({
+      mesocycleId: "historical-1",
+      sourcePlanner: "legacy_projection",
+      strategyImplications: expect.arrayContaining([
+        "preserve_successful_progression",
+      ]),
+    });
+    expect(input.exerciseResponseSignals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          exerciseId: "performed-reality-press",
+          signal: "progressed",
+          evidence: expect.objectContaining({
+            loadTrend: "rising",
+            notes: expect.arrayContaining([
+              "derived_from_performed_logs_not_prescribed_plan_shape",
+            ]),
+          }),
+        }),
+      ]),
+    );
     expect(input.evidenceLimitations).toEqual(
       expect.arrayContaining([
         "historical_review_loader_uses_performed_reality_not_prescribed_plan_shape",
@@ -599,6 +648,179 @@ describe("loadV2MesocycleStrategyHistoricalReviewEvidence", () => {
     expect(input.evidenceLimitations).toEqual(
       expect.arrayContaining([
         "historical_mesocycle_review_unavailable:missing-review",
+      ]),
+    );
+  });
+
+  it("represents late skipped-set spikes and deload non-execution as evidence only", async () => {
+    const reader = makeHistoricalReader({
+      rows: [
+        makeHistoricalDbRow({
+          id: "late-skip-history",
+          mesoNumber: 4,
+          closedAt: "2026-04-22T00:00:00.000Z",
+        }),
+      ],
+      workoutsByMesocycle: {
+        "late-skip-history": [
+          makeHistoricalWorkout({
+            id: "late-skip-w1",
+            scheduledDate: "2026-04-01T00:00:00.000Z",
+            status: "COMPLETED",
+            week: 1,
+            load: 80,
+            rpe: 7,
+            exerciseId: "skip-prone-calf",
+            exerciseName: "Skip Prone Calf Raise",
+            primaryMuscles: ["Calves"],
+          }),
+          makeHistoricalWorkout({
+            id: "late-skip-w3",
+            scheduledDate: "2026-04-15T00:00:00.000Z",
+            status: "COMPLETED",
+            week: 3,
+            load: 80,
+            rpe: 8.5,
+            skippedSetCount: 2,
+            exerciseId: "skip-prone-calf",
+            exerciseName: "Skip Prone Calf Raise",
+            primaryMuscles: ["Calves"],
+          }),
+          makeHistoricalWorkout({
+            id: "late-skip-w4",
+            scheduledDate: "2026-04-22T00:00:00.000Z",
+            status: "COMPLETED",
+            week: 4,
+            load: 80,
+            rpe: 9,
+            skippedSetCount: 2,
+            exerciseId: "skip-prone-calf",
+            exerciseName: "Skip Prone Calf Raise",
+            primaryMuscles: ["Calves"],
+          }),
+          makeHistoricalWorkout({
+            id: "late-skip-deload",
+            scheduledDate: "2026-04-29T00:00:00.000Z",
+            status: "SKIPPED",
+            week: 5,
+            phase: "DELOAD",
+          }),
+        ],
+      },
+    });
+
+    const loaded = await loadV2MesocycleStrategyHistoricalReviewEvidence(
+      reader as unknown as Parameters<
+        typeof loadV2MesocycleStrategyHistoricalReviewEvidence
+      >[0],
+      { userId: "future-user-3" },
+    );
+    const input = buildV2MesocycleStrategyInputFromReadModels({
+      historicalMesocycleReviews: loaded.historicalMesocycleReviews,
+      evidenceLimitations: loaded.evidenceLimitations,
+    });
+
+    expect(input.blockResponseSignals).toHaveLength(1);
+    expect(input.blockResponseSignals[0]).toMatchObject({
+      mesocycleId: "late-skip-history",
+      adherence: {
+        skippedSetCount: 4,
+        skippedSetTrend: "rising",
+      },
+      effortProgression: {
+        hardWeekEffortReached: true,
+        deloadExecuted: false,
+      },
+      strategyImplications: expect.arrayContaining([
+        "cap_late_block_volume",
+        "improve_deload_execution",
+      ]),
+    });
+    expect(input.exerciseResponseSignals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          exerciseId: "skip-prone-calf",
+          signal: "skipped_often",
+          evidence: expect.objectContaining({
+            completedExposureCount: 3,
+            skippedExposureCount: 2,
+          }),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(input)).not.toContain("aaron8819@gmail.com");
+  });
+
+  it("keeps thin, pain, and swapped evidence explicit instead of inventing certainty", () => {
+    const input = buildV2MesocycleStrategyInputFromReadModels({
+      historicalMesocycleReviews: [
+        {
+          mesocycleId: "thin-history",
+          sourcePlanner: "unknown",
+        },
+        {
+          mesocycleId: "explicit-response-history",
+          sourcePlanner: "legacy_projection",
+          exerciseResponseSignals: [
+            {
+              exerciseId: "shoulder-raise",
+              exerciseName: "Shoulder Raise",
+              signal: "pain_or_tolerance_issue",
+              evidence: {
+                mesocycleIds: ["explicit-response-history"],
+                completedExposureCount: 2,
+                skippedExposureCount: 0,
+                loadTrend: "unknown",
+                repTrend: "unknown",
+                rpeTrend: "unknown",
+                notes: ["explicit_tolerance_note:shoulder_discomfort"],
+              },
+              confidence: "medium",
+            },
+            {
+              exerciseId: "old-curl",
+              exerciseName: "Old Curl",
+              signal: "swapped_out",
+              evidence: {
+                mesocycleIds: ["explicit-response-history"],
+                completedExposureCount: 0,
+                skippedExposureCount: 0,
+                swappedExposureCount: 2,
+                loadTrend: "unknown",
+                repTrend: "unknown",
+                rpeTrend: "unknown",
+                notes: ["explicit_swap_evidence"],
+              },
+              confidence: "medium",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(input.blockResponseSignals[0]).toMatchObject({
+      mesocycleId: "thin-history",
+      strategyImplications: ["unknown"],
+      confidence: "low",
+    });
+    expect(input.exerciseResponseSignals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          signal: "pain_or_tolerance_issue",
+          confidence: "medium",
+        }),
+        expect.objectContaining({
+          signal: "swapped_out",
+          evidence: expect.objectContaining({
+            swappedExposureCount: 2,
+          }),
+        }),
+      ]),
+    );
+    expect(input.evidenceLimitations).toEqual(
+      expect.arrayContaining([
+        "pain_or_tolerance_requires_explicit_evidence",
+        "historical_mesocycles_are_validation_data_not_policy_targets",
       ]),
     );
   });

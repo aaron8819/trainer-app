@@ -2167,6 +2167,12 @@ export function buildPlannerOnlyNoRepairSummary(input: {
   const strategy = noRepair.v2MesocycleStrategyDiagnostic;
   const strategySourceCounts =
     strategy?.strategyInputSummary.historicalSourcePlannerCounts;
+  const strategyResponse = strategy?.responseEvidenceSummary;
+  const strategyImplications = strategyResponse?.strategyImplicationCounts;
+  const exerciseSignals = strategyResponse?.exerciseSignalsByType;
+  const responseConfidence = strategyResponse?.confidenceDistribution;
+  const continuityEvidence = strategy?.continuityVariationEvidence;
+  const volumeFatigueEvidence = strategy?.volumeFatigueStrategyEvidence;
   const strategyLines = strategy
     ? [
         "V2 Mesocycle Strategy Diagnostic",
@@ -2179,6 +2185,17 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Strategy historical mesocycles: ${strategy.strategyInputSummary.historicalMesocycleCount}`,
         `Strategy source planners: legacy_projection=${strategySourceCounts?.legacy_projection ?? 0} v2=${strategySourceCounts?.v2 ?? 0} unknown=${strategySourceCounts?.unknown ?? 0}`,
         `Strategy evidence categories: ${strategy.strategyInputSummary.evidenceCategoriesAvailable.join(",") || "none"}`,
+        `Block response signals: ${strategyResponse?.blockResponseSignalCount ?? 0}`,
+        `Strategy implications: protect=${strategyImplications?.protect_lagging_muscles_earlier ?? 0} capLate=${strategyImplications?.cap_late_block_volume ?? 0} reduceFatigue=${strategyImplications?.reduce_axial_or_overlap_fatigue ?? 0} preserveProgression=${strategyImplications?.preserve_successful_progression ?? 0} deload=${strategyImplications?.improve_deload_execution ?? 0} unknown=${strategyImplications?.unknown ?? 0}`,
+        `Recurring under-hit examples: ${formatNameList(strategyResponse?.recurringUnderHitMuscleExamples ?? [], 5)}`,
+        `Recurring over-concentration examples: ${formatNameList(strategyResponse?.recurringOverConcentrationExamples ?? [], 5)}`,
+        `Exercise response signals: ${strategyResponse?.exerciseResponseSignalCount ?? 0}`,
+        `Exercise signals: progressed=${exerciseSignals?.progressed ?? 0} stalled=${exerciseSignals?.stalled ?? 0} regressed=${exerciseSignals?.regressed ?? 0} skipped=${exerciseSignals?.skipped_often ?? 0} swapped=${exerciseSignals?.swapped_out ?? 0} pain=${exerciseSignals?.pain_or_tolerance_issue ?? 0} fatigue=${exerciseSignals?.high_fatigue_cost ?? 0} low=${exerciseSignals?.low_confidence ?? 0} unknown=${exerciseSignals?.unknown ?? 0}`,
+        `Response confidence: low=${responseConfidence?.low ?? 0} medium=${responseConfidence?.medium ?? 0} high=${responseConfidence?.high ?? 0}`,
+        `Evidence limitations: ${strategyResponse?.evidenceLimitations.length ?? 0}`,
+        `Continuity/variation evidence: ${formatStatus(continuityEvidence?.status ?? "not_available")} keep=${continuityEvidence?.keepCandidateCount ?? 0} rotate=${continuityEvidence?.rotateCandidateCount ?? 0} avoid=${continuityEvidence?.avoidCandidateCount ?? 0} low=${continuityEvidence?.lowConfidenceCount ?? 0}`,
+        `Materializer ranking evidence usable: ${strategyResponse?.usableForFutureMaterializerRanking ? "yes" : "no"}`,
+        `Volume/fatigue evidence: ${formatStatus(volumeFatigueEvidence?.status ?? "not_available")} protect=${volumeFatigueEvidence?.protectLaggingMuscleSignals.length ?? 0} over=${volumeFatigueEvidence?.overConcentrationSignals.length ?? 0} late=${volumeFatigueEvidence?.lateBlockFatigueSignals.length ?? 0} deload=${volumeFatigueEvidence?.deloadExecutionSignals.length ?? 0}`,
         `Performed history loaded: ${strategy.strategyInputSummary.performedHistoryEvidenceLoaded ? "yes" : "no"}`,
         `Old prescribed plan shape excluded: ${strategy.strategyInputSummary.prescribedPlanShapeExcludedFromStrategyPolicy ? "yes" : "no"}`,
         `North-star gaps: ${strategy.currentStateVsNorthStarGaps.length}`,

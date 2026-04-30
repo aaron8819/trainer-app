@@ -11,12 +11,14 @@ import { buildV2TargetSkeleton } from "./target-skeleton";
 import type {
   V2MesocycleStrategyInput,
   V2PlannerMesocyclePolicy,
+  V2StrategyHypothesisShadowProjectionEvidence,
 } from "./types";
 import { buildV2WeeklyDemandCurve } from "./weekly-demand-curve";
 import { buildV2WeeklyProgressionModel } from "./weekly-progression";
 
 export type V2PlannerMesocyclePolicyInput = {
   mesocycleStrategyInput?: V2MesocycleStrategyInput;
+  strategyShadowProjection?: V2StrategyHypothesisShadowProjectionEvidence;
 };
 
 export function buildV2PlannerMesocyclePolicy(
@@ -24,6 +26,7 @@ export function buildV2PlannerMesocyclePolicy(
 ): V2PlannerMesocyclePolicy {
   const mesocycleStrategyDiagnostic = buildV2MesocycleStrategyDiagnostic({
     strategyInput: input.mesocycleStrategyInput,
+    strategyShadowProjection: input.strategyShadowProjection,
   });
   const targetSkeleton = buildV2TargetSkeleton();
   const weeklyProgressionModel = buildV2WeeklyProgressionModel();

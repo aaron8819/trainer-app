@@ -5,6 +5,7 @@ import {
   buildV2PlannerMesocyclePolicy,
   buildV2TargetSkeleton,
   type V2MesocycleStrategyInput,
+  type V2StrategyHypothesisShadowProjectionEvidence,
 } from "./index";
 
 function buildStrategyInput(): V2MesocycleStrategyInput {
@@ -200,6 +201,170 @@ function buildStrategyInput(): V2MesocycleStrategyInput {
       "historical_mesocycles_are_validation_data_not_policy_targets",
       "strategy_input_does_not_feed_mesocycle_demand",
     ],
+  };
+}
+
+function buildShadowProjectionEvidence(
+  overrides: Partial<V2StrategyHypothesisShadowProjectionEvidence> = {},
+): V2StrategyHypothesisShadowProjectionEvidence {
+  return {
+    version: 1,
+    source: "v2_strategy_hypothesis_shadow_projection",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: false,
+    projectionMode: "shadow_projection",
+    candidateHypotheses: [
+      "protect_lagging_muscles_earlier",
+      "cap_late_block_volume",
+    ],
+    baselineProjection: "planner_only_no_repair",
+    candidateProjection: "combined_strategy_shadow_planner_only_no_repair",
+    candidateStrategy: {
+      candidateProtectedMuscles: ["Calves", "Side Delts"],
+      candidateDonorMuscles: ["Glutes"],
+      protectedSlotOwners: {
+        Calves: ["lower_a", "lower_b"],
+        "Side Delts": ["upper_a", "upper_b"],
+      },
+      preferRedistributionBeforeNetNewVolume: true,
+    },
+    before: {
+      priorityCoverage: {
+        coveredCount: 1,
+        belowMinimumCount: 1,
+        aboveMaximumCount: 0,
+        unknownCount: 0,
+        totalCount: 2,
+        examples: ["Side Delts:below_minimum:1_sets"],
+      },
+      laggingMuscleCoverage: [
+        {
+          muscle: "Calves",
+          status: "covered",
+          sets: 4,
+          minSets: 4,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+        {
+          muscle: "Side Delts",
+          status: "below_minimum",
+          sets: 1,
+          minSets: 3,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+      ],
+      donorMuscleCoverage: [
+        {
+          muscle: "Glutes",
+          status: "covered",
+          sets: 12,
+          minSets: 4,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+      ],
+      sessionSize: {
+        totalSetsBySlot: {
+          lower_a: 14,
+          lower_b: 14,
+          upper_a: 15,
+          upper_b: 18,
+        },
+      },
+      concentration: {
+        count: 2,
+        summary: ["high_concentration_count:2"],
+      },
+      repairPressure: {
+        materialRepairCount: 2,
+        majorRepairCount: 1,
+        suspiciousRepairCount: 1,
+      },
+      forbiddenSlotRisk: {
+        count: 0,
+        summary: ["forbidden_primary_violation_count:0"],
+      },
+      lateBlockFatigueRisk: {
+        count: 2,
+        totalSets: 61,
+        maxSlotSets: 18,
+        summary: ["high_concentration_count:2", "max_slot_sets:18"],
+      },
+    },
+    after: {
+      priorityCoverage: {
+        coveredCount: 2,
+        belowMinimumCount: 0,
+        aboveMaximumCount: 0,
+        unknownCount: 0,
+        totalCount: 2,
+        examples: ["Side Delts:covered:3_sets"],
+      },
+      laggingMuscleCoverage: [
+        {
+          muscle: "Calves",
+          status: "covered",
+          sets: 4,
+          minSets: 4,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+        {
+          muscle: "Side Delts",
+          status: "covered",
+          sets: 3,
+          minSets: 3,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+      ],
+      donorMuscleCoverage: [
+        {
+          muscle: "Glutes",
+          status: "covered",
+          sets: 11,
+          minSets: 4,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+      ],
+      sessionSize: {
+        totalSetsBySlot: {
+          lower_a: 14,
+          lower_b: 13,
+          upper_a: 17,
+          upper_b: 17,
+        },
+      },
+      concentration: {
+        count: 1,
+        summary: ["high_concentration_count:1"],
+      },
+      repairPressure: {
+        materialRepairCount: 1,
+        majorRepairCount: 1,
+        suspiciousRepairCount: 1,
+      },
+      forbiddenSlotRisk: {
+        count: 0,
+        summary: ["forbidden_primary_violation_count:0"],
+      },
+      lateBlockFatigueRisk: {
+        count: 1,
+        totalSets: 61,
+        maxSlotSets: 17,
+        summary: ["high_concentration_count:1", "max_slot_sets:17"],
+      },
+    },
+    limitations: [
+      "shadow_projection_is_planner_only_no_repair",
+      "repaired_projection_excluded_from_projection_target",
+      "old_prescribed_plan_shape_excluded_from_projection_target",
+    ],
+    ...overrides,
   };
 }
 
@@ -700,6 +865,39 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     ).not.toEqual(expect.arrayContaining(["Core", "Forearms"]));
   });
 
+  it("derives donor candidates only from over-concentration and fatigue evidence", () => {
+    const input = buildStrategyInput();
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: {
+        ...input,
+        blockResponseSignals: input.blockResponseSignals.map((signal) => ({
+          ...signal,
+          muscleDistribution: {
+            ...signal.muscleDistribution,
+            recurringUnderHitMuscles: [
+              ...(signal.muscleDistribution.recurringUnderHitMuscles ?? []),
+              "Biceps",
+            ],
+          },
+          fatigueDistribution: {
+            ...signal.fatigueDistribution,
+            evidence: [
+              ...signal.fatigueDistribution.evidence,
+              "soft_target_noise:Core",
+              "overlap_fatigue_driver:Lower Back",
+            ],
+          },
+        })),
+      },
+    });
+    const donors =
+      diagnostic.strategyHypothesisPromotionDiff.projectionDiff.candidateStrategy
+        .redistributionPreference.candidateDonorMuscles;
+
+    expect(donors).toEqual(expect.arrayContaining(["Glutes", "Lower Back"]));
+    expect(donors).not.toEqual(expect.arrayContaining(["Biceps", "Core"]));
+  });
+
   it("does not evaluate late-block cap fear without skipped-set and hard-week evidence", () => {
     const input = buildStrategyInput();
     const diagnostic = buildV2MesocycleStrategyDiagnostic({
@@ -812,6 +1010,401 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     );
     expect(JSON.stringify(projection)).not.toContain(
       "old-prescribed-plan-only",
+    );
+  });
+
+  it("computes measured shadow projection gates only from before and after deltas", () => {
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+      strategyShadowProjection: buildShadowProjectionEvidence(),
+    });
+    const projection =
+      diagnostic.strategyHypothesisPromotionDiff.projectionDiff;
+
+    expect(projection).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      projectionMode: "shadow_projection",
+      readiness: "needs_better_projection",
+      shadowProjection: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByDemandOrMaterializer: false,
+        baselineProjection: "planner_only_no_repair",
+        candidateProjection: "combined_strategy_shadow_planner_only_no_repair",
+      },
+    });
+    expect(projection.projectedDeltas.priorityCoverage).toMatchObject({
+      status: "improves",
+      before: {
+        belowMinimumCount: 1,
+      },
+      after: {
+        belowMinimumCount: 0,
+      },
+    });
+    expect(projection.projectedDeltas.repairPressure).toMatchObject({
+      beforeMaterialRepairCount: 2,
+      afterMaterialRepairCount: 1,
+      materialRepairDelta: -1,
+      beforeMajorRepairCount: 1,
+      afterMajorRepairCount: 1,
+      majorRepairDelta: 0,
+      beforeSuspiciousRepairCount: 1,
+      afterSuspiciousRepairCount: 1,
+      suspiciousRepairDelta: 0,
+      status: "improves",
+    });
+    expect(projection.projectedDeltas.sessionSize).toMatchObject({
+      beforeTotalSetsBySlot: expect.objectContaining({ upper_a: 15 }),
+      afterTotalSetsBySlot: expect.objectContaining({ upper_a: 17 }),
+      status: "worsens",
+    });
+    expect(projection.computedNonRegressionGates).toMatchObject({
+      preservePriorityCoverage: "pass",
+      preserveOrImproveLaggingMuscleCoverage: "pass",
+      noMaterialRepairIncrease: "pass",
+      noMajorRepairIncrease: "pass",
+      noSuspiciousRepairIncrease: "pass",
+      noSessionSizeRegression: "fail",
+      noDirtyCollateralIncrease: "unknown",
+    });
+    expect(projection.conflictAwareRefinement).toMatchObject({
+      enabled: true,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "available_with_limitations",
+      conflictCountsByType: {
+        session_size_cap_conflict: 1,
+      },
+      volumePolicy: {
+        netNewVolumeAllowed: false,
+        redistributionRequired: true,
+        maxSlotSetIncreaseAllowed: 0,
+      },
+      donorResolution: {
+        excludedDonorMuscles: [],
+        retainedDonorMuscles: ["Glutes"],
+      },
+    });
+  });
+
+  it("detects protected donor overlap and excludes unsafe donors before behavior readiness", () => {
+    const input = buildStrategyInput();
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: {
+        ...input,
+        blockResponseSignals: input.blockResponseSignals.map((signal, index) => ({
+          ...signal,
+          muscleDistribution: {
+            ...signal.muscleDistribution,
+            recurringUnderHitMuscles:
+              index === 0
+                ? ["Hamstrings"]
+                : signal.muscleDistribution.recurringUnderHitMuscles,
+            recurringOverConcentratedMuscles:
+              index === 0
+                ? ["Hamstrings"]
+                : signal.muscleDistribution.recurringOverConcentratedMuscles,
+            belowMevFlags:
+              index === 0
+                ? ["Hamstrings:below_target_or_mev_evidence"]
+                : signal.muscleDistribution.belowMevFlags,
+            overMavFlags:
+              index === 0
+                ? ["Hamstrings:over_target_or_mav_evidence"]
+                : signal.muscleDistribution.overMavFlags,
+          },
+          fatigueDistribution: {
+            ...signal.fatigueDistribution,
+            likelyFatigueDrivers:
+              index === 0
+                ? ["Hamstrings"]
+                : signal.fatigueDistribution.likelyFatigueDrivers,
+            evidence:
+              index === 0
+                ? ["overlap_fatigue_driver:Hamstrings"]
+                : signal.fatigueDistribution.evidence,
+          },
+          strategyImplications: [
+            "protect_lagging_muscles_earlier",
+            "cap_late_block_volume",
+          ],
+        })),
+      },
+    });
+    const refinement =
+      diagnostic.strategyHypothesisPromotionDiff.projectionDiff
+        .conflictAwareRefinement;
+
+    expect(refinement.conflicts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "protected_donor_overlap",
+          muscle: "Hamstrings",
+        }),
+      ]),
+    );
+    expect(refinement.donorResolution).toMatchObject({
+      excludedDonorMuscles: expect.arrayContaining(["Hamstrings"]),
+    });
+    expect(
+      diagnostic.strategyHypothesisPromotionDiff.projectionDiff
+        .computedNonRegressionGates.preserveOrImproveLaggingMuscleCoverage,
+    ).toBe("unknown");
+  });
+
+  it("blocks or flags floor, slot-owner, session-size, net-new, and protected-coverage conflicts in measured shadow mode", () => {
+    const shadowProjection = buildShadowProjectionEvidence({
+      candidateStrategy: {
+        candidateProtectedMuscles: ["Hamstrings"],
+        candidateDonorMuscles: ["Glutes", "Hamstrings"],
+        protectedSlotOwners: {
+          Hamstrings: [],
+        },
+        preferRedistributionBeforeNetNewVolume: true,
+      },
+      before: {
+        priorityCoverage: {
+          coveredCount: 1,
+          belowMinimumCount: 0,
+          aboveMaximumCount: 0,
+          unknownCount: 0,
+          totalCount: 1,
+          examples: ["Hamstrings:covered:6.3_sets"],
+        },
+        laggingMuscleCoverage: [
+          {
+            muscle: "Hamstrings",
+            status: "covered",
+            sets: 6.3,
+            minSets: 6,
+            priority: "primary",
+            targetTier: "A_PRIMARY",
+          },
+        ],
+        donorMuscleCoverage: [
+          {
+            muscle: "Glutes",
+            status: "covered",
+            sets: 6,
+            minSets: 6,
+            priority: "support",
+            targetTier: "B_SUPPORT",
+          },
+          {
+            muscle: "Hamstrings",
+            status: "covered",
+            sets: 6.3,
+            minSets: 6,
+            priority: "primary",
+            targetTier: "A_PRIMARY",
+          },
+        ],
+        sessionSize: {
+          totalSetsBySlot: {
+            lower_a: 14,
+            lower_b: 11,
+            upper_a: 15,
+            upper_b: 18,
+          },
+        },
+        concentration: { count: 2, summary: ["high_concentration_count:2"] },
+        repairPressure: {
+          materialRepairCount: 2,
+          majorRepairCount: 1,
+          suspiciousRepairCount: 1,
+        },
+        forbiddenSlotRisk: {
+          count: 0,
+          summary: ["forbidden_primary_violation_count:0"],
+        },
+        lateBlockFatigueRisk: {
+          count: 2,
+          totalSets: 58,
+          maxSlotSets: 18,
+          summary: ["total_sets:58", "max_slot_sets:18"],
+        },
+      },
+      after: {
+        priorityCoverage: {
+          coveredCount: 0,
+          belowMinimumCount: 1,
+          aboveMaximumCount: 0,
+          unknownCount: 0,
+          totalCount: 1,
+          examples: ["Hamstrings:below_minimum:5.1_sets"],
+        },
+        laggingMuscleCoverage: [
+          {
+            muscle: "Hamstrings",
+            status: "below_minimum",
+            sets: 5.1,
+            minSets: 6,
+            priority: "primary",
+            targetTier: "A_PRIMARY",
+          },
+        ],
+        donorMuscleCoverage: [
+          {
+            muscle: "Glutes",
+            status: "below_minimum",
+            sets: 5,
+            minSets: 6,
+            priority: "support",
+            targetTier: "B_SUPPORT",
+          },
+          {
+            muscle: "Hamstrings",
+            status: "below_minimum",
+            sets: 5.1,
+            minSets: 6,
+            priority: "primary",
+            targetTier: "A_PRIMARY",
+          },
+        ],
+        sessionSize: {
+          totalSetsBySlot: {
+            lower_a: 14,
+            lower_b: 11,
+            upper_a: 18,
+            upper_b: 19,
+          },
+        },
+        concentration: { count: 1, summary: ["high_concentration_count:1"] },
+        repairPressure: {
+          materialRepairCount: 2,
+          majorRepairCount: 1,
+          suspiciousRepairCount: 1,
+        },
+        forbiddenSlotRisk: {
+          count: 0,
+          summary: ["forbidden_primary_violation_count:0"],
+        },
+        lateBlockFatigueRisk: {
+          count: 1,
+          totalSets: 62,
+          maxSlotSets: 19,
+          summary: ["total_sets:62", "max_slot_sets:19"],
+        },
+      },
+    });
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+      strategyShadowProjection: shadowProjection,
+    });
+    const projection =
+      diagnostic.strategyHypothesisPromotionDiff.projectionDiff;
+    const conflicts = projection.conflictAwareRefinement.conflicts;
+
+    expect(conflicts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "protected_donor_overlap",
+          muscle: "Hamstrings",
+        }),
+        expect.objectContaining({
+          type: "floor_preservation_conflict",
+          muscle: "Glutes",
+        }),
+        expect.objectContaining({
+          type: "floor_preservation_conflict",
+          muscle: "Hamstrings",
+        }),
+        expect.objectContaining({
+          type: "slot_owner_missing",
+          muscle: "Hamstrings",
+        }),
+        expect.objectContaining({
+          type: "session_size_cap_conflict",
+          slotId: "upper_a",
+        }),
+        expect.objectContaining({
+          type: "session_size_cap_conflict",
+          slotId: "upper_b",
+        }),
+        expect.objectContaining({
+          type: "net_new_volume_blocked",
+        }),
+      ]),
+    );
+    expect(projection.conflictAwareRefinement.donorResolution).toMatchObject({
+      excludedDonorMuscles: expect.arrayContaining(["Glutes", "Hamstrings"]),
+      retainedDonorMuscles: [],
+    });
+    expect(projection.conflictAwareRefinement.volumePolicy).toEqual({
+      netNewVolumeAllowed: false,
+      redistributionRequired: true,
+      maxSlotSetIncreaseAllowed: 0,
+    });
+    expect(projection.projectedDeltas.laggingMuscleCoverage.status).toBe(
+      "worsens",
+    );
+    expect(projection.projectedDeltas.sessionSize.status).toBe("worsens");
+    expect(projection.projectedDeltas.lateBlockFatigueRisk.status).toBe(
+      "worsens",
+    );
+    expect(projection.computedNonRegressionGates).toMatchObject({
+      preserveOrImproveLaggingMuscleCoverage: "fail",
+      noSessionSizeRegression: "fail",
+      noLateBlockSkippedSetRiskIncrease: "fail",
+      noMaterialRepairIncrease: "pass",
+    });
+    expect(projection.readiness).toBe("needs_better_projection");
+    expect(projection.readOnly).toBe(true);
+    expect(projection.affectsScoringOrGeneration).toBe(false);
+    expect(projection.consumedByDemandOrMaterializer).toBe(false);
+  });
+
+  it("leaves a measured gate unknown when the relevant delta is missing", () => {
+    const base = buildShadowProjectionEvidence();
+    const beforeWithoutRepair = { ...base.before };
+    const afterWithoutRepair = { ...base.after };
+    delete beforeWithoutRepair.repairPressure;
+    delete afterWithoutRepair.repairPressure;
+    const shadowProjection = buildShadowProjectionEvidence({
+      before: beforeWithoutRepair,
+      after: afterWithoutRepair,
+    });
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+      strategyShadowProjection: shadowProjection,
+    });
+    const projection =
+      diagnostic.strategyHypothesisPromotionDiff.projectionDiff;
+
+    expect(projection.projectedDeltas.repairPressure.status).toBe("unknown");
+    expect(projection.computedNonRegressionGates).toMatchObject({
+      noMaterialRepairIncrease: "unknown",
+      noMajorRepairIncrease: "unknown",
+      noSuspiciousRepairIncrease: "unknown",
+    });
+    expect(
+      projection.conflictAwareRefinement.conflictCountsByType
+        .floor_preservation_conflict,
+    ).toBeUndefined();
+  });
+
+  it("does not treat repaired projection or old prescribed plan shape as the shadow target", () => {
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+      strategyShadowProjection: buildShadowProjectionEvidence(),
+    });
+    const serialized = JSON.stringify(
+      diagnostic.strategyHypothesisPromotionDiff.projectionDiff,
+    );
+
+    expect(serialized).toContain("planner_only_no_repair");
+    expect(serialized).not.toContain("baselineRepaired");
+    expect(serialized).not.toContain("old-prescribed-plan-only");
+    expect(
+      diagnostic.strategyHypothesisPromotionDiff.projectionDiff.limitations,
+    ).toEqual(
+      expect.arrayContaining([
+        "repaired_projection_excluded_from_projection_target",
+        "old_prescribed_plan_shape_excluded_from_projection_target",
+      ]),
     );
   });
 

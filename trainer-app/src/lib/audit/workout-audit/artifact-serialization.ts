@@ -126,6 +126,17 @@ function asStringArray(value: unknown): string[] {
     : [];
 }
 
+function countConflictTypes(conflicts: unknown): JsonRecord {
+  return asRecordArray(conflicts).reduce<JsonRecord>((counts, conflict) => {
+    const type =
+      typeof conflict.type === "string" && conflict.type.length > 0
+        ? conflict.type
+        : "unknown";
+    counts[type] = ((counts[type] as number) ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
 function createValueCatalog(prefix: string): ValueCatalog {
   const bySerialized = new Map<string, string>();
   const entries: JsonRecord = {};
@@ -795,6 +806,9 @@ function compactStrategyPromotionDiff(value: unknown): JsonRecord | undefined {
   );
   const reportedGateCount = gateValues.filter(Boolean).length;
   const projectionDiff = asRecord(diff.projectionDiff);
+  const conflictAwareRefinement = asRecord(
+    projectionDiff?.conflictAwareRefinement,
+  );
   const candidateStrategy = asRecord(projectionDiff?.candidateStrategy);
   const redistributionPreference = asRecord(
     candidateStrategy?.redistributionPreference,
@@ -845,6 +859,35 @@ function compactStrategyPromotionDiff(value: unknown): JsonRecord | undefined {
           ),
           computedGateCounts,
           readiness: projectionDiff.readiness ?? "not_ready",
+          conflictAwareRefinement: conflictAwareRefinement
+            ? {
+                enabled: conflictAwareRefinement.enabled === true,
+                readOnly: conflictAwareRefinement.readOnly === true,
+                affectsScoringOrGeneration:
+                  conflictAwareRefinement.affectsScoringOrGeneration === true
+                    ? true
+                    : false,
+                status:
+                  conflictAwareRefinement.status ??
+                  "available_with_limitations",
+                conflictCount: countArray(
+                  conflictAwareRefinement.conflicts,
+                ),
+                conflictCountsByType:
+                  asRecord(conflictAwareRefinement.conflictCountsByType) ??
+                  countConflictTypes(conflictAwareRefinement.conflicts),
+                excludedDonorMuscleCount: countArray(
+                  asRecord(conflictAwareRefinement.donorResolution)
+                    ?.excludedDonorMuscles,
+                ),
+                retainedDonorMuscleCount: countArray(
+                  asRecord(conflictAwareRefinement.donorResolution)
+                    ?.retainedDonorMuscles,
+                ),
+                volumePolicy:
+                  asRecord(conflictAwareRefinement.volumePolicy) ?? {},
+              }
+            : undefined,
           topLimitations: asStringArray(projectionDiff.limitations).slice(0, 5),
           consumedByDemandOrMaterializer:
             projectionDiff.consumedByDemandOrMaterializer === true

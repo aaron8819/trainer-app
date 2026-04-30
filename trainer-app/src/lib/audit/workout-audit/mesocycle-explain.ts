@@ -22,6 +22,7 @@ import {
 } from "@/lib/api/mesocycle-handoff-slot-plan-projection";
 import {
   createCalvesFourFourPlannerOnlyPolicyOverride,
+  createV2CombinedStrategyShadowProjectionOverride,
   type PlannerOnlyPolicyOverride,
 } from "@/lib/api/planner-only-policy-override";
 import { resolveMesocycleSlotContract } from "@/lib/api/mesocycle-slot-contract";
@@ -51,6 +52,10 @@ import {
   buildV2PlannerMesocyclePolicy,
   type V2MesocycleStrategyInput,
   type V2SetDistributionIntent,
+  type V2StrategyHypothesisProjectionCoverageRow,
+  type V2StrategyHypothesisProjectionCoverageSummary,
+  type V2StrategyHypothesisProjectionMetricSummary,
+  type V2StrategyHypothesisShadowProjectionEvidence,
   type V2SupportLanePolicy,
 } from "@/lib/engine/planning/v2";
 import {
@@ -2214,6 +2219,293 @@ function buildProjectionMetricDelta(input: {
       input.after.duplicateRowCount - input.before.duplicateRowCount,
     keyAcceptanceFailCount:
       input.after.keyAcceptance.fail - input.before.keyAcceptance.fail,
+  };
+}
+
+function totalSetsBySlot(
+  slots: ReadonlyArray<SlotCompositionSnapshot>,
+): Record<string, number> {
+  const entries: Array<[string, number]> = slots.map((slot) => [
+    slot.slotId,
+    slot.exercises.reduce((sum, exercise) => sum + exercise.setCount, 0),
+  ]);
+  return Object.fromEntries(
+    entries.sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
+
+function coverageStatus(input: {
+  sets: number | null;
+  minSets: number | null;
+  maxSets: number | null;
+}): V2StrategyHypothesisProjectionCoverageRow["status"] {
+  if (input.sets == null) {
+    return "unknown";
+  }
+  if (input.minSets != null && input.sets < input.minSets) {
+    return "below_minimum";
+  }
+  if (input.maxSets != null && input.sets > input.maxSets) {
+    return "above_maximum";
+  }
+  return "covered";
+}
+
+function buildCoverageSummary(
+  rows: readonly V2StrategyHypothesisProjectionCoverageRow[],
+): V2StrategyHypothesisProjectionCoverageSummary {
+  return {
+    coveredCount: rows.filter((row) => row.status === "covered").length,
+    belowMinimumCount: rows.filter((row) => row.status === "below_minimum")
+      .length,
+    aboveMaximumCount: rows.filter((row) => row.status === "above_maximum")
+      .length,
+    unknownCount: rows.filter((row) => row.status === "unknown").length,
+    totalCount: rows.length,
+    examples: rows
+      .slice()
+      .sort((left, right) => left.muscle.localeCompare(right.muscle))
+      .slice(0, 8)
+      .map(
+        (row) =>
+          `${row.muscle}:${row.status}:${row.sets ?? "unknown"}_sets`,
+      ),
+  };
+}
+
+function buildCoverageRows(input: {
+  planningReality: PlanningRealityDiagnostic;
+  muscles?: readonly string[];
+}): V2StrategyHypothesisProjectionCoverageRow[] {
+  const totals = sumSlotStimulusByMuscle(input.planningReality.finalSlotPlan);
+  const requestedMuscles = input.muscles
+    ? new Set(input.muscles)
+    : undefined;
+  return input.planningReality.shadowWeeklyDemand
+    .filter((row) => {
+      if (requestedMuscles && !requestedMuscles.has(row.muscle)) {
+        return false;
+      }
+      return row.targetTier === "A_PRIMARY" || row.targetTier === "B_SUPPORT";
+    })
+    .map((row) => {
+      const sets = totals.get(row.muscle) ?? 0;
+      return {
+        muscle: row.muscle,
+        status: coverageStatus({
+          sets,
+          minSets: row.minEffectiveSets,
+          maxSets: row.maxEffectiveSets,
+        }),
+        sets,
+        ...(row.minEffectiveSets != null
+          ? { minSets: row.minEffectiveSets }
+          : {}),
+        ...(row.preferredEffectiveSets != null
+          ? { preferredSets: row.preferredEffectiveSets }
+          : {}),
+        ...(row.maxEffectiveSets != null
+          ? { maxSets: row.maxEffectiveSets }
+          : {}),
+        priority: row.priority,
+        targetTier: row.targetTier,
+      };
+    })
+    .sort((left, right) => left.muscle.localeCompare(right.muscle));
+}
+
+function buildMetricSummary(input: {
+  count: number;
+  summary: string[];
+  totalSets?: number;
+  maxSlotSets?: number;
+}): V2StrategyHypothesisProjectionMetricSummary {
+  return {
+    count: input.count,
+    summary: uniqueSorted(input.summary).slice(0, 8),
+    ...(input.totalSets != null ? { totalSets: input.totalSets } : {}),
+    ...(input.maxSlotSets != null ? { maxSlotSets: input.maxSlotSets } : {}),
+  };
+}
+
+function countDirtyCollateralRows(
+  planningReality: PlanningRealityDiagnostic,
+): V2StrategyHypothesisProjectionMetricSummary {
+  const dirtyPreselectionRows = planningReality.preselectionFeasibility.flatMap(
+    (row) =>
+      row.dirtyClosureSignals.map(
+        (signal) => `${row.slotId}:${row.muscle}:${signal.signal}`,
+      ),
+  );
+  const dirtyRepairRows = planningReality.repairMaterialityAfterShadowAllocation
+    .filter((row) =>
+      `${row.repairMechanism} ${row.source} ${row.rationale} ${row.shadowRationale.join(" ")}`
+        .toLowerCase()
+        .match(/dirty|collateral/),
+    )
+    .map(
+      (row) =>
+        `${row.slotId ?? "unknown"}:${row.muscle ?? "unknown"}:${row.repairMechanism}`,
+    );
+  const rows = uniqueSorted([...dirtyPreselectionRows, ...dirtyRepairRows]);
+  return buildMetricSummary({
+    count: rows.length,
+    summary: rows,
+  });
+}
+
+function buildForbiddenSlotRiskSummary(
+  planningReality: PlanningRealityDiagnostic,
+): V2StrategyHypothesisProjectionMetricSummary {
+  const count = countForbiddenFinalPrimaryViolations(
+    planningReality,
+    planningReality.finalSlotPlan,
+  );
+  return buildMetricSummary({
+    count,
+    summary:
+      count > 0
+        ? [`forbidden_primary_violation_count:${count}`]
+        : ["forbidden_primary_violation_count:0"],
+  });
+}
+
+function buildLateBlockFatigueRiskSummary(
+  planningReality: PlanningRealityDiagnostic,
+): V2StrategyHypothesisProjectionMetricSummary {
+  const setsBySlot = totalSetsBySlot(planningReality.finalSlotPlan);
+  const slotSetCounts = Object.values(setsBySlot);
+  const totalSets = slotSetCounts.reduce((sum, value) => sum + value, 0);
+  const maxSlotSets = Math.max(0, ...slotSetCounts);
+  const highConcentrationCount =
+    planningReality.summary.highExerciseConcentrationCount ?? 0;
+  return buildMetricSummary({
+    count: highConcentrationCount,
+    totalSets,
+    maxSlotSets,
+    summary: [
+      `high_concentration_count:${highConcentrationCount}`,
+      `total_sets:${totalSets}`,
+      `max_slot_sets:${maxSlotSets}`,
+    ],
+  });
+}
+
+function buildStrategyShadowProjectionSnapshot(input: {
+  planningReality: PlanningRealityDiagnostic;
+  candidateProtectedMuscles: readonly string[];
+  candidateDonorMuscles: readonly string[];
+}): V2StrategyHypothesisShadowProjectionEvidence["before"] {
+  const priorityCoverageRows = buildCoverageRows({
+    planningReality: input.planningReality,
+  });
+  const laggingCoverageRows = buildCoverageRows({
+    planningReality: input.planningReality,
+    muscles: input.candidateProtectedMuscles,
+  });
+  const donorCoverageRows = buildCoverageRows({
+    planningReality: input.planningReality,
+    muscles: input.candidateDonorMuscles,
+  });
+  const setsBySlot = totalSetsBySlot(input.planningReality.finalSlotPlan);
+  return {
+    priorityCoverage: buildCoverageSummary(priorityCoverageRows),
+    laggingMuscleCoverage: laggingCoverageRows,
+    donorMuscleCoverage: donorCoverageRows,
+    sessionSize: {
+      totalSetsBySlot: setsBySlot,
+    },
+    concentration: buildMetricSummary({
+      count: input.planningReality.summary.highExerciseConcentrationCount ?? 0,
+      summary: [
+        `high_concentration_count:${input.planningReality.summary.highExerciseConcentrationCount ?? 0}`,
+      ],
+    }),
+    repairPressure: {
+      materialRepairCount: getMaterialRepairCount(input.planningReality),
+      majorRepairCount: getMajorRepairCount(input.planningReality),
+      suspiciousRepairCount:
+        input.planningReality.suspiciousRepairsNotEligibleForPromotion
+          ?.length ?? 0,
+    },
+    dirtyCollateral: countDirtyCollateralRows(input.planningReality),
+    forbiddenSlotRisk: buildForbiddenSlotRiskSummary(input.planningReality),
+    lateBlockFatigueRisk: buildLateBlockFatigueRiskSummary(
+      input.planningReality,
+    ),
+  };
+}
+
+function resolveStrategyShadowProtectedSlotOwners(
+  candidateProtectedMuscles: readonly string[],
+): Record<string, string[]> {
+  const ownersByMuscle: Record<string, string[]> = {
+    Biceps: ["upper_b"],
+    Calves: ["lower_a", "lower_b"],
+    Chest: ["upper_a", "upper_b"],
+    Hamstrings: ["lower_a", "lower_b"],
+    Lats: ["upper_a", "upper_b"],
+    Quads: ["lower_a", "lower_b"],
+    "Rear Delts": ["upper_a"],
+    "Side Delts": ["upper_a", "upper_b"],
+    Triceps: ["upper_a", "upper_b"],
+    "Upper Back": ["upper_a", "upper_b"],
+  };
+  return Object.fromEntries(
+    uniqueSorted([...candidateProtectedMuscles]).map((muscle) => [
+      muscle,
+      ownersByMuscle[muscle] ?? [],
+    ]),
+  );
+}
+
+function buildStrategyShadowProjectionEvidence(input: {
+  before: PlanningRealityDiagnostic;
+  after: PlanningRealityDiagnostic;
+  candidateProtectedMuscles: readonly string[];
+  candidateDonorMuscles: readonly string[];
+  limitations: readonly string[];
+}): V2StrategyHypothesisShadowProjectionEvidence {
+  return {
+    version: 1,
+    source: "v2_strategy_hypothesis_shadow_projection",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: false,
+    projectionMode: "shadow_projection",
+    candidateHypotheses: [
+      "protect_lagging_muscles_earlier",
+      "cap_late_block_volume",
+    ],
+    baselineProjection: "planner_only_no_repair",
+    candidateProjection: "combined_strategy_shadow_planner_only_no_repair",
+    candidateStrategy: {
+      candidateProtectedMuscles: uniqueSorted([
+        ...input.candidateProtectedMuscles,
+      ]),
+      candidateDonorMuscles: uniqueSorted([...input.candidateDonorMuscles]),
+      protectedSlotOwners: resolveStrategyShadowProtectedSlotOwners(
+        input.candidateProtectedMuscles,
+      ),
+      preferRedistributionBeforeNetNewVolume: true,
+    },
+    before: buildStrategyShadowProjectionSnapshot({
+      planningReality: input.before,
+      candidateProtectedMuscles: input.candidateProtectedMuscles,
+      candidateDonorMuscles: input.candidateDonorMuscles,
+    }),
+    after: buildStrategyShadowProjectionSnapshot({
+      planningReality: input.after,
+      candidateProtectedMuscles: input.candidateProtectedMuscles,
+      candidateDonorMuscles: input.candidateDonorMuscles,
+    }),
+    limitations: uniqueSorted([
+      "shadow_projection_is_planner_only_no_repair",
+      "repaired_projection_excluded_from_projection_target",
+      "old_prescribed_plan_shape_excluded_from_projection_target",
+      "shadow_projection_not_consumed_by_demand_weekly_curve_materializer_generation_selection_repair_seed_runtime_or_receipts",
+      ...input.limitations,
+    ]),
   };
 }
 
@@ -7588,6 +7880,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   compareRepaired: boolean;
   repairedProjectionAvailable: boolean;
   mesocycleStrategyInput?: V2MesocycleStrategyInput;
+  strategyShadowProjection?: V2StrategyHypothesisShadowProjectionEvidence;
 }): MesocycleExplainPlannerOnlyNoRepair {
   const repairDependenciesDisabled = [
     "support-floor closure",
@@ -7649,6 +7942,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     });
     const plannerPolicy = buildV2PlannerMesocyclePolicy({
       mesocycleStrategyInput: input.mesocycleStrategyInput,
+      strategyShadowProjection: input.strategyShadowProjection,
     });
     const v2MesocycleStrategyDiagnostic =
       plannerPolicy.mesocycleStrategyDiagnostic;
@@ -7838,6 +8132,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   });
   const plannerPolicy = buildV2PlannerMesocyclePolicy({
     mesocycleStrategyInput: input.mesocycleStrategyInput,
+    strategyShadowProjection: input.strategyShadowProjection,
   });
   const v2MesocycleStrategyDiagnostic =
     plannerPolicy.mesocycleStrategyDiagnostic;
@@ -8954,6 +9249,27 @@ export async function buildMesocycleExplainAuditPayload(input: {
       ...historicalStrategyEvidence.evidenceLimitations,
     ],
   });
+  const preliminaryStrategyProjectionDiff = buildV2PlannerMesocyclePolicy({
+    mesocycleStrategyInput,
+  }).mesocycleStrategyDiagnostic.strategyHypothesisPromotionDiff.projectionDiff;
+  const preliminaryRedistributionPreference =
+    preliminaryStrategyProjectionDiff.candidateStrategy.redistributionPreference;
+  const strategyShadowProjectionOverride =
+    input.plannerOnlyNoRepair?.enabled &&
+    preliminaryStrategyProjectionDiff.status === "available_with_limitations" &&
+    preliminaryStrategyProjectionDiff.evaluatedHypotheses.includes(
+      "protect_lagging_muscles_earlier",
+    ) &&
+    preliminaryStrategyProjectionDiff.evaluatedHypotheses.includes(
+      "cap_late_block_volume",
+    )
+      ? createV2CombinedStrategyShadowProjectionOverride({
+          candidateProtectedMuscles:
+            preliminaryRedistributionPreference.candidateProtectedMuscles,
+          candidateDonorMuscles:
+            preliminaryRedistributionPreference.candidateDonorMuscles,
+        })
+      : undefined;
   const sourceProjection = toHandoffProjectionSource(
     (await loadHandoffSourceMesocycle(
       prisma,
@@ -8996,6 +9312,17 @@ export async function buildMesocycleExplainAuditPayload(input: {
         experimentalPlannerOnlyNoRepair: true,
       })
     : undefined;
+  const strategyShadowProjection =
+    input.plannerOnlyNoRepair?.enabled && strategyShadowProjectionOverride
+      ? projectSuccessorSlotPlansFromSnapshot({
+          userId: input.userId,
+          source: sourceProjection,
+          design: previewArtifacts.artifacts.recommendedDesign,
+          snapshot: sourceSnapshot,
+          experimentalPlannerOnlyNoRepair: true,
+          plannerOnlyPolicyOverride: strategyShadowProjectionOverride,
+        })
+      : undefined;
 
   if ("error" in slotPlanProjection) {
     limitations.push(
@@ -9016,6 +9343,11 @@ export async function buildMesocycleExplainAuditPayload(input: {
   ) {
     limitations.push(
       `Planner-only no-repair projection reported unresolved demand without repair: ${plannerOnlyNoRepairProjection.error}`,
+    );
+  }
+  if (strategyShadowProjection && "error" in strategyShadowProjection) {
+    limitations.push(
+      `V2 strategy shadow projection reported unresolved demand without repair: ${strategyShadowProjection.error}`,
     );
   }
 
@@ -9220,6 +9552,23 @@ export async function buildMesocycleExplainAuditPayload(input: {
   const plannerOnlyNoRepairDiagnostics = plannerOnlyNoRepairProjection
     ? buildProjectionDiagnostics(plannerOnlyNoRepairProjection.diagnostics)
     : undefined;
+  const strategyShadowProjectionDiagnostics = strategyShadowProjection
+    ? buildProjectionDiagnostics(strategyShadowProjection.diagnostics)
+    : undefined;
+  const strategyShadowProjectionEvidence =
+    plannerOnlyNoRepairDiagnostics?.planningReality &&
+    strategyShadowProjectionDiagnostics?.planningReality &&
+    strategyShadowProjectionOverride
+      ? buildStrategyShadowProjectionEvidence({
+          before: plannerOnlyNoRepairDiagnostics.planningReality,
+          after: strategyShadowProjectionDiagnostics.planningReality,
+          candidateProtectedMuscles:
+            strategyShadowProjectionOverride.candidateProtectedMuscles,
+          candidateDonorMuscles:
+            strategyShadowProjectionOverride.candidateDonorMuscles,
+          limitations,
+        })
+      : undefined;
   const plannerOnlyDryRun =
     input.plannerOnlyDryRun?.enabled && input.plannerOnlyDryRun.compareRepaired
       ? buildPlannerOnlyDryRunComparison(
@@ -9237,6 +9586,7 @@ export async function buildMesocycleExplainAuditPayload(input: {
         compareRepaired: input.plannerOnlyNoRepair.compareRepaired,
         repairedProjectionAvailable: !("error" in slotPlanProjection),
         mesocycleStrategyInput,
+        strategyShadowProjection: strategyShadowProjectionEvidence,
       })
     : undefined;
 

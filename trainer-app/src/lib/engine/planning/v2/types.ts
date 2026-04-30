@@ -235,6 +235,113 @@ export type V2StrategyHypothesisProjectionGateStatus =
   | "fail"
   | "unknown";
 
+export type V2StrategyHypothesisProjectionCoverageRow = {
+  muscle: string;
+  status: "covered" | "below_minimum" | "above_maximum" | "unknown";
+  sets?: number;
+  minSets?: number;
+  preferredSets?: number;
+  maxSets?: number;
+  priority?: "primary" | "support" | "secondary" | "implicit";
+  targetTier?: string;
+};
+
+export type V2StrategyHypothesisProjectionCoverageSummary = {
+  coveredCount: number;
+  belowMinimumCount: number;
+  aboveMaximumCount: number;
+  unknownCount: number;
+  totalCount: number;
+  examples: string[];
+};
+
+export type V2StrategyHypothesisProjectionMetricSummary = {
+  count: number;
+  summary: string[];
+  totalSets?: number;
+  maxSlotSets?: number;
+};
+
+export type V2StrategyHypothesisConflictAwareRefinementStatus =
+  | "not_available"
+  | "available_with_limitations"
+  | "available";
+
+export type V2StrategyHypothesisConflictAwareConflictType =
+  | "protected_donor_overlap"
+  | "floor_preservation_conflict"
+  | "slot_owner_missing"
+  | "session_size_cap_conflict"
+  | "net_new_volume_blocked"
+  | "unknown";
+
+export type V2StrategyHypothesisConflictAwareConflict = {
+  type: V2StrategyHypothesisConflictAwareConflictType;
+  muscle?: string;
+  slotId?: string;
+  reason: string;
+};
+
+export type V2StrategyHypothesisConflictAwareRefinement = {
+  enabled: true;
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  status: V2StrategyHypothesisConflictAwareRefinementStatus;
+  conflicts: V2StrategyHypothesisConflictAwareConflict[];
+  conflictCountsByType: Partial<
+    Record<V2StrategyHypothesisConflictAwareConflictType, number>
+  >;
+  donorResolution: {
+    excludedDonorMuscles: string[];
+    retainedDonorMuscles: string[];
+    reasonByMuscle: Record<string, string>;
+  };
+  volumePolicy: {
+    netNewVolumeAllowed: false;
+    redistributionRequired: true;
+    maxSlotSetIncreaseAllowed: 0;
+  };
+};
+
+export type V2StrategyHypothesisShadowProjectionSnapshot = {
+  priorityCoverage?: V2StrategyHypothesisProjectionCoverageSummary;
+  laggingMuscleCoverage?: V2StrategyHypothesisProjectionCoverageRow[];
+  donorMuscleCoverage?: V2StrategyHypothesisProjectionCoverageRow[];
+  sessionSize?: {
+    totalSetsBySlot: Record<string, number>;
+  };
+  concentration?: V2StrategyHypothesisProjectionMetricSummary;
+  repairPressure?: {
+    materialRepairCount: number;
+    majorRepairCount: number;
+    suspiciousRepairCount: number;
+  };
+  dirtyCollateral?: V2StrategyHypothesisProjectionMetricSummary;
+  forbiddenSlotRisk?: V2StrategyHypothesisProjectionMetricSummary;
+  lateBlockFatigueRisk?: V2StrategyHypothesisProjectionMetricSummary;
+};
+
+export type V2StrategyHypothesisShadowProjectionEvidence = {
+  version: 1;
+  source: "v2_strategy_hypothesis_shadow_projection";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByDemandOrMaterializer: false;
+  projectionMode: "shadow_projection";
+  candidateHypotheses: V2StrategyHypothesisPromotionDiffHypothesisId[];
+  baselineProjection: "planner_only_no_repair";
+  candidateProjection: "combined_strategy_shadow_planner_only_no_repair";
+  candidateStrategy: {
+    candidateProtectedMuscles: string[];
+    candidateDonorMuscles: string[];
+    protectedSlotOwners?: Record<string, string[]>;
+    preferRedistributionBeforeNetNewVolume: true;
+  };
+  before: V2StrategyHypothesisShadowProjectionSnapshot;
+  after: V2StrategyHypothesisShadowProjectionSnapshot;
+  limitations: string[];
+};
+
 export type V2StrategyHypothesisProjectionDiff = {
   version: 1;
   source: "v2_strategy_hypothesis_projection_diff";
@@ -268,37 +375,63 @@ export type V2StrategyHypothesisProjectionDiff = {
   };
   projectedDeltas: {
     priorityCoverage: {
+      before?: V2StrategyHypothesisProjectionCoverageSummary;
+      after?: V2StrategyHypothesisProjectionCoverageSummary;
       status: V2StrategyHypothesisProjectionDeltaStatus;
       notes: string[];
     };
     laggingMuscleCoverage: {
+      before?: V2StrategyHypothesisProjectionCoverageRow[];
+      after?: V2StrategyHypothesisProjectionCoverageRow[];
       status: V2StrategyHypothesisProjectionDeltaStatus;
       examples: string[];
     };
     sessionSize: {
+      beforeTotalSetsBySlot?: Record<string, number>;
+      afterTotalSetsBySlot?: Record<string, number>;
       status: V2StrategyHypothesisProjectionDeltaStatus;
       notes: string[];
     };
     concentration: {
+      before?: V2StrategyHypothesisProjectionMetricSummary;
+      after?: V2StrategyHypothesisProjectionMetricSummary;
       status: V2StrategyHypothesisProjectionDeltaStatus;
       notes: string[];
     };
     repairPressure: {
+      beforeMaterialRepairCount?: number;
+      afterMaterialRepairCount?: number;
       materialRepairDelta?: number;
+      beforeMajorRepairCount?: number;
+      afterMajorRepairCount?: number;
       majorRepairDelta?: number;
+      beforeSuspiciousRepairCount?: number;
+      afterSuspiciousRepairCount?: number;
       suspiciousRepairDelta?: number;
       status: V2StrategyHypothesisProjectionDeltaStatus;
       notes: string[];
     };
     dirtyCollateral: {
+      before?: V2StrategyHypothesisProjectionMetricSummary;
+      after?: V2StrategyHypothesisProjectionMetricSummary;
+      status: V2StrategyHypothesisProjectionDeltaStatus;
+      notes: string[];
+    };
+    forbiddenSlotRisk: {
+      before?: V2StrategyHypothesisProjectionMetricSummary;
+      after?: V2StrategyHypothesisProjectionMetricSummary;
       status: V2StrategyHypothesisProjectionDeltaStatus;
       notes: string[];
     };
     lateBlockFatigueRisk: {
+      before?: V2StrategyHypothesisProjectionMetricSummary;
+      after?: V2StrategyHypothesisProjectionMetricSummary;
       status: V2StrategyHypothesisProjectionDeltaStatus;
       notes: string[];
     };
   };
+  shadowProjection?: V2StrategyHypothesisShadowProjectionEvidence;
+  conflictAwareRefinement: V2StrategyHypothesisConflictAwareRefinement;
   computedNonRegressionGates: {
     preservePriorityCoverage: V2StrategyHypothesisProjectionGateStatus;
     preserveOrImproveLaggingMuscleCoverage: V2StrategyHypothesisProjectionGateStatus;

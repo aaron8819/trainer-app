@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildV2PlannerMesocyclePolicy,
   type V2MesocycleStrategyInput,
+  type V2StrategyHypothesisShadowProjectionEvidence,
 } from "@/lib/engine/planning/v2";
 import { AUDIT_RECONSTRUCTION_GUARDRAIL } from "./constants";
 import {
@@ -151,6 +152,111 @@ function makePromotionDiffStrategyInput(): V2MesocycleStrategyInput {
     },
     evidenceLimitations: [
       "historical_mesocycles_are_validation_data_not_policy_targets",
+    ],
+  };
+}
+
+function makePromotionDiffShadowProjectionEvidence(): V2StrategyHypothesisShadowProjectionEvidence {
+  return {
+    version: 1,
+    source: "v2_strategy_hypothesis_shadow_projection",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: false,
+    projectionMode: "shadow_projection",
+    candidateHypotheses: [
+      "protect_lagging_muscles_earlier",
+      "cap_late_block_volume",
+    ],
+    baselineProjection: "planner_only_no_repair",
+    candidateProjection: "combined_strategy_shadow_planner_only_no_repair",
+    candidateStrategy: {
+      candidateProtectedMuscles: ["Calves", "Side Delts"],
+      candidateDonorMuscles: ["Glutes"],
+      preferRedistributionBeforeNetNewVolume: true,
+    },
+    before: {
+      priorityCoverage: {
+        coveredCount: 1,
+        belowMinimumCount: 1,
+        aboveMaximumCount: 0,
+        unknownCount: 0,
+        totalCount: 2,
+        examples: ["Side Delts:below_minimum:1_sets"],
+      },
+      laggingMuscleCoverage: [
+        { muscle: "Calves", status: "covered", sets: 4 },
+        { muscle: "Side Delts", status: "below_minimum", sets: 1 },
+      ],
+      sessionSize: {
+        totalSetsBySlot: {
+          lower_a: 14,
+          lower_b: 14,
+          upper_a: 15,
+          upper_b: 18,
+        },
+      },
+      concentration: { count: 2, summary: ["high_concentration_count:2"] },
+      repairPressure: {
+        materialRepairCount: 2,
+        majorRepairCount: 1,
+        suspiciousRepairCount: 1,
+      },
+      dirtyCollateral: { count: 0, summary: ["dirty_collateral_count:0"] },
+      forbiddenSlotRisk: {
+        count: 0,
+        summary: ["forbidden_primary_violation_count:0"],
+      },
+      lateBlockFatigueRisk: {
+        count: 2,
+        totalSets: 61,
+        maxSlotSets: 18,
+        summary: ["high_concentration_count:2"],
+      },
+    },
+    after: {
+      priorityCoverage: {
+        coveredCount: 2,
+        belowMinimumCount: 0,
+        aboveMaximumCount: 0,
+        unknownCount: 0,
+        totalCount: 2,
+        examples: ["Side Delts:covered:3_sets"],
+      },
+      laggingMuscleCoverage: [
+        { muscle: "Calves", status: "covered", sets: 4 },
+        { muscle: "Side Delts", status: "covered", sets: 3 },
+      ],
+      sessionSize: {
+        totalSetsBySlot: {
+          lower_a: 14,
+          lower_b: 13,
+          upper_a: 17,
+          upper_b: 17,
+        },
+      },
+      concentration: { count: 1, summary: ["high_concentration_count:1"] },
+      repairPressure: {
+        materialRepairCount: 1,
+        majorRepairCount: 1,
+        suspiciousRepairCount: 1,
+      },
+      dirtyCollateral: { count: 0, summary: ["dirty_collateral_count:0"] },
+      forbiddenSlotRisk: {
+        count: 0,
+        summary: ["forbidden_primary_violation_count:0"],
+      },
+      lateBlockFatigueRisk: {
+        count: 1,
+        totalSets: 61,
+        maxSlotSets: 17,
+        summary: ["high_concentration_count:1"],
+      },
+    },
+    limitations: [
+      "shadow_projection_is_planner_only_no_repair",
+      "repaired_projection_excluded_from_projection_target",
+      "old_prescribed_plan_shape_excluded_from_projection_target",
     ],
   };
 }
@@ -1786,6 +1892,7 @@ describe("buildWorkoutAuditArtifact", () => {
     mesocycleExplain!.plannerOnlyNoRepair!.v2MesocycleStrategyDiagnostic =
       buildV2PlannerMesocyclePolicy({
         mesocycleStrategyInput: makePromotionDiffStrategyInput(),
+        strategyShadowProjection: makePromotionDiffShadowProjectionEvidence(),
       }).mesocycleStrategyDiagnostic;
     mesocycleExplain!.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.slotDiffs[0]?.laneDiffs.push(
       {
@@ -1879,19 +1986,19 @@ describe("buildWorkoutAuditArtifact", () => {
         strategyHypothesisPromotionDiff: {
           status: "available_with_limitations",
           evaluatedHypothesisCount: 2,
-          nextSafeAction: "run_read_only_shadow_trial",
+          nextSafeAction: "add_read_only_projection_diff",
           consumedByDemandOrMaterializer: false,
           projectionDiff: {
             status: "available_with_limitations",
-            projectionMode: "read_only_estimate",
+            projectionMode: "shadow_projection",
             candidateProtectedMuscleCount: 2,
             candidateDonorMuscleCount: 1,
             computedGateCounts: {
-              pass: 0,
-              fail: 0,
-              unknown: 10,
+              pass: 9,
+              fail: 1,
+              unknown: 0,
             },
-            readiness: "ready_for_read_only_shadow_trial",
+            readiness: "needs_better_projection",
             consumedByDemandOrMaterializer: false,
           },
         },
@@ -2102,7 +2209,7 @@ describe("buildWorkoutAuditArtifact", () => {
             "protect_lagging_muscles_earlier",
             "cap_late_block_volume",
           ],
-          projectionMode: "read_only_estimate",
+          projectionMode: "shadow_projection",
           candidateStrategy: expect.objectContaining({
             redistributionPreference: expect.objectContaining({
               preferRedistributionBeforeNetNewVolume: true,
@@ -2114,12 +2221,49 @@ describe("buildWorkoutAuditArtifact", () => {
             }),
           }),
           computedNonRegressionGates: expect.objectContaining({
-            preservePriorityCoverage: "unknown",
-            noLateBlockSkippedSetRiskIncrease: "unknown",
+            preservePriorityCoverage: "pass",
+            noLateBlockSkippedSetRiskIncrease: "pass",
+            noSessionSizeRegression: "fail",
           }),
-          readiness: "ready_for_read_only_shadow_trial",
+          conflictAwareRefinement: expect.objectContaining({
+            enabled: true,
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            status: "available_with_limitations",
+            conflictCountsByType: expect.objectContaining({
+              session_size_cap_conflict: 1,
+            }),
+            volumePolicy: {
+              netNewVolumeAllowed: false,
+              redistributionRequired: true,
+              maxSlotSetIncreaseAllowed: 0,
+            },
+          }),
+          projectedDeltas: expect.objectContaining({
+            sessionSize: expect.objectContaining({
+              beforeTotalSetsBySlot: expect.objectContaining({
+                upper_a: 15,
+              }),
+              afterTotalSetsBySlot: expect.objectContaining({
+                upper_a: 17,
+              }),
+              status: "worsens",
+            }),
+            repairPressure: expect.objectContaining({
+              materialRepairDelta: -1,
+              majorRepairDelta: 0,
+              suspiciousRepairDelta: 0,
+            }),
+          }),
+          shadowProjection: expect.objectContaining({
+            source: "v2_strategy_hypothesis_shadow_projection",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            baselineProjection: "planner_only_no_repair",
+          }),
+          readiness: "needs_better_projection",
         }),
-        nextSafeAction: "run_read_only_shadow_trial",
+        nextSafeAction: "add_read_only_projection_diff",
       },
       v2TargetVsNoRepairDiff: {
         summary: expect.objectContaining({
@@ -2195,10 +2339,25 @@ describe("buildWorkoutAuditArtifact", () => {
       mainV2Summary.mesocycleStrategyDiagnostic
         ?.strategyHypothesisPromotionDiff;
     expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
+      "beforeTotalSetsBySlot",
+    );
+    expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
+      "shadowProjection",
+    );
+    expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
       "targetTierMuscles",
     );
     expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
       "history-b:skipped_set_trend_rising",
+    );
+    expect(JSON.stringify(compactPromotionDiffSummary)).toContain(
+      "conflictAwareRefinement",
+    );
+    expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
+      "conflicts",
+    );
+    expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
+      "candidate projection increased slot set pressure",
     );
     expect(strategyShard.sizeBytes).toBeLessThan(524_288);
     expect(promotionReadinessShard.sizeBytes).toBeLessThan(524_288);

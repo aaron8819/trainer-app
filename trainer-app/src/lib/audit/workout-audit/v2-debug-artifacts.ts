@@ -130,6 +130,17 @@ function countProjectionGateStatuses(value: unknown): JsonRecord {
   };
 }
 
+function countConflictTypes(conflicts: unknown): JsonRecord {
+  return asRecordArray(conflicts).reduce<JsonRecord>((counts, conflict) => {
+    const type =
+      typeof conflict.type === "string" && conflict.type.length > 0
+        ? conflict.type
+        : "unknown";
+    counts[type] = ((counts[type] as number) ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
 function pickRecordFields(
   value: unknown,
   fields: ReadonlyArray<string>,
@@ -849,6 +860,9 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
       ?.strategyHypothesisPromotionDiff,
   );
   const strategyProjectionDiff = asRecord(strategyPromotionDiff?.projectionDiff);
+  const conflictAwareRefinement = asRecord(
+    strategyProjectionDiff?.conflictAwareRefinement,
+  );
   const projectionCandidateStrategy = asRecord(
     strategyProjectionDiff?.candidateStrategy,
   );
@@ -923,6 +937,20 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
                   strategyProjectionDiff.computedNonRegressionGates,
                 ),
                 readiness: strategyProjectionDiff.readiness ?? "not_ready",
+                conflictAwareRefinement: conflictAwareRefinement
+                  ? {
+                      status:
+                        conflictAwareRefinement.status ??
+                        "available_with_limitations",
+                      conflictCount: countArray(
+                        conflictAwareRefinement.conflicts,
+                      ),
+                      conflictCountsByType:
+                        asRecord(
+                          conflictAwareRefinement.conflictCountsByType,
+                        ) ?? countConflictTypes(conflictAwareRefinement.conflicts),
+                    }
+                  : undefined,
                 consumedByDemandOrMaterializer:
                   strategyProjectionDiff.consumedByDemandOrMaterializer === true
                     ? true

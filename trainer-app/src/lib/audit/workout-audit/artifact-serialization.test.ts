@@ -1819,6 +1819,36 @@ describe("artifact serialization helpers", () => {
                   noConcentrationRegression: "unknown",
                   noLateBlockSkippedSetRiskIncrease: "unknown",
                 },
+                conflictAwareRefinement: {
+                  enabled: true,
+                  readOnly: true,
+                  affectsScoringOrGeneration: false,
+                  status: "available_with_limitations",
+                  conflicts: [
+                    {
+                      type: "session_size_cap_conflict",
+                      slotId: "upper_a",
+                      reason:
+                        "candidate projection increased slot set pressure despite max slot set increase allowance of zero",
+                    },
+                  ],
+                  conflictCountsByType: {
+                    session_size_cap_conflict: 1,
+                  },
+                  donorResolution: {
+                    excludedDonorMuscles: [],
+                    retainedDonorMuscles: ["Glutes"],
+                    reasonByMuscle: {
+                      Glutes:
+                        "retained_as_over_concentration_or_fatigue_driver_candidate_with_no_measured_conflict",
+                    },
+                  },
+                  volumePolicy: {
+                    netNewVolumeAllowed: false,
+                    redistributionRequired: true,
+                    maxSlotSetIncreaseAllowed: 0,
+                  },
+                },
                 readiness: "ready_for_read_only_shadow_trial",
                 limitations: [
                   "no_shadow_projection_rerun_yet",
@@ -1905,6 +1935,23 @@ describe("artifact serialization helpers", () => {
           fail: 0,
           unknown: 10,
         },
+        conflictAwareRefinement: {
+          enabled: true,
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          status: "available_with_limitations",
+          conflictCount: 1,
+          conflictCountsByType: {
+            session_size_cap_conflict: 1,
+          },
+          excludedDonorMuscleCount: 0,
+          retainedDonorMuscleCount: 1,
+          volumePolicy: {
+            netNewVolumeAllowed: false,
+            redistributionRequired: true,
+            maxSlotSetIncreaseAllowed: 0,
+          },
+        },
         readiness: "ready_for_read_only_shadow_trial",
         topLimitations: [
           "no_shadow_projection_rerun_yet",
@@ -1921,6 +1968,9 @@ describe("artifact serialization helpers", () => {
     );
     expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
       "candidateDonorMuscles",
+    );
+    expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
+      "candidate projection increased slot set pressure",
     );
     expect(noRepair).not.toHaveProperty("v2MesocycleStrategyDiagnostic");
   });

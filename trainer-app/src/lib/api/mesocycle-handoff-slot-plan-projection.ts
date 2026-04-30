@@ -17,7 +17,11 @@ import type { SuccessorMesocycleProjectionSource } from "./mesocycle-handoff-pro
 import { SESSION_CAPS } from "./template-session/selection-adapter";
 import { getWeekOneSupportFloor } from "./template-session/role-budgeting";
 import { selectAccessoryLaneInsertion } from "@/lib/planning/accessory-lane";
-import type { PlannerOnlyPolicyOverride } from "./planner-only-policy-override";
+import type {
+  CalvesFourFourPlannerOnlyPolicyOverride,
+  PlannerOnlyPolicyOverride,
+  V2CombinedStrategyShadowProjectionOverride,
+} from "./planner-only-policy-override";
 import type { PreloadedGenerationSnapshot } from "./template-session/context-loader";
 import type { MappedGenerationContext } from "./template-session/types";
 import {
@@ -1035,7 +1039,7 @@ const SOFT_SUPPORT_PRESELECTION_EFFECTIVE_SET_FLOOR = 2;
 
 function isCalvesFourFourPlannerOnlyOverride(
   override: PlannerOnlyPolicyOverride | undefined,
-): override is PlannerOnlyPolicyOverride {
+): override is CalvesFourFourPlannerOnlyPolicyOverride {
   return (
     override?.readOnly === true &&
     override.appliesOnlyTo === "planner_only_dry_run" &&
@@ -1043,10 +1047,20 @@ function isCalvesFourFourPlannerOnlyOverride(
   );
 }
 
+function isCombinedStrategyShadowProjectionOverride(
+  override: PlannerOnlyPolicyOverride | undefined,
+): override is V2CombinedStrategyShadowProjectionOverride {
+  return (
+    override?.readOnly === true &&
+    override.appliesOnlyTo === "v2_strategy_shadow_projection" &&
+    override.id === "combined_lagging_protection_late_block_cap"
+  );
+}
+
 function getPlannerOnlyCalvesOverrideSlot(
   override: PlannerOnlyPolicyOverride | undefined,
   slotId: string,
-): PlannerOnlyPolicyOverride["slots"][number] | undefined {
+): CalvesFourFourPlannerOnlyPolicyOverride["slots"][number] | undefined {
   if (!isCalvesFourFourPlannerOnlyOverride(override)) {
     return undefined;
   }
@@ -1057,6 +1071,322 @@ function cloneSlotPreselectionDemand(
   demand: SlotPreselectionDemand,
 ): SlotPreselectionDemand {
   return { ...demand };
+}
+
+type StrategyShadowProtectedLaneRule = {
+  slotId: string;
+  laneId: string;
+  preferredClasses: SlotLanePlan[number]["preferredClasses"];
+  minSets: number;
+  preferredSets: number;
+};
+
+type StrategyShadowDonorLaneRule = {
+  slotId: string;
+  laneId: string;
+  setReduction: number;
+};
+
+const STRATEGY_SHADOW_PROTECTED_LANE_RULES: Record<
+  string,
+  StrategyShadowProtectedLaneRule[]
+> = {
+  Chest: [
+    {
+      slotId: "upper_a",
+      laneId: "chest_secondary",
+      preferredClasses: ["chest_fly", "machine_press", "cable_press"],
+      minSets: 3,
+      preferredSets: 3,
+    },
+    {
+      slotId: "upper_b",
+      laneId: "chest_second_exposure",
+      preferredClasses: ["machine_press", "horizontal_press", "chest_fly", "cable_press"],
+      minSets: 3,
+      preferredSets: 3,
+    },
+  ],
+  Lats: [
+    {
+      slotId: "upper_a",
+      laneId: "vertical_pull_support",
+      preferredClasses: ["pulldown", "assisted_pullup"],
+      minSets: 3,
+      preferredSets: 3,
+    },
+    {
+      slotId: "upper_b",
+      laneId: "vertical_pull_anchor",
+      preferredClasses: ["pulldown", "assisted_pullup"],
+      minSets: 3,
+      preferredSets: 3,
+    },
+  ],
+  "Upper Back": [
+    {
+      slotId: "upper_a",
+      laneId: "row_anchor",
+      preferredClasses: ["chest_supported_row", "cable_row", "t_bar_row"],
+      minSets: 3,
+      preferredSets: 3,
+    },
+    {
+      slotId: "upper_b",
+      laneId: "row_support",
+      preferredClasses: ["cable_row", "chest_supported_row"],
+      minSets: 2,
+      preferredSets: 2,
+    },
+  ],
+  "Side Delts": [
+    {
+      slotId: "upper_a",
+      laneId: "strategy_shadow_side_delt_early",
+      preferredClasses: ["lateral_raise"],
+      minSets: 2,
+      preferredSets: 2,
+    },
+    {
+      slotId: "upper_b",
+      laneId: "side_delt_isolation",
+      preferredClasses: ["lateral_raise"],
+      minSets: 3,
+      preferredSets: 3,
+    },
+  ],
+  "Rear Delts": [
+    {
+      slotId: "upper_a",
+      laneId: "rear_delt",
+      preferredClasses: ["rear_delt_fly", "reverse_pec_deck"],
+      minSets: 2,
+      preferredSets: 2,
+    },
+  ],
+  Triceps: [
+    {
+      slotId: "upper_a",
+      laneId: "triceps",
+      preferredClasses: ["triceps_isolation"],
+      minSets: 2,
+      preferredSets: 2,
+    },
+    {
+      slotId: "upper_b",
+      laneId: "optional_triceps",
+      preferredClasses: ["triceps_isolation"],
+      minSets: 2,
+      preferredSets: 2,
+    },
+  ],
+  Biceps: [
+    {
+      slotId: "upper_b",
+      laneId: "biceps",
+      preferredClasses: ["biceps_curl"],
+      minSets: 3,
+      preferredSets: 3,
+    },
+  ],
+  Quads: [
+    {
+      slotId: "lower_a",
+      laneId: "quad_isolation",
+      preferredClasses: ["leg_extension"],
+      minSets: 2,
+      preferredSets: 2,
+    },
+    {
+      slotId: "lower_b",
+      laneId: "quad_support",
+      preferredClasses: ["leg_press", "split_squat", "goblet_squat", "leg_extension"],
+      minSets: 2,
+      preferredSets: 2,
+    },
+  ],
+  Hamstrings: [
+    {
+      slotId: "lower_a",
+      laneId: "hamstring_curl",
+      preferredClasses: ["seated_leg_curl", "lying_leg_curl"],
+      minSets: 2,
+      preferredSets: 2,
+    },
+    {
+      slotId: "lower_b",
+      laneId: "knee_flexion_curl",
+      preferredClasses: ["seated_leg_curl", "lying_leg_curl", "nordic_curl"],
+      minSets: 2,
+      preferredSets: 2,
+    },
+  ],
+  Calves: [
+    {
+      slotId: "lower_a",
+      laneId: "calves",
+      preferredClasses: ["calf_raise"],
+      minSets: 4,
+      preferredSets: 4,
+    },
+    {
+      slotId: "lower_b",
+      laneId: "calves",
+      preferredClasses: ["calf_raise"],
+      minSets: 4,
+      preferredSets: 4,
+    },
+  ],
+};
+
+const STRATEGY_SHADOW_DONOR_LANE_RULES: Record<
+  string,
+  StrategyShadowDonorLaneRule[]
+> = {
+  Glutes: [
+    { slotId: "lower_b", laneId: "hinge_anchor", setReduction: 1 },
+    { slotId: "lower_a", laneId: "secondary_hinge", setReduction: 1 },
+  ],
+  "Lower Back": [
+    { slotId: "lower_b", laneId: "hinge_anchor", setReduction: 1 },
+    { slotId: "lower_a", laneId: "secondary_hinge", setReduction: 1 },
+  ],
+  "Front Delts": [
+    { slotId: "upper_b", laneId: "vertical_press", setReduction: 1 },
+  ],
+  Chest: [
+    { slotId: "upper_a", laneId: "chest_secondary", setReduction: 1 },
+    { slotId: "upper_b", laneId: "chest_second_exposure", setReduction: 1 },
+  ],
+  Lats: [
+    { slotId: "upper_a", laneId: "vertical_pull_support", setReduction: 1 },
+    { slotId: "upper_b", laneId: "vertical_pull_anchor", setReduction: 1 },
+  ],
+  "Upper Back": [
+    { slotId: "upper_a", laneId: "row_anchor", setReduction: 1 },
+    { slotId: "upper_b", laneId: "row_support", setReduction: 1 },
+  ],
+  Hamstrings: [
+    { slotId: "lower_a", laneId: "secondary_hinge", setReduction: 1 },
+    { slotId: "lower_b", laneId: "hinge_anchor", setReduction: 1 },
+  ],
+};
+
+function reduceLaneSets(
+  lane: SlotLanePlan[number],
+  setReduction: number,
+): SlotLanePlan[number] {
+  const floor = lane.optional === true ? 0 : lane.preferredSets >= 3 ? 2 : 1;
+  return {
+    ...lane,
+    minSets: Math.max(floor, lane.minSets - setReduction),
+    preferredSets: Math.max(floor, lane.preferredSets - setReduction),
+  };
+}
+
+function sumPreferredSetsForSlot(
+  slotLanePlan: SlotLanePlan,
+  slotId: string,
+): number {
+  return slotLanePlan
+    .filter((lane) => lane.slotId === slotId)
+    .reduce((sum, lane) => sum + lane.preferredSets, 0);
+}
+
+function strategyShadowLanePreferredSetIncrease(
+  slotLanePlan: SlotLanePlan,
+  rule: StrategyShadowProtectedLaneRule,
+): number {
+  const existing = slotLanePlan.find(
+    (lane) => lane.slotId === rule.slotId && lane.laneId === rule.laneId,
+  );
+  if (!existing) {
+    return rule.preferredSets;
+  }
+  return Math.max(0, rule.preferredSets - existing.preferredSets);
+}
+
+function upsertStrategyShadowLane(
+  slotLanePlan: SlotLanePlan,
+  rule: StrategyShadowProtectedLaneRule,
+): void {
+  const existingIndex = slotLanePlan.findIndex(
+    (lane) => lane.slotId === rule.slotId && lane.laneId === rule.laneId,
+  );
+  if (existingIndex >= 0) {
+    const existing = slotLanePlan[existingIndex];
+    const requiredExisting = { ...existing };
+    delete requiredExisting.optional;
+    slotLanePlan[existingIndex] = {
+      ...requiredExisting,
+      minSets: Math.max(existing.minSets, rule.minSets),
+      preferredSets: Math.max(existing.preferredSets, rule.preferredSets),
+      preferredClasses: existing.preferredClasses,
+    };
+    return;
+  }
+
+  slotLanePlan.push({
+    slotId: rule.slotId,
+    laneId: rule.laneId,
+    preferredClasses: rule.preferredClasses,
+    minSets: rule.minSets,
+    preferredSets: rule.preferredSets,
+    source: "hypertrophy_upper_lower_slot_lane_plan",
+  });
+}
+
+function applyCombinedStrategyShadowProjectionOverride(input: {
+  slotId: string;
+  slotLanePlan: SlotLanePlan;
+  override: V2CombinedStrategyShadowProjectionOverride;
+}): SlotLanePlan {
+  let slotLanePlan = input.slotLanePlan;
+  const originalPreferredSetBudget = sumPreferredSetsForSlot(
+    slotLanePlan,
+    input.slotId,
+  );
+  const protectedMuscles = new Set(input.override.candidateProtectedMuscles);
+  for (const donorMuscle of input.override.candidateDonorMuscles) {
+    if (protectedMuscles.has(donorMuscle)) {
+      continue;
+    }
+    for (const rule of STRATEGY_SHADOW_DONOR_LANE_RULES[donorMuscle] ?? []) {
+      if (rule.slotId !== input.slotId) {
+        continue;
+      }
+      slotLanePlan = slotLanePlan.map((lane) =>
+        lane.slotId === rule.slotId && lane.laneId === rule.laneId
+          ? reduceLaneSets(lane, rule.setReduction)
+        : lane,
+      );
+    }
+  }
+
+  let availablePreferredSetBudget = Math.max(
+    0,
+    originalPreferredSetBudget - sumPreferredSetsForSlot(slotLanePlan, input.slotId),
+  );
+  for (const protectedMuscle of input.override.candidateProtectedMuscles) {
+    for (const rule of STRATEGY_SHADOW_PROTECTED_LANE_RULES[
+      protectedMuscle
+    ] ?? []) {
+      if (rule.slotId !== input.slotId) {
+        continue;
+      }
+      const preferredSetIncrease = strategyShadowLanePreferredSetIncrease(
+        slotLanePlan,
+        rule,
+      );
+      if (preferredSetIncrease > availablePreferredSetBudget) {
+        continue;
+      }
+      upsertStrategyShadowLane(slotLanePlan, rule);
+      availablePreferredSetBudget -= preferredSetIncrease;
+    }
+  }
+
+  return slotLanePlan;
 }
 
 function buildPlannerOnlyOverrideAdjustedSlotPlan(input: {
@@ -1084,7 +1414,21 @@ function buildPlannerOnlyOverrideAdjustedSlotPlan(input: {
   }));
 
   if (!overrideSlot) {
-    return { slotPreselectionDemands, slotLanePlan };
+    const combinedOverride = isCombinedStrategyShadowProjectionOverride(
+      input.plannerOnlyPolicyOverride,
+    )
+      ? input.plannerOnlyPolicyOverride
+      : undefined;
+    return {
+      slotPreselectionDemands,
+      slotLanePlan: combinedOverride
+        ? applyCombinedStrategyShadowProjectionOverride({
+            slotId: input.slotId,
+            slotLanePlan,
+            override: combinedOverride,
+          })
+        : slotLanePlan,
+    };
   }
 
   upsertSlotPreselectionDemand(slotPreselectionDemands, {

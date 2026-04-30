@@ -13,9 +13,12 @@ import type {
   V2MesocycleStrategyRecommendationMustNotYetInfluence,
   V2StrategyHypothesisPromotionDiff,
   V2StrategyHypothesisPromotionDiffHypothesisId,
+  V2StrategyHypothesisConflictAwareConflict,
+  V2StrategyHypothesisConflictAwareRefinement,
   V2StrategyHypothesisProjectionDeltaStatus,
   V2StrategyHypothesisProjectionDiff,
   V2StrategyHypothesisProjectionGateStatus,
+  V2StrategyHypothesisShadowProjectionEvidence,
   V2StrategyHypothesisPromotionReadiness,
   V2StrategyHypothesisPromotionReadinessLevel,
   V2StrategyHypothesisPromotionReadinessNextSafeAction,
@@ -24,6 +27,7 @@ import type {
 
 export type V2MesocycleStrategyDiagnosticInput = {
   strategyInput?: V2MesocycleStrategyInput;
+  strategyShadowProjection?: V2StrategyHypothesisShadowProjectionEvidence;
 };
 
 const STRATEGY_INPUT_GROUPS: V2MesocycleStrategyInputGroup[] = [
@@ -1721,11 +1725,619 @@ function gateFromProjectedDelta(input: {
   return "unknown";
 }
 
+function gateFromMeasuredNumericDelta(
+  delta: number | undefined,
+): V2StrategyHypothesisProjectionGateStatus {
+  if (typeof delta !== "number") {
+    return "unknown";
+  }
+  return delta <= 0 ? "pass" : "fail";
+}
+
+function isMeasuredDelta(value: {
+  status: V2StrategyHypothesisProjectionDeltaStatus;
+}): boolean {
+  return value.status !== "unknown";
+}
+
+function compareCoverageSummary(
+  before:
+    | V2StrategyHypothesisShadowProjectionEvidence["before"]["priorityCoverage"]
+    | undefined,
+  after:
+    | V2StrategyHypothesisShadowProjectionEvidence["after"]["priorityCoverage"]
+    | undefined,
+): V2StrategyHypothesisProjectionDeltaStatus {
+  if (!before || !after) {
+    return "unknown";
+  }
+  if (
+    after.belowMinimumCount > before.belowMinimumCount ||
+    after.coveredCount < before.coveredCount ||
+    after.unknownCount > before.unknownCount
+  ) {
+    return "worsens";
+  }
+  if (
+    after.belowMinimumCount < before.belowMinimumCount ||
+    after.coveredCount > before.coveredCount ||
+    after.unknownCount < before.unknownCount
+  ) {
+    return "improves";
+  }
+  return "preserved";
+}
+
+function coverageRank(
+  row: NonNullable<
+    V2StrategyHypothesisShadowProjectionEvidence["before"]["laggingMuscleCoverage"]
+  >[number],
+): number | null {
+  if (row.status === "covered" || row.status === "above_maximum") {
+    return 2;
+  }
+  if (row.status === "below_minimum") {
+    return 0;
+  }
+  return null;
+}
+
+function compareLaggingCoverage(
+  before:
+    | V2StrategyHypothesisShadowProjectionEvidence["before"]["laggingMuscleCoverage"]
+    | undefined,
+  after:
+    | V2StrategyHypothesisShadowProjectionEvidence["after"]["laggingMuscleCoverage"]
+    | undefined,
+): V2StrategyHypothesisProjectionDeltaStatus {
+  if (!before || !after || before.length === 0 || after.length === 0) {
+    return "unknown";
+  }
+  const afterByMuscle = new Map(after.map((row) => [row.muscle, row]));
+  let improves = false;
+  for (const beforeRow of before) {
+    const afterRow = afterByMuscle.get(beforeRow.muscle);
+    if (!afterRow) {
+      return "unknown";
+    }
+    const beforeRank = coverageRank(beforeRow);
+    const afterRank = coverageRank(afterRow);
+    if (beforeRank == null || afterRank == null) {
+      return "unknown";
+    }
+    if (
+      afterRank < beforeRank ||
+      (typeof beforeRow.sets === "number" &&
+        typeof afterRow.sets === "number" &&
+        afterRow.sets < beforeRow.sets)
+    ) {
+      return "worsens";
+    }
+    if (
+      afterRank > beforeRank ||
+      (typeof beforeRow.sets === "number" &&
+        typeof afterRow.sets === "number" &&
+        afterRow.sets > beforeRow.sets)
+    ) {
+      improves = true;
+    }
+  }
+  return improves ? "improves" : "preserved";
+}
+
+function sumSlotSets(slots: Record<string, number> | undefined): number | null {
+  if (!slots) {
+    return null;
+  }
+  return Object.values(slots).reduce((sum, value) => sum + value, 0);
+}
+
+function compareSessionSize(input: {
+  before?: Record<string, number>;
+  after?: Record<string, number>;
+}): V2StrategyHypothesisProjectionDeltaStatus {
+  if (!input.before || !input.after) {
+    return "unknown";
+  }
+  const slotIds = unique([
+    ...Object.keys(input.before),
+    ...Object.keys(input.after),
+  ]);
+  if (
+    slotIds.some((slotId) => (input.after?.[slotId] ?? 0) > (input.before?.[slotId] ?? 0))
+  ) {
+    return "worsens";
+  }
+  const beforeTotal = sumSlotSets(input.before);
+  const afterTotal = sumSlotSets(input.after);
+  if (beforeTotal == null || afterTotal == null) {
+    return "unknown";
+  }
+  if (afterTotal < beforeTotal) {
+    return "improves";
+  }
+  return "preserved";
+}
+
+function compareMetricCount(input: {
+  before?: { count: number };
+  after?: { count: number };
+}): V2StrategyHypothesisProjectionDeltaStatus {
+  if (!input.before || !input.after) {
+    return "unknown";
+  }
+  if (input.after.count > input.before.count) {
+    return "worsens";
+  }
+  if (input.after.count < input.before.count) {
+    return "improves";
+  }
+  return "preserved";
+}
+
+function compareRepairPressure(
+  before:
+    | V2StrategyHypothesisShadowProjectionEvidence["before"]["repairPressure"]
+    | undefined,
+  after:
+    | V2StrategyHypothesisShadowProjectionEvidence["after"]["repairPressure"]
+    | undefined,
+): V2StrategyHypothesisProjectionDeltaStatus {
+  if (!before || !after) {
+    return "unknown";
+  }
+  const deltas = [
+    after.materialRepairCount - before.materialRepairCount,
+    after.majorRepairCount - before.majorRepairCount,
+    after.suspiciousRepairCount - before.suspiciousRepairCount,
+  ];
+  if (deltas.some((delta) => delta > 0)) {
+    return "worsens";
+  }
+  if (deltas.some((delta) => delta < 0)) {
+    return "improves";
+  }
+  return "preserved";
+}
+
+function compareLateBlockFatigueRisk(input: {
+  before?: { count: number; totalSets?: number; maxSlotSets?: number };
+  after?: { count: number; totalSets?: number; maxSlotSets?: number };
+}): V2StrategyHypothesisProjectionDeltaStatus {
+  if (!input.before || !input.after) {
+    return "unknown";
+  }
+  const beforeValues = [
+    input.before.count,
+    input.before.totalSets,
+    input.before.maxSlotSets,
+  ];
+  const afterValues = [
+    input.after.count,
+    input.after.totalSets,
+    input.after.maxSlotSets,
+  ];
+  let improves = false;
+  for (let index = 0; index < beforeValues.length; index += 1) {
+    const before = beforeValues[index];
+    const after = afterValues[index];
+    if (typeof before !== "number" || typeof after !== "number") {
+      continue;
+    }
+    if (after > before) {
+      return "worsens";
+    }
+    if (after < before) {
+      improves = true;
+    }
+  }
+  return improves ? "improves" : "preserved";
+}
+
+function buildMeasuredProjectedDeltas(
+  shadowProjection: V2StrategyHypothesisShadowProjectionEvidence,
+): V2StrategyHypothesisProjectionDiff["projectedDeltas"] {
+  const beforeRepair = shadowProjection.before.repairPressure;
+  const afterRepair = shadowProjection.after.repairPressure;
+  const beforeSessionSize = shadowProjection.before.sessionSize?.totalSetsBySlot;
+  const afterSessionSize = shadowProjection.after.sessionSize?.totalSetsBySlot;
+
+  return {
+    priorityCoverage: {
+      before: shadowProjection.before.priorityCoverage,
+      after: shadowProjection.after.priorityCoverage,
+      status: compareCoverageSummary(
+        shadowProjection.before.priorityCoverage,
+        shadowProjection.after.priorityCoverage,
+      ),
+      notes: [
+        "measured_by_read_only_shadow_projection",
+        "priority_coverage_compares_target_tier_shadow_weekly_demand_rows",
+      ],
+    },
+    laggingMuscleCoverage: {
+      before: shadowProjection.before.laggingMuscleCoverage,
+      after: shadowProjection.after.laggingMuscleCoverage,
+      status: compareLaggingCoverage(
+        shadowProjection.before.laggingMuscleCoverage,
+        shadowProjection.after.laggingMuscleCoverage,
+      ),
+      examples:
+        shadowProjection.after.laggingMuscleCoverage?.map(
+          (row) => `${row.muscle}:${row.status}:${row.sets ?? "unknown"}`,
+        ) ?? [],
+    },
+    sessionSize: {
+      beforeTotalSetsBySlot: beforeSessionSize,
+      afterTotalSetsBySlot: afterSessionSize,
+      status: compareSessionSize({
+        before: beforeSessionSize,
+        after: afterSessionSize,
+      }),
+      notes: [
+        "measured_by_read_only_shadow_projection",
+        "session_size_compares_before_after_total_sets_by_slot",
+      ],
+    },
+    concentration: {
+      before: shadowProjection.before.concentration,
+      after: shadowProjection.after.concentration,
+      status: compareMetricCount({
+        before: shadowProjection.before.concentration,
+        after: shadowProjection.after.concentration,
+      }),
+      notes: [
+        "measured_by_read_only_shadow_projection",
+        "concentration_compares_high_concentration_count",
+      ],
+    },
+    repairPressure: {
+      beforeMaterialRepairCount: beforeRepair?.materialRepairCount,
+      afterMaterialRepairCount: afterRepair?.materialRepairCount,
+      materialRepairDelta:
+        beforeRepair && afterRepair
+          ? afterRepair.materialRepairCount - beforeRepair.materialRepairCount
+          : undefined,
+      beforeMajorRepairCount: beforeRepair?.majorRepairCount,
+      afterMajorRepairCount: afterRepair?.majorRepairCount,
+      majorRepairDelta:
+        beforeRepair && afterRepair
+          ? afterRepair.majorRepairCount - beforeRepair.majorRepairCount
+          : undefined,
+      beforeSuspiciousRepairCount: beforeRepair?.suspiciousRepairCount,
+      afterSuspiciousRepairCount: afterRepair?.suspiciousRepairCount,
+      suspiciousRepairDelta:
+        beforeRepair && afterRepair
+          ? afterRepair.suspiciousRepairCount -
+            beforeRepair.suspiciousRepairCount
+          : undefined,
+      status: compareRepairPressure(beforeRepair, afterRepair),
+      notes: [
+        "measured_by_read_only_shadow_projection",
+        "repair_pressure_compares_material_major_and_suspicious_counters",
+      ],
+    },
+    dirtyCollateral: {
+      before: shadowProjection.before.dirtyCollateral,
+      after: shadowProjection.after.dirtyCollateral,
+      status: compareMetricCount({
+        before: shadowProjection.before.dirtyCollateral,
+        after: shadowProjection.after.dirtyCollateral,
+      }),
+      notes: [
+        "measured_by_read_only_shadow_projection_when_dirty_collateral_rows_exist",
+      ],
+    },
+    forbiddenSlotRisk: {
+      before: shadowProjection.before.forbiddenSlotRisk,
+      after: shadowProjection.after.forbiddenSlotRisk,
+      status: compareMetricCount({
+        before: shadowProjection.before.forbiddenSlotRisk,
+        after: shadowProjection.after.forbiddenSlotRisk,
+      }),
+      notes: [
+        "measured_by_read_only_shadow_projection",
+        "forbidden_slot_risk_counts_primary_work_in_forbidden_slots",
+      ],
+    },
+    lateBlockFatigueRisk: {
+      before: shadowProjection.before.lateBlockFatigueRisk,
+      after: shadowProjection.after.lateBlockFatigueRisk,
+      status: compareLateBlockFatigueRisk({
+        before: shadowProjection.before.lateBlockFatigueRisk,
+        after: shadowProjection.after.lateBlockFatigueRisk,
+      }),
+      notes: [
+        "measured_by_read_only_shadow_projection",
+        "late_block_fatigue_risk_compares_concentration_and_session_size_pressure",
+      ],
+    },
+  };
+}
+
+const CONFLICT_AWARE_CONFLICT_TYPES: V2StrategyHypothesisConflictAwareConflict["type"][] =
+  [
+    "protected_donor_overlap",
+    "floor_preservation_conflict",
+    "slot_owner_missing",
+    "session_size_cap_conflict",
+    "net_new_volume_blocked",
+    "unknown",
+  ];
+
+function sortedUnique(values: readonly string[]): string[] {
+  return unique([...values]).sort((left, right) => left.localeCompare(right));
+}
+
+type ShadowProjectionCoverageRow = NonNullable<
+  V2StrategyHypothesisShadowProjectionEvidence["before"]["laggingMuscleCoverage"]
+>[number];
+
+function coverageByMuscle(
+  rows: readonly ShadowProjectionCoverageRow[] | undefined,
+): Map<string, ShadowProjectionCoverageRow> {
+  return new Map((rows ?? []).map((row) => [row.muscle, row]));
+}
+
+function isCoverageRowSafelyAboveFloor(
+  row: ShadowProjectionCoverageRow | undefined,
+): boolean {
+  if (!row) {
+    return false;
+  }
+  if (row.status !== "covered" && row.status !== "above_maximum") {
+    return false;
+  }
+  if (typeof row.minSets === "number" && typeof row.sets === "number") {
+    return row.sets >= row.minSets;
+  }
+  return false;
+}
+
+function didCoverageFallBelowFloor(input: {
+  before: ShadowProjectionCoverageRow | undefined;
+  after: ShadowProjectionCoverageRow | undefined;
+}): boolean {
+  if (!input.after) {
+    return false;
+  }
+  const afterBelow =
+    input.after.status === "below_minimum" ||
+    (typeof input.after.minSets === "number" &&
+      typeof input.after.sets === "number" &&
+      input.after.sets < input.after.minSets);
+  if (!afterBelow) {
+    return false;
+  }
+  if (!input.before) {
+    return true;
+  }
+  return !(
+    input.before.status === "below_minimum" &&
+    typeof input.before.sets === "number" &&
+    typeof input.after.sets === "number" &&
+    input.after.sets >= input.before.sets
+  );
+}
+
+function totalSetsForSlots(slots: Record<string, number> | undefined): number | null {
+  if (!slots) {
+    return null;
+  }
+  return Object.values(slots).reduce((sum, value) => sum + value, 0);
+}
+
+function countConflictTypes(
+  conflicts: readonly V2StrategyHypothesisConflictAwareConflict[],
+): V2StrategyHypothesisConflictAwareRefinement["conflictCountsByType"] {
+  const counts: V2StrategyHypothesisConflictAwareRefinement["conflictCountsByType"] =
+    {};
+  for (const type of CONFLICT_AWARE_CONFLICT_TYPES) {
+    const count = conflicts.filter((conflict) => conflict.type === type).length;
+    if (count > 0) {
+      counts[type] = count;
+    }
+  }
+  return counts;
+}
+
+function addConflict(
+  conflicts: V2StrategyHypothesisConflictAwareConflict[],
+  conflict: V2StrategyHypothesisConflictAwareConflict,
+): void {
+  const key = `${conflict.type}:${conflict.muscle ?? ""}:${conflict.slotId ?? ""}:${conflict.reason}`;
+  if (
+    conflicts.some(
+      (existing) =>
+        `${existing.type}:${existing.muscle ?? ""}:${existing.slotId ?? ""}:${existing.reason}` ===
+        key,
+    )
+  ) {
+    return;
+  }
+  conflicts.push(conflict);
+}
+
+function buildConflictAwareRefinement(input: {
+  evaluatesCombinedPair: boolean;
+  protectedMuscles: readonly string[];
+  donorMuscles: readonly string[];
+  projectedDeltas: V2StrategyHypothesisProjectionDiff["projectedDeltas"];
+  shadowProjection?: V2StrategyHypothesisShadowProjectionEvidence;
+}): V2StrategyHypothesisConflictAwareRefinement {
+  const conflicts: V2StrategyHypothesisConflictAwareConflict[] = [];
+  const protectedMuscles = sortedUnique(
+    input.shadowProjection?.candidateStrategy.candidateProtectedMuscles ??
+      input.protectedMuscles,
+  );
+  const donorMuscles = sortedUnique(
+    input.shadowProjection?.candidateStrategy.candidateDonorMuscles ??
+      input.donorMuscles,
+  );
+  const protectedSet = new Set(protectedMuscles);
+  const excludedDonors = new Set<string>();
+  const reasonByMuscle: Record<string, string> = {};
+  const donorBefore = coverageByMuscle(
+    input.shadowProjection?.before.donorMuscleCoverage,
+  );
+  const donorAfter = coverageByMuscle(
+    input.shadowProjection?.after.donorMuscleCoverage,
+  );
+  const protectedBefore = coverageByMuscle(
+    input.shadowProjection?.before.laggingMuscleCoverage,
+  );
+  const protectedAfter = coverageByMuscle(
+    input.shadowProjection?.after.laggingMuscleCoverage,
+  );
+
+  for (const donorMuscle of donorMuscles) {
+    if (!protectedSet.has(donorMuscle)) {
+      continue;
+    }
+    const after = donorAfter.get(donorMuscle) ?? protectedAfter.get(donorMuscle);
+    if (isCoverageRowSafelyAboveFloor(after)) {
+      reasonByMuscle[donorMuscle] =
+        "retained_overlap_donor_only_because_shadow_projection_proves_floor_preserved";
+      continue;
+    }
+    excludedDonors.add(donorMuscle);
+    reasonByMuscle[donorMuscle] =
+      "excluded_because_muscle_is_both_protected_and_donor_without_floor_proof";
+    addConflict(conflicts, {
+      type: "protected_donor_overlap",
+      muscle: donorMuscle,
+      reason:
+        "protected target-tier muscle also appeared as donor; donor reduction is blocked without measured proof that floor remains safe",
+    });
+  }
+
+  for (const donorMuscle of donorMuscles) {
+    const before = donorBefore.get(donorMuscle);
+    const after = donorAfter.get(donorMuscle);
+    if (!didCoverageFallBelowFloor({ before, after })) {
+      continue;
+    }
+    excludedDonors.add(donorMuscle);
+    reasonByMuscle[donorMuscle] =
+      "excluded_because_shadow_projection_put_donor_below_floor";
+    addConflict(conflicts, {
+      type: "floor_preservation_conflict",
+      muscle: donorMuscle,
+      reason:
+        "candidate donor reduction would reduce a target-tier muscle below its measured floor",
+    });
+  }
+
+  for (const protectedMuscle of protectedMuscles) {
+    const before = protectedBefore.get(protectedMuscle);
+    const after = protectedAfter.get(protectedMuscle);
+    if (didCoverageFallBelowFloor({ before, after })) {
+      addConflict(conflicts, {
+        type: "floor_preservation_conflict",
+        muscle: protectedMuscle,
+        reason:
+          "candidate projection reduced protected target-tier coverage below floor",
+      });
+    }
+    if (
+      typeof before?.sets === "number" &&
+      typeof after?.sets === "number" &&
+      after.sets < before.sets
+    ) {
+      addConflict(conflicts, {
+        type: "floor_preservation_conflict",
+        muscle: protectedMuscle,
+        reason:
+          "redistribution cannot damage protected target-tier coverage",
+      });
+    }
+    const slotOwners =
+      input.shadowProjection?.candidateStrategy.protectedSlotOwners?.[
+        protectedMuscle
+      ];
+    if (input.shadowProjection && (!slotOwners || slotOwners.length === 0)) {
+      addConflict(conflicts, {
+        type: "slot_owner_missing",
+        muscle: protectedMuscle,
+        reason:
+          "protected work requires a compatible slot owner before it can be treated as a safe redistribution candidate",
+      });
+    }
+  }
+
+  const beforeSlots = input.projectedDeltas.sessionSize.beforeTotalSetsBySlot;
+  const afterSlots = input.projectedDeltas.sessionSize.afterTotalSetsBySlot;
+  const beforeTotal = totalSetsForSlots(beforeSlots);
+  const afterTotal = totalSetsForSlots(afterSlots);
+  if (
+    typeof beforeTotal === "number" &&
+    typeof afterTotal === "number" &&
+    afterTotal > beforeTotal
+  ) {
+    addConflict(conflicts, {
+      type: "net_new_volume_blocked",
+      reason:
+        "conflict-aware shadow refinement blocks net-new volume; redistribution must fit inside the existing session/week budget",
+    });
+  }
+  for (const slotId of sortedUnique([
+    ...Object.keys(beforeSlots ?? {}),
+    ...Object.keys(afterSlots ?? {}),
+  ])) {
+    const before = beforeSlots?.[slotId] ?? 0;
+    const after = afterSlots?.[slotId] ?? 0;
+    if (after > before) {
+      addConflict(conflicts, {
+        type: "session_size_cap_conflict",
+        slotId,
+        reason:
+          "candidate projection increased slot set pressure despite max slot set increase allowance of zero",
+      });
+    }
+  }
+
+  for (const donorMuscle of donorMuscles) {
+    if (reasonByMuscle[donorMuscle]) {
+      continue;
+    }
+    reasonByMuscle[donorMuscle] =
+      "retained_as_over_concentration_or_fatigue_driver_candidate_with_no_measured_conflict";
+  }
+
+  const retainedDonorMuscles = donorMuscles.filter(
+    (muscle) => !excludedDonors.has(muscle),
+  );
+
+  return {
+    enabled: true,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    status: !input.evaluatesCombinedPair
+      ? "not_available"
+      : conflicts.length > 0 || !input.shadowProjection
+        ? "available_with_limitations"
+        : "available",
+    conflicts,
+    conflictCountsByType: countConflictTypes(conflicts),
+    donorResolution: {
+      excludedDonorMuscles: sortedUnique([...excludedDonors]),
+      retainedDonorMuscles,
+      reasonByMuscle,
+    },
+    volumePolicy: {
+      netNewVolumeAllowed: false,
+      redistributionRequired: true,
+      maxSlotSetIncreaseAllowed: 0,
+    },
+  };
+}
+
 function buildStrategyHypothesisProjectionDiff(input: {
   evaluatedHypotheses: V2StrategyHypothesisPromotionDiffHypothesisId[];
   protectLaggingMusclesEarlier: V2StrategyHypothesisPromotionDiff["protectLaggingMusclesEarlier"];
   capLateBlockVolume: V2StrategyHypothesisPromotionDiff["capLateBlockVolume"];
   blockSignals: V2MesocycleStrategyInput["blockResponseSignals"];
+  strategyShadowProjection?: V2StrategyHypothesisShadowProjectionEvidence;
 }): V2StrategyHypothesisProjectionDiff {
   const evaluatesCombinedPair =
     input.evaluatedHypotheses.includes("protect_lagging_muscles_earlier") &&
@@ -1736,9 +2348,23 @@ function buildStrategyHypothesisProjectionDiff(input: {
   const donorMuscles = collectRedistributionDonorEntries(input.blockSignals).map(
     (entry) => entry.muscle,
   );
+  const shadowProjection =
+    evaluatesCombinedPair &&
+    input.strategyShadowProjection?.projectionMode === "shadow_projection" &&
+    input.strategyShadowProjection.candidateHypotheses.includes(
+      "protect_lagging_muscles_earlier",
+    ) &&
+    input.strategyShadowProjection.candidateHypotheses.includes(
+      "cap_late_block_volume",
+    )
+      ? input.strategyShadowProjection
+      : undefined;
   const projectionMode: V2StrategyHypothesisProjectionDiff["projectionMode"] =
-    evaluatesCombinedPair ? "read_only_estimate" : "not_projected";
-  const measured = false;
+    shadowProjection
+      ? "shadow_projection"
+      : evaluatesCombinedPair
+        ? "read_only_estimate"
+        : "not_projected";
   const protectionMechanism = proposedProjectionProtectionMechanism({
     protectedMuscles,
     donorMuscles,
@@ -1749,115 +2375,149 @@ function buildStrategyHypothesisProjectionDiff(input: {
     skippedSetExamples: input.capLateBlockVolume.skippedSetEvidence.examples,
   });
   const projectedDeltas: V2StrategyHypothesisProjectionDiff["projectedDeltas"] =
-    {
-      priorityCoverage: {
-        status: "unknown",
-        notes: [
-          "no_shadow_projection_quantifies_priority_set_delta",
-          "priority_coverage_cannot_pass_from_hypothesis_presence",
-        ],
-      },
-      laggingMuscleCoverage: {
-        status:
-          evaluatesCombinedPair && protectedMuscles.length > 0
-            ? "improves"
-            : "unknown",
-        examples: protectedMuscles.slice(0, 8),
-      },
-      sessionSize: {
-        status:
-          evaluatesCombinedPair &&
-          donorMuscles.length > 0 &&
-          input.capLateBlockVolume.skippedSetEvidence.hardWeekSkippedSetSignal
-            ? "preserved"
-            : "unknown",
-        notes: [
-          donorMuscles.length > 0
-            ? "redistribution_preferred_before_net_new_late_block_volume"
-            : "no_supported_redistribution_donor_muscles_found",
-          "session_size_delta_not_measured_by_shadow_projection",
-        ],
-      },
-      concentration: {
-        status:
-          evaluatesCombinedPair && donorMuscles.length > 0
-            ? "improves"
-            : "unknown",
-        notes: [
-          donorMuscles.length > 0
-            ? "candidate_donor_muscles_come_from_over_concentration_or_fatigue_evidence"
-            : "concentration_delta_not_estimated_without_donor_evidence",
-          "concentration_delta_not_measured_by_shadow_projection",
-        ],
-      },
-      repairPressure: {
-        status: "unknown",
-        notes: [
-          "material_major_and_suspicious_repair_deltas_not_available_without_shadow_projection",
-        ],
-      },
-      dirtyCollateral: {
-        status: "unknown",
-        notes: [
-          "dirty_collateral_delta_not_available_without_shadow_projection",
-        ],
-      },
-      lateBlockFatigueRisk: {
-        status:
-          evaluatesCombinedPair &&
-          input.capLateBlockVolume.skippedSetEvidence.hardWeekSkippedSetSignal
-            ? "improves"
-            : "unknown",
-        notes: [
-          input.capLateBlockVolume.skippedSetEvidence.hardWeekSkippedSetSignal
-            ? "hard_week_skipped_set_signal_supports_cap_pressure_estimate"
-            : "late_block_skipped_set_pressure_not_supported",
-          "late_block_fatigue_delta_not_measured_by_shadow_projection",
-        ],
-      },
-    };
+    shadowProjection
+      ? buildMeasuredProjectedDeltas(shadowProjection)
+      : {
+          priorityCoverage: {
+            status: "unknown",
+            notes: [
+              "no_shadow_projection_quantifies_priority_set_delta",
+              "priority_coverage_cannot_pass_from_hypothesis_presence",
+            ],
+          },
+          laggingMuscleCoverage: {
+            status:
+              evaluatesCombinedPair && protectedMuscles.length > 0
+                ? "improves"
+                : "unknown",
+            examples: protectedMuscles.slice(0, 8),
+          },
+          sessionSize: {
+            status:
+              evaluatesCombinedPair &&
+              donorMuscles.length > 0 &&
+              input.capLateBlockVolume.skippedSetEvidence
+                .hardWeekSkippedSetSignal
+                ? "preserved"
+                : "unknown",
+            notes: [
+              donorMuscles.length > 0
+                ? "redistribution_preferred_before_net_new_late_block_volume"
+                : "no_supported_redistribution_donor_muscles_found",
+              "session_size_delta_not_measured_by_shadow_projection",
+            ],
+          },
+          concentration: {
+            status:
+              evaluatesCombinedPair && donorMuscles.length > 0
+                ? "improves"
+                : "unknown",
+            notes: [
+              donorMuscles.length > 0
+                ? "candidate_donor_muscles_come_from_over_concentration_or_fatigue_evidence"
+                : "concentration_delta_not_estimated_without_donor_evidence",
+              "concentration_delta_not_measured_by_shadow_projection",
+            ],
+          },
+          repairPressure: {
+            status: "unknown",
+            notes: [
+              "material_major_and_suspicious_repair_deltas_not_available_without_shadow_projection",
+            ],
+          },
+          dirtyCollateral: {
+            status: "unknown",
+            notes: [
+              "dirty_collateral_delta_not_available_without_shadow_projection",
+            ],
+          },
+          forbiddenSlotRisk: {
+            status: "unknown",
+            notes: [
+              "forbidden_slot_risk_delta_not_available_without_shadow_projection",
+            ],
+          },
+          lateBlockFatigueRisk: {
+            status:
+              evaluatesCombinedPair &&
+              input.capLateBlockVolume.skippedSetEvidence
+                .hardWeekSkippedSetSignal
+                ? "improves"
+                : "unknown",
+            notes: [
+              input.capLateBlockVolume.skippedSetEvidence
+                .hardWeekSkippedSetSignal
+                ? "hard_week_skipped_set_signal_supports_cap_pressure_estimate"
+                : "late_block_skipped_set_pressure_not_supported",
+              "late_block_fatigue_delta_not_measured_by_shadow_projection",
+            ],
+          },
+        };
+  const conflictAwareRefinement = buildConflictAwareRefinement({
+    evaluatesCombinedPair,
+    protectedMuscles,
+    donorMuscles,
+    projectedDeltas,
+    shadowProjection,
+  });
   const computedNonRegressionGates: V2StrategyHypothesisProjectionDiff["computedNonRegressionGates"] =
     {
       preservePriorityCoverage: gateFromProjectedDelta({
         status: projectedDeltas.priorityCoverage.status,
-        measured,
+        measured:
+          Boolean(shadowProjection) &&
+          isMeasuredDelta(projectedDeltas.priorityCoverage),
       }),
       preserveOrImproveLaggingMuscleCoverage: gateFromProjectedDelta({
         status: projectedDeltas.laggingMuscleCoverage.status,
-        measured,
+        measured:
+          Boolean(shadowProjection) &&
+          isMeasuredDelta(projectedDeltas.laggingMuscleCoverage),
       }),
-      noMaterialRepairIncrease: gateFromProjectedDelta({
-        status: projectedDeltas.repairPressure.status,
-        measured,
-      }),
-      noMajorRepairIncrease: gateFromProjectedDelta({
-        status: projectedDeltas.repairPressure.status,
-        measured,
-      }),
-      noSuspiciousRepairIncrease: gateFromProjectedDelta({
-        status: projectedDeltas.repairPressure.status,
-        measured,
-      }),
+      noMaterialRepairIncrease: gateFromMeasuredNumericDelta(
+        projectedDeltas.repairPressure.materialRepairDelta,
+      ),
+      noMajorRepairIncrease: gateFromMeasuredNumericDelta(
+        projectedDeltas.repairPressure.majorRepairDelta,
+      ),
+      noSuspiciousRepairIncrease: gateFromMeasuredNumericDelta(
+        projectedDeltas.repairPressure.suspiciousRepairDelta,
+      ),
       noDirtyCollateralIncrease: gateFromProjectedDelta({
         status: projectedDeltas.dirtyCollateral.status,
-        measured,
+        measured:
+          Boolean(shadowProjection) &&
+          isMeasuredDelta(projectedDeltas.dirtyCollateral),
       }),
-      noForbiddenSlotWorkaround: "unknown",
+      noForbiddenSlotWorkaround: gateFromProjectedDelta({
+        status: projectedDeltas.forbiddenSlotRisk.status,
+        measured:
+          Boolean(shadowProjection) &&
+          isMeasuredDelta(projectedDeltas.forbiddenSlotRisk),
+      }),
       noSessionSizeRegression: gateFromProjectedDelta({
         status: projectedDeltas.sessionSize.status,
-        measured,
+        measured:
+          Boolean(shadowProjection) && isMeasuredDelta(projectedDeltas.sessionSize),
       }),
       noConcentrationRegression: gateFromProjectedDelta({
         status: projectedDeltas.concentration.status,
-        measured,
+        measured:
+          Boolean(shadowProjection) &&
+          isMeasuredDelta(projectedDeltas.concentration),
       }),
       noLateBlockSkippedSetRiskIncrease: gateFromProjectedDelta({
         status: projectedDeltas.lateBlockFatigueRisk.status,
-        measured,
+        measured:
+          Boolean(shadowProjection) &&
+          isMeasuredDelta(projectedDeltas.lateBlockFatigueRisk),
       }),
     };
   const gateValues = Object.values(computedNonRegressionGates);
   const allGatesPass = gateValues.every((gate) => gate === "pass");
+  const anyGateFails = gateValues.some((gate) => gate === "fail");
+  const hasMeasuredConflict =
+    Boolean(shadowProjection) && conflictAwareRefinement.conflicts.length > 0;
 
   return {
     version: 1,
@@ -1887,21 +2547,38 @@ function buildStrategyHypothesisProjectionDiff(input: {
       },
     },
     projectedDeltas,
+    ...(shadowProjection ? { shadowProjection } : {}),
+    conflictAwareRefinement,
     computedNonRegressionGates,
     readiness: !evaluatesCombinedPair
       ? "not_ready"
-      : projectionMode === "read_only_estimate"
-        ? "ready_for_read_only_shadow_trial"
-        : allGatesPass
+      : shadowProjection
+        ? allGatesPass && !hasMeasuredConflict
           ? "ready_for_bounded_behavior_trial"
-          : "needs_better_projection",
+          : anyGateFails || hasMeasuredConflict
+            ? "needs_better_projection"
+            : "ready_for_read_only_shadow_trial"
+        : "ready_for_read_only_shadow_trial",
     limitations: unique([
-      "read_only_estimate_not_behavior_trial",
-      "no_shadow_projection_rerun_yet",
-      "computed_gates_default_unknown_without_projected_delta_evidence",
-      "repair_pressure_deltas_not_measured",
-      "dirty_collateral_deltas_not_measured",
-      "session_size_deltas_are_estimated_not_quantified",
+      ...(conflictAwareRefinement.conflicts.length > 0
+        ? ["conflict_aware_refinement_found_unsafe_candidate_interactions"]
+        : []),
+      shadowProjection
+        ? "shadow_projection_rerun_is_read_only_and_non_binding"
+        : "read_only_estimate_not_behavior_trial",
+      ...(shadowProjection ? [] : ["no_shadow_projection_rerun_yet"]),
+      ...(shadowProjection
+        ? []
+        : ["computed_gates_default_unknown_without_projected_delta_evidence"]),
+      ...(projectedDeltas.repairPressure.status === "unknown"
+        ? ["repair_pressure_deltas_not_measured"]
+        : []),
+      ...(projectedDeltas.dirtyCollateral.status === "unknown"
+        ? ["dirty_collateral_deltas_not_measured"]
+        : []),
+      ...(projectedDeltas.sessionSize.status === "unknown"
+        ? ["session_size_deltas_are_estimated_not_quantified"]
+        : []),
       "repaired_projection_excluded_from_projection_target",
       "old_prescribed_plan_shape_excluded_from_projection_target",
       "candidate_strategy_is_owner_agnostic",
@@ -2094,6 +2771,7 @@ function buildCapLateBlockPromotionDiff(input: {
 function buildStrategyHypothesisPromotionDiff(input: {
   strategyInput?: V2MesocycleStrategyInput;
   strategyHypothesisPromotionReadiness: V2StrategyHypothesisPromotionReadiness;
+  strategyShadowProjection?: V2StrategyHypothesisShadowProjectionEvidence;
 }): V2StrategyHypothesisPromotionDiff {
   const blockSignals = input.strategyInput?.blockResponseSignals ?? [];
   const readyRows = readyPromotionDiffRows(
@@ -2130,6 +2808,7 @@ function buildStrategyHypothesisPromotionDiff(input: {
     protectLaggingMusclesEarlier,
     capLateBlockVolume,
     blockSignals,
+    strategyShadowProjection: input.strategyShadowProjection,
   });
 
   return {
@@ -2210,6 +2889,7 @@ export function buildV2MesocycleStrategyDiagnostic(
     buildStrategyHypothesisPromotionDiff({
       strategyInput: input.strategyInput,
       strategyHypothesisPromotionReadiness,
+      strategyShadowProjection: input.strategyShadowProjection,
     });
   const phaseConfidence = resolvePhaseConfidence(strategyInputSummary);
 

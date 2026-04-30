@@ -972,6 +972,19 @@ function compactPlannerOnlyNoRepair(
               "number"
                 ? v2StrategyInputSummary.historicalMesocycleCount
                 : 0,
+            strategyInputHistoricalSourcePlannerCounts:
+              asRecord(v2StrategyInputSummary?.historicalSourcePlannerCounts) ??
+              {},
+            strategyInputEvidenceCategoriesAvailable: Array.isArray(
+              v2StrategyInputSummary?.evidenceCategoriesAvailable,
+            )
+              ? v2StrategyInputSummary.evidenceCategoriesAvailable
+              : [],
+            performedHistoryEvidenceLoaded:
+              v2StrategyInputSummary?.performedHistoryEvidenceLoaded === true,
+            prescribedPlanShapeExcludedFromStrategyPolicy:
+              v2StrategyInputSummary
+                ?.prescribedPlanShapeExcludedFromStrategyPolicy === true,
             strategyInputConfidenceChange:
               typeof v2StrategyInputSummary?.confidenceChange === "string"
                 ? v2StrategyInputSummary.confidenceChange

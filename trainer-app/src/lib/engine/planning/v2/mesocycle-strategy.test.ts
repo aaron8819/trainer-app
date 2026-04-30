@@ -194,10 +194,32 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
         missingGroups: [],
         historicalMesocycleCount: 2,
         historicalSourcePlanners: ["legacy_projection"],
+        historicalSourcePlannerCounts: {
+          legacy_projection: 2,
+          v2: 0,
+          unknown: 0,
+        },
+        evidenceCategoriesAvailable: expect.arrayContaining([
+          "adherence",
+          "performed_volume",
+          "performance_signals",
+          "readiness",
+          "fatigue_flags",
+          "pain_or_tolerance",
+          "historical_adherence_flags",
+        ]),
+        performedHistoryEvidenceLoaded: true,
+        prescribedPlanShapeExcludedFromStrategyPolicy: true,
         confidenceChange: "eligible_for_medium_evidence",
         ownerAgnostic: true,
       },
     });
+    expect(diagnostic.performedHistorySignals.available).toEqual(
+      expect.arrayContaining([
+        "strategy_input:performed_history_evidence_loaded",
+        "historical_prescribed_plan_shape_excluded_from_strategy_policy",
+      ]),
+    );
     expect(diagnostic.userTrainingProfileInputs.missing).not.toContain(
       "pure_v2_user_training_profile_input",
     );

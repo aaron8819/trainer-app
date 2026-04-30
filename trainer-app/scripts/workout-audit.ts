@@ -2165,6 +2165,8 @@ export function buildPlannerOnlyNoRepairSummary(input: {
     return baseLines;
   }
   const strategy = noRepair.v2MesocycleStrategyDiagnostic;
+  const strategySourceCounts =
+    strategy?.strategyInputSummary.historicalSourcePlannerCounts;
   const strategyLines = strategy
     ? [
         "V2 Mesocycle Strategy Diagnostic",
@@ -2175,6 +2177,10 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Missing profile inputs: ${strategy.userTrainingProfileInputs.missing.length}`,
         `Strategy input groups: present=${strategy.strategyInputSummary.presentGroups.join(",") || "none"} missing=${strategy.strategyInputSummary.missingGroups.join(",") || "none"}`,
         `Strategy historical mesocycles: ${strategy.strategyInputSummary.historicalMesocycleCount}`,
+        `Strategy source planners: legacy_projection=${strategySourceCounts?.legacy_projection ?? 0} v2=${strategySourceCounts?.v2 ?? 0} unknown=${strategySourceCounts?.unknown ?? 0}`,
+        `Strategy evidence categories: ${strategy.strategyInputSummary.evidenceCategoriesAvailable.join(",") || "none"}`,
+        `Performed history loaded: ${strategy.strategyInputSummary.performedHistoryEvidenceLoaded ? "yes" : "no"}`,
+        `Old prescribed plan shape excluded: ${strategy.strategyInputSummary.prescribedPlanShapeExcludedFromStrategyPolicy ? "yes" : "no"}`,
         `North-star gaps: ${strategy.currentStateVsNorthStarGaps.length}`,
       ]
     : [];

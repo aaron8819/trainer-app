@@ -1,10 +1,29 @@
+import type { Prisma } from "@prisma/client";
 import type { ReadinessSignal } from "@/lib/engine/readiness/types";
 import type { V2MesocycleStrategyInput } from "@/lib/engine/planning/v2";
 import type { MesocycleHandoffSummary } from "./mesocycle-handoff-contract";
-import type {
-  MesocycleReviewData,
-  MesocycleReviewMuscleRow,
+import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
+import {
+  loadMesocycleReview,
+  type MesocycleReviewData,
+  type MesocycleReviewMuscleRow,
 } from "./mesocycle-review";
+
+type V2MesocycleStrategyHistoricalReviewReader = Pick<
+  Prisma.TransactionClient,
+  "mesocycle" | "workout"
+>;
+
+type HistoricalMesocycleSeedRow = {
+  id: string;
+  state: string;
+  startWeek: number;
+  closedAt: Date | null;
+  slotPlanSeedJson: unknown;
+  macroCycle: {
+    startDate: Date;
+  };
+};
 
 type StrategyTrainingAge =
   V2MesocycleStrategyInput["userProfile"]["trainingAge"];
@@ -35,9 +54,18 @@ export type V2MesocycleStrategyCurrentContextEvidence = {
 };
 
 export type V2MesocycleStrategyHistoricalReviewEvidence = {
-  review: MesocycleReviewData;
+  review?: MesocycleReviewData | null;
+  mesocycleId?: string;
   sourcePlanner?: HistoricalSourcePlanner;
+  status?: string | null;
   startedAt?: string | null;
+  completedAt?: string | null;
+  evidenceLimitations?: string[];
+};
+
+export type V2MesocycleStrategyHistoricalReviewLoadResult = {
+  historicalMesocycleReviews: V2MesocycleStrategyHistoricalReviewEvidence[];
+  evidenceLimitations: string[];
 };
 
 export type V2MesocycleStrategyInputAdapterInput = {
@@ -59,6 +87,95 @@ function uniqueStringsInOrder(values: Array<string | null | undefined>): string[
   return Array.from(
     new Set(values.filter((value): value is string => Boolean(value))),
   );
+}
+
+function addWeeks(date: Date, weeks: number): Date {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + weeks * 7);
+  return result;
+}
+
+function classifyHistoricalSourcePlanner(
+  row: Pick<HistoricalMesocycleSeedRow, "slotPlanSeedJson" | "state">,
+): HistoricalSourcePlanner {
+  const seed = parseSlotPlanSeedJson(row.slotPlanSeedJson);
+  if (!seed) {
+    return row.state === "COMPLETED" ? "legacy_projection" : "unknown";
+  }
+  if (
+    seed.acceptedPlannerIntent?.source === "v2_planner_policy" ||
+    seed.source === "v2_materialized_seed"
+  ) {
+    return "v2";
+  }
+  return "legacy_projection";
+}
+
+export async function loadV2MesocycleStrategyHistoricalReviewEvidence(
+  reader: V2MesocycleStrategyHistoricalReviewReader,
+  input: {
+    userId: string;
+    limit?: number;
+    excludeMesocycleIds?: string[];
+  },
+): Promise<V2MesocycleStrategyHistoricalReviewLoadResult> {
+  const excludedIds = input.excludeMesocycleIds?.filter(Boolean) ?? [];
+  const rows = (await reader.mesocycle.findMany({
+    where: {
+      state: "COMPLETED",
+      macroCycle: { userId: input.userId },
+      ...(excludedIds.length > 0 ? { id: { notIn: excludedIds } } : {}),
+    },
+    orderBy: [{ closedAt: "desc" }, { mesoNumber: "desc" }],
+    take: input.limit ?? 6,
+    select: {
+      id: true,
+      state: true,
+      startWeek: true,
+      closedAt: true,
+      slotPlanSeedJson: true,
+      macroCycle: {
+        select: {
+          startDate: true,
+        },
+      },
+    },
+  })) as HistoricalMesocycleSeedRow[];
+
+  const historicalMesocycleReviews = await Promise.all(
+    rows.map(async (row) => {
+      const review = await loadMesocycleReview(reader, {
+        userId: input.userId,
+        mesocycleId: row.id,
+      });
+      const unavailableLimitations = review
+        ? []
+        : [`historical_mesocycle_review_unavailable:${row.id}`];
+      return {
+        review,
+        mesocycleId: row.id,
+        sourcePlanner: classifyHistoricalSourcePlanner(row),
+        status: row.state,
+        startedAt: addWeeks(row.macroCycle.startDate, row.startWeek).toISOString(),
+        completedAt: row.closedAt?.toISOString() ?? null,
+        evidenceLimitations: unavailableLimitations,
+      } satisfies V2MesocycleStrategyHistoricalReviewEvidence;
+    }),
+  );
+
+  return {
+    historicalMesocycleReviews,
+    evidenceLimitations: uniqueStrings([
+      "historical_review_loader_read_only",
+      "historical_review_loader_uses_performed_reality_not_prescribed_plan_shape",
+      "historical_prescribed_plan_shape_excluded_from_strategy_policy",
+      "completed_non_v2_historical_mesocycles_labeled_legacy_projection",
+      rows.length > 0 ? null : "historical_mesocycle_review_missing",
+      ...historicalMesocycleReviews.flatMap(
+        (row) => row.evidenceLimitations ?? [],
+      ),
+    ]),
+  };
 }
 
 function normalizeTrainingAge(value: string | null | undefined): StrategyTrainingAge {
@@ -209,31 +326,38 @@ function buildHistoricalMesocycle(
   input: V2MesocycleStrategyHistoricalReviewEvidence,
 ): V2MesocycleStrategyInput["historicalMesocycles"][number] {
   const review = input.review;
+  const completedAt = review?.closedAt ?? input.completedAt;
   return {
-    mesocycleId: review.mesocycleId,
+    mesocycleId: review?.mesocycleId ?? input.mesocycleId ?? "unknown",
     sourcePlanner: input.sourcePlanner ?? "unknown",
-    status: review.archive.currentState,
+    ...(review?.archive.currentState || input.status
+      ? { status: review?.archive.currentState ?? input.status ?? undefined }
+      : {}),
     ...(input.startedAt ? { startedAt: input.startedAt } : {}),
-    ...(review.closedAt ? { completedAt: review.closedAt } : {}),
-    adherenceSummary: {
-      plannedSessions: review.derived.adherence.plannedSessions,
-      completedSessions: review.derived.adherence.coreCompletedSessions,
-      partialSessions: review.derived.adherence.partialSessions,
-      skippedSessions: review.derived.adherence.skippedSessions,
-    },
-    performedVolumeSummary: review.derived.muscleVolumeSummary.map((row) => ({
-      muscle: row.muscle,
-      plannedSets: row.targetSets,
-      performedSets: row.actualEffectiveSets,
-      targetRange: `target:${row.targetSets}`,
-      status: mapVolumeStatus(row),
-    })),
-    performanceSignals: review.derived.topProgressedExercises.map((row) => ({
-      exerciseId: row.exerciseId,
-      exerciseName: row.exerciseName,
-      signal: "progressed" as const,
-      confidence: row.exposureCount >= 2 ? "medium" : "low",
-    })),
+    ...(completedAt ? { completedAt } : {}),
+    ...(review
+      ? {
+          adherenceSummary: {
+            plannedSessions: review.derived.adherence.plannedSessions,
+            completedSessions: review.derived.adherence.coreCompletedSessions,
+            partialSessions: review.derived.adherence.partialSessions,
+            skippedSessions: review.derived.adherence.skippedSessions,
+          },
+          performedVolumeSummary: review.derived.muscleVolumeSummary.map((row) => ({
+            muscle: row.muscle,
+            plannedSets: row.targetSets,
+            performedSets: row.actualEffectiveSets,
+            targetRange: `target:${row.targetSets}`,
+            status: mapVolumeStatus(row),
+          })),
+          performanceSignals: review.derived.topProgressedExercises.map((row) => ({
+            exerciseId: row.exerciseId,
+            exerciseName: row.exerciseName,
+            signal: "progressed" as const,
+            confidence: row.exposureCount >= 2 ? "medium" : "low",
+          })),
+        }
+      : {}),
   };
 }
 

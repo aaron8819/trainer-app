@@ -15,6 +15,16 @@ const STRATEGY_INPUT_GROUPS: V2MesocycleStrategyInputGroup[] = [
   "readinessAndRecoverySignals",
 ];
 
+const STRATEGY_EVIDENCE_CATEGORIES = [
+  "adherence",
+  "performed_volume",
+  "performance_signals",
+  "readiness",
+  "fatigue_flags",
+  "pain_or_tolerance",
+  "historical_adherence_flags",
+] as const;
+
 function unique(values: string[]): string[] {
   return Array.from(new Set(values));
 }
@@ -58,6 +68,48 @@ function hasReadinessEvidence(input: V2MesocycleStrategyInput): boolean {
   );
 }
 
+function buildHistoricalSourcePlannerCounts(
+  strategyInput: V2MesocycleStrategyInput | undefined,
+): V2MesocycleStrategyDiagnostic["strategyInputSummary"]["historicalSourcePlannerCounts"] {
+  const counts = {
+    legacy_projection: 0,
+    v2: 0,
+    unknown: 0,
+  };
+  for (const mesocycle of strategyInput?.historicalMesocycles ?? []) {
+    counts[mesocycle.sourcePlanner] += 1;
+  }
+  return counts;
+}
+
+function collectEvidenceCategories(
+  strategyInput: V2MesocycleStrategyInput,
+): string[] {
+  return unique([
+    ...strategyInput.historicalMesocycles.flatMap((mesocycle) => [
+      mesocycle.adherenceSummary ? "adherence" : "",
+      (mesocycle.performedVolumeSummary?.length ?? 0) > 0
+        ? "performed_volume"
+        : "",
+      (mesocycle.performanceSignals?.length ?? 0) > 0
+        ? "performance_signals"
+        : "",
+    ]),
+    strategyInput.readinessAndRecoverySignals.available.length > 0
+      ? "readiness"
+      : "",
+    (strategyInput.readinessAndRecoverySignals.fatigueFlags?.length ?? 0) > 0
+      ? "fatigue_flags"
+      : "",
+    (strategyInput.readinessAndRecoverySignals.painFlags?.length ?? 0) > 0
+      ? "pain_or_tolerance"
+      : "",
+    (strategyInput.readinessAndRecoverySignals.adherenceFlags?.length ?? 0) > 0
+      ? "historical_adherence_flags"
+      : "",
+  ].filter(Boolean));
+}
+
 function summarizeStrategyInput(
   strategyInput: V2MesocycleStrategyInput | undefined,
 ): V2MesocycleStrategyDiagnostic["strategyInputSummary"] {
@@ -71,6 +123,11 @@ function summarizeStrategyInput(
       missingGroups: STRATEGY_INPUT_GROUPS,
       historicalMesocycleCount: 0,
       historicalSourcePlanners: [],
+      historicalSourcePlannerCounts: buildHistoricalSourcePlannerCounts(undefined),
+      evidenceCategoriesAvailable: [],
+      evidenceCategoriesMissing: [...STRATEGY_EVIDENCE_CATEGORIES],
+      performedHistoryEvidenceLoaded: false,
+      prescribedPlanShapeExcludedFromStrategyPolicy: true,
       phaseClassificationStatus: "unknown",
       objectiveClassificationStatus: "unknown",
       confidenceChange: "not_evaluated_no_input",
@@ -107,6 +164,10 @@ function summarizeStrategyInput(
       (mesocycle.performedVolumeSummary?.length ?? 0) > 0 ||
       (mesocycle.performanceSignals?.length ?? 0) > 0,
   );
+  const evidenceCategoriesAvailable = collectEvidenceCategories(strategyInput);
+  const evidenceCategoriesMissing = STRATEGY_EVIDENCE_CATEGORIES.filter(
+    (category) => !evidenceCategoriesAvailable.includes(category),
+  );
   const evidenceSupportsMediumConfidence =
     missingGroups.length === 0 &&
     strategyInput.userProfile.confidence !== "low" &&
@@ -122,6 +183,12 @@ function summarizeStrategyInput(
     missingGroups,
     historicalMesocycleCount: strategyInput.historicalMesocycles.length,
     historicalSourcePlanners,
+    historicalSourcePlannerCounts:
+      buildHistoricalSourcePlannerCounts(strategyInput),
+    evidenceCategoriesAvailable,
+    evidenceCategoriesMissing,
+    performedHistoryEvidenceLoaded: hasHistoricalResponseEvidence,
+    prescribedPlanShapeExcludedFromStrategyPolicy: true,
     phaseClassificationStatus: "unknown",
     objectiveClassificationStatus: "unknown",
     confidenceChange: evidenceSupportsMediumConfidence
@@ -187,11 +254,20 @@ function buildPerformedHistorySignals(
             `strategy_input:historical_mesocycles:${summary.historicalMesocycleCount}`,
           ]
         : []),
+      ...(summary.performedHistoryEvidenceLoaded
+        ? ["strategy_input:performed_history_evidence_loaded"]
+        : []),
+      ...(summary.prescribedPlanShapeExcludedFromStrategyPolicy
+        ? ["historical_prescribed_plan_shape_excluded_from_strategy_policy"]
+        : []),
     ]),
     missing: unique([
       ...(hasHistoricalInput
         ? []
         : ["performed_history_is_not_primary_input_to_pure_v2_strategy"]),
+      ...(summary.performedHistoryEvidenceLoaded
+        ? []
+        : ["strategy_ready_performed_history_evidence_not_loaded"]),
       "muscle_level_response_trends_are_not_strategy_normalized",
       "exercise_staleness_tolerance_sfr_and_pain_history_are_not_strategy_ranked",
       "post_mesocycle_learning_loop_is_not_yet_v2_strategy_owner",

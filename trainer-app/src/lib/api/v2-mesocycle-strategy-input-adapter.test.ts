@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ReadinessSignal } from "@/lib/engine/readiness/types";
 import type { MesocycleHandoffSummary } from "./mesocycle-handoff-contract";
 import type { MesocycleReviewData } from "./mesocycle-review";
-import { buildV2MesocycleStrategyInputFromReadModels } from "./v2-mesocycle-strategy-input-adapter";
+import {
+  buildV2MesocycleStrategyInputFromReadModels,
+  loadV2MesocycleStrategyHistoricalReviewEvidence,
+} from "./v2-mesocycle-strategy-input-adapter";
 
 function makeHandoffSummary(): MesocycleHandoffSummary {
   return {
@@ -200,6 +203,146 @@ function makeReadiness(): ReadinessSignal {
   };
 }
 
+function makeLegacySeedJson(exerciseId = "old-prescribed-plan-only") {
+  return {
+    version: 1,
+    slots: [
+      {
+        slotId: "upper_a",
+        exercises: [
+          {
+            exerciseId,
+            role: "CORE_COMPOUND",
+            setCount: 3,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function makeHistoricalDbRow(input: {
+  id: string;
+  mesoNumber: number;
+  closedAt: string;
+  validReview?: boolean;
+  slotPlanSeedJson?: unknown;
+}) {
+  const handoffSummary = makeHandoffSummary();
+  return {
+    id: input.id,
+    state: "COMPLETED",
+    mesoNumber: input.mesoNumber,
+    focus: "Hypertrophy",
+    closedAt: new Date(input.closedAt),
+    handoffSummaryJson:
+      input.validReview === false
+        ? null
+        : {
+            ...handoffSummary,
+            mesocycleId: input.id,
+            closedAt: input.closedAt,
+          },
+    nextSeedDraftJson: null,
+    startWeek: input.mesoNumber * 5,
+    durationWeeks: 5,
+    sessionsPerWeek: 4,
+    slotPlanSeedJson:
+      input.slotPlanSeedJson === undefined
+        ? makeLegacySeedJson()
+        : input.slotPlanSeedJson,
+    macroCycle: {
+      startDate: new Date("2026-01-01T00:00:00.000Z"),
+    },
+    blocks: [],
+  };
+}
+
+function makeHistoricalWorkout(input: {
+  id: string;
+  scheduledDate: string;
+  status: "COMPLETED" | "SKIPPED";
+  load?: number;
+}) {
+  return {
+    id: input.id,
+    scheduledDate: new Date(input.scheduledDate),
+    completedAt:
+      input.status === "COMPLETED" ? new Date(input.scheduledDate) : null,
+    status: input.status,
+    sessionIntent: "UPPER",
+    selectionMode: "INTENT",
+    selectionMetadata: null,
+    advancesSplit: true,
+    mesocyclePhaseSnapshot: "ACCUMULATION",
+    mesocycleWeekSnapshot: 1,
+    exercises:
+      input.status === "COMPLETED"
+        ? [
+            {
+              exerciseId: "performed-reality-press",
+              exercise: {
+                id: "performed-reality-press",
+                name: "Performed Reality Press",
+                aliases: [],
+                exerciseMuscles: [
+                  {
+                    role: "PRIMARY",
+                    muscle: { name: "Chest" },
+                  },
+                ],
+              },
+              sets: [
+                {
+                  setIndex: 0,
+                  logs: [
+                    {
+                      wasSkipped: false,
+                      actualReps: 8,
+                      actualLoad: input.load ?? 80,
+                      actualRpe: 8,
+                    },
+                  ],
+                },
+                {
+                  setIndex: 1,
+                  logs: [
+                    {
+                      wasSkipped: false,
+                      actualReps: 8,
+                      actualLoad: input.load ?? 80,
+                      actualRpe: 8,
+                    },
+                  ],
+                },
+              ],
+            },
+          ]
+        : [],
+  };
+}
+
+function makeHistoricalReader(input: {
+  rows: Array<ReturnType<typeof makeHistoricalDbRow>>;
+  workoutsByMesocycle: Record<string, unknown[]>;
+}) {
+  return {
+    mesocycle: {
+      findMany: vi.fn(async () => input.rows),
+      findFirst: vi.fn(async (args: { where?: { id?: string } }) => {
+        const id = args.where?.id;
+        return input.rows.find((row) => row.id === id) ?? null;
+      }),
+    },
+    workout: {
+      findMany: vi.fn(async (args: { where?: { mesocycleId?: string } }) => {
+        const mesocycleId = args.where?.mesocycleId ?? "";
+        return input.workoutsByMesocycle[mesocycleId] ?? [];
+      }),
+    },
+  };
+}
+
 describe("buildV2MesocycleStrategyInputFromReadModels", () => {
   it("labels missing evidence honestly instead of fabricating profile, history, or readiness", () => {
     const input = buildV2MesocycleStrategyInputFromReadModels({});
@@ -309,5 +452,154 @@ describe("buildV2MesocycleStrategyInputFromReadModels", () => {
     );
     expect(JSON.stringify(input)).not.toContain("aaron8819@gmail.com");
     expect(JSON.stringify(input)).not.toContain("ownerEmail");
+  });
+});
+
+describe("loadV2MesocycleStrategyHistoricalReviewEvidence", () => {
+  it("loads multiple legacy historical mesocycles as performed evidence without owner-specific policy", async () => {
+    const reader = makeHistoricalReader({
+      rows: [
+        makeHistoricalDbRow({
+          id: "historical-1",
+          mesoNumber: 1,
+          closedAt: "2026-03-01T00:00:00.000Z",
+        }),
+        makeHistoricalDbRow({
+          id: "historical-2",
+          mesoNumber: 2,
+          closedAt: "2026-04-01T00:00:00.000Z",
+        }),
+      ],
+      workoutsByMesocycle: {
+        "historical-1": [
+          makeHistoricalWorkout({
+            id: "historical-1-session-1",
+            scheduledDate: "2026-02-01T00:00:00.000Z",
+            status: "COMPLETED",
+            load: 80,
+          }),
+          makeHistoricalWorkout({
+            id: "historical-1-session-2",
+            scheduledDate: "2026-02-08T00:00:00.000Z",
+            status: "COMPLETED",
+            load: 90,
+          }),
+          makeHistoricalWorkout({
+            id: "historical-1-session-3",
+            scheduledDate: "2026-02-15T00:00:00.000Z",
+            status: "SKIPPED",
+          }),
+        ],
+        "historical-2": [
+          makeHistoricalWorkout({
+            id: "historical-2-session-1",
+            scheduledDate: "2026-03-01T00:00:00.000Z",
+            status: "COMPLETED",
+            load: 85,
+          }),
+          makeHistoricalWorkout({
+            id: "historical-2-session-2",
+            scheduledDate: "2026-03-08T00:00:00.000Z",
+            status: "COMPLETED",
+            load: 95,
+          }),
+        ],
+      },
+    });
+
+    const loaded = await loadV2MesocycleStrategyHistoricalReviewEvidence(
+      reader as unknown as Parameters<
+        typeof loadV2MesocycleStrategyHistoricalReviewEvidence
+      >[0],
+      { userId: "future-user-1" },
+    );
+    const input = buildV2MesocycleStrategyInputFromReadModels({
+      historicalMesocycleReviews: loaded.historicalMesocycleReviews,
+      evidenceLimitations: loaded.evidenceLimitations,
+    });
+
+    expect(loaded.historicalMesocycleReviews).toHaveLength(2);
+    expect(input.historicalMesocycles.map((row) => row.sourcePlanner)).toEqual([
+      "legacy_projection",
+      "legacy_projection",
+    ]);
+    expect(input.historicalMesocycles[0]?.adherenceSummary).toMatchObject({
+      plannedSessions: expect.any(Number),
+      completedSessions: expect.any(Number),
+    });
+    expect(input.historicalMesocycles[0]?.performedVolumeSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Chest",
+          performedSets: expect.any(Number),
+        }),
+      ]),
+    );
+    expect(input.historicalMesocycles[0]?.performanceSignals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          exerciseId: "performed-reality-press",
+          signal: "progressed",
+        }),
+      ]),
+    );
+    expect(input.evidenceLimitations).toEqual(
+      expect.arrayContaining([
+        "historical_review_loader_uses_performed_reality_not_prescribed_plan_shape",
+        "historical_prescribed_plan_shape_excluded_from_strategy_policy",
+        "historical_mesocycles_are_validation_data_not_policy_targets",
+      ]),
+    );
+    expect(JSON.stringify(input)).toContain("performed-reality-press");
+    expect(JSON.stringify(input)).not.toContain("old-prescribed-plan-only");
+    expect(JSON.stringify(input)).not.toContain("aaron8819@gmail.com");
+    expect(reader.mesocycle.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          macroCycle: { userId: "future-user-1" },
+        }),
+      }),
+    );
+  });
+
+  it("labels unavailable historical review evidence honestly", async () => {
+    const reader = makeHistoricalReader({
+      rows: [
+        makeHistoricalDbRow({
+          id: "missing-review",
+          mesoNumber: 3,
+          closedAt: "2026-04-15T00:00:00.000Z",
+          validReview: false,
+          slotPlanSeedJson: null,
+        }),
+      ],
+      workoutsByMesocycle: {},
+    });
+
+    const loaded = await loadV2MesocycleStrategyHistoricalReviewEvidence(
+      reader as unknown as Parameters<
+        typeof loadV2MesocycleStrategyHistoricalReviewEvidence
+      >[0],
+      { userId: "future-user-2" },
+    );
+    const input = buildV2MesocycleStrategyInputFromReadModels({
+      historicalMesocycleReviews: loaded.historicalMesocycleReviews,
+      evidenceLimitations: loaded.evidenceLimitations,
+    });
+
+    expect(input.historicalMesocycles).toEqual([
+      expect.objectContaining({
+        mesocycleId: "missing-review",
+        sourcePlanner: "legacy_projection",
+        status: "COMPLETED",
+      }),
+    ]);
+    expect(input.historicalMesocycles[0]?.adherenceSummary).toBeUndefined();
+    expect(input.historicalMesocycles[0]?.performedVolumeSummary).toBeUndefined();
+    expect(input.evidenceLimitations).toEqual(
+      expect.arrayContaining([
+        "historical_mesocycle_review_unavailable:missing-review",
+      ]),
+    );
   });
 });

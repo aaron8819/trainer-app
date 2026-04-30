@@ -229,6 +229,14 @@ export type V2MesocycleStrategyDiagnostic = {
     historicalSourcePlanners: Array<
       V2MesocycleStrategyInput["historicalMesocycles"][number]["sourcePlanner"]
     >;
+    historicalSourcePlannerCounts: Record<
+      V2MesocycleStrategyInput["historicalMesocycles"][number]["sourcePlanner"],
+      number
+    >;
+    evidenceCategoriesAvailable: string[];
+    evidenceCategoriesMissing: string[];
+    performedHistoryEvidenceLoaded: boolean;
+    prescribedPlanShapeExcludedFromStrategyPolicy: true;
     phaseClassificationStatus: "unknown";
     objectiveClassificationStatus: "unknown";
     confidenceChange:

@@ -26,7 +26,10 @@ import {
 } from "@/lib/api/planner-only-policy-override";
 import { resolveMesocycleSlotContract } from "@/lib/api/mesocycle-slot-contract";
 import { parseSlotPlanSeedJson } from "@/lib/api/slot-plan-seed-parser";
-import { buildV2MesocycleStrategyInputFromReadModels } from "@/lib/api/v2-mesocycle-strategy-input-adapter";
+import {
+  buildV2MesocycleStrategyInputFromReadModels,
+  loadV2MesocycleStrategyHistoricalReviewEvidence,
+} from "@/lib/api/v2-mesocycle-strategy-input-adapter";
 import {
   appendWorkoutHistoryEntryToMappedContext,
   buildProjectedWorkoutHistoryEntry,
@@ -8918,6 +8921,10 @@ export async function buildMesocycleExplainAuditPayload(input: {
   });
   const latestStrategyReadiness =
     (await getLatestReadinessSignalForReader(prisma, input.userId)) ?? null;
+  const historicalStrategyEvidence =
+    await loadV2MesocycleStrategyHistoricalReviewEvidence(prisma, {
+      userId: input.userId,
+    });
   const mesocycleStrategyInput = buildV2MesocycleStrategyInputFromReadModels({
     userProfile: {
       availableTrainingDays: sourceMesocycle.daysPerWeek,
@@ -8939,10 +8946,12 @@ export async function buildMesocycleExplainAuditPayload(input: {
       intensityBias: sourceMesocycle.intensityBias,
     },
     handoffSummary: previewArtifacts.artifacts.summary,
+    historicalMesocycleReviews:
+      historicalStrategyEvidence.historicalMesocycleReviews,
     readiness: latestStrategyReadiness,
     evidenceLimitations: [
       "mesocycle_explain_strategy_input_uses_current_handoff_preview_context",
-      "mesocycle_review_history_not_loaded_for_this_diagnostic_yet",
+      ...historicalStrategyEvidence.evidenceLimitations,
     ],
   });
   const sourceProjection = toHandoffProjectionSource(

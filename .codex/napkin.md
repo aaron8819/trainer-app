@@ -46,6 +46,8 @@
 | 2026-04-30 | self | Treated the mandatory Trainer pre-edit audit/plan as a final stopping point and made the user prompt me to continue. | After emitting required audit/plan, continue directly into implementation unless the user explicitly asked for plan-only. |
 | 2026-04-30 | self | Repeated the PowerShell quote parsing mistake with a double-quoted `rg` pattern containing escaped quotes while tracing audit tests. | Use single-quoted `rg` patterns or simpler literal searches whenever the search text contains quotes. |
 | 2026-04-30 | self | The first V2 strategy-input diagnostic change let the no-input path gain extra missing/limitation counts and assumed partial persisted handoff summaries had full lifecycle fields. | Preserve legacy no-input diagnostic counts, and make adapters tolerate partial read-model summaries by labeling missing fields instead of dereferencing them. |
+| 2026-04-30 | self | Vitest passed the V2 historical-review loader tests, but `tsc --noEmit` failed because the test double did not satisfy the full Prisma delegate type. | Keep production adapter reader types strict; cast narrow test doubles at the callsite or define an explicit minimal test reader type before trusting focused Vitest. |
+| 2026-04-30 | self | The first live historical source classification labeled one completed pre-V2 mesocycle `unknown` because it lacked parseable seed metadata. | For this migration, classify completed non-V2 historical mesocycles as `legacy_projection` while still using only performed/review evidence as strategy input, never old prescribed shape. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

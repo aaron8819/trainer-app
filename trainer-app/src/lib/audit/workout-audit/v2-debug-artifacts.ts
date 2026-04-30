@@ -118,6 +118,18 @@ function countArray(value: unknown): number {
   return Array.isArray(value) ? value.length : 0;
 }
 
+function countProjectionGateStatuses(value: unknown): JsonRecord {
+  const gates = Object.values(asRecord(value) ?? {}).filter(
+    (entry): entry is string =>
+      entry === "pass" || entry === "fail" || entry === "unknown",
+  );
+  return {
+    pass: gates.filter((entry) => entry === "pass").length,
+    fail: gates.filter((entry) => entry === "fail").length,
+    unknown: gates.filter((entry) => entry === "unknown").length,
+  };
+}
+
 function pickRecordFields(
   value: unknown,
   fields: ReadonlyArray<string>,
@@ -836,6 +848,13 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
     asRecord(noRepair.v2MesocycleStrategyDiagnostic)
       ?.strategyHypothesisPromotionDiff,
   );
+  const strategyProjectionDiff = asRecord(strategyPromotionDiff?.projectionDiff);
+  const projectionCandidateStrategy = asRecord(
+    strategyProjectionDiff?.candidateStrategy,
+  );
+  const projectionRedistributionPreference = asRecord(
+    projectionCandidateStrategy?.redistributionPreference,
+  );
   const exerciseSelection = asRecord(noRepair.v2ExerciseSelectionPlanDiagnostic);
   const deloadProjection = asRecord(noRepair.v2DeloadProjectionDiagnostic);
 
@@ -889,6 +908,27 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
             strategyPromotionDiff.consumedByDemandOrMaterializer === true
               ? true
               : false,
+          projectionDiff: strategyProjectionDiff
+            ? {
+                status: strategyProjectionDiff.status ?? "not_available",
+                projectionMode:
+                  strategyProjectionDiff.projectionMode ?? "not_projected",
+                candidateProtectedMuscleCount: countArray(
+                  projectionRedistributionPreference?.candidateProtectedMuscles,
+                ),
+                candidateDonorMuscleCount: countArray(
+                  projectionRedistributionPreference?.candidateDonorMuscles,
+                ),
+                computedGateCounts: countProjectionGateStatuses(
+                  strategyProjectionDiff.computedNonRegressionGates,
+                ),
+                readiness: strategyProjectionDiff.readiness ?? "not_ready",
+                consumedByDemandOrMaterializer:
+                  strategyProjectionDiff.consumedByDemandOrMaterializer === true
+                    ? true
+                    : false,
+              }
+            : undefined,
         }
       : undefined,
     v2Summary: {

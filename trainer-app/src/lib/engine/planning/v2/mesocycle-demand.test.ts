@@ -53,6 +53,10 @@ describe("buildV2MesocycleDemand", () => {
     expect(JSON.stringify(demand)).not.toContain(
       "strategyHypothesisPromotionDiff",
     );
+    expect(JSON.stringify(demand)).not.toContain(
+      "strategyHypothesisProjectionDiff",
+    );
     expect(JSON.stringify(demand)).not.toContain("promotion_diff");
+    expect(JSON.stringify(demand)).not.toContain("projection_diff");
   });
 });

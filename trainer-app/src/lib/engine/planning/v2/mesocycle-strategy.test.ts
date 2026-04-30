@@ -258,6 +258,17 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
       consumedByDemandOrMaterializer: false,
       status: "not_available",
       evaluatedHypotheses: [],
+      projectionDiff: {
+        version: 1,
+        source: "v2_strategy_hypothesis_projection_diff",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByDemandOrMaterializer: false,
+        status: "not_available",
+        evaluatedHypotheses: [],
+        projectionMode: "not_projected",
+        readiness: "not_ready",
+      },
       nextSafeAction: "do_not_promote",
     });
   });
@@ -578,7 +589,7 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
         "protect_lagging_muscles_earlier",
         "cap_late_block_volume",
       ],
-      nextSafeAction: "add_read_only_projection_diff",
+      nextSafeAction: "run_read_only_shadow_trial",
     });
     expect(diff.evaluatedHypotheses).not.toContain("reduce_overlap_fatigue");
     expect(diff.evaluatedHypotheses).not.toContain(
@@ -610,6 +621,40 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
         "cap_must_preserve_priority_target_coverage",
         "cap_must_distinguish_plan_bloat_from_user_non_adherence",
       ]),
+    });
+    expect(diff.projectionDiff).toMatchObject({
+      version: 1,
+      source: "v2_strategy_hypothesis_projection_diff",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "available_with_limitations",
+      evaluatedHypotheses: [
+        "protect_lagging_muscles_earlier",
+        "cap_late_block_volume",
+      ],
+      projectionMode: "read_only_estimate",
+      readiness: "ready_for_read_only_shadow_trial",
+      candidateStrategy: {
+        laggingMuscleProtection: {
+          muscles: expect.arrayContaining(["Side Delts", "Calves"]),
+          proposedMechanism: "redistribute_sets",
+        },
+        lateBlockVolumeCap: {
+          proposedMechanism: "hard_week_expansion_cap",
+        },
+        redistributionPreference: {
+          preferRedistributionBeforeNetNewVolume: true,
+          candidateDonorMuscles: expect.arrayContaining([
+            "Glutes",
+            "Front Delts",
+          ]),
+          candidateProtectedMuscles: expect.arrayContaining([
+            "Side Delts",
+            "Calves",
+          ]),
+        },
+      },
     });
   });
 
@@ -649,6 +694,10 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
       diagnostic.strategyHypothesisPromotionDiff.protectLaggingMusclesEarlier
         .recurringUnderHitMuscles,
     ).not.toContain("Core");
+    expect(
+      diagnostic.strategyHypothesisPromotionDiff.projectionDiff.candidateStrategy
+        .redistributionPreference.candidateProtectedMuscles,
+    ).not.toEqual(expect.arrayContaining(["Core", "Forearms"]));
   });
 
   it("does not evaluate late-block cap fear without skipped-set and hard-week evidence", () => {
@@ -711,19 +760,59 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
       ],
     });
     expect(diff.nonRegressionGates).toEqual({
-      preservePriorityCoverage: true,
-      preserveOrImproveLaggingMuscleCoverage: true,
-      noMaterialRepairIncrease: true,
-      noMajorRepairIncrease: true,
-      noSuspiciousRepairIncrease: true,
-      noDirtyCollateralIncrease: true,
-      noForbiddenSlotWorkaround: true,
-      noSessionSizeRegression: true,
-      noConcentrationRegression: true,
-      noLateBlockSkippedSetRiskIncrease: true,
+      preservePriorityCoverage: false,
+      preserveOrImproveLaggingMuscleCoverage: false,
+      noMaterialRepairIncrease: false,
+      noMajorRepairIncrease: false,
+      noSuspiciousRepairIncrease: false,
+      noDirtyCollateralIncrease: false,
+      noForbiddenSlotWorkaround: false,
+      noSessionSizeRegression: false,
+      noConcentrationRegression: false,
+      noLateBlockSkippedSetRiskIncrease: false,
     });
-    expect(diff.nextSafeAction).toBe("add_read_only_projection_diff");
+    expect(diff.projectionDiff.computedNonRegressionGates).toEqual({
+      preservePriorityCoverage: "unknown",
+      preserveOrImproveLaggingMuscleCoverage: "unknown",
+      noMaterialRepairIncrease: "unknown",
+      noMajorRepairIncrease: "unknown",
+      noSuspiciousRepairIncrease: "unknown",
+      noDirtyCollateralIncrease: "unknown",
+      noForbiddenSlotWorkaround: "unknown",
+      noSessionSizeRegression: "unknown",
+      noConcentrationRegression: "unknown",
+      noLateBlockSkippedSetRiskIncrease: "unknown",
+    });
+    expect(diff.nextSafeAction).toBe("run_read_only_shadow_trial");
     expect(diff.affectsScoringOrGeneration).toBe(false);
+  });
+
+  it("computes projection gates from projected deltas instead of hypothesis presence", () => {
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+    });
+    const projection =
+      diagnostic.strategyHypothesisPromotionDiff.projectionDiff;
+
+    expect(projection.projectedDeltas.laggingMuscleCoverage.status).toBe(
+      "improves",
+    );
+    expect(projection.projectedDeltas.sessionSize.status).toBe("preserved");
+    expect(projection.computedNonRegressionGates).toMatchObject({
+      preserveOrImproveLaggingMuscleCoverage: "unknown",
+      noSessionSizeRegression: "unknown",
+    });
+    expect(projection.limitations).toEqual(
+      expect.arrayContaining([
+        "no_shadow_projection_rerun_yet",
+        "computed_gates_default_unknown_without_projected_delta_evidence",
+        "old_prescribed_plan_shape_excluded_from_projection_target",
+        "repaired_projection_excluded_from_projection_target",
+      ]),
+    );
+    expect(JSON.stringify(projection)).not.toContain(
+      "old-prescribed-plan-only",
+    );
   });
 
   it("maps every recommendation hypothesis to the conservative promotion owner and next safe action", () => {
@@ -928,8 +1017,14 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     expect(JSON.stringify(policy.mesocycleDemand)).not.toContain(
       "promotion_diff",
     );
+    expect(JSON.stringify(policy.mesocycleDemand)).not.toContain(
+      "projection_diff",
+    );
     expect(JSON.stringify(policy.weeklyDemandCurve)).not.toContain(
       "promotion_diff",
+    );
+    expect(JSON.stringify(policy.weeklyDemandCurve)).not.toContain(
+      "projection_diff",
     );
   });
 });

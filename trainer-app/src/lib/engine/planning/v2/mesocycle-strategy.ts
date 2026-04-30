@@ -13,6 +13,9 @@ import type {
   V2MesocycleStrategyRecommendationMustNotYetInfluence,
   V2StrategyHypothesisPromotionDiff,
   V2StrategyHypothesisPromotionDiffHypothesisId,
+  V2StrategyHypothesisProjectionDeltaStatus,
+  V2StrategyHypothesisProjectionDiff,
+  V2StrategyHypothesisProjectionGateStatus,
   V2StrategyHypothesisPromotionReadiness,
   V2StrategyHypothesisPromotionReadinessLevel,
   V2StrategyHypothesisPromotionReadinessNextSafeAction,
@@ -1615,21 +1618,6 @@ function emptyNonRegressionGates(): V2StrategyHypothesisPromotionDiff["nonRegres
   };
 }
 
-function reportedNonRegressionGates(): V2StrategyHypothesisPromotionDiff["nonRegressionGates"] {
-  return {
-    preservePriorityCoverage: true,
-    preserveOrImproveLaggingMuscleCoverage: true,
-    noMaterialRepairIncrease: true,
-    noMajorRepairIncrease: true,
-    noSuspiciousRepairIncrease: true,
-    noDirtyCollateralIncrease: true,
-    noForbiddenSlotWorkaround: true,
-    noSessionSizeRegression: true,
-    noConcentrationRegression: true,
-    noLateBlockSkippedSetRiskIncrease: true,
-  };
-}
-
 function collectTargetTierUnderHitEntries(
   blockSignals: V2MesocycleStrategyInput["blockResponseSignals"],
 ): MuscleEvidenceEntry[] {
@@ -1639,6 +1627,293 @@ function collectTargetTierUnderHitEntries(
       ...(signal.muscleDistribution.belowMevFlags ?? []).map(muscleNameFromFlag),
     ].filter(isTargetTierMuscle),
   );
+}
+
+function fatigueDriverMuscleFromEvidence(entry: string): string | null {
+  const match = entry.match(
+    /(?:overlap_fatigue_driver|fatigue_driver|over_concentrated):([^:]+)/i,
+  );
+  return match?.[1]?.trim() || null;
+}
+
+function collectRedistributionDonorEntries(
+  blockSignals: V2MesocycleStrategyInput["blockResponseSignals"],
+): MuscleEvidenceEntry[] {
+  return collectMuscleEvidence(blockSignals, (signal) =>
+    [
+      ...(signal.muscleDistribution.recurringOverConcentratedMuscles ?? []),
+      ...(signal.muscleDistribution.overMavFlags ?? []).map(muscleNameFromFlag),
+      ...(signal.fatigueDistribution.likelyFatigueDrivers ?? []),
+      ...signal.fatigueDistribution.evidence
+        .map(fatigueDriverMuscleFromEvidence)
+        .filter((muscle): muscle is string => Boolean(muscle)),
+    ].filter(Boolean),
+  );
+}
+
+function sortedEvidenceMuscles(entries: MuscleEvidenceEntry[]): string[] {
+  return entries
+    .map((entry) => entry.muscle)
+    .sort(
+      (left, right) =>
+        targetTierRank(left) - targetTierRank(right) ||
+        left.localeCompare(right),
+    );
+}
+
+function proposedProjectionProtectionMechanism(input: {
+  protectedMuscles: readonly string[];
+  donorMuscles: readonly string[];
+}): V2StrategyHypothesisProjectionDiff["candidateStrategy"]["laggingMuscleProtection"]["proposedMechanism"] {
+  if (input.protectedMuscles.length === 0) {
+    return "unknown";
+  }
+  if (input.donorMuscles.length > 0) {
+    return "redistribute_sets";
+  }
+  if (
+    input.protectedMuscles.some(
+      (muscle) => getMuscleTargetSemantics(muscle).targetTier === "B_SUPPORT",
+    )
+  ) {
+    return "early_slot_owned_support";
+  }
+  if (
+    input.protectedMuscles.some(
+      (muscle) => getMuscleTargetSemantics(muscle).targetTier === "A_PRIMARY",
+    )
+  ) {
+    return "direct_floor_protection";
+  }
+  return "unknown";
+}
+
+function proposedProjectionCapMechanism(input: {
+  hardWeekSkippedSetSignal: boolean;
+  skippedSetExamples: readonly string[];
+}): V2StrategyHypothesisProjectionDiff["candidateStrategy"]["lateBlockVolumeCap"]["proposedMechanism"] {
+  if (!input.hardWeekSkippedSetSignal) {
+    return "unknown";
+  }
+  if (
+    input.skippedSetExamples.some((example) =>
+      /hard_week|late_block/i.test(example),
+    )
+  ) {
+    return "hard_week_expansion_cap";
+  }
+  return "session_size_cap";
+}
+
+function gateFromProjectedDelta(input: {
+  status: V2StrategyHypothesisProjectionDeltaStatus;
+  measured: boolean;
+}): V2StrategyHypothesisProjectionGateStatus {
+  if (input.status === "worsens") {
+    return "fail";
+  }
+  if (!input.measured) {
+    return "unknown";
+  }
+  if (input.status === "improves" || input.status === "preserved") {
+    return "pass";
+  }
+  return "unknown";
+}
+
+function buildStrategyHypothesisProjectionDiff(input: {
+  evaluatedHypotheses: V2StrategyHypothesisPromotionDiffHypothesisId[];
+  protectLaggingMusclesEarlier: V2StrategyHypothesisPromotionDiff["protectLaggingMusclesEarlier"];
+  capLateBlockVolume: V2StrategyHypothesisPromotionDiff["capLateBlockVolume"];
+  blockSignals: V2MesocycleStrategyInput["blockResponseSignals"];
+}): V2StrategyHypothesisProjectionDiff {
+  const evaluatesCombinedPair =
+    input.evaluatedHypotheses.includes("protect_lagging_muscles_earlier") &&
+    input.evaluatedHypotheses.includes("cap_late_block_volume");
+  const protectedMuscles = sortedEvidenceMuscles(
+    collectTargetTierUnderHitEntries(input.blockSignals),
+  );
+  const donorMuscles = collectRedistributionDonorEntries(input.blockSignals).map(
+    (entry) => entry.muscle,
+  );
+  const projectionMode: V2StrategyHypothesisProjectionDiff["projectionMode"] =
+    evaluatesCombinedPair ? "read_only_estimate" : "not_projected";
+  const measured = false;
+  const protectionMechanism = proposedProjectionProtectionMechanism({
+    protectedMuscles,
+    donorMuscles,
+  });
+  const capMechanism = proposedProjectionCapMechanism({
+    hardWeekSkippedSetSignal:
+      input.capLateBlockVolume.skippedSetEvidence.hardWeekSkippedSetSignal,
+    skippedSetExamples: input.capLateBlockVolume.skippedSetEvidence.examples,
+  });
+  const projectedDeltas: V2StrategyHypothesisProjectionDiff["projectedDeltas"] =
+    {
+      priorityCoverage: {
+        status: "unknown",
+        notes: [
+          "no_shadow_projection_quantifies_priority_set_delta",
+          "priority_coverage_cannot_pass_from_hypothesis_presence",
+        ],
+      },
+      laggingMuscleCoverage: {
+        status:
+          evaluatesCombinedPair && protectedMuscles.length > 0
+            ? "improves"
+            : "unknown",
+        examples: protectedMuscles.slice(0, 8),
+      },
+      sessionSize: {
+        status:
+          evaluatesCombinedPair &&
+          donorMuscles.length > 0 &&
+          input.capLateBlockVolume.skippedSetEvidence.hardWeekSkippedSetSignal
+            ? "preserved"
+            : "unknown",
+        notes: [
+          donorMuscles.length > 0
+            ? "redistribution_preferred_before_net_new_late_block_volume"
+            : "no_supported_redistribution_donor_muscles_found",
+          "session_size_delta_not_measured_by_shadow_projection",
+        ],
+      },
+      concentration: {
+        status:
+          evaluatesCombinedPair && donorMuscles.length > 0
+            ? "improves"
+            : "unknown",
+        notes: [
+          donorMuscles.length > 0
+            ? "candidate_donor_muscles_come_from_over_concentration_or_fatigue_evidence"
+            : "concentration_delta_not_estimated_without_donor_evidence",
+          "concentration_delta_not_measured_by_shadow_projection",
+        ],
+      },
+      repairPressure: {
+        status: "unknown",
+        notes: [
+          "material_major_and_suspicious_repair_deltas_not_available_without_shadow_projection",
+        ],
+      },
+      dirtyCollateral: {
+        status: "unknown",
+        notes: [
+          "dirty_collateral_delta_not_available_without_shadow_projection",
+        ],
+      },
+      lateBlockFatigueRisk: {
+        status:
+          evaluatesCombinedPair &&
+          input.capLateBlockVolume.skippedSetEvidence.hardWeekSkippedSetSignal
+            ? "improves"
+            : "unknown",
+        notes: [
+          input.capLateBlockVolume.skippedSetEvidence.hardWeekSkippedSetSignal
+            ? "hard_week_skipped_set_signal_supports_cap_pressure_estimate"
+            : "late_block_skipped_set_pressure_not_supported",
+          "late_block_fatigue_delta_not_measured_by_shadow_projection",
+        ],
+      },
+    };
+  const computedNonRegressionGates: V2StrategyHypothesisProjectionDiff["computedNonRegressionGates"] =
+    {
+      preservePriorityCoverage: gateFromProjectedDelta({
+        status: projectedDeltas.priorityCoverage.status,
+        measured,
+      }),
+      preserveOrImproveLaggingMuscleCoverage: gateFromProjectedDelta({
+        status: projectedDeltas.laggingMuscleCoverage.status,
+        measured,
+      }),
+      noMaterialRepairIncrease: gateFromProjectedDelta({
+        status: projectedDeltas.repairPressure.status,
+        measured,
+      }),
+      noMajorRepairIncrease: gateFromProjectedDelta({
+        status: projectedDeltas.repairPressure.status,
+        measured,
+      }),
+      noSuspiciousRepairIncrease: gateFromProjectedDelta({
+        status: projectedDeltas.repairPressure.status,
+        measured,
+      }),
+      noDirtyCollateralIncrease: gateFromProjectedDelta({
+        status: projectedDeltas.dirtyCollateral.status,
+        measured,
+      }),
+      noForbiddenSlotWorkaround: "unknown",
+      noSessionSizeRegression: gateFromProjectedDelta({
+        status: projectedDeltas.sessionSize.status,
+        measured,
+      }),
+      noConcentrationRegression: gateFromProjectedDelta({
+        status: projectedDeltas.concentration.status,
+        measured,
+      }),
+      noLateBlockSkippedSetRiskIncrease: gateFromProjectedDelta({
+        status: projectedDeltas.lateBlockFatigueRisk.status,
+        measured,
+      }),
+    };
+  const gateValues = Object.values(computedNonRegressionGates);
+  const allGatesPass = gateValues.every((gate) => gate === "pass");
+
+  return {
+    version: 1,
+    source: "v2_strategy_hypothesis_projection_diff",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: false,
+    status: evaluatesCombinedPair
+      ? "available_with_limitations"
+      : "not_available",
+    evaluatedHypotheses: evaluatesCombinedPair
+      ? PROMOTION_DIFF_HYPOTHESIS_IDS
+      : input.evaluatedHypotheses,
+    projectionMode,
+    candidateStrategy: {
+      laggingMuscleProtection: {
+        muscles: protectedMuscles,
+        proposedMechanism: protectionMechanism,
+      },
+      lateBlockVolumeCap: {
+        proposedMechanism: capMechanism,
+      },
+      redistributionPreference: {
+        preferRedistributionBeforeNetNewVolume: true,
+        candidateDonorMuscles: donorMuscles,
+        candidateProtectedMuscles: protectedMuscles,
+      },
+    },
+    projectedDeltas,
+    computedNonRegressionGates,
+    readiness: !evaluatesCombinedPair
+      ? "not_ready"
+      : projectionMode === "read_only_estimate"
+        ? "ready_for_read_only_shadow_trial"
+        : allGatesPass
+          ? "ready_for_bounded_behavior_trial"
+          : "needs_better_projection",
+    limitations: unique([
+      "read_only_estimate_not_behavior_trial",
+      "no_shadow_projection_rerun_yet",
+      "computed_gates_default_unknown_without_projected_delta_evidence",
+      "repair_pressure_deltas_not_measured",
+      "dirty_collateral_deltas_not_measured",
+      "session_size_deltas_are_estimated_not_quantified",
+      "repaired_projection_excluded_from_projection_target",
+      "old_prescribed_plan_shape_excluded_from_projection_target",
+      "candidate_strategy_is_owner_agnostic",
+      "projection_diff_is_not_consumed_by_demand_weekly_curve_materializer_generation_selection_repair_seed_runtime_or_receipts",
+      ...(input.protectLaggingMusclesEarlier.status === "not_evaluated"
+        ? ["lagging_muscle_protection_diff_not_available"]
+        : []),
+      ...(input.capLateBlockVolume.status === "not_evaluated"
+        ? ["late_block_volume_cap_diff_not_available"]
+        : []),
+    ]),
+  };
 }
 
 function proposedProtectionType(
@@ -1850,6 +2125,12 @@ function buildStrategyHypothesisPromotionDiff(input: {
     input.strategyHypothesisPromotionReadiness.hypothesisReadiness.some(
       (row) => isPromotionDiffHypothesisId(row.hypothesisId),
     );
+  const projectionDiff = buildStrategyHypothesisProjectionDiff({
+    evaluatedHypotheses,
+    protectLaggingMusclesEarlier,
+    capLateBlockVolume,
+    blockSignals,
+  });
 
   return {
     version: 1,
@@ -1879,13 +2160,13 @@ function buildStrategyHypothesisPromotionDiff(input: {
           ]
         : [],
     },
-    nonRegressionGates:
-      evaluatedHypotheses.length > 0
-        ? reportedNonRegressionGates()
-        : emptyNonRegressionGates(),
+    projectionDiff,
+    nonRegressionGates: emptyNonRegressionGates(),
     nextSafeAction:
-      evaluatedHypotheses.length > 0
-        ? "add_read_only_projection_diff"
+      projectionDiff.readiness === "ready_for_read_only_shadow_trial"
+        ? "run_read_only_shadow_trial"
+        : evaluatedHypotheses.length > 0
+          ? "add_read_only_projection_diff"
         : hasTargetedRows
           ? "collect_more_evidence"
           : "do_not_promote",

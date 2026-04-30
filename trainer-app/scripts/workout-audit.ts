@@ -2218,6 +2218,21 @@ export function buildPlannerOnlyNoRepairSummary(input: {
           .targetTierMuscles ?? []);
   const promotionDiffSkippedEvidence =
     strategyPromotionDiff?.capLateBlockVolume.skippedSetEvidence;
+  const promotionProjectionDiff = strategyPromotionDiff?.projectionDiff;
+  const promotionProjectionPreference =
+    promotionProjectionDiff?.candidateStrategy.redistributionPreference;
+  const promotionProjectionGateValues = Object.values(
+    promotionProjectionDiff?.computedNonRegressionGates ?? {},
+  );
+  const promotionProjectionGateCounts = {
+    pass: promotionProjectionGateValues.filter((entry) => entry === "pass")
+      .length,
+    fail: promotionProjectionGateValues.filter((entry) => entry === "fail")
+      .length,
+    unknown: promotionProjectionGateValues.filter(
+      (entry) => entry === "unknown",
+    ).length,
+  };
   const strategyLines = strategy
     ? [
         "V2 Mesocycle Strategy Diagnostic",
@@ -2260,6 +2275,11 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Promotion diff hard-week skipped-set signal: ${promotionDiffSkippedEvidence?.hardWeekSkippedSetSignal ? "yes" : "no"} examples=${formatNameList(promotionDiffSkippedEvidence?.examples ?? [], 5)}`,
         `Promotion diff interaction risk: ${formatStatus(strategyPromotionDiff?.interactionRisk.status ?? "not_evaluated")} ${formatNameList(strategyPromotionDiff?.interactionRisk.risks ?? [], 3)}`,
         `Promotion diff non-regression gates: reported=${promotionDiffReportedGateCount}/${promotionDiffGateValues.length} enforced=no`,
+        `Promotion projection diff: ${formatStatus(promotionProjectionDiff?.status ?? "not_available")} mode=${formatStatus(promotionProjectionDiff?.projectionMode ?? "not_projected")} readiness=${formatStatus(promotionProjectionDiff?.readiness ?? "not_ready")}`,
+        `Promotion projection candidates: protected=${promotionProjectionPreference?.candidateProtectedMuscles.length ?? 0} donors=${promotionProjectionPreference?.candidateDonorMuscles.length ?? 0}`,
+        `Promotion projection gates: pass=${promotionProjectionGateCounts.pass} fail=${promotionProjectionGateCounts.fail} unknown=${promotionProjectionGateCounts.unknown}`,
+        `Promotion projection limitations: ${formatNameList(promotionProjectionDiff?.limitations ?? [], 5)}`,
+        `Promotion projection consumedByDemandOrMaterializer: ${Boolean(promotionProjectionDiff?.consumedByDemandOrMaterializer) ? "true" : "false"}`,
         `Promotion diff consumedByDemandOrMaterializer: ${Boolean(strategyPromotionDiff?.consumedByDemandOrMaterializer) ? "true" : "false"}`,
         `Performed history loaded: ${strategy.strategyInputSummary.performedHistoryEvidenceLoaded ? "yes" : "no"}`,
         `Old prescribed plan shape excluded: ${strategy.strategyInputSummary.prescribedPlanShapeExcludedFromStrategyPolicy ? "yes" : "no"}`,

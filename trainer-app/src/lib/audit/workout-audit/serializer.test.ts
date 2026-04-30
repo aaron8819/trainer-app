@@ -1879,8 +1879,21 @@ describe("buildWorkoutAuditArtifact", () => {
         strategyHypothesisPromotionDiff: {
           status: "available_with_limitations",
           evaluatedHypothesisCount: 2,
-          nextSafeAction: "add_read_only_projection_diff",
+          nextSafeAction: "run_read_only_shadow_trial",
           consumedByDemandOrMaterializer: false,
+          projectionDiff: {
+            status: "available_with_limitations",
+            projectionMode: "read_only_estimate",
+            candidateProtectedMuscleCount: 2,
+            candidateDonorMuscleCount: 1,
+            computedGateCounts: {
+              pass: 0,
+              fail: 0,
+              unknown: 10,
+            },
+            readiness: "ready_for_read_only_shadow_trial",
+            consumedByDemandOrMaterializer: false,
+          },
         },
       },
       repairPromotionScoreboard: {
@@ -2076,10 +2089,37 @@ describe("buildWorkoutAuditArtifact", () => {
           ],
         }),
         nonRegressionGates: expect.objectContaining({
-          preservePriorityCoverage: true,
-          noLateBlockSkippedSetRiskIncrease: true,
+          preservePriorityCoverage: false,
+          noLateBlockSkippedSetRiskIncrease: false,
         }),
-        nextSafeAction: "add_read_only_projection_diff",
+        projectionDiff: expect.objectContaining({
+          source: "v2_strategy_hypothesis_projection_diff",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByDemandOrMaterializer: false,
+          status: "available_with_limitations",
+          evaluatedHypotheses: [
+            "protect_lagging_muscles_earlier",
+            "cap_late_block_volume",
+          ],
+          projectionMode: "read_only_estimate",
+          candidateStrategy: expect.objectContaining({
+            redistributionPreference: expect.objectContaining({
+              preferRedistributionBeforeNetNewVolume: true,
+              candidateProtectedMuscles: expect.arrayContaining([
+                "Side Delts",
+                "Calves",
+              ]),
+              candidateDonorMuscles: ["Glutes"],
+            }),
+          }),
+          computedNonRegressionGates: expect.objectContaining({
+            preservePriorityCoverage: "unknown",
+            noLateBlockSkippedSetRiskIncrease: "unknown",
+          }),
+          readiness: "ready_for_read_only_shadow_trial",
+        }),
+        nextSafeAction: "run_read_only_shadow_trial",
       },
       v2TargetVsNoRepairDiff: {
         summary: expect.objectContaining({

@@ -1749,19 +1749,95 @@ describe("artifact serialization helpers", () => {
                   "prefer_redistribution_from_over_concentrated_or_fatigue_driver_muscles_before_adding_net_new_late_block_volume",
                 ],
               },
-              nonRegressionGates: {
-                preservePriorityCoverage: true,
-                preserveOrImproveLaggingMuscleCoverage: true,
-                noMaterialRepairIncrease: true,
-                noMajorRepairIncrease: true,
-                noSuspiciousRepairIncrease: true,
-                noDirtyCollateralIncrease: true,
-                noForbiddenSlotWorkaround: true,
-                noSessionSizeRegression: true,
-                noConcentrationRegression: true,
-                noLateBlockSkippedSetRiskIncrease: true,
+              projectionDiff: {
+                version: 1,
+                source: "v2_strategy_hypothesis_projection_diff",
+                readOnly: true,
+                affectsScoringOrGeneration: false,
+                consumedByDemandOrMaterializer: false,
+                status: "available_with_limitations",
+                evaluatedHypotheses: [
+                  "protect_lagging_muscles_earlier",
+                  "cap_late_block_volume",
+                ],
+                projectionMode: "read_only_estimate",
+                candidateStrategy: {
+                  laggingMuscleProtection: {
+                    muscles: ["Side Delts"],
+                    proposedMechanism: "redistribute_sets",
+                  },
+                  lateBlockVolumeCap: {
+                    proposedMechanism: "hard_week_expansion_cap",
+                  },
+                  redistributionPreference: {
+                    preferRedistributionBeforeNetNewVolume: true,
+                    candidateDonorMuscles: ["Glutes"],
+                    candidateProtectedMuscles: ["Side Delts"],
+                  },
+                },
+                projectedDeltas: {
+                  priorityCoverage: {
+                    status: "unknown",
+                    notes: ["no_shadow_projection_quantifies_priority_set_delta"],
+                  },
+                  laggingMuscleCoverage: {
+                    status: "improves",
+                    examples: ["Side Delts"],
+                  },
+                  sessionSize: {
+                    status: "preserved",
+                    notes: [
+                      "redistribution_preferred_before_net_new_late_block_volume",
+                    ],
+                  },
+                  concentration: {
+                    status: "improves",
+                    notes: ["candidate_donor_muscles_come_from_evidence"],
+                  },
+                  repairPressure: {
+                    status: "unknown",
+                    notes: ["repair_pressure_deltas_not_measured"],
+                  },
+                  dirtyCollateral: {
+                    status: "unknown",
+                    notes: ["dirty_collateral_delta_not_available"],
+                  },
+                  lateBlockFatigueRisk: {
+                    status: "improves",
+                    notes: ["hard_week_skipped_set_signal_supports_cap_pressure_estimate"],
+                  },
+                },
+                computedNonRegressionGates: {
+                  preservePriorityCoverage: "unknown",
+                  preserveOrImproveLaggingMuscleCoverage: "unknown",
+                  noMaterialRepairIncrease: "unknown",
+                  noMajorRepairIncrease: "unknown",
+                  noSuspiciousRepairIncrease: "unknown",
+                  noDirtyCollateralIncrease: "unknown",
+                  noForbiddenSlotWorkaround: "unknown",
+                  noSessionSizeRegression: "unknown",
+                  noConcentrationRegression: "unknown",
+                  noLateBlockSkippedSetRiskIncrease: "unknown",
+                },
+                readiness: "ready_for_read_only_shadow_trial",
+                limitations: [
+                  "no_shadow_projection_rerun_yet",
+                  "computed_gates_default_unknown_without_projected_delta_evidence",
+                ],
               },
-              nextSafeAction: "add_read_only_projection_diff",
+              nonRegressionGates: {
+                preservePriorityCoverage: false,
+                preserveOrImproveLaggingMuscleCoverage: false,
+                noMaterialRepairIncrease: false,
+                noMajorRepairIncrease: false,
+                noSuspiciousRepairIncrease: false,
+                noDirtyCollateralIncrease: false,
+                noForbiddenSlotWorkaround: false,
+                noSessionSizeRegression: false,
+                noConcentrationRegression: false,
+                noLateBlockSkippedSetRiskIncrease: false,
+              },
+              nextSafeAction: "run_read_only_shadow_trial",
             },
             currentStateVsNorthStarGaps: [],
           },
@@ -1810,19 +1886,41 @@ describe("artifact serialization helpers", () => {
       evaluatedHypothesisCount: 2,
       interactionRiskStatus: "available_with_limitations",
       nonRegressionGateStatus: {
-        reported: true,
-        reportedCount: 10,
+        reported: false,
+        reportedCount: 0,
         totalCount: 10,
         enforcedAsBehavior: false,
       },
-      nextSafeAction: "add_read_only_projection_diff",
+      nextSafeAction: "run_read_only_shadow_trial",
       consumedByDemandOrMaterializer: false,
+      projectionDiff: {
+        status: "available_with_limitations",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        projectionMode: "read_only_estimate",
+        candidateProtectedMuscleCount: 1,
+        candidateDonorMuscleCount: 1,
+        computedGateCounts: {
+          pass: 0,
+          fail: 0,
+          unknown: 10,
+        },
+        readiness: "ready_for_read_only_shadow_trial",
+        topLimitations: [
+          "no_shadow_projection_rerun_yet",
+          "computed_gates_default_unknown_without_projected_delta_evidence",
+        ],
+        consumedByDemandOrMaterializer: false,
+      },
     });
     expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
       "targetTierMuscles",
     );
     expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
       "skipped_set_trend_rising",
+    );
+    expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
+      "candidateDonorMuscles",
     );
     expect(noRepair).not.toHaveProperty("v2MesocycleStrategyDiagnostic");
   });

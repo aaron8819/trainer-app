@@ -794,6 +794,21 @@ function compactStrategyPromotionDiff(value: unknown): JsonRecord | undefined {
     (entry): entry is boolean => typeof entry === "boolean",
   );
   const reportedGateCount = gateValues.filter(Boolean).length;
+  const projectionDiff = asRecord(diff.projectionDiff);
+  const candidateStrategy = asRecord(projectionDiff?.candidateStrategy);
+  const redistributionPreference = asRecord(
+    candidateStrategy?.redistributionPreference,
+  );
+  const computedGateValues = Object.values(
+    asRecord(projectionDiff?.computedNonRegressionGates) ?? {},
+  ).filter((entry): entry is string =>
+    entry === "pass" || entry === "fail" || entry === "unknown",
+  );
+  const computedGateCounts = {
+    pass: computedGateValues.filter((entry) => entry === "pass").length,
+    fail: computedGateValues.filter((entry) => entry === "fail").length,
+    unknown: computedGateValues.filter((entry) => entry === "unknown").length,
+  };
 
   return {
     status: diff.status ?? "not_available",
@@ -815,6 +830,28 @@ function compactStrategyPromotionDiff(value: unknown): JsonRecord | undefined {
         : "do_not_promote",
     consumedByDemandOrMaterializer:
       diff.consumedByDemandOrMaterializer === true ? true : false,
+    projectionDiff: projectionDiff
+      ? {
+          status: projectionDiff.status ?? "not_available",
+          readOnly: projectionDiff.readOnly === true,
+          affectsScoringOrGeneration:
+            projectionDiff.affectsScoringOrGeneration === true ? true : false,
+          projectionMode: projectionDiff.projectionMode ?? "not_projected",
+          candidateProtectedMuscleCount: countArray(
+            redistributionPreference?.candidateProtectedMuscles,
+          ),
+          candidateDonorMuscleCount: countArray(
+            redistributionPreference?.candidateDonorMuscles,
+          ),
+          computedGateCounts,
+          readiness: projectionDiff.readiness ?? "not_ready",
+          topLimitations: asStringArray(projectionDiff.limitations).slice(0, 5),
+          consumedByDemandOrMaterializer:
+            projectionDiff.consumedByDemandOrMaterializer === true
+              ? true
+              : false,
+        }
+      : undefined,
   };
 }
 

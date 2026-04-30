@@ -3509,6 +3509,11 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
       "Promotion diff hard-week skipped-set signal: no examples=none",
       "Promotion diff interaction risk: not-evaluated none",
       "Promotion diff non-regression gates: reported=0/10 enforced=no",
+      "Promotion projection diff: not-available mode=not-projected readiness=not-ready",
+      "Promotion projection candidates: protected=0 donors=0",
+      "Promotion projection gates: pass=0 fail=0 unknown=10",
+      "Promotion projection limitations: candidate_strategy_is_owner_agnostic, computed_gates_default_unknown_without_projected_delta_evidence, dirty_collateral_deltas_not_measured, lagging_muscle_protection_diff_not_available, late_block_volume_cap_diff_not_available, +7 more",
+      "Promotion projection consumedByDemandOrMaterializer: false",
       "Promotion diff consumedByDemandOrMaterializer: false",
       "Performed history loaded: no",
       "Old prescribed plan shape excluded: yes",
@@ -3569,14 +3574,19 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
 
     expect(summary).toEqual(
       expect.arrayContaining([
-        "Promotion diff gate: available-with-limitations evaluated=2 next=add-read-only-projection-diff",
+        "Promotion diff gate: available-with-limitations evaluated=2 next=run-read-only-shadow-trial",
         "Promotion diff hypotheses: cap_late_block_volume, protect_lagging_muscles_earlier",
         "Promotion diff target-tier under-hit: Side Delts",
         expect.stringContaining(
           "Promotion diff hard-week skipped-set signal: yes examples=",
         ),
         "Promotion diff interaction risk: available-with-limitations both_hypotheses_can_conflict_without_redistribution_policy, lagging_muscle_protection_may_require_more_allocated_work, late_block_volume_cap_may_require_less_total_expansion",
-        "Promotion diff non-regression gates: reported=10/10 enforced=no",
+        "Promotion diff non-regression gates: reported=0/10 enforced=no",
+        "Promotion projection diff: available-with-limitations mode=read-only-estimate readiness=ready-for-read-only-shadow-trial",
+        "Promotion projection candidates: protected=2 donors=1",
+        "Promotion projection gates: pass=0 fail=0 unknown=10",
+        "Promotion projection limitations: candidate_strategy_is_owner_agnostic, computed_gates_default_unknown_without_projected_delta_evidence, dirty_collateral_deltas_not_measured, no_shadow_projection_rerun_yet, old_prescribed_plan_shape_excluded_from_projection_target, +5 more",
+        "Promotion projection consumedByDemandOrMaterializer: false",
         "Promotion diff consumedByDemandOrMaterializer: false",
       ]),
     );

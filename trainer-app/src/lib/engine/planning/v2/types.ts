@@ -224,6 +224,101 @@ export type V2StrategyHypothesisPromotionDiffHypothesisId =
   | "protect_lagging_muscles_earlier"
   | "cap_late_block_volume";
 
+export type V2StrategyHypothesisProjectionDeltaStatus =
+  | "improves"
+  | "preserved"
+  | "worsens"
+  | "unknown";
+
+export type V2StrategyHypothesisProjectionGateStatus =
+  | "pass"
+  | "fail"
+  | "unknown";
+
+export type V2StrategyHypothesisProjectionDiff = {
+  version: 1;
+  source: "v2_strategy_hypothesis_projection_diff";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByDemandOrMaterializer: false;
+  status: V2StrategyHypothesisPromotionDiffStatus;
+  evaluatedHypotheses: V2StrategyHypothesisPromotionDiffHypothesisId[];
+  projectionMode: "read_only_estimate" | "shadow_projection" | "not_projected";
+  candidateStrategy: {
+    laggingMuscleProtection: {
+      muscles: string[];
+      proposedMechanism:
+        | "redistribute_sets"
+        | "early_slot_owned_support"
+        | "direct_floor_protection"
+        | "unknown";
+    };
+    lateBlockVolumeCap: {
+      proposedMechanism:
+        | "hard_week_expansion_cap"
+        | "session_size_cap"
+        | "set_bump_budget_cap"
+        | "unknown";
+    };
+    redistributionPreference: {
+      preferRedistributionBeforeNetNewVolume: true;
+      candidateDonorMuscles: string[];
+      candidateProtectedMuscles: string[];
+    };
+  };
+  projectedDeltas: {
+    priorityCoverage: {
+      status: V2StrategyHypothesisProjectionDeltaStatus;
+      notes: string[];
+    };
+    laggingMuscleCoverage: {
+      status: V2StrategyHypothesisProjectionDeltaStatus;
+      examples: string[];
+    };
+    sessionSize: {
+      status: V2StrategyHypothesisProjectionDeltaStatus;
+      notes: string[];
+    };
+    concentration: {
+      status: V2StrategyHypothesisProjectionDeltaStatus;
+      notes: string[];
+    };
+    repairPressure: {
+      materialRepairDelta?: number;
+      majorRepairDelta?: number;
+      suspiciousRepairDelta?: number;
+      status: V2StrategyHypothesisProjectionDeltaStatus;
+      notes: string[];
+    };
+    dirtyCollateral: {
+      status: V2StrategyHypothesisProjectionDeltaStatus;
+      notes: string[];
+    };
+    lateBlockFatigueRisk: {
+      status: V2StrategyHypothesisProjectionDeltaStatus;
+      notes: string[];
+    };
+  };
+  computedNonRegressionGates: {
+    preservePriorityCoverage: V2StrategyHypothesisProjectionGateStatus;
+    preserveOrImproveLaggingMuscleCoverage: V2StrategyHypothesisProjectionGateStatus;
+    noMaterialRepairIncrease: V2StrategyHypothesisProjectionGateStatus;
+    noMajorRepairIncrease: V2StrategyHypothesisProjectionGateStatus;
+    noSuspiciousRepairIncrease: V2StrategyHypothesisProjectionGateStatus;
+    noDirtyCollateralIncrease: V2StrategyHypothesisProjectionGateStatus;
+    noForbiddenSlotWorkaround: V2StrategyHypothesisProjectionGateStatus;
+    noSessionSizeRegression: V2StrategyHypothesisProjectionGateStatus;
+    noConcentrationRegression: V2StrategyHypothesisProjectionGateStatus;
+    noLateBlockSkippedSetRiskIncrease: V2StrategyHypothesisProjectionGateStatus;
+  };
+  readiness:
+    | "not_ready"
+    | "needs_better_projection"
+    | "ready_for_read_only_shadow_trial"
+    | "ready_for_bounded_behavior_trial";
+  limitations: string[];
+};
+
 export type V2StrategyHypothesisPromotionDiff = {
   version: 1;
   source: "v2_strategy_hypothesis_promotion_diff";
@@ -263,6 +358,7 @@ export type V2StrategyHypothesisPromotionDiff = {
     risks: string[];
     requiredJointGuards: string[];
   };
+  projectionDiff: V2StrategyHypothesisProjectionDiff;
   nonRegressionGates: {
     preservePriorityCoverage: boolean;
     preserveOrImproveLaggingMuscleCoverage: boolean;
@@ -277,6 +373,7 @@ export type V2StrategyHypothesisPromotionDiff = {
   };
   nextSafeAction:
     | "add_read_only_projection_diff"
+    | "run_read_only_shadow_trial"
     | "collect_more_evidence"
     | "do_not_promote";
 };

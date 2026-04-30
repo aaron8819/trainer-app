@@ -210,6 +210,77 @@ export type V2StrategyHypothesisPromotionReadiness = {
   limitations: string[];
 };
 
+export type V2StrategyHypothesisPromotionDiffStatus =
+  | "not_available"
+  | "available_with_limitations"
+  | "available";
+
+export type V2StrategyHypothesisPromotionDiffRowStatus =
+  | "not_evaluated"
+  | "available_with_limitations"
+  | "available";
+
+export type V2StrategyHypothesisPromotionDiffHypothesisId =
+  | "protect_lagging_muscles_earlier"
+  | "cap_late_block_volume";
+
+export type V2StrategyHypothesisPromotionDiff = {
+  version: 1;
+  source: "v2_strategy_hypothesis_promotion_diff";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByDemandOrMaterializer: false;
+  status: V2StrategyHypothesisPromotionDiffStatus;
+  evaluatedHypotheses: V2StrategyHypothesisPromotionDiffHypothesisId[];
+  protectLaggingMusclesEarlier: {
+    status: V2StrategyHypothesisPromotionDiffRowStatus;
+    targetTierMuscles: string[];
+    recurringUnderHitMuscles: string[];
+    proposedProtectionType:
+      | "early_week_direct_sets"
+      | "slot_owned_support_floor"
+      | "set_redistribution"
+      | "unknown";
+    requiredGuards: string[];
+    riskSummary: string[];
+  };
+  capLateBlockVolume: {
+    status: V2StrategyHypothesisPromotionDiffRowStatus;
+    skippedSetEvidence: {
+      hardWeekSkippedSetSignal: boolean;
+      examples: string[];
+    };
+    proposedCapType:
+      | "hard_week_session_size_cap"
+      | "set_bump_budget_cap"
+      | "late_block_expansion_cap"
+      | "unknown";
+    requiredGuards: string[];
+    riskSummary: string[];
+  };
+  interactionRisk: {
+    status: V2StrategyHypothesisPromotionDiffRowStatus;
+    risks: string[];
+    requiredJointGuards: string[];
+  };
+  nonRegressionGates: {
+    preservePriorityCoverage: boolean;
+    preserveOrImproveLaggingMuscleCoverage: boolean;
+    noMaterialRepairIncrease: boolean;
+    noMajorRepairIncrease: boolean;
+    noSuspiciousRepairIncrease: boolean;
+    noDirtyCollateralIncrease: boolean;
+    noForbiddenSlotWorkaround: boolean;
+    noSessionSizeRegression: boolean;
+    noConcentrationRegression: boolean;
+    noLateBlockSkippedSetRiskIncrease: boolean;
+  };
+  nextSafeAction:
+    | "add_read_only_projection_diff"
+    | "collect_more_evidence"
+    | "do_not_promote";
+};
+
 export type V2ResponseTrend = "stable" | "rising" | "falling" | "unknown";
 
 export type V2BlockStrategyImplication =
@@ -421,6 +492,7 @@ export type V2MesocycleStrategyDiagnostic = {
   };
   strategyRecommendation: V2MesocycleStrategyRecommendation;
   strategyHypothesisPromotionReadiness: V2StrategyHypothesisPromotionReadiness;
+  strategyHypothesisPromotionDiff: V2StrategyHypothesisPromotionDiff;
   demandDerivationPlan: {
     currentDemandSource: "fixed_skeleton_lanes" | "strategy_derived" | "mixed";
     targetDemandSource: "mesocycle_strategy";

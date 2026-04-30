@@ -50,5 +50,9 @@ describe("buildV2MesocycleDemand", () => {
       doesNotUseAcceptedSeed: true,
       doesNotUseRuntimeReplay: true,
     });
+    expect(JSON.stringify(demand)).not.toContain(
+      "strategyHypothesisPromotionDiff",
+    );
+    expect(JSON.stringify(demand)).not.toContain("promotion_diff");
   });
 });

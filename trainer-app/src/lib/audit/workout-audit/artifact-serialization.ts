@@ -209,6 +209,10 @@ function countBy(rows: ReadonlyArray<JsonRecord>, field: string): JsonRecord {
   }, {});
 }
 
+function countArray(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
 function compactRepairRows(value: unknown): unknown {
   const rows = asRecordArray(value);
   if (rows.length === 0) {
@@ -780,6 +784,40 @@ function compactCrossWeekProjectionGate(value: unknown): unknown {
   };
 }
 
+function compactStrategyPromotionDiff(value: unknown): JsonRecord | undefined {
+  const diff = asRecord(value);
+  if (!diff) {
+    return undefined;
+  }
+  const gates = asRecord(diff.nonRegressionGates) ?? {};
+  const gateValues = Object.values(gates).filter(
+    (entry): entry is boolean => typeof entry === "boolean",
+  );
+  const reportedGateCount = gateValues.filter(Boolean).length;
+
+  return {
+    status: diff.status ?? "not_available",
+    readOnly: diff.readOnly === true,
+    affectsScoringOrGeneration:
+      diff.affectsScoringOrGeneration === true ? true : false,
+    evaluatedHypothesisCount: countArray(diff.evaluatedHypotheses),
+    interactionRiskStatus:
+      asRecord(diff.interactionRisk)?.status ?? "not_evaluated",
+    nonRegressionGateStatus: {
+      reported: reportedGateCount > 0,
+      reportedCount: reportedGateCount,
+      totalCount: gateValues.length,
+      enforcedAsBehavior: false,
+    },
+    nextSafeAction:
+      typeof diff.nextSafeAction === "string"
+        ? diff.nextSafeAction
+        : "do_not_promote",
+    consumedByDemandOrMaterializer:
+      diff.consumedByDemandOrMaterializer === true ? true : false,
+  };
+}
+
 function compactPlannerOnlyNoRepair(
   value: unknown,
   debugArtifact?: PlannerOnlyNoRepairDebugArtifactLink,
@@ -838,6 +876,9 @@ function compactPlannerOnlyNoRepair(
   );
   const v2StrategyPromotionReadiness = asRecord(
     v2MesocycleStrategyDiagnostic?.strategyHypothesisPromotionReadiness,
+  );
+  const v2StrategyPromotionDiff = asRecord(
+    v2MesocycleStrategyDiagnostic?.strategyHypothesisPromotionDiff,
   );
   const v2StrategyPromotionReadinessRows = asRecordArray(
     v2StrategyPromotionReadiness?.hypothesisReadiness,
@@ -1174,6 +1215,9 @@ function compactPlannerOnlyNoRepair(
                   consumedByDemandOrMaterializer: false,
                 }
               : undefined,
+            strategyHypothesisPromotionDiff: compactStrategyPromotionDiff(
+              v2StrategyPromotionDiff,
+            ),
             northStarGapCount: Array.isArray(
               v2MesocycleStrategyDiagnostic.currentStateVsNorthStarGaps,
             )

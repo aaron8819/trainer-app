@@ -649,6 +649,15 @@ function mergeShardDataIntoNoRepair(
         data.strategyHypothesisPromotionReadiness,
     };
   }
+
+  if ("strategyHypothesisPromotionDiff" in data) {
+    const existingStrategy =
+      asRecord(noRepair.v2MesocycleStrategyDiagnostic) ?? {};
+    noRepair.v2MesocycleStrategyDiagnostic = {
+      ...existingStrategy,
+      strategyHypothesisPromotionDiff: data.strategyHypothesisPromotionDiff,
+    };
+  }
 }
 
 async function loadV2DebugIndexAsSidecar(input: {

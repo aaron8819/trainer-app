@@ -1707,6 +1707,62 @@ describe("artifact serialization helpers", () => {
                 },
               ],
             },
+            strategyHypothesisPromotionDiff: {
+              version: 1,
+              source: "v2_strategy_hypothesis_promotion_diff",
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              consumedByDemandOrMaterializer: false,
+              status: "available_with_limitations",
+              evaluatedHypotheses: [
+                "protect_lagging_muscles_earlier",
+                "cap_late_block_volume",
+              ],
+              protectLaggingMusclesEarlier: {
+                status: "available_with_limitations",
+                targetTierMuscles: ["Side Delts"],
+                recurringUnderHitMuscles: ["Side Delts"],
+                proposedProtectionType: "slot_owned_support_floor",
+                requiredGuards: ["protected_sets_must_have_slot_owner"],
+                riskSummary: ["protected_sets_can_crowd_out_priority_targets"],
+              },
+              capLateBlockVolume: {
+                status: "available_with_limitations",
+                skippedSetEvidence: {
+                  hardWeekSkippedSetSignal: true,
+                  examples: ["meso-2:skipped_set_trend_rising"],
+                },
+                proposedCapType: "late_block_expansion_cap",
+                requiredGuards: [
+                  "cap_must_preserve_priority_target_coverage",
+                ],
+                riskSummary: [
+                  "skipped_sets_may_reflect_schedule_or_adherence_not_plan_bloat",
+                ],
+              },
+              interactionRisk: {
+                status: "available_with_limitations",
+                risks: [
+                  "lagging_muscle_protection_may_require_more_allocated_work",
+                ],
+                requiredJointGuards: [
+                  "prefer_redistribution_from_over_concentrated_or_fatigue_driver_muscles_before_adding_net_new_late_block_volume",
+                ],
+              },
+              nonRegressionGates: {
+                preservePriorityCoverage: true,
+                preserveOrImproveLaggingMuscleCoverage: true,
+                noMaterialRepairIncrease: true,
+                noMajorRepairIncrease: true,
+                noSuspiciousRepairIncrease: true,
+                noDirtyCollateralIncrease: true,
+                noForbiddenSlotWorkaround: true,
+                noSessionSizeRegression: true,
+                noConcentrationRegression: true,
+                noLateBlockSkippedSetRiskIncrease: true,
+              },
+              nextSafeAction: "add_read_only_projection_diff",
+            },
             currentStateVsNorthStarGaps: [],
           },
         },
@@ -1747,6 +1803,27 @@ describe("artifact serialization helpers", () => {
       ],
       consumedByDemandOrMaterializer: false,
     });
+    expect(strategy.strategyHypothesisPromotionDiff).toMatchObject({
+      status: "available_with_limitations",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      evaluatedHypothesisCount: 2,
+      interactionRiskStatus: "available_with_limitations",
+      nonRegressionGateStatus: {
+        reported: true,
+        reportedCount: 10,
+        totalCount: 10,
+        enforcedAsBehavior: false,
+      },
+      nextSafeAction: "add_read_only_projection_diff",
+      consumedByDemandOrMaterializer: false,
+    });
+    expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
+      "targetTierMuscles",
+    );
+    expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
+      "skipped_set_trend_rising",
+    );
     expect(noRepair).not.toHaveProperty("v2MesocycleStrategyDiagnostic");
   });
 

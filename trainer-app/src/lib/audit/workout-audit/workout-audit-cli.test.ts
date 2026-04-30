@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildV2MesocycleStrategyDiagnostic } from "@/lib/engine/planning/v2";
+import {
+  buildV2MesocycleStrategyDiagnostic,
+  type V2MesocycleStrategyInput,
+} from "@/lib/engine/planning/v2";
 import {
   buildAuditTimingSummaryLines,
   buildActiveMesocycleSlotReseedApplySummary,
@@ -74,6 +77,105 @@ function makeV2ExerciseSelectionPlanDiagnostic() {
     warnings: ["week_1:upper_a:chest_anchor:concentration_quality_warning"],
     missingInputs: [],
     safeForBehaviorPromotion: false as const,
+  };
+}
+
+function makePromotionDiffStrategyInput(): V2MesocycleStrategyInput {
+  return {
+    version: 1,
+    userProfile: {
+      trainingGoal: "hypertrophy",
+      trainingAge: "intermediate",
+      availableTrainingDays: 4,
+      confidence: "medium",
+    },
+    currentTrainingContext: {
+      split: "upper_lower",
+      currentPhase: "AWAITING_HANDOFF",
+      currentMesocycleStatus: "COMPLETED",
+      weekCount: 5,
+      slotSequence: ["upper_a", "lower_a", "upper_b", "lower_b"],
+      volumeTarget: "MODERATE",
+      intensityBias: "HYPERTROPHY",
+    },
+    historicalMesocycles: [
+      {
+        mesocycleId: "history-a",
+        sourcePlanner: "legacy_projection",
+        status: "COMPLETED",
+      },
+      {
+        mesocycleId: "history-b",
+        sourcePlanner: "legacy_projection",
+        status: "COMPLETED",
+      },
+    ],
+    blockResponseSignals: [
+      {
+        mesocycleId: "history-a",
+        sourcePlanner: "legacy_projection",
+        adherence: {
+          completedSessions: 14,
+          skippedSetCount: 1,
+          skippedSetTrend: "stable",
+        },
+        effortProgression: {
+          averageRpeByWeek: [{ week: 4, averageRpe: 8.1 }],
+          hardWeekEffortReached: true,
+          deloadExecuted: true,
+        },
+        muscleDistribution: {
+          recurringUnderHitMuscles: ["Side Delts"],
+          belowMevFlags: ["Side Delts:below_target_or_mev_evidence"],
+        },
+        fatigueDistribution: {
+          systemicFatigueFlag: false,
+          likelyFatigueDrivers: [],
+          evidence: ["hard_week_effort_reached"],
+        },
+        strategyImplications: ["protect_lagging_muscles_earlier"],
+        confidence: "medium",
+      },
+      {
+        mesocycleId: "history-b",
+        sourcePlanner: "legacy_projection",
+        adherence: {
+          completedSessions: 13,
+          skippedSetCount: 6,
+          skippedSetTrend: "rising",
+        },
+        effortProgression: {
+          averageRpeByWeek: [{ week: 4, averageRpe: 8.8 }],
+          hardWeekEffortReached: true,
+          deloadExecuted: true,
+        },
+        muscleDistribution: {
+          recurringUnderHitMuscles: ["Side Delts", "Calves"],
+          belowMevFlags: [
+            "Side Delts:below_target_or_mev_evidence",
+            "Calves:below_target_or_mev_evidence",
+          ],
+        },
+        fatigueDistribution: {
+          systemicFatigueFlag: true,
+          likelyFatigueDrivers: ["Glutes"],
+          evidence: ["late_block_skipped_sets_rising"],
+        },
+        strategyImplications: [
+          "protect_lagging_muscles_earlier",
+          "cap_late_block_volume",
+        ],
+        confidence: "medium",
+      },
+    ],
+    exerciseResponseSignals: [],
+    readinessAndRecoverySignals: {
+      available: ["subjective_readiness"],
+      missing: [],
+    },
+    evidenceLimitations: [
+      "historical_mesocycles_are_validation_data_not_policy_targets",
+    ],
   };
 }
 
@@ -3401,6 +3503,13 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
       "Promotion missing evidence: none",
       "Promotion global blockers: audit_comparison_path_required_before_behavior, bounded_trials_require_explicit_follow_up_slice, no_strategy_hypotheses_available, non_regression_gates_not_yet_satisfied, promotion_readiness_is_diagnostic_only, readiness_must_not_influence_generation_selection_repair_seed_runtime_or_receipts, +2 more",
       "Promotion readiness consumed by demand/materializer: no",
+      "Promotion diff gate: not-available evaluated=0 next=do-not-promote",
+      "Promotion diff hypotheses: none",
+      "Promotion diff target-tier under-hit: none",
+      "Promotion diff hard-week skipped-set signal: no examples=none",
+      "Promotion diff interaction risk: not-evaluated none",
+      "Promotion diff non-regression gates: reported=0/10 enforced=no",
+      "Promotion diff consumedByDemandOrMaterializer: false",
       "Performed history loaded: no",
       "Old prescribed plan shape excluded: yes",
       "North-star gaps: 6",
@@ -3419,6 +3528,58 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
       "Suspicious or blocked: 0",
       "Next migration slice: chest_secondary:promote_to_planner_later",
     ]);
+  });
+
+  it("prints compact promotion diff gate details for ready read-only hypotheses", () => {
+    const summary = buildPlannerOnlyNoRepairSummary({
+      artifact: {
+        mesocycleExplain: {
+          plannerOnlyNoRepair: {
+            acceptanceClassification: {
+              basicMesocycleShapeStatus: "pass_with_warnings",
+              replacementReadinessStatus: "not_ready",
+              hardBlockers: [],
+              qualityWarnings: [],
+              diagnosticOnly: [],
+              sessionShaping: [],
+              migrationScoreboard: {
+                materialRepairCount: 0,
+                majorRepairCount: 0,
+                suspiciousRepairs: 0,
+                canReplaceRepairedProjection: false,
+                reason: "not_ready",
+              },
+            },
+            v2MesocycleStrategyDiagnostic:
+              buildV2MesocycleStrategyDiagnostic({
+                strategyInput: makePromotionDiffStrategyInput(),
+              }),
+            v2MesocyclePlan: {
+              planStatus: "experimental",
+              deloadTransform: {
+                projectionStatus: "partially_modeled",
+              },
+            },
+          },
+        },
+      } as unknown as Parameters<
+        typeof buildPlannerOnlyNoRepairSummary
+      >[0]["artifact"],
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Promotion diff gate: available-with-limitations evaluated=2 next=add-read-only-projection-diff",
+        "Promotion diff hypotheses: cap_late_block_volume, protect_lagging_muscles_earlier",
+        "Promotion diff target-tier under-hit: Side Delts",
+        expect.stringContaining(
+          "Promotion diff hard-week skipped-set signal: yes examples=",
+        ),
+        "Promotion diff interaction risk: available-with-limitations both_hypotheses_can_conflict_without_redistribution_policy, lagging_muscle_protection_may_require_more_allocated_work, late_block_volume_cap_may_require_less_total_expansion",
+        "Promotion diff non-regression gates: reported=10/10 enforced=no",
+        "Promotion diff consumedByDemandOrMaterializer: false",
+      ]),
+    );
   });
 });
 

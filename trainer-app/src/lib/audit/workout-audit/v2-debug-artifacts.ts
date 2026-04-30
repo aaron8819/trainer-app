@@ -328,7 +328,7 @@ function compactPromotionReadiness(value: unknown): JsonRecord {
         nextSafeAction: row.nextSafeAction,
         missingEvidence: asStringArray(row.missingEvidence).slice(0, 8),
         requiredEvidenceCount: countArray(row.requiredEvidence),
-        nonRegressionGateCount: countArray(row.nonRegressionGates),
+        nonRegressionGateCount: countArray(row.requiredNonRegressionGates),
         knownRiskCount: countArray(row.knownRisks),
         rollbackCriterionCount: countArray(row.rollbackCriteria),
       })),
@@ -372,23 +372,35 @@ function buildLaneDiagnosticCatalog(diff: unknown): JsonRecord {
   };
 }
 
-function compactPromotionDiffs(value: unknown): JsonRecord {
-  const diff = asRecord(value);
-  if (!diff) {
+function compactPromotionDiffs(noRepair: JsonRecord): JsonRecord {
+  const diff = asRecord(noRepair.v2TargetVsNoRepairDiff);
+  const strategyPromotionDiff = asRecord(
+    asRecord(noRepair.v2MesocycleStrategyDiagnostic)
+      ?.strategyHypothesisPromotionDiff,
+  );
+  if (!diff && !strategyPromotionDiff) {
     return { status: "not_available" };
   }
+
   return {
-    v2TargetVsNoRepairDiff: {
-      version: diff.version,
-      source: diff.source,
-      readOnly: diff.readOnly === true,
-      affectsScoringOrGeneration:
-        diff.affectsScoringOrGeneration === true ? true : false,
-      summary: asRecord(diff.summary) ?? {},
-      replacementReadinessImpact:
-        asRecord(diff.replacementReadinessImpact) ?? {},
-      diagnosticCatalogs: buildLaneDiagnosticCatalog(diff),
-    },
+    ...(strategyPromotionDiff
+      ? { strategyHypothesisPromotionDiff: strategyPromotionDiff }
+      : {}),
+    ...(diff
+      ? {
+          v2TargetVsNoRepairDiff: {
+            version: diff.version,
+            source: diff.source,
+            readOnly: diff.readOnly === true,
+            affectsScoringOrGeneration:
+              diff.affectsScoringOrGeneration === true ? true : false,
+            summary: asRecord(diff.summary) ?? {},
+            replacementReadinessImpact:
+              asRecord(diff.replacementReadinessImpact) ?? {},
+            diagnosticCatalogs: buildLaneDiagnosticCatalog(diff),
+          },
+        }
+      : {}),
   };
 }
 
@@ -585,8 +597,22 @@ function buildFullShardData(
           }
         : null;
     case "promotion-diffs":
-      return noRepair.v2TargetVsNoRepairDiff
-        ? { v2TargetVsNoRepairDiff: noRepair.v2TargetVsNoRepairDiff }
+      return noRepair.v2TargetVsNoRepairDiff ||
+        asRecord(noRepair.v2MesocycleStrategyDiagnostic)
+          ?.strategyHypothesisPromotionDiff
+        ? {
+            ...(noRepair.v2TargetVsNoRepairDiff
+              ? { v2TargetVsNoRepairDiff: noRepair.v2TargetVsNoRepairDiff }
+              : {}),
+            ...(asRecord(noRepair.v2MesocycleStrategyDiagnostic)
+              ?.strategyHypothesisPromotionDiff
+              ? {
+                  strategyHypothesisPromotionDiff: asRecord(
+                    noRepair.v2MesocycleStrategyDiagnostic,
+                  )?.strategyHypothesisPromotionDiff,
+                }
+              : {}),
+          }
         : null;
     case "repair-evidence":
       return noRepair.repairPromotionScoreboard
@@ -629,7 +655,7 @@ function buildCompactShardData(
     case "promotion-readiness":
       return compactPromotionReadiness(noRepair.v2MesocycleStrategyDiagnostic);
     case "promotion-diffs":
-      return compactPromotionDiffs(noRepair.v2TargetVsNoRepairDiff);
+      return compactPromotionDiffs(noRepair);
     case "repair-evidence":
       return compactRepairEvidence(noRepair.repairPromotionScoreboard);
     case "materialization":
@@ -806,6 +832,10 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
   const replacementReadinessImpact = asRecord(
     v2Diff?.replacementReadinessImpact,
   );
+  const strategyPromotionDiff = asRecord(
+    asRecord(noRepair.v2MesocycleStrategyDiagnostic)
+      ?.strategyHypothesisPromotionDiff,
+  );
   const exerciseSelection = asRecord(noRepair.v2ExerciseSelectionPlanDiagnostic);
   const deloadProjection = asRecord(noRepair.v2DeloadProjectionDiagnostic);
 
@@ -847,6 +877,20 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
       summary: v2DiffSummary ?? {},
       replacementReadinessImpact: replacementReadinessImpact ?? {},
     },
+    strategyHypothesisPromotionDiff: strategyPromotionDiff
+      ? {
+          status: strategyPromotionDiff.status ?? "not_available",
+          evaluatedHypothesisCount: countArray(
+            strategyPromotionDiff.evaluatedHypotheses,
+          ),
+          nextSafeAction:
+            strategyPromotionDiff.nextSafeAction ?? "do_not_promote",
+          consumedByDemandOrMaterializer:
+            strategyPromotionDiff.consumedByDemandOrMaterializer === true
+              ? true
+              : false,
+        }
+      : undefined,
     v2Summary: {
       targetVsNoRepairSummary: v2DiffSummary ?? {},
       laneCounts: {

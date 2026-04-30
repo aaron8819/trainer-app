@@ -2177,6 +2177,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
   const recommendationHypotheses = strategyRecommendation?.hypotheses ?? [];
   const strategyPromotionReadiness =
     strategy?.strategyHypothesisPromotionReadiness;
+  const strategyPromotionDiff = strategy?.strategyHypothesisPromotionDiff;
   const promotionReadinessRows =
     strategyPromotionReadiness?.hypothesisReadiness ?? [];
   const recommendationPriorityCounts = recommendationHypotheses.reduce<
@@ -2202,6 +2203,21 @@ export function buildPlannerOnlyNoRepairSummary(input: {
   const promotionTopMissingEvidence = Array.from(
     new Set(promotionReadinessRows.flatMap((row) => row.missingEvidence)),
   ).slice(0, 6);
+  const promotionDiffGateValues = Object.values(
+    strategyPromotionDiff?.nonRegressionGates ?? {},
+  ).filter((entry): entry is boolean => typeof entry === "boolean");
+  const promotionDiffReportedGateCount = promotionDiffGateValues.filter(
+    Boolean,
+  ).length;
+  const promotionDiffTargetTierExamples =
+    strategyPromotionDiff?.protectLaggingMusclesEarlier
+      .recurringUnderHitMuscles.length
+      ? strategyPromotionDiff.protectLaggingMusclesEarlier
+          .recurringUnderHitMuscles
+      : (strategyPromotionDiff?.protectLaggingMusclesEarlier
+          .targetTierMuscles ?? []);
+  const promotionDiffSkippedEvidence =
+    strategyPromotionDiff?.capLateBlockVolume.skippedSetEvidence;
   const strategyLines = strategy
     ? [
         "V2 Mesocycle Strategy Diagnostic",
@@ -2238,6 +2254,13 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Promotion missing evidence: ${formatNameList(promotionTopMissingEvidence, 6)}`,
         `Promotion global blockers: ${formatNameList(strategyPromotionReadiness?.globalBlockers ?? [], 6)}`,
         "Promotion readiness consumed by demand/materializer: no",
+        `Promotion diff gate: ${formatStatus(strategyPromotionDiff?.status ?? "not_available")} evaluated=${strategyPromotionDiff?.evaluatedHypotheses.length ?? 0} next=${formatStatus(strategyPromotionDiff?.nextSafeAction ?? "do_not_promote")}`,
+        `Promotion diff hypotheses: ${formatNameList(strategyPromotionDiff?.evaluatedHypotheses ?? [], 4)}`,
+        `Promotion diff target-tier under-hit: ${formatNameList(promotionDiffTargetTierExamples, 6)}`,
+        `Promotion diff hard-week skipped-set signal: ${promotionDiffSkippedEvidence?.hardWeekSkippedSetSignal ? "yes" : "no"} examples=${formatNameList(promotionDiffSkippedEvidence?.examples ?? [], 5)}`,
+        `Promotion diff interaction risk: ${formatStatus(strategyPromotionDiff?.interactionRisk.status ?? "not_evaluated")} ${formatNameList(strategyPromotionDiff?.interactionRisk.risks ?? [], 3)}`,
+        `Promotion diff non-regression gates: reported=${promotionDiffReportedGateCount}/${promotionDiffGateValues.length} enforced=no`,
+        `Promotion diff consumedByDemandOrMaterializer: ${Boolean(strategyPromotionDiff?.consumedByDemandOrMaterializer) ? "true" : "false"}`,
         `Performed history loaded: ${strategy.strategyInputSummary.performedHistoryEvidenceLoaded ? "yes" : "no"}`,
         `Old prescribed plan shape excluded: ${strategy.strategyInputSummary.prescribedPlanShapeExcludedFromStrategyPolicy ? "yes" : "no"}`,
         `North-star gaps: ${strategy.currentStateVsNorthStarGaps.length}`,

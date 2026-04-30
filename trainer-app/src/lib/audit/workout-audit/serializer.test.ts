@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildV2PlannerMesocyclePolicy } from "@/lib/engine/planning/v2";
+import {
+  buildV2PlannerMesocyclePolicy,
+  type V2MesocycleStrategyInput,
+} from "@/lib/engine/planning/v2";
 import { AUDIT_RECONSTRUCTION_GUARDRAIL } from "./constants";
 import {
   buildWorkoutAuditArtifact,
@@ -51,6 +54,105 @@ function expectSuccessfulGeneration(
     throw new Error("expected successful generation artifact");
   }
   return generation;
+}
+
+function makePromotionDiffStrategyInput(): V2MesocycleStrategyInput {
+  return {
+    version: 1,
+    userProfile: {
+      trainingGoal: "hypertrophy",
+      trainingAge: "intermediate",
+      availableTrainingDays: 4,
+      confidence: "medium",
+    },
+    currentTrainingContext: {
+      split: "upper_lower",
+      currentPhase: "AWAITING_HANDOFF",
+      currentMesocycleStatus: "COMPLETED",
+      weekCount: 5,
+      slotSequence: ["upper_a", "lower_a", "upper_b", "lower_b"],
+      volumeTarget: "MODERATE",
+      intensityBias: "HYPERTROPHY",
+    },
+    historicalMesocycles: [
+      {
+        mesocycleId: "history-a",
+        sourcePlanner: "legacy_projection",
+        status: "COMPLETED",
+      },
+      {
+        mesocycleId: "history-b",
+        sourcePlanner: "legacy_projection",
+        status: "COMPLETED",
+      },
+    ],
+    blockResponseSignals: [
+      {
+        mesocycleId: "history-a",
+        sourcePlanner: "legacy_projection",
+        adherence: {
+          completedSessions: 14,
+          skippedSetCount: 1,
+          skippedSetTrend: "stable",
+        },
+        effortProgression: {
+          averageRpeByWeek: [{ week: 4, averageRpe: 8.1 }],
+          hardWeekEffortReached: true,
+          deloadExecuted: true,
+        },
+        muscleDistribution: {
+          recurringUnderHitMuscles: ["Side Delts"],
+          belowMevFlags: ["Side Delts:below_target_or_mev_evidence"],
+        },
+        fatigueDistribution: {
+          systemicFatigueFlag: false,
+          likelyFatigueDrivers: [],
+          evidence: ["hard_week_effort_reached"],
+        },
+        strategyImplications: ["protect_lagging_muscles_earlier"],
+        confidence: "medium",
+      },
+      {
+        mesocycleId: "history-b",
+        sourcePlanner: "legacy_projection",
+        adherence: {
+          completedSessions: 13,
+          skippedSetCount: 6,
+          skippedSetTrend: "rising",
+        },
+        effortProgression: {
+          averageRpeByWeek: [{ week: 4, averageRpe: 8.8 }],
+          hardWeekEffortReached: true,
+          deloadExecuted: true,
+        },
+        muscleDistribution: {
+          recurringUnderHitMuscles: ["Side Delts", "Calves"],
+          belowMevFlags: [
+            "Side Delts:below_target_or_mev_evidence",
+            "Calves:below_target_or_mev_evidence",
+          ],
+        },
+        fatigueDistribution: {
+          systemicFatigueFlag: true,
+          likelyFatigueDrivers: ["Glutes"],
+          evidence: ["late_block_skipped_sets_rising"],
+        },
+        strategyImplications: [
+          "protect_lagging_muscles_earlier",
+          "cap_late_block_volume",
+        ],
+        confidence: "medium",
+      },
+    ],
+    exerciseResponseSignals: [],
+    readinessAndRecoverySignals: {
+      available: ["subjective_readiness"],
+      missing: [],
+    },
+    evidenceLimitations: [
+      "historical_mesocycles_are_validation_data_not_policy_targets",
+    ],
+  };
 }
 
 function makePlannerOwnedAccumulationProjection() {
@@ -1681,6 +1783,10 @@ describe("buildWorkoutAuditArtifact", () => {
 
   it("returns a linked V2 no-repair debug index and compact shards only when the explicit flag is enabled", () => {
     const mesocycleExplain = makeMesocycleExplainNoRepairPayload();
+    mesocycleExplain!.plannerOnlyNoRepair!.v2MesocycleStrategyDiagnostic =
+      buildV2PlannerMesocyclePolicy({
+        mesocycleStrategyInput: makePromotionDiffStrategyInput(),
+      }).mesocycleStrategyDiagnostic;
     mesocycleExplain!.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.slotDiffs[0]?.laneDiffs.push(
       {
         laneId: "biceps",
@@ -1769,6 +1875,14 @@ describe("buildWorkoutAuditArtifact", () => {
     });
     expect(mainNoRepair.debugArtifact).toHaveProperty("contains");
     expect(mainNoRepair.v2Summary).toMatchObject({
+      mesocycleStrategyDiagnostic: {
+        strategyHypothesisPromotionDiff: {
+          status: "available_with_limitations",
+          evaluatedHypothesisCount: 2,
+          nextSafeAction: "add_read_only_projection_diff",
+          consumedByDemandOrMaterializer: false,
+        },
+      },
       repairPromotionScoreboard: {
         rawRepairEvidence: {
           materialRepairCount: 2,
@@ -1921,13 +2035,52 @@ describe("buildWorkoutAuditArtifact", () => {
     });
     expect(promotionReadinessShard.artifact.data).toMatchObject({
       strategyHypothesisPromotionReadiness: expect.objectContaining({
-        status: "not_ready",
+        status: "partially_ready",
         globalBlockers: expect.arrayContaining([
           "readiness_not_consumed_by_mesocycle_demand_or_materializer",
         ]),
       }),
     });
     expect(promotionDiffsShard.artifact.data).toMatchObject({
+      strategyHypothesisPromotionDiff: {
+        version: 1,
+        source: "v2_strategy_hypothesis_promotion_diff",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByDemandOrMaterializer: false,
+        status: "available_with_limitations",
+        evaluatedHypotheses: [
+          "protect_lagging_muscles_earlier",
+          "cap_late_block_volume",
+        ],
+        protectLaggingMusclesEarlier: expect.objectContaining({
+          targetTierMuscles: expect.arrayContaining(["Side Delts", "Calves"]),
+          recurringUnderHitMuscles: ["Side Delts"],
+          requiredGuards: expect.arrayContaining([
+            "protected_sets_must_have_slot_owner",
+            "protected_sets_must_not_use_forbidden_slots",
+          ]),
+        }),
+        capLateBlockVolume: expect.objectContaining({
+          skippedSetEvidence: expect.objectContaining({
+            hardWeekSkippedSetSignal: true,
+            examples: expect.arrayContaining([
+              "history-b:skipped_set_trend_rising",
+              "history-b:hard_week_average_rpe:8.8",
+            ]),
+          }),
+        }),
+        interactionRisk: expect.objectContaining({
+          requiredJointGuards: [
+            "prefer_redistribution_from_over_concentrated_or_fatigue_driver_muscles_before_adding_net_new_late_block_volume",
+          ],
+        }),
+        nonRegressionGates: expect.objectContaining({
+          preservePriorityCoverage: true,
+          noLateBlockSkippedSetRiskIncrease: true,
+        }),
+        nextSafeAction: "add_read_only_projection_diff",
+      },
       v2TargetVsNoRepairDiff: {
         summary: expect.objectContaining({
           migrationCandidateCount: 1,
@@ -1993,8 +2146,23 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(promotionDiffsShard.serialized).not.toContain(
       "concentration:pulling_collateral",
     );
+    const mainV2Summary = mainNoRepair.v2Summary as {
+      mesocycleStrategyDiagnostic?: {
+        strategyHypothesisPromotionDiff?: unknown;
+      };
+    };
+    const compactPromotionDiffSummary =
+      mainV2Summary.mesocycleStrategyDiagnostic
+        ?.strategyHypothesisPromotionDiff;
+    expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
+      "targetTierMuscles",
+    );
+    expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
+      "history-b:skipped_set_trend_rising",
+    );
     expect(strategyShard.sizeBytes).toBeLessThan(524_288);
     expect(promotionReadinessShard.sizeBytes).toBeLessThan(524_288);
+    expect(promotionDiffsShard.sizeBytes).toBeLessThan(524_288);
     expect(output.sizeBytes).toBeLessThan(1_048_576);
   });
 

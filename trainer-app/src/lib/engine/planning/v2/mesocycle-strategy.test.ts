@@ -250,6 +250,16 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
       status: "not_ready",
       hypothesisReadiness: [],
     });
+    expect(diagnostic.strategyHypothesisPromotionDiff).toMatchObject({
+      version: 1,
+      source: "v2_strategy_hypothesis_promotion_diff",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "not_available",
+      evaluatedHypotheses: [],
+      nextSafeAction: "do_not_promote",
+    });
   });
 
   it("represents missing inputs and partial performed-history support honestly", () => {
@@ -551,6 +561,171 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     });
   });
 
+  it("adds a read-only promotion diff only for the first two ready read-only hypotheses", () => {
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+    });
+    const diff = diagnostic.strategyHypothesisPromotionDiff;
+
+    expect(diff).toMatchObject({
+      version: 1,
+      source: "v2_strategy_hypothesis_promotion_diff",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "available_with_limitations",
+      evaluatedHypotheses: [
+        "protect_lagging_muscles_earlier",
+        "cap_late_block_volume",
+      ],
+      nextSafeAction: "add_read_only_projection_diff",
+    });
+    expect(diff.evaluatedHypotheses).not.toContain("reduce_overlap_fatigue");
+    expect(diff.evaluatedHypotheses).not.toContain(
+      "preserve_successful_progression",
+    );
+    expect(diff.protectLaggingMusclesEarlier).toMatchObject({
+      status: "available_with_limitations",
+      targetTierMuscles: expect.arrayContaining(["Side Delts", "Calves"]),
+      recurringUnderHitMuscles: ["Side Delts"],
+      proposedProtectionType: "slot_owned_support_floor",
+      requiredGuards: expect.arrayContaining([
+        "protected_sets_must_have_slot_owner",
+        "protected_sets_must_not_create_late_block_bloat",
+        "protected_sets_must_not_rely_on_dirty_collateral",
+        "protected_sets_must_not_use_forbidden_slots",
+      ]),
+    });
+    expect(diff.capLateBlockVolume).toMatchObject({
+      status: "available_with_limitations",
+      skippedSetEvidence: {
+        hardWeekSkippedSetSignal: true,
+        examples: expect.arrayContaining([
+          "meso-any-2:skipped_set_trend_rising",
+          "meso-any-2:hard_week_average_rpe:8.8",
+        ]),
+      },
+      proposedCapType: "late_block_expansion_cap",
+      requiredGuards: expect.arrayContaining([
+        "cap_must_preserve_priority_target_coverage",
+        "cap_must_distinguish_plan_bloat_from_user_non_adherence",
+      ]),
+    });
+  });
+
+  it("uses target-tier under-hit examples for lagging-muscle protection instead of secondary noise", () => {
+    const input = buildStrategyInput();
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: {
+        ...input,
+        blockResponseSignals: input.blockResponseSignals.map((signal) => ({
+          ...signal,
+          muscleDistribution: {
+            ...signal.muscleDistribution,
+            recurringUnderHitMuscles: [
+              ...(signal.muscleDistribution.recurringUnderHitMuscles ?? []),
+              "Core",
+              "Forearms",
+            ],
+            belowMevFlags: [
+              ...(signal.muscleDistribution.belowMevFlags ?? []),
+              "Core:secondary_soft_target_noise",
+              "Forearms:secondary_soft_target_noise",
+            ],
+          },
+        })),
+      },
+    });
+
+    expect(
+      diagnostic.strategyHypothesisPromotionDiff.protectLaggingMusclesEarlier
+        .targetTierMuscles,
+    ).toEqual(expect.arrayContaining(["Side Delts", "Calves"]));
+    expect(
+      diagnostic.strategyHypothesisPromotionDiff.protectLaggingMusclesEarlier
+        .targetTierMuscles,
+    ).not.toEqual(expect.arrayContaining(["Core", "Forearms"]));
+    expect(
+      diagnostic.strategyHypothesisPromotionDiff.protectLaggingMusclesEarlier
+        .recurringUnderHitMuscles,
+    ).not.toContain("Core");
+  });
+
+  it("does not evaluate late-block cap fear without skipped-set and hard-week evidence", () => {
+    const input = buildStrategyInput();
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: {
+        ...input,
+        blockResponseSignals: input.blockResponseSignals.map((signal) => ({
+          ...signal,
+          adherence: {
+            ...signal.adherence,
+            skippedSetCount: 0,
+            skippedSetTrend: "stable",
+          },
+          effortProgression: {
+            ...signal.effortProgression,
+            averageRpeByWeek: [{ week: 4, averageRpe: 7 }],
+            hardWeekEffortReached: false,
+          },
+          fatigueDistribution: {
+            ...signal.fatigueDistribution,
+            evidence: ["arbitrary_volume_fear_without_skipped_sets"],
+          },
+          strategyImplications: signal.strategyImplications.includes(
+            "cap_late_block_volume",
+          )
+            ? signal.strategyImplications
+            : [...signal.strategyImplications, "cap_late_block_volume"],
+        })),
+      },
+    });
+
+    expect(
+      diagnostic.strategyHypothesisPromotionDiff.evaluatedHypotheses,
+    ).not.toContain("cap_late_block_volume");
+    expect(diagnostic.strategyHypothesisPromotionDiff.capLateBlockVolume).toMatchObject(
+      {
+        status: "not_evaluated",
+        skippedSetEvidence: {
+          hardWeekSkippedSetSignal: false,
+        },
+      },
+    );
+  });
+
+  it("surfaces interaction risk and reports non-regression gates without enforcing behavior", () => {
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+    });
+    const diff = diagnostic.strategyHypothesisPromotionDiff;
+
+    expect(diff.interactionRisk).toMatchObject({
+      status: "available_with_limitations",
+      risks: expect.arrayContaining([
+        "lagging_muscle_protection_may_require_more_allocated_work",
+        "late_block_volume_cap_may_require_less_total_expansion",
+      ]),
+      requiredJointGuards: [
+        "prefer_redistribution_from_over_concentrated_or_fatigue_driver_muscles_before_adding_net_new_late_block_volume",
+      ],
+    });
+    expect(diff.nonRegressionGates).toEqual({
+      preservePriorityCoverage: true,
+      preserveOrImproveLaggingMuscleCoverage: true,
+      noMaterialRepairIncrease: true,
+      noMajorRepairIncrease: true,
+      noSuspiciousRepairIncrease: true,
+      noDirtyCollateralIncrease: true,
+      noForbiddenSlotWorkaround: true,
+      noSessionSizeRegression: true,
+      noConcentrationRegression: true,
+      noLateBlockSkippedSetRiskIncrease: true,
+    });
+    expect(diff.nextSafeAction).toBe("add_read_only_projection_diff");
+    expect(diff.affectsScoringOrGeneration).toBe(false);
+  });
+
   it("maps every recommendation hypothesis to the conservative promotion owner and next safe action", () => {
     const diagnostic = buildV2MesocycleStrategyDiagnostic({
       strategyInput: buildStrategyInput(),
@@ -702,6 +877,7 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     const policy = buildV2PlannerMesocyclePolicy({
       mesocycleStrategyInput: buildStrategyInput(),
     });
+    const standalonePolicy = buildV2PlannerMesocyclePolicy();
     const standaloneDemand = buildV2MesocycleDemand({
       targetSkeleton: buildV2TargetSkeleton(),
     });
@@ -722,9 +898,38 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
         "readiness_not_consumed_by_mesocycle_demand_or_materializer",
       ]),
     });
+    expect(policy.mesocycleStrategyDiagnostic.strategyHypothesisPromotionDiff).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "available_with_limitations",
+    });
     expect(policyKeys.indexOf("mesocycleStrategyDiagnostic")).toBeLessThan(
       policyKeys.indexOf("mesocycleDemand"),
     );
     expect(policy.mesocycleDemand).toEqual(standaloneDemand);
+    expect(policy.mesocycleDemand).toEqual(standalonePolicy.mesocycleDemand);
+    expect(policy.weeklyDemandCurve).toEqual(standalonePolicy.weeklyDemandCurve);
+    expect(policy.slotDemandAllocationByWeek).toEqual(
+      standalonePolicy.slotDemandAllocationByWeek,
+    );
+    expect(policy.exerciseClassDistributionBySlot).toEqual(
+      standalonePolicy.exerciseClassDistributionBySlot,
+    );
+    expect(policy.v2SetDistributionIntent).toEqual(
+      standalonePolicy.v2SetDistributionIntent,
+    );
+    expect(policy.selectionCapacityPlan).toEqual(
+      standalonePolicy.selectionCapacityPlan,
+    );
+    expect(policy.exerciseSelectionPlan).toEqual(
+      standalonePolicy.exerciseSelectionPlan,
+    );
+    expect(JSON.stringify(policy.mesocycleDemand)).not.toContain(
+      "promotion_diff",
+    );
+    expect(JSON.stringify(policy.weeklyDemandCurve)).not.toContain(
+      "promotion_diff",
+    );
   });
 });

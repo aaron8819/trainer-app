@@ -36,6 +36,10 @@ import {
   buildMesocycleSlotPlanSeed,
   projectSuccessorSlotPlansFromSnapshot,
 } from "./mesocycle-handoff-slot-plan-projection";
+import {
+  buildV2MaterializedSeedForAcceptance,
+  type BuildV2MaterializedSeedForAcceptanceInput,
+} from "./mesocycle-handoff-v2-materialized-seed";
 import { getLatestReadinessSignalForReader } from "./readiness";
 import { loadPreloadedGenerationSnapshot } from "./template-session/context-loader";
 
@@ -746,7 +750,24 @@ async function buildAcceptedMesocycleSlotPlanSeed(input: {
   source: SuccessorMesocycleProjectionSource;
   design: NextMesocycleDesign;
   slotSequence: ReturnType<typeof projectSuccessorMesocycle>["mesocycle"]["slotSequence"];
+  v2MaterializedSeedWrite?: Omit<
+    BuildV2MaterializedSeedForAcceptanceInput,
+    "slotSequence"
+  >;
 }) {
+  const v2MaterializedSeed = buildV2MaterializedSeedForAcceptance({
+    slotSequence: input.slotSequence,
+    ...(input.v2MaterializedSeedWrite ?? {}),
+  });
+  if (v2MaterializedSeed.status === "ready") {
+    return v2MaterializedSeed.slotPlanSeedJson;
+  }
+  if (v2MaterializedSeed.status === "blocked") {
+    throw new Error(
+      `MESOCYCLE_HANDOFF_V2_MATERIALIZED_SEED_BLOCKED:${v2MaterializedSeed.reason}`,
+    );
+  }
+
   const snapshot = await loadPreloadedGenerationSnapshot(input.userId);
   const slotPlanProjection = projectSuccessorSlotPlansFromSnapshot({
     userId: input.userId,
@@ -897,6 +918,10 @@ export async function prepareMesocycleHandoffAcceptance(input: {
   mesocycleId: string;
   reader?: PendingHandoffArtifactReader & HandoffSourceMesocycleReader;
   allowCompletedSource?: boolean;
+  v2MaterializedSeedWrite?: Omit<
+    BuildV2MaterializedSeedForAcceptanceInput,
+    "slotSequence"
+  >;
 }): Promise<HandoffAcceptancePreparation> {
   const reader = input.reader ?? prisma;
   const source = await loadHandoffSourceMesocycle(reader, input.mesocycleId);
@@ -954,6 +979,9 @@ export async function prepareMesocycleHandoffAcceptance(input: {
     source: projectionSource,
     design,
     slotSequence: projection.mesocycle.slotSequence,
+    ...(input.v2MaterializedSeedWrite
+      ? { v2MaterializedSeedWrite: input.v2MaterializedSeedWrite }
+      : {}),
   });
 
   return {

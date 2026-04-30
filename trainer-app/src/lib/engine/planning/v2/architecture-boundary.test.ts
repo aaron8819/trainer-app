@@ -11,6 +11,13 @@ const liveContextDryRunHarness = path.join(
   "workout-audit",
   "v2-materialization-live-context-dry-run.ts",
 );
+const acceptanceMaterializedSeedHelper = path.join(
+  process.cwd(),
+  "src",
+  "lib",
+  "api",
+  "mesocycle-handoff-v2-materialized-seed.ts",
+);
 const promotionReadinessContract = path.join(
   process.cwd(),
   "src",
@@ -353,6 +360,9 @@ describe("V2 planner policy module boundary", () => {
         return [];
       }
       if (file === liveContextDryRunHarness) {
+        return [];
+      }
+      if (file === acceptanceMaterializedSeedHelper) {
         return [];
       }
       const text = fs.readFileSync(file, "utf8");

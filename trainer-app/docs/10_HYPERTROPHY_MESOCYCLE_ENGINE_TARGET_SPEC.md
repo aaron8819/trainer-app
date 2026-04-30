@@ -1,8 +1,8 @@
 # Hypertrophy Mesocycle Engine Target Spec
 
 Owner: Aaron
-Last reviewed: 2026-04-27
-Purpose: Convert the first-principles 5-week upper/lower hypertrophy mesocycle design into a concrete target engine spec and migration map.
+Last reviewed: 2026-04-30
+Purpose: Define the north-star V2 hypertrophy planner as the future authoritative intelligence layer for an elite, evolving, explainable training app while preserving accepted-seed execution and runtime replay.
 
 This report is a target architecture map, not current runtime behavior. Current runtime truth remains code plus audit artifacts. The live reference artifact used for this mapping was:
 
@@ -17,15 +17,72 @@ This report is a target architecture map, not current runtime behavior. Current 
 
 ## 1. Executive Summary
 
-Yes, the target design aligns with the current diagnostics direction. The current diagnostics are already pointing toward the same top-down flow:
+V2 is not merely a safer seed-writing or materialization migration.
+
+The target is not simply:
 
 ```txt
-weekly muscle demand
+V2 can write seeds.
+```
+
+The target is:
+
+```txt
+V2 writes intelligent, evolving, explainable training blocks that get better as the user trains.
+```
+
+V2 should replace the plan author, not the plan executor. Runtime replay should stay boring:
+
+```txt
+Read accepted seed.
+Build workout.
+Let user train.
+Log performed reality.
+```
+
+Planner intelligence should move upstream:
+
+- What phase is the user in?
+- What is this mesocycle trying to accomplish?
+- Which muscles need more, less, or maintenance work?
+- Which movement patterns/classes should deliver that stimulus?
+- Which exercises should persist, rotate, or be avoided?
+- How should the next block evolve based on performed history?
+
+The north-star hierarchy is:
+
+```txt
+User Training Profile
+-> Macrocycle / Phase Strategy
+-> Mesocycle Strategy
+-> Muscle Priority / Volume Model
+-> Movement Pattern / Exercise-Class Model
+-> Weekly Progression Model
+-> Slot Architecture
+-> Exercise Selection Strategy
+-> Set / Rep / RIR Prescription
+-> Runtime Adjustment Rules
+-> Post-Mesocycle Learning Loop
+-> Accepted Seed
+-> Runtime Replay
+```
+
+The current V2 chain is directionally correct but incomplete unless higher-level strategy and feedback loops sit above `MesocycleDemand`. The existing pure chain can model demand, weekly curve, slot allocation, class lanes, set distribution, capacity, selection policy, materialization, and seed-shaped previews. That is necessary infrastructure. It is not yet the full intelligence layer.
+
+Current migration status is explicit below: the migration has proven important architecture and safety mechanics, but V2 is not live default and does not yet own elite planner intelligence.
+
+The current diagnostics are already pointing toward a top-down flow:
+
+```txt
+strategy
+-> muscle demand
 -> slot allocation
 -> exercise class intent
 -> set distribution
 -> exercise selection
--> repair as safety net
+-> accepted seed
+-> runtime replay
+-> performed-history learning
 ```
 
 The current engine has good pieces already:
@@ -47,28 +104,254 @@ The current engine is fighting the target in the handoff projection path. It sti
 - forbidden cleanup
 - distribution guard after repair has already attempted damage
 
-Bluntly: the current direction is right, but the current implementation is still repair-shaped. The live audit says `mostly_repair_shaped`, not "almost planned."
+Bluntly: the current direction is right, but the current implementation is still repair-shaped. The live audit says `mostly_repair_shaped`, not "almost planned." The current V2 implementation proves important migration mechanics; it does not prove elite planner intelligence yet.
 
-The next implementation artifact should be a compact read-only `TopDownMesocyclePlan` diagnostic that encodes the full 5-week target design before any behavior migration. Do not start by changing Chest, Hamstrings, or repair. The target has to exist as one explicit, replayable planner object first.
+The next implementation artifact should be a compact read-only `TopDownMesocyclePlan` / `MesocycleStrategy` diagnostic that encodes the full strategy-to-seed target before any behavior migration. Do not start by changing Chest, Hamstrings, or repair. The target has to exist as one explicit, replayable planner object first.
 
 Migrate incrementally. Do not rewrite from scratch. The current runtime infrastructure that must be preserved is valuable: receipt-first evidence, accepted seed replay, slot sequencing, lifecycle math, audit modes, and regression coverage. The right path is a hybrid planner replacement: build a new top-down planner slice beside the current projection stack, diff it against current output, then gradually let selection consume one slice at a time.
 
-## 2. Target Engine Spec
+## 2. Current Migration Status
+
+Current proven state:
+
+- Pure V2 planner/materializer exists under `src/lib/engine/planning/v2/*`.
+- V2 can produce seed-shaped preview from live context through the read-only materialization bridge.
+- Promotion-readiness gates exist and default production gates are false.
+- A disabled production-side acceptance helper exists and fails closed unless explicitly opted in.
+- A read-only acceptance probe exists.
+- Accepted-seed provenance exists for legacy projection, disabled V2, blocked V2, and future V2 materialized seed paths.
+- Default production behavior remains unchanged.
+- V2 is not live default.
+- Current seed/runtime replay remains the correct execution layer.
+
+What this proves:
+
+- The migration has a safe route from pure planner policy to seed-shaped preview.
+- Production acceptance has explicit fail-closed gates.
+- Seed serialization and runtime replay remain the right execution layer.
+
+What this does not prove:
+
+- V2 is not yet the default plan author.
+- V2 has not yet learned from performed history as its primary strategy input.
+- Current V2 demand is still too close to fixed skeleton/lane policy.
+- Repaired projection is still the production seed author by default.
+
+## 3. Target Engine Spec
 
 | Layer | Purpose | Inputs | Outputs | Hard invariants | Soft preferences | Failure modes | Current approximate owner | Recommended owner |
 |---|---|---|---|---|---|---|---|---|
-| `MesocycleDemand` | Define the whole block's muscle priorities, target tiers, exposure counts, and specialization status. | User goal, focus, volume target, split, frequency, landmarks, constraints, prior mesocycle evidence. | Canonical per-muscle block demand: min/preferred/max effective sets, exposure count, priority, specialization flags. | Demand exists before slot or exercise choice. Primary/support/secondary meaning is explicit. No forbidden-slot rescue can create demand. | Prefer two exposures for major upper/lower drivers and low-collateral direct work for support muscles. | Demand inferred from repair, collateral mistaken for intent, support muscles missing until late repair. | `getWeeklyVolumeTarget()`, `MUSCLE_TARGET_TIER_BY_MUSCLE`, `planningReality.shadowWeeklyDemand`. | New compact planner seam under `src/lib/api` or `src/lib/engine/planning`, consumed first as read-only. |
-| `WeeklyDemandCurve` | Spread demand across Weeks 1-5: entry, accumulation, hard accumulation, peak, deload. | `MesocycleDemand`, block timeline, lifecycle week, RIR/set multipliers. | Per-week per-muscle min/preferred/max effective sets and progression intent. | Week 5 deload is explicit 40-60 percent volume with high RIR. Weeks 1-4 are projected, not copied blindly from Week 1. | Week 1 85-90 percent, Week 2 100 percent, Week 3 105-110 percent, Week 4 110-115 percent. | Week 2-4 unprojected, deload identity/set reduction missing, behavior judged only by Week 1. | `getWeeklyVolumeTarget()`, `buildWeeklyDemandCurve()` diagnostic. | Planner-owned `WeeklyDemandCurve` v2, still cross-checked by lifecycle math. |
-| `SlotDemandAllocationByWeek` | Allocate each week's muscle demand into `upper_a`, `lower_a`, `upper_b`, `lower_b`. | Weekly demand, slot sequence, slot authored semantics, fatigue budgets. | Per-week slot-owned muscle obligations and forbidden muscles. | Allocation exists before exercise selection. A slot cannot solve a primary muscle marked forbidden. | Chest in both uppers, quads squat-led in Lower A plus support in Lower B, hamstrings hinge plus curl, calves distributed. | Compatible-slot averaging that ignores class intent, lower-slot Chest repair, upper-slot lower-body collateral. | `buildWeeklyMuscleObligationPlan()`, `buildSlotDemandAllocationByWeek()` diagnostic. | Planner-owned allocation object persisted into accepted plan receipt/seed intent later. |
-| `ExerciseClassDistributionBySlot` | Convert slot muscle demand into exercise-class lanes. | Slot allocation, movement lane contracts, inventory class taxonomy, fatigue constraints. | Required/preferred/forbidden class lanes by slot. | Class intent exists before exact exercise selection. Distinct upper Chest exposure is class-level, not exact-exercise-level. | Prefer clean class diversity and minimize redundant pull/hinge/calf variants unless specialized. | Duplicate Incline DB Bench, SLDL duplication, Back Extension closing hamstrings, same-session calf duplicates. | `buildExerciseClassDistributionBySlot()` diagnostic. | Planner-owned class distribution v2. |
-| `SetDistributionIntent` | Decide how many sets each lane receives and cap concentration before exercise selection. | Class distribution, weekly demand, slot budgets, concentration policy. | Lane and muscle set budgets, max per exercise, max share, at-limit behavior. | No exercise above 5 sets unless justified. No single exercise should provide more than 50-60 percent of weekly primary stimulus unless intentional. | Anchor plus accessory where appropriate; direct isolation for side delts/calves; two-exercise split for high-priority muscles. | Late set bumping creates concentration, cap trim removes planned identity, repair adds exercise shape. | `setDistributionIntents`, `distributionGuardActions`, program-quality caps. | Planner-owned distribution policy with repair guard as safety net only. |
-| `ExerciseSelectionPlan` | Choose exact exercises that satisfy class and set intent. | Class lanes, set distribution, inventory, continuity, user preferences, equipment, fatigue. | Slot exercise identities with planned sets and rationale. | Selection consumes planner intent, not raw repair deficits. Clean alternatives must be visible before allowing duplicates. | Preserve lane identity over exact exercise repetition. Use low-collateral support where available. | Selection blind spot, classification gap, duplicate continuity conflict, role/cap blocked inventory. | `composeIntentSessionFromMappedContext()`, selection-v2, projection candidate selection. | Existing selection-v2 should remain optimizer, but consume planner slices instead of repair targets. |
-| `ProgressionPlan` | Define week-to-week set/RIR progression while preserving class identity. | Weekly curve, accepted exercise plan, performance history, block prescription. | Week-specific sets/RIR/load intent by slot/exercise. | Progression must be planned for Weeks 1-4 and deload. Runtime load decisions stay canonical. | Increase volume/intensity gradually; avoid changing exercise identity just to progress. | Week 1 seed repeated without policy, fatigue/concentration escalates silently. | `block-prescription-intent.ts`, `getRirTarget()`, load/progression engine. | Existing periodization/progression seams, plus planner-owned per-week set intent. |
-| `DeloadPlan` | Preserve exercise identity while cutting volume and effort for recovery. | Accepted plan, Week 4 peak shape, deload policy, runtime seed. | Week 5 slot plans with reduced sets, high RIR, stable movement skill. | Deload is not normal selection. It preserves accepted identity where possible and excludes progression anchors. | 40-60 percent volume, RIR 4-5 per target design or current canonical deload effort if retained. | Deload unprojected, deload reselection, deload not comparable to accumulation. | `deload-session.ts`, `block-prescription-intent.ts`, `getRirTarget()`. | Existing deload seam, fed by accepted planner intent. |
-| `AcceptedPlanReceipt` | Persist the planner intent that made the accepted seed. | Planner objects, selected exercises, set distribution, diagnostics. | Receipt/seed metadata that can explain why a plan exists and replay it. | Receipt-first truth. No parallel top-level mirrors. Accepted seed replay must not reselect. | Store compact intent references, not huge diagnostics. | Runtime cannot distinguish planned shape from repair-shaped output. | `slotPlanSeedJson`, `selectionMetadata.sessionDecisionReceipt`, handoff acceptance. | `slotPlanSeedJson` plus compact accepted planner intent in receipt/seed metadata. |
-| `RuntimeExecution` | Execute accepted plan deterministically and log performed truth. | `slotSequenceJson`, `slotPlanSeedJson`, lifecycle state, performed history. | Generated session, receipt, saved workout/logs, explainability, audit replay. | Seeded runtime replays accepted identities and set counts without reselection. | Runtime can adapt loads, not silently redesign the plan. | Legacy reselection, runtime drift, receipt/output mismatch. | `mesocycle-slot-runtime.ts`, `slot-plan-seed.ts`, `template-session.ts`, save route. | Keep current runtime. Do not replace it. |
+| `UserTrainingProfile` | Summarize stable user context that should constrain all future planning. | Goal, training age, frequency, equipment, constraints, preferences, pain history, adherence history. | Planner-ready user profile with confidence and known limitations. | Profile informs strategy; it does not directly mutate accepted seeds or runtime replay. | Keep the first version practical and evidence-backed. | Generic plans repeat because the planner has no memory of the user. | `Constraints`, setup/handoff drafts, workout context, review read models. | API read-model seam feeding pure planner strategy inputs. |
+| `MacrocyclePhaseStrategy` | Decide the broad phase context for the next block. | User profile, prior mesocycle review, training block context, recovery/performance trends. | Phase label and rationale such as balanced hypertrophy, specialization, maintenance, recovery-biased, return-to-training. | Every future mesocycle has a reason. Phase strategy precedes muscle targets. | Lightweight phase sequencing before any rigid macrocycle system. | Same generic block repeats forever, or phase is inferred from repair output. | `TrainingBlock`, `mesocycle-genesis-policy`, handoff summary. | New planner strategy seam above `MesocycleDemand`. |
+| `MesocycleStrategy` | Translate phase context into the objective for this block. | Phase strategy, user goal, adherence/recovery, performed history, split/frequency constraints. | Block objective, specialization status, recovery bias, continuity/variation stance, risk notes. | Mesocycle strategy -> muscle priorities, not muscle targets -> somehow strategy. | Be explicit about why volume is increasing, holding, reducing, or specializing. | Muscle targets become the whole strategy. | `nextSeedDraftJson`, `recommendedDesign`, genesis policy. | Pure V2 strategy object, initially read-only. |
+| `MesocycleDemand` / `MusclePriorityVolumeModel` | Define the whole block's muscle priorities, target tiers, exposure counts, and specialization/maintenance status. | Mesocycle strategy, user goal, volume target, split, frequency, landmarks, constraints, prior mesocycle evidence. | Canonical per-muscle block demand: min/preferred/max effective sets, exposure count, priority, specialization flags. | Demand exists before slot or exercise choice. Primary/support/secondary meaning is explicit. No forbidden-slot rescue can create demand. | Prefer two exposures for major upper/lower drivers and low-collateral direct work for support muscles. | Demand inferred from repair, collateral mistaken for intent, support muscles missing until late repair. | `getWeeklyVolumeTarget()`, `MUSCLE_TARGET_TIER_BY_MUSCLE`, `planningReality.shadowWeeklyDemand`, current V2 `MesocycleDemand`. | Planner-owned demand derived from strategy, not only fixed skeleton lanes. |
+| `MovementPatternExerciseClassModel` | Convert stimulus needs into movement patterns and exercise-class obligations. | Muscle demand, phase, fatigue budget, prior movement stress, inventory taxonomy. | Required/preferred/forbidden movement patterns and class lanes. | Movement/class intent exists before exact exercise identity. | Preserve useful movement skill while rotating stale exact exercises. | Exact exercise selection pretends to solve class strategy. | `ExerciseClassDistributionBySlot`, selection-v2 class helpers, taxonomy bridge. | Planner-owned class model before materialization. |
+| `WeeklyDemandCurve` / `WeeklyProgressionModel` | Spread demand across Weeks 1-5: entry, accumulation, hard accumulation, peak, deload. | `MesocycleDemand`, block timeline, lifecycle week, RIR/set multipliers, recovery bias. | Per-week per-muscle min/preferred/max effective sets and progression intent. | Week 5 deload is explicit 40-60 percent volume with high RIR. Weeks 1-4 are projected, not copied blindly from Week 1. | Week 1 85-90 percent, Week 2 100 percent, Week 3 105-110 percent, Week 4 110-115 percent unless strategy says otherwise. | Week 2-4 unprojected, deload identity/set reduction missing, behavior judged only by Week 1. | `getWeeklyVolumeTarget()`, `buildWeeklyDemandCurve()` diagnostic, V2 weekly progression model. | Planner-owned `WeeklyDemandCurve` v2, still cross-checked by lifecycle math. |
+| `SlotArchitecture` / `SlotDemandAllocationByWeek` | Allocate each week's muscle demand into `upper_a`, `lower_a`, `upper_b`, `lower_b`. | Weekly demand, slot sequence, authored slot semantics, fatigue budgets, strategy. | Per-week slot-owned muscle obligations and forbidden muscles. | Allocation exists before exercise selection. A slot cannot solve a primary muscle marked forbidden. | Chest in both uppers, quads squat-led in Lower A plus support in Lower B, hamstrings hinge plus curl, calves distributed unless strategy says otherwise. | Compatible-slot averaging that ignores class intent, lower-slot Chest repair, upper-slot lower-body collateral. | `buildWeeklyMuscleObligationPlan()`, `buildSlotDemandAllocationByWeek()` diagnostic, V2 slot allocation. | Planner-owned allocation object persisted into accepted planner intent later. |
+| `SetRepRirPrescription` / `SetDistributionIntent` | Decide sets, set spread, concentration limits, rep/RIR intent, and cap behavior before exact exercise selection. | Class distribution, weekly demand, slot budgets, phase, progression model. | Lane and muscle set budgets, rep/RIR intent, max per exercise, max share, at-limit behavior. | No exercise above 5 sets unless justified. No single exercise should provide more than 50-60 percent of weekly primary stimulus unless intentional. | Anchor plus accessory where appropriate; direct isolation for side delts/calves; two-exercise split for high-priority muscles. | Late set bumping creates concentration, cap trim removes planned identity, repair adds exercise shape. | `setDistributionIntents`, V2 `SetDistributionIntent`, distribution guards, program-quality caps. | Planner-owned distribution/prescription policy with repair guard as safety net only. |
+| `ExerciseSelectionStrategy` | Decide what exact exercises should deliver each lane's stimulus. | Class lanes, set distribution, inventory, continuity, user preferences, equipment, fatigue, performance response. | Slot exercise identities with planned sets and rationale. | Selection consumes planner intent, not raw repair deficits. Clean alternatives must be visible before allowing duplicates. | Preserve productive anchors; rotate stale/painful/stalled accessories; preserve class when rotating exact identity. | Selection blind spot, classification gap, duplicate continuity conflict, role/cap blocked inventory. | `composeIntentSessionFromMappedContext()`, selection-v2, V2 materializer, projection candidate selection. | Existing selection-v2/materializer as optimizer, fed by planner strategy rather than repair targets. |
+| `RuntimeAdjustmentRules` | Define what runtime may adapt locally without redesigning the block. | Accepted seed, current check-in, session-local edits, pain/readiness, load progression. | Local adjustment boundaries and receipt semantics. | Runtime edits are local unless explicitly reseeded. Runtime does not silently author a new mesocycle. | Allow practical swaps/adds/removes/reductions while preserving explainability. | Runtime edits drift into hidden plan mutation. | Save/log flows, session receipts, seeded runtime, active reseed workflow. | Existing runtime/reseed seams, kept separate from planner authoring. |
+| `PostMesocycleLearningLoop` | Learn from performed reality and feed the next strategy. | Actual sets, skipped sets, partial sessions, load/reps/RPE/RIR trends, pain/fatigue notes, swaps, adherence, duration, target achievement. | Next-block recommendations for volume, phase, specialization, continuity, rotation, recovery. | Performed history influences the next block through planner strategy, not repair projection. | Prefer simple rules first; expose confidence. | App repeats generic blocks despite clear user response. | `MesocycleReview`, handoff summary, genesis policy, workout context. | API review/read model feeding V2 strategy inputs. |
+| `AcceptedSeed` / `AcceptedPlanProvenance` | Persist the executable seed plus compact planner provenance. | Planner objects, selected exercises, set distribution, production gates. | `slotPlanSeedJson` plus runtime-inert accepted planner intent/provenance. | Executable seed truth remains minimal. Metadata explains why the seed exists but runtime ignores it. | Store compact intent references, not huge diagnostics. | Runtime cannot distinguish planned shape from repair-shaped output, or metadata becomes a second source of truth. | `slotPlanSeedJson`, `acceptedPlannerIntent`, handoff acceptance. | `slotPlanSeedJson` plus compact accepted planner intent/provenance. |
+| `RuntimeReplay` | Execute accepted plan deterministically and log performed truth. | `slotSequenceJson`, `slotPlanSeedJson`, lifecycle state, performed history. | Generated session, receipt, saved workout/logs, explainability, audit replay. | Seeded runtime replays accepted identities and set counts without reselection. Runtime does not need lane ids or diagnostics. | Runtime can adapt loads and local edits, not silently redesign the plan. | Legacy reselection, runtime drift, receipt/output mismatch. | `mesocycle-slot-runtime.ts`, `slot-plan-seed.ts`, `template-session.ts`, save route. | Keep current runtime. Do not replace it. |
 
-## 3. Target Slot Contracts
+## 4. Muscle Targets: Necessary But Not Sufficient
+
+Muscle targets are essential for hypertrophy planning. A serious hypertrophy planner needs explicit muscle priorities, target tiers, weekly set ranges, exposure counts, and recovery constraints.
+
+But muscle targets are not the entire strategy. They should be derived from higher-level training strategy rather than treated as the strategy itself.
+
+The planner should understand these questions first:
+
+- What phase is the user in?
+- What goal is this block serving?
+- What recovery constraints are visible?
+- What does prior performed history show?
+- Is any muscle specializing, maintaining, resensitizing, or recovering?
+- What is this mesocycle trying to accomplish?
+
+Then it should derive muscle priority and volume targets.
+
+The target direction is:
+
+```txt
+Mesocycle Strategy -> Muscle Priorities
+```
+
+not:
+
+```txt
+Muscle Targets -> somehow this becomes strategy
+```
+
+The current V2 `MesocycleDemand` object is a valuable pure-policy slice, but today it is still too close to fixed skeleton/lane demand. Before V2 becomes authoritative, demand should be fed by a strategy object that can explain why Chest, Quads, Hamstrings, Side Delts, Calves, or any support muscle should receive more, less, maintenance, or recovery-biased work.
+
+## 5. Macrocycle / Phase Strategy
+
+The target does not require an overbuilt rigid macrocycle system first. A practical first version can be:
+
+```txt
+MesocycleReview
+-> NextMesocycleRecommendation
+-> MesocycleStrategy
+```
+
+Each future mesocycle should have a reason, not just repeat the same generic block.
+
+Possible phase labels:
+
+- balanced hypertrophy
+- accumulation
+- specialization
+- maintenance
+- resensitization / low-volume phase
+- recovery-biased block
+- strength-biased hypertrophy
+- return-to-training
+
+The phase layer should decide the broad intent before muscle demand is built. Examples:
+
+- If adherence was poor and sessions were long, choose a recovery-biased or lower-complexity block.
+- If Chest progressed and fatigue was low but Side Delts under-delivered, keep Chest productive and specialize Side Delts.
+- If hinge performance regressed and lower-back fatigue accumulated, reduce high-fatigue hinge exposure and preserve hamstrings through cleaner curls or low-axial options.
+- If the user returns after a gap, choose conservative entry volume and simpler continuity.
+
+This layer should start simple, evidence-backed, and explainable. It should not become a speculative rigid annual plan before the app has enough performed history.
+
+## 6. Mesocycle-To-Mesocycle Evolution
+
+V2 should evolve plans across blocks from performed history. The post-mesocycle loop should consume:
+
+- actual performed sets
+- skipped sets
+- partial sessions
+- load progression
+- rep progression
+- RPE/RIR trends
+- fatigue notes
+- pain notes
+- swaps
+- adherence
+- session duration
+- exercise response
+- muscle target achievement
+
+Possible next-block decisions:
+
+- increase volume
+- hold volume
+- reduce volume
+- specialize a muscle
+- move a muscle to maintenance
+- rotate exercises
+- preserve productive anchors
+- reduce high-fatigue patterns
+- change split/slot emphasis
+- recommend deload/recovery
+
+The rule is not "always progress volume." The rule is "respond to evidence." A high-quality hypertrophy app should be able to say:
+
+- "This block worked; repeat the productive anchors and only rotate stale accessories."
+- "This block under-delivered because adherence was low; reduce session density before adding volume."
+- "This muscle hit targets with low fatigue; keep it at maintenance while specializing another muscle."
+- "This pattern created too much fatigue; preserve the stimulus through a lower-fatigue class."
+
+Performed reality should feed the next `MesocycleStrategy`, not downstream repair.
+
+## 7. Continuity Vs Variation Policy
+
+Mesocycles should neither be identical forever nor randomly different.
+
+Exercise continuity classifications:
+
+- `keep`: preserve the exact exercise because it is productive, pain-free, and strategically useful.
+- `rotate_optional`: rotation is allowed but not required.
+- `rotate_recommended`: rotation is preferred because staleness, redundancy, or response suggests a better option.
+- `rotate_required`: rotation is required because of pain, poor tolerance, repeated stall, forbidden context, or incompatible next-block strategy.
+
+Suggested rules:
+
+- Keep productive anchors that are progressing and pain-free.
+- Keep exercises that the user performs consistently and responds to well.
+- Rotate stale accessories.
+- Rotate painful or poorly tolerated movements.
+- Rotate exercises that repeatedly stall.
+- Rotate if the same movement stress has accumulated across multiple blocks.
+- Preserve movement class when rotating exact exercise identity.
+- Do not rotate everything at once unless the block objective requires it.
+
+The planner should preserve continuity at the right level: sometimes exact exercise identity, sometimes lane identity, sometimes movement class, and sometimes only the muscle/stimulus objective.
+
+## 8. Materializer North Star
+
+Plain-English role:
+
+```txt
+Planner decides what stimulus is needed.
+Materializer chooses the exact exercise that best delivers it.
+```
+
+The materializer should rank candidates by:
+
+- required class/lane fit
+- directness of target stimulus
+- stimulus-to-fatigue ratio
+- equipment availability
+- user preference
+- prior successful performance
+- pain/joint tolerance
+- continuity value
+- recent exposure/staleness
+- novelty need
+- redundancy avoidance
+- deterministic tie-breaker
+
+The materializer should not define training strategy. It should not always pick the same exercise blindly. It should preserve productive continuity but allow controlled rotation. It should not make repaired projection behavior the target.
+
+Current V2 materialization is a useful dry-run bridge because it can turn planner lanes into seed-shaped slots. The north-star materializer needs richer ranking inputs before it becomes authoritative: performed response, staleness, tolerance, explicit continuity classification, and strategy-derived novelty pressure.
+
+## 9. Seed Shape Assessment
+
+The current executable seed truth is good because it is minimal:
+
+```txt
+{ exerciseId, role, setCount }
+```
+
+This is sufficient for runtime execution. It should remain boring.
+
+Runtime should not need:
+
+- lane IDs
+- blockers
+- omissions
+- inventory evidence
+- dry-run reports
+- planner diagnostics
+- repair materiality rows
+- class-match debug payloads
+
+Intelligence/provenance should live around the seed, not inside executable truth. `acceptedPlannerIntent` or similar metadata is explanatory only and must stay runtime-inert. It can explain the plan, audit the plan, and support future learning, but runtime replay must keep consuming the minimal seed fields.
+
+## 10. Runtime Flexibility
+
+Accepted seed is foundation, not prison.
+
+The user can:
+
+- swap exercises
+- add exercises
+- remove exercises
+- reduce sets
+- skip sessions
+- complete partial sessions
+- adjust load
+- adjust reps
+- log RPE/RIR
+
+Runtime edits are session-local deviations unless the user explicitly reseeds or accepts a replacement. Performed reality should feed the post-mesocycle learning loop.
+
+## 11. Target Slot Contracts
 
 ### Upper A
 
@@ -161,7 +444,7 @@ Engine contract:
 - Avoid two calf variants in one session unless specialization is explicit.
 - Hinge identity must survive, but lower-back and glute collateral are capped.
 
-## 4. Current Engine Compared Against Target
+## 12. Current Engine Compared Against Target
 
 | Target principle | Current evidence | Gap | Current owner | Recommended owner | Priority |
 |---|---|---|---|---|---|
@@ -175,24 +458,71 @@ Engine contract:
 | Material repair count | Live audit: 20 material, 10 major, 10 likely avoidable. | Current output is repair-shaped. | `planningReality.repairMaterialityAfterShadowAllocation`. | Planner-owned demand/allocation/class/set intent. | P0 blocker. |
 | Runtime seed replay | Current docs say `slotPlanSeedJson` is canonical runtime composition for seeded supported intents and runtime uses set-count overrides. | Runtime seed replay is not the problem. The accepted seed may encode repair-shaped output. | `slotPlanSeedJson`, `mesocycle-slot-runtime.ts`, `slot-plan-seed.ts`. | Keep current runtime; feed it better accepted planner output. | Preserve. |
 
-## 5. Acceptance Criteria Mapping
+## 13. North-Star Acceptance Criteria
 
-| Acceptance criterion | Current diagnostic source | Current pass/fail status | Missing diagnostic | Future enforcement location |
-|---|---|---|---|---|
-| Primary muscles above minimum | `projectedDelivery`, `weeklyDemandCurve`, audit summary. | Fails/limited: Chest under-target across accumulation; Week 2-4 projection missing. | Full week-by-week primary target enforcement from planned curve. | `WeeklyDemandCurve` plus planner acceptance gate. |
-| No primary muscle solved by forbidden slot | `slotPrescriptionIntents`, `forbiddenCleanupReroute`, forbidden cleanup. | Partially passes as cleanup/diagnostic. It is too late in the pipeline. | Pre-selection forbidden-slot enforcement by planner allocation. | `SlotDemandAllocationByWeek` and class distribution before selection. |
-| No exercise above 5 sets unless justified | `exerciseConcentration`, program-quality caps. | Partially passes for hard cap, but concentration remains high. | Justification tied to planner intent, not repair aftermath. | `SetDistributionIntent` and accepted plan receipt. |
-| No material repair required to create basic shape | `summary.materialRepairCount`, `repairMaterialityAfterShadowAllocation`. | Fails: 20 material repairs, 10 major. | None. This is already visible. | Accepted-plan gate after planner diff. |
-| No duplicate main lift if clean alternative exists | `duplicateContinuityJustification`, duplicate exercise reuse. | Fails/partial: clean alternatives visible for several duplicates. | Planner-level duplicate decision before selection. | `ExerciseClassDistributionBySlot` and `ExerciseSelectionPlan`. |
-| No excessive axial-fatigue stacking | `setDistributionIntents`, `exerciseConcentration`, class/fatigue budgets. | Partial/limited: SLDL duplication and lower-back collateral remain visible. | Week-by-week axial budget and cumulative fatigue projection. | `SlotDemandAllocationByWeek`, `SetDistributionIntent`, `ProgressionPlan`. |
-| No single exercise provides more than 50-60 percent of primary weekly stimulus unless intentional | `exerciseConcentration`. | Fails/partial: Back Squat, OHP, Incline DB Bench, Barbell Curl concentration flags. | Intentional concentration justification in accepted planner receipt. | `SetDistributionIntent` and accepted plan receipt. |
-| Slot demand allocation exists before exercise selection | `slotDemandAllocationByWeek`. | Fails as behavior: exists read-only only. | Behavior-consuming planner allocation object. | New `TopDownMesocyclePlan`; later selection adapter. |
-| Exercise class intent exists before exact exercise selection | `exerciseClassDistributionBySlot`. | Fails as behavior: exists read-only only. | Behavior-consuming class distribution slice. | Planner-owned class distribution v2. |
-| Runtime seed can replay without reselection | `slotPlanSeedJson`, seed parser/runtime tests, audit `seed`/`reality`. | Pass for accepted seeded supported intents. | Compact planner-intent receipt for why the seed exists. | Keep runtime; extend accepted receipt/seed metadata later. |
+These are ultimate planner criteria, not claims about current implementation.
 
-## 6. Legacy Policy Assessment
+| Acceptance criterion | Current diagnostic/source | Current state | Future enforcement location |
+|---|---|---|---|
+| Each mesocycle has an explicit strategy. | `recommendedDesign`, handoff summary, future V2 strategy. | Partial: handoff has recommendation structure, but V2 strategy is not yet authoritative. | `MesocycleStrategy` above demand. |
+| Muscle targets derive from strategy and user history. | `MesocycleDemand`, `weeklyDemandCurve`, mesocycle review. | Incomplete: current V2 demand is still skeleton/lane-derived. | `MesocycleStrategy -> MesocycleDemand`. |
+| Movement classes satisfy stimulus needs before exact exercises are chosen. | `exerciseClassDistributionBySlot`, V2 `ExerciseSelectionPlan`. | Read-only / dry-run only. | Planner class model consumed by selection/materializer. |
+| Exercise selection balances continuity and variation. | `duplicateContinuityJustification`, genesis carry-forward, materializer continuity hints. | Partial: continuity exists, but no full keep/rotate policy tied to strategy. | `ExerciseSelectionStrategy` plus continuity classification. |
+| Productive exercises can persist across blocks. | Carry-forward recommendations, prior slot evidence. | Partial. | Post-mesocycle learning loop and materializer continuity scoring. |
+| Stale, painful, stalled, or poorly tolerated exercises can rotate. | Pain conflicts, anomaly flags, swaps, history, selection-v2 constraints. | Partial; not yet a V2 block-level rotation policy. | Strategy/materializer ranking inputs. |
+| Performed history influences the next block. | `MesocycleReview`, workout context history, handoff genesis policy. | Partial; not yet the primary V2 strategy input. | `PostMesocycleLearningLoop -> MesocycleStrategy`. |
+| V2-authored seed remains minimal and runtime replayable. | `slotPlanSeedJson`, seed parser/runtime tests, audit `seed`/`reality`. | Pass for current seeded runtime; V2 live writes disabled. | `AcceptedSeed` contract and runtime replay. |
+| Runtime edits remain local unless explicitly reseeded. | Save/log flows, active reseed workflow, receipt semantics. | Current runtime architecture supports this direction. | Runtime adjustment rules and reseed workflow. |
+| Planner decisions are explainable. | `acceptedPlannerIntent`, V2 provenance, audit diagnostics. | Partial/future; metadata exists but live V2 plan authoring is disabled. | Accepted planner intent/provenance, audit readouts. |
+| Repair is safety net, not program author. | `repairMaterialityAfterShadowAllocation`, no-repair comparison, repair scoreboard. | Fails today: live artifact is `mostly_repair_shaped`. | V2 planner acceptance gate and repair demotion. |
+| Legacy repair-shaped planning is eventually deprecated. | Legacy projection and repair diagnostics. | Future cleanup only. | Migration phases after V2-authored plans prove stable. |
+
+Existing target-quality criteria still apply:
+
+- Primary muscles above minimum.
+- No primary muscle solved by forbidden slot.
+- No exercise above 5 sets unless justified.
+- No material repair required to create basic shape.
+- No duplicate main lift when a clean alternative exists unless explicitly justified.
+- No excessive axial-fatigue stacking.
+- No single exercise provides more than 50-60 percent of primary weekly stimulus unless intentional.
+- Slot demand allocation exists before exercise selection.
+- Exercise class intent exists before exact exercise selection.
+- Runtime seed can replay without reselection.
+
+## 14. Cleanup / Deprecation Plan
 
 Do not delete these layers until the planner owns their responsibility. Today several are doing real safety work.
+
+Eventually demote/remove old repair-shaped responsibilities as normal plan authors:
+
+- support-floor closure as program author
+- weekly obligation closure as program author
+- late set bumping as normal shaping
+- cap trim as normal shaping
+- program-quality identity changes as normal shaping
+- isolation injection as normal shaping
+- legacy projection as default seed author
+- repair promotion diagnostics as migration machinery
+
+Preserve repair as a safety net for:
+
+- capacity failure
+- inventory gaps
+- forbidden-slot protection
+- legacy compatibility
+- impossible plans
+- explicit fallback
+
+Cleanup sequence:
+
+1. V2 writes seed behind explicit gate.
+2. Runtime replay proves stable.
+3. V2-authored plans compare favorably.
+4. Repair materiality drops.
+5. Legacy projection becomes fallback only.
+6. Repair paths become safety nets.
+7. Obsolete repair-as-planner code is removed or quarantined.
 
 | Layer | Assessment | Decision |
 |---|---|---|
@@ -205,9 +535,9 @@ Do not delete these layers until the planner owns their responsibility. Today se
 | isolation injection | Sometimes closes support floors, but it can create identity churn. | Replace with planned support lanes; keep rescue-only. |
 | forbidden cleanup | Essential guardrail. It should not be where forbidden policy is first enforced. | Keep forever as safety net; planner should prevent most cases. |
 | distribution guard | Correct concept, wrong layer when used only after repair tries set bumps. | Promote concept into planner set policy; keep guard for repair. |
-| repair materiality diagnostics | High-value architecture signal. | Keep. This is the migration scoreboard. |
+| repair materiality diagnostics | High-value architecture signal during migration. | Keep until V2 is authoritative; then quarantine/remove migration-only readouts that no longer answer an active question. |
 
-## 7. Migration Strategy
+## 15. Migration Strategy
 
 ### Phase 0: Target Spec And Audit Mapping
 
@@ -231,9 +561,9 @@ Rollback criteria:
 
 - Report contradicts code/audit truth or overstates readiness.
 
-### Phase 1: Read-Only `TopDownMesocyclePlan` Or `ExerciseClassDistributionBySlot` v2
+### Phase 1: Read-Only `MesocycleStrategy` / `TopDownMesocyclePlan`
 
-Goal: Add one compact diagnostic object that represents the target top-down plan for all 5 weeks and all 4 slots.
+Goal: Add one compact diagnostic object that represents the target strategy-to-seed plan for all 5 weeks and all 4 slots.
 
 Likely files:
 
@@ -253,6 +583,7 @@ Risk:
 
 - Diagnostic bloat.
 - Adding another shadow that does not become migration-ready.
+- Treating current fixed-skeleton V2 policy as elite strategy before user profile, phase, performed-history, and continuity inputs exist.
 
 Rollback criteria:
 
@@ -310,9 +641,9 @@ Rollback criteria:
 
 - Any increase in material/major/suspicious repairs, concentration, or dirty collateral.
 
-### Phase 4: Accepted Plan Receipt Stores Planner Intent
+### Phase 4: Accepted Plan Provenance Stores Planner Intent
 
-Goal: Persist compact accepted planner intent alongside `slotPlanSeedJson` so accepted output can explain planned shape versus safety-net repair.
+Goal: Persist compact accepted planner intent/provenance alongside `slotPlanSeedJson` so accepted output can explain strategy, planned shape, and any safety-net repair without changing executable seed truth.
 
 Likely files:
 
@@ -325,6 +656,7 @@ Verification:
 
 - Seed replay unchanged.
 - Receipt-first explainability can read planner intent without parallel mirrors.
+- `acceptedPlannerIntent` remains explanatory and runtime-inert.
 - `npm run verify:contracts` if schema/contract values change.
 
 Risk:
@@ -386,7 +718,7 @@ Rollback criteria:
 
 - Legacy seeded/unseeded fallback behavior regresses.
 
-## 8. Rewrite Vs Migration Decision
+## 16. Rewrite Vs Migration Decision
 
 Would a from-scratch engine be easier to reason about? Yes, conceptually. The target planner is cleaner than the current projection plus repair stack.
 
@@ -424,22 +756,34 @@ Recommended path: hybrid planner replacement.
 
 Not full rewrite. Not incremental patching of individual Chest/Hamstrings symptoms. Use a strangler-style planner alongside the current projection stack, but the thing being strangled is the repair-shaped planner responsibility, not the runtime infrastructure.
 
-## 9. Recommended Next Implementation Prompt
+## 17. Recommended Next Implementation Prompt
 
 Use this prompt next:
 
 ```txt
-Add a compact read-only TopDownMesocyclePlan diagnostic for the 5-week, 4-day upper/lower hypertrophy target design.
+Add a compact read-only MesocycleStrategy / TopDownMesocyclePlan diagnostic for the V2 hypertrophy planner north star.
 
 Do not change generation, selection, repair, seed serialization, runtime replay, receipts, or accepted mesocycle behavior.
+Do not enable V2 live writes.
+Do not make repaired projection the target.
+Do not bloat executable seed truth.
 
 The diagnostic should encode:
-- MesocycleDemand
+- UserTrainingProfile inputs that are available today, with explicit missing-input limitations
+- Macrocycle / Phase Strategy
+- MesocycleStrategy
+- MesocycleDemand derived from strategy, not only from fixed skeleton lanes
 - WeeklyDemandCurve for Weeks 1-5
 - SlotDemandAllocationByWeek for Upper A, Lower A, Upper B, Lower B
 - ExerciseClassDistributionBySlot for the target class lanes
-- SetDistributionIntent with concentration and duplicate limits
+- Set / Rep / RIR Prescription with concentration and duplicate limits
+- ExerciseSelectionStrategy, including continuity vs variation policy
+- Materializer intent/ranking requirements without selecting production exercises
+- RuntimeAdjustmentRules boundaries
+- PostMesocycleLearningLoop signals and next-block decision hooks
 - DeloadPlan identity/set-reduction expectations
+- AcceptedSeed contract summary showing executable truth remains { exerciseId, role, setCount }
+- RuntimeReplay contract summary showing runtime ignores planner metadata
 
 Compare it read-only against current planningReality:
 - weeklyDemandCurve
@@ -458,12 +802,15 @@ Output a compact planner-vs-current summary in mesocycle-explain operator debug:
 - blocked by inventory/classification/capacity/duplicate policy
 - currently created by repair
 - suspicious and not eligible for promotion
+- current-state vs north-star gap
+- next required upstream owner
 
 Guardrails:
 - artifact size must not exceed the current audit budget
 - standard/debug generation parity must remain unchanged
 - all new fields must be readOnly=true and affectsScoringOrGeneration=false
 - runtime seed replay must be unchanged
+- acceptedPlannerIntent or similar metadata must be explanatory only and runtime-inert
 ```
 
 ## Seam Locator Output

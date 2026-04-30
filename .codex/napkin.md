@@ -41,6 +41,8 @@
 | 2026-04-29 | self | In the V2 materialized seed acceptance helper test, first treated a passed `materializedPlan` as enough for guarded-write readiness and forgot the dry-run report still blocks missing planner policy and inventory availability. | For V2 materialized-seed eligibility fixtures, provide explicit planner policy, exercise selection plan, taxonomy, inventory, lane coverage, and production gates; a seed-shaped plan alone is not promotion-ready evidence. |
 | 2026-04-30 | self | While adding the V2 acceptance probe, initially called `buildV2ExerciseMaterializationPlan()` directly from the API helper and tripped the architecture boundary test. | Keep dry-run materializer calls inside `src/lib/engine/planning/v2/materialization`; expose derived lane-coverage evidence from the dry-run report and let API probes summarize it. |
 | 2026-04-30 | self | Reused a double-quoted PowerShell `rg` command containing escaped double quotes and hit the known terminator parser error. | Use a single-quoted PowerShell pattern for `rg` searches that include literal double quotes. |
+| 2026-04-30 | self | Tried a complex quoted `rg` regex for `describe(\".*accept...` in PowerShell and hit parser/escape issues twice. | Use simple literal searches first, and keep regex/path arguments clearly separated with single-quoted patterns. |
+| 2026-04-30 | self | Used a PowerShell double-quoted `Select-String -Pattern` containing Markdown backticks and broke string termination. | Use single-quoted patterns or avoid literal backticks in PowerShell search patterns. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

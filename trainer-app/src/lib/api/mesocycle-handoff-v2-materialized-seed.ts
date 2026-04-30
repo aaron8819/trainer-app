@@ -54,6 +54,31 @@ export type V2MaterializedSeedAcceptanceProvenance = {
   };
 };
 
+export type AcceptedSeedPersistenceSource =
+  | "legacy_projection_seed"
+  | "v2_disabled"
+  | "v2_blocked_fail_closed"
+  | "v2_materialized_seed";
+
+export type AcceptedSeedPersistenceProvenance = {
+  source: AcceptedSeedPersistenceSource;
+  dbWriteOccurred: boolean;
+  seedSerializer: "buildMesocycleSlotPlanSeed";
+  seedSourceSelectedBeforeTransaction: boolean;
+  persistedInsideExistingAcceptanceTransaction: boolean;
+  persistedMesocycleId?: string;
+  fallback?: {
+    occurred: boolean;
+    source?: "fallback_existing_projection";
+    reason?: string;
+  };
+  executableSeedTruth: {
+    source: "slotPlanSeedJson";
+    runtimeConsumedFields: ["exerciseId", "role", "setCount"];
+    runtimeIgnoresPlannerMetadata: true;
+  };
+};
+
 export type BuildV2MaterializedSeedForAcceptanceResult =
   | {
       status: "disabled";
@@ -106,6 +131,12 @@ const ALL_PRODUCTION_WRITE_GATES_PROVIDED: V2MaterializationProductionWriteGates
 };
 
 const EXECUTABLE_SEED_TRUTH: V2MaterializedSeedAcceptanceProvenance["executableSeedTruth"] = {
+  source: "slotPlanSeedJson",
+  runtimeConsumedFields: ["exerciseId", "role", "setCount"],
+  runtimeIgnoresPlannerMetadata: true,
+};
+
+const ACCEPTED_SEED_EXECUTABLE_TRUTH: AcceptedSeedPersistenceProvenance["executableSeedTruth"] = {
   source: "slotPlanSeedJson",
   runtimeConsumedFields: ["exerciseId", "role", "setCount"],
   runtimeIgnoresPlannerMetadata: true,
@@ -280,6 +311,46 @@ export function buildV2MaterializedSeedForAcceptance(
       dryRunOnly: false,
     }),
   };
+}
+
+export function buildAcceptedSeedPersistenceProvenance(input: {
+  source: AcceptedSeedPersistenceSource;
+  dbWriteOccurred?: boolean;
+  seedSourceSelectedBeforeTransaction?: boolean;
+  persistedInsideExistingAcceptanceTransaction?: boolean;
+  persistedMesocycleId?: string;
+  fallback?: AcceptedSeedPersistenceProvenance["fallback"];
+}): AcceptedSeedPersistenceProvenance {
+  return {
+    source: input.source,
+    dbWriteOccurred: input.dbWriteOccurred ?? false,
+    seedSerializer: "buildMesocycleSlotPlanSeed",
+    seedSourceSelectedBeforeTransaction:
+      input.seedSourceSelectedBeforeTransaction ?? true,
+    persistedInsideExistingAcceptanceTransaction:
+      input.persistedInsideExistingAcceptanceTransaction ?? false,
+    ...(input.persistedMesocycleId
+      ? { persistedMesocycleId: input.persistedMesocycleId }
+      : {}),
+    fallback: input.fallback ?? { occurred: false },
+    executableSeedTruth: ACCEPTED_SEED_EXECUTABLE_TRUTH,
+  };
+}
+
+export function completeAcceptedSeedPersistenceProvenance(input: {
+  provenance: AcceptedSeedPersistenceProvenance;
+  persistedMesocycleId?: string;
+  dbWriteOccurred: boolean;
+}): AcceptedSeedPersistenceProvenance {
+  return buildAcceptedSeedPersistenceProvenance({
+    source: input.provenance.source,
+    dbWriteOccurred: input.dbWriteOccurred,
+    seedSourceSelectedBeforeTransaction:
+      input.provenance.seedSourceSelectedBeforeTransaction,
+    persistedInsideExistingAcceptanceTransaction: input.dbWriteOccurred,
+    persistedMesocycleId: input.persistedMesocycleId,
+    fallback: input.provenance.fallback,
+  });
 }
 
 export function buildV2MaterializedSeedAcceptanceProbe(

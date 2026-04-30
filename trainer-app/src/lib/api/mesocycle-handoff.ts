@@ -37,8 +37,12 @@ import {
   projectSuccessorSlotPlansFromSnapshot,
 } from "./mesocycle-handoff-slot-plan-projection";
 import {
+  buildAcceptedSeedPersistenceProvenance,
+  completeAcceptedSeedPersistenceProvenance,
   buildV2MaterializedSeedForAcceptance,
+  type AcceptedSeedPersistenceProvenance,
   type BuildV2MaterializedSeedForAcceptanceInput,
+  type V2MaterializedSeedAcceptanceProvenance,
 } from "./mesocycle-handoff-v2-materialized-seed";
 import { getLatestReadinessSignalForReader } from "./readiness";
 import { loadPreloadedGenerationSnapshot } from "./template-session/context-loader";
@@ -121,7 +125,8 @@ type HandoffAcceptancePreparation = {
   pendingRow: PendingHandoffRow;
   draftFingerprint: string;
   projection: ReturnType<typeof projectSuccessorMesocycle>;
-  slotPlanSeed: Awaited<ReturnType<typeof buildAcceptedMesocycleSlotPlanSeed>>;
+  slotPlanSeed: AcceptedMesocycleSlotPlanSeed;
+  seedPersistenceProvenance: AcceptedSeedPersistenceProvenance;
 };
 
 export type PendingMesocycleHandoff = {
@@ -144,6 +149,34 @@ export type ClosedMesocycleArchive = {
   summary: MesocycleHandoffSummary | null;
   draft: NextCycleSeedDraft | null;
 };
+
+type AcceptedMesocycleSlotPlanSeed = ReturnType<typeof buildMesocycleSlotPlanSeed> | null;
+
+type AcceptedMesocycleSlotPlanSeedPreparation = {
+  slotPlanSeed: AcceptedMesocycleSlotPlanSeed;
+  seedPersistenceProvenance: AcceptedSeedPersistenceProvenance;
+};
+
+type HandoffAcceptanceTransactionResult = {
+  mesocycle: Mesocycle;
+  seedPersistenceProvenance: AcceptedSeedPersistenceProvenance;
+};
+
+export class MesocycleHandoffV2MaterializedSeedBlockedError extends Error {
+  readonly seedPersistenceProvenance: AcceptedSeedPersistenceProvenance;
+  readonly helperProvenance: V2MaterializedSeedAcceptanceProvenance;
+
+  constructor(input: {
+    reason: string;
+    seedPersistenceProvenance: AcceptedSeedPersistenceProvenance;
+    helperProvenance: V2MaterializedSeedAcceptanceProvenance;
+  }) {
+    super(`MESOCYCLE_HANDOFF_V2_MATERIALIZED_SEED_BLOCKED:${input.reason}`);
+    this.name = "MesocycleHandoffV2MaterializedSeedBlockedError";
+    this.seedPersistenceProvenance = input.seedPersistenceProvenance;
+    this.helperProvenance = input.helperProvenance;
+  }
+}
 
 const nextMesocycleStartingPointJsonSchema = z.object({
   volumeEntry: z.literal("conservative"),
@@ -754,18 +787,29 @@ async function buildAcceptedMesocycleSlotPlanSeed(input: {
     BuildV2MaterializedSeedForAcceptanceInput,
     "slotSequence"
   >;
-}) {
-  const v2MaterializedSeed = buildV2MaterializedSeedForAcceptance({
-    slotSequence: input.slotSequence,
-    ...(input.v2MaterializedSeedWrite ?? {}),
-  });
-  if (v2MaterializedSeed.status === "ready") {
-    return v2MaterializedSeed.slotPlanSeedJson;
-  }
-  if (v2MaterializedSeed.status === "blocked") {
-    throw new Error(
-      `MESOCYCLE_HANDOFF_V2_MATERIALIZED_SEED_BLOCKED:${v2MaterializedSeed.reason}`,
-    );
+}): Promise<AcceptedMesocycleSlotPlanSeedPreparation> {
+  if (input.v2MaterializedSeedWrite) {
+    const v2MaterializedSeed = buildV2MaterializedSeedForAcceptance({
+      slotSequence: input.slotSequence,
+      ...input.v2MaterializedSeedWrite,
+    });
+    if (v2MaterializedSeed.status === "ready") {
+      return {
+        slotPlanSeed: v2MaterializedSeed.slotPlanSeedJson,
+        seedPersistenceProvenance: buildAcceptedSeedPersistenceProvenance({
+          source: "v2_materialized_seed",
+        }),
+      };
+    }
+    if (v2MaterializedSeed.status === "blocked") {
+      throw new MesocycleHandoffV2MaterializedSeedBlockedError({
+        reason: v2MaterializedSeed.reason,
+        helperProvenance: v2MaterializedSeed.provenance,
+        seedPersistenceProvenance: buildAcceptedSeedPersistenceProvenance({
+          source: "v2_blocked_fail_closed",
+        }),
+      });
+    }
   }
 
   const snapshot = await loadPreloadedGenerationSnapshot(input.userId);
@@ -778,7 +822,12 @@ async function buildAcceptedMesocycleSlotPlanSeed(input: {
 
   if ("error" in slotPlanProjection) {
     if (!slotPlanProjection.slotPlans) {
-      return null;
+      return {
+        slotPlanSeed: null,
+        seedPersistenceProvenance: buildAcceptedSeedPersistenceProvenance({
+          source: "legacy_projection_seed",
+        }),
+      };
     }
     if (
       slotPlanProjection.error.startsWith(
@@ -788,29 +837,39 @@ async function buildAcceptedMesocycleSlotPlanSeed(input: {
       throw new Error(slotPlanProjection.error);
     }
     const protectedCoverageDiagnostics = slotPlanProjection.diagnostics?.protectedCoverage;
-    return buildMesocycleSlotPlanSeed({
-      slotSequence: input.slotSequence,
-      slotPlans: slotPlanProjection.slotPlans,
-      diagnostics: {
-        projectionStatus: "partial_acceptable",
-        ...(protectedCoverageDiagnostics
-          ? {
-              protectedCoverage: {
-                unresolvedProtectedMuscles:
-                  protectedCoverageDiagnostics.unresolvedProtectedMuscles,
-                supportFloorRepairReasons:
-                  protectedCoverageDiagnostics.supportFloorRepairReasons,
-              },
-            }
-          : {}),
-      },
-    });
+    return {
+      slotPlanSeed: buildMesocycleSlotPlanSeed({
+        slotSequence: input.slotSequence,
+        slotPlans: slotPlanProjection.slotPlans,
+        diagnostics: {
+          projectionStatus: "partial_acceptable",
+          ...(protectedCoverageDiagnostics
+            ? {
+                protectedCoverage: {
+                  unresolvedProtectedMuscles:
+                    protectedCoverageDiagnostics.unresolvedProtectedMuscles,
+                  supportFloorRepairReasons:
+                    protectedCoverageDiagnostics.supportFloorRepairReasons,
+                },
+              }
+            : {}),
+        },
+      }),
+      seedPersistenceProvenance: buildAcceptedSeedPersistenceProvenance({
+        source: "legacy_projection_seed",
+      }),
+    };
   }
 
-  return buildMesocycleSlotPlanSeed({
-    slotSequence: input.slotSequence,
-    slotPlans: slotPlanProjection.slotPlans,
-  });
+  return {
+    slotPlanSeed: buildMesocycleSlotPlanSeed({
+      slotSequence: input.slotSequence,
+      slotPlans: slotPlanProjection.slotPlans,
+    }),
+    seedPersistenceProvenance: buildAcceptedSeedPersistenceProvenance({
+      source: "legacy_projection_seed",
+    }),
+  };
 }
 
 function canPrepareAcceptanceFromState(
@@ -974,7 +1033,7 @@ export async function prepareMesocycleHandoffAcceptance(input: {
     source: projectionSource,
     design,
   });
-  const slotPlanSeed = await buildAcceptedMesocycleSlotPlanSeed({
+  const seedPreparation = await buildAcceptedMesocycleSlotPlanSeed({
     userId: source.macroCycle.userId,
     source: projectionSource,
     design,
@@ -990,14 +1049,27 @@ export async function prepareMesocycleHandoffAcceptance(input: {
     pendingRow: refreshedPendingRow,
     draftFingerprint: buildAcceptanceDraftFingerprint(draft),
     projection,
-    slotPlanSeed,
+    slotPlanSeed: seedPreparation.slotPlanSeed,
+    seedPersistenceProvenance: seedPreparation.seedPersistenceProvenance,
   };
 }
 
-export async function acceptPreparedMesocycleHandoffInTransaction(
+function completePreparedSeedPersistence(input: {
+  prepared: HandoffAcceptancePreparation;
+  mesocycle: Mesocycle;
+  dbWriteOccurred: boolean;
+}): AcceptedSeedPersistenceProvenance {
+  return completeAcceptedSeedPersistenceProvenance({
+    provenance: input.prepared.seedPersistenceProvenance,
+    persistedMesocycleId: input.mesocycle.id,
+    dbWriteOccurred: input.dbWriteOccurred,
+  });
+}
+
+export async function acceptPreparedMesocycleHandoffWithProvenanceInTransaction(
   tx: Tx,
   prepared: HandoffAcceptancePreparation
-): Promise<Mesocycle> {
+): Promise<HandoffAcceptanceTransactionResult> {
   const current = await tx.mesocycle.findFirst({
     where: {
       id: prepared.source.id,
@@ -1013,7 +1085,14 @@ export async function acceptPreparedMesocycleHandoffInTransaction(
   if (current.state === "COMPLETED") {
     const successor = await findAcceptedSuccessorInTransaction(tx, current);
     if (successor) {
-      return successor;
+      return {
+        mesocycle: successor,
+        seedPersistenceProvenance: completePreparedSeedPersistence({
+          prepared,
+          mesocycle: successor,
+          dbWriteOccurred: false,
+        }),
+      };
     }
     throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
   }
@@ -1039,7 +1118,14 @@ export async function acceptPreparedMesocycleHandoffInTransaction(
         isActive: false,
       },
     });
-    return existingSuccessor;
+    return {
+      mesocycle: existingSuccessor,
+      seedPersistenceProvenance: completePreparedSeedPersistence({
+        prepared,
+        mesocycle: existingSuccessor,
+        dbWriteOccurred: false,
+      }),
+    };
   }
 
   const summary = readMesocycleHandoffSummary(current.handoffSummaryJson);
@@ -1144,7 +1230,25 @@ export async function acceptPreparedMesocycleHandoffInTransaction(
     },
   });
 
-  return next;
+  return {
+    mesocycle: next,
+    seedPersistenceProvenance: completePreparedSeedPersistence({
+      prepared,
+      mesocycle: next,
+      dbWriteOccurred: Boolean(slotPlanSeed),
+    }),
+  };
+}
+
+export async function acceptPreparedMesocycleHandoffInTransaction(
+  tx: Tx,
+  prepared: HandoffAcceptancePreparation
+): Promise<Mesocycle> {
+  const result = await acceptPreparedMesocycleHandoffWithProvenanceInTransaction(
+    tx,
+    prepared
+  );
+  return result.mesocycle;
 }
 
 export async function acceptMesocycleHandoff(input: {

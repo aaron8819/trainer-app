@@ -19,8 +19,10 @@ import { runV2MaterializedSeedAcceptanceProbe } from "@/lib/audit/workout-audit/
 import { buildMesocycleSlotPlanSeed } from "./mesocycle-handoff-slot-plan-projection.seed-serialization";
 import { buildMesocycleSlotSequence } from "./mesocycle-slot-contract";
 import {
+  buildAcceptedSeedPersistenceProvenance,
   buildV2MaterializedSeedAcceptanceProbe,
   buildV2MaterializedSeedForAcceptance,
+  completeAcceptedSeedPersistenceProvenance,
 } from "./mesocycle-handoff-v2-materialized-seed";
 
 function makeSlotSequence() {
@@ -540,6 +542,89 @@ describe("buildV2MaterializedSeedForAcceptance", () => {
     );
 
     expect(result.status).toBe("ready");
+  });
+});
+
+describe("AcceptedSeedPersistenceProvenance", () => {
+  it("keeps transaction provenance distinct from helper preparation provenance", () => {
+    const helperResult = buildV2MaterializedSeedForAcceptance(makeEligibleInput());
+    const transactionProvenance = buildAcceptedSeedPersistenceProvenance({
+      source: "v2_materialized_seed",
+    });
+
+    expect(helperResult.status).toBe("ready");
+    if (helperResult.status !== "ready") {
+      throw new Error("expected ready result");
+    }
+    expect(helperResult.provenance).toMatchObject({
+      source: "v2_materialized_seed",
+      dbWriteOccurred: false,
+      readOnly: false,
+      dryRunOnly: false,
+    });
+    expect(transactionProvenance).toMatchObject({
+      source: "v2_materialized_seed",
+      dbWriteOccurred: false,
+      seedSourceSelectedBeforeTransaction: true,
+      persistedInsideExistingAcceptanceTransaction: false,
+      fallback: { occurred: false },
+      executableSeedTruth: {
+        source: "slotPlanSeedJson",
+        runtimeConsumedFields: ["exerciseId", "role", "setCount"],
+      },
+    });
+    expect(transactionProvenance).not.toHaveProperty("dryRunReportVersion");
+    expect(transactionProvenance).not.toHaveProperty("productionGates");
+  });
+
+  it("marks dbWriteOccurred only when transaction success is reported", () => {
+    const prepared = buildAcceptedSeedPersistenceProvenance({
+      source: "v2_materialized_seed",
+    });
+    const failedOrUnrun = completeAcceptedSeedPersistenceProvenance({
+      provenance: prepared,
+      persistedMesocycleId: "meso-2",
+      dbWriteOccurred: false,
+    });
+    const persisted = completeAcceptedSeedPersistenceProvenance({
+      provenance: prepared,
+      persistedMesocycleId: "meso-2",
+      dbWriteOccurred: true,
+    });
+
+    expect(failedOrUnrun).toMatchObject({
+      source: "v2_materialized_seed",
+      dbWriteOccurred: false,
+      persistedInsideExistingAcceptanceTransaction: false,
+      persistedMesocycleId: "meso-2",
+    });
+    expect(persisted).toMatchObject({
+      source: "v2_materialized_seed",
+      dbWriteOccurred: true,
+      persistedInsideExistingAcceptanceTransaction: true,
+      persistedMesocycleId: "meso-2",
+    });
+  });
+
+  it("never labels fallback projection as V2 success", () => {
+    const provenance = buildAcceptedSeedPersistenceProvenance({
+      source: "legacy_projection_seed",
+      fallback: {
+        occurred: true,
+        source: "fallback_existing_projection",
+        reason: "future_explicit_fallback_example",
+      },
+    });
+
+    expect(provenance).toMatchObject({
+      source: "legacy_projection_seed",
+      dbWriteOccurred: false,
+      fallback: {
+        occurred: true,
+        source: "fallback_existing_projection",
+      },
+    });
+    expect(provenance.source).not.toBe("v2_materialized_seed");
   });
 });
 

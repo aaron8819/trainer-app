@@ -117,6 +117,34 @@ If the issue is tooling or readout only, keep the change in the audit/reporting 
 - Preserve existing audit mode semantics unless the task explicitly changes them.
 - Reach for broader verification only when shared CLI parsing, contracts, or reused audit seams changed.
 
+## Read-Only Diagnostic Refactor Checklist
+
+For mechanical refactors of audit/diagnostic code, especially `planningReality`, artifact equality is the fastest no-drift proof.
+
+- Capture a live baseline artifact before the refactor when feasible.
+- Keep large mechanical splits explicit: export/import through a stable facade, and prefer direct named imports over hidden behavior changes.
+- Compare serialized diagnostic subobject equality after the refactor, for example `planningRealityJsonEqual: true`.
+- Compare key summary values: `planningShape`, `materialRepairCount`, `majorRepairCount`, `likelyAvoidableMaterialRepairCount`, `remainingMaterialRepairCount`, and `suspiciousRepairsNotEligibleForPromotion`.
+- Compare important diagnostic summaries when present: `exerciseClassAlignment`, `exerciseClassUnresolvedCauses`, `duplicateContinuityJustification`, and `preselectionDistributionPolicyByWeek`.
+- Compare artifact and section byte sizes: full artifact bytes, `planningReality` bytes, and any touched section bytes.
+- Confirm CLI/operator summary text is semantically unchanged.
+- Run focused tests, typecheck, audit matrix, live `mesocycle-explain`, and `npm run verify` when the refactor is broad enough.
+
+Do not accept a read-only diagnostic refactor based only on TypeScript/tests if serialized diagnostic equality was not checked. Tests may pass while artifact shape or meaning drifts.
+
+Recommended verification snippet:
+
+```powershell
+npm run test -- src/lib/api/mesocycle-handoff-slot-plan-projection.test.ts
+npm run test -- src/lib/audit/workout-audit/workout-audit-cli.test.ts
+npm run test -- src/lib/audit/workout-audit/mesocycle-explain.test.ts
+npm run test -- src/lib/audit/workout-audit/artifact-serialization.test.ts
+npx tsc --noEmit
+npm run test:audit:matrix
+npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com --operator-debug
+npm run verify
+```
+
 ## Required output
 
 Return:

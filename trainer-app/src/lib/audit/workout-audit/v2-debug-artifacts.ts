@@ -949,11 +949,25 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
                   typeof donorSurplusSummary?.candidateCount === "number"
                     ? donorSurplusSummary.candidateCount
                     : countArray(donorSurplusEvidence.donorEvidence),
+                measuredMarginCount:
+                  typeof donorSurplusSummary?.measuredMarginCount === "number"
+                    ? donorSurplusSummary.measuredMarginCount
+                    : asRecordArray(donorSurplusEvidence.donorEvidence).filter(
+                        (row) =>
+                          asRecord(row.baselineCoverage)?.measured === true,
+                      ).length,
                 eligibleCount:
                   typeof donorSurplusSummary?.eligibleCount === "number"
                     ? donorSurplusSummary.eligibleCount
                     : asRecordArray(donorSurplusEvidence.donorEvidence).filter(
                         (row) => asRecord(row.eligibility)?.eligible === true,
+                      ).length,
+                ineligibleCount:
+                  typeof donorSurplusSummary?.ineligibleCount === "number"
+                    ? donorSurplusSummary.ineligibleCount
+                    : asRecordArray(donorSurplusEvidence.donorEvidence).filter(
+                        (row) =>
+                          asRecord(row.eligibility)?.eligible !== true,
                       ).length,
                 unknownMarginCount:
                   typeof donorSurplusSummary?.unknownMarginCount === "number"
@@ -967,6 +981,9 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
                   typeof donorSurplusSummary?.slotIncompatibleCount === "number"
                     ? donorSurplusSummary.slotIncompatibleCount
                     : 0,
+                topReasons: Array.isArray(donorSurplusSummary?.topReasons)
+                  ? donorSurplusSummary.topReasons
+                  : [],
                 consumedByDemandOrMaterializer:
                   donorSurplusEvidence.consumedByDemandOrMaterializer === true
                     ? true

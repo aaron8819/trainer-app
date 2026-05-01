@@ -375,6 +375,7 @@ export type V2DonorSurplusEvidence = {
       floorSets?: number;
       preferredSets?: number;
       surplusAboveFloor?: number;
+      safetyMarginRequired?: number;
       status: V2DonorSurplusBaselineCoverageStatus;
     };
     protectedConflict: {
@@ -394,11 +395,16 @@ export type V2DonorSurplusEvidence = {
   }>;
   summary: {
     candidateCount: number;
+    measuredMarginCount: number;
     eligibleCount: number;
     ineligibleCount: number;
     unknownMarginCount: number;
     protectedOverlapCount: number;
     slotIncompatibleCount: number;
+    topReasons: Array<{
+      reason: V2DonorSurplusEligibilityReason;
+      count: number;
+    }>;
   };
   limitations: string[];
 };

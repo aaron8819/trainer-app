@@ -2604,9 +2604,12 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
       "target_tier_under_hit",
     );
-    expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
-      "safe_surplus_margin",
-    );
+    expect(compactPromotionDiffSummary).toMatchObject({
+      donorSurplusEvidence: {
+        measuredMarginCount: 1,
+        topReasons: [{ reason: "safe_surplus_margin", count: 1 }],
+      },
+    });
     expect(JSON.stringify(compactPromotionDiffSummary)).toContain(
       "slotOwnedDemandAdjustmentPlan",
     );

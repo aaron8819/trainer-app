@@ -1322,9 +1322,11 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
       status: "available",
       summary: {
         candidateCount: 1,
+        measuredMarginCount: 1,
         eligibleCount: 1,
         ineligibleCount: 0,
         unknownMarginCount: 0,
+        topReasons: [{ reason: "safe_surplus_margin", count: 1 }],
       },
       donorEvidence: [
         {
@@ -1337,6 +1339,7 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
             floorSets: 6,
             preferredSets: 8,
             surplusAboveFloor: 6,
+            safetyMarginRequired: 1,
             status: "surplus",
           },
           protectedConflict: {
@@ -1365,7 +1368,48 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     );
   });
 
-  it("requires measurable donor floor margin before eligibility", () => {
+  it("keeps unknown-margin candidates ineligible when floor is missing", () => {
+    const evidence = buildV2DonorSurplusEvidence({
+      evaluatesCombinedPair: true,
+      candidateProtectedMuscles: ["Side Delts"],
+      candidateDonorMuscles: ["Glutes"],
+      blockSignals: buildStrategyInput().blockResponseSignals,
+      baseCoverageRows: [
+        {
+          muscle: "Glutes",
+          status: "covered",
+          sets: 12,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+      ],
+      donorSlotOwners: { Glutes: ["lower_a"] },
+      clearlyOverConcentratedMuscles: ["Glutes"],
+    });
+
+    expect(evidence.donorEvidence[0]).toMatchObject({
+      muscle: "Glutes",
+      baselineCoverage: {
+        measured: false,
+        effectiveSets: 12,
+        safetyMarginRequired: 1,
+        status: "unknown",
+      },
+      eligibility: {
+        eligible: false,
+        reason: "unknown_margin",
+        confidence: "low",
+      },
+    });
+    expect(evidence.summary).toMatchObject({
+      candidateCount: 1,
+      measuredMarginCount: 0,
+      eligibleCount: 0,
+      unknownMarginCount: 1,
+    });
+  });
+
+  it("keeps unknown-margin candidates ineligible when baseline coverage is missing", () => {
     const evidence = buildV2DonorSurplusEvidence({
       evaluatesCombinedPair: true,
       candidateProtectedMuscles: ["Side Delts"],
@@ -1379,6 +1423,7 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
         muscle: "Glutes",
         baselineCoverage: {
           measured: false,
+          safetyMarginRequired: 1,
           status: "unknown",
         },
         eligibility: {
@@ -1390,8 +1435,90 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     ]);
     expect(evidence.summary).toMatchObject({
       candidateCount: 1,
+      measuredMarginCount: 0,
       eligibleCount: 0,
       unknownMarginCount: 1,
+    });
+  });
+
+  it("computes surplus only when baseline and floor are both measured", () => {
+    const evidence = buildV2DonorSurplusEvidence({
+      evaluatesCombinedPair: true,
+      candidateProtectedMuscles: ["Side Delts"],
+      candidateDonorMuscles: ["Glutes", "Upper Back"],
+      blockSignals: buildStrategyInput().blockResponseSignals,
+      baseCoverageRows: [
+        {
+          muscle: "Glutes",
+          status: "covered",
+          sets: 12,
+          minSets: 6,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+        {
+          muscle: "Upper Back",
+          status: "covered",
+          minSets: 6,
+          priority: "primary",
+          targetTier: "A_PRIMARY",
+        },
+      ],
+      donorSlotOwners: { Glutes: ["lower_a"], "Upper Back": ["upper_a"] },
+      clearlyOverConcentratedMuscles: ["Glutes", "Upper Back"],
+    });
+    const rows = new Map(evidence.donorEvidence.map((row) => [row.muscle, row]));
+
+    expect(rows.get("Glutes")?.baselineCoverage).toMatchObject({
+      measured: true,
+      effectiveSets: 12,
+      floorSets: 6,
+      surplusAboveFloor: 6,
+      safetyMarginRequired: 1,
+      status: "surplus",
+    });
+    expect(rows.get("Upper Back")?.baselineCoverage).toMatchObject({
+      measured: false,
+      floorSets: 6,
+      safetyMarginRequired: 1,
+      status: "unknown",
+    });
+    expect(rows.get("Upper Back")?.baselineCoverage).not.toHaveProperty(
+      "surplusAboveFloor",
+    );
+  });
+
+  it("does not infer donor surplus from over-concentration evidence alone", () => {
+    const evidence = buildV2DonorSurplusEvidence({
+      evaluatesCombinedPair: true,
+      candidateProtectedMuscles: ["Side Delts"],
+      candidateDonorMuscles: ["Glutes"],
+      blockSignals: buildStrategyInput().blockResponseSignals.map((signal) => ({
+        ...signal,
+        muscleDistribution: {
+          ...signal.muscleDistribution,
+          recurringOverConcentratedMuscles: ["Glutes"],
+        },
+        fatigueDistribution: {
+          ...signal.fatigueDistribution,
+          likelyFatigueDrivers: [],
+          evidence: [],
+        },
+      })),
+      donorSlotOwners: { Glutes: ["lower_a"] },
+      clearlyOverConcentratedMuscles: ["Glutes"],
+    });
+
+    expect(evidence.donorEvidence[0]).toMatchObject({
+      candidateReason: "over_concentration",
+      baselineCoverage: {
+        measured: false,
+        status: "unknown",
+      },
+      eligibility: {
+        eligible: false,
+        reason: "unknown_margin",
+      },
     });
   });
 
@@ -1455,9 +1582,47 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     expect(reasonByMuscle.get("Lats")).toBe("below_floor");
     expect(reasonByMuscle.get("Quads")).toBe("at_floor");
     expect(evidence.summary).toMatchObject({
+      measuredMarginCount: 4,
       eligibleCount: 0,
       protectedOverlapCount: 1,
       slotIncompatibleCount: 1,
+    });
+  });
+
+  it("allows protected donor overlap only when protected surplus is proven", () => {
+    const evidence = buildV2DonorSurplusEvidence({
+      evaluatesCombinedPair: true,
+      candidateProtectedMuscles: ["Hamstrings"],
+      candidateDonorMuscles: ["Hamstrings"],
+      blockSignals: buildStrategyInput().blockResponseSignals,
+      baseCoverageRows: [
+        {
+          muscle: "Hamstrings",
+          status: "covered",
+          sets: 8,
+          minSets: 6,
+          priority: "primary",
+          targetTier: "A_PRIMARY",
+        },
+      ],
+      donorSlotOwners: { Hamstrings: ["lower_a"] },
+      clearlyOverConcentratedMuscles: ["Hamstrings"],
+    });
+
+    expect(evidence.donorEvidence[0]).toMatchObject({
+      protectedConflict: {
+        isProtectedMuscle: true,
+        requiresSurplusProof: true,
+      },
+      baselineCoverage: {
+        measured: true,
+        surplusAboveFloor: 2,
+        safetyMarginRequired: 1,
+      },
+      eligibility: {
+        eligible: true,
+        reason: "safe_surplus_margin",
+      },
     });
   });
 
@@ -1499,10 +1664,18 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
       eligible: false,
       reason: "insufficient_margin",
     });
+    expect(
+      evidence.donorEvidence.find((row) => row.muscle === "Chest")
+        ?.baselineCoverage.safetyMarginRequired,
+    ).toBe(1);
     expect(eligibilityByMuscle.get("Forearms")).toMatchObject({
       eligible: true,
       reason: "safe_surplus_margin",
     });
+    expect(
+      evidence.donorEvidence.find((row) => row.muscle === "Forearms")
+        ?.baselineCoverage.safetyMarginRequired,
+    ).toBe(0.5);
   });
 
   it("keeps filtered candidates non-binding and leaves gates dependent on measured deltas", () => {

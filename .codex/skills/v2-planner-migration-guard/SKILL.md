@@ -55,6 +55,17 @@ Artifact output changed: yes/no
 
 If multiple layers apply, use the most restrictive guardrails.
 
+## Pause And Ask / Re-scope
+
+Pause before editing if:
+
+- the prompt asks to "promote" a diagnostic but does not name the behavior owner
+- the task could affect seed/runtime semantics
+- the task uses repaired projection as the expected output
+- the task asks for production V2 writes without explicit gates
+- the task would add detailed arrays to the main artifact
+- the task crosses pure V2 and API/audit/runtime seams
+
 ## Step 2: Global Invariants
 
 - V2 should replace the plan author, not the plan executor.

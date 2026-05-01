@@ -111,6 +111,19 @@ const RECOMMENDATION_MUST_NOT_YET_INFLUENCE: V2MesocycleStrategyRecommendationMu
 const PROMOTION_DIFF_HYPOTHESIS_IDS: V2StrategyHypothesisPromotionDiffHypothesisId[] =
   ["protect_lagging_muscles_earlier", "cap_late_block_volume"];
 
+const DONOR_SURPLUS_ELIGIBILITY_REASONS: V2DonorSurplusEligibilityReason[] = [
+  "safe_surplus_margin",
+  "protected_overlap",
+  "below_floor",
+  "at_floor",
+  "insufficient_margin",
+  "unknown_margin",
+  "slot_incompatible",
+  "concentration_risk",
+  "fatigue_regression_risk",
+  "unknown",
+];
+
 const RECOMMENDATION_INFLUENCE_TARGETS: Record<
   V2MesocycleStrategyRecommendationHypothesisId,
   V2MesocycleStrategyRecommendationInfluenceTarget[]
@@ -2243,6 +2256,7 @@ function donorCoverageFromSources(input: {
   preShadowCandidateFilter:
     | V2StrategyHypothesisPreShadowCandidateFilter
     | undefined;
+  safetyMarginRequired: number;
 }): V2DonorSurplusEvidence["donorEvidence"][number]["baselineCoverage"] {
   const row = input.baseCoverageRows?.find(
     (candidate) => candidate.muscle === input.muscle,
@@ -2275,6 +2289,7 @@ function donorCoverageFromSources(input: {
     ...(typeof floorSets === "number" ? { floorSets } : {}),
     ...(typeof preferredSets === "number" ? { preferredSets } : {}),
     ...(typeof surplusAboveFloor === "number" ? { surplusAboveFloor } : {}),
+    safetyMarginRequired: input.safetyMarginRequired,
     status,
   };
 }
@@ -2401,10 +2416,16 @@ export function buildV2DonorSurplusEvidence(
       coverageRow?.targetTier ??
       getMuscleTargetSemantics(muscle).targetTier ??
       undefined;
+    const targetTierDonor =
+      targetTier === "A_PRIMARY" || targetTier === "B_SUPPORT";
+    const safetyMarginRequired = targetTierDonor
+      ? targetTierFloorMarginSets
+      : floorMarginSets;
     const baselineCoverage = donorCoverageFromSources({
       muscle,
       baseCoverageRows: input.baseCoverageRows,
       preShadowCandidateFilter: input.preShadowCandidateFilter,
+      safetyMarginRequired,
     });
     const protectedConflict = {
       isProtectedMuscle: candidateProtected.has(muscle),
@@ -2446,6 +2467,9 @@ export function buildV2DonorSurplusEvidence(
 
   const summary: V2DonorSurplusEvidence["summary"] = {
     candidateCount: donorEvidence.length,
+    measuredMarginCount: donorEvidence.filter(
+      (row) => row.baselineCoverage.measured,
+    ).length,
     eligibleCount: donorEvidence.filter((row) => row.eligibility.eligible)
       .length,
     ineligibleCount: donorEvidence.filter((row) => !row.eligibility.eligible)
@@ -2459,6 +2483,17 @@ export function buildV2DonorSurplusEvidence(
     slotIncompatibleCount: donorEvidence.filter(
       (row) => row.eligibility.reason === "slot_incompatible",
     ).length,
+    topReasons: DONOR_SURPLUS_ELIGIBILITY_REASONS.map((reason) => ({
+      reason,
+      count: donorEvidence.filter((row) => row.eligibility.reason === reason)
+        .length,
+    }))
+      .filter((row) => row.count > 0)
+      .sort(
+        (left, right) =>
+          right.count - left.count || left.reason.localeCompare(right.reason),
+      )
+      .slice(0, 5),
   };
   const status: V2DonorSurplusEvidence["status"] =
     !input.evaluatesCombinedPair || donorEvidence.length === 0

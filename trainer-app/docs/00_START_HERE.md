@@ -31,6 +31,7 @@ Sources of truth:
 - `docs/07_OPERATIONS.md`: env, migrations, seed, verification, production hygiene
 - `docs/08_AUDIT_CLI_DB_VALIDATION.md`: direct DB-backed validation runbook for workout-audit CLI
 - `docs/09_AUDIT_PLAYBOOK.md`: recurring audit workflow and artifact-reading guide
+- `docs/10_HYPERTROPHY_MESOCYCLE_ENGINE_TARGET_SPEC.md`: target architecture report and migration map for the first-principles hypertrophy mesocycle planner; not current runtime behavior until implemented
 - `docs/contracts/runtime-contracts.json`: canonical enum/runtime contract values
 
 Reference-only docs:

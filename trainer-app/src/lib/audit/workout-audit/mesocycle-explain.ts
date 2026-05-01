@@ -47,7 +47,11 @@ import {
   buildSessionAuditMutationSummary,
   resolvePersistedOrReconstructedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
-import { getMuscleTargetSemantics } from "@/lib/engine/volume-landmarks";
+import {
+  getMuscleTargetSemantics,
+  normalizeExposedMuscle,
+  VOLUME_LANDMARKS,
+} from "@/lib/engine/volume-landmarks";
 import {
   buildV2PlannerMesocyclePolicy,
   buildV2StrategyHypothesisPreShadowCandidateFilter,
@@ -2283,7 +2287,7 @@ function buildCoverageRows(input: {
   const requestedMuscles = input.muscles
     ? new Set(input.muscles)
     : undefined;
-  return input.planningReality.shadowWeeklyDemand
+  const rows = input.planningReality.shadowWeeklyDemand
     .filter((row) => {
       if (requestedMuscles && !requestedMuscles.has(row.muscle)) {
         return false;
@@ -2314,6 +2318,52 @@ function buildCoverageRows(input: {
       };
     })
     .sort((left, right) => left.muscle.localeCompare(right.muscle));
+  if (!requestedMuscles) {
+    return rows;
+  }
+
+  const measuredMuscles = new Set(rows.map((row) => row.muscle));
+  const fallbackRows = [...requestedMuscles]
+    .filter((muscle) => !measuredMuscles.has(muscle))
+    .flatMap((muscle) => {
+      const exposedMuscle = normalizeExposedMuscle(muscle);
+      const semantics = getMuscleTargetSemantics(exposedMuscle);
+      const landmarks = VOLUME_LANDMARKS[exposedMuscle];
+      const floor = semantics.softTargetRange?.min ?? landmarks?.mev;
+      if (floor == null) {
+        return [];
+      }
+      const preferred = semantics.softTargetRange?.max ?? landmarks?.mav;
+      const maxTarget = landmarks?.mav ?? semantics.softTargetRange?.max;
+      const sets = totals.get(muscle) ?? totals.get(exposedMuscle) ?? 0;
+      return [
+        {
+          muscle,
+          status: coverageStatus({
+            sets,
+            minSets: floor,
+            maxSets: maxTarget ?? null,
+          }),
+          sets,
+          minSets: floor,
+          ...(preferred != null ? { preferredSets: preferred } : {}),
+          ...(maxTarget != null ? { maxSets: maxTarget } : {}),
+          priority:
+            semantics.targetTier === "A_PRIMARY"
+              ? "primary"
+              : semantics.targetTier === "B_SUPPORT"
+                ? "support"
+                : semantics.targetTier === "C_SECONDARY"
+                  ? "secondary"
+                  : "implicit",
+          ...(semantics.targetTier ? { targetTier: semantics.targetTier } : {}),
+        } satisfies V2StrategyHypothesisProjectionCoverageRow,
+      ];
+    });
+
+  return [...rows, ...fallbackRows].sort((left, right) =>
+    left.muscle.localeCompare(right.muscle),
+  );
 }
 
 function buildMetricSummary(input: {
@@ -2584,6 +2634,10 @@ function buildPreShadowCandidateFilter(input: {
     candidateDonorMuscles: input.preliminaryDonorMuscles,
     baseCoverageRows: buildCoverageRows({
       planningReality: input.noRepairPlanningReality,
+      muscles: uniqueSorted([
+        ...input.preliminaryDonorMuscles,
+        ...input.preliminaryProtectedMuscles,
+      ]),
     }),
     protectedSlotOwners: resolveStrategyShadowProtectedSlotOwners(
       input.preliminaryProtectedMuscles,

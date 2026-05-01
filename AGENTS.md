@@ -31,6 +31,9 @@
 - Use `receipt-integrity` for any change that touches `selectionMetadata.sessionDecisionReceipt`, receipt-backed meaning, or consumers that depend on persisted session-decision context.
 - Use `seed-runtime-source-of-truth` for any task touching accepted seed shape, slot/runtime replay, template-session, deload replay, acceptedPlannerIntent/provenance, receipts, reseed/update paths, or audit claims about seed/runtime behavior.
 
+## Contextual Skills
+- Use `v2-planner-migration-guard` when a task touches V2 planner policy, diagnostics, materialization dry-run, audit shards, accepted seed contracts, runtime replay, or repair promotion/readouts.
+
 ## Session Retrospectives
 - Use `session-retrospective` before the final response of substantial implementation, debugging, audit, or validation sessions.
 - The retrospective should capture observable lessons from the session: what changed, what was hard, what assumptions were corrected, what verification mattered, and how future prompts or workflows could improve.

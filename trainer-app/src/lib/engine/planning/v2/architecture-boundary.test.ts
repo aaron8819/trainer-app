@@ -202,6 +202,7 @@ describe("V2 planner policy module boundary", () => {
     expect(exportedText).toContain("V2ExerciseMaterializationPlan");
     expect(exportedText).toContain("V2MaterializationDryRunReport");
     expect(exportedText).toContain("V2MaterializationPromotionReadiness");
+    expect(exportedText).toContain("V2BasePlanValidation");
     expect(exportedText).toContain("V2AcceptedPlannerIntentDto");
   });
 
@@ -402,6 +403,46 @@ describe("V2 planner policy module boundary", () => {
     expect(violations).toEqual([]);
   });
 
+  it("does not add BasePlanValidation to audit artifact or sidecar schemas", () => {
+    const artifactFiles = [
+      path.join(process.cwd(), "src", "lib", "audit", "workout-audit", "types.ts"),
+      path.join(
+        process.cwd(),
+        "src",
+        "lib",
+        "audit",
+        "workout-audit",
+        "serializer.ts",
+      ),
+      path.join(
+        process.cwd(),
+        "src",
+        "lib",
+        "audit",
+        "workout-audit",
+        "artifact-serialization.ts",
+      ),
+      path.join(
+        process.cwd(),
+        "src",
+        "lib",
+        "audit",
+        "workout-audit",
+        "v2-debug-artifacts.ts",
+      ),
+    ];
+    const violations = artifactFiles.flatMap((file) => {
+      const text = fs.readFileSync(file, "utf8");
+      return /basePlanValidation|V2BasePlanValidation|v2_base_plan_validation|buildV2BasePlanValidation/.test(
+        text,
+      )
+        ? [`${path.relative(process.cwd(), file)} exposes base plan validation`]
+        : [];
+    });
+
+    expect(violations).toEqual([]);
+  });
+
   it("does not call the dry-run materializer from production modules", () => {
     const sourceDir = path.join(process.cwd(), "src");
     const materializationSegment = `${path.sep}engine${path.sep}planning${path.sep}v2${path.sep}materialization${path.sep}`;
@@ -437,6 +478,21 @@ describe("V2 planner policy module boundary", () => {
       const text = fs.readFileSync(file, "utf8");
       return /buildV2MaterializationDryRunReport\s*\(/.test(text)
         ? [`${path.relative(process.cwd(), file)} calls dry-run materialization report`]
+        : [];
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  it("does not call the base-plan validation diagnostic from production modules", () => {
+    const sourceDir = path.join(process.cwd(), "src");
+    const violations = listSourceTypeScriptFiles(sourceDir).flatMap((file) => {
+      if (file.startsWith(v2PolicyDir)) {
+        return [];
+      }
+      const text = fs.readFileSync(file, "utf8");
+      return /buildV2BasePlanValidation\s*\(/.test(text)
+        ? [`${path.relative(process.cwd(), file)} calls base plan validation`]
         : [];
     });
 

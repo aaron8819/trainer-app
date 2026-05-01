@@ -1,5 +1,6 @@
 export { buildV2DeloadTransformPolicy } from "./deload-transform";
 export { buildV2AcceptedPlannerIntentDto } from "./accepted-planner-intent-dto";
+export { buildV2BasePlanValidation } from "./materialization/base-plan-validation";
 export { buildV2ExerciseClassDistributionBySlot } from "./exercise-class-distribution";
 export { buildV2ExerciseSelectionPlan } from "./exercise-selection-plan";
 export { buildV2MaterializationDryRunReport } from "./materialization/dry-run-report";
@@ -142,6 +143,13 @@ export type {
   V2MaterializationExercise,
   V2MaterializedSelection,
 } from "./materialization/types";
+export type {
+  V2BasePlanValidation,
+  V2BasePlanValidationInput,
+  V2BasePlanValidationIssue,
+  V2BasePlanValidationNextSafeAction,
+  V2BasePlanValidationStatus,
+} from "./materialization/base-plan-validation";
 export type { V2SelectionCapacityPlanInput } from "./selection-capacity-plan";
 export type {
   V2SupportLaneActivationEvaluation,

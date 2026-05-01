@@ -80,6 +80,7 @@
 | 2026-05-01 | self | In the first shadow-consumption trial patch, returned `shadowRemainingDependencyCount` while the computed variable was named `shadowRemainingRepairDependencyCount`, causing focused Vitest to fail at runtime. | After adding similarly named diagnostic summary fields, run the focused test immediately and prefer consistent full names through the return object. |
 | 2026-05-01 | self | Used the reserved `repairedProjection` wording inside pure V2 materialization diagnostics and tripped the architecture-boundary readout-key scan. | In pure V2 files, keep the existing neutral `repairedPlan` vocabulary; reserve repaired-projection wording for audit/operator surfaces outside the pure policy boundary. |
 | 2026-05-01 | self | Serializer fixture Vitest passed but `tsc --noEmit` failed because the new shadow-consumption fixture omitted required nested `interpretationRules` and detailed `changes` sections. | For new typed audit DTOs, make serializer fixtures satisfy the full exported type before trusting artifact-focused tests. |
+| 2026-05-01 | self | Assumed user-supplied audit artifact paths were repo-root relative and hit `ENOENT`; Trainer audit artifacts are under `trainer-app/artifacts/audits/` from the repo root. | Resolve audit artifact paths relative to `trainer-app/` first when the prompt names `artifacts/audits/...`. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

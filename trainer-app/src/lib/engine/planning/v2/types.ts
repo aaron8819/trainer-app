@@ -1302,15 +1302,23 @@ export type V2ExerciseSelectionPlan = {
         laneId: string;
         requirement: "required" | "conditional_optional" | "optional";
         role: V2PlannerLaneRole;
+        classLaneKind: V2ExerciseClassDistributionBySlot["weeks"][number]["slots"][number]["classLanes"][number]["classLaneKind"];
         primaryMuscles: string[];
+        supportMuscles: string[];
+        optionalMuscles: string[];
+        managedCollateralMuscles: string[];
+        ownershipKinds: V2ExerciseClassDistributionBySlot["weeks"][number]["slots"][number]["classLanes"][number]["ownershipRows"][number]["ownershipKind"][];
         acceptableExerciseClasses: string[];
         preferredExerciseClasses: string[];
         setBudget: V2PlannerSetRange;
+        setBudgetBasis: V2SetDistributionIntent["weeks"][number]["slots"][number]["lanes"][number]["setBudget"]["basis"];
         directFloor?: {
           muscle: string;
           minDirectSets: number;
           collateralCanSatisfy: false;
+          requiredExerciseClasses: string[];
         };
+        optionalActivation?: V2SetDistributionIntent["weeks"][number]["slots"][number]["lanes"][number]["optionalActivation"];
         duplicatePolicy: {
           scope: "same_slot" | "same_week" | "across_accumulation";
           classDistinctness:

@@ -60,6 +60,7 @@ export function buildV2PlannerMesocyclePolicy(
   });
   const exerciseSelectionPlan = buildV2ExerciseSelectionPlan({
     exerciseClassDistributionBySlot,
+    v2SetDistributionIntent,
     v2SupportLanePolicy,
     selectionCapacityPlan,
   });

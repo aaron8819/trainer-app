@@ -81,7 +81,7 @@ export function buildV2ExerciseMaterializationPlan(
         continue;
       }
 
-      if (isOptionalLane(lane)) {
+      if (isNonRequiredMaterializationLane(lane)) {
         omissions.push({
           slotId: slot.slotId,
           laneId: lane.laneId,
@@ -123,7 +123,13 @@ function representativeSlots(
 ): PlanSlot[] {
   const seen = new Set<string>();
   const slots: PlanSlot[] = [];
-  for (const week of [...weeks].sort((left, right) => left.week - right.week)) {
+  const sortedWeeks = [...weeks].sort((left, right) => left.week - right.week);
+  const baseWeeks = sortedWeeks.filter((week) =>
+    ["accumulation", "hard_accumulation", "peak_overreach_lite"].includes(
+      week.phase,
+    ),
+  );
+  for (const week of baseWeeks.length ? baseWeeks : sortedWeeks) {
     for (const slot of [...week.slots].sort(
       (left, right) =>
         left.slotIndex - right.slotIndex || left.slotId.localeCompare(right.slotId),
@@ -189,7 +195,7 @@ function materializeLane(input: {
         | V2ExerciseMaterializationPlan["blockers"][number]["reason"]
         | "optional_not_activated";
     } {
-  if (isOptionalLane(input.lane) && input.lane.setBudget.preferred <= 0) {
+  if (shouldSkipLaneByPolicy(input.lane)) {
     return { kind: "unmaterialized", reason: "optional_not_activated" };
   }
   if (input.materializedSlot.exercises.length >= input.slot.maxExerciseCount) {
@@ -222,9 +228,21 @@ function materializeLane(input: {
     return { kind: "unmaterialized", reason: "no_class_match" };
   }
 
+  const directFloorClassIds: string[] = input.lane.directFloor?.requiredExerciseClasses
+    ?.length
+    ? resolveV2ExerciseClassIds(
+        input.taxonomy,
+        input.lane.directFloor.requiredExerciseClasses,
+      )
+    : [];
   const directCandidates = input.lane.directFloor
-    ? classCandidates.filter((candidate) =>
-        candidate.match.directMuscles.includes(input.lane.directFloor?.muscle ?? ""),
+    ? classCandidates.filter(
+        (candidate) =>
+          candidate.match.directMuscles.includes(
+            input.lane.directFloor?.muscle ?? "",
+          ) &&
+          (!directFloorClassIds.length ||
+            directFloorClassIds.includes(candidate.match.classId)),
       )
     : classCandidates;
   if (!directCandidates.length) {
@@ -394,6 +412,21 @@ function isDuplicate(
   );
 }
 
-function isOptionalLane(lane: PlanLane): boolean {
-  return lane.requirement === "optional" || lane.requirement === "conditional_optional";
+function shouldSkipLaneByPolicy(lane: PlanLane): boolean {
+  return (
+    lane.setBudget.preferred <= 0 ||
+    lane.classLaneKind === "managed_collateral_marker" ||
+    (lane.classLaneKind === "optional_recoverable_lane" &&
+      lane.setBudget.preferred <= 0)
+  );
+}
+
+function isNonRequiredMaterializationLane(lane: PlanLane): boolean {
+  return (
+    lane.requirement === "optional" ||
+    lane.requirement === "conditional_optional" ||
+    lane.classLaneKind === "optional_recoverable_lane" ||
+    lane.classLaneKind === "managed_collateral_marker" ||
+    lane.setBudget.preferred <= 0
+  );
 }

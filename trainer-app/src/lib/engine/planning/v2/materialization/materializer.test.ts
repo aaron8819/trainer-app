@@ -43,8 +43,20 @@ function exercise(
 function lane(input: Partial<PlanLane> & Pick<PlanLane, "laneId" | "role" | "primaryMuscles" | "acceptableExerciseClasses">): PlanLane {
   return {
     requirement: "required",
+    classLaneKind: input.role === "optional"
+      ? "optional_recoverable_lane"
+      : "owned_class_lane",
+    supportMuscles: [],
+    optionalMuscles: input.role === "optional" ? [...input.primaryMuscles] : [],
+    managedCollateralMuscles: [],
+    ownershipKinds: input.role === "optional"
+      ? ["optional_if_needed"]
+      : ["primary_exposure"],
     preferredExerciseClasses: [...input.acceptableExerciseClasses],
     setBudget: { min: 2, preferred: 3, max: 3 },
+    setBudgetBasis: input.role === "optional"
+      ? "optional_activation_required"
+      : "class_ownership_allocation",
     duplicatePolicy: {
       scope: "same_slot",
       classDistinctness: "preferred",
@@ -371,7 +383,12 @@ const representativeV2Inventory = [
 
 function representativeRequiredLaneIds(plan: V2ExerciseSelectionPlan): string[] {
   const seenSlots = new Set<string>();
-  return plan.weeks
+  const baseWeeks = plan.weeks.filter((week) =>
+    ["accumulation", "hard_accumulation", "peak_overreach_lite"].includes(
+      week.phase,
+    ),
+  );
+  return (baseWeeks.length ? baseWeeks : plan.weeks)
     .flatMap((week) =>
       week.slots.flatMap((slot) => {
         if (seenSlots.has(slot.slotId)) {
@@ -384,6 +401,20 @@ function representativeRequiredLaneIds(plan: V2ExerciseSelectionPlan): string[] 
       }),
     )
     .sort();
+}
+
+function exerciseForLane(
+  result: V2ExerciseMaterializationPlan,
+  slotId: string,
+  laneId: string,
+) {
+  const found = result.slots
+    .find((slotRow) => slotRow.slotId === slotId)
+    ?.exercises.find((exerciseRow) => exerciseRow.laneIds.includes(laneId));
+  if (!found) {
+    throw new Error(`Missing materialized lane ${slotId}:${laneId}`);
+  }
+  return found;
 }
 
 describe("buildV2ExerciseMaterializationPlan", () => {
@@ -412,6 +443,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
             muscle: "Triceps",
             minDirectSets: 2,
             collateralCanSatisfy: false,
+            requiredExerciseClasses: ["triceps_isolation"],
           },
         }),
         lane({
@@ -525,6 +557,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
             muscle: "Triceps",
             minDirectSets: 2,
             collateralCanSatisfy: false,
+            requiredExerciseClasses: ["triceps_isolation"],
           },
         }),
       ]),
@@ -544,6 +577,82 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       {
         slotId: "upper_a",
         laneId: "triceps",
+        reason: "direct_floor_unmaterialized",
+      },
+    ]);
+  });
+
+  it("does not let OHP collateral satisfy the side-delt direct floor", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "side_delt_isolation",
+          role: "accessory",
+          primaryMuscles: ["Side Delts"],
+          acceptableExerciseClasses: ["vertical_press", "lateral_raise"],
+          directFloor: {
+            muscle: "Side Delts",
+            minDirectSets: 3,
+            collateralCanSatisfy: false,
+            requiredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
+          },
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "shoulder-press",
+          name: "Machine Shoulder Press",
+          aliases: ["OHP"],
+          primaryMuscles: ["Front Delts", "Side Delts"],
+          movementPatterns: ["vertical_press"],
+          isCompound: true,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "side_delt_isolation",
+        reason: "direct_floor_unmaterialized",
+      },
+    ]);
+  });
+
+  it("does not let row collateral satisfy the rear-delt direct floor", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "rear_delt",
+          role: "accessory",
+          primaryMuscles: ["Rear Delts"],
+          acceptableExerciseClasses: [
+            "horizontal_pull_support",
+            "rear_delt_isolation",
+          ],
+          directFloor: {
+            muscle: "Rear Delts",
+            minDirectSets: 2,
+            collateralCanSatisfy: false,
+            requiredExerciseClasses: ["rear_delt_isolation"],
+          },
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "supported-row",
+          name: "Chest Supported Row",
+          primaryMuscles: ["Upper Back", "Lats"],
+          movementPatterns: ["row"],
+          isCompound: true,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "rear_delt",
         reason: "direct_floor_unmaterialized",
       },
     ]);
@@ -592,6 +701,106 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(result.slots[0]?.exercises.map((row) => row.exerciseId)).toEqual([
       "bench",
       "fly",
+    ]);
+  });
+
+  it("prefers a distinct chest class family over same-press novelty", () => {
+    const chestPlan = plan([
+      lane({
+        laneId: "chest_anchor",
+        role: "anchor",
+        primaryMuscles: ["Chest"],
+        acceptableExerciseClasses: ["horizontal_press"],
+      }),
+      lane({
+        laneId: "chest_second_exposure",
+        role: "support",
+        primaryMuscles: ["Chest"],
+        acceptableExerciseClasses: ["horizontal_press", "fly"],
+        duplicatePolicy: {
+          scope: "same_slot",
+          classDistinctness: "required_if_clean_alternative_exists",
+          sameExerciseAllowedOnlyWithJustification: true,
+        },
+        cleanAlternativePolicy: {
+          requiredBeforeDuplicate: true,
+          evaluationTiming: "future_inventory_selection",
+        },
+      }),
+    ]);
+
+    const result = materialize({
+      plan: chestPlan,
+      inventory: [
+        exercise({
+          exerciseId: "machine-press",
+          name: "Machine Chest Press",
+          primaryMuscles: ["Chest"],
+          movementPatterns: ["horizontal_press"],
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "selectorized-press",
+          name: "Selectorized Chest Press",
+          primaryMuscles: ["Chest"],
+          movementPatterns: ["horizontal_press"],
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "fly",
+          name: "Cable Fly",
+          primaryMuscles: ["Chest"],
+          movementPatterns: ["fly"],
+          fatigueCost: 3,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([]);
+    expect(result.slots[0]?.exercises.map((row) => row.exerciseId)).toEqual([
+      "machine-press",
+      "fly",
+    ]);
+  });
+
+  it("omits managed collateral lanes even when a class match exists", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "vertical_press",
+          requirement: "optional",
+          role: "optional",
+          classLaneKind: "managed_collateral_marker",
+          primaryMuscles: [],
+          managedCollateralMuscles: ["Front Delts"],
+          ownershipKinds: ["managed_collateral"],
+          acceptableExerciseClasses: ["vertical_press"],
+          setBudget: { min: 0, preferred: 0, max: 0 },
+          setBudgetBasis: "managed_collateral_budget",
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "shoulder-press",
+          name: "Machine Shoulder Press",
+          aliases: ["OHP"],
+          primaryMuscles: ["Front Delts", "Side Delts"],
+          movementPatterns: ["vertical_press"],
+          isCompound: true,
+        }),
+      ],
+    });
+
+    expect(result.status).toBe("materialized");
+    expect(result.slots[0]?.exercises).toEqual([]);
+    expect(result.omissions).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "vertical_press",
+        reason: "optional_not_activated",
+      },
     ]);
   });
 
@@ -702,6 +911,59 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(result.status).toBe("materialized");
     expect(result.blockers).toEqual([]);
     expect(materializedLaneIds).toEqual(requiredLaneIds);
+    expect(exerciseForLane(result, "upper_a", "chest_anchor")).toMatchObject({
+      exerciseId: "machine-chest-press",
+      setCount: 4,
+    });
+    expect(exerciseForLane(result, "upper_b", "chest_second_exposure"))
+      .toMatchObject({
+        exerciseId: "cable-fly",
+        setCount: 4,
+      });
+    expect(exerciseForLane(result, "upper_a", "row_anchor")).toMatchObject({
+      exerciseId: "chest-supported-row",
+      setCount: 4,
+    });
+    expect(exerciseForLane(result, "upper_b", "vertical_pull_anchor"))
+      .toMatchObject({
+        exerciseId: "assisted-pull-up",
+        setCount: 3,
+      });
+    expect(exerciseForLane(result, "upper_b", "row_support")).toMatchObject({
+      exerciseId: "cable-row",
+      setCount: 3,
+    });
+    expect(exerciseForLane(result, "upper_b", "side_delt_isolation"))
+      .toMatchObject({
+        exerciseId: "cable-lateral-raise",
+        setCount: 4,
+      });
+    expect(exerciseForLane(result, "upper_a", "rear_delt")).toMatchObject({
+      exerciseId: "rear-delt-fly",
+      setCount: 3,
+    });
+    expect(exerciseForLane(result, "lower_b", "hinge_anchor")).toMatchObject({
+      exerciseId: "romanian-deadlift",
+      setCount: 3,
+    });
+    expect(exerciseForLane(result, "lower_b", "knee_flexion_curl"))
+      .toMatchObject({
+        exerciseId: "lying-leg-curl",
+        setCount: 2,
+      });
+    expect(exerciseForLane(result, "lower_a", "calves")).toMatchObject({
+      exerciseId: "standing-calf-raise",
+      setCount: 4,
+    });
+    expect(exerciseForLane(result, "lower_b", "calves")).toMatchObject({
+      exerciseId: "standing-calf-raise",
+      setCount: 4,
+    });
+    expect(
+      result.slots.flatMap((slotRow) =>
+        slotRow.exercises.filter((exerciseRow) => exerciseRow.setCount >= 5),
+      ),
+    ).toEqual([]);
     expect(materializedLaneIds).not.toContain("upper_b:vertical_press");
     expect(
       result.omissions.find(

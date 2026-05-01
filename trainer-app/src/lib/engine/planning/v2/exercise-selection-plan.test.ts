@@ -8,6 +8,7 @@ function buildPlan() {
   const policy = buildV2PlannerMesocyclePolicy();
   return buildV2ExerciseSelectionPlan({
     exerciseClassDistributionBySlot: policy.exerciseClassDistributionBySlot,
+    v2SetDistributionIntent: policy.v2SetDistributionIntent,
     v2SupportLanePolicy: policy.v2SupportLanePolicy,
     selectionCapacityPlan: policy.selectionCapacityPlan,
   });
@@ -109,10 +110,13 @@ describe("buildV2ExerciseSelectionPlan", () => {
     expect(lane(2, "upper_a", "chest_anchor")).toMatchObject({
       requirement: "required",
       role: "anchor",
+      classLaneKind: "owned_class_lane",
+      ownershipKinds: ["primary_exposure"],
       primaryMuscles: ["Chest"],
       acceptableExerciseClasses: ["horizontal_press", "slight_incline_press"],
       preferredExerciseClasses: ["horizontal_press", "slight_incline_press"],
       setBudget: { min: 3, preferred: 4, max: 4 },
+      setBudgetBasis: "class_ownership_allocation",
       perExerciseCap: {
         maxSetsWithoutJustification: 4,
         maxDirectExercises: 2,
@@ -125,6 +129,13 @@ describe("buildV2ExerciseSelectionPlan", () => {
     expect(lane(1, "upper_b", "optional_triceps_if_under_target")).toMatchObject({
       requirement: "conditional_optional",
       role: "optional",
+      classLaneKind: "optional_recoverable_lane",
+      optionalMuscles: ["Triceps"],
+      setBudget: { min: 0, preferred: 0, max: 0 },
+      setBudgetBasis: "optional_activation_required",
+      optionalActivation: {
+        type: "activate_only_if_weekly_target_below_range",
+      },
       cleanAlternativePolicy: {
         evaluationTiming: "future_inventory_selection",
       },
@@ -133,6 +144,9 @@ describe("buildV2ExerciseSelectionPlan", () => {
       {
         requirement: "optional",
         role: "optional",
+        classLaneKind: "optional_recoverable_lane",
+        optionalMuscles: ["Core", "Glutes"],
+        setBudget: { min: 0, preferred: 0, max: 0 },
         continuityPolicy: {
           preserve: "lane_role",
         },
@@ -146,6 +160,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
         muscle: "Triceps",
         minDirectSets: 2,
         collateralCanSatisfy: false,
+        requiredExerciseClasses: ["triceps_isolation", "pressdown"],
       },
     });
     expect(lane(1, "upper_b", "side_delt_isolation")).toMatchObject({
@@ -153,7 +168,45 @@ describe("buildV2ExerciseSelectionPlan", () => {
         muscle: "Side Delts",
         minDirectSets: 3,
         collateralCanSatisfy: false,
+        requiredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
       },
+    });
+  });
+
+  it("preserves ownership markers for managed collateral without making them selected demand", () => {
+    expect(lane(2, "upper_b", "vertical_press")).toMatchObject({
+      requirement: "optional",
+      classLaneKind: "managed_collateral_marker",
+      primaryMuscles: [],
+      managedCollateralMuscles: ["Front Delts"],
+      ownershipKinds: ["managed_collateral"],
+      acceptableExerciseClasses: ["vertical_press"],
+      setBudget: { min: 0, preferred: 0, max: 0 },
+      setBudgetBasis: "managed_collateral_budget",
+    });
+    expect(lane(2, "lower_b", "hinge_anchor")).toMatchObject({
+      classLaneKind: "owned_class_lane",
+      primaryMuscles: ["Hamstrings"],
+      managedCollateralMuscles: ["Glutes", "Lower Back"],
+      ownershipKinds: ["managed_collateral", "primary_exposure"],
+      setBudget: { min: 3, preferred: 3, max: 4 },
+    });
+  });
+
+  it("uses SetDistributionIntent budgets instead of skeleton lane defaults", () => {
+    expect(lane(2, "lower_a", "hamstring_curl")).toMatchObject({
+      setBudget: { min: 2, preferred: 2, max: 2 },
+      setBudgetBasis: "class_ownership_allocation",
+    });
+    expect(lane(2, "lower_a", "secondary_hinge")).toMatchObject({
+      primaryMuscles: ["Hamstrings"],
+      managedCollateralMuscles: ["Glutes", "Lower Back"],
+      setBudget: { min: 1, preferred: 1, max: 1 },
+      setBudgetBasis: "class_ownership_allocation",
+    });
+    expect(lane(2, "lower_b", "knee_flexion_curl")).toMatchObject({
+      setBudget: { min: 2, preferred: 2, max: 2 },
+      acceptableExerciseClasses: ["hamstring_curl"],
     });
   });
 

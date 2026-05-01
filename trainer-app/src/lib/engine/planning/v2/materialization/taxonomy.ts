@@ -331,5 +331,31 @@ function duplicateFamilyForClass(
   exercise: V2MaterializationExercise,
   classId: V2ExerciseClassId,
 ): string {
+  if (classId === "distinct_chest_press_or_fly") {
+    return `${classId}:${chestVariantFamily(exercise)}`;
+  }
   return `${classId}:${normalizeV2MaterializationText(exercise.name)}`;
+}
+
+function chestVariantFamily(exercise: V2MaterializationExercise): string {
+  const text = normalizedFields(exercise);
+  if (hasAnyPattern(exercise, ["fly"]) || hasAnyText(text, ["fly"])) {
+    return "fly";
+  }
+  if (
+    hasAnyPattern(exercise, ["slight_incline_press", "incline_press"]) ||
+    hasAnyText(text, ["slight incline", "incline"])
+  ) {
+    return "incline_press";
+  }
+  if (hasAnyText(text, ["cable press"])) {
+    return "cable_press";
+  }
+  if (hasAnyText(text, ["machine press", "machine chest press", "selectorized"])) {
+    return "machine_press";
+  }
+  if (hasAnyPattern(exercise, ["press", "horizontal_press"]) || hasAnyText(text, ["press"])) {
+    return "press";
+  }
+  return normalizeV2MaterializationText(exercise.name);
 }

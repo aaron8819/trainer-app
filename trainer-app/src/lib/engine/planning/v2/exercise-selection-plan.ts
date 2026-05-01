@@ -1,4 +1,5 @@
 import type { V2SupportLanePolicy } from "./support-lane-policy";
+import type { V2SetDistributionIntent } from "./set-distribution-intent";
 import type {
   V2ExerciseClassDistributionBySlot,
   V2ExerciseSelectionPlan,
@@ -10,6 +11,7 @@ import type {
 
 export type V2ExerciseSelectionPlanInput = {
   exerciseClassDistributionBySlot: V2ExerciseClassDistributionBySlot;
+  v2SetDistributionIntent: V2SetDistributionIntent;
   v2SupportLanePolicy: V2SupportLanePolicy;
   selectionCapacityPlan: V2SelectionCapacityPlan;
 };
@@ -17,6 +19,10 @@ export type V2ExerciseSelectionPlanInput = {
 type ClassSlot =
   V2ExerciseClassDistributionBySlot["weeks"][number]["slots"][number];
 type ClassLane = ClassSlot["classLanes"][number];
+type IntentSlot = V2SetDistributionIntent["weeks"][number]["slots"][number];
+type IntentLane = IntentSlot["lanes"][number];
+type CapacitySlot =
+  V2SelectionCapacityPlan["weeks"][number]["slots"][number];
 type CapacityLane =
   V2SelectionCapacityPlan["weeks"][number]["slots"][number]["lanes"][number];
 type Requirement =
@@ -70,20 +76,8 @@ function buildDirectFloorIndex(
       muscle: row.muscle,
       minDirectSets: row.directFloor.minDirectSets,
       collateralCanSatisfy: false,
+      requiredExerciseClasses: [...row.directFloor.requiredExerciseClasses],
     });
-  }
-  return index;
-}
-
-function buildConditionalOptionalLaneIndex(
-  policy: V2SupportLanePolicy,
-): Set<string> {
-  const index = new Set<string>();
-  for (const row of policy.supportLanes) {
-    const rule = row.optionalActivationRule;
-    if (rule.type === "conditional_under_support_floor") {
-      index.add(laneKey(rule.slotId, rule.laneId));
-    }
   }
   return index;
 }
@@ -95,36 +89,74 @@ function findClassLane(
   return slot?.classLanes.find((lane) => lane.laneId === laneId);
 }
 
-function requirementForLane(input: {
-  lane: CapacityLane;
-  classLane: ClassLane | undefined;
-  conditionalOptionalLaneIndex: ReadonlySet<string>;
-  slotId: V2PlannerSlotId;
-}): Requirement {
-  if (input.lane.role === "optional") {
-    if (
-      input.conditionalOptionalLaneIndex.has(
-        laneKey(input.slotId, input.lane.laneId),
-      )
-    ) {
-      return "conditional_optional";
+function buildCapacitySlotIndex(
+  capacity: V2SelectionCapacityPlan,
+): Map<string, CapacitySlot> {
+  const index = new Map<string, CapacitySlot>();
+  for (const week of capacity.weeks) {
+    for (const slot of week.slots) {
+      index.set(slotKey(week.week, slot.slotId), slot);
     }
-    return input.classLane?.requiredExerciseClasses.length &&
-      input.lane.setBudget.preferred > 0
-      ? "required"
-      : "optional";
+  }
+  return index;
+}
+
+function findCapacityLane(
+  slot: CapacitySlot | undefined,
+  laneId: string,
+): CapacityLane | undefined {
+  return slot?.lanes.find((lane) => lane.laneId === laneId);
+}
+
+function directFloorFromIntentLane(
+  lane: IntentLane,
+): V2ExerciseSelectionPlan["weeks"][number]["slots"][number]["lanes"][number]["directFloor"] | undefined {
+  if (!lane.directFloor) {
+    return undefined;
+  }
+  return {
+    muscle: lane.directFloor.muscle,
+    minDirectSets: lane.directFloor.minDirectSets,
+    collateralCanSatisfy: false,
+    requiredExerciseClasses: [...lane.requiredExerciseClasses],
+  };
+}
+
+function cloneOptionalActivation(
+  activation: IntentLane["optionalActivation"],
+): IntentLane["optionalActivation"] {
+  if (!activation) {
+    return undefined;
+  }
+  return {
+    type: activation.type,
+    weeklyFloorSets: activation.weeklyFloorSets,
+    requiresSlotExerciseHeadroom: activation.requiresSlotExerciseHeadroom,
+    requiresCleanAlternative: activation.requiresCleanAlternative,
+    requiresRecoverability: activation.requiresRecoverability,
+  };
+}
+
+function requirementForLane(input: {
+  lane: IntentLane;
+}): Requirement {
+  if (input.lane.role === "optional" && input.lane.optionalActivation) {
+    return "conditional_optional";
   }
   if (
-    input.classLane?.classLaneKind === "managed_collateral_marker" ||
+    input.lane.classLaneKind === "managed_collateral_marker" ||
     input.lane.setBudget.preferred <= 0
   ) {
     return "optional";
+  }
+  if (input.lane.role === "optional") {
+    return input.lane.requiredExerciseClasses.length ? "required" : "optional";
   }
   return "required";
 }
 
 function duplicatePolicyForLane(input: {
-  lane: CapacityLane;
+  lane: IntentLane;
   classLane: ClassLane | undefined;
 }): DuplicatePolicy {
   const requiredIfAlternativeExists =
@@ -161,10 +193,8 @@ export function buildV2ExerciseSelectionPlan(
   const classSlotIndex = buildClassSlotIndex(
     input.exerciseClassDistributionBySlot,
   );
+  const capacitySlotIndex = buildCapacitySlotIndex(input.selectionCapacityPlan);
   const directFloorIndex = buildDirectFloorIndex(input.v2SupportLanePolicy);
-  const conditionalOptionalLaneIndex = buildConditionalOptionalLaneIndex(
-    input.v2SupportLanePolicy,
-  );
 
   return {
     version: 1,
@@ -172,47 +202,50 @@ export function buildV2ExerciseSelectionPlan(
     readOnly: true,
     affectsScoringOrGeneration: false,
     selectionTiming: "before_inventory_selection",
-    weeks: input.selectionCapacityPlan.weeks.map((week) => ({
+    weeks: input.v2SetDistributionIntent.weeks.map((week) => ({
       week: week.week,
       phase: week.phase,
-      slots: week.slots.map((slot) => {
+      slots: week.slots.map((slot, fallbackSlotIndex) => {
         const classSlot = classSlotIndex.get(slotKey(week.week, slot.slotId));
+        const capacitySlot = capacitySlotIndex.get(
+          slotKey(week.week, slot.slotId),
+        );
         return {
           slotId: slot.slotId,
-          slotIndex: slot.slotIndex,
-          maxExerciseCount: slot.maxExerciseCount,
+          slotIndex:
+            classSlot?.slotIndex ?? capacitySlot?.slotIndex ?? fallbackSlotIndex,
+          maxExerciseCount: capacitySlot?.maxExerciseCount ?? 6,
           targetSessionSets: setRange(slot.targetSessionSets),
           lanes: slot.lanes.map((lane) => {
             const classLane = findClassLane(classSlot, lane.laneId);
+            const capacityLane = findCapacityLane(capacitySlot, lane.laneId);
             const duplicatePolicy = duplicatePolicyForLane({ lane, classLane });
             const acceptableExerciseClasses = unique([
-              ...(classLane?.requiredExerciseClasses ?? []),
-              ...(classLane?.preferredExerciseClasses ??
-                lane.preferredExerciseClasses),
+              ...lane.requiredExerciseClasses,
+              ...lane.preferredExerciseClasses,
             ]);
+            const directFloor =
+              directFloorIndex.get(laneKey(slot.slotId, lane.laneId)) ??
+              directFloorFromIntentLane(lane);
+            const optionalActivation = cloneOptionalActivation(
+              lane.optionalActivation,
+            );
             return {
               laneId: lane.laneId,
-              requirement: requirementForLane({
-                lane,
-                classLane,
-                conditionalOptionalLaneIndex,
-                slotId: slot.slotId,
-              }),
+              requirement: requirementForLane({ lane }),
               role: lane.role,
+              classLaneKind: lane.classLaneKind,
               primaryMuscles: [...lane.primaryMuscles],
+              supportMuscles: [...lane.supportMuscles],
+              optionalMuscles: [...lane.optionalMuscles],
+              managedCollateralMuscles: [...lane.managedCollateralMuscles],
+              ownershipKinds: [...lane.ownershipKinds],
               acceptableExerciseClasses,
-              preferredExerciseClasses: [
-                ...(classLane?.preferredExerciseClasses ??
-                  lane.preferredExerciseClasses),
-              ],
+              preferredExerciseClasses: [...lane.preferredExerciseClasses],
               setBudget: setRange(lane.setBudget),
-              ...(directFloorIndex.has(laneKey(slot.slotId, lane.laneId))
-                ? {
-                    directFloor: directFloorIndex.get(
-                      laneKey(slot.slotId, lane.laneId),
-                    ),
-                  }
-                : {}),
+              setBudgetBasis: lane.setBudget.basis,
+              ...(directFloor ? { directFloor } : {}),
+              ...(optionalActivation ? { optionalActivation } : {}),
               duplicatePolicy,
               cleanAlternativePolicy: {
                 requiredBeforeDuplicate:
@@ -222,10 +255,15 @@ export function buildV2ExerciseSelectionPlan(
               },
               perExerciseCap: {
                 maxSetsWithoutJustification:
-                  lane.perExerciseCap.maxSetsWithoutJustification,
-                maxDirectExercises: lane.perExerciseCap.maxDirectExercises,
+                  capacityLane?.perExerciseCap.maxSetsWithoutJustification ??
+                  lane.capPolicy.maxSetsPerExerciseWithoutJustification,
+                maxDirectExercises:
+                  capacityLane?.perExerciseCap.maxDirectExercises ??
+                  lane.capPolicy.maxDirectExercises,
                 allowAboveFiveSetsOnlyWithJustification:
-                  lane.perExerciseCap.allowAboveFiveSetsOnlyWithJustification,
+                  capacityLane?.perExerciseCap
+                    .allowAboveFiveSetsOnlyWithJustification ??
+                  lane.capPolicy.allowAboveFiveSetsOnlyWithJustification,
               },
               continuityPolicy: continuityPolicyForRole(lane.role),
             };

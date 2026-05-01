@@ -1,4 +1,5 @@
 import { getMuscleTargetSemantics } from "@/lib/engine/volume-landmarks";
+import { V2_TARGET_SLOT_SKELETON } from "./target-skeleton";
 import type {
   V2BlockStrategyImplication,
   V2ExerciseResponseSignalType,
@@ -13,6 +14,10 @@ import type {
   V2MesocycleStrategyRecommendationMustNotYetInfluence,
   V2StrategyHypothesisPromotionDiff,
   V2StrategyHypothesisPromotionDiffHypothesisId,
+  V2SlotOwnedDemandAdjustmentDonorEligibilityReason,
+  V2SlotOwnedDemandAdjustmentPlan,
+  V2SlotOwnedDemandAdjustmentProtectedStatus,
+  V2SlotOwnedDemandAdjustmentRequiredOwner,
   V2StrategyHypothesisConflictAwareConflict,
   V2StrategyHypothesisConflictAwareRefinement,
   V2StrategyHypothesisPreShadowCandidateFilter,
@@ -2910,6 +2915,276 @@ function buildStrategyHypothesisProjectionDiff(input: {
   };
 }
 
+function candidateSlotOwnersForMuscle(muscle: string): string[] {
+  return V2_TARGET_SLOT_SKELETON.filter((slot) =>
+    slot.lanes.some((lane) => lane.primaryMuscles.includes(muscle)),
+  ).map((slot) => slot.slotId);
+}
+
+function slotOwnedDemandPriority(muscle: string): "P0" | "P1" | "P2" {
+  const tier = getMuscleTargetSemantics(muscle).targetTier;
+  if (tier === "A_PRIMARY") {
+    return "P0";
+  }
+  if (tier === "B_SUPPORT") {
+    return "P1";
+  }
+  return "P2";
+}
+
+function requiredOwnerForProtectedDemand(
+  muscle: string,
+): V2SlotOwnedDemandAdjustmentRequiredOwner {
+  const tier = getMuscleTargetSemantics(muscle).targetTier;
+  if (tier === "A_PRIMARY") {
+    return "MesocycleDemand";
+  }
+  if (tier === "B_SUPPORT") {
+    return "SlotDemandAllocation";
+  }
+  return "unknown";
+}
+
+function slotOwnedDemandReason(
+  prefix: string,
+  entry: MuscleEvidenceEntry,
+): string {
+  return `${prefix}:${entry.count}_signal${entry.count === 1 ? "" : "s"}`;
+}
+
+type PreShadowDonorRow =
+  V2StrategyHypothesisPreShadowCandidateFilter["donorEligibility"][number];
+
+function hasSafeSurplusMargin(row: PreShadowDonorRow | undefined): boolean {
+  return (
+    row?.eligible === true ||
+    row?.reason === "safe_surplus_margin" ||
+    row?.baseCoverage?.status === "surplus"
+  );
+}
+
+function resolveSlotOwnedDonorEligibility(input: {
+  muscle: string;
+  protectedMuscles: ReadonlySet<string>;
+  preShadowRow: PreShadowDonorRow | undefined;
+  candidateSlotOwners: readonly string[];
+}): {
+  eligible: boolean;
+  reason: V2SlotOwnedDemandAdjustmentDonorEligibilityReason;
+} {
+  const safeSurplus = hasSafeSurplusMargin(input.preShadowRow);
+  if (input.protectedMuscles.has(input.muscle) && !safeSurplus) {
+    return { eligible: false, reason: "protected_overlap" };
+  }
+  if (
+    input.preShadowRow?.reason === "slot_incompatible" ||
+    input.candidateSlotOwners.length === 0
+  ) {
+    return { eligible: false, reason: "slot_incompatible" };
+  }
+  if (
+    !input.preShadowRow ||
+    input.preShadowRow.reason === "unknown_floor_margin" ||
+    input.preShadowRow.reason === "unknown" ||
+    input.preShadowRow.baseCoverage?.status === "unknown"
+  ) {
+    return { eligible: false, reason: "unknown_margin" };
+  }
+  if (input.preShadowRow.reason === "below_floor") {
+    return { eligible: false, reason: "below_floor" };
+  }
+  if (input.preShadowRow.reason === "insufficient_margin") {
+    return { eligible: false, reason: "insufficient_margin" };
+  }
+  if (input.preShadowRow.reason === "concentration_risk") {
+    return { eligible: false, reason: "concentration_risk" };
+  }
+  if (safeSurplus) {
+    return { eligible: true, reason: "safe_surplus_margin" };
+  }
+  return { eligible: false, reason: "unknown_margin" };
+}
+
+function buildSlotOwnedDemandAdjustmentPlan(input: {
+  evaluatedHypotheses: V2StrategyHypothesisPromotionDiffHypothesisId[];
+  protectLaggingMusclesEarlier: V2StrategyHypothesisPromotionDiff["protectLaggingMusclesEarlier"];
+  capLateBlockVolume: V2StrategyHypothesisPromotionDiff["capLateBlockVolume"];
+  blockSignals: V2MesocycleStrategyInput["blockResponseSignals"];
+  preShadowCandidateFilter?: V2StrategyHypothesisPreShadowCandidateFilter;
+}): V2SlotOwnedDemandAdjustmentPlan {
+  const evaluatesCombinedPair =
+    input.evaluatedHypotheses.includes("protect_lagging_muscles_earlier") &&
+    input.evaluatedHypotheses.includes("cap_late_block_volume");
+  const protectedEntries = collectTargetTierUnderHitEntries(
+    input.blockSignals,
+  );
+  const donorEntries = collectRedistributionDonorEntries(input.blockSignals);
+  const protectedMuscleSet = new Set(
+    protectedEntries.map((entry) => entry.muscle),
+  );
+  const preShadowDonorByMuscle = new Map(
+    (input.preShadowCandidateFilter?.donorEligibility ?? []).map((row) => [
+      row.muscle,
+      row,
+    ]),
+  );
+  const preShadowProtectedByMuscle = new Map(
+    (input.preShadowCandidateFilter?.protectedEligibility ?? []).map((row) => [
+      row.muscle,
+      row,
+    ]),
+  );
+
+  const donorDemand = donorEntries.map((entry) => {
+    const candidateSlotOwners = candidateSlotOwnersForMuscle(entry.muscle);
+    const eligibility = resolveSlotOwnedDonorEligibility({
+      muscle: entry.muscle,
+      protectedMuscles: protectedMuscleSet,
+      preShadowRow: preShadowDonorByMuscle.get(entry.muscle),
+      candidateSlotOwners,
+    });
+
+    return {
+      muscle: entry.muscle,
+      reason: slotOwnedDemandReason("over_concentration_or_fatigue", entry),
+      eligible: eligibility.eligible,
+      eligibilityReason: eligibility.reason,
+      candidateSlotOwners,
+    };
+  });
+  const hasEligibleDonor = donorDemand.some((row) => row.eligible);
+
+  const protectedDemand = protectedEntries.map((entry) => {
+    const candidateSlotOwners = candidateSlotOwnersForMuscle(entry.muscle);
+    const preShadowProtected = preShadowProtectedByMuscle.get(entry.muscle);
+    let status: V2SlotOwnedDemandAdjustmentProtectedStatus = "owned";
+
+    if (
+      candidateSlotOwners.length === 0 ||
+      preShadowProtected?.reason === "slot_owner_missing"
+    ) {
+      status = "missing_slot_owner";
+    } else if (!hasEligibleDonor) {
+      status = "requires_net_new_volume";
+    } else if (preShadowProtected && preShadowProtected.eligible === false) {
+      status = "blocked";
+    }
+
+    return {
+      muscle: entry.muscle,
+      reason: slotOwnedDemandReason("target_tier_under_hit", entry),
+      targetTier: getMuscleTargetSemantics(entry.muscle).targetTier ?? "unknown",
+      priority: slotOwnedDemandPriority(entry.muscle),
+      requiredOwner: requiredOwnerForProtectedDemand(entry.muscle),
+      candidateSlotOwners,
+      status,
+    };
+  });
+
+  const blockingReasons = unique([
+    ...(!evaluatesCombinedPair
+      ? ["combined_strategy_hypotheses_not_available"]
+      : []),
+    ...(protectedDemand.length === 0
+      ? ["no_target_tier_under_hit_protected_demand"]
+      : []),
+    ...(donorDemand.length === 0
+      ? ["no_over_concentration_or_fatigue_donor_demand"]
+      : []),
+    ...(donorDemand.length > 0 && !hasEligibleDonor
+      ? ["no_safe_donor_with_measurable_surplus_margin"]
+      : []),
+    ...(protectedDemand.some((row) => row.status === "missing_slot_owner")
+      ? ["protected_demand_missing_slot_owner"]
+      : []),
+    ...(protectedDemand.some((row) => row.status === "requires_net_new_volume")
+      ? ["net_new_volume_not_allowed"]
+      : []),
+    ...(donorDemand.some((row) => row.eligibilityReason === "protected_overlap")
+      ? ["protected_donor_overlap_without_safe_surplus"]
+      : []),
+  ]);
+  const unresolvedInputs = unique([
+    ...(donorDemand.some((row) => row.eligibilityReason === "unknown_margin")
+      ? ["donor_floor_surplus_margin"]
+      : []),
+    ...(!evaluatesCombinedPair ? ["combined_strategy_hypothesis_evidence"] : []),
+    ...(protectedDemand.some((row) => row.status === "missing_slot_owner")
+      ? ["protected_slot_owner_budget"]
+      : []),
+  ]);
+  const feasible =
+    evaluatesCombinedPair &&
+    protectedDemand.length > 0 &&
+    donorDemand.length > 0 &&
+    hasEligibleDonor &&
+    protectedDemand.every((row) => row.status === "owned");
+  const status: V2SlotOwnedDemandAdjustmentPlan["status"] =
+    !evaluatesCombinedPair ||
+    protectedDemand.length === 0 ||
+    donorDemand.length === 0
+      ? "not_available"
+      : feasible
+        ? "feasible"
+        : "blocked";
+  const feasibilityStatus: V2SlotOwnedDemandAdjustmentPlan["feasibility"]["status"] =
+    !evaluatesCombinedPair ? "unknown" : feasible ? "feasible" : "blocked";
+  const nextSafeAction: V2SlotOwnedDemandAdjustmentPlan["nextSafeAction"] =
+    feasible
+      ? "add_strategy_to_demand_diff"
+      : unresolvedInputs.length > 0 || status === "not_available"
+        ? "collect_more_evidence"
+        : "do_not_promote";
+
+  return {
+    version: 1,
+    source: "v2_slot_owned_demand_adjustment_plan",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    status,
+    objective: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      protectLaggingTargetTierMuscles:
+        input.protectLaggingMusclesEarlier.status !== "not_evaluated",
+      capLateBlockVolume: input.capLateBlockVolume.status !== "not_evaluated",
+      preferRedistributionBeforeNetNewVolume: true,
+    },
+    protectedDemand,
+    donorDemand,
+    slotBudgetPolicy: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      netNewVolumeAllowed: false,
+      maxSlotIncreaseAllowed: 0,
+      requireSlotOwnership: true,
+      requireFloorPreservation: true,
+      requirePriorityCoveragePreservation: true,
+    },
+    feasibility: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: feasibilityStatus,
+      blockingReasons,
+      unresolvedInputs,
+      nextRequiredEvidence: unique([
+        ...(protectedDemand.length === 0
+          ? ["target_tier_lagging_muscle_evidence"]
+          : []),
+        ...(donorDemand.length === 0
+          ? ["over_concentration_or_fatigue_donor_evidence"]
+          : []),
+        ...(hasEligibleDonor ? [] : ["measurable_safe_donor_surplus_margin"]),
+        ...(protectedDemand.some((row) => row.status === "missing_slot_owner")
+          ? ["slot_owner_for_protected_target_tier_muscles"]
+          : []),
+        "priority_coverage_preservation_evidence",
+      ]),
+    },
+    nextSafeAction,
+  };
+}
+
 function proposedProtectionType(
   muscles: readonly string[],
 ): V2StrategyHypothesisPromotionDiff["protectLaggingMusclesEarlier"]["proposedProtectionType"] {
@@ -3129,6 +3404,13 @@ function buildStrategyHypothesisPromotionDiff(input: {
     strategyShadowProjection: input.strategyShadowProjection,
     preShadowCandidateFilter: input.preShadowCandidateFilter,
   });
+  const slotOwnedDemandAdjustmentPlan = buildSlotOwnedDemandAdjustmentPlan({
+    evaluatedHypotheses,
+    protectLaggingMusclesEarlier,
+    capLateBlockVolume,
+    blockSignals,
+    preShadowCandidateFilter: input.preShadowCandidateFilter,
+  });
 
   return {
     version: 1,
@@ -3159,6 +3441,7 @@ function buildStrategyHypothesisPromotionDiff(input: {
         : [],
     },
     projectionDiff,
+    slotOwnedDemandAdjustmentPlan,
     nonRegressionGates: emptyNonRegressionGates(),
     nextSafeAction:
       projectionDiff.readiness === "ready_for_read_only_shadow_trial"

@@ -328,6 +328,86 @@ export type V2StrategyHypothesisPreShadowCandidateFilter = {
   };
 };
 
+export type V2SlotOwnedDemandAdjustmentPlanStatus =
+  | "not_available"
+  | "available_with_limitations"
+  | "blocked"
+  | "feasible";
+
+export type V2SlotOwnedDemandAdjustmentRequiredOwner =
+  | "MesocycleDemand"
+  | "SlotDemandAllocation"
+  | "SetDistributionIntent"
+  | "unknown";
+
+export type V2SlotOwnedDemandAdjustmentProtectedStatus =
+  | "owned"
+  | "missing_slot_owner"
+  | "requires_net_new_volume"
+  | "blocked";
+
+export type V2SlotOwnedDemandAdjustmentDonorEligibilityReason =
+  | "safe_surplus_margin"
+  | "protected_overlap"
+  | "below_floor"
+  | "insufficient_margin"
+  | "unknown_margin"
+  | "slot_incompatible"
+  | "concentration_risk"
+  | "not_target_policy";
+
+export type V2SlotOwnedDemandAdjustmentPlan = {
+  version: 1;
+  source: "v2_slot_owned_demand_adjustment_plan";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  status: V2SlotOwnedDemandAdjustmentPlanStatus;
+  objective: {
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    protectLaggingTargetTierMuscles: boolean;
+    capLateBlockVolume: boolean;
+    preferRedistributionBeforeNetNewVolume: true;
+  };
+  protectedDemand: Array<{
+    muscle: string;
+    reason: string;
+    targetTier: string;
+    priority: "P0" | "P1" | "P2";
+    requiredOwner: V2SlotOwnedDemandAdjustmentRequiredOwner;
+    candidateSlotOwners: string[];
+    status: V2SlotOwnedDemandAdjustmentProtectedStatus;
+  }>;
+  donorDemand: Array<{
+    muscle: string;
+    reason: string;
+    eligible: boolean;
+    eligibilityReason: V2SlotOwnedDemandAdjustmentDonorEligibilityReason;
+    candidateSlotOwners: string[];
+  }>;
+  slotBudgetPolicy: {
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    netNewVolumeAllowed: false;
+    maxSlotIncreaseAllowed: 0;
+    requireSlotOwnership: true;
+    requireFloorPreservation: true;
+    requirePriorityCoveragePreservation: true;
+  };
+  feasibility: {
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    status: "feasible" | "blocked" | "unknown";
+    blockingReasons: string[];
+    unresolvedInputs: string[];
+    nextRequiredEvidence: string[];
+  };
+  nextSafeAction:
+    | "collect_more_evidence"
+    | "add_strategy_to_demand_diff"
+    | "do_not_promote";
+};
+
 export type V2StrategyHypothesisConflictAwareRefinementStatus =
   | "not_available"
   | "available_with_limitations"
@@ -559,6 +639,7 @@ export type V2StrategyHypothesisPromotionDiff = {
     requiredJointGuards: string[];
   };
   projectionDiff: V2StrategyHypothesisProjectionDiff;
+  slotOwnedDemandAdjustmentPlan: V2SlotOwnedDemandAdjustmentPlan;
   nonRegressionGates: {
     preservePriorityCoverage: boolean;
     preserveOrImproveLaggingMuscleCoverage: boolean;

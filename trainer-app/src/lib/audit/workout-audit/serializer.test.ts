@@ -2032,16 +2032,38 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(mainNoRepair.debugArtifact).toHaveProperty("contains");
     expect(mainNoRepair.v2Summary).toMatchObject({
       mesocycleStrategyDiagnostic: {
-        strategyHypothesisPromotionDiff: {
-          status: "available_with_limitations",
-          evaluatedHypothesisCount: 2,
-          nextSafeAction: "add_read_only_projection_diff",
-          consumedByDemandOrMaterializer: false,
-          projectionDiff: {
+          strategyHypothesisPromotionDiff: {
             status: "available_with_limitations",
-            projectionMode: "shadow_projection",
-            candidateProtectedMuscleCount: 2,
-            candidateDonorMuscleCount: 1,
+            evaluatedHypothesisCount: 2,
+            nextSafeAction: "add_read_only_projection_diff",
+            consumedByDemandOrMaterializer: false,
+            slotOwnedDemandAdjustmentPlan: {
+              status: "feasible",
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              protectedDemandCount: 2,
+              donorDemandCount: 1,
+              eligibleDonorCount: 1,
+              slotBudgetPolicy: {
+                netNewVolumeAllowed: false,
+                maxSlotIncreaseAllowed: 0,
+                requireSlotOwnership: true,
+                requireFloorPreservation: true,
+                requirePriorityCoveragePreservation: true,
+              },
+              feasibility: {
+                status: "feasible",
+                blockingReasonCount: 0,
+                unresolvedInputCount: 0,
+                nextRequiredEvidenceCount: 1,
+              },
+              nextSafeAction: "add_strategy_to_demand_diff",
+            },
+            projectionDiff: {
+              status: "available_with_limitations",
+              projectionMode: "shadow_projection",
+              candidateProtectedMuscleCount: 2,
+              candidateDonorMuscleCount: 1,
             computedGateCounts: {
               pass: 9,
               fail: 1,
@@ -2180,6 +2202,30 @@ describe("buildWorkoutAuditArtifact", () => {
         v2DeloadProjectionDiagnostic: {
           status: "projected_with_limitations",
         },
+        strategyHypothesisPromotionDiff: {
+          slotOwnedDemandAdjustmentPlan: {
+            status: "feasible",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            protectedDemandCount: 2,
+            donorDemandCount: 1,
+            eligibleDonorCount: 1,
+            slotBudgetPolicy: {
+              netNewVolumeAllowed: false,
+              maxSlotIncreaseAllowed: 0,
+              requireSlotOwnership: true,
+              requireFloorPreservation: true,
+              requirePriorityCoveragePreservation: true,
+            },
+            feasibility: {
+              status: "feasible",
+              blockingReasonCount: 0,
+              unresolvedInputCount: 0,
+              nextRequiredEvidenceCount: 1,
+            },
+            nextSafeAction: "add_strategy_to_demand_diff",
+          },
+        },
       },
     });
 
@@ -2248,15 +2294,67 @@ describe("buildWorkoutAuditArtifact", () => {
             ]),
           }),
         }),
-        interactionRisk: expect.objectContaining({
-          requiredJointGuards: [
-            "prefer_redistribution_from_over_concentrated_or_fatigue_driver_muscles_before_adding_net_new_late_block_volume",
-          ],
-        }),
-        nonRegressionGates: expect.objectContaining({
-          preservePriorityCoverage: false,
-          noLateBlockSkippedSetRiskIncrease: false,
-        }),
+          interactionRisk: expect.objectContaining({
+            requiredJointGuards: [
+              "prefer_redistribution_from_over_concentrated_or_fatigue_driver_muscles_before_adding_net_new_late_block_volume",
+            ],
+          }),
+          slotOwnedDemandAdjustmentPlan: expect.objectContaining({
+            version: 1,
+            source: "v2_slot_owned_demand_adjustment_plan",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            status: "feasible",
+            objective: {
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              protectLaggingTargetTierMuscles: true,
+              capLateBlockVolume: true,
+              preferRedistributionBeforeNetNewVolume: true,
+            },
+            protectedDemand: expect.arrayContaining([
+              expect.objectContaining({
+                muscle: "Side Delts",
+                candidateSlotOwners: ["upper_b"],
+                status: "owned",
+              }),
+              expect.objectContaining({
+                muscle: "Calves",
+                status: "owned",
+              }),
+            ]),
+            donorDemand: [
+              expect.objectContaining({
+                muscle: "Glutes",
+                eligible: true,
+                eligibilityReason: "safe_surplus_margin",
+              }),
+            ],
+            slotBudgetPolicy: {
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              netNewVolumeAllowed: false,
+              maxSlotIncreaseAllowed: 0,
+              requireSlotOwnership: true,
+              requireFloorPreservation: true,
+              requirePriorityCoveragePreservation: true,
+            },
+            feasibility: {
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              status: "feasible",
+              blockingReasons: [],
+              unresolvedInputs: [],
+              nextRequiredEvidence: [
+                "priority_coverage_preservation_evidence",
+              ],
+            },
+            nextSafeAction: "add_strategy_to_demand_diff",
+          }),
+          nonRegressionGates: expect.objectContaining({
+            preservePriorityCoverage: false,
+            noLateBlockSkippedSetRiskIncrease: false,
+          }),
         projectionDiff: expect.objectContaining({
           source: "v2_strategy_hypothesis_projection_diff",
           readOnly: true,
@@ -2447,6 +2545,15 @@ describe("buildWorkoutAuditArtifact", () => {
     );
     expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
       "Hamstrings",
+    );
+    expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
+      "target_tier_under_hit",
+    );
+    expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
+      "safe_surplus_margin",
+    );
+    expect(JSON.stringify(compactPromotionDiffSummary)).toContain(
+      "slotOwnedDemandAdjustmentPlan",
     );
     expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
       "candidate projection increased slot set pressure",

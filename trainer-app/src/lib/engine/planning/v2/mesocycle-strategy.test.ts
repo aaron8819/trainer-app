@@ -435,6 +435,30 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
         projectionMode: "not_projected",
         readiness: "not_ready",
       },
+      slotOwnedDemandAdjustmentPlan: {
+        version: 1,
+        source: "v2_slot_owned_demand_adjustment_plan",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        status: "not_available",
+        objective: {
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          preferRedistributionBeforeNetNewVolume: true,
+        },
+        slotBudgetPolicy: {
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          netNewVolumeAllowed: false,
+          maxSlotIncreaseAllowed: 0,
+          requireSlotOwnership: true,
+        },
+        feasibility: {
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          status: "unknown",
+        },
+      },
       nextSafeAction: "do_not_promote",
     });
   });
@@ -1391,6 +1415,315 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     );
   });
 
+  it("adds a pure read-only slot-owned demand adjustment plan beside promotion diffs", () => {
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+    });
+    const plan =
+      diagnostic.strategyHypothesisPromotionDiff
+        .slotOwnedDemandAdjustmentPlan;
+
+    expect(plan).toMatchObject({
+      version: 1,
+      source: "v2_slot_owned_demand_adjustment_plan",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "blocked",
+      objective: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        protectLaggingTargetTierMuscles: true,
+        capLateBlockVolume: true,
+        preferRedistributionBeforeNetNewVolume: true,
+      },
+      slotBudgetPolicy: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        netNewVolumeAllowed: false,
+        maxSlotIncreaseAllowed: 0,
+        requireSlotOwnership: true,
+        requireFloorPreservation: true,
+        requirePriorityCoveragePreservation: true,
+      },
+      feasibility: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        status: "blocked",
+        blockingReasons: expect.arrayContaining([
+          "no_safe_donor_with_measurable_surplus_margin",
+          "net_new_volume_not_allowed",
+        ]),
+        unresolvedInputs: expect.arrayContaining([
+          "donor_floor_surplus_margin",
+        ]),
+      },
+      nextSafeAction: "collect_more_evidence",
+    });
+  });
+
+  it("derives protected demand only from target-tier lagging evidence", () => {
+    const input = buildStrategyInput();
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: {
+        ...input,
+        blockResponseSignals: input.blockResponseSignals.map(
+          (signal, index) => ({
+            ...signal,
+            muscleDistribution: {
+              ...signal.muscleDistribution,
+              recurringUnderHitMuscles:
+                index === 0
+                  ? ["Chest", "Core", "Side Delts"]
+                  : ["Forearms"],
+              belowMevFlags:
+                index === 0
+                  ? [
+                      "Chest:below_target_or_mev_evidence",
+                      "Core:below_target_or_mev_evidence",
+                    ]
+                  : ["Forearms:below_target_or_mev_evidence"],
+            },
+            strategyImplications: [
+              "protect_lagging_muscles_earlier",
+              "cap_late_block_volume",
+            ],
+          }),
+        ),
+      },
+    });
+    const protectedMuscles =
+      diagnostic.strategyHypothesisPromotionDiff.slotOwnedDemandAdjustmentPlan
+        .protectedDemand.map((row) => row.muscle);
+
+    expect(protectedMuscles).toEqual(
+      expect.arrayContaining(["Chest", "Side Delts"]),
+    );
+    expect(protectedMuscles).not.toEqual(
+      expect.arrayContaining(["Core", "Forearms"]),
+    );
+  });
+
+  it("derives donor demand only from over-concentration and fatigue evidence", () => {
+    const input = buildStrategyInput();
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: {
+        ...input,
+        blockResponseSignals: input.blockResponseSignals.map(
+          (signal, index) => ({
+            ...signal,
+            muscleDistribution: {
+              recurringUnderHitMuscles:
+                index === 0 ? ["Chest", "Side Delts"] : ["Chest"],
+              belowMevFlags:
+                index === 0
+                  ? [
+                      "Chest:below_target_or_mev_evidence",
+                      "Side Delts:below_target_or_mev_evidence",
+                    ]
+                  : ["Chest:below_target_or_mev_evidence"],
+              recurringOverConcentratedMuscles:
+                index === 0 ? ["Glutes"] : [],
+              overMavFlags:
+                index === 1 ? ["Upper Back:over_target_or_mav_evidence"] : [],
+            },
+            fatigueDistribution: {
+              systemicFatigueFlag: index === 1,
+              likelyFatigueDrivers: index === 1 ? ["Lats"] : [],
+              evidence:
+                index === 1
+                  ? ["overlap_fatigue_driver:Lats"]
+                  : ["hard_week_effort_reached"],
+            },
+            strategyImplications: [
+              "protect_lagging_muscles_earlier",
+              "cap_late_block_volume",
+            ],
+          }),
+        ),
+      },
+    });
+    const donorMuscles =
+      diagnostic.strategyHypothesisPromotionDiff.slotOwnedDemandAdjustmentPlan
+        .donorDemand.map((row) => row.muscle);
+
+    expect(donorMuscles).toEqual(
+      expect.arrayContaining(["Glutes", "Lats", "Upper Back"]),
+    );
+    expect(donorMuscles).not.toContain("Chest");
+    expect(donorMuscles).not.toContain("Side Delts");
+  });
+
+  it("blocks donor eligibility for protected overlap and unknown floor margin", () => {
+    const input = buildStrategyInput();
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: {
+        ...input,
+        blockResponseSignals: input.blockResponseSignals.map(
+          (signal, index) => ({
+            ...signal,
+            muscleDistribution: {
+              ...signal.muscleDistribution,
+              recurringUnderHitMuscles:
+                index === 0
+                  ? ["Hamstrings"]
+                  : signal.muscleDistribution.recurringUnderHitMuscles,
+              belowMevFlags:
+                index === 0
+                  ? ["Hamstrings:below_target_or_mev_evidence"]
+                  : signal.muscleDistribution.belowMevFlags,
+              recurringOverConcentratedMuscles:
+                index === 0
+                  ? ["Hamstrings", "Glutes"]
+                  : signal.muscleDistribution.recurringOverConcentratedMuscles,
+            },
+            fatigueDistribution: {
+              ...signal.fatigueDistribution,
+              likelyFatigueDrivers:
+                index === 0
+                  ? ["Hamstrings", "Glutes"]
+                  : signal.fatigueDistribution.likelyFatigueDrivers,
+              evidence:
+                index === 0
+                  ? ["overlap_fatigue_driver:Hamstrings"]
+                  : signal.fatigueDistribution.evidence,
+            },
+            strategyImplications: [
+              "protect_lagging_muscles_earlier",
+              "cap_late_block_volume",
+            ],
+          }),
+        ),
+      },
+    });
+    const donorByMuscle = new Map(
+      diagnostic.strategyHypothesisPromotionDiff.slotOwnedDemandAdjustmentPlan
+        .donorDemand.map((row) => [row.muscle, row]),
+    );
+
+    expect(donorByMuscle.get("Hamstrings")).toMatchObject({
+      eligible: false,
+      eligibilityReason: "protected_overlap",
+    });
+    expect(donorByMuscle.get("Glutes")).toMatchObject({
+      eligible: false,
+      eligibilityReason: "unknown_margin",
+    });
+  });
+
+  it("reports feasible only when a measurable safe donor and slot-owned protected demand exist", () => {
+    const preShadowCandidateFilter =
+      buildV2StrategyHypothesisPreShadowCandidateFilter({
+        evaluatesCombinedPair: true,
+        candidateProtectedMuscles: ["Side Delts"],
+        candidateDonorMuscles: ["Glutes"],
+        baseCoverageRows: [
+          {
+            muscle: "Glutes",
+            status: "covered",
+            sets: 12,
+            minSets: 6,
+            priority: "support",
+            targetTier: "B_SUPPORT",
+          },
+        ],
+        donorSlotOwners: { Glutes: ["lower_a"] },
+        protectedSlotOwners: { "Side Delts": ["upper_b"] },
+        slotSetCountBySlot: { upper_b: 15, lower_a: 14 },
+        slotMaxSetCountBySlot: { upper_b: 21, lower_a: 18 },
+        clearlyOverConcentratedMuscles: ["Glutes"],
+      });
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+      preShadowCandidateFilter,
+    });
+    const plan =
+      diagnostic.strategyHypothesisPromotionDiff.slotOwnedDemandAdjustmentPlan;
+
+    expect(plan.donorDemand).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Glutes",
+          eligible: true,
+          eligibilityReason: "safe_surplus_margin",
+        }),
+      ]),
+    );
+    expect(plan.protectedDemand).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Side Delts",
+          candidateSlotOwners: expect.arrayContaining(["upper_b"]),
+          status: "owned",
+        }),
+      ]),
+    );
+    expect(plan.status).toBe("feasible");
+    expect(plan.feasibility.status).toBe("feasible");
+    expect(plan.nextSafeAction).toBe("add_strategy_to_demand_diff");
+  });
+
+  it("reports blocked instead of repairing when no safe donor exists", () => {
+    const preShadowCandidateFilter =
+      buildV2StrategyHypothesisPreShadowCandidateFilter({
+        evaluatesCombinedPair: true,
+        candidateProtectedMuscles: ["Side Delts"],
+        candidateDonorMuscles: ["Hamstrings"],
+        baseCoverageRows: [
+          {
+            muscle: "Hamstrings",
+            status: "covered",
+            sets: 6.2,
+            minSets: 6,
+            priority: "primary",
+            targetTier: "A_PRIMARY",
+          },
+        ],
+        donorSlotOwners: { Hamstrings: ["lower_a"] },
+        protectedSlotOwners: { "Side Delts": ["upper_b"] },
+        slotSetCountBySlot: { upper_b: 15, lower_a: 14 },
+        slotMaxSetCountBySlot: { upper_b: 21, lower_a: 18 },
+      });
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: {
+        ...buildStrategyInput(),
+        blockResponseSignals: buildStrategyInput().blockResponseSignals.map(
+          (signal) => ({
+            ...signal,
+            muscleDistribution: {
+              recurringUnderHitMuscles: ["Side Delts"],
+              recurringOverConcentratedMuscles: ["Hamstrings"],
+              belowMevFlags: ["Side Delts:below_target_or_mev_evidence"],
+              overMavFlags: [],
+            },
+            fatigueDistribution: {
+              systemicFatigueFlag: true,
+              likelyFatigueDrivers: ["Hamstrings"],
+              evidence: ["overlap_fatigue_driver:Hamstrings"],
+            },
+            strategyImplications: [
+              "protect_lagging_muscles_earlier",
+              "cap_late_block_volume",
+            ],
+          }),
+        ),
+      },
+      preShadowCandidateFilter,
+    });
+    const plan =
+      diagnostic.strategyHypothesisPromotionDiff.slotOwnedDemandAdjustmentPlan;
+
+    expect(plan.status).toBe("blocked");
+    expect(plan.feasibility).toMatchObject({
+      status: "blocked",
+      blockingReasons: expect.arrayContaining([
+        "no_safe_donor_with_measurable_surplus_margin",
+        "net_new_volume_not_allowed",
+      ]),
+    });
+    expect(JSON.stringify(plan)).not.toContain("repair");
+    expect(plan.nextSafeAction).toBe("do_not_promote");
+  });
+
   it("records that the measured shadow was built from retained filter candidates", () => {
     const preShadowCandidateFilter =
       buildV2StrategyHypothesisPreShadowCandidateFilter({
@@ -2027,6 +2360,10 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
       affectsScoringOrGeneration: false,
       consumedByDemandOrMaterializer: false,
       status: "available_with_limitations",
+      slotOwnedDemandAdjustmentPlan: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+      },
     });
     expect(policyKeys.indexOf("mesocycleStrategyDiagnostic")).toBeLessThan(
       policyKeys.indexOf("mesocycleDemand"),
@@ -2055,11 +2392,32 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     expect(JSON.stringify(policy.mesocycleDemand)).not.toContain(
       "projection_diff",
     );
+    expect(JSON.stringify(policy.mesocycleDemand)).not.toContain(
+      "slotOwnedDemandAdjustmentPlan",
+    );
     expect(JSON.stringify(policy.weeklyDemandCurve)).not.toContain(
       "promotion_diff",
     );
     expect(JSON.stringify(policy.weeklyDemandCurve)).not.toContain(
       "projection_diff",
+    );
+    expect(JSON.stringify(policy.weeklyDemandCurve)).not.toContain(
+      "slotOwnedDemandAdjustmentPlan",
+    );
+    expect(JSON.stringify(policy.slotDemandAllocationByWeek)).not.toContain(
+      "slotOwnedDemandAdjustmentPlan",
+    );
+    expect(JSON.stringify(policy.exerciseClassDistributionBySlot)).not.toContain(
+      "slotOwnedDemandAdjustmentPlan",
+    );
+    expect(JSON.stringify(policy.v2SetDistributionIntent)).not.toContain(
+      "slotOwnedDemandAdjustmentPlan",
+    );
+    expect(JSON.stringify(policy.selectionCapacityPlan)).not.toContain(
+      "slotOwnedDemandAdjustmentPlan",
+    );
+    expect(JSON.stringify(policy.exerciseSelectionPlan)).not.toContain(
+      "slotOwnedDemandAdjustmentPlan",
     );
   });
 });

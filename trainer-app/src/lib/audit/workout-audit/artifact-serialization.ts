@@ -819,6 +819,9 @@ function compactStrategyPromotionDiff(value: unknown): JsonRecord | undefined {
   const redistributionPreference = asRecord(
     candidateStrategy?.redistributionPreference,
   );
+  const slotOwnedPlan = asRecord(diff.slotOwnedDemandAdjustmentPlan);
+  const slotOwnedFeasibility = asRecord(slotOwnedPlan?.feasibility);
+  const slotOwnedBudgetPolicy = asRecord(slotOwnedPlan?.slotBudgetPolicy);
   const computedGateValues = Object.values(
     asRecord(projectionDiff?.computedNonRegressionGates) ?? {},
   ).filter((entry): entry is string =>
@@ -932,6 +935,52 @@ function compactStrategyPromotionDiff(value: unknown): JsonRecord | undefined {
             projectionDiff.consumedByDemandOrMaterializer === true
               ? true
               : false,
+        }
+      : undefined,
+    slotOwnedDemandAdjustmentPlan: slotOwnedPlan
+      ? {
+          status: slotOwnedPlan.status ?? "not_available",
+          readOnly: slotOwnedPlan.readOnly === true,
+          affectsScoringOrGeneration:
+            slotOwnedPlan.affectsScoringOrGeneration === true ? true : false,
+          protectedDemandCount: countArray(slotOwnedPlan.protectedDemand),
+          donorDemandCount: countArray(slotOwnedPlan.donorDemand),
+          eligibleDonorCount: asRecordArray(slotOwnedPlan.donorDemand).filter(
+            (row) => row.eligible === true,
+          ).length,
+          slotBudgetPolicy: {
+            netNewVolumeAllowed:
+              slotOwnedBudgetPolicy?.netNewVolumeAllowed === true
+                ? true
+                : false,
+            maxSlotIncreaseAllowed:
+              typeof slotOwnedBudgetPolicy?.maxSlotIncreaseAllowed === "number"
+                ? slotOwnedBudgetPolicy.maxSlotIncreaseAllowed
+                : 0,
+            requireSlotOwnership:
+              slotOwnedBudgetPolicy?.requireSlotOwnership === true,
+            requireFloorPreservation:
+              slotOwnedBudgetPolicy?.requireFloorPreservation === true,
+            requirePriorityCoveragePreservation:
+              slotOwnedBudgetPolicy?.requirePriorityCoveragePreservation ===
+              true,
+          },
+          feasibility: {
+            status: slotOwnedFeasibility?.status ?? "unknown",
+            blockingReasonCount: countArray(
+              slotOwnedFeasibility?.blockingReasons,
+            ),
+            unresolvedInputCount: countArray(
+              slotOwnedFeasibility?.unresolvedInputs,
+            ),
+            nextRequiredEvidenceCount: countArray(
+              slotOwnedFeasibility?.nextRequiredEvidence,
+            ),
+          },
+          nextSafeAction:
+            typeof slotOwnedPlan.nextSafeAction === "string"
+              ? slotOwnedPlan.nextSafeAction
+              : "do_not_promote",
         }
       : undefined,
   };

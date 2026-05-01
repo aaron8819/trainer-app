@@ -1914,6 +1914,67 @@ describe("artifact serialization helpers", () => {
                   "computed_gates_default_unknown_without_projected_delta_evidence",
                 ],
               },
+              slotOwnedDemandAdjustmentPlan: {
+                version: 1,
+                source: "v2_slot_owned_demand_adjustment_plan",
+                readOnly: true,
+                affectsScoringOrGeneration: false,
+                status: "feasible",
+                objective: {
+                  readOnly: true,
+                  affectsScoringOrGeneration: false,
+                  protectLaggingTargetTierMuscles: true,
+                  capLateBlockVolume: true,
+                  preferRedistributionBeforeNetNewVolume: true,
+                },
+                protectedDemand: [
+                  {
+                    muscle: "Side Delts",
+                    reason: "target_tier_under_hit:Side Delts",
+                    targetTier: "B_SUPPORT",
+                    priority: "P1",
+                    requiredOwner: "SlotDemandAllocation",
+                    candidateSlotOwners: ["upper_a", "upper_b"],
+                    status: "owned",
+                  },
+                ],
+                donorDemand: [
+                  {
+                    muscle: "Glutes",
+                    reason: "over_concentration_or_fatigue:Glutes",
+                    eligible: true,
+                    eligibilityReason: "safe_surplus_margin",
+                    candidateSlotOwners: ["lower_a", "lower_b"],
+                  },
+                  {
+                    muscle: "Hamstrings",
+                    reason: "over_concentration_or_fatigue:Hamstrings",
+                    eligible: false,
+                    eligibilityReason: "insufficient_margin",
+                    candidateSlotOwners: ["lower_a"],
+                  },
+                ],
+                slotBudgetPolicy: {
+                  readOnly: true,
+                  affectsScoringOrGeneration: false,
+                  netNewVolumeAllowed: false,
+                  maxSlotIncreaseAllowed: 0,
+                  requireSlotOwnership: true,
+                  requireFloorPreservation: true,
+                  requirePriorityCoveragePreservation: true,
+                },
+                feasibility: {
+                  readOnly: true,
+                  affectsScoringOrGeneration: false,
+                  status: "feasible",
+                  blockingReasons: [],
+                  unresolvedInputs: [],
+                  nextRequiredEvidence: [
+                    "priority_coverage_preservation_evidence",
+                  ],
+                },
+                nextSafeAction: "add_strategy_to_demand_diff",
+              },
               nonRegressionGates: {
                 preservePriorityCoverage: false,
                 preserveOrImproveLaggingMuscleCoverage: false,
@@ -1982,6 +2043,28 @@ describe("artifact serialization helpers", () => {
       },
       nextSafeAction: "run_read_only_shadow_trial",
       consumedByDemandOrMaterializer: false,
+      slotOwnedDemandAdjustmentPlan: {
+        status: "feasible",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        protectedDemandCount: 1,
+        donorDemandCount: 2,
+        eligibleDonorCount: 1,
+        slotBudgetPolicy: {
+          netNewVolumeAllowed: false,
+          maxSlotIncreaseAllowed: 0,
+          requireSlotOwnership: true,
+          requireFloorPreservation: true,
+          requirePriorityCoveragePreservation: true,
+        },
+        feasibility: {
+          status: "feasible",
+          blockingReasonCount: 0,
+          unresolvedInputCount: 0,
+          nextRequiredEvidenceCount: 1,
+        },
+        nextSafeAction: "add_strategy_to_demand_diff",
+      },
       projectionDiff: {
         status: "available_with_limitations",
         readOnly: true,
@@ -2048,6 +2131,12 @@ describe("artifact serialization helpers", () => {
     );
     expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
       "Hamstrings",
+    );
+    expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
+      "target_tier_under_hit",
+    );
+    expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
+      "safe_surplus_margin",
     );
     expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
       "candidate projection increased slot set pressure",

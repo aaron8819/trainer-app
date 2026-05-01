@@ -59,6 +59,7 @@
 | 2026-04-30 | self | The first conflict-aware refinement used the broad evidence-derived donor list even when a measured shadow projection supplied a narrower candidate donor list, so the focused test retained Front Delts unexpectedly. | When a measured shadow projection exists, resolve donor/protected conflicts against `shadowProjection.candidateStrategy` first; use evidence-derived candidates only for estimate mode. |
 | 2026-04-30 | self | A conflict-focused unit fixture changed strategy input evidence enough that the promotion diff no longer entered measured `shadow_projection` mode, so only estimate-mode overlap was tested. | For projection-diff conflict tests, keep a known-ready strategy input and vary the supplied shadow projection evidence when the test is about measured deltas. |
 | 2026-05-01 | self | Added a new CLI operator-summary line for V2 pre-shadow filtering and initially updated code before the exact CLI expected-output fixture. | Whenever adding a compact audit summary line, update `workout-audit-cli.test.ts` exact arrays in the same patch before rerunning focused audit tests. |
+| 2026-05-01 | self | While adding the slot-owned demand adjustment feasible test, briefly fed Hamstrings-only donor evidence while expecting Glutes safe-surplus eligibility. | In policy tests, make the strategy evidence source and the filter/floor evidence source name the same donor before asserting feasibility. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

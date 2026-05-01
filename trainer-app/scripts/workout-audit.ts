@@ -2256,6 +2256,13 @@ export function buildPlannerOnlyNoRepairSummary(input: {
     promotionProjectionPreShadowOverride?.retainedProtectedMuscles.length ?? 0;
   const promotionProjectionPreShadowExcludedProtected =
     promotionProjectionPreShadowOverride?.excludedProtectedMuscles.length ?? 0;
+  const slotOwnedDemandAdjustmentPlan =
+    strategyPromotionDiff?.slotOwnedDemandAdjustmentPlan;
+  const slotOwnedDemandFeasibility =
+    slotOwnedDemandAdjustmentPlan?.feasibility;
+  const slotOwnedDemandEligibleDonors =
+    slotOwnedDemandAdjustmentPlan?.donorDemand.filter((row) => row.eligible)
+      .length ?? 0;
   const strategyLines = strategy
     ? [
         "V2 Mesocycle Strategy Diagnostic",
@@ -2304,6 +2311,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Promotion projection gates: pass=${promotionProjectionGateCounts.pass} fail=${promotionProjectionGateCounts.fail} unknown=${promotionProjectionGateCounts.unknown}`,
         `Promotion projection conflict-aware: ${formatStatus(promotionProjectionConflictAware?.status ?? "not_available")} conflicts=${promotionProjectionConflictCount} protected-donor=${promotionProjectionConflictCounts.protected_donor_overlap ?? 0} floor=${promotionProjectionConflictCounts.floor_preservation_conflict ?? 0} slot-owner=${promotionProjectionConflictCounts.slot_owner_missing ?? 0} session-size=${promotionProjectionConflictCounts.session_size_cap_conflict ?? 0} net-new=${promotionProjectionConflictCounts.net_new_volume_blocked ?? 0}`,
         `Promotion projection limitations: ${formatNameList(promotionProjectionDiff?.limitations ?? [], 5)}`,
+        `Promotion slot-owned demand adjustment: ${formatStatus(slotOwnedDemandAdjustmentPlan?.status ?? "not_available")} feasibility=${formatStatus(slotOwnedDemandFeasibility?.status ?? "unknown")} protected=${slotOwnedDemandAdjustmentPlan?.protectedDemand.length ?? 0} donors=${slotOwnedDemandAdjustmentPlan?.donorDemand.length ?? 0} eligibleDonors=${slotOwnedDemandEligibleDonors} blocking=${slotOwnedDemandFeasibility?.blockingReasons.length ?? 0} unresolved=${slotOwnedDemandFeasibility?.unresolvedInputs.length ?? 0} next=${formatStatus(slotOwnedDemandAdjustmentPlan?.nextSafeAction ?? "do_not_promote")}`,
         `Promotion projection consumedByDemandOrMaterializer: ${Boolean(promotionProjectionDiff?.consumedByDemandOrMaterializer) ? "true" : "false"}`,
         `Promotion diff consumedByDemandOrMaterializer: ${Boolean(strategyPromotionDiff?.consumedByDemandOrMaterializer) ? "true" : "false"}`,
         `Performed history loaded: ${strategy.strategyInputSummary.performedHistoryEvidenceLoaded ? "yes" : "no"}`,

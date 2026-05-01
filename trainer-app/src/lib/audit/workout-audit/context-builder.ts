@@ -120,6 +120,25 @@ export async function buildWorkoutAuditContext(
     };
   }
 
+  if (mode === "replace-empty-mesocycle-with-v2") {
+    if (!request.ownerEmail) {
+      throw new Error("replace-empty-mesocycle-with-v2 mode requires --owner");
+    }
+    if (!request.mesocycleId) {
+      throw new Error("replace-empty-mesocycle-with-v2 mode requires --mesocycle-id");
+    }
+    return {
+      mode,
+      requestedMode: request.mode,
+      userId: identity.userId,
+      ownerEmail: identity.ownerEmail,
+      plannerDiagnosticsMode,
+      replaceEmptyMesocycleWithV2: {
+        mesocycleId: request.mesocycleId,
+      },
+    };
+  }
+
   if (mode === "v2-accepted-seed-prepare-compare") {
     return {
       mode,

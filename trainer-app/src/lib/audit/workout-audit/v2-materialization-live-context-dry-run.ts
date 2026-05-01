@@ -18,7 +18,6 @@ import {
   type V2MaterializationExercise,
   type V2PlannerMesocyclePolicy,
 } from "@/lib/engine/planning/v2";
-import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/planning-reality";
 import {
   buildMesocycleSlotSequence,
@@ -28,6 +27,12 @@ import {
   buildV2MaterializedSeedAcceptanceProbe,
   type BuildV2MaterializedSeedAcceptanceProbeResult,
 } from "@/lib/api/mesocycle-handoff-v2-materialized-seed";
+import {
+  normalizeLiveInventoryForV2Materialization,
+  type LiveV2MaterializationExerciseRow,
+} from "@/lib/api/v2-materialization-live-inventory";
+
+export { normalizeLiveInventoryForV2Materialization };
 
 export type V2LiveContextInventorySource =
   | "live_normalized_inventory"
@@ -84,18 +89,6 @@ type MesocycleContext = {
   weeklySchedule?: readonly string[] | null;
 };
 
-type LiveInventoryExerciseRow = {
-  id: string;
-  name: string;
-  aliases?: Array<{ alias: string }>;
-  movementPatterns?: readonly string[] | null;
-  isCompound?: boolean | null;
-  isMainLiftEligible?: boolean | null;
-  fatigueCost?: number | null;
-  exerciseEquipment?: Array<{ equipment: { type: string } }>;
-  exerciseMuscles?: Array<{ role: string; muscle: { name: string } }>;
-};
-
 export type V2MaterializedSeedAcceptanceProbeReader = {
   user: {
     findUnique(args: unknown): Promise<{
@@ -112,7 +105,7 @@ export type V2MaterializedSeedAcceptanceProbeReader = {
     } | null>;
   };
   exercise: {
-    findMany(args: unknown): Promise<LiveInventoryExerciseRow[]>;
+    findMany(args: unknown): Promise<LiveV2MaterializationExerciseRow[]>;
   };
   userPreference: {
     findUnique(args: unknown): Promise<{
@@ -148,47 +141,6 @@ const EMPTY_CONSTRAINTS: V2ExerciseMaterializationInput["constraints"] = {
   favoriteExerciseIds: [],
   painConflictExerciseIds: [],
 };
-
-export function normalizeLiveInventoryForV2Materialization(
-  exercises: LiveInventoryExerciseRow[],
-): V2MaterializationExercise[] {
-  return exercises.map((exercise) => {
-    const primaryMuscles = musclesByRole(exercise, "PRIMARY");
-    const secondaryMuscles = musclesByRole(exercise, "SECONDARY");
-    const aliases = (exercise.aliases ?? []).map((alias) => alias.alias);
-    const stimulusByMusclePerSet = Object.fromEntries(
-      getEffectiveStimulusByMuscle(
-        {
-          id: exercise.id,
-          name: exercise.name,
-          aliases,
-          primaryMuscles,
-          secondaryMuscles,
-        },
-        1,
-        { logFallback: false },
-      ),
-    );
-
-    return {
-      exerciseId: exercise.id,
-      name: exercise.name,
-      aliases,
-      movementPatterns: [...(exercise.movementPatterns ?? [])].map((pattern) =>
-        pattern.toLowerCase(),
-      ),
-      primaryMuscles,
-      secondaryMuscles,
-      equipment: (exercise.exerciseEquipment ?? []).map((entry) =>
-        entry.equipment.type.toLowerCase(),
-      ),
-      isCompound: exercise.isCompound ?? false,
-      isMainLiftEligible: exercise.isMainLiftEligible ?? false,
-      fatigueCost: exercise.fatigueCost ?? undefined,
-      stimulusByMusclePerSet,
-    };
-  });
-}
 
 export function buildV2LiveContextMaterializationDryRunHarness(
   input: V2LiveContextMaterializationDryRunInput,
@@ -524,16 +476,6 @@ export async function runV2MaterializedSeedAcceptanceProbe(input: {
     liveNormalizedInventoryAvailable: inventory.length > 0,
     constraints,
   });
-}
-
-function musclesByRole(
-  exercise: Pick<LiveInventoryExerciseRow, "exerciseMuscles">,
-  role: "PRIMARY" | "SECONDARY",
-): string[] {
-  return (exercise.exerciseMuscles ?? [])
-    .filter((entry) => entry.role === role)
-    .map((entry) => entry.muscle.name)
-    .sort((left, right) => left.localeCompare(right));
 }
 
 function summarizeBlockersBeforePromotion(input: {

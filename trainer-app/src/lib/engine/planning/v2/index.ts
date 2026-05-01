@@ -7,6 +7,7 @@ export { buildV2ExerciseClassDistributionBySlot } from "./exercise-class-distrib
 export { buildV2ExerciseSelectionPlan } from "./exercise-selection-plan";
 export { buildV2MaterializationDryRunReport } from "./materialization/dry-run-report";
 export { buildV2MaterializationPromotionReadiness } from "./materialization/promotion-readiness";
+export { buildV2MaterializationPreparationEvidence } from "./materialization/preparation-evidence";
 export { buildV2ExerciseMaterializationPlan } from "./materialization/materializer";
 export { buildV2MesocycleDemand } from "./mesocycle-demand";
 export {
@@ -145,6 +146,7 @@ export type {
   V2MaterializationExercise,
   V2MaterializedSelection,
 } from "./materialization/types";
+export type { V2MaterializationPreparationEvidence } from "./materialization/preparation-evidence";
 export type {
   V2BasePlanCompare,
   V2BasePlanCompareClassification,

@@ -1993,6 +1993,29 @@ export function buildActiveMesocycleSlotReseedApplySummary(input: {
   ];
 }
 
+export function buildReplaceEmptyMesocycleWithV2Summary(input: {
+  artifact: Pick<WorkoutAuditArtifact, "replaceEmptyMesocycleWithV2">;
+  outputPath: string;
+}): string[] | null {
+  const payload = input.artifact.replaceEmptyMesocycleWithV2;
+  if (!payload) {
+    return null;
+  }
+
+  const safetyBlockers = payload.candidateSafety.blockers.join(",") || "none";
+  const v2Blockers = payload.v2Preparation.blockers.join(",") || "none";
+  const changedSlots = payload.seedComparison.changedSlotIds.join(", ") || "none";
+
+  return [
+    `[workout-audit:replace-empty-v2] mesocycle=${payload.targetMesocycleId} dry_run=${formatBooleanFlag(payload.dryRun)} write_eligible=${formatBooleanFlag(payload.write.eligible)}`,
+    `[workout-audit:replace-empty-v2] safety_allowed=${formatBooleanFlag(payload.candidateSafety.allowed)} safety_blockers=${safetyBlockers}`,
+    `[workout-audit:replace-empty-v2] v2_status=${payload.v2Preparation.status} base=${payload.v2Preparation.basePlanValidation.status} materializer=${payload.v2Preparation.materializerStatus} promotion=${payload.v2Preparation.promotionReadinessStatus} seed_shape=${formatBooleanFlag(payload.v2Preparation.seedShapeCompatibility.compatible)} blockers=${v2Blockers}`,
+    `[workout-audit:replace-empty-v2] seed_sets=${formatAuditValue(payload.seedComparison.totalSetCount.current)}->${formatAuditValue(payload.seedComparison.totalSetCount.v2)} changed_slots=${changedSlots}`,
+    `[workout-audit:replace-empty-v2] boundary serializer=${payload.seedRuntimeBoundary.serializer} runtime_replay_unchanged=${formatBooleanFlag(payload.seedRuntimeBoundary.runtimeReplayUnchanged)} db_write=${formatBooleanFlag(payload.provenance.dbWriteOccurred)} transaction=${payload.provenance.transactionStatus}`,
+    `[workout-audit:replace-empty-v2] artifact=${input.outputPath}`,
+  ];
+}
+
 export function buildV2AcceptedSeedPrepareCompareSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "v2AcceptedSeedPrepareCompare">;
   outputPath: string;
@@ -2565,6 +2588,10 @@ async function main(input?: {
   let args!: ReturnType<typeof parseArgs>;
   let shouldApplyBoundedReseed!: boolean;
   let shouldAcceptSlotPlanUpgrade!: boolean;
+  let shouldWriteEmptyMesocycleV2Replacement!: boolean;
+  let shouldConfirmEmptyMesocycleV2Replacement!: boolean;
+  let shouldDryRunOnly!: boolean;
+  let hasExplicitEmptyMesocycleV2ReplacementFlag!: boolean;
   let shouldRunPlannerOnlyDryRun!: boolean;
   let shouldRunPlannerOnlyNoRepair!: boolean;
   let shouldWriteV2DebugArtifact!: boolean;
@@ -2577,6 +2604,12 @@ async function main(input?: {
     shouldPrintTimingReadout = shouldPrintAuditTimingReadout(args);
     shouldApplyBoundedReseed = args["apply-bounded-reseed"] === true;
     shouldAcceptSlotPlanUpgrade = args["accept-slot-plan-upgrade"] === true;
+    shouldWriteEmptyMesocycleV2Replacement = args.write === true;
+    shouldConfirmEmptyMesocycleV2Replacement =
+      args["confirm-empty-mesocycle-replacement"] === true;
+    shouldDryRunOnly = args["dry-run"] === true;
+    hasExplicitEmptyMesocycleV2ReplacementFlag =
+      args["replace-empty-active-mesocycle-with-v2"] === true;
     shouldRunPlannerOnlyDryRun = args["planner-only-dry-run"] === true;
     shouldRunPlannerOnlyNoRepair = args["planner-only-no-repair"] === true;
     shouldWriteV2DebugArtifact = args["v2-debug-artifact"] === true;
@@ -2591,6 +2624,38 @@ async function main(input?: {
     }
     if (shouldWriteV2DebugArtifact && !shouldRunPlannerOnlyNoRepair) {
       throw new Error("--v2-debug-artifact requires --planner-only-no-repair");
+    }
+    if (requestedMode === "replace-empty-mesocycle-with-v2") {
+      if (!hasExplicitEmptyMesocycleV2ReplacementFlag) {
+        throw new Error(
+          "--replace-empty-active-mesocycle-with-v2 is required for --mode replace-empty-mesocycle-with-v2"
+        );
+      }
+      if (typeof args.owner !== "string" || args.owner.trim().length === 0) {
+        throw new Error("replace-empty-mesocycle-with-v2 requires explicit --owner");
+      }
+      if (typeof args["mesocycle-id"] !== "string" || args["mesocycle-id"].trim().length === 0) {
+        throw new Error("replace-empty-mesocycle-with-v2 requires explicit --mesocycle-id");
+      }
+      if (shouldDryRunOnly && shouldWriteEmptyMesocycleV2Replacement) {
+        throw new Error("Use only one replacement execution flag: --dry-run or --write");
+      }
+      if (
+        shouldWriteEmptyMesocycleV2Replacement &&
+        !shouldConfirmEmptyMesocycleV2Replacement
+      ) {
+        throw new Error(
+          "--write requires --confirm-empty-mesocycle-replacement for replace-empty-mesocycle-with-v2"
+        );
+      }
+    } else if (
+      shouldWriteEmptyMesocycleV2Replacement ||
+      shouldConfirmEmptyMesocycleV2Replacement ||
+      hasExplicitEmptyMesocycleV2ReplacementFlag
+    ) {
+      throw new Error(
+        "empty mesocycle V2 replacement flags require --mode replace-empty-mesocycle-with-v2"
+      );
     }
     env = loadAuditEnv(typeof args["env-file"] === "string" ? args["env-file"] : undefined);
     normalizedIntent = normalizeAuditIntentArg(
@@ -2769,8 +2834,10 @@ async function main(input?: {
       ? `week=${run.weeklyRetro.week} recommendations=${run.weeklyRetro.recommendedPriorities.length}`
     : run.projectedWeekVolume
       ? `week=${run.projectedWeekVolume.currentWeek.week} projected_sessions=${run.projectedWeekVolume.projectedSessions.length}`
-      : run.activeMesocycleSlotReseed
-        ? `week=${run.activeMesocycleSlotReseed.activeMesocycle.week} verdict=${run.activeMesocycleSlotReseed.recommendation.verdict}`
+    : run.activeMesocycleSlotReseed
+      ? `week=${run.activeMesocycleSlotReseed.activeMesocycle.week} verdict=${run.activeMesocycleSlotReseed.recommendation.verdict}`
+      : run.replaceEmptyMesocycleWithV2
+        ? `mesocycle=${run.replaceEmptyMesocycleWithV2.targetMesocycleId} safety=${run.replaceEmptyMesocycleWithV2.candidateSafety.allowed ? "allowed" : "blocked"} v2=${run.replaceEmptyMesocycleWithV2.v2Preparation.status}`
       : run.v2AcceptedSeedPrepareCompare
         ? `handoff_candidate=${run.v2AcceptedSeedPrepareCompare.handoffCandidate.found ? "yes" : "no"} compare_status=${run.v2AcceptedSeedPrepareCompare.compareStatus}`
       : run.mesocycleExplain
@@ -2862,6 +2929,15 @@ async function main(input?: {
       console.log(line);
     }
   }
+  const replaceEmptyMesocycleWithV2Summary = buildReplaceEmptyMesocycleWithV2Summary({
+    artifact,
+    outputPath,
+  });
+  if (replaceEmptyMesocycleWithV2Summary) {
+    for (const line of replaceEmptyMesocycleWithV2Summary) {
+      console.log(line);
+    }
+  }
   const v2AcceptedSeedPrepareCompareSummary =
     buildV2AcceptedSeedPrepareCompareSummary({
       artifact,
@@ -2870,6 +2946,30 @@ async function main(input?: {
     });
   if (v2AcceptedSeedPrepareCompareSummary) {
     for (const line of v2AcceptedSeedPrepareCompareSummary) {
+      console.log(line);
+    }
+  }
+  let replaceEmptyMesocycleWithV2WriteSummary: string[] | null = null;
+  if (shouldWriteEmptyMesocycleV2Replacement) {
+    const { replaceEmptyMesocycleWithV2 } = await import(
+      "@/lib/api/replace-empty-mesocycle-with-v2"
+    );
+    const writeResult = await replaceEmptyMesocycleWithV2({
+      userId: context.userId,
+      ownerEmail: context.ownerEmail ?? "",
+      mesocycleId: request.mesocycleId!,
+      replaceEmptyActiveMesocycleWithV2: true,
+      write: true,
+      confirmEmptyMesocycleReplacement:
+        shouldConfirmEmptyMesocycleV2Replacement,
+    });
+    replaceEmptyMesocycleWithV2WriteSummary = [
+      `[workout-audit:replace-empty-v2:write] mesocycle=${writeResult.targetMesocycleId} eligible=${formatBooleanFlag(writeResult.write.eligible)} db_write=${formatBooleanFlag(writeResult.write.dbWriteOccurred)} transaction=${writeResult.write.transactionStatus}`,
+      `[workout-audit:replace-empty-v2:write] safety_allowed=${formatBooleanFlag(writeResult.candidateSafety.allowed)} v2_status=${writeResult.v2Preparation.status}`,
+    ];
+  }
+  if (replaceEmptyMesocycleWithV2WriteSummary) {
+    for (const line of replaceEmptyMesocycleWithV2WriteSummary) {
       console.log(line);
     }
   }

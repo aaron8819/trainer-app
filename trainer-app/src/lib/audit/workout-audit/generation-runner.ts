@@ -17,6 +17,7 @@ import { buildProgressionAnchorAuditPayload } from "./progression-anchor";
 import { buildV2AcceptedSeedPrepareCompareAuditPayload } from "./v2-accepted-seed-prepare-compare";
 import { buildWeeklyRetroAuditPayload } from "./weekly-retro";
 import type { WorkoutAuditContext, WorkoutAuditRun } from "./types";
+import { replaceEmptyMesocycleWithV2 } from "@/lib/api/replace-empty-mesocycle-with-v2";
 
 function resolveAdvancingSlotSnapshot(
   context: WorkoutAuditContext
@@ -117,6 +118,25 @@ export async function runWorkoutAuditGeneration(
         userId: context.userId,
         plannerDiagnosticsMode: context.plannerDiagnosticsMode,
       }),
+    };
+  }
+
+  if (mode === "replace-empty-mesocycle-with-v2") {
+    return {
+      context,
+      generatedAt: new Date().toISOString(),
+      replaceEmptyMesocycleWithV2: {
+        ...(await replaceEmptyMesocycleWithV2({
+          userId: context.userId,
+          ownerEmail: context.ownerEmail ?? "",
+          mesocycleId: context.replaceEmptyMesocycleWithV2!.mesocycleId,
+          replaceEmptyActiveMesocycleWithV2: true,
+        })),
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByProduction: false,
+        wouldWriteTransaction: false,
+      },
     };
   }
 

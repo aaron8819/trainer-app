@@ -86,6 +86,7 @@
 | 2026-05-01 | self | In the accepted-seed compare fixture, first mis-summed the V2 comparison plan's total sets as 34 instead of 42. | Sum every slot explicitly when asserting seed-shape totals; do not do mental arithmetic from dense multi-slot fixtures. |
 | 2026-05-01 | self | Expected legacy biceps/triceps support coverage to be false, but the legacy comparison fixture already provided support via Bench/Row secondary muscle evidence. | For class/lane compare assertions, distinguish direct-only gaps from direct/support coverage before marking legacy missing. |
 | 2026-05-01 | self | Repeated a PowerShell quote parsing mistake while searching CLI tests with a double-quoted `rg` pattern containing escaped quotes. | Use single-quoted `rg` patterns or search unquoted simple symbols first when locating test describe blocks. |
+| 2026-05-01 | self | Repeated the PowerShell quote parsing mistake while searching for `vi.mock("@/lib/engine/planning/v2")` with a double-quoted regex. | Use a simple single-quoted symbol search first, e.g. `rg 'engine/planning/v2' ...`, before adding regex punctuation. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

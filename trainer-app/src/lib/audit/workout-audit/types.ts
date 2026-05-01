@@ -38,11 +38,13 @@ import {
   HISTORICAL_WEEK_AUDIT_PAYLOAD_VERSION,
   MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION,
   PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
+  REPLACE_EMPTY_MESOCYCLE_WITH_V2_AUDIT_PAYLOAD_VERSION,
   PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION,
   V2_ACCEPTED_SEED_PREPARE_COMPARE_AUDIT_PAYLOAD_VERSION,
   WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION,
   WORKOUT_AUDIT_ARTIFACT_VERSION,
 } from "./constants";
+import type { ReplaceEmptyMesocycleWithV2Result } from "@/lib/api/replace-empty-mesocycle-with-v2";
 import type {
   WorkoutAuditCanonicalMode,
   WorkoutAuditRequestMode,
@@ -127,6 +129,9 @@ export type WorkoutAuditContext = {
   };
   activeMesocycleSlotReseed?: {
     enabled: true;
+  };
+  replaceEmptyMesocycleWithV2?: {
+    mesocycleId: string;
   };
   v2AcceptedSeedPrepareCompare?: {
     mesocycleId?: string;
@@ -650,6 +655,15 @@ export type ActiveMesocycleSlotReseedAuditPayload = {
     reasons: string[];
   };
 };
+
+export type ReplaceEmptyMesocycleWithV2AuditPayload =
+  ReplaceEmptyMesocycleWithV2Result & {
+    version: typeof REPLACE_EMPTY_MESOCYCLE_WITH_V2_AUDIT_PAYLOAD_VERSION;
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    consumedByProduction: false;
+    wouldWriteTransaction: false;
+  };
 
 export type V2AcceptedSeedPrepareCompareAuditPayload = {
   version: typeof V2_ACCEPTED_SEED_PREPARE_COMPARE_AUDIT_PAYLOAD_VERSION;
@@ -1845,6 +1859,7 @@ export type WorkoutAuditRun = {
   weeklyRetro?: WeeklyRetroAuditPayload;
   projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;
   activeMesocycleSlotReseed?: ActiveMesocycleSlotReseedAuditPayload;
+  replaceEmptyMesocycleWithV2?: ReplaceEmptyMesocycleWithV2AuditPayload;
   v2AcceptedSeedPrepareCompare?: V2AcceptedSeedPrepareCompareAuditPayload;
   mesocycleExplain?: MesocycleExplainAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;
@@ -1872,6 +1887,7 @@ export type WorkoutAuditArtifact = {
   weeklyRetro?: WeeklyRetroAuditPayload;
   projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;
   activeMesocycleSlotReseed?: ActiveMesocycleSlotReseedAuditPayload;
+  replaceEmptyMesocycleWithV2?: ReplaceEmptyMesocycleWithV2AuditPayload;
   v2AcceptedSeedPrepareCompare?: V2AcceptedSeedPrepareCompareAuditPayload;
   mesocycleExplain?: MesocycleExplainAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;

@@ -5,7 +5,7 @@ Last reviewed: 2026-03-16
 Purpose: Canonical operational playbook for recurring workout-audit CLI use. This doc tells operators and maintainers which audit to run, what to inspect first, what counts as a red flag, and when to escalate into deeper code-level investigation.
 
 This doc covers:
-- Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `projected-week-volume`, `current-week-audit`, `mesocycle-explain`, `v2-accepted-seed-prepare-compare`, `deload`, and `progression-anchor`
+- Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `projected-week-volume`, `current-week-audit`, `mesocycle-explain`, `v2-accepted-seed-prepare-compare`, `replace-empty-mesocycle-with-v2`, `deload`, and `progression-anchor`
 - Active-mesocycle dry-run reseed review for bounded slot-seed repair
 - Default audit workflows for common review scenarios
 - Artifact-reading guidance for the current audit JSON vocabulary
@@ -23,6 +23,7 @@ Sources of truth:
 - `trainer-app/src/lib/audit/workout-audit/context-builder.ts`
 - `trainer-app/src/lib/audit/workout-audit/generation-runner.ts`
 - `trainer-app/src/lib/audit/workout-audit/serializer.ts`
+- `trainer-app/src/lib/api/replace-empty-mesocycle-with-v2.ts`
 - `trainer-app/src/lib/evidence/session-audit-snapshot.ts`
 - `trainer-app/src/lib/evidence/session-audit-types.ts`
 - `trainer-app/docs/01_ARCHITECTURE.md`
@@ -507,6 +508,46 @@ Guardrails:
 - V2 preview availability and production-write eligibility are separate fields; production-write eligibility remains false here
 - V2 preview preparation does not call legacy projection or repair, and seed serialization identity must remain `buildMesocycleSlotPlanSeed`
 - detailed compare rows live in the mode's compact artifact section, not in `mesocycle-explain`
+
+### `replace-empty-mesocycle-with-v2`
+
+When to use it:
+- one explicitly identified active accumulation mesocycle was just created and has no performed reality
+- the operator wants to dry-run replacement of that empty seed with a V2-authored accepted seed
+- the target mesocycle id and owner email are known and must both be supplied
+
+Dry-run command:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode replace-empty-mesocycle-with-v2 --owner <owner-email> --mesocycle-id <active-empty-mesocycle-id> --replace-empty-active-mesocycle-with-v2 --dry-run
+```
+
+Guarded write command:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode replace-empty-mesocycle-with-v2 --owner <owner-email> --mesocycle-id <active-empty-mesocycle-id> --replace-empty-active-mesocycle-with-v2 --write --confirm-empty-mesocycle-replacement
+```
+
+Replacement semantics:
+- preserves the existing mesocycle id and `slotSequenceJson`
+- updates only `Mesocycle.slotPlanSeedJson`
+- uses `buildMesocycleSlotPlanSeed()` through the V2 accepted-seed preparation helper
+- writes no workouts, workout exercises, workout sets, set logs, receipts, or runtime replay data
+- does not change the default handoff accept route
+
+Inspect first:
+- `replaceEmptyMesocycleWithV2.candidateSafety`
+- `replaceEmptyMesocycleWithV2.v2Preparation`
+- `replaceEmptyMesocycleWithV2.seedComparison`
+- `replaceEmptyMesocycleWithV2.seedRuntimeBoundary`
+- `replaceEmptyMesocycleWithV2.provenance`
+
+Hard stops:
+- missing explicit owner, mesocycle id, replacement flag, or write confirmation
+- target owner mismatch, non-active state, non-`ACTIVE_ACCUMULATION` state, closed mesocycle, or non-new lifecycle counters
+- any workout rows, completed/partial sessions, workout exercise rows, workout set rows, set logs, performed set logs, or runtime deviations
+- V2 base-plan validation blockers, non-materialized materializer status, incompatible seed shape, blocked promotion readiness, or blocked V2 accepted-seed helper status
+- any fallback path trying to label legacy output as V2 success
 
 ### `active-mesocycle-slot-reseed`
 

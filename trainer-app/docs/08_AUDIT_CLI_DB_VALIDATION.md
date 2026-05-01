@@ -131,6 +131,23 @@ npm run audit:workout -- --mode active-mesocycle-slot-reseed --owner <owner-emai
 - Structural guards reject candidate seeds that change slot order, omit explicit `setCount`, or reference missing exercises.
 - `needs_projection_fix_first` and `not_safe_to_apply` remain hard stop verdicts.
 
+Empty active mesocycle V2 replacement dry-run:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode replace-empty-mesocycle-with-v2 --owner <owner-email> --mesocycle-id <active-empty-mesocycle-id> --replace-empty-active-mesocycle-with-v2 --dry-run
+```
+
+Guarded write, only after the dry-run artifact is clean:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode replace-empty-mesocycle-with-v2 --owner <owner-email> --mesocycle-id <active-empty-mesocycle-id> --replace-empty-active-mesocycle-with-v2 --write --confirm-empty-mesocycle-replacement
+```
+
+- This path is owner-scoped, mesocycle-id-scoped, and fail-closed.
+- Dry-run is the default; write requires the explicit replacement flag plus confirmation.
+- The write path updates only `Mesocycle.slotPlanSeedJson`, preserves the mesocycle id and `slotSequenceJson`, and uses `buildMesocycleSlotPlanSeed()` through the V2 accepted-seed preparation helper.
+- Any logged workout, performed set, runtime deviation, historical/closed state, V2 validation blocker, blocked materializer, or incompatible seed shape is a hard stop.
+
 Retrospective completed-week volume and slot review:
 
 ```powershell

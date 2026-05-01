@@ -5,8 +5,7 @@ import {
   type V2AcceptedSeedPreparationProbeInput,
 } from "@/lib/api/mesocycle-handoff";
 import {
-  buildV2BasePlanValidation,
-  buildV2ExerciseMaterializationPlan,
+  buildV2MaterializationPreparationEvidence,
   buildV2PlannerMesocyclePolicy,
   DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
 } from "@/lib/engine/planning/v2";
@@ -144,31 +143,15 @@ async function buildLiveV2ProbeInput(input: {
     favoriteExerciseIds: preferences?.favoriteExerciseIds ?? [],
     painConflictExerciseIds: [],
   };
-  const materializedPlan =
-    inventory.length > 0
-      ? buildV2ExerciseMaterializationPlan({
-          exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
-          inventory,
-          taxonomy,
-          constraints,
-        })
-      : null;
-  const basePlanValidation = buildV2BasePlanValidation({
+  const preparationEvidence = buildV2MaterializationPreparationEvidence({
     plannerPolicy,
-    materializedPlan,
-    inventory,
     taxonomy,
+    inventory,
+    constraints,
   });
 
   return {
-    plannerPolicy,
-    exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
-    taxonomy,
-    inventory,
-    materializedPlan,
-    basePlanValidation,
-    liveNormalizedInventoryAvailable: inventory.length > 0,
-    constraints,
+    ...preparationEvidence,
   };
 }
 

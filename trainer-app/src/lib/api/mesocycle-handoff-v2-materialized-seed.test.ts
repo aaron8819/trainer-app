@@ -988,9 +988,21 @@ describe("buildV2MaterializedSeedAcceptanceProbe", () => {
     expect(result).not.toHaveProperty("slotPlanSeedJson");
   });
 
-  it("keeps live production callers from enabling V2 materialized seed writes", () => {
+  it("keeps live production callers except the guarded empty-replacement operator from enabling V2 materialized seed writes", () => {
     const sourceDir = path.join(process.cwd(), "src");
+    const allowedOperatorWritePath = path.join(
+      sourceDir,
+      "lib",
+      "api",
+      "replace-empty-mesocycle-with-v2.ts",
+    );
     const violations = listSourceTypeScriptFiles(sourceDir).flatMap((file) => {
+      if (file === allowedOperatorWritePath) {
+        const text = fs.readFileSync(file, "utf8");
+        expect(text).toContain("replaceEmptyActiveMesocycleWithV2");
+        expect(text).toContain("confirmEmptyMesocycleReplacement");
+        return [];
+      }
       const text = fs.readFileSync(file, "utf8");
       return /enableV2MaterializedSeedWrite\s*:\s*true/.test(text)
         ? [path.relative(process.cwd(), file)]

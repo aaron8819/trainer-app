@@ -262,6 +262,72 @@ export type V2StrategyHypothesisProjectionMetricSummary = {
   maxSlotSets?: number;
 };
 
+export type V2StrategyHypothesisPreShadowCandidateFilterStatus =
+  | "not_available"
+  | "available_with_limitations"
+  | "available";
+
+export type V2StrategyHypothesisPreShadowDonorReason =
+  | "safe_surplus_margin"
+  | "protected_overlap"
+  | "below_floor"
+  | "insufficient_margin"
+  | "unknown_floor_margin"
+  | "slot_incompatible"
+  | "concentration_risk"
+  | "unknown";
+
+export type V2StrategyHypothesisPreShadowProtectedReason =
+  | "target_tier_under_hit"
+  | "slot_owner_missing"
+  | "would_require_net_new_volume"
+  | "unknown";
+
+export type V2StrategyHypothesisPreShadowCandidateFilter = {
+  enabled: true;
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByDemandOrMaterializer: false;
+  status: V2StrategyHypothesisPreShadowCandidateFilterStatus;
+  configuration: {
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    floorMarginSets: number;
+    targetTierFloorMarginSets: number;
+    netNewVolumeAllowed: false;
+    maxSlotIncreaseAllowed: 0;
+    redistributionRequired: true;
+  };
+  donorEligibility: Array<{
+    muscle: string;
+    eligible: boolean;
+    reason: V2StrategyHypothesisPreShadowDonorReason;
+    baseCoverage?: {
+      sets?: number;
+      floor?: number;
+      margin?: number;
+      status?: "below" | "covered" | "surplus" | "unknown";
+    };
+  }>;
+  protectedEligibility: Array<{
+    muscle: string;
+    eligible: boolean;
+    reason: V2StrategyHypothesisPreShadowProtectedReason;
+  }>;
+  overrideConstruction: {
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    consumedByDemandOrMaterializer: false;
+    excludedDonors: string[];
+    retainedDonors: string[];
+    excludedProtectedMuscles: string[];
+    retainedProtectedMuscles: string[];
+    netNewVolumeAllowed: false;
+    maxSlotIncreaseAllowed: 0;
+    redistributionRequired: true;
+  };
+};
+
 export type V2StrategyHypothesisConflictAwareRefinementStatus =
   | "not_available"
   | "available_with_limitations"
@@ -431,6 +497,7 @@ export type V2StrategyHypothesisProjectionDiff = {
     };
   };
   shadowProjection?: V2StrategyHypothesisShadowProjectionEvidence;
+  preShadowCandidateFilter: V2StrategyHypothesisPreShadowCandidateFilter;
   conflictAwareRefinement: V2StrategyHypothesisConflictAwareRefinement;
   computedNonRegressionGates: {
     preservePriorityCoverage: V2StrategyHypothesisProjectionGateStatus;

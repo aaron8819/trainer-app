@@ -15,6 +15,10 @@ import type {
   V2StrategyHypothesisPromotionDiffHypothesisId,
   V2StrategyHypothesisConflictAwareConflict,
   V2StrategyHypothesisConflictAwareRefinement,
+  V2StrategyHypothesisPreShadowCandidateFilter,
+  V2StrategyHypothesisPreShadowDonorReason,
+  V2StrategyHypothesisPreShadowProtectedReason,
+  V2StrategyHypothesisProjectionCoverageRow,
   V2StrategyHypothesisProjectionDeltaStatus,
   V2StrategyHypothesisProjectionDiff,
   V2StrategyHypothesisProjectionGateStatus,
@@ -28,6 +32,7 @@ import type {
 export type V2MesocycleStrategyDiagnosticInput = {
   strategyInput?: V2MesocycleStrategyInput;
   strategyShadowProjection?: V2StrategyHypothesisShadowProjectionEvidence;
+  preShadowCandidateFilter?: V2StrategyHypothesisPreShadowCandidateFilter;
 };
 
 const STRATEGY_INPUT_GROUPS: V2MesocycleStrategyInputGroup[] = [
@@ -2069,6 +2074,296 @@ function sortedUnique(values: readonly string[]): string[] {
   return unique([...values]).sort((left, right) => left.localeCompare(right));
 }
 
+const DEFAULT_PRE_SHADOW_FLOOR_MARGIN_SETS = 0.5;
+const DEFAULT_PRE_SHADOW_TARGET_TIER_FLOOR_MARGIN_SETS = 1;
+
+export type V2StrategyHypothesisPreShadowCandidateFilterInput = {
+  evaluatesCombinedPair: boolean;
+  candidateProtectedMuscles: readonly string[];
+  candidateDonorMuscles: readonly string[];
+  baseCoverageRows?: readonly V2StrategyHypothesisProjectionCoverageRow[];
+  protectedSlotOwners?: Record<string, readonly string[]>;
+  donorSlotOwners?: Record<string, readonly string[]>;
+  slotSetCountBySlot?: Record<string, number>;
+  slotMaxSetCountBySlot?: Record<string, number>;
+  clearlyOverConcentratedMuscles?: readonly string[];
+  concentrationRiskMuscles?: readonly string[];
+  floorMarginSets?: number;
+  targetTierFloorMarginSets?: number;
+};
+
+function baseCoverageStatus(input: {
+  sets?: number;
+  floor?: number;
+  marginRequired: number;
+}): "below" | "covered" | "surplus" | "unknown" {
+  if (typeof input.sets !== "number" || typeof input.floor !== "number") {
+    return "unknown";
+  }
+  const margin = input.sets - input.floor;
+  if (margin < 0) {
+    return "below";
+  }
+  if (margin >= input.marginRequired) {
+    return "surplus";
+  }
+  return "covered";
+}
+
+function preShadowBaseCoverage(input: {
+  row: V2StrategyHypothesisProjectionCoverageRow | undefined;
+  marginRequired: number;
+}):
+  | V2StrategyHypothesisPreShadowCandidateFilter["donorEligibility"][number]["baseCoverage"]
+  | undefined {
+  if (!input.row) {
+    return { status: "unknown" };
+  }
+  const floor = input.row.minSets;
+  const sets = input.row.sets;
+  return {
+    ...(typeof sets === "number" ? { sets } : {}),
+    ...(typeof floor === "number" ? { floor } : {}),
+    ...(typeof sets === "number" && typeof floor === "number"
+      ? { margin: Number((sets - floor).toFixed(2)) }
+      : {}),
+    status: baseCoverageStatus({
+      sets,
+      floor,
+      marginRequired: input.marginRequired,
+    }),
+  };
+}
+
+function isTargetTierFromCoverage(
+  muscle: string,
+  row: V2StrategyHypothesisProjectionCoverageRow | undefined,
+): boolean {
+  const tier = row?.targetTier ?? getMuscleTargetSemantics(muscle).targetTier;
+  return tier === "A_PRIMARY" || tier === "B_SUPPORT";
+}
+
+function hasCompatibleSlotOwner(input: {
+  muscle: string;
+  ownersByMuscle: Record<string, readonly string[]> | undefined;
+}): boolean {
+  return (input.ownersByMuscle?.[input.muscle]?.length ?? 0) > 0;
+}
+
+function hasNonOverloadedSlotOwner(input: {
+  muscle: string;
+  ownersByMuscle: Record<string, readonly string[]> | undefined;
+  slotSetCountBySlot: Record<string, number> | undefined;
+  slotMaxSetCountBySlot: Record<string, number> | undefined;
+}): boolean {
+  const owners = input.ownersByMuscle?.[input.muscle] ?? [];
+  if (owners.length === 0) {
+    return false;
+  }
+  return owners.some((slotId) => {
+    const currentSets = input.slotSetCountBySlot?.[slotId];
+    const maxSets = input.slotMaxSetCountBySlot?.[slotId];
+    if (typeof currentSets !== "number" || typeof maxSets !== "number") {
+      return true;
+    }
+    return currentSets < maxSets;
+  });
+}
+
+function emptyPreShadowCandidateFilter(
+  status: V2StrategyHypothesisPreShadowCandidateFilter["status"],
+): V2StrategyHypothesisPreShadowCandidateFilter {
+  return {
+    enabled: true,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: false,
+    status,
+    configuration: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      floorMarginSets: DEFAULT_PRE_SHADOW_FLOOR_MARGIN_SETS,
+      targetTierFloorMarginSets:
+        DEFAULT_PRE_SHADOW_TARGET_TIER_FLOOR_MARGIN_SETS,
+      netNewVolumeAllowed: false,
+      maxSlotIncreaseAllowed: 0,
+      redistributionRequired: true,
+    },
+    donorEligibility: [],
+    protectedEligibility: [],
+    overrideConstruction: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      excludedDonors: [],
+      retainedDonors: [],
+      excludedProtectedMuscles: [],
+      retainedProtectedMuscles: [],
+      netNewVolumeAllowed: false,
+      maxSlotIncreaseAllowed: 0,
+      redistributionRequired: true,
+    },
+  };
+}
+
+export function buildV2StrategyHypothesisPreShadowCandidateFilter(
+  input: V2StrategyHypothesisPreShadowCandidateFilterInput,
+): V2StrategyHypothesisPreShadowCandidateFilter {
+  const floorMarginSets =
+    input.floorMarginSets ?? DEFAULT_PRE_SHADOW_FLOOR_MARGIN_SETS;
+  const targetTierFloorMarginSets =
+    input.targetTierFloorMarginSets ??
+    DEFAULT_PRE_SHADOW_TARGET_TIER_FLOOR_MARGIN_SETS;
+  const candidateDonors = sortedUnique(input.candidateDonorMuscles);
+  const candidateProtected = sortedUnique(input.candidateProtectedMuscles);
+  const coverageByMuscleName = new Map(
+    (input.baseCoverageRows ?? []).map((row) => [row.muscle, row]),
+  );
+  if (!input.evaluatesCombinedPair || !input.baseCoverageRows) {
+    return {
+      ...emptyPreShadowCandidateFilter("not_available"),
+      configuration: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        floorMarginSets,
+        targetTierFloorMarginSets,
+        netNewVolumeAllowed: false,
+        maxSlotIncreaseAllowed: 0,
+        redistributionRequired: true,
+      },
+    };
+  }
+
+  const protectedSet = new Set(candidateProtected);
+  const clearlyOverConcentrated = new Set(
+    input.clearlyOverConcentratedMuscles ?? [],
+  );
+  const concentrationRisk = new Set(input.concentrationRiskMuscles ?? []);
+
+  const donorEligibility = candidateDonors.map((muscle) => {
+    const row = coverageByMuscleName.get(muscle);
+    const targetTier = isTargetTierFromCoverage(muscle, row);
+    const marginRequired = targetTier
+      ? targetTierFloorMarginSets
+      : floorMarginSets;
+    const baseCoverage = preShadowBaseCoverage({ row, marginRequired });
+    const margin = baseCoverage?.margin;
+    const safeSurplus =
+      typeof margin === "number" && margin >= marginRequired;
+    let reason: V2StrategyHypothesisPreShadowDonorReason =
+      "safe_surplus_margin";
+    let eligible = true;
+
+    if (protectedSet.has(muscle) && !safeSurplus) {
+      eligible = false;
+      reason = "protected_overlap";
+    } else if (baseCoverage?.status === "unknown") {
+      eligible = false;
+      reason = "unknown_floor_margin";
+    } else if (baseCoverage?.status === "below") {
+      eligible = false;
+      reason = "below_floor";
+    } else if (!safeSurplus) {
+      eligible = false;
+      reason = "insufficient_margin";
+    } else if (
+      targetTier &&
+      row?.status !== "above_maximum" &&
+      !clearlyOverConcentrated.has(muscle)
+    ) {
+      eligible = false;
+      reason = "concentration_risk";
+    } else if (
+      !hasCompatibleSlotOwner({
+        muscle,
+        ownersByMuscle: input.donorSlotOwners,
+      })
+    ) {
+      eligible = false;
+      reason = "slot_incompatible";
+    } else if (concentrationRisk.has(muscle)) {
+      eligible = false;
+      reason = "concentration_risk";
+    }
+
+    return {
+      muscle,
+      eligible,
+      reason,
+      ...(baseCoverage ? { baseCoverage } : {}),
+    };
+  });
+  const retainedDonors = donorEligibility
+    .filter((row) => row.eligible)
+    .map((row) => row.muscle);
+  const excludedDonors = donorEligibility
+    .filter((row) => !row.eligible)
+    .map((row) => row.muscle);
+
+  const protectedEligibility = candidateProtected.map((muscle) => {
+    let eligible = true;
+    let reason: V2StrategyHypothesisPreShadowProtectedReason =
+      "target_tier_under_hit";
+    if (
+      !hasNonOverloadedSlotOwner({
+        muscle,
+        ownersByMuscle: input.protectedSlotOwners,
+        slotSetCountBySlot: input.slotSetCountBySlot,
+        slotMaxSetCountBySlot: input.slotMaxSetCountBySlot,
+      })
+    ) {
+      eligible = false;
+      reason = "slot_owner_missing";
+    } else if (retainedDonors.length === 0) {
+      eligible = false;
+      reason = "would_require_net_new_volume";
+    }
+    return { muscle, eligible, reason };
+  });
+  const retainedProtectedMuscles = protectedEligibility
+    .filter((row) => row.eligible)
+    .map((row) => row.muscle);
+  const excludedProtectedMuscles = protectedEligibility
+    .filter((row) => !row.eligible)
+    .map((row) => row.muscle);
+  const hasLimitations =
+    excludedDonors.length > 0 ||
+    excludedProtectedMuscles.length > 0 ||
+    retainedDonors.length === 0 ||
+    retainedProtectedMuscles.length === 0;
+
+  return {
+    enabled: true,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: false,
+    status: hasLimitations ? "available_with_limitations" : "available",
+    configuration: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      floorMarginSets,
+      targetTierFloorMarginSets,
+      netNewVolumeAllowed: false,
+      maxSlotIncreaseAllowed: 0,
+      redistributionRequired: true,
+    },
+    donorEligibility,
+    protectedEligibility,
+    overrideConstruction: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      excludedDonors,
+      retainedDonors,
+      excludedProtectedMuscles,
+      retainedProtectedMuscles,
+      netNewVolumeAllowed: false,
+      maxSlotIncreaseAllowed: 0,
+      redistributionRequired: true,
+    },
+  };
+}
+
 type ShadowProjectionCoverageRow = NonNullable<
   V2StrategyHypothesisShadowProjectionEvidence["before"]["laggingMuscleCoverage"]
 >[number];
@@ -2338,6 +2633,7 @@ function buildStrategyHypothesisProjectionDiff(input: {
   capLateBlockVolume: V2StrategyHypothesisPromotionDiff["capLateBlockVolume"];
   blockSignals: V2MesocycleStrategyInput["blockResponseSignals"];
   strategyShadowProjection?: V2StrategyHypothesisShadowProjectionEvidence;
+  preShadowCandidateFilter?: V2StrategyHypothesisPreShadowCandidateFilter;
 }): V2StrategyHypothesisProjectionDiff {
   const evaluatesCombinedPair =
     input.evaluatedHypotheses.includes("protect_lagging_muscles_earlier") &&
@@ -2460,6 +2756,9 @@ function buildStrategyHypothesisProjectionDiff(input: {
     projectedDeltas,
     shadowProjection,
   });
+  const preShadowCandidateFilter =
+    input.preShadowCandidateFilter ??
+    emptyPreShadowCandidateFilter("not_available");
   const computedNonRegressionGates: V2StrategyHypothesisProjectionDiff["computedNonRegressionGates"] =
     {
       preservePriorityCoverage: gateFromProjectedDelta({
@@ -2518,6 +2817,12 @@ function buildStrategyHypothesisProjectionDiff(input: {
   const anyGateFails = gateValues.some((gate) => gate === "fail");
   const hasMeasuredConflict =
     Boolean(shadowProjection) && conflictAwareRefinement.conflicts.length > 0;
+  const preShadowFilterBlocksShadow =
+    evaluatesCombinedPair &&
+    preShadowCandidateFilter.status !== "not_available" &&
+    (preShadowCandidateFilter.overrideConstruction.retainedDonors.length === 0 ||
+      preShadowCandidateFilter.overrideConstruction.retainedProtectedMuscles
+        .length === 0);
 
   return {
     version: 1,
@@ -2548,6 +2853,7 @@ function buildStrategyHypothesisProjectionDiff(input: {
     },
     projectedDeltas,
     ...(shadowProjection ? { shadowProjection } : {}),
+    preShadowCandidateFilter,
     conflictAwareRefinement,
     computedNonRegressionGates,
     readiness: !evaluatesCombinedPair
@@ -2558,8 +2864,19 @@ function buildStrategyHypothesisProjectionDiff(input: {
           : anyGateFails || hasMeasuredConflict
             ? "needs_better_projection"
             : "ready_for_read_only_shadow_trial"
-        : "ready_for_read_only_shadow_trial",
+        : preShadowFilterBlocksShadow
+          ? "needs_better_projection"
+          : "ready_for_read_only_shadow_trial",
     limitations: unique([
+      ...(preShadowCandidateFilter.status !== "not_available"
+        ? ["pre_shadow_candidate_filter_is_read_only_and_non_binding"]
+        : []),
+      ...(preShadowCandidateFilter.overrideConstruction.excludedDonors.length > 0
+        ? ["pre_shadow_candidate_filter_excluded_unsafe_donors"]
+        : []),
+      ...(preShadowFilterBlocksShadow
+        ? ["pre_shadow_candidate_filter_left_no_safe_override_material"]
+        : []),
       ...(conflictAwareRefinement.conflicts.length > 0
         ? ["conflict_aware_refinement_found_unsafe_candidate_interactions"]
         : []),
@@ -2772,6 +3089,7 @@ function buildStrategyHypothesisPromotionDiff(input: {
   strategyInput?: V2MesocycleStrategyInput;
   strategyHypothesisPromotionReadiness: V2StrategyHypothesisPromotionReadiness;
   strategyShadowProjection?: V2StrategyHypothesisShadowProjectionEvidence;
+  preShadowCandidateFilter?: V2StrategyHypothesisPreShadowCandidateFilter;
 }): V2StrategyHypothesisPromotionDiff {
   const blockSignals = input.strategyInput?.blockResponseSignals ?? [];
   const readyRows = readyPromotionDiffRows(
@@ -2809,6 +3127,7 @@ function buildStrategyHypothesisPromotionDiff(input: {
     capLateBlockVolume,
     blockSignals,
     strategyShadowProjection: input.strategyShadowProjection,
+    preShadowCandidateFilter: input.preShadowCandidateFilter,
   });
 
   return {
@@ -2890,6 +3209,7 @@ export function buildV2MesocycleStrategyDiagnostic(
       strategyInput: input.strategyInput,
       strategyHypothesisPromotionReadiness,
       strategyShadowProjection: input.strategyShadowProjection,
+      preShadowCandidateFilter: input.preShadowCandidateFilter,
     });
   const phaseConfidence = resolvePhaseConfidence(strategyInputSummary);
 

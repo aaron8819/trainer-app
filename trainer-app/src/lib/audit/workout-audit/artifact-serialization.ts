@@ -809,6 +809,12 @@ function compactStrategyPromotionDiff(value: unknown): JsonRecord | undefined {
   const conflictAwareRefinement = asRecord(
     projectionDiff?.conflictAwareRefinement,
   );
+  const preShadowCandidateFilter = asRecord(
+    projectionDiff?.preShadowCandidateFilter,
+  );
+  const preShadowOverride = asRecord(
+    preShadowCandidateFilter?.overrideConstruction,
+  );
   const candidateStrategy = asRecord(projectionDiff?.candidateStrategy);
   const redistributionPreference = asRecord(
     candidateStrategy?.redistributionPreference,
@@ -859,6 +865,39 @@ function compactStrategyPromotionDiff(value: unknown): JsonRecord | undefined {
           ),
           computedGateCounts,
           readiness: projectionDiff.readiness ?? "not_ready",
+          ...(preShadowCandidateFilter
+            ? {
+                preShadowCandidateFilter: {
+                  enabled: preShadowCandidateFilter.enabled === true,
+                  readOnly: preShadowCandidateFilter.readOnly === true,
+                  affectsScoringOrGeneration:
+                    preShadowCandidateFilter.affectsScoringOrGeneration === true
+                      ? true
+                      : false,
+                  status:
+                    preShadowCandidateFilter.status ?? "not_available",
+                  eligibleDonorCount: asRecordArray(
+                    preShadowCandidateFilter.donorEligibility,
+                  ).filter((row) => row.eligible === true).length,
+                  excludedDonorCount: countArray(
+                    preShadowOverride?.excludedDonors,
+                  ),
+                  retainedDonorCount: countArray(
+                    preShadowOverride?.retainedDonors,
+                  ),
+                  excludedProtectedMuscleCount: countArray(
+                    preShadowOverride?.excludedProtectedMuscles,
+                  ),
+                  retainedProtectedMuscleCount: countArray(
+                    preShadowOverride?.retainedProtectedMuscles,
+                  ),
+                  consumedByDemandOrMaterializer:
+                    preShadowCandidateFilter.consumedByDemandOrMaterializer === true
+                      ? true
+                      : false,
+                },
+              }
+            : {}),
           conflictAwareRefinement: conflictAwareRefinement
             ? {
                 enabled: conflictAwareRefinement.enabled === true,

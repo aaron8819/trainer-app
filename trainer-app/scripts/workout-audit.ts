@@ -2243,6 +2243,19 @@ export function buildPlannerOnlyNoRepairSummary(input: {
       (sum, value) => sum + (typeof value === "number" ? value : 0),
       0,
     );
+  const promotionProjectionPreShadow =
+    promotionProjectionDiff?.preShadowCandidateFilter;
+  const promotionProjectionPreShadowOverride =
+    promotionProjectionPreShadow?.overrideConstruction;
+  const promotionProjectionPreShadowEligibleDonors =
+    promotionProjectionPreShadow?.donorEligibility.filter((row) => row.eligible)
+      .length ?? 0;
+  const promotionProjectionPreShadowExcludedDonors =
+    promotionProjectionPreShadowOverride?.excludedDonors.length ?? 0;
+  const promotionProjectionPreShadowRetainedProtected =
+    promotionProjectionPreShadowOverride?.retainedProtectedMuscles.length ?? 0;
+  const promotionProjectionPreShadowExcludedProtected =
+    promotionProjectionPreShadowOverride?.excludedProtectedMuscles.length ?? 0;
   const strategyLines = strategy
     ? [
         "V2 Mesocycle Strategy Diagnostic",
@@ -2287,6 +2300,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Promotion diff non-regression gates: reported=${promotionDiffReportedGateCount}/${promotionDiffGateValues.length} enforced=no`,
         `Promotion projection diff: ${formatStatus(promotionProjectionDiff?.status ?? "not_available")} mode=${formatStatus(promotionProjectionDiff?.projectionMode ?? "not_projected")} readiness=${formatStatus(promotionProjectionDiff?.readiness ?? "not_ready")}`,
         `Promotion projection candidates: protected=${promotionProjectionPreference?.candidateProtectedMuscles.length ?? 0} donors=${promotionProjectionPreference?.candidateDonorMuscles.length ?? 0}`,
+        `Promotion projection pre-shadow filter: ${formatStatus(promotionProjectionPreShadow?.status ?? "not_available")} eligibleDonors=${promotionProjectionPreShadowEligibleDonors} excludedDonors=${promotionProjectionPreShadowExcludedDonors} retainedProtected=${promotionProjectionPreShadowRetainedProtected} excludedProtected=${promotionProjectionPreShadowExcludedProtected}`,
         `Promotion projection gates: pass=${promotionProjectionGateCounts.pass} fail=${promotionProjectionGateCounts.fail} unknown=${promotionProjectionGateCounts.unknown}`,
         `Promotion projection conflict-aware: ${formatStatus(promotionProjectionConflictAware?.status ?? "not_available")} conflicts=${promotionProjectionConflictCount} protected-donor=${promotionProjectionConflictCounts.protected_donor_overlap ?? 0} floor=${promotionProjectionConflictCounts.floor_preservation_conflict ?? 0} slot-owner=${promotionProjectionConflictCounts.slot_owner_missing ?? 0} session-size=${promotionProjectionConflictCounts.session_size_cap_conflict ?? 0} net-new=${promotionProjectionConflictCounts.net_new_volume_blocked ?? 0}`,
         `Promotion projection limitations: ${formatNameList(promotionProjectionDiff?.limitations ?? [], 5)}`,

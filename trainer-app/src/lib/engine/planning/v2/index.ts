@@ -6,7 +6,10 @@ export { buildV2MaterializationDryRunReport } from "./materialization/dry-run-re
 export { buildV2MaterializationPromotionReadiness } from "./materialization/promotion-readiness";
 export { buildV2ExerciseMaterializationPlan } from "./materialization/materializer";
 export { buildV2MesocycleDemand } from "./mesocycle-demand";
-export { buildV2MesocycleStrategyDiagnostic } from "./mesocycle-strategy";
+export {
+  buildV2MesocycleStrategyDiagnostic,
+  buildV2StrategyHypothesisPreShadowCandidateFilter,
+} from "./mesocycle-strategy";
 export { buildV2PlannerMesocyclePolicy } from "./mesocycle-policy";
 export { buildV2SelectionCapacityPlan } from "./selection-capacity-plan";
 export { buildV2SetDistributionIntent } from "./set-distribution-intent";
@@ -28,7 +31,10 @@ export {
 export type {
   V2AcceptedPlannerIntentDto,
 } from "./accepted-planner-intent-dto";
-export type { V2MesocycleStrategyDiagnosticInput } from "./mesocycle-strategy";
+export type {
+  V2MesocycleStrategyDiagnosticInput,
+  V2StrategyHypothesisPreShadowCandidateFilterInput,
+} from "./mesocycle-strategy";
 export type { V2PlannerMesocyclePolicyInput } from "./mesocycle-policy";
 export type {
   ExerciseClassDistributionBySlot,
@@ -62,6 +68,10 @@ export type {
   V2StrategyHypothesisConflictAwareConflictType,
   V2StrategyHypothesisConflictAwareRefinement,
   V2StrategyHypothesisConflictAwareRefinementStatus,
+  V2StrategyHypothesisPreShadowCandidateFilter,
+  V2StrategyHypothesisPreShadowCandidateFilterStatus,
+  V2StrategyHypothesisPreShadowDonorReason,
+  V2StrategyHypothesisPreShadowProtectedReason,
   V2StrategyHypothesisProjectionDeltaStatus,
   V2StrategyHypothesisProjectionDiff,
   V2StrategyHypothesisProjectionCoverageRow,

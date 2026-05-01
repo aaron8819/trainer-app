@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildV2PlannerMesocyclePolicy,
+  buildV2StrategyHypothesisPreShadowCandidateFilter,
   type V2MesocycleStrategyInput,
   type V2StrategyHypothesisShadowProjectionEvidence,
 } from "@/lib/engine/planning/v2";
@@ -259,6 +260,53 @@ function makePromotionDiffShadowProjectionEvidence(): V2StrategyHypothesisShadow
       "old_prescribed_plan_shape_excluded_from_projection_target",
     ],
   };
+}
+
+function makePromotionDiffPreShadowCandidateFilter() {
+  return buildV2StrategyHypothesisPreShadowCandidateFilter({
+    evaluatesCombinedPair: true,
+    candidateProtectedMuscles: ["Calves", "Side Delts"],
+    candidateDonorMuscles: ["Glutes", "Hamstrings"],
+    baseCoverageRows: [
+      {
+        muscle: "Glutes",
+        status: "covered",
+        sets: 12,
+        minSets: 6,
+        priority: "support",
+        targetTier: "B_SUPPORT",
+      },
+      {
+        muscle: "Hamstrings",
+        status: "covered",
+        sets: 6.2,
+        minSets: 6,
+        priority: "primary",
+        targetTier: "A_PRIMARY",
+      },
+    ],
+    donorSlotOwners: {
+      Glutes: ["lower_a", "lower_b"],
+      Hamstrings: ["lower_a"],
+    },
+    protectedSlotOwners: {
+      Calves: ["lower_a", "lower_b"],
+      "Side Delts": ["upper_a", "upper_b"],
+    },
+    slotSetCountBySlot: {
+      lower_a: 14,
+      lower_b: 14,
+      upper_a: 15,
+      upper_b: 18,
+    },
+    slotMaxSetCountBySlot: {
+      lower_a: 18,
+      lower_b: 16,
+      upper_a: 20,
+      upper_b: 21,
+    },
+    clearlyOverConcentratedMuscles: ["Glutes"],
+  });
 }
 
 function makePlannerOwnedAccumulationProjection() {
@@ -1892,6 +1940,7 @@ describe("buildWorkoutAuditArtifact", () => {
     mesocycleExplain!.plannerOnlyNoRepair!.v2MesocycleStrategyDiagnostic =
       buildV2PlannerMesocyclePolicy({
         mesocycleStrategyInput: makePromotionDiffStrategyInput(),
+        preShadowCandidateFilter: makePromotionDiffPreShadowCandidateFilter(),
         strategyShadowProjection: makePromotionDiffShadowProjectionEvidence(),
       }).mesocycleStrategyDiagnostic;
     mesocycleExplain!.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.slotDiffs[0]?.laneDiffs.push(
@@ -1997,6 +2046,15 @@ describe("buildWorkoutAuditArtifact", () => {
               pass: 9,
               fail: 1,
               unknown: 0,
+            },
+            preShadowCandidateFilter: {
+              status: "available_with_limitations",
+              eligibleDonorCount: 1,
+              excludedDonorCount: 1,
+              retainedDonorCount: 1,
+              retainedProtectedMuscleCount: 2,
+              excludedProtectedMuscleCount: 0,
+              consumedByDemandOrMaterializer: false,
             },
             readiness: "needs_better_projection",
             consumedByDemandOrMaterializer: false,
@@ -2239,6 +2297,31 @@ describe("buildWorkoutAuditArtifact", () => {
               maxSlotSetIncreaseAllowed: 0,
             },
           }),
+          preShadowCandidateFilter: expect.objectContaining({
+            enabled: true,
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            consumedByDemandOrMaterializer: false,
+            status: "available_with_limitations",
+            donorEligibility: expect.arrayContaining([
+              expect.objectContaining({
+                muscle: "Hamstrings",
+                eligible: false,
+                reason: "insufficient_margin",
+              }),
+              expect.objectContaining({
+                muscle: "Glutes",
+                eligible: true,
+                reason: "safe_surplus_margin",
+              }),
+            ]),
+            overrideConstruction: expect.objectContaining({
+              excludedDonors: ["Hamstrings"],
+              retainedDonors: ["Glutes"],
+              netNewVolumeAllowed: false,
+              maxSlotIncreaseAllowed: 0,
+            }),
+          }),
           projectedDeltas: expect.objectContaining({
             sessionSize: expect.objectContaining({
               beforeTotalSetsBySlot: expect.objectContaining({
@@ -2353,8 +2436,17 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(JSON.stringify(compactPromotionDiffSummary)).toContain(
       "conflictAwareRefinement",
     );
+    expect(JSON.stringify(compactPromotionDiffSummary)).toContain(
+      "preShadowCandidateFilter",
+    );
     expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
       "conflicts",
+    );
+    expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
+      "donorEligibility",
+    );
+    expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
+      "Hamstrings",
     );
     expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
       "candidate projection increased slot set pressure",

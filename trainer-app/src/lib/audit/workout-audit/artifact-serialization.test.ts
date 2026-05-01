@@ -1849,6 +1849,65 @@ describe("artifact serialization helpers", () => {
                     maxSlotSetIncreaseAllowed: 0,
                   },
                 },
+                preShadowCandidateFilter: {
+                  enabled: true,
+                  readOnly: true,
+                  affectsScoringOrGeneration: false,
+                  consumedByDemandOrMaterializer: false,
+                  status: "available_with_limitations",
+                  configuration: {
+                    readOnly: true,
+                    affectsScoringOrGeneration: false,
+                    floorMarginSets: 0.5,
+                    targetTierFloorMarginSets: 1,
+                    netNewVolumeAllowed: false,
+                    maxSlotIncreaseAllowed: 0,
+                    redistributionRequired: true,
+                  },
+                  donorEligibility: [
+                    {
+                      muscle: "Glutes",
+                      eligible: true,
+                      reason: "safe_surplus_margin",
+                      baseCoverage: {
+                        sets: 12,
+                        floor: 6,
+                        margin: 6,
+                        status: "surplus",
+                      },
+                    },
+                    {
+                      muscle: "Hamstrings",
+                      eligible: false,
+                      reason: "insufficient_margin",
+                      baseCoverage: {
+                        sets: 6.2,
+                        floor: 6,
+                        margin: 0.2,
+                        status: "covered",
+                      },
+                    },
+                  ],
+                  protectedEligibility: [
+                    {
+                      muscle: "Side Delts",
+                      eligible: true,
+                      reason: "target_tier_under_hit",
+                    },
+                  ],
+                  overrideConstruction: {
+                    readOnly: true,
+                    affectsScoringOrGeneration: false,
+                    consumedByDemandOrMaterializer: false,
+                    excludedDonors: ["Hamstrings"],
+                    retainedDonors: ["Glutes"],
+                    excludedProtectedMuscles: [],
+                    retainedProtectedMuscles: ["Side Delts"],
+                    netNewVolumeAllowed: false,
+                    maxSlotIncreaseAllowed: 0,
+                    redistributionRequired: true,
+                  },
+                },
                 readiness: "ready_for_read_only_shadow_trial",
                 limitations: [
                   "no_shadow_projection_rerun_yet",
@@ -1952,6 +2011,18 @@ describe("artifact serialization helpers", () => {
             maxSlotSetIncreaseAllowed: 0,
           },
         },
+        preShadowCandidateFilter: {
+          enabled: true,
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          status: "available_with_limitations",
+          eligibleDonorCount: 1,
+          excludedDonorCount: 1,
+          retainedDonorCount: 1,
+          excludedProtectedMuscleCount: 0,
+          retainedProtectedMuscleCount: 1,
+          consumedByDemandOrMaterializer: false,
+        },
         readiness: "ready_for_read_only_shadow_trial",
         topLimitations: [
           "no_shadow_projection_rerun_yet",
@@ -1968,6 +2039,15 @@ describe("artifact serialization helpers", () => {
     );
     expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
       "candidateDonorMuscles",
+    );
+    expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).toContain(
+      "preShadowCandidateFilter",
+    );
+    expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
+      "donorEligibility",
+    );
+    expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
+      "Hamstrings",
     );
     expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
       "candidate projection increased slot set pressure",

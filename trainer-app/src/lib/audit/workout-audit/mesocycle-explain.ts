@@ -50,8 +50,10 @@ import {
 import { getMuscleTargetSemantics } from "@/lib/engine/volume-landmarks";
 import {
   buildV2PlannerMesocyclePolicy,
+  buildV2StrategyHypothesisPreShadowCandidateFilter,
   type V2MesocycleStrategyInput,
   type V2SetDistributionIntent,
+  type V2StrategyHypothesisPreShadowCandidateFilter,
   type V2StrategyHypothesisProjectionCoverageRow,
   type V2StrategyHypothesisProjectionCoverageSummary,
   type V2StrategyHypothesisProjectionMetricSummary,
@@ -2457,6 +2459,147 @@ function resolveStrategyShadowProtectedSlotOwners(
       ownersByMuscle[muscle] ?? [],
     ]),
   );
+}
+
+const STRATEGY_SHADOW_DONOR_SLOT_OWNERS: Record<string, string[]> = {
+  Chest: ["upper_a", "upper_b"],
+  "Front Delts": ["upper_b"],
+  Glutes: ["lower_a", "lower_b"],
+  Hamstrings: ["lower_a", "lower_b"],
+  Lats: ["upper_a", "upper_b"],
+  "Lower Back": ["lower_a", "lower_b"],
+  "Upper Back": ["upper_a", "upper_b"],
+};
+
+function contributionSlotOwners(input: {
+  planningReality: PlanningRealityDiagnostic;
+  muscle: string;
+}): string[] {
+  return uniqueSorted(
+    input.planningReality.finalSlotPlan
+      .filter((slot) =>
+        slot.exercises.some(
+          (exercise) =>
+            (exercise.effectiveStimulusByMuscle[input.muscle] ?? 0) > 0,
+        ),
+      )
+      .map((slot) => slot.slotId),
+  );
+}
+
+function resolveStrategyShadowDonorSlotOwners(input: {
+  planningReality: PlanningRealityDiagnostic;
+  candidateDonorMuscles: readonly string[];
+}): Record<string, string[]> {
+  return Object.fromEntries(
+    uniqueSorted([...input.candidateDonorMuscles]).map((muscle) => {
+      const actualOwners = new Set(
+        contributionSlotOwners({ planningReality: input.planningReality, muscle }),
+      );
+      const overrideOwners = STRATEGY_SHADOW_DONOR_SLOT_OWNERS[muscle] ?? [];
+      return [muscle, overrideOwners.filter((slotId) => actualOwners.has(slotId))];
+    }),
+  );
+}
+
+function clearlyOverConcentratedMuscles(
+  planningReality: PlanningRealityDiagnostic,
+): string[] {
+  return uniqueSorted(
+    planningReality.exerciseConcentration
+      .filter((row) =>
+        row.flags.some(
+          (flag) =>
+            flag === "EXERCISE_SUPPLIES_OVER_50_PERCENT_WEEKLY_STIMULUS" ||
+            flag === "EXERCISE_SUPPLIES_OVER_60_PERCENT_WEEKLY_STIMULUS",
+        ),
+      )
+      .flatMap((row) => [
+        ...row.primaryMuscles,
+        ...Object.keys(row.effectiveStimulusContributionByMuscle),
+      ]),
+  );
+}
+
+function donorConcentrationRiskMuscles(input: {
+  planningReality: PlanningRealityDiagnostic;
+  candidateDonorMuscles: readonly string[];
+  donorSlotOwners: Record<string, string[]>;
+}): string[] {
+  const riskMuscles: string[] = [];
+  for (const muscle of input.candidateDonorMuscles) {
+    const slotContributions = input.planningReality.finalSlotPlan
+      .map((slot) => ({
+        slotId: slot.slotId,
+        contribution: slot.exercises.reduce(
+          (sum, exercise) =>
+            sum + (exercise.effectiveStimulusByMuscle[muscle] ?? 0),
+          0,
+        ),
+      }))
+      .filter((slot) => slot.contribution > 0)
+      .sort((left, right) => right.contribution - left.contribution);
+    if (slotContributions.length < 2) {
+      continue;
+    }
+    const total = slotContributions.reduce(
+      (sum, slot) => sum + slot.contribution,
+      0,
+    );
+    const highest = slotContributions[0];
+    const reducedOwners = new Set(input.donorSlotOwners[muscle] ?? []);
+    if (
+      highest &&
+      highest.contribution / total >= 0.5 &&
+      !reducedOwners.has(highest.slotId) &&
+      slotContributions.some((slot) => reducedOwners.has(slot.slotId))
+    ) {
+      riskMuscles.push(muscle);
+    }
+  }
+  return uniqueSorted(riskMuscles);
+}
+
+function buildPreShadowCandidateFilter(input: {
+  evaluatesCombinedPair: boolean;
+  preliminaryProtectedMuscles: readonly string[];
+  preliminaryDonorMuscles: readonly string[];
+  noRepairPlanningReality: PlanningRealityDiagnostic | undefined;
+  slotMaxSetCountBySlot: Record<string, number>;
+}): V2StrategyHypothesisPreShadowCandidateFilter {
+  if (!input.noRepairPlanningReality) {
+    return buildV2StrategyHypothesisPreShadowCandidateFilter({
+      evaluatesCombinedPair: input.evaluatesCombinedPair,
+      candidateProtectedMuscles: input.preliminaryProtectedMuscles,
+      candidateDonorMuscles: input.preliminaryDonorMuscles,
+    });
+  }
+  const donorSlotOwners = resolveStrategyShadowDonorSlotOwners({
+    planningReality: input.noRepairPlanningReality,
+    candidateDonorMuscles: input.preliminaryDonorMuscles,
+  });
+  return buildV2StrategyHypothesisPreShadowCandidateFilter({
+    evaluatesCombinedPair: input.evaluatesCombinedPair,
+    candidateProtectedMuscles: input.preliminaryProtectedMuscles,
+    candidateDonorMuscles: input.preliminaryDonorMuscles,
+    baseCoverageRows: buildCoverageRows({
+      planningReality: input.noRepairPlanningReality,
+    }),
+    protectedSlotOwners: resolveStrategyShadowProtectedSlotOwners(
+      input.preliminaryProtectedMuscles,
+    ),
+    donorSlotOwners,
+    slotSetCountBySlot: totalSetsBySlot(input.noRepairPlanningReality.finalSlotPlan),
+    slotMaxSetCountBySlot: input.slotMaxSetCountBySlot,
+    clearlyOverConcentratedMuscles: clearlyOverConcentratedMuscles(
+      input.noRepairPlanningReality,
+    ),
+    concentrationRiskMuscles: donorConcentrationRiskMuscles({
+      planningReality: input.noRepairPlanningReality,
+      candidateDonorMuscles: input.preliminaryDonorMuscles,
+      donorSlotOwners,
+    }),
+  });
 }
 
 function buildStrategyShadowProjectionEvidence(input: {
@@ -7880,6 +8023,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   compareRepaired: boolean;
   repairedProjectionAvailable: boolean;
   mesocycleStrategyInput?: V2MesocycleStrategyInput;
+  preShadowCandidateFilter?: V2StrategyHypothesisPreShadowCandidateFilter;
   strategyShadowProjection?: V2StrategyHypothesisShadowProjectionEvidence;
 }): MesocycleExplainPlannerOnlyNoRepair {
   const repairDependenciesDisabled = [
@@ -7942,6 +8086,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     });
     const plannerPolicy = buildV2PlannerMesocyclePolicy({
       mesocycleStrategyInput: input.mesocycleStrategyInput,
+      preShadowCandidateFilter: input.preShadowCandidateFilter,
       strategyShadowProjection: input.strategyShadowProjection,
     });
     const v2MesocycleStrategyDiagnostic =
@@ -8132,6 +8277,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   });
   const plannerPolicy = buildV2PlannerMesocyclePolicy({
     mesocycleStrategyInput: input.mesocycleStrategyInput,
+    preShadowCandidateFilter: input.preShadowCandidateFilter,
     strategyShadowProjection: input.strategyShadowProjection,
   });
   const v2MesocycleStrategyDiagnostic =
@@ -9249,27 +9395,22 @@ export async function buildMesocycleExplainAuditPayload(input: {
       ...historicalStrategyEvidence.evidenceLimitations,
     ],
   });
-  const preliminaryStrategyProjectionDiff = buildV2PlannerMesocyclePolicy({
+  const preliminaryPlannerPolicy = buildV2PlannerMesocyclePolicy({
     mesocycleStrategyInput,
-  }).mesocycleStrategyDiagnostic.strategyHypothesisPromotionDiff.projectionDiff;
+  });
+  const preliminaryStrategyProjectionDiff =
+    preliminaryPlannerPolicy.mesocycleStrategyDiagnostic
+      .strategyHypothesisPromotionDiff.projectionDiff;
   const preliminaryRedistributionPreference =
     preliminaryStrategyProjectionDiff.candidateStrategy.redistributionPreference;
-  const strategyShadowProjectionOverride =
-    input.plannerOnlyNoRepair?.enabled &&
+  const evaluatesCombinedStrategyShadow =
     preliminaryStrategyProjectionDiff.status === "available_with_limitations" &&
     preliminaryStrategyProjectionDiff.evaluatedHypotheses.includes(
       "protect_lagging_muscles_earlier",
     ) &&
     preliminaryStrategyProjectionDiff.evaluatedHypotheses.includes(
       "cap_late_block_volume",
-    )
-      ? createV2CombinedStrategyShadowProjectionOverride({
-          candidateProtectedMuscles:
-            preliminaryRedistributionPreference.candidateProtectedMuscles,
-          candidateDonorMuscles:
-            preliminaryRedistributionPreference.candidateDonorMuscles,
-        })
-      : undefined;
+    );
   const sourceProjection = toHandoffProjectionSource(
     (await loadHandoffSourceMesocycle(
       prisma,
@@ -9312,6 +9453,39 @@ export async function buildMesocycleExplainAuditPayload(input: {
         experimentalPlannerOnlyNoRepair: true,
       })
     : undefined;
+  const plannerOnlyNoRepairDiagnostics = plannerOnlyNoRepairProjection
+    ? buildProjectionDiagnostics(plannerOnlyNoRepairProjection.diagnostics)
+    : undefined;
+  const preShadowCandidateFilter = buildPreShadowCandidateFilter({
+    evaluatesCombinedPair:
+      Boolean(input.plannerOnlyNoRepair?.enabled) &&
+      evaluatesCombinedStrategyShadow,
+    preliminaryProtectedMuscles:
+      preliminaryRedistributionPreference.candidateProtectedMuscles,
+    preliminaryDonorMuscles:
+      preliminaryRedistributionPreference.candidateDonorMuscles,
+    noRepairPlanningReality: plannerOnlyNoRepairDiagnostics?.planningReality,
+    slotMaxSetCountBySlot: Object.fromEntries(
+      preliminaryPlannerPolicy.targetSkeleton.slots.map((slot) => [
+        slot.slotId,
+        slot.targetSessionSets.max,
+      ]),
+    ),
+  });
+  const retainedPreShadowProtected =
+    preShadowCandidateFilter.overrideConstruction.retainedProtectedMuscles;
+  const retainedPreShadowDonors =
+    preShadowCandidateFilter.overrideConstruction.retainedDonors;
+  const strategyShadowProjectionOverride =
+    input.plannerOnlyNoRepair?.enabled &&
+    evaluatesCombinedStrategyShadow &&
+    retainedPreShadowProtected.length > 0 &&
+    retainedPreShadowDonors.length > 0
+      ? createV2CombinedStrategyShadowProjectionOverride({
+          candidateProtectedMuscles: retainedPreShadowProtected,
+          candidateDonorMuscles: retainedPreShadowDonors,
+        })
+      : undefined;
   const strategyShadowProjection =
     input.plannerOnlyNoRepair?.enabled && strategyShadowProjectionOverride
       ? projectSuccessorSlotPlansFromSnapshot({
@@ -9549,9 +9723,6 @@ export async function buildMesocycleExplainAuditPayload(input: {
   const plannerOnlyOverrideDiagnostics = plannerOnlyOverrideProjection
     ? buildProjectionDiagnostics(plannerOnlyOverrideProjection.diagnostics)
     : undefined;
-  const plannerOnlyNoRepairDiagnostics = plannerOnlyNoRepairProjection
-    ? buildProjectionDiagnostics(plannerOnlyNoRepairProjection.diagnostics)
-    : undefined;
   const strategyShadowProjectionDiagnostics = strategyShadowProjection
     ? buildProjectionDiagnostics(strategyShadowProjection.diagnostics)
     : undefined;
@@ -9586,6 +9757,7 @@ export async function buildMesocycleExplainAuditPayload(input: {
         compareRepaired: input.plannerOnlyNoRepair.compareRepaired,
         repairedProjectionAvailable: !("error" in slotPlanProjection),
         mesocycleStrategyInput,
+        preShadowCandidateFilter,
         strategyShadowProjection: strategyShadowProjectionEvidence,
       })
     : undefined;

@@ -863,6 +863,12 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
   const conflictAwareRefinement = asRecord(
     strategyProjectionDiff?.conflictAwareRefinement,
   );
+  const preShadowCandidateFilter = asRecord(
+    strategyProjectionDiff?.preShadowCandidateFilter,
+  );
+  const preShadowOverride = asRecord(
+    preShadowCandidateFilter?.overrideConstruction,
+  );
   const projectionCandidateStrategy = asRecord(
     strategyProjectionDiff?.candidateStrategy,
   );
@@ -937,6 +943,34 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
                   strategyProjectionDiff.computedNonRegressionGates,
                 ),
                 readiness: strategyProjectionDiff.readiness ?? "not_ready",
+                ...(preShadowCandidateFilter
+                  ? {
+                      preShadowCandidateFilter: {
+                        status:
+                          preShadowCandidateFilter.status ?? "not_available",
+                        eligibleDonorCount: asRecordArray(
+                          preShadowCandidateFilter.donorEligibility,
+                        ).filter((row) => row.eligible === true).length,
+                        excludedDonorCount: countArray(
+                          preShadowOverride?.excludedDonors,
+                        ),
+                        retainedDonorCount: countArray(
+                          preShadowOverride?.retainedDonors,
+                        ),
+                        excludedProtectedMuscleCount: countArray(
+                          preShadowOverride?.excludedProtectedMuscles,
+                        ),
+                        retainedProtectedMuscleCount: countArray(
+                          preShadowOverride?.retainedProtectedMuscles,
+                        ),
+                        consumedByDemandOrMaterializer:
+                          preShadowCandidateFilter.consumedByDemandOrMaterializer ===
+                          true
+                            ? true
+                            : false,
+                      },
+                    }
+                  : {}),
                 conflictAwareRefinement: conflictAwareRefinement
                   ? {
                       status:

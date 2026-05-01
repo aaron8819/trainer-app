@@ -3,6 +3,7 @@ import {
   buildV2MesocycleDemand,
   buildV2MesocycleStrategyDiagnostic,
   buildV2PlannerMesocyclePolicy,
+  buildV2StrategyHypothesisPreShadowCandidateFilter,
   buildV2TargetSkeleton,
   type V2MesocycleStrategyInput,
   type V2StrategyHypothesisShadowProjectionEvidence,
@@ -1011,6 +1012,447 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     expect(JSON.stringify(projection)).not.toContain(
       "old-prescribed-plan-only",
     );
+  });
+
+  it("filters unsafe donors from base no-repair coverage before shadow override construction", () => {
+    const filter = buildV2StrategyHypothesisPreShadowCandidateFilter({
+      evaluatesCombinedPair: true,
+      candidateProtectedMuscles: ["Hamstrings", "Side Delts"],
+      candidateDonorMuscles: ["Glutes", "Hamstrings", "Mystery"],
+      baseCoverageRows: [
+        {
+          muscle: "Glutes",
+          status: "covered",
+          sets: 10,
+          minSets: 6,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+        {
+          muscle: "Hamstrings",
+          status: "covered",
+          sets: 6.3,
+          minSets: 6,
+          priority: "primary",
+          targetTier: "A_PRIMARY",
+        },
+        {
+          muscle: "Side Delts",
+          status: "below_minimum",
+          sets: 5,
+          minSets: 6,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+      ],
+      donorSlotOwners: {
+        Glutes: ["lower_a", "lower_b"],
+        Hamstrings: ["lower_a"],
+      },
+      protectedSlotOwners: {
+        Hamstrings: ["lower_a", "lower_b"],
+        "Side Delts": ["upper_a", "upper_b"],
+      },
+      slotSetCountBySlot: {
+        lower_a: 14,
+        lower_b: 14,
+        upper_a: 15,
+        upper_b: 16,
+      },
+      slotMaxSetCountBySlot: {
+        lower_a: 18,
+        lower_b: 16,
+        upper_a: 20,
+        upper_b: 21,
+      },
+      clearlyOverConcentratedMuscles: ["Glutes"],
+    });
+
+    expect(filter).toMatchObject({
+      enabled: true,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "available_with_limitations",
+      configuration: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        netNewVolumeAllowed: false,
+        maxSlotIncreaseAllowed: 0,
+        redistributionRequired: true,
+      },
+      overrideConstruction: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByDemandOrMaterializer: false,
+        excludedDonors: ["Hamstrings", "Mystery"],
+        retainedDonors: ["Glutes"],
+        excludedProtectedMuscles: [],
+        retainedProtectedMuscles: ["Hamstrings", "Side Delts"],
+        netNewVolumeAllowed: false,
+        maxSlotIncreaseAllowed: 0,
+        redistributionRequired: true,
+      },
+    });
+    expect(filter.donorEligibility).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Glutes",
+          eligible: true,
+          reason: "safe_surplus_margin",
+          baseCoverage: expect.objectContaining({
+            sets: 10,
+            floor: 6,
+            margin: 4,
+            status: "surplus",
+          }),
+        }),
+        expect.objectContaining({
+          muscle: "Hamstrings",
+          eligible: false,
+          reason: "protected_overlap",
+          baseCoverage: expect.objectContaining({
+            sets: 6.3,
+            floor: 6,
+            status: "covered",
+          }),
+        }),
+        expect.objectContaining({
+          muscle: "Mystery",
+          eligible: false,
+          reason: "unknown_floor_margin",
+          baseCoverage: { status: "unknown" },
+        }),
+      ]),
+    );
+  });
+
+  it("requires measurable donor floor margin and stricter target-tier evidence", () => {
+    const filter = buildV2StrategyHypothesisPreShadowCandidateFilter({
+      evaluatesCombinedPair: true,
+      candidateProtectedMuscles: ["Side Delts"],
+      candidateDonorMuscles: [
+        "Chest",
+        "Glutes",
+        "Lats",
+        "Quads",
+        "Triceps",
+        "Upper Back",
+      ],
+      baseCoverageRows: [
+        {
+          muscle: "Chest",
+          status: "covered",
+          sets: 11.4,
+          minSets: 10,
+          priority: "primary",
+          targetTier: "A_PRIMARY",
+        },
+        {
+          muscle: "Glutes",
+          status: "covered",
+          sets: 6.2,
+          minSets: 6,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+        {
+          muscle: "Lats",
+          status: "below_minimum",
+          sets: 7,
+          minSets: 8,
+          priority: "primary",
+          targetTier: "A_PRIMARY",
+        },
+        {
+          muscle: "Quads",
+          status: "covered",
+          sets: 11.4,
+          minSets: 10,
+          priority: "primary",
+          targetTier: "A_PRIMARY",
+        },
+        {
+          muscle: "Triceps",
+          status: "covered",
+          sets: 5,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+        {
+          muscle: "Upper Back",
+          status: "above_maximum",
+          sets: 15,
+          minSets: 6,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+      ],
+      donorSlotOwners: {
+        Chest: ["upper_a"],
+        Glutes: ["lower_a"],
+        Lats: ["upper_a"],
+        Quads: ["lower_a"],
+        Triceps: ["upper_a"],
+      },
+      protectedSlotOwners: {
+        "Side Delts": ["upper_a"],
+      },
+      slotSetCountBySlot: { upper_a: 14 },
+      slotMaxSetCountBySlot: { upper_a: 20 },
+      clearlyOverConcentratedMuscles: ["Chest"],
+      concentrationRiskMuscles: ["Chest"],
+    });
+    const reasonByMuscle = new Map(
+      filter.donorEligibility.map((row) => [row.muscle, row.reason]),
+    );
+
+    expect(reasonByMuscle.get("Chest")).toBe("concentration_risk");
+    expect(reasonByMuscle.get("Glutes")).toBe("insufficient_margin");
+    expect(reasonByMuscle.get("Lats")).toBe("below_floor");
+    expect(reasonByMuscle.get("Quads")).toBe("concentration_risk");
+    expect(reasonByMuscle.get("Triceps")).toBe("unknown_floor_margin");
+    expect(reasonByMuscle.get("Upper Back")).toBe("slot_incompatible");
+    expect(filter.overrideConstruction.retainedDonors).toEqual([]);
+    expect(filter.protectedEligibility).toEqual([
+      {
+        muscle: "Side Delts",
+        eligible: false,
+        reason: "would_require_net_new_volume",
+      },
+    ]);
+  });
+
+  it("excludes protected candidates when compatible owners are overloaded", () => {
+    const filter = buildV2StrategyHypothesisPreShadowCandidateFilter({
+      evaluatesCombinedPair: true,
+      candidateProtectedMuscles: ["Side Delts"],
+      candidateDonorMuscles: ["Glutes"],
+      baseCoverageRows: [
+        {
+          muscle: "Glutes",
+          status: "covered",
+          sets: 12,
+          minSets: 6,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+      ],
+      donorSlotOwners: { Glutes: ["lower_a"] },
+      protectedSlotOwners: { "Side Delts": ["upper_a"] },
+      slotSetCountBySlot: { upper_a: 20, lower_a: 14 },
+      slotMaxSetCountBySlot: { upper_a: 20, lower_a: 18 },
+      clearlyOverConcentratedMuscles: ["Glutes"],
+    });
+
+    expect(filter.donorEligibility).toEqual([
+      expect.objectContaining({
+        muscle: "Glutes",
+        eligible: true,
+      }),
+    ]);
+    expect(filter.protectedEligibility).toEqual([
+      {
+        muscle: "Side Delts",
+        eligible: false,
+        reason: "slot_owner_missing",
+      },
+    ]);
+    expect(filter.overrideConstruction).toMatchObject({
+      retainedDonors: ["Glutes"],
+      retainedProtectedMuscles: [],
+      excludedProtectedMuscles: ["Side Delts"],
+      maxSlotIncreaseAllowed: 0,
+      netNewVolumeAllowed: false,
+    });
+  });
+
+  it("keeps filtered candidates non-binding and leaves gates dependent on measured deltas", () => {
+    const preShadowCandidateFilter =
+      buildV2StrategyHypothesisPreShadowCandidateFilter({
+        evaluatesCombinedPair: true,
+        candidateProtectedMuscles: ["Side Delts"],
+        candidateDonorMuscles: ["Glutes", "Hamstrings"],
+        baseCoverageRows: [
+          {
+            muscle: "Glutes",
+            status: "covered",
+            sets: 12,
+            minSets: 6,
+            priority: "support",
+            targetTier: "B_SUPPORT",
+          },
+          {
+            muscle: "Hamstrings",
+            status: "covered",
+            sets: 6.2,
+            minSets: 6,
+            priority: "primary",
+            targetTier: "A_PRIMARY",
+          },
+        ],
+        donorSlotOwners: {
+          Glutes: ["lower_a"],
+          Hamstrings: ["lower_a"],
+        },
+        protectedSlotOwners: {
+          "Side Delts": ["upper_a"],
+        },
+        slotSetCountBySlot: { upper_a: 15, lower_a: 14 },
+        slotMaxSetCountBySlot: { upper_a: 20, lower_a: 18 },
+        clearlyOverConcentratedMuscles: ["Glutes"],
+      });
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: {
+        ...buildStrategyInput(),
+        blockResponseSignals: buildStrategyInput().blockResponseSignals.map(
+          (signal, index) => ({
+            ...signal,
+            muscleDistribution: {
+              ...signal.muscleDistribution,
+              recurringOverConcentratedMuscles:
+                index === 0
+                  ? ["Hamstrings", "Glutes"]
+                  : signal.muscleDistribution.recurringOverConcentratedMuscles,
+            },
+            fatigueDistribution: {
+              ...signal.fatigueDistribution,
+              likelyFatigueDrivers:
+                index === 0
+                  ? ["Hamstrings", "Glutes"]
+                  : signal.fatigueDistribution.likelyFatigueDrivers,
+            },
+          }),
+        ),
+      },
+      preShadowCandidateFilter,
+    });
+    const projection =
+      diagnostic.strategyHypothesisPromotionDiff.projectionDiff;
+
+    expect(
+      projection.candidateStrategy.redistributionPreference.candidateDonorMuscles,
+    ).toEqual(expect.arrayContaining(["Hamstrings", "Glutes"]));
+    expect(projection.preShadowCandidateFilter.overrideConstruction).toMatchObject({
+      excludedDonors: ["Hamstrings"],
+      retainedDonors: ["Glutes"],
+    });
+    expect(projection.computedNonRegressionGates).toMatchObject({
+      preservePriorityCoverage: "unknown",
+      preserveOrImproveLaggingMuscleCoverage: "unknown",
+      noSessionSizeRegression: "unknown",
+    });
+    expect(projection.readiness).toBe("ready_for_read_only_shadow_trial");
+    expect(projection.preShadowCandidateFilter.readOnly).toBe(true);
+    expect(projection.preShadowCandidateFilter.affectsScoringOrGeneration).toBe(
+      false,
+    );
+    expect(projection.preShadowCandidateFilter.consumedByDemandOrMaterializer).toBe(
+      false,
+    );
+  });
+
+  it("keeps readiness at needs_better_projection when the filter leaves no safe override material", () => {
+    const preShadowCandidateFilter =
+      buildV2StrategyHypothesisPreShadowCandidateFilter({
+        evaluatesCombinedPair: true,
+        candidateProtectedMuscles: ["Side Delts"],
+        candidateDonorMuscles: ["Hamstrings"],
+        baseCoverageRows: [
+          {
+            muscle: "Hamstrings",
+            status: "covered",
+            sets: 6.2,
+            minSets: 6,
+            priority: "primary",
+            targetTier: "A_PRIMARY",
+          },
+        ],
+        donorSlotOwners: { Hamstrings: ["lower_a"] },
+        protectedSlotOwners: { "Side Delts": ["upper_a"] },
+        slotSetCountBySlot: { upper_a: 15, lower_a: 14 },
+        slotMaxSetCountBySlot: { upper_a: 20, lower_a: 18 },
+      });
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+      preShadowCandidateFilter,
+    });
+    const projection =
+      diagnostic.strategyHypothesisPromotionDiff.projectionDiff;
+
+    expect(preShadowCandidateFilter.overrideConstruction.retainedDonors).toEqual(
+      [],
+    );
+    expect(projection.readiness).toBe("needs_better_projection");
+    expect(projection.limitations).toEqual(
+      expect.arrayContaining([
+        "pre_shadow_candidate_filter_left_no_safe_override_material",
+      ]),
+    );
+  });
+
+  it("records that the measured shadow was built from retained filter candidates", () => {
+    const preShadowCandidateFilter =
+      buildV2StrategyHypothesisPreShadowCandidateFilter({
+        evaluatesCombinedPair: true,
+        candidateProtectedMuscles: ["Side Delts"],
+        candidateDonorMuscles: ["Glutes", "Hamstrings"],
+        baseCoverageRows: [
+          {
+            muscle: "Glutes",
+            status: "covered",
+            sets: 12,
+            minSets: 6,
+            priority: "support",
+            targetTier: "B_SUPPORT",
+          },
+          {
+            muscle: "Hamstrings",
+            status: "covered",
+            sets: 6.2,
+            minSets: 6,
+            priority: "primary",
+            targetTier: "A_PRIMARY",
+          },
+        ],
+        donorSlotOwners: {
+          Glutes: ["lower_a"],
+          Hamstrings: ["lower_a"],
+        },
+        protectedSlotOwners: { "Side Delts": ["upper_a"] },
+        slotSetCountBySlot: { upper_a: 15, lower_a: 14 },
+        slotMaxSetCountBySlot: { upper_a: 20, lower_a: 18 },
+        clearlyOverConcentratedMuscles: ["Glutes"],
+      });
+    const shadowProjection = buildShadowProjectionEvidence({
+      candidateStrategy: {
+        candidateProtectedMuscles:
+          preShadowCandidateFilter.overrideConstruction.retainedProtectedMuscles,
+        candidateDonorMuscles:
+          preShadowCandidateFilter.overrideConstruction.retainedDonors,
+        protectedSlotOwners: {
+          "Side Delts": ["upper_a"],
+        },
+        preferRedistributionBeforeNetNewVolume: true,
+      },
+    });
+    const diagnostic = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+      preShadowCandidateFilter,
+      strategyShadowProjection: shadowProjection,
+    });
+    const projection =
+      diagnostic.strategyHypothesisPromotionDiff.projectionDiff;
+
+    expect(
+      projection.preShadowCandidateFilter.overrideConstruction.excludedDonors,
+    ).toEqual(["Hamstrings"]);
+    expect(projection.shadowProjection?.candidateStrategy.candidateDonorMuscles).toEqual(
+      ["Glutes"],
+    );
+    expect(
+      JSON.stringify(projection.shadowProjection?.candidateStrategy),
+    ).not.toContain("Hamstrings");
   });
 
   it("computes measured shadow projection gates only from before and after deltas", () => {

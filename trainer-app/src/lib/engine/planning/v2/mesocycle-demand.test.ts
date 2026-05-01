@@ -62,5 +62,6 @@ describe("buildV2MesocycleDemand", () => {
     expect(JSON.stringify(demand)).not.toContain("promotion_diff");
     expect(JSON.stringify(demand)).not.toContain("projection_diff");
     expect(JSON.stringify(demand)).not.toContain("conflictAwareRefinement");
+    expect(JSON.stringify(demand)).not.toContain("preShadowCandidateFilter");
   });
 });

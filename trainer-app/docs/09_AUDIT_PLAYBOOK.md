@@ -5,7 +5,7 @@ Last reviewed: 2026-03-16
 Purpose: Canonical operational playbook for recurring workout-audit CLI use. This doc tells operators and maintainers which audit to run, what to inspect first, what counts as a red flag, and when to escalate into deeper code-level investigation.
 
 This doc covers:
-- Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `projected-week-volume`, `current-week-audit`, `mesocycle-explain`, `deload`, and `progression-anchor`
+- Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `projected-week-volume`, `current-week-audit`, `mesocycle-explain`, `v2-accepted-seed-prepare-compare`, `deload`, and `progression-anchor`
 - Active-mesocycle dry-run reseed review for bounded slot-seed repair
 - Default audit workflows for common review scenarios
 - Artifact-reading guidance for the current audit JSON vocabulary
@@ -473,6 +473,40 @@ Escalate when:
 - accepted seed normalization fails for a mesocycle that should have `slotPlanSeedJson`
 - runtime drift appears without corresponding generated-vs-saved or slot-identity evidence
 - someone is relying on unavailable historical ranking rationale as if it were persisted truth
+
+### `v2-accepted-seed-prepare-compare`
+
+When to use it:
+- inspect a live `AWAITING_HANDOFF` candidate at the handoff acceptance seam
+- compare legacy accepted-seed preparation with the disabled V2 preparation preview
+- verify the V2 path stays preview-only before any production write slice is considered
+
+Command pattern:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode v2-accepted-seed-prepare-compare --owner <owner-email>
+```
+
+Optional explicit candidate:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode v2-accepted-seed-prepare-compare --owner <owner-email> --mesocycle-id <handoff-mesocycle-id>
+```
+
+Inspect first:
+- `v2AcceptedSeedPrepareCompare.boundaryFacts`
+- `v2AcceptedSeedPrepareCompare.availability`
+- `v2AcceptedSeedPrepareCompare.seedShapeComparison`
+- `v2AcceptedSeedPrepareCompare.identityCoverageComparison.identitySummary`
+- `v2AcceptedSeedPrepareCompare.provenance`
+
+Guardrails:
+- the mode resolves the latest pending handoff candidate when no explicit mesocycle id is supplied
+- it calls `prepareV2AcceptedSeedPreparationCompare()` with real handoff context
+- it is read-only, writes no transaction, mutates no DB rows, and is not consumed by production
+- V2 preview availability and production-write eligibility are separate fields; production-write eligibility remains false here
+- V2 preview preparation does not call legacy projection or repair, and seed serialization identity must remain `buildMesocycleSlotPlanSeed`
+- detailed compare rows live in the mode's compact artifact section, not in `mesocycle-explain`
 
 ### `active-mesocycle-slot-reseed`
 

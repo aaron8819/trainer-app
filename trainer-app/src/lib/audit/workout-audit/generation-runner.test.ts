@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
   const generateDeloadSessionFromIntent = vi.fn();
   const buildWeeklyRetroAuditPayload = vi.fn();
   const buildActiveMesocycleSlotReseedAuditPayload = vi.fn();
+  const buildV2AcceptedSeedPrepareCompareAuditPayload = vi.fn();
   const buildMesocycleExplainAuditPayload = vi.fn();
   return {
     loadActiveMesocycle,
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => {
     generateDeloadSessionFromIntent,
     buildWeeklyRetroAuditPayload,
     buildActiveMesocycleSlotReseedAuditPayload,
+    buildV2AcceptedSeedPrepareCompareAuditPayload,
     buildMesocycleExplainAuditPayload,
   };
 });
@@ -43,6 +45,11 @@ vi.mock("./weekly-retro", () => ({
 vi.mock("./active-mesocycle-slot-reseed", () => ({
   buildActiveMesocycleSlotReseedAuditPayload: (...args: unknown[]) =>
     mocks.buildActiveMesocycleSlotReseedAuditPayload(...args),
+}));
+
+vi.mock("./v2-accepted-seed-prepare-compare", () => ({
+  buildV2AcceptedSeedPrepareCompareAuditPayload: (...args: unknown[]) =>
+    mocks.buildV2AcceptedSeedPrepareCompareAuditPayload(...args),
 }));
 
 vi.mock("./mesocycle-explain", () => ({
@@ -203,6 +210,30 @@ describe("runWorkoutAuditGeneration", () => {
       recommendation: {
         verdict: "safe_to_apply_bounded_reseed",
         reasons: ["push support improved"],
+      },
+    });
+    mocks.buildV2AcceptedSeedPrepareCompareAuditPayload.mockResolvedValue({
+      version: 1,
+      source: "v2_accepted_seed_prepare_compare_audit",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      wouldWriteTransaction: false,
+      compareStatus: "available",
+      handoffCandidate: {
+        found: true,
+        mesocycleId: "meso-1",
+      },
+      boundaryFacts: {
+        readOnly: true,
+        noWrite: true,
+        consumedByProduction: false,
+        v2PreviewAvailable: true,
+        v2ProductionWriteEligible: false,
+        seedSerializer: "buildMesocycleSlotPlanSeed",
+        legacyProjectionCalledByV2Path: false,
+        repairCalledByV2Path: false,
+        transactionStatus: "no_write",
       },
     });
     mocks.buildMesocycleExplainAuditPayload.mockResolvedValue({
@@ -551,6 +582,45 @@ describe("runWorkoutAuditGeneration", () => {
       },
       recommendation: {
         verdict: "safe_to_apply_bounded_reseed",
+      },
+    });
+  });
+
+  it("routes v2 accepted-seed prepare compare through the read-only audit builder without touching generation helpers", async () => {
+    const context: WorkoutAuditContext = {
+      mode: "v2-accepted-seed-prepare-compare",
+      requestedMode: "v2-accepted-seed-prepare-compare",
+      userId: "user-1",
+      ownerEmail: "owner@test.local",
+      plannerDiagnosticsMode: "debug",
+      v2AcceptedSeedPrepareCompare: {
+        mesocycleId: "meso-1",
+        requestedIdSource: "mesocycle_id",
+      },
+    };
+
+    const run = await runWorkoutAuditGeneration(context);
+
+    expect(
+      mocks.buildV2AcceptedSeedPrepareCompareAuditPayload,
+    ).toHaveBeenCalledWith({
+      userId: "user-1",
+      ownerEmail: "owner@test.local",
+      mesocycleId: "meso-1",
+      requestedIdSource: "mesocycle_id",
+    });
+    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
+    expect(mocks.generateDeloadSessionFromIntent).not.toHaveBeenCalled();
+    expect(run.generationResult).toBeUndefined();
+    expect(run.v2AcceptedSeedPrepareCompare).toMatchObject({
+      readOnly: true,
+      wouldWriteTransaction: false,
+      consumedByProduction: false,
+      compareStatus: "available",
+      boundaryFacts: {
+        v2PreviewAvailable: true,
+        v2ProductionWriteEligible: false,
+        transactionStatus: "no_write",
       },
     });
   });

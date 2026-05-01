@@ -131,6 +131,7 @@ export function buildWorkoutAuditArtifact(
     weeklyRetro: run.weeklyRetro,
     projectedWeekVolume: run.projectedWeekVolume,
     activeMesocycleSlotReseed: run.activeMesocycleSlotReseed,
+    v2AcceptedSeedPrepareCompare: run.v2AcceptedSeedPrepareCompare,
     mesocycleExplain: run.mesocycleExplain,
     progressionAnchor: run.progressionAnchor,
     warningSummary: buildGenerationWarningSummary({

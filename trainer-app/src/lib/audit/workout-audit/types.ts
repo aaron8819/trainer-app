@@ -24,6 +24,7 @@ import type {
   V2SupportLaneProjectionDiagnostic,
 } from "@/lib/api/planning-reality";
 import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection.diagnostics";
+import type { V2AcceptedSeedPreparationCompareResult } from "@/lib/api/mesocycle-handoff";
 import type { SlotPreselectionDemandDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection";
 import type { SessionGenerationResult } from "@/lib/api/template-session/types";
 import type {
@@ -38,6 +39,7 @@ import {
   MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION,
   PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
   PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION,
+  V2_ACCEPTED_SEED_PREPARE_COMPARE_AUDIT_PAYLOAD_VERSION,
   WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION,
   WORKOUT_AUDIT_ARTIFACT_VERSION,
 } from "./constants";
@@ -125,6 +127,10 @@ export type WorkoutAuditContext = {
   };
   activeMesocycleSlotReseed?: {
     enabled: true;
+  };
+  v2AcceptedSeedPrepareCompare?: {
+    mesocycleId?: string;
+    requestedIdSource?: "mesocycle_id" | "source_mesocycle_id";
   };
   progressionAnchor?: {
     workoutId?: string;
@@ -643,6 +649,101 @@ export type ActiveMesocycleSlotReseedAuditPayload = {
     verdict: ActiveMesocycleSlotReseedRecommendation;
     reasons: string[];
   };
+};
+
+export type V2AcceptedSeedPrepareCompareAuditPayload = {
+  version: typeof V2_ACCEPTED_SEED_PREPARE_COMPARE_AUDIT_PAYLOAD_VERSION;
+  source: "v2_accepted_seed_prepare_compare_audit";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByProduction: false;
+  wouldWriteTransaction: false;
+  compareStatus:
+    | "available"
+    | "blocked"
+    | "not_comparable"
+    | "no_handoff_candidate";
+  handoffCandidate: {
+    found: boolean;
+    resolvedBy:
+      | "explicit_mesocycle_id"
+      | "explicit_source_mesocycle_id"
+      | "latest_pending_handoff"
+      | "not_found";
+    mesocycleId?: string;
+    state?: string;
+    missingReason?: "no_pending_handoff_candidate";
+  };
+  boundaryFacts: {
+    readOnly: true;
+    noWrite: true;
+    consumedByProduction: false;
+    v2PreviewAvailable: boolean;
+    v2ProductionWriteEligible: false;
+    seedSerializer: "buildMesocycleSlotPlanSeed";
+    legacyProjectionCalledByV2Path: false;
+    repairCalledByV2Path: false;
+    transactionStatus: "no_write";
+  };
+  availability: {
+    handoffCandidateFound: boolean;
+    legacyPreparationAvailable: boolean;
+    v2PreparationPreviewAvailable: boolean;
+    v2BlockedFailClosed: boolean;
+    missingEvidence: string[];
+  };
+  seedShapeComparison: Pick<
+    V2AcceptedSeedPreparationCompareResult["seedShapeComparison"],
+    | "classification"
+    | "slotIdsInOrder"
+    | "exerciseCountBySlot"
+    | "setCountBySlot"
+    | "totalSetCount"
+    | "executableFieldShape"
+    | "seedSerializerIdentity"
+  >;
+  identityCoverageComparison: {
+    identitySummary: {
+      sameExercise: number;
+      v2Added: number;
+      v2Removed: number;
+      cleanAlternative: number;
+      classEquivalentDifference: number;
+      unclear: number;
+      notComparable: number;
+    };
+    identityRows: Array<{
+      slotId: string;
+      relationship: V2AcceptedSeedPreparationCompareResult["exerciseIdentityComparison"]["rows"][number]["relationship"];
+      classification: V2AcceptedSeedPreparationCompareResult["exerciseIdentityComparison"]["rows"][number]["classification"];
+      sameExerciseIds: string[];
+      v2AddedExerciseIds: string[];
+      v2RemovedExerciseIds: string[];
+      evidence: string[];
+      omittedEvidenceCount?: number;
+    }>;
+    coverageRows: Array<{
+      item: V2AcceptedSeedPreparationCompareResult["classLaneCoverageComparison"]["rows"][number]["item"];
+      legacy: boolean | null;
+      v2: boolean | null;
+      classification: V2AcceptedSeedPreparationCompareResult["classLaneCoverageComparison"]["rows"][number]["classification"];
+      evidence: string[];
+      omittedEvidenceCount?: number;
+    }>;
+  };
+  provenance: {
+    legacySourceLabel: string;
+    v2SourceLabel: "v2_disabled";
+    baseValidationStatus: V2AcceptedSeedPreparationCompareResult["provenanceNoWriteBoundary"]["baseValidationStatus"];
+    materializerStatus: V2AcceptedSeedPreparationCompareResult["provenanceNoWriteBoundary"]["materializerStatus"];
+    seedShapeCompatibility: V2AcceptedSeedPreparationCompareResult["provenanceNoWriteBoundary"]["seedShapeCompatibility"];
+    promotionReadinessStatus: V2AcceptedSeedPreparationCompareResult["provenanceNoWriteBoundary"]["promotionReadinessStatus"];
+    productionGates: V2AcceptedSeedPreparationCompareResult["provenanceNoWriteBoundary"]["productionGates"];
+    fallbackPolicy: V2AcceptedSeedPreparationCompareResult["provenanceNoWriteBoundary"]["fallbackPolicy"];
+    transactionStatus: "no_write";
+  };
+  guardrails: V2AcceptedSeedPreparationCompareResult["guardrails"];
+  summary: V2AcceptedSeedPreparationCompareResult["summary"];
 };
 
 export type MesocycleExplainReasonSource =
@@ -1744,6 +1845,7 @@ export type WorkoutAuditRun = {
   weeklyRetro?: WeeklyRetroAuditPayload;
   projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;
   activeMesocycleSlotReseed?: ActiveMesocycleSlotReseedAuditPayload;
+  v2AcceptedSeedPrepareCompare?: V2AcceptedSeedPrepareCompareAuditPayload;
   mesocycleExplain?: MesocycleExplainAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;
 };
@@ -1770,6 +1872,7 @@ export type WorkoutAuditArtifact = {
   weeklyRetro?: WeeklyRetroAuditPayload;
   projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;
   activeMesocycleSlotReseed?: ActiveMesocycleSlotReseedAuditPayload;
+  v2AcceptedSeedPrepareCompare?: V2AcceptedSeedPrepareCompareAuditPayload;
   mesocycleExplain?: MesocycleExplainAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;
   warningSummary: AuditWarningSummary;

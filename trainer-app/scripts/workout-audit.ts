@@ -203,6 +203,16 @@ function formatBooleanFlag(value: boolean): string {
   return value ? "yes" : "no";
 }
 
+function formatAuditValue(value: string | number | boolean | null | undefined): string {
+  if (value == null) {
+    return "none";
+  }
+  if (typeof value === "boolean") {
+    return formatBooleanFlag(value);
+  }
+  return String(value);
+}
+
 type PlanningRealityDiagnostic = NonNullable<
   NonNullable<WorkoutAuditArtifact["mesocycleExplain"]>["preview"]["projectionDiagnostics"]["planningReality"]
 >;
@@ -1983,6 +1993,38 @@ export function buildActiveMesocycleSlotReseedApplySummary(input: {
   ];
 }
 
+export function buildV2AcceptedSeedPrepareCompareSummary(input: {
+  artifact: Pick<WorkoutAuditArtifact, "v2AcceptedSeedPrepareCompare">;
+  outputPath: string;
+  sizeBytes: number;
+}): string[] | null {
+  const payload = input.artifact.v2AcceptedSeedPrepareCompare;
+  if (!payload) {
+    return null;
+  }
+
+  const identity = payload.identityCoverageComparison.identitySummary;
+  const seedShape = payload.seedShapeComparison;
+  const slotOrder =
+    seedShape.slotIdsInOrder.legacy.length > 0 ||
+    seedShape.slotIdsInOrder.v2.length > 0
+      ? `${seedShape.slotIdsInOrder.legacy.join(">") || "none"} -> ${seedShape.slotIdsInOrder.v2.join(">") || "none"}`
+      : "none";
+  const productionGateMissing =
+    payload.provenance.productionGates.missing.join(",") || "none";
+
+  return [
+    `[workout-audit:v2-seed-compare] handoff_candidate=${formatBooleanFlag(payload.handoffCandidate.found)} mesocycle=${formatAuditValue(payload.handoffCandidate.mesocycleId)} status=${payload.compareStatus}`,
+    `[workout-audit:v2-seed-compare] boundary read_only=${formatBooleanFlag(payload.boundaryFacts.readOnly)} no_write=${formatBooleanFlag(payload.boundaryFacts.noWrite)} consumed_by_production=${formatBooleanFlag(payload.boundaryFacts.consumedByProduction)} serializer=${payload.boundaryFacts.seedSerializer}`,
+    `[workout-audit:v2-seed-compare] availability legacy=${formatBooleanFlag(payload.availability.legacyPreparationAvailable)} v2_preview=${formatBooleanFlag(payload.availability.v2PreparationPreviewAvailable)} production_write_eligible=${formatBooleanFlag(payload.boundaryFacts.v2ProductionWriteEligible)} fail_closed=${formatBooleanFlag(payload.availability.v2BlockedFailClosed)}`,
+    `[workout-audit:v2-seed-compare] v2_path legacy_projection_called=${formatBooleanFlag(payload.boundaryFacts.legacyProjectionCalledByV2Path)} repair_called=${formatBooleanFlag(payload.boundaryFacts.repairCalledByV2Path)} transaction=${payload.boundaryFacts.transactionStatus}`,
+    `[workout-audit:v2-seed-compare] seed_shape classification=${seedShape.classification} slots=${slotOrder} total_sets=${formatAuditValue(seedShape.totalSetCount.legacy)}->${formatAuditValue(seedShape.totalSetCount.v2)} executable_shape=${seedShape.executableFieldShape.classification}`,
+    `[workout-audit:v2-seed-compare] identity same=${identity.sameExercise} added=${identity.v2Added} removed=${identity.v2Removed} clean_alt=${identity.cleanAlternative} class_equiv=${identity.classEquivalentDifference} unclear=${identity.unclear} not_comparable=${identity.notComparable}`,
+    `[workout-audit:v2-seed-compare] gates base=${payload.provenance.baseValidationStatus} materializer=${payload.provenance.materializerStatus} seed_shape=${formatBooleanFlag(payload.provenance.seedShapeCompatibility.compatible)} promotion=${payload.provenance.promotionReadinessStatus} production_gates_missing=${productionGateMissing}`,
+    `[workout-audit:v2-seed-compare] artifact=${input.outputPath} size_bytes=${input.sizeBytes}`,
+  ];
+}
+
 export function buildProjectedWeekOperatorSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "projectedWeekVolume" | "warningSummary">;
   outputPath: string;
@@ -2729,6 +2771,8 @@ async function main(input?: {
       ? `week=${run.projectedWeekVolume.currentWeek.week} projected_sessions=${run.projectedWeekVolume.projectedSessions.length}`
       : run.activeMesocycleSlotReseed
         ? `week=${run.activeMesocycleSlotReseed.activeMesocycle.week} verdict=${run.activeMesocycleSlotReseed.recommendation.verdict}`
+      : run.v2AcceptedSeedPrepareCompare
+        ? `handoff_candidate=${run.v2AcceptedSeedPrepareCompare.handoffCandidate.found ? "yes" : "no"} compare_status=${run.v2AcceptedSeedPrepareCompare.compareStatus}`
       : run.mesocycleExplain
         ? `source=${run.mesocycleExplain.sourceMesocycleId} retrospective=${run.mesocycleExplain.retrospectiveMesocycleId} preview_slots=${run.mesocycleExplain.preview.slotPlans.length}`
       : run.progressionAnchor
@@ -2815,6 +2859,17 @@ async function main(input?: {
   });
   if (activeMesocycleSlotReseedSummary) {
     for (const line of activeMesocycleSlotReseedSummary) {
+      console.log(line);
+    }
+  }
+  const v2AcceptedSeedPrepareCompareSummary =
+    buildV2AcceptedSeedPrepareCompareSummary({
+      artifact,
+      outputPath,
+      sizeBytes,
+    });
+  if (v2AcceptedSeedPrepareCompareSummary) {
+    for (const line of v2AcceptedSeedPrepareCompareSummary) {
       console.log(line);
     }
   }

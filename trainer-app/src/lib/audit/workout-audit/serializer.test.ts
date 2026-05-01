@@ -1580,6 +1580,72 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(artifact.generation).toBeUndefined();
   });
 
+  it("serializes v2 accepted-seed prepare compare payloads without attaching generation fields", () => {
+    const v2AcceptedSeedPrepareCompare = {
+      version: 1,
+      source: "v2_accepted_seed_prepare_compare_audit",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      wouldWriteTransaction: false,
+      compareStatus: "available",
+      handoffCandidate: {
+        found: true,
+        resolvedBy: "explicit_mesocycle_id",
+        mesocycleId: "meso-1",
+        state: "AWAITING_HANDOFF",
+      },
+      boundaryFacts: {
+        readOnly: true,
+        noWrite: true,
+        consumedByProduction: false,
+        v2PreviewAvailable: true,
+        v2ProductionWriteEligible: false,
+        seedSerializer: "buildMesocycleSlotPlanSeed",
+        legacyProjectionCalledByV2Path: false,
+        repairCalledByV2Path: false,
+        transactionStatus: "no_write",
+      },
+    } as WorkoutAuditRun["v2AcceptedSeedPrepareCompare"];
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "v2-accepted-seed-prepare-compare",
+        userId: "user-1",
+        mesocycleId: "meso-1",
+      },
+      {
+        ...baseRun,
+        context: {
+          mode: "v2-accepted-seed-prepare-compare",
+          requestedMode: "v2-accepted-seed-prepare-compare",
+          userId: "user-1",
+          plannerDiagnosticsMode: "standard",
+          v2AcceptedSeedPrepareCompare: {
+            mesocycleId: "meso-1",
+            requestedIdSource: "mesocycle_id",
+          },
+        },
+        generationResult: undefined,
+        v2AcceptedSeedPrepareCompare,
+      },
+    );
+
+    expect(artifact.mode).toBe("v2-accepted-seed-prepare-compare");
+    expect(artifact.v2AcceptedSeedPrepareCompare).toMatchObject({
+      readOnly: true,
+      consumedByProduction: false,
+      wouldWriteTransaction: false,
+      compareStatus: "available",
+      boundaryFacts: {
+        v2PreviewAvailable: true,
+        v2ProductionWriteEligible: false,
+        seedSerializer: "buildMesocycleSlotPlanSeed",
+        transactionStatus: "no_write",
+      },
+    });
+    expect(artifact.generation).toBeUndefined();
+  });
+
   it("serializes mesocycle-explain payloads without attaching generation fields", () => {
     const artifact = buildWorkoutAuditArtifact(
       {

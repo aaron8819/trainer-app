@@ -120,6 +120,24 @@ export async function buildWorkoutAuditContext(
     };
   }
 
+  if (mode === "v2-accepted-seed-prepare-compare") {
+    return {
+      mode,
+      requestedMode: request.mode,
+      userId: identity.userId,
+      ownerEmail: identity.ownerEmail,
+      plannerDiagnosticsMode,
+      v2AcceptedSeedPrepareCompare: {
+        mesocycleId: request.mesocycleId ?? request.sourceMesocycleId,
+        ...(request.mesocycleId
+          ? { requestedIdSource: "mesocycle_id" as const }
+          : request.sourceMesocycleId
+            ? { requestedIdSource: "source_mesocycle_id" as const }
+            : {}),
+      },
+    };
+  }
+
   if (mode === "mesocycle-explain") {
     return {
       mode,

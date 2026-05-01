@@ -3,6 +3,7 @@ export const WORKOUT_AUDIT_CANONICAL_MODES = [
   "projected-week-volume",
   "current-week-audit",
   "active-mesocycle-slot-reseed",
+  "v2-accepted-seed-prepare-compare",
   "mesocycle-explain",
   "historical-week",
   "weekly-retro",
@@ -16,6 +17,7 @@ export const WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const ACTIVE_MESOCYCLE_SLOT_RESEED_AUDIT_PAYLOAD_VERSION = 1 as const;
+export const V2_ACCEPTED_SEED_PREPARE_COMPARE_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const SPLIT_SANITY_AUDIT_ARTIFACT_VERSION = 1 as const;
 export const WEEK_CLOSE_HANDOFF_AUDIT_ARTIFACT_VERSION = 1 as const;

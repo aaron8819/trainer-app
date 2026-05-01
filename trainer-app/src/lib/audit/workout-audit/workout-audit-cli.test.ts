@@ -14,6 +14,7 @@ import {
   buildPlannerOnlyNoRepairSummary,
   buildProjectedWeekDebugSummary,
   buildProjectedWeekOperatorSummary,
+  buildV2AcceptedSeedPrepareCompareSummary,
   buildV2DebugArtifactSummary,
   buildWeeklyRetroOperatorSummary,
   computePlanningRealitySizeBudget,
@@ -4151,6 +4152,87 @@ describe("buildWeeklyRetroOperatorSummary", () => {
       "[workout-audit:retro] under_target=none",
       "[workout-audit:retro] interventions=none",
       "[workout-audit:retro] recommendation=no_further_action",
+    ]);
+  });
+});
+
+describe("buildV2AcceptedSeedPrepareCompareSummary", () => {
+  it("prints compact boundary, availability, and provenance facts", () => {
+    const summary = buildV2AcceptedSeedPrepareCompareSummary({
+      artifact: {
+        v2AcceptedSeedPrepareCompare: {
+          compareStatus: "available",
+          handoffCandidate: {
+            found: true,
+            mesocycleId: "meso-1",
+          },
+          boundaryFacts: {
+            readOnly: true,
+            noWrite: true,
+            consumedByProduction: false,
+            v2PreviewAvailable: true,
+            v2ProductionWriteEligible: false,
+            seedSerializer: "buildMesocycleSlotPlanSeed",
+            legacyProjectionCalledByV2Path: false,
+            repairCalledByV2Path: false,
+            transactionStatus: "no_write",
+          },
+          availability: {
+            legacyPreparationAvailable: true,
+            v2PreparationPreviewAvailable: true,
+            v2BlockedFailClosed: false,
+          },
+          seedShapeComparison: {
+            classification: "unclear",
+            slotIdsInOrder: {
+              legacy: ["upper_a", "lower_a"],
+              v2: ["upper_a", "lower_a"],
+            },
+            totalSetCount: {
+              legacy: 14,
+              v2: 42,
+            },
+            executableFieldShape: {
+              classification: "v2_preserves",
+            },
+          },
+          identityCoverageComparison: {
+            identitySummary: {
+              sameExercise: 2,
+              v2Added: 3,
+              v2Removed: 1,
+              cleanAlternative: 1,
+              classEquivalentDifference: 1,
+              unclear: 0,
+              notComparable: 0,
+            },
+          },
+          provenance: {
+            baseValidationStatus: "pass",
+            materializerStatus: "materialized",
+            seedShapeCompatibility: {
+              compatible: true,
+            },
+            promotionReadinessStatus: "blocked",
+            productionGates: {
+              missing: ["acceptancePathDesigned", "receiptContractDesigned"],
+            },
+          },
+        } as never,
+      },
+      outputPath: "C:\\artifacts\\v2-seed.json",
+      sizeBytes: 4096,
+    });
+
+    expect(summary).toEqual([
+      "[workout-audit:v2-seed-compare] handoff_candidate=yes mesocycle=meso-1 status=available",
+      "[workout-audit:v2-seed-compare] boundary read_only=yes no_write=yes consumed_by_production=no serializer=buildMesocycleSlotPlanSeed",
+      "[workout-audit:v2-seed-compare] availability legacy=yes v2_preview=yes production_write_eligible=no fail_closed=no",
+      "[workout-audit:v2-seed-compare] v2_path legacy_projection_called=no repair_called=no transaction=no_write",
+      "[workout-audit:v2-seed-compare] seed_shape classification=unclear slots=upper_a>lower_a -> upper_a>lower_a total_sets=14->42 executable_shape=v2_preserves",
+      "[workout-audit:v2-seed-compare] identity same=2 added=3 removed=1 clean_alt=1 class_equiv=1 unclear=0 not_comparable=0",
+      "[workout-audit:v2-seed-compare] gates base=pass materializer=materialized seed_shape=yes promotion=blocked production_gates_missing=acceptancePathDesigned,receiptContractDesigned",
+      "[workout-audit:v2-seed-compare] artifact=C:\\artifacts\\v2-seed.json size_bytes=4096",
     ]);
   });
 });

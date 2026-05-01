@@ -14,6 +14,7 @@ import { buildCurrentWeekAuditEvaluation } from "./current-week-audit";
 import { buildHistoricalWeekAuditPayload } from "./historical-week";
 import { buildMesocycleExplainAuditPayload } from "./mesocycle-explain";
 import { buildProgressionAnchorAuditPayload } from "./progression-anchor";
+import { buildV2AcceptedSeedPrepareCompareAuditPayload } from "./v2-accepted-seed-prepare-compare";
 import { buildWeeklyRetroAuditPayload } from "./weekly-retro";
 import type { WorkoutAuditContext, WorkoutAuditRun } from "./types";
 
@@ -116,6 +117,21 @@ export async function runWorkoutAuditGeneration(
         userId: context.userId,
         plannerDiagnosticsMode: context.plannerDiagnosticsMode,
       }),
+    };
+  }
+
+  if (mode === "v2-accepted-seed-prepare-compare") {
+    return {
+      context,
+      generatedAt: new Date().toISOString(),
+      v2AcceptedSeedPrepareCompare:
+        await buildV2AcceptedSeedPrepareCompareAuditPayload({
+          userId: context.userId,
+          ownerEmail: context.ownerEmail,
+          mesocycleId: context.v2AcceptedSeedPrepareCompare?.mesocycleId,
+          requestedIdSource:
+            context.v2AcceptedSeedPrepareCompare?.requestedIdSource,
+        }),
     };
   }
 

@@ -188,6 +188,7 @@ export type V2AcceptedSeedPreparationCompareResult = {
     v2SourceLabel: "v2_disabled";
     baseValidationStatus: BuildV2MaterializedSeedAcceptanceProbeResult["gates"]["basePlanValidation"]["status"];
     materializerStatus: BuildV2MaterializedSeedAcceptanceProbeResult["gates"]["materializerStatus"]["status"];
+    seedShapeCompatibility: BuildV2MaterializedSeedAcceptanceProbeResult["gates"]["seedShapeCompatibility"];
     promotionReadinessStatus: BuildV2MaterializedSeedAcceptanceProbeResult["gates"]["promotionReadiness"]["status"];
     productionGates: BuildV2MaterializedSeedAcceptanceProbeResult["gates"]["productionGates"];
     fallbackPolicy: BuildV2MaterializedSeedAcceptanceProbeResult["gates"]["fallbackPolicy"];
@@ -339,6 +340,8 @@ export function buildV2AcceptedSeedPreparationCompare(input: {
       baseValidationStatus:
         v2Preparation.probe.gates.basePlanValidation.status,
       materializerStatus: v2Preparation.probe.gates.materializerStatus.status,
+      seedShapeCompatibility:
+        v2Preparation.probe.gates.seedShapeCompatibility,
       promotionReadinessStatus:
         v2Preparation.probe.gates.promotionReadiness.status,
       productionGates: v2Preparation.probe.gates.productionGates,

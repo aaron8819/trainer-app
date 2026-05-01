@@ -120,6 +120,27 @@ describe("buildWorkoutAuditContext", () => {
     expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
   });
 
+  it("builds v2 accepted-seed prepare compare context without loading next-session intent", async () => {
+    const context = await buildWorkoutAuditContext({
+      mode: "v2-accepted-seed-prepare-compare",
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      plannerDiagnosticsMode: "debug",
+    });
+
+    expect(context).toMatchObject({
+      mode: "v2-accepted-seed-prepare-compare",
+      requestedMode: "v2-accepted-seed-prepare-compare",
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+      v2AcceptedSeedPrepareCompare: {
+        mesocycleId: "meso-1",
+        requestedIdSource: "mesocycle_id",
+      },
+    });
+    expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
+  });
+
   it("builds mesocycle-explain context without loading next-session intent", async () => {
     const context = await buildWorkoutAuditContext({
       mode: "mesocycle-explain",

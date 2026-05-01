@@ -65,6 +65,7 @@
 | 2026-05-01 | self | Repeated the Windows wildcard-path `rg` mistake with `trainer-app\src\lib\engine\planning\v2\*.test.ts`. | Use `rg <pattern> <directory> -g "*.test.ts"` or rely on `rg --files` filters in PowerShell. |
 | 2026-05-01 | self | Repeated the wildcard-path mistake while searching generated audit artifacts with `artifacts\audits\2026-...*.json`. | Search the artifact directory and pass the filename pattern through `-g`, e.g. `rg <pattern> artifacts\audits -g "2026-...*.json"`. |
 | 2026-05-01 | self | Forgot the known stdin `tsx` named-import quirk when probing the V2 planner policy and got a missing named export error. | For ad hoc `tsx` stdin probes, import the module default from the local TS file and destructure exports from that object. |
+| 2026-05-01 | self | Repeated the PowerShell Markdown-backtick parser mistake while searching docs for `SlotDemandAllocationByWeek`. | Avoid literal backticks in PowerShell search strings; search a simpler substring or use single-quoted patterns without Markdown formatting. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

@@ -1169,10 +1169,49 @@ export type V2ExerciseClassDistributionBySlot = {
       classLanes: Array<{
         laneId: string;
         role: V2PlannerLaneRole;
+        classLaneKind:
+          | "owned_class_lane"
+          | "support_class_lane"
+          | "optional_recoverable_lane"
+          | "managed_collateral_marker";
         primaryMuscles: string[];
+        supportMuscles: string[];
+        optionalMuscles: string[];
+        managedCollateralMuscles: string[];
+        classIntents: string[];
         requiredExerciseClasses: string[];
         preferredExerciseClasses: string[];
         setBudget: V2PlannerSetRange;
+        allocatedTargetSetRange: V2PlannerSetRange;
+        ownershipRows: Array<{
+          owningSlotId: V2PlannerSlotId;
+          laneId: string;
+          muscle: string;
+          role: V2PlannerDemandRole;
+          targetStatus: V2PlannerTargetStatus;
+          targetSetRange: V2PlannerSetRange;
+          demandShare: number;
+          classIntent: string;
+          ownershipKind:
+            | "primary_exposure"
+            | "support_exposure"
+            | "direct_support"
+            | "managed_collateral"
+            | "optional_if_needed";
+          allocationBasis:
+            | "target_lane"
+            | "slot_role_policy"
+            | "weekly_demand_curve"
+            | "deload_transform"
+            | "static_slot_exposure_ownership"
+            | "managed_collateral_fatigue_budget"
+            | "optional_if_needed";
+          classLaneKind:
+            | "owned_class_lane"
+            | "support_class_lane"
+            | "optional_recoverable_lane"
+            | "managed_collateral_marker";
+        }>;
         preferredSetSplit:
           | "single_anchor"
           | "anchor_plus_support"

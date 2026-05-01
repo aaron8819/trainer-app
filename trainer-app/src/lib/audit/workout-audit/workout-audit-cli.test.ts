@@ -260,6 +260,32 @@ function makeV2SelectionCapacityPlanDiagnostic() {
   };
 }
 
+function makeV2BasePlanCompareFixture() {
+  return {
+    version: 1,
+    source: "v2_base_plan_compare",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    status: "available",
+    comparedPlans: {
+      v2BasePlanAvailable: true,
+      plannerOnlyNoRepairAvailable: true,
+      repairedPlanAvailable: true,
+    },
+    summary: {
+      v2BaseValidationStatus: "pass",
+      v2TotalSets: 55,
+      noRepairTotalSets: 25,
+      repairedTotalSets: 55,
+      repairDependencyCount: 9,
+      v2ImprovementCount: 12,
+      v2RegressionCount: 0,
+      unclearCount: 2,
+    },
+    nextSafeAction: "add_shadow_consumption_trial",
+  };
+}
+
 describe("normalizeAuditIntentArg", () => {
   it("normalizes uppercase explicit intents into canonical lower-case session intents", () => {
     expect(normalizeAuditIntentArg("UPPER")).toBe("upper");
@@ -3549,6 +3575,56 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
       "Suspicious or blocked: 0",
       "Next migration slice: chest_secondary:promote_to_planner_later",
     ]);
+  });
+
+  it("prints compact V2 base-plan compare diagnostics when present", () => {
+    const summary = buildPlannerOnlyNoRepairSummary({
+      artifact: {
+        mesocycleExplain: {
+          plannerOnlyNoRepair: {
+            acceptanceClassification: {
+              basicMesocycleShapeStatus: "pass_with_warnings",
+              replacementReadinessStatus: "not_ready",
+              hardBlockers: [],
+              qualityWarnings: [],
+              diagnosticOnly: [],
+              sessionShaping: [],
+              migrationScoreboard: {
+                materialRepairCount: 0,
+                majorRepairCount: 0,
+                suspiciousRepairs: 0,
+                canReplaceRepairedProjection: false,
+                reason: "not_ready",
+              },
+            },
+            v2MesocyclePlan: {
+              planStatus: "experimental",
+              deloadTransform: {
+                projectionStatus: "partially_modeled",
+              },
+            },
+            v2BasePlanCompare: makeV2BasePlanCompareFixture(),
+          },
+        },
+      } as unknown as Parameters<
+        typeof buildPlannerOnlyNoRepairSummary
+      >[0]["artifact"],
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "V2 Base Plan Compare",
+        "--------------------",
+        "Status: available",
+        "Compared plans: v2=yes noRepair=yes repaired=yes",
+        "Set totals: v2=55 noRepair=25 repaired=55",
+        "Repair dependencies: 9",
+        "V2 compare classifications: improves=12 regresses=0 unclear=2",
+        "Next safe action: add-shadow-consumption-trial",
+        "Read-only/no generation impact: yes",
+        "V2 base-plan compare detail: v2-materialization shard when --v2-debug-artifact is enabled",
+      ]),
+    );
   });
 
   it("prints compact promotion diff gate details for ready read-only hypotheses", () => {

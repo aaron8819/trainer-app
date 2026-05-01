@@ -1068,6 +1068,11 @@ function compactPlannerOnlyNoRepair(
   const v2MesocycleStrategyDiagnostic = asRecord(
     noRepair.v2MesocycleStrategyDiagnostic,
   );
+  const v2BasePlanCompare = asRecord(noRepair.v2BasePlanCompare);
+  const v2BasePlanCompareSummary = asRecord(v2BasePlanCompare?.summary);
+  const v2BasePlanCompareComparedPlans = asRecord(
+    v2BasePlanCompare?.comparedPlans,
+  );
   const v2PhaseStrategy = asRecord(
     v2MesocycleStrategyDiagnostic?.phaseStrategy,
   );
@@ -1444,6 +1449,38 @@ function compactPlannerOnlyNoRepair(
             )
               ? v2MesocycleStrategyDiagnostic.currentStateVsNorthStarGaps.length
               : 0,
+          }
+        : undefined,
+      basePlanCompare: v2BasePlanCompare
+        ? {
+            status: v2BasePlanCompare.status ?? "not_available",
+            readOnly: v2BasePlanCompare.readOnly === true,
+            affectsScoringOrGeneration:
+              v2BasePlanCompare.affectsScoringOrGeneration === true
+                ? true
+                : false,
+            comparedPlans: v2BasePlanCompareComparedPlans ?? {},
+            summary: {
+              v2BaseValidationStatus:
+                v2BasePlanCompareSummary?.v2BaseValidationStatus ??
+                "not_available",
+              v2TotalSets: v2BasePlanCompareSummary?.v2TotalSets ?? null,
+              noRepairTotalSets:
+                v2BasePlanCompareSummary?.noRepairTotalSets ?? null,
+              repairedTotalSets:
+                v2BasePlanCompareSummary?.repairedTotalSets ?? null,
+              repairDependencyCount:
+                v2BasePlanCompareSummary?.repairDependencyCount ?? null,
+              v2ImprovementCount:
+                v2BasePlanCompareSummary?.v2ImprovementCount ?? 0,
+              v2RegressionCount:
+                v2BasePlanCompareSummary?.v2RegressionCount ?? 0,
+              unclearCount: v2BasePlanCompareSummary?.unclearCount ?? 0,
+            },
+            nextSafeAction:
+              typeof v2BasePlanCompare.nextSafeAction === "string"
+                ? v2BasePlanCompare.nextSafeAction
+                : "inspect_compare",
           }
         : undefined,
       supportLanePolicy: v2SupportLanePolicy

@@ -1,5 +1,6 @@
 import type { SessionIntent } from "@/lib/engine/session-types";
 import type {
+  V2BasePlanCompare,
   V2MesocycleStrategyDiagnostic,
   V2SetDistributionIntent,
   V2SupportLanePolicy,
@@ -1036,6 +1037,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
     };
   };
   v2MesocycleStrategyDiagnostic: V2MesocycleStrategyDiagnostic;
+  v2BasePlanCompare?: V2BasePlanCompare;
   repairPromotionScoreboard?: {
     version: 1;
     readOnly: true;

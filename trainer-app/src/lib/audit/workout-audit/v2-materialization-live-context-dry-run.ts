@@ -2,9 +2,14 @@ import { prisma } from "@/lib/db/prisma";
 import type { WorkoutSessionIntent } from "@prisma/client";
 import {
   buildV2ExerciseMaterializationPlan,
+  buildV2BasePlanCompare,
+  buildV2BasePlanValidation,
   buildV2MaterializationDryRunReport,
   buildV2PlannerMesocyclePolicy,
   DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+  matchV2ExerciseClasses,
+  type V2BasePlanCompare,
+  type V2BasePlanComparePlanView,
   type V2ExerciseClassTaxonomy,
   type V2ExerciseMaterializationInput,
   type V2MaterializationDryRunReport,
@@ -12,6 +17,7 @@ import {
   type V2PlannerMesocyclePolicy,
 } from "@/lib/engine/planning/v2";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
+import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/planning-reality";
 import {
   buildMesocycleSlotSequence,
   resolveMesocycleSlotContract,
@@ -123,6 +129,16 @@ export type V2LiveContextMaterializationDryRunInput = {
   taxonomy?: V2ExerciseClassTaxonomy;
   constraints?: V2ExerciseMaterializationInput["constraints"];
   continuity?: V2ExerciseMaterializationInput["continuity"];
+};
+
+export type V2LiveContextBasePlanCompareInput = {
+  plannerPolicy?: V2PlannerMesocyclePolicy;
+  taxonomy?: V2ExerciseClassTaxonomy;
+  inventory?: V2MaterializationExercise[] | null;
+  constraints?: V2ExerciseMaterializationInput["constraints"];
+  continuity?: V2ExerciseMaterializationInput["continuity"];
+  noRepairPlanningReality?: SlotPlanPlanningRealityDiagnostic | null;
+  repairedPlanningReality?: SlotPlanPlanningRealityDiagnostic | null;
 };
 
 const EMPTY_CONSTRAINTS: V2ExerciseMaterializationInput["constraints"] = {
@@ -250,6 +266,49 @@ export function buildV2LiveContextMaterializationDryRunHarness(
     }),
     safeToPromoteToProductionWrite: false,
   };
+}
+
+export function buildV2BasePlanCompareFromLiveContext(
+  input: V2LiveContextBasePlanCompareInput,
+): V2BasePlanCompare {
+  const plannerPolicy = input.plannerPolicy ?? buildV2PlannerMesocyclePolicy();
+  const taxonomy = input.taxonomy ?? DEFAULT_V2_EXERCISE_CLASS_TAXONOMY;
+  const inventory = input.inventory ?? [];
+  const constraints = input.constraints ?? EMPTY_CONSTRAINTS;
+  const materializedPlan =
+    inventory.length > 0
+      ? buildV2ExerciseMaterializationPlan({
+          exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
+          inventory,
+          taxonomy,
+          constraints,
+          ...(input.continuity ? { continuity: input.continuity } : {}),
+        })
+      : null;
+  const validation = buildV2BasePlanValidation({
+    plannerPolicy,
+    materializedPlan,
+    inventory,
+    taxonomy,
+  });
+
+  return buildV2BasePlanCompare({
+    v2BasePlanValidation: validation,
+    v2MaterializedPlan: materializedPlan,
+    inventory,
+    taxonomy,
+    plannerOnlyNoRepairPlan: normalizePlanningRealityForBasePlanCompare({
+      planId: "planner_only_no_repair",
+      planningReality: input.noRepairPlanningReality,
+      taxonomy,
+    }),
+    repairedPlan: normalizePlanningRealityForBasePlanCompare({
+      planId: "repaired_projection",
+      planningReality: input.repairedPlanningReality,
+      taxonomy,
+      includeRepairEvidence: true,
+    }),
+  });
 }
 
 export async function runV2LiveContextMaterializationDryRunHarness(input: {
@@ -433,4 +492,86 @@ function summarizeBlockersBeforePromotion(input: {
       ...input.dryRunReport.readiness.missingBeforePromotion,
     ]),
   );
+}
+
+function normalizePlanningRealityForBasePlanCompare(input: {
+  planId: V2BasePlanComparePlanView["planId"];
+  planningReality?: SlotPlanPlanningRealityDiagnostic | null;
+  taxonomy: V2ExerciseClassTaxonomy;
+  includeRepairEvidence?: boolean;
+}): V2BasePlanComparePlanView {
+  const planningReality = input.planningReality;
+  return {
+    planId: input.planId,
+    available: Boolean(planningReality?.finalSlotPlan.length),
+    source: "planning_reality_final_slot_plan",
+    slots:
+      planningReality?.finalSlotPlan.map((slot) => ({
+        slotId: slot.slotId,
+        intent: slot.intent,
+        exercises: slot.exercises.map((exercise) => {
+          const materializationExercise =
+            planningRealityExerciseToMaterializationExercise(exercise);
+          return {
+            exerciseId: exercise.exerciseId,
+            exerciseName: exercise.exerciseName,
+            setCount: exercise.setCount,
+            role: exercise.role,
+            classIds: matchV2ExerciseClasses(
+              materializationExercise,
+              input.taxonomy,
+            ).map((match) => match.classId),
+            primaryMuscles: exercise.primaryMuscles,
+            movementPatterns: exercise.movementPatterns,
+            effectiveStimulusByMuscle: exercise.effectiveStimulusByMuscle,
+          };
+        }),
+      })) ?? [],
+    ...(input.includeRepairEvidence && planningReality
+      ? {
+          repairEvidence: planningReality.repairMaterialityAfterShadowAllocation.map(
+            (row) => ({
+              repairMechanism: row.repairMechanism,
+              action: row.action,
+              materiality: row.materiality,
+              slotId: row.slotId,
+              muscle: row.muscle,
+              exerciseName: row.exerciseName,
+              changedExerciseIdentity: row.changedExerciseIdentity,
+              changedSlotShapeMaterially: row.changedSlotShapeMaterially,
+              evidence: [
+                row.rationale,
+                `shadowAllocationBasis:${row.shadowAllocationBasis}`,
+                ...row.shadowRationale,
+              ],
+            }),
+          ),
+        }
+      : {}),
+  };
+}
+
+function planningRealityExerciseToMaterializationExercise(
+  exercise: SlotPlanPlanningRealityDiagnostic["finalSlotPlan"][number]["exercises"][number],
+): V2MaterializationExercise {
+  return {
+    exerciseId: exercise.exerciseId,
+    name: exercise.exerciseName,
+    aliases: [],
+    movementPatterns: exercise.movementPatterns,
+    primaryMuscles: exercise.primaryMuscles,
+    secondaryMuscles: [],
+    equipment: [],
+    isCompound: exercise.role === "main",
+    isMainLiftEligible: exercise.role === "main",
+    fatigueCost: 1,
+    stimulusByMusclePerSet: Object.fromEntries(
+      Object.entries(exercise.effectiveStimulusByMuscle).map(
+        ([muscle, stimulus]) => [
+          muscle,
+          exercise.setCount > 0 ? stimulus / exercise.setCount : 0,
+        ],
+      ),
+    ),
+  };
 }

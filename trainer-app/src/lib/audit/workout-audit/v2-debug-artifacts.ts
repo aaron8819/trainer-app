@@ -510,7 +510,8 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
   const v2Plan = asRecord(noRepair.v2MesocyclePlan);
   const setDistribution = asRecord(noRepair.v2SetDistributionIntent);
   const supportPolicy = asRecord(noRepair.v2SupportLanePolicy);
-  if (!v2Plan && !setDistribution && !supportPolicy) {
+  const basePlanCompare = asRecord(noRepair.v2BasePlanCompare);
+  if (!v2Plan && !setDistribution && !supportPolicy && !basePlanCompare) {
     return null;
   }
   return {
@@ -541,6 +542,7 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
       affectsScoringOrGeneration:
         supportPolicy?.affectsScoringOrGeneration === true ? true : false,
     },
+    ...(basePlanCompare ? { v2BasePlanCompare: basePlanCompare } : {}),
     materializedSeedWriteStatus: "not_available_in_audit_artifact",
   };
 }
@@ -886,6 +888,8 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
   );
   const exerciseSelection = asRecord(noRepair.v2ExerciseSelectionPlanDiagnostic);
   const deloadProjection = asRecord(noRepair.v2DeloadProjectionDiagnostic);
+  const basePlanCompare = asRecord(noRepair.v2BasePlanCompare);
+  const basePlanCompareSummary = asRecord(basePlanCompare?.summary);
 
   return {
     summary: {
@@ -921,6 +925,20 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
     v2DeloadProjectionDiagnostic: {
       status: deloadProjection?.status ?? "not_available",
     },
+    v2BasePlanCompare: basePlanCompare
+      ? {
+          status: basePlanCompare.status ?? "not_available",
+          readOnly: basePlanCompare.readOnly === true,
+          affectsScoringOrGeneration:
+            basePlanCompare.affectsScoringOrGeneration === true ? true : false,
+          comparedPlans: asRecord(basePlanCompare.comparedPlans) ?? {},
+          summary: basePlanCompareSummary ?? {},
+          nextSafeAction:
+            typeof basePlanCompare.nextSafeAction === "string"
+              ? basePlanCompare.nextSafeAction
+              : "inspect_compare",
+        }
+      : undefined,
     v2TargetVsNoRepairDiff: {
       summary: v2DiffSummary ?? {},
       replacementReadinessImpact: replacementReadinessImpact ?? {},
@@ -1130,6 +1148,8 @@ function buildIndexSummary(input: {
   const v2DiffSummary = asRecord(
     asRecord(input.noRepair.v2TargetVsNoRepairDiff)?.summary,
   );
+  const basePlanCompare = asRecord(input.noRepair.v2BasePlanCompare);
+  const basePlanSummary = asRecord(basePlanCompare?.summary);
   return {
     status: asRecord(input.noRepair.summary)?.status ?? "unknown",
     basicMesocycleShapeStatus:
@@ -1140,6 +1160,11 @@ function buildIndexSummary(input: {
       input.noRepair.canReplaceRepairedProjection === true,
     targetLaneCount: v2DiffSummary?.targetLaneCount ?? null,
     migrationCandidateCount: v2DiffSummary?.migrationCandidateCount ?? null,
+    v2BasePlanCompareStatus: basePlanCompare?.status ?? "not_available",
+    v2BasePlanCompareImprovementCount:
+      basePlanSummary?.v2ImprovementCount ?? null,
+    v2BasePlanCompareRegressionCount:
+      basePlanSummary?.v2RegressionCount ?? null,
     writtenShardCount: input.shardMetadata.filter(
       (shard) => shard.status === "written",
     ).length,

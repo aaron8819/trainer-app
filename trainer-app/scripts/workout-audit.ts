@@ -2323,6 +2323,25 @@ export function buildPlannerOnlyNoRepairSummary(input: {
       ]
     : [];
   const repairScoreboard = noRepair.repairPromotionScoreboard;
+  const basePlanCompare = noRepair.v2BasePlanCompare;
+  const basePlanCompareLines = basePlanCompare
+    ? [
+        "V2 Base Plan Compare",
+        "--------------------",
+        `Status: ${formatStatus(basePlanCompare.status)}`,
+        `Compared plans: v2=${basePlanCompare.comparedPlans.v2BasePlanAvailable ? "yes" : "no"} noRepair=${basePlanCompare.comparedPlans.plannerOnlyNoRepairAvailable ? "yes" : "no"} repaired=${basePlanCompare.comparedPlans.repairedPlanAvailable ? "yes" : "no"}`,
+        `Set totals: v2=${basePlanCompare.summary.v2TotalSets ?? "n/a"} noRepair=${basePlanCompare.summary.noRepairTotalSets ?? "n/a"} repaired=${basePlanCompare.summary.repairedTotalSets ?? "n/a"}`,
+        `Repair dependencies: ${basePlanCompare.summary.repairDependencyCount ?? 0}`,
+        `V2 compare classifications: improves=${basePlanCompare.summary.v2ImprovementCount} regresses=${basePlanCompare.summary.v2RegressionCount} unclear=${basePlanCompare.summary.unclearCount}`,
+        `Next safe action: ${formatStatus(basePlanCompare.nextSafeAction)}`,
+        `Read-only/no generation impact: ${basePlanCompare.readOnly && !basePlanCompare.affectsScoringOrGeneration ? "yes" : "no"}`,
+      ]
+    : [];
+  const materializationShardLines = basePlanCompare
+    ? [
+        "V2 base-plan compare detail: v2-materialization shard when --v2-debug-artifact is enabled",
+      ]
+    : [];
   const repairScoreboardLines = repairScoreboard
     ? [
         "V2 Repair Promotion Scoreboard",
@@ -2369,6 +2388,8 @@ export function buildPlannerOnlyNoRepairSummary(input: {
       ? "Deload: transform defined, not production-projected"
       : `Deload: ${formatStatus(v2Plan.deloadTransform.projectionStatus)}`,
     `Replacement readiness: ${formatStatus(classification.replacementReadinessStatus)}`,
+    ...basePlanCompareLines,
+    ...materializationShardLines,
     ...repairScoreboardLines,
     ...diffLines,
   ];

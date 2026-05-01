@@ -10,6 +10,113 @@ import {
 import { WORKOUT_AUDIT_SIZE_LIMIT_BYTES } from "./constants";
 import type { WorkoutAuditArtifact } from "./types";
 
+function makeV2BasePlanCompareFixture() {
+  return {
+    version: 1,
+    source: "v2_base_plan_compare",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    status: "available",
+    comparedPlans: {
+      v2BasePlanAvailable: true,
+      plannerOnlyNoRepairAvailable: true,
+      repairedPlanAvailable: true,
+    },
+    interpretationRules: {
+      v2BasePlanIsCandidateStaticNorthStar: true,
+      repairedPlanIsEvidenceNotTarget: true,
+      noRepairOutputShowsCurrentPlannerBeforeRepair: true,
+      differencesDoNotImplyV2WrongBecauseItDiffersFromRepairedPlan: true,
+    },
+    summary: {
+      v2BaseValidationStatus: "pass",
+      v2TotalSets: 55,
+      noRepairTotalSets: 25,
+      repairedTotalSets: 55,
+      repairDependencyCount: 9,
+      v2ImprovementCount: 12,
+      v2RegressionCount: 0,
+      unclearCount: 2,
+    },
+    comparisons: {
+      slotShape: {
+        classification: "v2_improves",
+        v2Base: {
+          slotCount: 4,
+          exerciseCount: 18,
+          totalSets: 55,
+          maxSlotSets: 17,
+          optionalLaneMaterializationCount: 0,
+          standaloneOneSetExerciseCount: 0,
+          fiveSetStackCount: 0,
+          setsBySlot: [{ slotId: "upper_a", exerciseCount: 5, setCount: 15 }],
+        },
+        rows: [
+          {
+            item: "total_weekly_sets",
+            classification: "v2_improves",
+            evidence: ["v2:55", "noRepair:25", "repaired:55"],
+          },
+        ],
+      },
+      muscleCoverage: {
+        classification: "v2_improves",
+        underHitMuscles: [],
+        overConcentratedMuscles: [],
+        managedCollateralExposure: [],
+        rows: [],
+      },
+      exerciseClassCoverage: {
+        classification: "v2_improves",
+        rows: [],
+      },
+      repairDependency: {
+        classification: "v2_improves",
+        dependencyCount: 9,
+        responsibilities: [],
+      },
+      exerciseIdentity: {
+        classification: "unclear",
+        duplicateExactExercises: {
+          v2Base: [],
+          plannerOnlyNoRepair: ["Cable Crossover"],
+          repairedPlan: [],
+        },
+        duplicateClassFamilies: {
+          v2Base: [],
+          plannerOnlyNoRepair: ["chest_isolation"],
+          repairedPlan: [],
+        },
+        slots: [],
+        materializerDifferences: [
+          "upper_a:identity_differs_from_projection_evidence",
+        ],
+      },
+      deloadReadiness: {
+        classification: "v2_preserves",
+        rows: [],
+      },
+    },
+    blockersBeforeBehaviorPromotion: [
+      "shadow_consumption_trial_not_run",
+      "guarded_behavior_trial_not_run",
+    ],
+    nextSafeAction: "add_shadow_consumption_trial",
+    guardrails: {
+      doesNotUseHistoricalStrategyRecommendations: true,
+      doesNotTreatRepairedPlanAsTargetPolicy: true,
+      doesNotFeedProductionProjection: true,
+      doesNotAffectGeneration: true,
+      doesNotAffectSelectionV2: true,
+      doesNotAffectRepair: true,
+      doesNotAffectSeedSerialization: true,
+      doesNotAffectRuntimeReplay: true,
+      doesNotAffectReceipts: true,
+      consumedByDemandOrMaterializer: false,
+    },
+  };
+}
+
 describe("artifact serialization helpers", () => {
   it("sorts object keys without reordering arrays", () => {
     const serialized = serializeStableJson({
@@ -571,6 +678,7 @@ describe("artifact serialization helpers", () => {
             diagnosticRows: [],
             rawSuspiciousRows: [],
           },
+          v2BasePlanCompare: makeV2BasePlanCompareFixture(),
           crossWeekProjectionGate: {
             readOnly: true,
             affectsScoringOrGeneration: false,
@@ -779,6 +887,27 @@ describe("artifact serialization helpers", () => {
         split: undefined,
         weekCount: 1,
         slotCount: 1,
+        basePlanCompare: {
+          status: "available",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          comparedPlans: {
+            v2BasePlanAvailable: true,
+            plannerOnlyNoRepairAvailable: true,
+            repairedPlanAvailable: true,
+          },
+          summary: {
+            v2BaseValidationStatus: "pass",
+            v2TotalSets: 55,
+            noRepairTotalSets: 25,
+            repairedTotalSets: 55,
+            repairDependencyCount: 9,
+            v2ImprovementCount: 12,
+            v2RegressionCount: 0,
+            unclearCount: 2,
+          },
+          nextSafeAction: "add_shadow_consumption_trial",
+        },
         laneCounts: {
           target: 1,
           partial: 1,
@@ -919,7 +1048,9 @@ describe("artifact serialization helpers", () => {
     expect(serialized).not.toContain("promotionCandidates");
     expect(noRepair).not.toHaveProperty("v2TargetVsNoRepairDiff");
     expect(noRepair).not.toHaveProperty("v2SetDistributionIntent");
+    expect(noRepair).not.toHaveProperty("v2BasePlanCompare");
     expect(noRepair).not.toHaveProperty("plannerOwnedAccumulationProjection");
+    expect(JSON.stringify(noRepair.v2Summary)).not.toContain("slotShape");
     expect(
       (noRepair.crossWeekProjectionGate as Record<string, unknown>)
         .accumulationWeeksStatus,

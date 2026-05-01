@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+  buildV2BasePlanCompare,
   buildV2BasePlanValidation,
   buildV2ExerciseMaterializationPlan,
   buildV2PlannerMesocyclePolicy,
 } from "./index";
 import type {
+  V2BasePlanComparePlanView,
   V2BasePlanValidation,
   V2ExerciseMaterializationPlan,
   V2MaterializationExercise,
@@ -215,6 +217,179 @@ function buildFixture(): {
 
 function warningReasons(validation: V2BasePlanValidation): string[] {
   return validation.warnings.map((warning) => warning.reason);
+}
+
+function materializedPlanView(
+  planId: V2BasePlanComparePlanView["planId"],
+  materializedPlan: V2ExerciseMaterializationPlan,
+): V2BasePlanComparePlanView {
+  const inventoryById = new Map(
+    representativeV2Inventory.map((inventoryExercise) => [
+      inventoryExercise.exerciseId,
+      inventoryExercise,
+    ]),
+  );
+  return {
+    planId,
+    available: true,
+    slots: materializedPlan.slots.map((slot) => ({
+      slotId: slot.slotId,
+      exercises: slot.exercises.map((exerciseRow) => {
+        const inventoryExercise = inventoryById.get(exerciseRow.exerciseId);
+        return {
+          exerciseId: exerciseRow.exerciseId,
+          exerciseName: inventoryExercise?.name ?? exerciseRow.exerciseId,
+          setCount: exerciseRow.setCount,
+          role: exerciseRow.role,
+          laneIds: exerciseRow.laneIds,
+          classIds: [],
+          primaryMuscles: inventoryExercise?.primaryMuscles ?? [],
+          movementPatterns: inventoryExercise?.movementPatterns ?? [],
+          effectiveStimulusByMuscle:
+            inventoryExercise?.stimulusByMusclePerSet ?? {},
+        };
+      }),
+    })),
+  };
+}
+
+function representativeNoRepairPlan(): V2BasePlanComparePlanView {
+  return {
+    planId: "planner_only_no_repair",
+    available: true,
+    slots: [
+      {
+        slotId: "upper_a",
+        exercises: [
+          {
+            exerciseId: "machine-chest-press",
+            exerciseName: "Machine Chest Press",
+            setCount: 5,
+            classIds: ["distinct_chest_press_or_fly"],
+            primaryMuscles: ["Chest"],
+          },
+          {
+            exerciseId: "chest-supported-row",
+            exerciseName: "Chest Supported Row",
+            setCount: 5,
+            classIds: ["horizontal_pull_support"],
+            primaryMuscles: ["Upper Back", "Lats"],
+          },
+        ],
+      },
+      {
+        slotId: "lower_a",
+        exercises: [
+          {
+            exerciseId: "hack-squat",
+            exerciseName: "Hack Squat",
+            setCount: 5,
+            classIds: ["squat_pattern"],
+            primaryMuscles: ["Quads"],
+          },
+        ],
+      },
+      {
+        slotId: "upper_b",
+        exercises: [
+          {
+            exerciseId: "assisted-pull-up",
+            exerciseName: "Assisted Pull Up",
+            setCount: 5,
+            classIds: ["vertical_pull"],
+            primaryMuscles: ["Lats"],
+          },
+        ],
+      },
+      {
+        slotId: "lower_b",
+        exercises: [
+          {
+            exerciseId: "romanian-deadlift",
+            exerciseName: "Romanian Deadlift",
+            setCount: 5,
+            classIds: ["hinge_compound"],
+            primaryMuscles: ["Hamstrings", "Glutes"],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function representativeRepairedPlan(
+  materializedPlan: V2ExerciseMaterializationPlan,
+): V2BasePlanComparePlanView {
+  return {
+    ...materializedPlanView("repaired_projection", materializedPlan),
+    repairEvidence: [
+      {
+        repairMechanism: "support_floor_closure",
+        action: "added",
+        materiality: "major",
+        slotId: "upper_b",
+        muscle: "Side Delts",
+        exerciseName: "Cable Lateral Raise",
+        changedExerciseIdentity: true,
+        evidence: ["support_floor:Side Delts"],
+      },
+      {
+        repairMechanism: "weekly_obligation_closure",
+        action: "added",
+        materiality: "major",
+        slotId: "lower_a",
+        muscle: "Calves",
+        exerciseName: "Standing Calf Raise",
+        changedExerciseIdentity: true,
+        evidence: ["weekly_obligation:Calves"],
+      },
+      {
+        repairMechanism: "late_set_bump",
+        action: "set_bumped",
+        materiality: "moderate",
+        slotId: "upper_a",
+        muscle: "Chest",
+        exerciseName: "Machine Chest Press",
+        evidence: ["set_bumped:4->5"],
+      },
+      {
+        repairMechanism: "cap_trim",
+        action: "set_trimmed",
+        materiality: "minor",
+        slotId: "upper_a",
+        muscle: "Chest",
+        exerciseName: "Machine Chest Press",
+        evidence: ["cap_trim"],
+      },
+      {
+        repairMechanism: "forbidden_cleanup",
+        action: "removed",
+        materiality: "major",
+        slotId: "lower_b",
+        muscle: "Chest",
+        exerciseName: "Cable Crossover",
+        evidence: ["forbidden:lower_b:Chest"],
+      },
+      {
+        repairMechanism: "duplicate_cleanup",
+        action: "removed",
+        materiality: "minor",
+        slotId: "lower_b",
+        muscle: "Calves",
+        exerciseName: "Standing Calf Raise",
+        evidence: ["duplicate:calves"],
+      },
+      {
+        repairMechanism: "dirty_collateral",
+        action: "diagnostic_only",
+        materiality: "none",
+        slotId: "lower_b",
+        muscle: "Lower Back",
+        exerciseName: "Back Extension",
+        evidence: ["dirty_collateral:lower_back"],
+      },
+    ],
+  };
 }
 
 describe("buildV2BasePlanValidation", () => {
@@ -560,5 +735,203 @@ describe("buildV2BasePlanValidation", () => {
     });
 
     expect(JSON.stringify(materializedPlan)).toBe(before);
+  });
+
+  it("compares clean V2 base plan against no-repair and repaired projection without making repaired output the target", () => {
+    const { validation, materializedPlan } = buildFixture();
+    const compare = buildV2BasePlanCompare({
+      v2BasePlanValidation: validation,
+      v2MaterializedPlan: materializedPlan,
+      inventory: representativeV2Inventory,
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      plannerOnlyNoRepairPlan: representativeNoRepairPlan(),
+      repairedPlan: representativeRepairedPlan(materializedPlan),
+    });
+
+    expect(compare).toMatchObject({
+      version: 1,
+      source: "v2_base_plan_compare",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "available",
+      comparedPlans: {
+        v2BasePlanAvailable: true,
+        plannerOnlyNoRepairAvailable: true,
+        repairedPlanAvailable: true,
+      },
+      interpretationRules: {
+        v2BasePlanIsCandidateStaticNorthStar: true,
+        repairedPlanIsEvidenceNotTarget: true,
+        noRepairOutputShowsCurrentPlannerBeforeRepair: true,
+        differencesDoNotImplyV2WrongBecauseItDiffersFromRepairedPlan: true,
+      },
+      guardrails: {
+        doesNotTreatRepairedPlanAsTargetPolicy: true,
+        doesNotFeedProductionProjection: true,
+        doesNotAffectGeneration: true,
+        doesNotAffectSelectionV2: true,
+        doesNotAffectRepair: true,
+        doesNotAffectSeedSerialization: true,
+        doesNotAffectRuntimeReplay: true,
+        doesNotAffectReceipts: true,
+        consumedByDemandOrMaterializer: false,
+      },
+    });
+    expect(compare.summary).toMatchObject({
+      v2BaseValidationStatus: "pass",
+      v2TotalSets: 55,
+      noRepairTotalSets: 25,
+      repairedTotalSets: 55,
+      repairDependencyCount: 9,
+    });
+    expect(compare.nextSafeAction).toBe("add_shadow_consumption_trial");
+  });
+
+  it("classifies differences as improvement, preservation, regression, unclear, or not comparable", () => {
+    const { validation, materializedPlan } = buildFixture();
+    const compare = buildV2BasePlanCompare({
+      v2BasePlanValidation: validation,
+      v2MaterializedPlan: materializedPlan,
+      inventory: representativeV2Inventory,
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      plannerOnlyNoRepairPlan: representativeNoRepairPlan(),
+      repairedPlan: representativeRepairedPlan(materializedPlan),
+    });
+    const classifications = JSON.stringify(compare.comparisons);
+
+    expect(classifications).toContain("v2_improves");
+    expect(classifications).toContain("v2_preserves");
+    expect(classifications).toContain("unclear");
+    expect(classifications).not.toContain("v2_regresses");
+
+    const limitedCompare = buildV2BasePlanCompare({
+      v2BasePlanValidation: validation,
+      v2MaterializedPlan: materializedPlan,
+      inventory: representativeV2Inventory,
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+    });
+    expect(JSON.stringify(limitedCompare.comparisons)).toContain(
+      "not_comparable",
+    );
+    expect(limitedCompare.status).toBe("available_with_limitations");
+  });
+
+  it("reports V2 slot shape totals, class coverage, repair dependencies, and deload readiness", () => {
+    const { validation, materializedPlan } = buildFixture();
+    const compare = buildV2BasePlanCompare({
+      v2BasePlanValidation: validation,
+      v2MaterializedPlan: materializedPlan,
+      inventory: representativeV2Inventory,
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      plannerOnlyNoRepairPlan: representativeNoRepairPlan(),
+      repairedPlan: representativeRepairedPlan(materializedPlan),
+    });
+
+    expect(compare.comparisons.slotShape.v2Base).toMatchObject({
+      slotCount: 4,
+      exerciseCount: 18,
+      totalSets: 55,
+      maxSlotSets: 17,
+      optionalLaneMaterializationCount: 0,
+      standaloneOneSetExerciseCount: 0,
+      fiveSetStackCount: 0,
+    });
+    expect(compare.comparisons.slotShape.v2Base.setsBySlot).toEqual([
+      { slotId: "upper_a", exerciseCount: 5, setCount: 15 },
+      { slotId: "lower_a", exerciseCount: 4, setCount: 12 },
+      { slotId: "upper_b", exerciseCount: 5, setCount: 17 },
+      { slotId: "lower_b", exerciseCount: 4, setCount: 11 },
+    ]);
+    expect(compare.comparisons.exerciseClassCoverage.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          item: "chest_distinct_exposure",
+          v2Base: true,
+        }),
+        expect.objectContaining({
+          item: "side_delt_direct_class",
+          v2Base: true,
+        }),
+        expect.objectContaining({
+          item: "rear_delt_direct_support_class",
+          v2Base: true,
+        }),
+        expect.objectContaining({
+          item: "hamstrings_hinge_plus_curl",
+          v2Base: true,
+        }),
+        expect.objectContaining({
+          item: "calves_direct_work",
+          v2Base: true,
+        }),
+      ]),
+    );
+    expect(compare.comparisons.repairDependency.responsibilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          item: "support-floor closure as planner author",
+          classification: "v2_improves",
+          dependencyCount: 1,
+        }),
+        expect.objectContaining({
+          item: "late set bumping",
+          classification: "v2_improves",
+          dependencyCount: 1,
+        }),
+        expect.objectContaining({
+          item: "forbidden cleanup",
+          classification: "v2_improves",
+          dependencyCount: 1,
+        }),
+      ]),
+    );
+    expect(compare.comparisons.deloadReadiness.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          item: "preserved_identities",
+          classification: "v2_preserves",
+        }),
+        expect.objectContaining({
+          item: "reduced_sets",
+          classification: "v2_preserves",
+        }),
+        expect.objectContaining({
+          item: "high_rir",
+          classification: "v2_preserves",
+        }),
+        expect.objectContaining({
+          item: "no_new_movements",
+          classification: "v2_preserves",
+        }),
+      ]),
+    );
+  });
+
+  it("does not feed production projection, seed, runtime, receipts, or materializer behavior", () => {
+    const { validation, materializedPlan } = buildFixture();
+    const beforeMaterializedPlan = JSON.stringify(materializedPlan);
+    const noRepairPlan = representativeNoRepairPlan();
+    const beforeNoRepair = JSON.stringify(noRepairPlan);
+
+    const compare = buildV2BasePlanCompare({
+      v2BasePlanValidation: validation,
+      v2MaterializedPlan: materializedPlan,
+      inventory: representativeV2Inventory,
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      plannerOnlyNoRepairPlan: noRepairPlan,
+      repairedPlan: representativeRepairedPlan(materializedPlan),
+    });
+
+    expect(JSON.stringify(materializedPlan)).toBe(beforeMaterializedPlan);
+    expect(JSON.stringify(noRepairPlan)).toBe(beforeNoRepair);
+    expect(JSON.stringify(compare)).not.toMatch(
+      /slotPlanSeedJson|sessionDecisionReceipt|acceptedPlannerIntent|runtimeReplay/,
+    );
+    expect(compare.guardrails).toMatchObject({
+      doesNotFeedProductionProjection: true,
+      doesNotAffectSeedSerialization: true,
+      doesNotAffectRuntimeReplay: true,
+      doesNotAffectReceipts: true,
+    });
   });
 });

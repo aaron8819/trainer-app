@@ -55,6 +55,10 @@ import {
 import {
   buildV2PlannerMesocyclePolicy,
   buildV2StrategyHypothesisPreShadowCandidateFilter,
+  DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+  type V2ExerciseClassTaxonomy,
+  type V2ExerciseMaterializationInput,
+  type V2MaterializationExercise,
   type V2MesocycleStrategyInput,
   type V2SetDistributionIntent,
   type V2StrategyHypothesisPreShadowCandidateFilter,
@@ -73,6 +77,10 @@ import {
 import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 import { MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION } from "./constants";
 import { buildRepairPromotionScoreboard } from "./mesocycle-explain-v2-repair-scoreboard";
+import {
+  buildV2BasePlanCompareFromLiveContext,
+  normalizeLiveInventoryForV2Materialization,
+} from "./v2-materialization-live-context-dry-run";
 import {
   interpretRuntimeEdits,
   type RuntimeEditExerciseContext,
@@ -8079,6 +8087,11 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   mesocycleStrategyInput?: V2MesocycleStrategyInput;
   preShadowCandidateFilter?: V2StrategyHypothesisPreShadowCandidateFilter;
   strategyShadowProjection?: V2StrategyHypothesisShadowProjectionEvidence;
+  v2BasePlanCompareContext?: {
+    inventory: V2MaterializationExercise[];
+    taxonomy: V2ExerciseClassTaxonomy;
+    constraints: V2ExerciseMaterializationInput["constraints"];
+  };
 }): MesocycleExplainPlannerOnlyNoRepair {
   const repairDependenciesDisabled = [
     "support-floor closure",
@@ -8146,6 +8159,14 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     const v2MesocycleStrategyDiagnostic =
       plannerPolicy.mesocycleStrategyDiagnostic;
     const v2SetDistributionIntent = plannerPolicy.v2SetDistributionIntent;
+    const v2BasePlanCompare = input.v2BasePlanCompareContext
+      ? buildV2BasePlanCompareFromLiveContext({
+          plannerPolicy,
+          noRepairPlanningReality: undefined,
+          repairedPlanningReality: input.repairedPlanningReality,
+          ...input.v2BasePlanCompareContext,
+        })
+      : undefined;
     const v2SupportLanePolicy = getPureV2SupportLanePolicy();
     const plannerOwnedAccumulationProjection =
       buildPlannerOwnedAccumulationProjection({
@@ -8230,6 +8251,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         validationFailureCount: 1,
       },
       acceptanceClassification,
+      ...(v2BasePlanCompare ? { v2BasePlanCompare } : {}),
       ...(repairPromotionScoreboard ? { repairPromotionScoreboard } : {}),
       v2MesocycleStrategyDiagnostic,
       v2MesocyclePlan,
@@ -8337,6 +8359,14 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   const v2MesocycleStrategyDiagnostic =
     plannerPolicy.mesocycleStrategyDiagnostic;
   const v2SetDistributionIntent = plannerPolicy.v2SetDistributionIntent;
+  const v2BasePlanCompare = input.v2BasePlanCompareContext
+    ? buildV2BasePlanCompareFromLiveContext({
+        plannerPolicy,
+        noRepairPlanningReality: noRepair,
+        repairedPlanningReality: input.repairedPlanningReality,
+        ...input.v2BasePlanCompareContext,
+      })
+    : undefined;
   const v2SupportLanePolicy = getPureV2SupportLanePolicy();
   const plannerOwnedAccumulationProjection =
     buildPlannerOwnedAccumulationProjection({
@@ -8431,6 +8461,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       validationFailureCount,
     },
     acceptanceClassification,
+    ...(v2BasePlanCompare ? { v2BasePlanCompare } : {}),
     ...(repairPromotionScoreboard ? { repairPromotionScoreboard } : {}),
     v2MesocycleStrategyDiagnostic,
     crossWeekProjectionGate,
@@ -9391,7 +9422,13 @@ export async function buildMesocycleExplainAuditPayload(input: {
     input.sourceMesocycleId ?? (await resolveSourceMesocycleId(input.userId));
   const retrospectiveMesocycleId =
     input.retrospectiveMesocycleId ?? sourceMesocycleId;
-  const [sourceMesocycle, retrospectiveMesocycle, constraints] =
+  const [
+    sourceMesocycle,
+    retrospectiveMesocycle,
+    constraints,
+    v2InventoryExercises,
+    v2UserPreferences,
+  ] =
     await Promise.all([
       loadExplainMesocycle({
         userId: input.userId,
@@ -9405,10 +9442,34 @@ export async function buildMesocycleExplainAuditPayload(input: {
         where: { userId: input.userId },
         select: { weeklySchedule: true },
       }),
+      prisma.exercise.findMany({
+        orderBy: { name: "asc" },
+        include: {
+          aliases: true,
+          exerciseEquipment: { include: { equipment: true } },
+          exerciseMuscles: { include: { muscle: true } },
+        },
+      }),
+      prisma.userPreference.findUnique({
+        where: { userId: input.userId },
+        select: {
+          avoidExerciseIds: true,
+          favoriteExerciseIds: true,
+        },
+      }),
     ]);
   const weeklySchedule = (constraints?.weeklySchedule ?? []).map((intent) =>
     intent.toLowerCase(),
   );
+  const v2BasePlanCompareContext = {
+    inventory: normalizeLiveInventoryForV2Materialization(v2InventoryExercises),
+    taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+    constraints: {
+      avoidExerciseIds: v2UserPreferences?.avoidExerciseIds ?? [],
+      favoriteExerciseIds: v2UserPreferences?.favoriteExerciseIds ?? [],
+      painConflictExerciseIds: [],
+    },
+  };
   const limitations: string[] = [];
 
   const previewArtifacts = await loadPreviewArtifacts({
@@ -9813,6 +9874,7 @@ export async function buildMesocycleExplainAuditPayload(input: {
         mesocycleStrategyInput,
         preShadowCandidateFilter,
         strategyShadowProjection: strategyShadowProjectionEvidence,
+        v2BasePlanCompareContext,
       })
     : undefined;
 

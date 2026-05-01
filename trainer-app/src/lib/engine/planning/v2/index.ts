@@ -1,5 +1,6 @@
 export { buildV2DeloadTransformPolicy } from "./deload-transform";
 export { buildV2AcceptedPlannerIntentDto } from "./accepted-planner-intent-dto";
+export { buildV2BasePlanCompare } from "./materialization/base-plan-compare";
 export { buildV2BasePlanValidation } from "./materialization/base-plan-validation";
 export { buildV2ExerciseClassDistributionBySlot } from "./exercise-class-distribution";
 export { buildV2ExerciseSelectionPlan } from "./exercise-selection-plan";
@@ -143,6 +144,17 @@ export type {
   V2MaterializationExercise,
   V2MaterializedSelection,
 } from "./materialization/types";
+export type {
+  V2BasePlanCompare,
+  V2BasePlanCompareClassification,
+  V2BasePlanCompareExercise,
+  V2BasePlanCompareInput,
+  V2BasePlanCompareNextSafeAction,
+  V2BasePlanComparePlanId,
+  V2BasePlanComparePlanView,
+  V2BasePlanCompareRepairEvidence,
+  V2BasePlanCompareSlot,
+} from "./materialization/base-plan-compare";
 export type {
   V2BasePlanValidation,
   V2BasePlanValidationInput,

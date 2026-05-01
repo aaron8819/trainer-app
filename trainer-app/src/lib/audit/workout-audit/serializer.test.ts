@@ -1772,6 +1772,20 @@ describe("buildWorkoutAuditArtifact", () => {
       },
       safeForBehaviorPromotion: false,
     });
+    expect(fullNoRepair?.v2BasePlanCompare).toMatchObject({
+      source: "v2_base_plan_compare",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "available",
+      comparisons: {
+        slotShape: {
+          v2Base: {
+            totalSets: 55,
+            maxSlotSets: 17,
+          },
+        },
+      },
+    });
     expect(fullNoRepair?.v2TargetVsNoRepairDiff).toBeTruthy();
     expect(
       fullNoRepair?.crossWeekProjectionGate.accumulationWeeksStatus.weeks,
@@ -1785,6 +1799,27 @@ describe("buildWorkoutAuditArtifact", () => {
         split: "upper_lower_4x",
         weekCount: 5,
         slotCount: 1,
+        basePlanCompare: {
+          status: "available",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          comparedPlans: {
+            v2BasePlanAvailable: true,
+            plannerOnlyNoRepairAvailable: true,
+            repairedPlanAvailable: true,
+          },
+          summary: {
+            v2BaseValidationStatus: "pass",
+            v2TotalSets: 55,
+            noRepairTotalSets: 25,
+            repairedTotalSets: 55,
+            repairDependencyCount: 9,
+            v2ImprovementCount: 12,
+            v2RegressionCount: 0,
+            unclearCount: 2,
+          },
+          nextSafeAction: "add_shadow_consumption_trial",
+        },
         mesocycleStrategyDiagnostic: {
           status: "available_with_limitations",
           readOnly: true,
@@ -1927,7 +1962,11 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(serializedNoRepair).not.toHaveProperty(
       "v2DeloadProjectionDiagnostic",
     );
+    expect(serializedNoRepair).not.toHaveProperty("v2BasePlanCompare");
     expect(serializedNoRepair).not.toHaveProperty("v2TargetVsNoRepairDiff");
+    expect(JSON.stringify(serializedNoRepair.v2Summary)).not.toContain(
+      "slotShape",
+    );
     expect(
       (serializedNoRepair.crossWeekProjectionGate as Record<string, unknown>)
         .accumulationWeeksStatus,
@@ -2031,6 +2070,21 @@ describe("buildWorkoutAuditArtifact", () => {
     });
     expect(mainNoRepair.debugArtifact).toHaveProperty("contains");
     expect(mainNoRepair.v2Summary).toMatchObject({
+      basePlanCompare: {
+        status: "available",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        summary: {
+          v2TotalSets: 55,
+          noRepairTotalSets: 25,
+          repairedTotalSets: 55,
+          repairDependencyCount: 9,
+          v2ImprovementCount: 12,
+          v2RegressionCount: 0,
+          unclearCount: 2,
+        },
+        nextSafeAction: "add_shadow_consumption_trial",
+      },
       mesocycleStrategyDiagnostic: {
           strategyHypothesisPromotionDiff: {
             status: "available_with_limitations",
@@ -2167,6 +2221,9 @@ describe("buildWorkoutAuditArtifact", () => {
         perArtifactLimitBytes: 1_048_576,
       },
       summary: {
+        v2BasePlanCompareStatus: "available",
+        v2BasePlanCompareImprovementCount: 12,
+        v2BasePlanCompareRegressionCount: 0,
         writtenShardCount: 7,
         skippedShardCount: 0,
       },
@@ -2248,6 +2305,18 @@ describe("buildWorkoutAuditArtifact", () => {
             nextSafeAction: "add_strategy_to_demand_diff",
           },
         },
+        v2BasePlanCompare: {
+          status: "available",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          summary: {
+            v2TotalSets: 55,
+            noRepairTotalSets: 25,
+            repairedTotalSets: 55,
+            repairDependencyCount: 9,
+          },
+          nextSafeAction: "add_shadow_consumption_trial",
+        },
       },
     });
 
@@ -2264,6 +2333,7 @@ describe("buildWorkoutAuditArtifact", () => {
     const promotionReadinessShard = findShard("promotion-readiness");
     const promotionDiffsShard = findShard("promotion-diffs");
     const repairEvidenceShard = findShard("repair-evidence");
+    const materializationShard = findShard("materialization");
     const crossWeekShard = findShard("cross-week-projection");
     const selectionShard = findShard("selection-alignment");
 
@@ -2532,6 +2602,24 @@ describe("buildWorkoutAuditArtifact", () => {
         }),
       }),
     });
+    expect(materializationShard.artifact.data).toMatchObject({
+      v2BasePlanCompare: {
+        source: "v2_base_plan_compare",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        comparisons: {
+          slotShape: {
+            v2Base: {
+              totalSets: 55,
+              maxSlotSets: 17,
+            },
+          },
+          repairDependency: {
+            dependencyCount: 9,
+          },
+        },
+      },
+    });
     expect(crossWeekShard.artifact.data).toMatchObject({
       crossWeekProjectionGate: {
         accumulationWeeksStatus: expect.objectContaining({
@@ -2700,6 +2788,178 @@ describe("buildWorkoutAuditArtifact", () => {
     ).toContain("concentration:pulling_collateral");
   });
 });
+
+function makeV2BasePlanCompareFixture() {
+  const v2SlotMetrics = {
+    slotCount: 4,
+    exerciseCount: 18,
+    totalSets: 55,
+    maxSlotSets: 17,
+    optionalLaneMaterializationCount: 0,
+    standaloneOneSetExerciseCount: 0,
+    fiveSetStackCount: 0,
+    setsBySlot: [
+      { slotId: "upper_a", exerciseCount: 5, setCount: 15 },
+      { slotId: "lower_a", exerciseCount: 4, setCount: 12 },
+      { slotId: "upper_b", exerciseCount: 5, setCount: 17 },
+      { slotId: "lower_b", exerciseCount: 4, setCount: 11 },
+    ],
+  };
+
+  return {
+    version: 1,
+    source: "v2_base_plan_compare",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    status: "available",
+    comparedPlans: {
+      v2BasePlanAvailable: true,
+      plannerOnlyNoRepairAvailable: true,
+      repairedPlanAvailable: true,
+    },
+    interpretationRules: {
+      v2BasePlanIsCandidateStaticNorthStar: true,
+      repairedPlanIsEvidenceNotTarget: true,
+      noRepairOutputShowsCurrentPlannerBeforeRepair: true,
+      differencesDoNotImplyV2WrongBecauseItDiffersFromRepairedPlan: true,
+    },
+    summary: {
+      v2BaseValidationStatus: "pass",
+      v2TotalSets: 55,
+      noRepairTotalSets: 25,
+      repairedTotalSets: 55,
+      repairDependencyCount: 9,
+      v2ImprovementCount: 12,
+      v2RegressionCount: 0,
+      unclearCount: 2,
+    },
+    comparisons: {
+      slotShape: {
+        classification: "v2_improves",
+        v2Base: v2SlotMetrics,
+        plannerOnlyNoRepair: {
+          ...v2SlotMetrics,
+          exerciseCount: 7,
+          totalSets: 25,
+          maxSlotSets: 8,
+          standaloneOneSetExerciseCount: 2,
+          setsBySlot: [{ slotId: "upper_a", exerciseCount: 3, setCount: 8 }],
+        },
+        repairedPlan: v2SlotMetrics,
+        rows: [
+          {
+            item: "total_weekly_sets",
+            classification: "v2_improves",
+            evidence: ["v2:55", "noRepair:25", "repaired:55"],
+          },
+        ],
+      },
+      muscleCoverage: {
+        classification: "v2_improves",
+        underHitMuscles: [],
+        overConcentratedMuscles: [],
+        managedCollateralExposure: [],
+        rows: [
+          {
+            item: "target_tier_coverage",
+            classification: "v2_improves",
+            evidence: ["below_floor:none"],
+          },
+        ],
+      },
+      exerciseClassCoverage: {
+        classification: "v2_improves",
+        rows: [
+          {
+            item: "chest_distinct_exposure",
+            classification: "v2_improves",
+            v2Base: true,
+            plannerOnlyNoRepair: false,
+            repairedPlan: true,
+            evidence: ["v2:true", "noRepair:false", "repaired:true"],
+          },
+          {
+            item: "hamstrings_hinge_plus_curl",
+            classification: "v2_improves",
+            v2Base: true,
+            plannerOnlyNoRepair: false,
+            repairedPlan: true,
+            evidence: ["v2:true", "noRepair:false", "repaired:true"],
+          },
+        ],
+      },
+      repairDependency: {
+        classification: "v2_improves",
+        dependencyCount: 9,
+        responsibilities: [
+          {
+            item: "support-floor closure as planner author",
+            classification: "v2_improves",
+            dependencyCount: 1,
+            evidence: ["upper_a:Chest:Machine Chest Press:support_floor:set_bumped"],
+          },
+        ],
+      },
+      exerciseIdentity: {
+        classification: "unclear",
+        duplicateExactExercises: {
+          v2Base: [],
+          plannerOnlyNoRepair: ["Cable Crossover"],
+          repairedPlan: [],
+        },
+        duplicateClassFamilies: {
+          v2Base: [],
+          plannerOnlyNoRepair: ["chest_isolation"],
+          repairedPlan: [],
+        },
+        slots: [
+          {
+            slotId: "upper_a",
+            classification: "unclear",
+            v2BaseIdentities: ["Machine Chest Press"],
+            plannerOnlyNoRepairIdentities: ["Incline Dumbbell Press"],
+            repairedPlanIdentities: ["Machine Chest Press"],
+            evidence: [
+              "v2:Machine Chest Press",
+              "noRepair:Incline Dumbbell Press",
+              "repaired:Machine Chest Press",
+            ],
+          },
+        ],
+        materializerDifferences: [
+          "upper_a:identity_differs_from_projection_evidence",
+        ],
+      },
+      deloadReadiness: {
+        classification: "v2_preserves",
+        rows: [
+          {
+            item: "preserved_identities",
+            classification: "v2_preserves",
+            evidence: ["sameIdentitiesSupported:true"],
+          },
+        ],
+      },
+    },
+    blockersBeforeBehaviorPromotion: [
+      "shadow_consumption_trial_not_run",
+      "guarded_behavior_trial_not_run",
+    ],
+    nextSafeAction: "add_shadow_consumption_trial",
+    guardrails: {
+      doesNotUseHistoricalStrategyRecommendations: true,
+      doesNotTreatRepairedPlanAsTargetPolicy: true,
+      doesNotFeedProductionProjection: true,
+      doesNotAffectGeneration: true,
+      doesNotAffectSelectionV2: true,
+      doesNotAffectRepair: true,
+      doesNotAffectSeedSerialization: true,
+      doesNotAffectRuntimeReplay: true,
+      doesNotAffectReceipts: true,
+      consumedByDemandOrMaterializer: false,
+    },
+  };
+}
 
 function makeMesocycleExplainNoRepairPayload() {
   return {
@@ -2942,6 +3202,7 @@ function makeMesocycleExplainNoRepairPayload() {
           },
         ],
       },
+      v2BasePlanCompare: makeV2BasePlanCompareFixture(),
       crossWeekProjectionGate: {
         readOnly: true,
         affectsScoringOrGeneration: false,

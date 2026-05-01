@@ -490,6 +490,9 @@ describe("V2 planner policy module boundary", () => {
       if (file.startsWith(v2PolicyDir)) {
         return [];
       }
+      if (file === liveContextDryRunHarness) {
+        return [];
+      }
       const text = fs.readFileSync(file, "utf8");
       return /buildV2BasePlanValidation\s*\(/.test(text)
         ? [`${path.relative(process.cwd(), file)} calls base plan validation`]

@@ -1103,6 +1103,12 @@ export type V2SlotDemandAllocationByWeek = {
   readOnly: true;
   affectsScoringOrGeneration: false;
   allocationTiming: "before_exercise_selection";
+  exposureOwnershipPolicy: {
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    demandSource: "balanced_static_block_policy";
+    basis: "static_upper_lower_slot_exposure_ownership";
+  };
   weeks: Array<{
     week: number;
     phase: V2PlannerPhase;
@@ -1124,11 +1130,22 @@ export type V2SlotDemandAllocationByWeek = {
           role: V2PlannerDemandRole;
           targetStatus: V2PlannerTargetStatus;
           targetSetRange: V2PlannerSetRange;
+          demandShare: number;
+          classIntent: string;
+          ownershipKind:
+            | "primary_exposure"
+            | "support_exposure"
+            | "direct_support"
+            | "managed_collateral"
+            | "optional_if_needed";
           allocationBasis:
             | "target_lane"
             | "slot_role_policy"
             | "weekly_demand_curve"
-            | "deload_transform";
+            | "deload_transform"
+            | "static_slot_exposure_ownership"
+            | "managed_collateral_fatigue_budget"
+            | "optional_if_needed";
         }>;
       }>;
     }>;

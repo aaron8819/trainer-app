@@ -83,6 +83,8 @@
 | 2026-05-01 | self | Assumed user-supplied audit artifact paths were repo-root relative and hit `ENOENT`; Trainer audit artifacts are under `trainer-app/artifacts/audits/` from the repo root. | Resolve audit artifact paths relative to `trainer-app/` first when the prompt names `artifacts/audits/...`. |
 | 2026-05-01 | self | Repeated the Windows wildcard-path `rg` mistake while searching `mesocycle-handoff*.ts` files. | Use `rg <pattern> <directory> -g "mesocycle-handoff*.ts"` instead of passing wildcard paths directly in PowerShell. |
 | 2026-05-01 | self | A handoff V2 probe fixture widened seed preview roles to `string` and used a readonly `as const` array, so `tsc --noEmit` failed after Vitest passed. | Type V2 materialization report fixtures with the exported DTO type and keep role literals / mutable arrays compatible with the production contract. |
+| 2026-05-01 | self | In the accepted-seed compare fixture, first mis-summed the V2 comparison plan's total sets as 34 instead of 42. | Sum every slot explicitly when asserting seed-shape totals; do not do mental arithmetic from dense multi-slot fixtures. |
+| 2026-05-01 | self | Expected legacy biceps/triceps support coverage to be false, but the legacy comparison fixture already provided support via Bench/Row secondary muscle evidence. | For class/lane compare assertions, distinguish direct-only gaps from direct/support coverage before marking legacy missing. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

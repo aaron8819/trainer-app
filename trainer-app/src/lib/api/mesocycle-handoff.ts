@@ -37,6 +37,10 @@ import {
   projectSuccessorSlotPlansFromSnapshot,
 } from "./mesocycle-handoff-slot-plan-projection";
 import {
+  buildV2AcceptedSeedPreparationCompare,
+  type V2AcceptedSeedPreparationCompareResult,
+} from "./mesocycle-handoff-v2-accepted-seed-compare";
+import {
   buildAcceptedSeedPersistenceProvenance,
   buildV2MaterializedSeedAcceptanceProbe,
   completeAcceptedSeedPersistenceProvenance,
@@ -66,6 +70,7 @@ export type {
   NextCycleSeedDraft,
   NextCycleSeedSlot,
   NextCycleSlotId,
+  V2AcceptedSeedPreparationCompareResult,
 };
 
 type Tx = Prisma.TransactionClient;
@@ -990,6 +995,132 @@ export async function prepareV2AcceptedSeedPreparationProbe(input: {
       summaryLoaded: true,
       draftLoaded: true,
       acceptanceProjectionBuilt: true,
+    },
+  });
+}
+
+export async function prepareV2AcceptedSeedPreparationCompare(input: {
+  userId: string;
+  mesocycleId: string;
+  reader?: PendingHandoffArtifactReader & HandoffSourceMesocycleReader;
+  v2Probe?: V2AcceptedSeedPreparationProbeInput;
+}): Promise<V2AcceptedSeedPreparationCompareResult> {
+  const reader = input.reader ?? prisma;
+  const source = await loadHandoffSourceMesocycle(reader, input.mesocycleId);
+  if (source.macroCycle.userId !== input.userId) {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_FOUND");
+  }
+
+  const pendingRow = await reader.mesocycle.findUnique({
+    where: { id: input.mesocycleId },
+    select: pendingHandoffRowSelect,
+  });
+  const summary = readMesocycleHandoffSummary(pendingRow?.handoffSummaryJson);
+  const storedDraft = readNextCycleSeedDraft(pendingRow?.nextSeedDraftJson);
+
+  if (
+    !pendingRow ||
+    pendingRow.state !== "AWAITING_HANDOFF" ||
+    !summary ||
+    !summary.recommendedDesign ||
+    !summary.recommendedNextSeed ||
+    !storedDraft
+  ) {
+    return buildV2AcceptedSeedPreparationCompare({
+      legacyPreparation: null,
+      legacyUnavailableReason: "handoff_context_unavailable",
+      v2ProbeInput: {
+        ...(input.v2Probe ?? {}),
+        ownerLoaded: true,
+        mesocycleLoaded: Boolean(pendingRow),
+        slotSequence: buildMesocycleSlotSequence([]),
+        slotSequenceSource: "missing",
+        handoffContext: {
+          ...(pendingRow?.state ? { sourceState: pendingRow.state } : {}),
+          summaryLoaded: Boolean(summary?.recommendedDesign),
+          draftLoaded: Boolean(storedDraft),
+          acceptanceProjectionBuilt: false,
+        },
+      },
+    });
+  }
+
+  let draft: NextCycleSeedDraft;
+  try {
+    draft = sanitizeNextCycleSeedDraft({
+      draft: storedDraft,
+      sourceMesocycleId: source.id,
+      fallbackDraft: summary.recommendedNextSeed,
+    });
+  } catch {
+    return buildV2AcceptedSeedPreparationCompare({
+      legacyPreparation: null,
+      legacyUnavailableReason: "handoff_draft_invalid",
+      v2ProbeInput: {
+        ...(input.v2Probe ?? {}),
+        ownerLoaded: true,
+        mesocycleLoaded: true,
+        slotSequence: buildMesocycleSlotSequence([]),
+        slotSequenceSource: "missing",
+        handoffContext: {
+          sourceState: pendingRow.state,
+          summaryLoaded: true,
+          draftLoaded: false,
+          acceptanceProjectionBuilt: false,
+        },
+      },
+    });
+  }
+
+  const design = applyDraftOverridesToDesign({
+    design: summary.recommendedDesign,
+    draft,
+  });
+  const projectionSource = toHandoffProjectionSource(source);
+  const projection = projectSuccessorMesocycle({
+    source: projectionSource,
+    design,
+  });
+  let legacyPreparation: AcceptedMesocycleSlotPlanSeedPreparation | null = null;
+  let legacyUnavailableReason: string | undefined;
+
+  try {
+    legacyPreparation = await buildAcceptedMesocycleSlotPlanSeed({
+      userId: source.macroCycle.userId,
+      source: projectionSource,
+      design,
+      slotSequence: projection.mesocycle.slotSequence,
+    });
+    if (!legacyPreparation.slotPlanSeed) {
+      legacyUnavailableReason = "legacy_projection_seed_unavailable";
+    }
+  } catch (error) {
+    legacyPreparation = null;
+    legacyUnavailableReason =
+      error instanceof Error ? error.message : "legacy_preparation_failed";
+  }
+
+  return buildV2AcceptedSeedPreparationCompare({
+    legacyPreparation,
+    ...(legacyUnavailableReason ? { legacyUnavailableReason } : {}),
+    v2ProbeInput: {
+      ...(input.v2Probe ?? {}),
+      ownerLoaded: true,
+      mesocycleLoaded: true,
+      slotSequence: projection.mesocycle.slotSequence,
+      slotIntentById: Object.fromEntries(
+        projection.mesocycle.slotSequence.slots.map((slot) => [
+          slot.slotId,
+          slot.intent,
+        ]),
+      ),
+      slotSequenceSource: "handoff_acceptance_preparation",
+      handoffContext: {
+        sourceState: pendingRow.state,
+        summaryLoaded: true,
+        draftLoaded: true,
+        acceptanceProjectionBuilt: true,
+      },
     },
   });
 }

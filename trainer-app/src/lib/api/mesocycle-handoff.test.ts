@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type {
-  V2MaterializationDryRunReport,
-  V2MaterializationPromotionReadiness,
+import {
+  DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+  type V2MaterializationExercise,
+  type V2MaterializationDryRunReport,
+  type V2MaterializationPromotionReadiness,
 } from "@/lib/engine/planning/v2";
 
 const mocks = vi.hoisted(() => ({
@@ -32,6 +34,7 @@ import {
   loadClosedMesocycleArchive,
   MesocycleHandoffV2MaterializedSeedBlockedError,
   prepareMesocycleHandoffAcceptance,
+  prepareV2AcceptedSeedPreparationCompare,
   prepareV2AcceptedSeedPreparationProbe,
   readMesocycleHandoffSummary,
   readNextCycleSeedDraft,
@@ -351,6 +354,198 @@ function makeProjectedSlotPlans() {
   ];
 }
 
+function makeV2ComparisonSlotPlans() {
+  return [
+    {
+      slotId: "upper_a",
+      intent: "UPPER",
+      exercises: [
+        { exerciseId: "incline-press", role: "CORE_COMPOUND", setCount: 3 },
+        { exerciseId: "row", role: "ACCESSORY", setCount: 3 },
+        { exerciseId: "pulldown", role: "ACCESSORY", setCount: 3 },
+        { exerciseId: "reverse-fly", role: "ACCESSORY", setCount: 2 },
+      ],
+    },
+    {
+      slotId: "lower_a",
+      intent: "LOWER",
+      exercises: [
+        { exerciseId: "squat", role: "CORE_COMPOUND", setCount: 4 },
+        { exerciseId: "leg-curl", role: "ACCESSORY", setCount: 3 },
+        { exerciseId: "calf-raise", role: "ACCESSORY", setCount: 3 },
+      ],
+    },
+    {
+      slotId: "upper_b",
+      intent: "UPPER",
+      exercises: [
+        { exerciseId: "bench", role: "CORE_COMPOUND", setCount: 3 },
+        { exerciseId: "lateral-raise", role: "ACCESSORY", setCount: 3 },
+        { exerciseId: "cable-curl", role: "ACCESSORY", setCount: 2 },
+        { exerciseId: "triceps-pushdown", role: "ACCESSORY", setCount: 2 },
+      ],
+    },
+    {
+      slotId: "lower_b",
+      intent: "LOWER",
+      exercises: [
+        { exerciseId: "split-squat", role: "ACCESSORY", setCount: 3 },
+        { exerciseId: "rdl", role: "CORE_COMPOUND", setCount: 3 },
+        { exerciseId: "leg-curl", role: "ACCESSORY", setCount: 2 },
+        { exerciseId: "calf-raise", role: "ACCESSORY", setCount: 3 },
+      ],
+    },
+  ];
+}
+
+function makeComparisonInventory(): V2MaterializationExercise[] {
+  return [
+    {
+      exerciseId: "bench",
+      name: "Bench Press",
+      movementPatterns: ["horizontal_press"],
+      primaryMuscles: ["Chest"],
+      secondaryMuscles: ["Triceps"],
+      equipment: ["barbell"],
+      isCompound: true,
+      isMainLiftEligible: true,
+      stimulusByMusclePerSet: { Chest: 1, Triceps: 0.4 },
+    },
+    {
+      exerciseId: "incline-press",
+      name: "Incline Dumbbell Press",
+      movementPatterns: ["horizontal_press"],
+      primaryMuscles: ["Chest"],
+      secondaryMuscles: ["Triceps"],
+      equipment: ["dumbbell"],
+      isCompound: true,
+      isMainLiftEligible: true,
+      stimulusByMusclePerSet: { Chest: 1, Triceps: 0.4 },
+    },
+    {
+      exerciseId: "row",
+      name: "Chest-Supported Row",
+      movementPatterns: ["horizontal_pull", "row"],
+      primaryMuscles: ["Upper Back", "Lats"],
+      secondaryMuscles: ["Rear Delts", "Biceps"],
+      equipment: ["machine"],
+      isCompound: true,
+      isMainLiftEligible: false,
+      stimulusByMusclePerSet: { "Upper Back": 1, Lats: 0.7, Biceps: 0.3 },
+    },
+    {
+      exerciseId: "pulldown",
+      name: "Lat Pulldown",
+      movementPatterns: ["vertical_pull"],
+      primaryMuscles: ["Lats"],
+      secondaryMuscles: ["Biceps"],
+      equipment: ["cable"],
+      isCompound: true,
+      isMainLiftEligible: false,
+      stimulusByMusclePerSet: { Lats: 1, Biceps: 0.3 },
+    },
+    {
+      exerciseId: "reverse-fly",
+      name: "Reverse Fly",
+      movementPatterns: ["horizontal_pull"],
+      primaryMuscles: ["Rear Delts"],
+      secondaryMuscles: ["Upper Back"],
+      equipment: ["dumbbell"],
+      isCompound: false,
+      isMainLiftEligible: false,
+      stimulusByMusclePerSet: { "Rear Delts": 1 },
+    },
+    {
+      exerciseId: "squat",
+      name: "Back Squat",
+      movementPatterns: ["squat"],
+      primaryMuscles: ["Quads"],
+      secondaryMuscles: ["Glutes"],
+      equipment: ["barbell"],
+      isCompound: true,
+      isMainLiftEligible: true,
+      stimulusByMusclePerSet: { Quads: 1, Glutes: 0.6 },
+    },
+    {
+      exerciseId: "split-squat",
+      name: "Split Squat",
+      movementPatterns: ["squat"],
+      primaryMuscles: ["Quads"],
+      secondaryMuscles: ["Glutes"],
+      equipment: ["dumbbell"],
+      isCompound: true,
+      isMainLiftEligible: false,
+      stimulusByMusclePerSet: { Quads: 1, Glutes: 0.5 },
+    },
+    {
+      exerciseId: "rdl",
+      name: "Romanian Deadlift",
+      movementPatterns: ["hinge"],
+      primaryMuscles: ["Hamstrings"],
+      secondaryMuscles: ["Glutes", "Lower Back"],
+      equipment: ["barbell"],
+      isCompound: true,
+      isMainLiftEligible: true,
+      stimulusByMusclePerSet: { Hamstrings: 1, Glutes: 0.6 },
+    },
+    {
+      exerciseId: "leg-curl",
+      name: "Seated Leg Curl",
+      movementPatterns: ["knee_flexion"],
+      primaryMuscles: ["Hamstrings"],
+      secondaryMuscles: [],
+      equipment: ["machine"],
+      isCompound: false,
+      isMainLiftEligible: false,
+      stimulusByMusclePerSet: { Hamstrings: 1 },
+    },
+    {
+      exerciseId: "calf-raise",
+      name: "Standing Calf Raise",
+      movementPatterns: ["ankle_extension"],
+      primaryMuscles: ["Calves"],
+      secondaryMuscles: [],
+      equipment: ["machine"],
+      isCompound: false,
+      isMainLiftEligible: false,
+      stimulusByMusclePerSet: { Calves: 1 },
+    },
+    {
+      exerciseId: "lateral-raise",
+      name: "Cable Lateral Raise",
+      movementPatterns: ["shoulder_abduction"],
+      primaryMuscles: ["Side Delts"],
+      secondaryMuscles: [],
+      equipment: ["cable"],
+      isCompound: false,
+      isMainLiftEligible: false,
+      stimulusByMusclePerSet: { "Side Delts": 1 },
+    },
+    {
+      exerciseId: "cable-curl",
+      name: "Cable Curl",
+      movementPatterns: ["elbow_flexion"],
+      primaryMuscles: ["Biceps"],
+      secondaryMuscles: [],
+      equipment: ["cable"],
+      isCompound: false,
+      isMainLiftEligible: false,
+      stimulusByMusclePerSet: { Biceps: 1 },
+    },
+    {
+      exerciseId: "triceps-pushdown",
+      name: "Triceps Pushdown",
+      movementPatterns: ["elbow_extension"],
+      primaryMuscles: ["Triceps"],
+      secondaryMuscles: [],
+      equipment: ["cable"],
+      isCompound: false,
+      isMainLiftEligible: false,
+      stimulusByMusclePerSet: { Triceps: 1 },
+    },
+  ];
+}
+
 function makeAcceptanceTx(input: {
   create?: ReturnType<typeof vi.fn>;
   update?: ReturnType<typeof vi.fn>;
@@ -492,9 +687,13 @@ function makeBlockedV2MaterializedSeedWrite() {
 }
 
 function makeV2AcceptedSeedPreparationProbeInput(
-  input: { blocked?: boolean } = {},
+  input: {
+    blocked?: boolean;
+    slotPlans?: ReturnType<typeof makeProjectedSlotPlans>;
+    inventory?: V2MaterializationExercise[];
+  } = {},
 ) {
-  const slotPlans = makeProjectedSlotPlans();
+  const slotPlans = input.slotPlans ?? makeProjectedSlotPlans();
   const requiredLaneCoverageBySlot = slotPlans.map((slot) => ({
     slotId: slot.slotId,
     requiredLaneCount: slot.exercises.length,
@@ -566,6 +765,12 @@ function makeV2AcceptedSeedPreparationProbeInput(
   const buildSlotPlanSeed = vi.fn(buildMesocycleSlotPlanSeed);
 
   return {
+    ...(input.inventory
+      ? {
+          inventory: input.inventory,
+          taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+        }
+      : {}),
     basePlanValidation: {
       source: "v2_base_plan_validation",
       status: input.blocked ? "fail" : "pass",
@@ -1909,6 +2114,265 @@ describe("handoff draft persistence", () => {
     expect(tx.mesocycle.update).not.toHaveBeenCalled();
     expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
     expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("compares legacy and V2 accepted-seed preparation without writing either result", async () => {
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+    mocks.loadPreloadedGenerationSnapshot.mockResolvedValue({ context: {} });
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockReturnValue({
+      slotPlans: makeProjectedSlotPlans(),
+    });
+    const tx = makeAcceptanceTx();
+    const v2Probe = makeV2AcceptedSeedPreparationProbeInput({
+      slotPlans: makeV2ComparisonSlotPlans(),
+      inventory: makeComparisonInventory(),
+    });
+
+    const result = await prepareV2AcceptedSeedPreparationCompare({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      reader: tx as never,
+      v2Probe,
+    });
+
+    expect(result).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      wouldWriteTransaction: false,
+      consumedByProduction: false,
+      legacyPreparationAvailable: true,
+      v2PreparationAvailable: true,
+      v2WouldCallLegacyProjection: false,
+      v2WouldCallLegacyRepair: false,
+      seedSerializer: "buildMesocycleSlotPlanSeed",
+      comparedPreparationAvailability: {
+        legacy: {
+          available: true,
+          sourceLabel: "legacy_projection_seed",
+          wouldCallLegacyProjection: true,
+          wouldCallLegacyRepair: true,
+          dbWriteOccurred: false,
+        },
+        v2: {
+          available: true,
+          sourceLabel: "v2_disabled",
+          wouldCallLegacyProjection: false,
+          wouldCallLegacyRepair: false,
+          dbWriteOccurred: false,
+          failClosed: false,
+        },
+      },
+      seedShapeComparison: {
+        slotCount: {
+          legacy: 4,
+          v2: 4,
+          classification: "v2_preserves",
+        },
+        slotIdsInOrder: {
+          legacy: ["upper_a", "lower_a", "upper_b", "lower_b"],
+          v2: ["upper_a", "lower_a", "upper_b", "lower_b"],
+          sameOrder: true,
+          classification: "v2_preserves",
+        },
+        executableFieldShape: {
+          legacy: ["exerciseId", "role", "setCount"],
+          v2: ["exerciseId", "role", "setCount"],
+          classification: "v2_preserves",
+        },
+        seedSerializerIdentity: {
+          legacy: "buildMesocycleSlotPlanSeed",
+          v2: "buildMesocycleSlotPlanSeed",
+          classification: "v2_preserves",
+        },
+      },
+      repairLegacyDependencyComparison: {
+        rows: expect.arrayContaining([
+          expect.objectContaining({
+            item: "support_floor_closure",
+            legacyPreparationPathMayUse: true,
+            v2PreparationPathUses: false,
+            v2AvoidsDependency: true,
+            classification: "v2_improves",
+          }),
+          expect.objectContaining({
+            item: "forbidden_cleanup_mutation",
+            v2PreparationPathUses: false,
+          }),
+        ]),
+      },
+      provenanceNoWriteBoundary: {
+        legacySourceLabel: "legacy_projection_seed",
+        v2SourceLabel: "v2_disabled",
+        transactionStatus: "no_write",
+        dbWriteOccurred: false,
+        v2ProvenanceCanBeMistakenForPersistedSuccess: false,
+        runtimeReplayContract: {
+          unchanged: true,
+          runtimeConsumedFields: ["exerciseId", "role", "setCount"],
+          runtimeIgnoresPlannerMetadata: true,
+        },
+      },
+      seedSerializationBoundary: {
+        serializer: "buildMesocycleSlotPlanSeed",
+        handcraftedSlotPlanSeedJson: false,
+        executableRowFields: ["exerciseId", "role", "setCount"],
+        acceptedPlannerIntentRuntimeInert: true,
+        runtimeConsumesPlannerMetadata: false,
+        previewExposedAsSlotPlanSeedJson: false,
+      },
+    });
+    expect(result.seedShapeComparison.totalSetCount).toEqual({
+      legacy: 14,
+      v2: 42,
+      classification: "unclear",
+    });
+    expect(result.seedShapeComparison.exerciseCountBySlot).toContainEqual({
+      slotId: "lower_a",
+      legacy: 1,
+      v2: 3,
+      classification: "unclear",
+    });
+    expect(result.exerciseIdentityComparison.rows).toContainEqual(
+      expect.objectContaining({
+        slotId: "lower_a",
+        relationship: "v2_added",
+        v2AddedExerciseIds: ["calf-raise", "leg-curl"],
+      }),
+    );
+    expect(result.classLaneCoverageComparison.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          item: "side_delt_direct",
+          legacy: false,
+          v2: true,
+          classification: "v2_improves",
+        }),
+        expect.objectContaining({
+          item: "biceps_direct_support",
+          legacy: true,
+          v2: true,
+          classification: "v2_preserves",
+        }),
+        expect.objectContaining({
+          item: "triceps_direct_support",
+          legacy: true,
+          v2: true,
+          classification: "v2_preserves",
+        }),
+        expect.objectContaining({
+          item: "hamstrings_hinge_curl",
+          legacy: false,
+          v2: true,
+          classification: "v2_improves",
+        }),
+        expect.objectContaining({
+          item: "calves_direct_work",
+          legacy: false,
+          v2: true,
+          classification: "v2_improves",
+        }),
+      ]),
+    );
+    expect(result.provenanceNoWriteBoundary.v2SourceLabel).not.toBe(
+      "v2_materialized_seed",
+    );
+    expect(result).not.toHaveProperty("slotPlanSeedJson");
+    expect(v2Probe.dependencies.buildSlotPlanSeed).toHaveBeenCalledTimes(2);
+    expect(mocks.loadPreloadedGenerationSnapshot).toHaveBeenCalledOnce();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledOnce();
+    expect(tx.mesocycle.create).not.toHaveBeenCalled();
+    expect(tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(tx.mesocycle.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when V2 comparison readiness is blocked and does not report persisted V2 success", async () => {
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+    mocks.loadPreloadedGenerationSnapshot.mockResolvedValue({ context: {} });
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockReturnValue({
+      slotPlans: makeProjectedSlotPlans(),
+    });
+    const tx = makeAcceptanceTx();
+    const v2Probe = makeV2AcceptedSeedPreparationProbeInput({ blocked: true });
+
+    const result = await prepareV2AcceptedSeedPreparationCompare({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      reader: tx as never,
+      v2Probe,
+    });
+
+    expect(result).toMatchObject({
+      readOnly: true,
+      wouldWriteTransaction: false,
+      consumedByProduction: false,
+      legacyPreparationAvailable: true,
+      v2PreparationAvailable: false,
+      comparedPreparationAvailability: {
+        v2: {
+          available: false,
+          failClosed: true,
+          sourceLabel: "v2_disabled",
+          dbWriteOccurred: false,
+        },
+      },
+      provenanceNoWriteBoundary: {
+        v2SourceLabel: "v2_disabled",
+        baseValidationStatus: "fail",
+        transactionStatus: "no_write",
+        dbWriteOccurred: false,
+        v2ProvenanceCanBeMistakenForPersistedSuccess: false,
+      },
+    });
+    expect(result.comparedPreparationAvailability.v2.blockers).toEqual(
+      expect.arrayContaining([
+        "required_materialization:upper_a:required_lane_coverage_incomplete",
+        "seed_serializer:slot_count_mismatch",
+      ]),
+    );
+    expect(result.provenanceNoWriteBoundary.v2SourceLabel).not.toBe(
+      "v2_materialized_seed",
+    );
+    expect(result).not.toHaveProperty("slotPlanSeedJson");
+    expect(v2Probe.dependencies.buildSlotPlanSeed).not.toHaveBeenCalled();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledOnce();
+    expect(tx.mesocycle.create).not.toHaveBeenCalled();
+    expect(tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(tx.mesocycle.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("leaves default acceptance on the legacy projection path after running the compare", async () => {
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+    mocks.loadPreloadedGenerationSnapshot.mockResolvedValue({ context: {} });
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockReturnValue({
+      slotPlans: makeProjectedSlotPlans(),
+    });
+
+    await prepareV2AcceptedSeedPreparationCompare({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      reader: makeAcceptanceTx() as never,
+      v2Probe: makeV2AcceptedSeedPreparationProbeInput({
+        slotPlans: makeV2ComparisonSlotPlans(),
+      }),
+    });
+
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+    const prepared = await prepareMesocycleHandoffAcceptance({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      reader: makeAcceptanceTx() as never,
+    });
+
+    expect(prepared.seedPersistenceProvenance.source).toBe(
+      "legacy_projection_seed",
+    );
+    expect(prepared.seedPersistenceProvenance.dbWriteOccurred).toBe(false);
+    expect(mocks.loadPreloadedGenerationSnapshot).toHaveBeenCalledOnce();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledOnce();
   });
 
   it("does not report persisted V2 success when the transaction fails", async () => {

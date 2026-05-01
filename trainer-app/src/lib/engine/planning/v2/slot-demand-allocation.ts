@@ -116,10 +116,10 @@ const V2_STATIC_SLOT_EXPOSURE_OWNERSHIP: V2StaticSlotExposureOwnership[] = [
     slotId: "lower_a",
     laneId: "secondary_hinge",
     muscle: "Hamstrings",
-    demandShare: 0.05,
+    demandShare: 0,
     role: "support",
     classIntent: "low_dose_hinge_support",
-    ownershipKind: "support_exposure",
+    ownershipKind: "optional_if_needed",
   },
   {
     slotId: "lower_a",

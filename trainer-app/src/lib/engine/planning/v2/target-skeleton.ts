@@ -97,11 +97,11 @@ export const V2_TARGET_SLOT_SKELETON: V2PlannerSlotDefinition[] = [
       {
         laneId: "secondary_hinge",
         targetLaneId: "hinge_anchor",
-        required: true,
-        role: "support",
-        primaryMuscles: ["Hamstrings", "Glutes"],
+        required: false,
+        role: "optional",
+        primaryMuscles: ["Hamstrings"],
         preferredExerciseClasses: ["low_dose_hinge"],
-        targetSets: { min: 2, preferred: 2, max: 2 },
+        targetSets: { min: 0, preferred: 0, max: 2 },
       },
       {
         laneId: "calves",
@@ -120,11 +120,11 @@ export const V2_TARGET_SLOT_SKELETON: V2PlannerSlotDefinition[] = [
     lanes: [
       {
         laneId: "vertical_press",
-        required: true,
-        role: "anchor",
-        primaryMuscles: ["Front Delts", "Side Delts"],
+        required: false,
+        role: "optional",
+        primaryMuscles: ["Front Delts"],
         preferredExerciseClasses: ["vertical_press"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
+        targetSets: { min: 0, preferred: 0, max: 3 },
       },
       {
         laneId: "vertical_pull_anchor",

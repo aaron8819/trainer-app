@@ -219,7 +219,7 @@ function materializeLane(input: {
   const classCandidates = buildCandidates({
     ...input,
     resolvedClasses,
-    preferredClasses: resolveV2ExerciseClassIds(
+    preferredClasses: resolveV2ExerciseClassIdsInPreferenceOrder(
       input.taxonomy,
       input.lane.preferredExerciseClasses,
     ),
@@ -343,6 +343,25 @@ function preferredClassOrderForLane(
   }
   const resolvedIndex = resolvedClasses.indexOf(classId);
   return resolvedIndex >= 0 ? resolvedIndex + 100 : 999;
+}
+
+function resolveV2ExerciseClassIdsInPreferenceOrder(
+  taxonomy: V2ExerciseClassTaxonomy,
+  classNames: string[],
+): string[] {
+  const resolved: string[] = [];
+  for (const className of classNames) {
+    const normalizedClassName = normalizeV2MaterializationText(className).replace(
+      /\s+/g,
+      "_",
+    );
+    for (const classId of taxonomy.classAliases[normalizedClassName] ?? []) {
+      if (!resolved.includes(classId)) {
+        resolved.push(classId);
+      }
+    }
+  }
+  return resolved;
 }
 
 function directnessForLane(lane: PlanLane, match: V2ExerciseClassMatch): number {

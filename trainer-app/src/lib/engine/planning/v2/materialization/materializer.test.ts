@@ -968,6 +968,14 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(
       result.omissions.find(
         (row) =>
+          row.slotId === "lower_a" &&
+          row.laneId === "secondary_hinge" &&
+          row.reason === "optional_not_activated",
+      ),
+    ).toBeDefined();
+    expect(
+      result.omissions.find(
+        (row) =>
           row.slotId === "upper_b" &&
           row.laneId === "vertical_press" &&
           row.reason === "optional_not_activated",
@@ -1279,7 +1287,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(result.seedShapeCompatibility.compatible).toBe(true);
     expect(result.executablePreviewCountBySlot).toEqual([
       { slotId: "upper_a", exerciseCount: 5 },
-      { slotId: "lower_a", exerciseCount: 5 },
+      { slotId: "lower_a", exerciseCount: 4 },
       { slotId: "upper_b", exerciseCount: 5 },
       { slotId: "lower_b", exerciseCount: 4 },
     ]);

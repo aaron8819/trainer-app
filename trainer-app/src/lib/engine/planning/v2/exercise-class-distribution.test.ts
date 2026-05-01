@@ -240,7 +240,6 @@ describe("buildV2ExerciseClassDistributionBySlot", () => {
     expect(rows.map((row) => `${row.owningSlotId}:${row.laneId}:${row.classIntent}`))
       .toEqual([
         "lower_a:hamstring_curl:knee_flexion_curl",
-        "lower_a:secondary_hinge:low_dose_hinge_support",
         "lower_b:hinge_anchor:hinge_primary",
         "lower_b:knee_flexion_curl:knee_flexion_curl_support",
       ]);
@@ -416,7 +415,7 @@ describe("buildV2ExerciseClassDistributionBySlot", () => {
     expect(lane(distribution, "upper_b", "vertical_press").requiredExerciseClasses)
       .toEqual([]);
     expect(lane(distribution, "lower_a", "secondary_hinge").requiredExerciseClasses)
-      .toEqual(["low_dose_hinge"]);
+      .toEqual([]);
   });
 
   it("keeps optional lanes optional unless activation criteria are met elsewhere", () => {
@@ -445,6 +444,15 @@ describe("buildV2ExerciseClassDistributionBySlot", () => {
       optionalMuscles: ["Core", "Glutes"],
       requiredExerciseClasses: [],
       preferredExerciseClasses: ["glute_or_core_accessory"],
+      allocatedTargetSetRange: { min: 0, preferred: 0, max: 0 },
+      preferredSetSplit: "optional_if_recoverable",
+    });
+    expect(lane(distribution, "lower_a", "secondary_hinge")).toMatchObject({
+      classLaneKind: "optional_recoverable_lane",
+      optionalMuscles: ["Hamstrings"],
+      managedCollateralMuscles: ["Glutes", "Lower Back"],
+      requiredExerciseClasses: [],
+      preferredExerciseClasses: ["low_dose_hinge"],
       allocatedTargetSetRange: { min: 0, preferred: 0, max: 0 },
       preferredSetSplit: "optional_if_recoverable",
     });

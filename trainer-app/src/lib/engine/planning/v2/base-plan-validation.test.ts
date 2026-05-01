@@ -230,10 +230,10 @@ describe("buildV2BasePlanValidation", () => {
       status: "pass_with_warnings",
       summary: {
         slotCount: 4,
-        exerciseCount: 19,
-        totalSets: 58,
+        exerciseCount: 18,
+        totalSets: 57,
         blockerCount: 0,
-        warningCount: 11,
+        warningCount: 1,
         materializerStatus: "materialized",
       },
     });
@@ -267,14 +267,39 @@ describe("buildV2BasePlanValidation", () => {
     );
   });
 
-  it("flags standalone one-set exercises for design review", () => {
-    const { validation } = buildFixture();
+  it("enforces standalone one-set exercises as disallowed base hypertrophy work", () => {
+    const { validation, materializedPlan, policy } = buildFixture();
 
-    expect(validation.checks.setCountQuality.standaloneOneSetExercises).toEqual([
-      "lower_a:secondary_hinge:Barbell Hip Thrust",
-    ]);
-    expect(warningReasons(validation)).toContain(
-      "standalone_one_set_exercise:lower_a:secondary_hinge:Barbell Hip Thrust",
+    expect(validation.checks.setCountQuality.standaloneOneSetExercises).toEqual([]);
+    expect(warningReasons(validation)).not.toEqual(
+      expect.arrayContaining([expect.stringContaining("standalone_one_set")]),
+    );
+
+    const oneSetCalfPlan: V2ExerciseMaterializationPlan = {
+      ...materializedPlan,
+      slots: materializedPlan.slots.map((slot) =>
+        slot.slotId === "lower_a"
+          ? {
+              ...slot,
+              exercises: slot.exercises.map((exerciseRow) =>
+                exerciseRow.laneIds.includes("calves")
+                  ? { ...exerciseRow, setCount: 1 }
+                  : exerciseRow,
+              ),
+            }
+          : slot,
+      ),
+    };
+    const oneSetValidation = buildV2BasePlanValidation({
+      plannerPolicy: policy,
+      materializedPlan: oneSetCalfPlan,
+      inventory: representativeV2Inventory,
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+    });
+
+    expect(oneSetValidation.status).toBe("fail");
+    expect(oneSetValidation.blockers.map((blocker) => blocker.reason)).toContain(
+      "standalone_one_set_hypertrophy_exercise_disallowed:lower_a:calves:Standing Calf Raise",
     );
   });
 
@@ -297,10 +322,7 @@ describe("buildV2BasePlanValidation", () => {
     expect(validation.checks.exerciseClassCoverage.rearDeltDirectSupportClass)
       .toBe(true);
     expect(warningReasons(validation)).toEqual(
-      expect.arrayContaining([
-        "Side Delts:direct_or_support_sets_below_balanced_base_preferred",
-        "Rear Delts:direct_or_support_sets_below_balanced_base_preferred",
-      ]),
+      ["flat_allocation_pattern:many_lanes_at_four_sets_while_support_muscles_remain_below_preferred"],
     );
   });
 
@@ -313,10 +335,10 @@ describe("buildV2BasePlanValidation", () => {
         "upper_b:biceps:Biceps",
       ]),
     );
-    expect(warningReasons(validation)).toEqual(
+    expect(warningReasons(validation)).not.toEqual(
       expect.arrayContaining([
-        "Biceps:direct_or_support_sets_below_balanced_base_preferred",
-        "Triceps:direct_or_support_sets_below_balanced_base_preferred",
+        expect.stringContaining("Biceps:direct_or_support_sets_below"),
+        expect.stringContaining("Triceps:direct_or_support_sets_below"),
       ]),
     );
   });
@@ -340,6 +362,43 @@ describe("buildV2BasePlanValidation", () => {
       "standing-calf-raise",
     ]);
     expect(validation.checks.duplicateDistinctness.calfDuplicatePolicy).toBe(
+      "same_exercise_reuse_accepted_by_policy",
+    );
+    expect(warningReasons(validation)).not.toContain(
+      "calf_same_exercise_reused_across_lower_slots_variant_policy_needed",
+    );
+  });
+
+  it("warns on duplicate calf reuse only when a clean variant exists", () => {
+    const policy = buildV2PlannerMesocyclePolicy();
+    const inventoryWithCalfVariant = [
+      ...representativeV2Inventory,
+      exercise({
+        exerciseId: "seated-calf-raise",
+        name: "Seated Calf Raise",
+        primaryMuscles: ["Calves"],
+        movementPatterns: ["isolation"],
+        fatigueCost: 1,
+      }),
+    ];
+    const materializedPlan = buildV2ExerciseMaterializationPlan({
+      exerciseSelectionPlan: policy.exerciseSelectionPlan,
+      inventory: inventoryWithCalfVariant,
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      constraints: {
+        avoidExerciseIds: [],
+        favoriteExerciseIds: [],
+        painConflictExerciseIds: [],
+      },
+    });
+    const validation = buildV2BasePlanValidation({
+      plannerPolicy: policy,
+      materializedPlan,
+      inventory: inventoryWithCalfVariant,
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+    });
+
+    expect(validation.checks.duplicateDistinctness.calfDuplicatePolicy).toBe(
       "variant_diversity_preferred",
     );
     expect(warningReasons(validation)).toContain(
@@ -347,18 +406,18 @@ describe("buildV2BasePlanValidation", () => {
     );
   });
 
-  it("surfaces vertical press ownership and omission decision", () => {
+  it("surfaces aligned vertical press ownership and omission decision", () => {
     const { validation } = buildFixture();
 
     expect(validation.checks.verticalPressDecision).toMatchObject({
-      targetSkeletonLaneRequired: true,
+      targetSkeletonLaneRequired: false,
       selectionRequirement: "optional",
       classLaneKind: "managed_collateral_marker",
       materialized: false,
       decision: "managed_collateral_marker",
-      targetSpecAlignmentIssue: true,
+      targetSpecAlignmentIssue: false,
     });
-    expect(warningReasons(validation)).toContain(
+    expect(warningReasons(validation)).not.toContain(
       "target_skeleton_marks_vertical_press_required_but_current_policy_omits_it_as_managed_collateral",
     );
   });
@@ -399,18 +458,18 @@ describe("buildV2BasePlanValidation", () => {
     );
   });
 
-  it("checks glute direct-vs-collateral ambiguity", () => {
-    const { validation } = buildFixture();
+  it("checks glute managed-collateral policy without standalone direct glute work", () => {
+    const { validation, materializedPlan } = buildFixture();
 
-    expect(validation.checks.muscleCoverage.managedCollateralWarnings).toEqual(
+    expect(
+      materializedPlan.slots.flatMap((slot) =>
+        slot.exercises.map((exerciseRow) => exerciseRow.exerciseId),
+      ),
+    ).not.toContain("barbell-hip-thrust");
+    expect(validation.checks.muscleCoverage.managedCollateralWarnings).toEqual([]);
+    expect(warningReasons(validation)).not.toEqual(
       expect.arrayContaining([
-        "Glutes:lower_a:secondary_hinge:Barbell Hip Thrust",
-        "Glutes:lower_b:hinge_anchor:Romanian Deadlift",
-      ]),
-    );
-    expect(warningReasons(validation)).toEqual(
-      expect.arrayContaining([
-        "managed_collateral_direct_work_ambiguity:Glutes:lower_a:secondary_hinge:Barbell Hip Thrust",
+        expect.stringContaining("managed_collateral_direct_work_ambiguity"),
       ]),
     );
   });
@@ -423,10 +482,10 @@ describe("buildV2BasePlanValidation", () => {
       reducedSetsSupported: true,
       highRirSupported: true,
       noNewMovementsSupported: true,
-      status: "compatible_with_limitations",
+      status: "compatible",
     });
     expect(validation.checks.deloadCompatibility.oneSetReductionLimitations)
-      .toEqual(["lower_a:barbell-hip-thrust"]);
+      .toEqual([]);
   });
 
   it("marks the diagnostic read-only and not behavior-consuming", () => {

@@ -198,13 +198,6 @@ type MaterializedLaneEvidence = {
   match?: V2ExerciseClassMatch;
 };
 
-const SUPPORT_MUSCLES_TO_AUDIT = [
-  "Side Delts",
-  "Rear Delts",
-  "Biceps",
-  "Triceps",
-] as const;
-
 const GUARDRAILS: V2BasePlanValidation["guardrails"] = {
   doesNotUseHistoricalStrategyRecommendations: true,
   doesNotUseRepairedProjection: true,
@@ -265,6 +258,8 @@ export function buildV2BasePlanValidation(
   });
   const duplicateDistinctness = buildDuplicateDistinctness({
     evidence,
+    inventory: input.inventory ?? [],
+    taxonomy: input.taxonomy,
   });
   const verticalPressDecision = buildVerticalPressDecision({
     targetSkeleton: input.plannerPolicy.targetSkeleton,
@@ -603,13 +598,18 @@ function buildManagedCollateralWarnings(
 ): string[] {
   return Array.from(
     new Set(
-      evidence.flatMap((row) =>
-        (row.planLane?.managedCollateralMuscles ?? []).flatMap((muscle) =>
-          row.match?.directMuscles.includes(muscle)
-            ? [`${muscle}:${row.slotId}:${row.laneId}:${row.exerciseName}`]
-            : [],
-        ),
-      ),
+      evidence.flatMap((row) => {
+        const shouldAuditManagedCollateral =
+          row.planLane?.classLaneKind === "managed_collateral_marker" ||
+          row.planLane?.role === "optional";
+        return shouldAuditManagedCollateral
+          ? (row.planLane?.managedCollateralMuscles ?? []).flatMap((muscle) =>
+              row.match?.directMuscles.includes(muscle)
+                ? [`${muscle}:${row.slotId}:${row.laneId}:${row.exerciseName}`]
+                : [],
+            )
+          : [];
+      }),
     ),
   ).sort((left, right) => left.localeCompare(right));
 }
@@ -860,6 +860,8 @@ function buildSetCountQuality(input: {
 
 function buildDuplicateDistinctness(input: {
   evidence: ReadonlyArray<MaterializedLaneEvidence>;
+  inventory: ReadonlyArray<V2MaterializationExercise>;
+  taxonomy?: V2ExerciseClassTaxonomy | null;
 }): V2BasePlanValidation["checks"]["duplicateDistinctness"] {
   const duplicateExerciseIds = duplicates(
     input.evidence.map((row) => row.exercise.exerciseId),
@@ -870,6 +872,28 @@ function buildDuplicateDistinctness(input: {
   const calfRows = input.evidence.filter((row) =>
     row.match?.directMuscles.includes("Calves"),
   );
+  const calfDuplicateExerciseIds = duplicates(
+    calfRows.map((row) => row.exercise.exerciseId),
+  );
+  const materializedCalfExerciseIds = new Set(
+    calfRows.map((row) => row.exercise.exerciseId),
+  );
+  const calfInventoryExerciseIds =
+    input.taxonomy
+      ? new Set(
+          input.inventory.flatMap((exercise) =>
+            matchV2ExerciseClasses(exercise, input.taxonomy ?? undefined).some(
+              (match) =>
+                match.classId === "calf_isolation" &&
+                match.directMuscles.includes("Calves"),
+            )
+              ? [exercise.exerciseId]
+              : [],
+          ),
+        )
+      : new Set<string>();
+  const cleanCalfAlternativeExists =
+    calfInventoryExerciseIds.size > materializedCalfExerciseIds.size;
   const hingeRows = input.evidence.filter((row) =>
     row.match?.classId.includes("hinge"),
   );
@@ -886,8 +910,10 @@ function buildDuplicateDistinctness(input: {
     calfDuplicatePolicy:
       calfRows.length < 2
         ? "not_evaluated"
-        : duplicates(calfRows.map((row) => row.exercise.exerciseId)).length
-          ? "variant_diversity_preferred"
+        : calfDuplicateExerciseIds.length
+          ? cleanCalfAlternativeExists
+            ? "variant_diversity_preferred"
+            : "same_exercise_reuse_accepted_by_policy"
           : "not_duplicated",
     lowerHingeDuplicatePolicy:
       hingeRows.length < 2
@@ -1023,6 +1049,10 @@ function buildBlockers(input: {
       category: "set_count_quality",
       reason: `default_five_set_stack:${reason}`,
     })),
+    ...input.setCountQuality.standaloneOneSetExercises.map((reason) => ({
+      category: "set_count_quality",
+      reason: `standalone_one_set_hypertrophy_exercise_disallowed:${reason}`,
+    })),
     ...(input.classCoverage.optionalLanesOmittedUnlessActivated
       ? []
       : [
@@ -1049,21 +1079,7 @@ function buildWarnings(input: {
   verticalPressDecision: V2BasePlanValidation["checks"]["verticalPressDecision"];
   deloadCompatibility: V2BasePlanValidation["checks"]["deloadCompatibility"];
 }): V2BasePlanValidationIssue[] {
-  const rowByMuscle = new Map(
-    input.muscleCoverage.rows.map((row) => [row.muscle, row]),
-  );
   return [
-    ...SUPPORT_MUSCLES_TO_AUDIT.flatMap((muscle) => {
-      const row = rowByMuscle.get(muscle);
-      return row && row.materializedLaneSets < row.range.preferred
-        ? [
-            {
-              category: "coach_quality",
-              reason: `${muscle}:direct_or_support_sets_below_balanced_base_preferred`,
-            },
-          ]
-        : [];
-    }),
     ...input.setCountQuality.standaloneOneSetExercises.map((reason) => ({
       category: "set_count_quality",
       reason: `standalone_one_set_exercise:${reason}`,
@@ -1133,8 +1149,8 @@ function buildCoachQuality(input: {
         answer: input.setCountQuality.standaloneOneSetExercises.some((row) =>
           row.includes("Barbell Hip Thrust"),
         )
-          ? "Classified as suspicious but policy-explainable low-dose hinge support; needs an explicit design decision before treating it as clean base quality."
-          : "No standalone hip-thrust issue detected.",
+          ? "No; standalone one-set hypertrophy work is disallowed by default unless a future activation/technique/prehab tag exists."
+          : "No disallowed standalone hip-thrust issue detected in the base plan.",
       },
       {
         question:
@@ -1143,13 +1159,16 @@ function buildCoachQuality(input: {
           input.duplicateDistinctness.calfDuplicatePolicy ===
           "variant_diversity_preferred"
             ? "Same-exercise calf reuse is detected; base quality should prefer variant diversity when clean alternatives exist."
+            : input.duplicateDistinctness.calfDuplicatePolicy ===
+                "same_exercise_reuse_accepted_by_policy"
+              ? "Same-exercise calf reuse is accepted for the simple base plan when no clean alternate calf variant is visible."
             : "No calf duplicate requiring variant policy was detected.",
       },
       {
         question: "Is vertical press intentionally omitted or accidentally lost?",
         answer: input.verticalPressDecision.targetSpecAlignmentIssue
           ? "Current policy intentionally omits it as managed collateral, but the target skeleton still marks the lane required, so this is a target/spec alignment issue."
-          : "Vertical press policy is internally aligned for the current evidence.",
+          : "Vertical press is an aligned managed-collateral marker, not a required base-plan lane.",
       },
       {
         question:
@@ -1162,25 +1181,25 @@ function buildCoachQuality(input: {
         question:
           "Does total weekly set count look intentionally recoverable rather than underbuilt?",
         answer:
-          "The total weekly set count is recoverable for a four-day base, but support muscles still sit below preferred targets.",
+          "The total weekly set count is recoverable for a four-day base; support muscles intentionally sit at direct floors until full-block strategy or specialization asks for more.",
       },
       {
         question: "Does the plan avoid previous repair-shaped smells?",
         answer:
-          "It avoids repaired projection input and materializer blockers, but one-set support, vertical-press alignment, flat allocation, and duplicate calves remain validation smells.",
+          "It avoids repaired projection input, materializer blockers, one-set standalone work, vertical-press contradiction, and default glute isolation; flat allocation remains a warning-only quality smell.",
       },
       {
         question:
           "Are side/rear delts and biceps/triceps sufficiently covered?",
         answer:
-          "They meet direct floors, but each remains below balanced-base preferred support volume.",
+          "Yes for the static balanced base: they meet direct floors, while preferred support volume is reserved for future full-block strategy or specialization decisions.",
       },
       {
         question:
           "Is glute work intentionally direct, or managed collateral only?",
         answer: gluteWarning
           ? "Glute direct work appears through hip-extension lanes even though Glutes are managed-collateral demand; this needs policy clarity."
-          : "No direct glute ambiguity was detected.",
+          : "Glutes are managed collateral from squat/hinge patterns, with optional direct work omitted from the default base plan.",
       },
       {
         question: "Is current set allocation too flat across lanes?",

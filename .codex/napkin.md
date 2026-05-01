@@ -72,6 +72,7 @@
 | 2026-05-01 | self | While adding selection-plan set-budget assertions, guessed lower hamstring max budgets from the target spec instead of the actual `V2SetDistributionIntent` rows and failed focused tests. | For V2 policy tests, assert exact budgets from the upstream owner being consumed; if unsure, inspect the built policy before writing expected ranges. |
 | 2026-05-01 | self | Compared resolved `V2ExerciseClassId[]` against `V2ExerciseClassMatch.classId`, which is still typed as `string`, so `tsc --noEmit` failed after Vitest passed. | After changing pure V2 type surfaces, run `tsc --noEmit` before broad verify and keep local comparisons compatible with existing public diagnostic/string types. |
 | 2026-05-01 | self | Repeated the `V2ExerciseClassMatch.classId` narrow-type mismatch inside the new base-plan validation diagnostic and also relied on `Boolean(row)` to narrow an optional row. | Normalize resolved class ids into `Set<string>` / `Map<string, number>` at diagnostic boundaries, and use explicit `row ? ... : false` narrowing before trusting focused Vitest. |
+| 2026-05-01 | self | Repeated a complex PowerShell `rg` regex with bracket/backslash/quote mixing while searching V2 test expectations and hit an escape parse error. | Use separate simple literal `rg` searches in PowerShell instead of one broad alternation when the pattern contains brackets or quotes. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

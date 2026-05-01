@@ -192,7 +192,6 @@ describe("buildV2SetDistributionIntent", () => {
     expect(hamstrings.map((row) => `${row.laneId}:${row.setBudget.preferred}`))
       .toEqual([
         "hamstring_curl:2",
-        "secondary_hinge:1",
         "hinge_anchor:3",
         "knee_flexion_curl:2",
       ]);
@@ -284,6 +283,17 @@ describe("buildV2SetDistributionIntent", () => {
         },
       },
     );
+    expect(lane(plan, "lower_a", "secondary_hinge")).toMatchObject({
+      classLaneKind: "optional_recoverable_lane",
+      optionalMuscles: ["Hamstrings"],
+      managedCollateralMuscles: ["Glutes", "Lower Back"],
+      setBudget: {
+        min: 0,
+        preferred: 0,
+        max: 0,
+        basis: "optional_activation_required",
+      },
+    });
   });
 
   it("keeps managed collateral rows at zero direct set budget", () => {

@@ -195,7 +195,7 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
     );
     const chestTotal = sumRanges(positiveRowsForMuscle(allocation, "Chest"));
 
-    expect(rawHamstrings).toMatchObject({ preferred: 11, laneCount: 4 });
+    expect(rawHamstrings).toMatchObject({ preferred: 9, laneCount: 4 });
     expect(rawChest).toMatchObject({ preferred: 11, laneCount: 3 });
     expect(hamstringsTotal).toEqual(weekDemand(weeklyDemandCurve, 2, "Hamstrings"));
     expect(chestTotal).toEqual(weekDemand(weeklyDemandCurve, 2, "Chest"));
@@ -253,15 +253,14 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
     expect(rows.map((row) => `${row.slotId}:${row.laneId}:${row.muscle.classIntent}`))
       .toEqual([
         "lower_a:hamstring_curl:knee_flexion_curl",
-        "lower_a:secondary_hinge:low_dose_hinge_support",
         "lower_b:hinge_anchor:hinge_primary",
         "lower_b:knee_flexion_curl:knee_flexion_curl_support",
       ]);
     expect(sumRanges(rows)).toEqual(
       weekDemand(weeklyDemandCurve, 2, "Hamstrings"),
     );
-    expect(sumRanges(hingeRows).preferred).toBe(3);
-    expect(sumRanges(curlRows).preferred).toBe(3);
+    expect(sumRanges(hingeRows).preferred).toBe(2.8);
+    expect(sumRanges(curlRows).preferred).toBe(3.2);
   });
 
   it("distributes Calves across both lower slots", () => {

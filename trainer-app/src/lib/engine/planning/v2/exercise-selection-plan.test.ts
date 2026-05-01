@@ -199,10 +199,14 @@ describe("buildV2ExerciseSelectionPlan", () => {
       setBudgetBasis: "class_ownership_allocation",
     });
     expect(lane(2, "lower_a", "secondary_hinge")).toMatchObject({
-      primaryMuscles: ["Hamstrings"],
+      requirement: "optional",
+      role: "optional",
+      classLaneKind: "optional_recoverable_lane",
+      primaryMuscles: [],
+      optionalMuscles: ["Hamstrings"],
       managedCollateralMuscles: ["Glutes", "Lower Back"],
-      setBudget: { min: 1, preferred: 1, max: 1 },
-      setBudgetBasis: "class_ownership_allocation",
+      setBudget: { min: 0, preferred: 0, max: 0 },
+      setBudgetBasis: "optional_activation_required",
     });
     expect(lane(2, "lower_b", "knee_flexion_curl")).toMatchObject({
       setBudget: { min: 2, preferred: 2, max: 2 },

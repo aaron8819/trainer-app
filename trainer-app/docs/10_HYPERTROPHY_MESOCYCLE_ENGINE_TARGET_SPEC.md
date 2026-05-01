@@ -387,13 +387,13 @@ Required class lanes:
 | Squat anchor | squat pattern | 3-4 |
 | Quad isolation | leg extension or similar | 2-3 |
 | Hamstring curl | knee-flexion curl | 2-3 |
-| Secondary hinge | low-dose hinge | 2 |
+| Optional secondary hinge | low-dose hinge only if recoverable | 0-2 |
 | Calves | calf isolation | 3-4 |
 
 Engine contract:
 
 - Quads receive about 5-7 effective sets.
-- Hamstrings receive about 3-5 effective sets from curl plus small hinge.
+- Hamstrings receive about 3-5 effective sets from curl plus the hinge-dominant lower slot; Lower A hinge support is optional, not a default one-set standalone exercise.
 - Avoid SLDL plus multiple curls unless specialization is explicit.
 - Watch lower-back exposure.
 - Lower A can include hinge support, but hinge must not dominate.
@@ -406,7 +406,7 @@ Required class lanes:
 
 | Lane | Classes | Sets |
 |---|---|---|
-| Vertical press | vertical press | 2-3 |
+| Vertical press marker | vertical press collateral only | 0 |
 | Vertical pull anchor | vertical pull | 3-4 |
 | Chest second exposure | distinct class from Upper A | 3-4 |
 | Row support | horizontal pull support | 2-3 |
@@ -418,7 +418,7 @@ Engine contract:
 
 - Do not repeat Incline DB Bench by default.
 - Preserve Chest lane, not exact exercise.
-- Side delts require direct low-collateral work.
+- Side delts require direct low-collateral work; vertical press is managed collateral in the static balanced base plan, not a required owned lane.
 - Pulling should not duplicate Upper A unless back priority is explicit.
 - OHP collateral does not replace side-delt isolation by itself.
 
@@ -443,6 +443,15 @@ Engine contract:
 - Avoid duplicate SLDL from Lower A unless justified.
 - Avoid two calf variants in one session unless specialization is explicit.
 - Hinge identity must survive, but lower-back and glute collateral are capped.
+
+### Static Base-Policy Alignment
+
+- Vertical press is a managed-collateral marker in the static balanced base plan. It is not materialized by default; side delts are served by direct low-collateral isolation.
+- Glutes are managed collateral from squat and hinge patterns, with optional direct glute/core work only when recoverable. The base plan should not materialize standalone one-set hip-extension/glute work.
+- Standalone one-set hypertrophy exercises are disallowed by default unless a future lane is explicitly tagged as activation, technique, or prehab.
+- Reusing the same calf exercise across both lower days is acceptable for the simple base plan when no clean variant exists; variant diversity is preferred when a clean alternate is visible.
+- Side delts, rear delts, biceps, and triceps meet direct floors in the static base; preferred support volume is reserved for full-block strategy or specialization.
+- Flat four-set allocation is a warning-only base-plan quality smell until set-distribution rules become more nuanced.
 
 ## 12. Current Engine Compared Against Target
 

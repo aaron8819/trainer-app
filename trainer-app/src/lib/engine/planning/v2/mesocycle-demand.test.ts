@@ -146,7 +146,7 @@ describe("buildV2MesocycleDemand", () => {
     const rawChest = rawLaneSummedRange(skeleton, "Chest");
 
     expect(rawHamstrings).toMatchObject({
-      preferred: 11,
+      preferred: 9,
       laneCount: 4,
     });
     expect(hamstrings).toMatchObject({

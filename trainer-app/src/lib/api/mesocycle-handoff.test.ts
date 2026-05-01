@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import type {
+  V2MaterializationDryRunReport,
+  V2MaterializationPromotionReadiness,
+} from "@/lib/engine/planning/v2";
 
 const mocks = vi.hoisted(() => ({
   loadPreloadedGenerationSnapshot: vi.fn(),
@@ -28,6 +32,7 @@ import {
   loadClosedMesocycleArchive,
   MesocycleHandoffV2MaterializedSeedBlockedError,
   prepareMesocycleHandoffAcceptance,
+  prepareV2AcceptedSeedPreparationProbe,
   readMesocycleHandoffSummary,
   readNextCycleSeedDraft,
   sanitizeNextCycleSeedDraft,
@@ -36,6 +41,7 @@ import {
   type NextCycleSeedDraft,
   updateMesocycleHandoffDraftInTransaction,
 } from "./mesocycle-handoff";
+import { buildMesocycleSlotPlanSeed } from "./mesocycle-handoff-slot-plan-projection.seed-serialization";
 
 async function prepareThenAcceptMesocycleHandoff(tx: unknown, mesocycleId = "meso-1") {
   const prepared = await prepareMesocycleHandoffAcceptance({
@@ -481,6 +487,136 @@ function makeBlockedV2MaterializedSeedWrite() {
         ],
         nonBlockingOmissions: [],
       })),
+    },
+  };
+}
+
+function makeV2AcceptedSeedPreparationProbeInput(
+  input: { blocked?: boolean } = {},
+) {
+  const slotPlans = makeProjectedSlotPlans();
+  const requiredLaneCoverageBySlot = slotPlans.map((slot) => ({
+    slotId: slot.slotId,
+    requiredLaneCount: slot.exercises.length,
+    materializedRequiredLaneCount: input.blocked ? 0 : slot.exercises.length,
+    blockedRequiredLaneCount: input.blocked ? slot.exercises.length : 0,
+    missingRequiredLaneIds: input.blocked
+      ? slot.exercises.map((exercise) => exercise.exerciseId)
+      : [],
+  }));
+  const productionWriteGates = {
+    acceptancePathDesigned: true,
+    slotPlanSeedJsonWriteGateDesigned: true,
+    receiptContractDesigned: true,
+    runtimeReplayContractVerified: true,
+    auditSerializationContractDesigned: true,
+    rollbackStrategyDefined: true,
+  };
+  const dryRunReport: V2MaterializationDryRunReport = {
+    version: 1,
+    source: "v2_exercise_materialization",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    dryRunOnly: true,
+    status: input.blocked ? "blocked" : "materialized",
+    plannerPolicyAvailable: true,
+    exerciseSelectionPlanAvailable: true,
+    taxonomyAvailable: true,
+    inventoryAvailable: true,
+    materializer: {
+      status: input.blocked ? "blocked" : "materialized",
+      blockerCount: input.blocked ? 1 : 0,
+      omissionCount: 0,
+    },
+    seedShapeCompatibility: {
+      compatible: !input.blocked,
+      slotCount: input.blocked ? 0 : slotPlans.length,
+      exerciseCount: input.blocked
+        ? 0
+        : slotPlans.reduce((sum, slot) => sum + slot.exercises.length, 0),
+      missingNameCount: 0,
+      duplicateExerciseIdWithinSlotCount: 0,
+      invalidRoleCount: 0,
+      invalidSetCount: 0,
+      unsupportedClassCount: 0,
+    },
+    requiredLaneCoverageBySlot,
+    executableSeedPreview: input.blocked
+      ? []
+      : slotPlans.map((slot) => ({
+          slotId: slot.slotId,
+          intent: slot.intent,
+          exercises: slot.exercises.map((exercise) => ({
+            exerciseId: exercise.exerciseId,
+            name: exercise.exerciseId,
+            role: exercise.role as "CORE_COMPOUND" | "ACCESSORY",
+            setCount: exercise.setCount,
+          })),
+        })),
+    strippedMaterializerFields: ["laneIds"],
+    blockers: input.blocked
+      ? [{ slotId: "upper_a", laneId: "bench", reason: "no_class_match" }]
+      : [],
+    omissions: [],
+    readiness: {
+      safeToPromoteToProductionWrite: false,
+      missingBeforePromotion: [],
+    },
+  };
+  const buildSlotPlanSeed = vi.fn(buildMesocycleSlotPlanSeed);
+
+  return {
+    basePlanValidation: {
+      source: "v2_base_plan_validation",
+      status: input.blocked ? "fail" : "pass",
+      blockerCount: input.blocked ? 1 : 0,
+      warningCount: 0,
+      nextSafeAction: input.blocked
+        ? "fix_materializer"
+        : "ready_for_base_plan_compare",
+    } as const,
+    requiredLaneCoverageBySlot,
+    productionWriteGates,
+    dependencies: {
+      buildDryRunReport: vi.fn(() => dryRunReport),
+      buildPromotionReadiness: vi.fn((): V2MaterializationPromotionReadiness => ({
+        version: 1,
+        source: "v2_materialization_promotion_readiness",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        status: input.blocked ? "blocked" : "eligible_for_guarded_write",
+        safeToPromoteToProductionWrite: !input.blocked,
+        requiredMaterialization: {
+          status: input.blocked ? "blocked" : "passed",
+          requiredLaneCoveragePassed: !input.blocked,
+          materializerStatus: input.blocked ? "blocked" : "materialized",
+          requiredBlockerCount: input.blocked ? 1 : 0,
+        },
+        optionalOmissions: {
+          count: 0,
+          affectsPromotion: false,
+          reasons: [],
+        },
+        seedShape: {
+          compatible: !input.blocked,
+          slotCountMatches: !input.blocked,
+          noDuplicateExerciseIdsWithinSlot: true,
+          rolesValid: true,
+          setCountsValid: true,
+          namesAvailable: true,
+        },
+        productionWriteGates,
+        blockers: input.blocked
+          ? [
+              {
+                category: "required_materialization",
+                reason: "upper_a:required_lane_coverage_incomplete",
+              },
+            ]
+          : [],
+        nonBlockingOmissions: [],
+      })),
+      buildSlotPlanSeed,
     },
   };
 }
@@ -1601,6 +1737,178 @@ describe("handoff draft persistence", () => {
         }),
       })
     );
+  });
+
+  it("prepares a read-only V2 accepted-seed probe from the real handoff slot sequence", async () => {
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+    const tx = makeAcceptanceTx();
+    const v2Probe = makeV2AcceptedSeedPreparationProbeInput();
+
+    const result = await prepareV2AcceptedSeedPreparationProbe({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      reader: tx as never,
+      v2Probe,
+    });
+
+    expect(result).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      wouldWriteTransaction: false,
+      wouldCallLegacyProjection: false,
+      wouldCallLegacyRepair: false,
+      seedSerializer: "buildMesocycleSlotPlanSeed",
+      context: {
+        ownerLoaded: true,
+        mesocycleLoaded: true,
+        slotSequence: {
+          source: "handoff_acceptance_preparation",
+          slots: [
+            { slotId: "upper_a", intent: "UPPER" },
+            { slotId: "lower_a", intent: "LOWER" },
+            { slotId: "upper_b", intent: "UPPER" },
+            { slotId: "lower_b", intent: "LOWER" },
+          ],
+        },
+        handoff: {
+          sourceState: "AWAITING_HANDOFF",
+          summaryLoaded: true,
+          draftLoaded: true,
+          acceptanceProjectionBuilt: true,
+        },
+      },
+      gates: {
+        basePlanValidation: {
+          status: "pass",
+          passed: true,
+          blockerCount: 0,
+        },
+        materializerStatus: { status: "materialized", passed: true },
+        seedShapeCompatibility: { passed: true, compatible: true },
+        requiredLaneCoverage: { passed: true, slotCount: 4 },
+        noRequiredBlockersRemain: { passed: true },
+        promotionReadiness: {
+          status: "eligible_for_guarded_write",
+          eligibleForGuardedWrite: true,
+          safeToPromoteToProductionWrite: false,
+        },
+      },
+      projectionRepairBoundary: {
+        legacyProjectionCalled: false,
+        legacyRepairEngineCalled: false,
+        supportFloorClosureCalled: false,
+        weeklyObligationClosureCalled: false,
+        lateSetBumpingCalled: false,
+        capTrimCalled: false,
+        repairAddedExercisesIntroduced: false,
+        duplicateCleanupMutatedV2Output: false,
+        dirtyCollateralCleanupMutatedV2Output: false,
+      },
+      seedSerializationBoundary: {
+        serializer: "buildMesocycleSlotPlanSeed",
+        handcraftedSlotPlanSeedJson: false,
+        executableRowFields: ["exerciseId", "role", "setCount"],
+        previewExposedAsSlotPlanSeedJson: false,
+        serializerProbe: {
+          attempted: true,
+          status: "passed",
+          slotCount: 4,
+          exerciseCount: 4,
+          blockers: [],
+        },
+      },
+      acceptancePreparation: {
+        helperOptIn: "disabled",
+        helperStatus: "disabled",
+        wouldWriteTransaction: false,
+        persistenceProvenanceIsSeparate: true,
+        dbWriteOccurred: false,
+      },
+      provenance: {
+        source: "v2_disabled",
+        dbWriteOccurred: false,
+      },
+    });
+    expect(result).not.toHaveProperty("slotPlanSeedJson");
+    expect(v2Probe.dependencies.buildSlotPlanSeed).toHaveBeenCalledOnce();
+    expect(tx.mesocycle.create).not.toHaveBeenCalled();
+    expect(tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(tx.mesocycle.updateMany).not.toHaveBeenCalled();
+    expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("reports blocked V2 preparation as fail-closed probe readiness without legacy fallback success", async () => {
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+    const tx = makeAcceptanceTx();
+    const v2Probe = makeV2AcceptedSeedPreparationProbeInput({ blocked: true });
+
+    const result = await prepareV2AcceptedSeedPreparationProbe({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      reader: tx as never,
+      v2Probe,
+    });
+
+    expect(result).toMatchObject({
+      readOnly: true,
+      wouldWriteTransaction: false,
+      gates: {
+        basePlanValidation: {
+          status: "fail",
+          passed: false,
+          blockerCount: 1,
+        },
+        materializerStatus: { status: "blocked", passed: false },
+        seedShapeCompatibility: { passed: false, compatible: false },
+        requiredLaneCoverage: { passed: false },
+        noRequiredBlockersRemain: { passed: false },
+        promotionReadiness: {
+          status: "blocked",
+          eligibleForGuardedWrite: false,
+          safeToPromoteToProductionWrite: false,
+        },
+        fallbackPolicy: {
+          v2BlockedFailsClosed: true,
+          silentlyFallsBackToLegacyProjection: false,
+        },
+      },
+      seedSerializationBoundary: {
+        handcraftedSlotPlanSeedJson: false,
+        serializerProbe: {
+          attempted: false,
+          status: "not_attempted",
+          blockers: ["slot_count_mismatch"],
+        },
+      },
+      acceptancePreparation: {
+        helperOptIn: "disabled",
+        wouldWriteTransaction: false,
+        dbWriteOccurred: false,
+      },
+      provenance: {
+        source: "v2_disabled",
+        dbWriteOccurred: false,
+      },
+      simulated_opt_in_readiness: {
+        status: "blocked",
+        readinessWouldBeEligibleForGuardedWrite: false,
+        safeToPromoteToProductionWrite: false,
+      },
+    });
+    expect(result.gates.fallbackPolicy.allowedFallbackLabels).toEqual([
+      "legacy_projection_seed",
+      "fallback_existing_projection",
+    ]);
+    expect(result.provenance.source).not.toBe("v2_materialized_seed");
+    expect(result).not.toHaveProperty("slotPlanSeedJson");
+    expect(v2Probe.dependencies.buildSlotPlanSeed).not.toHaveBeenCalled();
+    expect(tx.mesocycle.create).not.toHaveBeenCalled();
+    expect(tx.mesocycle.update).not.toHaveBeenCalled();
+    expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
   });
 
   it("does not report persisted V2 success when the transaction fails", async () => {

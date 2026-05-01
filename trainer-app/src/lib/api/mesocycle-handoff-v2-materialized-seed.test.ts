@@ -150,6 +150,14 @@ const exerciseNameById = {
   "leg-press": "Leg Press",
 };
 
+const passingBasePlanValidation = {
+  source: "v2_base_plan_validation",
+  status: "pass",
+  blockerCount: 0,
+  warningCount: 0,
+  nextSafeAction: "ready_for_base_plan_compare",
+} as const;
+
 const inventory: V2MaterializationExercise[] = [
   {
     exerciseId: "bench",
@@ -629,12 +637,13 @@ describe("AcceptedSeedPersistenceProvenance", () => {
 });
 
 describe("buildV2MaterializedSeedAcceptanceProbe", () => {
-  it("keeps the helper disabled and never serializes seed JSON from the probe", () => {
+  it("keeps the helper disabled while using the seed serializer for read-only preview validation", () => {
     const buildSlotPlanSeed = vi.fn(buildMesocycleSlotPlanSeed);
     const probeInput = makeEligibleInput();
 
     const result = buildV2MaterializedSeedAcceptanceProbe({
       ...probeInput,
+      basePlanValidation: passingBasePlanValidation,
       dependencies: { buildSlotPlanSeed },
       ownerLoaded: true,
       mesocycleLoaded: true,
@@ -661,7 +670,78 @@ describe("buildV2MaterializedSeedAcceptanceProbe", () => {
     });
     expect(result.safeToPromoteToProductionWrite).toBe(false);
     expect(result.promotionReadiness.safeToPromoteToProductionWrite).toBe(false);
-    expect(buildSlotPlanSeed).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      wouldWriteTransaction: false,
+      wouldCallLegacyProjection: false,
+      wouldCallLegacyRepair: false,
+      seedSerializer: "buildMesocycleSlotPlanSeed",
+      gates: {
+        basePlanValidation: {
+          status: "pass",
+          passed: true,
+          blockerCount: 0,
+          warningCount: 0,
+        },
+        materializerStatus: { status: "materialized", passed: true },
+        seedShapeCompatibility: { passed: true, compatible: true },
+        requiredLaneCoverage: { passed: true },
+        noRequiredBlockersRemain: { passed: true },
+        provenance: {
+          available: true,
+          source: "v2_disabled",
+          dbWriteOccurred: false,
+        },
+        runtimeReplayContract: {
+          unchanged: true,
+          runtimeConsumedFields: ["exerciseId", "role", "setCount"],
+        },
+        fallbackPolicy: {
+          explicit: true,
+          v2BlockedFailsClosed: true,
+          silentlyFallsBackToLegacyProjection: false,
+          allowedFallbackLabels: [
+            "legacy_projection_seed",
+            "fallback_existing_projection",
+          ],
+        },
+      },
+      projectionRepairBoundary: {
+        legacyProjectionCalled: false,
+        legacyRepairEngineCalled: false,
+        supportFloorClosureCalled: false,
+        weeklyObligationClosureCalled: false,
+        lateSetBumpingCalled: false,
+        capTrimCalled: false,
+        repairAddedExercisesIntroduced: false,
+        duplicateCleanupMutatedV2Output: false,
+        dirtyCollateralCleanupMutatedV2Output: false,
+      },
+      seedSerializationBoundary: {
+        serializer: "buildMesocycleSlotPlanSeed",
+        handcraftedSlotPlanSeedJson: false,
+        executableRowFields: ["exerciseId", "role", "setCount"],
+        acceptedPlannerIntentRuntimeInert: true,
+        runtimeConsumesPlannerMetadata: false,
+        previewExposedAsSlotPlanSeedJson: false,
+        serializerProbe: {
+          attempted: true,
+          status: "passed",
+          slotCount: 2,
+          exerciseCount: 3,
+          blockers: [],
+        },
+      },
+      acceptancePreparation: {
+        helperOptIn: "disabled",
+        helperStatus: "disabled",
+        wouldWriteTransaction: false,
+        persistenceProvenanceIsSeparate: true,
+        dbWriteOccurred: false,
+      },
+    });
+    expect(buildSlotPlanSeed).toHaveBeenCalledOnce();
     expect(result).not.toHaveProperty("slotPlanSeedJson");
   });
 
@@ -737,6 +817,16 @@ describe("buildV2MaterializedSeedAcceptanceProbe", () => {
         },
       ]),
     );
+    expect(result.gates.basePlanValidation).toMatchObject({
+      status: "missing",
+      passed: false,
+      missingReason: "base_plan_validation_not_provided",
+    });
+    expect(result.seedSerializationBoundary.serializerProbe).toMatchObject({
+      attempted: false,
+      status: "not_attempted",
+      blockers: ["slot_count_mismatch"],
+    });
   });
 
   it("separates optional omissions from blockers", () => {
@@ -785,6 +875,18 @@ describe("buildV2MaterializedSeedAcceptanceProbe", () => {
     expect(result.dryRunReport.status).toBe("materialized");
     expect(result.dryRunReport.seedShapeCompatibility.compatible).toBe(true);
     expect(result.promotionReadiness.status).toBe("not_ready");
+    expect(result.gates.productionGates).toMatchObject({
+      explicit: false,
+      allProvided: false,
+      missing: [
+        "acceptancePathDesigned",
+        "auditSerializationContractDesigned",
+        "receiptContractDesigned",
+        "rollbackStrategyDefined",
+        "runtimeReplayContractVerified",
+        "slotPlanSeedJsonWriteGateDesigned",
+      ],
+    });
     expect(result.simulated_opt_in_readiness).toMatchObject({
       label: "simulated_opt_in_readiness",
       status: "ready",
@@ -863,6 +965,16 @@ describe("buildV2MaterializedSeedAcceptanceProbe", () => {
 
     expect(result.context.ownerLoaded).toBe(true);
     expect(result.context.mesocycleLoaded).toBe(true);
+    expect(result.context.slotSequence).toMatchObject({
+      source: "live_mesocycle_slot_sequence",
+      slots: [
+        { slotId: "upper_a", intent: "UPPER" },
+        { slotId: "lower_a", intent: "LOWER" },
+        { slotId: "upper_b", intent: "UPPER" },
+        { slotId: "lower_b", intent: "LOWER" },
+      ],
+    });
+    expect(result.gates.basePlanValidation.status).not.toBe("missing");
     expect(result.helperResultWithOptInDisabled).toMatchObject({
       status: "disabled",
       provenance: { source: "v2_disabled" },

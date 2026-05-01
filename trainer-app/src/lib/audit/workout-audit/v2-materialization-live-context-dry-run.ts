@@ -488,21 +488,41 @@ export async function runV2MaterializedSeedAcceptanceProbe(input: {
   );
   const plannerPolicy = buildV2PlannerMesocyclePolicy();
   const inventory = normalizeLiveInventoryForV2Materialization(exercises);
+  const taxonomy = DEFAULT_V2_EXERCISE_CLASS_TAXONOMY;
+  const constraints = {
+    avoidExerciseIds: preferences?.avoidExerciseIds ?? [],
+    favoriteExerciseIds: preferences?.favoriteExerciseIds ?? [],
+    painConflictExerciseIds: [],
+  };
+  const materializedPlan =
+    inventory.length > 0
+      ? buildV2ExerciseMaterializationPlan({
+          exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
+          inventory,
+          taxonomy,
+          constraints,
+        })
+      : null;
+  const basePlanValidation = buildV2BasePlanValidation({
+    plannerPolicy,
+    materializedPlan,
+    inventory,
+    taxonomy,
+  });
 
   return buildV2MaterializedSeedAcceptanceProbe({
     ownerLoaded: true,
     mesocycleLoaded: Boolean(mesocycle),
     slotSequence,
+    slotSequenceSource: "live_mesocycle_slot_sequence",
     plannerPolicy,
     exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
-    taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+    taxonomy,
     inventory,
+    materializedPlan,
+    basePlanValidation,
     liveNormalizedInventoryAvailable: inventory.length > 0,
-    constraints: {
-      avoidExerciseIds: preferences?.avoidExerciseIds ?? [],
-      favoriteExerciseIds: preferences?.favoriteExerciseIds ?? [],
-      painConflictExerciseIds: [],
-    },
+    constraints,
   });
 }
 

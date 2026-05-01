@@ -81,6 +81,8 @@
 | 2026-05-01 | self | Used the reserved `repairedProjection` wording inside pure V2 materialization diagnostics and tripped the architecture-boundary readout-key scan. | In pure V2 files, keep the existing neutral `repairedPlan` vocabulary; reserve repaired-projection wording for audit/operator surfaces outside the pure policy boundary. |
 | 2026-05-01 | self | Serializer fixture Vitest passed but `tsc --noEmit` failed because the new shadow-consumption fixture omitted required nested `interpretationRules` and detailed `changes` sections. | For new typed audit DTOs, make serializer fixtures satisfy the full exported type before trusting artifact-focused tests. |
 | 2026-05-01 | self | Assumed user-supplied audit artifact paths were repo-root relative and hit `ENOENT`; Trainer audit artifacts are under `trainer-app/artifacts/audits/` from the repo root. | Resolve audit artifact paths relative to `trainer-app/` first when the prompt names `artifacts/audits/...`. |
+| 2026-05-01 | self | Repeated the Windows wildcard-path `rg` mistake while searching `mesocycle-handoff*.ts` files. | Use `rg <pattern> <directory> -g "mesocycle-handoff*.ts"` instead of passing wildcard paths directly in PowerShell. |
+| 2026-05-01 | self | A handoff V2 probe fixture widened seed preview roles to `string` and used a readonly `as const` array, so `tsc --noEmit` failed after Vitest passed. | Type V2 materialization report fixtures with the exported DTO type and keep role literals / mutable arrays compatible with the production contract. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

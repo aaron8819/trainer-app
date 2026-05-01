@@ -38,12 +38,16 @@ import {
 } from "./mesocycle-handoff-slot-plan-projection";
 import {
   buildAcceptedSeedPersistenceProvenance,
+  buildV2MaterializedSeedAcceptanceProbe,
   completeAcceptedSeedPersistenceProvenance,
   buildV2MaterializedSeedForAcceptance,
   type AcceptedSeedPersistenceProvenance,
+  type BuildV2MaterializedSeedAcceptanceProbeInput,
+  type BuildV2MaterializedSeedAcceptanceProbeResult,
   type BuildV2MaterializedSeedForAcceptanceInput,
   type V2MaterializedSeedAcceptanceProvenance,
 } from "./mesocycle-handoff-v2-materialized-seed";
+import { buildMesocycleSlotSequence } from "./mesocycle-slot-contract";
 import { getLatestReadinessSignalForReader } from "./readiness";
 import { loadPreloadedGenerationSnapshot } from "./template-session/context-loader";
 
@@ -161,6 +165,16 @@ type HandoffAcceptanceTransactionResult = {
   mesocycle: Mesocycle;
   seedPersistenceProvenance: AcceptedSeedPersistenceProvenance;
 };
+
+export type V2AcceptedSeedPreparationProbeInput = Omit<
+  BuildV2MaterializedSeedAcceptanceProbeInput,
+  | "slotSequence"
+  | "ownerLoaded"
+  | "mesocycleLoaded"
+  | "slotIntentById"
+  | "slotSequenceSource"
+  | "handoffContext"
+>;
 
 export class MesocycleHandoffV2MaterializedSeedBlockedError extends Error {
   readonly seedPersistenceProvenance: AcceptedSeedPersistenceProvenance;
@@ -870,6 +884,114 @@ async function buildAcceptedMesocycleSlotPlanSeed(input: {
       source: "legacy_projection_seed",
     }),
   };
+}
+
+function buildFailClosedV2AcceptedSeedPreparationProbe(input: {
+  probeInput?: V2AcceptedSeedPreparationProbeInput;
+  ownerLoaded: boolean;
+  mesocycleLoaded: boolean;
+  sourceState?: string;
+  summaryLoaded: boolean;
+  draftLoaded: boolean;
+}): BuildV2MaterializedSeedAcceptanceProbeResult {
+  return buildV2MaterializedSeedAcceptanceProbe({
+    ...(input.probeInput ?? {}),
+    ownerLoaded: input.ownerLoaded,
+    mesocycleLoaded: input.mesocycleLoaded,
+    slotSequence: buildMesocycleSlotSequence([]),
+    slotSequenceSource: "missing",
+    handoffContext: {
+      ...(input.sourceState ? { sourceState: input.sourceState } : {}),
+      summaryLoaded: input.summaryLoaded,
+      draftLoaded: input.draftLoaded,
+      acceptanceProjectionBuilt: false,
+    },
+  });
+}
+
+export async function prepareV2AcceptedSeedPreparationProbe(input: {
+  userId: string;
+  mesocycleId: string;
+  reader?: HandoffSourceMesocycleReader;
+  v2Probe?: V2AcceptedSeedPreparationProbeInput;
+}): Promise<BuildV2MaterializedSeedAcceptanceProbeResult> {
+  const reader = input.reader ?? prisma;
+  const source = await loadHandoffSourceMesocycle(reader, input.mesocycleId);
+  if (source.macroCycle.userId !== input.userId) {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_FOUND");
+  }
+
+  const pendingRow = await reader.mesocycle.findUnique({
+    where: { id: input.mesocycleId },
+    select: pendingHandoffRowSelect,
+  });
+  const summary = readMesocycleHandoffSummary(pendingRow?.handoffSummaryJson);
+  const storedDraft = readNextCycleSeedDraft(pendingRow?.nextSeedDraftJson);
+
+  if (
+    !pendingRow ||
+    pendingRow.state !== "AWAITING_HANDOFF" ||
+    !summary ||
+    !summary.recommendedDesign ||
+    !summary.recommendedNextSeed ||
+    !storedDraft
+  ) {
+    return buildFailClosedV2AcceptedSeedPreparationProbe({
+      probeInput: input.v2Probe,
+      ownerLoaded: true,
+      mesocycleLoaded: Boolean(pendingRow),
+      sourceState: pendingRow?.state,
+      summaryLoaded: Boolean(summary?.recommendedDesign),
+      draftLoaded: Boolean(storedDraft),
+    });
+  }
+
+  let draft: NextCycleSeedDraft;
+  try {
+    draft = sanitizeNextCycleSeedDraft({
+      draft: storedDraft,
+      sourceMesocycleId: source.id,
+      fallbackDraft: summary.recommendedNextSeed,
+    });
+  } catch {
+    return buildFailClosedV2AcceptedSeedPreparationProbe({
+      probeInput: input.v2Probe,
+      ownerLoaded: true,
+      mesocycleLoaded: true,
+      sourceState: pendingRow.state,
+      summaryLoaded: true,
+      draftLoaded: false,
+    });
+  }
+
+  const design = applyDraftOverridesToDesign({
+    design: summary.recommendedDesign,
+    draft,
+  });
+  const projection = projectSuccessorMesocycle({
+    source: toHandoffProjectionSource(source),
+    design,
+  });
+
+  return buildV2MaterializedSeedAcceptanceProbe({
+    ...(input.v2Probe ?? {}),
+    ownerLoaded: true,
+    mesocycleLoaded: true,
+    slotSequence: projection.mesocycle.slotSequence,
+    slotIntentById: Object.fromEntries(
+      projection.mesocycle.slotSequence.slots.map((slot) => [
+        slot.slotId,
+        slot.intent,
+      ]),
+    ),
+    slotSequenceSource: "handoff_acceptance_preparation",
+    handoffContext: {
+      sourceState: pendingRow.state,
+      summaryLoaded: true,
+      draftLoaded: true,
+      acceptanceProjectionBuilt: true,
+    },
+  });
 }
 
 function canPrepareAcceptanceFromState(

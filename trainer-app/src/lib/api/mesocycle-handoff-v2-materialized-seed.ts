@@ -4,6 +4,9 @@ import {
   type V2ExerciseMaterializationInput,
   type V2ExerciseMaterializationPlan,
   type V2ExerciseSelectionPlan,
+  type V2BasePlanValidation,
+  type V2BasePlanValidationNextSafeAction,
+  type V2BasePlanValidationStatus,
   type V2AcceptedPlannerIntentDto,
   type V2ExerciseClassTaxonomy,
   type V2MaterializationDryRunReport,
@@ -158,6 +161,20 @@ export type V2MaterializedSeedAcceptanceProbeBlockerGroup = {
   reasons: string[];
 };
 
+export type V2MaterializedSeedAcceptanceProbeSlotSequenceSource =
+  | "caller_supplied"
+  | "handoff_acceptance_preparation"
+  | "live_mesocycle_slot_sequence"
+  | "missing";
+
+export type V2MaterializedSeedAcceptanceProbeBasePlanValidationEvidence = {
+  source: "v2_base_plan_validation";
+  status: V2BasePlanValidationStatus;
+  blockerCount: number;
+  warningCount: number;
+  nextSafeAction: V2BasePlanValidationNextSafeAction;
+};
+
 export type BuildV2MaterializedSeedAcceptanceProbeInput = Omit<
   BuildV2MaterializedSeedForAcceptanceInput,
   "enableV2MaterializedSeedWrite"
@@ -165,6 +182,17 @@ export type BuildV2MaterializedSeedAcceptanceProbeInput = Omit<
   ownerLoaded?: boolean;
   mesocycleLoaded?: boolean;
   liveNormalizedInventoryAvailable?: boolean;
+  slotSequenceSource?: V2MaterializedSeedAcceptanceProbeSlotSequenceSource;
+  handoffContext?: {
+    sourceState?: string;
+    summaryLoaded?: boolean;
+    draftLoaded?: boolean;
+    acceptanceProjectionBuilt?: boolean;
+  };
+  basePlanValidation?:
+    | V2MaterializedSeedAcceptanceProbeBasePlanValidationEvidence
+    | V2BasePlanValidation
+    | null;
 };
 
 export type BuildV2MaterializedSeedAcceptanceProbeResult = {
@@ -172,12 +200,29 @@ export type BuildV2MaterializedSeedAcceptanceProbeResult = {
   source: "v2_materialized_seed_acceptance_probe";
   readOnly: true;
   affectsScoringOrGeneration: false;
+  wouldWriteTransaction: false;
+  wouldCallLegacyProjection: false;
+  wouldCallLegacyRepair: false;
+  seedSerializer: "buildMesocycleSlotPlanSeed";
   dryRunOnly: true;
   context: {
     ownerLoaded: boolean;
     mesocycleLoaded: boolean;
     slotSequenceAvailable: boolean;
     slotSequenceSlotCount: number;
+    slotSequence: {
+      source: V2MaterializedSeedAcceptanceProbeSlotSequenceSource;
+      slots: Array<{
+        slotId: string;
+        intent: string;
+      }>;
+    };
+    handoff?: {
+      sourceState?: string;
+      summaryLoaded?: boolean;
+      draftLoaded?: boolean;
+      acceptanceProjectionBuilt?: boolean;
+    };
   };
   evidence: {
     plannerPolicyAvailable: boolean;
@@ -190,6 +235,100 @@ export type BuildV2MaterializedSeedAcceptanceProbeResult = {
       provided: boolean;
       futureCallerMustProvide: true;
     }>;
+  };
+  gates: {
+    basePlanValidation: {
+      status: V2BasePlanValidationStatus | "missing";
+      passed: boolean;
+      blockerCount: number | null;
+      warningCount: number | null;
+      nextSafeAction?: V2BasePlanValidationNextSafeAction;
+      missingReason?: "base_plan_validation_not_provided";
+    };
+    materializerStatus: {
+      status: V2MaterializationDryRunReport["materializer"]["status"];
+      passed: boolean;
+    };
+    seedShapeCompatibility: {
+      passed: boolean;
+      compatible: boolean;
+      slotCountMatches: boolean;
+      rolesValid: boolean;
+      setCountsValid: boolean;
+      noDuplicateExerciseIdsWithinSlot: boolean;
+      namesAvailable: boolean;
+    };
+    requiredLaneCoverage: {
+      passed: boolean;
+      slotCount: number;
+      missingRequiredLaneCount: number;
+    };
+    noRequiredBlockersRemain: {
+      passed: boolean;
+      requiredMaterializationBlockerCount: number;
+      basePlanBlockerCount: number | null;
+    };
+    promotionReadiness: {
+      status: V2MaterializationPromotionReadiness["status"];
+      eligibleForGuardedWrite: boolean;
+      safeToPromoteToProductionWrite: false;
+      blockerReasons: string[];
+    };
+    productionGates: {
+      explicit: boolean;
+      allProvided: boolean;
+      values: V2MaterializationProductionWriteGates;
+      missing: string[];
+    };
+    provenance: {
+      available: true;
+      source: V2MaterializedSeedAcceptanceProvenance["source"];
+      dbWriteOccurred: false;
+    };
+    runtimeReplayContract: {
+      unchanged: true;
+      runtimeConsumedFields: ["exerciseId", "role", "setCount"];
+      runtimeIgnoresPlannerMetadata: true;
+    };
+    fallbackPolicy: {
+      explicit: true;
+      v2BlockedFailsClosed: true;
+      silentlyFallsBackToLegacyProjection: false;
+      allowedFallbackLabels: ["legacy_projection_seed", "fallback_existing_projection"];
+    };
+  };
+  projectionRepairBoundary: {
+    legacyProjectionCalled: false;
+    legacyRepairEngineCalled: false;
+    supportFloorClosureCalled: false;
+    weeklyObligationClosureCalled: false;
+    lateSetBumpingCalled: false;
+    capTrimCalled: false;
+    repairAddedExercisesIntroduced: false;
+    duplicateCleanupMutatedV2Output: false;
+    dirtyCollateralCleanupMutatedV2Output: false;
+  };
+  seedSerializationBoundary: {
+    serializer: "buildMesocycleSlotPlanSeed";
+    handcraftedSlotPlanSeedJson: false;
+    executableRowFields: ["exerciseId", "role", "setCount"];
+    acceptedPlannerIntentRuntimeInert: true;
+    runtimeConsumesPlannerMetadata: false;
+    previewExposedAsSlotPlanSeedJson: false;
+    serializerProbe: {
+      attempted: boolean;
+      status: "passed" | "blocked" | "not_attempted";
+      slotCount: number;
+      exerciseCount: number;
+      blockers: string[];
+    };
+  };
+  acceptancePreparation: {
+    helperOptIn: "disabled";
+    helperStatus: "disabled";
+    wouldWriteTransaction: false;
+    persistenceProvenanceIsSeparate: true;
+    dbWriteOccurred: false;
   };
   requiredLaneCoverageBySlot: V2MaterializationRequiredLaneCoverage[];
   dryRunReport: {
@@ -413,6 +552,9 @@ export function buildV2MaterializedSeedAcceptanceProbe(
     ownerLoaded: input.ownerLoaded === true,
     mesocycleLoaded: input.mesocycleLoaded === true,
     slotSequenceAvailable: input.slotSequence.slots.length > 0,
+    summaryLoaded: input.handoffContext?.summaryLoaded,
+    draftLoaded: input.handoffContext?.draftLoaded,
+    acceptanceProjectionBuilt: input.handoffContext?.acceptanceProjectionBuilt,
   });
   const blockersByCategory = groupProbeBlockers([
     ...contextBlockers,
@@ -422,18 +564,73 @@ export function buildV2MaterializedSeedAcceptanceProbe(
     ...contextBlockers,
     ...simulatedReadiness.blockers,
   ]);
+  const basePlanValidation = normalizeBasePlanValidationEvidence(
+    input.basePlanValidation,
+  );
+  const seedSerializerProbe = buildReadOnlySeedSerializerProbe({
+    dryRunReport,
+    slotSequence: input.slotSequence,
+    buildSlotPlanSeed:
+      input.dependencies?.buildSlotPlanSeed ?? buildMesocycleSlotPlanSeed,
+  });
+  const productionGateMissing = missingProductionGateKeys(
+    promotionReadiness.productionWriteGates,
+  );
+  const provenance = buildAcceptanceProvenance({
+    source: "v2_disabled",
+    dryRunReportVersion: dryRunReport.version,
+    promotionReadinessVersion: promotionReadiness.version,
+    productionWriteGates: promotionReadiness.productionWriteGates,
+    blockers: promotionReadiness.blockers,
+    readOnly: true,
+    dryRunOnly: true,
+  });
 
   return {
     version: 1,
     source: "v2_materialized_seed_acceptance_probe",
     readOnly: true,
     affectsScoringOrGeneration: false,
+    wouldWriteTransaction: false,
+    wouldCallLegacyProjection: false,
+    wouldCallLegacyRepair: false,
+    seedSerializer: "buildMesocycleSlotPlanSeed",
     dryRunOnly: true,
     context: {
       ownerLoaded: input.ownerLoaded === true,
       mesocycleLoaded: input.mesocycleLoaded === true,
       slotSequenceAvailable: input.slotSequence.slots.length > 0,
       slotSequenceSlotCount: input.slotSequence.slots.length,
+      slotSequence: {
+        source:
+          input.slotSequenceSource ??
+          (input.slotSequence.slots.length > 0 ? "caller_supplied" : "missing"),
+        slots: input.slotSequence.slots.map((slot) => ({
+          slotId: slot.slotId,
+          intent: slot.intent,
+        })),
+      },
+      ...(input.handoffContext
+        ? {
+            handoff: {
+              ...(input.handoffContext.sourceState
+                ? { sourceState: input.handoffContext.sourceState }
+                : {}),
+              ...(input.handoffContext.summaryLoaded !== undefined
+                ? { summaryLoaded: input.handoffContext.summaryLoaded }
+                : {}),
+              ...(input.handoffContext.draftLoaded !== undefined
+                ? { draftLoaded: input.handoffContext.draftLoaded }
+                : {}),
+              ...(input.handoffContext.acceptanceProjectionBuilt !== undefined
+                ? {
+                    acceptanceProjectionBuilt:
+                      input.handoffContext.acceptanceProjectionBuilt,
+                  }
+                : {}),
+            },
+          }
+        : {}),
     },
     evidence: {
       plannerPolicyAvailable: dryRunReport.plannerPolicyAvailable,
@@ -453,6 +650,118 @@ export function buildV2MaterializedSeedAcceptanceProbe(
         productionWriteGates: promotionReadiness.productionWriteGates,
       }),
     },
+    gates: {
+      basePlanValidation: basePlanValidation
+        ? {
+            status: basePlanValidation.status,
+            passed:
+              basePlanValidation.status === "pass" ||
+              basePlanValidation.status === "pass_with_warnings",
+            blockerCount: basePlanValidation.blockerCount,
+            warningCount: basePlanValidation.warningCount,
+            nextSafeAction: basePlanValidation.nextSafeAction,
+          }
+        : {
+            status: "missing",
+            passed: false,
+            blockerCount: null,
+            warningCount: null,
+            missingReason: "base_plan_validation_not_provided",
+          },
+      materializerStatus: {
+        status: dryRunReport.materializer.status,
+        passed: dryRunReport.materializer.status === "materialized",
+      },
+      seedShapeCompatibility: {
+        passed: promotionReadiness.seedShape.compatible,
+        compatible: dryRunReport.seedShapeCompatibility.compatible,
+        slotCountMatches: promotionReadiness.seedShape.slotCountMatches,
+        rolesValid: promotionReadiness.seedShape.rolesValid,
+        setCountsValid: promotionReadiness.seedShape.setCountsValid,
+        noDuplicateExerciseIdsWithinSlot:
+          promotionReadiness.seedShape.noDuplicateExerciseIdsWithinSlot,
+        namesAvailable: promotionReadiness.seedShape.namesAvailable,
+      },
+      requiredLaneCoverage: {
+        passed:
+          promotionReadiness.requiredMaterialization.requiredLaneCoveragePassed,
+        slotCount: requiredLaneCoverageBySlot.length,
+        missingRequiredLaneCount: requiredLaneCoverageBySlot.reduce(
+          (sum, slot) => sum + slot.missingRequiredLaneIds.length,
+          0,
+        ),
+      },
+      noRequiredBlockersRemain: {
+        passed:
+          promotionReadiness.requiredMaterialization.requiredBlockerCount === 0 &&
+          (basePlanValidation?.blockerCount ?? 0) === 0,
+        requiredMaterializationBlockerCount:
+          promotionReadiness.requiredMaterialization.requiredBlockerCount,
+        basePlanBlockerCount: basePlanValidation?.blockerCount ?? null,
+      },
+      promotionReadiness: {
+        status: promotionReadiness.status,
+        eligibleForGuardedWrite:
+          promotionReadiness.status === "eligible_for_guarded_write" &&
+          promotionReadiness.safeToPromoteToProductionWrite === true,
+        safeToPromoteToProductionWrite: false,
+        blockerReasons: promotionReadiness.blockers.map((blocker) =>
+          `${blocker.category}:${blocker.reason}`,
+        ),
+      },
+      productionGates: {
+        explicit: input.productionWriteGates !== undefined,
+        allProvided: productionGateMissing.length === 0,
+        values: promotionReadiness.productionWriteGates,
+        missing: productionGateMissing,
+      },
+      provenance: {
+        available: true,
+        source: provenance.source,
+        dbWriteOccurred: false,
+      },
+      runtimeReplayContract: {
+        unchanged: true,
+        runtimeConsumedFields: ["exerciseId", "role", "setCount"],
+        runtimeIgnoresPlannerMetadata: true,
+      },
+      fallbackPolicy: {
+        explicit: true,
+        v2BlockedFailsClosed: true,
+        silentlyFallsBackToLegacyProjection: false,
+        allowedFallbackLabels: [
+          "legacy_projection_seed",
+          "fallback_existing_projection",
+        ],
+      },
+    },
+    projectionRepairBoundary: {
+      legacyProjectionCalled: false,
+      legacyRepairEngineCalled: false,
+      supportFloorClosureCalled: false,
+      weeklyObligationClosureCalled: false,
+      lateSetBumpingCalled: false,
+      capTrimCalled: false,
+      repairAddedExercisesIntroduced: false,
+      duplicateCleanupMutatedV2Output: false,
+      dirtyCollateralCleanupMutatedV2Output: false,
+    },
+    seedSerializationBoundary: {
+      serializer: "buildMesocycleSlotPlanSeed",
+      handcraftedSlotPlanSeedJson: false,
+      executableRowFields: ["exerciseId", "role", "setCount"],
+      acceptedPlannerIntentRuntimeInert: true,
+      runtimeConsumesPlannerMetadata: false,
+      previewExposedAsSlotPlanSeedJson: false,
+      serializerProbe: seedSerializerProbe,
+    },
+    acceptancePreparation: {
+      helperOptIn: "disabled",
+      helperStatus: "disabled",
+      wouldWriteTransaction: false,
+      persistenceProvenanceIsSeparate: true,
+      dbWriteOccurred: false,
+    },
     requiredLaneCoverageBySlot,
     dryRunReport: {
       status: dryRunReport.status,
@@ -465,15 +774,7 @@ export function buildV2MaterializedSeedAcceptanceProbe(
       productionWriteGates: promotionReadiness.productionWriteGates,
     },
     helperResultWithOptInDisabled,
-    provenance: buildAcceptanceProvenance({
-      source: "v2_disabled",
-      dryRunReportVersion: dryRunReport.version,
-      promotionReadinessVersion: promotionReadiness.version,
-      productionWriteGates: promotionReadiness.productionWriteGates,
-      blockers: promotionReadiness.blockers,
-      readOnly: true,
-      dryRunOnly: true,
-    }),
+    provenance,
     simulated_opt_in_readiness: {
       label: "simulated_opt_in_readiness",
       status:
@@ -497,6 +798,83 @@ export function buildV2MaterializedSeedAcceptanceProbe(
     })),
     safeToPromoteToProductionWrite: false,
   };
+}
+
+function normalizeBasePlanValidationEvidence(
+  validation:
+    | V2MaterializedSeedAcceptanceProbeBasePlanValidationEvidence
+    | V2BasePlanValidation
+    | null
+    | undefined,
+): V2MaterializedSeedAcceptanceProbeBasePlanValidationEvidence | null {
+  if (!validation) {
+    return null;
+  }
+  if ("summary" in validation) {
+    return {
+      source: "v2_base_plan_validation",
+      status: validation.status,
+      blockerCount: validation.summary.blockerCount,
+      warningCount: validation.summary.warningCount,
+      nextSafeAction: validation.nextSafeAction,
+    };
+  }
+  return validation;
+}
+
+function buildReadOnlySeedSerializerProbe(input: {
+  dryRunReport: V2MaterializationDryRunReport;
+  slotSequence: MesocycleSlotSequence;
+  buildSlotPlanSeed: typeof buildMesocycleSlotPlanSeed;
+}): BuildV2MaterializedSeedAcceptanceProbeResult["seedSerializationBoundary"]["serializerProbe"] {
+  const projectedSlotPlans = materializedReportToProjectedSlotPlans({
+    dryRunReport: input.dryRunReport,
+    slotSequence: input.slotSequence,
+  });
+  if ("blocked" in projectedSlotPlans) {
+    return {
+      attempted: false,
+      status: input.dryRunReport.executableSeedPreview.length > 0
+        ? "blocked"
+        : "not_attempted",
+      slotCount: 0,
+      exerciseCount: 0,
+      blockers: [projectedSlotPlans.blocked.reason],
+    };
+  }
+
+  try {
+    const seedPreview = input.buildSlotPlanSeed({
+      slotSequence: input.slotSequence,
+      slotPlans: projectedSlotPlans.slotPlans,
+    });
+    return {
+      attempted: true,
+      status: "passed",
+      slotCount: seedPreview.slots.length,
+      exerciseCount: seedPreview.slots.reduce(
+        (sum, slot) => sum + slot.exercises.length,
+        0,
+      ),
+      blockers: [],
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      status: "blocked",
+      slotCount: 0,
+      exerciseCount: 0,
+      blockers: [error instanceof Error ? error.message : "seed_serializer_failed"],
+    };
+  }
+}
+
+function missingProductionGateKeys(
+  gates: V2MaterializationProductionWriteGates,
+): string[] {
+  return Object.entries(gates)
+    .flatMap(([key, value]) => (value ? [] : [key]))
+    .sort((left, right) => left.localeCompare(right));
 }
 
 function callerOwnedEvidenceForProbe(input: {
@@ -559,6 +937,9 @@ function contextBlockersForProbe(input: {
   ownerLoaded: boolean;
   mesocycleLoaded: boolean;
   slotSequenceAvailable: boolean;
+  summaryLoaded?: boolean;
+  draftLoaded?: boolean;
+  acceptanceProjectionBuilt?: boolean;
 }): V2MaterializationPromotionBlocker[] {
   return [
     ...(input.ownerLoaded
@@ -580,6 +961,30 @@ function contextBlockersForProbe(input: {
             reason: "slot_sequence_unavailable",
           },
         ]),
+    ...(input.summaryLoaded === false
+      ? [
+          {
+            category: "required_materialization" as const,
+            reason: "handoff_summary_not_loaded",
+          },
+        ]
+      : []),
+    ...(input.draftLoaded === false
+      ? [
+          {
+            category: "required_materialization" as const,
+            reason: "handoff_draft_not_loaded",
+          },
+        ]
+      : []),
+    ...(input.acceptanceProjectionBuilt === false
+      ? [
+          {
+            category: "required_materialization" as const,
+            reason: "handoff_acceptance_projection_not_built",
+          },
+        ]
+      : []),
   ];
 }
 

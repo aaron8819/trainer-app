@@ -1218,7 +1218,7 @@ function compactPlannerOnlyNoRepair(
             proposedPhase: v2PhaseStrategy?.proposedPhase ?? "unknown",
             confidence: v2PhaseStrategy?.confidence ?? "low",
             currentDemandSource:
-              v2DemandDerivationPlan?.currentDemandSource ?? "fixed_skeleton_lanes",
+              v2DemandDerivationPlan?.currentDemandSource ?? "mixed",
             targetDemandSource:
               v2DemandDerivationPlan?.targetDemandSource ?? "mesocycle_strategy",
             missingInputCount: Array.isArray(v2UserProfileInputs?.missing)

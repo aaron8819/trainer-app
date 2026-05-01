@@ -134,7 +134,7 @@ What this does not prove:
 
 - V2 is not yet the default plan author.
 - V2 has not yet learned from performed history as its primary strategy input.
-- Current V2 demand is still too close to fixed skeleton/lane policy.
+- Current V2 demand has a first static balanced base-policy slice, but it is not yet derived from full phase strategy, user history, or performed-response adjustment.
 - Repaired projection is still the production seed author by default.
 
 ## 3. Target Engine Spec
@@ -144,7 +144,7 @@ What this does not prove:
 | `UserTrainingProfile` | Summarize stable user context that should constrain all future planning. | Goal, training age, frequency, equipment, constraints, preferences, pain history, adherence history. | Planner-ready user profile with confidence and known limitations. | Profile informs strategy; it does not directly mutate accepted seeds or runtime replay. | Keep the first version practical and evidence-backed. | Generic plans repeat because the planner has no memory of the user. | `Constraints`, setup/handoff drafts, workout context, review read models. | API read-model seam feeding pure planner strategy inputs. |
 | `MacrocyclePhaseStrategy` | Decide the broad phase context for the next block. | User profile, prior mesocycle review, training block context, recovery/performance trends. | Phase label and rationale such as balanced hypertrophy, specialization, maintenance, recovery-biased, return-to-training. | Every future mesocycle has a reason. Phase strategy precedes muscle targets. | Lightweight phase sequencing before any rigid macrocycle system. | Same generic block repeats forever, or phase is inferred from repair output. | `TrainingBlock`, `mesocycle-genesis-policy`, handoff summary. | New planner strategy seam above `MesocycleDemand`. |
 | `MesocycleStrategy` | Translate phase context into the objective for this block. | Phase strategy, user goal, adherence/recovery, performed history, split/frequency constraints. | Block objective, specialization status, recovery bias, continuity/variation stance, risk notes. | Mesocycle strategy -> muscle priorities, not muscle targets -> somehow strategy. | Be explicit about why volume is increasing, holding, reducing, or specializing. | Muscle targets become the whole strategy. | `nextSeedDraftJson`, `recommendedDesign`, genesis policy. | Pure V2 strategy object, initially read-only. |
-| `MesocycleDemand` / `MusclePriorityVolumeModel` | Define the whole block's muscle priorities, target tiers, exposure counts, and specialization/maintenance status. | Mesocycle strategy, user goal, volume target, split, frequency, landmarks, constraints, prior mesocycle evidence. | Canonical per-muscle block demand: min/preferred/max effective sets, exposure count, priority, specialization flags. | Demand exists before slot or exercise choice. Primary/support/secondary meaning is explicit. No forbidden-slot rescue can create demand. | Prefer two exposures for major upper/lower drivers and low-collateral direct work for support muscles. | Demand inferred from repair, collateral mistaken for intent, support muscles missing until late repair. | `getWeeklyVolumeTarget()`, `MUSCLE_TARGET_TIER_BY_MUSCLE`, `planningReality.shadowWeeklyDemand`, current V2 `MesocycleDemand`. | Planner-owned demand derived from strategy, not only fixed skeleton lanes. |
+| `MesocycleDemand` / `MusclePriorityVolumeModel` | Define the whole block's muscle priorities, target tiers, exposure counts, and specialization/maintenance status. | Mesocycle strategy, user goal, volume target, split, frequency, landmarks, constraints, prior mesocycle evidence. | Canonical per-muscle block demand: min/preferred/max effective sets, exposure count, priority, specialization flags. | Demand exists before slot or exercise choice. Primary/support/secondary meaning is explicit. No forbidden-slot rescue can create demand. | Prefer two exposures for major upper/lower drivers and low-collateral direct work for support muscles. | Demand inferred from repair, collateral mistaken for intent, support muscles missing until late repair. | `getWeeklyVolumeTarget()`, `MUSCLE_TARGET_TIER_BY_MUSCLE`, `planningReality.shadowWeeklyDemand`, current V2 `MesocycleDemand`. | Planner-owned demand derived from strategy on top of the static base policy. |
 | `MovementPatternExerciseClassModel` | Convert stimulus needs into movement patterns and exercise-class obligations. | Muscle demand, phase, fatigue budget, prior movement stress, inventory taxonomy. | Required/preferred/forbidden movement patterns and class lanes. | Movement/class intent exists before exact exercise identity. | Preserve useful movement skill while rotating stale exact exercises. | Exact exercise selection pretends to solve class strategy. | `ExerciseClassDistributionBySlot`, selection-v2 class helpers, taxonomy bridge. | Planner-owned class model before materialization. |
 | `WeeklyDemandCurve` / `WeeklyProgressionModel` | Spread demand across Weeks 1-5: entry, accumulation, hard accumulation, peak, deload. | `MesocycleDemand`, block timeline, lifecycle week, RIR/set multipliers, recovery bias. | Per-week per-muscle min/preferred/max effective sets and progression intent. | Week 5 deload is explicit 40-60 percent volume with high RIR. Weeks 1-4 are projected, not copied blindly from Week 1. | Week 1 85-90 percent, Week 2 100 percent, Week 3 105-110 percent, Week 4 110-115 percent unless strategy says otherwise. | Week 2-4 unprojected, deload identity/set reduction missing, behavior judged only by Week 1. | `getWeeklyVolumeTarget()`, `buildWeeklyDemandCurve()` diagnostic, V2 weekly progression model. | Planner-owned `WeeklyDemandCurve` v2, still cross-checked by lifecycle math. |
 | `SlotArchitecture` / `SlotDemandAllocationByWeek` | Allocate each week's muscle demand into `upper_a`, `lower_a`, `upper_b`, `lower_b`. | Weekly demand, slot sequence, authored slot semantics, fatigue budgets, strategy. | Per-week slot-owned muscle obligations and forbidden muscles. | Allocation exists before exercise selection. A slot cannot solve a primary muscle marked forbidden. | Chest in both uppers, quads squat-led in Lower A plus support in Lower B, hamstrings hinge plus curl, calves distributed unless strategy says otherwise. | Compatible-slot averaging that ignores class intent, lower-slot Chest repair, upper-slot lower-body collateral. | `buildWeeklyMuscleObligationPlan()`, `buildSlotDemandAllocationByWeek()` diagnostic, V2 slot allocation. | Planner-owned allocation object persisted into accepted planner intent later. |
@@ -184,7 +184,7 @@ not:
 Muscle Targets -> somehow this becomes strategy
 ```
 
-The current V2 `MesocycleDemand` object is a valuable pure-policy slice, but today it is still too close to fixed skeleton/lane demand. Before V2 becomes authoritative, demand should be fed by a strategy object that can explain why Chest, Quads, Hamstrings, Side Delts, Calves, or any support muscle should receive more, less, maintenance, or recovery-biased work.
+The current V2 `MesocycleDemand` object is a valuable pure-policy slice. It now starts from a static balanced upper/lower base policy instead of summing every skeleton lane into muscle demand: target ranges, exposure counts, direct floors, collateral credit limits, and managed-collateral cautions exist before slot allocation. Before V2 becomes authoritative, demand still needs a strategy object that can explain why Chest, Quads, Hamstrings, Side Delts, Calves, or any support muscle should receive more, less, maintenance, or recovery-biased work.
 
 ## 5. Macrocycle / Phase Strategy
 
@@ -465,7 +465,7 @@ These are ultimate planner criteria, not claims about current implementation.
 | Acceptance criterion | Current diagnostic/source | Current state | Future enforcement location |
 |---|---|---|---|
 | Each mesocycle has an explicit strategy. | `recommendedDesign`, handoff summary, future V2 strategy. | Partial: handoff has recommendation structure, but V2 strategy is not yet authoritative. | `MesocycleStrategy` above demand. |
-| Muscle targets derive from strategy and user history. | `MesocycleDemand`, `weeklyDemandCurve`, mesocycle review. | Incomplete: current V2 demand is still skeleton/lane-derived. | `MesocycleStrategy -> MesocycleDemand`. |
+| Muscle targets derive from strategy and user history. | `MesocycleDemand`, `weeklyDemandCurve`, mesocycle review. | Partial: current V2 demand has a static balanced base policy, but not phase/user-history strategy adjustment. | `MesocycleStrategy -> MesocycleDemand`. |
 | Movement classes satisfy stimulus needs before exact exercises are chosen. | `exerciseClassDistributionBySlot`, V2 `ExerciseSelectionPlan`. | Read-only / dry-run only. | Planner class model consumed by selection/materializer. |
 | Exercise selection balances continuity and variation. | `duplicateContinuityJustification`, genesis carry-forward, materializer continuity hints. | Partial: continuity exists, but no full keep/rotate policy tied to strategy. | `ExerciseSelectionStrategy` plus continuity classification. |
 | Productive exercises can persist across blocks. | Carry-forward recommendations, prior slot evidence. | Partial. | Post-mesocycle learning loop and materializer continuity scoring. |
@@ -583,7 +583,7 @@ Risk:
 
 - Diagnostic bloat.
 - Adding another shadow that does not become migration-ready.
-- Treating current fixed-skeleton V2 policy as elite strategy before user profile, phase, performed-history, and continuity inputs exist.
+- Treating the current static balanced V2 base policy as elite strategy before user profile, phase, performed-history, and continuity inputs exist.
 
 Rollback criteria:
 
@@ -772,7 +772,7 @@ The diagnostic should encode:
 - UserTrainingProfile inputs that are available today, with explicit missing-input limitations
 - Macrocycle / Phase Strategy
 - MesocycleStrategy
-- MesocycleDemand derived from strategy, not only from fixed skeleton lanes
+- MesocycleDemand derived from strategy on top of the static balanced base policy
 - WeeklyDemandCurve for Weeks 1-5
 - SlotDemandAllocationByWeek for Upper A, Lower A, Upper B, Lower B
 - ExerciseClassDistributionBySlot for the target class lanes

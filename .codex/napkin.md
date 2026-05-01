@@ -62,6 +62,7 @@
 | 2026-05-01 | self | While adding the slot-owned demand adjustment feasible test, briefly fed Hamstrings-only donor evidence while expecting Glutes safe-surplus eligibility. | In policy tests, make the strategy evidence source and the filter/floor evidence source name the same donor before asserting feasibility. |
 | 2026-05-01 | self | The first over-concentration-only donor-margin test still inherited Glutes fatigue-driver evidence from the fixture, so the candidate was classified as both over-concentration and fatigue. | For diagnostic tests that isolate a candidate reason, clear both concentration and fatigue evidence before asserting that over-concentration alone cannot imply floor surplus. |
 | 2026-05-01 | self | Used the MCP `nodeRepl` helper inside a plain PowerShell-piped `node` script and got `ReferenceError: nodeRepl is not defined`. | Keep plain Node artifact parsers free of MCP-only helpers; use `console.log` or run through the Node REPL tool when `nodeRepl.write` is needed. |
+| 2026-05-01 | self | Repeated the Windows wildcard-path `rg` mistake with `trainer-app\src\lib\engine\planning\v2\*.test.ts`. | Use `rg <pattern> <directory> -g "*.test.ts"` or rely on `rg --files` filters in PowerShell. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

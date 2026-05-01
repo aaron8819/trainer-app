@@ -790,7 +790,7 @@ describe("artifact serialization helpers", () => {
           affectsScoringOrGeneration: false,
           proposedPhase: "unknown",
           confidence: "low",
-          currentDemandSource: "fixed_skeleton_lanes",
+          currentDemandSource: "mixed",
           targetDemandSource: "mesocycle_strategy",
           missingInputCount: 6,
           limitationCount: 3,
@@ -1604,7 +1604,7 @@ describe("artifact serialization helpers", () => {
               confidence: "low",
             },
             demandDerivationPlan: {
-              currentDemandSource: "fixed_skeleton_lanes",
+              currentDemandSource: "mixed",
               targetDemandSource: "mesocycle_strategy",
             },
             userTrainingProfileInputs: {

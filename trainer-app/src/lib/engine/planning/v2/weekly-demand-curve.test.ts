@@ -27,7 +27,7 @@ describe("buildV2WeeklyDemandCurve", () => {
       projectionStatus: "projected_from_mesocycle_demand",
     });
     expect(week2Chest).toMatchObject({
-      targetSetRange: { min: 8, preferred: 11, max: 11 },
+      targetSetRange: { min: 8, preferred: 9, max: 11 },
       source: expect.arrayContaining([
         "mesocycle_demand",
         "v2_weekly_progression_model",
@@ -36,7 +36,7 @@ describe("buildV2WeeklyDemandCurve", () => {
       ]),
     });
     expect(week5Chest).toMatchObject({
-      targetSetRange: { min: 4, preferred: 5.5, max: 5.5 },
+      targetSetRange: { min: 4, preferred: 4.5, max: 5.5 },
       source: expect.not.arrayContaining([
         "planningReality",
         "no_repair_output",

@@ -1006,10 +1006,24 @@ export type V2PlannerDemandRole =
   | "secondary"
   | "implicit";
 
+export type V2PlannerDemandTargetMode =
+  | "default"
+  | "specialization"
+  | "maintenance"
+  | "managed_collateral";
+
 export type V2PlannerSetRange = {
   min: number;
   preferred: number;
   max: number;
+};
+
+export type V2PlannerDirectnessPolicy = {
+  directSetFloor: number;
+  preferredDirectSets: number;
+  collateralCreditLimit: number;
+  collateralCanSatisfyFloor: boolean;
+  requiredClassIntents: string[];
 };
 
 export type V2MesocycleDemand = {
@@ -1021,14 +1035,18 @@ export type V2MesocycleDemand = {
   weekCount: number;
   designBasis: {
     targetSkeleton: "upper_lower_4x_v2";
-    evidencePolicy: "volume_landmarks_and_target_tiers";
+    evidencePolicy:
+      | "volume_landmarks_and_target_tiers"
+      | "balanced_static_block_policy_and_volume_landmarks";
     allocationTiming: "before_exercise_selection";
+    demandTiming: "before_slot_allocation";
   };
   muscles: Array<{
     muscle: string;
     targetTier: MuscleTargetTier | null;
     role: V2PlannerDemandRole;
     targetStatus: V2PlannerTargetStatus;
+    targetMode: V2PlannerDemandTargetMode;
     landmark: {
       mv: number;
       mev: number;
@@ -1037,6 +1055,8 @@ export type V2MesocycleDemand = {
     } | null;
     baselineSetRange: V2PlannerSetRange;
     exposureCount: number;
+    directness: V2PlannerDirectnessPolicy;
+    cautions: string[];
     source: string[];
     limitations: string[];
   }>;

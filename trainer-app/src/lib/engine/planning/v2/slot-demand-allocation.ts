@@ -125,15 +125,16 @@ export function buildV2SlotDemandAllocationByWeek(
               allocatedMuscles: lane.primaryMuscles
                 .map((muscle) => {
                   const demand = demandByMuscle.get(muscle);
+                  const exposureDivisor =
+                    demand && demand.exposureCount > 0
+                      ? demand.exposureCount
+                      : (laneOccurrencesByMuscle.get(muscle) ?? 1);
                   return {
                     muscle,
                     role: roleForLane(lane.role),
                     targetStatus: demand?.targetStatus ?? "diagnostic",
                     targetSetRange: demand
-                      ? divideRange(
-                          demand.targetSetRange,
-                          laneOccurrencesByMuscle.get(muscle) ?? 1,
-                        )
+                      ? divideRange(demand.targetSetRange, exposureDivisor)
                       : scaleRange(lane.targetSets, week.volumeMultiplier),
                     allocationBasis: allocationBasis({
                       laneRole: lane.role,

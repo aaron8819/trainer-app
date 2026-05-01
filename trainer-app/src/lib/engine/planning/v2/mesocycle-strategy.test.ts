@@ -486,17 +486,17 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     expect(diagnostic.continuityVariationPolicy.currentSupport).toBe("partial");
   });
 
-  it("reports current demand as fixed skeleton lane-derived and separates north-star gaps", () => {
+  it("reports current demand as static base policy plus remaining strategy gaps", () => {
     const diagnostic = buildV2MesocycleStrategyDiagnostic();
 
     expect(diagnostic.demandDerivationPlan).toMatchObject({
-      currentDemandSource: "fixed_skeleton_lanes",
+      currentDemandSource: "mixed",
       targetDemandSource: "mesocycle_strategy",
     });
     expect(diagnostic.currentStateVsNorthStarGaps).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          gap: expect.stringContaining("MesocycleDemand currently derives"),
+          gap: expect.stringContaining("MesocycleDemand uses a static balanced"),
           targetOwner: "MesocycleStrategy -> MesocycleDemand",
           priority: "P0",
         }),
@@ -529,7 +529,7 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
         recoveryBiases: [],
       },
       demandDerivationPlan: {
-        currentDemandSource: "fixed_skeleton_lanes",
+        currentDemandSource: "mixed",
         targetDemandSource: "mesocycle_strategy",
       },
       strategyInputSummary: {
@@ -699,9 +699,7 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
           ),
       ),
     ).toBe(true);
-    expect(diagnostic.demandDerivationPlan.currentDemandSource).toBe(
-      "fixed_skeleton_lanes",
-    );
+    expect(diagnostic.demandDerivationPlan.currentDemandSource).toBe("mixed");
   });
 
   it("derives promotion readiness from strategy hypotheses and evidence quality without promoting behavior", () => {

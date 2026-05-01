@@ -3939,7 +3939,7 @@ export function buildV2MesocycleStrategyDiagnostic(
       maintenanceTargets: [],
       recoveryBiases: [],
       rationale: [
-        "current_v2_demand_is_derived_from_fixed_upper_lower_skeleton_lanes",
+        "current_v2_demand_uses_static_balanced_base_policy_before_historical_adjustment",
         "strategy_specific_specialization_maintenance_or_recovery_biases_are_not_inferred",
         "future_strategy_should_explain_why_muscle_demand_increases_holds_reduces_or_specializes",
       ],
@@ -3983,7 +3983,7 @@ export function buildV2MesocycleStrategyDiagnostic(
     strategyHypothesisPromotionReadiness,
     strategyHypothesisPromotionDiff,
     demandDerivationPlan: {
-      currentDemandSource: "fixed_skeleton_lanes",
+      currentDemandSource: "mixed",
       targetDemandSource: "mesocycle_strategy",
       gapsBeforeStrategyDerivedDemand: [
         "explicit_user_training_profile_adapter",
@@ -3991,13 +3991,13 @@ export function buildV2MesocycleStrategyDiagnostic(
         "mesocycle_objective_with_specialization_maintenance_recovery_bias",
         "performed_history_learning_loop",
         "continuity_variation_policy",
-        "demand_builder_that_consumes_strategy_instead_of_only_target_skeleton_lanes",
+        "full_strategy_to_demand_adjustment_after_static_base_policy",
       ],
     },
     strategyInputSummary,
     currentStateVsNorthStarGaps: [
       {
-        gap: "MesocycleDemand currently derives from fixed skeleton lane policy, not an explicit strategy objective.",
+        gap: "MesocycleDemand uses a static balanced base policy, but not an explicit strategy objective or performed-history adjustment.",
         currentOwner: "src/lib/engine/planning/v2/mesocycle-demand.ts",
         targetOwner: "MesocycleStrategy -> MesocycleDemand",
         priority: "P0",

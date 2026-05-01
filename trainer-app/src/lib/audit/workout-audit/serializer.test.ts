@@ -1725,7 +1725,7 @@ describe("buildWorkoutAuditArtifact", () => {
       affectsScoringOrGeneration: false,
       status: "available_with_limitations",
       demandDerivationPlan: {
-        currentDemandSource: "fixed_skeleton_lanes",
+        currentDemandSource: "mixed",
         targetDemandSource: "mesocycle_strategy",
       },
     });
@@ -1791,7 +1791,7 @@ describe("buildWorkoutAuditArtifact", () => {
           affectsScoringOrGeneration: false,
           proposedPhase: "unknown",
           confidence: "low",
-          currentDemandSource: "fixed_skeleton_lanes",
+          currentDemandSource: "mixed",
           targetDemandSource: "mesocycle_strategy",
           missingInputCount: 6,
           limitationCount: 3,
@@ -2274,7 +2274,7 @@ describe("buildWorkoutAuditArtifact", () => {
         v2MesocycleStrategyDiagnostic: expect.objectContaining({
           status: "available_with_limitations",
           demandDerivationPlan: expect.objectContaining({
-            currentDemandSource: "fixed_skeleton_lanes",
+            currentDemandSource: "mixed",
           }),
         }),
       },

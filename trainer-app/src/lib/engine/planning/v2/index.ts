@@ -56,6 +56,8 @@ export type {
   V2ExerciseResponseSignal,
   V2ExerciseResponseSignalType,
   V2ExerciseSelectionPlan,
+  V2PlannerDemandTargetMode,
+  V2PlannerDirectnessPolicy,
   V2MesocycleDemand,
   V2MesocycleStrategyDiagnostic,
   V2MesocycleStrategyConfidence,

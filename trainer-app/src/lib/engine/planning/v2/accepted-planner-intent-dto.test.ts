@@ -216,8 +216,8 @@ describe("buildV2AcceptedPlannerIntentDto", () => {
     expect(dto.muscleTargets.find((row) => row.muscle === "Chest")).toMatchObject({
       targetTier: "A_PRIMARY",
       role: "primary",
-      setRange: { min: 8, preferred: 11, max: 11 },
-      exposureCount: 3,
+      setRange: { min: 8, preferred: 9, max: 11 },
+      exposureCount: 2,
     });
     expect(dto.weekPolicies[3]).toMatchObject({
       week: 4,

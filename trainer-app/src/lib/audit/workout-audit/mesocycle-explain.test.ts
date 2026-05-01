@@ -10,6 +10,7 @@ import {
 
 const mocks = vi.hoisted(() => {
   const mesocycleFindFirst = vi.fn();
+  const mesocycleFindMany = vi.fn();
   const constraintsFindUnique = vi.fn();
   const workoutFindMany = vi.fn();
   const mesocycleExerciseRoleFindMany = vi.fn();
@@ -35,6 +36,7 @@ const mocks = vi.hoisted(() => {
 
   return {
     mesocycleFindFirst,
+    mesocycleFindMany,
     constraintsFindUnique,
     workoutFindMany,
     mesocycleExerciseRoleFindMany,
@@ -60,6 +62,7 @@ const mocks = vi.hoisted(() => {
     prisma: {
       mesocycle: {
         findFirst: (...args: unknown[]) => mesocycleFindFirst(...args),
+        findMany: (...args: unknown[]) => mesocycleFindMany(...args),
       },
       constraints: {
         findUnique: (...args: unknown[]) => constraintsFindUnique(...args),
@@ -882,6 +885,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     };
 
     mocks.mesocycleFindFirst.mockResolvedValue(mesocycle);
+    mocks.mesocycleFindMany.mockResolvedValue([]);
     mocks.constraintsFindUnique.mockResolvedValue({
       weeklySchedule: ["UPPER", "LOWER"],
     });
@@ -2649,7 +2653,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
         confidence: "low",
       },
       demandDerivationPlan: {
-        currentDemandSource: "fixed_skeleton_lanes",
+        currentDemandSource: "mixed",
         targetDemandSource: "mesocycle_strategy",
       },
       strategyInputSummary: {

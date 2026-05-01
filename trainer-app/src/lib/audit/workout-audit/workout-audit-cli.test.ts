@@ -286,6 +286,39 @@ function makeV2BasePlanCompareFixture() {
   };
 }
 
+function makeV2BasePlanShadowConsumptionTrialFixture() {
+  return {
+    version: 1,
+    source: "v2_base_plan_shadow_consumption_trial",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    status: "available",
+    consumedByProduction: false,
+    comparedPlans: {
+      v2BasePlanAvailable: true,
+      shadowConsumedPlanAvailable: true,
+      plannerOnlyNoRepairAvailable: true,
+      repairedPlanAvailable: true,
+    },
+    summary: {
+      shadowTotalSets: 55,
+      v2BaseTotalSets: 55,
+      noRepairTotalSets: 25,
+      repairedTotalSets: 55,
+      currentRepairDependencyCount: 9,
+      shadowRemainingRepairDependencyCount: 1,
+      repairDependencyDelta: -8,
+      improvementCount: 14,
+      preservationCount: 10,
+      regressionCount: 0,
+      unclearCount: 1,
+      notComparableCount: 0,
+      categorizedIdentityDifferenceCount: 4,
+    },
+    nextSafeAction: "inspect_shadow_consumption",
+  };
+}
+
 describe("normalizeAuditIntentArg", () => {
   it("normalizes uppercase explicit intents into canonical lower-case session intents", () => {
     expect(normalizeAuditIntentArg("UPPER")).toBe("upper");
@@ -3604,6 +3637,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
               },
             },
             v2BasePlanCompare: makeV2BasePlanCompareFixture(),
+            v2BasePlanShadowConsumptionTrial:
+              makeV2BasePlanShadowConsumptionTrialFixture(),
           },
         },
       } as unknown as Parameters<
@@ -3622,7 +3657,18 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
         "V2 compare classifications: improves=12 regresses=0 unclear=2",
         "Next safe action: add-shadow-consumption-trial",
         "Read-only/no generation impact: yes",
-        "V2 base-plan compare detail: v2-materialization shard when --v2-debug-artifact is enabled",
+        "V2 Base Plan Shadow Consumption",
+        "--------------------------------",
+        "Status: available",
+        "Compared plans: v2=yes shadow=yes noRepair=yes repaired=yes",
+        "Set totals: shadow=55 v2=55 noRepair=25 repaired=55",
+        "Repair dependency delta: -8 remaining=1 current=9",
+        "Shadow classifications: improves=14 preserves=10 regresses=0 unclear=1 notComparable=0",
+        "Identity differences categorized: 4",
+        "Consumed by production: no",
+        "Next safe action: inspect-shadow-consumption",
+        "Read-only/no generation impact: yes",
+        "V2 base-plan compare/shadow detail: v2-materialization shard when --v2-debug-artifact is enabled",
       ]),
     );
   });

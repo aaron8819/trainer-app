@@ -1820,6 +1820,28 @@ describe("buildWorkoutAuditArtifact", () => {
           },
           nextSafeAction: "add_shadow_consumption_trial",
         },
+        basePlanShadowConsumptionTrial: {
+          status: "available",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByProduction: false,
+          summary: {
+            shadowTotalSets: 55,
+            v2BaseTotalSets: 55,
+            noRepairTotalSets: 25,
+            repairedTotalSets: 55,
+            currentRepairDependencyCount: 9,
+            shadowRemainingRepairDependencyCount: 1,
+            repairDependencyDelta: -8,
+            improvementCount: 14,
+            preservationCount: 10,
+            regressionCount: 0,
+            unclearCount: 1,
+            notComparableCount: 0,
+            categorizedIdentityDifferenceCount: 4,
+          },
+          nextSafeAction: "inspect_shadow_consumption",
+        },
         mesocycleStrategyDiagnostic: {
           status: "available_with_limitations",
           readOnly: true,
@@ -2085,6 +2107,22 @@ describe("buildWorkoutAuditArtifact", () => {
         },
         nextSafeAction: "add_shadow_consumption_trial",
       },
+      basePlanShadowConsumptionTrial: {
+        status: "available",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByProduction: false,
+        summary: {
+          shadowTotalSets: 55,
+          currentRepairDependencyCount: 9,
+          shadowRemainingRepairDependencyCount: 1,
+          repairDependencyDelta: -8,
+          regressionCount: 0,
+          unclearCount: 1,
+          categorizedIdentityDifferenceCount: 4,
+        },
+        nextSafeAction: "inspect_shadow_consumption",
+      },
       mesocycleStrategyDiagnostic: {
           strategyHypothesisPromotionDiff: {
             status: "available_with_limitations",
@@ -2224,6 +2262,9 @@ describe("buildWorkoutAuditArtifact", () => {
         v2BasePlanCompareStatus: "available",
         v2BasePlanCompareImprovementCount: 12,
         v2BasePlanCompareRegressionCount: 0,
+        v2BasePlanShadowConsumptionStatus: "available",
+        v2BasePlanShadowConsumptionRepairDependencyDelta: -8,
+        v2BasePlanShadowConsumptionRegressionCount: 0,
         writtenShardCount: 7,
         skippedShardCount: 0,
       },
@@ -2316,6 +2357,18 @@ describe("buildWorkoutAuditArtifact", () => {
             repairDependencyCount: 9,
           },
           nextSafeAction: "add_shadow_consumption_trial",
+        },
+        v2BasePlanShadowConsumptionTrial: {
+          status: "available",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByProduction: false,
+          summary: {
+            shadowTotalSets: 55,
+            repairDependencyDelta: -8,
+            regressionCount: 0,
+          },
+          nextSafeAction: "inspect_shadow_consumption",
         },
       },
     });
@@ -2616,6 +2669,29 @@ describe("buildWorkoutAuditArtifact", () => {
           },
           repairDependency: {
             dependencyCount: 9,
+          },
+        },
+      },
+      v2BasePlanShadowConsumptionTrial: {
+        source: "v2_base_plan_shadow_consumption_trial",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByProduction: false,
+        summary: {
+          shadowTotalSets: 55,
+          repairDependencyDelta: -8,
+          regressionCount: 0,
+          unclearCount: 1,
+        },
+        changes: {
+          repairDependency: {
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            diagnosticDelta: -8,
+          },
+          exerciseIdentity: {
+            readOnly: true,
+            affectsScoringOrGeneration: false,
           },
         },
       },
@@ -2961,6 +3037,170 @@ function makeV2BasePlanCompareFixture() {
   };
 }
 
+function makeV2BasePlanShadowConsumptionTrialFixture() {
+  return {
+    version: 1,
+    source: "v2_base_plan_shadow_consumption_trial",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    status: "available",
+    consumedByProduction: false,
+    shadowAdapter: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      sourcePlan: "v2_base_plan",
+      adapter: "v2_base_plan_to_projection_plan_view",
+      productionProjectionRerun: false,
+      writesSeed: false,
+      writesRuntime: false,
+      writesReceipts: false,
+      limitations: ["read_only_projection_shape_adapter_only"],
+    },
+    comparedPlans: {
+      v2BasePlanAvailable: true,
+      shadowConsumedPlanAvailable: true,
+      plannerOnlyNoRepairAvailable: true,
+      repairedPlanAvailable: true,
+    },
+    interpretationRules: {
+      shadowConsumptionIsDiagnosticOnly: true,
+      repairedPlanIsEvidenceNotTarget: true,
+      noRepairOutputShowsCurrentPlannerBeforeRepair: true,
+      differencesFromRepairedPlanDoNotImplyV2Wrong: true,
+    },
+    summary: {
+      shadowTotalSets: 55,
+      v2BaseTotalSets: 55,
+      noRepairTotalSets: 25,
+      repairedTotalSets: 55,
+      currentRepairDependencyCount: 9,
+      shadowRemainingRepairDependencyCount: 1,
+      repairDependencyDelta: -8,
+      improvementCount: 14,
+      preservationCount: 10,
+      regressionCount: 0,
+      unclearCount: 1,
+      notComparableCount: 0,
+      categorizedIdentityDifferenceCount: 4,
+    },
+    changes: {
+      slotShape: {
+        classification: "v2_improves",
+        v2Base: {
+          slotCount: 4,
+          exerciseCount: 18,
+          totalSets: 55,
+          maxSlotSets: 17,
+          optionalLaneMaterializationCount: 0,
+          standaloneOneSetExerciseCount: 0,
+          fiveSetStackCount: 0,
+          setsBySlot: [
+            { slotId: "upper_a", exerciseCount: 5, setCount: 15 },
+          ],
+        },
+        rows: [
+          {
+            item: "total_weekly_sets",
+            classification: "v2_improves",
+            evidence: ["v2:55"],
+          },
+        ],
+      },
+      muscleCoverage: {
+        classification: "v2_improves",
+        underHitMuscles: [],
+        overConcentratedMuscles: [],
+        managedCollateralExposure: [],
+        rows: [
+          {
+            item: "target_tier_coverage",
+            classification: "v2_improves",
+            evidence: ["below_floor:none"],
+          },
+        ],
+      },
+      exerciseClassCoverage: {
+        classification: "v2_improves",
+        rows: [
+          {
+            item: "chest_distinct_exposure",
+            classification: "v2_improves",
+            v2Base: true,
+            plannerOnlyNoRepair: false,
+            repairedPlan: true,
+            evidence: ["v2:true"],
+          },
+        ],
+      },
+      repairDependency: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        classification: "v2_improves",
+        currentDependencyCount: 9,
+        shadowRemainingDependencyCount: 1,
+        diagnosticDelta: -8,
+        rows: [
+          {
+            item: "support-floor closure as planner author",
+            classification: "v2_improves",
+            effect: "reduce",
+            currentDependencyCount: 1,
+            shadowRemainingDependencyCount: 0,
+            diagnosticDelta: -1,
+            evidence: ["support_floor:Side Delts"],
+          },
+        ],
+      },
+      exerciseIdentity: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        classification: "v2_preserves",
+        rows: [
+          {
+            slotId: "upper_a",
+            relationship: "same_class_family",
+            classification: "v2_preserves",
+            shadowIdentities: ["Machine Chest Press"],
+            plannerOnlyNoRepairIdentities: ["Cable Crossover"],
+            repairedPlanIdentities: ["Machine Chest Press"],
+            evidence: ["same_class_family_as_projection_evidence"],
+          },
+        ],
+        materializerDifferenceCategories: ["upper_a:same_class_family"],
+      },
+      deloadReadiness: {
+        classification: "v2_preserves",
+        rows: [
+          {
+            item: "preserved_identities",
+            classification: "v2_preserves",
+            evidence: ["sameIdentitiesSupported:true"],
+          },
+        ],
+      },
+    },
+    blockersBeforeBehaviorPromotion: [
+      "production_projection_not_consuming_shadow",
+      "guarded_behavior_trial_not_run",
+    ],
+    nextSafeAction: "inspect_shadow_consumption",
+    guardrails: {
+      doesNotUseHistoricalStrategyRecommendations: true,
+      doesNotTreatRepairedPlanAsTargetPolicy: true,
+      doesNotFeedProductionProjection: true,
+      doesNotAffectGeneration: true,
+      doesNotAffectSelectionV2: true,
+      doesNotAffectRepair: true,
+      doesNotAffectSeedSerialization: true,
+      doesNotAffectRuntimeReplay: true,
+      doesNotAffectReceipts: true,
+      doesNotPersistV2Output: true,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+    },
+  };
+}
+
 function makeMesocycleExplainNoRepairPayload() {
   return {
     version: 1,
@@ -3203,6 +3443,8 @@ function makeMesocycleExplainNoRepairPayload() {
         ],
       },
       v2BasePlanCompare: makeV2BasePlanCompareFixture(),
+      v2BasePlanShadowConsumptionTrial:
+        makeV2BasePlanShadowConsumptionTrialFixture(),
       crossWeekProjectionGate: {
         readOnly: true,
         affectsScoringOrGeneration: false,

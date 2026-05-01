@@ -511,7 +511,14 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
   const setDistribution = asRecord(noRepair.v2SetDistributionIntent);
   const supportPolicy = asRecord(noRepair.v2SupportLanePolicy);
   const basePlanCompare = asRecord(noRepair.v2BasePlanCompare);
-  if (!v2Plan && !setDistribution && !supportPolicy && !basePlanCompare) {
+  const shadowConsumption = asRecord(noRepair.v2BasePlanShadowConsumptionTrial);
+  if (
+    !v2Plan &&
+    !setDistribution &&
+    !supportPolicy &&
+    !basePlanCompare &&
+    !shadowConsumption
+  ) {
     return null;
   }
   return {
@@ -543,6 +550,9 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
         supportPolicy?.affectsScoringOrGeneration === true ? true : false,
     },
     ...(basePlanCompare ? { v2BasePlanCompare: basePlanCompare } : {}),
+    ...(shadowConsumption
+      ? { v2BasePlanShadowConsumptionTrial: shadowConsumption }
+      : {}),
     materializedSeedWriteStatus: "not_available_in_audit_artifact",
   };
 }
@@ -890,6 +900,8 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
   const deloadProjection = asRecord(noRepair.v2DeloadProjectionDiagnostic);
   const basePlanCompare = asRecord(noRepair.v2BasePlanCompare);
   const basePlanCompareSummary = asRecord(basePlanCompare?.summary);
+  const shadowConsumption = asRecord(noRepair.v2BasePlanShadowConsumptionTrial);
+  const shadowSummary = asRecord(shadowConsumption?.summary);
 
   return {
     summary: {
@@ -936,7 +948,23 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
           nextSafeAction:
             typeof basePlanCompare.nextSafeAction === "string"
               ? basePlanCompare.nextSafeAction
-              : "inspect_compare",
+            : "inspect_compare",
+      }
+      : undefined,
+    v2BasePlanShadowConsumptionTrial: shadowConsumption
+      ? {
+          status: shadowConsumption.status ?? "not_available",
+          readOnly: shadowConsumption.readOnly === true,
+          affectsScoringOrGeneration:
+            shadowConsumption.affectsScoringOrGeneration === true ? true : false,
+          consumedByProduction:
+            shadowConsumption.consumedByProduction === true ? true : false,
+          comparedPlans: asRecord(shadowConsumption.comparedPlans) ?? {},
+          summary: shadowSummary ?? {},
+          nextSafeAction:
+            typeof shadowConsumption.nextSafeAction === "string"
+              ? shadowConsumption.nextSafeAction
+              : "inspect_shadow_consumption",
         }
       : undefined,
     v2TargetVsNoRepairDiff: {
@@ -1150,6 +1178,8 @@ function buildIndexSummary(input: {
   );
   const basePlanCompare = asRecord(input.noRepair.v2BasePlanCompare);
   const basePlanSummary = asRecord(basePlanCompare?.summary);
+  const shadowConsumption = asRecord(input.noRepair.v2BasePlanShadowConsumptionTrial);
+  const shadowSummary = asRecord(shadowConsumption?.summary);
   return {
     status: asRecord(input.noRepair.summary)?.status ?? "unknown",
     basicMesocycleShapeStatus:
@@ -1165,6 +1195,12 @@ function buildIndexSummary(input: {
       basePlanSummary?.v2ImprovementCount ?? null,
     v2BasePlanCompareRegressionCount:
       basePlanSummary?.v2RegressionCount ?? null,
+    v2BasePlanShadowConsumptionStatus:
+      shadowConsumption?.status ?? "not_available",
+    v2BasePlanShadowConsumptionRepairDependencyDelta:
+      shadowSummary?.repairDependencyDelta ?? null,
+    v2BasePlanShadowConsumptionRegressionCount:
+      shadowSummary?.regressionCount ?? null,
     writtenShardCount: input.shardMetadata.filter(
       (shard) => shard.status === "written",
     ).length,

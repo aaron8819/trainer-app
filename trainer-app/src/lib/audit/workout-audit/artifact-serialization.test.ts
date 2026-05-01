@@ -117,6 +117,103 @@ function makeV2BasePlanCompareFixture() {
   };
 }
 
+function makeV2BasePlanShadowConsumptionTrialFixture() {
+  return {
+    version: 1,
+    source: "v2_base_plan_shadow_consumption_trial",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    status: "available",
+    consumedByProduction: false,
+    shadowAdapter: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      sourcePlan: "v2_base_plan",
+      adapter: "v2_base_plan_to_projection_plan_view",
+      productionProjectionRerun: false,
+      writesSeed: false,
+      writesRuntime: false,
+      writesReceipts: false,
+      limitations: ["read_only_projection_shape_adapter_only"],
+    },
+    comparedPlans: {
+      v2BasePlanAvailable: true,
+      shadowConsumedPlanAvailable: true,
+      plannerOnlyNoRepairAvailable: true,
+      repairedPlanAvailable: true,
+    },
+    summary: {
+      shadowTotalSets: 55,
+      v2BaseTotalSets: 55,
+      noRepairTotalSets: 25,
+      repairedTotalSets: 55,
+      currentRepairDependencyCount: 9,
+      shadowRemainingRepairDependencyCount: 1,
+      repairDependencyDelta: -8,
+      improvementCount: 14,
+      preservationCount: 10,
+      regressionCount: 0,
+      unclearCount: 1,
+      notComparableCount: 0,
+      categorizedIdentityDifferenceCount: 4,
+    },
+    changes: {
+      repairDependency: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        diagnosticDelta: -8,
+        rows: [
+          {
+            item: "support-floor closure as planner author",
+            classification: "v2_improves",
+            effect: "reduce",
+            currentDependencyCount: 1,
+            shadowRemainingDependencyCount: 0,
+            diagnosticDelta: -1,
+            evidence: ["support_floor:Side Delts"],
+          },
+        ],
+      },
+      exerciseIdentity: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        classification: "v2_preserves",
+        rows: [
+          {
+            slotId: "upper_a",
+            relationship: "same_class_family",
+            classification: "v2_preserves",
+            shadowIdentities: ["Machine Chest Press"],
+            plannerOnlyNoRepairIdentities: ["Cable Crossover"],
+            repairedPlanIdentities: ["Machine Chest Press"],
+            evidence: ["same_class_family_as_projection_evidence"],
+          },
+        ],
+        materializerDifferenceCategories: ["upper_a:same_class_family"],
+      },
+    },
+    blockersBeforeBehaviorPromotion: [
+      "production_projection_not_consuming_shadow",
+      "guarded_behavior_trial_not_run",
+    ],
+    nextSafeAction: "inspect_shadow_consumption",
+    guardrails: {
+      doesNotUseHistoricalStrategyRecommendations: true,
+      doesNotTreatRepairedPlanAsTargetPolicy: true,
+      doesNotFeedProductionProjection: true,
+      doesNotAffectGeneration: true,
+      doesNotAffectSelectionV2: true,
+      doesNotAffectRepair: true,
+      doesNotAffectSeedSerialization: true,
+      doesNotAffectRuntimeReplay: true,
+      doesNotAffectReceipts: true,
+      doesNotPersistV2Output: true,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+    },
+  };
+}
+
 describe("artifact serialization helpers", () => {
   it("sorts object keys without reordering arrays", () => {
     const serialized = serializeStableJson({
@@ -679,6 +776,8 @@ describe("artifact serialization helpers", () => {
             rawSuspiciousRows: [],
           },
           v2BasePlanCompare: makeV2BasePlanCompareFixture(),
+          v2BasePlanShadowConsumptionTrial:
+            makeV2BasePlanShadowConsumptionTrialFixture(),
           crossWeekProjectionGate: {
             readOnly: true,
             affectsScoringOrGeneration: false,
@@ -907,6 +1006,34 @@ describe("artifact serialization helpers", () => {
             unclearCount: 2,
           },
           nextSafeAction: "add_shadow_consumption_trial",
+        },
+        basePlanShadowConsumptionTrial: {
+          status: "available",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByProduction: false,
+          comparedPlans: {
+            v2BasePlanAvailable: true,
+            shadowConsumedPlanAvailable: true,
+            plannerOnlyNoRepairAvailable: true,
+            repairedPlanAvailable: true,
+          },
+          summary: {
+            shadowTotalSets: 55,
+            v2BaseTotalSets: 55,
+            noRepairTotalSets: 25,
+            repairedTotalSets: 55,
+            currentRepairDependencyCount: 9,
+            shadowRemainingRepairDependencyCount: 1,
+            repairDependencyDelta: -8,
+            improvementCount: 14,
+            preservationCount: 10,
+            regressionCount: 0,
+            unclearCount: 1,
+            notComparableCount: 0,
+            categorizedIdentityDifferenceCount: 4,
+          },
+          nextSafeAction: "inspect_shadow_consumption",
         },
         laneCounts: {
           target: 1,

@@ -3,6 +3,7 @@ import type { WorkoutSessionIntent } from "@prisma/client";
 import {
   buildV2ExerciseMaterializationPlan,
   buildV2BasePlanCompare,
+  buildV2BasePlanShadowConsumptionTrial,
   buildV2BasePlanValidation,
   buildV2MaterializationDryRunReport,
   buildV2PlannerMesocyclePolicy,
@@ -10,6 +11,7 @@ import {
   matchV2ExerciseClasses,
   type V2BasePlanCompare,
   type V2BasePlanComparePlanView,
+  type V2BasePlanShadowConsumptionTrial,
   type V2ExerciseClassTaxonomy,
   type V2ExerciseMaterializationInput,
   type V2MaterializationDryRunReport,
@@ -293,6 +295,49 @@ export function buildV2BasePlanCompareFromLiveContext(
   });
 
   return buildV2BasePlanCompare({
+    v2BasePlanValidation: validation,
+    v2MaterializedPlan: materializedPlan,
+    inventory,
+    taxonomy,
+    plannerOnlyNoRepairPlan: normalizePlanningRealityForBasePlanCompare({
+      planId: "planner_only_no_repair",
+      planningReality: input.noRepairPlanningReality,
+      taxonomy,
+    }),
+    repairedPlan: normalizePlanningRealityForBasePlanCompare({
+      planId: "repaired_projection",
+      planningReality: input.repairedPlanningReality,
+      taxonomy,
+      includeRepairEvidence: true,
+    }),
+  });
+}
+
+export function buildV2BasePlanShadowConsumptionTrialFromLiveContext(
+  input: V2LiveContextBasePlanCompareInput,
+): V2BasePlanShadowConsumptionTrial {
+  const plannerPolicy = input.plannerPolicy ?? buildV2PlannerMesocyclePolicy();
+  const taxonomy = input.taxonomy ?? DEFAULT_V2_EXERCISE_CLASS_TAXONOMY;
+  const inventory = input.inventory ?? [];
+  const constraints = input.constraints ?? EMPTY_CONSTRAINTS;
+  const materializedPlan =
+    inventory.length > 0
+      ? buildV2ExerciseMaterializationPlan({
+          exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
+          inventory,
+          taxonomy,
+          constraints,
+          ...(input.continuity ? { continuity: input.continuity } : {}),
+        })
+      : null;
+  const validation = buildV2BasePlanValidation({
+    plannerPolicy,
+    materializedPlan,
+    inventory,
+    taxonomy,
+  });
+
+  return buildV2BasePlanShadowConsumptionTrial({
     v2BasePlanValidation: validation,
     v2MaterializedPlan: materializedPlan,
     inventory,

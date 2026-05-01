@@ -2324,6 +2324,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
     : [];
   const repairScoreboard = noRepair.repairPromotionScoreboard;
   const basePlanCompare = noRepair.v2BasePlanCompare;
+  const shadowConsumption = noRepair.v2BasePlanShadowConsumptionTrial;
   const basePlanCompareLines = basePlanCompare
     ? [
         "V2 Base Plan Compare",
@@ -2337,9 +2338,24 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Read-only/no generation impact: ${basePlanCompare.readOnly && !basePlanCompare.affectsScoringOrGeneration ? "yes" : "no"}`,
       ]
     : [];
-  const materializationShardLines = basePlanCompare
+  const shadowConsumptionLines = shadowConsumption
     ? [
-        "V2 base-plan compare detail: v2-materialization shard when --v2-debug-artifact is enabled",
+        "V2 Base Plan Shadow Consumption",
+        "--------------------------------",
+        `Status: ${formatStatus(shadowConsumption.status)}`,
+        `Compared plans: v2=${shadowConsumption.comparedPlans.v2BasePlanAvailable ? "yes" : "no"} shadow=${shadowConsumption.comparedPlans.shadowConsumedPlanAvailable ? "yes" : "no"} noRepair=${shadowConsumption.comparedPlans.plannerOnlyNoRepairAvailable ? "yes" : "no"} repaired=${shadowConsumption.comparedPlans.repairedPlanAvailable ? "yes" : "no"}`,
+        `Set totals: shadow=${shadowConsumption.summary.shadowTotalSets ?? "n/a"} v2=${shadowConsumption.summary.v2BaseTotalSets ?? "n/a"} noRepair=${shadowConsumption.summary.noRepairTotalSets ?? "n/a"} repaired=${shadowConsumption.summary.repairedTotalSets ?? "n/a"}`,
+        `Repair dependency delta: ${shadowConsumption.summary.repairDependencyDelta ?? "n/a"} remaining=${shadowConsumption.summary.shadowRemainingRepairDependencyCount ?? "n/a"} current=${shadowConsumption.summary.currentRepairDependencyCount ?? "n/a"}`,
+        `Shadow classifications: improves=${shadowConsumption.summary.improvementCount} preserves=${shadowConsumption.summary.preservationCount} regresses=${shadowConsumption.summary.regressionCount} unclear=${shadowConsumption.summary.unclearCount} notComparable=${shadowConsumption.summary.notComparableCount}`,
+        `Identity differences categorized: ${shadowConsumption.summary.categorizedIdentityDifferenceCount}`,
+        `Consumed by production: ${shadowConsumption.consumedByProduction ? "yes" : "no"}`,
+        `Next safe action: ${formatStatus(shadowConsumption.nextSafeAction)}`,
+        `Read-only/no generation impact: ${shadowConsumption.readOnly && !shadowConsumption.affectsScoringOrGeneration ? "yes" : "no"}`,
+      ]
+    : [];
+  const materializationShardLines = basePlanCompare || shadowConsumption
+    ? [
+        "V2 base-plan compare/shadow detail: v2-materialization shard when --v2-debug-artifact is enabled",
       ]
     : [];
   const repairScoreboardLines = repairScoreboard
@@ -2389,6 +2405,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
       : `Deload: ${formatStatus(v2Plan.deloadTransform.projectionStatus)}`,
     `Replacement readiness: ${formatStatus(classification.replacementReadinessStatus)}`,
     ...basePlanCompareLines,
+    ...shadowConsumptionLines,
     ...materializationShardLines,
     ...repairScoreboardLines,
     ...diffLines,

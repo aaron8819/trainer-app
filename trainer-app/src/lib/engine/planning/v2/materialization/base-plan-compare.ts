@@ -25,6 +25,13 @@ export type V2BasePlanCompareNextSafeAction =
   | "add_guarded_behavior_trial"
   | "do_not_promote";
 
+export type V2BasePlanShadowConsumptionTrialNextSafeAction =
+  | "inspect_shadow_consumption"
+  | "fix_v2_base_plan"
+  | "fix_shadow_adapter"
+  | "add_guarded_behavior_trial"
+  | "do_not_promote";
+
 export type V2BasePlanCompareExercise = {
   exerciseId?: string | null;
   exerciseName: string;
@@ -97,6 +104,33 @@ type ExerciseIdentitySlotRow = {
   slotId: string;
   classification: V2BasePlanCompareClassification;
   v2BaseIdentities: string[];
+  plannerOnlyNoRepairIdentities: string[];
+  repairedPlanIdentities: string[];
+  evidence: string[];
+};
+
+type ShadowRepairDependencyRow = {
+  item: string;
+  classification: V2BasePlanCompareClassification;
+  effect: "reduce" | "preserve" | "increase" | "not_comparable";
+  currentDependencyCount: number;
+  shadowRemainingDependencyCount: number;
+  diagnosticDelta: number;
+  evidence: string[];
+};
+
+type ShadowExerciseIdentityRow = {
+  slotId: string;
+  classification: V2BasePlanCompareClassification;
+  relationship:
+    | "same_exercise_identity"
+    | "same_class_family"
+    | "same_slot_lane_role"
+    | "different_acceptable_clean_alternative"
+    | "true_regression"
+    | "unclear"
+    | "not_comparable";
+  shadowIdentities: string[];
   plannerOnlyNoRepairIdentities: string[];
   repairedPlanIdentities: string[];
   evidence: string[];
@@ -199,6 +233,95 @@ export type V2BasePlanCompare = {
   };
 };
 
+export type V2BasePlanShadowConsumptionTrial = {
+  version: 1;
+  source: "v2_base_plan_shadow_consumption_trial";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  status:
+    | "available"
+    | "available_with_limitations"
+    | "blocked"
+    | "not_available";
+  consumedByProduction: false;
+  shadowAdapter: {
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    sourcePlan: "v2_base_plan";
+    adapter: "v2_base_plan_to_projection_plan_view";
+    productionProjectionRerun: false;
+    writesSeed: false;
+    writesRuntime: false;
+    writesReceipts: false;
+    limitations: string[];
+  };
+  comparedPlans: {
+    v2BasePlanAvailable: boolean;
+    shadowConsumedPlanAvailable: boolean;
+    plannerOnlyNoRepairAvailable: boolean;
+    repairedPlanAvailable: boolean;
+  };
+  interpretationRules: {
+    shadowConsumptionIsDiagnosticOnly: true;
+    repairedPlanIsEvidenceNotTarget: true;
+    noRepairOutputShowsCurrentPlannerBeforeRepair: true;
+    differencesFromRepairedPlanDoNotImplyV2Wrong: true;
+  };
+  summary: {
+    shadowTotalSets?: number;
+    v2BaseTotalSets?: number;
+    noRepairTotalSets?: number;
+    repairedTotalSets?: number;
+    currentRepairDependencyCount?: number;
+    shadowRemainingRepairDependencyCount?: number;
+    repairDependencyDelta?: number;
+    improvementCount: number;
+    preservationCount: number;
+    regressionCount: number;
+    unclearCount: number;
+    notComparableCount: number;
+    categorizedIdentityDifferenceCount: number;
+  };
+  changes: {
+    slotShape: V2BasePlanCompare["comparisons"]["slotShape"];
+    muscleCoverage: V2BasePlanCompare["comparisons"]["muscleCoverage"];
+    exerciseClassCoverage: V2BasePlanCompare["comparisons"]["exerciseClassCoverage"];
+    repairDependency: {
+      readOnly: true;
+      affectsScoringOrGeneration: false;
+      classification: V2BasePlanCompareClassification;
+      currentDependencyCount: number;
+      shadowRemainingDependencyCount: number;
+      diagnosticDelta: number;
+      rows: ShadowRepairDependencyRow[];
+    };
+    exerciseIdentity: {
+      readOnly: true;
+      affectsScoringOrGeneration: false;
+      classification: V2BasePlanCompareClassification;
+      rows: ShadowExerciseIdentityRow[];
+      materializerDifferenceCategories: string[];
+    };
+    deloadReadiness: V2BasePlanCompare["comparisons"]["deloadReadiness"];
+  };
+  blockersBeforeBehaviorPromotion: string[];
+  nextSafeAction: V2BasePlanShadowConsumptionTrialNextSafeAction;
+  guardrails: {
+    doesNotUseHistoricalStrategyRecommendations: true;
+    doesNotTreatRepairedPlanAsTargetPolicy: true;
+    doesNotFeedProductionProjection: true;
+    doesNotAffectGeneration: true;
+    doesNotAffectSelectionV2: true;
+    doesNotAffectRepair: true;
+    doesNotAffectSeedSerialization: true;
+    doesNotAffectRuntimeReplay: true;
+    doesNotAffectReceipts: true;
+    doesNotPersistV2Output: true;
+    consumedByProduction: false;
+    consumedByDemandOrMaterializer: false;
+  };
+};
+
 const GUARDRAILS: V2BasePlanCompare["guardrails"] = {
   doesNotUseHistoricalStrategyRecommendations: true,
   doesNotTreatRepairedPlanAsTargetPolicy: true,
@@ -209,6 +332,21 @@ const GUARDRAILS: V2BasePlanCompare["guardrails"] = {
   doesNotAffectSeedSerialization: true,
   doesNotAffectRuntimeReplay: true,
   doesNotAffectReceipts: true,
+  consumedByDemandOrMaterializer: false,
+};
+
+const SHADOW_GUARDRAILS: V2BasePlanShadowConsumptionTrial["guardrails"] = {
+  doesNotUseHistoricalStrategyRecommendations: true,
+  doesNotTreatRepairedPlanAsTargetPolicy: true,
+  doesNotFeedProductionProjection: true,
+  doesNotAffectGeneration: true,
+  doesNotAffectSelectionV2: true,
+  doesNotAffectRepair: true,
+  doesNotAffectSeedSerialization: true,
+  doesNotAffectRuntimeReplay: true,
+  doesNotAffectReceipts: true,
+  doesNotPersistV2Output: true,
+  consumedByProduction: false,
   consumedByDemandOrMaterializer: false,
 };
 
@@ -382,6 +520,157 @@ export function buildV2BasePlanCompare(
       unclearCount,
     }),
     guardrails: GUARDRAILS,
+  };
+}
+
+export function buildV2BasePlanShadowConsumptionTrial(
+  input: V2BasePlanCompareInput,
+): V2BasePlanShadowConsumptionTrial {
+  const v2BasePlan = buildV2PlanView({
+    materializedPlan: input.v2MaterializedPlan,
+    validation: input.v2BasePlanValidation,
+    inventory: input.inventory ?? [],
+    taxonomy: input.taxonomy ?? undefined,
+  });
+  const noRepair = input.plannerOnlyNoRepairPlan;
+  const repaired = input.repairedPlan;
+  const baseCompare = buildV2BasePlanCompare(input);
+  const comparedPlans = {
+    v2BasePlanAvailable: baseCompare.comparedPlans.v2BasePlanAvailable,
+    shadowConsumedPlanAvailable:
+      baseCompare.comparedPlans.v2BasePlanAvailable && v2BasePlan.available,
+    plannerOnlyNoRepairAvailable:
+      baseCompare.comparedPlans.plannerOnlyNoRepairAvailable,
+    repairedPlanAvailable: baseCompare.comparedPlans.repairedPlanAvailable,
+  };
+  const repairDependencyRows = buildShadowRepairDependencyRows(
+    baseCompare.comparisons.repairDependency.responsibilities,
+  );
+  const currentRepairDependencyCount =
+    baseCompare.comparisons.repairDependency.dependencyCount;
+  const shadowRemainingRepairDependencyCount = repairDependencyRows.reduce(
+    (sum, row) => sum + row.shadowRemainingDependencyCount,
+    0,
+  );
+  const exerciseIdentity = buildShadowExerciseIdentityCompare({
+    shadowPlan: v2BasePlan,
+    noRepair,
+    repaired,
+    validation: input.v2BasePlanValidation,
+  });
+  const classifications = [
+    ...baseCompare.comparisons.slotShape.rows.map((row) => row.classification),
+    ...baseCompare.comparisons.muscleCoverage.rows.map(
+      (row) => row.classification,
+    ),
+    ...baseCompare.comparisons.exerciseClassCoverage.rows.map(
+      (row) => row.classification,
+    ),
+    ...repairDependencyRows.map((row) => row.classification),
+    ...exerciseIdentity.rows.map((row) => row.classification),
+    ...baseCompare.comparisons.deloadReadiness.rows.map(
+      (row) => row.classification,
+    ),
+  ];
+  const regressionCount = countClassification(classifications, "v2_regresses");
+  const unclearCount = countClassification(classifications, "unclear");
+  const status = shadowTrialStatus({
+    comparedPlans,
+    validation: input.v2BasePlanValidation,
+    regressionCount,
+  });
+  const blockersBeforeBehaviorPromotion = buildShadowPromotionBlockers({
+    comparedPlans,
+    validation: input.v2BasePlanValidation,
+    regressionCount,
+    unclearCount,
+  });
+
+  return {
+    version: 1,
+    source: "v2_base_plan_shadow_consumption_trial",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    status,
+    consumedByProduction: false,
+    shadowAdapter: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      sourcePlan: "v2_base_plan",
+      adapter: "v2_base_plan_to_projection_plan_view",
+      productionProjectionRerun: false,
+      writesSeed: false,
+      writesRuntime: false,
+      writesReceipts: false,
+      limitations: [
+        "read_only_projection_shape_adapter_only",
+        "production_projection_not_rerun_with_v2_base_plan",
+        "repair_dependency_delta_is_diagnostic_not_measured_behavior",
+      ],
+    },
+    comparedPlans,
+    interpretationRules: {
+      shadowConsumptionIsDiagnosticOnly: true,
+      repairedPlanIsEvidenceNotTarget: true,
+      noRepairOutputShowsCurrentPlannerBeforeRepair: true,
+      differencesFromRepairedPlanDoNotImplyV2Wrong: true,
+    },
+    summary: {
+      ...(comparedPlans.shadowConsumedPlanAvailable
+        ? { shadowTotalSets: computeSlotMetrics(v2BasePlan).totalSets }
+        : {}),
+      ...(baseCompare.summary.v2TotalSets != null
+        ? { v2BaseTotalSets: baseCompare.summary.v2TotalSets }
+        : {}),
+      ...(baseCompare.summary.noRepairTotalSets != null
+        ? { noRepairTotalSets: baseCompare.summary.noRepairTotalSets }
+        : {}),
+      ...(baseCompare.summary.repairedTotalSets != null
+        ? { repairedTotalSets: baseCompare.summary.repairedTotalSets }
+        : {}),
+      currentRepairDependencyCount,
+      shadowRemainingRepairDependencyCount,
+      repairDependencyDelta:
+        shadowRemainingRepairDependencyCount - currentRepairDependencyCount,
+      improvementCount: countClassification(classifications, "v2_improves"),
+      preservationCount: countClassification(classifications, "v2_preserves"),
+      regressionCount,
+      unclearCount,
+      notComparableCount: countClassification(classifications, "not_comparable"),
+      categorizedIdentityDifferenceCount: exerciseIdentity.rows.filter(
+        (row) =>
+          row.relationship !== "unclear" &&
+          row.relationship !== "not_comparable",
+      ).length,
+    },
+    changes: {
+      slotShape: baseCompare.comparisons.slotShape,
+      muscleCoverage: baseCompare.comparisons.muscleCoverage,
+      exerciseClassCoverage: baseCompare.comparisons.exerciseClassCoverage,
+      repairDependency: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        classification: aggregateClassifications(
+          repairDependencyRows.map((row) => row.classification),
+        ),
+        currentDependencyCount: currentRepairDependencyCount,
+        shadowRemainingDependencyCount:
+          shadowRemainingRepairDependencyCount,
+        diagnosticDelta:
+          shadowRemainingRepairDependencyCount - currentRepairDependencyCount,
+        rows: repairDependencyRows,
+      },
+      exerciseIdentity,
+      deloadReadiness: baseCompare.comparisons.deloadReadiness,
+    },
+    blockersBeforeBehaviorPromotion,
+    nextSafeAction: shadowTrialNextSafeAction({
+      comparedPlans,
+      validation: input.v2BasePlanValidation,
+      regressionCount,
+      unclearCount,
+    }),
+    guardrails: SHADOW_GUARDRAILS,
   };
 }
 
@@ -845,6 +1134,248 @@ function buildExerciseIdentityCompare(input: {
   };
 }
 
+function buildShadowRepairDependencyRows(
+  rows: V2BasePlanCompare["comparisons"]["repairDependency"]["responsibilities"],
+): ShadowRepairDependencyRow[] {
+  return rows.map((row) => {
+    const effect = shadowRepairEffect(row.classification, row.dependencyCount);
+    const shadowRemainingDependencyCount =
+      effect === "reduce" ? 0 : row.dependencyCount;
+    return {
+      item: row.item,
+      classification:
+        row.dependencyCount === 0 ? "v2_preserves" : row.classification,
+      effect,
+      currentDependencyCount: row.dependencyCount,
+      shadowRemainingDependencyCount,
+      diagnosticDelta: shadowRemainingDependencyCount - row.dependencyCount,
+      evidence: [
+        ...row.evidence,
+        `effect:${effect}`,
+        "repaired_projection_evidence_not_target_policy",
+      ],
+    };
+  });
+}
+
+function shadowRepairEffect(
+  classification: V2BasePlanCompareClassification,
+  dependencyCount: number,
+): ShadowRepairDependencyRow["effect"] {
+  if (dependencyCount === 0) {
+    return "preserve";
+  }
+  if (classification === "v2_improves") {
+    return "reduce";
+  }
+  if (classification === "v2_regresses") {
+    return "increase";
+  }
+  if (classification === "not_comparable") {
+    return "not_comparable";
+  }
+  return "preserve";
+}
+
+function buildShadowExerciseIdentityCompare(input: {
+  shadowPlan: V2BasePlanComparePlanView;
+  noRepair?: V2BasePlanComparePlanView | null;
+  repaired?: V2BasePlanComparePlanView | null;
+  validation?: V2BasePlanValidation | null;
+}): V2BasePlanShadowConsumptionTrial["changes"]["exerciseIdentity"] {
+  const slotIds = uniqueSorted([
+    ...input.shadowPlan.slots.map((slot) => slot.slotId),
+    ...(input.noRepair?.slots ?? []).map((slot) => slot.slotId),
+    ...(input.repaired?.slots ?? []).map((slot) => slot.slotId),
+  ]);
+  const rows = slotIds.map((slotId) => {
+    const shadowSlot = slotForId(input.shadowPlan, slotId);
+    const noRepairSlot = slotForId(input.noRepair, slotId);
+    const repairedSlot = slotForId(input.repaired, slotId);
+    const relation = classifyShadowIdentityRelationship({
+      shadowSlot,
+      noRepairSlot,
+      repairedSlot,
+      validation: input.validation,
+    });
+    return {
+      slotId,
+      relationship: relation.relationship,
+      classification: relation.classification,
+      shadowIdentities: exerciseNamesForSlot(input.shadowPlan, slotId),
+      plannerOnlyNoRepairIdentities: exerciseNamesForSlot(input.noRepair, slotId),
+      repairedPlanIdentities: exerciseNamesForSlot(input.repaired, slotId),
+      evidence: relation.evidence,
+    };
+  });
+
+  return {
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    classification: aggregateClassifications(
+      rows.map((row) => row.classification),
+    ),
+    rows,
+    materializerDifferenceCategories: uniqueSorted(
+      rows
+        .filter(
+          (row) =>
+            row.relationship !== "same_exercise_identity" &&
+            row.relationship !== "not_comparable",
+        )
+        .map((row) => `${row.slotId}:${row.relationship}`),
+    ),
+  };
+}
+
+function classifyShadowIdentityRelationship(input: {
+  shadowSlot?: V2BasePlanCompareSlot;
+  noRepairSlot?: V2BasePlanCompareSlot;
+  repairedSlot?: V2BasePlanCompareSlot;
+  validation?: V2BasePlanValidation | null;
+}): {
+  relationship: ShadowExerciseIdentityRow["relationship"];
+  classification: V2BasePlanCompareClassification;
+  evidence: string[];
+} {
+  const comparisonSlots = [input.noRepairSlot, input.repairedSlot].filter(
+    (slot): slot is V2BasePlanCompareSlot => Boolean(slot),
+  );
+  if (!input.shadowSlot || input.shadowSlot.exercises.length === 0) {
+    return {
+      relationship: comparisonSlots.length ? "true_regression" : "not_comparable",
+      classification: comparisonSlots.length ? "v2_regresses" : "not_comparable",
+      evidence: ["shadow_slot_unavailable"],
+    };
+  }
+  if (!comparisonSlots.length) {
+    return {
+      relationship: "not_comparable",
+      classification: "not_comparable",
+      evidence: ["no_projection_slot_evidence"],
+    };
+  }
+  if (
+    comparisonSlots.some((slot) =>
+      sameExerciseIdentitySet(input.shadowSlot?.exercises ?? [], slot.exercises),
+    )
+  ) {
+    return {
+      relationship: "same_exercise_identity",
+      classification: "v2_preserves",
+      evidence: ["same_exercise_identity_as_projection_evidence"],
+    };
+  }
+  if (
+    comparisonSlots.some((slot) =>
+      sharesExerciseClassFamily(input.shadowSlot?.exercises ?? [], slot.exercises),
+    )
+  ) {
+    return {
+      relationship: "same_class_family",
+      classification: "v2_preserves",
+      evidence: ["same_class_family_as_projection_evidence"],
+    };
+  }
+  if (
+    comparisonSlots.some((slot) =>
+      sharesSlotLaneRole(input.shadowSlot?.exercises ?? [], slot.exercises),
+    )
+  ) {
+    return {
+      relationship: "same_slot_lane_role",
+      classification: "v2_preserves",
+      evidence: ["same_slot_lane_role_as_projection_evidence"],
+    };
+  }
+  if (
+    isAcceptableCleanShadowAlternative({
+      shadowSlot: input.shadowSlot,
+      validation: input.validation,
+    })
+  ) {
+    return {
+      relationship: "different_acceptable_clean_alternative",
+      classification: "v2_improves",
+      evidence: [
+        "clean_v2_base_alternative",
+        "no_standalone_one_set_or_five_set_stack_in_shadow_slot",
+      ],
+    };
+  }
+  return {
+    relationship: "unclear",
+    classification: "unclear",
+    evidence: ["identity_differs_without_class_or_role_bridge"],
+  };
+}
+
+function isAcceptableCleanShadowAlternative(input: {
+  shadowSlot: V2BasePlanCompareSlot;
+  validation?: V2BasePlanValidation | null;
+}): boolean {
+  const slotShape = input.validation?.checks.slotShape.slots.find(
+    (slot) => slot.slotId === input.shadowSlot.slotId,
+  );
+  return (
+    input.validation?.status !== "fail" &&
+    input.shadowSlot.exercises.length > 0 &&
+    input.shadowSlot.exercises.every(
+      (exercise) => exercise.setCount > 1 && exercise.setCount < 5,
+    ) &&
+    slotShape?.overloaded !== true
+  );
+}
+
+function sameExerciseIdentitySet(
+  left: V2BasePlanCompareExercise[],
+  right: V2BasePlanCompareExercise[],
+): boolean {
+  return sameStringSet(
+    left.map(exerciseIdentityKey).sort((a, b) => a.localeCompare(b)),
+    right.map(exerciseIdentityKey).sort((a, b) => a.localeCompare(b)),
+  );
+}
+
+function sharesExerciseClassFamily(
+  left: V2BasePlanCompareExercise[],
+  right: V2BasePlanCompareExercise[],
+): boolean {
+  const rightClasses = new Set(
+    right.flatMap((exercise) => exercise.classIds ?? []),
+  );
+  return left.some((exercise) =>
+    (exercise.classIds ?? []).some((classId) => rightClasses.has(classId)),
+  );
+}
+
+function sharesSlotLaneRole(
+  left: V2BasePlanCompareExercise[],
+  right: V2BasePlanCompareExercise[],
+): boolean {
+  const rightRoles = new Set(
+    right.flatMap((exercise) => [
+      ...(exercise.role ? [exercise.role] : []),
+      ...(exercise.laneIds ?? []),
+    ]),
+  );
+  return left.some((exercise) =>
+    [
+      ...(exercise.role ? [exercise.role] : []),
+      ...(exercise.laneIds ?? []),
+    ].some((role) => rightRoles.has(role)),
+  );
+}
+
+function slotForId(
+  plan: V2BasePlanComparePlanView | null | undefined,
+  slotId: string,
+): V2BasePlanCompareSlot | undefined {
+  return plan?.available
+    ? plan.slots.find((slot) => slot.slotId === slotId)
+    : undefined;
+}
+
 function buildDeloadReadinessCompare(input: {
   validation?: V2BasePlanValidation | null;
 }): V2BasePlanCompare["comparisons"]["deloadReadiness"] {
@@ -1113,6 +1644,90 @@ function nextSafeAction(input: {
     return "inspect_compare";
   }
   return "add_shadow_consumption_trial";
+}
+
+function countClassification(
+  classifications: V2BasePlanCompareClassification[],
+  target: V2BasePlanCompareClassification,
+): number {
+  return classifications.filter((classification) => classification === target)
+    .length;
+}
+
+function shadowTrialStatus(input: {
+  comparedPlans: V2BasePlanShadowConsumptionTrial["comparedPlans"];
+  validation?: V2BasePlanValidation | null;
+  regressionCount: number;
+}): V2BasePlanShadowConsumptionTrial["status"] {
+  if (!input.comparedPlans.v2BasePlanAvailable || !input.validation) {
+    return "not_available";
+  }
+  if (input.validation.status === "fail" || input.regressionCount > 0) {
+    return "blocked";
+  }
+  if (
+    !input.comparedPlans.shadowConsumedPlanAvailable ||
+    !input.comparedPlans.plannerOnlyNoRepairAvailable ||
+    !input.comparedPlans.repairedPlanAvailable
+  ) {
+    return "available_with_limitations";
+  }
+  return "available";
+}
+
+function buildShadowPromotionBlockers(input: {
+  comparedPlans: V2BasePlanShadowConsumptionTrial["comparedPlans"];
+  validation?: V2BasePlanValidation | null;
+  regressionCount: number;
+  unclearCount: number;
+}): string[] {
+  return [
+    ...(!input.comparedPlans.v2BasePlanAvailable
+      ? ["v2_base_plan_unavailable"]
+      : []),
+    ...(!input.comparedPlans.shadowConsumedPlanAvailable
+      ? ["shadow_consumed_plan_unavailable"]
+      : []),
+    ...(!input.comparedPlans.plannerOnlyNoRepairAvailable
+      ? ["planner_only_no_repair_unavailable"]
+      : []),
+    ...(!input.comparedPlans.repairedPlanAvailable
+      ? ["repaired_plan_unavailable"]
+      : []),
+    ...(input.validation?.status === "fail" ? ["v2_base_validation_failed"] : []),
+    ...(input.regressionCount > 0
+      ? [`v2_regression_count:${input.regressionCount}`]
+      : []),
+    ...(input.unclearCount > 0 ? [`unclear_count:${input.unclearCount}`] : []),
+    "production_projection_not_consuming_shadow",
+    "guarded_behavior_trial_not_run",
+    "accepted_seed_runtime_consumption_gate_not_changed",
+  ];
+}
+
+function shadowTrialNextSafeAction(input: {
+  comparedPlans: V2BasePlanShadowConsumptionTrial["comparedPlans"];
+  validation?: V2BasePlanValidation | null;
+  regressionCount: number;
+  unclearCount: number;
+}): V2BasePlanShadowConsumptionTrialNextSafeAction {
+  if (!input.comparedPlans.v2BasePlanAvailable) {
+    return "fix_v2_base_plan";
+  }
+  if (!input.comparedPlans.shadowConsumedPlanAvailable) {
+    return "fix_shadow_adapter";
+  }
+  if (input.validation?.status === "fail" || input.regressionCount > 0) {
+    return "fix_v2_base_plan";
+  }
+  if (
+    !input.comparedPlans.plannerOnlyNoRepairAvailable ||
+    !input.comparedPlans.repairedPlanAvailable ||
+    input.unclearCount > 0
+  ) {
+    return "inspect_shadow_consumption";
+  }
+  return "add_guarded_behavior_trial";
 }
 
 function hasClassOrMuscle(

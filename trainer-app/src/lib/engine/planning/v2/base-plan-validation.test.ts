@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
   buildV2BasePlanCompare,
+  buildV2BasePlanShadowConsumptionTrial,
   buildV2BasePlanValidation,
   buildV2ExerciseMaterializationPlan,
   buildV2PlannerMesocyclePolicy,
@@ -933,5 +934,131 @@ describe("buildV2BasePlanValidation", () => {
       doesNotAffectRuntimeReplay: true,
       doesNotAffectReceipts: true,
     });
+  });
+
+  it("builds a read-only shadow consumption trial without treating repaired projection as target", () => {
+    const { validation, materializedPlan } = buildFixture();
+    const noRepairPlan = representativeNoRepairPlan();
+    const repairedPlan = representativeRepairedPlan(materializedPlan);
+    const beforeNoRepair = JSON.stringify(noRepairPlan);
+    const beforeRepaired = JSON.stringify(repairedPlan);
+
+    const trial = buildV2BasePlanShadowConsumptionTrial({
+      v2BasePlanValidation: validation,
+      v2MaterializedPlan: materializedPlan,
+      inventory: representativeV2Inventory,
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      plannerOnlyNoRepairPlan: noRepairPlan,
+      repairedPlan,
+    });
+
+    expect(trial).toMatchObject({
+      version: 1,
+      source: "v2_base_plan_shadow_consumption_trial",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "available",
+      consumedByProduction: false,
+      shadowAdapter: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        sourcePlan: "v2_base_plan",
+        adapter: "v2_base_plan_to_projection_plan_view",
+        productionProjectionRerun: false,
+        writesSeed: false,
+        writesRuntime: false,
+        writesReceipts: false,
+      },
+      comparedPlans: {
+        v2BasePlanAvailable: true,
+        shadowConsumedPlanAvailable: true,
+        plannerOnlyNoRepairAvailable: true,
+        repairedPlanAvailable: true,
+      },
+      interpretationRules: {
+        shadowConsumptionIsDiagnosticOnly: true,
+        repairedPlanIsEvidenceNotTarget: true,
+        differencesFromRepairedPlanDoNotImplyV2Wrong: true,
+      },
+      guardrails: {
+        doesNotTreatRepairedPlanAsTargetPolicy: true,
+        doesNotFeedProductionProjection: true,
+        doesNotAffectGeneration: true,
+        doesNotAffectSelectionV2: true,
+        doesNotAffectRepair: true,
+        doesNotAffectSeedSerialization: true,
+        doesNotAffectRuntimeReplay: true,
+        doesNotAffectReceipts: true,
+        doesNotPersistV2Output: true,
+        consumedByProduction: false,
+        consumedByDemandOrMaterializer: false,
+      },
+    });
+    expect(trial.summary).toMatchObject({
+      shadowTotalSets: 55,
+      v2BaseTotalSets: 55,
+      noRepairTotalSets: 25,
+      repairedTotalSets: 55,
+      currentRepairDependencyCount: 9,
+      shadowRemainingRepairDependencyCount: 1,
+      repairDependencyDelta: -8,
+      regressionCount: 0,
+    });
+    expect(trial.changes.repairDependency).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      diagnosticDelta: -8,
+    });
+    expect(trial.nextSafeAction).toBe("inspect_shadow_consumption");
+    expect(JSON.stringify(noRepairPlan)).toBe(beforeNoRepair);
+    expect(JSON.stringify(repairedPlan)).toBe(beforeRepaired);
+    expect(JSON.stringify(trial)).not.toMatch(
+      /slotPlanSeedJson|sessionDecisionReceipt|acceptedPlannerIntent|runtimeReplay/,
+    );
+  });
+
+  it("categorizes shadow identity and materializer differences to reduce unclear buckets", () => {
+    const { validation, materializedPlan } = buildFixture();
+    const noRepairPlan = representativeNoRepairPlan();
+
+    const trial = buildV2BasePlanShadowConsumptionTrial({
+      v2BasePlanValidation: validation,
+      v2MaterializedPlan: materializedPlan,
+      inventory: representativeV2Inventory,
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      plannerOnlyNoRepairPlan: noRepairPlan,
+    });
+
+    expect(trial.summary.categorizedIdentityDifferenceCount).toBeGreaterThan(0);
+    expect(trial.changes.exerciseIdentity.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          slotId: "upper_a",
+          relationship: "same_class_family",
+          classification: "v2_preserves",
+        }),
+        expect.objectContaining({
+          slotId: "lower_a",
+          relationship: "same_class_family",
+          classification: "v2_preserves",
+        }),
+        expect.objectContaining({
+          slotId: "upper_b",
+          relationship: "same_class_family",
+          classification: "v2_preserves",
+        }),
+        expect.objectContaining({
+          slotId: "lower_b",
+          relationship: "same_class_family",
+          classification: "v2_preserves",
+        }),
+      ]),
+    );
+    expect(trial.changes.exerciseIdentity.materializerDifferenceCategories).toEqual(
+      expect.arrayContaining([
+        "lower_a:same_class_family",
+        "upper_a:same_class_family",
+      ]),
+    );
   });
 });

@@ -79,6 +79,7 @@ import { MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION } from "./constants";
 import { buildRepairPromotionScoreboard } from "./mesocycle-explain-v2-repair-scoreboard";
 import {
   buildV2BasePlanCompareFromLiveContext,
+  buildV2BasePlanShadowConsumptionTrialFromLiveContext,
   normalizeLiveInventoryForV2Materialization,
 } from "./v2-materialization-live-context-dry-run";
 import {
@@ -8167,6 +8168,14 @@ export function buildPlannerOnlyNoRepairComparison(input: {
           ...input.v2BasePlanCompareContext,
         })
       : undefined;
+    const v2BasePlanShadowConsumptionTrial = input.v2BasePlanCompareContext
+      ? buildV2BasePlanShadowConsumptionTrialFromLiveContext({
+          plannerPolicy,
+          noRepairPlanningReality: undefined,
+          repairedPlanningReality: input.repairedPlanningReality,
+          ...input.v2BasePlanCompareContext,
+        })
+      : undefined;
     const v2SupportLanePolicy = getPureV2SupportLanePolicy();
     const plannerOwnedAccumulationProjection =
       buildPlannerOwnedAccumulationProjection({
@@ -8252,6 +8261,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       },
       acceptanceClassification,
       ...(v2BasePlanCompare ? { v2BasePlanCompare } : {}),
+      ...(v2BasePlanShadowConsumptionTrial
+        ? { v2BasePlanShadowConsumptionTrial }
+        : {}),
       ...(repairPromotionScoreboard ? { repairPromotionScoreboard } : {}),
       v2MesocycleStrategyDiagnostic,
       v2MesocyclePlan,
@@ -8367,6 +8379,14 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         ...input.v2BasePlanCompareContext,
       })
     : undefined;
+  const v2BasePlanShadowConsumptionTrial = input.v2BasePlanCompareContext
+    ? buildV2BasePlanShadowConsumptionTrialFromLiveContext({
+        plannerPolicy,
+        noRepairPlanningReality: noRepair,
+        repairedPlanningReality: input.repairedPlanningReality,
+        ...input.v2BasePlanCompareContext,
+      })
+    : undefined;
   const v2SupportLanePolicy = getPureV2SupportLanePolicy();
   const plannerOwnedAccumulationProjection =
     buildPlannerOwnedAccumulationProjection({
@@ -8462,6 +8482,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     },
     acceptanceClassification,
     ...(v2BasePlanCompare ? { v2BasePlanCompare } : {}),
+    ...(v2BasePlanShadowConsumptionTrial
+      ? { v2BasePlanShadowConsumptionTrial }
+      : {}),
     ...(repairPromotionScoreboard ? { repairPromotionScoreboard } : {}),
     v2MesocycleStrategyDiagnostic,
     crossWeekProjectionGate,

@@ -203,6 +203,7 @@ describe("V2 planner policy module boundary", () => {
     expect(exportedText).toContain("V2MaterializationDryRunReport");
     expect(exportedText).toContain("V2MaterializationPromotionReadiness");
     expect(exportedText).toContain("V2BasePlanValidation");
+    expect(exportedText).toContain("V2BasePlanShadowConsumptionTrial");
     expect(exportedText).toContain("V2AcceptedPlannerIntentDto");
   });
 
@@ -527,6 +528,24 @@ describe("V2 planner policy module boundary", () => {
         ? [`live-context dry-run harness matches ${String(pattern)}`]
         : [],
     );
+
+    expect(violations).toEqual([]);
+  });
+
+  it("does not call the shadow consumption diagnostic from production modules", () => {
+    const sourceDir = path.join(process.cwd(), "src");
+    const violations = listSourceTypeScriptFiles(sourceDir).flatMap((file) => {
+      if (file.startsWith(v2PolicyDir)) {
+        return [];
+      }
+      if (file === liveContextDryRunHarness) {
+        return [];
+      }
+      const text = fs.readFileSync(file, "utf8");
+      return /buildV2BasePlanShadowConsumptionTrial\s*\(/.test(text)
+        ? [`${path.relative(process.cwd(), file)} calls shadow consumption trial`]
+        : [];
+    });
 
     expect(violations).toEqual([]);
   });

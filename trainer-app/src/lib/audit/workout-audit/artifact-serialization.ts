@@ -1073,6 +1073,15 @@ function compactPlannerOnlyNoRepair(
   const v2BasePlanCompareComparedPlans = asRecord(
     v2BasePlanCompare?.comparedPlans,
   );
+  const v2BasePlanShadowConsumptionTrial = asRecord(
+    noRepair.v2BasePlanShadowConsumptionTrial,
+  );
+  const v2BasePlanShadowSummary = asRecord(
+    v2BasePlanShadowConsumptionTrial?.summary,
+  );
+  const v2BasePlanShadowComparedPlans = asRecord(
+    v2BasePlanShadowConsumptionTrial?.comparedPlans,
+  );
   const v2PhaseStrategy = asRecord(
     v2MesocycleStrategyDiagnostic?.phaseStrategy,
   );
@@ -1481,6 +1490,57 @@ function compactPlannerOnlyNoRepair(
               typeof v2BasePlanCompare.nextSafeAction === "string"
                 ? v2BasePlanCompare.nextSafeAction
                 : "inspect_compare",
+          }
+        : undefined,
+      basePlanShadowConsumptionTrial: v2BasePlanShadowConsumptionTrial
+        ? {
+            status:
+              v2BasePlanShadowConsumptionTrial.status ?? "not_available",
+            readOnly: v2BasePlanShadowConsumptionTrial.readOnly === true,
+            affectsScoringOrGeneration:
+              v2BasePlanShadowConsumptionTrial.affectsScoringOrGeneration ===
+              true
+                ? true
+                : false,
+            consumedByProduction:
+              v2BasePlanShadowConsumptionTrial.consumedByProduction === true
+                ? true
+                : false,
+            comparedPlans: v2BasePlanShadowComparedPlans ?? {},
+            summary: {
+              shadowTotalSets:
+                v2BasePlanShadowSummary?.shadowTotalSets ?? null,
+              v2BaseTotalSets:
+                v2BasePlanShadowSummary?.v2BaseTotalSets ?? null,
+              noRepairTotalSets:
+                v2BasePlanShadowSummary?.noRepairTotalSets ?? null,
+              repairedTotalSets:
+                v2BasePlanShadowSummary?.repairedTotalSets ?? null,
+              currentRepairDependencyCount:
+                v2BasePlanShadowSummary?.currentRepairDependencyCount ?? null,
+              shadowRemainingRepairDependencyCount:
+                v2BasePlanShadowSummary
+                  ?.shadowRemainingRepairDependencyCount ?? null,
+              repairDependencyDelta:
+                v2BasePlanShadowSummary?.repairDependencyDelta ?? null,
+              improvementCount:
+                v2BasePlanShadowSummary?.improvementCount ?? 0,
+              preservationCount:
+                v2BasePlanShadowSummary?.preservationCount ?? 0,
+              regressionCount:
+                v2BasePlanShadowSummary?.regressionCount ?? 0,
+              unclearCount: v2BasePlanShadowSummary?.unclearCount ?? 0,
+              notComparableCount:
+                v2BasePlanShadowSummary?.notComparableCount ?? 0,
+              categorizedIdentityDifferenceCount:
+                v2BasePlanShadowSummary
+                  ?.categorizedIdentityDifferenceCount ?? 0,
+            },
+            nextSafeAction:
+              typeof v2BasePlanShadowConsumptionTrial.nextSafeAction ===
+              "string"
+                ? v2BasePlanShadowConsumptionTrial.nextSafeAction
+                : "inspect_shadow_consumption",
           }
         : undefined,
       supportLanePolicy: v2SupportLanePolicy

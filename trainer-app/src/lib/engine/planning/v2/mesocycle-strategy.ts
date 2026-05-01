@@ -2,6 +2,9 @@ import { getMuscleTargetSemantics } from "@/lib/engine/volume-landmarks";
 import { V2_TARGET_SLOT_SKELETON } from "./target-skeleton";
 import type {
   V2BlockStrategyImplication,
+  V2DonorSurplusCandidateReason,
+  V2DonorSurplusEligibilityReason,
+  V2DonorSurplusEvidence,
   V2ExerciseResponseSignalType,
   V2MesocycleStrategyDiagnostic,
   V2MesocycleStrategyEvidenceStatus,
@@ -38,6 +41,21 @@ export type V2MesocycleStrategyDiagnosticInput = {
   strategyInput?: V2MesocycleStrategyInput;
   strategyShadowProjection?: V2StrategyHypothesisShadowProjectionEvidence;
   preShadowCandidateFilter?: V2StrategyHypothesisPreShadowCandidateFilter;
+};
+
+export type V2DonorSurplusEvidenceInput = {
+  evaluatesCombinedPair: boolean;
+  candidateDonorMuscles: readonly string[];
+  candidateProtectedMuscles: readonly string[];
+  blockSignals?: V2MesocycleStrategyInput["blockResponseSignals"];
+  baseCoverageRows?: readonly V2StrategyHypothesisProjectionCoverageRow[];
+  preShadowCandidateFilter?: V2StrategyHypothesisPreShadowCandidateFilter;
+  donorSlotOwners?: Record<string, readonly string[]>;
+  clearlyOverConcentratedMuscles?: readonly string[];
+  concentrationRiskMuscles?: readonly string[];
+  fatigueRegressionRiskMuscles?: readonly string[];
+  floorMarginSets?: number;
+  targetTierFloorMarginSets?: number;
 };
 
 const STRATEGY_INPUT_GROUPS: V2MesocycleStrategyInputGroup[] = [
@@ -2175,6 +2193,314 @@ function hasNonOverloadedSlotOwner(input: {
   });
 }
 
+function donorReasonByMuscle(
+  blockSignals: V2MesocycleStrategyInput["blockResponseSignals"] | undefined,
+): Map<string, V2DonorSurplusCandidateReason> {
+  const overConcentration = new Set(
+    collectRedistributionDonorEntries(
+      (blockSignals ?? []).map((signal) => ({
+        ...signal,
+        fatigueDistribution: {
+          systemicFatigueFlag: signal.fatigueDistribution.systemicFatigueFlag,
+          likelyFatigueDrivers: [],
+          evidence: [],
+        },
+      })),
+    ).map((entry) => entry.muscle),
+  );
+  const fatigueDrivers = new Set(
+    collectRedistributionDonorEntries(
+      (blockSignals ?? []).map((signal) => ({
+        ...signal,
+        muscleDistribution: {
+          recurringUnderHitMuscles: [],
+          recurringOverConcentratedMuscles: [],
+          belowMevFlags: [],
+          overMavFlags: [],
+        },
+      })),
+    ).map((entry) => entry.muscle),
+  );
+  const muscles = sortedUnique([
+    ...Array.from(overConcentration),
+    ...Array.from(fatigueDrivers),
+  ]);
+  return new Map(
+    muscles.map((muscle) => [
+      muscle,
+      overConcentration.has(muscle) && fatigueDrivers.has(muscle)
+        ? "both"
+        : overConcentration.has(muscle)
+          ? "over_concentration"
+          : "fatigue_driver",
+    ]),
+  );
+}
+
+function donorCoverageFromSources(input: {
+  muscle: string;
+  baseCoverageRows: readonly V2StrategyHypothesisProjectionCoverageRow[] | undefined;
+  preShadowCandidateFilter:
+    | V2StrategyHypothesisPreShadowCandidateFilter
+    | undefined;
+}): V2DonorSurplusEvidence["donorEvidence"][number]["baselineCoverage"] {
+  const row = input.baseCoverageRows?.find(
+    (candidate) => candidate.muscle === input.muscle,
+  );
+  const preShadowRow = input.preShadowCandidateFilter?.donorEligibility.find(
+    (candidate) => candidate.muscle === input.muscle,
+  );
+  const effectiveSets = row?.sets ?? preShadowRow?.baseCoverage?.sets;
+  const floorSets = row?.minSets ?? preShadowRow?.baseCoverage?.floor;
+  const preferredSets = row?.preferredSets;
+  const measured =
+    typeof effectiveSets === "number" && typeof floorSets === "number";
+  const surplusAboveFloor = measured
+    ? Number((effectiveSets - floorSets).toFixed(2))
+    : undefined;
+  const measuredSurplusAboveFloor =
+    typeof surplusAboveFloor === "number" ? surplusAboveFloor : null;
+  const status: V2DonorSurplusEvidence["donorEvidence"][number]["baselineCoverage"]["status"] =
+    !measured
+      ? "unknown"
+      : measuredSurplusAboveFloor !== null && measuredSurplusAboveFloor < 0
+        ? "below_floor"
+        : measuredSurplusAboveFloor === 0
+          ? "at_floor"
+          : "surplus";
+
+  return {
+    measured,
+    ...(typeof effectiveSets === "number" ? { effectiveSets } : {}),
+    ...(typeof floorSets === "number" ? { floorSets } : {}),
+    ...(typeof preferredSets === "number" ? { preferredSets } : {}),
+    ...(typeof surplusAboveFloor === "number" ? { surplusAboveFloor } : {}),
+    status,
+  };
+}
+
+function resolveDonorSlotOwnership(input: {
+  muscle: string;
+  donorSlotOwners: Record<string, readonly string[]> | undefined;
+  preShadowRow:
+    | V2StrategyHypothesisPreShadowCandidateFilter["donorEligibility"][number]
+    | undefined;
+}): V2DonorSurplusEvidence["donorEvidence"][number]["slotOwnership"] {
+  const owners =
+    input.donorSlotOwners?.[input.muscle] ??
+    candidateSlotOwnersForMuscle(input.muscle);
+  const limitations = unique([
+    ...(owners.length === 0 ? ["no_candidate_slot_owner"] : []),
+    ...(input.preShadowRow?.reason === "slot_incompatible"
+      ? ["slot_owner_evidence_incompatible"]
+      : []),
+  ]);
+  return {
+    candidateSlotOwners: [...owners],
+    compatible: owners.length > 0 && limitations.length === 0,
+    limitations,
+  };
+}
+
+function resolveDonorEligibility(input: {
+  targetTier?: string;
+  baselineCoverage: V2DonorSurplusEvidence["donorEvidence"][number]["baselineCoverage"];
+  protectedConflict: V2DonorSurplusEvidence["donorEvidence"][number]["protectedConflict"];
+  slotOwnership: V2DonorSurplusEvidence["donorEvidence"][number]["slotOwnership"];
+  preShadowRow:
+    | V2StrategyHypothesisPreShadowCandidateFilter["donorEligibility"][number]
+    | undefined;
+  concentrationRisk: boolean;
+  fatigueRegressionRisk: boolean;
+  floorMarginSets: number;
+  targetTierFloorMarginSets: number;
+}): V2DonorSurplusEvidence["donorEvidence"][number]["eligibility"] {
+  const targetTierDonor =
+    input.targetTier === "A_PRIMARY" || input.targetTier === "B_SUPPORT";
+  const requiredMargin = targetTierDonor
+    ? input.targetTierFloorMarginSets
+    : input.floorMarginSets;
+  const margin = input.baselineCoverage.surplusAboveFloor;
+  const safeSurplus = typeof margin === "number" && margin >= requiredMargin;
+  let reason: V2DonorSurplusEligibilityReason = "safe_surplus_margin";
+  let eligible = true;
+
+  if (input.protectedConflict.isProtectedMuscle && !safeSurplus) {
+    eligible = false;
+    reason = "protected_overlap";
+  } else if (!input.baselineCoverage.measured) {
+    eligible = false;
+    reason = "unknown_margin";
+  } else if (input.baselineCoverage.status === "below_floor") {
+    eligible = false;
+    reason = "below_floor";
+  } else if (input.baselineCoverage.status === "at_floor") {
+    eligible = false;
+    reason = "at_floor";
+  } else if (!safeSurplus) {
+    eligible = false;
+    reason = "insufficient_margin";
+  } else if (!input.slotOwnership.compatible) {
+    eligible = false;
+    reason = "slot_incompatible";
+  } else if (
+    input.preShadowRow?.reason === "concentration_risk" ||
+    input.concentrationRisk
+  ) {
+    eligible = false;
+    reason = "concentration_risk";
+  } else if (input.fatigueRegressionRisk) {
+    eligible = false;
+    reason = "fatigue_regression_risk";
+  }
+
+  return {
+    eligible,
+    reason,
+    confidence:
+      eligible && input.baselineCoverage.measured
+        ? "high"
+        : input.baselineCoverage.measured
+          ? "medium"
+          : "low",
+  };
+}
+
+export function buildV2DonorSurplusEvidence(
+  input: V2DonorSurplusEvidenceInput,
+): V2DonorSurplusEvidence {
+  const floorMarginSets =
+    input.floorMarginSets ?? DEFAULT_PRE_SHADOW_FLOOR_MARGIN_SETS;
+  const targetTierFloorMarginSets =
+    input.targetTierFloorMarginSets ??
+    DEFAULT_PRE_SHADOW_TARGET_TIER_FLOOR_MARGIN_SETS;
+  const candidateDonors = sortedUnique(input.candidateDonorMuscles);
+  const candidateProtected = new Set(sortedUnique(input.candidateProtectedMuscles));
+  const reasonByMuscle = donorReasonByMuscle(input.blockSignals);
+  const coverageByMuscleName = new Map(
+    (input.baseCoverageRows ?? []).map((row) => [row.muscle, row]),
+  );
+  const preShadowDonorByMuscle = new Map(
+    (input.preShadowCandidateFilter?.donorEligibility ?? []).map((row) => [
+      row.muscle,
+      row,
+    ]),
+  );
+  const clearlyOverConcentrated = new Set(
+    input.clearlyOverConcentratedMuscles ?? [],
+  );
+  const concentrationRisk = new Set(input.concentrationRiskMuscles ?? []);
+  const fatigueRegressionRisk = new Set(
+    input.fatigueRegressionRiskMuscles ?? [],
+  );
+
+  const donorEvidence = candidateDonors.map((muscle) => {
+    const coverageRow = coverageByMuscleName.get(muscle);
+    const preShadowRow = preShadowDonorByMuscle.get(muscle);
+    const targetTier =
+      coverageRow?.targetTier ??
+      getMuscleTargetSemantics(muscle).targetTier ??
+      undefined;
+    const baselineCoverage = donorCoverageFromSources({
+      muscle,
+      baseCoverageRows: input.baseCoverageRows,
+      preShadowCandidateFilter: input.preShadowCandidateFilter,
+    });
+    const protectedConflict = {
+      isProtectedMuscle: candidateProtected.has(muscle),
+      requiresSurplusProof: candidateProtected.has(muscle),
+    };
+    const slotOwnership = resolveDonorSlotOwnership({
+      muscle,
+      donorSlotOwners: input.donorSlotOwners,
+      preShadowRow,
+    });
+    const eligibility = resolveDonorEligibility({
+      targetTier,
+      baselineCoverage,
+      protectedConflict,
+      slotOwnership,
+      preShadowRow,
+      concentrationRisk:
+        concentrationRisk.has(muscle) ||
+        preShadowRow?.reason === "concentration_risk" ||
+        (input.clearlyOverConcentratedMuscles !== undefined &&
+          (targetTier === "A_PRIMARY" || targetTier === "B_SUPPORT") &&
+          coverageRow?.status !== "above_maximum" &&
+          !clearlyOverConcentrated.has(muscle)),
+      fatigueRegressionRisk: fatigueRegressionRisk.has(muscle),
+      floorMarginSets,
+      targetTierFloorMarginSets,
+    });
+
+    return {
+      muscle,
+      ...(targetTier ? { targetTier } : {}),
+      candidateReason: reasonByMuscle.get(muscle) ?? "unknown",
+      baselineCoverage,
+      protectedConflict,
+      slotOwnership,
+      eligibility,
+    };
+  });
+
+  const summary: V2DonorSurplusEvidence["summary"] = {
+    candidateCount: donorEvidence.length,
+    eligibleCount: donorEvidence.filter((row) => row.eligibility.eligible)
+      .length,
+    ineligibleCount: donorEvidence.filter((row) => !row.eligibility.eligible)
+      .length,
+    unknownMarginCount: donorEvidence.filter(
+      (row) => row.eligibility.reason === "unknown_margin",
+    ).length,
+    protectedOverlapCount: donorEvidence.filter(
+      (row) => row.eligibility.reason === "protected_overlap",
+    ).length,
+    slotIncompatibleCount: donorEvidence.filter(
+      (row) => row.eligibility.reason === "slot_incompatible",
+    ).length,
+  };
+  const status: V2DonorSurplusEvidence["status"] =
+    !input.evaluatesCombinedPair || donorEvidence.length === 0
+      ? "not_available"
+      : summary.eligibleCount === donorEvidence.length
+        ? "available"
+        : "available_with_limitations";
+
+  return {
+    version: 1,
+    source: "v2_donor_surplus_evidence",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: false,
+    status,
+    donorEvidence,
+    summary,
+    limitations: unique([
+      ...(!input.evaluatesCombinedPair
+        ? ["combined_strategy_hypotheses_not_available"]
+        : []),
+      ...(candidateDonors.length === 0 ? ["no_candidate_donor_evidence"] : []),
+      ...(candidateDonors.length > 0 && summary.eligibleCount === 0
+        ? ["no_safe_donor_with_measurable_surplus_margin"]
+        : []),
+      ...(summary.unknownMarginCount > 0
+        ? ["donor_floor_surplus_margin"]
+        : []),
+      ...(summary.protectedOverlapCount > 0
+        ? ["protected_donor_overlap_requires_surplus_proof"]
+        : []),
+      ...(summary.slotIncompatibleCount > 0
+        ? ["slot_ownership_compatibility_missing"]
+        : []),
+      "donor_surplus_evidence_is_read_only_and_non_binding",
+      "old_prescribed_plan_shape_excluded_from_donor_surplus_evidence",
+      "repaired_projection_excluded_from_donor_surplus_target",
+      "donor_surplus_evidence_is_not_consumed_by_demand_weekly_curve_slot_allocation_materializer_generation_selection_repair_seed_runtime_or_receipts",
+    ]),
+  };
+}
+
 function emptyPreShadowCandidateFilter(
   status: V2StrategyHypothesisPreShadowCandidateFilter["status"],
 ): V2StrategyHypothesisPreShadowCandidateFilter {
@@ -2954,6 +3280,8 @@ function slotOwnedDemandReason(
 
 type PreShadowDonorRow =
   V2StrategyHypothesisPreShadowCandidateFilter["donorEligibility"][number];
+type DonorSurplusEvidenceRow =
+  V2DonorSurplusEvidence["donorEvidence"][number];
 
 function hasSafeSurplusMargin(row: PreShadowDonorRow | undefined): boolean {
   return (
@@ -2963,15 +3291,46 @@ function hasSafeSurplusMargin(row: PreShadowDonorRow | undefined): boolean {
   );
 }
 
+function slotOwnedDemandDonorReason(input: {
+  entry: MuscleEvidenceEntry;
+  donorEvidence: DonorSurplusEvidenceRow | undefined;
+}): string {
+  const reason = input.donorEvidence?.candidateReason ?? "unknown";
+  const prefix =
+    reason === "both"
+      ? "over_concentration_and_fatigue"
+      : reason === "over_concentration"
+        ? "over_concentration"
+        : reason === "fatigue_driver"
+          ? "fatigue_driver"
+          : "over_concentration_or_fatigue";
+  return slotOwnedDemandReason(prefix, input.entry);
+}
+
+function mapDonorSurplusEligibilityReason(
+  reason: V2DonorSurplusEligibilityReason,
+): V2SlotOwnedDemandAdjustmentDonorEligibilityReason {
+  return reason === "unknown" ? "unknown_margin" : reason;
+}
+
 function resolveSlotOwnedDonorEligibility(input: {
   muscle: string;
   protectedMuscles: ReadonlySet<string>;
   preShadowRow: PreShadowDonorRow | undefined;
+  donorEvidence: DonorSurplusEvidenceRow | undefined;
   candidateSlotOwners: readonly string[];
 }): {
   eligible: boolean;
   reason: V2SlotOwnedDemandAdjustmentDonorEligibilityReason;
 } {
+  if (input.donorEvidence) {
+    return {
+      eligible: input.donorEvidence.eligibility.eligible,
+      reason: mapDonorSurplusEligibilityReason(
+        input.donorEvidence.eligibility.reason,
+      ),
+    };
+  }
   const safeSurplus = hasSafeSurplusMargin(input.preShadowRow);
   if (input.protectedMuscles.has(input.muscle) && !safeSurplus) {
     return { eligible: false, reason: "protected_overlap" };
@@ -3011,6 +3370,7 @@ function buildSlotOwnedDemandAdjustmentPlan(input: {
   capLateBlockVolume: V2StrategyHypothesisPromotionDiff["capLateBlockVolume"];
   blockSignals: V2MesocycleStrategyInput["blockResponseSignals"];
   preShadowCandidateFilter?: V2StrategyHypothesisPreShadowCandidateFilter;
+  donorSurplusEvidence: V2DonorSurplusEvidence;
 }): V2SlotOwnedDemandAdjustmentPlan {
   const evaluatesCombinedPair =
     input.evaluatedHypotheses.includes("protect_lagging_muscles_earlier") &&
@@ -3034,19 +3394,26 @@ function buildSlotOwnedDemandAdjustmentPlan(input: {
       row,
     ]),
   );
+  const donorSurplusByMuscle = new Map(
+    input.donorSurplusEvidence.donorEvidence.map((row) => [row.muscle, row]),
+  );
 
   const donorDemand = donorEntries.map((entry) => {
-    const candidateSlotOwners = candidateSlotOwnersForMuscle(entry.muscle);
+    const donorEvidence = donorSurplusByMuscle.get(entry.muscle);
+    const candidateSlotOwners =
+      donorEvidence?.slotOwnership.candidateSlotOwners ??
+      candidateSlotOwnersForMuscle(entry.muscle);
     const eligibility = resolveSlotOwnedDonorEligibility({
       muscle: entry.muscle,
       protectedMuscles: protectedMuscleSet,
       preShadowRow: preShadowDonorByMuscle.get(entry.muscle),
+      donorEvidence,
       candidateSlotOwners,
     });
 
     return {
       muscle: entry.muscle,
-      reason: slotOwnedDemandReason("over_concentration_or_fatigue", entry),
+      reason: slotOwnedDemandDonorReason({ entry, donorEvidence }),
       eligible: eligibility.eligible,
       eligibilityReason: eligibility.reason,
       candidateSlotOwners,
@@ -3396,6 +3763,18 @@ function buildStrategyHypothesisPromotionDiff(input: {
     input.strategyHypothesisPromotionReadiness.hypothesisReadiness.some(
       (row) => isPromotionDiffHypothesisId(row.hypothesisId),
     );
+  const donorSurplusEvidence = buildV2DonorSurplusEvidence({
+    evaluatesCombinedPair: evaluatesBoth,
+    candidateProtectedMuscles: sortedEvidenceMuscles(
+      collectTargetTierUnderHitEntries(blockSignals),
+    ),
+    candidateDonorMuscles: collectRedistributionDonorEntries(blockSignals).map(
+      (entry) => entry.muscle,
+    ),
+    blockSignals,
+    baseCoverageRows: input.strategyShadowProjection?.before.donorMuscleCoverage,
+    preShadowCandidateFilter: input.preShadowCandidateFilter,
+  });
   const projectionDiff = buildStrategyHypothesisProjectionDiff({
     evaluatedHypotheses,
     protectLaggingMusclesEarlier,
@@ -3410,6 +3789,7 @@ function buildStrategyHypothesisPromotionDiff(input: {
     capLateBlockVolume,
     blockSignals,
     preShadowCandidateFilter: input.preShadowCandidateFilter,
+    donorSurplusEvidence,
   });
 
   return {
@@ -3441,6 +3821,7 @@ function buildStrategyHypothesisPromotionDiff(input: {
         : [],
     },
     projectionDiff,
+    donorSurplusEvidence,
     slotOwnedDemandAdjustmentPlan,
     nonRegressionGates: emptyNonRegressionGates(),
     nextSafeAction:

@@ -1914,6 +1914,79 @@ describe("artifact serialization helpers", () => {
                   "computed_gates_default_unknown_without_projected_delta_evidence",
                 ],
               },
+              donorSurplusEvidence: {
+                version: 1,
+                source: "v2_donor_surplus_evidence",
+                readOnly: true,
+                affectsScoringOrGeneration: false,
+                consumedByDemandOrMaterializer: false,
+                status: "available_with_limitations",
+                donorEvidence: [
+                  {
+                    muscle: "Glutes",
+                    targetTier: "B_SUPPORT",
+                    candidateReason: "both",
+                    baselineCoverage: {
+                      measured: true,
+                      effectiveSets: 12,
+                      floorSets: 6,
+                      surplusAboveFloor: 6,
+                      status: "surplus",
+                    },
+                    protectedConflict: {
+                      isProtectedMuscle: false,
+                      requiresSurplusProof: false,
+                    },
+                    slotOwnership: {
+                      candidateSlotOwners: ["lower_a", "lower_b"],
+                      compatible: true,
+                      limitations: [],
+                    },
+                    eligibility: {
+                      eligible: true,
+                      reason: "safe_surplus_margin",
+                      confidence: "high",
+                    },
+                  },
+                  {
+                    muscle: "Hamstrings",
+                    targetTier: "A_PRIMARY",
+                    candidateReason: "over_concentration",
+                    baselineCoverage: {
+                      measured: true,
+                      effectiveSets: 6.2,
+                      floorSets: 6,
+                      surplusAboveFloor: 0.2,
+                      status: "surplus",
+                    },
+                    protectedConflict: {
+                      isProtectedMuscle: false,
+                      requiresSurplusProof: false,
+                    },
+                    slotOwnership: {
+                      candidateSlotOwners: ["lower_a"],
+                      compatible: true,
+                      limitations: [],
+                    },
+                    eligibility: {
+                      eligible: false,
+                      reason: "insufficient_margin",
+                      confidence: "medium",
+                    },
+                  },
+                ],
+                summary: {
+                  candidateCount: 2,
+                  eligibleCount: 1,
+                  ineligibleCount: 1,
+                  unknownMarginCount: 0,
+                  protectedOverlapCount: 0,
+                  slotIncompatibleCount: 0,
+                },
+                limitations: [
+                  "donor_surplus_evidence_is_read_only_and_non_binding",
+                ],
+              },
               slotOwnedDemandAdjustmentPlan: {
                 version: 1,
                 source: "v2_slot_owned_demand_adjustment_plan",
@@ -2043,6 +2116,17 @@ describe("artifact serialization helpers", () => {
       },
       nextSafeAction: "run_read_only_shadow_trial",
       consumedByDemandOrMaterializer: false,
+      donorSurplusEvidence: {
+        status: "available_with_limitations",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        candidateCount: 2,
+        eligibleCount: 1,
+        unknownMarginCount: 0,
+        protectedOverlapCount: 0,
+        slotIncompatibleCount: 0,
+        consumedByDemandOrMaterializer: false,
+      },
       slotOwnedDemandAdjustmentPlan: {
         status: "feasible",
         readOnly: true,
@@ -2128,6 +2212,9 @@ describe("artifact serialization helpers", () => {
     );
     expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
       "donorEligibility",
+    );
+    expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
+      "donorEvidence",
     );
     expect(JSON.stringify(strategy.strategyHypothesisPromotionDiff)).not.toContain(
       "Hamstrings",

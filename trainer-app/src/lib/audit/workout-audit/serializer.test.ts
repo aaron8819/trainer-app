@@ -2037,6 +2037,17 @@ describe("buildWorkoutAuditArtifact", () => {
             evaluatedHypothesisCount: 2,
             nextSafeAction: "add_read_only_projection_diff",
             consumedByDemandOrMaterializer: false,
+            donorSurplusEvidence: {
+              status: "available",
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              candidateCount: 1,
+              eligibleCount: 1,
+              unknownMarginCount: 0,
+              protectedOverlapCount: 0,
+              slotIncompatibleCount: 0,
+              consumedByDemandOrMaterializer: false,
+            },
             slotOwnedDemandAdjustmentPlan: {
               status: "feasible",
               readOnly: true,
@@ -2203,6 +2214,17 @@ describe("buildWorkoutAuditArtifact", () => {
           status: "projected_with_limitations",
         },
         strategyHypothesisPromotionDiff: {
+          donorSurplusEvidence: {
+            status: "available",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            candidateCount: 1,
+            eligibleCount: 1,
+            unknownMarginCount: 0,
+            protectedOverlapCount: 0,
+            slotIncompatibleCount: 0,
+            consumedByDemandOrMaterializer: false,
+          },
           slotOwnedDemandAdjustmentPlan: {
             status: "feasible",
             readOnly: true,
@@ -2298,6 +2320,36 @@ describe("buildWorkoutAuditArtifact", () => {
             requiredJointGuards: [
               "prefer_redistribution_from_over_concentrated_or_fatigue_driver_muscles_before_adding_net_new_late_block_volume",
             ],
+          }),
+          donorSurplusEvidence: expect.objectContaining({
+            version: 1,
+            source: "v2_donor_surplus_evidence",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            consumedByDemandOrMaterializer: false,
+            status: "available",
+            donorEvidence: [
+              expect.objectContaining({
+                muscle: "Glutes",
+                candidateReason: "fatigue_driver",
+                baselineCoverage: expect.objectContaining({
+                  measured: true,
+                  effectiveSets: 12,
+                  floorSets: 6,
+                  surplusAboveFloor: 6,
+                  status: "surplus",
+                }),
+                eligibility: expect.objectContaining({
+                  eligible: true,
+                  reason: "safe_surplus_margin",
+                }),
+              }),
+            ],
+            summary: expect.objectContaining({
+              candidateCount: 1,
+              eligibleCount: 1,
+              unknownMarginCount: 0,
+            }),
           }),
           slotOwnedDemandAdjustmentPlan: expect.objectContaining({
             version: 1,
@@ -2542,6 +2594,9 @@ describe("buildWorkoutAuditArtifact", () => {
     );
     expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
       "donorEligibility",
+    );
+    expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
+      "donorEvidence",
     );
     expect(JSON.stringify(compactPromotionDiffSummary)).not.toContain(
       "Hamstrings",

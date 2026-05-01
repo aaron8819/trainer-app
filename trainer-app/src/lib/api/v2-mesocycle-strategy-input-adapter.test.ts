@@ -615,6 +615,19 @@ describe("loadV2MesocycleStrategyHistoricalReviewEvidence", () => {
     expect(
       JSON.stringify(diagnostic.strategyHypothesisPromotionReadiness),
     ).not.toContain("old-prescribed-plan-only");
+    expect(
+      JSON.stringify(
+        diagnostic.strategyHypothesisPromotionDiff.donorSurplusEvidence,
+      ),
+    ).not.toContain("old-prescribed-plan-only");
+    expect(
+      diagnostic.strategyHypothesisPromotionDiff.donorSurplusEvidence.limitations,
+    ).toEqual(
+      expect.arrayContaining([
+        "old_prescribed_plan_shape_excluded_from_donor_surplus_evidence",
+        "repaired_projection_excluded_from_donor_surplus_target",
+      ]),
+    );
     expect(diagnostic.strategyRecommendation.hypotheses).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

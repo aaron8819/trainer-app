@@ -819,6 +819,8 @@ function compactStrategyPromotionDiff(value: unknown): JsonRecord | undefined {
   const redistributionPreference = asRecord(
     candidateStrategy?.redistributionPreference,
   );
+  const donorSurplusEvidence = asRecord(diff.donorSurplusEvidence);
+  const donorSurplusSummary = asRecord(donorSurplusEvidence?.summary);
   const slotOwnedPlan = asRecord(diff.slotOwnedDemandAdjustmentPlan);
   const slotOwnedFeasibility = asRecord(slotOwnedPlan?.feasibility);
   const slotOwnedBudgetPolicy = asRecord(slotOwnedPlan?.slotBudgetPolicy);
@@ -853,6 +855,42 @@ function compactStrategyPromotionDiff(value: unknown): JsonRecord | undefined {
         : "do_not_promote",
     consumedByDemandOrMaterializer:
       diff.consumedByDemandOrMaterializer === true ? true : false,
+    donorSurplusEvidence: donorSurplusEvidence
+      ? {
+          status: donorSurplusEvidence.status ?? "not_available",
+          readOnly: donorSurplusEvidence.readOnly === true,
+          affectsScoringOrGeneration:
+            donorSurplusEvidence.affectsScoringOrGeneration === true
+              ? true
+              : false,
+          candidateCount:
+            typeof donorSurplusSummary?.candidateCount === "number"
+              ? donorSurplusSummary.candidateCount
+              : countArray(donorSurplusEvidence.donorEvidence),
+          eligibleCount:
+            typeof donorSurplusSummary?.eligibleCount === "number"
+              ? donorSurplusSummary.eligibleCount
+              : asRecordArray(donorSurplusEvidence.donorEvidence).filter(
+                  (row) => asRecord(row.eligibility)?.eligible === true,
+                ).length,
+          unknownMarginCount:
+            typeof donorSurplusSummary?.unknownMarginCount === "number"
+              ? donorSurplusSummary.unknownMarginCount
+              : 0,
+          protectedOverlapCount:
+            typeof donorSurplusSummary?.protectedOverlapCount === "number"
+              ? donorSurplusSummary.protectedOverlapCount
+              : 0,
+          slotIncompatibleCount:
+            typeof donorSurplusSummary?.slotIncompatibleCount === "number"
+              ? donorSurplusSummary.slotIncompatibleCount
+              : 0,
+          consumedByDemandOrMaterializer:
+            donorSurplusEvidence.consumedByDemandOrMaterializer === true
+              ? true
+              : false,
+        }
+      : undefined,
     projectionDiff: projectionDiff
       ? {
           status: projectionDiff.status ?? "not_available",

@@ -69,5 +69,10 @@ describe("buildV2MesocycleDemand", () => {
     expect(JSON.stringify(demand)).not.toContain(
       "v2_slot_owned_demand_adjustment_plan",
     );
+    expect(JSON.stringify(demand)).not.toContain("V2DonorSurplusEvidence");
+    expect(JSON.stringify(demand)).not.toContain("donorSurplusEvidence");
+    expect(JSON.stringify(demand)).not.toContain(
+      "v2_donor_surplus_evidence",
+    );
   });
 });

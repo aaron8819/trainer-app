@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildV2DonorSurplusEvidence,
   buildV2MesocycleDemand,
   buildV2MesocycleStrategyDiagnostic,
   buildV2PlannerMesocyclePolicy,
@@ -1291,6 +1292,219 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     });
   });
 
+  it("builds pure read-only donor surplus evidence from measured coverage and slot ownership", () => {
+    const evidence = buildV2DonorSurplusEvidence({
+      evaluatesCombinedPair: true,
+      candidateProtectedMuscles: ["Side Delts"],
+      candidateDonorMuscles: ["Glutes"],
+      blockSignals: buildStrategyInput().blockResponseSignals,
+      baseCoverageRows: [
+        {
+          muscle: "Glutes",
+          status: "covered",
+          sets: 12,
+          minSets: 6,
+          preferredSets: 8,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+      ],
+      donorSlotOwners: { Glutes: ["lower_a"] },
+      clearlyOverConcentratedMuscles: ["Glutes"],
+    });
+
+    expect(evidence).toMatchObject({
+      version: 1,
+      source: "v2_donor_surplus_evidence",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "available",
+      summary: {
+        candidateCount: 1,
+        eligibleCount: 1,
+        ineligibleCount: 0,
+        unknownMarginCount: 0,
+      },
+      donorEvidence: [
+        {
+          muscle: "Glutes",
+          targetTier: "B_SUPPORT",
+          candidateReason: "both",
+          baselineCoverage: {
+            measured: true,
+            effectiveSets: 12,
+            floorSets: 6,
+            preferredSets: 8,
+            surplusAboveFloor: 6,
+            status: "surplus",
+          },
+          protectedConflict: {
+            isProtectedMuscle: false,
+            requiresSurplusProof: false,
+          },
+          slotOwnership: {
+            candidateSlotOwners: ["lower_a"],
+            compatible: true,
+            limitations: [],
+          },
+          eligibility: {
+            eligible: true,
+            reason: "safe_surplus_margin",
+            confidence: "high",
+          },
+        },
+      ],
+    });
+    expect(evidence.limitations).toEqual(
+      expect.arrayContaining([
+        "donor_surplus_evidence_is_read_only_and_non_binding",
+        "old_prescribed_plan_shape_excluded_from_donor_surplus_evidence",
+        "repaired_projection_excluded_from_donor_surplus_target",
+      ]),
+    );
+  });
+
+  it("requires measurable donor floor margin before eligibility", () => {
+    const evidence = buildV2DonorSurplusEvidence({
+      evaluatesCombinedPair: true,
+      candidateProtectedMuscles: ["Side Delts"],
+      candidateDonorMuscles: ["Glutes"],
+      blockSignals: buildStrategyInput().blockResponseSignals,
+      donorSlotOwners: { Glutes: ["lower_a"] },
+    });
+
+    expect(evidence.donorEvidence).toEqual([
+      expect.objectContaining({
+        muscle: "Glutes",
+        baselineCoverage: {
+          measured: false,
+          status: "unknown",
+        },
+        eligibility: {
+          eligible: false,
+          reason: "unknown_margin",
+          confidence: "low",
+        },
+      }),
+    ]);
+    expect(evidence.summary).toMatchObject({
+      candidateCount: 1,
+      eligibleCount: 0,
+      unknownMarginCount: 1,
+    });
+  });
+
+  it("rejects below-floor, at-floor, protected-overlap, and slot-incompatible donors", () => {
+    const evidence = buildV2DonorSurplusEvidence({
+      evaluatesCombinedPair: true,
+      candidateProtectedMuscles: ["Hamstrings"],
+      candidateDonorMuscles: ["Glutes", "Hamstrings", "Lats", "Quads"],
+      blockSignals: buildStrategyInput().blockResponseSignals,
+      baseCoverageRows: [
+        {
+          muscle: "Glutes",
+          status: "covered",
+          sets: 12,
+          minSets: 6,
+          priority: "support",
+          targetTier: "B_SUPPORT",
+        },
+        {
+          muscle: "Hamstrings",
+          status: "covered",
+          sets: 6.2,
+          minSets: 6,
+          priority: "primary",
+          targetTier: "A_PRIMARY",
+        },
+        {
+          muscle: "Lats",
+          status: "below_minimum",
+          sets: 7,
+          minSets: 8,
+          priority: "primary",
+          targetTier: "A_PRIMARY",
+        },
+        {
+          muscle: "Quads",
+          status: "covered",
+          sets: 10,
+          minSets: 10,
+          priority: "primary",
+          targetTier: "A_PRIMARY",
+        },
+      ],
+      donorSlotOwners: {
+        Glutes: [],
+        Hamstrings: ["lower_a"],
+        Lats: ["upper_a"],
+        Quads: ["lower_a"],
+      },
+      clearlyOverConcentratedMuscles: ["Glutes", "Hamstrings", "Lats", "Quads"],
+    });
+    const reasonByMuscle = new Map(
+      evidence.donorEvidence.map((row) => [
+        row.muscle,
+        row.eligibility.reason,
+      ]),
+    );
+
+    expect(reasonByMuscle.get("Glutes")).toBe("slot_incompatible");
+    expect(reasonByMuscle.get("Hamstrings")).toBe("protected_overlap");
+    expect(reasonByMuscle.get("Lats")).toBe("below_floor");
+    expect(reasonByMuscle.get("Quads")).toBe("at_floor");
+    expect(evidence.summary).toMatchObject({
+      eligibleCount: 0,
+      protectedOverlapCount: 1,
+      slotIncompatibleCount: 1,
+    });
+  });
+
+  it("requires stricter surplus margin for target-tier donors than secondary donors", () => {
+    const evidence = buildV2DonorSurplusEvidence({
+      evaluatesCombinedPair: true,
+      candidateProtectedMuscles: ["Side Delts"],
+      candidateDonorMuscles: ["Chest", "Forearms"],
+      blockSignals: buildStrategyInput().blockResponseSignals,
+      baseCoverageRows: [
+        {
+          muscle: "Chest",
+          status: "covered",
+          sets: 10.6,
+          minSets: 10,
+          priority: "primary",
+          targetTier: "A_PRIMARY",
+        },
+        {
+          muscle: "Forearms",
+          status: "covered",
+          sets: 2.6,
+          minSets: 2,
+          priority: "secondary",
+          targetTier: "SECONDARY",
+        },
+      ],
+      donorSlotOwners: {
+        Chest: ["upper_a"],
+        Forearms: ["upper_a"],
+      },
+      clearlyOverConcentratedMuscles: ["Chest", "Forearms"],
+    });
+    const eligibilityByMuscle = new Map(
+      evidence.donorEvidence.map((row) => [row.muscle, row.eligibility]),
+    );
+
+    expect(eligibilityByMuscle.get("Chest")).toMatchObject({
+      eligible: false,
+      reason: "insufficient_margin",
+    });
+    expect(eligibilityByMuscle.get("Forearms")).toMatchObject({
+      eligible: true,
+      reason: "safe_surplus_margin",
+    });
+  });
+
   it("keeps filtered candidates non-binding and leaves gates dependent on measured deltas", () => {
     const preShadowCandidateFilter =
       buildV2StrategyHypothesisPreShadowCandidateFilter({
@@ -2360,6 +2574,11 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
       affectsScoringOrGeneration: false,
       consumedByDemandOrMaterializer: false,
       status: "available_with_limitations",
+      donorSurplusEvidence: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByDemandOrMaterializer: false,
+      },
       slotOwnedDemandAdjustmentPlan: {
         readOnly: true,
         affectsScoringOrGeneration: false,
@@ -2395,6 +2614,9 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     expect(JSON.stringify(policy.mesocycleDemand)).not.toContain(
       "slotOwnedDemandAdjustmentPlan",
     );
+    expect(JSON.stringify(policy.mesocycleDemand)).not.toContain(
+      "donorSurplusEvidence",
+    );
     expect(JSON.stringify(policy.weeklyDemandCurve)).not.toContain(
       "promotion_diff",
     );
@@ -2404,20 +2626,38 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     expect(JSON.stringify(policy.weeklyDemandCurve)).not.toContain(
       "slotOwnedDemandAdjustmentPlan",
     );
+    expect(JSON.stringify(policy.weeklyDemandCurve)).not.toContain(
+      "donorSurplusEvidence",
+    );
     expect(JSON.stringify(policy.slotDemandAllocationByWeek)).not.toContain(
       "slotOwnedDemandAdjustmentPlan",
+    );
+    expect(JSON.stringify(policy.slotDemandAllocationByWeek)).not.toContain(
+      "donorSurplusEvidence",
     );
     expect(JSON.stringify(policy.exerciseClassDistributionBySlot)).not.toContain(
       "slotOwnedDemandAdjustmentPlan",
     );
+    expect(JSON.stringify(policy.exerciseClassDistributionBySlot)).not.toContain(
+      "donorSurplusEvidence",
+    );
     expect(JSON.stringify(policy.v2SetDistributionIntent)).not.toContain(
       "slotOwnedDemandAdjustmentPlan",
+    );
+    expect(JSON.stringify(policy.v2SetDistributionIntent)).not.toContain(
+      "donorSurplusEvidence",
     );
     expect(JSON.stringify(policy.selectionCapacityPlan)).not.toContain(
       "slotOwnedDemandAdjustmentPlan",
     );
+    expect(JSON.stringify(policy.selectionCapacityPlan)).not.toContain(
+      "donorSurplusEvidence",
+    );
     expect(JSON.stringify(policy.exerciseSelectionPlan)).not.toContain(
       "slotOwnedDemandAdjustmentPlan",
+    );
+    expect(JSON.stringify(policy.exerciseSelectionPlan)).not.toContain(
+      "donorSurplusEvidence",
     );
   });
 });

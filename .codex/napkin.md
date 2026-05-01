@@ -72,6 +72,7 @@
 - For verify cleanup, remove stimulus fallback warning noise by adding explicit fixture-only `stimulusProfile` values that match the fallback math, while leaving `src/lib/engine/stimulus.test.ts` as the intentional fallback-warning coverage.
 - For V2 strategy recommendation layers, keep ranking in pure `mesocycle-strategy.ts`, expose only compact status/count/evidence summaries through audit serialization/CLI, and assert demand/materializer/generation non-consumption in both pure and audit tests.
 - For V2 strategy promotion readiness, define the full evidence/owner/gate requirements in the pure strategy seam, but keep the main audit artifact to compact counts/top-missing summaries and leave full detail to the V2 sidecar.
+- For V2 donor-surplus diagnostics, keep normalized donor evidence as a pure sibling of the promotion diff, let slot-owned planning consume it only diagnostically, and expose only compact counts in the main artifact/index while full rows stay in `v2-promotion-diffs`.
 
 ## Patterns That Don't Work
 - Do not promote suspicious downstream repair rows unless the owning V2 layer is clearly upstream and compatible with the target architecture.

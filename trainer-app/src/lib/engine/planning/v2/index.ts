@@ -7,6 +7,7 @@ export { buildV2MaterializationPromotionReadiness } from "./materialization/prom
 export { buildV2ExerciseMaterializationPlan } from "./materialization/materializer";
 export { buildV2MesocycleDemand } from "./mesocycle-demand";
 export {
+  buildV2DonorSurplusEvidence,
   buildV2MesocycleStrategyDiagnostic,
   buildV2StrategyHypothesisPreShadowCandidateFilter,
 } from "./mesocycle-strategy";
@@ -32,6 +33,7 @@ export type {
   V2AcceptedPlannerIntentDto,
 } from "./accepted-planner-intent-dto";
 export type {
+  V2DonorSurplusEvidenceInput,
   V2MesocycleStrategyDiagnosticInput,
   V2StrategyHypothesisPreShadowCandidateFilterInput,
 } from "./mesocycle-strategy";
@@ -42,6 +44,11 @@ export type {
   MesocycleDemand,
   SlotDemandAllocationByWeek,
   SelectionCapacityPlan,
+  V2DonorSurplusBaselineCoverageStatus,
+  V2DonorSurplusCandidateReason,
+  V2DonorSurplusEligibilityReason,
+  V2DonorSurplusEvidence,
+  V2DonorSurplusEvidenceStatus,
   V2BlockResponseSignal,
   V2BlockStrategyImplication,
   V2DeloadTransformPolicy,

@@ -271,6 +271,7 @@ export type V2StrategyHypothesisPreShadowDonorReason =
   | "safe_surplus_margin"
   | "protected_overlap"
   | "below_floor"
+  | "at_floor"
   | "insufficient_margin"
   | "unknown_floor_margin"
   | "slot_incompatible"
@@ -328,6 +329,80 @@ export type V2StrategyHypothesisPreShadowCandidateFilter = {
   };
 };
 
+export type V2DonorSurplusEvidenceStatus =
+  | "not_available"
+  | "available_with_limitations"
+  | "available";
+
+export type V2DonorSurplusCandidateReason =
+  | "over_concentration"
+  | "fatigue_driver"
+  | "both"
+  | "unknown";
+
+export type V2DonorSurplusBaselineCoverageStatus =
+  | "below_floor"
+  | "at_floor"
+  | "surplus"
+  | "unknown";
+
+export type V2DonorSurplusEligibilityReason =
+  | "safe_surplus_margin"
+  | "protected_overlap"
+  | "below_floor"
+  | "at_floor"
+  | "insufficient_margin"
+  | "unknown_margin"
+  | "slot_incompatible"
+  | "concentration_risk"
+  | "fatigue_regression_risk"
+  | "unknown";
+
+export type V2DonorSurplusEvidence = {
+  version: 1;
+  source: "v2_donor_surplus_evidence";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByDemandOrMaterializer: false;
+  status: V2DonorSurplusEvidenceStatus;
+  donorEvidence: Array<{
+    muscle: string;
+    targetTier?: string;
+    candidateReason: V2DonorSurplusCandidateReason;
+    baselineCoverage: {
+      measured: boolean;
+      effectiveSets?: number;
+      floorSets?: number;
+      preferredSets?: number;
+      surplusAboveFloor?: number;
+      status: V2DonorSurplusBaselineCoverageStatus;
+    };
+    protectedConflict: {
+      isProtectedMuscle: boolean;
+      requiresSurplusProof: boolean;
+    };
+    slotOwnership: {
+      candidateSlotOwners: string[];
+      compatible: boolean;
+      limitations: string[];
+    };
+    eligibility: {
+      eligible: boolean;
+      reason: V2DonorSurplusEligibilityReason;
+      confidence: "low" | "medium" | "high";
+    };
+  }>;
+  summary: {
+    candidateCount: number;
+    eligibleCount: number;
+    ineligibleCount: number;
+    unknownMarginCount: number;
+    protectedOverlapCount: number;
+    slotIncompatibleCount: number;
+  };
+  limitations: string[];
+};
+
 export type V2SlotOwnedDemandAdjustmentPlanStatus =
   | "not_available"
   | "available_with_limitations"
@@ -350,10 +425,12 @@ export type V2SlotOwnedDemandAdjustmentDonorEligibilityReason =
   | "safe_surplus_margin"
   | "protected_overlap"
   | "below_floor"
+  | "at_floor"
   | "insufficient_margin"
   | "unknown_margin"
   | "slot_incompatible"
   | "concentration_risk"
+  | "fatigue_regression_risk"
   | "not_target_policy";
 
 export type V2SlotOwnedDemandAdjustmentPlan = {
@@ -639,6 +716,7 @@ export type V2StrategyHypothesisPromotionDiff = {
     requiredJointGuards: string[];
   };
   projectionDiff: V2StrategyHypothesisProjectionDiff;
+  donorSurplusEvidence: V2DonorSurplusEvidence;
   slotOwnedDemandAdjustmentPlan: V2SlotOwnedDemandAdjustmentPlan;
   nonRegressionGates: {
     preservePriorityCoverage: boolean;

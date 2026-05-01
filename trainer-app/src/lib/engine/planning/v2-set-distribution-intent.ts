@@ -354,7 +354,30 @@ function minimumFloor(input: {
   return Math.min(input.preferred, 2);
 }
 
+function roleSensitiveBasePreferred(input: {
+  slotId: V2SetDistributionIntentSlotId;
+  lane: ClassLane;
+  directSupportPolicy: SupportLane | undefined;
+  driverRange: V2PlannerSetRange;
+  phase: V2SetDistributionIntentPhase;
+}): number {
+  if (isLowDoseHingeSupport(input.lane)) {
+    return 1;
+  }
+  if (input.phase !== "deload" && input.directSupportPolicy) {
+    return input.directSupportPolicy.preferredDirectSets.preferred;
+  }
+  if (hasClassIntent(input.lane, "row_horizontal_pull_anchor")) {
+    return 3;
+  }
+  if (input.slotId === "lower_b" && isCalfDirectLane(input.lane)) {
+    return 3;
+  }
+  return roundSetCount(input.driverRange.preferred);
+}
+
 function buildSetBudget(input: {
+  slotId: V2SetDistributionIntentSlotId;
   lane: ClassLane;
   directSupportPolicy: SupportLane | undefined;
   phase: V2SetDistributionIntentPhase;
@@ -386,11 +409,13 @@ function buildSetBudget(input: {
     driverRange,
     phase: input.phase,
   });
-  const basePreferred = isLowDoseHingeSupport(input.lane)
-    ? 1
-    : input.phase !== "deload" && input.directSupportPolicy
-      ? input.directSupportPolicy.preferredDirectSets.preferred
-      : roundSetCount(driverRange.preferred);
+  const basePreferred = roleSensitiveBasePreferred({
+    slotId: input.slotId,
+    lane: input.lane,
+    directSupportPolicy: input.directSupportPolicy,
+    driverRange,
+    phase: input.phase,
+  });
   const preferred = clamp(basePreferred, 0, cap);
   const min = minimumFloor({
     lane: input.lane,
@@ -529,6 +554,7 @@ function buildLane(input: {
       input.lane.ownershipRows.map((row) => row.ownershipKind),
     ),
     setBudget: buildSetBudget({
+      slotId: input.slotId,
       lane: input.lane,
       directSupportPolicy: input.directSupportPolicy,
       phase: input.phase,

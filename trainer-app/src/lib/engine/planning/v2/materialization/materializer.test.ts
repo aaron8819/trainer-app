@@ -922,7 +922,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       });
     expect(exerciseForLane(result, "upper_a", "row_anchor")).toMatchObject({
       exerciseId: "chest-supported-row",
-      setCount: 4,
+      setCount: 3,
     });
     expect(exerciseForLane(result, "upper_b", "vertical_pull_anchor"))
       .toMatchObject({
@@ -957,7 +957,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     });
     expect(exerciseForLane(result, "lower_b", "calves")).toMatchObject({
       exerciseId: "standing-calf-raise",
-      setCount: 4,
+      setCount: 3,
     });
     expect(
       result.slots.flatMap((slotRow) =>

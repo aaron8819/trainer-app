@@ -184,6 +184,36 @@ describe("buildV2SetDistributionIntent", () => {
     );
   });
 
+  it("uses role-sensitive preferred budgets instead of making every lane 4 sets", () => {
+    const plan = intent();
+
+    expect(lane(plan, "upper_a", "row_anchor")).toMatchObject({
+      role: "anchor",
+      setBudget: { min: 3, preferred: 3, max: 4 },
+    });
+    expect(lane(plan, "upper_a", "vertical_pull_support")).toMatchObject({
+      role: "support",
+      setBudget: { min: 2, preferred: 2, max: 3 },
+    });
+    expect(lane(plan, "upper_b", "vertical_pull_anchor")).toMatchObject({
+      role: "anchor",
+      setBudget: { min: 3, preferred: 3, max: 4 },
+    });
+    expect(lane(plan, "upper_b", "row_support")).toMatchObject({
+      role: "support",
+      setBudget: { min: 2, preferred: 3, max: 3 },
+    });
+    expect(lane(plan, "lower_b", "calves")).toMatchObject({
+      role: "accessory",
+      setBudget: { min: 3, preferred: 3, max: 4 },
+    });
+    expect(
+      week(plan).slots
+        .flatMap((slotRow) => slotRow.lanes)
+        .filter((laneRow) => laneRow.setBudget.preferred === 4),
+    ).toHaveLength(5);
+  });
+
   it("keeps Hamstrings hinge and curl split within balanced demand", () => {
     const policy = buildPolicy();
     const plan = policy.v2SetDistributionIntent;
@@ -212,7 +242,7 @@ describe("buildV2SetDistributionIntent", () => {
     expect(lane(plan, "lower_b", "calves")).toMatchObject({
       classLaneKind: "support_class_lane",
       primaryMuscles: ["Calves"],
-      setBudget: { min: 3, preferred: 4, max: 4 },
+      setBudget: { min: 3, preferred: 3, max: 4 },
     });
   });
 

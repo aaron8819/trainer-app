@@ -218,7 +218,7 @@ function warningReasons(validation: V2BasePlanValidation): string[] {
 }
 
 describe("buildV2BasePlanValidation", () => {
-  it("detects full dry-run materialized coverage without treating materialized as pass", () => {
+  it("detects full dry-run materialized coverage without treating materialized as production behavior", () => {
     const { materializedPlan, validation } = buildFixture();
 
     expect(materializedPlan.status).toBe("materialized");
@@ -227,18 +227,18 @@ describe("buildV2BasePlanValidation", () => {
       source: "v2_base_plan_validation",
       readOnly: true,
       affectsScoringOrGeneration: false,
-      status: "pass_with_warnings",
+      status: "pass",
       summary: {
         slotCount: 4,
         exerciseCount: 18,
-        totalSets: 57,
+        totalSets: 55,
         blockerCount: 0,
-        warningCount: 1,
+        warningCount: 0,
         materializerStatus: "materialized",
       },
     });
     expect(validation.blockers).toEqual([]);
-    expect(validation.summary.warningCount).toBeGreaterThan(0);
+    expect(validation.warnings).toEqual([]);
   });
 
   it("checks muscle coverage against balanced demand and direct floors", () => {
@@ -248,13 +248,19 @@ describe("buildV2BasePlanValidation", () => {
     expect(coverage.belowFloorMuscles).toEqual([]);
     expect(coverage.aboveMaxMuscles).toEqual([]);
     expect(coverage.coveredMuscles).toEqual(
-      expect.arrayContaining(["Chest", "Upper Back", "Quads", "Calves"]),
+      expect.arrayContaining(["Chest", "Upper Back", "Quads"]),
     );
     expect(coverage.abovePreferredMuscles).toEqual(
       expect.arrayContaining(["Hamstrings", "Lats"]),
     );
     expect(coverage.belowPreferredMuscles).toEqual(
-      expect.arrayContaining(["Side Delts", "Rear Delts", "Biceps", "Triceps"]),
+      expect.arrayContaining([
+        "Side Delts",
+        "Rear Delts",
+        "Biceps",
+        "Calves",
+        "Triceps",
+      ]),
     );
     expect(coverage.directSupportFloors.missed).toEqual([]);
     expect(coverage.directSupportFloors.met).toEqual(
@@ -321,9 +327,7 @@ describe("buildV2BasePlanValidation", () => {
     ).toBe(true);
     expect(validation.checks.exerciseClassCoverage.rearDeltDirectSupportClass)
       .toBe(true);
-    expect(warningReasons(validation)).toEqual(
-      ["flat_allocation_pattern:many_lanes_at_four_sets_while_support_muscles_remain_below_preferred"],
-    );
+    expect(warningReasons(validation)).toEqual([]);
   });
 
   it("checks biceps and triceps direct/support coverage", () => {
@@ -447,13 +451,38 @@ describe("buildV2BasePlanValidation", () => {
   });
 
   it("checks flat allocation warnings", () => {
-    const { validation } = buildFixture();
+    const { validation, materializedPlan, policy } = buildFixture();
 
-    expect(validation.checks.setCountQuality.fourSetLaneCount).toBeGreaterThanOrEqual(
-      6,
+    expect(validation.checks.setCountQuality.fourSetLaneCount).toBe(5);
+    expect(validation.checks.setCountQuality.flatAllocationWarning).toBe(false);
+    expect(warningReasons(validation)).not.toContain(
+      "flat_allocation_pattern:many_lanes_at_four_sets_while_support_muscles_remain_below_preferred",
     );
-    expect(validation.checks.setCountQuality.flatAllocationWarning).toBe(true);
-    expect(warningReasons(validation)).toContain(
+
+    const oldFlatPatternPlan: V2ExerciseMaterializationPlan = {
+      ...materializedPlan,
+      slots: materializedPlan.slots.map((slot) => ({
+        ...slot,
+        exercises: slot.exercises.map((exerciseRow) =>
+          (slot.slotId === "upper_a" && exerciseRow.laneIds.includes("row_anchor")) ||
+          (slot.slotId === "lower_b" && exerciseRow.laneIds.includes("calves"))
+            ? { ...exerciseRow, setCount: 4 }
+            : exerciseRow,
+        ),
+      })),
+    };
+    const oldFlatPatternValidation = buildV2BasePlanValidation({
+      plannerPolicy: policy,
+      materializedPlan: oldFlatPatternPlan,
+      inventory: representativeV2Inventory,
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+    });
+
+    expect(oldFlatPatternValidation.checks.setCountQuality.fourSetLaneCount)
+      .toBeGreaterThanOrEqual(6);
+    expect(oldFlatPatternValidation.checks.setCountQuality.flatAllocationWarning)
+      .toBe(true);
+    expect(warningReasons(oldFlatPatternValidation)).toContain(
       "flat_allocation_pattern:many_lanes_at_four_sets_while_support_muscles_remain_below_preferred",
     );
   });

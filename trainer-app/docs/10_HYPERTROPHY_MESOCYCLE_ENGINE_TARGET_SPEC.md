@@ -451,7 +451,7 @@ Engine contract:
 - Standalone one-set hypertrophy exercises are disallowed by default unless a future lane is explicitly tagged as activation, technique, or prehab.
 - Reusing the same calf exercise across both lower days is acceptable for the simple base plan when no clean variant exists; variant diversity is preferred when a clean alternate is visible.
 - Side delts, rear delts, biceps, and triceps meet direct floors in the static base; preferred support volume is reserved for full-block strategy or specialization.
-- Flat four-set allocation is a warning-only base-plan quality smell until set-distribution rules become more nuanced.
+- Static base set distribution is role-sensitive rather than flat: Chest remains 4+4 to preserve the balanced floor, Upper A row anchor can sit at 3 because Upper B row and vertical-pull lanes preserve pull balance, Lower B calves can sit at 3 while Lower A calves stay 4, optional lanes stay 0, and managed collateral remains 0 direct sets. Flat allocation remains a warning-only smell when the materialized base regresses to many unjustified four-set lanes.
 
 ## 12. Current Engine Compared Against Target
 

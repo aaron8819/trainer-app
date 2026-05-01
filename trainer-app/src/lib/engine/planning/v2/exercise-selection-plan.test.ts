@@ -105,7 +105,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
   it("represents required lanes and capacity sourced from SelectionCapacityPlan", () => {
     expect(slot(2, "upper_a")).toMatchObject({
       maxExerciseCount: 6,
-      targetSessionSets: { min: 15, preferred: 16, max: 17 },
+      targetSessionSets: { min: 15, preferred: 15, max: 17 },
     });
     expect(lane(2, "upper_a", "chest_anchor")).toMatchObject({
       requirement: "required",

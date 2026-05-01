@@ -172,16 +172,16 @@ describe("buildV2SelectionCapacityPlan", () => {
       slotId: "lower_b",
       slotIndex: 3,
       maxExerciseCount: 6,
-      targetSessionSets: { min: 10, preferred: 12, max: 13 },
+      targetSessionSets: { min: 10, preferred: 11, max: 13 },
     });
   });
 
   it("represents upper-pull capacity as policy headroom rather than observed pressure", () => {
     expect(lane(2, "upper_a", "row_anchor")).toMatchObject({
-      setBudget: { min: 3, preferred: 4, max: 4 },
+      setBudget: { min: 3, preferred: 3, max: 4 },
       laneHeadroomPolicy: {
-        preferredRequiresHeadroom: true,
-        cleanAlternativeRequiredForExpansion: true,
+        preferredRequiresHeadroom: false,
+        cleanAlternativeRequiredForExpansion: false,
         capAwareExpansion: "not_needed",
       },
     });

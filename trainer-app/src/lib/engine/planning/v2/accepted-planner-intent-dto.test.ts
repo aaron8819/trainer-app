@@ -166,7 +166,7 @@ describe("buildV2AcceptedPlannerIntentDto", () => {
         min: 2,
         preferred: 3,
         max: 3,
-        basis: "exercise_class_role",
+        basis: "support_direct_floor",
       },
       supportDirectFloor: {
         muscle: "Triceps",

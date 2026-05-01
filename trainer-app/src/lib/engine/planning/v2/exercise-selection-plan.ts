@@ -101,17 +101,26 @@ function requirementForLane(input: {
   conditionalOptionalLaneIndex: ReadonlySet<string>;
   slotId: V2PlannerSlotId;
 }): Requirement {
-  if (input.lane.role !== "optional") {
-    return "required";
+  if (input.lane.role === "optional") {
+    if (
+      input.conditionalOptionalLaneIndex.has(
+        laneKey(input.slotId, input.lane.laneId),
+      )
+    ) {
+      return "conditional_optional";
+    }
+    return input.classLane?.requiredExerciseClasses.length &&
+      input.lane.setBudget.preferred > 0
+      ? "required"
+      : "optional";
   }
   if (
-    input.conditionalOptionalLaneIndex.has(
-      laneKey(input.slotId, input.lane.laneId),
-    )
+    input.classLane?.classLaneKind === "managed_collateral_marker" ||
+    input.lane.setBudget.preferred <= 0
   ) {
-    return "conditional_optional";
+    return "optional";
   }
-  return input.classLane?.requiredExerciseClasses.length ? "required" : "optional";
+  return "required";
 }
 
 function duplicatePolicyForLane(input: {

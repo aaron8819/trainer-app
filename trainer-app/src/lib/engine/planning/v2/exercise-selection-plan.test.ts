@@ -104,7 +104,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
   it("represents required lanes and capacity sourced from SelectionCapacityPlan", () => {
     expect(slot(2, "upper_a")).toMatchObject({
       maxExerciseCount: 6,
-      targetSessionSets: { min: 15, preferred: 20, max: 20 },
+      targetSessionSets: { min: 15, preferred: 16, max: 17 },
     });
     expect(lane(2, "upper_a", "chest_anchor")).toMatchObject({
       requirement: "required",
@@ -114,7 +114,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
       preferredExerciseClasses: ["horizontal_press", "slight_incline_press"],
       setBudget: { min: 3, preferred: 4, max: 4 },
       perExerciseCap: {
-        maxSetsWithoutJustification: 5,
+        maxSetsWithoutJustification: 4,
         maxDirectExercises: 2,
         allowAboveFiveSetsOnlyWithJustification: true,
       },

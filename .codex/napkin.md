@@ -66,6 +66,9 @@
 | 2026-05-01 | self | Repeated the wildcard-path mistake while searching generated audit artifacts with `artifacts\audits\2026-...*.json`. | Search the artifact directory and pass the filename pattern through `-g`, e.g. `rg <pattern> artifacts\audits -g "2026-...*.json"`. |
 | 2026-05-01 | self | Forgot the known stdin `tsx` named-import quirk when probing the V2 planner policy and got a missing named export error. | For ad hoc `tsx` stdin probes, import the module default from the local TS file and destructure exports from that object. |
 | 2026-05-01 | self | Repeated the PowerShell Markdown-backtick parser mistake while searching docs for `SlotDemandAllocationByWeek`. | Avoid literal backticks in PowerShell search strings; search a simpler substring or use single-quoted patterns without Markdown formatting. |
+| 2026-05-01 | self | Repeated the Windows wildcard-path `rg` mistake while searching V2 planning tests with `trainer-app\src\lib\engine\planning\v2\*.test.ts`. | Use `rg <pattern> <directory> -g "*.test.ts"` or `rg --files` filters; never pass wildcard paths directly in PowerShell. |
+| 2026-05-01 | self | After adding a new required `V2SetDistributionIntent.guardrails` field and basis literals, focused V2 tests passed but `tsc --noEmit` caught stale audit typed fixtures. | When changing pure V2 policy object shapes, update audit serializer/CLI typed fixtures before trusting focused policy tests. |
+| 2026-05-01 | self | While probing pure `v2SetDistributionIntent`, assumed week rows exposed `plannedTotalSets` and hit a runtime error. | Sum `week.slots[].targetSessionSets.preferred` for set-distribution week totals; the week row intentionally only carries week/phase/progression metadata plus slots. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

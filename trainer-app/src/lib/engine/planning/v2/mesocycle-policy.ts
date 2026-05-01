@@ -46,11 +46,13 @@ export function buildV2PlannerMesocyclePolicy(
   const exerciseClassDistributionBySlot = buildV2ExerciseClassDistributionBySlot({
     slotDemandAllocationByWeek,
   });
+  const v2SupportLanePolicy = buildV2SupportLanePolicy({ targetSkeleton });
   const v2SetDistributionIntent = buildV2SetDistributionIntent({
-    targetSkeleton,
+    slotDemandAllocationByWeek,
+    exerciseClassDistributionBySlot,
+    v2SupportLanePolicy,
     weeklyProgressionModel,
   });
-  const v2SupportLanePolicy = buildV2SupportLanePolicy({ targetSkeleton });
   const selectionCapacityPlan = buildV2SelectionCapacityPlan({
     exerciseClassDistributionBySlot,
     v2SetDistributionIntent,

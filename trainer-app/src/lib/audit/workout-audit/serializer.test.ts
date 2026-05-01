@@ -3152,6 +3152,7 @@ function makeMesocycleExplainNoRepairPayload() {
           doesNotUseAcceptedSeedAsTarget: true,
           doesNotAffectSelection: true,
           doesNotAffectRepair: true,
+          doesNotAffectSeedSerialization: true,
           doesNotAffectRuntimeReplay: true,
         },
       },

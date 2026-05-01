@@ -702,7 +702,15 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(result.status).toBe("materialized");
     expect(result.blockers).toEqual([]);
     expect(materializedLaneIds).toEqual(requiredLaneIds);
-    expect(materializedLaneIds).toContain("upper_b:vertical_press");
+    expect(materializedLaneIds).not.toContain("upper_b:vertical_press");
+    expect(
+      result.omissions.find(
+        (row) =>
+          row.slotId === "upper_b" &&
+          row.laneId === "vertical_press" &&
+          row.reason === "optional_not_activated",
+      ),
+    ).toBeDefined();
     expect(
       result.omissions.find(
         (row) =>
@@ -1008,17 +1016,17 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(result.unsupportedClassCount).toBeGreaterThan(0);
     expect(result.seedShapeCompatibility.compatible).toBe(true);
     expect(result.executablePreviewCountBySlot).toEqual([
-      { slotId: "upper_a", exerciseCount: 6 },
+      { slotId: "upper_a", exerciseCount: 5 },
       { slotId: "lower_a", exerciseCount: 5 },
-      { slotId: "upper_b", exerciseCount: 6 },
+      { slotId: "upper_b", exerciseCount: 5 },
       { slotId: "lower_b", exerciseCount: 4 },
     ]);
     expect(result.requiredLaneCoverageBySlot).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           slotId: "upper_a",
-          requiredLaneCount: 6,
-          materializedRequiredLaneCount: 6,
+          requiredLaneCount: 5,
+          materializedRequiredLaneCount: 5,
           blockedRequiredLaneCount: 0,
           missingRequiredLaneIds: [],
         }),

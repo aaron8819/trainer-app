@@ -45,14 +45,30 @@ then executes them reliably without hidden mutation.
 
 The migration question has moved. The most useful question is no longer only whether V2 can write accepted seed. The latest factory-line work showed that the accepted-seed replacement path can preserve V2 materialized rows, runtime replay faithfully executes persisted seed, and downstream Program/runtime/persistence suspicion was not the core issue.
 
-The next strategic question is sharper:
+The migration is now expanding beyond:
+
+```txt
+Can V2 create a high-quality accepted seed?
+```
+
+The next strategic layer is:
+
+```txt
+Can the app turn that seed into high-quality hypertrophy sessions
+through reliable prescriptions, coaching, session-local flexibility,
+and accurate performed-reality capture?
+```
+
+V2 is the future plan author. Runtime is the plan executor. The materializer is the narrow translator between those layers. That distinction matters because production projection still has legacy repair-shaped behavior, while the latest mismatch evidence points to materialized exercise identity quality and under-specified lane intent rather than failed persistence or runtime replay.
+
+The planner/materializer question still matters:
 
 ```txt
 Can V2 author elite lane intent and materialize it cleanly
 without hidden re-authoring?
 ```
 
-V2 is the future plan author. Runtime is the plan executor. The materializer is the narrow translator between those layers. That distinction matters because production projection still has legacy repair-shaped behavior, while the latest mismatch evidence points to materialized exercise identity quality and under-specified lane intent rather than failed persistence or runtime replay.
+But once the app has a high-quality seed, runtime must answer the execution question without becoming a second planner.
 
 Success means:
 
@@ -60,6 +76,8 @@ Success means:
 - Planner-owned lane intent is explicit enough that materializer ranking does not infer core training meaning from coarse taxonomy aliases.
 - The accepted seed remains minimal and deterministic.
 - Runtime replay does not become V2-aware.
+- Runtime prescriptions are coherent with performance evidence, lifecycle week, rep target, and effort target.
+- Runtime coaching helps the user execute today's planned intent with appropriate load, reps, RIR/RPE, rest, swaps, and adjustments.
 - User edits stay session-local unless an explicit reseed or replacement path is chosen.
 - Logs capture what actually happened.
 - Review turns performed reality into future planning evidence.
@@ -85,7 +103,7 @@ Operating roles:
 - Planner = intelligence. It decides the block objective, muscle priorities, movement/class obligations, weekly progression, support floors, continuity stance, lane-selection intent, and set distribution before exact exercise selection.
 - Materializer = lane-intent-to-exercise translator. It converts planner lane intent into concrete exercise identities while preserving planner intent, optimizing stimulus-to-fatigue, respecting constraints, honoring stability and fatigue preferences, and staying explainable.
 - Seed = contract. It stores the accepted executable plan in the smallest runtime-consumable shape.
-- Runtime = execution. Runtime replay should remain boring.
+- Runtime = execution. Runtime replay remains boring with respect to seed truth, but runtime prescription and coaching can be intelligent with respect to today's execution. It should help the user perform the planned intent with appropriate loads, reps, RIR/RPE, rest, swaps, and bounded adjustments without re-authoring the plan.
 - Logs = reality. Logs record performed sets, skipped work, swaps, pain/tolerance, load, reps, RPE/RIR, adherence, and session duration.
 - Review = learning. Review summarizes what worked, what failed, and what should influence the next plan.
 - Repair = safety net. Repair is safety net, not program author.
@@ -132,13 +150,38 @@ Runtime should replay the accepted seed and log performed reality. Runtime shoul
 
 Swaps, added work, removed work, reduced sets, skipped sessions, partial sessions, load changes, rep changes, and effort changes are session-local deviations unless the user explicitly accepts a reseed or replacement.
 
-### Principle 6 - Performed Reality Informs Future Blocks
+### Principle 6 - Elite Runtime Execution Without Seed Mutation
+
+Runtime should be execution-intelligent but seed-inert. It should prescribe load, reps, effort, rest, and coaching cues from evidence; support session-local swaps, additions, skips, and set-level adjustments; and save performed reality accurately. It must not silently mutate the accepted seed or convert runtime edits into a new plan.
+
+This is the key distinction:
+
+```txt
+Intelligent execution is allowed.
+Hidden plan re-authoring is not.
+```
+
+### Principle 7 - Prescriptions Must Be Coherent With Performance Evidence
+
+Target load, target reps, and target RIR/RPE must agree with each other and with recent performance evidence.
+
+If prior exact performance was hard and below the new target reps, the next easier target should not increase load. A prescription like "more weight, more reps, easier effort" is a risk signal unless there is explicit evidence explaining why it is reasonable.
+
+Load targets should be suggestions with source and confidence, not false precision. Estimated or low-confidence prescriptions should be labeled. Progression logic should consider exercise type, equipment increments, dumbbell/per-hand conventions, rep range, target RIR/RPE, lifecycle week, exact-exercise history, substituted-exercise history, and confidence.
+
+### Principle 8 - Swaps Preserve Lane Intent
+
+Runtime swaps should preserve the planned lane/job, not merely the same primary muscle.
+
+Same primary muscle is not enough. Swap suggestions should match movement pattern, role, directness, fatigue/stability profile, loadability/progression characteristics, session context, and relevant collateral effects. Fallback swaps should be labeled as fallbacks, not silently presented as equivalent. Runtime swaps remain session-local unless explicit reseed or replacement occurs.
+
+### Principle 9 - Performed Reality Informs Future Blocks
 
 The learning loop should use what the user actually performed, not old prescribed repair-shaped plans. Performed sets, adherence, fatigue, tolerance, progression, stalls, swaps, pain, and deload execution should become next-block evidence.
 
 That learning should improve the next `MesocycleStrategy`. It should not silently mutate the current accepted seed.
 
-### Principle 7 - Planner-Owned Lane Intent Before Materializer Guesswork
+### Principle 10 - Planner-Owned Lane Intent Before Materializer Guesswork
 
 Lane intent must become explicit enough that taxonomy and ranking do not infer core training meaning.
 
@@ -146,7 +189,7 @@ The planner should say whether a lane requires, prefers, allows, or disallows sp
 
 The materializer should consume those semantics. It should not invent them.
 
-### Principle 8 - Policies Should Be Evidence-Aligned, Not Rigid
+### Principle 11 - Policies Should Be Evidence-Aligned, Not Rigid
 
 Planner policy should be grounded in hypertrophy principles and allow justified exceptions. Avoid arbitrary always/never rules.
 
@@ -175,6 +218,19 @@ The latest factory-line finding resolved the downstream suspicion:
 - The persisted seed matched the V2 materialized candidate, accepted-seed preview, final seed-builder input, and runtime replay.
 
 The actual issue was materializer identity selection. V2 materialization selected legacy-looking exercise identities. That means the upstream gap is not primarily "can the seed be stored?" but "does the materializer select the right concrete exercise for the planner's intended lane?"
+
+The latest runtime/session audit adds a second quality signal. Week 1 session 4 correctly derived `lower_b` from the persisted seed and slot sequence, and generated a stable Lower B structure:
+
+- Stiff-Legged Deadlift: 3 sets
+- Seated Leg Curl: 3 sets
+- Bulgarian Split Squat: 3 sets
+- Seated Calf Raise: 3 sets
+
+Runtime replay was correct. The main issue was prescription quality: Stiff-Legged Deadlift generated `140 x 10 @ RPE 6.5` despite prior exact history of `135 x 6 @ RPE 8.5`. That was a load/RIR mismatch: more load, more reps, and easier target effort than the evidence supported.
+
+The narrow root cause was that overshoot progression treated "performed above prescribed targetLoad" as enough to increase load, even though prior reps and effort contradicted the new easier target. The narrow fix now holds the quantized anchor when the current target asks for materially more reps at materially easier effort than prior performance supports. After that fix, the SLDL target became `135 x 10 @ RPE 6.5`. The remaining warning still correctly fires because even holding load can remain ambitious when the target jumps from `135 x 6 @ RPE 8.5` to `135 x 10 @ RPE 6.5`.
+
+The strategic conclusion is not "runtime should re-author the seed"; it is that runtime prescription needs its own quality gate over load, reps, effort, confidence, source, caution warnings, and adjustment range.
 
 The latest tactical materializer and taxonomy fix materially improves the V2 base-plan path:
 
@@ -251,10 +307,13 @@ User Training Profile
 -> Slot Architecture
 -> Exercise Selection Strategy
 -> Set / Rep / RIR Prescription
--> Runtime Adjustment Rules
--> Post-Mesocycle Learning Loop
 -> Accepted Seed
 -> Runtime Replay
+-> Runtime Prescription Engine
+-> Runtime Coaching / Autoregulation
+-> Runtime Edit Layer
+-> Save / Reconciliation Layer
+-> Post-Mesocycle Learning Loop
 ```
 
 ### User Training Profile
@@ -345,18 +404,6 @@ Strategic purpose: define set spread, concentration limits, rep/RIR intent, dire
 
 Current status: V2 set-distribution intent has moved the base plan away from flat four-set lanes. Do not let late set bumping or cap trim create ordinary set policy.
 
-### Runtime Adjustment Rules
-
-Strategic purpose: define what runtime may adapt locally without redesigning the mesocycle. Good looks like practical user flexibility with receipts that explain deviations.
-
-Current status: runtime and reseed seams already support the direction. Do not move planner intelligence into runtime.
-
-### Post-Mesocycle Learning Loop
-
-Strategic purpose: turn performed reality into next-block strategy evidence. Good looks like review summaries that can recommend volume hold/increase/reduction, specialization, recovery bias, exercise continuity, rotation, or fatigue-management changes.
-
-Current status: `MesocycleReview`, handoff summaries, strategy-input adapters, and audit diagnostics have pieces of the loop. Do not use old repaired prescribed plans as the training signal.
-
 ### Accepted Seed
 
 Strategic purpose: persist the executable plan plus compact runtime-inert provenance. Good looks like seed truth that runtime can replay without selection or repair.
@@ -368,6 +415,50 @@ Current status: accepted seed infrastructure is valuable. Do not bloat executabl
 Strategic purpose: execute the accepted plan deterministically and log what happened. Good looks like stable replay from `slotSequenceJson` and `slotPlanSeedJson`, with session-local deviations recorded as performed reality.
 
 Current status: keep current runtime. Do not replace it.
+
+### Runtime Adjustment Rules
+
+Strategic purpose: define what runtime may adapt locally without redesigning the mesocycle. Good looks like practical user flexibility with receipts that explain deviations and read models that distinguish planned truth from performed reality.
+
+Current status: runtime and reseed seams already support the direction. Do not move planner intelligence into runtime.
+
+### Runtime Prescription Engine
+
+Strategic purpose: transform seed exercise rows into session prescriptions: set rows, rep ranges, target reps, target load, target RIR/RPE, confidence, and source/basis.
+
+Good looks like prescription output that respects lifecycle week, exercise class, equipment increments, exact performance history, substitution history, cold-start uncertainty, and the difference between load suggestion and load truth.
+
+Current status: target architecture only. Do not infer from this doc that production prescription logic already passes the quality gate.
+
+### Runtime Coaching / Autoregulation
+
+Strategic purpose: help the user adjust today based on readiness, pain, actual set performance, missed reps, unexpectedly high RPE, soreness/fatigue, and exercise-specific confidence.
+
+Good looks like bounded coaching that explains when to add a set, repeat load, reduce load, lower reps, extend rest, skip a set, swap an exercise, or stop the exercise while preserving the planned session intent.
+
+Current status: target architecture only. Autoregulation must remain session-local unless an explicit reseed/replacement flow is chosen.
+
+### Runtime Edit Layer
+
+Strategic purpose: support swap, add set, skip set, add exercise, remove unlogged added exercise, and other session-local deviations while preserving seed truth.
+
+Good looks like edits that are easy for the user, explicit in provenance, bounded by fatigue/session context, and never silently converted into future plan policy.
+
+Current status: runtime edit seams exist, but this section defines the north-star quality bar rather than claiming complete behavior.
+
+### Save / Reconciliation Layer
+
+Strategic purpose: persist performed reality, runtime edit ops, skipped work, substitutions, additions, and receipts so Program/Home/Analytics can distinguish planned truth from performed reality.
+
+Good looks like save behavior that preserves the original planned seed receipt, records deviations separately, treats skipped sets as valid logs but not performed work, and gives review/analytics enough evidence to learn from reality without mutating the accepted seed.
+
+Current status: target architecture only for the full runtime execution quality bar.
+
+### Post-Mesocycle Learning Loop
+
+Strategic purpose: turn performed reality into next-block strategy evidence. Good looks like review summaries that can recommend volume hold/increase/reduction, specialization, recovery bias, exercise continuity, rotation, or fatigue-management changes.
+
+Current status: `MesocycleReview`, handoff summaries, strategy-input adapters, and audit diagnostics have pieces of the loop. Do not use old repaired prescribed plans as the training signal.
 
 ## 6. Static Base Plan Strategy
 
@@ -435,7 +526,111 @@ Quality expectations:
 
 Materializer/taxonomy fixes make this path better. They do not remove the need for planner-owned `laneSelectionIntent`.
 
-## 7. Factory-Line Strategy
+## 7. Runtime Session Execution Strategy
+
+Once the accepted seed exists, the runtime layer has two jobs:
+
+- faithfully instantiate the accepted seed
+- coach the user through today's session in a way that produces high-quality hypertrophy data
+
+Runtime remains seed-inert. It does not select the mesocycle's exercises, rewrite slot set counts, consume V2 diagnostics as plan policy, or mutate `slotPlanSeedJson` during ordinary logging. But runtime can still be excellent at execution: prescriptions, cues, set-level decisions, swaps, additions, skips, confidence labels, and save reconciliation.
+
+### Prescription Quality
+
+Prescription quality means the app's set rows make sense for hypertrophy training and for the user's evidence.
+
+Target behavior:
+
+- exercise-specific rep ranges instead of one flat default
+- compound and isolation movements treated differently
+- target effort consistent with lifecycle week, including Week 1 RIR 3-4 and deload reductions in volume, effort, and load where appropriate
+- target load exposed as an adjustable suggestion with source/basis, confidence, and, when useful, a recommended adjustment range
+- conservative cold starts when exact history is missing
+- no unrealistic jumps from prior performance
+- estimates labeled as estimates
+- low-confidence prescriptions labeled instead of hidden behind precise numbers
+
+The Stiff-Legged Deadlift mismatch is the motivating example. `140 x 10 @ RPE 6.5` after `135 x 6 @ RPE 8.5` should be treated as a prescription-quality warning unless evidence explains the jump. The fixed target of `135 x 10 @ RPE 6.5` is better because it does not increase load, but it should still be "allowed but cautioned" because holding load can remain too aggressive when reps and target effort change substantially.
+
+Strategic interpretation: runtime prescription quality needs more than a single target number. The UI/operator surface should distinguish target load, source/basis, confidence, caution state, and recommended adjustment range. Future behavior may reduce load automatically, but the first strategic requirement is visible mismatch detection and honest confidence labeling.
+
+### Load Progression / Prescription Gate
+
+Acceptance criteria:
+
+- target load does not increase when prior reps were below target and prior RPE was materially harder than the current target
+- target load, target reps, and target RIR/RPE agree with one another
+- a target can be allowed but cautioned when evidence is plausible but weak
+- holding load can still warn when target reps and target RPE change substantially
+- estimates are labeled
+- low-confidence prescriptions are labeled
+- source/basis and confidence are visible beside the target
+- recommended adjustment range is visible when the point target is uncertain
+- dumbbell/per-hand conventions are clear
+- equipment increments are respected
+- recent history is used but not overtrusted
+- substituted exercise history is used carefully
+- exact exercise history wins when appropriate
+- load targets remain adjustable suggestions rather than false exact truth
+
+### Runtime Swap Quality
+
+Swap quality means the replacement preserves the lane's training job.
+
+Acceptance criteria:
+
+- lane-preserving swaps are suggested first
+- same movement/class is preferred before broad primary-muscle fallback
+- movement pattern, role, directness, fatigue/stability profile, loadability/progression, collateral effects, and session context are checked
+- already-present exercises are excluded unless explicitly allowed
+- logged exercise restrictions are clear
+- fallback tier is shown
+- swap reason is shown
+- fallback swaps are labeled as fallbacks
+- runtime swaps stay session-local unless explicit reseed or replacement occurs
+
+### Add Set / Back Off Guidance
+
+Add-set suggestions should be earned by today's evidence.
+
+Suggest adding a set when:
+
+- performance is within target RIR/RPE
+- reps remain in range
+- technique quality is good
+- fatigue budget is available
+- the muscle/slot is not near its planned ceiling
+
+Suggest backing off when:
+
+- RPE overshoots target materially
+- pain appears
+- form breaks down
+- load or reps drop sharply
+- recovery signals warn against more work
+- misses repeat across sets
+- recent related sessions show high fatigue
+
+### Add Exercise Guidance
+
+Add exercise should not be random. It should be optional, session-local, and tied to a visible reason: a deficit, pump/accessory need, equipment reality, time availability, or explicit user intent.
+
+The add-exercise layer should be bounded by fatigue and session budget, explain why the exercise is suggested, and clearly exclude the added exercise from canonical seed truth unless the user later accepts an explicit reseed/replacement.
+
+### Save / Receipts / Analytics
+
+Save should preserve the original planned seed receipt and persist deviations as performed-reality metadata.
+
+Target behavior:
+
+- runtime edit operations, swaps, additions, skipped sets, and substitutions are captured as what happened today
+- skipped sets are valid logs but not performed work
+- Program/Home do not confuse edited runtime structure with canonical seed truth
+- Analytics separates planned, skipped, and performed sets
+- Review learns from performed reality
+- receipts/provenance explain deviations without becoming a second executable plan
+
+## 8. Factory-Line Strategy
 
 The downstream production factory contains valuable infrastructure and old repair-shaped assumptions. The migration should audit responsibility before wiring V2 into production default behavior.
 
@@ -516,7 +711,7 @@ These should remain available only for unsupported or old paths until V2 is prov
 
 Do not remove safety infrastructure early. First prove that V2 owns the plan, the materializer selects high-quality candidate identities, the factory preserves the seed, runtime replays it, and repair materiality drops.
 
-## 8. Historical Personalization Roadmap Boundary
+## 9. Historical Personalization Roadmap Boundary
 
 Historical personalization is important. It should happen after the base V2 planner is excellent.
 
@@ -545,7 +740,7 @@ Examples of useful future evidence:
 - deload execution quality
 - muscles that were under-hit, over-concentrated, or easy to recover from
 
-## 9. Migration Strategy
+## 10. Migration Strategy
 
 1. Establish clean V2 static base plan.
 
@@ -595,7 +790,7 @@ Examples of useful future evidence:
 
    Add this after the default V2 planner is strong and the learning loop can consume performed reality without using old repaired prescribed plans as target policy.
 
-## 10. Decision Criteria / Acceptance Criteria
+## 11. Decision Criteria / Acceptance Criteria
 
 These are strategic decision gates, not claims that current production already passes.
 
@@ -635,6 +830,22 @@ These are strategic decision gates, not claims that current production already p
 - no production write occurs from diagnostic-only materializer output
 - provenance distinguishes seed authoring, seed serialization, transaction persistence, runtime composition, and UI display source
 
+### Runtime Execution Quality Gate
+
+- next-session generation replays persisted seed exactly
+- rep ranges match exercise class and hypertrophy goal
+- RIR/RPE target matches lifecycle week
+- load target is coherent with recent performance
+- target source and confidence are visible
+- recommended adjustment range is visible when confidence is low or mismatch risk is present
+- risky load/RIR mismatch is warned
+- allowed-but-cautioned prescriptions are distinguished from clean prescriptions
+- estimates and low-confidence targets are labeled
+- swaps preserve lane intent
+- add-set and add-exercise behavior is bounded and session-local
+- save preserves seed and logs reality
+- Program/Home/Analytics distinguish planned, skipped, and performed work
+
 ### Repair Demotion Gate
 
 - material, major, and suspicious repairs drop materially
@@ -652,12 +863,19 @@ These are strategic decision gates, not claims that current production already p
 - historical evidence influences next strategy, not current accepted seed mutation
 - old repair-shaped prescribed plans are not treated as performed truth
 
-## 11. What Not To Do
+## 12. What Not To Do
 
 - Do not let diagnostics become behavior.
 - Do not copy repaired projection as target policy.
 - Do not make the materializer a second planner.
 - Do not let runtime consume planner metadata.
+- Do not let runtime edits mutate canonical seed.
+- Do not treat target loads as exact truth when confidence is low.
+- Do not increase load into an easier RIR target when prior reps/effort contradict it.
+- Do not hide prescription source/confidence from the user/operator.
+- Do not suggest swaps that preserve only primary muscle while changing the lane's training effect.
+- Do not let added exercises silently become future plan policy.
+- Do not let analytics confuse skipped, planned, and performed sets.
 - Do not let favorites or continuity override lane intent in fresh base plans.
 - Do not infer authoring truth from a single provenance/source field.
 - Do not infer candidate identity from set totals.
@@ -673,7 +891,7 @@ These are strategic decision gates, not claims that current production already p
 - Do not claim historical personalization is implemented while it remains diagnostic or roadmap work.
 - Do not delete safety repair paths before V2 owns the responsibility they currently protect.
 
-## 12. Immediate Next Strategic Step: Candidate Identity Verification + Lane Intent Contract
+## 13. Immediate Next Strategic Step: Candidate Identity Verification + Lane Intent Contract
 
 The next question:
 
@@ -695,6 +913,24 @@ Immediate sequence:
 9. Keep the diagnostic read-only until the planner-owned contract is implemented.
 10. Continue provenance/source cleanup so seed authoring provenance, seed serialization source, runtime composition source, and UI exercise source are not conflated.
 
+### Runtime Execution Audit Track
+
+The immediate runtime question:
+
+```txt
+Does the app turn the accepted seed into a safe, evidence-aligned,
+hypertrophy-focused training session, and does it save deviations
+as reality without mutating the plan?
+```
+
+Active audit tracks:
+
+- load/RIR mismatch warning
+- lane-preserving swap audit
+- runtime edit plus save contract audit
+- seed provenance helper
+- next-session UI/read-model confirmation if needed
+
 Guardrails for that next slice:
 
 - no generation behavior change from diagnostics
@@ -702,6 +938,7 @@ Guardrails for that next slice:
 - no seed shape change
 - no runtime replay change
 - no receipt behavior change
+- no claim that runtime execution gates are implemented until code/tests/audits prove them
 - no V2 live default claim
 - no `laneSelectionIntent` implementation claim until a planner-owned contract exists
 - no `V2LaneSelectionIntentAudit` consumption by materializer ranking

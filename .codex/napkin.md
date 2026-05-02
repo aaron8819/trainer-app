@@ -109,6 +109,7 @@
 | 2026-05-02 | self | Repeated a PowerShell terminator error by mixing embedded double quotes inside a broad `rg` alternation while checking stale backfill names. | Keep stale-literal checks in single-quoted `rg` patterns or split into boring separate searches. |
 | 2026-05-02 | self | The first guarded Week 1 backfill write used the documented CLI path and hit Prisma's default 5s interactive transaction timeout after the safety checks passed. | Confirm rollback state, then rerun the same helper with explicit write/confirmation and a longer `$transaction` timeout wrapper; do not hand-build the DB write. |
 | 2026-05-02 | self | During the Lower B read-model audit, repeated the Windows wildcard-path `rg` mistake with `src\lib\api\projected-week-volume*` and then hit the known `tsx` stdin default-wrapper import issue for Prisma. | Keep Windows `rg` paths concrete with `-g` filters, and unwrap dynamic stdin imports with `const mod = raw.default ?? raw` before using local exports. |
+| 2026-05-02 | self | In the runtime north-star doc update, first placed runtime prescription/coaching before accepted seed/runtime replay in the stack even though prescriptions transform seed rows. | For seed/runtime strategy docs, order accepted seed and replay before runtime prescription/edit/save layers so the prose reinforces executable seed truth. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

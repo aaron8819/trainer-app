@@ -7,6 +7,8 @@ import type {
   V2TargetSkeleton,
 } from "../types";
 import {
+  evaluateV2AnchorLaneQuality,
+  isV2AnchorLaneQualityChecked,
   matchV2ExerciseClasses,
   resolveV2ExerciseClassIds,
 } from "./taxonomy";
@@ -130,6 +132,19 @@ export type V2BasePlanValidation = {
         | "not_evaluated";
       lowerHingeDuplicatePolicy: "passed" | "warning" | "not_evaluated";
       supportReusePolicy: "acceptable" | "needs_variant_policy" | "not_evaluated";
+    };
+    anchorLaneQuality: {
+      rows: Array<{
+        slotId: string;
+        laneId: string;
+        exerciseId: string;
+        exerciseName: string;
+        tier: "ideal" | "fallback" | "ineligible";
+        idealAlternativeCount: number;
+        reasons: string[];
+      }>;
+      blockers: V2BasePlanValidationIssue[];
+      warnings: V2BasePlanValidationIssue[];
     };
     verticalPressDecision: {
       targetSkeletonLaneRequired: boolean;
@@ -261,6 +276,11 @@ export function buildV2BasePlanValidation(
     inventory: input.inventory ?? [],
     taxonomy: input.taxonomy,
   });
+  const anchorLaneQuality = buildAnchorLaneQuality({
+    evidence,
+    inventory: input.inventory ?? [],
+    taxonomy: input.taxonomy,
+  });
   const verticalPressDecision = buildVerticalPressDecision({
     targetSkeleton: input.plannerPolicy.targetSkeleton,
     laneIndex,
@@ -277,11 +297,13 @@ export function buildV2BasePlanValidation(
     slotShape,
     classCoverage,
     setCountQuality,
+    anchorLaneQuality,
   });
   const warnings = buildWarnings({
     muscleCoverage,
     setCountQuality,
     duplicateDistinctness,
+    anchorLaneQuality,
     verticalPressDecision,
     deloadCompatibility,
   });
@@ -318,6 +340,7 @@ export function buildV2BasePlanValidation(
       exerciseClassCoverage: classCoverage,
       setCountQuality,
       duplicateDistinctness,
+      anchorLaneQuality,
       verticalPressDecision,
       deloadCompatibility,
       coachQuality,
@@ -939,6 +962,142 @@ function duplicates(values: string[]): string[] {
   return Array.from(duplicated).sort((left, right) => left.localeCompare(right));
 }
 
+function buildAnchorLaneQuality(input: {
+  evidence: ReadonlyArray<MaterializedLaneEvidence>;
+  inventory: ReadonlyArray<V2MaterializationExercise>;
+  taxonomy?: V2ExerciseClassTaxonomy | null;
+}): V2BasePlanValidation["checks"]["anchorLaneQuality"] {
+  if (!input.taxonomy) {
+    return { rows: [], blockers: [], warnings: [] };
+  }
+
+  const rows = input.evidence
+    .filter(
+      (row) =>
+        row.planLane &&
+        row.inventoryExercise &&
+        isV2AnchorLaneQualityChecked(row.laneId),
+    )
+    .map((row) => {
+      const quality = evaluateV2AnchorLaneQuality(
+        row.laneId,
+        row.inventoryExercise as V2MaterializationExercise,
+        row.match,
+      );
+      const idealAlternativeCount = countIdealAnchorAlternatives({
+        lane: row.planLane as PlanLane,
+        inventory: input.inventory,
+        taxonomy: input.taxonomy as V2ExerciseClassTaxonomy,
+      });
+      return {
+        slotId: row.slotId,
+        laneId: row.laneId,
+        exerciseId: row.exercise.exerciseId,
+        exerciseName: row.exerciseName,
+        tier: quality.tier,
+        idealAlternativeCount,
+        reasons: [...quality.reasons],
+      };
+    })
+    .sort(
+      (left, right) =>
+        left.slotId.localeCompare(right.slotId) ||
+        left.laneId.localeCompare(right.laneId) ||
+        left.exerciseName.localeCompare(right.exerciseName),
+    );
+
+  const blockers = rows.flatMap((row): V2BasePlanValidationIssue[] => {
+    if (row.tier === "ineligible") {
+      return [
+        anchorQualityIssue({
+          row,
+          reason: `anchor_ineligible_exercise_selected:${row.slotId}:${row.laneId}:${row.exerciseName}:${row.reasons.join("|")}`,
+        }),
+      ];
+    }
+    if (row.tier !== "fallback" || row.idealAlternativeCount <= 0) {
+      return [];
+    }
+    const specificReason = specificFallbackBlockerReason(row);
+    return [
+      anchorQualityIssue({
+        row,
+        reason: `anchor_fallback_selected_while_ideal_alternative_exists:${row.slotId}:${row.laneId}:${row.exerciseName}:ideal_alternative_count=${row.idealAlternativeCount}`,
+      }),
+      ...(specificReason
+        ? [anchorQualityIssue({ row, reason: specificReason })]
+        : []),
+    ];
+  });
+
+  const warnings = rows.flatMap((row): V2BasePlanValidationIssue[] =>
+    row.tier === "fallback" && row.idealAlternativeCount === 0
+      ? [
+          anchorQualityIssue({
+            row,
+            reason: `anchor_fallback_selected_no_ideal_alternative:${row.slotId}:${row.laneId}:${row.exerciseName}:${row.reasons.join("|")}`,
+          }),
+        ]
+      : [],
+  );
+
+  return { rows, blockers, warnings };
+}
+
+function anchorQualityIssue(input: {
+  row: V2BasePlanValidation["checks"]["anchorLaneQuality"]["rows"][number];
+  reason: string;
+}): V2BasePlanValidationIssue {
+  return {
+    category: "anchor_lane_quality",
+    reason: input.reason,
+    slotId: input.row.slotId,
+    laneId: input.row.laneId,
+    exerciseId: input.row.exerciseId,
+  };
+}
+
+function specificFallbackBlockerReason(
+  row: V2BasePlanValidation["checks"]["anchorLaneQuality"]["rows"][number],
+): string | null {
+  if (row.laneId === "squat_anchor") {
+    return `squat_anchor_support_only_selected_while_loadable_alternative_exists:${row.slotId}:${row.exerciseName}`;
+  }
+  if (row.laneId === "hinge_anchor") {
+    return `hinge_anchor_accessory_selected_while_true_hinge_exists:${row.slotId}:${row.exerciseName}`;
+  }
+  if (row.laneId === "row_anchor" || row.laneId === "row_support") {
+    return `row_anchor_lacks_loadability_while_loadable_row_exists:${row.slotId}:${row.laneId}:${row.exerciseName}`;
+  }
+  return null;
+}
+
+function countIdealAnchorAlternatives(input: {
+  lane: PlanLane;
+  inventory: ReadonlyArray<V2MaterializationExercise>;
+  taxonomy: V2ExerciseClassTaxonomy;
+}): number {
+  const acceptable = new Set<string>(
+    resolveV2ExerciseClassIds(input.taxonomy, [
+      ...input.lane.acceptableExerciseClasses,
+      ...input.lane.preferredExerciseClasses,
+    ]),
+  );
+  if (!acceptable.size) {
+    return 0;
+  }
+
+  return input.inventory.filter((exercise) =>
+    matchV2ExerciseClasses(exercise, input.taxonomy)
+      .filter((match) => acceptable.has(match.classId))
+      .some(
+        (match) =>
+          evaluateV2AnchorLaneQuality(input.lane.laneId, exercise, match).tier ===
+          "ideal",
+      ),
+  ).length;
+}
+
 function buildVerticalPressDecision(input: {
   targetSkeleton: V2TargetSkeleton;
   laneIndex: ReadonlyMap<string, PlanLane>;
@@ -1023,6 +1182,7 @@ function buildBlockers(input: {
   slotShape: V2BasePlanValidation["checks"]["slotShape"];
   classCoverage: V2BasePlanValidation["checks"]["exerciseClassCoverage"];
   setCountQuality: V2BasePlanValidation["checks"]["setCountQuality"];
+  anchorLaneQuality: V2BasePlanValidation["checks"]["anchorLaneQuality"];
 }): V2BasePlanValidationIssue[] {
   const materializerBlockers =
     input.materializedPlan?.blockers.map((blocker) => ({
@@ -1053,6 +1213,7 @@ function buildBlockers(input: {
       category: "set_count_quality",
       reason: `standalone_one_set_hypertrophy_exercise_disallowed:${reason}`,
     })),
+    ...input.anchorLaneQuality.blockers,
     ...(input.classCoverage.optionalLanesOmittedUnlessActivated
       ? []
       : [
@@ -1076,6 +1237,7 @@ function buildWarnings(input: {
   muscleCoverage: V2BasePlanValidation["checks"]["muscleCoverage"];
   setCountQuality: V2BasePlanValidation["checks"]["setCountQuality"];
   duplicateDistinctness: V2BasePlanValidation["checks"]["duplicateDistinctness"];
+  anchorLaneQuality: V2BasePlanValidation["checks"]["anchorLaneQuality"];
   verticalPressDecision: V2BasePlanValidation["checks"]["verticalPressDecision"];
   deloadCompatibility: V2BasePlanValidation["checks"]["deloadCompatibility"];
 }): V2BasePlanValidationIssue[] {
@@ -1097,6 +1259,7 @@ function buildWarnings(input: {
       category: "muscle_coverage",
       reason: `managed_collateral_direct_work_ambiguity:${reason}`,
     })),
+    ...input.anchorLaneQuality.warnings,
     ...(input.duplicateDistinctness.calfDuplicatePolicy ===
     "variant_diversity_preferred"
       ? [
@@ -1236,6 +1399,11 @@ function nextSafeAction(input: {
     return "fix_materializer";
   }
   if (
+    input.blockers.some((blocker) => blocker.category === "anchor_lane_quality")
+  ) {
+    return "fix_materializer";
+  }
+  if (
     input.blockers.some((blocker) =>
       blocker.category === "exercise_class_coverage" ||
       blocker.category === "muscle_coverage",
@@ -1246,6 +1414,7 @@ function nextSafeAction(input: {
   if (
     input.warnings.some((warning) =>
       warning.category === "vertical_press_decision" ||
+      warning.category === "anchor_lane_quality" ||
       warning.reason.includes("managed_collateral_direct_work_ambiguity"),
     )
   ) {

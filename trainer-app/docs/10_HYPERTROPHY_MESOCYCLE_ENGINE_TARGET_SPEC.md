@@ -4,7 +4,7 @@ Owner: Aaron
 Last reviewed: 2026-05-02
 Purpose: Define the strategic direction for the V2 hypertrophy planner migration: V2 becomes the future plan author, accepted seed remains minimal executable truth, runtime replay remains stable, and performed reality informs future blocks without silently mutating the current one.
 
-This document is a strategy and migration map, not a claim about current runtime behavior. Current runtime truth remains the code, contract tests, and audit artifacts. The current mapping is grounded in the same live audit evidence previously used for this target doc plus the latest V2 factory-line, materializer, taxonomy, and candidate-identity findings:
+This document is a strategy and migration map, not a claim about current runtime behavior. Current runtime truth remains the code, contract tests, and audit artifacts. The current mapping is grounded in the same live audit evidence previously used for this target doc plus the latest V2 factory-line, materializer, taxonomy, candidate-identity, and lane-selection-intent audit findings:
 
 - `artifacts/audits/2026-04-27T13-46-09-620Z-mesocycle-explain.json`
 - Owner: `aaron8819@gmail.com`
@@ -204,6 +204,34 @@ The deeper strategic finding remains unresolved:
 - The materializer still infers too much from coarse classes and taxonomy aliases.
 - Materializer/taxonomy fixes improve the V2 base-plan path, but they do not replace the need for richer planner-owned lane intent.
 
+Read-only diagnostic progress now makes that gap explicit. `V2LaneSelectionIntentAudit` was added with this diagnostic contract:
+
+```txt
+source: "v2_lane_selection_intent_audit"
+readOnly: true
+affectsScoringOrGeneration: false
+consumedByDemandOrMaterializer: false
+```
+
+Current summary:
+
+- `totalLanes: 23`
+- `lanesWithCorrectnessRisk: 5`
+- `lanesWithQualityRisk: 10`
+- `lanesWithExtensibilityRisk: 19`
+
+Strategic interpretation:
+
+- Current V2 lanes carry useful class, muscle, set-budget, duplicate, and continuity intent.
+- High-risk lanes still rely on materializer/taxonomy inference for movement pattern, substitution strictness, directness, fatigue, stability, loadability, collateral policy, and ranking priority.
+- Vertical pull lanes have class intent but lack planner-owned movement, directness, and substitution strictness.
+- `quad_isolation` is now correctly separate from `squat_pattern`, but still needs explicit movement and substitution policy.
+- Hinge anchor exposes managed collateral muscles but lacks consumable collateral caps and axial fatigue preference.
+- Chest anchor and second exposure lack explicit stability and press-vs-fly priority.
+- Row lanes lack explicit horizontal-pull movement and substitution policy.
+- Calves lack cross-lower-slot duplicate and variant policy.
+- `upper_a:chest_secondary` exists in the target skeleton but is absent from the final materializer-facing `ExerciseSelectionPlan`; treat it as skeleton-only ghost intent until it is intentionally restored, retired, or mapped into materializer-facing policy.
+
 Current production projection remains legacy/repair-shaped. V2 is not live default. Historical personalization is not implemented as production strategy. Repair has not yet been demoted. The latest work mostly proves that seed transport and runtime replay can be boring when given a seed; it does not prove that V2 has fully authored elite exercise lanes yet.
 
 Provenance also needs cleanup. `slotPlanSeedJson.source = "handoff_slot_plan_projection"` is currently serializer-owned and hard-coded enough that it is not sufficient proof of legacy authorship by itself. Stronger V2 signals include `acceptedPlannerIntent.source = "v2_planner_policy"` and replacement artifacts that report V2 materialized seed provenance. `slotPlanSeedJson.source`, `acceptedPlannerIntent.source`, runtime `compositionSource`, and UI `exerciseSource` can describe different layers and must not be collapsed into one authorship claim.
@@ -291,7 +319,7 @@ High-risk lane families that need this contract first:
 - row anchor/support
 - calves
 
-Current status: not implemented as a planner-owned contract. A read-only `V2LaneSelectionIntentAudit` should come first so the app can expose where current materializer/taxonomy inference is still standing in for explicit planner intent.
+Current status: not implemented as a planner-owned contract. A read-only `V2LaneSelectionIntentAudit` now exposes where current materializer/taxonomy inference is still standing in for explicit planner intent. That diagnostic should guide contract design, but it must not feed materializer ranking until the planner-owned `laneSelectionIntent` contract exists.
 
 ### Weekly Progression Model
 
@@ -535,31 +563,35 @@ Examples of useful future evidence:
 
    Backfill should use the seed decision as settled truth. Do not backfill from an ambiguous candidate, a legacy-looking materializer output, or a provenance-only inference.
 
-5. Add read-only `V2LaneSelectionIntentAudit`.
+5. Use read-only `V2LaneSelectionIntentAudit` to design the contract.
 
-   The audit should expose where current lane intent is explicit, where materializer/taxonomy inference is still doing too much, and which high-risk lane families need a richer planner contract. It should be read-only and not consumed by demand, materialization, generation, seed serialization, runtime replay, receipts, UI, DB writes, or persistence.
+   Current status: added as a diagnostic. It exposes where current lane intent is explicit, where materializer/taxonomy inference is still doing too much, and which high-risk lane families need a richer planner contract. It should remain read-only and not be consumed by demand, materialization, generation, seed serialization, runtime replay, receipts, UI, DB writes, or persistence.
 
 6. Design planner-owned `laneSelectionIntent`.
 
-   Promote only after the read-only audit proves the shape. The contract should be planner-owned and materializer-consumed, with explicit movement/class intent, substitution strictness, stability, fatigue, directness, collateral, loadability, continuity, duplicate, and ranking policy.
+   Promote only after the read-only audit proves the shape. The contract should be planner-owned and materializer-consumed, with explicit movement/class intent, substitution strictness, stability, fatigue, directness, collateral, loadability, continuity, duplicate, and ranking policy. Start with vertical pull, quad isolation/support, hinge, chest exposures, rows, and calves.
 
-7. Add guarded shadow/disabled consumption path for the richer lane contract.
+7. Resolve skeleton-only / ghost lane cleanup.
+
+   `upper_a:chest_secondary` exists in the target skeleton but is absent from the final materializer-facing `ExerciseSelectionPlan`. Decide whether it should be restored as a real lane, intentionally retired, or represented through another explicit lane before using it as evidence of materialized V2 intent.
+
+8. Add guarded shadow/disabled consumption path for the richer lane contract.
 
    No production writes. The path should prove transport, validation, provenance, materializer consumption, and serializer compatibility while reporting exactly where consumption would fail.
 
-8. Add bounded behavior trial.
+9. Add bounded behavior trial.
 
    Only after gates prove safe. Start with the smallest slice that has clear owner, measurable quality improvement, non-regression checks, and rollback criteria.
 
-9. Promote V2 as default author for supported cases.
+10. Promote V2 as default author for supported cases.
 
    Only after V2-authored output passes plan-quality, materialization-quality, and integration gates. Runtime replay remains unchanged; repair becomes safety net for supported cases.
 
-10. Demote/quarantine obsolete repair-as-planner machinery.
+11. Demote/quarantine obsolete repair-as-planner machinery.
 
    Do this after V2 ownership is proven. Keep true safety, legacy fallback, impossible-plan handling, and forbidden-slot protection.
 
-11. Add historical personalization / mesocycle-to-mesocycle adaptation.
+12. Add historical personalization / mesocycle-to-mesocycle adaptation.
 
    Add this after the default V2 planner is strong and the learning loop can consume performed reality without using old repaired prescribed plans as target policy.
 
@@ -636,6 +668,7 @@ These are strategic decision gates, not claims that current production already p
 - Do not allow old factory logic to re-author a clean V2 plan.
 - Do not claim V2 is live default until production actually uses it as the supported default author.
 - Do not claim `laneSelectionIntent` is implemented while it remains roadmap or diagnostic work.
+- Do not feed `V2LaneSelectionIntentAudit` into materializer ranking before a planner-owned contract exists.
 - Do not claim repair has been demoted while production projection still depends on repair for normal shape.
 - Do not claim historical personalization is implemented while it remains diagnostic or roadmap work.
 - Do not delete safety repair paths before V2 owns the responsibility they currently protect.
@@ -656,9 +689,11 @@ Immediate sequence:
 3. Verify that each selected identity satisfies the lane's intended movement/class role, directness, stability, fatigue, and stimulus-to-fatigue needs.
 4. Decide whether the current empty mesocycle should be guarded-replaced only if it remains empty and the candidate is materially better.
 5. Resume backfill only after the canonical seed decision is made.
-6. Add read-only `V2LaneSelectionIntentAudit`.
-7. Design planner-owned `laneSelectionIntent` for materializer consumption.
-8. Continue provenance/source cleanup so seed authoring provenance, seed serialization source, runtime composition source, and UI exercise source are not conflated.
+6. Use read-only `V2LaneSelectionIntentAudit` to design the `laneSelectionIntent` contract.
+7. Start the contract with vertical pull, quad isolation/support, hinge, chest exposures, rows, and calves.
+8. Resolve `upper_a:chest_secondary` as skeleton-only ghost intent: restore, retire, or explicitly map it before treating it as materializer-facing policy.
+9. Keep the diagnostic read-only until the planner-owned contract is implemented.
+10. Continue provenance/source cleanup so seed authoring provenance, seed serialization source, runtime composition source, and UI exercise source are not conflated.
 
 Guardrails for that next slice:
 
@@ -669,5 +704,6 @@ Guardrails for that next slice:
 - no receipt behavior change
 - no V2 live default claim
 - no `laneSelectionIntent` implementation claim until a planner-owned contract exists
+- no `V2LaneSelectionIntentAudit` consumption by materializer ranking
 - repaired projection used only as evidence
 - materializer remains a translator, not a planner

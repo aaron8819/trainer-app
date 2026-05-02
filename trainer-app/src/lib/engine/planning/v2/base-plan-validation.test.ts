@@ -220,6 +220,33 @@ function warningReasons(validation: V2BasePlanValidation): string[] {
   return validation.warnings.map((warning) => warning.reason);
 }
 
+function blockerReasons(validation: V2BasePlanValidation): string[] {
+  return validation.blockers.map((blocker) => blocker.reason);
+}
+
+function replaceLaneExercise(input: {
+  plan: V2ExerciseMaterializationPlan;
+  slotId: string;
+  laneId: string;
+  exerciseId: string;
+}): V2ExerciseMaterializationPlan {
+  return {
+    ...input.plan,
+    slots: input.plan.slots.map((slot) =>
+      slot.slotId === input.slotId
+        ? {
+            ...slot,
+            exercises: slot.exercises.map((exerciseRow) =>
+              exerciseRow.laneIds.includes(input.laneId)
+                ? { ...exerciseRow, exerciseId: input.exerciseId }
+                : exerciseRow,
+            ),
+          }
+        : slot,
+    ),
+  };
+}
+
 function materializedPlanView(
   planId: V2BasePlanComparePlanView["planId"],
   materializedPlan: V2ExerciseMaterializationPlan,
@@ -493,6 +520,141 @@ describe("buildV2BasePlanValidation", () => {
     ).toBe(true);
     expect(validation.checks.duplicateDistinctness.chestPressFlyDistinction)
       .toBe("passed");
+  });
+
+  it("blocks fly-only chest anchors even when a materialized plan claims the lane", () => {
+    const { materializedPlan, policy } = buildFixture();
+    const flyAnchorPlan = replaceLaneExercise({
+      plan: materializedPlan,
+      slotId: "upper_a",
+      laneId: "chest_anchor",
+      exerciseId: "cable-fly",
+    });
+    const validation = buildV2BasePlanValidation({
+      plannerPolicy: policy,
+      materializedPlan: flyAnchorPlan,
+      inventory: representativeV2Inventory,
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+    });
+
+    expect(validation.status).toBe("fail");
+    expect(blockerReasons(validation)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          "anchor_ineligible_exercise_selected:upper_a:chest_anchor:Cable Fly:chest_fly_only",
+        ),
+      ]),
+    );
+  });
+
+  it("blocks fallback anchor choices when better loadable alternatives exist", () => {
+    const { materializedPlan, policy } = buildFixture();
+    const degradedPlan = replaceLaneExercise({
+      plan: replaceLaneExercise({
+        plan: replaceLaneExercise({
+          plan: materializedPlan,
+          slotId: "lower_a",
+          laneId: "squat_anchor",
+          exerciseId: "goblet-squat",
+        }),
+        slotId: "lower_b",
+        laneId: "hinge_anchor",
+        exerciseId: "cable-pull-through",
+      }),
+      slotId: "upper_b",
+      laneId: "row_support",
+      exerciseId: "inverted-row",
+    });
+    const validation = buildV2BasePlanValidation({
+      plannerPolicy: policy,
+      materializedPlan: degradedPlan,
+      inventory: [
+        ...representativeV2Inventory,
+        exercise({
+          exerciseId: "goblet-squat",
+          name: "Goblet Squat",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["squat"],
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "cable-pull-through",
+          name: "Cable Pull-Through",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: {
+            Hamstrings: 0.8,
+            Glutes: 0.8,
+            "Lower Back": 0.1,
+          },
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "inverted-row",
+          name: "Inverted Row",
+          primaryMuscles: ["Upper Back", "Lats"],
+          movementPatterns: ["row"],
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+      ],
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+    });
+
+    expect(validation.status).toBe("fail");
+    expect(blockerReasons(validation)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          "squat_anchor_support_only_selected_while_loadable_alternative_exists:lower_a:Goblet Squat",
+        ),
+        expect.stringContaining(
+          "hinge_anchor_accessory_selected_while_true_hinge_exists:lower_b:Cable Pull-Through",
+        ),
+        expect.stringContaining(
+          "row_anchor_lacks_loadability_while_loadable_row_exists:upper_b:row_support:Inverted Row",
+        ),
+      ]),
+    );
+  });
+
+  it("warns rather than blocks when a fallback anchor is the only visible option", () => {
+    const { materializedPlan, policy } = buildFixture();
+    const gobletPlan = replaceLaneExercise({
+      plan: materializedPlan,
+      slotId: "lower_a",
+      laneId: "squat_anchor",
+      exerciseId: "goblet-squat",
+    });
+    const validation = buildV2BasePlanValidation({
+      plannerPolicy: policy,
+      materializedPlan: gobletPlan,
+      inventory: [
+        ...representativeV2Inventory.filter(
+          (row) => row.exerciseId !== "hack-squat" && row.exerciseId !== "leg-press",
+        ),
+        exercise({
+          exerciseId: "goblet-squat",
+          name: "Goblet Squat",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["squat"],
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+      ],
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+    });
+
+    expect(validation.status).toBe("pass_with_warnings");
+    expect(validation.blockers).toEqual([]);
+    expect(warningReasons(validation)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          "anchor_fallback_selected_no_ideal_alternative:lower_a:squat_anchor:Goblet Squat",
+        ),
+      ]),
+    );
   });
 
   it("checks side and rear delt directness", () => {

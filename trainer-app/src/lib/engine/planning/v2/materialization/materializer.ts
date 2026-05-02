@@ -7,6 +7,8 @@ import type {
   V2MaterializedSelection,
 } from "./types";
 import {
+  evaluateV2AnchorLaneQuality,
+  isV2AnchorLaneQualityChecked,
   matchV2ExerciseClasses,
   normalizeV2MaterializationText,
   resolveV2ExerciseClassIds,
@@ -257,7 +259,15 @@ function materializeLane(input: {
     return { kind: "unmaterialized", reason: "direct_floor_unmaterialized" };
   }
 
-  const cleanCandidates = directCandidates.filter(
+  const anchorQualityCandidates = filterAnchorQualityCandidates({
+    lane: input.lane,
+    candidates: directCandidates,
+  });
+  if (!anchorQualityCandidates.length) {
+    return { kind: "unmaterialized", reason: "no_class_match" };
+  }
+
+  const cleanCandidates = anchorQualityCandidates.filter(
     (candidate) => !isDuplicate(candidate, input.lane, input.slot, input.selected),
   );
   const duplicateRequiresClean =
@@ -271,7 +281,9 @@ function materializeLane(input: {
     };
   }
 
-  const candidatePool = cleanCandidates.length ? cleanCandidates : directCandidates;
+  const candidatePool = cleanCandidates.length
+    ? cleanCandidates
+    : anchorQualityCandidates;
   const chosen = [...candidatePool].sort(compareCandidates)[0];
   if (!chosen) {
     return { kind: "unmaterialized", reason: "no_class_match" };
@@ -292,6 +304,41 @@ function materializeLane(input: {
       input.lane.perExerciseCap.maxSetsWithoutJustification,
     ),
   };
+}
+
+function filterAnchorQualityCandidates(input: {
+  lane: PlanLane;
+  candidates: Candidate[];
+}): Candidate[] {
+  if (!isV2AnchorLaneQualityChecked(input.lane.laneId)) {
+    return input.candidates;
+  }
+  const evaluated = input.candidates.map((candidate) => ({
+    candidate,
+    quality: evaluateV2AnchorLaneQuality(
+      input.lane.laneId,
+      candidate.exercise,
+      candidate.match,
+    ),
+  }));
+  const ideal = evaluated.filter((row) => row.quality.tier === "ideal");
+  if (ideal.length) {
+    return ideal.map((row) => row.candidate);
+  }
+  const fallback = evaluated.filter((row) => row.quality.tier === "fallback");
+  if (fallback.length && allowsAnchorFallback(input.lane.laneId)) {
+    return fallback.map((row) => row.candidate);
+  }
+  return [];
+}
+
+function allowsAnchorFallback(laneId: string): boolean {
+  return (
+    laneId === "squat_anchor" ||
+    laneId === "hinge_anchor" ||
+    laneId === "row_anchor" ||
+    laneId === "row_support"
+  );
 }
 
 function buildCandidates(input: {

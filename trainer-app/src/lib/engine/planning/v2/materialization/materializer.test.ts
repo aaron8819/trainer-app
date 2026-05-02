@@ -728,6 +728,314 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     ]);
   });
 
+  it("blocks Cable Fly from a fresh chest anchor even when it is favorited", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "chest_anchor",
+          role: "anchor",
+          primaryMuscles: ["Chest"],
+          acceptableExerciseClasses: ["horizontal_press", "fly"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "cable-fly",
+          name: "Cable Fly",
+          primaryMuscles: ["Chest"],
+          movementPatterns: ["fly"],
+          fatigueCost: 1,
+        }),
+      ],
+      favoriteExerciseIds: ["cable-fly"],
+    });
+
+    expect(result.blockers).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "chest_anchor",
+        reason: "no_class_match",
+      },
+    ]);
+  });
+
+  it("allows Cable Fly to satisfy a chest second-exposure fly lane", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "chest_second_exposure",
+          role: "support",
+          primaryMuscles: ["Chest"],
+          acceptableExerciseClasses: ["fly", "distinct_chest_press_or_fly"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "cable-fly",
+          name: "Cable Fly",
+          primaryMuscles: ["Chest"],
+          movementPatterns: ["fly"],
+          fatigueCost: 1,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "upper_a", "chest_second_exposure"))
+      .toMatchObject({
+        exerciseId: "cable-fly",
+        role: "ACCESSORY",
+      });
+  });
+
+  it("allows loadable press variants to satisfy a fresh chest anchor", () => {
+    const pressVariants = [
+      ["machine-press", "Machine Chest Press"],
+      ["db-press", "DB Bench Press"],
+      ["barbell-press", "Barbell Bench Press"],
+      ["smith-press", "Smith Machine Bench Press"],
+      ["incline-press", "Incline Machine Press"],
+    ] as const;
+
+    for (const [exerciseId, name] of pressVariants) {
+      const result = materialize({
+        plan: plan([
+          lane({
+            laneId: "chest_anchor",
+            role: "anchor",
+            primaryMuscles: ["Chest"],
+            acceptableExerciseClasses: ["horizontal_press"],
+          }),
+        ]),
+        inventory: [
+          exercise({
+            exerciseId,
+            name,
+            primaryMuscles: ["Chest"],
+            movementPatterns: ["horizontal_press"],
+            isCompound: true,
+            fatigueCost: 1,
+          }),
+        ],
+      });
+
+      expect(exerciseForLane(result, "upper_a", "chest_anchor").exerciseId)
+        .toBe(exerciseId);
+    }
+  });
+
+  it("keeps Goblet Squat behind loadable squat-anchor alternatives", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "squat_anchor",
+          role: "anchor",
+          primaryMuscles: ["Quads"],
+          acceptableExerciseClasses: ["squat_pattern"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "goblet-squat",
+          name: "Goblet Squat",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["squat"],
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "leg-press",
+          name: "Leg Press",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["leg_press"],
+          isCompound: true,
+          fatigueCost: 2,
+        }),
+        exercise({
+          exerciseId: "hack-squat",
+          name: "Hack Squat",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["squat"],
+          isCompound: true,
+          fatigueCost: 2,
+        }),
+      ],
+      favoriteExerciseIds: ["goblet-squat"],
+    });
+
+    expect(exerciseForLane(result, "upper_a", "squat_anchor").exerciseId)
+      .toBe("hack-squat");
+  });
+
+  it("allows Goblet Squat as a fallback squat anchor when no loadable alternative exists", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "squat_anchor",
+          role: "anchor",
+          primaryMuscles: ["Quads"],
+          acceptableExerciseClasses: ["squat_pattern"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "goblet-squat",
+          name: "Goblet Squat",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["squat"],
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "upper_a", "squat_anchor").exerciseId)
+      .toBe("goblet-squat");
+  });
+
+  it("keeps Cable Pull-Through behind true hinge anchors", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "hinge_anchor",
+          role: "anchor",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          acceptableExerciseClasses: [
+            "hinge_compound",
+            "low_axial_hip_extension_anchor",
+          ],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "cable-pull-through",
+          name: "Cable Pull-Through",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: { Hamstrings: 0.8, Glutes: 0.8, "Lower Back": 0.1 },
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "romanian-deadlift",
+          name: "Romanian Deadlift",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: { Hamstrings: 1, Glutes: 0.8, "Lower Back": 0.25 },
+          isCompound: true,
+          isMainLiftEligible: true,
+          fatigueCost: 2,
+        }),
+      ],
+      favoriteExerciseIds: ["cable-pull-through"],
+    });
+
+    expect(exerciseForLane(result, "upper_a", "hinge_anchor").exerciseId)
+      .toBe("romanian-deadlift");
+  });
+
+  it("allows Cable Pull-Through as a diagnostic fallback when true hinges are absent", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "hinge_anchor",
+          role: "anchor",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          acceptableExerciseClasses: [
+            "hinge_compound",
+            "low_axial_hip_extension_anchor",
+          ],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "cable-pull-through",
+          name: "Cable Pull-Through",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: { Hamstrings: 0.8, Glutes: 0.8, "Lower Back": 0.1 },
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "upper_a", "hinge_anchor").exerciseId)
+      .toBe("cable-pull-through");
+  });
+
+  it("keeps RDL and SLDL valid as hinge anchors", () => {
+    const hingeVariants = [
+      ["rdl", "Romanian Deadlift"],
+      ["sldl", "Stiff-Legged Deadlift"],
+    ] as const;
+
+    for (const [exerciseId, name] of hingeVariants) {
+      const result = materialize({
+        plan: plan([
+          lane({
+            laneId: "hinge_anchor",
+            role: "anchor",
+            primaryMuscles: ["Hamstrings", "Glutes"],
+            acceptableExerciseClasses: ["hinge_compound"],
+          }),
+        ]),
+        inventory: [
+          exercise({
+            exerciseId,
+            name,
+            primaryMuscles: ["Hamstrings", "Glutes"],
+            movementPatterns: ["hinge"],
+            stimulusByMusclePerSet: { Hamstrings: 1, Glutes: 0.8 },
+            isCompound: true,
+            isMainLiftEligible: true,
+            fatigueCost: 2,
+          }),
+        ],
+      });
+
+      expect(exerciseForLane(result, "upper_a", "hinge_anchor").exerciseId)
+        .toBe(exerciseId);
+    }
+  });
+
+  it("prefers loadable rows over Inverted Row for fresh row support", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "row_support",
+          role: "support",
+          primaryMuscles: ["Upper Back", "Lats"],
+          acceptableExerciseClasses: ["horizontal_pull_support"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "inverted-row",
+          name: "Inverted Row",
+          primaryMuscles: ["Upper Back", "Lats"],
+          movementPatterns: ["row"],
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "seated-cable-row",
+          name: "Seated Cable Row",
+          primaryMuscles: ["Upper Back", "Lats"],
+          movementPatterns: ["horizontal_pull"],
+          isCompound: true,
+          fatigueCost: 2,
+        }),
+      ],
+      favoriteExerciseIds: ["inverted-row"],
+    });
+
+    expect(exerciseForLane(result, "upper_a", "row_support").exerciseId)
+      .toBe("seated-cable-row");
+  });
+
   it("prefers a clean alternative over a duplicate", () => {
     const chestPlan = plan([
       lane({

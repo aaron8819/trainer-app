@@ -104,6 +104,48 @@ export function normalizeV2MaterializationText(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+export type V2AnchorLaneQualityTier = "ideal" | "fallback" | "ineligible";
+
+export type V2AnchorLaneQuality = {
+  tier: V2AnchorLaneQualityTier;
+  laneFamily:
+    | "chest_anchor"
+    | "squat_anchor"
+    | "hinge_anchor"
+    | "vertical_pull"
+    | "row"
+    | "not_anchor_quality_checked";
+  reasons: string[];
+};
+
+export function isV2AnchorLaneQualityChecked(laneId: string): boolean {
+  return anchorLaneFamily(laneId) !== "not_anchor_quality_checked";
+}
+
+export function evaluateV2AnchorLaneQuality(
+  laneId: string,
+  exercise: V2MaterializationExercise,
+  match?: V2ExerciseClassMatch,
+): V2AnchorLaneQuality {
+  const family = anchorLaneFamily(laneId);
+  if (family === "not_anchor_quality_checked") {
+    return { tier: "ideal", laneFamily: family, reasons: [] };
+  }
+
+  switch (family) {
+    case "chest_anchor":
+      return evaluateChestAnchorQuality(exercise, match);
+    case "squat_anchor":
+      return evaluateSquatAnchorQuality(exercise, match);
+    case "hinge_anchor":
+      return evaluateHingeAnchorQuality(exercise, match);
+    case "vertical_pull":
+      return evaluateVerticalPullQuality(exercise, match);
+    case "row":
+      return evaluateRowQuality(exercise, match);
+  }
+}
+
 function normalizeToken(value: string): string {
   return normalizeV2MaterializationText(value).replace(/\s+/g, "_");
 }
@@ -173,6 +215,263 @@ function lowerBackStimulus(exercise: V2MaterializationExercise): number {
     ([muscle]) => normalizeV2MaterializationText(muscle) === "lower back",
   );
   return entry?.[1] ?? 0;
+}
+
+function anchorLaneFamily(
+  laneId: string,
+): V2AnchorLaneQuality["laneFamily"] {
+  if (laneId === "chest_anchor") {
+    return "chest_anchor";
+  }
+  if (laneId === "squat_anchor") {
+    return "squat_anchor";
+  }
+  if (laneId === "hinge_anchor") {
+    return "hinge_anchor";
+  }
+  if (laneId === "vertical_pull_anchor" || laneId === "vertical_pull_support") {
+    return "vertical_pull";
+  }
+  if (laneId === "row_anchor" || laneId === "row_support") {
+    return "row";
+  }
+  return "not_anchor_quality_checked";
+}
+
+function hasLoadabilitySignal(exercise: V2MaterializationExercise): boolean {
+  const text = normalizedFields(exercise);
+  return (
+    hasAnyText(text, [
+      "barbell",
+      "dumbbell",
+      "db",
+      "machine",
+      "smith",
+      "cable",
+      "selectorized",
+      "plate loaded",
+      "leg press",
+      "hack squat",
+      "t bar",
+      "chest supported",
+      "seated",
+    ]) ||
+    hasAnyPattern(exercise, ["leg_press"]) ||
+    hasAnyText(
+      exercise.equipment.map(normalizeV2MaterializationText).join(" "),
+      ["barbell", "dumbbell", "machine", "smith", "cable"],
+    )
+  );
+}
+
+function isFlyOnlyChestExercise(exercise: V2MaterializationExercise): boolean {
+  const text = normalizedFields(exercise);
+  return (
+    hasAnyPattern(exercise, ["fly"]) ||
+    hasAnyText(text, ["fly", "crossover", "pec deck"])
+  );
+}
+
+function isPressLikeChestExercise(exercise: V2MaterializationExercise): boolean {
+  const text = normalizedFields(exercise);
+  return (
+    hasAnyPattern(exercise, [
+      "press",
+      "horizontal_press",
+      "slight_incline_press",
+      "incline_press",
+    ]) ||
+    hasAnyText(text, [
+      "press",
+      "bench",
+      "push up",
+      "pushup",
+      "dip",
+    ])
+  );
+}
+
+function isLoadableSquatAnchor(exercise: V2MaterializationExercise): boolean {
+  const text = normalizedFields(exercise);
+  return (
+    hasAnyPattern(exercise, ["leg_press"]) ||
+    hasAnyText(text, [
+      "hack squat",
+      "leg press",
+      "smith squat",
+      "smith machine squat",
+      "front squat",
+      "high bar squat",
+      "low bar squat",
+      "back squat",
+      "barbell squat",
+      "safety bar squat",
+      "ssb squat",
+      "belt squat",
+      "pendulum squat",
+      "machine squat",
+    ])
+  );
+}
+
+function isSupportOnlySquat(exercise: V2MaterializationExercise): boolean {
+  const text = normalizedFields(exercise);
+  return hasAnyText(text, [
+    "goblet squat",
+    "sissy squat",
+    "split squat",
+    "lunge",
+    "step up",
+    "bodyweight squat",
+  ]);
+}
+
+function isTrueHingeAnchor(exercise: V2MaterializationExercise): boolean {
+  const text = normalizedFields(exercise);
+  return (
+    (hasAnyPattern(exercise, ["hinge"]) ||
+      hasAnyText(text, [
+        "deadlift",
+        "romanian deadlift",
+        "rdl",
+        "stiff leg",
+        "stiff-legged",
+        "sldl",
+        "good morning",
+      ])) &&
+    !hasAnyText(text, [
+      "pull through",
+      "pull-through",
+      "glute bridge",
+      "hip thrust",
+      "reverse hyper",
+      "back extension",
+    ])
+  );
+}
+
+function isStableLoadableRow(exercise: V2MaterializationExercise): boolean {
+  const text = normalizedFields(exercise);
+  return (
+    hasAnyText(text, [
+      "chest supported row",
+      "chest-supported row",
+      "seated cable row",
+      "cable row",
+      "machine row",
+      "t bar row",
+      "t-bar row",
+      "dumbbell row",
+      "barbell row",
+      "seal row",
+    ]) ||
+    (hasAnyText(text, ["row"]) &&
+      hasLoadabilitySignal(exercise) &&
+      !hasAnyText(text, ["inverted row", "bodyweight row", "trx row"]))
+  );
+}
+
+function quality(
+  tier: V2AnchorLaneQualityTier,
+  laneFamily: V2AnchorLaneQuality["laneFamily"],
+  reasons: string[],
+): V2AnchorLaneQuality {
+  return { tier, laneFamily, reasons };
+}
+
+function evaluateChestAnchorQuality(
+  exercise: V2MaterializationExercise,
+  match?: V2ExerciseClassMatch,
+): V2AnchorLaneQuality {
+  if (!hasRelevantDirectMuscle(exercise, "Chest")) {
+    return quality("ineligible", "chest_anchor", ["missing_direct_chest"]);
+  }
+  if (isFlyOnlyChestExercise(exercise)) {
+    return quality("ineligible", "chest_anchor", ["chest_fly_only"]);
+  }
+  if (!isPressLikeChestExercise(exercise)) {
+    return quality("ineligible", "chest_anchor", ["missing_press_pattern"]);
+  }
+  if (!exercise.isCompound || !hasLoadabilitySignal(exercise)) {
+    return quality("fallback", "chest_anchor", [
+      "press_like_but_lacks_compound_loadability",
+    ]);
+  }
+  return quality("ideal", "chest_anchor", [
+    match?.classId ? `class:${match.classId}` : "press_like_loadable_compound",
+  ]);
+}
+
+function evaluateSquatAnchorQuality(
+  exercise: V2MaterializationExercise,
+  match?: V2ExerciseClassMatch,
+): V2AnchorLaneQuality {
+  if (match?.classId !== "squat_pattern" || !hasRelevantDirectMuscle(exercise, "Quads")) {
+    return quality("ineligible", "squat_anchor", ["missing_squat_quad_class"]);
+  }
+  if (isLoadableSquatAnchor(exercise) && exercise.isCompound) {
+    return quality("ideal", "squat_anchor", [
+      "loadable_squat_or_leg_press_anchor",
+    ]);
+  }
+  return quality("fallback", "squat_anchor", [
+    isSupportOnlySquat(exercise)
+      ? "support_only_squat_pattern"
+      : "squat_pattern_lacks_loadability_signal",
+  ]);
+}
+
+function evaluateHingeAnchorQuality(
+  exercise: V2MaterializationExercise,
+  match?: V2ExerciseClassMatch,
+): V2AnchorLaneQuality {
+  const hamstringBiased =
+    hasRelevantDirectMuscle(exercise, "Hamstrings") ||
+    stimulusForMuscle(exercise, "Hamstrings") >= 0.75;
+  if (
+    match?.classId === "hinge_compound" &&
+    exercise.isCompound &&
+    hamstringBiased &&
+    isTrueHingeAnchor(exercise)
+  ) {
+    return quality("ideal", "hinge_anchor", [
+      "true_hamstring_biased_hinge_compound",
+    ]);
+  }
+  if (match?.classId === "low_axial_hip_extension_anchor") {
+    return quality("fallback", "hinge_anchor", [
+      "low_axial_hip_extension_support",
+    ]);
+  }
+  return quality("ineligible", "hinge_anchor", [
+    "missing_true_hamstring_biased_hinge",
+  ]);
+}
+
+function evaluateVerticalPullQuality(
+  exercise: V2MaterializationExercise,
+  match?: V2ExerciseClassMatch,
+): V2AnchorLaneQuality {
+  return match?.classId === "vertical_pull" && hasRelevantDirectMuscle(exercise, "Lats")
+    ? quality("ideal", "vertical_pull", ["true_vertical_pull"])
+    : quality("ineligible", "vertical_pull", ["missing_true_vertical_pull"]);
+}
+
+function evaluateRowQuality(
+  exercise: V2MaterializationExercise,
+  match?: V2ExerciseClassMatch,
+): V2AnchorLaneQuality {
+  if (
+    match?.classId !== "horizontal_pull_support" ||
+    (!hasRelevantDirectMuscle(exercise, "Upper Back") &&
+      !hasRelevantDirectMuscle(exercise, "Lats"))
+  ) {
+    return quality("ineligible", "row", ["missing_horizontal_pull_class"]);
+  }
+  if (isStableLoadableRow(exercise)) {
+    return quality("ideal", "row", ["stable_loadable_row"]);
+  }
+  return quality("fallback", "row", ["row_lacks_loadability_signal"]);
 }
 
 function matchesClass(
@@ -293,9 +592,8 @@ function matchesClass(
     case "hinge_compound":
       return (
         exercise.isCompound &&
-        (hasAnyPattern(exercise, ["hinge"]) ||
-          hasAnyText(text, ["deadlift", "rdl", "sldl", "good morning"])) &&
-        !hasAnyText(text, ["glute bridge", "hip thrust", "back extension"])
+        hasRelevantDirectMuscle(exercise, "Hamstrings") &&
+        isTrueHingeAnchor(exercise)
       );
     case "quad_isolation":
       return (

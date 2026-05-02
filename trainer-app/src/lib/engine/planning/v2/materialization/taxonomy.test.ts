@@ -253,6 +253,55 @@ describe("V2 exercise class taxonomy", () => {
         }),
       ),
     ).not.toContain("quad_isolation");
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "cable-pull-through",
+          name: "Cable Pull-Through",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: { Hamstrings: 0.8, Glutes: 0.8, "Lower Back": 0.1 },
+          isCompound: true,
+        }),
+      ),
+    ).not.toContain("hinge_compound");
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "cable-pull-through",
+          name: "Cable Pull-Through",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: { Hamstrings: 0.8, Glutes: 0.8, "Lower Back": 0.1 },
+          isCompound: true,
+        }),
+      ),
+    ).toContain("low_axial_hip_extension_anchor");
+  });
+
+  it("keeps true RDL and SLDL hinges eligible for hinge compound anchors", () => {
+    const hingeVariants = [
+      exercise({
+        exerciseId: "rdl",
+        name: "Romanian Deadlift",
+        primaryMuscles: ["Hamstrings", "Glutes"],
+        movementPatterns: ["hinge"],
+        isCompound: true,
+        isMainLiftEligible: true,
+      }),
+      exercise({
+        exerciseId: "sldl",
+        name: "Stiff-Legged Deadlift",
+        primaryMuscles: ["Hamstrings", "Glutes"],
+        movementPatterns: ["hinge"],
+        isCompound: true,
+        isMainLiftEligible: true,
+      }),
+    ];
+
+    for (const fixture of hingeVariants) {
+      expect(classIds(fixture)).toContain("hinge_compound");
+    }
   });
 
   it("resolves leg extension aliases to quad isolation without collapsing into squat", () => {

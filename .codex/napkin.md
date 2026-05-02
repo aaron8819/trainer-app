@@ -87,6 +87,7 @@
 | 2026-05-01 | self | Expected legacy biceps/triceps support coverage to be false, but the legacy comparison fixture already provided support via Bench/Row secondary muscle evidence. | For class/lane compare assertions, distinguish direct-only gaps from direct/support coverage before marking legacy missing. |
 | 2026-05-01 | self | Repeated a PowerShell quote parsing mistake while searching CLI tests with a double-quoted `rg` pattern containing escaped quotes. | Use single-quoted `rg` patterns or search unquoted simple symbols first when locating test describe blocks. |
 | 2026-05-01 | self | Repeated the PowerShell quote parsing mistake while searching for `vi.mock("@/lib/engine/planning/v2")` with a double-quoted regex. | Use a simple single-quoted symbol search first, e.g. `rg 'engine/planning/v2' ...`, before adding regex punctuation. |
+| 2026-05-01 | self | In a PowerShell-piped `tsx` DB probe, destructured named exports from `./src/lib/db/prisma` directly and hit `closePrismaResourcesForAuditCli is not a function` because stdin import wrapping exposed the module under `default`. | For ad hoc `tsx` stdin probes, unwrap `const mod = raw.default ?? raw` before destructuring local module exports, even for DB helpers. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

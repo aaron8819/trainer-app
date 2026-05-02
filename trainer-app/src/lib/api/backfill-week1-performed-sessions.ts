@@ -584,26 +584,27 @@ function resolveExerciseByTerms(
       normalizeName,
     ),
   }));
-  const exact = rows.filter((row) =>
-    row.names.some((name) => normalizedTerms.includes(name)),
-  );
-  if (exact.length === 1) {
-    return { status: "resolved", exercise: exact[0]!.exercise };
-  }
-  if (exact.length > 1) {
-    return { status: "ambiguous" };
+
+  for (const term of normalizedTerms) {
+    const exact = rows.filter((row) => row.names.some((name) => name === term));
+    if (exact.length === 1) {
+      return { status: "resolved", exercise: exact[0]!.exercise };
+    }
+    if (exact.length > 1) {
+      return { status: "ambiguous" };
+    }
   }
 
-  const contains = rows.filter((row) =>
-    row.names.some((name) =>
-      normalizedTerms.some((term) => name.includes(term) || term.includes(name)),
-    ),
-  );
-  if (contains.length === 1) {
-    return { status: "resolved", exercise: contains[0]!.exercise };
-  }
-  if (contains.length > 1) {
-    return { status: "ambiguous" };
+  for (const term of normalizedTerms) {
+    const contains = rows.filter((row) =>
+      row.names.some((name) => name.includes(term) || term.includes(name)),
+    );
+    if (contains.length === 1) {
+      return { status: "resolved", exercise: contains[0]!.exercise };
+    }
+    if (contains.length > 1) {
+      return { status: "ambiguous" };
+    }
   }
   return { status: "missing" };
 }

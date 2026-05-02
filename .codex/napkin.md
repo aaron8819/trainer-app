@@ -92,6 +92,7 @@
 | 2026-05-02 | self | Tried to call `loadProgramPageData()` from a standalone `tsx` probe and hit Next `headers()` request-scope enforcement through the UI-audit fixture helper. | For page loaders that call `next/headers`, validate through a request/server path or import pure builders/mocked tests instead of direct standalone invocation. |
 | 2026-05-02 | self | Repeated the Windows wildcard-path `rg` mistake while searching `src/lib/api/analytics*`, `history*`, and `closeout*`. | Search the owning directory and use `-g "analytics*.ts"` / `-g "closeout*.ts"` filters instead of wildcard path arguments. |
 | 2026-05-02 | self | Repeated the stdin `tsx` named-import quirk with `scripts/audit-cli-support` and got a false missing export error for `loadAuditEnv`. | In PowerShell-piped `tsx` probes, dynamically import local modules and unwrap `raw.default ?? raw` before using exports. |
+| 2026-05-02 | self | The first transition-week backfill exercise resolver treated preferred and fallback search terms equally, so `Close-Grip Pulldown` became ambiguous when `Lat Pulldown` also existed. | Resolve exercise search terms in priority order: exact match per term first, then contains fallback per term. |
 | 2026-05-02 | self | Repeated the Windows `rg` path/pattern mistake during the downstream seed-consumer audit by mixing wildcard-like paths and quoted alternation. | Keep `rg` calls boring on Windows: search a real directory plus `-g` filters, and use one simple single-quoted pattern at a time. |
 
 ## User Preferences
@@ -112,6 +113,7 @@
 
 ## Domain Notes
 - Repo-local Codex skills live under `.codex/skills/<name>/SKILL.md`; there is no central skills index as of 2026-04-30, so a new practical guard skill can be added as a single `SKILL.md` unless UI metadata is explicitly needed.
+- For Program/read-model DB truth checks, Vitest and `audit:* --env-file .env.local` resolve to `.env.local` when the shell has no pre-set `DATABASE_URL`; `.env.audit.local` can point at an older schema missing `Mesocycle.slotPlanSeedJson`, so do not use it to validate current seeded-slot behavior.
 - V2 target path: MesocycleDemand -> WeeklyDemandCurve -> SlotDemandAllocationByWeek -> ExerciseClassDistributionBySlot -> SetDistributionIntent -> ExerciseSelectionPlan -> Accepted Seed -> Runtime Replay.
 - V2 planner intelligence audit: current pure chain is still fixed-skeleton/muscle-lane derived; before promotion, add an upstream strategy layer for user profile, phase/macro intent, block objective, performed-history learning, and continuity/variation policy rather than treating pure V2 policy as elite by default.
 - V2 Lower B hinge-anchor readouts should keep `hinge_compound` narrow for RDL/SLDL/deadlift-like hinges; Glute Bridge / hip-thrust-like patterns belong in the explicit diagnostic class `low_axial_hip_extension_anchor`, and generic `hinge` must not satisfy `hinge_compound`.

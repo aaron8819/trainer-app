@@ -21,6 +21,7 @@ import {
 } from "@/lib/api/template-session/slot-plan-seed";
 import type { PreloadedGenerationSnapshot } from "@/lib/api/template-session/context-loader";
 import type { MovementPatternV2, WorkoutPlan } from "@/lib/engine/types";
+import { listWorkoutPlanExercisesInOrder } from "@/lib/engine/workout-plan-order";
 import {
   getProtectedWeekOneCoverageObligations,
   getProjectionPreferredSupportMuscles,
@@ -199,26 +200,28 @@ function buildSeedExerciseRows(
 }
 
 function buildSessionExerciseRows(workout: WorkoutPlan): ActiveMesocycleSlotReseedSessionExerciseRow[] {
-  return [...workout.mainLifts, ...workout.accessories].map((exercise) => ({
-    exerciseId: exercise.exercise.id,
-    exerciseName: exercise.exercise.name,
-    role: workout.mainLifts.includes(exercise) ? "CORE_COMPOUND" : "ACCESSORY",
-    setCount: exercise.sets.length,
-    movementPatterns: [...(exercise.exercise.movementPatterns ?? [])],
-    primaryMuscles: [...(exercise.exercise.primaryMuscles ?? [])],
-  }));
+  return listWorkoutPlanExercisesInOrder(workout)
+    .filter(({ section }) => section !== "warmup")
+    .map(({ exercise, section }) => ({
+      exerciseId: exercise.exercise.id,
+      exerciseName: exercise.exercise.name,
+      role: section === "main" ? "CORE_COMPOUND" : "ACCESSORY",
+      setCount: exercise.sets.length,
+      movementPatterns: [...(exercise.exercise.movementPatterns ?? [])],
+      primaryMuscles: [...(exercise.exercise.primaryMuscles ?? [])],
+    }));
 }
 
 function countWorkoutSets(workout: WorkoutPlan): number {
-  return [...workout.mainLifts, ...workout.accessories].reduce(
-    (sum, exercise) => sum + exercise.sets.length,
-    0
-  );
+  return listWorkoutPlanExercisesInOrder(workout)
+    .filter(({ section }) => section !== "warmup")
+    .reduce((sum, { exercise }) => sum + exercise.sets.length, 0);
 }
 
 function hasCompoundMovementPattern(workout: WorkoutPlan, pattern: MovementPatternV2): boolean {
-  return [...workout.mainLifts, ...workout.accessories].some(
-    (exercise) =>
+  return listWorkoutPlanExercisesInOrder(workout).some(
+    ({ exercise, section }) =>
+      section !== "warmup" &&
       (exercise.exercise.isCompound ?? false) &&
       (exercise.exercise.movementPatterns ?? []).includes(pattern)
   );

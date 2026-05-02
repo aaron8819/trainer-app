@@ -8,6 +8,7 @@ import {
   loadActiveMesocycle,
 } from "@/lib/api/mesocycle-lifecycle";
 import type { SessionIntent } from "@/lib/engine/session-types";
+import { listWorkoutPlanExercisesInOrder } from "@/lib/engine/workout-plan-order";
 import type {
   PlannerDeficitSnapshot,
   PlannerOpportunityMuscleDiagnostic,
@@ -214,10 +215,9 @@ function sumWorkoutSets(run: WorkoutAuditRun): number {
     return 0;
   }
 
-  const exercises = [
-    ...run.generationResult.workout.mainLifts,
-    ...run.generationResult.workout.accessories,
-  ];
+  const exercises = listWorkoutPlanExercisesInOrder(run.generationResult.workout)
+    .filter(({ section }) => section !== "warmup")
+    .map(({ exercise }) => exercise);
   return exercises.reduce((sum, exercise) => sum + exercise.sets.length, 0);
 }
 
@@ -226,7 +226,9 @@ function getPlannedExerciseNames(run: WorkoutAuditRun): string[] {
     return [];
   }
 
-  return [...run.generationResult.workout.mainLifts, ...run.generationResult.workout.accessories]
+  return listWorkoutPlanExercisesInOrder(run.generationResult.workout)
+    .filter(({ section }) => section !== "warmup")
+    .map(({ exercise }) => exercise)
     .map((exercise) => exercise.exercise.name)
     .slice(0, 5);
 }

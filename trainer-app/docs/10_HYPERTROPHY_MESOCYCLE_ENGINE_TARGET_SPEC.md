@@ -181,6 +181,8 @@ The learning loop should use what the user actually performed, not old prescribe
 
 That learning should improve the next `MesocycleStrategy`. It should not silently mutate the current accepted seed.
 
+Do not turn one bad day, one skipped set, or one swap into durable future plan policy without confidence, recurrence, or user reason. Single-session evidence can be a caution flag; durable strategy needs a stronger signal.
+
 ### Principle 10 - Planner-Owned Lane Intent Before Materializer Guesswork
 
 Lane intent must become explicit enough that taxonomy and ranking do not infer core training meaning.
@@ -460,6 +462,8 @@ Current status: runtime and reseed seams already support the direction. Do not m
 Strategic purpose: transform seed exercise rows into session prescriptions: set rows, rep ranges, target reps, target load, target RIR/RPE, confidence, and source/basis.
 
 Good looks like prescription output that respects lifecycle week, exercise class, equipment increments, exact performance history, substitution history, cold-start uncertainty, and the difference between load suggestion and load truth.
+
+Future prescription/coaching should also use exercise-specific coaching profiles. High-skill axial compounds, stable machine compounds, unilateral compounds, isolations, lengthened-biased isolations, and calf/forearm/high-rep-tolerant isolations should not share one generic progression model. The profile should influence rep range, load confidence, progression aggressiveness, caution labels, and add/back-off guidance.
 
 Current status: target architecture only. Do not infer from this doc that production prescription logic already passes the quality gate.
 

@@ -154,11 +154,11 @@ function mapSwapProfile(
   exercise: ExerciseRecord,
   options?: { isMainLift?: boolean; hasRecentHistory?: boolean },
 ): RuntimeExerciseSwapProfile {
-  const aliases = exercise.aliases.map((alias) => alias.alias);
-  const primaryMuscles = exercise.exerciseMuscles
+  const aliases = (exercise.aliases ?? []).map((alias) => alias.alias);
+  const primaryMuscles = (exercise.exerciseMuscles ?? [])
     .filter((entry) => entry.role === "PRIMARY")
     .map((entry) => entry.muscle.name);
-  const secondaryMuscles = exercise.exerciseMuscles
+  const secondaryMuscles = (exercise.exerciseMuscles ?? [])
     .filter((entry) => entry.role === "SECONDARY")
     .map((entry) => entry.muscle.name);
   const stimulusByMusclePerSet = Object.fromEntries(
@@ -185,12 +185,12 @@ function mapSwapProfile(
     isMainLiftEligible: exercise.isMainLiftEligible,
     isCompound: exercise.isCompound,
     hasRecentHistory: options?.hasRecentHistory ?? false,
-    movementPatterns: exercise.movementPatterns.map((pattern) =>
+    movementPatterns: (exercise.movementPatterns ?? []).map((pattern) =>
       pattern.toLowerCase(),
     ),
     primaryMuscles: primaryMuscles.map((muscle) => muscle.toLowerCase()),
     secondaryMuscles: secondaryMuscles.map((muscle) => muscle.toLowerCase()),
-    equipment: exercise.exerciseEquipment.map((entry) =>
+    equipment: (exercise.exerciseEquipment ?? []).map((entry) =>
       entry.equipment.type.toLowerCase(),
     ),
     stimulusByMusclePerSet,

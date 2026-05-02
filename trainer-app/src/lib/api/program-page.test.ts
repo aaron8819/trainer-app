@@ -129,6 +129,7 @@ describe("buildProgramCurrentWeekPlan", () => {
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
           exercises: [],
+          exerciseSource: "unavailable",
           impact: null,
         },
         {
@@ -142,6 +143,7 @@ describe("buildProgramCurrentWeekPlan", () => {
           linkedWorkoutId: "planned-lower",
           linkedWorkoutStatus: "planned",
           exercises: [],
+          exerciseSource: "unavailable",
           impact: null,
         },
         {
@@ -155,6 +157,7 @@ describe("buildProgramCurrentWeekPlan", () => {
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
           exercises: [],
+          exerciseSource: "unavailable",
           impact: null,
         },
       ],
@@ -251,6 +254,7 @@ describe("buildProgramCurrentWeekPlan", () => {
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
         exercises: [],
+        exerciseSource: "unavailable",
         impact: null,
       },
       {
@@ -264,6 +268,7 @@ describe("buildProgramCurrentWeekPlan", () => {
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
         exercises: [],
+        exerciseSource: "unavailable",
         impact: null,
       },
       {
@@ -277,6 +282,7 @@ describe("buildProgramCurrentWeekPlan", () => {
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
         exercises: [],
+        exerciseSource: "unavailable",
         impact: null,
       },
     ]);
@@ -392,6 +398,7 @@ describe("buildProgramCurrentWeekPlan", () => {
     expect(result?.slots[0]).toMatchObject({
       label: "Upper 1",
       statusLabel: "Completed",
+      exerciseSource: "persisted_slot_plan_seed",
       exercises: [
         { exerciseId: "bench", name: "Incline DB Bench", setCount: 4, role: "primary" },
         { exerciseId: "row", name: "T-Bar Row", setCount: 3, role: "accessory" },
@@ -725,6 +732,7 @@ describe("loadProgramPageData", () => {
           volumeBasis: "projected_next",
           linkedWorkoutId: "planned-upper",
           linkedWorkoutStatus: "planned",
+          exerciseSource: "linked_workout_structure",
           exercises: [
             {
               exerciseId: "incline-db-bench",
@@ -760,6 +768,7 @@ describe("loadProgramPageData", () => {
           volumeBasis: "projected_remaining",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
+          exerciseSource: "projected_week_volume",
           exercises: [
             {
               exerciseId: "leg-press",
@@ -803,6 +812,7 @@ describe("loadProgramPageData", () => {
           volumeBasis: "projected_remaining",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
+          exerciseSource: "projected_week_volume",
           exercises: [
             {
               exerciseId: "lat-pulldown",
@@ -1004,6 +1014,246 @@ describe("loadProgramPageData", () => {
     });
     expect(result.volumeDetails.dashboard.volumeThisWeek).toHaveLength(3);
     expect(result.advancedActions.availableActions).toEqual(["deload", "extend_phase", "reset"]);
+  });
+
+  it("uses set-aware persisted seed exercises when linked workouts and projection disagree", async () => {
+    const slotPlanSeedJson = {
+      version: 1,
+      source: "handoff_slot_plan_projection",
+      slots: [
+        {
+          slotId: "lower_a",
+          exercises: [
+            { exerciseId: "leg-press-v2", role: "CORE_COMPOUND", setCount: 4 },
+          ],
+        },
+        {
+          slotId: "upper_a",
+          exercises: [
+            { exerciseId: "machine-chest-press", role: "CORE_COMPOUND", setCount: 4 },
+            { exerciseId: "chest-supported-row", role: "CORE_COMPOUND", setCount: 3 },
+            { exerciseId: "neutral-grip-pulldown", role: "ACCESSORY", setCount: 2 },
+            { exerciseId: "rear-delt-reverse-fly", role: "ACCESSORY", setCount: 3 },
+            { exerciseId: "rope-pressdown", role: "ACCESSORY", setCount: 3 },
+          ],
+        },
+      ],
+    };
+    mocks.mesocycleFindFirst.mockResolvedValueOnce({
+      id: "meso-1",
+      startWeek: 0,
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 4,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 2,
+      state: "ACTIVE_ACCUMULATION",
+      slotSequenceJson: buildMesocycleSlotSequence([
+        { slotId: "lower_a", intent: "LOWER" },
+        { slotId: "upper_a", intent: "UPPER" },
+      ]),
+      slotPlanSeedJson,
+      macroCycle: { startDate: new Date("2026-03-02T00:00:00.000Z") },
+    });
+    mocks.exerciseFindMany.mockResolvedValueOnce([
+      { id: "leg-press-v2", name: "Leg Press" },
+      { id: "machine-chest-press", name: "Machine Chest Press" },
+      { id: "chest-supported-row", name: "Chest Supported Row" },
+      { id: "neutral-grip-pulldown", name: "Neutral Grip Pulldown" },
+      { id: "rear-delt-reverse-fly", name: "Rear Delt Reverse Fly" },
+      { id: "rope-pressdown", name: "Rope Pressdown" },
+    ]);
+    mocks.workoutFindMany.mockResolvedValueOnce([
+      {
+        id: "planned-upper-legacy",
+        status: "PLANNED",
+        scheduledDate: new Date("2026-03-02T00:00:00.000Z"),
+        sessionIntent: "UPPER",
+        selectionMode: "INTENT",
+        selectionMetadata: {
+          sessionDecisionReceipt: {
+            sessionSlot: {
+              slotId: "upper_a",
+              intent: "upper",
+              sequenceIndex: 1,
+              sequenceLength: 2,
+              source: "mesocycle_slot_sequence",
+            },
+          },
+        },
+        advancesSplit: true,
+        exercises: [
+          {
+            exerciseId: "barbell-bench-press",
+            orderIndex: 0,
+            isMainLift: true,
+            exercise: { id: "barbell-bench-press", name: "Barbell Bench Press" },
+            sets: [{ id: "bench-1" }, { id: "bench-2" }, { id: "bench-3" }],
+          },
+          {
+            exerciseId: "cable-pullover",
+            orderIndex: 1,
+            isMainLift: false,
+            exercise: { id: "cable-pullover", name: "Cable Pullover" },
+            sets: [{ id: "pullover-1" }, { id: "pullover-2" }],
+          },
+        ],
+      },
+    ]);
+    mocks.loadProjectedWeekVolumeReport.mockResolvedValueOnce({
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 2,
+        phase: "accumulation",
+        blockType: "accumulation",
+      },
+      projectionNotes: [],
+      completedVolumeByMuscle: {},
+      projectedSessions: [
+        {
+          slotId: "upper_a",
+          intent: "upper",
+          isNext: true,
+          exerciseCount: 5,
+          totalSets: 15,
+          exercises: [
+            { exerciseId: "barbell-bench-press", name: "Barbell Bench Press", setCount: 4, role: "primary" },
+            { exerciseId: "chest-supported-db-row", name: "Chest-Supported Dumbbell Row", setCount: 3, role: "primary" },
+            { exerciseId: "cable-pullover", name: "Cable Pullover", setCount: 2, role: "accessory" },
+            { exerciseId: "cable-rear-delt-fly", name: "Cable Rear Delt Fly", setCount: 3, role: "accessory" },
+            { exerciseId: "cable-triceps-pushdown", name: "Cable Triceps Pushdown", setCount: 3, role: "accessory" },
+          ],
+          projectedContributionByMuscle: {
+            Chest: 4,
+            Lats: 2,
+          },
+        },
+      ],
+      fullWeekByMuscle: [],
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      intent: "upper",
+      slotId: "upper_a",
+      slotSequenceIndex: 1,
+      slotSequenceLength: 2,
+      slotSource: "mesocycle_slot_sequence",
+      existingWorkoutId: "planned-upper-legacy",
+      isExisting: true,
+      source: "existing_incomplete",
+      weekInMeso: 2,
+      sessionInWeek: 2,
+      derivationTrace: [],
+      selectedIncompleteStatus: "planned",
+    });
+
+    const result = await loadProgramPageData("user-1");
+    const slots = result.currentWeekPlan?.slots ?? [];
+    const upperSlot = slots.find((slot) => slot.slotId === "upper_a");
+    const runtimeSeedRows = slotPlanSeedJson.slots[1]?.exercises.map((exercise) => ({
+      exerciseId: exercise.exerciseId,
+      role: exercise.role === "CORE_COMPOUND" ? "primary" : "accessory",
+      setCount: exercise.setCount,
+    }));
+
+    expect(slots.map((slot) => slot.slotId)).toEqual(["lower_a", "upper_a"]);
+    expect(upperSlot?.exerciseSource).toBe("persisted_slot_plan_seed");
+    expect(
+      upperSlot?.exercises?.map(({ exerciseId, role, setCount }) => ({
+        exerciseId,
+        role,
+        setCount,
+      }))
+    ).toEqual(runtimeSeedRows);
+    expect(upperSlot?.exercises?.map((exercise) => exercise.name)).toEqual([
+      "Machine Chest Press",
+      "Chest Supported Row",
+      "Neutral Grip Pulldown",
+      "Rear Delt Reverse Fly",
+      "Rope Pressdown",
+    ]);
+    expect(upperSlot?.exercises?.map((exercise) => exercise.name)).not.toEqual(
+      expect.arrayContaining([
+        "Barbell Bench Press",
+        "Chest-Supported Dumbbell Row",
+        "Cable Pullover",
+        "Cable Rear Delt Fly",
+        "Cable Triceps Pushdown",
+      ])
+    );
+  });
+
+  it("does not fall back to projected exercises when a set-aware seed slot cannot resolve catalog names", async () => {
+    mocks.mesocycleFindFirst.mockResolvedValueOnce({
+      id: "meso-1",
+      startWeek: 0,
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 4,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 1,
+      state: "ACTIVE_ACCUMULATION",
+      slotSequenceJson: buildMesocycleSlotSequence([
+        { slotId: "upper_a", intent: "UPPER" },
+      ]),
+      slotPlanSeedJson: {
+        version: 1,
+        slots: [
+          {
+            slotId: "upper_a",
+            exercises: [
+              { exerciseId: "machine-chest-press", role: "CORE_COMPOUND", setCount: 4 },
+            ],
+          },
+        ],
+      },
+      macroCycle: { startDate: new Date("2026-03-02T00:00:00.000Z") },
+    });
+    mocks.exerciseFindMany.mockResolvedValueOnce([]);
+    mocks.workoutFindMany.mockResolvedValueOnce([]);
+    mocks.loadProjectedWeekVolumeReport.mockResolvedValueOnce({
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 2,
+        phase: "accumulation",
+        blockType: "accumulation",
+      },
+      projectionNotes: [],
+      completedVolumeByMuscle: {},
+      projectedSessions: [
+        {
+          slotId: "upper_a",
+          intent: "upper",
+          isNext: true,
+          exerciseCount: 1,
+          totalSets: 4,
+          exercises: [
+            { exerciseId: "barbell-bench-press", name: "Barbell Bench Press", setCount: 4, role: "primary" },
+          ],
+          projectedContributionByMuscle: {
+            Chest: 4,
+          },
+        },
+      ],
+      fullWeekByMuscle: [],
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      intent: "upper",
+      slotId: "upper_a",
+      slotSequenceIndex: 0,
+      slotSequenceLength: 1,
+      slotSource: "mesocycle_slot_sequence",
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation",
+      weekInMeso: 2,
+      sessionInWeek: 1,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+    });
+
+    const result = await loadProgramPageData("user-1");
+    const upperSlot = result.currentWeekPlan?.slots.find((slot) => slot.slotId === "upper_a");
+
+    expect(upperSlot?.exerciseSource).toBe("persisted_slot_plan_seed");
+    expect(upperSlot?.exercises).toEqual([]);
   });
 
   it("keeps off-order slot impact attached to the matching canonical slot id", async () => {

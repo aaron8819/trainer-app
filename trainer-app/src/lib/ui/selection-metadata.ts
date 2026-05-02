@@ -71,7 +71,8 @@ export type RuntimeEditDirectiveState = {
 
 export type RuntimeExerciseReplaceReason =
   | "gap_fill_equivalent_accessory_swap"
-  | "equipment_availability_equivalent_pull_swap";
+  | "equipment_availability_equivalent_pull_swap"
+  | "transition_week_backfill_substitution";
 
 export type RuntimeEditOperationSource =
   | "api_workouts_add_exercise"
@@ -495,7 +496,8 @@ function parseRuntimeEditOperation(value: unknown): RuntimeEditOperation | undef
       typeof facts.fromExerciseId !== "string" ||
       typeof facts.toExerciseId !== "string" ||
       (facts.reason !== "gap_fill_equivalent_accessory_swap" &&
-        facts.reason !== "equipment_availability_equivalent_pull_swap") ||
+        facts.reason !== "equipment_availability_equivalent_pull_swap" &&
+        facts.reason !== "transition_week_backfill_substitution") ||
       typeof facts.setCount !== "number" ||
       !Number.isFinite(facts.setCount)
     ) {

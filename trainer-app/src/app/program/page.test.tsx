@@ -167,6 +167,7 @@ describe("ProgramPage", () => {
           {
             muscle: "Chest",
             status: "meaningfully_low",
+            dashboardGroup: "primary_driver",
             statusLabel: "Below MEV",
             statusDescription: "8 projected is still below MEV after the planned week.",
             deltaLabel: "-4 sets",
@@ -176,6 +177,7 @@ describe("ProgramPage", () => {
           {
             muscle: "Lats",
             status: "slightly_low",
+            dashboardGroup: "primary_driver",
             statusLabel: "Below target",
             statusDescription: "10 projected vs 12 target; 6 completed so far.",
             deltaLabel: "-2 sets",
@@ -185,6 +187,7 @@ describe("ProgramPage", () => {
           {
             muscle: "Rear Delts",
             status: "slightly_high",
+            dashboardGroup: "primary_driver",
             statusLabel: "Slightly high",
             statusDescription: "7 projected vs 6 target; 4 completed so far.",
             deltaLabel: "+1 sets",
@@ -194,6 +197,7 @@ describe("ProgramPage", () => {
           {
             muscle: "Quads",
             status: "meaningfully_high",
+            dashboardGroup: "primary_driver",
             statusLabel: "Meaningfully high",
             statusDescription: "15 projected vs 10 target; 12 completed so far.",
             deltaLabel: "+5 sets",
@@ -203,6 +207,7 @@ describe("ProgramPage", () => {
           {
             muscle: "Biceps",
             status: "on_target",
+            dashboardGroup: "primary_driver",
             statusLabel: "On target",
             statusDescription: "8 projected vs 8 target; 8 completed so far.",
             deltaLabel: "on target",
@@ -214,6 +219,7 @@ describe("ProgramPage", () => {
           {
             muscle: "Chest",
             status: "meaningfully_low",
+            dashboardGroup: "primary_driver",
             statusLabel: "Below MEV",
             statusDescription: "8 projected is still below MEV after the planned week.",
             deltaLabel: "-4 sets",
@@ -223,6 +229,7 @@ describe("ProgramPage", () => {
           {
             muscle: "Quads",
             status: "meaningfully_high",
+            dashboardGroup: "primary_driver",
             statusLabel: "Meaningfully high",
             statusDescription: "15 projected vs 10 target; 12 completed so far.",
             deltaLabel: "+5 sets",

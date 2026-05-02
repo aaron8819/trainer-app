@@ -32,6 +32,7 @@
         "audit:sequencing": "tsx scripts/audit-sequencing.ts",
         "audit:accounting": "tsx scripts/audit-accounting-semantics.ts",
         "audit:exercise-classification": "tsx scripts/audit-exercise-classification.ts",
+        "backfill:week1-performed": "tsx scripts/backfill-week1-performed-sessions.ts",
         "report:workout-week-snapshot-repair": "tsx scripts/report-workout-week-snapshot-repair.ts",
         "repair:workout-week-snapshot": "tsx scripts/repair-workout-week-snapshot.ts",
         "report:stimulus-coverage": "tsx scripts/report-stimulus-profile-coverage.ts",

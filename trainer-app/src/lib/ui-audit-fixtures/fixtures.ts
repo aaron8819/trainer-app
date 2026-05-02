@@ -636,6 +636,7 @@ const activeProgram: ProgramPageData = {
         volumeBasis: "actual_completed",
         linkedWorkoutId: "ui-audit-workout-partial",
         linkedWorkoutStatus: "partial",
+        exerciseSource: "linked_workout_structure",
         impact: {
           topMuscles: [{ muscle: "Chest", projectedEffectiveSets: 4 }],
           hiddenMuscleCount: 1,
@@ -652,6 +653,7 @@ const activeProgram: ProgramPageData = {
         volumeBasis: "projected_next",
         linkedWorkoutId: "ui-audit-workout-planned",
         linkedWorkoutStatus: "planned",
+        exerciseSource: "linked_workout_structure",
         impact: {
           topMuscles: [
             { muscle: "Lats", projectedEffectiveSets: 5 },
@@ -671,6 +673,7 @@ const activeProgram: ProgramPageData = {
         volumeBasis: "projected_remaining",
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
+        exerciseSource: "projected_week_volume",
         impact: {
           topMuscles: [
             { muscle: "Quads", projectedEffectiveSets: 5 },
@@ -690,6 +693,7 @@ const activeProgram: ProgramPageData = {
         volumeBasis: "projected_remaining",
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
+        exerciseSource: "unavailable",
         impact: null,
       },
     ],

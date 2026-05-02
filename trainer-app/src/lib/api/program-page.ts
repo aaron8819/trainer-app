@@ -136,6 +136,12 @@ export type ProgramSlotExercise = {
   role?: "primary" | "accessory";
 };
 
+export type ProgramSlotExerciseSource =
+  | "persisted_slot_plan_seed"
+  | "linked_workout_structure"
+  | "projected_week_volume"
+  | "unavailable";
+
 export type ProgramCurrentWeekPlanRow = {
   slotId: string;
   label: string;
@@ -147,6 +153,7 @@ export type ProgramCurrentWeekPlanRow = {
   linkedWorkoutId: string | null;
   linkedWorkoutStatus: string | null;
   exercises?: ProgramSlotExercise[];
+  exerciseSource: ProgramSlotExerciseSource;
   impact: ProgramSlotImpact | null;
 };
 
@@ -701,39 +708,53 @@ function collectSeedExerciseIds(slotPlanSeedJson: unknown): string[] {
   );
 }
 
+type SeededSlotExerciseResolution = {
+  exercises: ProgramSlotExercise[];
+  source?: ProgramSlotExerciseSource;
+  blocksFallback: boolean;
+};
+
+function resolveFallbackExerciseSource(input: {
+  linkedExerciseCount: number;
+  projectedExerciseCount?: number;
+}): ProgramSlotExerciseSource {
+  if (input.linkedExerciseCount > 0) {
+    return "linked_workout_structure";
+  }
+
+  if ((input.projectedExerciseCount ?? 0) > 0) {
+    return "projected_week_volume";
+  }
+
+  return "unavailable";
+}
+
 function resolveSeededSlotExercises(input: {
   slotPlanSeedJson?: unknown;
   slotId: string;
-  linkedExercises?: ProgramSlotExercise[];
-  projectedExercises?: ProgramSlotExercise[];
   exerciseNameById?: Record<string, string>;
-}): ProgramSlotExercise[] {
+}): SeededSlotExerciseResolution {
   const seed = parseSlotPlanSeedJson(input.slotPlanSeedJson);
   const seedSlot = seed?.slots.find((slot) => slot.slotId === input.slotId) ?? null;
   if (!seedSlot) {
-    return [];
+    return { exercises: [], blocksFallback: false };
   }
 
-  const linkedById = new Map(
-    (input.linkedExercises ?? [])
-      .filter((exercise) => exercise.exerciseId)
-      .map((exercise) => [exercise.exerciseId!, exercise])
-  );
-  const projectedById = new Map(
-    (input.projectedExercises ?? [])
-      .filter((exercise) => exercise.exerciseId)
-      .map((exercise) => [exercise.exerciseId!, exercise])
-  );
+  const hasExecutableSetCounts =
+    seedSlot.exercises.length > 0 &&
+    seedSlot.exercises.every(
+      (exercise) => exercise.hasExplicitSetCount && typeof exercise.setCount === "number"
+    );
+
+  if (!hasExecutableSetCounts) {
+    return { exercises: [], blocksFallback: false };
+  }
 
   const exercises = seedSlot.exercises.flatMap((seedExercise) => {
-    const matchedExercise =
-      linkedById.get(seedExercise.exerciseId) ?? projectedById.get(seedExercise.exerciseId) ?? null;
-    const name =
-      seedExercise.name ??
-      input.exerciseNameById?.[seedExercise.exerciseId] ??
-      matchedExercise?.name ??
-      null;
-    const setCount = seedExercise.setCount ?? matchedExercise?.setCount ?? null;
+    const name = input.exerciseNameById
+      ? input.exerciseNameById[seedExercise.exerciseId] ?? null
+      : seedExercise.name ?? null;
+    const setCount = seedExercise.setCount ?? null;
 
     if (!name || typeof setCount !== "number") {
       return [];
@@ -747,7 +768,11 @@ function resolveSeededSlotExercises(input: {
     } satisfies ProgramSlotExercise];
   });
 
-  return exercises.length === seedSlot.exercises.length ? exercises : [];
+  return {
+    exercises: exercises.length === seedSlot.exercises.length ? exercises : [],
+    source: "persisted_slot_plan_seed",
+    blocksFallback: true,
+  };
 }
 
 function attachProjectedSlotDetails(input: {
@@ -776,19 +801,27 @@ function attachProjectedSlotDetails(input: {
       const seededExercises = resolveSeededSlotExercises({
         slotPlanSeedJson: input.slotPlanSeedJson,
         slotId: slot.slotId,
-        linkedExercises: slot.exercises ?? [],
-        projectedExercises,
         exerciseNameById: input.seedExerciseNameById,
       });
+      const resolvedExercises =
+        seededExercises.exercises.length > 0
+          ? seededExercises.exercises
+          : seededExercises.blocksFallback
+            ? []
+            : (slot.exercises ?? []).length > 0
+              ? slot.exercises
+              : projectedExercises;
+      const exerciseSource =
+        seededExercises.source ??
+        resolveFallbackExerciseSource({
+          linkedExerciseCount: slot.exercises?.length ?? 0,
+          projectedExerciseCount: projectedExercises.length,
+        });
 
       return {
         ...slot,
-        exercises:
-          seededExercises.length > 0
-            ? seededExercises
-            : (slot.exercises ?? []).length > 0
-              ? slot.exercises
-              : projectedExercises,
+        exercises: resolvedExercises,
+        exerciseSource,
         impact: projectedSession
           ? buildProgramSlotImpact({
               projectedContributionByMuscle: projectedSession.projectedContributionByMuscle,
@@ -1095,7 +1128,6 @@ export function buildProgramCurrentWeekPlan(input: {
       const seededExercises = resolveSeededSlotExercises({
         slotPlanSeedJson: input.slotPlanSeedJson,
         slotId: slot.slotId,
-        linkedExercises,
         exerciseNameById: input.seedExerciseNameById,
       });
       const presentation = resolvePlanRowPresentation({
@@ -1115,7 +1147,17 @@ export function buildProgramCurrentWeekPlan(input: {
         ...presentation,
         linkedWorkoutId: linkedWorkout?.id ?? null,
         linkedWorkoutStatus: linkedWorkout?.status ?? null,
-        exercises: seededExercises.length > 0 ? seededExercises : linkedExercises,
+        exercises:
+          seededExercises.exercises.length > 0
+            ? seededExercises.exercises
+            : seededExercises.blocksFallback
+              ? []
+              : linkedExercises,
+        exerciseSource:
+          seededExercises.source ??
+          resolveFallbackExerciseSource({
+            linkedExerciseCount: linkedExercises.length,
+          }),
         impact: null,
       };
     }),

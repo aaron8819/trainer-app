@@ -3,6 +3,9 @@ import {
   WORKOUT_AUDIT_CONCLUSIONS,
 } from "./conclusions";
 import type {
+  AcceptedMesocycleSeedProvenanceConsistency,
+} from "@/lib/api/accepted-mesocycle-seed-provenance";
+import type {
   V2DebugDetailLevel,
   WorkoutAuditArtifact,
   WorkoutAuditGenerationPath,
@@ -29,6 +32,15 @@ import {
   buildV2DebugArtifacts,
   type BuiltV2DebugArtifactOutput,
 } from "./v2-debug-artifacts";
+import type {
+  ProgressionDecisionTrace,
+  SessionAuditExerciseSnapshot,
+  SessionAuditSnapshot,
+} from "@/lib/evidence/session-audit-types";
+
+const TARGET_EFFORT_MISMATCH_REP_GAP = 2;
+const TARGET_EFFORT_MISMATCH_RPE_GAP = 1.5;
+const TARGET_EFFORT_MISMATCH_MIN_PERFORMANCE_JUMP_RATIO = 1.05;
 
 function getArtifactGuardrailWarnings(run: WorkoutAuditRun): string[] {
   const warnings: string[] = [];
@@ -53,9 +65,104 @@ function getArtifactGuardrailWarnings(run: WorkoutAuditRun): string[] {
   return warnings;
 }
 
+function buildTargetEffortLoadMismatchWarnings(
+  sessionSnapshot: SessionAuditSnapshot | undefined,
+): string[] {
+  const generated = sessionSnapshot?.generated;
+  if (!generated) {
+    return [];
+  }
+
+  const warnings: string[] = [];
+  for (const exercise of generated.exercises) {
+    const trace = generated.traces.progression[exercise.exerciseId];
+    const target = resolveRepresentativeTarget(exercise, trace);
+    if (!trace || !target) {
+      continue;
+    }
+
+    const anchorLoad = trace.anchor.anchorLoad;
+    const priorMedianReps = trace.metrics.medianReps;
+    const priorModalRpe = trace.metrics.modalRpe;
+    if (
+      !Number.isFinite(anchorLoad) ||
+      !Number.isFinite(priorMedianReps) ||
+      !Number.isFinite(priorModalRpe)
+    ) {
+      continue;
+    }
+
+    const targetLoadHoldsHigh = target.load >= anchorLoad;
+    const repsGap = target.reps - priorMedianReps;
+    const rpeGap = (priorModalRpe as number) - target.rpe;
+    const priorPerformance = anchorLoad * (1 + priorMedianReps / 30);
+    const targetPerformance = target.load * (1 + target.reps / 30);
+    const performanceJumpRatio =
+      priorPerformance > 0 ? targetPerformance / priorPerformance : 0;
+
+    if (
+      targetLoadHoldsHigh &&
+      repsGap >= TARGET_EFFORT_MISMATCH_REP_GAP &&
+      rpeGap >= TARGET_EFFORT_MISMATCH_RPE_GAP &&
+      performanceJumpRatio >= TARGET_EFFORT_MISMATCH_MIN_PERFORMANCE_JUMP_RATIO
+    ) {
+      warnings.push(
+        `target_effort_load_mismatch: ${exercise.exerciseName} generated ${formatAuditNumber(target.load)} lb for ${formatAuditNumber(target.reps)} reps @ RPE ${formatAuditNumber(target.rpe)} after prior anchor ${formatAuditNumber(anchorLoad)} lb, median ${formatAuditNumber(priorMedianReps)} reps @ RPE ${formatAuditNumber(priorModalRpe as number)}; load delta ${formatSignedAuditNumber(trace.metrics.loadDelta)} lb while prior reps/effort do not support the easier target.`,
+      );
+    }
+  }
+
+  return warnings;
+}
+
+function resolveRepresentativeTarget(
+  exercise: SessionAuditExerciseSnapshot,
+  trace: ProgressionDecisionTrace | undefined,
+): { load: number; reps: number; rpe: number } | null {
+  if (!trace) {
+    return null;
+  }
+
+  const targetSet =
+    exercise.prescribedSets.find((set) => set.setIndex === 1) ??
+    exercise.prescribedSets[0];
+  const targetLoad = targetSet?.targetLoad ?? trace.metrics.nextLoad;
+  const targetReps =
+    targetSet?.targetReps ??
+    targetSet?.targetRepRange?.max ??
+    trace.repRange.max;
+  const targetRpe = targetSet?.targetRpe;
+
+  if (
+    !Number.isFinite(targetLoad) ||
+    !Number.isFinite(targetReps) ||
+    !Number.isFinite(targetRpe)
+  ) {
+    return null;
+  }
+
+  return {
+    load: targetLoad as number,
+    reps: targetReps as number,
+    rpe: targetRpe as number,
+  };
+}
+
+function formatAuditNumber(value: number): string {
+  return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+}
+
+function formatSignedAuditNumber(value: number): string {
+  const formatted = formatAuditNumber(value);
+  return value >= 0 ? `+${formatted}` : formatted;
+}
+
 function buildGenerationProvenanceSummary(input: {
   generation: AuditSessionGenerationResult | undefined;
   generationPath: WorkoutAuditGenerationPath | undefined;
+  acceptedSeedProvenanceConsistency:
+    | AcceptedMesocycleSeedProvenanceConsistency
+    | undefined;
 }): WorkoutAuditGenerationProvenanceSummary | undefined {
   if (!input.generation && !input.generationPath) {
     return undefined;
@@ -74,6 +181,13 @@ function buildGenerationProvenanceSummary(input: {
     auditOnly: {
       generationPath: input.generationPath ?? null,
     },
+    ...(input.acceptedSeedProvenanceConsistency
+      ? {
+          seed: {
+            provenanceConsistency: input.acceptedSeedProvenanceConsistency,
+          },
+        }
+      : {}),
   };
 }
 
@@ -95,6 +209,8 @@ export function buildWorkoutAuditArtifact(
   const generationProvenance = buildGenerationProvenanceSummary({
     generation: normalizedGeneration,
     generationPath: run.generationPath,
+    acceptedSeedProvenanceConsistency:
+      run.acceptedSeedProvenanceConsistency,
   });
   const sanitizedRequest: WorkoutAuditRequest = {
     ...request,
@@ -107,7 +223,10 @@ export function buildWorkoutAuditArtifact(
     targetMuscles: normalizeExposedMuscleListForAudit(request.targetMuscles),
   };
 
-  const guardrailWarnings = getArtifactGuardrailWarnings(run);
+  const semanticWarnings = [
+    ...getArtifactGuardrailWarnings(run),
+    ...buildTargetEffortLoadMismatchWarnings(run.sessionSnapshot),
+  ];
 
   return {
     version: WORKOUT_AUDIT_ARTIFACT_VERSION,
@@ -138,7 +257,7 @@ export function buildWorkoutAuditArtifact(
     warningSummary: buildGenerationWarningSummary({
       generation: normalizedGeneration,
       capturedWarnings: options?.capturedWarnings,
-      additionalSemanticWarnings: guardrailWarnings,
+      additionalSemanticWarnings: semanticWarnings,
     }),
   };
 }

@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => {
   const mesocycleFindFirst = vi.fn();
   const mesocycleFindMany = vi.fn();
   const constraintsFindUnique = vi.fn();
+  const exerciseFindMany = vi.fn();
+  const userPreferenceFindUnique = vi.fn();
   const workoutFindMany = vi.fn();
   const mesocycleExerciseRoleFindMany = vi.fn();
   const loadActiveMesocycle = vi.fn();
@@ -38,6 +40,8 @@ const mocks = vi.hoisted(() => {
     mesocycleFindFirst,
     mesocycleFindMany,
     constraintsFindUnique,
+    exerciseFindMany,
+    userPreferenceFindUnique,
     workoutFindMany,
     mesocycleExerciseRoleFindMany,
     loadActiveMesocycle,
@@ -66,6 +70,12 @@ const mocks = vi.hoisted(() => {
       },
       constraints: {
         findUnique: (...args: unknown[]) => constraintsFindUnique(...args),
+      },
+      exercise: {
+        findMany: (...args: unknown[]) => exerciseFindMany(...args),
+      },
+      userPreference: {
+        findUnique: (...args: unknown[]) => userPreferenceFindUnique(...args),
       },
       workout: {
         findMany: (...args: unknown[]) => workoutFindMany(...args),
@@ -888,6 +898,11 @@ describe("buildMesocycleExplainAuditPayload", () => {
     mocks.mesocycleFindMany.mockResolvedValue([]);
     mocks.constraintsFindUnique.mockResolvedValue({
       weeklySchedule: ["UPPER", "LOWER"],
+    });
+    mocks.exerciseFindMany.mockResolvedValue([]);
+    mocks.userPreferenceFindUnique.mockResolvedValue({
+      avoidExerciseIds: [],
+      favoriteExerciseIds: [],
     });
     mocks.workoutFindMany.mockResolvedValue([
       {
@@ -1992,6 +2007,18 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(payload.seed.slotPlans[0]?.exercises[0]).toMatchObject({
       exerciseId: "ex-1",
       setCount: 4,
+    });
+    expect(payload.seed.provenanceConsistency).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      status: "valid",
+      seed: {
+        available: true,
+        source: "handoff_slot_plan_projection",
+        executableShape: "set_aware",
+      },
+      warnings: [],
     });
     expect(payload.reality.generatedVsSaved).toHaveLength(1);
     expect(payload.comparison.previewVsSeed.slotDiffs).toHaveLength(1);

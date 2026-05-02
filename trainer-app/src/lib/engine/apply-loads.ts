@@ -667,6 +667,10 @@ function resolveLoadForExercise(
       lastSets: latestSetsForDecision,
       repRange,
       equipment,
+      currentTarget: {
+        reps: targetReps,
+        rpe: targetRpe,
+      },
       historySessions,
       workingSetLoad,
       calibrationConfidenceScale,

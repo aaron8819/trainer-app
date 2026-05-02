@@ -26,6 +26,7 @@ import {
   type PlannerOnlyPolicyOverride,
 } from "@/lib/api/planner-only-policy-override";
 import { resolveMesocycleSlotContract } from "@/lib/api/mesocycle-slot-contract";
+import { evaluateAcceptedMesocycleSeedProvenance } from "@/lib/api/accepted-mesocycle-seed-provenance";
 import { parseSlotPlanSeedJson } from "@/lib/api/slot-plan-seed-parser";
 import {
   buildV2MesocycleStrategyInputFromReadModels,
@@ -9794,6 +9795,11 @@ export async function buildMesocycleExplainAuditPayload(input: {
       `Retrospective mesocycle ${retrospectiveMesocycle.id} has a persisted slotPlanSeedJson that could not be normalized against the canonical slot sequence.`,
     );
   }
+  const seedProvenanceConsistency = evaluateAcceptedMesocycleSeedProvenance({
+    mesocycleId: retrospectiveMesocycle.id,
+    mesocycleState: retrospectiveMesocycle.state,
+    slotPlanSeedJson: retrospectiveMesocycle.slotPlanSeedJson,
+  });
 
   const reality = buildRealityRows({
     workouts: seedWorkouts,
@@ -9966,6 +9972,7 @@ export async function buildMesocycleExplainAuditPayload(input: {
     seed: {
       mesocycleId: retrospectiveMesocycle.id,
       available: seedSlots.length > 0,
+      provenanceConsistency: seedProvenanceConsistency,
       slotPlans: seedSlots.map((slot) => ({
         slotId: slot.slotId,
         slotIndex: slot.slotIndex,

@@ -88,6 +88,22 @@ describe("buildCanonicalProgressionEvaluationInput", () => {
     ]);
   });
 
+  it("passes current target reps and RPE through to progression decision options", () => {
+    const input = buildCanonicalProgressionEvaluationInput({
+      lastSets: [{ reps: 6, rpe: 8.5, load: 135, targetLoad: 105 }],
+      repRange: [6, 10],
+      equipment: "barbell",
+      currentTarget: {
+        reps: 10,
+        rpe: 6.5,
+      },
+    });
+
+    expect(input.currentTarget).toEqual({ reps: 10, rpe: 6.5 });
+    expect(input.context.currentTarget).toEqual({ reps: 10, rpe: 6.5 });
+    expect(input.decisionOptions.currentTarget).toEqual({ reps: 10, rpe: 6.5 });
+  });
+
   it("does not detect a one-off under-range session", () => {
     const input = buildCanonicalProgressionEvaluationInput({
       lastSets: deviatingSets(165),

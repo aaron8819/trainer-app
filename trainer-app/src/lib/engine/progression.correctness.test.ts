@@ -303,6 +303,39 @@ describe("progression correctness", () => {
     expect(decision?.trace.outcome.reasonCodes).toContain("controlled_hard_overshoot_progression");
   });
 
+  it("blocks overshoot load increases when the new target asks for more reps at materially easier effort", () => {
+    const decision = computeDoubleProgressionDecision(
+      [
+        { reps: 6, rpe: 8.5, load: 135, targetLoad: 105, targetReps: 10 },
+        { reps: 6, rpe: 8.5, load: 135, targetLoad: 105, targetReps: 10 },
+        { reps: 6, rpe: 8.5, load: 135, targetLoad: 105, targetReps: 10 },
+        { reps: 6, rpe: 8.5, load: 135, targetLoad: 105, targetReps: 10 },
+        { reps: 6, rpe: 8.5, load: 135, targetLoad: 105, targetReps: 10 },
+      ],
+      [6, 10],
+      "barbell",
+      {
+        priorSessionCount: 1,
+        currentTarget: {
+          reps: 10,
+          rpe: 6.5,
+        },
+      }
+    );
+
+    expect(decision?.path).toBe("fallback_hold");
+    expect(decision?.nextLoad).toBe(135);
+    expect(decision?.decisionLog.join(" | ")).toContain(
+      "target effort mismatch blocked load increase"
+    );
+    expect(decision?.trace.outcome.reasonCodes).toContain(
+      "overshoot_blocked_by_target_effort_mismatch"
+    );
+    expect(decision?.trace.outcome.reasonCodes).not.toContain(
+      "controlled_hard_overshoot_progression"
+    );
+  });
+
   it("still treats Tier 3 8.5-RPE overshoot as an evidence failure rather than a hard effort block", () => {
     const decision = computeDoubleProgressionDecision(
       [
@@ -404,6 +437,8 @@ describe("progression correctness", () => {
     expect(PROGRESSION_CONFIG.catchUpRpeCeiling).toBe(8);
     expect(PROGRESSION_CONFIG.catchUpMinSetCount).toBe(4);
     expect(PROGRESSION_CONFIG.catchUpMedianGapMultiplier).toBe(2);
+    expect(PROGRESSION_CONFIG.targetEffortMismatchRepGap).toBe(2);
+    expect(PROGRESSION_CONFIG.targetEffortMismatchRpeGap).toBe(1.5);
   });
 
   it("triggers deload on a sustained low-readiness streak", () => {

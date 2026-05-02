@@ -1,4 +1,5 @@
 import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
+import { evaluateAcceptedMesocycleSeedProvenance } from "@/lib/api/accepted-mesocycle-seed-provenance";
 import { loadProjectedWeekVolumeReport } from "@/lib/api/projected-week-volume";
 import {
   generateDeloadSessionFromIntent,
@@ -228,6 +229,20 @@ export async function runWorkoutAuditGeneration(
           progressionTraces: generationResult.audit?.progressionTraces,
           deloadTrace: generationResult.audit?.deloadTrace,
         });
+  const receiptCompositionSource =
+    "error" in generationResult
+      ? null
+      : (generationResult.selection.sessionDecisionReceipt?.sessionProvenance
+          ?.compositionSource ?? null);
+  const acceptedSeedProvenanceConsistency =
+    activeMesocycle?.slotPlanSeedJson != null
+      ? evaluateAcceptedMesocycleSeedProvenance({
+          mesocycleId: activeMesocycle.id,
+          mesocycleState: activeMesocycle.state,
+          slotPlanSeedJson: activeMesocycle.slotPlanSeedJson,
+          receiptCompositionSource,
+        })
+      : undefined;
 
   return {
     context,
@@ -235,5 +250,8 @@ export async function runWorkoutAuditGeneration(
     generationResult,
     sessionSnapshot,
     generationPath,
+    ...(acceptedSeedProvenanceConsistency
+      ? { acceptedSeedProvenanceConsistency }
+      : {}),
   };
 }

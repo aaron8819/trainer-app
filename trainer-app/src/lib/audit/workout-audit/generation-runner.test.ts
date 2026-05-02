@@ -367,6 +367,63 @@ describe("runWorkoutAuditGeneration", () => {
     });
   });
 
+  it("adds read-only accepted seed provenance consistency for future-week generation", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      slotPlanSeedJson: {
+        version: 1,
+        source: "handoff_slot_plan_projection",
+        slots: [
+          {
+            slotId: "upper_a",
+            exercises: [
+              { exerciseId: "bench", role: "CORE_COMPOUND", setCount: 4 },
+            ],
+          },
+        ],
+      },
+    });
+    mocks.generateSessionFromIntent.mockResolvedValue({
+      ...okGenerationResult,
+      selection: {
+        ...okGenerationResult.selection,
+        sessionDecisionReceipt: {
+          sessionProvenance: {
+            mesocycleId: "meso-1",
+            compositionSource: "persisted_slot_plan_seed",
+          },
+        },
+      },
+    });
+    const context: WorkoutAuditContext = {
+      mode: "future-week",
+      requestedMode: "future-week",
+      userId: "user-1",
+      plannerDiagnosticsMode: "standard",
+      generationInput: { intent: "upper" },
+    };
+
+    const run = await runWorkoutAuditGeneration(context);
+
+    expect(run.acceptedSeedProvenanceConsistency).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      status: "valid",
+      seed: {
+        source: "handoff_slot_plan_projection",
+        executableShape: "set_aware",
+      },
+      warnings: [
+        expect.objectContaining({
+          code: "RUNTIME_REPLAY_PROVENANCE_NOT_AUTHORSHIP",
+          severity: "info",
+        }),
+      ],
+    });
+  });
+
   it("uses deload generation path when active mesocycle is deload", async () => {
     mocks.loadActiveMesocycle.mockResolvedValue({ state: "ACTIVE_DELOAD" });
     const context: WorkoutAuditContext = {

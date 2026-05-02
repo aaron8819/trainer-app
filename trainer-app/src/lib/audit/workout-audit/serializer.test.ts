@@ -939,6 +939,116 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(artifact.warningSummary.counts.blockingErrors).toBe(1);
   });
 
+  it("warns when generated load and target effort imply an unrealistic progression jump", () => {
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "future-week",
+        userId: "user-1",
+      },
+      {
+        ...baseRun,
+        sessionSnapshot: {
+          version: 1,
+          generated: {
+            selectionMode: "INTENT",
+            sessionIntent: "lower",
+            semantics: {
+              kind: "advancing",
+              effectiveSelectionMode: "INTENT",
+              isDeload: false,
+              isStrictGapFill: false,
+              isStrictSupplemental: false,
+              advancesLifecycle: true,
+              consumesWeeklyScheduleIntent: true,
+              countsTowardCompliance: true,
+              countsTowardRecentStimulus: true,
+              countsTowardWeeklyVolume: true,
+              countsTowardProgressionHistory: true,
+              countsTowardPerformanceHistory: true,
+              updatesProgressionAnchor: true,
+              eligibleForUniqueIntentSubtraction: true,
+              reasons: [],
+              trace: {
+                advancesSplitInput: true,
+              },
+            },
+            exerciseCount: 1,
+            hardSetCount: 3,
+            exercises: [
+              {
+                exerciseId: "sldl",
+                exerciseName: "Stiff-Legged Deadlift",
+                orderIndex: 0,
+                section: "main",
+                isMainLift: true,
+                prescribedSetCount: 3,
+                prescribedSets: [
+                  {
+                    setIndex: 1,
+                    targetReps: 10,
+                    targetRpe: 6.5,
+                    targetLoad: 140,
+                  },
+                ],
+              },
+            ],
+            traces: {
+              progression: {
+                sldl: {
+                  version: 1,
+                  decisionSource: "double_progression",
+                  repRange: { min: 6, max: 10 },
+                  equipment: "barbell",
+                  anchor: {
+                    source: "conservative_modal",
+                    workingSetApplied: false,
+                    anchorLoad: 135,
+                    signalSetCount: 5,
+                    effectiveSetCount: 5,
+                    trimmedSetCount: 0,
+                    highVarianceDetected: false,
+                    minSignalLoad: 135,
+                    maxSignalLoad: 135,
+                    medianSignalLoad: 135,
+                  },
+                  confidence: {
+                    priorSessionCount: 1,
+                    sampleScale: 0.8,
+                    historyScale: 1,
+                    combinedScale: 0.8,
+                    reasons: [],
+                  },
+                  metrics: {
+                    medianReps: 6,
+                    modalRpe: 8.5,
+                    nextLoad: 140,
+                    loadDelta: 5,
+                  },
+                  outcome: {
+                    path: "path_5_overshoot",
+                    action: "increase",
+                    reasonCodes: [
+                      "performed_above_prescription",
+                      "controlled_hard_overshoot_progression",
+                    ],
+                  },
+                  decisionLog: [
+                    "Path 5 fired: performed load beat prescription.",
+                  ],
+                },
+              },
+            },
+          },
+        },
+      },
+    );
+
+    expect(artifact.warningSummary.semanticWarnings).toContain(
+      "target_effort_load_mismatch: Stiff-Legged Deadlift generated 140 lb for 10 reps @ RPE 6.5 after prior anchor 135 lb, median 6 reps @ RPE 8.5; load delta +5 lb while prior reps/effort do not support the easier target.",
+    );
+    expect(artifact.warningSummary.counts.semanticWarnings).toBe(1);
+  });
+
   it("adds normalized canonical semantics when a session snapshot is available", () => {
     const artifact = buildWorkoutAuditArtifact(
       {
@@ -1172,6 +1282,59 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(artifact.generationPath).toEqual(
       artifact.generationProvenance?.auditOnly.generationPath,
     );
+  });
+
+  it("serializes compact accepted seed provenance consistency in generationProvenance", () => {
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "future-week",
+        userId: "user-1",
+      },
+      {
+        ...baseRun,
+        generationPath: {
+          requestedMode: "future-week",
+          executionMode: "standard_generation",
+          generator: "generateSessionFromIntent",
+          reason: "standard_future_week_or_preview",
+        },
+        acceptedSeedProvenanceConsistency: {
+          version: 1,
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByProduction: false,
+          status: "suspicious",
+          seed: {
+            available: true,
+            source: "handoff_slot_plan_projection",
+            plannerMetadataSource: "v2_planner_policy",
+            targetSkeletonId: "upper_lower_4x_v2",
+            executableShape: "set_aware",
+          },
+          warnings: [
+            {
+              code: "SEED_SOURCE_LEGACY_WITH_V2_PLANNER_METADATA",
+              severity: "warning",
+              evidence:
+                "mesocycleId=meso-1 seed.source=handoff_slot_plan_projection plannerMetadataSource=v2_planner_policy",
+            },
+          ],
+        },
+      },
+    );
+    const serialized = JSON.parse(serializeWorkoutAuditArtifact(artifact));
+
+    expect(
+      serialized.generationProvenance.seed.provenanceConsistency.warnings,
+    ).toEqual([
+      expect.objectContaining({
+        code: "SEED_SOURCE_LEGACY_WITH_V2_PLANNER_METADATA",
+        severity: "warning",
+      }),
+    ]);
+    expect(
+      JSON.stringify(serialized.generationProvenance.seed.provenanceConsistency),
+    ).not.toContain("acceptedPlannerIntent");
   });
 
   it("adds do-not-reconstruct guardrails for saved-only legacy audit coverage", () => {

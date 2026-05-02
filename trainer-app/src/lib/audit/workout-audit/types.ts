@@ -49,6 +49,7 @@ import type {
   WorkoutAuditCanonicalMode,
   WorkoutAuditRequestMode,
 } from "./constants";
+import type { AcceptedMesocycleSeedProvenanceConsistency } from "@/lib/api/accepted-mesocycle-seed-provenance";
 
 export type AuditBasisDescriptor = {
   sourceModule: string;
@@ -177,6 +178,9 @@ export type WorkoutAuditGenerationProvenanceSummary = {
   };
   auditOnly: {
     generationPath: WorkoutAuditGenerationPath | null;
+  };
+  seed?: {
+    provenanceConsistency: AcceptedMesocycleSeedProvenanceConsistency;
   };
 };
 
@@ -1815,6 +1819,7 @@ export type MesocycleExplainAuditPayload = {
   seed: {
     mesocycleId: string;
     available: boolean;
+    provenanceConsistency?: AcceptedMesocycleSeedProvenanceConsistency;
     slotPlans: MesocycleExplainSlotRow[];
     exerciseRationale: MesocycleExplainExerciseRationale[];
   };
@@ -1855,6 +1860,7 @@ export type WorkoutAuditRun = {
   generationResult?: SessionGenerationResult;
   sessionSnapshot?: SessionAuditSnapshot;
   generationPath?: WorkoutAuditGenerationPath;
+  acceptedSeedProvenanceConsistency?: AcceptedMesocycleSeedProvenanceConsistency;
   historicalWeek?: HistoricalWeekAuditPayload;
   weeklyRetro?: WeeklyRetroAuditPayload;
   projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;

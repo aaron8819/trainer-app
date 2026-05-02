@@ -28,6 +28,7 @@ export type CanonicalProgressionEvaluationInput = {
   lastSets: ProgressionSet[];
   repRange: [number, number];
   equipment: ProgressionEquipment;
+  currentTarget?: DoubleProgressionDecisionOptions["currentTarget"];
   decisionOptions: DoubleProgressionDecisionOptions;
   context: {
     workingSetLoad?: number;
@@ -36,6 +37,7 @@ export type CanonicalProgressionEvaluationInput = {
     confidenceReasons: string[];
     intentDeviation: IntentDeviationSignal;
     intentDeviationTargetLoadCeiling?: number;
+    currentTarget?: DoubleProgressionDecisionOptions["currentTarget"];
   };
 };
 
@@ -43,6 +45,7 @@ export function buildCanonicalProgressionEvaluationInput(input: {
   lastSets: ProgressionSet[];
   repRange: [number, number];
   equipment: ProgressionEquipment;
+  currentTarget?: DoubleProgressionDecisionOptions["currentTarget"];
   workingSetLoad?: number;
   historySessions?: CanonicalProgressionHistorySession[];
   calibrationConfidenceScale?: number;
@@ -74,12 +77,14 @@ export function buildCanonicalProgressionEvaluationInput(input: {
     lastSets: input.lastSets,
     repRange: input.repRange,
     equipment: input.equipment,
+    ...(input.currentTarget ? { currentTarget: input.currentTarget } : {}),
     decisionOptions: {
       workingSetLoad: input.workingSetLoad,
       priorSessionCount,
       historyConfidenceScale: combinedHistoryConfidenceScale,
       confidenceReasons,
       intentDeviation: intentDeviation.signal,
+      ...(input.currentTarget ? { currentTarget: input.currentTarget } : {}),
       ...(intentDeviation.targetLoadCeiling != null
         ? { intentDeviationTargetLoadCeiling: intentDeviation.targetLoadCeiling }
         : {}),
@@ -90,6 +95,7 @@ export function buildCanonicalProgressionEvaluationInput(input: {
       historyConfidenceScale: combinedHistoryConfidenceScale,
       confidenceReasons,
       intentDeviation: intentDeviation.signal,
+      ...(input.currentTarget ? { currentTarget: input.currentTarget } : {}),
       ...(intentDeviation.targetLoadCeiling != null
         ? { intentDeviationTargetLoadCeiling: intentDeviation.targetLoadCeiling }
         : {}),

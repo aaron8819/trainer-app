@@ -47,6 +47,10 @@ export type DoubleProgressionDecisionOptions = {
     severity: "none" | "moderate" | "strong";
   };
   intentDeviationTargetLoadCeiling?: number;
+  currentTarget?: {
+    reps?: number;
+    rpe?: number;
+  };
 };
 
 export const PROGRESSION_CONFIG = {
@@ -75,6 +79,9 @@ export const PROGRESSION_CONFIG = {
   catchUpRpeCeiling: 8,
   catchUpMinSetCount: 4,
   catchUpMedianGapMultiplier: 2,
+  // Overshoot is not credible when the next target asks for materially more reps at easier effort.
+  targetEffortMismatchRepGap: 2,
+  targetEffortMismatchRpeGap: 1.5,
 } as const;
 const EFFECTIVE_RPE_MIN = 6;
 
@@ -490,6 +497,49 @@ export function computeDoubleProgressionDecision(
     if (!overshootEvidenceDetail) {
       throw new Error("Overshoot evaluation qualified without evidence.");
     }
+    const targetEffortMismatch = evaluateTargetEffortMismatch({
+      medianReps,
+      modalRpe,
+      currentTarget: options?.currentTarget,
+    });
+    if (targetEffortMismatch) {
+      const nextLoad = roundLoad(anchorLoad);
+      decisionLog.push(targetEffortMismatch.message);
+      return {
+        nextLoad,
+        anchorLoad,
+        path: "fallback_hold",
+        decisionLog,
+        trace: buildProgressionDecisionTrace({
+          anchorLoad,
+          nextLoad,
+          path: "fallback_hold",
+          decisionLog,
+          anchorSource,
+          signalSetCount: signalSets.length,
+          effectiveSetCount: effectiveSets.length,
+          trimmedSetCount: signalSets.length - effectiveSets.length,
+          hasHighVariance,
+          minLoad,
+          maxLoad,
+          medianLoad,
+          priorSessionCount: options?.priorSessionCount ?? 0,
+          sampleConfidenceScale,
+          historyConfidenceScale,
+          progressionConfidenceScale,
+          confidenceReasons: options?.confidenceReasons ?? [],
+          repRange,
+          equipment,
+          medianReps,
+          modalRpe: modalRpe ?? null,
+          reasonCodes: [
+            "progression_conditions_not_met",
+            "performed_above_prescription",
+            "overshoot_blocked_by_target_effort_mismatch",
+          ],
+        }),
+      };
+    }
     const catchUpEvaluation = allowCatchUp
       ? evaluateCatchUpProgression({
           overshootEvidence: overshootEvidenceDetail,
@@ -652,6 +702,36 @@ function resolveIntentDeviationClamp(input: {
     nextLoad: Math.min(roundLoad(input.anchorLoad), targetLoadCeiling),
     severity: input.severity,
     targetLoadCeiling,
+  };
+}
+
+function evaluateTargetEffortMismatch(input: {
+  medianReps: number;
+  modalRpe?: number;
+  currentTarget?: DoubleProgressionDecisionOptions["currentTarget"];
+}): { message: string } | null {
+  const targetReps = input.currentTarget?.reps;
+  const targetRpe = input.currentTarget?.rpe;
+  if (
+    !Number.isFinite(targetReps) ||
+    !Number.isFinite(targetRpe) ||
+    !Number.isFinite(input.modalRpe)
+  ) {
+    return null;
+  }
+
+  const repGap = (targetReps as number) - input.medianReps;
+  const rpeGap = (input.modalRpe as number) - (targetRpe as number);
+  if (
+    repGap < PROGRESSION_CONFIG.targetEffortMismatchRepGap ||
+    rpeGap < PROGRESSION_CONFIG.targetEffortMismatchRpeGap
+  ) {
+    return null;
+  }
+
+  return {
+    message:
+      `Overshoot gate: target effort mismatch blocked load increase because prior median reps ${input.medianReps.toFixed(1)} were below current target ${formatNumber(targetReps as number)} while prior modal RPE ${formatNumber(input.modalRpe as number)} was ${rpeGap.toFixed(1)} above current target RPE ${formatNumber(targetRpe as number)}. Hold load until reps/effort support progression.`,
   };
 }
 
@@ -1076,6 +1156,10 @@ function median(values: number[]): number {
     return (sorted[middle - 1] + sorted[middle]) / 2;
   }
   return sorted[middle];
+}
+
+function formatNumber(value: number): string {
+  return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
 }
 
 function resolveSampleSizeConfidenceScale(priorSessionCount?: number): number {

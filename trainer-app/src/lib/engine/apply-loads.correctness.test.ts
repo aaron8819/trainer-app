@@ -670,6 +670,71 @@ describe("applyLoads correctness", () => {
     );
   });
 
+  it("does not increase SLDL load when the next target raises reps and lowers target RPE materially", () => {
+    const workout: WorkoutPlan = {
+      id: "w-sldl",
+      scheduledDate: "2026-05-02T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "we-sldl",
+          exercise: stiffLegDeadlift,
+          orderIndex: 0,
+          isMainLift: true,
+          sets: [
+            { setIndex: 1, targetReps: 10, targetRpe: 6.5 },
+            { setIndex: 2, targetReps: 10, targetRpe: 6.5 },
+            { setIndex: 3, targetReps: 10, targetRpe: 6.5 },
+          ],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 35,
+    };
+
+    const result = applyLoadsWithAudit(workout, {
+      history: [
+        {
+          date: "2026-04-16T16:13:22.403Z",
+          completed: true,
+          status: "COMPLETED",
+          progressionEligible: true,
+          sessionIntent: "lower",
+          selectionMode: "INTENT",
+          confidence: 1,
+          mesocycleSnapshot: { phase: "ACCUMULATION", week: 4, session: 4 },
+          exercises: [
+            {
+              exerciseId: "sldl",
+              sets: [1, 2, 3, 4, 5].map((setIndex) => ({
+                exerciseId: "sldl",
+                setIndex,
+                reps: 6,
+                rpe: 8.5,
+                load: 135,
+                targetLoad: 105,
+                targetReps: 10,
+                targetRepMin: 10,
+                targetRepMax: 12,
+              })),
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { sldl: stiffLegDeadlift },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "lower",
+      isFirstSessionInMesocycle: true,
+    });
+
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(135);
+    expect(result.audit.progressionTraces.sldl.outcome.reasonCodes).toContain(
+      "overshoot_blocked_by_target_effort_mismatch"
+    );
+  });
+
   it("anchors progression to the modal performed load in the latest session", () => {
     const cablePullover: Exercise = {
       id: "cable-pullover",

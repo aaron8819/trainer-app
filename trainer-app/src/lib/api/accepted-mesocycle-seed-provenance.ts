@@ -1,0 +1,272 @@
+import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
+
+export const ACCEPTED_SEED_PROVENANCE_WARNING_CODES = [
+  "SEED_SOURCE_LEGACY_WITH_V2_PLANNER_METADATA",
+  "RUNTIME_REPLAY_PROVENANCE_NOT_AUTHORSHIP",
+  "UI_SEED_SOURCE_NOT_AUTHORSHIP",
+  "V2_DIAGNOSTICS_WITH_LEGACY_ACCEPTED_SEED",
+  "V2_SOURCE_WITHOUT_V2_PLANNER_METADATA",
+  "V2_PROVENANCE_REPORTED_WITHOUT_DB_WRITE",
+  "UNKNOWN_ACCEPTED_SEED_SOURCE",
+  "MISSING_EXECUTABLE_SET_COUNTS",
+] as const;
+
+export type AcceptedSeedProvenanceWarningCode =
+  (typeof ACCEPTED_SEED_PROVENANCE_WARNING_CODES)[number];
+
+export type AcceptedSeedProvenanceWarningSeverity =
+  | "info"
+  | "warning"
+  | "error";
+
+export type AcceptedMesocycleSeedProvenanceInput = {
+  mesocycleId: string;
+  mesocycleState?: string;
+  slotPlanSeedJson: unknown;
+  receiptCompositionSource?: string | null;
+  readModelExerciseSource?: string | null;
+  v2DiagnosticSignals?: {
+    dbWriteOccurred?: boolean;
+    persistenceSource?: string;
+    materializedSeedSource?: string;
+    generationPath?: string;
+  };
+};
+
+export type AcceptedMesocycleSeedProvenanceConsistency = {
+  version: 1;
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByProduction: false;
+  status: "valid" | "suspicious" | "invalid";
+  seed: {
+    available: boolean;
+    source?: string;
+    plannerMetadataSource?: string;
+    targetSkeletonId?: string;
+    executableShape: "set_aware" | "identity_only" | "missing" | "unknown";
+  };
+  warnings: Array<{
+    code: AcceptedSeedProvenanceWarningCode;
+    severity: AcceptedSeedProvenanceWarningSeverity;
+    evidence: string;
+  }>;
+};
+
+type Warning = AcceptedMesocycleSeedProvenanceConsistency["warnings"][number];
+
+const LEGACY_SEED_SOURCES = new Set([
+  "handoff_slot_plan_projection",
+  "legacy_projection_seed",
+]);
+
+const RUNTIME_REPLAY_SOURCES = new Set([
+  "persisted_slot_plan_seed",
+  "deload_seed_replay",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function isLegacySeedSource(source: string | undefined): boolean {
+  return source ? LEGACY_SEED_SOURCES.has(source) : false;
+}
+
+function isV2SeedSource(source: string | undefined): boolean {
+  return source === "v2_planner_policy" || source?.startsWith("v2_") === true;
+}
+
+function isKnownSeedSource(source: string | undefined): boolean {
+  return isLegacySeedSource(source) || isV2SeedSource(source);
+}
+
+function hasV2DiagnosticSignals(
+  signals: AcceptedMesocycleSeedProvenanceInput["v2DiagnosticSignals"],
+): boolean {
+  return Boolean(signals && Object.keys(signals).length > 0);
+}
+
+function executableShape(input: {
+  seedPresent: boolean;
+  exerciseCount: number;
+  missingSetCount: number;
+}): AcceptedMesocycleSeedProvenanceConsistency["seed"]["executableShape"] {
+  if (!input.seedPresent) {
+    return "missing";
+  }
+  if (input.exerciseCount === 0) {
+    return "missing";
+  }
+  if (input.missingSetCount === 0) {
+    return "set_aware";
+  }
+  if (input.missingSetCount === input.exerciseCount) {
+    return "identity_only";
+  }
+  return "unknown";
+}
+
+function statusForWarnings(warnings: Warning[]): AcceptedMesocycleSeedProvenanceConsistency["status"] {
+  if (warnings.some((warning) => warning.severity === "error")) {
+    return "invalid";
+  }
+  if (warnings.some((warning) => warning.severity === "warning")) {
+    return "suspicious";
+  }
+  return "valid";
+}
+
+export function evaluateAcceptedMesocycleSeedProvenance(
+  input: AcceptedMesocycleSeedProvenanceInput,
+): AcceptedMesocycleSeedProvenanceConsistency {
+  const rawSeed = isRecord(input.slotPlanSeedJson) ? input.slotPlanSeedJson : null;
+  const parsedSeed = parseSlotPlanSeedJson(input.slotPlanSeedJson);
+  const rawPlannerMetadata = isRecord(rawSeed?.acceptedPlannerIntent)
+    ? rawSeed.acceptedPlannerIntent
+    : null;
+  const source = parsedSeed?.source ?? readString(rawSeed?.source);
+  const plannerMetadataSource =
+    parsedSeed?.acceptedPlannerIntent?.source ??
+    readString(rawPlannerMetadata?.source);
+  const targetSkeletonId =
+    parsedSeed?.acceptedPlannerIntent?.targetSkeletonId ??
+    readString(rawPlannerMetadata?.targetSkeletonId);
+  const exercises = parsedSeed?.slots.flatMap((slot) => slot.exercises) ?? [];
+  const missingSetCount = exercises.filter(
+    (exercise) => !exercise.hasExplicitSetCount,
+  ).length;
+  const shape = executableShape({
+    seedPresent: parsedSeed != null,
+    exerciseCount: exercises.length,
+    missingSetCount,
+  });
+  const seedAvailable = parsedSeed != null && exercises.length > 0;
+  const legacySeedSource = isLegacySeedSource(source);
+  const v2SeedSource = isV2SeedSource(source);
+  const hasV2PlannerMetadata =
+    plannerMetadataSource === "v2_planner_policy" && Boolean(targetSkeletonId);
+  const v2SignalsPresent = hasV2DiagnosticSignals(input.v2DiagnosticSignals);
+  const warnings: Warning[] = [];
+
+  if (legacySeedSource && plannerMetadataSource === "v2_planner_policy") {
+    warnings.push({
+      code: "SEED_SOURCE_LEGACY_WITH_V2_PLANNER_METADATA",
+      severity: "warning",
+      evidence: `mesocycleId=${input.mesocycleId} seed.source=${source} plannerMetadataSource=${plannerMetadataSource}`,
+    });
+  }
+
+  if (
+    input.receiptCompositionSource &&
+    isV2SeedSource(input.receiptCompositionSource)
+  ) {
+    warnings.push({
+      code: "RUNTIME_REPLAY_PROVENANCE_NOT_AUTHORSHIP",
+      severity: "error",
+      evidence: `compositionSource=${input.receiptCompositionSource} looks like planner authorship; runtime provenance must report replay path, not planner metadata`,
+    });
+  }
+
+  if (
+    input.receiptCompositionSource &&
+    RUNTIME_REPLAY_SOURCES.has(input.receiptCompositionSource) &&
+    (legacySeedSource || !source || !isKnownSeedSource(source))
+  ) {
+    warnings.push({
+      code: "RUNTIME_REPLAY_PROVENANCE_NOT_AUTHORSHIP",
+      severity: "info",
+      evidence: `compositionSource=${input.receiptCompositionSource} replays the accepted seed; seed.source=${source ?? "missing"} remains the author label`,
+    });
+  }
+
+  if (
+    input.readModelExerciseSource === "persisted_slot_plan_seed" &&
+    (legacySeedSource || !source || !isKnownSeedSource(source))
+  ) {
+    warnings.push({
+      code: "UI_SEED_SOURCE_NOT_AUTHORSHIP",
+      severity: "info",
+      evidence: `exerciseSource=${input.readModelExerciseSource} is a read-model row source; seed.source=${source ?? "missing"} remains the author label`,
+    });
+  }
+
+  if (v2SignalsPresent && legacySeedSource) {
+    const signals = input.v2DiagnosticSignals;
+    warnings.push({
+      code: "V2_DIAGNOSTICS_WITH_LEGACY_ACCEPTED_SEED",
+      severity: "warning",
+      evidence: `seed.source=${source}; v2Signals=${[
+        signals?.persistenceSource
+          ? `persistenceSource=${signals.persistenceSource}`
+          : null,
+        signals?.materializedSeedSource
+          ? `materializedSeedSource=${signals.materializedSeedSource}`
+          : null,
+        signals?.generationPath ? `generationPath=${signals.generationPath}` : null,
+        signals?.dbWriteOccurred !== undefined
+          ? `dbWriteOccurred=${signals.dbWriteOccurred}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(",")}`,
+    });
+  }
+
+  if (v2SeedSource && !hasV2PlannerMetadata) {
+    warnings.push({
+      code: "V2_SOURCE_WITHOUT_V2_PLANNER_METADATA",
+      severity: "error",
+      evidence: `seed.source=${source}; plannerMetadataSource=${plannerMetadataSource ?? "missing"} targetSkeletonId=${targetSkeletonId ?? "missing"}`,
+    });
+  }
+
+  if (
+    isV2SeedSource(input.v2DiagnosticSignals?.persistenceSource) &&
+    input.v2DiagnosticSignals?.dbWriteOccurred === false
+  ) {
+    warnings.push({
+      code: "V2_PROVENANCE_REPORTED_WITHOUT_DB_WRITE",
+      severity: "error",
+      evidence: `persistenceSource=${input.v2DiagnosticSignals.persistenceSource} dbWriteOccurred=false`,
+    });
+  }
+
+  if (seedAvailable && (!source || !isKnownSeedSource(source))) {
+    warnings.push({
+      code: "UNKNOWN_ACCEPTED_SEED_SOURCE",
+      severity: "warning",
+      evidence: `mesocycleId=${input.mesocycleId} seed.source=${source ?? "missing"}`,
+    });
+  }
+
+  if (seedAvailable && missingSetCount > 0) {
+    warnings.push({
+      code: "MISSING_EXECUTABLE_SET_COUNTS",
+      severity: "error",
+      evidence: `mesocycleId=${input.mesocycleId} missingSetCount=${missingSetCount} executableShape=${shape}`,
+    });
+  }
+
+  return {
+    version: 1,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByProduction: false,
+    status: statusForWarnings(warnings),
+    seed: {
+      available: seedAvailable,
+      ...(source ? { source } : {}),
+      ...(plannerMetadataSource ? { plannerMetadataSource } : {}),
+      ...(targetSkeletonId ? { targetSkeletonId } : {}),
+      executableShape: shape,
+    },
+    warnings,
+  };
+}

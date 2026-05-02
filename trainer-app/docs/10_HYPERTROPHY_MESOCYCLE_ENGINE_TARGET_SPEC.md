@@ -449,6 +449,8 @@ Current status: accepted seed infrastructure is valuable. Do not bloat executabl
 
 Strategic purpose: execute the accepted plan deterministically and log what happened. Good looks like stable replay from `slotSequenceJson` and `slotPlanSeedJson`, with session-local deviations recorded as performed reality.
 
+Runtime order fidelity: for seeded generated workouts, `WorkoutExercise.orderIndex` is the executable flattening contract. UI, audit, projected summary, and generated workout views must not infer planned order from `mainLifts + accessories` section grouping. Section labels can explain role, but they must not reorder persisted seed truth unless an explicit, surfaced runtime ordering policy exists.
+
 Current status: keep current runtime. Do not replace it.
 
 ### Runtime Adjustment Rules
@@ -1052,6 +1054,8 @@ These are strategic decision gates, not claims that current production already p
 - next-session generation replays persisted seed exactly
 - next-session generation preserves persisted seed exercise order unless an explicit, labeled runtime ordering policy exists
 - Program, Home, Next Workout, and generated workout rows agree on slot, identity, set count, role, and order for seeded sessions
+- generated seeded workouts preserve `WorkoutExercise.orderIndex` across main/accessory section boundaries
+- consumers must not flatten by section order when presenting executable planned workout order
 - rep ranges match exercise class and hypertrophy goal
 - RIR/RPE target matches lifecycle week
 - load target is coherent with recent performance
@@ -1101,6 +1105,7 @@ These are strategic decision gates, not claims that current production already p
 - Do not let runtime consume planner metadata.
 - Do not let runtime edits mutate canonical seed.
 - Do not reorder seeded exercises in runtime preview/generation unless the ordering policy is explicit, intentional, and surfaced.
+- Do not infer seeded runtime order from `mainLifts` / `accessories` array position.
 - Do not treat target loads as exact truth when confidence is low.
 - Do not increase load into an easier RIR target when prior reps/effort contradict it.
 - Do not hide prescription source/confidence from the user/operator.

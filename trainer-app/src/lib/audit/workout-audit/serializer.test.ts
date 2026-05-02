@@ -1580,6 +1580,202 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(artifact.generation).toBeUndefined();
   });
 
+  it("serializes replace-empty V2 candidate identity summaries without making them seed truth", () => {
+    const candidateIdentitySummary = {
+      available: true,
+      rowCount: 1,
+      detailLevel: "selected_identity",
+      rankingDetailAvailability: {
+        topAlternatives: "not_available",
+        scoreTuple: "not_available",
+        selectedReason: "not_available",
+        reason: "materializer_does_not_emit_candidate_ranking",
+      },
+      rows: [
+        {
+          slotId: "upper_a",
+          laneId: "chest_press",
+          laneRole: "anchor",
+          seedRole: "CORE_COMPOUND",
+          selectedExercise: {
+            exerciseId: "v2-bench",
+            name: "V2 Bench",
+          },
+          setCount: 3,
+          topAlternatives: [],
+        },
+      ],
+    };
+    const replaceEmptyMesocycleWithV2 = {
+      version: 1,
+      source: "replace_empty_mesocycle_with_v2",
+      dryRun: true,
+      writeRequested: false,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      wouldWriteTransaction: false,
+      owner: { email: "owner@test.local", userId: "user-1" },
+      targetMesocycleId: "meso-1",
+      replacementSemantics: {
+        strategy: "update_existing_empty_mesocycle_in_place",
+        preservesMesocycleId: true,
+        updates: ["slotPlanSeedJson"],
+        preserves: [
+          "slotSequenceJson",
+          "workouts",
+          "workoutSets",
+          "setLogs",
+          "runtimeReplay",
+          "defaultHandoffAcceptance",
+        ],
+      },
+      candidateSafety: {
+        checked: true,
+        allowed: true,
+        blockers: [],
+        target: {
+          found: true,
+          mesocycleId: "meso-1",
+          ownerEmail: "owner@test.local",
+        },
+        evidence: {
+          workoutCount: 0,
+          completedOrPartialSessionCount: 0,
+          workoutExerciseRowCount: 0,
+          workoutSetRowCount: 0,
+          setLogCount: 0,
+          performedSetLogCount: 0,
+          runtimeDeviationCount: 0,
+          performedRealityEmpty: true,
+          replacingWillOrphanPerformedHistory: false,
+        },
+      },
+      v2Preparation: {
+        status: "ready",
+        blockers: [],
+        basePlanValidation: {
+          status: "pass",
+          passed: true,
+          blockerCount: 0,
+          warningCount: 0,
+        },
+        materializerStatus: "materialized",
+        promotionReadinessStatus: "eligible_for_guarded_write",
+        seedShapeCompatibility: {
+          compatible: true,
+          slotCount: 1,
+          exerciseCount: 1,
+          missingNameCount: 0,
+          duplicateExerciseIdWithinSlotCount: 0,
+          invalidRoleCount: 0,
+          invalidSetCount: 0,
+          unsupportedClassCount: 0,
+        },
+        candidateIdentitySummary,
+        productionWriteGates: {
+          acceptancePathDesigned: true,
+          slotPlanSeedJsonWriteGateDesigned: true,
+          receiptContractDesigned: true,
+          runtimeReplayContractVerified: true,
+          auditSerializationContractDesigned: true,
+          rollbackStrategyDefined: true,
+        },
+        helperStatus: "ready",
+        helperProvenanceSource: "v2_materialized_seed",
+      },
+      seedComparison: {
+        currentAvailable: true,
+        v2Available: true,
+        slotIdsInOrder: {
+          current: ["upper_a"],
+          v2: ["upper_a"],
+          sameOrder: true,
+        },
+        totalSetCount: {
+          current: 3,
+          v2: 3,
+        },
+        changedSlotIds: ["upper_a"],
+      },
+      seedRuntimeBoundary: {
+        serializer: "buildMesocycleSlotPlanSeed",
+        handcraftedSlotPlanSeedJson: false,
+        executableRowFields: ["exerciseId", "role", "setCount"],
+        acceptedPlannerIntentRuntimeInert: true,
+        runtimeReplayUnchanged: true,
+        runtimeConsumesPlannerMetadata: false,
+      },
+      provenance: {
+        source: "v2_materialized_seed",
+        operation: "replace_empty_mesocycle",
+        owner: "owner@test.local",
+        targetMesocycleId: "meso-1",
+        noLoggedWorkoutsVerified: true,
+        noPerformedSetsVerified: true,
+        serializer: "buildMesocycleSlotPlanSeed",
+        dbWriteOccurred: false,
+        transactionStatus: "not_requested",
+        fallbackStatus: "none",
+        runtimeReplayUnchanged: true,
+      },
+      write: {
+        requested: false,
+        confirmationProvided: false,
+        eligible: true,
+        dbWriteOccurred: false,
+        transactionStatus: "not_requested",
+      },
+      guardrails: {
+        requiresExplicitOwnerEmail: true,
+        requiresExplicitMesocycleId: true,
+        requiresExplicitReplacementFlag: true,
+        writeRequiresExplicitConfirmation: true,
+        blocksWhenWorkoutRowsExist: true,
+        blocksWhenPerformedSetLogsExist: true,
+        doesNotMutateWorkouts: true,
+        doesNotMutateRuntimeLogs: true,
+        doesNotMutateHistoricalMesocycles: true,
+        doesNotChangeDefaultAcceptRoute: true,
+        doesNotChangeRuntimeReplay: true,
+        v2BlockedFailsClosed: true,
+        fallbackCannotBeLabeledV2Success: true,
+      },
+    } as WorkoutAuditRun["replaceEmptyMesocycleWithV2"];
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "replace-empty-mesocycle-with-v2",
+        userId: "user-1",
+        ownerEmail: "owner@test.local",
+        mesocycleId: "meso-1",
+      },
+      {
+        ...baseRun,
+        context: {
+          mode: "replace-empty-mesocycle-with-v2",
+          requestedMode: "replace-empty-mesocycle-with-v2",
+          userId: "user-1",
+          ownerEmail: "owner@test.local",
+          plannerDiagnosticsMode: "standard",
+          replaceEmptyMesocycleWithV2: {
+            mesocycleId: "meso-1",
+          },
+        },
+        generationResult: undefined,
+        replaceEmptyMesocycleWithV2,
+      },
+    );
+    const serialized = JSON.parse(serializeWorkoutAuditArtifact(artifact));
+
+    expect(serialized.replaceEmptyMesocycleWithV2.v2Preparation).toMatchObject({
+      candidateIdentitySummary,
+    });
+    expect(
+      serialized.replaceEmptyMesocycleWithV2.seedRuntimeBoundary.executableRowFields,
+    ).toEqual(["exerciseId", "role", "setCount"]);
+    expect(serialized.generation).toBeUndefined();
+  });
+
   it("serializes v2 accepted-seed prepare compare payloads without attaching generation fields", () => {
     const v2AcceptedSeedPrepareCompare = {
       version: 1,

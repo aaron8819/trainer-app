@@ -752,6 +752,34 @@ function makeV2AcceptedSeedPreparationProbeInput(
             setCount: exercise.setCount,
           })),
         })),
+    candidateIdentitySummary: {
+      available: !input.blocked,
+      rowCount: input.blocked
+        ? 0
+        : slotPlans.reduce((sum, slot) => sum + slot.exercises.length, 0),
+      detailLevel: "selected_identity",
+      rankingDetailAvailability: {
+        topAlternatives: "not_available",
+        scoreTuple: "not_available",
+        selectedReason: "not_available",
+        reason: "materializer_does_not_emit_candidate_ranking",
+      },
+      rows: input.blocked
+        ? []
+        : slotPlans.flatMap((slot) =>
+            slot.exercises.map((exercise) => ({
+              slotId: slot.slotId,
+              laneId: exercise.exerciseId,
+              seedRole: exercise.role as "CORE_COMPOUND" | "ACCESSORY",
+              selectedExercise: {
+                exerciseId: exercise.exerciseId,
+                name: exercise.exerciseId,
+              },
+              setCount: exercise.setCount,
+              topAlternatives: [],
+            })),
+          ),
+    },
     strippedMaterializerFields: ["laneIds"],
     blockers: input.blocked
       ? [{ slotId: "upper_a", laneId: "bench", reason: "no_class_match" }]

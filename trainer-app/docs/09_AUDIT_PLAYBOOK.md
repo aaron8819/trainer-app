@@ -538,9 +538,15 @@ Replacement semantics:
 Inspect first:
 - `replaceEmptyMesocycleWithV2.candidateSafety`
 - `replaceEmptyMesocycleWithV2.v2Preparation`
+- `replaceEmptyMesocycleWithV2.v2Preparation.candidateIdentitySummary`
 - `replaceEmptyMesocycleWithV2.seedComparison`
 - `replaceEmptyMesocycleWithV2.seedRuntimeBoundary`
 - `replaceEmptyMesocycleWithV2.provenance`
+
+Candidate identity summary:
+- compact selected-identity rows show `slotId`, `laneId`, lane role, seed role, selected exercise id/name, and `setCount`
+- top alternatives, score tuple, and selected-reason ranking details are marked unavailable until the materializer emits ranking diagnostics
+- the summary is audit-only and must not be consumed by seed serialization, runtime replay, receipts, or persistence
 
 Hard stops:
 - missing explicit owner, mesocycle id, replacement flag, or write confirmation

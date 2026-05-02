@@ -134,6 +134,11 @@ export function buildV2MaterializationDryRunReport(
           slotIntentById: input.slotIntentById ?? {},
         })
       : [],
+    candidateIdentitySummary: buildCandidateIdentitySummary({
+      materializedPlan,
+      exerciseSelectionPlan,
+      nameById,
+    }),
     strippedMaterializerFields: [...STRIPPED_MATERIALIZER_FIELDS],
     blockers,
     omissions,
@@ -148,6 +153,70 @@ export function buildV2MaterializationDryRunReport(
       }),
     },
   };
+}
+
+function buildCandidateIdentitySummary(input: {
+  materializedPlan: V2ExerciseMaterializationPlan | null;
+  exerciseSelectionPlan: V2ExerciseSelectionPlan | null;
+  nameById: Record<string, string | undefined>;
+}): V2MaterializationDryRunReport["candidateIdentitySummary"] {
+  const laneRoleByKey = buildLaneRoleIndex(input.exerciseSelectionPlan);
+  const rows = (input.materializedPlan?.slots ?? []).flatMap((slot) =>
+    slot.exercises.flatMap((exercise) => {
+      const laneIds = exercise.laneIds.length ? exercise.laneIds : ["unknown"];
+      return laneIds.map((laneId) => ({
+        slotId: slot.slotId,
+        laneId,
+        ...(laneRoleByKey.get(`${slot.slotId}:${laneId}`)
+          ? { laneRole: laneRoleByKey.get(`${slot.slotId}:${laneId}`) }
+          : {}),
+        seedRole: exercise.role,
+        selectedExercise: {
+          exerciseId: exercise.exerciseId,
+          ...(input.nameById[exercise.exerciseId]
+            ? { name: input.nameById[exercise.exerciseId] }
+            : {}),
+        },
+        setCount: exercise.setCount,
+        topAlternatives: [],
+      }));
+    }),
+  );
+
+  return {
+    available: rows.length > 0,
+    rowCount: rows.length,
+    detailLevel: "selected_identity",
+    rankingDetailAvailability: {
+      topAlternatives: "not_available",
+      scoreTuple: "not_available",
+      selectedReason: "not_available",
+      reason: "materializer_does_not_emit_candidate_ranking",
+    },
+    rows,
+  };
+}
+
+function buildLaneRoleIndex(
+  exerciseSelectionPlan: V2ExerciseSelectionPlan | null,
+): Map<string, string> {
+  const laneRoleByKey = new Map<string, string>();
+  for (const week of [...(exerciseSelectionPlan?.weeks ?? [])].sort(
+    (left, right) => left.week - right.week,
+  )) {
+    for (const slot of [...week.slots].sort(
+      (left, right) =>
+        left.slotIndex - right.slotIndex || left.slotId.localeCompare(right.slotId),
+    )) {
+      for (const lane of slot.lanes) {
+        const key = `${slot.slotId}:${lane.laneId}`;
+        if (!laneRoleByKey.has(key)) {
+          laneRoleByKey.set(key, lane.role);
+        }
+      }
+    }
+  }
+  return laneRoleByKey;
 }
 
 function summarizeRequiredLaneCoverage(input: {

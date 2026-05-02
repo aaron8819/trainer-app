@@ -30,6 +30,7 @@ export type V2ExerciseClassId =
   | "horizontal_pull_support"
   | "vertical_pull"
   | "hinge_compound"
+  | "quad_isolation"
   | "squat_pattern";
 
 export type V2ExerciseClassMatch = {
@@ -67,6 +68,7 @@ export type V2ExerciseMaterializationInput = {
   continuity?: {
     carryForwardExerciseIdsByLane?: Record<string, string[]>;
     priorMaterializedSelections?: V2MaterializedSelection[];
+    identityPreservationMode?: "preserve_exact_lane_identity";
   };
 };
 
@@ -126,6 +128,35 @@ export type V2MaterializationDryRunReportPreviewSlot = {
   }>;
 };
 
+export type V2MaterializationCandidateIdentitySummary = {
+  available: boolean;
+  rowCount: number;
+  detailLevel: "selected_identity";
+  rankingDetailAvailability: {
+    topAlternatives: "not_available";
+    scoreTuple: "not_available";
+    selectedReason: "not_available";
+    reason: "materializer_does_not_emit_candidate_ranking";
+  };
+  rows: Array<{
+    slotId: string;
+    laneId: string;
+    laneRole?: string;
+    seedRole: "CORE_COMPOUND" | "ACCESSORY";
+    selectedExercise: {
+      exerciseId: string;
+      name?: string;
+    };
+    setCount: number;
+    topAlternatives: Array<{
+      exerciseId: string;
+      name?: string;
+      scoreTuple?: Record<string, number | string>;
+      reason?: string;
+    }>;
+  }>;
+};
+
 export type V2MaterializationDryRunReport = {
   version: 1;
   source: "v2_exercise_materialization";
@@ -154,6 +185,7 @@ export type V2MaterializationDryRunReport = {
   };
   requiredLaneCoverageBySlot: V2MaterializationRequiredLaneCoverage[];
   executableSeedPreview: V2MaterializationDryRunReportPreviewSlot[];
+  candidateIdentitySummary: V2MaterializationCandidateIdentitySummary;
   strippedMaterializerFields: string[];
   blockers: V2MaterializationDryRunReportReason[];
   omissions: V2MaterializationDryRunReportReason[];

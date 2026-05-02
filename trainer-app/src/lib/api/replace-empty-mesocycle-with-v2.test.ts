@@ -165,6 +165,31 @@ vi.mock("@/lib/engine/planning/v2", async () => {
           ],
         },
       ],
+      candidateIdentitySummary: {
+        available: true,
+        rowCount: 1,
+        detailLevel: "selected_identity",
+        rankingDetailAvailability: {
+          topAlternatives: "not_available",
+          scoreTuple: "not_available",
+          selectedReason: "not_available",
+          reason: "materializer_does_not_emit_candidate_ranking",
+        },
+        rows: [
+          {
+            slotId: "upper_a",
+            laneId: "chest_press",
+            laneRole: "anchor",
+            seedRole: "CORE_COMPOUND",
+            selectedExercise: {
+              exerciseId: "v2-bench",
+              name: "V2 Bench",
+            },
+            setCount: 3,
+            topAlternatives: [],
+          },
+        ],
+      },
       strippedMaterializerFields: [],
       blockers: [],
       omissions: [],
@@ -391,6 +416,42 @@ describe("replaceEmptyMesocycleWithV2", () => {
       runtimeReplayUnchanged: true,
       runtimeConsumesPlannerMetadata: false,
     });
+  });
+
+  it("surfaces compact V2 candidate identities without exposing them as seed truth", async () => {
+    const result = await runReplacement();
+
+    expect(result.v2Preparation.candidateIdentitySummary).toEqual({
+      available: true,
+      rowCount: 1,
+      detailLevel: "selected_identity",
+      rankingDetailAvailability: {
+        topAlternatives: "not_available",
+        scoreTuple: "not_available",
+        selectedReason: "not_available",
+        reason: "materializer_does_not_emit_candidate_ranking",
+      },
+      rows: [
+        {
+          slotId: "upper_a",
+          laneId: "chest_press",
+          laneRole: "anchor",
+          seedRole: "CORE_COMPOUND",
+          selectedExercise: {
+            exerciseId: "v2-bench",
+            name: "V2 Bench",
+          },
+          setCount: 3,
+          topAlternatives: [],
+        },
+      ],
+    });
+    expect(result.seedRuntimeBoundary.executableRowFields).toEqual([
+      "exerciseId",
+      "role",
+      "setCount",
+    ]);
+    expect(mocks.txMesocycleUpdate).not.toHaveBeenCalled();
   });
 
   it("write mode delegates seed construction to the existing serializer", async () => {

@@ -771,7 +771,7 @@ function buildExerciseClassCoverage(input: {
         evidence: input.evidence,
         slotId: "lower_a",
         laneId: "quad_isolation",
-        classId: "squat_pattern",
+        classId: "quad_isolation",
       }) &&
       hasLane({
         evidence: input.evidence,

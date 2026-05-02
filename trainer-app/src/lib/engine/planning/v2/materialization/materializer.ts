@@ -26,9 +26,11 @@ type Candidate = {
   match: V2ExerciseClassMatch;
   preferredClassOrder: number;
   directness: number;
-  continuity: number;
-  favorite: number;
+  identityPreservation: number;
+  laneIntent: number;
+  stimulusToFatigue: number;
   fatigue: number;
+  favorite: number;
   normalizedName: string;
   exerciseId: string;
 };
@@ -66,6 +68,7 @@ export function buildV2ExerciseMaterializationPlan(
         availableEquipment: input.constraints.availableEquipment,
         carryForwardExerciseIds:
           input.continuity?.carryForwardExerciseIdsByLane ?? {},
+        identityPreservationMode: input.continuity?.identityPreservationMode,
         selected,
         materializedSlot,
       });
@@ -181,6 +184,11 @@ function materializeLane(input: {
   favoriteExerciseIds: ReadonlySet<string>;
   availableEquipment: string[] | undefined;
   carryForwardExerciseIds: Record<string, string[]>;
+  identityPreservationMode:
+    | NonNullable<
+        V2ExerciseMaterializationInput["continuity"]
+      >["identityPreservationMode"]
+    | undefined;
   selected: V2MaterializedSelection[];
   materializedSlot: V2ExerciseMaterializationPlan["slots"][number];
 }):
@@ -296,6 +304,11 @@ function buildCandidates(input: {
   favoriteExerciseIds: ReadonlySet<string>;
   availableEquipment: string[] | undefined;
   carryForwardExerciseIds: Record<string, string[]>;
+  identityPreservationMode:
+    | NonNullable<
+        V2ExerciseMaterializationInput["continuity"]
+      >["identityPreservationMode"]
+    | undefined;
 }): Candidate[] {
   const resolved = new Set(input.resolvedClasses);
   return input.inventory.flatMap(({ exercise, matches }) => {
@@ -317,14 +330,17 @@ function buildCandidates(input: {
           input.preferredClasses,
         ),
         directness: directnessForLane(input.lane, match),
-        continuity: continuityScore({
+        identityPreservation: identityPreservationScore({
           slotId: input.slot.slotId,
           laneId: input.lane.laneId,
           exerciseId: exercise.exerciseId,
           carryForwardExerciseIds: input.carryForwardExerciseIds,
+          identityPreservationMode: input.identityPreservationMode,
         }),
-        favorite: input.favoriteExerciseIds.has(exercise.exerciseId) ? 0 : 1,
+        laneIntent: laneIntentPreferenceScore(input.lane, match, exercise),
+        stimulusToFatigue: stimulusToFatigueScore(input.lane, match, exercise),
         fatigue: exercise.fatigueCost ?? 0,
+        favorite: input.favoriteExerciseIds.has(exercise.exerciseId) ? 0 : 1,
         normalizedName: normalizeV2MaterializationText(exercise.name),
         exerciseId: exercise.exerciseId,
       }));
@@ -373,12 +389,20 @@ function directnessForLane(lane: PlanLane, match: V2ExerciseClassMatch): number 
     : 1;
 }
 
-function continuityScore(input: {
+function identityPreservationScore(input: {
   slotId: string;
   laneId: string;
   exerciseId: string;
   carryForwardExerciseIds: Record<string, string[]>;
+  identityPreservationMode:
+    | NonNullable<
+        V2ExerciseMaterializationInput["continuity"]
+      >["identityPreservationMode"]
+    | undefined;
 }): number {
+  if (input.identityPreservationMode !== "preserve_exact_lane_identity") {
+    return 0;
+  }
   const scopedLaneKey = `${input.slotId}:${input.laneId}`;
   const carryForwardIds = [
     ...(input.carryForwardExerciseIds[scopedLaneKey] ?? []),
@@ -387,13 +411,126 @@ function continuityScore(input: {
   return carryForwardIds.includes(input.exerciseId) ? 0 : 1;
 }
 
+function laneIntentPreferenceScore(
+  lane: PlanLane,
+  match: V2ExerciseClassMatch,
+  exercise: V2MaterializationExercise,
+): number {
+  const targetStimulus = averageTargetStimulus(lane, match, exercise);
+  const lowerBackStimulus = stimulusForMuscle(exercise, "Lower Back");
+  const targetsLowerBack = targetMusclesForLane(lane, match).some(
+    (muscle) =>
+      normalizeV2MaterializationText(muscle) ===
+      normalizeV2MaterializationText("Lower Back"),
+  );
+
+  return (
+    (targetStimulus >= 0.75 ? 0 : 2) +
+    (exercise.isMainLiftEligible ? 2 : 0) +
+    (!targetsLowerBack && lowerBackStimulus >= 0.5 ? 1 : 0)
+  );
+}
+
+function stimulusToFatigueScore(
+  lane: PlanLane,
+  match: V2ExerciseClassMatch,
+  exercise: V2MaterializationExercise,
+): number {
+  const fatigue = Math.max(exercise.fatigueCost ?? 1, 0.5);
+  return -roundToThousandth(averageTargetStimulus(lane, match, exercise) / fatigue);
+}
+
+function averageTargetStimulus(
+  lane: PlanLane,
+  match: V2ExerciseClassMatch,
+  exercise: V2MaterializationExercise,
+): number {
+  const muscles = targetMusclesForLane(lane, match);
+  if (!muscles.length) {
+    return 0;
+  }
+  return (
+    muscles.reduce(
+      (total, muscle) => total + inferredStimulusForMuscle(exercise, match, muscle),
+      0,
+    ) / muscles.length
+  );
+}
+
+function targetMusclesForLane(
+  lane: PlanLane,
+  match: V2ExerciseClassMatch,
+): string[] {
+  if (lane.directFloor) {
+    return [lane.directFloor.muscle];
+  }
+  if (lane.primaryMuscles.length) {
+    return lane.primaryMuscles;
+  }
+  return match.directMuscles;
+}
+
+function inferredStimulusForMuscle(
+  exercise: V2MaterializationExercise,
+  match: V2ExerciseClassMatch,
+  muscle: string,
+): number {
+  const explicitStimulus = stimulusForMuscle(exercise, muscle);
+  if (explicitStimulus > 0) {
+    return explicitStimulus;
+  }
+  const normalizedMuscle = normalizeV2MaterializationText(muscle);
+  if (
+    exercise.primaryMuscles.some(
+      (primary) => normalizeV2MaterializationText(primary) === normalizedMuscle,
+    )
+  ) {
+    return 1;
+  }
+  if (
+    match.directMuscles.some(
+      (direct) => normalizeV2MaterializationText(direct) === normalizedMuscle,
+    )
+  ) {
+    return 0.75;
+  }
+  if (
+    exercise.secondaryMuscles.some(
+      (secondary) =>
+        normalizeV2MaterializationText(secondary) === normalizedMuscle,
+    )
+  ) {
+    return 0.5;
+  }
+  return 0;
+}
+
+function stimulusForMuscle(
+  exercise: V2MaterializationExercise,
+  muscle: string,
+): number {
+  const normalizedMuscle = normalizeV2MaterializationText(muscle);
+  return (
+    Object.entries(exercise.stimulusByMusclePerSet).find(
+      ([entryMuscle]) =>
+        normalizeV2MaterializationText(entryMuscle) === normalizedMuscle,
+    )?.[1] ?? 0
+  );
+}
+
+function roundToThousandth(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
 function compareCandidates(left: Candidate, right: Candidate): number {
   return (
     left.preferredClassOrder - right.preferredClassOrder ||
     left.directness - right.directness ||
-    left.continuity - right.continuity ||
-    left.favorite - right.favorite ||
+    left.identityPreservation - right.identityPreservation ||
+    left.laneIntent - right.laneIntent ||
+    left.stimulusToFatigue - right.stimulusToFatigue ||
     left.fatigue - right.fatigue ||
+    left.favorite - right.favorite ||
     left.normalizedName.localeCompare(right.normalizedName) ||
     left.exerciseId.localeCompare(right.exerciseId)
   );

@@ -12,6 +12,7 @@ import type { V2ExerciseSelectionPlan } from "../types";
 import type {
   V2ExerciseClassTaxonomy,
   V2ExerciseMaterializationPlan,
+  V2ExerciseMaterializationInput,
   V2MaterializationProductionWriteGates,
   V2MaterializationRequiredLaneCoverage,
   V2MaterializationExercise,
@@ -122,6 +123,7 @@ function materialize(input: {
   avoidExerciseIds?: string[];
   favoriteExerciseIds?: string[];
   painConflictExerciseIds?: string[];
+  continuity?: V2ExerciseMaterializationInput["continuity"];
 }) {
   return buildV2ExerciseMaterializationPlan({
     exerciseSelectionPlan: input.plan,
@@ -132,6 +134,7 @@ function materialize(input: {
       favoriteExerciseIds: input.favoriteExerciseIds ?? [],
       painConflictExerciseIds: input.painConflictExerciseIds ?? [],
     },
+    ...(input.continuity ? { continuity: input.continuity } : {}),
   });
 }
 
@@ -658,6 +661,73 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     ]);
   });
 
+  it("blocks rows and pullovers from direct vertical-pull lanes", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "vertical_pull_anchor",
+          role: "anchor",
+          primaryMuscles: ["Lats"],
+          acceptableExerciseClasses: ["vertical_pull"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "cable-pullover",
+          name: "Cable Pullover",
+          primaryMuscles: ["Lats"],
+          movementPatterns: ["vertical_pull"],
+          isCompound: false,
+        }),
+        exercise({
+          exerciseId: "t-bar-row",
+          name: "Chest-Supported T-Bar Row",
+          primaryMuscles: ["Upper Back", "Lats"],
+          movementPatterns: ["row"],
+          isCompound: true,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "vertical_pull_anchor",
+        reason: "no_class_match",
+      },
+    ]);
+  });
+
+  it("blocks goblet squat from quad-isolation and leg-extension lanes", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "quad_isolation",
+          role: "support",
+          primaryMuscles: ["Quads"],
+          acceptableExerciseClasses: ["leg_extension", "quad_isolation"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "goblet-squat",
+          name: "Goblet Squat",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["squat"],
+          isCompound: true,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "quad_isolation",
+        reason: "no_class_match",
+      },
+    ]);
+  });
+
   it("prefers a clean alternative over a duplicate", () => {
     const chestPlan = plan([
       lane({
@@ -886,6 +956,253 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     };
 
     expect(materialize(input)).toEqual(materialize(input));
+  });
+
+  it("keeps favorite barbell bench behind a stronger fresh chest-anchor candidate", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "chest_anchor",
+          role: "anchor",
+          primaryMuscles: ["Chest"],
+          acceptableExerciseClasses: ["horizontal_press"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "barbell-bench",
+          name: "Barbell Bench Press",
+          primaryMuscles: ["Chest"],
+          movementPatterns: ["horizontal_press"],
+          stimulusByMusclePerSet: { Chest: 1 },
+          isCompound: true,
+          isMainLiftEligible: true,
+          fatigueCost: 5,
+        }),
+        exercise({
+          exerciseId: "machine-chest-press",
+          name: "Machine Chest Press",
+          primaryMuscles: ["Chest"],
+          movementPatterns: ["horizontal_press"],
+          stimulusByMusclePerSet: { Chest: 1 },
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+      ],
+      favoriteExerciseIds: ["barbell-bench"],
+    });
+
+    expect(exerciseForLane(result, "upper_a", "chest_anchor").exerciseId)
+      .toBe("machine-chest-press");
+  });
+
+  it("keeps favorite back squat behind a lower-fatigue quad-biased anchor", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "squat_anchor",
+          role: "anchor",
+          primaryMuscles: ["Quads"],
+          acceptableExerciseClasses: ["squat_pattern"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "barbell-back-squat",
+          name: "Barbell Back Squat",
+          primaryMuscles: ["Quads", "Glutes"],
+          movementPatterns: ["squat"],
+          stimulusByMusclePerSet: { Quads: 0.9, "Lower Back": 0.6 },
+          isCompound: true,
+          isMainLiftEligible: true,
+          fatigueCost: 5,
+        }),
+        exercise({
+          exerciseId: "hack-squat",
+          name: "Hack Squat",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["squat"],
+          stimulusByMusclePerSet: { Quads: 1 },
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+      ],
+      favoriteExerciseIds: ["barbell-back-squat"],
+    });
+
+    expect(exerciseForLane(result, "upper_a", "squat_anchor").exerciseId)
+      .toBe("hack-squat");
+  });
+
+  it("keeps favorite conventional deadlift behind a hamstring-biased hypertrophy hinge", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "hinge_anchor",
+          role: "anchor",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          acceptableExerciseClasses: ["hinge_compound"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "conventional-deadlift",
+          name: "Conventional Deadlift",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: {
+            Hamstrings: 0.75,
+            Glutes: 0.75,
+            "Lower Back": 0.9,
+          },
+          isCompound: true,
+          isMainLiftEligible: true,
+          fatigueCost: 5,
+        }),
+        exercise({
+          exerciseId: "romanian-deadlift",
+          name: "Romanian Deadlift",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: {
+            Hamstrings: 1,
+            Glutes: 0.8,
+            "Lower Back": 0.25,
+          },
+          isCompound: true,
+          isMainLiftEligible: true,
+          fatigueCost: 2,
+        }),
+      ],
+      favoriteExerciseIds: ["conventional-deadlift"],
+    });
+
+    expect(exerciseForLane(result, "upper_a", "hinge_anchor").exerciseId)
+      .toBe("romanian-deadlift");
+  });
+
+  it("lets favorites win only among otherwise equivalent candidates", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "biceps",
+          role: "accessory",
+          primaryMuscles: ["Biceps"],
+          acceptableExerciseClasses: ["biceps_isolation"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "alpha-curl",
+          name: "Alpha Cable Curl",
+          primaryMuscles: ["Biceps"],
+          stimulusByMusclePerSet: { Biceps: 1 },
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "zeta-curl",
+          name: "Zeta Cable Curl",
+          primaryMuscles: ["Biceps"],
+          stimulusByMusclePerSet: { Biceps: 1 },
+          fatigueCost: 1,
+        }),
+      ],
+      favoriteExerciseIds: ["zeta-curl"],
+    });
+
+    expect(exerciseForLane(result, "upper_a", "biceps").exerciseId)
+      .toBe("zeta-curl");
+  });
+
+  it("uses name and id as the deterministic fallback after intent scoring ties", () => {
+    const input = {
+      plan: plan([
+        lane({
+          laneId: "biceps",
+          role: "accessory",
+          primaryMuscles: ["Biceps"],
+          acceptableExerciseClasses: ["biceps_isolation"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "zeta-curl",
+          name: "Zeta Cable Curl",
+          primaryMuscles: ["Biceps"],
+          stimulusByMusclePerSet: { Biceps: 1 },
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "alpha-curl",
+          name: "Alpha Cable Curl",
+          primaryMuscles: ["Biceps"],
+          stimulusByMusclePerSet: { Biceps: 1 },
+          fatigueCost: 1,
+        }),
+      ],
+    };
+
+    expect(exerciseForLane(materialize(input), "upper_a", "biceps").exerciseId)
+      .toBe("alpha-curl");
+    expect(materialize(input)).toEqual(materialize(input));
+  });
+
+  it("does not let carry-forward continuity beat fresh lane intent unless explicitly opted in", () => {
+    const continuityPlan = plan([
+      lane({
+        laneId: "chest_anchor",
+        role: "anchor",
+        primaryMuscles: ["Chest"],
+        acceptableExerciseClasses: ["horizontal_press"],
+      }),
+    ]);
+    const inventory = [
+      exercise({
+        exerciseId: "barbell-bench",
+        name: "Barbell Bench Press",
+        primaryMuscles: ["Chest"],
+        movementPatterns: ["horizontal_press"],
+        stimulusByMusclePerSet: { Chest: 1 },
+        isCompound: true,
+        isMainLiftEligible: true,
+        fatigueCost: 5,
+      }),
+      exercise({
+        exerciseId: "machine-chest-press",
+        name: "Machine Chest Press",
+        primaryMuscles: ["Chest"],
+        movementPatterns: ["horizontal_press"],
+        stimulusByMusclePerSet: { Chest: 1 },
+        isCompound: true,
+        fatigueCost: 1,
+      }),
+    ];
+
+    const fresh = materialize({
+      plan: continuityPlan,
+      inventory,
+      continuity: {
+        carryForwardExerciseIdsByLane: {
+          "upper_a:chest_anchor": ["barbell-bench"],
+        },
+      },
+    });
+    const preserveIdentity = materialize({
+      plan: continuityPlan,
+      inventory,
+      continuity: {
+        identityPreservationMode: "preserve_exact_lane_identity",
+        carryForwardExerciseIdsByLane: {
+          "upper_a:chest_anchor": ["barbell-bench"],
+        },
+      },
+    });
+
+    expect(exerciseForLane(fresh, "upper_a", "chest_anchor").exerciseId)
+      .toBe("machine-chest-press");
+    expect(
+      exerciseForLane(preserveIdentity, "upper_a", "chest_anchor").exerciseId,
+    ).toBe("barbell-bench");
   });
 
   it("dry-run materializes the full required V2 representative skeleton", () => {
@@ -1120,6 +1437,31 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       role: "CORE_COMPOUND",
       setCount: 4,
     });
+    expect(report.candidateIdentitySummary).toEqual({
+      available: true,
+      rowCount: 1,
+      detailLevel: "selected_identity",
+      rankingDetailAvailability: {
+        topAlternatives: "not_available",
+        scoreTuple: "not_available",
+        selectedReason: "not_available",
+        reason: "materializer_does_not_emit_candidate_ranking",
+      },
+      rows: [
+        {
+          slotId: "upper_a",
+          laneId: "chest_anchor",
+          laneRole: "anchor",
+          seedRole: "CORE_COMPOUND",
+          selectedExercise: {
+            exerciseId: "bench",
+            name: "Machine Chest Press",
+          },
+          setCount: 4,
+          topAlternatives: [],
+        },
+      ],
+    });
   });
 
   it("surfaces duplicate exercise IDs within a slot as promotion blockers", () => {
@@ -1238,6 +1580,14 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(serializedPreview).not.toMatch(
       /laneIds|blockers|omissions|dryRunOnly|status/,
     );
+    expect(report.candidateIdentitySummary.rows.map((row) => row.laneId)).toEqual([
+      "chest_anchor",
+      "row_anchor",
+    ]);
+    expect(report.candidateIdentitySummary.rows.map((row) => row.setCount)).toEqual([
+      4,
+      3,
+    ]);
   });
 
   it("builds a compact live-context dry-run harness result from normalized inventory", () => {

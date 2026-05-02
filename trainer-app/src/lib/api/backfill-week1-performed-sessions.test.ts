@@ -231,6 +231,7 @@ function safeMesocycle(overrides: Record<string, unknown> = {}) {
     state: "ACTIVE_ACCUMULATION",
     isActive: true,
     durationWeeks: 5,
+    completedSessions: 0,
     accumulationSessionsCompleted: 0,
     deloadSessionsCompleted: 0,
     sessionsPerWeek: 4,

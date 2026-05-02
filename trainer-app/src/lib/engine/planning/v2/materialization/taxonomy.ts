@@ -18,6 +18,7 @@ export const V2_EXERCISE_CLASS_ORDER: V2ExerciseClassId[] = [
   "horizontal_pull_support",
   "vertical_pull",
   "hinge_compound",
+  "quad_isolation",
   "squat_pattern",
 ];
 
@@ -57,12 +58,12 @@ export const DEFAULT_V2_EXERCISE_CLASS_TAXONOMY: V2ExerciseClassTaxonomy = {
     t_bar_row: ["horizontal_pull_support"],
     vertical_pull: ["vertical_pull"],
     hinge_compound: ["hinge_compound"],
+    quad_isolation: ["quad_isolation"],
+    leg_extension: ["quad_isolation"],
     squat_pattern: ["squat_pattern"],
     squat: ["squat_pattern"],
     leg_press: ["squat_pattern"],
     lunge: ["squat_pattern"],
-    quad_isolation: ["squat_pattern"],
-    leg_extension: ["squat_pattern"],
   },
 };
 
@@ -278,8 +279,16 @@ function matchesClass(
     case "vertical_pull":
       return (
         hasPrimaryMuscle(exercise, "Lats") &&
-        (hasAnyPattern(exercise, ["vertical_pull"]) ||
-          hasAnyText(text, ["pulldown", "pull up", "pullup", "assisted pull", "chin"]))
+        hasAnyText(text, [
+          "pulldown",
+          "pull down",
+          "pull up",
+          "pullup",
+          "assisted pull",
+          "chin up",
+          "chinup",
+        ]) &&
+        !hasAnyText(text, ["row", "pullover", "pull over"])
       );
     case "hinge_compound":
       return (
@@ -288,11 +297,19 @@ function matchesClass(
           hasAnyText(text, ["deadlift", "rdl", "sldl", "good morning"])) &&
         !hasAnyText(text, ["glute bridge", "hip thrust", "back extension"])
       );
+    case "quad_isolation":
+      return (
+        hasPrimaryMuscle(exercise, "Quads") &&
+        (hasAnyText(text, ["leg extension", "quad extension", "knee extension"]) ||
+          (hasAnyPattern(exercise, ["isolation"]) && hasAnyText(text, ["extension"]))) &&
+        !hasAnyText(text, ["squat", "lunge", "leg press"])
+      );
     case "squat_pattern":
       return (
         hasPrimaryMuscle(exercise, "Quads") &&
         (hasAnyPattern(exercise, ["squat", "lunge", "leg_press"]) ||
-          hasAnyText(text, ["squat", "lunge", "leg press", "leg extension"]))
+          hasAnyText(text, ["squat", "lunge", "leg press"])) &&
+        !hasAnyText(text, ["leg extension"])
       );
   }
 }
@@ -314,6 +331,7 @@ function directMusclesForClass(
     horizontal_pull_support: ["Upper Back", "Lats"],
     vertical_pull: ["Lats"],
     hinge_compound: ["Hamstrings", "Glutes"],
+    quad_isolation: ["Quads"],
     squat_pattern: ["Quads"],
   };
   const primary = normalizedMuscles(exercise.primaryMuscles);

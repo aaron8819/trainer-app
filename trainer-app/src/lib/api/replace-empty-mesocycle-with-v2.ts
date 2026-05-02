@@ -164,6 +164,7 @@ export type V2ReplacementSeedPreparation = {
   materializerStatus: V2MaterializationDryRunReport["materializer"]["status"];
   promotionReadinessStatus: V2MaterializationPromotionReadiness["status"];
   seedShapeCompatibility: V2MaterializationDryRunReport["seedShapeCompatibility"];
+  candidateIdentitySummary: V2MaterializationDryRunReport["candidateIdentitySummary"];
   productionWriteGates: V2MaterializationProductionWriteGates;
   helperStatus: BuildV2MaterializedSeedForAcceptanceResult["status"];
   helperProvenanceSource:
@@ -395,6 +396,21 @@ function seedRuntimeBoundary(): ReplaceEmptyMesocycleWithV2Result["seedRuntimeBo
     acceptedPlannerIntentRuntimeInert: true,
     runtimeReplayUnchanged: true,
     runtimeConsumesPlannerMetadata: false,
+  };
+}
+
+function emptyCandidateIdentitySummary(): V2MaterializationDryRunReport["candidateIdentitySummary"] {
+  return {
+    available: false,
+    rowCount: 0,
+    detailLevel: "selected_identity",
+    rankingDetailAvailability: {
+      topAlternatives: "not_available",
+      scoreTuple: "not_available",
+      selectedReason: "not_available",
+      reason: "materializer_does_not_emit_candidate_ranking",
+    },
+    rows: [],
   };
 }
 
@@ -660,6 +676,7 @@ async function buildV2ReplacementSeedPreparation(input: {
       materializerStatus: dryRunReport.materializer.status,
       promotionReadinessStatus: promotionReadiness.status,
       seedShapeCompatibility: dryRunReport.seedShapeCompatibility,
+      candidateIdentitySummary: dryRunReport.candidateIdentitySummary,
       productionWriteGates: V2_REPLACEMENT_PRODUCTION_WRITE_GATES,
       helperStatus: "blocked",
       helperProvenanceSource: "v2_blocked_fail_closed",
@@ -700,6 +717,7 @@ async function buildV2ReplacementSeedPreparation(input: {
     materializerStatus: dryRunReport.materializer.status,
     promotionReadinessStatus: promotionReadiness.status,
     seedShapeCompatibility: dryRunReport.seedShapeCompatibility,
+    candidateIdentitySummary: dryRunReport.candidateIdentitySummary,
     productionWriteGates: V2_REPLACEMENT_PRODUCTION_WRITE_GATES,
     ...(v2Seed.status === "ready"
       ? {
@@ -763,6 +781,7 @@ function buildResult(input: {
       materializerStatus: input.v2Preparation.materializerStatus,
       promotionReadinessStatus: input.v2Preparation.promotionReadinessStatus,
       seedShapeCompatibility: input.v2Preparation.seedShapeCompatibility,
+      candidateIdentitySummary: input.v2Preparation.candidateIdentitySummary,
       productionWriteGates: input.v2Preparation.productionWriteGates,
       helperStatus: input.v2Preparation.helperStatus,
       helperProvenanceSource: input.v2Preparation.helperProvenanceSource,
@@ -854,6 +873,7 @@ export async function replaceEmptyMesocycleWithV2(
             invalidSetCount: 0,
             unsupportedClassCount: 0,
           },
+          candidateIdentitySummary: emptyCandidateIdentitySummary(),
           productionWriteGates: V2_REPLACEMENT_PRODUCTION_WRITE_GATES,
           helperStatus: "blocked",
           helperProvenanceSource: "v2_blocked_fail_closed",

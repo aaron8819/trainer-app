@@ -150,6 +150,15 @@ describe("V2 exercise class taxonomy", () => {
         }),
       ],
       [
+        "quad_isolation",
+        exercise({
+          exerciseId: "leg-extension",
+          name: "Leg Extension",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["isolation"],
+        }),
+      ],
+      [
         "squat_pattern",
         exercise({
           exerciseId: "leg-press",
@@ -212,6 +221,47 @@ describe("V2 exercise class taxonomy", () => {
         }),
       ),
     ).not.toContain("biceps_isolation");
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "cable-pullover",
+          name: "Cable Pullover",
+          primaryMuscles: ["Lats"],
+          movementPatterns: ["vertical_pull"],
+        }),
+      ),
+    ).not.toContain("vertical_pull");
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "t-bar-row",
+          name: "Chest-Supported T-Bar Row",
+          primaryMuscles: ["Upper Back", "Lats"],
+          movementPatterns: ["row"],
+          isCompound: true,
+        }),
+      ),
+    ).not.toContain("vertical_pull");
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "goblet-squat",
+          name: "Goblet Squat",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["squat"],
+          isCompound: true,
+        }),
+      ),
+    ).not.toContain("quad_isolation");
+  });
+
+  it("resolves leg extension aliases to quad isolation without collapsing into squat", () => {
+    expect(
+      resolveV2ExerciseClassIds(DEFAULT_V2_EXERCISE_CLASS_TAXONOMY, [
+        "quad_isolation",
+        "leg_extension",
+      ]),
+    ).toEqual(["quad_isolation"]);
   });
 
   it("resolves vertical press aliases to the canonical class", () => {

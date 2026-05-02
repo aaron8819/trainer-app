@@ -734,7 +734,18 @@ Candidate tiers:
 3. useful fallback with warning
 4. broad same-muscle fallback
 
-Current audit interpretation: present runtime swap behavior is seed-safe, but it is not yet lane-preserving enough. Romanian Deadlift for Stiff-Legged Deadlift is a good same-lane example. Back Extension / Reverse Hyperextension for Seated Leg Curl are wrong-lane for knee-flexion curl. Goblet Squat over Belt Squat / Leg Press / Hack Squat for Bulgarian Split Squat shows loadability and quad-support quality gaps. No calf swap for Seated Calf Raise shows hard fatigue deltas can suppress useful equivalent alternatives.
+Prior audit interpretation: runtime swap behavior was seed-safe, but not yet lane-preserving enough. Romanian Deadlift for Stiff-Legged Deadlift was a good same-lane example. Back Extension / Reverse Hyperextension for Seated Leg Curl were wrong-lane for knee-flexion curl. Goblet Squat over Belt Squat / Leg Press / Hack Squat for Bulgarian Split Squat showed loadability and quad-support quality gaps. No calf swap for Seated Calf Raise showed hard fatigue deltas could suppress useful equivalent alternatives.
+
+Recent swap-quality progress: runtime swap suggestions now carry lane-fit diagnostics such as `swapLaneFitScore`, `swapCandidateReason`, `swapFallbackTier`, `sourceLaneRole`, `sourceV2Class`, `movementPatternMatch`, `fatigueDelta`, `jointStressDelta`, `stabilityTier`, `loadabilityTier`, and `weeklyCollisionWarnings`.
+
+Narrow ranking fixes improved Lower B swap quality:
+
+- SLDL now prefers Romanian Deadlift as exact-lane and treats Cable Pull-Through as warning fallback.
+- Seated Leg Curl now prefers Lying Leg Curl as exact-lane and demotes Back Extension / Reverse Hyperextension to broad fallback.
+- Bulgarian Split Squat now ranks Belt Squat / Leg Press / Hack Squat above Goblet/Lunge fallbacks for loadable quad support.
+- Seated Calf Raise now surfaces Standing Calf Raise / Leg Press Calf Raise as warning-tier candidates rather than returning no swaps.
+
+Remaining gap: `weeklyCollisionWarnings` exists but is not yet populated. True weekly/session collision-aware swap coaching remains future work.
 
 Runtime interpretation:
 

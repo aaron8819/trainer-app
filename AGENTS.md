@@ -34,6 +34,51 @@
 ## Contextual Skills
 - Use `v2-planner-migration-guard` when a task touches V2 planner policy, diagnostics, materialization dry-run, audit shards, accepted seed contracts, runtime replay, or repair promotion/readouts.
 
+## Operating Mode Classification
+- Before work, classify every task as one of: `read-only audit`, `small write`, `shared seam write`, `DB/migration`, or `destructive cleanup`.
+- State the classification before tool use when the task is substantial, risky, or touches shared seams.
+- Escalate to the stricter mode if a task crosses categories.
+
+## Parallel Worktree Rules
+- Read-only audits may run in parallel.
+- Write tasks that touch shared seams must use isolated worktrees unless explicitly approved.
+- Shared seam writes must be serialized unless explicitly approved.
+- Do not continue if the worktree is dirty from another task. If dirty state overlaps the task, stop and ask before editing.
+
+## DB Safety
+- Default DB policy is read-only inspection only.
+- Hard stop and ask before Prisma migrations, direct SQL, seed scripts, repair/backfill scripts, commands with `--write`, `--apply`, `--accept-*`, destructive flags, or any command that may mutate local, staging, or production DB state.
+- Never mutate DB state unless the user explicitly requested that exact mutation and scope.
+
+## Seed And Runtime Source Of Truth
+- `slotPlanSeedJson` is executable truth for accepted mesocycles.
+- Runtime replay may consume only `exerciseId`, `role`, and `setCount` from `slotPlanSeedJson`.
+- Planner metadata, diagnostics, lane IDs, accepted planner intent, provenance, and audit sidecars are explanatory truth only.
+- Runtime edits are session-local deviations unless an explicit reseed/update/acceptance path promotes them.
+- Do not introduce new sources of truth or downstream patches when an upstream canonical fix is required.
+
+## V2 Materializer Boundary
+- The V2 materializer may produce explanatory diagnostics, previews, and accepted intent.
+- Production runtime execution must go through the guarded seed serializer/replay path.
+- Runtime must not consume V2 diagnostics, lane IDs, planner metadata, or accepted planner intent as executable policy.
+
+## Audit Runtime Separation
+- Audit artifacts, debug shards, and readout fields must not become production behavior inputs.
+- Promote audit-only diagnostics into runtime behavior only through reviewed production code, canonical owner seams, and tests.
+- Audit tooling must not mutate generation, replay, persistence, or planner behavior as a side effect.
+
+## Required Response Format For Substantial Tasks
+- Classification
+- Owner seam
+- Allowed write paths
+- Forbidden paths
+- Verification commands
+- DB policy
+- Residual risk
+
+## Stop-And-Ask Triggers
+- Stop and ask before proceeding if the worktree is dirty from overlapping work, DB mutation is possible, seed shape changes, runtime starts consuming planner metadata, production V2 write behavior changes, destructive cleanup is proposed, or owner/source of truth is unclear.
+
 ## Session Retrospectives
 - Use `session-retrospective` before the final response of substantial implementation, debugging, audit, or validation sessions.
 - The retrospective should capture observable lessons from the session: what changed, what was hard, what assumptions were corrected, what verification mattered, and how future prompts or workflows could improve.

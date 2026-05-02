@@ -325,7 +325,7 @@ Strategic interpretation:
 
 Current production projection remains legacy/repair-shaped. V2 is not live default. Historical personalization is not implemented as production strategy. Repair has not yet been demoted. The latest work mostly proves that seed transport and runtime replay can be boring when given a seed; it does not prove that V2 has fully authored elite exercise lanes yet.
 
-Provenance also needs cleanup. `slotPlanSeedJson.source = "handoff_slot_plan_projection"` is currently serializer-owned and hard-coded enough that it is not sufficient proof of legacy authorship by itself. Stronger V2 signals include `acceptedPlannerIntent.source = "v2_planner_policy"` and replacement artifacts that report V2 materialized seed provenance. `slotPlanSeedJson.source`, `acceptedPlannerIntent.source`, runtime `compositionSource`, and UI `exerciseSource` can describe different layers and must not be collapsed into one authorship claim.
+Provenance also needs careful layer boundaries. `slotPlanSeedJson.source` is explanatory seed provenance, not executable truth. It can now distinguish legacy projection-authored seeds from guarded V2 materialized-seed writes, but it still must not be collapsed with planner metadata, transaction evidence, runtime composition, or UI read-model source. `slotPlanSeedJson.source`, `acceptedPlannerIntent.source`, runtime `compositionSource`, and UI `exerciseSource` can describe different layers and must not be collapsed into one authorship claim.
 
 ## 5. The Planner Stack
 
@@ -579,6 +579,12 @@ Once the accepted seed exists, the runtime layer has two jobs:
 
 Runtime remains seed-inert. It does not select the mesocycle's exercises, rewrite slot set counts, consume V2 diagnostics as plan policy, or mutate `slotPlanSeedJson` during ordinary logging. But runtime can still be excellent at execution: prescriptions, cues, set-level decisions, swaps, additions, skips, confidence labels, and save reconciliation.
 
+### Coach The User, Not Just The Workout
+
+Elite runtime coaching should help the user choose the next best action, not merely display the planned workout. The app should help the user decide whether to stay the course, repeat load, increase load, reduce load, extend rest, add a set, skip a set, swap an exercise, or stop an exercise.
+
+That coaching remains session-local and seed-inert. It can shape today's execution and the saved performed-reality record, but it must not silently re-author the accepted mesocycle.
+
 ### Coaching UX Contract
 
 The workout UI should give simple, actionable guidance without turning the workout screen into an audit report. For each seeded row, the user should see the target reps, target load, target RIR/RPE, and the most important confidence or caution label.
@@ -594,6 +600,13 @@ Target behavior:
 - the main workout UI stays concise while operator, audit, and debug surfaces carry detailed evidence and provenance
 
 Good coaching should make the next action obvious. It should not require the user to read internal policy, but it should be honest when the app is estimating or asking for caution.
+
+Every significant warning should have two surfaces:
+
+- user-facing concise action guidance
+- operator/audit-facing evidence, source, trace, confidence, and reason codes
+
+The user should see the actionable choice. Operators and audit surfaces should preserve the evidence trail.
 
 ### Prescription Quality
 
@@ -638,9 +651,33 @@ Future performed-reality signals should include:
 - soreness or fatigue
 - equipment availability
 - time pressure
-- reason for swap, skip, or addition
+- reason for swap, skip, addition, stopped exercise, or major load reduction
 
 These signals should inform coaching and future planning evidence. They should not silently mutate the current accepted seed.
+
+### Exercise-Specific Coaching Profiles
+
+Future runtime prescription and coaching should distinguish exercise profiles instead of applying one generic hypertrophy rule to every movement.
+
+Profiles:
+
+- high-skill axial compounds
+- stable machine compounds
+- unilateral compounds
+- isolations
+- lengthened-biased isolations
+- calf, forearm, and other high-rep-tolerant isolations
+
+Profile should influence:
+
+- rep range
+- load confidence
+- progression aggressiveness
+- caution labels
+- add-set guidance
+- back-off, rest, skip, or stop guidance
+
+Examples: high-skill axial compounds should usually progress more cautiously and warn sooner on form, pain, or RPE mismatch. Stable machine compounds may tolerate more confident load progression when history is clean. Unilateral compounds need side-to-side and balance/tolerance awareness. Lengthened-biased isolations may deserve more caution around soreness, pain, and aggressive load jumps. Calf/forearm/high-rep-tolerant isolations can often use wider rep targets and different add/back-off heuristics than heavy hinges or squats.
 
 ### Load Progression / Prescription Gate
 
@@ -838,7 +875,13 @@ Provenance language needs sharper layer boundaries:
 - Runtime composition source: which runtime path generated a session, such as `compositionSource: "persisted_slot_plan_seed"`.
 - UI exercise source: which read model source populated display rows, such as `exerciseSource: "persisted_slot_plan_seed"`.
 
-Do not infer authoring truth from `slotPlanSeedJson.source` alone while it remains serializer-owned or hard-coded. A seed can carry `source: "handoff_slot_plan_projection"` and still need stronger adjacent evidence before being classified as legacy-authored or V2-authored. Prefer layered evidence: `acceptedPlannerIntent.source = "v2_planner_policy"`, replacement artifacts that report V2 materialized seed provenance, transaction context, and runtime `compositionSource`.
+Recent provenance cleanup: `buildMesocycleSlotPlanSeed()` no longer has to serialize every accepted seed as `source: "handoff_slot_plan_projection"`. Legacy callers still omit the optional source and keep the legacy label. The guarded V2 materialized-seed ready path now passes `source: "v2_materialized_seed"` through the same serializer.
+
+This improves future accepted-seed provenance without changing executable seed shape, parser compatibility, runtime replay, receipts, Program/Home/UI behavior, or existing persisted seeds.
+
+Important boundary: `slotPlanSeedJson.source` is explanatory provenance, not executable truth. Runtime must continue to consume only `slots[].exercises[{ exerciseId, role, setCount }]`.
+
+Do not infer complete authoring truth from `slotPlanSeedJson.source` alone. Prefer layered evidence: `acceptedPlannerIntent.source = "v2_planner_policy"`, replacement artifacts that report V2 materialized seed provenance, transaction context, and runtime `compositionSource`.
 
 ### Candidate Identity Artifact Visibility
 
@@ -1016,6 +1059,8 @@ These are strategic decision gates, not claims that current production already p
 - skipped sets are valid logs but not performed work
 - save preserves seed and logs reality
 - runtime edit/reconciliation metadata records session-local mutations
+- swaps, skips, added exercises, stopped exercises, and major load reductions can capture user reason when useful
+- reason capture distinguishes pain, equipment issue, time pressure, preference, fatigue, target-muscle feel, and form breakdown
 - Program/Home/Analytics distinguish planned, skipped, and performed work
 - workout detail/log views distinguish current workout reality from original planned receipt truth
 
@@ -1034,6 +1079,7 @@ These are strategic decision gates, not claims that current production already p
 - recommendations have confidence and known limitations
 - recommendations expire or are reviewed after each block
 - historical evidence influences next strategy, not current accepted seed mutation
+- one bad day, one skipped set, or one swap does not become durable future plan policy without confidence, recurrence, or user reason
 - old repair-shaped prescribed plans are not treated as performed truth
 
 ## 12. What Not To Do
@@ -1129,7 +1175,7 @@ Critical blockers:
 - seed mutation risk
 - unsafe prescription
 - wrong slot/session
-- wrong exercise identity, set count, or order for seeded sessions
+- wrong exercise identity, set count, or materially meaningful order for seeded sessions
 - save/read-model corruption
 
 Non-critical improvements can be logged as roadmap items when the user can train safely with manual guidance. Examples: better swap ranking, richer caution copy, more nuanced adjustment ranges, additional operator detail, or future performed-reality feedback fields.

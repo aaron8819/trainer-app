@@ -1,4 +1,5 @@
 import type { WorkoutPlan } from "@/lib/engine/types";
+import { listWorkoutPlanExercisesInOrder } from "@/lib/engine/workout-plan-order";
 import { readSessionDecisionReceipt } from "./session-decision-receipt";
 import type {
   DeloadTransformationTrace,
@@ -300,27 +301,16 @@ function mapSetSnapshot(
 }
 
 function buildExerciseSnapshots(workout: WorkoutPlan): SessionAuditExerciseSnapshot[] {
-  const sections: Array<{
-    entries: WorkoutPlan["warmup"] | WorkoutPlan["mainLifts"] | WorkoutPlan["accessories"];
-    section: "warmup" | "main" | "accessory";
-  }> = [
-    { entries: workout.warmup, section: "warmup" },
-    { entries: workout.mainLifts, section: "main" },
-    { entries: workout.accessories, section: "accessory" },
-  ];
-
-  return sections.flatMap(({ entries, section }) =>
-    entries.map((exercise) => ({
-      exerciseId: exercise.exercise.id,
-      exerciseName: exercise.exercise.name,
-      orderIndex: exercise.orderIndex,
-      section,
-      isMainLift: exercise.isMainLift,
-      role: exercise.role,
-      prescribedSetCount: exercise.sets.length,
-      prescribedSets: exercise.sets.map(mapSetSnapshot),
-    }))
-  );
+  return listWorkoutPlanExercisesInOrder(workout).map(({ exercise, section }) => ({
+    exerciseId: exercise.exercise.id,
+    exerciseName: exercise.exercise.name,
+    orderIndex: exercise.orderIndex,
+    section,
+    isMainLift: exercise.isMainLift,
+    role: exercise.role,
+    prescribedSetCount: exercise.sets.length,
+    prescribedSets: exercise.sets.map(mapSetSnapshot),
+  }));
 }
 
 type PersistedWorkoutExerciseInput = {

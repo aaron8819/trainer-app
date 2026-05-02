@@ -357,7 +357,15 @@ describe("buildV2MaterializedSeedForAcceptance", () => {
 
     expect(result.status).toBe("ready");
     expect(buildSlotPlanSeed).toHaveBeenCalledOnce();
+    expect(buildSlotPlanSeed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "v2_materialized_seed",
+      }),
+    );
     expect(result).toMatchObject({
+      slotPlanSeedJson: {
+        source: "v2_materialized_seed",
+      },
       provenance: {
         source: "v2_materialized_seed",
         dryRunReportVersion: 1,
@@ -448,6 +456,7 @@ describe("buildV2MaterializedSeedForAcceptance", () => {
     expect(result.slotPlanSeedJson.acceptedPlannerIntent).toEqual(
       acceptedPlannerIntent,
     );
+    expect(result.slotPlanSeedJson.source).toBe("v2_materialized_seed");
     expect(JSON.stringify(result.slotPlanSeedJson.acceptedPlannerIntent)).not.toMatch(
       /laneIds|blockers|omissions|inventoryEvidence|debugArtifact|selectedExercise|debug/,
     );
@@ -472,6 +481,7 @@ describe("buildV2MaterializedSeedForAcceptance", () => {
     if (result.status !== "ready") {
       throw new Error("expected ready result");
     }
+    expect(result.slotPlanSeedJson.source).toBe("v2_materialized_seed");
     expect(result.slotPlanSeedJson.slots).toEqual([
       {
         slotId: "upper_a",

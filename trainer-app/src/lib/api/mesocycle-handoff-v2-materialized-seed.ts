@@ -436,6 +436,7 @@ export function buildV2MaterializedSeedForAcceptance(
     slotPlanSeedJson: buildSlotPlanSeed({
       slotSequence: input.slotSequence,
       slotPlans: projectedSlotPlans.slotPlans,
+      source: "v2_materialized_seed",
       ...(input.acceptedPlannerIntent
         ? { acceptedPlannerIntent: input.acceptedPlannerIntent }
         : {}),

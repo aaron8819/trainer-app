@@ -5,6 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
 import type { SaveWorkoutRequestPayload } from "@/components/log-workout/api";
 import type { HomeDecisionSummary } from "@/lib/api/home-page";
+import {
+  listWorkoutPlanExercisesInOrder,
+  type OrderedWorkoutExerciseSection,
+} from "@/lib/engine/workout-plan-order";
 
 type SessionIntent = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
 
@@ -71,6 +75,20 @@ function toDbSessionIntent(
     | "BODY_PART";
 }
 
+function toSaveExerciseSection(
+  section: OrderedWorkoutExerciseSection
+): "WARMUP" | "MAIN" | "ACCESSORY" {
+  if (section === "warmup") return "WARMUP";
+  if (section === "main") return "MAIN";
+  return "ACCESSORY";
+}
+
+function formatExerciseSection(section: OrderedWorkoutExerciseSection): string {
+  if (section === "main") return "Main lift";
+  if (section === "warmup") return "Warmup";
+  return "Accessory";
+}
+
 function formatTargetReps(set?: WorkoutSet): string {
   if (!set) return "";
   if (set.targetRepRange && set.targetRepRange.min !== set.targetRepRange.max) {
@@ -117,7 +135,7 @@ export function IntentWorkoutCard({
   }, [initialIntent]);
 
   const allExercises = useMemo(
-    () => [...(workout?.mainLifts ?? []), ...(workout?.accessories ?? [])],
+    () => (workout ? listWorkoutPlanExercisesInOrder(workout) : []),
     [workout]
   );
 
@@ -169,12 +187,8 @@ export function IntentWorkoutCard({
       sessionIntent: toDbSessionIntent(generatedMetadata?.sessionIntent ?? intent),
       selectionMetadata: generatedMetadata?.selectionMetadata,
       filteredExercises: generatedMetadata?.filteredExercises,
-      exercises: [
-        ...workout.warmup.map((exercise) => ({ ...exercise, section: "WARMUP" as const })),
-        ...workout.mainLifts.map((exercise) => ({ ...exercise, section: "MAIN" as const })),
-        ...workout.accessories.map((exercise) => ({ ...exercise, section: "ACCESSORY" as const })),
-      ].map((exercise) => ({
-        section: (exercise as { section: "WARMUP" | "MAIN" | "ACCESSORY" }).section,
+      exercises: allExercises.map(({ exercise, section }) => ({
+        section: toSaveExerciseSection(section),
         exerciseId: exercise.exercise.id,
         sets: exercise.sets.map((set) => ({
           setIndex: set.setIndex,
@@ -333,28 +347,24 @@ export function IntentWorkoutCard({
             <p className="text-lg font-semibold">{workout.estimatedMinutes} minutes</p>
           </div>
 
-          {[
-            { label: "Main Lifts", items: workout.mainLifts },
-            { label: "Accessories", items: workout.accessories },
-          ].map((section) =>
-            section.items.length > 0 ? (
-              <div key={section.label} className="rounded-xl border border-slate-200 p-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                  {section.label}
-                </h3>
-                <div className="mt-3 space-y-3">
-                  {section.items.map((exercise) => (
-                    <div key={exercise.id} className="rounded-lg border border-slate-100 p-3">
-                      <p className="text-sm font-semibold">{exercise.exercise.name}</p>
-                      <p className="text-xs text-slate-500">
-                        {exercise.sets.length} sets - {formatTargetReps(exercise.sets[0])}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+          {allExercises.length > 0 ? (
+            <div className="rounded-xl border border-slate-200 p-4">
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                Exercises
+              </h3>
+              <div className="mt-3 space-y-3">
+                {allExercises.map(({ exercise, section }) => (
+                  <div key={exercise.id} className="rounded-lg border border-slate-100 p-3">
+                    <p className="text-sm font-semibold">{exercise.exercise.name}</p>
+                    <p className="text-xs text-slate-500">
+                      {exercise.sets.length} sets - {formatTargetReps(exercise.sets[0])} -{" "}
+                      {formatExerciseSection(section)}
+                    </p>
+                  </div>
+                ))}
               </div>
-            ) : null
-          )}
+            </div>
+          ) : null}
 
           {allExercises.length === 0 ? (
             <p className="text-sm text-slate-500">No exercises returned.</p>

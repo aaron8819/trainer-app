@@ -2,6 +2,7 @@ import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { normalizeExposedMuscle } from "@/lib/engine/volume-landmarks";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import type { WorkoutHistoryEntry, WorkoutPlan } from "@/lib/engine/types";
+import { listWorkoutPlanExercisesInOrder } from "@/lib/engine/workout-plan-order";
 import { finalizeDeloadSessionResult } from "./template-session/finalize-session";
 import {
   buildMappedGenerationContextFromSnapshot,
@@ -27,7 +28,10 @@ export function computeWorkoutContributionByMuscle(
 ): Record<string, number> {
   const byMuscle = new Map<string, number>();
 
-  for (const exercise of [...workout.mainLifts, ...workout.accessories]) {
+  for (const { exercise, section } of listWorkoutPlanExercisesInOrder(workout)) {
+    if (section === "warmup") {
+      continue;
+    }
     const setCount = exercise.sets.length;
     if (setCount <= 0) {
       continue;
@@ -68,9 +72,10 @@ export function buildProjectedWorkoutHistoryEntry(input: {
   selectionMode?: "AUTO" | "MANUAL" | "BONUS" | "INTENT";
   exerciseFilter?: (exercise: WorkoutPlan["mainLifts"][number]) => boolean;
 }): WorkoutHistoryEntry {
-  const exercises = [...input.workout.mainLifts, ...input.workout.accessories].filter(
-    input.exerciseFilter ?? (() => true)
-  );
+  const exercises = listWorkoutPlanExercisesInOrder(input.workout)
+    .filter(({ section }) => section !== "warmup")
+    .map(({ exercise }) => exercise)
+    .filter(input.exerciseFilter ?? (() => true));
 
   return {
     date: input.occurredAt.toISOString(),
@@ -125,7 +130,9 @@ export function listWorkoutExerciseNames(
   workout: WorkoutPlan,
   exerciseFilter?: (exercise: WorkoutPlan["mainLifts"][number]) => boolean
 ): string[] {
-  return [...workout.mainLifts, ...workout.accessories]
+  return listWorkoutPlanExercisesInOrder(workout)
+    .filter(({ section }) => section !== "warmup")
+    .map(({ exercise }) => exercise)
     .filter(exerciseFilter ?? (() => true))
     .map((exercise) => exercise.exercise.name);
 }

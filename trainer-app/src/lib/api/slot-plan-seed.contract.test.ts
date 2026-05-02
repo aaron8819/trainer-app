@@ -228,6 +228,7 @@ describe("slot-plan seed contract", () => {
       },
     });
 
+    expect(seed.source).toBe("handoff_slot_plan_projection");
     expect(seed.slots.map((slot) => slot.slotId)).toEqual(["upper_a", "lower_a"]);
     expect(seed.slots[0]?.exercises.map(({ exerciseId, setCount }) => ({
       exerciseId,
@@ -305,6 +306,7 @@ describe("slot-plan seed contract", () => {
     ]);
 
     const seed = buildMesocycleSlotPlanSeed(adapted);
+    expect(seed.source).toBe("handoff_slot_plan_projection");
     expect(seed.slots).toEqual([
       {
         slotId: "upper_a",

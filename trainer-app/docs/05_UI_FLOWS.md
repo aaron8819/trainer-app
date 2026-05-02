@@ -51,6 +51,7 @@ Route-purpose shorthand:
 - UI entry points: dashboard/template/intent components
 - APIs: `POST /api/workouts/generate-from-template`, `POST /api/workouts/generate-from-intent`, `POST /api/workouts/save`
 - `IntentWorkoutCard` and `GenerateFromTemplateCard` consume shared generation response types and pass session-level context through the canonical `selectionMetadata.sessionDecisionReceipt` flow described in `docs/01_ARCHITECTURE.md` (`src/components/IntentWorkoutCard.tsx`, `src/components/GenerateFromTemplateCard.tsx`, `src/components/log-workout/api.ts`).
+- `IntentWorkoutCard` presents and saves generated exercises in `WorkoutExercise.orderIndex` order. For seeded mesocycles this keeps the Next Workout preview and eventual saved row order aligned with persisted `slotPlanSeedJson` even when CORE_COMPOUND and ACCESSORY roles interleave.
 - While a mesocycle handoff is pending, Home and Program replace generation/program controls with review CTAs, and the generation routes return `409` rather than silently creating training against a closed mesocycle boundary.
 - Normal generation is now slot-aware. Home presets generation using the current runtime slot recommendation, and successful generation stamps canonical `sessionSlot` receipt metadata from truthful runtime slot identity for advancing seeded sessions, including off-order explicit-intent generation when the requested intent maps to an unresolved slot (`src/app/page.tsx`, `src/app/api/workouts/generate-from-intent/route.ts`, `src/app/api/workouts/generate-from-template/route.ts`).
 

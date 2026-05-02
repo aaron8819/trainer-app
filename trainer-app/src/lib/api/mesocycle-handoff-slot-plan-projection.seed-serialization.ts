@@ -25,9 +25,13 @@ export type MesocycleSlotPlanSeedExercise = {
   setCount: number;
 };
 
+export type MesocycleSlotPlanSeedSource =
+  | "handoff_slot_plan_projection"
+  | "v2_materialized_seed";
+
 export type MesocycleSlotPlanSeed = {
   version: 1;
-  source: "handoff_slot_plan_projection";
+  source: MesocycleSlotPlanSeedSource;
   acceptedPlannerIntent?: V2AcceptedPlannerIntentDto;
   slots: Array<{
     slotId: string;
@@ -58,6 +62,7 @@ function slotIdsAlignWithSlotSequence(input: {
 export function buildMesocycleSlotPlanSeed(input: {
   slotSequence: MesocycleSlotSequence;
   slotPlans: ReadonlyArray<ProjectedSuccessorSlotPlan>;
+  source?: MesocycleSlotPlanSeedSource;
   diagnostics?: MesocycleSlotPlanSeed["diagnostics"];
   acceptedPlannerIntent?: V2AcceptedPlannerIntentDto;
 }): MesocycleSlotPlanSeed {
@@ -69,7 +74,7 @@ export function buildMesocycleSlotPlanSeed(input: {
 
   return {
     version: 1,
-    source: "handoff_slot_plan_projection",
+    source: input.source ?? "handoff_slot_plan_projection",
     ...(acceptedPlannerIntent ? { acceptedPlannerIntent } : {}),
     slots: input.slotPlans.map((slotPlan) => ({
       slotId: slotPlan.slotId,

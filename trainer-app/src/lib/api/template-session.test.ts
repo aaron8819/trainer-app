@@ -2095,6 +2095,150 @@ describe("generateSessionFromIntent", () => {
     }
   });
 
+  it("keeps Lower B set-aware seed order in generated runtime order indexes", async () => {
+    const lowerLibrary = [
+      makeCustomExercise({
+        id: "sldl",
+        name: "Stiff-Legged Deadlift",
+        movementPatterns: ["hinge"],
+        splitTags: ["legs"],
+        primaryMuscles: ["Hamstrings"],
+        secondaryMuscles: ["Glutes"],
+        isMainLiftEligible: true,
+        isCompound: true,
+      }),
+      makeCustomExercise({
+        id: "leg-curl",
+        name: "Seated Leg Curl",
+        movementPatterns: ["isolation"],
+        splitTags: ["legs"],
+        primaryMuscles: ["Hamstrings"],
+        isMainLiftEligible: false,
+        isCompound: false,
+      }),
+      makeCustomExercise({
+        id: "split-squat",
+        name: "Bulgarian Split Squat",
+        movementPatterns: ["squat"],
+        splitTags: ["legs"],
+        primaryMuscles: ["Quads"],
+        secondaryMuscles: ["Glutes"],
+        isMainLiftEligible: true,
+        isCompound: true,
+      }),
+      makeCustomExercise({
+        id: "calf-raise",
+        name: "Seated Calf Raise",
+        movementPatterns: ["calf_raise_flexed"],
+        splitTags: ["legs"],
+        primaryMuscles: ["Calves"],
+        isMainLiftEligible: false,
+        isCompound: false,
+      }),
+    ];
+    mapExercisesMock.mockReturnValue(lowerLibrary);
+    mapConstraintsMock.mockReturnValue({
+      daysPerWeek: 4,
+      splitType: "upper_lower",
+      weeklySchedule: ["upper", "lower", "upper", "lower"],
+    });
+    loadWorkoutContextMock.mockResolvedValue({
+      profile: { id: "profile" },
+      goals: { primaryGoal: "HYPERTROPHY", secondaryGoal: "NONE" },
+      constraints: {
+        daysPerWeek: 4,
+        splitType: "UPPER_LOWER",
+        weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      },
+      injuries: [],
+      exercises: lowerLibrary.map((exercise) => ({ id: exercise.id })),
+      workouts: [],
+      preferences: null,
+      checkIns: [],
+    });
+    loadActiveMesocycleMock.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 3,
+      deloadSessionsCompleted: 0,
+      durationWeeks: 5,
+      sessionsPerWeek: 4,
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+      slotPlanSeedJson: {
+        version: 1,
+        source: "handoff_slot_plan_projection",
+        slots: [
+          {
+            slotId: "upper_a",
+            exercises: [{ exerciseId: "sldl", role: "CORE_COMPOUND", setCount: 3 }],
+          },
+          {
+            slotId: "lower_a",
+            exercises: [{ exerciseId: "sldl", role: "CORE_COMPOUND", setCount: 3 }],
+          },
+          {
+            slotId: "upper_b",
+            exercises: [{ exerciseId: "split-squat", role: "CORE_COMPOUND", setCount: 3 }],
+          },
+          {
+            slotId: "lower_b",
+            exercises: [
+              { exerciseId: "sldl", role: "CORE_COMPOUND", setCount: 3 },
+              { exerciseId: "leg-curl", role: "ACCESSORY", setCount: 3 },
+              { exerciseId: "split-squat", role: "CORE_COMPOUND", setCount: 3 },
+              { exerciseId: "calf-raise", role: "ACCESSORY", setCount: 3 },
+            ],
+          },
+        ],
+      },
+    });
+
+    const selectSpy = vi.spyOn(selectionV2, "selectExercisesOptimized");
+    try {
+      const result = await generateSessionFromIntent("user-1", {
+        intent: "lower",
+        slotId: "lower_b",
+      });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+
+      expect(selectSpy).not.toHaveBeenCalled();
+      expect(result.selection.selectedExerciseIds).toEqual([
+        "sldl",
+        "leg-curl",
+        "split-squat",
+        "calf-raise",
+      ]);
+      expect([
+        ...result.workout.mainLifts,
+        ...result.workout.accessories,
+      ].map((exercise) => ({
+        exerciseId: exercise.exercise.id,
+        orderIndex: exercise.orderIndex,
+        setCount: exercise.sets.length,
+        section: exercise.isMainLift ? "main" : "accessory",
+      })).sort((left, right) => left.orderIndex - right.orderIndex)).toEqual([
+        { exerciseId: "sldl", orderIndex: 0, setCount: 3, section: "main" },
+        { exerciseId: "leg-curl", orderIndex: 1, setCount: 3, section: "accessory" },
+        { exerciseId: "split-squat", orderIndex: 2, setCount: 3, section: "main" },
+        { exerciseId: "calf-raise", orderIndex: 3, setCount: 3, section: "accessory" },
+      ]);
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
+
   it("does not fall back to legacy intent composition when a seeded mesocycle has an unresolvable slot-plan seed", async () => {
     loadActiveMesocycleMock.mockResolvedValue({
       id: "meso-1",

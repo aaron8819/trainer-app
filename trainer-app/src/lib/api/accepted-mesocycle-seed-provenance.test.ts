@@ -215,9 +215,16 @@ describe("evaluateAcceptedMesocycleSeedProvenance", () => {
         source: "v2_materialized_seed",
         acceptedPlannerIntent: buildV2AcceptedPlannerIntentDto(),
       }),
+      receiptCompositionSource: "persisted_slot_plan_seed",
     });
 
     expect(result.status).toBe("valid");
+    expect(result.seed).toMatchObject({
+      source: "v2_materialized_seed",
+      plannerMetadataSource: "v2_planner_policy",
+      targetSkeletonId: "upper_lower_4x_v2",
+      executableShape: "set_aware",
+    });
     expect(result.warnings).toEqual([]);
   });
 

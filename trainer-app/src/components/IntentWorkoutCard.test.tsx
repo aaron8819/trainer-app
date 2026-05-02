@@ -158,4 +158,95 @@ describe("IntentWorkoutCard", () => {
     expect(savePayload.sessionIntent).toBe("BODY_PART");
     expect(savePayload.selectionMetadata).toEqual(selectionMetadata);
   });
+
+  it("saves generated next-workout exercises by planned orderIndex instead of section grouping", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          workout: {
+            id: "w-lower-b",
+            scheduledDate: "2026-05-02T00:00:00.000Z",
+            warmup: [],
+            mainLifts: [
+              {
+                id: "we-sldl",
+                orderIndex: 0,
+                isMainLift: true,
+                exercise: { id: "sldl", name: "Stiff-Legged Deadlift" },
+                sets: [{ setIndex: 1, targetReps: 8 }],
+              },
+              {
+                id: "we-split-squat",
+                orderIndex: 2,
+                isMainLift: true,
+                exercise: { id: "split-squat", name: "Bulgarian Split Squat" },
+                sets: [{ setIndex: 1, targetReps: 10 }],
+              },
+            ],
+            accessories: [
+              {
+                id: "we-leg-curl",
+                orderIndex: 1,
+                isMainLift: false,
+                exercise: { id: "leg-curl", name: "Seated Leg Curl" },
+                sets: [{ setIndex: 1, targetReps: 12 }],
+              },
+              {
+                id: "we-calf",
+                orderIndex: 3,
+                isMainLift: false,
+                exercise: { id: "calf-raise", name: "Seated Calf Raise" },
+                sets: [{ setIndex: 1, targetReps: 12 }],
+              },
+            ],
+            estimatedMinutes: 50,
+          },
+          sraWarnings: [],
+          substitutions: [],
+          volumePlanByMuscle: {},
+          selectionMode: "INTENT",
+          sessionIntent: "lower",
+          selectionSummary: { selectedCount: 4, pinnedCount: 0, setTargetCount: 4 },
+          selectionMetadata: {},
+          filteredExercises: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ workoutId: "w-lower-b" }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <IntentWorkoutCard
+        initialIntent="lower"
+        initialSlotId="lower_b"
+        primaryAction={{ label: "Start workout", state: "planned", mode: "generate" }}
+        nextSessionLabel="Lower B"
+        nextSessionDescription="Fourth session this week"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Start workout" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Seated Calf Raise")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Workout" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    const saveCall = fetchMock.mock.calls[1];
+    const savePayload = JSON.parse(saveCall[1].body as string);
+
+    expect(savePayload.exercises.map((exercise: { exerciseId: string }) => exercise.exerciseId))
+      .toEqual(["sldl", "leg-curl", "split-squat", "calf-raise"]);
+    expect(savePayload.exercises.map((exercise: { section: string }) => exercise.section))
+      .toEqual(["MAIN", "ACCESSORY", "MAIN", "ACCESSORY"]);
+  });
 });

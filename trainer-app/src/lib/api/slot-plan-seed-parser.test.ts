@@ -94,6 +94,44 @@ describe("parseSlotPlanSeedJson", () => {
     ).toEqual(acceptedPlannerIntent);
   });
 
+  it("parses V2 source labels while keeping planner metadata outside executable rows", () => {
+    const acceptedPlannerIntent = buildV2AcceptedPlannerIntentDto();
+    const parsed = parseSlotPlanSeedJson({
+      version: 1,
+      source: "v2_materialized_seed",
+      acceptedPlannerIntent,
+      slots: [
+        {
+          slotId: "upper_a",
+          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND", setCount: 4 }],
+        },
+      ],
+    });
+
+    expect(parsed).toMatchObject({
+      version: 1,
+      source: "v2_materialized_seed",
+      acceptedPlannerIntent,
+      slots: [
+        {
+          slotId: "upper_a",
+          exercises: [
+            {
+              exerciseId: "bench",
+              role: "CORE_COMPOUND",
+              setCount: 4,
+              hasExplicitName: false,
+              hasExplicitSetCount: true,
+            },
+          ],
+        },
+      ],
+    });
+    expect(parsed?.slots[0]?.exercises[0]).not.toHaveProperty(
+      "acceptedPlannerIntent",
+    );
+  });
+
   it("ignores malformed optional accepted planner intent metadata while parsing valid slots", () => {
     const parsed = parseSlotPlanSeedJson({
       version: 1,

@@ -248,4 +248,255 @@ describe("runtime exercise swap constraints", () => {
       }),
     ).toBeNull();
   });
+
+  it("labels hip/back extension as fallback instead of exact knee-flexion curl equivalents", () => {
+    const candidates = buildRuntimeExerciseSwapCandidates({
+      current: {
+        id: "seated-leg-curl",
+        name: "Seated Leg Curl",
+        fatigueCost: 1,
+        jointStress: "low",
+        isCompound: false,
+        movementPatterns: ["flexion", "isolation"],
+        primaryMuscles: ["hamstrings"],
+        equipment: ["machine"],
+        sourceLane: {
+          slotId: "lower_b",
+          seedRole: "ACCESSORY",
+          laneId: "knee_flexion_curl",
+          laneRole: "support",
+          primaryMuscles: ["Hamstrings"],
+          acceptableExerciseClasses: ["hamstring_curl"],
+          preferredExerciseClasses: ["hamstring_curl"],
+        },
+      },
+      candidates: [
+        {
+          id: "lying-leg-curl",
+          name: "Lying Leg Curl",
+          fatigueCost: 1,
+          jointStress: "low",
+          isCompound: false,
+          movementPatterns: ["flexion", "isolation"],
+          primaryMuscles: ["hamstrings"],
+          equipment: ["machine"],
+        },
+        {
+          id: "back-extension",
+          name: "Back Extension (45 Degree)",
+          fatigueCost: 1,
+          jointStress: "low",
+          isCompound: true,
+          movementPatterns: ["extension"],
+          primaryMuscles: ["hamstrings", "glutes"],
+          secondaryMuscles: ["lower back"],
+          equipment: ["machine"],
+        },
+        {
+          id: "reverse-hyper",
+          name: "Reverse Hyperextension",
+          fatigueCost: 1,
+          jointStress: "low",
+          isCompound: true,
+          movementPatterns: ["extension"],
+          primaryMuscles: ["hamstrings", "glutes"],
+          secondaryMuscles: ["lower back"],
+          equipment: ["machine"],
+        },
+      ],
+    });
+
+    expect(candidates.map((entry) => entry.exerciseId)).toEqual([
+      "lying-leg-curl",
+      "back-extension",
+      "reverse-hyper",
+    ]);
+    expect(candidates[0]).toMatchObject({
+      exerciseId: "lying-leg-curl",
+      swapFallbackTier: "exact_lane_equivalent",
+      sourceV2Class: "knee_flexion_curl",
+    });
+    expect(
+      candidates
+        .filter((entry) => entry.exerciseId !== "lying-leg-curl")
+        .map((entry) => entry.swapFallbackTier),
+    ).toEqual(["broad_same_muscle_fallback", "broad_same_muscle_fallback"]);
+  });
+
+  it("ranks loadable lower-b quad-support swaps above support-only squat fallbacks", () => {
+    const candidates = buildRuntimeExerciseSwapCandidates({
+      current: {
+        id: "bulgarian-split-squat",
+        name: "Bulgarian Split Squat",
+        fatigueCost: 3,
+        jointStress: "medium",
+        isCompound: true,
+        movementPatterns: ["lunge"],
+        primaryMuscles: ["quads", "glutes"],
+        equipment: ["dumbbell"],
+        sourceLane: {
+          slotId: "lower_b",
+          seedRole: "ACCESSORY",
+          laneId: "quad_support",
+          laneRole: "support",
+          primaryMuscles: ["Quads"],
+          acceptableExerciseClasses: [
+            "leg_press",
+            "squat_pattern",
+            "quad_isolation",
+            "lunge",
+          ],
+          preferredExerciseClasses: [
+            "leg_press",
+            "squat_pattern",
+            "quad_isolation",
+            "lunge",
+          ],
+        },
+      },
+      candidates: [
+        {
+          id: "reverse-lunge",
+          name: "Reverse Lunge",
+          fatigueCost: 2,
+          jointStress: "medium",
+          isCompound: true,
+          movementPatterns: ["lunge"],
+          primaryMuscles: ["quads", "glutes"],
+          equipment: ["dumbbell"],
+        },
+        {
+          id: "walking-lunge",
+          name: "Walking Lunge",
+          fatigueCost: 2,
+          jointStress: "medium",
+          isCompound: true,
+          movementPatterns: ["lunge"],
+          primaryMuscles: ["quads", "glutes"],
+          equipment: ["dumbbell"],
+        },
+        {
+          id: "goblet-squat",
+          name: "Goblet Squat",
+          fatigueCost: 1,
+          jointStress: "low",
+          isCompound: true,
+          movementPatterns: ["squat"],
+          primaryMuscles: ["quads", "glutes"],
+          equipment: ["dumbbell"],
+        },
+        {
+          id: "belt-squat",
+          name: "Belt Squat",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: true,
+          movementPatterns: ["squat"],
+          primaryMuscles: ["quads", "glutes"],
+          equipment: ["machine"],
+        },
+        {
+          id: "leg-press",
+          name: "Leg Press",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: true,
+          movementPatterns: ["squat"],
+          primaryMuscles: ["quads", "glutes"],
+          equipment: ["machine"],
+        },
+        {
+          id: "hack-squat",
+          name: "Hack Squat",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: true,
+          movementPatterns: ["squat"],
+          primaryMuscles: ["quads"],
+          equipment: ["machine"],
+        },
+      ],
+      limit: 6,
+    });
+
+    const order = candidates.map((entry) => entry.exerciseId);
+    for (const loadable of ["belt-squat", "hack-squat", "leg-press"]) {
+      expect(order.indexOf(loadable)).toBeGreaterThanOrEqual(0);
+      expect(order.indexOf(loadable)).toBeLessThan(order.indexOf("goblet-squat"));
+      expect(order.indexOf(loadable)).toBeLessThan(order.indexOf("reverse-lunge"));
+      expect(order.indexOf(loadable)).toBeLessThan(order.indexOf("walking-lunge"));
+    }
+    expect(
+      candidates.filter((entry) =>
+        ["belt-squat", "hack-squat", "leg-press"].includes(entry.exerciseId),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ swapFallbackTier: "exact_lane_equivalent" }),
+      ]),
+    );
+    expect(candidates.find((entry) => entry.exerciseId === "goblet-squat")).toMatchObject({
+      swapFallbackTier: "useful_fallback_warning",
+    });
+  });
+
+  it("allows equivalent calf-isolation swaps as warning-tier candidates despite small fatigue delta", () => {
+    const candidates = buildRuntimeExerciseSwapCandidates({
+      current: {
+        id: "seated-calf-raise",
+        name: "Seated Calf Raise",
+        fatigueCost: 1,
+        jointStress: "low",
+        isCompound: false,
+        movementPatterns: ["calf_raise_flexed", "isolation"],
+        primaryMuscles: ["calves"],
+        equipment: ["machine"],
+        sourceLane: {
+          slotId: "lower_b",
+          seedRole: "ACCESSORY",
+          laneId: "calves",
+          laneRole: "accessory",
+          primaryMuscles: ["Calves"],
+          acceptableExerciseClasses: ["calf_isolation"],
+          preferredExerciseClasses: ["calf_isolation"],
+        },
+      },
+      candidates: [
+        {
+          id: "standing-calf-raise",
+          name: "Standing Calf Raise",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: false,
+          movementPatterns: ["calf_raise_extended", "isolation"],
+          primaryMuscles: ["calves"],
+          equipment: ["machine"],
+        },
+        {
+          id: "leg-press-calf-raise",
+          name: "Leg Press Calf Raise",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: false,
+          movementPatterns: ["calf_raise_extended", "isolation"],
+          primaryMuscles: ["calves"],
+          equipment: ["machine"],
+        },
+      ],
+    });
+
+    expect(candidates.map((entry) => entry.exerciseId)).toEqual([
+      "leg-press-calf-raise",
+      "standing-calf-raise",
+    ]);
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          swapFallbackTier: "useful_fallback_warning",
+          sourceV2Class: "calf_isolation",
+          fatigueDelta: 1,
+        }),
+      ]),
+    );
+  });
 });

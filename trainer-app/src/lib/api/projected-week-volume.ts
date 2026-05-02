@@ -17,6 +17,7 @@ import {
 } from "@/lib/ui/weekly-muscle-status";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import type { MovementPatternV2, WorkoutPlan } from "@/lib/engine/types";
+import { listWorkoutPlanExercisesInOrder } from "@/lib/engine/workout-plan-order";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
@@ -119,16 +120,21 @@ function countWorkoutExercises(workout: WorkoutPlan): number {
 }
 
 function countWorkoutSets(workout: WorkoutPlan): number {
-  return [...workout.mainLifts, ...workout.accessories].reduce(
-    (sum, exercise) => sum + exercise.sets.length,
-    0
-  );
+  return listWorkoutPlanExercisesInOrder(workout)
+    .filter(({ section }) => section !== "warmup")
+    .reduce(
+      (sum, { exercise }) => sum + exercise.sets.length,
+      0
+    );
 }
 
 function countWorkoutMovementPatterns(workout: WorkoutPlan): Record<string, number> {
   const counts = new Map<MovementPatternV2, number>();
 
-  for (const workoutExercise of [...workout.mainLifts, ...workout.accessories]) {
+  for (const { exercise: workoutExercise, section } of listWorkoutPlanExercisesInOrder(workout)) {
+    if (section === "warmup") {
+      continue;
+    }
     for (const pattern of workoutExercise.exercise.movementPatterns ?? []) {
       counts.set(pattern, (counts.get(pattern) ?? 0) + 1);
     }
@@ -177,20 +183,14 @@ function enforceProjectedSessionMinimumSets(input: {
 }
 
 function summarizeWorkoutExercises(workout: WorkoutPlan): ProjectedWeekVolumeExerciseSummary[] {
-  return [
-    ...workout.mainLifts.map((exercise) => ({
+  return listWorkoutPlanExercisesInOrder(workout)
+    .filter(({ section }) => section !== "warmup")
+    .map(({ exercise, section }) => ({
       exerciseId: exercise.exercise.id,
       name: exercise.exercise.name,
       setCount: exercise.sets.length,
-      role: "primary" as const,
-    })),
-    ...workout.accessories.map((exercise) => ({
-      exerciseId: exercise.exercise.id,
-      name: exercise.exercise.name,
-      setCount: exercise.sets.length,
-      role: "accessory" as const,
-    })),
-  ];
+      role: section === "main" ? ("primary" as const) : ("accessory" as const),
+    }));
 }
 
 function toProjectedWeekVolumeByMuscle(

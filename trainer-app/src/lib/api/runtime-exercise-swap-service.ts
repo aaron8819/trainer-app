@@ -5,9 +5,13 @@ import { searchExerciseLibrary } from "@/lib/api/exercise-library";
 import {
   buildRuntimeExerciseSwapCandidates,
   isSwapEligible,
+  resolveRuntimeExerciseSwapSourceLaneContext,
   type RuntimeExerciseSwapCandidate,
   type RuntimeExerciseSwapProfile,
 } from "@/lib/api/runtime-exercise-swap";
+import { parseSlotPlanSeedJson } from "@/lib/api/slot-plan-seed-parser";
+import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
+import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import {
   formatRuntimeExerciseSwapNote,
   readRuntimeAddedExerciseIds,
@@ -32,6 +36,7 @@ type SwapWorkoutRecord = {
   selectionMetadata: unknown;
   selectionMode: string | null;
   sessionIntent: string | null;
+  mesocycle?: { slotPlanSeedJson: unknown } | null;
   exercises?: Array<{ id: string; exerciseId: string }>;
 };
 
@@ -149,9 +154,31 @@ function mapSwapProfile(
   exercise: ExerciseRecord,
   options?: { isMainLift?: boolean; hasRecentHistory?: boolean },
 ): RuntimeExerciseSwapProfile {
+  const aliases = exercise.aliases.map((alias) => alias.alias);
+  const primaryMuscles = exercise.exerciseMuscles
+    .filter((entry) => entry.role === "PRIMARY")
+    .map((entry) => entry.muscle.name);
+  const secondaryMuscles = exercise.exerciseMuscles
+    .filter((entry) => entry.role === "SECONDARY")
+    .map((entry) => entry.muscle.name);
+  const stimulusByMusclePerSet = Object.fromEntries(
+    getEffectiveStimulusByMuscle(
+      {
+        id: exercise.id,
+        name: exercise.name,
+        aliases,
+        primaryMuscles,
+        secondaryMuscles,
+      },
+      1,
+      { logFallback: false },
+    ),
+  );
+
   return {
     id: exercise.id,
     name: exercise.name,
+    aliases,
     fatigueCost: exercise.fatigueCost,
     jointStress: exercise.jointStress?.toLowerCase(),
     isMainLift: options?.isMainLift ?? false,
@@ -161,12 +188,44 @@ function mapSwapProfile(
     movementPatterns: exercise.movementPatterns.map((pattern) =>
       pattern.toLowerCase(),
     ),
-    primaryMuscles: exercise.exerciseMuscles
-      .filter((entry) => entry.role === "PRIMARY")
-      .map((entry) => entry.muscle.name.toLowerCase()),
+    primaryMuscles: primaryMuscles.map((muscle) => muscle.toLowerCase()),
+    secondaryMuscles: secondaryMuscles.map((muscle) => muscle.toLowerCase()),
     equipment: exercise.exerciseEquipment.map((entry) =>
       entry.equipment.type.toLowerCase(),
     ),
+    stimulusByMusclePerSet,
+  };
+}
+
+function mapSourceSwapProfile(context: SwapContext): RuntimeExerciseSwapProfile {
+  const sourceProfile = mapSwapProfile(context.workoutExercise.exercise, {
+    isMainLift: context.workoutExercise.isMainLift,
+  });
+  const receipt = readSessionDecisionReceipt(context.workout.selectionMetadata);
+  const seed = parseSlotPlanSeedJson(context.workout.mesocycle?.slotPlanSeedJson);
+  const receiptSlotId = receipt?.sessionSlot?.slotId;
+  const seedSlot =
+    (receiptSlotId
+      ? seed?.slots.find((slot) => slot.slotId === receiptSlotId)
+      : undefined) ??
+    seed?.slots.find((slot) =>
+      slot.exercises.some(
+        (exercise) => exercise.exerciseId === context.workoutExercise.exerciseId,
+      ),
+    );
+  const seedExercise = seedSlot?.exercises.find(
+    (exercise) => exercise.exerciseId === context.workoutExercise.exerciseId,
+  );
+
+  return {
+    ...sourceProfile,
+    sourceLane: resolveRuntimeExerciseSwapSourceLaneContext({
+      source: sourceProfile,
+      slotId: seedSlot?.slotId ?? receiptSlotId,
+      seedRole: seedExercise?.role,
+      weekInMeso: receipt?.cycleContext.weekInMeso,
+      acceptedPlannerIntent: seed?.acceptedPlannerIntent,
+    }),
   };
 }
 
@@ -304,6 +363,11 @@ async function loadRuntimeExerciseSwapContext(input: {
       selectionMetadata: true,
       selectionMode: true,
       sessionIntent: true,
+      mesocycle: {
+        select: {
+          slotPlanSeedJson: true,
+        },
+      },
       exercises: {
         select: {
           id: true,
@@ -501,12 +565,11 @@ async function loadRecentExerciseLoad(input: {
 }
 
 function selectEligibleReplacement(input: {
-  currentExercise: ExerciseRecord;
+  currentProfile: RuntimeExerciseSwapProfile;
   exercisePool: ExerciseRecord[];
   replacementExerciseId: string;
   existingExerciseIds: Set<string>;
   recentlyUsedExerciseIds: Set<string>;
-  isMainLift: boolean;
 }): ExerciseRecord {
   const replacementExercise = input.exercisePool.find(
     (exercise) => exercise.id === input.replacementExerciseId,
@@ -520,9 +583,7 @@ function selectEligibleReplacement(input: {
   }
 
   const candidates = buildRuntimeExerciseSwapCandidates({
-    current: mapSwapProfile(input.currentExercise, {
-      isMainLift: input.isMainLift,
-    }),
+    current: input.currentProfile,
     candidates: mapSwapProfilePool({
       exercisePool: input.exercisePool,
       recentlyUsedExerciseIds: input.recentlyUsedExerciseIds,
@@ -563,13 +624,13 @@ async function resolveRuntimeExerciseSwap(input: {
     userId: input.userId,
     exerciseIds: exercisePool.map((exercise) => exercise.id),
   });
+  const currentProfile = mapSourceSwapProfile(context);
   const replacementExercise = selectEligibleReplacement({
-    currentExercise: context.workoutExercise.exercise,
+    currentProfile,
     exercisePool,
     replacementExerciseId: input.replacementExerciseId,
     existingExerciseIds: toExistingWorkoutExerciseIds(context),
     recentlyUsedExerciseIds,
-    isMainLift: context.workoutExercise.isMainLift,
   });
   const targetLoad = await loadRecentExerciseLoad({
     userId: input.userId,
@@ -651,29 +712,15 @@ export async function resolveRuntimeExerciseSwapCandidates(input: {
       exerciseIds: searchMatchedExercisePool.map((exercise) => exercise.id),
     });
     const searchMatchedCandidates = buildRuntimeExerciseSwapCandidates({
-      current: mapSwapProfile(context.workoutExercise.exercise, {
-        isMainLift: context.workoutExercise.isMainLift,
-      }),
+      current: mapSourceSwapProfile(context),
       candidates: mapSwapProfilePool({
         exercisePool: searchMatchedExercisePool,
         recentlyUsedExerciseIds,
       }),
       excludedExerciseIds: toExistingWorkoutExerciseIds(context),
-      limit: searchMatchedExercisePool.length,
+      limit,
     });
-    const candidateByExerciseId = new Map(
-      searchMatchedCandidates.map((candidate) => [
-        candidate.exerciseId,
-        candidate,
-      ]),
-    );
-
-    return searchMatchedExercisePool
-      .flatMap((exercise) => {
-        const candidate = candidateByExerciseId.get(exercise.id);
-        return candidate ? [candidate] : [];
-      })
-      .slice(0, limit);
+    return searchMatchedCandidates;
   }
 
   const exercisePool = await loadExercisePool();
@@ -683,9 +730,7 @@ export async function resolveRuntimeExerciseSwapCandidates(input: {
   });
 
   return buildRuntimeExerciseSwapCandidates({
-    current: mapSwapProfile(context.workoutExercise.exercise, {
-      isMainLift: context.workoutExercise.isMainLift,
-    }),
+    current: mapSourceSwapProfile(context),
     candidates: mapSwapProfilePool({
       exercisePool,
       recentlyUsedExerciseIds,

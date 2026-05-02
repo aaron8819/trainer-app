@@ -76,6 +76,7 @@ import {
   resolveRuntimeExerciseSwapCandidates,
   resolveRuntimeExerciseSwapPreview,
 } from "./runtime-exercise-swap-service";
+import { buildV2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 
 const runtimeEditDirectives = {
   continuityAlias: "none",
@@ -154,6 +155,69 @@ function buildCloseoutSelectionMetadata() {
         },
       ],
     },
+  };
+}
+
+function buildLowerBSelectionMetadata() {
+  return {
+    sessionDecisionReceipt: {
+      version: 1,
+      cycleContext: {
+        weekInMeso: 1,
+        weekInBlock: 1,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      sessionSlot: {
+        slotId: "lower_b",
+        intent: "LOWER",
+        sequenceIndex: 3,
+        sequenceLength: 4,
+        source: "mesocycle_slot_sequence",
+      },
+      lifecycleVolume: { source: "lifecycle", targets: {} },
+      sorenessSuppressedMuscles: [],
+      deloadDecision: {
+        mode: "none",
+        reason: [],
+        reductionPercent: 0,
+        appliedTo: "none",
+      },
+      readiness: {
+        wasAutoregulated: false,
+        signalAgeHours: null,
+        fatigueScoreOverall: null,
+        intensityScaling: {
+          applied: false,
+          exerciseIds: [],
+          scaledUpCount: 0,
+          scaledDownCount: 0,
+        },
+      },
+      exceptions: [],
+    },
+  };
+}
+
+function buildLowerBSlotPlanSeedJson() {
+  return {
+    version: 1,
+    source: "v2_materialized_seed",
+    acceptedPlannerIntent: buildV2AcceptedPlannerIntentDto(),
+    slots: [
+      {
+        slotId: "lower_b",
+        exercises: [
+          {
+            exerciseId: "bulgarian-split-squat",
+            role: "ACCESSORY",
+            setCount: 3,
+          },
+        ],
+      },
+    ],
   };
 }
 
@@ -801,6 +865,120 @@ describe("runtime exercise swap service", () => {
         (candidate) => candidate.exerciseId === "unsupported-curl",
       ),
     ).toBe(false);
+  });
+
+  it("re-ranks typed search matches by lane fit after bounded text search", async () => {
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "LOWER",
+      exercises: [{ id: "we-1", exerciseId: "bulgarian-split-squat" }],
+      selectionMetadata: buildLowerBSelectionMetadata(),
+      mesocycle: { slotPlanSeedJson: buildLowerBSlotPlanSeedJson() },
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      id: "we-1",
+      workoutId: "workout-1",
+      exerciseId: "bulgarian-split-squat",
+      section: "MAIN",
+      isMainLift: false,
+      exercise: {
+        id: "bulgarian-split-squat",
+        name: "Bulgarian Split Squat",
+        fatigueCost: 3,
+        jointStress: "MEDIUM",
+        isMainLiftEligible: false,
+        isCompound: true,
+        movementPatterns: ["LUNGE"],
+        exerciseEquipment: [{ equipment: { type: "DUMBBELL" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Quads" } },
+          { role: "PRIMARY", muscle: { name: "Glutes" } },
+        ],
+      },
+      sets: [
+        {
+          id: "set-1",
+          setIndex: 1,
+          targetRpe: 8,
+          restSeconds: 120,
+          logs: [],
+        },
+      ],
+    });
+    mocks.searchExerciseLibrary.mockResolvedValueOnce([
+      {
+        id: "goblet-squat",
+        name: "Goblet Squat",
+        primaryMuscles: ["Quads", "Glutes"],
+        equipment: ["DUMBBELL"],
+      },
+      {
+        id: "leg-press",
+        name: "Leg Press",
+        primaryMuscles: ["Quads", "Glutes"],
+        equipment: ["MACHINE"],
+      },
+    ]);
+    mocks.exerciseFindMany.mockResolvedValueOnce([
+      {
+        id: "goblet-squat",
+        name: "Goblet Squat",
+        fatigueCost: 1,
+        jointStress: "LOW",
+        isMainLiftEligible: false,
+        isCompound: true,
+        repRangeMin: 8,
+        repRangeMax: 12,
+        movementPatterns: ["SQUAT"],
+        exerciseEquipment: [{ equipment: { type: "DUMBBELL" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Quads" } },
+          { role: "PRIMARY", muscle: { name: "Glutes" } },
+        ],
+      },
+      {
+        id: "leg-press",
+        name: "Leg Press",
+        fatigueCost: 2,
+        jointStress: "LOW",
+        isMainLiftEligible: false,
+        isCompound: true,
+        repRangeMin: 8,
+        repRangeMax: 12,
+        movementPatterns: ["SQUAT"],
+        exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Quads" } },
+          { role: "PRIMARY", muscle: { name: "Glutes" } },
+        ],
+      },
+    ]);
+
+    const candidates = await resolveRuntimeExerciseSwapCandidates({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      userId: "user-1",
+      query: "squat",
+      limit: 8,
+    });
+
+    expect(mocks.searchExerciseLibrary).toHaveBeenCalledWith("squat", 48);
+    expect(candidates.map((candidate) => candidate.exerciseId)).toEqual([
+      "leg-press",
+      "goblet-squat",
+    ]);
+    expect(candidates[0]).toMatchObject({
+      exerciseId: "leg-press",
+      swapFallbackTier: "exact_lane_equivalent",
+      sourceLaneRole: "support",
+      sourceV2Class: "squat_pattern",
+    });
+    expect(candidates[1]).toMatchObject({
+      exerciseId: "goblet-squat",
+      swapFallbackTier: "useful_fallback_warning",
+    });
   });
 
   it("swaps an unlogged main lift only to a main-lift eligible movement-family match", async () => {

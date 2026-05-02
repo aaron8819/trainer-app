@@ -318,6 +318,76 @@ describe("resolveRequiredSeededSlotPlan", () => {
     });
   });
 
+  it("preserves Lower B set-aware seed order before runtime section grouping", () => {
+    const seed = {
+      version: 1,
+      source: "handoff_slot_plan_projection",
+      slots: [
+        {
+          slotId: "lower_b",
+          exercises: [
+            { exerciseId: "sldl", role: "CORE_COMPOUND", setCount: 3 },
+            { exerciseId: "leg-curl", role: "ACCESSORY", setCount: 3 },
+            { exerciseId: "split-squat", role: "CORE_COMPOUND", setCount: 3 },
+            { exerciseId: "calf-raise", role: "ACCESSORY", setCount: 3 },
+          ],
+        },
+      ],
+    };
+    const mapped = {
+      activeMesocycle: {
+        slotPlanSeedJson: seed,
+        slotSequenceJson: {
+          version: 1,
+          source: "handoff_draft",
+          sequenceMode: "ordered_flexible",
+          slots: [{ slotId: "lower_b", intent: "LOWER" }],
+        },
+      },
+      mappedConstraints: {
+        weeklySchedule: ["lower"],
+      },
+      exerciseLibrary: [
+        { id: "sldl", name: "Stiff-Legged Deadlift" },
+        { id: "leg-curl", name: "Seated Leg Curl" },
+        { id: "split-squat", name: "Bulgarian Split Squat" },
+        { id: "calf-raise", name: "Seated Calf Raise" },
+      ],
+      history: [],
+    } as unknown as MappedGenerationContext;
+
+    const resolved = resolveRequiredSeededSlotPlan({
+      mapped,
+      sessionIntent: "lower",
+      slotId: "lower_b",
+    });
+
+    expect(resolved && !("error" in resolved)
+      ? resolved.exercises.map(({ exerciseId, role, setCount }) => ({
+          exerciseId,
+          role,
+          setCount,
+        }))
+      : resolved).toEqual([
+      { exerciseId: "sldl", role: "CORE_COMPOUND", setCount: 3 },
+      { exerciseId: "leg-curl", role: "ACCESSORY", setCount: 3 },
+      { exerciseId: "split-squat", role: "CORE_COMPOUND", setCount: 3 },
+      { exerciseId: "calf-raise", role: "ACCESSORY", setCount: 3 },
+    ]);
+    expect(resolved && !("error" in resolved)
+      ? resolved.templateExercises.map(({ exercise, orderIndex, mesocycleRole }) => ({
+          exerciseId: exercise.id,
+          orderIndex,
+          mesocycleRole,
+        }))
+      : resolved).toEqual([
+      { exerciseId: "sldl", orderIndex: 0, mesocycleRole: "CORE_COMPOUND" },
+      { exerciseId: "leg-curl", orderIndex: 1, mesocycleRole: "ACCESSORY" },
+      { exerciseId: "split-squat", orderIndex: 2, mesocycleRole: "CORE_COMPOUND" },
+      { exerciseId: "calf-raise", orderIndex: 3, mesocycleRole: "ACCESSORY" },
+    ]);
+  });
+
   it("marks missing setCount as legacy fallback and logs the compatibility path", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {

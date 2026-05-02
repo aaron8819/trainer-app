@@ -151,6 +151,72 @@ describe("session-audit-snapshot", () => {
     });
   });
 
+  it("preserves generated exercise order by orderIndex across main and accessory sections", () => {
+    const lowerBWorkout = {
+      id: "workout-lower-b",
+      scheduledDate: "2026-05-02T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "sldl-entry",
+          exercise: { id: "sldl", name: "Stiff-Legged Deadlift" },
+          orderIndex: 0,
+          isMainLift: true,
+          role: "main" as const,
+          sets: [{ setIndex: 1, targetReps: 8, role: "main" as const }],
+        },
+        {
+          id: "split-squat-entry",
+          exercise: { id: "split-squat", name: "Bulgarian Split Squat" },
+          orderIndex: 2,
+          isMainLift: true,
+          role: "main" as const,
+          sets: [{ setIndex: 1, targetReps: 10, role: "main" as const }],
+        },
+      ],
+      accessories: [
+        {
+          id: "leg-curl-entry",
+          exercise: { id: "leg-curl", name: "Seated Leg Curl" },
+          orderIndex: 1,
+          isMainLift: false,
+          role: "accessory" as const,
+          sets: [{ setIndex: 1, targetReps: 12, role: "accessory" as const }],
+        },
+        {
+          id: "calf-entry",
+          exercise: { id: "calf", name: "Seated Calf Raise" },
+          orderIndex: 3,
+          isMainLift: false,
+          role: "accessory" as const,
+          sets: [{ setIndex: 1, targetReps: 12, role: "accessory" as const }],
+        },
+      ],
+      estimatedMinutes: 50,
+    } as unknown as WorkoutPlan;
+
+    const generated = buildGeneratedSessionAuditSnapshot({
+      workout: lowerBWorkout,
+      selectionMode: "INTENT",
+      sessionIntent: "LOWER",
+      selectionMetadata: {
+        sessionDecisionReceipt: baseReceipt,
+      },
+      advancesSplit: true,
+    });
+
+    expect(generated.generated?.exercises.map((exercise) => ({
+      exerciseId: exercise.exerciseId,
+      section: exercise.section,
+      orderIndex: exercise.orderIndex,
+    }))).toEqual([
+      { exerciseId: "sldl", section: "main", orderIndex: 0 },
+      { exerciseId: "leg-curl", section: "accessory", orderIndex: 1 },
+      { exerciseId: "split-squat", section: "main", orderIndex: 2 },
+      { exerciseId: "calf", section: "accessory", orderIndex: 3 },
+    ]);
+  });
+
   it("normalizes legacy progression trace vocabulary when reading persisted snapshots", () => {
     const snapshot = readSessionAuditSnapshot({
       sessionAuditSnapshot: {

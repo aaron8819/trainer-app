@@ -457,7 +457,7 @@ describe("replaceEmptyMesocycleWithV2", () => {
   it("write mode delegates seed construction to the existing serializer", async () => {
     const serializerSeed = {
       version: 1 as const,
-      source: "handoff_slot_plan_projection" as const,
+      source: "v2_materialized_seed" as const,
       slots: [
         {
           slotId: "upper_a",
@@ -480,6 +480,11 @@ describe("replaceEmptyMesocycleWithV2", () => {
     });
 
     expect(buildSlotPlanSeed).toHaveBeenCalledTimes(1);
+    expect(buildSlotPlanSeed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "v2_materialized_seed",
+      }),
+    );
     expect(mocks.txMesocycleUpdate).toHaveBeenCalledWith({
       where: { id: "meso-1" },
       data: { slotPlanSeedJson: serializerSeed },

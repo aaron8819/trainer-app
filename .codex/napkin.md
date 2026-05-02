@@ -104,6 +104,8 @@
 | 2026-05-02 | self | In V2 anchor-quality validation, let `resolveV2ExerciseClassIds()` infer a narrow set while comparing against `V2ExerciseClassMatch.classId: string`, and left an unreachable switch case after a prior guard. | Normalize class-id diagnostic sets to `Set<string>` and let TypeScript narrowing remove impossible branches before rerunning full `tsc --noEmit`. |
 | 2026-05-02 | self | Looked for `v2-set-distribution-intent.ts` under `planning/v2/` even though it lives one directory up and is re-exported by the V2 folder. | Use `rg --files trainer-app/src/lib/engine/planning | rg "set-distribution-intent"` before assuming the path from memory. |
 | 2026-05-02 | self | Built another over-broad `rg` alternation with escaped quotes and braces and hit a regex parse error while checking stale mesocycle-demand expectations. | Prefer separate simple single-quoted `rg` searches for each stale literal on Windows. |
+| 2026-05-02 | self | Looked for V2 base-plan validation directly under `planning/v2/` and hit a missing path during a warning-body probe. | Base-plan validation lives under `src/lib/engine/planning/v2/materialization/base-plan-validation.ts`; check `rg --files` before opening remembered V2 paths. |
+| 2026-05-02 | self | Repeated a PowerShell terminator error by mixing embedded double quotes inside a broad `rg` alternation while checking stale backfill names. | Keep stale-literal checks in single-quoted `rg` patterns or split into boring separate searches. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

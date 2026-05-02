@@ -37,8 +37,7 @@ export type PerformedSetDefinition = {
 type BackfillMappingKind =
   | "planned"
   | "substitution"
-  | "added"
-  | "added_optional_core";
+  | "added";
 
 export type PerformedExerciseDefinition = {
   performedName: string;
@@ -67,9 +66,13 @@ export const TRANSITION_WEEK_BACKFILL_SESSIONS: readonly BackfillSessionDefiniti
     performed: [
       {
         performedName: "Incline DB Bench Press",
-        searchTerms: ["Incline DB Bench Press", "Incline Dumbbell Bench Press"],
+        searchTerms: [
+          "Incline Dumbbell Bench Press",
+          "Incline DB Bench Press",
+          "Incline DB Press",
+        ],
         kind: "substitution",
-        seedExerciseName: "Machine Chest Press",
+        seedExerciseName: "Incline Machine Press",
         section: "MAIN",
         isMainLift: true,
         sets: [
@@ -82,7 +85,7 @@ export const TRANSITION_WEEK_BACKFILL_SESSIONS: readonly BackfillSessionDefiniti
         performedName: "T-Bar Row",
         searchTerms: ["T-Bar Row", "T Bar Row"],
         kind: "substitution",
-        seedExerciseName: "Chest Supported Row",
+        seedExerciseName: "Close-Grip Seated Cable Row",
         section: "MAIN",
         isMainLift: true,
         sets: [
@@ -95,7 +98,7 @@ export const TRANSITION_WEEK_BACKFILL_SESSIONS: readonly BackfillSessionDefiniti
         performedName: "Lat Pulldown",
         searchTerms: ["Lat Pulldown", "Lat Pull-Down"],
         kind: "substitution",
-        seedExerciseName: "Neutral Grip Pulldown",
+        seedExerciseName: "Close-Grip Lat Pulldown",
         section: "MAIN",
         isMainLift: true,
         sets: [
@@ -119,8 +122,8 @@ export const TRANSITION_WEEK_BACKFILL_SESSIONS: readonly BackfillSessionDefiniti
       {
         performedName: "Cable Rear Delt Fly",
         searchTerms: ["Cable Rear Delt Fly", "Rear Delt Cable Fly", "Rear Delt Reverse Fly"],
-        kind: "substitution",
-        seedExerciseName: "Rear Delt Reverse Fly",
+        kind: "planned",
+        seedExerciseName: "Cable Rear Delt Fly",
         section: "ACCESSORY",
         isMainLift: false,
         sets: [
@@ -130,27 +133,31 @@ export const TRANSITION_WEEK_BACKFILL_SESSIONS: readonly BackfillSessionDefiniti
         ],
       },
       {
+        performedName: "Machine Lateral Raise",
+        searchTerms: ["Machine Lateral Raise", "Lateral Raise Machine"],
+        kind: "planned",
+        seedExerciseName: "Machine Lateral Raise",
+        section: "ACCESSORY",
+        isMainLift: false,
+        sets: [],
+      },
+      {
         performedName: "Cable Triceps Pressdown",
-        searchTerms: ["Cable Triceps Pressdown", "Cable Tricep Pressdown", "Rope Pressdown"],
-        kind: "substitution",
-        seedExerciseName: "Rope Pressdown",
+        searchTerms: [
+          "Cable Triceps Pushdown",
+          "Triceps Pushdown",
+          "Tricep Rope Pushdown",
+          "Cable Triceps Pressdown",
+          "Cable Tricep Pressdown",
+        ],
+        kind: "planned",
+        seedExerciseName: "Cable Triceps Pushdown",
         section: "ACCESSORY",
         isMainLift: false,
         sets: [
           { reps: 15, load: 27.5 },
           { reps: 15, load: 32.5 },
           { reps: 15, load: 32.5 },
-        ],
-      },
-      {
-        performedName: "Torso Rotation",
-        searchTerms: ["Torso Rotation", "Rotary Torso"],
-        kind: "added_optional_core",
-        section: "ACCESSORY",
-        isMainLift: false,
-        sets: [
-          { load: 120, note: "Source log supplied load-only value: 120" },
-          { load: 120, note: "Source log supplied load-only value: 120" },
         ],
       },
     ],
@@ -165,7 +172,7 @@ export const TRANSITION_WEEK_BACKFILL_SESSIONS: readonly BackfillSessionDefiniti
         performedName: "Barbell Back Squat",
         searchTerms: ["Barbell Back Squat", "Back Squat"],
         kind: "substitution",
-        seedExerciseName: "Hack Squat",
+        seedExerciseName: "Belt Squat",
         section: "MAIN",
         isMainLift: true,
         sets: [
@@ -191,8 +198,8 @@ export const TRANSITION_WEEK_BACKFILL_SESSIONS: readonly BackfillSessionDefiniti
       {
         performedName: "Seated Leg Curl",
         searchTerms: ["Seated Leg Curl"],
-        kind: "planned",
-        seedExerciseName: "Seated Leg Curl",
+        kind: "substitution",
+        seedExerciseName: "Lying Leg Curl",
         section: "ACCESSORY",
         isMainLift: false,
         sets: [
@@ -203,21 +210,42 @@ export const TRANSITION_WEEK_BACKFILL_SESSIONS: readonly BackfillSessionDefiniti
       },
       {
         performedName: "DB RDL",
-        searchTerms: ["DB RDL", "Dumbbell Romanian Deadlift", "Dumbbell RDL"],
+        searchTerms: [
+          "DB Romanian Deadlift",
+          "Romanian Deadlift",
+          "DB RDL",
+          "Dumbbell Romanian Deadlift",
+          "Dumbbell RDL",
+        ],
         kind: "added",
         section: "ACCESSORY",
         isMainLift: false,
         sets: [
-          { reps: 12, load: 25 },
-          { reps: 8, load: 30 },
-          { reps: 8, load: 30 },
+          {
+            reps: 12,
+            load: 25,
+            note:
+              "Transition-week backfill: DB RDL load recorded as per-hand dumbbell load from source log.",
+          },
+          {
+            reps: 8,
+            load: 30,
+            note:
+              "Transition-week backfill: DB RDL load recorded as per-hand dumbbell load from source log.",
+          },
+          {
+            reps: 8,
+            load: 30,
+            note:
+              "Transition-week backfill: DB RDL load recorded as per-hand dumbbell load from source log.",
+          },
         ],
       },
       {
         performedName: "Standing Calf Raise",
         searchTerms: ["Standing Calf Raise"],
-        kind: "planned",
-        seedExerciseName: "Standing Calf Raise",
+        kind: "substitution",
+        seedExerciseName: "Seated Calf Raise",
         section: "ACCESSORY",
         isMainLift: false,
         sets: [
@@ -226,14 +254,6 @@ export const TRANSITION_WEEK_BACKFILL_SESSIONS: readonly BackfillSessionDefiniti
           { reps: 12, load: 90 },
           { reps: 12, load: 90 },
         ],
-      },
-      {
-        performedName: "Torso Rotation",
-        searchTerms: ["Torso Rotation", "Rotary Torso"],
-        kind: "added_optional_core",
-        section: "ACCESSORY",
-        isMainLift: false,
-        sets: [{ reps: 12, load: 130 }],
       },
     ],
   },
@@ -245,8 +265,14 @@ export const TRANSITION_WEEK_BACKFILL_SESSIONS: readonly BackfillSessionDefiniti
     performed: [
       {
         performedName: "DB Overhead Press",
-        searchTerms: ["DB Overhead Press", "Dumbbell Overhead Press", "Dumbbell Shoulder Press"],
-        kind: "added",
+        searchTerms: [
+          "Dumbbell Overhead Press",
+          "DB Shoulder Press",
+          "Dumbbell Shoulder Press",
+          "DB Overhead Press",
+        ],
+        kind: "substitution",
+        seedExerciseName: "Machine Shoulder Press",
         section: "MAIN",
         isMainLift: true,
         sets: [
@@ -256,9 +282,13 @@ export const TRANSITION_WEEK_BACKFILL_SESSIONS: readonly BackfillSessionDefiniti
       },
       {
         performedName: "Close-Grip Pulldown Variant",
-        searchTerms: ["Close-Grip Pulldown", "Close Grip Pulldown", "Lat Pulldown"],
+        searchTerms: [
+          "Close-Grip Lat Pulldown",
+          "Close-Grip Pulldown",
+          "Close Grip Pulldown",
+        ],
         kind: "substitution",
-        seedExerciseName: "Assisted Pull Up",
+        seedExerciseName: "Lat Pulldown",
         section: "MAIN",
         isMainLift: true,
         sets: [
@@ -283,9 +313,9 @@ export const TRANSITION_WEEK_BACKFILL_SESSIONS: readonly BackfillSessionDefiniti
       },
       {
         performedName: "Seated Cable Row",
-        searchTerms: ["Seated Cable Row", "Cable Row"],
-        kind: "substitution",
-        seedExerciseName: "Cable Row",
+        searchTerms: ["Seated Cable Row"],
+        kind: "planned",
+        seedExerciseName: "Seated Cable Row",
         section: "MAIN",
         isMainLift: true,
         sets: [{ reps: 8, load: 42.5 }],
@@ -293,7 +323,8 @@ export const TRANSITION_WEEK_BACKFILL_SESSIONS: readonly BackfillSessionDefiniti
       {
         performedName: "Machine Lateral Raise",
         searchTerms: ["Machine Lateral Raise", "Lateral Raise Machine"],
-        kind: "added",
+        kind: "planned",
+        seedExerciseName: "Machine Lateral Raise",
         section: "ACCESSORY",
         isMainLift: false,
         sets: [
@@ -305,8 +336,7 @@ export const TRANSITION_WEEK_BACKFILL_SESSIONS: readonly BackfillSessionDefiniti
       {
         performedName: "Cable Lateral Raise",
         searchTerms: ["Cable Lateral Raise"],
-        kind: "planned",
-        seedExerciseName: "Cable Lateral Raise",
+        kind: "added",
         section: "ACCESSORY",
         isMainLift: false,
         sets: [
@@ -319,7 +349,7 @@ export const TRANSITION_WEEK_BACKFILL_SESSIONS: readonly BackfillSessionDefiniti
         performedName: "EZ Bar Curl",
         searchTerms: ["EZ Bar Curl", "EZ-Bar Curl"],
         kind: "substitution",
-        seedExerciseName: "Cable Curl",
+        seedExerciseName: "Barbell Curl",
         section: "ACCESSORY",
         isMainLift: false,
         sets: [
@@ -1217,7 +1247,7 @@ function buildPersistedExercisesForBackfill(input: {
       sets: Array.from({ length: mapping.writeSetCount }, (_, setIndex) => {
         const actual = definition.sets[setIndex];
         const wasSkipped = !actual;
-        const fallbackReps = lastPerformed?.reps ?? 0;
+        const fallbackReps = lastPerformed?.reps ?? 8;
         const fallbackLoad = lastPerformed?.load ?? null;
         return {
           workoutSetId: input.idFactory(),

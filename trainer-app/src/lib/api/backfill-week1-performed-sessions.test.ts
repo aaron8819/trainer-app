@@ -46,12 +46,12 @@ function slug(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
 
-function exercise(name: string, id = slug(name)): ExerciseRow {
+function exercise(name: string, id = slug(name), aliases: string[] = []): ExerciseRow {
   return {
     id,
     name,
     movementPatterns: [],
-    aliases: [],
+    aliases: aliases.map((alias) => ({ alias })),
   };
 }
 
@@ -63,39 +63,45 @@ function seedSlotPlanJson() {
       {
         slotId: "upper_a",
         exercises: [
-          { exerciseId: "machine-chest-press", role: "CORE_COMPOUND", setCount: 4 },
-          { exerciseId: "chest-supported-row", role: "CORE_COMPOUND", setCount: 3 },
-          { exerciseId: "neutral-grip-pulldown", role: "ACCESSORY", setCount: 2 },
-          { exerciseId: "rear-delt-reverse-fly", role: "ACCESSORY", setCount: 3 },
-          { exerciseId: "rope-pressdown", role: "ACCESSORY", setCount: 3 },
+          { exerciseId: "incline-machine-press", role: "CORE_COMPOUND", setCount: 4 },
+          {
+            exerciseId: "close-grip-seated-cable-row",
+            role: "CORE_COMPOUND",
+            setCount: 3,
+          },
+          { exerciseId: "close-grip-lat-pulldown", role: "ACCESSORY", setCount: 2 },
+          { exerciseId: "cable-rear-delt-fly", role: "ACCESSORY", setCount: 2 },
+          { exerciseId: "machine-lateral-raise", role: "ACCESSORY", setCount: 2 },
+          { exerciseId: "cable-triceps-pushdown", role: "ACCESSORY", setCount: 3 },
         ],
       },
       {
         slotId: "lower_a",
         exercises: [
-          { exerciseId: "hack-squat", role: "CORE_COMPOUND", setCount: 4 },
+          { exerciseId: "belt-squat", role: "CORE_COMPOUND", setCount: 4 },
           { exerciseId: "leg-extension", role: "ACCESSORY", setCount: 2 },
-          { exerciseId: "seated-leg-curl", role: "ACCESSORY", setCount: 2 },
-          { exerciseId: "standing-calf-raise", role: "ACCESSORY", setCount: 4 },
+          { exerciseId: "lying-leg-curl", role: "ACCESSORY", setCount: 2 },
+          { exerciseId: "seated-calf-raise", role: "ACCESSORY", setCount: 4 },
         ],
       },
       {
         slotId: "upper_b",
         exercises: [
-          { exerciseId: "assisted-pull-up", role: "CORE_COMPOUND", setCount: 3 },
-          { exerciseId: "cable-fly", role: "CORE_COMPOUND", setCount: 4 },
-          { exerciseId: "cable-row", role: "CORE_COMPOUND", setCount: 3 },
-          { exerciseId: "cable-lateral-raise", role: "ACCESSORY", setCount: 4 },
-          { exerciseId: "cable-curl", role: "ACCESSORY", setCount: 3 },
+          { exerciseId: "machine-shoulder-press", role: "ACCESSORY", setCount: 2 },
+          { exerciseId: "lat-pulldown", role: "CORE_COMPOUND", setCount: 3 },
+          { exerciseId: "cable-fly", role: "ACCESSORY", setCount: 3 },
+          { exerciseId: "seated-cable-row", role: "ACCESSORY", setCount: 3 },
+          { exerciseId: "machine-lateral-raise", role: "ACCESSORY", setCount: 4 },
+          { exerciseId: "barbell-curl", role: "ACCESSORY", setCount: 3 },
         ],
       },
       {
         slotId: "lower_b",
         exercises: [
-          { exerciseId: "romanian-deadlift", role: "CORE_COMPOUND", setCount: 3 },
-          { exerciseId: "lying-leg-curl", role: "ACCESSORY", setCount: 2 },
-          { exerciseId: "leg-press", role: "CORE_COMPOUND", setCount: 3 },
-          { exerciseId: "standing-calf-raise", role: "ACCESSORY", setCount: 3 },
+          { exerciseId: "stiff-legged-deadlift", role: "CORE_COMPOUND", setCount: 3 },
+          { exerciseId: "seated-leg-curl", role: "ACCESSORY", setCount: 3 },
+          { exerciseId: "bulgarian-split-squat", role: "ACCESSORY", setCount: 3 },
+          { exerciseId: "seated-calf-raise", role: "ACCESSORY", setCount: 3 },
         ],
       },
     ],
@@ -113,35 +119,40 @@ function slotSequenceJson() {
 
 function exerciseCatalog(): ExerciseRow[] {
   return [
-    exercise("Machine Chest Press"),
-    exercise("Chest Supported Row"),
-    exercise("Neutral Grip Pulldown"),
-    exercise("Rear Delt Reverse Fly"),
-    exercise("Rope Pressdown"),
-    exercise("Hack Squat"),
-    exercise("Leg Extension"),
-    exercise("Seated Leg Curl"),
-    exercise("Standing Calf Raise"),
-    exercise("Assisted Pull Up"),
-    exercise("Cable Fly"),
-    exercise("Cable Row"),
-    exercise("Cable Lateral Raise"),
-    exercise("Cable Curl"),
-    exercise("Romanian Deadlift"),
-    exercise("Lying Leg Curl"),
-    exercise("Leg Press"),
-    exercise("Incline DB Bench Press"),
-    exercise("T-Bar Row"),
-    exercise("Lat Pulldown"),
+    exercise("Incline Machine Press"),
+    exercise("Close-Grip Seated Cable Row"),
+    exercise("Close-Grip Lat Pulldown"),
     exercise("Cable Rear Delt Fly"),
-    exercise("Cable Triceps Pressdown"),
-    exercise("Torso Rotation"),
-    exercise("Barbell Back Squat"),
-    exercise("DB RDL"),
-    exercise("DB Overhead Press"),
-    exercise("Close-Grip Pulldown"),
     exercise("Machine Lateral Raise"),
-    exercise("EZ Bar Curl"),
+    exercise("Cable Triceps Pushdown", undefined, [
+      "Triceps Pushdown",
+      "Tricep Rope Pushdown",
+    ]),
+    exercise("Belt Squat"),
+    exercise("Leg Extension"),
+    exercise("Lying Leg Curl"),
+    exercise("Seated Calf Raise"),
+    exercise("Machine Shoulder Press"),
+    exercise("Lat Pulldown"),
+    exercise("Cable Fly"),
+    exercise("Seated Cable Row"),
+    exercise("Barbell Curl"),
+    exercise("Stiff-Legged Deadlift"),
+    exercise("Seated Leg Curl"),
+    exercise("Bulgarian Split Squat"),
+    exercise("Incline Dumbbell Bench Press", undefined, ["Incline DB Press"]),
+    exercise("T-Bar Row"),
+    exercise("Machine Chest Press"),
+    exercise("Standing Calf Raise"),
+    exercise("Cable Lateral Raise"),
+    exercise("Romanian Deadlift", undefined, ["DB Romanian Deadlift"]),
+    exercise("Barbell Back Squat"),
+    exercise("Dumbbell Overhead Press", undefined, [
+      "DB Shoulder Press",
+      "Dumbbell Shoulder Press",
+    ]),
+    exercise("EZ-Bar Curl"),
+    exercise("Torso Rotation"),
   ];
 }
 
@@ -246,26 +257,13 @@ function safeMesocycle(overrides: Record<string, unknown> = {}) {
 }
 
 function validPerformedSessions(): BackfillSessionDefinition[] {
-  return TRANSITION_WEEK_BACKFILL_SESSIONS.map((session) => {
-    if (session.slotId !== "upper_a") {
-      return { ...session, performed: session.performed.map((entry) => ({ ...entry })) };
-    }
-
-    return {
-      ...session,
-      performed: session.performed.map((entry) =>
-        entry.performedName === "Torso Rotation"
-          ? {
-              ...entry,
-              sets: [
-                { reps: 12, load: 120 },
-                { reps: 12, load: 120 },
-              ],
-            }
-          : { ...entry },
-      ),
-    };
-  });
+  return TRANSITION_WEEK_BACKFILL_SESSIONS.map((session) => ({
+    ...session,
+    performed: session.performed.map((entry) => ({
+      ...entry,
+      sets: entry.sets.map((set) => ({ ...set })),
+    })),
+  }));
 }
 
 function createFixture(input: {
@@ -453,6 +451,16 @@ describe("backfillWeek1PerformedSessions", () => {
     const result = await runBackfill(fixture);
 
     expect(result.dryRun).toBe(true);
+    expect(result.safety.blockers).toEqual([]);
+    expect(result.dryRunSummary.totals).toEqual({
+      workouts: 3,
+      workoutExercises: 19,
+      workoutSets: 61,
+      performedSetLogs: 54,
+      skippedSetLogs: 7,
+      runtimeEditOps: 22,
+    });
+    expect(result.expectedNextSlotAfterWrite.slotId).toBe("lower_b");
     expect(result.write.dbWriteOccurred).toBe(false);
     expect(fixture.state.createdWorkouts).toHaveLength(0);
     expect(fixture.state.createdWorkoutExercises).toHaveLength(0);
@@ -471,12 +479,42 @@ describe("backfillWeek1PerformedSessions", () => {
     expect(fixture.state.createdWorkouts).toHaveLength(0);
   });
 
-  it("blocks the production payload while Upper A Torso Rotation has load-only rows", async () => {
+  it("omits skipped Torso Rotation rows from the default production payload", async () => {
     const fixture = createFixture();
 
-    const result = await runBackfill(fixture, {
-      sessions: TRANSITION_WEEK_BACKFILL_SESSIONS,
-    });
+    const result = await runBackfill(fixture);
+
+    expect(result.safety.eligible).toBe(true);
+    expect(result.safety.blockers).toEqual([]);
+    expect(
+      result.dryRunSummary.slots.flatMap((slot) =>
+        slot.mappings.map((mapping) => mapping.performedName),
+      ),
+    ).not.toContain("Torso Rotation");
+  });
+
+  it("blocks if a provided performed row has load-only sets", async () => {
+    const fixture = createFixture();
+    const sessions = validPerformedSessions();
+    sessions[0] = {
+      ...sessions[0]!,
+      performed: [
+        ...sessions[0]!.performed,
+        {
+          performedName: "Torso Rotation",
+          searchTerms: ["Torso Rotation", "Rotary Torso"],
+          kind: "added",
+          section: "ACCESSORY",
+          isMainLift: false,
+          sets: [
+            { load: 120, note: "Source log supplied load-only value: 120" },
+            { load: 120, note: "Source log supplied load-only value: 120" },
+          ],
+        },
+      ],
+    };
+
+    const result = await runBackfill(fixture, { sessions });
 
     expect(result.safety.eligible).toBe(false);
     expect(result.safety.blockers).toContain("performed_set_missing_reps_or_rpe");
@@ -520,22 +558,37 @@ describe("backfillWeek1PerformedSessions", () => {
         expect.objectContaining({
           kind: "replace_exercise",
           facts: expect.objectContaining({
-            fromExerciseId: "machine-chest-press",
-            toExerciseId: "incline-db-bench-press",
+            fromExerciseId: "incline-machine-press",
+            toExerciseId: "incline-dumbbell-bench-press",
+            reason: "transition_week_backfill_substitution",
+          }),
+        }),
+        expect.objectContaining({
+          kind: "replace_exercise",
+          facts: expect.objectContaining({
+            fromExerciseId: "cable-fly",
+            toExerciseId: "machine-chest-press",
             reason: "transition_week_backfill_substitution",
           }),
         }),
         expect.objectContaining({
           kind: "add_exercise",
           facts: expect.objectContaining({
-            exerciseId: "cable-fly",
+            exerciseId: "romanian-deadlift",
+            prescriptionSource: "generic_accessory_fallback",
+          }),
+        }),
+        expect.objectContaining({
+          kind: "add_exercise",
+          facts: expect.objectContaining({
+            exerciseId: "cable-lateral-raise",
             prescriptionSource: "generic_accessory_fallback",
           }),
         }),
         expect.objectContaining({
           kind: "add_set",
           facts: expect.objectContaining({
-            exerciseId: "lat-pulldown",
+            exerciseId: "machine-chest-press",
           }),
         }),
       ]),
@@ -548,6 +601,11 @@ describe("backfillWeek1PerformedSessions", () => {
         String(log.notes ?? "").includes("skipped/unperformed outside app"),
       ),
     ).toBe(true);
+    expect(
+      fixture.state.createdSetLogs.filter((log) =>
+        String(log.notes ?? "").includes("per-hand dumbbell load"),
+      ),
+    ).toHaveLength(3);
     expect(fixture.state.mesocycle?.accumulationSessionsCompleted).toBe(3);
     expect(result.expectedNextSlotAfterWrite.slotId).toBe("lower_b");
 

@@ -48,7 +48,7 @@ const CLASS_INTENT_EXERCISE_CLASSES: Record<string, string[]> = {
   optional_glute_core_only_if_recoverable: ["glute_or_core_accessory"],
   optional_triceps_if_direct_floor_still_under_target: ["triceps_isolation"],
   quad_isolation_or_support: ["leg_extension", "quad_isolation"],
-  quad_support: ["squat", "leg_press", "lunge", "quad_isolation"],
+  quad_support: ["leg_press", "squat_pattern", "quad_isolation", "lunge"],
   rear_delt_isolation: ["rear_delt_isolation"],
   row_horizontal_pull_anchor: [
     "horizontal_pull",
@@ -68,6 +68,7 @@ const CLASS_INTENT_EXERCISE_CLASSES: Record<string, string[]> = {
   triceps_isolation_or_pressdown: ["triceps_isolation", "pressdown"],
   vertical_pull_anchor: ["vertical_pull"],
   vertical_pull_support: ["vertical_pull"],
+  vertical_press_support: ["vertical_press"],
 };
 
 function uniqueSorted(values: string[]): string[] {

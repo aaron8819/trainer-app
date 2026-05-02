@@ -166,6 +166,28 @@ const SUPPORT_LANE_SPECS: SupportLanePolicySpec[] = [
   },
   {
     muscle: "Side Delts",
+    owningSlotId: "upper_a",
+    owningLaneId: "side_delt_isolation",
+    directFloorMin: 2,
+    preferredDirectSets: { min: 2, preferred: 2, max: 2 },
+    collateralCreditLimit: {
+      maxWeeklyEffectiveSetsCreditable: 1,
+      collateralSources: ["ohp", "vertical_press"],
+      creditAppliesToWeeklyTotalOnly: true,
+    },
+    optionalActivationRule: {
+      type: "not_applicable",
+      diagnosticOnly: true,
+    },
+    expansionPolicy: {
+      firstChoice: "upper_a_second_direct_side_delt_isolation_exposure",
+      supplementalOnly: ["ohp_vertical_press_collateral"],
+      avoidAsPrimarySolution: ["vertical_press_collateral_as_side_delt_solution"],
+      provisionalOrDiagnosticOnly: [],
+    },
+  },
+  {
+    muscle: "Side Delts",
     owningSlotId: "upper_b",
     owningLaneId: "side_delt_isolation",
     directFloorMin: 3,
@@ -191,7 +213,7 @@ const SUPPORT_LANE_SPECS: SupportLanePolicySpec[] = [
     owningSlotId: "upper_a",
     owningLaneId: "rear_delt",
     directFloorMin: 2,
-    preferredDirectSets: { min: 2, preferred: 3, max: 3 },
+    preferredDirectSets: { min: 2, preferred: 2, max: 2 },
     collateralCreditLimit: {
       maxWeeklyEffectiveSetsCreditable: 1,
       collateralSources: ["row", "horizontal_pull", "vertical_pull"],

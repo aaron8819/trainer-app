@@ -10,11 +10,16 @@ import { buildV2TargetSkeleton } from "./target-skeleton";
 
 function policyByMuscle(
   muscle: "Triceps" | "Side Delts" | "Rear Delts" | "Biceps",
+  owningSlotId?: string,
 ) {
   const policy = buildV2SupportLanePolicy({
     targetSkeleton: buildV2TargetSkeleton(),
   });
-  const row = policy.supportLanes.find((lane) => lane.muscle === muscle);
+  const row = policy.supportLanes.find(
+    (lane) =>
+      lane.muscle === muscle &&
+      (!owningSlotId || lane.owningSlotId === owningSlotId),
+  );
   if (!row) {
     throw new Error(`Missing support policy for ${muscle}`);
   }
@@ -38,8 +43,8 @@ describe("buildV2SupportLanePolicy", () => {
         allocationTiming: "before_exercise_selection",
       },
       summary: {
-        policyCount: 4,
-        requiredDirectFloorCount: 4,
+        policyCount: 5,
+        requiredDirectFloorCount: 5,
         optionalConditionalLaneCount: 1,
       },
     });
@@ -80,9 +85,21 @@ describe("buildV2SupportLanePolicy", () => {
   });
 
   it("prioritizes Side Delts direct lateral raise work over OHP collateral", () => {
-    const sideDelts = policyByMuscle("Side Delts");
+    const upperA = policyByMuscle("Side Delts", "upper_a");
+    const upperB = policyByMuscle("Side Delts", "upper_b");
 
-    expect(sideDelts).toMatchObject({
+    expect(upperA).toMatchObject({
+      owningSlotId: "upper_a",
+      owningLaneId: "side_delt_isolation",
+      directFloor: {
+        minDirectSets: 2,
+        requiredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
+        collateralCanSatisfyDirectFloor: false,
+      },
+      preferredDirectSets: { min: 2, preferred: 2, max: 2 },
+      collateralCanSatisfyDirectFloor: false,
+    });
+    expect(upperB).toMatchObject({
       owningSlotId: "upper_b",
       owningLaneId: "side_delt_isolation",
       directFloor: {
@@ -93,11 +110,14 @@ describe("buildV2SupportLanePolicy", () => {
       preferredDirectSets: { min: 3, preferred: 4, max: 4 },
       collateralCanSatisfyDirectFloor: false,
     });
-    expect(sideDelts.expansionPolicy.firstChoice).toContain("lateral_raise");
-    expect(sideDelts.expansionPolicy.supplementalOnly).toContain(
+    expect(upperA.expansionPolicy.firstChoice).toContain(
+      "second_direct_side_delt",
+    );
+    expect(upperB.expansionPolicy.firstChoice).toContain("lateral_raise");
+    expect(upperB.expansionPolicy.supplementalOnly).toContain(
       "ohp_vertical_press_collateral",
     );
-    expect(sideDelts.expansionPolicy.avoidAsPrimarySolution).toContain(
+    expect(upperB.expansionPolicy.avoidAsPrimarySolution).toContain(
       "vertical_press_collateral_as_side_delt_solution",
     );
   });
@@ -113,7 +133,7 @@ describe("buildV2SupportLanePolicy", () => {
         requiredExerciseClasses: ["rear_delt_isolation"],
         collateralCanSatisfyDirectFloor: false,
       },
-      preferredDirectSets: { min: 2, preferred: 3, max: 3 },
+      preferredDirectSets: { min: 2, preferred: 2, max: 2 },
       collateralCanSatisfyDirectFloor: false,
     });
     expect(rearDelts.expansionPolicy.firstChoice).toBe(
@@ -206,7 +226,7 @@ describe("buildV2SupportLanePolicy", () => {
       readOnly: true,
       affectsScoringOrGeneration: false,
       summary: {
-        policyCount: 4,
+        policyCount: 5,
       },
     });
   });

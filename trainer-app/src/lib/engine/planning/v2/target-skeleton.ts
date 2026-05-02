@@ -10,7 +10,7 @@ export const V2_TARGET_SLOT_SEQUENCE: V2PlannerSlotId[] = [
 export const V2_TARGET_SLOT_SKELETON: V2PlannerSlotDefinition[] = [
   {
     slotId: "upper_a",
-    intent: "horizontal push/pull + rear delt/triceps support",
+    intent: "horizontal push/pull + rear/side delt/triceps support",
     targetSessionSets: { min: 15, max: 20 },
     lanes: [
       {
@@ -52,7 +52,16 @@ export const V2_TARGET_SLOT_SKELETON: V2PlannerSlotDefinition[] = [
         role: "accessory",
         primaryMuscles: ["Rear Delts"],
         preferredExerciseClasses: ["rear_delt_isolation"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
+        targetSets: { min: 2, preferred: 2, max: 2 },
+      },
+      {
+        laneId: "side_delt_isolation",
+        targetLaneId: "side_delt_support",
+        required: true,
+        role: "accessory",
+        primaryMuscles: ["Side Delts"],
+        preferredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
+        targetSets: { min: 2, preferred: 2, max: 2 },
       },
       {
         laneId: "triceps",
@@ -120,11 +129,12 @@ export const V2_TARGET_SLOT_SKELETON: V2PlannerSlotDefinition[] = [
     lanes: [
       {
         laneId: "vertical_press",
-        required: false,
-        role: "optional",
+        targetLaneId: "vertical_press_support",
+        required: true,
+        role: "support",
         primaryMuscles: ["Front Delts"],
         preferredExerciseClasses: ["vertical_press"],
-        targetSets: { min: 0, preferred: 0, max: 3 },
+        targetSets: { min: 2, preferred: 2, max: 2 },
       },
       {
         laneId: "vertical_pull_anchor",
@@ -142,7 +152,7 @@ export const V2_TARGET_SLOT_SKELETON: V2PlannerSlotDefinition[] = [
         role: "support",
         primaryMuscles: ["Chest"],
         preferredExerciseClasses: ["distinct_chest_press_or_fly"],
-        targetSets: { min: 3, preferred: 4, max: 4 },
+        targetSets: { min: 3, preferred: 3, max: 3 },
       },
       {
         laneId: "row_support",
@@ -209,7 +219,12 @@ export const V2_TARGET_SLOT_SKELETON: V2PlannerSlotDefinition[] = [
         required: true,
         role: "support",
         primaryMuscles: ["Quads"],
-        preferredExerciseClasses: ["squat", "leg_press", "lunge", "quad_isolation"],
+        preferredExerciseClasses: [
+          "leg_press",
+          "squat_pattern",
+          "quad_isolation",
+          "lunge",
+        ],
         targetSets: { min: 2, preferred: 3, max: 3 },
       },
       {

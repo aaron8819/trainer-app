@@ -274,11 +274,26 @@ describe("buildV2ExerciseClassDistributionBySlot", () => {
     });
   });
 
-  it("keeps side delt direct class separate from vertical-press collateral", () => {
+  it("keeps side delt direct classes separate from vertical-press support", () => {
     const { weeklyDemandCurve, distribution } = buildFixture();
+    const upperASideDeltLane = lane(distribution, "upper_a", "side_delt_isolation");
     const sideDeltLane = lane(distribution, "upper_b", "side_delt_isolation");
     const verticalPress = lane(distribution, "upper_b", "vertical_press");
 
+    expect(upperASideDeltLane).toMatchObject({
+      classLaneKind: "support_class_lane",
+      primaryMuscles: ["Side Delts"],
+      supportMuscles: ["Side Delts"],
+      classIntents: ["lateral_raise_low_collateral_side_delt"],
+      requiredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
+      ownershipRows: [
+        expect.objectContaining({
+          muscle: "Side Delts",
+          ownershipKind: "direct_support",
+          demandShare: 1 / 3,
+        }),
+      ],
+    });
     expect(sideDeltLane).toMatchObject({
       classLaneKind: "support_class_lane",
       primaryMuscles: ["Side Delts"],
@@ -289,24 +304,24 @@ describe("buildV2ExerciseClassDistributionBySlot", () => {
         expect.objectContaining({
           muscle: "Side Delts",
           ownershipKind: "direct_support",
-          demandShare: 1,
+          demandShare: 2 / 3,
         }),
       ],
     });
     expect(sumRanges(positiveOwnershipRowsForMuscle(distribution, "Side Delts")))
       .toEqual(weekDemand(weeklyDemandCurve, "Side Delts"));
     expect(verticalPress).toMatchObject({
-      classLaneKind: "managed_collateral_marker",
-      primaryMuscles: [],
-      supportMuscles: [],
-      managedCollateralMuscles: ["Front Delts"],
-      requiredExerciseClasses: [],
+      classLaneKind: "support_class_lane",
+      primaryMuscles: ["Front Delts"],
+      supportMuscles: ["Front Delts"],
+      managedCollateralMuscles: [],
+      requiredExerciseClasses: ["vertical_press"],
       preferredExerciseClasses: ["vertical_press"],
       ownershipRows: [
         expect.objectContaining({
           muscle: "Front Delts",
-          ownershipKind: "managed_collateral",
-          classIntent: "managed_vertical_press_collateral",
+          ownershipKind: "support_exposure",
+          classIntent: "vertical_press_support",
         }),
       ],
     });
@@ -388,7 +403,12 @@ describe("buildV2ExerciseClassDistributionBySlot", () => {
     });
     expect(lane(distribution, "lower_b", "quad_support")).toMatchObject({
       classLaneKind: "support_class_lane",
-      requiredExerciseClasses: ["squat", "leg_press", "lunge", "quad_isolation"],
+      requiredExerciseClasses: [
+        "leg_press",
+        "squat_pattern",
+        "quad_isolation",
+        "lunge",
+      ],
     });
     expect(sumRanges(rows)).toEqual(weekDemand(weeklyDemandCurve, "Quads"));
   });
@@ -403,7 +423,6 @@ describe("buildV2ExerciseClassDistributionBySlot", () => {
       .toEqual([
         "lower_a:secondary_hinge:Glutes",
         "lower_a:secondary_hinge:Lower Back",
-        "upper_b:vertical_press:Front Delts",
         "lower_b:hinge_anchor:Glutes",
         "lower_b:hinge_anchor:Lower Back",
       ]);
@@ -413,7 +432,7 @@ describe("buildV2ExerciseClassDistributionBySlot", () => {
       true,
     );
     expect(lane(distribution, "upper_b", "vertical_press").requiredExerciseClasses)
-      .toEqual([]);
+      .toEqual(["vertical_press"]);
     expect(lane(distribution, "lower_a", "secondary_hinge").requiredExerciseClasses)
       .toEqual([]);
   });

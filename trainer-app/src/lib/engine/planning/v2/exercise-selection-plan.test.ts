@@ -105,7 +105,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
   it("represents required lanes and capacity sourced from SelectionCapacityPlan", () => {
     expect(slot(2, "upper_a")).toMatchObject({
       maxExerciseCount: 6,
-      targetSessionSets: { min: 15, preferred: 15, max: 17 },
+      targetSessionSets: { min: 15, preferred: 16, max: 18 },
     });
     expect(lane(2, "upper_a", "chest_anchor")).toMatchObject({
       requirement: "required",
@@ -173,16 +173,16 @@ describe("buildV2ExerciseSelectionPlan", () => {
     });
   });
 
-  it("preserves ownership markers for managed collateral without making them selected demand", () => {
+  it("turns vertical press into required pattern support while keeping hinge collateral managed", () => {
     expect(lane(2, "upper_b", "vertical_press")).toMatchObject({
-      requirement: "optional",
-      classLaneKind: "managed_collateral_marker",
-      primaryMuscles: [],
-      managedCollateralMuscles: ["Front Delts"],
-      ownershipKinds: ["managed_collateral"],
+      requirement: "required",
+      classLaneKind: "support_class_lane",
+      primaryMuscles: ["Front Delts"],
+      managedCollateralMuscles: [],
+      ownershipKinds: ["support_exposure"],
       acceptableExerciseClasses: ["vertical_press"],
-      setBudget: { min: 0, preferred: 0, max: 0 },
-      setBudgetBasis: "managed_collateral_budget",
+      setBudget: { min: 2, preferred: 2, max: 3 },
+      setBudgetBasis: "class_ownership_allocation",
     });
     expect(lane(2, "lower_b", "hinge_anchor")).toMatchObject({
       classLaneKind: "owned_class_lane",
@@ -209,7 +209,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
       setBudgetBasis: "optional_activation_required",
     });
     expect(lane(2, "lower_b", "knee_flexion_curl")).toMatchObject({
-      setBudget: { min: 2, preferred: 2, max: 2 },
+      setBudget: { min: 2, preferred: 3, max: 3 },
       acceptableExerciseClasses: ["hamstring_curl"],
     });
   });

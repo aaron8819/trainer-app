@@ -196,7 +196,7 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
     const chestTotal = sumRanges(positiveRowsForMuscle(allocation, "Chest"));
 
     expect(rawHamstrings).toMatchObject({ preferred: 9, laneCount: 4 });
-    expect(rawChest).toMatchObject({ preferred: 11, laneCount: 3 });
+    expect(rawChest).toMatchObject({ preferred: 10, laneCount: 3 });
     expect(hamstringsTotal).toEqual(weekDemand(weeklyDemandCurve, 2, "Hamstrings"));
     expect(chestTotal).toEqual(weekDemand(weeklyDemandCurve, 2, "Chest"));
     expect(hamstringsTotal.preferred).toBeLessThan(rawHamstrings.preferred);
@@ -259,8 +259,8 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
     expect(sumRanges(rows)).toEqual(
       weekDemand(weeklyDemandCurve, 2, "Hamstrings"),
     );
-    expect(sumRanges(hingeRows).preferred).toBe(2.8);
-    expect(sumRanges(curlRows).preferred).toBe(3.2);
+    expect(sumRanges(hingeRows).preferred).toBe(3.8);
+    expect(sumRanges(curlRows).preferred).toBe(4.2);
   });
 
   it("distributes Calves across both lower slots", () => {
@@ -278,22 +278,33 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
     expect(sumRanges(rows)).toEqual(weekDemand(weeklyDemandCurve, 2, "Calves"));
   });
 
-  it("assigns Side Delts direct low-collateral ownership to Upper B", () => {
+  it("assigns Side Delts direct low-collateral ownership to both upper slots", () => {
     const { weeklyDemandCurve, allocation } = buildFixture();
     const rows = positiveRowsForMuscle(allocation, "Side Delts");
 
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      slotId: "upper_b",
-      laneId: "side_delt_isolation",
-      muscle: {
-        role: "support",
-        demandShare: 1,
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => ({
+      slotId: row.slotId,
+      laneId: row.laneId,
+      demandShare: row.muscle.demandShare,
+      classIntent: row.muscle.classIntent,
+      ownershipKind: row.muscle.ownershipKind,
+    }))).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "side_delt_isolation",
+        demandShare: 1 / 3,
         classIntent: "lateral_raise_low_collateral_side_delt",
         ownershipKind: "direct_support",
-        allocationBasis: "static_slot_exposure_ownership",
       },
-    });
+      {
+        slotId: "upper_b",
+        laneId: "side_delt_isolation",
+        demandShare: 2 / 3,
+        classIntent: "lateral_raise_low_collateral_side_delt",
+        ownershipKind: "direct_support",
+      },
+    ]);
     expect(sumRanges(rows)).toEqual(
       weekDemand(weeklyDemandCurve, 2, "Side Delts"),
     );
@@ -381,10 +392,23 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
     );
   });
 
-  it("keeps Front Delts, Glutes, and Lower Back as managed collateral instead of demand owners", () => {
+  it("keeps hip and axial fatigue managed while front delts get bounded vertical-press pattern support", () => {
     const { allocation } = buildFixture();
 
-    for (const muscle of ["Front Delts", "Glutes", "Lower Back"]) {
+    const frontDeltRows = rowsForMuscle(allocation, "Front Delts");
+    expect(frontDeltRows).toHaveLength(1);
+    expect(frontDeltRows[0]).toMatchObject({
+      slotId: "upper_b",
+      laneId: "vertical_press",
+      muscle: {
+        role: "support",
+        ownershipKind: "support_exposure",
+        classIntent: "vertical_press_support",
+        targetSetRange: { min: 0, preferred: 1, max: 3 },
+      },
+    });
+
+    for (const muscle of ["Glutes", "Lower Back"]) {
       const rows = rowsForMuscle(allocation, muscle);
       expect(rows.length).toBeGreaterThan(0);
       expect(sumRanges(rows)).toEqual({ min: 0, preferred: 0, max: 0 });

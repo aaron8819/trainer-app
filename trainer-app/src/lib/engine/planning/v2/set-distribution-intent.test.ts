@@ -177,7 +177,7 @@ describe("buildV2SetDistributionIntent", () => {
         "machine_press",
         "cable_press",
       ],
-      setBudget: { min: 2, preferred: 4, max: 4 },
+      setBudget: { min: 2, preferred: 3, max: 4 },
     });
     expect(sumPreferred([upperAChest, upperBChest])).toBeLessThanOrEqual(
       demandRange(buildPolicy(), "Chest").preferred,
@@ -211,7 +211,7 @@ describe("buildV2SetDistributionIntent", () => {
       week(plan).slots
         .flatMap((slotRow) => slotRow.lanes)
         .filter((laneRow) => laneRow.setBudget.preferred === 4),
-    ).toHaveLength(5);
+    ).toHaveLength(4);
   });
 
   it("keeps Hamstrings hinge and curl split within balanced demand", () => {
@@ -223,7 +223,7 @@ describe("buildV2SetDistributionIntent", () => {
       .toEqual([
         "hamstring_curl:2",
         "hinge_anchor:3",
-        "knee_flexion_curl:2",
+        "knee_flexion_curl:3",
       ]);
     expect(sumPreferred(hamstrings)).toBeLessThanOrEqual(
       demandRange(policy, "Hamstrings").max,
@@ -246,9 +246,19 @@ describe("buildV2SetDistributionIntent", () => {
     });
   });
 
-  it("plans Side Delts as direct work instead of vertical-press collateral only", () => {
+  it("plans Side Delts as two direct exposures and vertical press as pattern support", () => {
     const plan = intent();
 
+    expect(lane(plan, "upper_a", "side_delt_isolation")).toMatchObject({
+      classLaneKind: "support_class_lane",
+      primaryMuscles: ["Side Delts"],
+      directFloor: {
+        muscle: "Side Delts",
+        minDirectSets: 2,
+        collateralCanSatisfy: false,
+      },
+      setBudget: { min: 2, preferred: 2, max: 2, basis: "support_direct_floor" },
+    });
     expect(lane(plan, "upper_b", "side_delt_isolation")).toMatchObject({
       classLaneKind: "support_class_lane",
       primaryMuscles: ["Side Delts"],
@@ -260,10 +270,11 @@ describe("buildV2SetDistributionIntent", () => {
       setBudget: { min: 3, preferred: 4, max: 4, basis: "support_direct_floor" },
     });
     expect(lane(plan, "upper_b", "vertical_press")).toMatchObject({
-      classLaneKind: "managed_collateral_marker",
-      primaryMuscles: [],
-      managedCollateralMuscles: ["Front Delts"],
-      setBudget: { min: 0, preferred: 0, max: 0 },
+      classLaneKind: "support_class_lane",
+      primaryMuscles: ["Front Delts"],
+      managedCollateralMuscles: [],
+      preferredExerciseClasses: ["vertical_press"],
+      setBudget: { min: 2, preferred: 2, max: 3 },
     });
   });
 
@@ -272,7 +283,7 @@ describe("buildV2SetDistributionIntent", () => {
 
     expect(lane(plan, "upper_a", "rear_delt")).toMatchObject({
       directFloor: { muscle: "Rear Delts", minDirectSets: 2 },
-      setBudget: { min: 2, preferred: 3, max: 3, basis: "support_direct_floor" },
+      setBudget: { min: 2, preferred: 2, max: 2, basis: "support_direct_floor" },
     });
     expect(lane(plan, "upper_a", "triceps")).toMatchObject({
       directFloor: { muscle: "Triceps", minDirectSets: 2 },
@@ -335,14 +346,24 @@ describe("buildV2SetDistributionIntent", () => {
     );
 
     expect(managed.map((row) => `${row.laneId}:${row.managedCollateralMuscles.join("+")}`))
-      .toEqual([
-        "vertical_press:Front Delts",
-      ]);
+      .toEqual([]);
     expect(lane(plan, "lower_b", "hinge_anchor")).toMatchObject({
       managedCollateralMuscles: ["Glutes", "Lower Back"],
       setBudget: { min: 3, preferred: 3, max: 4 },
     });
     expect(managed.every((row) => row.setBudget.preferred === 0)).toBe(true);
+  });
+
+  it("keeps the representative accumulation base within the sane weekly set range", () => {
+    const plan = intent();
+    const accumulationTotal = week(plan, 2).slots.reduce(
+      (sum, row) => sum + row.targetSessionSets.preferred,
+      0,
+    );
+
+    expect(accumulationTotal).toBe(58);
+    expect(accumulationTotal).toBeGreaterThanOrEqual(56);
+    expect(accumulationTotal).toBeLessThanOrEqual(60);
   });
 
   it("prevents default 5-set stacking and stays within slot capacity", () => {

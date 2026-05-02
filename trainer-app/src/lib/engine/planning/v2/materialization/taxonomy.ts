@@ -111,6 +111,7 @@ export type V2AnchorLaneQuality = {
   laneFamily:
     | "chest_anchor"
     | "squat_anchor"
+    | "quad_support"
     | "hinge_anchor"
     | "vertical_pull"
     | "row"
@@ -137,6 +138,8 @@ export function evaluateV2AnchorLaneQuality(
       return evaluateChestAnchorQuality(exercise, match);
     case "squat_anchor":
       return evaluateSquatAnchorQuality(exercise, match);
+    case "quad_support":
+      return evaluateQuadSupportQuality(exercise, match);
     case "hinge_anchor":
       return evaluateHingeAnchorQuality(exercise, match);
     case "vertical_pull":
@@ -225,6 +228,9 @@ function anchorLaneFamily(
   }
   if (laneId === "squat_anchor") {
     return "squat_anchor";
+  }
+  if (laneId === "quad_support") {
+    return "quad_support";
   }
   if (laneId === "hinge_anchor") {
     return "hinge_anchor";
@@ -326,6 +332,23 @@ function isSupportOnlySquat(exercise: V2MaterializationExercise): boolean {
   ]);
 }
 
+function isLoadableQuadSupport(exercise: V2MaterializationExercise): boolean {
+  const text = normalizedFields(exercise);
+  return (
+    isLoadableSquatAnchor(exercise) ||
+    hasAnyText(text, [
+      "bulgarian split squat",
+      "split squat",
+      "rear foot elevated split squat",
+      "front foot elevated split squat",
+      "smith split squat",
+      "dumbbell split squat",
+      "machine split squat",
+    ]) &&
+      hasLoadabilitySignal(exercise)
+  );
+}
+
 function isTrueHingeAnchor(exercise: V2MaterializationExercise): boolean {
   const text = normalizedFields(exercise);
   return (
@@ -418,6 +441,36 @@ function evaluateSquatAnchorQuality(
     isSupportOnlySquat(exercise)
       ? "support_only_squat_pattern"
       : "squat_pattern_lacks_loadability_signal",
+  ]);
+}
+
+function evaluateQuadSupportQuality(
+  exercise: V2MaterializationExercise,
+  match?: V2ExerciseClassMatch,
+): V2AnchorLaneQuality {
+  if (
+    match?.classId === "quad_isolation" &&
+    hasRelevantDirectMuscle(exercise, "Quads")
+  ) {
+    return quality("fallback", "quad_support", [
+      "quad_isolation_support_when_loadable_pattern_unavailable",
+    ]);
+  }
+  if (
+    match?.classId !== "squat_pattern" ||
+    !hasRelevantDirectMuscle(exercise, "Quads")
+  ) {
+    return quality("ineligible", "quad_support", ["missing_quad_support_class"]);
+  }
+  if (exercise.isCompound && isLoadableQuadSupport(exercise)) {
+    return quality("ideal", "quad_support", [
+      "loadable_quad_support_pattern",
+    ]);
+  }
+  return quality("fallback", "quad_support", [
+    isSupportOnlySquat(exercise)
+      ? "support_only_quad_pattern"
+      : "quad_support_lacks_loadability_signal",
   ]);
 }
 

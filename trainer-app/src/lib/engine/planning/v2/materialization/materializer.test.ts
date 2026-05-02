@@ -894,6 +894,87 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       .toBe("goblet-squat");
   });
 
+  it("keeps Goblet Squat behind loadable Lower B quad-support options", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "quad_support",
+          role: "support",
+          primaryMuscles: ["Quads"],
+          acceptableExerciseClasses: [
+            "leg_press",
+            "squat_pattern",
+            "quad_isolation",
+            "lunge",
+          ],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "goblet-squat",
+          name: "Goblet Squat",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["squat"],
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "leg-press",
+          name: "Leg Press",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["leg_press"],
+          isCompound: true,
+          fatigueCost: 2,
+        }),
+      ],
+      favoriteExerciseIds: ["goblet-squat"],
+    });
+
+    expect(exerciseForLane(result, "upper_a", "quad_support").exerciseId)
+      .toBe("leg-press");
+  });
+
+  it("keeps generic lunge fallback behind leg press for Lower B quad support", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "quad_support",
+          role: "support",
+          primaryMuscles: ["Quads"],
+          acceptableExerciseClasses: [
+            "leg_press",
+            "squat_pattern",
+            "quad_isolation",
+            "lunge",
+          ],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "reverse-lunge",
+          name: "Reverse Lunge",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["lunge"],
+          equipment: ["dumbbell"],
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "leg-press",
+          name: "Leg Press",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["leg_press"],
+          isCompound: true,
+          fatigueCost: 2,
+        }),
+      ],
+      favoriteExerciseIds: ["reverse-lunge"],
+    });
+
+    expect(exerciseForLane(result, "upper_a", "quad_support").exerciseId)
+      .toBe("leg-press");
+  });
+
   it("keeps Cable Pull-Through behind true hinge anchors", () => {
     const result = materialize({
       plan: plan([
@@ -1543,7 +1624,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(exerciseForLane(result, "upper_b", "chest_second_exposure"))
       .toMatchObject({
         exerciseId: "cable-fly",
-        setCount: 4,
+        setCount: 3,
       });
     expect(exerciseForLane(result, "upper_a", "row_anchor")).toMatchObject({
       exerciseId: "chest-supported-row",
@@ -1563,9 +1644,19 @@ describe("buildV2ExerciseMaterializationPlan", () => {
         exerciseId: "cable-lateral-raise",
         setCount: 4,
       });
+    expect(exerciseForLane(result, "upper_a", "side_delt_isolation"))
+      .toMatchObject({
+        exerciseId: "cable-lateral-raise",
+        setCount: 2,
+      });
+    expect(exerciseForLane(result, "upper_b", "vertical_press"))
+      .toMatchObject({
+        exerciseId: "machine-shoulder-press",
+        setCount: 2,
+      });
     expect(exerciseForLane(result, "upper_a", "rear_delt")).toMatchObject({
       exerciseId: "rear-delt-fly",
-      setCount: 3,
+      setCount: 2,
     });
     expect(exerciseForLane(result, "lower_b", "hinge_anchor")).toMatchObject({
       exerciseId: "romanian-deadlift",
@@ -1574,7 +1665,12 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(exerciseForLane(result, "lower_b", "knee_flexion_curl"))
       .toMatchObject({
         exerciseId: "lying-leg-curl",
-        setCount: 2,
+        setCount: 3,
+      });
+    expect(exerciseForLane(result, "lower_b", "quad_support"))
+      .toMatchObject({
+        exerciseId: "leg-press",
+        setCount: 3,
       });
     expect(exerciseForLane(result, "lower_a", "calves")).toMatchObject({
       exerciseId: "standing-calf-raise",
@@ -1589,20 +1685,11 @@ describe("buildV2ExerciseMaterializationPlan", () => {
         slotRow.exercises.filter((exerciseRow) => exerciseRow.setCount >= 5),
       ),
     ).toEqual([]);
-    expect(materializedLaneIds).not.toContain("upper_b:vertical_press");
     expect(
       result.omissions.find(
         (row) =>
           row.slotId === "lower_a" &&
           row.laneId === "secondary_hinge" &&
-          row.reason === "optional_not_activated",
-      ),
-    ).toBeDefined();
-    expect(
-      result.omissions.find(
-        (row) =>
-          row.slotId === "upper_b" &&
-          row.laneId === "vertical_press" &&
           row.reason === "optional_not_activated",
       ),
     ).toBeDefined();
@@ -1944,17 +2031,17 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(result.unsupportedClassCount).toBeGreaterThan(0);
     expect(result.seedShapeCompatibility.compatible).toBe(true);
     expect(result.executablePreviewCountBySlot).toEqual([
-      { slotId: "upper_a", exerciseCount: 5 },
+      { slotId: "upper_a", exerciseCount: 6 },
       { slotId: "lower_a", exerciseCount: 4 },
-      { slotId: "upper_b", exerciseCount: 5 },
+      { slotId: "upper_b", exerciseCount: 6 },
       { slotId: "lower_b", exerciseCount: 4 },
     ]);
     expect(result.requiredLaneCoverageBySlot).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           slotId: "upper_a",
-          requiredLaneCount: 5,
-          materializedRequiredLaneCount: 5,
+          requiredLaneCount: 6,
+          materializedRequiredLaneCount: 6,
           blockedRequiredLaneCount: 0,
           missingRequiredLaneIds: [],
         }),

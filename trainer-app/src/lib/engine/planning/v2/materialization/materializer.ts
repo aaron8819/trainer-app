@@ -335,6 +335,7 @@ function filterAnchorQualityCandidates(input: {
 function allowsAnchorFallback(laneId: string): boolean {
   return (
     laneId === "squat_anchor" ||
+    laneId === "quad_support" ||
     laneId === "hinge_anchor" ||
     laneId === "row_anchor" ||
     laneId === "row_support"

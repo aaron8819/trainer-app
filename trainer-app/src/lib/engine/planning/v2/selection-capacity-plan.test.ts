@@ -152,7 +152,7 @@ describe("buildV2SelectionCapacityPlan", () => {
       },
     });
     expect(lane(2, "upper_a", "rear_delt")).toMatchObject({
-      setBudget: { min: 2, preferred: 3, max: 3 },
+      setBudget: { min: 2, preferred: 2, max: 2 },
       perExerciseCap: {
         maxSetsWithoutJustification: 4,
         maxDirectExercises: 1,
@@ -166,13 +166,13 @@ describe("buildV2SelectionCapacityPlan", () => {
       slotId: "upper_b",
       slotIndex: 2,
       maxExerciseCount: 6,
-      targetSessionSets: { min: 15, preferred: 17, max: 18 },
+      targetSessionSets: { min: 15, preferred: 18, max: 21 },
     });
     expect(slot(2, "lower_b")).toMatchObject({
       slotId: "lower_b",
       slotIndex: 3,
       maxExerciseCount: 6,
-      targetSessionSets: { min: 10, preferred: 11, max: 13 },
+      targetSessionSets: { min: 10, preferred: 12, max: 14 },
     });
   });
 

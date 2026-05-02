@@ -105,10 +105,17 @@ export type V2BasePlanValidation = {
     exerciseClassCoverage: {
       chestDistinctUpperExposures: boolean;
       rowAndVerticalPullBalance: boolean;
+      verticalPressOrHighInclineShoulderPress: boolean;
       sideDeltDirectLateralRaiseClass: boolean;
+      sideDeltDirectExposureCount: number;
+      sideDeltSecondDirectExposure: boolean;
       rearDeltDirectSupportClass: boolean;
       hamstringsHingeAndCurl: boolean;
+      hamstringsDirectSets: number;
+      hamstringsDirectSetFloor: number;
+      hamstringsDirectSetFloorMet: boolean;
       quadsSquatPressAndSupport: boolean;
+      lowerBLoadableQuadSupport: boolean;
       calvesDirectLowerSlotWork: boolean;
       optionalLanesOmittedUnlessActivated: boolean;
       managedCollateralLanesNotMaterializedAsDirectDemand: boolean;
@@ -225,6 +232,8 @@ const GUARDRAILS: V2BasePlanValidation["guardrails"] = {
   consumedByDemandOrMaterializer: false,
 };
 
+const BASE_DIRECT_HAMSTRING_SET_FLOOR = 8;
+
 export function buildV2BasePlanValidation(
   input: V2BasePlanValidationInput,
 ): V2BasePlanValidation {
@@ -301,6 +310,7 @@ export function buildV2BasePlanValidation(
   });
   const warnings = buildWarnings({
     muscleCoverage,
+    classCoverage,
     setCountQuality,
     duplicateDistinctness,
     anchorLaneQuality,
@@ -313,6 +323,7 @@ export function buildV2BasePlanValidation(
     duplicateDistinctness,
     verticalPressDecision,
     muscleCoverage,
+    classCoverage,
   });
   const status = validationStatus({
     blockers,
@@ -709,6 +720,33 @@ function buildExerciseClassCoverage(input: {
   laneIndex: ReadonlyMap<string, PlanLane>;
   evidence: ReadonlyArray<MaterializedLaneEvidence>;
 }): V2BasePlanValidation["checks"]["exerciseClassCoverage"] {
+  const sideDeltDirectExposureCount = new Set(
+    input.evidence.flatMap((row) =>
+      row.match?.classId === "lateral_raise" &&
+      row.match.directMuscles.includes("Side Delts")
+        ? [`${row.slotId}:${row.laneId}`]
+        : [],
+    ),
+  ).size;
+  const hamstringsDirectSets = input.evidence.reduce(
+    (sum, row) =>
+      row.match?.directMuscles.includes("Hamstrings")
+        ? sum + row.exercise.setCount
+        : sum,
+    0,
+  );
+  const lowerBQuadSupport = input.evidence.find(
+    (row) => row.slotId === "lower_b" && row.laneId === "quad_support",
+  );
+  const lowerBLoadableQuadSupport =
+    lowerBQuadSupport?.inventoryExercise && lowerBQuadSupport.match
+      ? evaluateV2AnchorLaneQuality(
+          lowerBQuadSupport.laneId,
+          lowerBQuadSupport.inventoryExercise,
+          lowerBQuadSupport.match,
+        ).tier === "ideal"
+      : false;
+
   return {
     chestDistinctUpperExposures:
       hasLane({
@@ -752,12 +790,20 @@ function buildExerciseClassCoverage(input: {
         laneId: "row_support",
         classId: "horizontal_pull_support",
       }),
+    verticalPressOrHighInclineShoulderPress: hasLane({
+      evidence: input.evidence,
+      slotId: "upper_b",
+      laneId: "vertical_press",
+      classId: "vertical_press",
+    }),
     sideDeltDirectLateralRaiseClass: hasLane({
       evidence: input.evidence,
       slotId: "upper_b",
       laneId: "side_delt_isolation",
       classId: "lateral_raise",
     }),
+    sideDeltDirectExposureCount,
+    sideDeltSecondDirectExposure: sideDeltDirectExposureCount >= 2,
     rearDeltDirectSupportClass: hasLane({
       evidence: input.evidence,
       slotId: "upper_a",
@@ -783,6 +829,10 @@ function buildExerciseClassCoverage(input: {
         laneId: "knee_flexion_curl",
         classId: "knee_flexion_curl",
       }),
+    hamstringsDirectSets,
+    hamstringsDirectSetFloor: BASE_DIRECT_HAMSTRING_SET_FLOOR,
+    hamstringsDirectSetFloorMet:
+      hamstringsDirectSets >= BASE_DIRECT_HAMSTRING_SET_FLOOR,
     quadsSquatPressAndSupport:
       hasLane({
         evidence: input.evidence,
@@ -802,6 +852,7 @@ function buildExerciseClassCoverage(input: {
         laneId: "quad_support",
         classId: "squat_pattern",
       }),
+    lowerBLoadableQuadSupport,
     calvesDirectLowerSlotWork:
       hasLane({
         evidence: input.evidence,
@@ -1018,6 +1069,9 @@ function buildAnchorLaneQuality(input: {
     if (row.tier !== "fallback" || row.idealAlternativeCount <= 0) {
       return [];
     }
+    if (row.laneId === "quad_support") {
+      return [];
+    }
     const specificReason = specificFallbackBlockerReason(row);
     return [
       anchorQualityIssue({
@@ -1030,16 +1084,27 @@ function buildAnchorLaneQuality(input: {
     ];
   });
 
-  const warnings = rows.flatMap((row): V2BasePlanValidationIssue[] =>
-    row.tier === "fallback" && row.idealAlternativeCount === 0
+  const warnings = rows.flatMap((row): V2BasePlanValidationIssue[] => {
+    if (row.tier !== "fallback") {
+      return [];
+    }
+    if (row.laneId === "quad_support" && row.idealAlternativeCount > 0) {
+      return [
+        anchorQualityIssue({
+          row,
+          reason: `lower_b_quad_support_fallback_selected_while_loadable_option_exists:${row.slotId}:${row.exerciseName}:ideal_alternative_count=${row.idealAlternativeCount}`,
+        }),
+      ];
+    }
+    return row.idealAlternativeCount === 0
       ? [
           anchorQualityIssue({
             row,
             reason: `anchor_fallback_selected_no_ideal_alternative:${row.slotId}:${row.laneId}:${row.exerciseName}:${row.reasons.join("|")}`,
           }),
         ]
-      : [],
-  );
+      : [];
+  });
 
   return { rows, blockers, warnings };
 }
@@ -1235,6 +1300,7 @@ function buildBlockers(input: {
 
 function buildWarnings(input: {
   muscleCoverage: V2BasePlanValidation["checks"]["muscleCoverage"];
+  classCoverage: V2BasePlanValidation["checks"]["exerciseClassCoverage"];
   setCountQuality: V2BasePlanValidation["checks"]["setCountQuality"];
   duplicateDistinctness: V2BasePlanValidation["checks"]["duplicateDistinctness"];
   anchorLaneQuality: V2BasePlanValidation["checks"]["anchorLaneQuality"];
@@ -1260,6 +1326,44 @@ function buildWarnings(input: {
       reason: `managed_collateral_direct_work_ambiguity:${reason}`,
     })),
     ...input.anchorLaneQuality.warnings,
+    ...(input.classCoverage.verticalPressOrHighInclineShoulderPress
+      ? []
+      : [
+          {
+            category: "exercise_class_coverage",
+            reason:
+              "base_pattern_missing_vertical_press_or_high_incline_press",
+            slotId: "upper_b",
+            laneId: "vertical_press",
+          },
+        ]),
+    ...(input.classCoverage.sideDeltSecondDirectExposure
+      ? []
+      : [
+          {
+            category: "exercise_class_coverage",
+            reason: `side_delt_direct_exposure_count_below_base_floor:${input.classCoverage.sideDeltDirectExposureCount}/2`,
+          },
+        ]),
+    ...(input.classCoverage.hamstringsDirectSetFloorMet
+      ? []
+      : [
+          {
+            category: "muscle_coverage",
+            reason: `hamstrings_direct_sets_below_base_floor:${input.classCoverage.hamstringsDirectSets}/${input.classCoverage.hamstringsDirectSetFloor}`,
+          },
+        ]),
+    ...(input.classCoverage.lowerBLoadableQuadSupport
+      ? []
+      : [
+          {
+            category: "exercise_class_coverage",
+            reason:
+              "lower_b_quad_support_not_loadable_quad_support_pattern",
+            slotId: "lower_b",
+            laneId: "quad_support",
+          },
+        ]),
     ...(input.duplicateDistinctness.calfDuplicatePolicy ===
     "variant_diversity_preferred"
       ? [
@@ -1299,6 +1403,7 @@ function buildCoachQuality(input: {
   duplicateDistinctness: V2BasePlanValidation["checks"]["duplicateDistinctness"];
   verticalPressDecision: V2BasePlanValidation["checks"]["verticalPressDecision"];
   muscleCoverage: V2BasePlanValidation["checks"]["muscleCoverage"];
+  classCoverage: V2BasePlanValidation["checks"]["exerciseClassCoverage"];
 }): V2BasePlanValidation["checks"]["coachQuality"] {
   const gluteWarning = input.muscleCoverage.managedCollateralWarnings.find((row) =>
     row.startsWith("Glutes:"),
@@ -1329,9 +1434,11 @@ function buildCoachQuality(input: {
       },
       {
         question: "Is vertical press intentionally omitted or accidentally lost?",
-        answer: input.verticalPressDecision.targetSpecAlignmentIssue
-          ? "Current policy intentionally omits it as managed collateral, but the target skeleton still marks the lane required, so this is a target/spec alignment issue."
-          : "Vertical press is an aligned managed-collateral marker, not a required base-plan lane.",
+        answer: input.classCoverage.verticalPressOrHighInclineShoulderPress
+          ? "Vertical press is materialized as a planner-owned support lane in the balanced base."
+          : input.verticalPressDecision.targetSpecAlignmentIssue
+            ? "Current policy intentionally omits it as managed collateral, but the target skeleton still marks the lane required, so this is a target/spec alignment issue."
+            : "Vertical press is absent from the materialized base and should be recovered when inventory allows it.",
       },
       {
         question:
@@ -1355,7 +1462,23 @@ function buildCoachQuality(input: {
         question:
           "Are side/rear delts and biceps/triceps sufficiently covered?",
         answer:
-          "Yes for the static balanced base: they meet direct floors, while preferred support volume is reserved for future full-block strategy or specialization decisions.",
+          input.classCoverage.sideDeltSecondDirectExposure
+            ? "Yes for the static balanced base: side delts receive two direct exposures, rear delts keep a focused floor dose, and arms meet direct floors."
+            : "Side delts only have one direct exposure; a second direct isolation lane is preferred over relying on vertical-press collateral.",
+      },
+      {
+        question:
+          "Does Lower B quad support use a loadable pattern rather than a goblet-style fallback?",
+        answer: input.classCoverage.lowerBLoadableQuadSupport
+          ? "Yes; Lower B quad support selected a loadable quad-support pattern."
+          : "No; Lower B quad support is fallback-quality and should prefer leg press, machine squat, hack/smith, or loadable split-squat patterns when available.",
+      },
+      {
+        question:
+          "Do hamstrings meet the updated direct base floor?",
+        answer: input.classCoverage.hamstringsDirectSetFloorMet
+          ? `Yes; direct hamstring sets are ${input.classCoverage.hamstringsDirectSets}.`
+          : `No; direct hamstring sets are ${input.classCoverage.hamstringsDirectSets}, below the ${input.classCoverage.hamstringsDirectSetFloor}-set base floor.`,
       },
       {
         question:
@@ -1414,6 +1537,10 @@ function nextSafeAction(input: {
   if (
     input.warnings.some((warning) =>
       warning.category === "vertical_press_decision" ||
+      warning.reason.includes("base_pattern_missing_vertical_press") ||
+      warning.reason.includes("side_delt_direct_exposure_count") ||
+      warning.reason.includes("hamstrings_direct_sets_below_base_floor") ||
+      warning.reason.includes("lower_b_quad_support") ||
       warning.category === "anchor_lane_quality" ||
       warning.reason.includes("managed_collateral_direct_work_ambiguity"),
     )

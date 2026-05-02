@@ -78,7 +78,7 @@ describe("buildV2MesocycleDemand", () => {
       targetStatus: "hard",
       targetMode: "default",
       landmark: expect.objectContaining({ mev: 10, mav: 16 }),
-      baselineSetRange: { min: 8, preferred: 9, max: 11 },
+      baselineSetRange: { min: 7, preferred: 8, max: 10 },
       exposureCount: 2,
       directness: expect.objectContaining({
         directSetFloor: 6,
@@ -95,7 +95,7 @@ describe("buildV2MesocycleDemand", () => {
       role: "support",
       targetStatus: "soft",
       directness: expect.objectContaining({
-        directSetFloor: 3,
+        directSetFloor: 4,
         collateralCanSatisfyFloor: false,
       }),
     });
@@ -150,8 +150,8 @@ describe("buildV2MesocycleDemand", () => {
       laneCount: 4,
     });
     expect(hamstrings).toMatchObject({
-      baselineSetRange: { min: 4, preferred: 6, max: 8 },
-      exposureCount: 2,
+      baselineSetRange: { min: 6, preferred: 8, max: 9 },
+      exposureCount: 3,
       directness: expect.objectContaining({
         requiredClassIntents: ["hinge_compound", "knee_flexion_curl"],
       }),
@@ -168,11 +168,11 @@ describe("buildV2MesocycleDemand", () => {
 
   it("keeps major target muscles in sane min/preferred/max ranges", () => {
     const expectedRanges = new Map<string, V2PlannerSetRange>([
-      ["Chest", { min: 8, preferred: 9, max: 11 }],
+      ["Chest", { min: 7, preferred: 8, max: 10 }],
       ["Lats", { min: 7, preferred: 9, max: 12 }],
       ["Upper Back", { min: 5, preferred: 7, max: 10 }],
       ["Quads", { min: 7, preferred: 9, max: 12 }],
-      ["Hamstrings", { min: 4, preferred: 6, max: 8 }],
+      ["Hamstrings", { min: 6, preferred: 8, max: 9 }],
     ]);
 
     for (const [muscle, range] of expectedRanges) {
@@ -191,8 +191,8 @@ describe("buildV2MesocycleDemand", () => {
       targetStatus: "soft",
       baselineSetRange: { min: 4, preferred: 6, max: 8 },
       directness: {
-        directSetFloor: 3,
-        preferredDirectSets: 4,
+        directSetFloor: 4,
+        preferredDirectSets: 6,
         collateralCreditLimit: 2,
         collateralCanSatisfyFloor: false,
         requiredClassIntents: ["lateral_raise", "low_collateral_side_delt"],
@@ -264,7 +264,12 @@ describe("buildV2MesocycleDemand", () => {
       preferredExerciseClasses: ["squat_pattern"],
     });
     expect(laneFor(skeleton, "lower_b", "quad_support")).toMatchObject({
-      preferredExerciseClasses: ["squat", "leg_press", "lunge", "quad_isolation"],
+      preferredExerciseClasses: [
+        "leg_press",
+        "squat_pattern",
+        "quad_isolation",
+        "lunge",
+      ],
     });
     expect(laneFor(skeleton, "lower_b", "hinge_anchor")).toMatchObject({
       preferredExerciseClasses: [

@@ -367,6 +367,21 @@ function roleSensitiveBasePreferred(input: {
   if (input.phase !== "deload" && input.directSupportPolicy) {
     return input.directSupportPolicy.preferredDirectSets.preferred;
   }
+  if (hasClassIntent(input.lane, "vertical_press_support")) {
+    return 2;
+  }
+  if (hasClassIntent(input.lane, "distinct_second_chest_press_or_fly")) {
+    return 3;
+  }
+  if (hasClassIntent(input.lane, "hinge_primary")) {
+    return 3;
+  }
+  if (
+    input.slotId === "lower_b" &&
+    hasClassIntent(input.lane, "knee_flexion_curl_support")
+  ) {
+    return 3;
+  }
   if (hasClassIntent(input.lane, "row_horizontal_pull_anchor")) {
     return 3;
   }

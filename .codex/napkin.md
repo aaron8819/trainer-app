@@ -100,6 +100,7 @@
 | 2026-05-02 | self | Repeated the V2 barrel export mistake in a live materializer ranking probe and failed on `normalizeV2MaterializationText is not a function`. | For ranking probes, import `normalizeV2MaterializationText` / class helpers from the materialization taxonomy module first, and only use the V2 barrel for public builders/types. |
 | 2026-05-02 | self | Repeated the Windows wildcard-path `rg` mistake while searching `trainer-app\src\lib\engine\planning\v2\*.test.ts` and got an invalid path error. | Use `rg <pattern> <real-directory> -g "*.test.ts"` or `rg --files` filters for V2 test searches on PowerShell. |
 | 2026-05-02 | self | During a taxonomy audit, trusted an initial file read that appeared to show `quad_isolation` still collapsed into `squat_pattern`, but the working tree already had local uncommitted taxonomy edits splitting it out. | Check `git diff`/current line-numbered file reads before declaring an issue fixed or unfixed, especially when the user says an investigation is already in progress. |
+| 2026-05-02 | self | Exported `lane-selection-intent-audit` through the pure V2 barrel and tripped the architecture boundary regex because import paths containing `audit` are forbidden in pure policy imports. | Keep diagnostic helpers with `audit` in the filename direct-import-only, or choose a boundary-safe module name before adding barrel exports. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

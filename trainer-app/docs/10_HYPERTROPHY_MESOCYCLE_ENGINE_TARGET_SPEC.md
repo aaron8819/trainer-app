@@ -1,10 +1,10 @@
 # Hypertrophy Mesocycle Engine Strategy
 
 Owner: Aaron
-Last reviewed: 2026-05-01
+Last reviewed: 2026-05-02
 Purpose: Define the strategic direction for the V2 hypertrophy planner migration: V2 becomes the future plan author, accepted seed remains minimal executable truth, runtime replay remains stable, and performed reality informs future blocks without silently mutating the current one.
 
-This document is a strategy and migration map, not a claim about current runtime behavior. Current runtime truth remains the code, contract tests, and audit artifacts. The current mapping is grounded in the same live audit evidence previously used for this target doc:
+This document is a strategy and migration map, not a claim about current runtime behavior. Current runtime truth remains the code, contract tests, and audit artifacts. The current mapping is grounded in the same live audit evidence previously used for this target doc plus the latest V2 factory-line, materializer, taxonomy, and candidate-identity findings:
 
 - `artifacts/audits/2026-04-27T13-46-09-620Z-mesocycle-explain.json`
 - Owner: `aaron8819@gmail.com`
@@ -43,11 +43,21 @@ The app creates excellent, explainable, adaptable hypertrophy training blocks,
 then executes them reliably without hidden mutation.
 ```
 
-V2 is the future plan author. Runtime is the plan executor. That distinction matters because the current production projection path still creates too much normal plan shape through downstream repair and cleanup. Repair can protect the app from impossible, unsafe, or legacy cases; it should not be where the ordinary mesocycle is designed.
+The migration question has moved. The most useful question is no longer only whether V2 can write accepted seed. The latest factory-line work showed that the accepted-seed replacement path can preserve V2 materialized rows, runtime replay faithfully executes persisted seed, and downstream Program/runtime/persistence suspicion was not the core issue.
+
+The next strategic question is sharper:
+
+```txt
+Can V2 author elite lane intent and materialize it cleanly
+without hidden re-authoring?
+```
+
+V2 is the future plan author. Runtime is the plan executor. The materializer is the narrow translator between those layers. That distinction matters because production projection still has legacy repair-shaped behavior, while the latest mismatch evidence points to materialized exercise identity quality and under-specified lane intent rather than failed persistence or runtime replay.
 
 Success means:
 
 - A supported user can accept a V2-authored mesocycle whose plan quality is strong before repair.
+- Planner-owned lane intent is explicit enough that materializer ranking does not infer core training meaning from coarse taxonomy aliases.
 - The accepted seed remains minimal and deterministic.
 - Runtime replay does not become V2-aware.
 - User edits stay session-local unless an explicit reseed or replacement path is chosen.
@@ -62,7 +72,7 @@ Target loop:
 ```txt
 Training principles + user context
 -> V2 planner authors mesocycle intent
--> materializer selects exercises
+-> materializer translates lane intent into exercises
 -> accepted seed stores executable truth
 -> runtime executes seed
 -> user edits are session-local
@@ -72,13 +82,15 @@ Training principles + user context
 
 Operating roles:
 
-- Planner = intelligence. It decides the block objective, muscle priorities, movement/class obligations, weekly progression, support floors, continuity stance, and set distribution before exact exercise selection.
-- Materializer = exercise choice. It turns planner intent into concrete exercise identities using inventory, class fit, fatigue, continuity, tolerance, and deterministic tie-breaking.
+- Planner = intelligence. It decides the block objective, muscle priorities, movement/class obligations, weekly progression, support floors, continuity stance, lane-selection intent, and set distribution before exact exercise selection.
+- Materializer = lane-intent-to-exercise translator. It converts planner lane intent into concrete exercise identities while preserving planner intent, optimizing stimulus-to-fatigue, respecting constraints, honoring stability and fatigue preferences, and staying explainable.
 - Seed = contract. It stores the accepted executable plan in the smallest runtime-consumable shape.
 - Runtime = execution. Runtime replay should remain boring.
 - Logs = reality. Logs record performed sets, skipped work, swaps, pain/tolerance, load, reps, RPE/RIR, adherence, and session duration.
 - Review = learning. Review summarizes what worked, what failed, and what should influence the next plan.
 - Repair = safety net. Repair is safety net, not program author.
+
+The materializer must not become a second planner. Planner owns lane intent. Materializer filters and ranks candidate exercises inside that intent. If a lane needs a true vertical pull, a quad isolation movement, a hamstring-biased hinge, or a low-axial support option, that meaning should be planner-owned and explicit rather than guessed from broad class names after the fact.
 
 The central source-of-truth boundary is unchanged:
 
@@ -86,7 +98,7 @@ The central source-of-truth boundary is unchanged:
 slotPlanSeedJson.slots[].exercises[{ exerciseId, role, setCount }]
 ```
 
-Planner metadata is explanatory, not executable. `acceptedPlannerIntent`, provenance, diagnostics, materializer blockers, materializer omissions, lane ids, promotion-readiness evidence, and audit readouts may explain why a plan exists. Runtime must not consume them as a second plan.
+Planner metadata is explanatory, not executable. `acceptedPlannerIntent`, provenance, diagnostics, materializer blockers, materializer omissions, lane ids, promotion-readiness evidence, audit readouts, and future `laneSelectionIntent` fields may explain why a plan exists. Runtime must not consume them as a second plan.
 
 ## 3. Strategic Principles
 
@@ -126,7 +138,15 @@ The learning loop should use what the user actually performed, not old prescribe
 
 That learning should improve the next `MesocycleStrategy`. It should not silently mutate the current accepted seed.
 
-### Principle 7 - Policies Should Be Evidence-Aligned, Not Rigid
+### Principle 7 - Planner-Owned Lane Intent Before Materializer Guesswork
+
+Lane intent must become explicit enough that taxonomy and ranking do not infer core training meaning.
+
+The planner should say whether a lane requires, prefers, allows, or disallows specific movement patterns and exercise classes; how strict substitution should be; how much stability, axial fatigue, directness, collateral, progression/loadability, continuity, duplication, and ranking priority matter; and what failure should look like when no candidate satisfies the lane.
+
+The materializer should consume those semantics. It should not invent them.
+
+### Principle 8 - Policies Should Be Evidence-Aligned, Not Rigid
 
 Planner policy should be grounded in hypertrophy principles and allow justified exceptions. Avoid arbitrary always/never rules.
 
@@ -134,7 +154,7 @@ Examples: no default 5-set stacking is a quality guard, not a universal law. Dup
 
 ## 4. Current Migration Position
 
-Current runtime seed replay is valuable and should be preserved. Accepted seeded supported mesocycles already replay deterministic exercise identities and set counts from `slotPlanSeedJson`; the execution layer is not the problem.
+Current runtime seed replay is valuable and should be preserved. Accepted seeded supported mesocycles replay deterministic exercise identities and set counts from `slotPlanSeedJson`; the execution layer is not the problem.
 
 Current infrastructure worth preserving:
 
@@ -143,44 +163,50 @@ Current infrastructure worth preserving:
 - `slotPlanSeedJson` deterministic seeded runtime replay
 - `planningReality` read-only diagnostics for demand, slot allocation, class alignment, set distribution, duplicate justification, and repair materiality
 - audit harnesses that separate promotion candidates from suspicious repairs that must not become policy
+- guarded replacement and comparison paths that can prove V2 materialized seed compatibility without making V2 the live default
 
-Current production projection remains mostly repair-shaped. The audit evidence still reports `mostly_repair_shaped`, material repairs, major repairs, and likely upstream-avoidable repairs. Production projection still does not consume V2 as the authoritative plan author, and repair remains too involved in normal plan shaping.
+The latest factory-line finding resolved the downstream suspicion:
 
-Current repair-shaped symptoms to keep visible:
+- Program had a masking bug: when a set-aware seed existed but display resolution failed, it could fall through to linked workout or projection rows.
+- That has been hardened. Set-aware seeded Program rows should come from `slotPlanSeedJson` plus catalog names only, labeled `exerciseSource: "persisted_slot_plan_seed"`.
+- Runtime replay was not the problem. Runtime faithfully replayed the persisted seed.
+- The active seed mismatch was not a failed persistence or acceptance bug.
+- The V2 replacement path was connected to V2 materialization.
+- The persisted seed matched the V2 materialized candidate, accepted-seed preview, final seed-builder input, and runtime replay.
 
-- support-floor closure still creates basic support work late
-- weekly obligation closure still protects ordinary floors downstream
-- late set bumping can create concentration that later needs cleanup
-- cap trim still removes overbuilt shape after the fact
-- program-quality and duplicate cleanup can change identity after selection
-- dirty collateral cleanup can hide that the planner did not own clean class lanes early enough
+The actual issue was materializer identity selection. V2 materialization selected legacy-looking exercise identities. That means the upstream gap is not primarily "can the seed be stored?" but "does the materializer select the right concrete exercise for the planner's intended lane?"
 
-V2 base planner progress is real:
+The latest tactical materializer and taxonomy fix materially improves the V2 base-plan path:
 
-- static balanced base demand
-- explicit slot exposure ownership
-- ownership-driven class lanes
-- role-sensitive set distribution
-- materialized dry-run base plan
-- base-plan validation pass
-- shadow-consumption compare showing strong diagnostic evidence
+```txt
+Old fresh ranking:
+class match -> directness -> continuity -> favorites -> fatigue -> name -> id
 
-What that means strategically:
+New fresh V2 ranking:
+class/directness -> explicit identity preservation -> lane intent/stability
+-> stimulus-to-fatigue -> fatigue -> favorite -> name -> id
+```
 
-- V2 can describe a cleaner target than the production repaired projection.
-- The pure planner stack is starting to own shape before repair.
-- The materializer can produce seed-shaped previews in dry-run.
-- The shadow-consumption compare is promising evidence that downstream machinery can be audited against a cleaner V2 base plan.
+Important guardrails from that fix:
 
-What it does not mean:
+- Continuity only affects identity ranking when `identityPreservationMode: "preserve_exact_lane_identity"` is explicitly passed.
+- `quad_isolation` is separate from `squat_pattern`.
+- Direct `vertical_pull` requires pulldown, pull-up, chin-up, or equivalent vertical-pull identity text.
+- Rows and pullovers no longer satisfy direct vertical-pull lanes.
+- Goblet Squat no longer satisfies `quad_isolation`.
+- Favorites still win only among otherwise equivalent candidates.
 
-- V2 is not live default.
-- Historical personalization is not implemented as production strategy.
-- Production acceptance does not yet use V2 as the authoritative plan author.
-- Repair has not yet been demoted.
-- A clean dry-run does not prove the full factory line will preserve the plan.
+Strategically relevant verification passed for this slice: focused materializer, taxonomy, base-plan, and architecture tests; `npx tsc --noEmit`; `npm run verify:contracts`; and `npm run verify`.
 
-The current risk is downstream factory machinery re-authoring or worsening a clean V2 plan. The next strategic focus is the V2 accepted-seed consumption seam and factory-line responsibility audit.
+The deeper strategic finding remains unresolved:
+
+- The planner does not yet provide a rich enough lane-selection contract.
+- The materializer still infers too much from coarse classes and taxonomy aliases.
+- Materializer/taxonomy fixes improve the V2 base-plan path, but they do not replace the need for richer planner-owned lane intent.
+
+Current production projection remains legacy/repair-shaped. V2 is not live default. Historical personalization is not implemented as production strategy. Repair has not yet been demoted. The latest work mostly proves that seed transport and runtime replay can be boring when given a seed; it does not prove that V2 has fully authored elite exercise lanes yet.
+
+Provenance also needs cleanup. `slotPlanSeedJson.source = "handoff_slot_plan_projection"` is currently serializer-owned and hard-coded enough that it is not sufficient proof of legacy authorship by itself. Stronger V2 signals include `acceptedPlannerIntent.source = "v2_planner_policy"` and replacement artifacts that report V2 materialized seed provenance. `slotPlanSeedJson.source`, `acceptedPlannerIntent.source`, runtime `compositionSource`, and UI `exerciseSource` can describe different layers and must not be collapsed into one authorship claim.
 
 ## 5. The Planner Stack
 
@@ -192,6 +218,7 @@ User Training Profile
 -> Mesocycle Strategy
 -> Muscle Priority / Volume Model
 -> Movement Pattern / Exercise-Class Model
+-> Lane Selection Intent
 -> Weekly Progression Model
 -> Slot Architecture
 -> Exercise Selection Strategy
@@ -228,9 +255,43 @@ Current status: V2 static balanced base demand is a strong first slice. It is no
 
 ### Movement Pattern / Exercise-Class Model
 
-Strategic purpose: convert stimulus needs into movement and class lanes before exact exercise identity. Good looks like explicit requirements such as hinge plus knee-flexion curl, distinct upper Chest classes, direct side-delt support, and calf isolation distribution.
+Strategic purpose: convert stimulus needs into movement and class lanes before exact exercise identity. Good looks like explicit requirements such as hinge plus knee-flexion curl, distinct upper Chest classes, direct side-delt support, direct vertical-pull anchors, quad isolation, calf isolation distribution, and known disallowed substitutes.
 
-Current status: `exerciseClassDistributionBySlot`, selection-v2 helpers, and the V2 taxonomy bridge expose much of this shape. Do not let exact exercise selection pretend to solve class strategy by accident.
+Current status: `exerciseClassDistributionBySlot`, `ExerciseSelectionPlan`, materialization taxonomy, and the V2 taxonomy bridge expose much of this shape. The recent split between `quad_isolation` and `squat_pattern`, plus stricter direct `vertical_pull` matching, is the right direction. It is still not enough. Do not let exact exercise selection pretend to solve class strategy by accident.
+
+### Lane Selection Intent
+
+Strategic purpose: make lane semantics explicit enough that the materializer can select exercises without guessing core training meaning from broad classes or names.
+
+Future planner-owned object:
+
+```txt
+laneSelectionIntent
+```
+
+Likely fields:
+
+- required, preferred, and disallowed movement patterns
+- preferred, allowed, and disallowed exercise classes
+- substitution strictness
+- stability preference
+- axial/systemic fatigue preference
+- directness requirement
+- managed collateral policy
+- progression/loadability preference
+- continuity/duplicate policy
+- ranking priority
+
+High-risk lane families that need this contract first:
+
+- vertical pull anchor/support
+- squat anchor, quad isolation, and quad support
+- hinge anchor
+- chest anchor and chest second exposure
+- row anchor/support
+- calves
+
+Current status: not implemented as a planner-owned contract. A read-only `V2LaneSelectionIntentAudit` should come first so the app can expose where current materializer/taxonomy inference is still standing in for explicit planner intent.
 
 ### Weekly Progression Model
 
@@ -246,9 +307,9 @@ Current status: slot sequencing and authored slot semantics are valuable infrast
 
 ### Exercise Selection Strategy
 
-Strategic purpose: choose exact exercises that satisfy class lanes and set budgets while balancing continuity, variation, tolerance, equipment, fatigue, and inventory. Good looks like productive anchors preserved, stale/painful/stalled accessories rotated, and duplicate decisions justified.
+Strategic purpose: choose exact exercises that satisfy lane-specific movement/class intent and set budgets while balancing stimulus-to-fatigue, stability, continuity, variation, tolerance, equipment, fatigue, favorites, and inventory. Good looks like productive anchors preserved when explicitly requested, stale/painful/stalled accessories rotated, and duplicate decisions justified.
 
-Current status: selection-v2, materializer dry-run, continuity hints, and audit diagnostics are useful but not yet authoritative production selection from V2 strategy. Do not make repaired projection the target exercise policy.
+Current status: selection-v2, materializer dry-run, continuity hints, candidate identity artifacts, and audit diagnostics are useful but not yet authoritative production selection from V2 strategy. The materializer should consume planner-owned `laneSelectionIntent`; it should not invent lane semantics, use favorites as a fresh-base-plan override, or let continuity dominate unless exact identity preservation is explicitly requested.
 
 ### Set / Rep / RIR Prescription
 
@@ -295,8 +356,9 @@ balanced base demand
 -> slot exposure ownership
 -> exercise class ownership
 -> set distribution ownership
--> exercise selection/materialization
+-> lane-intent-aware materialization
 -> full V2 base-plan validation
+-> candidate identity verification
 -> shadow consumption compare
 -> only later production consumption
 ```
@@ -307,8 +369,9 @@ Plain-English meaning:
 - Slot exposure ownership decides which slots are responsible for which muscles.
 - Exercise class ownership decides which movement classes should deliver the stimulus.
 - Set distribution ownership decides how many sets each lane should carry before any late bump or trim.
-- Exercise selection/materialization turns lane intent into actual exercise identities in dry-run.
+- Materialization turns planner lane intent into actual exercise identities in dry-run.
 - Base-plan validation checks whether the materialized base plan is internally clean.
+- Candidate identity verification checks whether selected exercises are actually good representatives of the lanes.
 - Shadow consumption compare asks what production projection would do if it consumed the cleaner V2 base shape.
 - Production consumption waits until the factory-line audit proves the plan can pass through acceptance without being re-authored or worsened.
 
@@ -328,11 +391,29 @@ The current base plan direction should keep these details from the prior target 
 - Side delts, rear delts, biceps, and triceps meet direct floors in the static base; preferred support volume belongs to full-block strategy or specialization.
 - Static base set distribution is role-sensitive, not flat. Chest can remain 4+4 to preserve balanced exposure; Upper A row can be 3 when Upper B row and vertical-pull lanes preserve pull balance; Lower B calves can be 3 while Lower A calves stay 4; optional lanes stay 0; managed collateral remains 0 direct sets.
 
+### Materializer Quality
+
+The materializer quality bar is higher than "valid exercise id found." It should choose exercises that make sense for the lane.
+
+Quality expectations:
+
+- Stable hypertrophy anchors should generally beat high-fatigue favorites when lane fit and stimulus-to-fatigue are better.
+- Vertical pull lanes require true pulldown, pull-up, chin-up, or equivalent vertical-pull patterns; rows and pullovers are not direct vertical-pull substitutes.
+- Quad isolation is not squat-pattern support; Goblet Squat does not satisfy `quad_isolation`.
+- Hinge anchor should respect hamstring bias, loadability, stability, and axial/systemic fatigue.
+- Calf lanes should prefer direct calf work, with variant diversity when clean variants exist.
+- Favorites and continuity are useful signals, but they are not dominant fresh-base-plan policy.
+- Continuity should dominate only when the planner or replacement path explicitly requests exact lane identity preservation.
+
+Materializer/taxonomy fixes make this path better. They do not remove the need for planner-owned `laneSelectionIntent`.
+
 ## 7. Factory-Line Strategy
 
-The downstream production factory contains valuable infrastructure and old repair-shaped assumptions. The migration should audit responsibility before wiring V2 into production.
+The downstream production factory contains valuable infrastructure and old repair-shaped assumptions. The migration should audit responsibility before wiring V2 into production default behavior.
 
 The factory should transport, validate, persist, and explain V2 plans. It should not re-author them.
+
+The latest factory-line audit changed the risk model. The accepted-seed path can preserve V2 materialized rows, Program seed display has been hardened against fallback masking, and runtime replay is vindicated. The remaining risk is less about runtime/persistence corruption and more about whether the materialized candidate identities are good enough to become canonical seed truth.
 
 ### Keep As Infrastructure
 
@@ -343,9 +424,11 @@ These layers are useful and should be preserved:
 - slot sequencing
 - seed serializer/parser
 - acceptance transaction
+- guarded empty-mesocycle replacement path
 - runtime replay
 - receipt/provenance infrastructure
 - audit harness
+- Program/Home read models that display persisted seed truth without re-authoring it
 
 ### Constrain / Redesign
 
@@ -354,10 +437,32 @@ These layers may be necessary, but their responsibilities need tightening so the
 - handoff preparation
 - projection transport/preview
 - acceptance gates
+- materializer candidate ranking
 - metadata/provenance
 - debug readouts
 
 The question for each is: does it carry and validate V2 intent, or does it quietly re-author shape?
+
+### Provenance / Source Label Cleanup
+
+Provenance language needs sharper layer boundaries:
+
+- Seed authoring provenance: who authored the plan intent and materialized candidate.
+- Seed serialization source: which serializer path wrote `slotPlanSeedJson.source`.
+- Runtime composition source: which runtime path generated a session, such as `compositionSource: "persisted_slot_plan_seed"`.
+- UI exercise source: which read model source populated display rows, such as `exerciseSource: "persisted_slot_plan_seed"`.
+
+Do not infer authoring truth from `slotPlanSeedJson.source` alone while it remains serializer-owned or hard-coded. A seed can carry `source: "handoff_slot_plan_projection"` and still need stronger adjacent evidence before being classified as legacy-authored or V2-authored. Prefer layered evidence: `acceptedPlannerIntent.source = "v2_planner_policy"`, replacement artifacts that report V2 materialized seed provenance, transaction context, and runtime `compositionSource`.
+
+### Candidate Identity Artifact Visibility
+
+Replacement dry-run artifact visibility is now better. `replaceEmptyMesocycleWithV2.v2Preparation.candidateIdentitySummary` exposes compact selected exercise identities before write:
+
+```txt
+{ slotId, laneId, laneRole, seedRole, selectedExercise, setCount }
+```
+
+This is read-only artifact/reporting visibility, not behavior. It prevents operators from inferring candidate identity from set totals or provenance alone. Ranking details remain explicitly unavailable until the materializer emits real ranking diagnostics.
 
 ### Demote To Safety Net
 
@@ -381,7 +486,7 @@ These should remain available only for unsupported or old paths until V2 is prov
 - legacy repaired seed path
 - compatibility flows for old mesocycles
 
-Do not remove safety infrastructure early. First prove that V2 owns the plan, the factory preserves it, runtime replays it, and repair materiality drops.
+Do not remove safety infrastructure early. First prove that V2 owns the plan, the materializer selects high-quality candidate identities, the factory preserves the seed, runtime replays it, and repair materiality drops.
 
 ## 8. Historical Personalization Roadmap Boundary
 
@@ -416,33 +521,45 @@ Examples of useful future evidence:
 
 1. Establish clean V2 static base plan.
 
-   Current status: mostly achieved in pure dry-run. Static balanced demand, slot ownership, class ownership, role-sensitive set distribution, materialized dry-run, and base-plan validation provide strong first-slice evidence.
+   Current status: materially improved in pure dry-run. Static balanced demand, slot ownership, class ownership, role-sensitive set distribution, stricter taxonomy, materializer ranking guardrails, and base-plan validation provide stronger first-slice evidence.
 
-2. Validate V2 base plan against no-repair/repaired production output.
+2. Verify materialized candidate identities through dry-run artifacts.
 
-   Current status: shadow compare is promising. Repaired projection remains evidence only, not target policy.
+   Current next priority. Inspect `candidateIdentitySummary` before write and confirm selected exercises satisfy the intended lanes. Do not infer identities from set totals, totals by muscle, or provenance labels.
 
-3. Audit factory-line responsibilities and define V2 consumption seam.
+3. Decide whether the current empty mesocycle should be guarded-replaced.
 
-   Current next priority. The key risk is that legacy projection/repair machinery re-authors or worsens a clean V2 materialized base plan before acceptance.
+   Replace only if the mesocycle remains empty, the candidate is materially better, gates remain fail-closed, and the seed decision is canonical. This is an explicit guarded replacement decision, not a live-default V2 promotion.
 
-4. Add guarded shadow/disabled consumption path.
+4. Resume backfill only after canonical seed decision.
 
-   No production writes. The path should prove transport, validation, provenance, and serializer compatibility while reporting exactly where consumption would fail.
+   Backfill should use the seed decision as settled truth. Do not backfill from an ambiguous candidate, a legacy-looking materializer output, or a provenance-only inference.
 
-5. Add bounded behavior trial.
+5. Add read-only `V2LaneSelectionIntentAudit`.
+
+   The audit should expose where current lane intent is explicit, where materializer/taxonomy inference is still doing too much, and which high-risk lane families need a richer planner contract. It should be read-only and not consumed by demand, materialization, generation, seed serialization, runtime replay, receipts, UI, DB writes, or persistence.
+
+6. Design planner-owned `laneSelectionIntent`.
+
+   Promote only after the read-only audit proves the shape. The contract should be planner-owned and materializer-consumed, with explicit movement/class intent, substitution strictness, stability, fatigue, directness, collateral, loadability, continuity, duplicate, and ranking policy.
+
+7. Add guarded shadow/disabled consumption path for the richer lane contract.
+
+   No production writes. The path should prove transport, validation, provenance, materializer consumption, and serializer compatibility while reporting exactly where consumption would fail.
+
+8. Add bounded behavior trial.
 
    Only after gates prove safe. Start with the smallest slice that has clear owner, measurable quality improvement, non-regression checks, and rollback criteria.
 
-6. Promote V2 as default author for supported cases.
+9. Promote V2 as default author for supported cases.
 
-   Only after V2-authored output passes plan-quality and integration gates. Runtime replay remains unchanged; repair becomes safety net for supported cases.
+   Only after V2-authored output passes plan-quality, materialization-quality, and integration gates. Runtime replay remains unchanged; repair becomes safety net for supported cases.
 
-7. Demote/quarantine obsolete repair-as-planner machinery.
+10. Demote/quarantine obsolete repair-as-planner machinery.
 
    Do this after V2 ownership is proven. Keep true safety, legacy fallback, impossible-plan handling, and forbidden-slot protection.
 
-8. Add historical personalization / mesocycle-to-mesocycle adaptation.
+11. Add historical personalization / mesocycle-to-mesocycle adaptation.
 
    Add this after the default V2 planner is strong and the learning loop can consume performed reality without using old repaired prescribed plans as target policy.
 
@@ -464,6 +581,17 @@ These are strategic decision gates, not claims that current production already p
 - duplicate main lifts justified when clean alternatives exist
 - deload compatibility with identity preservation and volume/effort reduction
 
+### Materialization Quality Gate
+
+- candidate satisfies lane-specific movement/class intent
+- no invalid substitutes for direct vertical pull, quad isolation, hinge anchor, calves, or other high-risk lanes
+- favorites do not beat materially better lane-fit or stimulus-to-fatigue candidates
+- continuity only dominates when explicitly requested through exact lane identity preservation
+- stable, loadable hypertrophy anchors beat unstable or high-fatigue candidates when lane fit is better
+- blocked lanes fail diagnostically rather than silently filling with bad matches
+- dry-run artifact exposes candidate identities before write through `candidateIdentitySummary`
+- ranking details are not inferred until materializer emits real ranking diagnostics
+
 ### Integration Gate
 
 - V2 can pass through acceptance without being re-authored
@@ -473,7 +601,7 @@ These are strategic decision gates, not claims that current production already p
 - `acceptedPlannerIntent` and provenance remain explanatory
 - V2 blocked opt-in fails closed and is not labeled V2 success
 - no production write occurs from diagnostic-only materializer output
-- provenance distinguishes preparation, transaction persistence, and runtime replay evidence
+- provenance distinguishes seed authoring, seed serialization, transaction persistence, runtime composition, and UI display source
 
 ### Repair Demotion Gate
 
@@ -496,44 +624,50 @@ These are strategic decision gates, not claims that current production already p
 
 - Do not let diagnostics become behavior.
 - Do not copy repaired projection as target policy.
+- Do not make the materializer a second planner.
 - Do not let runtime consume planner metadata.
+- Do not let favorites or continuity override lane intent in fresh base plans.
+- Do not infer authoring truth from a single provenance/source field.
+- Do not infer candidate identity from set totals.
 - Do not keep adding historical adaptation before base planner quality.
 - Do not overfit to Aaron's two historical mesocycles.
 - Do not make rigid policies without training justification.
 - Do not bloat executable seed truth.
 - Do not allow old factory logic to re-author a clean V2 plan.
 - Do not claim V2 is live default until production actually uses it as the supported default author.
+- Do not claim `laneSelectionIntent` is implemented while it remains roadmap or diagnostic work.
 - Do not claim repair has been demoted while production projection still depends on repair for normal shape.
 - Do not claim historical personalization is implemented while it remains diagnostic or roadmap work.
 - Do not delete safety repair paths before V2 owns the responsibility they currently protect.
 
-## 12. Immediate Next Strategic Step
-
-Focused V2 accepted-seed consumption seam / factory-line audit.
+## 12. Immediate Next Strategic Step: Candidate Identity Verification + Lane Intent Contract
 
 The next question:
 
 ```txt
-How can a V2 materialized base plan become accepted seed truth without being re-authored or worsened by legacy projection/repair machinery?
+Are the V2 materialized candidate identities good enough to become canonical seed truth,
+and what planner-owned lane intent is missing when they are not?
 ```
 
-That audit should answer:
+Immediate sequence:
 
-- Which downstream steps are pure transport, validation, persistence, or explanation?
-- Which steps still assume projection or repair owns normal plan shape?
-- Where does the plan risk being mutated, repaired, trimmed, cleaned up, or reselected?
-- What exact seam should consume a V2 materialized base plan in disabled/shadow mode first?
-- What gates prove the factory preserved the plan before any production write?
-- What provenance should distinguish V2 disabled, V2 blocked fail-closed, V2 materialized seed, and legacy projection seed?
-- What tests or audit artifacts prove runtime replay remains unchanged?
+1. Run the read-only replacement/materialization dry-run.
+2. Inspect `replaceEmptyMesocycleWithV2.v2Preparation.candidateIdentitySummary`.
+3. Verify that each selected identity satisfies the lane's intended movement/class role, directness, stability, fatigue, and stimulus-to-fatigue needs.
+4. Decide whether the current empty mesocycle should be guarded-replaced only if it remains empty and the candidate is materially better.
+5. Resume backfill only after the canonical seed decision is made.
+6. Add read-only `V2LaneSelectionIntentAudit`.
+7. Design planner-owned `laneSelectionIntent` for materializer consumption.
+8. Continue provenance/source cleanup so seed authoring provenance, seed serialization source, runtime composition source, and UI exercise source are not conflated.
 
 Guardrails for that next slice:
 
-- no generation behavior change
-- no selection behavior change
-- no repair behavior change
+- no generation behavior change from diagnostics
+- no repair behavior change from diagnostics
 - no seed shape change
 - no runtime replay change
 - no receipt behavior change
 - no V2 live default claim
+- no `laneSelectionIntent` implementation claim until a planner-owned contract exists
 - repaired projection used only as evidence
+- materializer remains a translator, not a planner

@@ -14,6 +14,7 @@ import type {
   SessionSlotSnapshot,
 } from "@/lib/evidence/types";
 import { buildCanonicalDeloadDecision } from "@/lib/deload/semantics";
+import { buildPrescriptionConfidenceReadouts } from "@/lib/api/prescription-confidence-readout";
 import type { MappedGenerationContext, SessionGenerationResult } from "./types";
 
 export function runSessionGeneration(
@@ -184,6 +185,10 @@ export function finalizePostLoadResult(
           : "Adjusted to recovery session based on recent fatigue signals.",
       }
     : withLoads;
+  const prescriptionReadouts = buildPrescriptionConfidenceReadouts({
+    workout: finalWorkout,
+    loadAudit: audit,
+  });
   const sessionDecisionReceipt = buildSessionDecisionReceipt({
     cycleContext: mapped.cycleContext,
     sessionProvenance: buildSessionProvenance(mapped, compositionSource),
@@ -210,6 +215,7 @@ export function finalizePostLoadResult(
       volumePlanByMuscle,
     },
     filteredExercises,
+    prescriptionReadouts,
     audit,
   };
 }
@@ -244,6 +250,10 @@ export function finalizeDeloadSessionResult(input: {
       (input.mapped.activeMesocycle?.accumulationSessionsCompleted ?? -1) === 0,
   });
   const volumePlanByMuscle = buildPostLoadVolumePlan(input.mapped, withLoads);
+  const prescriptionReadouts = buildPrescriptionConfidenceReadouts({
+    workout: withLoads,
+    loadAudit: audit,
+  });
 
   return {
     workout: withLoads,
@@ -270,6 +280,7 @@ export function finalizeDeloadSessionResult(input: {
       volumePlanByMuscle,
     },
     filteredExercises: [],
+    prescriptionReadouts,
     audit: {
       progressionTraces: audit.progressionTraces,
       deloadTrace: attachResolvedLoadsToDeloadTrace(input.deloadTrace, audit),

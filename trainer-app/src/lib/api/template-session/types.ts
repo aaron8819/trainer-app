@@ -67,6 +67,35 @@ export type GenerateIntentSessionInput = {
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;
 };
 
+export type PrescriptionConfidenceLoadSource =
+  | "history"
+  | "baseline"
+  | "estimate"
+  | "existing_target_load"
+  | "bodyweight"
+  | "none"
+  | "unknown";
+
+export type PrescriptionConfidenceReadout = {
+  exerciseId: string;
+  exerciseName: string;
+  targetLoad: number | null;
+  targetReps: number | null;
+  repRange: { min: number; max: number } | null;
+  targetRpe: number | null;
+  targetRir: number | null;
+  loadSource: PrescriptionConfidenceLoadSource;
+  confidence: "high" | "medium" | "low";
+  cautionLevel: "none" | "notice" | "caution";
+  cautionReason: string | null;
+  suggestedAdjustmentRange: {
+    minLoad: number;
+    maxLoad: number;
+    unit: "lb";
+    basis: string;
+  } | null;
+};
+
 export type SessionGenerationResult =
   | {
       workout: WorkoutPlan;
@@ -80,6 +109,7 @@ export type SessionGenerationResult =
         sessionDecisionReceipt?: SessionDecisionReceipt;
       };
       filteredExercises?: FilteredExerciseSummary[];
+      prescriptionReadouts?: PrescriptionConfidenceReadout[];
       audit?: {
         progressionTraces: Record<string, ProgressionDecisionTrace>;
         deloadTrace?: DeloadTransformationTrace;

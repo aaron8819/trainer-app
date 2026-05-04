@@ -490,7 +490,7 @@ Runtime edit principles:
 - added exercises should be session-local, conservative, removable until logged, and excluded from canonical seed
 - save should preserve planned truth while recording performed reality
 
-Current status: runtime edit seams exist and the read-only audit found normal UI runtime edits are seed-safe, but this section still defines the broader north-star quality bar rather than claiming every hardening item is complete.
+Current status: runtime edit seams exist and the read-only audit found normal UI runtime edits are seed-safe. Recent runtime hardening added direct API route mutability guards for add-exercise and add-set: `PLANNED`, `IN_PROGRESS`, and `PARTIAL` workouts can accept session-local edits when open, while `COMPLETED`, `SKIPPED`, and closed/inactive mesocycle states reject structural edits. Seed truth and runtime replay remain unchanged. This section still defines the broader north-star quality bar rather than claiming every hardening item is complete.
 
 ### Save / Reconciliation Layer
 
@@ -628,6 +628,10 @@ Target behavior:
 The Stiff-Legged Deadlift mismatch is the motivating example. `140 x 10 @ RPE 6.5` after `135 x 6 @ RPE 8.5` should be treated as a prescription-quality warning unless evidence explains the jump. The fixed target of `135 x 10 @ RPE 6.5` is better because it does not increase load, but it should still be "allowed but cautioned" because holding load can remain too aggressive when reps and target effort change substantially.
 
 Strategic interpretation: runtime prescription quality needs more than a single target number. The UI/operator surface should distinguish target load, source/basis, confidence, caution state, and recommended adjustment range. Future behavior may reduce load automatically, but the first strategic requirement is visible mismatch detection and honest confidence labeling.
+
+Recent prescription-confidence audit: the app already stores target reps/load/RPE on generated set rows and has progression confidence in generation traces, but normal generation responses do not yet expose a unified prescription confidence readout. The next target contract is a server-owned `PrescriptionConfidenceReadout` containing target load, target reps/range, target RPE/RIR, load source, confidence, caution level, caution reason, and suggested adjustment range.
+
+This readout should be generated after load assignment in the server read model. It should not live in React, planner/materializer, seed replay, or executable seed truth.
 
 ### Data Quality Is Part Of Coaching
 
@@ -838,8 +842,6 @@ Target behavior:
 
 Known hardening items:
 
-- add-exercise should explicitly reject terminal or closed workouts at the API level
-- add-set should explicitly reject terminal workouts
 - save rewrite with nonempty `exercises` payload is powerful and should remain tightly guarded and tested
 - add-exercise preview/discovery set count should align with canonical add behavior or explain the difference
 
@@ -1056,6 +1058,7 @@ These are strategic decision gates, not claims that current production already p
 - Program, Home, Next Workout, and generated workout rows agree on slot, identity, set count, role, and order for seeded sessions
 - generated seeded workouts preserve `WorkoutExercise.orderIndex` across main/accessory section boundaries
 - consumers must not flatten by section order when presenting executable planned workout order
+- recent regression coverage protects seeded-runtime truth across parser/replay, Program current-week plan, projected summary, generated workout order, and session-audit snapshots
 - rep ranges match exercise class and hypertrophy goal
 - RIR/RPE target matches lifecycle week
 - load target is coherent with recent performance

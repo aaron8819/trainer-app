@@ -1132,6 +1132,295 @@ describe("generateWorkoutExplanation progression receipt", () => {
     });
   });
 
+  it("downgrades a plain increase when the performed anchor materially missed the written target with skipped coverage", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "INTENT",
+      sessionIntent: "LOWER_B",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          id: "we1",
+          exerciseId: "ex1",
+          isMainLift: true,
+          exercise: {
+            id: "ex1",
+            name: "Stiff-Legged Deadlift",
+            movementPatterns: ["HINGE"],
+            exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Hamstrings" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 10,
+              targetRepMin: null,
+              targetRepMax: null,
+              targetRpe: 6.5,
+              targetLoad: 135,
+              restSeconds: 150,
+              logs: [{ actualReps: null, actualLoad: null, actualRpe: null, wasSkipped: true }],
+            },
+            {
+              setIndex: 2,
+              targetReps: 10,
+              targetRepMin: null,
+              targetRepMax: null,
+              targetRpe: 6.5,
+              targetLoad: 135,
+              restSeconds: 150,
+              logs: [{ actualReps: 12, actualLoad: 95, actualRpe: 6.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 3,
+              targetReps: 10,
+              targetRepMin: null,
+              targetRepMax: null,
+              targetRpe: 6.5,
+              targetLoad: 135,
+              restSeconds: 150,
+              logs: [{ actualReps: 8, actualLoad: 115, actualRpe: 6.5, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValue(null);
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const decision = result.nextExposureDecisions.get("ex1");
+    expect(decision?.decisionLog?.join(" | ")).toContain("Path 2 fired");
+    expect(decision?.action).toBe("target_too_high");
+    expect(decision?.summary).toBe("Next exposure: target likely too high.");
+    expect(decision?.reason).toContain("written target 135 lbs");
+  });
+
+  it("does not emit a confident increase from one noisy signal set", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          id: "we1",
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Lat Pulldown",
+            movementPatterns: ["VERTICAL_PULL"],
+            exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Lats" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 12,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 7,
+              targetLoad: 40,
+              restSeconds: 120,
+              logs: [{ actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false }],
+            },
+            {
+              setIndex: 2,
+              targetReps: 12,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 7,
+              targetLoad: 40,
+              restSeconds: 120,
+              logs: [{ actualReps: null, actualLoad: null, actualRpe: null, wasSkipped: true }],
+            },
+            {
+              setIndex: 3,
+              targetReps: 12,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 7,
+              targetLoad: 40,
+              restSeconds: 120,
+              logs: [{ actualReps: null, actualLoad: null, actualRpe: null, wasSkipped: true }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValue(null);
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
+      action: "insufficient_evidence",
+      summary: "Next exposure: not enough clean evidence.",
+    });
+  });
+
+  it("downgrades increases when skipped planned sets lower recommendation confidence", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          id: "we1",
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Lat Pulldown",
+            movementPatterns: ["VERTICAL_PULL"],
+            exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Lats" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 12,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 7,
+              targetLoad: 40,
+              restSeconds: 120,
+              logs: [{ actualReps: null, actualLoad: null, actualRpe: null, wasSkipped: true }],
+            },
+            {
+              setIndex: 2,
+              targetReps: 12,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 7,
+              targetLoad: 40,
+              restSeconds: 120,
+              logs: [{ actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false }],
+            },
+            {
+              setIndex: 3,
+              targetReps: 12,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 7,
+              targetLoad: 40,
+              restSeconds: 120,
+              logs: [{ actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValue(null);
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
+      action: "caution_review_manually",
+      summary: "Next exposure: review manually.",
+    });
+  });
+
+  it("downgrades transition-backfilled sessions to manual review instead of a plain increase", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      selectionMetadata: {
+        runtimeEditReconciliation: {
+          version: 1,
+          lastReconciledAt: "2026-02-21T00:00:00.000Z",
+          directives: {
+            continuityAlias: "none",
+            progressionAlias: "none",
+            futureSessionGeneration: "ignore",
+            futureSeedCarryForward: "ignore",
+          },
+          ops: [
+            {
+              kind: "replace_exercise",
+              source: "api_workouts_swap_exercise",
+              appliedAt: "2026-02-21T00:00:00.000Z",
+              scope: "current_workout_only",
+              facts: {
+                workoutExerciseId: "we1",
+                fromExerciseId: "old-ex",
+                toExerciseId: "ex1",
+                reason: "transition_week_backfill_substitution",
+                setCount: 2,
+              },
+            },
+          ],
+        },
+      },
+      filteredExercises: [],
+      exercises: [
+        {
+          id: "we1",
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Lat Pulldown",
+            movementPatterns: ["VERTICAL_PULL"],
+            exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Lats" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 12,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 7,
+              targetLoad: 40,
+              restSeconds: 120,
+              logs: [{ actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false }],
+            },
+            {
+              setIndex: 2,
+              targetReps: 12,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 7,
+              targetLoad: 40,
+              restSeconds: 120,
+              logs: [{ actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValue(null);
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
+      action: "caution_review_manually",
+      summary: "Next exposure: review manually.",
+    });
+  });
+
   it("explains earned next-exposure increases when performed load materially beats prescription", async () => {
     mocks.workoutFindUnique.mockResolvedValueOnce({
       id: "w1",

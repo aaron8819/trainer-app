@@ -56,7 +56,10 @@ import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { resolveTargetRepRange } from "@/lib/session-semantics/target-evaluation";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { getCanonicalNextExposureCopy } from "@/lib/ui/next-exposure-copy";
-import { readRuntimeAddedExerciseIds } from "@/lib/ui/selection-metadata";
+import {
+  readRuntimeAddedExerciseIds,
+  readRuntimeReplacedExercises,
+} from "@/lib/ui/selection-metadata";
 import { readSessionAuditSnapshot } from "@/lib/evidence/session-audit-snapshot";
 
 const HISTORY_RECENCY_WINDOW_DAYS = 42;
@@ -71,6 +74,13 @@ const CANONICAL_RATIONALE_COMPONENT_KEYS = [
 ] as const;
 
 type GeneratedProgressionEvidence = "confirmed" | "absent" | "unknown";
+
+const MATERIAL_TARGET_MISS_RATIO = 0.1;
+const LARGE_TARGET_MISS_RATIO = 0.2;
+const RECALIBRATED_INCREASE_TARGET_MISS_RATIO = 0.08;
+const LOW_SIGNAL_SET_COUNT = 2;
+const LOW_SIGNAL_COVERAGE_RATIO = 0.75;
+const NON_TRIVIAL_SKIPPED_RATIO = 0.25;
 
 function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
@@ -160,6 +170,9 @@ export async function generateWorkoutExplanation(
   const progressionReceipts = new Map<string, ProgressionReceipt>();
   const nextExposureDecisions = new Map<string, NextExposureDecision>();
   const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(
+    workout.selectionMetadata
+  );
+  const runtimeReplacedExercises = readRuntimeReplacedExercises(
     workout.selectionMetadata
   );
   const sessionAuditSnapshot = readSessionAuditSnapshot(workout.selectionMetadata);
@@ -283,6 +296,19 @@ export async function generateWorkoutExplanation(
               }
             : undefined,
         })),
+        plannedSets: workoutExercise.sets.map((set) => ({
+          setIndex: set.setIndex,
+          targetLoad: set.targetLoad,
+          targetReps: set.targetReps,
+          targetRpe: set.targetRpe,
+          actualLoad: set.logs[0]?.actualLoad ?? null,
+          actualReps: set.logs[0]?.actualReps ?? null,
+          actualRpe: set.logs[0]?.actualRpe ?? null,
+          wasSkipped: set.logs[0]?.wasSkipped ?? false,
+        })),
+        hasTransitionBackfillSubstitution:
+          runtimeReplacedExercises.get(workoutExercise.id)?.reason ===
+          "transition_week_backfill_substitution",
       }
     );
     if (nextExposureDecision) {
@@ -905,6 +931,39 @@ type ExplainabilityConfidenceInput = {
   }>;
 };
 
+type NextExposurePlannedSetInput = {
+  setIndex: number;
+  targetLoad?: number | null;
+  targetReps?: number | null;
+  targetRpe?: number | null;
+  actualLoad?: number | null;
+  actualReps?: number | null;
+  actualRpe?: number | null;
+  wasSkipped?: boolean;
+};
+
+type NextExposureDecisionInput = ExplainabilityConfidenceInput & {
+  plannedSets: NextExposurePlannedSetInput[];
+  hasTransitionBackfillSubstitution?: boolean;
+};
+
+type NextExposureTargetAdherence = {
+  plannedSetCount: number;
+  performedSetCount: number;
+  signalSetCount: number;
+  skippedSetCount: number;
+  signalCoverageRatio: number;
+  skippedRatio: number;
+  targetLoad: number | null;
+  targetMissRatio: number | null;
+};
+
+type NextExposureReviewQuality = {
+  action: NextExposureDecision["action"];
+  reason?: string;
+  decisionLog: string[];
+};
+
 async function resolveExplainabilityHistoryConfidenceScale(
   input: ExplainabilityConfidenceInput
 ): Promise<number> {
@@ -1197,7 +1256,7 @@ async function buildNextExposureDecision(
   repRange: [number, number],
   equipment: string[],
   isCompound: boolean | undefined,
-  input: ExplainabilityConfidenceInput
+  input: NextExposureDecisionInput
 ): Promise<NextExposureDecision | null> {
   if (!performedSemantics) {
     return null;
@@ -1223,12 +1282,24 @@ async function buildNextExposureDecision(
     return null;
   }
 
-  const action: NextExposureDecision["action"] =
+  const baseAction: NextExposureDecision["action"] =
     decision.nextLoad > decision.anchorLoad
       ? "increase"
       : decision.nextLoad < decision.anchorLoad
       ? "decrease"
       : "hold";
+  const reviewQuality = resolveNextExposureReviewQuality({
+    baseAction,
+    decisionAnchorLoad: decision.anchorLoad,
+    performedSemantics,
+    plannedSets: input.plannedSets,
+    hasTransitionBackfillSubstitution: input.hasTransitionBackfillSubstitution === true,
+  });
+  const action = reviewQuality.action;
+  const decisionLog =
+    reviewQuality.decisionLog.length > 0
+      ? [...decision.decisionLog, ...reviewQuality.decisionLog]
+      : decision.decisionLog;
 
   return {
     action,
@@ -1236,18 +1307,226 @@ async function buildNextExposureDecision(
     reason: formatNextExposureReason({
       action,
       decisionPath: decision.path,
-      decisionLog: decision.decisionLog,
+      decisionLog,
       repRange,
       medianReps: performedSemantics.medianReps,
       modalRpe: performedSemantics.modalRpe,
       anchorLoad: decision.anchorLoad,
+      reviewQualityReason: reviewQuality.reason,
     }),
     anchorLoad: decision.anchorLoad,
     repRange: { min: repRange[0], max: repRange[1] },
     modalRpe: performedSemantics.modalRpe,
     medianReps: performedSemantics.medianReps,
-    decisionLog: decision.decisionLog,
+    decisionLog,
   };
+}
+
+function resolveNextExposureReviewQuality(input: {
+  baseAction: NextExposureDecision["action"];
+  decisionAnchorLoad: number;
+  performedSemantics: NonNullable<ReturnType<typeof derivePerformedExerciseSemantics>>;
+  plannedSets: NextExposurePlannedSetInput[];
+  hasTransitionBackfillSubstitution: boolean;
+}): NextExposureReviewQuality {
+  if (input.baseAction !== "increase") {
+    return { action: input.baseAction, decisionLog: [] };
+  }
+
+  const adherence = summarizeNextExposureTargetAdherence({
+    plannedSets: input.plannedSets,
+    performedSemantics: input.performedSemantics,
+    anchorLoad: input.decisionAnchorLoad,
+  });
+  const adherenceLog = formatTargetAdherenceDecisionLog(adherence, input.decisionAnchorLoad);
+  const buildDowngrade = (
+    action: NextExposureDecision["action"],
+    reason: string,
+    guardLog: string
+  ): NextExposureReviewQuality => ({
+    action,
+    reason,
+    decisionLog: [adherenceLog, guardLog],
+  });
+
+  if (input.hasTransitionBackfillSubstitution) {
+    return buildDowngrade(
+      "caution_review_manually",
+      "This workout carries a transition-backfill substitution flag, so the performed set trace should be reviewed manually before increasing.",
+      "Review-quality guard: transition-backfilled substitution downgraded a plain increase to manual review."
+    );
+  }
+
+  if (adherence.signalSetCount < LOW_SIGNAL_SET_COUNT) {
+    return buildDowngrade(
+      "insufficient_evidence",
+      `Only ${adherence.signalSetCount}/${adherence.plannedSetCount} planned sets produced clean progression signal${formatSkippedClause(adherence)}. Hold or review manually before increasing.`,
+      "Review-quality guard: too few clean signal sets downgraded a plain increase to insufficient evidence."
+    );
+  }
+
+  const hasLowCoverage =
+    adherence.signalCoverageRatio < LOW_SIGNAL_COVERAGE_RATIO ||
+    adherence.skippedRatio >= NON_TRIVIAL_SKIPPED_RATIO;
+  const targetMissRatio = adherence.targetMissRatio;
+
+  if (targetMissRatio != null && targetMissRatio >= LARGE_TARGET_MISS_RATIO) {
+    return buildDowngrade(
+      "target_too_high",
+      `The engine trace would increase from today's ${formatLoadLabel(input.decisionAnchorLoad)} performed anchor, but the written target ${formatLoadLabel(adherence.targetLoad)} was missed by ${formatRatioPercent(targetMissRatio)} with ${adherence.signalSetCount}/${adherence.plannedSetCount} clean signal sets${formatSkippedClause(adherence)}. Treat the written target as too high before increasing.`,
+      "Review-quality guard: large written-target miss downgraded a plain increase to target-too-high review."
+    );
+  }
+
+  if (targetMissRatio != null && targetMissRatio >= MATERIAL_TARGET_MISS_RATIO && hasLowCoverage) {
+    return buildDowngrade(
+      "recalibrate",
+      `Today's performed anchor was ${formatRatioPercent(targetMissRatio)} below the written target ${formatLoadLabel(adherence.targetLoad)}, and set coverage was not clean (${adherence.signalSetCount}/${adherence.plannedSetCount} signal sets${formatSkippedClause(adherence)}). Recalibrate before increasing.`,
+      "Review-quality guard: material written-target miss plus low coverage downgraded a plain increase to recalibration."
+    );
+  }
+
+  if (hasLowCoverage) {
+    return buildDowngrade(
+      "caution_review_manually",
+      `Skipped or incomplete planned sets reduced confidence (${adherence.signalSetCount}/${adherence.plannedSetCount} clean signal sets${formatSkippedClause(adherence)}). Review the log before increasing.`,
+      "Review-quality guard: skipped or incomplete planned-set coverage downgraded a plain increase to manual review."
+    );
+  }
+
+  if (
+    targetMissRatio != null &&
+    targetMissRatio >= RECALIBRATED_INCREASE_TARGET_MISS_RATIO
+  ) {
+    return buildDowngrade(
+      "recalibrated_increase",
+      `This is an increase from today's ${formatLoadLabel(input.decisionAnchorLoad)} performed anchor, not a clean win against the written target ${formatLoadLabel(adherence.targetLoad)}. The target was missed by ${formatRatioPercent(targetMissRatio)}, so progress from the recalibrated anchor.`,
+      "Review-quality guard: material written-target miss reframed a plain increase as a recalibrated-anchor increase."
+    );
+  }
+
+  return { action: input.baseAction, decisionLog: [] };
+}
+
+function summarizeNextExposureTargetAdherence(input: {
+  plannedSets: NextExposurePlannedSetInput[];
+  performedSemantics: NonNullable<ReturnType<typeof derivePerformedExerciseSemantics>>;
+  anchorLoad: number;
+}): NextExposureTargetAdherence {
+  const plannedSetCount = input.plannedSets.length;
+  const performedSetCount = input.plannedSets.filter(
+    (set) =>
+      !set.wasSkipped &&
+      Number.isFinite(set.actualLoad) &&
+      (set.actualLoad ?? 0) >= 0 &&
+      Number.isFinite(set.actualReps) &&
+      (set.actualReps ?? 0) > 0
+  ).length;
+  const signalSetCount = input.performedSemantics.signalSets.length;
+  const skippedSetCount = input.plannedSets.filter((set) => set.wasSkipped).length;
+  const targetLoad = resolveRepresentativeTargetLoad(
+    input.plannedSets,
+    input.performedSemantics.anchorStrategy
+  );
+  const targetMissRatio =
+    targetLoad != null && targetLoad > 0 && input.anchorLoad < targetLoad
+      ? (targetLoad - input.anchorLoad) / targetLoad
+      : null;
+
+  return {
+    plannedSetCount,
+    performedSetCount,
+    signalSetCount,
+    skippedSetCount,
+    signalCoverageRatio: plannedSetCount > 0 ? signalSetCount / plannedSetCount : 0,
+    skippedRatio: plannedSetCount > 0 ? skippedSetCount / plannedSetCount : 0,
+    targetLoad,
+    targetMissRatio,
+  };
+}
+
+function resolveRepresentativeTargetLoad(
+  plannedSets: NextExposurePlannedSetInput[],
+  anchorStrategy: NonNullable<ReturnType<typeof derivePerformedExerciseSemantics>>["anchorStrategy"]
+): number | null {
+  const targetLoads = plannedSets
+    .map((set) => set.targetLoad)
+    .filter((value): value is number => Number.isFinite(value) && (value ?? 0) >= 0);
+  if (targetLoads.length === 0) {
+    return null;
+  }
+  if (anchorStrategy === "working_set") {
+    return Math.max(...targetLoads);
+  }
+  return resolveModalTargetLoad(targetLoads) ?? medianNumber(targetLoads);
+}
+
+function resolveModalTargetLoad(values: number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+  const frequency = new Map<number, number>();
+  for (const value of values) {
+    frequency.set(value, (frequency.get(value) ?? 0) + 1);
+  }
+  const center = medianNumber(values);
+  return (
+    Array.from(frequency.entries()).sort((left, right) => {
+      if (right[1] !== left[1]) {
+        return right[1] - left[1];
+      }
+      const leftDistance = Math.abs(left[0] - center);
+      const rightDistance = Math.abs(right[0] - center);
+      if (leftDistance !== rightDistance) {
+        return leftDistance - rightDistance;
+      }
+      return left[0] - right[0];
+    })[0]?.[0] ?? null
+  );
+}
+
+function medianNumber(values: number[]): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+  return sorted[middle] ?? NaN;
+}
+
+function formatTargetAdherenceDecisionLog(
+  adherence: NextExposureTargetAdherence,
+  anchorLoad: number
+): string {
+  const targetMiss =
+    adherence.targetMissRatio != null
+      ? formatRatioPercent(adherence.targetMissRatio)
+      : "n/a";
+  return (
+    `Review-quality signal: target=${formatLoadLabel(adherence.targetLoad)}, ` +
+    `anchor=${formatLoadLabel(anchorLoad)}, target miss=${targetMiss}, ` +
+    `performed sets=${adherence.performedSetCount}/${adherence.plannedSetCount}, ` +
+    `signal sets=${adherence.signalSetCount}/${adherence.plannedSetCount}, ` +
+    `skipped sets=${adherence.skippedSetCount}.`
+  );
+}
+
+function formatSkippedClause(adherence: NextExposureTargetAdherence): string {
+  if (adherence.skippedSetCount === 0) {
+    return "";
+  }
+  return `, ${adherence.skippedSetCount} skipped`;
+}
+
+function formatRatioPercent(ratio: number): string {
+  return `${(ratio * 100).toFixed(1)}%`;
+}
+
+function formatLoadLabel(load: number | null): string {
+  if (load == null || !Number.isFinite(load)) {
+    return "n/a";
+  }
+  return `${Number.isInteger(load) ? load.toFixed(0) : load.toFixed(1)} lbs`;
 }
 
 async function buildExplainabilityCanonicalProgressionInput(
@@ -1353,12 +1632,16 @@ function formatNextExposureReason(input: {
   medianReps: number | null;
   modalRpe: number | null;
   anchorLoad: number;
+  reviewQualityReason?: string;
 }): string {
   const repBand = `${input.repRange[0]}-${input.repRange[1]}`;
   const medianRepsLabel =
     input.medianReps != null ? Number(input.medianReps.toFixed(1)) : "n/a";
   const modalRpeLabel = input.modalRpe != null ? input.modalRpe : "n/a";
 
+  if (input.reviewQualityReason) {
+    return input.reviewQualityReason;
+  }
   if (input.action === "increase") {
     if (input.decisionPath === "path_5_overshoot") {
       return input.modalRpe != null && input.modalRpe > 8

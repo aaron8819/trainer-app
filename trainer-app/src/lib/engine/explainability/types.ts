@@ -24,8 +24,18 @@ export type WorkoutExplanation = {
   volumeCompliance: MuscleVolumeCompliance[]; // Per-muscle weekly volume compliance (post-generation)
 };
 
+export type NextExposureDecisionAction =
+  | "increase"
+  | "recalibrated_increase"
+  | "hold"
+  | "decrease"
+  | "recalibrate"
+  | "target_too_high"
+  | "insufficient_evidence"
+  | "caution_review_manually";
+
 export type NextExposureDecision = {
-  action: "increase" | "hold" | "decrease";
+  action: NextExposureDecisionAction;
   summary: string;
   reason: string;
   anchorLoad: number | null;

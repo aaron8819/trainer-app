@@ -172,6 +172,46 @@ describe("buildPostWorkoutInsightsModel", () => {
     ]);
   });
 
+  it("does not frame target-quality downgrades as plain increases", () => {
+    const explanation = makeExplanation();
+    explanation.nextExposureDecisions = new Map([
+      [
+        "lat-pull",
+        {
+          action: "target_too_high",
+          summary: "Next exposure: target likely too high.",
+          reason:
+            "The engine trace would increase from today's 95 lbs performed anchor, but the written target 135 lbs was missed by 29.6%.",
+          anchorLoad: 95,
+          repRange: { min: 10, max: 10 },
+          modalRpe: 6.5,
+          medianReps: 10,
+        },
+      ],
+    ]);
+
+    const model = buildPostWorkoutInsightsModel({
+      explanation,
+      exercises: [
+        {
+          exerciseId: "lat-pull",
+          exerciseName: "Stiff-Legged Deadlift",
+          isMainLift: true,
+        },
+      ],
+    });
+
+    expect(model.headline).toBe("Key lifts need target review before increasing next time.");
+    expect(model.summary).toContain("Review or recalibrate Stiff-Legged Deadlift");
+    expect(model.overview.find((item) => item.label === "Next time")?.value).toContain(
+      "Review or recalibrate Stiff-Legged Deadlift"
+    );
+    expect(model.overview.find((item) => item.label === "Next time")?.tone).toBe("caution");
+    expect(model.keyLifts[0]?.badge).toBe("Target too high");
+    expect(model.keyLifts[0]?.nextTime).toContain("Next exposure: target likely too high.");
+    expect(model.headline).not.toContain("point to an increase");
+  });
+
   it("uses deload-first framing instead of progression-first messaging for deload sessions", () => {
     const explanation = makeExplanation();
     explanation.sessionContext.blockPhase.blockType = "deload";

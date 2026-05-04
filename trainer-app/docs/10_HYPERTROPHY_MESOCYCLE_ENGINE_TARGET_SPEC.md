@@ -661,6 +661,10 @@ Future performed-reality signals should include:
 
 These signals should inform coaching and future planning evidence. They should not silently mutate the current accepted seed.
 
+### Session Review / Recommendations
+
+Session review must distinguish clean progression from recalibration. If actual performed load is materially below the written target, skipped planned sets are present, or evidence is based on too few/noisy sets, the app should not emit a plain "increase next time." It should classify the result as hold, recalibrate, target too high, insufficient evidence, or caution/review manually.
+
 ### Exercise-Specific Coaching Profiles
 
 Future runtime prescription and coaching should distinguish exercise profiles instead of applying one generic hypertrophy rule to every movement.
@@ -1111,6 +1115,7 @@ These are strategic decision gates, not claims that current production already p
 - Do not infer seeded runtime order from `mainLifts` / `accessories` array position.
 - Do not treat target loads as exact truth when confidence is low.
 - Do not increase load into an easier RIR target when prior reps/effort contradict it.
+- Do not frame an increase from a reduced performed anchor as a clean progression win when the written target was materially missed.
 - Do not hide prescription source/confidence from the user/operator.
 - Do not suggest swaps that preserve only primary muscle while changing the lane's training effect.
 - Do not present broad same-muscle fallbacks as equivalent lane-preserving swaps.

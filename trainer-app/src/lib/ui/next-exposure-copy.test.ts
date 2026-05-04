@@ -22,6 +22,16 @@ describe("getCanonicalNextExposureCopy", () => {
     });
   });
 
+  it("returns distinct copy for recalibrated-anchor increases", () => {
+    expect(getCanonicalNextExposureCopy("recalibrated_increase")).toEqual({
+      badge: "Increase from anchor",
+      summary: "Next exposure: increase from today's performed anchor.",
+      resultClause: "points to an increase from a recalibrated anchor",
+      actionPhrase: "Increase from performed anchor",
+      nextTimeImperative: "Increase from today's performed anchor, not the missed written target.",
+    });
+  });
+
   it("returns consistent copy for decrease decisions", () => {
     expect(getCanonicalNextExposureCopy("decrease")).toEqual({
       badge: "Reduce next time",
@@ -29,6 +39,25 @@ describe("getCanonicalNextExposureCopy", () => {
       resultClause: "points to a reduction next time",
       actionPhrase: "Reduce load",
       nextTimeImperative: "Reduce load next time.",
+    });
+  });
+
+  it("returns caution copy for target-quality downgrades", () => {
+    expect(getCanonicalNextExposureCopy("recalibrate")).toMatchObject({
+      badge: "Recalibrate target",
+      summary: "Next exposure: recalibrate target.",
+    });
+    expect(getCanonicalNextExposureCopy("target_too_high")).toMatchObject({
+      badge: "Target too high",
+      summary: "Next exposure: target likely too high.",
+    });
+    expect(getCanonicalNextExposureCopy("insufficient_evidence")).toMatchObject({
+      badge: "Insufficient evidence",
+      summary: "Next exposure: not enough clean evidence.",
+    });
+    expect(getCanonicalNextExposureCopy("caution_review_manually")).toMatchObject({
+      badge: "Review manually",
+      summary: "Next exposure: review manually.",
     });
   });
 });

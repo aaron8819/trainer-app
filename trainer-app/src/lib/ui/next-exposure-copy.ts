@@ -20,6 +20,14 @@ export function getCanonicalNextExposureCopy(
         actionPhrase: "Increase load",
         nextTimeImperative: "Increase load next time.",
       };
+    case "recalibrated_increase":
+      return {
+        badge: "Increase from anchor",
+        summary: "Next exposure: increase from today's performed anchor.",
+        resultClause: "points to an increase from a recalibrated anchor",
+        actionPhrase: "Increase from performed anchor",
+        nextTimeImperative: "Increase from today's performed anchor, not the missed written target.",
+      };
     case "decrease":
       return {
         badge: "Reduce next time",
@@ -27,6 +35,38 @@ export function getCanonicalNextExposureCopy(
         resultClause: "points to a reduction next time",
         actionPhrase: "Reduce load",
         nextTimeImperative: "Reduce load next time.",
+      };
+    case "recalibrate":
+      return {
+        badge: "Recalibrate target",
+        summary: "Next exposure: recalibrate target.",
+        resultClause: "needs target recalibration before increasing",
+        actionPhrase: "Recalibrate target",
+        nextTimeImperative: "Recalibrate the written target before increasing.",
+      };
+    case "target_too_high":
+      return {
+        badge: "Target too high",
+        summary: "Next exposure: target likely too high.",
+        resultClause: "shows the written target was likely too high",
+        actionPhrase: "Lower the written target",
+        nextTimeImperative: "Lower or rebuild the written target before increasing.",
+      };
+    case "insufficient_evidence":
+      return {
+        badge: "Insufficient evidence",
+        summary: "Next exposure: not enough clean evidence.",
+        resultClause: "does not give enough clean evidence for a load increase",
+        actionPhrase: "Hold for cleaner evidence",
+        nextTimeImperative: "Hold or review manually until cleaner set evidence is available.",
+      };
+    case "caution_review_manually":
+      return {
+        badge: "Review manually",
+        summary: "Next exposure: review manually.",
+        resultClause: "needs manual review before increasing",
+        actionPhrase: "Review before increasing",
+        nextTimeImperative: "Review the set log before increasing.",
       };
     default:
       return {

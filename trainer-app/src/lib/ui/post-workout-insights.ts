@@ -89,6 +89,27 @@ function formatExerciseNameList(names: string[]): string {
   return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
 }
 
+function isCleanIncreaseAction(action: NextExposureDecision["action"] | "deload"): boolean {
+  return action === "increase";
+}
+
+function isRecalibratedIncreaseAction(
+  action: NextExposureDecision["action"] | "deload"
+): boolean {
+  return action === "recalibrated_increase";
+}
+
+function isReviewBeforeIncreaseAction(
+  action: NextExposureDecision["action"] | "deload"
+): boolean {
+  return (
+    action === "recalibrate" ||
+    action === "target_too_high" ||
+    action === "insufficient_evidence" ||
+    action === "caution_review_manually"
+  );
+}
+
 function describePerformedSignal(decision: NextExposureDecision): string {
   const parts = [
     `Today's performed signal centered on ${formatLoad(decision.anchorLoad)}`,
@@ -137,10 +158,10 @@ function toneForAction(action: NextExposureDecision["action"] | "deload"): PostW
   if (action === "deload") {
     return "neutral";
   }
-  if (action === "increase") {
+  if (isCleanIncreaseAction(action)) {
     return "positive";
   }
-  if (action === "decrease") {
+  if (action === "decrease" || isReviewBeforeIncreaseAction(action)) {
     return "caution";
   }
   return "neutral";
@@ -302,12 +323,27 @@ function buildHeadline(keyLifts: PostWorkoutKeyLiftInsight[]): string {
     return "Deload logged. The win was crisp work with low fatigue.";
   }
 
-  const increaseCount = keyLifts.filter((lift) => lift.action === "increase").length;
+  const increaseCount = keyLifts.filter((lift) => isCleanIncreaseAction(lift.action)).length;
+  const recalibratedIncreaseCount = keyLifts.filter((lift) =>
+    isRecalibratedIncreaseAction(lift.action)
+  ).length;
+  const reviewCount = keyLifts.filter((lift) =>
+    isReviewBeforeIncreaseAction(lift.action)
+  ).length;
   const decreaseCount = keyLifts.filter((lift) => lift.action === "decrease").length;
   const holdCount = keyLifts.filter((lift) => lift.action === "hold").length;
 
+  if (reviewCount > 0) {
+    return "Key lifts need target review before increasing next time.";
+  }
   if (decreaseCount > 0) {
     return "At least one key lift points to a reduction next time.";
+  }
+  if (recalibratedIncreaseCount > 0 && increaseCount === 0) {
+    return "Key lifts point to a cautious increase from a recalibrated anchor.";
+  }
+  if (recalibratedIncreaseCount > 0) {
+    return "Some key lifts have clean increases while others need recalibrated anchors.";
   }
   if (increaseCount > 0 && increaseCount < keyLifts.length) {
     return "Some key lifts point to an increase next time, while others should hold.";
@@ -330,14 +366,29 @@ function buildSummary(
   }
 
   const increaseNames = keyLifts
-    .filter((lift) => lift.action === "increase")
+    .filter((lift) => isCleanIncreaseAction(lift.action))
+    .map((lift) => lift.exerciseName);
+  const recalibratedIncreaseNames = keyLifts
+    .filter((lift) => isRecalibratedIncreaseAction(lift.action))
+    .map((lift) => lift.exerciseName);
+  const reviewNames = keyLifts
+    .filter((lift) => isReviewBeforeIncreaseAction(lift.action))
     .map((lift) => lift.exerciseName);
   const decreaseNames = keyLifts
     .filter((lift) => lift.action === "decrease")
     .map((lift) => lift.exerciseName);
 
+  if (reviewNames.length > 0) {
+    return `Review or recalibrate ${formatExerciseNameList(reviewNames)} before treating the next load as a progression win.`;
+  }
   if (decreaseNames.length > 0) {
     return `Keep the next exposure conservative on ${formatExerciseNameList(decreaseNames)}.`;
+  }
+  if (recalibratedIncreaseNames.length > 0 && increaseNames.length === 0) {
+    return `The next exposure can increase from today's performed anchor on ${formatExerciseNameList(recalibratedIncreaseNames)}, but this was not a clean beat of the written target.`;
+  }
+  if (recalibratedIncreaseNames.length > 0) {
+    return `Increase cleanly on ${formatExerciseNameList(increaseNames)} and use a recalibrated anchor on ${formatExerciseNameList(recalibratedIncreaseNames)}.`;
   }
   if (increaseNames.length > 0) {
     return `The next exposure points to an increase on ${formatExerciseNameList(increaseNames)} if setup and readiness feel normal.`;
@@ -370,7 +421,13 @@ function buildOverview(keyLifts: PostWorkoutKeyLiftInsight[]): PostWorkoutOvervi
   }
 
   const increaseNames = keyLifts
-    .filter((lift) => lift.action === "increase")
+    .filter((lift) => isCleanIncreaseAction(lift.action))
+    .map((lift) => lift.exerciseName);
+  const recalibratedIncreaseNames = keyLifts
+    .filter((lift) => isRecalibratedIncreaseAction(lift.action))
+    .map((lift) => lift.exerciseName);
+  const reviewNames = keyLifts
+    .filter((lift) => isReviewBeforeIncreaseAction(lift.action))
     .map((lift) => lift.exerciseName);
   const holdNames = keyLifts
     .filter((lift) => lift.action === "hold")
@@ -380,8 +437,14 @@ function buildOverview(keyLifts: PostWorkoutKeyLiftInsight[]): PostWorkoutOvervi
     .map((lift) => lift.exerciseName);
 
   const howItWent =
-    reduceNames.length > 0
+    reviewNames.length > 0
+      ? `${reviewNames.length} key lift${reviewNames.length === 1 ? "" : "s"} need${reviewNames.length === 1 ? "s" : ""} target review before increasing.`
+      : reduceNames.length > 0
       ? `${reduceNames.length} key lift${reduceNames.length === 1 ? "" : "s"} came back with a caution signal.`
+      : recalibratedIncreaseNames.length > 0 && increaseNames.length === 0
+      ? `${recalibratedIncreaseNames.length} key lift${recalibratedIncreaseNames.length === 1 ? "" : "s"} point${recalibratedIncreaseNames.length === 1 ? "s" : ""} to a cautious increase from a recalibrated anchor.`
+      : recalibratedIncreaseNames.length > 0
+      ? `${increaseNames.length} key lift${increaseNames.length === 1 ? "" : "s"} point${increaseNames.length === 1 ? "s" : ""} to a clean increase; ${recalibratedIncreaseNames.length} need${recalibratedIncreaseNames.length === 1 ? "s" : ""} a recalibrated anchor.`
       : increaseNames.length > 0
       ? `${increaseNames.length} key lift${increaseNames.length === 1 ? "" : "s"} point${increaseNames.length === 1 ? "s" : ""} to an increase next time.`
       : holdNames.length > 0
@@ -389,8 +452,14 @@ function buildOverview(keyLifts: PostWorkoutKeyLiftInsight[]): PostWorkoutOvervi
       : "No key-lift progression call was available.";
 
   const nextTime =
-    reduceNames.length > 0
+    reviewNames.length > 0
+      ? `Review or recalibrate ${formatExerciseNameList(reviewNames)} before increasing.`
+      : reduceNames.length > 0
       ? `${getCanonicalNextExposureCopy("decrease").actionPhrase} on ${formatExerciseNameList(reduceNames)}.`
+      : recalibratedIncreaseNames.length > 0 && increaseNames.length > 0
+      ? `${getCanonicalNextExposureCopy("increase").actionPhrase} on ${formatExerciseNameList(increaseNames)}; ${getCanonicalNextExposureCopy("recalibrated_increase").actionPhrase.toLowerCase()} on ${formatExerciseNameList(recalibratedIncreaseNames)}.`
+      : recalibratedIncreaseNames.length > 0
+      ? `${getCanonicalNextExposureCopy("recalibrated_increase").actionPhrase} on ${formatExerciseNameList(recalibratedIncreaseNames)}.`
       : increaseNames.length > 0 && holdNames.length > 0
       ? `${getCanonicalNextExposureCopy("increase").actionPhrase} on ${formatExerciseNameList(increaseNames)}; ${getCanonicalNextExposureCopy("hold").actionPhrase.toLowerCase()} on ${formatExerciseNameList(holdNames)}.`
       : increaseNames.length > 0
@@ -403,12 +472,12 @@ function buildOverview(keyLifts: PostWorkoutKeyLiftInsight[]): PostWorkoutOvervi
     {
       label: "How it went",
       value: howItWent,
-      tone: reduceNames.length > 0 ? "caution" : increaseNames.length > 0 ? "positive" : "neutral",
+      tone: reviewNames.length > 0 || reduceNames.length > 0 ? "caution" : increaseNames.length > 0 ? "positive" : "neutral",
     },
     {
       label: "Next time",
       value: nextTime,
-      tone: reduceNames.length > 0 ? "caution" : increaseNames.length > 0 ? "positive" : "neutral",
+      tone: reviewNames.length > 0 || reduceNames.length > 0 ? "caution" : increaseNames.length > 0 ? "positive" : "neutral",
       emphasized: true,
     },
   ];

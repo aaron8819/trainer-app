@@ -94,6 +94,7 @@ export async function POST(request: Request) {
     volumePlanByMuscle: result.volumePlanByMuscle,
     selectionMode: result.selectionMode,
     sessionIntent: result.sessionIntent,
+    prescriptionReadouts: result.prescriptionReadouts,
     selectionMetadata: responseSelectionMetadata,
   };
 

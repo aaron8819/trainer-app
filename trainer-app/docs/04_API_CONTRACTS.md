@@ -211,9 +211,10 @@ Sources of truth:
 - Routes:
   - `POST /api/workouts/generate-from-intent` (`src/app/api/workouts/generate-from-intent/route.ts`)
   - `POST /api/workouts/generate-from-template` (`src/app/api/workouts/generate-from-template/route.ts`)
-- Generation responses persist canonical selection metadata only:
+- Generation responses return canonical selection metadata and server-owned prescription readouts only:
   - intent route returns `selectionMetadata`, carrying canonical `sessionDecisionReceipt`
   - template route returns `selectionMetadata`, carrying canonical `sessionDecisionReceipt`
+  - both routes may return optional `prescriptionReadouts` (`PrescriptionConfidenceReadout[]` from `src/lib/api/template-session/types.ts`) after canonical load assignment. This is response/read-model metadata only; it must not be persisted as executable seed truth, planner policy, or a receipt mirror.
 - Generation routes canonicalize receipt readiness/autoregulation fields through shared selection metadata helpers rather than returning ad hoc top-level session mirrors (`src/lib/ui/selection-metadata.ts`, `src/lib/api/template-session/types.ts`).
 - Generation routes own original plan metadata. Mutation reconciliation is added later by write-side mutation paths when the saved workout structure changes.
 - Both generation routes now return `409` with `{ error: "Mesocycle handoff pending.", handoff }` when the prior mesocycle is closed into `AWAITING_HANDOFF` and no successor has been accepted yet.

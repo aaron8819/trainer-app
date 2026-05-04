@@ -189,6 +189,22 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       sraWarnings: [],
       substitutions: [],
       volumePlanByMuscle: {},
+      prescriptionReadouts: [
+        {
+          exerciseId: "ex-2",
+          exerciseName: "Press",
+          targetLoad: 135,
+          targetReps: 6,
+          repRange: { min: 6, max: 6 },
+          targetRpe: 7,
+          targetRir: 3,
+          loadSource: "history",
+          confidence: "high",
+          cautionLevel: "none",
+          cautionReason: null,
+          suggestedAdjustmentRange: null,
+        },
+      ],
       selection: {
         selectedExerciseIds: ["ex-2"],
         mainLiftIds: ["ex-2"],
@@ -251,6 +267,14 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(body.selectionMetadata).toBeDefined();
     expect(body.selection).toBeUndefined();
     expect(body.autoregulation).toBeUndefined();
+    expect(body.prescriptionReadouts).toEqual([
+      expect.objectContaining({
+        exerciseId: "ex-2",
+        exerciseName: "Press",
+        confidence: "high",
+        cautionLevel: "none",
+      }),
+    ]);
     expect(body.selectionMetadata.sessionDecisionReceipt.version).toBe(1);
     expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
       "user-1",

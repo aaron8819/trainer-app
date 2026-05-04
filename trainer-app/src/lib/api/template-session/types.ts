@@ -150,6 +150,7 @@ type SharedGeneratedWorkoutResponse = {
   volumePlanByMuscle: VolumePlanByMuscle;
   selectionMode: "AUTO" | "INTENT";
   sessionIntent: SessionIntent;
+  prescriptionReadouts?: PrescriptionConfidenceReadout[];
 };
 
 export type GenerateFromIntentResponse = SharedGeneratedWorkoutResponse & {

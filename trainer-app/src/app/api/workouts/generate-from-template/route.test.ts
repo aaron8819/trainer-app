@@ -130,6 +130,22 @@ describe("POST /api/workouts/generate-from-template", () => {
       sraWarnings: [],
       substitutions: [],
       volumePlanByMuscle: {},
+      prescriptionReadouts: [
+        {
+          exerciseId: "ex-1",
+          exerciseName: "Bench Press",
+          targetLoad: 185,
+          targetReps: 8,
+          repRange: { min: 8, max: 8 },
+          targetRpe: 8,
+          targetRir: 2,
+          loadSource: "history",
+          confidence: "high",
+          cautionLevel: "none",
+          cautionReason: null,
+          suggestedAdjustmentRange: null,
+        },
+      ],
       selection: {
         selectedExerciseIds: ["ex-1"],
         mainLiftIds: ["ex-1"],
@@ -191,6 +207,14 @@ describe("POST /api/workouts/generate-from-template", () => {
     expect(body.selectionMetadata).toBeDefined();
     expect(body.selection).toBeUndefined();
     expect(body.autoregulation).toBeUndefined();
+    expect(body.prescriptionReadouts).toEqual([
+      expect.objectContaining({
+        exerciseId: "ex-1",
+        exerciseName: "Bench Press",
+        confidence: "high",
+        cautionLevel: "none",
+      }),
+    ]);
     expect(body.selectionMetadata.sessionDecisionReceipt.version).toBe(1);
     expect(body.selectionMetadata.sessionDecisionReceipt.sessionSlot).toEqual({
       slotId: "push_a",

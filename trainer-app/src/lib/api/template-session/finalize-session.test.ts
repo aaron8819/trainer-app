@@ -1,5 +1,222 @@
 import { describe, expect, it } from "vitest";
 import { finalizeDeloadSessionResult } from "./finalize-session";
+import { buildPrescriptionConfidenceReadouts } from "@/lib/api/prescription-confidence-readout";
+import type { ApplyLoadsAudit } from "@/lib/engine/apply-loads";
+import type { WorkoutPlan } from "@/lib/engine/types";
+import type { ProgressionDecisionTrace } from "@/lib/evidence/session-audit-types";
+
+function workoutWithOneExercise(input: {
+  exerciseId: string;
+  exerciseName: string;
+  targetLoad?: number;
+  targetReps: number;
+  targetRpe: number;
+  equipment?: WorkoutPlan["mainLifts"][number]["exercise"]["equipment"];
+}): WorkoutPlan {
+  return {
+    id: "workout-readout",
+    scheduledDate: "2026-03-08T00:00:00.000Z",
+    warmup: [],
+    mainLifts: [
+      {
+        id: `${input.exerciseId}-entry`,
+        exercise: {
+          id: input.exerciseId,
+          name: input.exerciseName,
+          movementPatterns: ["hinge"],
+          splitTags: ["legs"],
+          jointStress: "medium",
+          isMainLiftEligible: true,
+          isCompound: true,
+          fatigueCost: 3,
+          equipment: input.equipment ?? ["barbell"],
+          primaryMuscles: ["Hamstrings"],
+          secondaryMuscles: ["Glutes"],
+        },
+        orderIndex: 0,
+        isMainLift: true,
+        role: "main",
+        sets: [
+          {
+            setIndex: 1,
+            targetLoad: input.targetLoad,
+            targetReps: input.targetReps,
+            targetRpe: input.targetRpe,
+            role: "main",
+          },
+        ],
+      },
+    ],
+    accessories: [],
+    estimatedMinutes: 30,
+  };
+}
+
+function progressionTrace(input: {
+  anchorLoad: number;
+  medianReps: number;
+  modalRpe: number;
+  nextLoad: number;
+  combinedScale?: number;
+}): ProgressionDecisionTrace {
+  return {
+    version: 1,
+    decisionSource: "double_progression",
+    repRange: { min: 8, max: 12 },
+    equipment: "barbell",
+    anchor: {
+      source: "conservative_modal",
+      workingSetApplied: false,
+      anchorLoad: input.anchorLoad,
+      signalSetCount: 1,
+      effectiveSetCount: 1,
+      trimmedSetCount: 0,
+      highVarianceDetected: false,
+      minSignalLoad: input.anchorLoad,
+      maxSignalLoad: input.anchorLoad,
+      medianSignalLoad: input.anchorLoad,
+    },
+    confidence: {
+      priorSessionCount: 1,
+      sampleScale: 1,
+      historyScale: input.combinedScale ?? 1,
+      combinedScale: input.combinedScale ?? 1,
+      reasons: [],
+    },
+    metrics: {
+      medianReps: input.medianReps,
+      modalRpe: input.modalRpe,
+      nextLoad: input.nextLoad,
+      loadDelta: input.nextLoad - input.anchorLoad,
+    },
+    outcome: {
+      path: "fallback_hold",
+      action: "hold",
+      reasonCodes: ["held_for_test_fixture"],
+    },
+    decisionLog: [],
+  };
+}
+
+function loadAuditFor(input: {
+  exerciseId: string;
+  source: ApplyLoadsAudit["resolvedLoads"][string]["source"];
+  targetLoad: number;
+  trace?: ProgressionDecisionTrace;
+}): Pick<ApplyLoadsAudit, "progressionTraces" | "resolvedLoads"> {
+  return {
+    progressionTraces: input.trace ? { [input.exerciseId]: input.trace } : {},
+    resolvedLoads: {
+      [input.exerciseId]: {
+        source: input.source,
+        canonicalSourceLoad: input.targetLoad,
+        resolvedTopSetLoad: input.targetLoad,
+        resolvedSetLoads: [input.targetLoad],
+      },
+    },
+  };
+}
+
+describe("buildPrescriptionConfidenceReadouts", () => {
+  it("flags the SLDL target-effort/load mismatch as caution-level low confidence", () => {
+    const readouts = buildPrescriptionConfidenceReadouts({
+      workout: workoutWithOneExercise({
+        exerciseId: "sldl",
+        exerciseName: "Stiff-Legged Deadlift",
+        targetLoad: 135,
+        targetReps: 10,
+        targetRpe: 6.5,
+      }),
+      loadAudit: loadAuditFor({
+        exerciseId: "sldl",
+        source: "history",
+        targetLoad: 135,
+        trace: progressionTrace({
+          anchorLoad: 135,
+          medianReps: 6,
+          modalRpe: 8.5,
+          nextLoad: 135,
+        }),
+      }),
+    });
+
+    expect(readouts[0]).toMatchObject({
+      exerciseId: "sldl",
+      exerciseName: "Stiff-Legged Deadlift",
+      targetLoad: 135,
+      targetReps: 10,
+      targetRpe: 6.5,
+      targetRir: 3.5,
+      loadSource: "history",
+      confidence: "low",
+      cautionLevel: "caution",
+      suggestedAdjustmentRange: {
+        minLoad: 125,
+        maxLoad: 135,
+        unit: "lb",
+        basis: "target_effort_load_mismatch",
+      },
+    });
+    expect(readouts[0]?.cautionReason).toContain("target_effort_load_mismatch");
+  });
+
+  it("keeps a history-backed target clean when recent evidence supports it", () => {
+    const readouts = buildPrescriptionConfidenceReadouts({
+      workout: workoutWithOneExercise({
+        exerciseId: "sldl",
+        exerciseName: "Stiff-Legged Deadlift",
+        targetLoad: 135,
+        targetReps: 8,
+        targetRpe: 8,
+      }),
+      loadAudit: loadAuditFor({
+        exerciseId: "sldl",
+        source: "history",
+        targetLoad: 135,
+        trace: progressionTrace({
+          anchorLoad: 135,
+          medianReps: 8,
+          modalRpe: 8,
+          nextLoad: 135,
+        }),
+      }),
+    });
+
+    expect(readouts[0]).toMatchObject({
+      loadSource: "history",
+      confidence: "high",
+      cautionLevel: "none",
+      cautionReason: null,
+      suggestedAdjustmentRange: null,
+    });
+  });
+
+  it("marks estimate/cold-start loads low confidence without target-effort mismatch", () => {
+    const readouts = buildPrescriptionConfidenceReadouts({
+      workout: workoutWithOneExercise({
+        exerciseId: "cable-curl",
+        exerciseName: "Cable Curl",
+        targetLoad: 40,
+        targetReps: 12,
+        targetRpe: 8,
+        equipment: ["cable"],
+      }),
+      loadAudit: loadAuditFor({
+        exerciseId: "cable-curl",
+        source: "estimate",
+        targetLoad: 40,
+      }),
+    });
+
+    expect(readouts[0]).toMatchObject({
+      loadSource: "estimate",
+      confidence: "low",
+      cautionLevel: "notice",
+      cautionReason: "estimate_load_no_exact_history",
+    });
+    expect(readouts[0]?.cautionReason).not.toContain("target_effort_load_mismatch");
+  });
+});
 
 describe("finalizeDeloadSessionResult", () => {
   it("stamps deload traces with final resolved loads from the canonical load engine", () => {
@@ -162,5 +379,10 @@ describe("finalizeDeloadSessionResult", () => {
     expect(result.audit?.deloadTrace?.exercises[0]?.anchoredLoad).toBe(
       result.audit?.deloadTrace?.exercises[0]?.canonicalSourceLoad
     );
+    expect(result.prescriptionReadouts?.[0]).toMatchObject({
+      exerciseId: "row",
+      exerciseName: "Chest Supported Row",
+      loadSource: "history",
+    });
   });
 });

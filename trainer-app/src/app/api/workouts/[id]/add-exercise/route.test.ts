@@ -175,6 +175,9 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
 
     mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-1",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
     });
     mocks.exerciseFindUnique.mockResolvedValue({
       id: "fly",
@@ -192,6 +195,9 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       selectionMetadata: buildWorkoutSelectionMetadata(),
       selectionMode: "INTENT",
       sessionIntent: "PUSH",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
       exercises: [
         {
           orderIndex: 0,
@@ -401,6 +407,9 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       }),
       selectionMode: "INTENT",
       sessionIntent: "PUSH",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
       exercises: [],
     });
     mocks.txWorkoutExerciseFindFirst.mockResolvedValueOnce({ orderIndex: 0 });
@@ -488,6 +497,9 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       selectionMetadata: {},
       selectionMode: "INTENT",
       sessionIntent: "PUSH",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
       exercises: [],
     });
     mocks.txWorkoutExerciseFindFirst.mockResolvedValueOnce({ orderIndex: 0 });
@@ -536,6 +548,40 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
     );
   });
 
+  it.each(["IN_PROGRESS", "PARTIAL"] as const)(
+    "preserves add-exercise behavior for %s workouts",
+    async (status) => {
+      mocks.workoutFindFirst.mockResolvedValueOnce({
+        id: "workout-1",
+        status,
+        mesocycleId: null,
+        mesocycle: null,
+      });
+      mocks.txWorkoutFindUnique.mockResolvedValueOnce({
+        selectionMetadata: {},
+        selectionMode: "INTENT",
+        sessionIntent: "PUSH",
+        status,
+        mesocycleId: null,
+        mesocycle: null,
+        exercises: [],
+      });
+
+      const response = await POST(
+        new Request("http://localhost/api/workouts/workout-1/add-exercise", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ exerciseId: "fly" }),
+        }),
+        { params: Promise.resolve({ id: "workout-1" }) }
+      );
+
+      expect(response.status).toBe(200);
+      expect(mocks.txWorkoutExerciseCreate).toHaveBeenCalled();
+      expect(mocks.txWorkoutUpdate).toHaveBeenCalled();
+    }
+  );
+
   it("rejects freeform adds for strict gap-fill sessions", async () => {
     mocks.txWorkoutFindUnique.mockResolvedValueOnce({
       selectionMetadata: {
@@ -551,6 +597,9 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       },
       selectionMode: "INTENT",
       sessionIntent: "BODY_PART",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
       exercises: [],
     });
 
@@ -568,5 +617,84 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       error: "Strict gap-fill sessions only allow constrained swaps, not freeform exercise adds.",
     });
     expect(mocks.txWorkoutExerciseCreate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["COMPLETED", "This session is completed and is now read-only."],
+    ["SKIPPED", "This session was skipped and is now read-only."],
+  ] as const)("rejects %s workouts before adding an exercise", async (status, error) => {
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-1",
+      status,
+      mesocycleId: null,
+      mesocycle: null,
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/add-exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: "fly" }),
+      }),
+      { params: Promise.resolve({ id: "workout-1" }) }
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error });
+    expect(mocks.exerciseFindUnique).not.toHaveBeenCalled();
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects adds when an open workout belongs to a closed mesocycle", async () => {
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-1",
+      status: "PARTIAL",
+      mesocycleId: "meso-1",
+      mesocycle: { state: "AWAITING_HANDOFF", isActive: false },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/add-exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: "fly" }),
+      }),
+      { params: Promise.resolve({ id: "workout-1" }) }
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "This workout belongs to a closed mesocycle with handoff pending and can no longer be resumed.",
+    });
+    expect(mocks.exerciseFindUnique).not.toHaveBeenCalled();
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rechecks mutability inside the transaction before creating the exercise", async () => {
+    mocks.txWorkoutFindUnique.mockResolvedValueOnce({
+      selectionMetadata: buildWorkoutSelectionMetadata(),
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      status: "COMPLETED",
+      mesocycleId: null,
+      mesocycle: null,
+      exercises: [],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/add-exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: "fly" }),
+      }),
+      { params: Promise.resolve({ id: "workout-1" }) }
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "This session is completed and is now read-only.",
+    });
+    expect(mocks.txWorkoutExerciseCreate).not.toHaveBeenCalled();
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
   });
 });

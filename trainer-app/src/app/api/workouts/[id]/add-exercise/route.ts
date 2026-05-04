@@ -9,6 +9,7 @@ import { buildExerciseMuscleDisplayGroups } from "@/lib/ui/exercise-muscle-tags"
 import type { TrainingAge, PrimaryGoal } from "@/lib/engine/types";
 import { Prisma } from "@prisma/client";
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
+import { getLogWorkoutPageState } from "@/lib/workout-workflow";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,6 +17,35 @@ export const runtime = "nodejs";
 const addExerciseSchema = z.object({
   exerciseId: z.string().min(1),
 });
+
+const RUNTIME_EDIT_BLOCKED_PREFIX = "WORKOUT_RUNTIME_EDIT_BLOCKED:";
+
+type RuntimeEditableWorkoutState = {
+  status: string | null;
+  mesocycleId: string | null;
+  mesocycle: {
+    state: string | null;
+    isActive: boolean | null;
+  } | null;
+};
+
+function getRuntimeEditBlockedReason(workout: RuntimeEditableWorkoutState): string | null {
+  const pageState = getLogWorkoutPageState(workout.status, {
+    mesocycleId: workout.mesocycleId,
+    mesocycleState: workout.mesocycle?.state ?? null,
+    mesocycleIsActive: workout.mesocycle?.isActive ?? null,
+  });
+
+  return pageState.mutability === "editable" ? null : pageState.reason;
+}
+
+function parseRuntimeEditBlockedReason(error: unknown): string | null {
+  if (!(error instanceof Error) || !error.message.startsWith(RUNTIME_EDIT_BLOCKED_PREFIX)) {
+    return null;
+  }
+
+  return error.message.slice(RUNTIME_EDIT_BLOCKED_PREFIX.length);
+}
 
 export async function POST(
   request: Request,
@@ -40,10 +70,22 @@ export async function POST(
     where: { id: workoutId, userId: owner.id },
     select: {
       id: true,
+      status: true,
+      mesocycleId: true,
+      mesocycle: {
+        select: {
+          state: true,
+          isActive: true,
+        },
+      },
     },
   });
   if (!workout) {
     return NextResponse.json({ error: "Workout not found" }, { status: 404 });
+  }
+  const blockedReason = getRuntimeEditBlockedReason(workout);
+  if (blockedReason) {
+    return NextResponse.json({ error: blockedReason }, { status: 409 });
   }
 
   // Load exercise, user profile, goals, and most recent actual load in parallel
@@ -96,6 +138,14 @@ export async function POST(
           selectionMetadata: true,
           selectionMode: true,
           sessionIntent: true,
+          status: true,
+          mesocycleId: true,
+          mesocycle: {
+            select: {
+              state: true,
+              isActive: true,
+            },
+          },
           exercises: {
             orderBy: [{ orderIndex: "asc" }, { id: "asc" }],
             select: {
@@ -117,6 +167,10 @@ export async function POST(
       });
       if (!latestWorkout) {
         throw new Error("WORKOUT_NOT_FOUND");
+      }
+      const transactionBlockedReason = getRuntimeEditBlockedReason(latestWorkout);
+      if (transactionBlockedReason) {
+        throw new Error(`${RUNTIME_EDIT_BLOCKED_PREFIX}${transactionBlockedReason}`);
       }
       if (
         isStrictOptionalGapFillSession({
@@ -229,16 +283,23 @@ export async function POST(
       return createdExercise;
     });
 
-  let workoutExercise;
-  try {
-    workoutExercise = await createExerciseAtNextIndex();
-  } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) {
+  let workoutExercise: Awaited<ReturnType<typeof createExerciseAtNextIndex>> | null = null;
+  for (let attempt = 0; attempt < 2 && !workoutExercise; attempt += 1) {
+    try {
       workoutExercise = await createExerciseAtNextIndex();
-    } else {
+    } catch (error) {
+      if (
+        attempt === 0 &&
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        continue;
+      }
+
+      const transactionBlockedReason = parseRuntimeEditBlockedReason(error);
+      if (transactionBlockedReason) {
+        return NextResponse.json({ error: transactionBlockedReason }, { status: 409 });
+      }
       if (error instanceof Error && error.message === "WORKOUT_NOT_FOUND") {
         return NextResponse.json({ error: "Workout not found" }, { status: 404 });
       }
@@ -250,6 +311,9 @@ export async function POST(
       }
       throw error;
     }
+  }
+  if (!workoutExercise) {
+    throw new Error("Workout exercise was not created.");
   }
 
   // Return in LogExerciseInput format

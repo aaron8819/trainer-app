@@ -3,10 +3,29 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
-import { getClosedMesocycleWorkoutFenceReason } from "@/lib/workout-workflow";
+import { getLogWorkoutPageState } from "@/lib/workout-workflow";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+type RuntimeEditableWorkoutState = {
+  status: string | null;
+  mesocycleId: string | null;
+  mesocycle: {
+    state: string | null;
+    isActive: boolean | null;
+  } | null;
+};
+
+function getRuntimeEditBlockedReason(workout: RuntimeEditableWorkoutState): string | null {
+  const pageState = getLogWorkoutPageState(workout.status, {
+    mesocycleId: workout.mesocycleId,
+    mesocycleState: workout.mesocycle?.state ?? null,
+    mesocycleIsActive: workout.mesocycle?.isActive ?? null,
+  });
+
+  return pageState.mutability === "editable" ? null : pageState.reason;
+}
 
 export async function POST(
   _request: Request,
@@ -48,6 +67,7 @@ export async function POST(
         workout: {
           select: {
             id: true,
+            status: true,
             selectionMetadata: true,
             selectionMode: true,
             sessionIntent: true,
@@ -80,11 +100,7 @@ export async function POST(
       return { error: "Workout exercise not found" as const, status: 404 as const };
     }
 
-    const blockedReason = getClosedMesocycleWorkoutFenceReason({
-      mesocycleId: workoutExercise.workout.mesocycleId,
-      mesocycleState: workoutExercise.workout.mesocycle?.state ?? null,
-      mesocycleIsActive: workoutExercise.workout.mesocycle?.isActive ?? null,
-    });
+    const blockedReason = getRuntimeEditBlockedReason(workoutExercise.workout);
     if (blockedReason) {
       return { error: blockedReason, status: 409 as const };
     }

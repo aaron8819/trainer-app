@@ -59,6 +59,7 @@ describe("POST /api/workouts/[id]/exercises/[exerciseId]/add-set", () => {
       exerciseId: "bench",
       workout: {
         id: "workout-1",
+        status: "PLANNED",
         selectionMetadata: {
           sessionDecisionReceipt: {
             version: 1,
@@ -308,4 +309,108 @@ describe("POST /api/workouts/[id]/exercises/[exerciseId]/add-set", () => {
       },
     });
   });
+
+  it.each([
+    ["COMPLETED", "This session is completed and is now read-only."],
+    ["SKIPPED", "This session was skipped and is now read-only."],
+  ] as const)("rejects %s workouts before appending a set", async (status, error) => {
+    mocks.txWorkoutExerciseFindFirst.mockResolvedValueOnce({
+      id: "we-1",
+      exerciseId: "bench",
+      workout: {
+        id: "workout-1",
+        status,
+        selectionMetadata: {},
+        selectionMode: "INTENT",
+        sessionIntent: "PUSH",
+        mesocycleId: null,
+        mesocycle: null,
+      },
+      sets: [],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/exercises/we-1/add-set", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "workout-1", exerciseId: "we-1" }) }
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error });
+    expect(mocks.txWorkoutSetCreate).not.toHaveBeenCalled();
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects set appends when an open workout belongs to a closed mesocycle", async () => {
+    mocks.txWorkoutExerciseFindFirst.mockResolvedValueOnce({
+      id: "we-1",
+      exerciseId: "bench",
+      workout: {
+        id: "workout-1",
+        status: "PARTIAL",
+        selectionMetadata: {},
+        selectionMode: "INTENT",
+        sessionIntent: "PUSH",
+        mesocycleId: "meso-1",
+        mesocycle: { state: "COMPLETED", isActive: false },
+      },
+      sets: [],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/exercises/we-1/add-set", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "workout-1", exerciseId: "we-1" }) }
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "This workout belongs to a completed mesocycle and can no longer be resumed.",
+    });
+    expect(mocks.txWorkoutSetCreate).not.toHaveBeenCalled();
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
+  });
+
+  it.each(["IN_PROGRESS", "PARTIAL"] as const)(
+    "preserves add-set behavior for %s workouts",
+    async (status) => {
+      mocks.txWorkoutExerciseFindFirst.mockResolvedValueOnce({
+        id: "we-1",
+        exerciseId: "bench",
+        workout: {
+          id: "workout-1",
+          status,
+          selectionMetadata: {},
+          selectionMode: "INTENT",
+          sessionIntent: "PUSH",
+          mesocycleId: null,
+          mesocycle: null,
+        },
+        sets: [
+          {
+            setIndex: 3,
+            targetReps: 8,
+            targetRepMin: 6,
+            targetRepMax: 10,
+            targetRpe: 8,
+            targetLoad: 185,
+            restSeconds: 180,
+          },
+        ],
+      });
+
+      const response = await POST(
+        new Request("http://localhost/api/workouts/workout-1/exercises/we-1/add-set", {
+          method: "POST",
+        }),
+        { params: Promise.resolve({ id: "workout-1", exerciseId: "we-1" }) }
+      );
+
+      expect(response.status).toBe(200);
+      expect(mocks.txWorkoutSetCreate).toHaveBeenCalled();
+      expect(mocks.txWorkoutUpdate).toHaveBeenCalled();
+    }
+  );
 });

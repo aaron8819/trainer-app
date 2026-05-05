@@ -104,10 +104,10 @@ describe("buildV2LaneSelectionIntentAudit", () => {
     expect(support.availableIntent).toMatchObject({
       classRequirementsPreferences: {
         acceptableExerciseClasses: [
-          "squat",
           "leg_press",
-          "lunge",
+          "squat_pattern",
           "quad_isolation",
+          "lunge",
         ],
       },
     });

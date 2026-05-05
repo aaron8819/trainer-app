@@ -66,14 +66,6 @@ function hasOwnField(value: object, field: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, field);
 }
 
-function hasAnyClass(lane: PlanLane, classes: string[]): boolean {
-  return classes.some(
-    (className) =>
-      lane.acceptableExerciseClasses.includes(className) ||
-      lane.preferredExerciseClasses.includes(className),
-  );
-}
-
 function hasExplicitMovementIntent(lane: PlanLane): boolean {
   return (
     hasOwnField(lane, "requiredMovementPatterns") ||

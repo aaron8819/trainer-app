@@ -516,7 +516,16 @@ describe("runWorkoutAuditGeneration", () => {
             vertical_pull: 1,
             horizontal_push: 1,
           },
-          projectedContributionByMuscle: { Lats: 4 },
+          exercises: [
+            {
+              exerciseId: "db-bench",
+              name: "Dumbbell Bench Press",
+              setCount: 3,
+              role: "primary",
+              effectiveStimulusByMuscle: { Chest: 3 },
+            },
+          ],
+          projectedContributionByMuscle: { Chest: 3, Lats: 4 },
         },
       ],
       fullWeekByMuscle: [
@@ -580,6 +589,30 @@ describe("runWorkoutAuditGeneration", () => {
         },
       ],
     });
+    const runtimeDoseDiagnostics =
+      run.projectedWeekVolume?.runtimeDoseAdjustmentDiagnostics ?? [];
+    expect(runtimeDoseDiagnostics).toEqual([
+      expect.objectContaining({
+        muscle: "Chest",
+        readOnly: true,
+        affectsAcceptedSeed: false,
+        recommendedAction: expect.objectContaining({
+          kind: "add_set",
+          slotId: "upper_b",
+          exerciseName: "Dumbbell Bench Press",
+          setDelta: 1,
+        }),
+      }),
+    ]);
+    expect(
+      runtimeDoseDiagnostics
+        .filter((diagnostic) => diagnostic.recommendedAction.setDelta !== 0)
+        .every(
+          (diagnostic) =>
+            Boolean(diagnostic.recommendedAction.slotId) &&
+            Boolean(diagnostic.recommendedAction.exerciseName)
+        )
+    ).toBe(true);
   });
 
   it("routes weekly-retro through the composed audit builder without touching generation helpers", async () => {

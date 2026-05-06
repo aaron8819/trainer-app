@@ -16,6 +16,7 @@ import type {
   ProjectedWeekVolumeMuscleRow,
   ProjectedWeekVolumeSessionSummary,
 } from "@/lib/api/projected-week-volume";
+import type { RuntimeDoseAdjustmentDiagnostic } from "@/lib/api/runtime-dose-guidance";
 import type { PlannerOnlyPolicyOverride } from "@/lib/api/planner-only-policy-override";
 import type {
   PlannerOwnedAccumulationProjection,
@@ -510,6 +511,7 @@ export type ProjectedWeekVolumeAuditPayload = {
   currentWeekAudit?: CurrentWeekAuditEvaluation;
   interventionHints?: CurrentWeekAuditInterventionHint[];
   sessionRisks?: CurrentWeekAuditSessionRisk[];
+  runtimeDoseAdjustmentDiagnostics?: RuntimeDoseAdjustmentDiagnostic[];
 };
 
 export type CurrentWeekAuditEvaluation = {

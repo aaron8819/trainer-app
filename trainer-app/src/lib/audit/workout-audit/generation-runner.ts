@@ -1,6 +1,7 @@
 import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
 import { evaluateAcceptedMesocycleSeedProvenance } from "@/lib/api/accepted-mesocycle-seed-provenance";
 import { loadProjectedWeekVolumeReport } from "@/lib/api/projected-week-volume";
+import { buildRuntimeDoseAdjustmentDiagnostics } from "@/lib/api/runtime-dose-guidance";
 import {
   generateDeloadSessionFromIntent,
   generateSessionFromIntent,
@@ -98,7 +99,11 @@ export async function runWorkoutAuditGeneration(
     };
     const currentWeekAuditFields =
       mode === "current-week-audit"
-        ? buildCurrentWeekAuditEvaluation(payload)
+        ? {
+            ...buildCurrentWeekAuditEvaluation(payload),
+            runtimeDoseAdjustmentDiagnostics:
+              buildRuntimeDoseAdjustmentDiagnostics(payload),
+          }
         : {};
 
     return {

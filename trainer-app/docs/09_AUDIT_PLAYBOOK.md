@@ -288,11 +288,13 @@ Inspect first:
 - `projectedWeekVolume.fullWeekByMuscle`
 - `projectedWeekVolume.currentWeekAudit`
 - `projectedWeekVolume.interventionHints`
+- `projectedWeekVolume.runtimeDoseAdjustmentDiagnostics`
 - `projectedWeekVolume.sessionRisks`
 
 Important interpretation rule:
 - this mode reuses the canonical `projected-week-volume` pipeline
 - `currentWeekAudit`, `interventionHints`, and `sessionRisks` are audit-only guidance fields; they do not mutate mesocycles, modify slot plans, or feed generation/runtime policy
+- `runtimeDoseAdjustmentDiagnostics` is the read-only session-local dose-guidance layer; it can name optional add/reduce candidates, but it does not mutate `slotPlanSeedJson`, runtime replay, planner/materializer output, receipts, UI, or performed logs
 - use it before session execution; if sessions are already in progress or completed, read the projection notes and consider `projected-week-volume` or `weekly-retro` depending on the question
 
 Common red flags:
@@ -818,6 +820,7 @@ Read these fields in this order unless the audit type says otherwise.
 - Present for `current-week-audit`.
 - Read it after confirming `currentWeek` and `projectionNotes`.
 - It is an audit-only evaluation layer over `fullWeekByMuscle` and `projectedSessions`, not generation policy.
+- `runtimeDoseAdjustmentDiagnostics` is the companion read-only dose-guidance diagnostic. Treat `recommendedAction` as session-local coaching evidence only; `readOnly=true` and `affectsAcceptedSeed=false` are mandatory boundary facts.
 
 ### `activeMesocycleSlotReseed.recommendation`
 - Present for `active-mesocycle-slot-reseed`.

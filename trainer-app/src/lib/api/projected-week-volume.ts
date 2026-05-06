@@ -4,12 +4,14 @@ import { prisma } from "@/lib/db/prisma";
 import {
   getExposedVolumeLandmarkEntries,
   getMuscleTargetSemantics,
+  normalizeExposedMuscle,
   type MuscleDashboardGroup,
   type MuscleTargetTier,
   type MuscleTargetWarningSeverity,
   type VolumeSoftTargetRange,
   type VolumeTargetKind,
 } from "@/lib/engine/volume-landmarks";
+import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import {
   getWeeklyMuscleDashboardGroup,
   getWeeklyMuscleDisplayGroup,
@@ -68,6 +70,7 @@ export type ProjectedWeekVolumeExerciseSummary = {
   name: string;
   setCount: number;
   role: "primary" | "accessory";
+  effectiveStimulusByMuscle?: Record<string, number>;
 };
 
 export type ProjectedWeekVolumeMuscleRow = {
@@ -185,12 +188,31 @@ function enforceProjectedSessionMinimumSets(input: {
 function summarizeWorkoutExercises(workout: WorkoutPlan): ProjectedWeekVolumeExerciseSummary[] {
   return listWorkoutPlanExercisesInOrder(workout)
     .filter(({ section }) => section !== "warmup")
-    .map(({ exercise, section }) => ({
-      exerciseId: exercise.exercise.id,
-      name: exercise.exercise.name,
-      setCount: exercise.sets.length,
-      role: section === "main" ? ("primary" as const) : ("accessory" as const),
-    }));
+    .map(({ exercise, section }) => {
+      const effectiveStimulusByMuscle = new Map<string, number>();
+      for (const [muscle, effectiveSets] of getEffectiveStimulusByMuscle(
+        exercise.exercise,
+        exercise.sets.length
+      )) {
+        const exposedMuscle = normalizeExposedMuscle(muscle);
+        effectiveStimulusByMuscle.set(
+          exposedMuscle,
+          roundToTenth((effectiveStimulusByMuscle.get(exposedMuscle) ?? 0) + effectiveSets)
+        );
+      }
+
+      return {
+        exerciseId: exercise.exercise.id,
+        name: exercise.exercise.name,
+        setCount: exercise.sets.length,
+        role: section === "main" ? ("primary" as const) : ("accessory" as const),
+        effectiveStimulusByMuscle: Object.fromEntries(
+          Array.from(effectiveStimulusByMuscle.entries()).sort(([left], [right]) =>
+            left.localeCompare(right)
+          )
+        ),
+      };
+    });
 }
 
 function toProjectedWeekVolumeByMuscle(

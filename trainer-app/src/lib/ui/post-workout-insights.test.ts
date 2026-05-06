@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { WorkoutExplanation } from "@/lib/engine/explainability";
 import { buildPostWorkoutInsightsModel } from "./post-workout-insights";
+import { formatRepPrescription } from "./rep-target-display";
 
 function makeExplanation(): WorkoutExplanation {
   return {
@@ -73,7 +74,7 @@ function makeExplanation(): WorkoutExplanation {
         {
           action: "hold",
           summary: "Next exposure: hold load.",
-          reason: "Median reps stayed at 8 in the 8-12 band, so keep building reps before adding load.",
+          reason: "Median reps stayed at 8 in the 8–12 range, so keep building reps before adding load.",
           anchorLoad: 40,
           repRange: { min: 8, max: 12 },
           modalRpe: 8,
@@ -98,6 +99,31 @@ function makeExplanation(): WorkoutExplanation {
 }
 
 describe("buildPostWorkoutInsightsModel", () => {
+  it("formats main-lift rep ranges with the range primary and aim secondary", () => {
+    expect(
+      formatRepPrescription(
+        {
+          targetReps: 9,
+          targetRepRange: { min: 6, max: 10 },
+        },
+        { showAim: true }
+      )
+    ).toEqual({
+      primary: "6–10 reps",
+      secondary: "aim 9",
+    });
+
+    expect(
+      formatRepPrescription({
+        targetReps: 10,
+        targetRepRange: { min: 10, max: 15 },
+      })
+    ).toEqual({
+      primary: "10–15 reps",
+      secondary: null,
+    });
+  });
+
   it("keeps the session outcome and next-time guidance aligned for hold cases", () => {
     const model = buildPostWorkoutInsightsModel({
       explanation: makeExplanation(),

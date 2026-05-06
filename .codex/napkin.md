@@ -4,6 +4,7 @@
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
 | 2026-05-05 | self | Batched `git status` with the session-start napkin read instead of reading `.Codex/napkin.md` first. | Read the repo napkin as the first file/tool action in every Trainer session, then proceed with other inspection. |
+| 2026-05-05 | self | Repeated the session-start napkin batching mistake while also running `git status` and reading skills. | Make the first tool call exclusively `Get-Content -Raw .Codex/napkin.md`; only then run status or skill reads. |
 | 2026-04-28 | self | Used bash-style `node - <<'NODE'` heredoc in PowerShell and hit parser errors. | Use a PowerShell here-string piped to `node` for inline Node scripts. |
 | 2026-04-28 | self | Used `&&` command chaining in PowerShell while checking git status/diff and hit a parser error. | Run separate PowerShell commands or use `;` only when sequential shell semantics are intended. |
 | 2026-04-28 | self | Put double quotes inside a double-quoted PowerShell `rg` pattern and hit an `Unrecognized token` parser error. | Prefer single-quoted rg patterns in PowerShell when the pattern itself contains double quotes. |

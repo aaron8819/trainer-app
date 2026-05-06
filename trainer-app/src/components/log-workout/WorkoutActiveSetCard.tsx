@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { toDisplayLoad } from "@/lib/ui/load-display";
+import { formatRepPrescriptionInline } from "@/lib/ui/rep-target-display";
 import { getSetValidity } from "@/lib/logging/setValidity";
 import type {
   ActiveSetDraftState,
@@ -13,12 +14,8 @@ import type {
   SetDraftNumericValues,
 } from "@/components/log-workout/types";
 
-function formatTargetReps(set: LogSetInput): string {
-  if (set.targetRepRange && set.targetRepRange.min !== set.targetRepRange.max) {
-    return `${set.targetRepRange.min}-${set.targetRepRange.max} reps`;
-  }
-
-  return `${set.targetReps} reps`;
+function formatTargetReps(set: LogSetInput, showAim: boolean): string {
+  return formatRepPrescriptionInline(set, { showAim });
 }
 
 function isBodyweightExercise(exercise: LogExerciseInput): boolean {
@@ -223,7 +220,7 @@ export function WorkoutActiveSetCard({
           {activeSet.set.isRuntimeAdded ? " · Extra set" : ""}
         </p>
         <p className="mt-0.5 text-xs font-medium text-slate-600">
-          {formatTargetReps(activeSet.set)}
+          {formatTargetReps(activeSet.set, activeSet.exercise.isMainLift)}
           {activeSet.set.targetLoad != null
             ? ` · ${
                 isDumbbell

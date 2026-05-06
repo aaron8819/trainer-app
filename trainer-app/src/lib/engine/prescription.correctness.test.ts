@@ -21,6 +21,16 @@ const mainLift: Exercise = {
   repRangeMax: 12,
 };
 
+const beltSquat: Exercise = {
+  ...mainLift,
+  id: "belt-squat",
+  name: "Belt Squat",
+  equipment: ["machine"],
+  repRangeMin: 3,
+  repRangeMax: 10,
+  primaryMuscles: ["Quads"],
+};
+
 const accessory: Exercise = {
   id: "raise",
   name: "Lateral Raise",
@@ -106,6 +116,33 @@ describe("prescription correctness", () => {
     expect(compoundRpe).toBe(accessoryRpe);
     expect(result.workout.mainLifts[0].sets).toHaveLength(4);
     expect(result.workout.accessories[0].sets).toHaveLength(3);
+  });
+
+  it("carries the main-lift hypertrophy rep range while preserving the week-2 rep aim", () => {
+    const result = generateWorkoutFromTemplate(
+      [{ exercise: beltSquat, orderIndex: 0, mesocycleRole: "CORE_COMPOUND" }],
+      {
+        ...commonOptions,
+        exerciseLibrary: [beltSquat],
+        goals: { primary: "hypertrophy" as const, secondary: "none" as const },
+        periodization: {
+          setMultiplier: 1,
+          rpeOffset: 0,
+          isDeload: false,
+          backOffMultiplier: 0.9,
+          weekInBlock: 2,
+          accumulationWeeks: 4,
+          lifecycleRirTarget: { min: 2, max: 3 },
+          lifecycleSetTargets: { main: 4, accessory: 3 },
+        },
+      }
+    );
+
+    const firstSet = result.workout.mainLifts[0].sets[0];
+
+    expect(firstSet.targetReps).toBe(9);
+    expect(firstSet.targetRepRange).toEqual({ min: 6, max: 10 });
+    expect(firstSet.targetRpe).toBe(7.5);
   });
 
   it("prescribes week-3 hypertrophy work at 1-2 RIR in a 5-week mesocycle", () => {

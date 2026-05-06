@@ -136,6 +136,10 @@ function prescribeMainLiftSets(
   const workingSetReps = Math.round(
     effectiveMain[1] - blockProgress * (effectiveMain[1] - effectiveMain[0])
   );
+  const targetRepRange = {
+    min: effectiveMain[0],
+    max: effectiveMain[1],
+  };
   const usesUniformWorkingSets = goals.primary === "hypertrophy" || periodization?.isDeload === true;
   const backOffReps = Math.min(
     effectiveMain[1],
@@ -155,6 +159,7 @@ function prescribeMainLiftSets(
     return Array.from({ length: setCount }, (_, index) => ({
       setIndex: index + 1,
       targetReps: workingSetReps,
+      targetRepRange,
       targetRpe,
       targetLoad: undefined,
     }));
@@ -163,6 +168,7 @@ function prescribeMainLiftSets(
   return Array.from({ length: setCount }, (_, index) => ({
     setIndex: index + 1,
     targetReps: index === 0 ? workingSetReps : backOffReps,
+    targetRepRange,
     targetRpe,
     targetLoad: undefined,
   }));

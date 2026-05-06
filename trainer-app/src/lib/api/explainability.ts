@@ -16,7 +16,8 @@ import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import type { Exercise as EngineExercise, PrimaryGoal, WorkoutSelectionMode } from "@/lib/engine/types";
 import type { SelectionObjective, SelectionCandidate } from "@/lib/engine/selection-v2/types";
 import { loadCurrentBlockContext } from "./periodization";
-import { getRestSeconds } from "@/lib/engine/prescription";
+import { clampRepRange, getRestSeconds } from "@/lib/engine/prescription";
+import { getGoalRepRanges } from "@/lib/engine/rules";
 import { mapExercises } from "./workout-context";
 import type { Prisma, Workout, WorkoutExercise, WorkoutSet } from "@prisma/client";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
@@ -85,6 +86,40 @@ const NON_TRIVIAL_SKIPPED_RATIO = 0.25;
 
 function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+function resolveWorkoutExerciseTargetRepRange(input: {
+  topSet?: {
+    targetReps?: number | null;
+    targetRepRange?: { min: number; max: number } | null;
+  };
+  exercise: EngineExercise;
+  isMainLift: boolean;
+  primaryGoal: PrimaryGoal;
+}): { min: number; max: number } | null {
+  if (
+    input.topSet?.targetRepRange &&
+    Number.isFinite(input.topSet.targetRepRange.min) &&
+    Number.isFinite(input.topSet.targetRepRange.max)
+  ) {
+    return input.topSet.targetRepRange;
+  }
+
+  if (
+    input.isMainLift &&
+    Number.isFinite(input.exercise.repRangeMin) &&
+    Number.isFinite(input.exercise.repRangeMax)
+  ) {
+    const [min, max] = clampRepRange(getGoalRepRanges(input.primaryGoal).main, {
+      min: input.exercise.repRangeMin as number,
+      max: input.exercise.repRangeMax as number,
+    });
+    return { min, max };
+  }
+
+  return resolveTargetRepRange({
+    targetReps: input.topSet?.targetReps,
+  });
 }
 
 function countsTowardCanonicalPerformanceHistory(input: {
@@ -191,7 +226,7 @@ export async function generateWorkoutExplanation(
     const engineSets = workoutExercise.sets.map((dbSet: WorkoutSet) => ({
       setIndex: dbSet.setIndex,
       targetReps: dbSet.targetReps ?? 10,
-      targetRepRange: dbSet.targetRepMin && dbSet.targetRepMax
+      targetRepRange: dbSet.targetRepMin != null && dbSet.targetRepMax != null
         ? { min: dbSet.targetRepMin, max: dbSet.targetRepMax }
         : undefined,
       targetRpe: dbSet.targetRpe ?? undefined,
@@ -231,14 +266,16 @@ export async function generateWorkoutExplanation(
     }
 
     const topSet = engineSets.find((set) => set.targetReps != null || set.targetRepRange != null);
-    const effectiveRepRange = resolveTargetRepRange({
-      targetReps: topSet?.targetReps,
-      targetRepRange: topSet?.targetRepRange,
+    const isMainLiftEligible = workoutExercise.exercise.isMainLiftEligible ?? workoutExercise.isMainLift;
+    const effectiveRepRange = resolveWorkoutExerciseTargetRepRange({
+      topSet,
+      exercise,
+      isMainLift: isMainLiftEligible,
+      primaryGoal: mappedPrimaryGoal,
     });
     const repRange: [number, number] = effectiveRepRange
       ? [effectiveRepRange.min, effectiveRepRange.max]
       : [8, 8];
-    const isMainLiftEligible = workoutExercise.exercise.isMainLiftEligible ?? workoutExercise.isMainLift;
     const equipmentTypes = workoutExercise.exercise.exerciseEquipment.map((item) => item.equipment.type);
     const lastPerformed = await loadLatestPerformedSetSummary(
       workout.userId,
@@ -301,6 +338,8 @@ export async function generateWorkoutExplanation(
           setIndex: set.setIndex,
           targetLoad: set.targetLoad,
           targetReps: set.targetReps,
+          targetRepMin: set.targetRepMin,
+          targetRepMax: set.targetRepMax,
           targetRpe: set.targetRpe,
           actualLoad: set.logs[0]?.actualLoad ?? null,
           actualReps: set.logs[0]?.actualReps ?? null,
@@ -936,6 +975,8 @@ type NextExposurePlannedSetInput = {
   setIndex: number;
   targetLoad?: number | null;
   targetReps?: number | null;
+  targetRepMin?: number | null;
+  targetRepMax?: number | null;
   targetRpe?: number | null;
   actualLoad?: number | null;
   actualReps?: number | null;
@@ -1657,7 +1698,14 @@ function formatNextExposureReason(input: {
   anchorLoad: number;
   reviewQualityReason?: string;
 }): string {
-  const repBand = `${input.repRange[0]}-${input.repRange[1]}`;
+  const repRangeLabel =
+    input.repRange[0] === input.repRange[1]
+      ? `${input.repRange[0]}`
+      : `${input.repRange[0]}–${input.repRange[1]}`;
+  const repTargetLabel =
+    input.repRange[0] === input.repRange[1]
+      ? `${repRangeLabel}-rep target`
+      : `${repRangeLabel} range`;
   const medianRepsLabel =
     input.medianReps != null ? Number(input.medianReps.toFixed(1)) : "n/a";
   const modalRpeLabel = input.modalRpe != null ? input.modalRpe : "n/a";
@@ -1671,7 +1719,7 @@ function formatNextExposureReason(input: {
         ? `You beat the written load across enough working sets to earn a one-step increase, even at modal RPE ${modalRpeLabel}.`
         : `You beat the written load at manageable effort, so ${input.anchorLoad} lbs should not stay capped next time.`;
     }
-    return `Median reps reached the top of the ${repBand} band at manageable effort (modal RPE ${modalRpeLabel}) on ${input.anchorLoad} lbs.`;
+    return `Median reps reached the upper end of the ${repTargetLabel} at manageable effort (modal RPE ${modalRpeLabel}) on ${input.anchorLoad} lbs.`;
   }
   if (input.action === "decrease") {
     return `Effort looked too high to keep ${input.anchorLoad} lbs moving productively next time.`;
@@ -1686,7 +1734,7 @@ function formatNextExposureReason(input: {
   if (input.modalRpe != null && input.modalRpe >= 9) {
     return `Effort was already high at modal RPE ${modalRpeLabel}, so ${input.anchorLoad} lbs should hold.`;
   }
-  return `Median reps stayed at ${medianRepsLabel} in the ${repBand} band, so keep building reps before adding load.`;
+  return `Median reps stayed at ${medianRepsLabel} in the ${repTargetLabel}, so keep building reps before adding load.`;
 }
 
 function resolveProgressionEquipment(equipment: string[]): "barbell" | "dumbbell" | "cable" | "other" {

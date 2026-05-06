@@ -5,6 +5,7 @@ import type { LogExerciseInput } from "@/components/log-workout/types";
 import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
 import type { RuntimeExerciseSwapExercisePayload } from "@/lib/api/runtime-exercise-swap-service";
 import { isDumbbellEquipment, toDisplayLoad } from "@/lib/ui/load-display";
+import { formatRepPrescriptionInline } from "@/lib/ui/rep-target-display";
 
 type RuntimeExerciseSwapCandidate = {
   exerciseId: string;
@@ -146,15 +147,10 @@ export function RuntimeExerciseSwapSheet({
 
   function formatRepTarget(
     targetReps: number,
-    targetRepRange: { min: number; max: number } | undefined
+    targetRepRange: { min: number; max: number } | undefined,
+    showAim: boolean
   ): string {
-    if (!targetRepRange) {
-      return `${targetReps} reps`;
-    }
-    if (targetRepRange.min === targetRepRange.max) {
-      return `${targetRepRange.min} reps`;
-    }
-    return `${targetReps} reps (${targetRepRange.min}-${targetRepRange.max})`;
+    return formatRepPrescriptionInline({ targetReps, targetRepRange }, { showAim });
   }
 
   function formatLoadHint(targetLoad: number | null, equipment: string[] | undefined): string {
@@ -424,7 +420,8 @@ export function RuntimeExerciseSwapSheet({
                           <p key={set.setId}>
                             {`Set ${set.setIndex}: ${formatRepTarget(
                               set.targetReps,
-                              set.targetRepRange
+                              set.targetRepRange,
+                              preview.isMainLift
                             )} | ${formatLoadHint(
                               set.targetLoad,
                               preview.equipment

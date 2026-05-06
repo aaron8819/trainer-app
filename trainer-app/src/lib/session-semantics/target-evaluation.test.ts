@@ -60,4 +60,20 @@ describe("evaluateTargetReps", () => {
       deviation: -1,
     });
   });
+
+  it("uses persisted min/max boundaries before falling back to the aim", () => {
+    expect(
+      evaluateTargetReps({
+        actualReps: 10,
+        targetReps: 9,
+        targetRepMin: 6,
+        targetRepMax: 10,
+      })
+    ).toMatchObject({
+      kind: "in_range",
+      targetRange: { min: 6, max: 10 },
+      usesRangeTarget: true,
+      deviation: 0,
+    });
+  });
 });

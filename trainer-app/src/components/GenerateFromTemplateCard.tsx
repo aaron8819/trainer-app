@@ -15,6 +15,7 @@ import {
 import type { ActiveBlockPhase } from "@/lib/api/program";
 import type { GenerateFromTemplateResponse } from "@/lib/api/template-session/types";
 import type { SaveWorkoutRequestPayload } from "@/components/log-workout/api";
+import { formatRepPrescriptionInline } from "@/lib/ui/rep-target-display";
 
 type WorkoutSet = {
   setIndex: number;
@@ -93,14 +94,11 @@ type GeneratedMetadata = Pick<
   "selectionMode" | "sessionIntent" | "selectionMetadata"
 >;
 
-function formatTargetReps(set?: WorkoutSet): string {
+function formatTargetReps(set: WorkoutSet | undefined, showAim: boolean): string {
   if (!set) {
     return "";
   }
-  if (set.targetRepRange && set.targetRepRange.min !== set.targetRepRange.max) {
-    return `${set.targetRepRange.min}-${set.targetRepRange.max} reps`;
-  }
-  return `${set.targetReps} reps`;
+  return formatRepPrescriptionInline(set, { showAim });
 }
 
 function hasBodyweightEquipment(equipment?: string[]): boolean {
@@ -633,7 +631,7 @@ export function GenerateFromTemplateCard({ templates, blockPhase }: GenerateFrom
                       <div key={exercise.id} className="rounded-lg border border-slate-100 p-3">
                         <p className="text-sm font-semibold">{exercise.exercise.name}</p>
                         <p className="text-xs text-slate-500">
-                          {exercise.sets.length} sets - {formatTargetReps(exercise.sets[0])}
+                          {exercise.sets.length} sets - {formatTargetReps(exercise.sets[0], exercise.isMainLift)}
                           {loadLabel ? ` - ${loadLabel}` : ""}
                           {exercise.sets[0]?.targetRpe ? ` - RPE ${exercise.sets[0].targetRpe}` : ""}
                         </p>

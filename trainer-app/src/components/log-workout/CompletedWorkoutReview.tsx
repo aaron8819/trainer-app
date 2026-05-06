@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { PostWorkoutInsights } from "@/components/post-workout/PostWorkoutInsights";
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { isDumbbellEquipment, toDisplayLoad } from "@/lib/ui/load-display";
+import { formatRepPrescriptionInline } from "@/lib/ui/rep-target-display";
 import { evaluateTargetReps } from "@/lib/session-semantics/target-evaluation";
 import { hydrateWorkoutExplanation, type WorkoutExplanationResponse } from "@/lib/ui/workout-explanation-response";
 import { buildWorkoutExecutionSummary } from "@/lib/ui/workout-execution-summary";
@@ -20,12 +21,10 @@ import type {
 
 function formatRepTarget(
   targetReps: number,
-  targetRepRange?: { min: number; max: number }
+  targetRepRange: { min: number; max: number } | undefined,
+  showAim: boolean
 ): string {
-  if (targetRepRange && targetRepRange.min !== targetRepRange.max) {
-    return `${targetRepRange.min}-${targetRepRange.max} reps`;
-  }
-  return `${targetReps} reps`;
+  return formatRepPrescriptionInline({ targetReps, targetRepRange }, { showAim });
 }
 
 type CompletedWorkoutReviewProps = {
@@ -192,7 +191,7 @@ export function CompletedWorkoutReview({
                       ? "text-amber-700"
                       : "text-rose-700";
                     const targetLabel = [
-                      formatRepTarget(set.targetReps, set.targetRepRange),
+                      formatRepTarget(set.targetReps, set.targetRepRange, exercise.isMainLift),
                       set.targetLoad != null
                         ? isDumbbell
                           ? `${toDisplayLoad(set.targetLoad, true)} lbs each`

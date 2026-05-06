@@ -9,6 +9,7 @@ import {
   listWorkoutPlanExercisesInOrder,
   type OrderedWorkoutExerciseSection,
 } from "@/lib/engine/workout-plan-order";
+import { formatRepPrescriptionInline } from "@/lib/ui/rep-target-display";
 
 type SessionIntent = "push" | "pull" | "legs" | "upper" | "lower" | "full_body" | "body_part";
 
@@ -89,12 +90,9 @@ function formatExerciseSection(section: OrderedWorkoutExerciseSection): string {
   return "Accessory";
 }
 
-function formatTargetReps(set?: WorkoutSet): string {
+function formatTargetReps(set: WorkoutSet | undefined, showAim: boolean): string {
   if (!set) return "";
-  if (set.targetRepRange && set.targetRepRange.min !== set.targetRepRange.max) {
-    return `${set.targetRepRange.min}-${set.targetRepRange.max} reps`;
-  }
-  return `${set.targetReps} reps`;
+  return formatRepPrescriptionInline(set, { showAim });
 }
 
 function parseTargetMuscles(input: string): string[] {
@@ -357,7 +355,7 @@ export function IntentWorkoutCard({
                   <div key={exercise.id} className="rounded-lg border border-slate-100 p-3">
                     <p className="text-sm font-semibold">{exercise.exercise.name}</p>
                     <p className="text-xs text-slate-500">
-                      {exercise.sets.length} sets - {formatTargetReps(exercise.sets[0])} -{" "}
+                      {exercise.sets.length} sets - {formatTargetReps(exercise.sets[0], exercise.isMainLift)} -{" "}
                       {formatExerciseSection(section)}
                     </p>
                   </div>

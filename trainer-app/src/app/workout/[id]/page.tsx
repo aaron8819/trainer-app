@@ -6,6 +6,7 @@ import { SessionContextCard } from "@/components/explainability";
 import { prisma } from "@/lib/db/prisma";
 import { parseExplainabilitySelectionMetadata } from "@/lib/ui/explainability";
 import { isDumbbellEquipment, formatLoad } from "@/lib/ui/load-display";
+import { formatRepPrescriptionInline } from "@/lib/ui/rep-target-display";
 import {
   getLoadProvenanceNote,
   hasPerformedHistory,
@@ -36,14 +37,11 @@ const formatTargetRepDisplay = (set?: {
   targetReps: number;
   targetRepMin: number | null;
   targetRepMax: number | null;
-}) => {
+}, showAim = false) => {
   if (!set) {
     return "-- reps";
   }
-  if (set.targetRepMin != null && set.targetRepMax != null && set.targetRepMin !== set.targetRepMax) {
-    return `${set.targetRepMin}-${set.targetRepMax} reps`;
-  }
-  return `${set.targetReps} reps`;
+  return formatRepPrescriptionInline(set, { showAim });
 };
 
 const hasBodyweightEquipment = (exercise: {
@@ -302,7 +300,10 @@ export default async function WorkoutDetailPage({
                           </div>
                           <p className="mt-1 text-sm leading-6 text-slate-600">
                             <>
-                              {`${exercise.sets.length} sets - ${formatTargetRepDisplay(exercise.sets[0])}`}
+                              {`${exercise.sets.length} sets - ${formatTargetRepDisplay(
+                                exercise.sets[0],
+                                roleLabel === "Main lift"
+                              )}`}
                               {workingLoadDisplay ? ` | ${workingLoadDisplay}` : ""}
                               {exercise.sets[0]?.targetRpe ? ` | RPE ${exercise.sets[0].targetRpe}` : ""}
                             </>
@@ -366,7 +367,7 @@ export default async function WorkoutDetailPage({
                                   ) : null}
                                 </span>
                                 <span className="text-slate-700">
-                                  {formatTargetRepDisplay(set)}
+                                  {formatTargetRepDisplay(set, roleLabel === "Main lift")}
                                   {formatLoad(set.targetLoad, isDumbbellExercise, isBodyweightExercise)
                                     ? ` | ${formatLoad(set.targetLoad, isDumbbellExercise, isBodyweightExercise)}`
                                     : ""}

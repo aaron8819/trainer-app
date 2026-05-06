@@ -133,7 +133,7 @@ Sources of truth:
   - controlled-hard lane: `modalRpe <= 8.5` only when overshoot coverage is stronger (`>= 75%` of target-bearing sets, minimum `3` when available) and no high-variance trim was required
   - `modalRpe > 8.5` still holds on the overshoot path
 - Canonical progression inputs must therefore preserve prescribed `targetLoad` through history/context mapping (`src/lib/api/workout-context.ts`, `src/lib/session-semantics/performed-exercise-semantics.ts`, `src/lib/engine/apply-loads.ts`).
-- Hypertrophy main lifts now author uniform working sets in `src/lib/engine/prescription.ts` and receive one resolved working load across those sets in `src/lib/engine/apply-loads.ts`. `computeDoubleProgressionDecision()` in `src/lib/engine/progression.ts` accepts an optional `workingSetLoad` parameter so progression, reps, and effort can describe the same representative working-set object when the caller has already resolved it.
+- Hypertrophy main lifts now author uniform working sets in `src/lib/engine/prescription.ts` and receive one resolved working load across those sets in `src/lib/engine/apply-loads.ts`. Main-lift sets carry both the lifecycle-interpolated `targetReps` aim and the effective prescription `targetRepRange`; progression and review should use the range's upper bound for double-progression readiness while keeping `targetReps` as the load-estimation/prefill aim. `computeDoubleProgressionDecision()` in `src/lib/engine/progression.ts` accepts an optional `workingSetLoad` parameter so progression, reps, and effort can describe the same representative working-set object when the caller has already resolved it.
 - Progression outlier thresholds and sample-size confidence scaling are centralized in `PROGRESSION_CONFIG` (`src/lib/engine/progression.ts`) and emitted into progression decision logs.
 - Bodyweight working sets are canonicalized at write-time to `actualLoad=0` when `targetLoad=0`; `null` is not treated as canonical bodyweight load.
 - Scheduled deload load reduction is canonicalized in `src/lib/engine/apply-loads.ts`, not in deload generation. `src/lib/api/template-session/deload-session.ts` leaves `targetLoad` unset, and `applyLoads()` anchors deload load-down to the most recent performed accumulation load for that exercise, then applies the lighter deload prescription with the existing multiplier and canonical quantization. If no accumulation-phase history exists, it falls back to the normal canonical source-load resolver.
@@ -172,6 +172,7 @@ SetLog / logged performance
   - else fall back to `targetRepMin` + `targetRepMax`
   - else fall back to point target `targetReps`
 - `evaluateTargetReps()` is the shared read-side helper for comparing actual reps against the effective target. Read-side review/explainability surfaces should not re-derive range vs point-target semantics locally.
+- `targetReps` is the suggested aim inside a range, not a substitute for `targetRepRange` / `targetRepMin` / `targetRepMax`. Main hypertrophy lift copy should describe the upper end of the true range instead of synthetic exact bands such as `9-9`.
 
 ## Set-state classification
 - Canonical read-side set-state interpretation lives in `classifySetLog()` in `src/lib/session-semantics/set-classification.ts`.

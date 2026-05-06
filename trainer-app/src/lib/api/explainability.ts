@@ -78,6 +78,7 @@ type GeneratedProgressionEvidence = "confirmed" | "absent" | "unknown";
 const MATERIAL_TARGET_MISS_RATIO = 0.1;
 const LARGE_TARGET_MISS_RATIO = 0.2;
 const RECALIBRATED_INCREASE_TARGET_MISS_RATIO = 0.08;
+const RECALIBRATED_INCREASE_TARGET_OVERSHOOT_RATIO = 0.08;
 const LOW_SIGNAL_SET_COUNT = 2;
 const LOW_SIGNAL_COVERAGE_RATIO = 0.75;
 const NON_TRIVIAL_SKIPPED_RATIO = 0.25;
@@ -956,6 +957,7 @@ type NextExposureTargetAdherence = {
   skippedRatio: number;
   targetLoad: number | null;
   targetMissRatio: number | null;
+  targetOvershootRatio: number | null;
 };
 
 type NextExposureReviewQuality = {
@@ -1339,7 +1341,7 @@ function resolveNextExposureReviewQuality(input: {
     anchorLoad: input.decisionAnchorLoad,
   });
   const adherenceLog = formatTargetAdherenceDecisionLog(adherence, input.decisionAnchorLoad);
-  const buildDowngrade = (
+  const buildReviewQualityAction = (
     action: NextExposureDecision["action"],
     reason: string,
     guardLog: string
@@ -1350,7 +1352,7 @@ function resolveNextExposureReviewQuality(input: {
   });
 
   if (input.hasTransitionBackfillSubstitution) {
-    return buildDowngrade(
+    return buildReviewQualityAction(
       "caution_review_manually",
       "This workout carries a transition-backfill substitution flag, so the performed set trace should be reviewed manually before increasing.",
       "Review-quality guard: transition-backfilled substitution downgraded a plain increase to manual review."
@@ -1358,7 +1360,7 @@ function resolveNextExposureReviewQuality(input: {
   }
 
   if (adherence.signalSetCount < LOW_SIGNAL_SET_COUNT) {
-    return buildDowngrade(
+    return buildReviewQualityAction(
       "insufficient_evidence",
       `Only ${adherence.signalSetCount}/${adherence.plannedSetCount} planned sets produced clean progression signal${formatSkippedClause(adherence)}. Hold or review manually before increasing.`,
       "Review-quality guard: too few clean signal sets downgraded a plain increase to insufficient evidence."
@@ -1369,9 +1371,10 @@ function resolveNextExposureReviewQuality(input: {
     adherence.signalCoverageRatio < LOW_SIGNAL_COVERAGE_RATIO ||
     adherence.skippedRatio >= NON_TRIVIAL_SKIPPED_RATIO;
   const targetMissRatio = adherence.targetMissRatio;
+  const targetOvershootRatio = adherence.targetOvershootRatio;
 
   if (targetMissRatio != null && targetMissRatio >= LARGE_TARGET_MISS_RATIO) {
-    return buildDowngrade(
+    return buildReviewQualityAction(
       "target_too_high",
       `The engine trace would increase from today's ${formatLoadLabel(input.decisionAnchorLoad)} performed anchor, but the written target ${formatLoadLabel(adherence.targetLoad)} was missed by ${formatRatioPercent(targetMissRatio)} with ${adherence.signalSetCount}/${adherence.plannedSetCount} clean signal sets${formatSkippedClause(adherence)}. Treat the written target as too high before increasing.`,
       "Review-quality guard: large written-target miss downgraded a plain increase to target-too-high review."
@@ -1379,7 +1382,7 @@ function resolveNextExposureReviewQuality(input: {
   }
 
   if (targetMissRatio != null && targetMissRatio >= MATERIAL_TARGET_MISS_RATIO && hasLowCoverage) {
-    return buildDowngrade(
+    return buildReviewQualityAction(
       "recalibrate",
       `Today's performed anchor was ${formatRatioPercent(targetMissRatio)} below the written target ${formatLoadLabel(adherence.targetLoad)}, and set coverage was not clean (${adherence.signalSetCount}/${adherence.plannedSetCount} signal sets${formatSkippedClause(adherence)}). Recalibrate before increasing.`,
       "Review-quality guard: material written-target miss plus low coverage downgraded a plain increase to recalibration."
@@ -1387,7 +1390,7 @@ function resolveNextExposureReviewQuality(input: {
   }
 
   if (hasLowCoverage) {
-    return buildDowngrade(
+    return buildReviewQualityAction(
       "caution_review_manually",
       `Skipped or incomplete planned sets reduced confidence (${adherence.signalSetCount}/${adherence.plannedSetCount} clean signal sets${formatSkippedClause(adherence)}). Review the log before increasing.`,
       "Review-quality guard: skipped or incomplete planned-set coverage downgraded a plain increase to manual review."
@@ -1395,10 +1398,21 @@ function resolveNextExposureReviewQuality(input: {
   }
 
   if (
+    targetOvershootRatio != null &&
+    targetOvershootRatio >= RECALIBRATED_INCREASE_TARGET_OVERSHOOT_RATIO
+  ) {
+    return buildReviewQualityAction(
+      "recalibrated_increase",
+      `This is an upward target recalibration from today's ${formatLoadLabel(input.decisionAnchorLoad)} performed anchor, not a clean progression win against the written target ${formatLoadLabel(adherence.targetLoad)}. The performed anchor was ${formatRatioPercent(targetOvershootRatio)} above the written target, so treat the written target as too low and progress from the recalibrated anchor.`,
+      "Review-quality guard: target_too_low/performed_anchor_above_written_target/upward_recalibration reframed a plain increase as a recalibrated-anchor increase."
+    );
+  }
+
+  if (
     targetMissRatio != null &&
     targetMissRatio >= RECALIBRATED_INCREASE_TARGET_MISS_RATIO
   ) {
-    return buildDowngrade(
+    return buildReviewQualityAction(
       "recalibrated_increase",
       `This is an increase from today's ${formatLoadLabel(input.decisionAnchorLoad)} performed anchor, not a clean win against the written target ${formatLoadLabel(adherence.targetLoad)}. The target was missed by ${formatRatioPercent(targetMissRatio)}, so progress from the recalibrated anchor.`,
       "Review-quality guard: material written-target miss reframed a plain increase as a recalibrated-anchor increase."
@@ -1432,6 +1446,10 @@ function summarizeNextExposureTargetAdherence(input: {
     targetLoad != null && targetLoad > 0 && input.anchorLoad < targetLoad
       ? (targetLoad - input.anchorLoad) / targetLoad
       : null;
+  const targetOvershootRatio =
+    targetLoad != null && targetLoad > 0 && input.anchorLoad > targetLoad
+      ? (input.anchorLoad - targetLoad) / targetLoad
+      : null;
 
   return {
     plannedSetCount,
@@ -1442,6 +1460,7 @@ function summarizeNextExposureTargetAdherence(input: {
     skippedRatio: plannedSetCount > 0 ? skippedSetCount / plannedSetCount : 0,
     targetLoad,
     targetMissRatio,
+    targetOvershootRatio,
   };
 }
 
@@ -1502,9 +1521,13 @@ function formatTargetAdherenceDecisionLog(
     adherence.targetMissRatio != null
       ? formatRatioPercent(adherence.targetMissRatio)
       : "n/a";
+  const targetOvershoot =
+    adherence.targetOvershootRatio != null
+      ? formatRatioPercent(adherence.targetOvershootRatio)
+      : "n/a";
   return (
     `Review-quality signal: target=${formatLoadLabel(adherence.targetLoad)}, ` +
-    `anchor=${formatLoadLabel(anchorLoad)}, target miss=${targetMiss}, ` +
+    `anchor=${formatLoadLabel(anchorLoad)}, target miss=${targetMiss}, target overshoot=${targetOvershoot}, ` +
     `performed sets=${adherence.performedSetCount}/${adherence.plannedSetCount}, ` +
     `signal sets=${adherence.signalSetCount}/${adherence.plannedSetCount}, ` +
     `skipped sets=${adherence.skippedSetCount}.`

@@ -24,12 +24,15 @@ describe("getCanonicalNextExposureCopy", () => {
 
   it("returns distinct copy for recalibrated-anchor increases", () => {
     expect(getCanonicalNextExposureCopy("recalibrated_increase")).toEqual({
-      badge: "Increase from anchor",
-      summary: "Next exposure: increase from today's performed anchor.",
-      resultClause: "points to an increase from a recalibrated anchor",
-      actionPhrase: "Increase from performed anchor",
-      nextTimeImperative: "Increase from today's performed anchor, not the missed written target.",
+      badge: "Recalibrated increase",
+      summary: "Next exposure: recalibrated increase.",
+      resultClause: "points to a recalibrated increase from the performed anchor",
+      actionPhrase: "Use a recalibrated increase",
+      nextTimeImperative: "Increase from today's performed anchor while recalibrating the written target.",
     });
+    expect(JSON.stringify(getCanonicalNextExposureCopy("recalibrated_increase"))).not.toMatch(
+      /missed/i
+    );
   });
 
   it("returns consistent copy for decrease decisions", () => {

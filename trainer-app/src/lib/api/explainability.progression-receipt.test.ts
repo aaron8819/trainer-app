@@ -1421,7 +1421,113 @@ describe("generateWorkoutExplanation progression receipt", () => {
     });
   });
 
-  it("explains earned next-exposure increases when performed load materially beats prescription", async () => {
+  it("reclassifies materially above-target increases as upward recalibrations", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "INTENT",
+      sessionIntent: "LEGS",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          exerciseId: "ex1",
+          isMainLift: true,
+          exercise: {
+            id: "ex1",
+            name: "Back Squat",
+            movementPatterns: ["SQUAT"],
+            exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Quads" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 8,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 8,
+              targetLoad: 120,
+              restSeconds: 150,
+              logs: [{ actualReps: 8, actualLoad: 145, actualRpe: 7.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 2,
+              targetReps: 8,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 8,
+              targetLoad: 120,
+              restSeconds: 150,
+              logs: [{ actualReps: 8, actualLoad: 145, actualRpe: 8, wasSkipped: false }],
+            },
+            {
+              setIndex: 3,
+              targetReps: 8,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 8,
+              targetLoad: 120,
+              restSeconds: 150,
+              logs: [{ actualReps: 7, actualLoad: 140, actualRpe: 8, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockImplementation(async (args: {
+      where?: { workout?: { scheduledDate?: { lt?: Date }; selectionMode?: string } };
+    }) => {
+      const scheduledBefore = args.where?.workout?.scheduledDate?.lt;
+      const requiredSelectionMode = args.where?.workout?.selectionMode;
+      const priorIntent = {
+        workout: {
+          scheduledDate: new Date("2026-02-18T00:00:00.000Z"),
+          selectionMode: "INTENT",
+          sessionIntent: "LEGS",
+          selectionMetadata: {},
+        },
+        sets: [
+          {
+            setIndex: 1,
+            logs: [{ actualReps: 8, actualLoad: 135, actualRpe: 8, wasSkipped: false }],
+          },
+          {
+            setIndex: 2,
+            logs: [{ actualReps: 8, actualLoad: 135, actualRpe: 8, wasSkipped: false }],
+          },
+        ],
+      };
+      if (requiredSelectionMode && requiredSelectionMode !== "INTENT") {
+        return null;
+      }
+      if (scheduledBefore && priorIntent.workout.scheduledDate.getTime() >= scheduledBefore.getTime()) {
+        return null;
+      }
+      return priorIntent;
+    });
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const decision = result.nextExposureDecisions.get("ex1");
+    expect(decision).toMatchObject({
+      action: "recalibrated_increase",
+      summary: "Next exposure: recalibrated increase.",
+      anchorLoad: 145,
+    });
+    expect(decision?.reason).toContain("written target 120 lbs");
+    expect(decision?.reason).toContain("target as too low");
+    expect(decision?.reason).not.toMatch(/missed/i);
+    expect(result.nextExposureDecisions.get("ex1")?.decisionLog?.join(" | ")).toContain(
+      "Path 5 fired"
+    );
+    expect(decision?.decisionLog?.join(" | ")).toContain("target_too_low");
+  });
+
+  it("keeps near-target strong overshoot performance as a clean increase", async () => {
     mocks.workoutFindUnique.mockResolvedValueOnce({
       id: "w1",
       userId: "u1",
@@ -1512,14 +1618,15 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect("error" in result).toBe(false);
     if ("error" in result) return;
 
-    expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
+    const decision = result.nextExposureDecisions.get("ex1");
+    expect(decision).toMatchObject({
       action: "increase",
+      summary: "Next exposure: increase load.",
       anchorLoad: 145,
     });
-    expect(result.nextExposureDecisions.get("ex1")?.reason).toContain("beat the written load");
-    expect(result.nextExposureDecisions.get("ex1")?.decisionLog?.join(" | ")).toContain(
-      "Path 5 fired"
-    );
+    expect(decision?.reason).toContain("beat the written load");
+    expect(decision?.decisionLog?.join(" | ")).toContain("Path 5 fired");
+    expect(decision?.decisionLog?.join(" | ")).not.toContain("target_too_low");
   });
 
   it("surfaces the bounded catch-up lane when same-exercise overshoot shows clear under-translation", async () => {

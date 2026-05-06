@@ -663,7 +663,7 @@ These signals should inform coaching and future planning evidence. They should n
 
 ### Session Review / Recommendations
 
-Session review must distinguish clean progression from recalibration. If actual performed load is materially below the written target, skipped planned sets are present, or evidence is based on too few/noisy sets, the app should not emit a plain "increase next time." It should classify the result as hold, recalibrate, target too high, insufficient evidence, or caution/review manually.
+Session review must distinguish clean progression from recalibration in both directions. If actual performed load is materially below the written target, the target may be too high. If actual performed load is materially above the written target, the target may be too low. Skipped planned sets or too few/noisy signal sets should also block a plain "increase next time." None of these cases should be framed as a normal clean progression without confidence/context; they should classify as a recalibrated increase, hold, recalibrate, target too high, insufficient evidence, or caution/review manually as appropriate.
 
 ### Exercise-Specific Coaching Profiles
 

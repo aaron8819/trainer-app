@@ -340,10 +340,10 @@ function buildHeadline(keyLifts: PostWorkoutKeyLiftInsight[]): string {
     return "At least one key lift points to a reduction next time.";
   }
   if (recalibratedIncreaseCount > 0 && increaseCount === 0) {
-    return "Key lifts point to a cautious increase from a recalibrated anchor.";
+    return "Key lifts point to recalibrated increases from performed anchors.";
   }
   if (recalibratedIncreaseCount > 0) {
-    return "Some key lifts have clean increases while others need recalibrated anchors.";
+    return "Some key lifts have clean increases while others need recalibrated increases.";
   }
   if (increaseCount > 0 && increaseCount < keyLifts.length) {
     return "Some key lifts point to an increase next time, while others should hold.";
@@ -385,10 +385,10 @@ function buildSummary(
     return `Keep the next exposure conservative on ${formatExerciseNameList(decreaseNames)}.`;
   }
   if (recalibratedIncreaseNames.length > 0 && increaseNames.length === 0) {
-    return `The next exposure can increase from today's performed anchor on ${formatExerciseNameList(recalibratedIncreaseNames)}, but this was not a clean beat of the written target.`;
+    return `The next exposure can use a recalibrated increase on ${formatExerciseNameList(recalibratedIncreaseNames)} because the written target needs calibration.`;
   }
   if (recalibratedIncreaseNames.length > 0) {
-    return `Increase cleanly on ${formatExerciseNameList(increaseNames)} and use a recalibrated anchor on ${formatExerciseNameList(recalibratedIncreaseNames)}.`;
+    return `Increase cleanly on ${formatExerciseNameList(increaseNames)} and use recalibrated increases on ${formatExerciseNameList(recalibratedIncreaseNames)}.`;
   }
   if (increaseNames.length > 0) {
     return `The next exposure points to an increase on ${formatExerciseNameList(increaseNames)} if setup and readiness feel normal.`;
@@ -442,9 +442,9 @@ function buildOverview(keyLifts: PostWorkoutKeyLiftInsight[]): PostWorkoutOvervi
       : reduceNames.length > 0
       ? `${reduceNames.length} key lift${reduceNames.length === 1 ? "" : "s"} came back with a caution signal.`
       : recalibratedIncreaseNames.length > 0 && increaseNames.length === 0
-      ? `${recalibratedIncreaseNames.length} key lift${recalibratedIncreaseNames.length === 1 ? "" : "s"} point${recalibratedIncreaseNames.length === 1 ? "s" : ""} to a cautious increase from a recalibrated anchor.`
+      ? `${recalibratedIncreaseNames.length} key lift${recalibratedIncreaseNames.length === 1 ? "" : "s"} point${recalibratedIncreaseNames.length === 1 ? "s" : ""} to a recalibrated increase.`
       : recalibratedIncreaseNames.length > 0
-      ? `${increaseNames.length} key lift${increaseNames.length === 1 ? "" : "s"} point${increaseNames.length === 1 ? "s" : ""} to a clean increase; ${recalibratedIncreaseNames.length} need${recalibratedIncreaseNames.length === 1 ? "s" : ""} a recalibrated anchor.`
+      ? `${increaseNames.length} key lift${increaseNames.length === 1 ? "" : "s"} point${increaseNames.length === 1 ? "s" : ""} to a clean increase; ${recalibratedIncreaseNames.length} need${recalibratedIncreaseNames.length === 1 ? "s" : ""} recalibrated increases.`
       : increaseNames.length > 0
       ? `${increaseNames.length} key lift${increaseNames.length === 1 ? "" : "s"} point${increaseNames.length === 1 ? "s" : ""} to an increase next time.`
       : holdNames.length > 0

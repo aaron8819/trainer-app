@@ -212,6 +212,46 @@ describe("buildPostWorkoutInsightsModel", () => {
     expect(model.headline).not.toContain("point to an increase");
   });
 
+  it("frames upward recalibration without missed-target language", () => {
+    const explanation = makeExplanation();
+    explanation.nextExposureDecisions = new Map([
+      [
+        "lat-pull",
+        {
+          action: "recalibrated_increase",
+          summary: "Next exposure: recalibrated increase.",
+          reason:
+            "This is an upward target recalibration from today's 110 lbs performed anchor. The written target 55 lbs was too low.",
+          anchorLoad: 110,
+          repRange: { min: 8, max: 12 },
+          modalRpe: 7.5,
+          medianReps: 10,
+        },
+      ],
+    ]);
+
+    const model = buildPostWorkoutInsightsModel({
+      explanation,
+      exercises: [
+        {
+          exerciseId: "lat-pull",
+          exerciseName: "Incline Machine Press",
+          isMainLift: true,
+        },
+      ],
+    });
+
+    expect(model.headline).toBe("Key lifts point to recalibrated increases from performed anchors.");
+    expect(model.summary).toContain("written target needs calibration");
+    expect(model.overview.find((item) => item.label === "Next time")?.value).toContain(
+      "Use a recalibrated increase on Incline Machine Press"
+    );
+    expect(model.keyLifts[0]?.badge).toBe("Recalibrated increase");
+    expect(model.keyLifts[0]?.nextTime).toContain("Next exposure: recalibrated increase.");
+    expect(JSON.stringify(model)).not.toMatch(/missed/i);
+    expect(model.headline).not.toContain("clean increase");
+  });
+
   it("uses deload-first framing instead of progression-first messaging for deload sessions", () => {
     const explanation = makeExplanation();
     explanation.sessionContext.blockPhase.blockType = "deload";

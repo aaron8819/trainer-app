@@ -428,6 +428,14 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(mockedLogSetRequest).not.toHaveBeenCalled();
   });
 
+  it("shows a session elapsed timer without logging data", () => {
+    renderClient();
+
+    expect(screen.getByTestId("session-elapsed-timer")).toHaveTextContent("Session 0:00");
+    expect(mockedLogSetRequest).not.toHaveBeenCalled();
+    expect(mockedSaveWorkoutRequest).not.toHaveBeenCalled();
+  });
+
   it("shows the added exercise label in the queue for runtime-added exercises", () => {
     render(
       <LogWorkoutClient

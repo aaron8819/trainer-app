@@ -38,7 +38,6 @@ import { WeeklyVolumeCheck } from "@/components/log-workout/WeeklyVolumeCheck";
 import { useActiveSetDraftState } from "@/components/log-workout/useActiveSetDraftState";
 import { usePersistedWorkoutSessionUi } from "@/components/log-workout/usePersistedWorkoutSessionUi";
 import { useRestTimerState, type RestTimerSnapshot } from "@/components/log-workout/useRestTimerState";
-import { useWorkoutSessionElapsedTime } from "@/components/log-workout/useWorkoutSessionElapsedTime";
 import { useWorkoutSessionLayout } from "@/components/log-workout/useWorkoutSessionLayout";
 import { useWorkoutSessionFlow } from "@/components/log-workout/useWorkoutSessionFlow";
 import { isSetSatisfied } from "@/components/log-workout/useWorkoutLogState";
@@ -725,7 +724,6 @@ export default function LogWorkoutClient({
     activeSet !== null &&
     autoregHint.exerciseId === activeSet.exercise.workoutExerciseId;
   const sessionTerminated = completion.completed || completion.skipped;
-  const sessionElapsed = useWorkoutSessionElapsedTime(workoutId, !sessionTerminated);
   const showFinishBar = capabilities.canFinish && !sessionTerminated && allSetsLogged;
   const shouldShowActiveEditor =
     !sessionTerminated && activeSet != null && (activeCardMode.kind === "edit" || !allSetsLogged);
@@ -975,17 +973,6 @@ export default function LogWorkoutClient({
           onAdjust={adjustTimer}
           onMuteToggle={() => setRestTimerMuted((prev) => !prev)}
         />
-      ) : null}
-
-      {!sessionTerminated ? (
-        <div className="flex justify-center">
-          <div
-            className="inline-flex min-h-8 items-center rounded-full border border-slate-200 bg-slate-50 px-3 text-xs font-semibold tabular-nums text-slate-600"
-            data-testid="session-elapsed-timer"
-          >
-            Session {sessionElapsed.elapsedLabel}
-          </div>
-        </div>
       ) : null}
 
       {shouldShowActiveEditor ? (

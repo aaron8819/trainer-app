@@ -27,6 +27,7 @@ export type WorkoutExplanation = {
 export type NextExposureDecisionAction =
   | "increase"
   | "recalibrated_increase"
+  | "hold_at_recalibrated_anchor"
   | "hold"
   | "decrease"
   | "recalibrate"

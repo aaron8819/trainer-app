@@ -278,6 +278,64 @@ describe("buildPostWorkoutInsightsModel", () => {
     expect(model.headline).not.toContain("clean increase");
   });
 
+  it("surfaces notable accessory recalibration even when a main lift exists", () => {
+    const explanation = makeExplanation();
+    explanation.nextExposureDecisions = new Map([
+      [
+        "main",
+        {
+          action: "hold",
+          summary: "Next exposure: hold load.",
+          reason: "Median reps stayed in range, so keep building reps before adding load.",
+          anchorLoad: 225,
+          repRange: { min: 6, max: 10 },
+          modalRpe: 8,
+          medianReps: 8,
+        },
+      ],
+      [
+        "leg-extension",
+        {
+          action: "hold_at_recalibrated_anchor",
+          summary: "Next exposure: hold at recalibrated anchor.",
+          reason:
+            "Next target should hold at today's 85 lbs performed anchor, not the old written target 70 lbs. The written target or estimate was too low and was recalibrated upward.",
+          anchorLoad: 85,
+          repRange: { min: 10, max: 15 },
+          modalRpe: 7.5,
+          medianReps: 12,
+        },
+      ],
+    ]);
+
+    const model = buildPostWorkoutInsightsModel({
+      explanation,
+      exercises: [
+        {
+          exerciseId: "main",
+          exerciseName: "Back Squat",
+          isMainLift: true,
+        },
+        {
+          exerciseId: "leg-extension",
+          exerciseName: "Leg Extension",
+          isMainLift: false,
+        },
+      ],
+    });
+
+    expect(model.keyLifts.map((lift) => lift.exerciseName)).toContain("Leg Extension");
+    expect(model.keyLifts[0]).toMatchObject({
+      exerciseName: "Leg Extension",
+      badge: "Recalibrated hold",
+      nextTime: expect.stringContaining("hold at recalibrated anchor"),
+    });
+    expect(model.headline).toBe("Key lifts should hold at recalibrated performed anchors.");
+    expect(model.overview.find((item) => item.label === "Next time")?.value).toContain(
+      "Hold the recalibrated anchor on Leg Extension"
+    );
+  });
+
   it("uses deload-first framing instead of progression-first messaging for deload sessions", () => {
     const explanation = makeExplanation();
     explanation.sessionContext.blockPhase.blockType = "deload";

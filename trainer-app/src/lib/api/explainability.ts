@@ -997,6 +997,7 @@ type NextExposureTargetAdherence = {
   signalCoverageRatio: number;
   skippedRatio: number;
   targetLoad: number | null;
+  targetRpe: number | null;
   targetMissRatio: number | null;
   targetOvershootRatio: number | null;
 };
@@ -1335,6 +1336,7 @@ async function buildNextExposureDecision(
     baseAction,
     decisionAnchorLoad: decision.anchorLoad,
     performedSemantics,
+    repRange,
     plannedSets: input.plannedSets,
     hasTransitionBackfillSubstitution: input.hasTransitionBackfillSubstitution === true,
   });
@@ -1369,13 +1371,10 @@ function resolveNextExposureReviewQuality(input: {
   baseAction: NextExposureDecision["action"];
   decisionAnchorLoad: number;
   performedSemantics: NonNullable<ReturnType<typeof derivePerformedExerciseSemantics>>;
+  repRange: [number, number];
   plannedSets: NextExposurePlannedSetInput[];
   hasTransitionBackfillSubstitution: boolean;
 }): NextExposureReviewQuality {
-  if (input.baseAction !== "increase") {
-    return { action: input.baseAction, decisionLog: [] };
-  }
-
   const adherence = summarizeNextExposureTargetAdherence({
     plannedSets: input.plannedSets,
     performedSemantics: input.performedSemantics,
@@ -1392,6 +1391,33 @@ function resolveNextExposureReviewQuality(input: {
     decisionLog: [adherenceLog, guardLog],
   });
 
+  const hasLowCoverage =
+    adherence.signalCoverageRatio < LOW_SIGNAL_COVERAGE_RATIO ||
+    adherence.skippedRatio >= NON_TRIVIAL_SKIPPED_RATIO;
+  const targetMissRatio = adherence.targetMissRatio;
+  const targetOvershootRatio = adherence.targetOvershootRatio;
+
+  if (
+    input.baseAction === "hold" &&
+    !input.hasTransitionBackfillSubstitution &&
+    isCleanUpwardRecalibratedHold({
+      adherence,
+      hasLowCoverage,
+      performedSemantics: input.performedSemantics,
+      repRange: input.repRange,
+    })
+  ) {
+    return buildReviewQualityAction(
+      "hold_at_recalibrated_anchor",
+      `Next target should hold at today's ${formatLoadLabel(input.decisionAnchorLoad)} performed anchor, not the old written target ${formatLoadLabel(adherence.targetLoad)}. Reps stayed within the ${formatRepRangeLabel(input.repRange)} range at or under target effort (${formatRpeComparison(input.performedSemantics.modalRpe, adherence.targetRpe)}), so the written target or estimate was too low and was recalibrated upward.`,
+      "Review-quality guard: target_too_low/performed_anchor_above_written_target/hold_at_recalibrated_anchor reframed a plain hold as a recalibrated-anchor hold."
+    );
+  }
+
+  if (input.baseAction !== "increase") {
+    return { action: input.baseAction, decisionLog: [] };
+  }
+
   if (input.hasTransitionBackfillSubstitution) {
     return buildReviewQualityAction(
       "caution_review_manually",
@@ -1407,12 +1433,6 @@ function resolveNextExposureReviewQuality(input: {
       "Review-quality guard: too few clean signal sets downgraded a plain increase to insufficient evidence."
     );
   }
-
-  const hasLowCoverage =
-    adherence.signalCoverageRatio < LOW_SIGNAL_COVERAGE_RATIO ||
-    adherence.skippedRatio >= NON_TRIVIAL_SKIPPED_RATIO;
-  const targetMissRatio = adherence.targetMissRatio;
-  const targetOvershootRatio = adherence.targetOvershootRatio;
 
   if (targetMissRatio != null && targetMissRatio >= LARGE_TARGET_MISS_RATIO) {
     return buildReviewQualityAction(
@@ -1463,6 +1483,37 @@ function resolveNextExposureReviewQuality(input: {
   return { action: input.baseAction, decisionLog: [] };
 }
 
+function isCleanUpwardRecalibratedHold(input: {
+  adherence: NextExposureTargetAdherence;
+  hasLowCoverage: boolean;
+  performedSemantics: NonNullable<ReturnType<typeof derivePerformedExerciseSemantics>>;
+  repRange: [number, number];
+}): boolean {
+  if (input.adherence.signalSetCount < LOW_SIGNAL_SET_COUNT || input.hasLowCoverage) {
+    return false;
+  }
+  if (
+    input.adherence.targetOvershootRatio == null ||
+    input.adherence.targetOvershootRatio < RECALIBRATED_INCREASE_TARGET_OVERSHOOT_RATIO
+  ) {
+    return false;
+  }
+  const medianReps = input.performedSemantics.medianReps;
+  if (
+    medianReps == null ||
+    medianReps < input.repRange[0] ||
+    medianReps > input.repRange[1]
+  ) {
+    return false;
+  }
+  const modalRpe = input.performedSemantics.modalRpe;
+  return (
+    modalRpe != null &&
+    input.adherence.targetRpe != null &&
+    modalRpe <= input.adherence.targetRpe
+  );
+}
+
 function summarizeNextExposureTargetAdherence(input: {
   plannedSets: NextExposurePlannedSetInput[];
   performedSemantics: NonNullable<ReturnType<typeof derivePerformedExerciseSemantics>>;
@@ -1483,6 +1534,7 @@ function summarizeNextExposureTargetAdherence(input: {
     input.plannedSets,
     input.performedSemantics.anchorStrategy
   );
+  const targetRpe = resolveRepresentativeTargetRpe(input.plannedSets);
   const targetMissRatio =
     targetLoad != null && targetLoad > 0 && input.anchorLoad < targetLoad
       ? (targetLoad - input.anchorLoad) / targetLoad
@@ -1500,6 +1552,7 @@ function summarizeNextExposureTargetAdherence(input: {
     signalCoverageRatio: plannedSetCount > 0 ? signalSetCount / plannedSetCount : 0,
     skippedRatio: plannedSetCount > 0 ? skippedSetCount / plannedSetCount : 0,
     targetLoad,
+    targetRpe,
     targetMissRatio,
     targetOvershootRatio,
   };
@@ -1522,6 +1575,40 @@ function resolveRepresentativeTargetLoad(
 }
 
 function resolveModalTargetLoad(values: number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+  const frequency = new Map<number, number>();
+  for (const value of values) {
+    frequency.set(value, (frequency.get(value) ?? 0) + 1);
+  }
+  const center = medianNumber(values);
+  return (
+    Array.from(frequency.entries()).sort((left, right) => {
+      if (right[1] !== left[1]) {
+        return right[1] - left[1];
+      }
+      const leftDistance = Math.abs(left[0] - center);
+      const rightDistance = Math.abs(right[0] - center);
+      if (leftDistance !== rightDistance) {
+        return leftDistance - rightDistance;
+      }
+      return left[0] - right[0];
+    })[0]?.[0] ?? null
+  );
+}
+
+function resolveRepresentativeTargetRpe(plannedSets: NextExposurePlannedSetInput[]): number | null {
+  const targetRpes = plannedSets
+    .map((set) => set.targetRpe)
+    .filter((value): value is number => Number.isFinite(value));
+  if (targetRpes.length === 0) {
+    return null;
+  }
+  return resolveModalNumber(targetRpes) ?? medianNumber(targetRpes);
+}
+
+function resolveModalNumber(values: number[]): number | null {
   if (values.length === 0) {
     return null;
   }
@@ -1584,6 +1671,17 @@ function formatSkippedClause(adherence: NextExposureTargetAdherence): string {
 
 function formatRatioPercent(ratio: number): string {
   return `${(ratio * 100).toFixed(1)}%`;
+}
+
+function formatRepRangeLabel(repRange: [number, number]): string {
+  return repRange[0] === repRange[1] ? `${repRange[0]}` : `${repRange[0]}-${repRange[1]}`;
+}
+
+function formatRpeComparison(modalRpe: number | null, targetRpe: number | null): string {
+  if (modalRpe == null || targetRpe == null) {
+    return "target RPE signal unavailable";
+  }
+  return `modal RPE ${modalRpe} vs target RPE ${targetRpe}`;
 }
 
 function formatLoadLabel(load: number | null): string {

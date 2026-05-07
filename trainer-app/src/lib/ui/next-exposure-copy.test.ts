@@ -22,6 +22,16 @@ describe("getCanonicalNextExposureCopy", () => {
     });
   });
 
+  it("returns distinct copy for recalibrated-anchor holds", () => {
+    expect(getCanonicalNextExposureCopy("hold_at_recalibrated_anchor")).toEqual({
+      badge: "Recalibrated hold",
+      summary: "Next exposure: hold at recalibrated anchor.",
+      resultClause: "points to a hold at the recalibrated performed anchor",
+      actionPhrase: "Hold the recalibrated anchor",
+      nextTimeImperative: "Hold the performed anchor next time because the written target was too low.",
+    });
+  });
+
   it("returns distinct copy for recalibrated-anchor increases", () => {
     expect(getCanonicalNextExposureCopy("recalibrated_increase")).toEqual({
       badge: "Recalibrated increase",

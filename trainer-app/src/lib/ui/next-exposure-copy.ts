@@ -28,6 +28,14 @@ export function getCanonicalNextExposureCopy(
         actionPhrase: "Use a recalibrated increase",
         nextTimeImperative: "Increase from today's performed anchor while recalibrating the written target.",
       };
+    case "hold_at_recalibrated_anchor":
+      return {
+        badge: "Recalibrated hold",
+        summary: "Next exposure: hold at recalibrated anchor.",
+        resultClause: "points to a hold at the recalibrated performed anchor",
+        actionPhrase: "Hold the recalibrated anchor",
+        nextTimeImperative: "Hold the performed anchor next time because the written target was too low.",
+      };
     case "decrease":
       return {
         badge: "Reduce next time",

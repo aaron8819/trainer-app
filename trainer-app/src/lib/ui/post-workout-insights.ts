@@ -99,6 +99,18 @@ function isRecalibratedIncreaseAction(
   return action === "recalibrated_increase";
 }
 
+function isRecalibratedHoldAction(
+  action: NextExposureDecision["action"] | "deload"
+): boolean {
+  return action === "hold_at_recalibrated_anchor";
+}
+
+function isRecalibratedAnchorAction(
+  action: NextExposureDecision["action"] | "deload"
+): boolean {
+  return isRecalibratedIncreaseAction(action) || isRecalibratedHoldAction(action);
+}
+
 function isReviewBeforeIncreaseAction(
   action: NextExposureDecision["action"] | "deload"
 ): boolean {
@@ -165,6 +177,22 @@ function toneForAction(action: NextExposureDecision["action"] | "deload"): PostW
     return "caution";
   }
   return "neutral";
+}
+
+function getNextExposureActionPriority(action: NextExposureDecision["action"]): number {
+  if (isReviewBeforeIncreaseAction(action)) {
+    return 0;
+  }
+  if (action === "decrease") {
+    return 1;
+  }
+  if (isRecalibratedAnchorAction(action)) {
+    return 2;
+  }
+  if (isCleanIncreaseAction(action)) {
+    return 3;
+  }
+  return 4;
 }
 
 function badgeForAction(action: NextExposureDecision["action"] | "deload"): string {
@@ -294,8 +322,32 @@ function buildDescriptiveKeyLiftInsights(
   const withDecision = exercises.filter((exercise) =>
     explanation.nextExposureDecisions.has(exercise.exerciseId)
   );
-  const primary = withDecision.filter((exercise) => exercise.isMainLift);
-  const selected = (primary.length > 0 ? primary : withDecision).slice(0, 3);
+  const selected = withDecision
+    .map((exercise, index) => {
+      const decision = explanation.nextExposureDecisions.get(exercise.exerciseId);
+      return { exercise, decision, index };
+    })
+    .filter(
+      (row): row is {
+        exercise: ReviewedExerciseMeta;
+        decision: NextExposureDecision;
+        index: number;
+      } => Boolean(row.decision)
+    )
+    .sort((left, right) => {
+      const priorityDiff =
+        getNextExposureActionPriority(left.decision.action) -
+        getNextExposureActionPriority(right.decision.action);
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+      if (left.exercise.isMainLift !== right.exercise.isMainLift) {
+        return left.exercise.isMainLift ? -1 : 1;
+      }
+      return left.index - right.index;
+    })
+    .slice(0, 3)
+    .map((row) => row.exercise);
 
   return selected.flatMap((exercise) => {
     const decision = explanation.nextExposureDecisions.get(exercise.exerciseId);
@@ -327,6 +379,9 @@ function buildHeadline(keyLifts: PostWorkoutKeyLiftInsight[]): string {
   const recalibratedIncreaseCount = keyLifts.filter((lift) =>
     isRecalibratedIncreaseAction(lift.action)
   ).length;
+  const recalibratedHoldCount = keyLifts.filter((lift) =>
+    isRecalibratedHoldAction(lift.action)
+  ).length;
   const reviewCount = keyLifts.filter((lift) =>
     isReviewBeforeIncreaseAction(lift.action)
   ).length;
@@ -344,6 +399,9 @@ function buildHeadline(keyLifts: PostWorkoutKeyLiftInsight[]): string {
   }
   if (recalibratedIncreaseCount > 0) {
     return "Some key lifts have clean increases while others need recalibrated increases.";
+  }
+  if (recalibratedHoldCount > 0) {
+    return "Key lifts should hold at recalibrated performed anchors.";
   }
   if (increaseCount > 0 && increaseCount < keyLifts.length) {
     return "Some key lifts point to an increase next time, while others should hold.";
@@ -371,6 +429,9 @@ function buildSummary(
   const recalibratedIncreaseNames = keyLifts
     .filter((lift) => isRecalibratedIncreaseAction(lift.action))
     .map((lift) => lift.exerciseName);
+  const recalibratedHoldNames = keyLifts
+    .filter((lift) => isRecalibratedHoldAction(lift.action))
+    .map((lift) => lift.exerciseName);
   const reviewNames = keyLifts
     .filter((lift) => isReviewBeforeIncreaseAction(lift.action))
     .map((lift) => lift.exerciseName);
@@ -389,6 +450,9 @@ function buildSummary(
   }
   if (recalibratedIncreaseNames.length > 0) {
     return `Increase cleanly on ${formatExerciseNameList(increaseNames)} and use recalibrated increases on ${formatExerciseNameList(recalibratedIncreaseNames)}.`;
+  }
+  if (recalibratedHoldNames.length > 0) {
+    return `Hold the recalibrated performed anchor on ${formatExerciseNameList(recalibratedHoldNames)} because the written target needs calibration.`;
   }
   if (increaseNames.length > 0) {
     return `The next exposure points to an increase on ${formatExerciseNameList(increaseNames)} if setup and readiness feel normal.`;
@@ -426,6 +490,9 @@ function buildOverview(keyLifts: PostWorkoutKeyLiftInsight[]): PostWorkoutOvervi
   const recalibratedIncreaseNames = keyLifts
     .filter((lift) => isRecalibratedIncreaseAction(lift.action))
     .map((lift) => lift.exerciseName);
+  const recalibratedHoldNames = keyLifts
+    .filter((lift) => isRecalibratedHoldAction(lift.action))
+    .map((lift) => lift.exerciseName);
   const reviewNames = keyLifts
     .filter((lift) => isReviewBeforeIncreaseAction(lift.action))
     .map((lift) => lift.exerciseName);
@@ -445,6 +512,8 @@ function buildOverview(keyLifts: PostWorkoutKeyLiftInsight[]): PostWorkoutOvervi
       ? `${recalibratedIncreaseNames.length} key lift${recalibratedIncreaseNames.length === 1 ? "" : "s"} point${recalibratedIncreaseNames.length === 1 ? "s" : ""} to a recalibrated increase.`
       : recalibratedIncreaseNames.length > 0
       ? `${increaseNames.length} key lift${increaseNames.length === 1 ? "" : "s"} point${increaseNames.length === 1 ? "s" : ""} to a clean increase; ${recalibratedIncreaseNames.length} need${recalibratedIncreaseNames.length === 1 ? "s" : ""} recalibrated increases.`
+      : recalibratedHoldNames.length > 0
+      ? `${recalibratedHoldNames.length} key lift${recalibratedHoldNames.length === 1 ? "" : "s"} should hold at recalibrated performed anchors.`
       : increaseNames.length > 0
       ? `${increaseNames.length} key lift${increaseNames.length === 1 ? "" : "s"} point${increaseNames.length === 1 ? "s" : ""} to an increase next time.`
       : holdNames.length > 0
@@ -460,6 +529,8 @@ function buildOverview(keyLifts: PostWorkoutKeyLiftInsight[]): PostWorkoutOvervi
       ? `${getCanonicalNextExposureCopy("increase").actionPhrase} on ${formatExerciseNameList(increaseNames)}; ${getCanonicalNextExposureCopy("recalibrated_increase").actionPhrase.toLowerCase()} on ${formatExerciseNameList(recalibratedIncreaseNames)}.`
       : recalibratedIncreaseNames.length > 0
       ? `${getCanonicalNextExposureCopy("recalibrated_increase").actionPhrase} on ${formatExerciseNameList(recalibratedIncreaseNames)}.`
+      : recalibratedHoldNames.length > 0
+      ? `${getCanonicalNextExposureCopy("hold_at_recalibrated_anchor").actionPhrase} on ${formatExerciseNameList(recalibratedHoldNames)}.`
       : increaseNames.length > 0 && holdNames.length > 0
       ? `${getCanonicalNextExposureCopy("increase").actionPhrase} on ${formatExerciseNameList(increaseNames)}; ${getCanonicalNextExposureCopy("hold").actionPhrase.toLowerCase()} on ${formatExerciseNameList(holdNames)}.`
       : increaseNames.length > 0

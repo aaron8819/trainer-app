@@ -676,6 +676,8 @@ These signals should inform coaching and future planning evidence. They should n
 
 Session review must distinguish clean progression from recalibration in both directions. If actual performed load is materially below the written target, the target may be too high and the recommendation should be recalibration/caution rather than a clean win. If actual performed load is materially above the written target, the target may be too low and an upward `recalibrated_increase` is more honest than a plain clean increase. Near-target performance with strong evidence can still earn a clean increase. Skipped planned sets or too few/noisy signal sets should also block a plain "increase next time."
 
+Post-workout review must also surface recalibration when the next action is hold. If actual performed load materially exceeds the written target and the next target is anchored upward, the app should explain that the written target or estimate was too low, even if the progression action is hold rather than increase.
+
 ### Exercise-Specific Coaching Profiles
 
 Future runtime prescription and coaching should distinguish exercise profiles instead of applying one generic hypertrophy rule to every movement.
@@ -1130,6 +1132,7 @@ These are strategic decision gates, not claims that current production already p
 - Do not present a main-lift rep aim as an exact hypertrophy requirement when a true rep range exists.
 - Do not increase load into an easier RIR target when prior reps/effort contradict it.
 - Do not frame an increase from a reduced performed anchor as a clean progression win when the written target was materially missed.
+- Do not hide target recalibration just because the next action is hold.
 - Do not hide prescription source/confidence from the user/operator.
 - Do not suggest swaps that preserve only primary muscle while changing the lane's training effect.
 - Do not present broad same-muscle fallbacks as equivalent lane-preserving swaps.

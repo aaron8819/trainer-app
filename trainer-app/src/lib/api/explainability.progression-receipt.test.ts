@@ -1527,6 +1527,207 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect(decision?.decisionLog?.join(" | ")).toContain("target_too_low");
   });
 
+  it("reclassifies a Leg Extension-like hold as a hold at the upward recalibrated anchor", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "INTENT",
+      sessionIntent: "LOWER_A",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          id: "we1",
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Leg Extension",
+            movementPatterns: ["KNEE_EXTENSION"],
+            exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Quads" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 15,
+              targetRpe: 7.5,
+              targetLoad: 70,
+              restSeconds: 90,
+              logs: [{ actualReps: 15, actualLoad: 70, actualRpe: 7.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 2,
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 15,
+              targetRpe: 7.5,
+              targetLoad: 70,
+              restSeconds: 90,
+              logs: [{ actualReps: 12, actualLoad: 85, actualRpe: 7.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 3,
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 15,
+              targetRpe: 7.5,
+              targetLoad: 70,
+              restSeconds: 90,
+              logs: [{ actualReps: 12, actualLoad: 85, actualRpe: 7.5, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValue(null);
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const decision = result.nextExposureDecisions.get("ex1");
+    expect(decision).toMatchObject({
+      action: "hold_at_recalibrated_anchor",
+      summary: "Next exposure: hold at recalibrated anchor.",
+      anchorLoad: 85,
+      medianReps: 12,
+      modalRpe: 7.5,
+    });
+    expect(decision?.reason).toContain("performed anchor");
+    expect(decision?.reason).toContain("written target 70 lbs");
+    expect(decision?.reason).toContain("recalibrated upward");
+    expect(decision?.decisionLog?.join(" | ")).toContain("performed_anchor_above_written_target");
+  });
+
+  it("reclassifies a Lying Leg Curl-like cold-start hold as an upward estimate recalibration", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "INTENT",
+      sessionIntent: "LOWER_A",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          id: "we1",
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Lying Leg Curl",
+            movementPatterns: ["KNEE_FLEXION"],
+            exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Hamstrings" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 10,
+              targetRepMin: 10,
+              targetRepMax: 15,
+              targetRpe: 7.5,
+              targetLoad: 37.5,
+              restSeconds: 90,
+              logs: [{ actualReps: 10, actualLoad: 70, actualRpe: 7.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 2,
+              targetReps: 10,
+              targetRepMin: 10,
+              targetRepMax: 15,
+              targetRpe: 7.5,
+              targetLoad: 37.5,
+              restSeconds: 90,
+              logs: [{ actualReps: 10, actualLoad: 70, actualRpe: 7.5, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValue(null);
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const decision = result.nextExposureDecisions.get("ex1");
+    expect(decision).toMatchObject({
+      action: "hold_at_recalibrated_anchor",
+      anchorLoad: 70,
+      medianReps: 10,
+      modalRpe: 7.5,
+    });
+    expect(decision?.reason).toContain("written target 37.5 lbs");
+    expect(decision?.reason).toContain("estimate was too low");
+  });
+
+  it("keeps near-target accessory holds as plain holds", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "INTENT",
+      sessionIntent: "LOWER_A",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          id: "we1",
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Leg Extension",
+            movementPatterns: ["KNEE_EXTENSION"],
+            exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Quads" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 10,
+              targetRepMin: 10,
+              targetRepMax: 15,
+              targetRpe: 7.5,
+              targetLoad: 80,
+              restSeconds: 90,
+              logs: [{ actualReps: 10, actualLoad: 85, actualRpe: 7.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 2,
+              targetReps: 10,
+              targetRepMin: 10,
+              targetRepMax: 15,
+              targetRpe: 7.5,
+              targetLoad: 80,
+              restSeconds: 90,
+              logs: [{ actualReps: 10, actualLoad: 85, actualRpe: 7.5, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValue(null);
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
+      action: "hold",
+      summary: "Next exposure: hold load.",
+      anchorLoad: 85,
+    });
+    expect(result.nextExposureDecisions.get("ex1")?.decisionLog?.join(" | ")).not.toContain(
+      "hold_at_recalibrated_anchor"
+    );
+  });
+
   it("keeps near-target strong overshoot performance as a clean increase", async () => {
     mocks.workoutFindUnique.mockResolvedValueOnce({
       id: "w1",

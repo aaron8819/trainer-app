@@ -428,10 +428,11 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(mockedLogSetRequest).not.toHaveBeenCalled();
   });
 
-  it("shows a session elapsed timer without logging data", () => {
+  it("does not show a session elapsed timer in the active log UI", () => {
     renderClient();
 
-    expect(screen.getByTestId("session-elapsed-timer")).toHaveTextContent("Session 0:00");
+    expect(screen.queryByTestId("session-elapsed-timer")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Session 0:00$/)).not.toBeInTheDocument();
     expect(mockedLogSetRequest).not.toHaveBeenCalled();
     expect(mockedSaveWorkoutRequest).not.toHaveBeenCalled();
   });
@@ -2262,6 +2263,23 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     await waitFor(() => {
       expect(screen.getByTestId("rest-timer-hud")).toBeInTheDocument();
       expect(screen.queryByTestId("rest-timer-expanded-controls")).not.toBeInTheDocument();
+    });
+  });
+
+  it("does not start the rest timer after a skipped live set", async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    await user.click(screen.getByRole("button", { name: "Skip set" }));
+
+    await waitFor(() => {
+      expect(mockedLogSetRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workoutSetId: "set-1",
+          wasSkipped: true,
+        })
+      );
+      expect(screen.queryByTestId("rest-timer-hud")).not.toBeInTheDocument();
     });
   });
 

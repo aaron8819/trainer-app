@@ -14,6 +14,7 @@ export type ReviewedExerciseMeta = {
   exerciseId: string;
   exerciseName: string;
   isMainLift: boolean;
+  isRuntimeAdded?: boolean;
 };
 
 export type PostWorkoutInsightTone = "positive" | "neutral" | "caution";
@@ -319,8 +320,10 @@ function buildDescriptiveKeyLiftInsights(
     });
   }
 
-  const withDecision = exercises.filter((exercise) =>
-    explanation.nextExposureDecisions.has(exercise.exerciseId)
+  const withDecision = exercises.filter(
+    (exercise) =>
+      exercise.isRuntimeAdded !== true &&
+      explanation.nextExposureDecisions.has(exercise.exerciseId)
   );
   const selected = withDecision
     .map((exercise, index) => {

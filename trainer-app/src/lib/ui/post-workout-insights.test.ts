@@ -238,6 +238,83 @@ describe("buildPostWorkoutInsightsModel", () => {
     expect(model.headline).not.toContain("point to an increase");
   });
 
+  it("ranks severe target-too-high recalibration ahead of accessory upward recalibrations", () => {
+    const explanation = makeExplanation();
+    explanation.nextExposureDecisions = new Map([
+      [
+        "shoulder-press",
+        {
+          action: "recalibrated_increase",
+          summary: "Next exposure: recalibrated increase.",
+          reason: "Increase from the performed anchor.",
+          anchorLoad: 85,
+          repRange: { min: 8, max: 12 },
+          modalRpe: 7.5,
+          medianReps: 10,
+        },
+      ],
+      [
+        "lateral-raise",
+        {
+          action: "recalibrated_increase",
+          summary: "Next exposure: recalibrated increase.",
+          reason: "Increase from the performed anchor.",
+          anchorLoad: 25,
+          repRange: { min: 10, max: 15 },
+          modalRpe: 7.5,
+          medianReps: 12,
+        },
+      ],
+      [
+        "barbell-curl",
+        {
+          action: "recalibrated_increase",
+          summary: "Next exposure: recalibrated increase.",
+          reason: "Increase from the performed anchor.",
+          anchorLoad: 60,
+          repRange: { min: 8, max: 12 },
+          modalRpe: 8,
+          medianReps: 10,
+        },
+      ],
+      [
+        "cable-fly",
+        {
+          action: "target_too_high",
+          summary: "Next exposure: target likely too high.",
+          reason:
+            "Next target should hold and rebuild from today's 17.5 lbs performed anchor, not the old written target 55 lbs. Treat the written target as too high rather than a normal clean hold.",
+          anchorLoad: 17.5,
+          repRange: { min: 10, max: 15 },
+          modalRpe: 7.5,
+          medianReps: 12,
+        },
+      ],
+    ]);
+
+    const model = buildPostWorkoutInsightsModel({
+      explanation,
+      exercises: [
+        { exerciseId: "shoulder-press", exerciseName: "Machine Shoulder Press", isMainLift: false },
+        { exerciseId: "lateral-raise", exerciseName: "Machine Lateral Raise", isMainLift: false },
+        { exerciseId: "barbell-curl", exerciseName: "Barbell Curl", isMainLift: false },
+        { exerciseId: "cable-fly", exerciseName: "Cable Fly", isMainLift: false },
+      ],
+    });
+
+    expect(model.keyLifts[0]).toMatchObject({
+      exerciseName: "Cable Fly",
+      badge: "Target too high",
+      tone: "caution",
+    });
+    expect(model.keyLifts.map((lift) => lift.exerciseName)).toEqual([
+      "Cable Fly",
+      "Machine Shoulder Press",
+      "Machine Lateral Raise",
+    ]);
+    expect(model.headline).toBe("Key lifts need target review before increasing next time.");
+  });
+
   it("frames upward recalibration without missed-target language", () => {
     const explanation = makeExplanation();
     explanation.nextExposureDecisions = new Map([
@@ -334,6 +411,52 @@ describe("buildPostWorkoutInsightsModel", () => {
     expect(model.overview.find((item) => item.label === "Next time")?.value).toContain(
       "Hold the recalibrated anchor on Leg Extension"
     );
+  });
+
+  it("keeps runtime-added exercises out of key-lift takeaways by default", () => {
+    const explanation = makeExplanation();
+    explanation.nextExposureDecisions = new Map([
+      [
+        "planned",
+        {
+          action: "hold",
+          summary: "Next exposure: hold load.",
+          reason: "Median reps stayed in range, so keep building reps before adding load.",
+          anchorLoad: 40,
+          repRange: { min: 8, max: 12 },
+          modalRpe: 8,
+          medianReps: 8,
+        },
+      ],
+      [
+        "bonus",
+        {
+          action: "target_too_high",
+          summary: "Next exposure: target likely too high.",
+          reason: "Runtime-added work should stay out of key-lift takeaways.",
+          anchorLoad: 20,
+          repRange: { min: 10, max: 15 },
+          modalRpe: 7,
+          medianReps: 12,
+        },
+      ],
+    ]);
+
+    const model = buildPostWorkoutInsightsModel({
+      explanation,
+      exercises: [
+        { exerciseId: "planned", exerciseName: "Lat Pulldown", isMainLift: true },
+        {
+          exerciseId: "bonus",
+          exerciseName: "Bonus Cable Curl",
+          isMainLift: false,
+          isRuntimeAdded: true,
+        },
+      ],
+    });
+
+    expect(model.keyLifts.map((lift) => lift.exerciseName)).toEqual(["Lat Pulldown"]);
+    expect(JSON.stringify(model.keyLifts)).not.toContain("Bonus Cable Curl");
   });
 
   it("uses deload-first framing instead of progression-first messaging for deload sessions", () => {

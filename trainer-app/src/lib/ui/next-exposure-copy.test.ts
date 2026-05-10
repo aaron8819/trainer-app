@@ -63,6 +63,9 @@ describe("getCanonicalNextExposureCopy", () => {
     expect(getCanonicalNextExposureCopy("target_too_high")).toMatchObject({
       badge: "Target too high",
       summary: "Next exposure: target likely too high.",
+      actionPhrase: "Hold and rebuild from the performed anchor",
+      nextTimeImperative:
+        "Hold and rebuild from the performed anchor because the written target was too high.",
     });
     expect(getCanonicalNextExposureCopy("insufficient_evidence")).toMatchObject({
       badge: "Insufficient evidence",

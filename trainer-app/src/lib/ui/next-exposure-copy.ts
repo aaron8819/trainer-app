@@ -57,8 +57,9 @@ export function getCanonicalNextExposureCopy(
         badge: "Target too high",
         summary: "Next exposure: target likely too high.",
         resultClause: "shows the written target was likely too high",
-        actionPhrase: "Lower the written target",
-        nextTimeImperative: "Lower or rebuild the written target before increasing.",
+        actionPhrase: "Hold and rebuild from the performed anchor",
+        nextTimeImperative:
+          "Hold and rebuild from the performed anchor because the written target was too high.",
       };
     case "insufficient_evidence":
       return {

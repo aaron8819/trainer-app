@@ -1603,6 +1603,83 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect(decision?.decisionLog?.join(" | ")).toContain("performed_anchor_above_written_target");
   });
 
+  it("reclassifies a Cable Fly-like hold as target-too-high downward recalibration", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "INTENT",
+      sessionIntent: "UPPER_B",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          id: "we1",
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Cable Fly",
+            movementPatterns: ["HORIZONTAL_ADDUCTION"],
+            exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 15,
+              targetRpe: 8,
+              targetLoad: 55,
+              restSeconds: 90,
+              logs: [{ actualReps: 12, actualLoad: 17.5, actualRpe: 7.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 2,
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 15,
+              targetRpe: 8,
+              targetLoad: 55,
+              restSeconds: 90,
+              logs: [{ actualReps: 12, actualLoad: 17.5, actualRpe: 7.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 3,
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 15,
+              targetRpe: 8,
+              targetLoad: 55,
+              restSeconds: 90,
+              logs: [{ actualReps: 12, actualLoad: 17.5, actualRpe: 7.5, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValue(null);
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const decision = result.nextExposureDecisions.get("ex1");
+    expect(decision).toMatchObject({
+      action: "target_too_high",
+      summary: "Next exposure: target likely too high.",
+      anchorLoad: 17.5,
+      medianReps: 12,
+      modalRpe: 7.5,
+    });
+    expect(decision?.reason).toContain("written target 55 lbs");
+    expect(decision?.reason).toContain("missed by 68.2%");
+    expect(decision?.reason).toContain("hold and rebuild");
+    expect(decision?.reason).toContain("rather than a normal clean hold");
+    expect(decision?.decisionLog?.join(" | ")).toContain("performed_anchor_below_written_target");
+  });
+
   it("reclassifies a Lying Leg Curl-like cold-start hold as an upward estimate recalibration", async () => {
     mocks.workoutFindUnique.mockResolvedValueOnce({
       id: "w1",

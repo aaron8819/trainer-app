@@ -233,6 +233,7 @@ export default async function WorkoutDetailPage({
                 exerciseId: exercise.exerciseId,
                 exerciseName: exercise.exercise.name,
                 isMainLift: exercise.isMainLift || exercise.section === "MAIN",
+                isRuntimeAdded: runtimeAddedExerciseIds.has(exercise.id),
               }))}
             />
           ) : summary ? (

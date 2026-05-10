@@ -1414,6 +1414,23 @@ function resolveNextExposureReviewQuality(input: {
     );
   }
 
+  if (
+    input.baseAction === "hold" &&
+    !input.hasTransitionBackfillSubstitution &&
+    isCleanDownwardRecalibratedHold({
+      adherence,
+      hasLowCoverage,
+      performedSemantics: input.performedSemantics,
+      repRange: input.repRange,
+    })
+  ) {
+    return buildReviewQualityAction(
+      "target_too_high",
+      `Next target should hold and rebuild from today's ${formatLoadLabel(input.decisionAnchorLoad)} performed anchor, not the old written target ${formatLoadLabel(adherence.targetLoad)}. The written target was missed by ${formatRatioPercent(targetMissRatio ?? 0)} despite ${adherence.signalSetCount}/${adherence.plannedSetCount} clean signal sets${formatSkippedClause(adherence)}, and reps stayed within the ${formatRepRangeLabel(input.repRange)} range at or under target effort (${formatRpeComparison(input.performedSemantics.modalRpe, adherence.targetRpe)}). Treat the written target as too high rather than a normal clean hold.`,
+      "Review-quality guard: target_too_high/performed_anchor_below_written_target/downward_recalibration reframed a plain hold as a target-too-high recalibration."
+    );
+  }
+
   if (input.baseAction !== "increase") {
     return { action: input.baseAction, decisionLog: [] };
   }
@@ -1495,6 +1512,37 @@ function isCleanUpwardRecalibratedHold(input: {
   if (
     input.adherence.targetOvershootRatio == null ||
     input.adherence.targetOvershootRatio < RECALIBRATED_INCREASE_TARGET_OVERSHOOT_RATIO
+  ) {
+    return false;
+  }
+  const medianReps = input.performedSemantics.medianReps;
+  if (
+    medianReps == null ||
+    medianReps < input.repRange[0] ||
+    medianReps > input.repRange[1]
+  ) {
+    return false;
+  }
+  const modalRpe = input.performedSemantics.modalRpe;
+  return (
+    modalRpe != null &&
+    input.adherence.targetRpe != null &&
+    modalRpe <= input.adherence.targetRpe
+  );
+}
+
+function isCleanDownwardRecalibratedHold(input: {
+  adherence: NextExposureTargetAdherence;
+  hasLowCoverage: boolean;
+  performedSemantics: NonNullable<ReturnType<typeof derivePerformedExerciseSemantics>>;
+  repRange: [number, number];
+}): boolean {
+  if (input.adherence.signalSetCount < LOW_SIGNAL_SET_COUNT || input.hasLowCoverage) {
+    return false;
+  }
+  if (
+    input.adherence.targetMissRatio == null ||
+    input.adherence.targetMissRatio < LARGE_TARGET_MISS_RATIO
   ) {
     return false;
   }

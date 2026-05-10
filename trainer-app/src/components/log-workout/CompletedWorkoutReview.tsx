@@ -134,6 +134,7 @@ export function CompletedWorkoutReview({
             exerciseId: exercise.exerciseId,
             exerciseName: exercise.name,
             isMainLift: exercise.isMainLift,
+            isRuntimeAdded: exercise.isRuntimeAdded,
           }))}
         />
       ) : null}

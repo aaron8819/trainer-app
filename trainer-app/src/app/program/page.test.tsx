@@ -1,9 +1,13 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
+import type { ProgramDashboardData } from "@/lib/api/program";
 
-function hasTextOutsideDetails(text: string): boolean {
-  return screen
+function hasTextOutsideDetails(
+  text: string,
+  container: HTMLElement = document.body,
+): boolean {
+  return within(container)
     .queryAllByText(text)
     .some((element) => !element.closest("details"));
 }
@@ -29,6 +33,119 @@ const mocks = vi.hoisted(() => ({
   loadPendingMesocycleHandoff: vi.fn(),
   loadProgramPageData: vi.fn(),
 }));
+
+type VolumeRow = ProgramDashboardData["volumeThisWeek"][number];
+
+function buildVolumeRow(input: {
+  muscle: string;
+  dashboardGroup: VolumeRow["dashboardGroup"];
+  status: string;
+  statusLabel: string;
+  statusDescription: string;
+  effectiveSets: number;
+  target: number;
+  deltaLabel: string;
+}): VolumeRow {
+  return {
+    muscle: input.muscle,
+    targetKind: input.dashboardGroup === "secondary" ? "soft" : "hard",
+    targetRange: null,
+    displayGroup: input.dashboardGroup === "secondary" ? "secondary" : "primary",
+    targetTier: null,
+    warningSeverity: input.dashboardGroup === "secondary" ? "info" : "hard",
+    dashboardGroup: input.dashboardGroup,
+    effectiveSets: input.effectiveSets,
+    directSets: input.effectiveSets,
+    indirectSets: 0,
+    target: input.target,
+    mev: 6,
+    mav: 10,
+    mrv: 14,
+    weightedSetsLabel: `${input.effectiveSets} weighted`,
+    targetLabel: `${input.target} target`,
+    statusLabel: input.statusLabel,
+    statusDescription: input.statusDescription,
+    deltaLabel: input.deltaLabel,
+    landmarkContext: undefined,
+    badges: [{ status: input.status, label: input.statusLabel }],
+    opportunityScore: 0,
+    opportunityState: "covered",
+    opportunityRationale: "Weekly target is covered.",
+  };
+}
+
+const compactVolumeRows: VolumeRow[] = [
+  buildVolumeRow({
+    muscle: "Chest",
+    dashboardGroup: "primary_driver",
+    status: "below_mev",
+    statusLabel: "Below MEV",
+    statusDescription: "4 weighted sets against 10 target.",
+    effectiveSets: 4,
+    target: 10,
+    deltaLabel: "-6 sets",
+  }),
+  buildVolumeRow({
+    muscle: "Lats",
+    dashboardGroup: "primary_driver",
+    status: "in_range",
+    statusLabel: "Below target",
+    statusDescription: "7 weighted sets against 12 target.",
+    effectiveSets: 7,
+    target: 12,
+    deltaLabel: "-5 sets",
+  }),
+  buildVolumeRow({
+    muscle: "Quads",
+    dashboardGroup: "primary_driver",
+    status: "at_mrv",
+    statusLabel: "At MRV",
+    statusDescription: "14 weighted sets against 10 target.",
+    effectiveSets: 14,
+    target: 10,
+    deltaLabel: "+4 sets",
+  }),
+  buildVolumeRow({
+    muscle: "Triceps",
+    dashboardGroup: "primary_driver",
+    status: "on_target",
+    statusLabel: "On target",
+    statusDescription: "8 weighted sets against 8 target.",
+    effectiveSets: 8,
+    target: 8,
+    deltaLabel: "on target",
+  }),
+  buildVolumeRow({
+    muscle: "Rear Delts",
+    dashboardGroup: "support_driver",
+    status: "near_mrv",
+    statusLabel: "Near MRV",
+    statusDescription: "12 weighted sets against 8 target.",
+    effectiveSets: 12,
+    target: 8,
+    deltaLabel: "+4 sets",
+  }),
+  buildVolumeRow({
+    muscle: "Biceps",
+    dashboardGroup: "support_driver",
+    status: "on_target",
+    statusLabel: "On target",
+    statusDescription: "8 weighted sets against 8 target.",
+    effectiveSets: 8,
+    target: 8,
+    deltaLabel: "on target",
+  }),
+  buildVolumeRow({
+    muscle: "Core",
+    dashboardGroup: "secondary",
+    status: "below_mev",
+    statusLabel: "Below soft range",
+    statusDescription: "0 weighted sets against 4 target.",
+    effectiveSets: 0,
+    target: 4,
+    deltaLabel: "-4 sets",
+  }),
+];
 
 vi.mock("@/lib/api/workout-context", () => ({
   resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
@@ -322,7 +439,7 @@ describe("ProgramPage", () => {
           viewedWeek: 2,
           viewedBlockType: "accumulation",
           sessionsUntilDeload: 6,
-          volumeThisWeek: [],
+          volumeThisWeek: compactVolumeRows,
           deloadReadiness: null,
           rirTarget: { min: 2, max: 3 },
           coachingCue: "Build volume with crisp execution.",
@@ -373,14 +490,39 @@ describe("ProgramPage", () => {
     expect(
       screen.getByRole("heading", { name: "Projected Week Finish" }),
     ).toBeInTheDocument();
+    const projectedSection = screen
+      .getByRole("heading", { name: "Projected Week Finish" })
+      .closest("section") as HTMLElement;
+    expect(projectedSection).not.toBeNull();
     expect(
       screen.getByRole("heading", { name: "Weekly Volume Snapshot" }),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Review active or historical volume here. Program overview, slots, optional sessions, and projected finish above stay anchored to the active week.",
+        "4 primary/support targets need a quick check this week.",
       ),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Active-week volume uses the existing Program read model. Projected week finish remains above.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Primary 4")).toBeInTheDocument();
+    expect(screen.getByText("Support 2")).toBeInTheDocument();
+    expect(screen.getByText("Needs attention 2")).toBeInTheDocument();
+    expect(screen.getByText("On track 2")).toBeInTheDocument();
+    expect(screen.getByText("Watch high 2")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Open Analytics" }),
+    ).toHaveAttribute("href", "/analytics");
+    expect(screen.getByText("4 weighted sets against 10 target.")).toBeInTheDocument();
+    expect(screen.getByText("7 weighted sets against 12 target.")).toBeInTheDocument();
+    expect(screen.getByText("14 weighted sets against 10 target.")).toBeInTheDocument();
+    expect(screen.getByText("12 weighted sets against 8 target.")).toBeInTheDocument();
+    expect(screen.queryByText("Triceps")).not.toBeInTheDocument();
+    expect(screen.queryByText("Core")).not.toBeInTheDocument();
+    expect(screen.queryByText("Primary hypertrophy targets")).not.toBeInTheDocument();
+    expect(screen.queryByText("ProgramStatusCard:volumeOnly")).not.toBeInTheDocument();
     expect(
       screen.getByText(
         "If you complete the remaining planned sessions this week, you will likely land here.",
@@ -424,10 +566,10 @@ describe("ProgramPage", () => {
         /Lats \+3 · Upper Back \+2 · Rear Delts \+1.5 · \+2 more/,
       ).length,
     ).toBeGreaterThan(0);
-    expect(hasTextOutsideDetails("Chest")).toBe(true);
-    expect(hasTextOutsideDetails("Quads")).toBe(true);
-    expect(hasTextOutsideDetails("-4 sets")).toBe(true);
-    expect(hasTextOutsideDetails("+5 sets")).toBe(true);
+    expect(hasTextOutsideDetails("Chest", projectedSection)).toBe(true);
+    expect(hasTextOutsideDetails("Quads", projectedSection)).toBe(true);
+    expect(hasTextOutsideDetails("-4 sets", projectedSection)).toBe(true);
+    expect(hasTextOutsideDetails("+5 sets", projectedSection)).toBe(true);
     expect(screen.getByText("Priority coaching notes")).toBeInTheDocument();
     expect(screen.getByText("All primary target details (5)")).toBeInTheDocument();
 
@@ -441,9 +583,9 @@ describe("ProgramPage", () => {
     expect(
       screen.getByRole("heading", { name: "below target primary targets" }),
     ).toBeInTheDocument();
-    expect(hasTextOutsideDetails("Lats")).toBe(true);
-    expect(hasTextOutsideDetails("Chest")).toBe(false);
-    expect(hasTextOutsideDetails("Quads")).toBe(false);
+    expect(hasTextOutsideDetails("Lats", projectedSection)).toBe(true);
+    expect(hasTextOutsideDetails("Chest", projectedSection)).toBe(false);
+    expect(hasTextOutsideDetails("Quads", projectedSection)).toBe(false);
 
     await user.click(screen.getByRole("button", { name: "1 below target" }));
 
@@ -452,12 +594,10 @@ describe("ProgramPage", () => {
         "Showing below target primary targets.",
       ),
     ).not.toBeInTheDocument();
-    expect(hasTextOutsideDetails("Chest")).toBe(true);
-    expect(hasTextOutsideDetails("Quads")).toBe(true);
-    expect(hasTextOutsideDetails("Lats")).toBe(false);
-    expect(
-      screen.getByText("ProgramStatusCard:volumeOnly"),
-    ).toBeInTheDocument();
+    expect(hasTextOutsideDetails("Chest", projectedSection)).toBe(true);
+    expect(hasTextOutsideDetails("Quads", projectedSection)).toBe(true);
+    expect(hasTextOutsideDetails("Lats", projectedSection)).toBe(false);
+    expect(screen.queryByText("ProgramStatusCard:volumeOnly")).not.toBeInTheDocument();
     expect(
       screen.getByText("CycleAnchorControls:deload,extend_phase,reset"),
     ).toBeInTheDocument();

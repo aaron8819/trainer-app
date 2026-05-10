@@ -128,6 +128,7 @@
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.
 
 ## Patterns That Work
+- For Program page presentation tests, scope existing Projected Week Finish assertions to that section before adding a new volume snapshot that can reuse the same muscle names.
 - For V2 planner/repair questions, treat repaired projection as evidence of legacy downstream responsibility, not as the target architecture.
 - For V2 pure-policy extraction, add engine-owned builders first and leave planningReality adapters untouched unless equality/serialization evidence proves a safe no-drift adapter swap.
 - For V2 `SelectionCapacityPlan`, keep the pure engine plan in `src/lib/engine/planning/v2` and assert audit/workout sidecar schemas do not expose it until an explicit artifact slice is requested.

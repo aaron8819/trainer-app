@@ -10,6 +10,7 @@ import { ProgramStatusCard } from "@/components/ProgramStatusCard";
 import { CloseoutCard } from "@/components/CloseoutCard";
 import { OptionalWeekCompletion } from "@/components/OptionalWeekCompletion";
 import { WeekCompletionOutlookSection } from "./WeekCompletionOutlookSection";
+import { VolumeSnapshotSection } from "./VolumeSnapshotSection";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -554,28 +555,7 @@ export default async function ProgramPage() {
         ) : null}
 
         {data.overview ? (
-          <section className="mt-8">
-            <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Volume Details
-              </p>
-              <h2 className="mt-1 text-lg font-semibold text-slate-900">
-                Weekly Volume Snapshot
-              </h2>
-              <p className="mt-2 text-sm text-slate-600">
-                Review active or historical volume here. Program overview,
-                slots, optional sessions, and projected finish above stay
-                anchored to the active week.
-              </p>
-
-              <div className="mt-4">
-                <ProgramStatusCard
-                  initialData={data.volumeDetails.dashboard}
-                  variant="volumeOnly"
-                />
-              </div>
-            </div>
-          </section>
+          <VolumeSnapshotSection dashboard={data.volumeDetails.dashboard} />
         ) : null}
 
         {data.overview ? (

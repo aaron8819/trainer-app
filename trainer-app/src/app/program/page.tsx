@@ -134,15 +134,20 @@ function formatTrainNextExerciseOverview(
 }
 
 function formatTrainNextSourceLabel(slot: ProgramCurrentWeekPlanRow): string {
+  const linkedWorkoutStatus =
+    slot.linkedWorkoutStatus?.trim().toLowerCase() ?? null;
+  const isActiveWorkout =
+    linkedWorkoutStatus === "in_progress" || linkedWorkoutStatus === "partial";
+
   switch (slot.exerciseSource) {
     case "persisted_slot_plan_seed":
-      return "Planned from accepted seed";
+      return "From your accepted plan";
     case "linked_workout_structure":
-      return "Planned from saved workout";
+      return isActiveWorkout ? "From your active workout" : "From saved workout";
     case "projected_week_volume":
-      return "Planned from projected week";
+      return "Projected from remaining plan";
     case "unavailable":
-      return "Plan source unavailable";
+      return "Exercise details unavailable";
   }
 }
 
@@ -224,6 +229,13 @@ export default async function ProgramPage() {
   const trainNextExerciseOverview = trainNextSlot
     ? formatTrainNextExerciseOverview(trainNextSlot)
     : null;
+  const unavailableExerciseSlotCount =
+    currentWeekPlan?.slots.filter(
+      (slot) =>
+        slot.uiState !== "completed" &&
+        slot.volumeBasis !== "actual_completed" &&
+        (slot.exercises ?? []).length === 0,
+    ).length ?? 0;
   const rirTarget =
     data.overview?.rirTarget ?? data.volumeDetails.dashboard.rirTarget;
 
@@ -231,22 +243,22 @@ export default async function ProgramPage() {
     <main className="min-h-screen bg-white text-slate-900">
       <div className="page-shell max-w-5xl pb-8">
         <h1 className="page-title">My Program</h1>
-        <p className="mt-1.5 text-sm text-slate-600">
+        <p className="mt-1.5 hidden text-sm text-slate-600 sm:block">
           Your active mesocycle, next slot, and projected week landing. Use
           History for completed sessions and Analytics for longer-term trends.
         </p>
 
         {data.overview ? (
-          <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:mt-6 sm:p-5">
+          <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 sm:mt-6 sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Active Mesocycle
                 </p>
-                <h2 className="mt-1 text-xl font-semibold text-slate-900 sm:text-2xl">
+                <h2 className="mt-1 text-lg font-semibold text-slate-900 sm:text-2xl">
                   Meso {data.overview.mesoNumber}: {data.overview.focus}
                 </h2>
-                <p className="mt-1.5 text-sm text-slate-600 sm:mt-2">
+                <p className="mt-1.5 hidden text-sm text-slate-600 sm:mt-2 sm:block">
                   {data.overview.coachingCue}
                 </p>
               </div>
@@ -255,8 +267,8 @@ export default async function ProgramPage() {
               </span>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:mt-5 sm:gap-3 lg:grid-cols-4">
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:rounded-xl sm:p-4">
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-5 sm:gap-3 lg:grid-cols-4">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 sm:rounded-xl sm:p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">
                   Week
                 </p>
@@ -264,7 +276,7 @@ export default async function ProgramPage() {
                   {data.overview.currentWeek} / {data.overview.durationWeeks}
                 </p>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:rounded-xl sm:p-4">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 sm:rounded-xl sm:p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">
                   Progress
                 </p>
@@ -272,27 +284,27 @@ export default async function ProgramPage() {
                   {data.overview.percentComplete}%
                 </p>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:rounded-xl sm:p-4">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 sm:rounded-xl sm:p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">
                   Target RIR
                 </p>
                 <p className="mt-1 text-lg font-semibold text-slate-900 sm:mt-2 sm:text-xl">
                   {data.overview.rirTarget
-                    ? `This week: ${data.overview.rirTarget.min}-${data.overview.rirTarget.max} RIR`
+                    ? `${data.overview.rirTarget.min}-${data.overview.rirTarget.max} RIR`
                     : "n/a"}
                 </p>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:rounded-xl sm:p-4">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 sm:rounded-xl sm:p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">
                   Deload Week
                 </p>
                 <p className="mt-1 text-lg font-semibold text-slate-900 sm:mt-2 sm:text-xl">
-                  Week {data.overview.durationWeeks}
+                  W{data.overview.durationWeeks}
                 </p>
               </div>
             </div>
 
-            <div className="mt-4 h-2 w-full rounded-full bg-slate-200 sm:mt-5">
+            <div className="mt-3 h-2 w-full rounded-full bg-slate-200 sm:mt-5">
               <div
                 className="h-2 rounded-full bg-slate-900 transition-all"
                 style={{ width: `${data.overview.percentComplete}%` }}
@@ -351,7 +363,13 @@ export default async function ProgramPage() {
               </Link>
             </div>
 
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.8fr)]">
+            <div
+              className={
+                trainNextExercises.length > 0
+                  ? "mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.8fr)]"
+                  : "mt-5"
+              }
+            >
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-200">
                   Why it matters
@@ -375,11 +393,11 @@ export default async function ProgramPage() {
                 </p>
               </div>
 
-              <div className="min-w-0 border-t border-white/15 pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-200">
-                  Exercises
-                </p>
-                {trainNextExercises.length > 0 ? (
+              {trainNextExercises.length > 0 ? (
+                <div className="min-w-0 border-t border-white/15 pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-200">
+                    Exercises
+                  </p>
                   <div className="mt-2 grid gap-1.5">
                     {trainNextExercises.map((exercise) => (
                       <div
@@ -395,12 +413,8 @@ export default async function ProgramPage() {
                       </div>
                     ))}
                   </div>
-                ) : (
-                  <p className="mt-2 text-sm text-slate-300">
-                    Exercises unavailable
-                  </p>
-                )}
-              </div>
+                </div>
+              ) : null}
             </div>
           </section>
         ) : null}
@@ -419,6 +433,13 @@ export default async function ProgramPage() {
                   Train the next slot first, then use the finish projection
                   below to see how the week is likely to land.
                 </p>
+                {unavailableExerciseSlotCount > 0 ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Exercise details unavailable for{" "}
+                    {unavailableExerciseSlotCount}{" "}
+                    {unavailableExerciseSlotCount === 1 ? "slot" : "slots"}.
+                  </p>
+                ) : null}
               </div>
               <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
                 Week {currentWeekPlan.week}
@@ -468,34 +489,28 @@ export default async function ProgramPage() {
                               <p>{completedSlotSetSummary}</p>
                             ) : null}
                           </div>
-                        ) : (
+                        ) : slotExercises.length > 0 ? (
                           <div className="mt-3">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                               Exercises
                             </p>
-                            {slotExercises.length > 0 ? (
-                              <div className="mt-1.5 grid gap-1.5">
-                                {slotExercises.map((exercise) => (
-                                  <div
-                                    key={`${slot.slotId}:${exercise.exerciseId ?? exercise.name}`}
-                                    className="flex items-baseline justify-between gap-3 text-sm text-slate-800"
-                                  >
-                                    <span className="min-w-0 truncate">
-                                      {exercise.name}
-                                    </span>
-                                    <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-600">
-                                      {formatPlannedSetLabel(exercise.setCount)}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <p className="mt-1.5 text-sm text-slate-500">
-                                Exercises unavailable
-                              </p>
-                            )}
+                            <div className="mt-1.5 grid gap-1.5">
+                              {slotExercises.map((exercise) => (
+                                <div
+                                  key={`${slot.slotId}:${exercise.exerciseId ?? exercise.name}`}
+                                  className="flex items-baseline justify-between gap-3 text-sm text-slate-800"
+                                >
+                                  <span className="min-w-0 truncate">
+                                    {exercise.name}
+                                  </span>
+                                  <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-600">
+                                    {formatPlannedSetLabel(exercise.setCount)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        )}
+                        ) : null}
                         {!isCompletedSlot && slot.impact ? (
                           <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">

@@ -479,7 +479,7 @@ describe("ProgramPage", () => {
       screen.getByText("Week 2 · Lower 1 · Target 2-3 RIR · 5 planned sets"),
     ).toBeInTheDocument();
     expect(screen.getByText("T-Bar Row + Face Pull")).toBeInTheDocument();
-    expect(screen.getByText("Planned from accepted seed")).toBeInTheDocument();
+    expect(screen.getByText("From your accepted plan")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Start workout" })).toHaveAttribute(
       "href",
       "/log/w-next",
@@ -509,7 +509,7 @@ describe("ProgramPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Primary 4")).toBeInTheDocument();
     expect(screen.getByText("Support 2")).toBeInTheDocument();
-    expect(screen.getByText("Needs attention 2")).toBeInTheDocument();
+    expect(screen.getByText("Watch list 2")).toBeInTheDocument();
     expect(screen.getByText("On track 2")).toBeInTheDocument();
     expect(screen.getByText("Watch high 2")).toBeInTheDocument();
     expect(
@@ -782,9 +782,10 @@ describe("ProgramPage", () => {
     expect(
       screen.getByRole("heading", { name: "Train next: Upper 1" }),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("Exercises unavailable").length).toBeGreaterThan(
-      0,
-    );
+    expect(
+      screen.getByText("Exercise details unavailable for 1 slot."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Exercises unavailable")).not.toBeInTheDocument();
     expect(
       screen.getByText("OptionalWeekCompletion:/log/workout-closeout"),
     ).toBeInTheDocument();
@@ -877,7 +878,7 @@ describe("ProgramPage", () => {
     expect(
       screen.getByText("Romanian Deadlift + Leg Curl"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Planned from saved workout")).toBeInTheDocument();
+    expect(screen.getByText("From your active workout")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open workout" })).toHaveAttribute(
       "href",
       "/log/w-active",

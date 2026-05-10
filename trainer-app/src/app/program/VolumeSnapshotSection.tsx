@@ -12,14 +12,14 @@ type WeeklyVolumeStatus =
 type SnapshotBucket = "needs_attention" | "on_track" | "watch_high" | "other";
 
 const STATUS_BUCKET_LABEL: Record<SnapshotBucket, string> = {
-  needs_attention: "Needs attention",
+  needs_attention: "Watch list",
   on_track: "On track",
   watch_high: "Watch high",
   other: "Review",
 };
 
 const STATUS_BUCKET_STYLE: Record<SnapshotBucket, string> = {
-  needs_attention: "border-rose-200 bg-rose-50 text-rose-800",
+  needs_attention: "border-sky-200 bg-sky-50 text-sky-800",
   on_track: "border-emerald-200 bg-emerald-50 text-emerald-800",
   watch_high: "border-amber-200 bg-amber-50 text-amber-800",
   other: "border-slate-200 bg-slate-50 text-slate-700",
@@ -199,8 +199,8 @@ export function VolumeSnapshotSection({
         <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700">
           Support {supportCount}
         </span>
-        <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-rose-800">
-          Needs attention {needsAttentionCount}
+        <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sky-800">
+          Watch list {needsAttentionCount}
         </span>
         <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800">
           On track {onTrackCount}
@@ -213,7 +213,7 @@ export function VolumeSnapshotSection({
       {visiblePriorityRows.length > 0 ? (
         <div className="mt-5">
           <h3 className="text-sm font-semibold text-slate-900">
-            Needs attention
+            Watch list
           </h3>
           <ul className="mt-2 grid gap-2">
             {visiblePriorityRows.map((row) => (
@@ -228,7 +228,8 @@ export function VolumeSnapshotSection({
         </div>
       ) : (
         <p className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm font-medium text-emerald-800">
-          On track: no primary/support volume rows need attention right now.
+          On track: no primary/support volume rows are on the watch list right
+          now.
         </p>
       )}
     </section>

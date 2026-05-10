@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { loadPendingMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
-import { loadProgramPageData, type ProgramCurrentWeekPlanRow } from "@/lib/api/program-page";
+import {
+  loadProgramPageData,
+  type ProgramCurrentWeekPlanRow,
+} from "@/lib/api/program-page";
 import { CycleAnchorControls } from "@/components/CycleAnchorControls";
 import { ProgramStatusCard } from "@/components/ProgramStatusCard";
 import { CloseoutCard } from "@/components/CloseoutCard";
@@ -12,10 +15,15 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
-const CURRENT_WEEK_PLAN_STATE_STYLE: Record<ProgramCurrentWeekPlanRow["uiState"], string> = {
+const CURRENT_WEEK_PLAN_STATE_STYLE: Record<
+  ProgramCurrentWeekPlanRow["uiState"],
+  string
+> = {
   completed: "border-emerald-200 bg-emerald-50/80 text-emerald-800",
-  active: "border-blue-300 bg-white text-blue-900 shadow-sm ring-1 ring-blue-200/80",
-  planned: "border-blue-300 bg-white text-blue-900 shadow-sm ring-1 ring-blue-200/80",
+  active:
+    "border-blue-300 bg-white text-blue-900 shadow-sm ring-1 ring-blue-200/80",
+  planned:
+    "border-blue-300 bg-white text-blue-900 shadow-sm ring-1 ring-blue-200/80",
   projected: "border-slate-200 bg-slate-50/80 text-slate-700",
   blocked: "border-rose-200 bg-rose-50/80 text-rose-800",
 };
@@ -48,6 +56,77 @@ function formatSlotWorkoutActionLabel(slot: ProgramCurrentWeekPlanRow): string {
   return "Open workout";
 }
 
+function findTrainNextSlot(
+  slots: ProgramCurrentWeekPlanRow[],
+): ProgramCurrentWeekPlanRow | null {
+  return (
+    slots.find(
+      (slot) =>
+        slot.volumeBasis === "projected_next" && slot.uiState !== "completed",
+    ) ?? null
+  );
+}
+
+function formatTrainNextSetTotal(
+  slot: ProgramCurrentWeekPlanRow,
+): string | null {
+  const totalSets = (slot.exercises ?? []).reduce(
+    (sum, exercise) => sum + exercise.setCount,
+    0,
+  );
+
+  if (totalSets <= 0) {
+    return null;
+  }
+
+  return `${totalSets} planned ${totalSets === 1 ? "set" : "sets"}`;
+}
+
+function formatTrainNextExerciseOverview(
+  slot: ProgramCurrentWeekPlanRow,
+): string | null {
+  const exercises = slot.exercises ?? [];
+  if (exercises.length === 0) {
+    return null;
+  }
+
+  const visibleExercises = exercises
+    .slice(0, 4)
+    .map((exercise) => exercise.name);
+  const hiddenCount = exercises.length - visibleExercises.length;
+
+  return `${visibleExercises.join(" + ")}${hiddenCount > 0 ? ` + ${hiddenCount} more` : ""}`;
+}
+
+function formatTrainNextSourceLabel(slot: ProgramCurrentWeekPlanRow): string {
+  switch (slot.exerciseSource) {
+    case "persisted_slot_plan_seed":
+      return "Planned from accepted seed";
+    case "linked_workout_structure":
+      return "Planned from saved workout";
+    case "projected_week_volume":
+      return "Planned from projected week";
+    case "unavailable":
+      return "Plan source unavailable";
+  }
+}
+
+function formatTrainNextCtaLabel(slot: ProgramCurrentWeekPlanRow): string {
+  const status = slot.linkedWorkoutStatus?.trim().toLowerCase() ?? null;
+
+  if (status === "in_progress" || status === "partial") {
+    return "Open workout";
+  }
+
+  return "Start workout";
+}
+
+function resolveTrainNextHref(slot: ProgramCurrentWeekPlanRow): string {
+  return slot.linkedWorkoutId
+    ? `/log/${slot.linkedWorkoutId}`
+    : "/#generate-workout";
+}
+
 export default async function ProgramPage() {
   const user = await resolveOwner();
   const pendingHandoff = await loadPendingMesocycleHandoff(user.id);
@@ -69,8 +148,9 @@ export default async function ProgramPage() {
               Meso {pendingHandoff.mesoNumber}: {pendingHandoff.focus}
             </h2>
             <p className="mt-2 text-sm text-slate-700">
-              Review the saved handoff recommendation, make any setup edits you want, then accept the next cycle
-              to resume generation and program controls.
+              Review the saved handoff recommendation, make any setup edits you
+              want, then accept the next cycle to resume generation and program
+              controls.
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               <Link
@@ -95,16 +175,30 @@ export default async function ProgramPage() {
   const data = await loadProgramPageData(user.id);
   const currentWeekPlan = data.currentWeekPlan;
   const closeout = data.closeout;
-  const activeWeekCloseout = closeout && closeout.isPriorWeek !== true ? closeout : null;
-  const priorWeekCloseout = closeout && closeout.isPriorWeek === true ? closeout : null;
+  const activeWeekCloseout =
+    closeout && closeout.isPriorWeek !== true ? closeout : null;
+  const priorWeekCloseout =
+    closeout && closeout.isPriorWeek === true ? closeout : null;
+  const trainNextSlot = currentWeekPlan
+    ? findTrainNextSlot(currentWeekPlan.slots)
+    : null;
+  const trainNextExercises = trainNextSlot?.exercises ?? [];
+  const trainNextSetTotal = trainNextSlot
+    ? formatTrainNextSetTotal(trainNextSlot)
+    : null;
+  const trainNextExerciseOverview = trainNextSlot
+    ? formatTrainNextExerciseOverview(trainNextSlot)
+    : null;
+  const rirTarget =
+    data.overview?.rirTarget ?? data.volumeDetails.dashboard.rirTarget;
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
       <div className="page-shell max-w-5xl pb-8">
         <h1 className="page-title">My Program</h1>
         <p className="mt-1.5 text-sm text-slate-600">
-          Your active mesocycle, next slot, and projected week landing. Use History for completed
-          sessions and Analytics for longer-term trends.
+          Your active mesocycle, next slot, and projected week landing. Use
+          History for completed sessions and Analytics for longer-term trends.
         </p>
 
         {data.overview ? (
@@ -193,6 +287,89 @@ export default async function ProgramPage() {
           </section>
         )}
 
+        {currentWeekPlan && trainNextSlot ? (
+          <section className="mt-7 rounded-3xl border-2 border-slate-900 bg-slate-950 p-5 text-white shadow-sm sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-200">
+                  Next Workout
+                </p>
+                <h2
+                  className="mt-1 text-2xl font-semibold"
+                  id="train-next-heading"
+                >
+                  Train next: {trainNextSlot.label}
+                </h2>
+                <p className="mt-2 text-sm text-slate-300">
+                  Week {currentWeekPlan.week} · {trainNextSlot.label}
+                  {rirTarget
+                    ? ` · Target ${rirTarget.min}-${rirTarget.max} RIR`
+                    : ""}
+                  {trainNextSetTotal ? ` · ${trainNextSetTotal}` : ""}
+                </p>
+              </div>
+              <Link
+                href={resolveTrainNextHref(trainNextSlot)}
+                className="inline-flex min-h-11 items-center justify-center rounded-full bg-white px-5 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-blue-50"
+              >
+                {formatTrainNextCtaLabel(trainNextSlot)}
+              </Link>
+            </div>
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,0.8fr)]">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-200">
+                  Why it matters
+                </p>
+                <p className="mt-1 text-sm text-slate-200">
+                  {trainNextSlot.impact?.summaryLabel ??
+                    trainNextSlot.statusDescription}
+                </p>
+                {trainNextExerciseOverview ? (
+                  <>
+                    <p className="mt-4 text-[11px] font-semibold uppercase tracking-wide text-blue-200">
+                      Focus
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-white">
+                      {trainNextExerciseOverview}
+                    </p>
+                  </>
+                ) : null}
+                <p className="mt-4 text-xs font-semibold text-blue-100">
+                  {formatTrainNextSourceLabel(trainNextSlot)}
+                </p>
+              </div>
+
+              <div className="min-w-0 border-t border-white/15 pt-4 lg:border-l lg:border-t-0 lg:pl-5 lg:pt-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-200">
+                  Exercises
+                </p>
+                {trainNextExercises.length > 0 ? (
+                  <div className="mt-2 grid gap-1.5">
+                    {trainNextExercises.map((exercise) => (
+                      <div
+                        key={`train-next:${trainNextSlot.slotId}:${exercise.exerciseId ?? exercise.name}`}
+                        className="flex items-baseline justify-between gap-3 text-sm"
+                      >
+                        <span className="min-w-0 truncate text-slate-100">
+                          {exercise.name}
+                        </span>
+                        <span className="shrink-0 text-xs font-semibold tabular-nums text-blue-100">
+                          {formatPlannedSetLabel(exercise.setCount)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-300">
+                    Exercises unavailable
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
         {currentWeekPlan ? (
           <section className="mt-7 rounded-3xl border-2 border-blue-200 bg-gradient-to-b from-blue-50 via-white to-white p-5 shadow-sm sm:p-6">
             <div className="flex items-start justify-between gap-3">
@@ -204,8 +381,8 @@ export default async function ProgramPage() {
                   This Week's Training Plan
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  Train the next slot first, then use the finish projection below to see how the
-                  week is likely to land.
+                  Train the next slot first, then use the finish projection
+                  below to see how the week is likely to land.
                 </p>
               </div>
               <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
@@ -224,7 +401,9 @@ export default async function ProgramPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-base font-semibold text-slate-900">{slot.label}</p>
+                          <p className="text-base font-semibold text-slate-900">
+                            {slot.label}
+                          </p>
                           {slot.volumeBasis === "projected_next" ? (
                             <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-blue-800">
                               Next up
@@ -232,9 +411,12 @@ export default async function ProgramPage() {
                           ) : null}
                         </div>
                         <p className="mt-1 text-xs text-slate-600">
-                          Session {slot.sessionInWeek} of {currentWeekPlan.slots.length}
+                          Session {slot.sessionInWeek} of{" "}
+                          {currentWeekPlan.slots.length}
                         </p>
-                        <p className="mt-1 text-xs text-slate-600">{slot.statusDescription}</p>
+                        <p className="mt-1 text-xs text-slate-600">
+                          {slot.statusDescription}
+                        </p>
                         <div className="mt-3">
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                             Exercises
@@ -246,7 +428,9 @@ export default async function ProgramPage() {
                                   key={`${slot.slotId}:${exercise.exerciseId ?? exercise.name}`}
                                   className="flex items-baseline justify-between gap-3 text-sm text-slate-800"
                                 >
-                                  <span className="min-w-0 truncate">{exercise.name}</span>
+                                  <span className="min-w-0 truncate">
+                                    {exercise.name}
+                                  </span>
                                   <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-600">
                                     {formatPlannedSetLabel(exercise.setCount)}
                                   </span>
@@ -294,7 +478,10 @@ export default async function ProgramPage() {
         {activeWeekCloseout ? (
           <section className="mt-7">
             <OptionalWeekCompletion
-              activeWeek={data.overview?.currentWeek ?? data.volumeDetails.dashboard.currentWeek}
+              activeWeek={
+                data.overview?.currentWeek ??
+                data.volumeDetails.dashboard.currentWeek
+              }
               customSession={activeWeekCloseout}
             />
           </section>
@@ -324,12 +511,16 @@ export default async function ProgramPage() {
                 Weekly Volume Snapshot
               </h2>
               <p className="mt-2 text-sm text-slate-600">
-                Review active or historical volume here. Program overview, slots, optional
-                sessions, and projected finish above stay anchored to the active week.
+                Review active or historical volume here. Program overview,
+                slots, optional sessions, and projected finish above stay
+                anchored to the active week.
               </p>
 
               <div className="mt-4">
-                <ProgramStatusCard initialData={data.volumeDetails.dashboard} variant="volumeOnly" />
+                <ProgramStatusCard
+                  initialData={data.volumeDetails.dashboard}
+                  variant="volumeOnly"
+                />
               </div>
             </div>
           </section>
@@ -342,8 +533,8 @@ export default async function ProgramPage() {
                 Advanced Cycle Actions
               </summary>
               <p className="mt-3 text-sm text-slate-600">
-                Manual mesocycle adjustments live here so the main Program flow stays focused on
-                understanding the active week.
+                Manual mesocycle adjustments live here so the main Program flow
+                stays focused on understanding the active week.
               </p>
               <CycleAnchorControls
                 availableActions={data.advancedActions.availableActions}

@@ -36,7 +36,8 @@ vi.mock("./program", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./program")>();
   return {
     ...actual,
-    loadProgramDashboardData: (...args: unknown[]) => mocks.loadProgramDashboardData(...args),
+    loadProgramDashboardData: (...args: unknown[]) =>
+      mocks.loadProgramDashboardData(...args),
     computeMesoWeekStart: (date: Date, week: number) => {
       const next = new Date(date);
       next.setDate(next.getDate() + (week - 1) * 7);
@@ -46,7 +47,8 @@ vi.mock("./program", async (importOriginal) => {
 });
 
 vi.mock("./muscle-outcome-review", async (importOriginal) => {
-  const original = await importOriginal<typeof import("./muscle-outcome-review")>();
+  const original =
+    await importOriginal<typeof import("./muscle-outcome-review")>();
   return {
     ...original,
   };
@@ -61,12 +63,14 @@ vi.mock("./next-session", async (importOriginal) => {
   const original = await importOriginal<typeof import("./next-session")>();
   return {
     ...original,
-    loadNextWorkoutContext: (...args: unknown[]) => mocks.loadNextWorkoutContext(...args),
+    loadNextWorkoutContext: (...args: unknown[]) =>
+      mocks.loadNextWorkoutContext(...args),
   };
 });
 
 vi.mock("./mesocycle-week-close", () => ({
-  findRelevantWeekCloseForUser: (...args: unknown[]) => mocks.findRelevantWeekCloseForUser(...args),
+  findRelevantWeekCloseForUser: (...args: unknown[]) =>
+    mocks.findRelevantWeekCloseForUser(...args),
 }));
 
 vi.mock("@/lib/ui-audit-fixtures/server", () => ({
@@ -74,7 +78,29 @@ vi.mock("@/lib/ui-audit-fixtures/server", () => ({
 }));
 
 import { buildMesocycleSlotSequence } from "./mesocycle-slot-contract";
-import { buildProgramCurrentWeekPlan, loadProgramPageData } from "./program-page";
+import {
+  buildProgramCurrentWeekPlan,
+  loadProgramPageData,
+} from "./program-page";
+
+function makeSlotSelectionMetadata(input: {
+  slotId: string;
+  intent: string;
+  sequenceIndex: number;
+  sequenceLength: number;
+}): unknown {
+  return {
+    sessionDecisionReceipt: {
+      sessionSlot: {
+        slotId: input.slotId,
+        intent: input.intent,
+        sequenceIndex: input.sequenceIndex,
+        sequenceLength: input.sequenceLength,
+        source: "mesocycle_slot_sequence",
+      },
+    },
+  };
+}
 
 describe("buildProgramCurrentWeekPlan", () => {
   it("marks ordered slots as completed, next, and remaining from canonical runtime context", () => {
@@ -124,7 +150,8 @@ describe("buildProgramCurrentWeekPlan", () => {
           sessionInWeek: 1,
           uiState: "completed",
           statusLabel: "Completed",
-          statusDescription: "Session 1 is counted from actual completed volume.",
+          statusDescription:
+            "Session 1 is counted from actual completed volume.",
           volumeBasis: "actual_completed",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
@@ -138,7 +165,8 @@ describe("buildProgramCurrentWeekPlan", () => {
           sessionInWeek: 2,
           uiState: "planned",
           statusLabel: "Planned next",
-          statusDescription: "Session 2 already has a planned workout ready to log.",
+          statusDescription:
+            "Session 2 already has a planned workout ready to log.",
           volumeBasis: "projected_next",
           linkedWorkoutId: "planned-lower",
           linkedWorkoutStatus: "planned",
@@ -152,7 +180,8 @@ describe("buildProgramCurrentWeekPlan", () => {
           sessionInWeek: 3,
           uiState: "projected",
           statusLabel: "Projected",
-          statusDescription: "Session 3 is unresolved; its volume is projected as remaining work.",
+          statusDescription:
+            "Session 3 is unresolved; its volume is projected as remaining work.",
           volumeBasis: "projected_remaining",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
@@ -161,6 +190,141 @@ describe("buildProgramCurrentWeekPlan", () => {
           impact: null,
         },
       ],
+    });
+  });
+
+  it("does not mark completed required slots as the next Program slot", () => {
+    const slotSequenceJson = buildMesocycleSlotSequence([
+      { slotId: "upper_a", intent: "UPPER" },
+      { slotId: "lower_a", intent: "LOWER" },
+    ]);
+
+    const result = buildProgramCurrentWeekPlan({
+      week: 2,
+      slotSequenceJson,
+      weeklySchedule: [],
+      currentWeekWorkouts: [
+        {
+          id: "completed-upper",
+          status: "COMPLETED",
+          scheduledDate: new Date("2026-03-02T00:00:00.000Z"),
+          sessionIntent: "UPPER",
+          selectionMode: "INTENT",
+          selectionMetadata: makeSlotSelectionMetadata({
+            slotId: "upper_a",
+            intent: "upper",
+            sequenceIndex: 0,
+            sequenceLength: 2,
+          }),
+          advancesSplit: true,
+        },
+        {
+          id: "completed-lower",
+          status: "COMPLETED",
+          scheduledDate: new Date("2026-03-03T00:00:00.000Z"),
+          sessionIntent: "LOWER",
+          selectionMode: "INTENT",
+          selectionMetadata: makeSlotSelectionMetadata({
+            slotId: "lower_a",
+            intent: "lower",
+            sequenceIndex: 1,
+            sequenceLength: 2,
+          }),
+          advancesSplit: true,
+        },
+      ],
+      nextWorkoutContext: {
+        intent: null,
+        slotId: null,
+        slotSequenceIndex: null,
+        slotSequenceLength: null,
+        slotSource: null,
+        existingWorkoutId: null,
+        isExisting: false,
+        source: "rotation",
+        weekInMeso: 2,
+        sessionInWeek: null,
+        derivationTrace: [],
+        selectedIncompleteStatus: null,
+      },
+    });
+
+    expect(result?.slots.map((slot) => slot.volumeBasis)).toEqual([
+      "actual_completed",
+      "actual_completed",
+    ]);
+    expect(
+      result?.slots.some((slot) => slot.volumeBasis === "projected_next"),
+    ).toBe(false);
+  });
+
+  it("uses an active incomplete workout as the next Program slot when canonical next-session context selects it", () => {
+    const slotSequenceJson = buildMesocycleSlotSequence([
+      { slotId: "lower_a", intent: "LOWER" },
+    ]);
+
+    const result = buildProgramCurrentWeekPlan({
+      week: 2,
+      slotSequenceJson,
+      weeklySchedule: [],
+      currentWeekWorkouts: [
+        {
+          id: "active-lower",
+          status: "IN_PROGRESS",
+          scheduledDate: new Date("2026-03-02T00:00:00.000Z"),
+          sessionIntent: "LOWER",
+          selectionMode: "INTENT",
+          selectionMetadata: makeSlotSelectionMetadata({
+            slotId: "lower_a",
+            intent: "lower",
+            sequenceIndex: 0,
+            sequenceLength: 1,
+          }),
+          advancesSplit: true,
+          exercises: [
+            {
+              exerciseId: "rdl",
+              orderIndex: 0,
+              isMainLift: true,
+              exercise: { id: "rdl", name: "Romanian Deadlift" },
+              sets: [{ id: "rdl-1" }, { id: "rdl-2" }, { id: "rdl-3" }],
+            },
+          ],
+        },
+      ],
+      nextWorkoutContext: {
+        intent: "lower",
+        slotId: "lower_a",
+        slotSequenceIndex: 0,
+        slotSequenceLength: 1,
+        slotSource: "mesocycle_slot_sequence",
+        existingWorkoutId: "active-lower",
+        isExisting: true,
+        source: "existing_incomplete",
+        weekInMeso: null,
+        sessionInWeek: null,
+        derivationTrace: [],
+        selectedIncompleteStatus: "in_progress",
+      },
+    });
+
+    expect(result?.slots[0]).toMatchObject({
+      slotId: "lower_a",
+      label: "Lower 1",
+      uiState: "active",
+      statusLabel: "Active",
+      volumeBasis: "projected_next",
+      linkedWorkoutId: "active-lower",
+      linkedWorkoutStatus: "in_progress",
+      exercises: [
+        {
+          exerciseId: "rdl",
+          name: "Romanian Deadlift",
+          setCount: 3,
+          role: "primary",
+        },
+      ],
+      exerciseSource: "linked_workout_structure",
     });
   });
 
@@ -219,7 +383,12 @@ describe("buildProgramCurrentWeekPlan", () => {
                   scaledDownCount: 0,
                 },
               },
-              exceptions: [{ code: "closeout_session", message: "Marked as closeout session." }],
+              exceptions: [
+                {
+                  code: "closeout_session",
+                  message: "Marked as closeout session.",
+                },
+              ],
             },
           },
           advancesSplit: false,
@@ -263,7 +432,8 @@ describe("buildProgramCurrentWeekPlan", () => {
         sessionInWeek: 2,
         uiState: "projected",
         statusLabel: "Projected",
-        statusDescription: "Session 2 is unresolved; its volume is projected as remaining work.",
+        statusDescription:
+          "Session 2 is unresolved; its volume is projected as remaining work.",
         volumeBasis: "projected_remaining",
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
@@ -277,7 +447,8 @@ describe("buildProgramCurrentWeekPlan", () => {
         sessionInWeek: 3,
         uiState: "projected",
         statusLabel: "Projected",
-        statusDescription: "Session 3 is unresolved; its volume is projected as remaining work.",
+        statusDescription:
+          "Session 3 is unresolved; its volume is projected as remaining work.",
         volumeBasis: "projected_remaining",
         linkedWorkoutId: null,
         linkedWorkoutStatus: null,
@@ -302,8 +473,18 @@ describe("buildProgramCurrentWeekPlan", () => {
           {
             slotId: "upper_a",
             exercises: [
-              { exerciseId: "bench", name: "Incline DB Bench", role: "CORE_COMPOUND", setCount: 4 },
-              { exerciseId: "row", name: "T-Bar Row", role: "ACCESSORY", setCount: 3 },
+              {
+                exerciseId: "bench",
+                name: "Incline DB Bench",
+                role: "CORE_COMPOUND",
+                setCount: 4,
+              },
+              {
+                exerciseId: "row",
+                name: "T-Bar Row",
+                role: "ACCESSORY",
+                setCount: 3,
+              },
             ],
           },
         ],
@@ -400,8 +581,18 @@ describe("buildProgramCurrentWeekPlan", () => {
       statusLabel: "Completed",
       exerciseSource: "persisted_slot_plan_seed",
       exercises: [
-        { exerciseId: "bench", name: "Incline DB Bench", setCount: 4, role: "primary" },
-        { exerciseId: "row", name: "T-Bar Row", setCount: 3, role: "accessory" },
+        {
+          exerciseId: "bench",
+          name: "Incline DB Bench",
+          setCount: 4,
+          role: "primary",
+        },
+        {
+          exerciseId: "row",
+          name: "T-Bar Row",
+          setCount: 3,
+          role: "accessory",
+        },
       ],
     });
   });
@@ -437,7 +628,8 @@ describe("loadProgramPageData", () => {
           mrv: 22,
           opportunityScore: 0,
           opportunityState: "high_opportunity",
-          opportunityRationale: "Below target in this snapshot, with recovery room for more work.",
+          opportunityRationale:
+            "Below target in this snapshot, with recovery room for more work.",
         },
         {
           muscle: "Biceps",
@@ -450,7 +642,8 @@ describe("loadProgramPageData", () => {
           mrv: 18,
           opportunityScore: 0,
           opportunityState: "covered",
-          opportunityRationale: "Weekly target is already covered in this volume snapshot.",
+          opportunityRationale:
+            "Weekly target is already covered in this volume snapshot.",
         },
         {
           muscle: "Quads",
@@ -463,7 +656,8 @@ describe("loadProgramPageData", () => {
           mrv: 20,
           opportunityScore: 0,
           opportunityState: "deprioritize_today",
-          opportunityRationale: "Recent weighted stimulus is already high for this muscle.",
+          opportunityRationale:
+            "Recent weighted stimulus is already high for this muscle.",
         },
       ],
       deloadReadiness: null,
@@ -487,8 +681,18 @@ describe("loadProgramPageData", () => {
           exerciseCount: 5,
           totalSets: 14,
           exercises: [
-            { exerciseId: "incline-db-bench", name: "Incline DB Bench", setCount: 3, role: "primary" },
-            { exerciseId: "tbar-row", name: "T-Bar Row", setCount: 3, role: "primary" },
+            {
+              exerciseId: "incline-db-bench",
+              name: "Incline DB Bench",
+              setCount: 3,
+              role: "primary",
+            },
+            {
+              exerciseId: "tbar-row",
+              name: "T-Bar Row",
+              setCount: 3,
+              role: "primary",
+            },
           ],
           projectedContributionByMuscle: {
             Chest: 4,
@@ -501,8 +705,18 @@ describe("loadProgramPageData", () => {
           exerciseCount: 5,
           totalSets: 15,
           exercises: [
-            { exerciseId: "leg-press", name: "Leg Press", setCount: 4, role: "primary" },
-            { exerciseId: "leg-curl", name: "Leg Curl", setCount: 3, role: "accessory" },
+            {
+              exerciseId: "leg-press",
+              name: "Leg Press",
+              setCount: 4,
+              role: "primary",
+            },
+            {
+              exerciseId: "leg-curl",
+              name: "Leg Curl",
+              setCount: 3,
+              role: "accessory",
+            },
           ],
           projectedContributionByMuscle: {
             Quads: 9,
@@ -518,8 +732,18 @@ describe("loadProgramPageData", () => {
           exerciseCount: 5,
           totalSets: 14,
           exercises: [
-            { exerciseId: "lat-pulldown", name: "Lat Pulldown", setCount: 3, role: "primary" },
-            { exerciseId: "face-pull", name: "Face Pull", setCount: 2, role: "accessory" },
+            {
+              exerciseId: "lat-pulldown",
+              name: "Lat Pulldown",
+              setCount: 3,
+              role: "primary",
+            },
+            {
+              exerciseId: "face-pull",
+              name: "Face Pull",
+              setCount: 2,
+              role: "accessory",
+            },
           ],
           projectedContributionByMuscle: {
             Lats: 5,
@@ -687,7 +911,12 @@ describe("loadProgramPageData", () => {
                 scaledDownCount: 0,
               },
             },
-            exceptions: [{ code: "closeout_session", message: "Marked as closeout session." }],
+            exceptions: [
+              {
+                code: "closeout_session",
+                message: "Marked as closeout session.",
+              },
+            ],
           },
         },
         advancesSplit: false,
@@ -728,7 +957,8 @@ describe("loadProgramPageData", () => {
           sessionInWeek: 1,
           uiState: "planned",
           statusLabel: "Planned next",
-          statusDescription: "Session 1 already has a planned workout ready to log.",
+          statusDescription:
+            "Session 1 already has a planned workout ready to log.",
           volumeBasis: "projected_next",
           linkedWorkoutId: "planned-upper",
           linkedWorkoutStatus: "planned",
@@ -764,7 +994,8 @@ describe("loadProgramPageData", () => {
           sessionInWeek: 2,
           uiState: "projected",
           statusLabel: "Projected",
-          statusDescription: "Session 2 is unresolved; its volume is projected as remaining work.",
+          statusDescription:
+            "Session 2 is unresolved; its volume is projected as remaining work.",
           volumeBasis: "projected_remaining",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
@@ -799,7 +1030,8 @@ describe("loadProgramPageData", () => {
               },
             ],
             hiddenMuscleCount: 1,
-            summaryLabel: "Quads +9 \u00b7 Glutes +4.3 \u00b7 Calves +4 \u00b7 +1 more",
+            summaryLabel:
+              "Quads +9 \u00b7 Glutes +4.3 \u00b7 Calves +4 \u00b7 +1 more",
           },
         },
         {
@@ -808,7 +1040,8 @@ describe("loadProgramPageData", () => {
           sessionInWeek: 3,
           uiState: "projected",
           statusLabel: "Projected",
-          statusDescription: "Session 3 is unresolved; its volume is projected as remaining work.",
+          statusDescription:
+            "Session 3 is unresolved; its volume is projected as remaining work.",
           volumeBasis: "projected_remaining",
           linkedWorkoutId: null,
           linkedWorkoutStatus: null,
@@ -843,7 +1076,8 @@ describe("loadProgramPageData", () => {
               },
             ],
             hiddenMuscleCount: 3,
-            summaryLabel: "Lats +5 \u00b7 Upper Back +4 \u00b7 Chest +3 \u00b7 +3 more",
+            summaryLabel:
+              "Lats +5 \u00b7 Upper Back +4 \u00b7 Chest +3 \u00b7 +3 more",
           },
         },
       ],
@@ -864,7 +1098,8 @@ describe("loadProgramPageData", () => {
       canDismiss: true,
     });
     expect(result.weekCompletionOutlook).toMatchObject({
-      assumptionLabel: "If you complete the remaining planned sessions this week, you will likely land here.",
+      assumptionLabel:
+        "If you complete the remaining planned sessions this week, you will likely land here.",
       summary: {
         meaningfullyLow: 0,
         slightlyLow: 1,
@@ -877,31 +1112,36 @@ describe("loadProgramPageData", () => {
           status: "meaningfully_low",
           label: "meaningfully low",
           count: 0,
-          activeDescription: "Showing all projected muscles in the Meaningfully low bucket.",
+          activeDescription:
+            "Showing all projected muscles in the Meaningfully low bucket.",
         },
         {
           status: "slightly_low",
           label: "below target",
           count: 1,
-          activeDescription: "Showing all projected muscles in the Below target bucket.",
+          activeDescription:
+            "Showing all projected muscles in the Below target bucket.",
         },
         {
           status: "on_target",
           label: "on target",
           count: 0,
-          activeDescription: "Showing all projected muscles in the On target bucket.",
+          activeDescription:
+            "Showing all projected muscles in the On target bucket.",
         },
         {
           status: "slightly_high",
           label: "slightly high",
           count: 0,
-          activeDescription: "Showing all projected muscles in the Slightly high bucket.",
+          activeDescription:
+            "Showing all projected muscles in the Slightly high bucket.",
         },
         {
           status: "meaningfully_high",
           label: "meaningfully high",
           count: 1,
-          activeDescription: "Showing all projected muscles in the Meaningfully high bucket.",
+          activeDescription:
+            "Showing all projected muscles in the Meaningfully high bucket.",
         },
       ],
       rows: [
@@ -923,9 +1163,17 @@ describe("loadProgramPageData", () => {
           },
           badges: [
             { status: "on_target", label: "On target" },
-            { status: "actual_completed", label: "Actual completed", count: 12 },
+            {
+              status: "actual_completed",
+              label: "Actual completed",
+              count: 12,
+            },
             { status: "projected_next", label: "Projected next", count: 0 },
-            { status: "projected_remaining", label: "Projected remaining", count: 3 },
+            {
+              status: "projected_remaining",
+              label: "Projected remaining",
+              count: 3,
+            },
           ],
         },
         {
@@ -948,7 +1196,11 @@ describe("loadProgramPageData", () => {
             { status: "in_range", label: "On target" },
             { status: "actual_completed", label: "Actual completed", count: 4 },
             { status: "projected_next", label: "Projected next", count: 4 },
-            { status: "projected_remaining", label: "Projected remaining", count: 0 },
+            {
+              status: "projected_remaining",
+              label: "Projected remaining",
+              count: 0,
+            },
           ],
         },
       ],
@@ -971,9 +1223,17 @@ describe("loadProgramPageData", () => {
           },
           badges: [
             { status: "on_target", label: "On target" },
-            { status: "actual_completed", label: "Actual completed", count: 12 },
+            {
+              status: "actual_completed",
+              label: "Actual completed",
+              count: 12,
+            },
             { status: "projected_next", label: "Projected next", count: 0 },
-            { status: "projected_remaining", label: "Projected remaining", count: 3 },
+            {
+              status: "projected_remaining",
+              label: "Projected remaining",
+              count: 3,
+            },
           ],
         },
         {
@@ -996,15 +1256,18 @@ describe("loadProgramPageData", () => {
             { status: "in_range", label: "On target" },
             { status: "actual_completed", label: "Actual completed", count: 4 },
             { status: "projected_next", label: "Projected next", count: 4 },
-            { status: "projected_remaining", label: "Projected remaining", count: 0 },
+            {
+              status: "projected_remaining",
+              label: "Projected remaining",
+              count: 0,
+            },
           ],
         },
       ],
     });
-    expect(result.weekCompletionOutlook?.primaryRows?.map((row) => row.muscle)).toEqual([
-      "Quads",
-      "Chest",
-    ]);
+    expect(
+      result.weekCompletionOutlook?.primaryRows?.map((row) => row.muscle),
+    ).toEqual(["Quads", "Chest"]);
     expect(result.weekCompletionOutlook?.supportRows).toEqual([]);
     expect(result.weekCompletionOutlook?.secondaryRows).toEqual([]);
     expect(result.weekCompletionOutlook?.secondarySummary).toEqual({
@@ -1013,7 +1276,11 @@ describe("loadProgramPageData", () => {
       aboveSoftRange: 0,
     });
     expect(result.volumeDetails.dashboard.volumeThisWeek).toHaveLength(3);
-    expect(result.advancedActions.availableActions).toEqual(["deload", "extend_phase", "reset"]);
+    expect(result.advancedActions.availableActions).toEqual([
+      "deload",
+      "extend_phase",
+      "reset",
+    ]);
   });
 
   it("uses set-aware persisted seed exercises when linked workouts and projection disagree", async () => {
@@ -1030,10 +1297,26 @@ describe("loadProgramPageData", () => {
         {
           slotId: "upper_a",
           exercises: [
-            { exerciseId: "machine-chest-press", role: "CORE_COMPOUND", setCount: 4 },
-            { exerciseId: "chest-supported-row", role: "CORE_COMPOUND", setCount: 3 },
-            { exerciseId: "neutral-grip-pulldown", role: "ACCESSORY", setCount: 2 },
-            { exerciseId: "rear-delt-reverse-fly", role: "ACCESSORY", setCount: 3 },
+            {
+              exerciseId: "machine-chest-press",
+              role: "CORE_COMPOUND",
+              setCount: 4,
+            },
+            {
+              exerciseId: "chest-supported-row",
+              role: "CORE_COMPOUND",
+              setCount: 3,
+            },
+            {
+              exerciseId: "neutral-grip-pulldown",
+              role: "ACCESSORY",
+              setCount: 2,
+            },
+            {
+              exerciseId: "rear-delt-reverse-fly",
+              role: "ACCESSORY",
+              setCount: 3,
+            },
             { exerciseId: "rope-pressdown", role: "ACCESSORY", setCount: 3 },
           ],
         },
@@ -1086,7 +1369,10 @@ describe("loadProgramPageData", () => {
             exerciseId: "barbell-bench-press",
             orderIndex: 0,
             isMainLift: true,
-            exercise: { id: "barbell-bench-press", name: "Barbell Bench Press" },
+            exercise: {
+              id: "barbell-bench-press",
+              name: "Barbell Bench Press",
+            },
             sets: [{ id: "bench-1" }, { id: "bench-2" }, { id: "bench-3" }],
           },
           {
@@ -1116,11 +1402,36 @@ describe("loadProgramPageData", () => {
           exerciseCount: 5,
           totalSets: 15,
           exercises: [
-            { exerciseId: "barbell-bench-press", name: "Barbell Bench Press", setCount: 4, role: "primary" },
-            { exerciseId: "chest-supported-db-row", name: "Chest-Supported Dumbbell Row", setCount: 3, role: "primary" },
-            { exerciseId: "cable-pullover", name: "Cable Pullover", setCount: 2, role: "accessory" },
-            { exerciseId: "cable-rear-delt-fly", name: "Cable Rear Delt Fly", setCount: 3, role: "accessory" },
-            { exerciseId: "cable-triceps-pushdown", name: "Cable Triceps Pushdown", setCount: 3, role: "accessory" },
+            {
+              exerciseId: "barbell-bench-press",
+              name: "Barbell Bench Press",
+              setCount: 4,
+              role: "primary",
+            },
+            {
+              exerciseId: "chest-supported-db-row",
+              name: "Chest-Supported Dumbbell Row",
+              setCount: 3,
+              role: "primary",
+            },
+            {
+              exerciseId: "cable-pullover",
+              name: "Cable Pullover",
+              setCount: 2,
+              role: "accessory",
+            },
+            {
+              exerciseId: "cable-rear-delt-fly",
+              name: "Cable Rear Delt Fly",
+              setCount: 3,
+              role: "accessory",
+            },
+            {
+              exerciseId: "cable-triceps-pushdown",
+              name: "Cable Triceps Pushdown",
+              setCount: 3,
+              role: "accessory",
+            },
           ],
           projectedContributionByMuscle: {
             Chest: 4,
@@ -1148,11 +1459,13 @@ describe("loadProgramPageData", () => {
     const result = await loadProgramPageData("user-1");
     const slots = result.currentWeekPlan?.slots ?? [];
     const upperSlot = slots.find((slot) => slot.slotId === "upper_a");
-    const runtimeSeedRows = slotPlanSeedJson.slots[1]?.exercises.map((exercise) => ({
-      exerciseId: exercise.exerciseId,
-      role: exercise.role === "CORE_COMPOUND" ? "primary" : "accessory",
-      setCount: exercise.setCount,
-    }));
+    const runtimeSeedRows = slotPlanSeedJson.slots[1]?.exercises.map(
+      (exercise) => ({
+        exerciseId: exercise.exerciseId,
+        role: exercise.role === "CORE_COMPOUND" ? "primary" : "accessory",
+        setCount: exercise.setCount,
+      }),
+    );
 
     expect(slots.map((slot) => slot.slotId)).toEqual(["lower_a", "upper_a"]);
     expect(upperSlot?.exerciseSource).toBe("persisted_slot_plan_seed");
@@ -1161,7 +1474,7 @@ describe("loadProgramPageData", () => {
         exerciseId,
         role,
         setCount,
-      }))
+      })),
     ).toEqual(runtimeSeedRows);
     expect(upperSlot?.exercises?.map((exercise) => exercise.name)).toEqual([
       "Machine Chest Press",
@@ -1177,7 +1490,7 @@ describe("loadProgramPageData", () => {
         "Cable Pullover",
         "Cable Rear Delt Fly",
         "Cable Triceps Pushdown",
-      ])
+      ]),
     );
   });
 
@@ -1199,7 +1512,11 @@ describe("loadProgramPageData", () => {
           {
             slotId: "upper_a",
             exercises: [
-              { exerciseId: "machine-chest-press", role: "CORE_COMPOUND", setCount: 4 },
+              {
+                exerciseId: "machine-chest-press",
+                role: "CORE_COMPOUND",
+                setCount: 4,
+              },
             ],
           },
         ],
@@ -1225,7 +1542,12 @@ describe("loadProgramPageData", () => {
           exerciseCount: 1,
           totalSets: 4,
           exercises: [
-            { exerciseId: "barbell-bench-press", name: "Barbell Bench Press", setCount: 4, role: "primary" },
+            {
+              exerciseId: "barbell-bench-press",
+              name: "Barbell Bench Press",
+              setCount: 4,
+              role: "primary",
+            },
           ],
           projectedContributionByMuscle: {
             Chest: 4,
@@ -1250,7 +1572,9 @@ describe("loadProgramPageData", () => {
     });
 
     const result = await loadProgramPageData("user-1");
-    const upperSlot = result.currentWeekPlan?.slots.find((slot) => slot.slotId === "upper_a");
+    const upperSlot = result.currentWeekPlan?.slots.find(
+      (slot) => slot.slotId === "upper_a",
+    );
 
     expect(upperSlot?.exerciseSource).toBe("persisted_slot_plan_seed");
     expect(upperSlot?.exercises).toEqual([]);
@@ -1322,8 +1646,18 @@ describe("loadProgramPageData", () => {
           exerciseCount: 5,
           totalSets: 15,
           exercises: [
-            { exerciseId: "leg-press", name: "Leg Press", setCount: 4, role: "primary" },
-            { exerciseId: "leg-curl", name: "Leg Curl", setCount: 3, role: "accessory" },
+            {
+              exerciseId: "leg-press",
+              name: "Leg Press",
+              setCount: 4,
+              role: "primary",
+            },
+            {
+              exerciseId: "leg-curl",
+              name: "Leg Curl",
+              setCount: 3,
+              role: "accessory",
+            },
           ],
           projectedContributionByMuscle: {
             Quads: 9,
@@ -1339,7 +1673,9 @@ describe("loadProgramPageData", () => {
     });
 
     const result = await loadProgramPageData("user-1");
-    const lowerSlot = result.currentWeekPlan?.slots.find((slot) => slot.slotId === "lower_a");
+    const lowerSlot = result.currentWeekPlan?.slots.find(
+      (slot) => slot.slotId === "lower_a",
+    );
 
     expect(lowerSlot).toMatchObject({
       label: "Lower 1",
@@ -1353,11 +1689,16 @@ describe("loadProgramPageData", () => {
           { muscle: "Calves", projectedEffectiveSets: 4 },
         ],
         hiddenMuscleCount: 3,
-        summaryLabel: "Quads +9 \u00b7 Glutes +4.3 \u00b7 Calves +4 \u00b7 +3 more",
+        summaryLabel:
+          "Quads +9 \u00b7 Glutes +4.3 \u00b7 Calves +4 \u00b7 +3 more",
       },
     });
-    expect(lowerSlot?.impact?.topMuscles.map((row) => row.muscle)).not.toContain("Chest");
-    expect(lowerSlot?.impact?.topMuscles.map((row) => row.muscle)).not.toContain("Lats");
+    expect(
+      lowerSlot?.impact?.topMuscles.map((row) => row.muscle),
+    ).not.toContain("Chest");
+    expect(
+      lowerSlot?.impact?.topMuscles.map((row) => row.muscle),
+    ).not.toContain("Lats");
   });
 
   it("server-provides distinct below-MEV and below-target outlook labels", async () => {
@@ -1457,7 +1798,8 @@ describe("loadProgramPageData", () => {
         expect.objectContaining({
           muscle: "Chest",
           statusLabel: "Below MEV",
-          statusDescription: "4 projected is still below MEV after the planned week.",
+          statusDescription:
+            "4 projected is still below MEV after the planned week.",
         }),
         expect.objectContaining({
           muscle: "Lats",
@@ -1477,11 +1819,12 @@ describe("loadProgramPageData", () => {
           targetLabel: "Soft target: 2-4 weighted sets",
           displayGroup: "secondary",
           statusLabel: "Above soft range",
-          statusDescription: "5 projected vs 2-4 soft target; 0 completed so far. Non-blocking.",
+          statusDescription:
+            "5 projected vs 2-4 soft target; 0 completed so far. Non-blocking.",
           deltaLabel: "+1 sets",
           comparisonLabel: "5 projected vs 2-4 soft target",
         }),
-      ])
+      ]),
     );
     expect(result.weekCompletionOutlook?.summary.meaningfullyHigh).toBe(0);
     expect(result.weekCompletionOutlook?.supportRows).toEqual([
@@ -1546,7 +1889,9 @@ describe("loadProgramPageData", () => {
     });
 
     const result = await loadProgramPageData("user-1");
-    const lowerSlot = result.currentWeekPlan?.slots.find((slot) => slot.slotId === "lower_a");
+    const lowerSlot = result.currentWeekPlan?.slots.find(
+      (slot) => slot.slotId === "lower_a",
+    );
 
     expect(lowerSlot).toMatchObject({
       label: "Lower 1",
@@ -1621,7 +1966,9 @@ describe("loadProgramPageData", () => {
         remainingDeficitSets: 4,
         remainingQualifyingMuscleCount: 1,
         remainingTopTargetMuscles: ["Chest"],
-        remainingMuscles: [{ muscle: "Chest", target: 12, actual: 8, deficit: 4 }],
+        remainingMuscles: [
+          { muscle: "Chest", target: 12, actual: 8, deficit: 4 },
+        ],
       },
       optionalWorkout: null,
     });
@@ -1655,99 +2002,103 @@ describe("loadProgramPageData", () => {
   });
 
   it("hides dismissed closeout rows without offering another create action", async () => {
-    mocks.workoutFindMany
-      .mockResolvedValueOnce([
-        {
-          id: "planned-upper",
-          status: "PLANNED",
-          scheduledDate: new Date("2026-03-02T00:00:00.000Z"),
-          sessionIntent: "UPPER",
-          selectionMode: "INTENT",
-          selectionMetadata: {
-            sessionDecisionReceipt: {
-              version: 1,
-              cycleContext: {
-                weekInMeso: 2,
-                weekInBlock: 2,
-                phase: "accumulation",
-                blockType: "accumulation",
-                isDeload: false,
-                source: "computed",
-              },
-              sessionSlot: {
-                slotId: "upper_a",
-                intent: "upper",
-                sequenceIndex: 0,
-                sequenceLength: 3,
-                source: "mesocycle_slot_sequence",
-              },
-              lifecycleVolume: { source: "unknown" },
-              sorenessSuppressedMuscles: [],
-              deloadDecision: {
-                mode: "none",
-                reason: [],
-                reductionPercent: 0,
-                appliedTo: "none",
-              },
-              readiness: {
-                wasAutoregulated: false,
-                signalAgeHours: null,
-                fatigueScoreOverall: null,
-                intensityScaling: {
-                  applied: false,
-                  exerciseIds: [],
-                  scaledUpCount: 0,
-                  scaledDownCount: 0,
-                },
-              },
-              exceptions: [],
+    mocks.workoutFindMany.mockResolvedValueOnce([
+      {
+        id: "planned-upper",
+        status: "PLANNED",
+        scheduledDate: new Date("2026-03-02T00:00:00.000Z"),
+        sessionIntent: "UPPER",
+        selectionMode: "INTENT",
+        selectionMetadata: {
+          sessionDecisionReceipt: {
+            version: 1,
+            cycleContext: {
+              weekInMeso: 2,
+              weekInBlock: 2,
+              phase: "accumulation",
+              blockType: "accumulation",
+              isDeload: false,
+              source: "computed",
             },
-          },
-          advancesSplit: true,
-        },
-        {
-          id: "closeout-planned",
-          status: "PLANNED",
-          scheduledDate: new Date("2026-03-03T00:00:00.000Z"),
-          sessionIntent: null,
-          selectionMode: "MANUAL",
-          selectionMetadata: {
-            closeoutDismissed: true,
-            sessionDecisionReceipt: {
-              version: 1,
-              cycleContext: {
-                weekInMeso: 2,
-                weekInBlock: 2,
-                phase: "accumulation",
-                blockType: "accumulation",
-                isDeload: false,
-                source: "computed",
-              },
-              lifecycleVolume: { source: "unknown" },
-              sorenessSuppressedMuscles: [],
-              deloadDecision: {
-                mode: "none",
-                reason: [],
-                reductionPercent: 0,
-                appliedTo: "none",
-              },
-              readiness: {
-                wasAutoregulated: false,
-                signalAgeHours: null,
-                fatigueScoreOverall: null,
-                intensityScaling: {
-                  applied: false,
-                  exerciseIds: [],
-                  scaledUpCount: 0,
-                  scaledDownCount: 0,
-                },
-              },
-              exceptions: [{ code: "closeout_session", message: "Marked as closeout session." }],
+            sessionSlot: {
+              slotId: "upper_a",
+              intent: "upper",
+              sequenceIndex: 0,
+              sequenceLength: 3,
+              source: "mesocycle_slot_sequence",
             },
+            lifecycleVolume: { source: "unknown" },
+            sorenessSuppressedMuscles: [],
+            deloadDecision: {
+              mode: "none",
+              reason: [],
+              reductionPercent: 0,
+              appliedTo: "none",
+            },
+            readiness: {
+              wasAutoregulated: false,
+              signalAgeHours: null,
+              fatigueScoreOverall: null,
+              intensityScaling: {
+                applied: false,
+                exerciseIds: [],
+                scaledUpCount: 0,
+                scaledDownCount: 0,
+              },
+            },
+            exceptions: [],
           },
-          advancesSplit: false,
         },
-      ]);
+        advancesSplit: true,
+      },
+      {
+        id: "closeout-planned",
+        status: "PLANNED",
+        scheduledDate: new Date("2026-03-03T00:00:00.000Z"),
+        sessionIntent: null,
+        selectionMode: "MANUAL",
+        selectionMetadata: {
+          closeoutDismissed: true,
+          sessionDecisionReceipt: {
+            version: 1,
+            cycleContext: {
+              weekInMeso: 2,
+              weekInBlock: 2,
+              phase: "accumulation",
+              blockType: "accumulation",
+              isDeload: false,
+              source: "computed",
+            },
+            lifecycleVolume: { source: "unknown" },
+            sorenessSuppressedMuscles: [],
+            deloadDecision: {
+              mode: "none",
+              reason: [],
+              reductionPercent: 0,
+              appliedTo: "none",
+            },
+            readiness: {
+              wasAutoregulated: false,
+              signalAgeHours: null,
+              fatigueScoreOverall: null,
+              intensityScaling: {
+                applied: false,
+                exerciseIds: [],
+                scaledUpCount: 0,
+                scaledDownCount: 0,
+              },
+            },
+            exceptions: [
+              {
+                code: "closeout_session",
+                message: "Marked as closeout session.",
+              },
+            ],
+          },
+        },
+        advancesSplit: false,
+      },
+    ]);
 
     const result = await loadProgramPageData("user-1");
 

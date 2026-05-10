@@ -150,6 +150,28 @@ describe("ProgramPage", () => {
                 "Lats +3 \u00b7 Upper Back +2 \u00b7 Rear Delts +1.5 \u00b7 +2 more",
             },
           },
+          {
+            slotId: "upper_b",
+            label: "Upper 2",
+            sessionInWeek: 3,
+            uiState: "projected",
+            statusLabel: "Projected",
+            statusDescription:
+              "Session 3 is unresolved; its volume is projected as remaining work.",
+            volumeBasis: "projected_remaining",
+            linkedWorkoutId: null,
+            linkedWorkoutStatus: null,
+            exercises: [
+              {
+                exerciseId: "cable-curl",
+                name: "Cable Curl",
+                setCount: 2,
+                role: "accessory",
+              },
+            ],
+            exerciseSource: "projected_week_volume",
+            impact: null,
+          },
         ],
       },
       closeout: null,
@@ -369,9 +391,14 @@ describe("ProgramPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Upper 1")).toBeInTheDocument();
     expect(screen.getByText("Lower 1")).toBeInTheDocument();
+    expect(screen.getByText("Upper 2")).toBeInTheDocument();
     expect(screen.getAllByText("Exercises").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Incline DB Bench")).not.toBeInTheDocument();
+    expect(screen.getByText("Workout: Completed")).toBeInTheDocument();
     expect(screen.getAllByText("T-Bar Row").length).toBeGreaterThan(0);
+    expect(screen.getByText("Cable Curl")).toBeInTheDocument();
     expect(screen.getAllByText("3 sets").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("2 sets").length).toBeGreaterThan(0);
     expect(screen.getByText("If you train this slot")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Review workout" }),
@@ -423,6 +450,97 @@ describe("ProgramPage", () => {
     expect(screen.queryByText("Next Views")).not.toBeInTheDocument();
     expect(screen.queryByText("Session History")).not.toBeInTheDocument();
     expect(screen.queryByText(/skip_phase/i)).not.toBeInTheDocument();
+  });
+
+  it("renders performed set totals for compact completed slots when linked workout structure is the available source", async () => {
+    mocks.loadProgramPageData.mockResolvedValueOnce({
+      overview: {
+        mesoNumber: 2,
+        focus: "Strength-Hypertrophy",
+        currentBlockType: "accumulation",
+        durationWeeks: 5,
+        currentWeek: 2,
+        percentComplete: 40,
+        blocks: [{ blockType: "accumulation", startWeek: 1, durationWeeks: 5 }],
+        rirTarget: { min: 2, max: 3 },
+        sessionsUntilDeload: 6,
+        deloadReadiness: null,
+        coachingCue: "Build volume with crisp execution.",
+      },
+      currentWeekPlan: {
+        week: 2,
+        slots: [
+          {
+            slotId: "upper_a",
+            label: "Upper 1",
+            sessionInWeek: 1,
+            uiState: "completed",
+            statusLabel: "Completed",
+            statusDescription:
+              "Session 1 is counted from actual completed volume.",
+            volumeBasis: "actual_completed",
+            linkedWorkoutId: "w-completed",
+            linkedWorkoutStatus: "completed",
+            exercises: [
+              {
+                exerciseId: "runtime-bench",
+                name: "Runtime Bench",
+                setCount: 3,
+                role: "primary",
+              },
+              {
+                exerciseId: "runtime-row",
+                name: "Runtime Row",
+                setCount: 2,
+                role: "accessory",
+              },
+            ],
+            exerciseSource: "linked_workout_structure",
+            impact: null,
+          },
+        ],
+      },
+      closeout: null,
+      weekCompletionOutlook: null,
+      volumeDetails: {
+        dashboard: {
+          activeMeso: {
+            mesoNumber: 2,
+            focus: "Strength-Hypertrophy",
+            durationWeeks: 5,
+            completedSessions: 4,
+            volumeTarget: "moderate",
+            currentBlockType: "accumulation",
+            blocks: [],
+          },
+          currentWeek: 2,
+          viewedWeek: 2,
+          viewedBlockType: "accumulation",
+          sessionsUntilDeload: 6,
+          volumeThisWeek: [],
+          deloadReadiness: null,
+          rirTarget: { min: 2, max: 3 },
+          coachingCue: "Build volume with crisp execution.",
+        },
+      },
+      advancedActions: {
+        availableActions: ["deload", "extend_phase", "reset"],
+      },
+    });
+
+    const { default: ProgramPage } = await import("./page");
+    const ui = await ProgramPage();
+
+    render(ui);
+
+    expect(screen.getByText("Upper 1")).toBeInTheDocument();
+    expect(screen.getByText("Workout: Completed")).toBeInTheDocument();
+    expect(screen.getByText("Performed: 5 sets")).toBeInTheDocument();
+    expect(screen.queryByText("Runtime Bench")).not.toBeInTheDocument();
+    expect(screen.queryByText("Runtime Row")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Review workout" }),
+    ).toHaveAttribute("href", "/workout/w-completed");
   });
 
   it("renders active-week custom work separately from the ordered slot map", async () => {

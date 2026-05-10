@@ -56,6 +56,40 @@ function formatSlotWorkoutActionLabel(slot: ProgramCurrentWeekPlanRow): string {
   return "Open workout";
 }
 
+function formatSlotWorkoutStatusLabel(slot: ProgramCurrentWeekPlanRow): string | null {
+  const status = slot.linkedWorkoutStatus?.trim();
+  if (!status) {
+    return null;
+  }
+
+  const label = status
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+
+  return `Workout: ${label}`;
+}
+
+function formatCompletedSlotSetSummary(
+  slot: ProgramCurrentWeekPlanRow,
+): string | null {
+  if (slot.exerciseSource !== "linked_workout_structure") {
+    return null;
+  }
+
+  const totalSets = (slot.exercises ?? []).reduce(
+    (sum, exercise) => sum + exercise.setCount,
+    0,
+  );
+
+  if (totalSets <= 0) {
+    return null;
+  }
+
+  return `Performed: ${formatPlannedSetLabel(totalSets)}`;
+}
+
 function findTrainNextSlot(
   slots: ProgramCurrentWeekPlanRow[],
 ): ProgramCurrentWeekPlanRow | null {
@@ -393,6 +427,13 @@ export default async function ProgramPage() {
             <div className="mt-5 grid gap-3">
               {currentWeekPlan.slots.map((slot) => {
                 const slotExercises = slot.exercises ?? [];
+                const isCompletedSlot =
+                  slot.uiState === "completed" ||
+                  slot.volumeBasis === "actual_completed";
+                const linkedWorkoutStatusLabel =
+                  formatSlotWorkoutStatusLabel(slot);
+                const completedSlotSetSummary =
+                  isCompletedSlot ? formatCompletedSlotSetSummary(slot) : null;
                 return (
                   <div
                     key={slot.slotId}
@@ -417,33 +458,44 @@ export default async function ProgramPage() {
                         <p className="mt-1 text-xs text-slate-600">
                           {slot.statusDescription}
                         </p>
-                        <div className="mt-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                            Exercises
-                          </p>
-                          {slotExercises.length > 0 ? (
-                            <div className="mt-1.5 grid gap-1.5">
-                              {slotExercises.map((exercise) => (
-                                <div
-                                  key={`${slot.slotId}:${exercise.exerciseId ?? exercise.name}`}
-                                  className="flex items-baseline justify-between gap-3 text-sm text-slate-800"
-                                >
-                                  <span className="min-w-0 truncate">
-                                    {exercise.name}
-                                  </span>
-                                  <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-600">
-                                    {formatPlannedSetLabel(exercise.setCount)}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="mt-1.5 text-sm text-slate-500">
-                              Exercises unavailable
+                        {isCompletedSlot ? (
+                          <div className="mt-3 grid gap-1 text-sm text-slate-700">
+                            {linkedWorkoutStatusLabel ? (
+                              <p>{linkedWorkoutStatusLabel}</p>
+                            ) : null}
+                            {completedSlotSetSummary ? (
+                              <p>{completedSlotSetSummary}</p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <div className="mt-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              Exercises
                             </p>
-                          )}
-                        </div>
-                        {slot.impact ? (
+                            {slotExercises.length > 0 ? (
+                              <div className="mt-1.5 grid gap-1.5">
+                                {slotExercises.map((exercise) => (
+                                  <div
+                                    key={`${slot.slotId}:${exercise.exerciseId ?? exercise.name}`}
+                                    className="flex items-baseline justify-between gap-3 text-sm text-slate-800"
+                                  >
+                                    <span className="min-w-0 truncate">
+                                      {exercise.name}
+                                    </span>
+                                    <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-600">
+                                      {formatPlannedSetLabel(exercise.setCount)}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="mt-1.5 text-sm text-slate-500">
+                                Exercises unavailable
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        {!isCompletedSlot && slot.impact ? (
                           <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
                               If you train this slot

@@ -87,8 +87,8 @@ describe("ProgramPage", () => {
             statusLabel: "Completed",
             statusDescription: "Session 1 is counted from actual completed volume.",
             volumeBasis: "actual_completed",
-            linkedWorkoutId: null,
-            linkedWorkoutStatus: null,
+            linkedWorkoutId: "w-completed",
+            linkedWorkoutStatus: "completed",
             exercises: [
               { exerciseId: "incline-db-bench", name: "Incline DB Bench", setCount: 3, role: "primary" },
             ],
@@ -279,12 +279,12 @@ describe("ProgramPage", () => {
 
     expect(screen.getByRole("heading", { name: "My Program" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /Meso 2: Strength-Hypertrophy/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Ordered weekly slots" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Projected week landing" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Weighted weekly volume" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "This Week's Training Plan" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Projected Week Finish" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Weekly Volume Snapshot" })).toBeInTheDocument();
     expect(
       screen.getByText(
-          "Review active or historical volume here. Program overview, slots, optional sessions, and projected landing above stay anchored to the active week."
+          "Review active or historical volume here. Program overview, slots, optional sessions, and projected finish above stay anchored to the active week."
       )
     ).toBeInTheDocument();
     expect(
@@ -300,7 +300,15 @@ describe("ProgramPage", () => {
     expect(screen.getAllByText("Exercises").length).toBeGreaterThan(0);
     expect(screen.getByText("T-Bar Row")).toBeInTheDocument();
     expect(screen.getAllByText("3 sets").length).toBeGreaterThan(0);
-    expect(screen.getByText("Projected weekly contribution")).toBeInTheDocument();
+    expect(screen.getByText("If you train this slot")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Review workout" })).toHaveAttribute(
+      "href",
+      "/workout/w-completed"
+    );
+    expect(screen.getByRole("link", { name: "Open Lower 1" })).toHaveAttribute(
+      "href",
+      "/workout/w-next"
+    );
     expect(
       screen.getByText(/Lats \+3 · Upper Back \+2 · Rear Delts \+1.5 · \+2 more/)
     ).toBeInTheDocument();
@@ -411,9 +419,9 @@ describe("ProgramPage", () => {
 
     render(ui);
 
-    expect(screen.getByRole("heading", { name: "Ordered weekly slots" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "This Week's Training Plan" })).toBeInTheDocument();
     expect(screen.getByText("Exercises unavailable")).toBeInTheDocument();
     expect(screen.getByText("OptionalWeekCompletion:/log/workout-closeout")).toBeInTheDocument();
-    expect(screen.getAllByText(/Upper 1/)).toHaveLength(1);
+    expect(screen.getAllByText("Upper 1")).toHaveLength(1);
   });
 });

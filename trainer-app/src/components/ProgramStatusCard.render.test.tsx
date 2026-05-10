@@ -583,7 +583,7 @@ describe("ProgramStatusCard opportunity state", () => {
             deloadReadiness: {
               shouldDeload: true,
               urgency: "scheduled",
-              reason: "Scheduled lighter week in the plan.",
+              reason: "Deload week in the plan.",
             },
           }
         ),
@@ -614,16 +614,16 @@ describe("ProgramStatusCard opportunity state", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("/api/program?week=3");
     expect(screen.getByText("intensification")).toBeInTheDocument();
-    expect(screen.getByText("Target RIR viewed week")).toBeInTheDocument();
+    expect(screen.getByText("Viewed week RIR")).toBeInTheDocument();
     expect(screen.getByText("2-3 RIR")).toBeInTheDocument();
     expect(screen.getByText("Push load, not fatigue.")).toBeInTheDocument();
     expect(screen.getByText("Volume - Week 3 (Read-only)")).toBeInTheDocument();
     expect(screen.getByText("Viewing historical volume for Week 3. Read-only.")).toBeInTheDocument();
     expect(screen.getByText("Back")).toBeInTheDocument();
     expect(
-      screen.queryByText("3 sessions until scheduled lighter week")
+      screen.queryByText("3 sessions until deload week")
     ).not.toBeInTheDocument();
-    expect(screen.queryByText(/Scheduled lighter week/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Deload week/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Today:/)).not.toBeInTheDocument();
   });
 });
@@ -646,19 +646,19 @@ describe("ProgramStatusCard lighter-week language", () => {
     data.deloadReadiness = {
       shouldDeload: true,
       urgency: "recommended",
-      reason: "Program-level recovery timing suggests a lighter week may be worth considering.",
+      reason: "Program-level recovery timing suggests a deload week may be worth considering.",
     };
 
     render(<ProgramStatusCard initialData={data} />);
 
-    expect(screen.getByText("Target RIR active week")).toBeInTheDocument();
-    expect(screen.getByText("Scheduled lighter week")).toBeInTheDocument();
+    expect(screen.getByText("This week RIR")).toBeInTheDocument();
+    expect(screen.getByText("Deload week")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Program advisory: Program-level recovery timing suggests a lighter week may be worth considering."
+        "Program advisory: Program-level recovery timing suggests a deload week may be worth considering."
       )
     ).toBeInTheDocument();
-    expect(screen.queryByText(/^Deload week$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Scheduled lighter week$/)).not.toBeInTheDocument();
   });
 });
 
@@ -756,7 +756,7 @@ describe("ProgramStatusCard homeCompact variant", () => {
     expect(screen.getByText("Strength-Hypertrophy")).toBeInTheDocument();
     expect(screen.getByText("Week 4 of 5")).toBeInTheDocument();
     expect(screen.getByText("0-1 RIR")).toBeInTheDocument();
-    expect(screen.getByText("3 sessions until scheduled lighter week")).toBeInTheDocument();
+    expect(screen.getByText("3 sessions until deload week")).toBeInTheDocument();
     expect(screen.getByText("Build volume.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open program details" })).toHaveAttribute(
       "href",
@@ -861,7 +861,7 @@ describe("ProgramStatusCard volumeOnly variant", () => {
     expect(screen.getByText("Chest")).toBeInTheDocument();
     expect(screen.queryByText("Mesocycle Timeline")).not.toBeInTheDocument();
     expect(screen.queryByText("Week 4 of 5")).not.toBeInTheDocument();
-    expect(screen.queryByText("3 sessions until scheduled lighter week")).not.toBeInTheDocument();
+    expect(screen.queryByText("3 sessions until deload week")).not.toBeInTheDocument();
     expect(screen.queryByText("Build volume.")).not.toBeInTheDocument();
   });
 

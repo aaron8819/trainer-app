@@ -68,7 +68,7 @@ export function WeekCompletionOutlookSection({
       <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">
         Week Completion Outlook
       </p>
-      <h2 className="mt-1 text-xl font-semibold text-slate-900">Projected week landing</h2>
+      <h2 className="mt-1 text-xl font-semibold text-slate-900">Projected Week Finish</h2>
       <p className="mt-2 text-sm text-slate-600">{outlook.assumptionLabel}</p>
 
       <div className="mt-4">

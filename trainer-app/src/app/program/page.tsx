@@ -36,6 +36,18 @@ function formatPlannedSetLabel(value: number): string {
   return `${value} ${value === 1 ? "set" : "sets"}`;
 }
 
+function formatSlotWorkoutActionLabel(slot: ProgramCurrentWeekPlanRow): string {
+  if (slot.volumeBasis === "actual_completed") {
+    return "Review workout";
+  }
+
+  if (slot.volumeBasis === "projected_next") {
+    return `Open ${slot.label}`;
+  }
+
+  return "Open workout";
+}
+
 export default async function ProgramPage() {
   const user = await resolveOwner();
   const pendingHandoff = await loadPendingMesocycleHandoff(user.id);
@@ -91,8 +103,8 @@ export default async function ProgramPage() {
       <div className="page-shell max-w-5xl pb-8">
         <h1 className="page-title">My Program</h1>
         <p className="mt-1.5 text-sm text-slate-600">
-          Active mesocycle overview and current-week structure. Use History for past sessions and
-          Analytics for longer-term trends.
+          Your active mesocycle, next slot, and projected week landing. Use History for completed
+          sessions and Analytics for longer-term trends.
         </p>
 
         {data.overview ? (
@@ -137,18 +149,16 @@ export default async function ProgramPage() {
                 </p>
                 <p className="mt-1 text-lg font-semibold text-slate-900 sm:mt-2 sm:text-xl">
                   {data.overview.rirTarget
-                    ? `${data.overview.rirTarget.min}-${data.overview.rirTarget.max}`
+                    ? `This week: ${data.overview.rirTarget.min}-${data.overview.rirTarget.max} RIR`
                     : "n/a"}
                 </p>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:rounded-xl sm:p-4">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:text-xs">
-                  Lighter Week
+                  Deload Week
                 </p>
                 <p className="mt-1 text-lg font-semibold text-slate-900 sm:mt-2 sm:text-xl">
-                  {data.overview.sessionsUntilDeload === 0
-                    ? "Scheduled"
-                    : `${data.overview.sessionsUntilDeload} away`}
+                  Week {data.overview.durationWeeks}
                 </p>
               </div>
             </div>
@@ -191,11 +201,11 @@ export default async function ProgramPage() {
                   Current Week Plan
                 </p>
                 <h2 className="mt-1 text-2xl font-semibold text-slate-900">
-                  Ordered weekly slots
+                  This Week's Training Plan
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  Follow the next slot first, then use the projection below to understand the
-                  full-week consequence.
+                  Train the next slot first, then use the finish projection below to see how the
+                  week is likely to land.
                 </p>
               </div>
               <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
@@ -217,7 +227,7 @@ export default async function ProgramPage() {
                           <p className="text-base font-semibold text-slate-900">{slot.label}</p>
                           {slot.volumeBasis === "projected_next" ? (
                             <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-blue-800">
-                              Primary
+                              Next up
                             </span>
                           ) : null}
                         </div>
@@ -252,7 +262,7 @@ export default async function ProgramPage() {
                         {slot.impact ? (
                           <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
-                              Projected weekly contribution
+                              If you train this slot
                             </p>
                             <p className="mt-1 text-sm font-medium text-slate-900">
                               {slot.impact.summaryLabel}
@@ -269,7 +279,7 @@ export default async function ProgramPage() {
                             href={`/workout/${slot.linkedWorkoutId}`}
                             className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-900 transition-colors hover:border-slate-400"
                           >
-                            Open workout
+                            {formatSlotWorkoutActionLabel(slot)}
                           </Link>
                         ) : null}
                       </div>
@@ -311,11 +321,11 @@ export default async function ProgramPage() {
                 Volume Details
               </p>
               <h2 className="mt-1 text-lg font-semibold text-slate-900">
-                Weighted weekly volume
+                Weekly Volume Snapshot
               </h2>
               <p className="mt-2 text-sm text-slate-600">
                 Review active or historical volume here. Program overview, slots, optional
-                sessions, and projected landing above stay anchored to the active week.
+                sessions, and projected finish above stay anchored to the active week.
               </p>
 
               <div className="mt-4">

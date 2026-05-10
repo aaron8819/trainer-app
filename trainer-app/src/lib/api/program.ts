@@ -246,7 +246,7 @@ export function computeAdvisoryDeloadReadiness(
     return {
       shouldDeload: true,
       urgency: "urgent",
-      reason: `${saturatedMuscles.map((row) => row.muscle).join(", ")} are at or near MRV in a scheduled lighter week window. Program timing and current fatigue signals both point toward keeping the next week lighter.`,
+      reason: `${saturatedMuscles.map((row) => row.muscle).join(", ")} are at or near MRV in the scheduled deload window. Program timing and current fatigue signals both point toward keeping the next week recovery-focused.`,
     };
   }
 
@@ -254,7 +254,7 @@ export function computeAdvisoryDeloadReadiness(
     return {
       shouldDeload: true,
       urgency: "scheduled",
-      reason: "Scheduled lighter week in the plan. Expect lighter loads, reduced volume, and technique focus.",
+      reason: "Deload week in the plan. Expect lighter loads, reduced volume, and technique focus.",
     };
   }
 
@@ -263,7 +263,7 @@ export function computeAdvisoryDeloadReadiness(
     return {
       shouldDeload: true,
       urgency: "recommended",
-      reason: `${names} ${saturatedMuscles.length === 1 ? "is" : "are"} near upper volume bounds. Program-level recovery timing suggests a lighter week may be worth considering.`,
+      reason: `${names} ${saturatedMuscles.length === 1 ? "is" : "are"} near upper volume bounds. Program-level recovery timing suggests a deload week may be worth considering.`,
     };
   }
 

@@ -255,7 +255,7 @@ function VolumeRowGrid({
               </p>
             ) : null}
             {hasBreakdown ? (
-              <p className="mt-2 text-[11px] font-medium opacity-70">Tap for breakdown</p>
+              <p className="mt-2 text-[11px] font-medium opacity-70">View breakdown</p>
             ) : null}
           </button>
         );
@@ -476,7 +476,7 @@ function ProgramCardProgress({
 function ProgramCardStatusRow({
   rirTarget,
   sessionsUntilDeload,
-  rirLabel = "Target RIR active week",
+  rirLabel = "This week RIR",
 }: {
   rirTarget: ProgramDashboardData["rirTarget"];
   sessionsUntilDeload?: number | null;
@@ -501,8 +501,8 @@ function ProgramCardStatusRow({
           }`}
         >
           {sessionsUntilDeload === 0
-            ? "Scheduled lighter week"
-            : `${sessionsUntilDeload} sessions until scheduled lighter week`}
+            ? "Deload week"
+            : `${sessionsUntilDeload} sessions until deload week`}
         </p>
       ) : null}
     </div>
@@ -646,7 +646,7 @@ function ProgramStatusCardDefault({
           <ProgramCardStatusRow
             rirTarget={rirTarget}
             sessionsUntilDeload={isHistorical ? null : sessionsUntilDeload}
-            rirLabel={isHistorical ? "Target RIR viewed week" : "Target RIR active week"}
+            rirLabel={isHistorical ? "Viewed week RIR" : "This week RIR"}
           />
           {!isHistorical && deloadReadiness?.shouldDeload ? (
             <div className="mt-3">

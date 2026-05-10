@@ -2,6 +2,12 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 
+function hasTextOutsideDetails(text: string): boolean {
+  return screen
+    .queryAllByText(text)
+    .some((element) => !element.closest("details"));
+}
+
 vi.mock("next/link", () => ({
   default: ({
     href,
@@ -210,7 +216,7 @@ describe("ProgramPage", () => {
           {
             status: "slightly_high",
             label: "slightly high",
-            count: 1,
+            count: 0,
             activeDescription:
               "Showing all projected muscles in the Slightly high bucket.",
           },
@@ -381,14 +387,20 @@ describe("ProgramPage", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "1 meaningfully low" }),
+      screen.getByText("Projected: remaining planned sessions completed"),
     ).toBeInTheDocument();
+    expect(screen.getByText("Completed: performed logs so far")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1 below MEV" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "1 below target" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "1 on target" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1 watch high" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "0 slightly high" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("Upper 1")).toBeInTheDocument();
     expect(screen.getByText("Lower 1")).toBeInTheDocument();
     expect(screen.getByText("Upper 2")).toBeInTheDocument();
@@ -412,35 +424,37 @@ describe("ProgramPage", () => {
         /Lats \+3 · Upper Back \+2 · Rear Delts \+1.5 · \+2 more/,
       ).length,
     ).toBeGreaterThan(0);
-    expect(screen.getByText("Chest")).toBeInTheDocument();
-    expect(screen.getByText("Quads")).toBeInTheDocument();
-    expect(screen.getByText("-4 sets")).toBeInTheDocument();
-    expect(screen.getByText("+5 sets")).toBeInTheDocument();
-    expect(screen.queryByText("Lats")).not.toBeInTheDocument();
-    expect(screen.queryByText("Rear Delts")).not.toBeInTheDocument();
-    expect(screen.queryByText("Biceps")).not.toBeInTheDocument();
+    expect(hasTextOutsideDetails("Chest")).toBe(true);
+    expect(hasTextOutsideDetails("Quads")).toBe(true);
+    expect(hasTextOutsideDetails("-4 sets")).toBe(true);
+    expect(hasTextOutsideDetails("+5 sets")).toBe(true);
+    expect(screen.getByText("Priority coaching notes")).toBeInTheDocument();
+    expect(screen.getByText("All primary target details (5)")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "1 below target" }));
 
     expect(
       screen.getByText(
-        "Showing all projected muscles in the Below target bucket.",
+        "Showing below target primary targets.",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText("Lats")).toBeInTheDocument();
-    expect(screen.queryByText("Chest")).not.toBeInTheDocument();
-    expect(screen.queryByText("Quads")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "below target primary targets" }),
+    ).toBeInTheDocument();
+    expect(hasTextOutsideDetails("Lats")).toBe(true);
+    expect(hasTextOutsideDetails("Chest")).toBe(false);
+    expect(hasTextOutsideDetails("Quads")).toBe(false);
 
     await user.click(screen.getByRole("button", { name: "1 below target" }));
 
     expect(
       screen.queryByText(
-        "Showing all projected muscles in the Below target bucket.",
+        "Showing below target primary targets.",
       ),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("Chest")).toBeInTheDocument();
-    expect(screen.getByText("Quads")).toBeInTheDocument();
-    expect(screen.queryByText("Lats")).not.toBeInTheDocument();
+    expect(hasTextOutsideDetails("Chest")).toBe(true);
+    expect(hasTextOutsideDetails("Quads")).toBe(true);
+    expect(hasTextOutsideDetails("Lats")).toBe(false);
     expect(
       screen.getByText("ProgramStatusCard:volumeOnly"),
     ).toBeInTheDocument();

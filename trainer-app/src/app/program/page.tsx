@@ -427,7 +427,7 @@ export default async function ProgramPage() {
                   Current Week Plan
                 </p>
                 <h2 className="mt-1 text-2xl font-semibold text-slate-900">
-                  This Week's Training Plan
+                  This Week&apos;s Training Plan
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
                   Train the next slot first, then use the finish projection

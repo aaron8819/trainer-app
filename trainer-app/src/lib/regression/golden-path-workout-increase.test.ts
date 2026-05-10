@@ -357,7 +357,7 @@ describe("golden-path completed workout increase regression", () => {
     expect(nextExposureDecision).toMatchObject({
       action: "increase",
       summary: "Next exposure: increase load.",
-      reason: "Median reps reached the top of the 8-10 band at manageable effort (modal RPE 7) on 155 lbs.",
+      reason: "Median reps reached the upper end of the 8–10 range at manageable effort (modal RPE 7) on 155 lbs.",
       anchorLoad: 155,
       repRange: { min: 8, max: 10 },
       medianReps: 10,
@@ -408,7 +408,7 @@ describe("golden-path completed workout increase regression", () => {
       performed: "Today's performed signal centered on 155 lbs at median 10 reps at modal RPE 7.",
       todayContext: "Today's written target moved from 150 lbs to 155 lbs (+3.3%).",
       nextTime:
-        "Next exposure: increase load. Median reps reached the top of the 8-10 band at manageable effort (modal RPE 7) on 155 lbs.",
+        "Next exposure: increase load. Median reps reached the upper end of the 8–10 range at manageable effort (modal RPE 7) on 155 lbs.",
     });
 
     expect(workoutReviewModel.headline).toBe(completionReviewModel.headline);

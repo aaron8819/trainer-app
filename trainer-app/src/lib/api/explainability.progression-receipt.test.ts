@@ -1337,6 +1337,119 @@ describe("generateWorkoutExplanation progression receipt", () => {
     });
   });
 
+  it("keeps runtime-added sets out of planned-set coverage while preserving performed reality", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      selectionMetadata: {
+        runtimeEditReconciliation: {
+          version: 1,
+          lastReconciledAt: "2026-02-21T00:00:00.000Z",
+          directives: {
+            continuityAlias: "none",
+            progressionAlias: "none",
+            futureSessionGeneration: "ignore",
+            futureSeedCarryForward: "ignore",
+          },
+          ops: [
+            {
+              kind: "add_set",
+              source: "api_workouts_add_set",
+              appliedAt: "2026-02-21T00:00:00.000Z",
+              scope: "current_workout_only",
+              facts: {
+                workoutExerciseId: "we1",
+                exerciseId: "ex1",
+                workoutSetId: "s4-runtime-added",
+                setIndex: 4,
+                clonedFromSetIndex: 3,
+              },
+            },
+          ],
+        },
+      },
+      filteredExercises: [],
+      exercises: [
+        {
+          id: "we1",
+          exerciseId: "ex1",
+          isMainLift: false,
+          exercise: {
+            id: "ex1",
+            name: "Lat Pulldown",
+            movementPatterns: ["VERTICAL_PULL"],
+            exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Lats" } }],
+          },
+          sets: [
+            {
+              id: "s1-planned",
+              setIndex: 1,
+              targetReps: 12,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 7,
+              targetLoad: 40,
+              restSeconds: 120,
+              logs: [{ actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false }],
+            },
+            {
+              id: "s2-planned",
+              setIndex: 2,
+              targetReps: 12,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 7,
+              targetLoad: 40,
+              restSeconds: 120,
+              logs: [{ actualReps: 10, actualLoad: 40, actualRpe: 7, wasSkipped: false }],
+            },
+            {
+              id: "s3-planned",
+              setIndex: 3,
+              targetReps: 12,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 7,
+              targetLoad: 40,
+              restSeconds: 120,
+              logs: [],
+            },
+            {
+              id: "s4-runtime-added",
+              setIndex: 4,
+              targetReps: 12,
+              targetRepMin: 8,
+              targetRepMax: 12,
+              targetRpe: 7,
+              targetLoad: 40,
+              restSeconds: 120,
+              logs: [{ actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValue(null);
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const decision = result.nextExposureDecisions.get("ex1");
+    expect(decision).toMatchObject({
+      action: "caution_review_manually",
+      summary: "Next exposure: review manually.",
+      medianReps: 12,
+    });
+    expect(decision?.decisionLog?.join(" | ")).toContain("performed sets=2/3");
+    expect(decision?.decisionLog?.join(" | ")).toContain("signal sets=2/3");
+    expect(decision?.decisionLog?.join(" | ")).not.toContain("signal sets=3/4");
+  });
+
   it("downgrades transition-backfilled sessions to manual review instead of a plain increase", async () => {
     mocks.workoutFindUnique.mockResolvedValueOnce({
       id: "w1",

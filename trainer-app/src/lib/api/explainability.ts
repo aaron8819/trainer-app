@@ -59,6 +59,7 @@ import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-s
 import { getCanonicalNextExposureCopy } from "@/lib/ui/next-exposure-copy";
 import {
   readRuntimeAddedExerciseIds,
+  readRuntimeAddedSetIds,
   readRuntimeReplacedExercises,
 } from "@/lib/ui/selection-metadata";
 import { readSessionAuditSnapshot } from "@/lib/evidence/session-audit-snapshot";
@@ -208,6 +209,7 @@ export async function generateWorkoutExplanation(
   const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(
     workout.selectionMetadata
   );
+  const runtimeAddedSetIds = readRuntimeAddedSetIds(workout.selectionMetadata);
   const runtimeReplacedExercises = readRuntimeReplacedExercises(
     workout.selectionMetadata
   );
@@ -334,18 +336,20 @@ export async function generateWorkoutExplanation(
               }
             : undefined,
         })),
-        plannedSets: workoutExercise.sets.map((set) => ({
-          setIndex: set.setIndex,
-          targetLoad: set.targetLoad,
-          targetReps: set.targetReps,
-          targetRepMin: set.targetRepMin,
-          targetRepMax: set.targetRepMax,
-          targetRpe: set.targetRpe,
-          actualLoad: set.logs[0]?.actualLoad ?? null,
-          actualReps: set.logs[0]?.actualReps ?? null,
-          actualRpe: set.logs[0]?.actualRpe ?? null,
-          wasSkipped: set.logs[0]?.wasSkipped ?? false,
-        })),
+        plannedSets: workoutExercise.sets
+          .filter((set) => !runtimeAddedSetIds.has(set.id))
+          .map((set) => ({
+            setIndex: set.setIndex,
+            targetLoad: set.targetLoad,
+            targetReps: set.targetReps,
+            targetRepMin: set.targetRepMin,
+            targetRepMax: set.targetRepMax,
+            targetRpe: set.targetRpe,
+            actualLoad: set.logs[0]?.actualLoad ?? null,
+            actualReps: set.logs[0]?.actualReps ?? null,
+            actualRpe: set.logs[0]?.actualRpe ?? null,
+            wasSkipped: set.logs[0]?.wasSkipped ?? false,
+          })),
         hasTransitionBackfillSubstitution:
           runtimeReplacedExercises.get(workoutExercise.id)?.reason ===
           "transition_week_backfill_substitution",
@@ -1569,14 +1573,9 @@ function summarizeNextExposureTargetAdherence(input: {
 }): NextExposureTargetAdherence {
   const plannedSetCount = input.plannedSets.length;
   const performedSetCount = input.plannedSets.filter(
-    (set) =>
-      !set.wasSkipped &&
-      Number.isFinite(set.actualLoad) &&
-      (set.actualLoad ?? 0) >= 0 &&
-      Number.isFinite(set.actualReps) &&
-      (set.actualReps ?? 0) > 0
+    isPerformedNextExposureSet
   ).length;
-  const signalSetCount = input.performedSemantics.signalSets.length;
+  const signalSetCount = input.plannedSets.filter(isCleanNextExposureSignalSet).length;
   const skippedSetCount = input.plannedSets.filter((set) => set.wasSkipped).length;
   const targetLoad = resolveRepresentativeTargetLoad(
     input.plannedSets,
@@ -1604,6 +1603,23 @@ function summarizeNextExposureTargetAdherence(input: {
     targetMissRatio,
     targetOvershootRatio,
   };
+}
+
+function isPerformedNextExposureSet(set: NextExposurePlannedSetInput): boolean {
+  return (
+    !set.wasSkipped &&
+    Number.isFinite(set.actualLoad) &&
+    (set.actualLoad ?? 0) >= 0 &&
+    Number.isFinite(set.actualReps) &&
+    (set.actualReps ?? 0) > 0
+  );
+}
+
+function isCleanNextExposureSignalSet(set: NextExposurePlannedSetInput): boolean {
+  return (
+    isPerformedNextExposureSet(set) &&
+    (set.actualRpe == null || set.actualRpe >= 6)
+  );
 }
 
 function resolveRepresentativeTargetLoad(

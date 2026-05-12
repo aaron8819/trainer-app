@@ -368,6 +368,45 @@ export type ProjectionDeliveryDriftPayload = {
   limitations: string[];
 };
 
+export type WeeklyRetroExerciseLoadCalibrationClassification =
+  | "clean"
+  | "target_too_low"
+  | "target_too_high"
+  | "recalibrated_hold"
+  | "insufficient_evidence"
+  | "runtime_added"
+  | "skipped_or_low_coverage";
+
+export type WeeklyRetroExerciseLoadCalibrationRow = {
+  week: number;
+  workoutId: string;
+  slotId?: string;
+  sessionLabel: string;
+  exerciseId: string;
+  exerciseName: string;
+  plannedSetCount: number;
+  savedSetCount: number;
+  performedSetCount: number;
+  skippedSetCount: number;
+  addedSetCount: number;
+  targetLoad?: number;
+  targetRepRange?: {
+    min: number;
+    max: number;
+  };
+  targetRpe?: number;
+  performedLoadSummary: {
+    anchorLoad?: number;
+    medianLoad?: number;
+    medianReps?: number;
+    modalRpe?: number;
+    loadDeltaPct?: number;
+  };
+  classification: WeeklyRetroExerciseLoadCalibrationClassification;
+  reasonCodes: string[];
+  notes: string[];
+};
+
 export type WeeklyRetroAuditSessionExecutionRow = {
   workoutId: string;
   scheduledDate: string;
@@ -458,6 +497,7 @@ export type WeeklyRetroAuditPayload = {
     muscles: WeeklyRetroAuditVolumeRow[];
   };
   planAdherence: WeeklyRetroPlanAdherence;
+  exerciseLoadCalibrationRows?: WeeklyRetroExerciseLoadCalibrationRow[];
   projectionDeliveryDrift?: ProjectionDeliveryDriftPayload;
   interventions: Array<{
     priority: "high" | "medium" | "low";

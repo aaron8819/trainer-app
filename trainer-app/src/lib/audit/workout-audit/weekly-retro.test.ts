@@ -817,4 +817,315 @@ describe("buildWeeklyRetroAuditPayload", () => {
       ],
     });
   });
+
+  it("emits compact exercise load-calibration rows for clean, mis-targeted, added, and low-coverage work", async () => {
+    mocks.buildHistoricalWeekAuditPayload.mockResolvedValue({
+      version: 1,
+      week: 2,
+      mesocycleId: "meso-1",
+      sessions: [
+        {
+          workoutId: "workout-loads",
+          scheduledDate: "2026-03-10T00:00:00.000Z",
+          status: "COMPLETED",
+          sessionIntent: "LOWER",
+          selectionMode: "INTENT",
+          snapshotSource: "persisted",
+          sessionSnapshot: {
+            generated: {
+              selectionMode: "INTENT",
+              sessionIntent: "LOWER",
+              semantics: {
+                kind: "advancing",
+                isCloseout: false,
+                isDeload: false,
+                consumesWeeklyScheduleIntent: true,
+                countsTowardProgressionHistory: true,
+              },
+              exerciseCount: 4,
+              hardSetCount: 13,
+              exercises: [
+                {
+                  exerciseId: "clean-row",
+                  exerciseName: "Chest Supported Row",
+                  orderIndex: 0,
+                  section: "main",
+                  isMainLift: true,
+                  prescribedSetCount: 3,
+                  prescribedSets: [
+                    { setIndex: 0, targetReps: 8, targetRpe: 8, targetLoad: 100 },
+                  ],
+                },
+                {
+                  exerciseId: "sldl",
+                  exerciseName: "Stiff-Legged Deadlift",
+                  orderIndex: 1,
+                  section: "main",
+                  isMainLift: true,
+                  prescribedSetCount: 3,
+                  prescribedSets: [
+                    { setIndex: 0, targetReps: 9, targetRpe: 8, targetLoad: 140 },
+                  ],
+                },
+                {
+                  exerciseId: "machine-press",
+                  exerciseName: "Machine Shoulder Press",
+                  orderIndex: 2,
+                  section: "accessory",
+                  isMainLift: false,
+                  prescribedSetCount: 3,
+                  prescribedSets: [
+                    { setIndex: 0, targetReps: 12, targetRpe: 8, targetLoad: 22.5 },
+                  ],
+                },
+                {
+                  exerciseId: "leg-press",
+                  exerciseName: "Leg Press",
+                  orderIndex: 3,
+                  section: "accessory",
+                  isMainLift: false,
+                  prescribedSetCount: 4,
+                  prescribedSets: [
+                    { setIndex: 0, targetReps: 10, targetRpe: 8, targetLoad: 200 },
+                  ],
+                },
+              ],
+              traces: { progression: {} },
+            },
+            saved: {
+              mesocycleSnapshot: {
+                mesocycleId: "meso-1",
+                week: 2,
+                session: 1,
+                phase: "accumulation",
+              },
+              semantics: {
+                kind: "advancing",
+                isCloseout: false,
+                isDeload: false,
+                consumesWeeklyScheduleIntent: true,
+              },
+            },
+          },
+          canonicalSemantics: {
+            sourceLayer: "saved",
+            phase: "accumulation",
+            isDeload: false,
+            countsTowardProgressionHistory: true,
+            countsTowardPerformanceHistory: true,
+            updatesProgressionAnchor: true,
+          },
+          progressionEvidence: {
+            countsTowardProgressionHistory: true,
+            countsTowardPerformanceHistory: true,
+            updatesProgressionAnchor: true,
+            reasonCodes: ["advances_split_true"],
+          },
+          reconciliation: {
+            version: 1,
+            comparisonState: "comparable",
+            hasDrift: true,
+            changedFields: ["exercise_added"],
+            addedExerciseIds: ["curl"],
+            removedExerciseIds: [],
+            exercisesWithSetCountChanges: [],
+            exercisesWithPrescriptionChanges: [],
+          },
+        },
+      ],
+      summary: {
+        sessionCount: 1,
+        advancingCount: 1,
+        gapFillCount: 0,
+        supplementalCount: 0,
+        deloadCount: 0,
+        progressionEligibleCount: 1,
+        progressionExcludedCount: 0,
+        weekCloseRelevantCount: 0,
+        persistedSnapshotCount: 1,
+        reconstructedSnapshotCount: 0,
+        mutationDriftCount: 1,
+        statusCounts: { COMPLETED: 1 },
+        intentCounts: { LOWER: 1 },
+      },
+      comparabilityCoverage: {
+        comparableSessionCount: 1,
+        missingGeneratedSnapshotCount: 0,
+        persistedSnapshotCount: 1,
+        reconstructedSnapshotCount: 0,
+        generatedLayerCoverage: "full",
+        limitations: [],
+      },
+    });
+    mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({});
+    mocks.workoutFindMany.mockResolvedValue([
+      {
+        id: "workout-loads",
+        selectionMetadata: {
+          slot: {
+            slotId: "lower_a",
+            intent: "lower",
+            sequenceIndex: 1,
+            source: "mesocycle_slot_sequence",
+          },
+        },
+        exercises: [
+          makeRuntimeExercise("clean-row", "Chest Supported Row", 0, [
+            makeRuntimeSet(0, 100, 8, 8),
+            makeRuntimeSet(1, 105, 8, 8),
+            makeRuntimeSet(2, 100, 8, 8),
+          ]),
+          makeRuntimeExercise("sldl", "Stiff-Legged Deadlift", 1, [
+            makeRuntimeSet(0, 95, 9, 8),
+            makeRuntimeSet(1, 115, 9, 8),
+            makeRuntimeSet(2, 115, 9, 8),
+          ]),
+          makeRuntimeExercise("machine-press", "Machine Shoulder Press", 2, [
+            makeRuntimeSet(0, 55, 12, 8),
+            makeRuntimeSet(1, 55, 12, 8),
+            makeRuntimeSet(2, 55, 12, 8),
+          ]),
+          makeRuntimeExercise("leg-press", "Leg Press", 3, [
+            makeRuntimeSet(0, 200, 10, 8),
+            makeSkippedRuntimeSet(1, 200),
+            makeSkippedRuntimeSet(2, 200),
+            { setIndex: 3, targetReps: 10, targetLoad: 200, logs: [] },
+          ]),
+          makeRuntimeExercise("curl", "Barbell Curl", 4, [
+            makeRuntimeSet(0, 50, 12, 8),
+            makeRuntimeSet(1, 60, 10, 9),
+          ]),
+        ],
+      },
+    ]);
+    mocks.getWeeklyVolumeTarget.mockReturnValue(0);
+
+    const payload = await buildWeeklyRetroAuditPayload({
+      userId: "user-1",
+      week: 2,
+      mesocycleId: "meso-1",
+    });
+    const rowsByExercise = new Map(
+      payload.exerciseLoadCalibrationRows?.map((row) => [row.exerciseId, row])
+    );
+
+    expect(rowsByExercise.get("clean-row")).toMatchObject({
+      week: 2,
+      slotId: "lower_a",
+      sessionLabel: "lower_a",
+      plannedSetCount: 3,
+      savedSetCount: 3,
+      performedSetCount: 3,
+      skippedSetCount: 0,
+      targetLoad: 100,
+      targetRepRange: { min: 8, max: 8 },
+      targetRpe: 8,
+      classification: "clean",
+      performedLoadSummary: {
+        anchorLoad: 100,
+        medianLoad: 100,
+        medianReps: 8,
+        modalRpe: 8,
+        loadDeltaPct: 0,
+      },
+    });
+    expect(rowsByExercise.get("sldl")).toMatchObject({
+      classification: "target_too_high",
+      reasonCodes: ["performed_load_materially_below_target"],
+      performedLoadSummary: {
+        medianLoad: 115,
+        medianReps: 9,
+        loadDeltaPct: -17.9,
+      },
+    });
+    expect(rowsByExercise.get("machine-press")).toMatchObject({
+      classification: "target_too_low",
+      reasonCodes: ["performed_load_materially_above_target"],
+      performedLoadSummary: {
+        medianLoad: 55,
+        medianReps: 12,
+        loadDeltaPct: 144.4,
+      },
+    });
+    expect(rowsByExercise.get("curl")).toMatchObject({
+      classification: "runtime_added",
+      plannedSetCount: 0,
+      savedSetCount: 2,
+      performedSetCount: 2,
+      addedSetCount: 2,
+    });
+    expect(rowsByExercise.get("leg-press")).toMatchObject({
+      classification: "skipped_or_low_coverage",
+      plannedSetCount: 4,
+      savedSetCount: 4,
+      performedSetCount: 1,
+      skippedSetCount: 2,
+      reasonCodes: [
+        "planned_exercise_low_performed_coverage",
+        "skipped_sets_present",
+      ],
+    });
+  });
 });
+
+function makeRuntimeExercise(
+  exerciseId: string,
+  name: string,
+  orderIndex: number,
+  sets: Array<{
+    setIndex: number;
+    targetReps: number;
+    targetLoad: number;
+    logs: Array<{
+      actualReps?: number;
+      actualRpe?: number;
+      actualLoad?: number;
+      wasSkipped: boolean;
+    }>;
+  }>
+) {
+  return {
+    exerciseId,
+    orderIndex,
+    sets,
+    exercise: {
+      name,
+      aliases: [],
+      exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Test Muscle" } }],
+    },
+  };
+}
+
+function makeRuntimeSet(
+  setIndex: number,
+  load: number,
+  reps: number,
+  rpe: number
+) {
+  return {
+    setIndex,
+    targetReps: reps,
+    targetLoad: load,
+    logs: [
+      {
+        actualLoad: load,
+        actualReps: reps,
+        actualRpe: rpe,
+        wasSkipped: false,
+      },
+    ],
+  };
+}
+
+function makeSkippedRuntimeSet(setIndex: number, targetLoad: number) {
+  return {
+    setIndex,
+    targetReps: 10,
+    targetLoad,
+    logs: [
+      {
+        wasSkipped: true,
+      },
+    ],
+  };
+}

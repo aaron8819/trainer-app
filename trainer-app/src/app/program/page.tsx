@@ -570,7 +570,42 @@ export default async function ProgramPage() {
         ) : null}
 
         {data.overview ? (
-          <VolumeSnapshotSection dashboard={data.volumeDetails.dashboard} />
+          <>
+            <VolumeSnapshotSection dashboard={data.volumeDetails.dashboard} />
+            <section className="mt-4">
+              <details className="rounded-3xl border border-slate-200 bg-white p-4 sm:p-5">
+                <summary className="cursor-pointer list-none">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Full Details
+                      </p>
+                      <h2 className="mt-1 text-lg font-semibold text-slate-900">
+                        Full weekly volume dashboard
+                      </h2>
+                      <p className="mt-1 max-w-2xl text-sm text-slate-600">
+                        Review prior weeks, the full target table, and
+                        per-muscle breakdowns without leaving Program.
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-slate-300 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                      Open details
+                    </span>
+                  </div>
+                </summary>
+                <p className="mt-4 text-xs font-medium text-slate-500">
+                  Source labels: Performed so far, Projected finish,
+                  Historical completed week, Planned target.
+                </p>
+                <div className="mt-3">
+                  <ProgramStatusCard
+                    initialData={data.volumeDetails.dashboard}
+                    variant="volumeOnly"
+                  />
+                </div>
+              </details>
+            </section>
+          </>
         ) : null}
 
         {data.overview ? (

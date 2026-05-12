@@ -67,6 +67,7 @@ describe("getCanonicalNextExposureCopy", () => {
       nextTimeImperative:
         "Hold and rebuild from the performed anchor because the written target was too high.",
     });
+    expect(getCanonicalNextExposureCopy("target_too_high").actionPhrase).not.toBe("Hold load");
     expect(getCanonicalNextExposureCopy("insufficient_evidence")).toMatchObject({
       badge: "Insufficient evidence",
       summary: "Next exposure: not enough clean evidence.",

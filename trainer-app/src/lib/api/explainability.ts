@@ -79,6 +79,7 @@ type GeneratedProgressionEvidence = "confirmed" | "absent" | "unknown";
 
 const MATERIAL_TARGET_MISS_RATIO = 0.1;
 const LARGE_TARGET_MISS_RATIO = 0.2;
+const MAIN_LIFT_DOWNWARD_RECALIBRATED_HOLD_RATIO = 0.15;
 const RECALIBRATED_INCREASE_TARGET_MISS_RATIO = 0.08;
 const RECALIBRATED_INCREASE_TARGET_OVERSHOOT_RATIO = 0.08;
 const LOW_SIGNAL_SET_COUNT = 2;
@@ -1339,6 +1340,7 @@ async function buildNextExposureDecision(
   const reviewQuality = resolveNextExposureReviewQuality({
     baseAction,
     decisionAnchorLoad: decision.anchorLoad,
+    isMainLift: performedSemantics.anchorStrategy === "working_set",
     performedSemantics,
     repRange,
     plannedSets: input.plannedSets,
@@ -1374,6 +1376,7 @@ async function buildNextExposureDecision(
 function resolveNextExposureReviewQuality(input: {
   baseAction: NextExposureDecision["action"];
   decisionAnchorLoad: number;
+  isMainLift: boolean;
   performedSemantics: NonNullable<ReturnType<typeof derivePerformedExerciseSemantics>>;
   repRange: [number, number];
   plannedSets: NextExposurePlannedSetInput[];
@@ -1424,13 +1427,14 @@ function resolveNextExposureReviewQuality(input: {
     isCleanDownwardRecalibratedHold({
       adherence,
       hasLowCoverage,
+      isMainLift: input.isMainLift,
       performedSemantics: input.performedSemantics,
       repRange: input.repRange,
     })
   ) {
     return buildReviewQualityAction(
       "target_too_high",
-      `Next target should hold and rebuild from today's ${formatLoadLabel(input.decisionAnchorLoad)} performed anchor, not the old written target ${formatLoadLabel(adherence.targetLoad)}. The written target was missed by ${formatRatioPercent(targetMissRatio ?? 0)} despite ${adherence.signalSetCount}/${adherence.plannedSetCount} clean signal sets${formatSkippedClause(adherence)}, and reps stayed within the ${formatRepRangeLabel(input.repRange)} range at or under target effort (${formatRpeComparison(input.performedSemantics.modalRpe, adherence.targetRpe)}). Treat the written target as too high rather than a normal clean hold.`,
+      `Hold around ${formatLoadLabel(input.decisionAnchorLoad)} next time and rebuild from today's performed anchor, not the old written target ${formatLoadLabel(adherence.targetLoad)}. The written target was missed by ${formatRatioPercent(targetMissRatio ?? 0)} despite ${adherence.signalSetCount}/${adherence.plannedSetCount} clean signal sets${formatSkippedClause(adherence)}, and reps stayed within the ${formatRepRangeLabel(input.repRange)} range at or under target effort (${formatRpeComparison(input.performedSemantics.modalRpe, adherence.targetRpe)}). Treat ${formatLoadLabel(adherence.targetLoad)} as too high for next exposure rather than a normal clean hold.`,
       "Review-quality guard: target_too_high/performed_anchor_below_written_target/downward_recalibration reframed a plain hold as a target-too-high recalibration."
     );
   }
@@ -1538,6 +1542,7 @@ function isCleanUpwardRecalibratedHold(input: {
 function isCleanDownwardRecalibratedHold(input: {
   adherence: NextExposureTargetAdherence;
   hasLowCoverage: boolean;
+  isMainLift: boolean;
   performedSemantics: NonNullable<ReturnType<typeof derivePerformedExerciseSemantics>>;
   repRange: [number, number];
 }): boolean {
@@ -1546,7 +1551,10 @@ function isCleanDownwardRecalibratedHold(input: {
   }
   if (
     input.adherence.targetMissRatio == null ||
-    input.adherence.targetMissRatio < LARGE_TARGET_MISS_RATIO
+    input.adherence.targetMissRatio <
+      (input.isMainLift
+        ? MAIN_LIFT_DOWNWARD_RECALIBRATED_HOLD_RATIO
+        : LARGE_TARGET_MISS_RATIO)
   ) {
     return false;
   }

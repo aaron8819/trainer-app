@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ProgramDashboardData, ProgramVolumeRow } from "@/lib/api/program";
 
 type WeeklyVolumeStatus =
@@ -108,8 +107,8 @@ function VolumeSnapshotRow({ row }: { row: ProgramVolumeRow }) {
         </span>
       </div>
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-slate-600">
-        <span>{row.weightedSetsLabel}</span>
-        <span>{row.targetLabel}</span>
+        <span>Performed so far: {row.weightedSetsLabel}</span>
+        <span>Planned target: {row.targetLabel}</span>
         <span>{row.deltaLabel}</span>
       </div>
     </li>
@@ -160,9 +159,25 @@ export function VolumeSnapshotSection({
     primaryAndSupportRows,
     (row) => getBucket(row) === "on_track",
   );
+  const performedTotal = primaryAndSupportRows.reduce(
+    (sum, row) => sum + row.effectiveSets,
+    0,
+  );
+  const isNoPerformedVolume =
+    primaryAndSupportRows.length > 0 &&
+    primaryAndSupportRows.every(
+      (row) =>
+        row.effectiveSets <= 0 && row.directSets <= 0 && row.indirectSets <= 0,
+    );
+  const isEarlyPerformedState =
+    isNoPerformedVolume ||
+    (primaryAndSupportRows.length > 0 && performedTotal > 0 && performedTotal < 2);
   const hiddenPriorityCount = priorityRows.length - visiblePriorityRows.length;
-  const summary =
-    priorityRows.length > 0
+  const summary = isNoPerformedVolume
+    ? "Week just started. No performed volume yet; showing projected finish from the remaining plan above."
+    : isEarlyPerformedState
+      ? "Week just started. Performed volume is still sparse; use projected finish above to judge where the week is likely to land."
+      : priorityRows.length > 0
       ? `${priorityRows.length} primary/support target${
           priorityRows.length === 1 ? "" : "s"
         } need a quick check this week.`
@@ -180,16 +195,10 @@ export function VolumeSnapshotSection({
           </h2>
           <p className="mt-2 max-w-2xl text-sm text-slate-600">{summary}</p>
           <p className="mt-1 text-xs text-slate-500">
-            Active-week volume uses the existing Program read model. Projected
-            week finish remains above.
+            Performed so far comes from logged work. Projected finish uses the
+            remaining plan above. Planned target is the weekly target.
           </p>
         </div>
-        <Link
-          href="/analytics"
-          className="inline-flex min-h-10 items-center justify-center rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:border-slate-400"
-        >
-          Open Analytics
-        </Link>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
@@ -199,18 +208,38 @@ export function VolumeSnapshotSection({
         <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700">
           Support {supportCount}
         </span>
-        <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sky-800">
-          Watch list {needsAttentionCount}
-        </span>
-        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800">
-          On track {onTrackCount}
-        </span>
-        <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-800">
-          Watch high {watchHighCount}
-        </span>
+        {isEarlyPerformedState ? (
+          <>
+            <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-blue-800">
+              {isNoPerformedVolume
+                ? "No performed volume yet"
+                : "Early performed volume"}
+            </span>
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-700">
+              Projected finish above
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sky-800">
+              Watch list {needsAttentionCount}
+            </span>
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-800">
+              On track {onTrackCount}
+            </span>
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-800">
+              Watch high {watchHighCount}
+            </span>
+          </>
+        )}
       </div>
 
-      {visiblePriorityRows.length > 0 ? (
+      {isEarlyPerformedState ? (
+        <p className="mt-5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm font-medium text-blue-900">
+          Use Full details to inspect targets. The compact snapshot will call
+          out truly actionable misses after performed volume starts landing.
+        </p>
+      ) : visiblePriorityRows.length > 0 ? (
         <div className="mt-5">
           <h3 className="text-sm font-semibold text-slate-900">
             Watch list
@@ -222,7 +251,7 @@ export function VolumeSnapshotSection({
           </ul>
           {hiddenPriorityCount > 0 ? (
             <p className="mt-2 text-xs text-slate-500">
-              +{hiddenPriorityCount} more in Analytics.
+              +{hiddenPriorityCount} more in Full details.
             </p>
           ) : null}
         </div>

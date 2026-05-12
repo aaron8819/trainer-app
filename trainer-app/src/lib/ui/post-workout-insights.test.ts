@@ -207,11 +207,11 @@ describe("buildPostWorkoutInsightsModel", () => {
           action: "target_too_high",
           summary: "Next exposure: target likely too high.",
           reason:
-            "The engine trace would increase from today's 95 lbs performed anchor, but the written target 135 lbs was missed by 29.6%.",
-          anchorLoad: 95,
-          repRange: { min: 10, max: 10 },
-          modalRpe: 6.5,
-          medianReps: 10,
+            "Hold around 115 lbs next time and rebuild from today's performed anchor, not the old written target 140 lbs. Treat 140 lbs as too high for next exposure rather than a normal clean hold.",
+          anchorLoad: 115,
+          repRange: { min: 6, max: 10 },
+          modalRpe: 7.5,
+          medianReps: 9,
         },
       ],
     ]);
@@ -235,6 +235,10 @@ describe("buildPostWorkoutInsightsModel", () => {
     expect(model.overview.find((item) => item.label === "Next time")?.tone).toBe("caution");
     expect(model.keyLifts[0]?.badge).toBe("Target too high");
     expect(model.keyLifts[0]?.nextTime).toContain("Next exposure: target likely too high.");
+    expect(model.keyLifts[0]?.nextTime).toContain("Hold around 115 lbs next time");
+    expect(model.keyLifts[0]?.nextTime).toContain(
+      "Treat 140 lbs as too high for next exposure"
+    );
     expect(model.headline).not.toContain("point to an increase");
   });
 

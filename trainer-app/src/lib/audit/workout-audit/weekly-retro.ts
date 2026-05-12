@@ -5,6 +5,7 @@ import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt
 import { getWeeklyVolumeTarget } from "@/lib/api/mesocycle-lifecycle-math";
 import { loadMesocycleWeekMuscleVolume } from "@/lib/api/weekly-volume";
 import { readRuntimeEditReconciliation } from "@/lib/ui/selection-metadata";
+import type { SessionAuditExerciseSnapshot } from "@/lib/evidence/session-audit-types";
 import { WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION } from "./constants";
 import { buildHistoricalWeekAuditPayload } from "./historical-week";
 import { buildProjectionDeliveryDrift } from "./projection-drift";
@@ -17,6 +18,7 @@ import type {
   HistoricalWeekAuditSession,
   RuntimeEditIntent,
   RuntimeEditInterpretation,
+  WeeklyRetroExerciseLoadCalibrationRow,
   WeeklyRetroAuditPayload,
   WeeklyRetroPlanAdherence,
   WeeklyRetroAuditSessionExecutionRow,
@@ -33,8 +35,18 @@ type WeeklyRetroRuntimeWorkoutRow = {
   selectionMetadata: unknown;
   exercises: Array<{
     exerciseId: string;
+    orderIndex: number;
     sets: Array<{
+      setIndex: number;
+      targetReps: number;
+      targetRepMin?: number | null;
+      targetRepMax?: number | null;
+      targetRpe?: number | null;
+      targetLoad?: number | null;
       logs?: Array<{
+        actualReps?: number | null;
+        actualRpe?: number | null;
+        actualLoad?: number | null;
         wasSkipped: boolean;
       }>;
     }>;
@@ -48,6 +60,17 @@ type WeeklyRetroRuntimeWorkoutRow = {
     };
   }>;
 };
+
+type WeeklyRetroRuntimeWorkoutExercise =
+  WeeklyRetroRuntimeWorkoutRow["exercises"][number];
+
+type WeeklyRetroRuntimeWorkoutSet =
+  WeeklyRetroRuntimeWorkoutExercise["sets"][number];
+
+type ExerciseTargetPrescription = Pick<
+  WeeklyRetroExerciseLoadCalibrationRow,
+  "targetLoad" | "targetRepRange" | "targetRpe"
+>;
 
 function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
@@ -110,18 +133,248 @@ function buildSavedSetCounts(
   return new Map(
     (workout?.exercises ?? []).map((exercise) => [
       exercise.exerciseId,
-      countCompletedOrStructuredSets(exercise.sets),
+      countPerformedOrStructuredSets(exercise.sets),
     ])
   );
 }
 
-function countCompletedOrStructuredSets(
+function countPerformedOrStructuredSets(
   sets: WeeklyRetroRuntimeWorkoutRow["exercises"][number]["sets"]
 ): number {
   if (sets.some((set) => Array.isArray(set.logs))) {
     return sets.filter((set) => (set.logs?.length ?? 0) > 0 && !set.logs?.[0]?.wasSkipped).length;
   }
   return sets.length;
+}
+
+function countSavedSets(sets: WeeklyRetroRuntimeWorkoutSet[]): number {
+  return sets.length;
+}
+
+function countPerformedSets(sets: WeeklyRetroRuntimeWorkoutSet[]): number {
+  return sets.filter((set) => {
+    const latestLog = set.logs?.[0];
+    return latestLog && !latestLog.wasSkipped;
+  }).length;
+}
+
+function countSkippedSets(sets: WeeklyRetroRuntimeWorkoutSet[]): number {
+  return sets.filter((set) => set.logs?.[0]?.wasSkipped === true).length;
+}
+
+function median(values: number[]): number | undefined {
+  if (values.length === 0) {
+    return undefined;
+  }
+  const sorted = values.slice().sort((left, right) => left - right);
+  const midpoint = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) {
+    return sorted[midpoint];
+  }
+  return (sorted[midpoint - 1] + sorted[midpoint]) / 2;
+}
+
+function modal(values: number[]): number | undefined {
+  if (values.length === 0) {
+    return undefined;
+  }
+  const counts = new Map<number, number>();
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return values
+    .slice()
+    .sort((left, right) => {
+      const countDelta = (counts.get(right) ?? 0) - (counts.get(left) ?? 0);
+      return countDelta !== 0 ? countDelta : left - right;
+    })[0];
+}
+
+function firstFinite(values: Array<number | null | undefined>): number | undefined {
+  return values.find(
+    (value): value is number => typeof value === "number" && Number.isFinite(value)
+  );
+}
+
+function resolveTargetRepRange(input: {
+  targetReps?: number | null;
+  targetRepMin?: number | null;
+  targetRepMax?: number | null;
+}): { min: number; max: number } | undefined {
+  if (typeof input.targetRepMin === "number" && typeof input.targetRepMax === "number") {
+    return { min: input.targetRepMin, max: input.targetRepMax };
+  }
+  if (typeof input.targetReps === "number") {
+    return { min: input.targetReps, max: input.targetReps };
+  }
+  return undefined;
+}
+
+function resolveTargetPrescription(input: {
+  generatedExercise?: SessionAuditExerciseSnapshot;
+  savedExercise?: WeeklyRetroRuntimeWorkoutExercise;
+}): ExerciseTargetPrescription {
+  const generatedSets = input.generatedExercise?.prescribedSets ?? [];
+  const savedSets = input.savedExercise?.sets ?? [];
+  const generatedRepRange = generatedSets
+    .map((set) => resolveTargetRepRange(set))
+    .find((range): range is { min: number; max: number } => Boolean(range));
+  const savedRepRange = savedSets
+    .map((set) =>
+      resolveTargetRepRange({
+        targetReps: set.targetReps,
+        targetRepMin: set.targetRepMin,
+        targetRepMax: set.targetRepMax,
+      })
+    )
+    .find((range): range is { min: number; max: number } => Boolean(range));
+
+  return {
+    targetLoad:
+      firstFinite(generatedSets.map((set) => set.targetLoad)) ??
+      firstFinite(savedSets.map((set) => set.targetLoad)),
+    targetRepRange: generatedRepRange ?? savedRepRange,
+    targetRpe:
+      firstFinite(generatedSets.map((set) => set.targetRpe)) ??
+      firstFinite(savedSets.map((set) => set.targetRpe)),
+  };
+}
+
+function summarizePerformedLoad(
+  sets: WeeklyRetroRuntimeWorkoutSet[],
+  targetLoad: number | undefined
+): WeeklyRetroExerciseLoadCalibrationRow["performedLoadSummary"] {
+  const performedSets = sets
+    .filter((set) => {
+      const latestLog = set.logs?.[0];
+      return latestLog && !latestLog.wasSkipped;
+    })
+    .sort((left, right) => left.setIndex - right.setIndex);
+  const loads = performedSets
+    .map((set) => set.logs?.[0]?.actualLoad)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const reps = performedSets
+    .map((set) => set.logs?.[0]?.actualReps)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const rpes = performedSets
+    .map((set) => set.logs?.[0]?.actualRpe)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const medianLoad = median(loads);
+
+  return {
+    anchorLoad: loads[0],
+    medianLoad,
+    medianReps: median(reps),
+    modalRpe: modal(rpes),
+    loadDeltaPct:
+      typeof targetLoad === "number" && targetLoad > 0 && typeof medianLoad === "number"
+        ? roundToTenth(((medianLoad - targetLoad) / targetLoad) * 100)
+        : undefined,
+  };
+}
+
+function classifyExerciseLoadCalibration(input: {
+  plannedSetCount: number;
+  savedSetCount: number;
+  performedSetCount: number;
+  skippedSetCount: number;
+  addedSetCount: number;
+  targetLoad?: number;
+  targetRepRange?: { min: number; max: number };
+  performedLoadSummary: WeeklyRetroExerciseLoadCalibrationRow["performedLoadSummary"];
+}): Pick<WeeklyRetroExerciseLoadCalibrationRow, "classification" | "reasonCodes" | "notes"> {
+  const coverage =
+    input.plannedSetCount > 0 ? input.performedSetCount / input.plannedSetCount : null;
+
+  if (input.plannedSetCount === 0 && input.savedSetCount > 0) {
+    return {
+      classification: "runtime_added",
+      reasonCodes: ["exercise_not_in_generated_snapshot"],
+      notes: [`saved_sets:${input.savedSetCount}`, `performed_sets:${input.performedSetCount}`],
+    };
+  }
+
+  if (
+    input.plannedSetCount > 0 &&
+    (input.performedSetCount === 0 ||
+      (coverage != null && coverage < 0.5) ||
+      input.skippedSetCount >= Math.ceil(input.plannedSetCount / 2))
+  ) {
+    const reasonCodes = ["planned_exercise_low_performed_coverage"];
+    if (input.skippedSetCount > 0) {
+      reasonCodes.push("skipped_sets_present");
+    }
+    return {
+      classification: "skipped_or_low_coverage",
+      reasonCodes,
+      notes: [
+        `coverage:${coverage == null ? "n/a" : roundToTenth(coverage * 100)}%`,
+        `skipped_sets:${input.skippedSetCount}`,
+      ],
+    };
+  }
+
+  const loadDeltaPct = input.performedLoadSummary.loadDeltaPct;
+  const medianReps = input.performedLoadSummary.medianReps;
+  const lowerRepTarget = input.targetRepRange?.min;
+  const repsBelowTarget =
+    typeof medianReps === "number" &&
+    typeof lowerRepTarget === "number" &&
+    medianReps < lowerRepTarget - 1;
+
+  if (typeof input.targetLoad !== "number" || typeof loadDeltaPct !== "number") {
+    return {
+      classification: "insufficient_evidence",
+      reasonCodes: ["missing_target_or_performed_load"],
+      notes: [
+        `target_load:${input.targetLoad ?? "missing"}`,
+        `median_load:${input.performedLoadSummary.medianLoad ?? "missing"}`,
+      ],
+    };
+  }
+
+  const anchorLoad = input.performedLoadSummary.anchorLoad;
+  const anchorNearTarget =
+    typeof anchorLoad === "number" &&
+    Math.abs(((anchorLoad - input.targetLoad) / input.targetLoad) * 100) <= 5;
+
+  if (anchorNearTarget && loadDeltaPct <= -10 && input.performedSetCount >= 2) {
+    return {
+      classification: "recalibrated_hold",
+      reasonCodes: ["opened_near_target_then_reduced_load"],
+      notes: [`load_delta_pct:${loadDeltaPct}`],
+    };
+  }
+
+  if (loadDeltaPct <= -15 || repsBelowTarget) {
+    return {
+      classification: "target_too_high",
+      reasonCodes: [
+        loadDeltaPct <= -15
+          ? "performed_load_materially_below_target"
+          : "median_reps_below_target",
+      ],
+      notes: [`load_delta_pct:${loadDeltaPct}`],
+    };
+  }
+
+  if (loadDeltaPct >= 15 && !repsBelowTarget) {
+    return {
+      classification: "target_too_low",
+      reasonCodes: ["performed_load_materially_above_target"],
+      notes: [`load_delta_pct:${loadDeltaPct}`],
+    };
+  }
+
+  return {
+    classification: "clean",
+    reasonCodes: ["performed_load_within_target_band"],
+    notes: [
+      `load_delta_pct:${loadDeltaPct}`,
+      ...(input.addedSetCount > 0 ? [`added_sets:${input.addedSetCount}`] : []),
+      ...(input.skippedSetCount > 0 ? [`skipped_sets:${input.skippedSetCount}`] : []),
+    ],
+  };
 }
 
 function buildReplacementMap(
@@ -373,6 +626,91 @@ function buildSessionExecutionRows(input: {
   });
 }
 
+function buildExerciseLoadCalibrationRows(input: {
+  week: number;
+  sessions: HistoricalWeekAuditSession[];
+  workoutsById: Map<string, WeeklyRetroRuntimeWorkoutRow>;
+  slotIdentityByWorkoutId: Map<string, ReturnType<typeof readSessionSlotSnapshot>>;
+}): WeeklyRetroExerciseLoadCalibrationRow[] {
+  const rows: WeeklyRetroExerciseLoadCalibrationRow[] = [];
+
+  for (const session of input.sessions) {
+    const workout = input.workoutsById.get(session.workoutId);
+    const savedExercisesById = new Map(
+      (workout?.exercises ?? []).map((exercise) => [exercise.exerciseId, exercise])
+    );
+    const generatedExercises = session.sessionSnapshot.generated?.exercises ?? [];
+    const generatedExerciseIds = new Set(generatedExercises.map((exercise) => exercise.exerciseId));
+    const slot = input.slotIdentityByWorkoutId.get(session.workoutId);
+    const sessionLabel =
+      slot?.slotId ??
+      [session.sessionIntent, session.scheduledDate.slice(0, 10)]
+        .filter((value): value is string => Boolean(value))
+        .join(":");
+
+    const exercisePairs: Array<{
+      generatedExercise?: SessionAuditExerciseSnapshot;
+      savedExercise?: WeeklyRetroRuntimeWorkoutExercise;
+    }> = [
+      ...generatedExercises
+        .slice()
+        .sort((left, right) => left.orderIndex - right.orderIndex)
+        .map((generatedExercise) => ({
+          generatedExercise,
+          savedExercise: savedExercisesById.get(generatedExercise.exerciseId),
+        })),
+      ...(workout?.exercises ?? [])
+        .filter((savedExercise) => !generatedExerciseIds.has(savedExercise.exerciseId))
+        .slice()
+        .sort((left, right) => left.orderIndex - right.orderIndex)
+        .map((savedExercise) => ({ savedExercise })),
+    ];
+
+    for (const pair of exercisePairs) {
+      const plannedSetCount = pair.generatedExercise?.prescribedSetCount ?? 0;
+      const savedSetCount = countSavedSets(pair.savedExercise?.sets ?? []);
+      const performedSetCount = countPerformedSets(pair.savedExercise?.sets ?? []);
+      const skippedSetCount = countSkippedSets(pair.savedExercise?.sets ?? []);
+      const addedSetCount = Math.max(0, savedSetCount - plannedSetCount);
+      const target = resolveTargetPrescription(pair);
+      const performedLoadSummary = summarizePerformedLoad(
+        pair.savedExercise?.sets ?? [],
+        target.targetLoad
+      );
+      const classification = classifyExerciseLoadCalibration({
+        plannedSetCount,
+        savedSetCount,
+        performedSetCount,
+        skippedSetCount,
+        addedSetCount,
+        targetLoad: target.targetLoad,
+        targetRepRange: target.targetRepRange,
+        performedLoadSummary,
+      });
+
+      rows.push({
+        week: input.week,
+        workoutId: session.workoutId,
+        slotId: slot?.slotId,
+        sessionLabel,
+        exerciseId: pair.generatedExercise?.exerciseId ?? pair.savedExercise?.exerciseId ?? "unknown",
+        exerciseName:
+          pair.generatedExercise?.exerciseName ?? pair.savedExercise?.exercise.name ?? "Unknown exercise",
+        plannedSetCount,
+        savedSetCount,
+        performedSetCount,
+        skippedSetCount,
+        addedSetCount,
+        ...target,
+        performedLoadSummary,
+        ...classification,
+      });
+    }
+  }
+
+  return rows;
+}
+
 function sortVolumeRows(
   left: WeeklyRetroAuditVolumeRow,
   right: WeeklyRetroAuditVolumeRow
@@ -459,17 +797,29 @@ export async function buildWeeklyRetroAuditPayload(input: {
         id: true,
         selectionMetadata: true,
         exercises: {
+          orderBy: [{ orderIndex: "asc" }, { id: "asc" }],
           select: {
             exerciseId: true,
+            orderIndex: true,
             sets: {
+              orderBy: { setIndex: "asc" },
               select: {
                 id: true,
+                setIndex: true,
+                targetReps: true,
+                targetRepMin: true,
+                targetRepMax: true,
+                targetRpe: true,
+                targetLoad: true,
                 logs: {
                   orderBy: {
                     completedAt: "desc",
                   },
                   take: 1,
                   select: {
+                    actualReps: true,
+                    actualRpe: true,
+                    actualLoad: true,
                     wasSkipped: true,
                   },
                 },
@@ -625,6 +975,12 @@ export async function buildWeeklyRetroAuditPayload(input: {
     workoutsById: runtimeWorkoutsById,
     volumeRows,
     legacyLimitedSessionCount,
+  });
+  const exerciseLoadCalibrationRows = buildExerciseLoadCalibrationRows({
+    week: input.week,
+    sessions: historicalWeek.sessions,
+    workoutsById: runtimeWorkoutsById,
+    slotIdentityByWorkoutId,
   });
   const slotIdentityIssueCount =
     missingSlotIdentityWorkoutIds.length + duplicateSlots.length + intentMismatches.length;
@@ -939,6 +1295,7 @@ export async function buildWeeklyRetroAuditPayload(input: {
       muscles: volumeRows,
     },
     planAdherence,
+    exerciseLoadCalibrationRows,
     interventions,
     rootCauses,
     recommendedPriorities,

@@ -1788,9 +1788,160 @@ describe("generateWorkoutExplanation progression receipt", () => {
     });
     expect(decision?.reason).toContain("written target 55 lbs");
     expect(decision?.reason).toContain("missed by 68.2%");
-    expect(decision?.reason).toContain("hold and rebuild");
+    expect(decision?.reason).toContain("Hold around 17.5 lbs next time");
+    expect(decision?.reason).toContain("Treat 55 lbs as too high for next exposure");
     expect(decision?.reason).toContain("rather than a normal clean hold");
     expect(decision?.decisionLog?.join(" | ")).toContain("performed_anchor_below_written_target");
+  });
+
+  it("reclassifies a main-lift SLDL hold below the written target as target-too-high rebuild copy", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "INTENT",
+      sessionIntent: "LOWER_B",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          id: "we1",
+          exerciseId: "ex1",
+          isMainLift: true,
+          exercise: {
+            id: "ex1",
+            name: "Stiff-Legged Deadlift",
+            movementPatterns: ["HINGE"],
+            exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Hamstrings" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 9,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 7.5,
+              targetLoad: 140,
+              restSeconds: 180,
+              logs: [{ actualReps: 9, actualLoad: 95, actualRpe: 7.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 2,
+              targetReps: 9,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 7.5,
+              targetLoad: 140,
+              restSeconds: 180,
+              logs: [{ actualReps: 9, actualLoad: 115, actualRpe: 7.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 3,
+              targetReps: 9,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 7.5,
+              targetLoad: 140,
+              restSeconds: 180,
+              logs: [{ actualReps: 9, actualLoad: 115, actualRpe: 7.5, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValue(null);
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const decision = result.nextExposureDecisions.get("ex1");
+    expect(decision).toMatchObject({
+      action: "target_too_high",
+      summary: "Next exposure: target likely too high.",
+      anchorLoad: 115,
+      medianReps: 9,
+      modalRpe: 7.5,
+    });
+    expect(decision?.reason).toContain("Hold around 115 lbs next time");
+    expect(decision?.reason).toContain("Treat 140 lbs as too high for next exposure");
+    expect(decision?.reason).not.toContain("Hold load");
+    expect(decision?.decisionLog?.join(" | ")).toContain("target miss=17.9%");
+    expect(decision?.decisionLog?.join(" | ")).toContain("performed_anchor_below_written_target");
+  });
+
+  it("keeps near-target main-lift holds as plain holds", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "w1",
+      userId: "u1",
+      scheduledDate: new Date("2026-02-21T00:00:00.000Z"),
+      selectionMode: "INTENT",
+      sessionIntent: "LOWER_B",
+      selectionMetadata: {},
+      filteredExercises: [],
+      exercises: [
+        {
+          id: "we1",
+          exerciseId: "ex1",
+          isMainLift: true,
+          exercise: {
+            id: "ex1",
+            name: "Stiff-Legged Deadlift",
+            movementPatterns: ["HINGE"],
+            exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+            exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Hamstrings" } }],
+          },
+          sets: [
+            {
+              setIndex: 1,
+              targetReps: 9,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 7.5,
+              targetLoad: 140,
+              restSeconds: 180,
+              logs: [{ actualReps: 9, actualLoad: 130, actualRpe: 7.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 2,
+              targetReps: 9,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 7.5,
+              targetLoad: 140,
+              restSeconds: 180,
+              logs: [{ actualReps: 9, actualLoad: 130, actualRpe: 7.5, wasSkipped: false }],
+            },
+            {
+              setIndex: 3,
+              targetReps: 9,
+              targetRepMin: 6,
+              targetRepMax: 10,
+              targetRpe: 7.5,
+              targetLoad: 140,
+              restSeconds: 180,
+              logs: [{ actualReps: 9, actualLoad: 130, actualRpe: 7.5, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValue(null);
+
+    const result = await generateWorkoutExplanation("w1");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    const decision = result.nextExposureDecisions.get("ex1");
+    expect(decision).toMatchObject({
+      action: "hold",
+      summary: "Next exposure: hold load.",
+      anchorLoad: 130,
+    });
+    expect(decision?.decisionLog?.join(" | ")).not.toContain(
+      "performed_anchor_below_written_target"
+    );
   });
 
   it("reclassifies a Lying Leg Curl-like cold-start hold as an upward estimate recalibration", async () => {

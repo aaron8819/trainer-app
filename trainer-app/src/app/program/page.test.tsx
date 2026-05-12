@@ -163,7 +163,17 @@ vi.mock("@/lib/api/program-page", () => ({
 
 vi.mock("@/components/ProgramStatusCard", () => ({
   ProgramStatusCard: ({ variant }: { variant?: string }) => (
-    <div>ProgramStatusCard:{variant ?? "default"}</div>
+    <div>
+      <div>ProgramStatusCard:{variant ?? "default"}</div>
+      {variant === "volumeOnly" ? (
+        <div>
+          <h3>Primary hypertrophy targets</h3>
+          <button type="button">View previous week</button>
+          <p>Historical completed week</p>
+          <p>View breakdown</p>
+        </div>
+      ) : null}
+    </div>
   ),
 }));
 
@@ -504,7 +514,7 @@ describe("ProgramPage", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Active-week volume uses the existing Program read model. Projected week finish remains above.",
+        "Performed so far comes from logged work. Projected finish uses the remaining plan above. Planned target is the weekly target.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Primary 4")).toBeInTheDocument();
@@ -512,17 +522,25 @@ describe("ProgramPage", () => {
     expect(screen.getByText("Watch list 2")).toBeInTheDocument();
     expect(screen.getByText("On track 2")).toBeInTheDocument();
     expect(screen.getByText("Watch high 2")).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Open Analytics" }),
-    ).toHaveAttribute("href", "/analytics");
     expect(screen.getByText("4 weighted sets against 10 target.")).toBeInTheDocument();
     expect(screen.getByText("7 weighted sets against 12 target.")).toBeInTheDocument();
     expect(screen.getByText("14 weighted sets against 10 target.")).toBeInTheDocument();
     expect(screen.getByText("12 weighted sets against 8 target.")).toBeInTheDocument();
     expect(screen.queryByText("Triceps")).not.toBeInTheDocument();
     expect(screen.queryByText("Core")).not.toBeInTheDocument();
-    expect(screen.queryByText("Primary hypertrophy targets")).not.toBeInTheDocument();
-    expect(screen.queryByText("ProgramStatusCard:volumeOnly")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Full weekly volume dashboard" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("ProgramStatusCard:volumeOnly")).toBeInTheDocument();
+    expect(screen.getByText("Primary hypertrophy targets")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View previous week" })).toBeInTheDocument();
+    expect(screen.getByText("Historical completed week")).toBeInTheDocument();
+    expect(screen.getByText("View breakdown")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Source labels: Performed so far, Projected finish, Historical completed week, Planned target.",
+      ),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
         "If you complete the remaining planned sessions this week, you will likely land here.",
@@ -597,13 +615,104 @@ describe("ProgramPage", () => {
     expect(hasTextOutsideDetails("Chest", projectedSection)).toBe(true);
     expect(hasTextOutsideDetails("Quads", projectedSection)).toBe(true);
     expect(hasTextOutsideDetails("Lats", projectedSection)).toBe(false);
-    expect(screen.queryByText("ProgramStatusCard:volumeOnly")).not.toBeInTheDocument();
+    expect(screen.getByText("ProgramStatusCard:volumeOnly")).toBeInTheDocument();
     expect(
       screen.getByText("CycleAnchorControls:deload,extend_phase,reset"),
     ).toBeInTheDocument();
     expect(screen.queryByText("Next Views")).not.toBeInTheDocument();
     expect(screen.queryByText("Session History")).not.toBeInTheDocument();
     expect(screen.queryByText(/skip_phase/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the active-week zero-volume snapshot calm and leaves target inspection to full details", async () => {
+    mocks.loadProgramPageData.mockResolvedValueOnce({
+      overview: {
+        mesoNumber: 2,
+        focus: "Strength-Hypertrophy",
+        currentBlockType: "accumulation",
+        durationWeeks: 5,
+        currentWeek: 1,
+        percentComplete: 20,
+        blocks: [{ blockType: "accumulation", startWeek: 1, durationWeeks: 5 }],
+        rirTarget: { min: 2, max: 3 },
+        sessionsUntilDeload: 12,
+        deloadReadiness: null,
+        coachingCue: "Start the block with clean execution.",
+      },
+      currentWeekPlan: null,
+      closeout: null,
+      weekCompletionOutlook: null,
+      volumeDetails: {
+        dashboard: {
+          activeMeso: {
+            mesoNumber: 2,
+            focus: "Strength-Hypertrophy",
+            durationWeeks: 5,
+            completedSessions: 0,
+            volumeTarget: "moderate",
+            currentBlockType: "accumulation",
+            blocks: [],
+          },
+          currentWeek: 1,
+          viewedWeek: 1,
+          viewedBlockType: "accumulation",
+          sessionsUntilDeload: 12,
+          volumeThisWeek: [
+            buildVolumeRow({
+              muscle: "Chest",
+              dashboardGroup: "primary_driver",
+              status: "below_mev",
+              statusLabel: "Below MEV",
+              statusDescription: "0 weighted sets against 10 target.",
+              effectiveSets: 0,
+              target: 10,
+              deltaLabel: "-10 sets",
+            }),
+            buildVolumeRow({
+              muscle: "Side Delts",
+              dashboardGroup: "support_driver",
+              status: "below_mev",
+              statusLabel: "Below MEV",
+              statusDescription: "0 weighted sets against 8 target.",
+              effectiveSets: 0,
+              target: 8,
+              deltaLabel: "-8 sets",
+            }),
+          ],
+          deloadReadiness: null,
+          rirTarget: { min: 2, max: 3 },
+          coachingCue: "Start the block with clean execution.",
+        },
+      },
+      advancedActions: {
+        availableActions: ["deload", "extend_phase", "reset"],
+      },
+    });
+
+    const { default: ProgramPage } = await import("./page");
+    const ui = await ProgramPage();
+
+    render(ui);
+
+    expect(
+      screen.getByText(
+        "Week just started. No performed volume yet; showing projected finish from the remaining plan above.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("No performed volume yet")).toBeInTheDocument();
+    expect(screen.getByText("Projected finish above")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Use Full details to inspect targets. The compact snapshot will call out truly actionable misses after performed volume starts landing.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("2 primary/support targets need a quick check this week."),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Watch list" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Watch list 2")).not.toBeInTheDocument();
+    expect(screen.queryByText("0 weighted sets against 10 target.")).not.toBeInTheDocument();
+    expect(screen.getByText("ProgramStatusCard:volumeOnly")).toBeInTheDocument();
   });
 
   it("renders performed set totals for compact completed slots when linked workout structure is the available source", async () => {

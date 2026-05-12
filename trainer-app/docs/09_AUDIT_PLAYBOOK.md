@@ -136,6 +136,7 @@ Inspect first:
 - `weeklyRetro.executiveSummary`
 - `weeklyRetro.planAdherence`
 - `weeklyRetro.loadCalibration`
+- `weeklyRetro.exerciseLoadCalibrationRows`
 - `weeklyRetro.sessionExecution`
 - `weeklyRetro.slotBalance`
 - `weeklyRetro.volumeTargeting`
@@ -719,11 +720,12 @@ Escalate when:
 3. Open `weeklyRetro.executiveSummary` and confirm the artifact is scoped to the intended week and mesocycle.
 4. Read `weeklyRetro.planAdherence` to separate planned work completion from runtime-added work. Explained additions such as `target_gap_closure` should not hide missed planned sets, and unclassified drift should still reduce confidence.
 5. Read `weeklyRetro.loadCalibration` before trusting actual-vs-target conclusions.
-6. Read `weeklyRetro.sessionExecution` for compact completed/skipped status, slot identity, progression eligibility, week-close visibility, and reconciliation context before drilling into historical-week.
-7. Read `weeklyRetro.slotBalance` and resolve any missing or duplicate slot identity first.
-8. Read `weeklyRetro.volumeTargeting` for actual weekly target / MEV / MAV comparisons and contributor context.
-9. Follow `weeklyRetro.recommendedPriorities` in order.
-10. Escalate if slot integrity, unclassified runtime drift, missed planned work, or legacy coverage limitations make the retrospective answer unreliable.
+6. Scan `weeklyRetro.exerciseLoadCalibrationRows` for compact exercise-level planned/saved/performed load-calibration evidence before drilling into historical-week.
+7. Read `weeklyRetro.sessionExecution` for compact completed/skipped status, slot identity, progression eligibility, week-close visibility, and reconciliation context before drilling into historical-week.
+8. Read `weeklyRetro.slotBalance` and resolve any missing or duplicate slot identity first.
+9. Read `weeklyRetro.volumeTargeting` for actual weekly target / MEV / MAV comparisons and contributor context.
+10. Follow `weeklyRetro.recommendedPriorities` in order.
+11. Escalate if slot integrity, unclassified runtime drift, missed planned work, or legacy coverage limitations make the retrospective answer unreliable.
 
 ### Upcoming week preview
 1. Run `future-week`.

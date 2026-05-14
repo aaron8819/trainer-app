@@ -1310,7 +1310,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     });
   });
 
-  it("returns to the new active logging context after adding a set", async () => {
+  it("returns to the unresolved planned logging context after adding a set before planned work is done", async () => {
     const user = userEvent.setup();
     const scrollIntoViewSpy = vi.fn();
     const scrollToSpy = vi.fn();
@@ -1349,7 +1349,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       });
       expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Dumbbell Bench Press" })).toBeInTheDocument();
-      expect(screen.getByText(/Set 3 of 3 .*Extra set/)).toBeInTheDocument();
+      expect(screen.getByText(/Set 2 of 3/)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Log set" })).toBeInTheDocument();
       expect(scrollIntoViewSpy).toHaveBeenCalled();
       expect(scrollToSpy).toHaveBeenCalled();
@@ -1357,6 +1357,62 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
 
     expect(within(queueRow).getByTestId("exercise-set-chip-list")).toBeInTheDocument();
     expect(within(queueRow).getByRole("button", { name: /Set 3 Extra set/ })).toBeInTheDocument();
+  });
+
+  it("focuses the new set when adding a set to a runtime-added exercise", async () => {
+    const user = userEvent.setup();
+    mockedAddSetToExerciseRequest.mockResolvedValueOnce({
+      data: {
+        set: {
+          setId: "added-set-2",
+          setIndex: 2,
+          targetReps: 12,
+          targetLoad: 35,
+          targetRpe: 8,
+          restSeconds: 90,
+          isRuntimeAdded: true,
+        },
+      },
+      error: null,
+    });
+
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        exercises={[
+          {
+            workoutExerciseId: "ex-added",
+            name: "Cable Fly",
+            equipment: ["cable"],
+            isMainLift: false,
+            isRuntimeAdded: true,
+            sets: [
+              {
+                setId: "added-set-1",
+                setIndex: 1,
+                targetReps: 12,
+                targetLoad: 35,
+                targetRpe: 8,
+                restSeconds: 90,
+                isRuntimeAdded: true,
+              },
+            ],
+          },
+        ]}
+      />
+    );
+
+    const queueRow = screen.getByTestId("queue-row-ex-added");
+    await user.click(within(queueRow).getByRole("button", { name: "+ Add set" }));
+
+    await waitFor(() => {
+      expect(mockedAddSetToExerciseRequest).toHaveBeenCalledWith({
+        workoutId: "workout-1",
+        workoutExerciseId: "ex-added",
+      });
+      expect(screen.getByText(/Set 2 of 2 .*Extra set/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Set 2 Extra set/ })).toBeInTheDocument();
+    });
   });
 
   it("keeps append targeting on the new runtime-added set when triggered from edit mode", async () => {

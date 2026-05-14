@@ -2,13 +2,17 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { useMemo, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as workoutApi from "@/components/log-workout/api";
-import type { LogExerciseInput, NormalizedExercises } from "@/components/log-workout/types";
+import type { FlatSetItem, LogExerciseInput, NormalizedExercises } from "@/components/log-workout/types";
 import { useWorkoutSessionFlow } from "@/components/log-workout/useWorkoutSessionFlow";
-import { getNextUnloggedSetId } from "@/components/log-workout/useWorkoutLogState";
+import {
+  getNextUnloggedSetId,
+  resolveAddSetFocusTarget,
+} from "@/components/log-workout/useWorkoutLogState";
 import type { SaveWorkoutResponse, WorkoutStatus } from "@/lib/api/workout-save-contract";
 
 vi.mock("@/components/log-workout/api", () => ({
   addSetToExerciseRequest: vi.fn(),
+  deleteWorkoutExerciseRequest: vi.fn(),
   logSetRequest: vi.fn(),
   deleteSetLogRequest: vi.fn(),
   saveWorkoutRequest: vi.fn(),
@@ -55,8 +59,71 @@ function makeExercises(): NormalizedExercises {
   };
 }
 
+function makeThreeSetExercises(): NormalizedExercises {
+  return {
+    warmup: [],
+    main: [
+      {
+        workoutExerciseId: "ex-1",
+        name: "Dumbbell Bench Press",
+        equipment: ["dumbbell"],
+        isMainLift: true,
+        sets: [
+          {
+            setId: "set-1",
+            setIndex: 1,
+            targetReps: 10,
+            targetLoad: 50,
+            targetRpe: 8,
+            actualReps: 10,
+            actualLoad: 50,
+            actualRpe: 6,
+            restSeconds: 90,
+          },
+          {
+            setId: "set-2",
+            setIndex: 2,
+            targetReps: 10,
+            targetLoad: 50,
+            targetRpe: 8,
+            actualReps: 10,
+            actualLoad: 50,
+            actualRpe: 8,
+            restSeconds: 120,
+          },
+          {
+            setId: "set-3",
+            setIndex: 3,
+            targetReps: 10,
+            targetLoad: 50,
+            targetRpe: 8,
+            actualReps: 10,
+            actualLoad: 50,
+            actualRpe: 8,
+            restSeconds: 120,
+          },
+        ],
+      },
+    ],
+    accessory: [],
+  };
+}
+
 function isBodyweightExercise(exercise: LogExerciseInput): boolean {
   return (exercise.equipment ?? []).some((item) => item.toLowerCase() === "bodyweight");
+}
+
+function flattenMainSets(data: NormalizedExercises): FlatSetItem[] {
+  return data.main.flatMap((exercise, exerciseIndex) =>
+    exercise.sets.map((set, setIndex) => ({
+      section: "main" as const,
+      sectionLabel: "Main Lifts",
+      exerciseIndex,
+      setIndex,
+      exercise,
+      set,
+    }))
+  );
 }
 
 function makeSaveWorkoutResponse(
@@ -96,31 +163,24 @@ type HarnessCallbacks = {
 
 function WorkoutSessionFlowHarness({
   callbacks,
+  exercises = makeExercises(),
+  initialLoggedSetIds = new Set<string>(),
+  initialActiveSetId = "set-1",
 }: {
   callbacks: HarnessCallbacks;
+  exercises?: NormalizedExercises;
+  initialLoggedSetIds?: Set<string>;
+  initialActiveSetId?: string | null;
 }) {
-  const [data, setData] = useState<NormalizedExercises>(makeExercises());
-  const [loggedSetIds, setLoggedSetIds] = useState<Set<string>>(new Set());
-  const [activeSetId, setActiveSetId] = useState<string | null>("set-1");
+  const [data, setData] = useState<NormalizedExercises>(exercises);
+  const [loggedSetIds, setLoggedSetIds] = useState<Set<string>>(initialLoggedSetIds);
+  const [activeSetId, setActiveSetId] = useState<string | null>(initialActiveSetId);
   const [restTimer, setRestTimer] = useState<{ startedAtMs: number; endAtMs: number } | null>({
     startedAtMs: 1000,
     endAtMs: 61000,
   });
 
-  const flatSets = useMemo(
-    () =>
-      data.main.flatMap((exercise, exerciseIndex) =>
-        exercise.sets.map((set, setIndex) => ({
-          section: "main" as const,
-          sectionLabel: "Main Lifts",
-          exerciseIndex,
-          setIndex,
-          exercise,
-          set,
-        }))
-      ),
-    [data]
-  );
+  const flatSets = useMemo(() => flattenMainSets(data), [data]);
 
   const updateSetFields = (setId: string, updater: (set: (typeof flatSets)[number]["set"]) => (typeof flatSets)[number]["set"]) => {
     setData((prev) => ({
@@ -203,6 +263,92 @@ function WorkoutSessionFlowHarness({
   );
 }
 
+describe("resolveAddSetFocusTarget", () => {
+  const newRuntimeSet = {
+    setId: "set-new",
+    setIndex: 4,
+    targetReps: 10,
+    targetLoad: 50,
+    targetRpe: 8,
+    isRuntimeAdded: true,
+  };
+
+  it("keeps focus on the first unresolved planned set", () => {
+    const flatSets = flattenMainSets(makeThreeSetExercises());
+
+    expect(
+      resolveAddSetFocusTarget({
+        flatSets,
+        loggedSetIds: new Set(["set-1"]),
+        workoutExerciseId: "ex-1",
+        newSet: newRuntimeSet,
+      })
+    ).toBe("set-2");
+  });
+
+  it("treats skipped planned sets as resolved", () => {
+    const exercises = makeThreeSetExercises();
+    exercises.main[0].sets[1] = {
+      ...exercises.main[0].sets[1],
+      actualReps: null,
+      actualLoad: null,
+      actualRpe: null,
+      wasSkipped: true,
+    };
+    const flatSets = flattenMainSets(exercises);
+
+    expect(
+      resolveAddSetFocusTarget({
+        flatSets,
+        loggedSetIds: new Set(["set-1", "set-3"]),
+        workoutExerciseId: "ex-1",
+        newSet: newRuntimeSet,
+      })
+    ).toBe("set-new");
+  });
+
+  it("ignores existing runtime-added sets when looking for unresolved planned work", () => {
+    const exercises = makeThreeSetExercises();
+    exercises.main[0].sets.push({
+      setId: "set-extra-existing",
+      setIndex: 4,
+      targetReps: 10,
+      targetLoad: 50,
+      targetRpe: 8,
+      isRuntimeAdded: true,
+    });
+    const flatSets = flattenMainSets(exercises);
+
+    expect(
+      resolveAddSetFocusTarget({
+        flatSets,
+        loggedSetIds: new Set(["set-1", "set-2", "set-3"]),
+        workoutExerciseId: "ex-1",
+        newSet: newRuntimeSet,
+      })
+    ).toBe("set-new");
+  });
+
+  it("focuses the new set for runtime-added exercises", () => {
+    const exercises = makeThreeSetExercises();
+    exercises.main[0] = {
+      ...exercises.main[0],
+      isRuntimeAdded: true,
+      sets: exercises.main[0].sets.map((set) => ({ ...set, isRuntimeAdded: true })),
+    };
+    const flatSets = flattenMainSets(exercises);
+
+    expect(
+      resolveAddSetFocusTarget({
+        flatSets,
+        loggedSetIds: new Set(),
+        workoutExerciseId: "ex-1",
+        newSet: newRuntimeSet,
+      })
+    ).toBe("set-new");
+  });
+});
+
 describe("useWorkoutSessionFlow", () => {
   function createCallbacks(): HarnessCallbacks {
     const clearDraftSpy = vi.fn();
@@ -275,7 +421,7 @@ describe("useWorkoutSessionFlow", () => {
     expect(callbacks.setFieldPrefilledSpy).toHaveBeenCalledTimes(3);
   });
 
-  it("adds a set, appends it to the exercise, and makes the new set active", async () => {
+  it("adds a set, appends it to the exercise, keeps unresolved planned work active, and leaves the timer unchanged", async () => {
     const callbacks = createCallbacks();
 
     render(<WorkoutSessionFlowHarness callbacks={callbacks} />);
@@ -287,8 +433,43 @@ describe("useWorkoutSessionFlow", () => {
         workoutExerciseId: "ex-1",
       });
       expect(screen.getByTestId("set-ids")).toHaveTextContent("set-1,set-2,set-3");
-      expect(screen.getByTestId("active-set-id")).toHaveTextContent("set-3");
+      expect(screen.getByTestId("active-set-id")).toHaveTextContent("set-2");
+      expect(screen.getByTestId("timer-end")).toHaveTextContent("61000");
       expect(screen.getByTestId("status")).toHaveTextContent("Extra set added.");
+    });
+  });
+
+  it("adds a set after all original planned sets are logged and focuses the new extra set", async () => {
+    const callbacks = createCallbacks();
+    mockedAddSetToExerciseRequest.mockResolvedValueOnce({
+      data: {
+        set: {
+          setId: "set-4",
+          setIndex: 4,
+          targetReps: 10,
+          targetLoad: 50,
+          targetRpe: 8,
+          restSeconds: 120,
+          isRuntimeAdded: true,
+        },
+      },
+      error: null,
+    });
+
+    render(
+      <WorkoutSessionFlowHarness
+        callbacks={callbacks}
+        exercises={makeThreeSetExercises()}
+        initialLoggedSetIds={new Set(["set-1", "set-2", "set-3"])}
+        initialActiveSetId="set-3"
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "add-set" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("set-ids")).toHaveTextContent("set-1,set-2,set-3,set-4");
+      expect(screen.getByTestId("active-set-id")).toHaveTextContent("set-4");
+      expect(screen.getByTestId("timer-end")).toHaveTextContent("61000");
     });
   });
 

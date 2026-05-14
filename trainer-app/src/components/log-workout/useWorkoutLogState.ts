@@ -73,6 +73,32 @@ export function getNextUnloggedSetId(
   return null;
 }
 
+export function resolveAddSetFocusTarget({
+  flatSets,
+  loggedSetIds,
+  workoutExerciseId,
+  newSet,
+}: {
+  flatSets: FlatSetItem[];
+  loggedSetIds: Set<string>;
+  workoutExerciseId: string;
+  newSet: LogSetInput;
+}): string {
+  const targetExercise = flatSets.find(
+    (item) => item.exercise.workoutExerciseId === workoutExerciseId
+  )?.exercise;
+
+  if (!targetExercise || targetExercise.isRuntimeAdded) {
+    return newSet.setId;
+  }
+
+  const firstUnresolvedPlannedSet = targetExercise.sets.find(
+    (set) => !(set.isRuntimeAdded ?? false) && !loggedSetIds.has(set.setId) && !isSetSatisfied(set)
+  );
+
+  return firstUnresolvedPlannedSet?.setId ?? newSet.setId;
+}
+
 export function useWorkoutLogState(exercises: LogExerciseInput[] | SectionedExercises) {
   const initial = useMemo(() => normalizeExercises(exercises), [exercises]);
   const initialLoggedSetIds = useMemo(() => {

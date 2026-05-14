@@ -1,7 +1,7 @@
 # Hypertrophy Mesocycle Engine Strategy
 
 Owner: Aaron
-Last reviewed: 2026-05-06
+Last reviewed: 2026-05-14
 Purpose: Define the strategic direction for the V2 hypertrophy planner migration: V2 becomes the future plan author, accepted seed remains minimal executable truth, runtime replay remains stable, and performed reality informs future blocks without silently mutating the current one.
 
 This document is a strategy and migration map, not a claim about current runtime behavior. Current runtime truth remains the code, contract tests, and audit artifacts. The current mapping is grounded in the same live audit evidence previously used for this target doc plus the latest V2 factory-line, materializer, taxonomy, candidate-identity, and lane-selection-intent audit findings:
@@ -212,14 +212,24 @@ Current infrastructure worth preserving:
 
 ### Current Live Checkpoint
 
-The latest live checkpoint is:
+Current live validation has moved past the initial seed/backfill milestone into real Week 2/Week 3 execution.
 
-- a persisted 58-set V2 seed exists for the active mesocycle
-- Week 1 has been completed through normal runtime/save flow
-- the mesocycle advanced to Week 2
-- Week 2 Upper A has been completed
-- the next seeded session is Week 2 Lower A
-- known remaining concerns are first-class dose guidance, analytics mesocycle-week versus calendar-week labeling, swap weekly-collision warnings, and the planner-owned `laneSelectionIntent` contract
+The durable checkpoint:
+
+- a persisted 58-set V2 seed exists for the active mesocycle and remains canonical planned truth
+- Week 1 completed through normal runtime/save flow
+- Week 2 completed through normal runtime/save flow
+- Week 3 has started
+- Week 3 Upper A and Week 3 Lower A have been completed
+- the next live slot should be read from current runtime state rather than hard-coded in this strategy doc
+- known remaining concerns are Week 3/Week 4 dose guidance, concise prescription readout UI, analytics mesocycle-week versus calendar-week labeling, swap weekly-collision warnings, rest-timer coaching, add-set UX, post-mesocycle learning evidence, and the planner-owned `laneSelectionIntent` contract
+
+The Week 2 retrospective is an important validation point, not a new source of executable truth:
+
+- 4/4 advancing sessions completed
+- 58/58 planned sets completed
+- no muscle exceeded MAV
+- Week 2 exposed important load recalibration signals, but did not prove a seed or structure defect
 
 The latest factory-line finding resolved the downstream suspicion:
 
@@ -232,24 +242,11 @@ The latest factory-line finding resolved the downstream suspicion:
 
 The actual issue was materializer identity selection. V2 materialization selected legacy-looking exercise identities. That means the upstream gap is not primarily "can the seed be stored?" but "does the materializer select the right concrete exercise for the planner's intended lane?"
 
-The latest runtime/session validation adds a second quality signal: the user can complete and save seeded sessions through normal UI while seed truth and read models remain coherent. Lower B completed and saved normally, Week 1 closed, Week 2 opened, Week 2 Upper A completed, and the next-session path now points to Week 2 Lower A from persisted seed truth.
+The latest runtime/session validation adds a second quality signal: the user can complete and save seeded sessions through normal UI while seed truth and read models remain coherent. Week 1 and Week 2 completed, Week 3 started, and the app continued to generate and save seeded sessions from persisted seed truth.
 
 Runtime order fidelity has also been fixed. Seeded generated workouts preserve `WorkoutExercise.orderIndex`, and Next Workout, Program, and generated workout rows agree on seed order. The strategic rule remains: seeded sessions should have one visible planned order unless an explicit, labeled runtime ordering policy exists.
 
-Week 2 Lower A pre-training audit gives the next concrete coaching target:
-
-- Belt Squat: 3 sets
-- Leg Extension: 3 sets
-- Lying Leg Curl: 3 sets
-- Seated Calf Raise: 3 sets
-
-Belt Squat currently reads as `6–10` reps, aim `9`, RPE `7.5`, load `100`: medium confidence with practical caution. Lying Leg Curl is a low-confidence estimate and should guide the user toward roughly `35–37.5` rather than pretending the point target is exact. Leg Extension +1 remains a reasonable session-local dose adjustment when knees, recovery, and time are good. That is coaching/dose guidance, not a seed mutation.
-
-The main prescription issue was Stiff-Legged Deadlift generating `140 x 10 @ RPE 6.5` despite prior exact history of `135 x 6 @ RPE 8.5`. That was a load/RIR mismatch: more load, more reps, and easier target effort than the evidence supported.
-
-The narrow root cause was that overshoot progression treated "performed above prescribed targetLoad" as enough to increase load, even though prior reps and effort contradicted the new easier target. The narrow fix now holds the quantized anchor when the current target asks for materially more reps at materially easier effort than prior performance supports. After that fix, the SLDL target became `135 x 10 @ RPE 6.5`. The remaining warning still correctly fires because even holding load can remain ambitious when the target jumps from `135 x 6 @ RPE 8.5` to `135 x 10 @ RPE 6.5`.
-
-The strategic conclusion is not "runtime should re-author the seed"; it is that runtime prescription needs its own quality gate over load, reps, effort, confidence, source, caution warnings, and adjustment range.
+Week 2 and early Week 3 prescription evidence moved the coaching problem from "can seeded sessions be executed?" to "can the app interpret performed anchors honestly?" The strategic conclusion is not "runtime should re-author the seed"; it is that runtime prescription and review need their own quality gate over load, reps, effort, confidence, source, caution warnings, adjustment range, and recalibration evidence.
 
 Prescription confidence readouts now exist on generated session responses as `prescriptionReadouts`. They are server-owned read-model/coaching metadata only. They are not seed truth, receipt truth, runtime replay input, planner policy, or executable truth.
 
@@ -474,7 +471,7 @@ Good looks like prescription output that respects lifecycle week, exercise class
 
 Future prescription/coaching should also use exercise-specific coaching profiles. High-skill axial compounds, stable machine compounds, unilateral compounds, isolations, lengthened-biased isolations, and calf/forearm/high-rep-tolerant isolations should not share one generic progression model. The profile should influence rep range, load confidence, progression aggressiveness, caution labels, and add/back-off guidance.
 
-Current status: generated session responses expose server-owned `prescriptionReadouts` as coaching/read-model metadata. UI consumption, concise row-level presentation, and full dose-adjustment guidance remain future work. Do not infer from this doc that production prescription logic already passes the full quality gate.
+Current status: generated session responses expose server-owned `prescriptionReadouts` as coaching/read-model metadata. Runtime dose-guidance diagnostics exist as audit/readout evidence, not behavior. UI consumption, concise row-level presentation, and production dose-adjustment behavior remain future work. Do not infer from this doc that production prescription logic already passes the full quality gate.
 
 ### Runtime Coaching / Autoregulation
 
@@ -640,9 +637,51 @@ Recent prescription-confidence progress: generated session responses now expose 
 
 This readout should be generated after load assignment in the server read model. It should not live in React, planner/materializer, seed replay, or executable seed truth.
 
-UI consumption and concise coaching presentation remain future work. The workout screen should surface the smallest actionable version of this readout while keeping detailed source, confidence, and reason evidence available to operator/audit surfaces.
+UI consumption and concise coaching presentation remain future work. The workout screen should surface the smallest actionable version of this readout:
 
-Main-lift rep prescription now distinguishes the prescribed boundary from the aim inside the boundary. `targetRepMin` / `targetRepMax` or `targetRepRange` is the prescription boundary; `targetReps` is the aim. UI and review copy should be range-first, for example `6–10 reps (aim 9)`, and should not present a hypertrophy main lift as a synthetic exact `9-9` band when a true range exists.
+- confidence
+- caution
+- source
+- suggested adjustment range
+
+Detailed traces, reason codes, provenance, and debugging evidence belong in audit/operator surfaces.
+
+Main-lift rep prescription now distinguishes the prescribed boundary from the aim inside the boundary. `targetRepMin` / `targetRepMax` or `targetRepRange` is the prescription boundary; `targetReps` is the aim inside the range. UI and review copy should be range-first, for example `6–10 reps (aim 7)`, and should not present a hypertrophy main lift as a synthetic exact `9-9 band` when a true range exists.
+
+### Runtime Dose Guidance
+
+Runtime dose-guidance diagnostics now exist in audit/readout form as `runtimeDoseAdjustmentDiagnostics`.
+
+Current status:
+
+- read-only
+- `affectsAcceptedSeed=false`
+- reports planned remaining volume
+- reports performed week-to-date volume
+- reports projected end-of-week target status
+- reports fatigue-density concern
+- reports readiness caveat
+- reports recommended session-local action
+
+This is not runtime behavior and must not mutate seed. Add/reduce recommendations require an actionable exercise candidate. No-candidate deficit rows must remain `hold_seed`.
+
+Runtime add-on coaching should combine:
+
+- weekly target gap
+- low systemic fatigue option
+- upcoming session overlap
+- recovery/readiness
+- user feeling good
+
+Feeling good is a green light to consider more work; it is not sufficient by itself. The app should prefer the lowest-fatigue set that closes a real weekly gap and avoids compromising the next slot.
+
+Examples:
+
+- hamstrings low while Lower B already includes SLDL plus curl: prefer curl volume before extra hinge volume
+- calves low: add a calf set
+- quads low: add Leg Extension
+- side/rear delts low: add lateral or rear-delt isolation
+- avoid extra lower-back or hinge volume unless specifically needed and recoverable
 
 ### Data Quality Is Part Of Coaching
 
@@ -677,6 +716,23 @@ These signals should inform coaching and future planning evidence. They should n
 Session review must distinguish clean progression from recalibration in both directions. If actual performed load is materially below the written target, the target may be too high and the recommendation should be recalibration/caution rather than a clean win. If actual performed load is materially above the written target, the target may be too low and an upward `recalibrated_increase` is more honest than a plain clean increase. Near-target performance with strong evidence can still earn a clean increase. Skipped planned sets or too few/noisy signal sets should also block a plain "increase next time."
 
 Post-workout review must also surface recalibration when the next action is hold. If actual performed load materially exceeds the written target and the next target is anchored upward, the app should explain that the written target or estimate was too low, even if the progression action is hold rather than increase.
+
+Recent recommendation-quality progress sharpened this separation:
+
+- clean progression is distinct from target recalibration
+- upward recalibration applies when the performed anchor is materially above the written target, and may appear as `recalibrated_increase` or `hold_at_recalibrated_anchor`
+- downward recalibration applies when the performed anchor is materially below the written target, and may appear as `target_too_high`
+- recalibration can happen even when the base progression action is `hold`
+- runtime-added sets count as performed reality, but must not hide missed planned work or inflate clean planned-set coverage
+
+Review copy should make the next working load explicit when it differs from the written target. Examples: "Hold around 115, not 140" or "Treat 140 as too high."
+
+Durable principles:
+
+- progression math and coaching interpretation are separate layers
+- a mechanically valid progression trace is not automatically good coaching copy
+- post-workout review should prioritize severe prescription-quality misses over routine progression wins
+- runtime-added work counts as performed reality, but must not hide missed planned work
 
 ### Exercise-Specific Coaching Profiles
 
@@ -807,6 +863,49 @@ Possible recommendations:
 
 These recommendations remain session-local. They may shape today's workout and the saved performed-reality record, but they must not change the accepted seed unless the user later chooses an explicit reseed or replacement path.
 
+### Rest Timer Direction
+
+The workout UI should not add a visible elapsed session timer by default. The useful timer is the intelligent rest timer after logged sets.
+
+Current product direction:
+
+- no visible elapsed session timer
+- keep the intelligent rest timer after logged sets
+- accessory default rest should be 2:00
+- main lift default rest can stay 3:00
+- warmups remain shorter
+- rest timer state is UI/session-local and not training-plan truth
+
+Future rest-timer coaching should adapt based on:
+
+- exercise type
+- target and actual RPE
+- missed reps
+- performance dropoff
+- compound versus isolation context
+- next-set risk
+
+### Future Low-Priority Execution Layers: Warmups and Core Work
+
+Warmups and core work are useful execution layers, but they are not near-term blockers for the current V2 planner/runtime migration. They should remain future, optional, and separate from accepted seed working-set truth unless explicit contracts are introduced.
+
+Warmups:
+
+- should prepare the user for quality working sets
+- should not count toward hypertrophy volume targets unless explicitly marked otherwise
+- should be generated or runtime-guided from exercise type, target load, session position, compound versus isolation context, skill/joint demand, and readiness/pain when available
+- should remain separate from accepted seed working-set truth unless a future explicit warmup contract is introduced
+- may give Belt Squat ramp-up sets while a lateral raise may only need a light acclimation set
+
+Core:
+
+- should be optional secondary/support work by default
+- can include trunk flexion, anti-extension, anti-rotation, rotation, loaded carries, or bracing-support patterns
+- should be tracked when performed
+- may be suggested when time and recovery allow, but should not crowd out primary hypertrophy work
+- should not silently become required block structure unless strategy explicitly prioritizes trunk development
+- should remain session-local unless future planner strategy elevates core
+
 ### Add Set / Back Off Guidance
 
 Add-set suggestions should be earned by today's evidence.
@@ -863,6 +962,51 @@ Known hardening items:
 
 - save rewrite with nonempty `exercises` payload is powerful and should remain tightly guarded and tested
 - add-exercise preview/discovery set count should align with canonical add behavior or explain the difference
+
+### Weekly Retro Load Calibration
+
+Recent weekly-retro progress adds `weeklyRetro.exerciseLoadCalibrationRows[]`.
+
+This readout compares planned, saved, performed, skipped, and runtime-added work, plus target and performed load summaries at exercise/session level. It classifies rows as:
+
+- `clean`
+- `target_too_low`
+- `target_too_high`
+- `recalibrated_hold`
+- `insufficient_evidence`
+- `runtime_added`
+- `skipped_or_low_coverage`
+
+These rows are audit/readout heuristics only. They do not feed runtime behavior, mutate seed, or become progression policy.
+
+Week 2 examples:
+
+- Belt Squat -> `recalibrated_hold`
+- SLDL and Cable Fly -> `target_too_high`
+- Machine Shoulder Press, Barbell Curl, Leg Extension, and Lying Leg Curl -> `target_too_low`
+
+Strategic principle: weekly retros should make load calibration visible without becoming progression policy.
+
+### User-Facing Training Cockpit
+
+Program should make the next training action obvious first while preserving access to weekly volume review in-page. Analytics can own deeper trends, but Program should still support mesocycle-week review and prior-week target comparison.
+
+Recent Program page progress moved toward an action-first hierarchy:
+
+- Train Next card
+- This Week's Training Plan
+- Projected Week Finish
+- Weekly Volume Snapshot
+- expandable full weekly volume dashboard
+
+Completed slots are compact by default. The full weekly volume dashboard remains available in Program, not only Analytics. The compact snapshot avoids alarming early-week zero-volume watch lists while preserving progressive disclosure for deeper review.
+
+Program source labels should remain user-facing:
+
+- From your accepted plan
+- From your active workout
+- From saved workout
+- Projected from remaining plan
 
 ## 8. Factory-Line Strategy
 
@@ -1086,20 +1230,29 @@ These are strategic decision gates, not claims that current production already p
 - risky load/RIR mismatch is warned
 - allowed-but-cautioned prescriptions are distinguished from clean prescriptions
 - estimates and low-confidence targets are labeled
+- prescription readouts expose concise confidence, caution, source, and suggested adjustment range in workout UI
 - swaps preserve lane intent
 - swap candidates are tiered by lane/class equivalence before broad same-muscle fallback
 - wrong-lane swaps are blocked or clearly labeled as fallbacks
 - equivalent swaps are not suppressed by trivial fatigue/stress deltas without explanation
+- runtime dose guidance distinguishes target-volume deficit from fatigue-density concern
+- add/reduce recommendations require actionable exercise candidates
+- add-on recommendations prefer low-fatigue movements that close real weekly gaps and avoid compromising the next slot
 - add-set and add-exercise behavior is bounded and session-local
 - add set clones target prescription rather than actual logged performance
 - added exercises are removable until logged and excluded from canonical seed
+- runtime-added sets do not inflate planned-set adherence
 - skipped sets are valid logs but not performed work
 - save preserves seed and logs reality
 - runtime edit/reconciliation metadata records session-local mutations
 - swaps, skips, added exercises, stopped exercises, and major load reductions can capture user reason when useful
 - reason capture distinguishes pain, equipment issue, time pressure, preference, fatigue, target-muscle feel, and form breakdown
+- post-workout review exposes target-too-high, target-too-low, recalibrated hold, and runtime-added coverage correctly
+- weekly-retro exposes exercise-level load calibration evidence
 - Program/Home/Analytics distinguish planned, skipped, and performed work
+- Program keeps next action prominent while preserving full weekly volume detail behind progressive disclosure
 - workout detail/log views distinguish current workout reality from original planned receipt truth
+- rest timer supports execution quality without becoming persistence truth
 
 ### Repair Demotion Gate
 
@@ -1132,7 +1285,10 @@ These are strategic decision gates, not claims that current production already p
 - Do not present a main-lift rep aim as an exact hypertrophy requirement when a true rep range exists.
 - Do not increase load into an easier RIR target when prior reps/effort contradict it.
 - Do not frame an increase from a reduced performed anchor as a clean progression win when the written target was materially missed.
-- Do not hide target recalibration just because the next action is hold.
+- Do not hide target recalibration just because the base action or next action is hold.
+- Do not treat "user feels good" as sufficient reason to add volume without checking weekly need, fatigue cost, and upcoming overlap.
+- Do not let runtime-added sets inflate planned-set adherence.
+- Do not force every Week 3/Week 4 target with high-fatigue work.
 - Do not hide prescription source/confidence from the user/operator.
 - Do not suggest swaps that preserve only primary muscle while changing the lane's training effect.
 - Do not present broad same-muscle fallbacks as equivalent lane-preserving swaps.
@@ -1146,6 +1302,13 @@ These are strategic decision gates, not claims that current production already p
 - Do not let favorites or continuity override lane intent in fresh base plans.
 - Do not infer authoring truth from a single provenance/source field.
 - Do not infer candidate identity from set totals.
+- Do not turn Program into an audit dashboard by default.
+- Do not remove useful weekly-volume review from Program entirely; use progressive disclosure instead.
+- Do not add a visible elapsed workout timer by default.
+- Do not let rest timer state become plan truth or training evidence without a separate contract.
+- Do not count warmup sets as hypertrophy working volume.
+- Do not let optional core work crowd out primary/support hypertrophy targets.
+- Do not mix warmup execution guidance into accepted seed working-set truth without an explicit contract.
 - Do not keep adding historical adaptation before base planner quality.
 - Do not overfit to Aaron's two historical mesocycles.
 - Do not make rigid policies without training justification.
@@ -1158,24 +1321,28 @@ These are strategic decision gates, not claims that current production already p
 - Do not claim historical personalization is implemented while it remains diagnostic or roadmap work.
 - Do not delete safety repair paths before V2 owns the responsibility they currently protect.
 
-## 13. Immediate Next Strategic Step: Week 2 Runtime Coaching + Remaining Contracts
+## 13. Immediate Next Strategic Step: Week 3 Runtime Coaching, Dose Guidance, and Learning Loop Evidence
 
 The next question:
 
 ```txt
-Can the user train Week 2 Lower A safely and clearly,
-with runtime coaching improving execution quality
-while seed/runtime replay stays boring?
+Can the app guide Week 3/Week 4 accumulation intelligently:
+hitting higher targets with low-fatigue, session-local adjustments,
+while preserving seed truth and learning from performed reality?
 ```
 
-Immediate sequence:
+Immediate tracks:
 
-1. Keep Week 2 Lower A generated from persisted seed truth: Belt Squat, Leg Extension, Lying Leg Curl, Seated Calf Raise.
-2. Present main-lift rep ranges range-first, with the point aim clearly subordinate to the boundary.
-3. Use `prescriptionReadouts` for concise confidence/caution copy without making them seed, receipt, or replay truth.
-4. Treat Leg Extension +1 as session-local dose adjustment guidance, not plan re-authoring.
-5. Keep swap weekly-collision warnings, analytics labeling, and `laneSelectionIntent` on explicit remaining tracks.
-6. Classify remaining coaching gaps as critical blocker or roadmap improvement before blocking the user from training.
+1. Use Week 3/Week 4 runtime dose guidance to recommend targeted add-ons without mutating seed.
+2. Continue verifying prescriptions use performed anchors and confidence/recalibration evidence.
+3. Surface `prescriptionReadouts` in workout UI concisely.
+4. Improve rest-timer coaching after logged sets.
+5. Improve add-set UX so adding a set does not steal focus from unfinished planned sets.
+6. Add swap weekly-collision warnings.
+7. Add analytics labeling for mesocycle-week versus calendar-week.
+8. Continue planner-owned `laneSelectionIntent` contract as the parallel architecture track.
+9. Begin shaping post-mesocycle learning evidence, using weekly-retro load-calibration rows and performed-reality summaries.
+10. Keep warmups and optional core work as low-priority future execution layers after the dose guidance, prescription UI, recommendation quality, analytics labeling, lane-intent, and learning-evidence tracks are healthier.
 
 ### Parallel Architecture Track: `laneSelectionIntent`
 

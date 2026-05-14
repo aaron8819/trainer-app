@@ -8,7 +8,11 @@ import {
   deleteSetLogRequest,
   logSetRequest,
 } from "@/components/log-workout/api";
-import { getNextUnloggedSetId, resolveRestSeconds } from "@/components/log-workout/useWorkoutLogState";
+import {
+  getNextUnloggedSetId,
+  resolveAddSetFocusTarget,
+  resolveRestSeconds,
+} from "@/components/log-workout/useWorkoutLogState";
 import type { RestTimerSnapshot } from "@/components/log-workout/useRestTimerState";
 import {
   useWorkoutSessionCompletion,
@@ -417,6 +421,12 @@ export function useWorkoutSessionFlow({
         }
 
         const nextSet = response.data.set;
+        const nextFocusSetId = resolveAddSetFocusTarget({
+          flatSets: flatSetsRef.current,
+          loggedSetIds: loggedSetIdsRef.current,
+          workoutExerciseId,
+          newSet: nextSet,
+        });
         setData((prev) => {
           for (const section of Object.keys(prev) as Array<keyof NormalizedExercises>) {
             const exerciseIndex = prev[section].findIndex(
@@ -441,7 +451,7 @@ export function useWorkoutSessionFlow({
 
           return prev;
         });
-        setActiveSetId(nextSet.setId);
+        setActiveSetId(nextFocusSetId);
         setAutoregHint(null);
         showStatus("Extra set added.");
         return true;

@@ -46,7 +46,7 @@ export function resolveRestSeconds(item: FlatSetItem): number {
   }
   if (item.section === "warmup") return 60;
   if (item.section === "main") return 180;
-  return 90;
+  return 120;
 }
 
 export function getNextUnloggedSetId(

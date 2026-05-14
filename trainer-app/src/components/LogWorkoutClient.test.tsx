@@ -246,6 +246,53 @@ function renderClient() {
   return render(<LogWorkoutClient workoutId="workout-1" exercises={makeExercises()} />);
 }
 
+function makeSingleSetSectionedExercise(
+  section: keyof SectionedExercises,
+  restSeconds?: number | null
+): SectionedExercises {
+  const sections: SectionedExercises = { warmup: [], main: [], accessory: [] };
+  sections[section] = [
+    {
+      workoutExerciseId: `ex-${section}`,
+      name:
+        section === "warmup"
+          ? "Band Pull Apart"
+          : section === "main"
+            ? "Barbell Bench Press"
+            : "Cable Fly",
+      equipment: section === "main" ? ["barbell"] : section === "accessory" ? ["cable"] : undefined,
+      isMainLift: section === "main",
+      sets: [
+        {
+          setId: `set-${section}`,
+          setIndex: 1,
+          targetReps: section === "main" ? 5 : 12,
+          targetLoad: section === "warmup" ? null : 50,
+          targetRpe: section === "warmup" ? 6 : 8,
+          ...(restSeconds == null ? {} : { restSeconds }),
+        },
+      ],
+    },
+  ];
+  return sections;
+}
+
+async function expectRestTimerDurationAfterLogging(
+  exercises: SectionedExercises,
+  expectedDurationText: string
+) {
+  vi.spyOn(Date, "now").mockReturnValue(1000);
+  const user = userEvent.setup();
+  render(<LogWorkoutClient workoutId="workout-rest-defaults" exercises={exercises} />);
+
+  await user.click(screen.getByRole("button", { name: "Log set" }));
+
+  await waitFor(() => {
+    expect(screen.getByTestId("rest-timer-hud")).toBeInTheDocument();
+    expect(screen.getByText(expectedDurationText)).toBeInTheDocument();
+  });
+}
+
 function setupDialogMocks() {
   HTMLDialogElement.prototype.showModal = vi.fn(function showModal(this: HTMLDialogElement) {
     this.open = true;
@@ -2264,6 +2311,22 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       expect(screen.getByTestId("rest-timer-hud")).toBeInTheDocument();
       expect(screen.queryByTestId("rest-timer-expanded-controls")).not.toBeInTheDocument();
     });
+  });
+
+  it("uses a 60-second fallback rest timer for warmup sets", async () => {
+    await expectRestTimerDurationAfterLogging(makeSingleSetSectionedExercise("warmup"), "1:00");
+  });
+
+  it("uses a 180-second fallback rest timer for main sets", async () => {
+    await expectRestTimerDurationAfterLogging(makeSingleSetSectionedExercise("main"), "3:00");
+  });
+
+  it("uses a 120-second fallback rest timer for accessory sets", async () => {
+    await expectRestTimerDurationAfterLogging(makeSingleSetSectionedExercise("accessory"), "2:00");
+  });
+
+  it("uses explicit set rest seconds before section fallback rest", async () => {
+    await expectRestTimerDurationAfterLogging(makeSingleSetSectionedExercise("accessory", 75), "1:15");
   });
 
   it("does not start the rest timer after a skipped live set", async () => {

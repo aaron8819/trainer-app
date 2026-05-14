@@ -274,7 +274,14 @@ describe("resolveAddSetFocusTarget", () => {
   };
 
   it("keeps focus on the first unresolved planned set", () => {
-    const flatSets = flattenMainSets(makeThreeSetExercises());
+    const exercises = makeThreeSetExercises();
+    exercises.main[0].sets[1] = {
+      ...exercises.main[0].sets[1],
+      actualReps: null,
+      actualLoad: null,
+      actualRpe: null,
+    };
+    const flatSets = flattenMainSets(exercises);
 
     expect(
       resolveAddSetFocusTarget({

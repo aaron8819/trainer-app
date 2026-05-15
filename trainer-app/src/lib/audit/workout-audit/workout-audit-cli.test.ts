@@ -19,9 +19,12 @@ import {
   buildWeeklyRetroOperatorSummary,
   computePlanningRealitySizeBudget,
   createAuditCliTiming,
+  assertNoArtifactWriteCompatibility,
   normalizeAuditIntentArg,
   runAuditCliWithTeardown,
+  shouldSuppressAuditArtifactWrites,
   shouldPrintAuditTimingReadout,
+  writeAuditArtifactFiles,
 } from "../../../../scripts/workout-audit";
 
 function makePlannerOwnedAccumulationProjection() {
@@ -334,6 +337,117 @@ describe("normalizeAuditIntentArg", () => {
 });
 
 describe("audit CLI timing and teardown", () => {
+  it("recognizes no-artifact and stdout-only as artifact suppression aliases", () => {
+    expect(shouldSuppressAuditArtifactWrites({})).toBe(false);
+    expect(shouldSuppressAuditArtifactWrites({ "no-artifact": true })).toBe(true);
+    expect(shouldSuppressAuditArtifactWrites({ "stdout-only": true })).toBe(true);
+  });
+
+  it("rejects no-artifact when an explicit write-oriented flag is present", () => {
+    expect(() =>
+      assertNoArtifactWriteCompatibility({ "no-artifact": true, write: true }),
+    ).toThrow("--no-artifact/--stdout-only cannot be combined with --write");
+    expect(() =>
+      assertNoArtifactWriteCompatibility({
+        "stdout-only": true,
+        "apply-bounded-reseed": true,
+      }),
+    ).toThrow(
+      "--no-artifact/--stdout-only cannot be combined with --apply-bounded-reseed",
+    );
+    expect(() =>
+      assertNoArtifactWriteCompatibility({
+        "no-artifact": true,
+        "accept-slot-plan-upgrade": true,
+      }),
+    ).toThrow(
+      "--no-artifact/--stdout-only cannot be combined with --accept-slot-plan-upgrade",
+    );
+    expect(() =>
+      assertNoArtifactWriteCompatibility({
+        "no-artifact": true,
+        "v2-debug-artifact": true,
+      }),
+    ).toThrow(
+      "--no-artifact/--stdout-only cannot be combined with --v2-debug-artifact",
+    );
+  });
+
+  it("skips artifact directory creation, main file writes, and sidecar writes when suppressed", async () => {
+    const ensureOutputDir = vi.fn().mockResolvedValue(undefined);
+    const writeTextFile = vi.fn().mockResolvedValue(undefined);
+    const timing = createAuditCliTiming({ now: () => 0 });
+
+    const result = await writeAuditArtifactFiles({
+      suppressWrites: true,
+      outputDir: "C:\\artifacts\\audits",
+      outputPath: "C:\\artifacts\\audits\\audit.json",
+      serialized: "{}",
+      v2DebugArtifact: {
+        fileName: "audit-v2-debug-index.json",
+        serialized: "{}",
+        shards: [{ fileName: "audit-v2-strategy.json", serialized: "{}" }],
+      },
+      timing,
+      ensureOutputDir,
+      writeTextFile,
+      joinPath: (...parts) => parts.join("\\"),
+    });
+
+    expect(result).toEqual({
+      artifactOutputPath: null,
+      v2DebugOutputPath: null,
+      sidecarFileCount: 0,
+    });
+    expect(ensureOutputDir).not.toHaveBeenCalled();
+    expect(writeTextFile).not.toHaveBeenCalled();
+    expect(timing.records().map((record) => record.span)).toEqual([
+      "artifact_write",
+      "sidecar_write",
+    ]);
+  });
+
+  it("preserves default artifact, sidecar, and shard writes", async () => {
+    const ensureOutputDir = vi.fn().mockResolvedValue(undefined);
+    const writeTextFile = vi.fn().mockResolvedValue(undefined);
+    const timing = createAuditCliTiming({ now: () => 0 });
+
+    const result = await writeAuditArtifactFiles({
+      suppressWrites: false,
+      outputDir: "C:\\artifacts\\audits",
+      outputPath: "C:\\artifacts\\audits\\audit.json",
+      serialized: "{\"main\":true}",
+      v2DebugArtifact: {
+        fileName: "audit-v2-debug-index.json",
+        serialized: "{\"index\":true}",
+        shards: [{ fileName: "audit-v2-strategy.json", serialized: "{\"shard\":true}" }],
+      },
+      timing,
+      ensureOutputDir,
+      writeTextFile,
+      joinPath: (...parts) => parts.join("\\"),
+    });
+
+    expect(result).toEqual({
+      artifactOutputPath: "C:\\artifacts\\audits\\audit.json",
+      v2DebugOutputPath: "C:\\artifacts\\audits\\audit-v2-debug-index.json",
+      sidecarFileCount: 2,
+    });
+    expect(ensureOutputDir).toHaveBeenCalledWith("C:\\artifacts\\audits");
+    expect(writeTextFile).toHaveBeenCalledWith(
+      "C:\\artifacts\\audits\\audit.json",
+      "{\"main\":true}",
+    );
+    expect(writeTextFile).toHaveBeenCalledWith(
+      "C:\\artifacts\\audits\\audit-v2-debug-index.json",
+      "{\"index\":true}",
+    );
+    expect(writeTextFile).toHaveBeenCalledWith(
+      "C:\\artifacts\\audits\\audit-v2-strategy.json",
+      "{\"shard\":true}",
+    );
+  });
+
   it("prints timing readout only for operator-debug or debug runs", () => {
     expect(shouldPrintAuditTimingReadout({})).toBe(false);
     expect(shouldPrintAuditTimingReadout({ "operator-debug": true })).toBe(

@@ -297,6 +297,29 @@ export function shouldPrintAuditTimingReadout(args: Record<string, unknown>): bo
   return args["operator-debug"] === true || args.debug === true;
 }
 
+export function shouldSuppressAuditArtifactWrites(args: Record<string, unknown>): boolean {
+  return args["no-artifact"] === true || args["stdout-only"] === true;
+}
+
+export function assertNoArtifactWriteCompatibility(args: Record<string, unknown>): void {
+  if (!shouldSuppressAuditArtifactWrites(args)) {
+    return;
+  }
+
+  const conflictingFlags = [
+    ["write", "--write"],
+    ["apply-bounded-reseed", "--apply-bounded-reseed"],
+    ["accept-slot-plan-upgrade", "--accept-slot-plan-upgrade"],
+    ["v2-debug-artifact", "--v2-debug-artifact"],
+  ] as const;
+  const conflict = conflictingFlags.find(([key]) => args[key] === true);
+  if (conflict) {
+    throw new Error(
+      `--no-artifact/--stdout-only cannot be combined with ${conflict[1]}`
+    );
+  }
+}
+
 export function createAuditCliTiming(input?: {
   now?: () => number;
 }): AuditCliTiming {
@@ -378,6 +401,78 @@ export async function runAuditCliWithTeardown(input: {
   if (teardownError) {
     throw teardownError;
   }
+}
+
+type AuditArtifactFileShard = {
+  fileName: string;
+  serialized: string;
+};
+
+type AuditArtifactSidecarOutput = {
+  fileName: string;
+  serialized: string;
+  shards: AuditArtifactFileShard[];
+};
+
+export async function writeAuditArtifactFiles(input: {
+  suppressWrites: boolean;
+  outputDir: string;
+  outputPath: string;
+  serialized: string;
+  v2DebugArtifact?: AuditArtifactSidecarOutput;
+  timing: AuditCliTiming;
+  ensureOutputDir?: (dir: string) => Promise<void>;
+  writeTextFile?: (filePath: string, contents: string) => Promise<void>;
+  joinPath?: (...parts: string[]) => string;
+}): Promise<{
+  artifactOutputPath: string | null;
+  v2DebugOutputPath: string | null;
+  sidecarFileCount: number;
+}> {
+  const ensureOutputDir =
+    input.ensureOutputDir ?? ((dir) => mkdir(dir, { recursive: true }).then(() => undefined));
+  const writeTextFile =
+    input.writeTextFile ?? ((filePath, contents) => writeFile(filePath, contents, "utf8"));
+  const joinPath = input.joinPath ?? path.join;
+
+  const endArtifactWrite = input.timing.start("artifact_write");
+  try {
+    if (!input.suppressWrites) {
+      await ensureOutputDir(input.outputDir);
+      await writeTextFile(input.outputPath, input.serialized);
+    }
+  } finally {
+    endArtifactWrite();
+  }
+
+  const v2DebugOutputPath =
+    !input.suppressWrites && input.v2DebugArtifact
+      ? joinPath(input.outputDir, input.v2DebugArtifact.fileName)
+      : null;
+  let sidecarFileCount = 0;
+  const endSidecarWrite = input.timing.start("sidecar_write");
+  try {
+    if (!input.suppressWrites && input.v2DebugArtifact && v2DebugOutputPath) {
+      await writeTextFile(v2DebugOutputPath, input.v2DebugArtifact.serialized);
+      await Promise.all(
+        input.v2DebugArtifact.shards.map((shard) =>
+          writeTextFile(
+            joinPath(input.outputDir, shard.fileName),
+            shard.serialized,
+          ),
+        ),
+      );
+      sidecarFileCount = 1 + input.v2DebugArtifact.shards.length;
+    }
+  } finally {
+    endSidecarWrite();
+  }
+
+  return {
+    artifactOutputPath: input.suppressWrites ? null : input.outputPath,
+    v2DebugOutputPath,
+    sidecarFileCount,
+  };
 }
 
 function asArray<T>(value: readonly T[] | null | undefined): T[] {
@@ -2596,6 +2691,7 @@ async function main(input?: {
   let shouldRunPlannerOnlyNoRepair!: boolean;
   let shouldWriteV2DebugArtifact!: boolean;
   let shouldCompareRepaired!: boolean;
+  let shouldSuppressArtifactWrites!: boolean;
   let requestedMode!: WorkoutAuditRequest["mode"];
   let env!: ReturnType<typeof loadAuditEnv>;
   let normalizedIntent: SessionIntent | undefined;
@@ -2614,6 +2710,8 @@ async function main(input?: {
     shouldRunPlannerOnlyNoRepair = args["planner-only-no-repair"] === true;
     shouldWriteV2DebugArtifact = args["v2-debug-artifact"] === true;
     shouldCompareRepaired = args["compare-repaired"] === true;
+    shouldSuppressArtifactWrites = shouldSuppressAuditArtifactWrites(args);
+    assertNoArtifactWriteCompatibility(args);
     requestedMode =
       (args.mode as WorkoutAuditRequest["mode"] | undefined) ?? "future-week";
     if (shouldRunPlannerOnlyDryRun && !shouldCompareRepaired) {
@@ -2797,34 +2895,18 @@ async function main(input?: {
   }
   const { artifact, serializedArtifact, serialized, sizeBytes, v2DebugArtifact } = output;
 
-  await mkdir(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, fileName);
-  const endArtifactWrite = timing.start("artifact_write");
-  try {
-    await writeFile(outputPath, serialized, "utf8");
-  } finally {
-    endArtifactWrite();
-  }
-  const v2DebugOutputPath = v2DebugArtifact
-    ? path.join(outputDir, v2DebugArtifact.fileName)
-    : null;
-  const endSidecarWrite = timing.start("sidecar_write");
-  try {
-    if (v2DebugArtifact && v2DebugOutputPath) {
-      await writeFile(v2DebugOutputPath, v2DebugArtifact.serialized, "utf8");
-      await Promise.all(
-        v2DebugArtifact.shards.map((shard) =>
-          writeFile(
-            path.join(outputDir, shard.fileName),
-            shard.serialized,
-            "utf8",
-          ),
-        ),
-      );
-    }
-  } finally {
-    endSidecarWrite();
-  }
+  const artifactWriteResult = await writeAuditArtifactFiles({
+    suppressWrites: shouldSuppressArtifactWrites,
+    outputDir,
+    outputPath,
+    serialized,
+    v2DebugArtifact,
+    timing,
+  });
+  const outputPathForSummary =
+    artifactWriteResult.artifactOutputPath ?? "not_written (--no-artifact)";
+  const v2DebugOutputPath = artifactWriteResult.v2DebugOutputPath;
 
   const endCliSummaryFormatting = timing.start("cli_summary_formatting");
   try {
@@ -2850,13 +2932,19 @@ async function main(input?: {
           ? `generation_error=${run.generationResult.error}`
           : `selected=${run.generationResult.selection.selectedExerciseIds.length}`;
 
-  console.log(`[workout-audit] wrote ${outputPath}`);
+  if (artifactWriteResult.artifactOutputPath) {
+    console.log(`[workout-audit] wrote ${artifactWriteResult.artifactOutputPath}`);
+  } else {
+    console.log("[workout-audit] artifact_write=skipped reason=no-artifact");
+    console.log("[workout-audit:read-only] db_mutation=no artifact_write=no workout_log_session_creation=no");
+    console.log("[workout-audit:read-only] note=read_only_db_audit_and_local_artifact_writes_are_separate_guarantees");
+  }
   console.log(
     `[workout-audit] mode=${context.mode} diagnostics=${context.plannerDiagnosticsMode} ${summary}`
   );
   const projectedWeekSummary = buildProjectedWeekOperatorSummary({
     artifact,
-    outputPath,
+    outputPath: outputPathForSummary,
   });
   if (projectedWeekSummary) {
     for (const line of projectedWeekSummary) {
@@ -2881,7 +2969,7 @@ async function main(input?: {
   }
   const planningRealitySummary = buildPlanningRealitySummary({
     artifact,
-    outputPath,
+    outputPath: outputPathForSummary,
   });
   if (planningRealitySummary) {
     for (const line of planningRealitySummary) {
@@ -2922,7 +3010,7 @@ async function main(input?: {
   }
   const activeMesocycleSlotReseedSummary = buildActiveMesocycleSlotReseedSummary({
     artifact,
-    outputPath,
+    outputPath: outputPathForSummary,
   });
   if (activeMesocycleSlotReseedSummary) {
     for (const line of activeMesocycleSlotReseedSummary) {
@@ -2931,7 +3019,7 @@ async function main(input?: {
   }
   const replaceEmptyMesocycleWithV2Summary = buildReplaceEmptyMesocycleWithV2Summary({
     artifact,
-    outputPath,
+    outputPath: outputPathForSummary,
   });
   if (replaceEmptyMesocycleWithV2Summary) {
     for (const line of replaceEmptyMesocycleWithV2Summary) {
@@ -2941,7 +3029,7 @@ async function main(input?: {
   const v2AcceptedSeedPrepareCompareSummary =
     buildV2AcceptedSeedPrepareCompareSummary({
       artifact,
-      outputPath,
+      outputPath: outputPathForSummary,
       sizeBytes,
     });
   if (v2AcceptedSeedPrepareCompareSummary) {

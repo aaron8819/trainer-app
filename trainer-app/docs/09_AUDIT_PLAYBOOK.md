@@ -764,6 +764,46 @@ Escalate when:
 5. Read `projectedWeekVolume.sessionRisks` for long sessions, redundant pattern stacking, and upper/full-body pull-vs-push imbalance.
 6. Confirm the unchanged projection landing in `projectedWeekVolume.fullWeekByMuscle` before acting on guidance.
 
+### Strict read-only pre-training checks
+Use this when the operator explicitly needs no edited files, no DB mutation, no workout/log/session creation, and no local artifact files during an active mesocycle.
+
+Important distinction:
+- No DB mutation and no artifact write are separate guarantees.
+- A normal read-only DB audit can still write local JSON files under `artifacts/audits/`.
+- Add `--no-artifact` or its alias `--stdout-only` when local artifact files must not be created.
+
+Upcoming-session preview without artifact writes:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode future-week --owner <owner-email> --no-artifact
+```
+
+Current-week dose guidance without artifact writes:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode current-week-audit --owner <owner-email> --operator-debug --no-artifact
+```
+
+Full current-week projection without artifact writes:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode projected-week-volume --owner <owner-email> --operator-debug --no-artifact
+```
+
+Expected stdout markers:
+- `[workout-audit] artifact_write=skipped reason=no-artifact`
+- `[workout-audit:read-only] db_mutation=no artifact_write=no workout_log_session_creation=no`
+
+Do not run these in strict no-file-write situations:
+
+```powershell
+npm run audit:week
+npm run audit:week:debug
+npm run audit:workout -- --env-file .env.local --mode current-week-audit --owner <owner-email>
+```
+
+Those standard paths are DB read-only for the audit modes above, but they write audit artifacts by default. Also avoid `--write`, `--apply-bounded-reseed`, `--accept-slot-plan-upgrade`, and `--v2-debug-artifact`; the CLI rejects those flags when combined with `--no-artifact` / `--stdout-only`.
+
 ### Active seeded-slot reseed review
 1. Run `active-mesocycle-slot-reseed`.
 2. Read `executiveSummary` and `recommendation` first.

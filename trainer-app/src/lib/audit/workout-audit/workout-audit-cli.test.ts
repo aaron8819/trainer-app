@@ -5,6 +5,7 @@ import {
 } from "@/lib/engine/planning/v2";
 import {
   buildAuditTimingSummaryLines,
+  buildWorkoutAuditHelpText,
   buildActiveMesocycleSlotReseedApplySummary,
   buildActiveMesocycleSlotReseedSummary,
   buildCurrentWeekAuditOperatorSummary,
@@ -20,6 +21,8 @@ import {
   computePlanningRealitySizeBudget,
   createAuditCliTiming,
   assertNoArtifactWriteCompatibility,
+  isWorkoutAuditHelpRequested,
+  main,
   normalizeAuditIntentArg,
   runAuditCliWithTeardown,
   shouldSuppressAuditArtifactWrites,
@@ -334,6 +337,54 @@ describe("normalizeAuditIntentArg", () => {
       'Invalid --intent value "TORSO". Expected one of: push, pull, legs, upper, lower, full_body, body_part.',
     );
   });
+});
+
+describe("workout audit CLI help", () => {
+  it("detects help flags before other parsed options", () => {
+    expect(isWorkoutAuditHelpRequested(["--help"])).toBe(true);
+    expect(isWorkoutAuditHelpRequested(["-h"])).toBe(true);
+    expect(isWorkoutAuditHelpRequested(["--no-artifact", "--help"])).toBe(true);
+    expect(isWorkoutAuditHelpRequested(["--help", "--no-artifact"])).toBe(true);
+    expect(isWorkoutAuditHelpRequested(["--mode", "future-week"])).toBe(false);
+  });
+
+  it("prints clear usage text", () => {
+    const help = buildWorkoutAuditHelpText();
+
+    expect(help).toContain("Usage: npm run audit:workout -- [options]");
+    expect(help).toContain("-h, --help");
+    expect(help).toContain("Without --mode, the default audit mode is future-week.");
+    expect(help).toContain(
+      "Help exits before owner resolution, DB preflight, audit execution, artifact directory creation, and artifact writing.",
+    );
+  });
+
+  it.each([["--help"], ["-h"], ["--help", "--no-artifact"], ["--no-artifact", "--help"]])(
+    "prints help and exits before audit work for %s",
+    async (...argv) => {
+      const originalDatabaseUrl = process.env.DATABASE_URL;
+      const timing = createAuditCliTiming({ now: () => 0 });
+      const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+      delete process.env.DATABASE_URL;
+      try {
+        await main({ argv, timing });
+        expect(log).toHaveBeenCalledTimes(1);
+        expect(log.mock.calls[0]?.[0]).toContain("Usage: npm run audit:workout -- [options]");
+        expect(timing.records().map((record) => record.span)).toEqual([
+          "argument_parsing",
+          "total_measured_work",
+        ]);
+      } finally {
+        if (originalDatabaseUrl === undefined) {
+          delete process.env.DATABASE_URL;
+        } else {
+          process.env.DATABASE_URL = originalDatabaseUrl;
+        }
+        log.mockRestore();
+      }
+    },
+  );
 });
 
 describe("audit CLI timing and teardown", () => {

@@ -771,6 +771,7 @@ Important distinction:
 - No DB mutation and no artifact write are separate guarantees.
 - A normal read-only DB audit can still write local JSON files under `artifacts/audits/`.
 - Add `--no-artifact` or its alias `--stdout-only` when local artifact files must not be created.
+- Help/no-op commands are stricter: `npm run audit:workout -- --help` and `npm run audit:workout -- -h` print usage and exit before env loading, owner resolution, DB preflight, audit execution, artifact directory creation, or artifact writing.
 
 Upcoming-session preview without artifact writes:
 

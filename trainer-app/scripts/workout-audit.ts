@@ -320,6 +320,33 @@ export function assertNoArtifactWriteCompatibility(args: Record<string, unknown>
   }
 }
 
+export function isWorkoutAuditHelpRequested(argv: readonly string[]): boolean {
+  return argv.some((token) => token === "--help" || token === "-h");
+}
+
+export function buildWorkoutAuditHelpText(): string {
+  return [
+    "Usage: npm run audit:workout -- [options]",
+    "",
+    "Runs the Trainer workout audit CLI. Without --mode, the default audit mode is future-week.",
+    "",
+    "Options:",
+    "  -h, --help                         Print this help and exit without preflight, DB access, audit execution, or artifact writes.",
+    "  --env-file <path>                  Load environment variables from a specific file.",
+    "  --mode <mode>                      Audit mode: future-week, projected-week-volume, current-week-audit, historical-week, weekly-retro, mesocycle-explain, deload, progression-anchor, active-mesocycle-slot-reseed, replace-empty-mesocycle-with-v2, v2-accepted-seed-prepare-compare.",
+    "  --owner <email>                    Resolve the audit owner by email.",
+    "  --user-id <id>                     Resolve the audit owner by user id.",
+    "  --intent <intent>                  Session intent for generated-session modes.",
+    "  --week <number>                    Target week for historical or retrospective audits.",
+    "  --mesocycle-id <id>                Target mesocycle id when the selected mode requires one.",
+    "  --no-artifact, --stdout-only       Run the audit without writing local artifact files.",
+    "  --operator-debug, --debug          Print extra operator diagnostics.",
+    "",
+    "Safety:",
+    "  Help exits before owner resolution, DB preflight, audit execution, artifact directory creation, and artifact writing.",
+  ].join("\n");
+}
+
 export function createAuditCliTiming(input?: {
   now?: () => number;
 }): AuditCliTiming {
@@ -2669,7 +2696,7 @@ export function buildWeeklyRetroOperatorSummary(input: {
   return lines;
 }
 
-async function main(input?: {
+export async function main(input?: {
   argv?: string[];
   timing?: AuditCliTiming;
 }): Promise<void> {
@@ -2696,7 +2723,13 @@ async function main(input?: {
   let env!: ReturnType<typeof loadAuditEnv>;
   let normalizedIntent: SessionIntent | undefined;
   try {
-    args = parseArgs(input?.argv ?? process.argv.slice(2));
+    const argv = input?.argv ?? process.argv.slice(2);
+    if (isWorkoutAuditHelpRequested(argv)) {
+      console.log(buildWorkoutAuditHelpText());
+      return;
+    }
+
+    args = parseArgs(argv);
     shouldPrintTimingReadout = shouldPrintAuditTimingReadout(args);
     shouldApplyBoundedReseed = args["apply-bounded-reseed"] === true;
     shouldAcceptSlotPlanUpgrade = args["accept-slot-plan-upgrade"] === true;

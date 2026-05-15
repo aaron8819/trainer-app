@@ -203,7 +203,7 @@ describe("POST /api/workouts/[id]/add-exercise-preview", () => {
           targetRepRange: { min: 12, max: 14 },
           targetLoad: 35,
           targetRpe: 6.5,
-          restSeconds: 90,
+          restSeconds: 120,
           prescriptionSource: "session_accessory_defaults",
         },
       ],

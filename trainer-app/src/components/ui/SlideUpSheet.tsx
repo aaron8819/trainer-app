@@ -99,17 +99,17 @@ function OpenSlideUpSheet({
         <div
           data-testid="slide-up-sheet-panel"
           className={
-            "flex w-full max-h-[min(90dvh,90vh)] flex-col overflow-hidden rounded-t-2xl bg-white pb-[env(safe-area-inset-bottom)] shadow-xl sm:max-h-[85dvh] sm:pb-0 " +
-            "md:max-h-[80dvh] md:max-w-lg md:rounded-2xl " +
+            "flex h-[88dvh] w-full max-h-[calc(100dvh-12px)] flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:max-h-[85dvh] " +
+            "md:h-auto md:max-h-[80dvh] md:max-w-lg md:rounded-2xl " +
             "animate-[slideUp_200ms_ease-out] md:animate-[fadeIn_150ms_ease-out]"
           }
         >
           {title && (
             <div
               data-testid="slide-up-sheet-header"
-              className="z-10 flex items-center justify-between gap-3 rounded-t-2xl border-b border-slate-100 bg-white px-4 py-3 sm:px-5 sm:py-4"
+              className="z-10 flex items-center justify-between gap-3 rounded-t-2xl border-b border-slate-100 bg-white px-4 py-2.5 sm:px-5 sm:py-4"
             >
-              <h2 className="min-w-0 text-base font-semibold text-slate-900 sm:text-lg">{title}</h2>
+              <h2 className="min-w-0 text-base font-semibold leading-tight text-slate-900 sm:text-lg">{title}</h2>
               <button
                 onClick={handleClose}
                 className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
@@ -124,7 +124,7 @@ function OpenSlideUpSheet({
           )}
           <div
             data-testid="slide-up-sheet-body"
-            className="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-[calc(16px+env(safe-area-inset-bottom))] sm:p-5"
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-[calc(16px+env(safe-area-inset-bottom))] sm:p-5"
           >
             {children}
           </div>

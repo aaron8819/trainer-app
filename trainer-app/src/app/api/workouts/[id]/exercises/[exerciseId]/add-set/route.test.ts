@@ -57,6 +57,8 @@ describe("POST /api/workouts/[id]/exercises/[exerciseId]/add-set", () => {
     mocks.txWorkoutExerciseFindFirst.mockResolvedValue({
       id: "we-1",
       exerciseId: "bench",
+      section: "MAIN",
+      isMainLift: true,
       workout: {
         id: "workout-1",
         status: "PLANNED",
@@ -379,6 +381,8 @@ describe("POST /api/workouts/[id]/exercises/[exerciseId]/add-set", () => {
       mocks.txWorkoutExerciseFindFirst.mockResolvedValueOnce({
         id: "we-1",
         exerciseId: "bench",
+        section: "MAIN",
+        isMainLift: true,
         workout: {
           id: "workout-1",
           status,
@@ -413,4 +417,104 @@ describe("POST /api/workouts/[id]/exercises/[exerciseId]/add-set", () => {
       expect(mocks.txWorkoutUpdate).toHaveBeenCalled();
     }
   );
+
+  it("defaults runtime-added sets on accessory exercises to 120 seconds instead of cloning stale 90-second rest", async () => {
+    mocks.txWorkoutExerciseFindFirst.mockResolvedValueOnce({
+      id: "we-accessory",
+      exerciseId: "lateral-raise",
+      section: "ACCESSORY",
+      isMainLift: false,
+      workout: {
+        id: "workout-1",
+        status: "IN_PROGRESS",
+        selectionMetadata: {},
+        selectionMode: "INTENT",
+        sessionIntent: "PUSH",
+        mesocycleId: null,
+        mesocycle: null,
+      },
+      sets: [
+        {
+          setIndex: 2,
+          targetReps: 12,
+          targetRepMin: 10,
+          targetRepMax: 15,
+          targetRpe: 8,
+          targetLoad: 20,
+          restSeconds: 90,
+        },
+      ],
+    });
+    mocks.txWorkoutSetCreate.mockResolvedValueOnce({
+      id: "set-extra",
+      setIndex: 3,
+      targetReps: 12,
+      targetRepMin: 10,
+      targetRepMax: 15,
+      targetRpe: 8,
+      targetLoad: 20,
+      restSeconds: 120,
+    });
+    mocks.txWorkoutExerciseFindMany.mockResolvedValueOnce([
+      {
+        exerciseId: "lateral-raise",
+        orderIndex: 1,
+        section: "ACCESSORY",
+        exercise: { name: "Cable Lateral Raise" },
+        sets: [
+          {
+            setIndex: 1,
+            targetReps: 12,
+            targetRepMin: 10,
+            targetRepMax: 15,
+            targetRpe: 8,
+            targetLoad: 20,
+            restSeconds: 90,
+          },
+          {
+            setIndex: 2,
+            targetReps: 12,
+            targetRepMin: 10,
+            targetRepMax: 15,
+            targetRpe: 8,
+            targetLoad: 20,
+            restSeconds: 90,
+          },
+          {
+            setIndex: 3,
+            targetReps: 12,
+            targetRepMin: 10,
+            targetRepMax: 15,
+            targetRpe: 8,
+            targetLoad: 20,
+            restSeconds: 120,
+          },
+        ],
+      },
+    ]);
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/exercises/we-accessory/add-set", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "workout-1", exerciseId: "we-accessory" }) }
+    );
+
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(mocks.txWorkoutSetCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          workoutExerciseId: "we-accessory",
+          restSeconds: 120,
+        }),
+      })
+    );
+    expect(body.set).toMatchObject({
+      setId: "set-extra",
+      restSeconds: 120,
+      isRuntimeAdded: true,
+    });
+  });
 });

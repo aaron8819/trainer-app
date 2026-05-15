@@ -9,6 +9,7 @@ import type {
   NormalizedExercises,
   SectionedExercises,
 } from "./types";
+import { resolveExecutionRestSeconds } from "@/lib/logging/rest-timer-policy";
 
 const SECTION_ORDER: ExerciseSection[] = ["warmup", "main", "accessory"];
 
@@ -41,12 +42,11 @@ export function formatSectionLabel(section: ExerciseSection): string {
 }
 
 export function resolveRestSeconds(item: FlatSetItem): number {
-  if (item.set.restSeconds != null && item.set.restSeconds > 0) {
-    return item.set.restSeconds;
-  }
-  if (item.section === "warmup") return 60;
-  if (item.section === "main") return 180;
-  return 120;
+  return resolveExecutionRestSeconds({
+    restSeconds: item.set.restSeconds,
+    section: item.section,
+    isMainLift: item.exercise.isMainLift,
+  });
 }
 
 export function getNextUnloggedSetId(

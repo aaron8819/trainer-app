@@ -257,13 +257,13 @@ describe("RuntimeExerciseSwapSheet", () => {
     expect(screen.queryByText(/constrained equivalents/i)).not.toBeInTheDocument();
     expect(await screen.findAllByText("Post-swap prescription")).toHaveLength(2);
     expect(
-      screen.getByText("Set 1: 10 reps (8-12) | Load hint 27.5 lbs each | Target RPE 8 | 2 min rest")
+      screen.getByText("Set 1: 8–12 reps | Load hint 27.5 lbs each | Target RPE 8 | 2 min rest")
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Set 2: 10 reps (8-12) | Load hint 27.5 lbs each | Target RPE 8 | 2 min rest")
+      screen.getByText("Set 2: 8–12 reps | Load hint 27.5 lbs each | Target RPE 8 | 2 min rest")
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Set 1: 12 reps (10-14) | No load hint | Target RPE 7 | 90 sec rest")
+      screen.getByText("Set 1: 10–14 reps | No load hint | Target RPE 7 | 90 sec rest")
     ).toBeInTheDocument();
 
     const previewCalls = fetchMock.mock.calls.filter(([requestUrl]) =>

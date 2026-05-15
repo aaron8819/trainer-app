@@ -131,7 +131,7 @@ export default async function LogWorkoutPage({
       canAddSet: true,
       canRemoveSet: true,
       canSwapExercise: true,
-      canAddExercise: false,
+      canAddExercise: true,
       canFinish: true,
       showWeeklyCheck: true,
     };
@@ -146,7 +146,7 @@ export default async function LogWorkoutPage({
           <LogWorkoutClient
             workoutId={logFixture.workoutId}
             exercises={attachLogExerciseCapabilities(logFixture.exercises, fixtureCapabilities)}
-            allowBonusExerciseAdd={false}
+            allowBonusExerciseAdd={true}
             allowRuntimeExerciseSwap={true}
             capabilities={fixtureCapabilities}
             initialRestTimer={buildInitialRestTimer(logFixture.initialRestTimerDurationSeconds)}

@@ -1,9 +1,10 @@
 import { readSessionAuditSnapshot } from "@/lib/evidence/session-audit-snapshot";
 import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import { getLifecycleSetTargets } from "@/lib/api/mesocycle-lifecycle-math";
-import { clampRepRange, getRestSeconds } from "@/lib/engine/prescription";
+import { clampRepRange } from "@/lib/engine/prescription";
 import { getBaseTargetRpe, getGoalRepRanges } from "@/lib/engine/rules";
 import type { PrimaryGoal, TrainingAge } from "@/lib/engine/types";
+import { resolveDefaultRestSecondsForExecutionSet } from "@/lib/logging/rest-timer-policy";
 
 type ExistingWorkoutSet = {
   targetReps?: number | null;
@@ -79,7 +80,6 @@ function buildCurrentWorkoutAccessoryPattern(
     targetRepMin: toFiniteNumber(anchorSet?.targetRepMin),
     targetRepMax: toFiniteNumber(anchorSet?.targetRepMax),
     targetRpe: toFiniteNumber(anchorSet?.targetRpe),
-    restSeconds: toFiniteNumber(anchorSet?.restSeconds),
   };
 }
 
@@ -100,7 +100,6 @@ function buildGeneratedAccessoryPattern(selectionMetadata: unknown): AccessoryPa
     targetRepMin: toFiniteNumber(anchorSet?.targetRepRange?.min),
     targetRepMax: toFiniteNumber(anchorSet?.targetRepRange?.max),
     targetRpe: toFiniteNumber(anchorSet?.targetRpe),
-    restSeconds: toFiniteNumber(anchorSet?.restSeconds),
   };
 }
 
@@ -123,20 +122,6 @@ function resolveExerciseRepRange(input: {
     max,
     targetReps: Math.round((min + max) / 2),
   };
-}
-
-function resolveFallbackRestSeconds(
-  exercise: RuntimeAddedExerciseResolverInput["exercise"],
-  targetReps: number
-): number {
-  return getRestSeconds(
-    {
-      fatigueCost: exercise.fatigueCost ?? undefined,
-      isCompound: exercise.isCompound ?? undefined,
-    } as Parameters<typeof getRestSeconds>[0],
-    false,
-    targetReps
-  );
 }
 
 function resolveReceiptLifecycleDefaults(
@@ -183,10 +168,6 @@ export function resolveRuntimeAddedAccessoryDefaults(
     primaryGoal: input.primaryGoal,
   });
   const genericTargetRpe = getBaseTargetRpe(input.primaryGoal, input.trainingAge);
-  const fallbackRestSeconds = resolveFallbackRestSeconds(
-    input.exercise,
-    resolvedRepRange.targetReps
-  );
   const pattern =
     currentAccessoryPattern ??
     generatedAccessoryPattern ??
@@ -215,7 +196,10 @@ export function resolveRuntimeAddedAccessoryDefaults(
     targetRepMin,
     targetRepMax,
     targetRpe: pattern?.targetRpe ?? receiptLifecycleDefaults?.targetRpe ?? genericTargetRpe,
-    restSeconds: pattern?.restSeconds ?? fallbackRestSeconds,
+    restSeconds: resolveDefaultRestSecondsForExecutionSet({
+      section: "ACCESSORY",
+      isMainLift: false,
+    }),
     prescriptionSource: hasCanonicalSessionContext
       ? "session_accessory_defaults"
       : "generic_accessory_fallback",

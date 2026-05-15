@@ -577,6 +577,26 @@ function isEquivalentCalfIsolationFatigueException(input: {
   );
 }
 
+function isEquivalentLateralRaiseFatigueException(input: {
+  current: RuntimeExerciseSwapProfile;
+  candidate: RuntimeExerciseSwapProfile;
+  fatigueDelta: number;
+}): boolean {
+  if (input.fatigueDelta <= 0 || input.fatigueDelta > 1) {
+    return false;
+  }
+  const currentClasses = matchV2ExerciseClasses(
+    toV2MaterializationExercise(input.current),
+  ).map((match) => match.classId);
+  const candidateClasses = matchV2ExerciseClasses(
+    toV2MaterializationExercise(input.candidate),
+  ).map((match) => match.classId);
+  return (
+    currentClasses.includes("lateral_raise") &&
+    candidateClasses.includes("lateral_raise")
+  );
+}
+
 type SourceLanePolicy =
   V2AcceptedPlannerIntentDto["weekPolicies"][number]["slots"][number]["lanes"][number];
 
@@ -766,6 +786,11 @@ export function evaluateRuntimeExerciseSwapEligibility(input: {
   if (
     fatigueDelta > 0 &&
     !isEquivalentCalfIsolationFatigueException({
+      current: input.current,
+      candidate: input.candidate,
+      fatigueDelta,
+    }) &&
+    !isEquivalentLateralRaiseFatigueException({
       current: input.current,
       candidate: input.candidate,
       fatigueDelta,

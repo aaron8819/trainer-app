@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
 import { getLogWorkoutPageState } from "@/lib/workout-workflow";
+import { resolveDefaultRestSecondsForExecutionSet } from "@/lib/logging/rest-timer-policy";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -64,6 +65,8 @@ export async function POST(
       select: {
         id: true,
         exerciseId: true,
+        section: true,
+        isMainLift: true,
         workout: {
           select: {
             id: true,
@@ -122,7 +125,10 @@ export async function POST(
         targetRepMax: lastSet.targetRepMax,
         targetRpe: lastSet.targetRpe,
         targetLoad: lastSet.targetLoad,
-        restSeconds: lastSet.restSeconds,
+        restSeconds: resolveDefaultRestSecondsForExecutionSet({
+          section: workoutExercise.section,
+          isMainLift: workoutExercise.isMainLift,
+        }),
       },
       select: {
         id: true,

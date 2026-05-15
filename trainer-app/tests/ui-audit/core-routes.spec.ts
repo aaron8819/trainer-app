@@ -81,6 +81,7 @@ test.describe("lightweight fixture interaction checks", () => {
     await page.setExtraHTTPHeaders({ [FIXTURE_HEADER]: "active" });
     await installMutationGuards(page);
     await installSwapFixtureRoutes(page);
+    await installAddExerciseFixtureRoutes(page);
 
     await page.goto(ACTIVE_LOG_WORKOUT_PATH, { waitUntil: "domcontentloaded" });
     await waitForStableRoute(page);
@@ -110,16 +111,46 @@ test.describe("lightweight fixture interaction checks", () => {
     await page.getByRole("button", { name: "Swap" }).first().click();
     await expect(page.getByRole("heading", { name: "Swap Chest-Supported Row" })).toBeVisible();
     await expect(page.getByText("Search replacements")).toBeVisible();
-    await expect(page.getByText("Cable Row")).toBeVisible();
-    await expect(page.getByText("Post-swap prescription")).toBeVisible();
+    await expect(page.getByText("Cable Row", { exact: true })).toBeVisible();
+    await expect(page.getByText("Post-swap prescription").first()).toBeVisible();
     await expect(
-      page.getByText("Set 1: 10 reps (8-12) | Load hint 100 lbs | Target RPE 8 | 2 min rest")
+      page.getByText("Set 1: 8–12 reps | Load hint 100 lbs | Target RPE 8 | 2 min rest").first()
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Use swap" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Use swap" }).first()).toBeEnabled();
     await expectElementWithinViewport(page, page.locator("dialog").first());
+    await expectSheetBodyReachable(page);
+
+    const swapSearch = page.getByPlaceholder("Search by name, alias, muscle, or equipment...");
+    await expect(swapSearch).toBeVisible();
+    await swapSearch.focus();
+    await expect(swapSearch).toBeFocused();
+    await swapSearch.fill("cable");
+    await expect(page.getByText("Cable Row", { exact: true })).toBeVisible();
+    await swapSearch.blur();
+    await expectSheetBodyReachable(page);
 
     await page.getByRole("button", { name: "Close" }).click();
     await expect(page.getByRole("heading", { name: "Swap Chest-Supported Row" })).toBeHidden();
+
+    await page.getByRole("button", { name: "+ Add Exercise" }).click();
+    await expect(page.getByRole("heading", { name: "Add Exercise" })).toBeVisible();
+    await expect(page.getByText("Recommended for this session")).toBeVisible();
+    await expect(page.getByText("Browse all exercises")).toBeVisible();
+    await expect(page.getByText("Cable Fly")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add" }).first()).toBeVisible();
+    await expectSheetBodyReachable(page);
+
+    const addSearch = page.getByPlaceholder("Search by name, alias, muscle, or equipment...");
+    await expect(addSearch).toBeVisible();
+    await addSearch.focus();
+    await expect(addSearch).toBeFocused();
+    await addSearch.fill("row");
+    await expect(page.getByText("Cable Row", { exact: true })).toBeVisible();
+    await addSearch.blur();
+    await expectSheetBodyReachable(page);
+
+    await page.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByRole("heading", { name: "Add Exercise" })).toBeHidden();
     await expectNoAppError(page);
   });
 
@@ -225,6 +256,36 @@ async function expectElementFullyWithinViewport(page: Page, locator: Locator) {
   expect(box.y).toBeGreaterThanOrEqual(-2);
   expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 2);
   expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 2);
+}
+
+async function expectSheetBodyReachable(page: Page) {
+  const panel = page.getByTestId("slide-up-sheet-panel");
+  const body = page.getByTestId("slide-up-sheet-body");
+
+  await expectElementFullyWithinViewport(page, panel);
+  await expect(body).toBeVisible();
+
+  const metrics = await body.evaluate((element) => {
+    const startScrollTop = element.scrollTop;
+    element.scrollTop = element.scrollHeight;
+    const afterScrollTop = element.scrollTop;
+    const bottomGap = element.scrollHeight - element.clientHeight - element.scrollTop;
+    element.scrollTop = startScrollTop;
+    const rect = element.getBoundingClientRect();
+    return {
+      canScroll: element.scrollHeight > element.clientHeight,
+      afterScrollTop,
+      bottomGap,
+      bottom: rect.bottom,
+    };
+  });
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
+  expect(metrics.bottom).toBeLessThanOrEqual((viewport?.height ?? 0) + 2);
+  if (metrics.canScroll) {
+    expect(metrics.afterScrollTop).toBeGreaterThan(0);
+    expect(Math.abs(metrics.bottomGap)).toBeLessThanOrEqual(2);
+  }
 }
 
 async function expectNoElementOverlap(first: Locator, second: Locator) {
@@ -348,6 +409,27 @@ async function installSwapFixtureRoutes(page: Page) {
               equipment: ["cable"],
               reason: "Keeps the pull pattern close and reduces setup friction.",
             },
+            {
+              exerciseId: "ui-audit-machine-row",
+              exerciseName: "Machine Row",
+              primaryMuscles: ["Lats", "Upper Back"],
+              equipment: ["machine"],
+              reason: "Keeps the pull pattern close with guided setup.",
+            },
+            {
+              exerciseId: "ui-audit-single-arm-row",
+              exerciseName: "Single-Arm Cable Row",
+              primaryMuscles: ["Lats", "Upper Back"],
+              equipment: ["cable"],
+              reason: "Keeps the pull pattern close while reducing bracing demand.",
+            },
+            {
+              exerciseId: "ui-audit-seated-row",
+              exerciseName: "Seated Row",
+              primaryMuscles: ["Lats", "Upper Back"],
+              equipment: ["machine"],
+              reason: "Keeps the target muscles and stable setup.",
+            },
           ],
         },
       });
@@ -358,13 +440,20 @@ async function installSwapFixtureRoutes(page: Page) {
       request.method() === "GET" &&
       url.pathname === "/api/workouts/ui-audit-workout-planned/swap-exercise-preview"
     ) {
+      const exerciseId = url.searchParams.get("exerciseId") ?? "ui-audit-cable-row";
+      const exerciseNameById: Record<string, string> = {
+        "ui-audit-cable-row": "Cable Row",
+        "ui-audit-machine-row": "Machine Row",
+        "ui-audit-single-arm-row": "Single-Arm Cable Row",
+        "ui-audit-seated-row": "Seated Row",
+      };
       await route.fulfill({
         json: {
           exercise: {
             workoutExerciseId: "ui-audit-row-we",
-            exerciseId: "ui-audit-cable-row",
-            name: "Cable Row",
-            equipment: ["cable"],
+            exerciseId,
+            name: exerciseNameById[exerciseId] ?? "Cable Row",
+            equipment: [exerciseId.includes("machine") ? "machine" : "cable"],
             movementPatterns: ["horizontal_pull"],
             isMainLift: false,
             isSwapped: true,
@@ -409,5 +498,93 @@ async function installSwapFixtureRoutes(page: Page) {
     }
 
     await route.continue();
+  });
+}
+
+async function installAddExerciseFixtureRoutes(page: Page) {
+  await page.route("**/api/workouts/ui-audit-workout-planned/bonus-suggestions", async (route) => {
+    await route.fulfill({
+      json: {
+        suggestions: [
+          {
+            exerciseId: "ui-audit-cable-fly",
+            exerciseName: "Cable Fly",
+            primaryMuscles: ["Chest"],
+            equipment: ["cable"],
+            reason: "Chest has room for a small accessory top-up.",
+          },
+          {
+            exerciseId: "ui-audit-lateral-raise",
+            exerciseName: "Cable Lateral Raise",
+            primaryMuscles: ["Side Delts"],
+            equipment: ["cable"],
+            reason: "Side delts can take a low-fatigue accessory.",
+          },
+          {
+            exerciseId: "ui-audit-rope-pressdown",
+            exerciseName: "Rope Pressdown",
+            primaryMuscles: ["Triceps"],
+            equipment: ["cable"],
+            reason: "Triceps accessory work fits the session finish.",
+          },
+          {
+            exerciseId: "ui-audit-rear-delt-fly",
+            exerciseName: "Rear Delt Fly",
+            primaryMuscles: ["Rear Delts"],
+            equipment: ["dumbbell"],
+            reason: "Rear delts can use a small isolation dose.",
+          },
+        ],
+      },
+    });
+  });
+
+  await page.route("**/api/exercises/search**", async (route) => {
+    const url = new URL(route.request().url());
+    const query = url.searchParams.get("q");
+    await route.fulfill({
+      json: {
+        results:
+          query === "row"
+            ? [
+                {
+                  id: "ui-audit-search-cable-row",
+                  name: "Cable Row",
+                  primaryMuscles: ["Lats", "Upper Back"],
+                  equipment: ["cable"],
+                },
+              ]
+            : [],
+      },
+    });
+  });
+
+  await page.route("**/api/workouts/ui-audit-workout-planned/add-exercise-preview", async (route) => {
+    const body = route.request().postDataJSON() as { exerciseIds?: string[] };
+    await route.fulfill({
+      json: {
+        previews: (body.exerciseIds ?? []).map((exerciseId) => ({
+          exerciseId,
+          exerciseName: exerciseId,
+          equipment: ["cable"],
+          section: "ACCESSORY",
+          isMainLift: false,
+          setCount: 2,
+          targetReps: 12,
+          targetRepRange: { min: 10, max: 14 },
+          targetLoad: null,
+          targetRpe: 7,
+          restSeconds: 90,
+          prescriptionSource: "session_accessory_defaults",
+        })),
+      },
+    });
+  });
+
+  await page.route("**/api/workouts/ui-audit-workout-planned/add-exercise", async (route) => {
+    await route.fulfill({
+      status: 405,
+      json: { error: "UI audit interaction check does not persist added exercises." },
+    });
   });
 }

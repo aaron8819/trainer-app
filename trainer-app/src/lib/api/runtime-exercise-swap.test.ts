@@ -128,6 +128,7 @@ describe("runtime exercise swap constraints", () => {
 
     expect(candidates.map((entry) => entry.exerciseId)).toEqual([
       "cable-lateral-raise",
+      "machine-lateral-raise",
     ]);
   });
 
@@ -498,5 +499,54 @@ describe("runtime exercise swap constraints", () => {
         }),
       ]),
     );
+  });
+
+  it("allows machine lateral raises to surface cable lateral raises as same-target safe swaps", () => {
+    const candidates = buildRuntimeExerciseSwapCandidates({
+      current: {
+        id: "machine-lateral-raise",
+        name: "Machine Lateral Raise",
+        fatigueCost: 1,
+        jointStress: "low",
+        isCompound: false,
+        isMainLift: false,
+        isMainLiftEligible: false,
+        movementPatterns: ["abduction"],
+        primaryMuscles: ["side delts"],
+        equipment: ["machine"],
+        sourceLane: {
+          slotId: "upper_b",
+          seedRole: "ACCESSORY",
+          laneId: "side_delts",
+          laneRole: "accessory",
+          primaryMuscles: ["Side Delts"],
+          acceptableExerciseClasses: ["lateral_raise"],
+          preferredExerciseClasses: ["lateral_raise"],
+        },
+      },
+      candidates: [
+        {
+          id: "cable-lateral-raise",
+          name: "Cable Lateral Raise",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: false,
+          isMainLiftEligible: false,
+          movementPatterns: ["abduction"],
+          primaryMuscles: ["side delts"],
+          equipment: ["cable"],
+        },
+      ],
+    });
+
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        exerciseId: "cable-lateral-raise",
+        exerciseName: "Cable Lateral Raise",
+        sourceV2Class: "lateral_raise",
+        swapFallbackTier: "useful_fallback_warning",
+        fatigueDelta: 1,
+      }),
+    ]);
   });
 });

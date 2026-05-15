@@ -65,12 +65,15 @@ describe("SlideUpSheet", () => {
 
     expect(panel.className).toContain("flex-col");
     expect(panel.className).toContain("overflow-hidden");
-    expect(panel.className).toContain("max-h-[min(90dvh,90vh)]");
-    expect(panel.className).toContain("pb-[env(safe-area-inset-bottom)]");
+    expect(panel.className).toContain("h-[88dvh]");
+    expect(panel.className).toContain("max-h-[calc(100dvh-12px)]");
+    expect(panel.className).toContain("md:h-auto");
     expect(header.className).not.toContain("sticky");
+    expect(header.className).toContain("py-2.5");
     expect(body.className).toContain("flex-1");
     expect(body.className).toContain("min-h-0");
     expect(body.className).toContain("overflow-y-auto");
+    expect(body.className).toContain("overscroll-contain");
     expect(body.className).toContain("pb-[calc(16px+env(safe-area-inset-bottom))]");
   });
 

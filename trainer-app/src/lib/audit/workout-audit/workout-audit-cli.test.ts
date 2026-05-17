@@ -13,6 +13,7 @@ import {
   buildPlanningRealitySizeBudgetSummary,
   buildPlannerOnlyDryRunSummary,
   buildPlannerOnlyNoRepairSummary,
+  buildPreSessionReadinessSummary,
   buildProjectedWeekDebugSummary,
   buildProjectedWeekOperatorSummary,
   buildV2AcceptedSeedPrepareCompareSummary,
@@ -354,6 +355,7 @@ describe("workout audit CLI help", () => {
     expect(help).toContain("Usage: npm run audit:workout -- [options]");
     expect(help).toContain("-h, --help");
     expect(help).toContain("Without --mode, the default audit mode is future-week.");
+    expect(help).toContain("pre-session-readiness");
     expect(help).toContain(
       "Help exits before owner resolution, DB preflight, audit execution, artifact directory creation, and artifact writing.",
     );
@@ -3968,6 +3970,300 @@ describe("buildCurrentWeekAuditOperatorSummary", () => {
     });
 
     expect(summary).toBeNull();
+  });
+});
+
+describe("buildPreSessionReadinessSummary", () => {
+  it("prints generated preview, dose guidance, add-ons, and safe-to-train status", () => {
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: {
+        identity: {
+          userId: "user-1",
+          ownerEmail: "owner@test.local",
+        },
+        request: {
+          mode: "pre-session-readiness",
+          ownerEmail: "owner@test.local",
+          mesocycleId: "meso-1",
+        },
+        nextSession: {
+          intent: "upper",
+          slotId: "upper_a",
+          slotSequenceIndex: 0,
+          slotSequenceLength: 4,
+          slotSource: "mesocycle_slot_sequence",
+          existingWorkoutId: null,
+          isExisting: false,
+          source: "rotation",
+          weekInMeso: 4,
+          sessionInWeek: 1,
+          derivationTrace: [],
+          selectedIncompleteStatus: null,
+        },
+        generationPath: {
+          requestedMode: "pre-session-readiness",
+          executionMode: "standard_generation",
+          generator: "generateSessionFromIntent",
+          reason: "standard_future_week_or_preview",
+        },
+        generationProvenance: {
+          receiptProvenance: {
+            mesocycleId: "meso-1",
+            compositionSource: "persisted_slot_plan_seed",
+          },
+          auditOnly: {
+            generationPath: null,
+          },
+          seed: {
+            provenanceConsistency: {
+              version: 1,
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              consumedByProduction: false,
+              status: "valid",
+              seed: {
+                available: true,
+                source: "handoff_slot_plan_projection",
+                executableShape: "set_aware",
+              },
+              warnings: [],
+            },
+          },
+        },
+        sessionSnapshot: {
+          version: 1,
+          generated: {
+            selectionMode: "INTENT",
+            sessionIntent: "upper",
+            semantics: {
+              kind: "advancing",
+              isDeload: false,
+              isStrictGapFill: false,
+              isStrictSupplemental: false,
+              advancesLifecycle: true,
+              consumesWeeklyScheduleIntent: true,
+              countsTowardCompliance: true,
+              countsTowardRecentStimulus: true,
+              countsTowardWeeklyVolume: true,
+              countsTowardProgressionHistory: true,
+              countsTowardPerformanceHistory: true,
+              updatesProgressionAnchor: true,
+              eligibleForUniqueIntentSubtraction: true,
+              reasons: [],
+              trace: { advancesSplitInput: true },
+            },
+            exerciseCount: 2,
+            hardSetCount: 7,
+            exercises: [
+              {
+                exerciseId: "incline",
+                exerciseName: "Incline Machine Press",
+                orderIndex: 0,
+                section: "main",
+                isMainLift: true,
+                prescribedSetCount: 4,
+                prescribedSets: [
+                  {
+                    setIndex: 1,
+                    targetLoad: 132.5,
+                    targetRepRange: { min: 8, max: 10 },
+                    targetRpe: 8,
+                  },
+                ],
+              },
+              {
+                exerciseId: "rear-delt",
+                exerciseName: "Cable Rear Delt Fly",
+                orderIndex: 1,
+                section: "accessory",
+                isMainLift: false,
+                prescribedSetCount: 3,
+                prescribedSets: [
+                  {
+                    setIndex: 1,
+                    targetLoad: 10,
+                    targetRepRange: { min: 12, max: 15 },
+                    targetRpe: 8,
+                  },
+                ],
+              },
+            ],
+            traces: {
+              progression: {
+                incline: {
+                  version: 1,
+                  decisionSource: "double_progression",
+                  repRange: { min: 8, max: 10 },
+                  equipment: "other",
+                  anchor: {
+                    source: "working_set",
+                    workingSetApplied: true,
+                    anchorLoad: 130,
+                    signalSetCount: 4,
+                    effectiveSetCount: 4,
+                    trimmedSetCount: 0,
+                    highVarianceDetected: false,
+                    minSignalLoad: 130,
+                    maxSignalLoad: 130,
+                    medianSignalLoad: 130,
+                  },
+                  confidence: {
+                    priorSessionCount: 3,
+                    sampleScale: 1,
+                    historyScale: 1,
+                    combinedScale: 0.8,
+                    reasons: ["recent_history"],
+                  },
+                  metrics: {
+                    medianReps: 9,
+                    modalRpe: 8,
+                    nextLoad: 132.5,
+                    loadDelta: 2.5,
+                  },
+                  outcome: {
+                    path: "path_1",
+                    action: "increase",
+                    reasonCodes: ["clean_progression"],
+                  },
+                  decisionLog: [],
+                },
+              },
+            },
+          },
+        },
+        projectedWeekVolume: {
+          version: 1,
+          currentWeek: {
+            mesocycleId: "meso-1",
+            week: 4,
+            phase: "accumulation",
+            blockType: "accumulation",
+          },
+          projectionNotes: [],
+          completedVolumeByMuscle: {},
+          projectedSessions: [
+            {
+              slotId: "upper_a",
+              intent: "upper",
+              isNext: true,
+              exerciseCount: 2,
+              totalSets: 7,
+              projectedContributionByMuscle: {
+                Chest: 4,
+                "Rear Delts": 3,
+              },
+            },
+          ],
+          fullWeekByMuscle: [],
+          currentWeekAudit: {
+            belowMEV: [],
+            overMAV: [],
+            underTargetClusters: [],
+            fatigueRisks: [],
+          },
+          runtimeDoseAdjustmentDiagnostics: [
+            {
+              muscle: "Rear Delts",
+              plannedRemainingVolume: {
+                effectiveSets: 3,
+                bySlot: [
+                  {
+                    slotId: "upper_a",
+                    exerciseName: "Cable Rear Delt Fly",
+                    effectiveSets: 3,
+                  },
+                ],
+              },
+              performedWeekToDateVolume: {
+                effectiveSets: 4,
+                source: "weekly_volume_read_model",
+              },
+              projectedEndOfWeekVolume: {
+                effectiveSets: 7,
+                weeklyTarget: 8,
+                mev: 4,
+                mav: 12,
+              },
+              targetStatus: "slightly_low",
+              fatigueDensityConcern: {
+                level: "none",
+                drivers: [],
+              },
+              recoveryReadinessCaveat: {
+                status: "none",
+              },
+              recommendedAction: {
+                kind: "optional_add_set",
+                slotId: "upper_a",
+                exerciseName: "Cable Rear Delt Fly",
+                setDelta: 1,
+              },
+              reasonCode: "close_low_volume_opportunity",
+              confidence: 0.8,
+              readOnly: true,
+              affectsAcceptedSeed: false,
+            },
+          ],
+        },
+        weeklyRetro: {
+          week: 3,
+          volumeTargeting: {
+            overMav: [],
+            overTargetOnly: ["Triceps"],
+          },
+          planAdherence: {
+            plannedWorkCompletedSets: 46,
+            plannedWorkTotalSets: 48,
+            plannedWorkMissedSets: 2,
+            explainedAdditions: {
+              totalSets: 3,
+            },
+            engineConfidenceImpact: "low",
+          },
+        },
+        preSessionReadiness: {
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByProduction: false,
+          wouldWriteTransaction: false,
+          activeMesocycle: {
+            mesocycleId: "meso-1",
+            state: "ACTIVE_ACCUMULATION",
+            completedAccumulationSessions: 12,
+            currentWeek: 4,
+            currentSession: 1,
+            requestedMesocycleId: "meso-1",
+            mesocycleIdMatchesRequest: true,
+          },
+        },
+        warningSummary: {
+          blockingErrors: [],
+          semanticWarnings: [],
+          backgroundWarnings: [],
+          counts: {
+            blockingErrors: 0,
+            semanticWarnings: 0,
+            backgroundWarnings: 0,
+          },
+        },
+      } as never,
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Pre-Session Readiness",
+        "Generated Preview",
+        "Order | Exercise | Sets | Load | Rep target/range | RPE",
+        "1 | Incline Machine Press | 4 | 132.5 | 8-10 | 8",
+        "2 | Cable Rear Delt Fly | 3 | 10 | 12-15 | 8",
+        "Current-Week Dose Guidance",
+        "Rear Delts | 7 vs MEV 4 / target 8 / MAV 12 | slightly_low | optional +1 Cable Rear Delt Fly | 0.8",
+        "Session-Local Add-On Recommendation",
+        "- +1 Cable Rear Delt Fly if readiness is good (Rear Delts, close_low_volume_opportunity)",
+        "Safe to train: yes",
+      ]),
+    );
   });
 });
 

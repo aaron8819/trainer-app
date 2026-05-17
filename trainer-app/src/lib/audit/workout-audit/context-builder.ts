@@ -54,7 +54,9 @@ export async function buildWorkoutAuditContext(
     throw new Error("--planner-only-dry-run currently requires --compare-repaired");
   }
   const shouldLoadNextSession =
-    mode === "future-week" || mode === "deload";
+    mode === "future-week" ||
+    mode === "pre-session-readiness" ||
+    mode === "deload";
 
   if (mode === "historical-week") {
     if (!Number.isFinite(request.week)) {
@@ -103,6 +105,40 @@ export async function buildWorkoutAuditContext(
       plannerDiagnosticsMode,
       projectedWeekVolume: {
         enabled: true,
+      },
+    };
+  }
+
+  if (mode === "pre-session-readiness") {
+    const nextSession = await loadNextWorkoutContext(identity.userId);
+    const intent = (request.intent ?? nextSession?.intent) as
+      | SessionIntent
+      | undefined;
+    if (!intent) {
+      throw new Error(
+        "pre-session-readiness mode requires --intent or a derivable next-session intent"
+      );
+    }
+    return {
+      mode,
+      requestedMode: request.mode,
+      userId: identity.userId,
+      ownerEmail: identity.ownerEmail,
+      plannerDiagnosticsMode,
+      generationInput: {
+        intent,
+        targetMuscles: request.targetMuscles,
+        source: request.intent ? "explicit-intent" : "derived-next-session",
+      },
+      nextSession,
+      projectedWeekVolume: {
+        enabled: true,
+      },
+      preSessionReadiness: {
+        enabled: true,
+        ...(request.mesocycleId
+          ? { requestedMesocycleId: request.mesocycleId }
+          : {}),
       },
     };
   }

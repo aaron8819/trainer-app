@@ -1,4 +1,7 @@
-import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
+import {
+  deriveCurrentMesocycleSession,
+  loadActiveMesocycle,
+} from "@/lib/api/mesocycle-lifecycle";
 import { evaluateAcceptedMesocycleSeedProvenance } from "@/lib/api/accepted-mesocycle-seed-provenance";
 import { loadProjectedWeekVolumeReport } from "@/lib/api/projected-week-volume";
 import { buildRuntimeDoseAdjustmentDiagnostics } from "@/lib/api/runtime-dose-guidance";
@@ -18,7 +21,12 @@ import { buildMesocycleExplainAuditPayload } from "./mesocycle-explain";
 import { buildProgressionAnchorAuditPayload } from "./progression-anchor";
 import { buildV2AcceptedSeedPrepareCompareAuditPayload } from "./v2-accepted-seed-prepare-compare";
 import { buildWeeklyRetroAuditPayload } from "./weekly-retro";
-import type { WorkoutAuditContext, WorkoutAuditRun } from "./types";
+import type {
+  ProjectedWeekVolumeAuditPayload,
+  WorkoutAuditContext,
+  WorkoutAuditGenerationPath,
+  WorkoutAuditRun,
+} from "./types";
 import { replaceEmptyMesocycleWithV2 } from "@/lib/api/replace-empty-mesocycle-with-v2";
 
 function resolveAdvancingSlotSnapshot(
@@ -42,6 +50,126 @@ function resolveAdvancingSlotSnapshot(
     sequenceIndex: nextSession.slotSequenceIndex,
     sequenceLength: nextSession.slotSequenceLength ?? undefined,
     source: nextSession.slotSource,
+  };
+}
+
+async function buildProjectedWeekAuditPayload(input: {
+  userId: string;
+  plannerDiagnosticsMode: WorkoutAuditContext["plannerDiagnosticsMode"];
+  includeCurrentWeekGuidance: boolean;
+}): Promise<ProjectedWeekVolumeAuditPayload> {
+  const projectedWeekVolume = await loadProjectedWeekVolumeReport({
+    userId: input.userId,
+    plannerDiagnosticsMode: input.plannerDiagnosticsMode,
+  });
+  const payload = {
+    version: PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
+    ...projectedWeekVolume,
+  };
+  const currentWeekAuditFields = input.includeCurrentWeekGuidance
+    ? {
+        ...buildCurrentWeekAuditEvaluation(payload),
+        runtimeDoseAdjustmentDiagnostics:
+          buildRuntimeDoseAdjustmentDiagnostics(payload),
+      }
+    : {};
+
+  return {
+    ...payload,
+    ...currentWeekAuditFields,
+  };
+}
+
+async function buildGeneratedSessionRunFields(input: {
+  context: WorkoutAuditContext;
+  activeMesocycle: Awaited<ReturnType<typeof loadActiveMesocycle>>;
+}): Promise<Pick<
+  WorkoutAuditRun,
+  | "generationResult"
+  | "sessionSnapshot"
+  | "generationPath"
+  | "acceptedSeedProvenanceConsistency"
+>> {
+  const { context, activeMesocycle } = input;
+  const mode = context.mode;
+  const generationInput = context.generationInput!;
+  const useDeloadGeneration =
+    mode === "deload" || activeMesocycle?.state === "ACTIVE_DELOAD";
+  const advancingSlot = resolveAdvancingSlotSnapshot(context);
+  const generationResult =
+    useDeloadGeneration
+      ? await generateDeloadSessionFromIntent(context.userId, {
+          intent: generationInput.intent,
+          targetMuscles: generationInput.targetMuscles,
+          plannerDiagnosticsMode: context.plannerDiagnosticsMode,
+        })
+      : await generateSessionFromIntent(context.userId, {
+          intent: generationInput.intent,
+          targetMuscles: generationInput.targetMuscles,
+          advancingSlot,
+          plannerDiagnosticsMode: context.plannerDiagnosticsMode,
+        });
+  const generationPath: WorkoutAuditGenerationPath =
+    mode === "deload"
+      ? {
+          requestedMode: context.requestedMode ?? context.mode,
+          executionMode: "explicit_deload_preview",
+          generator: "generateDeloadSessionFromIntent",
+          reason: "explicit_deload_mode",
+        }
+      : useDeloadGeneration
+        ? {
+            requestedMode: context.requestedMode ?? context.mode,
+            executionMode: "active_deload_reroute",
+            generator: "generateDeloadSessionFromIntent",
+            reason: "active_mesocycle_state_active_deload",
+          }
+        : {
+            requestedMode: context.requestedMode ?? context.mode,
+            executionMode: "standard_generation",
+            generator: "generateSessionFromIntent",
+            reason: "standard_future_week_or_preview",
+          };
+
+  const sessionSnapshot =
+    "error" in generationResult
+      ? undefined
+      : buildGeneratedSessionAuditSnapshot({
+          workout: generationResult.workout,
+          selectionMode: generationResult.selectionMode,
+          sessionIntent: generationResult.sessionIntent,
+          selectionMetadata: {
+            sessionDecisionReceipt:
+              generationResult.selection.sessionDecisionReceipt,
+          },
+          targetMuscles: generationInput.targetMuscles,
+          advancesSplit: true,
+          filteredExercises: generationResult.filteredExercises,
+          progressionTraces: generationResult.audit?.progressionTraces,
+          deloadTrace: generationResult.audit?.deloadTrace,
+        });
+  const receiptCompositionSource =
+    "error" in generationResult
+      ? null
+      : (generationResult.selection.sessionDecisionReceipt?.sessionProvenance
+          ?.compositionSource ?? null);
+  const acceptedSeedProvenanceConsistency =
+    activeMesocycle?.slotPlanSeedJson != null
+      ? evaluateAcceptedMesocycleSeedProvenance({
+          mesocycleId: activeMesocycle.id,
+          mesocycleState: activeMesocycle.state,
+          slotPlanSeedJson: activeMesocycle.slotPlanSeedJson,
+          receiptCompositionSource,
+        })
+      : undefined;
+
+  return {
+    generationResult,
+    sessionSnapshot,
+    generationPath,
+    ...(acceptedSeedProvenanceConsistency
+      ? { acceptedSeedProvenanceConsistency }
+      : {}),
   };
 }
 
@@ -89,30 +217,14 @@ export async function runWorkoutAuditGeneration(
   }
 
   if (mode === "projected-week-volume" || mode === "current-week-audit") {
-    const projectedWeekVolume = await loadProjectedWeekVolumeReport({
-      userId: context.userId,
-      plannerDiagnosticsMode: context.plannerDiagnosticsMode,
-    });
-    const payload = {
-      version: PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
-      ...projectedWeekVolume,
-    };
-    const currentWeekAuditFields =
-      mode === "current-week-audit"
-        ? {
-            ...buildCurrentWeekAuditEvaluation(payload),
-            runtimeDoseAdjustmentDiagnostics:
-              buildRuntimeDoseAdjustmentDiagnostics(payload),
-          }
-        : {};
-
     return {
       context,
       generatedAt: new Date().toISOString(),
-      projectedWeekVolume: {
-        ...payload,
-        ...currentWeekAuditFields,
-      },
+      projectedWeekVolume: await buildProjectedWeekAuditPayload({
+      userId: context.userId,
+      plannerDiagnosticsMode: context.plannerDiagnosticsMode,
+      includeCurrentWeekGuidance: mode === "current-week-audit",
+    }),
     };
   }
 
@@ -177,86 +289,70 @@ export async function runWorkoutAuditGeneration(
     };
   }
 
-  const generationInput = context.generationInput!;
   const activeMesocycle =
-    mode === "future-week" ? await loadActiveMesocycle(context.userId) : null;
-  const useDeloadGeneration =
-    mode === "deload" || activeMesocycle?.state === "ACTIVE_DELOAD";
-  const advancingSlot = resolveAdvancingSlotSnapshot(context);
-  const generationResult =
-    useDeloadGeneration
-      ? await generateDeloadSessionFromIntent(context.userId, {
-          intent: generationInput.intent,
-          targetMuscles: generationInput.targetMuscles,
-          plannerDiagnosticsMode: context.plannerDiagnosticsMode,
-        })
-      : await generateSessionFromIntent(context.userId, {
-          intent: generationInput.intent,
-          targetMuscles: generationInput.targetMuscles,
-          advancingSlot,
-          plannerDiagnosticsMode: context.plannerDiagnosticsMode,
-        });
-  const generationPath =
-    mode === "deload"
-      ? {
-          requestedMode: context.requestedMode ?? context.mode,
-          executionMode: "explicit_deload_preview" as const,
-          generator: "generateDeloadSessionFromIntent" as const,
-          reason: "explicit_deload_mode" as const,
-        }
-      : useDeloadGeneration
-        ? {
-            requestedMode: context.requestedMode ?? context.mode,
-            executionMode: "active_deload_reroute" as const,
-            generator: "generateDeloadSessionFromIntent" as const,
-            reason: "active_mesocycle_state_active_deload" as const,
-          }
-        : {
-            requestedMode: context.requestedMode ?? context.mode,
-            executionMode: "standard_generation" as const,
-            generator: "generateSessionFromIntent" as const,
-            reason: "standard_future_week_or_preview" as const,
-          };
+    mode === "future-week" || mode === "pre-session-readiness"
+      ? await loadActiveMesocycle(context.userId)
+      : null;
+  const generatedFields = await buildGeneratedSessionRunFields({
+    context,
+    activeMesocycle,
+  });
 
-  const sessionSnapshot =
-    "error" in generationResult
-      ? undefined
-      : buildGeneratedSessionAuditSnapshot({
-          workout: generationResult.workout,
-          selectionMode: generationResult.selectionMode,
-          sessionIntent: generationResult.sessionIntent,
-          selectionMetadata: {
-            sessionDecisionReceipt: generationResult.selection.sessionDecisionReceipt,
-          },
-          targetMuscles: generationInput.targetMuscles,
-          advancesSplit: true,
-          filteredExercises: generationResult.filteredExercises,
-          progressionTraces: generationResult.audit?.progressionTraces,
-          deloadTrace: generationResult.audit?.deloadTrace,
-        });
-  const receiptCompositionSource =
-    "error" in generationResult
-      ? null
-      : (generationResult.selection.sessionDecisionReceipt?.sessionProvenance
-          ?.compositionSource ?? null);
-  const acceptedSeedProvenanceConsistency =
-    activeMesocycle?.slotPlanSeedJson != null
-      ? evaluateAcceptedMesocycleSeedProvenance({
-          mesocycleId: activeMesocycle.id,
-          mesocycleState: activeMesocycle.state,
-          slotPlanSeedJson: activeMesocycle.slotPlanSeedJson,
-          receiptCompositionSource,
-        })
-      : undefined;
+  if (mode === "pre-session-readiness") {
+    const projectedWeekVolume = await buildProjectedWeekAuditPayload({
+      userId: context.userId,
+      plannerDiagnosticsMode: context.plannerDiagnosticsMode,
+      includeCurrentWeekGuidance: true,
+    });
+    const currentSession = activeMesocycle
+      ? deriveCurrentMesocycleSession(activeMesocycle)
+      : null;
+    const requestedMesocycleId =
+      context.preSessionReadiness?.requestedMesocycleId;
+    const weeklyRetro =
+      projectedWeekVolume.currentWeek.week > 1
+        ? await buildWeeklyRetroAuditPayload({
+            userId: context.userId,
+            ownerEmail: context.ownerEmail,
+            week: projectedWeekVolume.currentWeek.week - 1,
+            mesocycleId: projectedWeekVolume.currentWeek.mesocycleId,
+            projectionArtifactPath: undefined,
+          })
+        : undefined;
+
+    return {
+      context,
+      generatedAt: new Date().toISOString(),
+      ...generatedFields,
+      projectedWeekVolume,
+      ...(weeklyRetro ? { weeklyRetro } : {}),
+      preSessionReadiness: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByProduction: false,
+        wouldWriteTransaction: false,
+        activeMesocycle: {
+          mesocycleId: activeMesocycle?.id ?? null,
+          state: activeMesocycle?.state ?? null,
+          completedAccumulationSessions:
+            activeMesocycle?.accumulationSessionsCompleted ?? null,
+          currentWeek: currentSession?.week ?? null,
+          currentSession: currentSession?.session ?? null,
+          ...(requestedMesocycleId ? { requestedMesocycleId } : {}),
+          ...(requestedMesocycleId
+            ? {
+                mesocycleIdMatchesRequest:
+                  activeMesocycle?.id === requestedMesocycleId,
+              }
+            : {}),
+        },
+      },
+    };
+  }
 
   return {
     context,
     generatedAt: new Date().toISOString(),
-    generationResult,
-    sessionSnapshot,
-    generationPath,
-    ...(acceptedSeedProvenanceConsistency
-      ? { acceptedSeedProvenanceConsistency }
-      : {}),
+    ...generatedFields,
   };
 }

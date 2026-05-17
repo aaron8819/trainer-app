@@ -213,6 +213,233 @@ function formatAuditValue(value: string | number | boolean | null | undefined): 
   return String(value);
 }
 
+function formatAuditDecimal(value: number | null | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return "n/a";
+  }
+  return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+}
+
+function formatRepTarget(
+  set:
+    | {
+        targetRepRange?: { min: number; max: number };
+        targetReps?: number;
+      }
+    | undefined
+): string {
+  if (!set) {
+    return "n/a";
+  }
+  if (set.targetRepRange) {
+    return `${formatAuditDecimal(set.targetRepRange.min)}-${formatAuditDecimal(set.targetRepRange.max)}`;
+  }
+  return formatAuditDecimal(set.targetReps);
+}
+
+function formatDoseAction(
+  action: NonNullable<ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]>[number]["recommendedAction"]
+): string {
+  if (action.kind === "hold_seed") {
+    return "hold seed";
+  }
+  if (action.kind === "optional_add_set") {
+    return `optional +1 ${action.exerciseName ?? "set"}`;
+  }
+  if (action.kind === "add_set") {
+    return `consider +1 ${action.exerciseName ?? "set"}`;
+  }
+  if (action.kind === "reduce_set_if_fatigue_meaningful") {
+    return `reduce -1 ${action.exerciseName ?? "set"} if fatigue meaningful`;
+  }
+  if (action.kind === "avoid_default_reduction") {
+    return "avoid default reduction";
+  }
+  return action.kind;
+}
+
+function formatDoseStatus(
+  diagnostic: NonNullable<ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]>[number]
+): string {
+  const end = diagnostic.projectedEndOfWeekVolume;
+  return `${formatAuditDecimal(end.effectiveSets)} vs MEV ${formatAuditDecimal(end.mev)} / target ${formatAuditDecimal(end.weeklyTarget)} / MAV ${formatAuditDecimal(end.mav)}`;
+}
+
+function selectPreSessionDoseDiagnostics(input: {
+  diagnostics: NonNullable<ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]>;
+  nextSession: ProjectedWeekVolumeAuditPayload["projectedSessions"][number] | undefined;
+  operatorDebug: boolean;
+}): NonNullable<ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]> {
+  if (input.operatorDebug) {
+    return [...input.diagnostics].sort((left, right) =>
+      left.muscle.localeCompare(right.muscle)
+    );
+  }
+  const nextMuscles = new Set(
+    Object.entries(input.nextSession?.projectedContributionByMuscle ?? {})
+      .filter(([, value]) => value > 0)
+      .map(([muscle]) => muscle)
+  );
+  return input.diagnostics
+    .filter(
+      (diagnostic) =>
+        nextMuscles.has(diagnostic.muscle) ||
+        diagnostic.recommendedAction.setDelta !== 0 ||
+        diagnostic.fatigueDensityConcern.level !== "none" ||
+        diagnostic.recoveryReadinessCaveat.status !== "none"
+    )
+    .sort((left, right) => {
+      const leftAction = Math.abs(left.recommendedAction.setDelta);
+      const rightAction = Math.abs(right.recommendedAction.setDelta);
+      return (
+        rightAction - leftAction ||
+        left.targetStatus.localeCompare(right.targetStatus) ||
+        left.muscle.localeCompare(right.muscle)
+      );
+    })
+    .slice(0, 8);
+}
+
+function isLowRiskSessionLocalAddon(input: {
+  diagnostic: NonNullable<ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]>[number];
+  exercises: NonNullable<NonNullable<WorkoutAuditArtifact["sessionSnapshot"]>["generated"]>["exercises"];
+}): boolean {
+  const exerciseName = input.diagnostic.recommendedAction.exerciseName;
+  if (!exerciseName || input.diagnostic.recommendedAction.setDelta <= 0) {
+    return false;
+  }
+  if (
+    input.diagnostic.fatigueDensityConcern.level === "meaningful" ||
+    input.diagnostic.fatigueDensityConcern.level === "high" ||
+    input.diagnostic.recoveryReadinessCaveat.status !== "none"
+  ) {
+    return false;
+  }
+
+  const exercise = input.exercises.find(
+    (candidate) => candidate.exerciseName === exerciseName
+  );
+  if (!exercise || exercise.section !== "accessory") {
+    return false;
+  }
+
+  const lowerName = exerciseName.toLowerCase();
+  const excludedMuscles = new Set(["Chest", "Triceps", "Side Delts"]);
+  const largerPatternTokens = [
+    "press",
+    "row",
+    "pulldown",
+    "lateral raise",
+    "pushdown",
+    "squat",
+    "deadlift",
+    "calf",
+    "curl",
+    "extension",
+  ];
+
+  return (
+    !excludedMuscles.has(input.diagnostic.muscle) &&
+    (lowerName.includes("rear delt") || lowerName.includes("fly")) &&
+    !largerPatternTokens.some(
+      (token) => lowerName.includes(token) && !lowerName.includes("fly")
+    )
+  );
+}
+
+function buildPreSessionAvoidList(input: {
+  diagnostics: NonNullable<ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]>;
+  sessionRisks: NonNullable<ProjectedWeekVolumeAuditPayload["sessionRisks"]>;
+}): string[] {
+  const avoid = new Set<string>();
+
+  if (
+    input.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.muscle === "Chest" &&
+        diagnostic.recommendedAction.setDelta > 0
+    )
+  ) {
+    avoid.add("extra pressing");
+  }
+  if (
+    input.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.muscle === "Triceps" &&
+        diagnostic.recommendedAction.setDelta > 0
+    )
+  ) {
+    avoid.add("chest/triceps top-up");
+  }
+  if (
+    input.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.muscle === "Side Delts" &&
+        diagnostic.recommendedAction.setDelta > 0
+    )
+  ) {
+    avoid.add("extra lateral raise");
+  }
+
+  for (const diagnostic of input.diagnostics) {
+    if (
+      diagnostic.targetStatus === "slightly_high" ||
+      diagnostic.targetStatus === "meaningfully_high" ||
+      diagnostic.fatigueDensityConcern.level === "meaningful" ||
+      diagnostic.fatigueDensityConcern.level === "high"
+    ) {
+      avoid.add(`extra ${diagnostic.muscle}`);
+    }
+  }
+  for (const risk of input.sessionRisks) {
+    avoid.add(`${risk.slotId}: ${risk.issue}`);
+  }
+
+  return Array.from(avoid);
+}
+
+function buildSafeToTrain(input: {
+  artifact: Pick<
+    WorkoutAuditArtifact,
+    | "generation"
+    | "nextSession"
+    | "sessionSnapshot"
+    | "warningSummary"
+    | "preSessionReadiness"
+    | "projectedWeekVolume"
+  >;
+}): { safe: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  if (input.artifact.warningSummary.counts.blockingErrors > 0) {
+    reasons.push("blocking audit errors are present");
+  }
+  if (input.artifact.generation && "error" in input.artifact.generation) {
+    reasons.push(`generation failed: ${input.artifact.generation.error}`);
+  }
+  if (!input.artifact.sessionSnapshot?.generated && !input.artifact.generation) {
+    reasons.push("missing generated session preview");
+  }
+  if (input.artifact.nextSession?.source === "existing_incomplete") {
+    reasons.push(
+      `incomplete workout blocker: ${input.artifact.nextSession.existingWorkoutId ?? "unknown"} (${input.artifact.nextSession.selectedIncompleteStatus ?? "unknown"})`
+    );
+  }
+  if (
+    input.artifact.preSessionReadiness?.activeMesocycle
+      .mesocycleIdMatchesRequest === false
+  ) {
+    reasons.push("requested mesocycle id does not match the active mesocycle");
+  }
+  if (!input.artifact.projectedWeekVolume) {
+    reasons.push("missing current-week projection and dose guidance");
+  }
+
+  return {
+    safe: reasons.length === 0,
+    reasons: reasons.length > 0 ? reasons : ["no blocking audit, state, or generation blockers detected"],
+  };
+}
+
 type PlanningRealityDiagnostic = NonNullable<
   NonNullable<WorkoutAuditArtifact["mesocycleExplain"]>["preview"]["projectionDiagnostics"]["planningReality"]
 >;
@@ -333,7 +560,7 @@ export function buildWorkoutAuditHelpText(): string {
     "Options:",
     "  -h, --help                         Print this help and exit without preflight, DB access, audit execution, or artifact writes.",
     "  --env-file <path>                  Load environment variables from a specific file.",
-    "  --mode <mode>                      Audit mode: future-week, projected-week-volume, current-week-audit, historical-week, weekly-retro, mesocycle-explain, deload, progression-anchor, active-mesocycle-slot-reseed, replace-empty-mesocycle-with-v2, v2-accepted-seed-prepare-compare.",
+    "  --mode <mode>                      Audit mode: future-week, pre-session-readiness, projected-week-volume, current-week-audit, historical-week, weekly-retro, mesocycle-explain, deload, progression-anchor, active-mesocycle-slot-reseed, replace-empty-mesocycle-with-v2, v2-accepted-seed-prepare-compare.",
     "  --owner <email>                    Resolve the audit owner by email.",
     "  --user-id <id>                     Resolve the audit owner by user id.",
     "  --intent <intent>                  Session intent for generated-session modes.",
@@ -2649,6 +2876,173 @@ export function buildCurrentWeekAuditOperatorSummary(input: {
   ];
 }
 
+export function buildPreSessionReadinessSummary(input: {
+  artifact: Pick<
+    WorkoutAuditArtifact,
+    | "identity"
+    | "request"
+    | "nextSession"
+    | "generation"
+    | "sessionSnapshot"
+    | "generationPath"
+    | "generationProvenance"
+    | "projectedWeekVolume"
+    | "weeklyRetro"
+    | "warningSummary"
+    | "preSessionReadiness"
+  >;
+  operatorDebug?: boolean;
+}): string[] | null {
+  const payload = input.artifact.preSessionReadiness;
+  if (!payload) {
+    return null;
+  }
+
+  const projectedWeek = input.artifact.projectedWeekVolume;
+  const generated = input.artifact.sessionSnapshot?.generated;
+  const nextProjectedSession = projectedWeek?.projectedSessions.find(
+    (session) => session.isNext
+  ) ?? projectedWeek?.projectedSessions[0];
+  const receiptProvenance = input.artifact.generationProvenance?.receiptProvenance;
+  const seed = input.artifact.generationProvenance?.seed?.provenanceConsistency;
+  const active = payload.activeMesocycle;
+  const nextSession = input.artifact.nextSession;
+  const doseDiagnostics = selectPreSessionDoseDiagnostics({
+    diagnostics: projectedWeek?.runtimeDoseAdjustmentDiagnostics ?? [],
+    nextSession: nextProjectedSession,
+    operatorDebug: input.operatorDebug === true,
+  });
+  const safeToTrain = buildSafeToTrain({ artifact: input.artifact });
+  const exercises = [...(generated?.exercises ?? [])].sort(
+    (left, right) => left.orderIndex - right.orderIndex
+  );
+  const lines = [
+    "Pre-Session Readiness",
+    "---------------------",
+    `Current app state: owner=${input.artifact.identity.ownerEmail ?? input.artifact.identity.userId} active_mesocycle=${active.mesocycleId ?? "unknown"} state=${active.state ?? "unknown"} completed_accumulation_sessions=${formatAuditValue(active.completedAccumulationSessions)} current_week=${formatAuditValue(active.currentWeek)} current_session=${formatAuditValue(active.currentSession)} next_slot=${nextSession?.slotId ?? "unknown"} incomplete_workout_blocker=${nextSession?.source === "existing_incomplete" ? `${nextSession.existingWorkoutId ?? "unknown"} (${nextSession.selectedIncompleteStatus ?? "unknown"})` : "none"}`,
+    `Generation: path=${input.artifact.generationPath?.executionMode ?? "unknown"} generator=${input.artifact.generationPath?.generator ?? "unknown"} composition_source=${receiptProvenance?.compositionSource ?? "unknown"} receipt_mesocycle=${receiptProvenance?.mesocycleId ?? "unknown"} seed_source=${seed?.seed.source ?? "unknown"} seed_shape=${seed?.seed.executableShape ?? "unknown"} seed_or_slot_hash=not_available`,
+    `Seed order/set counts respected: ${
+      receiptProvenance?.compositionSource === "persisted_slot_plan_seed"
+        ? "yes, generated preview is from persisted seed replay"
+        : "unknown, composition source is not persisted seed replay"
+    }`,
+    "",
+    "Generated Preview",
+    "Order | Exercise | Sets | Load | Rep target/range | RPE",
+  ];
+
+  if (input.artifact.generation && "error" in input.artifact.generation) {
+    lines.push(`generation_error | ${input.artifact.generation.error}`);
+  } else if (exercises.length === 0) {
+    lines.push("none | no generated exercises available | n/a | n/a | n/a | n/a");
+  } else {
+    for (const exercise of exercises) {
+      const firstSet = exercise.prescribedSets[0];
+      lines.push(
+        `${exercise.orderIndex + 1} | ${exercise.exerciseName} | ${exercise.prescribedSetCount} | ${formatAuditDecimal(firstSet?.targetLoad)} | ${formatRepTarget(firstSet)} | ${formatAuditDecimal(firstSet?.targetRpe)}`
+      );
+    }
+  }
+
+  lines.push("", "Prescription Confidence / Cautions");
+  if (exercises.length === 0) {
+    lines.push("none");
+  } else {
+    for (const exercise of exercises) {
+      const trace = generated?.traces.progression[exercise.exerciseId];
+      const firstSet = exercise.prescribedSets[0];
+      const action = trace?.outcome.action ?? "hold";
+      const caution =
+        trace?.confidence.reasons.length
+          ? trace.confidence.reasons.slice(0, 2).join(",")
+          : "standard";
+      const executionNote =
+        typeof firstSet?.targetRpe === "number"
+          ? `cap around RPE ${formatAuditDecimal(firstSet.targetRpe)}`
+          : "use prescribed effort target";
+      lines.push(
+        `${exercise.exerciseName}: load=${formatAuditDecimal(firstSet?.targetLoad)} action=${action} confidence=${formatAuditDecimal(trace?.confidence.combinedScale)} caution=${caution} note=${executionNote}`
+      );
+    }
+  }
+
+  lines.push("", "Current-Week Dose Guidance");
+  lines.push("Muscle | projected vs MEV/target/MAV | status | recommended action | confidence");
+  if (doseDiagnostics.length === 0) {
+    lines.push("none | no relevant dose diagnostics | n/a | hold seed | n/a");
+  } else {
+    for (const diagnostic of doseDiagnostics) {
+      lines.push(
+        `${diagnostic.muscle} | ${formatDoseStatus(diagnostic)} | ${diagnostic.targetStatus} | ${formatDoseAction(diagnostic.recommendedAction)} | ${formatAuditDecimal(diagnostic.confidence)}`
+      );
+    }
+  }
+
+  const retro = input.artifact.weeklyRetro;
+  const fatigueRows = [
+    ...(retro?.volumeTargeting.overMav ?? []).map((muscle) => `${muscle}: over MAV`),
+    ...(retro?.volumeTargeting.overTargetOnly ?? []).map(
+      (muscle) => `${muscle}: over target`
+    ),
+    ...(projectedWeek?.currentWeekAudit?.fatigueRisks ?? []),
+  ];
+  lines.push("", "Prior-Week / Fatigue Context");
+  lines.push(
+    retro
+      ? `prior_week=${retro.week} planned_completed=${retro.planAdherence.plannedWorkCompletedSets}/${retro.planAdherence.plannedWorkTotalSets} performed_planned_sets missed=${retro.planAdherence.plannedWorkMissedSets} added_sets=${formatSignedSetDelta(retro.planAdherence.explainedAdditions.totalSets)} confidence_impact=${retro.planAdherence.engineConfidenceImpact}`
+      : "prior_week=not_available"
+  );
+  lines.push(
+    `fatigue_notes=${fatigueRows.length > 0 ? fatigueRows.slice(0, 6).join("; ") : "none"}`
+  );
+  lines.push(
+    `recovery_caveats=${doseDiagnostics
+      .filter((diagnostic) => diagnostic.recoveryReadinessCaveat.status !== "none")
+      .map(
+        (diagnostic) =>
+          `${diagnostic.muscle}:${diagnostic.recoveryReadinessCaveat.status}`
+      )
+      .join("; ") || "none"}`
+  );
+
+  const addOns = doseDiagnostics.filter((diagnostic) =>
+    isLowRiskSessionLocalAddon({ diagnostic, exercises })
+  );
+  const avoid = buildPreSessionAvoidList({
+    diagnostics: doseDiagnostics,
+    sessionRisks: projectedWeek?.sessionRisks ?? [],
+  });
+
+  lines.push("", "Session-Local Add-On Recommendation");
+  lines.push("Run seed as-is.");
+  lines.push("Optional add-ons:");
+  if (addOns.length === 0) {
+    lines.push("- none");
+  } else {
+    for (const diagnostic of addOns.slice(0, 4)) {
+      lines.push(
+        `- +1 ${diagnostic.recommendedAction.exerciseName ?? diagnostic.muscle} if readiness is good (${diagnostic.muscle}, ${diagnostic.reasonCode})`
+      );
+    }
+  }
+  lines.push("Avoid:");
+  if (avoid.length === 0) {
+    lines.push("- no extra work beyond session-local readiness judgment");
+  } else {
+    for (const item of Array.from(new Set(avoid)).slice(0, 6)) {
+      lines.push(`- ${item}`);
+    }
+  }
+  lines.push(
+    "Boundary: recommendations only; no workout/session/log/seed/progression mutation."
+  );
+
+  lines.push("", `Safe to train: ${safeToTrain.safe ? "yes" : "no"}`);
+  lines.push(`Reason: ${safeToTrain.reasons.join("; ")}`);
+
+  return lines;
+}
+
 export function buildWeeklyRetroOperatorSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "weeklyRetro">;
 }): string[] | null {
@@ -2975,11 +3369,20 @@ export async function main(input?: {
   console.log(
     `[workout-audit] mode=${context.mode} diagnostics=${context.plannerDiagnosticsMode} ${summary}`
   );
+  const preSessionReadinessSummary = buildPreSessionReadinessSummary({
+    artifact,
+    operatorDebug: args["operator-debug"] === true,
+  });
+  if (preSessionReadinessSummary) {
+    for (const line of preSessionReadinessSummary) {
+      console.log(line);
+    }
+  }
   const projectedWeekSummary = buildProjectedWeekOperatorSummary({
     artifact,
     outputPath: outputPathForSummary,
   });
-  if (projectedWeekSummary) {
+  if (projectedWeekSummary && !preSessionReadinessSummary) {
     for (const line of projectedWeekSummary) {
       console.log(line);
     }
@@ -2987,7 +3390,7 @@ export async function main(input?: {
   const currentWeekAuditSummary = buildCurrentWeekAuditOperatorSummary({
     artifact,
   });
-  if (currentWeekAuditSummary) {
+  if (currentWeekAuditSummary && !preSessionReadinessSummary) {
     for (const line of currentWeekAuditSummary) {
       console.log(line);
     }
@@ -2995,7 +3398,7 @@ export async function main(input?: {
   const weeklyRetroSummary = buildWeeklyRetroOperatorSummary({
     artifact,
   });
-  if (weeklyRetroSummary) {
+  if (weeklyRetroSummary && !preSessionReadinessSummary) {
     for (const line of weeklyRetroSummary) {
       console.log(line);
     }
@@ -3136,7 +3539,7 @@ export async function main(input?: {
       console.log(line);
     }
   }
-  if (args["operator-debug"] === true) {
+  if (args["operator-debug"] === true && !preSessionReadinessSummary) {
     const projectedWeekDebugSummary = buildProjectedWeekDebugSummary({
       artifact,
     });

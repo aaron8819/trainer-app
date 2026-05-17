@@ -3,6 +3,7 @@ import type { WorkoutAuditContext } from "./types";
 
 const mocks = vi.hoisted(() => {
   const loadActiveMesocycle = vi.fn();
+  const deriveCurrentMesocycleSession = vi.fn();
   const loadProjectedWeekVolumeReport = vi.fn();
   const generateSessionFromIntent = vi.fn();
   const generateDeloadSessionFromIntent = vi.fn();
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => {
   const buildMesocycleExplainAuditPayload = vi.fn();
   return {
     loadActiveMesocycle,
+    deriveCurrentMesocycleSession,
     loadProjectedWeekVolumeReport,
     generateSessionFromIntent,
     generateDeloadSessionFromIntent,
@@ -24,6 +26,8 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
   loadActiveMesocycle: (...args: unknown[]) => mocks.loadActiveMesocycle(...args),
+  deriveCurrentMesocycleSession: (...args: unknown[]) =>
+    mocks.deriveCurrentMesocycleSession(...args),
 }));
 
 vi.mock("@/lib/api/projected-week-volume", () => ({
@@ -87,6 +91,7 @@ describe("runWorkoutAuditGeneration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.loadActiveMesocycle.mockResolvedValue({ state: "ACTIVE_ACCUMULATION" });
+    mocks.deriveCurrentMesocycleSession.mockReturnValue({ week: 4, session: 1 });
     mocks.loadProjectedWeekVolumeReport.mockResolvedValue({
       currentWeek: {
         mesocycleId: "meso-1",
@@ -613,6 +618,156 @@ describe("runWorkoutAuditGeneration", () => {
             Boolean(diagnostic.recommendedAction.exerciseName)
         )
     ).toBe(true);
+  });
+
+  it("builds pre-session-readiness from existing generation and dose readout paths without write helpers", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 12,
+      slotPlanSeedJson: {
+        version: 1,
+        source: "handoff_slot_plan_projection",
+        slots: [
+          {
+            slotId: "upper_a",
+            exercises: [
+              { exerciseId: "incline", role: "CORE_COMPOUND", setCount: 4 },
+            ],
+          },
+        ],
+      },
+    });
+    mocks.loadProjectedWeekVolumeReport.mockResolvedValueOnce({
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 4,
+        phase: "accumulation",
+        blockType: "accumulation",
+      },
+      projectionNotes: [],
+      completedVolumeByMuscle: {},
+      projectedSessions: [
+        {
+          slotId: "upper_a",
+          intent: "upper",
+          isNext: true,
+          exerciseCount: 1,
+          totalSets: 4,
+          exercises: [
+            {
+              exerciseId: "incline",
+              name: "Incline Machine Press",
+              setCount: 4,
+              role: "primary",
+              effectiveStimulusByMuscle: { Chest: 4 },
+            },
+          ],
+          projectedContributionByMuscle: { Chest: 4 },
+        },
+      ],
+      fullWeekByMuscle: [
+        {
+          muscle: "Chest",
+          completedEffectiveSets: 4,
+          projectedNextSessionEffectiveSets: 4,
+          projectedRemainingWeekEffectiveSets: 0,
+          projectedFullWeekEffectiveSets: 8,
+          weeklyTarget: 10,
+          mev: 8,
+          mav: 16,
+          deltaToTarget: -2,
+          deltaToMev: 0,
+          deltaToMav: -8,
+        },
+      ],
+    });
+    mocks.generateSessionFromIntent.mockResolvedValueOnce({
+      ...okGenerationResult,
+      selection: {
+        ...okGenerationResult.selection,
+        sessionDecisionReceipt: {
+          sessionProvenance: {
+            mesocycleId: "meso-1",
+            compositionSource: "persisted_slot_plan_seed",
+          },
+        },
+      },
+    });
+    const context: WorkoutAuditContext = {
+      mode: "pre-session-readiness",
+      requestedMode: "pre-session-readiness",
+      userId: "user-1",
+      ownerEmail: "owner@test.local",
+      plannerDiagnosticsMode: "debug",
+      generationInput: { intent: "upper" },
+      nextSession: {
+        intent: "upper",
+        slotId: "upper_a",
+        slotSequenceIndex: 0,
+        slotSequenceLength: 4,
+        slotSource: "mesocycle_slot_sequence",
+        existingWorkoutId: null,
+        isExisting: false,
+        source: "rotation",
+        weekInMeso: 4,
+        sessionInWeek: 1,
+        derivationTrace: [],
+        selectedIncompleteStatus: null,
+      },
+      projectedWeekVolume: { enabled: true },
+      preSessionReadiness: {
+        enabled: true,
+        requestedMesocycleId: "meso-1",
+      },
+    };
+
+    const run = await runWorkoutAuditGeneration(context);
+
+    expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith("user-1", {
+      intent: "upper",
+      targetMuscles: undefined,
+      advancingSlot: {
+        slotId: "upper_a",
+        intent: "upper",
+        sequenceIndex: 0,
+        sequenceLength: 4,
+        source: "mesocycle_slot_sequence",
+      },
+      plannerDiagnosticsMode: "debug",
+    });
+    expect(mocks.loadProjectedWeekVolumeReport).toHaveBeenCalledWith({
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+    });
+    expect(mocks.buildWeeklyRetroAuditPayload).toHaveBeenCalledWith({
+      userId: "user-1",
+      ownerEmail: "owner@test.local",
+      week: 3,
+      mesocycleId: "meso-1",
+      projectionArtifactPath: undefined,
+    });
+    expect(mocks.generateDeloadSessionFromIntent).not.toHaveBeenCalled();
+    expect(run.preSessionReadiness).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      wouldWriteTransaction: false,
+      activeMesocycle: {
+        mesocycleId: "meso-1",
+        state: "ACTIVE_ACCUMULATION",
+        completedAccumulationSessions: 12,
+        currentWeek: 4,
+        currentSession: 1,
+        requestedMesocycleId: "meso-1",
+        mesocycleIdMatchesRequest: true,
+      },
+    });
+    expect(run.projectedWeekVolume?.runtimeDoseAdjustmentDiagnostics?.[0]).toMatchObject({
+      muscle: "Chest",
+      readOnly: true,
+      affectsAcceptedSeed: false,
+    });
   });
 
   it("routes weekly-retro through the composed audit builder without touching generation helpers", async () => {

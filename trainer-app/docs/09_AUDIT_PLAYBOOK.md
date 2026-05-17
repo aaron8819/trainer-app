@@ -202,6 +202,51 @@ Escalate when:
 - the artifact does not explain a meaningful session exclusion or forced deload path
 - warnings suggest structural planner issues rather than isolated library noise
 
+### `pre-session-readiness`
+
+When to use it:
+- strict read-only pre-training check for the next active-mesocycle session
+- one-command replacement for manually combining `future-week`, `current-week-audit`, generated exercise/load probes, and prior-week fatigue context
+- active mesocycle checks where stdout is enough and local artifact writes are undesired
+
+Primary questions it answers:
+- what the next generated session prescribes, including exercise order, set count, load, rep target/range, and RPE
+- whether the current app state has blockers such as an incomplete workout or mesocycle-id mismatch
+- which relevant current-week dose rows suggest holding the seed, optional session-local add-ons, or caution
+- what recent prior-week/fatigue context should limit add-ons
+- whether the operator should treat the session as safe to train
+
+Command pattern:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode pre-session-readiness --owner <owner-email> --mesocycle-id <active-mesocycle-id> --no-artifact --operator-debug
+```
+
+Inspect first:
+- `Pre-Session Readiness`
+- `Generated Preview`
+- `Current-Week Dose Guidance`
+- `Session-Local Add-On Recommendation`
+- `Safe to train`
+
+Important interpretation rule:
+- this mode composes existing read-only generation, projected-week, current-week dose guidance, and prior-week retrospective readouts
+- recommendations are session-local operator guidance only
+- it does not mutate `slotPlanSeedJson`, runtime replay, receipts, progression anchors, workouts, logs, sessions, analytics semantics, planner/materializer policy, or DB state
+- `--no-artifact` keeps the check stdout-only; without it, the normal audit artifact behavior still applies
+
+Common red flags:
+- `Safe to train: no`
+- incomplete workout blocker is present
+- requested mesocycle id does not match the active mesocycle
+- generated preview is missing or generation failed
+- dose guidance suggests add-ons for muscles already high or fatigue-dense
+
+Escalate when:
+- the generated preview contradicts the expected active slot
+- safe-to-train is blocked by audit inconsistency rather than an expected incomplete workout
+- the one-command readout lacks a signal needed for the operator decision; add that signal to the read-only audit seam before changing generation behavior
+
 ### `projected-week-volume`
 
 When to use it:
@@ -777,6 +822,12 @@ Upcoming-session preview without artifact writes:
 
 ```powershell
 npm run audit:workout -- --env-file .env.local --mode future-week --owner <owner-email> --no-artifact
+```
+
+One-command pre-session readiness without artifact writes:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode pre-session-readiness --owner <owner-email> --mesocycle-id <active-mesocycle-id> --no-artifact --operator-debug
 ```
 
 Current-week dose guidance without artifact writes:

@@ -129,6 +129,10 @@ export type WorkoutAuditContext = {
   projectedWeekVolume?: {
     enabled: true;
   };
+  preSessionReadiness?: {
+    enabled: true;
+    requestedMesocycleId?: string;
+  };
   activeMesocycleSlotReseed?: {
     enabled: true;
   };
@@ -553,6 +557,22 @@ export type ProjectedWeekVolumeAuditPayload = {
   interventionHints?: CurrentWeekAuditInterventionHint[];
   sessionRisks?: CurrentWeekAuditSessionRisk[];
   runtimeDoseAdjustmentDiagnostics?: RuntimeDoseAdjustmentDiagnostic[];
+};
+
+export type PreSessionReadinessAuditPayload = {
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByProduction: false;
+  wouldWriteTransaction: false;
+  activeMesocycle: {
+    mesocycleId: string | null;
+    state: string | null;
+    completedAccumulationSessions: number | null;
+    currentWeek: number | null;
+    currentSession: number | null;
+    requestedMesocycleId?: string;
+    mesocycleIdMatchesRequest?: boolean;
+  };
 };
 
 export type CurrentWeekAuditEvaluation = {
@@ -1907,6 +1927,7 @@ export type WorkoutAuditRun = {
   historicalWeek?: HistoricalWeekAuditPayload;
   weeklyRetro?: WeeklyRetroAuditPayload;
   projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;
+  preSessionReadiness?: PreSessionReadinessAuditPayload;
   activeMesocycleSlotReseed?: ActiveMesocycleSlotReseedAuditPayload;
   replaceEmptyMesocycleWithV2?: ReplaceEmptyMesocycleWithV2AuditPayload;
   v2AcceptedSeedPrepareCompare?: V2AcceptedSeedPrepareCompareAuditPayload;
@@ -1935,6 +1956,7 @@ export type WorkoutAuditArtifact = {
   historicalWeek?: HistoricalWeekAuditPayload;
   weeklyRetro?: WeeklyRetroAuditPayload;
   projectedWeekVolume?: ProjectedWeekVolumeAuditPayload;
+  preSessionReadiness?: PreSessionReadinessAuditPayload;
   activeMesocycleSlotReseed?: ActiveMesocycleSlotReseedAuditPayload;
   replaceEmptyMesocycleWithV2?: ReplaceEmptyMesocycleWithV2AuditPayload;
   v2AcceptedSeedPrepareCompare?: V2AcceptedSeedPrepareCompareAuditPayload;

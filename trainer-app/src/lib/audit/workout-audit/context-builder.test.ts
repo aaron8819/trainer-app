@@ -99,6 +99,49 @@ describe("buildWorkoutAuditContext", () => {
     expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
   });
 
+  it("builds pre-session-readiness context from next-session plus current-week readout inputs", async () => {
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      intent: "upper",
+      slotId: "upper_a",
+      slotSequenceIndex: 0,
+      slotSequenceLength: 4,
+      slotSource: "mesocycle_slot_sequence",
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation",
+      weekInMeso: 4,
+      sessionInWeek: 1,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+    });
+
+    const context = await buildWorkoutAuditContext({
+      mode: "pre-session-readiness",
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      plannerDiagnosticsMode: "debug",
+    });
+
+    expect(context).toMatchObject({
+      mode: "pre-session-readiness",
+      requestedMode: "pre-session-readiness",
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+      generationInput: {
+        intent: "upper",
+        source: "derived-next-session",
+      },
+      projectedWeekVolume: {
+        enabled: true,
+      },
+      preSessionReadiness: {
+        enabled: true,
+        requestedMesocycleId: "meso-1",
+      },
+    });
+    expect(mocks.loadNextWorkoutContext).toHaveBeenCalledWith("user-1");
+  });
+
   it("builds weekly-retro context from explicit week and mesocycle inputs without loading next-session", async () => {
     const context = await buildWorkoutAuditContext({
       mode: "weekly-retro",

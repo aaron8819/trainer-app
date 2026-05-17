@@ -38,6 +38,9 @@ export type RuntimeEditInterpretationInput = {
   runtimeEditReconciliation?: RuntimeEditReconciliation;
   exerciseContexts?: Iterable<RuntimeEditExerciseContext>;
   targetContext?: RuntimeEditTargetContext[];
+  weeklyOpportunity?: {
+    isFinalAdvancingSession: boolean;
+  };
   legacyReconciliation?: SessionAuditMutationSummary;
   explicitSignals?: ExplicitRuntimeEditSignal[];
 };
@@ -203,6 +206,31 @@ function findTargetGapEvidence(input: {
   return evidence;
 }
 
+function findFinalMevClosureEvidence(input: {
+  muscles: string[];
+  targetMap: Map<string, RuntimeEditTargetContext>;
+  contributionByMuscle: Map<string, number>;
+}): string[] {
+  const evidence: string[] = [];
+  for (const muscle of input.muscles) {
+    const target = input.targetMap.get(muscle);
+    if (!target || target.mev <= 0) {
+      continue;
+    }
+    const contribution = input.contributionByMuscle.get(muscle) ?? 0;
+    if (contribution <= 0) {
+      continue;
+    }
+    const inferredBefore = target.actualEffectiveSets - contribution;
+    if (inferredBefore < target.mev && target.actualEffectiveSets >= target.mev) {
+      evidence.push(
+        `${muscle}: inferred_before=${roundToTenth(inferredBefore)} mev=${roundToTenth(target.mev)} final=${roundToTenth(target.actualEffectiveSets)} contribution=${roundToTenth(contribution)}`
+      );
+    }
+  }
+  return evidence;
+}
+
 function buildContributionByMuscle(input: {
   exerciseId: string | undefined;
   exerciseMap: Map<string, RuntimeEditExerciseContext>;
@@ -241,12 +269,56 @@ function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+function isLikelyLowFatigueTopUp(context: RuntimeEditExerciseContext | undefined): boolean {
+  if (!context) {
+    return false;
+  }
+
+  const text = [context.exerciseName, ...(context.aliases ?? [])]
+    .filter((value): value is string => Boolean(value))
+    .join(" ")
+    .toLowerCase();
+  const highFatiguePatterns = [
+    "deadlift",
+    "squat",
+    "split squat",
+    "lunge",
+    "bench",
+    "row",
+    "pulldown",
+    "pull-up",
+    "chin-up",
+    "leg press",
+    "shoulder press",
+    "overhead press",
+  ];
+  if (highFatiguePatterns.some((pattern) => text.includes(pattern))) {
+    return false;
+  }
+
+  const isolationPatterns = [
+    "curl",
+    "extension",
+    "raise",
+    "fly",
+    "pec deck",
+    "pushdown",
+    "pressdown",
+    "calf",
+    "leg curl",
+    "face pull",
+  ];
+  return isolationPatterns.some((pattern) => text.includes(pattern));
+}
+
 function classifyPositiveAddition(input: {
   operation: RuntimeEditOperation;
   setDelta: number;
   muscles: string[];
+  exerciseContext: RuntimeEditExerciseContext | undefined;
   targetMap: Map<string, RuntimeEditTargetContext>;
   contributionByMuscle: Map<string, number>;
+  weeklyOpportunity?: RuntimeEditInterpretationInput["weeklyOpportunity"];
   hasConflictingStructuralSignal: boolean;
 }): {
   intent: RuntimeEditIntent;
@@ -270,9 +342,32 @@ function classifyPositiveAddition(input: {
     targetMap: input.targetMap,
     contributionByMuscle: input.contributionByMuscle,
   });
+  const finalMevClosureEvidence = findFinalMevClosureEvidence({
+    muscles: input.muscles,
+    targetMap: input.targetMap,
+    contributionByMuscle: input.contributionByMuscle,
+  });
 
   const meetsSetThreshold =
     input.operation.kind === "add_set" || input.setDelta >= 2;
+  if (
+    input.weeklyOpportunity?.isFinalAdvancingSession === true &&
+    finalMevClosureEvidence.length > 0 &&
+    meetsSetThreshold &&
+    isLikelyLowFatigueTopUp(input.exerciseContext) &&
+    !input.hasConflictingStructuralSignal
+  ) {
+    return {
+      intent: "final_weekly_opportunity_mev_closure",
+      confidence: "high",
+      evidence: [
+        "final advancing session top-up closed an inferred pre-session MEV floor",
+        "classification is read-only and does not mutate seed, replay, or weekly volume math",
+        ...finalMevClosureEvidence,
+      ],
+    };
+  }
+
   if (
     gapEvidence.length > 0 &&
     meetsSetThreshold &&
@@ -304,6 +399,7 @@ function interpretPersistedOperation(input: {
   operations: RuntimeEditOperation[];
   exerciseMap: Map<string, RuntimeEditExerciseContext>;
   targetMap: Map<string, RuntimeEditTargetContext>;
+  weeklyOpportunity?: RuntimeEditInterpretationInput["weeklyOpportunity"];
   explicitSignals: ExplicitRuntimeEditSignal[];
   hasConflictingStructuralSignal: boolean;
 }): RuntimeEditInterpretation {
@@ -366,8 +462,10 @@ function interpretPersistedOperation(input: {
       operation,
       setDelta,
       muscles,
+      exerciseContext: exerciseId ? input.exerciseMap.get(exerciseId) : undefined,
       targetMap: input.targetMap,
       contributionByMuscle,
+      weeklyOpportunity: input.weeklyOpportunity,
       hasConflictingStructuralSignal: input.hasConflictingStructuralSignal,
     });
 
@@ -557,6 +655,7 @@ export function interpretRuntimeEdits(
       operations: ops,
       exerciseMap,
       targetMap,
+      weeklyOpportunity: input.weeklyOpportunity,
       explicitSignals: input.explicitSignals ?? [],
       hasConflictingStructuralSignal,
     })

@@ -198,6 +198,115 @@ describe("buildPostWorkoutInsightsModel", () => {
     ]);
   });
 
+  it("ranks final-opportunity MEV closures above neutral readiness and in-range notes", () => {
+    const explanation = makeExplanation();
+    explanation.sessionContext.readinessStatus.adaptations = [
+      "Readiness normal; no adjustment needed.",
+    ];
+    explanation.volumeCompliance = [
+      {
+        muscle: "Calves",
+        performedEffectiveVolumeBeforeSession: 7,
+        plannedEffectiveVolumeThisSession: 1,
+        projectedEffectiveVolume: 8,
+        weeklyTarget: 12,
+        mev: 8,
+        mav: 16,
+        status: "APPROACHING_TARGET",
+      },
+      {
+        muscle: "Chest",
+        performedEffectiveVolumeBeforeSession: 8,
+        plannedEffectiveVolumeThisSession: 2,
+        projectedEffectiveVolume: 10,
+        weeklyTarget: 14,
+        mev: 10,
+        mav: 20,
+        status: "APPROACHING_TARGET",
+      },
+      {
+        muscle: "Triceps",
+        performedEffectiveVolumeBeforeSession: 5.6,
+        plannedEffectiveVolumeThisSession: 2,
+        projectedEffectiveVolume: 7.6,
+        weeklyTarget: 10,
+        mev: 6,
+        mav: 16,
+        status: "APPROACHING_TARGET",
+      },
+      {
+        muscle: "Adductors",
+        performedEffectiveVolumeBeforeSession: 8,
+        plannedEffectiveVolumeThisSession: 1,
+        projectedEffectiveVolume: 9,
+        weeklyTarget: 12,
+        mev: 6,
+        mav: 18,
+        status: "APPROACHING_TARGET",
+      },
+    ];
+
+    const model = buildPostWorkoutInsightsModel({
+      explanation,
+      exercises: [],
+    });
+
+    expect(model.programSignals).toHaveLength(3);
+    expect(model.programSignals[0]).toMatchObject({
+      label: "Chest",
+      tone: "positive",
+      value: expect.stringContaining("below MEV before this session"),
+    });
+    expect(model.programSignals[1]).toMatchObject({
+      label: "Triceps",
+      tone: "positive",
+      value: expect.stringContaining("below MEV before this session"),
+    });
+    expect(model.programSignals.map((signal) => signal.label)).not.toContain("Readiness");
+  });
+
+  it("keeps below-MEV-after-session and readiness warnings ahead of MEV closures", () => {
+    const explanation = makeExplanation();
+    explanation.sessionContext.readinessStatus.adaptations = [
+      "Readiness adaptation: keep the next block conservative.",
+    ];
+    explanation.volumeCompliance = [
+      {
+        muscle: "Lats",
+        performedEffectiveVolumeBeforeSession: 4,
+        plannedEffectiveVolumeThisSession: 1,
+        projectedEffectiveVolume: 5,
+        weeklyTarget: 12,
+        mev: 8,
+        mav: 18,
+        status: "UNDER_MEV",
+      },
+      {
+        muscle: "Chest",
+        performedEffectiveVolumeBeforeSession: 8,
+        plannedEffectiveVolumeThisSession: 2,
+        projectedEffectiveVolume: 10,
+        weeklyTarget: 14,
+        mev: 10,
+        mav: 20,
+        status: "APPROACHING_TARGET",
+      },
+    ];
+
+    const model = buildPostWorkoutInsightsModel({
+      explanation,
+      exercises: [],
+    });
+
+    expect(model.programSignals.map((signal) => signal.label)).toEqual([
+      "Readiness",
+      "Lats",
+      "Chest",
+    ]);
+    expect(model.programSignals[1]?.value).toContain("still below MEV");
+    expect(model.programSignals[2]?.value).toContain("below MEV before this session");
+  });
+
   it("does not frame target-quality downgrades as plain increases", () => {
     const explanation = makeExplanation();
     explanation.nextExposureDecisions = new Map([

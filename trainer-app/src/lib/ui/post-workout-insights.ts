@@ -230,6 +230,15 @@ function describeVolumeSignal(status: WeeklyMuscleStatus, muscle: string): strin
   }
 }
 
+function describeMevClosureSignal(input: {
+  muscle: string;
+  before: number;
+  after: number;
+  mev: number;
+}): string {
+  return `${input.muscle} was below MEV before this session (${input.before.toFixed(1)}/${input.mev.toFixed(1)}) and finished at/above MEV (${input.after.toFixed(1)}/${input.mev.toFixed(1)}).`;
+}
+
 function toneForVolumeStatus(status: WeeklyMuscleStatus): PostWorkoutInsightTone {
   if (status === "at_mrv" || status === "near_mrv" || status === "below_mev") {
     return "caution";
@@ -238,6 +247,18 @@ function toneForVolumeStatus(status: WeeklyMuscleStatus): PostWorkoutInsightTone
     return "positive";
   }
   return "neutral";
+}
+
+function isNeutralReadinessAdaptation(adaptation: string): boolean {
+  const normalized = adaptation.toLowerCase();
+  return (
+    normalized.includes("neutral") ||
+    normalized.includes("normal") ||
+    normalized.includes("no adaptation") ||
+    normalized.includes("no adjustment") ||
+    normalized.includes("no readiness") ||
+    normalized.includes("unchanged")
+  );
 }
 
 function buildDescriptiveProgramSignals(
@@ -256,40 +277,91 @@ function buildDescriptiveProgramSignals(
         mev: row.mev,
         mrv: landmarks.mrv,
       });
+      const mevClosure =
+        row.plannedEffectiveVolumeThisSession >= 1.5 &&
+        row.performedEffectiveVolumeBeforeSession > 0 &&
+        row.performedEffectiveVolumeBeforeSession < row.mev &&
+        row.projectedEffectiveVolume >= row.mev;
+      const priority =
+        status === "at_mrv" || status === "near_mrv"
+          ? 0
+          : status === "below_mev"
+            ? 1
+            : mevClosure
+              ? 2
+              : VOLUME_STATUS_PRIORITY[status] + 3;
 
       return {
         muscle: row.muscle,
         status,
+        priority,
+        value: mevClosure
+          ? describeMevClosureSignal({
+              muscle: row.muscle,
+              before: row.performedEffectiveVolumeBeforeSession,
+              after: row.projectedEffectiveVolume,
+              mev: row.mev,
+            })
+          : describeVolumeSignal(status, row.muscle),
+        tone: mevClosure ? "positive" : toneForVolumeStatus(status),
       };
     })
-    .filter((row): row is { muscle: string; status: WeeklyMuscleStatus } => row !== null)
+    .filter(
+      (
+        row
+      ): row is {
+        muscle: string;
+        status: WeeklyMuscleStatus;
+        priority: number;
+        value: string;
+        tone: PostWorkoutInsightTone;
+      } => row !== null
+    )
     .sort((left, right) => {
-      const priorityDiff = VOLUME_STATUS_PRIORITY[left.status] - VOLUME_STATUS_PRIORITY[right.status];
+      const priorityDiff = left.priority - right.priority;
       if (priorityDiff !== 0) {
         return priorityDiff;
       }
+      const statusDiff =
+        VOLUME_STATUS_PRIORITY[left.status] - VOLUME_STATUS_PRIORITY[right.status];
+      if (statusDiff !== 0) {
+        return statusDiff;
+      }
       return left.muscle.localeCompare(right.muscle);
     })
-    .slice(0, 3)
     .map((row) => ({
       label: row.muscle,
-      value: describeVolumeSignal(row.status, row.muscle),
-      tone: toneForVolumeStatus(row.status),
+      value: row.value,
+      tone: row.tone,
+      priority: row.priority,
     }));
 
   const readinessAdaptation = explanation.sessionContext.readinessStatus.adaptations[0];
+  const signals = volumeSignals.slice();
   if (readinessAdaptation) {
-    return [
-      {
-        label: "Readiness",
-        value: readinessAdaptation,
-        tone: "caution",
-      },
-      ...volumeSignals.slice(0, 2),
-    ];
+    const neutralReadiness = isNeutralReadinessAdaptation(readinessAdaptation);
+    signals.push({
+      label: "Readiness",
+      value: readinessAdaptation,
+      tone: neutralReadiness ? "neutral" : "caution",
+      priority: neutralReadiness ? 9 : 0,
+    });
   }
 
-  return volumeSignals;
+  return signals
+    .sort((left, right) => {
+      const priorityDiff = left.priority - right.priority;
+      if (priorityDiff !== 0) {
+        return priorityDiff;
+      }
+      return left.label.localeCompare(right.label);
+    })
+    .slice(0, 3)
+    .map((signal) => ({
+      label: signal.label,
+      value: signal.value,
+      tone: signal.tone,
+    }));
 }
 
 function buildDescriptiveKeyLiftInsights(

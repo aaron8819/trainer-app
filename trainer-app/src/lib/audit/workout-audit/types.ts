@@ -300,6 +300,7 @@ export type WeeklyRetroAuditVolumeRow = {
 };
 
 export type RuntimeEditIntent =
+  | "final_weekly_opportunity_mev_closure"
   | "target_gap_closure"
   | "user_preference"
   | "substitution"

@@ -12,9 +12,16 @@ export function getLoadProvenanceNote(input: {
   targetLoad: number | null | undefined;
   isBodyweightExercise: boolean;
   hasHistory: boolean;
+  isRuntimeAdded?: boolean;
 }): string {
-  const { targetLoad, isBodyweightExercise, hasHistory } = input;
+  const { targetLoad, isBodyweightExercise, hasHistory, isRuntimeAdded } = input;
   if (targetLoad != null) {
+    if (isRuntimeAdded) {
+      return hasHistory
+        ? "Added exercise. Load target came from recent performed history."
+        : "Added exercise. No recent performed history found; use the suggested load as a starting point and let RPE govern.";
+    }
+
     return hasHistory
       ? "Load target came from recent performed history."
       : "Load target follows the written plan because no recent performed history is available.";

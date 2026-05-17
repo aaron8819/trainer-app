@@ -530,7 +530,7 @@ describe("buildWeeklyRetroAuditPayload", () => {
     );
   });
 
-  it("separates explained runtime additions from missed planned work and mutation drift", async () => {
+  it("separates final-opportunity MEV closure additions from missed planned work and mutation drift", async () => {
     mocks.buildHistoricalWeekAuditPayload.mockResolvedValue({
       version: 1,
       week: 3,
@@ -603,7 +603,7 @@ describe("buildWeeklyRetroAuditPayload", () => {
             comparisonState: "comparable",
             hasDrift: true,
             changedFields: ["exercise_added"],
-            addedExerciseIds: ["cable-crunch"],
+            addedExerciseIds: ["pec-deck"],
             removedExerciseIds: [],
             exercisesWithSetCountChanges: [],
             exercisesWithPrescriptionChanges: [],
@@ -635,16 +635,16 @@ describe("buildWeeklyRetroAuditPayload", () => {
       },
     });
     mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({
-      Core: {
-        directSets: 3,
+      Chest: {
+        directSets: 10,
         indirectSets: 0,
-        effectiveSets: 5,
+        effectiveSets: 10,
         contributions: [
           {
-            exerciseId: "cable-crunch",
-            exerciseName: "Cable Crunch",
-            effectiveSets: 3,
-            performedSets: 3,
+            exerciseId: "pec-deck",
+            exerciseName: "Pec Deck Machine",
+            effectiveSets: 2,
+            performedSets: 2,
           },
         ],
       },
@@ -669,11 +669,11 @@ describe("buildWeeklyRetroAuditPayload", () => {
                 appliedAt: "2026-03-15T12:00:00.000Z",
                 scope: "current_workout_only",
                 facts: {
-                  workoutExerciseId: "we-core",
-                  exerciseId: "cable-crunch",
+                  workoutExerciseId: "we-pec",
+                  exerciseId: "pec-deck",
                   orderIndex: 1,
                   section: "ACCESSORY",
-                  setCount: 3,
+                  setCount: 2,
                   prescriptionSource: "session_accessory_defaults",
                 },
               },
@@ -697,19 +697,19 @@ describe("buildWeeklyRetroAuditPayload", () => {
             },
           },
           {
-            exerciseId: "cable-crunch",
-            sets: [{ id: "core-set-1" }, { id: "core-set-2" }, { id: "core-set-3" }],
+            exerciseId: "pec-deck",
+            sets: [{ id: "pec-set-1" }, { id: "pec-set-2" }],
             exercise: {
-              name: "Cable Crunch",
+              name: "Pec Deck Machine",
               aliases: [],
-              exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Core" } }],
+              exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
             },
           },
         ],
       },
     ]);
     mocks.getWeeklyVolumeTarget.mockImplementation(
-      (_mesocycle: unknown, muscle: string) => (muscle === "Core" ? 8 : 0)
+      (_mesocycle: unknown, muscle: string) => (muscle === "Chest" ? 14 : 0)
     );
 
     const payload = await buildWeeklyRetroAuditPayload({
@@ -724,21 +724,21 @@ describe("buildWeeklyRetroAuditPayload", () => {
       plannedWorkTotalSets: 4,
       plannedWorkCompletedSets: 4,
       explainedAdditions: {
-        totalSets: 3,
+        totalSets: 2,
         byIntent: {
-          target_gap_closure: 3,
+          final_weekly_opportunity_mev_closure: 2,
         },
       },
       substitutions: 0,
       painFatigueDeviations: 0,
       unclassifiedDrift: 0,
-      engineConfidenceImpact: "low",
+      engineConfidenceImpact: "none",
     });
     expect(payload.planAdherence.interpretations[0]).toMatchObject({
-      intent: "target_gap_closure",
+      intent: "final_weekly_opportunity_mev_closure",
       confidence: "high",
-      setDelta: 3,
-      muscles: ["Core"],
+      setDelta: 2,
+      muscles: ["Chest"],
     });
     expect(payload.loadCalibration.status).toBe("aligned");
     expect(payload.rootCauses.map((entry) => entry.code)).not.toContain("mutation_drift");

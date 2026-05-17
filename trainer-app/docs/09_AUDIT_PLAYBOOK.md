@@ -897,7 +897,7 @@ Read these fields in this order unless the audit type says otherwise.
 - `comparisonState="missing_generated_snapshot"` means no real generated-vs-saved comparison was possible.
 - `hasDrift=true` means the saved workout diverged materially from the generated layer.
 - `changedFields` is the first field to read.
-- In `weekly-retro`, read `planAdherence.interpretations` before treating drift as engine instability. Runtime additions can be classified as `target_gap_closure`, `opportunistic_extra`, substitutions, pain/fatigue deviations, or unclassified drift without rewriting the original generated plan.
+- In `weekly-retro`, read `planAdherence.interpretations` before treating drift as engine instability. Runtime additions can be classified as `final_weekly_opportunity_mev_closure`, `target_gap_closure`, `opportunistic_extra`, substitutions, pain/fatigue deviations, or unclassified drift without rewriting the original generated plan.
 
 ### Deload trace provenance fields
 - Use these together:

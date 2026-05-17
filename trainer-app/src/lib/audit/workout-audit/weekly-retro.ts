@@ -508,6 +508,14 @@ function buildPlanAdherence(input: {
   const targetContext = buildTargetContext(input.volumeRows);
   const exerciseContexts = buildExerciseContexts(Array.from(input.workoutsById.values()));
   const interpretations: RuntimeEditInterpretation[] = [];
+  const finalAdvancingWorkoutId = input.sessions
+    .filter(
+      (session) =>
+        resolveSessionSemantics(session)?.consumesWeeklyScheduleIntent === true
+    )
+    .slice()
+    .sort((left, right) => left.scheduledDate.localeCompare(right.scheduledDate))
+    .at(-1)?.workoutId;
   let plannedWorkTotalSets = 0;
   let plannedWorkCompletedSets = 0;
 
@@ -521,12 +529,16 @@ function buildPlanAdherence(input: {
         runtimeEditReconciliation: readRuntimeEditReconciliation(workout?.selectionMetadata),
         exerciseContexts,
         targetContext,
+        weeklyOpportunity: {
+          isFinalAdvancingSession: session.workoutId === finalAdvancingWorkoutId,
+        },
         legacyReconciliation: session.reconciliation,
       })
     );
   }
 
   const explainedAdditionIntents = new Set<RuntimeEditIntent>([
+    "final_weekly_opportunity_mev_closure",
     "target_gap_closure",
     "opportunistic_extra",
     "user_preference",

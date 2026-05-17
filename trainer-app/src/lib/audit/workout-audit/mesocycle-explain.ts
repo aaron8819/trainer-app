@@ -9110,6 +9110,9 @@ function buildRuntimeDriftLabels(
   return Array.from(
     new Set(
       interpretations.map((interpretation) => {
+        if (interpretation.intent === "final_weekly_opportunity_mev_closure") {
+          return "runtime_addition_final_weekly_opportunity_mev_closure";
+        }
         if (interpretation.intent === "target_gap_closure") {
           return "runtime_addition_target_gap_closure";
         }

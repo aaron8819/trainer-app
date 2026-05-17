@@ -266,6 +266,7 @@ export default async function WorkoutDetailPage({
                     targetLoad,
                     isBodyweightExercise,
                     hasHistory: hasPerformedHistory(progressionReceipt),
+                    isRuntimeAdded: runtimeAddedExerciseIds.has(exercise.id),
                   });
 
                   const stressNote = hasHighSeverityInjury

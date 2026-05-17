@@ -35,4 +35,25 @@ describe("session-overview copy guards", () => {
       })
     ).toBe("Load target follows the written plan because no recent performed history is available.");
   });
+
+  it("does not describe runtime-added load targets as following the written plan", () => {
+    expect(
+      getLoadProvenanceNote({
+        targetLoad: 40,
+        isBodyweightExercise: false,
+        hasHistory: false,
+        isRuntimeAdded: true,
+      })
+    ).toBe(
+      "Added exercise. No recent performed history found; use the suggested load as a starting point and let RPE govern."
+    );
+    expect(
+      getLoadProvenanceNote({
+        targetLoad: 40,
+        isBodyweightExercise: false,
+        hasHistory: true,
+        isRuntimeAdded: true,
+      })
+    ).toBe("Added exercise. Load target came from recent performed history.");
+  });
 });

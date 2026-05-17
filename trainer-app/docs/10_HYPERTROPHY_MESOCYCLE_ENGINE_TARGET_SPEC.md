@@ -1,7 +1,7 @@
 # Hypertrophy Mesocycle Engine Strategy
 
 Owner: Aaron
-Last reviewed: 2026-05-14
+Last reviewed: 2026-05-17
 Purpose: Define the strategic direction for the V2 hypertrophy planner migration: V2 becomes the future plan author, accepted seed remains minimal executable truth, runtime replay remains stable, and performed reality informs future blocks without silently mutating the current one.
 
 This document is a strategy and migration map, not a claim about current runtime behavior. Current runtime truth remains the code, contract tests, and audit artifacts. The current mapping is grounded in the same live audit evidence previously used for this target doc plus the latest V2 factory-line, materializer, taxonomy, candidate-identity, and lane-selection-intent audit findings:
@@ -683,6 +683,30 @@ Examples:
 - side/rear delts low: add lateral or rear-delt isolation
 - avoid extra lower-back or hinge volume unless specifically needed and recoverable
 
+#### Final Weekly Opportunity MEV Closure
+
+When a target-tier muscle is below MEV and the current session is the final practical weekly opportunity, prefer a small low-fatigue isolation top-up that counts as session-local performed reality. Do not mutate accepted seed truth for this; preserve the distinction between weekly dose correction and mesocycle structure.
+
+This is execution-time coaching, not automatic plan mutation. If recovery, time, and session context allow, the app should prefer a small isolation top-up that closes the weekly floor with minimal systemic cost. Examples:
+
+- chest: prefer Pec Deck Machine or Cable Fly over extra heavy pressing for a small top-up
+- triceps: prefer Cable Triceps Pushdown over more pressing
+- hamstrings: prefer Seated Leg Curl over extra SLDL or other high-fatigue hinge volume
+- calves: prefer Calf Raise work before adding broader lower-body fatigue
+
+These top-ups are performed reality for the current workout. They do not mutate the accepted seed, change planner intent, imply automatic reseeding, or become future plan policy without later review and an explicit reseed/replacement path.
+
+Audits and readouts should distinguish generic `opportunistic_extra` from deliberate `final_weekly_opportunity_mev_closure` when the context is known. A final-session MEV-floor correction should not be labeled as random extra work just because it was runtime-added.
+
+Guardrails:
+
+- do not chase every remaining target deficit in the final session
+- MEV floor closure is more important than forcing target volume
+- avoid exceeding MAV
+- avoid high-fatigue additions when recovery is compromised
+- require user confirmation or explicit session-local action
+- do not automatically mutate the active mesocycle plan
+
 ### Data Quality Is Part Of Coaching
 
 Prescription quality depends on evidence quality. Runtime should not hide weak evidence behind precise-looking targets.
@@ -1236,6 +1260,7 @@ These are strategic decision gates, not claims that current production already p
 - wrong-lane swaps are blocked or clearly labeled as fallbacks
 - equivalent swaps are not suppressed by trivial fatigue/stress deltas without explanation
 - runtime dose guidance distinguishes target-volume deficit from fatigue-density concern
+- readouts distinguish generic `opportunistic_extra` from deliberate `final_weekly_opportunity_mev_closure`
 - add/reduce recommendations require actionable exercise candidates
 - add-on recommendations prefer low-fatigue movements that close real weekly gaps and avoid compromising the next slot
 - add-set and add-exercise behavior is bounded and session-local

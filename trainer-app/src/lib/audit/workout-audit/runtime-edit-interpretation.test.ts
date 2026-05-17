@@ -39,6 +39,18 @@ const exerciseContexts = [
     primaryMuscles: ["Upper Back", "Lats"],
     secondaryMuscles: ["Biceps"],
   },
+  {
+    exerciseId: "pec-deck",
+    exerciseName: "Pec Deck Machine",
+    primaryMuscles: ["Chest"],
+    secondaryMuscles: [],
+  },
+  {
+    exerciseId: "pushdown",
+    exerciseName: "Cable Triceps Pushdown",
+    primaryMuscles: ["Triceps"],
+    secondaryMuscles: [],
+  },
 ];
 
 describe("interpretRuntimeEdits", () => {
@@ -331,5 +343,145 @@ describe("interpretRuntimeEdits", () => {
     });
     expect(withoutSignal[0]?.intent).not.toBe("fatigue_adjustment");
     expect(withoutSignal[0]?.intent).not.toBe("pain_avoidance");
+  });
+
+  it("classifies final-session isolation additions that close MEV as final weekly opportunity closures", () => {
+    const interpretations = interpretRuntimeEdits({
+      runtimeEditReconciliation: reconciliation([
+        {
+          kind: "add_exercise",
+          source: "api_workouts_add_exercise",
+          appliedAt: "2026-04-01T12:00:00.000Z",
+          scope: "current_workout_only",
+          facts: {
+            workoutExerciseId: "we-pec",
+            exerciseId: "pec-deck",
+            orderIndex: 5,
+            section: "ACCESSORY",
+            setCount: 2,
+            prescriptionSource: "session_accessory_defaults",
+          },
+        },
+        {
+          kind: "add_exercise",
+          source: "api_workouts_add_exercise",
+          appliedAt: "2026-04-01T12:05:00.000Z",
+          scope: "current_workout_only",
+          facts: {
+            workoutExerciseId: "we-pushdown",
+            exerciseId: "pushdown",
+            orderIndex: 6,
+            section: "ACCESSORY",
+            setCount: 2,
+            prescriptionSource: "session_accessory_defaults",
+          },
+        },
+      ]),
+      exerciseContexts,
+      targetContext: [
+        {
+          muscle: "Chest",
+          actualEffectiveSets: 10,
+          weeklyTarget: 14,
+          mev: 10,
+        },
+        {
+          muscle: "Triceps",
+          actualEffectiveSets: 7.6,
+          weeklyTarget: 10,
+          mev: 6,
+        },
+      ],
+      weeklyOpportunity: {
+        isFinalAdvancingSession: true,
+      },
+    });
+
+    expect(interpretations).toEqual([
+      expect.objectContaining({
+        exerciseId: "pec-deck",
+        intent: "final_weekly_opportunity_mev_closure",
+        confidence: "high",
+        muscles: ["Chest"],
+      }),
+      expect.objectContaining({
+        exerciseId: "pushdown",
+        intent: "final_weekly_opportunity_mev_closure",
+        confidence: "high",
+        muscles: ["Triceps"],
+      }),
+    ]);
+  });
+
+  it("keeps above-MEV random extras and non-final additions out of final MEV closure", () => {
+    const randomExtra = interpretRuntimeEdits({
+      runtimeEditReconciliation: reconciliation([
+        {
+          kind: "add_exercise",
+          source: "api_workouts_add_exercise",
+          appliedAt: "2026-04-01T12:00:00.000Z",
+          scope: "current_workout_only",
+          facts: {
+            workoutExerciseId: "we-pushdown",
+            exerciseId: "pushdown",
+            orderIndex: 6,
+            section: "ACCESSORY",
+            setCount: 2,
+            prescriptionSource: "session_accessory_defaults",
+          },
+        },
+      ]),
+      exerciseContexts,
+      targetContext: [
+        {
+          muscle: "Triceps",
+          actualEffectiveSets: 12,
+          weeklyTarget: 10,
+          mev: 6,
+        },
+      ],
+      weeklyOpportunity: {
+        isFinalAdvancingSession: true,
+      },
+    });
+    const nonFinalTopUp = interpretRuntimeEdits({
+      runtimeEditReconciliation: reconciliation([
+        {
+          kind: "add_exercise",
+          source: "api_workouts_add_exercise",
+          appliedAt: "2026-04-01T12:00:00.000Z",
+          scope: "current_workout_only",
+          facts: {
+            workoutExerciseId: "we-pec",
+            exerciseId: "pec-deck",
+            orderIndex: 5,
+            section: "ACCESSORY",
+            setCount: 2,
+            prescriptionSource: "session_accessory_defaults",
+          },
+        },
+      ]),
+      exerciseContexts,
+      targetContext: [
+        {
+          muscle: "Chest",
+          actualEffectiveSets: 10,
+          weeklyTarget: 14,
+          mev: 10,
+        },
+      ],
+      weeklyOpportunity: {
+        isFinalAdvancingSession: false,
+      },
+    });
+
+    expect(randomExtra[0]).toMatchObject({
+      intent: "opportunistic_extra",
+      confidence: "medium",
+    });
+    expect(nonFinalTopUp[0]).toMatchObject({
+      intent: "target_gap_closure",
+      confidence: "high",
+    });
   });
 });

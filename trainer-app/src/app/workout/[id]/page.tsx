@@ -26,6 +26,7 @@ import {
 } from "@/lib/ui/session-identity";
 import { evaluateTargetReps } from "@/lib/session-semantics/target-evaluation";
 import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
+import { buildWorkoutExecutionSummary } from "@/lib/ui/workout-execution-summary";
 import { getWorkoutDetailTitle, getWorkoutWorkflowState } from "@/lib/workout-workflow";
 import { getCanonicalDeloadProgressionTriggerText } from "@/lib/deload/semantics";
 
@@ -203,6 +204,18 @@ export default async function WorkoutDetailPage({
       { label: "Accessories", items: accessory },
     ];
   })();
+  const executionSummary = buildWorkoutExecutionSummary(
+    workout.exercises.map((exercise) => ({
+      exerciseId: exercise.exerciseId,
+      name: exercise.exercise.name,
+      isRuntimeAdded: runtimeAddedExerciseIds.has(exercise.id),
+      sets: exercise.sets.map((set) => ({
+        isRuntimeAdded: runtimeAddedSetIds.has(set.id),
+        wasLogged: Boolean(set.logs[0]),
+        wasSkipped: set.logs[0]?.wasSkipped ?? false,
+      })),
+    }))
+  );
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
@@ -243,6 +256,16 @@ export default async function WorkoutDetailPage({
           {workflow.resumeBlockedReason ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               {workflow.resumeBlockedReason}
+            </div>
+          ) : null}
+
+          {hasPerformedStatus && executionSummary.duplicateAddedExercises.length > 0 ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              {executionSummary.duplicateAddedExercises.map((duplicate) => (
+                <p key={duplicate.exerciseId ?? duplicate.exerciseName}>
+                  {duplicate.exerciseName} was planned but skipped, while the same exercise was logged as an added exercise. This looks like duplicate logging rather than a missed dose.
+                </p>
+              ))}
             </div>
           ) : null}
 

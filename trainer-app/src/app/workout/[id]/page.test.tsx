@@ -406,6 +406,113 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
     expect(screen.getByText("Added exercise")).toBeInTheDocument();
   });
 
+  it("surfaces same-exercise planned/add duplicate logging on workout detail review", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      userId: "user-1",
+      status: "COMPLETED",
+      estimatedMinutes: 55,
+      selectionMetadata: {
+        runtimeEditReconciliation: {
+          version: 1,
+          lastReconciledAt: "2026-05-19T10:00:00.000Z",
+          directives: {
+            continuityAlias: "none",
+            progressionAlias: "none",
+            futureSessionGeneration: "ignore",
+            futureSeedCarryForward: "ignore",
+          },
+          ops: [
+            {
+              kind: "add_exercise",
+              source: "api_workouts_add_exercise",
+              appliedAt: "2026-05-19T10:00:00.000Z",
+              scope: "current_workout_only",
+              facts: {
+                workoutExerciseId: "we-added",
+                exerciseId: "rear-delt-fly",
+                orderIndex: 1,
+                section: "ACCESSORY",
+                setCount: 3,
+                prescriptionSource: "session_accessory_defaults",
+              },
+            },
+          ],
+        },
+      },
+      sessionIntent: "UPPER",
+      exercises: [
+        {
+          id: "we-planned",
+          orderIndex: 0,
+          exerciseId: "rear-delt-fly",
+          isMainLift: false,
+          section: "ACCESSORY",
+          exercise: {
+            name: "Cable Rear Delt Fly",
+            jointStress: "LOW",
+            exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+          },
+          sets: [
+            {
+              id: "set-planned-1",
+              setIndex: 1,
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 14,
+              targetLoad: 20,
+              targetRpe: 8,
+              logs: [{ actualReps: null, actualLoad: null, actualRpe: null, wasSkipped: true }],
+            },
+            {
+              id: "set-planned-2",
+              setIndex: 2,
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 14,
+              targetLoad: 20,
+              targetRpe: 8,
+              logs: [{ actualReps: null, actualLoad: null, actualRpe: null, wasSkipped: true }],
+            },
+          ],
+        },
+        {
+          id: "we-added",
+          orderIndex: 1,
+          exerciseId: "rear-delt-fly",
+          isMainLift: false,
+          section: "ACCESSORY",
+          exercise: {
+            name: "Cable Rear Delt Fly",
+            jointStress: "LOW",
+            exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+          },
+          sets: [
+            {
+              id: "set-added-1",
+              setIndex: 1,
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 14,
+              targetLoad: 20,
+              targetRpe: 8,
+              logs: [{ actualReps: 15, actualLoad: 20, actualRpe: 8, wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+
+    const { default: WorkoutDetailPage } = await import("./page");
+    const ui = await WorkoutDetailPage({ params: Promise.resolve({ id: "workout-1" }) });
+
+    render(ui);
+
+    expect(
+      screen.getByText(/Cable Rear Delt Fly was planned but skipped, while the same exercise was logged as an added exercise/)
+    ).toBeInTheDocument();
+  });
+
   it("labels swapped exercises explicitly on workout detail surfaces", async () => {
     mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-1",

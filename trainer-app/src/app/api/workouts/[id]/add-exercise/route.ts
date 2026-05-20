@@ -4,7 +4,10 @@ import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { buildRuntimeAddedExercisePreview } from "@/lib/api/runtime-added-exercise-preview";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
-import { RUNTIME_ADDED_EXERCISE_SESSION_NOTE } from "@/lib/ui/selection-metadata";
+import {
+  readRuntimeAddedExerciseIds,
+  RUNTIME_ADDED_EXERCISE_SESSION_NOTE,
+} from "@/lib/ui/selection-metadata";
 import { buildExerciseMuscleDisplayGroups } from "@/lib/ui/exercise-muscle-tags";
 import type { TrainingAge, PrimaryGoal } from "@/lib/engine/types";
 import { Prisma } from "@prisma/client";
@@ -16,9 +19,24 @@ export const runtime = "nodejs";
 
 const addExerciseSchema = z.object({
   exerciseId: z.string().min(1),
+  allowDuplicate: z.boolean().optional(),
 });
 
 const RUNTIME_EDIT_BLOCKED_PREFIX = "WORKOUT_RUNTIME_EDIT_BLOCKED:";
+const DUPLICATE_ADD_BLOCKED_PREFIX = "DUPLICATE_ADD_BLOCKED:";
+
+type DuplicateAddBlockCode =
+  | "DUPLICATE_EXERCISE_PLANNED_UNRESOLVED"
+  | "DUPLICATE_EXERCISE_ALREADY_ADDED"
+  | "DUPLICATE_EXERCISE_EXTRA_WORK_CONFIRMATION_REQUIRED";
+
+type DuplicateAddBlock = {
+  code: DuplicateAddBlockCode;
+  exerciseName: string;
+  plannedSetCount: number;
+  unresolvedPlannedSetCount: number;
+  addedSetCount: number;
+};
 
 type RuntimeEditableWorkoutState = {
   status: string | null;
@@ -45,6 +63,127 @@ function parseRuntimeEditBlockedReason(error: unknown): string | null {
   }
 
   return error.message.slice(RUNTIME_EDIT_BLOCKED_PREFIX.length);
+}
+
+function buildDuplicateAddError(block: DuplicateAddBlock): string {
+  switch (block.code) {
+    case "DUPLICATE_EXERCISE_PLANNED_UNRESOLVED":
+      return `${block.exerciseName} is already in this workout. Log the ${block.unresolvedPlannedSetCount} unresolved planned set(s) there instead.`;
+    case "DUPLICATE_EXERCISE_ALREADY_ADDED":
+      return `${block.exerciseName} was already added to this workout. Use the existing added row instead.`;
+    case "DUPLICATE_EXERCISE_EXTRA_WORK_CONFIRMATION_REQUIRED":
+      return `${block.exerciseName} is already in this workout and its planned sets are resolved. Confirm if you want to add extra work.`;
+  }
+}
+
+function serializeDuplicateAddBlock(block: DuplicateAddBlock): string {
+  return `${DUPLICATE_ADD_BLOCKED_PREFIX}${JSON.stringify(block)}`;
+}
+
+function parseDuplicateAddBlock(error: unknown): DuplicateAddBlock | null {
+  if (!(error instanceof Error) || !error.message.startsWith(DUPLICATE_ADD_BLOCKED_PREFIX)) {
+    return null;
+  }
+
+  const raw = error.message.slice(DUPLICATE_ADD_BLOCKED_PREFIX.length);
+  try {
+    const parsed = JSON.parse(raw) as Partial<DuplicateAddBlock>;
+    if (
+      (parsed.code === "DUPLICATE_EXERCISE_PLANNED_UNRESOLVED" ||
+        parsed.code === "DUPLICATE_EXERCISE_ALREADY_ADDED" ||
+        parsed.code === "DUPLICATE_EXERCISE_EXTRA_WORK_CONFIRMATION_REQUIRED") &&
+      typeof parsed.exerciseName === "string" &&
+      typeof parsed.plannedSetCount === "number" &&
+      typeof parsed.unresolvedPlannedSetCount === "number" &&
+      typeof parsed.addedSetCount === "number"
+    ) {
+      return parsed as DuplicateAddBlock;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function countUnresolvedSets(
+  sets: Array<{ logs?: Array<{ wasSkipped?: boolean | null }> }>
+): number {
+  return sets.filter((set) => (set.logs?.length ?? 0) === 0).length;
+}
+
+function resolveDuplicateAddBlock(input: {
+  exerciseId: string;
+  exerciseName: string;
+  selectionMetadata: unknown;
+  currentExercises: Array<{
+    id?: string | null;
+    exerciseId?: string | null;
+    exercise?: { name?: string | null } | null;
+    sets: Array<{ logs?: Array<{ wasSkipped?: boolean | null }> }>;
+  }>;
+  allowDuplicate: boolean;
+}): DuplicateAddBlock | null {
+  const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(input.selectionMetadata);
+  const matchingExercises = input.currentExercises.filter(
+    (workoutExercise) => workoutExercise.exerciseId === input.exerciseId
+  );
+  if (matchingExercises.length === 0) {
+    return null;
+  }
+
+  const exerciseName =
+    matchingExercises.find((workoutExercise) => workoutExercise.exercise?.name)?.exercise?.name ??
+    input.exerciseName;
+  const matchingRuntimeAdded = matchingExercises.filter(
+    (workoutExercise) =>
+      typeof workoutExercise.id === "string" && runtimeAddedExerciseIds.has(workoutExercise.id)
+  );
+  if (matchingRuntimeAdded.length > 0) {
+    return {
+      code: "DUPLICATE_EXERCISE_ALREADY_ADDED",
+      exerciseName,
+      plannedSetCount: matchingExercises
+        .filter((workoutExercise) => !matchingRuntimeAdded.includes(workoutExercise))
+        .reduce((sum, workoutExercise) => sum + workoutExercise.sets.length, 0),
+      unresolvedPlannedSetCount: 0,
+      addedSetCount: matchingRuntimeAdded.reduce(
+        (sum, workoutExercise) => sum + workoutExercise.sets.length,
+        0
+      ),
+    };
+  }
+
+  const plannedSetCount = matchingExercises.reduce(
+    (sum, workoutExercise) => sum + workoutExercise.sets.length,
+    0
+  );
+  const unresolvedPlannedSetCount = matchingExercises.reduce(
+    (sum, workoutExercise) => sum + countUnresolvedSets(workoutExercise.sets),
+    0
+  );
+
+  if (unresolvedPlannedSetCount > 0) {
+    return {
+      code: "DUPLICATE_EXERCISE_PLANNED_UNRESOLVED",
+      exerciseName,
+      plannedSetCount,
+      unresolvedPlannedSetCount,
+      addedSetCount: 0,
+    };
+  }
+
+  if (!input.allowDuplicate) {
+    return {
+      code: "DUPLICATE_EXERCISE_EXTRA_WORK_CONFIRMATION_REQUIRED",
+      exerciseName,
+      plannedSetCount,
+      unresolvedPlannedSetCount,
+      addedSetCount: 0,
+    };
+  }
+
+  return null;
 }
 
 export async function POST(
@@ -149,8 +288,15 @@ export async function POST(
           exercises: {
             orderBy: [{ orderIndex: "asc" }, { id: "asc" }],
             select: {
+              id: true,
+              exerciseId: true,
               orderIndex: true,
               section: true,
+              exercise: {
+                select: {
+                  name: true,
+                },
+              },
               sets: {
                 orderBy: { setIndex: "asc" },
                 select: {
@@ -159,6 +305,13 @@ export async function POST(
                   targetRepMax: true,
                   targetRpe: true,
                   restSeconds: true,
+                  logs: {
+                    orderBy: { completedAt: "desc" },
+                    take: 1,
+                    select: {
+                      wasSkipped: true,
+                    },
+                  },
                 },
               },
             },
@@ -180,6 +333,16 @@ export async function POST(
         })
       ) {
         throw new Error("GAP_FILL_BONUS_EXERCISE_BLOCKED");
+      }
+      const duplicateBlock = resolveDuplicateAddBlock({
+        exerciseId: exercise.id,
+        exerciseName: exercise.name,
+        selectionMetadata: latestWorkout.selectionMetadata,
+        currentExercises: latestWorkout.exercises,
+        allowDuplicate: parsed.data.allowDuplicate === true,
+      });
+      if (duplicateBlock) {
+        throw new Error(serializeDuplicateAddBlock(duplicateBlock));
       }
 
       const latest = await tx.workoutExercise.findFirst({
@@ -309,6 +472,17 @@ export async function POST(
           { status: 409 }
         );
       }
+      const duplicateBlock = parseDuplicateAddBlock(error);
+      if (duplicateBlock) {
+        return NextResponse.json(
+          {
+            error: buildDuplicateAddError(duplicateBlock),
+            code: duplicateBlock.code,
+            duplicate: duplicateBlock,
+          },
+          { status: 409 }
+        );
+      }
       throw error;
     }
   }
@@ -320,6 +494,7 @@ export async function POST(
   const muscleTagGroups = buildExerciseMuscleDisplayGroups(exercise);
   const logExercise = {
     workoutExerciseId: workoutExercise.id,
+    exerciseId: exercise.id,
     name: exercise.name,
     equipment: exercise.exerciseEquipment.map((eq) => eq.equipment.type),
     muscleTags: muscleTagGroups.muscleTags,

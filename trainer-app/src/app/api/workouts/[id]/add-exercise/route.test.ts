@@ -201,12 +201,18 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       exercises: [
         {
           orderIndex: 0,
+          id: "we-bench",
+          exerciseId: "bench",
           section: "MAIN",
+          exercise: { name: "Bench Press" },
           sets: [{ targetReps: 8, targetRepMin: 6, targetRepMax: 10, targetRpe: 6.5, restSeconds: 180 }],
         },
         {
           orderIndex: 1,
+          id: "we-pressdown",
+          exerciseId: "pressdown",
           section: "ACCESSORY",
+          exercise: { name: "Rope Pressdown" },
           sets: [
             {
               targetReps: 12,
@@ -314,6 +320,231 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
         ],
       },
     ]);
+  });
+
+  it("prevents adding the same exercise when unresolved planned sets already exist", async () => {
+    mocks.txWorkoutFindUnique.mockResolvedValueOnce({
+      selectionMetadata: buildWorkoutSelectionMetadata(),
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
+      exercises: [
+        {
+          id: "we-fly-planned",
+          exerciseId: "fly",
+          orderIndex: 0,
+          section: "ACCESSORY",
+          exercise: { name: "Cable Fly" },
+          sets: [
+            {
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 14,
+              targetRpe: 6.5,
+              restSeconds: 90,
+              logs: [],
+            },
+            {
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 14,
+              targetRpe: 6.5,
+              restSeconds: 90,
+              logs: [],
+            },
+          ],
+        },
+      ],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/add-exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: "fly" }),
+      }),
+      { params: Promise.resolve({ id: "workout-1" }) }
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "DUPLICATE_EXERCISE_PLANNED_UNRESOLVED",
+      error: "Cable Fly is already in this workout. Log the 2 unresolved planned set(s) there instead.",
+      duplicate: {
+        exerciseName: "Cable Fly",
+        plannedSetCount: 2,
+        unresolvedPlannedSetCount: 2,
+        addedSetCount: 0,
+      },
+    });
+    expect(mocks.txWorkoutExerciseCreate).not.toHaveBeenCalled();
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
+  });
+
+  it("requires confirmation before adding extra same-exercise work after planned sets are resolved", async () => {
+    mocks.txWorkoutFindUnique.mockResolvedValueOnce({
+      selectionMetadata: buildWorkoutSelectionMetadata(),
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
+      exercises: [
+        {
+          id: "we-fly-planned",
+          exerciseId: "fly",
+          orderIndex: 0,
+          section: "ACCESSORY",
+          exercise: { name: "Cable Fly" },
+          sets: [
+            {
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 14,
+              targetRpe: 6.5,
+              restSeconds: 90,
+              logs: [{ wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/add-exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: "fly" }),
+      }),
+      { params: Promise.resolve({ id: "workout-1" }) }
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "DUPLICATE_EXERCISE_EXTRA_WORK_CONFIRMATION_REQUIRED",
+      error: "Cable Fly is already in this workout and its planned sets are resolved. Confirm if you want to add extra work.",
+    });
+    expect(mocks.txWorkoutExerciseCreate).not.toHaveBeenCalled();
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
+  });
+
+  it("allows confirmed extra same-exercise work after planned sets are resolved", async () => {
+    mocks.txWorkoutFindUnique.mockResolvedValueOnce({
+      selectionMetadata: buildWorkoutSelectionMetadata(),
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
+      exercises: [
+        {
+          id: "we-fly-planned",
+          exerciseId: "fly",
+          orderIndex: 0,
+          section: "ACCESSORY",
+          exercise: { name: "Cable Fly" },
+          sets: [
+            {
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 14,
+              targetRpe: 6.5,
+              restSeconds: 90,
+              logs: [{ wasSkipped: false }],
+            },
+          ],
+        },
+      ],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/add-exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: "fly", allowDuplicate: true }),
+      }),
+      { params: Promise.resolve({ id: "workout-1" }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.txWorkoutExerciseCreate).toHaveBeenCalled();
+    expect(mocks.txWorkoutUpdate).toHaveBeenCalled();
+  });
+
+  it("prevents adding the same exercise twice as runtime-added work", async () => {
+    mocks.txWorkoutFindUnique.mockResolvedValueOnce({
+      selectionMetadata: buildWorkoutSelectionMetadata({
+        runtimeEditReconciliation: {
+          version: 1,
+          lastReconciledAt: "2026-05-19T12:00:00.000Z",
+          directives: {
+            continuityAlias: "none",
+            progressionAlias: "none",
+            futureSessionGeneration: "ignore",
+            futureSeedCarryForward: "ignore",
+          },
+          ops: [
+            {
+              kind: "add_exercise",
+              source: "api_workouts_add_exercise",
+              appliedAt: "2026-05-19T12:00:00.000Z",
+              scope: "current_workout_only",
+              facts: {
+                workoutExerciseId: "we-fly-added",
+                exerciseId: "fly",
+                orderIndex: 2,
+                section: "ACCESSORY",
+                setCount: 2,
+                prescriptionSource: "session_accessory_defaults",
+              },
+            },
+          ],
+        },
+      }),
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      status: "PLANNED",
+      mesocycleId: null,
+      mesocycle: null,
+      exercises: [
+        {
+          id: "we-fly-added",
+          exerciseId: "fly",
+          orderIndex: 2,
+          section: "ACCESSORY",
+          exercise: { name: "Cable Fly" },
+          sets: [
+            {
+              targetReps: 12,
+              targetRepMin: 10,
+              targetRepMax: 14,
+              targetRpe: 6.5,
+              restSeconds: 90,
+              logs: [],
+            },
+          ],
+        },
+      ],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/add-exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exerciseId: "fly", allowDuplicate: true }),
+      }),
+      { params: Promise.resolve({ id: "workout-1" }) }
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "DUPLICATE_EXERCISE_ALREADY_ADDED",
+      error: "Cable Fly was already added to this workout. Use the existing added row instead.",
+    });
+    expect(mocks.txWorkoutExerciseCreate).not.toHaveBeenCalled();
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
   });
 
   it("inherits current session accessory defaults and persists canonical runtime-added provenance", async () => {

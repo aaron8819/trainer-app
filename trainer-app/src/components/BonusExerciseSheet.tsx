@@ -14,6 +14,11 @@ type Props = {
   onAdd: (exercise: LogExerciseInput) => void;
 };
 
+type DuplicateAddConfirmation = {
+  exerciseId: string;
+  message: string;
+};
+
 export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props) {
   const [suggestions, setSuggestions] = useState<BonusSuggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -23,6 +28,8 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
   const [previewByExerciseId, setPreviewByExerciseId] = useState<Record<string, RuntimeAddedExercisePreview>>({});
   const [addingId, setAddingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [duplicateConfirmation, setDuplicateConfirmation] =
+    useState<DuplicateAddConfirmation | null>(null);
   const requestedPreviewIdsRef = useRef<Set<string>>(new Set());
   const trimmedSearchQuery = useMemo(() => searchQuery.trim(), [searchQuery]);
 
@@ -99,6 +106,7 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
     setLoadingSuggestions(true);
     setLoadingSearch(false);
     setError(null);
+    setDuplicateConfirmation(null);
     setAddingId(null);
     setPreviewByExerciseId({});
     requestedPreviewIdsRef.current = new Set();
@@ -172,18 +180,27 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
     void loadPreviews(searchResults.map((exercise) => exercise.id));
   }, [searchResults, isOpen, loadPreviews]);
 
-  const handleAdd = async (exerciseId: string) => {
+  const handleAdd = async (exerciseId: string, options: { allowDuplicate?: boolean } = {}) => {
     setAddingId(exerciseId);
     setError(null);
+    setDuplicateConfirmation(null);
     try {
       const res = await fetch(`/api/workouts/${workoutId}/add-exercise`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId }),
+        body: JSON.stringify({
+          exerciseId,
+          ...(options.allowDuplicate ? { allowDuplicate: true } : {}),
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setError(body.error ?? "Failed to add exercise");
+        const message = body.error ?? "Failed to add exercise";
+        if (body.code === "DUPLICATE_EXERCISE_EXTRA_WORK_CONFIRMATION_REQUIRED") {
+          setDuplicateConfirmation({ exerciseId, message });
+        } else {
+          setError(message);
+        }
         return;
       }
       const data = await res.json().catch(() => ({}));
@@ -303,6 +320,21 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
         </div>
 
         {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+        {duplicateConfirmation ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <p>{duplicateConfirmation.message}</p>
+            <button
+              className="mt-3 inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-5 text-sm font-semibold text-white disabled:opacity-60"
+              disabled={addingId !== null}
+              onClick={() =>
+                handleAdd(duplicateConfirmation.exerciseId, { allowDuplicate: true })
+              }
+              type="button"
+            >
+              Add extra work
+            </button>
+          </div>
+        ) : null}
       </div>
     </SlideUpSheet>
   );

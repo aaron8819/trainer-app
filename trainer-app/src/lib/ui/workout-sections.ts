@@ -82,6 +82,7 @@ export function splitExercises(
     });
     const entry: LogExerciseInput = {
       workoutExerciseId: exercise.id,
+      ...(exercise.exercise.id ? { exerciseId: exercise.exercise.id } : {}),
       name: exercise.exercise.name,
       equipment: (exercise.exercise.exerciseEquipment ?? []).map((item) => item.equipment.type),
       movementPatterns: (exercise.exercise.movementPatterns ?? []).map((pattern) =>

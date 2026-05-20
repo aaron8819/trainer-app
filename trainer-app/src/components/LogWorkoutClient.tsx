@@ -289,6 +289,7 @@ export default function LogWorkoutClient({
         .filter((exercise) => exercise.sets.some((set) => satisfiedSetIds.has(set.setId)))
         .map((exercise) => ({
           exerciseId: exercise.workoutExerciseId,
+          sourceExerciseId: exercise.exerciseId,
           name: exercise.name,
           equipment: exercise.equipment,
           isSwapped: exercise.isSwapped,

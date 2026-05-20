@@ -35,6 +35,7 @@ export type LogExerciseMuscleTagGroups = {
 
 export type LogExerciseInput = {
   workoutExerciseId: string;
+  exerciseId?: string;
   name: string;
   equipment?: string[];
   movementPatterns?: string[];
@@ -128,6 +129,7 @@ export type CompletedWorkoutSetSummary = {
 
 export type CompletedWorkoutExerciseSummary = {
   exerciseId: string;
+  sourceExerciseId?: string;
   name: string;
   equipment?: string[];
   isSwapped?: boolean;

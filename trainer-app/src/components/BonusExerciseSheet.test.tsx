@@ -2,8 +2,13 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BonusExerciseSheet } from "./BonusExerciseSheet";
 
+type MockFetchResponse = {
+  ok: boolean;
+  json: () => Promise<unknown>;
+};
+
 function createFetchMock() {
-  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit): Promise<MockFetchResponse> => {
     const url = String(input);
     const parsedUrl = new URL(url, "http://localhost");
 
@@ -103,6 +108,7 @@ function createFetchMock() {
         json: async () => ({
           exercise: {
             workoutExerciseId: "we-2",
+            exerciseId: "fly",
             name: "Cable Fly",
             equipment: ["CABLE"],
             isRuntimeAdded: true,
@@ -301,5 +307,89 @@ describe("BonusExerciseSheet", () => {
     });
     expect(screen.queryByText(/Cable Row/)).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/workouts/workout-1/bonus-suggestions");
+  });
+
+  it("asks for explicit confirmation before adding duplicate extra work", async () => {
+    const onAdd = vi.fn();
+    const onClose = vi.fn();
+    const fetchMock = createFetchMock();
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const parsedUrl = new URL(url, "http://localhost");
+      if (parsedUrl.pathname !== "/api/workouts/workout-1/add-exercise") {
+        return createFetchMock()(input, init);
+      }
+
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        exerciseId?: string;
+        allowDuplicate?: boolean;
+      };
+      if (!body.allowDuplicate) {
+        return {
+          ok: false,
+          json: async () => ({
+            code: "DUPLICATE_EXERCISE_EXTRA_WORK_CONFIRMATION_REQUIRED",
+            error:
+              "Cable Fly is already in this workout and its planned sets are resolved. Confirm if you want to add extra work.",
+          }),
+        };
+      }
+
+      return {
+        ok: true,
+        json: async () => ({
+          exercise: {
+            workoutExerciseId: "we-duplicate-extra",
+            exerciseId: "fly",
+            name: "Cable Fly",
+            equipment: ["CABLE"],
+            isRuntimeAdded: true,
+            isMainLift: false,
+            section: "ACCESSORY",
+            sets: [
+              {
+                setId: "set-extra",
+                setIndex: 1,
+                targetReps: 12,
+                targetRepRange: { min: 10, max: 14 },
+                targetRpe: 6.5,
+              },
+            ],
+          },
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <BonusExerciseSheet
+        isOpen
+        onClose={onClose}
+        workoutId="workout-1"
+        onAdd={onAdd}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add" }));
+
+    expect(
+      await screen.findByText(/Cable Fly is already in this workout/)
+    ).toBeInTheDocument();
+    expect(onAdd).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Add extra work" }));
+
+    await waitFor(() => {
+      expect(onAdd).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workoutExerciseId: "we-duplicate-extra",
+          exerciseId: "fly",
+        })
+      );
+    });
+    expect(onClose).toHaveBeenCalled();
+    expect(
+      fetchMock.mock.calls.some(([, init]) => String(init?.body).includes("\"allowDuplicate\":true"))
+    ).toBe(true);
   });
 });

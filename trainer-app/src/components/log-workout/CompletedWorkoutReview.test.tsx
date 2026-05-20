@@ -318,4 +318,93 @@ describe("CompletedWorkoutReview", () => {
     expect(within(skippedCard as HTMLElement).getByText("1")).toBeInTheDocument();
     expect(within(extraCard as HTMLElement).getByText("2")).toBeInTheDocument();
   });
+
+  it("relabels same-exercise added logs as duplicate logging instead of missed planned work", () => {
+    render(
+      <CompletedWorkoutReview
+        workoutId="workout-1"
+        rpeAdherence={null}
+        sessionIdentityLabel="Upper 1"
+        sessionTechnicalLabel="Slot ID: upper_a"
+        performanceSummary={[
+          {
+            exerciseId: "we-planned",
+            sourceExerciseId: "rear-delt-fly",
+            name: "Cable Rear Delt Fly",
+            equipment: ["cable"],
+            isMainLift: false,
+            section: "accessory",
+            sets: [
+              {
+                setIndex: 1,
+                targetReps: 12,
+                actualReps: null,
+                actualLoad: null,
+                actualRpe: null,
+                wasLogged: true,
+                wasSkipped: true,
+              },
+              {
+                setIndex: 2,
+                targetReps: 12,
+                actualReps: null,
+                actualLoad: null,
+                actualRpe: null,
+                wasLogged: true,
+                wasSkipped: true,
+              },
+            ],
+          },
+          {
+            exerciseId: "we-added",
+            sourceExerciseId: "rear-delt-fly",
+            name: "Cable Rear Delt Fly",
+            equipment: ["cable"],
+            isRuntimeAdded: true,
+            isMainLift: false,
+            section: "accessory",
+            sets: [
+              {
+                setIndex: 1,
+                targetReps: 12,
+                actualReps: 15,
+                actualLoad: 20,
+                actualRpe: 8,
+                wasLogged: true,
+                wasSkipped: false,
+              },
+              {
+                setIndex: 2,
+                targetReps: 12,
+                actualReps: 14,
+                actualLoad: 20,
+                actualRpe: 8,
+                wasLogged: true,
+                wasSkipped: false,
+              },
+              {
+                setIndex: 3,
+                targetReps: 12,
+                actualReps: 13,
+                actualLoad: 20,
+                actualRpe: 8,
+                wasLogged: true,
+                wasSkipped: false,
+              },
+            ],
+          },
+        ]}
+      />
+    );
+
+    const skippedCard = screen.getByText("Skipped sets").closest("div");
+    expect(skippedCard).not.toBeNull();
+    expect(within(skippedCard as HTMLElement).getByText("0")).toBeInTheDocument();
+    expect(
+      within(skippedCard as HTMLElement).getByText("2 reconciled as duplicate logging")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Cable Rear Delt Fly was planned but skipped while the same exercise was logged as an added exercise/)
+    ).toBeInTheDocument();
+  });
 });

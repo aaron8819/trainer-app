@@ -43,7 +43,14 @@ export function CompletedWorkoutReview({
 }: CompletedWorkoutReviewProps) {
   const [explanation, setExplanation] = useState<WorkoutExplanation | null>(null);
   const [isLoadingExplanation, setIsLoadingExplanation] = useState(true);
-  const executionSummary = buildWorkoutExecutionSummary(performanceSummary);
+  const executionSummary = buildWorkoutExecutionSummary(
+    performanceSummary.map((exercise) => ({
+      exerciseId: exercise.sourceExerciseId,
+      name: exercise.name,
+      isRuntimeAdded: exercise.isRuntimeAdded,
+      sets: exercise.sets,
+    }))
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -101,8 +108,12 @@ export function CompletedWorkoutReview({
           </div>
           <div>
             <p className="text-xs text-emerald-700">Skipped sets</p>
-            <p className="text-2xl font-bold text-emerald-900">{executionSummary.skippedSetCount}</p>
-            <p className="text-xs text-emerald-600">Planned but not performed</p>
+            <p className="text-2xl font-bold text-emerald-900">{executionSummary.uncoveredSkippedSetCount}</p>
+            <p className="text-xs text-emerald-600">
+              {executionSummary.duplicateCoveredSkippedSetCount > 0
+                ? `${executionSummary.duplicateCoveredSkippedSetCount} reconciled as duplicate logging`
+                : "Planned but not performed"}
+            </p>
           </div>
           <div>
             <p className="text-xs text-emerald-700">Extra sets</p>
@@ -119,6 +130,15 @@ export function CompletedWorkoutReview({
             <p className="text-xs text-emerald-600">
               {rpeAdherence.adherent}/{rpeAdherence.total} on target
             </p>
+          </div>
+        ) : null}
+        {executionSummary.duplicateAddedExercises.length > 0 ? (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-white/70 p-3 text-sm text-amber-900">
+            {executionSummary.duplicateAddedExercises.map((duplicate) => (
+              <p key={duplicate.exerciseId ?? duplicate.exerciseName}>
+                {duplicate.exerciseName} was planned but skipped while the same exercise was logged as an added exercise. This looks like duplicate logging rather than a missed dose.
+              </p>
+            ))}
           </div>
         ) : null}
       </section>

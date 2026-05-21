@@ -1,7 +1,7 @@
 # Hypertrophy Mesocycle Engine Strategy
 
 Owner: Aaron
-Last reviewed: 2026-05-17
+Last reviewed: 2026-05-21
 Purpose: Define the strategic direction for the V2 hypertrophy planner migration: V2 becomes the future plan author, accepted seed remains minimal executable truth, runtime replay remains stable, and performed reality informs future blocks without silently mutating the current one.
 
 This document is a strategy and migration map, not a claim about current runtime behavior. Current runtime truth remains the code, contract tests, and audit artifacts. The current mapping is grounded in the same live audit evidence previously used for this target doc plus the latest V2 factory-line, materializer, taxonomy, candidate-identity, and lane-selection-intent audit findings:
@@ -665,6 +665,51 @@ Current status:
 
 This is not runtime behavior and must not mutate seed. Add/reduce recommendations require an actionable exercise candidate. No-candidate deficit rows must remain `hold_seed`.
 
+#### Weekly Volume Target Semantics
+
+Weekly volume guidance should distinguish floors, useful adaptive zones, stretch targets, and ceilings. A single target number is too easy to misread as a must-hit quota, especially when it equals or sits close to MAV.
+
+Target semantics:
+
+- below MEV: problem state; fix when practical, especially for priority muscles
+- at/above MEV: productive floor achieved; additional work depends on recovery, session fit, and stimulus-to-fatigue
+- productive target zone: preferred adaptive range above MEV when recoverable
+- stretch target: optional; pursue only when recovery/performance are strong and add-ons are low-fatigue
+- MAV/MRV ceiling: caution zone; do not chase automatically
+
+Runtime coaching should not blindly chase every weekly target. It should prioritize MEV floor closure, useful low-fatigue volume, and recovery-aware decisions. A muscle below target but above MEV is not automatically a problem.
+
+Early and mid-week behavior:
+
+- do not panic-top-up just because projected target status is low
+- run the accepted seed first
+- use conservative, session-aligned add-ons only when recovery, fatigue cost, and upcoming overlap justify them
+
+Final practical opportunity behavior:
+
+- if a target-tier muscle is below MEV, use bounded low-fatigue isolation top-ups to close the floor when practical
+- do not chase the full target deficit
+- do not add high-fatigue compound work solely to satisfy a volume target
+
+If the app repeatedly shows large target gaps while correct coaching says "do not chase," the target semantics need refinement rather than runtime pressure to force volume. A future model should represent the policy as a floor/range/ceiling structure:
+
+```txt
+MEV floor
+productive zone
+stretch zone
+MAV/MRV cap
+```
+
+Illustrative framing only, not hardcoded policy:
+
+```txt
+Chest:
+  MEV floor: 10
+  productive zone: 10-14
+  stretch: 14-16
+  cap: 16
+```
+
 Runtime add-on coaching should combine:
 
 - weekly target gap
@@ -702,6 +747,7 @@ Guardrails:
 
 - do not chase every remaining target deficit in the final session
 - MEV floor closure is more important than forcing target volume
+- do not treat below-target/above-MEV as failure by default
 - avoid exceeding MAV
 - avoid high-fatigue additions when recovery is compromised
 - require user confirmation or explicit session-local action
@@ -1148,6 +1194,10 @@ Examples of useful future evidence:
 - deload execution quality
 - muscles that were under-hit, over-concentrated, or easy to recover from
 
+After each mesocycle, evaluate whether weekly targets acted as useful coaching targets or aspirational ceilings. If muscles consistently reach MEV but remain far below target despite good execution and recovery, consider lowering default targets, relabeling the target as a stretch target, using target ranges instead of single target numbers, tiering muscles by priority, or increasing seed volume only for repeatedly underdosed priority muscles in the next plan.
+
+Policy changes belong between mesocycles unless they fix a blocker. Do not mutate accepted seed during an active mesocycle just to chase targets; runtime add-ons remain session-local performed reality.
+
 ## 10. Migration Strategy
 
 1. Establish clean V2 static base plan.
@@ -1260,6 +1310,9 @@ These are strategic decision gates, not claims that current production already p
 - wrong-lane swaps are blocked or clearly labeled as fallbacks
 - equivalent swaps are not suppressed by trivial fatigue/stress deltas without explanation
 - runtime dose guidance distinguishes target-volume deficit from fatigue-density concern
+- runtime dose guidance distinguishes MEV floor, productive target zone, stretch target, and MAV/MRV ceiling
+- below-target/above-MEV is not treated as failure by default
+- final practical opportunity coaching closes MEV floors when practical without chasing full target deficits
 - readouts distinguish generic `opportunistic_extra` from deliberate `final_weekly_opportunity_mev_closure`
 - add/reduce recommendations require actionable exercise candidates
 - add-on recommendations prefer low-fatigue movements that close real weekly gaps and avoid compromising the next slot
@@ -1295,6 +1348,8 @@ These are strategic decision gates, not claims that current production already p
 - recommendations expire or are reviewed after each block
 - historical evidence influences next strategy, not current accepted seed mutation
 - one bad day, one skipped set, or one swap does not become durable future plan policy without confidence, recurrence, or user reason
+- weekly targets are reviewed after the block to decide whether they behaved as useful coaching targets, stretch targets, or aspirational ceilings
+- target ranges, priority tiers, or next-block seed volume changes are considered between mesocycles, not by mutating an active accepted seed
 - old repair-shaped prescribed plans are not treated as performed truth
 
 ## 12. What Not To Do
@@ -1314,6 +1369,9 @@ These are strategic decision gates, not claims that current production already p
 - Do not treat "user feels good" as sufficient reason to add volume without checking weekly need, fatigue cost, and upcoming overlap.
 - Do not let runtime-added sets inflate planned-set adherence.
 - Do not force every Week 3/Week 4 target with high-fatigue work.
+- Do not treat a weekly target as a must-hit quota when the muscle is already at or above MEV.
+- Do not chase targets near MAV as default coaching requirements; treat them as stretch or upper-bound targets unless recovery and session fit are strong.
+- Do not mutate accepted seed during an active mesocycle just to close target gaps.
 - Do not hide prescription source/confidence from the user/operator.
 - Do not suggest swaps that preserve only primary muscle while changing the lane's training effect.
 - Do not present broad same-muscle fallbacks as equivalent lane-preserving swaps.

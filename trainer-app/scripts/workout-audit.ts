@@ -3043,8 +3043,138 @@ export function buildPreSessionReadinessSummary(input: {
   return lines;
 }
 
+type WeeklyRetroPayload = NonNullable<WorkoutAuditArtifact["weeklyRetro"]>;
+type WeeklyRetroExerciseReconciliationRow =
+  NonNullable<WeeklyRetroPayload["exerciseLoadCalibrationRows"]>[number];
+
+function formatSetCount(value: number): string {
+  return Number.isInteger(value) ? String(value) : formatAuditDecimal(value);
+}
+
+function formatSetWord(value: number): string {
+  return Math.abs(value) === 1 ? "set" : "sets";
+}
+
+function hasDuplicateEvidence(row: WeeklyRetroExerciseReconciliationRow): boolean {
+  return [...row.reasonCodes, ...row.notes].some((value) =>
+    value.toLowerCase().includes("duplicate")
+  );
+}
+
+function formatExerciseReconciliationNotes(input: {
+  row: WeeklyRetroExerciseReconciliationRow;
+  interpretations: WeeklyRetroPayload["planAdherence"]["interpretations"];
+}): string {
+  const { row } = input;
+  const normalizedExerciseName = row.exerciseName.toLowerCase();
+  const matchingInterpretations = input.interpretations.filter(
+    (interpretation) =>
+      interpretation.exerciseId === row.exerciseId ||
+      interpretation.evidence.some((evidence) =>
+        evidence.toLowerCase().includes(normalizedExerciseName)
+      )
+  );
+  const notes: string[] = [];
+
+  if (matchingInterpretations.some((interpretation) => interpretation.intent === "substitution")) {
+    notes.push("substitute / replacement-like pattern");
+  }
+
+  if (hasDuplicateEvidence(row)) {
+    notes.push("same-exercise duplicate logging");
+  }
+
+  if (row.addedSetCount > 0) {
+    const targetGapWork = matchingInterpretations.some((interpretation) =>
+      ["final_weekly_opportunity_mev_closure", "target_gap_closure"].includes(
+        interpretation.intent
+      )
+    );
+    const addedNote =
+      row.plannedSetCount === 0
+        ? "added exercise, session-local performed reality"
+        : `+${formatSetCount(row.addedSetCount)} runtime-added ${formatSetWord(row.addedSetCount)}`;
+    notes.push(targetGapWork ? `${addedNote}; target-gap work` : addedNote);
+  }
+
+  if (row.skippedSetCount > 0) {
+    notes.push(
+      `${formatSetCount(row.skippedSetCount)} skipped planned ${formatSetWord(row.skippedSetCount)}`
+    );
+  }
+
+  if (
+    (row.classification === "target_too_low" ||
+      row.classification === "target_too_high") &&
+    typeof row.performedLoadSummary.medianLoad === "number" &&
+    typeof row.targetLoad === "number"
+  ) {
+    notes.push(
+      `median ${formatAuditDecimal(row.performedLoadSummary.medianLoad)} vs target ${formatAuditDecimal(row.targetLoad)}`
+    );
+  }
+
+  if (
+    row.classification === "recalibrated_hold" &&
+    typeof row.performedLoadSummary.anchorLoad === "number" &&
+    typeof row.performedLoadSummary.medianLoad === "number" &&
+    typeof row.targetLoad === "number"
+  ) {
+    notes.push(
+      `opened ${formatAuditDecimal(row.performedLoadSummary.anchorLoad)} then median ${formatAuditDecimal(row.performedLoadSummary.medianLoad)} vs target ${formatAuditDecimal(row.targetLoad)}`
+    );
+  }
+
+  if (row.classification === "skipped_or_low_coverage" && notes.length === 0) {
+    notes.push("planned low performed coverage");
+  }
+
+  if (row.classification === "insufficient_evidence" && notes.length === 0) {
+    notes.push("missing target or performed load evidence");
+  }
+
+  return notes.length > 0 ? Array.from(new Set(notes)).join("; ") : "none";
+}
+
+function buildWeeklyRetroExerciseReconciliationTable(
+  weeklyRetro: WeeklyRetroPayload
+): string[] {
+  const rows = weeklyRetro.exerciseLoadCalibrationRows ?? [];
+  if (rows.length === 0) {
+    return [
+      "",
+      "Exercise Reconciliation",
+      "Exercise | Slot | Planned | Saved | Performed | Skipped | Added | Classification | Notes",
+      "none | n/a | 0 | 0 | 0 | 0 | 0 | n/a | no exercise-level reconciliation rows available",
+    ];
+  }
+
+  return [
+    "",
+    "Exercise Reconciliation",
+    "Exercise | Slot | Planned | Saved | Performed | Skipped | Added | Classification | Notes",
+    ...rows.map((row) =>
+      [
+        row.exerciseName,
+        row.slotId ?? row.sessionLabel,
+        formatSetCount(row.plannedSetCount),
+        formatSetCount(row.savedSetCount),
+        formatSetCount(row.performedSetCount),
+        formatSetCount(row.skippedSetCount),
+        formatSetCount(row.addedSetCount),
+        row.classification,
+        formatExerciseReconciliationNotes({
+          row,
+          interpretations: weeklyRetro.planAdherence.interpretations,
+        }),
+      ].join(" | ")
+    ),
+  ];
+}
+
 export function buildWeeklyRetroOperatorSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "weeklyRetro">;
+  operatorDebug?: boolean;
 }): string[] | null {
   const weeklyRetro = input.artifact.weeklyRetro;
   if (!weeklyRetro) {
@@ -3085,6 +3215,10 @@ export function buildWeeklyRetroOperatorSummary(input: {
     lines.push(
       `[workout-audit:retro] projection_delivery_drift=${projectionDrift.status} direction=${projectionDrift.summary.direction} under=${projectionDrift.summary.materialUnderdeliveryCount} over=${projectionDrift.summary.materialOverdeliveryCount} net=${formatSignedSetDelta(projectionDrift.summary.netEffectiveSetDelta)}`
     );
+  }
+
+  if (input.operatorDebug === true) {
+    lines.push(...buildWeeklyRetroExerciseReconciliationTable(weeklyRetro));
   }
 
   return lines;
@@ -3397,6 +3531,7 @@ export async function main(input?: {
   }
   const weeklyRetroSummary = buildWeeklyRetroOperatorSummary({
     artifact,
+    operatorDebug: args["operator-debug"] === true,
   });
   if (weeklyRetroSummary && !preSessionReadinessSummary) {
     for (const line of weeklyRetroSummary) {

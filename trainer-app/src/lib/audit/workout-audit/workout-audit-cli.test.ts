@@ -4517,6 +4517,230 @@ describe("buildWeeklyRetroOperatorSummary", () => {
     );
   });
 
+  it("prints an operator-debug exercise reconciliation table from weekly-retro rows", () => {
+    const summary = buildWeeklyRetroOperatorSummary({
+      operatorDebug: true,
+      artifact: {
+        weeklyRetro: {
+          loadCalibration: {
+            status: "aligned",
+            comparableSessionCount: 1,
+            driftSessionCount: 0,
+            prescriptionChangeCount: 0,
+            selectionDriftCount: 0,
+            legacyLimitedSessionCount: 0,
+            highlightedSessions: [],
+          },
+          volumeTargeting: {
+            muscles: [],
+          },
+          planAdherence: {
+            plannedWorkCompletedPercent: 100,
+            plannedWorkMissedSets: 0,
+            plannedWorkTotalSets: 14,
+            plannedWorkCompletedSets: 14,
+            explainedAdditions: {
+              totalSets: 5,
+              byIntent: {
+                target_gap_closure: 1,
+              },
+            },
+            substitutions: 1,
+            painFatigueDeviations: 0,
+            unclassifiedDrift: 0,
+            engineConfidenceImpact: "none",
+            interpretations: [
+              {
+                opKind: "add_set",
+                intent: "target_gap_closure",
+                confidence: "high",
+                source: "persisted_op",
+                setDelta: 1,
+                exerciseId: "leg-extension",
+                muscles: ["Quads"],
+                evidence: ["Quads: inferred_before=7 target=8 mev=6"],
+              },
+              {
+                opKind: "replace_exercise",
+                intent: "substitution",
+                confidence: "high",
+                source: "persisted_op",
+                setDelta: 0,
+                exerciseId: "standing-calf",
+                muscles: ["Calves"],
+                evidence: ["from:Seated Calf Raise", "to:Standing Calf Raise"],
+              },
+            ],
+          },
+          interventions: [],
+          recommendedPriorities: [],
+          exerciseLoadCalibrationRows: [
+            {
+              week: 4,
+              workoutId: "workout-lower-a",
+              slotId: "lower_a",
+              sessionLabel: "lower_a",
+              exerciseId: "belt-squat",
+              exerciseName: "Belt Squat",
+              plannedSetCount: 4,
+              savedSetCount: 4,
+              performedSetCount: 4,
+              skippedSetCount: 0,
+              addedSetCount: 0,
+              targetLoad: 80,
+              performedLoadSummary: {
+                medianLoad: 95,
+              },
+              classification: "target_too_low",
+              reasonCodes: ["performed_load_materially_above_target"],
+              notes: ["load_delta_pct:18.8"],
+            },
+            {
+              week: 4,
+              workoutId: "workout-lower-a",
+              slotId: "lower_a",
+              sessionLabel: "lower_a",
+              exerciseId: "leg-extension",
+              exerciseName: "Leg Extension",
+              plannedSetCount: 2,
+              savedSetCount: 3,
+              performedSetCount: 3,
+              skippedSetCount: 0,
+              addedSetCount: 1,
+              performedLoadSummary: {},
+              classification: "clean",
+              reasonCodes: ["performed_load_within_target_band"],
+              notes: ["added_sets:1"],
+            },
+            {
+              week: 4,
+              workoutId: "workout-lower-a",
+              slotId: "lower_a",
+              sessionLabel: "lower_a",
+              exerciseId: "seated-calf",
+              exerciseName: "Seated Calf Raise",
+              plannedSetCount: 4,
+              savedSetCount: 0,
+              performedSetCount: 0,
+              skippedSetCount: 0,
+              addedSetCount: 0,
+              performedLoadSummary: {},
+              classification: "skipped_or_low_coverage",
+              reasonCodes: ["planned_exercise_low_performed_coverage"],
+              notes: ["coverage:0%"],
+            },
+            {
+              week: 4,
+              workoutId: "workout-lower-a",
+              slotId: "lower_a",
+              sessionLabel: "lower_a",
+              exerciseId: "standing-calf",
+              exerciseName: "Standing Calf Raise",
+              plannedSetCount: 0,
+              savedSetCount: 4,
+              performedSetCount: 4,
+              skippedSetCount: 0,
+              addedSetCount: 4,
+              performedLoadSummary: {},
+              classification: "runtime_added",
+              reasonCodes: ["exercise_not_in_generated_snapshot"],
+              notes: ["saved_sets:4", "performed_sets:4"],
+            },
+            {
+              week: 4,
+              workoutId: "workout-lower-a",
+              slotId: "lower_a",
+              sessionLabel: "lower_a",
+              exerciseId: "duplicate-calf",
+              exerciseName: "Duplicate Calf Raise",
+              plannedSetCount: 2,
+              savedSetCount: 2,
+              performedSetCount: 2,
+              skippedSetCount: 0,
+              addedSetCount: 0,
+              performedLoadSummary: {},
+              classification: "clean",
+              reasonCodes: ["same_exercise_duplicate_logging"],
+              notes: [],
+            },
+          ],
+        } as never,
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Exercise Reconciliation",
+        "Exercise | Slot | Planned | Saved | Performed | Skipped | Added | Classification | Notes",
+        "Belt Squat | lower_a | 4 | 4 | 4 | 0 | 0 | target_too_low | median 95 vs target 80",
+        "Leg Extension | lower_a | 2 | 3 | 3 | 0 | 1 | clean | +1 runtime-added set; target-gap work",
+        "Seated Calf Raise | lower_a | 4 | 0 | 0 | 0 | 0 | skipped_or_low_coverage | substitute / replacement-like pattern",
+        "Standing Calf Raise | lower_a | 0 | 4 | 4 | 0 | 4 | runtime_added | substitute / replacement-like pattern; added exercise, session-local performed reality",
+        "Duplicate Calf Raise | lower_a | 2 | 2 | 2 | 0 | 0 | clean | same-exercise duplicate logging",
+      ]),
+    );
+  });
+
+  it("keeps the exercise reconciliation table out of normal weekly-retro output", () => {
+    const summary = buildWeeklyRetroOperatorSummary({
+      artifact: {
+        weeklyRetro: {
+          loadCalibration: {
+            status: "aligned",
+            comparableSessionCount: 1,
+            driftSessionCount: 0,
+            prescriptionChangeCount: 0,
+            selectionDriftCount: 0,
+            legacyLimitedSessionCount: 0,
+            highlightedSessions: [],
+          },
+          volumeTargeting: {
+            muscles: [],
+          },
+          planAdherence: {
+            plannedWorkCompletedPercent: 100,
+            plannedWorkMissedSets: 0,
+            plannedWorkTotalSets: 4,
+            plannedWorkCompletedSets: 4,
+            explainedAdditions: {
+              totalSets: 0,
+              byIntent: {},
+            },
+            substitutions: 0,
+            painFatigueDeviations: 0,
+            unclassifiedDrift: 0,
+            engineConfidenceImpact: "none",
+            interpretations: [],
+          },
+          interventions: [],
+          recommendedPriorities: [],
+          exerciseLoadCalibrationRows: [
+            {
+              week: 4,
+              workoutId: "workout-lower-a",
+              slotId: "lower_a",
+              sessionLabel: "lower_a",
+              exerciseId: "belt-squat",
+              exerciseName: "Belt Squat",
+              plannedSetCount: 4,
+              savedSetCount: 4,
+              performedSetCount: 4,
+              skippedSetCount: 0,
+              addedSetCount: 0,
+              performedLoadSummary: {},
+              classification: "clean",
+              reasonCodes: [],
+              notes: [],
+            },
+          ],
+        } as never,
+      },
+    });
+
+    expect(summary).not.toContain("Exercise Reconciliation");
+    expect(summary?.some((line) => line.includes("Planned | Saved"))).toBe(false);
+  });
+
   it("prints explicit no-action markers when the weekly-retro payload is quiet", () => {
     const summary = buildWeeklyRetroOperatorSummary({
       artifact: {

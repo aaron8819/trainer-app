@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
+| 2026-05-20 | self | Repeated the napkin startup mistake by batching `.Codex/napkin.md` with `git status` and docs reads at the start of weekly-retro stdout work. | The first Trainer tool call must be exactly one unbatched `Get-Content -Raw .Codex/napkin.md`; run status/docs only after it returns. |
 | 2026-05-05 | self | Batched `git status` with the session-start napkin read instead of reading `.Codex/napkin.md` first. | Read the repo napkin as the first file/tool action in every Trainer session, then proceed with other inspection. |
 | 2026-05-05 | self | Repeated the session-start napkin batching mistake while also running `git status` and reading skills. | Make the first tool call exclusively `Get-Content -Raw .Codex/napkin.md`; only then run status or skill reads. |
 | 2026-05-06 | self | Repeated the napkin startup mistake again by reading skill files and running `git status` before `.Codex/napkin.md`. | In Trainer, the very first tool call must be only `Get-Content -Raw .Codex/napkin.md`; do not batch it with anything else, even required status checks. |

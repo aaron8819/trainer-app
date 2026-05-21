@@ -126,6 +126,16 @@ Optional projection-delivery comparison:
 npm run audit:workout -- --env-file .env.local --mode weekly-retro --user-id <user-id> --week <week> --mesocycle-id <mesocycle-id> --projection-artifact <projected-week-volume-artifact-path>
 ```
 
+Strict stdout-only operator review:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode weekly-retro --owner <owner-email> --mesocycle-id <mesocycle-id> --week <week> --no-artifact --operator-debug
+```
+
+- `--operator-debug` prints an `Exercise Reconciliation` table from `weeklyRetro.exerciseLoadCalibrationRows`.
+- The table is read-only stdout over existing audit rows: planned, saved, performed, skipped, added, classification, and short notes for additions, skipped work, substitutions when already classified, duplicate evidence when present, and load target mismatch.
+- `--no-artifact` still suppresses the main artifact and debug sidecar writes.
+
 Fast operator loop:
 
 ```powershell
@@ -834,6 +844,12 @@ Current-week dose guidance without artifact writes:
 
 ```powershell
 npm run audit:workout -- --env-file .env.local --mode current-week-audit --owner <owner-email> --operator-debug --no-artifact
+```
+
+Weekly-retro exercise reconciliation without artifact writes:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode weekly-retro --owner <owner-email> --mesocycle-id <mesocycle-id> --week <week> --operator-debug --no-artifact
 ```
 
 Full current-week projection without artifact writes:

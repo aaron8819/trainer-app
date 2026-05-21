@@ -713,12 +713,15 @@ Chest:
 Runtime add-on coaching should combine:
 
 - weekly target gap
+- expected weighted contribution of the candidate exercise
 - low systemic fatigue option
 - upcoming session overlap
 - recovery/readiness
 - user feeling good
 
 Feeling good is a green light to consider more work; it is not sufficient by itself. The app should prefer the lowest-fatigue set that closes a real weekly gap and avoids compromising the next slot.
+
+Raw sets are not always weighted sets. A runtime add-on recommendation must account for the expected weighted contribution of the candidate exercise. One raw set of an isolation movement may not equal one full weighted set for the target muscle, depending on the app's muscle contribution model.
 
 Examples:
 
@@ -739,6 +742,10 @@ This is execution-time coaching, not automatic plan mutation. If recovery, time,
 - hamstrings: prefer Seated Leg Curl over extra SLDL or other high-fatigue hinge volume
 - calves: prefer Calf Raise work before adding broader lower-body fatigue
 
+Final-opportunity MEV closure should be weighted-set-aware. When a muscle is below MEV at the final practical weekly opportunity, the app should estimate how many raw sets are needed to close the weighted-set floor, then apply recovery and session-fit guardrails. The goal is to close the MEV floor when practical, not chase the full target deficit.
+
+Week 4 Upper B exposed the durable lesson. If chest is 3 weighted sets below MEV, recommending +1-2 raw chest-isolation sets may still leave chest below MEV when those exercises contribute partial weighted volume. The coaching direction can be right while the sizing is underpowered.
+
 These top-ups are performed reality for the current workout. They do not mutate the accepted seed, change planner intent, imply automatic reseeding, or become future plan policy without later review and an explicit reseed/replacement path.
 
 Audits and readouts should distinguish generic `opportunistic_extra` from deliberate `final_weekly_opportunity_mev_closure` when the context is known. A final-session MEV-floor correction should not be labeled as random extra work just because it was runtime-added.
@@ -748,8 +755,11 @@ Guardrails:
 - do not chase every remaining target deficit in the final session
 - MEV floor closure is more important than forcing target volume
 - do not treat below-target/above-MEV as failure by default
-- avoid exceeding MAV
+- prefer low-fatigue isolation top-ups
+- do not add high-fatigue compound work just to close the arithmetic gap
+- avoid exceeding MAV/MRV
 - avoid high-fatigue additions when recovery is compromised
+- if closing the floor would require too much volume, say so and accept the miss
 - require user confirmation or explicit session-local action
 - do not automatically mutate the active mesocycle plan
 
@@ -1196,6 +1206,8 @@ Examples of useful future evidence:
 
 After each mesocycle, evaluate whether weekly targets acted as useful coaching targets or aspirational ceilings. If muscles consistently reach MEV but remain far below target despite good execution and recovery, consider lowering default targets, relabeling the target as a stretch target, using target ranges instead of single target numbers, tiering muscles by priority, or increasing seed volume only for repeatedly underdosed priority muscles in the next plan.
 
+Also review repeated cases where final-opportunity top-ups were directionally correct but failed to close weighted MEV floors. Use those cases to calibrate exercise contribution weights, top-up sizing, and target-zone semantics.
+
 Policy changes belong between mesocycles unless they fix a blocker. Do not mutate accepted seed during an active mesocycle just to chase targets; runtime add-ons remain session-local performed reality.
 
 ## 10. Migration Strategy
@@ -1313,6 +1325,9 @@ These are strategic decision gates, not claims that current production already p
 - runtime dose guidance distinguishes MEV floor, productive target zone, stretch target, and MAV/MRV ceiling
 - below-target/above-MEV is not treated as failure by default
 - final practical opportunity coaching closes MEV floors when practical without chasing full target deficits
+- final practical opportunity top-up sizing accounts for expected weighted contribution, not just raw set count
+- readiness and dose guidance explain whether a recommended add-on is expected to close the weighted MEV floor or only reduce the deficit
+- example target readout direction: `Chest is projected 7 / MEV 10. Candidate Cable Fly contributes ~X weighted chest sets per raw set. Recommended +N raw sets is expected to close / partially close the MEV floor.`
 - readouts distinguish generic `opportunistic_extra` from deliberate `final_weekly_opportunity_mev_closure`
 - add/reduce recommendations require actionable exercise candidates
 - add-on recommendations prefer low-fatigue movements that close real weekly gaps and avoid compromising the next slot

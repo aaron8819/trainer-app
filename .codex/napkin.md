@@ -4,6 +4,7 @@
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
 | 2026-05-20 | self | Repeated the napkin startup mistake by batching `.Codex/napkin.md` with `git status` and docs reads at the start of weekly-retro stdout work. | The first Trainer tool call must be exactly one unbatched `Get-Content -Raw .Codex/napkin.md`; run status/docs only after it returns. |
+| 2026-05-21 | self | Read `.Codex/napkin.md` first, but used `Get-Content` without `-Raw`, repeating the startup convention miss in a smaller form. | The first Trainer tool call must be exactly `Get-Content -Raw -LiteralPath .Codex/napkin.md`; do not improvise the command shape. |
 | 2026-05-05 | self | Batched `git status` with the session-start napkin read instead of reading `.Codex/napkin.md` first. | Read the repo napkin as the first file/tool action in every Trainer session, then proceed with other inspection. |
 | 2026-05-05 | self | Repeated the session-start napkin batching mistake while also running `git status` and reading skills. | Make the first tool call exclusively `Get-Content -Raw .Codex/napkin.md`; only then run status or skill reads. |
 | 2026-05-06 | self | Repeated the napkin startup mistake again by reading skill files and running `git status` before `.Codex/napkin.md`. | In Trainer, the very first tool call must be only `Get-Content -Raw .Codex/napkin.md`; do not batch it with anything else, even required status checks. |
@@ -143,6 +144,7 @@
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.
 
 ## Patterns That Work
+- For pre-session readiness stdout changes, run the live `--no-artifact --operator-debug` smoke after focused formatter tests; it can reveal cross-section wording contradictions that unit snippets miss, such as a new closure section allowing a top-up while the legacy avoid list still suppresses it.
 - For Program page presentation tests, scope existing Projected Week Finish assertions to that section before adding a new volume snapshot that can reuse the same muscle names.
 - For V2 planner/repair questions, treat repaired projection as evidence of legacy downstream responsibility, not as the target architecture.
 - For V2 pure-policy extraction, add engine-owned builders first and leave planningReality adapters untouched unless equality/serialization evidence proves a safe no-drift adapter swap.

@@ -265,6 +265,234 @@ function formatDoseStatus(
   return `${formatAuditDecimal(end.effectiveSets)} vs MEV ${formatAuditDecimal(end.mev)} / target ${formatAuditDecimal(end.weeklyTarget)} / MAV ${formatAuditDecimal(end.mav)}`;
 }
 
+type PreSessionDoseDiagnostic =
+  NonNullable<ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]>[number];
+type ProjectedWeekMuscleRow = ProjectedWeekVolumeAuditPayload["fullWeekByMuscle"][number];
+type ProjectedWeekSession = ProjectedWeekVolumeAuditPayload["projectedSessions"][number];
+
+const UPPER_BODY_MUSCLES = new Set([
+  "Chest",
+  "Lats",
+  "Upper Back",
+  "Side Delts",
+  "Rear Delts",
+  "Biceps",
+  "Triceps",
+]);
+const LOWER_BODY_MUSCLES = new Set([
+  "Quads",
+  "Hamstrings",
+  "Glutes",
+  "Calves",
+  "Adductors",
+  "Abductors",
+  "Lower Back",
+]);
+const TARGET_TIER_MEANINGFUL = new Set(["A_PRIMARY", "B_SUPPORT"]);
+
+function getMuscleRegion(muscle: string): "upper" | "lower" | null {
+  if (UPPER_BODY_MUSCLES.has(muscle)) {
+    return "upper";
+  }
+  if (LOWER_BODY_MUSCLES.has(muscle)) {
+    return "lower";
+  }
+  return null;
+}
+
+function sessionMatchesRegion(
+  session: ProjectedWeekSession | undefined,
+  region: "upper" | "lower"
+): boolean {
+  if (!session) {
+    return false;
+  }
+  const label = `${session.slotId ?? ""} ${session.intent ?? ""}`.toLowerCase();
+  if (label.includes("full_body")) {
+    return true;
+  }
+  if (region === "upper") {
+    return (
+      label.includes("upper") ||
+      label.includes("push") ||
+      label.includes("pull")
+    );
+  }
+  return label.includes("lower") || label.includes("legs");
+}
+
+function isFinalPracticalOpportunity(input: {
+  muscle: string;
+  nextSession: ProjectedWeekSession | undefined;
+  projectedSessions: ProjectedWeekVolumeAuditPayload["projectedSessions"];
+}): boolean {
+  const region = getMuscleRegion(input.muscle);
+  if (!region || !sessionMatchesRegion(input.nextSession, region)) {
+    return false;
+  }
+
+  const nextIndex = input.projectedSessions.findIndex(
+    (session) => session === input.nextSession
+  );
+  const remainingSessions =
+    nextIndex >= 0
+      ? input.projectedSessions.slice(nextIndex + 1)
+      : input.projectedSessions.slice(1);
+  return !remainingSessions.some((session) => sessionMatchesRegion(session, region));
+}
+
+function getLowFatigueIsolationLabel(input: {
+  muscle: string;
+  exerciseName?: string;
+}): string {
+  const exerciseName = input.exerciseName;
+  if (input.muscle === "Chest") {
+    if (exerciseName?.toLowerCase().includes("fly")) {
+      return `${exerciseName} or Pec Deck`;
+    }
+    return "Cable Fly or Pec Deck";
+  }
+  if (input.muscle === "Triceps") {
+    return exerciseName?.toLowerCase().includes("pushdown")
+      ? exerciseName
+      : "Pushdown";
+  }
+  if (input.muscle === "Biceps") {
+    return exerciseName?.toLowerCase().includes("curl") ? exerciseName : "Curl";
+  }
+  if (input.muscle === "Side Delts") {
+    return exerciseName?.toLowerCase().includes("lateral")
+      ? exerciseName
+      : "Lateral Raise";
+  }
+  if (input.muscle === "Rear Delts") {
+    return exerciseName?.toLowerCase().includes("rear delt")
+      ? exerciseName
+      : "Rear Delt Fly";
+  }
+  if (input.muscle === "Calves") {
+    return exerciseName?.toLowerCase().includes("calf")
+      ? exerciseName
+      : "Calf Raise";
+  }
+  return exerciseName ?? "low-fatigue isolation";
+}
+
+function getSuppressionAction(muscle: string): string {
+  if (muscle === "Biceps") {
+    return "no extra curls";
+  }
+  if (muscle === "Side Delts") {
+    return "no extra lateral raises";
+  }
+  if (muscle === "Rear Delts") {
+    return "no extra rear-delt work";
+  }
+  if (muscle === "Lats") {
+    return "no extra pulldowns";
+  }
+  if (muscle === "Upper Back") {
+    return "no extra rows";
+  }
+  return "seed only";
+}
+
+function formatMevProjection(input: {
+  effectiveSets: number;
+  mev: number;
+}): string {
+  return `projected ${formatAuditDecimal(input.effectiveSets)} / MEV ${formatAuditDecimal(input.mev)}`;
+}
+
+function buildDoseClosureGuidance(input: {
+  diagnostics: PreSessionDoseDiagnostic[];
+  fullWeekRows: ProjectedWeekVolumeAuditPayload["fullWeekByMuscle"];
+  projectedSessions: ProjectedWeekVolumeAuditPayload["projectedSessions"];
+  nextSession: ProjectedWeekSession | undefined;
+}): string[] {
+  const lines = ["", "Dose Closure Guidance"];
+  const diagnosticByMuscle = new Map(
+    input.diagnostics.map((diagnostic) => [diagnostic.muscle, diagnostic])
+  );
+  const relevantRows = input.fullWeekRows
+    .filter((row) => TARGET_TIER_MEANINGFUL.has(row.targetTier ?? ""))
+    .filter((row) => {
+      const region = getMuscleRegion(row.muscle);
+      return Boolean(region && sessionMatchesRegion(input.nextSession, region));
+    })
+    .sort((left, right) => {
+      const leftGap = left.mev - left.projectedFullWeekEffectiveSets;
+      const rightGap = right.mev - right.projectedFullWeekEffectiveSets;
+      return rightGap - leftGap || left.muscle.localeCompare(right.muscle);
+    });
+  const priority: string[] = [];
+  const optional: string[] = [];
+  const suppress: string[] = [];
+  const monitor: string[] = [];
+
+  for (const row of relevantRows) {
+    const diagnostic = diagnosticByMuscle.get(row.muscle);
+    const mevGap = row.mev - row.projectedFullWeekEffectiveSets;
+    const finalOpportunity = isFinalPracticalOpportunity({
+      muscle: row.muscle,
+      nextSession: input.nextSession,
+      projectedSessions: input.projectedSessions,
+    });
+    const projection = formatMevProjection({
+      effectiveSets: row.projectedFullWeekEffectiveSets,
+      mev: row.mev,
+    });
+
+    if (mevGap > 0) {
+      if (!finalOpportunity) {
+        const region = getMuscleRegion(row.muscle);
+        monitor.push(
+          `- ${row.muscle}: ${projection}. Below MEV, but another practical ${region ?? "training"} opportunity remains; monitor after the seed.`
+        );
+        continue;
+      }
+
+      const isolation = getLowFatigueIsolationLabel({
+        muscle: row.muscle,
+        exerciseName: diagnostic?.recommendedAction.exerciseName,
+      });
+      if (mevGap <= 1.25) {
+        optional.push(
+          `- ${row.muscle}: ${projection}. Optional +1 ${isolation} only if readiness/time/elbows are good. Tiny MEV gap; use low-fatigue isolation only.`
+        );
+      } else {
+        priority.push(
+          `- ${row.muscle}: ${projection}. Add +1-2 ${isolation}. Final practical ${getMuscleRegion(row.muscle)} opportunity; close MEV floor, not full target.`
+        );
+      }
+      continue;
+    }
+
+    const relation = row.projectedFullWeekEffectiveSets === row.mev
+      ? "at MEV after seed"
+      : "projected above MEV after seed";
+    suppress.push(`- ${row.muscle}: ${relation}; ${getSuppressionAction(row.muscle)}.`);
+  }
+
+  lines.push("Priority:");
+  lines.push(...(priority.length > 0 ? priority : ["- none"]));
+  lines.push("Optional:");
+  lines.push(...(optional.length > 0 ? optional : ["- none"]));
+  if (monitor.length > 0) {
+    lines.push("Monitor / defer:");
+    lines.push(...monitor);
+  }
+  lines.push("Suppress:");
+  lines.push(...(suppress.length > 0 ? suppress.slice(0, 8) : ["- none"]));
+  lines.push("Guardrails:");
+  lines.push("- session-local only; no seed/runtime/save/progression mutation");
+  lines.push("- do not add extra pressing");
+  lines.push("- do not add extra rows/pulldowns");
+  lines.push("- do not chase full target deficit");
+
+  return lines;
+}
+
 function selectPreSessionDoseDiagnostics(input: {
   diagnostics: NonNullable<ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]>;
   nextSession: ProjectedWeekVolumeAuditPayload["projectedSessions"][number] | undefined;
@@ -369,7 +597,7 @@ function buildPreSessionAvoidList(input: {
         diagnostic.recommendedAction.setDelta > 0
     )
   ) {
-    avoid.add("chest/triceps top-up");
+    avoid.add("extra pressing for triceps");
   }
   if (
     input.diagnostics.some(
@@ -2977,6 +3205,14 @@ export function buildPreSessionReadinessSummary(input: {
       );
     }
   }
+  lines.push(
+    ...buildDoseClosureGuidance({
+      diagnostics: projectedWeek?.runtimeDoseAdjustmentDiagnostics ?? [],
+      fullWeekRows: projectedWeek?.fullWeekByMuscle ?? [],
+      projectedSessions: projectedWeek?.projectedSessions ?? [],
+      nextSession: nextProjectedSession,
+    })
+  );
 
   const retro = input.artifact.weeklyRetro;
   const fatigueRows = [
@@ -3015,6 +3251,7 @@ export function buildPreSessionReadinessSummary(input: {
 
   lines.push("", "Session-Local Add-On Recommendation");
   lines.push("Run seed as-is.");
+  lines.push("Use Dose Closure Guidance for MEV-floor top-ups; session-local only.");
   lines.push("Optional add-ons:");
   if (addOns.length === 0) {
     lines.push("- none");

@@ -3974,6 +3974,367 @@ describe("buildCurrentWeekAuditOperatorSummary", () => {
 });
 
 describe("buildPreSessionReadinessSummary", () => {
+  function buildWeek4UpperBPreSessionArtifact(overrides: {
+    projectedSessions?: unknown[];
+    fullWeekByMuscle?: unknown[];
+    runtimeDoseAdjustmentDiagnostics?: unknown[];
+  } = {}) {
+    const projectedSessions = overrides.projectedSessions ?? [
+      {
+        slotId: "upper_b",
+        intent: "upper",
+        isNext: true,
+        exerciseCount: 6,
+        totalSets: 18,
+        exercises: [
+          {
+            exerciseId: "machine-shoulder-press",
+            name: "Machine Shoulder Press",
+            setCount: 2,
+            role: "primary",
+            effectiveStimulusByMuscle: { "Side Delts": 2, Triceps: 1.6 },
+          },
+          {
+            exerciseId: "lat-pulldown",
+            name: "Lat Pulldown",
+            setCount: 3,
+            role: "primary",
+            effectiveStimulusByMuscle: { Lats: 3, "Upper Back": 1.5, Biceps: 1 },
+          },
+          {
+            exerciseId: "cable-fly",
+            name: "Cable Fly",
+            setCount: 3,
+            role: "accessory",
+            effectiveStimulusByMuscle: { Chest: 3 },
+          },
+          {
+            exerciseId: "seated-cable-row",
+            name: "Seated Cable Row",
+            setCount: 3,
+            role: "primary",
+            effectiveStimulusByMuscle: { "Upper Back": 3, Lats: 1.5, Biceps: 1 },
+          },
+          {
+            exerciseId: "machine-lateral-raise",
+            name: "Machine Lateral Raise",
+            setCount: 4,
+            role: "accessory",
+            effectiveStimulusByMuscle: { "Side Delts": 4 },
+          },
+          {
+            exerciseId: "barbell-curl",
+            name: "Barbell Curl",
+            setCount: 3,
+            role: "accessory",
+            effectiveStimulusByMuscle: { Biceps: 3 },
+          },
+        ],
+        projectedContributionByMuscle: {
+          Chest: 3,
+          Triceps: 1.6,
+          Biceps: 5,
+          "Side Delts": 6,
+          Lats: 4.5,
+          "Upper Back": 4.5,
+          "Rear Delts": 1,
+        },
+      },
+    ];
+    const fullWeekByMuscle = overrides.fullWeekByMuscle ?? [
+      buildFullWeekRow("Chest", 7, 12, 10, 16, "A_PRIMARY"),
+      buildFullWeekRow("Triceps", 5.6, 8, 6, 12, "B_SUPPORT"),
+      buildFullWeekRow("Biceps", 8, 10, 6, 14, "B_SUPPORT"),
+      buildFullWeekRow("Side Delts", 6, 12, 6, 16, "B_SUPPORT"),
+      buildFullWeekRow("Rear Delts", 6, 8, 4, 12, "B_SUPPORT"),
+      buildFullWeekRow("Lats", 12, 14, 8, 16, "A_PRIMARY"),
+      buildFullWeekRow("Upper Back", 9, 10, 6, 14, "A_PRIMARY"),
+    ];
+    const runtimeDoseAdjustmentDiagnostics =
+      overrides.runtimeDoseAdjustmentDiagnostics ?? [
+        buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly", -5),
+        buildDoseDiagnostic(
+          "Triceps",
+          5.6,
+          8,
+          6,
+          12,
+          "add_set",
+          "Machine Shoulder Press",
+          -2.4
+        ),
+        buildDoseDiagnostic("Biceps", 8, 10, 6, 14, "hold_seed", undefined, -2),
+        buildDoseDiagnostic("Side Delts", 6, 12, 6, 16, "hold_seed", undefined, -6),
+        buildDoseDiagnostic("Rear Delts", 6, 8, 4, 12, "hold_seed", undefined, -2),
+        buildDoseDiagnostic("Lats", 12, 14, 8, 16, "hold_seed", undefined, -2),
+        buildDoseDiagnostic("Upper Back", 9, 10, 6, 14, "hold_seed", undefined, -1),
+      ];
+
+    return {
+      identity: {
+        userId: "user-1",
+        ownerEmail: "aaron8819@gmail.com",
+      },
+      request: {
+        mode: "pre-session-readiness",
+        ownerEmail: "aaron8819@gmail.com",
+        mesocycleId: "ceb2cff3-9d4d-4b3e-b309-c63ab28e62d4",
+      },
+      nextSession: {
+        intent: "upper",
+        slotId: "upper_b",
+        slotSequenceIndex: 2,
+        slotSequenceLength: 4,
+        slotSource: "mesocycle_slot_sequence",
+        existingWorkoutId: null,
+        isExisting: false,
+        source: "rotation",
+        weekInMeso: 4,
+        sessionInWeek: 3,
+        derivationTrace: [],
+        selectedIncompleteStatus: null,
+      },
+      generationPath: {
+        requestedMode: "pre-session-readiness",
+        executionMode: "standard_generation",
+        generator: "generateSessionFromIntent",
+        reason: "standard_future_week_or_preview",
+      },
+      generationProvenance: {
+        receiptProvenance: {
+          mesocycleId: "ceb2cff3-9d4d-4b3e-b309-c63ab28e62d4",
+          compositionSource: "persisted_slot_plan_seed",
+        },
+        auditOnly: {
+          generationPath: null,
+        },
+        seed: {
+          provenanceConsistency: {
+            version: 1,
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            consumedByProduction: false,
+            status: "valid",
+            seed: {
+              available: true,
+              source: "handoff_slot_plan_projection",
+              executableShape: "set_aware",
+            },
+            warnings: [],
+          },
+        },
+      },
+      sessionSnapshot: {
+        version: 1,
+        generated: {
+          selectionMode: "INTENT",
+          sessionIntent: "upper",
+          semantics: {
+            kind: "advancing",
+            isDeload: false,
+            isStrictGapFill: false,
+            isStrictSupplemental: false,
+            advancesLifecycle: true,
+            consumesWeeklyScheduleIntent: true,
+            countsTowardCompliance: true,
+            countsTowardRecentStimulus: true,
+            countsTowardWeeklyVolume: true,
+            countsTowardProgressionHistory: true,
+            countsTowardPerformanceHistory: true,
+            updatesProgressionAnchor: true,
+            eligibleForUniqueIntentSubtraction: true,
+            reasons: [],
+            trace: { advancesSplitInput: true },
+          },
+          exerciseCount: 6,
+          hardSetCount: 18,
+          exercises: [
+            buildGeneratedExercise("machine-shoulder-press", "Machine Shoulder Press", 0, "main", 2),
+            buildGeneratedExercise("lat-pulldown", "Lat Pulldown", 1, "main", 3),
+            buildGeneratedExercise("cable-fly", "Cable Fly", 2, "accessory", 3),
+            buildGeneratedExercise("seated-cable-row", "Seated Cable Row", 3, "main", 3),
+            buildGeneratedExercise("machine-lateral-raise", "Machine Lateral Raise", 4, "accessory", 4),
+            buildGeneratedExercise("barbell-curl", "Barbell Curl", 5, "accessory", 3),
+          ],
+          traces: {
+            progression: {},
+          },
+        },
+      },
+      projectedWeekVolume: {
+        version: 1,
+        currentWeek: {
+          mesocycleId: "ceb2cff3-9d4d-4b3e-b309-c63ab28e62d4",
+          week: 4,
+          phase: "accumulation",
+          blockType: "accumulation",
+        },
+        projectionNotes: [],
+        completedVolumeByMuscle: {},
+        projectedSessions,
+        fullWeekByMuscle,
+        currentWeekAudit: {
+          belowMEV: ["Chest", "Triceps"],
+          overMAV: [],
+          underTargetClusters: [{ muscle: "Chest", deficit: 5 }],
+          fatigueRisks: [],
+        },
+        sessionRisks: [],
+        runtimeDoseAdjustmentDiagnostics,
+      },
+      weeklyRetro: {
+        week: 3,
+        volumeTargeting: {
+          overMav: [],
+          overTargetOnly: [],
+        },
+        planAdherence: {
+          plannedWorkCompletedSets: 46,
+          plannedWorkTotalSets: 48,
+          plannedWorkMissedSets: 2,
+          explainedAdditions: {
+            totalSets: 0,
+          },
+          engineConfidenceImpact: "none",
+        },
+      },
+      preSessionReadiness: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByProduction: false,
+        wouldWriteTransaction: false,
+        activeMesocycle: {
+          mesocycleId: "ceb2cff3-9d4d-4b3e-b309-c63ab28e62d4",
+          state: "ACTIVE_ACCUMULATION",
+          completedAccumulationSessions: 14,
+          currentWeek: 4,
+          currentSession: 3,
+          requestedMesocycleId: "ceb2cff3-9d4d-4b3e-b309-c63ab28e62d4",
+          mesocycleIdMatchesRequest: true,
+        },
+      },
+      warningSummary: {
+        blockingErrors: [],
+        semanticWarnings: [],
+        backgroundWarnings: [],
+        counts: {
+          blockingErrors: 0,
+          semanticWarnings: 0,
+          backgroundWarnings: 0,
+        },
+      },
+    };
+  }
+
+  function buildGeneratedExercise(
+    exerciseId: string,
+    exerciseName: string,
+    orderIndex: number,
+    section: "main" | "accessory",
+    prescribedSetCount: number
+  ) {
+    return {
+      exerciseId,
+      exerciseName,
+      orderIndex,
+      section,
+      isMainLift: section === "main",
+      prescribedSetCount,
+      prescribedSets: [
+        {
+          setIndex: 1,
+          targetLoad: 10,
+          targetRepRange: { min: 8, max: 12 },
+          targetRpe: 8,
+        },
+      ],
+    };
+  }
+
+  function buildFullWeekRow(
+    muscle: string,
+    projectedFullWeekEffectiveSets: number,
+    weeklyTarget: number,
+    mev: number,
+    mav: number,
+    targetTier: string
+  ) {
+    return {
+      muscle,
+      targetKind: "hard",
+      displayGroup: targetTier === "A_PRIMARY" ? "primary" : "support",
+      targetTier,
+      warningSeverity: targetTier === "A_PRIMARY" ? "hard" : "soft",
+      dashboardGroup:
+        targetTier === "A_PRIMARY" ? "primary_driver" : "support_driver",
+      completedEffectiveSets: 0,
+      projectedNextSessionEffectiveSets: projectedFullWeekEffectiveSets,
+      projectedRemainingWeekEffectiveSets: 0,
+      projectedFullWeekEffectiveSets,
+      weeklyTarget,
+      mev,
+      mav,
+      mrv: mav + 6,
+      deltaToTarget: Number((projectedFullWeekEffectiveSets - weeklyTarget).toFixed(1)),
+      deltaToMev: Number((projectedFullWeekEffectiveSets - mev).toFixed(1)),
+      deltaToMav: Number((projectedFullWeekEffectiveSets - mav).toFixed(1)),
+    };
+  }
+
+  function buildDoseDiagnostic(
+    muscle: string,
+    effectiveSets: number,
+    weeklyTarget: number,
+    mev: number,
+    mav: number,
+    kind: "hold_seed" | "add_set" | "optional_add_set",
+    exerciseName: string | undefined,
+    deltaToTarget: number
+  ) {
+    return {
+      muscle,
+      plannedRemainingVolume: {
+        effectiveSets,
+        bySlot:
+          exerciseName != null
+            ? [{ slotId: "upper_b", exerciseName, effectiveSets }]
+            : [],
+      },
+      performedWeekToDateVolume: {
+        effectiveSets: 0,
+        source: "weekly_volume_read_model",
+      },
+      projectedEndOfWeekVolume: {
+        effectiveSets,
+        weeklyTarget,
+        mev,
+        mav,
+      },
+      targetStatus:
+        deltaToTarget <= -2
+          ? "meaningfully_low"
+          : deltaToTarget < -0.25
+            ? "slightly_low"
+            : "on_target",
+      fatigueDensityConcern: {
+        level: "none",
+        drivers: [],
+      },
+      recoveryReadinessCaveat: {
+        status: "none",
+      },
+      recommendedAction: {
+        kind,
+        ...(exerciseName ? { slotId: "upper_b", exerciseName } : {}),
+        setDelta: kind === "hold_seed" ? 0 : 1,
+      },
+      reasonCode: kind === "hold_seed" ? "seed_truth_preserved" : "target_volume_deficit",
+      confidence: 0.8,
+      readOnly: true,
+      affectsAcceptedSeed: false,
+    };
+  }
+
   it("prints generated preview, dose guidance, add-ons, and safe-to-train status", () => {
     const summary = buildPreSessionReadinessSummary({
       operatorDebug: false,
@@ -4260,9 +4621,97 @@ describe("buildPreSessionReadinessSummary", () => {
         "Current-Week Dose Guidance",
         "Rear Delts | 7 vs MEV 4 / target 8 / MAV 12 | slightly_low | optional +1 Cable Rear Delt Fly | 0.8",
         "Session-Local Add-On Recommendation",
+        "Use Dose Closure Guidance for MEV-floor top-ups; session-local only.",
         "- +1 Cable Rear Delt Fly if readiness is good (Rear Delts, close_low_volume_opportunity)",
         "Safe to train: yes",
       ]),
+    );
+  });
+
+  it("prints final-opportunity MEV closure, marginal top-up, suppressions, and guardrails", () => {
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: buildWeek4UpperBPreSessionArtifact() as never,
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Dose Closure Guidance",
+        "Priority:",
+        "- Chest: projected 7 / MEV 10. Add +1-2 Cable Fly or Pec Deck. Final practical upper opportunity; close MEV floor, not full target.",
+        "Optional:",
+        "- Triceps: projected 5.6 / MEV 6. Optional +1 Pushdown only if readiness/time/elbows are good. Tiny MEV gap; use low-fatigue isolation only.",
+        "Suppress:",
+        "- Biceps: projected above MEV after seed; no extra curls.",
+        "- Side Delts: at MEV after seed; no extra lateral raises.",
+        "- Lats: projected above MEV after seed; no extra pulldowns.",
+        "- Upper Back: projected above MEV after seed; no extra rows.",
+        "Guardrails:",
+        "- session-local only; no seed/runtime/save/progression mutation",
+        "- do not add extra pressing",
+        "- do not add extra rows/pulldowns",
+        "- do not chase full target deficit",
+        "Use Dose Closure Guidance for MEV-floor top-ups; session-local only.",
+        "Safe to train: yes",
+      ])
+    );
+    expect(summary).not.toContain("- chest/triceps top-up");
+  });
+
+  it("defers a below-MEV top-up when another practical upper opportunity remains", () => {
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: buildWeek4UpperBPreSessionArtifact({
+        projectedSessions: [
+          {
+            slotId: "upper_a",
+            intent: "upper",
+            isNext: true,
+            exerciseCount: 1,
+            totalSets: 3,
+            exercises: [
+              {
+                exerciseId: "cable-fly",
+                name: "Cable Fly",
+                setCount: 3,
+                role: "accessory",
+                effectiveStimulusByMuscle: { Chest: 3 },
+              },
+            ],
+            projectedContributionByMuscle: { Chest: 3 },
+          },
+          {
+            slotId: "upper_b",
+            intent: "upper",
+            isNext: false,
+            exerciseCount: 1,
+            totalSets: 3,
+            exercises: [
+              {
+                exerciseId: "pec-deck",
+                name: "Pec Deck",
+                setCount: 3,
+                role: "accessory",
+                effectiveStimulusByMuscle: { Chest: 3 },
+              },
+            ],
+            projectedContributionByMuscle: { Chest: 3 },
+          },
+        ],
+        fullWeekByMuscle: [buildFullWeekRow("Chest", 7, 12, 10, 16, "A_PRIMARY")],
+        runtimeDoseAdjustmentDiagnostics: [
+          buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly", -5),
+        ],
+      }) as never,
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Priority:",
+        "- none",
+        "Monitor / defer:",
+        "- Chest: projected 7 / MEV 10. Below MEV, but another practical upper opportunity remains; monitor after the seed.",
+      ])
     );
   });
 });

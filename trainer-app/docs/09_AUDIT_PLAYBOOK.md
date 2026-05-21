@@ -236,12 +236,14 @@ Inspect first:
 - `Pre-Session Readiness`
 - `Generated Preview`
 - `Current-Week Dose Guidance`
+- `Dose Closure Guidance`
 - `Session-Local Add-On Recommendation`
 - `Safe to train`
 
 Important interpretation rule:
 - this mode composes existing read-only generation, projected-week, current-week dose guidance, and prior-week retrospective readouts
 - recommendations are session-local operator guidance only
+- `Dose Closure Guidance` is a formatter/readout layer over projected current-week rows and runtime dose diagnostics; when the next slot is the final practical upper/lower opportunity, it may recommend bounded MEV-floor closure with low-fatigue isolation while suppressing at/above-MEV muscles and warning against chasing full target deficits
 - it does not mutate `slotPlanSeedJson`, runtime replay, receipts, progression anchors, workouts, logs, sessions, analytics semantics, planner/materializer policy, or DB state
 - `--no-artifact` keeps the check stdout-only; without it, the normal audit artifact behavior still applies
 

@@ -269,6 +269,16 @@ type PreSessionDoseDiagnostic =
   NonNullable<ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]>[number];
 type ProjectedWeekMuscleRow = ProjectedWeekVolumeAuditPayload["fullWeekByMuscle"][number];
 type ProjectedWeekSession = ProjectedWeekVolumeAuditPayload["projectedSessions"][number];
+type DoseClosureRecommendation = {
+  kind: "priority" | "optional";
+  muscle: string;
+  line: string;
+  addonLine: string;
+};
+type DoseClosurePlan = {
+  lines: string[];
+  recommendations: DoseClosureRecommendation[];
+};
 
 const UPPER_BODY_MUSCLES = new Set([
   "Chest",
@@ -372,11 +382,28 @@ function getLowFatigueIsolationLabel(input: {
       : "Rear Delt Fly";
   }
   if (input.muscle === "Calves") {
+    const normalized = exerciseName?.toLowerCase();
+    if (normalized?.includes("seated calf")) {
+      return `${exerciseName} or equivalent Standing Calf Raise`;
+    }
+    if (normalized?.includes("standing calf")) {
+      return `${exerciseName} or equivalent Seated Calf Raise`;
+    }
     return exerciseName?.toLowerCase().includes("calf")
-      ? exerciseName
+      ? `${exerciseName} or equivalent Calf Raise`
       : "Calf Raise";
   }
   return exerciseName ?? "low-fatigue isolation";
+}
+
+function getDoseClosureAddonCaveat(muscle: string): string {
+  if (muscle === "Calves") {
+    return "if calves/Achilles/feet feel good";
+  }
+  if (muscle === "Triceps") {
+    return "if readiness/time/elbows are good";
+  }
+  return "if readiness/time allow";
 }
 
 function getSuppressionAction(muscle: string): string {
@@ -452,12 +479,12 @@ function formatContributionEstimate(input: {
   return `Estimated contribution: ~${formatAuditDecimal(input.estimate.weightedSetsPerRawSet)} weighted ${input.muscle} sets per raw ${input.estimate.exerciseName} set.`;
 }
 
-function formatPriorityDoseClosureLine(input: {
+function buildPriorityDoseClosureRecommendation(input: {
   row: ProjectedWeekMuscleRow;
   diagnostic: PreSessionDoseDiagnostic | undefined;
   nextSession: ProjectedWeekSession | undefined;
   isolation: string;
-}): string {
+}): DoseClosureRecommendation {
   const weightedGap = Math.max(0, input.row.mev - input.row.projectedFullWeekEffectiveSets);
   const projection = formatMevProjection({
     effectiveSets: input.row.projectedFullWeekEffectiveSets,
@@ -471,7 +498,12 @@ function formatPriorityDoseClosureLine(input: {
   const base = `- ${input.row.muscle}: ${projection}; gap ${formatWeightedSetGap(weightedGap)}. Candidate: ${input.isolation}. ${formatContributionEstimate({ muscle: input.row.muscle, estimate })}`;
 
   if (!estimate) {
-    return `${base} Recommended: +1-2 raw low-fatigue ${input.row.muscle} isolation sets if readiness/time allow. Expected outcome: reduce deficit but may still miss MEV. Guardrail: accept the miss if full closure would require too much volume today; do not chase full target or add pressing.`;
+    return {
+      kind: "priority",
+      muscle: input.row.muscle,
+      line: `${base} Recommended: +1-2 raw low-fatigue ${input.row.muscle} isolation sets if readiness/time allow. Expected outcome: reduce deficit but may still miss MEV. Guardrail: accept the miss if full closure would require too much volume today; do not chase full target or add pressing.`,
+      addonLine: `- Add +1-2 raw low-fatigue ${input.row.muscle} isolation sets ${getDoseClosureAddonCaveat(input.row.muscle)}.`,
+    };
   }
 
   const rawSetsNeeded = Math.ceil(weightedGap / estimate.weightedSetsPerRawSet);
@@ -482,30 +514,45 @@ function formatPriorityDoseClosureLine(input: {
     : " A +1-2 raw add-on is expected to reduce the deficit, not fully close MEV.";
 
   if (rawSetsNeeded > MAX_BOUNDED_TOP_UP_RAW_SETS) {
-    return `${base} Closing would require about ${formatRawSetCount(rawSetsNeeded)}, above the bounded top-up cap. Recommended: +2-${MAX_BOUNDED_TOP_UP_RAW_SETS} raw low-fatigue isolation sets only if readiness/time allow. Expected outcome: reduce deficit but may still miss MEV; accept the miss rather than chase volume today. Guardrail: do not chase full target or add pressing.`;
+    return {
+      kind: "priority",
+      muscle: input.row.muscle,
+      line: `${base} Closing would require about ${formatRawSetCount(rawSetsNeeded)}, above the bounded top-up cap. Recommended: +2-${MAX_BOUNDED_TOP_UP_RAW_SETS} raw low-fatigue isolation sets only if readiness/time allow. Expected outcome: reduce deficit but may still miss MEV; accept the miss rather than chase volume today. Guardrail: do not chase full target or add pressing.`,
+      addonLine: `- Add +2-${MAX_BOUNDED_TOP_UP_RAW_SETS} raw sets of ${input.isolation} ${getDoseClosureAddonCaveat(input.row.muscle)}; accept the miss rather than chase more volume today.`,
+    };
   }
 
-  return `${base} Recommended: +${rawSetsNeeded} raw low-fatigue isolation ${rawSetsNeeded === 1 ? "set" : "sets"} if readiness/time allow. Expected outcome: likely closes MEV floor.${oneToTwoNote} Guardrail: do not chase full target or add pressing.`;
+  return {
+    kind: "priority",
+    muscle: input.row.muscle,
+    line: `${base} Recommended: +${rawSetsNeeded} raw low-fatigue isolation ${rawSetsNeeded === 1 ? "set" : "sets"} if readiness/time allow. Expected outcome: likely closes MEV floor.${oneToTwoNote} Guardrail: do not chase full target or add pressing.`,
+    addonLine: `- Add +${rawSetsNeeded} raw ${rawSetsNeeded === 1 ? "set" : "sets"} of ${input.isolation} ${getDoseClosureAddonCaveat(input.row.muscle)}.`,
+  };
 }
 
-function formatOptionalDoseClosureLine(input: {
+function buildOptionalDoseClosureRecommendation(input: {
   row: ProjectedWeekMuscleRow;
   isolation: string;
-}): string {
+}): DoseClosureRecommendation {
   const weightedGap = Math.max(0, input.row.mev - input.row.projectedFullWeekEffectiveSets);
   const projection = formatMevProjection({
     effectiveSets: input.row.projectedFullWeekEffectiveSets,
     mev: input.row.mev,
   });
-  return `- ${input.row.muscle}: ${projection}; gap ${formatWeightedSetGap(weightedGap)}. Optional +1 ${input.isolation} if readiness/time/elbows are good. Expected outcome: close or reduce tiny MEV gap; low-fatigue isolation only.`;
+  return {
+    kind: "optional",
+    muscle: input.row.muscle,
+    line: `- ${input.row.muscle}: ${projection}; gap ${formatWeightedSetGap(weightedGap)}. Optional +1 ${input.isolation} ${getDoseClosureAddonCaveat(input.row.muscle)}. Expected outcome: close or reduce tiny MEV gap; low-fatigue isolation only.`,
+    addonLine: `- Add +1 ${input.isolation} ${getDoseClosureAddonCaveat(input.row.muscle)}.`,
+  };
 }
 
-function buildDoseClosureGuidance(input: {
+function buildDoseClosurePlan(input: {
   diagnostics: PreSessionDoseDiagnostic[];
   fullWeekRows: ProjectedWeekVolumeAuditPayload["fullWeekByMuscle"];
   projectedSessions: ProjectedWeekVolumeAuditPayload["projectedSessions"];
   nextSession: ProjectedWeekSession | undefined;
-}): string[] {
+}): DoseClosurePlan {
   const lines = ["", "Dose Closure Guidance"];
   const diagnosticByMuscle = new Map(
     input.diagnostics.map((diagnostic) => [diagnostic.muscle, diagnostic])
@@ -523,6 +570,7 @@ function buildDoseClosureGuidance(input: {
     });
   const priority: string[] = [];
   const optional: string[] = [];
+  const recommendations: DoseClosureRecommendation[] = [];
   const suppress: string[] = [];
   const monitor: string[] = [];
 
@@ -553,21 +601,21 @@ function buildDoseClosureGuidance(input: {
         exerciseName: diagnostic?.recommendedAction.exerciseName,
       });
       if (mevGap <= 1.25) {
-        optional.push(
-          formatOptionalDoseClosureLine({
-            row,
-            isolation,
-          })
-        );
+        const recommendation = buildOptionalDoseClosureRecommendation({
+          row,
+          isolation,
+        });
+        optional.push(recommendation.line);
+        recommendations.push(recommendation);
       } else {
-        priority.push(
-          formatPriorityDoseClosureLine({
-            row,
-            diagnostic,
-            nextSession: input.nextSession,
-            isolation,
-          })
-        );
+        const recommendation = buildPriorityDoseClosureRecommendation({
+          row,
+          diagnostic,
+          nextSession: input.nextSession,
+          isolation,
+        });
+        priority.push(recommendation.line);
+        recommendations.push(recommendation);
       }
       continue;
     }
@@ -595,7 +643,7 @@ function buildDoseClosureGuidance(input: {
   lines.push("- do not chase full target deficit");
   lines.push("- avoid exceeding MAV/MRV; accept the miss if closure requires excessive raw volume");
 
-  return lines;
+  return { lines, recommendations };
 }
 
 function selectPreSessionDoseDiagnostics(input: {
@@ -633,56 +681,11 @@ function selectPreSessionDoseDiagnostics(input: {
     .slice(0, 8);
 }
 
-function isLowRiskSessionLocalAddon(input: {
-  diagnostic: NonNullable<ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]>[number];
-  exercises: NonNullable<NonNullable<WorkoutAuditArtifact["sessionSnapshot"]>["generated"]>["exercises"];
-}): boolean {
-  const exerciseName = input.diagnostic.recommendedAction.exerciseName;
-  if (!exerciseName || input.diagnostic.recommendedAction.setDelta <= 0) {
-    return false;
-  }
-  if (
-    input.diagnostic.fatigueDensityConcern.level === "meaningful" ||
-    input.diagnostic.fatigueDensityConcern.level === "high" ||
-    input.diagnostic.recoveryReadinessCaveat.status !== "none"
-  ) {
-    return false;
-  }
-
-  const exercise = input.exercises.find(
-    (candidate) => candidate.exerciseName === exerciseName
-  );
-  if (!exercise || exercise.section !== "accessory") {
-    return false;
-  }
-
-  const lowerName = exerciseName.toLowerCase();
-  const excludedMuscles = new Set(["Chest", "Triceps", "Side Delts"]);
-  const largerPatternTokens = [
-    "press",
-    "row",
-    "pulldown",
-    "lateral raise",
-    "pushdown",
-    "squat",
-    "deadlift",
-    "calf",
-    "curl",
-    "extension",
-  ];
-
-  return (
-    !excludedMuscles.has(input.diagnostic.muscle) &&
-    (lowerName.includes("rear delt") || lowerName.includes("fly")) &&
-    !largerPatternTokens.some(
-      (token) => lowerName.includes(token) && !lowerName.includes("fly")
-    )
-  );
-}
-
 function buildPreSessionAvoidList(input: {
   diagnostics: NonNullable<ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]>;
   sessionRisks: NonNullable<ProjectedWeekVolumeAuditPayload["sessionRisks"]>;
+  nextSession: ProjectedWeekSession | undefined;
+  doseClosureRecommendations: DoseClosureRecommendation[];
 }): string[] {
   const avoid = new Set<string>();
 
@@ -726,6 +729,15 @@ function buildPreSessionAvoidList(input: {
   }
   for (const risk of input.sessionRisks) {
     avoid.add(`${risk.slotId}: ${risk.issue}`);
+  }
+  const region = getMuscleRegion(input.doseClosureRecommendations[0]?.muscle ?? "");
+  if (
+    region === "lower" ||
+    (input.doseClosureRecommendations.length > 0 &&
+      sessionMatchesRegion(input.nextSession, "lower"))
+  ) {
+    avoid.add("upper-body work");
+    avoid.add("extra hinge");
   }
 
   return Array.from(avoid);
@@ -3310,14 +3322,13 @@ export function buildPreSessionReadinessSummary(input: {
       );
     }
   }
-  lines.push(
-    ...buildDoseClosureGuidance({
-      diagnostics: projectedWeek?.runtimeDoseAdjustmentDiagnostics ?? [],
-      fullWeekRows: projectedWeek?.fullWeekByMuscle ?? [],
-      projectedSessions: projectedWeek?.projectedSessions ?? [],
-      nextSession: nextProjectedSession,
-    })
-  );
+  const doseClosurePlan = buildDoseClosurePlan({
+    diagnostics: projectedWeek?.runtimeDoseAdjustmentDiagnostics ?? [],
+    fullWeekRows: projectedWeek?.fullWeekByMuscle ?? [],
+    projectedSessions: projectedWeek?.projectedSessions ?? [],
+    nextSession: nextProjectedSession,
+  });
+  lines.push(...doseClosurePlan.lines);
 
   const retro = input.artifact.weeklyRetro;
   const fatigueRows = [
@@ -3346,25 +3357,22 @@ export function buildPreSessionReadinessSummary(input: {
       .join("; ") || "none"}`
   );
 
-  const addOns = doseDiagnostics.filter((diagnostic) =>
-    isLowRiskSessionLocalAddon({ diagnostic, exercises })
-  );
   const avoid = buildPreSessionAvoidList({
     diagnostics: doseDiagnostics,
     sessionRisks: projectedWeek?.sessionRisks ?? [],
+    nextSession: nextProjectedSession,
+    doseClosureRecommendations: doseClosurePlan.recommendations,
   });
 
   lines.push("", "Session-Local Add-On Recommendation");
-  lines.push("Run seed as-is.");
+  lines.push("Run seed as prescribed.");
   lines.push("Use Dose Closure Guidance for MEV-floor top-ups; session-local only.");
   lines.push("Optional add-ons:");
-  if (addOns.length === 0) {
+  if (doseClosurePlan.recommendations.length === 0) {
     lines.push("- none");
   } else {
-    for (const diagnostic of addOns.slice(0, 4)) {
-      lines.push(
-        `- +1 ${diagnostic.recommendedAction.exerciseName ?? diagnostic.muscle} if readiness is good (${diagnostic.muscle}, ${diagnostic.reasonCode})`
-      );
+    for (const recommendation of doseClosurePlan.recommendations.slice(0, 4)) {
+      lines.push(recommendation.addonLine);
     }
   }
   lines.push("Avoid:");

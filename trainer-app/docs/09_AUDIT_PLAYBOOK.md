@@ -244,6 +244,7 @@ Important interpretation rule:
 - this mode composes existing read-only generation, projected-week, current-week dose guidance, and prior-week retrospective readouts
 - recommendations are session-local operator guidance only
 - `Dose Closure Guidance` is a formatter/readout layer over projected current-week rows and runtime dose diagnostics; when the next slot is the final practical upper/lower opportunity, it prints the projected weighted sets, MEV floor, weighted gap, candidate contribution when available, raw-set estimate, and whether the add-on is expected to close the floor or only reduce the deficit
+- `Session-Local Add-On Recommendation` must stay consistent with `Dose Closure Guidance`: if Dose Closure prints a low-fatigue MEV-floor top-up for the next slot, the add-on section should list that same session-local action rather than saying no optional add-ons
 - Weighted top-up sizing is explanatory only: it uses existing projected exercise contribution data, keeps recommendations bounded to low-fatigue isolation, and warns operators to accept the miss when full closure would require excessive raw volume
 - it does not mutate `slotPlanSeedJson`, runtime replay, receipts, progression anchors, workouts, logs, sessions, analytics semantics, planner/materializer policy, or DB state
 - `--no-artifact` keeps the check stdout-only; without it, the normal audit artifact behavior still applies

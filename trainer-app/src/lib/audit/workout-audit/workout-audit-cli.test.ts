@@ -4622,7 +4622,7 @@ describe("buildPreSessionReadinessSummary", () => {
         "Rear Delts | 7 vs MEV 4 / target 8 / MAV 12 | slightly_low | optional +1 Cable Rear Delt Fly | 0.8",
         "Session-Local Add-On Recommendation",
         "Use Dose Closure Guidance for MEV-floor top-ups; session-local only.",
-        "- +1 Cable Rear Delt Fly if readiness is good (Rear Delts, close_low_volume_opportunity)",
+        "- none",
         "Safe to train: yes",
       ]),
     );
@@ -4657,11 +4657,102 @@ describe("buildPreSessionReadinessSummary", () => {
         "- do not chase full target deficit",
         "- avoid exceeding MAV/MRV; accept the miss if closure requires excessive raw volume",
         "Use Dose Closure Guidance for MEV-floor top-ups; session-local only.",
+        "- Add +5 raw sets of Cable Fly or Pec Deck if readiness/time allow.",
+        "- Add +1 Pushdown if readiness/time/elbows are good.",
         "Safe to train: yes",
       ])
     );
     expect(summary).not.toContain("- chest/triceps top-up");
+    expect(summary).not.toContain("- Add +1 Barbell Curl if readiness/time allow.");
+    expect(summary).not.toContain("- Add +1 Machine Lateral Raise if readiness/time allow.");
     expect(artifact.projectedWeekVolume.fullWeekByMuscle).toEqual(volumeRowsBefore);
+  });
+
+  it("reflects Lower B calf MEV floor closure in session-local add-ons without upper-body or hinge work", () => {
+    const artifact = buildWeek4UpperBPreSessionArtifact({
+      projectedSessions: [
+        {
+          slotId: "lower_b",
+          intent: "lower",
+          isNext: true,
+          exerciseCount: 4,
+          totalSets: 12,
+          exercises: [
+            {
+              exerciseId: "stiff-legged-deadlift",
+              name: "Stiff-Legged Deadlift",
+              setCount: 3,
+              role: "primary",
+              effectiveStimulusByMuscle: { Hamstrings: 3, Glutes: 1.5, "Lower Back": 1 },
+            },
+            {
+              exerciseId: "leg-curl",
+              name: "Lying Leg Curl",
+              setCount: 3,
+              role: "accessory",
+              effectiveStimulusByMuscle: { Hamstrings: 3 },
+            },
+            {
+              exerciseId: "seated-calf-raise",
+              name: "Seated Calf Raise",
+              setCount: 4,
+              role: "accessory",
+              effectiveStimulusByMuscle: { Calves: 4 },
+            },
+          ],
+          projectedContributionByMuscle: {
+            Hamstrings: 6,
+            Glutes: 1.5,
+            "Lower Back": 1,
+            Calves: 4,
+          },
+        },
+      ],
+      fullWeekByMuscle: [
+        buildFullWeekRow("Chest", 7, 12, 10, 16, "A_PRIMARY"),
+        buildFullWeekRow("Hamstrings", 8, 8, 6, 14, "A_PRIMARY"),
+        buildFullWeekRow("Calves", 7, 10, 8, 14, "B_SUPPORT"),
+      ],
+      runtimeDoseAdjustmentDiagnostics: [
+        buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly", -5),
+        buildDoseDiagnostic(
+          "Calves",
+          7,
+          10,
+          8,
+          14,
+          "optional_add_set",
+          "Seated Calf Raise",
+          -3
+        ),
+        buildDoseDiagnostic("Hamstrings", 8, 8, 6, 14, "hold_seed", undefined, 0),
+      ],
+    });
+    artifact.nextSession.intent = "lower";
+    artifact.nextSession.slotId = "lower_b";
+    artifact.nextSession.sessionInWeek = 4;
+    artifact.sessionSnapshot.generated.sessionIntent = "lower";
+    artifact.sessionSnapshot.generated.exercises = [
+      buildGeneratedExercise("stiff-legged-deadlift", "Stiff-Legged Deadlift", 0, "main", 3),
+      buildGeneratedExercise("leg-curl", "Lying Leg Curl", 1, "accessory", 3),
+      buildGeneratedExercise("seated-calf-raise", "Seated Calf Raise", 2, "accessory", 4),
+    ];
+
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: artifact as never,
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "- Calves: projected 7 / MEV 8; gap 1 weighted sets. Optional +1 Seated Calf Raise or equivalent Standing Calf Raise if calves/Achilles/feet feel good. Expected outcome: close or reduce tiny MEV gap; low-fatigue isolation only.",
+        "- Add +1 Seated Calf Raise or equivalent Standing Calf Raise if calves/Achilles/feet feel good.",
+        "- upper-body work",
+        "- extra hinge",
+      ])
+    );
+    expect(summary).not.toContain("- Chest: projected 7 / MEV 10; gap 3 weighted sets. Candidate: Cable Fly or Pec Deck.");
+    expect(summary).not.toContain("- Add +5 raw sets of Cable Fly or Pec Deck if readiness/time allow.");
   });
 
   it("prints raw sets needed equal to weighted gap when candidate contribution is one-to-one", () => {
@@ -4827,6 +4918,8 @@ describe("buildPreSessionReadinessSummary", () => {
         "- none",
         "Monitor / defer:",
         "- Chest: projected 7 / MEV 10. Below MEV, but another practical upper opportunity remains; monitor after the seed.",
+        "Optional add-ons:",
+        "- none",
       ])
     );
   });

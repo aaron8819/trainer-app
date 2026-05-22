@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
+| 2026-05-22 | self | Repeated the napkin startup mistake by reading the napkin skill first, then batching `.Codex/napkin.md` with a skill read during pre-push verification. | In Trainer, the first actual tool call must be exactly `Get-Content -Raw -LiteralPath .Codex/napkin.md`; no skill reads, no wrappers, no exceptions. |
 | 2026-05-20 | self | Repeated the napkin startup mistake by batching `.Codex/napkin.md` with `git status` and docs reads at the start of weekly-retro stdout work. | The first Trainer tool call must be exactly one unbatched `Get-Content -Raw .Codex/napkin.md`; run status/docs only after it returns. |
 | 2026-05-21 | self | Read `.Codex/napkin.md` first, but used `Get-Content` without `-Raw`, repeating the startup convention miss in a smaller form. | The first Trainer tool call must be exactly `Get-Content -Raw -LiteralPath .Codex/napkin.md`; do not improvise the command shape. |
 | 2026-05-21 | self | Repeated the napkin startup mistake by batching `.Codex/napkin.md` with `git status` and skill reads at the start of weighted top-up readout work. | The first Trainer tool call must be exactly one unbatched command: `Get-Content -Raw -LiteralPath .Codex/napkin.md`; only then run status, skills, or docs. |

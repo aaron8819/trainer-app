@@ -4006,7 +4006,7 @@ describe("buildPreSessionReadinessSummary", () => {
             name: "Cable Fly",
             setCount: 3,
             role: "accessory",
-            effectiveStimulusByMuscle: { Chest: 3 },
+            effectiveStimulusByMuscle: { Chest: 1.8 },
           },
           {
             exerciseId: "seated-cable-row",
@@ -4629,18 +4629,22 @@ describe("buildPreSessionReadinessSummary", () => {
   });
 
   it("prints final-opportunity MEV closure, marginal top-up, suppressions, and guardrails", () => {
+    const artifact = buildWeek4UpperBPreSessionArtifact();
+    const volumeRowsBefore = JSON.parse(
+      JSON.stringify(artifact.projectedWeekVolume.fullWeekByMuscle)
+    );
     const summary = buildPreSessionReadinessSummary({
       operatorDebug: false,
-      artifact: buildWeek4UpperBPreSessionArtifact() as never,
+      artifact: artifact as never,
     });
 
     expect(summary).toEqual(
       expect.arrayContaining([
         "Dose Closure Guidance",
         "Priority:",
-        "- Chest: projected 7 / MEV 10. Add +1-2 Cable Fly or Pec Deck. Final practical upper opportunity; close MEV floor, not full target.",
+        "- Chest: projected 7 / MEV 10; gap 3 weighted sets. Candidate: Cable Fly or Pec Deck. Estimated contribution: ~0.6 weighted Chest sets per raw Cable Fly set. Recommended: +5 raw low-fatigue isolation sets if readiness/time allow. Expected outcome: likely closes MEV floor. A +1-2 raw add-on is expected to reduce the deficit, not fully close MEV. Guardrail: do not chase full target or add pressing.",
         "Optional:",
-        "- Triceps: projected 5.6 / MEV 6. Optional +1 Pushdown only if readiness/time/elbows are good. Tiny MEV gap; use low-fatigue isolation only.",
+        "- Triceps: projected 5.6 / MEV 6; gap 0.4 weighted sets. Optional +1 Pushdown if readiness/time/elbows are good. Expected outcome: close or reduce tiny MEV gap; low-fatigue isolation only.",
         "Suppress:",
         "- Biceps: projected above MEV after seed; no extra curls.",
         "- Side Delts: at MEV after seed; no extra lateral raises.",
@@ -4651,11 +4655,123 @@ describe("buildPreSessionReadinessSummary", () => {
         "- do not add extra pressing",
         "- do not add extra rows/pulldowns",
         "- do not chase full target deficit",
+        "- avoid exceeding MAV/MRV; accept the miss if closure requires excessive raw volume",
         "Use Dose Closure Guidance for MEV-floor top-ups; session-local only.",
         "Safe to train: yes",
       ])
     );
     expect(summary).not.toContain("- chest/triceps top-up");
+    expect(artifact.projectedWeekVolume.fullWeekByMuscle).toEqual(volumeRowsBefore);
+  });
+
+  it("prints raw sets needed equal to weighted gap when candidate contribution is one-to-one", () => {
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: buildWeek4UpperBPreSessionArtifact({
+        projectedSessions: [
+          {
+            slotId: "upper_b",
+            intent: "upper",
+            isNext: true,
+            exerciseCount: 1,
+            totalSets: 3,
+            exercises: [
+              {
+                exerciseId: "cable-fly",
+                name: "Cable Fly",
+                setCount: 3,
+                role: "accessory",
+                effectiveStimulusByMuscle: { Chest: 3 },
+              },
+            ],
+            projectedContributionByMuscle: { Chest: 3 },
+          },
+        ],
+        fullWeekByMuscle: [buildFullWeekRow("Chest", 7, 12, 10, 16, "A_PRIMARY")],
+        runtimeDoseAdjustmentDiagnostics: [
+          buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly", -5),
+        ],
+      }) as never,
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "- Chest: projected 7 / MEV 10; gap 3 weighted sets. Candidate: Cable Fly or Pec Deck. Estimated contribution: ~1 weighted Chest sets per raw Cable Fly set. Recommended: +3 raw low-fatigue isolation sets if readiness/time allow. Expected outcome: likely closes MEV floor. A +1-2 raw add-on is expected to reduce the deficit, not fully close MEV. Guardrail: do not chase full target or add pressing.",
+      ])
+    );
+  });
+
+  it("accepts the miss when weighted closure would exceed the bounded raw-set cap", () => {
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: buildWeek4UpperBPreSessionArtifact({
+        projectedSessions: [
+          {
+            slotId: "upper_b",
+            intent: "upper",
+            isNext: true,
+            exerciseCount: 1,
+            totalSets: 2,
+            exercises: [
+              {
+                exerciseId: "cable-fly",
+                name: "Cable Fly",
+                setCount: 2,
+                role: "accessory",
+                effectiveStimulusByMuscle: { Chest: 0.8 },
+              },
+            ],
+            projectedContributionByMuscle: { Chest: 0.8 },
+          },
+        ],
+        fullWeekByMuscle: [buildFullWeekRow("Chest", 7, 12, 10, 16, "A_PRIMARY")],
+        runtimeDoseAdjustmentDiagnostics: [
+          buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly", -5),
+        ],
+      }) as never,
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "- Chest: projected 7 / MEV 10; gap 3 weighted sets. Candidate: Cable Fly or Pec Deck. Estimated contribution: ~0.4 weighted Chest sets per raw Cable Fly set. Closing would require about 8 raw sets, above the bounded top-up cap. Recommended: +2-5 raw low-fatigue isolation sets only if readiness/time allow. Expected outcome: reduce deficit but may still miss MEV; accept the miss rather than chase volume today. Guardrail: do not chase full target or add pressing.",
+      ])
+    );
+  });
+
+  it("uses conservative close-vs-reduce wording when candidate contribution is unavailable", () => {
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: buildWeek4UpperBPreSessionArtifact({
+        projectedSessions: [
+          {
+            slotId: "upper_b",
+            intent: "upper",
+            isNext: true,
+            exerciseCount: 1,
+            totalSets: 3,
+            exercises: [
+              {
+                exerciseId: "cable-fly",
+                name: "Cable Fly",
+                setCount: 3,
+                role: "accessory",
+              },
+            ],
+            projectedContributionByMuscle: { Chest: 3 },
+          },
+        ],
+        fullWeekByMuscle: [buildFullWeekRow("Chest", 7, 12, 10, 16, "A_PRIMARY")],
+        runtimeDoseAdjustmentDiagnostics: [
+          buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly", -5),
+        ],
+      }) as never,
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "- Chest: projected 7 / MEV 10; gap 3 weighted sets. Candidate: Cable Fly or Pec Deck. Estimated contribution unavailable; raw set recommendation may reduce but not guarantee MEV closure. Recommended: +1-2 raw low-fatigue Chest isolation sets if readiness/time allow. Expected outcome: reduce deficit but may still miss MEV. Guardrail: accept the miss if full closure would require too much volume today; do not chase full target or add pressing.",
+      ])
+    );
   });
 
   it("defers a below-MEV top-up when another practical upper opportunity remains", () => {

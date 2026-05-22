@@ -289,6 +289,7 @@ const LOWER_BODY_MUSCLES = new Set([
   "Lower Back",
 ]);
 const TARGET_TIER_MEANINGFUL = new Set(["A_PRIMARY", "B_SUPPORT"]);
+const MAX_BOUNDED_TOP_UP_RAW_SETS = 5;
 
 function getMuscleRegion(muscle: string): "upper" | "lower" | null {
   if (UPPER_BODY_MUSCLES.has(muscle)) {
@@ -404,6 +405,101 @@ function formatMevProjection(input: {
   return `projected ${formatAuditDecimal(input.effectiveSets)} / MEV ${formatAuditDecimal(input.mev)}`;
 }
 
+function formatWeightedSetGap(value: number): string {
+  return `${formatAuditDecimal(Math.max(0, value))} weighted sets`;
+}
+
+function formatRawSetCount(value: number): string {
+  return `${value} raw ${value === 1 ? "set" : "sets"}`;
+}
+
+function getCandidateContributionEstimate(input: {
+  muscle: string;
+  diagnostic: PreSessionDoseDiagnostic | undefined;
+  nextSession: ProjectedWeekSession | undefined;
+}): { exerciseName: string; weightedSetsPerRawSet: number } | null {
+  const exerciseName = input.diagnostic?.recommendedAction.exerciseName;
+  if (!exerciseName || !input.nextSession?.exercises?.length) {
+    return null;
+  }
+
+  const normalizedExerciseName = exerciseName.toLowerCase();
+  const exercise = input.nextSession.exercises.find(
+    (candidate) => candidate.name.toLowerCase() === normalizedExerciseName
+  );
+  if (!exercise || exercise.setCount <= 0) {
+    return null;
+  }
+
+  const weightedSets = exercise.effectiveStimulusByMuscle?.[input.muscle];
+  if (typeof weightedSets !== "number" || !Number.isFinite(weightedSets) || weightedSets <= 0) {
+    return null;
+  }
+
+  return {
+    exerciseName: exercise.name,
+    weightedSetsPerRawSet: Math.round((weightedSets / exercise.setCount) * 10) / 10,
+  };
+}
+
+function formatContributionEstimate(input: {
+  muscle: string;
+  estimate: { exerciseName: string; weightedSetsPerRawSet: number } | null;
+}): string {
+  if (!input.estimate) {
+    return "Estimated contribution unavailable; raw set recommendation may reduce but not guarantee MEV closure.";
+  }
+  return `Estimated contribution: ~${formatAuditDecimal(input.estimate.weightedSetsPerRawSet)} weighted ${input.muscle} sets per raw ${input.estimate.exerciseName} set.`;
+}
+
+function formatPriorityDoseClosureLine(input: {
+  row: ProjectedWeekMuscleRow;
+  diagnostic: PreSessionDoseDiagnostic | undefined;
+  nextSession: ProjectedWeekSession | undefined;
+  isolation: string;
+}): string {
+  const weightedGap = Math.max(0, input.row.mev - input.row.projectedFullWeekEffectiveSets);
+  const projection = formatMevProjection({
+    effectiveSets: input.row.projectedFullWeekEffectiveSets,
+    mev: input.row.mev,
+  });
+  const estimate = getCandidateContributionEstimate({
+    muscle: input.row.muscle,
+    diagnostic: input.diagnostic,
+    nextSession: input.nextSession,
+  });
+  const base = `- ${input.row.muscle}: ${projection}; gap ${formatWeightedSetGap(weightedGap)}. Candidate: ${input.isolation}. ${formatContributionEstimate({ muscle: input.row.muscle, estimate })}`;
+
+  if (!estimate) {
+    return `${base} Recommended: +1-2 raw low-fatigue ${input.row.muscle} isolation sets if readiness/time allow. Expected outcome: reduce deficit but may still miss MEV. Guardrail: accept the miss if full closure would require too much volume today; do not chase full target or add pressing.`;
+  }
+
+  const rawSetsNeeded = Math.ceil(weightedGap / estimate.weightedSetsPerRawSet);
+  const oneToTwoRawSetsLikelyCloses =
+    estimate.weightedSetsPerRawSet * 2 >= weightedGap;
+  const oneToTwoNote = oneToTwoRawSetsLikelyCloses
+    ? ""
+    : " A +1-2 raw add-on is expected to reduce the deficit, not fully close MEV.";
+
+  if (rawSetsNeeded > MAX_BOUNDED_TOP_UP_RAW_SETS) {
+    return `${base} Closing would require about ${formatRawSetCount(rawSetsNeeded)}, above the bounded top-up cap. Recommended: +2-${MAX_BOUNDED_TOP_UP_RAW_SETS} raw low-fatigue isolation sets only if readiness/time allow. Expected outcome: reduce deficit but may still miss MEV; accept the miss rather than chase volume today. Guardrail: do not chase full target or add pressing.`;
+  }
+
+  return `${base} Recommended: +${rawSetsNeeded} raw low-fatigue isolation ${rawSetsNeeded === 1 ? "set" : "sets"} if readiness/time allow. Expected outcome: likely closes MEV floor.${oneToTwoNote} Guardrail: do not chase full target or add pressing.`;
+}
+
+function formatOptionalDoseClosureLine(input: {
+  row: ProjectedWeekMuscleRow;
+  isolation: string;
+}): string {
+  const weightedGap = Math.max(0, input.row.mev - input.row.projectedFullWeekEffectiveSets);
+  const projection = formatMevProjection({
+    effectiveSets: input.row.projectedFullWeekEffectiveSets,
+    mev: input.row.mev,
+  });
+  return `- ${input.row.muscle}: ${projection}; gap ${formatWeightedSetGap(weightedGap)}. Optional +1 ${input.isolation} if readiness/time/elbows are good. Expected outcome: close or reduce tiny MEV gap; low-fatigue isolation only.`;
+}
+
 function buildDoseClosureGuidance(input: {
   diagnostics: PreSessionDoseDiagnostic[];
   fullWeekRows: ProjectedWeekVolumeAuditPayload["fullWeekByMuscle"];
@@ -458,11 +554,19 @@ function buildDoseClosureGuidance(input: {
       });
       if (mevGap <= 1.25) {
         optional.push(
-          `- ${row.muscle}: ${projection}. Optional +1 ${isolation} only if readiness/time/elbows are good. Tiny MEV gap; use low-fatigue isolation only.`
+          formatOptionalDoseClosureLine({
+            row,
+            isolation,
+          })
         );
       } else {
         priority.push(
-          `- ${row.muscle}: ${projection}. Add +1-2 ${isolation}. Final practical ${getMuscleRegion(row.muscle)} opportunity; close MEV floor, not full target.`
+          formatPriorityDoseClosureLine({
+            row,
+            diagnostic,
+            nextSession: input.nextSession,
+            isolation,
+          })
         );
       }
       continue;
@@ -489,6 +593,7 @@ function buildDoseClosureGuidance(input: {
   lines.push("- do not add extra pressing");
   lines.push("- do not add extra rows/pulldowns");
   lines.push("- do not chase full target deficit");
+  lines.push("- avoid exceeding MAV/MRV; accept the miss if closure requires excessive raw volume");
 
   return lines;
 }

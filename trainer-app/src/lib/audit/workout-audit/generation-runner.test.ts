@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
   const buildWeeklyRetroAuditPayload = vi.fn();
   const buildActiveMesocycleSlotReseedAuditPayload = vi.fn();
   const buildV2AcceptedSeedPrepareCompareAuditPayload = vi.fn();
+  const buildNextMesocycleAcceptanceGateAuditPayload = vi.fn();
   const buildMesocycleExplainAuditPayload = vi.fn();
   return {
     loadActiveMesocycle,
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => {
     buildWeeklyRetroAuditPayload,
     buildActiveMesocycleSlotReseedAuditPayload,
     buildV2AcceptedSeedPrepareCompareAuditPayload,
+    buildNextMesocycleAcceptanceGateAuditPayload,
     buildMesocycleExplainAuditPayload,
   };
 });
@@ -54,6 +56,11 @@ vi.mock("./active-mesocycle-slot-reseed", () => ({
 vi.mock("./v2-accepted-seed-prepare-compare", () => ({
   buildV2AcceptedSeedPrepareCompareAuditPayload: (...args: unknown[]) =>
     mocks.buildV2AcceptedSeedPrepareCompareAuditPayload(...args),
+}));
+
+vi.mock("./next-mesocycle-acceptance-gate", () => ({
+  buildNextMesocycleAcceptanceGateAuditPayload: (...args: unknown[]) =>
+    mocks.buildNextMesocycleAcceptanceGateAuditPayload(...args),
 }));
 
 vi.mock("./mesocycle-explain", () => ({
@@ -239,6 +246,39 @@ describe("runWorkoutAuditGeneration", () => {
         legacyProjectionCalledByV2Path: false,
         repairCalledByV2Path: false,
         transactionStatus: "no_write",
+      },
+    });
+    mocks.buildNextMesocycleAcceptanceGateAuditPayload.mockResolvedValue({
+      version: 1,
+      source: "next_mesocycle_acceptance_gate_audit",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      wouldWriteTransaction: false,
+      gateResult: "not_runnable_yet",
+      candidateFound: false,
+      why: ["no persisted handoff candidate"],
+      recommendation: "rerun after handoff exists",
+      candidateIdentity: {
+        sourceMesocycleId: "meso-source",
+        sourceState: "ACTIVE_DELOAD",
+        candidateKind: "absent",
+        candidateDraftAvailable: false,
+        persistedHandoffCandidateFound: false,
+        writeNeededToInspect: false,
+      },
+      gates: [],
+      weeklyMuscleTable: [],
+      priorBlockRecurringRisks: [],
+      diagnosticPreview: {
+        available: false,
+        label: "not_available",
+        canBeAccepted: false,
+        notes: [],
+      },
+      blockers: ["no persisted handoff candidate"],
+      supportingEvidence: {
+        mesocycleExplainPreviewAvailable: false,
       },
     });
     mocks.buildMesocycleExplainAuditPayload.mockResolvedValue({
@@ -958,6 +998,40 @@ describe("runWorkoutAuditGeneration", () => {
         v2ProductionWriteEligible: false,
         transactionStatus: "no_write",
       },
+    });
+  });
+
+  it("routes next-mesocycle acceptance gate through the read-only audit builder without touching generation helpers", async () => {
+    const context: WorkoutAuditContext = {
+      mode: "next-mesocycle-acceptance-gate",
+      requestedMode: "next-mesocycle-acceptance-gate",
+      userId: "user-1",
+      ownerEmail: "owner@test.local",
+      plannerDiagnosticsMode: "debug",
+      nextMesocycleAcceptanceGate: {
+        sourceMesocycleId: "meso-source",
+      },
+    };
+
+    const run = await runWorkoutAuditGeneration(context);
+
+    expect(
+      mocks.buildNextMesocycleAcceptanceGateAuditPayload,
+    ).toHaveBeenCalledWith({
+      userId: "user-1",
+      ownerEmail: "owner@test.local",
+      sourceMesocycleId: "meso-source",
+      plannerDiagnosticsMode: "debug",
+    });
+    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
+    expect(mocks.generateDeloadSessionFromIntent).not.toHaveBeenCalled();
+    expect(run.generationResult).toBeUndefined();
+    expect(run.nextMesocycleAcceptanceGate).toMatchObject({
+      readOnly: true,
+      wouldWriteTransaction: false,
+      consumedByProduction: false,
+      gateResult: "not_runnable_yet",
+      candidateFound: false,
     });
   });
 

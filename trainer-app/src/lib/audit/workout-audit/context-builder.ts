@@ -212,6 +212,22 @@ export async function buildWorkoutAuditContext(
     };
   }
 
+  if (mode === "next-mesocycle-acceptance-gate") {
+    if (!request.sourceMesocycleId) {
+      throw new Error("next-mesocycle-acceptance-gate mode requires --source-mesocycle-id");
+    }
+    return {
+      mode,
+      requestedMode: request.mode,
+      userId: identity.userId,
+      ownerEmail: identity.ownerEmail,
+      plannerDiagnosticsMode,
+      nextMesocycleAcceptanceGate: {
+        sourceMesocycleId: request.sourceMesocycleId,
+      },
+    };
+  }
+
   if (mode === "mesocycle-explain") {
     return {
       mode,

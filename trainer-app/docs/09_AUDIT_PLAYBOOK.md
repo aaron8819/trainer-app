@@ -5,7 +5,7 @@ Last reviewed: 2026-03-16
 Purpose: Canonical operational playbook for recurring workout-audit CLI use. This doc tells operators and maintainers which audit to run, what to inspect first, what counts as a red flag, and when to escalate into deeper code-level investigation.
 
 This doc covers:
-- Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `projected-week-volume`, `current-week-audit`, `mesocycle-explain`, `v2-accepted-seed-prepare-compare`, `replace-empty-mesocycle-with-v2`, `deload`, and `progression-anchor`
+- Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `projected-week-volume`, `current-week-audit`, `mesocycle-explain`, `v2-accepted-seed-prepare-compare`, `next-mesocycle-acceptance-gate`, `replace-empty-mesocycle-with-v2`, `deload`, and `progression-anchor`
 - Active-mesocycle dry-run reseed review for bounded slot-seed repair
 - Default audit workflows for common review scenarios
 - Artifact-reading guidance for the current audit JSON vocabulary
@@ -584,6 +584,33 @@ Guardrails:
 - V2 preview availability and production-write eligibility are separate fields; production-write eligibility remains false here
 - V2 preview preparation does not call legacy projection or repair, and seed serialization identity must remain `buildMesocycleSlotPlanSeed`
 - detailed compare rows live in the mode's compact artifact section, not in `mesocycle-explain`
+
+### `next-mesocycle-acceptance-gate`
+
+When to use it:
+- final read-only checklist before accepting a pending next-mesocycle candidate
+- deload/handoff boundary checks where a manual operator review would otherwise combine `mesocycle-explain`, `v2-accepted-seed-prepare-compare`, weekly volume, and recent retro evidence by hand
+- confirming that a diagnostic preview is not being mistaken for an accepted or draft candidate
+
+Command pattern:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode next-mesocycle-acceptance-gate --owner <owner-email> --source-mesocycle-id <source-mesocycle-id> --no-artifact --operator-debug
+```
+
+Inspect first:
+- `nextMesocycleAcceptanceGate.candidateIdentity`
+- `nextMesocycleAcceptanceGate.gates`
+- `nextMesocycleAcceptanceGate.weeklyMuscleTable`
+- `nextMesocycleAcceptanceGate.priorBlockRecurringRisks`
+- `nextMesocycleAcceptanceGate.diagnosticPreview`
+
+Interpretation rules:
+- `candidateFound=false` means the gate is not runnable yet; rerun after the source reaches `AWAITING_HANDOFF` and a persisted handoff candidate exists
+- source state, missing persisted candidate, active deload incompletion, and incomplete workouts are blockers, not acceptance failures to override
+- `mesocycle-explain` preview evidence is labeled `diagnostic_preview_not_candidate`; it can inform the gate but cannot satisfy candidate identity by itself
+- volume rows use the current target semantics: below MEV blocks, above MEV but below target is not a failure, target near MAV is a stretch/cap rather than a quota, and over MAV is a failure/warning
+- this mode writes no DB rows, creates no workouts/logs/sessions, mutates no seed, and changes no planner/materializer/runtime/generation behavior
 
 ### `replace-empty-mesocycle-with-v2`
 

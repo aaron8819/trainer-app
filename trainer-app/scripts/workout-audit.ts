@@ -1051,7 +1051,7 @@ export function buildWorkoutAuditHelpText(): string {
     "Options:",
     "  -h, --help                         Print this help and exit without preflight, DB access, audit execution, or artifact writes.",
     "  --env-file <path>                  Load environment variables from a specific file.",
-    "  --mode <mode>                      Audit mode: future-week, pre-session-readiness, projected-week-volume, current-week-audit, historical-week, weekly-retro, mesocycle-explain, deload, progression-anchor, active-mesocycle-slot-reseed, replace-empty-mesocycle-with-v2, v2-accepted-seed-prepare-compare.",
+    "  --mode <mode>                      Audit mode: future-week, pre-session-readiness, projected-week-volume, current-week-audit, historical-week, weekly-retro, mesocycle-explain, deload, progression-anchor, active-mesocycle-slot-reseed, replace-empty-mesocycle-with-v2, v2-accepted-seed-prepare-compare, next-mesocycle-acceptance-gate.",
     "  --owner <email>                    Resolve the audit owner by email.",
     "  --user-id <id>                     Resolve the audit owner by user id.",
     "  --intent <intent>                  Session intent for generated-session modes.",
@@ -2888,6 +2888,87 @@ export function buildV2AcceptedSeedPrepareCompareSummary(input: {
   ];
 }
 
+export function buildNextMesocycleAcceptanceGateSummary(input: {
+  artifact: Pick<WorkoutAuditArtifact, "nextMesocycleAcceptanceGate">;
+}): string[] | null {
+  const payload = input.artifact.nextMesocycleAcceptanceGate;
+  if (!payload) {
+    return null;
+  }
+
+  const lines = [
+    "",
+    "Next Mesocycle Acceptance Gate",
+    `candidate found: ${formatBooleanFlag(payload.candidateFound)}`,
+    `gate result: ${payload.gateResult}`,
+  ];
+
+  if (payload.why.length > 0) {
+    lines.push("why:");
+    for (const reason of payload.why) {
+      lines.push(`- ${reason}`);
+    }
+  }
+  lines.push(`recommendation: ${payload.recommendation}`);
+  lines.push("");
+  lines.push("Candidate Identity");
+  lines.push("Owner | Source Mesocycle | Source State | Candidate | Candidate/Draft ID | Accepted/Draft/Absent | Write Needed");
+  lines.push(
+    [
+      payload.candidateIdentity.ownerEmail ?? "unknown",
+      payload.candidateIdentity.sourceMesocycleId,
+      payload.candidateIdentity.sourceState ?? "unknown",
+      payload.candidateFound ? "yes" : "no",
+      payload.candidateIdentity.candidateMesocycleId ?? "none",
+      payload.candidateIdentity.candidateKind,
+      payload.candidateIdentity.writeNeededToInspect ? "yes" : "no",
+    ].join(" | "),
+  );
+  lines.push("");
+  lines.push("Gate | Pass/Fail/Unknown | Evidence | Notes");
+  for (const gate of payload.gates) {
+    lines.push(`${gate.gate} | ${gate.status} | ${gate.evidence} | ${gate.notes}`);
+  }
+
+  if (payload.weeklyMuscleTable.length > 0) {
+    lines.push("");
+    lines.push("Muscle | Projected sets | MEV | Productive/Target | MAV | Status | Notes");
+    for (const row of payload.weeklyMuscleTable) {
+      lines.push(
+        [
+          row.muscle,
+          formatAuditDecimal(row.projectedSets),
+          formatAuditDecimal(row.mev),
+          row.productiveTarget == null
+            ? "unknown"
+            : formatAuditDecimal(row.productiveTarget),
+          formatAuditDecimal(row.mav),
+          row.status,
+          row.notes,
+        ].join(" | "),
+      );
+    }
+  }
+
+  lines.push("");
+  lines.push("Prior-Block Recurring Risks");
+  lines.push("Risk | Pass/Fail/Unknown | Evidence | Notes");
+  for (const risk of payload.priorBlockRecurringRisks) {
+    lines.push(`${risk.risk} | ${risk.status} | ${risk.evidence} | ${risk.notes}`);
+  }
+
+  lines.push("");
+  lines.push("Diagnostic Preview");
+  lines.push(
+    `available=${formatBooleanFlag(payload.diagnosticPreview.available)} label=${payload.diagnosticPreview.label} can_be_accepted=no planning_shape=${payload.diagnosticPreview.planningShape ?? "unknown"}`,
+  );
+  for (const note of payload.diagnosticPreview.notes) {
+    lines.push(`- ${note}`);
+  }
+
+  return lines;
+}
+
 export function buildProjectedWeekOperatorSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "projectedWeekVolume" | "warningSummary">;
   outputPath: string;
@@ -4092,6 +4173,8 @@ export async function main(input?: {
         ? `mesocycle=${run.replaceEmptyMesocycleWithV2.targetMesocycleId} safety=${run.replaceEmptyMesocycleWithV2.candidateSafety.allowed ? "allowed" : "blocked"} v2=${run.replaceEmptyMesocycleWithV2.v2Preparation.status}`
       : run.v2AcceptedSeedPrepareCompare
         ? `handoff_candidate=${run.v2AcceptedSeedPrepareCompare.handoffCandidate.found ? "yes" : "no"} compare_status=${run.v2AcceptedSeedPrepareCompare.compareStatus}`
+      : run.nextMesocycleAcceptanceGate
+        ? `candidate_found=${run.nextMesocycleAcceptanceGate.candidateFound ? "yes" : "no"} gate_result=${run.nextMesocycleAcceptanceGate.gateResult}`
       : run.mesocycleExplain
         ? `source=${run.mesocycleExplain.sourceMesocycleId} retrospective=${run.mesocycleExplain.retrospectiveMesocycleId} preview_slots=${run.mesocycleExplain.preview.slotPlans.length}`
       : run.progressionAnchor
@@ -4223,6 +4306,15 @@ export async function main(input?: {
     });
   if (v2AcceptedSeedPrepareCompareSummary) {
     for (const line of v2AcceptedSeedPrepareCompareSummary) {
+      console.log(line);
+    }
+  }
+  const nextMesocycleAcceptanceGateSummary =
+    buildNextMesocycleAcceptanceGateSummary({
+      artifact,
+    });
+  if (nextMesocycleAcceptanceGateSummary) {
+    for (const line of nextMesocycleAcceptanceGateSummary) {
       console.log(line);
     }
   }

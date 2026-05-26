@@ -18,6 +18,7 @@ import { buildActiveMesocycleSlotReseedAuditPayload } from "./active-mesocycle-s
 import { buildCurrentWeekAuditEvaluation } from "./current-week-audit";
 import { buildHistoricalWeekAuditPayload } from "./historical-week";
 import { buildMesocycleExplainAuditPayload } from "./mesocycle-explain";
+import { buildNextMesocycleAcceptanceGateAuditPayload } from "./next-mesocycle-acceptance-gate";
 import { buildProgressionAnchorAuditPayload } from "./progression-anchor";
 import { buildV2AcceptedSeedPrepareCompareAuditPayload } from "./v2-accepted-seed-prepare-compare";
 import { buildWeeklyRetroAuditPayload } from "./weekly-retro";
@@ -300,6 +301,21 @@ export async function runWorkoutAuditGeneration(
           mesocycleId: context.v2AcceptedSeedPrepareCompare?.mesocycleId,
           requestedIdSource:
             context.v2AcceptedSeedPrepareCompare?.requestedIdSource,
+        }),
+    };
+  }
+
+  if (mode === "next-mesocycle-acceptance-gate") {
+    return {
+      context,
+      generatedAt: new Date().toISOString(),
+      nextMesocycleAcceptanceGate:
+        await buildNextMesocycleAcceptanceGateAuditPayload({
+          userId: context.userId,
+          ownerEmail: context.ownerEmail,
+          sourceMesocycleId:
+            context.nextMesocycleAcceptanceGate!.sourceMesocycleId,
+          plannerDiagnosticsMode: context.plannerDiagnosticsMode,
         }),
     };
   }

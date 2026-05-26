@@ -259,6 +259,37 @@ describe("buildWorkoutAuditContext", () => {
     expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
   });
 
+  it("builds next-mesocycle acceptance gate context from an explicit source mesocycle id", async () => {
+    const context = await buildWorkoutAuditContext({
+      mode: "next-mesocycle-acceptance-gate",
+      userId: "user-1",
+      sourceMesocycleId: "meso-source",
+      plannerDiagnosticsMode: "debug",
+    });
+
+    expect(context).toMatchObject({
+      mode: "next-mesocycle-acceptance-gate",
+      requestedMode: "next-mesocycle-acceptance-gate",
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+      nextMesocycleAcceptanceGate: {
+        sourceMesocycleId: "meso-source",
+      },
+    });
+    expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
+  });
+
+  it("requires source mesocycle id for next-mesocycle acceptance gate", async () => {
+    await expect(
+      buildWorkoutAuditContext({
+        mode: "next-mesocycle-acceptance-gate",
+        userId: "user-1",
+      }),
+    ).rejects.toThrow(
+      "next-mesocycle-acceptance-gate mode requires --source-mesocycle-id",
+    );
+  });
+
   it("builds mesocycle-explain context without loading next-session intent", async () => {
     const context = await buildWorkoutAuditContext({
       mode: "mesocycle-explain",

@@ -14,6 +14,7 @@ import {
   buildPlanningRealitySizeBudgetSummary,
   buildPlannerOnlyDryRunSummary,
   buildPlannerOnlyNoRepairSummary,
+  buildNextMesocycleAcceptanceGateSummary,
   buildPreSessionReadinessSummary,
   buildProjectedWeekDebugSummary,
   buildProjectedWeekOperatorSummary,
@@ -357,6 +358,7 @@ describe("workout audit CLI help", () => {
     expect(help).toContain("-h, --help");
     expect(help).toContain("Without --mode, the default audit mode is future-week.");
     expect(help).toContain("pre-session-readiness");
+    expect(help).toContain("next-mesocycle-acceptance-gate");
     expect(help).toContain(
       "Help exits before owner resolution, DB preflight, audit execution, artifact directory creation, and artifact writing.",
     );
@@ -459,6 +461,32 @@ describe("audit CLI timing and teardown", () => {
       "artifact_write",
       "sidecar_write",
     ]);
+  });
+
+  it("writes no files for a normal no-artifact acceptance-gate run", async () => {
+    const ensureOutputDir = vi.fn().mockResolvedValue(undefined);
+    const writeTextFile = vi.fn().mockResolvedValue(undefined);
+    const timing = createAuditCliTiming({ now: () => 0 });
+
+    const result = await writeAuditArtifactFiles({
+      suppressWrites: true,
+      outputDir: "C:\\artifacts\\audits",
+      outputPath:
+        "C:\\artifacts\\audits\\next-mesocycle-acceptance-gate.json",
+      serialized: "{\"mode\":\"next-mesocycle-acceptance-gate\"}",
+      timing,
+      ensureOutputDir,
+      writeTextFile,
+      joinPath: (...parts) => parts.join("\\"),
+    });
+
+    expect(result).toEqual({
+      artifactOutputPath: null,
+      v2DebugOutputPath: null,
+      sidecarFileCount: 0,
+    });
+    expect(ensureOutputDir).not.toHaveBeenCalled();
+    expect(writeTextFile).not.toHaveBeenCalled();
   });
 
   it("preserves default artifact, sidecar, and shard writes", async () => {
@@ -6132,6 +6160,91 @@ describe("buildV2AcceptedSeedPrepareCompareSummary", () => {
       "[workout-audit:v2-seed-compare] gates base=pass materializer=materialized seed_shape=yes promotion=blocked production_gates_missing=acceptancePathDesigned,receiptContractDesigned",
       "[workout-audit:v2-seed-compare] artifact=C:\\artifacts\\v2-seed.json size_bytes=4096",
     ]);
+  });
+});
+
+describe("buildNextMesocycleAcceptanceGateSummary", () => {
+  it("prints candidate identity, gate table, muscle rows, risks, and preview caveat", () => {
+    const summary = buildNextMesocycleAcceptanceGateSummary({
+      artifact: {
+        nextMesocycleAcceptanceGate: {
+          version: 1,
+          source: "next_mesocycle_acceptance_gate_audit",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByProduction: false,
+          wouldWriteTransaction: false,
+          gateResult: "not_runnable_yet",
+          candidateFound: false,
+          why: [
+            "source state not AWAITING_HANDOFF (ACTIVE_DELOAD)",
+            "no persisted handoff candidate",
+          ],
+          recommendation: "rerun after handoff exists",
+          candidateIdentity: {
+            ownerEmail: "owner@test.local",
+            sourceMesocycleId: "meso-source",
+            sourceState: "ACTIVE_DELOAD",
+            candidateKind: "diagnostic_preview_only",
+            candidateDraftAvailable: false,
+            persistedHandoffCandidateFound: false,
+            writeNeededToInspect: false,
+          },
+          gates: [
+            {
+              gate: "Candidate identity",
+              status: "fail",
+              evidence: "candidate_found=no kind=diagnostic_preview_only",
+              notes: "diagnostic previews are evidence only and cannot be accepted",
+            },
+          ],
+          weeklyMuscleTable: [
+            {
+              muscle: "Chest",
+              projectedSets: 12,
+              mev: 10,
+              productiveTarget: 14,
+              mav: 16,
+              status: "above_mev_below_target_not_failure",
+              notes: "above MEV but below target is not a failure",
+            },
+          ],
+          priorBlockRecurringRisks: [
+            {
+              risk: "Chest MEV fragility",
+              status: "pass",
+              evidence: "projected=12 mev=10",
+              notes: "watch recurring chest floor misses before acceptance",
+            },
+          ],
+          diagnosticPreview: {
+            available: true,
+            label: "diagnostic_preview_not_candidate",
+            canBeAccepted: false,
+            planningShape: "mostly_upstream_planned",
+            notes: ["mesocycle-explain preview is diagnostic evidence only"],
+          },
+          blockers: ["no persisted handoff candidate"],
+          supportingEvidence: {
+            mesocycleExplainPreviewAvailable: true,
+          },
+        },
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "candidate found: no",
+        "gate result: not_runnable_yet",
+        "Candidate Identity",
+        "Gate | Pass/Fail/Unknown | Evidence | Notes",
+        "Candidate identity | fail | candidate_found=no kind=diagnostic_preview_only | diagnostic previews are evidence only and cannot be accepted",
+        "Muscle | Projected sets | MEV | Productive/Target | MAV | Status | Notes",
+        "Chest | 12 | 10 | 14 | 16 | above_mev_below_target_not_failure | above MEV but below target is not a failure",
+        "Prior-Block Recurring Risks",
+        "available=yes label=diagnostic_preview_not_candidate can_be_accepted=no planning_shape=mostly_upstream_planned",
+      ]),
+    );
   });
 });
 

@@ -9,6 +9,7 @@ import {
   buildActiveMesocycleSlotReseedApplySummary,
   buildActiveMesocycleSlotReseedSummary,
   buildCurrentWeekAuditOperatorSummary,
+  buildFutureWeekOperatorDebugSummary,
   buildPlanningRealitySummary,
   buildPlanningRealitySizeBudgetSummary,
   buildPlannerOnlyDryRunSummary,
@@ -5030,7 +5031,454 @@ describe("buildPreSessionReadinessSummary", () => {
   });
 });
 
+describe("buildFutureWeekOperatorDebugSummary", () => {
+  function buildFutureWeekExercise(
+    exerciseId: string,
+    exerciseName: string,
+    orderIndex: number,
+    prescribedSetCount: number,
+    targetLoad: number,
+    targetReps: number,
+    targetRpe: number
+  ) {
+    return {
+      exerciseId,
+      exerciseName,
+      orderIndex,
+      section: orderIndex < 2 ? "main" : "accessory",
+      isMainLift: orderIndex < 2,
+      prescribedSetCount,
+      prescribedSets: [
+        {
+          setIndex: 1,
+          targetLoad,
+          targetReps,
+          targetRpe,
+        },
+      ],
+    };
+  }
+
+  function buildFutureWeekArtifact(overrides: Record<string, unknown> = {}) {
+    return {
+      mode: "future-week",
+      requestedMode: "future-week",
+      nextSession: {
+        intent: "upper",
+        slotId: "upper_a",
+        slotSequenceIndex: 0,
+        slotSequenceLength: 4,
+        slotSource: "mesocycle_slot_sequence",
+        existingWorkoutId: null,
+        isExisting: false,
+        source: "rotation",
+        weekInMeso: 5,
+        sessionInWeek: 1,
+        derivationTrace: [],
+        selectedIncompleteStatus: null,
+      },
+      generationPath: {
+        requestedMode: "future-week",
+        executionMode: "active_deload_reroute",
+        generator: "generateDeloadSessionFromIntent",
+        reason: "active_mesocycle_state_active_deload",
+      },
+      generationProvenance: {
+        receiptProvenance: {
+          mesocycleId: "meso-1",
+          compositionSource: "deload_seed_replay",
+        },
+        auditOnly: {
+          generationPath: null,
+        },
+      },
+      sessionSnapshot: {
+        version: 1,
+        generated: {
+          selectionMode: "INTENT",
+          sessionIntent: "upper",
+          semantics: {
+            kind: "advancing",
+            isDeload: true,
+            isStrictGapFill: false,
+            isStrictSupplemental: false,
+            advancesLifecycle: true,
+            consumesWeeklyScheduleIntent: true,
+            countsTowardCompliance: true,
+            countsTowardRecentStimulus: true,
+            countsTowardWeeklyVolume: true,
+            countsTowardProgressionHistory: false,
+            countsTowardPerformanceHistory: false,
+            updatesProgressionAnchor: false,
+            eligibleForUniqueIntentSubtraction: true,
+            reasons: [],
+            trace: { advancesSplitInput: true },
+          },
+          exerciseCount: 4,
+          hardSetCount: 8,
+          cycleContext: {
+            weekInMeso: 5,
+            weekInBlock: 1,
+            phase: "deload",
+            blockType: "deload",
+            isDeload: true,
+            source: "computed",
+          },
+          exercises: [
+            buildFutureWeekExercise(
+              "incline-machine-press",
+              "Incline Machine Press",
+              0,
+              2,
+              112.5,
+              6,
+              4.5
+            ),
+            buildFutureWeekExercise(
+              "close-grip-row",
+              "Close-Grip Seated Cable Row",
+              1,
+              2,
+              42.5,
+              6,
+              4.5
+            ),
+            buildFutureWeekExercise(
+              "machine-lateral-raise",
+              "Machine Lateral Raise",
+              2,
+              2,
+              37.5,
+              12,
+              4.5
+            ),
+            buildFutureWeekExercise(
+              "cable-triceps-pushdown",
+              "Cable Triceps Pushdown",
+              3,
+              2,
+              35,
+              15,
+              4.5
+            ),
+          ],
+          traces: {
+            progression: {},
+            deload: {
+              version: 1,
+              sessionIntent: "upper",
+              targetRpe: 4.5,
+              setFactor: 0.5,
+              minSets: 1,
+              exerciseCount: 4,
+              exercises: [],
+            },
+          },
+        },
+      },
+      warningSummary: {
+        blockingErrors: [],
+        semanticWarnings: [],
+        backgroundWarnings: [],
+        counts: {
+          blockingErrors: 0,
+          semanticWarnings: 0,
+          backgroundWarnings: 0,
+        },
+      },
+      ...overrides,
+    };
+  }
+
+  it("prints deload generation path and generated preview for future-week operator debug", () => {
+    const summary = buildFutureWeekOperatorDebugSummary({
+      operatorDebug: true,
+      artifact: buildFutureWeekArtifact() as never,
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Generation Summary",
+        "State | Week | Session | Slot | Path | Generator | Composition Source | Safe To Train",
+        "ACTIVE_DELOAD | 5 | 1 | upper_a | active_deload_reroute | generateDeloadSessionFromIntent | deload_seed_replay | yes",
+        "Blocker: none",
+        "Generated Preview",
+        "Order | Exercise | Sets | Load | Rep target/range | RPE | Note",
+        "1 | Incline Machine Press | 2 | 112.5 | 6 | 4.5 | deload",
+        "4 | Cable Triceps Pushdown | 2 | 35 | 15 | 4.5 | deload",
+      ])
+    );
+  });
+
+  it("keeps future-week generation details out of normal non-operator output", () => {
+    expect(
+      buildFutureWeekOperatorDebugSummary({
+        operatorDebug: false,
+        artifact: buildFutureWeekArtifact() as never,
+      })
+    ).toBeNull();
+  });
+
+  it("prints closeout blocker instead of a misleading generated preview", () => {
+    const blockerMessage =
+      "Week 4 closeout is pending. Resolve or dismiss the optional gap-fill before generating the Week 5 deload.";
+    const summary = buildFutureWeekOperatorDebugSummary({
+      operatorDebug: true,
+      artifact: buildFutureWeekArtifact({
+        nextSession: {
+          intent: null,
+          slotId: null,
+          slotSequenceIndex: null,
+          slotSequenceLength: 4,
+          slotSource: null,
+          existingWorkoutId: null,
+          isExisting: false,
+          source: "final_week_close_pending",
+          weekInMeso: null,
+          sessionInWeek: null,
+          derivationTrace: [],
+          selectedIncompleteStatus: null,
+          lifecycleBlocker: {
+            code: "FINAL_ACCUMULATION_WEEK_CLOSE_PENDING",
+            severity: "hard_blocker",
+            message: blockerMessage,
+            mesocycleId: "meso-1",
+            weekCloseId: "week-close-4",
+            targetWeek: 4,
+          },
+        },
+        generation: { error: blockerMessage },
+        sessionSnapshot: undefined,
+        generationPath: {
+          requestedMode: "future-week",
+          executionMode: "blocked_closeout_required",
+          generator: "none",
+          reason: "final_accumulation_week_close_pending",
+        },
+        generationProvenance: {
+          receiptProvenance: {
+            mesocycleId: null,
+            compositionSource: null,
+          },
+          auditOnly: {
+            generationPath: null,
+          },
+        },
+        warningSummary: {
+          blockingErrors: [blockerMessage],
+          semanticWarnings: [],
+          backgroundWarnings: [],
+          counts: {
+            blockingErrors: 1,
+            semanticWarnings: 0,
+            backgroundWarnings: 0,
+          },
+        },
+      }) as never,
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "ACTIVE_ACCUMULATION | unknown | unknown | unknown | blocked_closeout_required | none | unknown | no",
+        `Blocker: ${blockerMessage}`,
+        "Generated Preview: unavailable (blocked_closeout_required)",
+      ])
+    );
+    expect(summary).not.toContain("Order | Exercise | Sets | Load | Rep target/range | RPE | Note");
+  });
+
+  it("labels standard accumulation future-week generation without changing the preview rows", () => {
+    const summary = buildFutureWeekOperatorDebugSummary({
+      operatorDebug: true,
+      artifact: buildFutureWeekArtifact({
+        generationPath: {
+          requestedMode: "future-week",
+          executionMode: "standard_generation",
+          generator: "generateSessionFromIntent",
+          reason: "standard_future_week_or_preview",
+        },
+        generationProvenance: {
+          receiptProvenance: {
+            mesocycleId: "meso-1",
+            compositionSource: "persisted_slot_plan_seed",
+          },
+          auditOnly: {
+            generationPath: null,
+          },
+        },
+        sessionSnapshot: {
+          version: 1,
+          generated: {
+            ...buildFutureWeekArtifact().sessionSnapshot.generated,
+            semantics: {
+              ...buildFutureWeekArtifact().sessionSnapshot.generated.semantics,
+              isDeload: false,
+              countsTowardProgressionHistory: true,
+              countsTowardPerformanceHistory: true,
+              updatesProgressionAnchor: true,
+            },
+          },
+        },
+      }) as never,
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "ACTIVE_ACCUMULATION | 5 | 1 | upper_a | standard_generation | generateSessionFromIntent | persisted_slot_plan_seed | yes",
+        "1 | Incline Machine Press | 2 | 112.5 | 6 | 4.5 | standard",
+      ])
+    );
+  });
+});
+
 describe("buildWeeklyRetroOperatorSummary", () => {
+  it("prints weekly set totals and muscle volume outcome for operator-debug weekly-retro", () => {
+    const volumeRows = [
+      {
+        muscle: "Chest",
+        actualEffectiveSets: 9,
+        weeklyTarget: 16,
+        mev: 10,
+        mav: 16,
+        deltaToTarget: -7,
+        deltaToMev: -1,
+        deltaToMav: -7,
+        status: "below_mev",
+        topContributors: [],
+      },
+      {
+        muscle: "Triceps",
+        actualEffectiveSets: 7.6,
+        weeklyTarget: 12,
+        mev: 6,
+        mav: 12,
+        deltaToTarget: -4.4,
+        deltaToMev: 1.6,
+        deltaToMav: -4.4,
+        status: "under_target_only",
+        topContributors: [],
+      },
+      {
+        muscle: "Lats",
+        actualEffectiveSets: 17,
+        weeklyTarget: 14,
+        mev: 8,
+        mav: 16,
+        deltaToTarget: 3,
+        deltaToMev: 9,
+        deltaToMav: 1,
+        status: "over_mav",
+        topContributors: [],
+      },
+    ];
+    const beforeRows = JSON.parse(JSON.stringify(volumeRows));
+    const summary = buildWeeklyRetroOperatorSummary({
+      operatorDebug: true,
+      artifact: {
+        weeklyRetro: {
+          loadCalibration: {
+            status: "aligned",
+            comparableSessionCount: 4,
+            driftSessionCount: 0,
+            prescriptionChangeCount: 0,
+            selectionDriftCount: 0,
+            legacyLimitedSessionCount: 0,
+            highlightedSessions: [],
+          },
+          volumeTargeting: {
+            muscles: volumeRows,
+          },
+          planAdherence: {
+            plannedWorkCompletedPercent: 100,
+            plannedWorkMissedSets: 0,
+            plannedWorkTotalSets: 58,
+            plannedWorkCompletedSets: 58,
+            explainedAdditions: {
+              totalSets: 17,
+              byIntent: {
+                final_weekly_opportunity_mev_closure: 17,
+              },
+            },
+            substitutions: 0,
+            painFatigueDeviations: 0,
+            unclassifiedDrift: 0,
+            engineConfidenceImpact: "none",
+            interpretations: [],
+          },
+          interventions: [],
+          recommendedPriorities: [],
+          exerciseLoadCalibrationRows: [
+            {
+              week: 4,
+              workoutId: "upper-a",
+              slotId: "upper_a",
+              sessionLabel: "upper_a",
+              exerciseId: "planned-upper",
+              exerciseName: "Planned Upper",
+              plannedSetCount: 40,
+              savedSetCount: 40,
+              performedSetCount: 40,
+              skippedSetCount: 0,
+              addedSetCount: 0,
+              performedLoadSummary: {},
+              classification: "clean",
+              reasonCodes: [],
+              notes: [],
+            },
+            {
+              week: 4,
+              workoutId: "lower-a",
+              slotId: "lower_a",
+              sessionLabel: "lower_a",
+              exerciseId: "planned-lower",
+              exerciseName: "Planned Lower",
+              plannedSetCount: 18,
+              savedSetCount: 11,
+              performedSetCount: 11,
+              skippedSetCount: 0,
+              addedSetCount: 0,
+              performedLoadSummary: {},
+              classification: "clean",
+              reasonCodes: [],
+              notes: [],
+            },
+            {
+              week: 4,
+              workoutId: "upper-b",
+              slotId: "upper_b",
+              sessionLabel: "upper_b",
+              exerciseId: "added-work",
+              exerciseName: "Added Work",
+              plannedSetCount: 0,
+              savedSetCount: 17,
+              performedSetCount: 17,
+              skippedSetCount: 0,
+              addedSetCount: 17,
+              performedLoadSummary: {},
+              classification: "runtime_added",
+              reasonCodes: ["exercise_not_in_generated_snapshot"],
+              notes: [],
+            },
+          ],
+        } as never,
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Weekly Set Summary",
+        "Planned | Saved | Performed | Skipped | Added | Planned Completed",
+        "58 | 68 | 68 | 0 | 17 | 58/58",
+        "Weekly Muscle Volume",
+        "Muscle | Sets | MEV | Target | MAV | Status | Notes",
+        "Chest | 9 | 10 | 16 | 16 | below_mev | missed by 1",
+        "Triceps | 7.6 | 6 | 12 | 12 | above_mev_under_target | fine",
+        "Lats | 17 | 8 | 14 | 16 | at_or_over_mav | over MAV",
+      ])
+    );
+    expect(volumeRows).toEqual(beforeRows);
+  });
+
   it("prints a compact weekly-retro verdict from the composed artifact payload", () => {
     const summary = buildWeeklyRetroOperatorSummary({
       artifact: {
@@ -5501,6 +5949,8 @@ describe("buildWeeklyRetroOperatorSummary", () => {
     });
 
     expect(summary).not.toContain("Exercise Reconciliation");
+    expect(summary).not.toContain("Weekly Set Summary");
+    expect(summary).not.toContain("Weekly Muscle Volume");
     expect(summary?.some((line) => line.includes("Planned | Saved"))).toBe(false);
   });
 

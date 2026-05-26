@@ -220,6 +220,12 @@ function formatAuditDecimal(value: number | null | undefined): string {
   return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
 }
 
+function formatAuditMaybeNumber(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? formatAuditDecimal(value)
+    : "unknown";
+}
+
 function formatRepTarget(
   set:
     | {
@@ -235,6 +241,140 @@ function formatRepTarget(
     return `${formatAuditDecimal(set.targetRepRange.min)}-${formatAuditDecimal(set.targetRepRange.max)}`;
   }
   return formatAuditDecimal(set.targetReps);
+}
+
+function buildFutureWeekSafeToTrain(input: {
+  artifact: Pick<
+    WorkoutAuditArtifact,
+    "generation" | "nextSession" | "sessionSnapshot" | "warningSummary"
+  >;
+}): { safe: boolean; blocker: string } {
+  const blockers: string[] = [];
+  if (input.artifact.warningSummary.counts.blockingErrors > 0) {
+    blockers.push(
+      input.artifact.warningSummary.blockingErrors[0] ??
+        "blocking audit errors are present"
+    );
+  }
+  if (input.artifact.generation && "error" in input.artifact.generation) {
+    blockers.push(input.artifact.generation.error);
+  }
+  if (!input.artifact.sessionSnapshot?.generated && !input.artifact.generation) {
+    blockers.push("missing generated session preview");
+  }
+  if (input.artifact.nextSession?.source === "existing_incomplete") {
+    blockers.push(
+      `incomplete workout blocker: ${input.artifact.nextSession.existingWorkoutId ?? "unknown"} (${input.artifact.nextSession.selectedIncompleteStatus ?? "unknown"})`
+    );
+  }
+  if (input.artifact.nextSession?.source === "final_week_close_pending") {
+    blockers.push(
+      input.artifact.nextSession.lifecycleBlocker?.message ??
+        "final accumulation closeout is pending"
+    );
+  }
+
+  return {
+    safe: blockers.length === 0,
+    blocker: blockers.length > 0 ? Array.from(new Set(blockers)).join("; ") : "none",
+  };
+}
+
+function inferFutureWeekState(input: {
+  artifact: Pick<WorkoutAuditArtifact, "generationPath" | "sessionSnapshot">;
+}): string {
+  const path = input.artifact.generationPath?.executionMode;
+  if (path === "active_deload_reroute" || path === "explicit_deload_preview") {
+    return "ACTIVE_DELOAD";
+  }
+  if (path === "standard_generation" || path === "blocked_closeout_required") {
+    return "ACTIVE_ACCUMULATION";
+  }
+  if (input.artifact.sessionSnapshot?.generated?.semantics.isDeload) {
+    return "ACTIVE_DELOAD";
+  }
+  return "unknown";
+}
+
+export function buildFutureWeekOperatorDebugSummary(input: {
+  artifact: Pick<
+    WorkoutAuditArtifact,
+    | "mode"
+    | "requestedMode"
+    | "nextSession"
+    | "generation"
+    | "sessionSnapshot"
+    | "generationPath"
+    | "generationProvenance"
+    | "warningSummary"
+  >;
+  operatorDebug?: boolean;
+}): string[] | null {
+  if (
+    input.operatorDebug !== true ||
+    (input.artifact.mode !== "future-week" &&
+      input.artifact.requestedMode !== "future-week")
+  ) {
+    return null;
+  }
+
+  const generated = input.artifact.sessionSnapshot?.generated;
+  const generationPath = input.artifact.generationPath;
+  const receiptProvenance = input.artifact.generationProvenance?.receiptProvenance;
+  const safeToTrain = buildFutureWeekSafeToTrain({ artifact: input.artifact });
+  const exercises = [...(generated?.exercises ?? [])].sort(
+    (left, right) => left.orderIndex - right.orderIndex
+  );
+  const path = generationPath?.executionMode ?? "unknown";
+  const isBlocked = path === "blocked_closeout_required" || !safeToTrain.safe;
+  const note =
+    generated?.semantics.isDeload || path === "active_deload_reroute"
+      ? "deload"
+      : "standard";
+
+  const lines = [
+    "",
+    "Generation Summary",
+    "State | Week | Session | Slot | Path | Generator | Composition Source | Safe To Train",
+    [
+      inferFutureWeekState({ artifact: input.artifact }),
+      formatAuditMaybeNumber(
+        input.artifact.nextSession?.weekInMeso ??
+          generated?.cycleContext?.weekInMeso
+      ),
+      formatAuditMaybeNumber(input.artifact.nextSession?.sessionInWeek),
+      input.artifact.nextSession?.slotId ?? "unknown",
+      path,
+      generationPath?.generator ?? "unknown",
+      receiptProvenance?.compositionSource ?? "unknown",
+      safeToTrain.safe ? "yes" : "no",
+    ].join(" | "),
+    `Blocker: ${safeToTrain.blocker}`,
+  ];
+
+  if (isBlocked) {
+    lines.push(`Generated Preview: unavailable (${path})`);
+    return lines;
+  }
+
+  lines.push(
+    "",
+    "Generated Preview",
+    "Order | Exercise | Sets | Load | Rep target/range | RPE | Note"
+  );
+  if (exercises.length === 0) {
+    lines.push("none | no generated exercises available | n/a | n/a | n/a | n/a | n/a");
+    return lines;
+  }
+
+  for (const [index, exercise] of exercises.entries()) {
+    const firstSet = exercise.prescribedSets[0];
+    lines.push(
+      `${index + 1} | ${exercise.exerciseName} | ${exercise.prescribedSetCount} | ${formatAuditDecimal(firstSet?.targetLoad)} | ${formatRepTarget(firstSet)} | ${formatAuditDecimal(firstSet?.targetRpe)} | ${note}`
+    );
+  }
+
+  return lines;
 }
 
 function formatDoseAction(
@@ -3529,6 +3669,116 @@ function buildWeeklyRetroExerciseReconciliationTable(
   ];
 }
 
+function buildWeeklySetSummaryTable(weeklyRetro: WeeklyRetroPayload): string[] {
+  const rows = weeklyRetro.exerciseLoadCalibrationRows ?? [];
+  const sumRows = (
+    selector: (row: WeeklyRetroExerciseReconciliationRow) => number
+  ): string => {
+    if (rows.length === 0) {
+      return "n/a";
+    }
+    return formatSetCount(rows.reduce((sum, row) => sum + selector(row), 0));
+  };
+  const planned = weeklyRetro.planAdherence.plannedWorkTotalSets;
+  const plannedCompleted = weeklyRetro.planAdherence.plannedWorkCompletedSets;
+
+  return [
+    "",
+    "Weekly Set Summary",
+    "Planned | Saved | Performed | Skipped | Added | Planned Completed",
+    [
+      formatSetCount(planned),
+      sumRows((row) => row.savedSetCount),
+      sumRows((row) => row.performedSetCount),
+      sumRows((row) => row.skippedSetCount),
+      sumRows((row) => row.addedSetCount),
+      `${formatSetCount(plannedCompleted)}/${formatSetCount(planned)}`,
+    ].join(" | "),
+  ];
+}
+
+function formatWeeklyMuscleStatus(
+  row: WeeklyRetroPayload["volumeTargeting"]["muscles"][number]
+): string {
+  if (row.mav > 0 && row.actualEffectiveSets >= row.mav) {
+    return "at_or_over_mav";
+  }
+  if (row.mev <= 0) {
+    return "no_mev_floor";
+  }
+  if (row.actualEffectiveSets < row.mev) {
+    return "below_mev";
+  }
+  if (
+    row.actualEffectiveSets === row.mev &&
+    row.actualEffectiveSets < row.weeklyTarget
+  ) {
+    return "at_mev";
+  }
+  if (row.actualEffectiveSets < row.weeklyTarget) {
+    return "above_mev_under_target";
+  }
+  if (row.actualEffectiveSets === row.weeklyTarget) {
+    return "on_target";
+  }
+  return "over_target_below_mav";
+}
+
+function formatCompactSetGap(value: number): string {
+  return formatAuditDecimal(Math.abs(value));
+}
+
+function formatWeeklyMuscleNote(
+  row: WeeklyRetroPayload["volumeTargeting"]["muscles"][number]
+): string {
+  const status = formatWeeklyMuscleStatus(row);
+  if (status === "below_mev") {
+    return `missed by ${formatCompactSetGap(row.deltaToMev)}`;
+  }
+  if (status === "at_mev") {
+    return "thin margin";
+  }
+  if (status === "above_mev_under_target") {
+    return "fine";
+  }
+  if (status === "at_or_over_mav") {
+    return row.actualEffectiveSets > row.mav ? "over MAV" : "thin margin";
+  }
+  if (status === "no_mev_floor") {
+    return "no MEV floor";
+  }
+  return "fine";
+}
+
+function buildWeeklyMuscleVolumeTable(weeklyRetro: WeeklyRetroPayload): string[] {
+  const rows = weeklyRetro.volumeTargeting.muscles;
+  if (rows.length === 0) {
+    return [
+      "",
+      "Weekly Muscle Volume",
+      "Muscle | Sets | MEV | Target | MAV | Status | Notes",
+      "none | 0 | n/a | n/a | n/a | n/a | no weekly muscle volume rows available",
+    ];
+  }
+
+  return [
+    "",
+    "Weekly Muscle Volume",
+    "Muscle | Sets | MEV | Target | MAV | Status | Notes",
+    ...rows.map((row) =>
+      [
+        row.muscle,
+        formatAuditDecimal(row.actualEffectiveSets),
+        formatAuditDecimal(row.mev),
+        formatAuditDecimal(row.weeklyTarget),
+        formatAuditDecimal(row.mav),
+        formatWeeklyMuscleStatus(row),
+        formatWeeklyMuscleNote(row),
+      ].join(" | ")
+    ),
+  ];
+}
+
 export function buildWeeklyRetroOperatorSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "weeklyRetro">;
   operatorDebug?: boolean;
@@ -3575,6 +3825,8 @@ export function buildWeeklyRetroOperatorSummary(input: {
   }
 
   if (input.operatorDebug === true) {
+    lines.push(...buildWeeklySetSummaryTable(weeklyRetro));
+    lines.push(...buildWeeklyMuscleVolumeTable(weeklyRetro));
     lines.push(...buildWeeklyRetroExerciseReconciliationTable(weeklyRetro));
   }
 
@@ -3892,6 +4144,15 @@ export async function main(input?: {
   });
   if (weeklyRetroSummary && !preSessionReadinessSummary) {
     for (const line of weeklyRetroSummary) {
+      console.log(line);
+    }
+  }
+  const futureWeekSummary = buildFutureWeekOperatorDebugSummary({
+    artifact,
+    operatorDebug: args["operator-debug"] === true,
+  });
+  if (futureWeekSummary && !preSessionReadinessSummary) {
+    for (const line of futureWeekSummary) {
       console.log(line);
     }
   }

@@ -133,6 +133,7 @@ npm run audit:workout -- --env-file .env.local --mode weekly-retro --owner <owne
 ```
 
 - `--operator-debug` prints an `Exercise Reconciliation` table from `weeklyRetro.exerciseLoadCalibrationRows`.
+- `--operator-debug` also prints compact stdout-only `Weekly Set Summary` and `Weekly Muscle Volume` tables from the existing `weeklyRetro.planAdherence`, `weeklyRetro.exerciseLoadCalibrationRows`, and `weeklyRetro.volumeTargeting.muscles` payload. These tables do not change weekly volume math, contribution weights, saved workouts, or artifact writing behavior.
 - The table is read-only stdout over existing audit rows: planned, saved, performed, skipped, added, classification, and short notes for additions, skipped work, substitutions when already classified, duplicate evidence when present, and load target mismatch.
 - `--no-artifact` still suppresses the main artifact and debug sidecar writes.
 
@@ -193,6 +194,16 @@ Explicit-intent variant:
 ```powershell
 npm run audit:workout -- --env-file .env.local --mode future-week --user-id <user-id> --intent <intent>
 ```
+
+Strict stdout-only operator preview:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode future-week --owner <owner-email> --no-artifact --operator-debug
+```
+
+- `--operator-debug` prints stdout-only `Generation Summary` and `Generated Preview` sections from existing artifact data: `generationPath`, `generationProvenance.receiptProvenance`, `nextSession`, warning blockers, and `sessionSnapshot.generated.exercises`.
+- Deload reroutes are labeled with the active deload path and generator; closeout-blocked states print the blocker instead of a generated preview table.
+- This is readout-only and must not be interpreted as a change to generation, lifecycle, deload policy, seed replay, receipts, or saved workout behavior.
 
 Inspect first:
 - `generationPath`

@@ -763,6 +763,28 @@ Guardrails:
 - require user confirmation or explicit session-local action
 - do not automatically mutate the active mesocycle plan
 
+#### Week Close And Gap-Fill Product Direction
+
+Optional week-close/gap-fill workouts should not be part of the normal training flow. A completed scheduled week should close automatically unless there is a real lifecycle or data blocker, such as an incomplete required advancing workout, invalid state, missing required data, an unresolved save/receipt integrity issue, invalid session sequencing, a pending user-confirmed correction flow, or an explicit user decision to add non-standard work before closing.
+
+Broad below-target deficits are not blockers. Below-target/above-MEV muscles should be treated as coaching evidence, not lifecycle blockers. Large deficit summaries based on stretch targets or MAV-adjacent targets should not create disruptive make-up workout prompts or block rollover into deload or the next week.
+
+If a muscle is at risk of missing MEV, the preferred intervention is bounded session-local coaching during normal pre-session readiness, not an end-of-week optional make-up workout. Examples:
+
+- add low-fatigue chest isolation during the final practical upper session
+- add calf raise during the final practical lower session
+- do not create a separate deficit-chasing workout after the week is otherwise complete
+
+Week close should become a review/checkpoint, not a workout generator. It should summarize:
+
+- muscles below MEV
+- muscles in the productive zone
+- target/stretch misses
+- MAV/MRV risks
+- useful evidence for the next planning cycle
+
+Week close should not normally generate extra workouts or block deload/week rollover. Target deficits alone are not real blockers.
+
 ### Data Quality Is Part Of Coaching
 
 Prescription quality depends on evidence quality. Runtime should not hide weak evidence behind precise-looking targets.
@@ -1210,6 +1232,8 @@ Also review repeated cases where final-opportunity top-ups were directionally co
 
 Policy changes belong between mesocycles unless they fix a blocker. Do not mutate accepted seed during an active mesocycle just to chase targets; runtime add-ons remain session-local performed reality.
 
+Roadmap note: remove or deprecate optional gap-fill workout generation from normal weekly close. Replace it with automatic week close plus a weekly review/readout. Use repeated below-MEV misses and target gaps as evidence for future planner/volume-policy changes between mesocycles.
+
 ## 10. Migration Strategy
 
 1. Establish clean V2 static base plan.
@@ -1331,6 +1355,9 @@ These are strategic decision gates, not claims that current production already p
 - readouts distinguish generic `opportunistic_extra` from deliberate `final_weekly_opportunity_mev_closure`
 - add/reduce recommendations require actionable exercise candidates
 - add-on recommendations prefer low-fatigue movements that close real weekly gaps and avoid compromising the next slot
+- completed scheduled weeks close automatically unless a real lifecycle/data blocker exists
+- target deficits alone do not block week rollover, deload transition, or next-week flow
+- week close acts as a review/checkpoint rather than a normal extra-workout generator
 - add-set and add-exercise behavior is bounded and session-local
 - add set clones target prescription rather than actual logged performance
 - added exercises are removable until logged and excluded from canonical seed
@@ -1386,6 +1413,7 @@ These are strategic decision gates, not claims that current production already p
 - Do not force every Week 3/Week 4 target with high-fatigue work.
 - Do not treat a weekly target as a must-hit quota when the muscle is already at or above MEV.
 - Do not chase targets near MAV as default coaching requirements; treat them as stretch or upper-bound targets unless recovery and session fit are strong.
+- Do not block week rollover or deload transition because many muscles are below target, then offer a broad make-up workout; that turns target semantics into lifecycle friction and risks extra fatigue at the worst time.
 - Do not mutate accepted seed during an active mesocycle just to close target gaps.
 - Do not hide prescription source/confidence from the user/operator.
 - Do not suggest swaps that preserve only primary muscle while changing the lane's training effect.

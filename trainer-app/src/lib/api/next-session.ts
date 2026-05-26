@@ -2,7 +2,10 @@ import { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
-import { deriveCurrentMesocycleSession } from "./mesocycle-lifecycle-math";
+import {
+  deriveCurrentMesocycleSession,
+  getAccumulationWeeks,
+} from "./mesocycle-lifecycle-math";
 import { loadPendingMesocycleHandoff } from "./mesocycle-handoff";
 import {
   buildRemainingRuntimeSlotsFromPerformed,
@@ -23,7 +26,23 @@ type MesoSessionInput = {
   slotSequenceJson?: unknown;
 };
 
-export type NextWorkoutSource = "existing_incomplete" | "rotation" | "handoff_pending";
+export type FinalAccumulationWeekClosePendingBlocker = {
+  code: "FINAL_ACCUMULATION_WEEK_CLOSE_PENDING";
+  severity: "hard_blocker";
+  message: string;
+  mesocycleId: string | null;
+  weekCloseId: string | null;
+  targetWeek: number | null;
+};
+
+export const FINAL_ACCUMULATION_WEEK_CLOSE_PENDING_MESSAGE =
+  "Final accumulation closeout is pending. Resolve or dismiss the optional gap-fill before generating the deload. Standard accumulation generation is blocked to prevent an unintended extra accumulation session.";
+
+export type NextWorkoutSource =
+  | "existing_incomplete"
+  | "rotation"
+  | "handoff_pending"
+  | "final_week_close_pending";
 
 export type NextWorkoutContext = {
   intent: string | null;
@@ -38,6 +57,7 @@ export type NextWorkoutContext = {
   sessionInWeek: number | null;
   derivationTrace: string[];
   selectedIncompleteStatus: string | null;
+  lifecycleBlocker?: FinalAccumulationWeekClosePendingBlocker | null;
 };
 
 type IncompleteWorkoutCandidate = {
@@ -59,6 +79,12 @@ export type AdvancingPerformedSlot = {
   slotId?: string | null;
   intent?: string | null;
 };
+
+type PendingWeekCloseForNextSession = {
+  id: string;
+  targetWeek: number;
+  status: string;
+} | null;
 
 const INCOMPLETE_STATUSES: WorkoutStatus[] = [
   "IN_PROGRESS",
@@ -128,6 +154,45 @@ function toSessionSlotSnapshot(input: {
   };
 }
 
+function buildFinalAccumulationWeekClosePendingBlocker(input: {
+  mesocycleId: string | null;
+  durationWeeks: number | null;
+  pendingWeekClose: PendingWeekCloseForNextSession;
+}): FinalAccumulationWeekClosePendingBlocker {
+  const closeoutLabel = input.pendingWeekClose?.targetWeek
+    ? `Week ${input.pendingWeekClose.targetWeek}`
+    : "Final accumulation";
+  const deloadLabel = input.durationWeeks ? `Week ${input.durationWeeks}` : "the";
+  return {
+    code: "FINAL_ACCUMULATION_WEEK_CLOSE_PENDING",
+    severity: "hard_blocker",
+    message: `${closeoutLabel} closeout is pending. Resolve or dismiss the optional gap-fill before generating the ${deloadLabel} deload. Standard accumulation generation is blocked to prevent an unintended extra accumulation session.`,
+    mesocycleId: input.mesocycleId,
+    weekCloseId: input.pendingWeekClose?.id ?? null,
+    targetWeek: input.pendingWeekClose?.targetWeek ?? null,
+  };
+}
+
+function isFinalAccumulationWeekClosePending(input: {
+  mesocycle: MesoSessionInput | null;
+  pendingWeekClose?: PendingWeekCloseForNextSession;
+}): boolean {
+  const mesocycle = input.mesocycle;
+  if (!mesocycle || mesocycle.state !== "ACTIVE_ACCUMULATION") {
+    return false;
+  }
+
+  const accumulationWeeks = getAccumulationWeeks(mesocycle.durationWeeks);
+  const accumulationThreshold =
+    accumulationWeeks * Math.max(1, mesocycle.sessionsPerWeek);
+
+  return (
+    mesocycle.accumulationSessionsCompleted >= accumulationThreshold &&
+    input.pendingWeekClose?.status === "PENDING_OPTIONAL_GAP_FILL" &&
+    input.pendingWeekClose.targetWeek === accumulationWeeks
+  );
+}
+
 export function resolveRequestedAdvancingSlotSnapshot(input: {
   nextWorkoutSource: NextWorkoutSource;
   requestedIntent: string;
@@ -191,6 +256,7 @@ export function resolveNextWorkoutContext(input: {
   incompleteWorkouts: IncompleteWorkoutCandidate[];
   performedAdvancingIntentsThisWeek?: string[];
   performedAdvancingSlotIdsThisWeek?: string[];
+  pendingWeekClose?: PendingWeekCloseForNextSession;
 }): NextWorkoutContext {
   const slotContract = resolveMesocycleSlotContract({
     slotSequenceJson: input.mesocycle?.slotSequenceJson,
@@ -221,6 +287,37 @@ export function resolveNextWorkoutContext(input: {
     );
   } else {
     trace.push("no_active_mesocycle");
+  }
+
+  if (
+    isFinalAccumulationWeekClosePending({
+      mesocycle: input.mesocycle,
+      pendingWeekClose: input.pendingWeekClose,
+    })
+  ) {
+    const blocker = buildFinalAccumulationWeekClosePendingBlocker({
+      mesocycleId: input.mesocycle?.id ?? null,
+      durationWeeks: input.mesocycle?.durationWeeks ?? null,
+      pendingWeekClose: input.pendingWeekClose ?? null,
+    });
+    trace.push(
+      `final_accumulation_week_close_pending week_close=${blocker.weekCloseId ?? "unknown"} target_week=${blocker.targetWeek ?? "unknown"}`
+    );
+    return {
+      intent: null,
+      slotId: null,
+      slotSequenceIndex: null,
+      slotSequenceLength: slotContract.slots.length > 0 ? slotContract.slots.length : null,
+      slotSource: null,
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "final_week_close_pending",
+      weekInMeso: null,
+      sessionInWeek: null,
+      derivationTrace: trace,
+      selectedIncompleteStatus: null,
+      lifecycleBlocker: blocker,
+    };
   }
 
   if (topIncomplete) {
@@ -282,6 +379,7 @@ export async function loadNextWorkoutContext(
       sessionInWeek: null,
       derivationTrace: [`pending_handoff mesocycle=${pendingHandoff.mesocycleId}`],
       selectedIncompleteStatus: null,
+      lifecycleBlocker: null,
     };
   }
 
@@ -303,28 +401,43 @@ export async function loadNextWorkoutContext(
       select: { weeklySchedule: true },
     }),
   ]);
-  const rawIncomplete = await prisma.workout.findMany({
-    where: {
-      userId,
-      status: { in: INCOMPLETE_STATUSES },
-      OR: [{ mesocycleId: null }, { mesocycle: { isActive: true } }],
-    },
-    orderBy: { scheduledDate: "asc" },
-    take: 20,
-    select: {
-      id: true,
-      sessionIntent: true,
-      status: true,
-      scheduledDate: true,
-      selectionMetadata: true,
-    },
-  });
-
   const weeklySchedule = (constraints?.weeklySchedule ?? []).map((intent) => intent as string);
   const currentSession = mesocycle ? deriveCurrentMesocycleSession(mesocycle) : null;
-  const rawPerformedAdvancingThisWeek =
-    mesocycle && currentSession
-      ? await prisma.workout.findMany({
+  const [rawIncomplete, pendingWeekClose, rawPerformedAdvancingThisWeek] =
+    await Promise.all([
+      prisma.workout.findMany({
+        where: {
+          userId,
+          status: { in: INCOMPLETE_STATUSES },
+          OR: [{ mesocycleId: null }, { mesocycle: { isActive: true } }],
+        },
+        orderBy: { scheduledDate: "asc" },
+        take: 20,
+        select: {
+          id: true,
+          sessionIntent: true,
+          status: true,
+          scheduledDate: true,
+          selectionMetadata: true,
+        },
+      }),
+      mesocycle
+        ? prisma.mesocycleWeekClose.findFirst({
+            where: {
+              mesocycleId: mesocycle.id,
+              status: "PENDING_OPTIONAL_GAP_FILL",
+              targetPhase: "ACCUMULATION",
+            },
+            orderBy: { targetWeek: "desc" },
+            select: {
+              id: true,
+              targetWeek: true,
+              status: true,
+            },
+          })
+        : Promise.resolve(null),
+      mesocycle && currentSession
+        ? prisma.workout.findMany({
           where: {
             userId,
             mesocycleId: mesocycle.id,
@@ -340,7 +453,8 @@ export async function loadNextWorkoutContext(
             sessionIntent: true,
           },
         })
-      : [];
+        : Promise.resolve([]),
+    ]);
   const performedAdvancingSlotsThisWeek = buildAdvancingPerformedSlots(rawPerformedAdvancingThisWeek);
   const runtimeSlotSequence = readRuntimeSlotSequence({
     slotSequenceJson: mesocycle?.slotSequenceJson,
@@ -366,6 +480,7 @@ export async function loadNextWorkoutContext(
     performedAdvancingIntentsThisWeek: performedAdvancingSlotsThisWeek
       .map((workout) => workout.intent ?? null)
       .filter((intent): intent is string => Boolean(intent)),
+    pendingWeekClose,
   });
 }
 

@@ -252,6 +252,7 @@ Important interpretation rule:
 Common red flags:
 - `Safe to train: no`
 - incomplete workout blocker is present
+- final accumulation closeout blocker is present; resolve or dismiss the pending optional gap-fill before expecting deload generation
 - requested mesocycle id does not match the active mesocycle
 - generated preview is missing or generation failed
 - dose guidance suggests add-ons for muscles already high or fatigue-dense

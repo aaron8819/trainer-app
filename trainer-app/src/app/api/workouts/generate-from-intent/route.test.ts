@@ -117,6 +117,57 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
   });
 
+  it("rejects standard accumulation generation while final week-close is pending", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      intent: null,
+      slotId: null,
+      slotSequenceIndex: null,
+      slotSequenceLength: 4,
+      slotSource: null,
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "final_week_close_pending",
+      weekInMeso: null,
+      sessionInWeek: null,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+      lifecycleBlocker: {
+        code: "FINAL_ACCUMULATION_WEEK_CLOSE_PENDING",
+        severity: "hard_blocker",
+        message:
+          "Week 4 closeout is pending. Resolve or dismiss the optional gap-fill before generating the Week 5 deload. Standard accumulation generation is blocked to prevent an unintended extra accumulation session.",
+        mesocycleId: "meso-1",
+        weekCloseId: "wc-4",
+        targetWeek: 4,
+      },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intent: "upper" }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error:
+        "Week 4 closeout is pending. Resolve or dismiss the optional gap-fill before generating the Week 5 deload. Standard accumulation generation is blocked to prevent an unintended extra accumulation session.",
+      blocker: expect.objectContaining({
+        code: "FINAL_ACCUMULATION_WEEK_CLOSE_PENDING",
+        weekCloseId: "wc-4",
+      }),
+    });
+    expect(mocks.loadRequestedAdvancingSlotSnapshot).not.toHaveBeenCalled();
+    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
+    expect(mocks.generateDeloadSessionFromIntent).not.toHaveBeenCalled();
+  });
+
   it("returns deload prescription path when active mesocycle state is ACTIVE_DELOAD", async () => {
     mocks.loadActiveMesocycle.mockResolvedValue({ id: "meso-1", state: "ACTIVE_DELOAD" });
     mocks.generateDeloadSessionFromIntent.mockResolvedValue({

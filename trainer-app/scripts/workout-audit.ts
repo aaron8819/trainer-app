@@ -769,6 +769,12 @@ function buildSafeToTrain(input: {
       `incomplete workout blocker: ${input.artifact.nextSession.existingWorkoutId ?? "unknown"} (${input.artifact.nextSession.selectedIncompleteStatus ?? "unknown"})`
     );
   }
+  if (input.artifact.nextSession?.source === "final_week_close_pending") {
+    reasons.push(
+      input.artifact.nextSession.lifecycleBlocker?.message ??
+        "final accumulation closeout is pending"
+    );
+  }
   if (
     input.artifact.preSessionReadiness?.activeMesocycle
       .mesocycleIdMatchesRequest === false
@@ -3265,6 +3271,7 @@ export function buildPreSessionReadinessSummary(input: {
     "Pre-Session Readiness",
     "---------------------",
     `Current app state: owner=${input.artifact.identity.ownerEmail ?? input.artifact.identity.userId} active_mesocycle=${active.mesocycleId ?? "unknown"} state=${active.state ?? "unknown"} completed_accumulation_sessions=${formatAuditValue(active.completedAccumulationSessions)} current_week=${formatAuditValue(active.currentWeek)} current_session=${formatAuditValue(active.currentSession)} next_slot=${nextSession?.slotId ?? "unknown"} incomplete_workout_blocker=${nextSession?.source === "existing_incomplete" ? `${nextSession.existingWorkoutId ?? "unknown"} (${nextSession.selectedIncompleteStatus ?? "unknown"})` : "none"}`,
+    `Lifecycle blocker: ${nextSession?.source === "final_week_close_pending" ? nextSession.lifecycleBlocker?.message ?? "final accumulation closeout is pending" : "none"}`,
     `Generation: path=${input.artifact.generationPath?.executionMode ?? "unknown"} generator=${input.artifact.generationPath?.generator ?? "unknown"} composition_source=${receiptProvenance?.compositionSource ?? "unknown"} receipt_mesocycle=${receiptProvenance?.mesocycleId ?? "unknown"} seed_source=${seed?.seed.source ?? "unknown"} seed_shape=${seed?.seed.executableShape ?? "unknown"} seed_or_slot_hash=not_available`,
     `Seed order/set counts respected: ${
       receiptProvenance?.compositionSource === "persisted_slot_plan_seed"

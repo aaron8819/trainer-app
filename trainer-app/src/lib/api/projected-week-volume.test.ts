@@ -418,6 +418,52 @@ describe("loadProjectedWeekVolumeReport", () => {
     });
   });
 
+  it("does not project standard accumulation sessions when final week-close is pending", async () => {
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      intent: null,
+      slotId: null,
+      slotSequenceIndex: null,
+      slotSequenceLength: 4,
+      slotSource: null,
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "final_week_close_pending",
+      weekInMeso: null,
+      sessionInWeek: null,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+      lifecycleBlocker: {
+        code: "FINAL_ACCUMULATION_WEEK_CLOSE_PENDING",
+        severity: "hard_blocker",
+        message:
+          "Week 4 closeout is pending. Resolve or dismiss the optional gap-fill before generating the Week 5 deload. Standard accumulation generation is blocked to prevent an unintended extra accumulation session.",
+        mesocycleId: "meso-1",
+        weekCloseId: "wc-4",
+        targetWeek: 4,
+      },
+    });
+
+    const report = await loadProjectedWeekVolumeReport({
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+    });
+
+    expect(report.projectionNotes).toEqual([
+      "Week 4 closeout is pending. Resolve or dismiss the optional gap-fill before generating the Week 5 deload. Standard accumulation generation is blocked to prevent an unintended extra accumulation session.",
+    ]);
+    expect(report.projectedSessions).toEqual([]);
+    expect(mocks.deriveNextRuntimeSlotSession).not.toHaveBeenCalled();
+    expect(mocks.buildRemainingFutureSlotsFromRuntime).not.toHaveBeenCalled();
+    expect(mocks.generateSessionFromMappedContext).not.toHaveBeenCalled();
+    expect(mocks.generateDeloadSessionFromIntentContext).not.toHaveBeenCalled();
+    expect(report.fullWeekByMuscle.find((row) => row.muscle === "Chest")).toMatchObject({
+      completedEffectiveSets: 4,
+      projectedNextSessionEffectiveSets: 0,
+      projectedRemainingWeekEffectiveSets: 0,
+      projectedFullWeekEffectiveSets: 4,
+    });
+  });
+
   it("uses the exposed scope for projection rows so Core absorbs Abs and broader muscles remain visible", async () => {
     mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({
       Core: { directSets: 2, indirectSets: 0, effectiveSets: 2 },

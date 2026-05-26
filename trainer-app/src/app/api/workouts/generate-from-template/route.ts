@@ -5,7 +5,10 @@ import { generateDeloadSessionFromTemplate, generateSessionFromTemplate } from "
 import { applyAutoregulation } from "@/lib/api/autoregulation";
 import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
 import { loadPendingMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
-import { loadNextWorkoutContext } from "@/lib/api/next-session";
+import {
+  FINAL_ACCUMULATION_WEEK_CLOSE_PENDING_MESSAGE,
+  loadNextWorkoutContext,
+} from "@/lib/api/next-session";
 import type { GenerateFromTemplateResponse } from "@/lib/api/template-session/types";
 import {
   attachSessionAuditSnapshotToSelectionMetadata,
@@ -39,6 +42,17 @@ export async function POST(request: Request) {
 
   const activeMesocycle = await loadActiveMesocycle(user.id);
   const nextWorkoutContext = await loadNextWorkoutContext(user.id);
+  if (nextWorkoutContext.source === "final_week_close_pending") {
+    return NextResponse.json(
+      {
+        error:
+          nextWorkoutContext.lifecycleBlocker?.message ??
+          FINAL_ACCUMULATION_WEEK_CLOSE_PENDING_MESSAGE,
+        blocker: nextWorkoutContext.lifecycleBlocker ?? null,
+      },
+      { status: 409 }
+    );
+  }
   const result =
     activeMesocycle?.state === "ACTIVE_DELOAD"
       ? await generateDeloadSessionFromTemplate(user.id, parsed.data.templateId)

@@ -770,6 +770,97 @@ describe("runWorkoutAuditGeneration", () => {
     });
   });
 
+  it("surfaces closeout-required blocker for pre-session-readiness without generation", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      accumulationSessionsCompleted: 16,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 4,
+      durationWeeks: 5,
+    });
+    mocks.deriveCurrentMesocycleSession.mockReturnValueOnce({
+      week: 4,
+      session: 4,
+      phase: "ACCUMULATION",
+    });
+    mocks.loadProjectedWeekVolumeReport.mockResolvedValueOnce({
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 4,
+        phase: "accumulation",
+        blockType: "accumulation",
+      },
+      projectionNotes: [
+        "Week 4 closeout is pending. Resolve or dismiss the optional gap-fill before generating the Week 5 deload. Standard accumulation generation is blocked to prevent an unintended extra accumulation session.",
+      ],
+      completedVolumeByMuscle: {},
+      projectedSessions: [],
+      fullWeekByMuscle: [],
+    });
+    const context: WorkoutAuditContext = {
+      mode: "pre-session-readiness",
+      requestedMode: "pre-session-readiness",
+      userId: "user-1",
+      ownerEmail: "owner@test.local",
+      plannerDiagnosticsMode: "debug",
+      nextSession: {
+        intent: null,
+        slotId: null,
+        slotSequenceIndex: null,
+        slotSequenceLength: 4,
+        slotSource: null,
+        existingWorkoutId: null,
+        isExisting: false,
+        source: "final_week_close_pending",
+        weekInMeso: null,
+        sessionInWeek: null,
+        derivationTrace: [],
+        selectedIncompleteStatus: null,
+        lifecycleBlocker: {
+          code: "FINAL_ACCUMULATION_WEEK_CLOSE_PENDING",
+          severity: "hard_blocker",
+          message:
+            "Week 4 closeout is pending. Resolve or dismiss the optional gap-fill before generating the Week 5 deload. Standard accumulation generation is blocked to prevent an unintended extra accumulation session.",
+          mesocycleId: "meso-1",
+          weekCloseId: "wc-4",
+          targetWeek: 4,
+        },
+      },
+      projectedWeekVolume: { enabled: true },
+      preSessionReadiness: {
+        enabled: true,
+        requestedMesocycleId: "meso-1",
+      },
+    };
+
+    const run = await runWorkoutAuditGeneration(context);
+
+    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
+    expect(mocks.generateDeloadSessionFromIntent).not.toHaveBeenCalled();
+    expect(run.generationResult).toEqual({
+      error:
+        "Week 4 closeout is pending. Resolve or dismiss the optional gap-fill before generating the Week 5 deload. Standard accumulation generation is blocked to prevent an unintended extra accumulation session.",
+    });
+    expect(run.generationPath).toEqual({
+      requestedMode: "pre-session-readiness",
+      executionMode: "blocked_closeout_required",
+      generator: "none",
+      reason: "final_accumulation_week_close_pending",
+    });
+    expect(run.preSessionReadiness).toMatchObject({
+      readOnly: true,
+      activeMesocycle: {
+        mesocycleId: "meso-1",
+        state: "ACTIVE_ACCUMULATION",
+        completedAccumulationSessions: 16,
+        requestedMesocycleId: "meso-1",
+        mesocycleIdMatchesRequest: true,
+      },
+    });
+    expect(run.projectedWeekVolume?.projectedSessions).toEqual([]);
+  });
+
   it("routes weekly-retro through the composed audit builder without touching generation helpers", async () => {
     const context: WorkoutAuditContext = {
       mode: "weekly-retro",

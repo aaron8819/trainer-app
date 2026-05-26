@@ -429,6 +429,32 @@ export async function loadProjectedWeekVolumeReport(input: {
     .map((entry) => entry.intent ?? null)
     .filter((intent): intent is string => typeof intent === "string" && intent.length > 0);
 
+  if (nextWorkoutContext.source === "final_week_close_pending") {
+    const projectionNotes = [
+      nextWorkoutContext.lifecycleBlocker?.message ??
+        "Final accumulation closeout is pending. Resolve or dismiss the optional gap-fill before generating the deload.",
+    ];
+
+    return {
+      currentWeek: {
+        mesocycleId: activeMesocycle.id,
+        week: currentWeek,
+        phase: mapped.cycleContext.phase,
+        blockType: mapped.cycleContext.blockType,
+      },
+      projectionNotes,
+      completedVolumeByMuscle: toProjectedWeekVolumeByMuscle(completedVolume),
+      projectedSessions: [],
+      fullWeekByMuscle: buildFullWeekRows({
+        activeMesocycle,
+        week: currentWeek,
+        completedVolumeByMuscle: toProjectedWeekVolumeByMuscle(completedVolume),
+        projectedSessions: [],
+        includeImplicitRows: plannerDiagnosticsMode === "debug",
+      }),
+    };
+  }
+
   const nextRuntimeSlot = deriveNextRuntimeSlotSession({
     mesocycle: activeMesocycle,
     slotSequenceJson: activeMesocycle.slotSequenceJson,

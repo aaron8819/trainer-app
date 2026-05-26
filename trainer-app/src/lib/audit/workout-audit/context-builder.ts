@@ -111,6 +111,25 @@ export async function buildWorkoutAuditContext(
 
   if (mode === "pre-session-readiness") {
     const nextSession = await loadNextWorkoutContext(identity.userId);
+    if (nextSession.source === "final_week_close_pending") {
+      return {
+        mode,
+        requestedMode: request.mode,
+        userId: identity.userId,
+        ownerEmail: identity.ownerEmail,
+        plannerDiagnosticsMode,
+        nextSession,
+        projectedWeekVolume: {
+          enabled: true,
+        },
+        preSessionReadiness: {
+          enabled: true,
+          ...(request.mesocycleId
+            ? { requestedMesocycleId: request.mesocycleId }
+            : {}),
+        },
+      };
+    }
     const intent = (request.intent ?? nextSession?.intent) as
       | SessionIntent
       | undefined;
@@ -249,6 +268,16 @@ export async function buildWorkoutAuditContext(
     const nextSession = shouldLoadNextSession
       ? await loadNextWorkoutContext(identity.userId)
       : undefined;
+    if (nextSession?.source === "final_week_close_pending") {
+      return {
+        mode,
+        requestedMode: request.mode,
+        userId: identity.userId,
+        ownerEmail: identity.ownerEmail,
+        plannerDiagnosticsMode,
+        nextSession,
+      };
+    }
     const intent = (request.intent ?? nextSession?.intent) as SessionIntent | undefined;
     if (!intent) {
       throw new Error("deload mode requires --intent or a derivable next-session intent");
@@ -271,6 +300,17 @@ export async function buildWorkoutAuditContext(
   const nextSession = shouldLoadNextSession
     ? await loadNextWorkoutContext(identity.userId)
     : undefined;
+
+  if (nextSession?.source === "final_week_close_pending") {
+    return {
+      mode,
+      requestedMode: request.mode,
+      userId: identity.userId,
+      ownerEmail: identity.ownerEmail,
+      plannerDiagnosticsMode,
+      nextSession,
+    };
+  }
 
   if (request.intent) {
     return {

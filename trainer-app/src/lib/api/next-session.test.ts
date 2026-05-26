@@ -170,6 +170,127 @@ describe("resolveNextWorkoutContext", () => {
     expect(context.sessionInWeek).toBe(2);
   });
 
+  it("blocks standard accumulation when the final accumulation threshold has a pending week-close", () => {
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        id: "meso-final",
+        sessionsPerWeek: 4,
+        accumulationSessionsCompleted: 16,
+        slotSequenceJson: {
+          version: 1,
+          source: "handoff_draft",
+          sequenceMode: "ordered_flexible",
+          slots: [
+            { slotId: "upper_a", intent: "UPPER" },
+            { slotId: "lower_a", intent: "LOWER" },
+            { slotId: "upper_b", intent: "UPPER" },
+            { slotId: "lower_b", intent: "LOWER" },
+          ],
+        },
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      incompleteWorkouts: [],
+      pendingWeekClose: {
+        id: "week-close-4",
+        targetWeek: 4,
+        status: "PENDING_OPTIONAL_GAP_FILL",
+      },
+    });
+
+    expect(context.source).toBe("final_week_close_pending");
+    expect(context.intent).toBeNull();
+    expect(context.slotId).toBeNull();
+    expect(context.lifecycleBlocker).toMatchObject({
+      code: "FINAL_ACCUMULATION_WEEK_CLOSE_PENDING",
+      severity: "hard_blocker",
+      mesocycleId: "meso-final",
+      weekCloseId: "week-close-4",
+      targetWeek: 4,
+    });
+    expect(context.lifecycleBlocker?.message).toContain("Week 4 closeout is pending");
+    expect(context.lifecycleBlocker?.message).toContain("Week 5 deload");
+    expect(context.derivationTrace).toContain(
+      "final_accumulation_week_close_pending week_close=week-close-4 target_week=4"
+    );
+  });
+
+  it("allows deload routing once the final closeout is resolved and lifecycle state advances", () => {
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        state: "ACTIVE_DELOAD",
+        sessionsPerWeek: 4,
+        accumulationSessionsCompleted: 16,
+        deloadSessionsCompleted: 0,
+        slotSequenceJson: {
+          version: 1,
+          source: "handoff_draft",
+          sequenceMode: "ordered_flexible",
+          slots: [
+            { slotId: "upper_a", intent: "UPPER" },
+            { slotId: "lower_a", intent: "LOWER" },
+            { slotId: "upper_b", intent: "UPPER" },
+            { slotId: "lower_b", intent: "LOWER" },
+          ],
+        },
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      incompleteWorkouts: [],
+    });
+
+    expect(context.source).toBe("rotation");
+    expect(context.intent).toBe("upper");
+    expect(context.slotId).toBe("upper_a");
+    expect(context.weekInMeso).toBe(5);
+    expect(context.sessionInWeek).toBe(1);
+    expect(context.lifecycleBlocker).toBeUndefined();
+  });
+
+  it("keeps normal accumulation routing below the final accumulation threshold", () => {
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        sessionsPerWeek: 4,
+        accumulationSessionsCompleted: 15,
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      incompleteWorkouts: [],
+      pendingWeekClose: {
+        id: "week-close-4",
+        targetWeek: 4,
+        status: "PENDING_OPTIONAL_GAP_FILL",
+      },
+    });
+
+    expect(context.source).toBe("rotation");
+    expect(context.intent).toBe("lower");
+    expect(context.weekInMeso).toBe(4);
+    expect(context.sessionInWeek).toBe(4);
+  });
+
+  it("does not treat a pending non-final week-close as the final lifecycle blocker", () => {
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        sessionsPerWeek: 4,
+        accumulationSessionsCompleted: 8,
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      incompleteWorkouts: [],
+      pendingWeekClose: {
+        id: "week-close-2",
+        targetWeek: 2,
+        status: "PENDING_OPTIONAL_GAP_FILL",
+      },
+    });
+
+    expect(context.source).toBe("rotation");
+    expect(context.intent).toBe("upper");
+    expect(context.weekInMeso).toBe(3);
+    expect(context.sessionInWeek).toBe(1);
+  });
+
   it("falls back to first schedule entry when mesocycle is unavailable", () => {
     const context = resolveNextWorkoutContext({
       mesocycle: null,

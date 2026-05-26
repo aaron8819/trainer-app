@@ -29,6 +29,31 @@ import type {
 } from "./types";
 import { replaceEmptyMesocycleWithV2 } from "@/lib/api/replace-empty-mesocycle-with-v2";
 
+function buildCloseoutBlockedGenerationRunFields(
+  context: WorkoutAuditContext
+): Pick<
+  WorkoutAuditRun,
+  | "generationResult"
+  | "sessionSnapshot"
+  | "generationPath"
+  | "acceptedSeedProvenanceConsistency"
+> {
+  return {
+    generationResult: {
+      error:
+        context.nextSession?.lifecycleBlocker?.message ??
+        "Final accumulation closeout is pending. Resolve or dismiss the optional gap-fill before generating the deload.",
+    },
+    sessionSnapshot: undefined,
+    generationPath: {
+      requestedMode: context.requestedMode ?? context.mode,
+      executionMode: "blocked_closeout_required",
+      generator: "none",
+      reason: "final_accumulation_week_close_pending",
+    },
+  };
+}
+
 function resolveAdvancingSlotSnapshot(
   context: WorkoutAuditContext
 ): SessionSlotSnapshot | undefined {
@@ -92,7 +117,13 @@ async function buildGeneratedSessionRunFields(input: {
 >> {
   const { context, activeMesocycle } = input;
   const mode = context.mode;
-  const generationInput = context.generationInput!;
+  const generationInput = context.generationInput;
+  if (!generationInput) {
+    if (context.nextSession?.source === "final_week_close_pending") {
+      return buildCloseoutBlockedGenerationRunFields(context);
+    }
+    throw new Error("Generated-session audit requires a generation input.");
+  }
   const useDeloadGeneration =
     mode === "deload" || activeMesocycle?.state === "ACTIVE_DELOAD";
   const advancingSlot = resolveAdvancingSlotSnapshot(context);

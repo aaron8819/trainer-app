@@ -106,6 +106,56 @@ describe("POST /api/workouts/generate-from-template", () => {
     expect(mocks.generateSessionFromTemplate).not.toHaveBeenCalled();
   });
 
+  it("rejects template generation while final week-close is pending", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      intent: null,
+      slotId: null,
+      slotSequenceIndex: null,
+      slotSequenceLength: 4,
+      slotSource: null,
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "final_week_close_pending",
+      weekInMeso: null,
+      sessionInWeek: null,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+      lifecycleBlocker: {
+        code: "FINAL_ACCUMULATION_WEEK_CLOSE_PENDING",
+        severity: "hard_blocker",
+        message:
+          "Week 4 closeout is pending. Resolve or dismiss the optional gap-fill before generating the Week 5 deload. Standard accumulation generation is blocked to prevent an unintended extra accumulation session.",
+        mesocycleId: "meso-1",
+        weekCloseId: "wc-4",
+        targetWeek: 4,
+      },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateId: "template-1" }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error:
+        "Week 4 closeout is pending. Resolve or dismiss the optional gap-fill before generating the Week 5 deload. Standard accumulation generation is blocked to prevent an unintended extra accumulation session.",
+      blocker: expect.objectContaining({
+        code: "FINAL_ACCUMULATION_WEEK_CLOSE_PENDING",
+        weekCloseId: "wc-4",
+      }),
+    });
+    expect(mocks.generateSessionFromTemplate).not.toHaveBeenCalled();
+    expect(mocks.generateDeloadSessionFromTemplate).not.toHaveBeenCalled();
+  });
+
   it("returns canonical selectionMetadata for template generation", async () => {
     mocks.generateSessionFromTemplate.mockResolvedValue({
       workout: {

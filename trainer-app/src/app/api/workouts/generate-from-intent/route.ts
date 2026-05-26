@@ -7,6 +7,7 @@ import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
 import { loadPendingMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
 import { findPendingWeekCloseForUser } from "@/lib/api/mesocycle-week-close";
 import {
+  FINAL_ACCUMULATION_WEEK_CLOSE_PENDING_MESSAGE,
   loadNextWorkoutContext,
   loadRequestedAdvancingSlotSnapshot,
 } from "@/lib/api/next-session";
@@ -106,6 +107,20 @@ export async function POST(request: Request) {
     parsed.data.optionalGapFill === true && parsed.data.intent === "body_part";
   const shouldApplySupplementalDeficitSession =
     parsed.data.supplementalDeficitSession === true && parsed.data.intent === "body_part";
+  if (
+    nextWorkoutContext.source === "final_week_close_pending" &&
+    !shouldApplyOptionalGapFill
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          nextWorkoutContext.lifecycleBlocker?.message ??
+          FINAL_ACCUMULATION_WEEK_CLOSE_PENDING_MESSAGE,
+        blocker: nextWorkoutContext.lifecycleBlocker ?? null,
+      },
+      { status: 409 }
+    );
+  }
   let canonicalGapFill:
     | {
         weekCloseId: string;

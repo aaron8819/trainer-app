@@ -9,7 +9,7 @@ export const WORKOUT_AUDIT_CONCLUSIONS: AuditConclusionBlock = {
     sourceModule: "src/lib/api/next-session.ts",
     sourceFunction: "loadNextWorkoutContext",
     runtimeRule:
-      "Resume the highest-priority incomplete workout first; otherwise derive the next advancing rotation slot from the active mesocycle and weekly schedule.",
+      "Block final accumulation closeout when the final week-close is pending; otherwise resume the highest-priority incomplete workout first or derive the next advancing rotation slot from the active mesocycle and weekly schedule.",
   },
   weekly_volume_basis: {
     sourceModule: "src/lib/api/weekly-volume.ts",

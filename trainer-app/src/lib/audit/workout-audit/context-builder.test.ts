@@ -142,6 +142,81 @@ describe("buildWorkoutAuditContext", () => {
     expect(mocks.loadNextWorkoutContext).toHaveBeenCalledWith("user-1");
   });
 
+  it("builds pre-session-readiness blocker context without deriving generation when final week-close is pending", async () => {
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      intent: null,
+      slotId: null,
+      slotSequenceIndex: null,
+      slotSequenceLength: 4,
+      slotSource: null,
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "final_week_close_pending",
+      weekInMeso: null,
+      sessionInWeek: null,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+      lifecycleBlocker: {
+        code: "FINAL_ACCUMULATION_WEEK_CLOSE_PENDING",
+        severity: "hard_blocker",
+        message:
+          "Week 4 closeout is pending. Resolve or dismiss the optional gap-fill before generating the Week 5 deload. Standard accumulation generation is blocked to prevent an unintended extra accumulation session.",
+        mesocycleId: "meso-1",
+        weekCloseId: "wc-4",
+        targetWeek: 4,
+      },
+    });
+
+    const context = await buildWorkoutAuditContext({
+      mode: "pre-session-readiness",
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      plannerDiagnosticsMode: "debug",
+    });
+
+    expect(context.generationInput).toBeUndefined();
+    expect(context.nextSession?.source).toBe("final_week_close_pending");
+    expect(context.projectedWeekVolume).toEqual({ enabled: true });
+    expect(context.preSessionReadiness).toEqual({
+      enabled: true,
+      requestedMesocycleId: "meso-1",
+    });
+  });
+
+  it("blocks explicit future-week intent generation when final week-close is pending", async () => {
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      intent: null,
+      slotId: null,
+      slotSequenceIndex: null,
+      slotSequenceLength: 4,
+      slotSource: null,
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "final_week_close_pending",
+      weekInMeso: null,
+      sessionInWeek: null,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+      lifecycleBlocker: {
+        code: "FINAL_ACCUMULATION_WEEK_CLOSE_PENDING",
+        severity: "hard_blocker",
+        message: "Week 4 closeout is pending.",
+        mesocycleId: "meso-1",
+        weekCloseId: "wc-4",
+        targetWeek: 4,
+      },
+    });
+
+    const context = await buildWorkoutAuditContext({
+      mode: "future-week",
+      userId: "user-1",
+      intent: "upper",
+    });
+
+    expect(context.generationInput).toBeUndefined();
+    expect(context.nextSession?.source).toBe("final_week_close_pending");
+  });
+
   it("builds weekly-retro context from explicit week and mesocycle inputs without loading next-session", async () => {
     const context = await buildWorkoutAuditContext({
       mode: "weekly-retro",

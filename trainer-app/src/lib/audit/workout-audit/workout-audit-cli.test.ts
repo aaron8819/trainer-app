@@ -4628,6 +4628,111 @@ describe("buildPreSessionReadinessSummary", () => {
     );
   });
 
+  it("prints closeout-required blocker for pre-session readiness", () => {
+    const blockerMessage =
+      "Week 4 closeout is pending. Resolve or dismiss the optional gap-fill before generating the Week 5 deload. Standard accumulation generation is blocked to prevent an unintended extra accumulation session.";
+    const summary = buildPreSessionReadinessSummary({
+      artifact: {
+        identity: {
+          userId: "user-1",
+          ownerEmail: "owner@test.local",
+        },
+        request: {
+          mode: "pre-session-readiness",
+          ownerEmail: "owner@test.local",
+          mesocycleId: "meso-1",
+        },
+        nextSession: {
+          intent: null,
+          slotId: null,
+          slotSequenceIndex: null,
+          slotSequenceLength: 4,
+          slotSource: null,
+          existingWorkoutId: null,
+          isExisting: false,
+          source: "final_week_close_pending",
+          weekInMeso: null,
+          sessionInWeek: null,
+          derivationTrace: [],
+          selectedIncompleteStatus: null,
+          lifecycleBlocker: {
+            code: "FINAL_ACCUMULATION_WEEK_CLOSE_PENDING",
+            severity: "hard_blocker",
+            message: blockerMessage,
+            mesocycleId: "meso-1",
+            weekCloseId: "wc-4",
+            targetWeek: 4,
+          },
+        },
+        generation: { error: blockerMessage },
+        generationPath: {
+          requestedMode: "pre-session-readiness",
+          executionMode: "blocked_closeout_required",
+          generator: "none",
+          reason: "final_accumulation_week_close_pending",
+        },
+        generationProvenance: {
+          receiptProvenance: {
+            mesocycleId: null,
+            compositionSource: null,
+          },
+          auditOnly: {
+            generationPath: null,
+          },
+        },
+        projectedWeekVolume: {
+          currentWeek: {
+            mesocycleId: "meso-1",
+            week: 4,
+            phase: "accumulation",
+            blockType: "accumulation",
+          },
+          projectionNotes: [blockerMessage],
+          completedVolumeByMuscle: {},
+          projectedSessions: [],
+          fullWeekByMuscle: [],
+          runtimeDoseAdjustmentDiagnostics: [],
+        },
+        warningSummary: {
+          blockingErrors: [blockerMessage],
+          semanticWarnings: [],
+          backgroundWarnings: [],
+          counts: {
+            blockingErrors: 1,
+            semanticWarnings: 0,
+            backgroundWarnings: 0,
+          },
+        },
+        preSessionReadiness: {
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByProduction: false,
+          wouldWriteTransaction: false,
+          activeMesocycle: {
+            mesocycleId: "meso-1",
+            state: "ACTIVE_ACCUMULATION",
+            completedAccumulationSessions: 16,
+            currentWeek: 4,
+            currentSession: 4,
+            requestedMesocycleId: "meso-1",
+            mesocycleIdMatchesRequest: true,
+          },
+        },
+      } as never,
+      operatorDebug: true,
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        `Lifecycle blocker: ${blockerMessage}`,
+        "Generated Preview",
+        `generation_error | ${blockerMessage}`,
+        "Safe to train: no",
+        expect.stringContaining(blockerMessage),
+      ])
+    );
+  });
+
   it("prints final-opportunity MEV closure, marginal top-up, suppressions, and guardrails", () => {
     const artifact = buildWeek4UpperBPreSessionArtifact();
     const volumeRowsBefore = JSON.parse(

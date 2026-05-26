@@ -167,30 +167,11 @@ Route-purpose shorthand:
 - `/library` exercise detail keeps raw recent sessions and bests visible through `PersonalHistorySection`, but its trend copy is explicitly descriptive logged-history framing rather than authoritative improvement-status labeling. That surface is for local history context, not canonical progression interpretation (`src/components/library/PersonalHistorySection.tsx`).
 
 ## Optional gap-fill flow
-1. Dashboard/home support computes optional-session state (`loadHomeProgramSupport()` in `src/lib/api/program.ts`) with `anchorWeek`, suppression flags, and policy caps.
-  - Home is an active-week operational surface. It renders week-close support only when the selected row matches both the active mesocycle and the active home week.
-2. UI shows the optional gap-fill card when the relevant week-close is still visible, not only when generation is still eligible (`src/components/OptionalGapFillCard.tsx`).
-  - `visible=true` means the same-week week-close should still be shown because deficit truth remains user-relevant.
-  - `eligible=true` means the same-week row can still generate or reopen the optional gap-fill workflow.
-  - A resolved same-week row may therefore remain visible with `workflowState=COMPLETED` and `deficitState=PARTIAL`.
-3. Generate action calls `POST /api/workouts/generate-from-intent` with:
-  - `intent=body_part`
-  - `optionalGapFill=true`
-  - `weekCloseId`
-  - `targetMuscles`
-  - policy caps (`maxGeneratedHardSets`, `maxGeneratedExercises`)
-  The route resolves the authoritative pending week-close row and injects `optionalGapFillContext.targetWeek` server-side before planner generation (`src/app/api/workouts/generate-from-intent/route.ts`, `src/lib/api/template-session.ts`).
-  Generated response metadata is normalized through `attachOptionalGapFillMetadata()` before save so the client keeps canonical `selectionMetadata.weekCloseId`, `targetMuscles`, and `optional_gap_fill` receipt marker without UI-local metadata forks (`src/components/OptionalGapFillCard.tsx`, `src/lib/ui/selection-metadata.ts`).
-4. Save action calls `POST /api/workouts/save` with `advancesSplit=false` semantics enforced server-side by strict triplet classification.
-  Save responses may include a `weekClose` summary payload; the UI should read `workflowState` and `deficitState` directly instead of collapsing to `resolution`.
-5. Disappearance rules:
-  - Advancing into a new active week suppresses prior-week week-close/gap-fill support on Home.
-  - Same-week resolved week-close remains visible while `deficitState !== CLOSED`.
-  - Same-week `deficitState=CLOSED` suppresses the card.
-  6. Labels and week/session mapping:
-    - list/log summary labels use canonical strict classifier for `Gap Fill` title + muscles subtext
-    - card copy must preserve the truth split: workflow can be complete while training targets remain partially unmet
-    - week/session badge uses snapshot-first semantics, so optional session renders as anchor `Wk:S` (sessions-per-week + 1 slot)
+- Normal week close no longer presents an optional gap-fill/closeout card from target deficits. Home and Program treat `resolution=AUTO_DISMISSED` rows as review evidence, not actionable or blocking optional work.
+- Completed scheduled weeks should therefore roll forward automatically when no real lifecycle/data blocker exists. Final accumulation week transitions to deload without requiring gap-fill dismissal.
+- Historical or manually-created optional gap-fill/closeout rows still use the strict receipt-backed classifiers and non-advancing save semantics. If a pending row is linked to user-confirmed optional work, the legacy create/dismiss paths may still resolve that workflow without changing slot sequencing.
+- Weekly target deficits should surface through review/readout surfaces such as Program volume snapshots, projected-week outcome rows, and weekly-retro audit output. UI copy should frame below-target or above-MEV gaps as coaching evidence, not mandatory work.
+- Labels and week/session mapping for existing optional sessions still use canonical strict classifiers for `Gap Fill` / closeout titles, target-muscle subtext, and snapshot-first week/session badges.
 
 ## Supplemental deficit flow
 1. User invokes supplemental generation from `IntentWorkoutCard` using the existing BODY_PART intent path (`src/components/IntentWorkoutCard.tsx`).

@@ -22,6 +22,7 @@ function buildCloseoutErrorResponse(error: Error) {
   }
 
   if (
+    error.message === "WEEK_CLOSE_NOT_PENDING" ||
     error.message === "CLOSEOUT_ACTIVE_MESOCYCLE_REQUIRED" ||
     error.message === "CLOSEOUT_ACTIVE_WEEK_REQUIRED" ||
     error.message === "CLOSEOUT_DELOAD_WEEK_FORBIDDEN" ||
@@ -32,6 +33,8 @@ function buildCloseoutErrorResponse(error: Error) {
         error:
           error.message === "CLOSEOUT_ALREADY_EXISTS_FOR_WEEK"
             ? "A closeout session already exists for this closeout window."
+            : error.message === "WEEK_CLOSE_NOT_PENDING"
+              ? "Week-close workflow is already resolved."
             : "Closeout session creation is only allowed for the current or previous accumulation week in the active mesocycle.",
       },
       { status: 409 }

@@ -95,7 +95,7 @@ Sources of truth:
 - Focused audit semantics coverage: `src/lib/audit/workout-audit/scenario-audits.test.ts` and `src/lib/api/template-session/remaining-week-planner.test.ts` assert off-order sequencing behavior and the `advancesSplit=false` accounting split between weekly accounting and split advancement.
 - Read-side session-semantics regression coverage: `src/lib/progression/progression-eligibility.test.ts`, `src/lib/api/workout-context.test.ts`, `src/lib/api/template-session/remaining-week-planner.test.ts`, and `src/lib/api/next-session.test.ts` assert that the derived helper preserves existing progression, history, remaining-week, and next-session behavior.
 - Bundled split-sanity audit coverage: `src/lib/audit/workout-audit/bundle.test.ts` verifies compact summary emission, optional rich-artifact emission, and automatic failure when unresolved same-intent deficits remain with `futureCapacity=0`.
-- Week-close handoff audit coverage: `src/lib/audit/workout-audit/week-close-handoff.test.ts` verifies boundary-aware conclusions for final advancing-session ownership handoff, optional gap-fill eligibility basis, and `historical_mixed_contract_state` detection only when a strict optional gap-fill workout exists without a persisted week-close owner.
+- Week-close handoff audit coverage: `src/lib/audit/workout-audit/week-close-handoff.test.ts` verifies boundary-aware conclusions for final advancing-session ownership handoff, legacy optional gap-fill evidence, and `historical_mixed_contract_state` detection only when a strict optional gap-fill workout exists without a persisted week-close owner.
 - Audit diagnostics matrix coverage:
   - `src/lib/audit/workout-audit/future-week-explicit-intent-matrix.test.ts`
   - `src/lib/audit/workout-audit/future-week-derived-intent-matrix.test.ts`
@@ -110,6 +110,7 @@ Sources of truth:
 
 ## Gap-fill regression
 - Key invariants:
+  - normal scheduled week close auto-resolves target deficits as review evidence and does not create blocking optional work
   - lifecycle counters/state do not advance for strict optional gap-fill (`advancesSplit=false`)
   - persisted non-advancing workouts cannot be flipped advancing via request payload
   - strict classifier triplet is enforced (`optional_gap_fill` + `INTENT` + `BODY_PART`)
@@ -119,14 +120,17 @@ Sources of truth:
   - `src/lib/audit/workout-audit/fixtures/optional-gap-fill-body-part.future-week-explicit-intent.json`
 - Focused test files:
   - `src/app/api/workouts/save/route.integration.test.ts`
+  - `src/lib/api/mesocycle-week-close.test.ts`
   - `src/app/api/workouts/save/lifecycle-contract.test.ts`
   - `src/lib/ui/gap-fill.test.ts`
   - `src/app/api/workouts/generate-from-intent/route.test.ts`
   - `src/lib/ui/selection-metadata.test.ts`
   - `src/lib/audit/workout-audit/optional-gap-fill.fixture-regression.test.ts`
   - `src/lib/api/program.test.ts`
+  - `src/lib/api/program-page.test.ts`
+  - `src/app/api/mesocycles/week-close/[id]/closeout/route.integration.test.ts`
 - Recommended focused command:
-  - `npm run test -- src/app/api/workouts/generate-from-intent/route.test.ts src/app/api/workouts/save/lifecycle-contract.test.ts src/app/api/workouts/save/route.integration.test.ts src/lib/api/program.test.ts src/lib/ui/gap-fill.test.ts src/lib/ui/selection-metadata.test.ts src/lib/audit/workout-audit/optional-gap-fill.fixture-regression.test.ts`
+  - `npm run test -- src/lib/api/mesocycle-week-close.test.ts src/app/api/workouts/save/route.integration.test.ts src/lib/api/program.test.ts src/lib/api/program-page.test.ts src/app/api/mesocycles/week-close/[id]/closeout/route.integration.test.ts src/app/api/workouts/generate-from-intent/route.test.ts src/app/api/workouts/save/lifecycle-contract.test.ts src/lib/ui/gap-fill.test.ts src/lib/ui/selection-metadata.test.ts src/lib/audit/workout-audit/optional-gap-fill.fixture-regression.test.ts`
 
 ## Configuration
 - Vitest include patterns: `src/**/*.test.ts` and `src/**/*.test.tsx`

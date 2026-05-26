@@ -425,10 +425,16 @@ export async function evaluateWeekCloseAtBoundary(tx: Tx, input: {
       status: "PENDING_OPTIONAL_GAP_FILL",
       NOT: { targetWeek: input.targetWeek },
     },
-    select: { id: true },
+    select: { id: true, optionalWorkoutId: true },
   });
   if (existingPending) {
-    throw new Error("PENDING_WEEK_CLOSE_EXISTS");
+    if (existingPending.optionalWorkoutId) {
+      throw new Error("PENDING_WEEK_CLOSE_EXISTS");
+    }
+    await resolveWeekCloseIfPending(tx, {
+      weekCloseId: existingPending.id,
+      resolution: "AUTO_DISMISSED",
+    });
   }
 
   const deficitSnapshot =
@@ -440,9 +446,12 @@ export async function evaluateWeekCloseAtBoundary(tx: Tx, input: {
     });
 
   const hasDeficits = deficitSnapshot.summary.qualifyingMuscleCount > 0;
+  const resolution: MesocycleWeekCloseResolution = hasDeficits
+    ? "AUTO_DISMISSED"
+    : "NO_GAP_FILL_NEEDED";
   const snapshotWithOutcome = withWeekCloseOutcome(
     deficitSnapshot,
-    hasDeficits ? "PENDING_OPTIONAL_GAP_FILL" : "COMPLETED"
+    "COMPLETED"
   );
   const now = new Date();
   const row = await tx.mesocycleWeekClose.upsert({
@@ -452,29 +461,21 @@ export async function evaluateWeekCloseAtBoundary(tx: Tx, input: {
         targetWeek: input.targetWeek,
       },
     },
-    update: hasDeficits
-      ? {
-          targetPhase: input.targetPhase ?? "ACCUMULATION",
-          status: "PENDING_OPTIONAL_GAP_FILL",
-          resolution: null,
-          deficitSnapshotJson: snapshotWithOutcome as Prisma.InputJsonValue,
-          resolvedAt: null,
-        }
-      : {
-          targetPhase: input.targetPhase ?? "ACCUMULATION",
-          status: "RESOLVED",
-          resolution: "NO_GAP_FILL_NEEDED",
-          deficitSnapshotJson: snapshotWithOutcome as Prisma.InputJsonValue,
-          resolvedAt: now,
-        },
+    update: {
+      targetPhase: input.targetPhase ?? "ACCUMULATION",
+      status: "RESOLVED",
+      resolution,
+      deficitSnapshotJson: snapshotWithOutcome as Prisma.InputJsonValue,
+      resolvedAt: now,
+    },
     create: {
       mesocycleId: input.mesocycle.id,
       targetWeek: input.targetWeek,
       targetPhase: input.targetPhase ?? "ACCUMULATION",
-      status: hasDeficits ? "PENDING_OPTIONAL_GAP_FILL" : "RESOLVED",
-      resolution: hasDeficits ? undefined : "NO_GAP_FILL_NEEDED",
+      status: "RESOLVED",
+      resolution,
       deficitSnapshotJson: snapshotWithOutcome as Prisma.InputJsonValue,
-      resolvedAt: hasDeficits ? undefined : now,
+      resolvedAt: now,
     },
     select: {
       id: true,
@@ -483,11 +484,8 @@ export async function evaluateWeekCloseAtBoundary(tx: Tx, input: {
     },
   });
 
-  let advancedLifecycle = false;
-  if (!hasDeficits) {
-    const transition = await transitionMesocycleStateInTransaction(tx, input.mesocycle.id);
-    advancedLifecycle = transition.advanced;
-  }
+  const transition = await transitionMesocycleStateInTransaction(tx, input.mesocycle.id);
+  const advancedLifecycle = transition.advanced;
 
   return {
     weekCloseId: row.id,
@@ -706,7 +704,10 @@ export async function findRelevantWeekCloseForUser(input: {
   }
 
   const mapped = mapWeekCloseRecord(resolved);
-  return mapped.weekCloseState.deficitState === "PARTIAL" ? mapped : null;
+  return mapped.weekCloseState.deficitState === "PARTIAL" &&
+    mapped.resolution !== "AUTO_DISMISSED"
+    ? mapped
+    : null;
 }
 
 export type WeekCloseResolutionResult = {
@@ -762,6 +763,7 @@ export async function createCloseoutSessionForWeek(
       id: true,
       targetWeek: true,
       targetPhase: true,
+      status: true,
       mesocycle: {
         select: {
           id: true,
@@ -786,6 +788,9 @@ export async function createCloseoutSessionForWeek(
 
   if (!weekClose) {
     throw new Error("WEEK_CLOSE_NOT_FOUND");
+  }
+  if (weekClose.status !== "PENDING_OPTIONAL_GAP_FILL") {
+    throw new Error("WEEK_CLOSE_NOT_PENDING");
   }
 
   const activeMesocycle = weekClose.mesocycle;

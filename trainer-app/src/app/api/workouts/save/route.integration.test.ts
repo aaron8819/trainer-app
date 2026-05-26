@@ -732,7 +732,7 @@ describe("POST /api/workouts/save", () => {
     expect(updateMany.data.mesocyclePhaseSnapshot).toBe("ACCUMULATION");
   });
 
-  it("evaluates a week-close window instead of advancing lifecycle at an accumulation week boundary", async () => {
+  it("auto-closes week-close target deficits as review evidence at an accumulation week boundary", async () => {
     mocks.workoutFindUnique
       .mockResolvedValueOnce({
         id: "workout-1",
@@ -763,11 +763,11 @@ describe("POST /api/workouts/save", () => {
     });
     mocks.evaluateWeekCloseAtBoundary.mockResolvedValueOnce({
       weekCloseId: "wc-1",
-      status: "PENDING_OPTIONAL_GAP_FILL",
-      resolution: null,
+      status: "RESOLVED",
+      resolution: "AUTO_DISMISSED",
       weekCloseState: {
-        workflowState: "PENDING_OPTIONAL_GAP_FILL",
-        deficitState: "OPEN",
+        workflowState: "COMPLETED",
+        deficitState: "PARTIAL",
         remainingDeficitSets: 4,
       },
       deficitSnapshot: {
@@ -800,9 +800,9 @@ describe("POST /api/workouts/save", () => {
     await expect(response.json()).resolves.toMatchObject({
       weekClose: {
         weekCloseId: "wc-1",
-        resolution: null,
-        workflowState: "PENDING_OPTIONAL_GAP_FILL",
-        deficitState: "OPEN",
+        resolution: "AUTO_DISMISSED",
+        workflowState: "COMPLETED",
+        deficitState: "PARTIAL",
         remainingDeficitSets: 4,
       },
     });

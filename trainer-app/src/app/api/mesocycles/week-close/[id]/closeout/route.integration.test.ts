@@ -153,4 +153,20 @@ describe("POST /api/mesocycles/week-close/[id]/closeout", () => {
       error: "A closeout session already exists for this closeout window.",
     });
   });
+
+  it("returns 409 when the week-close workflow is already resolved", async () => {
+    mocks.createCloseoutSessionForWeek.mockRejectedValueOnce(new Error("WEEK_CLOSE_NOT_PENDING"));
+
+    const response = await route.POST(
+      new Request("http://localhost/api/mesocycles/week-close/wc-1/closeout", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "wc-1" }) }
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Week-close workflow is already resolved.",
+    });
+  });
 });

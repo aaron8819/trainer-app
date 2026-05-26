@@ -9,7 +9,7 @@ export const WORKOUT_AUDIT_CONCLUSIONS: AuditConclusionBlock = {
     sourceModule: "src/lib/api/next-session.ts",
     sourceFunction: "loadNextWorkoutContext",
     runtimeRule:
-      "Block final accumulation closeout when the final week-close is pending; otherwise resume the highest-priority incomplete workout first or derive the next advancing rotation slot from the active mesocycle and weekly schedule.",
+      "Block only real final-accumulation lifecycle/data blockers such as unresolved linked closeout work; normal target deficits are review evidence and should not route another accumulation session past the final threshold. Otherwise resume the highest-priority incomplete workout first or derive the next advancing rotation slot from the active mesocycle and weekly schedule.",
   },
   weekly_volume_basis: {
     sourceModule: "src/lib/api/weekly-volume.ts",
@@ -33,7 +33,7 @@ export const WORKOUT_AUDIT_CONCLUSIONS: AuditConclusionBlock = {
     sourceModule: "src/lib/api/mesocycle-week-close.ts",
     sourceFunction: "buildWeekCloseDeficitSnapshot + resolveWeekCloseOnOptionalGapFillCompletion",
     runtimeRule:
-      "Week-close deficits are computed from canonical weekly volume accounting; optional gap-fill completion can resolve a pending week close, while normal forward progress can auto-dismiss it.",
+      "Week-close deficits are computed from canonical weekly volume accounting; normal scheduled week close resolves target deficits as review evidence, while legacy/manual optional gap-fill completion can still resolve a linked pending week close.",
   },
   sequencing_basis: {
     sourceModule: "src/lib/api/template-session/remaining-week-planner.ts",

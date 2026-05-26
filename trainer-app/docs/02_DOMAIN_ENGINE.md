@@ -297,12 +297,12 @@ SetLog / logged performance
     - remaining deficit `> 3.5` -> `3` sets
   - main-lift-typed fallback work remains capped below normal BODY_PART prescription even when fallback is necessary
 
-## Gap-fill decision order
-1. Compute anchor gate from lifecycle boundary: active accumulation + `accumulationSessionsCompleted % requiredSessionsPerWeek === 0`.
-2. Apply next-week suppression: `PLANNED` does not suppress; `IN_PROGRESS`/`PARTIAL` suppress.
-3. Enforce weekly optional cap using strict classification (`optional_gap_fill` + `INTENT` + `BODY_PART`) when counting is enabled; missing marker never counts as gap-fill.
-4. Resolve deficits and target muscles for the pending week-close `targetWeek` only.
-5. Fail closed when canonical week-bounded data is insufficient.
+## Week-close deficit handling
+- Week close is a lifecycle checkpoint, not a normal-flow workout generator.
+- At a completed scheduled accumulation-week boundary, `evaluateWeekCloseAtBoundary()` records the canonical weighted weekly deficit snapshot and resolves the workflow immediately. Target deficits are stored as review evidence with `resolution=AUTO_DISMISSED`; they do not create `PENDING_OPTIONAL_GAP_FILL` rows and do not block rollover.
+- `resolution=NO_GAP_FILL_NEEDED` means no qualifying target deficit remained. `resolution=AUTO_DISMISSED` can still carry `deficitState=PARTIAL`, which means targets were missed but the lifecycle workflow is complete.
+- Week rollover may still fail closed for real lifecycle/data blockers, including incomplete required advancing workouts, invalid lifecycle state, invalid sequencing, pending linked optional closeout work, or missing state needed to enter deload/next week safely.
+- Strict optional gap-fill and supplemental classifiers remain for historical/manual non-advancing sessions. They preserve accounting semantics but are not automatically created by week close.
 
 ## Mesocycle lifecycle service
 - Facade: `src/lib/api/mesocycle-lifecycle.ts`.
@@ -310,7 +310,7 @@ SetLog / logged performance
 - State module: `src/lib/api/mesocycle-lifecycle-state.ts` (state transitions + next-mesocycle initialization).
 - `transitionMesocycleState(mesocycleId)`: transitions state (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `AWAITING_HANDOFF`) and freezes handoff artifacts when deload is complete. It no longer creates the successor mesocycle automatically.
 - `getCurrentMesoWeek(mesocycle)`: derives effective lifecycle week from `state`, `durationWeeks`, `accumulationSessionsCompleted`, and `sessionsPerWeek`. Accumulation weeks are `durationWeeks - 1`; the final week is deload.
-- `loadNextWorkoutContext()` (`src/lib/api/next-session.ts`) must fail closed when an `ACTIVE_ACCUMULATION` mesocycle has already reached the final accumulation threshold and the final accumulation `MesocycleWeekClose` is still `PENDING_OPTIONAL_GAP_FILL`. In that state, the pending closeout is a hard lifecycle blocker: standard accumulation generation is blocked until the optional gap-fill is resolved or dismissed, preventing modulo wraparound from routing another Week 4 Session 1 before deload routing can begin.
+- `loadNextWorkoutContext()` (`src/lib/api/next-session.ts`) must fail closed when an `ACTIVE_ACCUMULATION` mesocycle has already reached the final accumulation threshold and a linked pending closeout/week-close workflow is still actionable. Normal target deficits no longer create that blocker; when required scheduled accumulation sessions are complete and no real blocker exists, lifecycle transition advances into `ACTIVE_DELOAD` instead of modulo-wrapping another accumulation session.
 - `getWeeklyVolumeTarget(mesocycle, muscleGroup, week, options?)`: returns lifecycle week-specific target sets from landmarks plus the canonical weekly target profile. Landmark values (MEV/MAV/MRV) are sourced from `VOLUME_LANDMARKS` in `src/lib/engine/volume-landmarks.ts`. The default canonical block-aware path is `mesocycle.blocks` when ordered block coverage is present; `options.blockContext` remains the higher-precedence seam for generation when week anchoring or forced context must override the raw mesocycle row. When block data is unavailable or incomplete, it falls back to duration-only lifecycle interpolation.
 - Analytics outcome review for the active mesocycle week is a read-only comparison layer built from `getWeeklyVolumeTarget(...)` + `loadMesocycleWeekMuscleVolume(...)`. It does not own alternate stimulus math or alternate target interpolation (`src/lib/api/muscle-outcome-review.ts`).
 - Weekly target placement is centralized in `src/lib/engine/volume-targets.ts` via `buildWeeklyVolumeTargetProfile()` + `interpolateWeeklyVolumeTarget()`. Default 4/5-week behavior is preserved under the default block layouts, but non-default block types can now materially shape target placement:

@@ -149,6 +149,7 @@
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.
 
 ## Patterns That Work
+- For Trainer week-close lifecycle work, separate target-deficit review evidence from actionable optional-workflow state: `AUTO_DISMISSED` partial rows can preserve deficit truth without creating Home/Program blockers or delaying deload.
 - For pre-session readiness stdout changes, run the live `--no-artifact --operator-debug` smoke after focused formatter tests; it can reveal cross-section wording contradictions that unit snippets miss, such as a new closure section allowing a top-up while the legacy avoid list still suppresses it.
 - For Program page presentation tests, scope existing Projected Week Finish assertions to that section before adding a new volume snapshot that can reuse the same muscle names.
 - For V2 planner/repair questions, treat repaired projection as evidence of legacy downstream responsibility, not as the target architecture.

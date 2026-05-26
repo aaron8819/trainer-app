@@ -700,12 +700,16 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     lastSessionSkipped = latestForIntent?.status === "SKIPPED";
   }
 
-  const relevantWeekClose = activeMesocycle
+  const rawRelevantWeekClose = activeMesocycle
     ? await findRelevantWeekCloseForUser({
         userId,
         mesocycleId: activeMesocycle.id,
       })
     : null;
+  const relevantWeekClose =
+    rawRelevantWeekClose?.resolution === "AUTO_DISMISSED"
+      ? null
+      : rawRelevantWeekClose;
   const closeoutTargetWeek =
     activeMesocycle &&
     isCloseoutWeekInScope({

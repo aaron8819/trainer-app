@@ -2001,6 +2001,81 @@ describe("loadProgramPageData", () => {
     });
   });
 
+  it("does not surface auto-closed target deficits as Program optional closeout work", async () => {
+    mocks.loadProgramDashboardData.mockResolvedValue({
+      activeMeso: {
+        mesoNumber: 2,
+        focus: "Strength-Hypertrophy",
+        durationWeeks: 5,
+        completedSessions: 12,
+        volumeTarget: "moderate",
+        currentBlockType: "accumulation",
+        blocks: [{ blockType: "accumulation", startWeek: 1, durationWeeks: 4 }],
+      },
+      currentWeek: 4,
+      viewedWeek: 4,
+      viewedBlockType: "accumulation",
+      sessionsUntilDeload: 4,
+      volumeThisWeek: [],
+      deloadReadiness: null,
+      rirTarget: { min: 0, max: 1 },
+      coachingCue: "Hold quality as volume peaks.",
+    });
+    mocks.mesocycleFindFirst.mockResolvedValue({
+      id: "meso-1",
+      startWeek: 0,
+      durationWeeks: 5,
+      accumulationSessionsCompleted: 12,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 4,
+      state: "ACTIVE_ACCUMULATION",
+      slotSequenceJson: buildMesocycleSlotSequence([
+        { slotId: "upper_a", intent: "UPPER" },
+        { slotId: "lower_a", intent: "LOWER" },
+      ]),
+      macroCycle: { startDate: new Date("2026-03-02T00:00:00.000Z") },
+    });
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      intent: "upper",
+      slotId: "upper_a",
+      slotSequenceIndex: 0,
+      slotSequenceLength: 2,
+      slotSource: "mesocycle_slot_sequence",
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation",
+      weekInMeso: 4,
+      sessionInWeek: 1,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+    });
+    mocks.findRelevantWeekCloseForUser.mockResolvedValue({
+      id: "wc-4",
+      mesocycleId: "meso-1",
+      targetWeek: 4,
+      targetPhase: "ACCUMULATION",
+      status: "RESOLVED",
+      resolution: "AUTO_DISMISSED",
+      deficitSnapshot: null,
+      weekCloseState: {
+        workflowState: "COMPLETED",
+        deficitState: "PARTIAL",
+        remainingDeficitSets: 4,
+        remainingQualifyingMuscleCount: 1,
+        remainingTopTargetMuscles: ["Chest"],
+        remainingMuscles: [
+          { muscle: "Chest", target: 12, actual: 8, deficit: 4 },
+        ],
+      },
+      optionalWorkout: null,
+    });
+    mocks.workoutFindMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+    const result = await loadProgramPageData("user-1");
+
+    expect(result.closeout).toBeNull();
+  });
+
   it("hides dismissed closeout rows without offering another create action", async () => {
     mocks.workoutFindMany.mockResolvedValueOnce([
       {

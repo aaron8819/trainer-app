@@ -344,8 +344,8 @@ describe("mesocycle week close", () => {
     expect(snapshot.muscles.map((row) => row.muscle)).toContain("Lower Back");
     expect(snapshot.muscles.map((row) => row.muscle)).not.toContain("Abs");
     const coreRow = snapshot.muscles.find((row) => row.muscle === "Core");
-    expect(coreRow?.actual).toBeCloseTo(3.6, 6);
-    expect(coreRow?.deficit).toBeCloseTo(0.4, 6);
+    expect(coreRow?.actual).toBeCloseTo(2, 6);
+    expect(coreRow?.deficit).toBeCloseTo(2, 6);
   });
 
   it("normalizes persisted week-close snapshots on read so legacy Abs rows collapse into Core", () => {
@@ -443,7 +443,7 @@ describe("mesocycle week close", () => {
     });
   });
 
-  it("creates a pending row and does not advance lifecycle when deficits remain", async () => {
+  it("records target deficits as completed review evidence and advances lifecycle", async () => {
     mocks.workoutFindMany.mockResolvedValue([
       {
         exercises: [
@@ -461,8 +461,8 @@ describe("mesocycle week close", () => {
     ]);
     mocks.weekCloseUpsert.mockResolvedValue({
       id: "wc-2",
-      status: "PENDING_OPTIONAL_GAP_FILL",
-      resolution: null,
+      status: "RESOLVED",
+      resolution: "AUTO_DISMISSED",
     });
 
     const result = await evaluateWeekCloseAtBoundary(mocks.tx as never, {
@@ -482,23 +482,33 @@ describe("mesocycle week close", () => {
     expect(mocks.weekCloseUpsert).toHaveBeenCalledWith(
       expect.objectContaining({
         update: expect.objectContaining({
-          status: "PENDING_OPTIONAL_GAP_FILL",
-          resolution: null,
-          resolvedAt: null,
+          status: "RESOLVED",
+          resolution: "AUTO_DISMISSED",
+          resolvedAt: expect.any(Date),
+        }),
+        create: expect.objectContaining({
+          status: "RESOLVED",
+          resolution: "AUTO_DISMISSED",
+          resolvedAt: expect.any(Date),
         }),
       })
     );
-    expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
-    expect(result.status).toBe("PENDING_OPTIONAL_GAP_FILL");
-    expect(result.advancedLifecycle).toBe(false);
+    expect(mocks.transitionMesocycleStateInTransaction).toHaveBeenCalledWith(mocks.tx, "meso-1");
+    expect(result.status).toBe("RESOLVED");
+    expect(result.resolution).toBe("AUTO_DISMISSED");
+    expect(result.advancedLifecycle).toBe(true);
     expect(result.weekCloseState).toMatchObject({
-      workflowState: "PENDING_OPTIONAL_GAP_FILL",
-      deficitState: "OPEN",
+      workflowState: "COMPLETED",
+      deficitState: "PARTIAL",
+      remainingDeficitSets: expect.any(Number),
     });
   });
 
-  it("rejects closing a new week while another week-close is pending", async () => {
-    mocks.weekCloseFindFirst.mockResolvedValue({ id: "wc-pending" });
+  it("rejects closing a new week while another user-confirmed week-close is pending", async () => {
+    mocks.weekCloseFindFirst.mockResolvedValue({
+      id: "wc-pending",
+      optionalWorkoutId: "workout-gap",
+    });
 
     await expect(
       evaluateWeekCloseAtBoundary(mocks.tx as never, {
@@ -517,11 +527,85 @@ describe("mesocycle week close", () => {
     ).rejects.toThrow("PENDING_WEEK_CLOSE_EXISTS");
   });
 
+  it("auto-dismisses an unlinked stale pending week-close before closing the next week", async () => {
+    mocks.weekCloseFindFirst.mockResolvedValue({ id: "wc-stale", optionalWorkoutId: null });
+    mocks.weekCloseFindUnique.mockResolvedValueOnce({
+      id: "wc-stale",
+      mesocycleId: "meso-1",
+      status: "PENDING_OPTIONAL_GAP_FILL",
+      resolution: null,
+      targetWeek: 1,
+      targetPhase: "ACCUMULATION",
+      deficitSnapshotJson: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+        summary: {
+          totalDeficitSets: 2,
+          qualifyingMuscleCount: 1,
+          topTargetMuscles: ["Chest"],
+        },
+        muscles: [{ muscle: "Chest", target: 12, actual: 10, deficit: 2 }],
+      },
+    });
+    mocks.weekCloseUpsert.mockResolvedValue({
+      id: "wc-2",
+      status: "RESOLVED",
+      resolution: "NO_GAP_FILL_NEEDED",
+    });
+
+    const result = await evaluateWeekCloseAtBoundary(mocks.tx as never, {
+      userId: "user-1",
+      mesocycle: {
+        id: "meso-1",
+        durationWeeks: 5,
+        sessionsPerWeek: 3,
+        startWeek: 0,
+        macroCycle: {
+          startDate: new Date("2026-03-01T00:00:00.000Z"),
+        },
+      },
+      targetWeek: 2,
+      deficitSnapshot: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+        summary: {
+          totalDeficitSets: 0,
+          qualifyingMuscleCount: 0,
+          topTargetMuscles: [],
+        },
+        muscles: [],
+      },
+    });
+
+    expect(mocks.weekCloseUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "wc-stale", status: "PENDING_OPTIONAL_GAP_FILL" },
+        data: expect.objectContaining({
+          status: "RESOLVED",
+          resolution: "AUTO_DISMISSED",
+        }),
+      })
+    );
+    expect(result.status).toBe("RESOLVED");
+    expect(result.resolution).toBe("NO_GAP_FILL_NEEDED");
+  });
+
   it("creates a closeout scaffold for the active accumulation week without slot identity", async () => {
     mocks.weekCloseFindFirst.mockResolvedValueOnce({
       id: "wc-1",
       targetWeek: 4,
       targetPhase: "ACCUMULATION",
+      status: "PENDING_OPTIONAL_GAP_FILL",
       mesocycle: {
         id: "meso-1",
         isActive: true,
@@ -590,6 +674,7 @@ describe("mesocycle week close", () => {
       id: "wc-1",
       targetWeek: 3,
       targetPhase: "ACCUMULATION",
+      status: "PENDING_OPTIONAL_GAP_FILL",
       mesocycle: {
         id: "meso-1",
         isActive: true,
@@ -654,6 +739,7 @@ describe("mesocycle week close", () => {
       id: "wc-1",
       targetWeek: 4,
       targetPhase: "ACCUMULATION",
+      status: "PENDING_OPTIONAL_GAP_FILL",
       mesocycle: {
         id: "meso-1",
         isActive: true,
@@ -718,6 +804,34 @@ describe("mesocycle week close", () => {
         weekCloseId: "wc-1",
       })
     ).rejects.toThrow("CLOSEOUT_ALREADY_EXISTS_FOR_WEEK");
+    expect(mocks.workoutCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects closeout creation for an already resolved week-close row", async () => {
+    mocks.weekCloseFindFirst.mockResolvedValueOnce({
+      id: "wc-1",
+      targetWeek: 4,
+      targetPhase: "ACCUMULATION",
+      status: "RESOLVED",
+      mesocycle: {
+        id: "meso-1",
+        isActive: true,
+        state: "ACTIVE_ACCUMULATION",
+        durationWeeks: 5,
+        accumulationSessionsCompleted: 10,
+        deloadSessionsCompleted: 0,
+        sessionsPerWeek: 3,
+        startWeek: 0,
+        blocks: [],
+      },
+    });
+
+    await expect(
+      createCloseoutSessionForWeek(mocks.tx as never, {
+        userId: "user-1",
+        weekCloseId: "wc-1",
+      })
+    ).rejects.toThrow("WEEK_CLOSE_NOT_PENDING");
     expect(mocks.workoutCreate).not.toHaveBeenCalled();
   });
 
@@ -862,6 +976,7 @@ describe("mesocycle week close", () => {
       id: "wc-1",
       targetWeek: 2,
       targetPhase: "ACCUMULATION",
+      status: "PENDING_OPTIONAL_GAP_FILL",
       mesocycle: {
         id: "meso-1",
         isActive: true,
@@ -889,6 +1004,7 @@ describe("mesocycle week close", () => {
       id: "wc-1",
       targetWeek: 5,
       targetPhase: "DELOAD",
+      status: "PENDING_OPTIONAL_GAP_FILL",
       mesocycle: {
         id: "meso-1",
         isActive: true,

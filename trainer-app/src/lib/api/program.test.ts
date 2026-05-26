@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
   const userIntegrationFindFirst = vi.fn();
   const workoutFindMany = vi.fn();
   const workoutFindFirst = vi.fn();
+  const mesocycleWeekCloseFindFirst = vi.fn();
   const mesocycleUpdate = vi.fn();
   const getCurrentMesoWeekFn = vi.fn(() => 1);
   const findRelevantWeekCloseForUser = vi.fn();
@@ -32,6 +33,7 @@ const mocks = vi.hoisted(() => {
     userIntegrationFindFirst,
     workoutFindMany,
     workoutFindFirst,
+    mesocycleWeekCloseFindFirst,
     mesocycleUpdate,
     getCurrentMesoWeekFn,
     findRelevantWeekCloseForUser,
@@ -42,6 +44,7 @@ const mocks = vi.hoisted(() => {
       constraints: { findUnique: constraintsFindUnique },
       userIntegration: { findFirst: userIntegrationFindFirst },
       workout: { findMany: workoutFindMany, findFirst: workoutFindFirst },
+      mesocycleWeekClose: { findFirst: mesocycleWeekCloseFindFirst },
     },
   };
 });
@@ -194,6 +197,7 @@ function setupDashboardMocks(
   mocks.userIntegrationFindFirst.mockResolvedValue(null);
   mocks.workoutFindMany.mockResolvedValue([]);
   mocks.workoutFindFirst.mockResolvedValue(null);
+  mocks.mesocycleWeekCloseFindFirst.mockResolvedValue(null);
   mocks.getCurrentMesoWeekFn.mockReturnValue(week);
   mocks.findRelevantWeekCloseForUser.mockResolvedValue(null);
 }
@@ -1671,6 +1675,64 @@ describe("loadHomeProgramSupport", () => {
     expect(result.gapFill.reason).toBeNull();
     expect(result.gapFill.workflowState).toBe("COMPLETED");
     expect(result.gapFill.deficitState).toBe("CLOSED");
+  });
+
+  it("does not surface normal-flow auto-closed target deficits as optional gap-fill work", async () => {
+    setupDashboardMocks(
+      {
+        state: "ACTIVE_ACCUMULATION",
+        sessionsPerWeek: 3,
+        accumulationSessionsCompleted: 9,
+      },
+      4
+    );
+    mocks.workoutFindMany.mockResolvedValueOnce([]);
+    mocks.findRelevantWeekCloseForUser.mockResolvedValueOnce({
+      id: "wc-4",
+      mesocycleId: "meso-1",
+      targetWeek: 4,
+      targetPhase: "ACCUMULATION",
+      status: "RESOLVED",
+      resolution: "AUTO_DISMISSED",
+      deficitSnapshot: {
+        version: 1,
+        policy: {
+          requiredSessionsPerWeek: 3,
+          maxOptionalGapFillSessionsPerWeek: 1,
+          maxGeneratedHardSets: 12,
+          maxGeneratedExercises: 4,
+        },
+        summary: {
+          totalDeficitSets: 5,
+          qualifyingMuscleCount: 2,
+          topTargetMuscles: ["Chest", "Side Delts"],
+        },
+        muscles: [
+          { muscle: "Chest", target: 12, actual: 9, deficit: 3 },
+          { muscle: "Side Delts", target: 10, actual: 8, deficit: 2 },
+        ],
+      },
+      weekCloseState: {
+        workflowState: "COMPLETED",
+        deficitState: "PARTIAL",
+        remainingDeficitSets: 5,
+        remainingQualifyingMuscleCount: 2,
+        remainingTopTargetMuscles: ["Chest", "Side Delts"],
+        remainingMuscles: [
+          { muscle: "Chest", target: 12, actual: 9, deficit: 3 },
+          { muscle: "Side Delts", target: 10, actual: 8, deficit: 2 },
+        ],
+      },
+      optionalWorkout: null,
+    });
+
+    const result = await loadHomeProgramSupport("user-1");
+
+    expect(result.gapFill.visible).toBe(false);
+    expect(result.gapFill.eligible).toBe(false);
+    expect(result.gapFill.weekCloseId).toBeNull();
+    expect(result.closeout.visible).toBe(false);
+    expect(result.closeout.canCreate).toBe(false);
   });
 
   it("does not surface a prior-week completed week-close card on home after the active week advances", async () => {

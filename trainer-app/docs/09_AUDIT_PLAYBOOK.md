@@ -90,7 +90,7 @@ Inspect first:
 Common red flags:
 - `comparabilityCoverage.generatedLayerCoverage !== "full"` when you expected modern persisted coverage
 - `progressionEvidence.countsTowardProgressionHistory=false` without an obvious semantic reason
-- `weekClose.workflowState="PENDING_OPTIONAL_GAP_FILL"` with meaningful remaining deficits
+- `weekClose.workflowState="PENDING_OPTIONAL_GAP_FILL"` with linked actionable optional work that should have been resolved
 - `reconciliation.hasDrift=true` with unexplained prescription or exercise changes
 - heavy `warningSummary.semanticWarnings`
 
@@ -263,7 +263,7 @@ Important interpretation rule:
 Common red flags:
 - `Safe to train: no`
 - incomplete workout blocker is present
-- final accumulation closeout blocker is present; resolve or dismiss the pending optional gap-fill before expecting deload generation
+- final accumulation lifecycle/data blocker is present; target deficits alone should be review evidence, not a reason to expect another accumulation session before deload generation
 - requested mesocycle id does not match the active mesocycle
 - generated preview is missing or generation failed
 - dose guidance suggests add-ons for muscles already high or fatigue-dense
@@ -777,7 +777,7 @@ Escalate when:
 2. Check `warningSummary` for non-trivial warning volume.
 3. Read `historicalWeek.summary` and `historicalWeek.comparabilityCoverage`.
 4. Scan each `sessions[*].progressionEvidence`.
-5. Scan `sessions[*].weekClose` for unresolved or surprising state.
+5. Scan each `sessions[*].weekClose` for unresolved or surprising state. Target deficits with `workflowState=COMPLETED` and `deficitState=PARTIAL` are review evidence, not lifecycle blockers.
 6. Scan `sessions[*].reconciliation` for drift.
 7. Escalate if exclusions, deficits, drift, or legacy limitations prevent a confident answer.
 
@@ -970,10 +970,11 @@ Read these fields in this order unless the audit type says otherwise.
 - If this looks wrong, then inspect the underlying `sessionSnapshot.*.semantics.reasons`.
 
 ### `weekClose`
-- Only relevant for audits touching completed weeks / optional gap-fill state.
+- Relevant for audits touching completed weeks, weekly review evidence, or legacy optional gap-fill state.
 - `workflowState` answers whether the workflow is still actionable.
 - `deficitState` answers whether the weekly deficit is actually closed.
 - Treat `remainingDeficitSets` as the quick severity signal.
+- `resolution=AUTO_DISMISSED` with `deficitState=PARTIAL` means normal week close completed while targets remained unmet. Treat that as weekly-review evidence; it should not be reported as an active closeout blocker.
 
 ### `reconciliation`
 - Generated-vs-saved mutation summary.

@@ -1322,12 +1322,16 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
   ]);
 
   const overview = buildProgramPageOverview(dashboard);
-  const relevantWeekClose = activeMesocycle
+  const rawRelevantWeekClose = activeMesocycle
     ? await findRelevantWeekCloseForUser({
         userId,
         mesocycleId: activeMesocycle.id,
       })
     : null;
+  const relevantWeekClose =
+    rawRelevantWeekClose?.resolution === "AUTO_DISMISSED"
+      ? null
+      : rawRelevantWeekClose;
   const closeoutTargetWeek =
     activeMesocycle &&
     isCloseoutWeekInScope({

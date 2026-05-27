@@ -33,4 +33,35 @@ describe("planning reality repair materiality target semantics", () => {
       },
     ]);
   });
+
+  it("keeps support-floor warning codes stable", () => {
+    const warnings = buildWarnings({
+      weeklyMuscleDemand: [],
+      slotDemandAllocation: [],
+      repairMateriality: [],
+      exerciseConcentration: [],
+      projectedDelivery: [
+        {
+          muscle: "Side Delts",
+          targetStatus: "soft",
+          targetRange: null,
+          preferredTarget: 8,
+          projectedEffectiveStimulusAfterInitialSlotComposition: 5,
+          projectedEffectiveStimulusAfterRepairAndFinalShaping: 8,
+          deltaFromPreferredTarget: 0,
+          exposureCount: 1,
+          majorContributingExercises: [],
+        },
+      ],
+    });
+
+    expect(warnings).toEqual([
+      {
+        code: "SUPPORT_FLOOR_CLOSED_LATE",
+        severity: "warning",
+        message: "Support-floor coverage closed only after final repair/shaping.",
+        evidence: ["Side Delts"],
+      },
+    ]);
+  });
 });

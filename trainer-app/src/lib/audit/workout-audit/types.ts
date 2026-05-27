@@ -838,6 +838,11 @@ export type V2AcceptedSeedPrepareCompareAuditPayload = {
 
 export type NextMesocycleAcceptanceGateStatus = "pass" | "fail" | "unknown";
 
+export type NextMesocycleAcceptanceGateEvidenceSeverity =
+  | "high"
+  | "medium"
+  | "low";
+
 export type NextMesocycleAcceptanceGatePayload = {
   version: typeof NEXT_MESOCYCLE_ACCEPTANCE_GATE_AUDIT_PAYLOAD_VERSION;
   source: "next_mesocycle_acceptance_gate_audit";
@@ -885,6 +890,12 @@ export type NextMesocycleAcceptanceGatePayload = {
     status: NextMesocycleAcceptanceGateStatus;
     evidence: string;
     notes: string;
+  }>;
+  completedBlockEvidence: Array<{
+    risk: string;
+    evidence: string;
+    acceptanceImplication: string;
+    severity: NextMesocycleAcceptanceGateEvidenceSeverity;
   }>;
   diagnosticPreview: {
     available: boolean;

@@ -270,6 +270,7 @@ describe("runWorkoutAuditGeneration", () => {
       gates: [],
       weeklyMuscleTable: [],
       priorBlockRecurringRisks: [],
+      completedBlockEvidence: [],
       diagnosticPreview: {
         available: false,
         label: "not_available",

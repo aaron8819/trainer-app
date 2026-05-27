@@ -4,11 +4,15 @@ import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { NEXT_MESOCYCLE_ACCEPTANCE_GATE_AUDIT_PAYLOAD_VERSION } from "./constants";
 import { buildMesocycleExplainAuditPayload } from "./mesocycle-explain";
 import { buildV2AcceptedSeedPrepareCompareAuditPayload } from "./v2-accepted-seed-prepare-compare";
+import { buildWeeklyRetroAuditPayload } from "./weekly-retro";
 import type {
   MesocycleExplainAuditPayload,
   NextMesocycleAcceptanceGatePayload,
   NextMesocycleAcceptanceGateStatus,
   V2AcceptedSeedPrepareCompareAuditPayload,
+  WeeklyRetroAuditPayload,
+  WeeklyRetroAuditVolumeRow,
+  WeeklyRetroExerciseLoadCalibrationClassification,
 } from "./types";
 
 type SourceMesocycleState = {
@@ -60,7 +64,17 @@ type AcceptanceGateEvidence = {
   incompleteWorkouts: IncompleteWorkoutState;
   v2PrepareCompare?: V2AcceptedSeedPrepareCompareAuditPayload;
   diagnosticPreview?: MesocycleExplainAuditPayload;
+  completedBlockRetros?: WeeklyRetroAuditPayload[];
   candidateVolumeRows?: CandidateVolumeInput[];
+};
+
+type CompletedBlockEvidenceRow =
+  NextMesocycleAcceptanceGatePayload["completedBlockEvidence"][number];
+
+type CompletedBlockEvidenceAssessment = {
+  rows: CompletedBlockEvidenceRow[];
+  candidateFailureRisks: string[];
+  candidateWarningRisks: string[];
 };
 
 const REQUIRED_GATE_LABELS = [
@@ -74,8 +88,23 @@ const REQUIRED_GATE_LABELS = [
   "Week 1 trainability",
 ] as const;
 
+const COMPLETED_BLOCK_WEEKS = [1, 2, 3, 4] as const;
+const LOAD_CALIBRATION_DRIFT_CLASSIFICATIONS: ReadonlySet<WeeklyRetroExerciseLoadCalibrationClassification> =
+  new Set<WeeklyRetroExerciseLoadCalibrationClassification>([
+    "target_too_low",
+    "target_too_high",
+    "recalibrated_hold",
+  ]);
+
 function joinEvidence(values: string[]): string {
   return values.filter((value) => value.length > 0).join("; ") || "none";
+}
+
+function formatGateNumber(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "unknown";
+  }
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 function statusFromBooleans(input: {
@@ -233,6 +262,398 @@ function buildPriorRiskRows(
   ];
 }
 
+function retroVolumeRowsForMuscle(
+  retros: WeeklyRetroAuditPayload[],
+  muscle: string,
+): Array<{ week: number; row: WeeklyRetroAuditVolumeRow }> {
+  return retros
+    .flatMap((retro) =>
+      retro.volumeTargeting.muscles
+        .filter((row) => row.muscle === muscle)
+        .map((row) => ({ week: retro.week, row })),
+    )
+    .sort((left, right) => left.week - right.week);
+}
+
+function retroVolumeRowForWeek(
+  retros: WeeklyRetroAuditPayload[],
+  week: number,
+  muscle: string,
+): WeeklyRetroAuditVolumeRow | undefined {
+  return retros
+    .find((retro) => retro.week === week)
+    ?.volumeTargeting.muscles.find((row) => row.muscle === muscle);
+}
+
+function runtimeTopUpWeeksForMuscle(
+  retros: WeeklyRetroAuditPayload[],
+  muscle: string,
+): number[] {
+  return retros
+    .filter((retro) =>
+      retro.planAdherence.interpretations.some(
+        (interpretation) =>
+          interpretation.setDelta > 0 &&
+          interpretation.muscles.includes(muscle) &&
+          (interpretation.intent === "final_weekly_opportunity_mev_closure" ||
+            interpretation.intent === "target_gap_closure"),
+      ),
+    )
+    .map((retro) => retro.week)
+    .sort((left, right) => left - right);
+}
+
+function candidateRowByMuscle(
+  weeklyRows: NextMesocycleAcceptanceGatePayload["weeklyMuscleTable"],
+): Map<string, WeeklyMuscleGateRow> {
+  return new Map(weeklyRows.map((row) => [row.muscle, row]));
+}
+
+function candidateMevImplication(input: {
+  candidateFound: boolean;
+  row?: WeeklyMuscleGateRow;
+  muscle: string;
+  floorKind: string;
+}): { text: string; failure: boolean; warning: boolean } {
+  if (!input.candidateFound) {
+    return {
+      text: "candidate evidence pending; apply when a persisted handoff candidate exists",
+      failure: false,
+      warning: false,
+    };
+  }
+  if (!input.row) {
+    return {
+      text: `candidate ${input.muscle} volume unavailable; cannot prove prior ${input.floorKind} addressed`,
+      failure: false,
+      warning: true,
+    };
+  }
+  if (input.row.projectedSets < input.row.mev) {
+    return {
+      text: `candidate repeats predictable ${input.muscle} below-MEV floor (${formatGateNumber(input.row.projectedSets)}/${formatGateNumber(input.row.mev)}); acceptance should fail`,
+      failure: true,
+      warning: false,
+    };
+  }
+  if (input.row.projectedSets - input.row.mev <= 1.5) {
+    return {
+      text: `candidate clears ${input.muscle} MEV but leaves a thin planned floor (${formatGateNumber(input.row.projectedSets)}/${formatGateNumber(input.row.mev)}); acceptance should warn`,
+      failure: false,
+      warning: true,
+    };
+  }
+  return {
+    text: `candidate addresses ${input.muscle} floor with planned seed volume (${formatGateNumber(input.row.projectedSets)}/${formatGateNumber(input.row.mev)})`,
+    failure: false,
+    warning: false,
+  };
+}
+
+function buildMevFragilityEvidence(input: {
+  retros: WeeklyRetroAuditPayload[];
+  candidateRows: Map<string, WeeklyMuscleGateRow>;
+  candidateFound: boolean;
+  muscle: "Chest" | "Calves";
+  risk: string;
+}): {
+  row: CompletedBlockEvidenceRow;
+  failure: boolean;
+  warning: boolean;
+} {
+  const finalWeek = retroVolumeRowForWeek(input.retros, 4, input.muscle);
+  const topUpWeeks = runtimeTopUpWeeksForMuscle(input.retros, input.muscle);
+  const belowMevRows = retroVolumeRowsForMuscle(input.retros, input.muscle).filter(
+    ({ row }) => row.status === "below_mev" || row.deltaToMev < 0,
+  );
+  const implication = candidateMevImplication({
+    candidateFound: input.candidateFound,
+    row: input.candidateRows.get(input.muscle),
+    muscle: input.muscle,
+    floorKind: "MEV fragility",
+  });
+  const severity: CompletedBlockEvidenceRow["severity"] =
+    (finalWeek?.status === "below_mev" || (finalWeek?.deltaToMev ?? 0) < 0) ||
+    topUpWeeks.length > 0 ||
+    belowMevRows.length > 0
+      ? "high"
+      : "low";
+  const evidence = joinEvidence([
+    topUpWeeks.length > 0
+      ? `${topUpWeeks.map((week) => `W${week}`).join(", ")} required top-up`
+      : "",
+    finalWeek
+      ? `W4 finished ${formatGateNumber(finalWeek.actualEffectiveSets)}/${formatGateNumber(finalWeek.mev)} MEV`
+      : "",
+    belowMevRows.length > 0
+      ? `below-MEV weeks=${belowMevRows.map(({ week }) => `W${week}`).join(",")}`
+      : "",
+  ]);
+
+  return {
+    row: {
+      risk: input.risk,
+      evidence:
+        evidence === "none"
+          ? "weekly-retro muscle evidence unavailable or clean"
+          : evidence,
+      acceptanceImplication: implication.text,
+      severity,
+    },
+    failure: severity === "high" && implication.failure,
+    warning: severity === "high" && implication.warning,
+  };
+}
+
+function buildDeltThinMarginEvidence(input: {
+  retros: WeeklyRetroAuditPayload[];
+  candidateRows: Map<string, WeeklyMuscleGateRow>;
+  candidateFound: boolean;
+}): {
+  row: CompletedBlockEvidenceRow;
+  failure: boolean;
+  warning: boolean;
+} {
+  const sideFinal = retroVolumeRowForWeek(input.retros, 4, "Side Delts");
+  const rearFinal = retroVolumeRowForWeek(input.retros, 4, "Rear Delts");
+  const sideCandidate = candidateMevImplication({
+    candidateFound: input.candidateFound,
+    row: input.candidateRows.get("Side Delts"),
+    muscle: "Side Delts",
+    floorKind: "thin margin",
+  });
+  const rearCandidate = candidateMevImplication({
+    candidateFound: input.candidateFound,
+    row: input.candidateRows.get("Rear Delts"),
+    muscle: "Rear Delts",
+    floorKind: "thin margin",
+  });
+  const finalRows = [sideFinal, rearFinal].filter(Boolean) as WeeklyRetroAuditVolumeRow[];
+  const belowOrThin = finalRows.some(
+    (row) => row.deltaToMev <= 1.5 || row.status === "below_mev",
+  );
+  const severity: CompletedBlockEvidenceRow["severity"] = belowOrThin
+    ? "medium"
+    : "low";
+  const implications = [sideCandidate.text, rearCandidate.text];
+
+  return {
+    row: {
+      risk: "Side/rear delt thin margins",
+      evidence: joinEvidence([
+        sideFinal
+          ? `Side Delts W4 ${formatGateNumber(sideFinal.actualEffectiveSets)}/${formatGateNumber(sideFinal.mev)} MEV`
+          : "Side Delts W4 unavailable",
+        rearFinal
+          ? `Rear Delts W4 ${formatGateNumber(rearFinal.actualEffectiveSets)}/${formatGateNumber(rearFinal.mev)} MEV`
+          : "Rear Delts W4 unavailable",
+      ]),
+      acceptanceImplication: input.candidateFound
+        ? implications.join("; ")
+        : "candidate evidence pending; avoid razor-thin side/rear delt floors when a persisted candidate exists",
+      severity,
+    },
+    failure: false,
+    warning:
+      severity !== "low" && (sideCandidate.failure || sideCandidate.warning || rearCandidate.failure || rearCandidate.warning),
+  };
+}
+
+function buildRuntimeAddonEvidence(
+  retros: WeeklyRetroAuditPayload[],
+): CompletedBlockEvidenceRow {
+  const weeks = retros
+    .map((retro) => ({
+      week: retro.week,
+      addedSets: retro.planAdherence.explainedAdditions.totalSets,
+      addedRows:
+        retro.exerciseLoadCalibrationRows?.filter(
+          (row) => row.classification === "runtime_added" || row.addedSetCount > 0,
+        ).length ?? 0,
+    }))
+    .filter((row) => row.addedSets > 0 || row.addedRows > 0);
+  const totalAddedSets = weeks.reduce((sum, row) => sum + row.addedSets, 0);
+
+  return {
+    risk: "Repeated runtime add-ons",
+    evidence:
+      weeks.length > 0
+        ? joinEvidence(
+            weeks.map(
+              (row) =>
+                `W${row.week} added_sets=${formatGateNumber(row.addedSets)} added_rows=${row.addedRows}`,
+            ),
+          )
+        : "no runtime-added weekly-retro evidence",
+    acceptanceImplication:
+      totalAddedSets > 0
+        ? "candidate should satisfy predictable floors with planned seed volume, not session-local add-ons"
+        : "informational; no recurring add-on dependency visible",
+    severity: weeks.length > 0 ? "medium" : "low",
+  };
+}
+
+function buildLoadCalibrationEvidence(
+  retros: WeeklyRetroAuditPayload[],
+): CompletedBlockEvidenceRow {
+  const driftRows = retros
+    .flatMap((retro) =>
+      (retro.exerciseLoadCalibrationRows ?? []).map((row) => ({
+        week: retro.week,
+        row,
+      })),
+    )
+    .filter(({ row }) => LOAD_CALIBRATION_DRIFT_CLASSIFICATIONS.has(row.classification));
+  const examples = driftRows.slice(0, 4).map(
+    ({ week, row }) => `W${week} ${row.exerciseName} ${row.classification}`,
+  );
+
+  return {
+    risk: "Load calibration drift",
+    evidence:
+      examples.length > 0
+        ? joinEvidence(examples)
+        : "no target-too-low/high or recalibrated-hold rows",
+    acceptanceImplication:
+      driftRows.length > 0
+        ? "Week 1 prescriptions should use recent anchors/confidence warnings; this audit does not mutate loads"
+        : "informational; no calibration drift visible in loaded retros",
+    severity: driftRows.length > 0 ? "medium" : "low",
+  };
+}
+
+function buildTargetSemanticsEvidence(
+  retros: WeeklyRetroAuditPayload[],
+): CompletedBlockEvidenceRow {
+  const underTargetOnly = retros.reduce(
+    (sum, retro) => sum + retro.volumeTargeting.underTargetOnly.length,
+    0,
+  );
+  const belowMev = retros.reduce(
+    (sum, retro) => sum + retro.volumeTargeting.belowMev.length,
+    0,
+  );
+
+  return {
+    risk: "Target semantics noise",
+    evidence: `below_target_above_mev_rows=${underTargetOnly}; below_mev_rows=${belowMev}`,
+    acceptanceImplication:
+      "do not fail candidate solely for below-target rows when projected volume is at or above MEV",
+    severity: underTargetOnly > 0 ? "medium" : "low",
+  };
+}
+
+function buildOptionalGapFillDependencyEvidence(input: {
+  retros: WeeklyRetroAuditPayload[];
+  candidateRows: Map<string, WeeklyMuscleGateRow>;
+  candidateFound: boolean;
+}): {
+  row: CompletedBlockEvidenceRow;
+  failure: boolean;
+  warning: boolean;
+} {
+  const topUpWeeks = Array.from(
+    new Set([
+      ...runtimeTopUpWeeksForMuscle(input.retros, "Chest"),
+      ...runtimeTopUpWeeksForMuscle(input.retros, "Calves"),
+    ]),
+  ).sort((left, right) => left - right);
+  const chest = candidateMevImplication({
+    candidateFound: input.candidateFound,
+    row: input.candidateRows.get("Chest"),
+    muscle: "Chest",
+    floorKind: "optional gap-fill dependency",
+  });
+  const calves = candidateMevImplication({
+    candidateFound: input.candidateFound,
+    row: input.candidateRows.get("Calves"),
+    muscle: "Calves",
+    floorKind: "optional gap-fill dependency",
+  });
+  const severity: CompletedBlockEvidenceRow["severity"] =
+    topUpWeeks.length > 0 ? "high" : "low";
+  const candidateImplication = !input.candidateFound
+    ? "evidence will be applied when a persisted handoff candidate exists"
+    : chest.failure || calves.failure
+      ? "candidate still depends on non-planned top-ups for predictable floors; acceptance should fail"
+      : chest.warning || calves.warning
+        ? "candidate planned floors are thin; acceptance should warn against optional gap-fill dependency"
+        : "candidate planned floors clear prior top-up dependency; optional gap-fill should remain unnecessary";
+
+  return {
+    row: {
+      risk: "Optional gap-fill dependency risk",
+      evidence:
+        topUpWeeks.length > 0
+          ? `${topUpWeeks.map((week) => `W${week}`).join(", ")} session-local top-up evidence`
+          : "normal week close should not rely on optional gap-fill",
+      acceptanceImplication: candidateImplication,
+      severity,
+    },
+    failure: severity === "high" && (chest.failure || calves.failure),
+    warning: severity === "high" && (chest.warning || calves.warning),
+  };
+}
+
+function buildCompletedBlockEvidenceAssessment(input: {
+  retros: WeeklyRetroAuditPayload[];
+  weeklyRows: NextMesocycleAcceptanceGatePayload["weeklyMuscleTable"];
+  candidateFound: boolean;
+}): CompletedBlockEvidenceAssessment {
+  const candidateRows = candidateRowByMuscle(input.weeklyRows);
+  const assessedRows = [
+    buildMevFragilityEvidence({
+      retros: input.retros,
+      candidateRows,
+      candidateFound: input.candidateFound,
+      muscle: "Chest",
+      risk: "Chest MEV fragility",
+    }),
+    buildMevFragilityEvidence({
+      retros: input.retros,
+      candidateRows,
+      candidateFound: input.candidateFound,
+      muscle: "Calves",
+      risk: "Calf MEV fragility",
+    }),
+    buildDeltThinMarginEvidence({
+      retros: input.retros,
+      candidateRows,
+      candidateFound: input.candidateFound,
+    }),
+    {
+      row: buildRuntimeAddonEvidence(input.retros),
+      failure: false,
+      warning: false,
+    },
+    {
+      row: buildLoadCalibrationEvidence(input.retros),
+      failure: false,
+      warning: false,
+    },
+    {
+      row: buildTargetSemanticsEvidence(input.retros),
+      failure: false,
+      warning: false,
+    },
+    buildOptionalGapFillDependencyEvidence({
+      retros: input.retros,
+      candidateRows,
+      candidateFound: input.candidateFound,
+    }),
+  ];
+
+  return {
+    rows: assessedRows.map((entry) => entry.row),
+    candidateFailureRisks: assessedRows
+      .filter((entry) => entry.failure)
+      .map((entry) => entry.row.risk),
+    candidateWarningRisks: assessedRows
+      .filter((entry) => entry.warning)
+      .map((entry) => entry.row.risk),
+  };
+}
+
 function buildBlockers(input: AcceptanceGateEvidence): string[] {
   const blockers: string[] = [];
   const source = input.sourceMesocycle;
@@ -270,6 +691,7 @@ function buildBlockers(input: AcceptanceGateEvidence): string[] {
 function buildGates(input: {
   evidence: AcceptanceGateEvidence;
   weeklyRows: NextMesocycleAcceptanceGatePayload["weeklyMuscleTable"];
+  completedBlockAssessment: CompletedBlockEvidenceAssessment;
   blockers: string[];
   candidateKind: NextMesocycleAcceptanceGatePayload["candidateIdentity"]["candidateKind"];
   planningShape?: string;
@@ -353,11 +775,27 @@ function buildGates(input: {
     }
 
     if (gate === "Prior-block recurring risks") {
+      const failures = input.completedBlockAssessment.candidateFailureRisks;
+      const warnings = input.completedBlockAssessment.candidateWarningRisks;
       return {
         gate,
-        status: "unknown",
-        evidence: "risk checklist included below",
-        notes: "recurring risks require operator review against recent weekly retros",
+        status:
+          failures.length > 0
+            ? "fail"
+            : !candidateFound || warnings.length > 0
+              ? "unknown"
+              : "pass",
+        evidence:
+          failures.length > 0
+            ? `repeated predictable misses=${failures.join(", ")}`
+            : warnings.length > 0
+              ? `thin or unverifiable recurring risks=${warnings.join(", ")}`
+              : input.completedBlockAssessment.rows.length > 0
+                ? "completed-block evidence reviewed"
+                : "completed-block evidence unavailable",
+        notes: candidateFound
+          ? "compares candidate floors against recent weekly-retro evidence"
+          : "evidence will be applied when a persisted handoff candidate exists",
       };
     }
 
@@ -467,9 +905,15 @@ export function buildNextMesocycleAcceptanceGateFromEvidence(
       ? evidence.candidateVolumeRows
       : volumeRowsFromPreview(evidence.diagnosticPreview),
   );
+  const completedBlockAssessment = buildCompletedBlockEvidenceAssessment({
+    retros: evidence.completedBlockRetros ?? [],
+    weeklyRows,
+    candidateFound,
+  });
   const gates = buildGates({
     evidence,
     weeklyRows,
+    completedBlockAssessment,
     blockers,
     candidateKind,
     planningShape,
@@ -517,6 +961,7 @@ export function buildNextMesocycleAcceptanceGateFromEvidence(
     gates,
     weeklyMuscleTable: weeklyRows,
     priorBlockRecurringRisks: buildPriorRiskRows(weeklyRows),
+    completedBlockEvidence: completedBlockAssessment.rows,
     diagnosticPreview: {
       available: previewAvailable,
       label: previewAvailable
@@ -602,6 +1047,34 @@ async function loadIncompleteWorkouts(input: {
   });
 }
 
+async function loadCompletedBlockRetros(input: {
+  userId: string;
+  ownerEmail?: string;
+  sourceMesocycle: SourceMesocycleState | null;
+  buildWeeklyRetro: typeof buildWeeklyRetroAuditPayload;
+}): Promise<WeeklyRetroAuditPayload[]> {
+  if (!input.sourceMesocycle) {
+    return [];
+  }
+
+  const retros = await Promise.all(
+    COMPLETED_BLOCK_WEEKS.map(async (week) => {
+      try {
+        return await input.buildWeeklyRetro({
+          userId: input.userId,
+          ownerEmail: input.ownerEmail,
+          week,
+          mesocycleId: input.sourceMesocycle!.id,
+        });
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return retros.filter((retro): retro is WeeklyRetroAuditPayload => retro != null);
+}
+
 export async function buildNextMesocycleAcceptanceGateAuditPayload(input: {
   userId: string;
   ownerEmail?: string;
@@ -611,6 +1084,7 @@ export async function buildNextMesocycleAcceptanceGateAuditPayload(input: {
     reader?: AcceptanceGateReader;
     buildV2Compare?: typeof buildV2AcceptedSeedPrepareCompareAuditPayload;
     buildMesocycleExplain?: typeof buildMesocycleExplainAuditPayload;
+    buildWeeklyRetro?: typeof buildWeeklyRetroAuditPayload;
   };
 }): Promise<NextMesocycleAcceptanceGatePayload> {
   const reader = (input.dependencies?.reader ?? prisma) as AcceptanceGateReader;
@@ -640,14 +1114,22 @@ export async function buildNextMesocycleAcceptanceGateAuditPayload(input: {
         },
       }).catch(() => undefined),
     ]);
-  const [successorMesocycle, incompleteWorkouts] = await Promise.all([
-    loadSuccessorState({ source: sourceMesocycle, reader }),
-    loadIncompleteWorkouts({
-      userId: input.userId,
-      sourceMesocycleId: input.sourceMesocycleId,
-      reader,
-    }),
-  ]);
+  const [successorMesocycle, incompleteWorkouts, completedBlockRetros] =
+    await Promise.all([
+      loadSuccessorState({ source: sourceMesocycle, reader }),
+      loadIncompleteWorkouts({
+        userId: input.userId,
+        sourceMesocycleId: input.sourceMesocycleId,
+        reader,
+      }),
+      loadCompletedBlockRetros({
+        userId: input.userId,
+        ownerEmail: input.ownerEmail,
+        sourceMesocycle,
+        buildWeeklyRetro:
+          input.dependencies?.buildWeeklyRetro ?? buildWeeklyRetroAuditPayload,
+      }),
+    ]);
 
   return buildNextMesocycleAcceptanceGateFromEvidence({
     userId: input.userId,
@@ -658,5 +1140,6 @@ export async function buildNextMesocycleAcceptanceGateAuditPayload(input: {
     incompleteWorkouts,
     v2PrepareCompare,
     diagnosticPreview,
+    completedBlockRetros,
   });
 }

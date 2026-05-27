@@ -602,6 +602,7 @@ Inspect first:
 - `nextMesocycleAcceptanceGate.candidateIdentity`
 - `nextMesocycleAcceptanceGate.gates`
 - `nextMesocycleAcceptanceGate.weeklyMuscleTable`
+- `nextMesocycleAcceptanceGate.completedBlockEvidence`
 - `nextMesocycleAcceptanceGate.priorBlockRecurringRisks`
 - `nextMesocycleAcceptanceGate.diagnosticPreview`
 
@@ -609,6 +610,7 @@ Interpretation rules:
 - `candidateFound=false` means the gate is not runnable yet; rerun after the source reaches `AWAITING_HANDOFF` and a persisted handoff candidate exists
 - source state, missing persisted candidate, active deload incompletion, and incomplete workouts are blockers, not acceptance failures to override
 - `mesocycle-explain` preview evidence is labeled `diagnostic_preview_not_candidate`; it can inform the gate but cannot satisfy candidate identity by itself
+- `completedBlockEvidence` summarizes read-only weekly-retro evidence from the completed accumulation block, including MEV fragility, runtime add-ons, load calibration drift, target-semantics noise, and optional gap-fill dependency risk; it still prints when no candidate exists and is applied once a persisted handoff candidate is available
 - volume rows use the current target semantics: below MEV blocks, above MEV but below target is not a failure, target near MAV is a stretch/cap rather than a quota, and over MAV is a failure/warning
 - this mode writes no DB rows, creates no workouts/logs/sessions, mutates no seed, and changes no planner/materializer/runtime/generation behavior
 

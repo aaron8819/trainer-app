@@ -6217,6 +6217,15 @@ describe("buildNextMesocycleAcceptanceGateSummary", () => {
               notes: "watch recurring chest floor misses before acceptance",
             },
           ],
+          completedBlockEvidence: [
+            {
+              risk: "Chest MEV fragility",
+              evidence: "W3 required top-up; W4 finished 9/10 MEV",
+              acceptanceImplication:
+                "candidate evidence pending; apply when a persisted handoff candidate exists",
+              severity: "high",
+            },
+          ],
           diagnosticPreview: {
             available: true,
             label: "diagnostic_preview_not_candidate",
@@ -6242,6 +6251,9 @@ describe("buildNextMesocycleAcceptanceGateSummary", () => {
         "Muscle | Projected sets | MEV | Productive/Target | MAV | Status | Notes",
         "Chest | 12 | 10 | 14 | 16 | above_mev_below_target_not_failure | above MEV but below target is not a failure",
         "Prior-Block Recurring Risks",
+        "Completed Block Evidence",
+        "Risk | Evidence | Acceptance implication | Severity",
+        "Chest MEV fragility | W3 required top-up; W4 finished 9/10 MEV | candidate evidence pending; apply when a persisted handoff candidate exists | high",
         "available=yes label=diagnostic_preview_not_candidate can_be_accepted=no planning_shape=mostly_upstream_planned",
       ]),
     );

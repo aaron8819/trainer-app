@@ -2958,6 +2958,15 @@ export function buildNextMesocycleAcceptanceGateSummary(input: {
   }
 
   lines.push("");
+  lines.push("Completed Block Evidence");
+  lines.push("Risk | Evidence | Acceptance implication | Severity");
+  for (const row of payload.completedBlockEvidence) {
+    lines.push(
+      `${row.risk} | ${row.evidence} | ${row.acceptanceImplication} | ${row.severity}`,
+    );
+  }
+
+  lines.push("");
   lines.push("Diagnostic Preview");
   lines.push(
     `available=${formatBooleanFlag(payload.diagnosticPreview.available)} label=${payload.diagnosticPreview.label} can_be_accepted=no planning_shape=${payload.diagnosticPreview.planningShape ?? "unknown"}`,

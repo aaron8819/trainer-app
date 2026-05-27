@@ -88,6 +88,26 @@
 - Do not include hidden chain-of-thought or generic self-reflection.
 - Recommend process, skill, or docs updates when useful.
 
+## Recursive Workflow Improvement
+
+For substantial Trainer tasks, improve both the product and the way we build the product.
+
+Current implementation is evidence, not authority. North-star docs, first-principles training logic, canonical seams, and source-of-truth boundaries are the standard. Challenge existing behavior when it conflicts with them.
+
+Retrospectives should capture reusable lessons when relevant:
+- Product / architecture: did this move behavior to the rightful owner seam and closer to the north star?
+- Planning / materialization: did planner intent survive set distribution, capacity, ranking, and exercise selection?
+- Acceptance / diagnostics: did outputs distinguish candidate truth, diagnostic evidence, hypothesis, and required fix?
+- Coaching / UI: did the user-facing flow make the next training action clear without target-chasing or misleading copy?
+- Validation / collaboration: were prompts, scope, tests, commands, and commit boundaries strong enough?
+
+For meaningful tasks, include concise workflow notes:
+Workflow lessons:
+- Product/seam lesson:
+- Prompt or validation lesson:
+- Reusable future instruction:
+- Follow-up: docs / fixture / audit mode / skill / none
+
 ## Canonical Boundaries
 - Resolve runtime identity via `resolveOwner()` in `trainer-app/src/lib/api/workout-context.ts`. Do not add alternate user-resolution paths in app routes.
 - Keep route handlers thin. Business logic belongs in `src/lib/api`; pure decision logic belongs in `src/lib/engine`.

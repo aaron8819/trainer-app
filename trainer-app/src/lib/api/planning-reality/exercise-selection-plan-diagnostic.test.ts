@@ -908,14 +908,11 @@ function makeCapacityDiagnosticInput(): CapacityBuilderInput {
                     role: "accessory",
                   },
                 ],
-                relevantDiagnostics: [
-                  "setPolicy:in_budget",
-                  "capAwareExpansion:preferred_exceeds_single_exercise_cap",
-                ],
+                relevantDiagnostics: ["setPolicy:in_budget"],
               },
-              gapCause: "cap_aware_expansion_limitation",
-              migrationRecommendation: "keep_diagnostic_only",
-              severity: "quality_warning",
+              gapCause: "none",
+              migrationRecommendation: "no_action",
+              severity: "pass",
             },
           ],
         },
@@ -1102,25 +1099,79 @@ describe("buildV2SelectionCapacityPlanDiagnostic", () => {
     );
   });
 
-  it("classifies Week 4 calves preferred-over-cap as cap-aware expansion needed", () => {
+  it("classifies Week 4 calves at capped productive target as target met no action", () => {
     const diagnostic = buildV2SelectionCapacityPlanDiagnostic(
       makeCapacityDiagnosticInput(),
     );
 
     expect(capacityLane(diagnostic, 4, "lower_a", "calves")).toMatchObject({
-      classification: "cap_aware_expansion_needed",
+      classification: "target_met_no_action",
       selectedExercise: "Standing Calf Raise",
       selectedSets: 4,
       perExerciseCap: 4,
       weeklyTargetStatus: "within",
     });
     expect(capacityLane(diagnostic, 4, "lower_b", "calves")).toMatchObject({
-      classification: "cap_aware_expansion_needed",
+      classification: "target_met_no_action",
       selectedExercise: "Seated Calf Raise",
       selectedSets: 4,
       perExerciseCap: 4,
       weeklyTargetStatus: "within",
     });
+    expect(diagnostic.summary.capAwareExpansionNeededCount).toBe(0);
+    expect(diagnostic.warnings).not.toEqual(
+      expect.arrayContaining([
+        "week_4:lower_a:calves:cap_aware_expansion_needed",
+        "week_4:lower_b:calves:cap_aware_expansion_needed",
+      ]),
+    );
+  });
+
+  it("classifies below-floor calf direct work as a blocker", () => {
+    const input = makeCapacityDiagnosticInput();
+    const calvesTotal = input.weeklyMuscleTotals.find(
+      (row) => row.muscle === "Calves",
+    );
+    if (!calvesTotal) {
+      throw new Error("missing Calves weekly total");
+    }
+    calvesTotal.projectedEffectiveSets = 7;
+    calvesTotal.status = "below";
+
+    const lowerASelectionLane = input.v2ExerciseSelectionPlanDiagnostic.weeks[0]?.slots
+      .find((slot) => slot.slotId === "lower_a")
+      ?.lanes.find((lane) => lane.laneId === "calves");
+    if (!lowerASelectionLane?.selectedIdentity) {
+      throw new Error("missing lower_a calf selection lane");
+    }
+    lowerASelectionLane.selectedIdentity.setCount = 2;
+    lowerASelectionLane.setBudgetStatus = "blocked";
+
+    const lowerADiff = input.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "lower_a")
+      ?.laneDiffs.find((lane) => lane.laneId === "calves");
+    const lowerASelected = lowerADiff?.currentEvidence.selectedExercises[0];
+    if (!lowerADiff || !lowerASelected) {
+      throw new Error("missing lower_a calf lane diff");
+    }
+    lowerASelected.sets = 2;
+    lowerADiff.currentStatus = "partial";
+    lowerADiff.currentEvidence.relevantDiagnostics = ["target_delivery:below_min"];
+    lowerADiff.gapCause = "set_distribution_gap";
+    lowerADiff.migrationRecommendation = "needs_set_distribution_policy";
+    lowerADiff.severity = "quality_warning";
+
+    const diagnostic = buildV2SelectionCapacityPlanDiagnostic(input);
+
+    expect(capacityLane(diagnostic, 1, "lower_a", "calves")).toMatchObject({
+      classification: "blocker",
+      selectedExercise: "Standing Calf Raise",
+      selectedSets: 2,
+      weeklyTargetStatus: "below",
+    });
+    expect(diagnostic.blockers).toEqual(
+      expect.arrayContaining(["week_1:lower_a:calves:blocker"]),
+    );
   });
 
   it("classifies optional lanes with target met or no headroom as optional suppressed", () => {

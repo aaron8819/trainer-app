@@ -2707,7 +2707,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
         slots: expect.arrayContaining([
           expect.objectContaining({
             slotId: "upper_a",
-            intent: "horizontal push/pull + rear delt/triceps support",
+            intent: "horizontal push/pull + rear/side delt/triceps support",
             lanes: expect.arrayContaining([
               expect.objectContaining({
                 laneId: "chest_anchor",
@@ -2835,7 +2835,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
       readOnly: true,
       affectsScoringOrGeneration: false,
       summary: {
-        policyCount: 4,
+        policyCount: 5,
         optionalConditionalLaneCount: 1,
       },
     });
@@ -2885,6 +2885,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
       identityStatus: "preserved",
       setBudgetStatus: "blocked",
     });
+    // `chest_secondary` is still visible on the broad skeleton, but the current
+    // materializer-facing exercise-selection diagnostic no longer emits it as a lane.
     expect(
       selectionDiagnosticLanes.find(
         (row) =>
@@ -2892,14 +2894,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
           row.slotId === "upper_a" &&
           row.lane.laneId === "chest_secondary",
       )?.lane,
-    ).toMatchObject({
-      identityStatus: "not_evaluated",
-      inventoryStatus: "not_evaluated",
-      cleanAlternatives: [],
-      limitations: expect.arrayContaining([
-        "generic_per_lane_candidate_inventory_not_available",
-      ]),
-    });
+    ).toBeUndefined();
     expect(
       payload.plannerOnlyNoRepair?.v2SetDistributionIntent.weeks[1].slots
         .find((slot) => slot.slotId === "upper_a")
@@ -2909,10 +2904,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
         min: 3,
         preferred: 4,
         max: 4,
-        basis: "target_lane",
+        basis: "class_ownership_allocation",
       },
       capPolicy: {
-        maxSetsPerExerciseWithoutJustification: 5,
+        maxSetsPerExerciseWithoutJustification: 4,
       },
       concentrationPolicy: {
         warningShare: 0.5,
@@ -2958,10 +2953,12 @@ describe("buildMesocycleExplainAuditPayload", () => {
       JSON.stringify(payload.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff)
         .length,
     ).toBeLessThan(16000);
+    // The fuller V2 policy now carries all Weeks 1-5 lane budgets; keep the
+    // guard broad enough for that shape while still catching runaway payloads.
     expect(
       JSON.stringify(payload.plannerOnlyNoRepair?.v2SetDistributionIntent)
         .length,
-    ).toBeLessThan(80000);
+    ).toBeLessThan(125000);
     expect(payload.plannerOnlyNoRepair?.slotPlans[0]).toMatchObject({
       slotId: "upper_a",
       exercises: [
@@ -4780,7 +4777,6 @@ describe("buildMesocycleExplainAuditPayload", () => {
         relevantDiagnostics: expect.arrayContaining([
           "setPolicy:allowed_expansion",
           "setBudget:allowed_expansion",
-          "justification:phase_expansion",
           "justification:slot_anchor",
         ]),
       },
@@ -4792,7 +4788,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     ).not.toBe("blocked");
   });
 
-  it("classifies chest-secondary set budget with strict lane-owned evidence only", () => {
+  it("keeps skeleton-only chest-secondary diagnostic without inferring set policy", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
         exercises: [
@@ -4856,10 +4852,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ?.laneDiffs.find((row) => row.laneId === "chest_secondary");
 
     expect(lane).toMatchObject({
-      currentStatus: "satisfied",
-      gapCause: "none",
-      migrationRecommendation: "no_action",
-      severity: "pass",
+      currentStatus: "partial",
+      gapCause: "unknown",
+      migrationRecommendation: "keep_diagnostic_only",
+      severity: "quality_warning",
       currentEvidence: {
         selectedExercises: [
           expect.objectContaining({
@@ -4869,21 +4865,17 @@ describe("buildMesocycleExplainAuditPayload", () => {
           }),
         ],
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:in_budget",
-          "setBudget:within_preferred",
-          "justification:none",
+          "setPolicy:unknown",
+          "target_status:unknown",
         ]),
       },
     });
     expect(lane?.currentEvidence.selectedExercises).toHaveLength(1);
+    // `upper_a:chest_secondary` remains visible as skeleton intent, but current
+    // V2 set-distribution policy is owned by materializer-facing lanes.
     expect(lane?.currentEvidence.relevantDiagnostics).not.toContain(
       "setPolicy:requires_justification",
     );
-    expect(lane?.currentEvidence.relevantDiagnostics).toEqual([
-      "setPolicy:in_budget",
-      "setBudget:within_preferred",
-      "justification:none",
-    ]);
     expect(
       lane?.currentEvidence.relevantDiagnostics.some((row) =>
         row.includes("Biceps"),
@@ -4891,7 +4883,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     ).toBe(false);
   });
 
-  it("classifies chest-secondary above preferred as requiring justification rather than hard blocking", () => {
+  it("keeps chest-secondary above preferred as diagnostic-only skeleton evidence", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
         exercises: [
@@ -4927,15 +4919,14 @@ describe("buildMesocycleExplainAuditPayload", () => {
 
     expect(lane).toMatchObject({
       currentStatus: "partial",
-      gapCause: "set_distribution_gap",
-      migrationRecommendation: "needs_set_budget_justification",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
       severity: "quality_warning",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:requires_justification",
-          "setPolicyReason:over_role_cap",
-          "setBudget:requires_justification",
-          "justification:none",
+          "setPolicy:unknown",
+          "Cable Crossover:Chest:single_exercise_share_100%",
+          "target_status:unknown",
         ]),
       },
     });
@@ -4945,7 +4936,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     );
   });
 
-  it("allows justified chest-secondary overage as a warning/partial lane instead of blocking it", () => {
+  it("keeps chest-secondary overage non-blocking while materializer-facing lanes own policy", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
         exercises: [
@@ -4984,16 +4975,16 @@ describe("buildMesocycleExplainAuditPayload", () => {
       severity: "quality_warning",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:allowed_expansion",
-          "setBudget:allowed_expansion",
-          "justification:low_systemic_fatigue",
+          "setPolicy:unknown",
+          "Cable Crossover:Chest:single_exercise_share_100%",
+          "target_status:unknown",
         ]),
       },
     });
     expect(lane?.currentStatus).not.toBe("blocked");
   });
 
-  it("keeps true chest-secondary set and share blockers blocked", () => {
+  it("keeps chest-secondary blocker-shaped rows diagnostic-only because the lane is skeleton-only", () => {
     const overFive = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
         exercises: [
@@ -5037,25 +5028,33 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ?.laneDiffs.find((row) => row.laneId === "chest_secondary");
 
     expect(overFiveLane).toMatchObject({
-      currentStatus: "blocked",
-      severity: "hard_blocker",
+      currentStatus: "partial",
+      severity: "quality_warning",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:hard_blocker",
-          "setPolicyReason:gt_5_sets",
+          "setPolicy:unknown",
+          "concentration:Cable Crossover:Chest:55%",
+          "target_status:unknown",
         ]),
       },
     });
     expect(overSixtyLane).toMatchObject({
-      currentStatus: "blocked",
-      severity: "hard_blocker",
+      currentStatus: "partial",
+      severity: "quality_warning",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:hard_blocker",
-          "setPolicyReason:over_60_share",
+          "setPolicy:unknown",
+          "concentration:Cable Crossover:Chest:64%",
+          "target_status:unknown",
         ]),
       },
     });
+    expect(overFiveLane?.currentEvidence.relevantDiagnostics).not.toContain(
+      "setPolicy:hard_blocker",
+    );
+    expect(overSixtyLane?.currentEvidence.relevantDiagnostics).not.toContain(
+      "setPolicy:hard_blocker",
+    );
   });
 
   it("classifies chest_second exposure with strict lane-owned chest evidence only", () => {
@@ -5147,7 +5146,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     );
   });
 
-  it("keeps chest-second primary concentration actionable above 60 percent when distinct exposure is not justified", () => {
+  it("keeps chest-second same-class concentration actionable without hard-failing above floor", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
         exercises: [
@@ -5190,22 +5189,23 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ?.laneDiffs.find((row) => row.laneId === "chest_second_exposure");
 
     expect(lane).toMatchObject({
-      currentStatus: "blocked",
+      currentStatus: "partial",
       gapCause: "concentration_policy_gap",
       migrationRecommendation: "needs_concentration_justification",
-      severity: "hard_blocker",
+      severity: "quality_warning",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:hard_blocker",
-          "setPolicyReason:over_60_share",
+          "setPolicy:quality_warning",
+          "setPolicyReason:warning_share",
           "concentration:chest_primary",
           "concentration:second_exposure",
-          "concentration:over_60_share",
           "concentration:needs_distinct_exposure",
-          "concentration:true_blocker",
         ]),
       },
     });
+    expect(lane?.currentEvidence.relevantDiagnostics).not.toEqual(
+      expect.arrayContaining(["readout_note:clean_chest_second_exposure"]),
+    );
   });
 
   it("classifies clean chest_second exposure as a non-blocking readout note", () => {
@@ -5721,7 +5721,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
   });
 
-  it("keeps dirty or forbidden chest-second evidence actionable", () => {
+  it("keeps chest-second below preferred visible without hard-failing the floor", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
         exercises: [
@@ -5767,17 +5767,22 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ?.laneDiffs.find((row) => row.laneId === "chest_second_exposure");
 
     expect(lane).toMatchObject({
-      currentStatus: "blocked",
-      gapCause: "concentration_policy_gap",
-      migrationRecommendation: "needs_concentration_justification",
-      severity: "hard_blocker",
+      currentStatus: "partial",
+      gapCause: "set_distribution_gap",
+      migrationRecommendation: "needs_set_distribution_policy",
+      severity: "quality_warning",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "forbidden_slot_primary_solution:Chest:upper_b",
-          "concentration:second_exposure",
+          "setPolicy:in_budget",
+          "setBudget:above_preferred",
+          "setBudget:within_planned_max",
+          "target_delivery:below_preferred",
         ]),
       },
     });
+    expect(lane?.currentEvidence.relevantDiagnostics).not.toEqual(
+      expect.arrayContaining(["target_delivery:below_min"]),
+    );
   });
 
   it("does not use repaired projection as the chest_second target policy", () => {
@@ -6284,15 +6289,14 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ?.laneDiffs.find((row) => row.laneId === "triceps");
 
     expect(unexplainedLane).toMatchObject({
-      currentStatus: "partial",
-      gapCause: "concentration_policy_gap",
-      migrationRecommendation: "needs_concentration_justification",
-      severity: "quality_warning",
+      currentStatus: "satisfied",
+      gapCause: "none",
+      migrationRecommendation: "no_action",
+      severity: "pass",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:quality_warning",
-          "concentration:support_tier",
-          "concentration:quality_warning",
+          "setPolicy:in_budget",
+          "setBudget:within_preferred",
           "justification:none",
         ]),
       },
@@ -6415,10 +6419,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ?.laneDiffs.find((row) => row.laneId === "biceps");
 
     expect(lane).toMatchObject({
-      currentStatus: "partial",
+      currentStatus: "blocked",
       gapCause: "set_distribution_gap",
-      migrationRecommendation: "needs_set_distribution_policy",
-      severity: "quality_warning",
+      migrationRecommendation: "needs_set_budget_justification",
+      severity: "hard_blocker",
       currentEvidence: {
         selectedExercises: [
           expect.objectContaining({
@@ -6529,7 +6533,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     ).not.toBe("biceps:needs_set_distribution_policy");
   });
 
-  it("does not select quality-warning or optional diagnostic rows as next migration slice", () => {
+  it("selects only the hard below-floor support lane as next migration slice", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
         exercises: [
@@ -6634,10 +6638,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
         )?.lane;
 
     expect(biceps).toMatchObject({
-      currentStatus: "partial",
+      currentStatus: "blocked",
       gapCause: "set_distribution_gap",
-      migrationRecommendation: "needs_set_distribution_policy",
-      severity: "quality_warning",
+      migrationRecommendation: "needs_set_budget_justification",
+      severity: "hard_blocker",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
           "target_delivery:below_min",
@@ -6692,10 +6696,15 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(
       noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
         .nextBestMigrationSlice,
-    ).toBeNull();
+    ).toBe("biceps:needs_set_budget_justification");
     expect(
       noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact.blockers,
-    ).toEqual([]);
+    ).toEqual(
+      expect.arrayContaining([
+        "blocked_lanes:1",
+        "biceps:needs_set_budget_justification",
+      ]),
+    );
   });
 
   it("reports the Lower B low-axial hip-extension limitation without treating Glute Bridge as a true hinge", () => {
@@ -7066,9 +7075,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
       severity: "pass",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
+          "setPolicy:in_budget",
           "setBudget:within_preferred",
-          "capAwareExpansion:preferred_exceeds_single_exercise_cap",
-          "expansionStatus:requires_distribution_or_second_exposure",
+          "justification:none",
           "readout_note:stale_calves_shortfall_suppressed_weekly_within_lane_satisfied",
         ]),
       },
@@ -7096,7 +7105,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(
       noRepair.repairPromotionScoreboard?.interpretation.currentV2PolicyGap
         .capAwareExpansionLimitationCount,
-    ).toBe(2);
+    ).toBe(0);
     expect(noRepair.slotPlans).toEqual([
       expect.objectContaining({
         slotId: "lower_a",
@@ -7430,10 +7439,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
     );
 
     expect(sideDelt).toMatchObject({
-      currentStatus: "blocked",
+      currentStatus: "partial",
       gapCause: "concentration_policy_gap",
       migrationRecommendation: "needs_concentration_justification",
-      severity: "hard_blocker",
+      severity: "quality_warning",
     });
     expect(triceps).toMatchObject({
       currentStatus: "missing",
@@ -7568,13 +7577,13 @@ describe("buildMesocycleExplainAuditPayload", () => {
         relevantDiagnostics: expect.arrayContaining([
           "setPolicy:hard_blocker",
           "setPolicyReason:systemic_fatigue",
-          "risk:systemic_fatigue",
+          "concentration:dirty_collateral",
         ]),
       },
     });
   });
 
-  it("still blocks dirty collateral concentration when it solves a support target", () => {
+  it("keeps dirty collateral concentration as Option B quality warning when direct work is absent", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
         exercises: [
@@ -7609,22 +7618,25 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ?.laneDiffs.find((row) => row.laneId === "side_delt_isolation");
 
     expect(lane).toMatchObject({
-      currentStatus: "blocked",
+      currentStatus: "partial",
       gapCause: "concentration_policy_gap",
       migrationRecommendation: "needs_concentration_justification",
-      severity: "hard_blocker",
+      severity: "quality_warning",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:hard_blocker",
-          "setPolicyReason:over_60_share",
+          "setPolicy:quality_warning",
+          "concentration:dirty_collateral",
           "concentration:support_tier",
         ]),
       },
     });
+    expect(lane?.currentEvidence.relevantDiagnostics).not.toEqual(
+      expect.arrayContaining(["setPolicy:hard_blocker"]),
+    );
     expect(
       noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
         .nextBestMigrationSlice,
-    ).toBe("vertical_press:needs_concentration_justification");
+    ).toBeNull();
   });
 
   it("does not use repaired projection as the rear-delt target policy", () => {
@@ -8306,9 +8318,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
       affectsScoringOrGeneration: false,
       safeForBehaviorPromotion: false,
       summary: {
-        supportMusclesEvaluated: 4,
+        supportMusclesEvaluated: 5,
         directFloorsMet: 1,
-        directFloorsBelow: 3,
+        directFloorsBelow: 4,
         optionalActivations: 1,
         unrecoverableExpansions: expect.any(Number),
       },

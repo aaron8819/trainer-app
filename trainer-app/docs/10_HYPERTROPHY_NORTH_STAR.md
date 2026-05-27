@@ -1,7 +1,7 @@
 # Hypertrophy Mesocycle Engine Strategy
 
 Owner: Aaron
-Last reviewed: 2026-05-21
+Last reviewed: 2026-05-27
 Purpose: Define the strategic direction for the V2 hypertrophy planner migration: V2 becomes the future plan author, accepted seed remains minimal executable truth, runtime replay remains stable, and performed reality informs future blocks without silently mutating the current one.
 
 This document is a strategy and migration map, not a claim about current runtime behavior. Current runtime truth remains the code, contract tests, and audit artifacts. The current mapping is grounded in the same live audit evidence previously used for this target doc plus the latest V2 factory-line, materializer, taxonomy, candidate-identity, and lane-selection-intent audit findings:
@@ -509,6 +509,121 @@ Current status: normal UI runtime edit/save reconciliation is seed-safe in the r
 Strategic purpose: turn performed reality into next-block strategy evidence. Good looks like review summaries that can recommend volume hold/increase/reduction, specialization, recovery bias, exercise continuity, rotation, or fatigue-management changes.
 
 Current status: `MesocycleReview`, handoff summaries, strategy-input adapters, and audit diagnostics have pieces of the loop. Do not use old repaired prescribed plans as the training signal.
+
+### Next-Mesocycle Acceptance Gate North Star
+
+The next-mesocycle acceptance gate is a read-only decision system whose job is to decide whether a candidate mesocycle should be trained from as-is. It is not the planner, materializer, repair engine, or runtime source of truth.
+
+The gate should answer:
+
+```txt
+Should this next mesocycle be trained from as-is?
+
+Is the candidate executable, safe, hypertrophy-effective, recoverable, responsive to prior-block evidence, and trainable in Week 1?
+```
+
+This is a layered, evidence-aware quality gate, not a checklist that passes because a few fields exist. It judges and explains. It must not silently fix, repair, reseed, re-author, or mutate the plan.
+
+Decision outcomes:
+
+```txt
+not_runnable:
+  no real candidate exists, wrong lifecycle state, unresolved blocker, or diagnostic preview only.
+
+rejected:
+  candidate has blocker/high-risk failures that must be fixed before Week 1.
+
+accepted_with_watch_items:
+  trainable, but has known risks to monitor through pre-session checks.
+
+accepted:
+  seed/runtime/lifecycle/volume/materialization/trainability gates pass with no material concerns.
+```
+
+Layered model:
+
+- Layer 0 — Candidate identity: a real persisted or draft candidate exists, it belongs to the correct owner/source block, and a diagnostic preview is not mistaken for a candidate.
+- Layer 1 — Lifecycle/source-of-truth safety: handoff state is correct, seed remains executable truth, runtime consumes only `{ exerciseId, role, setCount }`, and diagnostic metadata does not become runtime truth.
+- Layer 2 — Structural executability: all slots exist, order is stable, Week 1 and deload generate, and runtime does not need fallback or reselection to make the plan trainable.
+- Layer 3 — Hypertrophy floor/cap quality: priority muscles are above MEV with margin where appropriate, no muscle is over MAV, target/stretch semantics are respected, and below-target/above-MEV is not treated as failure.
+- Layer 4 — Distribution and stimulus-to-fatigue: the right muscles are in the right sessions, compound/isolation balance is sane, hinge/curl, press/fly, and row/pulldown balances are coherent, calves and delts get enough directness, and floor-closing work prefers low-fatigue choices.
+- Layer 5 — Prior-block evidence: recurring MEV misses, thin-margin muscles, repeated runtime add-ons, load calibration drift, and target-semantics friction are surfaced as evidence without automatically becoming policy.
+- Layer 6 — Week 1 trainability: generated sessions are coherent, loads/reps/RPE/confidence are usable, severe stale-target issues are surfaced, and the user can train without manual interpretation.
+- Layer 7 — Final decision: accept, accept with watch items, reject, or mark not runnable.
+
+Gate findings should use severity, not only binary pass/fail:
+
+```txt
+blocker
+high risk
+warning
+info
+pass
+```
+
+Examples:
+
+- no candidate = blocker / not runnable
+- priority muscle below MEV = high risk or blocker
+- recurring fragile muscle exactly at MEV = warning
+- below target but above MEV = info or watch item, not failure
+- over MAV = high risk/blocker
+- high repair burden = planner ownership warning or failure depending severity
+
+Evidence is not automatically a required fix. The gate must distinguish:
+
+- evidence
+- hypothesis
+- required fix
+
+Do not overfit to the last block. Do not treat MEV as the only goal. Do not over-trust decimal weighted-set precision. Do not pass bad exercise identity just because muscle volumes pass. Do not accept a repair-heavy plan as if it were clean planner authorship. Do not let the gate silently repair or mutate the plan.
+
+For muscles with repeated prior-block MEV fragility, exact-MEV coverage should not be a clean pass. It should at least create a watch item, and preferably the candidate should include a small planned buffer if recoverable.
+
+Examples:
+
+- chest exact MEV after prior misses = warning
+- calves exact MEV after prior misses = warning
+- side/rear delts exact MEV after thin-margin behavior = watch item
+
+A candidate may be trainable while still showing planner ownership debt.
+
+Output should separate:
+
+- trainability
+- planner/materializer quality
+- repair burden
+- watch items
+
+Example:
+
+```txt
+Trainability: pass
+Planner ownership: warning
+Repair burden: high
+```
+
+Every failure should include:
+
+```txt
+severity
+owner seam
+smallest safe fix
+must-fix-before-Week-1 yes/no
+```
+
+If the owner seam is unclear, the recommendation should be investigation, not implementation.
+
+The acceptance gate must not become:
+
+- a hidden planner
+- a repair engine
+- a source of truth
+- a noisy report nobody can act on
+- a rigid decimal-based scoring system
+- a reason to reject usable plans endlessly
+
+During deload, improve the acceptance gate before making planner/materializer changes. Only make planner/materializer fixes after the gate has a real candidate and identifies a specific failing seam.
 
 ## 6. Static Base Plan Strategy
 

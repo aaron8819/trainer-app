@@ -126,6 +126,9 @@ describe("buildV2ExerciseSelectionPlan", () => {
   });
 
   it("represents optional and conditional optional lanes without evaluating them", () => {
+    expect(slot(1, "upper_b")).toMatchObject({
+      maxExerciseCount: 7,
+    });
     expect(lane(1, "upper_b", "optional_triceps_if_under_target")).toMatchObject({
       requirement: "conditional_optional",
       role: "optional",

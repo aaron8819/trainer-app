@@ -702,6 +702,16 @@ function buildSlotShape(input: {
   };
 }
 
+function isActivatedOptionalLane(lane: PlanLane | undefined): boolean {
+  return Boolean(
+    lane &&
+      lane.requirement !== "required" &&
+      lane.classLaneKind === "optional_recoverable_lane" &&
+      lane.optionalActivation &&
+      lane.setBudget.preferred > 0,
+  );
+}
+
 function hasLane(input: {
   evidence: ReadonlyArray<MaterializedLaneEvidence>;
   slotId: string;
@@ -868,8 +878,9 @@ function buildExerciseClassCoverage(input: {
       }),
     optionalLanesOmittedUnlessActivated: input.evidence.every((row) =>
       row.planLane
-        ? row.planLane.requirement === "required" &&
-          row.planLane.classLaneKind !== "optional_recoverable_lane"
+        ? (row.planLane.requirement === "required" &&
+            row.planLane.classLaneKind !== "optional_recoverable_lane") ||
+          isActivatedOptionalLane(row.planLane)
         : true,
     ),
     managedCollateralLanesNotMaterializedAsDirectDemand: input.evidence.every(

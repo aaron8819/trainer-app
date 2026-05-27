@@ -415,7 +415,12 @@ export function buildV2BasePlanCompare(
     repairedPlanAvailable: repaired?.available === true,
   };
 
-  const slotShape = buildSlotShapeCompare({ v2BasePlan, noRepair, repaired });
+  const slotShape = buildSlotShapeCompare({
+    v2BasePlan,
+    noRepair,
+    repaired,
+    validation: input.v2BasePlanValidation,
+  });
   const muscleCoverage = buildMuscleCoverageCompare({
     validation: input.v2BasePlanValidation,
     v2BasePlan,
@@ -767,6 +772,7 @@ function buildSlotShapeCompare(input: {
   v2BasePlan: V2BasePlanComparePlanView;
   noRepair?: V2BasePlanComparePlanView | null;
   repaired?: V2BasePlanComparePlanView | null;
+  validation?: V2BasePlanValidation | null;
 }): V2BasePlanCompare["comparisons"]["slotShape"] {
   const v2Base = computeSlotMetrics(input.v2BasePlan);
   const noRepair = input.noRepair?.available
@@ -819,10 +825,15 @@ function buildSlotShapeCompare(input: {
     {
       item: "optional_lane_materialization",
       classification:
-        v2Base.optionalLaneMaterializationCount === 0
+        v2Base.optionalLaneMaterializationCount === 0 ||
+        input.validation?.checks.exerciseClassCoverage
+          .optionalLanesOmittedUnlessActivated
           ? "v2_improves"
           : "v2_regresses",
-      evidence: [`v2_optional:${v2Base.optionalLaneMaterializationCount}`],
+      evidence: [
+        `v2_optional:${v2Base.optionalLaneMaterializationCount}`,
+        `optional_omitted_unless_activated:${input.validation?.checks.exerciseClassCoverage.optionalLanesOmittedUnlessActivated ?? false}`,
+      ],
     },
     {
       item: "standalone_one_set_exercises",

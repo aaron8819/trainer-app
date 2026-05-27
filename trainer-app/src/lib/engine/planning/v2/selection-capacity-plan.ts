@@ -43,15 +43,42 @@ function setRange(range: {
   };
 }
 
-function maxExerciseCount(input: {
-  slotId: V2PlannerSlotId;
-  sessionCapacity: V2SelectionCapacityPlanInput["sessionCapacity"] | undefined;
+function protectedSupportFloorHeadroom(input: {
+  slot: IntentSlot;
+  supportActivationIndex: ReadonlyMap<string, number>;
 }): number {
-  return (
-    input.sessionCapacity?.maxExerciseCountBySlot?.[input.slotId] ??
-    input.sessionCapacity?.defaultMaxExerciseCount ??
-    DEFAULT_MAX_EXERCISE_COUNT
-  );
+  return input.slot.lanes.some(
+    (lane) =>
+      lane.role === "optional" &&
+      lane.classLaneKind === "optional_recoverable_lane" &&
+      lane.setBudget.preferred > 0 &&
+      input.supportActivationIndex.has(laneKey(input.slot.slotId, lane.laneId)),
+  )
+    ? 1
+    : 0;
+}
+
+function maxExerciseCount(input: {
+  slot: IntentSlot;
+  sessionCapacity: V2SelectionCapacityPlanInput["sessionCapacity"] | undefined;
+  supportActivationIndex: ReadonlyMap<string, number>;
+}): number {
+  const explicitSlotCap =
+    input.sessionCapacity?.maxExerciseCountBySlot?.[input.slot.slotId];
+  if (explicitSlotCap != null) {
+    return explicitSlotCap;
+  }
+
+  const baseCap =
+    input.sessionCapacity?.defaultMaxExerciseCount ?? DEFAULT_MAX_EXERCISE_COUNT;
+  const protectedHeadroom =
+    baseCap >= DEFAULT_MAX_EXERCISE_COUNT
+      ? protectedSupportFloorHeadroom({
+          slot: input.slot,
+          supportActivationIndex: input.supportActivationIndex,
+        })
+      : 0;
+  return baseCap + protectedHeadroom;
 }
 
 function capAwareExpansion(
@@ -143,8 +170,9 @@ export function buildV2SelectionCapacityPlan(
           slotId: slot.slotId,
           slotIndex: classSlot?.slotIndex ?? fallbackSlotIndex,
           maxExerciseCount: maxExerciseCount({
-            slotId: slot.slotId,
+            slot,
             sessionCapacity: input.sessionCapacity,
+            supportActivationIndex,
           }),
           targetSessionSets: setRange(slot.targetSessionSets),
           lanes: slot.lanes.map((lane) => {

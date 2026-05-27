@@ -13,6 +13,20 @@ function buildPlan() {
   });
 }
 
+function buildPlanWithExplicitUpperBCap(maxExerciseCount: number) {
+  const policy = buildV2PlannerMesocyclePolicy();
+  return buildV2SelectionCapacityPlan({
+    exerciseClassDistributionBySlot: policy.exerciseClassDistributionBySlot,
+    v2SetDistributionIntent: policy.v2SetDistributionIntent,
+    v2SupportLanePolicy: policy.v2SupportLanePolicy,
+    sessionCapacity: {
+      maxExerciseCountBySlot: {
+        upper_b: maxExerciseCount,
+      },
+    },
+  });
+}
+
 function lane(
   week: number,
   slotId: string,
@@ -165,7 +179,7 @@ describe("buildV2SelectionCapacityPlan", () => {
     expect(slot(2, "upper_b")).toMatchObject({
       slotId: "upper_b",
       slotIndex: 2,
-      maxExerciseCount: 6,
+      maxExerciseCount: 7,
       targetSessionSets: { min: 15, preferred: 20, max: 21 },
     });
     expect(slot(2, "lower_b")).toMatchObject({
@@ -173,6 +187,25 @@ describe("buildV2SelectionCapacityPlan", () => {
       slotIndex: 3,
       maxExerciseCount: 6,
       targetSessionSets: { min: 10, preferred: 12, max: 14 },
+    });
+  });
+
+  it("adds only one protected headroom slot for budgeted support-floor optional lanes", () => {
+    expect(slot(2, "upper_b").maxExerciseCount).toBe(7);
+    expect(slot(2, "upper_a").maxExerciseCount).toBe(6);
+    expect(slot(2, "lower_a").maxExerciseCount).toBe(6);
+    expect(slot(2, "lower_b").maxExerciseCount).toBe(6);
+  });
+
+  it("respects explicit stronger slot caps over protected support-floor headroom", () => {
+    const explicit = buildPlanWithExplicitUpperBCap(6);
+    const upperB = explicit.weeks
+      .find((week) => week.week === 2)
+      ?.slots.find((row) => row.slotId === "upper_b");
+
+    expect(upperB).toMatchObject({
+      slotId: "upper_b",
+      maxExerciseCount: 6,
     });
   });
 

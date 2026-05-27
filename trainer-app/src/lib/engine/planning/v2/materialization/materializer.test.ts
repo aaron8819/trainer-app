@@ -1331,6 +1331,42 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     ]);
   });
 
+  it("still drops budgeted support-floor optional lanes under an explicit stronger slot cap", () => {
+    const policy = buildV2PlannerMesocyclePolicy();
+    const explicitCapPlan: V2ExerciseSelectionPlan = {
+      ...policy.exerciseSelectionPlan,
+      weeks: policy.exerciseSelectionPlan.weeks.map((week) => ({
+        ...week,
+        slots: week.slots.map((slotRow) => ({
+          ...slotRow,
+          maxExerciseCount:
+            slotRow.slotId === "upper_b" ? 6 : slotRow.maxExerciseCount,
+          lanes: slotRow.lanes.map((laneRow) => ({ ...laneRow })),
+        })),
+      })),
+    };
+
+    const result = materialize({
+      plan: explicitCapPlan,
+      inventory: representativeV2Inventory,
+    });
+
+    expect(result.status).toBe("materialized");
+    expect(result.blockers).toEqual([]);
+    expect(
+      result.slots.find((slotRow) => slotRow.slotId === "upper_b")?.exercises,
+    ).toHaveLength(6);
+    expect(
+      result.omissions.find(
+        (row) =>
+          row.slotId === "upper_b" &&
+          row.laneId === "optional_triceps_if_under_target",
+      ),
+    ).toMatchObject({
+      reason: "optional_capacity_exhausted",
+    });
+  });
+
   it("produces exactly equal output on repeated calls", () => {
     const input = {
       plan: plan([
@@ -1616,7 +1652,9 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(result.dryRunOnly).toBe(true);
     expect(result.status).toBe("materialized");
     expect(result.blockers).toEqual([]);
-    expect(materializedLaneIds).toEqual(requiredLaneIds);
+    expect(materializedLaneIds).toEqual(
+      [...requiredLaneIds, "upper_b:optional_triceps_if_under_target"].sort(),
+    );
     expect(exerciseForLane(result, "upper_a", "chest_anchor")).toMatchObject({
       exerciseId: "machine-chest-press",
       setCount: 4,
@@ -1647,16 +1685,24 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(exerciseForLane(result, "upper_a", "side_delt_isolation"))
       .toMatchObject({
         exerciseId: "cable-lateral-raise",
-        setCount: 2,
+        setCount: 4,
       });
     expect(exerciseForLane(result, "upper_b", "vertical_press"))
       .toMatchObject({
         exerciseId: "machine-shoulder-press",
         setCount: 2,
       });
+    expect(exerciseForLane(result, "upper_b", "optional_triceps_if_under_target"))
+      .toMatchObject({
+        exerciseId: "rope-pressdown",
+        setCount: 2,
+      });
+    expect(
+      result.slots.find((slotRow) => slotRow.slotId === "upper_b")?.exercises,
+    ).toHaveLength(7);
     expect(exerciseForLane(result, "upper_a", "rear_delt")).toMatchObject({
       exerciseId: "rear-delt-fly",
-      setCount: 2,
+      setCount: 4,
     });
     expect(exerciseForLane(result, "lower_b", "hinge_anchor")).toMatchObject({
       exerciseId: "romanian-deadlift",
@@ -2033,7 +2079,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(result.executablePreviewCountBySlot).toEqual([
       { slotId: "upper_a", exerciseCount: 6 },
       { slotId: "lower_a", exerciseCount: 4 },
-      { slotId: "upper_b", exerciseCount: 6 },
+      { slotId: "upper_b", exerciseCount: 7 },
       { slotId: "lower_b", exerciseCount: 4 },
     ]);
     expect(result.requiredLaneCoverageBySlot).toEqual(

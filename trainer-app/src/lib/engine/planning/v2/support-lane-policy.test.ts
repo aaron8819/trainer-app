@@ -71,7 +71,7 @@ describe("buildV2SupportLanePolicy", () => {
       owningSlotId: "upper_a",
       owningLaneId: "triceps",
       directFloor: {
-        minDirectSets: 2,
+        minDirectSets: 3,
         requiredExerciseClasses: ["triceps_isolation", "pressdown"],
         collateralCanSatisfyDirectFloor: false,
       },
@@ -92,18 +92,18 @@ describe("buildV2SupportLanePolicy", () => {
       owningSlotId: "upper_a",
       owningLaneId: "side_delt_isolation",
       directFloor: {
-        minDirectSets: 2,
+        minDirectSets: 4,
         requiredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
         collateralCanSatisfyDirectFloor: false,
       },
-      preferredDirectSets: { min: 2, preferred: 2, max: 2 },
+      preferredDirectSets: { min: 4, preferred: 4, max: 4 },
       collateralCanSatisfyDirectFloor: false,
     });
     expect(upperB).toMatchObject({
       owningSlotId: "upper_b",
       owningLaneId: "side_delt_isolation",
       directFloor: {
-        minDirectSets: 3,
+        minDirectSets: 4,
         requiredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
         collateralCanSatisfyDirectFloor: false,
       },
@@ -129,11 +129,11 @@ describe("buildV2SupportLanePolicy", () => {
       owningSlotId: "upper_a",
       owningLaneId: "rear_delt",
       directFloor: {
-        minDirectSets: 2,
+        minDirectSets: 4,
         requiredExerciseClasses: ["rear_delt_isolation"],
         collateralCanSatisfyDirectFloor: false,
       },
-      preferredDirectSets: { min: 2, preferred: 2, max: 2 },
+      preferredDirectSets: { min: 4, preferred: 4, max: 4 },
       collateralCanSatisfyDirectFloor: false,
     });
     expect(rearDelts.expansionPolicy.firstChoice).toBe(
@@ -175,7 +175,7 @@ describe("buildV2SupportLanePolicy", () => {
       evaluateV2SupportLaneOptionalActivation({
         policy: triceps,
         candidateSlotId: "upper_b",
-        directSetsInOwningSlot: 2,
+        directSetsInOwningSlot: 3,
         reasonableCollateralEffectiveSets: 1,
         recoverable: true,
       }),
@@ -188,7 +188,7 @@ describe("buildV2SupportLanePolicy", () => {
       evaluateV2SupportLaneOptionalActivation({
         policy: triceps,
         candidateSlotId: "upper_b",
-        directSetsInOwningSlot: 2,
+        directSetsInOwningSlot: 4,
         reasonableCollateralEffectiveSets: 2,
         recoverable: true,
       }).active,
@@ -197,7 +197,7 @@ describe("buildV2SupportLanePolicy", () => {
       evaluateV2SupportLaneOptionalActivation({
         policy: triceps,
         candidateSlotId: "upper_b",
-        directSetsInOwningSlot: 1,
+        directSetsInOwningSlot: 2,
         reasonableCollateralEffectiveSets: 0,
         recoverable: true,
       }).reason,

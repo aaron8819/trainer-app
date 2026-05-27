@@ -5854,10 +5854,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
           {
             slotId: "upper_a",
             exerciseName: "Cable Rear Delt Fly",
-            setCount: 2,
+            setCount: 4,
             primaryMuscles: ["Rear Delts"],
             movementPatterns: ["horizontal_pull"],
-            stimulus: { "Rear Delts": 2 },
+            stimulus: { "Rear Delts": 4 },
             percentages: { "Rear Delts": 40 },
           },
           {
@@ -5899,22 +5899,23 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ?.laneDiffs.find((row) => row.laneId === "rear_delt");
 
     expect(lane).toMatchObject({
-      currentStatus: "satisfied",
-      gapCause: "none",
-      migrationRecommendation: "no_action",
-      severity: "pass",
+      currentStatus: "partial",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "keep_diagnostic_only",
+      severity: "quality_warning",
       currentEvidence: {
         selectedExercises: [
           expect.objectContaining({
             name: "Cable Rear Delt Fly",
-            sets: 2,
+            sets: 4,
             matchedClass: "rear_delt_isolation",
           }),
         ],
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:in_budget",
+          "setPolicy:quality_warning",
           "setBudget:within_preferred",
-          "justification:none",
+          "concentration:quality_warning",
+          "concentration:justified_direct_isolation",
         ]),
       },
     });
@@ -6005,10 +6006,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
           {
             slotId: "upper_a",
             exerciseName: "Cable Rear Delt Fly",
-            setCount: 2,
+            setCount: 4,
             primaryMuscles: ["Rear Delts"],
             movementPatterns: ["isolation"],
-            stimulus: { "Rear Delts": 2 },
+            stimulus: { "Rear Delts": 4 },
             percentages: { "Rear Delts": 64 },
           },
         ],
@@ -6059,7 +6060,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
         selectedExercises: [
           expect.objectContaining({
             name: "Cable Rear Delt Fly",
-            sets: 2,
+            sets: 4,
           }),
         ],
         relevantDiagnostics: expect.arrayContaining([
@@ -6108,10 +6109,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
           {
             slotId: "upper_a",
             exerciseName: "Cable Triceps Pushdown",
-            setCount: 2,
+            setCount: 3,
             primaryMuscles: ["Triceps"],
             movementPatterns: ["isolation"],
-            stimulus: { Triceps: 2 },
+            stimulus: { Triceps: 3 },
             percentages: { Triceps: 31 },
           },
         ],
@@ -6143,7 +6144,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
         selectedExercises: [
           expect.objectContaining({
             name: "Cable Triceps Pushdown",
-            sets: 2,
+            sets: 3,
             matchedClass: "triceps_isolation",
           }),
         ],
@@ -6172,10 +6173,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
           {
             slotId: "upper_a",
             exerciseName: "Cable Triceps Pushdown",
-            setCount: 2,
+            setCount: 3,
             primaryMuscles: ["Triceps"],
             movementPatterns: ["isolation"],
-            stimulus: { Triceps: 2 },
+            stimulus: { Triceps: 3 },
             percentages: { Triceps: 69 },
           },
         ],
@@ -6207,7 +6208,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
         selectedExercises: [
           expect.objectContaining({
             name: "Cable Triceps Pushdown",
-            sets: 2,
+            sets: 3,
             matchedClass: "triceps_isolation",
           }),
         ],
@@ -6242,10 +6243,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
             slotId: "upper_a",
             exerciseName: "Cable Triceps Pushdown",
             role: "main",
-            setCount: 2,
+            setCount: 3,
             primaryMuscles: ["Triceps"],
             movementPatterns: ["isolation"],
-            stimulus: { Triceps: 2 },
+            stimulus: { Triceps: 3 },
             percentages: { Triceps: 55 },
           },
         ],
@@ -6504,10 +6505,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ?.laneDiffs.find((row) => row.laneId === "biceps");
 
     expect(lane).toMatchObject({
-      currentStatus: "satisfied",
-      gapCause: "none",
-      migrationRecommendation: "no_action",
-      severity: "pass",
+      currentStatus: "partial",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
+      severity: "quality_warning",
       currentEvidence: {
         selectedExercises: [
           expect.objectContaining({
@@ -6517,9 +6518,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
           }),
         ],
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:in_budget",
-          "setBudget:within_preferred",
-          "exposure:single_direct_curl",
+          "setPolicy:allowed_expansion",
+          "setBudget:above_preferred",
+          "setBudget:allowed_expansion",
           "concentration:pulling_collateral",
         ]),
       },
@@ -7440,8 +7441,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
 
     expect(sideDelt).toMatchObject({
       currentStatus: "partial",
-      gapCause: "concentration_policy_gap",
-      migrationRecommendation: "needs_concentration_justification",
+      gapCause: "set_distribution_gap",
+      migrationRecommendation: "needs_set_distribution_policy",
       severity: "quality_warning",
     });
     expect(triceps).toMatchObject({
@@ -7619,12 +7620,12 @@ describe("buildMesocycleExplainAuditPayload", () => {
 
     expect(lane).toMatchObject({
       currentStatus: "partial",
-      gapCause: "concentration_policy_gap",
-      migrationRecommendation: "needs_concentration_justification",
+      gapCause: "set_distribution_gap",
+      migrationRecommendation: "needs_set_distribution_policy",
       severity: "quality_warning",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:quality_warning",
+          "setPolicy:under_budget",
           "concentration:dirty_collateral",
           "concentration:support_tier",
         ]),
@@ -7993,10 +7994,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(
       upperA?.laneDiffs.find((lane) => lane.laneId === "chest_anchor"),
     ).toMatchObject({
-      currentStatus: "satisfied",
-      gapCause: "none",
-      migrationRecommendation: "no_action",
-      severity: "pass",
+      currentStatus: "partial",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
+      severity: "quality_warning",
       currentEvidence: {
         selectedExercises: [
           expect.objectContaining({
@@ -8319,20 +8320,20 @@ describe("buildMesocycleExplainAuditPayload", () => {
       safeForBehaviorPromotion: false,
       summary: {
         supportMusclesEvaluated: 5,
-        directFloorsMet: 1,
-        directFloorsBelow: 4,
-        optionalActivations: 1,
+        directFloorsMet: 0,
+        directFloorsBelow: 5,
+        optionalActivations: 0,
         unrecoverableExpansions: expect.any(Number),
       },
     });
     expect(byMuscle.get("Triceps")).toMatchObject({
       currentDirectSets: 2,
       collateralCreditUsed: 1,
-      directFloorStatus: "met",
-      optionalActivationStatus: "triggered_diagnostic_only",
+      directFloorStatus: "below",
+      optionalActivationStatus: "not_triggered",
       rationale: expect.arrayContaining([
         "collateral_credit_applies_to_weekly_total_only",
-        "optional_activation:still_under_support_floor_after_direct_floor_and_collateral",
+        "optional_activation:direct_floor_not_attempted",
       ]),
       limitations: expect.arrayContaining([
         "optional_activation_does_not_create_hard_floor",

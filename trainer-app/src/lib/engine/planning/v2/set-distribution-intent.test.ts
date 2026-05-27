@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { buildV2PlannerMesocyclePolicy } from "./mesocycle-policy";
 import { buildV2TargetSkeleton } from "./target-skeleton";
 import type {
@@ -101,6 +102,21 @@ function lanesForMuscle(
   return week(plan, weekNumber).slots.flatMap((slotRow) =>
     slotRow.lanes.filter((laneRow) => laneRow.primaryMuscles.includes(muscle)),
   );
+}
+
+function setBudgetTotalForMuscle(
+  plan: V2SetDistributionIntent,
+  muscle: string,
+  weekNumber = 2,
+): number {
+  return week(plan, weekNumber).slots
+    .flatMap((slotRow) => slotRow.lanes)
+    .filter(
+      (laneRow) =>
+        laneRow.primaryMuscles.includes(muscle) ||
+        laneRow.optionalMuscles.includes(muscle),
+    )
+    .reduce((sum, laneRow) => sum + laneRow.setBudget.preferred, 0);
 }
 
 function rawLaneSummedPreferred(muscle: string): number {
@@ -211,7 +227,7 @@ describe("buildV2SetDistributionIntent", () => {
       week(plan).slots
         .flatMap((slotRow) => slotRow.lanes)
         .filter((laneRow) => laneRow.setBudget.preferred === 4),
-    ).toHaveLength(4);
+    ).toHaveLength(6);
   });
 
   it("keeps Hamstrings hinge and curl split within balanced demand", () => {
@@ -254,20 +270,20 @@ describe("buildV2SetDistributionIntent", () => {
       primaryMuscles: ["Side Delts"],
       directFloor: {
         muscle: "Side Delts",
-        minDirectSets: 2,
+        minDirectSets: 4,
         collateralCanSatisfy: false,
       },
-      setBudget: { min: 2, preferred: 2, max: 2, basis: "support_direct_floor" },
+      setBudget: { min: 4, preferred: 4, max: 4, basis: "support_direct_floor" },
     });
     expect(lane(plan, "upper_b", "side_delt_isolation")).toMatchObject({
       classLaneKind: "support_class_lane",
       primaryMuscles: ["Side Delts"],
       directFloor: {
         muscle: "Side Delts",
-        minDirectSets: 3,
+        minDirectSets: 4,
         collateralCanSatisfy: false,
       },
-      setBudget: { min: 3, preferred: 4, max: 4, basis: "support_direct_floor" },
+      setBudget: { min: 4, preferred: 4, max: 4, basis: "support_direct_floor" },
     });
     expect(lane(plan, "upper_b", "vertical_press")).toMatchObject({
       classLaneKind: "support_class_lane",
@@ -282,12 +298,12 @@ describe("buildV2SetDistributionIntent", () => {
     const plan = intent();
 
     expect(lane(plan, "upper_a", "rear_delt")).toMatchObject({
-      directFloor: { muscle: "Rear Delts", minDirectSets: 2 },
-      setBudget: { min: 2, preferred: 2, max: 2, basis: "support_direct_floor" },
+      directFloor: { muscle: "Rear Delts", minDirectSets: 4 },
+      setBudget: { min: 4, preferred: 4, max: 4, basis: "support_direct_floor" },
     });
     expect(lane(plan, "upper_a", "triceps")).toMatchObject({
-      directFloor: { muscle: "Triceps", minDirectSets: 2 },
-      setBudget: { min: 2, preferred: 3, max: 3, basis: "support_direct_floor" },
+      directFloor: { muscle: "Triceps", minDirectSets: 3 },
+      setBudget: { min: 3, preferred: 3, max: 3, basis: "support_direct_floor" },
     });
     expect(lane(plan, "upper_b", "biceps")).toMatchObject({
       directFloor: { muscle: "Biceps", minDirectSets: 2 },
@@ -295,21 +311,52 @@ describe("buildV2SetDistributionIntent", () => {
     });
   });
 
-  it("keeps optional lanes at zero unless activation criteria are met elsewhere", () => {
+  it("authors Side Delt, Rear Delt, and Triceps support-floor coverage upstream without MAV or primary-lane regression", () => {
+    const plan = intent();
+
+    expect(setBudgetTotalForMuscle(plan, "Side Delts")).toBeGreaterThanOrEqual(
+      VOLUME_LANDMARKS["Side Delts"].mev,
+    );
+    expect(setBudgetTotalForMuscle(plan, "Rear Delts")).toBeGreaterThanOrEqual(
+      VOLUME_LANDMARKS["Rear Delts"].mev,
+    );
+    expect(setBudgetTotalForMuscle(plan, "Triceps")).toBeGreaterThanOrEqual(5);
+
+    for (const muscle of ["Side Delts", "Rear Delts", "Triceps"] as const) {
+      expect(setBudgetTotalForMuscle(plan, muscle)).toBeLessThanOrEqual(
+        VOLUME_LANDMARKS[muscle].mav,
+      );
+    }
+    for (const planWeek of plan.weeks) {
+      for (const planSlot of planWeek.slots) {
+        for (const planLane of planSlot.lanes) {
+          expect(planLane.setBudget.preferred).toBeLessThanOrEqual(4);
+        }
+      }
+    }
+    expect(lane(plan, "upper_a", "chest_anchor")).toMatchObject({
+      setBudget: { min: 3, preferred: 4, max: 4 },
+    });
+    expect(lane(plan, "upper_b", "vertical_pull_anchor")).toMatchObject({
+      setBudget: { min: 3, preferred: 3, max: 4 },
+    });
+  });
+
+  it("activates bounded Triceps support-floor top-up without broad optional volume", () => {
     const plan = intent();
 
     expect(lane(plan, "upper_b", "optional_triceps_if_under_target")).toMatchObject({
       classLaneKind: "optional_recoverable_lane",
       optionalMuscles: ["Triceps"],
       setBudget: {
-        min: 0,
-        preferred: 0,
-        max: 0,
+        min: 2,
+        preferred: 2,
+        max: 2,
         basis: "optional_activation_required",
       },
       optionalActivation: {
         type: "activate_only_if_weekly_target_below_range",
-        weeklyFloorSets: 4,
+        weeklyFloorSets: 6,
       },
     });
     expect(lane(plan, "lower_b", "optional_glute_core_if_recoverable")).toMatchObject(
@@ -361,9 +408,9 @@ describe("buildV2SetDistributionIntent", () => {
       0,
     );
 
-    expect(accumulationTotal).toBe(58);
-    expect(accumulationTotal).toBeGreaterThanOrEqual(56);
-    expect(accumulationTotal).toBeLessThanOrEqual(60);
+    expect(accumulationTotal).toBe(64);
+    expect(accumulationTotal).toBeGreaterThanOrEqual(60);
+    expect(accumulationTotal).toBeLessThanOrEqual(64);
   });
 
   it("prevents default 5-set stacking and stays within slot capacity", () => {

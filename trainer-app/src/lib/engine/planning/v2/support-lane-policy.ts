@@ -138,7 +138,7 @@ const SUPPORT_LANE_SPECS: SupportLanePolicySpec[] = [
     muscle: "Triceps",
     owningSlotId: "upper_a",
     owningLaneId: "triceps",
-    directFloorMin: 2,
+    directFloorMin: 3,
     preferredDirectSets: { min: 2, preferred: 3, max: 3 },
     collateralCreditLimit: {
       maxWeeklyEffectiveSetsCreditable: 2,
@@ -150,7 +150,7 @@ const SUPPORT_LANE_SPECS: SupportLanePolicySpec[] = [
       slotId: "upper_b",
       laneId: "optional_triceps_if_under_target",
       required: false,
-      weeklySupportFloor: 4,
+      weeklySupportFloor: 6,
       requiresDirectFloorAttemptedFirst: true,
       requiresReasonableCollateralCreditedFirst: true,
       requiresRecoverability: true,
@@ -168,8 +168,8 @@ const SUPPORT_LANE_SPECS: SupportLanePolicySpec[] = [
     muscle: "Side Delts",
     owningSlotId: "upper_a",
     owningLaneId: "side_delt_isolation",
-    directFloorMin: 2,
-    preferredDirectSets: { min: 2, preferred: 2, max: 2 },
+    directFloorMin: 4,
+    preferredDirectSets: { min: 4, preferred: 4, max: 4 },
     collateralCreditLimit: {
       maxWeeklyEffectiveSetsCreditable: 1,
       collateralSources: ["ohp", "vertical_press"],
@@ -190,7 +190,7 @@ const SUPPORT_LANE_SPECS: SupportLanePolicySpec[] = [
     muscle: "Side Delts",
     owningSlotId: "upper_b",
     owningLaneId: "side_delt_isolation",
-    directFloorMin: 3,
+    directFloorMin: 4,
     preferredDirectSets: { min: 3, preferred: 4, max: 4 },
     collateralCreditLimit: {
       maxWeeklyEffectiveSetsCreditable: 1,
@@ -212,8 +212,8 @@ const SUPPORT_LANE_SPECS: SupportLanePolicySpec[] = [
     muscle: "Rear Delts",
     owningSlotId: "upper_a",
     owningLaneId: "rear_delt",
-    directFloorMin: 2,
-    preferredDirectSets: { min: 2, preferred: 2, max: 2 },
+    directFloorMin: 4,
+    preferredDirectSets: { min: 4, preferred: 4, max: 4 },
     collateralCreditLimit: {
       maxWeeklyEffectiveSetsCreditable: 1,
       collateralSources: ["row", "horizontal_pull", "vertical_pull"],

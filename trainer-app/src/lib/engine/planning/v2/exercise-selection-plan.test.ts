@@ -105,7 +105,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
   it("represents required lanes and capacity sourced from SelectionCapacityPlan", () => {
     expect(slot(2, "upper_a")).toMatchObject({
       maxExerciseCount: 6,
-      targetSessionSets: { min: 15, preferred: 16, max: 18 },
+      targetSessionSets: { min: 15, preferred: 20, max: 20 },
     });
     expect(lane(2, "upper_a", "chest_anchor")).toMatchObject({
       requirement: "required",
@@ -131,7 +131,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
       role: "optional",
       classLaneKind: "optional_recoverable_lane",
       optionalMuscles: ["Triceps"],
-      setBudget: { min: 0, preferred: 0, max: 0 },
+      setBudget: { min: 2, preferred: 2, max: 2 },
       setBudgetBasis: "optional_activation_required",
       optionalActivation: {
         type: "activate_only_if_weekly_target_below_range",
@@ -158,7 +158,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
     expect(lane(1, "upper_a", "triceps")).toMatchObject({
       directFloor: {
         muscle: "Triceps",
-        minDirectSets: 2,
+        minDirectSets: 3,
         collateralCanSatisfy: false,
         requiredExerciseClasses: ["triceps_isolation", "pressdown"],
       },
@@ -166,7 +166,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
     expect(lane(1, "upper_b", "side_delt_isolation")).toMatchObject({
       directFloor: {
         muscle: "Side Delts",
-        minDirectSets: 3,
+        minDirectSets: 4,
         collateralCanSatisfy: false,
         requiredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
       },

@@ -163,14 +163,14 @@ describe("buildV2AcceptedPlannerIntentDto", () => {
       acceptableExerciseClasses: ["triceps_isolation", "pressdown"],
       preferredExerciseClasses: ["triceps_isolation", "pressdown"],
       setBudget: {
-        min: 2,
+        min: 3,
         preferred: 3,
         max: 3,
         basis: "support_direct_floor",
       },
       supportDirectFloor: {
         muscle: "Triceps",
-        minDirectSets: 2,
+        minDirectSets: 3,
         requiredExerciseClasses: ["triceps_isolation", "pressdown"],
         collateralCanSatisfy: false,
       },
@@ -199,7 +199,7 @@ describe("buildV2AcceptedPlannerIntentDto", () => {
       requirement: "conditional_optional",
       optionalActivationPolicy: {
         type: "activate_only_if_weekly_target_below_range",
-        weeklyFloorSets: 4,
+        weeklyFloorSets: 6,
         requiresSlotExerciseHeadroom: true,
         requiresCleanAlternative: true,
         requiresRecoverability: true,
@@ -216,7 +216,7 @@ describe("buildV2AcceptedPlannerIntentDto", () => {
     expect(dto.muscleTargets.find((row) => row.muscle === "Chest")).toMatchObject({
       targetTier: "A_PRIMARY",
       role: "primary",
-      setRange: { min: 8, preferred: 9, max: 11 },
+      setRange: { min: 7, preferred: 8, max: 10 },
       exposureCount: 2,
     });
     expect(dto.weekPolicies[3]).toMatchObject({

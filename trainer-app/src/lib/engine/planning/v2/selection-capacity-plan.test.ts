@@ -127,7 +127,7 @@ describe("buildV2SelectionCapacityPlan", () => {
       role: "optional",
       optionalActivation: {
         type: "activate_only_if_weekly_target_below_range",
-        weeklyFloorSets: 4,
+        weeklyFloorSets: 6,
         requiresSlotExerciseHeadroom: true,
         requiresCleanAlternative: true,
         requiresRecoverability: true,
@@ -152,7 +152,7 @@ describe("buildV2SelectionCapacityPlan", () => {
       },
     });
     expect(lane(2, "upper_a", "rear_delt")).toMatchObject({
-      setBudget: { min: 2, preferred: 2, max: 2 },
+      setBudget: { min: 4, preferred: 4, max: 4 },
       perExerciseCap: {
         maxSetsWithoutJustification: 4,
         maxDirectExercises: 1,
@@ -166,7 +166,7 @@ describe("buildV2SelectionCapacityPlan", () => {
       slotId: "upper_b",
       slotIndex: 2,
       maxExerciseCount: 6,
-      targetSessionSets: { min: 15, preferred: 18, max: 21 },
+      targetSessionSets: { min: 15, preferred: 20, max: 21 },
     });
     expect(slot(2, "lower_b")).toMatchObject({
       slotId: "lower_b",

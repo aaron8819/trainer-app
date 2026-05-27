@@ -194,12 +194,12 @@ function supportLaneIndex(
 
 function optionalActivationIndex(
   policy: V2SupportLanePolicy,
-): Map<string, OptionalActivationRule> {
-  const index = new Map<string, OptionalActivationRule>();
+): Map<string, SupportLane> {
+  const index = new Map<string, SupportLane>();
   for (const row of policy.supportLanes) {
     const rule = row.optionalActivationRule;
     if (rule.type === "conditional_under_support_floor") {
-      index.set(laneKey(rule.slotId, rule.laneId), rule);
+      index.set(laneKey(rule.slotId, rule.laneId), row);
     }
   }
   return index;
@@ -395,6 +395,7 @@ function buildSetBudget(input: {
   slotId: V2SetDistributionIntentSlotId;
   lane: ClassLane;
   directSupportPolicy: SupportLane | undefined;
+  optionalActivationPolicy: SupportLane | undefined;
   phase: V2SetDistributionIntentPhase;
 }): IntentLane["setBudget"] {
   if (isManagedCollateralLane(input.lane)) {
@@ -407,6 +408,27 @@ function buildSetBudget(input: {
     };
   }
   if (isOptionalLane(input.lane)) {
+    const activationPolicy = input.optionalActivationPolicy;
+    const rule = activationPolicy?.optionalActivationRule;
+    if (
+      input.phase !== "deload" &&
+      activationPolicy &&
+      rule?.type === "conditional_under_support_floor"
+    ) {
+      const preferred = Math.min(
+        2,
+        Math.max(
+          0,
+          rule.weeklySupportFloor - activationPolicy.preferredDirectSets.preferred,
+        ),
+      );
+      return {
+        min: preferred,
+        preferred,
+        max: preferred,
+        basis: "optional_activation_required",
+      };
+    }
     return {
       ...ZERO_SET_RANGE,
       basis:
@@ -545,11 +567,11 @@ function buildLane(input: {
   slotId: V2SetDistributionIntentSlotId;
   lane: ClassLane;
   directSupportPolicy: SupportLane | undefined;
-  optionalActivationRule: OptionalActivationRule | undefined;
+  optionalActivationPolicy: SupportLane | undefined;
   phase: V2SetDistributionIntentPhase;
 }): IntentLane {
   const optionalActivation = optionalActivationForLane(
-    input.optionalActivationRule,
+    input.optionalActivationPolicy?.optionalActivationRule,
   );
   return {
     laneId: input.lane.laneId,
@@ -572,6 +594,7 @@ function buildLane(input: {
       slotId: input.slotId,
       lane: input.lane,
       directSupportPolicy: input.directSupportPolicy,
+      optionalActivationPolicy: input.optionalActivationPolicy,
       phase: input.phase,
     }),
     ...(input.phase !== "deload" && input.directSupportPolicy
@@ -673,7 +696,7 @@ export function buildV2SetDistributionIntent(
   input: V2SetDistributionIntentInput,
 ): V2SetDistributionIntent {
   const directSupportByLane = supportLaneIndex(input.v2SupportLanePolicy);
-  const optionalActivationByLane = optionalActivationIndex(
+  const optionalActivationPolicyByLane = optionalActivationIndex(
     input.v2SupportLanePolicy,
   );
   const allocationBySlot = allocationSlotIndex(input.slotDemandAllocationByWeek);
@@ -692,7 +715,7 @@ export function buildV2SetDistributionIntent(
           directSupportPolicy: directSupportByLane.get(
             laneKey(slot.slotId, lane.laneId),
           ),
-          optionalActivationRule: optionalActivationByLane.get(
+          optionalActivationPolicy: optionalActivationPolicyByLane.get(
             laneKey(slot.slotId, lane.laneId),
           ),
           phase,

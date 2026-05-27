@@ -4502,6 +4502,51 @@ function v2LanePrimaryTargetsMet(input: {
   });
 }
 
+function v2LaneTargetDeliveryDiagnostics(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  lane: V2Lane | V2Slot["lanes"][number];
+}): string[] {
+  if (!input.noRepair || !isChestSecondExposureV2Lane(input.lane)) {
+    return [];
+  }
+  const weeklyTotals = sumSlotStimulusByMuscle(input.noRepair.finalSlotPlan);
+  const demandByMuscle = getNoRepairDemandByMuscle(input.noRepair);
+  const weeklyTotalsByNormalizedMuscle = new Map(
+    Array.from(weeklyTotals.entries()).map(([muscle, sets]) => [
+      muscle.trim().toLowerCase(),
+      sets,
+    ]),
+  );
+  const demandByNormalizedMuscle = new Map(
+    Array.from(demandByMuscle.entries()).map(([muscle, demand]) => [
+      muscle.trim().toLowerCase(),
+      demand,
+    ]),
+  );
+  const diagnostics: string[] = [];
+  for (const muscle of input.lane.primaryMuscles) {
+    const normalizedMuscle = muscle.trim().toLowerCase();
+    const demand =
+      demandByMuscle.get(muscle) ??
+      demandByNormalizedMuscle.get(normalizedMuscle);
+    const delivered =
+      weeklyTotals.get(muscle) ??
+      weeklyTotalsByNormalizedMuscle.get(normalizedMuscle) ??
+      0;
+    if (demand?.minEffectiveSets != null && delivered < demand.minEffectiveSets) {
+      diagnostics.push("target_delivery:below_min");
+      continue;
+    }
+    if (
+      demand?.preferredEffectiveSets != null &&
+      delivered < demand.preferredEffectiveSets
+    ) {
+      diagnostics.push("target_delivery:below_preferred");
+    }
+  }
+  return uniqueSorted(diagnostics);
+}
+
 function v2LaneHasPrimaryHardTarget(input: {
   noRepair: PlanningRealityDiagnostic;
   lane: V2Lane | V2Slot["lanes"][number];
@@ -5346,13 +5391,17 @@ function strictChestSecondExposureConcentrationDiagnostics(input: {
       Array.from(exerciseNames).some((name) => normalized.includes(name))
     );
   });
-  if (!hasDirectShareWarning) {
-    return [];
-  }
   const distinctness = summarizeChestSecondExposureDistinctness({
     noRepair: input.noRepair,
     secondExposureExercises: input.exercises,
   });
+  if (
+    !hasDirectShareWarning &&
+    (!distinctness.hasSecondExposure ||
+      (distinctness.exerciseDistinct && distinctness.classDistinct))
+  ) {
+    return [];
+  }
   const targetMet = v2LanePrimaryTargetsMetWithDirectEvidence({
     noRepair: input.noRepair,
     lane: input.lane,
@@ -5410,6 +5459,7 @@ function collectV2LaneDiagnostics(input: {
   });
   const diagnostics: string[] = [
     ...input.setPolicyDiagnostics,
+    ...v2LaneTargetDeliveryDiagnostics({ noRepair, lane: input.lane }),
     ...(topDownLane
       ? [
           `target_status:${topDownLane.currentStatus}`,
@@ -5452,6 +5502,10 @@ function collectV2LaneDiagnostics(input: {
         lane: input.lane,
         noRepair,
       });
+    const targetDeliveryDiagnostics = v2LaneTargetDeliveryDiagnostics({
+      noRepair,
+      lane: input.lane,
+    });
     const explainedConcentrationDiagnostics =
       chestSecondExposureDiagnostics.length > 0
         ? chestSecondExposureDiagnostics
@@ -5469,6 +5523,7 @@ function collectV2LaneDiagnostics(input: {
         ? cleanChestSecondExposureReadout
           ? [
               ...input.setPolicyDiagnostics,
+              ...targetDeliveryDiagnostics,
               ...explainedConcentrationDiagnostics,
               ...bicepsAddenda,
             ]
@@ -5477,10 +5532,15 @@ function collectV2LaneDiagnostics(input: {
                 (row) => row !== "setPolicy:in_budget",
               ),
               "setPolicy:quality_warning",
+              ...targetDeliveryDiagnostics,
               ...explainedConcentrationDiagnostics,
               ...bicepsAddenda,
             ]
-        : [...input.setPolicyDiagnostics, ...bicepsAddenda];
+        : [
+            ...input.setPolicyDiagnostics,
+            ...targetDeliveryDiagnostics,
+            ...bicepsAddenda,
+          ];
     return compactV2LaneDiagnostics(
       labelSelectionFeasibilityPressureDiagnostics(
         relabelStaleCalvesShortfallDiagnostics({
@@ -5493,6 +5553,8 @@ function collectV2LaneDiagnostics(input: {
       ),
       chestSecondExposureDiagnostics.length > 0
         ? 14
+        : targetDeliveryDiagnostics.length > 0
+          ? 8
         : explainedConcentrationDiagnostics.length > 0
           ? 8
           : 6,
@@ -5944,6 +6006,7 @@ function inferV2GapCause(input: {
   if (
     joined.includes("distribution_guard") ||
     joined.includes("target_delivery:below_min") ||
+    joined.includes("target_delivery:below_preferred") ||
     joined.includes("exposure:missing_direct_curl") ||
     joined.includes("set_count") ||
     joined.includes("setbudget:requires_justification") ||
@@ -5958,11 +6021,18 @@ function inferV2GapCause(input: {
 function hasV2TrueHardBlockerDiagnostic(diagnostics: string[]): boolean {
   const normalized = diagnostics.map((row) => row.toLowerCase());
   const joined = normalized.join("|");
+  const hasDirtyCollateralSolvingTarget =
+    normalized.includes("concentration:dirty_collateral") &&
+    (joined.includes("target_delivery:satisfied") ||
+      joined.includes("target_status:satisfied") ||
+      joined.includes("target_status:overdelivered") ||
+      joined.includes("solving_target"));
   return (
     normalized.includes("setpolicy:hard_blocker") ||
+    normalized.includes("target_delivery:below_min") ||
     normalized.includes("target_status:blocked") ||
     joined.includes("forbidden") ||
-    joined.includes("dirty") ||
+    hasDirtyCollateralSolvingTarget ||
     joined.includes("back extension") ||
     joined.includes("back_extension") ||
     joined.includes("deload_conflict") ||
@@ -6035,6 +6105,9 @@ function classifyV2LaneStatus(input: {
   const hasTargetUnderdeliveryDiagnostics = input.diagnostics.includes(
     "target_delivery:below_min",
   );
+  const hasTargetBelowPreferredDiagnostics = input.diagnostics.includes(
+    "target_delivery:below_preferred",
+  );
 
   if (!hasMeaningfulNoRepairEvidence && repairedCreatesLane) {
     return "repair_dependent";
@@ -6047,7 +6120,8 @@ function classifyV2LaneStatus(input: {
     (withinTarget || withinTolerance) &&
     input.setPolicyStatus === "in_budget" &&
     !hasQualityWarningDiagnostics &&
-    !hasTargetUnderdeliveryDiagnostics
+    !hasTargetUnderdeliveryDiagnostics &&
+    !hasTargetBelowPreferredDiagnostics
   ) {
     return "satisfied";
   }

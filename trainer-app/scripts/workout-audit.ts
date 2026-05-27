@@ -3890,8 +3890,11 @@ function buildWeeklySetSummaryTable(weeklyRetro: WeeklyRetroPayload): string[] {
 function formatWeeklyMuscleStatus(
   row: WeeklyRetroPayload["volumeTargeting"]["muscles"][number]
 ): string {
-  if (row.mav > 0 && row.actualEffectiveSets >= row.mav) {
-    return "at_or_over_mav";
+  if (row.mav > 0 && row.actualEffectiveSets > row.mav) {
+    return "over_cap";
+  }
+  if (row.mav > 0 && row.actualEffectiveSets >= row.mav * 0.9) {
+    return "near_cap";
   }
   if (row.mev <= 0) {
     return "no_mev_floor";
@@ -3906,12 +3909,12 @@ function formatWeeklyMuscleStatus(
     return "at_mev";
   }
   if (row.actualEffectiveSets < row.weeklyTarget) {
-    return "above_mev_under_target";
+    return "below_preferred";
   }
   if (row.actualEffectiveSets === row.weeklyTarget) {
-    return "on_target";
+    return "preferred_reached";
   }
-  return "over_target_below_mav";
+  return "productive_range";
 }
 
 function formatCompactSetGap(value: number): string {
@@ -3923,16 +3926,19 @@ function formatWeeklyMuscleNote(
 ): string {
   const status = formatWeeklyMuscleStatus(row);
   if (status === "below_mev") {
-    return `missed by ${formatCompactSetGap(row.deltaToMev)}`;
+    return `floor gap ${formatCompactSetGap(row.deltaToMev)}`;
   }
   if (status === "at_mev") {
-    return "thin margin";
+    return "floor reached; thin margin";
   }
-  if (status === "above_mev_under_target") {
-    return "fine";
+  if (status === "below_preferred") {
+    return "floor reached; below preferred";
   }
-  if (status === "at_or_over_mav") {
-    return row.actualEffectiveSets > row.mav ? "over MAV" : "thin margin";
+  if (status === "near_cap") {
+    return "near MAV cap";
+  }
+  if (status === "over_cap") {
+    return "over MAV";
   }
   if (status === "no_mev_floor") {
     return "no MEV floor";
@@ -3978,14 +3984,35 @@ export function buildWeeklyRetroOperatorSummary(input: {
     return null;
   }
 
-  const underTargetRows = weeklyRetro.volumeTargeting.muscles
-    .filter(
-      (row) => row.status === "below_mev" || row.status === "under_target_only"
-    )
-    .sort((left, right) => left.deltaToTarget - right.deltaToTarget)
-    .slice(0, 4)
-    .map((row) => `${row.muscle} (${formatSignedSetDelta(row.deltaToTarget)})`)
-    .join(", ");
+  const formatRows = (
+    rows: WeeklyRetroPayload["volumeTargeting"]["muscles"],
+    deltaSelector: (row: WeeklyRetroPayload["volumeTargeting"]["muscles"][number]) => number
+  ): string =>
+    rows
+      .slice()
+      .sort((left, right) => deltaSelector(left) - deltaSelector(right))
+      .slice(0, 4)
+      .map((row) => `${row.muscle} (${formatSignedSetDelta(deltaSelector(row))})`)
+      .join(", ") || "none";
+  const belowMevRows = weeklyRetro.volumeTargeting.muscles.filter(
+    (row) => row.status === "below_mev"
+  );
+  const belowPreferredRows = weeklyRetro.volumeTargeting.muscles.filter(
+    (row) => row.status === "under_target_only"
+  );
+  const nearCapRows = weeklyRetro.volumeTargeting.muscles.filter(
+    (row) =>
+      row.mav > 0 &&
+      row.actualEffectiveSets <= row.mav &&
+      row.actualEffectiveSets >= row.mav * 0.9
+  );
+  const overCapRows = weeklyRetro.volumeTargeting.muscles.filter(
+    (row) => row.status === "over_mav"
+  );
+  const belowMevSummary = formatRows(belowMevRows, (row) => row.deltaToMev);
+  const belowPreferredSummary = formatRows(belowPreferredRows, (row) => row.deltaToTarget);
+  const nearCapSummary = formatRows(nearCapRows, (row) => row.deltaToMav);
+  const overCapSummary = formatRows(overCapRows, (row) => row.deltaToMav);
   const interventions =
     weeklyRetro.interventions
       .slice(0, 3)
@@ -4003,7 +4030,7 @@ export function buildWeeklyRetroOperatorSummary(input: {
     `[workout-audit:retro] load_calibration=${weeklyRetro.loadCalibration.status} comparable_sessions=${weeklyRetro.loadCalibration.comparableSessionCount} drift_sessions=${weeklyRetro.loadCalibration.driftSessionCount} legacy_limited=${weeklyRetro.loadCalibration.legacyLimitedSessionCount}`,
     `[workout-audit:retro] plan_adherence planned_completed=${planAdherence.plannedWorkCompletedPercent}% (${planAdherence.plannedWorkCompletedSets}/${planAdherence.plannedWorkTotalSets} sets) missed=${planAdherence.plannedWorkMissedSets} explained_additions=${formatSignedSetDelta(planAdherence.explainedAdditions.totalSets)} substitutions=${planAdherence.substitutions} unclassified=${planAdherence.unclassifiedDrift} engine_confidence=${planAdherence.engineConfidenceImpact}`,
     `[workout-audit:retro] explained_additions_by_intent=${explainedByIntent}`,
-    `[workout-audit:retro] under_target=${underTargetRows || "none"}`,
+    `[workout-audit:retro] volume below_mev=${belowMevSummary} below_preferred=${belowPreferredSummary} near_cap=${nearCapSummary} over_cap=${overCapSummary}`,
     `[workout-audit:retro] interventions=${interventions}`,
     `[workout-audit:retro] recommendation=${recommendation}`,
   ];

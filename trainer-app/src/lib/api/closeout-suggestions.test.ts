@@ -265,21 +265,16 @@ describe("getCloseoutSuggestions", () => {
     );
   });
 
-  it("ranks high deficits first and returns preview-backed closeout suggestions", async () => {
+  it("ranks MEV-floor gaps first and returns preview-backed closeout suggestions", async () => {
     const suggestions = await getCloseoutSuggestions({
       workoutId: "workout-closeout",
       userId: "user-1",
     });
 
-    expect(suggestions.map((suggestion) => suggestion.muscle)).toEqual([
-      "Chest",
-      "Rear Delts",
-      "Biceps",
-    ]);
+    expect(suggestions.map((suggestion) => suggestion.muscle)).toEqual(["Chest", "Rear Delts"]);
     expect(suggestions.map((suggestion) => suggestion.exerciseId)).toEqual([
       "cable-fly",
       "rear-delt-fly",
-      "db-curl",
     ]);
     expect(suggestions).toEqual(
       expect.arrayContaining([
@@ -288,12 +283,16 @@ describe("getCloseoutSuggestions", () => {
           sets: 2,
           reps: "10-14",
           suggestedSets: 2,
-          rationale: expect.stringContaining("High-priority closeout"),
+          rationale: expect.stringContaining("MEV-floor closeout"),
         }),
       ])
     );
+    expect(suggestions.map((suggestion) => suggestion.rationale).join(" ")).not.toMatch(
+      /against target|required|must/i
+    );
     expect(suggestions.find((suggestion) => suggestion.muscle === "Triceps")).toBeUndefined();
-    expect(mocks.buildRuntimeAddedExercisePreview).toHaveBeenCalledTimes(3);
+    expect(suggestions.find((suggestion) => suggestion.muscle === "Biceps")).toBeUndefined();
+    expect(mocks.buildRuntimeAddedExercisePreview).toHaveBeenCalledTimes(2);
   });
 
   it("subtracts existing closeout fill and filters recent or high-fatigue candidates", async () => {
@@ -421,7 +420,7 @@ describe("getCloseoutSuggestions", () => {
     expect(suggestions.find((suggestion) => suggestion.exerciseId === "curl")).toBeUndefined();
   });
 
-  it("returns an empty list when no qualifying deficits remain", async () => {
+  it("returns an empty list when only a preferred-target gap remains", async () => {
     mocks.loadProjectedWeekVolumeReport.mockResolvedValue({
       currentWeek: {
         mesocycleId: "meso-1",

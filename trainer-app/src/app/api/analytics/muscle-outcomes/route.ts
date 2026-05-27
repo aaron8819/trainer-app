@@ -20,11 +20,11 @@ export async function GET(request: Request) {
       review: null,
       semantics: {
         target:
-          "Target sets come from canonical mesocycle lifecycle weekly volume targets for the active week.",
+          "Preferred target sets come from canonical mesocycle lifecycle weekly volume targets for the active week.",
         actual:
           "Actual sets come from canonical weighted effective stimulus across performed workouts only.",
         status:
-          "Outcome states compare actual weighted stimulus against the week target using conservative percent-delta thresholds.",
+          "Outcome states are zone-aware: below MEV is a floor issue, above MEV but below preferred is informational, and MAV/cap rows are caution signals.",
       },
     });
   }
@@ -33,11 +33,11 @@ export async function GET(request: Request) {
     review,
     semantics: {
       target:
-        "Target sets come from canonical mesocycle lifecycle weekly volume targets for the active week.",
+        "Preferred target sets come from canonical mesocycle lifecycle weekly volume targets for the active week.",
       actual:
         "Actual sets come from canonical weighted effective stimulus across performed workouts only.",
       status:
-        "Outcome states compare actual weighted stimulus against the week target using conservative percent-delta thresholds.",
+        "Outcome states are zone-aware: below MEV is a floor issue, above MEV but below preferred is informational, and MAV/cap rows are caution signals.",
     },
   });
 }

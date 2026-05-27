@@ -963,6 +963,14 @@ export async function buildWeeklyRetroAuditPayload(input: {
   const overMav = volumeRows
     .filter((row) => row.status === "over_mav")
     .map((row) => row.muscle);
+  const nearMav = volumeRows
+    .filter(
+      (row) =>
+        row.mav > 0 &&
+        row.actualEffectiveSets <= row.mav &&
+        row.actualEffectiveSets >= row.mav * 0.9
+    )
+    .map((row) => row.muscle);
   const overTargetOnly = volumeRows
     .filter((row) => row.status === "over_target_only")
     .map((row) => row.muscle);
@@ -1022,11 +1030,13 @@ export async function buildWeeklyRetroAuditPayload(input: {
   }
   if (underTargetOnly.length > 0) {
     executiveHighlights.push(
-      `${underTargetOnly.length} muscle(s) finished under target but above MEV.`
+      `${underTargetOnly.length} muscle(s) finished below preferred target with the MEV floor reached.`
     );
   }
   if (overMav.length > 0) {
     executiveHighlights.push(`${overMav.length} muscle(s) exceeded MAV.`);
+  } else if (nearMav.length > 0) {
+    executiveHighlights.push(`${nearMav.length} muscle(s) finished near the MAV cap.`);
   }
   if (slotIdentityIssueCount > 0) {
     executiveHighlights.push(
@@ -1191,14 +1201,14 @@ export async function buildWeeklyRetroAuditPayload(input: {
     });
   }
 
-  if (belowMev.length > 0 || underTargetOnly.length > 0) {
+  if (belowMev.length > 0) {
     interventions.push({
       priority: "medium",
       kind: "volume_deficit",
-      summary: "Review under-target muscles against actual top contributors and session mix.",
+      summary: "Review below-MEV floor misses against actual top contributors and session mix.",
       evidence: [
         `Below MEV: ${belowMev.join(", ") || "none"}`,
-        `Under target only: ${underTargetOnly.join(", ") || "none"}`,
+        `Below preferred only: ${underTargetOnly.join(", ") || "none"}`,
       ],
     });
   }
@@ -1240,7 +1250,7 @@ export async function buildWeeklyRetroAuditPayload(input: {
         planAdherence.engineConfidenceImpact === "medium" ||
         legacyLimitedSessionCount > 0 ||
         belowMev.length > 0 ||
-        underTargetOnly.length > 0 ||
+        nearMav.length > 0 ||
         overMav.length > 0 ||
         slotIdentityIssueCount > 0
           ? "attention_required"
@@ -1252,7 +1262,7 @@ export async function buildWeeklyRetroAuditPayload(input: {
       progressionExcludedCount: historicalWeek.summary.progressionExcludedCount,
       driftSessionCount: driftSessions.length,
       belowMevCount: belowMev.length,
-      underTargetCount: belowMev.length + underTargetOnly.length,
+      underTargetCount: underTargetOnly.length,
       overMavCount: overMav.length,
       slotIdentityIssueCount,
       highlights: executiveHighlights,
@@ -1295,9 +1305,8 @@ export async function buildWeeklyRetroAuditPayload(input: {
     volumeTargeting: {
       status:
         belowMev.length > 0 ||
-        underTargetOnly.length > 0 ||
-        overMav.length > 0 ||
-        overTargetOnly.length > 0
+        nearMav.length > 0 ||
+        overMav.length > 0
           ? "attention_required"
           : "within_expected_band",
       belowMev,

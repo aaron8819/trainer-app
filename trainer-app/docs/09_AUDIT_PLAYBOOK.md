@@ -622,7 +622,7 @@ Interpretation rules:
 - `decisionSummary` separates `trainability`, `plannerMaterializerQuality`, and `repairBurden`; a trainable candidate can still carry planner/materializer quality warnings
 - `watchItems` are not blockers; they are risks to monitor through pre-session checks when a candidate is otherwise trainable
 - `completedBlockEvidence` summarizes read-only weekly-retro evidence from the completed accumulation block, including MEV fragility, runtime add-ons, load calibration drift, target-semantics noise, and optional gap-fill dependency risk; it separates evidence, hypothesis, acceptance implication, and required fix, still prints when no candidate exists, and does not force implementation unless the persisted candidate repeats a real failure
-- volume rows use the current target semantics: below MEV blocks, above MEV but below target is not a failure, target near MAV is a stretch/cap rather than a quota, and over MAV is a failure/warning
+- volume rows use the current target semantics: below MEV is the floor issue, above MEV but below target is informational, target near MAV is cap caution rather than a quota, and over MAV is a cap warning
 - `doNotFixNotes` explicitly lists readout states that should not trigger planner/materializer work by themselves, including below-target/above-MEV rows and diagnostic-preview failures before a candidate exists
 - this mode writes no DB rows, creates no workouts/logs/sessions, mutates no seed, and changes no planner/materializer/runtime/generation behavior
 
@@ -826,7 +826,7 @@ Escalate when:
 1. Run `weekly-retro`, or `npm run audit:week:retro -- --user-id <user-id> --week <week> --mesocycle-id <mesocycle-id>` for the common operator shortcut.
 2. Read the CLI summary first:
    - `load_calibration`
-   - `under_target`
+   - `volume below_mev=... below_preferred=... near_cap=... over_cap=...`
    - `interventions`
    - `recommendation`
 3. Open `weeklyRetro.executiveSummary` and confirm the artifact is scoped to the intended week and mesocycle.

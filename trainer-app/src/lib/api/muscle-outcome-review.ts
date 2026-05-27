@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import {
   getExposedVolumeLandmarkEntries,
   getMuscleTargetSemantics,
+  type VolumeLandmarks,
   type VolumeSoftTargetRange,
   type VolumeTargetKind,
 } from "@/lib/engine/volume-landmarks";
@@ -78,6 +79,7 @@ export function classifyMuscleOutcome(
   targetSets: number,
   actualEffectiveSets: number,
   options?: {
+    landmarks?: Pick<VolumeLandmarks, "mev" | "mav">;
     targetKind?: VolumeTargetKind;
     targetRange?: VolumeSoftTargetRange | null;
   }
@@ -105,6 +107,55 @@ export function classifyMuscleOutcome(
     return {
       delta: 0,
       percentDelta: 0,
+      status: "on_target",
+    };
+  }
+
+  const landmarks = options?.landmarks;
+  if (landmarks) {
+    const delta = roundToTenth(actualEffectiveSets - targetSets);
+    const percentDelta =
+      targetSets > 0
+        ? Number((delta / targetSets).toFixed(3))
+        : actualEffectiveSets > 0
+          ? 1
+          : 0;
+
+    if (actualEffectiveSets < landmarks.mev) {
+      return {
+        delta,
+        percentDelta,
+        status: "meaningfully_low",
+      };
+    }
+
+    if (landmarks.mav > 0 && actualEffectiveSets > landmarks.mav) {
+      return {
+        delta,
+        percentDelta,
+        status: "meaningfully_high",
+      };
+    }
+
+    if (landmarks.mav > 0 && actualEffectiveSets >= landmarks.mav * 0.9) {
+      return {
+        delta,
+        percentDelta,
+        status: "slightly_high",
+      };
+    }
+
+    if (targetSets > 0 && actualEffectiveSets < targetSets) {
+      return {
+        delta,
+        percentDelta,
+        status: "slightly_low",
+      };
+    }
+
+    return {
+      delta,
+      percentDelta,
       status: "on_target",
     };
   }
@@ -146,11 +197,13 @@ export function classifyMuscleOutcome(
 function buildMuscleOutcomeRow(
   muscle: string,
   targetSets: number,
+  landmarks: Pick<VolumeLandmarks, "mev" | "mav">,
   weeklyVolumeRow: WeeklyMuscleVolumeRow | undefined
 ): WeeklyMuscleOutcomeRow {
   const actualEffectiveSets = weeklyVolumeRow?.effectiveSets ?? 0;
   const targetSemantics = getMuscleTargetSemantics(muscle);
   const outcome = classifyMuscleOutcome(targetSets, actualEffectiveSets, {
+    landmarks,
     targetKind: targetSemantics.targetKind,
     targetRange: targetSemantics.softTargetRange,
   });
@@ -246,10 +299,10 @@ export async function loadWeeklyMuscleOutcome(
 
   const rows = sortOutcomeRows(
     getExposedVolumeLandmarkEntries()
-      .map(([muscle]) => {
+      .map(([muscle, landmarks]) => {
         const targetSets = getWeeklyVolumeTarget(activeMesocycle, muscle, currentWeek);
         const weeklyRow = weeklyVolume[muscle];
-        return buildMuscleOutcomeRow(muscle, targetSets, weeklyRow);
+        return buildMuscleOutcomeRow(muscle, targetSets, landmarks, weeklyRow);
       })
       .filter((row) => row.targetSets > 0 || row.actualEffectiveSets > 0)
   );

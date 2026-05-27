@@ -52,6 +52,33 @@ describe("classifyMuscleOutcome", () => {
       status: "meaningfully_high",
     });
   });
+
+  it("classifies hard-target outcomes by MEV floor, preferred target, and cap zones", () => {
+    const landmarks = { mev: 8, mav: 16 };
+
+    expect(classifyMuscleOutcome(12, 6, { landmarks })).toMatchObject({
+      delta: -6,
+      status: "meaningfully_low",
+    });
+
+    expect(classifyMuscleOutcome(12, 10, { landmarks })).toMatchObject({
+      delta: -2,
+      status: "slightly_low",
+    });
+
+    expect(classifyMuscleOutcome(12, 13, { landmarks })).toMatchObject({
+      delta: 1,
+      status: "on_target",
+    });
+
+    expect(classifyMuscleOutcome(12, 14.4, { landmarks })).toMatchObject({
+      status: "slightly_high",
+    });
+
+    expect(classifyMuscleOutcome(12, 17, { landmarks })).toMatchObject({
+      status: "meaningfully_high",
+    });
+  });
 });
 
 describe("loadWeeklyMuscleOutcome", () => {

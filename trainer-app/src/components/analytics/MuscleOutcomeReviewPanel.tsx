@@ -24,15 +24,15 @@ function formatPercentDelta(value: number): string {
 function formatStatusLabel(status: MuscleOutcomeStatus): string {
   switch (status) {
     case "on_target":
-      return "On target";
+      return "Within productive range";
     case "slightly_low":
-      return "Slightly low";
+      return "Below preferred";
     case "meaningfully_low":
-      return "Meaningfully low";
+      return "Below MEV";
     case "slightly_high":
-      return "Slightly high";
+      return "Near cap";
     case "meaningfully_high":
-      return "Meaningfully high";
+      return "Over cap";
   }
 }
 
@@ -41,13 +41,13 @@ function getStatusClasses(status: MuscleOutcomeStatus): string {
     case "on_target":
       return "bg-emerald-50 text-emerald-700";
     case "slightly_low":
-      return "bg-amber-50 text-amber-700";
+      return "bg-sky-50 text-sky-700";
     case "meaningfully_low":
       return "bg-rose-50 text-rose-700";
     case "slightly_high":
-      return "bg-sky-50 text-sky-700";
+      return "bg-amber-50 text-amber-700";
     case "meaningfully_high":
-      return "bg-indigo-50 text-indigo-700";
+      return "bg-rose-50 text-rose-700";
   }
 }
 
@@ -81,8 +81,9 @@ export function MuscleOutcomeReviewPanel() {
   return (
     <div className="space-y-4">
       <div className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">
-        Week {data.review.week} outcome review. Targets use saved lifecycle volume targets and
-        actuals use weighted effective stimulus from performed workouts only.
+        Week {data.review.week} outcome review. MEV is the actionable floor; preferred targets are
+        guidance, and MAV/cap rows are caution signals. Actuals use weighted effective stimulus
+        from performed workouts only.
       </div>
 
       <div className="overflow-x-auto">

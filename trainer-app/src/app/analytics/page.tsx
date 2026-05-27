@@ -75,8 +75,8 @@ export default function AnalyticsPage() {
               <div>
                 <h2 className="text-base font-semibold sm:text-lg">Muscle Outcome Review</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Compare each muscle&apos;s current-week target against actual weighted effective
-                  sets to see where volume landed relative to plan.
+                  Compare current-week weighted effective sets against the MEV floor, preferred
+                  target, and cap so productive below-preferred weeks stay informational.
                 </p>
                 <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 p-3.5 sm:mt-4 sm:p-4">
                   <MuscleOutcomeReviewPanel />

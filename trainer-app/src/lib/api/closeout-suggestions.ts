@@ -95,6 +95,7 @@ type RankedDeficit = {
   target: number;
   mev: number;
   deficit: number;
+  targetGap: number;
   priorityTier: 0 | 1;
 };
 
@@ -172,7 +173,8 @@ function buildRankedDeficits(input: {
       const actual = roundToTenth(input.actualByMuscle[row.muscle]?.effectiveSets ?? 0);
       const projected = roundToTenth(row.projectedFullWeekEffectiveSets);
       const target = roundToTenth(row.weeklyTarget);
-      const deficit = roundToTenth(Math.max(0, target - projected));
+      const deficit = roundToTenth(Math.max(0, row.mev - projected));
+      const targetGap = roundToTenth(Math.max(0, target - projected));
 
       return {
         muscle: row.muscle,
@@ -181,6 +183,7 @@ function buildRankedDeficits(input: {
         target,
         mev: row.mev,
         deficit,
+        targetGap,
         priorityTier: deficit >= HIGH_PRIORITY ? 0 : 1,
       } satisfies RankedDeficit;
     })
@@ -504,8 +507,14 @@ export async function getCloseoutSuggestions(input: {
     });
 
     const rationalePrefix =
-      deficit.priorityTier === 0 ? "High-priority closeout" : "Closeout top-up";
-    const rationale = `${rationalePrefix}: ${deficit.muscle} is projected ${deficit.projected}/${deficit.target} against target (${deficit.actual} actual, MEV ${deficit.mev}, deficit ${deficit.deficit}).`;
+      deficit.priorityTier === 0 ? "High-priority MEV-floor closeout" : "MEV-floor closeout";
+    const targetContext =
+      deficit.targetGap > 0 ? ` Preferred target gap is ${deficit.targetGap}.` : "";
+    const rationale = [
+      `${rationalePrefix}: ${deficit.muscle} is projected ${deficit.projected}/${deficit.mev} versus the MEV floor`,
+      `(${deficit.actual} actual, floor gap ${deficit.deficit}).${targetContext}`,
+      "Optional session-local work only.",
+    ].join(" ");
 
     suggestions.push({
       muscle: deficit.muscle,

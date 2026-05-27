@@ -5526,9 +5526,9 @@ describe("buildWeeklyRetroOperatorSummary", () => {
         "58 | 68 | 68 | 0 | 17 | 58/58",
         "Weekly Muscle Volume",
         "Muscle | Sets | MEV | Target | MAV | Status | Notes",
-        "Chest | 9 | 10 | 16 | 16 | below_mev | missed by 1",
-        "Triceps | 7.6 | 6 | 12 | 12 | above_mev_under_target | fine",
-        "Lats | 17 | 8 | 14 | 16 | at_or_over_mav | over MAV",
+        "Chest | 9 | 10 | 16 | 16 | below_mev | floor gap 1",
+        "Triceps | 7.6 | 6 | 12 | 12 | below_preferred | floor reached; below preferred",
+        "Lats | 17 | 8 | 14 | 16 | over_cap | over MAV",
       ])
     );
     expect(volumeRows).toEqual(beforeRows);
@@ -5668,7 +5668,7 @@ describe("buildWeeklyRetroOperatorSummary", () => {
       "[workout-audit:retro] load_calibration=attention_required comparable_sessions=2 drift_sessions=1 legacy_limited=1",
       "[workout-audit:retro] plan_adherence planned_completed=92% (46/50 sets) missed=4 explained_additions=+6.0 substitutions=1 unclassified=0 engine_confidence=low",
       "[workout-audit:retro] explained_additions_by_intent=opportunistic_extra:+2.0, target_gap_closure:+4.0",
-      "[workout-audit:retro] under_target=Chest (-4.0), Calves (-1.0)",
+      "[workout-audit:retro] volume below_mev=Chest (-2.0) below_preferred=Calves (-1.0) near_cap=none over_cap=none",
       "[workout-audit:retro] interventions=slot_identity, volume_deficit",
       "[workout-audit:retro] recommendation=Repair missing slot receipts.",
     ]);
@@ -6102,7 +6102,7 @@ describe("buildWeeklyRetroOperatorSummary", () => {
       "[workout-audit:retro] load_calibration=aligned comparable_sessions=3 drift_sessions=0 legacy_limited=0",
       "[workout-audit:retro] plan_adherence planned_completed=100% (45/45 sets) missed=0 explained_additions=0.0 substitutions=0 unclassified=0 engine_confidence=none",
       "[workout-audit:retro] explained_additions_by_intent=none",
-      "[workout-audit:retro] under_target=none",
+      "[workout-audit:retro] volume below_mev=none below_preferred=none near_cap=none over_cap=none",
       "[workout-audit:retro] interventions=none",
       "[workout-audit:retro] recommendation=no_further_action",
     ]);

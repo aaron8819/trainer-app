@@ -72,4 +72,17 @@ describe("AnalyticsPage", () => {
       "/templates"
     );
   });
+
+  it("frames outcome review around MEV, preferred targets, and caps", async () => {
+    render(<AnalyticsPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Volume" }));
+
+    expect(
+      screen.getByText(/MEV floor, preferred target, and cap/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/productive below-preferred weeks stay informational/i)
+    ).toBeInTheDocument();
+  });
 });

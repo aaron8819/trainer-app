@@ -321,7 +321,7 @@ describe("buildWeeklyRetroAuditPayload", () => {
       sessionCount: 3,
       driftSessionCount: 1,
       belowMevCount: 1,
-      underTargetCount: 1,
+      underTargetCount: 0,
       overMavCount: 1,
       slotIdentityIssueCount: 3,
     });
@@ -803,6 +803,9 @@ describe("buildWeeklyRetroAuditPayload", () => {
     expect(muscles).not.toContain("Abs");
     expect(payload.volumeTargeting.underTargetOnly).toContain("Core");
     expect(payload.volumeTargeting.underTargetOnly).not.toContain("Abs");
+    expect(payload.executiveSummary.underTargetCount).toBe(1);
+    expect(payload.volumeTargeting.status).toBe("within_expected_band");
+    expect(payload.interventions.map((entry) => entry.kind)).not.toContain("volume_deficit");
     expect(payload.volumeTargeting.muscles.find((row) => row.muscle === "Core")).toMatchObject({
       actualEffectiveSets: 2,
       weeklyTarget: 8,

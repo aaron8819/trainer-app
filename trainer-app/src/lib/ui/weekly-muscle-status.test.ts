@@ -121,9 +121,11 @@ describe("weekly muscle status", () => {
 
   it("formats primary and secondary Program volume labels", () => {
     expect(formatWeeklyMuscleStatusLabel("below_mev", { targetKind: "hard" })).toBe("Below MEV");
-    expect(formatWeeklyMuscleStatusLabel("near_target", { targetKind: "hard" })).toBe("On target");
-    expect(formatWeeklyMuscleStatusLabel("near_mrv", { targetKind: "hard" })).toBe("Slightly high");
-    expect(formatWeeklyMuscleStatusLabel("at_mrv", { targetKind: "hard" })).toBe("Meaningfully high");
+    expect(formatWeeklyMuscleStatusLabel("in_range", { targetKind: "hard" })).toBe("Productive zone");
+    expect(formatWeeklyMuscleStatusLabel("near_target", { targetKind: "hard" })).toBe("Below preferred target");
+    expect(formatWeeklyMuscleStatusLabel("on_target", { targetKind: "hard" })).toBe("Preferred target reached");
+    expect(formatWeeklyMuscleStatusLabel("near_mrv", { targetKind: "hard" })).toBe("Near cap");
+    expect(formatWeeklyMuscleStatusLabel("at_mrv", { targetKind: "hard" })).toBe("Over cap");
     expect(formatWeeklyMuscleStatusLabel("below_mev", { targetKind: "soft" })).toBe("Below soft range");
     expect(formatWeeklyMuscleStatusLabel("on_target", { targetKind: "soft" })).toBe("Within soft range");
     expect(formatWeeklyMuscleStatusLabel("near_mrv", { targetKind: "soft" })).toBe("Above soft range");

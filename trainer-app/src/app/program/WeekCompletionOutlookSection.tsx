@@ -41,11 +41,11 @@ function formatSummaryBadgeLabel(
     case "meaningfully_low":
       return "below MEV";
     case "slightly_low":
-      return "below target";
+      return "below preferred";
     case "on_target":
-      return "on target";
+      return "productive zone";
     case "slightly_high":
-      return "slightly high";
+      return "above preferred";
     case "meaningfully_high":
       return "watch high";
   }
@@ -58,7 +58,7 @@ function formatRowsHeading(selectedStatus: MuscleOutcomeStatus | null): string {
     return "Priority coaching notes";
   }
 
-  return `${formatSummaryBadgeLabel(selectedStatus, "selected")} primary targets`;
+    return `${formatSummaryBadgeLabel(selectedStatus, "selected")} primary targets`;
 }
 
 export function WeekCompletionOutlookSection({

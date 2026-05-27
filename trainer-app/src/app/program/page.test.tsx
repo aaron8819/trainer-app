@@ -62,7 +62,7 @@ function buildVolumeRow(input: {
     mav: 10,
     mrv: 14,
     weightedSetsLabel: `${input.effectiveSets} weighted`,
-    targetLabel: `${input.target} target`,
+    targetLabel: `Preferred target: ${input.target} weighted sets`,
     statusLabel: input.statusLabel,
     statusDescription: input.statusDescription,
     deltaLabel: input.deltaLabel,
@@ -80,7 +80,7 @@ const compactVolumeRows: VolumeRow[] = [
     dashboardGroup: "primary_driver",
     status: "below_mev",
     statusLabel: "Below MEV",
-    statusDescription: "4 weighted sets against 10 target.",
+    statusDescription: "4 weighted sets; below the MEV floor. Preferred target: 10.",
     effectiveSets: 4,
     target: 10,
     deltaLabel: "-6 sets",
@@ -89,8 +89,9 @@ const compactVolumeRows: VolumeRow[] = [
     muscle: "Lats",
     dashboardGroup: "primary_driver",
     status: "in_range",
-    statusLabel: "Below target",
-    statusDescription: "7 weighted sets against 12 target.",
+    statusLabel: "Productive zone",
+    statusDescription:
+      "Productive floor reached; below preferred target (7 of 12 weighted sets).",
     effectiveSets: 7,
     target: 12,
     deltaLabel: "-5 sets",
@@ -99,8 +100,8 @@ const compactVolumeRows: VolumeRow[] = [
     muscle: "Quads",
     dashboardGroup: "primary_driver",
     status: "at_mrv",
-    statusLabel: "At MRV",
-    statusDescription: "14 weighted sets against 10 target.",
+    statusLabel: "Over cap",
+    statusDescription: "14 weighted sets over the cap. Avoid adding more volume this week.",
     effectiveSets: 14,
     target: 10,
     deltaLabel: "+4 sets",
@@ -109,8 +110,8 @@ const compactVolumeRows: VolumeRow[] = [
     muscle: "Triceps",
     dashboardGroup: "primary_driver",
     status: "on_target",
-    statusLabel: "On target",
-    statusDescription: "8 weighted sets against 8 target.",
+    statusLabel: "Preferred target reached",
+    statusDescription: "Productive zone; preferred target reached (8 of 8 weighted sets).",
     effectiveSets: 8,
     target: 8,
     deltaLabel: "on target",
@@ -119,8 +120,9 @@ const compactVolumeRows: VolumeRow[] = [
     muscle: "Rear Delts",
     dashboardGroup: "support_driver",
     status: "near_mrv",
-    statusLabel: "Near MRV",
-    statusDescription: "12 weighted sets against 8 target.",
+    statusLabel: "Near cap",
+    statusDescription:
+      "12 weighted sets near the cap. Hold extra volume unless recovery is clearly strong.",
     effectiveSets: 12,
     target: 8,
     deltaLabel: "+4 sets",
@@ -129,8 +131,8 @@ const compactVolumeRows: VolumeRow[] = [
     muscle: "Biceps",
     dashboardGroup: "support_driver",
     status: "on_target",
-    statusLabel: "On target",
-    statusDescription: "8 weighted sets against 8 target.",
+    statusLabel: "Preferred target reached",
+    statusDescription: "Productive zone; preferred target reached (8 of 8 weighted sets).",
     effectiveSets: 8,
     target: 8,
     deltaLabel: "on target",
@@ -140,7 +142,7 @@ const compactVolumeRows: VolumeRow[] = [
     dashboardGroup: "secondary",
     status: "below_mev",
     statusLabel: "Below soft range",
-    statusDescription: "0 weighted sets against 4 target.",
+    statusDescription: "Current: below soft range. Non-blocking.",
     effectiveSets: 0,
     target: 4,
     deltaLabel: "-4 sets",
@@ -321,38 +323,34 @@ describe("ProgramPage", () => {
         badges: [
           {
             status: "meaningfully_low",
-            label: "meaningfully low",
+            label: "below MEV",
             count: 1,
-            activeDescription:
-              "Showing all projected muscles in the Meaningfully low bucket.",
+            activeDescription: "Showing projected muscles below the MEV floor.",
           },
           {
             status: "slightly_low",
-            label: "below target",
+            label: "below preferred",
             count: 1,
             activeDescription:
-              "Showing all projected muscles in the Below target bucket.",
+              "Showing projected muscles with the productive floor reached but below the preferred target.",
           },
           {
             status: "on_target",
-            label: "on target",
+            label: "productive zone",
             count: 1,
-            activeDescription:
-              "Showing all projected muscles in the On target bucket.",
+            activeDescription: "Showing projected muscles inside the productive zone.",
           },
           {
             status: "slightly_high",
-            label: "slightly high",
+            label: "above preferred",
             count: 0,
-            activeDescription:
-              "Showing all projected muscles in the Slightly high bucket.",
+            activeDescription: "Showing projected muscles above the preferred target.",
           },
           {
             status: "meaningfully_high",
-            label: "meaningfully high",
+            label: "watch high",
             count: 1,
-            activeDescription:
-              "Showing all projected muscles in the Meaningfully high bucket.",
+            activeDescription: "Showing projected muscles with high projected volume.",
           },
         ],
         rows: [
@@ -362,50 +360,52 @@ describe("ProgramPage", () => {
             dashboardGroup: "primary_driver",
             statusLabel: "Below MEV",
             statusDescription:
-              "8 projected is still below MEV after the planned week.",
+              "8 projected is still below the MEV floor after the planned week.",
             deltaLabel: "-4 sets",
-            comparisonLabel: "8 projected vs 12 target",
+            comparisonLabel: "8 projected vs 12 preferred target",
             badges: [],
           },
           {
             muscle: "Lats",
             status: "slightly_low",
             dashboardGroup: "primary_driver",
-            statusLabel: "Below target",
-            statusDescription: "10 projected vs 12 target; 6 completed so far.",
+            statusLabel: "Productive zone",
+            statusDescription:
+              "10 projected reaches the productive floor; below the 12 preferred target only. 6 completed so far.",
             deltaLabel: "-2 sets",
-            comparisonLabel: "10 projected vs 12 target",
+            comparisonLabel: "10 projected vs 12 preferred target",
             badges: [],
           },
           {
             muscle: "Rear Delts",
             status: "slightly_high",
             dashboardGroup: "primary_driver",
-            statusLabel: "Slightly high",
-            statusDescription: "7 projected vs 6 target; 4 completed so far.",
+            statusLabel: "Preferred target reached",
+            statusDescription:
+              "7 projected reaches the preferred target inside the productive zone; 4 completed so far.",
             deltaLabel: "+1 sets",
-            comparisonLabel: "7 projected vs 6 target",
+            comparisonLabel: "7 projected vs 6 preferred target",
             badges: [],
           },
           {
             muscle: "Quads",
             status: "meaningfully_high",
             dashboardGroup: "primary_driver",
-            statusLabel: "Meaningfully high",
-            statusDescription:
-              "15 projected vs 10 target; 12 completed so far.",
+            statusLabel: "Over cap",
+            statusDescription: "15 projected is over the cap; 12 completed so far.",
             deltaLabel: "+5 sets",
-            comparisonLabel: "15 projected vs 10 target",
+            comparisonLabel: "15 projected vs 10 preferred target",
             badges: [],
           },
           {
             muscle: "Biceps",
             status: "on_target",
             dashboardGroup: "primary_driver",
-            statusLabel: "On target",
-            statusDescription: "8 projected vs 8 target; 8 completed so far.",
+            statusLabel: "Preferred target reached",
+            statusDescription:
+              "8 projected reaches the preferred target inside the productive zone; 8 completed so far.",
             deltaLabel: "on target",
-            comparisonLabel: "8 projected vs 8 target",
+            comparisonLabel: "8 projected vs 8 preferred target",
             badges: [],
           },
         ],
@@ -416,20 +416,19 @@ describe("ProgramPage", () => {
             dashboardGroup: "primary_driver",
             statusLabel: "Below MEV",
             statusDescription:
-              "8 projected is still below MEV after the planned week.",
+              "8 projected is still below the MEV floor after the planned week.",
             deltaLabel: "-4 sets",
-            comparisonLabel: "8 projected vs 12 target",
+            comparisonLabel: "8 projected vs 12 preferred target",
             badges: [],
           },
           {
             muscle: "Quads",
             status: "meaningfully_high",
             dashboardGroup: "primary_driver",
-            statusLabel: "Meaningfully high",
-            statusDescription:
-              "15 projected vs 10 target; 12 completed so far.",
+            statusLabel: "Over cap",
+            statusDescription: "15 projected is over the cap; 12 completed so far.",
             deltaLabel: "+5 sets",
-            comparisonLabel: "15 projected vs 10 target",
+            comparisonLabel: "15 projected vs 10 preferred target",
             badges: [],
           },
         ],
@@ -509,23 +508,35 @@ describe("ProgramPage", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "4 primary/support targets need a quick check this week.",
+        "3 primary/support volume landmarks need a quick check this week.",
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Performed so far comes from logged work. Projected finish uses the remaining plan above. Planned target is the weekly target.",
+        "Performed so far comes from logged work. Projected finish uses the remaining plan above. Preferred targets guide the range; MEV and cap landmarks set the floor and ceiling.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("Primary 4")).toBeInTheDocument();
     expect(screen.getByText("Support 2")).toBeInTheDocument();
-    expect(screen.getByText("Watch list 2")).toBeInTheDocument();
-    expect(screen.getByText("On track 2")).toBeInTheDocument();
+    expect(screen.getByText("Watch list 1")).toBeInTheDocument();
+    expect(screen.getByText("On track 3")).toBeInTheDocument();
     expect(screen.getByText("Watch high 2")).toBeInTheDocument();
-    expect(screen.getByText("4 weighted sets against 10 target.")).toBeInTheDocument();
-    expect(screen.getByText("7 weighted sets against 12 target.")).toBeInTheDocument();
-    expect(screen.getByText("14 weighted sets against 10 target.")).toBeInTheDocument();
-    expect(screen.getByText("12 weighted sets against 8 target.")).toBeInTheDocument();
+    expect(
+      screen.getByText("4 weighted sets; below the MEV floor. Preferred target: 10."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "Productive floor reached; below preferred target (7 of 12 weighted sets).",
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("14 weighted sets over the cap. Avoid adding more volume this week."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "12 weighted sets near the cap. Hold extra volume unless recovery is clearly strong.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Triceps")).not.toBeInTheDocument();
     expect(screen.queryByText("Core")).not.toBeInTheDocument();
     expect(
@@ -538,7 +549,7 @@ describe("ProgramPage", () => {
     expect(screen.getByText("View breakdown")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Source labels: Performed so far, Projected finish, Historical completed week, Planned target.",
+        "Source labels: Performed so far, Projected finish, Historical completed week, Preferred target.",
       ),
     ).toBeInTheDocument();
     expect(
@@ -552,10 +563,10 @@ describe("ProgramPage", () => {
     expect(screen.getByText("Completed: performed logs so far")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "1 below MEV" })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "1 below target" }),
+      screen.getByRole("button", { name: "1 below preferred" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "1 on target" }),
+      screen.getByRole("button", { name: "1 productive zone" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "1 watch high" })).toBeInTheDocument();
     expect(
@@ -591,25 +602,25 @@ describe("ProgramPage", () => {
     expect(screen.getByText("Priority coaching notes")).toBeInTheDocument();
     expect(screen.getByText("All primary target details (5)")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "1 below target" }));
+    await user.click(screen.getByRole("button", { name: "1 below preferred" }));
 
     expect(
       screen.getByText(
-        "Showing below target primary targets.",
+        "Showing below preferred primary targets.",
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "below target primary targets" }),
+      screen.getByRole("heading", { name: "below preferred primary targets" }),
     ).toBeInTheDocument();
     expect(hasTextOutsideDetails("Lats", projectedSection)).toBe(true);
     expect(hasTextOutsideDetails("Chest", projectedSection)).toBe(false);
     expect(hasTextOutsideDetails("Quads", projectedSection)).toBe(false);
 
-    await user.click(screen.getByRole("button", { name: "1 below target" }));
+    await user.click(screen.getByRole("button", { name: "1 below preferred" }));
 
     expect(
       screen.queryByText(
-        "Showing below target primary targets.",
+        "Showing below preferred primary targets.",
       ),
     ).not.toBeInTheDocument();
     expect(hasTextOutsideDetails("Chest", projectedSection)).toBe(true);
@@ -663,7 +674,7 @@ describe("ProgramPage", () => {
               dashboardGroup: "primary_driver",
               status: "below_mev",
               statusLabel: "Below MEV",
-              statusDescription: "0 weighted sets against 10 target.",
+              statusDescription: "0 weighted sets; below the MEV floor. Preferred target: 10.",
               effectiveSets: 0,
               target: 10,
               deltaLabel: "-10 sets",
@@ -673,7 +684,7 @@ describe("ProgramPage", () => {
               dashboardGroup: "support_driver",
               status: "below_mev",
               statusLabel: "Below MEV",
-              statusDescription: "0 weighted sets against 8 target.",
+              statusDescription: "0 weighted sets; below the MEV floor. Preferred target: 8.",
               effectiveSets: 0,
               target: 8,
               deltaLabel: "-8 sets",
@@ -703,7 +714,7 @@ describe("ProgramPage", () => {
     expect(screen.getByText("Projected finish above")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Use Full details to inspect targets. The compact snapshot will call out truly actionable misses after performed volume starts landing.",
+        "Use Full details to inspect preferred targets. The compact snapshot will call out true floor or cap issues after performed volume starts landing.",
       ),
     ).toBeInTheDocument();
     expect(
@@ -711,7 +722,9 @@ describe("ProgramPage", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Watch list" })).not.toBeInTheDocument();
     expect(screen.queryByText("Watch list 2")).not.toBeInTheDocument();
-    expect(screen.queryByText("0 weighted sets against 10 target.")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("0 weighted sets; below the MEV floor. Preferred target: 10."),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("ProgramStatusCard:volumeOnly")).toBeInTheDocument();
   });
 

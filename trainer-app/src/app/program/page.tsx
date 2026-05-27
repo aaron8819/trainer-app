@@ -584,7 +584,7 @@ export default async function ProgramPage() {
                         Full weekly volume dashboard
                       </h2>
                       <p className="mt-1 max-w-2xl text-sm text-slate-600">
-                        Review prior weeks, the full target table, and
+                        Review prior weeks, the full landmark table, and
                         per-muscle breakdowns without leaving Program.
                       </p>
                     </div>
@@ -595,7 +595,7 @@ export default async function ProgramPage() {
                 </summary>
                 <p className="mt-4 text-xs font-medium text-slate-500">
                   Source labels: Performed so far, Projected finish,
-                  Historical completed week, Planned target.
+                  Historical completed week, Preferred target.
                 </p>
                 <div className="mt-3">
                   <ProgramStatusCard

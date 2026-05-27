@@ -52,12 +52,12 @@ export function formatTargetDisplayLabel(input: {
   targetRange?: VolumeSoftTargetRange | null;
 }): string {
   if (input.targetKind === "soft" && input.targetRange) {
-    return `Soft target: ${formatSetCount(input.targetRange.min)}-${formatSetCount(
+    return `Preferred range: ${formatSetCount(input.targetRange.min)}-${formatSetCount(
       input.targetRange.max
     )} weighted sets`;
   }
 
-  return `Target: ${formatWeightedSetsLabel(input.targetSets)}`;
+  return `Preferred target: ${formatWeightedSetsLabel(input.targetSets)}`;
 }
 
 export function formatTargetDeltaLabel(input: {

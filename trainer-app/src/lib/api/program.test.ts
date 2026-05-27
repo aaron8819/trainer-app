@@ -431,7 +431,7 @@ describe("loadProgramDashboardData", () => {
         targetRange: { min: 4, max: 6 },
         displayGroup: "secondary",
         target: 0,
-        targetLabel: "Soft target: 4-6 weighted sets",
+        targetLabel: "Preferred range: 4-6 weighted sets",
         statusLabel: "Below soft range",
         statusDescription: "Current: below soft range. Non-blocking.",
         directSets: 2,
@@ -442,7 +442,7 @@ describe("loadProgramDashboardData", () => {
         targetRange: { min: 3, max: 6 },
         displayGroup: "secondary",
         target: 0,
-        targetLabel: "Soft target: 3-6 weighted sets",
+        targetLabel: "Preferred range: 3-6 weighted sets",
         indirectSets: 2,
         effectiveSets: 0.6,
       });

@@ -37,6 +37,7 @@ import {
   formatWeeklyMuscleStatusLabel,
   getWeeklyMuscleDisplayGroup,
   getWeeklyMuscleStatus,
+  type WeeklyMuscleStatus,
   type WeeklyMuscleDisplayGroup,
 } from "@/lib/ui/weekly-muscle-status";
 import type {
@@ -329,24 +330,51 @@ function formatTargetLabel(input: {
   if (input.targetKind === "soft" && input.targetRange) {
     return `${formatSetCount(input.targetRange.min)}-${formatSetCount(
       input.targetRange.max
-    )} soft target`;
+    )} preferred range`;
   }
 
-  return `${formatSetCount(input.targetSets)} target`;
+  return `${formatSetCount(input.targetSets)} preferred target`;
 }
 
-function formatOutcomeStatusLabel(status: MuscleOutcomeStatus): string {
-  switch (status) {
-    case "meaningfully_low":
-      return "Meaningfully low";
-    case "slightly_low":
-      return "Below target";
+function formatProjectedHardStatusLabel(input: {
+  weeklyStatus: WeeklyMuscleStatus;
+  projectedSets: number;
+  mev: number;
+}): string {
+  switch (input.weeklyStatus) {
+    case "below_mev":
+      return "Below MEV";
+    case "in_range":
+      return input.projectedSets === input.mev ? "At MEV" : "Productive zone";
+    case "near_target":
+      return "Below preferred target";
     case "on_target":
-      return "On target";
-    case "slightly_high":
-      return "Slightly high";
-    case "meaningfully_high":
-      return "Meaningfully high";
+      return "Preferred target reached";
+    case "near_mrv":
+      return "Near cap";
+    case "at_mrv":
+      return "Over cap";
+  }
+}
+
+function formatProjectedHardStatusDescription(input: {
+  weeklyStatus: WeeklyMuscleStatus;
+  projectedLabel: string;
+  targetLabel: string;
+  completedLabel: string;
+}): string {
+  switch (input.weeklyStatus) {
+    case "below_mev":
+      return `${input.projectedLabel} is still below the MEV floor after the planned week.`;
+    case "in_range":
+    case "near_target":
+      return `${input.projectedLabel} reaches the productive floor; below the ${input.targetLabel} only. ${input.completedLabel} so far.`;
+    case "on_target":
+      return `${input.projectedLabel} reaches the preferred target inside the productive zone; ${input.completedLabel} so far.`;
+    case "near_mrv":
+      return `${input.projectedLabel} is near the cap; ${input.completedLabel} so far.`;
+    case "at_mrv":
+      return `${input.projectedLabel} is over the cap; ${input.completedLabel} so far.`;
   }
 }
 
@@ -354,33 +382,34 @@ function buildOutlookBadges(summary: ProgramOutcomeSummary): ProgramVolumeDispla
   return [
     {
       status: "meaningfully_low",
-      label: "meaningfully low",
+      label: "below MEV",
       count: summary.meaningfullyLow,
-      activeDescription: "Showing all projected muscles in the Meaningfully low bucket.",
+      activeDescription: "Showing projected muscles below the MEV floor.",
     },
     {
       status: "slightly_low",
-      label: "below target",
+      label: "below preferred",
       count: summary.slightlyLow,
-      activeDescription: "Showing all projected muscles in the Below target bucket.",
+      activeDescription:
+        "Showing projected muscles with the productive floor reached but below the preferred target.",
     },
     {
       status: "on_target",
-      label: "on target",
+      label: "productive zone",
       count: summary.onTarget,
-      activeDescription: "Showing all projected muscles in the On target bucket.",
+      activeDescription: "Showing projected muscles inside the productive zone.",
     },
     {
       status: "slightly_high",
-      label: "slightly high",
+      label: "above preferred",
       count: summary.slightlyHigh,
-      activeDescription: "Showing all projected muscles in the Slightly high bucket.",
+      activeDescription: "Showing projected muscles above the preferred target.",
     },
     {
       status: "meaningfully_high",
-      label: "meaningfully high",
+      label: "watch high",
       count: summary.meaningfullyHigh,
-      activeDescription: "Showing all projected muscles in the Meaningfully high bucket.",
+      activeDescription: "Showing projected muscles with high projected volume.",
     },
   ];
 }
@@ -426,6 +455,28 @@ function buildSoftTargetBadges(summary: ProgramSoftTargetSummary): ProgramVolume
   ];
 }
 
+function getProjectedOutlookRank(row: {
+  weeklyStatus: WeeklyMuscleStatus;
+  status: MuscleOutcomeStatus;
+}): number {
+  if (row.weeklyStatus === "below_mev") {
+    return 0;
+  }
+  if (row.weeklyStatus === "at_mrv" || row.weeklyStatus === "near_mrv") {
+    return 1;
+  }
+  if (row.status === "meaningfully_low") {
+    return 2;
+  }
+  if (row.status === "slightly_low") {
+    return 3;
+  }
+  if (row.status === "slightly_high" || row.status === "meaningfully_high") {
+    return 4;
+  }
+  return 5;
+}
+
 function buildProgramVolumeDisplayRow(input: {
   muscle: string;
   status: MuscleOutcomeStatus;
@@ -458,9 +509,13 @@ function buildProgramVolumeDisplayRow(input: {
   });
   const isSoftTarget = input.targetKind === "soft";
   const statusLabel =
-    isSoftTarget || weeklyStatus === "below_mev"
+    isSoftTarget
       ? weeklyStatusLabel
-      : formatOutcomeStatusLabel(input.status);
+      : formatProjectedHardStatusLabel({
+          weeklyStatus,
+          projectedSets: input.projectedFullWeekEffectiveSets,
+          mev: input.mev,
+        });
   const projectedLabel = `${formatSetCount(input.projectedFullWeekEffectiveSets)} projected`;
   const targetLabel = formatTargetLabel({
     targetSets: input.targetSets,
@@ -488,9 +543,12 @@ function buildProgramVolumeDisplayRow(input: {
     statusDescription:
       isSoftTarget
         ? `${projectedLabel} vs ${targetLabel}; ${completedLabel} so far. Non-blocking.`
-        : weeklyStatus === "below_mev"
-        ? `${projectedLabel} is still below MEV after the planned week.`
-        : `${projectedLabel} vs ${targetLabel}; ${completedLabel} so far.`,
+        : formatProjectedHardStatusDescription({
+            weeklyStatus,
+            projectedLabel,
+            targetLabel,
+            completedLabel,
+          }),
     deltaLabel: formatTargetDeltaLabel({
       effectiveSets: input.projectedFullWeekEffectiveSets,
       targetSets: input.targetSets,
@@ -537,14 +595,6 @@ function buildWeekCompletionOutlook(input: {
     return null;
   }
 
-  const rankedStatuses: Record<MuscleOutcomeStatus, number> = {
-    meaningfully_low: 0,
-    meaningfully_high: 1,
-    slightly_low: 2,
-    slightly_high: 3,
-    on_target: 4,
-  };
-
   const classifiedRows = input.report.fullWeekByMuscle.map((row) => {
     const targetKind = row.targetKind ?? "hard";
     const targetRange = row.targetRange ?? null;
@@ -556,10 +606,19 @@ function buildWeekCompletionOutlook(input: {
       targetKind,
       targetRange,
     });
+    const weeklyStatus = getWeeklyMuscleStatus({
+      effectiveSets: row.projectedFullWeekEffectiveSets,
+      target: row.weeklyTarget,
+      mev: row.mev,
+      mrv: row.mrv ?? row.mav,
+      targetKind,
+      softTargetRange: targetRange,
+    });
 
     return {
       muscle: row.muscle,
       status: outcome.status,
+      weeklyStatus,
       projectedFullWeekEffectiveSets: row.projectedFullWeekEffectiveSets,
       targetSets: row.weeklyTarget,
       targetKind,
@@ -581,7 +640,7 @@ function buildWeekCompletionOutlook(input: {
 
   const rows = classifiedRows
     .sort((left, right) => {
-      const rankDelta = rankedStatuses[left.status] - rankedStatuses[right.status];
+      const rankDelta = getProjectedOutlookRank(left) - getProjectedOutlookRank(right);
       if (rankDelta !== 0) {
         return rankDelta;
       }
@@ -627,7 +686,16 @@ function buildWeekCompletionOutlook(input: {
   const secondarySummary = buildSoftTargetSummary(secondaryRows);
 
   const defaultRows = primaryDriverRows
-    .filter((row) => row.status !== "on_target")
+    .filter((row) => {
+      const weeklyStatus = row.badges[0]?.status;
+      return (
+        weeklyStatus === "below_mev" ||
+        weeklyStatus === "near_mrv" ||
+        weeklyStatus === "at_mrv" ||
+        row.status === "meaningfully_low" ||
+        row.status === "slightly_low"
+      );
+    })
     .slice(0, 4);
 
   return {

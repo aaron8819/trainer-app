@@ -102,14 +102,16 @@ export function formatWeeklyMuscleStatusLabel(
     switch (status) {
       case "below_mev":
         return "Below MEV";
-      case "near_mrv":
-        return "Slightly high";
-      case "at_mrv":
-        return "Meaningfully high";
       case "in_range":
+        return "Productive zone";
       case "near_target":
+        return "Below preferred target";
       case "on_target":
-        return "On target";
+        return "Preferred target reached";
+      case "near_mrv":
+        return "Near cap";
+      case "at_mrv":
+        return "Over cap";
     }
   }
 

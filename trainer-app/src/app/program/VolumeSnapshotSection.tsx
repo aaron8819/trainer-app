@@ -52,8 +52,9 @@ function getBucket(row: ProgramVolumeRow): SnapshotBucket {
   const status = getStatus(row);
   switch (status) {
     case "below_mev":
-    case "in_range":
       return "needs_attention";
+    case "in_range":
+      return "on_track";
     case "near_mrv":
     case "at_mrv":
       return "watch_high";
@@ -108,7 +109,7 @@ function VolumeSnapshotRow({ row }: { row: ProgramVolumeRow }) {
       </div>
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-slate-600">
         <span>Performed so far: {row.weightedSetsLabel}</span>
-        <span>Planned target: {row.targetLabel}</span>
+        <span>{row.targetLabel}</span>
         <span>{row.deltaLabel}</span>
       </div>
     </li>
@@ -178,10 +179,10 @@ export function VolumeSnapshotSection({
     : isEarlyPerformedState
       ? "Week just started. Performed volume is still sparse; use projected finish above to judge where the week is likely to land."
       : priorityRows.length > 0
-      ? `${priorityRows.length} primary/support target${
+      ? `${priorityRows.length} primary/support volume landmark${
           priorityRows.length === 1 ? "" : "s"
         } need a quick check this week.`
-      : "Primary and support targets are on track in the current Program readout.";
+      : "Primary/support rows are inside productive volume landmarks; preferred target gaps can stay calm.";
 
   return (
     <section className="mt-8 rounded-3xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
@@ -196,7 +197,7 @@ export function VolumeSnapshotSection({
           <p className="mt-2 max-w-2xl text-sm text-slate-600">{summary}</p>
           <p className="mt-1 text-xs text-slate-500">
             Performed so far comes from logged work. Projected finish uses the
-            remaining plan above. Planned target is the weekly target.
+            remaining plan above. Preferred targets guide the range; MEV and cap landmarks set the floor and ceiling.
           </p>
         </div>
       </div>
@@ -236,8 +237,8 @@ export function VolumeSnapshotSection({
 
       {isEarlyPerformedState ? (
         <p className="mt-5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm font-medium text-blue-900">
-          Use Full details to inspect targets. The compact snapshot will call
-          out truly actionable misses after performed volume starts landing.
+          Use Full details to inspect preferred targets. The compact snapshot will call
+          out true floor or cap issues after performed volume starts landing.
         </p>
       ) : visiblePriorityRows.length > 0 ? (
         <div className="mt-5">
@@ -257,8 +258,8 @@ export function VolumeSnapshotSection({
         </div>
       ) : (
         <p className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm font-medium text-emerald-800">
-          On track: no primary/support volume rows are on the watch list right
-          now.
+          Productive zone: no primary/support floor or cap issues are on the
+          watch list right now.
         </p>
       )}
     </section>

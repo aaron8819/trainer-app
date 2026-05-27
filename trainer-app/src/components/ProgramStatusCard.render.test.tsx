@@ -104,7 +104,7 @@ function withOpportunity(
     targetRange: row.targetRange ?? null,
     displayGroup,
     weightedSetsLabel: row.weightedSetsLabel ?? `${row.effectiveSets} weighted sets`,
-    targetLabel: row.targetLabel ?? `Target: ${row.target} weighted sets`,
+    targetLabel: row.targetLabel ?? `Preferred target: ${row.target} weighted sets`,
     statusLabel,
     statusDescription:
       row.statusDescription ?? `${row.effectiveSets} weighted sets from server.`,
@@ -129,13 +129,15 @@ function buildServerStatus(row: {
   mev: number;
   mrv: number;
 }): { status: string; label: string } {
-  if (row.effectiveSets >= row.mrv) return { status: "at_mrv", label: "At MRV" };
-  if (row.effectiveSets >= row.mrv * 0.85) return { status: "near_mrv", label: "Near MRV" };
-  if (row.effectiveSets >= row.target) return { status: "on_target", label: "On target" };
+  if (row.effectiveSets >= row.mrv) return { status: "at_mrv", label: "Over cap" };
+  if (row.effectiveSets >= row.mrv * 0.85) return { status: "near_mrv", label: "Near cap" };
+  if (row.effectiveSets >= row.target) {
+    return { status: "on_target", label: "Preferred target reached" };
+  }
   if (row.effectiveSets >= row.mev) {
     return row.effectiveSets >= row.target * 0.85
-      ? { status: "near_target", label: "Near target" }
-      : { status: "in_range", label: "In range" };
+      ? { status: "near_target", label: "Below preferred target" }
+      : { status: "in_range", label: "Productive zone" };
   }
   return { status: "below_mev", label: "Below MEV" };
 }
@@ -251,7 +253,7 @@ describe("ProgramStatusCard indirect volume context", () => {
 
     const scoped = within(card);
     expect(scoped.getByText("0.9 weighted sets")).toBeInTheDocument();
-    expect(scoped.getByText("Target: 5 weighted sets")).toBeInTheDocument();
+    expect(scoped.getByText("Preferred target: 5 weighted sets")).toBeInTheDocument();
     expect(scoped.getByText("Below MEV")).toBeInTheDocument();
     expect(scoped.getByText("Raw sets: 0 direct, 3 indirect")).toBeInTheDocument();
   });
@@ -270,9 +272,9 @@ describe("ProgramStatusCard weekly status labels", () => {
         mav: 100,
         mrv: 101,
         weightedSetsLabel: "0.8 weighted sets",
-        targetLabel: "Target: 6 weighted sets",
+        targetLabel: "Preferred target: 6 weighted sets",
         statusLabel: "Below MEV",
-        statusDescription: "0.8 weighted sets against 6 target.",
+        statusDescription: "0.8 weighted sets; below the MEV floor. Preferred target: 6.",
         deltaLabel: "-5.2 sets",
         landmarkContext: {
           mevLabel: "MEV 6",
@@ -290,7 +292,7 @@ describe("ProgramStatusCard weekly status labels", () => {
     const card = screen.getByRole("button", { name: "Chest weekly volume" });
     const scoped = within(card);
     expect(scoped.getByText("0.8 weighted sets")).toBeInTheDocument();
-    expect(scoped.getByText("Target: 6 weighted sets")).toBeInTheDocument();
+    expect(scoped.getByText("Preferred target: 6 weighted sets")).toBeInTheDocument();
     expect(scoped.getByText("MEV 6 · MAV 10 · MRV 16")).toBeInTheDocument();
     expect(scoped.getByText("Current: below MEV")).toBeInTheDocument();
     expect(scoped.getByText("Below MEV")).toBeInTheDocument();
@@ -315,7 +317,7 @@ describe("ProgramStatusCard weekly status labels", () => {
 
     render(<ProgramStatusCard initialData={data} />);
 
-    expect(screen.getByText("In range")).toBeInTheDocument();
+    expect(screen.getByText("Productive zone")).toBeInTheDocument();
     expect(screen.queryByText("Building")).not.toBeInTheDocument();
   });
 
@@ -335,7 +337,7 @@ describe("ProgramStatusCard weekly status labels", () => {
 
     render(<ProgramStatusCard initialData={data} />);
 
-    expect(screen.getByText("Near target")).toBeInTheDocument();
+    expect(screen.getByText("Below preferred target")).toBeInTheDocument();
     expect(screen.queryByText("Building")).not.toBeInTheDocument();
   });
 
@@ -407,18 +409,18 @@ describe("ProgramStatusCard weekly status labels", () => {
     render(<ProgramStatusCard initialData={data} />);
 
     expectClassNames(screen.getByText("1 Below MEV"), ["bg-slate-100", "text-slate-700"]);
-    expectClassNames(screen.getByText("1 In range"), ["bg-emerald-50", "text-emerald-700"]);
-    expectClassNames(screen.getByText("1 Near target"), ["bg-emerald-100", "text-emerald-800"]);
-    expectClassNames(screen.getByText("1 On target"), ["bg-emerald-200", "text-emerald-950"]);
-    expectClassNames(screen.getByText("1 Near MRV"), ["bg-amber-50", "text-amber-800"]);
-    expectClassNames(screen.getByText("1 At MRV"), ["bg-red-50", "text-red-800"]);
+    expectClassNames(screen.getByText("1 Productive zone"), ["bg-emerald-50", "text-emerald-700"]);
+    expectClassNames(screen.getByText("1 Below preferred target"), ["bg-emerald-100", "text-emerald-800"]);
+    expectClassNames(screen.getByText("1 Preferred target reached"), ["bg-emerald-200", "text-emerald-950"]);
+    expectClassNames(screen.getByText("1 Near cap"), ["bg-amber-50", "text-amber-800"]);
+    expectClassNames(screen.getByText("1 Over cap"), ["bg-red-50", "text-red-800"]);
 
     const chestCard = screen.getByRole("button", { name: "Chest weekly volume" });
     expectClassNames(chestCard, ["bg-slate-50", "text-slate-600", "border-slate-200"]);
 
     const inRangeCard = screen.getByRole("button", { name: "Upper Back weekly volume" });
     expectClassNames(inRangeCard, ["bg-emerald-50", "text-emerald-700", "border-emerald-100"]);
-    expectClassNames(within(inRangeCard).getByText("In range"), [
+    expectClassNames(within(inRangeCard).getByText("Productive zone"), [
       "bg-emerald-50",
       "text-emerald-700",
       "border-emerald-100",
@@ -430,7 +432,7 @@ describe("ProgramStatusCard weekly status labels", () => {
       "text-emerald-800",
       "border-emerald-200",
     ]);
-    expectClassNames(within(nearTargetCard).getByText("Near target"), [
+    expectClassNames(within(nearTargetCard).getByText("Below preferred target"), [
       "bg-emerald-100",
       "text-emerald-800",
       "border-emerald-200",
@@ -442,7 +444,7 @@ describe("ProgramStatusCard weekly status labels", () => {
       "text-emerald-950",
       "border-emerald-300",
     ]);
-    expectClassNames(within(onTargetCard).getByText("On target"), [
+    expectClassNames(within(onTargetCard).getByText("Preferred target reached"), [
       "bg-emerald-200",
       "text-emerald-950",
       "border-emerald-300",
@@ -477,14 +479,14 @@ describe("ProgramStatusCard opportunity state", () => {
         }),
         opportunityState: "high_opportunity",
         opportunityRationale:
-          "Below target in this snapshot, with enough recovery room to consider more volume.",
+          "Below preferred target in this snapshot, with enough recovery room to consider more volume.",
       },
     ]);
 
     render(<ProgramStatusCard initialData={data} />);
 
     expect(screen.getByText("4 weighted sets")).toBeInTheDocument();
-    expect(screen.getByText("Target: 10 weighted sets")).toBeInTheDocument();
+    expect(screen.getByText("Preferred target: 10 weighted sets")).toBeInTheDocument();
     expect(screen.getByText("Below MEV")).toBeInTheDocument();
     expect(screen.getByText("Today: room for more")).toBeInTheDocument();
     expect(screen.queryByText("Volume opportunity")).not.toBeInTheDocument();
@@ -505,7 +507,7 @@ describe("ProgramStatusCard opportunity state", () => {
         }),
         opportunityState: "moderate_opportunity",
         opportunityRationale:
-          "Below target in this snapshot, but recent stimulus or readiness keeps the read mixed.",
+          "Below preferred target in this snapshot, but recent stimulus or readiness keeps the read mixed.",
       },
       {
         ...withOpportunity({
@@ -520,7 +522,7 @@ describe("ProgramStatusCard opportunity state", () => {
         }),
         opportunityState: "deprioritize_today",
         opportunityRationale:
-          "Below target in this snapshot, but recent weighted stimulus is still fresh.",
+          "Below preferred target in this snapshot, but recent weighted stimulus is still fresh.",
       },
     ]);
 
@@ -547,7 +549,7 @@ describe("ProgramStatusCard opportunity state", () => {
         }),
         opportunityState: "deprioritize_today",
         opportunityRationale:
-          "Below target in this snapshot, but recent weighted stimulus is still fresh.",
+          "Below preferred target in this snapshot, but recent weighted stimulus is still fresh.",
       },
     ]);
 
@@ -712,10 +714,10 @@ describe("ProgramStatusCard muscle breakdown", () => {
     await user.click(screen.getByRole("button", { name: "Show where Biceps sets came from" }));
 
     expect(screen.getByTestId("muscle-breakdown-sheet")).toBeInTheDocument();
-    expect(screen.getByText("Biceps: 4.1 weighted / 8 target")).toBeInTheDocument();
+    expect(screen.getByText("Biceps: 4.1 weighted / 8 preferred target")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Weighted sets count toward your weekly target. Raw direct and indirect sets are structural context."
+        "Weighted sets count toward weekly volume landmarks. Preferred targets guide the range; raw direct and indirect sets are structural context."
       )
     ).toBeInTheDocument();
     expect(
@@ -812,7 +814,7 @@ describe("ProgramStatusCard volumeOnly variant", () => {
         mev: 0,
         mav: 12,
         mrv: 20,
-        targetLabel: "Soft target: 4-6 weighted sets",
+        targetLabel: "Preferred range: 4-6 weighted sets",
         statusLabel: "Below soft range",
         statusDescription: "Current: below soft range. Non-blocking.",
         landmarkContext: undefined,
@@ -927,7 +929,7 @@ describe("ProgramStatusCard volumeOnly variant", () => {
 
     expect(screen.getByText("Volume - Week 4 (Active week)")).toBeInTheDocument();
     expect(screen.getByText("1 Below MEV")).toBeInTheDocument();
-    expect(screen.getByText("1 On target")).toBeInTheDocument();
+    expect(screen.getByText("1 Preferred target reached")).toBeInTheDocument();
     expect(screen.getByText("Chest")).toBeInTheDocument();
     expect(screen.getByText("Biceps")).toBeInTheDocument();
 
@@ -938,10 +940,10 @@ describe("ProgramStatusCard volumeOnly variant", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("/api/program?week=3");
     expect(screen.getByText("Viewing historical volume for Week 3. Read-only.")).toBeInTheDocument();
-    expect(screen.getByText("1 In range")).toBeInTheDocument();
-    expect(screen.getByText("1 Near MRV")).toBeInTheDocument();
+    expect(screen.getByText("1 Productive zone")).toBeInTheDocument();
+    expect(screen.getByText("1 Near cap")).toBeInTheDocument();
     expect(screen.queryByText("0 Below MEV")).not.toBeInTheDocument();
-    expect(screen.queryByText("0 On target")).not.toBeInTheDocument();
+    expect(screen.queryByText("0 Preferred target reached")).not.toBeInTheDocument();
     expect(screen.getByText("Back")).toBeInTheDocument();
     expect(screen.getByText("Quads")).toBeInTheDocument();
     expect(screen.queryByText("Chest")).not.toBeInTheDocument();
@@ -953,7 +955,7 @@ describe("ProgramStatusCard volumeOnly variant", () => {
     });
 
     expect(screen.getByText("1 Below MEV")).toBeInTheDocument();
-    expect(screen.getByText("1 On target")).toBeInTheDocument();
+    expect(screen.getByText("1 Preferred target reached")).toBeInTheDocument();
     expect(screen.getByText("Chest")).toBeInTheDocument();
     expect(screen.getByText("Biceps")).toBeInTheDocument();
     expect(screen.queryByText("Back")).not.toBeInTheDocument();

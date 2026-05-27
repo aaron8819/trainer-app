@@ -46,6 +46,7 @@ import {
   getWeeklyMuscleDashboardGroup,
   getWeeklyMuscleDisplayGroup,
   getWeeklyMuscleStatus,
+  type WeeklyMuscleStatus,
   type WeeklyMuscleDisplayGroup,
 } from "@/lib/ui/weekly-muscle-status";
 import {
@@ -361,6 +362,7 @@ function formatTargetStatusDescription(input: {
   target: number;
   targetKind: VolumeTargetKind;
   targetRange: VolumeSoftTargetRange | null;
+  status: WeeklyMuscleStatus;
   statusLabel?: string;
 }): string {
   if (input.targetKind === "soft" && input.targetRange) {
@@ -370,9 +372,22 @@ function formatTargetStatusDescription(input: {
     return `Current: ${currentLabel}. Non-blocking.`;
   }
 
-  return `${formatSetCount(input.effectiveSets)} weighted sets against ${formatSetCount(
-    input.target
-  )} target.`;
+  const effectiveLabel = formatSetCount(input.effectiveSets);
+  const targetLabel = formatSetCount(input.target);
+
+  switch (input.status) {
+    case "below_mev":
+      return `${effectiveLabel} weighted sets; below the MEV floor. Preferred target: ${targetLabel}.`;
+    case "in_range":
+    case "near_target":
+      return `Productive floor reached; below preferred target (${effectiveLabel} of ${targetLabel} weighted sets).`;
+    case "on_target":
+      return `Productive zone; preferred target reached (${effectiveLabel} of ${targetLabel} weighted sets).`;
+    case "near_mrv":
+      return `${effectiveLabel} weighted sets near the cap. Hold extra volume unless recovery is clearly strong.`;
+    case "at_mrv":
+      return `${effectiveLabel} weighted sets over the cap. Avoid adding more volume this week.`;
+  }
 }
 
 function getDescriptiveCoachingCueForBlockType(
@@ -946,6 +961,7 @@ function buildProgramVolumeRows(input: {
           target,
           targetKind: targetSemantics.targetKind,
           targetRange: targetSemantics.softTargetRange,
+          status: weeklyStatus,
           statusLabel,
         }),
         deltaLabel: formatTargetDeltaLabel({
@@ -971,7 +987,8 @@ function buildProgramVolumeRows(input: {
         ],
         opportunityScore: 0,
         opportunityState: "covered" as OpportunityState,
-        opportunityRationale: "Weekly target is already covered; no need to prioritize more work today.",
+        opportunityRationale:
+          "Preferred target is already covered; no need to prioritize more work today.",
         ...(data.contributions && data.contributions.length > 0
           ? {
               breakdown: {

@@ -616,7 +616,7 @@ function ProgramStatusCardDefault({
     : `Volume - Week ${viewedWeek} (Active week)`;
   const volumeScopeCopy = isVolumeOnly
     ? "Historical review here is volume-only."
-    : "Weighted sets count toward your weekly target. Raw direct and indirect sets are context only.";
+    : "Weighted sets count toward weekly volume landmarks. Preferred targets guide the range; raw direct and indirect sets are context only.";
 
   return (
     <div
@@ -795,11 +795,11 @@ function ProgramStatusCardDefault({
           <div data-testid="muscle-breakdown-sheet">
             <p className="text-sm font-semibold text-slate-900">
               {selectedBreakdown.muscle}: {formatSetCount(selectedBreakdown.effectiveSets)} weighted /{" "}
-              {formatSetCount(selectedBreakdown.targetSets)} target
+              {formatSetCount(selectedBreakdown.targetSets)} preferred target
             </p>
             <p className="mt-2 text-sm text-slate-600">
-              Weighted sets count toward your weekly target. Raw direct and indirect sets are
-              structural context.
+              Weighted sets count toward weekly volume landmarks. Preferred targets guide the
+              range; raw direct and indirect sets are structural context.
             </p>
             <p className="mt-1 text-sm text-slate-600">
               Each row shows raw sets x exercise weighting = weighted contribution.

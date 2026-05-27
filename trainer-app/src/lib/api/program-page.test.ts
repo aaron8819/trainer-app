@@ -629,7 +629,7 @@ describe("loadProgramPageData", () => {
           opportunityScore: 0,
           opportunityState: "high_opportunity",
           opportunityRationale:
-            "Below target in this snapshot, with recovery room for more work.",
+            "Below preferred target in this snapshot, with recovery room for more work.",
         },
         {
           muscle: "Biceps",
@@ -774,15 +774,15 @@ describe("loadProgramPageData", () => {
           muscle: "Quads",
           completedEffectiveSets: 12,
           projectedNextSessionEffectiveSets: 0,
-          projectedRemainingWeekEffectiveSets: 3,
-          projectedFullWeekEffectiveSets: 15,
+          projectedRemainingWeekEffectiveSets: 8,
+          projectedFullWeekEffectiveSets: 20,
           weeklyTarget: 10,
           mev: 6,
           mav: 16,
           mrv: 20,
-          deltaToTarget: 5,
-          deltaToMev: 9,
-          deltaToMav: -1,
+          deltaToTarget: 10,
+          deltaToMev: 14,
+          deltaToMav: 4,
         },
       ],
     });
@@ -1110,59 +1110,55 @@ describe("loadProgramPageData", () => {
       badges: [
         {
           status: "meaningfully_low",
-          label: "meaningfully low",
+          label: "below MEV",
           count: 0,
-          activeDescription:
-            "Showing all projected muscles in the Meaningfully low bucket.",
+          activeDescription: "Showing projected muscles below the MEV floor.",
         },
         {
           status: "slightly_low",
-          label: "below target",
+          label: "below preferred",
           count: 1,
           activeDescription:
-            "Showing all projected muscles in the Below target bucket.",
+            "Showing projected muscles with the productive floor reached but below the preferred target.",
         },
         {
           status: "on_target",
-          label: "on target",
+          label: "productive zone",
           count: 0,
-          activeDescription:
-            "Showing all projected muscles in the On target bucket.",
+          activeDescription: "Showing projected muscles inside the productive zone.",
         },
         {
           status: "slightly_high",
-          label: "slightly high",
+          label: "above preferred",
           count: 0,
-          activeDescription:
-            "Showing all projected muscles in the Slightly high bucket.",
+          activeDescription: "Showing projected muscles above the preferred target.",
         },
         {
           status: "meaningfully_high",
-          label: "meaningfully high",
+          label: "watch high",
           count: 1,
-          activeDescription:
-            "Showing all projected muscles in the Meaningfully high bucket.",
+          activeDescription: "Showing projected muscles with high projected volume.",
         },
       ],
       rows: [
         {
           muscle: "Quads",
           status: "meaningfully_high",
-          weightedSetsLabel: "15 weighted sets",
-          targetLabel: "Target: 10 weighted sets",
-          statusLabel: "Meaningfully high",
-          statusDescription: "15 projected vs 10 target; 12 completed so far.",
-          deltaLabel: "+5 sets",
-          comparisonLabel: "15 projected vs 10 target",
+          weightedSetsLabel: "20 weighted sets",
+          targetLabel: "Preferred target: 10 weighted sets",
+          statusLabel: "Over cap",
+          statusDescription: "20 projected is over the cap; 12 completed so far.",
+          deltaLabel: "+10 sets",
+          comparisonLabel: "20 projected vs 10 preferred target",
           landmarkContext: {
             mevLabel: "MEV 6",
             mavLabel: "MAV 16",
             mrvLabel: "MRV 20",
             rangeSummaryLabel: "MEV 6 · MAV 16 · MRV 20",
-            positionLabel: "Current: within MEV-MAV",
+            positionLabel: "Current: at or above MRV",
           },
           badges: [
-            { status: "on_target", label: "On target" },
+            { status: "at_mrv", label: "Over cap" },
             {
               status: "actual_completed",
               label: "Actual completed",
@@ -1172,7 +1168,7 @@ describe("loadProgramPageData", () => {
             {
               status: "projected_remaining",
               label: "Projected remaining",
-              count: 3,
+              count: 8,
             },
           ],
         },
@@ -1180,11 +1176,12 @@ describe("loadProgramPageData", () => {
           muscle: "Chest",
           status: "slightly_low",
           weightedSetsLabel: "8 weighted sets",
-          targetLabel: "Target: 10 weighted sets",
-          statusLabel: "Below target",
-          statusDescription: "8 projected vs 10 target; 4 completed so far.",
+          targetLabel: "Preferred target: 10 weighted sets",
+          statusLabel: "Productive zone",
+          statusDescription:
+            "8 projected reaches the productive floor; below the 10 preferred target only. 4 completed so far.",
           deltaLabel: "-2 sets",
-          comparisonLabel: "8 projected vs 10 target",
+          comparisonLabel: "8 projected vs 10 preferred target",
           landmarkContext: {
             mevLabel: "MEV 6",
             mavLabel: "MAV 16",
@@ -1193,7 +1190,7 @@ describe("loadProgramPageData", () => {
             positionLabel: "Current: within MEV-MAV",
           },
           badges: [
-            { status: "in_range", label: "On target" },
+            { status: "in_range", label: "Productive zone" },
             { status: "actual_completed", label: "Actual completed", count: 4 },
             { status: "projected_next", label: "Projected next", count: 4 },
             {
@@ -1208,21 +1205,21 @@ describe("loadProgramPageData", () => {
         {
           muscle: "Quads",
           status: "meaningfully_high",
-          weightedSetsLabel: "15 weighted sets",
-          targetLabel: "Target: 10 weighted sets",
-          statusLabel: "Meaningfully high",
-          statusDescription: "15 projected vs 10 target; 12 completed so far.",
-          deltaLabel: "+5 sets",
-          comparisonLabel: "15 projected vs 10 target",
+          weightedSetsLabel: "20 weighted sets",
+          targetLabel: "Preferred target: 10 weighted sets",
+          statusLabel: "Over cap",
+          statusDescription: "20 projected is over the cap; 12 completed so far.",
+          deltaLabel: "+10 sets",
+          comparisonLabel: "20 projected vs 10 preferred target",
           landmarkContext: {
             mevLabel: "MEV 6",
             mavLabel: "MAV 16",
             mrvLabel: "MRV 20",
             rangeSummaryLabel: "MEV 6 · MAV 16 · MRV 20",
-            positionLabel: "Current: within MEV-MAV",
+            positionLabel: "Current: at or above MRV",
           },
           badges: [
-            { status: "on_target", label: "On target" },
+            { status: "at_mrv", label: "Over cap" },
             {
               status: "actual_completed",
               label: "Actual completed",
@@ -1232,7 +1229,7 @@ describe("loadProgramPageData", () => {
             {
               status: "projected_remaining",
               label: "Projected remaining",
-              count: 3,
+              count: 8,
             },
           ],
         },
@@ -1240,11 +1237,12 @@ describe("loadProgramPageData", () => {
           muscle: "Chest",
           status: "slightly_low",
           weightedSetsLabel: "8 weighted sets",
-          targetLabel: "Target: 10 weighted sets",
-          statusLabel: "Below target",
-          statusDescription: "8 projected vs 10 target; 4 completed so far.",
+          targetLabel: "Preferred target: 10 weighted sets",
+          statusLabel: "Productive zone",
+          statusDescription:
+            "8 projected reaches the productive floor; below the 10 preferred target only. 4 completed so far.",
           deltaLabel: "-2 sets",
-          comparisonLabel: "8 projected vs 10 target",
+          comparisonLabel: "8 projected vs 10 preferred target",
           landmarkContext: {
             mevLabel: "MEV 6",
             mavLabel: "MAV 16",
@@ -1253,7 +1251,7 @@ describe("loadProgramPageData", () => {
             positionLabel: "Current: within MEV-MAV",
           },
           badges: [
-            { status: "in_range", label: "On target" },
+            { status: "in_range", label: "Productive zone" },
             { status: "actual_completed", label: "Actual completed", count: 4 },
             { status: "projected_next", label: "Projected next", count: 4 },
             {
@@ -1701,7 +1699,7 @@ describe("loadProgramPageData", () => {
     ).not.toContain("Lats");
   });
 
-  it("server-provides distinct below-MEV and below-target outlook labels", async () => {
+  it("server-provides distinct below-MEV and below-preferred outlook labels", async () => {
     mocks.loadProjectedWeekVolumeReport.mockResolvedValueOnce({
       currentWeek: {
         mesocycleId: "meso-1",
@@ -1799,12 +1797,13 @@ describe("loadProgramPageData", () => {
           muscle: "Chest",
           statusLabel: "Below MEV",
           statusDescription:
-            "4 projected is still below MEV after the planned week.",
+            "4 projected is still below the MEV floor after the planned week.",
         }),
         expect.objectContaining({
           muscle: "Lats",
-          statusLabel: "Below target",
-          statusDescription: "8 projected vs 10 target; 6 completed so far.",
+          statusLabel: "Productive zone",
+          statusDescription:
+            "8 projected reaches the productive floor; below the 10 preferred target only. 6 completed so far.",
         }),
         expect.objectContaining({
           muscle: "Side Delts",
@@ -1816,13 +1815,13 @@ describe("loadProgramPageData", () => {
         expect.objectContaining({
           muscle: "Forearms",
           status: "slightly_high",
-          targetLabel: "Soft target: 2-4 weighted sets",
+          targetLabel: "Preferred range: 2-4 weighted sets",
           displayGroup: "secondary",
           statusLabel: "Above soft range",
           statusDescription:
-            "5 projected vs 2-4 soft target; 0 completed so far. Non-blocking.",
+            "5 projected vs 2-4 preferred range; 0 completed so far. Non-blocking.",
           deltaLabel: "+1 sets",
-          comparisonLabel: "5 projected vs 2-4 soft target",
+          comparisonLabel: "5 projected vs 2-4 preferred range",
         }),
       ]),
     );

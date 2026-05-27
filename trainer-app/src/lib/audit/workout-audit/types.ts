@@ -591,6 +591,11 @@ export type CurrentWeekAuditEvaluation = {
     muscle: string;
     deficit: number;
   }>;
+  belowPreferred: Array<{
+    muscle: string;
+    deficit: number;
+    status: "below_preferred" | "stretch_miss";
+  }>;
   fatigueRisks: string[];
 };
 

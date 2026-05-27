@@ -3951,14 +3951,17 @@ describe("buildCurrentWeekAuditOperatorSummary", () => {
           currentWeekAudit: {
             belowMEV: ["Chest"],
             overMAV: ["Glutes"],
-            underTargetClusters: [{ muscle: "Chest", deficit: 6 }],
+            underTargetClusters: [{ muscle: "Chest", deficit: 2 }],
+            belowPreferred: [
+              { muscle: "Rear Delts", deficit: 2, status: "below_preferred" },
+            ],
             fatigueRisks: ["Glutes projects 2.0 sets over MAV"],
           },
           interventionHints: [
             {
               muscle: "Chest",
               suggestedSets: 2,
-              reason: "Projected 2.0 sets below MEV",
+              reason: "below_mev: projected 2.0 sets below MEV; bounded floor closure only",
             },
           ],
           sessionRisks: [
@@ -3972,9 +3975,10 @@ describe("buildCurrentWeekAuditOperatorSummary", () => {
     });
 
     expect(summary).toEqual([
-      "[workout-audit:current-week] below_mev=Chest under_target_clusters=Chest (-6.0) over_mav=Glutes",
+      "[workout-audit:current-week] below_mev=Chest mev_closure_clusters=Chest (-2.0) below_preferred=Rear Delts:below_preferred (-2.0) over_mav=Glutes",
       "[workout-audit:current-week] fatigue_risks=Glutes projects 2.0 sets over MAV",
-      "[workout-audit:current-week] intervention_hints=Chest:2 sets (Projected 2.0 sets below MEV)",
+      "[workout-audit:current-week] intervention_hints=Chest:2 sets (below_mev: projected 2.0 sets below MEV; bounded floor closure only)",
+      "[workout-audit:current-week] no_target_chasing=above_mev_below_target_rows_are_monitor_only",
       "[workout-audit:current-week] session_risks=lower_b: projected duration 85 min exceeds ~80 min",
     ]);
   });
@@ -4205,7 +4209,8 @@ describe("buildPreSessionReadinessSummary", () => {
         currentWeekAudit: {
           belowMEV: ["Chest", "Triceps"],
           overMAV: [],
-          underTargetClusters: [{ muscle: "Chest", deficit: 5 }],
+          underTargetClusters: [{ muscle: "Chest", deficit: 2 }],
+          belowPreferred: [],
           fatigueRisks: [],
         },
         sessionRisks: [],
@@ -4340,11 +4345,17 @@ describe("buildPreSessionReadinessSummary", () => {
         mav,
       },
       targetStatus:
-        deltaToTarget <= -2
-          ? "meaningfully_low"
-          : deltaToTarget < -0.25
-            ? "slightly_low"
-            : "on_target",
+        effectiveSets > mav
+          ? "over_mav"
+          : effectiveSets >= mav - 2
+            ? "near_mav"
+            : effectiveSets < mev
+              ? "below_mev"
+              : effectiveSets < weeklyTarget
+                ? weeklyTarget >= mav - 2
+                  ? "stretch_miss"
+                  : "below_preferred"
+                : "productive_zone",
       fatigueDensityConcern: {
         level: "none",
         drivers: [],
@@ -4357,7 +4368,20 @@ describe("buildPreSessionReadinessSummary", () => {
         ...(exerciseName ? { slotId: "upper_b", exerciseName } : {}),
         setDelta: kind === "hold_seed" ? 0 : 1,
       },
-      reasonCode: kind === "hold_seed" ? "seed_truth_preserved" : "target_volume_deficit",
+      reasonCode:
+        kind === "hold_seed"
+          ? effectiveSets < weeklyTarget && effectiveSets >= mev
+            ? "below_preferred_monitor"
+            : "seed_truth_preserved"
+          : Math.abs(effectiveSets - mev) <= 1.25
+            ? "close_low_volume_opportunity"
+            : "mev_floor_deficit",
+      guidance:
+        effectiveSets < mev
+          ? "below MEV floor; bounded low-fatigue closure if readiness and time allow"
+          : effectiveSets < weeklyTarget
+            ? "productive floor achieved; below preferred target; monitor, no default add-on"
+            : "productive zone achieved; hold seed",
       confidence: 0.8,
       readOnly: true,
       affectsAcceptedSeed: false,
@@ -4550,6 +4574,9 @@ describe("buildPreSessionReadinessSummary", () => {
             belowMEV: [],
             overMAV: [],
             underTargetClusters: [],
+            belowPreferred: [
+              { muscle: "Rear Delts", deficit: 1, status: "below_preferred" },
+            ],
             fatigueRisks: [],
           },
           runtimeDoseAdjustmentDiagnostics: [
@@ -4575,7 +4602,7 @@ describe("buildPreSessionReadinessSummary", () => {
                 mev: 4,
                 mav: 12,
               },
-              targetStatus: "slightly_low",
+              targetStatus: "below_preferred",
               fatigueDensityConcern: {
                 level: "none",
                 drivers: [],
@@ -4584,12 +4611,12 @@ describe("buildPreSessionReadinessSummary", () => {
                 status: "none",
               },
               recommendedAction: {
-                kind: "optional_add_set",
-                slotId: "upper_a",
-                exerciseName: "Cable Rear Delt Fly",
-                setDelta: 1,
+                kind: "hold_seed",
+                setDelta: 0,
               },
-              reasonCode: "close_low_volume_opportunity",
+              reasonCode: "below_preferred_monitor",
+              guidance:
+                "productive floor achieved; below preferred target; monitor, no default add-on",
               confidence: 0.8,
               readOnly: true,
               affectsAcceptedSeed: false,
@@ -4648,7 +4675,7 @@ describe("buildPreSessionReadinessSummary", () => {
         "1 | Incline Machine Press | 4 | 132.5 | 8-10 | 8",
         "2 | Cable Rear Delt Fly | 3 | 10 | 12-15 | 8",
         "Current-Week Dose Guidance",
-        "Rear Delts | 7 vs MEV 4 / target 8 / MAV 12 | slightly_low | optional +1 Cable Rear Delt Fly | 0.8",
+        "Rear Delts | 7 vs MEV 4 / target 8 / MAV 12 | below_preferred | monitor, no default add-on | 0.8",
         "Session-Local Add-On Recommendation",
         "Use Dose Closure Guidance for MEV-floor top-ups; session-local only.",
         "- none",

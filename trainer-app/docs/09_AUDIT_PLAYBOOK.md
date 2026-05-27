@@ -344,7 +344,8 @@ When to use it:
 
 Primary questions it answers:
 - which projected muscles are below MEV
-- which meaningful under-target clusters are at least 3 effective sets short
+- which below-MEV floor-closure clusters are at least 3 effective sets short
+- which above-MEV rows are merely below preferred/stretch targets and should be monitored rather than treated as default add-on triggers
 - which muscles are over MAV, with fatigue risks limited to glutes, lower back, and high systemic-fatigue patterns
 - whether any audit-only 2-3 set intervention hints are warranted
 - whether projected sessions carry long-duration, redundant-pattern, or upper/full-body pull-vs-push imbalance risks
@@ -371,7 +372,8 @@ Important interpretation rule:
 
 Common red flags:
 - `currentWeekAudit.belowMEV.length > 0`
-- `currentWeekAudit.underTargetClusters[*].deficit >= 3`
+- `currentWeekAudit.underTargetClusters[*].deficit >= 3` means a below-MEV floor gap, not a target-chasing gap
+- `currentWeekAudit.belowPreferred[*]` means productive floor achieved but below preferred/stretch target; monitor by default
 - `currentWeekAudit.overMAV` includes fatigue-sensitive muscles
 - `sessionRisks` reports long sessions, redundant pattern stacking, or pull-vs-push imbalance in an upper/full-body slot
 
@@ -869,10 +871,10 @@ Escalate when:
 ### Current-week pre-execution guidance
 1. Run `npm run audit:workout -- --env-file .env.local --mode current-week-audit --owner <owner-email>`.
 2. Confirm `projectedWeekVolume.currentWeek` matches the intended active week and phase.
-3. Read `projectedWeekVolume.currentWeekAudit` for below-MEV, over-MAV, meaningful under-target clusters, and fatigue risks.
+3. Read `projectedWeekVolume.currentWeekAudit` for below-MEV floor gaps, below-preferred/stretch misses, over-MAV rows, and fatigue risks.
 4. Read `projectedWeekVolume.interventionHints`; suggestions are bounded audit guidance only and should stay at 2-3 sets.
 5. Read `projectedWeekVolume.sessionRisks` for long sessions, redundant pattern stacking, and upper/full-body pull-vs-push imbalance.
-6. Confirm the unchanged projection landing in `projectedWeekVolume.fullWeekByMuscle` before acting on guidance.
+6. Confirm the unchanged projection landing in `projectedWeekVolume.fullWeekByMuscle` before acting on guidance. Do not add work solely because a row is above MEV but below a preferred or stretch target.
 
 ### Strict read-only pre-training checks
 Use this when the operator explicitly needs no edited files, no DB mutation, no workout/log/session creation, and no local artifact files during an active mesocycle.

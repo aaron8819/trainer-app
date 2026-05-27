@@ -378,9 +378,25 @@ export function buildFutureWeekOperatorDebugSummary(input: {
 }
 
 function formatDoseAction(
-  action: NonNullable<ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]>[number]["recommendedAction"]
+  action: NonNullable<ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]>[number]["recommendedAction"],
+  diagnostic?: NonNullable<ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]>[number]
 ): string {
   if (action.kind === "hold_seed") {
+    if (
+      diagnostic?.targetStatus === "below_preferred" ||
+      diagnostic?.targetStatus === "stretch_miss"
+    ) {
+      return "monitor, no default add-on";
+    }
+    if (diagnostic?.targetStatus === "near_mav") {
+      return "hold seed; near MAV cap";
+    }
+    if (diagnostic?.targetStatus === "over_mav") {
+      return "hold seed; over MAV caution";
+    }
+    if (diagnostic?.reasonCode === "no_candidate_hold_seed") {
+      return "hold seed; no viable add-on";
+    }
     return "hold seed";
   }
   if (action.kind === "optional_add_set") {
@@ -859,8 +875,8 @@ function buildPreSessionAvoidList(input: {
 
   for (const diagnostic of input.diagnostics) {
     if (
-      diagnostic.targetStatus === "slightly_high" ||
-      diagnostic.targetStatus === "meaningfully_high" ||
+      diagnostic.targetStatus === "near_mav" ||
+      diagnostic.targetStatus === "over_mav" ||
       diagnostic.fatigueDensityConcern.level === "meaningful" ||
       diagnostic.fatigueDensityConcern.level === "high"
     ) {
@@ -3523,15 +3539,20 @@ export function buildCurrentWeekAuditOperatorSummary(input: {
     projectedWeekVolume.interventionHints
       ?.map((hint) => `${hint.muscle}:${hint.suggestedSets} sets (${hint.reason})`)
       .join("; ") || "none";
+  const belowPreferred =
+    currentWeekAudit.belowPreferred
+      ?.map((row) => `${row.muscle}:${row.status} (-${row.deficit.toFixed(1)})`)
+      .join(", ") || "none";
   const sessionRisks =
     projectedWeekVolume.sessionRisks
       ?.map((risk) => `${risk.slotId}: ${risk.issue}`)
       .join("; ") || "none";
 
   return [
-    `[workout-audit:current-week] below_mev=${formatCurrentWeekList(currentWeekAudit.belowMEV)} under_target_clusters=${formatCurrentWeekUnderTargetClusters(currentWeekAudit.underTargetClusters)} over_mav=${formatCurrentWeekList(currentWeekAudit.overMAV)}`,
+    `[workout-audit:current-week] below_mev=${formatCurrentWeekList(currentWeekAudit.belowMEV)} mev_closure_clusters=${formatCurrentWeekUnderTargetClusters(currentWeekAudit.underTargetClusters)} below_preferred=${belowPreferred} over_mav=${formatCurrentWeekList(currentWeekAudit.overMAV)}`,
     `[workout-audit:current-week] fatigue_risks=${formatCurrentWeekList(currentWeekAudit.fatigueRisks, 3)}`,
     `[workout-audit:current-week] intervention_hints=${interventionHints}`,
+    "[workout-audit:current-week] no_target_chasing=above_mev_below_target_rows_are_monitor_only",
     `[workout-audit:current-week] session_risks=${sessionRisks}`,
   ];
 }
@@ -3634,7 +3655,7 @@ export function buildPreSessionReadinessSummary(input: {
   } else {
     for (const diagnostic of doseDiagnostics) {
       lines.push(
-        `${diagnostic.muscle} | ${formatDoseStatus(diagnostic)} | ${diagnostic.targetStatus} | ${formatDoseAction(diagnostic.recommendedAction)} | ${formatAuditDecimal(diagnostic.confidence)}`
+        `${diagnostic.muscle} | ${formatDoseStatus(diagnostic)} | ${diagnostic.targetStatus} | ${formatDoseAction(diagnostic.recommendedAction, diagnostic)} | ${formatAuditDecimal(diagnostic.confidence)}`
       );
     }
   }

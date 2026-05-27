@@ -80,25 +80,25 @@ function expectNonZeroSetDeltaActionsHaveCandidates(
 }
 
 describe("buildRuntimeDoseAdjustmentDiagnostics", () => {
-  it("recommends a session-local Leg Extension +1 when Quads are slightly under target", () => {
+  it("recommends a session-local Leg Extension +1 when Quads are below MEV", () => {
     const diagnostics = buildRuntimeDoseAdjustmentDiagnostics(
       buildInput({
         completedVolumeByMuscle: {
-          Quads: { directSets: 5, indirectSets: 0, effectiveSets: 5 },
+          Quads: { directSets: 1, indirectSets: 0, effectiveSets: 1 },
         },
         fullWeekByMuscle: [
           {
             muscle: "Quads",
-            completedEffectiveSets: 5,
+            completedEffectiveSets: 1,
             projectedNextSessionEffectiveSets: 6,
             projectedRemainingWeekEffectiveSets: 0,
-            projectedFullWeekEffectiveSets: 11,
+            projectedFullWeekEffectiveSets: 7,
             weeklyTarget: 12,
             mev: 8,
             mav: 16,
             mrv: 22,
-            deltaToTarget: -1,
-            deltaToMev: 3,
+            deltaToTarget: -5,
+            deltaToMev: -1,
             deltaToMav: -5,
           },
         ],
@@ -108,7 +108,7 @@ describe("buildRuntimeDoseAdjustmentDiagnostics", () => {
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0]).toMatchObject({
       muscle: "Quads",
-      targetStatus: "slightly_low",
+      targetStatus: "below_mev",
       plannedRemainingVolume: {
         effectiveSets: 6,
         bySlot: [
@@ -126,12 +126,51 @@ describe("buildRuntimeDoseAdjustmentDiagnostics", () => {
         setDelta: 1,
       },
       reasonCode: "close_low_volume_opportunity",
+      guidance: "below MEV floor; bounded low-fatigue closure if readiness and time allow",
       readOnly: true,
       affectsAcceptedSeed: false,
     });
   });
 
-  it("holds the seed with zero set delta when a deficit has no exercise candidate", () => {
+  it("uses add_set for a larger below-MEV floor gap when a candidate exists", () => {
+    const diagnostics = buildRuntimeDoseAdjustmentDiagnostics(
+      buildInput({
+        completedVolumeByMuscle: {
+          Quads: { directSets: 0, indirectSets: 0, effectiveSets: 0 },
+        },
+        fullWeekByMuscle: [
+          {
+            muscle: "Quads",
+            completedEffectiveSets: 0,
+            projectedNextSessionEffectiveSets: 6,
+            projectedRemainingWeekEffectiveSets: 0,
+            projectedFullWeekEffectiveSets: 6,
+            weeklyTarget: 12,
+            mev: 8,
+            mav: 16,
+            mrv: 22,
+            deltaToTarget: -6,
+            deltaToMev: -2,
+            deltaToMav: -10,
+          },
+        ],
+      })
+    );
+
+    expect(diagnostics[0]).toMatchObject({
+      muscle: "Quads",
+      targetStatus: "below_mev",
+      recommendedAction: {
+        kind: "add_set",
+        slotId: "lower_a",
+        exerciseName: "Leg Extension",
+        setDelta: 1,
+      },
+      reasonCode: "mev_floor_deficit",
+    });
+  });
+
+  it("holds the seed with zero set delta when a below-MEV deficit has no exercise candidate", () => {
     const diagnostics = buildRuntimeDoseAdjustmentDiagnostics(
       buildInput({
         projectedSessions: [],
@@ -146,11 +185,11 @@ describe("buildRuntimeDoseAdjustmentDiagnostics", () => {
             projectedRemainingWeekEffectiveSets: 0,
             projectedFullWeekEffectiveSets: 0,
             weeklyTarget: 4,
-            mev: 0,
+            mev: 2,
             mav: 10,
             mrv: 14,
             deltaToTarget: -4,
-            deltaToMev: 0,
+            deltaToMev: -2,
             deltaToMav: -10,
           },
         ],
@@ -160,7 +199,7 @@ describe("buildRuntimeDoseAdjustmentDiagnostics", () => {
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics[0]).toMatchObject({
       muscle: "Abductors",
-      targetStatus: "meaningfully_low",
+      targetStatus: "below_mev",
       plannedRemainingVolume: {
         effectiveSets: 0,
         bySlot: [],
@@ -169,7 +208,8 @@ describe("buildRuntimeDoseAdjustmentDiagnostics", () => {
         kind: "hold_seed",
         setDelta: 0,
       },
-      reasonCode: "seed_truth_preserved",
+      reasonCode: "no_candidate_hold_seed",
+      guidance: "below MEV floor but no viable candidate; hold seed and do not recommend impossible add-ons",
     });
     expect(diagnostics[0].recommendedAction.slotId).toBeUndefined();
     expect(diagnostics[0].recommendedAction.exerciseName).toBeUndefined();
@@ -185,30 +225,30 @@ describe("buildRuntimeDoseAdjustmentDiagnostics", () => {
         fullWeekByMuscle: [
           {
             muscle: "Quads",
-            completedEffectiveSets: 5,
+            completedEffectiveSets: 0,
             projectedNextSessionEffectiveSets: 6,
             projectedRemainingWeekEffectiveSets: 0,
-            projectedFullWeekEffectiveSets: 11,
+            projectedFullWeekEffectiveSets: 6,
             weeklyTarget: 12,
             mev: 8,
             mav: 16,
             mrv: 22,
-            deltaToTarget: -1,
-            deltaToMev: 3,
+            deltaToTarget: -6,
+            deltaToMev: -2,
             deltaToMav: -5,
           },
           {
             muscle: "Calves",
-            completedEffectiveSets: 4,
+            completedEffectiveSets: 1,
             projectedNextSessionEffectiveSets: 4,
             projectedRemainingWeekEffectiveSets: 0,
-            projectedFullWeekEffectiveSets: 8,
+            projectedFullWeekEffectiveSets: 5,
             weeklyTarget: 9,
             mev: 6,
             mav: 14,
             mrv: 20,
-            deltaToTarget: -1,
-            deltaToMev: 2,
+            deltaToTarget: -4,
+            deltaToMev: -1,
             deltaToMav: -6,
           },
         ],
@@ -222,7 +262,7 @@ describe("buildRuntimeDoseAdjustmentDiagnostics", () => {
     expect(addSetDiagnostics).toHaveLength(2);
     expect(addSetDiagnostics.map((diagnostic) => diagnostic.recommendedAction)).toEqual([
       expect.objectContaining({
-        kind: "optional_add_set",
+        kind: "add_set",
         slotId: "lower_a",
         exerciseName: "Leg Extension",
         setDelta: 1,
@@ -241,21 +281,21 @@ describe("buildRuntimeDoseAdjustmentDiagnostics", () => {
     const diagnostics = buildRuntimeDoseAdjustmentDiagnostics(
       buildInput({
         completedVolumeByMuscle: {
-          Calves: { directSets: 4, indirectSets: 0, effectiveSets: 4 },
+          Calves: { directSets: 1, indirectSets: 0, effectiveSets: 1 },
         },
         fullWeekByMuscle: [
           {
             muscle: "Calves",
-            completedEffectiveSets: 4,
+            completedEffectiveSets: 1,
             projectedNextSessionEffectiveSets: 4,
             projectedRemainingWeekEffectiveSets: 0,
-            projectedFullWeekEffectiveSets: 8,
+            projectedFullWeekEffectiveSets: 5,
             weeklyTarget: 9,
             mev: 6,
             mav: 14,
             mrv: 20,
-            deltaToTarget: -1,
-            deltaToMev: 2,
+            deltaToTarget: -4,
+            deltaToMev: -1,
             deltaToMav: -6,
           },
         ],
@@ -271,6 +311,111 @@ describe("buildRuntimeDoseAdjustmentDiagnostics", () => {
         setDelta: 1,
       },
       reasonCode: "close_low_volume_opportunity",
+    });
+  });
+
+  it("does not recommend add sets solely for above-MEV below-target volume", () => {
+    const diagnostics = buildRuntimeDoseAdjustmentDiagnostics(
+      buildInput({
+        completedVolumeByMuscle: {
+          Quads: { directSets: 5, indirectSets: 0, effectiveSets: 5 },
+        },
+        fullWeekByMuscle: [
+          {
+            muscle: "Quads",
+            completedEffectiveSets: 5,
+            projectedNextSessionEffectiveSets: 6,
+            projectedRemainingWeekEffectiveSets: 0,
+            projectedFullWeekEffectiveSets: 11,
+            weeklyTarget: 12,
+            mev: 8,
+            mav: 16,
+            mrv: 22,
+            deltaToTarget: -1,
+            deltaToMev: 3,
+            deltaToMav: -5,
+          },
+        ],
+      })
+    );
+
+    expect(diagnostics[0]).toMatchObject({
+      muscle: "Quads",
+      targetStatus: "below_preferred",
+      recommendedAction: {
+        kind: "hold_seed",
+        setDelta: 0,
+      },
+      reasonCode: "below_preferred_monitor",
+      guidance: "productive floor achieved; below preferred target; monitor, no default add-on",
+    });
+  });
+
+  it("labels above-MEV below-target MAV-adjacent misses as stretch misses", () => {
+    const diagnostics = buildRuntimeDoseAdjustmentDiagnostics(
+      buildInput({
+        fullWeekByMuscle: [
+          {
+            muscle: "Rear Delts",
+            completedEffectiveSets: 7,
+            projectedNextSessionEffectiveSets: 2.5,
+            projectedRemainingWeekEffectiveSets: 0,
+            projectedFullWeekEffectiveSets: 9.5,
+            weeklyTarget: 11,
+            mev: 4,
+            mav: 12,
+            mrv: 16,
+            deltaToTarget: -1.5,
+            deltaToMev: 5.5,
+            deltaToMav: -2.5,
+          },
+        ],
+      })
+    );
+
+    expect(diagnostics[0]).toMatchObject({
+      muscle: "Rear Delts",
+      targetStatus: "stretch_miss",
+      recommendedAction: {
+        kind: "hold_seed",
+        setDelta: 0,
+      },
+      reasonCode: "stretch_target_monitor",
+      guidance: "productive floor achieved; below stretch target; monitor, no default add-on",
+    });
+  });
+
+  it("suppresses add-ons for over-MAV rows and emits caution copy", () => {
+    const diagnostics = buildRuntimeDoseAdjustmentDiagnostics(
+      buildInput({
+        fullWeekByMuscle: [
+          {
+            muscle: "Glutes",
+            completedEffectiveSets: 12,
+            projectedNextSessionEffectiveSets: 6,
+            projectedRemainingWeekEffectiveSets: 0,
+            projectedFullWeekEffectiveSets: 18,
+            weeklyTarget: 12,
+            mev: 8,
+            mav: 16,
+            mrv: 22,
+            deltaToTarget: 6,
+            deltaToMev: 10,
+            deltaToMav: 2,
+          },
+        ],
+      })
+    );
+
+    expect(diagnostics[0]).toMatchObject({
+      muscle: "Glutes",
+      targetStatus: "over_mav",
+      recommendedAction: {
+        kind: "hold_seed",
+        setDelta: 0,
+      },
+      reasonCode: "over_mav_caution",
+      guidance: "over MAV; caution and suppress add-ons",
     });
   });
 
@@ -301,7 +446,7 @@ describe("buildRuntimeDoseAdjustmentDiagnostics", () => {
 
     expect(diagnostics[0]).toMatchObject({
       muscle: "Hamstrings",
-      targetStatus: "on_target",
+      targetStatus: "productive_zone",
       recommendedAction: {
         kind: "avoid_default_reduction",
         exerciseName: "Lying Leg Curl",

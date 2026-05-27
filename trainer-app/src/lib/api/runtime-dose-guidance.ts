@@ -23,11 +23,12 @@ export type RuntimeDoseAdjustmentDiagnostic = {
     mrv?: number;
   };
   targetStatus:
-    | "meaningfully_low"
-    | "slightly_low"
-    | "on_target"
-    | "slightly_high"
-    | "meaningfully_high";
+    | "below_mev"
+    | "below_preferred"
+    | "stretch_miss"
+    | "productive_zone"
+    | "near_mav"
+    | "over_mav";
   fatigueDensityConcern: {
     level: "none" | "watch" | "meaningful" | "high";
     drivers: Array<{
@@ -59,14 +60,19 @@ export type RuntimeDoseAdjustmentDiagnostic = {
     setDelta: -1 | 0 | 1;
   };
   reasonCode:
-    | "target_volume_deficit"
+    | "mev_floor_deficit"
     | "close_low_volume_opportunity"
-    | "target_volume_surplus"
+    | "below_preferred_monitor"
+    | "stretch_target_monitor"
+    | "near_mav_cap"
+    | "over_mav_caution"
     | "fatigue_density_watch"
     | "posterior_fatigue_meaningful"
     | "readiness_limited"
     | "hamstrings_on_target_no_default_reduction"
+    | "no_candidate_hold_seed"
     | "seed_truth_preserved";
+  guidance: string;
   confidence: number;
   readOnly: true;
   affectsAcceptedSeed: false;
@@ -115,6 +121,7 @@ const POSTERIOR_FATIGUE_MUSCLES = new Set([
 ]);
 
 const FATIGUE_PATTERNS = ["hinge", "squat", "lunge"] as const;
+const NEAR_MAV_BUFFER_SETS = 2;
 
 const EXERCISE_NAME_PRIORITIES: Record<string, string[]> = {
   Quads: ["leg extension", "leg press", "split squat", "belt squat", "squat"],
@@ -126,20 +133,27 @@ function normalizeList(values: string[] | undefined): Set<string> {
   return new Set((values ?? []).map((value) => value.toLowerCase()));
 }
 
-function getTargetStatus(deltaToTarget: number): RuntimeDoseAdjustmentDiagnostic["targetStatus"] {
-  if (deltaToTarget <= -2) {
-    return "meaningfully_low";
+function getTargetStatus(input: {
+  projectedEffectiveSets: number;
+  weeklyTarget: number;
+  mev: number;
+  mav: number;
+}): RuntimeDoseAdjustmentDiagnostic["targetStatus"] {
+  if (input.projectedEffectiveSets > input.mav) {
+    return "over_mav";
   }
-  if (deltaToTarget < -0.25) {
-    return "slightly_low";
+  if (input.projectedEffectiveSets >= input.mav - NEAR_MAV_BUFFER_SETS) {
+    return "near_mav";
   }
-  if (deltaToTarget <= 1) {
-    return "on_target";
+  if (input.projectedEffectiveSets < input.mev) {
+    return "below_mev";
   }
-  if (deltaToTarget <= 2) {
-    return "slightly_high";
+  if (input.projectedEffectiveSets < input.weeklyTarget) {
+    return input.weeklyTarget >= input.mav - NEAR_MAV_BUFFER_SETS
+      ? "stretch_miss"
+      : "below_preferred";
   }
-  return "meaningfully_high";
+  return "productive_zone";
 }
 
 function getExercisePriority(muscle: string, exerciseName: string): number {
@@ -348,7 +362,7 @@ function hasMeaningfulReadinessLimiter(
 function buildRecommendation(input: {
   muscle: string;
   targetStatus: RuntimeDoseAdjustmentDiagnostic["targetStatus"];
-  deltaToTarget: number;
+  deltaToMev: number;
   recoveryReadinessCaveat: RuntimeDoseAdjustmentDiagnostic["recoveryReadinessCaveat"];
   fatigueDensityConcern: RuntimeDoseAdjustmentDiagnostic["fatigueDensityConcern"];
   projectedSessions: RuntimeDoseProjectedSession[];
@@ -381,38 +395,54 @@ function buildRecommendation(input: {
     };
   }
 
-  if (
-    input.targetStatus === "meaningfully_low" ||
-    input.targetStatus === "slightly_low"
-  ) {
+  if (input.targetStatus === "below_mev") {
     if (!bestExercise) {
       return {
         recommendedAction: { kind: "hold_seed", setDelta: 0 },
-        reasonCode: "seed_truth_preserved",
+        reasonCode: "no_candidate_hold_seed",
       };
     }
 
+    const gapToMev = Math.abs(input.deltaToMev);
     return {
       recommendedAction: {
-        kind: Math.abs(input.deltaToTarget) <= 1.25 ? "optional_add_set" : "add_set",
+        kind: gapToMev <= 1.25 ? "optional_add_set" : "add_set",
         slotId: bestExercise.slotId,
         exerciseName: bestExercise.exerciseName,
         setDelta: 1,
       },
       reasonCode:
-        Math.abs(input.deltaToTarget) <= 1.25
+        gapToMev <= 1.25
           ? "close_low_volume_opportunity"
-          : "target_volume_deficit",
+          : "mev_floor_deficit",
     };
   }
 
-  if (
-    input.targetStatus === "slightly_high" ||
-    input.targetStatus === "meaningfully_high"
-  ) {
+  if (input.targetStatus === "below_preferred") {
     return {
       recommendedAction: { kind: "hold_seed", setDelta: 0 },
-      reasonCode: "target_volume_surplus",
+      reasonCode: "below_preferred_monitor",
+    };
+  }
+
+  if (input.targetStatus === "stretch_miss") {
+    return {
+      recommendedAction: { kind: "hold_seed", setDelta: 0 },
+      reasonCode: "stretch_target_monitor",
+    };
+  }
+
+  if (input.targetStatus === "near_mav") {
+    return {
+      recommendedAction: { kind: "hold_seed", setDelta: 0 },
+      reasonCode: "near_mav_cap",
+    };
+  }
+
+  if (input.targetStatus === "over_mav") {
+    return {
+      recommendedAction: { kind: "hold_seed", setDelta: 0 },
+      reasonCode: "over_mav_caution",
     };
   }
 
@@ -443,6 +473,30 @@ function buildRecommendation(input: {
     recommendedAction: { kind: "hold_seed", setDelta: 0 },
     reasonCode: "seed_truth_preserved",
   };
+}
+
+function buildGuidance(input: {
+  targetStatus: RuntimeDoseAdjustmentDiagnostic["targetStatus"];
+  recommendedAction: RuntimeDoseAdjustmentDiagnostic["recommendedAction"];
+}): string {
+  if (input.targetStatus === "below_mev") {
+    return input.recommendedAction.setDelta > 0
+      ? "below MEV floor; bounded low-fatigue closure if readiness and time allow"
+      : "below MEV floor but no viable candidate; hold seed and do not recommend impossible add-ons";
+  }
+  if (input.targetStatus === "below_preferred") {
+    return "productive floor achieved; below preferred target; monitor, no default add-on";
+  }
+  if (input.targetStatus === "stretch_miss") {
+    return "productive floor achieved; below stretch target; monitor, no default add-on";
+  }
+  if (input.targetStatus === "near_mav") {
+    return "near MAV cap; suppress add-ons";
+  }
+  if (input.targetStatus === "over_mav") {
+    return "over MAV; caution and suppress add-ons";
+  }
+  return "productive zone achieved; hold seed";
 }
 
 function computeConfidence(input: {
@@ -477,7 +531,12 @@ export function buildRuntimeDoseAdjustmentDiagnostics(
   return input.fullWeekByMuscle
     .filter((row) => !includeMuscles || includeMuscles.has(row.muscle))
     .map((row) => {
-      const targetStatus = getTargetStatus(row.deltaToTarget);
+      const targetStatus = getTargetStatus({
+        projectedEffectiveSets: row.projectedFullWeekEffectiveSets,
+        weeklyTarget: row.weeklyTarget,
+        mev: row.mev,
+        mav: row.mav,
+      });
       const plannedRemainingVolume = buildPlannedRemainingVolume({
         muscle: row.muscle,
         projectedSessions: input.projectedSessions,
@@ -494,7 +553,7 @@ export function buildRuntimeDoseAdjustmentDiagnostics(
       const recommendation = buildRecommendation({
         muscle: row.muscle,
         targetStatus,
-        deltaToTarget: row.deltaToTarget,
+        deltaToMev: row.deltaToMev,
         recoveryReadinessCaveat,
         fatigueDensityConcern,
         projectedSessions: input.projectedSessions,
@@ -521,6 +580,10 @@ export function buildRuntimeDoseAdjustmentDiagnostics(
         fatigueDensityConcern,
         recoveryReadinessCaveat,
         ...recommendation,
+        guidance: buildGuidance({
+          targetStatus,
+          recommendedAction: recommendation.recommendedAction,
+        }),
         confidence: computeConfidence({
           recommendedAction: recommendation.recommendedAction,
           recoveryReadinessCaveat,

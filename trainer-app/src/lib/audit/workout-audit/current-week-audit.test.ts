@@ -48,6 +48,7 @@ describe("buildCurrentWeekAuditEvaluation", () => {
         belowMEV: [],
         overMAV: [],
         underTargetClusters: [],
+        belowPreferred: [],
         fatigueRisks: [],
       },
       interventionHints: [],
@@ -62,16 +63,16 @@ describe("buildCurrentWeekAuditEvaluation", () => {
           {
             muscle: "Chest",
             completedEffectiveSets: 0,
-            projectedNextSessionEffectiveSets: 3,
-            projectedRemainingWeekEffectiveSets: 3,
-            projectedFullWeekEffectiveSets: 6,
+            projectedNextSessionEffectiveSets: 2,
+            projectedRemainingWeekEffectiveSets: 2,
+            projectedFullWeekEffectiveSets: 4,
             weeklyTarget: 12,
             mev: 8,
             mav: 16,
             warningSeverity: "hard",
-            deltaToTarget: -6,
-            deltaToMev: -2,
-            deltaToMav: -10,
+            deltaToTarget: -8,
+            deltaToMev: -4,
+            deltaToMav: -12,
           },
           {
             muscle: "Calves",
@@ -108,14 +109,62 @@ describe("buildCurrentWeekAuditEvaluation", () => {
 
     expect(evaluation.currentWeekAudit.belowMEV).toEqual(["Chest"]);
     expect(evaluation.currentWeekAudit.underTargetClusters).toEqual([
-      { muscle: "Chest", deficit: 6 },
+      { muscle: "Chest", deficit: 4 },
+    ]);
+    expect(evaluation.currentWeekAudit.belowPreferred).toEqual([
+      { muscle: "Calves", deficit: 2, status: "below_preferred" },
     ]);
     expect(evaluation.interventionHints).toEqual([
       {
         muscle: "Chest",
-        suggestedSets: 2,
-        reason: "Projected 2.0 sets below MEV",
+        suggestedSets: 3,
+        reason: "below_mev: projected 4.0 sets below MEV; bounded floor closure only",
       },
+    ]);
+  });
+
+  it("separates above-MEV target misses from below-MEV closure clusters", () => {
+    const evaluation = buildCurrentWeekAuditEvaluation(
+      buildPayload({
+        fullWeekByMuscle: [
+          {
+            muscle: "Chest",
+            completedEffectiveSets: 4,
+            projectedNextSessionEffectiveSets: 6,
+            projectedRemainingWeekEffectiveSets: 0,
+            projectedFullWeekEffectiveSets: 10,
+            weeklyTarget: 12,
+            mev: 8,
+            mav: 16,
+            warningSeverity: "hard",
+            deltaToTarget: -2,
+            deltaToMev: 2,
+            deltaToMav: -6,
+          },
+          {
+            muscle: "Rear Delts",
+            completedEffectiveSets: 6,
+            projectedNextSessionEffectiveSets: 7,
+            projectedRemainingWeekEffectiveSets: 0,
+            projectedFullWeekEffectiveSets: 13,
+            weeklyTarget: 15,
+            mev: 4,
+            mav: 16,
+            warningSeverity: "hard",
+            deltaToTarget: -2,
+            deltaToMev: 9,
+            deltaToMav: -3,
+          },
+        ],
+      })
+    );
+
+    expect(evaluation.currentWeekAudit.belowMEV).toEqual([]);
+    expect(evaluation.currentWeekAudit.underTargetClusters).toEqual([]);
+    expect(evaluation.interventionHints).toEqual([]);
+    expect(evaluation.currentWeekAudit.belowPreferred).toEqual([
+      { muscle: "Chest", deficit: 2, status: "below_preferred" },
+      { muscle: "Rear Delts", deficit: 2, status: "stretch_miss" },
     ]);
   });
 
@@ -194,6 +243,7 @@ describe("buildCurrentWeekAuditEvaluation", () => {
     );
 
     expect(evaluation.currentWeekAudit.overMAV).toEqual(["Glutes"]);
+    expect(evaluation.currentWeekAudit.belowPreferred).toEqual([]);
     expect(evaluation.currentWeekAudit.fatigueRisks).toEqual([
       "Glutes projects 2.0 sets over MAV",
       "lower_b: high systemic fatigue pattern: squat/hinge/lunge stacking with glutes/lower back stimulus",

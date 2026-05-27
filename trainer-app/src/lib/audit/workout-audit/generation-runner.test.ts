@@ -626,12 +626,14 @@ describe("runWorkoutAuditGeneration", () => {
       },
       currentWeekAudit: {
         belowMEV: ["Chest"],
-        underTargetClusters: [{ muscle: "Chest", deficit: 6 }],
+        underTargetClusters: [],
+        belowPreferred: [],
       },
       interventionHints: [
         {
           muscle: "Chest",
           suggestedSets: 2,
+          reason: "below_mev: projected 2.0 sets below MEV; bounded floor closure only",
         },
       ],
       sessionRisks: [
@@ -658,6 +660,7 @@ describe("runWorkoutAuditGeneration", () => {
           exerciseName: "Dumbbell Bench Press",
           setDelta: 1,
         }),
+        reasonCode: "mev_floor_deficit",
       }),
     ]);
     expect(

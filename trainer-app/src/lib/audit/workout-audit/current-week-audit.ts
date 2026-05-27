@@ -128,15 +128,10 @@ function buildInterventionHints(
   return rows
     .filter(isHardWarningRow)
     .map((row) => {
-      const deficitToTarget = roundToTenth(
-        row.weeklyTarget - row.projectedFullWeekEffectiveSets
-      );
       const deficitToMev = roundToTenth(row.mev - row.projectedFullWeekEffectiveSets);
       const isBelowMev = deficitToMev > 0;
-      const hasMeaningfulTargetDeficit =
-        deficitToTarget >= UNDER_TARGET_CLUSTER_DEFICIT;
 
-      if (!isBelowMev && !hasMeaningfulTargetDeficit) {
+      if (!isBelowMev) {
         return null;
       }
       if (row.deltaToMav >= -NEAR_MAV_BUFFER_SETS) {
@@ -146,17 +141,14 @@ function buildInterventionHints(
         return null;
       }
 
-      const actionableDeficit = isBelowMev ? deficitToMev : deficitToTarget;
       return {
         muscle: row.muscle,
         suggestedSets: Math.min(
           INTERVENTION_MAX_SETS,
-          Math.max(2, Math.ceil(actionableDeficit))
+          Math.max(2, Math.ceil(deficitToMev))
         ),
-        reason: isBelowMev
-          ? `Projected ${formatSets(deficitToMev)} below MEV`
-          : `Projected ${formatSets(deficitToTarget)} below target`,
-        sortKey: isBelowMev ? deficitToMev + 100 : deficitToTarget,
+        reason: `below_mev: projected ${formatSets(deficitToMev)} below MEV; bounded floor closure only`,
+        sortKey: deficitToMev + 100,
       };
     })
     .filter(
@@ -194,9 +186,38 @@ export function buildCurrentWeekAuditEvaluation(
     .filter(isHardWarningRow)
     .map((row) => ({
       muscle: row.muscle,
-      deficit: roundToTenth(row.weeklyTarget - row.projectedFullWeekEffectiveSets),
+      deficit: roundToTenth(row.mev - row.projectedFullWeekEffectiveSets),
     }))
     .filter((row) => row.deficit >= UNDER_TARGET_CLUSTER_DEFICIT)
+    .sort((left, right) => right.deficit - left.deficit || left.muscle.localeCompare(right.muscle));
+  const belowPreferred = projectedWeekVolume.fullWeekByMuscle
+    .filter(isHardWarningRow)
+    .map((row) => {
+      const deficitToPreferred = roundToTenth(
+        row.weeklyTarget - row.projectedFullWeekEffectiveSets
+      );
+      if (
+        row.projectedFullWeekEffectiveSets < row.mev ||
+        deficitToPreferred <= 0 ||
+        row.projectedFullWeekEffectiveSets >= row.mav - NEAR_MAV_BUFFER_SETS
+      ) {
+        return null;
+      }
+      return {
+        muscle: row.muscle,
+        deficit: deficitToPreferred,
+        status:
+          row.weeklyTarget >= row.mav - NEAR_MAV_BUFFER_SETS
+            ? ("stretch_miss" as const)
+            : ("below_preferred" as const),
+      };
+    })
+    .filter(
+      (
+        row
+      ): row is NonNullable<CurrentWeekAuditEvaluation["belowPreferred"][number]> =>
+        row != null
+    )
     .sort((left, right) => right.deficit - left.deficit || left.muscle.localeCompare(right.muscle));
   const sessionRisks = buildSessionRisks(projectedWeekVolume.projectedSessions);
   const fatigueRisks = [
@@ -213,6 +234,7 @@ export function buildCurrentWeekAuditEvaluation(
       belowMEV: belowMevRows.map((row) => row.muscle),
       overMAV: overMavRows.map((row) => row.muscle),
       underTargetClusters,
+      belowPreferred,
       fatigueRisks,
     },
     interventionHints: buildInterventionHints(projectedWeekVolume.fullWeekByMuscle),

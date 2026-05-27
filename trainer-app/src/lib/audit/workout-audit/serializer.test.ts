@@ -1636,6 +1636,7 @@ describe("buildWorkoutAuditArtifact", () => {
             belowMEV: [],
             overMAV: ["Glutes"],
             underTargetClusters: [],
+            belowPreferred: [],
             fatigueRisks: ["Glutes projects 2.0 sets over MAV"],
           },
           interventionHints: [],

@@ -289,7 +289,7 @@ const PROMOTION_READINESS_BLUEPRINTS: Record<
       "forbidden-slot workarounds can look cleaner while becoming less valid",
     ],
     rollbackCriteria: [
-      "required hamstring, glute, or back stimulus drops below target",
+      "required hamstring, glute, or back stimulus drops below its floor or preferred range",
       "suspicious repair or forbidden-slot cleanup increases",
       "material repair increases in the compared artifact",
     ],

@@ -1656,7 +1656,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
                 candidate: "chest_upper_slot_distinct_exercise_distribution",
                 weekScope: "accumulation_weeks",
                 expectedBenefit:
-                  "Chest is under target and needs distinct upper-slot distribution once weeks are projected.",
+                  "Chest is below its preferred target and needs distinct upper-slot distribution once weeks are projected.",
                 risk: "Not immediate behavior without week-by-week projection.",
                 prereqs: [
                   "inventory/class visibility for distinct chest press/fly options",
@@ -1824,7 +1824,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
               {
                 candidate: "chest_upper_slot_distinct_exercise_distribution",
                 readiness: "ready_for_bounded_trial",
-                reason: "Chest remains under target.",
+                reason: "Chest remains below its preferred target.",
                 requiredGuardrails: [
                   "bounded_to_upper_chest_distribution_only",
                 ],

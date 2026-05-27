@@ -1362,7 +1362,7 @@ export function buildCandidateBehaviorSlices(): PreselectionDistributionPolicyBy
       candidate: "chest_upper_slot_distinct_exercise_distribution",
       weekScope: "accumulation_weeks",
       expectedBenefit:
-        "Chest is a hard primary target, is currently under target, direct Chest evidence is concentrated in repeated Incline DB Bench exposure, and lower-slot Chest repair is blocked; a projected week-by-week distinct upper-slot press/fly distribution is the safest future behavior slice.",
+        "Chest is a hard primary target, is currently below its preferred target, direct Chest evidence is concentrated in repeated Incline DB Bench exposure, and lower-slot Chest repair is blocked; a projected week-by-week distinct upper-slot press/fly distribution is the safest future behavior slice.",
       risk:
         "Implementing it before weekly projection would optimize Week 1 evidence while pretending to solve the whole mesocycle.",
       prereqs: [
@@ -1843,7 +1843,7 @@ export function buildWeeklyDemandCurveWarnings(input: {
         muscle: delivery.muscle,
         evidence: [
           ...evidence,
-          "support_floor_still_under_target_if_week_1_repeats",
+          "support_floor_still_below_preferred_if_week_1_repeats",
         ],
         severity:
           delivery.muscle === "Side Delts" ? "warning" : "info",
@@ -2519,7 +2519,7 @@ export function buildAccumulationProjectionMuscles(input: {
     const evidence = uniqueSorted([
       ...(delivery ? formatCurveEvidenceForDelivery(delivery) : []),
       `week_${input.week.week}_uses_repeated_week_1_final_shape`,
-      ...(status === "below" ? ["repeated_week_1_shape_stays_below_target"] : []),
+      ...(status === "below" ? ["repeated_week_1_shape_stays_below_preferred_target"] : []),
       ...(status === "above" ? ["repeated_week_1_shape_stays_above_target"] : []),
     ]);
 
@@ -2807,8 +2807,8 @@ export function buildCandidateBehaviorReadiness(input: {
         ? "ready_for_bounded_trial"
         : "needs_more_projection",
       reason: chestReady
-        ? "Repeated Week 1 shape keeps Chest under target and keeps Chest exercise concentration/duplicate evidence visible across accumulation."
-        : "Needs accumulation projection evidence that Chest remains under target and concentrated in one repeated pressing identity.",
+        ? "Repeated Week 1 shape keeps Chest below its preferred target and keeps Chest exercise concentration/duplicate evidence visible across accumulation."
+        : "Needs accumulation projection evidence that Chest remains below its preferred target and concentrated in one repeated pressing identity.",
       requiredGuardrails: [
         "bounded_to_upper_chest_distribution_only",
         "preserve_upper_slot_pull_identity",

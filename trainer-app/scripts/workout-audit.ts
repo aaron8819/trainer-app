@@ -1544,13 +1544,13 @@ function buildWeeklyDemandCurveSummaryLines(
     );
   const risks: string[] = [];
   if (hasWarning("PRIMARY_UNDER_TARGET_ACROSS_ACCUMULATION", "Chest")) {
-    risks.push("Chest under target across accumulation");
+    risks.push("Chest below preferred target across accumulation");
   }
   if (hasWarning("MUSCLE_OVERDELIVERED_ACROSS_ACCUMULATION", "Hamstrings")) {
     risks.push("Hamstrings overdelivered if repeated");
   }
   if (hasWarning("SUPPORT_UNDER_TARGET_ACROSS_ACCUMULATION", "Side Delts")) {
-    risks.push("Side Delts under target");
+    risks.push("Side Delts below preferred support target");
   }
 
   return [
@@ -1974,13 +1974,13 @@ function buildAccumulationWeekProjectionSummaryLines(
     warnings.some((warning) => warning.code === code);
   const risks: string[] = [];
   if (hasWarning("CHEST_UNDER_TARGET_ACROSS_ACCUMULATION")) {
-    risks.push("Chest under target across accumulation");
+    risks.push("Chest below preferred target across accumulation");
   }
   if (hasWarning("HAMSTRINGS_OVERDELIVERED_ACROSS_ACCUMULATION")) {
     risks.push("Hamstrings overdelivered across accumulation");
   }
   if (hasWarning("SIDE_DELTS_UNDER_TARGET_ACROSS_ACCUMULATION")) {
-    risks.push("Side Delts under target across accumulation");
+    risks.push("Side Delts below preferred support target across accumulation");
   }
   if (hasWarning("DUPLICATE_MAIN_LIFT_REUSE_ACROSS_ACCUMULATION")) {
     risks.push("Duplicate main-lift reuse");

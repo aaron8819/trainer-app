@@ -304,7 +304,7 @@ describe("artifact serialization helpers", () => {
         trend: "persistent_under_target",
         evidence: [
           "Chest:final=4:preferred=10",
-          "repeated_week_1_shape_stays_below_target",
+          "repeated_week_1_shape_stays_below_preferred_target",
         ],
         limitations: [
           "repeated_week_1_final_shape_only",
@@ -484,7 +484,7 @@ describe("artifact serialization helpers", () => {
                   {
                     candidate: "chest_upper_slot_distinct_exercise_distribution",
                     readiness: "ready_for_bounded_trial",
-                    reason: "Chest remains under target.",
+                    reason: "Chest remains below its preferred target.",
                     requiredGuardrails: ["preserve_upper_slot_pull_identity"],
                   },
                 ],

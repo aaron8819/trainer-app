@@ -1765,7 +1765,7 @@ export function buildWarnings(input: {
     add(
       "PRIMARY_MUSCLE_BELOW_TARGET_BEFORE_REPAIR",
       "warning",
-      "A hard weekly-demand muscle was below target before final repair/shaping.",
+      "A hard weekly-demand muscle was below its preferred target before final repair/shaping; this is target-gap evidence, not a floor failure by itself.",
       primaryBelowBeforeRepair.slice(0, 4).map((row) => `${row.muscle}:${row.projectedEffectiveStimulusAfterInitialSlotComposition}/${row.preferredTarget}`)
     );
   }

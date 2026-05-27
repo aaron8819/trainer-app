@@ -165,11 +165,187 @@ import {
   buildPlannerOnlyDryRunComparison,
   buildPlannerOnlyNoRepairComparison,
 } from "./mesocycle-explain";
-import { buildV2PlannerMesocyclePolicy } from "@/lib/engine/planning/v2";
+import {
+  DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+  buildV2PlannerMesocyclePolicy,
+} from "@/lib/engine/planning/v2";
+import type { V2MaterializationExercise } from "@/lib/engine/planning/v2";
 
 type PlannerOnlyPlanningReality = NonNullable<
   Parameters<typeof buildPlannerOnlyDryRunComparison>[0]
 >;
+
+function v2Exercise(
+  input: Partial<V2MaterializationExercise> & {
+    exerciseId: string;
+    name: string;
+    primaryMuscles: string[];
+  },
+): V2MaterializationExercise {
+  return {
+    aliases: [],
+    movementPatterns: [],
+    secondaryMuscles: [],
+    equipment: [],
+    isCompound: false,
+    isMainLiftEligible: false,
+    fatigueCost: 1,
+    stimulusByMusclePerSet: {},
+    ...input,
+  };
+}
+
+const representativeV2Inventory: V2MaterializationExercise[] = [
+  v2Exercise({
+    exerciseId: "machine-chest-press",
+    name: "Machine Chest Press",
+    primaryMuscles: ["Chest"],
+    secondaryMuscles: ["Front Delts", "Triceps"],
+    movementPatterns: ["horizontal_press"],
+    isCompound: true,
+  }),
+  v2Exercise({
+    exerciseId: "cable-fly",
+    name: "Cable Fly",
+    primaryMuscles: ["Chest"],
+    movementPatterns: ["fly"],
+  }),
+  v2Exercise({
+    exerciseId: "incline-machine-press",
+    name: "Slight Incline Machine Press",
+    primaryMuscles: ["Chest"],
+    secondaryMuscles: ["Front Delts", "Triceps"],
+    movementPatterns: ["horizontal_press"],
+    isCompound: true,
+  }),
+  v2Exercise({
+    exerciseId: "chest-supported-row",
+    name: "Chest Supported Row",
+    primaryMuscles: ["Upper Back", "Lats"],
+    movementPatterns: ["row"],
+    isCompound: true,
+  }),
+  v2Exercise({
+    exerciseId: "cable-row",
+    name: "Cable Row",
+    primaryMuscles: ["Upper Back", "Lats"],
+    movementPatterns: ["horizontal_pull"],
+    isCompound: true,
+  }),
+  v2Exercise({
+    exerciseId: "lat-pulldown",
+    name: "Neutral Grip Pulldown",
+    primaryMuscles: ["Lats"],
+    movementPatterns: ["vertical_pull"],
+    isCompound: true,
+  }),
+  v2Exercise({
+    exerciseId: "assisted-pull-up",
+    name: "Assisted Pull Up",
+    primaryMuscles: ["Lats"],
+    movementPatterns: ["vertical_pull"],
+    isCompound: true,
+  }),
+  v2Exercise({
+    exerciseId: "rear-delt-fly",
+    name: "Rear Delt Reverse Fly",
+    primaryMuscles: ["Rear Delts"],
+    movementPatterns: ["isolation"],
+  }),
+  v2Exercise({
+    exerciseId: "rope-pressdown",
+    name: "Rope Pressdown",
+    primaryMuscles: ["Triceps"],
+  }),
+  v2Exercise({
+    exerciseId: "machine-shoulder-press",
+    name: "Machine Shoulder Press",
+    aliases: ["OHP"],
+    primaryMuscles: ["Front Delts", "Side Delts"],
+    movementPatterns: ["vertical_press"],
+    isCompound: true,
+  }),
+  v2Exercise({
+    exerciseId: "cable-lateral-raise",
+    name: "Cable Lateral Raise",
+    primaryMuscles: ["Side Delts"],
+    movementPatterns: ["isolation"],
+  }),
+  v2Exercise({
+    exerciseId: "cable-curl",
+    name: "Cable Curl",
+    primaryMuscles: ["Biceps"],
+  }),
+  v2Exercise({
+    exerciseId: "hack-squat",
+    name: "Hack Squat",
+    primaryMuscles: ["Quads"],
+    movementPatterns: ["squat"],
+    isCompound: true,
+  }),
+  v2Exercise({
+    exerciseId: "leg-extension",
+    name: "Leg Extension",
+    primaryMuscles: ["Quads"],
+    movementPatterns: ["isolation"],
+    fatigueCost: 2,
+  }),
+  v2Exercise({
+    exerciseId: "leg-press",
+    name: "Leg Press",
+    primaryMuscles: ["Quads"],
+    movementPatterns: ["leg_press"],
+    isCompound: true,
+    fatigueCost: 2,
+  }),
+  v2Exercise({
+    exerciseId: "seated-leg-curl",
+    name: "Seated Leg Curl",
+    primaryMuscles: ["Hamstrings"],
+    movementPatterns: ["flexion", "isolation"],
+  }),
+  v2Exercise({
+    exerciseId: "lying-leg-curl",
+    name: "Lying Leg Curl",
+    primaryMuscles: ["Hamstrings"],
+    movementPatterns: ["flexion", "isolation"],
+    fatigueCost: 2,
+  }),
+  v2Exercise({
+    exerciseId: "barbell-hip-thrust",
+    name: "Barbell Hip Thrust",
+    primaryMuscles: ["Glutes", "Hamstrings"],
+    stimulusByMusclePerSet: { "Lower Back": 0.25 },
+    isCompound: true,
+    fatigueCost: 2,
+  }),
+  v2Exercise({
+    exerciseId: "romanian-deadlift",
+    name: "Romanian Deadlift",
+    primaryMuscles: ["Hamstrings", "Glutes"],
+    movementPatterns: ["hinge"],
+    isCompound: true,
+    isMainLiftEligible: true,
+  }),
+  v2Exercise({
+    exerciseId: "standing-calf-raise",
+    name: "Standing Calf Raise",
+    primaryMuscles: ["Calves"],
+    movementPatterns: ["isolation"],
+  }),
+];
+
+function representativeV2BasePlanCompareContext() {
+  return {
+    inventory: representativeV2Inventory,
+    taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+    constraints: {
+      avoidExerciseIds: [],
+      favoriteExerciseIds: [],
+      painConflictExerciseIds: [],
+    },
+  };
+}
 
 function makeCalfPlanningReality(overrides: {
   lowerACalfSets?: number;
@@ -8032,6 +8208,216 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(
       noRepair.v2TargetVsNoRepairDiff.summary.migrationCandidateCount,
     ).toBeGreaterThan(0);
+  });
+
+  it("keeps rear_delt no-repair evidence visible while pure V2 coverage demotes it as next migration slice", () => {
+    const repairRow = (input: {
+      slotId: string;
+      muscle: string;
+      exerciseName: string;
+      action: "added" | "set_bumped";
+      effectiveStimulusDelta: number;
+      rawSetDelta: number;
+    }) => ({
+      repairMechanism: "support_floor_closure",
+      materiality: "major",
+      muscle: input.muscle,
+      slotId: input.slotId,
+      exerciseId: input.exerciseName.toLowerCase().replaceAll(" ", "-"),
+      exerciseName: input.exerciseName,
+      action: input.action,
+      effectiveStimulusAdded: Math.max(0, input.effectiveStimulusDelta),
+      effectiveStimulusDelta: input.effectiveStimulusDelta,
+      rawSetsAdded: Math.max(0, input.rawSetDelta),
+      rawSetDelta: input.rawSetDelta,
+      changedExerciseIdentity: input.action === "added",
+      changedSlotShapeMaterially: true,
+      behaviorClass: "program_shaping",
+      source: "program_quality_application",
+      rationale: "test rear-delt support-floor repair row",
+      likelyAvoidableWithShadowAllocation: true,
+      shadowAllocationBasis: "slot_owned_muscle_before_selection",
+      shadowRationale: ["shadow_slot_allocation:support:soft"],
+    });
+    const rearDeltDemand = {
+      muscle: "Rear Delts",
+      priority: "support" as const,
+      targetStatus: "soft" as const,
+      minEffectiveSets: 4,
+      preferredEffectiveSets: 6,
+      maxEffectiveSets: 12,
+    };
+    const noRepairReality = makeNoRepairConcentrationPlanningReality({
+      exercises: [
+        {
+          slotId: "upper_a",
+          exerciseId: "cable-rear-delt-fly",
+          exerciseName: "Cable Rear Delt Fly",
+          setCount: 3,
+          primaryMuscles: ["Rear Delts"],
+          movementPatterns: ["isolation"],
+          stimulus: { "Rear Delts": 3.1 },
+          percentages: { "Rear Delts": 64.5 },
+        },
+      ],
+      demands: [rearDeltDemand],
+    });
+    const repairedReality = {
+      ...makeNoRepairConcentrationPlanningReality({
+        exercises: [
+          {
+            slotId: "upper_a",
+            exerciseId: "cable-rear-delt-fly",
+            exerciseName: "Cable Rear Delt Fly",
+            setCount: 3,
+            primaryMuscles: ["Rear Delts"],
+            movementPatterns: ["isolation"],
+            stimulus: { "Rear Delts": 3.1 },
+            percentages: { "Rear Delts": 50 },
+          },
+          {
+            slotId: "upper_a",
+            exerciseId: "dumbbell-rear-delt-fly",
+            exerciseName: "Dumbbell Rear Delt Fly",
+            setCount: 2,
+            primaryMuscles: ["Rear Delts"],
+            movementPatterns: ["isolation"],
+            stimulus: { "Rear Delts": 2 },
+            percentages: { "Rear Delts": 30 },
+            producedOrIncreasedByRepair: true,
+          },
+          {
+            slotId: "upper_a",
+            exerciseId: "t-bar-row",
+            exerciseName: "T-Bar Row",
+            setCount: 5,
+            primaryMuscles: ["Upper Back", "Lats"],
+            movementPatterns: ["row"],
+            stimulus: { "Upper Back": 4, Lats: 4, "Rear Delts": 0.6 },
+            percentages: { "Upper Back": 50, Lats: 50, "Rear Delts": 10 },
+            producedOrIncreasedByRepair: true,
+          },
+        ],
+        demands: [rearDeltDemand],
+      }),
+      repairMaterialityAfterShadowAllocation: [
+        repairRow({
+          slotId: "upper_a",
+          muscle: "Rear Delts",
+          exerciseName: "Dumbbell Rear Delt Fly",
+          action: "added",
+          rawSetDelta: 2,
+          effectiveStimulusDelta: 2,
+        }),
+        repairRow({
+          slotId: "upper_a",
+          muscle: "Rear Delts",
+          exerciseName: "T-Bar Row",
+          action: "set_bumped",
+          rawSetDelta: 2,
+          effectiveStimulusDelta: 0.6,
+        }),
+      ],
+    } as PlannerOnlyPlanningReality;
+
+    const noRepair = buildPlannerOnlyNoRepairComparison({
+      noRepairPlanningReality: noRepairReality,
+      repairedPlanningReality: repairedReality,
+      compareRepaired: true,
+      repairedProjectionAvailable: true,
+      v2BasePlanCompareContext: representativeV2BasePlanCompareContext(),
+    });
+    const rearDeltLane = noRepair.v2TargetVsNoRepairDiff.slotDiffs
+      .find((slot) => slot.slotId === "upper_a")
+      ?.laneDiffs.find((lane) => lane.laneId === "rear_delt");
+
+    expect(noRepair.weeklyMuscleTotals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Rear Delts",
+          projectedEffectiveSets: 3.1,
+          targetMin: 4,
+          status: "below",
+        }),
+      ]),
+    );
+    expect(noRepair.v2BasePlanShadowConsumptionTrial).toMatchObject({
+      summary: { regressionCount: 0 },
+      changes: {
+        exerciseClassCoverage: {
+          rows: expect.arrayContaining([
+            expect.objectContaining({
+              item: "rear_delt_direct_support_class",
+              v2Base: true,
+            }),
+          ]),
+        },
+        muscleCoverage: {
+          rows: expect.arrayContaining([
+            expect.objectContaining({
+              item: "support_direct_floor_coverage",
+              evidence: expect.arrayContaining(["missed:none"]),
+            }),
+          ]),
+        },
+      },
+    });
+    expect(rearDeltLane).toMatchObject({
+      currentStatus: "blocked",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "keep_diagnostic_only",
+      severity: "quality_warning",
+      currentEvidence: {
+        selectedExercises: [
+          expect.objectContaining({
+            name: "Cable Rear Delt Fly",
+            sets: 3,
+          }),
+        ],
+        relevantDiagnostics: expect.arrayContaining([
+          "concentration:Cable Rear Delt Fly:Rear Delts:64.5%",
+          "setPolicy:hard_blocker",
+          "setPolicyReason:underdelivery_hidden_by_concentration",
+          "pure_v2_materialization:rear_delt_direct_support_class=true",
+          "pure_v2_materialization:support_direct_floors_missed=none",
+          "pure_v2_materialization:regressions=0",
+          "readout_bridge:rear_delt_current_no_repair_warning_demoted_by_pure_v2",
+        ]),
+      },
+    });
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.replacementReadinessImpact
+        .nextBestMigrationSlice ?? "none",
+    ).not.toContain("rear_delt");
+    expect(
+      noRepair.v2TargetVsNoRepairDiff.slotDiffs
+        .flatMap((slot) => slot.laneDiffs)
+        .filter(
+          (lane) =>
+            lane.laneId === "rear_delt" &&
+            lane.severity === "migration_candidate",
+        ),
+    ).toEqual([]);
+    expect(noRepair.repairPromotionScoreboard?.promotionCandidates).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          exerciseName: "Dumbbell Rear Delt Fly",
+        }),
+        expect.objectContaining({ exerciseName: "T-Bar Row" }),
+      ]),
+    );
+    expect(noRepair.repairPromotionScoreboard?.doNotPromoteRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          muscle: "Rear Delts",
+          exerciseName: "Dumbbell Rear Delt Fly",
+        }),
+        expect.objectContaining({
+          muscle: "Rear Delts",
+          exerciseName: "T-Bar Row",
+        }),
+      ]),
+    );
   });
 
   it("keeps session-shaping rows visible without promoting them into replacement blockers", () => {

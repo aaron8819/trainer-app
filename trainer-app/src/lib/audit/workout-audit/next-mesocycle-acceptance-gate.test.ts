@@ -101,7 +101,7 @@ function diagnosticPreview(input?: {
     status: "below" | "within" | "above" | "diagnostic";
   }>;
   supportLaneBoundaryRows?: Array<{
-    muscle: "Triceps";
+    muscle: "Triceps" | "Rear Delts";
     projectedEffectiveSets: number | null;
     mevFloor: number | null;
     severity: "warning" | "high_risk";
@@ -412,6 +412,79 @@ describe("next mesocycle acceptance gate", () => {
         }),
       ]),
     );
+  });
+
+  it("rejects a real candidate with rear-delt volume below the floor", () => {
+    const payload = build({
+      volumes: [
+        {
+          muscle: "Rear Delts",
+          projectedSets: 3.1,
+          mev: 4,
+          productiveTarget: 6,
+          mav: 12,
+        },
+      ],
+    });
+
+    expect(payload.candidateIdentity.candidateKind).toBe("draft");
+    expect(payload.weeklyMuscleTable[0]).toMatchObject({
+      muscle: "Rear Delts",
+      projectedSets: 3.1,
+      mev: 4,
+      status: "below_mev_fail",
+    });
+    expect(payload.gates.find((row) => row.gate === "Volume floors/zones")).toMatchObject({
+      status: "fail",
+      severity: "high_risk",
+      ownerSeam: "volume floors",
+      mustFixBeforeWeek1: true,
+    });
+    expect(payload.gateResult).toBe("rejected");
+  });
+
+  it("keeps rear-delt diagnostic preview evidence separate from candidate truth", () => {
+    const payload = build({
+      found: false,
+      preview: diagnosticPreview({
+        weeklyMuscleTotals: [
+          {
+            muscle: "Rear Delts",
+            projectedEffectiveSets: 3.1,
+            targetMin: 4,
+            targetPreferred: 6,
+            status: "below",
+          },
+        ],
+        supportLaneBoundaryRows: [
+          {
+            muscle: "Rear Delts",
+            projectedEffectiveSets: 3.1,
+            mevFloor: 4,
+            severity: "high_risk",
+            mustFixBeforeWeek1: true,
+          },
+        ],
+      }),
+    });
+
+    expect(payload.candidateFound).toBe(false);
+    expect(payload.candidateIdentity.candidateKind).toBe(
+      "diagnostic_preview_only",
+    );
+    expect(payload.diagnosticPreview.label).toBe(
+      "diagnostic_preview_not_candidate",
+    );
+    expect(payload.weeklyMuscleTable[0]).toMatchObject({
+      muscle: "Rear Delts",
+      status: "below_mev_fail",
+    });
+    expect(payload.gates.find((row) => row.gate === "Candidate identity")).toMatchObject({
+      status: "fail",
+      severity: "blocker",
+      notes: "diagnostic previews are evidence only and cannot be accepted",
+    });
+    expect(payload.gateResult).toBe("not_runnable");
   });
 
   it("keeps completed-block evidence separate from hypothesis and required fix", () => {

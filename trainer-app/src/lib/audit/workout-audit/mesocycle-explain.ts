@@ -3857,6 +3857,12 @@ type V2TargetVsNoRepairDiff =
   MesocycleExplainPlannerOnlyNoRepair["v2TargetVsNoRepairDiff"];
 type V2TargetVsNoRepairLaneDiff =
   V2TargetVsNoRepairDiff["slotDiffs"][number]["laneDiffs"][number];
+type V2BasePlanCompareReadout = NonNullable<
+  MesocycleExplainPlannerOnlyNoRepair["v2BasePlanCompare"]
+>;
+type V2BasePlanShadowConsumptionTrialReadout = NonNullable<
+  MesocycleExplainPlannerOnlyNoRepair["v2BasePlanShadowConsumptionTrial"]
+>;
 type CrossWeekProjectionGate =
   MesocycleExplainPlannerOnlyNoRepair["crossWeekProjectionGate"];
 type V2DeloadProjectionDiagnostic =
@@ -3878,6 +3884,81 @@ type V2LaneSetPolicyStatus =
   | "requires_justification"
   | "hard_blocker"
   | "unknown";
+type V2CoverageClassRow = {
+  item: string;
+  classification: string;
+  evidence: string[];
+  v2Base?: boolean;
+};
+type V2CoverageMuscleRow = {
+  item: string;
+  classification: string;
+  evidence: string[];
+};
+
+function hasPureV2RearDeltDirectClass(rows: V2CoverageClassRow[]): boolean {
+  const row = rows.find((candidate) => {
+    return candidate.item === "rear_delt_direct_support_class";
+  });
+  return (
+    row != null &&
+    row.v2Base === true &&
+    row.classification !== "v2_regresses"
+  );
+}
+
+function hasPureV2NoMissedSupportDirectFloors(
+  rows: V2CoverageMuscleRow[],
+): boolean {
+  const row = rows.find((candidate) => {
+    return candidate.item === "support_direct_floor_coverage";
+  });
+  return (
+    row != null &&
+    row.classification !== "v2_regresses" &&
+    row.evidence.some((evidence) => evidence.toLowerCase() === "missed:none")
+  );
+}
+
+function shadowTrialProvesPureV2RearDeltCoverage(
+  trial?: V2BasePlanShadowConsumptionTrialReadout,
+): boolean {
+  return (
+    trial != null &&
+    trial.comparedPlans.v2BasePlanAvailable &&
+    trial.comparedPlans.shadowConsumedPlanAvailable &&
+    trial.summary.regressionCount === 0 &&
+    hasPureV2RearDeltDirectClass(trial.changes.exerciseClassCoverage.rows) &&
+    hasPureV2NoMissedSupportDirectFloors(trial.changes.muscleCoverage.rows)
+  );
+}
+
+function basePlanCompareProvesPureV2RearDeltCoverage(
+  compare?: V2BasePlanCompareReadout,
+): boolean {
+  return (
+    compare != null &&
+    compare.comparedPlans.v2BasePlanAvailable &&
+    compare.summary.v2RegressionCount === 0 &&
+    hasPureV2RearDeltDirectClass(
+      compare.comparisons.exerciseClassCoverage.rows,
+    ) &&
+    hasPureV2NoMissedSupportDirectFloors(
+      compare.comparisons.muscleCoverage.rows,
+    )
+  );
+}
+
+function pureV2MaterializationProvesRearDeltCoverage(input: {
+  v2BasePlanCompare?: V2BasePlanCompareReadout;
+  v2BasePlanShadowConsumptionTrial?: V2BasePlanShadowConsumptionTrialReadout;
+}): boolean {
+  return (
+    shadowTrialProvesPureV2RearDeltCoverage(
+      input.v2BasePlanShadowConsumptionTrial,
+    ) || basePlanCompareProvesPureV2RearDeltCoverage(input.v2BasePlanCompare)
+  );
+}
 
 function toV2LaneWeek1Status(status?: string): V2Lane["currentWeek1Status"] {
   if (status === "matched") return "satisfied";
@@ -6278,6 +6359,48 @@ function normalizeOptionalV2MigrationRecommendation(input: {
   };
 }
 
+function alignRearDeltRecommendationWithPureV2Materialization(input: {
+  lane: V2Lane | V2Slot["lanes"][number];
+  diagnostics: string[];
+  pureV2RearDeltSupportCovered?: boolean;
+  recommendation: Pick<
+    V2TargetVsNoRepairLaneDiff,
+    "migrationRecommendation" | "severity"
+  >;
+}): {
+  diagnostics: string[];
+  recommendation: Pick<
+    V2TargetVsNoRepairLaneDiff,
+    "migrationRecommendation" | "severity"
+  >;
+} {
+  if (
+    !input.pureV2RearDeltSupportCovered ||
+    input.lane.laneId !== "rear_delt" ||
+    input.recommendation.migrationRecommendation === "no_action" ||
+    input.recommendation.migrationRecommendation === "blocked_do_not_promote"
+  ) {
+    return {
+      diagnostics: input.diagnostics,
+      recommendation: input.recommendation,
+    };
+  }
+
+  return {
+    diagnostics: uniqueSorted([
+      ...input.diagnostics,
+      "pure_v2_materialization:rear_delt_direct_support_class=true",
+      "pure_v2_materialization:support_direct_floors_missed=none",
+      "pure_v2_materialization:regressions=0",
+      "readout_bridge:rear_delt_current_no_repair_warning_demoted_by_pure_v2",
+    ]),
+    recommendation: {
+      migrationRecommendation: "keep_diagnostic_only",
+      severity: "quality_warning",
+    },
+  };
+}
+
 function buildV2LaneDiff(input: {
   noRepair?: PlanningRealityDiagnostic;
   repaired?: PlanningRealityDiagnostic;
@@ -6285,6 +6408,7 @@ function buildV2LaneDiff(input: {
   v2SetDistributionIntent?: V2SetDistributionIntent;
   slotId: V2TargetVsNoRepairDiff["slotDiffs"][number]["slotId"];
   lane: V2Lane | V2Slot["lanes"][number];
+  pureV2RearDeltSupportCovered?: boolean;
 }): V2TargetVsNoRepairLaneDiff {
   const noRepairSlot = getSlotById(
     input.noRepair?.finalSlotPlan ?? [],
@@ -6343,6 +6467,13 @@ function buildV2LaneDiff(input: {
       setPolicyStatus: setPolicy.status,
     }),
   });
+  const alignedReadout =
+    alignRearDeltRecommendationWithPureV2Materialization({
+      lane: input.lane,
+      diagnostics,
+      pureV2RearDeltSupportCovered: input.pureV2RearDeltSupportCovered,
+      recommendation,
+    });
 
   return {
     laneId: input.lane.laneId,
@@ -6356,10 +6487,10 @@ function buildV2LaneDiff(input: {
         exercises: noRepairExercises,
         lane: input.lane,
       }),
-      relevantDiagnostics: diagnostics,
+      relevantDiagnostics: alignedReadout.diagnostics,
     },
     gapCause,
-    ...recommendation,
+    ...alignedReadout.recommendation,
   };
 }
 
@@ -6463,6 +6594,7 @@ function buildV2TargetVsNoRepairDiff(input: {
   repaired?: PlanningRealityDiagnostic;
   slotPlans: MesocycleExplainPlannerOnlyNoRepair["slotPlans"];
   acceptanceClassification: NoRepairClassification;
+  pureV2RearDeltSupportCovered?: boolean;
 }): V2TargetVsNoRepairDiff {
   const noRepairSlotPlans = new Map(
     input.slotPlans.map((slot) => [slot.slotId, slot]),
@@ -6477,6 +6609,7 @@ function buildV2TargetVsNoRepairDiff(input: {
         v2SetDistributionIntent: input.v2SetDistributionIntent,
         slotId: slot.slotId,
         lane,
+        pureV2RearDeltSupportCovered: input.pureV2RearDeltSupportCovered,
       }),
     ),
   }));
@@ -8251,6 +8384,11 @@ export function buildPlannerOnlyNoRepairComparison(input: {
           ...input.v2BasePlanCompareContext,
         })
       : undefined;
+    const pureV2RearDeltSupportCovered =
+      pureV2MaterializationProvesRearDeltCoverage({
+        v2BasePlanCompare,
+        v2BasePlanShadowConsumptionTrial,
+      });
     const v2SupportLanePolicy = getPureV2SupportLanePolicy();
     const plannerOwnedAccumulationProjection =
       buildPlannerOwnedAccumulationProjection({
@@ -8263,6 +8401,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       repaired: input.repairedPlanningReality,
       slotPlans: [],
       acceptanceClassification,
+      pureV2RearDeltSupportCovered,
     });
     const v2ExerciseSelectionPlanDiagnostic =
       buildV2ExerciseSelectionPlanDiagnostic({
@@ -8462,6 +8601,11 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         ...input.v2BasePlanCompareContext,
       })
     : undefined;
+  const pureV2RearDeltSupportCovered =
+    pureV2MaterializationProvesRearDeltCoverage({
+      v2BasePlanCompare,
+      v2BasePlanShadowConsumptionTrial,
+    });
   const v2SupportLanePolicy = getPureV2SupportLanePolicy();
   const plannerOwnedAccumulationProjection =
     buildPlannerOwnedAccumulationProjection({
@@ -8475,6 +8619,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     repaired: input.repairedPlanningReality,
     slotPlans,
     acceptanceClassification,
+    pureV2RearDeltSupportCovered,
   });
   const v2ExerciseSelectionPlanDiagnostic =
     buildV2ExerciseSelectionPlanDiagnostic({

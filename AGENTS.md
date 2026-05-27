@@ -5,6 +5,27 @@
 - This repo is a single-user, local-first personal training app built with Next.js App Router, Prisma, and Postgres.
 - The fastest canonical doc entry point is `trainer-app/docs/00_START_HERE.md`.
 
+## North-Star First Principles
+
+Current implementation is evidence, not authority. The north-star docs, first-principles training logic, canonical seams, and source-of-truth boundaries are the standard.
+
+When current behavior conflicts with the north star, challenge it. Do not preserve behavior merely because it exists.
+
+For Trainer work, reason from the intended architecture:
+
+```txt
+Planner authors intent.
+Materializer translates intent.
+Acceptance gate judges the candidate.
+Seed stores executable truth.
+Runtime executes seed.
+Logs capture performed reality.
+Review informs future blocks.
+Repair is a safety net, not plan author.
+```
+
+Prefer fixing the rightful owner seam over downstream patches. If the owner seam is unclear, stop and investigate before implementing.
+
 ## Repo Map
 - `trainer-app/src/app`: App Router pages and route handlers only.
 - `trainer-app/src/app/api/**/route.ts`: request parsing, validation, owner resolution, and orchestration entrypoints.
@@ -16,6 +37,9 @@
 
 ## Explore Before Editing
 - Do not change code until you have identified the owning seam, read the current route/page, the owning `src/lib/*` implementation, and the nearby tests.
+- For Trainer repo Codex sessions, the first repo read should be:
+  `Get-Content -Raw -LiteralPath .Codex/napkin.md`
+  unless the task is clearly unrelated to repo work or the file does not exist.
 - Start with `trainer-app/docs/00_START_HERE.md`, then read the owning canonical doc for the seam you are changing.
 - Confirm an existing canonical helper does not already own the behavior before adding or moving logic.
 - Use `rg` first. Typical passes:
@@ -62,10 +86,37 @@
 - Production runtime execution must go through the guarded seed serializer/replay path.
 - Runtime must not consume V2 diagnostics, lane IDs, planner metadata, or accepted planner intent as executable policy.
 
+## Acceptance Gate Boundary
+
+The next-mesocycle acceptance gate is a read-only decision surface. It judges whether a candidate is trainable; it does not plan, repair, reseed, accept, or mutate.
+
+Acceptance-gate outputs should distinguish:
+- not runnable
+- rejected
+- accepted with watch items
+- accepted
+
+For failures or warnings, include:
+- severity
+- owner seam
+- smallest safe fix
+- must-fix-before-Week-1
+
+Do not treat diagnostic previews as candidates. Do not use the acceptance gate as hidden planner/materializer policy.
+
 ## Audit Runtime Separation
 - Audit artifacts, debug shards, and readout fields must not become production behavior inputs.
 - Promote audit-only diagnostics into runtime behavior only through reviewed production code, canonical owner seams, and tests.
 - Audit tooling must not mutate generation, replay, persistence, or planner behavior as a side effect.
+- Classify diagnostic outputs by fidelity before using them for decisions:
+  - candidate truth
+  - handoff-candidate evidence
+  - high-fidelity shadow preview
+  - low-fidelity diagnostic/stress test
+  - legacy/repair diagnostic
+  - runtime truth
+- Diagnostic previews can form hypotheses and guide investigations. They must not drive acceptance, planner/materializer policy, or runtime behavior unless their relationship to the canonical pipeline is proven.
+- Separate evidence, hypothesis, and required fix in audit outputs and retrospectives.
 
 ## Required Response Format For Substantial Tasks
 - Classification
@@ -102,11 +153,15 @@ Retrospectives should capture reusable lessons when relevant:
 - Validation / collaboration: were prompts, scope, tests, commands, and commit boundaries strong enough?
 
 For meaningful tasks, include concise workflow notes:
+```txt
 Workflow lessons:
 - Product/seam lesson:
 - Prompt or validation lesson:
 - Reusable future instruction:
 - Follow-up: docs / fixture / audit mode / skill / none
+```
+
+Avoid generic self-reflection. Base lessons only on changed files, commands, tests, audit outputs, errors, corrections, repo structure, or explicit user direction.
 
 ## Canonical Boundaries
 - Resolve runtime identity via `resolveOwner()` in `trainer-app/src/lib/api/workout-context.ts`. Do not add alternate user-resolution paths in app routes.

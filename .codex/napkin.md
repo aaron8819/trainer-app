@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
+| 2026-05-27 | self | In the first next-mesocycle acceptance-gate refinement, prior optional top-up evidence still produced a candidate warning even when the candidate cleared the relevant MEV floors with margin, causing the focused test to fail. | Keep completed-block evidence separate from required fixes/watch items: only escalate prior evidence when the persisted candidate repeats the risk or leaves a razor-thin margin. |
 | 2026-05-26 | self | Repeated the Trainer startup convention miss by batching `.Codex/napkin.md` with `git status` and skill reads, and used `Get-Content` without the exact `-Raw -LiteralPath` shape. | The first actual Trainer tool call must be a single unbatched `Get-Content -Raw -LiteralPath .Codex/napkin.md`; only after it returns should status, skills, docs, or parallel reads run. |
 | 2026-05-25 | self | Read `.Codex/napkin.md` first, but repeated the known startup convention miss by omitting `-Raw`. | The first Trainer tool call must be exactly `Get-Content -Raw -LiteralPath .Codex/napkin.md`; do not simplify the command shape. |
 | 2026-05-22 | self | Repeated the napkin startup mistake by reading the napkin skill first, then batching `.Codex/napkin.md` with a skill read during pre-push verification. | In Trainer, the first actual tool call must be exactly `Get-Content -Raw -LiteralPath .Codex/napkin.md`; no skill reads, no wrappers, no exceptions. |

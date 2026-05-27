@@ -7,6 +7,8 @@ import { buildV2AcceptedSeedPrepareCompareAuditPayload } from "./v2-accepted-see
 import { buildWeeklyRetroAuditPayload } from "./weekly-retro";
 import type {
   MesocycleExplainAuditPayload,
+  NextMesocycleAcceptanceGateRemediation,
+  NextMesocycleAcceptanceGateSeverity,
   NextMesocycleAcceptanceGatePayload,
   NextMesocycleAcceptanceGateStatus,
   V2AcceptedSeedPrepareCompareAuditPayload,
@@ -77,6 +79,14 @@ type CompletedBlockEvidenceAssessment = {
   candidateWarningRisks: string[];
 };
 
+type RepairBurdenAssessment = Pick<
+  NextMesocycleAcceptanceGatePayload["decisionSummary"],
+  "repairBurden" | "repairBurdenEvidence"
+> & {
+  materialRepairCount: number | null;
+  majorRepairCount: number | null;
+};
+
 const REQUIRED_GATE_LABELS = [
   "Candidate identity",
   "Seed truth/runtime contract",
@@ -109,15 +119,29 @@ function formatGateNumber(value: number | null | undefined): string {
 
 function statusFromBooleans(input: {
   fail?: boolean;
+  warning?: boolean;
   pass?: boolean;
 }): NextMesocycleAcceptanceGateStatus {
   if (input.fail) {
     return "fail";
   }
+  if (input.warning) {
+    return "warning";
+  }
   if (input.pass) {
     return "pass";
   }
   return "unknown";
+}
+
+function isActionableSeverity(
+  severity: NextMesocycleAcceptanceGateSeverity,
+): boolean {
+  return (
+    severity === "blocker" ||
+    severity === "high_risk" ||
+    severity === "warning"
+  );
 }
 
 function planningShapeFromPreview(
@@ -126,6 +150,67 @@ function planningShapeFromPreview(
   const planningReality =
     preview?.preview.projectionDiagnostics.planningReality;
   return planningReality?.summary?.planningShape;
+}
+
+function repairBurdenFromPreview(
+  preview: MesocycleExplainAuditPayload | undefined,
+): RepairBurdenAssessment {
+  const planningReality =
+    preview?.preview.projectionDiagnostics.planningReality;
+  const summary = planningReality?.summary;
+  const materialRepairCount =
+    planningReality?.shadowRepairSummary?.materialRepairCount ??
+    summary?.materialRepairCount ??
+    null;
+  const majorRepairCount =
+    planningReality?.shadowRepairSummary?.majorRepairCount ??
+    summary?.majorRepairCount ??
+    null;
+  const planningShape = summary?.planningShape;
+  const evidence = [
+    `planning_shape=${planningShape ?? "unknown"}`,
+    `materialRepairCount=${formatGateNumber(materialRepairCount)}`,
+    `majorRepairCount=${formatGateNumber(majorRepairCount)}`,
+  ].join(" ");
+
+  if (
+    planningShape === "mostly_repair_shaped" ||
+    planningShape === "mixed_upstream_plus_repair_shaped" ||
+    (majorRepairCount ?? 0) > 0 ||
+    (materialRepairCount ?? 0) >= 6
+  ) {
+    return {
+      repairBurden: "high",
+      repairBurdenEvidence: evidence,
+      materialRepairCount,
+      majorRepairCount,
+    };
+  }
+
+  if ((materialRepairCount ?? 0) >= 3) {
+    return {
+      repairBurden: "medium",
+      repairBurdenEvidence: evidence,
+      materialRepairCount,
+      majorRepairCount,
+    };
+  }
+
+  if ((materialRepairCount ?? 0) > 0) {
+    return {
+      repairBurden: "low",
+      repairBurdenEvidence: evidence,
+      materialRepairCount,
+      majorRepairCount,
+    };
+  }
+
+  return {
+    repairBurden: materialRepairCount == null ? "low" : "none",
+    repairBurdenEvidence: evidence,
+    materialRepairCount,
+    majorRepairCount,
+  };
 }
 
 function volumeRowsFromPreview(
@@ -177,6 +262,13 @@ function buildWeeklyMuscleTable(
               : status === "target_near_mav_stretch_cap"
                 ? "target near MAV is a stretch/cap, not a quota"
                 : "inside productive zone";
+      const severity: NextMesocycleAcceptanceGateSeverity =
+        status === "below_mev_fail" || status === "over_mav_fail_or_warning"
+          ? "high_risk"
+          : status === "above_mev_below_target_not_failure" ||
+              status === "target_near_mav_stretch_cap"
+            ? "info"
+            : "pass";
 
       return {
         muscle: row.muscle,
@@ -185,6 +277,7 @@ function buildWeeklyMuscleTable(
         productiveTarget,
         mav,
         status,
+        severity,
         notes,
       };
     })
@@ -207,8 +300,17 @@ function buildPriorRiskRows(
       risk: "Chest MEV fragility",
       status: statusFromBooleans({
         fail: chest?.status === "below_mev_fail",
+        warning: Boolean(chest && chest.projectedSets - chest.mev <= 1.5),
         pass: Boolean(chest && chest.projectedSets > chest.mev + 1),
       }),
+      severity:
+        chest?.status === "below_mev_fail"
+          ? "high_risk"
+          : chest && chest.projectedSets - chest.mev <= 1.5
+            ? "warning"
+            : chest
+              ? "pass"
+              : "info",
       evidence: chest
         ? `projected=${chest.projectedSets} mev=${chest.mev}`
         : "candidate volume unavailable",
@@ -218,8 +320,17 @@ function buildPriorRiskRows(
       risk: "Calves MEV fragility",
       status: statusFromBooleans({
         fail: calves?.status === "below_mev_fail",
+        warning: Boolean(calves && calves.projectedSets - calves.mev <= 1.5),
         pass: Boolean(calves && calves.projectedSets > calves.mev + 1),
       }),
+      severity:
+        calves?.status === "below_mev_fail"
+          ? "high_risk"
+          : calves && calves.projectedSets - calves.mev <= 1.5
+            ? "warning"
+            : calves
+              ? "pass"
+              : "info",
       evidence: calves
         ? `projected=${calves.projectedSets} mev=${calves.mev}`
         : "candidate volume unavailable",
@@ -228,9 +339,15 @@ function buildPriorRiskRows(
     {
       risk: "Side/rear delt thin margins",
       status: statusFromBooleans({
-        fail: thinMargin(sideDelts) || thinMargin(rearDelts),
+        warning: thinMargin(sideDelts) || thinMargin(rearDelts),
         pass: Boolean(sideDelts && rearDelts),
       }),
+      severity:
+        !sideDelts || !rearDelts
+          ? "info"
+          : thinMargin(sideDelts) || thinMargin(rearDelts)
+            ? "warning"
+            : "pass",
       evidence: joinEvidence([
         sideDelts
           ? `side_delts=${sideDelts.projectedSets}/${sideDelts.mev}`
@@ -244,18 +361,21 @@ function buildPriorRiskRows(
     {
       risk: "recurring load calibration issues",
       status: "unknown",
+      severity: "info",
       evidence: "weekly-retro evidence not embedded in this candidate",
       notes: "review recent weekly retros for target-too-low/high patterns",
     },
     {
       risk: "reliance on runtime add-ons",
       status: "unknown",
+      severity: "info",
       evidence: "weekly-retro runtime-addition evidence not embedded in this candidate",
       notes: "candidate should not depend on session-local add-ons to satisfy floors",
     },
     {
       risk: "target semantics friction",
       status: "pass",
+      severity: "pass",
       evidence: "gate treats MEV/MAV as hard boundaries and target as productive aim",
       notes: "above MEV but below target is not failed",
     },
@@ -372,12 +492,15 @@ function buildMevFragilityEvidence(input: {
     muscle: input.muscle,
     floorKind: "MEV fragility",
   });
-  const severity: CompletedBlockEvidenceRow["severity"] =
+  const recurringFragility =
     (finalWeek?.status === "below_mev" || (finalWeek?.deltaToMev ?? 0) < 0) ||
     topUpWeeks.length > 0 ||
-    belowMevRows.length > 0
-      ? "high"
-      : "low";
+    belowMevRows.length > 0;
+  const severity: CompletedBlockEvidenceRow["severity"] = implication.failure
+    ? "high_risk"
+    : recurringFragility && implication.warning
+      ? "warning"
+      : "info";
   const evidence = joinEvidence([
     topUpWeeks.length > 0
       ? `${topUpWeeks.map((week) => `W${week}`).join(", ")} required top-up`
@@ -397,11 +520,22 @@ function buildMevFragilityEvidence(input: {
         evidence === "none"
           ? "weekly-retro muscle evidence unavailable or clean"
           : evidence,
+      hypothesis: recurringFragility
+        ? `${input.muscle} may need planned floor margin instead of relying on late-block or session-local top-ups`
+        : `${input.muscle} prior-block evidence does not show a recurring floor problem`,
       acceptanceImplication: implication.text,
+      requiredFix: implication.failure
+        ? `raise planned ${input.muscle} Week 1/block volume to at least MEV through the canonical volume-floor owner`
+        : "none unless the persisted candidate repeats below-MEV or razor-thin floor exposure",
       severity,
+      ownerSeam: "volume floors",
+      smallestSafeFix: implication.failure
+        ? `investigate candidate ${input.muscle} allocation and adjust the canonical planner/materializer owner before accepting`
+        : "monitor in the gate/pre-session readout; do not implement planner behavior from prior evidence alone",
+      mustFixBeforeWeek1: implication.failure,
     },
-    failure: severity === "high" && implication.failure,
-    warning: severity === "high" && implication.warning,
+    failure: severity === "high_risk" && implication.failure,
+    warning: severity === "warning" || implication.warning,
   };
 }
 
@@ -433,8 +567,8 @@ function buildDeltThinMarginEvidence(input: {
     (row) => row.deltaToMev <= 1.5 || row.status === "below_mev",
   );
   const severity: CompletedBlockEvidenceRow["severity"] = belowOrThin
-    ? "medium"
-    : "low";
+    ? "warning"
+    : "info";
   const implications = [sideCandidate.text, rearCandidate.text];
 
   return {
@@ -451,11 +585,27 @@ function buildDeltThinMarginEvidence(input: {
       acceptanceImplication: input.candidateFound
         ? implications.join("; ")
         : "candidate evidence pending; avoid razor-thin side/rear delt floors when a persisted candidate exists",
+      hypothesis:
+        "side/rear delt support may be too close to the floor when prior block margins were thin",
+      requiredFix:
+        sideCandidate.failure || rearCandidate.failure
+          ? "fix candidate side/rear delt volume below MEV before Week 1"
+          : "none unless the candidate projects below MEV; exact or thin margins become watch items",
       severity,
+      ownerSeam: "volume floors",
+      smallestSafeFix:
+        sideCandidate.failure || rearCandidate.failure
+          ? "investigate slot allocation for direct delt support before accepting"
+          : "track as a watch item through pre-session volume/readiness checks",
+      mustFixBeforeWeek1: sideCandidate.failure || rearCandidate.failure,
     },
     failure: false,
     warning:
-      severity !== "low" && (sideCandidate.failure || sideCandidate.warning || rearCandidate.failure || rearCandidate.warning),
+      severity === "warning" &&
+      (sideCandidate.failure ||
+        sideCandidate.warning ||
+        rearCandidate.failure ||
+        rearCandidate.warning),
   };
 }
 
@@ -489,7 +639,19 @@ function buildRuntimeAddonEvidence(
       totalAddedSets > 0
         ? "candidate should satisfy predictable floors with planned seed volume, not session-local add-ons"
         : "informational; no recurring add-on dependency visible",
-    severity: weeks.length > 0 ? "medium" : "low",
+    hypothesis:
+      totalAddedSets > 0
+        ? "prior block needed operator/session-local work to close predictable dose gaps"
+        : "no recurring runtime-addition dependency is visible",
+    requiredFix:
+      "none by itself; fix only when the persisted candidate repeats a real floor/cap/trainability failure",
+    severity: weeks.length > 0 ? "warning" : "info",
+    ownerSeam: "planner policy",
+    smallestSafeFix:
+      totalAddedSets > 0
+        ? "investigate whether the candidate planned seed covers the same predictable floors before changing planner policy"
+        : "no implementation required",
+    mustFixBeforeWeek1: false,
   };
 }
 
@@ -518,7 +680,19 @@ function buildLoadCalibrationEvidence(
       driftRows.length > 0
         ? "Week 1 prescriptions should use recent anchors/confidence warnings; this audit does not mutate loads"
         : "informational; no calibration drift visible in loaded retros",
-    severity: driftRows.length > 0 ? "medium" : "low",
+    hypothesis:
+      driftRows.length > 0
+        ? "some Week 1 prescriptions may need extra confidence/readiness attention"
+        : "loaded retros do not show prescription calibration pressure",
+    requiredFix:
+      "none unless Week 1 candidate prescriptions are low-confidence or contradicted by canonical progression anchors",
+    severity: driftRows.length > 0 ? "warning" : "info",
+    ownerSeam: "prescription/readout",
+    smallestSafeFix:
+      driftRows.length > 0
+        ? "investigate prescription/readout confidence before changing load policy"
+        : "no implementation required",
+    mustFixBeforeWeek1: false,
   };
 }
 
@@ -539,7 +713,17 @@ function buildTargetSemanticsEvidence(
     evidence: `below_target_above_mev_rows=${underTargetOnly}; below_mev_rows=${belowMev}`,
     acceptanceImplication:
       "do not fail candidate solely for below-target rows when projected volume is at or above MEV",
-    severity: underTargetOnly > 0 ? "medium" : "low",
+    hypothesis:
+      underTargetOnly > 0
+        ? "productive target misses may be stretch-target or normal block-noise rather than trainability failures"
+        : "target semantics evidence is clean in loaded retros",
+    requiredFix:
+      "none for below-target/above-MEV rows unless another hard floor, cap, or trainability failure is present",
+    severity: underTargetOnly > 0 ? "info" : "pass",
+    ownerSeam: "target semantics",
+    smallestSafeFix:
+      "do not implement planner changes for below-target/above-MEV evidence alone",
+    mustFixBeforeWeek1: false,
   };
 }
 
@@ -570,8 +754,13 @@ function buildOptionalGapFillDependencyEvidence(input: {
     muscle: "Calves",
     floorKind: "optional gap-fill dependency",
   });
-  const severity: CompletedBlockEvidenceRow["severity"] =
-    topUpWeeks.length > 0 ? "high" : "low";
+  const hasCandidateFailure = chest.failure || calves.failure;
+  const hasCandidateWarning = chest.warning || calves.warning;
+  const severity: CompletedBlockEvidenceRow["severity"] = hasCandidateFailure
+    ? "high_risk"
+    : hasCandidateWarning
+      ? "warning"
+      : "info";
   const candidateImplication = !input.candidateFound
     ? "evidence will be applied when a persisted handoff candidate exists"
     : chest.failure || calves.failure
@@ -588,10 +777,22 @@ function buildOptionalGapFillDependencyEvidence(input: {
           ? `${topUpWeeks.map((week) => `W${week}`).join(", ")} session-local top-up evidence`
           : "normal week close should not rely on optional gap-fill",
       acceptanceImplication: candidateImplication,
+      hypothesis:
+        topUpWeeks.length > 0
+          ? "the next plan should not rely on optional gap-fill/top-up behavior for predictable priority floors"
+          : "no optional gap-fill dependency is visible",
+      requiredFix: hasCandidateFailure
+        ? "fix candidate Chest/Calves below-MEV repeat before Week 1"
+        : "none unless the persisted candidate repeats below-MEV priority floor exposure",
       severity,
+      ownerSeam: "volume floors",
+      smallestSafeFix: hasCandidateFailure
+        ? "investigate candidate volume floors at the canonical planner/materializer owner"
+        : "keep as watch/evidence; do not implement from prior top-up history alone",
+      mustFixBeforeWeek1: hasCandidateFailure,
     },
-    failure: severity === "high" && (chest.failure || calves.failure),
-    warning: severity === "high" && (chest.warning || calves.warning),
+    failure: hasCandidateFailure,
+    warning: severity === "warning",
   };
 }
 
@@ -695,6 +896,7 @@ function buildGates(input: {
   blockers: string[];
   candidateKind: NextMesocycleAcceptanceGatePayload["candidateIdentity"]["candidateKind"];
   planningShape?: string;
+  repairBurden: RepairBurdenAssessment;
 }): NextMesocycleAcceptanceGatePayload["gates"] {
   const v2 = input.evidence.v2PrepareCompare;
   const candidateFound = v2?.handoffCandidate.found === true;
@@ -717,8 +919,7 @@ function buildGates(input: {
     v2.seedShapeComparison.seedSerializerIdentity.classification === "v2_preserves";
   const materializerPass =
     v2?.provenance.materializerStatus === "materialized" &&
-    v2.provenance.seedShapeCompatibility.compatible === true &&
-    !mostlyRepairShaped;
+    v2.provenance.seedShapeCompatibility.compatible === true;
 
   return REQUIRED_GATE_LABELS.map((gate) => {
     if (gate === "Candidate identity") {
@@ -726,6 +927,7 @@ function buildGates(input: {
       return {
         gate,
         status: pass ? "pass" : "fail",
+        severity: pass ? "pass" : "blocker",
         evidence: `candidate_found=${candidateFound ? "yes" : "no"} kind=${input.candidateKind}`,
         notes:
           input.candidateKind === "diagnostic_preview_only"
@@ -733,31 +935,53 @@ function buildGates(input: {
             : pass
               ? "persisted handoff candidate is inspectable without writes"
               : "rerun after handoff exists",
+        ownerSeam: "candidate identity",
+        smallestSafeFix:
+          input.candidateKind === "diagnostic_preview_only"
+            ? "wait for or create the real persisted handoff candidate through the explicit handoff flow; do not accept a diagnostic preview"
+            : "rerun after the source reaches handoff and a persisted candidate exists",
+        mustFixBeforeWeek1: true,
       };
     }
 
     if (gate === "Seed truth/runtime contract") {
+      const status = statusFromBooleans({ pass: candidateFound && seedShapePass });
       return {
         gate,
-        status: statusFromBooleans({ pass: candidateFound && seedShapePass }),
+        status,
+        severity:
+          status === "pass" ? "pass" : candidateFound ? "blocker" : "info",
         evidence: v2
           ? `serializer=${v2.boundaryFacts.seedSerializer} executable_shape=${v2.seedShapeComparison.executableFieldShape.classification}`
           : "v2 prepare-compare unavailable",
         notes: "runtime contract remains exerciseId/role/setCount only",
+        ownerSeam: "seed/runtime contract",
+        smallestSafeFix:
+          status === "pass"
+            ? "no implementation required"
+            : "investigate seed serializer/runtime contract compatibility before accepting",
+        mustFixBeforeWeek1: candidateFound && status !== "pass",
       };
     }
 
     if (gate === "Volume floors/zones") {
-      return {
-        gate,
-        status:
-          !candidateFound
-            ? "unknown"
-            : input.weeklyRows.length === 0
+      const status =
+        !candidateFound
+          ? "unknown"
+          : input.weeklyRows.length === 0
             ? "unknown"
             : volumeFailures.length > 0
               ? "fail"
-              : "pass",
+              : "pass";
+      return {
+        gate,
+        status,
+        severity:
+          status === "fail"
+            ? "high_risk"
+            : status === "pass"
+              ? "pass"
+              : "info",
         evidence:
           !candidateFound
             ? input.weeklyRows.length > 0
@@ -771,20 +995,37 @@ function buildGates(input: {
               ? "no below-MEV or over-MAV rows"
               : "candidate volume unavailable",
         notes: "below target but above MEV is informational, not failure",
+        ownerSeam: "volume floors",
+        smallestSafeFix:
+          status === "fail"
+            ? "fix candidate weekly volume at the canonical volume-floor/materializer owner before accepting"
+            : "no implementation required for above-MEV/below-target rows",
+        mustFixBeforeWeek1: status === "fail",
       };
     }
 
     if (gate === "Prior-block recurring risks") {
       const failures = input.completedBlockAssessment.candidateFailureRisks;
       const warnings = input.completedBlockAssessment.candidateWarningRisks;
+      const status: NextMesocycleAcceptanceGateStatus =
+        failures.length > 0
+          ? "fail"
+          : !candidateFound
+            ? "unknown"
+            : warnings.length > 0
+              ? "warning"
+              : "pass";
       return {
         gate,
-        status:
+        status,
+        severity:
           failures.length > 0
-            ? "fail"
-            : !candidateFound || warnings.length > 0
-              ? "unknown"
-              : "pass",
+            ? "high_risk"
+            : warnings.length > 0
+              ? "warning"
+              : !candidateFound
+                ? "info"
+                : "pass",
         evidence:
           failures.length > 0
             ? `repeated predictable misses=${failures.join(", ")}`
@@ -796,18 +1037,31 @@ function buildGates(input: {
         notes: candidateFound
           ? "compares candidate floors against recent weekly-retro evidence"
           : "evidence will be applied when a persisted handoff candidate exists",
+        ownerSeam: "audit/readout",
+        smallestSafeFix:
+          failures.length > 0
+            ? "fix only the repeated candidate failure at its canonical owner; do not turn prior evidence into policy by itself"
+            : "monitor warning rows; no planner implementation from prior-block evidence alone",
+        mustFixBeforeWeek1: failures.length > 0,
       };
     }
 
     if (gate === "Slot/lane balance") {
+      const status: NextMesocycleAcceptanceGateStatus =
+        !candidateFound || coverageRows.length === 0
+          ? "unknown"
+          : coverageFailures.length > 0
+            ? "fail"
+            : "pass";
       return {
         gate,
-        status:
-          !candidateFound || coverageRows.length === 0
-            ? "unknown"
-            : coverageFailures.length > 0
-              ? "fail"
-              : "pass",
+        status,
+        severity:
+          status === "fail"
+            ? "high_risk"
+            : status === "pass"
+              ? "pass"
+              : "info",
         evidence:
           coverageFailures.length > 0
             ? coverageFailures.map((row) => row.item).join(", ")
@@ -815,66 +1069,305 @@ function buildGates(input: {
               ? `coverage_rows=${coverageRows.length}`
               : "coverage evidence unavailable",
         notes: "uses prepare-compare class/lane coverage, not runtime policy",
+        ownerSeam: "slot allocation",
+        smallestSafeFix:
+          status === "fail"
+            ? "investigate candidate slot allocation/coverage in the handoff preparation seam"
+            : "no implementation required",
+        mustFixBeforeWeek1: status === "fail",
       };
     }
 
     if (gate === "Exercise/materialization quality") {
+      const repairBurdenWarning =
+        input.repairBurden.repairBurden === "medium" ||
+        input.repairBurden.repairBurden === "high" ||
+        mostlyRepairShaped;
+      const status: NextMesocycleAcceptanceGateStatus =
+        candidateFound && !materializerPass
+          ? "fail"
+          : candidateFound && repairBurdenWarning
+            ? "warning"
+            : candidateFound && materializerPass
+              ? "pass"
+              : "unknown";
       return {
         gate,
-        status: statusFromBooleans({
-          fail: candidateFound && mostlyRepairShaped,
-          pass: candidateFound && materializerPass,
-        }),
+        status,
+        severity:
+          status === "fail"
+            ? "high_risk"
+            : status === "warning"
+              ? "warning"
+              : status === "pass"
+                ? "pass"
+                : "info",
         evidence: v2
           ? `materializer=${v2.provenance.materializerStatus} seed_shape=${v2.provenance.seedShapeCompatibility.compatible ? "yes" : "no"} planning_shape=${input.planningShape ?? "unknown"}`
           : `planning_shape=${input.planningShape ?? "unknown"}`,
         notes: mostlyRepairShaped
           ? candidateFound
-            ? "mostly repair-shaped candidate evidence blocks acceptance"
+            ? "repair-heavy candidate can be trainable but carries planner/materializer quality debt"
             : "mostly repair-shaped preview is diagnostic evidence only"
           : "diagnostic preview evidence remains non-executable",
+        ownerSeam: "materializer policy",
+        smallestSafeFix:
+          status === "fail"
+            ? "investigate materializer compatibility before accepting"
+            : status === "warning"
+              ? "train only with watch items; investigate planner/materializer ownership debt separately"
+              : "no implementation required",
+        mustFixBeforeWeek1: status === "fail",
       };
     }
 
     if (gate === "Lifecycle/deload safety") {
+      const status = input.blockers.length > 0 ? "fail" : "pass";
       return {
         gate,
-        status: input.blockers.length > 0 ? "fail" : "pass",
+        status,
+        severity: status === "fail" ? "blocker" : "pass",
         evidence: input.blockers.join(", ") || "no lifecycle blockers found",
         notes: "source must be AWAITING_HANDOFF before acceptance gate is runnable",
+        ownerSeam: "lifecycle/handoff",
+        smallestSafeFix:
+          status === "fail"
+            ? "resolve lifecycle/handoff blockers before evaluating acceptance"
+            : "no implementation required",
+        mustFixBeforeWeek1: status === "fail",
       };
     }
 
+    const status = statusFromBooleans({
+      pass:
+        candidateFound &&
+        v2?.provenance.baseValidationStatus === "pass" &&
+        v2.provenance.seedShapeCompatibility.compatible === true,
+    });
     return {
       gate,
-      status: statusFromBooleans({
-        pass:
-          candidateFound &&
-          v2?.provenance.baseValidationStatus === "pass" &&
-          v2.provenance.seedShapeCompatibility.compatible === true,
-      }),
+      status,
+      severity:
+        status === "pass" ? "pass" : candidateFound ? "high_risk" : "info",
       evidence: v2
         ? `base=${v2.provenance.baseValidationStatus} seed_shape=${v2.provenance.seedShapeCompatibility.compatible ? "yes" : "no"}`
         : "candidate trainability evidence unavailable",
       notes: "Week 1 must be trainable from persisted candidate evidence",
+      ownerSeam: "prescription/readout",
+      smallestSafeFix:
+        status === "pass"
+          ? "no implementation required"
+          : "investigate base validation and Week 1 prescription readiness before accepting",
+      mustFixBeforeWeek1: candidateFound && status !== "pass",
     };
   });
 }
 
-function deriveGateResult(input: {
+function buildDecisionSummary(input: {
   candidateFound: boolean;
   gates: NextMesocycleAcceptanceGatePayload["gates"];
-}): NextMesocycleAcceptanceGatePayload["gateResult"] {
+  repairBurden: RepairBurdenAssessment;
+}): NextMesocycleAcceptanceGatePayload["decisionSummary"] {
+  const weekOneGate = input.gates.find(
+    (gate) => gate.gate === "Week 1 trainability",
+  );
+  const materializerGate = input.gates.find(
+    (gate) => gate.gate === "Exercise/materialization quality",
+  );
+  const trainability =
+    weekOneGate?.status === "pass"
+      ? "pass"
+      : input.candidateFound && weekOneGate?.status === "warning"
+        ? "warning"
+        : "fail";
+  const plannerMaterializerQuality =
+    materializerGate?.status === "fail"
+      ? "fail"
+      : materializerGate?.status === "warning" ||
+          input.repairBurden.repairBurden === "medium" ||
+          input.repairBurden.repairBurden === "high"
+        ? "warning"
+        : "pass";
+
+  return {
+    trainability,
+    plannerMaterializerQuality,
+    repairBurden: input.repairBurden.repairBurden,
+    repairBurdenEvidence: input.repairBurden.repairBurdenEvidence,
+  };
+}
+
+function buildWatchItems(input: {
+  candidateFound: boolean;
+  weeklyRows: NextMesocycleAcceptanceGatePayload["weeklyMuscleTable"];
+  completedBlockRows: CompletedBlockEvidenceRow[];
+  repairBurden: RepairBurdenAssessment;
+}): NextMesocycleAcceptanceGatePayload["watchItems"] {
   if (!input.candidateFound) {
-    return "not_runnable_yet";
+    return [];
   }
-  if (input.gates.some((gate) => gate.status === "fail")) {
-    return "fail";
+
+  const completedRisks = new Set(
+    input.completedBlockRows
+      .filter((row) => row.severity === "warning" || row.severity === "high_risk")
+      .map((row) => row.risk),
+  );
+  const watchItems: NextMesocycleAcceptanceGatePayload["watchItems"] = [];
+  const maybeFloorWatch = (muscle: "Chest" | "Calves") => {
+    const row = input.weeklyRows.find((entry) => entry.muscle === muscle);
+    if (!row || row.projectedSets < row.mev || row.projectedSets - row.mev > 1.5) {
+      return;
+    }
+    const priorRisk =
+      muscle === "Chest" ? "Chest MEV fragility" : "Calf MEV fragility";
+    if (!completedRisks.has(priorRisk)) {
+      return;
+    }
+    watchItems.push({
+      risk: `${muscle} floor margin`,
+      whyItMatters: `prior block showed ${muscle} MEV fragility; candidate only clears the floor at ${formatGateNumber(row.projectedSets)}/${formatGateNumber(row.mev)}`,
+      monitoringPlan: `watch ${muscle} projected volume in Week 1 pre-session readiness and avoid relying on final-session top-up`,
+    });
+  };
+
+  maybeFloorWatch("Chest");
+  maybeFloorWatch("Calves");
+
+  for (const row of input.weeklyRows.filter(
+    (entry) =>
+      (entry.muscle === "Side Delts" || entry.muscle === "Rear Delts") &&
+      entry.projectedSets >= entry.mev &&
+      entry.projectedSets - entry.mev <= 1.5,
+  )) {
+    watchItems.push({
+      risk: `${row.muscle} thin margin`,
+      whyItMatters: `${row.muscle} is close to MEV after prior delt margin evidence`,
+      monitoringPlan:
+        "watch direct delt exposure in Upper A/B pre-session readiness before adding work",
+    });
   }
-  if (input.gates.some((gate) => gate.status === "unknown")) {
-    return "unknown";
+
+  if (
+    input.repairBurden.repairBurden === "medium" ||
+    input.repairBurden.repairBurden === "high"
+  ) {
+    watchItems.push({
+      risk: "Repair burden",
+      whyItMatters:
+        "candidate appears trainable, but the planner/materializer still shows ownership debt",
+      monitoringPlan:
+        "train from the persisted candidate only if Week 1 checks stay coherent; investigate planner quality separately",
+    });
   }
-  return "pass";
+
+  if (
+    input.completedBlockRows.some(
+      (row) => row.risk === "Load calibration drift" && row.severity === "warning",
+    )
+  ) {
+    watchItems.push({
+      risk: "Week 1 prescription confidence",
+      whyItMatters:
+        "prior block had load calibration drift that can make first-week prescriptions lower confidence",
+      monitoringPlan:
+        "watch Week 1 load/reps/RPE confidence in pre-session readiness; do not mutate loads from this gate",
+    });
+  }
+
+  return watchItems;
+}
+
+function buildGateFindings(
+  gates: NextMesocycleAcceptanceGatePayload["gates"],
+): NextMesocycleAcceptanceGateRemediation[] {
+  return gates
+    .filter(
+      (gate) => gate.status !== "pass" && isActionableSeverity(gate.severity),
+    )
+    .map((gate) => ({
+      finding: gate.gate,
+      severity: gate.severity,
+      ownerSeam: gate.ownerSeam,
+      smallestSafeFix: gate.smallestSafeFix,
+      mustFixBeforeWeek1: gate.mustFixBeforeWeek1,
+      evidence: gate.evidence,
+    }));
+}
+
+function buildCompletedBlockFindings(
+  rows: CompletedBlockEvidenceRow[],
+): NextMesocycleAcceptanceGateRemediation[] {
+  return rows
+    .filter((row) => isActionableSeverity(row.severity))
+    .map((row) => ({
+      finding: row.risk,
+      severity: row.severity,
+      ownerSeam: row.ownerSeam,
+      smallestSafeFix: row.smallestSafeFix,
+      mustFixBeforeWeek1: row.mustFixBeforeWeek1,
+      evidence: row.evidence,
+    }));
+}
+
+function buildDoNotFixNotes(): NextMesocycleAcceptanceGatePayload["doNotFixNotes"] {
+  return [
+    {
+      item: "below target but above MEV",
+      reason:
+        "productive target misses are informational unless another floor/cap/trainability failure is present",
+    },
+    {
+      item: "stretch-target miss",
+      reason: "stretch targets are not hard acceptance quotas",
+    },
+    {
+      item: "one-off weekly noise",
+      reason:
+        "completed-block evidence becomes a required fix only when the persisted candidate repeats a real failure",
+    },
+    {
+      item: "diagnostic preview failure before candidate exists",
+      reason: "preview evidence cannot be accepted or rejected as the candidate",
+    },
+    {
+      item: "cosmetic output issue",
+      reason:
+        "formatting/readout polish should not trigger planner/materializer implementation",
+    },
+  ];
+}
+
+function deriveGateResult(input: {
+  candidateFound: boolean;
+  candidateKind: NextMesocycleAcceptanceGatePayload["candidateIdentity"]["candidateKind"];
+  blockers: string[];
+  findings: NextMesocycleAcceptanceGateRemediation[];
+  watchItems: NextMesocycleAcceptanceGatePayload["watchItems"];
+}): NextMesocycleAcceptanceGatePayload["gateResult"] {
+  if (
+    !input.candidateFound ||
+    input.candidateKind === "absent" ||
+    input.candidateKind === "diagnostic_preview_only" ||
+    input.blockers.length > 0
+  ) {
+    return "not_runnable";
+  }
+  if (
+    input.findings.some(
+      (finding) =>
+        finding.mustFixBeforeWeek1 &&
+        (finding.severity === "blocker" || finding.severity === "high_risk"),
+    )
+  ) {
+    return "rejected";
+  }
+  if (
+    input.watchItems.length > 0 ||
+    input.findings.some((finding) => finding.severity === "warning")
+  ) {
+    return "accepted_with_watch_items";
+  }
+  return "accepted";
 }
 
 export function buildNextMesocycleAcceptanceGateFromEvidence(
@@ -900,6 +1393,7 @@ export function buildNextMesocycleAcceptanceGateFromEvidence(
     (candidateKind === "accepted" || candidateKind === "draft");
   const blockers = buildBlockers(evidence);
   const planningShape = planningShapeFromPreview(evidence.diagnosticPreview);
+  const repairBurden = repairBurdenFromPreview(evidence.diagnosticPreview);
   const weeklyRows = buildWeeklyMuscleTable(
     evidence.candidateVolumeRows?.length
       ? evidence.candidateVolumeRows
@@ -917,16 +1411,42 @@ export function buildNextMesocycleAcceptanceGateFromEvidence(
     blockers,
     candidateKind,
     planningShape,
+    repairBurden,
   });
-  const gateResult = deriveGateResult({ candidateFound, gates });
+  const watchItems = buildWatchItems({
+    candidateFound,
+    weeklyRows,
+    completedBlockRows: completedBlockAssessment.rows,
+    repairBurden,
+  });
+  const findings = [
+    ...buildGateFindings(gates),
+    ...buildCompletedBlockFindings(completedBlockAssessment.rows),
+  ];
+  const gateResult = deriveGateResult({
+    candidateFound,
+    candidateKind,
+    blockers,
+    findings,
+    watchItems,
+  });
+  const decisionSummary = buildDecisionSummary({
+    candidateFound,
+    gates,
+    repairBurden,
+  });
   const why =
-    gateResult === "not_runnable_yet"
+    gateResult === "not_runnable"
       ? blockers.length > 0
         ? blockers
         : ["no runnable persisted handoff candidate"]
-      : gates
-          .filter((gate) => gate.status === "fail")
-          .map((gate) => `${gate.gate}: ${gate.evidence}`);
+      : gateResult === "rejected"
+        ? findings
+            .filter((finding) => finding.mustFixBeforeWeek1)
+            .map((finding) => `${finding.finding}: ${finding.evidence}`)
+        : gateResult === "accepted_with_watch_items"
+          ? watchItems.map((item) => `${item.risk}: ${item.whyItMatters}`)
+          : ["all read-only acceptance gates passed"];
 
   return {
     version: NEXT_MESOCYCLE_ACCEPTANCE_GATE_AUDIT_PAYLOAD_VERSION,
@@ -939,11 +1459,14 @@ export function buildNextMesocycleAcceptanceGateFromEvidence(
     candidateFound,
     why,
     recommendation:
-      gateResult === "not_runnable_yet"
+      gateResult === "not_runnable"
         ? "rerun after handoff exists"
-        : gateResult === "pass"
+        : gateResult === "accepted"
           ? "candidate passes the read-only gate"
-          : "inspect failed or unknown gates before accepting",
+          : gateResult === "accepted_with_watch_items"
+            ? "candidate is trainable as-is, but monitor watch items through pre-session checks"
+            : "fix must-fix findings before Week 1; do not silently repair from this gate",
+    decisionSummary,
     candidateIdentity: {
       ...(evidence.ownerEmail ? { ownerEmail: evidence.ownerEmail } : {}),
       sourceMesocycleId: evidence.sourceMesocycleId,
@@ -962,6 +1485,9 @@ export function buildNextMesocycleAcceptanceGateFromEvidence(
     weeklyMuscleTable: weeklyRows,
     priorBlockRecurringRisks: buildPriorRiskRows(weeklyRows),
     completedBlockEvidence: completedBlockAssessment.rows,
+    watchItems,
+    findings,
+    doNotFixNotes: buildDoNotFixNotes(),
     diagnosticPreview: {
       available: previewAvailable,
       label: previewAvailable

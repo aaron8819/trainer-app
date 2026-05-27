@@ -2900,7 +2900,7 @@ export function buildNextMesocycleAcceptanceGateSummary(input: {
     "",
     "Next Mesocycle Acceptance Gate",
     `candidate found: ${formatBooleanFlag(payload.candidateFound)}`,
-    `gate result: ${payload.gateResult}`,
+    `final decision: ${payload.gateResult}`,
   ];
 
   if (payload.why.length > 0) {
@@ -2910,6 +2910,17 @@ export function buildNextMesocycleAcceptanceGateSummary(input: {
     }
   }
   lines.push(`recommendation: ${payload.recommendation}`);
+  lines.push("");
+  lines.push("Decision Summary");
+  lines.push("Trainability | Planner/materializer quality | Repair burden | Repair evidence");
+  lines.push(
+    [
+      payload.decisionSummary.trainability,
+      payload.decisionSummary.plannerMaterializerQuality,
+      payload.decisionSummary.repairBurden,
+      payload.decisionSummary.repairBurdenEvidence,
+    ].join(" | "),
+  );
   lines.push("");
   lines.push("Candidate Identity");
   lines.push("Owner | Source Mesocycle | Source State | Candidate | Candidate/Draft ID | Accepted/Draft/Absent | Write Needed");
@@ -2925,14 +2936,25 @@ export function buildNextMesocycleAcceptanceGateSummary(input: {
     ].join(" | "),
   );
   lines.push("");
-  lines.push("Gate | Pass/Fail/Unknown | Evidence | Notes");
+  lines.push("Gate | Status | Severity | Evidence | Owner seam | Smallest safe fix | Must fix before Week 1 | Notes");
   for (const gate of payload.gates) {
-    lines.push(`${gate.gate} | ${gate.status} | ${gate.evidence} | ${gate.notes}`);
+    lines.push(
+      [
+        gate.gate,
+        gate.status,
+        gate.severity,
+        gate.evidence,
+        gate.ownerSeam,
+        gate.smallestSafeFix,
+        gate.mustFixBeforeWeek1 ? "yes" : "no",
+        gate.notes,
+      ].join(" | "),
+    );
   }
 
   if (payload.weeklyMuscleTable.length > 0) {
     lines.push("");
-    lines.push("Muscle | Projected sets | MEV | Productive/Target | MAV | Status | Notes");
+    lines.push("Muscle | Projected sets | MEV | Productive/Target | MAV | Status | Severity | Notes");
     for (const row of payload.weeklyMuscleTable) {
       lines.push(
         [
@@ -2944,6 +2966,7 @@ export function buildNextMesocycleAcceptanceGateSummary(input: {
             : formatAuditDecimal(row.productiveTarget),
           formatAuditDecimal(row.mav),
           row.status,
+          row.severity,
           row.notes,
         ].join(" | "),
       );
@@ -2952,18 +2975,74 @@ export function buildNextMesocycleAcceptanceGateSummary(input: {
 
   lines.push("");
   lines.push("Prior-Block Recurring Risks");
-  lines.push("Risk | Pass/Fail/Unknown | Evidence | Notes");
+  lines.push("Risk | Status | Severity | Evidence | Notes");
   for (const risk of payload.priorBlockRecurringRisks) {
-    lines.push(`${risk.risk} | ${risk.status} | ${risk.evidence} | ${risk.notes}`);
+    lines.push(
+      `${risk.risk} | ${risk.status} | ${risk.severity} | ${risk.evidence} | ${risk.notes}`,
+    );
   }
 
   lines.push("");
   lines.push("Completed Block Evidence");
-  lines.push("Risk | Evidence | Acceptance implication | Severity");
+  lines.push(
+    "Risk | Severity | Evidence | Hypothesis | Acceptance implication | Required fix | Owner seam | Smallest safe fix | Must fix before Week 1",
+  );
   for (const row of payload.completedBlockEvidence) {
     lines.push(
-      `${row.risk} | ${row.evidence} | ${row.acceptanceImplication} | ${row.severity}`,
+      [
+        row.risk,
+        row.severity,
+        row.evidence,
+        row.hypothesis,
+        row.acceptanceImplication,
+        row.requiredFix,
+        row.ownerSeam,
+        row.smallestSafeFix,
+        row.mustFixBeforeWeek1 ? "yes" : "no",
+      ].join(" | "),
     );
+  }
+
+  lines.push("");
+  lines.push("Watch Items");
+  lines.push("Risk | Why it matters | Monitoring plan");
+  if (payload.watchItems.length === 0) {
+    lines.push("none | none | none");
+  } else {
+    for (const item of payload.watchItems) {
+      lines.push(
+        `${item.risk} | ${item.whyItMatters} | ${item.monitoringPlan}`,
+      );
+    }
+  }
+
+  lines.push("");
+  lines.push("Findings / Remediation");
+  lines.push(
+    "Finding | Severity | Owner seam | Smallest safe fix | Must fix before Week 1 | Evidence",
+  );
+  if (payload.findings.length === 0) {
+    lines.push("none | pass | audit/readout | no implementation required | no | none");
+  } else {
+    for (const finding of payload.findings) {
+      lines.push(
+        [
+          finding.finding,
+          finding.severity,
+          finding.ownerSeam,
+          finding.smallestSafeFix,
+          finding.mustFixBeforeWeek1 ? "yes" : "no",
+          finding.evidence,
+        ].join(" | "),
+      );
+    }
+  }
+
+  lines.push("");
+  lines.push("Do Not Fix From This Gate Alone");
+  lines.push("Item | Reason");
+  for (const note of payload.doNotFixNotes) {
+    lines.push(`${note.item} | ${note.reason}`);
   }
 
   lines.push("");

@@ -6174,13 +6174,20 @@ describe("buildNextMesocycleAcceptanceGateSummary", () => {
           affectsScoringOrGeneration: false,
           consumedByProduction: false,
           wouldWriteTransaction: false,
-          gateResult: "not_runnable_yet",
+          gateResult: "not_runnable",
           candidateFound: false,
           why: [
             "source state not AWAITING_HANDOFF (ACTIVE_DELOAD)",
             "no persisted handoff candidate",
           ],
           recommendation: "rerun after handoff exists",
+          decisionSummary: {
+            trainability: "fail",
+            plannerMaterializerQuality: "pass",
+            repairBurden: "low",
+            repairBurdenEvidence:
+              "planning_shape=mostly_upstream_planned materialRepairCount=unknown majorRepairCount=unknown",
+          },
           candidateIdentity: {
             ownerEmail: "owner@test.local",
             sourceMesocycleId: "meso-source",
@@ -6194,8 +6201,13 @@ describe("buildNextMesocycleAcceptanceGateSummary", () => {
             {
               gate: "Candidate identity",
               status: "fail",
+              severity: "blocker",
               evidence: "candidate_found=no kind=diagnostic_preview_only",
               notes: "diagnostic previews are evidence only and cannot be accepted",
+              ownerSeam: "candidate identity",
+              smallestSafeFix:
+                "wait for or create the real persisted handoff candidate through the explicit handoff flow; do not accept a diagnostic preview",
+              mustFixBeforeWeek1: true,
             },
           ],
           weeklyMuscleTable: [
@@ -6206,6 +6218,7 @@ describe("buildNextMesocycleAcceptanceGateSummary", () => {
               productiveTarget: 14,
               mav: 16,
               status: "above_mev_below_target_not_failure",
+              severity: "info",
               notes: "above MEV but below target is not a failure",
             },
           ],
@@ -6213,6 +6226,7 @@ describe("buildNextMesocycleAcceptanceGateSummary", () => {
             {
               risk: "Chest MEV fragility",
               status: "pass",
+              severity: "pass",
               evidence: "projected=12 mev=10",
               notes: "watch recurring chest floor misses before acceptance",
             },
@@ -6221,9 +6235,36 @@ describe("buildNextMesocycleAcceptanceGateSummary", () => {
             {
               risk: "Chest MEV fragility",
               evidence: "W3 required top-up; W4 finished 9/10 MEV",
+              hypothesis:
+                "Chest may need planned floor margin instead of relying on late-block or session-local top-ups",
               acceptanceImplication:
                 "candidate evidence pending; apply when a persisted handoff candidate exists",
-              severity: "high",
+              requiredFix:
+                "none unless the persisted candidate repeats below-MEV or razor-thin floor exposure",
+              severity: "info",
+              ownerSeam: "volume floors",
+              smallestSafeFix:
+                "monitor in the gate/pre-session readout; do not implement planner behavior from prior evidence alone",
+              mustFixBeforeWeek1: false,
+            },
+          ],
+          watchItems: [],
+          findings: [
+            {
+              finding: "Candidate identity",
+              severity: "blocker",
+              ownerSeam: "candidate identity",
+              smallestSafeFix:
+                "wait for or create the real persisted handoff candidate through the explicit handoff flow; do not accept a diagnostic preview",
+              mustFixBeforeWeek1: true,
+              evidence: "candidate_found=no kind=diagnostic_preview_only",
+            },
+          ],
+          doNotFixNotes: [
+            {
+              item: "below target but above MEV",
+              reason:
+                "productive target misses are informational unless another floor/cap/trainability failure is present",
             },
           ],
           diagnosticPreview: {
@@ -6244,16 +6285,24 @@ describe("buildNextMesocycleAcceptanceGateSummary", () => {
     expect(summary).toEqual(
       expect.arrayContaining([
         "candidate found: no",
-        "gate result: not_runnable_yet",
+        "final decision: not_runnable",
+        "Decision Summary",
+        "fail | pass | low | planning_shape=mostly_upstream_planned materialRepairCount=unknown majorRepairCount=unknown",
         "Candidate Identity",
-        "Gate | Pass/Fail/Unknown | Evidence | Notes",
-        "Candidate identity | fail | candidate_found=no kind=diagnostic_preview_only | diagnostic previews are evidence only and cannot be accepted",
-        "Muscle | Projected sets | MEV | Productive/Target | MAV | Status | Notes",
-        "Chest | 12 | 10 | 14 | 16 | above_mev_below_target_not_failure | above MEV but below target is not a failure",
+        "Gate | Status | Severity | Evidence | Owner seam | Smallest safe fix | Must fix before Week 1 | Notes",
+        "Candidate identity | fail | blocker | candidate_found=no kind=diagnostic_preview_only | candidate identity | wait for or create the real persisted handoff candidate through the explicit handoff flow; do not accept a diagnostic preview | yes | diagnostic previews are evidence only and cannot be accepted",
+        "Muscle | Projected sets | MEV | Productive/Target | MAV | Status | Severity | Notes",
+        "Chest | 12 | 10 | 14 | 16 | above_mev_below_target_not_failure | info | above MEV but below target is not a failure",
         "Prior-Block Recurring Risks",
         "Completed Block Evidence",
-        "Risk | Evidence | Acceptance implication | Severity",
-        "Chest MEV fragility | W3 required top-up; W4 finished 9/10 MEV | candidate evidence pending; apply when a persisted handoff candidate exists | high",
+        "Risk | Severity | Evidence | Hypothesis | Acceptance implication | Required fix | Owner seam | Smallest safe fix | Must fix before Week 1",
+        "Chest MEV fragility | info | W3 required top-up; W4 finished 9/10 MEV | Chest may need planned floor margin instead of relying on late-block or session-local top-ups | candidate evidence pending; apply when a persisted handoff candidate exists | none unless the persisted candidate repeats below-MEV or razor-thin floor exposure | volume floors | monitor in the gate/pre-session readout; do not implement planner behavior from prior evidence alone | no",
+        "Watch Items",
+        "none | none | none",
+        "Findings / Remediation",
+        "Candidate identity | blocker | candidate identity | wait for or create the real persisted handoff candidate through the explicit handoff flow; do not accept a diagnostic preview | yes | candidate_found=no kind=diagnostic_preview_only",
+        "Do Not Fix From This Gate Alone",
+        "below target but above MEV | productive target misses are informational unless another floor/cap/trainability failure is present",
         "available=yes label=diagnostic_preview_not_candidate can_be_accepted=no planning_shape=mostly_upstream_planned",
       ]),
     );

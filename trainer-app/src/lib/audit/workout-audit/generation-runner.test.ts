@@ -255,10 +255,17 @@ describe("runWorkoutAuditGeneration", () => {
       affectsScoringOrGeneration: false,
       consumedByProduction: false,
       wouldWriteTransaction: false,
-      gateResult: "not_runnable_yet",
+      gateResult: "not_runnable",
       candidateFound: false,
       why: ["no persisted handoff candidate"],
       recommendation: "rerun after handoff exists",
+      decisionSummary: {
+        trainability: "fail",
+        plannerMaterializerQuality: "pass",
+        repairBurden: "low",
+        repairBurdenEvidence:
+          "planning_shape=unknown materialRepairCount=unknown majorRepairCount=unknown",
+      },
       candidateIdentity: {
         sourceMesocycleId: "meso-source",
         sourceState: "ACTIVE_DELOAD",
@@ -271,6 +278,9 @@ describe("runWorkoutAuditGeneration", () => {
       weeklyMuscleTable: [],
       priorBlockRecurringRisks: [],
       completedBlockEvidence: [],
+      watchItems: [],
+      findings: [],
+      doNotFixNotes: [],
       diagnosticPreview: {
         available: false,
         label: "not_available",
@@ -1031,7 +1041,7 @@ describe("runWorkoutAuditGeneration", () => {
       readOnly: true,
       wouldWriteTransaction: false,
       consumedByProduction: false,
-      gateResult: "not_runnable_yet",
+      gateResult: "not_runnable",
       candidateFound: false,
     });
   });

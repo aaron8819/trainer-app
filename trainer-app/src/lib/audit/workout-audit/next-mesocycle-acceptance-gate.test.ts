@@ -277,9 +277,14 @@ describe("next mesocycle acceptance gate", () => {
     const payload = build({ found: false });
 
     expect(payload.candidateFound).toBe(false);
-    expect(payload.gateResult).toBe("not_runnable_yet");
+    expect(payload.gateResult).toBe("not_runnable");
     expect(payload.why).toContain("no persisted handoff candidate");
     expect(payload.recommendation).toBe("rerun after handoff exists");
+    expect(payload.gates.find((row) => row.gate === "Candidate identity")).toMatchObject({
+      severity: "blocker",
+      ownerSeam: "candidate identity",
+      mustFixBeforeWeek1: true,
+    });
   });
 
   it("prints completed-block evidence even when no candidate exists", () => {
@@ -289,7 +294,7 @@ describe("next mesocycle acceptance gate", () => {
     });
 
     expect(payload.candidateFound).toBe(false);
-    expect(payload.gateResult).toBe("not_runnable_yet");
+    expect(payload.gateResult).toBe("not_runnable");
     expect(payload.completedBlockEvidence.map((row) => row.risk)).toEqual(
       expect.arrayContaining([
         "Chest MEV fragility",
@@ -309,7 +314,7 @@ describe("next mesocycle acceptance gate", () => {
     const payload = build({ state: "ACTIVE_DELOAD", found: false });
 
     expect(payload.candidateFound).toBe(false);
-    expect(payload.gateResult).toBe("not_runnable_yet");
+    expect(payload.gateResult).toBe("not_runnable");
     expect(payload.blockers).toEqual(
       expect.arrayContaining([
         "source state not AWAITING_HANDOFF (ACTIVE_DELOAD)",
@@ -333,11 +338,13 @@ describe("next mesocycle acceptance gate", () => {
     );
     expect(payload.gates.find((row) => row.gate === "Candidate identity")).toMatchObject({
       status: "fail",
+      severity: "blocker",
       notes: "diagnostic previews are evidence only and cannot be accepted",
     });
+    expect(payload.gateResult).toBe("not_runnable");
   });
 
-  it("fails volume gate for a candidate with a below-MEV priority muscle", () => {
+  it("rejects a candidate with a below-MEV priority muscle", () => {
     const payload = build({
       volumes: [
         { muscle: "Chest", projectedSets: 8, mev: 10, productiveTarget: 14, mav: 16 },
@@ -350,10 +357,24 @@ describe("next mesocycle acceptance gate", () => {
     });
     expect(payload.gates.find((row) => row.gate === "Volume floors/zones")).toMatchObject({
       status: "fail",
+      severity: "high_risk",
+      ownerSeam: "volume floors",
+      mustFixBeforeWeek1: true,
     });
+    expect(payload.gateResult).toBe("rejected");
+    expect(payload.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          finding: "Volume floors/zones",
+          ownerSeam: "volume floors",
+          smallestSafeFix: expect.stringContaining("canonical volume-floor"),
+          mustFixBeforeWeek1: true,
+        }),
+      ]),
+    );
   });
 
-  it("classifies chest Week 4 below-MEV evidence as high severity", () => {
+  it("keeps completed-block evidence separate from hypothesis and required fix", () => {
     const payload = build({
       found: false,
       retros: completedBlockRetros,
@@ -362,12 +383,16 @@ describe("next mesocycle acceptance gate", () => {
     expect(
       payload.completedBlockEvidence.find((row) => row.risk === "Chest MEV fragility"),
     ).toMatchObject({
-      severity: "high",
+      severity: "info",
       evidence: expect.stringContaining("W4 finished 9/10 MEV"),
+      hypothesis: expect.stringContaining("planned floor margin"),
+      acceptanceImplication: expect.stringContaining("candidate evidence pending"),
+      requiredFix: expect.stringContaining("none unless"),
+      mustFixBeforeWeek1: false,
     });
   });
 
-  it("classifies calf Week 4 below-MEV evidence as high severity", () => {
+  it("does not make prior-block evidence an automatic required fix", () => {
     const payload = build({
       found: false,
       retros: completedBlockRetros,
@@ -376,8 +401,10 @@ describe("next mesocycle acceptance gate", () => {
     expect(
       payload.completedBlockEvidence.find((row) => row.risk === "Calf MEV fragility"),
     ).toMatchObject({
-      severity: "high",
+      severity: "info",
       evidence: expect.stringContaining("W4 finished 7/8 MEV"),
+      requiredFix: expect.stringContaining("none unless"),
+      mustFixBeforeWeek1: false,
     });
   });
 
@@ -391,6 +418,7 @@ describe("next mesocycle acceptance gate", () => {
 
     expect(payload.weeklyMuscleTable[0]).toMatchObject({
       status: "above_mev_below_target_not_failure",
+      severity: "info",
     });
     expect(payload.gates.find((row) => row.gate === "Volume floors/zones")).toMatchObject({
       status: "pass",
@@ -398,10 +426,16 @@ describe("next mesocycle acceptance gate", () => {
     expect(
       payload.completedBlockEvidence.find((row) => row.risk === "Target semantics noise"),
     ).toMatchObject({
-      severity: "medium",
+      severity: "info",
       acceptanceImplication:
         "do not fail candidate solely for below-target rows when projected volume is at or above MEV",
+      requiredFix: expect.stringContaining("none for below-target/above-MEV"),
     });
+    expect(payload.doNotFixNotes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ item: "below target but above MEV" }),
+      ]),
+    );
   });
 
   it("surfaces repeated runtime add-ons from completed weekly retros", () => {
@@ -413,8 +447,9 @@ describe("next mesocycle acceptance gate", () => {
     expect(
       payload.completedBlockEvidence.find((row) => row.risk === "Repeated runtime add-ons"),
     ).toMatchObject({
-      severity: "medium",
+      severity: "warning",
       evidence: expect.stringContaining("W3 added_sets=8"),
+      mustFixBeforeWeek1: false,
     });
   });
 
@@ -427,8 +462,9 @@ describe("next mesocycle acceptance gate", () => {
     expect(
       payload.completedBlockEvidence.find((row) => row.risk === "Load calibration drift"),
     ).toMatchObject({
-      severity: "medium",
+      severity: "warning",
       evidence: expect.stringContaining("Incline Machine Press target_too_low"),
+      ownerSeam: "prescription/readout",
     });
   });
 
@@ -443,11 +479,12 @@ describe("next mesocycle acceptance gate", () => {
       ],
     });
 
-    expect(payload.gateResult).toBe("fail");
+    expect(payload.gateResult).toBe("rejected");
     expect(
       payload.gates.find((row) => row.gate === "Prior-block recurring risks"),
     ).toMatchObject({
       status: "fail",
+      severity: "high_risk",
       evidence: expect.stringContaining("Chest MEV fragility"),
     });
   });
@@ -482,6 +519,32 @@ describe("next mesocycle acceptance gate", () => {
     });
   });
 
+  it("turns exact-MEV recurring fragile muscles into watch items", () => {
+    const payload = build({
+      retros: completedBlockRetros,
+      volumes: [
+        { muscle: "Chest", projectedSets: 10, mev: 10, productiveTarget: 14, mav: 16 },
+        { muscle: "Calves", projectedSets: 8, mev: 8, productiveTarget: 10, mav: 14 },
+        { muscle: "Side Delts", projectedSets: 8, mev: 6, productiveTarget: 8, mav: 14 },
+        { muscle: "Rear Delts", projectedSets: 7, mev: 4, productiveTarget: 6, mav: 12 },
+      ],
+    });
+
+    expect(payload.gateResult).toBe("accepted_with_watch_items");
+    expect(payload.watchItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ risk: "Chest floor margin" }),
+        expect.objectContaining({ risk: "Calves floor margin" }),
+      ]),
+    );
+    expect(
+      payload.completedBlockEvidence.find((row) => row.risk === "Chest MEV fragility"),
+    ).toMatchObject({
+      severity: "warning",
+      mustFixBeforeWeek1: false,
+    });
+  });
+
   it("fails volume gate for over-MAV candidate rows", () => {
     const payload = build({
       volumes: [
@@ -491,13 +554,16 @@ describe("next mesocycle acceptance gate", () => {
 
     expect(payload.weeklyMuscleTable[0]).toMatchObject({
       status: "over_mav_fail_or_warning",
+      severity: "high_risk",
     });
     expect(payload.gates.find((row) => row.gate === "Volume floors/zones")).toMatchObject({
       status: "fail",
+      severity: "high_risk",
     });
+    expect(payload.gateResult).toBe("rejected");
   });
 
-  it("fails materialization quality for mostly repair-shaped candidate evidence", () => {
+  it("separates trainability pass from planner quality warning for repair-heavy candidates", () => {
     const payload = build({
       preview: diagnosticPreview({ planningShape: "mostly_repair_shaped" }),
     });
@@ -505,8 +571,34 @@ describe("next mesocycle acceptance gate", () => {
     expect(
       payload.gates.find((row) => row.gate === "Exercise/materialization quality"),
     ).toMatchObject({
-      status: "fail",
-      notes: "mostly repair-shaped candidate evidence blocks acceptance",
+      status: "warning",
+      severity: "warning",
+      notes: "repair-heavy candidate can be trainable but carries planner/materializer quality debt",
     });
+    expect(payload.decisionSummary).toMatchObject({
+      trainability: "pass",
+      plannerMaterializerQuality: "warning",
+      repairBurden: "high",
+    });
+    expect(payload.gateResult).toBe("accepted_with_watch_items");
+    expect(payload.watchItems).toEqual(
+      expect.arrayContaining([expect.objectContaining({ risk: "Repair burden" })]),
+    );
+  });
+
+  it("accepts a clean candidate with no material concerns", () => {
+    const payload = build({
+      volumes: [
+        { muscle: "Chest", projectedSets: 12, mev: 10, productiveTarget: 12, mav: 16 },
+        { muscle: "Calves", projectedSets: 10, mev: 8, productiveTarget: 10, mav: 14 },
+      ],
+    });
+
+    expect(payload.gateResult).toBe("accepted");
+    expect(payload.decisionSummary).toMatchObject({
+      trainability: "pass",
+      plannerMaterializerQuality: "pass",
+    });
+    expect(payload.findings).toEqual([]);
   });
 });

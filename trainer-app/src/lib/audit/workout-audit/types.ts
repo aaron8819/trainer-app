@@ -836,12 +836,46 @@ export type V2AcceptedSeedPrepareCompareAuditPayload = {
   summary: V2AcceptedSeedPreparationCompareResult["summary"];
 };
 
-export type NextMesocycleAcceptanceGateStatus = "pass" | "fail" | "unknown";
+export type NextMesocycleAcceptanceGateDecision =
+  | "not_runnable"
+  | "rejected"
+  | "accepted_with_watch_items"
+  | "accepted";
 
-export type NextMesocycleAcceptanceGateEvidenceSeverity =
-  | "high"
-  | "medium"
-  | "low";
+export type NextMesocycleAcceptanceGateStatus =
+  | "pass"
+  | "warning"
+  | "fail"
+  | "unknown";
+
+export type NextMesocycleAcceptanceGateSeverity =
+  | "blocker"
+  | "high_risk"
+  | "warning"
+  | "info"
+  | "pass";
+
+export type NextMesocycleAcceptanceGateOwnerSeam =
+  | "candidate identity"
+  | "lifecycle/handoff"
+  | "seed/runtime contract"
+  | "volume floors"
+  | "target semantics"
+  | "slot allocation"
+  | "planner policy"
+  | "materializer policy"
+  | "exercise identity"
+  | "prescription/readout"
+  | "audit/readout";
+
+export type NextMesocycleAcceptanceGateRemediation = {
+  finding: string;
+  severity: NextMesocycleAcceptanceGateSeverity;
+  ownerSeam: NextMesocycleAcceptanceGateOwnerSeam;
+  smallestSafeFix: string;
+  mustFixBeforeWeek1: boolean;
+  evidence: string;
+};
 
 export type NextMesocycleAcceptanceGatePayload = {
   version: typeof NEXT_MESOCYCLE_ACCEPTANCE_GATE_AUDIT_PAYLOAD_VERSION;
@@ -850,10 +884,16 @@ export type NextMesocycleAcceptanceGatePayload = {
   affectsScoringOrGeneration: false;
   consumedByProduction: false;
   wouldWriteTransaction: false;
-  gateResult: "pass" | "fail" | "unknown" | "not_runnable_yet";
+  gateResult: NextMesocycleAcceptanceGateDecision;
   candidateFound: boolean;
   why: string[];
   recommendation: string;
+  decisionSummary: {
+    trainability: "pass" | "warning" | "fail";
+    plannerMaterializerQuality: "pass" | "warning" | "fail";
+    repairBurden: "none" | "low" | "medium" | "high";
+    repairBurdenEvidence: string;
+  };
   candidateIdentity: {
     ownerEmail?: string;
     sourceMesocycleId: string;
@@ -867,8 +907,12 @@ export type NextMesocycleAcceptanceGatePayload = {
   gates: Array<{
     gate: string;
     status: NextMesocycleAcceptanceGateStatus;
+    severity: NextMesocycleAcceptanceGateSeverity;
     evidence: string;
     notes: string;
+    ownerSeam: NextMesocycleAcceptanceGateOwnerSeam;
+    smallestSafeFix: string;
+    mustFixBeforeWeek1: boolean;
   }>;
   weeklyMuscleTable: Array<{
     muscle: string;
@@ -883,19 +927,36 @@ export type NextMesocycleAcceptanceGatePayload = {
       | "target_near_mav_stretch_cap"
       | "over_mav_fail_or_warning"
       | "unknown";
+    severity: NextMesocycleAcceptanceGateSeverity;
     notes: string;
   }>;
   priorBlockRecurringRisks: Array<{
     risk: string;
     status: NextMesocycleAcceptanceGateStatus;
+    severity: NextMesocycleAcceptanceGateSeverity;
     evidence: string;
     notes: string;
   }>;
   completedBlockEvidence: Array<{
     risk: string;
     evidence: string;
+    hypothesis: string;
     acceptanceImplication: string;
-    severity: NextMesocycleAcceptanceGateEvidenceSeverity;
+    requiredFix: string;
+    severity: NextMesocycleAcceptanceGateSeverity;
+    ownerSeam: NextMesocycleAcceptanceGateOwnerSeam;
+    smallestSafeFix: string;
+    mustFixBeforeWeek1: boolean;
+  }>;
+  watchItems: Array<{
+    risk: string;
+    whyItMatters: string;
+    monitoringPlan: string;
+  }>;
+  findings: NextMesocycleAcceptanceGateRemediation[];
+  doNotFixNotes: Array<{
+    item: string;
+    reason: string;
   }>;
   diagnosticPreview: {
     available: boolean;

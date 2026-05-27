@@ -600,18 +600,28 @@ npm run audit:workout -- --env-file .env.local --mode next-mesocycle-acceptance-
 
 Inspect first:
 - `nextMesocycleAcceptanceGate.candidateIdentity`
+- `nextMesocycleAcceptanceGate.gateResult`
+- `nextMesocycleAcceptanceGate.decisionSummary`
 - `nextMesocycleAcceptanceGate.gates`
 - `nextMesocycleAcceptanceGate.weeklyMuscleTable`
+- `nextMesocycleAcceptanceGate.watchItems`
+- `nextMesocycleAcceptanceGate.findings`
 - `nextMesocycleAcceptanceGate.completedBlockEvidence`
 - `nextMesocycleAcceptanceGate.priorBlockRecurringRisks`
+- `nextMesocycleAcceptanceGate.doNotFixNotes`
 - `nextMesocycleAcceptanceGate.diagnosticPreview`
 
 Interpretation rules:
-- `candidateFound=false` means the gate is not runnable yet; rerun after the source reaches `AWAITING_HANDOFF` and a persisted handoff candidate exists
+- `gateResult` is the final read-only decision: `not_runnable`, `rejected`, `accepted_with_watch_items`, or `accepted`
+- `candidateFound=false` means the gate is `not_runnable`; rerun after the source reaches `AWAITING_HANDOFF` and a persisted handoff candidate exists
 - source state, missing persisted candidate, active deload incompletion, and incomplete workouts are blockers, not acceptance failures to override
 - `mesocycle-explain` preview evidence is labeled `diagnostic_preview_not_candidate`; it can inform the gate but cannot satisfy candidate identity by itself
-- `completedBlockEvidence` summarizes read-only weekly-retro evidence from the completed accumulation block, including MEV fragility, runtime add-ons, load calibration drift, target-semantics noise, and optional gap-fill dependency risk; it still prints when no candidate exists and is applied once a persisted handoff candidate is available
+- gate rows and remediation rows use severity values `blocker`, `high_risk`, `warning`, `info`, and `pass`; every blocker/high-risk/warning finding names the owner seam, smallest safe fix, and whether it must be fixed before Week 1
+- `decisionSummary` separates `trainability`, `plannerMaterializerQuality`, and `repairBurden`; a trainable candidate can still carry planner/materializer quality warnings
+- `watchItems` are not blockers; they are risks to monitor through pre-session checks when a candidate is otherwise trainable
+- `completedBlockEvidence` summarizes read-only weekly-retro evidence from the completed accumulation block, including MEV fragility, runtime add-ons, load calibration drift, target-semantics noise, and optional gap-fill dependency risk; it separates evidence, hypothesis, acceptance implication, and required fix, still prints when no candidate exists, and does not force implementation unless the persisted candidate repeats a real failure
 - volume rows use the current target semantics: below MEV blocks, above MEV but below target is not a failure, target near MAV is a stretch/cap rather than a quota, and over MAV is a failure/warning
+- `doNotFixNotes` explicitly lists readout states that should not trigger planner/materializer work by themselves, including below-target/above-MEV rows and diagnostic-preview failures before a candidate exists
 - this mode writes no DB rows, creates no workouts/logs/sessions, mutates no seed, and changes no planner/materializer/runtime/generation behavior
 
 ### `replace-empty-mesocycle-with-v2`

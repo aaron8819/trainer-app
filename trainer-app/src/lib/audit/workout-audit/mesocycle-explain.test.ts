@@ -8311,6 +8311,12 @@ describe("buildMesocycleExplainAuditPayload", () => {
     const byMuscle = new Map(
       diagnostic.muscles.map((row) => [row.muscle, row]),
     );
+    const tricepsOptionalBoundary = diagnostic.laneBoundaryRows.find(
+      (row) =>
+        row.muscle === "Triceps" &&
+        row.slotId === "upper_b" &&
+        row.laneId === "optional_triceps_if_under_target",
+    );
 
     expect(diagnostic).toMatchObject({
       version: 1,
@@ -8323,8 +8329,16 @@ describe("buildMesocycleExplainAuditPayload", () => {
         directFloorsMet: 0,
         directFloorsBelow: 5,
         optionalActivations: 0,
+        authoredDroppedCount: expect.any(Number),
         unrecoverableExpansions: expect.any(Number),
       },
+    });
+    expect(tricepsOptionalBoundary).toMatchObject({
+      supportPolicyAuthored: true,
+      setDistributionBudgeted: true,
+      exerciseSelectionPreserved: false,
+      likelyOwnerSeam: "materializer_exercise_selection_capacity",
+      status: "authored_support_lane_dropped",
     });
     expect(byMuscle.get("Triceps")).toMatchObject({
       currentDirectSets: 2,

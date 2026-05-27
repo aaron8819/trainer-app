@@ -869,6 +869,7 @@ export type NextMesocycleAcceptanceGateOwnerSeam =
   | "slot allocation"
   | "planner policy"
   | "materializer policy"
+  | "materializer/exercise-selection capacity"
   | "exercise identity"
   | "prescription/readout"
   | "audit/readout";

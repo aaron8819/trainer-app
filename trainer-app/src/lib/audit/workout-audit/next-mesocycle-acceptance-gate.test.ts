@@ -100,6 +100,13 @@ function diagnosticPreview(input?: {
     targetPreferred: number | null;
     status: "below" | "within" | "above" | "diagnostic";
   }>;
+  supportLaneBoundaryRows?: Array<{
+    muscle: "Triceps";
+    projectedEffectiveSets: number | null;
+    mevFloor: number | null;
+    severity: "warning" | "high_risk";
+    mustFixBeforeWeek1: boolean;
+  }>;
 }): MesocycleExplainAuditPayload {
   return {
     preview: {
@@ -113,6 +120,39 @@ function diagnosticPreview(input?: {
     },
     plannerOnlyNoRepair: {
       weeklyMuscleTotals: input?.weeklyMuscleTotals ?? [],
+      v2SupportLaneProjectionDiagnostic: {
+        laneBoundaryRows: (input?.supportLaneBoundaryRows ?? []).map((row) => ({
+          muscle: row.muscle,
+          slotId: "upper_b",
+          laneId: "optional_triceps_if_under_target",
+          laneKind: "optional_top_up",
+          supportPolicyAuthored: true,
+          setDistributionBudgeted: true,
+          setBudget: { min: 2, preferred: 2, max: 2 },
+          exerciseSelectionPreserved: false,
+          exerciseSelectionStatus: "missing_candidate",
+          weeklyTargetStatus:
+            row.projectedEffectiveSets != null &&
+            row.mevFloor != null &&
+            row.projectedEffectiveSets < row.mevFloor
+              ? "below"
+              : "within",
+          projectedEffectiveSets: row.projectedEffectiveSets,
+          mevFloor: row.mevFloor,
+          likelyOwnerSeam: "materializer_exercise_selection_capacity",
+          status: "authored_support_lane_dropped",
+          severity: row.severity,
+          mustFixBeforeWeek1: row.mustFixBeforeWeek1,
+          evidence: [
+            "supportPolicyAuthored:yes",
+            "setDistributionBudgeted:yes",
+            "exerciseSelectionPreserved:no",
+          ],
+          limitations: [
+            "authored_budget_not_preserved_after_exercise_selection",
+          ],
+        })),
+      },
     },
   } as unknown as MesocycleExplainAuditPayload;
 }
@@ -584,6 +624,107 @@ describe("next mesocycle acceptance gate", () => {
     expect(payload.watchItems).toEqual(
       expect.arrayContaining([expect.objectContaining({ risk: "Repair burden" })]),
     );
+  });
+
+  it("blocks a candidate when an authored support lane is dropped and the floor remains below MEV", () => {
+    const payload = build({
+      preview: diagnosticPreview({
+        weeklyMuscleTotals: [
+          {
+            muscle: "Triceps",
+            projectedEffectiveSets: 5,
+            targetMin: 6,
+            targetPreferred: 8,
+            status: "below",
+          },
+        ],
+        supportLaneBoundaryRows: [
+          {
+            muscle: "Triceps",
+            projectedEffectiveSets: 5,
+            mevFloor: 6,
+            severity: "high_risk",
+            mustFixBeforeWeek1: true,
+          },
+        ],
+      }),
+      volumes: [
+        {
+          muscle: "Triceps",
+          projectedSets: 5,
+          mev: 6,
+          productiveTarget: 8,
+          mav: 12,
+        },
+      ],
+    });
+
+    expect(
+      payload.gates.find((row) => row.gate === "Exercise/materialization quality"),
+    ).toMatchObject({
+      status: "fail",
+      severity: "high_risk",
+      ownerSeam: "materializer/exercise-selection capacity",
+      notes:
+        "authored support lane was budgeted but dropped before selection while the candidate remains below MEV",
+      mustFixBeforeWeek1: true,
+    });
+    expect(payload.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          finding: "Exercise/materialization quality",
+          smallestSafeFix: expect.stringContaining("preserve the authored support lane"),
+          mustFixBeforeWeek1: true,
+        }),
+      ]),
+    );
+    expect(payload.gateResult).toBe("rejected");
+  });
+
+  it("warns when an authored support lane is dropped but no floor issue remains", () => {
+    const payload = build({
+      preview: diagnosticPreview({
+        weeklyMuscleTotals: [
+          {
+            muscle: "Triceps",
+            projectedEffectiveSets: 7,
+            targetMin: 6,
+            targetPreferred: 8,
+            status: "within",
+          },
+        ],
+        supportLaneBoundaryRows: [
+          {
+            muscle: "Triceps",
+            projectedEffectiveSets: 7,
+            mevFloor: 6,
+            severity: "warning",
+            mustFixBeforeWeek1: false,
+          },
+        ],
+      }),
+      volumes: [
+        {
+          muscle: "Triceps",
+          projectedSets: 7,
+          mev: 6,
+          productiveTarget: 8,
+          mav: 12,
+        },
+      ],
+    });
+
+    expect(
+      payload.gates.find((row) => row.gate === "Exercise/materialization quality"),
+    ).toMatchObject({
+      status: "warning",
+      severity: "warning",
+      ownerSeam: "materializer/exercise-selection capacity",
+      notes:
+        "authored support lane was budgeted but dropped; current candidate floor is not below MEV",
+      mustFixBeforeWeek1: false,
+    });
+    expect(payload.gateResult).toBe("accepted_with_watch_items");
   });
 
   it("accepts a clean candidate with no material concerns", () => {

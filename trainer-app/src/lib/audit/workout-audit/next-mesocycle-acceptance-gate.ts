@@ -213,6 +213,54 @@ function repairBurdenFromPreview(
   };
 }
 
+type SupportLaneBoundaryRow = NonNullable<
+  MesocycleExplainAuditPayload["plannerOnlyNoRepair"]
+>["v2SupportLaneProjectionDiagnostic"]["laneBoundaryRows"][number];
+
+function supportLaneBoundaryAssessment(input: {
+  preview: MesocycleExplainAuditPayload | undefined;
+  candidateFound: boolean;
+  weeklyRows: NextMesocycleAcceptanceGatePayload["weeklyMuscleTable"];
+}): {
+  droppedRows: SupportLaneBoundaryRow[];
+  blockingRows: SupportLaneBoundaryRow[];
+  warningRows: SupportLaneBoundaryRow[];
+  evidence: string;
+} {
+  const weeklyByMuscle = new Map(input.weeklyRows.map((row) => [row.muscle, row]));
+  const droppedRows =
+    input.preview?.plannerOnlyNoRepair?.v2SupportLaneProjectionDiagnostic
+      .laneBoundaryRows?.filter(
+        (row) => row.status === "authored_support_lane_dropped",
+      ) ?? [];
+  const blockingRows = input.candidateFound
+    ? droppedRows.filter((row) => {
+        const weekly = weeklyByMuscle.get(row.muscle);
+        return row.mustFixBeforeWeek1 || weekly?.status === "below_mev_fail";
+      })
+    : [];
+  const warningRows = input.candidateFound
+    ? droppedRows.filter((row) => !blockingRows.includes(row))
+    : [];
+  const evidence =
+    droppedRows.length > 0
+      ? droppedRows
+          .slice(0, 4)
+          .map(
+            (row) =>
+              `${row.muscle}:${row.slotId}/${row.laneId}:${row.status}:floor=${formatGateNumber(row.projectedEffectiveSets)}/${formatGateNumber(row.mevFloor)}`,
+          )
+          .join(", ")
+      : "no authored support lane drops reported";
+
+  return {
+    droppedRows,
+    blockingRows,
+    warningRows,
+    evidence,
+  };
+}
+
 function volumeRowsFromPreview(
   preview: MesocycleExplainAuditPayload | undefined,
 ): CandidateVolumeInput[] {
@@ -920,6 +968,11 @@ function buildGates(input: {
   const materializerPass =
     v2?.provenance.materializerStatus === "materialized" &&
     v2.provenance.seedShapeCompatibility.compatible === true;
+  const supportLaneBoundary = supportLaneBoundaryAssessment({
+    preview: input.evidence.diagnosticPreview,
+    candidateFound,
+    weeklyRows: input.weeklyRows,
+  });
 
   return REQUIRED_GATE_LABELS.map((gate) => {
     if (gate === "Candidate identity") {
@@ -1084,9 +1137,11 @@ function buildGates(input: {
         input.repairBurden.repairBurden === "high" ||
         mostlyRepairShaped;
       const status: NextMesocycleAcceptanceGateStatus =
-        candidateFound && !materializerPass
+        candidateFound &&
+        (!materializerPass || supportLaneBoundary.blockingRows.length > 0)
           ? "fail"
-          : candidateFound && repairBurdenWarning
+          : candidateFound &&
+              (repairBurdenWarning || supportLaneBoundary.warningRows.length > 0)
             ? "warning"
             : candidateFound && materializerPass
               ? "pass"
@@ -1102,20 +1157,35 @@ function buildGates(input: {
               : status === "pass"
                 ? "pass"
                 : "info",
-        evidence: v2
-          ? `materializer=${v2.provenance.materializerStatus} seed_shape=${v2.provenance.seedShapeCompatibility.compatible ? "yes" : "no"} planning_shape=${input.planningShape ?? "unknown"}`
-          : `planning_shape=${input.planningShape ?? "unknown"}`,
-        notes: mostlyRepairShaped
-          ? candidateFound
-            ? "repair-heavy candidate can be trainable but carries planner/materializer quality debt"
-            : "mostly repair-shaped preview is diagnostic evidence only"
-          : "diagnostic preview evidence remains non-executable",
-        ownerSeam: "materializer policy",
+        evidence: [
+          v2
+            ? `materializer=${v2.provenance.materializerStatus} seed_shape=${v2.provenance.seedShapeCompatibility.compatible ? "yes" : "no"} planning_shape=${input.planningShape ?? "unknown"}`
+            : `planning_shape=${input.planningShape ?? "unknown"}`,
+          `support_lane_boundary=${supportLaneBoundary.evidence}`,
+        ].join(" "),
+        notes:
+          supportLaneBoundary.blockingRows.length > 0
+            ? "authored support lane was budgeted but dropped before selection while the candidate remains below MEV"
+            : supportLaneBoundary.warningRows.length > 0
+              ? "authored support lane was budgeted but dropped; current candidate floor is not below MEV"
+              : mostlyRepairShaped
+                ? candidateFound
+                  ? "repair-heavy candidate can be trainable but carries planner/materializer quality debt"
+                  : "mostly repair-shaped preview is diagnostic evidence only"
+                : "diagnostic preview evidence remains non-executable",
+        ownerSeam:
+          supportLaneBoundary.droppedRows.length > 0
+            ? "materializer/exercise-selection capacity"
+            : "materializer policy",
         smallestSafeFix:
           status === "fail"
-            ? "investigate materializer compatibility before accepting"
+            ? supportLaneBoundary.blockingRows.length > 0
+              ? "preserve the authored support lane through the materializer/exercise-selection capacity owner before accepting"
+              : "investigate materializer compatibility before accepting"
             : status === "warning"
-              ? "train only with watch items; investigate planner/materializer ownership debt separately"
+              ? supportLaneBoundary.warningRows.length > 0
+                ? "keep as a watch item; investigate narrow support-lane preservation without changing planner volume math"
+                : "train only with watch items; investigate planner/materializer ownership debt separately"
               : "no implementation required",
         mustFixBeforeWeek1: status === "fail",
       };

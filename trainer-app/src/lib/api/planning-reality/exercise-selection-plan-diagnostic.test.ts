@@ -9,6 +9,10 @@ import {
   buildV2SelectionCapacityPlanDiagnostic,
   type V2SelectionCapacityPlanDiagnostic,
 } from "./selection-capacity-plan-diagnostic";
+import {
+  buildV2SupportLaneProjectionDiagnostic,
+  type V2SupportLaneProjectionDiagnostic,
+} from "./support-lane-projection-diagnostic";
 
 type BuilderInput = Parameters<typeof buildV2ExerciseSelectionPlanDiagnostic>[0];
 
@@ -1198,5 +1202,257 @@ describe("buildV2SelectionCapacityPlanDiagnostic", () => {
       weeklyTargetStatus: "below",
     });
     expect(diagnostic.summary.blockerCount).toBeGreaterThanOrEqual(1);
+  });
+});
+
+type SupportBoundaryInput = Parameters<
+  typeof buildV2SupportLaneProjectionDiagnostic
+>[0];
+
+function makeSupportBoundarySelectionLane(input: {
+  selected?: boolean;
+}): V2ExerciseSelectionPlanDiagnostic["weeks"][number]["slots"][number]["lanes"][number] {
+  return {
+    laneId: "optional_triceps_if_under_target",
+    plannedClass: ["triceps_isolation"],
+    primaryMuscles: ["Triceps"],
+    ...(input.selected
+      ? {
+          selectedIdentity: {
+            exerciseId: "pushdown",
+            exerciseName: "Cable Triceps Pushdown",
+            sourceWeek: 1 as const,
+            setCount: 2,
+          },
+        }
+      : {}),
+    identityStatus: input.selected ? "preserved" : "missing_candidate",
+    laneClassStatus: input.selected ? "match" : "not_evaluated",
+    setBudgetStatus: input.selected ? "within_budget" : "blocked",
+    duplicateStatus: "pass",
+    concentrationStatus: "pass",
+    fatigueStatus: "pass",
+    inventoryStatus: input.selected ? "available" : "missing",
+    capacityStatus: input.selected ? "within_capacity" : "blocked",
+    cleanAlternatives: [],
+    unresolvedDemand: input.selected
+      ? []
+      : ["v2TargetVsNoRepairDiff:selection_feasibility_pressure"],
+    evidenceRefs: ["selectionFeasibility:session_capacity_pressure"],
+    limitations: ["week_1_selected_identity_basis"],
+  };
+}
+
+function makeSupportBoundaryInput(overrides: {
+  includePolicy?: boolean;
+  selected?: boolean;
+  tricepsWeeklyStatus?: "below" | "within" | "above" | "diagnostic";
+  tricepsProjectedSets?: number;
+} = {}): SupportBoundaryInput {
+  const policy = buildV2PlannerMesocyclePolicy();
+  const supportPolicy = {
+    ...policy.v2SupportLanePolicy,
+    supportLanes:
+      overrides.includePolicy === false
+        ? policy.v2SupportLanePolicy.supportLanes.filter(
+            (row) => row.muscle !== "Triceps",
+          )
+        : policy.v2SupportLanePolicy.supportLanes,
+  };
+
+  return {
+    v2SupportLanePolicy: supportPolicy,
+    plannerOwnedAccumulationProjection: {
+      version: 1,
+      source: "v2_planner_policy",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      weeks: [],
+    },
+    v2SetDistributionIntent: policy.v2SetDistributionIntent,
+    v2TargetVsNoRepairDiff: {
+      slotDiffs: [
+        {
+          slotId: "upper_b",
+          laneDiffs: [
+            {
+              laneId: "optional_triceps_if_under_target",
+              targetPrimaryMuscles: ["Triceps"],
+              targetExerciseClasses: ["triceps_isolation"],
+              targetSets: { min: 2, preferred: 2, max: 2 },
+              currentStatus: overrides.selected ? "satisfied" : "missing",
+              currentEvidence: {
+                selectedExercises: overrides.selected
+                  ? [
+                      {
+                        name: "Cable Triceps Pushdown",
+                        sets: 2,
+                        matchedClass: "triceps_isolation",
+                        role: "accessory",
+                      },
+                    ]
+                  : [],
+                relevantDiagnostics: [
+                  "selectionFeasibility:session_capacity_pressure",
+                ],
+              },
+              gapCause: overrides.selected
+                ? "none"
+                : "selection_feasibility_pressure",
+              migrationRecommendation: overrides.selected
+                ? "no_action"
+                : "keep_diagnostic_only",
+              severity: overrides.selected ? "pass" : "quality_warning",
+            },
+          ],
+        },
+      ],
+    },
+    v2ExerciseSelectionPlanDiagnostic: {
+      version: 1,
+      source: "v2_planner_policy",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: overrides.selected ? "selection_ready_but_not_consumed" : "blocked",
+      identityBasis: "week_1_selected_identities",
+      projectionBasis:
+        "planner_owned_accumulation_projection_plus_week_1_identity_continuity",
+      summary: {
+        weeksEvaluated: 1,
+        lanesEvaluated: 1,
+        preservedIdentityCount: overrides.selected ? 1 : 0,
+        candidateAvailableCount: 0,
+        missingCandidateCount: overrides.selected ? 0 : 1,
+        classMismatchCount: 0,
+        duplicateRequiresJustificationCount: 0,
+        concentrationWarningCount: 0,
+        blockedLaneCount: overrides.selected ? 0 : 1,
+      },
+      weeks: [
+        {
+          week: 1,
+          slots: [
+            {
+              slotId: "upper_b",
+              lanes: [
+                makeSupportBoundarySelectionLane({
+                  selected: overrides.selected,
+                }),
+              ],
+            },
+          ],
+        },
+      ],
+      blockers: overrides.selected
+        ? []
+        : ["week_1:upper_b:optional_triceps_if_under_target:blocked"],
+      warnings: [],
+      missingInputs: [],
+      safeForBehaviorPromotion: false,
+    },
+    weeklyMuscleTotals: [
+      {
+        muscle: "Triceps",
+        projectedEffectiveSets: overrides.tricepsProjectedSets ?? 5,
+        targetMin: 6,
+        targetPreferred: 8,
+        status: overrides.tricepsWeeklyStatus ?? "below",
+      },
+    ],
+    week1SelectedIdentities: [
+      {
+        slotId: "upper_b",
+        slotIndex: 2,
+        intent: "upper",
+        exerciseCount: overrides.selected ? 5 : 6,
+        totalSets: 18,
+        projectedEffectiveStimulusByMuscle: {
+          Triceps: overrides.tricepsProjectedSets ?? 5,
+        },
+        exercises: overrides.selected
+          ? [
+              {
+                exerciseId: "pushdown",
+                exerciseName: "Cable Triceps Pushdown",
+                role: "accessory",
+                setCount: 2,
+                primaryMuscles: ["Triceps"],
+                movementPatterns: ["isolation"],
+                effectiveStimulusByMuscle: { Triceps: 2 },
+              },
+            ]
+          : [],
+      },
+    ],
+  } as unknown as SupportBoundaryInput;
+}
+
+function supportBoundaryRow(
+  diagnostic: V2SupportLaneProjectionDiagnostic,
+  laneId = "optional_triceps_if_under_target",
+) {
+  const row = diagnostic.laneBoundaryRows.find(
+    (entry) => entry.muscle === "Triceps" && entry.laneId === laneId,
+  );
+  if (!row) {
+    throw new Error(`missing support boundary row for ${laneId}`);
+  }
+  return row;
+}
+
+describe("buildV2SupportLaneProjectionDiagnostic boundary rows", () => {
+  it("reports a policy miss when set distribution contains a support lane without support policy", () => {
+    const diagnostic = buildV2SupportLaneProjectionDiagnostic(
+      makeSupportBoundaryInput({ includePolicy: false }),
+    );
+
+    expect(supportBoundaryRow(diagnostic)).toMatchObject({
+      supportPolicyAuthored: false,
+      setDistributionBudgeted: true,
+      exerciseSelectionPreserved: false,
+      status: "policy_miss",
+      likelyOwnerSeam: "support_lane_policy",
+      severity: "high_risk",
+    });
+    expect(diagnostic.summary.supportPolicyMissCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("reports authored support lanes dropped by exercise-selection capacity", () => {
+    const diagnostic = buildV2SupportLaneProjectionDiagnostic(
+      makeSupportBoundaryInput(),
+    );
+
+    expect(supportBoundaryRow(diagnostic)).toMatchObject({
+      supportPolicyAuthored: true,
+      setDistributionBudgeted: true,
+      exerciseSelectionPreserved: false,
+      weeklyTargetStatus: "below",
+      likelyOwnerSeam: "materializer_exercise_selection_capacity",
+      status: "authored_support_lane_dropped",
+      severity: "high_risk",
+      mustFixBeforeWeek1: true,
+    });
+    expect(diagnostic.summary.authoredDroppedCount).toBeGreaterThanOrEqual(1);
+    expect(diagnostic.summary.highRiskDroppedCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("reports pass when the authored support lane survives selection", () => {
+    const diagnostic = buildV2SupportLaneProjectionDiagnostic(
+      makeSupportBoundaryInput({
+        selected: true,
+        tricepsWeeklyStatus: "within",
+        tricepsProjectedSets: 6,
+      }),
+    );
+
+    expect(supportBoundaryRow(diagnostic)).toMatchObject({
+      supportPolicyAuthored: true,
+      setDistributionBudgeted: true,
+      exerciseSelectionPreserved: true,
+      status: "support_lane_preserved",
+      severity: "pass",
+      mustFixBeforeWeek1: false,
+    });
+    expect(diagnostic.summary.selectionPreservedCount).toBeGreaterThanOrEqual(1);
   });
 });

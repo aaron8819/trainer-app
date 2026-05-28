@@ -34,6 +34,8 @@ vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
   loadActiveMesocycle: (...args: unknown[]) => mocks.loadActiveMesocycle(...args),
   deriveCurrentMesocycleSession: (...args: unknown[]) =>
     mocks.deriveCurrentMesocycleSession(...args),
+  getDeloadSessionThreshold: (mesocycle: { sessionsPerWeek: number }) =>
+    Math.max(1, mesocycle.sessionsPerWeek),
 }));
 
 vi.mock("@/lib/api/projected-week-volume", () => ({
@@ -833,6 +835,9 @@ describe("runWorkoutAuditGeneration", () => {
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
       accumulationSessionsCompleted: 12,
+      deloadSessionsCompleted: 0,
+      sessionsPerWeek: 4,
+      durationWeeks: 5,
       slotPlanSeedJson: {
         version: 1,
         source: "handoff_slot_plan_projection",
@@ -965,6 +970,9 @@ describe("runWorkoutAuditGeneration", () => {
         mesocycleId: "meso-1",
         state: "ACTIVE_ACCUMULATION",
         completedAccumulationSessions: 12,
+        deloadSessionsCompleted: 0,
+        deloadSessionsExpected: 4,
+        deloadSessionPosition: null,
         currentWeek: 4,
         currentSession: 1,
         requestedMesocycleId: "meso-1",
@@ -975,6 +983,108 @@ describe("runWorkoutAuditGeneration", () => {
       muscle: "Chest",
       readOnly: true,
       affectsAcceptedSeed: false,
+    });
+  });
+
+  it("adds deload session progress to pre-session-readiness from lifecycle context", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValueOnce({
+      id: "meso-1",
+      state: "ACTIVE_DELOAD",
+      accumulationSessionsCompleted: 16,
+      deloadSessionsCompleted: 1,
+      sessionsPerWeek: 4,
+      durationWeeks: 5,
+      slotPlanSeedJson: {
+        version: 1,
+        source: "handoff_slot_plan_projection",
+        slots: [
+          {
+            slotId: "lower_a",
+            exercises: [
+              { exerciseId: "squat", role: "CORE_COMPOUND", setCount: 4 },
+            ],
+          },
+        ],
+      },
+    });
+    mocks.deriveCurrentMesocycleSession.mockReturnValueOnce({
+      week: 5,
+      session: 2,
+      phase: "DELOAD",
+    });
+    mocks.loadProjectedWeekVolumeReport.mockResolvedValueOnce({
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 5,
+        phase: "deload",
+        blockType: "deload",
+      },
+      projectionNotes: [],
+      completedVolumeByMuscle: {},
+      projectedSessions: [],
+      fullWeekByMuscle: [],
+    });
+    mocks.generateDeloadSessionFromIntent.mockResolvedValueOnce({
+      ...okGenerationResult,
+      selection: {
+        ...okGenerationResult.selection,
+        sessionDecisionReceipt: {
+          sessionProvenance: {
+            mesocycleId: "meso-1",
+            compositionSource: "deload_seed_replay",
+          },
+        },
+      },
+    });
+    const context: WorkoutAuditContext = {
+      mode: "pre-session-readiness",
+      requestedMode: "pre-session-readiness",
+      userId: "user-1",
+      ownerEmail: "owner@test.local",
+      plannerDiagnosticsMode: "debug",
+      generationInput: { intent: "lower" },
+      nextSession: {
+        intent: "lower",
+        slotId: "lower_a",
+        slotSequenceIndex: 1,
+        slotSequenceLength: 4,
+        slotSource: "mesocycle_slot_sequence",
+        existingWorkoutId: null,
+        isExisting: false,
+        source: "rotation",
+        weekInMeso: 5,
+        sessionInWeek: 2,
+        derivationTrace: [],
+        selectedIncompleteStatus: null,
+      },
+      projectedWeekVolume: { enabled: true },
+      preSessionReadiness: {
+        enabled: true,
+        requestedMesocycleId: "meso-1",
+      },
+    };
+
+    const run = await runWorkoutAuditGeneration(context);
+
+    expect(mocks.generateDeloadSessionFromIntent).toHaveBeenCalledWith("user-1", {
+      intent: "lower",
+      targetMuscles: undefined,
+      plannerDiagnosticsMode: "debug",
+    });
+    expect(run.preSessionReadiness?.activeMesocycle).toMatchObject({
+      mesocycleId: "meso-1",
+      state: "ACTIVE_DELOAD",
+      completedAccumulationSessions: 16,
+      deloadSessionsCompleted: 1,
+      deloadSessionsExpected: 4,
+      deloadSessionPosition: {
+        current: 2,
+        total: 4,
+      },
+      currentWeek: 5,
+      currentSession: 2,
+      requestedMesocycleId: "meso-1",
+      mesocycleIdMatchesRequest: true,
     });
   });
 
@@ -1062,6 +1172,9 @@ describe("runWorkoutAuditGeneration", () => {
         mesocycleId: "meso-1",
         state: "ACTIVE_ACCUMULATION",
         completedAccumulationSessions: 16,
+        deloadSessionsCompleted: 0,
+        deloadSessionsExpected: 4,
+        deloadSessionPosition: null,
         requestedMesocycleId: "meso-1",
         mesocycleIdMatchesRequest: true,
       },

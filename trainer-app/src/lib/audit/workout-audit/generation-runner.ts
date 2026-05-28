@@ -1,5 +1,6 @@
 import {
   deriveCurrentMesocycleSession,
+  getDeloadSessionThreshold,
   loadActiveMesocycle,
 } from "@/lib/api/mesocycle-lifecycle";
 import { evaluateAcceptedMesocycleSeedProvenance } from "@/lib/api/accepted-mesocycle-seed-provenance";
@@ -387,6 +388,18 @@ export async function runWorkoutAuditGeneration(
     const currentSession = activeMesocycle
       ? deriveCurrentMesocycleSession(activeMesocycle)
       : null;
+    const deloadSessionsExpected = activeMesocycle
+      ? getDeloadSessionThreshold(activeMesocycle)
+      : null;
+    const deloadSessionPosition =
+      activeMesocycle?.state === "ACTIVE_DELOAD" &&
+      currentSession?.phase === "DELOAD" &&
+      deloadSessionsExpected != null
+        ? {
+            current: currentSession.session,
+            total: deloadSessionsExpected,
+          }
+        : null;
     const requestedMesocycleId =
       context.preSessionReadiness?.requestedMesocycleId;
     const weeklyRetro =
@@ -416,6 +429,10 @@ export async function runWorkoutAuditGeneration(
           state: activeMesocycle?.state ?? null,
           completedAccumulationSessions:
             activeMesocycle?.accumulationSessionsCompleted ?? null,
+          deloadSessionsCompleted:
+            activeMesocycle?.deloadSessionsCompleted ?? null,
+          deloadSessionsExpected,
+          deloadSessionPosition,
           currentWeek: currentSession?.week ?? null,
           currentSession: currentSession?.session ?? null,
           ...(requestedMesocycleId ? { requestedMesocycleId } : {}),

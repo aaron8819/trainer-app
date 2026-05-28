@@ -4277,6 +4277,9 @@ describe("buildPreSessionReadinessSummary", () => {
           mesocycleId: "ceb2cff3-9d4d-4b3e-b309-c63ab28e62d4",
           state: "ACTIVE_ACCUMULATION",
           completedAccumulationSessions: 14,
+          deloadSessionsCompleted: 0,
+          deloadSessionsExpected: 4,
+          deloadSessionPosition: null as { current: number; total: number } | null,
           currentWeek: 4,
           currentSession: 3,
           requestedMesocycleId: "ceb2cff3-9d4d-4b3e-b309-c63ab28e62d4",
@@ -4684,6 +4687,9 @@ describe("buildPreSessionReadinessSummary", () => {
             mesocycleId: "meso-1",
             state: "ACTIVE_ACCUMULATION",
             completedAccumulationSessions: 12,
+            deloadSessionsCompleted: 0,
+            deloadSessionsExpected: 4,
+            deloadSessionPosition: null,
             currentWeek: 4,
             currentSession: 1,
             requestedMesocycleId: "meso-1",
@@ -4706,6 +4712,8 @@ describe("buildPreSessionReadinessSummary", () => {
     expect(summary).toEqual(
       expect.arrayContaining([
         "Pre-Session Readiness",
+        "Deload sessions completed: n/a",
+        "Deload session position: n/a",
         "Generated Preview",
         "Order | Exercise | Sets | Load | Rep target/range | RPE",
         "1 | Incline Machine Press | 4 | 132.5 | 8-10 | 8",
@@ -4717,6 +4725,62 @@ describe("buildPreSessionReadinessSummary", () => {
         "- none",
         "Safe to train: yes",
       ]),
+    );
+  });
+
+  it("prints deload session progress directly for pre-session readiness", () => {
+    const artifact = buildWeek4UpperBPreSessionArtifact();
+    artifact.nextSession = {
+      ...artifact.nextSession,
+      intent: "lower",
+      slotId: "lower_a",
+      slotSequenceIndex: 1,
+      weekInMeso: 5,
+      sessionInWeek: 2,
+    };
+    artifact.generationPath = {
+      requestedMode: "pre-session-readiness",
+      executionMode: "active_deload_reroute",
+      generator: "generateDeloadSessionFromIntent",
+      reason: "active_mesocycle_state_active_deload",
+    };
+    artifact.generationProvenance.receiptProvenance.compositionSource =
+      "deload_seed_replay";
+    artifact.projectedWeekVolume.currentWeek = {
+      mesocycleId: "ceb2cff3-9d4d-4b3e-b309-c63ab28e62d4",
+      week: 5,
+      phase: "deload",
+      blockType: "deload",
+    };
+    artifact.preSessionReadiness.activeMesocycle = {
+      ...artifact.preSessionReadiness.activeMesocycle,
+      state: "ACTIVE_DELOAD",
+      completedAccumulationSessions: 16,
+      deloadSessionsCompleted: 1,
+      deloadSessionsExpected: 4,
+      deloadSessionPosition: {
+        current: 2,
+        total: 4,
+      },
+      currentWeek: 5,
+      currentSession: 2,
+    };
+
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: true,
+      artifact: artifact as never,
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("state=ACTIVE_DELOAD"),
+        expect.stringContaining("current_week=5 current_session=2"),
+        "Deload sessions completed: 1",
+        "Deload session position: 2 of 4",
+        expect.stringContaining("path=active_deload_reroute"),
+        expect.stringContaining("composition_source=deload_seed_replay"),
+        "Safe to train: yes",
+      ])
     );
   });
 
@@ -4804,6 +4868,9 @@ describe("buildPreSessionReadinessSummary", () => {
             mesocycleId: "meso-1",
             state: "ACTIVE_ACCUMULATION",
             completedAccumulationSessions: 16,
+            deloadSessionsCompleted: 0,
+            deloadSessionsExpected: 4,
+            deloadSessionPosition: null,
             currentWeek: 4,
             currentSession: 4,
             requestedMesocycleId: "meso-1",

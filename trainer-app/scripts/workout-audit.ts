@@ -3747,6 +3747,18 @@ export function buildPreSessionReadinessSummary(input: {
   const seed = input.artifact.generationProvenance?.seed?.provenanceConsistency;
   const active = payload.activeMesocycle;
   const nextSession = input.artifact.nextSession;
+  const deloadProgressLine =
+    active.state === "ACTIVE_DELOAD"
+      ? `Deload sessions completed: ${formatAuditValue(active.deloadSessionsCompleted)}`
+      : "Deload sessions completed: n/a";
+  const deloadPositionLine =
+    active.state === "ACTIVE_DELOAD"
+      ? `Deload session position: ${
+          active.deloadSessionPosition
+            ? `${active.deloadSessionPosition.current} of ${active.deloadSessionPosition.total}`
+            : "n/a"
+        }`
+      : "Deload session position: n/a";
   const doseDiagnostics = selectPreSessionDoseDiagnostics({
     diagnostics: projectedWeek?.runtimeDoseAdjustmentDiagnostics ?? [],
     nextSession: nextProjectedSession,
@@ -3760,6 +3772,8 @@ export function buildPreSessionReadinessSummary(input: {
     "Pre-Session Readiness",
     "---------------------",
     `Current app state: owner=${input.artifact.identity.ownerEmail ?? input.artifact.identity.userId} active_mesocycle=${active.mesocycleId ?? "unknown"} state=${active.state ?? "unknown"} completed_accumulation_sessions=${formatAuditValue(active.completedAccumulationSessions)} current_week=${formatAuditValue(active.currentWeek)} current_session=${formatAuditValue(active.currentSession)} next_slot=${nextSession?.slotId ?? "unknown"} incomplete_workout_blocker=${nextSession?.source === "existing_incomplete" ? `${nextSession.existingWorkoutId ?? "unknown"} (${nextSession.selectedIncompleteStatus ?? "unknown"})` : "none"}`,
+    deloadProgressLine,
+    deloadPositionLine,
     `Lifecycle blocker: ${nextSession?.source === "final_week_close_pending" ? nextSession.lifecycleBlocker?.message ?? "final accumulation closeout is pending" : "none"}`,
     `Generation: path=${input.artifact.generationPath?.executionMode ?? "unknown"} generator=${input.artifact.generationPath?.generator ?? "unknown"} composition_source=${receiptProvenance?.compositionSource ?? "unknown"} receipt_mesocycle=${receiptProvenance?.mesocycleId ?? "unknown"} seed_source=${seed?.seed.source ?? "unknown"} seed_shape=${seed?.seed.executableShape ?? "unknown"} seed_or_slot_hash=not_available`,
     `Seed order/set counts respected: ${

@@ -29,7 +29,7 @@ function getAccumulationSessionThreshold(mesocycle: Pick<MesoWithLifecycle, "dur
   return getAccumulationWeeks(mesocycle.durationWeeks) * Math.max(1, mesocycle.sessionsPerWeek);
 }
 
-function getDeloadSessionThreshold(mesocycle: Pick<MesoWithLifecycle, "sessionsPerWeek">): number {
+export function getDeloadSessionThreshold(mesocycle: { sessionsPerWeek: number }): number {
   return Math.max(1, mesocycle.sessionsPerWeek);
 }
 

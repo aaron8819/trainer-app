@@ -586,6 +586,12 @@ export type PreSessionReadinessAuditPayload = {
     mesocycleId: string | null;
     state: string | null;
     completedAccumulationSessions: number | null;
+    deloadSessionsCompleted: number | null;
+    deloadSessionsExpected: number | null;
+    deloadSessionPosition: {
+      current: number;
+      total: number;
+    } | null;
     currentWeek: number | null;
     currentSession: number | null;
     requestedMesocycleId?: string;

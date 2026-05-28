@@ -3774,6 +3774,27 @@ export function buildCurrentWeekAuditOperatorSummary(input: {
   ];
 }
 
+function buildSeedReplayReadoutLines(input: {
+  compositionSource?: string | null;
+}): string[] {
+  if (input.compositionSource === "persisted_slot_plan_seed") {
+    return [
+      "Seed order/set counts respected: yes, generated preview is from persisted seed replay",
+    ];
+  }
+
+  if (input.compositionSource === "deload_seed_replay") {
+    return [
+      "Exercise identity/order source: accepted seed replay for deload",
+      "Set-count policy: deload-adjusted; accumulation seed set counts intentionally reduced",
+    ];
+  }
+
+  return [
+    "Seed order/set counts respected: unknown, composition source is not persisted seed replay",
+  ];
+}
+
 export function buildPreSessionReadinessSummary(input: {
   artifact: Pick<
     WorkoutAuditArtifact,
@@ -3806,6 +3827,9 @@ export function buildPreSessionReadinessSummary(input: {
   const active = payload.activeMesocycle;
   const nextSession = input.artifact.nextSession;
   const isActiveDeload = active.state === "ACTIVE_DELOAD";
+  const seedReplayReadoutLines = buildSeedReplayReadoutLines({
+    compositionSource: receiptProvenance?.compositionSource,
+  });
   const deloadProgressLine =
     isActiveDeload
       ? `Deload sessions completed: ${formatAuditValue(active.deloadSessionsCompleted)}`
@@ -3835,11 +3859,7 @@ export function buildPreSessionReadinessSummary(input: {
     deloadPositionLine,
     `Lifecycle blocker: ${nextSession?.source === "final_week_close_pending" ? nextSession.lifecycleBlocker?.message ?? "final accumulation closeout is pending" : "none"}`,
     `Generation: path=${input.artifact.generationPath?.executionMode ?? "unknown"} generator=${input.artifact.generationPath?.generator ?? "unknown"} composition_source=${receiptProvenance?.compositionSource ?? "unknown"} receipt_mesocycle=${receiptProvenance?.mesocycleId ?? "unknown"} seed_source=${seed?.seed.source ?? "unknown"} seed_shape=${seed?.seed.executableShape ?? "unknown"} seed_or_slot_hash=not_available`,
-    `Seed order/set counts respected: ${
-      receiptProvenance?.compositionSource === "persisted_slot_plan_seed"
-        ? "yes, generated preview is from persisted seed replay"
-        : "unknown, composition source is not persisted seed replay"
-    }`,
+    ...seedReplayReadoutLines,
     "",
     "Generated Preview",
     "Order | Exercise | Sets | Load | Rep target/range | RPE",

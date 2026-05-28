@@ -4715,6 +4715,7 @@ describe("buildPreSessionReadinessSummary", () => {
         "Pre-Session Readiness",
         "Deload sessions completed: n/a",
         "Deload session position: n/a",
+        "Seed order/set counts respected: yes, generated preview is from persisted seed replay",
         "Generated Preview",
         "Order | Exercise | Sets | Load | Rep target/range | RPE",
         "1 | Incline Machine Press | 4 | 132.5 | 8-10 | 8",
@@ -4780,6 +4781,8 @@ describe("buildPreSessionReadinessSummary", () => {
         "Deload session position: 2 of 4",
         expect.stringContaining("path=active_deload_reroute"),
         expect.stringContaining("composition_source=deload_seed_replay"),
+        "Exercise identity/order source: accepted seed replay for deload",
+        "Set-count policy: deload-adjusted; accumulation seed set counts intentionally reduced",
         "Current-Week Dose Guidance (Deload Context)",
         "Deload is intentionally reduced volume; do not chase MEV/target deficits.",
         "Chest | 7 vs MEV 10 / target 12 / MAV 16 | deload_non_actionable:below_mev | deload context: non-actionable; do not top up | 0.8",
@@ -4796,6 +4799,8 @@ describe("buildPreSessionReadinessSummary", () => {
     expect(joined).not.toContain("Recommended: +");
     expect(joined).not.toContain("- Add +");
     expect(joined).not.toContain("consider +1");
+    expect(joined).not.toContain("Seed order/set counts respected: unknown");
+    expect(joined).not.toContain("accumulation seed set counts preserved");
   });
 
   it("labels ACTIVE_DELOAD status lines as deload diagnostics with accumulation reference week", () => {

@@ -228,6 +228,25 @@ export async function buildWorkoutAuditContext(
     };
   }
 
+  if (mode === "next-mesocycle-post-accept-verification") {
+    if (!request.sourceMesocycleId) {
+      throw new Error("next-mesocycle-post-accept-verification mode requires --source-mesocycle-id");
+    }
+    return {
+      mode,
+      requestedMode: request.mode,
+      userId: identity.userId,
+      ownerEmail: identity.ownerEmail,
+      plannerDiagnosticsMode,
+      nextMesocyclePostAcceptVerification: {
+        sourceMesocycleId: request.sourceMesocycleId,
+        ...(request.mesocycleId
+          ? { successorMesocycleId: request.mesocycleId }
+          : {}),
+      },
+    };
+  }
+
   if (mode === "next-mesocycle-handoff-dry-run") {
     if (!request.sourceMesocycleId) {
       throw new Error("next-mesocycle-handoff-dry-run mode requires --source-mesocycle-id");

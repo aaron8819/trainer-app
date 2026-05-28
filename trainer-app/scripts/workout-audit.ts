@@ -1067,7 +1067,7 @@ export function buildWorkoutAuditHelpText(): string {
     "Options:",
     "  -h, --help                         Print this help and exit without preflight, DB access, audit execution, or artifact writes.",
     "  --env-file <path>                  Load environment variables from a specific file.",
-    "  --mode <mode>                      Audit mode: future-week, pre-session-readiness, projected-week-volume, current-week-audit, historical-week, weekly-retro, mesocycle-explain, deload, progression-anchor, active-mesocycle-slot-reseed, replace-empty-mesocycle-with-v2, v2-accepted-seed-prepare-compare, next-mesocycle-handoff-dry-run, next-mesocycle-acceptance-gate.",
+    "  --mode <mode>                      Audit mode: future-week, pre-session-readiness, projected-week-volume, current-week-audit, historical-week, weekly-retro, mesocycle-explain, deload, progression-anchor, active-mesocycle-slot-reseed, replace-empty-mesocycle-with-v2, v2-accepted-seed-prepare-compare, next-mesocycle-handoff-dry-run, next-mesocycle-acceptance-gate, next-mesocycle-post-accept-verification.",
     "  --owner <email>                    Resolve the audit owner by email.",
     "  --user-id <id>                     Resolve the audit owner by user id.",
     "  --intent <intent>                  Session intent for generated-session modes.",
@@ -3181,6 +3181,57 @@ export function buildNextMesocycleAcceptanceGateSummary(input: {
   return lines;
 }
 
+export function buildNextMesocyclePostAcceptVerificationSummary(input: {
+  artifact: Pick<WorkoutAuditArtifact, "nextMesocyclePostAcceptVerification">;
+}): string[] | null {
+  const payload = input.artifact.nextMesocyclePostAcceptVerification;
+  if (!payload) {
+    return null;
+  }
+
+  const failedChecks = payload.checks.filter((row) => row.status === "fail");
+  const watchChecks = payload.checks.filter(
+    (row) => row.status === "warning" || row.status === "unknown",
+  );
+  const mustFixChecks = failedChecks.filter((row) => row.mustFixBeforeWeek1);
+  const lines = [
+    "",
+    "Post-Accept Successor Verification",
+    `verification_result=${payload.verificationResult}`,
+    `recommendation=${payload.recommendation}`,
+    `source_mesocycle=${payload.sourceMesocycle.id} state=${payload.sourceMesocycle.state ?? "unknown"} active=${formatAuditValue(payload.sourceMesocycle.isActive)}`,
+    `successor_mesocycle=${payload.successorMesocycle.id ?? "missing"} requested=${payload.successorMesocycle.requestedId ?? "none"} state=${payload.successorMesocycle.state ?? "unknown"} active=${formatAuditValue(payload.successorMesocycle.isActive)} active_mesocycle=${payload.successorMesocycle.activeMesocycleId ?? "missing"}`,
+    `seed=${payload.seedContract.slotPlanSeedJson} minimal_executable_rows_only=${formatBooleanFlag(payload.seedContract.minimalExecutableRowsOnly)} slots=${payload.seedContract.slotCount} exercises=${payload.seedContract.exerciseCount}`,
+    `slot_sequence_persisted=${formatBooleanFlag(payload.slotSequence.hasPersistedSequence)} order_stable=${formatBooleanFlag(payload.slotSequence.orderStable)} order=${payload.slotSequence.slotOrder.join(">") || "missing"}`,
+    `future_week=${payload.futureWeekReplay.status} composition_source=${payload.futureWeekReplay.compositionSource ?? "missing"} path=${payload.futureWeekReplay.generationPath} order_matches_seed=${formatBooleanFlag(payload.futureWeekReplay.exerciseOrderMatchesSeed)} generated_exercises=${payload.futureWeekReplay.generatedExerciseCount}`,
+    `projected_week=${payload.projectedWeekVolume.status} mesocycle=${payload.projectedWeekVolume.mesocycleId ?? "missing"} sessions=${payload.projectedWeekVolume.projectedSessionCount} seed_backed=${formatBooleanFlag(payload.projectedWeekVolume.allProjectedSessionsSeedBacked)}`,
+    `read_models home_slot_source=${payload.readModels.homeNextSessionSlotSource ?? "missing"} program_sources=${payload.readModels.programExerciseSources.join(",") || "missing"} seed_backed=${formatBooleanFlag(payload.readModels.allProgramRowsSeedBacked)}`,
+    `provenance=${payload.provenance.status} receipt_composition_source=${payload.provenance.receiptCompositionSource ?? "missing"} warnings=${payload.provenance.warningCodes.join(",") || "none"}`,
+    `failed_checks=${failedChecks.length} must_fix_before_week_1=${mustFixChecks.length} watch_items=${watchChecks.length}`,
+    "",
+    "Check | Status | Must fix before Week 1 | Owner seam | Evidence",
+  ];
+
+  for (const row of payload.checks) {
+    lines.push(
+      [
+        row.check,
+        row.status,
+        row.mustFixBeforeWeek1 ? "yes" : "no",
+        row.ownerSeam,
+        row.evidence,
+      ].join(" | "),
+    );
+  }
+
+  lines.push("");
+  lines.push(
+    `safety writes=${payload.safety.writes} db_mutated=${formatBooleanFlag(payload.safety.dbMutated)} mesocycle_created=${formatBooleanFlag(payload.safety.mesocycleCreated)} workout_session_created=${formatBooleanFlag(payload.safety.workoutLogSessionCreated)} seed_runtime_changed=${formatBooleanFlag(payload.safety.seedRuntimeBehaviorChanged)} transaction=${formatBooleanFlag(payload.safety.transactionExecuted)}`,
+  );
+
+  return lines;
+}
+
 export function buildProjectedWeekOperatorSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "projectedWeekVolume" | "warningSummary">;
   outputPath: string;
@@ -4421,6 +4472,8 @@ export async function main(input?: {
         ? `source_state=${run.nextMesocycleHandoffDryRun.summary.sourceState ?? "unknown"} candidate_available=${run.nextMesocycleHandoffDryRun.summary.candidateAvailable ? "yes" : "no"} handoff_ready=${run.nextMesocycleHandoffDryRun.summary.handoffReady ? "yes" : "no"} writes=${run.nextMesocycleHandoffDryRun.summary.writes}`
       : run.nextMesocycleAcceptanceGate
         ? `candidate_found=${run.nextMesocycleAcceptanceGate.candidateFound ? "yes" : "no"} gate_result=${run.nextMesocycleAcceptanceGate.gateResult}`
+      : run.nextMesocyclePostAcceptVerification
+        ? `verification_result=${run.nextMesocyclePostAcceptVerification.verificationResult} failed_checks=${run.nextMesocyclePostAcceptVerification.checks.filter((row) => row.status === "fail").length}`
       : run.mesocycleExplain
         ? `source=${run.mesocycleExplain.sourceMesocycleId} retrospective=${run.mesocycleExplain.retrospectiveMesocycleId} preview_slots=${run.mesocycleExplain.preview.slotPlans.length}`
       : run.progressionAnchor
@@ -4570,6 +4623,15 @@ export async function main(input?: {
     });
   if (nextMesocycleAcceptanceGateSummary) {
     for (const line of nextMesocycleAcceptanceGateSummary) {
+      console.log(line);
+    }
+  }
+  const nextMesocyclePostAcceptVerificationSummary =
+    buildNextMesocyclePostAcceptVerificationSummary({
+      artifact,
+    });
+  if (nextMesocyclePostAcceptVerificationSummary) {
+    for (const line of nextMesocyclePostAcceptVerificationSummary) {
       console.log(line);
     }
   }

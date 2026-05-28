@@ -16,6 +16,7 @@ import {
   buildPlannerOnlyNoRepairSummary,
   buildNextMesocycleHandoffDryRunSummary,
   buildNextMesocycleAcceptanceGateSummary,
+  buildNextMesocyclePostAcceptVerificationSummary,
   buildPreSessionReadinessSummary,
   buildProjectedWeekDebugSummary,
   buildProjectedWeekOperatorSummary,
@@ -393,6 +394,7 @@ describe("workout audit CLI help", () => {
     expect(help).toContain("Without --mode, the default audit mode is future-week.");
     expect(help).toContain("pre-session-readiness");
     expect(help).toContain("next-mesocycle-acceptance-gate");
+    expect(help).toContain("next-mesocycle-post-accept-verification");
     expect(help).toContain(
       "Help exits before owner resolution, DB preflight, audit execution, artifact directory creation, and artifact writing.",
     );
@@ -6494,6 +6496,119 @@ describe("buildNextMesocycleAcceptanceGateSummary", () => {
         "Do Not Fix From This Gate Alone",
         "below target but above MEV | productive target misses are informational unless another floor/cap/trainability failure is present",
         "available=yes label=diagnostic_preview_not_candidate can_be_accepted=no planning_shape=mostly_upstream_planned",
+      ]),
+    );
+  });
+});
+
+describe("buildNextMesocyclePostAcceptVerificationSummary", () => {
+  it("prints persisted successor replay checks and read-only safety", () => {
+    const summary = buildNextMesocyclePostAcceptVerificationSummary({
+      artifact: {
+        nextMesocyclePostAcceptVerification: {
+          version: 1,
+          source: "next_mesocycle_post_accept_verification_audit",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByProduction: false,
+          wouldWriteTransaction: false,
+          verificationResult: "safe_to_train",
+          recommendation: "persisted successor is safe to train from for Week 1",
+          sourceMesocycle: {
+            id: "source-1",
+            state: "COMPLETED",
+            isActive: false,
+            macroCycleId: "macro-1",
+            mesoNumber: 1,
+          },
+          successorMesocycle: {
+            id: "successor-1",
+            requestedId: "successor-1",
+            state: "ACTIVE_ACCUMULATION",
+            isActive: true,
+            macroCycleId: "macro-1",
+            mesoNumber: 2,
+            activeMesocycleId: "successor-1",
+          },
+          seedContract: {
+            slotPlanSeedJson: "available",
+            source: "handoff_slot_plan_projection",
+            slotCount: 1,
+            exerciseCount: 1,
+            minimalExecutableRowsOnly: true,
+            executableFields: ["exerciseId", "role", "setCount"],
+            missingSetCount: 0,
+            extraExecutableRowFieldCount: 0,
+          },
+          slotSequence: {
+            available: true,
+            hasPersistedSequence: true,
+            orderStable: true,
+            slotOrder: ["upper_a"],
+            seedSlotOrder: ["upper_a"],
+          },
+          futureWeekReplay: {
+            status: "available",
+            compositionSource: "persisted_slot_plan_seed",
+            generationPath: "standard_generation",
+            nextSlotId: "upper_a",
+            generatedExerciseOrder: ["bench"],
+            seedExerciseOrder: ["bench"],
+            exerciseOrderMatchesSeed: true,
+            generatedExerciseCount: 1,
+            progressionTraceCount: 1,
+            cautionCount: 0,
+          },
+          projectedWeekVolume: {
+            status: "available",
+            currentWeek: 1,
+            mesocycleId: "successor-1",
+            projectedSessionCount: 1,
+            allProjectedSessionsSeedBacked: true,
+            mismatchedSlots: [],
+          },
+          readModels: {
+            homeNextSessionSlotSource: "mesocycle_slot_sequence",
+            programExerciseSources: ["persisted_slot_plan_seed"],
+            allProgramRowsSeedBacked: true,
+          },
+          provenance: {
+            status: "valid",
+            warningCodes: [],
+            receiptCompositionSource: "persisted_slot_plan_seed",
+          },
+          checks: [
+            {
+              check: "Week 1 future-week replays persisted seed",
+              status: "pass",
+              evidence: "compositionSource=persisted_slot_plan_seed",
+              ownerSeam: "template-session seeded runtime replay",
+              mustFixBeforeWeek1: true,
+            },
+          ],
+          safety: {
+            writes: "no",
+            dbMutated: false,
+            mesocycleCreated: false,
+            workoutLogSessionCreated: false,
+            seedRuntimeBehaviorChanged: false,
+            plannerMaterializerBehaviorChanged: false,
+            transactionExecuted: false,
+          },
+        },
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Post-Accept Successor Verification",
+        "verification_result=safe_to_train",
+        "seed=available minimal_executable_rows_only=yes slots=1 exercises=1",
+        "future_week=available composition_source=persisted_slot_plan_seed path=standard_generation order_matches_seed=yes generated_exercises=1",
+        "projected_week=available mesocycle=successor-1 sessions=1 seed_backed=yes",
+        "failed_checks=0 must_fix_before_week_1=0 watch_items=0",
+        "Week 1 future-week replays persisted seed | pass | yes | template-session seeded runtime replay | compositionSource=persisted_slot_plan_seed",
+        "safety writes=no db_mutated=no mesocycle_created=no workout_session_created=no seed_runtime_changed=no transaction=no",
       ]),
     );
   });

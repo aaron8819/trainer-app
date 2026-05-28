@@ -2177,6 +2177,137 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(artifact.generation).toBeUndefined();
   });
 
+  it("serializes post-accept successor verification payloads without attaching generation fields", () => {
+    const nextMesocyclePostAcceptVerification = {
+      version: 1,
+      source: "next_mesocycle_post_accept_verification_audit",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      wouldWriteTransaction: false,
+      verificationResult: "safe_to_train",
+      recommendation: "persisted successor is safe to train from for Week 1",
+      sourceMesocycle: {
+        id: "source-1",
+        state: "COMPLETED",
+        isActive: false,
+        macroCycleId: "macro-1",
+        mesoNumber: 1,
+      },
+      successorMesocycle: {
+        id: "successor-1",
+        requestedId: "successor-1",
+        state: "ACTIVE_ACCUMULATION",
+        isActive: true,
+        macroCycleId: "macro-1",
+        mesoNumber: 2,
+        activeMesocycleId: "successor-1",
+      },
+      seedContract: {
+        slotPlanSeedJson: "available",
+        source: "handoff_slot_plan_projection",
+        slotCount: 1,
+        exerciseCount: 1,
+        minimalExecutableRowsOnly: true,
+        executableFields: ["exerciseId", "role", "setCount"],
+        missingSetCount: 0,
+        extraExecutableRowFieldCount: 0,
+      },
+      slotSequence: {
+        available: true,
+        hasPersistedSequence: true,
+        orderStable: true,
+        slotOrder: ["upper_a"],
+        seedSlotOrder: ["upper_a"],
+      },
+      futureWeekReplay: {
+        status: "available",
+        compositionSource: "persisted_slot_plan_seed",
+        generationPath: "standard_generation",
+        nextSlotId: "upper_a",
+        generatedExerciseOrder: ["bench"],
+        seedExerciseOrder: ["bench"],
+        exerciseOrderMatchesSeed: true,
+        generatedExerciseCount: 1,
+        progressionTraceCount: 1,
+        cautionCount: 0,
+      },
+      projectedWeekVolume: {
+        status: "available",
+        currentWeek: 1,
+        mesocycleId: "successor-1",
+        projectedSessionCount: 1,
+        allProjectedSessionsSeedBacked: true,
+        mismatchedSlots: [],
+      },
+      readModels: {
+        homeNextSessionSlotSource: "mesocycle_slot_sequence",
+        programExerciseSources: ["persisted_slot_plan_seed"],
+        allProgramRowsSeedBacked: true,
+      },
+      provenance: {
+        status: "valid",
+        warningCodes: [],
+        receiptCompositionSource: "persisted_slot_plan_seed",
+      },
+      checks: [
+        {
+          check: "Week 1 future-week replays persisted seed",
+          status: "pass",
+          evidence: "compositionSource=persisted_slot_plan_seed",
+          ownerSeam: "template-session seeded runtime replay",
+          mustFixBeforeWeek1: true,
+        },
+      ],
+      safety: {
+        writes: "no",
+        dbMutated: false,
+        mesocycleCreated: false,
+        workoutLogSessionCreated: false,
+        seedRuntimeBehaviorChanged: false,
+        plannerMaterializerBehaviorChanged: false,
+        transactionExecuted: false,
+      },
+    } as WorkoutAuditRun["nextMesocyclePostAcceptVerification"];
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "next-mesocycle-post-accept-verification",
+        userId: "user-1",
+        sourceMesocycleId: "source-1",
+        mesocycleId: "successor-1",
+      },
+      {
+        ...baseRun,
+        context: {
+          mode: "next-mesocycle-post-accept-verification",
+          requestedMode: "next-mesocycle-post-accept-verification",
+          userId: "user-1",
+          plannerDiagnosticsMode: "standard",
+          nextMesocyclePostAcceptVerification: {
+            sourceMesocycleId: "source-1",
+            successorMesocycleId: "successor-1",
+          },
+        },
+        generationResult: undefined,
+        nextMesocyclePostAcceptVerification,
+      },
+    );
+
+    expect(artifact.mode).toBe("next-mesocycle-post-accept-verification");
+    expect(artifact.nextMesocyclePostAcceptVerification).toMatchObject({
+      readOnly: true,
+      consumedByProduction: false,
+      wouldWriteTransaction: false,
+      verificationResult: "safe_to_train",
+      safety: {
+        dbMutated: false,
+        mesocycleCreated: false,
+        transactionExecuted: false,
+      },
+    });
+    expect(artifact.generation).toBeUndefined();
+  });
+
   it("serializes mesocycle-explain payloads without attaching generation fields", () => {
     const artifact = buildWorkoutAuditArtifact(
       {

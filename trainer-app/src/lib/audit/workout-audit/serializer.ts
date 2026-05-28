@@ -255,6 +255,8 @@ export function buildWorkoutAuditArtifact(
     v2AcceptedSeedPrepareCompare: run.v2AcceptedSeedPrepareCompare,
     nextMesocycleHandoffDryRun: run.nextMesocycleHandoffDryRun,
     nextMesocycleAcceptanceGate: run.nextMesocycleAcceptanceGate,
+    nextMesocyclePostAcceptVerification:
+      run.nextMesocyclePostAcceptVerification,
     mesocycleExplain: run.mesocycleExplain,
     progressionAnchor: run.progressionAnchor,
     warningSummary: buildGenerationWarningSummary({

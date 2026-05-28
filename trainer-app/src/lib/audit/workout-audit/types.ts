@@ -40,6 +40,7 @@ import {
   MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION,
   NEXT_MESOCYCLE_ACCEPTANCE_GATE_AUDIT_PAYLOAD_VERSION,
   NEXT_MESOCYCLE_HANDOFF_DRY_RUN_AUDIT_PAYLOAD_VERSION,
+  NEXT_MESOCYCLE_POST_ACCEPT_VERIFICATION_AUDIT_PAYLOAD_VERSION,
   PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
   REPLACE_EMPTY_MESOCYCLE_WITH_V2_AUDIT_PAYLOAD_VERSION,
   PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION,
@@ -150,6 +151,10 @@ export type WorkoutAuditContext = {
   };
   nextMesocycleAcceptanceGate?: {
     sourceMesocycleId: string;
+  };
+  nextMesocyclePostAcceptVerification?: {
+    sourceMesocycleId: string;
+    successorMesocycleId?: string;
   };
   progressionAnchor?: {
     workoutId?: string;
@@ -1086,6 +1091,102 @@ export type NextMesocycleAcceptanceGatePayload = {
     v2PrepareCompareStatus?: V2AcceptedSeedPrepareCompareAuditPayload["compareStatus"];
     v2ProductionWriteEligible?: false;
     mesocycleExplainPreviewAvailable: boolean;
+  };
+};
+
+export type NextMesocyclePostAcceptVerificationStatus =
+  | "pass"
+  | "warning"
+  | "fail"
+  | "unknown";
+
+export type NextMesocyclePostAcceptVerificationPayload = {
+  version: typeof NEXT_MESOCYCLE_POST_ACCEPT_VERIFICATION_AUDIT_PAYLOAD_VERSION;
+  source: "next_mesocycle_post_accept_verification_audit";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByProduction: false;
+  wouldWriteTransaction: false;
+  verificationResult: "safe_to_train" | "blocked" | "watch_items" | "not_runnable";
+  recommendation: string;
+  sourceMesocycle: {
+    id: string;
+    state: string | null;
+    isActive: boolean | null;
+    macroCycleId: string | null;
+    mesoNumber: number | null;
+  };
+  successorMesocycle: {
+    id: string | null;
+    requestedId?: string;
+    state: string | null;
+    isActive: boolean | null;
+    macroCycleId: string | null;
+    mesoNumber: number | null;
+    activeMesocycleId: string | null;
+  };
+  seedContract: {
+    slotPlanSeedJson: "available" | "missing" | "invalid";
+    source: string | null;
+    slotCount: number;
+    exerciseCount: number;
+    minimalExecutableRowsOnly: boolean;
+    executableFields: Array<"exerciseId" | "role" | "setCount">;
+    missingSetCount: number;
+    extraExecutableRowFieldCount: number;
+  };
+  slotSequence: {
+    available: boolean;
+    hasPersistedSequence: boolean;
+    orderStable: boolean;
+    slotOrder: string[];
+    seedSlotOrder: string[];
+  };
+  futureWeekReplay: {
+    status: "available" | "generation_error" | "not_available";
+    compositionSource: string | null;
+    generationPath: "standard_generation" | "active_deload_reroute" | "explicit_deload_preview" | "blocked_closeout_required" | "not_run";
+    nextSlotId: string | null;
+    generatedExerciseOrder: string[];
+    seedExerciseOrder: string[];
+    exerciseOrderMatchesSeed: boolean;
+    generatedExerciseCount: number;
+    progressionTraceCount: number;
+    cautionCount: number;
+  };
+  projectedWeekVolume: {
+    status: "available" | "generation_error" | "not_available";
+    currentWeek: number | null;
+    mesocycleId: string | null;
+    projectedSessionCount: number;
+    allProjectedSessionsSeedBacked: boolean;
+    mismatchedSlots: string[];
+  };
+  readModels: {
+    homeNextSessionSlotSource: string | null;
+    programExerciseSources: string[];
+    allProgramRowsSeedBacked: boolean;
+  };
+  provenance: {
+    status: "valid" | "suspicious" | "invalid" | "not_available";
+    warningCodes: string[];
+    receiptCompositionSource: string | null;
+  };
+  checks: Array<{
+    check: string;
+    status: NextMesocyclePostAcceptVerificationStatus;
+    evidence: string;
+    ownerSeam: string;
+    mustFixBeforeWeek1: boolean;
+  }>;
+  safety: {
+    writes: "no";
+    dbMutated: false;
+    mesocycleCreated: false;
+    workoutLogSessionCreated: false;
+    seedRuntimeBehaviorChanged: false;
+    plannerMaterializerBehaviorChanged: false;
+    transactionExecuted: false;
   };
 };
 
@@ -2195,6 +2296,7 @@ export type WorkoutAuditRun = {
   v2AcceptedSeedPrepareCompare?: V2AcceptedSeedPrepareCompareAuditPayload;
   nextMesocycleHandoffDryRun?: NextMesocycleHandoffDryRunPayload;
   nextMesocycleAcceptanceGate?: NextMesocycleAcceptanceGatePayload;
+  nextMesocyclePostAcceptVerification?: NextMesocyclePostAcceptVerificationPayload;
   mesocycleExplain?: MesocycleExplainAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;
 };
@@ -2226,6 +2328,7 @@ export type WorkoutAuditArtifact = {
   v2AcceptedSeedPrepareCompare?: V2AcceptedSeedPrepareCompareAuditPayload;
   nextMesocycleHandoffDryRun?: NextMesocycleHandoffDryRunPayload;
   nextMesocycleAcceptanceGate?: NextMesocycleAcceptanceGatePayload;
+  nextMesocyclePostAcceptVerification?: NextMesocyclePostAcceptVerificationPayload;
   mesocycleExplain?: MesocycleExplainAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;
   warningSummary: AuditWarningSummary;

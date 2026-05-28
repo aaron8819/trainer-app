@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
+| 2026-05-28 | self | Tried to read the napkin skill from `.codex/skills/.system/napkin` even though this install exposes it under `.agents/skills/napkin`. | Use the skill path shown in the session skills list; the repo napkin still must be the first tool call, then skill reads can follow from their listed absolute paths. |
 | 2026-05-27 | self | In the first weekly-retro target-semantics cleanup pass, removing broad under-target attention also dropped near-MAV caution from the payload status path. | When demoting above-MEV/below-target rows, re-check cap rows separately and preserve near/over-MAV caution before running focused tests. |
 | 2026-05-27 | self | During V2 materializer capacity work, repeated two known probe mistakes: static named imports in PowerShell-piped `tsx` and a wildcard `rg` path under `planning/v2/*.test.ts`. | For stdin `tsx`, always dynamic-import and unwrap `raw.default ?? raw`; for Windows `rg`, search concrete directories with `-g "*.test.ts"`. |
 | 2026-05-27 | self | While locating handoff projection symbols, repeated the Windows wildcard-path mistake with `trainer-app\src\lib\api\mesocycle-handoff*`. | Use `rg <pattern> trainer-app\src\lib\api -g "mesocycle-handoff*.ts"` instead of wildcard path arguments in PowerShell. |
@@ -155,6 +156,7 @@
 | 2026-05-02 | self | During the Lower B read-model audit, repeated the Windows wildcard-path `rg` mistake with `src\lib\api\projected-week-volume*` and then hit the known `tsx` stdin default-wrapper import issue for Prisma. | Keep Windows `rg` paths concrete with `-g` filters, and unwrap dynamic stdin imports with `const mod = raw.default ?? raw` before using local exports. |
 | 2026-05-02 | self | In the runtime north-star doc update, first placed runtime prescription/coaching before accepted seed/runtime replay in the stack even though prescriptions transform seed rows. | For seed/runtime strategy docs, order accepted seed and replay before runtime prescription/edit/save layers so the prose reinforces executable seed truth. |
 | 2026-05-02 | self | Repeated the Windows wildcard-path `rg` mistake while checking V2 exports with `planning\v2\*.ts`. | Use `rg <pattern> <real-directory> -g "*.ts"` or read the specific barrel file directly. |
+| 2026-05-27 | self | Parallelized focused Vitest reruns through `multi_tool_use` and the Vitest fork pool timed out before workers responded. | Run Trainer Vitest verification serially, especially for audit/serializer files; keep `multi_tool_use` for reads, not test runner invocations. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.
@@ -172,6 +174,7 @@
 - For V2 strategy recommendation layers, keep ranking in pure `mesocycle-strategy.ts`, expose only compact status/count/evidence summaries through audit serialization/CLI, and assert demand/materializer/generation non-consumption in both pure and audit tests.
 - For V2 strategy promotion readiness, define the full evidence/owner/gate requirements in the pure strategy seam, but keep the main audit artifact to compact counts/top-missing summaries and leave full detail to the V2 sidecar.
 - For V2 donor-surplus diagnostics, keep normalized donor evidence as a pure sibling of the promotion diff, let slot-owned planning consume it only diagnostically, and expose only compact counts in the main artifact/index while full rows stay in `v2-promotion-diffs`.
+- For post-accept successor checks, put the proof in the read-only workout-audit seam: source/successor lifecycle, minimal executable seed rows, slot sequence stability, future-week replay, projected-week-volume, Program/Home read models, and provenance coherence. Do not patch runtime replay or handoff writes from this audit.
 
 ## Patterns That Don't Work
 - Do not promote suspicious downstream repair rows unless the owning V2 layer is clearly upstream and compatible with the target architecture.

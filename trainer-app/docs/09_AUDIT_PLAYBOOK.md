@@ -5,7 +5,7 @@ Last reviewed: 2026-03-16
 Purpose: Canonical operational playbook for recurring workout-audit CLI use. This doc tells operators and maintainers which audit to run, what to inspect first, what counts as a red flag, and when to escalate into deeper code-level investigation.
 
 This doc covers:
-- Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `projected-week-volume`, `current-week-audit`, `mesocycle-explain`, `v2-accepted-seed-prepare-compare`, `next-mesocycle-handoff-dry-run`, `next-mesocycle-acceptance-gate`, `replace-empty-mesocycle-with-v2`, `deload`, and `progression-anchor`
+- Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `projected-week-volume`, `current-week-audit`, `mesocycle-explain`, `v2-accepted-seed-prepare-compare`, `next-mesocycle-handoff-dry-run`, `next-mesocycle-acceptance-gate`, `next-mesocycle-post-accept-verification`, `replace-empty-mesocycle-with-v2`, `deload`, and `progression-anchor`
 - Active-mesocycle dry-run reseed review for bounded slot-seed repair
 - Default audit workflows for common review scenarios
 - Artifact-reading guidance for the current audit JSON vocabulary
@@ -657,6 +657,68 @@ Interpretation rules:
 - volume rows use the current target semantics: below MEV is the floor issue, above MEV but below target is informational, target near MAV is cap caution rather than a quota, and over MAV is a cap warning
 - `doNotFixNotes` explicitly lists readout states that should not trigger planner/materializer work by themselves, including below-target/above-MEV rows and diagnostic-preview failures before a candidate exists
 - this mode writes no DB rows, creates no workouts/logs/sessions, mutates no seed, and changes no planner/materializer/runtime/generation behavior
+
+### `next-mesocycle-post-accept-verification`
+
+When to use it:
+- immediately after the explicit accept-next-cycle flow creates the successor mesocycle
+- before training Week 1 of the successor
+- when the handoff dry-run and acceptance gate were clean but you still need proof that persisted runtime replay is safe
+
+Command pattern:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode next-mesocycle-post-accept-verification --owner <owner-email> --source-mesocycle-id <completed-source-mesocycle-id> --mesocycle-id <accepted-successor-mesocycle-id> --no-artifact --operator-debug
+```
+
+`--mesocycle-id` is optional, but should be supplied when the accepted successor id is known. The mode verifies that the resolved successor is the requested id.
+
+Inspect first:
+- `nextMesocyclePostAcceptVerification.verificationResult`
+- `nextMesocyclePostAcceptVerification.sourceMesocycle`
+- `nextMesocyclePostAcceptVerification.successorMesocycle`
+- `nextMesocyclePostAcceptVerification.seedContract`
+- `nextMesocyclePostAcceptVerification.slotSequence`
+- `nextMesocyclePostAcceptVerification.futureWeekReplay`
+- `nextMesocyclePostAcceptVerification.projectedWeekVolume`
+- `nextMesocyclePostAcceptVerification.readModels`
+- `nextMesocyclePostAcceptVerification.provenance`
+- `nextMesocyclePostAcceptVerification.checks`
+- `nextMesocyclePostAcceptVerification.safety`
+
+Required checks:
+- source mesocycle is completed and inactive
+- successor mesocycle is active, `ACTIVE_ACCUMULATION`, linked to the same macrocycle as source, and `mesoNumber = source.mesoNumber + 1`
+- optional requested successor id matches the linked active successor
+- `slotPlanSeedJson` exists, parses, and has set-aware executable exercise rows
+- executable seed exercise rows contain only `exerciseId`, `role`, and `setCount`
+- persisted slot sequence exists and matches seed slot order
+- Week 1 future-week generation uses `compositionSource="persisted_slot_plan_seed"`
+- generated Week 1 exercise order and set counts match the accepted seed for the next slot
+- projected-week-volume runs against the successor and every projected session matches the accepted seed for its slot
+- Program/Home read models are seed-backed (`persisted_slot_plan_seed` / `mesocycle_slot_sequence`)
+- no legacy fallback, reselection, or order drift appears in future-week or projection output
+- successor Week 1 standard generation is not deload-rerouted
+- receipt/provenance/read-model composition source are coherent
+- Week 1 prescriptions expose usable exercise, progression, and caution readouts
+
+Interpretation rules:
+- `safe_to_train` means the persisted successor is ready for Week 1 training.
+- `watch_items` means the successor is trainable only after reading the warning/unknown checks.
+- `blocked` means at least one must-fix check failed before Week 1.
+- `not_runnable` means the accepted successor context is missing or not inspectable yet.
+- This mode is post-accept only. It does not replace `next-mesocycle-handoff-dry-run` or `next-mesocycle-acceptance-gate`.
+- This mode writes no DB rows, creates no mesocycles, creates no workouts/logs/sessions, mutates no seed shape, and changes no planner/materializer/runtime/generation behavior.
+
+Common red flags:
+- successor id is missing, not active, not `ACTIVE_ACCUMULATION`, or not the active mesocycle
+- source is not `COMPLETED` and inactive
+- seed rows include extra executable fields beyond `exerciseId`, `role`, and `setCount`
+- slot order differs between `slotSequenceJson` and `slotPlanSeedJson`
+- future-week or projected-week-volume does not report `persisted_slot_plan_seed`
+- projected sessions mismatch the accepted seed by exercise id, set count, or order
+- read models fall back to linked workout structure, projected-week rows, or legacy weekly schedule
+- provenance reports invalid/suspicious seed or receipt composition source
 
 ### `replace-empty-mesocycle-with-v2`
 

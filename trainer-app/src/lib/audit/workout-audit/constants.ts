@@ -8,6 +8,7 @@ export const WORKOUT_AUDIT_CANONICAL_MODES = [
   "v2-accepted-seed-prepare-compare",
   "next-mesocycle-handoff-dry-run",
   "next-mesocycle-acceptance-gate",
+  "next-mesocycle-post-accept-verification",
   "mesocycle-explain",
   "historical-week",
   "weekly-retro",
@@ -25,6 +26,7 @@ export const REPLACE_EMPTY_MESOCYCLE_WITH_V2_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const V2_ACCEPTED_SEED_PREPARE_COMPARE_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const NEXT_MESOCYCLE_HANDOFF_DRY_RUN_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const NEXT_MESOCYCLE_ACCEPTANCE_GATE_AUDIT_PAYLOAD_VERSION = 1 as const;
+export const NEXT_MESOCYCLE_POST_ACCEPT_VERIFICATION_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const SPLIT_SANITY_AUDIT_ARTIFACT_VERSION = 1 as const;
 export const WEEK_CLOSE_HANDOFF_AUDIT_ARTIFACT_VERSION = 1 as const;

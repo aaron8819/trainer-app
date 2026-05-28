@@ -290,6 +290,39 @@ describe("buildWorkoutAuditContext", () => {
     );
   });
 
+  it("builds post-accept successor verification context from source and optional successor ids", async () => {
+    const context = await buildWorkoutAuditContext({
+      mode: "next-mesocycle-post-accept-verification",
+      userId: "user-1",
+      sourceMesocycleId: "meso-source",
+      mesocycleId: "meso-next",
+      plannerDiagnosticsMode: "debug",
+    });
+
+    expect(context).toMatchObject({
+      mode: "next-mesocycle-post-accept-verification",
+      requestedMode: "next-mesocycle-post-accept-verification",
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+      nextMesocyclePostAcceptVerification: {
+        sourceMesocycleId: "meso-source",
+        successorMesocycleId: "meso-next",
+      },
+    });
+    expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
+  });
+
+  it("requires source mesocycle id for post-accept successor verification", async () => {
+    await expect(
+      buildWorkoutAuditContext({
+        mode: "next-mesocycle-post-accept-verification",
+        userId: "user-1",
+      }),
+    ).rejects.toThrow(
+      "next-mesocycle-post-accept-verification mode requires --source-mesocycle-id",
+    );
+  });
+
   it("builds next-mesocycle handoff dry-run context from an explicit source mesocycle id", async () => {
     const context = await buildWorkoutAuditContext({
       mode: "next-mesocycle-handoff-dry-run",

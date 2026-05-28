@@ -228,6 +228,22 @@ export async function buildWorkoutAuditContext(
     };
   }
 
+  if (mode === "next-mesocycle-handoff-dry-run") {
+    if (!request.sourceMesocycleId) {
+      throw new Error("next-mesocycle-handoff-dry-run mode requires --source-mesocycle-id");
+    }
+    return {
+      mode,
+      requestedMode: request.mode,
+      userId: identity.userId,
+      ownerEmail: identity.ownerEmail,
+      plannerDiagnosticsMode,
+      nextMesocycleHandoffDryRun: {
+        sourceMesocycleId: request.sourceMesocycleId,
+      },
+    };
+  }
+
   if (mode === "mesocycle-explain") {
     return {
       mode,

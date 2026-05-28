@@ -39,6 +39,7 @@ import {
   HISTORICAL_WEEK_AUDIT_PAYLOAD_VERSION,
   MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION,
   NEXT_MESOCYCLE_ACCEPTANCE_GATE_AUDIT_PAYLOAD_VERSION,
+  NEXT_MESOCYCLE_HANDOFF_DRY_RUN_AUDIT_PAYLOAD_VERSION,
   PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
   REPLACE_EMPTY_MESOCYCLE_WITH_V2_AUDIT_PAYLOAD_VERSION,
   PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION,
@@ -143,6 +144,9 @@ export type WorkoutAuditContext = {
   v2AcceptedSeedPrepareCompare?: {
     mesocycleId?: string;
     requestedIdSource?: "mesocycle_id" | "source_mesocycle_id";
+  };
+  nextMesocycleHandoffDryRun?: {
+    sourceMesocycleId: string;
   };
   nextMesocycleAcceptanceGate?: {
     sourceMesocycleId: string;
@@ -839,6 +843,112 @@ export type V2AcceptedSeedPrepareCompareAuditPayload = {
   };
   guardrails: V2AcceptedSeedPreparationCompareResult["guardrails"];
   summary: V2AcceptedSeedPreparationCompareResult["summary"];
+};
+
+export type NextMesocycleHandoffDryRunPayload = {
+  version: typeof NEXT_MESOCYCLE_HANDOFF_DRY_RUN_AUDIT_PAYLOAD_VERSION;
+  source: "next_mesocycle_handoff_dry_run_audit";
+  ownerEmail?: string;
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByProduction: false;
+  wouldWriteTransaction: false;
+  summary: {
+    writes: "no";
+    sourceMesocycleId: string;
+    sourceState: string | null;
+    candidateAvailable: boolean;
+    handoffReady: boolean;
+    blockingReason: string | null;
+    preparationPath:
+      | "prepareMesocycleHandoffAcceptance"
+      | "not_called_source_not_awaiting_handoff";
+    transactionStatus: "not_started";
+  };
+  wouldPrepareWriteSummary: {
+    successorSource: "prepared_handoff_projection";
+    slotSequence: string;
+    seedShape: string;
+    slotPlanSeedSource: string | null;
+    trainingBlocksCount: number;
+    carriedRolesCount: number;
+    constraintsAction: "would_upsert_constraints";
+    sourceCompletionAction: "would_mark_source_completed";
+    transactionBoundary: string;
+    noDbWritesOccur: true;
+  } | null;
+  candidateIdentity: {
+    status: "available" | "not_available_until_handoff";
+    rows: Array<{
+      slotId: string;
+      laneOrRole: string;
+      exerciseId: string;
+      exerciseName: string;
+      setCount: number;
+      source: "prepared_slotPlanSeedJson";
+    }>;
+  };
+  seedShapeSummary: {
+    slotPlanSeedJson: "would_be_built" | "not_available";
+    wouldBeBuilt: boolean;
+    minimalExecutableRowsOnly: boolean;
+    executableFields: Array<"exerciseId" | "role" | "setCount">;
+    serializerPath: "buildMesocycleSlotPlanSeed";
+    slotCount: number;
+    exerciseCount: number;
+    seedSource: string | null;
+    parserCompatible?: boolean;
+  };
+  weeklyVolumeFloorCapSummary: {
+    status: "available" | "not_available";
+    basis: string;
+    rows: Array<{
+      muscle: string;
+      projectedSets: number;
+      mev: number | null;
+      mav: number | null;
+      status: string;
+    }>;
+  };
+  acceptanceGatePayloadSummary: {
+    checks: Array<{
+      check:
+        | "candidate identity gate"
+        | "seed/runtime contract gate"
+        | "volume floors/caps"
+        | "slot/lane balance"
+        | "Week 1 trainability";
+      enoughData: boolean;
+      basis: string;
+    }>;
+  };
+  weekOneRuntimeReplayPreview: {
+    status: "seed_order_preview_only" | "not_available";
+    runtimeReplayInstantiated: false;
+    rows: Array<{
+      slotId: string;
+      exerciseName: string;
+      role: string;
+      setCount: number;
+    }>;
+    limitation: string;
+  };
+  modeComparison: Array<{
+    mode:
+      | "mesocycle-explain"
+      | "v2-accepted-seed-prepare-compare"
+      | "next-mesocycle-acceptance-gate";
+    distinction: string;
+  }>;
+  safety: {
+    writes: "no";
+    dbMutated: false;
+    mesocycleCreated: false;
+    workoutLogSessionCreated: false;
+    seedRuntimeBehaviorChanged: false;
+    plannerMaterializerBehaviorChanged: false;
+    transactionExecuted: false;
+  };
 };
 
 export type NextMesocycleAcceptanceGateDecision =
@@ -2083,6 +2193,7 @@ export type WorkoutAuditRun = {
   activeMesocycleSlotReseed?: ActiveMesocycleSlotReseedAuditPayload;
   replaceEmptyMesocycleWithV2?: ReplaceEmptyMesocycleWithV2AuditPayload;
   v2AcceptedSeedPrepareCompare?: V2AcceptedSeedPrepareCompareAuditPayload;
+  nextMesocycleHandoffDryRun?: NextMesocycleHandoffDryRunPayload;
   nextMesocycleAcceptanceGate?: NextMesocycleAcceptanceGatePayload;
   mesocycleExplain?: MesocycleExplainAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;
@@ -2113,6 +2224,7 @@ export type WorkoutAuditArtifact = {
   activeMesocycleSlotReseed?: ActiveMesocycleSlotReseedAuditPayload;
   replaceEmptyMesocycleWithV2?: ReplaceEmptyMesocycleWithV2AuditPayload;
   v2AcceptedSeedPrepareCompare?: V2AcceptedSeedPrepareCompareAuditPayload;
+  nextMesocycleHandoffDryRun?: NextMesocycleHandoffDryRunPayload;
   nextMesocycleAcceptanceGate?: NextMesocycleAcceptanceGatePayload;
   mesocycleExplain?: MesocycleExplainAuditPayload;
   progressionAnchor?: ProgressionAnchorAuditPayload;

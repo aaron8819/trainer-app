@@ -1067,7 +1067,7 @@ export function buildWorkoutAuditHelpText(): string {
     "Options:",
     "  -h, --help                         Print this help and exit without preflight, DB access, audit execution, or artifact writes.",
     "  --env-file <path>                  Load environment variables from a specific file.",
-    "  --mode <mode>                      Audit mode: future-week, pre-session-readiness, projected-week-volume, current-week-audit, historical-week, weekly-retro, mesocycle-explain, deload, progression-anchor, active-mesocycle-slot-reseed, replace-empty-mesocycle-with-v2, v2-accepted-seed-prepare-compare, next-mesocycle-acceptance-gate.",
+    "  --mode <mode>                      Audit mode: future-week, pre-session-readiness, projected-week-volume, current-week-audit, historical-week, weekly-retro, mesocycle-explain, deload, progression-anchor, active-mesocycle-slot-reseed, replace-empty-mesocycle-with-v2, v2-accepted-seed-prepare-compare, next-mesocycle-handoff-dry-run, next-mesocycle-acceptance-gate.",
     "  --owner <email>                    Resolve the audit owner by email.",
     "  --user-id <id>                     Resolve the audit owner by user id.",
     "  --intent <intent>                  Session intent for generated-session modes.",
@@ -2904,6 +2904,114 @@ export function buildV2AcceptedSeedPrepareCompareSummary(input: {
   ];
 }
 
+export function buildNextMesocycleHandoffDryRunSummary(input: {
+  artifact: Pick<WorkoutAuditArtifact, "nextMesocycleHandoffDryRun">;
+}): string[] | null {
+  const payload = input.artifact.nextMesocycleHandoffDryRun;
+  if (!payload) {
+    return null;
+  }
+
+  const lines = [
+    "",
+    "Handoff Dry Run Summary",
+    `writes=${payload.summary.writes}`,
+    `source_state=${payload.summary.sourceState ?? "unknown"}`,
+    `source_mesocycle_id=${payload.summary.sourceMesocycleId}`,
+    `candidate_available=${formatBooleanFlag(payload.summary.candidateAvailable)}`,
+    `handoff_ready=${formatBooleanFlag(payload.summary.handoffReady)}`,
+    `blocking_reason=${payload.summary.blockingReason ?? "none"}`,
+    "",
+    "Would-Prepare / Would-Write Summary",
+  ];
+
+  if (payload.wouldPrepareWriteSummary) {
+    const summary = payload.wouldPrepareWriteSummary;
+    lines.push(`successor_source=${summary.successorSource}`);
+    lines.push(`slot_sequence=${summary.slotSequence}`);
+    lines.push(`seed_shape=${summary.seedShape}`);
+    lines.push(`slot_plan_seed_source=${summary.slotPlanSeedSource ?? "none"}`);
+    lines.push(`training_blocks_count=${summary.trainingBlocksCount}`);
+    lines.push(`carried_roles_count=${summary.carriedRolesCount}`);
+    lines.push(`constraints_action=${summary.constraintsAction}`);
+    lines.push(`source_completion_action=${summary.sourceCompletionAction}`);
+    lines.push(`transaction_boundary=${summary.transactionBoundary}`);
+  } else {
+    lines.push("not_available");
+  }
+  lines.push("No DB writes occur.");
+
+  lines.push("");
+  lines.push("Candidate Identity Summary");
+  if (payload.candidateIdentity.rows.length === 0) {
+    lines.push("candidate_identity=not_available_until_handoff");
+  } else {
+    lines.push("slot | lane/role | exercise | set_count | source");
+    for (const row of payload.candidateIdentity.rows) {
+      lines.push(
+        [
+          row.slotId,
+          row.laneOrRole,
+          row.exerciseName,
+          row.setCount,
+          row.source,
+        ].join(" | "),
+      );
+    }
+  }
+
+  lines.push("");
+  lines.push("Seed Shape Summary");
+  lines.push(
+    `slotPlanSeedJson=${payload.seedShapeSummary.slotPlanSeedJson} would_be_built=${formatBooleanFlag(payload.seedShapeSummary.wouldBeBuilt)}`,
+  );
+  lines.push(
+    `minimal_executable_rows_only=${formatBooleanFlag(payload.seedShapeSummary.minimalExecutableRowsOnly)} fields=${payload.seedShapeSummary.executableFields.join(",")}`,
+  );
+  lines.push(`serializer_path=${payload.seedShapeSummary.serializerPath}`);
+  lines.push(
+    `slots=${payload.seedShapeSummary.slotCount} exercises=${payload.seedShapeSummary.exerciseCount} parser_compatible=${formatBooleanFlag(payload.seedShapeSummary.parserCompatible === true)}`,
+  );
+
+  lines.push("");
+  lines.push("Weekly Volume / Floor / Cap Summary");
+  lines.push(
+    `status=${payload.weeklyVolumeFloorCapSummary.status} basis=${payload.weeklyVolumeFloorCapSummary.basis}`,
+  );
+
+  lines.push("");
+  lines.push("Acceptance Gate Payload Summary");
+  lines.push("check | enough_data | basis");
+  for (const check of payload.acceptanceGatePayloadSummary.checks) {
+    lines.push(
+      `${check.check} | ${formatBooleanFlag(check.enoughData)} | ${check.basis}`,
+    );
+  }
+
+  lines.push("");
+  lines.push("Week 1 Runtime Replay Preview");
+  lines.push(
+    `status=${payload.weekOneRuntimeReplayPreview.status} runtime_replay_instantiated=${formatBooleanFlag(payload.weekOneRuntimeReplayPreview.runtimeReplayInstantiated)}`,
+  );
+  lines.push(`limitation=${payload.weekOneRuntimeReplayPreview.limitation}`);
+  if (payload.weekOneRuntimeReplayPreview.rows.length > 0) {
+    lines.push("slot | exercise | role | set_count");
+    for (const row of payload.weekOneRuntimeReplayPreview.rows) {
+      lines.push(
+        [row.slotId, row.exerciseName, row.role, row.setCount].join(" | "),
+      );
+    }
+  }
+
+  lines.push("");
+  lines.push("Compare To Existing Modes");
+  for (const comparison of payload.modeComparison) {
+    lines.push(`${comparison.mode}: ${comparison.distinction}`);
+  }
+
+  return lines;
+}
+
 export function buildNextMesocycleAcceptanceGateSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "nextMesocycleAcceptanceGate">;
 }): string[] | null {
@@ -4309,6 +4417,8 @@ export async function main(input?: {
         ? `mesocycle=${run.replaceEmptyMesocycleWithV2.targetMesocycleId} safety=${run.replaceEmptyMesocycleWithV2.candidateSafety.allowed ? "allowed" : "blocked"} v2=${run.replaceEmptyMesocycleWithV2.v2Preparation.status}`
       : run.v2AcceptedSeedPrepareCompare
         ? `handoff_candidate=${run.v2AcceptedSeedPrepareCompare.handoffCandidate.found ? "yes" : "no"} compare_status=${run.v2AcceptedSeedPrepareCompare.compareStatus}`
+      : run.nextMesocycleHandoffDryRun
+        ? `source_state=${run.nextMesocycleHandoffDryRun.summary.sourceState ?? "unknown"} candidate_available=${run.nextMesocycleHandoffDryRun.summary.candidateAvailable ? "yes" : "no"} handoff_ready=${run.nextMesocycleHandoffDryRun.summary.handoffReady ? "yes" : "no"} writes=${run.nextMesocycleHandoffDryRun.summary.writes}`
       : run.nextMesocycleAcceptanceGate
         ? `candidate_found=${run.nextMesocycleAcceptanceGate.candidateFound ? "yes" : "no"} gate_result=${run.nextMesocycleAcceptanceGate.gateResult}`
       : run.mesocycleExplain
@@ -4442,6 +4552,15 @@ export async function main(input?: {
     });
   if (v2AcceptedSeedPrepareCompareSummary) {
     for (const line of v2AcceptedSeedPrepareCompareSummary) {
+      console.log(line);
+    }
+  }
+  const nextMesocycleHandoffDryRunSummary =
+    buildNextMesocycleHandoffDryRunSummary({
+      artifact,
+    });
+  if (nextMesocycleHandoffDryRunSummary) {
+    for (const line of nextMesocycleHandoffDryRunSummary) {
       console.log(line);
     }
   }

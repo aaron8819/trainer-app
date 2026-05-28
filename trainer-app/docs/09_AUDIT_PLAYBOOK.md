@@ -5,7 +5,7 @@ Last reviewed: 2026-03-16
 Purpose: Canonical operational playbook for recurring workout-audit CLI use. This doc tells operators and maintainers which audit to run, what to inspect first, what counts as a red flag, and when to escalate into deeper code-level investigation.
 
 This doc covers:
-- Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `projected-week-volume`, `current-week-audit`, `mesocycle-explain`, `v2-accepted-seed-prepare-compare`, `next-mesocycle-acceptance-gate`, `replace-empty-mesocycle-with-v2`, `deload`, and `progression-anchor`
+- Recurring operational use of `historical-week`, `weekly-retro`, `future-week`, `projected-week-volume`, `current-week-audit`, `mesocycle-explain`, `v2-accepted-seed-prepare-compare`, `next-mesocycle-handoff-dry-run`, `next-mesocycle-acceptance-gate`, `replace-empty-mesocycle-with-v2`, `deload`, and `progression-anchor`
 - Active-mesocycle dry-run reseed review for bounded slot-seed repair
 - Default audit workflows for common review scenarios
 - Artifact-reading guidance for the current audit JSON vocabulary
@@ -587,6 +587,37 @@ Guardrails:
 - V2 preview availability and production-write eligibility are separate fields; production-write eligibility remains false here
 - V2 preview preparation does not call legacy projection or repair, and seed serialization identity must remain `buildMesocycleSlotPlanSeed`
 - detailed compare rows live in the mode's compact artifact section, not in `mesocycle-explain`
+
+### `next-mesocycle-handoff-dry-run`
+
+When to use it:
+- rehearse the real next-mesocycle handoff preparation path without accepting the successor
+- inspect what the accept flow would prepare before the transaction boundary
+- distinguish prepared candidate truth from diagnostic previews before running the acceptance gate
+
+Command pattern:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode next-mesocycle-handoff-dry-run --owner <owner-email> --source-mesocycle-id <source-mesocycle-id> --no-artifact --operator-debug
+```
+
+Inspect first:
+- `nextMesocycleHandoffDryRun.summary`
+- `nextMesocycleHandoffDryRun.wouldPrepareWriteSummary`
+- `nextMesocycleHandoffDryRun.candidateIdentity`
+- `nextMesocycleHandoffDryRun.seedShapeSummary`
+- `nextMesocycleHandoffDryRun.acceptanceGatePayloadSummary`
+- `nextMesocycleHandoffDryRun.weekOneRuntimeReplayPreview`
+- `nextMesocycleHandoffDryRun.safety`
+
+Interpretation rules:
+- `writes` must always be `no`; this mode never calls the acceptance transaction and never creates a successor mesocycle
+- if the source is not `AWAITING_HANDOFF`, preparation is not called and `blockingReason=source_not_awaiting_handoff`
+- when the source is `AWAITING_HANDOFF`, the mode calls `prepareMesocycleHandoffAcceptance()` and stops before `acceptPreparedMesocycleHandoffInTransaction()`
+- candidate identity comes only from prepared `slotPlanSeedJson` rows, not from `mesocycle-explain` repaired/no-repair diagnostic previews
+- seed compatibility is reported against the existing `buildMesocycleSlotPlanSeed` serializer and runtime seed parser; executable seed rows remain only `exerciseId`, `role`, and `setCount`
+- Week 1 preview is a seed-order expectation preview unless a persisted successor exists; full runtime replay still requires post-accept active mesocycle context
+- use `next-mesocycle-acceptance-gate` after this mode when you need the final readiness decision
 
 ### `next-mesocycle-acceptance-gate`
 

@@ -2039,6 +2039,144 @@ describe("buildWorkoutAuditArtifact", () => {
     expect(artifact.generation).toBeUndefined();
   });
 
+  it("serializes next-mesocycle handoff dry-run payloads without attaching generation fields", () => {
+    const nextMesocycleHandoffDryRun = {
+      version: 1,
+      source: "next_mesocycle_handoff_dry_run_audit",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      wouldWriteTransaction: false,
+      summary: {
+        writes: "no",
+        sourceMesocycleId: "source-1",
+        sourceState: "AWAITING_HANDOFF",
+        candidateAvailable: true,
+        handoffReady: true,
+        blockingReason: null,
+        preparationPath: "prepareMesocycleHandoffAcceptance",
+        transactionStatus: "not_started",
+      },
+      wouldPrepareWriteSummary: {
+        successorSource: "prepared_handoff_projection",
+        slotSequence: "upper_a > upper_b",
+        seedShape: "version=1 slots=2 exercises=2",
+        slotPlanSeedSource: "handoff_slot_plan_projection",
+        trainingBlocksCount: 2,
+        carriedRolesCount: 1,
+        constraintsAction: "would_upsert_constraints",
+        sourceCompletionAction: "would_mark_source_completed",
+        transactionBoundary: "dry-run stops before transaction",
+        noDbWritesOccur: true,
+      },
+      candidateIdentity: {
+        status: "available",
+        rows: [
+          {
+            slotId: "upper_a",
+            laneOrRole: "CORE_COMPOUND",
+            exerciseId: "bench",
+            exerciseName: "Bench Press",
+            setCount: 3,
+            source: "prepared_slotPlanSeedJson",
+          },
+        ],
+      },
+      seedShapeSummary: {
+        slotPlanSeedJson: "would_be_built",
+        wouldBeBuilt: true,
+        minimalExecutableRowsOnly: true,
+        executableFields: ["exerciseId", "role", "setCount"],
+        serializerPath: "buildMesocycleSlotPlanSeed",
+        slotCount: 2,
+        exerciseCount: 2,
+        seedSource: "handoff_slot_plan_projection",
+        parserCompatible: true,
+      },
+      weeklyVolumeFloorCapSummary: {
+        status: "not_available",
+        basis: "prepared seed has no volume rows",
+        rows: [],
+      },
+      acceptanceGatePayloadSummary: {
+        checks: [
+          {
+            check: "candidate identity gate",
+            enoughData: true,
+            basis: "prepared seed contains exercise identity rows",
+          },
+        ],
+      },
+      weekOneRuntimeReplayPreview: {
+        status: "seed_order_preview_only",
+        runtimeReplayInstantiated: false,
+        rows: [
+          {
+            slotId: "upper_a",
+            exerciseName: "Bench Press",
+            role: "CORE_COMPOUND",
+            setCount: 3,
+          },
+        ],
+        limitation: "successor not persisted",
+      },
+      modeComparison: [
+        {
+          mode: "mesocycle-explain",
+          distinction: "diagnostic preview only",
+        },
+      ],
+      safety: {
+        writes: "no",
+        dbMutated: false,
+        mesocycleCreated: false,
+        workoutLogSessionCreated: false,
+        seedRuntimeBehaviorChanged: false,
+        plannerMaterializerBehaviorChanged: false,
+        transactionExecuted: false,
+      },
+    } as WorkoutAuditRun["nextMesocycleHandoffDryRun"];
+    const artifact = buildWorkoutAuditArtifact(
+      {
+        mode: "next-mesocycle-handoff-dry-run",
+        userId: "user-1",
+        sourceMesocycleId: "source-1",
+      },
+      {
+        ...baseRun,
+        context: {
+          mode: "next-mesocycle-handoff-dry-run",
+          requestedMode: "next-mesocycle-handoff-dry-run",
+          userId: "user-1",
+          plannerDiagnosticsMode: "standard",
+          nextMesocycleHandoffDryRun: {
+            sourceMesocycleId: "source-1",
+          },
+        },
+        generationResult: undefined,
+        nextMesocycleHandoffDryRun,
+      },
+    );
+
+    expect(artifact.mode).toBe("next-mesocycle-handoff-dry-run");
+    expect(artifact.nextMesocycleHandoffDryRun).toMatchObject({
+      readOnly: true,
+      consumedByProduction: false,
+      wouldWriteTransaction: false,
+      summary: {
+        writes: "no",
+        sourceState: "AWAITING_HANDOFF",
+        handoffReady: true,
+      },
+      safety: {
+        dbMutated: false,
+        mesocycleCreated: false,
+        transactionExecuted: false,
+      },
+    });
+    expect(artifact.generation).toBeUndefined();
+  });
+
   it("serializes mesocycle-explain payloads without attaching generation fields", () => {
     const artifact = buildWorkoutAuditArtifact(
       {

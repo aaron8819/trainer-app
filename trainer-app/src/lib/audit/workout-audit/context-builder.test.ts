@@ -290,6 +290,37 @@ describe("buildWorkoutAuditContext", () => {
     );
   });
 
+  it("builds next-mesocycle handoff dry-run context from an explicit source mesocycle id", async () => {
+    const context = await buildWorkoutAuditContext({
+      mode: "next-mesocycle-handoff-dry-run",
+      userId: "user-1",
+      sourceMesocycleId: "meso-source",
+      plannerDiagnosticsMode: "debug",
+    });
+
+    expect(context).toMatchObject({
+      mode: "next-mesocycle-handoff-dry-run",
+      requestedMode: "next-mesocycle-handoff-dry-run",
+      userId: "user-1",
+      plannerDiagnosticsMode: "debug",
+      nextMesocycleHandoffDryRun: {
+        sourceMesocycleId: "meso-source",
+      },
+    });
+    expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
+  });
+
+  it("requires source mesocycle id for next-mesocycle handoff dry-run", async () => {
+    await expect(
+      buildWorkoutAuditContext({
+        mode: "next-mesocycle-handoff-dry-run",
+        userId: "user-1",
+      }),
+    ).rejects.toThrow(
+      "next-mesocycle-handoff-dry-run mode requires --source-mesocycle-id",
+    );
+  });
+
   it("builds mesocycle-explain context without loading next-session intent", async () => {
     const context = await buildWorkoutAuditContext({
       mode: "mesocycle-explain",

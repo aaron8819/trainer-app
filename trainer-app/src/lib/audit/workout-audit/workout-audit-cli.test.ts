@@ -14,6 +14,7 @@ import {
   buildPlanningRealitySizeBudgetSummary,
   buildPlannerOnlyDryRunSummary,
   buildPlannerOnlyNoRepairSummary,
+  buildNextMesocycleHandoffDryRunSummary,
   buildNextMesocycleAcceptanceGateSummary,
   buildPreSessionReadinessSummary,
   buildProjectedWeekDebugSummary,
@@ -6220,6 +6221,135 @@ describe("buildV2AcceptedSeedPrepareCompareSummary", () => {
       "[workout-audit:v2-seed-compare] gates base=pass materializer=materialized seed_shape=yes promotion=blocked production_gates_missing=acceptancePathDesigned,receiptContractDesigned",
       "[workout-audit:v2-seed-compare] artifact=C:\\artifacts\\v2-seed.json size_bytes=4096",
     ]);
+  });
+});
+
+describe("buildNextMesocycleHandoffDryRunSummary", () => {
+  it("prints writes=no, readiness, seed shape, gate readiness, and runtime replay limitation", () => {
+    const summary = buildNextMesocycleHandoffDryRunSummary({
+      artifact: {
+        nextMesocycleHandoffDryRun: {
+          version: 1,
+          source: "next_mesocycle_handoff_dry_run_audit",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByProduction: false,
+          wouldWriteTransaction: false,
+          summary: {
+            writes: "no",
+            sourceMesocycleId: "source-1",
+            sourceState: "AWAITING_HANDOFF",
+            candidateAvailable: true,
+            handoffReady: true,
+            blockingReason: null,
+            preparationPath: "prepareMesocycleHandoffAcceptance",
+            transactionStatus: "not_started",
+          },
+          wouldPrepareWriteSummary: {
+            successorSource: "prepared_handoff_projection",
+            slotSequence: "upper_a > upper_b",
+            seedShape: "version=1 slots=2 exercises=2",
+            slotPlanSeedSource: "handoff_slot_plan_projection",
+            trainingBlocksCount: 2,
+            carriedRolesCount: 1,
+            constraintsAction: "would_upsert_constraints",
+            sourceCompletionAction: "would_mark_source_completed",
+            transactionBoundary: "dry-run stops before transaction",
+            noDbWritesOccur: true,
+          },
+          candidateIdentity: {
+            status: "available",
+            rows: [
+              {
+                slotId: "upper_a",
+                laneOrRole: "CORE_COMPOUND",
+                exerciseId: "bench",
+                exerciseName: "Bench Press",
+                setCount: 3,
+                source: "prepared_slotPlanSeedJson",
+              },
+            ],
+          },
+          seedShapeSummary: {
+            slotPlanSeedJson: "would_be_built",
+            wouldBeBuilt: true,
+            minimalExecutableRowsOnly: true,
+            executableFields: ["exerciseId", "role", "setCount"],
+            serializerPath: "buildMesocycleSlotPlanSeed",
+            slotCount: 2,
+            exerciseCount: 2,
+            seedSource: "handoff_slot_plan_projection",
+            parserCompatible: true,
+          },
+          weeklyVolumeFloorCapSummary: {
+            status: "not_available",
+            basis: "prepared seed has no volume rows",
+            rows: [],
+          },
+          acceptanceGatePayloadSummary: {
+            checks: [
+              {
+                check: "candidate identity gate",
+                enoughData: true,
+                basis: "prepared seed contains exercise identity rows",
+              },
+              {
+                check: "volume floors/caps",
+                enoughData: false,
+                basis: "not exposed by the pre-transaction prepared seed",
+              },
+            ],
+          },
+          weekOneRuntimeReplayPreview: {
+            status: "seed_order_preview_only",
+            runtimeReplayInstantiated: false,
+            rows: [
+              {
+                slotId: "upper_a",
+                exerciseName: "Bench Press",
+                role: "CORE_COMPOUND",
+                setCount: 3,
+              },
+            ],
+            limitation: "successor not persisted",
+          },
+          modeComparison: [
+            {
+              mode: "mesocycle-explain",
+              distinction: "diagnostic preview only",
+            },
+          ],
+          safety: {
+            writes: "no",
+            dbMutated: false,
+            mesocycleCreated: false,
+            workoutLogSessionCreated: false,
+            seedRuntimeBehaviorChanged: false,
+            plannerMaterializerBehaviorChanged: false,
+            transactionExecuted: false,
+          },
+        },
+      },
+    });
+
+    expect(summary).toContain("Handoff Dry Run Summary");
+    expect(summary).toContain("writes=no");
+    expect(summary).toContain("source_state=AWAITING_HANDOFF");
+    expect(summary).toContain("candidate_available=yes");
+    expect(summary).toContain("handoff_ready=yes");
+    expect(summary).toContain("No DB writes occur.");
+    expect(summary).toContain(
+      "minimal_executable_rows_only=yes fields=exerciseId,role,setCount",
+    );
+    expect(summary).toContain(
+      "candidate identity gate | yes | prepared seed contains exercise identity rows",
+    );
+    expect(summary).toContain(
+      "volume floors/caps | no | not exposed by the pre-transaction prepared seed",
+    );
+    expect(summary).toContain(
+      "status=seed_order_preview_only runtime_replay_instantiated=no",
+    );
   });
 });
 

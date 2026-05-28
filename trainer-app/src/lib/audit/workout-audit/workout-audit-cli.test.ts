@@ -6,6 +6,7 @@ import {
 import {
   buildAuditTimingSummaryLines,
   buildWorkoutAuditHelpText,
+  buildWorkoutAuditModeLine,
   buildActiveMesocycleSlotReseedApplySummary,
   buildActiveMesocycleSlotReseedSummary,
   buildCurrentWeekAuditOperatorSummary,
@@ -4779,8 +4780,88 @@ describe("buildPreSessionReadinessSummary", () => {
         "Deload session position: 2 of 4",
         expect.stringContaining("path=active_deload_reroute"),
         expect.stringContaining("composition_source=deload_seed_replay"),
+        "Current-Week Dose Guidance (Deload Context)",
+        "Deload is intentionally reduced volume; do not chase MEV/target deficits.",
+        "Chest | 7 vs MEV 10 / target 12 / MAV 16 | deload_non_actionable:below_mev | deload context: non-actionable; do not top up | 0.8",
+        "Dose Closure Guidance (Deload Context)",
+        "- none - deload volume deficits are expected/non-actionable.",
+        "- all hypertrophy add-set / MEV closure top-ups during ACTIVE_DELOAD.",
+        "Run deload seed as prescribed.",
+        "- hypertrophy add-ons / MEV closure top-ups during ACTIVE_DELOAD",
         "Safe to train: yes",
       ])
+    );
+    const joined = summary?.join("\n") ?? "";
+    expect(joined).not.toContain("Use Dose Closure Guidance for MEV-floor top-ups");
+    expect(joined).not.toContain("Recommended: +");
+    expect(joined).not.toContain("- Add +");
+    expect(joined).not.toContain("consider +1");
+  });
+
+  it("labels ACTIVE_DELOAD status lines as deload diagnostics with accumulation reference week", () => {
+    const line = buildWorkoutAuditModeLine({
+      mode: "pre-session-readiness",
+      plannerDiagnosticsMode: "standard",
+      summary: "week=4 projected_sessions=1",
+      preSessionReadiness: {
+        activeMesocycle: {
+          mesocycleId: "meso-1",
+          state: "ACTIVE_DELOAD",
+          completedAccumulationSessions: 16,
+          deloadSessionsCompleted: 2,
+          deloadSessionsExpected: 4,
+          deloadSessionPosition: { current: 3, total: 4 },
+          currentWeek: 5,
+          currentSession: 3,
+        },
+      },
+      projectedWeekVolume: {
+        currentWeek: {
+          mesocycleId: "meso-1",
+          week: 5,
+          phase: "deload",
+          blockType: "deload",
+        },
+      },
+      weeklyRetro: { week: 4 },
+    });
+
+    expect(line).toBe(
+      "[workout-audit] mode=pre-session-readiness diagnostics=deload planner_diagnostics=standard deload_week=5 accumulation_reference_week=4 projected_sessions=1"
+    );
+    expect(line).not.toContain("diagnostics=standard week=4");
+    expect(line).not.toContain(" week=4 ");
+  });
+
+  it("preserves accumulation status-line diagnostics labels", () => {
+    const line = buildWorkoutAuditModeLine({
+      mode: "pre-session-readiness",
+      plannerDiagnosticsMode: "debug",
+      summary: "week=4 projected_sessions=1",
+      preSessionReadiness: {
+        activeMesocycle: {
+          mesocycleId: "meso-1",
+          state: "ACTIVE_ACCUMULATION",
+          completedAccumulationSessions: 14,
+          deloadSessionsCompleted: 0,
+          deloadSessionsExpected: 4,
+          deloadSessionPosition: null,
+          currentWeek: 4,
+          currentSession: 3,
+        },
+      },
+      projectedWeekVolume: {
+        currentWeek: {
+          mesocycleId: "meso-1",
+          week: 4,
+          phase: "accumulation",
+          blockType: "accumulation",
+        },
+      },
+    });
+
+    expect(line).toBe(
+      "[workout-audit] mode=pre-session-readiness diagnostics=debug week=4 projected_sessions=1"
     );
   });
 

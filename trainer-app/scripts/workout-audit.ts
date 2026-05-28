@@ -456,6 +456,8 @@ const LOWER_BODY_MUSCLES = new Set([
 ]);
 const TARGET_TIER_MEANINGFUL = new Set(["A_PRIMARY", "B_SUPPORT"]);
 const MAX_BOUNDED_TOP_UP_RAW_SETS = 5;
+const DELOAD_DO_NOT_CHASE_VOLUME_MESSAGE =
+  "Deload is intentionally reduced volume; do not chase MEV/target deficits.";
 
 function getMuscleRegion(muscle: string): "upper" | "lower" | null {
   if (UPPER_BODY_MUSCLES.has(muscle)) {
@@ -802,6 +804,27 @@ function buildDoseClosurePlan(input: {
   return { lines, recommendations };
 }
 
+function buildDeloadDoseClosurePlan(): DoseClosurePlan {
+  return {
+    lines: [
+      "",
+      "Dose Closure Guidance (Deload Context)",
+      DELOAD_DO_NOT_CHASE_VOLUME_MESSAGE,
+      "Priority:",
+      "- none - deload volume deficits are expected/non-actionable.",
+      "Optional:",
+      "- none",
+      "Suppress:",
+      "- all hypertrophy add-set / MEV closure top-ups during ACTIVE_DELOAD.",
+      "Guardrails:",
+      "- run the deload prescription as generated unless a real blocker appears",
+      "- no hypertrophy add-ons or MEV closure work during deload",
+      "- no seed/runtime/save/progression mutation",
+    ],
+    recommendations: [],
+  };
+}
+
 function selectPreSessionDoseDiagnostics(input: {
   diagnostics: NonNullable<ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]>;
   nextSession: ProjectedWeekVolumeAuditPayload["projectedSessions"][number] | undefined;
@@ -945,6 +968,41 @@ function buildSafeToTrain(input: {
     safe: reasons.length === 0,
     reasons: reasons.length > 0 ? reasons : ["no blocking audit, state, or generation blockers detected"],
   };
+}
+
+export function buildWorkoutAuditModeLine(input: {
+  mode: string;
+  plannerDiagnosticsMode: string;
+  summary: string;
+  preSessionReadiness?: Pick<
+    NonNullable<WorkoutAuditArtifact["preSessionReadiness"]>,
+    "activeMesocycle"
+  >;
+  projectedWeekVolume?: Pick<
+    NonNullable<WorkoutAuditArtifact["projectedWeekVolume"]>,
+    "currentWeek"
+  >;
+  weeklyRetro?: Pick<NonNullable<WorkoutAuditArtifact["weeklyRetro"]>, "week">;
+}): string {
+  const active = input.preSessionReadiness?.activeMesocycle;
+  if (active?.state === "ACTIVE_DELOAD") {
+    const deloadWeek = active.currentWeek ?? input.projectedWeekVolume?.currentWeek.week;
+    const projectedWeek = input.projectedWeekVolume?.currentWeek.week;
+    const referenceWeek =
+      input.weeklyRetro?.week != null && input.weeklyRetro.week !== deloadWeek
+        ? input.weeklyRetro.week
+        : projectedWeek != null && projectedWeek !== deloadWeek
+          ? projectedWeek
+          : null;
+    const accumulationReference =
+      referenceWeek != null
+        ? ` accumulation_reference_week=${referenceWeek}`
+        : "";
+    const summary = input.summary.replace(/^week=[^\s]+\s*/, "");
+    return `[workout-audit] mode=${input.mode} diagnostics=deload planner_diagnostics=${input.plannerDiagnosticsMode} deload_week=${formatAuditValue(deloadWeek)}${accumulationReference}${summary ? ` ${summary}` : ""}`;
+  }
+
+  return `[workout-audit] mode=${input.mode} diagnostics=${input.plannerDiagnosticsMode} ${input.summary}`;
 }
 
 type PlanningRealityDiagnostic = NonNullable<
@@ -3747,12 +3805,13 @@ export function buildPreSessionReadinessSummary(input: {
   const seed = input.artifact.generationProvenance?.seed?.provenanceConsistency;
   const active = payload.activeMesocycle;
   const nextSession = input.artifact.nextSession;
+  const isActiveDeload = active.state === "ACTIVE_DELOAD";
   const deloadProgressLine =
-    active.state === "ACTIVE_DELOAD"
+    isActiveDeload
       ? `Deload sessions completed: ${formatAuditValue(active.deloadSessionsCompleted)}`
       : "Deload sessions completed: n/a";
   const deloadPositionLine =
-    active.state === "ACTIVE_DELOAD"
+    isActiveDeload
       ? `Deload session position: ${
           active.deloadSessionPosition
             ? `${active.deloadSessionPosition.current} of ${active.deloadSessionPosition.total}`
@@ -3821,23 +3880,45 @@ export function buildPreSessionReadinessSummary(input: {
     }
   }
 
-  lines.push("", "Current-Week Dose Guidance");
+  lines.push(
+    "",
+    isActiveDeload
+      ? "Current-Week Dose Guidance (Deload Context)"
+      : "Current-Week Dose Guidance"
+  );
+  if (isActiveDeload) {
+    lines.push(DELOAD_DO_NOT_CHASE_VOLUME_MESSAGE);
+  }
   lines.push("Muscle | projected vs MEV/target/MAV | status | recommended action | confidence");
   if (doseDiagnostics.length === 0) {
-    lines.push("none | no relevant dose diagnostics | n/a | hold seed | n/a");
+    lines.push(
+      isActiveDeload
+        ? "none | deload-context volume deficits are non-actionable | n/a | run deload prescription; no MEV/top-up work | n/a"
+        : "none | no relevant dose diagnostics | n/a | hold seed | n/a"
+    );
   } else {
     for (const diagnostic of doseDiagnostics) {
       lines.push(
-        `${diagnostic.muscle} | ${formatDoseStatus(diagnostic)} | ${diagnostic.targetStatus} | ${formatDoseAction(diagnostic.recommendedAction, diagnostic)} | ${formatAuditDecimal(diagnostic.confidence)}`
+        `${diagnostic.muscle} | ${formatDoseStatus(diagnostic)} | ${
+          isActiveDeload
+            ? `deload_non_actionable:${diagnostic.targetStatus}`
+            : diagnostic.targetStatus
+        } | ${
+          isActiveDeload
+            ? "deload context: non-actionable; do not top up"
+            : formatDoseAction(diagnostic.recommendedAction, diagnostic)
+        } | ${formatAuditDecimal(diagnostic.confidence)}`
       );
     }
   }
-  const doseClosurePlan = buildDoseClosurePlan({
-    diagnostics: projectedWeek?.runtimeDoseAdjustmentDiagnostics ?? [],
-    fullWeekRows: projectedWeek?.fullWeekByMuscle ?? [],
-    projectedSessions: projectedWeek?.projectedSessions ?? [],
-    nextSession: nextProjectedSession,
-  });
+  const doseClosurePlan = isActiveDeload
+    ? buildDeloadDoseClosurePlan()
+    : buildDoseClosurePlan({
+        diagnostics: projectedWeek?.runtimeDoseAdjustmentDiagnostics ?? [],
+        fullWeekRows: projectedWeek?.fullWeekByMuscle ?? [],
+        projectedSessions: projectedWeek?.projectedSessions ?? [],
+        nextSession: nextProjectedSession,
+      });
   lines.push(...doseClosurePlan.lines);
 
   const retro = input.artifact.weeklyRetro;
@@ -3875,8 +3956,12 @@ export function buildPreSessionReadinessSummary(input: {
   });
 
   lines.push("", "Session-Local Add-On Recommendation");
-  lines.push("Run seed as prescribed.");
-  lines.push("Use Dose Closure Guidance for MEV-floor top-ups; session-local only.");
+  lines.push(isActiveDeload ? "Run deload seed as prescribed." : "Run seed as prescribed.");
+  lines.push(
+    isActiveDeload
+      ? DELOAD_DO_NOT_CHASE_VOLUME_MESSAGE
+      : "Use Dose Closure Guidance for MEV-floor top-ups; session-local only."
+  );
   lines.push("Optional add-ons:");
   if (doseClosurePlan.recommendations.length === 0) {
     lines.push("- none");
@@ -3886,7 +3971,9 @@ export function buildPreSessionReadinessSummary(input: {
     }
   }
   lines.push("Avoid:");
-  if (avoid.length === 0) {
+  if (isActiveDeload) {
+    lines.push("- hypertrophy add-ons / MEV closure top-ups during ACTIVE_DELOAD");
+  } else if (avoid.length === 0) {
     lines.push("- no extra work beyond session-local readiness judgment");
   } else {
     for (const item of Array.from(new Set(avoid)).slice(0, 6)) {
@@ -4506,7 +4593,14 @@ export async function main(input?: {
     console.log("[workout-audit:read-only] note=read_only_db_audit_and_local_artifact_writes_are_separate_guarantees");
   }
   console.log(
-    `[workout-audit] mode=${context.mode} diagnostics=${context.plannerDiagnosticsMode} ${summary}`
+    buildWorkoutAuditModeLine({
+      mode: context.mode,
+      plannerDiagnosticsMode: context.plannerDiagnosticsMode,
+      summary,
+      preSessionReadiness: run.preSessionReadiness,
+      projectedWeekVolume: run.projectedWeekVolume,
+      weeklyRetro: run.weeklyRetro,
+    })
   );
   const preSessionReadinessSummary = buildPreSessionReadinessSummary({
     artifact,

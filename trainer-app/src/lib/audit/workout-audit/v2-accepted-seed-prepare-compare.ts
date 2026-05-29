@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import {
+  HANDOFF_V2_MATERIALIZED_SEED_PRODUCTION_WRITE_GATES,
   prepareV2AcceptedSeedPreparationCompare,
   type V2AcceptedSeedPreparationCompareResult,
   type V2AcceptedSeedPreparationProbeInput,
@@ -152,6 +153,8 @@ async function buildLiveV2ProbeInput(input: {
 
   return {
     ...preparationEvidence,
+    productionWriteGates:
+      HANDOFF_V2_MATERIALIZED_SEED_PRODUCTION_WRITE_GATES,
   };
 }
 
@@ -198,6 +201,21 @@ function compareStatus(
     return "blocked";
   }
   return "not_comparable";
+}
+
+function isV2ProductionWriteEligible(
+  compare: V2AcceptedSeedPreparationCompareResult,
+): boolean {
+  const baseValidation = compare.provenanceNoWriteBoundary.baseValidationStatus;
+  return (
+    compare.v2PreparationAvailable &&
+    (baseValidation === "pass" || baseValidation === "pass_with_warnings") &&
+    compare.provenanceNoWriteBoundary.materializerStatus === "materialized" &&
+    compare.provenanceNoWriteBoundary.seedShapeCompatibility.passed &&
+    compare.provenanceNoWriteBoundary.productionGates.allProvided &&
+    compare.provenanceNoWriteBoundary.promotionReadinessStatus ===
+      "eligible_for_guarded_write"
+  );
 }
 
 function buildNoCandidatePayload(
@@ -348,6 +366,7 @@ function buildPayloadFromCompare(input: {
   compare: V2AcceptedSeedPreparationCompareResult;
 }): V2AcceptedSeedPrepareCompareAuditPayload {
   const compare = input.compare;
+  const v2ProductionWriteEligible = isV2ProductionWriteEligible(compare);
   const identityRows = compare.exerciseIdentityComparison.rows.map((row) => ({
     slotId: row.slotId,
     relationship: row.relationship,
@@ -384,7 +403,7 @@ function buildPayloadFromCompare(input: {
       noWrite: true,
       consumedByProduction: false,
       v2PreviewAvailable: compare.v2PreparationAvailable,
-      v2ProductionWriteEligible: false,
+      v2ProductionWriteEligible,
       seedSerializer: compare.seedSerializer,
       legacyProjectionCalledByV2Path: compare.v2WouldCallLegacyProjection,
       repairCalledByV2Path: compare.v2WouldCallLegacyRepair,

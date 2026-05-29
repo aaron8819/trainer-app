@@ -124,7 +124,7 @@ export type BuildV2MaterializedSeedForAcceptanceInput = {
   dependencies?: V2MaterializedSeedAcceptanceDependencies;
 };
 
-const ALL_PRODUCTION_WRITE_GATES_PROVIDED: V2MaterializationProductionWriteGates = {
+export const HANDOFF_V2_MATERIALIZED_SEED_PRODUCTION_WRITE_GATES: V2MaterializationProductionWriteGates = {
   acceptancePathDesigned: true,
   slotPlanSeedJsonWriteGateDesigned: true,
   receiptContractDesigned: true,
@@ -409,7 +409,9 @@ export function buildV2MaterializedSeedForAcceptance(
   });
   const promotionReadiness = buildPromotionReadiness({
     dryRunReport,
-    requiredLaneCoverageBySlot: input.requiredLaneCoverageBySlot,
+    requiredLaneCoverageBySlot:
+      input.requiredLaneCoverageBySlot ??
+      dryRunReport.requiredLaneCoverageBySlot,
     expectedSlotCount: input.slotSequence.slots.length,
     seedSerializerRequiresExerciseNames:
       input.seedSerializerRequiresExerciseNames ?? true,
@@ -539,7 +541,7 @@ export function buildV2MaterializedSeedAcceptanceProbe(
     expectedSlotCount: input.slotSequence.slots.length,
     seedSerializerRequiresExerciseNames:
       input.seedSerializerRequiresExerciseNames ?? true,
-    productionWriteGates: ALL_PRODUCTION_WRITE_GATES_PROVIDED,
+    productionWriteGates: HANDOFF_V2_MATERIALIZED_SEED_PRODUCTION_WRITE_GATES,
   });
   const helperResultWithOptInDisabled = buildV2MaterializedSeedForAcceptance({
     ...input,

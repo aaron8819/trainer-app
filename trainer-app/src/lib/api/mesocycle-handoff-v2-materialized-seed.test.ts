@@ -384,6 +384,19 @@ describe("buildV2MaterializedSeedForAcceptance", () => {
     });
   });
 
+  it("uses materializer-provided required lane coverage when caller evidence is omitted", () => {
+    const result = buildV2MaterializedSeedForAcceptance({
+      ...makeEligibleInput(),
+      requiredLaneCoverageBySlot: undefined,
+    });
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error("expected ready result");
+    }
+    expect(result.slotPlanSeedJson.source).toBe("v2_materialized_seed");
+  });
+
   it("keeps acceptance provenance compact and out of executable seed truth", () => {
     const result = buildV2MaterializedSeedForAcceptance(
       makeEligibleInput(

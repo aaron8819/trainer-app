@@ -3,26 +3,29 @@ import type { V2AcceptedSeedPreparationCompareResult } from "@/lib/api/mesocycle
 import { getSerializedJsonSizeBytes } from "./artifact-serialization";
 import { buildV2AcceptedSeedPrepareCompareAuditPayload } from "./v2-accepted-seed-prepare-compare";
 
-function makeProductionGates() {
+function makeProductionGates(input: { allProvided?: boolean } = {}) {
+  const allProvided = input.allProvided === true;
   return {
-    explicit: false,
-    allProvided: false,
+    explicit: allProvided,
+    allProvided,
     values: {
-      acceptancePathDesigned: false,
-      slotPlanSeedJsonWriteGateDesigned: false,
-      receiptContractDesigned: false,
-      runtimeReplayContractVerified: false,
-      auditSerializationContractDesigned: false,
-      rollbackStrategyDefined: false,
+      acceptancePathDesigned: allProvided,
+      slotPlanSeedJsonWriteGateDesigned: allProvided,
+      receiptContractDesigned: allProvided,
+      runtimeReplayContractVerified: allProvided,
+      auditSerializationContractDesigned: allProvided,
+      rollbackStrategyDefined: allProvided,
     },
-    missing: [
-      "acceptancePathDesigned",
-      "auditSerializationContractDesigned",
-      "receiptContractDesigned",
-      "rollbackStrategyDefined",
-      "runtimeReplayContractVerified",
-      "slotPlanSeedJsonWriteGateDesigned",
-    ],
+    missing: allProvided
+      ? []
+      : [
+          "acceptancePathDesigned",
+          "auditSerializationContractDesigned",
+          "receiptContractDesigned",
+          "rollbackStrategyDefined",
+          "runtimeReplayContractVerified",
+          "slotPlanSeedJsonWriteGateDesigned",
+        ],
   };
 }
 
@@ -233,8 +236,8 @@ function makeCompareFixture(): V2AcceptedSeedPreparationCompareResult {
         noDuplicateExerciseIdsWithinSlot: true,
         namesAvailable: true,
       },
-      promotionReadinessStatus: "blocked",
-      productionGates: makeProductionGates(),
+      promotionReadinessStatus: "eligible_for_guarded_write",
+      productionGates: makeProductionGates({ allProvided: true }),
       fallbackPolicy: {
         explicit: true,
         v2BlockedFailsClosed: true,
@@ -340,6 +343,14 @@ describe("buildV2AcceptedSeedPrepareCompareAuditPayload", () => {
       v2Probe: expect.objectContaining({
         liveNormalizedInventoryAvailable: false,
         inventory: [],
+        productionWriteGates: {
+          acceptancePathDesigned: true,
+          slotPlanSeedJsonWriteGateDesigned: true,
+          receiptContractDesigned: true,
+          runtimeReplayContractVerified: true,
+          auditSerializationContractDesigned: true,
+          rollbackStrategyDefined: true,
+        },
         constraints: {
           avoidExerciseIds: [],
           favoriteExerciseIds: [],
@@ -352,7 +363,7 @@ describe("buildV2AcceptedSeedPrepareCompareAuditPayload", () => {
       noWrite: true,
       consumedByProduction: false,
       v2PreviewAvailable: true,
-      v2ProductionWriteEligible: false,
+      v2ProductionWriteEligible: true,
       seedSerializer: "buildMesocycleSlotPlanSeed",
       legacyProjectionCalledByV2Path: false,
       repairCalledByV2Path: false,
@@ -364,11 +375,11 @@ describe("buildV2AcceptedSeedPrepareCompareAuditPayload", () => {
       v2PreparationPreviewAvailable: true,
       v2BlockedFailClosed: false,
     });
-    expect(payload.availability.missingEvidence).toEqual(
-      expect.arrayContaining([
-        "production_gate:acceptancePathDesigned",
-        "production_gate:receiptContractDesigned",
-      ]),
+    expect(payload.availability.missingEvidence).not.toContain(
+      "production_gate:acceptancePathDesigned",
+    );
+    expect(payload.availability.missingEvidence).not.toContain(
+      "production_gate:receiptContractDesigned",
     );
     expect(payload.provenance).toMatchObject({
       legacySourceLabel: "legacy_projection_seed",
@@ -378,7 +389,7 @@ describe("buildV2AcceptedSeedPrepareCompareAuditPayload", () => {
       seedShapeCompatibility: {
         compatible: true,
       },
-      promotionReadinessStatus: "blocked",
+      promotionReadinessStatus: "eligible_for_guarded_write",
       transactionStatus: "no_write",
     });
     expect(payload.identityCoverageComparison.identitySummary).toEqual({

@@ -789,7 +789,7 @@ export type V2AcceptedSeedPrepareCompareAuditPayload = {
     noWrite: true;
     consumedByProduction: false;
     v2PreviewAvailable: boolean;
-    v2ProductionWriteEligible: false;
+    v2ProductionWriteEligible: boolean;
     seedSerializer: "buildMesocycleSlotPlanSeed";
     legacyProjectionCalledByV2Path: false;
     repairCalledByV2Path: false;
@@ -1095,7 +1095,7 @@ export type NextMesocycleAcceptanceGatePayload = {
   blockers: string[];
   supportingEvidence: {
     v2PrepareCompareStatus?: V2AcceptedSeedPrepareCompareAuditPayload["compareStatus"];
-    v2ProductionWriteEligible?: false;
+    v2ProductionWriteEligible?: boolean;
     mesocycleExplainPreviewAvailable: boolean;
   };
 };

@@ -55,6 +55,7 @@ import { buildMesocycleSlotSequence } from "./mesocycle-slot-contract";
 import { getLatestReadinessSignalForReader } from "./readiness";
 import { loadPreloadedGenerationSnapshot } from "./template-session/context-loader";
 
+export { HANDOFF_V2_MATERIALIZED_SEED_PRODUCTION_WRITE_GATES } from "./mesocycle-handoff-v2-materialized-seed";
 export {
   buildOrderedFlexibleSlots,
   findIncompatibleCarryForwardKeeps,

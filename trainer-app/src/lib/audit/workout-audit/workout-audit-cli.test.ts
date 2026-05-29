@@ -6412,6 +6412,15 @@ describe("buildNextMesocycleHandoffDryRunSummary", () => {
             transactionBoundary: "dry-run stops before transaction",
             noDbWritesOccur: true,
           },
+          persistedDraftTruth: {
+            status: "not_available",
+            source: null,
+            seedShape: "not_available",
+            slotCount: 0,
+            exerciseCount: 0,
+            minimalExecutableRowsOnly: false,
+            parserCompatible: false,
+          },
           candidateIdentity: {
             status: "available",
             rows: [
@@ -6427,6 +6436,7 @@ describe("buildNextMesocycleHandoffDryRunSummary", () => {
           },
           seedShapeSummary: {
             slotPlanSeedJson: "would_be_built",
+            truthBasis: "prepared_acceptance_seed",
             wouldBeBuilt: true,
             minimalExecutableRowsOnly: true,
             executableFields: ["exerciseId", "role", "setCount"],
@@ -6446,7 +6456,7 @@ describe("buildNextMesocycleHandoffDryRunSummary", () => {
               {
                 check: "candidate identity gate",
                 enoughData: true,
-                basis: "prepared seed contains exercise identity rows",
+                basis: "candidate seed contains exercise identity rows",
               },
               {
                 check: "volume floors/caps",
@@ -6493,11 +6503,17 @@ describe("buildNextMesocycleHandoffDryRunSummary", () => {
     expect(summary).toContain("candidate_available=yes");
     expect(summary).toContain("handoff_ready=yes");
     expect(summary).toContain("No DB writes occur.");
+    expect(summary).toContain("persisted_draft_source=none");
+    expect(summary).toContain("persisted_draft_rows=0");
+    expect(summary).toContain(
+      "prepared_projection_source=handoff_slot_plan_projection",
+    );
+    expect(summary).toContain("truth_basis=prepared_acceptance_seed");
     expect(summary).toContain(
       "minimal_executable_rows_only=yes fields=exerciseId,role,setCount",
     );
     expect(summary).toContain(
-      "candidate identity gate | yes | prepared seed contains exercise identity rows",
+      "candidate identity gate | yes | candidate seed contains exercise identity rows",
     );
     expect(summary).toContain(
       "volume floors/caps | no | not exposed by the pre-transaction prepared seed",

@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
+| 2026-05-29 | self | Repeated a PowerShell quoting mistake by putting a regex alternation with escaped double quotes inside a double-quoted `rg` command while checking updated audit fixtures. | Use single-quoted `rg` patterns in PowerShell whenever the pattern contains quotes, pipes, or grouping; split into simpler searches if needed. |
 | 2026-05-29 | self | Added a new V2 handoff refresh caller that referenced a re-exported production-gate constant without importing it locally; Vitest caught the missing binding. | When a module both re-exports and consumes a helper constant, import it into the local scope as well as re-exporting it. |
 | 2026-05-29 | self | A focused Vitest pass succeeded before `tsc --noEmit` exposed loose V2 fixture types (`intent: string`, incomplete base-plan validation shape, nullable audit summary). | For V2/seed fixture additions, run `tsc --noEmit` before assuming green Vitest means the seam is done; type fixtures with exported DTOs or cast narrowly at the fixture boundary. |
 | 2026-05-29 | self | Asserted the accepted-seed compare source on a nonexistent `result.provenance` path instead of the actual `provenanceNoWriteBoundary` / `comparedPreparationAvailability` fields. | Before adding audit assertions, inspect the returned DTO type/file and assert the public payload fields actually consumed by downstream audit output. |

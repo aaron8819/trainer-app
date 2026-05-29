@@ -282,12 +282,22 @@ describe("runWorkoutAuditGeneration", () => {
         transactionStatus: "not_started",
       },
       wouldPrepareWriteSummary: null,
+      persistedDraftTruth: {
+        status: "not_available",
+        source: null,
+        seedShape: "not_available",
+        slotCount: 0,
+        exerciseCount: 0,
+        minimalExecutableRowsOnly: false,
+        parserCompatible: false,
+      },
       candidateIdentity: {
         status: "not_available_until_handoff",
         rows: [],
       },
       seedShapeSummary: {
         slotPlanSeedJson: "not_available",
+        truthBasis: "none",
         wouldBeBuilt: false,
         minimalExecutableRowsOnly: false,
         executableFields: ["exerciseId", "role", "setCount"],

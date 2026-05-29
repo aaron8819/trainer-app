@@ -593,7 +593,7 @@ Guardrails:
 When to use it:
 - rehearse the real next-mesocycle handoff preparation path without accepting the successor
 - inspect what the accept flow would prepare before the transaction boundary
-- distinguish prepared candidate truth from diagnostic previews before running the acceptance gate
+- distinguish persisted draft truth, prepared projection evidence, and diagnostic previews before running the acceptance gate
 
 Command pattern:
 
@@ -603,6 +603,7 @@ npm run audit:workout -- --env-file .env.local --mode next-mesocycle-handoff-dry
 
 Inspect first:
 - `nextMesocycleHandoffDryRun.summary`
+- `nextMesocycleHandoffDryRun.persistedDraftTruth`
 - `nextMesocycleHandoffDryRun.wouldPrepareWriteSummary`
 - `nextMesocycleHandoffDryRun.candidateIdentity`
 - `nextMesocycleHandoffDryRun.seedShapeSummary`
@@ -614,7 +615,8 @@ Interpretation rules:
 - `writes` must always be `no`; this mode never calls the acceptance transaction and never creates a successor mesocycle
 - if the source is not `AWAITING_HANDOFF`, preparation is not called and `blockingReason=source_not_awaiting_handoff`
 - when the source is `AWAITING_HANDOFF`, the mode calls `prepareMesocycleHandoffAcceptance()` and stops before `acceptPreparedMesocycleHandoffInTransaction()`
-- candidate identity comes only from prepared `slotPlanSeedJson` rows, not from `mesocycle-explain` repaired/no-repair diagnostic previews
+- when `nextSeedDraftJson.acceptedSeedDraft` exists, `persistedDraftTruth` is the candidate truth to inspect first; prepared projection fields are shown separately as rehearsal evidence
+- candidate identity comes from persisted accepted-draft rows when present, otherwise from prepared `slotPlanSeedJson` rows; it never comes from `mesocycle-explain` repaired/no-repair diagnostic previews
 - seed compatibility is reported against the existing `buildMesocycleSlotPlanSeed` serializer and runtime seed parser; executable seed rows remain only `exerciseId`, `role`, and `setCount`
 - Week 1 preview is a seed-order expectation preview unless a persisted successor exists; full runtime replay still requires post-accept active mesocycle context
 - use `next-mesocycle-acceptance-gate` after this mode when you need the final readiness decision

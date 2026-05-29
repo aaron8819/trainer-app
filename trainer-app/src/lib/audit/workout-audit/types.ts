@@ -888,6 +888,16 @@ export type NextMesocycleHandoffDryRunPayload = {
     transactionBoundary: string;
     noDbWritesOccur: true;
   } | null;
+  persistedDraftTruth: {
+    status: "available" | "not_available";
+    source: string | null;
+    refreshedAt?: string;
+    seedShape: string;
+    slotCount: number;
+    exerciseCount: number;
+    minimalExecutableRowsOnly: boolean;
+    parserCompatible: boolean;
+  };
   candidateIdentity: {
     status: "available" | "not_available_until_handoff";
     rows: Array<{
@@ -896,11 +906,17 @@ export type NextMesocycleHandoffDryRunPayload = {
       exerciseId: string;
       exerciseName: string;
       setCount: number;
-      source: "prepared_slotPlanSeedJson";
+      source:
+        | "persisted_nextSeedDraftJson.acceptedSeedDraft"
+        | "prepared_slotPlanSeedJson";
     }>;
   };
   seedShapeSummary: {
-    slotPlanSeedJson: "would_be_built" | "not_available";
+    slotPlanSeedJson:
+      | "persisted_draft_available"
+      | "would_be_built"
+      | "not_available";
+    truthBasis: "persisted_draft" | "prepared_acceptance_seed" | "none";
     wouldBeBuilt: boolean;
     minimalExecutableRowsOnly: boolean;
     executableFields: Array<"exerciseId" | "role" | "setCount">;

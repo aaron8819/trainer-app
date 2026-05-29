@@ -2980,7 +2980,14 @@ export function buildNextMesocycleHandoffDryRunSummary(input: {
     `handoff_ready=${formatBooleanFlag(payload.summary.handoffReady)}`,
     `blocking_reason=${payload.summary.blockingReason ?? "none"}`,
     "",
-    "Would-Prepare / Would-Write Summary",
+    "Persisted Draft Truth",
+    `persisted_draft_source=${payload.persistedDraftTruth.source ?? "none"}`,
+    `persisted_draft_rows=${payload.persistedDraftTruth.exerciseCount}`,
+    `persisted_draft_shape=${payload.persistedDraftTruth.seedShape}`,
+    `persisted_draft_parser_compatible=${formatBooleanFlag(payload.persistedDraftTruth.parserCompatible)}`,
+    `persisted_draft_minimal_executable_rows_only=${formatBooleanFlag(payload.persistedDraftTruth.minimalExecutableRowsOnly)}`,
+    "",
+    "Prepared Projection / Would-Write Summary",
   ];
 
   if (payload.wouldPrepareWriteSummary) {
@@ -2988,7 +2995,9 @@ export function buildNextMesocycleHandoffDryRunSummary(input: {
     lines.push(`successor_source=${summary.successorSource}`);
     lines.push(`slot_sequence=${summary.slotSequence}`);
     lines.push(`seed_shape=${summary.seedShape}`);
-    lines.push(`slot_plan_seed_source=${summary.slotPlanSeedSource ?? "none"}`);
+    lines.push(
+      `prepared_projection_source=${summary.slotPlanSeedSource ?? "none"}`,
+    );
     lines.push(`training_blocks_count=${summary.trainingBlocksCount}`);
     lines.push(`carried_roles_count=${summary.carriedRolesCount}`);
     lines.push(`constraints_action=${summary.constraintsAction}`);
@@ -3023,6 +3032,7 @@ export function buildNextMesocycleHandoffDryRunSummary(input: {
   lines.push(
     `slotPlanSeedJson=${payload.seedShapeSummary.slotPlanSeedJson} would_be_built=${formatBooleanFlag(payload.seedShapeSummary.wouldBeBuilt)}`,
   );
+  lines.push(`truth_basis=${payload.seedShapeSummary.truthBasis}`);
   lines.push(
     `minimal_executable_rows_only=${formatBooleanFlag(payload.seedShapeSummary.minimalExecutableRowsOnly)} fields=${payload.seedShapeSummary.executableFields.join(",")}`,
   );

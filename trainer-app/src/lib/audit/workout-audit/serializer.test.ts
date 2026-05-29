@@ -2069,6 +2069,15 @@ describe("buildWorkoutAuditArtifact", () => {
         transactionBoundary: "dry-run stops before transaction",
         noDbWritesOccur: true,
       },
+      persistedDraftTruth: {
+        status: "not_available",
+        source: null,
+        seedShape: "not_available",
+        slotCount: 0,
+        exerciseCount: 0,
+        minimalExecutableRowsOnly: false,
+        parserCompatible: false,
+      },
       candidateIdentity: {
         status: "available",
         rows: [
@@ -2084,6 +2093,7 @@ describe("buildWorkoutAuditArtifact", () => {
       },
       seedShapeSummary: {
         slotPlanSeedJson: "would_be_built",
+        truthBasis: "prepared_acceptance_seed",
         wouldBeBuilt: true,
         minimalExecutableRowsOnly: true,
         executableFields: ["exerciseId", "role", "setCount"],
@@ -2103,7 +2113,7 @@ describe("buildWorkoutAuditArtifact", () => {
           {
             check: "candidate identity gate",
             enoughData: true,
-            basis: "prepared seed contains exercise identity rows",
+            basis: "candidate seed contains exercise identity rows",
           },
         ],
       },

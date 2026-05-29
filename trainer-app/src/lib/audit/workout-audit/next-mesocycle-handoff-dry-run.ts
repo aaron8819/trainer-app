@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/db/prisma";
-import { prepareMesocycleHandoffAcceptance } from "@/lib/api/mesocycle-handoff";
+import {
+  prepareMesocycleHandoffAcceptance,
+  readNextCycleSeedDraft,
+} from "@/lib/api/mesocycle-handoff";
+import type { MesocycleSlotPlanSeed } from "@/lib/api/mesocycle-handoff-slot-plan-projection.seed-serialization";
 import { parseSlotPlanSeedJson } from "@/lib/api/slot-plan-seed-parser";
 import { NEXT_MESOCYCLE_HANDOFF_DRY_RUN_AUDIT_PAYLOAD_VERSION } from "./constants";
 import type { NextMesocycleHandoffDryRunPayload } from "./types";
@@ -7,6 +11,7 @@ import type { NextMesocycleHandoffDryRunPayload } from "./types";
 type SourceMesocycleRow = {
   id: string;
   state: string;
+  nextSeedDraftJson?: unknown;
 };
 
 type ExerciseNameRow = {
@@ -47,6 +52,7 @@ async function loadSourceState(input: {
     select: {
       id: true,
       state: true,
+      nextSeedDraftJson: true,
     },
   });
 }
@@ -66,7 +72,9 @@ async function loadExerciseNames(input: {
   return new Map(rows.map((row) => [row.id, row.name]));
 }
 
-function seedExerciseRowsAreMinimal(seed: PreparedHandoff["slotPlanSeed"]): boolean {
+function seedExerciseRowsAreMinimal(
+  seed: MesocycleSlotPlanSeed | null | undefined,
+): boolean {
   return Boolean(
     seed?.slots.every((slot) =>
       slot.exercises.every((exercise) => {
@@ -78,6 +86,77 @@ function seedExerciseRowsAreMinimal(seed: PreparedHandoff["slotPlanSeed"]): bool
       }),
     ),
   );
+}
+
+function summarizeSeedShape(seed: MesocycleSlotPlanSeed | null | undefined): {
+  seedShape: string;
+  slotCount: number;
+  exerciseCount: number;
+  minimalExecutableRowsOnly: boolean;
+  parserCompatible: boolean;
+} {
+  const slotCount = seed?.slots.length ?? 0;
+  const exerciseCount =
+    seed?.slots.reduce((count, slot) => count + slot.exercises.length, 0) ?? 0;
+
+  return {
+    seedShape: seed
+      ? `version=${seed.version} slots=${slotCount} exercises=${exerciseCount}`
+      : "not_available",
+    slotCount,
+    exerciseCount,
+    minimalExecutableRowsOnly: seedExerciseRowsAreMinimal(seed),
+    parserCompatible: Boolean(seed && parseSlotPlanSeedJson(seed)),
+  };
+}
+
+async function buildIdentityRows(input: {
+  seed: MesocycleSlotPlanSeed | null | undefined;
+  reader: HandoffDryRunReader;
+  source: NextMesocycleHandoffDryRunPayload["candidateIdentity"]["rows"][number]["source"];
+}): Promise<NextMesocycleHandoffDryRunPayload["candidateIdentity"]["rows"]> {
+  const exerciseIds =
+    input.seed?.slots.flatMap((slot) =>
+      slot.exercises.map((exercise) => exercise.exerciseId),
+    ) ?? [];
+  const exerciseNames = await loadExerciseNames({
+    exerciseIds,
+    reader: input.reader,
+  });
+
+  return (
+    input.seed?.slots.flatMap((slot) =>
+      slot.exercises.map((exercise) => ({
+        slotId: slot.slotId,
+        laneOrRole: exercise.role,
+        exerciseId: exercise.exerciseId,
+        exerciseName: exerciseNames.get(exercise.exerciseId) ?? "unknown",
+        setCount: exercise.setCount,
+        source: input.source,
+      })),
+    ) ?? []
+  );
+}
+
+function buildPersistedDraftTruth(
+  source: SourceMesocycleRow | null,
+): NextMesocycleHandoffDryRunPayload["persistedDraftTruth"] & {
+  seed: MesocycleSlotPlanSeed | null;
+} {
+  const draft = readNextCycleSeedDraft(source?.nextSeedDraftJson);
+  const acceptedSeedDraft = draft?.acceptedSeedDraft;
+  const seed = acceptedSeedDraft?.slotPlanSeedJson ?? null;
+  const shape = summarizeSeedShape(seed);
+
+  return {
+    status: seed ? "available" : "not_available",
+    source: acceptedSeedDraft?.source ?? null,
+    ...(acceptedSeedDraft?.refreshedAt
+      ? { refreshedAt: acceptedSeedDraft.refreshedAt }
+      : {}),
+    ...shape,
+    seed,
+  };
 }
 
 function buildNoCandidatePayload(input: {
@@ -104,12 +183,22 @@ function buildNoCandidatePayload(input: {
       transactionStatus: "not_started",
     },
     wouldPrepareWriteSummary: null,
+    persistedDraftTruth: {
+      status: "not_available",
+      source: null,
+      seedShape: "not_available",
+      slotCount: 0,
+      exerciseCount: 0,
+      minimalExecutableRowsOnly: false,
+      parserCompatible: false,
+    },
     candidateIdentity: {
       status: "not_available_until_handoff",
       rows: [],
     },
     seedShapeSummary: {
       slotPlanSeedJson: "not_available",
+      truthBasis: "none",
       wouldBeBuilt: false,
       minimalExecutableRowsOnly: false,
       executableFields: [...EXECUTABLE_SEED_FIELDS],
@@ -203,8 +292,8 @@ function buildAcceptanceChecks(input: {
         enoughData: input.identityRowCount > 0,
         basis:
           input.identityRowCount > 0
-            ? "prepared seed contains exercise identity rows"
-            : "prepared seed contains no exercise identities",
+            ? "candidate seed contains exercise identity rows"
+            : "candidate seed contains no exercise identities",
       },
       {
         check: "seed/runtime contract gate",
@@ -212,7 +301,7 @@ function buildAcceptanceChecks(input: {
         basis:
           input.seedAvailable && input.serializerCompatible
             ? "buildMesocycleSlotPlanSeed output parses through runtime seed parser"
-            : "prepared seed missing or failed parser compatibility",
+            : "candidate seed missing or failed parser compatibility",
       },
       {
         check: "volume floors/caps",
@@ -243,36 +332,30 @@ function buildAcceptanceChecks(input: {
 async function buildPreparedPayload(input: {
   ownerEmail?: string;
   sourceMesocycleId: string;
-  sourceState: string;
+  source: SourceMesocycleRow;
   prepared: PreparedHandoff;
   reader: HandoffDryRunReader;
 }): Promise<NextMesocycleHandoffDryRunPayload> {
   const seed = input.prepared.slotPlanSeed;
-  const parsedSeed = parseSlotPlanSeedJson(seed);
   const slotSequence = input.prepared.projection.mesocycle.slotSequence.slots;
-  const exerciseIds =
-    seed?.slots.flatMap((slot) =>
-      slot.exercises.map((exercise) => exercise.exerciseId),
-    ) ?? [];
-  const exerciseNames = await loadExerciseNames({
-    exerciseIds,
+  const persistedDraft = buildPersistedDraftTruth(input.source);
+  const persistedIdentityRows = await buildIdentityRows({
+    seed: persistedDraft.seed,
     reader: input.reader,
+    source: "persisted_nextSeedDraftJson.acceptedSeedDraft",
+  });
+  const preparedIdentityRows = await buildIdentityRows({
+    seed,
+    reader: input.reader,
+    source: "prepared_slotPlanSeedJson",
   });
   const identityRows =
-    seed?.slots.flatMap((slot) =>
-      slot.exercises.map((exercise) => ({
-        slotId: slot.slotId,
-        laneOrRole: exercise.role,
-        exerciseId: exercise.exerciseId,
-        exerciseName: exerciseNames.get(exercise.exerciseId) ?? "unknown",
-        setCount: exercise.setCount,
-        source: "prepared_slotPlanSeedJson" as const,
-      })),
-    ) ?? [];
-  const slotCount = seed?.slots.length ?? slotSequence.length;
-  const exerciseCount = identityRows.length;
-  const serializerCompatible = Boolean(parsedSeed);
-  const minimalExecutableRowsOnly = seedExerciseRowsAreMinimal(seed);
+    persistedIdentityRows.length > 0
+      ? persistedIdentityRows
+      : preparedIdentityRows;
+  const preparedShape = summarizeSeedShape(seed);
+  const truthShape =
+    persistedDraft.status === "available" ? persistedDraft : preparedShape;
   const slotOrder = slotSequence.map((slot) => slot.slotId).join(" > ");
 
   return {
@@ -285,8 +368,8 @@ async function buildPreparedPayload(input: {
     summary: {
       writes: "no",
       sourceMesocycleId: input.sourceMesocycleId,
-      sourceState: input.sourceState,
-      candidateAvailable: exerciseCount > 0,
+      sourceState: input.source.state,
+      candidateAvailable: identityRows.length > 0,
       handoffReady: true,
       blockingReason: null,
       preparationPath: "prepareMesocycleHandoffAcceptance",
@@ -295,9 +378,7 @@ async function buildPreparedPayload(input: {
     wouldPrepareWriteSummary: {
       successorSource: "prepared_handoff_projection",
       slotSequence: slotOrder || "none",
-      seedShape: seed
-        ? `version=${seed.version} slots=${slotCount} exercises=${exerciseCount}`
-        : "not_available",
+      seedShape: preparedShape.seedShape,
       slotPlanSeedSource: seed?.source ?? null,
       trainingBlocksCount: input.prepared.projection.trainingBlocks.length,
       carriedRolesCount: input.prepared.projection.carriedForwardRoles.length,
@@ -307,35 +388,63 @@ async function buildPreparedPayload(input: {
         "acceptPreparedMesocycleHandoffInTransaction would perform writes; dry-run stops before it",
       noDbWritesOccur: true,
     },
+    persistedDraftTruth: {
+      status: persistedDraft.status,
+      source: persistedDraft.source,
+      ...(persistedDraft.refreshedAt
+        ? { refreshedAt: persistedDraft.refreshedAt }
+        : {}),
+      seedShape: persistedDraft.seedShape,
+      slotCount: persistedDraft.slotCount,
+      exerciseCount: persistedDraft.exerciseCount,
+      minimalExecutableRowsOnly: persistedDraft.minimalExecutableRowsOnly,
+      parserCompatible: persistedDraft.parserCompatible,
+    },
     candidateIdentity: {
-      status: exerciseCount > 0 ? "available" : "not_available_until_handoff",
+      status:
+        identityRows.length > 0 ? "available" : "not_available_until_handoff",
       rows: identityRows,
     },
     seedShapeSummary: {
-      slotPlanSeedJson: seed ? "would_be_built" : "not_available",
+      slotPlanSeedJson:
+        persistedDraft.status === "available"
+          ? "persisted_draft_available"
+          : seed
+            ? "would_be_built"
+            : "not_available",
+      truthBasis:
+        persistedDraft.status === "available"
+          ? "persisted_draft"
+          : seed
+            ? "prepared_acceptance_seed"
+            : "none",
       wouldBeBuilt: Boolean(seed),
-      minimalExecutableRowsOnly,
+      minimalExecutableRowsOnly: truthShape.minimalExecutableRowsOnly,
       executableFields: [...EXECUTABLE_SEED_FIELDS],
       serializerPath: "buildMesocycleSlotPlanSeed",
-      slotCount,
-      exerciseCount,
-      seedSource: seed?.source ?? null,
-      parserCompatible: serializerCompatible,
+      slotCount: truthShape.slotCount,
+      exerciseCount: truthShape.exerciseCount,
+      seedSource:
+        persistedDraft.status === "available"
+          ? persistedDraft.source
+          : (seed?.source ?? null),
+      parserCompatible: truthShape.parserCompatible,
     },
     weeklyVolumeFloorCapSummary: {
       status: "not_available",
       basis:
-        "prepared seed contains executable identity/set rows but not weighted muscle volume, MEV, or MAV rows",
+        "candidate seed contains executable identity/set rows but not weighted muscle volume, MEV, or MAV rows",
       rows: [],
     },
     acceptanceGatePayloadSummary: buildAcceptanceChecks({
       seedAvailable: Boolean(seed),
-      serializerCompatible,
-      slotCount,
-      identityRowCount: exerciseCount,
+      serializerCompatible: preparedShape.parserCompatible,
+      slotCount: preparedShape.slotCount || slotSequence.length,
+      identityRowCount: identityRows.length,
     }),
     weekOneRuntimeReplayPreview: {
-      status: exerciseCount > 0 ? "seed_order_preview_only" : "not_available",
+      status:
+        identityRows.length > 0 ? "seed_order_preview_only" : "not_available",
       runtimeReplayInstantiated: false,
       rows: identityRows.map((row) => ({
         slotId: row.slotId,
@@ -350,17 +459,17 @@ async function buildPreparedPayload(input: {
       {
         mode: "mesocycle-explain",
         distinction:
-          "diagnostic preview only; this dry-run uses the real handoff preparation path for candidate truth",
+          "diagnostic preview only; this dry-run uses persisted accepted-draft truth when present",
       },
       {
         mode: "v2-accepted-seed-prepare-compare",
         distinction:
-          "compares preparation alternatives; this dry-run summarizes the real would-write boundary for the prepared candidate",
+          "compares preparation alternatives; this dry-run separates persisted draft truth from prepared projection evidence",
       },
       {
         mode: "next-mesocycle-acceptance-gate",
         distinction:
-          "judges readiness; this dry-run prepares acceptance-gate-ready facts without executing acceptance",
+          "judges readiness from persisted candidate evidence; this dry-run does not execute acceptance",
       },
     ],
     safety: {
@@ -416,9 +525,9 @@ export async function buildNextMesocycleHandoffDryRunAuditPayload(input: {
     return await buildPreparedPayload({
       ownerEmail: input.ownerEmail,
       sourceMesocycleId: input.sourceMesocycleId,
-      sourceState: source.state,
       prepared,
       reader,
+      source,
     });
   } catch (error) {
     return buildNoCandidatePayload({

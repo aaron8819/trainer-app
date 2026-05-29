@@ -160,6 +160,7 @@
 | 2026-05-02 | self | Repeated the Windows wildcard-path `rg` mistake while checking V2 exports with `planning\v2\*.ts`. | Use `rg <pattern> <real-directory> -g "*.ts"` or read the specific barrel file directly. |
 | 2026-05-27 | self | Parallelized focused Vitest reruns through `multi_tool_use` and the Vitest fork pool timed out before workers responded. | Run Trainer Vitest verification serially, especially for audit/serializer files; keep `multi_tool_use` for reads, not test runner invocations. |
 | 2026-05-29 | self | While adding finish-deload-early, the first helper pass would have skipped any incomplete workout on the mesocycle, not only deload-scoped incomplete workouts. | Before terminally closing workouts in lifecycle helpers, classify the workout's canonical session semantics (`deriveSessionSemantics`) and reject unclear/non-target scope instead of broad status-based updates. |
+| 2026-05-29 | self | A live `finish-deload` call to localhost:3000 returned a branded 404 because port 3000 was serving another Next app, not Trainer. | When a live Trainer route returns an HTML/branded 404, verify the owning process/app for the port before treating it as a route or DB ownership failure; if needed, start Trainer on a free port and call the same implemented app route there. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

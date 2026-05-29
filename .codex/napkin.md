@@ -159,6 +159,7 @@
 | 2026-05-02 | self | In the runtime north-star doc update, first placed runtime prescription/coaching before accepted seed/runtime replay in the stack even though prescriptions transform seed rows. | For seed/runtime strategy docs, order accepted seed and replay before runtime prescription/edit/save layers so the prose reinforces executable seed truth. |
 | 2026-05-02 | self | Repeated the Windows wildcard-path `rg` mistake while checking V2 exports with `planning\v2\*.ts`. | Use `rg <pattern> <real-directory> -g "*.ts"` or read the specific barrel file directly. |
 | 2026-05-27 | self | Parallelized focused Vitest reruns through `multi_tool_use` and the Vitest fork pool timed out before workers responded. | Run Trainer Vitest verification serially, especially for audit/serializer files; keep `multi_tool_use` for reads, not test runner invocations. |
+| 2026-05-29 | self | While adding finish-deload-early, the first helper pass would have skipped any incomplete workout on the mesocycle, not only deload-scoped incomplete workouts. | Before terminally closing workouts in lifecycle helpers, classify the workout's canonical session semantics (`deriveSessionSemantics`) and reject unclear/non-target scope instead of broad status-based updates. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.
@@ -178,6 +179,7 @@
 - For V2 strategy promotion readiness, define the full evidence/owner/gate requirements in the pure strategy seam, but keep the main audit artifact to compact counts/top-missing summaries and leave full detail to the V2 sidecar.
 - For V2 donor-surplus diagnostics, keep normalized donor evidence as a pure sibling of the promotion diff, let slot-owned planning consume it only diagnostically, and expose only compact counts in the main artifact/index while full rows stay in `v2-promotion-diffs`.
 - For post-accept successor checks, put the proof in the read-only workout-audit seam: source/successor lifecycle, minimal executable seed rows, slot sequence stability, future-week replay, projected-week-volume, Program/Home read models, and provenance coherence. Do not patch runtime replay or handoff writes from this audit.
+- For explicit lifecycle closeout actions, combine owner/state gates with canonical session-semantics classification before mutating related workouts; terminally skipped rows should be non-performed and scoped to the intended workflow.
 
 ## Patterns That Don't Work
 - Do not promote suspicious downstream repair rows unless the owning V2 layer is clearly upstream and compatible with the target architecture.

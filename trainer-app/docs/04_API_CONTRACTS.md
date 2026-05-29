@@ -34,7 +34,7 @@ Sources of truth:
 - Workouts: `src/app/api/workouts/**` (generate-from-intent, generate-from-template, save, `GET /api/workouts/history`, `POST /api/workouts/[id]/dismiss-closeout`)
 - Logging: `src/app/api/logs/set/route.ts`
 - Logging support reads: `GET /api/workouts/[id]/logging-weekly-volume-check` (`src/app/api/workouts/[id]/logging-weekly-volume-check/route.ts`)
-- Mesocycles: `GET /api/mesocycles` (`src/app/api/mesocycles/route.ts`) plus handoff endpoints `PATCH /api/mesocycles/[id]/draft` and `POST /api/mesocycles/[id]/accept-next-cycle`
+- Mesocycles: `GET /api/mesocycles` (`src/app/api/mesocycles/route.ts`) plus handoff endpoints `POST /api/mesocycles/[id]/finish-deload`, `PATCH /api/mesocycles/[id]/draft`, and `POST /api/mesocycles/[id]/accept-next-cycle`
 - Week-close workflow: `POST /api/mesocycles/week-close/[id]/dismiss` and `POST|GET /api/mesocycles/week-close/[id]/closeout`
 - Program/periodization/readiness: `src/app/api/program/route.ts`, `src/app/api/periodization/macro/route.ts`, `src/app/api/readiness/submit/route.ts`, `src/app/api/stalls/route.ts`
 - Templates: `src/app/api/templates/**`
@@ -102,6 +102,13 @@ Sources of truth:
 - Mutation reconciliation is part of the persisted workout contract, not a read-side convenience. Structural mutation writers persist `selectionMetadata.workoutStructureState`, and the canonical write-side seam in `src/lib/api/runtime-edit-reconciliation.ts` may also append `selectionMetadata.runtimeEditReconciliation` edit facts for supported runtime mutations.
 
 ## Mesocycle handoff route contract
+- `POST /api/mesocycles/[id]/finish-deload` (`src/app/api/mesocycles/[id]/finish-deload/route.ts`)
+  - state gate: target mesocycle must exist for the owner and be in `ACTIVE_DELOAD`
+  - success: `{ ok: true, action: "finish_deload_early", mesocycle, skippedWorkoutIds, skippedWorkoutCount, handoffSummaryCreated, nextSeedDraftCreated }`
+  - ownership: route resolves the owner through `resolveOwner()` and delegates lifecycle behavior to `finishDeloadEarly()` in `src/lib/api/mesocycle-lifecycle-state.ts`
+  - semantics: this is an explicit user action to end the remaining deload without performing the remaining scheduled deload workouts; it does not create `SetLog` rows, does not create fake completed workouts, does not increment `deloadSessionsCompleted`, does not mutate `slotPlanSeedJson`, and does not change runtime replay
+  - incomplete deload workouts: unperformed `PLANNED`/`IN_PROGRESS` workouts in the source mesocycle are marked `SKIPPED` with additive `selectionMetadata.finishDeloadEarly` audit metadata before entering handoff; `PARTIAL` workouts or workouts with performed non-skipped logs are rejected with `409`
+  - handoff: success calls the same canonical handoff entry seam as normal deload completion, freezing `handoffSummaryJson` and seeding `nextSeedDraftJson`; successor creation remains reserved for `POST /api/mesocycles/[id]/accept-next-cycle`
 - `POST /api/mesocycles/[id]/setup-preview` (`src/app/api/mesocycles/[id]/setup-preview/route.ts`)
   - state gate: target mesocycle must exist for the owner and be in `AWAITING_HANDOFF`
   - request payload: `nextCycleSeedDraftUpdateSchema`

@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const mesocycleFindUnique = vi.fn();
   const mesocycleUpdate = vi.fn();
+  const txMesoFindFirst = vi.fn();
   const txMesoFindUnique = vi.fn();
   const txMesoUpdate = vi.fn();
   const txMesoCreate = vi.fn();
+  const txWorkoutUpdate = vi.fn();
   const txConstraintsFindUnique = vi.fn();
   const txTrainingBlockCreateMany = vi.fn();
   const txRoleFindMany = vi.fn();
@@ -15,6 +17,7 @@ const mocks = vi.hoisted(() => {
   const transaction = vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
     callback({
       mesocycle: {
+        findFirst: txMesoFindFirst,
         findUnique: txMesoFindUnique,
         update: txMesoUpdate,
         create: txMesoCreate,
@@ -31,6 +34,7 @@ const mocks = vi.hoisted(() => {
       },
       workout: {
         findMany: txWorkoutFindMany,
+        update: txWorkoutUpdate,
       },
       readinessSignal: {
         findFirst: txReadinessFindFirst,
@@ -41,9 +45,11 @@ const mocks = vi.hoisted(() => {
   return {
     mesocycleFindUnique,
     mesocycleUpdate,
+    txMesoFindFirst,
     txMesoFindUnique,
     txMesoUpdate,
     txMesoCreate,
+    txWorkoutUpdate,
     txConstraintsFindUnique,
     txTrainingBlockCreateMany,
     txRoleFindMany,
@@ -69,6 +75,8 @@ import {
   deriveCurrentMesocycleSession,
   deriveNextAdvancingIntentByWeeklySubtraction,
   deriveNextAdvancingSession,
+  finishDeloadEarly,
+  FinishDeloadEarlyBlockedWorkoutError,
   getLifecycleSetTargets,
   getCurrentMesoWeek,
   getRirTarget,
@@ -194,6 +202,241 @@ describe("mesocycle-lifecycle", () => {
         }),
       })
     );
+  });
+
+  it("finishes deload early through the handoff seam without inflating deload counters", async () => {
+    const closedAt = new Date("2026-03-10T00:00:00.000Z");
+    mocks.txMesoFindFirst.mockResolvedValue({
+      id: "m1",
+      state: "ACTIVE_DELOAD",
+      isActive: true,
+      handoffSummaryJson: null,
+      nextSeedDraftJson: null,
+      closedAt: null,
+    });
+    mocks.txWorkoutFindMany.mockResolvedValue([
+      {
+        id: "planned-deload",
+        status: "PLANNED",
+        advancesSplit: true,
+        selectionMode: "INTENT",
+        sessionIntent: "UPPER",
+        mesocyclePhaseSnapshot: "DELOAD",
+        selectionMetadata: { sessionDecisionReceipt: { version: 1 } },
+        exercises: [
+          {
+            sets: [
+              {
+                logs: [],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    mocks.txWorkoutUpdate.mockResolvedValue({ id: "planned-deload", status: "SKIPPED" });
+    mocks.txMesoFindUnique.mockResolvedValue({
+      id: "m1",
+      state: "ACTIVE_DELOAD",
+      macroCycleId: "macro-1",
+      mesoNumber: 1,
+      startWeek: 0,
+      focus: "Hypertrophy",
+      volumeTarget: "MODERATE",
+      intensityBias: "HYPERTROPHY",
+      isActive: true,
+      accumulationSessionsCompleted: 12,
+      deloadSessionsCompleted: 2,
+      durationWeeks: 5,
+      sessionsPerWeek: 4,
+      daysPerWeek: 4,
+      splitType: "UPPER_LOWER",
+      macroCycle: { userId: "user-1" },
+      blocks: [],
+    });
+    mocks.txMesoUpdate.mockResolvedValue({
+      id: "m1",
+      state: "AWAITING_HANDOFF",
+      isActive: false,
+      closedAt,
+      handoffSummaryJson: { version: 1 },
+      nextSeedDraftJson: { version: 1 },
+      deloadSessionsCompleted: 2,
+    });
+    mocks.txConstraintsFindUnique.mockResolvedValue({
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+    });
+    mocks.txRoleFindMany.mockResolvedValue([]);
+    mocks.txWorkoutFindMany.mockResolvedValueOnce([
+      {
+        id: "planned-deload",
+        status: "PLANNED",
+        advancesSplit: true,
+        selectionMode: "INTENT",
+        sessionIntent: "UPPER",
+        mesocyclePhaseSnapshot: "DELOAD",
+        selectionMetadata: { sessionDecisionReceipt: { version: 1 } },
+        exercises: [{ sets: [{ logs: [] }] }],
+      },
+    ]).mockResolvedValueOnce([]);
+    mocks.txReadinessFindFirst.mockResolvedValue(null);
+
+    const result = await finishDeloadEarly({
+      userId: "user-1",
+      mesocycleId: "m1",
+    });
+
+    expect(result.mesocycle.state).toBe("AWAITING_HANDOFF");
+    expect(result.skippedWorkoutIds).toEqual(["planned-deload"]);
+    expect(result.handoffSummaryCreated).toBe(true);
+    expect(result.nextSeedDraftCreated).toBe(true);
+    expect(mocks.txWorkoutUpdate).toHaveBeenCalledWith({
+      where: { id: "planned-deload" },
+      data: {
+        status: "SKIPPED",
+        selectionMetadata: expect.objectContaining({
+          finishDeloadEarly: expect.objectContaining({
+            reason: "user_finished_deload_early",
+            terminalStatus: "SKIPPED",
+          }),
+          sessionDecisionReceipt: { version: 1 },
+        }),
+      },
+    });
+    expect(mocks.txMesoUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          state: "AWAITING_HANDOFF",
+          isActive: false,
+          handoffSummaryJson: expect.objectContaining({ version: 1 }),
+          nextSeedDraftJson: expect.objectContaining({ version: 1 }),
+        }),
+      })
+    );
+    expect(mocks.txMesoUpdate).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          deloadSessionsCompleted: expect.anything(),
+        }),
+      })
+    );
+  });
+
+  it("rejects finish-deload early for non-owner mesocycles", async () => {
+    mocks.txMesoFindFirst.mockResolvedValue(null);
+
+    await expect(
+      finishDeloadEarly({ userId: "other-user", mesocycleId: "m1" })
+    ).rejects.toThrow("MESOCYCLE_FINISH_DELOAD_NOT_FOUND");
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
+    expect(mocks.txMesoUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects finish-deload early outside ACTIVE_DELOAD", async () => {
+    mocks.txMesoFindFirst.mockResolvedValue({
+      id: "m1",
+      state: "ACTIVE_ACCUMULATION",
+      isActive: true,
+      handoffSummaryJson: null,
+      nextSeedDraftJson: null,
+      closedAt: null,
+    });
+
+    await expect(
+      finishDeloadEarly({ userId: "user-1", mesocycleId: "m1" })
+    ).rejects.toThrow("MESOCYCLE_FINISH_DELOAD_INVALID_STATE");
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
+    expect(mocks.txMesoUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects finish-deload early when an incomplete deload workout has performed logs", async () => {
+    mocks.txMesoFindFirst.mockResolvedValue({
+      id: "m1",
+      state: "ACTIVE_DELOAD",
+      isActive: true,
+      handoffSummaryJson: null,
+      nextSeedDraftJson: null,
+      closedAt: null,
+    });
+    mocks.txWorkoutFindMany.mockResolvedValue([
+      {
+        id: "in-progress-deload",
+        status: "IN_PROGRESS",
+        advancesSplit: true,
+        selectionMode: "INTENT",
+        sessionIntent: "UPPER",
+        mesocyclePhaseSnapshot: "DELOAD",
+        selectionMetadata: {},
+        exercises: [
+          {
+            sets: [
+              {
+                logs: [
+                  {
+                    wasSkipped: false,
+                    actualReps: 8,
+                    actualRpe: 5,
+                    actualLoad: 100,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      finishDeloadEarly({ userId: "user-1", mesocycleId: "m1" })
+    ).rejects.toBeInstanceOf(FinishDeloadEarlyBlockedWorkoutError);
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
+    expect(mocks.txMesoUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects finish-deload early when an incomplete source workout is not deload-scoped", async () => {
+    mocks.txMesoFindFirst.mockResolvedValue({
+      id: "m1",
+      state: "ACTIVE_DELOAD",
+      isActive: true,
+      handoffSummaryJson: null,
+      nextSeedDraftJson: null,
+      closedAt: null,
+    });
+    mocks.txWorkoutFindMany.mockResolvedValue([
+      {
+        id: "old-accumulation-plan",
+        status: "PLANNED",
+        advancesSplit: true,
+        selectionMode: "INTENT",
+        sessionIntent: "UPPER",
+        mesocyclePhaseSnapshot: "ACCUMULATION",
+        selectionMetadata: {},
+        exercises: [{ sets: [{ logs: [] }] }],
+      },
+    ]);
+
+    await expect(
+      finishDeloadEarly({ userId: "user-1", mesocycleId: "m1" })
+    ).rejects.toBeInstanceOf(FinishDeloadEarlyBlockedWorkoutError);
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
+    expect(mocks.txMesoUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects finish-deload early when handoff artifacts already exist", async () => {
+    mocks.txMesoFindFirst.mockResolvedValue({
+      id: "m1",
+      state: "ACTIVE_DELOAD",
+      isActive: true,
+      handoffSummaryJson: { version: 1 },
+      nextSeedDraftJson: null,
+      closedAt: null,
+    });
+
+    await expect(
+      finishDeloadEarly({ userId: "user-1", mesocycleId: "m1" })
+    ).rejects.toThrow("MESOCYCLE_FINISH_DELOAD_HANDOFF_EXISTS");
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
+    expect(mocks.txMesoUpdate).not.toHaveBeenCalled();
   });
 
   it("no-ops transition for already COMPLETED mesocycle", async () => {

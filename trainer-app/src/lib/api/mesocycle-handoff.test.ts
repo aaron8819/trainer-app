@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildV2PlannerMesocyclePolicy,
   DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+  type V2MaterializationPreparationEvidence,
   type V2MaterializationExercise,
   type V2MaterializationDryRunReport,
   type V2MaterializationPromotionReadiness,
@@ -38,13 +40,18 @@ import {
   prepareV2AcceptedSeedPreparationProbe,
   readMesocycleHandoffSummary,
   readNextCycleSeedDraft,
+  refreshMesocycleHandoffNextSeedDraftFromV2,
   sanitizeNextCycleSeedDraft,
   toHandoffProjectionSource,
   type NextMesocycleDesign,
   type NextCycleSeedDraft,
   updateMesocycleHandoffDraftInTransaction,
 } from "./mesocycle-handoff";
-import { buildMesocycleSlotPlanSeed } from "./mesocycle-handoff-slot-plan-projection.seed-serialization";
+import {
+  buildMesocycleSlotPlanSeed,
+  type ProjectedSuccessorSlotPlan,
+} from "./mesocycle-handoff-slot-plan-projection.seed-serialization";
+import { buildMesocycleSlotSequence } from "./mesocycle-slot-contract";
 
 async function prepareThenAcceptMesocycleHandoff(tx: unknown, mesocycleId = "meso-1") {
   const prepared = await prepareMesocycleHandoffAcceptance({
@@ -550,8 +557,9 @@ function makeAcceptanceTx(input: {
   create?: ReturnType<typeof vi.fn>;
   update?: ReturnType<typeof vi.fn>;
   updateMany?: ReturnType<typeof vi.fn>;
+  draft?: NextCycleSeedDraft;
 } = {}) {
-  const recommendedDraft = buildRecommendedDraft();
+  const recommendedDraft = input.draft ?? buildRecommendedDraft();
   const create =
     input.create ??
     vi.fn().mockResolvedValue({
@@ -854,6 +862,165 @@ function makeV2AcceptedSeedPreparationProbeInput(
   };
 }
 
+function makeRefreshDependencies(input: { blocked?: boolean } = {}) {
+  const v2Probe = makeV2AcceptedSeedPreparationProbeInput({
+    blocked: input.blocked,
+    slotPlans: makeV2ComparisonSlotPlans(),
+    inventory: makeComparisonInventory(),
+  });
+  const plannerPolicy = buildV2PlannerMesocyclePolicy();
+  return {
+    buildPreparationEvidence: vi.fn(() => ({
+      plannerPolicy,
+      exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      inventory: makeComparisonInventory(),
+      constraints: {
+        avoidExerciseIds: [],
+        favoriteExerciseIds: [],
+        painConflictExerciseIds: [],
+      },
+      materializedPlan: null,
+      basePlanValidation: {
+        version: 1,
+        source: "v2_base_plan_validation",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        status: input.blocked ? "fail" : "pass_with_warnings",
+        summary: {
+          blockerCount: input.blocked ? 1 : 0,
+          warningCount: input.blocked ? 0 : 1,
+        },
+        nextSafeAction: input.blocked
+          ? "fix_materializer"
+          : "ready_for_base_plan_compare",
+        checks: {},
+        blockers: [],
+        warnings: [],
+        guardrails: {
+          doesNotUseHistoricalStrategyRecommendations: true,
+          doesNotUseRepairedProjection: true,
+          doesNotAffectGeneration: true,
+          doesNotAffectSelectionV2: true,
+          doesNotAffectRepair: true,
+          doesNotAffectSeedSerialization: true,
+          doesNotAffectRuntimeReplay: true,
+          doesNotAffectReceipts: true,
+          consumedByDemandOrMaterializer: false,
+        },
+      },
+      liveNormalizedInventoryAvailable: true,
+    }) as unknown as V2MaterializationPreparationEvidence),
+    buildDryRunReport: v2Probe.dependencies.buildDryRunReport,
+    buildPromotionReadiness: v2Probe.dependencies.buildPromotionReadiness,
+    buildSlotPlanSeed: v2Probe.dependencies.buildSlotPlanSeed,
+    now: () => new Date("2026-05-29T12:00:00.000Z"),
+  };
+}
+
+function makeRefreshReader(input: {
+  state?: "AWAITING_HANDOFF" | "ACTIVE_DELOAD" | "COMPLETED";
+  sourceUserId?: string;
+  draft?: NextCycleSeedDraft;
+} = {}) {
+  const draft = input.draft ?? buildRecommendedDraft();
+  const source = {
+    id: "meso-1",
+    macroCycleId: "macro-1",
+    mesoNumber: 1,
+    startWeek: 0,
+    durationWeeks: 5,
+    focus: "Upper Hypertrophy",
+    volumeTarget: "HIGH",
+    intensityBias: "HYPERTROPHY",
+    sessionsPerWeek: 4,
+    daysPerWeek: 4,
+    splitType: "UPPER_LOWER",
+    accumulationSessionsCompleted: 8,
+    deloadSessionsCompleted: 1,
+    slotSequenceJson: null,
+    blocks: [],
+    macroCycle: { userId: input.sourceUserId ?? "user-1" },
+  };
+  const pending = {
+    id: "meso-1",
+    state: input.state ?? "AWAITING_HANDOFF",
+    mesoNumber: 1,
+    focus: "Upper Hypertrophy",
+    closedAt: new Date("2026-04-01T00:00:00.000Z"),
+    handoffSummaryJson: buildHandoffSummaryJson(buildRecommendedDraft()),
+    nextSeedDraftJson: draft,
+  };
+  const update = vi.fn(async (args) => ({
+    ...pending,
+    nextSeedDraftJson: args.data.nextSeedDraftJson,
+  }));
+  const findUnique = vi
+    .fn()
+    .mockResolvedValueOnce(source)
+    .mockResolvedValueOnce(pending)
+    .mockResolvedValueOnce(pending);
+  return {
+    update,
+    create: vi.fn(),
+    reader: {
+      mesocycle: {
+        findUnique,
+        update,
+      },
+      exercise: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      userPreference: {
+        findUnique: vi.fn().mockResolvedValue({
+          avoidExerciseIds: [],
+          favoriteExerciseIds: [],
+        }),
+      },
+      mesocycleExerciseRole: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      constraints: {
+        findUnique: vi.fn(),
+      },
+      workout: {
+        findMany: vi.fn(),
+      },
+      readinessSignal: {
+        findFirst: vi.fn(),
+      },
+    },
+  };
+}
+
+function buildStoredV2Draft(): NextCycleSeedDraft {
+  const slotSequence = buildMesocycleSlotSequence(
+    buildRecommendedDraft().structure.slots,
+  );
+  return {
+    ...buildRecommendedDraft(),
+    updatedAt: "2026-05-29T12:00:00.000Z",
+    acceptedSeedDraft: {
+      version: 1,
+      source: "v2_materialized_seed",
+      refreshedAt: "2026-05-29T12:00:00.000Z",
+      slotPlanSeedJson: buildMesocycleSlotPlanSeed({
+        slotSequence,
+        slotPlans: makeV2ComparisonSlotPlans() as unknown as ProjectedSuccessorSlotPlan[],
+        source: "v2_materialized_seed",
+      }),
+      provenance: {
+        basePlanValidationStatus: "pass_with_warnings",
+        materializerStatus: "materialized",
+        promotionReadinessStatus: "eligible_for_guarded_write",
+        productionGatesMissing: [],
+        serializer: "buildMesocycleSlotPlanSeed",
+        runtimeReplayUnchanged: true,
+      },
+    },
+  };
+}
+
 describe("sanitizeNextCycleSeedDraft", () => {
   it("canonicalizes ordered slots and allows drop actions against the frozen recommendation set", () => {
     const sanitized = sanitizeNextCycleSeedDraft({
@@ -946,6 +1113,99 @@ describe("sanitizeNextCycleSeedDraft", () => {
     });
 
     expect(formatCarryForwardConflictMessage(conflicts)).toContain("Bench Press (UPPER)");
+  });
+});
+
+describe("refreshMesocycleHandoffNextSeedDraftFromV2", () => {
+  it("refreshes an AWAITING_HANDOFF draft with a production-eligible V2 materialized seed", async () => {
+    const { reader, update, create } = makeRefreshReader();
+    const result = await refreshMesocycleHandoffNextSeedDraftFromV2({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      reader: reader as never,
+      dependencies: makeRefreshDependencies(),
+    });
+
+    expect(result.seedDraft).toMatchObject({
+      source: "v2_materialized_seed",
+      slotCount: 4,
+      parserCompatible: true,
+      minimalExecutableRowsOnly: true,
+    });
+    expect(result.v2Preparation).toMatchObject({
+      basePlanValidationStatus: "pass_with_warnings",
+      materializerStatus: "materialized",
+      promotionReadinessStatus: "eligible_for_guarded_write",
+      productionGatesMissing: [],
+    });
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          nextSeedDraftJson: expect.objectContaining({
+            acceptedSeedDraft: expect.objectContaining({
+              source: "v2_materialized_seed",
+              slotPlanSeedJson: expect.objectContaining({
+                source: "v2_materialized_seed",
+              }),
+            }),
+          }),
+        },
+      }),
+    );
+    const writtenDraft = update.mock.calls[0]?.[0]?.data
+      .nextSeedDraftJson as NextCycleSeedDraft;
+    expect(
+      writtenDraft.acceptedSeedDraft?.slotPlanSeedJson.slots.every((slot) =>
+        slot.exercises.every(
+          (exercise) =>
+            JSON.stringify(Object.keys(exercise).sort()) ===
+            JSON.stringify(["exerciseId", "role", "setCount"]),
+        ),
+      ),
+    ).toBe(true);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-AWAITING_HANDOFF sources without changing the draft", async () => {
+    const { reader, update } = makeRefreshReader({ state: "ACTIVE_DELOAD" });
+
+    await expect(
+      refreshMesocycleHandoffNextSeedDraftFromV2({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        reader: reader as never,
+        dependencies: makeRefreshDependencies(),
+      }),
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_NOT_PENDING");
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when V2 is not eligible and leaves the legacy draft unchanged", async () => {
+    const { reader, update } = makeRefreshReader();
+
+    await expect(
+      refreshMesocycleHandoffNextSeedDraftFromV2({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        reader: reader as never,
+        dependencies: makeRefreshDependencies({ blocked: true }),
+      }),
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_V2_DRAFT_REFRESH_BLOCKED");
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("rejects owner mismatches before writing", async () => {
+    const { reader, update } = makeRefreshReader({ sourceUserId: "other-user" });
+
+    await expect(
+      refreshMesocycleHandoffNextSeedDraftFromV2({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        reader: reader as never,
+        dependencies: makeRefreshDependencies(),
+      }),
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_NOT_FOUND");
+    expect(update).not.toHaveBeenCalled();
   });
 });
 
@@ -2401,6 +2661,51 @@ describe("handoff draft persistence", () => {
     expect(prepared.seedPersistenceProvenance.dbWriteOccurred).toBe(false);
     expect(mocks.loadPreloadedGenerationSnapshot).toHaveBeenCalledOnce();
     expect(mocks.projectSuccessorSlotPlansFromSnapshot).toHaveBeenCalledOnce();
+  });
+
+  it("uses a refreshed V2 draft seed on the normal accept-preparation path without legacy projection", async () => {
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+    const tx = makeAcceptanceTx({ draft: buildStoredV2Draft() });
+
+    const prepared = await prepareMesocycleHandoffAcceptance({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      reader: tx as never,
+    });
+
+    expect(prepared.slotPlanSeed?.source).toBe("v2_materialized_seed");
+    expect(prepared.seedPersistenceProvenance).toMatchObject({
+      source: "v2_materialized_seed",
+      dbWriteOccurred: false,
+    });
+    expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
+    expect(tx.mesocycle.create).not.toHaveBeenCalled();
+  });
+
+  it("reports a refreshed V2 draft seed as the candidate source in prepare-compare", async () => {
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+
+    const result = await prepareV2AcceptedSeedPreparationCompare({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      reader: makeAcceptanceTx({ draft: buildStoredV2Draft() }) as never,
+      v2Probe: makeV2AcceptedSeedPreparationProbeInput({
+        slotPlans: makeV2ComparisonSlotPlans(),
+        inventory: makeComparisonInventory(),
+      }),
+    });
+
+    expect(result.provenanceNoWriteBoundary.legacySourceLabel).toBe(
+      "v2_materialized_seed",
+    );
+    expect(result.comparedPreparationAvailability.legacy.sourceLabel).toBe(
+      "v2_materialized_seed",
+    );
+    expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
   });
 
   it("does not report persisted V2 success when the transaction fails", async () => {

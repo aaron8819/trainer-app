@@ -25,13 +25,17 @@ function makeReader(state: string) {
   };
 }
 
-function makePreparedHandoff() {
+function makePreparedHandoff(
+  seedSource: "handoff_slot_plan_projection" | "v2_materialized_seed" =
+    "handoff_slot_plan_projection",
+) {
   const slotSequence = buildMesocycleSlotSequence([
     { slotId: "upper_a", intent: "UPPER" },
     { slotId: "upper_b", intent: "UPPER" },
   ]);
   const slotPlanSeed = buildMesocycleSlotPlanSeed({
     slotSequence,
+    source: seedSource,
     slotPlans: [
       {
         slotId: "upper_a",
@@ -199,6 +203,34 @@ describe("next-mesocycle handoff dry-run audit", () => {
         source: "prepared_slotPlanSeedJson",
       },
     ]);
+  });
+
+  it("reports a refreshed V2 materialized draft as candidate seed source", async () => {
+    const { reader } = makeReader("AWAITING_HANDOFF");
+    const prepareHandoff = vi.fn(async () =>
+      makePreparedHandoff("v2_materialized_seed"),
+    );
+
+    const payload = await buildNextMesocycleHandoffDryRunAuditPayload({
+      userId: "user-1",
+      sourceMesocycleId: "source-1",
+      dependencies: {
+        reader: reader as never,
+        prepareHandoff: prepareHandoff as never,
+      },
+    });
+
+    if (!payload.wouldPrepareWriteSummary) {
+      throw new Error("expected handoff preparation summary");
+    }
+    expect(payload.wouldPrepareWriteSummary.slotPlanSeedSource).toBe(
+      "v2_materialized_seed",
+    );
+    expect(payload.seedShapeSummary).toMatchObject({
+      seedSource: "v2_materialized_seed",
+      parserCompatible: true,
+      minimalExecutableRowsOnly: true,
+    });
   });
 
   it("does not treat diagnostic preview as candidate truth and reports gate readiness limits", async () => {

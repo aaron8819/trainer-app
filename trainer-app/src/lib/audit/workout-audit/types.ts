@@ -1026,6 +1026,7 @@ export type NextMesocycleAcceptanceGatePayload = {
     sourceMesocycleId: string;
     sourceState: string | null;
     candidateKind: "accepted" | "draft" | "absent" | "diagnostic_preview_only";
+    candidateSeedSource?: string | null;
     candidateMesocycleId?: string;
     candidateDraftAvailable: boolean;
     persistedHandoffCandidateFound: boolean;

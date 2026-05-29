@@ -1542,6 +1542,12 @@ export function buildNextMesocycleAcceptanceGateFromEvidence(
       sourceMesocycleId: evidence.sourceMesocycleId,
       sourceState: source?.state ?? null,
       candidateKind,
+      ...(candidateFound
+        ? {
+            candidateSeedSource:
+              evidence.v2PrepareCompare?.provenance.legacySourceLabel ?? null,
+          }
+        : {}),
       ...(evidence.successorMesocycle?.id
         ? { candidateMesocycleId: evidence.successorMesocycle.id }
         : persistedCandidateFound && source?.id

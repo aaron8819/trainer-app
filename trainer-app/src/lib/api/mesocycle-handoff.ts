@@ -3,6 +3,15 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { nextCycleSeedDraftUpdateSchema } from "@/lib/validation";
 import {
+  buildV2AcceptedPlannerIntentDto,
+  buildV2MaterializationDryRunReport,
+  buildV2MaterializationPreparationEvidence,
+  buildV2MaterializationPromotionReadiness,
+  buildV2PlannerMesocyclePolicy,
+  DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+  type V2BasePlanValidation,
+} from "@/lib/engine/planning/v2";
+import {
   buildOrderedFlexibleSlots,
   findIncompatibleCarryForwardKeeps,
   formatCarryForwardConflictMessage,
@@ -45,6 +54,7 @@ import {
   buildV2MaterializedSeedAcceptanceProbe,
   completeAcceptedSeedPersistenceProvenance,
   buildV2MaterializedSeedForAcceptance,
+  HANDOFF_V2_MATERIALIZED_SEED_PRODUCTION_WRITE_GATES,
   type AcceptedSeedPersistenceProvenance,
   type BuildV2MaterializedSeedAcceptanceProbeInput,
   type BuildV2MaterializedSeedAcceptanceProbeResult,
@@ -53,7 +63,13 @@ import {
 } from "./mesocycle-handoff-v2-materialized-seed";
 import { buildMesocycleSlotSequence } from "./mesocycle-slot-contract";
 import { getLatestReadinessSignalForReader } from "./readiness";
+import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
 import { loadPreloadedGenerationSnapshot } from "./template-session/context-loader";
+import {
+  normalizeLiveInventoryForV2Materialization,
+  type LiveV2MaterializationExerciseRow,
+} from "./v2-materialization-live-inventory";
+import type { MesocycleSlotPlanSeed } from "./mesocycle-handoff-slot-plan-projection.seed-serialization";
 
 export { HANDOFF_V2_MATERIALIZED_SEED_PRODUCTION_WRITE_GATES } from "./mesocycle-handoff-v2-materialized-seed";
 export {
@@ -90,6 +106,18 @@ type PendingHandoffArtifactReader =
       typeof prisma,
       "mesocycle" | "mesocycleExerciseRole" | "constraints" | "workout" | "readinessSignal"
     >;
+type V2DraftRefreshReader = PendingHandoffArtifactReader &
+  HandoffSourceMesocycleReader & {
+    exercise: {
+      findMany(args: unknown): Promise<LiveV2MaterializationExerciseRow[]>;
+    };
+    userPreference: {
+      findUnique(args: unknown): Promise<{
+        avoidExerciseIds: string[];
+        favoriteExerciseIds: string[];
+      } | null>;
+    };
+  };
 
 type HandoffSourceMesocycle = HandoffArtifactSource & {
   macroCycle: {
@@ -167,6 +195,40 @@ type AcceptedMesocycleSlotPlanSeedPreparation = {
   seedPersistenceProvenance: AcceptedSeedPersistenceProvenance;
 };
 
+type V2DraftRefreshDependencies = {
+  buildPreparationEvidence?: typeof buildV2MaterializationPreparationEvidence;
+  buildDryRunReport?: typeof buildV2MaterializationDryRunReport;
+  buildPromotionReadiness?: typeof buildV2MaterializationPromotionReadiness;
+  buildSlotPlanSeed?: NonNullable<
+    BuildV2MaterializedSeedForAcceptanceInput["dependencies"]
+  >["buildSlotPlanSeed"];
+  now?: () => Date;
+};
+
+export type MesocycleHandoffNextSeedDraftRefreshResult = {
+  handoff: PendingMesocycleHandoff;
+  seedDraft: {
+    source: "v2_materialized_seed";
+    slotCount: number;
+    exerciseCount: number;
+    parserCompatible: boolean;
+    minimalExecutableRowsOnly: boolean;
+  };
+  v2Preparation: {
+    basePlanValidationStatus: string;
+    materializerStatus: string;
+    promotionReadinessStatus: string;
+    productionGatesMissing: string[];
+  };
+  safety: {
+    updatedNextSeedDraftJsonOnly: true;
+    successorAccepted: false;
+    successorMesocycleCreated: false;
+    workoutLogSessionCreated: false;
+    runtimeReplayChanged: false;
+  };
+};
+
 type HandoffAcceptanceTransactionResult = {
   mesocycle: Mesocycle;
   seedPersistenceProvenance: AcceptedSeedPersistenceProvenance;
@@ -210,6 +272,47 @@ const legacyNextMesocycleStartingPointJsonSchema = z.object({
   excludeDeload: z.literal(true),
 });
 
+const mesocycleSlotPlanSeedExerciseJsonSchema = z
+  .object({
+    exerciseId: z.string().min(1),
+    role: z.enum(["CORE_COMPOUND", "ACCESSORY"]),
+    setCount: z.number().int().min(1),
+  })
+  .strict();
+
+const mesocycleSlotPlanSeedJsonSchema = z.object({
+  version: z.literal(1),
+  source: z.enum(["handoff_slot_plan_projection", "v2_materialized_seed"]),
+  acceptedPlannerIntent: z.unknown().optional(),
+  slots: z
+    .array(
+      z.object({
+        slotId: z.string().min(1),
+        exercises: z.array(mesocycleSlotPlanSeedExerciseJsonSchema),
+      }),
+    )
+    .min(1),
+  diagnostics: z.unknown().optional(),
+});
+
+const acceptedSeedDraftJsonSchema = z.object({
+  version: z.literal(1),
+  source: z.literal("v2_materialized_seed"),
+  refreshedAt: z.string().datetime(),
+  slotPlanSeedJson: mesocycleSlotPlanSeedJsonSchema.refine(
+    (seed) => seed.source === "v2_materialized_seed",
+    "accepted seed draft must be V2-authored",
+  ),
+  provenance: z.object({
+    basePlanValidationStatus: z.string(),
+    materializerStatus: z.string(),
+    promotionReadinessStatus: z.string(),
+    productionGatesMissing: z.array(z.string()),
+    serializer: z.literal("buildMesocycleSlotPlanSeed"),
+    runtimeReplayUnchanged: z.literal(true),
+  }),
+});
+
 const nextCycleSeedDraftJsonSchema = nextCycleSeedDraftUpdateSchema.extend({
   version: z.literal(1),
   createdAt: z.string().datetime(),
@@ -218,6 +321,7 @@ const nextCycleSeedDraftJsonSchema = nextCycleSeedDraftUpdateSchema.extend({
     nextMesocycleStartingPointJsonSchema,
     legacyNextMesocycleStartingPointJsonSchema,
   ]),
+  acceptedSeedDraft: acceptedSeedDraftJsonSchema.optional(),
 });
 
 const handoffCarryForwardRecommendationSchema = z.object({
@@ -532,10 +636,11 @@ export function readNextCycleSeedDraft(value: unknown): NextCycleSeedDraft | nul
   if (!parsed.success) {
     return null;
   }
+  const data = parsed.data as NextCycleSeedDraft;
 
   return normalizeNextCycleSeedDraft({
-    ...parsed.data,
-    startingPoint: normalizeStartingPoint(parsed.data.startingPoint),
+    ...data,
+    startingPoint: normalizeStartingPoint(data.startingPoint),
   });
 }
 
@@ -545,14 +650,15 @@ export function readMesocycleHandoffSummary(value: unknown): MesocycleHandoffSum
     return null;
   }
 
+  const data = parsed.data as MesocycleHandoffSummary;
   return {
-    ...parsed.data,
+    ...data,
     recommendedNextSeed: normalizeNextCycleSeedDraft({
-      ...parsed.data.recommendedNextSeed,
-      startingPoint: normalizeStartingPoint(parsed.data.recommendedNextSeed.startingPoint),
+      ...data.recommendedNextSeed,
+      startingPoint: normalizeStartingPoint(data.recommendedNextSeed.startingPoint),
     }),
-    recommendedDesign: parsed.data.recommendedDesign
-      ? normalizeRecommendedDesign(parsed.data.recommendedDesign as NextMesocycleDesign)
+    recommendedDesign: data.recommendedDesign
+      ? normalizeRecommendedDesign(data.recommendedDesign as NextMesocycleDesign)
       : undefined,
   };
 }
@@ -796,6 +902,159 @@ async function loadHandoffWorkoutRows(
       },
     },
   });
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(value);
+}
+
+function seedExerciseRowsAreMinimal(seed: MesocycleSlotPlanSeed | null): boolean {
+  return Boolean(
+    seed?.slots.every((slot) =>
+      slot.exercises.every((exercise) => {
+        const keys = Object.keys(exercise).sort();
+        return (
+          keys.length === 3 &&
+          keys[0] === "exerciseId" &&
+          keys[1] === "role" &&
+          keys[2] === "setCount"
+        );
+      }),
+    ),
+  );
+}
+
+function slotSeedAlignsWithSequence(input: {
+  seed: MesocycleSlotPlanSeed;
+  slotSequence: ReturnType<typeof projectSuccessorMesocycle>["mesocycle"]["slotSequence"];
+}): boolean {
+  const seedSlotIds = input.seed.slots.map((slot) => slot.slotId);
+  const sequenceSlotIds = input.slotSequence.slots.map((slot) => slot.slotId);
+  return stableJson(seedSlotIds) === stableJson(sequenceSlotIds);
+}
+
+function refreshedV2SeedFromDraft(input: {
+  draft: NextCycleSeedDraft;
+  slotSequence: ReturnType<typeof projectSuccessorMesocycle>["mesocycle"]["slotSequence"];
+}): MesocycleSlotPlanSeed | null {
+  const seed = input.draft.acceptedSeedDraft?.slotPlanSeedJson;
+  if (!seed || seed.source !== "v2_materialized_seed") {
+    return null;
+  }
+  if (!slotSeedAlignsWithSequence({ seed, slotSequence: input.slotSequence })) {
+    throw new Error("MESOCYCLE_HANDOFF_REFRESHED_SEED_ALIGNMENT_INVALID");
+  }
+  if (!parseSlotPlanSeedJson(seed) || !seedExerciseRowsAreMinimal(seed)) {
+    throw new Error("MESOCYCLE_HANDOFF_REFRESHED_SEED_INVALID");
+  }
+  return seed;
+}
+
+function basePlanValidationPassed(validation: V2BasePlanValidation): boolean {
+  return (
+    (validation.status === "pass" || validation.status === "pass_with_warnings") &&
+    validation.summary.blockerCount === 0
+  );
+}
+
+async function buildLiveV2MaterializedDraftSeed(input: {
+  reader: V2DraftRefreshReader;
+  userId: string;
+  slotSequence: ReturnType<typeof projectSuccessorMesocycle>["mesocycle"]["slotSequence"];
+  dependencies?: V2DraftRefreshDependencies;
+}): Promise<{
+  seed: MesocycleSlotPlanSeed;
+  basePlanValidation: V2BasePlanValidation;
+  materializerStatus: string;
+  promotionReadinessStatus: string;
+  productionGatesMissing: string[];
+}> {
+  const [exercises, preferences] = await Promise.all([
+    input.reader.exercise.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        aliases: true,
+        exerciseEquipment: { include: { equipment: true } },
+        exerciseMuscles: { include: { muscle: true } },
+      },
+    }),
+    input.reader.userPreference.findUnique({ where: { userId: input.userId } }),
+  ]);
+  const plannerPolicy = buildV2PlannerMesocyclePolicy();
+  const taxonomy = DEFAULT_V2_EXERCISE_CLASS_TAXONOMY;
+  const inventory = normalizeLiveInventoryForV2Materialization(exercises);
+  const constraints = {
+    avoidExerciseIds: preferences?.avoidExerciseIds ?? [],
+    favoriteExerciseIds: preferences?.favoriteExerciseIds ?? [],
+    painConflictExerciseIds: [],
+  };
+  const preparationEvidence = (input.dependencies?.buildPreparationEvidence ??
+    buildV2MaterializationPreparationEvidence)({
+    plannerPolicy,
+    taxonomy,
+    inventory,
+    constraints,
+  });
+  if (!basePlanValidationPassed(preparationEvidence.basePlanValidation)) {
+    throw new Error("MESOCYCLE_HANDOFF_V2_DRAFT_REFRESH_BLOCKED:base_plan_validation");
+  }
+
+  const slotIntentById = Object.fromEntries(
+    input.slotSequence.slots.map((slot) => [slot.slotId, slot.intent]),
+  );
+  const buildDryRunReport =
+    input.dependencies?.buildDryRunReport ?? buildV2MaterializationDryRunReport;
+  const dryRunReport = buildDryRunReport({
+    plannerPolicy: preparationEvidence.plannerPolicy,
+    exerciseSelectionPlan: preparationEvidence.exerciseSelectionPlan,
+    taxonomy: preparationEvidence.taxonomy,
+    inventory: preparationEvidence.inventory,
+    materializedPlan: preparationEvidence.materializedPlan,
+    constraints: preparationEvidence.constraints,
+    slotIntentById,
+  });
+  const buildPromotionReadiness =
+    input.dependencies?.buildPromotionReadiness ??
+    buildV2MaterializationPromotionReadiness;
+  const promotionReadiness = buildPromotionReadiness({
+    dryRunReport,
+    requiredLaneCoverageBySlot: dryRunReport.requiredLaneCoverageBySlot,
+    expectedSlotCount: input.slotSequence.slots.length,
+    productionWriteGates: HANDOFF_V2_MATERIALIZED_SEED_PRODUCTION_WRITE_GATES,
+  });
+  const v2Seed = buildV2MaterializedSeedForAcceptance({
+    enableV2MaterializedSeedWrite: true,
+    slotSequence: input.slotSequence,
+    plannerPolicy: preparationEvidence.plannerPolicy,
+    exerciseSelectionPlan: preparationEvidence.exerciseSelectionPlan,
+    taxonomy: preparationEvidence.taxonomy,
+    inventory: preparationEvidence.inventory,
+    materializedPlan: preparationEvidence.materializedPlan,
+    constraints: preparationEvidence.constraints,
+    requiredLaneCoverageBySlot: dryRunReport.requiredLaneCoverageBySlot,
+    productionWriteGates: HANDOFF_V2_MATERIALIZED_SEED_PRODUCTION_WRITE_GATES,
+    acceptedPlannerIntent: buildV2AcceptedPlannerIntentDto(plannerPolicy),
+    dependencies: {
+      buildDryRunReport: () => dryRunReport,
+      buildPromotionReadiness: () => promotionReadiness,
+      ...(input.dependencies?.buildSlotPlanSeed
+        ? { buildSlotPlanSeed: input.dependencies.buildSlotPlanSeed }
+        : {}),
+    },
+  });
+
+  if (v2Seed.status !== "ready") {
+    const reason = v2Seed.status === "blocked" ? v2Seed.reason : v2Seed.status;
+    throw new Error(`MESOCYCLE_HANDOFF_V2_DRAFT_REFRESH_BLOCKED:${reason}`);
+  }
+
+  return {
+    seed: v2Seed.slotPlanSeedJson,
+    basePlanValidation: preparationEvidence.basePlanValidation,
+    materializerStatus: dryRunReport.materializer.status,
+    promotionReadinessStatus: promotionReadiness.status,
+    productionGatesMissing: [],
+  };
 }
 
 async function buildAcceptedMesocycleSlotPlanSeed(input: {
@@ -1082,16 +1341,27 @@ export async function prepareV2AcceptedSeedPreparationCompare(input: {
     source: projectionSource,
     design,
   });
+  const refreshedDraftSeed = refreshedV2SeedFromDraft({
+    draft,
+    slotSequence: projection.mesocycle.slotSequence,
+  });
   let legacyPreparation: AcceptedMesocycleSlotPlanSeedPreparation | null = null;
   let legacyUnavailableReason: string | undefined;
 
   try {
-    legacyPreparation = await buildAcceptedMesocycleSlotPlanSeed({
-      userId: source.macroCycle.userId,
-      source: projectionSource,
-      design,
-      slotSequence: projection.mesocycle.slotSequence,
-    });
+    legacyPreparation = refreshedDraftSeed
+      ? {
+          slotPlanSeed: refreshedDraftSeed,
+          seedPersistenceProvenance: buildAcceptedSeedPersistenceProvenance({
+            source: "v2_materialized_seed",
+          }),
+        }
+      : await buildAcceptedMesocycleSlotPlanSeed({
+          userId: source.macroCycle.userId,
+          source: projectionSource,
+          design,
+          slotSequence: projection.mesocycle.slotSequence,
+        });
     if (!legacyPreparation.slotPlanSeed) {
       legacyUnavailableReason = "legacy_projection_seed_unavailable";
     }
@@ -1146,6 +1416,12 @@ function buildAcceptanceDraftFingerprint(draft: NextCycleSeedDraft): string {
   return JSON.stringify({
     sourceMesocycleId: draft.sourceMesocycleId,
     structure: draft.structure,
+    acceptedSeedDraft: draft.acceptedSeedDraft
+      ? {
+          source: draft.acceptedSeedDraft.source,
+          slotPlanSeedJson: draft.acceptedSeedDraft.slotPlanSeedJson,
+        }
+      : null,
     carryForwardSelections: draft.carryForwardSelections.map((selection) => ({
       exerciseId: selection.exerciseId,
       sessionIntent: selection.sessionIntent,
@@ -1287,15 +1563,26 @@ export async function prepareMesocycleHandoffAcceptance(input: {
     source: projectionSource,
     design,
   });
-  const seedPreparation = await buildAcceptedMesocycleSlotPlanSeed({
-    userId: source.macroCycle.userId,
-    source: projectionSource,
-    design,
+  const refreshedDraftSeed = refreshedV2SeedFromDraft({
+    draft,
     slotSequence: projection.mesocycle.slotSequence,
-    ...(input.v2MaterializedSeedWrite
-      ? { v2MaterializedSeedWrite: input.v2MaterializedSeedWrite }
-      : {}),
   });
+  const seedPreparation = refreshedDraftSeed
+    ? {
+        slotPlanSeed: refreshedDraftSeed,
+        seedPersistenceProvenance: buildAcceptedSeedPersistenceProvenance({
+          source: "v2_materialized_seed",
+        }),
+      }
+    : await buildAcceptedMesocycleSlotPlanSeed({
+        userId: source.macroCycle.userId,
+        source: projectionSource,
+        design,
+        slotSequence: projection.mesocycle.slotSequence,
+        ...(input.v2MaterializedSeedWrite
+          ? { v2MaterializedSeedWrite: input.v2MaterializedSeedWrite }
+          : {}),
+      });
 
   return {
     userId: input.userId,
@@ -1554,6 +1841,133 @@ export async function acceptMesocycleHandoff(input: {
 
   const prepared = await prepareMesocycleHandoffAcceptance(input);
   return prisma.$transaction((tx) => acceptPreparedMesocycleHandoffInTransaction(tx, prepared));
+}
+
+export async function refreshMesocycleHandoffNextSeedDraftFromV2(input: {
+  userId: string;
+  mesocycleId: string;
+  reader?: V2DraftRefreshReader;
+  dependencies?: V2DraftRefreshDependencies;
+}): Promise<MesocycleHandoffNextSeedDraftRefreshResult> {
+  const reader = (input.reader ?? prisma) as V2DraftRefreshReader;
+  const now = input.dependencies?.now ?? (() => new Date());
+  const source = await loadHandoffSourceMesocycle(reader, input.mesocycleId);
+  if (source.macroCycle.userId !== input.userId) {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_FOUND");
+  }
+
+  const pendingRow = await reader.mesocycle.findUnique({
+    where: { id: input.mesocycleId },
+    select: pendingHandoffRowSelect,
+  });
+  const refreshedPendingRow = await refreshPendingHandoffArtifactsIfNeeded(
+    reader,
+    pendingRow,
+  );
+  if (!refreshedPendingRow || refreshedPendingRow.state !== "AWAITING_HANDOFF") {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
+  }
+
+  const summary = readMesocycleHandoffSummary(refreshedPendingRow.handoffSummaryJson);
+  const storedDraft = readNextCycleSeedDraft(refreshedPendingRow.nextSeedDraftJson);
+  if (!summary || !summary.recommendedDesign || !summary.recommendedNextSeed || !storedDraft) {
+    throw new Error("MESOCYCLE_HANDOFF_DRAFT_MISSING");
+  }
+
+  const draft = sanitizeNextCycleSeedDraft({
+    draft: storedDraft,
+    sourceMesocycleId: source.id,
+    fallbackDraft: summary.recommendedNextSeed,
+  });
+  const draftFingerprint = buildAcceptanceDraftFingerprint(draft);
+  const design = applyDraftOverridesToDesign({
+    design: summary.recommendedDesign,
+    draft,
+  });
+  const projection = projectSuccessorMesocycle({
+    source: toHandoffProjectionSource(source),
+    design,
+  });
+  const v2DraftSeed = await buildLiveV2MaterializedDraftSeed({
+    reader,
+    userId: input.userId,
+    slotSequence: projection.mesocycle.slotSequence,
+    dependencies: input.dependencies,
+  });
+  const refreshedAt = now().toISOString();
+  const refreshedDraft: NextCycleSeedDraft = {
+    ...draft,
+    updatedAt: refreshedAt,
+    acceptedSeedDraft: {
+      version: 1,
+      source: "v2_materialized_seed",
+      refreshedAt,
+      slotPlanSeedJson: v2DraftSeed.seed,
+      provenance: {
+        basePlanValidationStatus: v2DraftSeed.basePlanValidation.status,
+        materializerStatus: v2DraftSeed.materializerStatus,
+        promotionReadinessStatus: v2DraftSeed.promotionReadinessStatus,
+        productionGatesMissing: v2DraftSeed.productionGatesMissing,
+        serializer: "buildMesocycleSlotPlanSeed",
+        runtimeReplayUnchanged: true,
+      },
+    },
+  };
+
+  const currentBeforeWrite = await reader.mesocycle.findUnique({
+    where: { id: refreshedPendingRow.id },
+    select: pendingHandoffRowSelect,
+  });
+  if (!currentBeforeWrite || currentBeforeWrite.state !== "AWAITING_HANDOFF") {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
+  }
+  const currentDraft = readNextCycleSeedDraft(currentBeforeWrite.nextSeedDraftJson);
+  if (!currentDraft) {
+    throw new Error("MESOCYCLE_HANDOFF_DRAFT_MISSING");
+  }
+  if (buildAcceptanceDraftFingerprint(currentDraft) !== draftFingerprint) {
+    throw new Error("MESOCYCLE_HANDOFF_DRAFT_CHANGED");
+  }
+
+  const updated = await reader.mesocycle.update({
+    where: { id: refreshedPendingRow.id },
+    data: {
+      nextSeedDraftJson: refreshedDraft as Prisma.InputJsonValue,
+    },
+    select: pendingHandoffRowSelect,
+  });
+
+  const mapped = mapPendingHandoffRow(updated);
+  if (!mapped) {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
+  }
+  const seed = v2DraftSeed.seed;
+  return {
+    handoff: mapped,
+    seedDraft: {
+      source: "v2_materialized_seed",
+      slotCount: seed.slots.length,
+      exerciseCount: seed.slots.reduce(
+        (sum, slot) => sum + slot.exercises.length,
+        0,
+      ),
+      parserCompatible: Boolean(parseSlotPlanSeedJson(seed)),
+      minimalExecutableRowsOnly: seedExerciseRowsAreMinimal(seed),
+    },
+    v2Preparation: {
+      basePlanValidationStatus: v2DraftSeed.basePlanValidation.status,
+      materializerStatus: v2DraftSeed.materializerStatus,
+      promotionReadinessStatus: v2DraftSeed.promotionReadinessStatus,
+      productionGatesMissing: v2DraftSeed.productionGatesMissing,
+    },
+    safety: {
+      updatedNextSeedDraftJsonOnly: true,
+      successorAccepted: false,
+      successorMesocycleCreated: false,
+      workoutLogSessionCreated: false,
+      runtimeReplayChanged: false,
+    },
+  };
 }
 
 export async function updateMesocycleHandoffDraftInTransaction(

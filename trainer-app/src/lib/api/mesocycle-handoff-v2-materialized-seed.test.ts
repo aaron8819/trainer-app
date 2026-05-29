@@ -1011,7 +1011,7 @@ describe("buildV2MaterializedSeedAcceptanceProbe", () => {
     expect(result).not.toHaveProperty("slotPlanSeedJson");
   });
 
-  it("keeps live production callers except the guarded empty-replacement operator from enabling V2 materialized seed writes", () => {
+  it("keeps live production callers except guarded explicit write paths from enabling V2 materialized seed writes", () => {
     const sourceDir = path.join(process.cwd(), "src");
     const allowedOperatorWritePath = path.join(
       sourceDir,
@@ -1019,11 +1019,23 @@ describe("buildV2MaterializedSeedAcceptanceProbe", () => {
       "api",
       "replace-empty-mesocycle-with-v2.ts",
     );
+    const allowedHandoffDraftRefreshPath = path.join(
+      sourceDir,
+      "lib",
+      "api",
+      "mesocycle-handoff.ts",
+    );
     const violations = listSourceTypeScriptFiles(sourceDir).flatMap((file) => {
       if (file === allowedOperatorWritePath) {
         const text = fs.readFileSync(file, "utf8");
         expect(text).toContain("replaceEmptyActiveMesocycleWithV2");
         expect(text).toContain("confirmEmptyMesocycleReplacement");
+        return [];
+      }
+      if (file === allowedHandoffDraftRefreshPath) {
+        const text = fs.readFileSync(file, "utf8");
+        expect(text).toContain("refreshMesocycleHandoffNextSeedDraftFromV2");
+        expect(text).toContain("MESOCYCLE_HANDOFF_V2_DRAFT_REFRESH_BLOCKED");
         return [];
       }
       const text = fs.readFileSync(file, "utf8");

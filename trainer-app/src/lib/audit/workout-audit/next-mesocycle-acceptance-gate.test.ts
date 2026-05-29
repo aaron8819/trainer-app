@@ -42,7 +42,10 @@ function source(state = "AWAITING_HANDOFF") {
   };
 }
 
-function v2Compare(found = true): V2AcceptedSeedPrepareCompareAuditPayload {
+function v2Compare(
+  found = true,
+  seedSource = "handoff_slot_plan_projection",
+): V2AcceptedSeedPrepareCompareAuditPayload {
   return {
     compareStatus: found ? "available" : "no_handoff_candidate",
     handoffCandidate: found
@@ -82,6 +85,7 @@ function v2Compare(found = true): V2AcceptedSeedPrepareCompareAuditPayload {
       ],
     },
     provenance: {
+      legacySourceLabel: seedSource,
       baseValidationStatus: "pass",
       materializerStatus: "materialized",
       seedShapeCompatibility: { compatible: true },
@@ -289,6 +293,7 @@ const completedBlockRetros = [
 function build(input: {
   state?: string;
   found?: boolean;
+  seedSource?: string;
   preview?: MesocycleExplainAuditPayload;
   retros?: WeeklyRetroAuditPayload[];
   volumes?: Array<{
@@ -305,7 +310,7 @@ function build(input: {
     sourceMesocycleId: "meso-source",
     sourceMesocycle: source(input.state),
     incompleteWorkouts: [],
-    v2PrepareCompare: v2Compare(input.found ?? true),
+    v2PrepareCompare: v2Compare(input.found ?? true, input.seedSource),
     diagnosticPreview: input.preview,
     completedBlockRetros: input.retros,
     candidateVolumeRows: input.volumes,
@@ -441,6 +446,26 @@ describe("next mesocycle acceptance gate", () => {
       mustFixBeforeWeek1: true,
     });
     expect(payload.gateResult).toBe("rejected");
+  });
+
+  it("identifies a refreshed V2 materialized seed as the evaluated candidate source", () => {
+    const payload = build({
+      seedSource: "v2_materialized_seed",
+      volumes: [
+        {
+          muscle: "Rear Delts",
+          projectedSets: 7,
+          mev: 4,
+          productiveTarget: 6,
+          mav: 12,
+        },
+      ],
+    });
+
+    expect(payload.candidateIdentity).toMatchObject({
+      candidateKind: "draft",
+      candidateSeedSource: "v2_materialized_seed",
+    });
   });
 
   it("keeps rear-delt diagnostic preview evidence separate from candidate truth", () => {

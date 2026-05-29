@@ -114,7 +114,7 @@ Route-purpose shorthand:
 
 5. Mesocycle closeout and next-cycle acceptance
 - UI entries: `/`, `/program`, `/mesocycles/[id]/review`, `/mesocycles/[id]/setup`
-- APIs: `PATCH /api/mesocycles/[id]/draft`, `POST /api/mesocycles/[id]/accept-next-cycle`
+- APIs: `PATCH /api/mesocycles/[id]/draft`, `POST /api/mesocycles/[id]/refresh-next-seed-draft`, `POST /api/mesocycles/[id]/accept-next-cycle`
 - When the last deload session closes the mesocycle, Home and Program switch into an explicit handoff state instead of auto-rolling into the next mesocycle (`src/app/page.tsx`, `src/app/program/page.tsx`).
 - `/mesocycles/[id]/review` is the closeout review page:
   - frozen handoff summary and canonical next-cycle design decision at the top
@@ -131,6 +131,7 @@ Route-purpose shorthand:
   - repeated-slot labels in setup preview derive from canonical ordered slot-contract sequencing, not from parsing slot-id suffixes
 - Acceptance flow semantics:
   - save draft first if needed
+  - optionally call the explicit guarded `POST /api/mesocycles/[id]/refresh-next-seed-draft` action to rebuild the persisted draft candidate from a production-eligible V2 materialized seed; this does not accept the next cycle
   - call `POST /api/mesocycles/[id]/accept-next-cycle`
   - on success, return to `/program` with the new active mesocycle created
 - Historical closeout remains reviewable after acceptance. Once the source mesocycle is `COMPLETED`, review stays available but setup editing is no longer surfaced.

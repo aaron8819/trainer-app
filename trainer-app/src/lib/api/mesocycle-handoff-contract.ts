@@ -8,6 +8,7 @@ import type {
   WorkoutSessionIntent,
 } from "@prisma/client";
 import type { MesocycleSlotAuthoredSemantics } from "./mesocycle-slot-contract";
+import type { MesocycleSlotPlanSeed } from "./mesocycle-handoff-slot-plan-projection.seed-serialization";
 
 export type NextCycleSlotId = string;
 
@@ -193,6 +194,20 @@ export type NextCycleSeedDraft = {
   };
   startingPoint: NextMesocycleStartingPoint;
   carryForwardSelections: NextCycleCarryForwardSelection[];
+  acceptedSeedDraft?: {
+    version: 1;
+    source: "v2_materialized_seed";
+    refreshedAt: string;
+    slotPlanSeedJson: MesocycleSlotPlanSeed;
+    provenance: {
+      basePlanValidationStatus: string;
+      materializerStatus: string;
+      promotionReadinessStatus: string;
+      productionGatesMissing: string[];
+      serializer: "buildMesocycleSlotPlanSeed";
+      runtimeReplayUnchanged: true;
+    };
+  };
 };
 
 export type HandoffCarryForwardRecommendation = {

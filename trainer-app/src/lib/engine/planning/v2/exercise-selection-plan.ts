@@ -8,6 +8,7 @@ import type {
   V2PlannerSlotId,
   V2SelectionCapacityPlan,
 } from "./types";
+import { buildV2LaneSelectionIntentV0ForPlanLane } from "./lane-selection-intent";
 
 export type V2ExerciseSelectionPlanInput = {
   exerciseClassDistributionBySlot: V2ExerciseClassDistributionBySlot;
@@ -238,6 +239,15 @@ export function buildV2ExerciseSelectionPlan(
             const optionalActivation = cloneOptionalActivation(
               lane.optionalActivation,
             );
+            const laneSelectionIntent = buildV2LaneSelectionIntentV0ForPlanLane({
+              laneId: lane.laneId,
+              role: lane.role,
+              primaryMuscles: [...lane.primaryMuscles],
+              supportMuscles: [...lane.supportMuscles],
+              acceptableExerciseClasses,
+              preferredExerciseClasses: [...lane.preferredExerciseClasses],
+              ...(directFloor ? { directFloor } : {}),
+            });
             return {
               laneId: lane.laneId,
               requirement: requirementForLane({ lane }),
@@ -272,6 +282,7 @@ export function buildV2ExerciseSelectionPlan(
                   lane.capPolicy.allowAboveFiveSetsOnlyWithJustification,
               },
               continuityPolicy: continuityPolicyForRole(lane.role),
+              ...(laneSelectionIntent ? { laneSelectionIntent } : {}),
             };
           }),
         };

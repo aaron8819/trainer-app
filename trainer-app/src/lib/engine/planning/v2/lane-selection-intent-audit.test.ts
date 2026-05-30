@@ -8,6 +8,7 @@ import {
   buildV2LaneSelectionIntentAudit,
   type V2LaneSelectionIntentAudit,
 } from "./lane-selection-intent-audit";
+import type { V2ExerciseSelectionPlan } from "./types";
 
 function buildAudit(): V2LaneSelectionIntentAudit {
   const policy = buildV2PlannerMesocyclePolicy();
@@ -56,6 +57,74 @@ describe("buildV2LaneSelectionIntentAudit", () => {
     expect(audit.summary.lanesWithCorrectnessRisk).toBeGreaterThan(0);
   });
 
+  it("emits laneSelectionIntent v0 for the high-risk Stage A lanes", () => {
+    const audit = buildAudit();
+
+    for (const [slotId, laneId] of [
+      ["upper_b", "vertical_press"],
+      ["upper_b", "vertical_pull_anchor"],
+      ["lower_a", "hamstring_curl"],
+      ["lower_a", "quad_isolation"],
+      ["lower_a", "calves"],
+      ["upper_b", "side_delt_isolation"],
+      ["upper_a", "rear_delt"],
+      ["upper_a", "triceps"],
+      ["upper_b", "biceps"],
+      ["upper_b", "row_support"],
+    ] as const) {
+      const lane = auditLane(audit, slotId, laneId);
+
+      expect(lane.proposedLaneSelectionIntent).toMatchObject({
+        version: 0,
+        contract: "laneSelectionIntent",
+        source: "v2_planner_policy",
+        consumedByMaterializer: false,
+      });
+      expect(lane.missingRequiredV0Fields).toEqual([]);
+      expect(lane.materializerInferenceRequired).toBe(true);
+    }
+  });
+
+  it("reports v0 risk fields and missing required fields when intent is absent", () => {
+    const policy = buildV2PlannerMesocyclePolicy();
+    const planWithoutRowSupportIntent = JSON.parse(
+      JSON.stringify(policy.exerciseSelectionPlan),
+    ) as V2ExerciseSelectionPlan;
+    let deletedCount = 0;
+    for (const week of planWithoutRowSupportIntent.weeks) {
+      const rowSupport = week.slots
+        .find((slot) => slot.slotId === "upper_b")
+        ?.lanes.find((lane) => lane.laneId === "row_support");
+      if (rowSupport) {
+        delete rowSupport.laneSelectionIntent;
+        deletedCount += 1;
+      }
+    }
+    expect(deletedCount).toBeGreaterThan(0);
+
+    const audit = buildV2LaneSelectionIntentAudit({
+      exerciseSelectionPlan: planWithoutRowSupportIntent,
+      targetSkeleton: policy.targetSkeleton,
+    });
+    const lane = auditLane(audit, "upper_b", "row_support");
+
+    expect(lane.missingRequiredV0Fields).toEqual(
+      expect.arrayContaining([
+        "laneJob",
+        "requiredMovementPattern",
+        "allowedExerciseClasses",
+        "directnessRequirement",
+        "capacityPriority",
+        "fallbackPolicy",
+        "identityPreservationMode",
+      ]),
+    );
+    expect(lane.risks).toMatchObject({
+      quality: "under_specified_current_plan",
+      extensibility: "under_specified_current_plan",
+    });
+  });
+
   it("flags vertical pull lanes when strict movement and substitution policy are implicit", () => {
     const audit = buildAudit();
 
@@ -76,6 +145,19 @@ describe("buildV2LaneSelectionIntentAudit", () => {
           acceptableExerciseClasses: ["vertical_pull"],
         },
       });
+      if (laneId === "vertical_pull_anchor") {
+        expect(lane.availableIntent).toMatchObject({
+          laneSelectionIntent: {
+            laneJob: "anchor_overload",
+            requiredMovementPattern: "vertical_pull",
+            disallowedExerciseClasses: [
+              "row",
+              "pullover",
+              "straight_arm_pulldown",
+            ],
+          },
+        });
+      }
       expectMissing(lane, "requiredMovementPatterns", "correctness");
       expectMissing(lane, "substitutionStrictness", "correctness");
     }
@@ -93,6 +175,11 @@ describe("buildV2LaneSelectionIntentAudit", () => {
       ]),
     );
     expect(isolation.availableIntent).toMatchObject({
+      laneSelectionIntent: {
+        laneJob: "direct_floor",
+        requiredMovementPattern: "knee_extension",
+        disallowedExerciseClasses: ["squat_pattern", "lunge", "leg_press"],
+      },
       classRequirementsPreferences: {
         acceptableExerciseClasses: ["leg_extension", "quad_isolation"],
       },
@@ -155,6 +242,35 @@ describe("buildV2LaneSelectionIntentAudit", () => {
       },
     });
     expectMissing(secondExposure, "pressVsFlyPriority", "quality");
+  });
+
+  it("captures chest, hamstring, and calf v0 requirements from the high-priority specs", () => {
+    const audit = buildAudit();
+    const chestSupport = auditLane(audit, "upper_b", "vertical_press");
+    const hamstringCurl = auditLane(audit, "lower_a", "hamstring_curl");
+    const calves = auditLane(audit, "lower_a", "calves");
+
+    expect(chestSupport.proposedLaneSelectionIntent).toMatchObject({
+      laneJob: "support_coverage",
+      requiredMovementPattern: "chest_press",
+      allowedExerciseClasses: ["chest_press", "chest_biased_press_support"],
+      minimumTargetStimulus: {
+        muscle: "Chest",
+        minimumPerSetStimulus: 0.75,
+      },
+      duplicatePolicy: "prefer_variation_if_clean",
+    });
+    expect(hamstringCurl.proposedLaneSelectionIntent).toMatchObject({
+      requiredMovementPattern: "knee_flexion",
+      allowedExerciseClasses: ["hamstring_curl"],
+      disallowedExerciseClasses: ["hinge", "back_extension", "hip_thrust"],
+      fatiguePreference: "low_axial",
+    });
+    expect(calves.proposedLaneSelectionIntent).toMatchObject({
+      requiredMovementPattern: "calf_raise",
+      allowedExerciseClasses: ["calf_isolation"],
+      duplicatePolicy: "prefer_variation_if_clean",
+    });
   });
 
   it("flags skeleton-only upper_a:chest_secondary when it is absent from the materializer-facing plan", () => {

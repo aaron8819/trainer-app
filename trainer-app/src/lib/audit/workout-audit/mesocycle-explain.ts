@@ -69,6 +69,7 @@ import {
   type V2StrategyHypothesisShadowProjectionEvidence,
   type V2SupportLanePolicy,
 } from "@/lib/engine/planning/v2";
+import { buildV2LaneSelectionIntentAudit } from "@/lib/engine/planning/v2/lane-selection-intent-audit";
 import {
   buildPlannerOwnedAccumulationProjection,
   buildV2ExerciseSelectionPlanDiagnostic,
@@ -8410,6 +8411,10 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         v2SetDistributionIntent,
         v2TargetVsNoRepairDiff,
       });
+    const v2LaneSelectionIntentAudit = buildV2LaneSelectionIntentAudit({
+      exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
+      targetSkeleton: plannerPolicy.targetSkeleton,
+    });
     const v2SupportLaneProjectionDiagnostic =
       buildV2SupportLaneProjectionDiagnostic({
         v2SupportLanePolicy,
@@ -8490,6 +8495,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       v2SelectionCapacityPlanDiagnostic,
       plannerOwnedAccumulationProjection,
       v2ExerciseSelectionPlanDiagnostic,
+      v2LaneSelectionIntentAudit,
       lowAxialHipExtensionLimitation,
       slotPlans: [],
       weeklyMuscleTotals: [],
@@ -8635,6 +8641,10 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         noRepair.duplicateContinuityJustification,
       exerciseConcentration: noRepair.exerciseConcentration,
     });
+  const v2LaneSelectionIntentAudit = buildV2LaneSelectionIntentAudit({
+    exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
+    targetSkeleton: plannerPolicy.targetSkeleton,
+  });
   const v2SupportLaneProjectionDiagnostic =
     buildV2SupportLaneProjectionDiagnostic({
       v2SupportLanePolicy,
@@ -8717,6 +8727,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     v2SelectionCapacityPlanDiagnostic,
     plannerOwnedAccumulationProjection,
     v2ExerciseSelectionPlanDiagnostic,
+    v2LaneSelectionIntentAudit,
     lowAxialHipExtensionLimitation,
     slotPlans,
     weeklyMuscleTotals,

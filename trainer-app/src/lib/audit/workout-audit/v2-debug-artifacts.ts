@@ -585,10 +585,30 @@ function compactCrossWeekData(noRepair: JsonRecord): JsonRecord {
 
 function compactSelectionAlignment(noRepair: JsonRecord): JsonRecord {
   const lowAxial = asRecord(noRepair.lowAxialHipExtensionLimitation);
+  const laneIntent = asRecord(noRepair.v2LaneSelectionIntentAudit);
+  const laneIntentRows = asRecordArray(laneIntent?.lanes);
   return {
     v2ExerciseSelectionPlanDiagnostic: compactDiagnosticStatus(
       noRepair.v2ExerciseSelectionPlanDiagnostic,
     ),
+    v2LaneSelectionIntentAudit: laneIntent
+      ? {
+          source: laneIntent.source ?? "v2_lane_selection_intent_audit",
+          readOnly: laneIntent.readOnly === true,
+          affectsScoringOrGeneration:
+            laneIntent.affectsScoringOrGeneration === true ? true : false,
+          consumedByDemandOrMaterializer:
+            laneIntent.consumedByDemandOrMaterializer === true ? true : false,
+          summary: asRecord(laneIntent.summary) ?? {},
+          missingRequiredV0FieldCount: laneIntentRows.reduce(
+            (sum, row) => sum + countArray(row.missingRequiredV0Fields),
+            0,
+          ),
+          materializerInferenceRequiredCount: laneIntentRows.filter(
+            (row) => row.materializerInferenceRequired === true,
+          ).length,
+        }
+      : { source: "v2_lane_selection_intent_audit", status: "not_available" },
     v2SelectionCapacityPlanDiagnostic: compactDiagnosticStatus(
       noRepair.v2SelectionCapacityPlanDiagnostic,
     ),
@@ -666,6 +686,7 @@ function buildFullShardData(
       return {
         v2ExerciseSelectionPlanDiagnostic:
           noRepair.v2ExerciseSelectionPlanDiagnostic,
+        v2LaneSelectionIntentAudit: noRepair.v2LaneSelectionIntentAudit,
         v2SelectionCapacityPlanDiagnostic:
           noRepair.v2SelectionCapacityPlanDiagnostic,
         v2SupportLaneProjectionDiagnostic:
@@ -897,6 +918,7 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
     projectionCandidateStrategy?.redistributionPreference,
   );
   const exerciseSelection = asRecord(noRepair.v2ExerciseSelectionPlanDiagnostic);
+  const laneSelectionIntent = asRecord(noRepair.v2LaneSelectionIntentAudit);
   const deloadProjection = asRecord(noRepair.v2DeloadProjectionDiagnostic);
   const basePlanCompare = asRecord(noRepair.v2BasePlanCompare);
   const basePlanCompareSummary = asRecord(basePlanCompare?.summary);
@@ -933,6 +955,16 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
     ),
     v2ExerciseSelectionPlanDiagnostic: {
       status: exerciseSelection?.status ?? "not_available",
+    },
+    v2LaneSelectionIntentAudit: {
+      source:
+        laneSelectionIntent?.source ?? "v2_lane_selection_intent_audit",
+      totalLanes: asRecord(laneSelectionIntent?.summary)?.totalLanes ?? null,
+      materializerInferenceRequired: true,
+      consumedByDemandOrMaterializer:
+        laneSelectionIntent?.consumedByDemandOrMaterializer === true
+          ? true
+          : false,
     },
     v2DeloadProjectionDiagnostic: {
       status: deloadProjection?.status ?? "not_available",

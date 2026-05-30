@@ -1,6 +1,7 @@
 import type { MuscleTargetTier } from "@/lib/engine/volume-landmarks";
 import type { V2SetDistributionIntent } from "./set-distribution-intent";
 import type { V2SupportLanePolicy } from "./support-lane-policy";
+import type { V2LaneSelectionIntentV0 } from "./lane-selection-intent";
 
 export type V2PlannerSlotId = "upper_a" | "lower_a" | "upper_b" | "lower_b";
 
@@ -1342,6 +1343,7 @@ export type V2ExerciseSelectionPlan = {
             | "stable_class_preferred"
             | "variation_allowed_within_class";
         };
+        laneSelectionIntent?: V2LaneSelectionIntentV0;
       }>;
     }>;
   }>;

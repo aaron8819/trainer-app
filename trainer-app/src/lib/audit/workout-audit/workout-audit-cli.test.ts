@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildV2PlannerMesocyclePolicy,
   buildV2MesocycleStrategyDiagnostic,
   type V2MesocycleStrategyInput,
 } from "@/lib/engine/planning/v2";
+import { buildV2LaneSelectionIntentAudit } from "@/lib/engine/planning/v2/lane-selection-intent-audit";
 import {
   buildAuditTimingSummaryLines,
   buildWorkoutAuditHelpText,
@@ -3577,6 +3579,11 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
             },
             v2ExerciseSelectionPlanDiagnostic:
               makeV2ExerciseSelectionPlanDiagnostic(),
+            v2LaneSelectionIntentAudit: buildV2LaneSelectionIntentAudit({
+              exerciseSelectionPlan:
+                buildV2PlannerMesocyclePolicy().exerciseSelectionPlan,
+              targetSkeleton: buildV2PlannerMesocyclePolicy().targetSkeleton,
+            }),
             lowAxialHipExtensionLimitation: {
               version: 1,
               source: "v2_planner_no_repair_diagnostic",

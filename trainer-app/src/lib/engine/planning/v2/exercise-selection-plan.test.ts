@@ -277,6 +277,51 @@ describe("buildV2ExerciseSelectionPlan", () => {
     });
   });
 
+  it("attaches planner-owned laneSelectionIntent v0 to high-risk lanes without seed identities", () => {
+    expect(lane(2, "upper_b", "vertical_press")).toMatchObject({
+      laneSelectionIntent: {
+        version: 0,
+        contract: "laneSelectionIntent",
+        source: "v2_planner_policy",
+        consumedByMaterializer: false,
+        laneJob: "support_coverage",
+        requiredMovementPattern: "chest_press",
+        allowedExerciseClasses: ["chest_press", "chest_biased_press_support"],
+        disallowedExerciseClasses: ["shoulder_biased_press"],
+        directnessRequirement: "high_directness",
+        minimumTargetStimulus: {
+          muscle: "Chest",
+          minimumPerSetStimulus: 0.75,
+        },
+      },
+    });
+    expect(lane(2, "lower_a", "hamstring_curl")).toMatchObject({
+      laneSelectionIntent: {
+        laneJob: "direct_floor",
+        requiredMovementPattern: "knee_flexion",
+        allowedExerciseClasses: ["hamstring_curl"],
+        disallowedExerciseClasses: ["hinge", "back_extension", "hip_thrust"],
+        directnessRequirement: "direct_only",
+      },
+    });
+    expect(JSON.stringify(lane(2, "upper_b", "vertical_press").laneSelectionIntent)).not.toMatch(
+      /exerciseId|exerciseName|slotPlanSeedJson|runtimeReplay/,
+    );
+  });
+
+  it("keeps laneSelectionIntent v0 pure and JSON-serializable", () => {
+    const intent = lane(1, "lower_b", "calves").laneSelectionIntent;
+
+    expect(intent).toMatchObject({
+      laneJob: "direct_floor",
+      requiredMovementPattern: "calf_raise",
+      allowedExerciseClasses: ["calf_isolation"],
+      duplicatePolicy: "prefer_variation_if_clean",
+      fallbackPolicy: "allow_duplicate_if_only_clean_option",
+    });
+    expect(JSON.parse(JSON.stringify(intent))).toEqual(intent);
+  });
+
   it("is included in the aggregate V2 planner mesocycle policy", () => {
     const policy = buildV2PlannerMesocyclePolicy();
 

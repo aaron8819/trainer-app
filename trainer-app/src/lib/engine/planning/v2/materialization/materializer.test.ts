@@ -181,6 +181,25 @@ function materialize(input: {
   });
 }
 
+function stripLaneSelectionIntent(
+  sourcePlan: V2ExerciseSelectionPlan,
+): V2ExerciseSelectionPlan {
+  return {
+    ...sourcePlan,
+    weeks: sourcePlan.weeks.map((week) => ({
+      ...week,
+      slots: week.slots.map((slot) => ({
+        ...slot,
+        lanes: slot.lanes.map((lane) => {
+          const next = { ...lane };
+          delete next.laneSelectionIntent;
+          return next;
+        }),
+      })),
+    })),
+  };
+}
+
 function makeMaterializedPlan(
   overrides: Partial<V2ExerciseMaterializationPlan> = {},
 ): V2ExerciseMaterializationPlan {
@@ -497,6 +516,24 @@ function weightedChestSets(input: {
 }
 
 describe("buildV2ExerciseMaterializationPlan", () => {
+  it("ignores laneSelectionIntent v0 in Stage A and keeps selection output unchanged", () => {
+    const plannerPolicy = buildV2PlannerMesocyclePolicy();
+    const withoutLaneSelectionIntent = stripLaneSelectionIntent(
+      plannerPolicy.exerciseSelectionPlan,
+    );
+
+    const withIntent = materialize({
+      plan: plannerPolicy.exerciseSelectionPlan,
+      inventory: representativeV2Inventory,
+    });
+    const withoutIntent = materialize({
+      plan: withoutLaneSelectionIntent,
+      inventory: representativeV2Inventory,
+    });
+
+    expect(withIntent).toEqual(withoutIntent);
+  });
+
   it("materializes all required lanes from fixture inventory", () => {
     const result = materialize({
       plan: plan([

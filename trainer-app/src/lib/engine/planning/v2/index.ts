@@ -5,6 +5,10 @@ export { buildV2BasePlanShadowConsumptionTrial } from "./materialization/base-pl
 export { buildV2BasePlanValidation } from "./materialization/base-plan-validation";
 export { buildV2ExerciseClassDistributionBySlot } from "./exercise-class-distribution";
 export { buildV2ExerciseSelectionPlan } from "./exercise-selection-plan";
+export {
+  buildV2LaneSelectionIntentV0ForPlanLane,
+  V2_LANE_SELECTION_INTENT_V0_FIELD_REQUIREMENTS,
+} from "./lane-selection-intent";
 export { buildV2MaterializationDryRunReport } from "./materialization/dry-run-report";
 export { buildV2MaterializationPromotionReadiness } from "./materialization/promotion-readiness";
 export { buildV2MaterializationPreparationEvidence } from "./materialization/preparation-evidence";
@@ -123,6 +127,21 @@ export type {
   V2WeeklyProgressionWeek,
   WeeklyDemandCurve,
 } from "./types";
+export type {
+  V2LaneSelectionIntentCapacityPriority,
+  V2LaneSelectionIntentDirectnessRequirement,
+  V2LaneSelectionIntentDuplicatePolicy,
+  V2LaneSelectionIntentExerciseClass,
+  V2LaneSelectionIntentFallbackPolicy,
+  V2LaneSelectionIntentFatiguePreference,
+  V2LaneSelectionIntentIdentityPreservationMode,
+  V2LaneSelectionIntentLaneJob,
+  V2LaneSelectionIntentLoadabilityPreference,
+  V2LaneSelectionIntentMovementPattern,
+  V2LaneSelectionIntentStabilityPreference,
+  V2LaneSelectionIntentV0,
+  V2LaneSelectionIntentV0Field,
+} from "./lane-selection-intent";
 export type { V2ExerciseSelectionPlanInput } from "./exercise-selection-plan";
 export type {
   V2ExerciseClassId,

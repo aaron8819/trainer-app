@@ -6,6 +6,7 @@ import type {
   V2SetDistributionIntent,
   V2SupportLanePolicy,
 } from "@/lib/engine/planning/v2";
+import type { V2LaneSelectionIntentAudit } from "@/lib/engine/planning/v2/lane-selection-intent-audit";
 import type {
   PlannerDiagnosticsMode,
   SessionCompositionSource,
@@ -2012,6 +2013,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
   v2SelectionCapacityPlanDiagnostic: V2SelectionCapacityPlanDiagnostic;
   plannerOwnedAccumulationProjection: PlannerOwnedAccumulationProjection;
   v2ExerciseSelectionPlanDiagnostic: V2ExerciseSelectionPlanDiagnostic;
+  v2LaneSelectionIntentAudit: V2LaneSelectionIntentAudit;
   lowAxialHipExtensionLimitation: {
     version: 1;
     source: "v2_planner_no_repair_diagnostic";

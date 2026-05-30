@@ -437,7 +437,7 @@ High-risk lane families that need this contract first:
 - row anchor/support
 - calves
 
-Current status: not implemented as a planner-owned contract. A read-only `V2LaneSelectionIntentAudit` now exposes where current materializer/taxonomy inference is still standing in for explicit planner intent. That diagnostic should guide contract design, but it must not feed materializer ranking until the planner-owned `laneSelectionIntent` contract exists.
+Current status: Stage A exists as planner-owned, runtime-inert `laneSelectionIntent v0` on high-risk `ExerciseSelectionPlan` lanes, with read-only `V2LaneSelectionIntentAudit` visibility. It exposes where current materializer/taxonomy inference is still standing in for explicit planner intent. It must not feed materializer ranking until a guarded Stage B consumption path is implemented and tested.
 
 ### Weekly Progression Model
 
@@ -1409,9 +1409,9 @@ Roadmap note: remove or deprecate optional gap-fill workout generation from norm
 
    Current status: added as a diagnostic. It exposes where current lane intent is explicit, where materializer/taxonomy inference is still doing too much, and which high-risk lane families need a richer planner contract. It should remain read-only and not be consumed by demand, materialization, generation, seed serialization, runtime replay, receipts, UI, DB writes, or persistence.
 
-8. Design planner-owned `laneSelectionIntent`.
+8. Promote planner-owned `laneSelectionIntent` into guarded materializer consumption.
 
-   Promote only after the read-only audit proves the shape. The contract should be planner-owned and materializer-consumed, with explicit movement/class intent, substitution strictness, stability, fatigue, directness, collateral, loadability, continuity, duplicate, and ranking policy. Start with vertical pull, quad isolation/support, hinge, chest exposures, rows, and calves.
+   Stage A defines `laneSelectionIntent v0` as planner-owned diagnostic truth. Stage B should consume it only through a guarded materializer path, with explicit movement/class intent, substitution strictness, stability, fatigue, directness, collateral, loadability, continuity, duplicate, and ranking policy. Start with vertical pull anchor, chest-biased press support, hamstring curl, rows, calves, and direct delt/arm lanes.
 
 9. Resolve skeleton-only / ghost lane cleanup.
 
@@ -1594,8 +1594,8 @@ These are strategic decision gates, not claims that current production already p
 - Do not bloat executable seed truth.
 - Do not allow old factory logic to re-author a clean V2 plan.
 - Do not claim V2 is live default until production actually uses it as the supported default author.
-- Do not claim `laneSelectionIntent` is implemented while it remains roadmap or diagnostic work.
-- Do not feed `V2LaneSelectionIntentAudit` into materializer ranking before a planner-owned contract exists.
+- Do not claim `laneSelectionIntent` changes production exercise selection while it remains Stage A diagnostic work.
+- Do not feed `V2LaneSelectionIntentAudit` or `laneSelectionIntent v0` into materializer ranking before the guarded Stage B consumption path exists.
 - Do not claim repair has been demoted while production projection still depends on repair for normal shape.
 - Do not claim historical personalization is implemented while it remains diagnostic or roadmap work.
 - Do not delete safety repair paths before V2 owns the responsibility they currently protect.

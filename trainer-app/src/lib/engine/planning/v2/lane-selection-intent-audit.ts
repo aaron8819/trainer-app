@@ -2,6 +2,11 @@ import type {
   V2ExerciseSelectionPlan,
   V2TargetSkeleton,
 } from "./types";
+import {
+  V2_LANE_SELECTION_INTENT_V0_FIELD_REQUIREMENTS,
+  type V2LaneSelectionIntentV0,
+  type V2LaneSelectionIntentV0Field,
+} from "./lane-selection-intent";
 
 export type V2LaneSelectionIntentRisk =
   | "correctness"
@@ -25,6 +30,26 @@ export type V2LaneSelectionIntentAudit = {
     slotId: string;
     laneId: string;
     role: string;
+    proposedLaneSelectionIntent?: V2LaneSelectionIntentV0;
+    missingRequiredV0Fields: V2LaneSelectionIntentV0Field[];
+    risks: {
+      correctness:
+        | "none"
+        | "missing_v0_intent"
+        | "under_specified_current_plan"
+        | "v0_defined_but_not_consumed";
+      quality:
+        | "none"
+        | "missing_v0_intent"
+        | "under_specified_current_plan"
+        | "v0_defined_but_not_consumed";
+      extensibility:
+        | "none"
+        | "missing_v0_intent"
+        | "under_specified_current_plan"
+        | "v0_defined_but_not_consumed";
+    };
+    materializerInferenceRequired: boolean;
     availableIntent: Record<string, unknown>;
     missingIntent: Array<{
       field: string;
@@ -43,6 +68,7 @@ export type V2LaneSelectionIntentAuditInput = {
 
 type AuditLane = V2LaneSelectionIntentAudit["lanes"][number];
 type MissingIntent = AuditLane["missingIntent"][number];
+type RiskStatus = AuditLane["risks"]["correctness"];
 type PlanSlot =
   V2ExerciseSelectionPlan["weeks"][number]["slots"][number];
 type PlanLane = PlanSlot["lanes"][number];
@@ -442,6 +468,63 @@ function missingIntentForPlanLane(lane: PlanLane): MissingIntent[] {
   return missing;
 }
 
+function missingRequiredV0Fields(
+  intent: V2LaneSelectionIntentV0 | undefined,
+): V2LaneSelectionIntentV0Field[] {
+  const fields = Object.entries(V2_LANE_SELECTION_INTENT_V0_FIELD_REQUIREMENTS)
+    .filter(([, requirement]) => requirement === "required")
+    .map(([field]) => field as V2LaneSelectionIntentV0Field);
+  if (!intent) {
+    return fields;
+  }
+  return fields.filter((field) => {
+    const value = intent[field];
+    return (
+      value === undefined ||
+      (Array.isArray(value) && value.length === 0)
+    );
+  });
+}
+
+function hasHighRiskLaneFamily(notes: string[]): boolean {
+  return notes.some((note) => note.startsWith("high_risk_lane_family:"));
+}
+
+function riskForCategory(input: {
+  risk: Exclude<V2LaneSelectionIntentRisk, "acceptable_for_now">;
+  missingIntent: MissingIntent[];
+  missingV0Fields: V2LaneSelectionIntentV0Field[];
+  hasProposedIntent: boolean;
+  highRiskLane: boolean;
+}): RiskStatus {
+  if (input.missingIntent.some((missing) => missing.risk === input.risk)) {
+    return "under_specified_current_plan";
+  }
+  if (!input.hasProposedIntent && input.highRiskLane) {
+    return "missing_v0_intent";
+  }
+  if (input.missingV0Fields.length > 0) {
+    return "missing_v0_intent";
+  }
+  if (input.hasProposedIntent) {
+    return "v0_defined_but_not_consumed";
+  }
+  return "none";
+}
+
+function riskSummary(input: {
+  missingIntent: MissingIntent[];
+  missingV0Fields: V2LaneSelectionIntentV0Field[];
+  hasProposedIntent: boolean;
+  highRiskLane: boolean;
+}): AuditLane["risks"] {
+  return {
+    correctness: riskForCategory({ ...input, risk: "correctness" }),
+    quality: riskForCategory({ ...input, risk: "quality" }),
+    extensibility: riskForCategory({ ...input, risk: "extensibility" }),
+  };
+}
+
 function availableIntentForPlanLane(input: {
   week: number;
   slot: PlanSlot;
@@ -477,6 +560,9 @@ function availableIntentForPlanLane(input: {
       : {}),
     ...(lane.optionalActivation
       ? { optionalActivation: { ...lane.optionalActivation } }
+      : {}),
+    ...(lane.laneSelectionIntent
+      ? { laneSelectionIntent: lane.laneSelectionIntent }
       : {}),
     perExerciseCap: { ...lane.perExerciseCap },
     cleanAlternativePolicy: { ...lane.cleanAlternativePolicy },
@@ -523,12 +609,28 @@ function buildPlanAuditLanes(plan: V2ExerciseSelectionPlan): AuditLane[] {
   return representativePlanSlots(plan).flatMap(({ week, slot }) =>
     slot.lanes.map((lane) => {
       const notes = laneFamilyNotes(lane);
+      const missingIntent = missingIntentForPlanLane(lane);
+      const missingV0Fields = missingRequiredV0Fields(lane.laneSelectionIntent);
+      const highRiskLane = hasHighRiskLaneFamily(notes);
       return {
         slotId: slot.slotId,
         laneId: lane.laneId,
         role: lane.role,
+        ...(lane.laneSelectionIntent
+          ? { proposedLaneSelectionIntent: lane.laneSelectionIntent }
+          : {}),
+        missingRequiredV0Fields: missingV0Fields,
+        risks: riskSummary({
+          missingIntent,
+          missingV0Fields,
+          hasProposedIntent: Boolean(lane.laneSelectionIntent),
+          highRiskLane,
+        }),
+        materializerInferenceRequired: Boolean(
+          lane.laneSelectionIntent?.consumedByMaterializer === false,
+        ),
         availableIntent: availableIntentForPlanLane({ week, slot, lane }),
-        missingIntent: missingIntentForPlanLane(lane),
+        missingIntent,
         ...(notes.length ? { notes } : {}),
       };
     }),
@@ -588,11 +690,23 @@ function buildSkeletonOnlyAuditLanes(input: {
       if (input.materializerFacingKeys.has(laneKey(slot.slotId, lane.laneId))) {
         return [];
       }
+      const requiredRisk: V2LaneSelectionIntentRisk = lane.required
+        ? "correctness"
+        : "extensibility";
       return [
         {
           slotId: slot.slotId,
           laneId: lane.laneId,
           role: lane.role,
+          missingRequiredV0Fields: missingRequiredV0Fields(undefined),
+          risks: {
+            correctness:
+              requiredRisk === "correctness" ? "missing_v0_intent" : "none",
+            quality: "missing_v0_intent",
+            extensibility:
+              requiredRisk === "extensibility" ? "missing_v0_intent" : "none",
+          },
+          materializerInferenceRequired: true,
           availableIntent: {
             materializerFacing: false,
             presentInTargetSkeleton: true,

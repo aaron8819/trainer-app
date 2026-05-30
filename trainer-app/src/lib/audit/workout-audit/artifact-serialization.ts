@@ -1132,6 +1132,12 @@ function compactPlannerOnlyNoRepair(
   const v2ExerciseSelectionSummary = asRecord(
     v2ExerciseSelectionPlanDiagnostic?.summary,
   );
+  const v2LaneSelectionIntentAudit = asRecord(
+    noRepair.v2LaneSelectionIntentAudit,
+  );
+  const v2LaneSelectionIntentSummary = asRecord(
+    v2LaneSelectionIntentAudit?.summary,
+  );
   const v2SelectionCapacityPlanDiagnostic = asRecord(
     noRepair.v2SelectionCapacityPlanDiagnostic,
   );
@@ -1604,6 +1610,30 @@ function compactPlannerOnlyNoRepair(
         )
           ? v2ExerciseSelectionPlanDiagnostic.missingInputs.length
           : 0,
+      },
+      laneSelectionIntentAudit: {
+        source:
+          v2LaneSelectionIntentAudit?.source ??
+          "v2_lane_selection_intent_audit",
+        readOnly: v2LaneSelectionIntentAudit?.readOnly === true,
+        affectsScoringOrGeneration:
+          v2LaneSelectionIntentAudit?.affectsScoringOrGeneration === true
+            ? true
+            : false,
+        consumedByDemandOrMaterializer:
+          v2LaneSelectionIntentAudit?.consumedByDemandOrMaterializer === true
+            ? true
+            : false,
+        summary: v2LaneSelectionIntentSummary ?? {},
+        missingRequiredV0FieldCount: asRecordArray(
+          v2LaneSelectionIntentAudit?.lanes,
+        ).reduce(
+          (sum, lane) => sum + countArray(lane.missingRequiredV0Fields),
+          0,
+        ),
+        materializerInferenceRequiredCount: asRecordArray(
+          v2LaneSelectionIntentAudit?.lanes,
+        ).filter((lane) => lane.materializerInferenceRequired === true).length,
       },
       selectionCapacityPlanDiagnostic: {
         status: v2SelectionCapacityPlanDiagnostic?.status ?? "diagnostic_only",

@@ -18,6 +18,25 @@ const acceptanceMaterializedSeedHelper = path.join(
   "api",
   "mesocycle-handoff-v2-materialized-seed.ts",
 );
+const seedRuntimeFiles = [
+  path.join(process.cwd(), "src", "lib", "api", "slot-plan-seed-parser.ts"),
+  path.join(
+    process.cwd(),
+    "src",
+    "lib",
+    "api",
+    "template-session",
+    "slot-plan-seed.ts",
+  ),
+  path.join(process.cwd(), "src", "lib", "api", "mesocycle-slot-runtime.ts"),
+  path.join(
+    process.cwd(),
+    "src",
+    "lib",
+    "api",
+    "mesocycle-handoff-slot-plan-projection.ts",
+  ),
+];
 const promotionReadinessContract = path.join(
   process.cwd(),
   "src",
@@ -398,6 +417,17 @@ describe("V2 planner policy module boundary", () => {
         text,
       )
         ? [`${path.relative(process.cwd(), file)} exposes exercise materialization`]
+        : [];
+    });
+
+    expect(violations).toEqual([]);
+  });
+
+  it("keeps laneSelectionIntent out of executable seed and runtime replay seams", () => {
+    const violations = seedRuntimeFiles.flatMap((file) => {
+      const text = fs.readFileSync(file, "utf8");
+      return /\blaneSelectionIntent\b/.test(text)
+        ? [`${path.relative(process.cwd(), file)} references laneSelectionIntent`]
         : [];
     });
 

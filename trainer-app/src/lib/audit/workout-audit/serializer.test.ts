@@ -5,6 +5,7 @@ import {
   type V2MesocycleStrategyInput,
   type V2StrategyHypothesisShadowProjectionEvidence,
 } from "@/lib/engine/planning/v2";
+import { buildV2LaneSelectionIntentAudit } from "@/lib/engine/planning/v2/lane-selection-intent-audit";
 import { AUDIT_RECONSTRUCTION_GUARDRAIL } from "./constants";
 import {
   buildWorkoutAuditArtifact,
@@ -2472,7 +2473,7 @@ describe("buildWorkoutAuditArtifact", () => {
       readOnly: true,
       affectsScoringOrGeneration: false,
       summary: {
-        policyCount: 4,
+        policyCount: 5,
       },
     });
     expect(fullNoRepair?.v2SupportLaneProjectionDiagnostic).toMatchObject({
@@ -2489,6 +2490,14 @@ describe("buildWorkoutAuditArtifact", () => {
       affectsScoringOrGeneration: false,
       identityBasis: "week_1_selected_identities",
       safeForBehaviorPromotion: false,
+    });
+    expect(fullNoRepair?.v2LaneSelectionIntentAudit).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      summary: {
+        totalLanes: expect.any(Number),
+      },
     });
     expect(fullNoRepair?.lowAxialHipExtensionLimitation).toMatchObject({
       readOnly: true,
@@ -2638,6 +2647,13 @@ describe("buildWorkoutAuditArtifact", () => {
             missingCandidateCount: 1,
           }),
         },
+        laneSelectionIntentAudit: {
+          source: "v2_lane_selection_intent_audit",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByDemandOrMaterializer: false,
+          materializerInferenceRequiredCount: expect.any(Number),
+        },
         lowAxialHipExtensionLimitation: {
           status: "acceptable_with_limitations",
           trueHingeExposureCount: 0,
@@ -2664,7 +2680,7 @@ describe("buildWorkoutAuditArtifact", () => {
           readOnly: true,
           affectsScoringOrGeneration: false,
           summary: {
-            policyCount: 4,
+            policyCount: 5,
           },
         },
         supportLaneProjectionDiagnostic: {
@@ -3228,7 +3244,7 @@ describe("buildWorkoutAuditArtifact", () => {
             protectedDemand: expect.arrayContaining([
               expect.objectContaining({
                 muscle: "Side Delts",
-                candidateSlotOwners: ["upper_b"],
+                candidateSlotOwners: expect.arrayContaining(["upper_b"]),
                 status: "owned",
               }),
               expect.objectContaining({
@@ -3940,6 +3956,8 @@ function makeV2BasePlanShadowConsumptionTrialFixture() {
 }
 
 function makeMesocycleExplainNoRepairPayload() {
+  const plannerPolicy = buildV2PlannerMesocyclePolicy();
+
   return {
     version: 1,
     sourceMesocycleId: "meso-source",
@@ -4397,7 +4415,7 @@ function makeMesocycleExplainNoRepairPayload() {
           doesNotAffectRuntimeReplay: true,
         },
       },
-      v2SupportLanePolicy: buildV2PlannerMesocyclePolicy().v2SupportLanePolicy,
+      v2SupportLanePolicy: plannerPolicy.v2SupportLanePolicy,
       v2SupportLaneProjectionDiagnostic:
         makeV2SupportLaneProjectionDiagnostic(),
       v2SelectionCapacityPlanDiagnostic:
@@ -4407,6 +4425,10 @@ function makeMesocycleExplainNoRepairPayload() {
       v2DeloadProjectionDiagnostic: makeV2DeloadProjectionDiagnostic(),
       v2ExerciseSelectionPlanDiagnostic:
         makeV2ExerciseSelectionPlanDiagnostic(),
+      v2LaneSelectionIntentAudit: buildV2LaneSelectionIntentAudit({
+        exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
+        targetSkeleton: plannerPolicy.targetSkeleton,
+      }),
       lowAxialHipExtensionLimitation: {
         version: 1,
         source: "v2_planner_no_repair_diagnostic",

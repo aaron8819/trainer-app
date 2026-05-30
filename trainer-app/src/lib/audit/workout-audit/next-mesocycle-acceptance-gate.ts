@@ -149,6 +149,41 @@ function statusFromBooleans(input: {
   return "unknown";
 }
 
+function weekOneTrainabilityStatus(input: {
+  candidateFound: boolean;
+  baseValidationStatus?: string;
+  seedShapeCompatible: boolean;
+}): NextMesocycleAcceptanceGateStatus {
+  if (!input.candidateFound) {
+    return "unknown";
+  }
+  if (!input.seedShapeCompatible) {
+    return "fail";
+  }
+  if (input.baseValidationStatus === "pass") {
+    return "pass";
+  }
+  if (input.baseValidationStatus === "pass_with_warnings") {
+    return "warning";
+  }
+  return "fail";
+}
+
+function weekOneTrainabilityEvidence(input: {
+  baseValidationStatus?: string;
+  seedShapeCompatible: boolean;
+  status: NextMesocycleAcceptanceGateStatus;
+}): string {
+  const evidence = [
+    `base=${input.baseValidationStatus ?? "unknown"}`,
+    `seed_shape=${input.seedShapeCompatible ? "yes" : "no"}`,
+  ];
+  if (input.status === "warning") {
+    evidence.push("post_accept_verification=required");
+  }
+  return evidence.join(" ");
+}
+
 function isActionableSeverity(
   severity: NextMesocycleAcceptanceGateSeverity,
 ): boolean {
@@ -1293,27 +1328,43 @@ function buildGates(input: {
       };
     }
 
-    const status = statusFromBooleans({
-      pass:
-        candidateFound &&
-        v2?.provenance.baseValidationStatus === "pass" &&
-        v2.provenance.seedShapeCompatibility.compatible === true,
+    const seedShapeCompatible =
+      v2?.provenance.seedShapeCompatibility.compatible === true;
+    const status = weekOneTrainabilityStatus({
+      candidateFound,
+      baseValidationStatus: v2?.provenance.baseValidationStatus,
+      seedShapeCompatible,
     });
     return {
       gate,
       status,
       severity:
-        status === "pass" ? "pass" : candidateFound ? "high_risk" : "info",
+        status === "pass"
+          ? "pass"
+          : status === "warning"
+            ? "warning"
+            : candidateFound
+              ? "high_risk"
+              : "info",
       evidence: v2
-        ? `base=${v2.provenance.baseValidationStatus} seed_shape=${v2.provenance.seedShapeCompatibility.compatible ? "yes" : "no"}`
+        ? weekOneTrainabilityEvidence({
+            baseValidationStatus: v2.provenance.baseValidationStatus,
+            seedShapeCompatible,
+            status,
+          })
         : "candidate trainability evidence unavailable",
-      notes: "Week 1 must be trainable from persisted candidate evidence",
+      notes:
+        status === "warning"
+          ? "base validation warnings are watch items when seed shape is compatible; full runtime replay is verified post-accept"
+          : "Week 1 must be trainable from persisted candidate evidence",
       ownerSeam: "prescription/readout",
       smallestSafeFix:
         status === "pass"
           ? "no implementation required"
-          : "investigate base validation and Week 1 prescription readiness before accepting",
-      mustFixBeforeWeek1: candidateFound && status !== "pass",
+          : status === "warning"
+            ? "run post-accept verification before training Week 1; investigate warning owners separately"
+            : "investigate base validation and Week 1 prescription readiness before accepting",
+      mustFixBeforeWeek1: candidateFound && status === "fail",
     };
   });
 }
@@ -1356,6 +1407,7 @@ function buildWatchItems(input: {
   candidateFound: boolean;
   weeklyRows: NextMesocycleAcceptanceGatePayload["weeklyMuscleTable"];
   completedBlockRows: CompletedBlockEvidenceRow[];
+  gates: NextMesocycleAcceptanceGatePayload["gates"];
   repairBurden: RepairBurdenAssessment;
 }): NextMesocycleAcceptanceGatePayload["watchItems"] {
   if (!input.candidateFound) {
@@ -1426,6 +1478,19 @@ function buildWatchItems(input: {
         "prior block had load calibration drift that can make first-week prescriptions lower confidence",
       monitoringPlan:
         "watch Week 1 load/reps/RPE confidence in pre-session readiness; do not mutate loads from this gate",
+    });
+  }
+
+  const weekOneGate = input.gates.find(
+    (gate) => gate.gate === "Week 1 trainability",
+  );
+  if (weekOneGate?.status === "warning") {
+    watchItems.push({
+      risk: "Post-accept Week 1 verification",
+      whyItMatters:
+        "pre-accept candidate evidence has non-blocking base validation warnings, and full runtime replay proof requires a persisted successor",
+      monitoringPlan:
+        "run next-mesocycle-post-accept-verification after explicit accept and before training Week 1",
     });
   }
 
@@ -1572,6 +1637,7 @@ export function buildNextMesocycleAcceptanceGateFromEvidence(
     candidateFound,
     weeklyRows,
     completedBlockRows: completedBlockAssessment.rows,
+    gates,
     repairBurden,
   });
   const findings = [

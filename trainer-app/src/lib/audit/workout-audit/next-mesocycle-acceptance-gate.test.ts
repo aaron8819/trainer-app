@@ -50,7 +50,14 @@ function source(state = "AWAITING_HANDOFF") {
 function v2Compare(
   found = true,
   seedSource = "handoff_slot_plan_projection",
+  options?: {
+    baseValidationStatus?: string;
+    seedShapeCompatible?: boolean;
+    executableFieldShapeClassification?: string;
+    seedSerializerIdentityClassification?: string;
+  },
 ): V2AcceptedSeedPrepareCompareAuditPayload {
+  const seedShapeCompatible = options?.seedShapeCompatible ?? true;
   return {
     compareStatus: found ? "available" : "no_handoff_candidate",
     handoffCandidate: found
@@ -77,8 +84,14 @@ function v2Compare(
       transactionStatus: "no_write",
     },
     seedShapeComparison: {
-      executableFieldShape: { classification: "v2_preserves" },
-      seedSerializerIdentity: { classification: "v2_preserves" },
+      executableFieldShape: {
+        classification:
+          options?.executableFieldShapeClassification ?? "v2_preserves",
+      },
+      seedSerializerIdentity: {
+        classification:
+          options?.seedSerializerIdentityClassification ?? "v2_preserves",
+      },
     },
     identityCoverageComparison: {
       coverageRows: [
@@ -91,9 +104,9 @@ function v2Compare(
     },
     provenance: {
       legacySourceLabel: seedSource,
-      baseValidationStatus: "pass",
+      baseValidationStatus: options?.baseValidationStatus ?? "pass",
       materializerStatus: "materialized",
-      seedShapeCompatibility: { compatible: true },
+      seedShapeCompatibility: { compatible: seedShapeCompatible },
       productionGates: { missing: [] },
       promotionReadinessStatus: "blocked",
     },
@@ -299,6 +312,10 @@ function build(input: {
   state?: string;
   found?: boolean;
   seedSource?: string;
+  baseValidationStatus?: string;
+  seedShapeCompatible?: boolean;
+  executableFieldShapeClassification?: string;
+  seedSerializerIdentityClassification?: string;
   preview?: MesocycleExplainAuditPayload;
   retros?: WeeklyRetroAuditPayload[];
   volumes?: Array<{
@@ -315,7 +332,13 @@ function build(input: {
     sourceMesocycleId: "meso-source",
     sourceMesocycle: source(input.state),
     incompleteWorkouts: [],
-    v2PrepareCompare: v2Compare(input.found ?? true, input.seedSource),
+    v2PrepareCompare: v2Compare(input.found ?? true, input.seedSource, {
+      baseValidationStatus: input.baseValidationStatus,
+      seedShapeCompatible: input.seedShapeCompatible,
+      executableFieldShapeClassification: input.executableFieldShapeClassification,
+      seedSerializerIdentityClassification:
+        input.seedSerializerIdentityClassification,
+    }),
     diagnosticPreview: input.preview,
     completedBlockRetros: input.retros,
     candidateVolumeRows: input.volumes,
@@ -587,6 +610,101 @@ describe("next mesocycle acceptance gate", () => {
       candidateKind: "draft",
       candidateSeedSource: "v2_materialized_seed",
     });
+  });
+
+  it("does not reject solely because base validation passed with non-blocking warnings", () => {
+    const payload = build({
+      seedSource: "v2_materialized_seed",
+      baseValidationStatus: "pass_with_warnings",
+      volumes: [
+        { muscle: "Chest", projectedSets: 12, mev: 10, productiveTarget: 12, mav: 16 },
+        { muscle: "Calves", projectedSets: 10, mev: 8, productiveTarget: 10, mav: 14 },
+      ],
+    });
+
+    expect(payload.gates.find((row) => row.gate === "Volume floors/zones")).toMatchObject({
+      status: "pass",
+    });
+    expect(payload.gates.find((row) => row.gate === "Week 1 trainability")).toMatchObject({
+      status: "warning",
+      severity: "warning",
+      evidence: "base=pass_with_warnings seed_shape=yes post_accept_verification=required",
+      mustFixBeforeWeek1: false,
+    });
+    expect(payload.decisionSummary.trainability).toBe("warning");
+    expect(payload.gateResult).toBe("accepted_with_watch_items");
+  });
+
+  it("turns non-blocking base validation warnings into Week 1 watch items", () => {
+    const payload = build({
+      baseValidationStatus: "pass_with_warnings",
+      volumes: [
+        { muscle: "Chest", projectedSets: 12, mev: 10, productiveTarget: 12, mav: 16 },
+      ],
+    });
+
+    expect(payload.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          finding: "Week 1 trainability",
+          severity: "warning",
+          mustFixBeforeWeek1: false,
+        }),
+      ]),
+    );
+    expect(payload.watchItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          risk: "Post-accept Week 1 verification",
+          monitoringPlan: expect.stringContaining(
+            "next-mesocycle-post-accept-verification",
+          ),
+        }),
+      ]),
+    );
+  });
+
+  it("rejects a candidate when base validation fails even if floors pass", () => {
+    const payload = build({
+      baseValidationStatus: "fail",
+      volumes: [
+        { muscle: "Chest", projectedSets: 12, mev: 10, productiveTarget: 12, mav: 16 },
+        { muscle: "Calves", projectedSets: 10, mev: 8, productiveTarget: 10, mav: 14 },
+      ],
+    });
+
+    expect(payload.gates.find((row) => row.gate === "Week 1 trainability")).toMatchObject({
+      status: "fail",
+      severity: "high_risk",
+      evidence: "base=fail seed_shape=yes",
+      mustFixBeforeWeek1: true,
+    });
+    expect(payload.gateResult).toBe("rejected");
+  });
+
+  it("rejects a candidate when seed shape compatibility fails", () => {
+    const payload = build({
+      seedShapeCompatible: false,
+      executableFieldShapeClassification: "v2_regresses",
+      volumes: [
+        { muscle: "Chest", projectedSets: 12, mev: 10, productiveTarget: 12, mav: 16 },
+      ],
+    });
+
+    expect(
+      payload.gates.find((row) => row.gate === "Seed truth/runtime contract"),
+    ).toMatchObject({
+      status: "unknown",
+      severity: "blocker",
+      mustFixBeforeWeek1: true,
+    });
+    expect(payload.gates.find((row) => row.gate === "Week 1 trainability")).toMatchObject({
+      status: "fail",
+      severity: "high_risk",
+      evidence: "base=pass seed_shape=no",
+      mustFixBeforeWeek1: true,
+    });
+    expect(payload.gateResult).toBe("rejected");
   });
 
   it("keeps rear-delt diagnostic preview evidence separate from candidate truth", () => {

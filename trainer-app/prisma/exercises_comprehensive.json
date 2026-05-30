@@ -820,6 +820,40 @@
       "timePerSetSec": 75
     },
     {
+      "name": "Machine Hip Thrust",
+      "movementPatterns": [
+        "hinge"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 1,
+      "stimulusBias": [
+        "mechanical",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Hamstrings"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      },
+      "timePerSetSec": 60
+    },
+    {
       "name": "Single-Leg Hip Thrust",
       "movementPatterns": [
         "hinge"
@@ -927,6 +961,44 @@
         "max": 12
       },
       "timePerSetSec": 35
+    },
+    {
+      "name": "45-Degree Back Extension, Hamstring Bias",
+      "movementPatterns": [
+        "extension"
+      ],
+      "splitTag": "legs",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine",
+        "Bodyweight"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "metabolic",
+        "stretch"
+      ],
+      "contraindications": {
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Hamstrings",
+        "Glutes"
+      ],
+      "secondaryMuscles": [
+        "Lower Back"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      },
+      "timePerSetSec": 40
     },
     {
       "name": "Reverse Hyperextension",
@@ -1488,6 +1560,76 @@
     },
     {
       "name": "Incline Machine Press",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [
+        "Triceps",
+        "Front Delts"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      },
+      "timePerSetSec": 55
+    },
+    {
+      "name": "Iso-Lateral Incline Press",
+      "movementPatterns": [
+        "horizontal_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Chest"
+      ],
+      "secondaryMuscles": [
+        "Front Delts",
+        "Triceps"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      },
+      "timePerSetSec": 55
+    },
+    {
+      "name": "Iso-Lateral Decline Press",
       "movementPatterns": [
         "horizontal_push"
       ],
@@ -2393,6 +2535,44 @@
       "timePerSetSec": 35
     },
     {
+      "name": "Seated Dip Machine",
+      "movementPatterns": [
+        "vertical_push"
+      ],
+      "splitTag": "push",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "medium",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "mechanical",
+        "metabolic"
+      ],
+      "contraindications": {
+        "shoulder": true,
+        "elbow": true
+      },
+      "primaryMuscles": [
+        "Triceps"
+      ],
+      "secondaryMuscles": [
+        "Chest",
+        "Front Delts"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      },
+      "timePerSetSec": 45
+    },
+    {
       "name": "Overhead Cable Triceps Extension",
       "movementPatterns": [
         "extension"
@@ -2740,6 +2920,41 @@
         "Biceps",
         "Upper Back",
         "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      },
+      "timePerSetSec": 50
+    },
+    {
+      "name": "Iso-Lateral Front Lat Pulldown",
+      "movementPatterns": [
+        "vertical_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Upper Back"
       ],
       "difficulty": "beginner",
       "unilateral": false,
@@ -3227,6 +3442,78 @@
       "timePerSetSec": 50
     },
     {
+      "name": "Iso-Lateral High Row",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Upper Back",
+        "Lats"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Rear Delts"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      },
+      "timePerSetSec": 50
+    },
+    {
+      "name": "Iso-Lateral Low Row",
+      "movementPatterns": [
+        "horizontal_pull"
+      ],
+      "splitTag": "pull",
+      "isCompound": true,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 2,
+      "sfrScore": 5,
+      "lengthPositionScore": 4,
+      "stimulusBias": [
+        "mechanical",
+        "stretch"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Lats",
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Biceps",
+        "Rear Delts"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 6,
+        "max": 12
+      },
+      "timePerSetSec": 50
+    },
+    {
       "name": "Meadows Row",
       "movementPatterns": [
         "horizontal_pull"
@@ -3363,6 +3650,40 @@
         "max": 15
       },
       "timePerSetSec": 25
+    },
+    {
+      "name": "Seated Machine Shrug",
+      "movementPatterns": [
+        "isolation"
+      ],
+      "splitTag": "pull",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 4,
+      "lengthPositionScore": 2,
+      "stimulusBias": [
+        "mechanical",
+        "metabolic"
+      ],
+      "contraindications": null,
+      "primaryMuscles": [
+        "Upper Back"
+      ],
+      "secondaryMuscles": [
+        "Forearms"
+      ],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 8,
+        "max": 15
+      },
+      "timePerSetSec": 30
     },
     {
       "name": "Barbell Curl",
@@ -4164,6 +4485,42 @@
       "unilateral": false,
       "repRangeRecommendation": {
         "min": 8,
+        "max": 20
+      },
+      "timePerSetSec": 35
+    },
+    {
+      "name": "Oblique Crunch Machine",
+      "movementPatterns": [
+        "flexion",
+        "rotation"
+      ],
+      "splitTag": "core",
+      "isCompound": false,
+      "isMainLiftEligible": false,
+      "jointStress": "low",
+      "equipment": [
+        "Machine"
+      ],
+      "fatigueCost": 1,
+      "sfrScore": 4,
+      "lengthPositionScore": 3,
+      "stimulusBias": [
+        "metabolic",
+        "stretch"
+      ],
+      "contraindications": {
+        "low_back": true
+      },
+      "primaryMuscles": [
+        "Abs",
+        "Core"
+      ],
+      "secondaryMuscles": [],
+      "difficulty": "beginner",
+      "unilateral": false,
+      "repRangeRecommendation": {
+        "min": 10,
         "max": 20
       },
       "timePerSetSec": 35

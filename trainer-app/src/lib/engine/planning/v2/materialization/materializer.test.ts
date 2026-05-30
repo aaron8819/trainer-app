@@ -733,6 +733,184 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     ]);
   });
 
+  it("materializes added machine variants into compatible V2 lanes", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "vertical_pull_anchor",
+          role: "anchor",
+          primaryMuscles: ["Lats"],
+          acceptableExerciseClasses: ["vertical_pull"],
+        }),
+        lane({
+          laneId: "row_anchor",
+          role: "anchor",
+          primaryMuscles: ["Upper Back", "Lats"],
+          acceptableExerciseClasses: ["horizontal_pull_support"],
+        }),
+        lane({
+          laneId: "chest_anchor",
+          role: "anchor",
+          primaryMuscles: ["Chest"],
+          acceptableExerciseClasses: ["horizontal_press"],
+          setBudget: { min: 3, preferred: 4, max: 4 },
+        }),
+        lane({
+          laneId: "hinge_anchor",
+          role: "anchor",
+          primaryMuscles: ["Glutes"],
+          acceptableExerciseClasses: ["low_axial_hip_extension_anchor"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "iso-front-pulldown",
+          name: "Iso-Lateral Front Lat Pulldown",
+          primaryMuscles: ["Lats"],
+          movementPatterns: ["vertical_pull"],
+          isCompound: true,
+          equipment: ["machine"],
+          fatigueCost: 2,
+        }),
+        exercise({
+          exerciseId: "iso-high-row",
+          name: "Iso-Lateral High Row",
+          primaryMuscles: ["Upper Back", "Lats"],
+          movementPatterns: ["horizontal_pull"],
+          isCompound: true,
+          equipment: ["machine"],
+          fatigueCost: 2,
+        }),
+        exercise({
+          exerciseId: "iso-incline-press",
+          name: "Iso-Lateral Incline Press",
+          primaryMuscles: ["Chest"],
+          secondaryMuscles: ["Front Delts", "Triceps"],
+          movementPatterns: ["horizontal_push"],
+          isCompound: true,
+          equipment: ["machine"],
+          fatigueCost: 2,
+        }),
+        exercise({
+          exerciseId: "machine-hip-thrust",
+          name: "Machine Hip Thrust",
+          primaryMuscles: ["Glutes"],
+          secondaryMuscles: ["Hamstrings"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: { Glutes: 1, Hamstrings: 0.2 },
+          isCompound: true,
+          equipment: ["machine"],
+          fatigueCost: 2,
+        }),
+      ],
+    });
+
+    expect(result.status).toBe("materialized");
+    expect(exerciseForLane(result, "upper_a", "vertical_pull_anchor").exerciseId).toBe(
+      "iso-front-pulldown",
+    );
+    expect(exerciseForLane(result, "upper_a", "row_anchor").exerciseId).toBe(
+      "iso-high-row",
+    );
+    expect(exerciseForLane(result, "upper_a", "chest_anchor").exerciseId).toBe(
+      "iso-incline-press",
+    );
+    expect(exerciseForLane(result, "upper_a", "hinge_anchor").exerciseId).toBe(
+      "machine-hip-thrust",
+    );
+  });
+
+  it("keeps added accessories out of incompatible V2 lanes", () => {
+    const hamstringCurlResult = materialize({
+      plan: plan([
+        lane({
+          laneId: "hamstring_curl",
+          role: "accessory",
+          primaryMuscles: ["Hamstrings"],
+          acceptableExerciseClasses: ["knee_flexion_curl"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "hamstring-back-extension",
+          name: "45-Degree Back Extension, Hamstring Bias",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          secondaryMuscles: ["Lower Back"],
+          movementPatterns: ["extension"],
+          stimulusByMusclePerSet: {
+            Hamstrings: 0.75,
+            Glutes: 0.65,
+            "Lower Back": 0.35,
+          },
+          isCompound: true,
+          equipment: ["machine"],
+        }),
+      ],
+    });
+    const rowResult = materialize({
+      plan: plan([
+        lane({
+          laneId: "row_anchor",
+          role: "anchor",
+          primaryMuscles: ["Upper Back", "Lats"],
+          acceptableExerciseClasses: ["horizontal_pull_support"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "machine-shrug",
+          name: "Seated Machine Shrug",
+          primaryMuscles: ["Upper Back"],
+          movementPatterns: ["isolation"],
+          equipment: ["machine"],
+        }),
+      ],
+    });
+    const chestResult = materialize({
+      plan: plan([
+        lane({
+          laneId: "chest_anchor",
+          role: "anchor",
+          primaryMuscles: ["Chest"],
+          acceptableExerciseClasses: ["horizontal_press"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "seated-dip",
+          name: "Seated Dip Machine",
+          primaryMuscles: ["Triceps"],
+          secondaryMuscles: ["Chest", "Front Delts"],
+          movementPatterns: ["vertical_push"],
+          isCompound: true,
+          equipment: ["machine"],
+        }),
+      ],
+    });
+
+    expect(hamstringCurlResult.blockers).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "hamstring_curl",
+        reason: "no_class_match",
+      },
+    ]);
+    expect(rowResult.blockers).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "row_anchor",
+        reason: "no_class_match",
+      },
+    ]);
+    expect(chestResult.blockers).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "chest_anchor",
+        reason: "no_class_match",
+      },
+    ]);
+  });
+
   it("blocks goblet squat from quad-isolation and leg-extension lanes", () => {
     const result = materialize({
       plan: plan([

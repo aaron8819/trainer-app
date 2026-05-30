@@ -339,10 +339,10 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
     ],
     flatPress
   );
-  register(["Incline Barbell Bench Press", "Incline Dumbbell Bench Press", "Incline Machine Press"], inclinePress);
-  register(["Decline Barbell Bench Press", "Decline Dumbbell Bench Press"], declinePress);
+  register(["Incline Barbell Bench Press", "Incline Dumbbell Bench Press", "Incline Machine Press", "Iso-Lateral Incline Press"], inclinePress);
+  register(["Decline Barbell Bench Press", "Decline Dumbbell Bench Press", "Iso-Lateral Decline Press"], declinePress);
   register(["Dip (Chest Emphasis)"], chestDip);
-  register(["Dip (Triceps Emphasis)", "Diamond Push-Up"], tricepsDip);
+  register(["Dip (Triceps Emphasis)", "Seated Dip Machine", "Diamond Push-Up"], tricepsDip);
   register(["Push-Up", "Deficit Push-Up"], pushUpPress);
   register(["Close-Grip Bench Press"], closeGripPress);
   register(["Cable Fly", "Pec Deck Machine", "Cable Crossover", "Dumbbell Fly", "Incline Dumbbell Fly"], fly);
@@ -380,16 +380,16 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
     ["Barbell Row", "T-Bar Row", "Pendlay Row", "Meadows Row", "Dumbbell Row", "One-Arm Dumbbell Row"],
     horizontalRow
   );
-  register(["Seated Cable Row", "Close-Grip Seated Cable Row", "Inverted Row"], supportedHorizontalRow);
+  register(["Seated Cable Row", "Close-Grip Seated Cable Row", "Iso-Lateral High Row", "Iso-Lateral Low Row", "Inverted Row"], supportedHorizontalRow);
   register(["Pull-Up", "Weighted Pull-Up", "Neutral Grip Pull-Up"], verticalPull);
   register(["Chin-Up"], buildStimulusProfile([
     ["lats", 1.0],
     ["biceps", 0.55],
     ["upper_back", 0.35],
   ]));
-  register(["Lat Pulldown", "Close-Grip Lat Pulldown"], verticalPull);
+  register(["Lat Pulldown", "Close-Grip Lat Pulldown", "Iso-Lateral Front Lat Pulldown"], verticalPull);
   register(["Cable Pullover", "Dumbbell Pullover", "Straight-Arm Pulldown"], pullover);
-  register(["Barbell Shrug", "Dumbbell Shrug"], shrug);
+  register(["Barbell Shrug", "Dumbbell Shrug", "Seated Machine Shrug"], shrug);
   register(["Dead Hang"], deadHang);
   register(
     [
@@ -418,7 +418,7 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
   register(["Belt Squat"], beltSquat);
   register(["Bulgarian Split Squat", "Reverse Lunge"], splitSquat);
   register(["Walking Lunge"], lunge);
-  register(["Barbell Hip Thrust", "Single-Leg Hip Thrust"], hipThrust);
+  register(["Barbell Hip Thrust", "Machine Hip Thrust", "Single-Leg Hip Thrust"], hipThrust);
   register(["Glute Bridge"], gluteBridge);
   register(["Romanian Deadlift", "Stiff-Legged Deadlift"], hinge);
   register(["Cable Pull-Through"], cablePullThrough);
@@ -432,6 +432,11 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
   register(["Hip Abduction Machine", "Cable Hip Abduction"], hipAbduction);
   register(["Hip Adduction Machine"], hipAdduction);
   register(["Back Extension (45 Degree)"], backExtension);
+  register(["45-Degree Back Extension, Hamstring Bias"], buildStimulusProfile([
+    ["hamstrings", 0.75],
+    ["glutes", 0.65],
+    ["lower_back", 0.35],
+  ]));
   register(["Reverse Hyperextension"], reverseHyperextension);
   register(["Plank"], plank);
   register(
@@ -443,10 +448,12 @@ export const INITIAL_STIMULUS_PROFILE_BY_NAME: Record<string, StimulusProfile> =
       "Dragon Flag",
       "Landmine Rotation",
       "Machine Crunch",
+      "Oblique Crunch Machine",
       "Pallof Press",
       "Reverse Crunch",
       "RKC Plank",
       "Russian Twist",
+      "Torso Rotation Machine",
       "Wood Chop",
     ],
     coreOnly

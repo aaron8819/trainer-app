@@ -304,6 +304,133 @@ describe("V2 exercise class taxonomy", () => {
     }
   });
 
+  it("classifies newly available machine variants without crossing guarded lanes", () => {
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "machine-hip-thrust",
+          name: "Machine Hip Thrust",
+          aliases: ["Glute Drive"],
+          primaryMuscles: ["Glutes"],
+          secondaryMuscles: ["Hamstrings"],
+          stimulusByMusclePerSet: { Glutes: 1, Hamstrings: 0.2 },
+          isCompound: true,
+          equipment: ["machine"],
+        }),
+      ),
+    ).toEqual(["low_axial_hip_extension_anchor"]);
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "iso-front-pulldown",
+          name: "Iso-Lateral Front Lat Pulldown",
+          primaryMuscles: ["Lats"],
+          movementPatterns: ["vertical_pull"],
+          isCompound: true,
+          equipment: ["machine"],
+        }),
+      ),
+    ).toContain("vertical_pull");
+    for (const row of [
+      exercise({
+        exerciseId: "iso-high-row",
+        name: "Iso-Lateral High Row",
+        primaryMuscles: ["Upper Back", "Lats"],
+        movementPatterns: ["horizontal_pull"],
+        isCompound: true,
+        equipment: ["machine"],
+      }),
+      exercise({
+        exerciseId: "iso-low-row",
+        name: "Iso-Lateral Low Row",
+        primaryMuscles: ["Lats", "Upper Back"],
+        movementPatterns: ["horizontal_pull"],
+        isCompound: true,
+        equipment: ["machine"],
+      }),
+    ]) {
+      expect(classIds(row)).toContain("horizontal_pull_support");
+      expect(classIds(row)).not.toContain("vertical_pull");
+    }
+    for (const row of [
+      exercise({
+        exerciseId: "iso-incline-press",
+        name: "Iso-Lateral Incline Press",
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: ["Front Delts", "Triceps"],
+        movementPatterns: ["horizontal_push"],
+        isCompound: true,
+        equipment: ["machine"],
+      }),
+      exercise({
+        exerciseId: "iso-decline-press",
+        name: "Iso-Lateral Decline Press",
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: ["Triceps", "Front Delts"],
+        movementPatterns: ["horizontal_push"],
+        isCompound: true,
+        equipment: ["machine"],
+      }),
+    ]) {
+      expect(classIds(row)).toContain("distinct_chest_press_or_fly");
+    }
+  });
+
+  it("keeps added accessories out of primary materializer lanes", () => {
+    const backExtensionClasses = classIds(
+      exercise({
+        exerciseId: "hamstring-back-extension",
+        name: "45-Degree Back Extension, Hamstring Bias",
+        primaryMuscles: ["Hamstrings", "Glutes"],
+        secondaryMuscles: ["Lower Back"],
+        movementPatterns: ["extension"],
+        stimulusByMusclePerSet: {
+          Hamstrings: 0.75,
+          Glutes: 0.65,
+          "Lower Back": 0.35,
+        },
+        isCompound: true,
+      }),
+    );
+    expect(backExtensionClasses).not.toContain("knee_flexion_curl");
+    expect(backExtensionClasses).not.toContain("hinge_compound");
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "machine-shrug",
+          name: "Seated Machine Shrug",
+          primaryMuscles: ["Upper Back"],
+          movementPatterns: ["isolation"],
+          equipment: ["machine"],
+        }),
+      ),
+    ).not.toContain("horizontal_pull_support");
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "seated-dip",
+          name: "Seated Dip Machine",
+          primaryMuscles: ["Triceps"],
+          secondaryMuscles: ["Chest", "Front Delts"],
+          movementPatterns: ["vertical_push"],
+          isCompound: true,
+          equipment: ["machine"],
+        }),
+      ),
+    ).not.toContain("distinct_chest_press_or_fly");
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "oblique-crunch",
+          name: "Oblique Crunch Machine",
+          primaryMuscles: ["Abs", "Core"],
+          movementPatterns: ["flexion", "rotation"],
+          equipment: ["machine"],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
   it("resolves leg extension aliases to quad isolation without collapsing into squat", () => {
     expect(
       resolveV2ExerciseClassIds(DEFAULT_V2_EXERCISE_CLASS_TAXONOMY, [

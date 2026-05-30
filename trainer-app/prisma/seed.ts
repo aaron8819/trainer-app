@@ -320,6 +320,27 @@ const exerciseAliases: ExerciseAliasSeed[] = [
   { exerciseName: "Barbell Bench Press", alias: "Decline Barbell Bench" },
   { exerciseName: "Dumbbell Bench Press", alias: "Flat DB Press" },
   { exerciseName: "Bulgarian Split Squat", alias: "Front-Foot Elevated Split Squat" },
+
+  // User-observed machine names and common gym labels.
+  { exerciseName: "Machine Hip Thrust", alias: "Machine Hip Thrust / Glute Drive" },
+  { exerciseName: "Machine Hip Thrust", alias: "Glute Drive" },
+  { exerciseName: "Machine Hip Thrust", alias: "Glute Trainer" },
+  { exerciseName: "Machine Hip Thrust", alias: "Bridge Glute Lifts" },
+  { exerciseName: "Iso-Lateral Front Lat Pulldown", alias: "Iso-Lateral Front Pulldown" },
+  { exerciseName: "Iso-Lateral Front Lat Pulldown", alias: "Front Lat Pulldown" },
+  { exerciseName: "45-Degree Back Extension, Hamstring Bias", alias: "Hamstring-Focused Back Extension" },
+  { exerciseName: "45-Degree Back Extension, Hamstring Bias", alias: "Hamstring Bias Back Extension" },
+  { exerciseName: "Seated Machine Shrug", alias: "Standing Machine Shrug" },
+  { exerciseName: "Seated Machine Shrug", alias: "Machine Shrug" },
+  { exerciseName: "Seated Machine Shrug", alias: "Seated Shrug" },
+  { exerciseName: "Seated Machine Shrug", alias: "Standing Shrug" },
+  { exerciseName: "Seated Dip Machine", alias: "Seated Dip" },
+  { exerciseName: "Seated Dip Machine", alias: "Dip Machine" },
+  { exerciseName: "Seated Dip Machine", alias: "Machine Dip" },
+  { exerciseName: "Oblique Crunch Machine", alias: "Oblique Crunch" },
+  { exerciseName: "Torso Rotation Machine", alias: "Torso Rotation" },
+  { exerciseName: "Torso Rotation Machine", alias: "Rotary Torso" },
+  { exerciseName: "Torso Rotation Machine", alias: "Rotary Torso Machine" },
 ];
 
 // baselineSeed removed — Baseline model dropped in migration 20260218000000_remove_baseline

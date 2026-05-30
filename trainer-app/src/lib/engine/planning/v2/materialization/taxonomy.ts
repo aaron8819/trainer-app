@@ -626,7 +626,12 @@ function matchesClass(
       return (
         hasPrimaryMuscle(exercise, "Rear Delts") &&
         (hasAnyPattern(exercise, ["isolation"]) ||
-          hasAnyText(text, ["rear delt", "reverse fly", "face pull"]))
+          hasAnyText(text, [
+            "rear delt",
+            "reverse fly",
+            "reverse pec deck",
+            "face pull",
+          ]))
       );
     case "triceps_isolation":
       return (

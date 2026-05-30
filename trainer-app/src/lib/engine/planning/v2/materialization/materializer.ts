@@ -786,9 +786,10 @@ function exerciseTextMatchesLaneSelectionIntentClass(
       return hasAnyMovementPattern(exercise, ["hinge"]) ||
         hasAnyNormalizedPhrase(text, ["deadlift", "rdl", "stiff leg", "good morning"]);
     case "row":
-    case "row_only":
       return hasAnyMovementPattern(exercise, ["row", "horizontal_pull"]) ||
         hasAnyNormalizedPhrase(text, ["row"]);
+    case "row_only":
+      return hasAnyNormalizedPhrase(text, ["row"]);
     case "shoulder_biased_press":
       return hasAnyMovementPattern(exercise, ["vertical_press", "overhead_press"]) ||
         hasAnyNormalizedPhrase(text, ["landmine press", "shoulder press", "overhead press"]);

@@ -984,8 +984,10 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     ]);
   });
 
-  it("rear_delt_direct selects rear-delt isolation and classified face-pull variants", () => {
+  it("rear_delt_direct selects live-shaped direct rear-delt and classified face-pull variants", () => {
     for (const [exerciseId, name] of [
+      ["cable-rear-delt-fly", "Cable Rear Delt Fly"],
+      ["dumbbell-rear-delt-fly", "Dumbbell Rear Delt Fly"],
       ["reverse-pec-deck", "Reverse Pec Deck"],
       ["face-pull", "Face Pull"],
     ] as const) {
@@ -1004,7 +1006,8 @@ describe("buildV2ExerciseMaterializationPlan", () => {
             exerciseId,
             name,
             primaryMuscles: ["Rear Delts"],
-            movementPatterns: ["isolation"],
+            secondaryMuscles: ["Upper Back"],
+            movementPatterns: ["horizontal_pull"],
             stimulusByMusclePerSet: { "Rear Delts": 1 },
             fatigueCost: 1,
           }),
@@ -1015,6 +1018,71 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       expect(exerciseForLane(result, "upper_a", "rear_delt").exerciseId)
         .toBe(exerciseId);
     }
+  });
+
+  it("upper_a rear_delt lane materializes with Stage C laneSelectionIntent on live-shaped inventory", () => {
+    const policy = buildV2PlannerMesocyclePolicy();
+    const upperA = policy.exerciseSelectionPlan.weeks[0]?.slots.find(
+      (slot) => slot.slotId === "upper_a",
+    );
+    const rearDeltLane = upperA?.lanes.find((laneRow) => laneRow.laneId === "rear_delt");
+    if (!upperA || !rearDeltLane) {
+      throw new Error("Missing upper_a rear_delt lane");
+    }
+    const result = materialize({
+      plan: {
+        ...policy.exerciseSelectionPlan,
+        weeks: [
+          {
+            ...policy.exerciseSelectionPlan.weeks[0],
+            slots: [
+              {
+                ...upperA,
+                lanes: [rearDeltLane],
+              },
+            ],
+          },
+        ],
+      },
+      inventory: [
+        exercise({
+          exerciseId: "seated-cable-row",
+          name: "Seated Cable Row",
+          primaryMuscles: ["Lats", "Upper Back"],
+          secondaryMuscles: ["Biceps", "Forearms"],
+          movementPatterns: ["horizontal_pull"],
+          stimulusByMusclePerSet: {
+            Lats: 0.8,
+            "Upper Back": 1,
+            "Rear Delts": 0.25,
+          },
+          isCompound: true,
+          fatigueCost: 2,
+        }),
+        exercise({
+          exerciseId: "cable-rear-delt-fly",
+          name: "Cable Rear Delt Fly",
+          primaryMuscles: ["Rear Delts"],
+          secondaryMuscles: ["Upper Back"],
+          movementPatterns: ["horizontal_pull"],
+          stimulusByMusclePerSet: {
+            "Rear Delts": 1,
+            "Upper Back": 0.2,
+          },
+          fatigueCost: 2,
+        }),
+      ],
+    });
+
+    expect(rearDeltLane.laneSelectionIntent).toMatchObject({
+      requiredMovementPattern: "rear_delt_fly",
+      consumedByMaterializer: true,
+    });
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "upper_a", "rear_delt")).toMatchObject({
+      exerciseId: "cable-rear-delt-fly",
+      setCount: 4,
+    });
   });
 
   it("blocks rows and pullovers from direct vertical-pull lanes", () => {

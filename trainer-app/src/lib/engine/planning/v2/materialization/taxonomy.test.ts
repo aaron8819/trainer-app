@@ -175,6 +175,33 @@ describe("V2 exercise class taxonomy", () => {
     }
   });
 
+  it("classifies direct rear-delt catalog shapes without treating row movement metadata as row-only", () => {
+    for (const [exerciseId, name] of [
+      ["cable-rear-delt-fly", "Cable Rear Delt Fly"],
+      ["dumbbell-rear-delt-fly", "Dumbbell Rear Delt Fly"],
+      ["reverse-pec-deck", "Reverse Pec Deck"],
+      ["face-pull", "Face Pull"],
+    ] as const) {
+      expect(
+        matchV2ExerciseClasses(
+          exercise({
+            exerciseId,
+            name,
+            primaryMuscles: ["Rear Delts"],
+            secondaryMuscles: ["Upper Back"],
+            movementPatterns: ["horizontal_pull"],
+            stimulusByMusclePerSet: { "Rear Delts": 1 },
+          }),
+        ),
+      ).toContainEqual(
+        expect.objectContaining({
+          classId: "rear_delt_isolation",
+          directMuscles: ["Rear Delts"],
+        }),
+      );
+    }
+  });
+
   it("keeps explicit negative fixtures out of direct classes", () => {
     expect(
       classIds(

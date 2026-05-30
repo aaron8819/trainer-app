@@ -148,6 +148,23 @@ describe("V2 materialization exercise catalog coverage", () => {
   });
 
   it("keeps named catalog rows aligned with V2 materialization taxonomy guards", () => {
+    for (const name of [
+      "Cable Rear Delt Fly",
+      "Dumbbell Rear Delt Fly",
+      "Reverse Pec Deck",
+      "Face Pull",
+    ]) {
+      expect(classIdsForCatalogExercise(name)).toContain("rear_delt_isolation");
+    }
+    for (const name of [
+      "Seated Cable Row",
+      "Iso-Lateral High Row",
+      "T-Bar Row",
+    ]) {
+      expect(classIdsForCatalogExercise(name)).not.toContain(
+        "rear_delt_isolation",
+      );
+    }
     expect(classIdsForCatalogExercise("Pec Deck Machine")).toContain(
       "distinct_chest_press_or_fly",
     );

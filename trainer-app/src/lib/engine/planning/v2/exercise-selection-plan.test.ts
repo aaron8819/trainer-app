@@ -230,8 +230,26 @@ describe("buildV2ExerciseSelectionPlan", () => {
         sameExerciseAllowedOnlyWithJustification: true,
       },
       cleanAlternativePolicy: {
-        requiredBeforeDuplicate: true,
+        requiredBeforeDuplicate: false,
         evaluationTiming: "future_inventory_selection",
+      },
+    });
+    expect(lane(1, "upper_b", "side_delt_isolation")).toMatchObject({
+      duplicatePolicy: {
+        scope: "same_week",
+        classDistinctness: "required_if_clean_alternative_exists",
+      },
+      cleanAlternativePolicy: {
+        requiredBeforeDuplicate: false,
+      },
+    });
+    expect(lane(1, "lower_b", "calves")).toMatchObject({
+      duplicatePolicy: {
+        scope: "same_week",
+        classDistinctness: "required_if_clean_alternative_exists",
+      },
+      cleanAlternativePolicy: {
+        requiredBeforeDuplicate: false,
       },
     });
     expect(lane(1, "upper_a", "chest_anchor")).toMatchObject({

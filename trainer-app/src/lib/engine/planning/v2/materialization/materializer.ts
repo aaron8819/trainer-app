@@ -272,9 +272,7 @@ function materializeLane(input: {
     (candidate) => !isDuplicate(candidate, input.lane, input.slot, input.selected),
   );
   const duplicateRequiresClean =
-    input.lane.cleanAlternativePolicy.requiredBeforeDuplicate ||
-    input.lane.duplicatePolicy.classDistinctness ===
-      "required_if_clean_alternative_exists";
+    input.lane.cleanAlternativePolicy.requiredBeforeDuplicate;
   if (!cleanCandidates.length && duplicateRequiresClean) {
     return {
       kind: "unmaterialized",

@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
+| 2026-05-30 | self | During the V2 candidate optimization pass, repeated the stdin `tsx` default-wrapper import issue for the Prisma module and then referenced a `PlanSlot` test helper type before declaring it. | For ad hoc `tsx` probes, always unwrap `raw.default ?? raw`; when adding typed test helpers, declare both slot and lane aliases before using them and run `tsc` before treating focused Vitest as final. |
 | 2026-05-30 | self | While probing V2 base-plan warnings through a PowerShell-piped `tsx` script, accidentally left a `nodeRepl.write` call from MCP habits and had to rerun the read-only probe. | Keep shell-executed `tsx` snippets plain Node/console code; reserve `nodeRepl.*` helpers only for the Node REPL MCP tool. |
 | 2026-05-30 | self | In a live next-seed refresh validation, assumed a `SetLog` could be counted through `workoutSet.workoutId`; Prisma requires traversing `workoutSet.workoutExercise.workout`. | For log-count safety snapshots, inspect the actual relation chain first: `SetLog -> WorkoutSet -> WorkoutExercise -> Workout`. |
 | 2026-05-30 | self | Repeated the PowerShell-piped `tsx` module-wrapper mistake while importing `v2-materialization-live-inventory` for a read-only inventory probe. | Use dynamic import plus `const mod = raw.default ?? raw` for local TS modules in stdin `tsx` probes, especially when they import path-aliased app modules. |

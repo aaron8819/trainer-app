@@ -22,6 +22,7 @@ import type {
 
 type PlanLane =
   V2ExerciseSelectionPlan["weeks"][number]["slots"][number]["lanes"][number];
+type PlanSlot = V2ExerciseSelectionPlan["weeks"][number]["slots"][number];
 
 function exercise(
   input: Partial<V2MaterializationExercise> & {
@@ -103,6 +104,46 @@ function plan(lanes: PlanLane[], maxExerciseCount = 6): V2ExerciseSelectionPlan 
             lanes,
           },
         ],
+      },
+    ],
+    guardrails: {
+      doesNotUseSelectedIdentities: true,
+      doesNotUseExerciseInventory: true,
+      doesNotUseNoRepairOutput: true,
+      doesNotUseRepairedProjection: true,
+      doesNotAffectSelection: true,
+      doesNotAffectRepair: true,
+      doesNotAffectSeedSerialization: true,
+      doesNotAffectRuntimeReplay: true,
+    },
+  };
+}
+
+function multiSlotPlan(
+  slots: Array<{
+    slotId: PlanSlot["slotId"];
+    slotIndex: number;
+    lanes: PlanLane[];
+    maxExerciseCount?: number;
+  }>,
+): V2ExerciseSelectionPlan {
+  return {
+    version: 1,
+    source: "v2_planner_policy",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    selectionTiming: "before_inventory_selection",
+    weeks: [
+      {
+        week: 1,
+        phase: "entry_calibration",
+        slots: slots.map((slot) => ({
+          slotId: slot.slotId,
+          slotIndex: slot.slotIndex,
+          maxExerciseCount: slot.maxExerciseCount ?? 6,
+          targetSessionSets: { min: 8, preferred: 12, max: 16 },
+          lanes: slot.lanes,
+        })),
       },
     ],
     guardrails: {
@@ -1421,6 +1462,216 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       "bench",
       "fly",
     ]);
+  });
+
+  it("varies calf isolation across lower slots when a clean alternate exists", () => {
+    const calfLane = () =>
+      lane({
+        laneId: "calves",
+        role: "accessory",
+        primaryMuscles: ["Calves"],
+        acceptableExerciseClasses: ["calf_isolation"],
+        setBudget: { min: 3, preferred: 4, max: 4 },
+        duplicatePolicy: {
+          scope: "same_week",
+          classDistinctness: "required_if_clean_alternative_exists",
+          sameExerciseAllowedOnlyWithJustification: true,
+        },
+        cleanAlternativePolicy: {
+          requiredBeforeDuplicate: false,
+          evaluationTiming: "future_inventory_selection",
+        },
+        continuityPolicy: {
+          preserve: "lane_class",
+          exactIdentityPolicy: "not_planned_until_inventory_selection",
+          crossWeekVariation: "variation_allowed_within_class",
+        },
+      });
+    const result = materialize({
+      plan: multiSlotPlan([
+        { slotId: "lower_a", slotIndex: 0, lanes: [calfLane()] },
+        { slotId: "lower_b", slotIndex: 1, lanes: [calfLane()] },
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "seated-calf-raise",
+          name: "Seated Calf Raise",
+          primaryMuscles: ["Calves"],
+          movementPatterns: ["isolation"],
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "leg-press-calf-raise",
+          name: "Leg Press Calf Raise",
+          primaryMuscles: ["Calves"],
+          movementPatterns: ["isolation"],
+          fatigueCost: 2,
+        }),
+        exercise({
+          exerciseId: "standing-calf-raise",
+          name: "Standing Calf Raise",
+          primaryMuscles: ["Calves"],
+          movementPatterns: ["isolation"],
+          fatigueCost: 2,
+        }),
+      ],
+    });
+
+    const selected = result.slots.flatMap((slot) => slot.exercises);
+
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "lower_a", "calves")).toMatchObject({
+      exerciseId: "seated-calf-raise",
+      setCount: 4,
+    });
+    expect(exerciseForLane(result, "lower_b", "calves")).toMatchObject({
+      exerciseId: "leg-press-calf-raise",
+      setCount: 4,
+    });
+    expect(new Set(selected.map((row) => row.exerciseId)).size).toBe(2);
+    expect(selected.reduce((sum, row) => sum + row.setCount, 0)).toBeGreaterThanOrEqual(8);
+    expect(selected.filter((row) => row.setCount >= 5)).toEqual([]);
+  });
+
+  it("keeps calf floor coverage by reusing the same calf exercise when no clean alternate exists", () => {
+    const result = materialize({
+      plan: multiSlotPlan([
+        {
+          slotId: "lower_a",
+          slotIndex: 0,
+          lanes: [
+            lane({
+              laneId: "calves",
+              role: "accessory",
+              primaryMuscles: ["Calves"],
+              acceptableExerciseClasses: ["calf_isolation"],
+              setBudget: { min: 3, preferred: 4, max: 4 },
+              duplicatePolicy: {
+                scope: "same_week",
+                classDistinctness: "required_if_clean_alternative_exists",
+                sameExerciseAllowedOnlyWithJustification: true,
+              },
+              cleanAlternativePolicy: {
+                requiredBeforeDuplicate: false,
+                evaluationTiming: "future_inventory_selection",
+              },
+            }),
+          ],
+        },
+        {
+          slotId: "lower_b",
+          slotIndex: 1,
+          lanes: [
+            lane({
+              laneId: "calves",
+              role: "accessory",
+              primaryMuscles: ["Calves"],
+              acceptableExerciseClasses: ["calf_isolation"],
+              setBudget: { min: 3, preferred: 4, max: 4 },
+              duplicatePolicy: {
+                scope: "same_week",
+                classDistinctness: "required_if_clean_alternative_exists",
+                sameExerciseAllowedOnlyWithJustification: true,
+              },
+              cleanAlternativePolicy: {
+                requiredBeforeDuplicate: false,
+                evaluationTiming: "future_inventory_selection",
+              },
+            }),
+          ],
+        },
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "seated-calf-raise",
+          name: "Seated Calf Raise",
+          primaryMuscles: ["Calves"],
+          movementPatterns: ["isolation"],
+          fatigueCost: 1,
+        }),
+      ],
+    });
+
+    const selected = result.slots.flatMap((slot) => slot.exercises);
+
+    expect(result.blockers).toEqual([]);
+    expect(selected.map((row) => row.exerciseId)).toEqual([
+      "seated-calf-raise",
+      "seated-calf-raise",
+    ]);
+    expect(selected.reduce((sum, row) => sum + row.setCount, 0)).toBeGreaterThanOrEqual(8);
+  });
+
+  it("varies direct lateral raises across upper slots when a clean alternate exists", () => {
+    const lateralLane = () =>
+      lane({
+        laneId: "side_delt_isolation",
+        role: "accessory",
+        primaryMuscles: ["Side Delts"],
+        acceptableExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
+        setBudget: { min: 4, preferred: 4, max: 4 },
+        directFloor: {
+          muscle: "Side Delts",
+          minDirectSets: 4,
+          collateralCanSatisfy: false,
+          requiredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
+        },
+        duplicatePolicy: {
+          scope: "same_week",
+          classDistinctness: "required_if_clean_alternative_exists",
+          sameExerciseAllowedOnlyWithJustification: true,
+        },
+        cleanAlternativePolicy: {
+          requiredBeforeDuplicate: false,
+          evaluationTiming: "future_inventory_selection",
+        },
+      });
+    const result = materialize({
+      plan: multiSlotPlan([
+        { slotId: "upper_a", slotIndex: 0, lanes: [lateralLane()] },
+        { slotId: "upper_b", slotIndex: 1, lanes: [lateralLane()] },
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "machine-lateral-raise",
+          name: "Machine Lateral Raise",
+          primaryMuscles: ["Side Delts"],
+          movementPatterns: ["isolation"],
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "cable-lateral-raise",
+          name: "Cable Lateral Raise",
+          primaryMuscles: ["Side Delts"],
+          movementPatterns: ["isolation"],
+          fatigueCost: 2,
+        }),
+        exercise({
+          exerciseId: "dumbbell-lateral-raise",
+          name: "Dumbbell Lateral Raise",
+          primaryMuscles: ["Side Delts"],
+          movementPatterns: ["isolation"],
+          fatigueCost: 2,
+        }),
+      ],
+    });
+
+    const selected = result.slots.flatMap((slot) => slot.exercises);
+
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "upper_a", "side_delt_isolation"))
+      .toMatchObject({
+        exerciseId: "machine-lateral-raise",
+        setCount: 4,
+      });
+    expect(exerciseForLane(result, "upper_b", "side_delt_isolation"))
+      .toMatchObject({
+        exerciseId: "cable-lateral-raise",
+        setCount: 4,
+      });
+    expect(new Set(selected.map((row) => row.exerciseId)).size).toBe(2);
+    expect(selected.reduce((sum, row) => sum + row.setCount, 0)).toBeGreaterThanOrEqual(8);
+    expect(selected.filter((row) => row.setCount >= 5)).toEqual([]);
   });
 
   it("prefers a distinct chest class family over same-press novelty", () => {

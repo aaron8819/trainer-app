@@ -163,17 +163,25 @@ function duplicatePolicyForLane(input: {
     input.classLane?.duplicatePolicy === "block_if_clean_alternative_exists";
 
   return {
-    scope:
-      input.lane.role === "anchor"
-        ? "across_accumulation"
-        : input.lane.role === "support"
-          ? "same_week"
-          : "same_slot",
+    scope: duplicateScopeForLane(input.lane),
     classDistinctness: requiredIfAlternativeExists
       ? "required_if_clean_alternative_exists"
       : "preferred",
     sameExerciseAllowedOnlyWithJustification: true,
   };
+}
+
+function duplicateScopeForLane(lane: IntentLane): DuplicatePolicy["scope"] {
+  if (lane.laneId === "calves" || lane.laneId === "side_delt_isolation") {
+    return "same_week";
+  }
+  if (lane.role === "anchor") {
+    return "across_accumulation";
+  }
+  if (lane.role === "support") {
+    return "same_week";
+  }
+  return "same_slot";
 }
 
 function continuityPolicyForRole(role: V2PlannerLaneRole): ContinuityPolicy {
@@ -248,9 +256,7 @@ export function buildV2ExerciseSelectionPlan(
               ...(optionalActivation ? { optionalActivation } : {}),
               duplicatePolicy,
               cleanAlternativePolicy: {
-                requiredBeforeDuplicate:
-                  duplicatePolicy.classDistinctness ===
-                  "required_if_clean_alternative_exists",
+                requiredBeforeDuplicate: false,
                 evaluationTiming: "future_inventory_selection",
               },
               perExerciseCap: {

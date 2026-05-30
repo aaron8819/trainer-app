@@ -23,6 +23,12 @@ const ZERO_SET_RANGE: V2PlannerSetRange = { min: 0, preferred: 0, max: 0 };
 const CLASS_INTENT_EXERCISE_CLASSES: Record<string, string[]> = {
   biceps_isolation: ["biceps_isolation"],
   calf_isolation: ["calf_isolation"],
+  chest_biased_press_support: [
+    "distinct_chest_press_or_fly",
+    "machine_press",
+    "cable_press",
+    "vertical_press",
+  ],
   distinct_second_chest_press_or_fly: [
     "distinct_chest_press_or_fly",
     "fly",

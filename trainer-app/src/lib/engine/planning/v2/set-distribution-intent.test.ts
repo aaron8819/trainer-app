@@ -171,15 +171,19 @@ describe("buildV2SetDistributionIntent", () => {
     expect(sumPreferred(lanesForMuscle(plan, "Hamstrings"))).toBeLessThan(
       rawLaneSummedPreferred("Hamstrings"),
     );
-    expect(sumPreferred(lanesForMuscle(plan, "Chest"))).toBeLessThan(
+    expect(sumPreferred(lanesForMuscle(plan, "Chest"))).toBe(
+      VOLUME_LANDMARKS.Chest.mev,
+    );
+    expect(sumPreferred(lanesForMuscle(plan, "Chest"))).toBeLessThanOrEqual(
       rawLaneSummedPreferred("Chest"),
     );
   });
 
-  it("gives Chest two sane exposures without duplicate-class inflation", () => {
+  it("gives Chest enough sane exposures without duplicate-class inflation", () => {
     const plan = intent();
     const upperAChest = lane(plan, "upper_a", "chest_anchor");
     const upperBChest = lane(plan, "upper_b", "chest_second_exposure");
+    const upperBPressSupport = lane(plan, "upper_b", "vertical_press");
 
     expect(upperAChest).toMatchObject({
       preferredExerciseClasses: ["horizontal_press", "slight_incline_press"],
@@ -193,10 +197,23 @@ describe("buildV2SetDistributionIntent", () => {
         "machine_press",
         "cable_press",
       ],
-      setBudget: { min: 2, preferred: 3, max: 4 },
+      setBudget: { min: 2, preferred: 3, max: 3 },
     });
-    expect(sumPreferred([upperAChest, upperBChest])).toBeLessThanOrEqual(
-      demandRange(buildPolicy(), "Chest").preferred,
+    expect(upperBPressSupport).toMatchObject({
+      classLaneKind: "support_class_lane",
+      primaryMuscles: ["Chest", "Front Delts"],
+      preferredExerciseClasses: [
+        "distinct_chest_press_or_fly",
+        "machine_press",
+        "cable_press",
+        "vertical_press",
+      ],
+      setBudget: { min: 2, preferred: 3, max: 3 },
+    });
+    expect(sumPreferred([upperAChest, upperBChest, upperBPressSupport]))
+      .toBeGreaterThanOrEqual(VOLUME_LANDMARKS.Chest.mev);
+    expect(sumPreferred([upperAChest, upperBChest, upperBPressSupport])).toBeLessThanOrEqual(
+      VOLUME_LANDMARKS.Chest.mav,
     );
   });
 
@@ -221,13 +238,13 @@ describe("buildV2SetDistributionIntent", () => {
     });
     expect(lane(plan, "lower_b", "calves")).toMatchObject({
       role: "accessory",
-      setBudget: { min: 3, preferred: 3, max: 4 },
+      setBudget: { min: 3, preferred: 4, max: 4 },
     });
     expect(
       week(plan).slots
         .flatMap((slotRow) => slotRow.lanes)
         .filter((laneRow) => laneRow.setBudget.preferred === 4),
-    ).toHaveLength(6);
+    ).toHaveLength(7);
   });
 
   it("keeps Hamstrings hinge and curl split within balanced demand", () => {
@@ -258,11 +275,14 @@ describe("buildV2SetDistributionIntent", () => {
     expect(lane(plan, "lower_b", "calves")).toMatchObject({
       classLaneKind: "support_class_lane",
       primaryMuscles: ["Calves"],
-      setBudget: { min: 3, preferred: 3, max: 4 },
+      setBudget: { min: 3, preferred: 4, max: 4 },
     });
+    expect(setBudgetTotalForMuscle(plan, "Calves")).toBeGreaterThanOrEqual(
+      VOLUME_LANDMARKS.Calves.mev,
+    );
   });
 
-  it("plans Side Delts as two direct exposures and vertical press as pattern support", () => {
+  it("plans Side Delts as two direct exposures and vertical press as chest-biased press support", () => {
     const plan = intent();
 
     expect(lane(plan, "upper_a", "side_delt_isolation")).toMatchObject({
@@ -287,10 +307,15 @@ describe("buildV2SetDistributionIntent", () => {
     });
     expect(lane(plan, "upper_b", "vertical_press")).toMatchObject({
       classLaneKind: "support_class_lane",
-      primaryMuscles: ["Front Delts"],
+      primaryMuscles: ["Chest", "Front Delts"],
       managedCollateralMuscles: [],
-      preferredExerciseClasses: ["vertical_press"],
-      setBudget: { min: 2, preferred: 2, max: 3 },
+      preferredExerciseClasses: [
+        "distinct_chest_press_or_fly",
+        "machine_press",
+        "cable_press",
+        "vertical_press",
+      ],
+      setBudget: { min: 2, preferred: 3, max: 3 },
     });
   });
 
@@ -408,9 +433,9 @@ describe("buildV2SetDistributionIntent", () => {
       0,
     );
 
-    expect(accumulationTotal).toBe(64);
+    expect(accumulationTotal).toBe(66);
     expect(accumulationTotal).toBeGreaterThanOrEqual(60);
-    expect(accumulationTotal).toBeLessThanOrEqual(64);
+    expect(accumulationTotal).toBeLessThanOrEqual(66);
   });
 
   it("prevents default 5-set stacking and stays within slot capacity", () => {

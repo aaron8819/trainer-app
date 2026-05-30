@@ -176,15 +176,20 @@ describe("buildV2ExerciseSelectionPlan", () => {
     });
   });
 
-  it("turns vertical press into required pattern support while keeping hinge collateral managed", () => {
+  it("turns vertical press into required chest-biased press support while keeping hinge collateral managed", () => {
     expect(lane(2, "upper_b", "vertical_press")).toMatchObject({
       requirement: "required",
       classLaneKind: "support_class_lane",
-      primaryMuscles: ["Front Delts"],
+      primaryMuscles: ["Chest", "Front Delts"],
       managedCollateralMuscles: [],
       ownershipKinds: ["support_exposure"],
-      acceptableExerciseClasses: ["vertical_press"],
-      setBudget: { min: 2, preferred: 2, max: 3 },
+      acceptableExerciseClasses: [
+        "distinct_chest_press_or_fly",
+        "machine_press",
+        "cable_press",
+        "vertical_press",
+      ],
+      setBudget: { min: 2, preferred: 3, max: 3 },
       setBudgetBasis: "class_ownership_allocation",
     });
     expect(lane(2, "lower_b", "hinge_anchor")).toMatchObject({

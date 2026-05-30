@@ -10,6 +10,7 @@ import {
   evaluateV2AnchorLaneQuality,
   isV2AnchorLaneQualityChecked,
   matchV2ExerciseClasses,
+  normalizeV2MaterializationText,
   resolveV2ExerciseClassIds,
 } from "./taxonomy";
 import type {
@@ -726,6 +727,40 @@ function hasLane(input: {
   );
 }
 
+function inventoryStimulusForMuscle(
+  exercise: V2MaterializationExercise,
+  muscle: string,
+): number {
+  const normalizedMuscle = normalizeV2MaterializationText(muscle);
+  return (
+    Object.entries(exercise.stimulusByMusclePerSet).find(
+      ([entryMuscle]) =>
+        normalizeV2MaterializationText(entryMuscle) === normalizedMuscle,
+    )?.[1] ?? 0
+  );
+}
+
+function hasChestBiasedPressSupport(input: {
+  evidence: ReadonlyArray<MaterializedLaneEvidence>;
+  slotId: string;
+  laneId: string;
+}): boolean {
+  return input.evidence.some((row) => {
+    const exercise = row.inventoryExercise;
+    return (
+      row.slotId === input.slotId &&
+      row.laneId === input.laneId &&
+      row.match?.classId === "distinct_chest_press_or_fly" &&
+      row.match.directMuscles.includes("Chest") &&
+      Boolean(
+        exercise &&
+          (exercise.secondaryMuscles.includes("Front Delts") ||
+            inventoryStimulusForMuscle(exercise, "Front Delts") > 0),
+      )
+    );
+  });
+}
+
 function buildExerciseClassCoverage(input: {
   laneIndex: ReadonlyMap<string, PlanLane>;
   evidence: ReadonlyArray<MaterializedLaneEvidence>;
@@ -800,12 +835,18 @@ function buildExerciseClassCoverage(input: {
         laneId: "row_support",
         classId: "horizontal_pull_support",
       }),
-    verticalPressOrHighInclineShoulderPress: hasLane({
-      evidence: input.evidence,
-      slotId: "upper_b",
-      laneId: "vertical_press",
-      classId: "vertical_press",
-    }),
+    verticalPressOrHighInclineShoulderPress:
+      hasLane({
+        evidence: input.evidence,
+        slotId: "upper_b",
+        laneId: "vertical_press",
+        classId: "vertical_press",
+      }) ||
+      hasChestBiasedPressSupport({
+        evidence: input.evidence,
+        slotId: "upper_b",
+        laneId: "vertical_press",
+      }),
     sideDeltDirectLateralRaiseClass: hasLane({
       evidence: input.evidence,
       slotId: "upper_b",

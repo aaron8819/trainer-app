@@ -160,6 +160,15 @@ const V2_STATIC_SLOT_EXPOSURE_OWNERSHIP: V2StaticSlotExposureOwnership[] = [
   {
     slotId: "upper_b",
     laneId: "vertical_press",
+    muscle: "Chest",
+    demandShare: 0.25,
+    role: "support",
+    classIntent: "chest_biased_press_support",
+    ownershipKind: "support_exposure",
+  },
+  {
+    slotId: "upper_b",
+    laneId: "vertical_press",
     muscle: "Front Delts",
     demandShare: 1,
     role: "support",

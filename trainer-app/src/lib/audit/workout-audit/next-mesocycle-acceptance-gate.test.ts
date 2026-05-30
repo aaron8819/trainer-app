@@ -4,6 +4,7 @@ import type {
   V2AcceptedSeedPrepareCompareAuditPayload,
   WeeklyRetroAuditPayload,
 } from "./types";
+import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import type { MesocycleSlotPlanSeed } from "@/lib/api/mesocycle-handoff-slot-plan-projection.seed-serialization";
 import {
   buildCandidateVolumeRowsFromSlotPlanSeed,
@@ -348,7 +349,7 @@ const refreshedV2SupportFloorSeed: MesocycleSlotPlanSeed = {
     {
       slotId: "upper_b",
       exercises: [
-        { exerciseId: "ohp", role: "ACCESSORY", setCount: 2 },
+        { exerciseId: "machine-chest", role: "ACCESSORY", setCount: 3 },
         { exerciseId: "lat", role: "ACCESSORY", setCount: 3 },
         { exerciseId: "fly", role: "ACCESSORY", setCount: 3 },
         { exerciseId: "row", role: "ACCESSORY", setCount: 3 },
@@ -363,7 +364,7 @@ const refreshedV2SupportFloorSeed: MesocycleSlotPlanSeed = {
         { exerciseId: "sldl", role: "CORE_COMPOUND", setCount: 3 },
         { exerciseId: "seated-curl", role: "ACCESSORY", setCount: 3 },
         { exerciseId: "split-squat", role: "ACCESSORY", setCount: 3 },
-        { exerciseId: "calf-b", role: "ACCESSORY", setCount: 3 },
+        { exerciseId: "calf-b", role: "ACCESSORY", setCount: 4 },
       ],
     },
   ],
@@ -384,7 +385,7 @@ const refreshedV2SupportFloorExercises = [
   exerciseRow("rear", "Cable Rear Delt Fly", ["Rear Delts"], ["Upper Back"]),
   exerciseRow("lateral-a", "Machine Lateral Raise", ["Side Delts"]),
   exerciseRow("triceps-a", "Cable Triceps Pushdown", ["Triceps"]),
-  exerciseRow("ohp", "Machine Shoulder Press", ["Side Delts"], ["Front Delts", "Triceps"]),
+  exerciseRow("machine-chest", "Machine Chest Press", ["Chest"], ["Front Delts", "Triceps"]),
   exerciseRow("lateral-b", "Machine Lateral Raise", ["Side Delts"]),
   exerciseRow("triceps-b", "Cable Triceps Pushdown", ["Triceps"]),
   exerciseRow("curl", "Barbell Curl", ["Biceps"], ["Forearms"]),
@@ -425,7 +426,7 @@ function candidateVolumeRowsFromRefreshedV2Seed() {
   return buildCandidateVolumeRowsFromSlotPlanSeed({
     seed: refreshedV2SupportFloorSeed,
     exercises: refreshedV2SupportFloorExercises,
-    muscles: ["Rear Delts", "Side Delts", "Triceps"],
+    muscles: Object.keys(VOLUME_LANDMARKS),
   });
 }
 
@@ -815,14 +816,30 @@ describe("next mesocycle acceptance gate", () => {
       projectedSets: 5.5,
       mev: 4,
     });
-    expect(volumeRow(rows, "Side Delts")).toMatchObject({
+    expect(volumeRow(rows, "Chest")).toMatchObject({
       projectedSets: 10,
+      mev: 10,
+    });
+    expect(volumeRow(rows, "Calves")).toMatchObject({
+      projectedSets: 8,
+      mev: 8,
+    });
+    expect(volumeRow(rows, "Side Delts")).toMatchObject({
+      projectedSets: 8,
       mev: 8,
     });
     expect(volumeRow(rows, "Triceps")).toMatchObject({
-      projectedSets: 7.6,
+      projectedSets: 8,
       mev: 6,
     });
+    for (const seedExercise of seedRows) {
+      expect(Object.keys(seedExercise).sort()).toEqual([
+        "exerciseId",
+        "role",
+        "setCount",
+      ]);
+    }
+    expect(rows.filter((row) => row.mev != null && row.projectedSets < row.mev)).toEqual([]);
     expect(rows.filter((row) => row.mav != null && row.projectedSets > row.mav)).toEqual([]);
   });
 
@@ -870,12 +887,20 @@ describe("next mesocycle acceptance gate", () => {
       projectedSets: 5.5,
       status: "productive_zone",
     });
-    expect(volumeRow(payload.weeklyMuscleTable, "Side Delts")).toMatchObject({
+    expect(volumeRow(payload.weeklyMuscleTable, "Chest")).toMatchObject({
       projectedSets: 10,
       status: "productive_zone",
     });
+    expect(volumeRow(payload.weeklyMuscleTable, "Calves")).toMatchObject({
+      projectedSets: 8,
+      status: "productive_zone",
+    });
+    expect(volumeRow(payload.weeklyMuscleTable, "Side Delts")).toMatchObject({
+      projectedSets: 8,
+      status: "productive_zone",
+    });
     expect(volumeRow(payload.weeklyMuscleTable, "Triceps")).toMatchObject({
-      projectedSets: 7.6,
+      projectedSets: 8,
       status: "productive_zone",
     });
     expect(payload.gates.find((row) => row.gate === "Volume floors/zones")).toMatchObject({

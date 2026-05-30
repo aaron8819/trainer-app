@@ -1689,8 +1689,8 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       });
     expect(exerciseForLane(result, "upper_b", "vertical_press"))
       .toMatchObject({
-        exerciseId: "machine-shoulder-press",
-        setCount: 2,
+        exerciseId: "incline-machine-press",
+        setCount: 3,
       });
     expect(exerciseForLane(result, "upper_b", "optional_triceps_if_under_target"))
       .toMatchObject({
@@ -1724,8 +1724,30 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     });
     expect(exerciseForLane(result, "lower_b", "calves")).toMatchObject({
       exerciseId: "standing-calf-raise",
-      setCount: 3,
+      setCount: 4,
     });
+    expect(
+      ["upper_a", "upper_b"].reduce(
+        (sum, slotId) =>
+          sum +
+          result.slots
+            .find((slotRow) => slotRow.slotId === slotId)!
+            .exercises.filter((exerciseRow) =>
+              ["chest_anchor", "chest_second_exposure", "vertical_press"]
+                .some((laneId) => exerciseRow.laneIds.includes(laneId)),
+            )
+            .reduce((slotSum, exerciseRow) => slotSum + exerciseRow.setCount, 0),
+        0,
+      ),
+    ).toBeGreaterThanOrEqual(10);
+    expect(
+      ["lower_a", "lower_b"].reduce(
+        (sum, slotId) =>
+          sum +
+          exerciseForLane(result, slotId, "calves").setCount,
+        0,
+      ),
+    ).toBeGreaterThanOrEqual(8);
     expect(
       result.slots.flatMap((slotRow) =>
         slotRow.exercises.filter((exerciseRow) => exerciseRow.setCount >= 5),

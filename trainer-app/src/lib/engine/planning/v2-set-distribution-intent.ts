@@ -367,6 +367,12 @@ function roleSensitiveBasePreferred(input: {
   if (input.phase !== "deload" && input.directSupportPolicy) {
     return input.directSupportPolicy.preferredDirectSets.preferred;
   }
+  if (hasClassIntent(input.lane, "horizontal_press_or_slight_incline")) {
+    return 4;
+  }
+  if (hasClassIntent(input.lane, "chest_biased_press_support")) {
+    return 3;
+  }
   if (hasClassIntent(input.lane, "vertical_press_support")) {
     return 2;
   }
@@ -383,9 +389,6 @@ function roleSensitiveBasePreferred(input: {
     return 3;
   }
   if (hasClassIntent(input.lane, "row_horizontal_pull_anchor")) {
-    return 3;
-  }
-  if (input.slotId === "lower_b" && isCalfDirectLane(input.lane)) {
     return 3;
   }
   return roundSetCount(input.driverRange.preferred);

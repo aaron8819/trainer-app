@@ -21,6 +21,7 @@
         "postinstall": "prisma generate",
         "verify:exercise-library": "tsx scripts/verify-exercise-library.ts",
         "audit:workout": "tsx scripts/workout-audit.ts",
+        "ops:refresh-next-seed-draft": "tsx scripts/ops-refresh-next-seed-draft.ts",
         "audit:mesocycle-explain:compare": "tsx scripts/audit-mesocycle-explain-compare.ts",
         "audit:week": "tsx scripts/workout-audit.ts --env-file .env.local --mode projected-week-volume",
         "audit:week:debug": "tsx scripts/workout-audit.ts --env-file .env.local --mode projected-week-volume --operator-debug",

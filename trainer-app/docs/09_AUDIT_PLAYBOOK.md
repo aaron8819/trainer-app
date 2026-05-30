@@ -588,6 +588,29 @@ Guardrails:
 - V2 preview preparation does not call legacy projection or repair, and seed serialization identity must remain `buildMesocycleSlotPlanSeed`
 - detailed compare rows live in the mode's compact artifact section, not in `mesocycle-explain`
 
+### `ops:refresh-next-seed-draft`
+
+When to use it:
+- repeat the V2 next-seed draft refresh ceremony with fewer manual steps
+- guard against calling the Trainer refresh route on the wrong localhost app
+- pair the refresh route with the handoff dry-run and acceptance gate every time
+
+Command pattern:
+
+```powershell
+npm run ops:refresh-next-seed-draft -- --origin http://localhost:<TRAINER_PORT> --owner <owner-email> --source-mesocycle-id <source-mesocycle-id>
+```
+
+Interpretation rules:
+- this is the only operator script that performs the refresh; it keeps mutation limited to `POST /api/mesocycles/[id]/refresh-next-seed-draft`
+- it does not accept the next cycle and does not create workouts, logs, sessions, migrations, repair rows, backfills, or direct SQL changes
+- it requires explicit `--origin`, `--owner`, and `--source-mesocycle-id`; never assume `localhost:3000`
+- because no reliable app identity endpoint exists, it checks the home page for `Personal AI Trainer` before calling the route and documents that limitation in stdout
+- it reads source state, visible draft source, and before/after safety counts through read-only Prisma
+- it fails unless the source is `AWAITING_HANDOFF` and the visible draft source is `v2_materialized_seed`; `--allow-non-v2-draft-source` is available only for an explicitly reviewed starting point
+- after refresh it runs `next-mesocycle-handoff-dry-run --no-artifact --operator-debug` and `next-mesocycle-acceptance-gate --no-artifact --operator-debug`
+- it exits nonzero for wrong app origin, non-handoff source state, refresh failure, unexpected successor/workout/log/session count changes, or acceptance-gate `rejected` / `not_runnable`
+
 ### `next-mesocycle-handoff-dry-run`
 
 When to use it:

@@ -1,7 +1,7 @@
 # Hypertrophy Mesocycle Engine Strategy
 
 Owner: Aaron
-Last reviewed: 2026-05-29
+Last reviewed: 2026-05-30
 Purpose: Define the strategic direction for the V2 hypertrophy planner migration: V2 becomes the future plan author, accepted seed remains minimal executable truth, runtime replay remains stable, and performed reality informs future blocks without silently mutating the current one.
 
 This document is a strategy and migration map, not a claim about current runtime behavior. Current runtime truth remains the code, contract tests, and audit artifacts. The current mapping is grounded in the same live audit evidence previously used for this target doc plus the latest V2 factory-line, materializer, taxonomy, candidate-identity, and lane-selection-intent audit findings:
@@ -1621,28 +1621,55 @@ Current near-term roadmap:
 7. Train Week 1 with the normal pre-session/post-session loop from persisted seed truth.
 8. After successful V2 path proof, plan legacy projection deprecation.
 
-### Parallel Architecture Track: `laneSelectionIntent`
+### Future Architecture Tracks For Engine Intelligence
 
-Keep planner-owned `laneSelectionIntent` as a parallel architecture track. The read-only `V2LaneSelectionIntentAudit` should continue to guide the contract, but it must not feed materializer ranking, runtime replay, seed serialization, receipts, UI, DB writes, or persistence until the planner-owned contract exists and is explicitly promoted through guarded tests/audits.
+The planner/materializer stack should not merely generate valid workouts. It should create elite, explainable, recoverable, progression-friendly mesocycles from first principles, then let runtime execute and learn without silently re-authoring the accepted seed.
 
-Near-term architecture work:
+Durable target flow:
 
-1. Use read-only `V2LaneSelectionIntentAudit` to design the `laneSelectionIntent` contract.
-2. Start the contract with vertical pull, quad isolation/support, hinge, chest exposures, rows, and calves.
-3. Resolve `upper_a:chest_secondary` as skeleton-only ghost intent: restore, retire, or explicitly map it before treating it as materializer-facing policy.
-4. Keep the diagnostic read-only until the planner-owned contract is implemented.
-5. Continue provenance/source cleanup so seed authoring provenance, seed serialization source, runtime composition source, and UI exercise source are not conflated.
+```txt
+Completed block evidence
+-> Strategy
+-> Demand / volume model
+-> Slot + lane intent
+-> Set distribution
+-> Materializer
+-> Candidate evaluator
+-> Acceptance gate
+-> Minimal accepted seed
+-> Runtime execution
+-> Performed reality
+-> Review / learning loop
+```
 
-### Runtime Execution Audit Track
+Every layer owns the right decision:
 
-Active audit tracks:
+```txt
+Strategy decides why.
+Demand decides how much.
+Slot/lane planner decides where.
+Set distribution decides how many sets.
+Materializer decides which exercise.
+Candidate evaluator judges quality.
+Acceptance gate decides accept/reject/watch.
+Runtime executes today.
+Review learns for the next block.
+```
 
-- runtime dose-adjustment diagnostic
-- analytics mesocycle-week versus calendar-week labeling
-- add-exercise preview/discovery set-count alignment audit
-- swap weekly-collision warnings
-- planner-owned `laneSelectionIntent` contract
-- post-mesocycle learning evidence contract
+Architecture design/refinement can happen before a full V2 mesocycle is completed. Production removal/promotion should wait for proof through V2 refresh, accept, post-accept verification, and real training use.
+
+Future engine intelligence tracks:
+
+1. `laneSelectionIntent v0`: planner defines the lane's actual training job so materializer no longer guesses core meaning from broad taxonomy, names, or class aliases. Start with high-risk lanes: chest-biased press support, vertical pull anchor, hamstring curl, quad isolation, calf direct, side/rear delt direct, rows, and arms.
+2. Candidate evaluator core: separate reusable candidate-quality computation from the acceptance-gate decision wrapper so dry-run, acceptance, post-accept verification, and audit readouts can share coherent quality logic where appropriate.
+3. Exercise inventory / metadata quality system: treat inventory metadata as downstream engine input, not labels. Track movement pattern, class, weighted stimulus, directness, fatigue, stability, loadability, joint/axial stress, duplicate family, substitution family, and forbidden lanes.
+4. Materializer ranking and capacity framework: rank by lane job, weighted stimulus, stimulus-to-fatigue, stability/loadability, capacity priority, duplicate policy, and variation policy. Capacity should be training-principled, not arbitrary lane dropping.
+5. Demand model as floor / productive / stretch / cap ranges: keep moving away from single target-as-quota. Planner, runtime coaching, analytics, and acceptance should reason in zones.
+6. Prior-block evidence learning loop: use performed reality, not repair-shaped prescribed plans. Evidence includes missed MEV, repeated add-ons, swaps, pain/tolerance, load calibration, fatigue, adherence, and progression.
+7. Prescription confidence / Week 1 trainability: a good seed is not enough; Week 1 prescriptions must be coherent, trainable, and confidence-labeled. Low-confidence prescriptions should be surfaced, not hidden.
+8. Variation / continuity policy: preserve anchors when continuity helps progression, vary accessories when clean alternatives improve stimulus, joint tolerance, or monotony, and do not chase novelty for its own sake.
+9. Swap equivalence engine: swaps must preserve lane job, not just primary muscle. Movement, directness, fatigue, loadability, and collision context matter.
+10. Runtime coaching loop: runtime stays seed-inert but becomes execution-smart through load adjustments, rest, set-level coaching, skips, swaps, session-local add-ons, and pain/fatigue responses.
 
 ### Training Continuity Guardrail
 

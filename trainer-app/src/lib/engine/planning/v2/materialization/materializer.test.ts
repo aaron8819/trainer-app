@@ -251,6 +251,113 @@ const hamstringCurlIntent = laneSelectionIntent({
   identityPreservationMode: "variation_allowed_within_lane_job",
 });
 
+const calfDirectSupportIntent = laneSelectionIntent({
+  version: 0,
+  source: "v2_planner_policy",
+  contract: "laneSelectionIntent",
+  readOnly: true,
+  affectsScoringOrGeneration: false,
+  consumedByMaterializer: true,
+  laneJob: "direct_floor",
+  requiredMovementPattern: "calf_raise",
+  allowedExerciseClasses: ["calf_isolation"],
+  directnessRequirement: "direct_only",
+  duplicatePolicy: "prefer_variation_if_clean",
+  capacityPriority: "floor_critical",
+  fallbackPolicy: "allow_duplicate_if_only_clean_option",
+  identityPreservationMode: "variation_allowed_within_lane_job",
+});
+
+const sideDeltDirectIntent = laneSelectionIntent({
+  version: 0,
+  source: "v2_planner_policy",
+  contract: "laneSelectionIntent",
+  readOnly: true,
+  affectsScoringOrGeneration: false,
+  consumedByMaterializer: true,
+  laneJob: "direct_floor",
+  requiredMovementPattern: "shoulder_abduction",
+  allowedExerciseClasses: ["lateral_raise"],
+  disallowedExerciseClasses: ["vertical_press"],
+  directnessRequirement: "direct_only",
+  duplicatePolicy: "prefer_variation_if_clean",
+  capacityPriority: "floor_critical",
+  fallbackPolicy: "block_if_floor_critical",
+  identityPreservationMode: "variation_allowed_within_lane_job",
+});
+
+const tricepsDirectIntent = laneSelectionIntent({
+  version: 0,
+  source: "v2_planner_policy",
+  contract: "laneSelectionIntent",
+  readOnly: true,
+  affectsScoringOrGeneration: false,
+  consumedByMaterializer: true,
+  laneJob: "direct_floor",
+  requiredMovementPattern: "elbow_extension",
+  allowedExerciseClasses: ["triceps_isolation"],
+  disallowedExerciseClasses: ["chest_press", "vertical_press"],
+  directnessRequirement: "direct_only",
+  duplicatePolicy: "prefer_variation_if_clean",
+  capacityPriority: "floor_critical",
+  fallbackPolicy: "block_if_floor_critical",
+  identityPreservationMode: "variation_allowed_within_lane_job",
+});
+
+const rearDeltDirectIntent = laneSelectionIntent({
+  version: 0,
+  source: "v2_planner_policy",
+  contract: "laneSelectionIntent",
+  readOnly: true,
+  affectsScoringOrGeneration: false,
+  consumedByMaterializer: true,
+  laneJob: "direct_floor",
+  requiredMovementPattern: "rear_delt_fly",
+  preferredMovementPatterns: ["shoulder_horizontal_abduction"],
+  allowedExerciseClasses: ["rear_delt_isolation"],
+  disallowedExerciseClasses: ["row_only"],
+  directnessRequirement: "direct_only",
+  capacityPriority: "floor_critical",
+  fallbackPolicy: "block_if_floor_critical",
+  identityPreservationMode: "variation_allowed_within_lane_job",
+});
+
+const rowSupportIntent = laneSelectionIntent({
+  version: 0,
+  source: "v2_planner_policy",
+  contract: "laneSelectionIntent",
+  readOnly: true,
+  affectsScoringOrGeneration: false,
+  consumedByMaterializer: true,
+  laneJob: "support_coverage",
+  requiredMovementPattern: "horizontal_pull",
+  allowedExerciseClasses: ["row"],
+  disallowedExerciseClasses: ["shrug", "vertical_pull", "pullover"],
+  directnessRequirement: "direct_or_high_support",
+  loadabilityPreference: "moderate_or_high",
+  capacityPriority: "high",
+  fallbackPolicy: "allow_labeled_fallback",
+  identityPreservationMode: "preserve_lane_job",
+});
+
+const quadIsolationIntent = laneSelectionIntent({
+  version: 0,
+  source: "v2_planner_policy",
+  contract: "laneSelectionIntent",
+  readOnly: true,
+  affectsScoringOrGeneration: false,
+  consumedByMaterializer: true,
+  laneJob: "direct_floor",
+  requiredMovementPattern: "knee_extension",
+  allowedExerciseClasses: ["quad_isolation"],
+  disallowedExerciseClasses: ["squat_pattern", "lunge", "leg_press"],
+  directnessRequirement: "direct_only",
+  fatiguePreference: "low_systemic",
+  capacityPriority: "floor_critical",
+  fallbackPolicy: "block_if_floor_critical",
+  identityPreservationMode: "variation_allowed_within_lane_job",
+});
+
 function makeMaterializedPlan(
   overrides: Partial<V2ExerciseMaterializationPlan> = {},
 ): V2ExerciseMaterializationPlan {
@@ -567,7 +674,7 @@ function weightedChestSets(input: {
 }
 
 describe("buildV2ExerciseMaterializationPlan", () => {
-  it("preserves prior materializer behavior when laneSelectionIntent is missing", () => {
+  it("missing intent preserves old materializer behavior", () => {
     const result = materialize({
       plan: plan([
         lane({
@@ -729,7 +836,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     ]);
   });
 
-  it("blocks direct floors when only collateral class evidence matches", () => {
+  it("triceps_direct consumes intent and rejects press-only collateral", () => {
     const result = materialize({
       plan: plan([
         lane({
@@ -743,6 +850,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
             collateralCanSatisfy: false,
             requiredExerciseClasses: ["triceps_isolation"],
           },
+          laneSelectionIntent: tricepsDirectIntent,
         }),
       ]),
       inventory: [
@@ -761,12 +869,44 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       {
         slotId: "upper_a",
         laneId: "triceps",
-        reason: "direct_floor_unmaterialized",
+        reason: "no_class_match",
       },
     ]);
   });
 
-  it("does not let OHP collateral satisfy the side-delt direct floor", () => {
+  it("triceps_direct selects pushdown and extension variants", () => {
+    for (const [exerciseId, name] of [
+      ["rope-pushdown", "Rope Pushdown"],
+      ["overhead-extension", "Overhead Triceps Extension"],
+    ] as const) {
+      const result = materialize({
+        plan: plan([
+          lane({
+            laneId: "triceps",
+            role: "accessory",
+            primaryMuscles: ["Triceps"],
+            acceptableExerciseClasses: ["triceps_isolation"],
+            laneSelectionIntent: tricepsDirectIntent,
+          }),
+        ]),
+        inventory: [
+          exercise({
+            exerciseId,
+            name,
+            primaryMuscles: ["Triceps"],
+            stimulusByMusclePerSet: { Triceps: 1 },
+            fatigueCost: 1,
+          }),
+        ],
+      });
+
+      expect(result.blockers).toEqual([]);
+      expect(exerciseForLane(result, "upper_a", "triceps").exerciseId)
+        .toBe(exerciseId);
+    }
+  });
+
+  it("side_delt_direct consumes intent and rejects vertical press collateral", () => {
     const result = materialize({
       plan: plan([
         lane({
@@ -780,6 +920,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
             collateralCanSatisfy: false,
             requiredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
           },
+          laneSelectionIntent: sideDeltDirectIntent,
         }),
       ]),
       inventory: [
@@ -798,12 +939,12 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       {
         slotId: "upper_a",
         laneId: "side_delt_isolation",
-        reason: "direct_floor_unmaterialized",
+        reason: "no_class_match",
       },
     ]);
   });
 
-  it("does not let row collateral satisfy the rear-delt direct floor", () => {
+  it("rear_delt_direct consumes intent and rejects row-only collateral", () => {
     const result = materialize({
       plan: plan([
         lane({
@@ -820,6 +961,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
             collateralCanSatisfy: false,
             requiredExerciseClasses: ["rear_delt_isolation"],
           },
+          laneSelectionIntent: rearDeltDirectIntent,
         }),
       ]),
       inventory: [
@@ -837,9 +979,42 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       {
         slotId: "upper_a",
         laneId: "rear_delt",
-        reason: "direct_floor_unmaterialized",
+        reason: "no_class_match",
       },
     ]);
+  });
+
+  it("rear_delt_direct selects rear-delt isolation and classified face-pull variants", () => {
+    for (const [exerciseId, name] of [
+      ["reverse-pec-deck", "Reverse Pec Deck"],
+      ["face-pull", "Face Pull"],
+    ] as const) {
+      const result = materialize({
+        plan: plan([
+          lane({
+            laneId: "rear_delt",
+            role: "accessory",
+            primaryMuscles: ["Rear Delts"],
+            acceptableExerciseClasses: ["rear_delt_isolation"],
+            laneSelectionIntent: rearDeltDirectIntent,
+          }),
+        ]),
+        inventory: [
+          exercise({
+            exerciseId,
+            name,
+            primaryMuscles: ["Rear Delts"],
+            movementPatterns: ["isolation"],
+            stimulusByMusclePerSet: { "Rear Delts": 1 },
+            fatigueCost: 1,
+          }),
+        ],
+      });
+
+      expect(result.blockers).toEqual([]);
+      expect(exerciseForLane(result, "upper_a", "rear_delt").exerciseId)
+        .toBe(exerciseId);
+    }
   });
 
   it("blocks rows and pullovers from direct vertical-pull lanes", () => {
@@ -1303,22 +1478,50 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     }
   });
 
-  it("blocks goblet squat from quad-isolation and leg-extension lanes", () => {
+  it("quad_isolation consumes intent and rejects squat/leg-press/goblet/lunge", () => {
     const result = materialize({
       plan: plan([
         lane({
           laneId: "quad_isolation",
           role: "support",
           primaryMuscles: ["Quads"],
-          acceptableExerciseClasses: ["leg_extension", "quad_isolation"],
+          acceptableExerciseClasses: [
+            "leg_extension",
+            "quad_isolation",
+            "squat_pattern",
+            "leg_press",
+            "lunge",
+          ],
+          laneSelectionIntent: quadIsolationIntent,
         }),
       ]),
       inventory: [
+        exercise({
+          exerciseId: "back-squat",
+          name: "Back Squat",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["squat"],
+          isCompound: true,
+        }),
+        exercise({
+          exerciseId: "leg-press",
+          name: "Leg Press",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["leg_press"],
+          isCompound: true,
+        }),
         exercise({
           exerciseId: "goblet-squat",
           name: "Goblet Squat",
           primaryMuscles: ["Quads"],
           movementPatterns: ["squat"],
+          isCompound: true,
+        }),
+        exercise({
+          exerciseId: "walking-lunge",
+          name: "Walking Lunge",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["lunge"],
           isCompound: true,
         }),
       ],
@@ -1331,6 +1534,36 @@ describe("buildV2ExerciseMaterializationPlan", () => {
         reason: "no_class_match",
       },
     ]);
+  });
+
+  it("quad_isolation selects leg extension when available", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "quad_isolation",
+          role: "support",
+          primaryMuscles: ["Quads"],
+          acceptableExerciseClasses: ["leg_extension", "quad_isolation"],
+          laneSelectionIntent: quadIsolationIntent,
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "leg-extension",
+          name: "Leg Extension",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["knee_extension", "isolation"],
+          stimulusByMusclePerSet: { Quads: 1 },
+          fatigueCost: 1,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "upper_a", "quad_isolation")).toMatchObject({
+      exerciseId: "leg-extension",
+      role: "ACCESSORY",
+    });
   });
 
   it("blocks Cable Fly from a fresh chest anchor even when it is favorited", () => {
@@ -1727,7 +1960,55 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     }
   });
 
-  it("prefers loadable rows over Inverted Row for fresh row support", () => {
+  it("row_support consumes intent and rejects shrug/pullover/vertical-pull", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "row_support",
+          role: "support",
+          primaryMuscles: ["Upper Back", "Lats"],
+          acceptableExerciseClasses: ["horizontal_pull_support", "vertical_pull"],
+          laneSelectionIntent: rowSupportIntent,
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "dumbbell-shrug",
+          name: "Dumbbell Shrug",
+          primaryMuscles: ["Upper Back"],
+          movementPatterns: ["isolation"],
+          isCompound: false,
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "cable-pullover",
+          name: "Cable Pullover",
+          primaryMuscles: ["Lats"],
+          movementPatterns: ["vertical_pull"],
+          isCompound: false,
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "lat-pulldown",
+          name: "Lat Pulldown",
+          primaryMuscles: ["Lats"],
+          movementPatterns: ["vertical_pull"],
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "row_support",
+        reason: "no_class_match",
+      },
+    ]);
+  });
+
+  it("row_support prefers loadable/stable row variants when available", () => {
     const result = materialize({
       plan: plan([
         lane({
@@ -1735,6 +2016,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
           role: "support",
           primaryMuscles: ["Upper Back", "Lats"],
           acceptableExerciseClasses: ["horizontal_pull_support"],
+          laneSelectionIntent: rowSupportIntent,
         }),
       ]),
       inventory: [
@@ -1808,13 +2090,52 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     ]);
   });
 
-  it("varies calf isolation across lower slots when a clean alternate exists", () => {
+  it("calf_direct_support consumes laneSelectionIntent", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "calves",
+          role: "accessory",
+          primaryMuscles: ["Calves"],
+          acceptableExerciseClasses: ["calf_isolation", "squat_pattern"],
+          laneSelectionIntent: calfDirectSupportIntent,
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "leg-press",
+          name: "Leg Press",
+          primaryMuscles: ["Quads"],
+          movementPatterns: ["leg_press"],
+          isCompound: true,
+          fatigueCost: 2,
+        }),
+        exercise({
+          exerciseId: "seated-calf-raise",
+          name: "Seated Calf Raise",
+          primaryMuscles: ["Calves"],
+          movementPatterns: ["isolation"],
+          stimulusByMusclePerSet: { Calves: 1 },
+          fatigueCost: 1,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "upper_a", "calves")).toMatchObject({
+      exerciseId: "seated-calf-raise",
+      role: "ACCESSORY",
+    });
+  });
+
+  it("calf lane varies seated/standing/leg-press when clean alternatives exist", () => {
     const calfLane = () =>
       lane({
         laneId: "calves",
         role: "accessory",
         primaryMuscles: ["Calves"],
         acceptableExerciseClasses: ["calf_isolation"],
+        laneSelectionIntent: calfDirectSupportIntent,
         setBudget: { min: 3, preferred: 4, max: 4 },
         duplicatePolicy: {
           scope: "same_week",
@@ -1877,7 +2198,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(selected.filter((row) => row.setCount >= 5)).toEqual([]);
   });
 
-  it("keeps calf floor coverage by reusing the same calf exercise when no clean alternate exists", () => {
+  it("calf lane allows duplicate when no clean alternate exists", () => {
     const result = materialize({
       plan: multiSlotPlan([
         {
@@ -1889,6 +2210,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
               role: "accessory",
               primaryMuscles: ["Calves"],
               acceptableExerciseClasses: ["calf_isolation"],
+              laneSelectionIntent: calfDirectSupportIntent,
               setBudget: { min: 3, preferred: 4, max: 4 },
               duplicatePolicy: {
                 scope: "same_week",
@@ -1911,6 +2233,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
               role: "accessory",
               primaryMuscles: ["Calves"],
               acceptableExerciseClasses: ["calf_isolation"],
+              laneSelectionIntent: calfDirectSupportIntent,
               setBudget: { min: 3, preferred: 4, max: 4 },
               duplicatePolicy: {
                 scope: "same_week",
@@ -1946,13 +2269,14 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(selected.reduce((sum, row) => sum + row.setCount, 0)).toBeGreaterThanOrEqual(8);
   });
 
-  it("varies direct lateral raises across upper slots when a clean alternate exists", () => {
+  it("side delt lane varies machine/cable/DB lateral when clean alternatives exist", () => {
     const lateralLane = () =>
       lane({
         laneId: "side_delt_isolation",
         role: "accessory",
         primaryMuscles: ["Side Delts"],
         acceptableExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
+        laneSelectionIntent: sideDeltDirectIntent,
         setBudget: { min: 4, preferred: 4, max: 4 },
         directFloor: {
           muscle: "Side Delts",

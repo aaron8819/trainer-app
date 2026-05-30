@@ -305,6 +305,61 @@ describe("buildV2ExerciseSelectionPlan", () => {
         consumedByMaterializer: true,
       },
     });
+    expect(lane(1, "lower_a", "quad_isolation")).toMatchObject({
+      laneSelectionIntent: {
+        laneJob: "direct_floor",
+        requiredMovementPattern: "knee_extension",
+        allowedExerciseClasses: ["quad_isolation"],
+        disallowedExerciseClasses: ["squat_pattern", "lunge", "leg_press"],
+        directnessRequirement: "direct_only",
+        consumedByMaterializer: true,
+      },
+    });
+    expect(lane(1, "lower_a", "calves")).toMatchObject({
+      laneSelectionIntent: {
+        laneJob: "direct_floor",
+        requiredMovementPattern: "calf_raise",
+        allowedExerciseClasses: ["calf_isolation"],
+        duplicatePolicy: "prefer_variation_if_clean",
+        consumedByMaterializer: true,
+      },
+    });
+    expect(lane(1, "upper_b", "side_delt_isolation")).toMatchObject({
+      laneSelectionIntent: {
+        laneJob: "direct_floor",
+        requiredMovementPattern: "shoulder_abduction",
+        allowedExerciseClasses: ["lateral_raise"],
+        disallowedExerciseClasses: ["vertical_press"],
+        consumedByMaterializer: true,
+      },
+    });
+    expect(lane(1, "upper_a", "triceps")).toMatchObject({
+      laneSelectionIntent: {
+        laneJob: "direct_floor",
+        requiredMovementPattern: "elbow_extension",
+        allowedExerciseClasses: ["triceps_isolation"],
+        disallowedExerciseClasses: ["chest_press", "vertical_press"],
+        consumedByMaterializer: true,
+      },
+    });
+    expect(lane(1, "upper_a", "rear_delt")).toMatchObject({
+      laneSelectionIntent: {
+        laneJob: "direct_floor",
+        requiredMovementPattern: "rear_delt_fly",
+        allowedExerciseClasses: ["rear_delt_isolation"],
+        disallowedExerciseClasses: ["row_only"],
+        consumedByMaterializer: true,
+      },
+    });
+    expect(lane(1, "upper_b", "row_support")).toMatchObject({
+      laneSelectionIntent: {
+        laneJob: "support_coverage",
+        requiredMovementPattern: "horizontal_pull",
+        allowedExerciseClasses: ["row"],
+        disallowedExerciseClasses: ["shrug", "vertical_pull", "pullover"],
+        consumedByMaterializer: true,
+      },
+    });
     expect(JSON.stringify(lane(2, "upper_b", "vertical_press").laneSelectionIntent)).not.toMatch(
       /exerciseId|exerciseName|slotPlanSeedJson|runtimeReplay/,
     );

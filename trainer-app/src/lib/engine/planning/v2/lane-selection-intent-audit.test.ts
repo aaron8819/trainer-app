@@ -57,7 +57,7 @@ describe("buildV2LaneSelectionIntentAudit", () => {
     expect(audit.summary.lanesWithCorrectnessRisk).toBeGreaterThan(0);
   });
 
-  it("emits laneSelectionIntent v0 for high-risk lanes and Stage B consumption flags for the first slice", () => {
+  it("emits laneSelectionIntent v0 for high-risk lanes and Stage C consumption flags for the promoted slice", () => {
     const audit = buildAudit();
 
     for (const [slotId, laneId] of [
@@ -73,20 +73,26 @@ describe("buildV2LaneSelectionIntentAudit", () => {
       ["upper_b", "row_support"],
     ] as const) {
       const lane = auditLane(audit, slotId, laneId);
-      const stageBConsumed =
+      const stageCConsumed =
         (slotId === "upper_b" && laneId === "vertical_press") ||
         (slotId === "upper_b" && laneId === "vertical_pull_anchor") ||
-        (slotId === "lower_a" && laneId === "hamstring_curl");
+        (slotId === "lower_a" && laneId === "hamstring_curl") ||
+        (slotId === "lower_a" && laneId === "quad_isolation") ||
+        (slotId === "lower_a" && laneId === "calves") ||
+        (slotId === "upper_b" && laneId === "side_delt_isolation") ||
+        (slotId === "upper_a" && laneId === "rear_delt") ||
+        (slotId === "upper_a" && laneId === "triceps") ||
+        (slotId === "upper_b" && laneId === "row_support");
 
       expect(lane.proposedLaneSelectionIntent).toMatchObject({
         version: 0,
         contract: "laneSelectionIntent",
         source: "v2_planner_policy",
-        consumedByMaterializer: stageBConsumed,
+        consumedByMaterializer: stageCConsumed,
       });
       expect(lane.missingRequiredV0Fields).toEqual([]);
-      expect(lane.consumedByMaterializer).toBe(stageBConsumed);
-      expect(lane.materializerInferenceRequired).toBe(!stageBConsumed);
+      expect(lane.consumedByMaterializer).toBe(stageCConsumed);
+      expect(lane.materializerInferenceRequired).toBe(!stageCConsumed);
     }
   });
 
@@ -276,7 +282,7 @@ describe("buildV2LaneSelectionIntentAudit", () => {
     expect(calves.proposedLaneSelectionIntent).toMatchObject({
       requiredMovementPattern: "calf_raise",
       allowedExerciseClasses: ["calf_isolation"],
-      consumedByMaterializer: false,
+      consumedByMaterializer: true,
       duplicatePolicy: "prefer_variation_if_clean",
     });
   });

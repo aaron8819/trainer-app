@@ -282,72 +282,87 @@ export function buildV2LaneSelectionIntentV0ForPlanLane(
   }
 
   if (lane.laneId === "quad_isolation") {
-    return baseIntent({
-      laneJob: "direct_floor",
-      requiredMovementPattern: "knee_extension",
-      allowedExerciseClasses: ["quad_isolation"],
-      disallowedExerciseClasses: ["squat_pattern", "lunge", "leg_press"],
-      directnessRequirement: "direct_only",
-      fatiguePreference: "low_systemic",
-      capacityPriority: "floor_critical",
-      fallbackPolicy: "block_if_floor_critical",
-      identityPreservationMode: "variation_allowed_within_lane_job",
-    });
+    return baseIntent(
+      {
+        laneJob: "direct_floor",
+        requiredMovementPattern: "knee_extension",
+        allowedExerciseClasses: ["quad_isolation"],
+        disallowedExerciseClasses: ["squat_pattern", "lunge", "leg_press"],
+        directnessRequirement: "direct_only",
+        fatiguePreference: "low_systemic",
+        capacityPriority: "floor_critical",
+        fallbackPolicy: "block_if_floor_critical",
+        identityPreservationMode: "variation_allowed_within_lane_job",
+      },
+      { consumedByMaterializer: true },
+    );
   }
 
   if (lane.laneId === "calves") {
-    return baseIntent({
-      laneJob: "direct_floor",
-      requiredMovementPattern: "calf_raise",
-      allowedExerciseClasses: ["calf_isolation"],
-      directnessRequirement: "direct_only",
-      duplicatePolicy: "prefer_variation_if_clean",
-      capacityPriority: "floor_critical",
-      fallbackPolicy: "allow_duplicate_if_only_clean_option",
-      identityPreservationMode: "variation_allowed_within_lane_job",
-    });
+    return baseIntent(
+      {
+        laneJob: "direct_floor",
+        requiredMovementPattern: "calf_raise",
+        allowedExerciseClasses: ["calf_isolation"],
+        directnessRequirement: "direct_only",
+        duplicatePolicy: "prefer_variation_if_clean",
+        capacityPriority: "floor_critical",
+        fallbackPolicy: "allow_duplicate_if_only_clean_option",
+        identityPreservationMode: "variation_allowed_within_lane_job",
+      },
+      { consumedByMaterializer: true },
+    );
   }
 
   if (lane.laneId === "side_delt_isolation") {
-    return baseIntent({
-      laneJob: "direct_floor",
-      requiredMovementPattern: "shoulder_abduction",
-      allowedExerciseClasses: ["lateral_raise"],
-      disallowedExerciseClasses: ["vertical_press"],
-      directnessRequirement: "direct_only",
-      duplicatePolicy: "prefer_variation_if_clean",
-      capacityPriority: "floor_critical",
-      fallbackPolicy: "block_if_floor_critical",
-      identityPreservationMode: "variation_allowed_within_lane_job",
-    });
+    return baseIntent(
+      {
+        laneJob: "direct_floor",
+        requiredMovementPattern: "shoulder_abduction",
+        allowedExerciseClasses: ["lateral_raise"],
+        disallowedExerciseClasses: ["vertical_press"],
+        directnessRequirement: "direct_only",
+        duplicatePolicy: "prefer_variation_if_clean",
+        capacityPriority: "floor_critical",
+        fallbackPolicy: "block_if_floor_critical",
+        identityPreservationMode: "variation_allowed_within_lane_job",
+      },
+      { consumedByMaterializer: true },
+    );
   }
 
   if (lane.laneId === "rear_delt") {
-    return baseIntent({
-      laneJob: "direct_floor",
-      requiredMovementPattern: "rear_delt_fly",
-      preferredMovementPatterns: ["shoulder_horizontal_abduction"],
-      allowedExerciseClasses: ["rear_delt_isolation"],
-      disallowedExerciseClasses: ["row_only"],
-      directnessRequirement: "direct_only",
-      capacityPriority: "floor_critical",
-      fallbackPolicy: "block_if_floor_critical",
-      identityPreservationMode: "variation_allowed_within_lane_job",
-    });
+    return baseIntent(
+      {
+        laneJob: "direct_floor",
+        requiredMovementPattern: "rear_delt_fly",
+        preferredMovementPatterns: ["shoulder_horizontal_abduction"],
+        allowedExerciseClasses: ["rear_delt_isolation"],
+        disallowedExerciseClasses: ["row_only"],
+        directnessRequirement: "direct_only",
+        capacityPriority: "floor_critical",
+        fallbackPolicy: "block_if_floor_critical",
+        identityPreservationMode: "variation_allowed_within_lane_job",
+      },
+      { consumedByMaterializer: true },
+    );
   }
 
   if (isTricepsDirectLane(lane)) {
-    return baseIntent({
-      laneJob: "direct_floor",
-      requiredMovementPattern: "elbow_extension",
-      allowedExerciseClasses: ["triceps_isolation"],
-      disallowedExerciseClasses: ["chest_press", "vertical_press"],
-      directnessRequirement: "direct_only",
-      duplicatePolicy: "prefer_variation_if_clean",
-      capacityPriority: "floor_critical",
-      fallbackPolicy: "block_if_floor_critical",
-      identityPreservationMode: "variation_allowed_within_lane_job",
-    });
+    return baseIntent(
+      {
+        laneJob: "direct_floor",
+        requiredMovementPattern: "elbow_extension",
+        allowedExerciseClasses: ["triceps_isolation"],
+        disallowedExerciseClasses: ["chest_press", "vertical_press"],
+        directnessRequirement: "direct_only",
+        duplicatePolicy: "prefer_variation_if_clean",
+        capacityPriority: "floor_critical",
+        fallbackPolicy: "block_if_floor_critical",
+        identityPreservationMode: "variation_allowed_within_lane_job",
+      },
+      { consumedByMaterializer: lane.laneId === "triceps" },
+    );
   }
 
   if (isBicepsDirectLane(lane)) {
@@ -365,17 +380,20 @@ export function buildV2LaneSelectionIntentV0ForPlanLane(
   }
 
   if (lane.laneId === "row_support") {
-    return baseIntent({
-      laneJob: "support_coverage",
-      requiredMovementPattern: "horizontal_pull",
-      allowedExerciseClasses: ["row"],
-      disallowedExerciseClasses: ["shrug", "vertical_pull", "pullover"],
-      directnessRequirement: "direct_or_high_support",
-      loadabilityPreference: "moderate_or_high",
-      capacityPriority: "high",
-      fallbackPolicy: "allow_labeled_fallback",
-      identityPreservationMode: "preserve_lane_job",
-    });
+    return baseIntent(
+      {
+        laneJob: "support_coverage",
+        requiredMovementPattern: "horizontal_pull",
+        allowedExerciseClasses: ["row"],
+        disallowedExerciseClasses: ["shrug", "vertical_pull", "pullover"],
+        directnessRequirement: "direct_or_high_support",
+        loadabilityPreference: "moderate_or_high",
+        capacityPriority: "high",
+        fallbackPolicy: "allow_labeled_fallback",
+        identityPreservationMode: "preserve_lane_job",
+      },
+      { consumedByMaterializer: true },
+    );
   }
 
   return undefined;
@@ -405,6 +423,55 @@ export function isV2LaneSelectionIntentConsumedByMaterializer(
     lane.laneId === "hamstring_curl" &&
     intent.requiredMovementPattern === "knee_flexion" &&
     intent.allowedExerciseClasses.includes("hamstring_curl")
+  ) {
+    return true;
+  }
+
+  if (
+    lane.laneId === "calves" &&
+    intent.requiredMovementPattern === "calf_raise" &&
+    intent.allowedExerciseClasses.includes("calf_isolation")
+  ) {
+    return true;
+  }
+
+  if (
+    lane.laneId === "side_delt_isolation" &&
+    intent.requiredMovementPattern === "shoulder_abduction" &&
+    intent.allowedExerciseClasses.includes("lateral_raise")
+  ) {
+    return true;
+  }
+
+  if (
+    lane.laneId === "triceps" &&
+    intent.requiredMovementPattern === "elbow_extension" &&
+    intent.allowedExerciseClasses.includes("triceps_isolation")
+  ) {
+    return true;
+  }
+
+  if (
+    lane.laneId === "rear_delt" &&
+    (intent.requiredMovementPattern === "rear_delt_fly" ||
+      intent.requiredMovementPattern === "shoulder_horizontal_abduction") &&
+    intent.allowedExerciseClasses.includes("rear_delt_isolation")
+  ) {
+    return true;
+  }
+
+  if (
+    lane.laneId === "row_support" &&
+    intent.requiredMovementPattern === "horizontal_pull" &&
+    intent.allowedExerciseClasses.includes("row")
+  ) {
+    return true;
+  }
+
+  if (
+    lane.laneId === "quad_isolation" &&
+    intent.requiredMovementPattern === "knee_extension" &&
+    intent.allowedExerciseClasses.includes("quad_isolation")
   ) {
     return true;
   }

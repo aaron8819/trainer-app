@@ -855,7 +855,12 @@ function matchesRequiredMovementPattern(
         hasAnyNormalizedPhrase(text, ["leg extension", "quad extension"]);
     case "rear_delt_fly":
     case "shoulder_horizontal_abduction":
-      return hasAnyNormalizedPhrase(text, ["rear delt", "reverse fly", "face pull"]);
+      return hasAnyNormalizedPhrase(text, [
+        "rear delt",
+        "reverse fly",
+        "reverse pec deck",
+        "face pull",
+      ]);
     case "shoulder_abduction":
       return hasAnyNormalizedPhrase(text, ["lateral raise"]) ||
         hasAnyMovementPattern(exercise, ["isolation"]);

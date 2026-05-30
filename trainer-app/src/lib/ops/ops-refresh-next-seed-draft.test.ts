@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildAuditCommandArgs,
+  buildNpmCommandInvocation,
   buildRefreshRouteUrl,
   commandArgsContainAcceptRoute,
   compareSafetyCounts,
@@ -249,5 +250,26 @@ describe("ops refresh-next-seed-draft route and audit command boundaries", () =>
     expect(handoff).toEqual(expect.arrayContaining(["--no-artifact"]));
     expect(gate).toEqual(expect.arrayContaining(["--operator-debug"]));
     expect(commandArgsContainAcceptRoute([...handoff, ...gate])).toBe(false);
+  });
+
+  it("routes nested npm audit commands through cmd on Windows", () => {
+    const invocation = buildNpmCommandInvocation(
+      ["run", "audit:workout", "--", "--help"],
+      "win32",
+    );
+
+    expect(invocation).toEqual({
+      command: "cmd.exe",
+      args: ["/c", "npm", "run", "audit:workout", "--", "--help"],
+    });
+  });
+
+  it("uses npm directly on non-Windows platforms", () => {
+    expect(
+      buildNpmCommandInvocation(["run", "audit:workout"], "linux"),
+    ).toEqual({
+      command: "npm",
+      args: ["run", "audit:workout"],
+    });
   });
 });

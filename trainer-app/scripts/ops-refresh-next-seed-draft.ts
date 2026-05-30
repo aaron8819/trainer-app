@@ -74,6 +74,7 @@ type CommandResult = {
   status: number;
   stdout: string;
   stderr: string;
+  error: string | null;
 };
 
 type AuditSummary = {
@@ -607,12 +608,19 @@ async function callRefreshRoute(input: {
   return body;
 }
 
-function npmCommand(): string {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
+export function buildNpmCommandInvocation(
+  args: string[],
+  platform: NodeJS.Platform = process.platform,
+): { command: string; args: string[] } {
+  if (platform === "win32") {
+    return { command: "cmd.exe", args: ["/c", "npm", ...args] };
+  }
+  return { command: "npm", args };
 }
 
 function runAuditCommand(args: string[]): CommandResult {
-  const result = spawnSync(npmCommand(), args, {
+  const invocation = buildNpmCommandInvocation(args);
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd: process.cwd(),
     encoding: "utf8",
     maxBuffer: 50 * 1024 * 1024,
@@ -621,6 +629,7 @@ function runAuditCommand(args: string[]): CommandResult {
     status: result.status ?? 1,
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
+    error: result.error ? String(result.error) : null,
   };
 }
 
@@ -631,7 +640,7 @@ function assertCommandSucceeded(label: string, result: CommandResult): void {
   const stdoutTail = result.stdout.split(/\r?\n/).slice(-20).join("\n");
   const stderrTail = result.stderr.split(/\r?\n/).slice(-20).join("\n");
   throw new Error(
-    `${label} failed with exit ${result.status}\nstdout:\n${stdoutTail}\nstderr:\n${stderrTail}`,
+    `${label} failed with exit ${result.status}${result.error ? ` error=${result.error}` : ""}\nstdout:\n${stdoutTail}\nstderr:\n${stderrTail}`,
   );
 }
 

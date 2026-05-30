@@ -3,6 +3,8 @@ import {
   buildV2LiveContextMaterializationDryRunHarness,
   normalizeLiveInventoryForV2Materialization,
 } from "@/lib/audit/workout-audit/v2-materialization-live-context-dry-run";
+import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
+import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { buildV2PlannerMesocyclePolicy } from "../mesocycle-policy";
 import { buildV2MaterializationDryRunReport } from "./dry-run-report";
 import { buildV2ExerciseMaterializationPlan } from "./materializer";
@@ -418,6 +420,39 @@ function exerciseForLane(
     throw new Error(`Missing materialized lane ${slotId}:${laneId}`);
   }
   return found;
+}
+
+function weightedChestSets(input: {
+  result: V2ExerciseMaterializationPlan;
+  inventory: V2MaterializationExercise[];
+}): number {
+  const exerciseById = new Map(
+    input.inventory.map((exerciseRow) => [exerciseRow.exerciseId, exerciseRow]),
+  );
+  const total = input.result.slots
+    .flatMap((slot) => slot.exercises)
+    .reduce((sum, materializedExercise) => {
+      const inventoryExercise = exerciseById.get(materializedExercise.exerciseId);
+      if (!inventoryExercise) {
+        return sum;
+      }
+      return (
+        sum +
+        (getEffectiveStimulusByMuscle(
+          {
+            id: inventoryExercise.exerciseId,
+            name: inventoryExercise.name,
+            aliases: inventoryExercise.aliases,
+            primaryMuscles: inventoryExercise.primaryMuscles,
+            secondaryMuscles: inventoryExercise.secondaryMuscles,
+            stimulusProfile: {},
+          },
+          materializedExercise.setCount,
+          { logFallback: false },
+        ).get("Chest") ?? 0)
+      );
+    }, 0);
+  return Math.round(total * 10) / 10;
 }
 
 describe("buildV2ExerciseMaterializationPlan", () => {
@@ -1222,6 +1257,117 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       "machine-press",
       "fly",
     ]);
+  });
+
+  it("prefers meaningful chest stimulus for chest-biased press support", () => {
+    const chestPlan = plan([
+      lane({
+        laneId: "chest_anchor",
+        role: "anchor",
+        primaryMuscles: ["Chest"],
+        acceptableExerciseClasses: ["horizontal_press", "slight_incline_press"],
+        setBudget: { min: 3, preferred: 4, max: 4 },
+      }),
+      lane({
+        laneId: "vertical_press",
+        role: "support",
+        primaryMuscles: ["Chest", "Front Delts"],
+        acceptableExerciseClasses: [
+          "distinct_chest_press_or_fly",
+          "machine_press",
+          "cable_press",
+          "vertical_press",
+        ],
+        setBudget: { min: 2, preferred: 3, max: 3 },
+      }),
+      lane({
+        laneId: "chest_second_exposure",
+        role: "support",
+        primaryMuscles: ["Chest"],
+        acceptableExerciseClasses: [
+          "distinct_chest_press_or_fly",
+          "fly",
+          "machine_press",
+          "cable_press",
+        ],
+        setBudget: { min: 2, preferred: 3, max: 3 },
+        duplicatePolicy: {
+          scope: "same_slot",
+          classDistinctness: "required_if_clean_alternative_exists",
+          sameExerciseAllowedOnlyWithJustification: true,
+        },
+        cleanAlternativePolicy: {
+          requiredBeforeDuplicate: true,
+          evaluationTiming: "future_inventory_selection",
+        },
+      }),
+    ]);
+    const inventory = [
+      exercise({
+        exerciseId: "incline-machine-press",
+        name: "Incline Machine Press",
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: ["Front Delts", "Triceps"],
+        movementPatterns: ["horizontal_press"],
+        isCompound: true,
+        fatigueCost: 2,
+      }),
+      exercise({
+        exerciseId: "landmine-press",
+        name: "Landmine Press",
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: ["Front Delts", "Triceps"],
+        movementPatterns: ["vertical_press"],
+        stimulusByMusclePerSet: {
+          Chest: 0.35,
+          "Front Delts": 1,
+          Triceps: 0.35,
+        },
+        isCompound: true,
+        fatigueCost: 2,
+      }),
+      exercise({
+        exerciseId: "machine-chest-press",
+        name: "Machine Chest Press",
+        primaryMuscles: ["Chest"],
+        secondaryMuscles: ["Front Delts", "Triceps"],
+        movementPatterns: ["horizontal_press"],
+        stimulusByMusclePerSet: {
+          Chest: 1,
+          "Front Delts": 0.3,
+          Triceps: 0.45,
+        },
+        isCompound: true,
+        fatigueCost: 2,
+      }),
+      exercise({
+        exerciseId: "cable-fly",
+        name: "Cable Fly",
+        primaryMuscles: ["Chest"],
+        movementPatterns: ["fly"],
+        stimulusByMusclePerSet: { Chest: 1 },
+        fatigueCost: 2,
+      }),
+    ];
+
+    const result = materialize({ plan: chestPlan, inventory });
+    const seedRows = result.slots.flatMap((slot) => slot.exercises);
+    const chestSets = weightedChestSets({ result, inventory });
+
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "upper_a", "vertical_press")).toMatchObject({
+      exerciseId: "machine-chest-press",
+      setCount: 3,
+    });
+    expect(exerciseForLane(result, "upper_a", "chest_second_exposure"))
+      .toMatchObject({
+        exerciseId: "cable-fly",
+        setCount: 3,
+      });
+    expect(chestSets).toBeGreaterThanOrEqual(VOLUME_LANDMARKS.Chest.mev);
+    expect(chestSets).toBeLessThanOrEqual(VOLUME_LANDMARKS.Chest.mav);
+    expect(Math.max(...seedRows.map((row) => row.setCount))).toBeLessThanOrEqual(4);
+    expect(seedRows).toHaveLength(3);
   });
 
   it("omits managed collateral lanes even when a class match exists", () => {

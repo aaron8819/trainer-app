@@ -29,6 +29,7 @@ type Candidate = {
   preferredClassOrder: number;
   directness: number;
   identityPreservation: number;
+  chestSupportStimulus: number;
   laneIntent: number;
   stimulusToFatigue: number;
   fatigue: number;
@@ -385,6 +386,11 @@ function buildCandidates(input: {
           carryForwardExerciseIds: input.carryForwardExerciseIds,
           identityPreservationMode: input.identityPreservationMode,
         }),
+        chestSupportStimulus: chestSupportStimulusScore(
+          input.lane,
+          match,
+          exercise,
+        ),
         laneIntent: laneIntentPreferenceScore(input.lane, match, exercise),
         stimulusToFatigue: stimulusToFatigueScore(input.lane, match, exercise),
         fatigue: exercise.fatigueCost ?? 0,
@@ -457,6 +463,50 @@ function identityPreservationScore(input: {
     ...(input.carryForwardExerciseIds[input.laneId] ?? []),
   ];
   return carryForwardIds.includes(input.exerciseId) ? 0 : 1;
+}
+
+function chestSupportStimulusScore(
+  lane: PlanLane,
+  match: V2ExerciseClassMatch,
+  exercise: V2MaterializationExercise,
+): number {
+  if (!isChestBiasedPressSupportLane(lane)) {
+    return 0;
+  }
+  const chestStimulus = inferredStimulusForMuscle(exercise, match, "Chest");
+  if (chestStimulus >= 0.75) {
+    return 0;
+  }
+  if (chestStimulus >= 0.5) {
+    return 1;
+  }
+  if (chestStimulus > 0) {
+    return 2;
+  }
+  return 3;
+}
+
+function isChestBiasedPressSupportLane(lane: PlanLane): boolean {
+  const classNames = [
+    ...lane.acceptableExerciseClasses,
+    ...lane.preferredExerciseClasses,
+  ].map(normalizeV2MaterializationText);
+  const ownsChest = lane.primaryMuscles.some(
+    (muscle) =>
+      normalizeV2MaterializationText(muscle) ===
+      normalizeV2MaterializationText("Chest"),
+  );
+  const canSelectChestPress = classNames.some((className) =>
+    [
+      "distinct chest press or fly",
+      "horizontal press",
+      "slight incline press",
+      "machine press",
+      "cable press",
+    ].includes(className),
+  );
+  const canSelectVerticalPress = classNames.includes("vertical press");
+  return ownsChest && canSelectChestPress && canSelectVerticalPress;
 }
 
 function laneIntentPreferenceScore(
@@ -575,6 +625,7 @@ function compareCandidates(left: Candidate, right: Candidate): number {
     left.preferredClassOrder - right.preferredClassOrder ||
     left.directness - right.directness ||
     left.identityPreservation - right.identityPreservation ||
+    left.chestSupportStimulus - right.chestSupportStimulus ||
     left.laneIntent - right.laneIntent ||
     left.stimulusToFatigue - right.stimulusToFatigue ||
     left.fatigue - right.fatigue ||

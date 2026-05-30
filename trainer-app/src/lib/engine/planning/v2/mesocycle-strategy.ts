@@ -35,6 +35,8 @@ import type {
   V2StrategyHypothesisPromotionReadinessLevel,
   V2StrategyHypothesisPromotionReadinessNextSafeAction,
   V2StrategyHypothesisPromotionReadinessOwner,
+  V2StrategyDemandZoneLearning,
+  V2StrategyToDemandDiff,
 } from "./types";
 
 export type V2MesocycleStrategyDiagnosticInput = {
@@ -1082,6 +1084,395 @@ function buildVolumeFatigueStrategyEvidence(
     lateBlockFatigueSignals,
     deloadExecutionSignals,
     limitations,
+  };
+}
+
+function buildDemandZoneLearning(
+  strategyInput: V2MesocycleStrategyInput | undefined,
+): V2StrategyDemandZoneLearning {
+  const historicalMesocycles = strategyInput?.historicalMesocycles ?? [];
+  const blockSignals = strategyInput?.blockResponseSignals ?? [];
+  const historicalVolumeRows = historicalMesocycles.flatMap((mesocycle) =>
+    (mesocycle.performedVolumeSummary ?? []).map((row) => ({
+      mesocycleId: mesocycle.mesocycleId,
+      ...row,
+    })),
+  );
+  const floorProtectionSignals = unique([
+    ...blockSignals.flatMap((signal) =>
+      (signal.muscleDistribution.belowMevFlags ?? []).map(
+        (flag) => `${signal.mesocycleId}:floor:${flag}`,
+      ),
+    ),
+    ...blockSignals.flatMap((signal) =>
+      (signal.muscleDistribution.recurringUnderHitMuscles ?? [])
+        .filter(isTargetTierMuscle)
+        .map((muscle) => `${signal.mesocycleId}:target_tier_under_hit:${muscle}`),
+    ),
+  ]).slice(0, 8);
+  const productiveMonitorSignals = unique(
+    historicalVolumeRows.flatMap((row) =>
+      row.status === "under"
+        ? [`${row.mesocycleId}:productive_monitor:${row.muscle}`]
+        : [],
+    ),
+  ).slice(0, 8);
+  const capRedistributionSignals = unique([
+    ...blockSignals.flatMap((signal) =>
+      (signal.muscleDistribution.overMavFlags ?? []).map(
+        (flag) => `${signal.mesocycleId}:cap:${flag}`,
+      ),
+    ),
+    ...blockSignals.flatMap((signal) =>
+      (signal.muscleDistribution.recurringOverConcentratedMuscles ?? []).map(
+        (muscle) => `${signal.mesocycleId}:over_concentrated:${muscle}`,
+      ),
+    ),
+    ...blockSignals.flatMap((signal) =>
+      signal.adherence.skippedSetTrend === "rising" ||
+      signal.strategyImplications.includes("cap_late_block_volume")
+        ? [`${signal.mesocycleId}:hard_week_or_skipped_set_cap_pressure`]
+        : [],
+    ),
+    ...blockSignals.flatMap((signal) =>
+      (signal.fatigueDistribution.likelyFatigueDrivers ?? []).map(
+        (muscle) => `${signal.mesocycleId}:fatigue_driver:${muscle}`,
+      ),
+    ),
+  ]).slice(0, 8);
+  const stretchMonitorSignals = unique(
+    historicalVolumeRows.flatMap((row) =>
+      row.status === "within" && row.targetRange?.includes("stretch")
+        ? [`${row.mesocycleId}:stretch_monitor:${row.muscle}`]
+        : [],
+    ),
+  ).slice(0, 8);
+  const availableCount =
+    floorProtectionSignals.length +
+    productiveMonitorSignals.length +
+    stretchMonitorSignals.length +
+    capRedistributionSignals.length;
+  const lowConfidenceCount = blockSignals.filter(
+    (signal) => signal.confidence === "low",
+  ).length;
+  const limitations = unique([
+    "demand_zone_learning_is_read_only",
+    "demand_zone_learning_not_consumed_by_mesocycle_demand",
+    "demand_zone_learning_not_consumed_by_weekly_curve_slot_allocation_or_materializer",
+    "performed_volume_status_lacks_explicit_floor_productive_stretch_cap_zone",
+    stretchMonitorSignals.length > 0
+      ? null
+      : "stretch_target_evidence_not_structured",
+    floorProtectionSignals.length > 0
+      ? null
+      : "floor_or_target_tier_under_hit_evidence_not_available",
+    capRedistributionSignals.length > 0
+      ? null
+      : "cap_or_fatigue_redistribution_evidence_not_available",
+  ].filter(Boolean) as string[]);
+  const nextSafeAction: V2StrategyDemandZoneLearning["nextSafeAction"] =
+    floorProtectionSignals.length > 0 || capRedistributionSignals.length > 0
+      ? "add_read_only_strategy_to_demand_diff"
+      : availableCount > 0
+        ? "keep_diagnostic_only"
+        : "collect_more_performed_evidence";
+
+  return {
+    version: 1,
+    source: "v2_strategy_demand_zone_learning",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: false,
+    status: resolveEvidenceStatus({
+      availableCount,
+      lowConfidenceCount,
+      limitationCount: limitations.length,
+    }),
+    floorProtectionSignals,
+    productiveMonitorSignals,
+    stretchMonitorSignals,
+    capRedistributionSignals,
+    learningRules: {
+      floorEvidence: "protect_trainability_before_growth_targeting",
+      productiveMissEvidence: "monitor_until_recurring_target_tier_under_hit",
+      stretchMissEvidence: "do_not_increase_demand_by_default",
+      capPressureEvidence: "prefer_redistribution_or_late_block_cap_hypothesis",
+    },
+    nextSafeAction,
+    limitations,
+  };
+}
+
+function demandDiffOwnerForFloorMuscle(
+  muscle: string | undefined,
+): V2StrategyToDemandDiff["rows"][number]["owner"] {
+  if (!muscle) {
+    return "unknown";
+  }
+  const tier = getMuscleTargetSemantics(muscle).targetTier;
+  if (tier === "A_PRIMARY") {
+    return "MesocycleDemand";
+  }
+  if (tier === "B_SUPPORT") {
+    return "SlotDemandAllocation";
+  }
+  return "unknown";
+}
+
+function demandZoneSignalMuscle(input: {
+  signal: string;
+  markers: readonly string[];
+}): string | undefined {
+  for (const marker of input.markers) {
+    const markerIndex = input.signal.indexOf(marker);
+    if (markerIndex < 0) {
+      continue;
+    }
+    const value = input.signal.slice(markerIndex + marker.length);
+    const muscle = muscleNameFromFlag(value);
+    return muscle || undefined;
+  }
+  return undefined;
+}
+
+function groupDemandZoneEvidence(input: {
+  signals: readonly string[];
+  markers: readonly string[];
+}): Map<string, string[]> {
+  const grouped = new Map<string, string[]>();
+  for (const signal of input.signals) {
+    const muscle = demandZoneSignalMuscle({
+      signal,
+      markers: input.markers,
+    });
+    if (!muscle) {
+      continue;
+    }
+    grouped.set(muscle, [...(grouped.get(muscle) ?? []), signal]);
+  }
+  return grouped;
+}
+
+function demandDiffProtectedReadiness(input: {
+  protectedRow: V2SlotOwnedDemandAdjustmentPlan["protectedDemand"][number] | undefined;
+  slotOwnedPlan: V2SlotOwnedDemandAdjustmentPlan;
+}): V2StrategyToDemandDiff["rows"][number]["readiness"] {
+  if (!input.protectedRow) {
+    return "needs_evidence";
+  }
+  if (
+    input.protectedRow.status === "owned" &&
+    input.slotOwnedPlan.status === "feasible"
+  ) {
+    return "read_only_diff";
+  }
+  return "blocked";
+}
+
+function demandDiffDonorReadiness(input: {
+  donorRow: V2SlotOwnedDemandAdjustmentPlan["donorDemand"][number] | undefined;
+  hasEligibleDonor: boolean;
+}): V2StrategyToDemandDiff["rows"][number]["readiness"] {
+  if (input.donorRow?.eligible) {
+    return "read_only_diff";
+  }
+  if (input.donorRow && !input.donorRow.eligible) {
+    return "blocked";
+  }
+  return input.hasEligibleDonor ? "read_only_diff" : "needs_evidence";
+}
+
+function buildStrategyToDemandDiff(input: {
+  demandZoneLearning: V2StrategyDemandZoneLearning;
+  slotOwnedPlan: V2SlotOwnedDemandAdjustmentPlan;
+}): V2StrategyToDemandDiff {
+  const protectedByMuscle = new Map(
+    input.slotOwnedPlan.protectedDemand.map((row) => [row.muscle, row]),
+  );
+  const donorByMuscle = new Map(
+    input.slotOwnedPlan.donorDemand.map((row) => [row.muscle, row]),
+  );
+  const hasEligibleDonor = input.slotOwnedPlan.donorDemand.some(
+    (row) => row.eligible,
+  );
+  const floorEvidence = groupDemandZoneEvidence({
+    signals: input.demandZoneLearning.floorProtectionSignals,
+    markers: [":floor:", ":target_tier_under_hit:"],
+  });
+  const productiveEvidence = groupDemandZoneEvidence({
+    signals: input.demandZoneLearning.productiveMonitorSignals,
+    markers: [":productive_monitor:"],
+  });
+  const stretchEvidence = groupDemandZoneEvidence({
+    signals: input.demandZoneLearning.stretchMonitorSignals,
+    markers: [":stretch_monitor:"],
+  });
+  const capEvidence = groupDemandZoneEvidence({
+    signals: input.demandZoneLearning.capRedistributionSignals.filter(
+      (signal) => !signal.includes(":hard_week_or_skipped_set_cap_pressure"),
+    ),
+    markers: [":cap:", ":over_concentrated:", ":fatigue_driver:"],
+  });
+
+  const rows: V2StrategyToDemandDiff["rows"] = [
+    ...Array.from(floorEvidence.entries()).map(([muscle, evidence]) => {
+      const protectedRow = protectedByMuscle.get(muscle);
+      const readiness = demandDiffProtectedReadiness({
+        protectedRow,
+        slotOwnedPlan: input.slotOwnedPlan,
+      });
+      return {
+        zone: "floor" as const,
+        scope: "muscle" as const,
+        muscle,
+        owner: demandDiffOwnerForFloorMuscle(muscle),
+        action: "protect_floor" as const,
+        readiness,
+        evidence: evidence.slice(0, 4),
+        limitations: unique([
+          "read_only_diff_only",
+          "requires_non_regression_gates_before_behavior",
+          ...(!protectedRow ? ["slot_owned_protected_row_missing"] : []),
+          ...(readiness === "blocked"
+            ? input.slotOwnedPlan.feasibility.blockingReasons
+            : []),
+        ]).slice(0, 8),
+      };
+    }),
+    ...Array.from(productiveEvidence.entries()).map(([muscle, evidence]) => ({
+      zone: "productive" as const,
+      scope: "muscle" as const,
+      muscle,
+      owner: "WeeklyDemandCurve" as const,
+      action: "monitor_productive" as const,
+      readiness: "monitor_only" as const,
+      evidence: evidence.slice(0, 4),
+      limitations: [
+        "productive_miss_requires_recurrence_before_demand_change",
+        "read_only_monitoring_only",
+      ],
+    })),
+    ...Array.from(stretchEvidence.entries()).map(([muscle, evidence]) => ({
+      zone: "stretch" as const,
+      scope: "muscle" as const,
+      muscle,
+      owner: "WeeklyDemandCurve" as const,
+      action: "do_not_raise_for_stretch" as const,
+      readiness: "monitor_only" as const,
+      evidence: evidence.slice(0, 4),
+      limitations: [
+        "stretch_target_miss_is_not_default_demand_increase",
+        "read_only_monitoring_only",
+      ],
+    })),
+    ...Array.from(capEvidence.entries()).map(([muscle, evidence]) => {
+      const donorRow = donorByMuscle.get(muscle);
+      const readiness = demandDiffDonorReadiness({
+        donorRow,
+        hasEligibleDonor,
+      });
+      return {
+        zone: "cap" as const,
+        scope: "muscle" as const,
+        muscle,
+        owner: "SetDistributionIntent" as const,
+        action: "redistribute_or_cap" as const,
+        readiness,
+        evidence: evidence.slice(0, 4),
+        limitations: unique([
+          "cap_pressure_prefers_redistribution_before_net_new_volume",
+          "read_only_diff_only",
+          ...(!donorRow ? ["donor_surplus_row_missing"] : []),
+          ...(donorRow && !donorRow.eligible
+            ? [donorRow.eligibilityReason]
+            : []),
+        ]).slice(0, 8),
+      };
+    }),
+    ...(input.demandZoneLearning.capRedistributionSignals.some((signal) =>
+      signal.includes(":hard_week_or_skipped_set_cap_pressure"),
+    )
+      ? [
+          {
+            zone: "cap" as const,
+            scope: "block" as const,
+            owner: "WeeklyDemandCurve" as const,
+            action: "redistribute_or_cap" as const,
+            readiness: hasEligibleDonor
+              ? ("read_only_diff" as const)
+              : ("needs_evidence" as const),
+            evidence: input.demandZoneLearning.capRedistributionSignals
+              .filter((signal) =>
+                signal.includes(":hard_week_or_skipped_set_cap_pressure"),
+              )
+              .slice(0, 4),
+            limitations: unique([
+              "hard_week_cap_signal_requires_projection_before_behavior",
+              "read_only_diff_only",
+              ...(hasEligibleDonor
+                ? []
+                : ["no_measured_safe_donor_surplus_margin"]),
+            ]),
+          },
+        ]
+      : []),
+  ];
+
+  const summaryRows = rows.reduce(
+    (summary, row) => {
+      if (row.zone === "floor") summary.floorProtectionCount += 1;
+      if (row.zone === "productive") summary.productiveMonitorCount += 1;
+      if (row.zone === "stretch") summary.stretchMonitorCount += 1;
+      if (row.zone === "cap") summary.capRedistributionCount += 1;
+      if (row.readiness === "read_only_diff") summary.readOnlyDiffCount += 1;
+      if (row.readiness === "blocked") summary.blockedCount += 1;
+      if (row.readiness === "monitor_only") summary.monitorOnlyCount += 1;
+      if (row.readiness === "needs_evidence") summary.needsEvidenceCount += 1;
+      return summary;
+    },
+    {
+      floorProtectionCount: 0,
+      productiveMonitorCount: 0,
+      stretchMonitorCount: 0,
+      capRedistributionCount: 0,
+      readOnlyDiffCount: 0,
+      blockedCount: 0,
+      monitorOnlyCount: 0,
+      needsEvidenceCount: 0,
+    },
+  );
+
+  return {
+    version: 1,
+    source: "v2_strategy_to_demand_diff",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: false,
+    status: rows.length > 0 ? "available_with_limitations" : "not_available",
+    basis: {
+      demandZoneLearning: true,
+      slotOwnedDemandAdjustmentPlan: true,
+      mesocycleDemandMutation: false,
+      weeklyCurveMutation: false,
+      slotAllocationMutation: false,
+    },
+    rows,
+    summary: summaryRows,
+    nextSafeAction:
+      summaryRows.readOnlyDiffCount > 0
+        ? "add_read_only_demand_projection"
+        : rows.length > 0
+          ? "keep_diagnostic_only"
+          : "collect_more_evidence",
+    limitations: unique([
+      "strategy_to_demand_diff_is_read_only",
+      "diff_does_not_mutate_mesocycle_demand_weekly_curve_or_slot_allocation",
+      "diff_not_consumed_by_materializer_generation_repair_seed_runtime_or_receipts",
+      "behavior_requires_explicit_follow_up_slice_and_non_regression_gates",
+      ...(summaryRows.blockedCount > 0
+        ? ["blocked_rows_are_not_repair_instructions"]
+        : []),
+    ]),
   };
 }
 
@@ -3892,6 +4283,7 @@ export function buildV2MesocycleStrategyDiagnostic(
   const volumeFatigueStrategyEvidence = buildVolumeFatigueStrategyEvidence(
     input.strategyInput,
   );
+  const demandZoneLearning = buildDemandZoneLearning(input.strategyInput);
   const strategyRecommendation = buildStrategyRecommendation(
     input.strategyInput,
     strategyInputSummary,
@@ -3910,6 +4302,11 @@ export function buildV2MesocycleStrategyDiagnostic(
       strategyShadowProjection: input.strategyShadowProjection,
       preShadowCandidateFilter: input.preShadowCandidateFilter,
     });
+  const strategyToDemandDiff = buildStrategyToDemandDiff({
+    demandZoneLearning,
+    slotOwnedPlan:
+      strategyHypothesisPromotionDiff.slotOwnedDemandAdjustmentPlan,
+  });
   const phaseConfidence = resolvePhaseConfidence(strategyInputSummary);
 
   return {
@@ -3979,6 +4376,8 @@ export function buildV2MesocycleStrategyDiagnostic(
     },
     continuityVariationEvidence,
     volumeFatigueStrategyEvidence,
+    demandZoneLearning,
+    strategyToDemandDiff,
     strategyRecommendation,
     strategyHypothesisPromotionReadiness,
     strategyHypothesisPromotionDiff,

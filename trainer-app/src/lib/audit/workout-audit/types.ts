@@ -4,6 +4,7 @@ import type {
   V2BasePlanShadowConsumptionTrial,
   V2MesocycleStrategyDiagnostic,
   V2SetDistributionIntent,
+  V2StrategyToDemandProjection,
   V2SupportLanePolicy,
 } from "@/lib/engine/planning/v2";
 import type { V2LaneSelectionIntentAudit } from "@/lib/engine/planning/v2/lane-selection-intent-audit";
@@ -1037,6 +1038,46 @@ export type NextMesocycleAcceptanceGatePayload = {
     plannerMaterializerQuality: "pass" | "warning" | "fail";
     repairBurden: "none" | "low" | "medium" | "high";
     repairBurdenEvidence: string;
+    repairBurdenSource:
+      | "planning_reality_shadow_repair_summary"
+      | "planning_reality_summary"
+      | "missing_planning_reality";
+    repairBurdenClassification:
+      | "candidate_truth"
+      | "legacy_diagnostic_context"
+      | "architecture_debt"
+      | "noisy_watch_item";
+    shadowConsumptionClassification:
+      | "not_available"
+      | "diagnostic_positive_needs_inspection"
+      | "diagnostic_limited_needs_inspection"
+      | "blocked_for_promotion"
+      | "guardrail_violation";
+    shadowConsumptionNextSafeAction:
+      | "inspect_shadow_consumption"
+      | "fix_v2_base_plan"
+      | "fix_shadow_adapter"
+      | "add_guarded_behavior_trial"
+      | "do_not_promote"
+      | "not_available";
+    shadowConsumptionEvidence: string;
+    materializerGuardrailClassification:
+      | "not_available"
+      | "no_material_guardrail_issue"
+      | "exercise_metadata_gap"
+      | "selection_ranking_gap"
+      | "capacity_policy_gap"
+      | "diagnostic_or_legacy_context"
+      | "guardrail_violation";
+    materializerGuardrailNextSafeAction:
+      | "inspect_exercise_metadata"
+      | "inspect_selection_ranking"
+      | "inspect_capacity_policy"
+      | "keep_diagnostic_only"
+      | "no_action"
+      | "not_available"
+      | "stop_guardrail_violation";
+    materializerGuardrailEvidence: string;
   };
   candidateIdentity: {
     ownerEmail?: string;
@@ -1607,6 +1648,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
     };
   };
   v2MesocycleStrategyDiagnostic: V2MesocycleStrategyDiagnostic;
+  strategyToDemandProjection: V2StrategyToDemandProjection;
   v2BasePlanCompare?: V2BasePlanCompare;
   v2BasePlanShadowConsumptionTrial?: V2BasePlanShadowConsumptionTrial;
   repairPromotionScoreboard?: {

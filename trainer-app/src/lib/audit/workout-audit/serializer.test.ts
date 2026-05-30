@@ -2468,6 +2468,13 @@ describe("buildWorkoutAuditArtifact", () => {
         targetDemandSource: "mesocycle_strategy",
       },
     });
+    expect(fullNoRepair?.strategyToDemandProjection).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      projectionMode: "read_only_non_mutating_join",
+      status: "not_available",
+    });
     expect(fullNoRepair?.v2SetDistributionIntent).toBeTruthy();
     expect(fullNoRepair?.v2SupportLanePolicy).toMatchObject({
       readOnly: true,
@@ -4280,6 +4287,7 @@ function makeMesocycleExplainNoRepairPayload() {
       },
       v2MesocycleStrategyDiagnostic:
         buildV2PlannerMesocyclePolicy().mesocycleStrategyDiagnostic,
+      strategyToDemandProjection: plannerPolicy.strategyToDemandProjection,
       v2MesocyclePlan: {
         version: 1,
         source: "v2_planner_no_repair_experimental",

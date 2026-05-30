@@ -8368,6 +8368,8 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     });
     const v2MesocycleStrategyDiagnostic =
       plannerPolicy.mesocycleStrategyDiagnostic;
+    const strategyToDemandProjection =
+      plannerPolicy.strategyToDemandProjection;
     const v2SetDistributionIntent = plannerPolicy.v2SetDistributionIntent;
     const v2BasePlanCompare = input.v2BasePlanCompareContext
       ? buildV2BasePlanCompareFromLiveContext({
@@ -8485,6 +8487,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         : {}),
       ...(repairPromotionScoreboard ? { repairPromotionScoreboard } : {}),
       v2MesocycleStrategyDiagnostic,
+      strategyToDemandProjection,
       v2MesocyclePlan,
       v2DeloadProjectionDiagnostic,
       crossWeekProjectionGate,
@@ -8590,6 +8593,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   });
   const v2MesocycleStrategyDiagnostic =
     plannerPolicy.mesocycleStrategyDiagnostic;
+  const strategyToDemandProjection = plannerPolicy.strategyToDemandProjection;
   const v2SetDistributionIntent = plannerPolicy.v2SetDistributionIntent;
   const v2BasePlanCompare = input.v2BasePlanCompareContext
     ? buildV2BasePlanCompareFromLiveContext({
@@ -8717,6 +8721,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       : {}),
     ...(repairPromotionScoreboard ? { repairPromotionScoreboard } : {}),
     v2MesocycleStrategyDiagnostic,
+    strategyToDemandProjection,
     crossWeekProjectionGate,
     v2MesocyclePlan,
     v2DeloadProjectionDiagnostic,

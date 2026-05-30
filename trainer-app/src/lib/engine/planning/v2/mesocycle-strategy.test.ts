@@ -1,12 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   buildV2DonorSurplusEvidence,
+  buildV2ExerciseClassDistributionBySlot,
   buildV2MesocycleDemand,
   buildV2MesocycleStrategyDiagnostic,
   buildV2PlannerMesocyclePolicy,
+  buildV2SetDistributionIntent,
+  buildV2SlotDemandAllocationByWeek,
   buildV2StrategyHypothesisPreShadowCandidateFilter,
+  buildV2StrategyToDemandProjection,
+  buildV2SupportLanePolicy,
   buildV2TargetSkeleton,
+  buildV2WeeklyDemandCurve,
+  buildV2WeeklyProgressionModel,
   type V2MesocycleStrategyInput,
+  type V2SlotOwnedDemandAdjustmentPlan,
+  type V2StrategyToDemandDiff,
   type V2StrategyHypothesisShadowProjectionEvidence,
 } from "./index";
 
@@ -203,6 +212,63 @@ function buildStrategyInput(): V2MesocycleStrategyInput {
       "historical_mesocycles_are_validation_data_not_policy_targets",
       "strategy_input_does_not_feed_mesocycle_demand",
     ],
+  };
+}
+
+function buildFeasibleSlotOwnedPlan(
+  muscle: string,
+): V2SlotOwnedDemandAdjustmentPlan {
+  return {
+    version: 1,
+    source: "v2_slot_owned_demand_adjustment_plan",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    status: "feasible",
+    objective: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      protectLaggingTargetTierMuscles: true,
+      capLateBlockVolume: true,
+      preferRedistributionBeforeNetNewVolume: true,
+    },
+    protectedDemand: [
+      {
+        muscle,
+        reason: "target_tier_under_hit:1_signal",
+        targetTier: "B_SUPPORT",
+        priority: "P1",
+        requiredOwner: "SlotDemandAllocation",
+        candidateSlotOwners: ["lower_a", "lower_b"],
+        status: "owned",
+      },
+    ],
+    donorDemand: [
+      {
+        muscle: "Glutes",
+        reason: "over_concentration:1_signal",
+        eligible: true,
+        eligibilityReason: "safe_surplus_margin",
+        candidateSlotOwners: ["lower_a", "lower_b"],
+      },
+    ],
+    slotBudgetPolicy: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      netNewVolumeAllowed: false,
+      maxSlotIncreaseAllowed: 0,
+      requireSlotOwnership: true,
+      requireFloorPreservation: true,
+      requirePriorityCoveragePreservation: true,
+    },
+    feasibility: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      status: "feasible",
+      blockingReasons: [],
+      unresolvedInputs: [],
+      nextRequiredEvidence: ["downstream_projection_non_regression"],
+    },
+    nextSafeAction: "add_strategy_to_demand_diff",
   };
 }
 
@@ -462,6 +528,39 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
       },
       nextSafeAction: "do_not_promote",
     });
+    expect(diagnostic.demandZoneLearning).toMatchObject({
+      version: 1,
+      source: "v2_strategy_demand_zone_learning",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "not_available",
+      floorProtectionSignals: [],
+      productiveMonitorSignals: [],
+      stretchMonitorSignals: [],
+      capRedistributionSignals: [],
+      nextSafeAction: "collect_more_performed_evidence",
+    });
+    expect(diagnostic.strategyToDemandDiff).toMatchObject({
+      version: 1,
+      source: "v2_strategy_to_demand_diff",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "not_available",
+      rows: [],
+      summary: {
+        floorProtectionCount: 0,
+        productiveMonitorCount: 0,
+        stretchMonitorCount: 0,
+        capRedistributionCount: 0,
+        readOnlyDiffCount: 0,
+        blockedCount: 0,
+        monitorOnlyCount: 0,
+        needsEvidenceCount: 0,
+      },
+      nextSafeAction: "collect_more_evidence",
+    });
   });
 
   it("represents missing inputs and partial performed-history support honestly", () => {
@@ -622,6 +721,70 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
       overConcentrationSignals: ["Glutes"],
       lateBlockFatigueSignals: ["meso-any-2:late_block_skipped_sets_rising"],
       deloadExecutionSignals: ["meso-any-2:deload_not_executed"],
+    });
+    expect(diagnostic.demandZoneLearning).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "available_with_limitations",
+      floorProtectionSignals: expect.arrayContaining([
+        "meso-any-1:floor:Side Delts:below_target_or_mev_evidence",
+        "meso-any-2:target_tier_under_hit:Calves",
+      ]),
+      capRedistributionSignals: expect.arrayContaining([
+        "meso-any-2:cap:Front Delts:over_target_or_mav_evidence",
+        "meso-any-2:hard_week_or_skipped_set_cap_pressure",
+      ]),
+      learningRules: {
+        floorEvidence: "protect_trainability_before_growth_targeting",
+        productiveMissEvidence:
+          "monitor_until_recurring_target_tier_under_hit",
+        stretchMissEvidence: "do_not_increase_demand_by_default",
+        capPressureEvidence:
+          "prefer_redistribution_or_late_block_cap_hypothesis",
+      },
+      nextSafeAction: "add_read_only_strategy_to_demand_diff",
+    });
+    expect(diagnostic.strategyToDemandDiff).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "available_with_limitations",
+      basis: {
+        demandZoneLearning: true,
+        slotOwnedDemandAdjustmentPlan: true,
+        mesocycleDemandMutation: false,
+        weeklyCurveMutation: false,
+        slotAllocationMutation: false,
+      },
+      rows: expect.arrayContaining([
+        expect.objectContaining({
+          zone: "floor",
+          scope: "muscle",
+          muscle: "Side Delts",
+          owner: "SlotDemandAllocation",
+          action: "protect_floor",
+        }),
+        expect.objectContaining({
+          zone: "cap",
+          scope: "muscle",
+          muscle: "Front Delts",
+          owner: "SetDistributionIntent",
+          action: "redistribute_or_cap",
+        }),
+        expect.objectContaining({
+          zone: "cap",
+          scope: "block",
+          owner: "WeeklyDemandCurve",
+          action: "redistribute_or_cap",
+        }),
+      ]),
+      summary: expect.objectContaining({
+        floorProtectionCount: 2,
+        productiveMonitorCount: 0,
+        capRedistributionCount: 3,
+      }),
+      nextSafeAction: "keep_diagnostic_only",
     });
     expect(diagnostic.strategyRecommendation).toMatchObject({
       readOnly: true,
@@ -2755,8 +2918,154 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
         affectsScoringOrGeneration: false,
       },
     });
+    expect(policy.mesocycleStrategyDiagnostic.demandZoneLearning).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+    });
+    expect(policy.mesocycleStrategyDiagnostic.strategyToDemandDiff).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+    });
+    expect(policy.strategyToDemandProjection).toMatchObject({
+      version: 1,
+      source: "v2_strategy_to_demand_projection",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      projectionMode: "read_only_non_mutating_join",
+      status: "available_with_limitations",
+      basis: {
+        strategyToDemandDiff: true,
+        mesocycleDemand: true,
+        mesocycleDemandMutation: false,
+        weeklyCurveMutation: false,
+        slotAllocationMutation: false,
+        setDistributionMutation: false,
+      },
+      nonMutationGates: {
+        noMesocycleDemandMutation: "pass",
+        noWeeklyCurveMutation: "pass",
+        noSlotAllocationMutation: "pass",
+        noSetDistributionMutation: "pass",
+        noMaterializerRankingMutation: "pass",
+        noSeedOrRuntimeImpact: "pass",
+        noAcceptanceThresholdImpact: "pass",
+      },
+      measuredCurrentNonRegressionSummary: {
+        measurementMode: "current_no_mutation_projection",
+        measuredRowCount: 4,
+        passCount: 4,
+        unknownCount: 1,
+        behaviorProjectionMeasured: false,
+        maxAbsoluteRangeDelta: 0,
+        totalNetNewVolumeDelta: 0,
+      },
+      boundedBehaviorTrial: {
+        version: 1,
+        source: "v2_strategy_to_demand_bounded_behavior_trial",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByDemandOrMaterializer: false,
+        trialMode: "row_level_static_demand_delta",
+      },
+    });
+    const behaviorTrial = policy.strategyToDemandProjection.boundedBehaviorTrial;
+    expect(behaviorTrial.summary).toMatchObject({
+      rowCount: policy.mesocycleStrategyDiagnostic.strategyToDemandDiff.rows.length,
+      readyForBehaviorCount: 0,
+      downstreamUnknownCount:
+        policy.mesocycleStrategyDiagnostic.strategyToDemandDiff.rows.length,
+      materializerUnknownCount:
+        policy.mesocycleStrategyDiagnostic.strategyToDemandDiff.rows.length,
+    });
+    expect(behaviorTrial.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          zone: "floor",
+          muscle: "Side Delts",
+          owner: "SlotDemandAllocation",
+          trialStatus: "blocked",
+          trialKind: "no_behavior_trial",
+          readiness: "needs_slot_owned_redistribution_context",
+          gates: expect.objectContaining({
+            ownerIsDemandOrSlotAllocation: "pass",
+            slotOwnedRedistributionContext: "unknown",
+            noNetNewVolume: "unknown",
+          }),
+          blockingReasons: expect.arrayContaining([
+            "bounded_delta_not_available",
+            "slot_owned_redistribution_context_required",
+            "downstream_projection_not_measured",
+          ]),
+        }),
+      ]),
+    );
+    expect(behaviorTrial.summary.readyForBehaviorCount).toBe(0);
+    expect(behaviorTrial.nextSafeAction).toBe(
+      behaviorTrial.summary.candidateCount > 0
+        ? "add_slot_owned_redistribution_context"
+        : "keep_diagnostic_only",
+    );
+    expect(policy.strategyToDemandProjection.nextSafeAction).toBe(
+      behaviorTrial.nextSafeAction === "add_slot_owned_redistribution_context"
+        ? "add_slot_owned_redistribution_context"
+        : "add_measured_non_regression_projection",
+    );
+    expect(policy.strategyToDemandProjection.summary).toMatchObject({
+      rowCount: policy.mesocycleStrategyDiagnostic.strategyToDemandDiff.rows.length,
+      floorProtectionCount: 2,
+      productiveMonitorCount: 0,
+      stretchMonitorCount: 0,
+      capRedistributionCount: 3,
+      currentNoMutationProjectionCount:
+        policy.mesocycleStrategyDiagnostic.strategyToDemandDiff.rows.length,
+      measuredCurrentProjectionCount: 4,
+      measuredCurrentProjectionPassCount: 4,
+      behaviorProjectionUnknownCount:
+        policy.mesocycleStrategyDiagnostic.strategyToDemandDiff.rows.length,
+    });
+    expect(policy.strategyToDemandProjection.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          zone: "floor",
+          muscle: "Side Delts",
+          owner: "SlotDemandAllocation",
+          readiness: "blocked",
+          currentProjection: expect.objectContaining({
+            rangeMutation: "none",
+            consumedByDemandOrMaterializer: false,
+          }),
+          measuredCurrentNonRegression: expect.objectContaining({
+            measurementMode: "current_no_mutation_projection",
+            measured: true,
+            rangeDelta: { min: 0, preferred: 0, max: 0 },
+            netNewVolumeDelta: 0,
+            gateStatus: "pass",
+            behaviorProjectionMeasured: false,
+          }),
+          behaviorPromotion: expect.objectContaining({
+            readiness: "blocked",
+            nonRegressionGates: expect.objectContaining({
+              currentDemandUnchanged: "pass",
+              baseDemandKnown: "pass",
+              measuredCurrentProjection: "pass",
+              measuredBehaviorProjection: "unknown",
+              noNetNewVolume: "pass",
+            }),
+          }),
+        }),
+      ]),
+    );
     expect(policyKeys.indexOf("mesocycleStrategyDiagnostic")).toBeLessThan(
       policyKeys.indexOf("mesocycleDemand"),
+    );
+    expect(policyKeys.indexOf("mesocycleDemand")).toBeLessThan(
+      policyKeys.indexOf("strategyToDemandProjection"),
+    );
+    expect(policyKeys.indexOf("strategyToDemandProjection")).toBeLessThan(
+      policyKeys.indexOf("weeklyDemandCurve"),
     );
     expect(policy.mesocycleDemand).toEqual(standaloneDemand);
     expect(policy.mesocycleDemand).toEqual(standalonePolicy.mesocycleDemand);
@@ -2788,6 +3097,15 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     expect(JSON.stringify(policy.mesocycleDemand)).not.toContain(
       "donorSurplusEvidence",
     );
+    expect(JSON.stringify(policy.mesocycleDemand)).not.toContain(
+      "demandZoneLearning",
+    );
+    expect(JSON.stringify(policy.mesocycleDemand)).not.toContain(
+      "strategyToDemandDiff",
+    );
+    expect(JSON.stringify(policy.mesocycleDemand)).not.toContain(
+      "strategyToDemandProjection",
+    );
     expect(JSON.stringify(policy.weeklyDemandCurve)).not.toContain(
       "promotion_diff",
     );
@@ -2800,11 +3118,29 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     expect(JSON.stringify(policy.weeklyDemandCurve)).not.toContain(
       "donorSurplusEvidence",
     );
+    expect(JSON.stringify(policy.weeklyDemandCurve)).not.toContain(
+      "demandZoneLearning",
+    );
+    expect(JSON.stringify(policy.weeklyDemandCurve)).not.toContain(
+      "strategyToDemandDiff",
+    );
+    expect(JSON.stringify(policy.weeklyDemandCurve)).not.toContain(
+      "strategyToDemandProjection",
+    );
     expect(JSON.stringify(policy.slotDemandAllocationByWeek)).not.toContain(
       "slotOwnedDemandAdjustmentPlan",
     );
     expect(JSON.stringify(policy.slotDemandAllocationByWeek)).not.toContain(
       "donorSurplusEvidence",
+    );
+    expect(JSON.stringify(policy.slotDemandAllocationByWeek)).not.toContain(
+      "demandZoneLearning",
+    );
+    expect(JSON.stringify(policy.slotDemandAllocationByWeek)).not.toContain(
+      "strategyToDemandDiff",
+    );
+    expect(JSON.stringify(policy.slotDemandAllocationByWeek)).not.toContain(
+      "strategyToDemandProjection",
     );
     expect(JSON.stringify(policy.exerciseClassDistributionBySlot)).not.toContain(
       "slotOwnedDemandAdjustmentPlan",
@@ -2830,5 +3166,336 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     expect(JSON.stringify(policy.exerciseSelectionPlan)).not.toContain(
       "donorSurplusEvidence",
     );
+  });
+
+  it("keeps bounded behavior trial diagnostic-only until redistribution and downstream gates exist", () => {
+    const mesocycleDemand = buildV2MesocycleDemand({
+      targetSkeleton: buildV2TargetSkeleton(),
+    });
+    const diff: V2StrategyToDemandDiff = {
+      version: 1,
+      source: "v2_strategy_to_demand_diff",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "available_with_limitations",
+      basis: {
+        demandZoneLearning: true,
+        slotOwnedDemandAdjustmentPlan: true,
+        mesocycleDemandMutation: false,
+        weeklyCurveMutation: false,
+        slotAllocationMutation: false,
+      },
+      rows: [
+        {
+          zone: "floor",
+          scope: "muscle",
+          muscle: "Calves",
+          owner: "SlotDemandAllocation",
+          action: "protect_floor",
+          readiness: "read_only_diff",
+          evidence: ["Calves:recurring_under_hit"],
+          limitations: ["slot_owner_projection_not_measured"],
+        },
+      ],
+      summary: {
+        floorProtectionCount: 1,
+        productiveMonitorCount: 0,
+        stretchMonitorCount: 0,
+        capRedistributionCount: 0,
+        readOnlyDiffCount: 1,
+        blockedCount: 0,
+        monitorOnlyCount: 0,
+        needsEvidenceCount: 0,
+      },
+      nextSafeAction: "add_read_only_demand_projection",
+      limitations: ["read_only_diff_only"],
+    };
+
+    const projection = buildV2StrategyToDemandProjection({
+      strategyToDemandDiff: diff,
+      mesocycleDemand,
+    });
+
+    expect(projection.boundedBehaviorTrial).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "available_with_limitations",
+      trialMode: "row_level_static_demand_delta",
+      summary: {
+        rowCount: 1,
+        candidateCount: 1,
+        readyForBehaviorCount: 0,
+        netNewVolumeFailCount: 1,
+        redistributionContextReadyCount: 0,
+        redistributionContextMissingCount: 1,
+        downstreamUnknownCount: 1,
+        materializerUnknownCount: 1,
+      },
+      nextSafeAction: "add_slot_owned_redistribution_context",
+    });
+    expect(projection.boundedBehaviorTrial.rows[0]).toMatchObject({
+      trialStatus: "trial_candidate",
+      trialKind: "single_set_floor_buffer",
+      baselineRange: { min: 6, preferred: 8, max: 10 },
+      proposedRange: { min: 7, preferred: 9, max: 11 },
+      proposedDelta: { min: 1, preferred: 1, max: 1 },
+      gates: {
+        baseDemandKnown: "pass",
+        ownerIsDemandOrSlotAllocation: "pass",
+        boundedDelta: "pass",
+        slotOwnedRedistributionContext: "unknown",
+        noNetNewVolume: "fail",
+        downstreamProjectionMeasured: "unknown",
+        materializerNonRegressionMeasured: "unknown",
+      },
+      readiness: "needs_slot_owned_redistribution_context",
+      blockingReasons: expect.arrayContaining([
+        "slot_owned_redistribution_context_required",
+        "downstream_projection_not_measured",
+      ]),
+    });
+    expect(projection.nextSafeAction).toBe(
+      "add_slot_owned_redistribution_context",
+    );
+    expect(projection.consumedByDemandOrMaterializer).toBe(false);
+  });
+
+  it("uses slot-owned redistribution context to advance the next diagnostic step without making behavior ready", () => {
+    const mesocycleDemand = buildV2MesocycleDemand({
+      targetSkeleton: buildV2TargetSkeleton(),
+    });
+    const diff: V2StrategyToDemandDiff = {
+      version: 1,
+      source: "v2_strategy_to_demand_diff",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "available_with_limitations",
+      basis: {
+        demandZoneLearning: true,
+        slotOwnedDemandAdjustmentPlan: true,
+        mesocycleDemandMutation: false,
+        weeklyCurveMutation: false,
+        slotAllocationMutation: false,
+      },
+      rows: [
+        {
+          zone: "floor",
+          scope: "muscle",
+          muscle: "Calves",
+          owner: "SlotDemandAllocation",
+          action: "protect_floor",
+          readiness: "read_only_diff",
+          evidence: ["Calves:recurring_under_hit"],
+          limitations: ["slot_owner_projection_not_measured"],
+        },
+      ],
+      summary: {
+        floorProtectionCount: 1,
+        productiveMonitorCount: 0,
+        stretchMonitorCount: 0,
+        capRedistributionCount: 0,
+        readOnlyDiffCount: 1,
+        blockedCount: 0,
+        monitorOnlyCount: 0,
+        needsEvidenceCount: 0,
+      },
+      nextSafeAction: "add_read_only_demand_projection",
+      limitations: ["read_only_diff_only"],
+    };
+
+    const projection = buildV2StrategyToDemandProjection({
+      strategyToDemandDiff: diff,
+      mesocycleDemand,
+      slotOwnedDemandAdjustmentPlan: buildFeasibleSlotOwnedPlan("Calves"),
+    });
+
+    expect(projection.boundedBehaviorTrial).toMatchObject({
+      redistributionContext: {
+        source: "v2_slot_owned_demand_adjustment_plan",
+        available: true,
+        status: "feasible",
+        feasibilityStatus: "feasible",
+        protectedDemandCount: 1,
+        protectedOwnedCount: 1,
+        donorDemandCount: 1,
+        eligibleDonorCount: 1,
+        netNewVolumeAllowed: false,
+        maxSlotIncreaseAllowed: 0,
+      },
+      summary: {
+        candidateCount: 1,
+        readyForBehaviorCount: 0,
+        netNewVolumeFailCount: 0,
+        redistributionContextReadyCount: 1,
+        redistributionContextMissingCount: 0,
+        downstreamUnknownCount: 1,
+        materializerUnknownCount: 1,
+      },
+      nextSafeAction: "add_downstream_behavior_projection",
+    });
+    expect(projection.boundedBehaviorTrial.rows[0]).toMatchObject({
+      trialStatus: "trial_candidate",
+      trialKind: "single_set_floor_buffer",
+      gates: {
+        baseDemandKnown: "pass",
+        ownerIsDemandOrSlotAllocation: "pass",
+        boundedDelta: "pass",
+        slotOwnedRedistributionContext: "pass",
+        noNetNewVolume: "unknown",
+        downstreamProjectionMeasured: "unknown",
+        materializerNonRegressionMeasured: "unknown",
+      },
+      redistributionContext: {
+        available: true,
+        protectedStatus: "owned",
+        candidateSlotOwners: ["lower_a", "lower_b"],
+        eligibleDonorCount: 1,
+      },
+      readiness: "needs_downstream_projection",
+      blockingReasons: expect.arrayContaining([
+        "net_new_volume_non_regression_not_measured",
+        "downstream_projection_not_measured",
+        "materializer_non_regression_not_measured",
+      ]),
+    });
+    expect(projection.nextSafeAction).toBe(
+      "add_downstream_behavior_projection",
+    );
+    expect(projection.consumedByDemandOrMaterializer).toBe(false);
+  });
+
+  it("inventories downstream weekly slot and set context without making the trial executable", () => {
+    const targetSkeleton = buildV2TargetSkeleton();
+    const weeklyProgressionModel = buildV2WeeklyProgressionModel();
+    const mesocycleDemand = buildV2MesocycleDemand({ targetSkeleton });
+    const weeklyDemandCurve = buildV2WeeklyDemandCurve({
+      mesocycleDemand,
+      weeklyProgressionModel,
+    });
+    const slotDemandAllocationByWeek = buildV2SlotDemandAllocationByWeek({
+      targetSkeleton,
+      weeklyDemandCurve,
+    });
+    const exerciseClassDistributionBySlot = buildV2ExerciseClassDistributionBySlot({
+      slotDemandAllocationByWeek,
+    });
+    const v2SupportLanePolicy = buildV2SupportLanePolicy({ targetSkeleton });
+    const v2SetDistributionIntent = buildV2SetDistributionIntent({
+      slotDemandAllocationByWeek,
+      exerciseClassDistributionBySlot,
+      v2SupportLanePolicy,
+      weeklyProgressionModel,
+    });
+    const diff: V2StrategyToDemandDiff = {
+      version: 1,
+      source: "v2_strategy_to_demand_diff",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "available_with_limitations",
+      basis: {
+        demandZoneLearning: true,
+        slotOwnedDemandAdjustmentPlan: true,
+        mesocycleDemandMutation: false,
+        weeklyCurveMutation: false,
+        slotAllocationMutation: false,
+      },
+      rows: [
+        {
+          zone: "floor",
+          scope: "muscle",
+          muscle: "Calves",
+          owner: "SlotDemandAllocation",
+          action: "protect_floor",
+          readiness: "read_only_diff",
+          evidence: ["Calves:recurring_under_hit"],
+          limitations: ["slot_owner_projection_not_measured"],
+        },
+      ],
+      summary: {
+        floorProtectionCount: 1,
+        productiveMonitorCount: 0,
+        stretchMonitorCount: 0,
+        capRedistributionCount: 0,
+        readOnlyDiffCount: 1,
+        blockedCount: 0,
+        monitorOnlyCount: 0,
+        needsEvidenceCount: 0,
+      },
+      nextSafeAction: "add_read_only_demand_projection",
+      limitations: ["read_only_diff_only"],
+    };
+
+    const projection = buildV2StrategyToDemandProjection({
+      strategyToDemandDiff: diff,
+      mesocycleDemand,
+      slotOwnedDemandAdjustmentPlan: buildFeasibleSlotOwnedPlan("Calves"),
+      weeklyDemandCurve,
+      slotDemandAllocationByWeek,
+      v2SetDistributionIntent,
+    });
+
+    expect(projection.boundedBehaviorTrial.downstreamBehaviorProjection).toMatchObject({
+      version: 1,
+      source: "v2_strategy_to_demand_downstream_context_inventory",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      projectionMode: "read_only_weekly_slot_context_inventory",
+      status: "available_with_limitations",
+      summary: {
+        candidateCount: 1,
+        weeklyCurveAvailableCount: 1,
+        slotAllocationAvailableCount: 1,
+        setDistributionContextAvailableCount: 1,
+        netNewVolumeUnknownCount: 1,
+        materializerUnknownCount: 1,
+        readyForBehaviorCount: 0,
+      },
+      nextSafeAction: "add_measured_redistribution_projection",
+    });
+    expect(
+      projection.boundedBehaviorTrial.downstreamBehaviorProjection.rows[0],
+    ).toMatchObject({
+      muscle: "Calves",
+      trialStatus: "trial_candidate",
+      candidateSlotOwners: ["lower_a", "lower_b"],
+      gates: {
+        redistributionContextAvailable: "pass",
+        weeklyCurveAvailable: "pass",
+        slotAllocationAvailable: "pass",
+        setDistributionContextAvailable: "pass",
+        netNewVolumePreservationMeasured: "unknown",
+        materializerNonRegressionMeasured: "unknown",
+      },
+      weeklyCurve: {
+        available: true,
+        accumulationWeekCount: 4,
+        matchingWeekCount: 4,
+      },
+      slotAllocation: {
+        available: true,
+        candidateSlotOwnerCount: 2,
+        ownersWithAllocationCount: 2,
+      },
+      setDistribution: {
+        available: true,
+        candidateSlotOwnerCount: 2,
+        ownersWithSetDistributionCount: 2,
+      },
+      readiness: "needs_measured_redistribution_projection",
+      blockingReasons: expect.arrayContaining([
+        "net_new_volume_preservation_not_measured",
+        "materializer_non_regression_not_measured",
+      ]),
+    });
+    expect(projection.boundedBehaviorTrial.nextSafeAction).toBe(
+      "add_measured_redistribution_projection",
+    );
+    expect(projection.nextSafeAction).toBe("add_measured_redistribution_projection");
+    expect(projection.consumedByDemandOrMaterializer).toBe(false);
   });
 });

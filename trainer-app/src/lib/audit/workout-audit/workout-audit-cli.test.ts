@@ -3208,6 +3208,7 @@ describe("buildPlannerOnlyDryRunSummary", () => {
 
 describe("buildPlannerOnlyNoRepairSummary", () => {
   it("prints a compact planner-only no-repair verdict", () => {
+    const plannerPolicy = buildV2PlannerMesocyclePolicy();
     const summary = buildPlannerOnlyNoRepairSummary({
       artifact: {
         mesocycleExplain: {
@@ -3340,7 +3341,9 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
               safeToPromoteBehavior: false,
             },
             v2MesocycleStrategyDiagnostic:
-              buildV2MesocycleStrategyDiagnostic(),
+              plannerPolicy.mesocycleStrategyDiagnostic,
+            strategyToDemandProjection:
+              plannerPolicy.strategyToDemandProjection,
             v2MesocyclePlan: {
               version: 1,
               source: "v2_planner_no_repair_experimental",
@@ -3802,6 +3805,15 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
       "Continuity/variation evidence: not-available keep=0 rotate=0 avoid=0 low=0",
       "Materializer ranking evidence usable: no",
       "Volume/fatigue evidence: not-available protect=0 over=0 late=0 deload=0",
+      "Demand-zone learning: not-available floor=0 productive=0 stretch=0 cap=0 next=collect-more-performed-evidence",
+      "Demand-zone consumed by demand/materializer: no",
+      "Strategy-to-demand diff: not-available rows=0 floor=0 productive=0 stretch=0 cap=0 readOnlyDiff=0 blocked=0 monitor=0 needsEvidence=0 next=collect-more-evidence",
+      "Strategy-to-demand consumed by demand/materializer: no",
+      "Strategy-to-demand projection: not-available rows=0 baseMatched=0 noMutation=0 measuredCurrent=0 behaviorUnknown=0 blocked=0 monitor=0 next=keep-diagnostic-only",
+      "Strategy-to-demand current measurement: measured=0 pass=0 unknown=0 maxDelta=0 netNew=0 behaviorMeasured=no",
+      "Strategy-to-demand bounded behavior trial: not-available candidates=0 ready=0 blocked=0 monitor=0 netNewFail=0 redistributionReady=0 redistributionMissing=0 downstreamUnknown=0 materializerUnknown=0 next=collect-more-evidence",
+      "Strategy-to-demand downstream context: not-available candidates=0 weeklyReady=0 slotReady=0 setReady=0 netNewUnknown=0 materializerUnknown=0 ready=0 next=collect-more-evidence",
+      "Strategy-to-demand projection consumed by demand/materializer: no",
       "Strategy recommendation: not-available phase=unknown confidence=low hypotheses=0",
       "Recommendation hypotheses: none",
       "Recommendation priorities: P0=0 P1=0 P2=0",
@@ -6554,7 +6566,17 @@ describe("buildNextMesocycleAcceptanceGateSummary", () => {
             plannerMaterializerQuality: "pass",
             repairBurden: "low",
             repairBurdenEvidence:
-              "planning_shape=mostly_upstream_planned materialRepairCount=unknown majorRepairCount=unknown",
+              "planning_shape=mostly_upstream_planned materialRepairCount=unknown majorRepairCount=unknown source=planning_reality_summary classification=legacy_diagnostic_context",
+            repairBurdenSource: "planning_reality_summary",
+            repairBurdenClassification: "legacy_diagnostic_context",
+            shadowConsumptionClassification: "not_available",
+            shadowConsumptionNextSafeAction: "not_available",
+            shadowConsumptionEvidence:
+              "no v2 base-plan shadow consumption trial reported",
+            materializerGuardrailClassification: "no_material_guardrail_issue",
+            materializerGuardrailNextSafeAction: "no_action",
+            materializerGuardrailEvidence:
+              "classification=no_material_guardrail_issue selectionBlindSpots=0 inventoryClassificationGaps=0 duplicateContinuityConflicts=0 slotCapacityIssues=0 selectionBlockers=unknown selectionClassMismatches=unknown duplicateJustifications=unknown capacityBlockers=unknown capacityPressure=unknown capAwareExpansionNeeded=unknown optionalSuppressed=unknown diagnosticsGuarded=true",
           },
           candidateIdentity: {
             ownerEmail: "owner@test.local",
@@ -6655,7 +6677,8 @@ describe("buildNextMesocycleAcceptanceGateSummary", () => {
         "candidate found: no",
         "final decision: not_runnable",
         "Decision Summary",
-        "fail | pass | low | planning_shape=mostly_upstream_planned materialRepairCount=unknown majorRepairCount=unknown",
+        "Trainability | Planner/materializer quality | Repair burden | Repair source | Repair classification | Materializer guardrail | Materializer next action | Shadow consumption | Shadow next action | Repair evidence | Materializer evidence | Shadow evidence",
+        "fail | pass | low | planning_reality_summary | legacy_diagnostic_context | no_material_guardrail_issue | no_action | not_available | not_available | planning_shape=mostly_upstream_planned materialRepairCount=unknown majorRepairCount=unknown source=planning_reality_summary classification=legacy_diagnostic_context | classification=no_material_guardrail_issue selectionBlindSpots=0 inventoryClassificationGaps=0 duplicateContinuityConflicts=0 slotCapacityIssues=0 selectionBlockers=unknown selectionClassMismatches=unknown duplicateJustifications=unknown capacityBlockers=unknown capacityPressure=unknown capAwareExpansionNeeded=unknown optionalSuppressed=unknown diagnosticsGuarded=true | no v2 base-plan shadow consumption trial reported",
         "Candidate Identity",
         "Gate | Status | Severity | Evidence | Owner seam | Smallest safe fix | Must fix before Week 1 | Notes",
         "Candidate identity | fail | blocker | candidate_found=no kind=diagnostic_preview_only | candidate identity | wait for or create the real persisted handoff candidate through the explicit handoff flow; do not accept a diagnostic preview | yes | diagnostic previews are evidence only and cannot be accepted",

@@ -435,7 +435,18 @@ describe("planning diagnostic readout target semantics", () => {
             plannerMaterializerQuality: "warning",
             repairBurden: "high",
             repairBurdenEvidence:
-              "planning_shape=mostly_repair_shaped materialRepairCount=3 majorRepairCount=1",
+              "planning_shape=mostly_repair_shaped materialRepairCount=3 majorRepairCount=1 source=planning_reality_summary classification=architecture_debt",
+            repairBurdenSource: "planning_reality_summary",
+            repairBurdenClassification: "architecture_debt",
+            shadowConsumptionClassification: "not_available",
+            shadowConsumptionNextSafeAction: "not_available",
+            shadowConsumptionEvidence:
+              "no v2 base-plan shadow consumption trial reported",
+            materializerGuardrailClassification:
+              "diagnostic_or_legacy_context",
+            materializerGuardrailNextSafeAction: "keep_diagnostic_only",
+            materializerGuardrailEvidence:
+              "classification=diagnostic_or_legacy_context selectionBlindSpots=0 inventoryClassificationGaps=0 duplicateContinuityConflicts=0 slotCapacityIssues=0 selectionBlockers=unknown selectionClassMismatches=unknown duplicateJustifications=unknown capacityBlockers=unknown capacityPressure=unknown capAwareExpansionNeeded=unknown optionalSuppressed=unknown diagnosticsGuarded=true",
           },
           candidateIdentity: {
             ownerEmail: "owner@test.local",
@@ -512,8 +523,8 @@ describe("planning diagnostic readout target semantics", () => {
 
     expect(summary).toEqual(
       expect.arrayContaining([
-        "Trainability | Planner/materializer quality | Repair burden | Repair evidence",
-        "warning | warning | high | planning_shape=mostly_repair_shaped materialRepairCount=3 majorRepairCount=1",
+        "Trainability | Planner/materializer quality | Repair burden | Repair source | Repair classification | Materializer guardrail | Materializer next action | Shadow consumption | Shadow next action | Repair evidence | Materializer evidence | Shadow evidence",
+        "warning | warning | high | planning_reality_summary | architecture_debt | diagnostic_or_legacy_context | keep_diagnostic_only | not_available | not_available | planning_shape=mostly_repair_shaped materialRepairCount=3 majorRepairCount=1 source=planning_reality_summary classification=architecture_debt | classification=diagnostic_or_legacy_context selectionBlindSpots=0 inventoryClassificationGaps=0 duplicateContinuityConflicts=0 slotCapacityIssues=0 selectionBlockers=unknown selectionClassMismatches=unknown duplicateJustifications=unknown capacityBlockers=unknown capacityPressure=unknown capAwareExpansionNeeded=unknown optionalSuppressed=unknown diagnosticsGuarded=true | no v2 base-plan shadow consumption trial reported",
         "Chest | 9 | 10 | 14 | 16 | below_mev_fail | high_risk | below MEV blocks acceptance",
         "Side Delts | 8 | 6 | 10 | 14 | above_mev_below_target_not_failure | info | above MEV but below target is not a failure",
         "Glutes | 15 | 8 | 15.5 | 16 | target_near_mav_stretch_cap | info | target near MAV is a stretch/cap, not a quota",

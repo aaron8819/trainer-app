@@ -347,7 +347,17 @@ describe("runWorkoutAuditGeneration", () => {
         plannerMaterializerQuality: "pass",
         repairBurden: "low",
         repairBurdenEvidence:
-          "planning_shape=unknown materialRepairCount=unknown majorRepairCount=unknown",
+          "planning_shape=unknown materialRepairCount=unknown majorRepairCount=unknown source=missing_planning_reality classification=legacy_diagnostic_context",
+        repairBurdenSource: "missing_planning_reality",
+        repairBurdenClassification: "legacy_diagnostic_context",
+        shadowConsumptionClassification: "not_available",
+        shadowConsumptionNextSafeAction: "not_available",
+        shadowConsumptionEvidence:
+          "no v2 base-plan shadow consumption trial reported",
+        materializerGuardrailClassification: "not_available",
+        materializerGuardrailNextSafeAction: "not_available",
+        materializerGuardrailEvidence:
+          "no planning-reality or V2 materializer diagnostics reported",
       },
       candidateIdentity: {
         sourceMesocycleId: "meso-source",

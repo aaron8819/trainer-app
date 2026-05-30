@@ -6,6 +6,7 @@ import { buildV2MesocycleStrategyDiagnostic } from "./mesocycle-strategy";
 import { buildV2SelectionCapacityPlan } from "./selection-capacity-plan";
 import { buildV2SetDistributionIntent } from "./set-distribution-intent";
 import { buildV2SlotDemandAllocationByWeek } from "./slot-demand-allocation";
+import { buildV2StrategyToDemandProjection } from "./strategy-to-demand-projection";
 import { buildV2SupportLanePolicy } from "./support-lane-policy";
 import { buildV2TargetSkeleton } from "./target-skeleton";
 import type {
@@ -53,6 +54,16 @@ export function buildV2PlannerMesocyclePolicy(
     v2SupportLanePolicy,
     weeklyProgressionModel,
   });
+  const strategyToDemandProjection = buildV2StrategyToDemandProjection({
+    strategyToDemandDiff: mesocycleStrategyDiagnostic.strategyToDemandDiff,
+    mesocycleDemand,
+    slotOwnedDemandAdjustmentPlan:
+      mesocycleStrategyDiagnostic.strategyHypothesisPromotionDiff
+        .slotOwnedDemandAdjustmentPlan,
+    weeklyDemandCurve,
+    slotDemandAllocationByWeek,
+    v2SetDistributionIntent,
+  });
   const selectionCapacityPlan = buildV2SelectionCapacityPlan({
     exerciseClassDistributionBySlot,
     v2SetDistributionIntent,
@@ -71,6 +82,7 @@ export function buildV2PlannerMesocyclePolicy(
     weeklyProgressionModel,
     deloadTransform,
     mesocycleDemand,
+    strategyToDemandProjection,
     weeklyDemandCurve,
     slotDemandAllocationByWeek,
     exerciseClassDistributionBySlot,

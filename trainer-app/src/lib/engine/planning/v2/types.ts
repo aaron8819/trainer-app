@@ -86,6 +86,7 @@ export type V2PlannerMesocyclePolicy = {
   weeklyProgressionModel: V2WeeklyProgressionModel;
   deloadTransform: V2DeloadTransformPolicy;
   mesocycleDemand: V2MesocycleDemand;
+  strategyToDemandProjection: V2StrategyToDemandProjection;
   weeklyDemandCurve: V2WeeklyDemandCurve;
   slotDemandAllocationByWeek: V2SlotDemandAllocationByWeek;
   exerciseClassDistributionBySlot: V2ExerciseClassDistributionBySlot;
@@ -814,6 +815,357 @@ export type V2ExerciseResponseSignal = {
   confidence: V2MesocycleStrategyConfidence;
 };
 
+export type V2StrategyDemandZoneLearning = {
+  version: 1;
+  source: "v2_strategy_demand_zone_learning";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByDemandOrMaterializer: false;
+  status: V2MesocycleStrategyEvidenceStatus;
+  floorProtectionSignals: string[];
+  productiveMonitorSignals: string[];
+  stretchMonitorSignals: string[];
+  capRedistributionSignals: string[];
+  learningRules: {
+    floorEvidence:
+      "protect_trainability_before_growth_targeting";
+    productiveMissEvidence:
+      "monitor_until_recurring_target_tier_under_hit";
+    stretchMissEvidence:
+      "do_not_increase_demand_by_default";
+    capPressureEvidence:
+      "prefer_redistribution_or_late_block_cap_hypothesis";
+  };
+  nextSafeAction:
+    | "collect_more_performed_evidence"
+    | "add_read_only_strategy_to_demand_diff"
+    | "keep_diagnostic_only";
+  limitations: string[];
+};
+
+export type V2StrategyToDemandDiff = {
+  version: 1;
+  source: "v2_strategy_to_demand_diff";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByDemandOrMaterializer: false;
+  status: V2MesocycleStrategyEvidenceStatus;
+  basis: {
+    demandZoneLearning: true;
+    slotOwnedDemandAdjustmentPlan: true;
+    mesocycleDemandMutation: false;
+    weeklyCurveMutation: false;
+    slotAllocationMutation: false;
+  };
+  rows: Array<{
+    zone: "floor" | "productive" | "stretch" | "cap";
+    scope: "muscle" | "block";
+    muscle?: string;
+    owner:
+      | "MesocycleDemand"
+      | "WeeklyDemandCurve"
+      | "SlotDemandAllocation"
+      | "SetDistributionIntent"
+      | "unknown";
+    action:
+      | "protect_floor"
+      | "monitor_productive"
+      | "do_not_raise_for_stretch"
+      | "redistribute_or_cap"
+      | "collect_more_evidence";
+    readiness:
+      | "read_only_diff"
+      | "monitor_only"
+      | "blocked"
+      | "needs_evidence";
+    evidence: string[];
+    limitations: string[];
+  }>;
+  summary: {
+    floorProtectionCount: number;
+    productiveMonitorCount: number;
+    stretchMonitorCount: number;
+    capRedistributionCount: number;
+    readOnlyDiffCount: number;
+    blockedCount: number;
+    monitorOnlyCount: number;
+    needsEvidenceCount: number;
+  };
+  nextSafeAction:
+    | "collect_more_evidence"
+    | "add_read_only_demand_projection"
+    | "keep_diagnostic_only";
+  limitations: string[];
+};
+
+export type V2StrategyToDemandProjection = {
+  version: 1;
+  source: "v2_strategy_to_demand_projection";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByDemandOrMaterializer: false;
+  projectionMode: "read_only_non_mutating_join";
+  status: V2MesocycleStrategyEvidenceStatus;
+  basis: {
+    strategyToDemandDiff: true;
+    mesocycleDemand: true;
+    mesocycleDemandMutation: false;
+    weeklyCurveMutation: false;
+    slotAllocationMutation: false;
+    setDistributionMutation: false;
+  };
+  rows: Array<{
+    zone: V2StrategyToDemandDiff["rows"][number]["zone"];
+    scope: V2StrategyToDemandDiff["rows"][number]["scope"];
+    muscle?: string;
+    owner: V2StrategyToDemandDiff["rows"][number]["owner"];
+    action: V2StrategyToDemandDiff["rows"][number]["action"];
+    readiness: V2StrategyToDemandDiff["rows"][number]["readiness"];
+    baseDemand: {
+      available: boolean;
+      role?: V2PlannerDemandRole;
+      targetStatus?: V2PlannerTargetStatus;
+      targetTier?: MuscleTargetTier | null;
+      baselineSetRange?: V2PlannerSetRange;
+      directSetFloor?: number;
+    };
+    currentProjection: {
+      rangeMutation: "none";
+      projectedRange?: V2PlannerSetRange;
+      consumedByDemandOrMaterializer: false;
+    };
+    measuredCurrentNonRegression: {
+      measurementMode: "current_no_mutation_projection";
+      measured: boolean;
+      baselineRange?: V2PlannerSetRange;
+      projectedRange?: V2PlannerSetRange;
+      rangeDelta?: V2PlannerSetRange;
+      netNewVolumeDelta?: number;
+      gateStatus: "pass" | "unknown";
+      behaviorProjectionMeasured: false;
+      limitations: string[];
+    };
+    behaviorPromotion: {
+      readiness:
+        | "not_behavior_ready"
+        | "monitor_only"
+        | "blocked"
+        | "needs_more_evidence";
+      requiredEvidence: string[];
+      nonRegressionGates: {
+        currentDemandUnchanged: "pass";
+        baseDemandKnown: "pass" | "unknown";
+        measuredCurrentProjection: "pass" | "unknown";
+        measuredBehaviorProjection: "unknown";
+        floorPreservation: "pass" | "unknown";
+        noNetNewVolume: "pass" | "unknown";
+      };
+    };
+    evidence: string[];
+    limitations: string[];
+  }>;
+  summary: {
+    rowCount: number;
+    floorProtectionCount: number;
+    productiveMonitorCount: number;
+    stretchMonitorCount: number;
+    capRedistributionCount: number;
+    baseDemandMatchedCount: number;
+    currentNoMutationProjectionCount: number;
+    measuredCurrentProjectionCount: number;
+    measuredCurrentProjectionPassCount: number;
+    blockedCount: number;
+    monitorOnlyCount: number;
+    behaviorProjectionUnknownCount: number;
+  };
+  measuredCurrentNonRegressionSummary: {
+    measurementMode: "current_no_mutation_projection";
+    measuredRowCount: number;
+    passCount: number;
+    unknownCount: number;
+    behaviorProjectionMeasured: false;
+    maxAbsoluteRangeDelta: number;
+    totalNetNewVolumeDelta: number;
+  };
+  boundedBehaviorTrial: {
+    version: 1;
+    source: "v2_strategy_to_demand_bounded_behavior_trial";
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    consumedByDemandOrMaterializer: false;
+    trialMode: "row_level_static_demand_delta";
+    status:
+      | "not_available"
+      | "available_with_limitations"
+      | "blocked";
+    redistributionContext: {
+      source:
+        | "v2_slot_owned_demand_adjustment_plan"
+        | "not_provided";
+      available: boolean;
+      status?: V2SlotOwnedDemandAdjustmentPlan["status"];
+      feasibilityStatus?: V2SlotOwnedDemandAdjustmentPlan["feasibility"]["status"];
+      protectedDemandCount: number;
+      protectedOwnedCount: number;
+      donorDemandCount: number;
+      eligibleDonorCount: number;
+      netNewVolumeAllowed: false;
+      maxSlotIncreaseAllowed: 0;
+      nextRequiredEvidence: string[];
+    };
+    downstreamBehaviorProjection: {
+      version: 1;
+      source: "v2_strategy_to_demand_downstream_context_inventory";
+      readOnly: true;
+      affectsScoringOrGeneration: false;
+      consumedByDemandOrMaterializer: false;
+      projectionMode: "read_only_weekly_slot_context_inventory";
+      status:
+        | "not_available"
+        | "available_with_limitations"
+        | "blocked";
+      rows: Array<{
+        zone: V2StrategyToDemandDiff["rows"][number]["zone"];
+        scope: V2StrategyToDemandDiff["rows"][number]["scope"];
+        muscle?: string;
+        owner: V2StrategyToDemandDiff["rows"][number]["owner"];
+        action: V2StrategyToDemandDiff["rows"][number]["action"];
+        trialStatus: "trial_candidate";
+        candidateSlotOwners: string[];
+        gates: {
+          redistributionContextAvailable: V2StrategyHypothesisProjectionGateStatus;
+          weeklyCurveAvailable: V2StrategyHypothesisProjectionGateStatus;
+          slotAllocationAvailable: V2StrategyHypothesisProjectionGateStatus;
+        setDistributionContextAvailable: V2StrategyHypothesisProjectionGateStatus;
+        netNewVolumePreservationMeasured: V2StrategyHypothesisProjectionGateStatus;
+        materializerNonRegressionMeasured: V2StrategyHypothesisProjectionGateStatus;
+      };
+        weeklyCurve: {
+          available: boolean;
+          accumulationWeekCount: number;
+          matchingWeekCount: number;
+        };
+        slotAllocation: {
+          available: boolean;
+          candidateSlotOwnerCount: number;
+          ownersWithAllocationCount: number;
+          allocationRowCount: number;
+        };
+        setDistribution: {
+          available: boolean;
+          candidateSlotOwnerCount: number;
+          ownersWithSetDistributionCount: number;
+          laneCount: number;
+        };
+        readiness:
+          | "needs_weekly_or_slot_context"
+          | "needs_set_distribution_projection"
+          | "needs_measured_redistribution_projection"
+          | "ready_for_behavior";
+        blockingReasons: string[];
+        limitations: string[];
+      }>;
+      summary: {
+        candidateCount: number;
+        weeklyCurveAvailableCount: number;
+        slotAllocationAvailableCount: number;
+        setDistributionContextAvailableCount: number;
+        netNewVolumeUnknownCount: number;
+        materializerUnknownCount: number;
+        readyForBehaviorCount: number;
+      };
+      nextSafeAction:
+        | "add_downstream_behavior_projection"
+        | "add_set_distribution_projection"
+        | "add_measured_redistribution_projection"
+        | "collect_more_evidence"
+        | "keep_diagnostic_only";
+      limitations: string[];
+    };
+    rows: Array<{
+      zone: V2StrategyToDemandDiff["rows"][number]["zone"];
+      scope: V2StrategyToDemandDiff["rows"][number]["scope"];
+      muscle?: string;
+      owner: V2StrategyToDemandDiff["rows"][number]["owner"];
+      action: V2StrategyToDemandDiff["rows"][number]["action"];
+      trialStatus:
+        | "trial_candidate"
+        | "blocked"
+        | "monitor_only";
+      trialKind:
+        | "single_set_floor_buffer"
+        | "requires_slot_owned_redistribution_context"
+        | "no_behavior_trial";
+      baselineRange?: V2PlannerSetRange;
+      proposedRange?: V2PlannerSetRange;
+      proposedDelta?: V2PlannerSetRange;
+      gates: {
+        baseDemandKnown: V2StrategyHypothesisProjectionGateStatus;
+        ownerIsDemandOrSlotAllocation: V2StrategyHypothesisProjectionGateStatus;
+        boundedDelta: V2StrategyHypothesisProjectionGateStatus;
+        slotOwnedRedistributionContext: V2StrategyHypothesisProjectionGateStatus;
+        noNetNewVolume: V2StrategyHypothesisProjectionGateStatus;
+        downstreamProjectionMeasured: V2StrategyHypothesisProjectionGateStatus;
+        materializerNonRegressionMeasured: V2StrategyHypothesisProjectionGateStatus;
+      };
+      redistributionContext: {
+        available: boolean;
+        protectedStatus?: V2SlotOwnedDemandAdjustmentProtectedStatus;
+        candidateSlotOwners: string[];
+        eligibleDonorCount: number;
+        reason?: string;
+        limitations: string[];
+      };
+      readiness:
+        | "not_ready"
+        | "needs_slot_owned_redistribution_context"
+        | "needs_downstream_projection"
+        | "ready_for_bounded_behavior_trial";
+      blockingReasons: string[];
+      limitations: string[];
+    }>;
+    summary: {
+      rowCount: number;
+      candidateCount: number;
+      blockedCount: number;
+      monitorOnlyCount: number;
+      readyForBehaviorCount: number;
+      netNewVolumeFailCount: number;
+      redistributionContextReadyCount: number;
+      redistributionContextMissingCount: number;
+      downstreamUnknownCount: number;
+      materializerUnknownCount: number;
+    };
+    nextSafeAction:
+      | "add_slot_owned_redistribution_context"
+      | "add_downstream_behavior_projection"
+      | "add_set_distribution_projection"
+      | "add_measured_redistribution_projection"
+      | "collect_more_evidence"
+      | "keep_diagnostic_only";
+    limitations: string[];
+  };
+  nonMutationGates: {
+    noMesocycleDemandMutation: "pass";
+    noWeeklyCurveMutation: "pass";
+    noSlotAllocationMutation: "pass";
+    noSetDistributionMutation: "pass";
+    noMaterializerRankingMutation: "pass";
+    noSeedOrRuntimeImpact: "pass";
+    noAcceptanceThresholdImpact: "pass";
+  };
+  nextSafeAction:
+    | "collect_more_evidence"
+    | "add_measured_non_regression_projection"
+    | "add_bounded_behavior_projection_trial"
+    | "add_slot_owned_redistribution_context"
+    | "add_downstream_behavior_projection"
+    | "add_set_distribution_projection"
+    | "add_measured_redistribution_projection"
+    | "keep_diagnostic_only";
+  limitations: string[];
+};
+
 export type V2MesocycleStrategyInputGroup =
   | "userProfile"
   | "currentTrainingContext"
@@ -953,6 +1305,8 @@ export type V2MesocycleStrategyDiagnostic = {
     deloadExecutionSignals: string[];
     limitations: string[];
   };
+  demandZoneLearning: V2StrategyDemandZoneLearning;
+  strategyToDemandDiff: V2StrategyToDemandDiff;
   strategyRecommendation: V2MesocycleStrategyRecommendation;
   strategyHypothesisPromotionReadiness: V2StrategyHypothesisPromotionReadiness;
   strategyHypothesisPromotionDiff: V2StrategyHypothesisPromotionDiff;

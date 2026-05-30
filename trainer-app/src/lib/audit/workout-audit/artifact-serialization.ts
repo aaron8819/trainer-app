@@ -1103,6 +1103,21 @@ function compactPlannerOnlyNoRepair(
   const v2VolumeFatigueStrategyEvidence = asRecord(
     v2MesocycleStrategyDiagnostic?.volumeFatigueStrategyEvidence,
   );
+  const v2DemandZoneLearning = asRecord(
+    v2MesocycleStrategyDiagnostic?.demandZoneLearning,
+  );
+  const v2StrategyToDemandDiff = asRecord(
+    v2MesocycleStrategyDiagnostic?.strategyToDemandDiff,
+  );
+  const v2StrategyToDemandProjection = asRecord(
+    noRepair.strategyToDemandProjection,
+  );
+  const v2StrategyToDemandBehaviorTrial = asRecord(
+    v2StrategyToDemandProjection?.boundedBehaviorTrial,
+  );
+  const v2StrategyToDemandDownstreamProjection = asRecord(
+    v2StrategyToDemandBehaviorTrial?.downstreamBehaviorProjection,
+  );
   const v2StrategyRecommendation = asRecord(
     v2MesocycleStrategyDiagnostic?.strategyRecommendation,
   );
@@ -1368,6 +1383,178 @@ function compactPlannerOnlyNoRepair(
                   )
                     ? v2VolumeFatigueStrategyEvidence.limitations.length
                     : 0,
+                }
+              : undefined,
+            demandZoneLearning: v2DemandZoneLearning
+              ? {
+                  status: v2DemandZoneLearning.status ?? "not_available",
+                  readOnly: v2DemandZoneLearning.readOnly === true,
+                  affectsScoringOrGeneration:
+                    v2DemandZoneLearning.affectsScoringOrGeneration === true
+                      ? true
+                      : false,
+                  consumedByDemandOrMaterializer:
+                    v2DemandZoneLearning.consumedByDemandOrMaterializer === true
+                      ? true
+                      : false,
+                  floorProtectionSignalCount: asStringArray(
+                    v2DemandZoneLearning.floorProtectionSignals,
+                  ).length,
+                  productiveMonitorSignalCount: asStringArray(
+                    v2DemandZoneLearning.productiveMonitorSignals,
+                  ).length,
+                  stretchMonitorSignalCount: asStringArray(
+                    v2DemandZoneLearning.stretchMonitorSignals,
+                  ).length,
+                  capRedistributionSignalCount: asStringArray(
+                    v2DemandZoneLearning.capRedistributionSignals,
+                  ).length,
+                  nextSafeAction:
+                    typeof v2DemandZoneLearning.nextSafeAction === "string"
+                      ? v2DemandZoneLearning.nextSafeAction
+                      : "collect_more_performed_evidence",
+                  limitationCount: asStringArray(v2DemandZoneLearning.limitations)
+                    .length,
+                }
+              : undefined,
+            strategyToDemandDiff: v2StrategyToDemandDiff
+              ? {
+                  status: v2StrategyToDemandDiff.status ?? "not_available",
+                  readOnly: v2StrategyToDemandDiff.readOnly === true,
+                  affectsScoringOrGeneration:
+                    v2StrategyToDemandDiff.affectsScoringOrGeneration === true
+                      ? true
+                      : false,
+                  consumedByDemandOrMaterializer:
+                    v2StrategyToDemandDiff.consumedByDemandOrMaterializer ===
+                    true
+                      ? true
+                      : false,
+                  rowCount: asRecordArray(v2StrategyToDemandDiff.rows).length,
+                  summary: asRecord(v2StrategyToDemandDiff.summary) ?? {},
+                  nextSafeAction:
+                    typeof v2StrategyToDemandDiff.nextSafeAction === "string"
+                      ? v2StrategyToDemandDiff.nextSafeAction
+                      : "collect_more_evidence",
+                  limitationCount: asStringArray(
+                    v2StrategyToDemandDiff.limitations,
+                  ).length,
+                }
+              : undefined,
+            strategyToDemandProjection: v2StrategyToDemandProjection
+              ? {
+                  status:
+                    v2StrategyToDemandProjection.status ?? "not_available",
+                  readOnly: v2StrategyToDemandProjection.readOnly === true,
+                  affectsScoringOrGeneration:
+                    v2StrategyToDemandProjection
+                      .affectsScoringOrGeneration === true
+                      ? true
+                      : false,
+                  consumedByDemandOrMaterializer:
+                    v2StrategyToDemandProjection
+                      .consumedByDemandOrMaterializer === true
+                      ? true
+                      : false,
+                  projectionMode:
+                    v2StrategyToDemandProjection.projectionMode ??
+                    "read_only_non_mutating_join",
+                  rowCount: asRecordArray(v2StrategyToDemandProjection.rows)
+                    .length,
+                  summary:
+                    asRecord(v2StrategyToDemandProjection.summary) ?? {},
+                  measuredCurrentNonRegressionSummary:
+                    asRecord(
+                      v2StrategyToDemandProjection
+                        .measuredCurrentNonRegressionSummary,
+                    ) ?? {},
+                  boundedBehaviorTrial:
+                    v2StrategyToDemandBehaviorTrial
+                      ? {
+                          status:
+                            typeof v2StrategyToDemandBehaviorTrial.status ===
+                            "string"
+                              ? v2StrategyToDemandBehaviorTrial.status
+                              : "not_available",
+                          readOnly:
+                            v2StrategyToDemandBehaviorTrial.readOnly === true,
+                          affectsScoringOrGeneration:
+                            v2StrategyToDemandBehaviorTrial
+                              .affectsScoringOrGeneration === true
+                              ? true
+                              : false,
+                          consumedByDemandOrMaterializer:
+                            v2StrategyToDemandBehaviorTrial
+                              .consumedByDemandOrMaterializer === true
+                              ? true
+                              : false,
+                          trialMode:
+                            typeof v2StrategyToDemandBehaviorTrial.trialMode ===
+                            "string"
+                              ? v2StrategyToDemandBehaviorTrial.trialMode
+                              : "row_level_static_demand_delta",
+                          summary:
+                            asRecord(
+                              v2StrategyToDemandBehaviorTrial.summary,
+                            ) ?? {},
+                          redistributionContext:
+                            asRecord(
+                              v2StrategyToDemandBehaviorTrial
+                                .redistributionContext,
+                            ) ?? {},
+                          downstreamBehaviorProjection:
+                            v2StrategyToDemandDownstreamProjection
+                              ? {
+                                  status:
+                                    typeof v2StrategyToDemandDownstreamProjection
+                                      .status === "string"
+                                      ? v2StrategyToDemandDownstreamProjection
+                                          .status
+                                      : "not_available",
+                                  projectionMode:
+                                    typeof v2StrategyToDemandDownstreamProjection
+                                      .projectionMode === "string"
+                                      ? v2StrategyToDemandDownstreamProjection
+                                          .projectionMode
+                                      : "read_only_weekly_slot_context_inventory",
+                                  summary:
+                                    asRecord(
+                                      v2StrategyToDemandDownstreamProjection
+                                        .summary,
+                                    ) ?? {},
+                                  nextSafeAction:
+                                    typeof v2StrategyToDemandDownstreamProjection
+                                      .nextSafeAction === "string"
+                                      ? v2StrategyToDemandDownstreamProjection
+                                          .nextSafeAction
+                                      : "keep_diagnostic_only",
+                                  limitationCount: asStringArray(
+                                    v2StrategyToDemandDownstreamProjection
+                                      .limitations,
+                                  ).length,
+                                }
+                              : undefined,
+                          nextSafeAction:
+                            typeof v2StrategyToDemandBehaviorTrial
+                              .nextSafeAction === "string"
+                              ? v2StrategyToDemandBehaviorTrial.nextSafeAction
+                              : "keep_diagnostic_only",
+                          limitationCount: asStringArray(
+                            v2StrategyToDemandBehaviorTrial.limitations,
+                          ).length,
+                        }
+                      : undefined,
+                  nonMutationGates:
+                    asRecord(v2StrategyToDemandProjection.nonMutationGates) ??
+                    {},
+                  nextSafeAction:
+                    typeof v2StrategyToDemandProjection.nextSafeAction ===
+                    "string"
+                      ? v2StrategyToDemandProjection.nextSafeAction
+                      : "collect_more_evidence",
+                  limitationCount: asStringArray(
+                    v2StrategyToDemandProjection.limitations,
+                  ).length,
                 }
               : undefined,
             strategyRecommendation: v2StrategyRecommendation

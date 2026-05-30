@@ -129,6 +129,7 @@ function diagnosticPreview(input?: {
     severity: "warning" | "high_risk";
     mustFixBeforeWeek1: boolean;
   }>;
+  shadowConsumptionTrial?: unknown;
 }): MesocycleExplainAuditPayload {
   return {
     preview: {
@@ -142,6 +143,9 @@ function diagnosticPreview(input?: {
     },
     plannerOnlyNoRepair: {
       weeklyMuscleTotals: input?.weeklyMuscleTotals ?? [],
+      ...(input?.shadowConsumptionTrial
+        ? { v2BasePlanShadowConsumptionTrial: input.shadowConsumptionTrial }
+        : {}),
       v2SupportLaneProjectionDiagnostic: {
         laneBoundaryRows: (input?.supportLaneBoundaryRows ?? []).map((row) => ({
           muscle: row.muscle,
@@ -1106,10 +1110,73 @@ describe("next mesocycle acceptance gate", () => {
       trainability: "pass",
       plannerMaterializerQuality: "warning",
       repairBurden: "high",
+      repairBurdenSource: "planning_reality_summary",
+      repairBurdenClassification: "architecture_debt",
     });
+    expect(payload.decisionSummary.repairBurdenEvidence).toContain(
+      "classification=architecture_debt",
+    );
     expect(payload.gateResult).toBe("accepted_with_watch_items");
     expect(payload.watchItems).toEqual(
       expect.arrayContaining([expect.objectContaining({ risk: "Repair burden" })]),
+    );
+  });
+
+  it("labels repair burden as candidate truth only when candidate floors fail", () => {
+    const payload = build({
+      preview: diagnosticPreview({ planningShape: "mostly_repair_shaped" }),
+      volumes: [
+        {
+          muscle: "Rear Delts",
+          projectedSets: 3,
+          mev: 4,
+          productiveTarget: 6,
+          mav: 12,
+        },
+      ],
+    });
+
+    expect(payload.gateResult).toBe("rejected");
+    expect(payload.decisionSummary).toMatchObject({
+      repairBurden: "high",
+      repairBurdenClassification: "candidate_truth",
+    });
+    expect(payload.decisionSummary.repairBurdenEvidence).toContain(
+      "classification=candidate_truth",
+    );
+  });
+
+  it("surfaces shadow consumption as diagnostic candidate-quality evidence only", () => {
+    const payload = build({
+      preview: diagnosticPreview({
+        shadowConsumptionTrial: {
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByProduction: false,
+          status: "available",
+          guardrails: {
+            consumedByProduction: false,
+            consumedByDemandOrMaterializer: false,
+          },
+          summary: {
+            repairDependencyDelta: -8,
+            currentRepairDependencyCount: 9,
+            shadowRemainingRepairDependencyCount: 1,
+            regressionCount: 0,
+          },
+          nextSafeAction: "inspect_shadow_consumption",
+        },
+      }),
+    });
+
+    expect(payload.gateResult).toBe("accepted_with_watch_items");
+    expect(payload.decisionSummary).toMatchObject({
+      shadowConsumptionClassification:
+        "diagnostic_positive_needs_inspection",
+      shadowConsumptionNextSafeAction: "inspect_shadow_consumption",
+    });
+    expect(payload.decisionSummary.shadowConsumptionEvidence).toContain(
+      "consumedByProduction=false",
     );
   });
 

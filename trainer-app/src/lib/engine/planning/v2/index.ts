@@ -23,6 +23,7 @@ export { buildV2PlannerMesocyclePolicy } from "./mesocycle-policy";
 export { buildV2SelectionCapacityPlan } from "./selection-capacity-plan";
 export { buildV2SetDistributionIntent } from "./set-distribution-intent";
 export { buildV2SlotDemandAllocationByWeek } from "./slot-demand-allocation";
+export { buildV2StrategyToDemandProjection } from "./strategy-to-demand-projection";
 export {
   buildV2SupportLanePolicy,
   evaluateV2SupportLaneOptionalActivation,
@@ -46,6 +47,7 @@ export type {
   V2StrategyHypothesisPreShadowCandidateFilterInput,
 } from "./mesocycle-strategy";
 export type { V2PlannerMesocyclePolicyInput } from "./mesocycle-policy";
+export type { V2StrategyToDemandProjectionInput } from "./strategy-to-demand-projection";
 export type {
   ExerciseClassDistributionBySlot,
   ExerciseSelectionPlan,
@@ -107,6 +109,8 @@ export type {
   V2StrategyHypothesisPromotionReadinessStatus,
   V2StrategyHypothesisShadowProjectionEvidence,
   V2StrategyHypothesisShadowProjectionSnapshot,
+  V2StrategyToDemandDiff,
+  V2StrategyToDemandProjection,
   V2PlannerDemandRole,
   V2PlannerLaneDefinition,
   V2PlannerLaneRole,

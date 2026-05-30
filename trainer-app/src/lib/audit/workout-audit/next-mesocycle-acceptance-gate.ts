@@ -5,6 +5,11 @@ import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { NEXT_MESOCYCLE_ACCEPTANCE_GATE_AUDIT_PAYLOAD_VERSION } from "./constants";
 import { buildMesocycleExplainAuditPayload } from "./mesocycle-explain";
+import {
+  buildCandidateDecisionSummary,
+  buildCandidateEvaluationAssessments,
+  type CandidateEvaluationAssessments,
+} from "./next-mesocycle-candidate-evaluator";
 import { buildV2AcceptedSeedPrepareCompareAuditPayload } from "./v2-accepted-seed-prepare-compare";
 import { buildWeeklyRetroAuditPayload } from "./weekly-retro";
 import type {
@@ -92,14 +97,6 @@ type CompletedBlockEvidenceAssessment = {
   rows: CompletedBlockEvidenceRow[];
   candidateFailureRisks: string[];
   candidateWarningRisks: string[];
-};
-
-type RepairBurdenAssessment = Pick<
-  NextMesocycleAcceptanceGatePayload["decisionSummary"],
-  "repairBurden" | "repairBurdenEvidence"
-> & {
-  materialRepairCount: number | null;
-  majorRepairCount: number | null;
 };
 
 const REQUIRED_GATE_LABELS = [
@@ -200,115 +197,6 @@ function planningShapeFromPreview(
   const planningReality =
     preview?.preview.projectionDiagnostics.planningReality;
   return planningReality?.summary?.planningShape;
-}
-
-function repairBurdenFromPreview(
-  preview: MesocycleExplainAuditPayload | undefined,
-): RepairBurdenAssessment {
-  const planningReality =
-    preview?.preview.projectionDiagnostics.planningReality;
-  const summary = planningReality?.summary;
-  const materialRepairCount =
-    planningReality?.shadowRepairSummary?.materialRepairCount ??
-    summary?.materialRepairCount ??
-    null;
-  const majorRepairCount =
-    planningReality?.shadowRepairSummary?.majorRepairCount ??
-    summary?.majorRepairCount ??
-    null;
-  const planningShape = summary?.planningShape;
-  const evidence = [
-    `planning_shape=${planningShape ?? "unknown"}`,
-    `materialRepairCount=${formatGateNumber(materialRepairCount)}`,
-    `majorRepairCount=${formatGateNumber(majorRepairCount)}`,
-  ].join(" ");
-
-  if (
-    planningShape === "mostly_repair_shaped" ||
-    planningShape === "mixed_upstream_plus_repair_shaped" ||
-    (majorRepairCount ?? 0) > 0 ||
-    (materialRepairCount ?? 0) >= 6
-  ) {
-    return {
-      repairBurden: "high",
-      repairBurdenEvidence: evidence,
-      materialRepairCount,
-      majorRepairCount,
-    };
-  }
-
-  if ((materialRepairCount ?? 0) >= 3) {
-    return {
-      repairBurden: "medium",
-      repairBurdenEvidence: evidence,
-      materialRepairCount,
-      majorRepairCount,
-    };
-  }
-
-  if ((materialRepairCount ?? 0) > 0) {
-    return {
-      repairBurden: "low",
-      repairBurdenEvidence: evidence,
-      materialRepairCount,
-      majorRepairCount,
-    };
-  }
-
-  return {
-    repairBurden: materialRepairCount == null ? "low" : "none",
-    repairBurdenEvidence: evidence,
-    materialRepairCount,
-    majorRepairCount,
-  };
-}
-
-type SupportLaneBoundaryRow = NonNullable<
-  MesocycleExplainAuditPayload["plannerOnlyNoRepair"]
->["v2SupportLaneProjectionDiagnostic"]["laneBoundaryRows"][number];
-
-function supportLaneBoundaryAssessment(input: {
-  preview: MesocycleExplainAuditPayload | undefined;
-  candidateFound: boolean;
-  weeklyRows: NextMesocycleAcceptanceGatePayload["weeklyMuscleTable"];
-}): {
-  droppedRows: SupportLaneBoundaryRow[];
-  blockingRows: SupportLaneBoundaryRow[];
-  warningRows: SupportLaneBoundaryRow[];
-  evidence: string;
-} {
-  const weeklyByMuscle = new Map(input.weeklyRows.map((row) => [row.muscle, row]));
-  const droppedRows =
-    input.preview?.plannerOnlyNoRepair?.v2SupportLaneProjectionDiagnostic
-      .laneBoundaryRows?.filter(
-        (row) => row.status === "authored_support_lane_dropped",
-      ) ?? [];
-  const blockingRows = input.candidateFound
-    ? droppedRows.filter((row) => {
-        const weekly = weeklyByMuscle.get(row.muscle);
-        return weekly?.status === "below_mev_fail";
-      })
-    : [];
-  const warningRows = input.candidateFound
-    ? droppedRows.filter((row) => !blockingRows.includes(row))
-    : [];
-  const evidence =
-    droppedRows.length > 0
-      ? droppedRows
-          .slice(0, 4)
-          .map(
-            (row) =>
-              `${row.muscle}:${row.slotId}/${row.laneId}:${row.status}:floor=${formatGateNumber(row.projectedEffectiveSets)}/${formatGateNumber(row.mevFloor)}`,
-          )
-          .join(", ")
-      : "no authored support lane drops reported";
-
-  return {
-    droppedRows,
-    blockingRows,
-    warningRows,
-    evidence,
-  };
 }
 
 function volumeRowsFromPreview(
@@ -1064,7 +952,7 @@ function buildGates(input: {
   blockers: string[];
   candidateKind: NextMesocycleAcceptanceGatePayload["candidateIdentity"]["candidateKind"];
   planningShape?: string;
-  repairBurden: RepairBurdenAssessment;
+  assessments: CandidateEvaluationAssessments;
 }): NextMesocycleAcceptanceGatePayload["gates"] {
   const v2 = input.evidence.v2PrepareCompare;
   const candidateFound = v2?.handoffCandidate.found === true;
@@ -1088,11 +976,7 @@ function buildGates(input: {
   const materializerPass =
     v2?.provenance.materializerStatus === "materialized" &&
     v2.provenance.seedShapeCompatibility.compatible === true;
-  const supportLaneBoundary = supportLaneBoundaryAssessment({
-    preview: input.evidence.diagnosticPreview,
-    candidateFound,
-    weeklyRows: input.weeklyRows,
-  });
+  const supportLaneBoundary = input.assessments.supportLaneBoundary;
 
   return REQUIRED_GATE_LABELS.map((gate) => {
     if (gate === "Candidate identity") {
@@ -1253,8 +1137,8 @@ function buildGates(input: {
 
     if (gate === "Exercise/materialization quality") {
       const repairBurdenWarning =
-        input.repairBurden.repairBurden === "medium" ||
-        input.repairBurden.repairBurden === "high" ||
+        input.assessments.repairBurden.repairBurden === "medium" ||
+        input.assessments.repairBurden.repairBurden === "high" ||
         mostlyRepairShaped;
       const status: NextMesocycleAcceptanceGateStatus =
         candidateFound &&
@@ -1369,46 +1253,12 @@ function buildGates(input: {
   });
 }
 
-function buildDecisionSummary(input: {
-  candidateFound: boolean;
-  gates: NextMesocycleAcceptanceGatePayload["gates"];
-  repairBurden: RepairBurdenAssessment;
-}): NextMesocycleAcceptanceGatePayload["decisionSummary"] {
-  const weekOneGate = input.gates.find(
-    (gate) => gate.gate === "Week 1 trainability",
-  );
-  const materializerGate = input.gates.find(
-    (gate) => gate.gate === "Exercise/materialization quality",
-  );
-  const trainability =
-    weekOneGate?.status === "pass"
-      ? "pass"
-      : input.candidateFound && weekOneGate?.status === "warning"
-        ? "warning"
-        : "fail";
-  const plannerMaterializerQuality =
-    materializerGate?.status === "fail"
-      ? "fail"
-      : materializerGate?.status === "warning" ||
-          input.repairBurden.repairBurden === "medium" ||
-          input.repairBurden.repairBurden === "high"
-        ? "warning"
-        : "pass";
-
-  return {
-    trainability,
-    plannerMaterializerQuality,
-    repairBurden: input.repairBurden.repairBurden,
-    repairBurdenEvidence: input.repairBurden.repairBurdenEvidence,
-  };
-}
-
 function buildWatchItems(input: {
   candidateFound: boolean;
   weeklyRows: NextMesocycleAcceptanceGatePayload["weeklyMuscleTable"];
   completedBlockRows: CompletedBlockEvidenceRow[];
   gates: NextMesocycleAcceptanceGatePayload["gates"];
-  repairBurden: RepairBurdenAssessment;
+  assessments: CandidateEvaluationAssessments;
 }): NextMesocycleAcceptanceGatePayload["watchItems"] {
   if (!input.candidateFound) {
     return [];
@@ -1455,8 +1305,8 @@ function buildWatchItems(input: {
   }
 
   if (
-    input.repairBurden.repairBurden === "medium" ||
-    input.repairBurden.repairBurden === "high"
+    input.assessments.repairBurden.repairBurden === "medium" ||
+    input.assessments.repairBurden.repairBurden === "high"
   ) {
     watchItems.push({
       risk: "Repair burden",
@@ -1613,12 +1463,21 @@ export function buildNextMesocycleAcceptanceGateFromEvidence(
     (candidateKind === "accepted" || candidateKind === "draft");
   const blockers = buildBlockers(evidence);
   const planningShape = planningShapeFromPreview(evidence.diagnosticPreview);
-  const repairBurden = repairBurdenFromPreview(evidence.diagnosticPreview);
   const weeklyRows = buildWeeklyMuscleTable(
     evidence.candidateVolumeRows?.length
       ? evidence.candidateVolumeRows
       : volumeRowsFromPreview(evidence.diagnosticPreview),
   );
+  const assessments = buildCandidateEvaluationAssessments({
+    preview: evidence.diagnosticPreview,
+    candidateFound,
+    weeklyRows,
+    candidateTruthFailure: weeklyRows.some(
+      (row) =>
+        row.status === "below_mev_fail" ||
+        row.status === "over_mav_fail_or_warning",
+    ),
+  });
   const completedBlockAssessment = buildCompletedBlockEvidenceAssessment({
     retros: evidence.completedBlockRetros ?? [],
     weeklyRows,
@@ -1631,14 +1490,14 @@ export function buildNextMesocycleAcceptanceGateFromEvidence(
     blockers,
     candidateKind,
     planningShape,
-    repairBurden,
+    assessments,
   });
   const watchItems = buildWatchItems({
     candidateFound,
     weeklyRows,
     completedBlockRows: completedBlockAssessment.rows,
     gates,
-    repairBurden,
+    assessments,
   });
   const findings = [
     ...buildGateFindings(gates),
@@ -1651,10 +1510,10 @@ export function buildNextMesocycleAcceptanceGateFromEvidence(
     findings,
     watchItems,
   });
-  const decisionSummary = buildDecisionSummary({
+  const decisionSummary = buildCandidateDecisionSummary({
     candidateFound,
     gates,
-    repairBurden,
+    assessments,
   });
   const why =
     gateResult === "not_runnable"

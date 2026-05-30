@@ -3104,13 +3104,23 @@ export function buildNextMesocycleAcceptanceGateSummary(input: {
   lines.push(`recommendation: ${payload.recommendation}`);
   lines.push("");
   lines.push("Decision Summary");
-  lines.push("Trainability | Planner/materializer quality | Repair burden | Repair evidence");
+  lines.push(
+    "Trainability | Planner/materializer quality | Repair burden | Repair source | Repair classification | Materializer guardrail | Materializer next action | Shadow consumption | Shadow next action | Repair evidence | Materializer evidence | Shadow evidence",
+  );
   lines.push(
     [
       payload.decisionSummary.trainability,
       payload.decisionSummary.plannerMaterializerQuality,
       payload.decisionSummary.repairBurden,
+      payload.decisionSummary.repairBurdenSource,
+      payload.decisionSummary.repairBurdenClassification,
+      payload.decisionSummary.materializerGuardrailClassification,
+      payload.decisionSummary.materializerGuardrailNextSafeAction,
+      payload.decisionSummary.shadowConsumptionClassification,
+      payload.decisionSummary.shadowConsumptionNextSafeAction,
       payload.decisionSummary.repairBurdenEvidence,
+      payload.decisionSummary.materializerGuardrailEvidence,
+      payload.decisionSummary.shadowConsumptionEvidence,
     ].join(" | "),
   );
   lines.push("");
@@ -3490,6 +3500,22 @@ export function buildPlannerOnlyNoRepairSummary(input: {
   const responseConfidence = strategyResponse?.confidenceDistribution;
   const continuityEvidence = strategy?.continuityVariationEvidence;
   const volumeFatigueEvidence = strategy?.volumeFatigueStrategyEvidence;
+  const demandZoneLearning = strategy?.demandZoneLearning;
+  const strategyToDemandDiff = strategy?.strategyToDemandDiff;
+  const strategyToDemandSummary = strategyToDemandDiff?.summary;
+  const strategyToDemandProjection = noRepair.strategyToDemandProjection;
+  const strategyToDemandProjectionSummary =
+    strategyToDemandProjection?.summary;
+  const strategyToDemandProjectionMeasurement =
+    strategyToDemandProjection?.measuredCurrentNonRegressionSummary;
+  const strategyToDemandBehaviorTrial =
+    strategyToDemandProjection?.boundedBehaviorTrial;
+  const strategyToDemandBehaviorTrialSummary =
+    strategyToDemandBehaviorTrial?.summary;
+  const strategyToDemandDownstreamProjection =
+    strategyToDemandBehaviorTrial?.downstreamBehaviorProjection;
+  const strategyToDemandDownstreamSummary =
+    strategyToDemandDownstreamProjection?.summary;
   const strategyRecommendation = strategy?.strategyRecommendation;
   const recommendationHypotheses = strategyRecommendation?.hypotheses ?? [];
   const strategyPromotionReadiness =
@@ -3605,6 +3631,15 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Continuity/variation evidence: ${formatStatus(continuityEvidence?.status ?? "not_available")} keep=${continuityEvidence?.keepCandidateCount ?? 0} rotate=${continuityEvidence?.rotateCandidateCount ?? 0} avoid=${continuityEvidence?.avoidCandidateCount ?? 0} low=${continuityEvidence?.lowConfidenceCount ?? 0}`,
         `Materializer ranking evidence usable: ${strategyResponse?.usableForFutureMaterializerRanking ? "yes" : "no"}`,
         `Volume/fatigue evidence: ${formatStatus(volumeFatigueEvidence?.status ?? "not_available")} protect=${volumeFatigueEvidence?.protectLaggingMuscleSignals.length ?? 0} over=${volumeFatigueEvidence?.overConcentrationSignals.length ?? 0} late=${volumeFatigueEvidence?.lateBlockFatigueSignals.length ?? 0} deload=${volumeFatigueEvidence?.deloadExecutionSignals.length ?? 0}`,
+        `Demand-zone learning: ${formatStatus(demandZoneLearning?.status ?? "not_available")} floor=${demandZoneLearning?.floorProtectionSignals.length ?? 0} productive=${demandZoneLearning?.productiveMonitorSignals.length ?? 0} stretch=${demandZoneLearning?.stretchMonitorSignals.length ?? 0} cap=${demandZoneLearning?.capRedistributionSignals.length ?? 0} next=${formatStatus(demandZoneLearning?.nextSafeAction ?? "collect_more_performed_evidence")}`,
+        `Demand-zone consumed by demand/materializer: ${demandZoneLearning?.consumedByDemandOrMaterializer ? "yes" : "no"}`,
+        `Strategy-to-demand diff: ${formatStatus(strategyToDemandDiff?.status ?? "not_available")} rows=${strategyToDemandDiff?.rows.length ?? 0} floor=${strategyToDemandSummary?.floorProtectionCount ?? 0} productive=${strategyToDemandSummary?.productiveMonitorCount ?? 0} stretch=${strategyToDemandSummary?.stretchMonitorCount ?? 0} cap=${strategyToDemandSummary?.capRedistributionCount ?? 0} readOnlyDiff=${strategyToDemandSummary?.readOnlyDiffCount ?? 0} blocked=${strategyToDemandSummary?.blockedCount ?? 0} monitor=${strategyToDemandSummary?.monitorOnlyCount ?? 0} needsEvidence=${strategyToDemandSummary?.needsEvidenceCount ?? 0} next=${formatStatus(strategyToDemandDiff?.nextSafeAction ?? "collect_more_evidence")}`,
+        `Strategy-to-demand consumed by demand/materializer: ${strategyToDemandDiff?.consumedByDemandOrMaterializer ? "yes" : "no"}`,
+        `Strategy-to-demand projection: ${formatStatus(strategyToDemandProjection?.status ?? "not_available")} rows=${strategyToDemandProjectionSummary?.rowCount ?? 0} baseMatched=${strategyToDemandProjectionSummary?.baseDemandMatchedCount ?? 0} noMutation=${strategyToDemandProjectionSummary?.currentNoMutationProjectionCount ?? 0} measuredCurrent=${strategyToDemandProjectionSummary?.measuredCurrentProjectionPassCount ?? 0} behaviorUnknown=${strategyToDemandProjectionSummary?.behaviorProjectionUnknownCount ?? 0} blocked=${strategyToDemandProjectionSummary?.blockedCount ?? 0} monitor=${strategyToDemandProjectionSummary?.monitorOnlyCount ?? 0} next=${formatStatus(strategyToDemandProjection?.nextSafeAction ?? "collect_more_evidence")}`,
+        `Strategy-to-demand current measurement: measured=${strategyToDemandProjectionMeasurement?.measuredRowCount ?? 0} pass=${strategyToDemandProjectionMeasurement?.passCount ?? 0} unknown=${strategyToDemandProjectionMeasurement?.unknownCount ?? 0} maxDelta=${strategyToDemandProjectionMeasurement?.maxAbsoluteRangeDelta ?? 0} netNew=${strategyToDemandProjectionMeasurement?.totalNetNewVolumeDelta ?? 0} behaviorMeasured=${strategyToDemandProjectionMeasurement?.behaviorProjectionMeasured ? "yes" : "no"}`,
+        `Strategy-to-demand bounded behavior trial: ${formatStatus(strategyToDemandBehaviorTrial?.status ?? "not_available")} candidates=${strategyToDemandBehaviorTrialSummary?.candidateCount ?? 0} ready=${strategyToDemandBehaviorTrialSummary?.readyForBehaviorCount ?? 0} blocked=${strategyToDemandBehaviorTrialSummary?.blockedCount ?? 0} monitor=${strategyToDemandBehaviorTrialSummary?.monitorOnlyCount ?? 0} netNewFail=${strategyToDemandBehaviorTrialSummary?.netNewVolumeFailCount ?? 0} redistributionReady=${strategyToDemandBehaviorTrialSummary?.redistributionContextReadyCount ?? 0} redistributionMissing=${strategyToDemandBehaviorTrialSummary?.redistributionContextMissingCount ?? 0} downstreamUnknown=${strategyToDemandBehaviorTrialSummary?.downstreamUnknownCount ?? 0} materializerUnknown=${strategyToDemandBehaviorTrialSummary?.materializerUnknownCount ?? 0} next=${formatStatus(strategyToDemandBehaviorTrial?.nextSafeAction ?? "keep_diagnostic_only")}`,
+        `Strategy-to-demand downstream context: ${formatStatus(strategyToDemandDownstreamProjection?.status ?? "not_available")} candidates=${strategyToDemandDownstreamSummary?.candidateCount ?? 0} weeklyReady=${strategyToDemandDownstreamSummary?.weeklyCurveAvailableCount ?? 0} slotReady=${strategyToDemandDownstreamSummary?.slotAllocationAvailableCount ?? 0} setReady=${strategyToDemandDownstreamSummary?.setDistributionContextAvailableCount ?? 0} netNewUnknown=${strategyToDemandDownstreamSummary?.netNewVolumeUnknownCount ?? 0} materializerUnknown=${strategyToDemandDownstreamSummary?.materializerUnknownCount ?? 0} ready=${strategyToDemandDownstreamSummary?.readyForBehaviorCount ?? 0} next=${formatStatus(strategyToDemandDownstreamProjection?.nextSafeAction ?? "keep_diagnostic_only")}`,
+        `Strategy-to-demand projection consumed by demand/materializer: ${strategyToDemandProjection?.consumedByDemandOrMaterializer ? "yes" : "no"}`,
         `Strategy recommendation: ${formatStatus(strategyRecommendation?.status ?? "not_available")} phase=${formatStatus(strategyRecommendation?.recommendedPhase ?? "unknown")} confidence=${strategyRecommendation?.confidence ?? "low"} hypotheses=${recommendationHypotheses.length}`,
         `Recommendation hypotheses: ${formatNameList(recommendationHypotheses.map((hypothesis) => hypothesis.id), 8)}`,
         `Recommendation priorities: P0=${recommendationPriorityCounts.P0} P1=${recommendationPriorityCounts.P1} P2=${recommendationPriorityCounts.P2}`,

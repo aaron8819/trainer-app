@@ -230,6 +230,14 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
       },
       {
         slotId: "upper_b",
+        laneId: "vertical_press",
+        role: "support",
+        demandShare: 0.25,
+        classIntent: "chest_biased_press_support",
+        ownershipKind: "support_exposure",
+      },
+      {
+        slotId: "upper_b",
         laneId: "chest_second_exposure",
         role: "support",
         demandShare: 0.5,

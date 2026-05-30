@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { readNextCycleSeedDraft } from "@/lib/api/mesocycle-handoff";
+import type { MesocycleSlotPlanSeed } from "@/lib/api/mesocycle-handoff-slot-plan-projection.seed-serialization";
+import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { NEXT_MESOCYCLE_ACCEPTANCE_GATE_AUDIT_PAYLOAD_VERSION } from "./constants";
 import { buildMesocycleExplainAuditPayload } from "./mesocycle-explain";
@@ -38,6 +40,16 @@ type IncompleteWorkoutState = {
   sessionIntent: string | null;
 }[];
 
+export type CandidateVolumeExerciseRow = {
+  id: string;
+  name: string;
+  aliases?: Array<{ alias: string }>;
+  exerciseMuscles?: Array<{
+    role: string;
+    muscle: { name: string };
+  }>;
+};
+
 type AcceptanceGateReader = {
   mesocycle: {
     findFirst(args: unknown): Promise<SourceMesocycleState | SuccessorMesocycleState>;
@@ -45,9 +57,12 @@ type AcceptanceGateReader = {
   workout: {
     findMany(args: unknown): Promise<IncompleteWorkoutState>;
   };
+  exercise: {
+    findMany(args: unknown): Promise<CandidateVolumeExerciseRow[]>;
+  };
 };
 
-type CandidateVolumeInput = {
+export type CandidateVolumeInput = {
   muscle: string;
   projectedSets: number;
   mev?: number | null;
@@ -236,7 +251,7 @@ function supportLaneBoundaryAssessment(input: {
   const blockingRows = input.candidateFound
     ? droppedRows.filter((row) => {
         const weekly = weeklyByMuscle.get(row.muscle);
-        return row.mustFixBeforeWeek1 || weekly?.status === "below_mev_fail";
+        return weekly?.status === "below_mev_fail";
       })
     : [];
   const warningRows = input.candidateFound
@@ -276,6 +291,76 @@ function volumeRowsFromPreview(
       };
     }) ?? []
   );
+}
+
+function roundToTenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function musclesByRole(
+  exercise: CandidateVolumeExerciseRow,
+  role: "PRIMARY" | "SECONDARY",
+): string[] {
+  return (exercise.exerciseMuscles ?? [])
+    .filter((entry) => entry.role === role)
+    .map((entry) => entry.muscle.name)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+export function buildCandidateVolumeRowsFromSlotPlanSeed(input: {
+  seed: MesocycleSlotPlanSeed;
+  exercises: CandidateVolumeExerciseRow[];
+  muscles?: readonly string[];
+}): CandidateVolumeInput[] {
+  const exerciseById = new Map(input.exercises.map((exercise) => [exercise.id, exercise]));
+  const totals = new Map<string, number>();
+
+  for (const slot of input.seed.slots) {
+    for (const seedExercise of slot.exercises) {
+      const exercise = exerciseById.get(seedExercise.exerciseId);
+      if (!exercise) {
+        continue;
+      }
+      const contribution = getEffectiveStimulusByMuscle(
+        {
+          id: exercise.id,
+          name: exercise.name,
+          aliases: (exercise.aliases ?? []).map((alias) => alias.alias),
+          primaryMuscles: musclesByRole(exercise, "PRIMARY"),
+          secondaryMuscles: musclesByRole(exercise, "SECONDARY"),
+        },
+        seedExercise.setCount,
+        { logFallback: false },
+      );
+      for (const [muscle, effectiveSets] of contribution) {
+        totals.set(muscle, (totals.get(muscle) ?? 0) + effectiveSets);
+      }
+    }
+  }
+
+  const muscles =
+    input.muscles && input.muscles.length > 0
+      ? Array.from(new Set(input.muscles))
+      : Object.keys(VOLUME_LANDMARKS).filter((muscle) => (totals.get(muscle) ?? 0) > 0);
+
+  return muscles
+    .flatMap((muscle) => {
+      const landmarks = VOLUME_LANDMARKS[muscle];
+      const projectedSets = roundToTenth(totals.get(muscle) ?? 0);
+      if (!landmarks && projectedSets <= 0) {
+        return [];
+      }
+      return [
+        {
+          muscle,
+          projectedSets,
+          mev: landmarks?.mev ?? null,
+          productiveTarget: landmarks?.mev ?? null,
+          mav: landmarks?.mav ?? null,
+        },
+      ];
+    })
+    .sort((left, right) => left.muscle.localeCompare(right.muscle));
 }
 
 function buildWeeklyMuscleTable(
@@ -1649,6 +1734,62 @@ async function loadIncompleteWorkouts(input: {
   });
 }
 
+async function loadPersistedDraftCandidateVolumeRows(input: {
+  sourceMesocycle: SourceMesocycleState | null;
+  reader: AcceptanceGateReader;
+  diagnosticPreview: MesocycleExplainAuditPayload | undefined;
+}): Promise<CandidateVolumeInput[] | undefined> {
+  const seed =
+    readNextCycleSeedDraft(input.sourceMesocycle?.nextSeedDraftJson)
+      ?.acceptedSeedDraft?.slotPlanSeedJson ?? null;
+  if (!seed) {
+    return undefined;
+  }
+  const candidateMuscles =
+    input.diagnosticPreview?.plannerOnlyNoRepair?.weeklyMuscleTotals.map(
+      (row) => row.muscle,
+    ) ?? [];
+  if (candidateMuscles.length === 0) {
+    return undefined;
+  }
+
+  const exerciseIds = Array.from(
+    new Set(
+      seed.slots.flatMap((slot) =>
+        slot.exercises.map((exercise) => exercise.exerciseId),
+      ),
+    ),
+  );
+  if (exerciseIds.length === 0) {
+    return buildCandidateVolumeRowsFromSlotPlanSeed({
+      seed,
+      exercises: [],
+      muscles: candidateMuscles,
+    });
+  }
+
+  const exercises = await input.reader.exercise.findMany({
+    where: { id: { in: exerciseIds } },
+    select: {
+      id: true,
+      name: true,
+      aliases: { select: { alias: true } },
+      exerciseMuscles: {
+        select: {
+          role: true,
+          muscle: { select: { name: true } },
+        },
+      },
+    },
+  });
+
+  return buildCandidateVolumeRowsFromSlotPlanSeed({
+    seed,
+    exercises,
+    muscles: candidateMuscles,
+  });
+}
+
 async function loadCompletedBlockRetros(input: {
   userId: string;
   ownerEmail?: string;
@@ -1716,7 +1857,12 @@ export async function buildNextMesocycleAcceptanceGateAuditPayload(input: {
         },
       }).catch(() => undefined),
     ]);
-  const [successorMesocycle, incompleteWorkouts, completedBlockRetros] =
+  const [
+    successorMesocycle,
+    incompleteWorkouts,
+    completedBlockRetros,
+    persistedDraftCandidateVolumeRows,
+  ] =
     await Promise.all([
       loadSuccessorState({ source: sourceMesocycle, reader }),
       loadIncompleteWorkouts({
@@ -1731,6 +1877,11 @@ export async function buildNextMesocycleAcceptanceGateAuditPayload(input: {
         buildWeeklyRetro:
           input.dependencies?.buildWeeklyRetro ?? buildWeeklyRetroAuditPayload,
       }),
+      loadPersistedDraftCandidateVolumeRows({
+        sourceMesocycle,
+        reader,
+        diagnosticPreview,
+      }),
     ]);
 
   return buildNextMesocycleAcceptanceGateFromEvidence({
@@ -1743,5 +1894,6 @@ export async function buildNextMesocycleAcceptanceGateAuditPayload(input: {
     v2PrepareCompare,
     diagnosticPreview,
     completedBlockRetros,
+    candidateVolumeRows: persistedDraftCandidateVolumeRows,
   });
 }

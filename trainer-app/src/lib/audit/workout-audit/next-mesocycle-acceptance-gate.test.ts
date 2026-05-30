@@ -4,7 +4,11 @@ import type {
   V2AcceptedSeedPrepareCompareAuditPayload,
   WeeklyRetroAuditPayload,
 } from "./types";
-import { buildNextMesocycleAcceptanceGateFromEvidence } from "./next-mesocycle-acceptance-gate";
+import type { MesocycleSlotPlanSeed } from "@/lib/api/mesocycle-handoff-slot-plan-projection.seed-serialization";
+import {
+  buildCandidateVolumeRowsFromSlotPlanSeed,
+  buildNextMesocycleAcceptanceGateFromEvidence,
+} from "./next-mesocycle-acceptance-gate";
 
 const draftJson = {
   version: 1,
@@ -315,6 +319,122 @@ function build(input: {
     completedBlockRetros: input.retros,
     candidateVolumeRows: input.volumes,
   });
+}
+
+const refreshedV2SupportFloorSeed: MesocycleSlotPlanSeed = {
+  version: 1,
+  source: "v2_materialized_seed",
+  slots: [
+    {
+      slotId: "upper_a",
+      exercises: [
+        { exerciseId: "incline", role: "CORE_COMPOUND", setCount: 4 },
+        { exerciseId: "close-row", role: "ACCESSORY", setCount: 3 },
+        { exerciseId: "close-lat", role: "ACCESSORY", setCount: 2 },
+        { exerciseId: "rear", role: "ACCESSORY", setCount: 4 },
+        { exerciseId: "lateral-a", role: "ACCESSORY", setCount: 4 },
+        { exerciseId: "triceps-a", role: "ACCESSORY", setCount: 3 },
+      ],
+    },
+    {
+      slotId: "lower_a",
+      exercises: [
+        { exerciseId: "belt-squat", role: "CORE_COMPOUND", setCount: 4 },
+        { exerciseId: "leg-extension", role: "ACCESSORY", setCount: 2 },
+        { exerciseId: "lying-curl", role: "ACCESSORY", setCount: 2 },
+        { exerciseId: "calf-a", role: "ACCESSORY", setCount: 4 },
+      ],
+    },
+    {
+      slotId: "upper_b",
+      exercises: [
+        { exerciseId: "ohp", role: "ACCESSORY", setCount: 2 },
+        { exerciseId: "lat", role: "ACCESSORY", setCount: 3 },
+        { exerciseId: "fly", role: "ACCESSORY", setCount: 3 },
+        { exerciseId: "row", role: "ACCESSORY", setCount: 3 },
+        { exerciseId: "lateral-b", role: "ACCESSORY", setCount: 4 },
+        { exerciseId: "triceps-b", role: "ACCESSORY", setCount: 2 },
+        { exerciseId: "curl", role: "ACCESSORY", setCount: 3 },
+      ],
+    },
+    {
+      slotId: "lower_b",
+      exercises: [
+        { exerciseId: "sldl", role: "CORE_COMPOUND", setCount: 3 },
+        { exerciseId: "seated-curl", role: "ACCESSORY", setCount: 3 },
+        { exerciseId: "split-squat", role: "ACCESSORY", setCount: 3 },
+        { exerciseId: "calf-b", role: "ACCESSORY", setCount: 3 },
+      ],
+    },
+  ],
+};
+
+const refreshedV2SupportFloorExercises = [
+  exerciseRow("incline", "Incline Machine Press", ["Chest"], ["Front Delts", "Triceps"]),
+  exerciseRow(
+    "close-row",
+    "Close-Grip Seated Cable Row",
+    ["Lats", "Upper Back"],
+    ["Biceps", "Forearms"],
+  ),
+  exerciseRow("close-lat", "Close-Grip Lat Pulldown", ["Lats"], ["Biceps", "Upper Back"]),
+  exerciseRow("lat", "Lat Pulldown", ["Lats"], ["Biceps", "Upper Back"]),
+  exerciseRow("fly", "Cable Fly", ["Chest"]),
+  exerciseRow("row", "Seated Cable Row", ["Lats", "Upper Back"], ["Biceps", "Forearms"]),
+  exerciseRow("rear", "Cable Rear Delt Fly", ["Rear Delts"], ["Upper Back"]),
+  exerciseRow("lateral-a", "Machine Lateral Raise", ["Side Delts"]),
+  exerciseRow("triceps-a", "Cable Triceps Pushdown", ["Triceps"]),
+  exerciseRow("ohp", "Machine Shoulder Press", ["Side Delts"], ["Front Delts", "Triceps"]),
+  exerciseRow("lateral-b", "Machine Lateral Raise", ["Side Delts"]),
+  exerciseRow("triceps-b", "Cable Triceps Pushdown", ["Triceps"]),
+  exerciseRow("curl", "Barbell Curl", ["Biceps"], ["Forearms"]),
+  exerciseRow("belt-squat", "Belt Squat", ["Quads"], ["Glutes", "Adductors"]),
+  exerciseRow("leg-extension", "Leg Extension", ["Quads"]),
+  exerciseRow("lying-curl", "Lying Leg Curl", ["Hamstrings"]),
+  exerciseRow("calf-a", "Seated Calf Raise", ["Calves"]),
+  exerciseRow("sldl", "Stiff-Legged Deadlift", ["Hamstrings"], ["Glutes", "Lower Back"]),
+  exerciseRow("seated-curl", "Seated Leg Curl", ["Hamstrings"]),
+  exerciseRow("split-squat", "Bulgarian Split Squat", ["Quads", "Glutes"]),
+  exerciseRow("calf-b", "Seated Calf Raise", ["Calves"]),
+];
+
+function exerciseRow(
+  id: string,
+  name: string,
+  primaryMuscles: string[],
+  secondaryMuscles: string[] = [],
+) {
+  return {
+    id,
+    name,
+    aliases: [],
+    exerciseMuscles: [
+      ...primaryMuscles.map((muscle) => ({
+        role: "PRIMARY",
+        muscle: { name: muscle },
+      })),
+      ...secondaryMuscles.map((muscle) => ({
+        role: "SECONDARY",
+        muscle: { name: muscle },
+      })),
+    ],
+  };
+}
+
+function candidateVolumeRowsFromRefreshedV2Seed() {
+  return buildCandidateVolumeRowsFromSlotPlanSeed({
+    seed: refreshedV2SupportFloorSeed,
+    exercises: refreshedV2SupportFloorExercises,
+    muscles: ["Rear Delts", "Side Delts", "Triceps"],
+  });
+}
+
+function volumeRow<T extends { muscle: string }>(rows: T[], muscle: string): T {
+  const found = rows.find((row) => row.muscle === muscle);
+  if (!found) {
+    throw new Error(`Missing candidate volume row for ${muscle}`);
+  }
+  return found;
 }
 
 describe("next mesocycle acceptance gate", () => {
@@ -681,6 +801,132 @@ describe("next mesocycle acceptance gate", () => {
       severity: "warning",
       mustFixBeforeWeek1: false,
     });
+  });
+
+  it("computes refreshed V2 support-floor volumes from executable seed truth", () => {
+    const rows = candidateVolumeRowsFromRefreshedV2Seed();
+    const seedRows = refreshedV2SupportFloorSeed.slots.flatMap(
+      (slot) => slot.exercises,
+    );
+
+    expect(seedRows).toHaveLength(21);
+    expect(Math.max(...seedRows.map((row) => row.setCount))).toBeLessThanOrEqual(4);
+    expect(volumeRow(rows, "Rear Delts")).toMatchObject({
+      projectedSets: 5.5,
+      mev: 4,
+    });
+    expect(volumeRow(rows, "Side Delts")).toMatchObject({
+      projectedSets: 10,
+      mev: 8,
+    });
+    expect(volumeRow(rows, "Triceps")).toMatchObject({
+      projectedSets: 7.6,
+      mev: 6,
+    });
+    expect(rows.filter((row) => row.mav != null && row.projectedSets > row.mav)).toEqual([]);
+  });
+
+  it("judges refreshed V2 support floors from seed truth instead of diagnostic preview volume", () => {
+    const payload = build({
+      seedSource: "v2_materialized_seed",
+      preview: diagnosticPreview({
+        weeklyMuscleTotals: [
+          {
+            muscle: "Rear Delts",
+            projectedEffectiveSets: 3.1,
+            targetMin: 4,
+            targetPreferred: 6,
+            status: "below",
+          },
+          {
+            muscle: "Side Delts",
+            projectedEffectiveSets: 6,
+            targetMin: 8,
+            targetPreferred: 10,
+            status: "below",
+          },
+          {
+            muscle: "Triceps",
+            projectedEffectiveSets: 4.4,
+            targetMin: 6,
+            targetPreferred: 8,
+            status: "below",
+          },
+        ],
+        supportLaneBoundaryRows: [
+          {
+            muscle: "Triceps",
+            projectedEffectiveSets: 4.4,
+            mevFloor: 6,
+            severity: "high_risk",
+            mustFixBeforeWeek1: true,
+          },
+        ],
+      }),
+      volumes: candidateVolumeRowsFromRefreshedV2Seed(),
+    });
+
+    expect(volumeRow(payload.weeklyMuscleTable, "Rear Delts")).toMatchObject({
+      projectedSets: 5.5,
+      status: "productive_zone",
+    });
+    expect(volumeRow(payload.weeklyMuscleTable, "Side Delts")).toMatchObject({
+      projectedSets: 10,
+      status: "productive_zone",
+    });
+    expect(volumeRow(payload.weeklyMuscleTable, "Triceps")).toMatchObject({
+      projectedSets: 7.6,
+      status: "productive_zone",
+    });
+    expect(payload.gates.find((row) => row.gate === "Volume floors/zones")).toMatchObject({
+      status: "pass",
+    });
+    expect(
+      payload.gates.find((row) => row.gate === "Exercise/materialization quality"),
+    ).toMatchObject({
+      status: "warning",
+      severity: "warning",
+      notes:
+        "authored support lane was budgeted but dropped; current candidate floor is not below MEV",
+      mustFixBeforeWeek1: false,
+    });
+    expect(payload.gateResult).toBe("accepted_with_watch_items");
+    expect(payload.findings).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          finding: "Volume floors/zones",
+          severity: "high_risk",
+        }),
+      ]),
+    );
+  });
+
+  it("preserves diagnostic-preview volume fallback when no seed-derived rows are supplied", () => {
+    const payload = build({
+      preview: diagnosticPreview({
+        weeklyMuscleTotals: [
+          {
+            muscle: "Rear Delts",
+            projectedEffectiveSets: 3.1,
+            targetMin: 4,
+            targetPreferred: 6,
+            status: "below",
+          },
+        ],
+      }),
+    });
+
+    expect(payload.weeklyMuscleTable).toEqual([
+      expect.objectContaining({
+        muscle: "Rear Delts",
+        projectedSets: 3.1,
+        status: "below_mev_fail",
+      }),
+    ]);
+    expect(payload.gates.find((row) => row.gate === "Volume floors/zones")).toMatchObject({
+      status: "fail",
+    });
+    expect(payload.gateResult).toBe("rejected");
   });
 
   it("fails volume gate for over-MAV candidate rows", () => {

@@ -1,7 +1,7 @@
 # Hypertrophy Mesocycle Engine Strategy
 
 Owner: Aaron
-Last reviewed: 2026-05-27
+Last reviewed: 2026-05-29
 Purpose: Define the strategic direction for the V2 hypertrophy planner migration: V2 becomes the future plan author, accepted seed remains minimal executable truth, runtime replay remains stable, and performed reality informs future blocks without silently mutating the current one.
 
 This document is a strategy and migration map, not a claim about current runtime behavior. Current runtime truth remains the code, contract tests, and audit artifacts. The current mapping is grounded in the same live audit evidence previously used for this target doc plus the latest V2 factory-line, materializer, taxonomy, candidate-identity, and lane-selection-intent audit findings:
@@ -88,24 +88,33 @@ Success means:
 Target loop:
 
 ```txt
-Training principles + user context
--> V2 planner authors mesocycle intent
--> materializer translates lane intent into exercises
--> accepted seed stores executable truth
--> runtime executes seed
--> user edits are session-local
--> logs capture performed reality
--> mesocycle review informs future strategy
+Completed block evidence
+-> Strategy
+-> Demand / volume model
+-> Slot + lane intent
+-> Set distribution
+-> Materializer
+-> Candidate evaluator
+-> Acceptance gate
+-> Minimal accepted seed
+-> Runtime execution
+-> Performed reality
+-> Review / learning loop
 ```
 
 Operating roles:
 
-- Planner = intelligence. It decides the block objective, muscle priorities, movement/class obligations, weekly progression, support floors, continuity stance, lane-selection intent, and set distribution before exact exercise selection.
-- Materializer = lane-intent-to-exercise translator. It converts planner lane intent into concrete exercise identities while preserving planner intent, optimizing stimulus-to-fatigue, respecting constraints, honoring stability and fatigue preferences, and staying explainable.
-- Seed = contract. It stores the accepted executable plan in the smallest runtime-consumable shape.
-- Runtime = execution. Runtime replay remains boring with respect to seed truth, but runtime prescription and coaching can be intelligent with respect to today's execution. It should help the user perform the planned intent with appropriate loads, reps, RIR/RPE, rest, swaps, and bounded adjustments without re-authoring the plan.
-- Logs = reality. Logs record performed sets, skipped work, swaps, pain/tolerance, load, reps, RPE/RIR, adherence, and session duration.
-- Review = learning. Review summarizes what worked, what failed, and what should influence the next plan.
+- Strategy = why. It chooses the block objective, phase stance, priorities, recovery bias, continuity/variation posture, and how completed-block evidence should matter.
+- Demand / volume model = how much. It translates strategy into muscle landmarks, direct/support floors, target zones, caps, progression shape, and deload expectations.
+- Slot + lane intent = where. It assigns the work to sessions and lanes with explicit movement/class obligations, directness, stability, axial-fatigue, collateral, substitution, continuity, and duplicate policy.
+- Set distribution = how many sets per lane. It budgets lane set counts before exercise identity selection so ordinary volume shape is not created by late repair.
+- Materializer = which exercise. It converts lane intent into concrete exercise identities while preserving planner intent, optimizing stimulus-to-fatigue, respecting constraints, and staying explainable.
+- Candidate evaluator = quality computation. It evaluates the materialized candidate for coverage, floors/caps, lane preservation, repair burden, materializer omissions, prior-block risk, trainability, and runtime-readiness evidence.
+- Acceptance gate = decision. It decides `not_runnable`, `rejected`, `accepted_with_watch_items`, or `accepted`; it judges and explains, but does not plan, repair, reseed, accept, or mutate.
+- Accepted seed = contract. It stores the accepted executable plan in the smallest runtime-consumable shape.
+- Runtime execution = seed-inert execution. Runtime replays only the accepted seed, while prescriptions, swaps, add-ons, skips, and coaching remain session-local unless an explicit reseed/update path promotes them.
+- Performed reality = evidence. Logs record performed sets, skipped work, swaps, pain/tolerance, load, reps, RPE/RIR, adherence, and session duration.
+- Review / learning = future strategy input. Review summarizes what worked, what failed, and what should influence the next plan without mutating the accepted one.
 - Repair = safety net. Repair is safety net, not program author.
 
 The materializer must not become a second planner. Planner owns lane intent. Materializer filters and ranks candidate exercises inside that intent. If a lane needs a true vertical pull, a quad isolation movement, a hamstring-biased hinge, or a low-axial support option, that meaning should be planner-owned and explicit rather than guessed from broad class names after the fact.
@@ -212,24 +221,35 @@ Current infrastructure worth preserving:
 
 ### Current Live Checkpoint
 
-Current live validation has moved past the initial seed/backfill milestone into real Week 2/Week 3 execution.
+Current live validation has moved past accumulation and deload into the post-mesocycle / pre-next-mesocycle handoff state.
 
 The durable checkpoint:
 
-- a persisted 58-set V2 seed exists for the active mesocycle and remains canonical planned truth
-- Week 1 completed through normal runtime/save flow
-- Week 2 completed through normal runtime/save flow
-- Week 3 has started
-- Week 3 Upper A and Week 3 Lower A have been completed
-- the next live slot should be read from current runtime state rather than hard-coded in this strategy doc
-- known remaining concerns are Week 3/Week 4 dose guidance, concise prescription readout UI, analytics mesocycle-week versus calendar-week labeling, swap weekly-collision warnings, rest-timer coaching, add-set UX, post-mesocycle learning evidence, and the planner-owned `laneSelectionIntent` contract
+- the completed source mesocycle is `ceb2cff3-9d4d-4b3e-b309-c63ab28e62d4`
+- the accumulation block completed
+- deload started and was intentionally finished early through the supported `finish-deload` route
+- deload completion did not create fake performed work
+- the source mesocycle is now `AWAITING_HANDOFF`
+- `handoffSummaryJson` exists on the source mesocycle
+- `nextSeedDraftJson` exists on the source mesocycle
+- `next-mesocycle-handoff-dry-run` exists as a read-only rehearsal of the handoff preparation path
+- `next-mesocycle-acceptance-gate` exists and now judges real candidate truth, not only diagnostic preview evidence
+- `next-mesocycle-post-accept-verification` exists to prove successor/runtime readiness after acceptance
+- `v2-accepted-seed-prepare-compare` can prove V2 production eligibility in a read-only compare
+- an explicit `refresh-next-seed-draft` route can refresh the persisted draft to `source: "v2_materialized_seed"`
+- the refreshed V2 draft is real candidate truth once persisted, but it has not been accepted or proven through runtime yet
+- the current blocker is candidate quality, not lifecycle state
 
-The Week 2 retrospective is an important validation point, not a new source of executable truth:
+The current rejected candidate state must stay visible:
 
-- 4/4 advancing sessions completed
-- 58/58 planned sets completed
-- no muscle exceeded MAV
-- Week 2 exposed important load recalibration signals, but did not prove a seed or structure defect
+- Rear Delts are below MEV
+- Side Delts are below MEV
+- Triceps are below MEV
+- support-lane preservation through materialization is not yet good enough
+- materializer/support-lane quality issues are the immediate owner-seam work
+- acceptance should wait until the refreshed real candidate is `accepted` or `accepted_with_watch_items`
+
+The completed accumulation block and early-finished deload are important validation points, not new sources of executable truth. The next accepted seed still has to be judged from the real persisted candidate and then proven after acceptance through runtime-readiness verification.
 
 The latest factory-line finding resolved the downstream suspicion:
 
@@ -242,7 +262,7 @@ The latest factory-line finding resolved the downstream suspicion:
 
 The actual issue was materializer identity selection. V2 materialization selected legacy-looking exercise identities. That means the upstream gap is not primarily "can the seed be stored?" but "does the materializer select the right concrete exercise for the planner's intended lane?"
 
-The latest runtime/session validation adds a second quality signal: the user can complete and save seeded sessions through normal UI while seed truth and read models remain coherent. Week 1 and Week 2 completed, Week 3 started, and the app continued to generate and save seeded sessions from persisted seed truth.
+The latest completed-block validation adds a second quality signal: the user can complete and save seeded accumulation sessions through normal UI while seed truth and read models remain coherent. The source block also reached deload and then `AWAITING_HANDOFF` through supported lifecycle routes, which means the immediate risk has shifted away from lifecycle mechanics and toward next-candidate quality.
 
 Runtime order fidelity has also been fixed. Seeded generated workouts preserve `WorkoutExercise.orderIndex`, and Next Workout, Program, and generated workout rows agree on seed order. The strategic rule remains: seeded sessions should have one visible planned order unless an explicit, labeled runtime ordering policy exists.
 
@@ -327,7 +347,7 @@ Strategic interpretation:
 - Calves lack cross-lower-slot duplicate and variant policy.
 - `upper_a:chest_secondary` exists in the target skeleton but is absent from the final materializer-facing `ExerciseSelectionPlan`; treat it as skeleton-only ghost intent until it is intentionally restored, retired, or mapped into materializer-facing policy.
 
-Current production projection remains legacy/repair-shaped. V2 is not live default. Historical personalization is not implemented as production strategy. Repair has not yet been demoted. The latest work mostly proves that seed transport and runtime replay can be boring when given a seed; it does not prove that V2 has fully authored elite exercise lanes yet.
+Current legacy production projection remains repair-shaped and should not stay as an equal parallel planner indefinitely. V2 is not live default. Historical personalization is not implemented as production strategy. Repair has not yet been demoted. The latest work proves that V2 eligibility can be checked read-only, that a persisted draft can be explicitly refreshed to V2 materialized seed truth, and that the acceptance gate can judge that real draft. It does not prove that the current V2 candidate has been accepted, trained, or proven through runtime.
 
 Provenance also needs careful layer boundaries. `slotPlanSeedJson.source` is explanatory seed provenance, not executable truth. It can now distinguish legacy projection-authored seeds from guarded V2 materialized-seed writes, but it still must not be collapsed with planner metadata, transaction evidence, runtime composition, or UI read-model source. `slotPlanSeedJson.source`, `acceptedPlannerIntent.source`, runtime `compositionSource`, and UI `exerciseSource` can describe different layers and must not be collapsed into one authorship claim.
 
@@ -623,7 +643,7 @@ The acceptance gate must not become:
 - a rigid decimal-based scoring system
 - a reason to reject usable plans endlessly
 
-During deload, improve the acceptance gate before making planner/materializer changes. Only make planner/materializer fixes after the gate has a real candidate and identifies a specific failing seam.
+After deload, use the acceptance gate against the real refreshed draft before accepting the next cycle. The gate now has a real candidate and has identified the immediate failing seams: support-floor coverage for Rear Delts, Side Delts, and Triceps, plus materializer support-lane preservation. The next work is candidate quality, not lifecycle.
 
 ## 6. Static Base Plan Strategy
 
@@ -1312,6 +1332,16 @@ These should remain available only for unsupported or old paths until V2 is prov
 
 Do not remove safety infrastructure early. First prove that V2 owns the plan, the materializer selects high-quality candidate identities, the factory preserves the seed, runtime replays it, and repair materiality drops.
 
+Deprecation criteria:
+
+- V2 refresh produces the persisted next-seed draft for a supported handoff candidate.
+- The real refreshed draft passes `next-mesocycle-acceptance-gate` as `accepted` or `accepted_with_watch_items`.
+- `accept-next-cycle` persists the successor from that accepted candidate without re-authoring it through legacy projection.
+- `next-mesocycle-post-accept-verification` proves runtime replay/read-model readiness for the successor.
+- Week 1 can be trained through the normal pre-session/post-session loop from persisted seed truth.
+
+Once those conditions pass, legacy projection should become a deprecation/removal candidate instead of an equal parallel planner. Keep compatibility fallback only where old data, unsupported split types, or genuinely impossible/safety cases require it.
+
 ## 9. Historical Personalization Roadmap Boundary
 
 Historical personalization is important. It should happen after the base V2 planner is excellent.
@@ -1355,47 +1385,55 @@ Roadmap note: remove or deprecate optional gap-fill workout generation from norm
 
    Current status: materially improved in pure dry-run. Static balanced demand, slot ownership, class ownership, role-sensitive set distribution, stricter taxonomy, materializer ranking guardrails, and base-plan validation provide stronger first-slice evidence.
 
-2. Verify materialized candidate identities through dry-run artifacts.
+2. Keep V2 eligibility separate from V2 consumption.
 
-   This remains a gate for future V2-authored seeds and replacements. Inspect `candidateIdentitySummary` before write and confirm selected exercises satisfy the intended lanes. Do not infer identities from set totals, totals by muscle, or provenance labels.
+   `v2-accepted-seed-prepare-compare` can prove whether a V2 materialized seed would be production-write eligible in a read-only compare. That is not the same as making production consume V2 output, accepting the next cycle, or proving runtime execution.
 
-3. Use guarded replacement only for eligible empty or unsupported cases.
+3. Refresh the persisted draft explicitly when V2 is eligible.
 
-   Replace only when the target mesocycle is eligible, the candidate is materially better, gates remain fail-closed, and the seed decision is canonical. This is an explicit guarded replacement decision, not a live-default V2 promotion.
+   The `refresh-next-seed-draft` route is the explicit opt-in path that can turn the pending handoff draft into a persisted `v2_materialized_seed` candidate. Once refreshed, that draft is real candidate truth for the handoff. It is still not accepted seed truth.
 
-4. Backfill performed reality only after canonical seed decision.
+4. Judge the refreshed real draft through the acceptance gate.
 
-   Backfill should use the seed decision as settled truth. The active live checkpoint has Week 1 Upper A, Lower A, and Upper B backfilled without changing `slotPlanSeedJson` or `slotSequenceJson`. Do not backfill from an ambiguous candidate, a legacy-looking materializer output, or a provenance-only inference.
+   `next-mesocycle-acceptance-gate` must judge the refreshed persisted draft, not a diagnostic preview. The current refreshed V2 candidate is rejected because Rear Delts, Side Delts, and Triceps are below MEV and materializer/support-lane preservation is not good enough. That rejection is useful signal, not a lifecycle failure.
 
-5. Use read-only `V2LaneSelectionIntentAudit` to design the contract.
+5. Accept only after the gate returns `accepted` or `accepted_with_watch_items`.
+
+   `accept-next-cycle` should happen only when the real candidate is trainable. If the result is `rejected` or `not_runnable`, fix the owning planner/materializer candidate-quality seam first, refresh the draft again, and rerun the handoff dry-run and acceptance gate.
+
+6. Prove runtime readiness after acceptance.
+
+   `next-mesocycle-post-accept-verification` is the post-accept proof that the persisted successor can replay through the canonical runtime/read-model path. It does not replace handoff dry-run or acceptance-gate review.
+
+7. Use read-only `V2LaneSelectionIntentAudit` to design the contract.
 
    Current status: added as a diagnostic. It exposes where current lane intent is explicit, where materializer/taxonomy inference is still doing too much, and which high-risk lane families need a richer planner contract. It should remain read-only and not be consumed by demand, materialization, generation, seed serialization, runtime replay, receipts, UI, DB writes, or persistence.
 
-6. Design planner-owned `laneSelectionIntent`.
+8. Design planner-owned `laneSelectionIntent`.
 
    Promote only after the read-only audit proves the shape. The contract should be planner-owned and materializer-consumed, with explicit movement/class intent, substitution strictness, stability, fatigue, directness, collateral, loadability, continuity, duplicate, and ranking policy. Start with vertical pull, quad isolation/support, hinge, chest exposures, rows, and calves.
 
-7. Resolve skeleton-only / ghost lane cleanup.
+9. Resolve skeleton-only / ghost lane cleanup.
 
    `upper_a:chest_secondary` exists in the target skeleton but is absent from the final materializer-facing `ExerciseSelectionPlan`. Decide whether it should be restored as a real lane, intentionally retired, or represented through another explicit lane before using it as evidence of materialized V2 intent.
 
-8. Add guarded shadow/disabled consumption path for the richer lane contract.
+10. Add guarded shadow/disabled consumption path for the richer lane contract.
 
    No production writes. The path should prove transport, validation, provenance, materializer consumption, and serializer compatibility while reporting exactly where consumption would fail.
 
-9. Add bounded behavior trial.
+11. Add bounded behavior trial.
 
    Only after gates prove safe. Start with the smallest slice that has clear owner, measurable quality improvement, non-regression checks, and rollback criteria.
 
-10. Promote V2 as default author for supported cases.
+12. Promote V2 as default author for supported cases.
 
    Only after V2-authored output passes plan-quality, materialization-quality, and integration gates. Runtime replay remains unchanged; repair becomes safety net for supported cases.
 
-11. Demote/quarantine obsolete repair-as-planner machinery.
+13. Demote/quarantine obsolete repair-as-planner machinery.
 
    Do this after V2 ownership is proven. Keep true safety, legacy fallback, impossible-plan handling, and forbidden-slot protection.
 
-12. Add historical personalization / mesocycle-to-mesocycle adaptation.
+14. Add historical personalization / mesocycle-to-mesocycle adaptation.
 
    Add this after the default V2 planner is strong and the learning loop can consume performed reality without using old repaired prescribed plans as target policy.
 
@@ -1562,28 +1600,26 @@ These are strategic decision gates, not claims that current production already p
 - Do not claim historical personalization is implemented while it remains diagnostic or roadmap work.
 - Do not delete safety repair paths before V2 owns the responsibility they currently protect.
 
-## 13. Immediate Next Strategic Step: Week 3 Runtime Coaching, Dose Guidance, and Learning Loop Evidence
+## 13. Immediate Next Strategic Step: Candidate Quality Before Acceptance
 
 The next question:
 
 ```txt
-Can the app guide Week 3/Week 4 accumulation intelligently:
-hitting higher targets with low-fatigue, session-local adjustments,
-while preserving seed truth and learning from performed reality?
+Can the refreshed V2 next-mesocycle candidate become trainable:
+meeting support floors, preserving support lanes through materialization,
+passing the acceptance gate, and then proving runtime readiness after acceptance?
 ```
 
-Immediate tracks:
+Current near-term roadmap:
 
-1. Use Week 3/Week 4 runtime dose guidance to recommend targeted add-ons without mutating seed.
-2. Continue verifying prescriptions use performed anchors and confidence/recalibration evidence.
-3. Surface `prescriptionReadouts` in workout UI concisely.
-4. Improve rest-timer coaching after logged sets.
-5. Improve add-set UX so adding a set does not steal focus from unfinished planned sets.
-6. Add swap weekly-collision warnings.
-7. Add analytics labeling for mesocycle-week versus calendar-week.
-8. Continue planner-owned `laneSelectionIntent` contract as the parallel architecture track.
-9. Begin shaping post-mesocycle learning evidence, using weekly-retro load-calibration rows and performed-reality summaries.
-10. Keep warmups and optional core work as low-priority future execution layers after the dose guidance, prescription UI, recommendation quality, analytics labeling, lane-intent, and learning-evidence tracks are healthier.
+1. Fix refreshed V2 candidate support-floor failures for Rear Delts, Side Delts, and Triceps.
+2. Preserve authored/budgeted support lanes through materialization instead of letting them disappear after selection.
+3. Refresh the V2 draft again through the explicit refresh path.
+4. Run handoff dry-run and acceptance gate against the real persisted draft.
+5. Accept only if the result is `accepted` or `accepted_with_watch_items`.
+6. Run post-accept verification after successor persistence.
+7. Train Week 1 with the normal pre-session/post-session loop from persisted seed truth.
+8. After successful V2 path proof, plan legacy projection deprecation.
 
 ### Parallel Architecture Track: `laneSelectionIntent`
 

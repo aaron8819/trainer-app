@@ -1431,6 +1431,20 @@ function buildAcceptanceDraftFingerprint(draft: NextCycleSeedDraft): string {
   });
 }
 
+function buildRefreshableDraftFingerprint(draft: NextCycleSeedDraft): string {
+  return JSON.stringify({
+    sourceMesocycleId: draft.sourceMesocycleId,
+    structure: draft.structure,
+    startingPoint: draft.startingPoint,
+    carryForwardSelections: draft.carryForwardSelections.map((selection) => ({
+      exerciseId: selection.exerciseId,
+      sessionIntent: selection.sessionIntent,
+      role: selection.role,
+      action: selection.action,
+    })),
+  });
+}
+
 async function findAcceptedSuccessorInTransaction(
   tx: Tx,
   source: Pick<HandoffAcceptanceSourceRow, "macroCycleId" | "mesoNumber">
@@ -1499,6 +1513,19 @@ async function repairAcceptedSuccessorSeedInTransaction(
     data: {
       slotPlanSeedJson: prepared.slotPlanSeed as Prisma.InputJsonValue,
     },
+  });
+}
+
+async function findAnySuccessorForRefresh(
+  reader: V2DraftRefreshReader,
+  source: Pick<HandoffAcceptanceSourceRow, "macroCycleId" | "mesoNumber">,
+): Promise<Pick<Mesocycle, "id"> | null> {
+  return reader.mesocycle.findFirst({
+    where: {
+      macroCycleId: source.macroCycleId,
+      mesoNumber: source.mesoNumber + 1,
+    },
+    select: { id: true },
   });
 }
 
@@ -1860,12 +1887,21 @@ export async function refreshMesocycleHandoffNextSeedDraftFromV2(input: {
     where: { id: input.mesocycleId },
     select: pendingHandoffRowSelect,
   });
+  if (
+    pendingRow?.state === "AWAITING_HANDOFF" &&
+    !readNextCycleSeedDraft(pendingRow.nextSeedDraftJson)
+  ) {
+    throw new Error("MESOCYCLE_HANDOFF_DRAFT_MISSING");
+  }
   const refreshedPendingRow = await refreshPendingHandoffArtifactsIfNeeded(
     reader,
     pendingRow,
   );
   if (!refreshedPendingRow || refreshedPendingRow.state !== "AWAITING_HANDOFF") {
     throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
+  }
+  if (await findAnySuccessorForRefresh(reader, source)) {
+    throw new Error("MESOCYCLE_HANDOFF_SUCCESSOR_ALREADY_EXISTS");
   }
 
   const summary = readMesocycleHandoffSummary(refreshedPendingRow.handoffSummaryJson);
@@ -1879,7 +1915,7 @@ export async function refreshMesocycleHandoffNextSeedDraftFromV2(input: {
     sourceMesocycleId: source.id,
     fallbackDraft: summary.recommendedNextSeed,
   });
-  const draftFingerprint = buildAcceptanceDraftFingerprint(draft);
+  const draftFingerprint = buildRefreshableDraftFingerprint(draft);
   const design = applyDraftOverridesToDesign({
     design: summary.recommendedDesign,
     draft,
@@ -1921,11 +1957,19 @@ export async function refreshMesocycleHandoffNextSeedDraftFromV2(input: {
   if (!currentBeforeWrite || currentBeforeWrite.state !== "AWAITING_HANDOFF") {
     throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
   }
+  if (await findAnySuccessorForRefresh(reader, source)) {
+    throw new Error("MESOCYCLE_HANDOFF_SUCCESSOR_ALREADY_EXISTS");
+  }
   const currentDraft = readNextCycleSeedDraft(currentBeforeWrite.nextSeedDraftJson);
   if (!currentDraft) {
     throw new Error("MESOCYCLE_HANDOFF_DRAFT_MISSING");
   }
-  if (buildAcceptanceDraftFingerprint(currentDraft) !== draftFingerprint) {
+  const currentSanitizedDraft = sanitizeNextCycleSeedDraft({
+    draft: currentDraft,
+    sourceMesocycleId: source.id,
+    fallbackDraft: summary.recommendedNextSeed,
+  });
+  if (buildRefreshableDraftFingerprint(currentSanitizedDraft) !== draftFingerprint) {
     throw new Error("MESOCYCLE_HANDOFF_DRAFT_CHANGED");
   }
 

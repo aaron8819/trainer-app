@@ -172,4 +172,23 @@ describe("POST /api/mesocycles/[id]/refresh-next-seed-draft", () => {
       reason: "required_lane_coverage_incomplete",
     });
   });
+
+  it("rejects refresh when the handoff draft is no longer refreshable", async () => {
+    mocks.refreshMesocycleHandoffNextSeedDraftFromV2.mockRejectedValue(
+      new Error("MESOCYCLE_HANDOFF_SUCCESSOR_ALREADY_EXISTS"),
+    );
+
+    const response = await POST(
+      new Request(
+        "http://localhost/api/mesocycles/meso-1/refresh-next-seed-draft",
+        { method: "POST" },
+      ),
+      { params: Promise.resolve({ id: "meso-1" }) },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Mesocycle handoff draft is not refreshable.",
+    });
+  });
 });

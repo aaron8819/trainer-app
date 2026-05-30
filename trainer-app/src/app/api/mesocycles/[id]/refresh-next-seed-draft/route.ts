@@ -61,7 +61,8 @@ export async function POST(
       error instanceof Error &&
       (error.message === "MESOCYCLE_HANDOFF_DRAFT_MISSING" ||
         error.message === "MESOCYCLE_HANDOFF_DRAFT_INVALID" ||
-        error.message === "MESOCYCLE_HANDOFF_DRAFT_CHANGED")
+        error.message === "MESOCYCLE_HANDOFF_DRAFT_CHANGED" ||
+        error.message === "MESOCYCLE_HANDOFF_SUCCESSOR_ALREADY_EXISTS")
     ) {
       return NextResponse.json(
         { error: "Mesocycle handoff draft is not refreshable." },

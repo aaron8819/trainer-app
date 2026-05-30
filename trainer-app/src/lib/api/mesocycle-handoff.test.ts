@@ -921,9 +921,12 @@ function makeRefreshDependencies(input: { blocked?: boolean } = {}) {
 function makeRefreshReader(input: {
   state?: "AWAITING_HANDOFF" | "ACTIVE_DELOAD" | "COMPLETED";
   sourceUserId?: string;
-  draft?: NextCycleSeedDraft;
+  draft?: unknown;
+  currentDraft?: unknown;
+  successorExists?: boolean;
 } = {}) {
   const draft = input.draft ?? buildRecommendedDraft();
+  const currentDraft = input.currentDraft ?? draft;
   const source = {
     id: "meso-1",
     macroCycleId: "macro-1",
@@ -951,21 +954,33 @@ function makeRefreshReader(input: {
     handoffSummaryJson: buildHandoffSummaryJson(buildRecommendedDraft()),
     nextSeedDraftJson: draft,
   };
+  const currentPending = {
+    ...pending,
+    nextSeedDraftJson: currentDraft,
+  };
   const update = vi.fn(async (args) => ({
     ...pending,
     nextSeedDraftJson: args.data.nextSeedDraftJson,
   }));
+  const create = vi.fn();
+  const findFirst = vi
+    .fn()
+    .mockResolvedValueOnce(input.successorExists ? { id: "meso-2" } : null)
+    .mockResolvedValueOnce(input.successorExists ? { id: "meso-2" } : null);
   const findUnique = vi
     .fn()
     .mockResolvedValueOnce(source)
     .mockResolvedValueOnce(pending)
-    .mockResolvedValueOnce(pending);
+    .mockResolvedValueOnce(currentPending);
   return {
     update,
-    create: vi.fn(),
+    create,
+    findFirst,
     reader: {
       mesocycle: {
         findUnique,
+        findFirst,
+        create,
         update,
       },
       exercise: {
@@ -993,7 +1008,9 @@ function makeRefreshReader(input: {
   };
 }
 
-function buildStoredV2Draft(): NextCycleSeedDraft {
+function buildStoredV2Draft(
+  slotPlans: ProjectedSuccessorSlotPlan[] = makeV2ComparisonSlotPlans() as unknown as ProjectedSuccessorSlotPlan[],
+): NextCycleSeedDraft {
   const slotSequence = buildMesocycleSlotSequence(
     buildRecommendedDraft().structure.slots,
   );
@@ -1006,7 +1023,7 @@ function buildStoredV2Draft(): NextCycleSeedDraft {
       refreshedAt: "2026-05-29T12:00:00.000Z",
       slotPlanSeedJson: buildMesocycleSlotPlanSeed({
         slotSequence,
-        slotPlans: makeV2ComparisonSlotPlans() as unknown as ProjectedSuccessorSlotPlan[],
+        slotPlans,
         source: "v2_materialized_seed",
       }),
       provenance: {
@@ -1166,6 +1183,73 @@ describe("refreshMesocycleHandoffNextSeedDraftFromV2", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("refreshes an existing V2 materialized seed draft with newly built V2 seed rows", async () => {
+    const staleV2Draft = buildStoredV2Draft(
+      makeProjectedSlotPlans() as unknown as ProjectedSuccessorSlotPlan[],
+    );
+    const { reader, update, create } = makeRefreshReader({ draft: staleV2Draft });
+
+    const result = await refreshMesocycleHandoffNextSeedDraftFromV2({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      reader: reader as never,
+      dependencies: makeRefreshDependencies(),
+    });
+
+    expect(result.seedDraft).toMatchObject({
+      source: "v2_materialized_seed",
+      parserCompatible: true,
+      minimalExecutableRowsOnly: true,
+    });
+    const writtenDraft = update.mock.calls[0]?.[0]?.data
+      .nextSeedDraftJson as NextCycleSeedDraft;
+    expect(
+      writtenDraft.acceptedSeedDraft?.slotPlanSeedJson.slots.flatMap((slot) =>
+        slot.exercises.map((exercise) => exercise.exerciseId),
+      ),
+    ).toContain("incline-press");
+    expect(
+      staleV2Draft.acceptedSeedDraft?.slotPlanSeedJson.slots.flatMap((slot) =>
+        slot.exercises.map((exercise) => exercise.exerciseId),
+      ),
+    ).not.toContain("incline-press");
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("is idempotent when an existing V2 draft rebuilds to the same seed", async () => {
+    const existingV2Draft = buildStoredV2Draft();
+    const { reader, update, create } = makeRefreshReader({ draft: existingV2Draft });
+
+    await expect(
+      refreshMesocycleHandoffNextSeedDraftFromV2({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        reader: reader as never,
+        dependencies: makeRefreshDependencies(),
+      }),
+    ).resolves.toMatchObject({
+      seedDraft: {
+        source: "v2_materialized_seed",
+        parserCompatible: true,
+        minimalExecutableRowsOnly: true,
+      },
+      safety: {
+        updatedNextSeedDraftJsonOnly: true,
+        successorAccepted: false,
+        successorMesocycleCreated: false,
+        workoutLogSessionCreated: false,
+        runtimeReplayChanged: false,
+      },
+    });
+    const writtenDraft = update.mock.calls[0]?.[0]?.data
+      .nextSeedDraftJson as NextCycleSeedDraft;
+    expect(writtenDraft.acceptedSeedDraft?.slotPlanSeedJson).toMatchObject({
+      source: "v2_materialized_seed",
+      slots: existingV2Draft.acceptedSeedDraft?.slotPlanSeedJson.slots,
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("rejects non-AWAITING_HANDOFF sources without changing the draft", async () => {
     const { reader, update } = makeRefreshReader({ state: "ACTIVE_DELOAD" });
 
@@ -1180,6 +1264,21 @@ describe("refreshMesocycleHandoffNextSeedDraftFromV2", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it("rejects refresh when a successor mesocycle already exists", async () => {
+    const { reader, update, create } = makeRefreshReader({ successorExists: true });
+
+    await expect(
+      refreshMesocycleHandoffNextSeedDraftFromV2({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        reader: reader as never,
+        dependencies: makeRefreshDependencies(),
+      }),
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_SUCCESSOR_ALREADY_EXISTS");
+    expect(update).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("fails closed when V2 is not eligible and leaves the legacy draft unchanged", async () => {
     const { reader, update } = makeRefreshReader();
 
@@ -1191,6 +1290,41 @@ describe("refreshMesocycleHandoffNextSeedDraftFromV2", () => {
         dependencies: makeRefreshDependencies({ blocked: true }),
       }),
     ).rejects.toThrow("MESOCYCLE_HANDOFF_V2_DRAFT_REFRESH_BLOCKED");
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("rejects unknown stored draft sources without changing the draft", async () => {
+    const unknownSourceDraft = {
+      ...buildRecommendedDraft(),
+      acceptedSeedDraft: {
+        version: 1,
+        source: "unknown_materialized_seed",
+        refreshedAt: "2026-05-29T12:00:00.000Z",
+        slotPlanSeedJson: {
+          version: 1,
+          source: "unknown_materialized_seed",
+          slots: [],
+        },
+        provenance: {
+          basePlanValidationStatus: "pass",
+          materializerStatus: "materialized",
+          promotionReadinessStatus: "eligible_for_guarded_write",
+          productionGatesMissing: [],
+          serializer: "buildMesocycleSlotPlanSeed",
+          runtimeReplayUnchanged: true,
+        },
+      },
+    };
+    const { reader, update } = makeRefreshReader({ draft: unknownSourceDraft });
+
+    await expect(
+      refreshMesocycleHandoffNextSeedDraftFromV2({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        reader: reader as never,
+        dependencies: makeRefreshDependencies(),
+      }),
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_DRAFT_MISSING");
     expect(update).not.toHaveBeenCalled();
   });
 

@@ -283,7 +283,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
         version: 0,
         contract: "laneSelectionIntent",
         source: "v2_planner_policy",
-        consumedByMaterializer: false,
+        consumedByMaterializer: true,
         laneJob: "support_coverage",
         requiredMovementPattern: "chest_press",
         allowedExerciseClasses: ["chest_press", "chest_biased_press_support"],
@@ -302,6 +302,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
         allowedExerciseClasses: ["hamstring_curl"],
         disallowedExerciseClasses: ["hinge", "back_extension", "hip_thrust"],
         directnessRequirement: "direct_only",
+        consumedByMaterializer: true,
       },
     });
     expect(JSON.stringify(lane(2, "upper_b", "vertical_press").laneSelectionIntent)).not.toMatch(

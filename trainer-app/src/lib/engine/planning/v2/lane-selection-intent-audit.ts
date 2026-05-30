@@ -4,6 +4,7 @@ import type {
 } from "./types";
 import {
   V2_LANE_SELECTION_INTENT_V0_FIELD_REQUIREMENTS,
+  isV2LaneSelectionIntentConsumedByMaterializer,
   type V2LaneSelectionIntentV0,
   type V2LaneSelectionIntentV0Field,
 } from "./lane-selection-intent";
@@ -49,6 +50,7 @@ export type V2LaneSelectionIntentAudit = {
         | "under_specified_current_plan"
         | "v0_defined_but_not_consumed";
     };
+    consumedByMaterializer: boolean;
     materializerInferenceRequired: boolean;
     availableIntent: Record<string, unknown>;
     missingIntent: Array<{
@@ -495,6 +497,7 @@ function riskForCategory(input: {
   missingIntent: MissingIntent[];
   missingV0Fields: V2LaneSelectionIntentV0Field[];
   hasProposedIntent: boolean;
+  consumedByMaterializer: boolean;
   highRiskLane: boolean;
 }): RiskStatus {
   if (input.missingIntent.some((missing) => missing.risk === input.risk)) {
@@ -506,7 +509,7 @@ function riskForCategory(input: {
   if (input.missingV0Fields.length > 0) {
     return "missing_v0_intent";
   }
-  if (input.hasProposedIntent) {
+  if (input.hasProposedIntent && !input.consumedByMaterializer) {
     return "v0_defined_but_not_consumed";
   }
   return "none";
@@ -516,6 +519,7 @@ function riskSummary(input: {
   missingIntent: MissingIntent[];
   missingV0Fields: V2LaneSelectionIntentV0Field[];
   hasProposedIntent: boolean;
+  consumedByMaterializer: boolean;
   highRiskLane: boolean;
 }): AuditLane["risks"] {
   return {
@@ -612,6 +616,8 @@ function buildPlanAuditLanes(plan: V2ExerciseSelectionPlan): AuditLane[] {
       const missingIntent = missingIntentForPlanLane(lane);
       const missingV0Fields = missingRequiredV0Fields(lane.laneSelectionIntent);
       const highRiskLane = hasHighRiskLaneFamily(notes);
+      const consumedByMaterializer =
+        isV2LaneSelectionIntentConsumedByMaterializer(lane);
       return {
         slotId: slot.slotId,
         laneId: lane.laneId,
@@ -624,10 +630,12 @@ function buildPlanAuditLanes(plan: V2ExerciseSelectionPlan): AuditLane[] {
           missingIntent,
           missingV0Fields,
           hasProposedIntent: Boolean(lane.laneSelectionIntent),
+          consumedByMaterializer,
           highRiskLane,
         }),
+        consumedByMaterializer,
         materializerInferenceRequired: Boolean(
-          lane.laneSelectionIntent?.consumedByMaterializer === false,
+          lane.laneSelectionIntent && !consumedByMaterializer,
         ),
         availableIntent: availableIntentForPlanLane({ week, slot, lane }),
         missingIntent,
@@ -706,6 +714,7 @@ function buildSkeletonOnlyAuditLanes(input: {
             extensibility:
               requiredRisk === "extensibility" ? "missing_v0_intent" : "none",
           },
+          consumedByMaterializer: false,
           materializerInferenceRequired: true,
           availableIntent: {
             materializerFacing: false,

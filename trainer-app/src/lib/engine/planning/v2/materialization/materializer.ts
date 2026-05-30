@@ -7,6 +7,12 @@ import type {
   V2MaterializedSelection,
 } from "./types";
 import {
+  isV2LaneSelectionIntentConsumedByMaterializer,
+  type V2LaneSelectionIntentV0,
+  type V2LaneSelectionIntentExerciseClass,
+  type V2LaneSelectionIntentMovementPattern,
+} from "../lane-selection-intent";
+import {
   evaluateV2AnchorLaneQuality,
   isV2AnchorLaneQualityChecked,
   matchV2ExerciseClasses,
@@ -239,6 +245,18 @@ function materializeLane(input: {
     return { kind: "unmaterialized", reason: "no_class_match" };
   }
 
+  const consumedLaneSelectionIntent = consumedLaneSelectionIntentForLane(input.lane);
+  const intentCandidates = consumedLaneSelectionIntent
+    ? filterCandidatesByLaneSelectionIntent({
+        lane: input.lane,
+        intent: consumedLaneSelectionIntent,
+        candidates: classCandidates,
+      })
+    : classCandidates;
+  if (!intentCandidates.length) {
+    return { kind: "unmaterialized", reason: "no_class_match" };
+  }
+
   const directFloorClassIds: string[] = input.lane.directFloor?.requiredExerciseClasses
     ?.length
     ? resolveV2ExerciseClassIds(
@@ -247,7 +265,7 @@ function materializeLane(input: {
       )
     : [];
   const directCandidates = input.lane.directFloor
-    ? classCandidates.filter(
+    ? intentCandidates.filter(
         (candidate) =>
           candidate.match.directMuscles.includes(
             input.lane.directFloor?.muscle ?? "",
@@ -255,7 +273,7 @@ function materializeLane(input: {
           (!directFloorClassIds.length ||
             directFloorClassIds.includes(candidate.match.classId)),
       )
-    : classCandidates;
+    : intentCandidates;
   if (!directCandidates.length) {
     return { kind: "unmaterialized", reason: "direct_floor_unmaterialized" };
   }
@@ -303,6 +321,58 @@ function materializeLane(input: {
       input.lane.perExerciseCap.maxSetsWithoutJustification,
     ),
   };
+}
+
+function consumedLaneSelectionIntentForLane(
+  lane: PlanLane,
+): V2LaneSelectionIntentV0 | undefined {
+  return isV2LaneSelectionIntentConsumedByMaterializer(lane)
+    ? lane.laneSelectionIntent
+    : undefined;
+}
+
+function filterCandidatesByLaneSelectionIntent(input: {
+  lane: PlanLane;
+  intent: V2LaneSelectionIntentV0;
+  candidates: Candidate[];
+}): Candidate[] {
+  return input.candidates.filter((candidate) =>
+    candidateSatisfiesLaneSelectionIntent({
+      ...input,
+      candidate,
+    }),
+  );
+}
+
+function candidateSatisfiesLaneSelectionIntent(input: {
+  lane: PlanLane;
+  intent: V2LaneSelectionIntentV0;
+  candidate: Candidate;
+}): boolean {
+  const { lane, intent, candidate } = input;
+  if (!classAllowedByLaneSelectionIntent(intent, candidate.match)) {
+    return false;
+  }
+  if (classDisallowedByLaneSelectionIntent(intent, candidate)) {
+    return false;
+  }
+  if (!matchesRequiredMovementPattern(candidate.exercise, intent.requiredMovementPattern)) {
+    return false;
+  }
+  if (!satisfiesLaneIntentDirectness({ lane, intent, candidate })) {
+    return false;
+  }
+  if (
+    intent.minimumTargetStimulus &&
+    inferredStimulusForMuscle(
+      candidate.exercise,
+      candidate.match,
+      intent.minimumTargetStimulus.muscle,
+    ) < intent.minimumTargetStimulus.minimumPerSetStimulus
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function filterAnchorQualityCandidates(input: {
@@ -512,6 +582,11 @@ function laneIntentPreferenceScore(
   match: V2ExerciseClassMatch,
   exercise: V2MaterializationExercise,
 ): number {
+  const consumedIntent = consumedLaneSelectionIntentForLane(lane);
+  if (consumedIntent) {
+    return laneSelectionIntentRankingScore(consumedIntent, match, exercise);
+  }
+
   const targetStimulus = averageTargetStimulus(lane, match, exercise);
   const lowerBackStimulus = stimulusForMuscle(exercise, "Lower Back");
   const targetsLowerBack = targetMusclesForLane(lane, match).some(
@@ -524,6 +599,60 @@ function laneIntentPreferenceScore(
     (targetStimulus >= 0.75 ? 0 : 2) +
     (exercise.isMainLiftEligible ? 2 : 0) +
     (!targetsLowerBack && lowerBackStimulus >= 0.5 ? 1 : 0)
+  );
+}
+
+function laneSelectionIntentRankingScore(
+  intent: V2LaneSelectionIntentV0,
+  match: V2ExerciseClassMatch,
+  exercise: V2MaterializationExercise,
+): number {
+  const targetStimulus = intent.minimumTargetStimulus
+    ? inferredStimulusForMuscle(
+        exercise,
+        match,
+        intent.minimumTargetStimulus.muscle,
+      )
+    : averageTargetStimulusFromIntent(intent, match, exercise);
+  const fatigue = exercise.fatigueCost ?? 1;
+  let score = targetStimulus >= 0.9 ? 0 : targetStimulus >= 0.75 ? 1 : 3;
+
+  if (
+    (intent.stabilityPreference === "stable_preferred" ||
+      intent.loadabilityPreference) &&
+    !hasStableLoadableSignal(exercise)
+  ) {
+    score += 1;
+  }
+  if (
+    intent.fatiguePreference &&
+    lowerBackOrSystemicFatiguePenalty(intent, exercise) > 0
+  ) {
+    score += lowerBackOrSystemicFatiguePenalty(intent, exercise);
+  }
+  if (intent.requiredMovementPattern === "chest_press" && isFlyLikeExercise(exercise)) {
+    score += 2;
+  }
+  if (fatigue <= 1.5) {
+    score -= 1;
+  }
+  return score;
+}
+
+function averageTargetStimulusFromIntent(
+  intent: V2LaneSelectionIntentV0,
+  match: V2ExerciseClassMatch,
+  exercise: V2MaterializationExercise,
+): number {
+  const muscles = match.directMuscles.length ? match.directMuscles : [];
+  if (!muscles.length) {
+    return 0;
+  }
+  return (
+    muscles.reduce(
+      (total, muscle) => total + inferredStimulusForMuscle(exercise, match, muscle),
+      0,
+    ) / muscles.length
   );
 }
 
@@ -566,6 +695,205 @@ function targetMusclesForLane(
   return match.directMuscles;
 }
 
+function classAllowedByLaneSelectionIntent(
+  intent: V2LaneSelectionIntentV0,
+  match: V2ExerciseClassMatch,
+): boolean {
+  const allowedClassIds = new Set(
+    intent.allowedExerciseClasses.flatMap(classIdsForLaneSelectionIntentClass),
+  );
+  return allowedClassIds.size === 0 || allowedClassIds.has(match.classId);
+}
+
+function classDisallowedByLaneSelectionIntent(
+  intent: V2LaneSelectionIntentV0,
+  candidate: Candidate,
+): boolean {
+  const disallowed = intent.disallowedExerciseClasses ?? [];
+  if (!disallowed.length) {
+    return false;
+  }
+  const disallowedClassIds = new Set(disallowed.flatMap(classIdsForLaneSelectionIntentClass));
+  if (disallowedClassIds.has(candidate.match.classId)) {
+    return true;
+  }
+  return disallowed.some((exerciseClass) =>
+    exerciseTextMatchesLaneSelectionIntentClass(candidate.exercise, exerciseClass),
+  );
+}
+
+function classIdsForLaneSelectionIntentClass(
+  exerciseClass: V2LaneSelectionIntentExerciseClass,
+): string[] {
+  switch (exerciseClass) {
+    case "chest_biased_press_support":
+    case "chest_press":
+      return ["distinct_chest_press_or_fly"];
+    case "hamstring_curl":
+      return ["knee_flexion_curl"];
+    case "vertical_pull":
+    case "chin_up":
+      return ["vertical_pull"];
+    case "row":
+    case "row_only":
+      return ["horizontal_pull_support"];
+    case "hinge":
+      return ["hinge_compound"];
+    case "hip_thrust":
+      return ["low_axial_hip_extension_anchor"];
+    case "shoulder_biased_press":
+    case "vertical_press":
+      return ["vertical_press"];
+    case "quad_isolation":
+      return ["quad_isolation"];
+    case "squat_pattern":
+    case "leg_press":
+    case "lunge":
+      return ["squat_pattern"];
+    case "calf_isolation":
+      return ["calf_isolation"];
+    case "lateral_raise":
+      return ["lateral_raise"];
+    case "rear_delt_isolation":
+      return ["rear_delt_isolation"];
+    case "triceps_isolation":
+      return ["triceps_isolation"];
+    case "biceps_isolation":
+      return ["biceps_isolation"];
+    case "back_extension":
+    case "pullover":
+    case "straight_arm_pulldown":
+    case "shrug":
+      return [];
+  }
+}
+
+function exerciseTextMatchesLaneSelectionIntentClass(
+  exercise: V2MaterializationExercise,
+  exerciseClass: V2LaneSelectionIntentExerciseClass,
+): boolean {
+  const text = normalizedExerciseText(exercise);
+  switch (exerciseClass) {
+    case "back_extension":
+      return hasAnyNormalizedPhrase(text, ["back extension", "hyperextension"]);
+    case "pullover":
+      return hasAnyNormalizedPhrase(text, ["pullover", "pull over"]);
+    case "straight_arm_pulldown":
+      return hasAnyNormalizedPhrase(text, ["straight arm pulldown", "straight arm"]);
+    case "hip_thrust":
+      return hasAnyNormalizedPhrase(text, ["hip thrust", "glute bridge"]);
+    case "hinge":
+      return hasAnyMovementPattern(exercise, ["hinge"]) ||
+        hasAnyNormalizedPhrase(text, ["deadlift", "rdl", "stiff leg", "good morning"]);
+    case "row":
+    case "row_only":
+      return hasAnyMovementPattern(exercise, ["row", "horizontal_pull"]) ||
+        hasAnyNormalizedPhrase(text, ["row"]);
+    case "shoulder_biased_press":
+      return hasAnyMovementPattern(exercise, ["vertical_press", "overhead_press"]) ||
+        hasAnyNormalizedPhrase(text, ["landmine press", "shoulder press", "overhead press"]);
+    case "shrug":
+      return hasAnyNormalizedPhrase(text, ["shrug"]);
+    default:
+      return false;
+  }
+}
+
+function matchesRequiredMovementPattern(
+  exercise: V2MaterializationExercise,
+  requiredPattern: V2LaneSelectionIntentMovementPattern,
+): boolean {
+  const text = normalizedExerciseText(exercise);
+  switch (requiredPattern) {
+    case "vertical_pull":
+      return (
+        hasAnyMovementPattern(exercise, ["vertical_pull"]) ||
+        hasAnyNormalizedPhrase(text, [
+          "pulldown",
+          "pull down",
+          "pull up",
+          "pullup",
+          "assisted pull",
+          "chin up",
+          "chinup",
+        ])
+      );
+    case "chest_press":
+      return (
+        hasAnyMovementPattern(exercise, [
+          "press",
+          "horizontal_press",
+          "slight_incline_press",
+          "incline_press",
+        ]) ||
+        hasAnyNormalizedPhrase(text, [
+          "chest press",
+          "incline press",
+          "decline press",
+          "bench press",
+          "machine press",
+          "iso lateral press",
+        ])
+      );
+    case "knee_flexion":
+      return (
+        hasAnyMovementPattern(exercise, ["knee_flexion", "flexion", "isolation"]) ||
+        hasAnyNormalizedPhrase(text, ["leg curl", "hamstring curl", "nordic"])
+      );
+    case "calf_raise":
+      return hasAnyMovementPattern(exercise, ["isolation"]) ||
+        hasAnyNormalizedPhrase(text, ["calf raise"]);
+    case "elbow_extension":
+      return hasAnyNormalizedPhrase(text, ["extension", "pressdown", "pushdown"]);
+    case "elbow_flexion":
+      return hasAnyNormalizedPhrase(text, ["curl"]);
+    case "horizontal_pull":
+      return hasAnyMovementPattern(exercise, ["row", "horizontal_pull"]) ||
+        hasAnyNormalizedPhrase(text, ["row"]);
+    case "knee_extension":
+      return hasAnyMovementPattern(exercise, ["isolation", "knee_extension"]) ||
+        hasAnyNormalizedPhrase(text, ["leg extension", "quad extension"]);
+    case "rear_delt_fly":
+    case "shoulder_horizontal_abduction":
+      return hasAnyNormalizedPhrase(text, ["rear delt", "reverse fly", "face pull"]);
+    case "shoulder_abduction":
+      return hasAnyNormalizedPhrase(text, ["lateral raise"]) ||
+        hasAnyMovementPattern(exercise, ["isolation"]);
+  }
+}
+
+function satisfiesLaneIntentDirectness(input: {
+  lane: PlanLane;
+  intent: V2LaneSelectionIntentV0;
+  candidate: Candidate;
+}): boolean {
+  const targetMuscle =
+    input.intent.minimumTargetStimulus?.muscle ??
+    input.lane.directFloor?.muscle ??
+    input.lane.primaryMuscles[0];
+  if (!targetMuscle) {
+    return true;
+  }
+  const stimulus = inferredStimulusForMuscle(
+    input.candidate.exercise,
+    input.candidate.match,
+    targetMuscle,
+  );
+  const directMuscle = input.candidate.match.directMuscles.some(
+    (muscle) =>
+      normalizeV2MaterializationText(muscle) ===
+      normalizeV2MaterializationText(targetMuscle),
+  );
+
+  if (input.intent.directnessRequirement === "direct_only") {
+    return directMuscle && stimulus >= 0.75;
+  }
+  if (input.intent.directnessRequirement === "high_directness") {
+    return stimulus >= 0.75;
+  }
+  return directMuscle || stimulus >= 0.75;
+}
+
 function inferredStimulusForMuscle(
   exercise: V2MaterializationExercise,
   match: V2ExerciseClassMatch,
@@ -597,6 +925,97 @@ function inferredStimulusForMuscle(
     )
   ) {
     return 0.5;
+  }
+  return 0;
+}
+
+function normalizedExerciseText(exercise: V2MaterializationExercise): string {
+  return [
+    exercise.name,
+    ...(exercise.aliases ?? []),
+    ...exercise.movementPatterns,
+    ...exercise.equipment,
+  ]
+    .map(normalizeV2MaterializationText)
+    .filter(Boolean)
+    .join(" ");
+}
+
+function hasAnyMovementPattern(
+  exercise: V2MaterializationExercise,
+  patterns: string[],
+): boolean {
+  const normalizedPatterns = exercise.movementPatterns.map(
+    normalizeV2MaterializationText,
+  );
+  return patterns.some((pattern) =>
+    normalizedPatterns.includes(normalizeV2MaterializationText(pattern)),
+  );
+}
+
+function hasAnyNormalizedPhrase(text: string, phrases: string[]): boolean {
+  return phrases.some((phrase) => hasNormalizedPhrase(text, phrase));
+}
+
+function hasNormalizedPhrase(text: string, phrase: string): boolean {
+  const normalizedPhrase = normalizeV2MaterializationText(phrase);
+  if (!normalizedPhrase) {
+    return false;
+  }
+  return new RegExp(`(?:^| )${escapeRegExp(normalizedPhrase)}(?: |$)`).test(text);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function hasStableLoadableSignal(exercise: V2MaterializationExercise): boolean {
+  const text = normalizedExerciseText(exercise);
+  return (
+    hasAnyNormalizedPhrase(text, [
+      "machine",
+      "selectorized",
+      "plate loaded",
+      "iso lateral",
+      "cable",
+      "bench",
+      "pull up",
+      "pullup",
+      "chin up",
+      "chinup",
+      "seated",
+      "lying",
+    ]) ||
+    exercise.equipment.some((equipment) =>
+      ["machine", "cable", "barbell", "dumbbell"].includes(
+        normalizeV2MaterializationText(equipment),
+      ),
+    )
+  );
+}
+
+function isFlyLikeExercise(exercise: V2MaterializationExercise): boolean {
+  const text = normalizedExerciseText(exercise);
+  return (
+    hasAnyMovementPattern(exercise, ["fly"]) ||
+    hasAnyNormalizedPhrase(text, ["fly", "crossover", "pec deck"])
+  );
+}
+
+function lowerBackOrSystemicFatiguePenalty(
+  intent: V2LaneSelectionIntentV0,
+  exercise: V2MaterializationExercise,
+): number {
+  const lowerBackStimulus = stimulusForMuscle(exercise, "Lower Back");
+  const fatigue = exercise.fatigueCost ?? 1;
+  if (intent.fatiguePreference === "low_axial") {
+    return (lowerBackStimulus >= 0.25 ? 2 : 0) + (fatigue >= 3 ? 1 : 0);
+  }
+  if (intent.fatiguePreference === "low_systemic") {
+    return fatigue >= 3 ? 2 : 0;
+  }
+  if (intent.fatiguePreference === "moderate_or_low") {
+    return fatigue >= 4 ? 2 : fatigue >= 3 ? 1 : 0;
   }
   return 0;
 }

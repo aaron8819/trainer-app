@@ -84,7 +84,7 @@ export type V2LaneSelectionIntentV0 = {
   contract: "laneSelectionIntent";
   readOnly: true;
   affectsScoringOrGeneration: false;
-  consumedByMaterializer: false;
+  consumedByMaterializer: boolean;
   laneJob: V2LaneSelectionIntentLaneJob;
   requiredMovementPattern: V2LaneSelectionIntentMovementPattern;
   preferredMovementPatterns?: V2LaneSelectionIntentMovementPattern[];
@@ -147,6 +147,11 @@ type LaneSelectionIntentSourceLane = {
   };
 };
 
+type LaneSelectionIntentConsumptionLane = {
+  laneId: string;
+  laneSelectionIntent?: V2LaneSelectionIntentV0;
+};
+
 function baseIntent(
   input: Omit<
     V2LaneSelectionIntentV0,
@@ -157,6 +162,7 @@ function baseIntent(
     | "affectsScoringOrGeneration"
     | "consumedByMaterializer"
   >,
+  options: { consumedByMaterializer?: boolean } = {},
 ): V2LaneSelectionIntentV0 {
   return {
     version: 0,
@@ -164,7 +170,7 @@ function baseIntent(
     contract: "laneSelectionIntent",
     readOnly: true,
     affectsScoringOrGeneration: false,
-    consumedByMaterializer: false,
+    consumedByMaterializer: options.consumedByMaterializer ?? false,
     ...input,
   };
 }
@@ -218,41 +224,47 @@ export function buildV2LaneSelectionIntentV0ForPlanLane(
   lane: LaneSelectionIntentSourceLane,
 ): V2LaneSelectionIntentV0 | undefined {
   if (isChestBiasedPressSupportLane(lane)) {
-    return baseIntent({
-      laneJob: "support_coverage",
-      requiredMovementPattern: "chest_press",
-      allowedExerciseClasses: ["chest_press", "chest_biased_press_support"],
-      disallowedExerciseClasses: ["shoulder_biased_press"],
-      directnessRequirement: "high_directness",
-      minimumTargetStimulus: {
-        muscle: "Chest",
-        minimumPerSetStimulus: 0.75,
+    return baseIntent(
+      {
+        laneJob: "support_coverage",
+        requiredMovementPattern: "chest_press",
+        allowedExerciseClasses: ["chest_press", "chest_biased_press_support"],
+        disallowedExerciseClasses: ["shoulder_biased_press"],
+        directnessRequirement: "high_directness",
+        minimumTargetStimulus: {
+          muscle: "Chest",
+          minimumPerSetStimulus: 0.75,
+        },
+        stabilityPreference: "stable_preferred",
+        fatiguePreference: "moderate_or_low",
+        duplicatePolicy: "prefer_variation_if_clean",
+        capacityPriority: "high",
+        fallbackPolicy: "allow_labeled_fallback",
+        identityPreservationMode: "variation_allowed_within_lane_job",
       },
-      stabilityPreference: "stable_preferred",
-      fatiguePreference: "moderate_or_low",
-      duplicatePolicy: "prefer_variation_if_clean",
-      capacityPriority: "high",
-      fallbackPolicy: "allow_labeled_fallback",
-      identityPreservationMode: "variation_allowed_within_lane_job",
-    });
+      { consumedByMaterializer: true },
+    );
   }
 
   if (lane.laneId === "vertical_pull_anchor") {
-    return baseIntent({
-      laneJob: "anchor_overload",
-      requiredMovementPattern: "vertical_pull",
-      allowedExerciseClasses: ["vertical_pull"],
-      disallowedExerciseClasses: ["row", "pullover", "straight_arm_pulldown"],
-      directnessRequirement: "direct_only",
-      minimumTargetStimulus: {
-        muscle: "Lats",
-        minimumPerSetStimulus: 0.75,
+    return baseIntent(
+      {
+        laneJob: "anchor_overload",
+        requiredMovementPattern: "vertical_pull",
+        allowedExerciseClasses: ["vertical_pull"],
+        disallowedExerciseClasses: ["row", "pullover", "straight_arm_pulldown"],
+        directnessRequirement: "direct_only",
+        minimumTargetStimulus: {
+          muscle: "Lats",
+          minimumPerSetStimulus: 0.75,
+        },
+        loadabilityPreference: "high",
+        capacityPriority: "floor_critical",
+        fallbackPolicy: "block_if_no_true_vertical_pull",
+        identityPreservationMode: "preserve_lane_job",
       },
-      loadabilityPreference: "high",
-      capacityPriority: "floor_critical",
-      fallbackPolicy: "block_if_no_true_vertical_pull",
-      identityPreservationMode: "preserve_lane_job",
-    });
+      { consumedByMaterializer: true },
+    );
   }
 
   if (isHamstringCurlLane(lane)) {
@@ -266,7 +278,7 @@ export function buildV2LaneSelectionIntentV0ForPlanLane(
       capacityPriority: "floor_critical",
       fallbackPolicy: "block_if_floor_critical",
       identityPreservationMode: "variation_allowed_within_lane_job",
-    });
+    }, { consumedByMaterializer: lane.laneId === "hamstring_curl" });
   }
 
   if (lane.laneId === "quad_isolation") {
@@ -367,4 +379,40 @@ export function buildV2LaneSelectionIntentV0ForPlanLane(
   }
 
   return undefined;
+}
+
+export function isV2LaneSelectionIntentConsumedByMaterializer(
+  lane: LaneSelectionIntentConsumptionLane,
+): boolean {
+  const intent = lane.laneSelectionIntent;
+  if (
+    !intent ||
+    intent.version !== 0 ||
+    intent.source !== "v2_planner_policy" ||
+    intent.contract !== "laneSelectionIntent"
+  ) {
+    return false;
+  }
+
+  if (
+    lane.laneId === "vertical_pull_anchor" &&
+    intent.requiredMovementPattern === "vertical_pull"
+  ) {
+    return true;
+  }
+
+  if (
+    lane.laneId === "hamstring_curl" &&
+    intent.requiredMovementPattern === "knee_flexion" &&
+    intent.allowedExerciseClasses.includes("hamstring_curl")
+  ) {
+    return true;
+  }
+
+  return (
+    (lane.laneId === "vertical_press" ||
+      lane.laneId === "chest_biased_press_support") &&
+    intent.requiredMovementPattern === "chest_press" &&
+    intent.allowedExerciseClasses.includes("chest_biased_press_support")
+  );
 }

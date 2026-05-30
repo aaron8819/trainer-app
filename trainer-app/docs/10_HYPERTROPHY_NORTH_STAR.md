@@ -403,7 +403,7 @@ Current status: V2 static balanced base demand is a strong first slice. It is no
 
 Strategic purpose: convert stimulus needs into movement and class lanes before exact exercise identity. Good looks like explicit requirements such as hinge plus knee-flexion curl, distinct upper Chest classes, direct side-delt support, direct vertical-pull anchors, quad isolation, calf isolation distribution, and known disallowed substitutes.
 
-Current status: `exerciseClassDistributionBySlot`, `ExerciseSelectionPlan`, materialization taxonomy, and the V2 taxonomy bridge expose much of this shape. The recent split between `quad_isolation` and `squat_pattern`, plus stricter direct `vertical_pull` matching, is the right direction. It is still not enough. Do not let exact exercise selection pretend to solve class strategy by accident.
+Current status: `exerciseClassDistributionBySlot`, `ExerciseSelectionPlan`, materialization taxonomy, and the V2 taxonomy bridge expose much of this shape. The recent split between `quad_isolation` and `squat_pattern`, stricter direct `vertical_pull` matching, and bounded Stage B `laneSelectionIntent` consumption for vertical pull anchor, chest-biased press support, and hamstring curl are the right direction. It is still not enough. Do not let exact exercise selection pretend to solve class strategy by accident.
 
 ### Lane Selection Intent
 
@@ -437,7 +437,7 @@ High-risk lane families that need this contract first:
 - row anchor/support
 - calves
 
-Current status: Stage A exists as planner-owned, runtime-inert `laneSelectionIntent v0` on high-risk `ExerciseSelectionPlan` lanes, with read-only `V2LaneSelectionIntentAudit` visibility. It exposes where current materializer/taxonomy inference is still standing in for explicit planner intent. It must not feed materializer ranking until a guarded Stage B consumption path is implemented and tested.
+Current status: Stage A exists as planner-owned `laneSelectionIntent v0` on high-risk `ExerciseSelectionPlan` lanes, with read-only `V2LaneSelectionIntentAudit` visibility. Stage B now has a guarded pure-materializer consumption path for only `vertical_pull_anchor`, chest-biased press support, and `hamstring_curl`; other lane intents remain diagnostic-only until separately promoted. Intent metadata remains read-only explanatory truth and must not feed accepted seed shape, runtime replay, receipts, DB writes, or non-V2 paths.
 
 ### Weekly Progression Model
 
@@ -1407,11 +1407,11 @@ Roadmap note: remove or deprecate optional gap-fill workout generation from norm
 
 7. Use read-only `V2LaneSelectionIntentAudit` to design the contract.
 
-   Current status: added as a diagnostic. It exposes where current lane intent is explicit, where materializer/taxonomy inference is still doing too much, and which high-risk lane families need a richer planner contract. It should remain read-only and not be consumed by demand, materialization, generation, seed serialization, runtime replay, receipts, UI, DB writes, or persistence.
+   Current status: added as a diagnostic and partially consumed by the pure V2 materializer for only `vertical_pull_anchor`, chest-biased press support, and `hamstring_curl`. It still exposes where current lane intent is explicit, where materializer/taxonomy inference is doing too much, and which high-risk lane families need a richer planner contract. Non-promoted lanes should remain read-only and not be consumed by demand, materialization, generation, seed serialization, runtime replay, receipts, UI, DB writes, or persistence.
 
 8. Promote planner-owned `laneSelectionIntent` into guarded materializer consumption.
 
-   Stage A defines `laneSelectionIntent v0` as planner-owned diagnostic truth. Stage B should consume it only through a guarded materializer path, with explicit movement/class intent, substitution strictness, stability, fatigue, directness, collateral, loadability, continuity, duplicate, and ranking policy. Start with vertical pull anchor, chest-biased press support, hamstring curl, rows, calves, and direct delt/arm lanes.
+   Stage A defines `laneSelectionIntent v0` as planner-owned diagnostic truth. Stage B now consumes it only through a guarded materializer path for vertical pull anchor, chest-biased press support, and hamstring curl, with explicit movement/class intent, substitution strictness, stability, fatigue, directness, loadability, and ranking policy. Future expansion should stay lane-by-lane; rows, calves, direct delt/arm lanes, and other high-risk lanes remain separate promotion slices.
 
 9. Resolve skeleton-only / ghost lane cleanup.
 
@@ -1594,8 +1594,8 @@ These are strategic decision gates, not claims that current production already p
 - Do not bloat executable seed truth.
 - Do not allow old factory logic to re-author a clean V2 plan.
 - Do not claim V2 is live default until production actually uses it as the supported default author.
-- Do not claim `laneSelectionIntent` changes production exercise selection while it remains Stage A diagnostic work.
-- Do not feed `V2LaneSelectionIntentAudit` or `laneSelectionIntent v0` into materializer ranking before the guarded Stage B consumption path exists.
+- Do not claim `laneSelectionIntent` changes production exercise selection outside the guarded Stage B materializer lanes.
+- Do not feed `V2LaneSelectionIntentAudit` or `laneSelectionIntent v0` into materializer ranking outside the guarded Stage B consumption path.
 - Do not claim repair has been demoted while production projection still depends on repair for normal shape.
 - Do not claim historical personalization is implemented while it remains diagnostic or roadmap work.
 - Do not delete safety repair paths before V2 owns the responsibility they currently protect.

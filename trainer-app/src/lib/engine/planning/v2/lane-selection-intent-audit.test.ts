@@ -57,7 +57,7 @@ describe("buildV2LaneSelectionIntentAudit", () => {
     expect(audit.summary.lanesWithCorrectnessRisk).toBeGreaterThan(0);
   });
 
-  it("emits laneSelectionIntent v0 for the high-risk Stage A lanes", () => {
+  it("emits laneSelectionIntent v0 for high-risk lanes and Stage B consumption flags for the first slice", () => {
     const audit = buildAudit();
 
     for (const [slotId, laneId] of [
@@ -73,15 +73,20 @@ describe("buildV2LaneSelectionIntentAudit", () => {
       ["upper_b", "row_support"],
     ] as const) {
       const lane = auditLane(audit, slotId, laneId);
+      const stageBConsumed =
+        (slotId === "upper_b" && laneId === "vertical_press") ||
+        (slotId === "upper_b" && laneId === "vertical_pull_anchor") ||
+        (slotId === "lower_a" && laneId === "hamstring_curl");
 
       expect(lane.proposedLaneSelectionIntent).toMatchObject({
         version: 0,
         contract: "laneSelectionIntent",
         source: "v2_planner_policy",
-        consumedByMaterializer: false,
+        consumedByMaterializer: stageBConsumed,
       });
       expect(lane.missingRequiredV0Fields).toEqual([]);
-      expect(lane.materializerInferenceRequired).toBe(true);
+      expect(lane.consumedByMaterializer).toBe(stageBConsumed);
+      expect(lane.materializerInferenceRequired).toBe(!stageBConsumed);
     }
   });
 
@@ -258,6 +263,7 @@ describe("buildV2LaneSelectionIntentAudit", () => {
         muscle: "Chest",
         minimumPerSetStimulus: 0.75,
       },
+      consumedByMaterializer: true,
       duplicatePolicy: "prefer_variation_if_clean",
     });
     expect(hamstringCurl.proposedLaneSelectionIntent).toMatchObject({
@@ -265,10 +271,12 @@ describe("buildV2LaneSelectionIntentAudit", () => {
       allowedExerciseClasses: ["hamstring_curl"],
       disallowedExerciseClasses: ["hinge", "back_extension", "hip_thrust"],
       fatiguePreference: "low_axial",
+      consumedByMaterializer: true,
     });
     expect(calves.proposedLaneSelectionIntent).toMatchObject({
       requiredMovementPattern: "calf_raise",
       allowedExerciseClasses: ["calf_isolation"],
+      consumedByMaterializer: false,
       duplicatePolicy: "prefer_variation_if_clean",
     });
   });

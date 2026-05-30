@@ -181,24 +181,75 @@ function materialize(input: {
   });
 }
 
-function stripLaneSelectionIntent(
-  sourcePlan: V2ExerciseSelectionPlan,
-): V2ExerciseSelectionPlan {
-  return {
-    ...sourcePlan,
-    weeks: sourcePlan.weeks.map((week) => ({
-      ...week,
-      slots: week.slots.map((slot) => ({
-        ...slot,
-        lanes: slot.lanes.map((lane) => {
-          const next = { ...lane };
-          delete next.laneSelectionIntent;
-          return next;
-        }),
-      })),
-    })),
-  };
+function laneSelectionIntent(
+  input: NonNullable<PlanLane["laneSelectionIntent"]>,
+): NonNullable<PlanLane["laneSelectionIntent"]> {
+  return input;
 }
+
+const verticalPullAnchorIntent = laneSelectionIntent({
+  version: 0,
+  source: "v2_planner_policy",
+  contract: "laneSelectionIntent",
+  readOnly: true,
+  affectsScoringOrGeneration: false,
+  consumedByMaterializer: true,
+  laneJob: "anchor_overload",
+  requiredMovementPattern: "vertical_pull",
+  allowedExerciseClasses: ["vertical_pull"],
+  disallowedExerciseClasses: ["row", "pullover", "straight_arm_pulldown"],
+  directnessRequirement: "direct_only",
+  minimumTargetStimulus: {
+    muscle: "Lats",
+    minimumPerSetStimulus: 0.75,
+  },
+  loadabilityPreference: "high",
+  capacityPriority: "floor_critical",
+  fallbackPolicy: "block_if_no_true_vertical_pull",
+  identityPreservationMode: "preserve_lane_job",
+});
+
+const chestBiasedPressSupportIntent = laneSelectionIntent({
+  version: 0,
+  source: "v2_planner_policy",
+  contract: "laneSelectionIntent",
+  readOnly: true,
+  affectsScoringOrGeneration: false,
+  consumedByMaterializer: true,
+  laneJob: "support_coverage",
+  requiredMovementPattern: "chest_press",
+  allowedExerciseClasses: ["chest_press", "chest_biased_press_support"],
+  disallowedExerciseClasses: ["shoulder_biased_press"],
+  directnessRequirement: "high_directness",
+  minimumTargetStimulus: {
+    muscle: "Chest",
+    minimumPerSetStimulus: 0.75,
+  },
+  stabilityPreference: "stable_preferred",
+  fatiguePreference: "moderate_or_low",
+  duplicatePolicy: "prefer_variation_if_clean",
+  capacityPriority: "high",
+  fallbackPolicy: "allow_labeled_fallback",
+  identityPreservationMode: "variation_allowed_within_lane_job",
+});
+
+const hamstringCurlIntent = laneSelectionIntent({
+  version: 0,
+  source: "v2_planner_policy",
+  contract: "laneSelectionIntent",
+  readOnly: true,
+  affectsScoringOrGeneration: false,
+  consumedByMaterializer: true,
+  laneJob: "direct_floor",
+  requiredMovementPattern: "knee_flexion",
+  allowedExerciseClasses: ["hamstring_curl"],
+  disallowedExerciseClasses: ["hinge", "back_extension", "hip_thrust"],
+  directnessRequirement: "direct_only",
+  fatiguePreference: "low_axial",
+  capacityPriority: "floor_critical",
+  fallbackPolicy: "block_if_floor_critical",
+  identityPreservationMode: "variation_allowed_within_lane_job",
+});
 
 function makeMaterializedPlan(
   overrides: Partial<V2ExerciseMaterializationPlan> = {},
@@ -516,22 +567,39 @@ function weightedChestSets(input: {
 }
 
 describe("buildV2ExerciseMaterializationPlan", () => {
-  it("ignores laneSelectionIntent v0 in Stage A and keeps selection output unchanged", () => {
-    const plannerPolicy = buildV2PlannerMesocyclePolicy();
-    const withoutLaneSelectionIntent = stripLaneSelectionIntent(
-      plannerPolicy.exerciseSelectionPlan,
-    );
-
-    const withIntent = materialize({
-      plan: plannerPolicy.exerciseSelectionPlan,
-      inventory: representativeV2Inventory,
+  it("preserves prior materializer behavior when laneSelectionIntent is missing", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "vertical_press",
+          role: "support",
+          primaryMuscles: ["Chest"],
+          acceptableExerciseClasses: ["vertical_press"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "landmine-press",
+          name: "Landmine Press",
+          primaryMuscles: ["Chest"],
+          secondaryMuscles: ["Front Delts", "Triceps"],
+          movementPatterns: ["vertical_press"],
+          stimulusByMusclePerSet: {
+            Chest: 0.35,
+            "Front Delts": 1,
+            Triceps: 0.35,
+          },
+          isCompound: true,
+          fatigueCost: 2,
+        }),
+      ],
     });
-    const withoutIntent = materialize({
-      plan: withoutLaneSelectionIntent,
-      inventory: representativeV2Inventory,
-    });
 
-    expect(withIntent).toEqual(withoutIntent);
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "upper_a", "vertical_press")).toMatchObject({
+      exerciseId: "landmine-press",
+      role: "ACCESSORY",
+    });
   });
 
   it("materializes all required lanes from fixture inventory", () => {
@@ -782,6 +850,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
           role: "anchor",
           primaryMuscles: ["Lats"],
           acceptableExerciseClasses: ["vertical_pull"],
+          laneSelectionIntent: verticalPullAnchorIntent,
         }),
       ]),
       inventory: [
@@ -816,6 +885,81 @@ describe("buildV2ExerciseMaterializationPlan", () => {
         reason: "no_class_match",
       },
     ]);
+  });
+
+  it("materializer consumes laneSelectionIntent for vertical_pull_anchor", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "vertical_pull_anchor",
+          role: "anchor",
+          primaryMuscles: ["Lats"],
+          acceptableExerciseClasses: [
+            "vertical_pull",
+            "horizontal_pull_support",
+          ],
+          laneSelectionIntent: verticalPullAnchorIntent,
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "t-bar-row",
+          name: "Chest-Supported T-Bar Row",
+          primaryMuscles: ["Upper Back", "Lats"],
+          movementPatterns: ["row"],
+          isCompound: true,
+        }),
+        exercise({
+          exerciseId: "lat-pulldown",
+          name: "Lat Pulldown",
+          primaryMuscles: ["Lats"],
+          movementPatterns: ["vertical_pull"],
+          stimulusByMusclePerSet: { Lats: 1 },
+          isCompound: true,
+          equipment: ["cable"],
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "upper_a", "vertical_pull_anchor")).toMatchObject({
+      exerciseId: "lat-pulldown",
+      role: "CORE_COMPOUND",
+    });
+  });
+
+  it("vertical_pull_anchor allows true pulldown, pull-up, and chin-up patterns", () => {
+    for (const [exerciseId, name] of [
+      ["lat-pulldown", "Lat Pulldown"],
+      ["pull-up", "Pull-Up"],
+      ["chin-up", "Chin-Up"],
+    ] as const) {
+      const result = materialize({
+        plan: plan([
+          lane({
+            laneId: "vertical_pull_anchor",
+            role: "anchor",
+            primaryMuscles: ["Lats"],
+            acceptableExerciseClasses: ["vertical_pull"],
+            laneSelectionIntent: verticalPullAnchorIntent,
+          }),
+        ]),
+        inventory: [
+          exercise({
+            exerciseId,
+            name,
+            primaryMuscles: ["Lats"],
+            movementPatterns: ["vertical_pull"],
+            stimulusByMusclePerSet: { Lats: 1 },
+            isCompound: true,
+          }),
+        ],
+      });
+
+      expect(result.blockers).toEqual([]);
+      expect(exerciseForLane(result, "upper_a", "vertical_pull_anchor").exerciseId)
+        .toBe(exerciseId);
+    }
   });
 
   it("materializes added machine variants into compatible V2 lanes", () => {
@@ -994,6 +1138,169 @@ describe("buildV2ExerciseMaterializationPlan", () => {
         reason: "no_class_match",
       },
     ]);
+  });
+
+  it("materializer consumes laneSelectionIntent for hamstring_curl", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "hamstring_curl",
+          role: "accessory",
+          primaryMuscles: ["Hamstrings"],
+          acceptableExerciseClasses: [
+            "knee_flexion_curl",
+            "hinge_compound",
+            "low_axial_hip_extension_anchor",
+          ],
+          laneSelectionIntent: hamstringCurlIntent,
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "romanian-deadlift",
+          name: "Romanian Deadlift",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: {
+            Hamstrings: 1,
+            Glutes: 0.75,
+            "Lower Back": 0.65,
+          },
+          isCompound: true,
+          fatigueCost: 4,
+        }),
+        exercise({
+          exerciseId: "machine-hip-thrust",
+          name: "Machine Hip Thrust",
+          primaryMuscles: ["Glutes", "Hamstrings"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: {
+            Hamstrings: 0.3,
+            Glutes: 1,
+            "Lower Back": 0.1,
+          },
+          isCompound: true,
+          equipment: ["machine"],
+          fatigueCost: 2,
+        }),
+        exercise({
+          exerciseId: "seated-leg-curl",
+          name: "Seated Leg Curl",
+          primaryMuscles: ["Hamstrings"],
+          movementPatterns: ["knee_flexion", "isolation"],
+          stimulusByMusclePerSet: { Hamstrings: 1 },
+          equipment: ["machine"],
+          fatigueCost: 1,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "upper_a", "hamstring_curl")).toMatchObject({
+      exerciseId: "seated-leg-curl",
+      role: "ACCESSORY",
+    });
+  });
+
+  it("hamstring_curl rejects back extension, hinge, and hip thrust patterns", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "hamstring_curl",
+          role: "accessory",
+          primaryMuscles: ["Hamstrings"],
+          acceptableExerciseClasses: [
+            "knee_flexion_curl",
+            "hinge_compound",
+            "low_axial_hip_extension_anchor",
+          ],
+          laneSelectionIntent: hamstringCurlIntent,
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "hamstring-back-extension",
+          name: "45-Degree Back Extension, Hamstring Bias",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          secondaryMuscles: ["Lower Back"],
+          movementPatterns: ["extension"],
+          stimulusByMusclePerSet: {
+            Hamstrings: 0.75,
+            Glutes: 0.65,
+            "Lower Back": 0.35,
+          },
+          isCompound: true,
+          equipment: ["machine"],
+        }),
+        exercise({
+          exerciseId: "romanian-deadlift",
+          name: "Romanian Deadlift",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: {
+            Hamstrings: 1,
+            Glutes: 0.75,
+            "Lower Back": 0.65,
+          },
+          isCompound: true,
+        }),
+        exercise({
+          exerciseId: "machine-hip-thrust",
+          name: "Machine Hip Thrust",
+          primaryMuscles: ["Glutes", "Hamstrings"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: {
+            Hamstrings: 0.3,
+            Glutes: 1,
+            "Lower Back": 0.1,
+          },
+          isCompound: true,
+          equipment: ["machine"],
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "hamstring_curl",
+        reason: "no_class_match",
+      },
+    ]);
+  });
+
+  it("hamstring_curl selects seated, lying, and Nordic-style curl patterns", () => {
+    for (const [exerciseId, name] of [
+      ["seated-leg-curl", "Seated Leg Curl"],
+      ["lying-leg-curl", "Lying Leg Curl"],
+      ["nordic-curl", "Nordic Hamstring Curl"],
+    ] as const) {
+      const result = materialize({
+        plan: plan([
+          lane({
+            laneId: "hamstring_curl",
+            role: "accessory",
+            primaryMuscles: ["Hamstrings"],
+            acceptableExerciseClasses: ["knee_flexion_curl"],
+            laneSelectionIntent: hamstringCurlIntent,
+          }),
+        ]),
+        inventory: [
+          exercise({
+            exerciseId,
+            name,
+            primaryMuscles: ["Hamstrings"],
+            movementPatterns: ["knee_flexion", "isolation"],
+            stimulusByMusclePerSet: { Hamstrings: 1 },
+            fatigueCost: exerciseId === "nordic-curl" ? 2 : 1,
+          }),
+        ],
+      });
+
+      expect(result.blockers).toEqual([]);
+      expect(exerciseForLane(result, "upper_a", "hamstring_curl").exerciseId)
+        .toBe(exerciseId);
+    }
   });
 
   it("blocks goblet squat from quad-isolation and leg-extension lanes", () => {
@@ -1920,6 +2227,142 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     ]);
   });
 
+  it("materializer consumes laneSelectionIntent for chest_biased_press_support", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "vertical_press",
+          role: "support",
+          primaryMuscles: ["Chest"],
+          acceptableExerciseClasses: [
+            "vertical_press",
+            "distinct_chest_press_or_fly",
+          ],
+          laneSelectionIntent: chestBiasedPressSupportIntent,
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "landmine-press",
+          name: "Landmine Press",
+          primaryMuscles: ["Chest"],
+          secondaryMuscles: ["Front Delts", "Triceps"],
+          movementPatterns: ["vertical_press"],
+          stimulusByMusclePerSet: {
+            Chest: 0.35,
+            "Front Delts": 1,
+            Triceps: 0.35,
+          },
+          isCompound: true,
+          fatigueCost: 2,
+        }),
+        exercise({
+          exerciseId: "machine-chest-press",
+          name: "Machine Chest Press",
+          primaryMuscles: ["Chest"],
+          secondaryMuscles: ["Front Delts", "Triceps"],
+          movementPatterns: ["horizontal_press"],
+          stimulusByMusclePerSet: {
+            Chest: 1,
+            "Front Delts": 0.3,
+            Triceps: 0.45,
+          },
+          isCompound: true,
+          equipment: ["machine"],
+          fatigueCost: 2,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "upper_a", "vertical_press")).toMatchObject({
+      exerciseId: "machine-chest-press",
+      role: "ACCESSORY",
+    });
+  });
+
+  it("chest_biased_press_support rejects low-chest Landmine Press without a true chest press", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "vertical_press",
+          role: "support",
+          primaryMuscles: ["Chest"],
+          acceptableExerciseClasses: [
+            "vertical_press",
+            "distinct_chest_press_or_fly",
+          ],
+          laneSelectionIntent: chestBiasedPressSupportIntent,
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "landmine-press",
+          name: "Landmine Press",
+          primaryMuscles: ["Chest"],
+          secondaryMuscles: ["Front Delts", "Triceps"],
+          movementPatterns: ["vertical_press"],
+          stimulusByMusclePerSet: {
+            Chest: 0.35,
+            "Front Delts": 1,
+            Triceps: 0.35,
+          },
+          isCompound: true,
+          fatigueCost: 2,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "vertical_press",
+        reason: "no_class_match",
+      },
+    ]);
+  });
+
+  it("chest_biased_press_support selects high-chest stable press variants", () => {
+    for (const [exerciseId, name] of [
+      ["machine-chest-press", "Machine Chest Press"],
+      ["iso-incline-press", "Iso-Lateral Incline Press"],
+      ["iso-decline-press", "Iso-Lateral Decline Press"],
+    ] as const) {
+      const result = materialize({
+        plan: plan([
+          lane({
+            laneId: "vertical_press",
+            role: "support",
+            primaryMuscles: ["Chest"],
+            acceptableExerciseClasses: ["distinct_chest_press_or_fly"],
+            laneSelectionIntent: chestBiasedPressSupportIntent,
+          }),
+        ]),
+        inventory: [
+          exercise({
+            exerciseId,
+            name,
+            primaryMuscles: ["Chest"],
+            secondaryMuscles: ["Front Delts", "Triceps"],
+            movementPatterns: ["horizontal_press"],
+            stimulusByMusclePerSet: {
+              Chest: 1,
+              "Front Delts": 0.3,
+              Triceps: 0.45,
+            },
+            isCompound: true,
+            equipment: ["machine"],
+            fatigueCost: 2,
+          }),
+        ],
+      });
+
+      expect(result.blockers).toEqual([]);
+      expect(exerciseForLane(result, "upper_a", "vertical_press").exerciseId)
+        .toBe(exerciseId);
+    }
+  });
+
   it("keeps Landmine Press available for non-chest-biased vertical press lanes", () => {
     const result = materialize({
       plan: plan([
@@ -2521,7 +2964,9 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       "role",
       "setCount",
     ]);
-    expect(JSON.stringify(result)).not.toMatch(/name|exerciseName|planningReality|slotPlanSeedJson/);
+    expect(JSON.stringify(result)).not.toMatch(
+      /name|exerciseName|planningReality|slotPlanSeedJson|laneSelectionIntent/,
+    );
   });
 
   it("reports dry-run materialization readiness as read-only diagnostic evidence", () => {

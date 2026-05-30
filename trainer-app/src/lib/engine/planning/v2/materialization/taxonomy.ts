@@ -181,26 +181,45 @@ function stimulusForMuscle(
   exercise: V2MaterializationExercise,
   muscle: string,
 ): number {
+  return explicitStimulusForMuscle(exercise, muscle) ?? 0;
+}
+
+function explicitStimulusForMuscle(
+  exercise: V2MaterializationExercise,
+  muscle: string,
+): number | undefined {
   const normalizedMuscle = normalizeV2MaterializationText(muscle);
-  return (
-    Object.entries(exercise.stimulusByMusclePerSet).find(
-      ([entryMuscle]) =>
-        normalizeV2MaterializationText(entryMuscle) === normalizedMuscle,
-    )?.[1] ?? 0
-  );
+  return Object.entries(exercise.stimulusByMusclePerSet).find(
+    ([entryMuscle]) =>
+      normalizeV2MaterializationText(entryMuscle) === normalizedMuscle,
+  )?.[1];
 }
 
 function hasRelevantDirectMuscle(
   exercise: V2MaterializationExercise,
   muscle: string,
 ): boolean {
-  return hasPrimaryMuscle(exercise, muscle) || stimulusForMuscle(exercise, muscle) >= 0.75;
+  const explicitStimulus = explicitStimulusForMuscle(exercise, muscle);
+  if (explicitStimulus !== undefined) {
+    return explicitStimulus >= 0.75;
+  }
+  return hasPrimaryMuscle(exercise, muscle);
 }
 
 function hasAnyText(text: string, patterns: string[]): boolean {
-  return patterns.some((pattern) =>
-    text.includes(normalizeV2MaterializationText(pattern)),
-  );
+  return patterns.some((pattern) => hasNormalizedPhrase(text, pattern));
+}
+
+function hasNormalizedPhrase(text: string, pattern: string): boolean {
+  const normalizedPattern = normalizeV2MaterializationText(pattern);
+  if (!normalizedPattern) {
+    return false;
+  }
+  return new RegExp(`(?:^| )${escapeRegExp(normalizedPattern)}(?: |$)`).test(text);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function hasAnyPattern(
@@ -545,7 +564,7 @@ function matchesClass(
       return (
         hasPrimaryMuscle(exercise, "Chest") &&
         (hasAnyPattern(exercise, ["press", "fly", "horizontal_press"]) ||
-          hasAnyText(text, ["press", "fly"]))
+          hasAnyText(text, ["press", "fly", "crossover", "pec deck"]))
       );
     case "vertical_press":
       return (
@@ -619,7 +638,7 @@ function matchesClass(
       return (
         hasPrimaryMuscle(exercise, "Biceps") &&
         hasAnyText(text, ["curl"]) &&
-        !hasAnyText(text, ["pull up", "pullup", "chin", "row"])
+        !hasAnyText(text, ["pull up", "pullup", "chin up", "chinup", "chin", "row"])
       );
     case "horizontal_pull_support":
       return (
@@ -640,7 +659,7 @@ function matchesClass(
           "chin up",
           "chinup",
         ]) &&
-        !hasAnyText(text, ["row", "pullover", "pull over"])
+        !hasAnyText(text, ["row", "pullover", "pull over", "straight arm"])
       );
     case "hinge_compound":
       return (
@@ -708,7 +727,7 @@ function duplicateFamilyForClass(
 
 function chestVariantFamily(exercise: V2MaterializationExercise): string {
   const text = normalizedFields(exercise);
-  if (hasAnyPattern(exercise, ["fly"]) || hasAnyText(text, ["fly"])) {
+  if (hasAnyPattern(exercise, ["fly"]) || hasAnyText(text, ["fly", "crossover", "pec deck"])) {
     return "fly";
   }
   if (

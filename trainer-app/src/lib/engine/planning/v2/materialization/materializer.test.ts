@@ -715,6 +715,13 @@ describe("buildV2ExerciseMaterializationPlan", () => {
           isCompound: false,
         }),
         exercise({
+          exerciseId: "straight-arm-pulldown",
+          name: "Straight-Arm Pulldown",
+          primaryMuscles: ["Lats"],
+          movementPatterns: ["vertical_pull"],
+          isCompound: false,
+        }),
+        exercise({
           exerciseId: "t-bar-row",
           name: "Chest-Supported T-Bar Row",
           primaryMuscles: ["Upper Back", "Lats"],
@@ -999,6 +1006,46 @@ describe("buildV2ExerciseMaterializationPlan", () => {
         exerciseId: "cable-fly",
         role: "ACCESSORY",
       });
+  });
+
+  it("allows pec deck and cable crossover to satisfy chest fly lanes", () => {
+    for (const row of [
+      exercise({
+        exerciseId: "pec-deck",
+        name: "Pec Deck Machine",
+        primaryMuscles: ["Chest"],
+        movementPatterns: ["horizontal_push"],
+        equipment: ["machine"],
+        fatigueCost: 2,
+      }),
+      exercise({
+        exerciseId: "cable-crossover",
+        name: "Cable Crossover",
+        primaryMuscles: ["Chest"],
+        movementPatterns: ["horizontal_push"],
+        equipment: ["cable"],
+        fatigueCost: 2,
+      }),
+    ]) {
+      const result = materialize({
+        plan: plan([
+          lane({
+            laneId: "chest_second_exposure",
+            role: "support",
+            primaryMuscles: ["Chest"],
+            acceptableExerciseClasses: ["fly", "distinct_chest_press_or_fly"],
+          }),
+        ]),
+        inventory: [row],
+      });
+
+      expect(result.blockers).toEqual([]);
+      expect(exerciseForLane(result, "upper_a", "chest_second_exposure"))
+        .toMatchObject({
+          exerciseId: row.exerciseId,
+          role: "ACCESSORY",
+        });
+    }
   });
 
   it("allows loadable press variants to satisfy a fresh chest anchor", () => {
@@ -1437,7 +1484,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     ]);
   });
 
-  it("prefers meaningful chest stimulus for chest-biased press support", () => {
+  it("prefers high-Chest press over Landmine Press for chest-biased support", () => {
     const chestPlan = plan([
       lane({
         laneId: "chest_anchor",
@@ -1546,6 +1593,78 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(chestSets).toBeLessThanOrEqual(VOLUME_LANDMARKS.Chest.mav);
     expect(Math.max(...seedRows.map((row) => row.setCount))).toBeLessThanOrEqual(4);
     expect(seedRows).toHaveLength(3);
+  });
+
+  it("blocks Landmine Press as a low-Chest-stimulus chest anchor", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "chest_anchor",
+          role: "anchor",
+          primaryMuscles: ["Chest"],
+          acceptableExerciseClasses: ["horizontal_press", "vertical_press"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "landmine-press",
+          name: "Landmine Press",
+          primaryMuscles: ["Chest"],
+          secondaryMuscles: ["Front Delts", "Triceps"],
+          movementPatterns: ["vertical_press"],
+          stimulusByMusclePerSet: {
+            Chest: 0.35,
+            "Front Delts": 1,
+            Triceps: 0.35,
+          },
+          isCompound: true,
+          fatigueCost: 2,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([
+      {
+        slotId: "upper_a",
+        laneId: "chest_anchor",
+        reason: "no_class_match",
+      },
+    ]);
+  });
+
+  it("keeps Landmine Press available for non-chest-biased vertical press lanes", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "vertical_press",
+          role: "support",
+          primaryMuscles: ["Front Delts"],
+          acceptableExerciseClasses: ["vertical_press"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "landmine-press",
+          name: "Landmine Press",
+          primaryMuscles: ["Chest"],
+          secondaryMuscles: ["Front Delts", "Triceps"],
+          movementPatterns: ["vertical_press"],
+          stimulusByMusclePerSet: {
+            Chest: 0.35,
+            "Front Delts": 1,
+            Triceps: 0.35,
+          },
+          isCompound: true,
+          fatigueCost: 2,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "upper_a", "vertical_press")).toMatchObject({
+      exerciseId: "landmine-press",
+      role: "ACCESSORY",
+    });
   });
 
   it("omits managed collateral lanes even when a class match exists", () => {

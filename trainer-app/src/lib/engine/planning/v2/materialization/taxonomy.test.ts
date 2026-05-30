@@ -234,6 +234,16 @@ describe("V2 exercise class taxonomy", () => {
     expect(
       classIds(
         exercise({
+          exerciseId: "straight-arm-pulldown",
+          name: "Straight-Arm Pulldown",
+          primaryMuscles: ["Lats"],
+          movementPatterns: ["vertical_pull"],
+        }),
+      ),
+    ).not.toContain("vertical_pull");
+    expect(
+      classIds(
+        exercise({
           exerciseId: "t-bar-row",
           name: "Chest-Supported T-Bar Row",
           primaryMuscles: ["Upper Back", "Lats"],
@@ -376,6 +386,33 @@ describe("V2 exercise class taxonomy", () => {
     }
   });
 
+  it("resolves pec deck and cable crossover as chest fly class variants", () => {
+    for (const row of [
+      exercise({
+        exerciseId: "pec-deck",
+        name: "Pec Deck Machine",
+        primaryMuscles: ["Chest"],
+        movementPatterns: ["horizontal_push"],
+        equipment: ["machine"],
+      }),
+      exercise({
+        exerciseId: "cable-crossover",
+        name: "Cable Crossover",
+        primaryMuscles: ["Chest"],
+        movementPatterns: ["horizontal_push"],
+        equipment: ["cable"],
+      }),
+    ]) {
+      expect(matchV2ExerciseClasses(row)).toContainEqual(
+        expect.objectContaining({
+          classId: "distinct_chest_press_or_fly",
+          directMuscles: ["Chest"],
+          duplicateFamily: "distinct_chest_press_or_fly:fly",
+        }),
+      );
+    }
+  });
+
   it("keeps added accessories out of primary materializer lanes", () => {
     const backExtensionClasses = classIds(
       exercise({
@@ -449,6 +486,20 @@ describe("V2 exercise class taxonomy", () => {
         "ohp",
       ]),
     ).toEqual(["vertical_press"]);
+  });
+
+  it("resolves preacher curl as biceps isolation despite machine equipment text", () => {
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "preacher-curl",
+          name: "Preacher Curl",
+          primaryMuscles: ["Biceps"],
+          movementPatterns: ["flexion"],
+          equipment: ["machine"],
+        }),
+      ),
+    ).toContain("biceps_isolation");
   });
 
   it("keeps vertical press distinct from nearby press, pull, and isolation classes", () => {

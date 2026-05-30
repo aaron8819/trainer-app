@@ -1,6 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
+import {
+  evaluateV2AnchorLaneQuality,
+  matchV2ExerciseClasses,
+  normalizeV2MaterializationText,
+} from "./taxonomy";
+import type { V2MaterializationExercise } from "./types";
 
 type CatalogExercise = {
   name: string;
@@ -28,6 +35,41 @@ function byName(name: string): CatalogExercise {
     throw new Error(`Missing catalog exercise: ${name}`);
   }
   return found;
+}
+
+function materializationExercise(name: string): V2MaterializationExercise {
+  const row = byName(name);
+  return {
+    exerciseId: normalizeV2MaterializationText(name).replace(/\s+/g, "-"),
+    name: row.name,
+    aliases: [],
+    movementPatterns: row.movementPatterns.map((pattern) => pattern.toLowerCase()),
+    primaryMuscles: row.primaryMuscles,
+    secondaryMuscles: row.secondaryMuscles,
+    equipment: row.equipment.map((equipment) => equipment.toLowerCase()),
+    isCompound: row.isCompound,
+    isMainLiftEligible: row.isMainLiftEligible,
+    fatigueCost: row.fatigueCost,
+    stimulusByMusclePerSet: Object.fromEntries(
+      getEffectiveStimulusByMuscle(
+        {
+          id: normalizeV2MaterializationText(name).replace(/\s+/g, "-"),
+          name: row.name,
+          aliases: [],
+          primaryMuscles: row.primaryMuscles,
+          secondaryMuscles: row.secondaryMuscles,
+        },
+        1,
+        { logFallback: false },
+      ),
+    ),
+  };
+}
+
+function classIdsForCatalogExercise(name: string): string[] {
+  return matchV2ExerciseClasses(materializationExercise(name)).map(
+    (match) => match.classId,
+  );
 }
 
 describe("V2 materialization exercise catalog coverage", () => {
@@ -103,5 +145,38 @@ describe("V2 materialization exercise catalog coverage", () => {
     ]) {
       expect(seedText).toContain(`alias: "${alias}"`);
     }
+  });
+
+  it("keeps named catalog rows aligned with V2 materialization taxonomy guards", () => {
+    expect(classIdsForCatalogExercise("Pec Deck Machine")).toContain(
+      "distinct_chest_press_or_fly",
+    );
+    expect(classIdsForCatalogExercise("Cable Crossover")).toContain(
+      "distinct_chest_press_or_fly",
+    );
+    expect(classIdsForCatalogExercise("Straight-Arm Pulldown")).not.toContain(
+      "vertical_pull",
+    );
+    expect(classIdsForCatalogExercise("Cable Pullover")).not.toContain(
+      "vertical_pull",
+    );
+    expect(classIdsForCatalogExercise("Preacher Curl")).toContain(
+      "biceps_isolation",
+    );
+
+    const landminePress = materializationExercise("Landmine Press");
+    const landmineChestClass = matchV2ExerciseClasses(landminePress).find(
+      (match) => match.classId === "distinct_chest_press_or_fly",
+    );
+    expect(
+      evaluateV2AnchorLaneQuality(
+        "chest_anchor",
+        landminePress,
+        landmineChestClass,
+      ),
+    ).toMatchObject({
+      tier: "ineligible",
+      reasons: ["missing_direct_chest"],
+    });
   });
 });

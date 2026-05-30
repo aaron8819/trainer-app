@@ -92,7 +92,8 @@ Migration hygiene:
   - `standard` / `supplemental` / `rescue`: inventory-layer usage and candidate summaries
   - `closure`: selected actions and, in debug mode, first-iteration candidate trace
   - `outcome`: deficit snapshots through base session, supplementation, and closure plus key tradeoffs
-- `npm run repair:exercise-library` (and `:apply`) for repair workflow
+- `npm run sync:exercise-library` (and `:apply`) for catalog-only exercise-library sync. It writes only `Exercise`, `ExerciseMuscle`, `ExerciseEquipment`, and `ExerciseAlias`; it does not run full `prisma/seed.ts`, seed owners, or seed workout templates.
+- `npm run repair:exercise-library` (and `:apply`) for the repair workflow; apply delegates to the catalog-only sync path.
 - Keep `docs/contracts/runtime-contracts.json` aligned with `src/lib/validation.ts`
 - Current baseline migration history is squashed to `prisma/migrations/20260222_baseline/migration.sql`; historical per-feature migration folders are archived at `docs/archive/prisma-migrations-backup/` (see `docs/archive/MIGRATIONS_BACKUP_ARCHIVE.md`).
 - Lifecycle backfill/role management scripts:

@@ -40,6 +40,8 @@
         "verify:contracts": "tsx scripts/check-doc-runtime-contracts.ts",
         "verify:fast": "npm run lint && npx tsc --noEmit && npm run test:fast && npm run verify:contracts",
         "verify": "npm run verify:fast",
+        "sync:exercise-library": "tsx scripts/sync-exercise-library.ts",
+        "sync:exercise-library:apply": "tsx scripts/sync-exercise-library.ts --apply",
         "repair:exercise-library": "tsx scripts/repair-exercise-library.ts",
         "repair:exercise-library:apply": "tsx scripts/repair-exercise-library.ts --apply",
         "storybook": "storybook dev -p 6006",

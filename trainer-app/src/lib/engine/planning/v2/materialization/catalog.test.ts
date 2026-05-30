@@ -23,7 +23,7 @@ type CatalogExercise = {
 };
 
 const catalogPath = path.join(process.cwd(), "prisma", "exercises_comprehensive.json");
-const seedPath = path.join(process.cwd(), "prisma", "seed.ts");
+const aliasSeedPath = path.join(process.cwd(), "prisma", "exercise-aliases.ts");
 
 function loadCatalog(): CatalogExercise[] {
   return JSON.parse(fs.readFileSync(catalogPath, "utf8")).exercises;
@@ -129,7 +129,7 @@ describe("V2 materialization exercise catalog coverage", () => {
   });
 
   it("declares aliases for user-observed names without adding duplicate rows", () => {
-    const seedText = fs.readFileSync(seedPath, "utf8");
+    const seedText = fs.readFileSync(aliasSeedPath, "utf8");
 
     for (const alias of [
       "Glute Drive",

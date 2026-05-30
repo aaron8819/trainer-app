@@ -13,6 +13,7 @@ import {
 
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { exerciseAliases } from "./exercise-aliases";
 import exercisesJson from "./exercises_comprehensive.json";
 
 const connectionString = process.env.DATABASE_URL;
@@ -43,7 +44,6 @@ const prisma = new PrismaClient({ adapter });
 // ═══════════════════════════════════════════════════════════════════════════
 
 type JsonExercise = (typeof exercisesJson.exercises)[number];
-type ExerciseAliasSeed = { exerciseName: string; alias: string };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Enum mappings (JSON string → Prisma enum)
@@ -282,66 +282,8 @@ const EXERCISES_TO_DELETE_BEFORE_RENAME = [
 // Exercise aliases (old names become aliases for searchability)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const exerciseAliases: ExerciseAliasSeed[] = [
-  // Old names from renames
-  { exerciseName: "Barbell Hip Thrust", alias: "Hip Thrust" },
-  { exerciseName: "Lying Leg Curl", alias: "Leg Curl" },
-  { exerciseName: "Incline Barbell Bench Press", alias: "Incline Barbell Bench" },
-  { exerciseName: "Incline Machine Press", alias: "Smith Machine Incline Press" },
-  { exerciseName: "Incline Dumbbell Bench Press", alias: "Dumbbell Incline Press" },
-  { exerciseName: "Pec Deck Machine", alias: "Pec Deck" },
-  { exerciseName: "Barbell Overhead Press", alias: "Overhead Press" },
-  { exerciseName: "Dumbbell Overhead Press", alias: "Dumbbell Shoulder Press" },
-  { exerciseName: "Dumbbell Lateral Raise", alias: "Lateral Raise" },
-  { exerciseName: "Dumbbell Lateral Raise", alias: "Dumbbell Lateral Raises" },
-  { exerciseName: "Cable Triceps Pushdown", alias: "Triceps Pushdown" },
-  { exerciseName: "Lying Triceps Extension (Skull Crusher)", alias: "Skull Crusher" },
-  { exerciseName: "Dip (Chest Emphasis)", alias: "Dips" },
-  { exerciseName: "Overhead Dumbbell Extension", alias: "Overhead Triceps Extension" },
-  { exerciseName: "Chest-Supported Dumbbell Row", alias: "Chest-Supported Row" },
-  { exerciseName: "One-Arm Dumbbell Row", alias: "Single-Arm Dumbbell Row" },
-  { exerciseName: "Reverse Pec Deck", alias: "Machine Rear Delt Fly" },
-  { exerciseName: "Dumbbell Rear Delt Fly", alias: "Reverse Fly" },
-  { exerciseName: "Preacher Curl", alias: "Cable Preacher Curl" },
-  { exerciseName: "Farmer's Walk", alias: "Farmer's Carry" },
-
-  // Legacy aliases from old seed
-  { exerciseName: "Dumbbell Overhead Press", alias: "DB Shoulder Press" },
-  { exerciseName: "Romanian Deadlift", alias: "Romanian Deadlift (BB)" },
-  { exerciseName: "Romanian Deadlift", alias: "DB Romanian Deadlift" },
-  { exerciseName: "Incline Dumbbell Bench Press", alias: "Incline DB Press" },
-  { exerciseName: "One-Arm Dumbbell Row", alias: "One-Arm DB Row" },
-  { exerciseName: "Incline Dumbbell Curl", alias: "Incline DB Curls" },
-  { exerciseName: "Lying Triceps Extension (Skull Crusher)", alias: "DB Skull Crushers" },
-  { exerciseName: "Dumbbell Lateral Raise", alias: "DB Lateral Raise" },
-  { exerciseName: "Face Pull", alias: "Face Pulls (Rope)" },
-  { exerciseName: "Cable Triceps Pushdown", alias: "Tricep Rope Pushdown" },
-  { exerciseName: "Barbell Bench Press", alias: "Flat Barbell Bench Press" },
-  { exerciseName: "Barbell Bench Press", alias: "Decline Barbell Bench" },
-  { exerciseName: "Dumbbell Bench Press", alias: "Flat DB Press" },
-  { exerciseName: "Bulgarian Split Squat", alias: "Front-Foot Elevated Split Squat" },
-
-  // User-observed machine names and common gym labels.
-  { exerciseName: "Machine Hip Thrust", alias: "Machine Hip Thrust / Glute Drive" },
-  { exerciseName: "Machine Hip Thrust", alias: "Glute Drive" },
-  { exerciseName: "Machine Hip Thrust", alias: "Glute Trainer" },
-  { exerciseName: "Machine Hip Thrust", alias: "Bridge Glute Lifts" },
-  { exerciseName: "Iso-Lateral Front Lat Pulldown", alias: "Iso-Lateral Front Pulldown" },
-  { exerciseName: "Iso-Lateral Front Lat Pulldown", alias: "Front Lat Pulldown" },
-  { exerciseName: "45-Degree Back Extension, Hamstring Bias", alias: "Hamstring-Focused Back Extension" },
-  { exerciseName: "45-Degree Back Extension, Hamstring Bias", alias: "Hamstring Bias Back Extension" },
-  { exerciseName: "Seated Machine Shrug", alias: "Standing Machine Shrug" },
-  { exerciseName: "Seated Machine Shrug", alias: "Machine Shrug" },
-  { exerciseName: "Seated Machine Shrug", alias: "Seated Shrug" },
-  { exerciseName: "Seated Machine Shrug", alias: "Standing Shrug" },
-  { exerciseName: "Seated Dip Machine", alias: "Seated Dip" },
-  { exerciseName: "Seated Dip Machine", alias: "Dip Machine" },
-  { exerciseName: "Seated Dip Machine", alias: "Machine Dip" },
-  { exerciseName: "Oblique Crunch Machine", alias: "Oblique Crunch" },
-  { exerciseName: "Torso Rotation Machine", alias: "Torso Rotation" },
-  { exerciseName: "Torso Rotation Machine", alias: "Rotary Torso" },
-  { exerciseName: "Torso Rotation Machine", alias: "Rotary Torso Machine" },
-];
+// Exercise aliases live in prisma/exercise-aliases.ts so seed and catalog-only
+// sync use the same searchability data.
 
 // baselineSeed removed — Baseline model dropped in migration 20260218000000_remove_baseline
 

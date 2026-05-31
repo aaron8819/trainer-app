@@ -7,6 +7,7 @@ import {
   WORKOUT_AUDIT_SIZE_LIMIT_BYTES,
 } from "./constants";
 import {
+  compactPlanningRealityDetail,
   getSerializedArtifactSizeBytes,
   serializeStableJson,
 } from "./artifact-serialization";
@@ -22,6 +23,7 @@ import type {
 type JsonRecord = Record<string, unknown>;
 
 export const V2_DEBUG_SHARD_IDS = [
+  "planning-reality",
   "strategy",
   "promotion-readiness",
   "promotion-diffs",
@@ -54,6 +56,7 @@ export type BuiltV2DebugArtifactOutput = {
 };
 
 const SHARD_FILE_SUFFIX_BY_ID: Record<V2DebugShardId, string> = {
+  "planning-reality": "v2-planning-reality",
   strategy: "v2-strategy",
   "promotion-readiness": "v2-promotion-readiness",
   "promotion-diffs": "v2-promotion-diffs",
@@ -803,11 +806,26 @@ function compactSelectionAlignment(noRepair: JsonRecord): JsonRecord {
   };
 }
 
+function getPlanningRealityData(artifact: WorkoutAuditArtifact): JsonRecord | null {
+  const planningReality =
+    artifact.mesocycleExplain?.preview.projectionDiagnostics.planningReality;
+  if (!planningReality) {
+    return null;
+  }
+  const compactPlanningReality = compactPlanningRealityDetail(planningReality);
+  return isRecord(compactPlanningReality)
+    ? { planningReality: compactPlanningReality }
+    : null;
+}
+
 function buildFullShardData(
   shardId: V2DebugShardId,
   noRepair: JsonRecord,
+  artifact: WorkoutAuditArtifact,
 ): JsonRecord | null {
   switch (shardId) {
+    case "planning-reality":
+      return getPlanningRealityData(artifact);
     case "strategy":
       return noRepair.v2MesocycleStrategyDiagnostic
         ? {
@@ -873,8 +891,11 @@ function buildFullShardData(
 function buildCompactShardData(
   shardId: V2DebugShardId,
   noRepair: JsonRecord,
+  artifact: WorkoutAuditArtifact,
 ): JsonRecord | null {
   switch (shardId) {
+    case "planning-reality":
+      return getPlanningRealityData(artifact);
     case "strategy":
       return {
         v2MesocycleStrategyDiagnostic: compactStrategyDiagnostic(
@@ -924,8 +945,8 @@ function buildShardArtifact(input: {
   }
   const data =
     input.detailLevel === "full"
-      ? buildFullShardData(input.shardId, input.noRepair)
-      : buildCompactShardData(input.shardId, input.noRepair);
+      ? buildFullShardData(input.shardId, input.noRepair, input.artifact)
+      : buildCompactShardData(input.shardId, input.noRepair, input.artifact);
   if (!data || Object.keys(data).length === 0) {
     return null;
   }
@@ -994,7 +1015,9 @@ function buildShardOutput(input: {
     fileName,
   );
   const budgetBytes =
-    input.detailLevel === "full"
+    input.shardId === "planning-reality"
+      ? WORKOUT_AUDIT_MAIN_ARTIFACT_BUDGET_BYTES
+      : input.detailLevel === "full"
       ? V2_DEBUG_FULL_DETAIL_SHARD_BUDGET_BYTES
       : V2_DEBUG_DEFAULT_SHARD_BUDGET_BYTES;
   const artifact = buildShardArtifact(input);

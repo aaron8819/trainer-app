@@ -2900,6 +2900,79 @@ describe("buildWorkoutAuditArtifact", () => {
 
   it("returns a linked V2 no-repair debug index and compact shards only when the explicit flag is enabled", () => {
     const mesocycleExplain = makeMesocycleExplainNoRepairPayload();
+    (
+      mesocycleExplain!.preview.projectionDiagnostics as Record<string, unknown>
+    ).planningReality = {
+      label: "weekly demand / slot allocation diagnostics",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      summary: {
+        planningShape: "mixed_upstream_plus_repair_shaped",
+        explicitWeeklyDemandMuscles: 2,
+        inferredDemandMuscles: 1,
+        slotsWithExplicitWeeklyDemand: 2,
+        slotsWithOnlyLocalOrInferredSemantics: 1,
+        materialRepairCount: 2,
+        majorRepairCount: 1,
+        highExerciseConcentrationCount: 0,
+        warningCodes: [],
+      },
+      weeklyMuscleDemand: [
+        {
+          muscle: "Chest",
+          evidence: ["planning_reality_detail_only"],
+        },
+      ],
+      slotDemandAllocation: [],
+      shadowWeeklyDemand: [],
+      shadowSlotDemandAllocation: [],
+      initialSlotComposition: [],
+      finalSlotPlan: [],
+      allocationVsInitialDelta: [],
+      allocationVsFinalDelta: [],
+      repairMaterialityAfterShadowAllocation: [],
+      shadowRepairSummary: {
+        materialRepairCount: 2,
+        majorRepairCount: 1,
+      },
+      suspiciousRepairsNotEligibleForPromotion: [],
+      promotionCandidates: [],
+      weakPreselectionConsumption: [],
+      slotPrescriptionIntents: [],
+      setDistributionIntents: [],
+      distributionGuardActions: [],
+      preselectionFeasibility: [],
+      preselectionDistributionPolicyByWeek: {
+        summary: { weekCount: 5 },
+        weeks: [],
+      },
+      weeklyDemandCurve: {
+        summary: { weekCount: 5 },
+        weeks: [],
+      },
+      slotDemandAllocationByWeek: {
+        summary: { weekCount: 5 },
+        weeks: [],
+      },
+      exerciseClassDistributionBySlot: [],
+      exerciseClassAlignment: {
+        summary: {},
+        slots: [],
+      },
+      exerciseClassUnresolvedCauses: [],
+      duplicateContinuityJustification: {
+        duplicates: [],
+      },
+      cleanupCandidateFeasibility: [],
+      accumulationWeekProjection: {
+        weeks: [],
+      },
+      projectedDelivery: [],
+      repairMateriality: [],
+      exerciseConcentration: [],
+      warnings: [],
+      limitations: [],
+    };
     mesocycleExplain!.plannerOnlyNoRepair!.v2MesocycleStrategyDiagnostic =
       buildV2PlannerMesocyclePolicy({
         mesocycleStrategyInput: makePromotionDiffStrategyInput(),
@@ -3167,7 +3240,7 @@ describe("buildWorkoutAuditArtifact", () => {
         v2BasePlanShadowConsumptionStatus: "available",
         v2BasePlanShadowConsumptionRepairDependencyDelta: -8,
         v2BasePlanShadowConsumptionRegressionCount: 0,
-        writtenShardCount: 7,
+        writtenShardCount: 8,
         skippedShardCount: 0,
       },
       shards: expect.arrayContaining([
@@ -3311,6 +3384,39 @@ describe("buildWorkoutAuditArtifact", () => {
     const materializationShard = findShard("materialization");
     const crossWeekShard = findShard("cross-week-projection");
     const selectionShard = findShard("selection-alignment");
+    const planningRealityShard = findShard("planning-reality");
+
+    const mainPlanningReality = output.serializedArtifact.mesocycleExplain
+      ?.preview.projectionDiagnostics.planningReality as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(mainPlanningReality).toMatchObject({
+      summary: {
+        planningShape: "mixed_upstream_plus_repair_shaped",
+        materialRepairCount: 2,
+      },
+      detailArtifact: {
+        shardId: "planning-reality",
+        relativePath: "artifacts/audits/parent-v2-planning-reality.json",
+        sizeBytes: planningRealityShard.sizeBytes,
+        sha256: planningRealityShard.sha256,
+      },
+    });
+    expect(mainPlanningReality).not.toHaveProperty("weeklyMuscleDemand");
+    expect(planningRealityShard.artifact.data).toMatchObject({
+      planningReality: {
+        summary: {
+          planningShape: "mixed_upstream_plus_repair_shaped",
+        },
+        weeklyMuscleDemand: [
+          expect.objectContaining({
+            muscle: "Chest",
+            evidence: ["planning_reality_detail_only"],
+          }),
+        ],
+      },
+    });
 
     expect(strategyShard.artifact).toMatchObject({
       kind: "v2_debug_shard",

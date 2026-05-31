@@ -86,6 +86,7 @@ type JsonRecord = Record<string, unknown>;
 
 export const V2_PLANNER_NO_REPAIR_DEBUG_CONTAINS = [
   "v2-debug-index",
+  "v2-planning-reality",
   "v2-strategy",
   "v2-promotion-readiness",
   "v2-promotion-diffs",
@@ -102,6 +103,8 @@ type PlannerOnlyNoRepairDebugArtifactLink = Required<
   >
 > &
   Pick<MesocycleExplainPlannerOnlyNoRepairDebugArtifactManifest, "detailLevel">;
+
+type PlanningRealityDebugArtifactLink = PlannerOnlyNoRepairDebugArtifactLink;
 
 type ValueCatalog = {
   ref(value: unknown): string;
@@ -2002,7 +2005,7 @@ function compactPlannerOnlyNoRepair(
   };
 }
 
-function compactPlanningReality(value: unknown): unknown {
+export function compactPlanningRealityDetail(value: unknown): unknown {
   const planningReality = asRecord(value);
   if (!planningReality) {
     return value;
@@ -2035,10 +2038,123 @@ function compactPlanningReality(value: unknown): unknown {
   };
 }
 
+function summarizePlanningRealitySection(value: unknown): JsonRecord {
+  if (Array.isArray(value)) {
+    return { kind: "array", rowCount: value.length };
+  }
+  const record = asRecord(value);
+  if (!record) {
+    return { kind: typeof value };
+  }
+  return {
+    kind: "object",
+    fieldCount: Object.keys(record).length,
+    ...(record.summary ? { summary: record.summary } : {}),
+    ...(typeof record.status === "string" ? { status: record.status } : {}),
+    ...(typeof record.source === "string" ? { source: record.source } : {}),
+    ...(typeof record.readOnly === "boolean" ? { readOnly: record.readOnly } : {}),
+    ...(typeof record.affectsScoringOrGeneration === "boolean"
+      ? { affectsScoringOrGeneration: record.affectsScoringOrGeneration }
+      : {}),
+  };
+}
+
+function buildPlanningRealityDetailManifest(
+  debugArtifact: PlanningRealityDebugArtifactLink,
+): JsonRecord {
+  return {
+    kind: "v2_debug_shard",
+    shardId: "planning-reality",
+    created: true,
+    fileName: debugArtifact.fileName,
+    relativePath: debugArtifact.relativePath,
+    sizeBytes: debugArtifact.sizeBytes,
+    sha256: debugArtifact.sha256,
+    detailLevel: debugArtifact.detailLevel ?? "compact",
+    contains: ["planningReality"],
+  };
+}
+
+function compactPlanningRealityForMainArtifact(
+  value: unknown,
+  debugArtifact: PlanningRealityDebugArtifactLink,
+): unknown {
+  const planningReality = asRecord(value);
+  if (!planningReality) {
+    return value;
+  }
+
+  const detailFields = [
+    "weeklyMuscleDemand",
+    "slotDemandAllocation",
+    "shadowWeeklyDemand",
+    "shadowSlotDemandAllocation",
+    "initialSlotComposition",
+    "finalSlotPlan",
+    "allocationVsInitialDelta",
+    "allocationVsFinalDelta",
+    "repairMaterialityAfterShadowAllocation",
+    "slotPrescriptionIntents",
+    "setDistributionIntents",
+    "preselectionFeasibility",
+    "preselectionDistributionPolicyByWeek",
+    "weeklyDemandCurve",
+    "slotDemandAllocationByWeek",
+    "exerciseClassDistributionBySlot",
+    "exerciseClassAlignment",
+    "exerciseClassUnresolvedCauses",
+    "duplicateContinuityJustification",
+    "cleanupCandidateFeasibility",
+    "topDownMesocyclePlan",
+    "accumulationWeekProjection",
+    "forbiddenCleanupReroute",
+    "rearDeltCollateralSummary",
+    "projectedDelivery",
+    "repairMateriality",
+    "exerciseConcentration",
+  ];
+
+  return {
+    label: planningReality.label,
+    readOnly: planningReality.readOnly === true,
+    affectsScoringOrGeneration:
+      planningReality.affectsScoringOrGeneration === true ? true : false,
+    summary: planningReality.summary,
+    shadowRepairSummary: planningReality.shadowRepairSummary,
+    suspiciousRepairsNotEligibleForPromotion:
+      planningReality.suspiciousRepairsNotEligibleForPromotion,
+    promotionCandidates: planningReality.promotionCandidates,
+    weakPreselectionConsumption: planningReality.weakPreselectionConsumption,
+    distributionGuardActions: planningReality.distributionGuardActions,
+    warnings: planningReality.warnings,
+    limitations: planningReality.limitations,
+    detailArtifact: buildPlanningRealityDetailManifest(debugArtifact),
+    detailFieldSummaries: Object.fromEntries(
+      detailFields
+        .filter((field) => field in planningReality)
+        .map((field) => [
+          field,
+          summarizePlanningRealitySection(planningReality[field]),
+        ]),
+    ),
+  };
+}
+
+function compactPlanningReality(
+  value: unknown,
+  debugArtifact?: PlanningRealityDebugArtifactLink,
+): unknown {
+  if (debugArtifact) {
+    return compactPlanningRealityForMainArtifact(value, debugArtifact);
+  }
+  return compactPlanningRealityDetail(value);
+}
+
 export function compactWorkoutAuditArtifactForSerialization(
   artifact: WorkoutAuditArtifact,
   options?: {
     plannerOnlyNoRepairDebugArtifact?: PlannerOnlyNoRepairDebugArtifactLink;
+    planningRealityDebugArtifact?: PlanningRealityDebugArtifactLink;
   },
 ): WorkoutAuditArtifact {
   const mesocycleExplain = artifact.mesocycleExplain;
@@ -2063,6 +2179,7 @@ export function compactWorkoutAuditArtifactForSerialization(
                 ? {
                     planningReality: compactPlanningReality(
                       planningReality,
+                      options?.planningRealityDebugArtifact,
                     ) as typeof planningReality,
                   }
                 : {}),

@@ -539,6 +539,123 @@ describe("artifact serialization helpers", () => {
     });
   });
 
+  it("summarizes main planningReality and links the detailed shard when available", () => {
+    const artifact = {
+      mesocycleExplain: {
+        preview: {
+          projectionDiagnostics: {
+            planningReality: {
+              label: "weekly demand / slot allocation diagnostics",
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              summary: {
+                planningShape: "mixed_upstream_plus_repair_shaped",
+                materialRepairCount: 3,
+                majorRepairCount: 1,
+              },
+              shadowRepairSummary: {
+                materialRepairCount: 3,
+                majorRepairCount: 1,
+              },
+              suspiciousRepairsNotEligibleForPromotion: [],
+              promotionCandidates: [
+                {
+                  slotId: "upper_b",
+                  muscle: "Chest",
+                  suggestedPromotion: "slot_preselection_demand",
+                },
+              ],
+              weakPreselectionConsumption: [],
+              distributionGuardActions: [],
+              weeklyMuscleDemand: [
+                {
+                  muscle: "Chest",
+                  evidence: ["keep_this_in_detail_shard"],
+                },
+              ],
+              weeklyDemandCurve: {
+                source: "v2_planner_policy",
+                readOnly: true,
+                affectsScoringOrGeneration: false,
+                summary: {
+                  weekCount: 5,
+                  demandRowCount: 20,
+                },
+                weeks: [
+                  {
+                    week: 1,
+                    rows: ["large_detail"],
+                  },
+                ],
+              },
+              repairMaterialityAfterShadowAllocation: [
+                {
+                  materiality: "major",
+                  action: "set_bumped",
+                  source: "program_quality_application",
+                },
+              ],
+              warnings: [],
+              limitations: ["diagnostic_only"],
+            },
+          },
+        },
+      },
+    } as unknown as WorkoutAuditArtifact;
+
+    const compact = compactWorkoutAuditArtifactForSerialization(artifact, {
+      planningRealityDebugArtifact: {
+        fileName: "parent-v2-planning-reality.json",
+        relativePath: "artifacts/audits/parent-v2-planning-reality.json",
+        sizeBytes: 4567,
+        sha256: "abc123",
+        detailLevel: "compact",
+      },
+    });
+    const planningReality = compact.mesocycleExplain?.preview
+      .projectionDiagnostics.planningReality as unknown as Record<
+      string,
+      unknown
+    >;
+
+    expect(planningReality).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      summary: {
+        planningShape: "mixed_upstream_plus_repair_shaped",
+        materialRepairCount: 3,
+      },
+      detailArtifact: {
+        kind: "v2_debug_shard",
+        shardId: "planning-reality",
+        created: true,
+        fileName: "parent-v2-planning-reality.json",
+        relativePath: "artifacts/audits/parent-v2-planning-reality.json",
+        sizeBytes: 4567,
+        sha256: "abc123",
+        detailLevel: "compact",
+      },
+      detailFieldSummaries: {
+        weeklyMuscleDemand: {
+          kind: "array",
+          rowCount: 1,
+        },
+        weeklyDemandCurve: {
+          kind: "object",
+          summary: {
+            weekCount: 5,
+            demandRowCount: 20,
+          },
+        },
+      },
+    });
+    expect(planningReality).not.toHaveProperty("weeklyMuscleDemand");
+    expect(planningReality).not.toHaveProperty("weeklyDemandCurve");
+    expect(JSON.stringify(planningReality)).not.toContain(
+      "keep_this_in_detail_shard",
+    );
+  });
+
   it("compacts planner-only dry-run to failures and top unresolved rows", () => {
     const artifact = {
       mesocycleExplain: {

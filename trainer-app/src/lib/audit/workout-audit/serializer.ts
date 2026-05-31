@@ -318,6 +318,9 @@ export function createWorkoutAuditArtifactOutput(
         detailLevel: options?.v2DebugDetailLevel ?? "compact",
       })
     : undefined;
+  const planningRealityDebugShard = v2DebugArtifact?.shards.find(
+    (shard) => shard.metadata.id === "planning-reality",
+  );
   const serializedArtifact = compactWorkoutAuditArtifactForSerialization(
     artifact,
     v2DebugArtifact
@@ -329,6 +332,17 @@ export function createWorkoutAuditArtifactOutput(
             sha256: v2DebugArtifact.sha256,
             detailLevel: v2DebugArtifact.artifact.detailLevel,
           },
+          ...(planningRealityDebugShard
+            ? {
+                planningRealityDebugArtifact: {
+                  fileName: planningRealityDebugShard.fileName,
+                  relativePath: planningRealityDebugShard.relativePath,
+                  sizeBytes: planningRealityDebugShard.sizeBytes,
+                  sha256: planningRealityDebugShard.sha256,
+                  detailLevel: planningRealityDebugShard.artifact.detailLevel,
+                },
+              }
+            : {}),
         }
       : undefined,
   );

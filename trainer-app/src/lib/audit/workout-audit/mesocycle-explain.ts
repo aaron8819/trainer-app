@@ -82,6 +82,7 @@ import { buildRepairPromotionScoreboard } from "./mesocycle-explain-v2-repair-sc
 import {
   buildV2BasePlanCompareFromLiveContext,
   buildV2BasePlanShadowConsumptionTrialFromLiveContext,
+  buildV2CapacityMaterializerProjectionFromLiveContext,
   normalizeLiveInventoryForV2Materialization,
 } from "./v2-materialization-live-context-dry-run";
 import {
@@ -8430,6 +8431,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     const v2SelectionCapacityPlanDiagnostic =
       buildV2SelectionCapacityPlanDiagnostic({
         v2SetDistributionIntent,
+        selectionCapacityPlan: plannerPolicy.selectionCapacityPlan,
         v2ExerciseSelectionPlanDiagnostic,
         v2TargetVsNoRepairDiff,
         week1SelectedIdentities: [],
@@ -8662,11 +8664,19 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   const v2SelectionCapacityPlanDiagnostic =
     buildV2SelectionCapacityPlanDiagnostic({
       v2SetDistributionIntent,
+      selectionCapacityPlan: plannerPolicy.selectionCapacityPlan,
       v2ExerciseSelectionPlanDiagnostic,
       v2TargetVsNoRepairDiff,
       week1SelectedIdentities: noRepair.finalSlotPlan,
       weeklyMuscleTotals,
     });
+  const v2CapacityMaterializerProjection = input.v2BasePlanCompareContext
+    ? buildV2CapacityMaterializerProjectionFromLiveContext({
+        plannerPolicy,
+        capacityDiagnostic: v2SelectionCapacityPlanDiagnostic,
+        ...input.v2BasePlanCompareContext,
+      })
+    : undefined;
   const lowAxialHipExtensionLimitation =
     buildLowAxialHipExtensionLimitation({
       noRepair,
@@ -8730,6 +8740,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     v2SupportLanePolicy,
     v2SupportLaneProjectionDiagnostic,
     v2SelectionCapacityPlanDiagnostic,
+    ...(v2CapacityMaterializerProjection
+      ? { v2CapacityMaterializerProjection }
+      : {}),
     plannerOwnedAccumulationProjection,
     v2ExerciseSelectionPlanDiagnostic,
     v2LaneSelectionIntentAudit,

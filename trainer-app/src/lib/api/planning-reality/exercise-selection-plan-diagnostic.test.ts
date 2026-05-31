@@ -750,6 +750,7 @@ function makeCapacityDiagnosticInput(): CapacityBuilderInput {
 
   return {
     v2SetDistributionIntent,
+    selectionCapacityPlan: policy.selectionCapacityPlan,
     v2ExerciseSelectionPlanDiagnostic: {
       version: 1,
       source: "v2_planner_policy",
@@ -1069,25 +1070,161 @@ describe("buildV2SelectionCapacityPlanDiagnostic", () => {
     expect(diagnostic.readOnly).toBe(true);
     expect(diagnostic.affectsScoringOrGeneration).toBe(false);
     expect(diagnostic.safeForBehaviorPromotion).toBe(false);
+    expect(diagnostic.capacityPolicyTrialDesign).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      safeForBehaviorPromotion: false,
+    });
   });
 
-  it("classifies upper pull target-met in-budget lanes as capacity pressure", () => {
+  it("uses pure capacity-plan slot caps before flagging target-met lane pressure", () => {
     const diagnostic = buildV2SelectionCapacityPlanDiagnostic(
       makeCapacityDiagnosticInput(),
     );
 
     expect(capacityLane(diagnostic, 1, "upper_a", "row_anchor")).toMatchObject({
       classification: "capacity_pressure",
+      inspectionCategory: "must_preserve",
       weeklyTargetStatus: "within",
       slotHeadroom: 0,
       cleanAlternativeCount: null,
     });
     expect(capacityLane(diagnostic, 1, "upper_b", "vertical_pull_anchor")).toMatchObject({
-      classification: "capacity_pressure",
+      classification: "target_met_no_action",
+      inspectionCategory: "must_preserve",
       weeklyTargetStatus: "within",
-      slotHeadroom: 0,
+      slotHeadroom: 1,
     });
-    expect(diagnostic.summary.capacityPressureCount).toBeGreaterThanOrEqual(2);
+    expect(
+      diagnostic.weeks
+        .find((row) => row.week === 1)
+        ?.slots.find((slot) => slot.slotId === "upper_b"),
+    ).toMatchObject({
+      maxExerciseCount: 7,
+    });
+    expect(diagnostic.summary.capacityPressureCount).toBe(4);
+    expect(diagnostic.summary.laneInspectionCategoryCounts).toMatchObject({
+      floor_critical: 12,
+      must_preserve: expect.any(Number),
+      optional_stretch: 12,
+      productive_support: expect.any(Number),
+    });
+    expect(diagnostic.warnings).not.toContain(
+      "week_1:upper_b:vertical_pull_anchor:capacity_pressure",
+    );
+  });
+
+  it("defines the smallest projection-only capacity policy trial and gates", () => {
+    const diagnostic = buildV2SelectionCapacityPlanDiagnostic(
+      makeCapacityDiagnosticInput(),
+    );
+
+    expect(diagnostic.capacityPolicyTrialDesign).toMatchObject({
+      status: "design_only",
+      trialId: "upper_a_max_exercise_count_plus_one_projection_only",
+      scope: "read_only_projection_only",
+      candidateChange: {
+        kind: "slot_max_exercise_count_delta",
+        slotId: "upper_a",
+        delta: 1,
+      },
+      targetSlots: ["upper_a"],
+      basis: expect.objectContaining({
+        targetSlotId: "upper_a",
+        targetSlotWeek: 1,
+        targetSlotExerciseCount: 6,
+        targetSlotMaxExerciseCount: 6,
+        targetSlotSetCount: 20,
+        targetSlotMaxSets: 17.5,
+        targetSlotFloorCriticalLaneCount: expect.any(Number),
+        targetSlotCapacityPressureLaneCount: expect.any(Number),
+      }),
+      blockersBeforeBehavior: [
+        "read_only_capacity_projection_not_run",
+        "materializer_validity_not_measured",
+        "acceptance_gate_not_rerun",
+        "candidate_impact_not_measured",
+      ],
+      nextSafeAction: "run_read_only_capacity_behavior_projection",
+    });
+    expect(
+      diagnostic.capacityPolicyTrialDesign.gates.map((gate) => gate.gateId),
+    ).toEqual([
+      "hard_floors",
+      "over_mav",
+      "session_size",
+      "five_set_stacking",
+      "lane_survival",
+      "duplicates",
+      "materializer_validity",
+      "acceptance_result",
+    ]);
+    expect(
+      diagnostic.capacityPolicyTrialDesign.gates.every(
+        (gate) => gate.status === "requires_projection",
+      ),
+    ).toBe(true);
+  });
+
+  it("projects direct capacity-trial impact without materializer or acceptance consumption", () => {
+    const diagnostic = buildV2SelectionCapacityPlanDiagnostic(
+      makeCapacityDiagnosticInput(),
+    );
+    const projection = diagnostic.capacityBehaviorProjection;
+
+    expect(projection).toMatchObject({
+      status: "projected_with_limitations",
+      projectionMode: "slot_cap_delta_existing_evidence_only",
+      trialId: "upper_a_max_exercise_count_plus_one_projection_only",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      safeForBehaviorPromotion: false,
+      candidateImpact: expect.objectContaining({
+        selectedIdentityDelta: 0,
+        weeklyVolumeDelta: 0,
+        capacityPressureRowsBefore: 4,
+        capacityPressureRowsAfter: 0,
+        capacityPressureRowsRelieved: 4,
+        optionalStretchRowsActivated: 0,
+      }),
+      blockersBeforeBehavior: expect.arrayContaining([
+        "materializer_validity_not_measured",
+        "acceptance_gate_not_rerun",
+        "candidate_identity_impact_not_measured",
+      ]),
+      nextSafeAction: "run_read_only_materializer_capacity_projection",
+    });
+    expect(projection.projectedSlots[0]).toMatchObject({
+      week: 1,
+      slotId: "upper_a",
+      maxExerciseCountBefore: 6,
+      maxExerciseCountAfter: 7,
+      slotHeadroomBefore: 0,
+      slotHeadroomAfter: 1,
+      capacityPressureRowsBefore: 1,
+      capacityPressureRowsAfter: 0,
+    });
+    expect(
+      Object.fromEntries(
+        projection.gates.map((gate) => [gate.gateId, gate.status]),
+      ),
+    ).toMatchObject({
+      hard_floors: "unknown",
+      over_mav: "pass",
+      session_size: "fail",
+      five_set_stacking: "pass",
+      lane_survival: "pass",
+      duplicates: "pass",
+      materializer_validity: "unknown",
+      acceptance_result: "unknown",
+    });
+    expect(projection.candidateImpact.regressions).toEqual(
+      expect.arrayContaining([
+        "week_1:upper_a:over_set_limit:sets_20_max_17.5",
+      ]),
+    );
   });
 
   it("does not classify satisfied Week 1 calf lanes as blockers", () => {
@@ -1187,6 +1324,7 @@ describe("buildV2SelectionCapacityPlanDiagnostic", () => {
       capacityLane(diagnostic, 1, "upper_b", "optional_triceps_if_under_target"),
     ).toMatchObject({
       classification: "optional_suppressed",
+      inspectionCategory: "optional_stretch",
       optionalEligibility: "suppressed",
     });
   });
@@ -1198,6 +1336,7 @@ describe("buildV2SelectionCapacityPlanDiagnostic", () => {
 
     expect(capacityLane(diagnostic, 1, "upper_a", "chest_anchor")).toMatchObject({
       classification: "blocker",
+      inspectionCategory: "floor_critical",
       selectedSets: 1,
       weeklyTargetStatus: "below",
     });

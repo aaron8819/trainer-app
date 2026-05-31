@@ -26,6 +26,7 @@ import type {
   V2SelectionCapacityPlanDiagnostic,
   V2SupportLaneProjectionDiagnostic,
 } from "@/lib/api/planning-reality";
+import type { V2CapacityMaterializerProjection } from "./v2-materialization-live-context-dry-run";
 import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection.diagnostics";
 import type { V2AcceptedSeedPreparationCompareResult } from "@/lib/api/mesocycle-handoff";
 import type { SlotPreselectionDemandDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection";
@@ -1651,6 +1652,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
   strategyToDemandProjection: V2StrategyToDemandProjection;
   v2BasePlanCompare?: V2BasePlanCompare;
   v2BasePlanShadowConsumptionTrial?: V2BasePlanShadowConsumptionTrial;
+  v2CapacityMaterializerProjection?: V2CapacityMaterializerProjection;
   repairPromotionScoreboard?: {
     version: 1;
     readOnly: true;

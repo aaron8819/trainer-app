@@ -487,6 +487,15 @@ function makeV2SelectionCapacityPlanDiagnostic() {
       capAwareExpansionNeededCount: 0,
       optionalSuppressedCount: 0,
       blockerCount: 0,
+      laneInspectionCategoryCounts: {
+        must_preserve: 1,
+        floor_critical: 0,
+        productive_support: 0,
+        optional_stretch: 0,
+        redundant_duplicate: 0,
+        high_fatigue_trim_candidate: 0,
+        unknown: 0,
+      },
     },
     weeks: [
       {
@@ -502,6 +511,7 @@ function makeV2SelectionCapacityPlanDiagnostic() {
               {
                 laneId: "row_anchor",
                 classification: "capacity_pressure" as const,
+                inspectionCategory: "must_preserve" as const,
                 selectedExercise: "Chest-Supported Row",
                 selectedSets: 4,
                 setBudget: { min: 3, preferred: 4, max: 4 },
@@ -524,6 +534,137 @@ function makeV2SelectionCapacityPlanDiagnostic() {
     blockers: [],
     warnings: ["week_1:upper_a:row_anchor:capacity_pressure"],
     missingInputs: [],
+    capacityPolicyTrialDesign: {
+      version: 1 as const,
+      source: "v2_selection_capacity_plan_diagnostic" as const,
+      readOnly: true as const,
+      affectsScoringOrGeneration: false as const,
+      consumedByDemandOrMaterializer: false as const,
+      status: "design_only" as const,
+      trialId: "upper_a_max_exercise_count_plus_one_projection_only",
+      scope: "read_only_projection_only" as const,
+      candidateChange: {
+        kind: "slot_max_exercise_count_delta" as const,
+        slotId: "upper_a",
+        delta: 1 as const,
+        reason: "zero_headroom_capacity_pressure_or_floor_critical_lanes",
+      },
+      targetSlots: ["upper_a"],
+      basis: {
+        targetSlotId: "upper_a",
+        targetSlotWeek: 1,
+        targetSlotExerciseCount: 6,
+        targetSlotMaxExerciseCount: 6,
+        targetSlotSetCount: 18,
+        targetSlotMaxSets: 18,
+        targetSlotFloorCriticalLaneCount: 0,
+        targetSlotCapacityPressureLaneCount: 1,
+        targetSlotMustPreserveLaneCount: 1,
+        targetSlotProductiveSupportLaneCount: 0,
+        totalFloorCriticalLaneCount: 0,
+        totalCapacityPressureLaneCount: 1,
+        totalOptionalStretchLaneCount: 0,
+        totalHighFatigueTrimCandidateLaneCount: 0,
+        totalRedundantDuplicateLaneCount: 0,
+      },
+      gates: ([
+        "hard_floors",
+        "over_mav",
+        "session_size",
+        "five_set_stacking",
+        "lane_survival",
+        "duplicates",
+        "materializer_validity",
+        "acceptance_result",
+      ] as const).map((gateId) => ({
+        gateId,
+        status: "requires_projection" as const,
+        ownerSeam: "diagnostic_projection",
+        requiredEvidence: ["read_only_projection"],
+        currentEvidence: ["not_run"],
+        failureMeaning: "do_not_promote_behavior",
+      })),
+      blockersBeforeBehavior: [
+        "read_only_capacity_projection_not_run",
+        "materializer_validity_not_measured",
+        "acceptance_gate_not_rerun",
+        "candidate_impact_not_measured",
+      ],
+      nextSafeAction: "run_read_only_capacity_behavior_projection" as const,
+      limitations: ["design_only_not_a_simulation"],
+      safeForBehaviorPromotion: false as const,
+    },
+    capacityBehaviorProjection: {
+      version: 1 as const,
+      source: "v2_selection_capacity_plan_diagnostic" as const,
+      readOnly: true as const,
+      affectsScoringOrGeneration: false as const,
+      consumedByDemandOrMaterializer: false as const,
+      status: "projected_with_limitations" as const,
+      projectionMode: "slot_cap_delta_existing_evidence_only" as const,
+      trialId: "upper_a_max_exercise_count_plus_one_projection_only",
+      candidateImpact: {
+        selectedIdentityDelta: 0 as const,
+        weeklyVolumeDelta: 0 as const,
+        capacityPressureRowsBefore: 1,
+        capacityPressureRowsAfter: 0,
+        capacityPressureRowsRelieved: 1,
+        floorCriticalRowsBefore: 0,
+        floorCriticalRowsAfter: 0,
+        optionalStretchRowsActivated: 0 as const,
+        regressionCount: 0,
+        regressions: [],
+        improvements: ["capacity_pressure_rows_relieved:1"],
+      },
+      projectedSlots: [
+        {
+          week: 1,
+          slotId: "upper_a",
+          exerciseCount: 6,
+          maxExerciseCountBefore: 6,
+          maxExerciseCountAfter: 7,
+          slotHeadroomBefore: 0,
+          slotHeadroomAfter: 1,
+          setCount: 18,
+          targetSessionMaxSets: 18,
+          setHeadroom: 0,
+          capacityPressureRowsBefore: 1,
+          capacityPressureRowsAfter: 0,
+          floorCriticalRowsBefore: 0,
+          floorCriticalRowsAfter: 0,
+          mustPreserveRows: 1,
+          productiveSupportRows: 0,
+          sessionSizeStatus: "within_limits" as const,
+        },
+      ],
+      gates: ([
+        ["hard_floors", "pass"],
+        ["over_mav", "pass"],
+        ["session_size", "pass"],
+        ["five_set_stacking", "pass"],
+        ["lane_survival", "pass"],
+        ["duplicates", "pass"],
+        ["materializer_validity", "unknown"],
+        ["acceptance_result", "unknown"],
+      ] as const).map(([gateId, status]) => ({
+        gateId,
+        status,
+        measured: status !== "unknown",
+        ownerSeam: "diagnostic_projection",
+        evidence: ["read_only_projection"],
+        regressions: [],
+        requiredNextEvidence:
+          status === "unknown" ? ["stronger_projection_evidence"] : [],
+      })),
+      blockersBeforeBehavior: [
+        "materializer_validity_not_measured",
+        "acceptance_gate_not_rerun",
+        "candidate_identity_impact_not_measured",
+      ],
+      nextSafeAction: "run_read_only_materializer_capacity_projection" as const,
+      limitations: ["cap_delta_only_existing_evidence_projection"],
+      safeForBehaviorPromotion: false as const,
+    },
     safeForBehaviorPromotion: false as const,
   };
 }
@@ -3131,6 +3272,26 @@ describe("buildWorkoutAuditArtifact", () => {
           },
           nextSafeAction: "inspect_shadow_consumption",
         },
+        v2CapacityMaterializerProjection: {
+          status: "projected_with_limitations",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByProduction: false,
+          projectionMode: "slot_cap_delta_materializer_dry_run",
+          trialId: "upper_a_max_exercise_count_plus_one_projection_only",
+          candidateImpact: {
+            selectedIdentityDelta: 1,
+            totalSetDelta: 2,
+            targetSlotExerciseDelta: 1,
+            materializerBlockerDelta: 0,
+            regressionCount: 0,
+          },
+          gateStatusCounts: {
+            pass: 6,
+            unknown: 2,
+          },
+          nextSafeAction: "inspect_materializer_capacity_projection",
+        },
       },
     });
 
@@ -3456,6 +3617,21 @@ describe("buildWorkoutAuditArtifact", () => {
           },
         },
       },
+      v2CapacityMaterializerProjection: {
+        source: "v2_capacity_materializer_projection",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByProduction: false,
+        targetSlot: expect.objectContaining({
+          slotId: "upper_a",
+          maxExerciseCountBefore: 6,
+          maxExerciseCountAfter: 7,
+        }),
+        candidateImpact: expect.objectContaining({
+          selectedIdentityDelta: 1,
+          totalSetDelta: 2,
+        }),
+      },
     });
     expect(crossWeekShard.artifact.data).toMatchObject({
       crossWeekProjectionGate: {
@@ -3482,7 +3658,58 @@ describe("buildWorkoutAuditArtifact", () => {
       v2SelectionCapacityPlanDiagnostic: expect.objectContaining({
         summary: expect.objectContaining({
           capacityPressureCount: 1,
+          laneInspectionCategoryCounts: expect.objectContaining({
+            must_preserve: 1,
+          }),
         }),
+      }),
+      v2SelectionCapacityLaneInspection: expect.objectContaining({
+        nonTargetMetRowCount: 1,
+        laneInspectionCategoryCounts: expect.objectContaining({
+          must_preserve: 1,
+        }),
+        rows: [
+          expect.objectContaining({
+            week: 1,
+            slotId: "upper_a",
+            laneId: "row_anchor",
+            classification: "capacity_pressure",
+            inspectionCategory: "must_preserve",
+            maxExerciseCount: 6,
+          }),
+        ],
+      }),
+      v2CapacityPolicyTrialDesign: expect.objectContaining({
+        status: "design_only",
+        consumedByDemandOrMaterializer: false,
+        trialId: "upper_a_max_exercise_count_plus_one_projection_only",
+        candidateChange: expect.objectContaining({
+          slotId: "upper_a",
+          delta: 1,
+        }),
+        gateStatusCounts: expect.objectContaining({
+          requires_projection: 8,
+        }),
+        nextSafeAction: "run_read_only_capacity_behavior_projection",
+        safeForBehaviorPromotion: false,
+      }),
+      v2CapacityBehaviorProjection: expect.objectContaining({
+        status: "projected_with_limitations",
+        consumedByDemandOrMaterializer: false,
+        projectionMode: "slot_cap_delta_existing_evidence_only",
+        trialId: "upper_a_max_exercise_count_plus_one_projection_only",
+        candidateImpact: expect.objectContaining({
+          capacityPressureRowsBefore: 1,
+          capacityPressureRowsAfter: 0,
+          capacityPressureRowsRelieved: 1,
+          regressionCount: 0,
+        }),
+        gateStatusCounts: expect.objectContaining({
+          pass: 6,
+          unknown: 2,
+        }),
+        nextSafeAction: "run_read_only_materializer_capacity_projection",
+        safeForBehaviorPromotion: false,
       }),
     });
     expect(promotionDiffsShard.serialized).not.toContain(
@@ -3962,6 +4189,89 @@ function makeV2BasePlanShadowConsumptionTrialFixture() {
   };
 }
 
+function makeV2CapacityMaterializerProjectionFixture() {
+  return {
+    version: 1,
+    source: "v2_capacity_materializer_projection",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    dryRunOnly: true,
+    consumedByProduction: false,
+    consumedByDemandOrMaterializer: false,
+    status: "projected_with_limitations",
+    projectionMode: "slot_cap_delta_materializer_dry_run",
+    trialId: "upper_a_max_exercise_count_plus_one_projection_only",
+    candidateChange: {
+      kind: "slot_max_exercise_count_delta",
+      slotId: "upper_a",
+      delta: 1,
+    },
+    comparedPlans: {
+      baselineAvailable: true,
+      trialAvailable: true,
+      inventoryExerciseCount: 20,
+    },
+    targetSlot: {
+      slotId: "upper_a",
+      maxExerciseCountBefore: 6,
+      maxExerciseCountAfter: 7,
+      baselineExerciseCount: 6,
+      trialExerciseCount: 7,
+      baselineSetCount: 15,
+      trialSetCount: 17,
+      addedIdentities: ["Cable Fly"],
+      removedIdentities: [],
+      floorCriticalLaneIds: ["chest_anchor"],
+      floorCriticalLaneIdsMaterialized: ["chest_anchor"],
+      floorCriticalLaneIdsMissing: [],
+    },
+    materializer: {
+      baselineStatus: "materialized",
+      trialStatus: "materialized",
+      baselineBlockerCount: 0,
+      trialBlockerCount: 0,
+      baselineSeedShapeCompatible: true,
+      trialSeedShapeCompatible: true,
+    },
+    candidateImpact: {
+      selectedIdentityDelta: 1,
+      totalSetDelta: 2,
+      targetSlotExerciseDelta: 1,
+      materializerBlockerDelta: 0,
+      regressionCount: 0,
+      regressions: [],
+      improvements: ["added_identities:1"],
+    },
+    gates: [
+      ["hard_floors", "pass"],
+      ["over_mav", "unknown"],
+      ["session_size", "pass"],
+      ["five_set_stacking", "pass"],
+      ["lane_survival", "pass"],
+      ["duplicates", "pass"],
+      ["materializer_validity", "pass"],
+      ["acceptance_result", "unknown"],
+    ].map(([gateId, status]) => ({
+      gateId,
+      status,
+      measured: status !== "unknown",
+      ownerSeam: "v2_materialization_dry_run",
+      evidence: [`${gateId}:${status}`],
+      regressions: [],
+      requiredNextEvidence: status === "unknown" ? ["next_evidence"] : [],
+    })),
+    blockersBeforeBehavior: [
+      "acceptance_result_gate_unknown",
+      "over_mav_gate_unknown",
+      "acceptance_gate_not_rerun",
+      "production_projection_not_consuming_trial",
+    ],
+    nextSafeAction: "inspect_materializer_capacity_projection",
+    limitations: ["read_only_materializer_dry_run_only"],
+    safeForBehaviorPromotion: false,
+  };
+}
+
 function makeMesocycleExplainNoRepairPayload() {
   const plannerPolicy = buildV2PlannerMesocyclePolicy();
 
@@ -4208,6 +4518,8 @@ function makeMesocycleExplainNoRepairPayload() {
       v2BasePlanCompare: makeV2BasePlanCompareFixture(),
       v2BasePlanShadowConsumptionTrial:
         makeV2BasePlanShadowConsumptionTrialFixture(),
+      v2CapacityMaterializerProjection:
+        makeV2CapacityMaterializerProjectionFixture(),
       crossWeekProjectionGate: {
         readOnly: true,
         affectsScoringOrGeneration: false,

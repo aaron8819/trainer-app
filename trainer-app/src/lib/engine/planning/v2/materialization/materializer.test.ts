@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildV2CapacityMaterializerProjectionFromLiveContext,
   buildV2LiveContextMaterializationDryRunHarness,
   normalizeLiveInventoryForV2Materialization,
 } from "@/lib/audit/workout-audit/v2-materialization-live-context-dry-run";
@@ -3688,6 +3689,96 @@ describe("buildV2ExerciseMaterializationPlan", () => {
         "production_acceptance_write_path",
         "slotPlanSeedJson_write_gate",
         "runtime_replay_consumption",
+      ]),
+    );
+  });
+
+  it("projects a capacity cap trial through the read-only materializer without production consumption", () => {
+    const plannerPolicy = buildV2PlannerMesocyclePolicy();
+    const result = buildV2CapacityMaterializerProjectionFromLiveContext({
+      plannerPolicy,
+      inventory: representativeV2Inventory,
+      capacityDiagnostic: {
+        capacityPolicyTrialDesign: {
+          trialId: "upper_a_max_exercise_count_plus_one_projection_only",
+          candidateChange: {
+            kind: "slot_max_exercise_count_delta",
+            slotId: "upper_a",
+            delta: 1,
+          },
+        },
+        weeks: [
+          {
+            week: 1,
+            slots: [
+              {
+                slotId: "upper_a",
+                lanes: [
+                  {
+                    laneId: "chest_anchor",
+                    inspectionCategory: "floor_critical",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      } as never,
+    });
+
+    expect(result).toMatchObject({
+      version: 1,
+      source: "v2_capacity_materializer_projection",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      dryRunOnly: true,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+      projectionMode: "slot_cap_delta_materializer_dry_run",
+      trialId: "upper_a_max_exercise_count_plus_one_projection_only",
+      candidateChange: {
+        kind: "slot_max_exercise_count_delta",
+        slotId: "upper_a",
+        delta: 1,
+      },
+      targetSlot: {
+        slotId: "upper_a",
+        maxExerciseCountBefore: 6,
+        maxExerciseCountAfter: 7,
+        floorCriticalLaneIds: ["chest_anchor"],
+      },
+      safeForBehaviorPromotion: false,
+    });
+    expect(result.targetSlot.trialExerciseCount).toBeGreaterThanOrEqual(
+      result.targetSlot.baselineExerciseCount,
+    );
+    expect(
+      Object.fromEntries(result.gates.map((gate) => [gate.gateId, gate.status])),
+    ).toMatchObject({
+      hard_floors: "pass",
+      materializer_validity: "pass",
+      acceptance_result: "unknown",
+    });
+    expect(result.candidateImpact).toMatchObject({
+      selectedIdentityDelta: 0,
+      totalSetDelta: 0,
+      targetSlotExerciseDelta: 0,
+      materializerBlockerDelta: 0,
+      regressionCount: 0,
+      improvements: [],
+      regressions: [],
+    });
+    expect(result.nextSafeAction).toBe("pivot_to_higher_roi_track");
+    expect(result.blockersBeforeBehavior).toEqual(
+      expect.arrayContaining([
+        "acceptance_result_gate_unknown",
+        "capacity_trial_no_candidate_impact",
+        "production_projection_not_consuming_trial",
+      ]),
+    );
+    expect(result.limitations).toEqual(
+      expect.arrayContaining([
+        "capacity_trial_did_not_change_candidate_identity_or_sets",
       ]),
     );
   });

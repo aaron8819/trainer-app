@@ -243,6 +243,163 @@ function compactDiagnosticStatus(value: unknown): JsonRecord {
   };
 }
 
+function compactSelectionCapacityLaneInspection(value: unknown): JsonRecord {
+  const diagnostic = asRecord(value);
+  if (!diagnostic) {
+    return { status: "not_available", rows: [] };
+  }
+  const rows = asRecordArray(diagnostic.weeks).flatMap((week) =>
+    asRecordArray(week.slots).flatMap((slot) =>
+      asRecordArray(slot.lanes).map((lane) => ({
+        week: week.week,
+        slotId: slot.slotId,
+        laneId: lane.laneId,
+        classification: lane.classification,
+        inspectionCategory: lane.inspectionCategory ?? "unknown",
+        weeklyTargetStatus: lane.weeklyTargetStatus,
+        optionalEligibility: lane.optionalEligibility,
+        selectedExercise: lane.selectedExercise,
+        selectedSets: lane.selectedSets,
+        slotHeadroom: lane.slotHeadroom,
+        setHeadroom: lane.setHeadroom,
+        cleanAlternativeCount: lane.cleanAlternativeCount,
+        exerciseCount: slot.exerciseCount,
+        maxExerciseCount: slot.maxExerciseCount,
+        setCount: slot.setCount,
+        setBudget: lane.setBudget,
+        perExerciseCap: lane.perExerciseCap,
+        evidenceTop: asStringArray(lane.evidence).slice(0, 4),
+        limitationTop: asStringArray(lane.limitations).slice(0, 4),
+      })),
+    ),
+  );
+  const nonTargetMetRows = rows.filter(
+    (row) => row.classification !== "target_met_no_action",
+  );
+  const rowLimit = 80;
+  return {
+    status: diagnostic.status ?? "not_available",
+    readOnly: diagnostic.readOnly === true,
+    affectsScoringOrGeneration:
+      diagnostic.affectsScoringOrGeneration === true ? true : false,
+    laneInspectionCategoryCounts:
+      asRecord(asRecord(diagnostic.summary)?.laneInspectionCategoryCounts) ?? {},
+    nonTargetMetRowCount: nonTargetMetRows.length,
+    rows: nonTargetMetRows.slice(0, rowLimit),
+    omittedRowCount: Math.max(0, nonTargetMetRows.length - rowLimit),
+  };
+}
+
+function compactCapacityPolicyTrialDesign(value: unknown): JsonRecord {
+  const diagnostic = asRecord(value);
+  const design = asRecord(diagnostic?.capacityPolicyTrialDesign);
+  if (!design) {
+    return { status: "not_available" };
+  }
+  const candidateChange = asRecord(design.candidateChange);
+  const gates = asRecordArray(design.gates);
+  return {
+    status: design.status ?? "not_available",
+    readOnly: design.readOnly === true,
+    affectsScoringOrGeneration:
+      design.affectsScoringOrGeneration === true ? true : false,
+    consumedByDemandOrMaterializer:
+      design.consumedByDemandOrMaterializer === true ? true : false,
+    safeForBehaviorPromotion:
+      design.safeForBehaviorPromotion === true ? true : false,
+    trialId: design.trialId ?? null,
+    scope: design.scope ?? "read_only_projection_only",
+    candidateChange: candidateChange
+      ? {
+          kind: candidateChange.kind,
+          slotId: candidateChange.slotId,
+          delta: candidateChange.delta,
+        }
+      : null,
+    targetSlots: asStringArray(design.targetSlots),
+    basis: asRecord(design.basis) ?? {},
+    gateStatusCounts: countBy(gates, "status"),
+    gates: gates.map((gate) => ({
+      gateId: gate.gateId,
+      status: gate.status,
+      ownerSeam: gate.ownerSeam,
+      requiredEvidenceCount: countArray(gate.requiredEvidence),
+      currentEvidenceTop: asStringArray(gate.currentEvidence).slice(0, 3),
+    })),
+    blockersBeforeBehavior: asStringArray(design.blockersBeforeBehavior),
+    nextSafeAction: design.nextSafeAction ?? "inspect_capacity_rows",
+    limitationCount: countArray(design.limitations),
+  };
+}
+
+function compactCapacityBehaviorProjection(value: unknown): JsonRecord {
+  const diagnostic = asRecord(value);
+  const projection = asRecord(diagnostic?.capacityBehaviorProjection);
+  if (!projection) {
+    return { status: "not_available" };
+  }
+  const gates = asRecordArray(projection.gates);
+  const candidateImpact = asRecord(projection.candidateImpact);
+  return {
+    status: projection.status ?? "not_available",
+    readOnly: projection.readOnly === true,
+    affectsScoringOrGeneration:
+      projection.affectsScoringOrGeneration === true ? true : false,
+    consumedByDemandOrMaterializer:
+      projection.consumedByDemandOrMaterializer === true ? true : false,
+    safeForBehaviorPromotion:
+      projection.safeForBehaviorPromotion === true ? true : false,
+    projectionMode: projection.projectionMode,
+    trialId: projection.trialId ?? null,
+    candidateImpact: candidateImpact
+      ? {
+          selectedIdentityDelta: candidateImpact.selectedIdentityDelta,
+          weeklyVolumeDelta: candidateImpact.weeklyVolumeDelta,
+          capacityPressureRowsBefore:
+            candidateImpact.capacityPressureRowsBefore,
+          capacityPressureRowsAfter: candidateImpact.capacityPressureRowsAfter,
+          capacityPressureRowsRelieved:
+            candidateImpact.capacityPressureRowsRelieved,
+          floorCriticalRowsAfter: candidateImpact.floorCriticalRowsAfter,
+          optionalStretchRowsActivated:
+            candidateImpact.optionalStretchRowsActivated,
+          regressionCount: candidateImpact.regressionCount,
+          improvements: asStringArray(candidateImpact.improvements).slice(0, 6),
+          regressions: asStringArray(candidateImpact.regressions).slice(0, 6),
+        }
+      : {},
+    projectedSlots: asRecordArray(projection.projectedSlots).map((slot) => ({
+      week: slot.week,
+      slotId: slot.slotId,
+      exerciseCount: slot.exerciseCount,
+      maxExerciseCountBefore: slot.maxExerciseCountBefore,
+      maxExerciseCountAfter: slot.maxExerciseCountAfter,
+      slotHeadroomBefore: slot.slotHeadroomBefore,
+      slotHeadroomAfter: slot.slotHeadroomAfter,
+      setCount: slot.setCount,
+      targetSessionMaxSets: slot.targetSessionMaxSets,
+      capacityPressureRowsBefore: slot.capacityPressureRowsBefore,
+      capacityPressureRowsAfter: slot.capacityPressureRowsAfter,
+      floorCriticalRowsAfter: slot.floorCriticalRowsAfter,
+      sessionSizeStatus: slot.sessionSizeStatus,
+    })),
+    gateStatusCounts: countBy(gates, "status"),
+    gates: gates.map((gate) => ({
+      gateId: gate.gateId,
+      status: gate.status,
+      measured: gate.measured === true,
+      ownerSeam: gate.ownerSeam,
+      evidenceTop: asStringArray(gate.evidence).slice(0, 3),
+      regressionCount: countArray(gate.regressions),
+      requiredNextEvidenceCount: countArray(gate.requiredNextEvidence),
+    })),
+    blockersBeforeBehavior: asStringArray(projection.blockersBeforeBehavior),
+    nextSafeAction:
+      projection.nextSafeAction ?? "run_read_only_materializer_capacity_projection",
+    limitationCount: countArray(projection.limitations),
+  };
+}
+
 function compactStrategyDiagnostic(value: unknown): JsonRecord {
   const diagnostic = asRecord(value);
   if (!diagnostic) {
@@ -512,12 +669,16 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
   const supportPolicy = asRecord(noRepair.v2SupportLanePolicy);
   const basePlanCompare = asRecord(noRepair.v2BasePlanCompare);
   const shadowConsumption = asRecord(noRepair.v2BasePlanShadowConsumptionTrial);
+  const capacityMaterializer = asRecord(
+    noRepair.v2CapacityMaterializerProjection,
+  );
   if (
     !v2Plan &&
     !setDistribution &&
     !supportPolicy &&
     !basePlanCompare &&
-    !shadowConsumption
+    !shadowConsumption &&
+    !capacityMaterializer
   ) {
     return null;
   }
@@ -552,6 +713,9 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
     ...(basePlanCompare ? { v2BasePlanCompare: basePlanCompare } : {}),
     ...(shadowConsumption
       ? { v2BasePlanShadowConsumptionTrial: shadowConsumption }
+      : {}),
+    ...(capacityMaterializer
+      ? { v2CapacityMaterializerProjection: capacityMaterializer }
       : {}),
     materializedSeedWriteStatus: "not_available_in_audit_artifact",
   };
@@ -610,6 +774,15 @@ function compactSelectionAlignment(noRepair: JsonRecord): JsonRecord {
         }
       : { source: "v2_lane_selection_intent_audit", status: "not_available" },
     v2SelectionCapacityPlanDiagnostic: compactDiagnosticStatus(
+      noRepair.v2SelectionCapacityPlanDiagnostic,
+    ),
+    v2SelectionCapacityLaneInspection: compactSelectionCapacityLaneInspection(
+      noRepair.v2SelectionCapacityPlanDiagnostic,
+    ),
+    v2CapacityPolicyTrialDesign: compactCapacityPolicyTrialDesign(
+      noRepair.v2SelectionCapacityPlanDiagnostic,
+    ),
+    v2CapacityBehaviorProjection: compactCapacityBehaviorProjection(
       noRepair.v2SelectionCapacityPlanDiagnostic,
     ),
     v2SupportLaneProjectionDiagnostic: compactDiagnosticStatus(
@@ -924,6 +1097,12 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
   const basePlanCompareSummary = asRecord(basePlanCompare?.summary);
   const shadowConsumption = asRecord(noRepair.v2BasePlanShadowConsumptionTrial);
   const shadowSummary = asRecord(shadowConsumption?.summary);
+  const capacityMaterializer = asRecord(
+    noRepair.v2CapacityMaterializerProjection,
+  );
+  const capacityMaterializerImpact = asRecord(
+    capacityMaterializer?.candidateImpact,
+  );
 
   return {
     summary: {
@@ -997,6 +1176,42 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
             typeof shadowConsumption.nextSafeAction === "string"
               ? shadowConsumption.nextSafeAction
               : "inspect_shadow_consumption",
+        }
+      : undefined,
+    v2CapacityMaterializerProjection: capacityMaterializer
+      ? {
+          status: capacityMaterializer.status ?? "not_available",
+          readOnly: capacityMaterializer.readOnly === true,
+          affectsScoringOrGeneration:
+            capacityMaterializer.affectsScoringOrGeneration === true
+              ? true
+              : false,
+          consumedByProduction:
+            capacityMaterializer.consumedByProduction === true ? true : false,
+          projectionMode:
+            capacityMaterializer.projectionMode ??
+            "slot_cap_delta_materializer_dry_run",
+          trialId: capacityMaterializer.trialId ?? null,
+          candidateImpact: capacityMaterializerImpact
+            ? {
+                selectedIdentityDelta:
+                  capacityMaterializerImpact.selectedIdentityDelta,
+                totalSetDelta: capacityMaterializerImpact.totalSetDelta,
+                targetSlotExerciseDelta:
+                  capacityMaterializerImpact.targetSlotExerciseDelta,
+                materializerBlockerDelta:
+                  capacityMaterializerImpact.materializerBlockerDelta,
+                regressionCount: capacityMaterializerImpact.regressionCount,
+              }
+            : {},
+          gateStatusCounts: countBy(
+            asRecordArray(capacityMaterializer.gates),
+            "status",
+          ),
+          nextSafeAction:
+            typeof capacityMaterializer.nextSafeAction === "string"
+              ? capacityMaterializer.nextSafeAction
+              : "inspect_materializer_capacity_projection",
         }
       : undefined,
     v2TargetVsNoRepairDiff: {
@@ -1212,6 +1427,12 @@ function buildIndexSummary(input: {
   const basePlanSummary = asRecord(basePlanCompare?.summary);
   const shadowConsumption = asRecord(input.noRepair.v2BasePlanShadowConsumptionTrial);
   const shadowSummary = asRecord(shadowConsumption?.summary);
+  const capacityMaterializer = asRecord(
+    input.noRepair.v2CapacityMaterializerProjection,
+  );
+  const capacityMaterializerImpact = asRecord(
+    capacityMaterializer?.candidateImpact,
+  );
   return {
     status: asRecord(input.noRepair.summary)?.status ?? "unknown",
     basicMesocycleShapeStatus:
@@ -1233,6 +1454,12 @@ function buildIndexSummary(input: {
       shadowSummary?.repairDependencyDelta ?? null,
     v2BasePlanShadowConsumptionRegressionCount:
       shadowSummary?.regressionCount ?? null,
+    v2CapacityMaterializerProjectionStatus:
+      capacityMaterializer?.status ?? "not_available",
+    v2CapacityMaterializerProjectionIdentityDelta:
+      capacityMaterializerImpact?.selectedIdentityDelta ?? null,
+    v2CapacityMaterializerProjectionTotalSetDelta:
+      capacityMaterializerImpact?.totalSetDelta ?? null,
     writtenShardCount: input.shardMetadata.filter(
       (shard) => shard.status === "written",
     ).length,

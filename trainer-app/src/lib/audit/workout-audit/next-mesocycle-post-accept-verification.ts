@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
 import { evaluateAcceptedMesocycleSeedProvenance } from "@/lib/api/accepted-mesocycle-seed-provenance";
 import { deriveCurrentMesocycleSession } from "@/lib/api/mesocycle-lifecycle";
@@ -31,6 +32,7 @@ type SourceMesocycleRow = {
   isActive: boolean;
   macroCycleId: string;
   mesoNumber: number;
+  nextSeedDraftJson?: unknown;
 };
 
 type SuccessorMesocycleRow = SourceMesocycleRow & {
@@ -60,6 +62,23 @@ type PostAcceptEvidence = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  if (isRecord(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function stableHash(value: unknown): string {
+  return createHash("sha256").update(stableStringify(value)).digest("hex");
 }
 
 function summarizeSeed(seedJson: unknown): NextMesocyclePostAcceptVerificationPayload["seedContract"] {
@@ -287,6 +306,83 @@ function seedExerciseRowsForSlot(input: {
   );
 }
 
+function acceptedSeedDraftSlotPlanSeedJson(nextSeedDraftJson: unknown): unknown {
+  const draft = isRecord(nextSeedDraftJson) ? nextSeedDraftJson : null;
+  const acceptedSeedDraft = isRecord(draft?.acceptedSeedDraft)
+    ? draft.acceptedSeedDraft
+    : null;
+  return acceptedSeedDraft?.slotPlanSeedJson;
+}
+
+function summarizeSeedIdentity(input: {
+  seedJson: unknown;
+  seedExerciseNameById: Record<string, string>;
+}): {
+  hash: string | null;
+  source: string | null;
+  rowCount: number;
+  slotOrder: string[];
+  anchorRows: Array<{
+    slotId: string;
+    exerciseId: string;
+    exerciseName: string;
+    setCount: number | null;
+  }>;
+} {
+  const parsed = parseSlotPlanSeedJson(input.seedJson);
+  if (!parsed) {
+    return {
+      hash: null,
+      source: null,
+      rowCount: 0,
+      slotOrder: [],
+      anchorRows: [],
+    };
+  }
+
+  return {
+    hash: stableHash(input.seedJson),
+    source: parsed.source ?? null,
+    rowCount: parsed.slots.reduce((sum, slot) => sum + slot.exercises.length, 0),
+    slotOrder: parsed.slots.map((slot) => slot.slotId),
+    anchorRows: parsed.slots.flatMap((slot) => {
+      const anchor = slot.exercises[0];
+      return anchor
+        ? [
+            {
+              slotId: slot.slotId,
+              exerciseId: anchor.exerciseId,
+              exerciseName:
+                input.seedExerciseNameById[anchor.exerciseId] ?? anchor.exerciseId,
+              setCount: anchor.setCount ?? null,
+            },
+          ]
+        : [];
+    }),
+  };
+}
+
+function arraysEqual(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => right[index] === value);
+}
+
+function anchorRowsEqual(
+  left: ReturnType<typeof summarizeSeedIdentity>["anchorRows"],
+  right: ReturnType<typeof summarizeSeedIdentity>["anchorRows"],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((row, index) => {
+      const other = right[index];
+      return (
+        other?.slotId === row.slotId &&
+        other.exerciseId === row.exerciseId &&
+        other.setCount === row.setCount
+      );
+    })
+  );
+}
+
 function rowsMatchSeed(input: {
   seedRows: Array<{ exerciseId: string; setCount: number | null }>;
   generatedRows: Array<{ exerciseId: string; setCount: number }>;
@@ -359,6 +455,53 @@ export function buildNextMesocyclePostAcceptVerificationFromEvidence(
 ): NextMesocyclePostAcceptVerificationPayload {
   const source = evidence.sourceMesocycle;
   const successor = evidence.successorMesocycle;
+  const preAcceptSeedJson = acceptedSeedDraftSlotPlanSeedJson(
+    source?.nextSeedDraftJson,
+  );
+  const preAcceptSeedIdentity = summarizeSeedIdentity({
+    seedJson: preAcceptSeedJson,
+    seedExerciseNameById: evidence.seedExerciseNameById,
+  });
+  const successorSeedIdentity = summarizeSeedIdentity({
+    seedJson: successor?.slotPlanSeedJson,
+    seedExerciseNameById: evidence.seedExerciseNameById,
+  });
+  const preAcceptDraftSeedAvailable = preAcceptSeedIdentity.hash != null;
+  const seedIdentityComparison = {
+    preAcceptPersistedDraftSeedHash: preAcceptSeedIdentity.hash,
+    successorSlotPlanSeedHash: successorSeedIdentity.hash,
+    hashesMatch:
+      preAcceptSeedIdentity.hash != null &&
+      preAcceptSeedIdentity.hash === successorSeedIdentity.hash,
+    source: {
+      preAccept: preAcceptSeedIdentity.source,
+      successor: successorSeedIdentity.source,
+      matches:
+        preAcceptSeedIdentity.source != null &&
+        preAcceptSeedIdentity.source === successorSeedIdentity.source,
+    },
+    anchorRows: {
+      preAccept: preAcceptSeedIdentity.anchorRows,
+      successor: successorSeedIdentity.anchorRows,
+      matches: anchorRowsEqual(
+        preAcceptSeedIdentity.anchorRows,
+        successorSeedIdentity.anchorRows,
+      ),
+    },
+    rowCount: {
+      preAccept: preAcceptSeedIdentity.rowCount,
+      successor: successorSeedIdentity.rowCount,
+      matches: preAcceptSeedIdentity.rowCount === successorSeedIdentity.rowCount,
+    },
+    slotOrder: {
+      preAccept: preAcceptSeedIdentity.slotOrder,
+      successor: successorSeedIdentity.slotOrder,
+      matches: arraysEqual(
+        preAcceptSeedIdentity.slotOrder,
+        successorSeedIdentity.slotOrder,
+      ),
+    },
+  };
   const parsedSeed = parseSlotPlanSeedJson(successor?.slotPlanSeedJson);
   const seedSummary = summarizeSeed(successor?.slotPlanSeedJson);
   const slotSequence = readRuntimeSlotSequence({
@@ -501,6 +644,23 @@ export function buildNextMesocyclePostAcceptVerificationFromEvidence(
           : "fail",
       evidence: `source=${source?.id ?? "missing"} successor=${successor?.id ?? "missing"} requested=${evidence.requestedSuccessorMesocycleId ?? "none"}`,
       ownerSeam: "mesocycle-handoff",
+      mustFixBeforeWeek1: true,
+    }),
+    check({
+      check: "successor seed matches pre-accept persisted draft seed when present",
+      status:
+        !preAcceptDraftSeedAvailable ||
+        (seedIdentityComparison.hashesMatch &&
+          seedIdentityComparison.source.matches &&
+          seedIdentityComparison.anchorRows.matches &&
+          seedIdentityComparison.rowCount.matches &&
+          seedIdentityComparison.slotOrder.matches)
+          ? "pass"
+          : "fail",
+      evidence: preAcceptDraftSeedAvailable
+        ? `preAcceptPersistedDraftSeedHash=${seedIdentityComparison.preAcceptPersistedDraftSeedHash ?? "missing"} successorSlotPlanSeedHash=${seedIdentityComparison.successorSlotPlanSeedHash ?? "missing"} source=${seedIdentityComparison.source.preAccept ?? "missing"}->${seedIdentityComparison.source.successor ?? "missing"} rowCount=${seedIdentityComparison.rowCount.preAccept}->${seedIdentityComparison.rowCount.successor} slotOrderMatches=${seedIdentityComparison.slotOrder.matches} anchorRowsMatch=${seedIdentityComparison.anchorRows.matches}`
+        : "preAcceptPersistedDraftSeedHash=not_available",
+      ownerSeam: "mesocycle-handoff accepted seed persistence",
       mustFixBeforeWeek1: true,
     }),
     check({
@@ -649,6 +809,7 @@ export function buildNextMesocyclePostAcceptVerificationFromEvidence(
       mesoNumber: successor?.mesoNumber ?? null,
       activeMesocycleId: evidence.activeMesocycleId,
     },
+    acceptedSeedIdentity: seedIdentityComparison,
     seedContract: seedSummary,
     slotSequence: {
       available: slotSequence.slots.length > 0,
@@ -773,6 +934,7 @@ export async function buildNextMesocyclePostAcceptVerificationAuditPayload(input
       isActive: true,
       macroCycleId: true,
       mesoNumber: true,
+      nextSeedDraftJson: true,
     },
   });
   const successorMesocycle = sourceMesocycle

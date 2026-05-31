@@ -1201,6 +1201,41 @@ export type NextMesocyclePostAcceptVerificationPayload = {
     mesoNumber: number | null;
     activeMesocycleId: string | null;
   };
+  acceptedSeedIdentity: {
+    preAcceptPersistedDraftSeedHash: string | null;
+    successorSlotPlanSeedHash: string | null;
+    hashesMatch: boolean;
+    source: {
+      preAccept: string | null;
+      successor: string | null;
+      matches: boolean;
+    };
+    anchorRows: {
+      preAccept: Array<{
+        slotId: string;
+        exerciseId: string;
+        exerciseName: string;
+        setCount: number | null;
+      }>;
+      successor: Array<{
+        slotId: string;
+        exerciseId: string;
+        exerciseName: string;
+        setCount: number | null;
+      }>;
+      matches: boolean;
+    };
+    rowCount: {
+      preAccept: number;
+      successor: number;
+      matches: boolean;
+    };
+    slotOrder: {
+      preAccept: string[];
+      successor: string[];
+      matches: boolean;
+    };
+  };
   seedContract: {
     slotPlanSeedJson: "available" | "missing" | "invalid";
     source: string | null;

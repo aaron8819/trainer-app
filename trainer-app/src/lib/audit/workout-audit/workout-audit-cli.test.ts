@@ -6874,6 +6874,38 @@ describe("buildNextMesocyclePostAcceptVerificationSummary", () => {
             mesoNumber: 2,
             activeMesocycleId: "successor-1",
           },
+          acceptedSeedIdentity: {
+            preAcceptPersistedDraftSeedHash: null,
+            successorSlotPlanSeedHash: "successor-seed-hash",
+            hashesMatch: false,
+            source: {
+              preAccept: null,
+              successor: "handoff_slot_plan_projection",
+              matches: false,
+            },
+            anchorRows: {
+              preAccept: [],
+              successor: [
+                {
+                  slotId: "upper_a",
+                  exerciseId: "bench",
+                  exerciseName: "Bench Press",
+                  setCount: 4,
+                },
+              ],
+              matches: false,
+            },
+            rowCount: {
+              preAccept: 0,
+              successor: 1,
+              matches: false,
+            },
+            slotOrder: {
+              preAccept: [],
+              successor: ["upper_a"],
+              matches: false,
+            },
+          },
           seedContract: {
             slotPlanSeedJson: "available",
             source: "handoff_slot_plan_projection",

@@ -178,6 +178,11 @@ describe("buildNextMesocyclePostAcceptVerificationFromEvidence", () => {
       slotPlanSeedJson: "available",
       minimalExecutableRowsOnly: true,
     });
+    expect(payload.acceptedSeedIdentity).toMatchObject({
+      preAcceptPersistedDraftSeedHash: null,
+      successorSlotPlanSeedHash: expect.any(String),
+      hashesMatch: false,
+    });
     expect(payload.futureWeekReplay).toMatchObject({
       compositionSource: "persisted_slot_plan_seed",
       exerciseOrderMatchesSeed: true,
@@ -195,6 +200,233 @@ describe("buildNextMesocyclePostAcceptVerificationFromEvidence", () => {
     expect(payload.projectedWeekVolume.allProjectedSessionsSeedBacked).toBe(true);
     expect(payload.readModels.allProgramRowsSeedBacked).toBe(true);
     expect(payload.checks.every((row) => row.status === "pass")).toBe(true);
+  });
+
+  it("compares pre-accept persisted V2 draft seed identity against the accepted successor seed", () => {
+    const evidence = makePassingEvidence();
+    const sourceMesocycle = evidence.sourceMesocycle;
+    const successorMesocycle = evidence.successorMesocycle;
+    const nextSession = evidence.nextSession;
+    const generationResult = evidence.generationResult;
+    const projectedWeekVolume = evidence.projectedWeekVolume;
+    if (
+      !sourceMesocycle ||
+      !successorMesocycle ||
+      !nextSession ||
+      !generationResult ||
+      "error" in generationResult ||
+      !projectedWeekVolume
+    ) {
+      throw new Error("post-accept verification fixture is incomplete");
+    }
+    const v2Seed = {
+      version: 1,
+      source: "v2_materialized_seed",
+      slots: [
+        {
+          slotId: "upper_a",
+          exercises: [
+            {
+              exerciseId: "barbell-bench-press",
+              role: "CORE_COMPOUND",
+              setCount: 4,
+            },
+          ],
+        },
+        {
+          slotId: "lower_a",
+          exercises: [
+            {
+              exerciseId: "barbell-back-squat",
+              role: "CORE_COMPOUND",
+              setCount: 4,
+            },
+          ],
+        },
+      ],
+    };
+    sourceMesocycle.nextSeedDraftJson = {
+      acceptedSeedDraft: {
+        slotPlanSeedJson: v2Seed,
+      },
+    };
+    successorMesocycle.slotSequenceJson = {
+      version: 1,
+      source: "handoff_draft",
+      sequenceMode: "ordered_flexible",
+      slots: [
+        { slotId: "upper_a", intent: "UPPER" },
+        { slotId: "lower_a", intent: "LOWER" },
+      ],
+    };
+    successorMesocycle.slotPlanSeedJson = v2Seed;
+    successorMesocycle.sessionsPerWeek = 2;
+    evidence.weeklySchedule = ["upper", "lower"];
+    evidence.seedExerciseNameById = {
+      "barbell-bench-press": "Barbell Bench Press",
+      "barbell-back-squat": "Barbell Back Squat",
+    };
+    nextSession.slotId = "upper_a";
+    generationResult.workout.mainLifts[0].exercise = {
+      id: "barbell-bench-press",
+      name: "Barbell Bench Press",
+    } as never;
+    generationResult.selection.selectedExerciseIds = ["barbell-bench-press"];
+    generationResult.selection.mainLiftIds = ["barbell-bench-press"];
+    generationResult.audit!.progressionTraces = {
+      "barbell-bench-press": {} as never,
+    };
+    generationResult.prescriptionReadouts![0].exerciseId =
+      "barbell-bench-press";
+    generationResult.prescriptionReadouts![0].exerciseName = "Barbell Bench Press";
+    projectedWeekVolume.projectedSessions = [
+      {
+        slotId: "upper_a",
+        intent: "upper",
+        isNext: true,
+        exerciseCount: 1,
+        totalSets: 4,
+        exercises: [
+          {
+            exerciseId: "barbell-bench-press",
+            name: "Barbell Bench Press",
+            setCount: 4,
+            role: "primary",
+            effectiveStimulusByMuscle: { Chest: 4 },
+          },
+        ],
+        projectedContributionByMuscle: { Chest: 4 },
+      },
+      {
+        slotId: "lower_a",
+        intent: "lower",
+        isNext: false,
+        exerciseCount: 1,
+        totalSets: 4,
+        exercises: [
+          {
+            exerciseId: "barbell-back-squat",
+            name: "Barbell Back Squat",
+            setCount: 4,
+            role: "primary",
+            effectiveStimulusByMuscle: { Quads: 4 },
+          },
+        ],
+        projectedContributionByMuscle: { Quads: 4 },
+      },
+    ];
+
+    const payload = buildNextMesocyclePostAcceptVerificationFromEvidence(evidence);
+
+    expect(payload.acceptedSeedIdentity).toMatchObject({
+      hashesMatch: true,
+      source: {
+        preAccept: "v2_materialized_seed",
+        successor: "v2_materialized_seed",
+        matches: true,
+      },
+      rowCount: {
+        preAccept: 2,
+        successor: 2,
+        matches: true,
+      },
+      slotOrder: {
+        preAccept: ["upper_a", "lower_a"],
+        successor: ["upper_a", "lower_a"],
+        matches: true,
+      },
+    });
+    expect(payload.acceptedSeedIdentity.anchorRows.preAccept).toEqual([
+      {
+        slotId: "upper_a",
+        exerciseId: "barbell-bench-press",
+        exerciseName: "Barbell Bench Press",
+        setCount: 4,
+      },
+      {
+        slotId: "lower_a",
+        exerciseId: "barbell-back-squat",
+        exerciseName: "Barbell Back Squat",
+        setCount: 4,
+      },
+    ]);
+    expect(payload.checks).toContainEqual(
+      expect.objectContaining({
+        check: "successor seed matches pre-accept persisted draft seed when present",
+        status: "pass",
+      }),
+    );
+    expect(payload.verificationResult).toBe("safe_to_train");
+  });
+
+  it("blocks when the successor seed does not match the pre-accept persisted V2 draft seed", () => {
+    const evidence = makePassingEvidence();
+    const sourceMesocycle = evidence.sourceMesocycle;
+    if (!sourceMesocycle) {
+      throw new Error("post-accept verification fixture is incomplete");
+    }
+    sourceMesocycle.nextSeedDraftJson = {
+      acceptedSeedDraft: {
+        slotPlanSeedJson: {
+          version: 1,
+          source: "v2_materialized_seed",
+          slots: [
+            {
+              slotId: "upper_a",
+              exercises: [
+                {
+                  exerciseId: "barbell-bench-press",
+                  role: "CORE_COMPOUND",
+                  setCount: 4,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    evidence.seedExerciseNameById = {
+      bench: "Incline Dumbbell Bench Press",
+      "barbell-bench-press": "Barbell Bench Press",
+    };
+
+    const payload = buildNextMesocyclePostAcceptVerificationFromEvidence(evidence);
+
+    expect(payload.acceptedSeedIdentity).toMatchObject({
+      hashesMatch: false,
+      source: {
+        preAccept: "v2_materialized_seed",
+        successor: "handoff_slot_plan_projection",
+        matches: false,
+      },
+      anchorRows: {
+        preAccept: [
+          {
+            slotId: "upper_a",
+            exerciseId: "barbell-bench-press",
+            exerciseName: "Barbell Bench Press",
+            setCount: 4,
+          },
+        ],
+        successor: [
+          {
+            slotId: "upper_a",
+            exerciseId: "bench",
+            exerciseName: "Incline Dumbbell Bench Press",
+            setCount: 4,
+          },
+        ],
+        matches: false,
+      },
+    });
+    expect(payload.checks).toContainEqual(
+      expect.objectContaining({
+        check: "successor seed matches pre-accept persisted draft seed when present",
+        status: "fail",
+        mustFixBeforeWeek1: true,
+      }),
+    );
+    expect(payload.verificationResult).toBe("blocked");
   });
 
   it("blocks Week 1 when executable seed rows contain extra runtime fields", () => {

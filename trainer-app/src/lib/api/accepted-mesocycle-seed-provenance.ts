@@ -219,7 +219,7 @@ export function evaluateAcceptedMesocycleSeedProvenance(
     });
   }
 
-  if (v2SeedSource && !hasV2PlannerMetadata) {
+  if (v2SeedSource && source !== "v2_materialized_seed" && !hasV2PlannerMetadata) {
     warnings.push({
       code: "V2_SOURCE_WITHOUT_V2_PLANNER_METADATA",
       severity: "error",

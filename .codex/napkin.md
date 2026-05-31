@@ -199,6 +199,7 @@
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.
 
 ## Patterns That Work
+- For V2 handoff accept regressions, keep `handoffSummaryJson.recommendedNextSeed` legacy while `nextSeedDraftJson.acceptedSeedDraft` is V2 in the fixture. Mirroring V2 into both places masks sanitize/fallback bugs that only appear in the real stored-draft path.
 - For live V2 next-mesocycle acceptance, compare the pre-accept persisted draft seed against the post-accept successor seed, not just post-accept replay coherence. A successor can replay `persisted_slot_plan_seed` safely while still being authored from `handoff_slot_plan_projection` instead of the accepted `v2_materialized_seed` draft.
 - For pre-accept execution-readiness work, keep seed identity/set-count proof separate from load prescription proof: handoff dry-run and acceptance gate can prove candidate seed/runtime-contract readiness, but exact load/confidence source maps should be post-accept audit readouts over existing `prescriptionReadouts`, not a pre-accept recomputation of progression policy.
 - For V2 target-vs-no-repair bridge work, use pure V2 materialization compare/shadow evidence only as diagnostic readout alignment: preserve the no-repair warning/repair evidence, demote the lane from `nextBestMigrationSlice`, and assert acceptance-gate candidate truth separately.

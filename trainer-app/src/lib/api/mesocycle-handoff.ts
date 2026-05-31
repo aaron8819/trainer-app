@@ -427,6 +427,45 @@ const mesocycleHandoffSummaryJsonSchema = z.object({
   recommendedDesign: nextMesocycleDesignJsonSchema.optional(),
 });
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasAcceptedSeedDraftField(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    Object.prototype.hasOwnProperty.call(value, "acceptedSeedDraft") &&
+    value.acceptedSeedDraft != null
+  );
+}
+
+function acceptedSeedDraftFromRawDraft(
+  draft: unknown,
+): NextCycleSeedDraft["acceptedSeedDraft"] | undefined {
+  if (!hasAcceptedSeedDraftField(draft)) {
+    return undefined;
+  }
+
+  const parsed = acceptedSeedDraftJsonSchema.safeParse(
+    (draft as Record<string, unknown>).acceptedSeedDraft,
+  );
+  if (!parsed.success) {
+    throw new Error("MESOCYCLE_HANDOFF_REFRESHED_SEED_INVALID");
+  }
+  return parsed.data as NextCycleSeedDraft["acceptedSeedDraft"];
+}
+
+function readNextCycleSeedDraftForAccept(value: unknown): NextCycleSeedDraft | null {
+  const draft = readNextCycleSeedDraft(value);
+  if (draft) {
+    return draft;
+  }
+  if (hasAcceptedSeedDraftField(value)) {
+    throw new Error("MESOCYCLE_HANDOFF_REFRESHED_SEED_INVALID");
+  }
+  return null;
+}
+
 export function sanitizeNextCycleSeedDraft(input: {
   draft: unknown;
   sourceMesocycleId: string;
@@ -498,6 +537,7 @@ export function sanitizeNextCycleSeedDraft(input: {
       )}`
     );
   }
+  const acceptedSeedDraft = acceptedSeedDraftFromRawDraft(input.draft);
 
   return {
     ...input.fallbackDraft,
@@ -511,6 +551,7 @@ export function sanitizeNextCycleSeedDraft(input: {
       slots: canonicalSlots,
     },
     carryForwardSelections: canonicalSelections,
+    ...(acceptedSeedDraft ? { acceptedSeedDraft } : {}),
   };
 }
 
@@ -595,6 +636,9 @@ async function refreshPendingHandoffArtifactsIfNeeded(
 
   const summary = readMesocycleHandoffSummary(row.handoffSummaryJson);
   const storedDraft = readNextCycleSeedDraft(row.nextSeedDraftJson);
+  if (!storedDraft && hasAcceptedSeedDraftField(row.nextSeedDraftJson)) {
+    throw new Error("MESOCYCLE_HANDOFF_REFRESHED_SEED_INVALID");
+  }
   if (!shouldRefreshPendingHandoffArtifacts({ row, summary, draft: storedDraft })) {
     return row;
   }
@@ -1559,7 +1603,9 @@ export async function prepareMesocycleHandoffAcceptance(input: {
   });
 
   const summary = readMesocycleHandoffSummary(refreshedPendingRow.handoffSummaryJson);
-  const storedDraft = readNextCycleSeedDraft(refreshedPendingRow.nextSeedDraftJson);
+  const storedDraft = readNextCycleSeedDraftForAccept(
+    refreshedPendingRow.nextSeedDraftJson,
+  );
   if (!summary || !storedDraft) {
     throw new Error("MESOCYCLE_HANDOFF_DRAFT_MISSING");
   }
@@ -1697,7 +1743,7 @@ export async function acceptPreparedMesocycleHandoffWithProvenanceInTransaction(
   }
 
   const summary = readMesocycleHandoffSummary(current.handoffSummaryJson);
-  const storedDraft = readNextCycleSeedDraft(current.nextSeedDraftJson);
+  const storedDraft = readNextCycleSeedDraftForAccept(current.nextSeedDraftJson);
   if (!summary || !storedDraft || !summary.recommendedNextSeed) {
     throw new Error("MESOCYCLE_HANDOFF_DRAFT_MISSING");
   }

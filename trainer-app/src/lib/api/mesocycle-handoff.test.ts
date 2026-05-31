@@ -558,8 +558,11 @@ function makeAcceptanceTx(input: {
   update?: ReturnType<typeof vi.fn>;
   updateMany?: ReturnType<typeof vi.fn>;
   draft?: NextCycleSeedDraft;
+  summaryDraft?: NextCycleSeedDraft;
+  storedDraftJson?: unknown;
 } = {}) {
-  const recommendedDraft = input.draft ?? buildRecommendedDraft();
+  const recommendedDraft = input.summaryDraft ?? input.draft ?? buildRecommendedDraft();
+  const storedDraftJson = input.storedDraftJson ?? input.draft ?? recommendedDraft;
   const create =
     input.create ??
     vi.fn().mockResolvedValue({
@@ -595,7 +598,7 @@ function makeAcceptanceTx(input: {
           focus: "Upper Hypertrophy",
           closedAt: new Date("2026-04-01T00:00:00.000Z"),
           handoffSummaryJson: buildHandoffSummaryJson(recommendedDraft),
-          nextSeedDraftJson: recommendedDraft,
+          nextSeedDraftJson: storedDraftJson,
         }),
       findFirst: vi
         .fn()
@@ -606,7 +609,7 @@ function makeAcceptanceTx(input: {
           focus: "Upper Hypertrophy",
           closedAt: new Date("2026-04-01T00:00:00.000Z"),
           handoffSummaryJson: buildHandoffSummaryJson(recommendedDraft),
-          nextSeedDraftJson: recommendedDraft,
+          nextSeedDraftJson: storedDraftJson,
           macroCycleId: "macro-1",
         })
         .mockResolvedValueOnce(null),
@@ -2816,6 +2819,190 @@ describe("handoff draft persistence", () => {
     expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
     expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
     expect(tx.mesocycle.create).not.toHaveBeenCalled();
+  });
+
+  it("uses stored V2 acceptedSeedDraft when the frozen recommendedNextSeed is still legacy", async () => {
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+    mocks.loadPreloadedGenerationSnapshot.mockResolvedValue({ context: {} });
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockReturnValue({
+      slotPlans: [
+        {
+          slotId: "upper_a",
+          intent: "UPPER",
+          exercises: [
+            {
+              exerciseId: "incline-dumbbell-bench-press",
+              role: "CORE_COMPOUND",
+              setCount: 5,
+            },
+          ],
+        },
+        {
+          slotId: "lower_a",
+          intent: "LOWER",
+          exercises: [
+            {
+              exerciseId: "barbell-back-squat",
+              role: "CORE_COMPOUND",
+              setCount: 3,
+            },
+          ],
+        },
+        {
+          slotId: "upper_b",
+          intent: "UPPER",
+          exercises: [{ exerciseId: "row", role: "ACCESSORY", setCount: 3 }],
+        },
+        {
+          slotId: "lower_b",
+          intent: "LOWER",
+          exercises: [{ exerciseId: "split-squat", role: "ACCESSORY", setCount: 3 }],
+        },
+      ],
+    });
+    const storedV2Draft = buildStoredV2Draft([
+      {
+        slotId: "upper_a",
+        intent: "UPPER",
+        exercises: [
+          {
+            exerciseId: "barbell-bench-press",
+            name: "Barbell Bench Press",
+            role: "CORE_COMPOUND",
+            setCount: 4,
+          },
+        ],
+      },
+      {
+        slotId: "lower_a",
+        intent: "LOWER",
+        exercises: [
+          {
+            exerciseId: "barbell-back-squat",
+            name: "Barbell Back Squat",
+            role: "CORE_COMPOUND",
+            setCount: 4,
+          },
+        ],
+      },
+      {
+        slotId: "upper_b",
+        intent: "UPPER",
+        exercises: [{ exerciseId: "row", role: "ACCESSORY", setCount: 3 }],
+      },
+      {
+        slotId: "lower_b",
+        intent: "LOWER",
+        exercises: [{ exerciseId: "split-squat", role: "ACCESSORY", setCount: 3 }],
+      },
+    ] as ProjectedSuccessorSlotPlan[]);
+    const tx = makeAcceptanceTx({
+      summaryDraft: buildRecommendedDraft(),
+      storedDraftJson: storedV2Draft,
+    });
+
+    const prepared = await prepareMesocycleHandoffAcceptance({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      reader: tx as never,
+    });
+
+    expect(prepared.slotPlanSeed?.source).toBe("v2_materialized_seed");
+    expect(prepared.slotPlanSeed?.slots).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          slotId: "upper_a",
+          exercises: [
+            {
+              exerciseId: "barbell-bench-press",
+              role: "CORE_COMPOUND",
+              setCount: 4,
+            },
+          ],
+        }),
+        expect.objectContaining({
+          slotId: "lower_a",
+          exercises: [
+            {
+              exerciseId: "barbell-back-squat",
+              role: "CORE_COMPOUND",
+              setCount: 4,
+            },
+          ],
+        }),
+      ]),
+    );
+    expect(prepared.slotPlanSeed?.slots.flatMap((slot) => slot.exercises)).toEqual(
+      expect.arrayContaining([
+        { exerciseId: "barbell-bench-press", role: "CORE_COMPOUND", setCount: 4 },
+        { exerciseId: "barbell-back-squat", role: "CORE_COMPOUND", setCount: 4 },
+      ]),
+    );
+    for (const exercise of prepared.slotPlanSeed?.slots.flatMap((slot) => slot.exercises) ?? []) {
+      expect(Object.keys(exercise).sort()).toEqual(["exerciseId", "role", "setCount"]);
+    }
+    expect(prepared.seedPersistenceProvenance).toMatchObject({
+      source: "v2_materialized_seed",
+      dbWriteOccurred: false,
+    });
+    expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
+
+    await acceptPreparedMesocycleHandoffWithProvenanceInTransaction(tx as never, prepared);
+    const createData = tx.mesocycle.create.mock.calls[0]?.[0]?.data;
+    expect(createData.slotPlanSeedJson).toMatchObject({
+      source: "v2_materialized_seed",
+      slots: prepared.slotPlanSeed?.slots,
+    });
+  });
+
+  it("fails closed when a stored V2 acceptedSeedDraft is malformed", async () => {
+    const malformedStoredDraft = {
+      ...buildRecommendedDraft(),
+      acceptedSeedDraft: {
+        version: 1,
+        source: "v2_materialized_seed",
+        refreshedAt: "2026-05-29T12:00:00.000Z",
+        slotPlanSeedJson: {
+          version: 1,
+          source: "v2_materialized_seed",
+          slots: [
+            {
+              slotId: "upper_a",
+              exercises: [
+                {
+                  exerciseId: "barbell-bench-press",
+                  role: "CORE_COMPOUND",
+                },
+              ],
+            },
+          ],
+        },
+        provenance: {
+          basePlanValidationStatus: "pass",
+          materializerStatus: "materialized",
+          promotionReadinessStatus: "eligible_for_guarded_write",
+          productionGatesMissing: [],
+          serializer: "buildMesocycleSlotPlanSeed",
+          runtimeReplayUnchanged: true,
+        },
+      },
+    };
+    const tx = makeAcceptanceTx({
+      summaryDraft: buildRecommendedDraft(),
+      storedDraftJson: malformedStoredDraft,
+    });
+
+    await expect(
+      prepareMesocycleHandoffAcceptance({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        reader: tx as never,
+      }),
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_REFRESHED_SEED_INVALID");
+    expect(tx.mesocycle.create).not.toHaveBeenCalled();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
   });
 
   it("reports a refreshed V2 draft seed as the candidate source in prepare-compare", async () => {

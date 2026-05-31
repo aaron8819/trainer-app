@@ -66,6 +66,16 @@ export async function POST(
     }
     if (
       error instanceof Error &&
+      (error.message === "MESOCYCLE_HANDOFF_REFRESHED_SEED_INVALID" ||
+        error.message === "MESOCYCLE_HANDOFF_REFRESHED_SEED_ALIGNMENT_INVALID")
+    ) {
+      return NextResponse.json(
+        { error: "Mesocycle handoff accepted seed draft is invalid." },
+        { status: 409 }
+      );
+    }
+    if (
+      error instanceof Error &&
       error.message.startsWith("MESOCYCLE_HANDOFF_KEEP_SELECTION_CONFLICT:")
     ) {
       return NextResponse.json(

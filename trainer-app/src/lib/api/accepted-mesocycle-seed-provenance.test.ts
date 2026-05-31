@@ -140,10 +140,24 @@ describe("evaluateAcceptedMesocycleSeedProvenance", () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it("rejects a V2 seed source without V2 planner metadata and target skeleton", () => {
+  it("accepts a V2 materialized seed source without optional V2 planner metadata", () => {
     const result = evaluateAcceptedMesocycleSeedProvenance({
       mesocycleId: "meso-1",
       slotPlanSeedJson: setAwareSeed({ source: "v2_materialized_seed" }),
+    });
+
+    expect(result.status).toBe("valid");
+    expect(result.seed).toMatchObject({
+      source: "v2_materialized_seed",
+      executableShape: "set_aware",
+    });
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("rejects a non-materialized V2 seed source without V2 planner metadata and target skeleton", () => {
+    const result = evaluateAcceptedMesocycleSeedProvenance({
+      mesocycleId: "meso-1",
+      slotPlanSeedJson: setAwareSeed({ source: "v2_future_seed" }),
     });
 
     expect(result.status).toBe("invalid");

@@ -1082,6 +1082,128 @@ export type V2StrategyToDemandProjection = {
         | "keep_diagnostic_only";
       limitations: string[];
     };
+    measuredRedistributionProjection: {
+      version: 1;
+      source: "v2_strategy_to_demand_measured_redistribution_projection";
+      readOnly: true;
+      affectsScoringOrGeneration: false;
+      consumedByDemandOrMaterializer: false;
+      projectionMode: "measured_shadow_projection" | "not_projected";
+      status:
+        | "not_available"
+        | "available_with_limitations"
+        | "blocked"
+        | "available";
+      rows: Array<{
+        zone: V2StrategyToDemandDiff["rows"][number]["zone"];
+        scope: V2StrategyToDemandDiff["rows"][number]["scope"];
+        muscle?: string;
+        owner: V2StrategyToDemandDiff["rows"][number]["owner"];
+        action: V2StrategyToDemandDiff["rows"][number]["action"];
+        trialStatus: "trial_candidate";
+        candidateSlotOwners: string[];
+        donorOffsets: Array<{
+          muscle: string;
+          candidateSlotOwners: string[];
+          eligibilityReason: V2SlotOwnedDemandAdjustmentDonorEligibilityReason;
+          beforeSets?: number;
+          afterSets?: number;
+          deltaSets?: number;
+          floorSets?: number;
+          status: string;
+        }>;
+        protectedCoverage: {
+          beforeSets?: number;
+          afterSets?: number;
+          deltaSets?: number;
+          floorSets?: number;
+          beforeStatus: string;
+          afterStatus: string;
+        };
+        impact: {
+          weeklySetDelta: number;
+          slotSetDeltaBySlot: Record<string, number>;
+          materializerRepairDelta?: number;
+          majorRepairDelta?: number;
+          suspiciousRepairDelta?: number;
+          concentrationDelta?: number;
+        };
+        gates: {
+          downstreamContextAvailable: V2StrategyHypothesisProjectionGateStatus;
+          measuredShadowProjection: V2StrategyHypothesisProjectionGateStatus;
+          donorOffsetMeasured: V2StrategyHypothesisProjectionGateStatus;
+          noNetNewVolume: V2StrategyHypothesisProjectionGateStatus;
+          floorPreservation: V2StrategyHypothesisProjectionGateStatus;
+          concentrationNonRegression: V2StrategyHypothesisProjectionGateStatus;
+          materializerNonRegression: V2StrategyHypothesisProjectionGateStatus;
+          acceptanceRisk: V2StrategyHypothesisProjectionGateStatus;
+        };
+        readiness:
+          | "ready_for_behavior_projection_trial"
+          | "needs_more_measured_evidence"
+          | "blocked_by_measured_regression";
+        blockingReasons: string[];
+        limitations: string[];
+      }>;
+      summary: {
+        candidateCount: number;
+        measuredCandidateCount: number;
+        readyForBehaviorProjectionTrialCount: number;
+        blockedByRegressionCount: number;
+        passGateCount: number;
+        failGateCount: number;
+        unknownGateCount: number;
+        totalNetNewVolumeDelta: number;
+        materializerRepairDelta: number;
+        majorRepairDelta: number;
+        suspiciousRepairDelta: number;
+        concentrationDelta: number;
+      };
+      blockerSummary: {
+        status: "not_available" | "not_blocked" | "blocked";
+        projectionScope: string;
+        independentCandidateProjectionAvailable: boolean;
+        blockedCandidateCount: number;
+        floorRegressionMuscles: string[];
+        donorOffsetMuscles: string[];
+        donorSlotOwners: Record<string, string[]>;
+        netNewVolumeRegressionCount: number;
+        concentrationRegressionCount: number;
+        materializerRegressionCount: number;
+        acceptanceRiskCount: number;
+        unknownEvidenceCount: number;
+        failedComputedGates: string[];
+        nextRequiredEvidence: string[];
+      };
+      alternateCandidateDiagnostic: {
+        status: "not_available" | "blocked" | "available_with_limitations";
+        measuredProjectionScope: string;
+        currentDonorMuscles: string[];
+        currentDonorSlotOwners: Record<string, string[]>;
+        alternateEligibleDonorCount: number;
+        alternateEligibleDonorMuscles: string[];
+        excludedDonorMuscles: string[];
+        ineligibleDonorCount: number;
+        ineligibleDonorReasons: Array<{
+          reason:
+            | V2SlotOwnedDemandAdjustmentDonorEligibilityReason
+            | V2StrategyHypothesisPreShadowDonorReason;
+          count: number;
+        }>;
+        protectedFloorRegressionMuscles: string[];
+        requiredEvidence: string[];
+        nextSafeAction:
+          | "run_independent_or_alternate_shadow_projection"
+          | "resolve_donor_pool_before_projection"
+          | "keep_diagnostic_only";
+      };
+      nextSafeAction:
+        | "add_measured_redistribution_projection"
+        | "resolve_measured_redistribution_regressions"
+        | "design_behavior_projection_trial"
+        | "keep_diagnostic_only";
+      limitations: string[];
+    };
     rows: Array<{
       zone: V2StrategyToDemandDiff["rows"][number]["zone"];
       scope: V2StrategyToDemandDiff["rows"][number]["scope"];
@@ -1141,6 +1263,8 @@ export type V2StrategyToDemandProjection = {
       | "add_downstream_behavior_projection"
       | "add_set_distribution_projection"
       | "add_measured_redistribution_projection"
+      | "resolve_measured_redistribution_regressions"
+      | "design_behavior_projection_trial"
       | "collect_more_evidence"
       | "keep_diagnostic_only";
     limitations: string[];
@@ -1162,6 +1286,8 @@ export type V2StrategyToDemandProjection = {
     | "add_downstream_behavior_projection"
     | "add_set_distribution_projection"
     | "add_measured_redistribution_projection"
+    | "resolve_measured_redistribution_regressions"
+    | "design_behavior_projection_trial"
     | "keep_diagnostic_only";
   limitations: string[];
 };

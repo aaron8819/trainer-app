@@ -63,6 +63,9 @@ export function buildV2PlannerMesocyclePolicy(
     weeklyDemandCurve,
     slotDemandAllocationByWeek,
     v2SetDistributionIntent,
+    strategyProjectionDiff:
+      mesocycleStrategyDiagnostic.strategyHypothesisPromotionDiff
+        .projectionDiff,
   });
   const selectionCapacityPlan = buildV2SelectionCapacityPlan({
     exerciseClassDistributionBySlot,

@@ -2,6 +2,8 @@ import type {
   V2MesocycleDemand,
   V2SlotOwnedDemandAdjustmentPlan,
   V2SlotDemandAllocationByWeek,
+  V2StrategyHypothesisProjectionDiff,
+  V2StrategyHypothesisProjectionGateStatus,
   V2StrategyToDemandDiff,
   V2StrategyToDemandProjection,
   V2WeeklyDemandCurve,
@@ -15,6 +17,7 @@ export type V2StrategyToDemandProjectionInput = {
   weeklyDemandCurve?: V2WeeklyDemandCurve;
   slotDemandAllocationByWeek?: V2SlotDemandAllocationByWeek;
   v2SetDistributionIntent?: V2SetDistributionIntent;
+  strategyProjectionDiff?: V2StrategyHypothesisProjectionDiff;
 };
 
 type ProjectionRow = V2StrategyToDemandProjection["rows"][number];
@@ -24,6 +27,12 @@ type RedistributionContext = BoundedTrial["redistributionContext"];
 type DownstreamBehaviorProjection = BoundedTrial["downstreamBehaviorProjection"];
 type DownstreamBehaviorProjectionRow =
   DownstreamBehaviorProjection["rows"][number];
+type MeasuredRedistributionProjection =
+  BoundedTrial["measuredRedistributionProjection"];
+type MeasuredRedistributionProjectionRow =
+  MeasuredRedistributionProjection["rows"][number];
+type AlternateCandidateDiagnostic =
+  MeasuredRedistributionProjection["alternateCandidateDiagnostic"];
 
 function demandByMuscle(
   demand: V2MesocycleDemand,
@@ -660,12 +669,615 @@ function buildDownstreamBehaviorProjection(input: {
   };
 }
 
+function gateCounts(
+  gates: Record<string, V2StrategyHypothesisProjectionGateStatus>,
+): { pass: number; fail: number; unknown: number } {
+  return Object.values(gates).reduce(
+    (counts, gate) => {
+      counts[gate] += 1;
+      return counts;
+    },
+    { pass: 0, fail: 0, unknown: 0 },
+  );
+}
+
+function sumSlotSets(slots: Record<string, number> | undefined): number | null {
+  if (!slots) {
+    return null;
+  }
+  return Object.values(slots).reduce((sum, sets) => sum + sets, 0);
+}
+
+function numericDelta(
+  before: number | undefined,
+  after: number | undefined,
+): number | undefined {
+  if (typeof before !== "number" || typeof after !== "number") {
+    return undefined;
+  }
+  return Math.round((after - before) * 10) / 10;
+}
+
+function coverageByMuscle<T extends { muscle: string }>(
+  rows: readonly T[] | undefined,
+): Map<string, T> {
+  return new Map((rows ?? []).map((row) => [row.muscle, row]));
+}
+
+function floorGate(input: {
+  before?: { sets?: number; minSets?: number; status?: string };
+  after?: { sets?: number; minSets?: number; status?: string };
+}): V2StrategyHypothesisProjectionGateStatus {
+  if (!input.before || !input.after) {
+    return "unknown";
+  }
+  if (
+    input.after.status === "below_minimum" ||
+    (typeof input.after.sets === "number" &&
+      typeof input.after.minSets === "number" &&
+      input.after.sets < input.after.minSets)
+  ) {
+    return "fail";
+  }
+  if (
+    typeof input.before.sets === "number" &&
+    typeof input.after.sets === "number" &&
+    input.after.sets < input.before.sets
+  ) {
+    return "fail";
+  }
+  return "pass";
+}
+
+function materializerGate(
+  gates: V2StrategyHypothesisProjectionDiff["computedNonRegressionGates"],
+): V2StrategyHypothesisProjectionGateStatus {
+  const values = [
+    gates.noMaterialRepairIncrease,
+    gates.noMajorRepairIncrease,
+    gates.noSuspiciousRepairIncrease,
+    gates.noDirtyCollateralIncrease,
+    gates.noForbiddenSlotWorkaround,
+  ];
+  if (values.some((gate) => gate === "fail")) {
+    return "fail";
+  }
+  if (values.some((gate) => gate === "unknown")) {
+    return "unknown";
+  }
+  return "pass";
+}
+
+function measuredRedistributionReadiness(
+  gates: MeasuredRedistributionProjectionRow["gates"],
+): MeasuredRedistributionProjectionRow["readiness"] {
+  if (Object.values(gates).some((gate) => gate === "fail")) {
+    return "blocked_by_measured_regression";
+  }
+  if (Object.values(gates).some((gate) => gate === "unknown")) {
+    return "needs_more_measured_evidence";
+  }
+  return "ready_for_behavior_projection_trial";
+}
+
+function measuredRedistributionBlockingReasons(
+  gates: MeasuredRedistributionProjectionRow["gates"],
+): string[] {
+  const reasons: string[] = [];
+  if (gates.noNetNewVolume === "fail") {
+    reasons.push("net_new_volume_regression");
+  }
+  if (gates.floorPreservation === "fail") {
+    reasons.push("protected_floor_regression");
+  }
+  if (gates.concentrationNonRegression === "fail") {
+    reasons.push("concentration_regression");
+  }
+  if (gates.materializerNonRegression === "fail") {
+    reasons.push("materializer_repair_pressure_regression");
+  }
+  if (gates.acceptanceRisk === "fail") {
+    reasons.push("projection_diff_not_ready_for_behavior_trial");
+  }
+
+  const unknownGates = Object.entries(gates)
+    .filter(([, gate]) => gate === "unknown")
+    .map(([gate]) => `needs_measured_${gate}`);
+
+  return [...reasons, ...unknownGates];
+}
+
+function uniqueSorted(values: readonly string[]): string[] {
+  return Array.from(new Set(values)).sort((left, right) =>
+    left.localeCompare(right),
+  );
+}
+
+function mergeSlotOwners(
+  rows: readonly MeasuredRedistributionProjectionRow[],
+): Record<string, string[]> {
+  const ownersByDonor = new Map<string, Set<string>>();
+  rows.forEach((row) => {
+    row.donorOffsets.forEach((donor) => {
+      const owners = ownersByDonor.get(donor.muscle) ?? new Set<string>();
+      donor.candidateSlotOwners.forEach((slotId) => owners.add(slotId));
+      ownersByDonor.set(donor.muscle, owners);
+    });
+  });
+
+  return Object.fromEntries(
+    Array.from(ownersByDonor.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([muscle, owners]) => [muscle, uniqueSorted(Array.from(owners))]),
+  );
+}
+
+function measuredRedistributionBlockerSummary(input: {
+  rows: readonly MeasuredRedistributionProjectionRow[];
+  projectionDiff?: V2StrategyHypothesisProjectionDiff;
+}): MeasuredRedistributionProjection["blockerSummary"] {
+  const blockedRows = input.rows.filter(
+    (row) => row.readiness === "blocked_by_measured_regression",
+  );
+  const failedComputedGates = Object.entries(
+    input.projectionDiff?.computedNonRegressionGates ?? {},
+  )
+    .filter(([, gate]) => gate === "fail")
+    .map(([gate]) => gate);
+  const floorRegressionMuscles = uniqueSorted(
+    input.rows
+      .filter((row) => row.gates.floorPreservation === "fail" && row.muscle)
+      .map((row) => row.muscle as string),
+  );
+  const donorOffsetMuscles = uniqueSorted(
+    input.rows.flatMap((row) => row.donorOffsets.map((donor) => donor.muscle)),
+  );
+  const unknownEvidenceCount = input.rows.reduce(
+    (sum, row) =>
+      sum + Object.values(row.gates).filter((gate) => gate === "unknown").length,
+    0,
+  );
+  const netNewVolumeRegressionCount = input.rows.filter(
+    (row) => row.gates.noNetNewVolume === "fail",
+  ).length;
+  const concentrationRegressionCount = input.rows.filter(
+    (row) => row.gates.concentrationNonRegression === "fail",
+  ).length;
+  const materializerRegressionCount = input.rows.filter(
+    (row) => row.gates.materializerNonRegression === "fail",
+  ).length;
+  const acceptanceRiskCount = input.rows.filter(
+    (row) => row.gates.acceptanceRisk === "fail",
+  ).length;
+  const nextRequiredEvidence = uniqueSorted([
+    ...(input.rows.length > 0 &&
+    input.projectionDiff?.shadowProjection?.candidateProjection ===
+      "combined_strategy_shadow_planner_only_no_repair"
+      ? ["independent_or_alternate_candidate_shadow_projection"]
+      : []),
+    ...(floorRegressionMuscles.length > 0
+      ? ["alternate_donor_or_slot_owner_that_preserves_protected_floors"]
+      : []),
+    ...(concentrationRegressionCount > 0
+      ? ["candidate_projection_with_no_concentration_regression"]
+      : []),
+    ...(materializerRegressionCount > 0
+      ? ["materializer_repair_pressure_non_regression"]
+      : []),
+    ...(netNewVolumeRegressionCount > 0
+      ? ["net_new_volume_preservation"]
+      : []),
+    ...(acceptanceRiskCount > 0
+      ? ["all_measured_non_regression_gates_pass_before_behavior_trial"]
+      : []),
+    ...(unknownEvidenceCount > 0 ? ["resolve_unknown_measured_gates"] : []),
+  ]);
+
+  return {
+    status:
+      input.rows.length === 0
+        ? "not_available"
+        : blockedRows.length > 0 || failedComputedGates.length > 0
+          ? "blocked"
+          : "not_blocked",
+    projectionScope:
+      input.projectionDiff?.shadowProjection?.candidateProjection ??
+      input.projectionDiff?.projectionMode ??
+      "not_projected",
+    independentCandidateProjectionAvailable:
+      Boolean(input.projectionDiff?.shadowProjection) &&
+      input.projectionDiff?.shadowProjection?.candidateProjection !==
+        "combined_strategy_shadow_planner_only_no_repair",
+    blockedCandidateCount: blockedRows.length,
+    floorRegressionMuscles,
+    donorOffsetMuscles,
+    donorSlotOwners: mergeSlotOwners(input.rows),
+    netNewVolumeRegressionCount,
+    concentrationRegressionCount,
+    materializerRegressionCount,
+    acceptanceRiskCount,
+    unknownEvidenceCount,
+    failedComputedGates,
+    nextRequiredEvidence,
+  };
+}
+
+function countIneligibleReasons(
+  reasons: readonly AlternateCandidateDiagnostic["ineligibleDonorReasons"][number]["reason"][],
+): AlternateCandidateDiagnostic["ineligibleDonorReasons"] {
+  const counts = new Map<
+    AlternateCandidateDiagnostic["ineligibleDonorReasons"][number]["reason"],
+    number
+  >();
+  reasons.forEach((reason) => {
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  });
+
+  return Array.from(counts.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([reason, count]) => ({ reason, count }));
+}
+
+function slotOwnersByDonor(
+  donorRows: readonly V2SlotOwnedDemandAdjustmentPlan["donorDemand"][number][],
+): Record<string, string[]> {
+  return Object.fromEntries(
+    donorRows
+      .map((row) => [
+        row.muscle,
+        uniqueSorted([...row.candidateSlotOwners]),
+      ] as const)
+      .sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
+
+function buildAlternateCandidateDiagnostic(input: {
+  rows: readonly MeasuredRedistributionProjectionRow[];
+  slotOwnedPlan?: V2SlotOwnedDemandAdjustmentPlan;
+  projectionDiff?: V2StrategyHypothesisProjectionDiff;
+  blockerSummary: MeasuredRedistributionProjection["blockerSummary"];
+}): AlternateCandidateDiagnostic {
+  const donorRows = input.slotOwnedPlan?.donorDemand ?? [];
+  const currentDonorMuscles = uniqueSorted(
+    input.rows.flatMap((row) => row.donorOffsets.map((donor) => donor.muscle)),
+  );
+  const currentDonorSet = new Set(currentDonorMuscles);
+  const eligibleDonors = donorRows.filter((row) => row.eligible);
+  const alternateEligibleDonors = eligibleDonors.filter(
+    (row) => !currentDonorSet.has(row.muscle),
+  );
+  const preShadowFilter = input.projectionDiff?.preShadowCandidateFilter;
+  const preShadowIneligible = preShadowFilter?.donorEligibility.filter(
+    (row) => !row.eligible,
+  ) ?? [];
+  const slotOwnedIneligible = donorRows.filter((row) => !row.eligible);
+  const reasonByMuscle = new Map<
+    string,
+    AlternateCandidateDiagnostic["ineligibleDonorReasons"][number]["reason"]
+  >();
+
+  slotOwnedIneligible.forEach((row) => {
+    reasonByMuscle.set(row.muscle, row.eligibilityReason);
+  });
+  preShadowIneligible.forEach((row) => {
+    if (!reasonByMuscle.has(row.muscle)) {
+      reasonByMuscle.set(row.muscle, row.reason);
+    }
+  });
+
+  const excludedDonorMuscles = uniqueSorted([
+    ...(preShadowFilter?.overrideConstruction.excludedDonors ?? []),
+    ...slotOwnedIneligible.map((row) => row.muscle),
+  ]);
+  const measuredProjectionScope =
+    input.projectionDiff?.shadowProjection?.candidateProjection ??
+    input.projectionDiff?.projectionMode ??
+    "not_projected";
+  const requiredEvidence =
+    input.rows.length === 0
+      ? []
+      : uniqueSorted([
+          ...input.blockerSummary.nextRequiredEvidence,
+          ...(alternateEligibleDonors.length === 0
+            ? ["non_current_eligible_donor_or_slot_owner"]
+            : []),
+        ]);
+  const status: AlternateCandidateDiagnostic["status"] =
+    input.rows.length === 0
+      ? "not_available"
+      : alternateEligibleDonors.length > 0
+        ? "available_with_limitations"
+        : "blocked";
+
+  return {
+    status,
+    measuredProjectionScope,
+    currentDonorMuscles,
+    currentDonorSlotOwners: slotOwnersByDonor(
+      eligibleDonors.filter((row) => currentDonorSet.has(row.muscle)),
+    ),
+    alternateEligibleDonorCount: alternateEligibleDonors.length,
+    alternateEligibleDonorMuscles: uniqueSorted(
+      alternateEligibleDonors.map((row) => row.muscle),
+    ),
+    excludedDonorMuscles,
+    ineligibleDonorCount: reasonByMuscle.size,
+    ineligibleDonorReasons: countIneligibleReasons(
+      Array.from(reasonByMuscle.values()),
+    ),
+    protectedFloorRegressionMuscles: [
+      ...input.blockerSummary.floorRegressionMuscles,
+    ],
+    requiredEvidence,
+    nextSafeAction:
+      status === "available_with_limitations"
+        ? "run_independent_or_alternate_shadow_projection"
+        : status === "blocked"
+          ? "resolve_donor_pool_before_projection"
+          : "keep_diagnostic_only",
+  };
+}
+
+function buildMeasuredRedistributionProjectionRow(input: {
+  row: DownstreamBehaviorProjectionRow;
+  slotOwnedPlan?: V2SlotOwnedDemandAdjustmentPlan;
+  projectionDiff: V2StrategyHypothesisProjectionDiff;
+}): MeasuredRedistributionProjectionRow {
+  const shadowProjection = input.projectionDiff.shadowProjection;
+  const beforeDonors = coverageByMuscle(
+    shadowProjection?.before.donorMuscleCoverage,
+  );
+  const afterDonors = coverageByMuscle(
+    shadowProjection?.after.donorMuscleCoverage,
+  );
+  const beforeProtected = coverageByMuscle(
+    shadowProjection?.before.laggingMuscleCoverage,
+  );
+  const afterProtected = coverageByMuscle(
+    shadowProjection?.after.laggingMuscleCoverage,
+  );
+  const eligibleDonors =
+    input.slotOwnedPlan?.donorDemand.filter((row) => row.eligible) ?? [];
+  const donorOffsets = eligibleDonors.map((donor) => {
+    const before = beforeDonors.get(donor.muscle);
+    const after = afterDonors.get(donor.muscle);
+    return {
+      muscle: donor.muscle,
+      candidateSlotOwners: [...donor.candidateSlotOwners],
+      eligibilityReason: donor.eligibilityReason,
+      beforeSets: before?.sets,
+      afterSets: after?.sets,
+      deltaSets: numericDelta(before?.sets, after?.sets),
+      floorSets: before?.minSets ?? after?.minSets,
+      status: after?.status ?? before?.status ?? "unknown",
+    };
+  });
+  const beforeCoverage = input.row.muscle
+    ? beforeProtected.get(input.row.muscle)
+    : undefined;
+  const afterCoverage = input.row.muscle
+    ? afterProtected.get(input.row.muscle)
+    : undefined;
+  const beforeTotalSets = sumSlotSets(
+    input.projectionDiff.projectedDeltas.sessionSize.beforeTotalSetsBySlot,
+  );
+  const afterTotalSets = sumSlotSets(
+    input.projectionDiff.projectedDeltas.sessionSize.afterTotalSetsBySlot,
+  );
+  const gates: MeasuredRedistributionProjectionRow["gates"] = {
+    downstreamContextAvailable:
+      input.row.gates.weeklyCurveAvailable === "pass" &&
+      input.row.gates.slotAllocationAvailable === "pass" &&
+      input.row.gates.setDistributionContextAvailable === "pass"
+        ? "pass"
+        : "unknown",
+    measuredShadowProjection: shadowProjection ? "pass" : "unknown",
+    donorOffsetMeasured:
+      donorOffsets.length > 0 &&
+      donorOffsets.every((row) => typeof row.deltaSets === "number")
+        ? "pass"
+        : "unknown",
+    noNetNewVolume:
+      input.projectionDiff.computedNonRegressionGates.noSessionSizeRegression,
+    floorPreservation: floorGate({
+      before: beforeCoverage,
+      after: afterCoverage,
+    }),
+    concentrationNonRegression:
+      input.projectionDiff.computedNonRegressionGates.noConcentrationRegression,
+    materializerNonRegression: materializerGate(
+      input.projectionDiff.computedNonRegressionGates,
+    ),
+    acceptanceRisk:
+      input.projectionDiff.readiness === "ready_for_bounded_behavior_trial"
+        ? "pass"
+        : "fail",
+  };
+  const beforeSlots =
+    input.projectionDiff.projectedDeltas.sessionSize.beforeTotalSetsBySlot;
+  const afterSlots =
+    input.projectionDiff.projectedDeltas.sessionSize.afterTotalSetsBySlot;
+
+  return {
+    zone: input.row.zone,
+    scope: input.row.scope,
+    ...(input.row.muscle ? { muscle: input.row.muscle } : {}),
+    owner: input.row.owner,
+    action: input.row.action,
+    trialStatus: input.row.trialStatus,
+    candidateSlotOwners: [...input.row.candidateSlotOwners],
+    donorOffsets,
+    protectedCoverage: {
+      beforeSets: beforeCoverage?.sets,
+      afterSets: afterCoverage?.sets,
+      deltaSets: numericDelta(beforeCoverage?.sets, afterCoverage?.sets),
+      floorSets: beforeCoverage?.minSets ?? afterCoverage?.minSets,
+      beforeStatus: beforeCoverage?.status ?? "unknown",
+      afterStatus: afterCoverage?.status ?? "unknown",
+    },
+    impact: {
+      weeklySetDelta:
+        numericDelta(beforeTotalSets ?? undefined, afterTotalSets ?? undefined) ??
+        0,
+      slotSetDeltaBySlot:
+        beforeSlots && afterSlots
+          ? Object.fromEntries(
+              Object.keys({ ...beforeSlots, ...afterSlots }).map((slotId) => [
+                slotId,
+                numericDelta(beforeSlots[slotId] ?? 0, afterSlots[slotId] ?? 0) ??
+                  0,
+              ]),
+            )
+          : {},
+      materializerRepairDelta:
+        input.projectionDiff.projectedDeltas.repairPressure
+          .materialRepairDelta,
+      majorRepairDelta:
+        input.projectionDiff.projectedDeltas.repairPressure.majorRepairDelta,
+      suspiciousRepairDelta:
+        input.projectionDiff.projectedDeltas.repairPressure
+          .suspiciousRepairDelta,
+      concentrationDelta: numericDelta(
+        input.projectionDiff.projectedDeltas.concentration.before?.count,
+        input.projectionDiff.projectedDeltas.concentration.after?.count,
+      ),
+    },
+    gates,
+    readiness: measuredRedistributionReadiness(gates),
+    blockingReasons: measuredRedistributionBlockingReasons(gates),
+    limitations: [
+      "measured_redistribution_projection_is_read_only_and_non_binding",
+      "uses_existing_strategy_shadow_projection_without_mutating_demand_or_materializer",
+      "does_not_feed_weekly_curve_slot_allocation_set_distribution_seed_runtime_or_acceptance",
+    ],
+  };
+}
+
+function buildMeasuredRedistributionProjection(input: {
+  downstreamBehaviorProjection: DownstreamBehaviorProjection;
+  slotOwnedPlan?: V2SlotOwnedDemandAdjustmentPlan;
+  strategyProjectionDiff?: V2StrategyHypothesisProjectionDiff;
+}): MeasuredRedistributionProjection {
+  const projectionDiff = input.strategyProjectionDiff;
+  const rows =
+    projectionDiff?.projectionMode === "shadow_projection"
+      ? input.downstreamBehaviorProjection.rows.map((row) =>
+          buildMeasuredRedistributionProjectionRow({
+            row,
+            slotOwnedPlan: input.slotOwnedPlan,
+            projectionDiff,
+          }),
+        )
+      : [];
+  const rowGateCounts = gateCounts(
+    Object.fromEntries(
+      rows.flatMap((row, rowIndex) =>
+        Object.entries(row.gates).map(([key, gate]) => [
+          `${rowIndex}:${key}`,
+          gate,
+        ]),
+      ),
+    ),
+  );
+  const computedGateCounts = rows.length > 0 && projectionDiff
+    ? gateCounts(projectionDiff.computedNonRegressionGates)
+    : { pass: 0, fail: 0, unknown: 0 };
+  const blockedByRegressionCount = rows.filter(
+    (row) => row.readiness === "blocked_by_measured_regression",
+  ).length;
+  const readyForBehaviorProjectionTrialCount = rows.filter(
+    (row) => row.readiness === "ready_for_behavior_projection_trial",
+  ).length;
+  const beforeTotalSets = sumSlotSets(
+    projectionDiff?.projectedDeltas.sessionSize.beforeTotalSetsBySlot,
+  );
+  const afterTotalSets = sumSlotSets(
+    projectionDiff?.projectedDeltas.sessionSize.afterTotalSetsBySlot,
+  );
+  const blockerSummary = measuredRedistributionBlockerSummary({
+    rows,
+    projectionDiff,
+  });
+  const alternateCandidateDiagnostic = buildAlternateCandidateDiagnostic({
+    rows,
+    slotOwnedPlan: input.slotOwnedPlan,
+    projectionDiff,
+    blockerSummary,
+  });
+
+  return {
+    version: 1,
+    source: "v2_strategy_to_demand_measured_redistribution_projection",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: false,
+    projectionMode:
+      projectionDiff?.projectionMode === "shadow_projection"
+        ? "measured_shadow_projection"
+        : "not_projected",
+    status:
+      rows.length === 0
+        ? "not_available"
+        : blockedByRegressionCount > 0 || computedGateCounts.fail > 0
+          ? "blocked"
+          : rowGateCounts.unknown > 0 || computedGateCounts.unknown > 0
+            ? "available_with_limitations"
+            : "available",
+    rows,
+    summary: {
+      candidateCount: input.downstreamBehaviorProjection.rows.length,
+      measuredCandidateCount: rows.length,
+      readyForBehaviorProjectionTrialCount,
+      blockedByRegressionCount,
+      passGateCount: rowGateCounts.pass + computedGateCounts.pass,
+      failGateCount: rowGateCounts.fail + computedGateCounts.fail,
+      unknownGateCount: rowGateCounts.unknown + computedGateCounts.unknown,
+      totalNetNewVolumeDelta:
+        numericDelta(beforeTotalSets ?? undefined, afterTotalSets ?? undefined) ??
+        0,
+      materializerRepairDelta:
+        projectionDiff?.projectedDeltas.repairPressure.materialRepairDelta ?? 0,
+      majorRepairDelta:
+        projectionDiff?.projectedDeltas.repairPressure.majorRepairDelta ?? 0,
+      suspiciousRepairDelta:
+        projectionDiff?.projectedDeltas.repairPressure.suspiciousRepairDelta ?? 0,
+      concentrationDelta:
+        numericDelta(
+          projectionDiff?.projectedDeltas.concentration.before?.count,
+          projectionDiff?.projectedDeltas.concentration.after?.count,
+        ) ?? 0,
+    },
+    blockerSummary,
+    alternateCandidateDiagnostic,
+    nextSafeAction:
+      rows.length === 0
+        ? input.downstreamBehaviorProjection.nextSafeAction ===
+          "add_measured_redistribution_projection"
+          ? "add_measured_redistribution_projection"
+          : "keep_diagnostic_only"
+        : blockedByRegressionCount > 0 || computedGateCounts.fail > 0
+          ? "resolve_measured_redistribution_regressions"
+          : readyForBehaviorProjectionTrialCount === rows.length
+            ? "design_behavior_projection_trial"
+            : "keep_diagnostic_only",
+    limitations: [
+      "measured_redistribution_projection_is_diagnostic_only",
+      "repaired_projection_and_old_prescribed_shape_are_excluded_as_targets",
+      "no_demand_weekly_curve_slot_allocation_set_distribution_materializer_seed_runtime_or_acceptance_consumption",
+      ...(projectionDiff?.projectionMode === "shadow_projection"
+        ? []
+        : ["strategy_shadow_projection_not_available"]),
+    ],
+  };
+}
+
 function buildBoundedBehaviorTrial(input: {
   rows: ProjectionRow[];
   slotOwnedPlan?: V2SlotOwnedDemandAdjustmentPlan;
   weeklyDemandCurve?: V2WeeklyDemandCurve;
   slotDemandAllocationByWeek?: V2SlotDemandAllocationByWeek;
   v2SetDistributionIntent?: V2SetDistributionIntent;
+  strategyProjectionDiff?: V2StrategyHypothesisProjectionDiff;
 }): BoundedTrial {
   const redistributionContext = buildRedistributionContext(input.slotOwnedPlan);
   const trialRows = input.rows.map((row) =>
@@ -712,6 +1324,11 @@ function buildBoundedBehaviorTrial(input: {
     slotDemandAllocationByWeek: input.slotDemandAllocationByWeek,
     v2SetDistributionIntent: input.v2SetDistributionIntent,
   });
+  const measuredRedistributionProjection = buildMeasuredRedistributionProjection({
+    downstreamBehaviorProjection,
+    slotOwnedPlan: input.slotOwnedPlan,
+    strategyProjectionDiff: input.strategyProjectionDiff,
+  });
 
   return {
     version: 1,
@@ -728,6 +1345,7 @@ function buildBoundedBehaviorTrial(input: {
           : "blocked",
     redistributionContext,
     downstreamBehaviorProjection,
+    measuredRedistributionProjection,
     rows: trialRows,
     summary: {
       rowCount: trialRows.length,
@@ -748,7 +1366,12 @@ function buildBoundedBehaviorTrial(input: {
           : "keep_diagnostic_only"
         : redistributionContextReadyCount < candidateCount
           ? "add_slot_owned_redistribution_context"
-          : downstreamBehaviorProjection.nextSafeAction,
+          : downstreamBehaviorProjection.nextSafeAction ===
+              "add_measured_redistribution_projection" &&
+              measuredRedistributionProjection.nextSafeAction !==
+                "add_measured_redistribution_projection"
+            ? measuredRedistributionProjection.nextSafeAction
+            : downstreamBehaviorProjection.nextSafeAction,
     limitations: [
       "bounded_behavior_trial_is_diagnostic_only",
       "row_level_deltas_do_not_feed_mesocycle_demand",
@@ -781,7 +1404,10 @@ function resolveProjectionNextSafeAction(input: {
     input.boundedBehaviorNextSafeAction ===
       "add_set_distribution_projection" ||
     input.boundedBehaviorNextSafeAction ===
-      "add_measured_redistribution_projection"
+      "add_measured_redistribution_projection" ||
+    input.boundedBehaviorNextSafeAction ===
+      "resolve_measured_redistribution_regressions" ||
+    input.boundedBehaviorNextSafeAction === "design_behavior_projection_trial"
   ) {
     return input.boundedBehaviorNextSafeAction;
   }
@@ -827,6 +1453,7 @@ export function buildV2StrategyToDemandProjection(
     weeklyDemandCurve: input.weeklyDemandCurve,
     slotDemandAllocationByWeek: input.slotDemandAllocationByWeek,
     v2SetDistributionIntent: input.v2SetDistributionIntent,
+    strategyProjectionDiff: input.strategyProjectionDiff,
   });
 
   return {

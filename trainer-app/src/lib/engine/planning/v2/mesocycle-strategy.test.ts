@@ -3497,5 +3497,128 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     );
     expect(projection.nextSafeAction).toBe("add_measured_redistribution_projection");
     expect(projection.consumedByDemandOrMaterializer).toBe(false);
+
+    const strategyProjectionDiff = buildV2MesocycleStrategyDiagnostic({
+      strategyInput: buildStrategyInput(),
+      strategyShadowProjection: buildShadowProjectionEvidence(),
+    }).strategyHypothesisPromotionDiff.projectionDiff;
+    const measuredProjection = buildV2StrategyToDemandProjection({
+      strategyToDemandDiff: diff,
+      mesocycleDemand,
+      slotOwnedDemandAdjustmentPlan: buildFeasibleSlotOwnedPlan("Calves"),
+      weeklyDemandCurve,
+      slotDemandAllocationByWeek,
+      v2SetDistributionIntent,
+      strategyProjectionDiff,
+    });
+
+    expect(
+      measuredProjection.boundedBehaviorTrial.measuredRedistributionProjection,
+    ).toMatchObject({
+      version: 1,
+      source: "v2_strategy_to_demand_measured_redistribution_projection",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      projectionMode: "measured_shadow_projection",
+      summary: {
+        candidateCount: 1,
+        measuredCandidateCount: 1,
+        totalNetNewVolumeDelta: 0,
+        materializerRepairDelta: -1,
+        majorRepairDelta: 0,
+        suspiciousRepairDelta: 0,
+        concentrationDelta: -1,
+      },
+    });
+    expect(
+      measuredProjection.boundedBehaviorTrial.measuredRedistributionProjection
+        .rows[0],
+    ).toMatchObject({
+      muscle: "Calves",
+      candidateSlotOwners: ["lower_a", "lower_b"],
+      donorOffsets: [
+        expect.objectContaining({
+          muscle: "Glutes",
+          beforeSets: 12,
+          afterSets: 11,
+          deltaSets: -1,
+          floorSets: 4,
+        }),
+      ],
+      protectedCoverage: {
+        beforeSets: 4,
+        afterSets: 4,
+        deltaSets: 0,
+        floorSets: 4,
+      },
+      impact: {
+        weeklySetDelta: 0,
+        materializerRepairDelta: -1,
+        concentrationDelta: -1,
+      },
+      gates: expect.objectContaining({
+        downstreamContextAvailable: "pass",
+        measuredShadowProjection: "pass",
+        donorOffsetMeasured: "pass",
+        noNetNewVolume: "fail",
+        floorPreservation: "pass",
+        materializerNonRegression: "unknown",
+      }),
+      blockingReasons: expect.arrayContaining([
+        "net_new_volume_regression",
+        "projection_diff_not_ready_for_behavior_trial",
+        "needs_measured_materializerNonRegression",
+      ]),
+    });
+    expect(
+      measuredProjection.boundedBehaviorTrial.measuredRedistributionProjection
+        .blockerSummary,
+    ).toMatchObject({
+      status: "blocked",
+      projectionScope: "combined_strategy_shadow_planner_only_no_repair",
+      independentCandidateProjectionAvailable: false,
+      blockedCandidateCount: 1,
+      floorRegressionMuscles: [],
+      donorOffsetMuscles: ["Glutes"],
+      donorSlotOwners: {
+        Glutes: ["lower_a", "lower_b"],
+      },
+      netNewVolumeRegressionCount: 1,
+      acceptanceRiskCount: 1,
+      nextRequiredEvidence: expect.arrayContaining([
+        "all_measured_non_regression_gates_pass_before_behavior_trial",
+        "independent_or_alternate_candidate_shadow_projection",
+        "net_new_volume_preservation",
+        "resolve_unknown_measured_gates",
+      ]),
+    });
+    expect(
+      measuredProjection.boundedBehaviorTrial.measuredRedistributionProjection
+        .alternateCandidateDiagnostic,
+    ).toMatchObject({
+      status: "blocked",
+      measuredProjectionScope: "combined_strategy_shadow_planner_only_no_repair",
+      currentDonorMuscles: ["Glutes"],
+      currentDonorSlotOwners: {
+        Glutes: ["lower_a", "lower_b"],
+      },
+      alternateEligibleDonorCount: 0,
+      alternateEligibleDonorMuscles: [],
+      excludedDonorMuscles: [],
+      ineligibleDonorCount: 0,
+      protectedFloorRegressionMuscles: [],
+      requiredEvidence: expect.arrayContaining([
+        "independent_or_alternate_candidate_shadow_projection",
+        "net_new_volume_preservation",
+        "non_current_eligible_donor_or_slot_owner",
+      ]),
+      nextSafeAction: "resolve_donor_pool_before_projection",
+    });
+    expect(
+      measuredProjection.boundedBehaviorTrial.measuredRedistributionProjection
+        .nextSafeAction,
+    ).toBe("resolve_measured_redistribution_regressions");
+    expect(measuredProjection.consumedByDemandOrMaterializer).toBe(false);
   });
 });

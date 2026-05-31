@@ -1118,6 +1118,12 @@ function compactPlannerOnlyNoRepair(
   const v2StrategyToDemandDownstreamProjection = asRecord(
     v2StrategyToDemandBehaviorTrial?.downstreamBehaviorProjection,
   );
+  const v2StrategyToDemandMeasuredRedistribution = asRecord(
+    v2StrategyToDemandBehaviorTrial?.measuredRedistributionProjection,
+  );
+  const v2StrategyToDemandMeasuredRedistributionRows = asRecordArray(
+    v2StrategyToDemandMeasuredRedistribution?.rows,
+  );
   const v2StrategyRecommendation = asRecord(
     v2MesocycleStrategyDiagnostic?.strategyRecommendation,
   );
@@ -1530,6 +1536,88 @@ function compactPlannerOnlyNoRepair(
                                       : "keep_diagnostic_only",
                                   limitationCount: asStringArray(
                                     v2StrategyToDemandDownstreamProjection
+                                      .limitations,
+                                  ).length,
+                                }
+                              : undefined,
+                          measuredRedistributionProjection:
+                            v2StrategyToDemandMeasuredRedistribution
+                              ? {
+                                  status:
+                                    typeof v2StrategyToDemandMeasuredRedistribution
+                                      .status === "string"
+                                      ? v2StrategyToDemandMeasuredRedistribution
+                                          .status
+                                      : "not_available",
+                                  projectionMode:
+                                    typeof v2StrategyToDemandMeasuredRedistribution
+                                      .projectionMode === "string"
+                                      ? v2StrategyToDemandMeasuredRedistribution
+                                          .projectionMode
+                                      : "not_projected",
+                                  summary:
+                                    asRecord(
+                                      v2StrategyToDemandMeasuredRedistribution
+                                        .summary,
+                                    ) ?? {},
+                                  blockerSummary:
+                                    asRecord(
+                                      v2StrategyToDemandMeasuredRedistribution
+                                        .blockerSummary,
+                                    ) ?? {},
+                                  alternateCandidateDiagnostic:
+                                    asRecord(
+                                      v2StrategyToDemandMeasuredRedistribution
+                                        .alternateCandidateDiagnostic,
+                                    ) ?? {},
+                                  rows:
+                                    v2StrategyToDemandMeasuredRedistributionRows.map(
+                                      (row) => ({
+                                        zone: row.zone,
+                                        scope: row.scope,
+                                        muscle: row.muscle,
+                                        owner: row.owner,
+                                        action: row.action,
+                                        trialStatus: row.trialStatus,
+                                        readiness: row.readiness,
+                                        candidateSlotOwners: asStringArray(
+                                          row.candidateSlotOwners,
+                                        ),
+                                        donorOffsets: asRecordArray(
+                                          row.donorOffsets,
+                                        ).map((donor) => ({
+                                          muscle: donor.muscle,
+                                          candidateSlotOwners: asStringArray(
+                                            donor.candidateSlotOwners,
+                                          ),
+                                          eligibilityReason:
+                                            donor.eligibilityReason,
+                                          beforeSets: donor.beforeSets,
+                                          afterSets: donor.afterSets,
+                                          deltaSets: donor.deltaSets,
+                                          floorSets: donor.floorSets,
+                                          status: donor.status,
+                                        })),
+                                        protectedCoverage:
+                                          asRecord(row.protectedCoverage) ?? {},
+                                        impact: asRecord(row.impact) ?? {},
+                                        gates: asRecord(row.gates) ?? {},
+                                        blockingReasons: asStringArray(
+                                          row.blockingReasons,
+                                        ),
+                                        limitationCount: asStringArray(
+                                          row.limitations,
+                                        ).length,
+                                      }),
+                                    ),
+                                  nextSafeAction:
+                                    typeof v2StrategyToDemandMeasuredRedistribution
+                                      .nextSafeAction === "string"
+                                      ? v2StrategyToDemandMeasuredRedistribution
+                                          .nextSafeAction
+                                      : "keep_diagnostic_only",
+                                  limitationCount: asStringArray(
+                                    v2StrategyToDemandMeasuredRedistribution
                                       .limitations,
                                   ).length,
                                 }

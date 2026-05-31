@@ -2996,6 +2996,100 @@ describe("handoff draft persistence", () => {
     ).rejects.toThrow("MESOCYCLE_HANDOFF_ACCEPTED_SEED_DRAFT_MISMATCH");
   });
 
+  it("fails closed when an AWAITING_HANDOFF retry finds an existing successor that does not match the stored V2 acceptedSeedDraft", async () => {
+    const storedV2Draft = buildStoredV2Draft();
+    const legacySuccessorSeed = buildMesocycleSlotPlanSeed({
+      slotSequence: buildMesocycleSlotSequence(buildRecommendedDraft().structure.slots),
+      slotPlans: makeProjectedSlotPlans() as unknown as ProjectedSuccessorSlotPlan[],
+      source: "handoff_slot_plan_projection",
+    });
+    const mesocycleUpdate = vi.fn();
+    const tx = {
+      mesocycle: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({
+            id: "meso-1",
+            state: "AWAITING_HANDOFF",
+            macroCycleId: "macro-1",
+            mesoNumber: 1,
+            nextSeedDraftJson: storedV2Draft,
+          })
+          .mockResolvedValueOnce({
+            id: "meso-2",
+            state: "ACTIVE_ACCUMULATION",
+            isActive: true,
+            slotPlanSeedJson: legacySuccessorSeed,
+          }),
+        update: mesocycleUpdate,
+      },
+    };
+
+    await expect(
+      acceptPreparedMesocycleHandoffWithProvenanceInTransaction(tx as never, {
+        userId: "user-1",
+        source: { id: "meso-1" },
+        seedPersistenceProvenance: {
+          source: "v2_materialized_seed",
+          dbWriteOccurred: false,
+        },
+      } as never),
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_ACCEPTED_SEED_DRAFT_MISMATCH");
+    expect(mesocycleUpdate).not.toHaveBeenCalled();
+  });
+
+  it("returns an existing AWAITING_HANDOFF successor when it matches the stored V2 acceptedSeedDraft", async () => {
+    const storedV2Draft = buildStoredV2Draft();
+    const matchingSuccessorSeed =
+      storedV2Draft.acceptedSeedDraft?.slotPlanSeedJson;
+    const existingSuccessor = {
+      id: "meso-2",
+      state: "ACTIVE_ACCUMULATION",
+      mesoNumber: 2,
+      isActive: true,
+      slotPlanSeedJson: matchingSuccessorSeed,
+    };
+    const mesocycleUpdate = vi.fn();
+    const tx = {
+      mesocycle: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({
+            id: "meso-1",
+            state: "AWAITING_HANDOFF",
+            macroCycleId: "macro-1",
+            mesoNumber: 1,
+            nextSeedDraftJson: storedV2Draft,
+          })
+          .mockResolvedValueOnce(existingSuccessor),
+        update: mesocycleUpdate,
+      },
+    };
+
+    await expect(
+      acceptPreparedMesocycleHandoffWithProvenanceInTransaction(tx as never, {
+        userId: "user-1",
+        source: { id: "meso-1" },
+        seedPersistenceProvenance: {
+          source: "v2_materialized_seed",
+          dbWriteOccurred: false,
+        },
+      } as never),
+    ).resolves.toMatchObject({
+      mesocycle: existingSuccessor,
+      seedPersistenceProvenance: {
+        source: "v2_materialized_seed",
+        dbWriteOccurred: false,
+      },
+    });
+    expect(mesocycleUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "meso-1" },
+        data: { state: "COMPLETED", isActive: false },
+      }),
+    );
+  });
+
   it("fails closed when a stored V2 acceptedSeedDraft is malformed", async () => {
     const malformedStoredDraft = {
       ...buildRecommendedDraft(),

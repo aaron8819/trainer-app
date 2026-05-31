@@ -1757,6 +1757,10 @@ export async function acceptPreparedMesocycleHandoffWithProvenanceInTransaction(
     if (!existingSuccessor.isActive) {
       throw new Error("MESOCYCLE_HANDOFF_SUCCESSOR_CONFLICT");
     }
+    assertExistingSuccessorMatchesV2AcceptedSeedDraft({
+      nextSeedDraftJson: current.nextSeedDraftJson,
+      successorSlotPlanSeedJson: existingSuccessor.slotPlanSeedJson,
+    });
     await tx.mesocycle.update({
       where: { id: current.id },
       data: {

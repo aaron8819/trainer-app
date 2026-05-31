@@ -1125,7 +1125,7 @@ export function buildWorkoutAuditHelpText(): string {
     "Options:",
     "  -h, --help                         Print this help and exit without preflight, DB access, audit execution, or artifact writes.",
     "  --env-file <path>                  Load environment variables from a specific file.",
-    "  --mode <mode>                      Audit mode: future-week, pre-session-readiness, projected-week-volume, current-week-audit, historical-week, weekly-retro, mesocycle-explain, deload, progression-anchor, active-mesocycle-slot-reseed, replace-empty-mesocycle-with-v2, v2-accepted-seed-prepare-compare, next-mesocycle-handoff-dry-run, next-mesocycle-acceptance-gate, next-mesocycle-post-accept-verification.",
+    "  --mode <mode>                      Audit mode: future-week, pre-session-readiness, projected-week-volume, current-week-audit, historical-week, weekly-retro, mesocycle-explain, deload, progression-anchor, active-mesocycle-slot-reseed, replace-empty-mesocycle-with-v2, replace-empty-successor-from-accepted-seed-draft, v2-accepted-seed-prepare-compare, next-mesocycle-handoff-dry-run, next-mesocycle-acceptance-gate, next-mesocycle-post-accept-verification.",
     "  --owner <email>                    Resolve the audit owner by email.",
     "  --user-id <id>                     Resolve the audit owner by user id.",
     "  --intent <intent>                  Session intent for generated-session modes.",
@@ -2930,6 +2930,33 @@ export function buildReplaceEmptyMesocycleWithV2Summary(input: {
   ];
 }
 
+export function buildAcceptedSeedDraftSuccessorRecoverySummary(input: {
+  artifact: Pick<WorkoutAuditArtifact, "replaceEmptySuccessorFromAcceptedSeedDraft">;
+  outputPath: string;
+}): string[] | null {
+  const payload = input.artifact.replaceEmptySuccessorFromAcceptedSeedDraft;
+  if (!payload) {
+    return null;
+  }
+
+  const blockers = payload.guardSummary.blockers.join(",") || "none";
+  const changedSlots = payload.seedComparison.changedSlotIds.join(", ") || "none";
+  const oldUpper = payload.seedComparison.anchors.upperA.old;
+  const newUpper = payload.seedComparison.anchors.upperA.candidate;
+  const oldLower = payload.seedComparison.anchors.lowerA.old;
+  const newLower = payload.seedComparison.anchors.lowerA.candidate;
+
+  return [
+    `[workout-audit:accepted-seed-draft-recovery] source=${payload.sourceMesocycle.id} successor=${payload.targetSuccessor.id} verdict=${payload.verdict} dry_run=${formatBooleanFlag(payload.dryRun)} write_eligible=${formatBooleanFlag(payload.write.eligible)}`,
+    `[workout-audit:accepted-seed-draft-recovery] replacement_source=${payload.recoverySource.replacementSource} persisted_draft=${formatBooleanFlag(payload.recoverySource.persistedAcceptedSeedDraft)} fresh_v2_generated=${formatBooleanFlag(payload.recoverySource.freshV2Generated)}`,
+    `[workout-audit:accepted-seed-draft-recovery] blockers=${blockers} target_empty=${formatBooleanFlag(payload.guardSummary.targetEmpty)} slot_order_compatible=${formatBooleanFlag(payload.guardSummary.slotOrderCompatible)} current_seed_differs=${formatBooleanFlag(payload.guardSummary.currentSeedDiffers)}`,
+    `[workout-audit:accepted-seed-draft-recovery] seed_source=${payload.seedComparison.currentSource ?? "missing"}->${payload.seedComparison.candidateSource ?? "missing"} changed_slots=${changedSlots}`,
+    `[workout-audit:accepted-seed-draft-recovery] upper_a=${oldUpper?.exerciseName ?? "missing"}:${formatAuditValue(oldUpper?.setCount)}->${newUpper?.exerciseName ?? "missing"}:${formatAuditValue(newUpper?.setCount)} lower_a=${oldLower?.exerciseName ?? "missing"}:${formatAuditValue(oldLower?.setCount)}->${newLower?.exerciseName ?? "missing"}:${formatAuditValue(newLower?.setCount)}`,
+    `[workout-audit:accepted-seed-draft-recovery] safety db_write=${formatBooleanFlag(payload.safety.liveDbMutated)} runtime_replay_changed=${formatBooleanFlag(payload.safety.runtimeReplayChanged)} workouts_logs_sessions_created=${formatBooleanFlag(payload.safety.workoutsLogsSessionsCreated)} transaction=${payload.write.transactionStatus}`,
+    `[workout-audit:accepted-seed-draft-recovery] artifact=${input.outputPath}`,
+  ];
+}
+
 export function buildV2AcceptedSeedPrepareCompareSummary(input: {
   artifact: Pick<WorkoutAuditArtifact, "v2AcceptedSeedPrepareCompare">;
   outputPath: string;
@@ -4428,8 +4455,11 @@ export async function main(input?: {
   let shouldAcceptSlotPlanUpgrade!: boolean;
   let shouldWriteEmptyMesocycleV2Replacement!: boolean;
   let shouldConfirmEmptyMesocycleV2Replacement!: boolean;
+  let shouldWriteAcceptedSeedDraftRecovery!: boolean;
+  let shouldConfirmAcceptedSeedDraftRecovery!: boolean;
   let shouldDryRunOnly!: boolean;
   let hasExplicitEmptyMesocycleV2ReplacementFlag!: boolean;
+  let hasExplicitAcceptedSeedDraftRecoveryFlag!: boolean;
   let shouldRunPlannerOnlyDryRun!: boolean;
   let shouldRunPlannerOnlyNoRepair!: boolean;
   let shouldWriteV2DebugArtifact!: boolean;
@@ -4449,12 +4479,15 @@ export async function main(input?: {
     shouldPrintTimingReadout = shouldPrintAuditTimingReadout(args);
     shouldApplyBoundedReseed = args["apply-bounded-reseed"] === true;
     shouldAcceptSlotPlanUpgrade = args["accept-slot-plan-upgrade"] === true;
-    shouldWriteEmptyMesocycleV2Replacement = args.write === true;
     shouldConfirmEmptyMesocycleV2Replacement =
       args["confirm-empty-mesocycle-replacement"] === true;
+    shouldConfirmAcceptedSeedDraftRecovery =
+      args["confirm-accepted-seed-draft-successor-recovery"] === true;
     shouldDryRunOnly = args["dry-run"] === true;
     hasExplicitEmptyMesocycleV2ReplacementFlag =
       args["replace-empty-active-mesocycle-with-v2"] === true;
+    hasExplicitAcceptedSeedDraftRecoveryFlag =
+      args["replace-empty-successor-from-accepted-seed-draft"] === true;
     shouldRunPlannerOnlyDryRun = args["planner-only-dry-run"] === true;
     shouldRunPlannerOnlyNoRepair = args["planner-only-no-repair"] === true;
     shouldWriteV2DebugArtifact = args["v2-debug-artifact"] === true;
@@ -4463,6 +4496,11 @@ export async function main(input?: {
     assertNoArtifactWriteCompatibility(args);
     requestedMode =
       (args.mode as WorkoutAuditRequest["mode"] | undefined) ?? "future-week";
+    shouldWriteEmptyMesocycleV2Replacement =
+      requestedMode === "replace-empty-mesocycle-with-v2" && args.write === true;
+    shouldWriteAcceptedSeedDraftRecovery =
+      requestedMode === "replace-empty-successor-from-accepted-seed-draft" &&
+      args.write === true;
     if (shouldRunPlannerOnlyDryRun && !shouldCompareRepaired) {
       throw new Error("--planner-only-dry-run currently requires --compare-repaired");
     }
@@ -4503,6 +4541,60 @@ export async function main(input?: {
       throw new Error(
         "empty mesocycle V2 replacement flags require --mode replace-empty-mesocycle-with-v2"
       );
+    }
+    if (requestedMode === "replace-empty-successor-from-accepted-seed-draft") {
+      if (!hasExplicitAcceptedSeedDraftRecoveryFlag) {
+        throw new Error(
+          "--replace-empty-successor-from-accepted-seed-draft is required for --mode replace-empty-successor-from-accepted-seed-draft"
+        );
+      }
+      if (typeof args.owner !== "string" || args.owner.trim().length === 0) {
+        throw new Error(
+          "replace-empty-successor-from-accepted-seed-draft requires explicit --owner",
+        );
+      }
+      if (
+        typeof args["source-mesocycle-id"] !== "string" ||
+        args["source-mesocycle-id"].trim().length === 0
+      ) {
+        throw new Error(
+          "replace-empty-successor-from-accepted-seed-draft requires explicit --source-mesocycle-id",
+        );
+      }
+      if (
+        typeof args["mesocycle-id"] !== "string" ||
+        args["mesocycle-id"].trim().length === 0
+      ) {
+        throw new Error(
+          "replace-empty-successor-from-accepted-seed-draft requires explicit --mesocycle-id",
+        );
+      }
+      if (shouldDryRunOnly && shouldWriteAcceptedSeedDraftRecovery) {
+        throw new Error("Use only one accepted-seed-draft recovery execution flag: --dry-run or --write");
+      }
+      if (
+        shouldWriteAcceptedSeedDraftRecovery &&
+        !shouldConfirmAcceptedSeedDraftRecovery
+      ) {
+        throw new Error(
+          "--write requires --confirm-accepted-seed-draft-successor-recovery for replace-empty-successor-from-accepted-seed-draft"
+        );
+      }
+    } else if (
+      shouldWriteAcceptedSeedDraftRecovery ||
+      shouldConfirmAcceptedSeedDraftRecovery ||
+      hasExplicitAcceptedSeedDraftRecoveryFlag
+    ) {
+      throw new Error(
+        "accepted-seed-draft successor recovery flags require --mode replace-empty-successor-from-accepted-seed-draft"
+      );
+    }
+    if (
+      args.write === true &&
+      requestedMode !== "replace-empty-mesocycle-with-v2" &&
+      requestedMode !== "replace-empty-successor-from-accepted-seed-draft"
+    ) {
+      throw new Error("--write is only supported by explicit recovery modes");
     }
     env = loadAuditEnv(typeof args["env-file"] === "string" ? args["env-file"] : undefined);
     normalizedIntent = normalizeAuditIntentArg(
@@ -4669,6 +4761,8 @@ export async function main(input?: {
       ? `week=${run.activeMesocycleSlotReseed.activeMesocycle.week} verdict=${run.activeMesocycleSlotReseed.recommendation.verdict}`
       : run.replaceEmptyMesocycleWithV2
         ? `mesocycle=${run.replaceEmptyMesocycleWithV2.targetMesocycleId} safety=${run.replaceEmptyMesocycleWithV2.candidateSafety.allowed ? "allowed" : "blocked"} v2=${run.replaceEmptyMesocycleWithV2.v2Preparation.status}`
+      : run.replaceEmptySuccessorFromAcceptedSeedDraft
+        ? `source=${run.replaceEmptySuccessorFromAcceptedSeedDraft.sourceMesocycle.id} successor=${run.replaceEmptySuccessorFromAcceptedSeedDraft.targetSuccessor.id} verdict=${run.replaceEmptySuccessorFromAcceptedSeedDraft.verdict}`
       : run.v2AcceptedSeedPrepareCompare
         ? `handoff_candidate=${run.v2AcceptedSeedPrepareCompare.handoffCandidate.found ? "yes" : "no"} compare_status=${run.v2AcceptedSeedPrepareCompare.compareStatus}`
       : run.nextMesocycleHandoffDryRun
@@ -4807,6 +4901,16 @@ export async function main(input?: {
       console.log(line);
     }
   }
+  const acceptedSeedDraftRecoverySummary =
+    buildAcceptedSeedDraftSuccessorRecoverySummary({
+      artifact,
+      outputPath: outputPathForSummary,
+    });
+  if (acceptedSeedDraftRecoverySummary) {
+    for (const line of acceptedSeedDraftRecoverySummary) {
+      console.log(line);
+    }
+  }
   const v2AcceptedSeedPrepareCompareSummary =
     buildV2AcceptedSeedPrepareCompareSummary({
       artifact,
@@ -4866,6 +4970,31 @@ export async function main(input?: {
   }
   if (replaceEmptyMesocycleWithV2WriteSummary) {
     for (const line of replaceEmptyMesocycleWithV2WriteSummary) {
+      console.log(line);
+    }
+  }
+  let acceptedSeedDraftRecoveryWriteSummary: string[] | null = null;
+  if (shouldWriteAcceptedSeedDraftRecovery) {
+    const { replaceEmptySuccessorFromAcceptedSeedDraft } = await import(
+      "@/lib/api/replace-empty-successor-from-accepted-seed-draft"
+    );
+    const writeResult = await replaceEmptySuccessorFromAcceptedSeedDraft({
+      userId: context.userId,
+      ownerEmail: context.ownerEmail ?? "",
+      sourceMesocycleId: request.sourceMesocycleId!,
+      successorMesocycleId: request.mesocycleId!,
+      replaceEmptySuccessorFromAcceptedSeedDraft: true,
+      write: true,
+      confirmAcceptedSeedDraftSuccessorRecovery:
+        shouldConfirmAcceptedSeedDraftRecovery,
+    });
+    acceptedSeedDraftRecoveryWriteSummary = [
+      `[workout-audit:accepted-seed-draft-recovery:write] source=${writeResult.sourceMesocycle.id} successor=${writeResult.targetSuccessor.id} eligible=${formatBooleanFlag(writeResult.write.eligible)} db_write=${formatBooleanFlag(writeResult.write.dbWriteOccurred)} transaction=${writeResult.write.transactionStatus}`,
+      `[workout-audit:accepted-seed-draft-recovery:write] verdict=${writeResult.verdict} blockers=${writeResult.guardSummary.blockers.join(",") || "none"}`,
+    ];
+  }
+  if (acceptedSeedDraftRecoveryWriteSummary) {
+    for (const line of acceptedSeedDraftRecoveryWriteSummary) {
       console.log(line);
     }
   }

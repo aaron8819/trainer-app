@@ -252,6 +252,8 @@ export function buildWorkoutAuditArtifact(
     preSessionReadiness: run.preSessionReadiness,
     activeMesocycleSlotReseed: run.activeMesocycleSlotReseed,
     replaceEmptyMesocycleWithV2: run.replaceEmptyMesocycleWithV2,
+    replaceEmptySuccessorFromAcceptedSeedDraft:
+      run.replaceEmptySuccessorFromAcceptedSeedDraft,
     v2AcceptedSeedPrepareCompare: run.v2AcceptedSeedPrepareCompare,
     nextMesocycleHandoffDryRun: run.nextMesocycleHandoffDryRun,
     nextMesocycleAcceptanceGate: run.nextMesocycleAcceptanceGate,

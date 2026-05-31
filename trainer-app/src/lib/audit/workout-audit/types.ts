@@ -45,6 +45,7 @@ import {
   NEXT_MESOCYCLE_HANDOFF_DRY_RUN_AUDIT_PAYLOAD_VERSION,
   NEXT_MESOCYCLE_POST_ACCEPT_VERIFICATION_AUDIT_PAYLOAD_VERSION,
   PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
+  REPLACE_EMPTY_SUCCESSOR_FROM_ACCEPTED_SEED_DRAFT_AUDIT_PAYLOAD_VERSION,
   REPLACE_EMPTY_MESOCYCLE_WITH_V2_AUDIT_PAYLOAD_VERSION,
   PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION,
   V2_ACCEPTED_SEED_PREPARE_COMPARE_AUDIT_PAYLOAD_VERSION,
@@ -52,6 +53,7 @@ import {
   WORKOUT_AUDIT_ARTIFACT_VERSION,
 } from "./constants";
 import type { ReplaceEmptyMesocycleWithV2Result } from "@/lib/api/replace-empty-mesocycle-with-v2";
+import type { AcceptedSeedDraftSuccessorRecoveryResult } from "@/lib/api/replace-empty-successor-from-accepted-seed-draft";
 import type {
   WorkoutAuditCanonicalMode,
   WorkoutAuditRequestMode,
@@ -144,6 +146,10 @@ export type WorkoutAuditContext = {
   };
   replaceEmptyMesocycleWithV2?: {
     mesocycleId: string;
+  };
+  replaceEmptySuccessorFromAcceptedSeedDraft?: {
+    sourceMesocycleId: string;
+    successorMesocycleId: string;
   };
   v2AcceptedSeedPrepareCompare?: {
     mesocycleId?: string;
@@ -758,6 +764,15 @@ export type ActiveMesocycleSlotReseedAuditPayload = {
 export type ReplaceEmptyMesocycleWithV2AuditPayload =
   ReplaceEmptyMesocycleWithV2Result & {
     version: typeof REPLACE_EMPTY_MESOCYCLE_WITH_V2_AUDIT_PAYLOAD_VERSION;
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    consumedByProduction: false;
+    wouldWriteTransaction: false;
+  };
+
+export type ReplaceEmptySuccessorFromAcceptedSeedDraftAuditPayload =
+  AcceptedSeedDraftSuccessorRecoveryResult & {
+    version: typeof REPLACE_EMPTY_SUCCESSOR_FROM_ACCEPTED_SEED_DRAFT_AUDIT_PAYLOAD_VERSION;
     readOnly: true;
     affectsScoringOrGeneration: false;
     consumedByProduction: false;
@@ -2429,6 +2444,7 @@ export type WorkoutAuditRun = {
   preSessionReadiness?: PreSessionReadinessAuditPayload;
   activeMesocycleSlotReseed?: ActiveMesocycleSlotReseedAuditPayload;
   replaceEmptyMesocycleWithV2?: ReplaceEmptyMesocycleWithV2AuditPayload;
+  replaceEmptySuccessorFromAcceptedSeedDraft?: ReplaceEmptySuccessorFromAcceptedSeedDraftAuditPayload;
   v2AcceptedSeedPrepareCompare?: V2AcceptedSeedPrepareCompareAuditPayload;
   nextMesocycleHandoffDryRun?: NextMesocycleHandoffDryRunPayload;
   nextMesocycleAcceptanceGate?: NextMesocycleAcceptanceGatePayload;
@@ -2461,6 +2477,7 @@ export type WorkoutAuditArtifact = {
   preSessionReadiness?: PreSessionReadinessAuditPayload;
   activeMesocycleSlotReseed?: ActiveMesocycleSlotReseedAuditPayload;
   replaceEmptyMesocycleWithV2?: ReplaceEmptyMesocycleWithV2AuditPayload;
+  replaceEmptySuccessorFromAcceptedSeedDraft?: ReplaceEmptySuccessorFromAcceptedSeedDraftAuditPayload;
   v2AcceptedSeedPrepareCompare?: V2AcceptedSeedPrepareCompareAuditPayload;
   nextMesocycleHandoffDryRun?: NextMesocycleHandoffDryRunPayload;
   nextMesocycleAcceptanceGate?: NextMesocycleAcceptanceGatePayload;

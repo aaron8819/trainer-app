@@ -24,6 +24,7 @@ Sources of truth:
 - `trainer-app/src/lib/audit/workout-audit/generation-runner.ts`
 - `trainer-app/src/lib/audit/workout-audit/serializer.ts`
 - `trainer-app/src/lib/api/replace-empty-mesocycle-with-v2.ts`
+- `trainer-app/src/lib/api/replace-empty-successor-from-accepted-seed-draft.ts`
 - `trainer-app/src/lib/evidence/session-audit-snapshot.ts`
 - `trainer-app/src/lib/evidence/session-audit-types.ts`
 - `trainer-app/docs/01_ARCHITECTURE.md`
@@ -797,6 +798,41 @@ Hard stops:
 - any workout rows, completed/partial sessions, workout exercise rows, workout set rows, set logs, performed set logs, or runtime deviations
 - V2 base-plan validation blockers, non-materialized materializer status, incompatible seed shape, blocked promotion readiness, or blocked V2 accepted-seed helper status
 - any fallback path trying to label legacy output as V2 success
+
+### `replace-empty-successor-from-accepted-seed-draft`
+
+When to use it:
+- a completed source mesocycle has a persisted `nextSeedDraftJson.acceptedSeedDraft.slotPlanSeedJson`
+- the accepted successor already exists, is active accumulation, and has no workouts/logs/session state
+- the operator needs to recover from an accept-path bug by replacing the successor seed from the persisted draft exactly, not by regenerating V2
+
+Dry-run command:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode replace-empty-successor-from-accepted-seed-draft --owner <owner-email> --source-mesocycle-id <completed-source-mesocycle-id> --mesocycle-id <active-empty-successor-id> --replace-empty-successor-from-accepted-seed-draft --dry-run
+```
+
+Guarded write command:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode replace-empty-successor-from-accepted-seed-draft --owner <owner-email> --source-mesocycle-id <completed-source-mesocycle-id> --mesocycle-id <active-empty-successor-id> --replace-empty-successor-from-accepted-seed-draft --write --confirm-accepted-seed-draft-successor-recovery
+```
+
+Replacement semantics:
+- replacement source is exactly `source.nextSeedDraftJson.acceptedSeedDraft.slotPlanSeedJson`
+- fresh V2 generation is not run and is reported as `freshV2Generated=false`
+- preserves the existing successor id and `slotSequenceJson`
+- updates only `Mesocycle.slotPlanSeedJson`
+- writes no successor mesocycles, workouts, workout exercises, workout sets, set logs, session check-ins, receipts, or runtime replay data
+
+Hard stops:
+- source missing, not `COMPLETED`, still active, or owner mismatch
+- persisted accepted seed draft missing, malformed, or not `v2_materialized_seed`
+- target missing, not active accumulation, not the expected next mesocycle in the same macrocycle, or not empty
+- target slot order is incompatible with the replacement seed
+- current target seed already matches the persisted draft
+- replacement seed rows are not minimal `exerciseId`, `role`, `setCount`
+- replacement exercise ids do not exist, set counts are missing, or expected anchors are absent (`upper_a` Barbell Bench Press 4 sets, `lower_a` Barbell Back Squat 4 sets)
 
 ### `active-mesocycle-slot-reseed`
 

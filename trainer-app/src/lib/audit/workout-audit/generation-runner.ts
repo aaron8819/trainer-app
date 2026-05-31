@@ -32,6 +32,7 @@ import type {
   WorkoutAuditRun,
 } from "./types";
 import { replaceEmptyMesocycleWithV2 } from "@/lib/api/replace-empty-mesocycle-with-v2";
+import { replaceEmptySuccessorFromAcceptedSeedDraft } from "@/lib/api/replace-empty-successor-from-accepted-seed-draft";
 
 function buildCloseoutBlockedGenerationRunFields(
   context: WorkoutAuditContext
@@ -284,6 +285,28 @@ export async function runWorkoutAuditGeneration(
           ownerEmail: context.ownerEmail ?? "",
           mesocycleId: context.replaceEmptyMesocycleWithV2!.mesocycleId,
           replaceEmptyActiveMesocycleWithV2: true,
+        })),
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByProduction: false,
+        wouldWriteTransaction: false,
+      },
+    };
+  }
+
+  if (mode === "replace-empty-successor-from-accepted-seed-draft") {
+    return {
+      context,
+      generatedAt: new Date().toISOString(),
+      replaceEmptySuccessorFromAcceptedSeedDraft: {
+        ...(await replaceEmptySuccessorFromAcceptedSeedDraft({
+          userId: context.userId,
+          ownerEmail: context.ownerEmail ?? "",
+          sourceMesocycleId:
+            context.replaceEmptySuccessorFromAcceptedSeedDraft!.sourceMesocycleId,
+          successorMesocycleId:
+            context.replaceEmptySuccessorFromAcceptedSeedDraft!.successorMesocycleId,
+          replaceEmptySuccessorFromAcceptedSeedDraft: true,
         })),
         readOnly: true,
         affectsScoringOrGeneration: false,

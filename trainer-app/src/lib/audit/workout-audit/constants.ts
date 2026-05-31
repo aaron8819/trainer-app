@@ -5,6 +5,7 @@ export const WORKOUT_AUDIT_CANONICAL_MODES = [
   "current-week-audit",
   "active-mesocycle-slot-reseed",
   "replace-empty-mesocycle-with-v2",
+  "replace-empty-successor-from-accepted-seed-draft",
   "v2-accepted-seed-prepare-compare",
   "next-mesocycle-handoff-dry-run",
   "next-mesocycle-acceptance-gate",
@@ -23,6 +24,7 @@ export const PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const ACTIVE_MESOCYCLE_SLOT_RESEED_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const REPLACE_EMPTY_MESOCYCLE_WITH_V2_AUDIT_PAYLOAD_VERSION = 1 as const;
+export const REPLACE_EMPTY_SUCCESSOR_FROM_ACCEPTED_SEED_DRAFT_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const V2_ACCEPTED_SEED_PREPARE_COMPARE_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const NEXT_MESOCYCLE_HANDOFF_DRY_RUN_AUDIT_PAYLOAD_VERSION = 1 as const;
 export const NEXT_MESOCYCLE_ACCEPTANCE_GATE_AUDIT_PAYLOAD_VERSION = 1 as const;

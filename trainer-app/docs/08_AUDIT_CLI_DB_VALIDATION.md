@@ -150,6 +150,22 @@ npm run audit:workout -- --env-file .env.local --mode replace-empty-mesocycle-wi
 - The write path updates only `Mesocycle.slotPlanSeedJson`, preserves the mesocycle id and `slotSequenceJson`, and uses `buildMesocycleSlotPlanSeed()` through the V2 accepted-seed preparation helper.
 - Any logged workout, performed set, runtime deviation, historical/closed state, V2 validation blocker, blocked materializer, or incompatible seed shape is a hard stop.
 
+Empty active successor recovery from persisted accepted seed draft:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode replace-empty-successor-from-accepted-seed-draft --owner <owner-email> --source-mesocycle-id <completed-source-mesocycle-id> --mesocycle-id <active-empty-successor-id> --replace-empty-successor-from-accepted-seed-draft --dry-run
+```
+
+Guarded write, only after dry-run returns `safe_to_accept_upgrade`:
+
+```powershell
+npm run audit:workout -- --env-file .env.local --mode replace-empty-successor-from-accepted-seed-draft --owner <owner-email> --source-mesocycle-id <completed-source-mesocycle-id> --mesocycle-id <active-empty-successor-id> --replace-empty-successor-from-accepted-seed-draft --write --confirm-accepted-seed-draft-successor-recovery
+```
+
+- This path consumes exactly `source.nextSeedDraftJson.acceptedSeedDraft.slotPlanSeedJson`; it does not regenerate V2.
+- The write path updates only the active successor `Mesocycle.slotPlanSeedJson` and preserves `slotSequenceJson`, workouts, logs, sessions, and runtime replay.
+- Source/target lifecycle, expected successor linkage, empty target state, minimal seed rows, exercise existence, explicit set counts, slot order, and expected anchor rows are all hard guards.
+
 Retrospective completed-week volume and slot review:
 
 ```powershell

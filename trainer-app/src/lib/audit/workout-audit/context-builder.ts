@@ -194,6 +194,35 @@ export async function buildWorkoutAuditContext(
     };
   }
 
+  if (mode === "replace-empty-successor-from-accepted-seed-draft") {
+    if (!request.ownerEmail) {
+      throw new Error(
+        "replace-empty-successor-from-accepted-seed-draft mode requires --owner",
+      );
+    }
+    if (!request.sourceMesocycleId) {
+      throw new Error(
+        "replace-empty-successor-from-accepted-seed-draft mode requires --source-mesocycle-id",
+      );
+    }
+    if (!request.mesocycleId) {
+      throw new Error(
+        "replace-empty-successor-from-accepted-seed-draft mode requires --mesocycle-id",
+      );
+    }
+    return {
+      mode,
+      requestedMode: request.mode,
+      userId: identity.userId,
+      ownerEmail: identity.ownerEmail,
+      plannerDiagnosticsMode,
+      replaceEmptySuccessorFromAcceptedSeedDraft: {
+        sourceMesocycleId: request.sourceMesocycleId,
+        successorMesocycleId: request.mesocycleId,
+      },
+    };
+  }
+
   if (mode === "v2-accepted-seed-prepare-compare") {
     return {
       mode,

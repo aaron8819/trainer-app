@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
+| 2026-05-31 | self | During live successor seed recovery verification, repeated the PowerShell-piped `tsx` module-wrapper mistake by statically importing named exports from `@/lib/db/prisma`, causing a syntax error before the read-only probe ran. | For every stdin `tsx` probe, use dynamic imports and unwrap `const mod = raw.default ?? raw` before accessing local module exports. |
 | 2026-05-31 | self | While adding Strategy B capacity materializer projection, narrowed on `candidateChange` but still passed nullable `capacityDiagnostic` into the projection summarizer; `tsc --noEmit` caught it. | When a diagnostic field is optional, narrow the parent diagnostic and the nested change together before handing both to typed helper functions. |
 | 2026-05-31 | self | Ran a read-only `tsx` live DB probe from the repo root while importing `./scripts/audit-cli-support`, which only resolves from `trainer-app/`. | Run Trainer `tsx` app probes with `workdir=trainer-app` when importing app-local scripts or use `./trainer-app/scripts/...` from the repo root. |
 | 2026-05-31 | self | Repeated the stdin `tsx` module-wrapper mistake on `audit-cli-support`, destructuring `loadAuditEnv` before unwrapping the module default. | For every PowerShell-piped `tsx` probe, unwrap each local module with `const mod = raw.default ?? raw` before destructuring. |

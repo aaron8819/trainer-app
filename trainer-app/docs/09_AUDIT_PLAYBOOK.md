@@ -709,6 +709,7 @@ Inspect first:
 - `nextMesocyclePostAcceptVerification.seedContract`
 - `nextMesocyclePostAcceptVerification.slotSequence`
 - `nextMesocyclePostAcceptVerification.futureWeekReplay`
+- `nextMesocyclePostAcceptVerification.prescriptionConfidence`
 - `nextMesocyclePostAcceptVerification.projectedWeekVolume`
 - `nextMesocyclePostAcceptVerification.readModels`
 - `nextMesocyclePostAcceptVerification.provenance`
@@ -729,13 +730,14 @@ Required checks:
 - no legacy fallback, reselection, or order drift appears in future-week or projection output
 - successor Week 1 standard generation is not deload-rerouted
 - receipt/provenance/read-model composition source are coherent
-- Week 1 prescriptions expose usable exercise, progression, and caution readouts
+- Week 1 prescriptions expose usable exercise, progression, confidence, source classification, and caution readouts
 
 Interpretation rules:
 - `safe_to_train` means the persisted successor is ready for Week 1 training.
 - `watch_items` means the successor is trainable only after reading the warning/unknown checks.
 - `blocked` means at least one must-fix check failed before Week 1.
 - `not_runnable` means the accepted successor context is missing or not inspectable yet.
+- `prescriptionConfidence` is a readout over existing generated prescription evidence. It can classify rows as `exact_history`, `recent_history`, `stale_history`, `estimated`, `missing`, `load_calibration_drift`, `exercise_new_to_user`, or `runtime_only`; it does not recompute loads, change progression policy, or mutate prescriptions.
 - This mode is post-accept only. It does not replace `next-mesocycle-handoff-dry-run` or `next-mesocycle-acceptance-gate`.
 - This mode writes no DB rows, creates no mesocycles, creates no workouts/logs/sessions, mutates no seed shape, and changes no planner/materializer/runtime/generation behavior.
 
@@ -748,6 +750,7 @@ Common red flags:
 - projected sessions mismatch the accepted seed by exercise id, set count, or order
 - read models fall back to linked workout structure, projected-week rows, or legacy weekly schedule
 - provenance reports invalid/suspicious seed or receipt composition source
+- `prescriptionConfidence` is missing, `runtime_only`, dominated by estimated/missing loads, or reports load-calibration drift that should be reviewed before Week 1 execution
 
 ### `replace-empty-mesocycle-with-v2`
 

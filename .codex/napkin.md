@@ -196,6 +196,7 @@
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.
 
 ## Patterns That Work
+- For pre-accept execution-readiness work, keep seed identity/set-count proof separate from load prescription proof: handoff dry-run and acceptance gate can prove candidate seed/runtime-contract readiness, but exact load/confidence source maps should be post-accept audit readouts over existing `prescriptionReadouts`, not a pre-accept recomputation of progression policy.
 - For V2 target-vs-no-repair bridge work, use pure V2 materialization compare/shadow evidence only as diagnostic readout alignment: preserve the no-repair warning/repair evidence, demote the lane from `nextBestMigrationSlice`, and assert acceptance-gate candidate truth separately.
 - For Trainer week-close lifecycle work, separate target-deficit review evidence from actionable optional-workflow state: `AUTO_DISMISSED` partial rows can preserve deficit truth without creating Home/Program blockers or delaying deload.
 - For pre-session readiness stdout changes, run the live `--no-artifact --operator-debug` smoke after focused formatter tests; it can reveal cross-section wording contradictions that unit snippets miss, such as a new closure section allowing a top-up while the legacy avoid list still suppresses it.

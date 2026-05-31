@@ -7,7 +7,10 @@ import { readRuntimeSlotSequence } from "@/lib/api/mesocycle-slot-runtime";
 import { loadNextWorkoutContext } from "@/lib/api/next-session";
 import { parseSlotPlanSeedJson } from "@/lib/api/slot-plan-seed-parser";
 import { generateSessionFromIntent } from "@/lib/api/template-session";
-import type { SessionGenerationResult } from "@/lib/api/template-session/types";
+import type {
+  PrescriptionConfidenceReadout,
+  SessionGenerationResult,
+} from "@/lib/api/template-session/types";
 import { listWorkoutPlanExercisesInOrder } from "@/lib/engine/workout-plan-order";
 import { parseSessionIntent } from "@/lib/planning/session-opportunities";
 import type { SessionSlotSnapshot } from "@/lib/evidence/types";
@@ -15,6 +18,7 @@ import type { MesocycleState } from "@prisma/client";
 import { NEXT_MESOCYCLE_POST_ACCEPT_VERIFICATION_AUDIT_PAYLOAD_VERSION } from "./constants";
 import type {
   NextMesocyclePostAcceptVerificationPayload,
+  PrescriptionConfidenceSourceClassification,
   ProjectedWeekVolumeAuditPayload,
   WorkoutAuditGenerationPath,
 } from "./types";
@@ -141,6 +145,132 @@ function generatedExerciseRows(
       exerciseId: exercise.exercise.id,
       setCount: exercise.sets.length,
     }));
+}
+
+function classifyPrescriptionReadout(
+  readout: PrescriptionConfidenceReadout,
+): PrescriptionConfidenceSourceClassification {
+  if (readout.cautionReason?.includes("target_effort_load_mismatch")) {
+    return "load_calibration_drift";
+  }
+
+  if (readout.cautionReason === "estimate_load_no_exact_history") {
+    return "exercise_new_to_user";
+  }
+
+  if (readout.loadSource === "estimate") {
+    return "estimated";
+  }
+
+  if (readout.loadSource === "none" || readout.loadSource === "unknown") {
+    return "missing";
+  }
+
+  if (
+    readout.loadSource === "baseline" ||
+    readout.loadSource === "existing_target_load"
+  ) {
+    return "estimated";
+  }
+
+  if (readout.loadSource === "history") {
+    if (readout.confidence === "high") {
+      return "exact_history";
+    }
+    if (readout.confidence === "medium") {
+      return "recent_history";
+    }
+    return "stale_history";
+  }
+
+  if (readout.loadSource === "bodyweight") {
+    return readout.confidence === "low" ? "missing" : "exact_history";
+  }
+
+  return "missing";
+}
+
+function ownerSeamForPrescriptionClassification(
+  classification: PrescriptionConfidenceSourceClassification,
+): string {
+  if (classification === "runtime_only") {
+    return "template-session seeded runtime replay";
+  }
+  if (classification === "load_calibration_drift") {
+    return "progression/load calibration readout";
+  }
+  return "future-week prescription readout";
+}
+
+function buildPrescriptionConfidenceSourceMap(
+  generationResult: PostAcceptEvidence["generationResult"],
+): NextMesocyclePostAcceptVerificationPayload["prescriptionConfidence"] {
+  if (!generationResult) {
+    return {
+      status: "runtime_only",
+      summary: {
+        rowCount: 0,
+        lowConfidenceCount: 0,
+        cautionCount: 0,
+        runtimeOnlyCount: 1,
+        classificationCounts: { runtime_only: 1 },
+      },
+      rows: [],
+    };
+  }
+
+  if ("error" in generationResult) {
+    return {
+      status: "generation_error",
+      summary: {
+        rowCount: 0,
+        lowConfidenceCount: 0,
+        cautionCount: 0,
+        runtimeOnlyCount: 0,
+        classificationCounts: {},
+      },
+      rows: [],
+    };
+  }
+
+  const rows = (generationResult.prescriptionReadouts ?? []).map((readout) => {
+    const classification = classifyPrescriptionReadout(readout);
+    return {
+      exerciseId: readout.exerciseId,
+      exerciseName: readout.exerciseName,
+      classification,
+      confidence: readout.confidence,
+      loadSource: readout.loadSource,
+      cautionLevel: readout.cautionLevel,
+      cautionReason: readout.cautionReason,
+      targetLoad: readout.targetLoad,
+      ownerSeam: ownerSeamForPrescriptionClassification(classification),
+      evidence: [
+        `loadSource=${readout.loadSource}`,
+        `confidence=${readout.confidence}`,
+        `caution=${readout.cautionLevel}`,
+        readout.cautionReason ? `reason=${readout.cautionReason}` : "",
+      ].filter(Boolean).join(" "),
+    };
+  });
+  const classificationCounts = rows.reduce<
+    Partial<Record<PrescriptionConfidenceSourceClassification, number>>
+  >((counts, row) => {
+    counts[row.classification] = (counts[row.classification] ?? 0) + 1;
+    return counts;
+  }, {});
+
+  return {
+    status: "available",
+    summary: {
+      rowCount: rows.length,
+      lowConfidenceCount: rows.filter((row) => row.confidence === "low").length,
+      cautionCount: rows.filter((row) => row.cautionLevel !== "none").length,
+      runtimeOnlyCount: 0,
+      classificationCounts,
+    },
+    rows,
+  };
 }
 
 function seedExerciseRowsForSlot(input: {
@@ -322,6 +452,19 @@ export function buildNextMesocyclePostAcceptVerificationFromEvidence(
           ...(evidence.generationResult.substitutions ?? []),
         ].length
       : 0;
+  const prescriptionConfidence = buildPrescriptionConfidenceSourceMap(
+    evidence.generationResult,
+  );
+  const prescriptionReadoutWarning =
+    prescriptionConfidence.summary.lowConfidenceCount > 0 ||
+    prescriptionConfidence.summary.cautionCount > 0 ||
+    (prescriptionConfidence.summary.classificationCounts.estimated ?? 0) > 0 ||
+    (prescriptionConfidence.summary.classificationCounts.missing ?? 0) > 0 ||
+    (prescriptionConfidence.summary.classificationCounts.exercise_new_to_user ??
+      0) > 0 ||
+    (prescriptionConfidence.summary.classificationCounts.stale_history ?? 0) > 0 ||
+    (prescriptionConfidence.summary.classificationCounts.load_calibration_drift ??
+      0) > 0;
 
   const checks: NextMesocyclePostAcceptVerificationPayload["checks"] = [
     check({
@@ -458,12 +601,14 @@ export function buildNextMesocyclePostAcceptVerificationFromEvidence(
     check({
       check: "Week 1 prescriptions expose usable confidence/caution readouts",
       status:
-        futureWeekStatus === "available" && generationRows.length > 0
-          ? progressionTraceCount > 0 || cautionCount >= 0
-            ? "pass"
-            : "warning"
+        futureWeekStatus === "available" &&
+        generationRows.length > 0 &&
+        prescriptionConfidence.summary.rowCount > 0
+          ? prescriptionReadoutWarning
+            ? "warning"
+            : "pass"
           : "fail",
-      evidence: `generatedExercises=${generationRows.length} progressionTraceCount=${progressionTraceCount} cautionCount=${cautionCount}`,
+      evidence: `generatedExercises=${generationRows.length} prescriptionRows=${prescriptionConfidence.summary.rowCount} lowConfidence=${prescriptionConfidence.summary.lowConfidenceCount} caution=${prescriptionConfidence.summary.cautionCount} classifications=${Object.entries(prescriptionConfidence.summary.classificationCounts).map(([key, value]) => `${key}:${value}`).join(",") || "none"}`,
       ownerSeam: "future-week prescription readout",
       mustFixBeforeWeek1: futureWeekStatus !== "available",
     }),
@@ -524,6 +669,7 @@ export function buildNextMesocyclePostAcceptVerificationFromEvidence(
       progressionTraceCount,
       cautionCount,
     },
+    prescriptionConfidence,
     projectedWeekVolume: {
       status: projectedWeekStatus,
       currentWeek: evidence.projectedWeekVolume?.currentWeek.week ?? null,

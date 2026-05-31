@@ -3282,6 +3282,7 @@ export function buildNextMesocyclePostAcceptVerificationSummary(input: {
     `seed=${payload.seedContract.slotPlanSeedJson} minimal_executable_rows_only=${formatBooleanFlag(payload.seedContract.minimalExecutableRowsOnly)} slots=${payload.seedContract.slotCount} exercises=${payload.seedContract.exerciseCount}`,
     `slot_sequence_persisted=${formatBooleanFlag(payload.slotSequence.hasPersistedSequence)} order_stable=${formatBooleanFlag(payload.slotSequence.orderStable)} order=${payload.slotSequence.slotOrder.join(">") || "missing"}`,
     `future_week=${payload.futureWeekReplay.status} composition_source=${payload.futureWeekReplay.compositionSource ?? "missing"} path=${payload.futureWeekReplay.generationPath} order_matches_seed=${formatBooleanFlag(payload.futureWeekReplay.exerciseOrderMatchesSeed)} generated_exercises=${payload.futureWeekReplay.generatedExerciseCount}`,
+    `prescription_confidence=${payload.prescriptionConfidence.status} rows=${payload.prescriptionConfidence.summary.rowCount} low=${payload.prescriptionConfidence.summary.lowConfidenceCount} caution=${payload.prescriptionConfidence.summary.cautionCount} classifications=${Object.entries(payload.prescriptionConfidence.summary.classificationCounts).map(([key, value]) => `${key}:${value}`).join(",") || "none"}`,
     `projected_week=${payload.projectedWeekVolume.status} mesocycle=${payload.projectedWeekVolume.mesocycleId ?? "missing"} sessions=${payload.projectedWeekVolume.projectedSessionCount} seed_backed=${formatBooleanFlag(payload.projectedWeekVolume.allProjectedSessionsSeedBacked)}`,
     `read_models home_slot_source=${payload.readModels.homeNextSessionSlotSource ?? "missing"} program_sources=${payload.readModels.programExerciseSources.join(",") || "missing"} seed_backed=${formatBooleanFlag(payload.readModels.allProgramRowsSeedBacked)}`,
     `provenance=${payload.provenance.status} receipt_composition_source=${payload.provenance.receiptCompositionSource ?? "missing"} warnings=${payload.provenance.warningCodes.join(",") || "none"}`,
@@ -3300,6 +3301,27 @@ export function buildNextMesocyclePostAcceptVerificationSummary(input: {
         row.evidence,
       ].join(" | "),
     );
+  }
+
+  lines.push("");
+  lines.push("Prescription Confidence Source Map");
+  lines.push("Exercise | Classification | Confidence | Load source | Caution | Owner seam | Evidence");
+  if (payload.prescriptionConfidence.rows.length === 0) {
+    lines.push("none | runtime_only | unknown | unknown | unknown | template-session seeded runtime replay | prescription load/readiness requires accepted successor generation");
+  } else {
+    for (const row of payload.prescriptionConfidence.rows) {
+      lines.push(
+        [
+          row.exerciseName,
+          row.classification,
+          row.confidence,
+          row.loadSource,
+          row.cautionLevel,
+          row.ownerSeam,
+          row.evidence,
+        ].join(" | "),
+      );
+    }
   }
 
   lines.push("");

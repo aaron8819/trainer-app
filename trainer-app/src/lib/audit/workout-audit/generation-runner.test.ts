@@ -439,6 +439,30 @@ describe("runWorkoutAuditGeneration", () => {
         progressionTraceCount: 1,
         cautionCount: 0,
       },
+      prescriptionConfidence: {
+        status: "available",
+        summary: {
+          rowCount: 1,
+          lowConfidenceCount: 0,
+          cautionCount: 0,
+          runtimeOnlyCount: 0,
+          classificationCounts: { exact_history: 1 },
+        },
+        rows: [
+          {
+            exerciseId: "bench",
+            exerciseName: "Bench Press",
+            classification: "exact_history",
+            confidence: "high",
+            loadSource: "history",
+            cautionLevel: "none",
+            cautionReason: null,
+            targetLoad: 205,
+            ownerSeam: "future-week prescription readout",
+            evidence: "loadSource=history confidence=high caution=none",
+          },
+        ],
+      },
       projectedWeekVolume: {
         status: "available",
         currentWeek: 1,

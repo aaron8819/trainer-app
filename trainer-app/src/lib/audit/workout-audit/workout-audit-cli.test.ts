@@ -6903,6 +6903,30 @@ describe("buildNextMesocyclePostAcceptVerificationSummary", () => {
             progressionTraceCount: 1,
             cautionCount: 0,
           },
+          prescriptionConfidence: {
+            status: "available",
+            summary: {
+              rowCount: 1,
+              lowConfidenceCount: 0,
+              cautionCount: 0,
+              runtimeOnlyCount: 0,
+              classificationCounts: { exact_history: 1 },
+            },
+            rows: [
+              {
+                exerciseId: "bench",
+                exerciseName: "Bench Press",
+                classification: "exact_history",
+                confidence: "high",
+                loadSource: "history",
+                cautionLevel: "none",
+                cautionReason: null,
+                targetLoad: 205,
+                ownerSeam: "future-week prescription readout",
+                evidence: "loadSource=history confidence=high caution=none",
+              },
+            ],
+          },
           projectedWeekVolume: {
             status: "available",
             currentWeek: 1,
@@ -6949,9 +6973,12 @@ describe("buildNextMesocyclePostAcceptVerificationSummary", () => {
         "verification_result=safe_to_train",
         "seed=available minimal_executable_rows_only=yes slots=1 exercises=1",
         "future_week=available composition_source=persisted_slot_plan_seed path=standard_generation order_matches_seed=yes generated_exercises=1",
+        "prescription_confidence=available rows=1 low=0 caution=0 classifications=exact_history:1",
         "projected_week=available mesocycle=successor-1 sessions=1 seed_backed=yes",
         "failed_checks=0 must_fix_before_week_1=0 watch_items=0",
         "Week 1 future-week replays persisted seed | pass | yes | template-session seeded runtime replay | compositionSource=persisted_slot_plan_seed",
+        "Prescription Confidence Source Map",
+        "Bench Press | exact_history | high | history | none | future-week prescription readout | loadSource=history confidence=high caution=none",
         "safety writes=no db_mutated=no mesocycle_created=no workout_session_created=no seed_runtime_changed=no transaction=no",
       ]),
     );

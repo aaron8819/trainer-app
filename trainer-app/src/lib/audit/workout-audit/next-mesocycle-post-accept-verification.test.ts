@@ -104,6 +104,22 @@ function makePassingEvidence(): Parameters<
           bench: {},
         },
       },
+      prescriptionReadouts: [
+        {
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          targetLoad: 205,
+          targetReps: null,
+          repRange: { min: 6, max: 10 },
+          targetRpe: 8,
+          targetRir: 2,
+          loadSource: "history",
+          confidence: "high",
+          cautionLevel: "none",
+          cautionReason: null,
+          suggestedAdjustmentRange: null,
+        },
+      ],
     } as never,
     generationPath: {
       requestedMode: "next-mesocycle-post-accept-verification",
@@ -166,6 +182,16 @@ describe("buildNextMesocyclePostAcceptVerificationFromEvidence", () => {
       compositionSource: "persisted_slot_plan_seed",
       exerciseOrderMatchesSeed: true,
     });
+    expect(payload.prescriptionConfidence.summary.classificationCounts).toEqual({
+      exact_history: 1,
+    });
+    expect(payload.prescriptionConfidence.rows).toContainEqual(
+      expect.objectContaining({
+        exerciseName: "Bench Press",
+        classification: "exact_history",
+        ownerSeam: "future-week prescription readout",
+      }),
+    );
     expect(payload.projectedWeekVolume.allProjectedSessionsSeedBacked).toBe(true);
     expect(payload.readModels.allProgramRowsSeedBacked).toBe(true);
     expect(payload.checks.every((row) => row.status === "pass")).toBe(true);

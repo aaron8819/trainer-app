@@ -1166,6 +1166,16 @@ export type NextMesocyclePostAcceptVerificationStatus =
   | "fail"
   | "unknown";
 
+export type PrescriptionConfidenceSourceClassification =
+  | "exact_history"
+  | "recent_history"
+  | "stale_history"
+  | "estimated"
+  | "missing"
+  | "load_calibration_drift"
+  | "exercise_new_to_user"
+  | "runtime_only";
+
 export type NextMesocyclePostAcceptVerificationPayload = {
   version: typeof NEXT_MESOCYCLE_POST_ACCEPT_VERIFICATION_AUDIT_PAYLOAD_VERSION;
   source: "next_mesocycle_post_accept_verification_audit";
@@ -1219,6 +1229,28 @@ export type NextMesocyclePostAcceptVerificationPayload = {
     generatedExerciseCount: number;
     progressionTraceCount: number;
     cautionCount: number;
+  };
+  prescriptionConfidence: {
+    status: "available" | "generation_error" | "runtime_only";
+    summary: {
+      rowCount: number;
+      lowConfidenceCount: number;
+      cautionCount: number;
+      runtimeOnlyCount: number;
+      classificationCounts: Partial<Record<PrescriptionConfidenceSourceClassification, number>>;
+    };
+    rows: Array<{
+      exerciseId: string;
+      exerciseName: string;
+      classification: PrescriptionConfidenceSourceClassification;
+      confidence: "high" | "medium" | "low" | "unknown";
+      loadSource: string;
+      cautionLevel: "none" | "notice" | "caution" | "unknown";
+      cautionReason: string | null;
+      targetLoad: number | null;
+      ownerSeam: string;
+      evidence: string;
+    }>;
   };
   projectedWeekVolume: {
     status: "available" | "generation_error" | "not_available";

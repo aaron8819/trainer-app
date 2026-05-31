@@ -899,6 +899,10 @@ export type NextMesocycleHandoffDryRunPayload = {
     slotSequence: string;
     seedShape: string;
     slotPlanSeedSource: string | null;
+    legacyProjectionUse:
+      | "candidate_truth_when_no_v2_draft"
+      | "compatibility_or_diagnostic_only"
+      | "not_legacy_projection";
     trainingBlocksCount: number;
     carriedRolesCount: number;
     constraintsAction: "would_upsert_constraints";

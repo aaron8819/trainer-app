@@ -642,7 +642,7 @@ Interpretation rules:
 - `writes` must always be `no`; this mode never calls the acceptance transaction and never creates a successor mesocycle
 - if the source is not `AWAITING_HANDOFF`, preparation is not called and `blockingReason=source_not_awaiting_handoff`
 - when the source is `AWAITING_HANDOFF`, the mode calls `prepareMesocycleHandoffAcceptance()` and stops before `acceptPreparedMesocycleHandoffInTransaction()`
-- when `nextSeedDraftJson.acceptedSeedDraft` exists, `persistedDraftTruth` is the candidate truth to inspect first; prepared projection fields are shown separately as rehearsal evidence
+- when `nextSeedDraftJson.acceptedSeedDraft.source = "v2_materialized_seed"` exists, `persistedDraftTruth` is the candidate truth; prepared legacy projection fields are compatibility/diagnostic evidence only and must not be accepted as equal truth
 - candidate identity comes from persisted accepted-draft rows when present, otherwise from prepared `slotPlanSeedJson` rows; it never comes from `mesocycle-explain` repaired/no-repair diagnostic previews
 - seed compatibility is reported against the existing `buildMesocycleSlotPlanSeed` serializer and runtime seed parser; executable seed rows remain only `exerciseId`, `role`, and `setCount`
 - Week 1 preview is a seed-order expectation preview unless a persisted successor exists; full runtime replay still requires post-accept active mesocycle context
@@ -721,6 +721,7 @@ Required checks:
 - source mesocycle is completed and inactive
 - successor mesocycle is active, `ACTIVE_ACCUMULATION`, linked to the same macrocycle as source, and `mesoNumber = source.mesoNumber + 1`
 - optional requested successor id matches the linked active successor
+- when a pre-accept persisted V2 accepted seed draft exists, the successor seed source, hash, anchor rows, row count, and slot order match that exact draft
 - `slotPlanSeedJson` exists, parses, and has set-aware executable exercise rows
 - executable seed exercise rows contain only `exerciseId`, `role`, and `setCount`
 - persisted slot sequence exists and matches seed slot order
@@ -745,6 +746,7 @@ Interpretation rules:
 Common red flags:
 - successor id is missing, not active, not `ACTIVE_ACCUMULATION`, or not the active mesocycle
 - source is not `COMPLETED` and inactive
+- successor seed source/hash/anchors differ from the pre-accept persisted V2 accepted seed draft
 - seed rows include extra executable fields beyond `exerciseId`, `role`, and `setCount`
 - slot order differs between `slotSequenceJson` and `slotPlanSeedJson`
 - future-week or projected-week-volume does not report `persisted_slot_plan_seed`

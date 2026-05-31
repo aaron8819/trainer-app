@@ -329,6 +329,20 @@ function buildAcceptanceChecks(input: {
   };
 }
 
+function classifyLegacyProjectionUse(input: {
+  persistedDraftStatus: "available" | "not_available";
+  preparedSeedSource: string | null | undefined;
+}): NonNullable<
+  NextMesocycleHandoffDryRunPayload["wouldPrepareWriteSummary"]
+>["legacyProjectionUse"] {
+  if (input.preparedSeedSource !== "handoff_slot_plan_projection") {
+    return "not_legacy_projection";
+  }
+  return input.persistedDraftStatus === "available"
+    ? "compatibility_or_diagnostic_only"
+    : "candidate_truth_when_no_v2_draft";
+}
+
 async function buildPreparedPayload(input: {
   ownerEmail?: string;
   sourceMesocycleId: string;
@@ -380,6 +394,10 @@ async function buildPreparedPayload(input: {
       slotSequence: slotOrder || "none",
       seedShape: preparedShape.seedShape,
       slotPlanSeedSource: seed?.source ?? null,
+      legacyProjectionUse: classifyLegacyProjectionUse({
+        persistedDraftStatus: persistedDraft.status,
+        preparedSeedSource: seed?.source ?? null,
+      }),
       trainingBlocksCount: input.prepared.projection.trainingBlocks.length,
       carriedRolesCount: input.prepared.projection.carriedForwardRoles.length,
       constraintsAction: "would_upsert_constraints",

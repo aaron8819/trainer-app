@@ -6569,6 +6569,7 @@ describe("buildNextMesocycleHandoffDryRunSummary", () => {
             slotSequence: "upper_a > upper_b",
             seedShape: "version=1 slots=2 exercises=2",
             slotPlanSeedSource: "handoff_slot_plan_projection",
+            legacyProjectionUse: "candidate_truth_when_no_v2_draft",
             trainingBlocksCount: 2,
             carriedRolesCount: 1,
             constraintsAction: "would_upsert_constraints",
@@ -6671,6 +6672,9 @@ describe("buildNextMesocycleHandoffDryRunSummary", () => {
     expect(summary).toContain("persisted_draft_rows=0");
     expect(summary).toContain(
       "prepared_projection_source=handoff_slot_plan_projection",
+    );
+    expect(summary).toContain(
+      "legacy_projection_use=candidate_truth_when_no_v2_draft",
     );
     expect(summary).toContain("truth_basis=prepared_acceptance_seed");
     expect(summary).toContain(

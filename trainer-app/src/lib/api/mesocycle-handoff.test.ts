@@ -2957,6 +2957,45 @@ describe("handoff draft persistence", () => {
     });
   });
 
+  it("fails closed when completed-source retry finds a successor that does not match the stored V2 acceptedSeedDraft", async () => {
+    const storedV2Draft = buildStoredV2Draft();
+    const legacySuccessorSeed = buildMesocycleSlotPlanSeed({
+      slotSequence: buildMesocycleSlotSequence(buildRecommendedDraft().structure.slots),
+      slotPlans: makeProjectedSlotPlans() as unknown as ProjectedSuccessorSlotPlan[],
+      source: "handoff_slot_plan_projection",
+    });
+    const tx = {
+      mesocycle: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({
+            id: "meso-1",
+            state: "COMPLETED",
+            macroCycleId: "macro-1",
+            mesoNumber: 1,
+            nextSeedDraftJson: storedV2Draft,
+          })
+          .mockResolvedValueOnce({
+            id: "meso-2",
+            state: "ACTIVE_ACCUMULATION",
+            isActive: true,
+            slotPlanSeedJson: legacySuccessorSeed,
+          }),
+      },
+    };
+
+    await expect(
+      acceptPreparedMesocycleHandoffWithProvenanceInTransaction(tx as never, {
+        userId: "user-1",
+        source: { id: "meso-1" },
+        seedPersistenceProvenance: {
+          source: "v2_materialized_seed",
+          dbWriteOccurred: false,
+        },
+      } as never),
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_ACCEPTED_SEED_DRAFT_MISMATCH");
+  });
+
   it("fails closed when a stored V2 acceptedSeedDraft is malformed", async () => {
     const malformedStoredDraft = {
       ...buildRecommendedDraft(),

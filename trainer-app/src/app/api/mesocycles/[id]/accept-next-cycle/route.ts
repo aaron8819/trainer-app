@@ -95,6 +95,15 @@ export async function POST(
         { status: 409 }
       );
     }
+    if (
+      error instanceof Error &&
+      error.message === "MESOCYCLE_HANDOFF_ACCEPTED_SEED_DRAFT_MISMATCH"
+    ) {
+      return NextResponse.json(
+        { error: "Mesocycle handoff accepted seed draft does not match successor seed." },
+        { status: 409 }
+      );
+    }
     throw error;
   }
 }

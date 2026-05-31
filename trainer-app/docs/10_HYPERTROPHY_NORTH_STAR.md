@@ -1339,8 +1339,9 @@ Deprecation criteria:
 - `accept-next-cycle` persists the successor from that accepted candidate without re-authoring it through legacy projection.
 - `next-mesocycle-post-accept-verification` proves runtime replay/read-model readiness for the successor.
 - Week 1 can be trained through the normal pre-session/post-session loop from persisted seed truth.
+- At least one V2-authored mesocycle has been trained far enough to prove normal Week 1 runtime behavior, if live confidence still depends on trained-cycle evidence.
 
-Once those conditions pass, legacy projection should become a deprecation/removal candidate instead of an equal parallel planner. Keep compatibility fallback only where old data, unsupported split types, or genuinely impossible/safety cases require it.
+Once `nextSeedDraftJson.acceptedSeedDraft.source = "v2_materialized_seed"` exists, that persisted seed draft is canonical candidate truth. Legacy `handoff_slot_plan_projection` remains compatibility/diagnostic evidence only; accept, recovery, and post-accept verification must use the exact persisted V2 draft or fail closed. After the criteria above pass, legacy projection should become a removal candidate instead of an equal parallel planner. Keep compatibility fallback only where no V2 acceptedSeedDraft exists, old data, unsupported split types, or genuinely impossible/safety cases require it.
 
 ## 9. Historical Personalization Roadmap Boundary
 
@@ -1392,6 +1393,7 @@ Roadmap note: remove or deprecate optional gap-fill workout generation from norm
 3. Refresh the persisted draft explicitly when V2 is eligible.
 
    The `refresh-next-seed-draft` route is the explicit opt-in path that can turn the pending handoff draft into a persisted `v2_materialized_seed` candidate. Once refreshed, that draft is real candidate truth for the handoff. It is still not accepted seed truth.
+   Legacy handoff projection may still be prepared for comparison or compatibility readout, but it is no longer an alternate production-write candidate for that source.
 
 4. Judge the refreshed real draft through the acceptance gate.
 
@@ -1399,7 +1401,7 @@ Roadmap note: remove or deprecate optional gap-fill workout generation from norm
 
 5. Accept only after the gate returns `accepted` or `accepted_with_watch_items`.
 
-   `accept-next-cycle` should happen only when the real candidate is trainable. If the result is `rejected` or `not_runnable`, fix the owning planner/materializer candidate-quality seam first, refresh the draft again, and rerun the handoff dry-run and acceptance gate.
+   `accept-next-cycle` should happen only when the real candidate is trainable. If the result is `rejected` or `not_runnable`, fix the owning planner/materializer candidate-quality seam first, refresh the draft again, and rerun the handoff dry-run and acceptance gate. When a persisted V2 acceptedSeedDraft exists, accept/retry/recovery must not silently fall back to legacy projection.
 
 6. Prove runtime readiness after acceptance.
 
@@ -1656,7 +1658,7 @@ Runtime executes today.
 Review learns for the next block.
 ```
 
-Architecture design/refinement can happen before a full V2 mesocycle is completed. Production removal/promotion should wait for proof through V2 refresh, accept, post-accept verification, and real training use.
+Architecture design/refinement can happen before a full V2 mesocycle is completed. Production removal/promotion should wait for proof through V2 refresh, accept, post-accept verification, Week 1 runtime proof, and real training use.
 
 Future engine intelligence tracks:
 

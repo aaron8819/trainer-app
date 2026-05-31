@@ -155,6 +155,27 @@ describe("POST /api/mesocycles/[id]/accept-next-cycle", () => {
     });
   });
 
+  it("surfaces a completed-source successor mismatch against the stored V2 accepted seed draft", async () => {
+    mocks.mesocycleFindFirst.mockResolvedValue({
+      id: "meso-1",
+    });
+    mocks.acceptMesocycleHandoff.mockRejectedValue(
+      new Error("MESOCYCLE_HANDOFF_ACCEPTED_SEED_DRAFT_MISMATCH")
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/mesocycles/meso-1/accept-next-cycle", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "meso-1" }) }
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Mesocycle handoff accepted seed draft does not match successor seed.",
+    });
+  });
+
   it("surfaces keep-selection conflicts against the edited split", async () => {
     mocks.mesocycleFindFirst.mockResolvedValue({
       id: "meso-1",

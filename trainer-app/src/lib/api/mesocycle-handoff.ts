@@ -1523,8 +1523,29 @@ async function loadAcceptedSuccessorForCompletedHandoffInTransaction(
   if (!successor) {
     throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
   }
+  assertExistingSuccessorMatchesV2AcceptedSeedDraft({
+    nextSeedDraftJson: source.nextSeedDraftJson,
+    successorSlotPlanSeedJson: successor.slotPlanSeedJson,
+  });
 
   return successor;
+}
+
+function assertExistingSuccessorMatchesV2AcceptedSeedDraft(input: {
+  nextSeedDraftJson: unknown;
+  successorSlotPlanSeedJson: unknown;
+}): void {
+  const draft = readNextCycleSeedDraftForAccept(input.nextSeedDraftJson);
+  const acceptedSeed = draft?.acceptedSeedDraft?.slotPlanSeedJson;
+  if (!acceptedSeed) {
+    return;
+  }
+  if (!input.successorSlotPlanSeedJson) {
+    throw new Error("MESOCYCLE_HANDOFF_ACCEPTED_SEED_DRAFT_MISMATCH");
+  }
+  if (stableJson(input.successorSlotPlanSeedJson) !== stableJson(acceptedSeed)) {
+    throw new Error("MESOCYCLE_HANDOFF_ACCEPTED_SEED_DRAFT_MISMATCH");
+  }
 }
 
 async function repairAcceptedSuccessorSeedInTransaction(
@@ -1548,7 +1569,14 @@ async function repairAcceptedSuccessorSeedInTransaction(
   if (!successor) {
     throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
   }
-  if (successor.slotPlanSeedJson || !prepared.slotPlanSeed) {
+  if (successor.slotPlanSeedJson) {
+    assertExistingSuccessorMatchesV2AcceptedSeedDraft({
+      nextSeedDraftJson: source.nextSeedDraftJson,
+      successorSlotPlanSeedJson: successor.slotPlanSeedJson,
+    });
+    return successor;
+  }
+  if (!prepared.slotPlanSeed) {
     return successor;
   }
 
@@ -1699,6 +1727,10 @@ export async function acceptPreparedMesocycleHandoffWithProvenanceInTransaction(
   if (current.state === "COMPLETED") {
     const successor = await findAcceptedSuccessorInTransaction(tx, current);
     if (successor) {
+      assertExistingSuccessorMatchesV2AcceptedSeedDraft({
+        nextSeedDraftJson: current.nextSeedDraftJson,
+        successorSlotPlanSeedJson: successor.slotPlanSeedJson,
+      });
       return {
         mesocycle: successor,
         seedPersistenceProvenance: completePreparedSeedPersistence({

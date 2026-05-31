@@ -207,6 +207,7 @@ describe("next-mesocycle handoff dry-run audit", () => {
     expect(payload.wouldPrepareWriteSummary).toMatchObject({
       successorSource: "prepared_handoff_projection",
       slotSequence: "upper_a > upper_b",
+      legacyProjectionUse: "candidate_truth_when_no_v2_draft",
       trainingBlocksCount: 2,
       carriedRolesCount: 1,
       constraintsAction: "would_upsert_constraints",
@@ -289,6 +290,9 @@ describe("next-mesocycle handoff dry-run audit", () => {
     expect(payload.wouldPrepareWriteSummary.slotPlanSeedSource).toBe(
       "v2_materialized_seed",
     );
+    expect(payload.wouldPrepareWriteSummary.legacyProjectionUse).toBe(
+      "not_legacy_projection",
+    );
     expect(payload.persistedDraftTruth).toMatchObject({
       status: "available",
       source: "v2_materialized_seed",
@@ -335,6 +339,9 @@ describe("next-mesocycle handoff dry-run audit", () => {
     expect(payload.wouldPrepareWriteSummary?.slotPlanSeedSource).toBe(
       "handoff_slot_plan_projection",
     );
+    expect(payload.wouldPrepareWriteSummary?.legacyProjectionUse).toBe(
+      "compatibility_or_diagnostic_only",
+    );
     expect(payload.seedShapeSummary).toMatchObject({
       truthBasis: "persisted_draft",
       seedSource: "v2_materialized_seed",
@@ -371,6 +378,9 @@ describe("next-mesocycle handoff dry-run audit", () => {
       truthBasis: "prepared_acceptance_seed",
       seedSource: "handoff_slot_plan_projection",
     });
+    expect(payload.wouldPrepareWriteSummary?.legacyProjectionUse).toBe(
+      "candidate_truth_when_no_v2_draft",
+    );
   });
 
   it("does not treat diagnostic preview as candidate truth and reports gate readiness limits", async () => {

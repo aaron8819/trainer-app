@@ -2204,6 +2204,7 @@ describe("buildWorkoutAuditArtifact", () => {
         slotSequence: "upper_a > upper_b",
         seedShape: "version=1 slots=2 exercises=2",
         slotPlanSeedSource: "handoff_slot_plan_projection",
+        legacyProjectionUse: "candidate_truth_when_no_v2_draft",
         trainingBlocksCount: 2,
         carriedRolesCount: 1,
         constraintsAction: "would_upsert_constraints",

@@ -3025,6 +3025,7 @@ export function buildNextMesocycleHandoffDryRunSummary(input: {
     lines.push(
       `prepared_projection_source=${summary.slotPlanSeedSource ?? "none"}`,
     );
+    lines.push(`legacy_projection_use=${summary.legacyProjectionUse}`);
     lines.push(`training_blocks_count=${summary.trainingBlocksCount}`);
     lines.push(`carried_roles_count=${summary.carriedRolesCount}`);
     lines.push(`constraints_action=${summary.constraintsAction}`);

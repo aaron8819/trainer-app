@@ -162,7 +162,7 @@ Guarded write, only after dry-run returns `safe_to_accept_upgrade`:
 npm run audit:workout -- --env-file .env.local --mode replace-empty-successor-from-accepted-seed-draft --owner <owner-email> --source-mesocycle-id <completed-source-mesocycle-id> --mesocycle-id <active-empty-successor-id> --replace-empty-successor-from-accepted-seed-draft --write --confirm-accepted-seed-draft-successor-recovery
 ```
 
-- This path consumes exactly `source.nextSeedDraftJson.acceptedSeedDraft.slotPlanSeedJson`; it does not regenerate V2.
+- This path consumes exactly `source.nextSeedDraftJson.acceptedSeedDraft.slotPlanSeedJson`; it does not regenerate V2 and does not fall back to legacy projection.
 - The write path updates only the active successor `Mesocycle.slotPlanSeedJson` and preserves `slotSequenceJson`, workouts, logs, sessions, and runtime replay.
 - Source/target lifecycle, expected successor linkage, empty target state, minimal seed rows, exercise existence, explicit set counts, slot order, and expected anchor rows are all hard guards.
 

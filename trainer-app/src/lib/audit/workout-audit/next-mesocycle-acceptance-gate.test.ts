@@ -356,7 +356,7 @@ const refreshedV2SupportFloorSeed: MesocycleSlotPlanSeed = {
     {
       slotId: "upper_a",
       exercises: [
-        { exerciseId: "incline", role: "CORE_COMPOUND", setCount: 4 },
+        { exerciseId: "barbell-bench", role: "CORE_COMPOUND", setCount: 4 },
         { exerciseId: "close-row", role: "ACCESSORY", setCount: 3 },
         { exerciseId: "close-lat", role: "ACCESSORY", setCount: 2 },
         { exerciseId: "rear", role: "ACCESSORY", setCount: 4 },
@@ -367,7 +367,7 @@ const refreshedV2SupportFloorSeed: MesocycleSlotPlanSeed = {
     {
       slotId: "lower_a",
       exercises: [
-        { exerciseId: "belt-squat", role: "CORE_COMPOUND", setCount: 4 },
+        { exerciseId: "barbell-back-squat", role: "CORE_COMPOUND", setCount: 4 },
         { exerciseId: "leg-extension", role: "ACCESSORY", setCount: 2 },
         { exerciseId: "lying-curl", role: "ACCESSORY", setCount: 2 },
         { exerciseId: "calf-a", role: "ACCESSORY", setCount: 4 },
@@ -398,7 +398,12 @@ const refreshedV2SupportFloorSeed: MesocycleSlotPlanSeed = {
 };
 
 const refreshedV2SupportFloorExercises = [
-  exerciseRow("incline", "Incline Machine Press", ["Chest"], ["Front Delts", "Triceps"]),
+  exerciseRow(
+    "barbell-bench",
+    "Barbell Bench Press",
+    ["Chest", "Triceps"],
+    ["Front Delts"],
+  ),
   exerciseRow(
     "close-row",
     "Close-Grip Seated Cable Row",
@@ -416,7 +421,12 @@ const refreshedV2SupportFloorExercises = [
   exerciseRow("lateral-b", "Machine Lateral Raise", ["Side Delts"]),
   exerciseRow("triceps-b", "Cable Triceps Pushdown", ["Triceps"]),
   exerciseRow("curl", "Barbell Curl", ["Biceps"], ["Forearms"]),
-  exerciseRow("belt-squat", "Belt Squat", ["Quads"], ["Glutes", "Adductors"]),
+  exerciseRow(
+    "barbell-back-squat",
+    "Barbell Back Squat",
+    ["Quads", "Glutes"],
+    ["Hamstrings", "Core", "Lower Back", "Adductors"],
+  ),
   exerciseRow("leg-extension", "Leg Extension", ["Quads"]),
   exerciseRow("lying-curl", "Lying Leg Curl", ["Hamstrings"]),
   exerciseRow("calf-a", "Seated Calf Raise", ["Calves"]),
@@ -951,7 +961,7 @@ describe("next mesocycle acceptance gate", () => {
       mev: 8,
     });
     expect(volumeRow(rows, "Triceps")).toMatchObject({
-      projectedSets: 8,
+      projectedSets: 8.2,
       mev: 6,
     });
     for (const seedExercise of seedRows) {
@@ -1022,7 +1032,7 @@ describe("next mesocycle acceptance gate", () => {
       status: "productive_zone",
     });
     expect(volumeRow(payload.weeklyMuscleTable, "Triceps")).toMatchObject({
-      projectedSets: 8,
+      projectedSets: 8.2,
       status: "productive_zone",
     });
     expect(payload.gates.find((row) => row.gate === "Volume floors/zones")).toMatchObject({

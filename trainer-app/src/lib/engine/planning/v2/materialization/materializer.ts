@@ -36,6 +36,8 @@ type Candidate = {
   directness: number;
   identityPreservation: number;
   chestSupportStimulus: number;
+  anchorVariantFit: number;
+  userPreferredAnchor: number;
   laneIntent: number;
   stimulusToFatigue: number;
   fatigue: number;
@@ -459,6 +461,12 @@ function buildCandidates(input: {
           match,
           exercise,
         ),
+        anchorVariantFit: anchorVariantFitScore(input.lane, exercise),
+        userPreferredAnchor: userPreferredAnchorScore(
+          input.lane,
+          exercise.exerciseId,
+          input.favoriteExerciseIds,
+        ),
         laneIntent: laneIntentPreferenceScore(input.lane, match, exercise),
         stimulusToFatigue: stimulusToFatigueScore(input.lane, match, exercise),
         fatigue: exercise.fatigueCost ?? 0,
@@ -575,6 +583,60 @@ function isChestBiasedPressSupportLane(lane: PlanLane): boolean {
   );
   const canSelectVerticalPress = classNames.includes("vertical press");
   return ownsChest && canSelectChestPress && canSelectVerticalPress;
+}
+
+function userPreferredAnchorScore(
+  lane: PlanLane,
+  exerciseId: string,
+  favoriteExerciseIds: ReadonlySet<string>,
+): number {
+  if (!isUserPreferredAnchorLane(lane)) {
+    return 1;
+  }
+  return favoriteExerciseIds.has(exerciseId) ? 0 : 1;
+}
+
+function isUserPreferredAnchorLane(lane: PlanLane): boolean {
+  return lane.role === "anchor" && (
+    lane.laneId === "chest_anchor" || lane.laneId === "squat_anchor"
+  );
+}
+
+function anchorVariantFitScore(
+  lane: PlanLane,
+  exercise: V2MaterializationExercise,
+): number {
+  if (lane.laneId !== "chest_anchor") {
+    return 0;
+  }
+
+  const classNames = [
+    ...lane.acceptableExerciseClasses,
+    ...lane.preferredExerciseClasses,
+  ].map(normalizeV2MaterializationText);
+  const inclineLane =
+    classNames.includes("slight incline press") &&
+    !classNames.includes("horizontal press");
+  const flatLane =
+    classNames.includes("horizontal press") &&
+    !classNames.includes("slight incline press");
+  const inclineExercise = isInclineChestPress(exercise);
+
+  if (inclineLane) {
+    return inclineExercise ? 0 : 1;
+  }
+  if (flatLane) {
+    return inclineExercise ? 1 : 0;
+  }
+  return 0;
+}
+
+function isInclineChestPress(exercise: V2MaterializationExercise): boolean {
+  const text = normalizedExerciseText(exercise);
+  return (
+    hasAnyMovementPattern(exercise, ["slight_incline_press", "incline_press"]) ||
+    hasAnyNormalizedPhrase(text, ["incline", "slight incline"])
+  );
 }
 
 function laneIntentPreferenceScore(
@@ -1049,6 +1111,8 @@ function compareCandidates(left: Candidate, right: Candidate): number {
     left.directness - right.directness ||
     left.identityPreservation - right.identityPreservation ||
     left.chestSupportStimulus - right.chestSupportStimulus ||
+    left.anchorVariantFit - right.anchorVariantFit ||
+    left.userPreferredAnchor - right.userPreferredAnchor ||
     left.laneIntent - right.laneIntent ||
     left.stimulusToFatigue - right.stimulusToFatigue ||
     left.fatigue - right.fatigue ||

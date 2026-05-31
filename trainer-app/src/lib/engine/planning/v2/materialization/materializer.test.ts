@@ -2950,7 +2950,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(materialize(input)).toEqual(materialize(input));
   });
 
-  it("keeps favorite barbell bench behind a stronger fresh chest-anchor candidate", () => {
+  it("prefers a user-favorite flat barbell bench for a chest anchor when lane safety allows", () => {
     const result = materialize({
       plan: plan([
         lane({
@@ -2984,11 +2984,65 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       favoriteExerciseIds: ["barbell-bench"],
     });
 
-    expect(exerciseForLane(result, "upper_a", "chest_anchor").exerciseId)
-      .toBe("machine-chest-press");
+    expect(exerciseForLane(result, "upper_a", "chest_anchor")).toMatchObject({
+      exerciseId: "barbell-bench",
+      role: "CORE_COMPOUND",
+      setCount: 3,
+    });
   });
 
-  it("keeps favorite back squat behind a lower-fatigue quad-biased anchor", () => {
+  it("prefers a user-favorite incline barbell bench for an incline-biased chest anchor", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "chest_anchor",
+          role: "anchor",
+          primaryMuscles: ["Chest"],
+          acceptableExerciseClasses: ["slight_incline_press"],
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "barbell-bench",
+          name: "Barbell Bench Press",
+          primaryMuscles: ["Chest"],
+          movementPatterns: ["horizontal_press"],
+          stimulusByMusclePerSet: { Chest: 1 },
+          isCompound: true,
+          isMainLiftEligible: true,
+          fatigueCost: 4,
+        }),
+        exercise({
+          exerciseId: "incline-barbell-bench",
+          name: "Incline Barbell Bench Press",
+          primaryMuscles: ["Chest"],
+          movementPatterns: ["slight_incline_press"],
+          stimulusByMusclePerSet: { Chest: 1 },
+          isCompound: true,
+          isMainLiftEligible: true,
+          fatigueCost: 4,
+        }),
+        exercise({
+          exerciseId: "incline-machine-press",
+          name: "Incline Machine Press",
+          primaryMuscles: ["Chest"],
+          movementPatterns: ["slight_incline_press"],
+          stimulusByMusclePerSet: { Chest: 1 },
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+      ],
+      favoriteExerciseIds: ["barbell-bench", "incline-barbell-bench"],
+    });
+
+    expect(exerciseForLane(result, "upper_a", "chest_anchor")).toMatchObject({
+      exerciseId: "incline-barbell-bench",
+      role: "CORE_COMPOUND",
+      setCount: 3,
+    });
+  });
+
+  it("prefers a user-favorite back squat for a squat/quad anchor when lane safety allows", () => {
     const result = materialize({
       plan: plan([
         lane({
@@ -3022,8 +3076,11 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       favoriteExerciseIds: ["barbell-back-squat"],
     });
 
-    expect(exerciseForLane(result, "upper_a", "squat_anchor").exerciseId)
-      .toBe("hack-squat");
+    expect(exerciseForLane(result, "upper_a", "squat_anchor")).toMatchObject({
+      exerciseId: "barbell-back-squat",
+      role: "CORE_COMPOUND",
+      setCount: 3,
+    });
   });
 
   it("keeps favorite conventional deadlift behind a hamstring-biased hypertrophy hinge", () => {

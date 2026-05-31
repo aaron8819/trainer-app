@@ -175,6 +175,45 @@ describe("Home page", () => {
         nextSessionReasonLabel: "Next in sequence",
         nextSessionReason: "Nothing earlier is still open, so Lower 1 is next this week.",
         activeWeekLabel: "Week 2 - 1 of 4 sessions complete",
+        activeWeekPlanSource: "mesocycle_slot_sequence",
+        activeWeekSessions: [
+          {
+            slotId: "upper_a",
+            label: "Upper 1",
+            status: "completed",
+            statusLabel: "Completed",
+            href: "/workout/workout-1",
+            workoutId: "workout-1",
+            sequenceIndex: 0,
+          },
+          {
+            slotId: "lower_a",
+            label: "Lower 1",
+            status: "next",
+            statusLabel: "Next",
+            href: "#generate-workout",
+            workoutId: null,
+            sequenceIndex: 1,
+          },
+          {
+            slotId: "upper_b",
+            label: "Upper 2",
+            status: "upcoming",
+            statusLabel: "Upcoming",
+            href: null,
+            workoutId: null,
+            sequenceIndex: 2,
+          },
+          {
+            slotId: "lower_b",
+            label: "Lower 2",
+            status: "upcoming",
+            statusLabel: "Upcoming",
+            href: null,
+            workoutId: null,
+            sequenceIndex: 3,
+          },
+        ],
         completedAdvancingSessionsThisWeek: 1,
         totalAdvancingSessionsThisWeek: 4,
       },
@@ -231,6 +270,12 @@ describe("Home page", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Continuity")).toBeInTheDocument();
     expect(screen.getByText("Active Week")).toBeInTheDocument();
+    expect(screen.getByText("Upper 1")).toBeInTheDocument();
+    expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(screen.getAllByText("Lower 1").length).toBeGreaterThan(0);
+    expect(screen.getByText("Next")).toBeInTheDocument();
+    expect(screen.getByText("Upper 2")).toBeInTheDocument();
+    expect(screen.getAllByText("Upcoming")).toHaveLength(2);
     expect(screen.getByText("ProgramStatusCard:homeCompact")).toBeInTheDocument();
     expect(
       screen.getByText("RecentWorkouts:Recent Activity:false:false:Open History")
@@ -329,6 +374,8 @@ describe("Home page", () => {
         nextSessionReasonLabel: "Next in sequence",
         nextSessionReason: "Nothing earlier is still open, so Lower 1 is next this week.",
         activeWeekLabel: "Week 2 - 1 of 4 sessions complete",
+        activeWeekPlanSource: null,
+        activeWeekSessions: [],
         completedAdvancingSessionsThisWeek: 1,
         totalAdvancingSessionsThisWeek: 4,
       },

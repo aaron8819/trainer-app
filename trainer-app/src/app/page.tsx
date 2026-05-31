@@ -26,6 +26,25 @@ function isSessionIntent(value: string | null): value is SessionIntent {
   );
 }
 
+function formatActiveWeekTitle(value: string): string {
+  return value.replace(" - ", " — ");
+}
+
+function getActiveWeekStatusClass(status: string): string {
+  switch (status) {
+    case "completed":
+      return "border-emerald-200 bg-emerald-50 text-emerald-700";
+    case "next":
+      return "border-slate-900 bg-slate-900 text-white";
+    case "in_progress":
+      return "border-blue-200 bg-blue-50 text-blue-700";
+    case "skipped":
+      return "border-amber-200 bg-amber-50 text-amber-700";
+    default:
+      return "border-slate-200 bg-slate-50 text-slate-600";
+  }
+}
+
 export default async function Home() {
   const owner = await resolveOwner();
   const homePage = await loadHomePageData(owner.id);
@@ -132,6 +151,7 @@ export default async function Home() {
     closeout && homeProgram.closeout.isPriorWeek !== true ? closeout : null;
   const priorWeekCloseout =
     closeout && homeProgram.closeout.isPriorWeek === true ? closeout : null;
+  const activeWeekSessions = decision.activeWeekSessions ?? [];
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
@@ -342,11 +362,50 @@ export default async function Home() {
                 Active Week
               </p>
               <p className="mt-2 text-lg font-semibold text-slate-900">
-                {decision.activeWeekLabel}
+                {formatActiveWeekTitle(homePage.headerContext)}
               </p>
               <p className="mt-2 text-sm text-slate-600">
-                {decision.nextSessionDescription ?? decision.nextSessionReason}
+                {decision.activeWeekLabel}
               </p>
+              {activeWeekSessions.length > 0 ? (
+                <div className="mt-4 divide-y divide-slate-100 rounded-xl border border-slate-200">
+                  {activeWeekSessions.map((session) => {
+                    const row = (
+                      <>
+                        <span className="min-w-0 truncate text-sm font-medium text-slate-900">
+                          {session.label}
+                        </span>
+                        <span
+                          className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${getActiveWeekStatusClass(session.status)}`}
+                        >
+                          {session.statusLabel}
+                        </span>
+                      </>
+                    );
+
+                    return session.href ? (
+                      <Link
+                        key={session.slotId}
+                        href={session.href}
+                        className="flex min-h-11 items-center justify-between gap-3 px-3 py-2 transition hover:bg-slate-50"
+                      >
+                        {row}
+                      </Link>
+                    ) : (
+                      <div
+                        key={session.slotId}
+                        className="flex min-h-11 items-center justify-between gap-3 px-3 py-2"
+                      >
+                        {row}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-slate-600">
+                  {decision.nextSessionDescription ?? decision.nextSessionReason}
+                </p>
+              )}
             </div>
           </section>
         ) : null}

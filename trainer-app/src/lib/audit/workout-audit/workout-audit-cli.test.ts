@@ -4212,6 +4212,8 @@ describe("buildPreSessionReadinessSummary", () => {
     projectedSessions?: unknown[];
     fullWeekByMuscle?: unknown[];
     runtimeDoseAdjustmentDiagnostics?: unknown[];
+    currentWeekAudit?: Record<string, unknown>;
+    sessionRisks?: unknown[];
   } = {}) {
     const projectedSessions = overrides.projectedSessions ?? [
       {
@@ -4286,7 +4288,7 @@ describe("buildPreSessionReadinessSummary", () => {
     ];
     const runtimeDoseAdjustmentDiagnostics =
       overrides.runtimeDoseAdjustmentDiagnostics ?? [
-        buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly", -5),
+        buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly"),
         buildDoseDiagnostic(
           "Triceps",
           5.6,
@@ -4294,14 +4296,13 @@ describe("buildPreSessionReadinessSummary", () => {
           6,
           12,
           "add_set",
-          "Machine Shoulder Press",
-          -2.4
+          "Machine Shoulder Press"
         ),
-        buildDoseDiagnostic("Biceps", 8, 10, 6, 14, "hold_seed", undefined, -2),
-        buildDoseDiagnostic("Side Delts", 6, 12, 6, 16, "hold_seed", undefined, -6),
-        buildDoseDiagnostic("Rear Delts", 6, 8, 4, 12, "hold_seed", undefined, -2),
-        buildDoseDiagnostic("Lats", 12, 14, 8, 16, "hold_seed", undefined, -2),
-        buildDoseDiagnostic("Upper Back", 9, 10, 6, 14, "hold_seed", undefined, -1),
+        buildDoseDiagnostic("Biceps", 8, 10, 6, 14, "hold_seed", undefined),
+        buildDoseDiagnostic("Side Delts", 6, 12, 6, 16, "hold_seed", undefined),
+        buildDoseDiagnostic("Rear Delts", 6, 8, 4, 12, "hold_seed", undefined),
+        buildDoseDiagnostic("Lats", 12, 14, 8, 16, "hold_seed", undefined),
+        buildDoseDiagnostic("Upper Back", 9, 10, 6, 14, "hold_seed", undefined),
       ];
 
     return {
@@ -4413,8 +4414,9 @@ describe("buildPreSessionReadinessSummary", () => {
           underTargetClusters: [{ muscle: "Chest", deficit: 2 }],
           belowPreferred: [],
           fatigueRisks: [],
+          ...(overrides.currentWeekAudit ?? {}),
         },
-        sessionRisks: [],
+        sessionRisks: overrides.sessionRisks ?? [],
         runtimeDoseAdjustmentDiagnostics,
       },
       weeklyRetro: {
@@ -4526,8 +4528,7 @@ describe("buildPreSessionReadinessSummary", () => {
     mev: number,
     mav: number,
     kind: "hold_seed" | "add_set" | "optional_add_set",
-    exerciseName: string | undefined,
-    deltaToTarget: number
+    exerciseName: string | undefined
   ) {
     return {
       muscle,
@@ -4953,6 +4954,10 @@ describe("buildPreSessionReadinessSummary", () => {
         "Dose Closure Guidance (Deload Context)",
         "- none - deload volume deficits are expected/non-actionable.",
         "- all hypertrophy add-set / MEV closure top-ups during ACTIVE_DELOAD.",
+        "Session-Local Coaching Readout",
+        "- none - deload context suppresses hypertrophy top-ups",
+        "Safe optional add-ons:",
+        "- all hypertrophy add-ons / MEV closure top-ups during ACTIVE_DELOAD",
         "Run deload seed as prescribed.",
         "- hypertrophy add-ons / MEV closure top-ups during ACTIVE_DELOAD",
         "Safe to train: yes",
@@ -5182,6 +5187,202 @@ describe("buildPreSessionReadinessSummary", () => {
     expect(artifact.projectedWeekVolume.fullWeekByMuscle).toEqual(volumeRowsBefore);
   });
 
+  it("surfaces a Chest exact-floor Cable Crossover buffer as session-local optional isolation", () => {
+    const artifact = buildWeek4UpperBPreSessionArtifact({
+      projectedSessions: [
+        {
+          slotId: "upper_b",
+          intent: "upper",
+          isNext: true,
+          exerciseCount: 2,
+          totalSets: 7,
+          exercises: [
+            {
+              exerciseId: "machine-chest-press",
+              name: "Machine Chest Press",
+              setCount: 4,
+              role: "primary",
+              effectiveStimulusByMuscle: { Chest: 4, Triceps: 2 },
+            },
+            {
+              exerciseId: "cable-crossover",
+              name: "Cable Crossover",
+              setCount: 3,
+              role: "accessory",
+              effectiveStimulusByMuscle: { Chest: 3 },
+            },
+          ],
+          projectedContributionByMuscle: { Chest: 3, Triceps: 2 },
+        },
+      ],
+      fullWeekByMuscle: [
+        buildFullWeekRow("Chest", 10, 12, 10, 16, "A_PRIMARY"),
+        buildFullWeekRow("Triceps", 8, 8, 6, 12, "B_SUPPORT"),
+      ],
+      runtimeDoseAdjustmentDiagnostics: [
+        buildDoseDiagnostic("Chest", 10, 12, 10, 16, "hold_seed", undefined),
+        buildDoseDiagnostic("Triceps", 8, 8, 6, 12, "hold_seed", undefined),
+      ],
+    });
+
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: artifact as never,
+    });
+    const joined = summary?.join("\n") ?? "";
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Session-Local Coaching Readout",
+        "Floor-buffer opportunities:",
+        "- Chest: projected 10 / MEV 10; floor margin 0 weighted sets. Optional +1 Cable Crossover or Pec Deck if readiness/time allow as a session-local buffer only. Expected outcome: add a thin MEV cushion without changing the accepted seed; low-fatigue isolation only.",
+        "Safe optional add-ons:",
+        "- Optional session-local +1 Cable Crossover or Pec Deck if readiness/time allow for floor buffer only.",
+        "Suppress / avoid:",
+        "- extra pressing",
+      ])
+    );
+    expect(joined).not.toContain("Optional +1 Machine Chest Press");
+    expect(joined).not.toContain("- Add +1 Machine Chest Press");
+  });
+
+  it("reports a fatigue watch for a squat plus hinge week before optional add-ons", () => {
+    const artifact = buildWeek4UpperBPreSessionArtifact({
+      projectedSessions: [
+        {
+          slotId: "lower_b",
+          intent: "lower",
+          isNext: true,
+          exerciseCount: 4,
+          totalSets: 14,
+          movementPatternCounts: { squat: 1, hinge: 1, lunge: 1 },
+          exercises: [
+            {
+              exerciseId: "back-squat",
+              name: "Back Squat",
+              setCount: 4,
+              role: "primary",
+              effectiveStimulusByMuscle: { Quads: 4, Glutes: 2 },
+            },
+            {
+              exerciseId: "romanian-deadlift",
+              name: "Romanian Deadlift",
+              setCount: 4,
+              role: "primary",
+              effectiveStimulusByMuscle: { Hamstrings: 4, Glutes: 3, "Lower Back": 2 },
+            },
+            {
+              exerciseId: "walking-lunge",
+              name: "Walking Lunge",
+              setCount: 3,
+              role: "accessory",
+              effectiveStimulusByMuscle: { Quads: 2, Glutes: 2 },
+            },
+          ],
+          projectedContributionByMuscle: {
+            Quads: 6,
+            Hamstrings: 4,
+            Glutes: 7,
+            "Lower Back": 2,
+          },
+        },
+      ],
+      fullWeekByMuscle: [
+        buildFullWeekRow("Quads", 10, 10, 8, 16, "A_PRIMARY"),
+        buildFullWeekRow("Hamstrings", 8, 8, 6, 14, "A_PRIMARY"),
+        buildFullWeekRow("Glutes", 15, 12, 6, 14, "B_SUPPORT"),
+      ],
+      runtimeDoseAdjustmentDiagnostics: [
+        {
+          ...buildDoseDiagnostic("Glutes", 15, 12, 6, 14, "hold_seed", undefined),
+          targetStatus: "over_mav",
+          fatigueDensityConcern: {
+            level: "meaningful",
+            drivers: [
+              {
+                slotId: "lower_b",
+                exerciseName: "Romanian Deadlift",
+                pattern: "hinge",
+              },
+              {
+                slotId: "lower_b",
+                exerciseName: "Back Squat",
+                pattern: "squat",
+              },
+            ],
+          },
+          reasonCode: "posterior_fatigue_meaningful",
+          guidance: "over MAV; caution and suppress add-ons",
+        },
+      ],
+      currentWeekAudit: {
+        fatigueRisks: [
+          "lower_b: high systemic fatigue pattern: squat/hinge/lunge stacking with glutes/lower back stimulus",
+        ],
+      },
+      sessionRisks: [
+        {
+          slotId: "lower_b",
+          issue:
+            "high systemic fatigue pattern: squat/hinge/lunge stacking with glutes/lower back stimulus",
+        },
+      ],
+    });
+    artifact.nextSession.intent = "lower";
+    artifact.nextSession.slotId = "lower_b";
+
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: artifact as never,
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Fatigue cautions:",
+        "- lower_b: high systemic fatigue pattern: squat/hinge/lunge stacking with glutes/lower back stimulus",
+        "- Glutes: meaningful fatigue watch via Romanian Deadlift, Back Squat",
+        "Safe optional add-ons:",
+        "- none",
+      ])
+    );
+  });
+
+  it("does not mutate seed provenance, generated preview, or runtime dose evidence while formatting coaching", () => {
+    const artifact = buildWeek4UpperBPreSessionArtifact({
+      fullWeekByMuscle: [
+        buildFullWeekRow("Chest", 10, 12, 10, 16, "A_PRIMARY"),
+      ],
+      runtimeDoseAdjustmentDiagnostics: [
+        buildDoseDiagnostic("Chest", 10, 12, 10, 16, "hold_seed", undefined),
+      ],
+    });
+    const before = JSON.parse(
+      JSON.stringify({
+        generationProvenance: artifact.generationProvenance,
+        generated: artifact.sessionSnapshot.generated,
+        projectedWeekVolume: artifact.projectedWeekVolume,
+        preSessionReadiness: artifact.preSessionReadiness,
+      })
+    );
+
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: artifact as never,
+    });
+
+    expect({
+      generationProvenance: artifact.generationProvenance,
+      generated: artifact.sessionSnapshot.generated,
+      projectedWeekVolume: artifact.projectedWeekVolume,
+      preSessionReadiness: artifact.preSessionReadiness,
+    }).toEqual(before);
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Boundary: recommendations only; no workout/session/log/seed/progression mutation.",
+      ])
+    );
+  });
+
   it("reflects Lower B calf MEV floor closure in session-local add-ons without upper-body or hinge work", () => {
     const artifact = buildWeek4UpperBPreSessionArtifact({
       projectedSessions: [
@@ -5228,7 +5429,7 @@ describe("buildPreSessionReadinessSummary", () => {
         buildFullWeekRow("Calves", 7, 10, 8, 14, "B_SUPPORT"),
       ],
       runtimeDoseAdjustmentDiagnostics: [
-        buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly", -5),
+        buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly"),
         buildDoseDiagnostic(
           "Calves",
           7,
@@ -5236,10 +5437,9 @@ describe("buildPreSessionReadinessSummary", () => {
           8,
           14,
           "optional_add_set",
-          "Seated Calf Raise",
-          -3
+          "Seated Calf Raise"
         ),
-        buildDoseDiagnostic("Hamstrings", 8, 8, 6, 14, "hold_seed", undefined, 0),
+        buildDoseDiagnostic("Hamstrings", 8, 8, 6, 14, "hold_seed", undefined),
       ],
     });
     artifact.nextSession.intent = "lower";
@@ -5294,7 +5494,7 @@ describe("buildPreSessionReadinessSummary", () => {
         ],
         fullWeekByMuscle: [buildFullWeekRow("Chest", 7, 12, 10, 16, "A_PRIMARY")],
         runtimeDoseAdjustmentDiagnostics: [
-          buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly", -5),
+          buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly"),
         ],
       }) as never,
     });
@@ -5331,7 +5531,7 @@ describe("buildPreSessionReadinessSummary", () => {
         ],
         fullWeekByMuscle: [buildFullWeekRow("Chest", 7, 12, 10, 16, "A_PRIMARY")],
         runtimeDoseAdjustmentDiagnostics: [
-          buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly", -5),
+          buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly"),
         ],
       }) as never,
     });
@@ -5367,7 +5567,7 @@ describe("buildPreSessionReadinessSummary", () => {
         ],
         fullWeekByMuscle: [buildFullWeekRow("Chest", 7, 12, 10, 16, "A_PRIMARY")],
         runtimeDoseAdjustmentDiagnostics: [
-          buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly", -5),
+          buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly"),
         ],
       }) as never,
     });
@@ -5421,7 +5621,7 @@ describe("buildPreSessionReadinessSummary", () => {
         ],
         fullWeekByMuscle: [buildFullWeekRow("Chest", 7, 12, 10, 16, "A_PRIMARY")],
         runtimeDoseAdjustmentDiagnostics: [
-          buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly", -5),
+          buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Cable Fly"),
         ],
       }) as never,
     });

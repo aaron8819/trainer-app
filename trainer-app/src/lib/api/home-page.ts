@@ -14,6 +14,8 @@ import {
 import {
   loadHomeProgramSupport,
   loadProgramDashboardData,
+  type HomeActiveWeekPlan,
+  type HomeActiveWeekSessionRow,
   type HomeProgramSupportData,
   type ProgramDashboardData,
 } from "./program";
@@ -28,6 +30,8 @@ export type HomeDecisionSummary = {
   nextSessionReasonLabel: string;
   nextSessionReason: string;
   activeWeekLabel: string | null;
+  activeWeekSessions: HomeActiveWeekSessionRow[];
+  activeWeekPlanSource: HomeActiveWeekPlan["source"] | null;
   completedAdvancingSessionsThisWeek: number;
   totalAdvancingSessionsThisWeek: number;
 };
@@ -307,6 +311,8 @@ function buildDecisionSummary(
     nextSessionReasonLabel: reason.label,
     nextSessionReason: reason.detail,
     activeWeekLabel: buildActiveWeekLabel(homeProgram),
+    activeWeekSessions: homeProgram.activeWeekPlan?.sessions ?? [],
+    activeWeekPlanSource: homeProgram.activeWeekPlan?.source ?? null,
     completedAdvancingSessionsThisWeek: homeProgram.completedAdvancingSessionsThisWeek,
     totalAdvancingSessionsThisWeek: homeProgram.totalAdvancingSessionsThisWeek,
   };

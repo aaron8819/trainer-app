@@ -21,7 +21,7 @@ import {
   getRirTarget,
   getWeeklyVolumeTarget,
 } from "./mesocycle-lifecycle-math";
-import { loadNextWorkoutContext } from "./next-session";
+import { buildAdvancingPerformedSlots, loadNextWorkoutContext } from "./next-session";
 import {
   findRelevantWeekCloseForUser,
   type WeekCloseDeficitState,
@@ -35,6 +35,11 @@ import {
 import { loadRecentMuscleStimulus } from "./recent-muscle-stimulus";
 import { computeMuscleOpportunity, type OpportunityState } from "./opportunity";
 import { resolvePhaseBlockProfile } from "./generation-phase-block-context";
+import {
+  buildRemainingRuntimeSlotsFromPerformed,
+  readRuntimeSlotSequence,
+} from "./mesocycle-slot-runtime";
+import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
 import {
   isCloseoutSession,
   isDismissedCloseoutSession,
@@ -58,6 +63,7 @@ import {
   formatWeightedSetsLabel,
   type VolumeReadModelLandmarkContext,
 } from "./volume-read-model-helpers";
+import { formatSessionIdentityLabel } from "@/lib/ui/session-identity";
 
 export type ProgramMesoBlock = {
   blockType: string;
@@ -139,6 +145,29 @@ export type NextSessionData = {
   isExisting: boolean;
 };
 
+export type HomeActiveWeekSessionStatus =
+  | "completed"
+  | "next"
+  | "upcoming"
+  | "in_progress"
+  | "skipped";
+
+export type HomeActiveWeekSessionRow = {
+  slotId: string;
+  label: string;
+  status: HomeActiveWeekSessionStatus;
+  statusLabel: string;
+  href: string | null;
+  workoutId: string | null;
+  sequenceIndex: number;
+};
+
+export type HomeActiveWeekPlan = {
+  week: number;
+  source: "mesocycle_slot_sequence" | "legacy_weekly_schedule";
+  sessions: HomeActiveWeekSessionRow[];
+};
+
 export type ProgramDashboardData = {
   activeMeso: ProgramMesoSummary | null;
   currentWeek: number;
@@ -154,6 +183,7 @@ export type ProgramDashboardData = {
 export type HomeProgramSupportData = {
   nextSession: NextSessionData;
   activeWeek: number | null;
+  activeWeekPlan: HomeActiveWeekPlan | null;
   completedAdvancingSessionsThisWeek: number;
   totalAdvancingSessionsThisWeek: number;
   lastSessionSkipped: boolean;
@@ -526,11 +556,30 @@ type CloseoutWorkoutCandidate = {
 };
 
 type HomeWeekProgressWorkoutCandidate = {
+  id: string;
+  status: WorkoutStatus;
+  scheduledDate: Date;
   advancesSplit: boolean | null;
   selectionMetadata: unknown;
   selectionMode: string | null;
   sessionIntent: string | null;
   mesocyclePhaseSnapshot: string | null;
+};
+
+const HOME_WEEK_WORKOUT_STATUSES: WorkoutStatus[] = [
+  "COMPLETED",
+  "PARTIAL",
+  "SKIPPED",
+  "IN_PROGRESS",
+  "PLANNED",
+];
+
+const HOME_SLOT_WORKOUT_PRIORITY: Record<WorkoutStatus, number> = {
+  IN_PROGRESS: 0,
+  PARTIAL: 1,
+  PLANNED: 2,
+  COMPLETED: 3,
+  SKIPPED: 4,
 };
 
 const CLOSEOUT_STATUS_PRIORITY: Record<WorkoutStatus, number> = {
@@ -604,22 +653,200 @@ function countAdvancingSessions(workouts: HomeWeekProgressWorkoutCandidate[]): n
   }).length;
 }
 
+function isPerformedWorkoutStatus(status: WorkoutStatus): boolean {
+  return (PERFORMED_WORKOUT_STATUSES as readonly string[]).includes(status);
+}
+
+function resolveHomeNextSlotId(input: {
+  nextSession: NextSessionData;
+  remainingSlots: ReadonlyArray<{ slotId: string; intent: string }>;
+}): string | null {
+  if (input.remainingSlots.length === 0) {
+    return null;
+  }
+
+  if (input.nextSession.isExisting && input.nextSession.slotId) {
+    const exact = input.remainingSlots.find((slot) => slot.slotId === input.nextSession.slotId);
+    if (exact) {
+      return exact.slotId;
+    }
+  }
+
+  if (input.nextSession.isExisting && input.nextSession.intent) {
+    const intentMatch = input.remainingSlots.find(
+      (slot) => slot.intent === input.nextSession.intent
+    );
+    if (intentMatch) {
+      return intentMatch.slotId;
+    }
+  }
+
+  return input.remainingSlots[0]?.slotId ?? null;
+}
+
+function buildHomeSlotWorkoutLookup(
+  workouts: HomeWeekProgressWorkoutCandidate[]
+): Map<string, { id: string; status: WorkoutStatus }> {
+  const bySlotId = new Map<string, { id: string; status: WorkoutStatus; priority: number }>();
+
+  for (const workout of workouts) {
+    const semantics = deriveSessionSemantics({
+      advancesSplit: workout.advancesSplit,
+      selectionMetadata: workout.selectionMetadata,
+      selectionMode: workout.selectionMode,
+      sessionIntent: workout.sessionIntent,
+      mesocyclePhase: workout.mesocyclePhaseSnapshot,
+    });
+    if (semantics.isCloseout || !semantics.consumesWeeklyScheduleIntent) {
+      continue;
+    }
+
+    const slotId = readSessionSlotSnapshot(workout.selectionMetadata)?.slotId ?? null;
+    if (!slotId) {
+      continue;
+    }
+
+    const priority = HOME_SLOT_WORKOUT_PRIORITY[workout.status] ?? 99;
+    const existing = bySlotId.get(slotId);
+    if (!existing || priority < existing.priority) {
+      bySlotId.set(slotId, {
+        id: workout.id,
+        status: workout.status,
+        priority,
+      });
+    }
+  }
+
+  return new Map(
+    Array.from(bySlotId.entries()).map(([slotId, workout]) => [
+      slotId,
+      { id: workout.id, status: workout.status },
+    ])
+  );
+}
+
+function buildHomeActiveWeekPlan(input: {
+  activeWeek: number | null;
+  slotSequenceJson?: unknown;
+  weeklySchedule: string[];
+  workouts: HomeWeekProgressWorkoutCandidate[];
+  nextSession: NextSessionData;
+  latestIncomplete: { id: string; status: string } | null;
+}): HomeActiveWeekPlan | null {
+  if (input.activeWeek == null) {
+    return null;
+  }
+
+  const slotSequence = readRuntimeSlotSequence({
+    slotSequenceJson: input.slotSequenceJson,
+    weeklySchedule: input.weeklySchedule,
+  });
+  if (slotSequence.slots.length === 0) {
+    return null;
+  }
+
+  const performedAdvancingSlotsThisWeek = buildAdvancingPerformedSlots(
+    input.workouts.filter((workout) => isPerformedWorkoutStatus(workout.status))
+  );
+  const remainingSlots = buildRemainingRuntimeSlotsFromPerformed({
+    slotSequenceJson: input.slotSequenceJson,
+    weeklySchedule: input.weeklySchedule,
+    performedAdvancingSlotsThisWeek,
+  });
+  const remainingSlotIds = new Set(remainingSlots.map((slot) => slot.slotId));
+  const nextSlotId = resolveHomeNextSlotId({
+    nextSession: input.nextSession,
+    remainingSlots,
+  });
+  const slotWorkoutLookup = buildHomeSlotWorkoutLookup(input.workouts);
+  const existingNextWorkout =
+    input.nextSession.workoutId && input.latestIncomplete
+      ? {
+          id: input.nextSession.workoutId,
+          status: input.latestIncomplete.status.toUpperCase() as WorkoutStatus,
+        }
+      : null;
+
+  return {
+    week: input.activeWeek,
+    source: slotSequence.source,
+    sessions: slotSequence.slots.map((slot) => {
+      const isNextSlot = slot.slotId === nextSlotId;
+      const linkedWorkout =
+        slotWorkoutLookup.get(slot.slotId) ?? (isNextSlot ? existingNextWorkout : null);
+      const linkedStatus = linkedWorkout?.status ?? null;
+      const isCompletedSlot = !remainingSlotIds.has(slot.slotId);
+      const status = (() => {
+        if (linkedStatus === "IN_PROGRESS" || linkedStatus === "PARTIAL") {
+          return "in_progress" as const;
+        }
+        if (linkedStatus === "SKIPPED") {
+          return "skipped" as const;
+        }
+        if (isCompletedSlot) {
+          return "completed" as const;
+        }
+        if (isNextSlot) {
+          return "next" as const;
+        }
+        return "upcoming" as const;
+      })();
+      const statusLabel =
+        status === "in_progress"
+          ? "In progress"
+          : status.charAt(0).toUpperCase() + status.slice(1);
+      const href =
+        status === "completed" || status === "skipped"
+          ? linkedWorkout
+            ? `/workout/${linkedWorkout.id}`
+            : null
+          : status === "in_progress"
+            ? linkedWorkout
+              ? `/log/${linkedWorkout.id}`
+              : null
+            : status === "next"
+              ? linkedWorkout
+                ? `/log/${linkedWorkout.id}`
+                : "#generate-workout"
+              : null;
+
+      return {
+        slotId: slot.slotId,
+        label: formatSessionIdentityLabel({
+          intent: slot.intent,
+          slotId: slot.slotId,
+        }),
+        status,
+        statusLabel,
+        href,
+        workoutId: linkedWorkout?.id ?? null,
+        sequenceIndex: slot.sequenceIndex,
+      };
+    }),
+  };
+}
+
 async function loadHomeWeekProgress(input: {
   userId: string;
   activeMesocycle: {
     id: string;
     startWeek: number;
     sessionsPerWeek: number;
+    slotSequenceJson?: unknown;
     macroCycle: { startDate: Date };
   } | null;
   activeWeek: number | null;
+  weeklySchedule: string[];
   nextSession: NextSessionData;
+  latestIncomplete: { id: string; status: string } | null;
 }): Promise<{
+  activeWeekPlan: HomeActiveWeekPlan | null;
   completedAdvancingSessionsThisWeek: number;
   totalAdvancingSessionsThisWeek: number;
 }> {
   if (!input.activeMesocycle || input.activeWeek == null) {
     return {
+      activeWeekPlan: null,
       completedAdvancingSessionsThisWeek: 0,
       totalAdvancingSessionsThisWeek: 0,
     };
@@ -635,7 +862,7 @@ async function loadHomeWeekProgress(input: {
     where: {
       userId: input.userId,
       mesocycleId: input.activeMesocycle.id,
-      status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
+      status: { in: HOME_WEEK_WORKOUT_STATUSES },
       sessionIntent: { not: null },
       OR: [
         { mesocycleWeekSnapshot: input.activeWeek },
@@ -646,6 +873,9 @@ async function loadHomeWeekProgress(input: {
       ],
     },
     select: {
+      id: true,
+      status: true,
+      scheduledDate: true,
       advancesSplit: true,
       selectionMetadata: true,
       selectionMode: true,
@@ -653,18 +883,32 @@ async function loadHomeWeekProgress(input: {
       mesocyclePhaseSnapshot: true,
     },
   });
+  const performedWorkouts = workouts.filter((workout) =>
+    isPerformedWorkoutStatus(workout.status)
+  );
+  const activeWeekPlan = buildHomeActiveWeekPlan({
+    activeWeek: input.activeWeek,
+    slotSequenceJson: input.activeMesocycle.slotSequenceJson,
+    weeklySchedule: input.weeklySchedule,
+    workouts,
+    nextSession: input.nextSession,
+    latestIncomplete: input.latestIncomplete,
+  });
 
   return {
-    completedAdvancingSessionsThisWeek: countAdvancingSessions(workouts),
+    activeWeekPlan,
+    completedAdvancingSessionsThisWeek: countAdvancingSessions(performedWorkouts),
     totalAdvancingSessionsThisWeek: Math.max(
       1,
-      input.nextSession.slotSequenceLength ?? input.activeMesocycle.sessionsPerWeek
+      activeWeekPlan?.sessions.length ??
+        input.nextSession.slotSequenceLength ??
+        input.activeMesocycle.sessionsPerWeek
     ),
   };
 }
 
 export async function loadHomeProgramSupport(userId: string): Promise<HomeProgramSupportData> {
-  const [nextWorkoutContext, activeMesocycle] = await Promise.all([
+  const [nextWorkoutContext, activeMesocycle, constraints] = await Promise.all([
     loadNextWorkoutContext(userId),
     prisma.mesocycle.findFirst({
       where: { macroCycle: { userId }, isActive: true },
@@ -677,12 +921,17 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
         deloadSessionsCompleted: true,
         volumeTarget: true,
         state: true,
+        slotSequenceJson: true,
         macroCycle: {
           select: {
             startDate: true,
           },
         },
       },
+    }),
+    prisma.constraints.findUnique({
+      where: { userId },
+      select: { weeklySchedule: true },
     }),
   ]);
   const activeWeek = activeMesocycle ? getCurrentMesoWeek(activeMesocycle) : null;
@@ -880,7 +1129,11 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
     userId,
     activeMesocycle,
     activeWeek,
+    weeklySchedule: (constraints?.weeklySchedule ?? []).map((intent) =>
+      intent.toLowerCase()
+    ),
     nextSession,
+    latestIncomplete,
   });
 
   return {

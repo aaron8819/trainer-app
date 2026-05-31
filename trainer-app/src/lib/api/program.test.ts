@@ -937,6 +937,9 @@ describe("loadHomeProgramSupport", () => {
       weeklySchedule: ["LOWER", "UPPER", "LOWER", "UPPER"],
     });
     const performedUpperA = {
+      id: "w-upper-a",
+      status: "COMPLETED",
+      scheduledDate: new Date("2026-03-24T00:00:00.000Z"),
       advancesSplit: true,
       selectionMetadata: makeSelectionMetadata({
         slot: {
@@ -951,6 +954,9 @@ describe("loadHomeProgramSupport", () => {
       mesocyclePhaseSnapshot: "ACCUMULATION",
     };
     const nonAdvancingCloseout = {
+      id: "w-closeout",
+      status: "COMPLETED",
+      scheduledDate: new Date("2026-03-24T01:00:00.000Z"),
       advancesSplit: false,
       selectionMetadata: makeSelectionMetadata({
         exceptionCode: "closeout_session",
@@ -960,6 +966,9 @@ describe("loadHomeProgramSupport", () => {
       mesocyclePhaseSnapshot: "ACCUMULATION",
     };
     const supplementalSession = {
+      id: "w-supplemental",
+      status: "COMPLETED",
+      scheduledDate: new Date("2026-03-24T02:00:00.000Z"),
       advancesSplit: false,
       selectionMetadata: makeSelectionMetadata({
         exceptionCode: "supplemental_deficit_session",
@@ -986,6 +995,155 @@ describe("loadHomeProgramSupport", () => {
     });
     expect(result.completedAdvancingSessionsThisWeek).toBe(1);
     expect(result.totalAdvancingSessionsThisWeek).toBe(4);
+  });
+
+  it("builds the active week checklist from the persisted slot sequence", async () => {
+    const slotSequenceJson = {
+      version: 1,
+      source: "handoff_draft",
+      sequenceMode: "ordered_flexible",
+      slots: [
+        { slotId: "upper_a", intent: "UPPER" },
+        { slotId: "lower_a", intent: "LOWER" },
+        { slotId: "upper_b", intent: "UPPER" },
+        { slotId: "lower_b", intent: "LOWER" },
+      ],
+    };
+    setupDashboardMocks(
+      {
+        sessionsPerWeek: 4,
+        slotSequenceJson,
+      },
+      1
+    );
+    mocks.constraintsFindUnique.mockResolvedValue({
+      weeklySchedule: ["LOWER", "LOWER", "UPPER", "UPPER"],
+    });
+    const completedUpperA = {
+      id: "w-upper-a",
+      status: "COMPLETED",
+      scheduledDate: new Date("2026-03-24T00:00:00.000Z"),
+      advancesSplit: true,
+      selectionMetadata: makeSelectionMetadata({
+        weekInMeso: 1,
+        slot: {
+          slotId: "upper_a",
+          intent: "upper",
+          sequenceIndex: 0,
+          sequenceLength: 4,
+        },
+      }),
+      selectionMode: "INTENT",
+      sessionIntent: "UPPER",
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+    };
+    mocks.workoutFindMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([completedUpperA])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([completedUpperA]);
+
+    const result = await loadHomeProgramSupport("user-1");
+
+    expect(result.activeWeekPlan).toMatchObject({
+      week: 1,
+      source: "mesocycle_slot_sequence",
+    });
+    expect(result.activeWeekPlan?.sessions.map((session) => session.label)).toEqual([
+      "Upper 1",
+      "Lower 1",
+      "Upper 2",
+      "Lower 2",
+    ]);
+    expect(result.activeWeekPlan?.sessions.map((session) => session.status)).toEqual([
+      "completed",
+      "next",
+      "upcoming",
+      "upcoming",
+    ]);
+  });
+
+  it("marks an existing in-progress active-week workout as resumable", async () => {
+    const slotSequenceJson = {
+      version: 1,
+      source: "handoff_draft",
+      sequenceMode: "ordered_flexible",
+      slots: [
+        { slotId: "upper_a", intent: "UPPER" },
+        { slotId: "lower_a", intent: "LOWER" },
+        { slotId: "upper_b", intent: "UPPER" },
+        { slotId: "lower_b", intent: "LOWER" },
+      ],
+    };
+    setupDashboardMocks(
+      {
+        sessionsPerWeek: 4,
+        slotSequenceJson,
+      },
+      1
+    );
+    mocks.constraintsFindUnique.mockResolvedValue({
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+    });
+    const completedUpperA = {
+      id: "w-upper-a",
+      status: "COMPLETED",
+      scheduledDate: new Date("2026-03-24T00:00:00.000Z"),
+      advancesSplit: true,
+      selectionMetadata: makeSelectionMetadata({
+        weekInMeso: 1,
+        slot: {
+          slotId: "upper_a",
+          intent: "upper",
+          sequenceIndex: 0,
+          sequenceLength: 4,
+        },
+      }),
+      selectionMode: "INTENT",
+      sessionIntent: "UPPER",
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+    };
+    const inProgressLowerA = {
+      id: "w-lower-a",
+      status: "IN_PROGRESS",
+      scheduledDate: new Date("2026-03-25T00:00:00.000Z"),
+      advancesSplit: true,
+      selectionMetadata: makeSelectionMetadata({
+        weekInMeso: 1,
+        slot: {
+          slotId: "lower_a",
+          intent: "lower",
+          sequenceIndex: 1,
+          sequenceLength: 4,
+        },
+      }),
+      selectionMode: "INTENT",
+      sessionIntent: "LOWER",
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+    };
+    mocks.workoutFindMany
+      .mockResolvedValueOnce([
+        {
+          id: inProgressLowerA.id,
+          status: inProgressLowerA.status,
+          sessionIntent: inProgressLowerA.sessionIntent,
+          scheduledDate: inProgressLowerA.scheduledDate,
+          selectionMetadata: inProgressLowerA.selectionMetadata,
+        },
+      ])
+      .mockResolvedValueOnce([completedUpperA])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([completedUpperA, inProgressLowerA]);
+
+    const result = await loadHomeProgramSupport("user-1");
+    const lowerA = result.activeWeekPlan?.sessions.find((session) => session.slotId === "lower_a");
+
+    expect(lowerA).toMatchObject({
+      status: "in_progress",
+      statusLabel: "In progress",
+      href: "/log/w-lower-a",
+      workoutId: "w-lower-a",
+    });
   });
 
   it("detects when the most recent workout for the rotation intent was skipped", async () => {

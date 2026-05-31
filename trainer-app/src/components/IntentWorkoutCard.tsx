@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
 import type { SaveWorkoutRequestPayload } from "@/components/log-workout/api";
 import type { HomeDecisionSummary } from "@/lib/api/home-page";
@@ -102,6 +103,33 @@ function parseTargetMuscles(input: string): string[] {
     .filter((entry) => entry.length > 0);
 }
 
+function buildSaveWorkoutPayload(input: {
+  workout: WorkoutPlan;
+  metadata: GeneratedMetadata;
+  fallbackIntent: SessionIntent;
+}): SaveWorkoutRequestPayload {
+  return {
+    workoutId: input.workout.id,
+    scheduledDate: input.workout.scheduledDate,
+    estimatedMinutes: input.workout.estimatedMinutes,
+    selectionMode: input.metadata.selectionMode,
+    sessionIntent: toDbSessionIntent(input.metadata.sessionIntent ?? input.fallbackIntent),
+    selectionMetadata: input.metadata.selectionMetadata,
+    filteredExercises: input.metadata.filteredExercises,
+    exercises: listWorkoutPlanExercisesInOrder(input.workout).map(({ exercise, section }) => ({
+      section: toSaveExerciseSection(section),
+      exerciseId: exercise.exercise.id,
+      sets: exercise.sets.map((set) => ({
+        setIndex: set.setIndex,
+        targetReps: set.targetReps,
+        targetRepRange: set.targetRepRange,
+        targetRpe: set.targetRpe,
+        targetLoad: set.targetLoad,
+      })),
+    })),
+  };
+}
+
 type IntentWorkoutCardProps = {
   initialIntent?: SessionIntent;
   initialSlotId?: string | null;
@@ -117,19 +145,24 @@ export function IntentWorkoutCard({
   nextSessionLabel,
   nextSessionDescription,
 }: IntentWorkoutCardProps) {
+  const router = useRouter();
   const [intent, setIntent] = useState<SessionIntent>(initialIntent);
   const [targetMusclesInput, setTargetMusclesInput] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showCustomize, setShowCustomize] = useState(initialIntent === "body_part");
 
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [generatedMetadata, setGeneratedMetadata] = useState<GeneratedMetadata | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
+  const startInFlightRef = useRef(false);
 
   useEffect(() => {
     setIntent(initialIntent);
+    setShowCustomize(initialIntent === "body_part");
   }, [initialIntent]);
 
   const allExercises = useMemo(
@@ -137,7 +170,13 @@ export function IntentWorkoutCard({
     [workout]
   );
 
-  const handleGenerate = async () => {
+  const generateWorkout = async (input: {
+    requestedIntent: SessionIntent;
+    requestedSlotId?: string | null;
+  }): Promise<{
+    workout: WorkoutPlan;
+    metadata: GeneratedMetadata;
+  } | null> => {
     setLoading(true);
     setError(null);
     setSavedId(null);
@@ -147,9 +186,12 @@ export function IntentWorkoutCard({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        intent,
-        slotId: intent === initialIntent ? initialSlotId : undefined,
-        targetMuscles: intent === "body_part" ? targetMuscles : undefined,
+        intent: input.requestedIntent,
+        slotId:
+          input.requestedIntent === initialIntent
+            ? input.requestedSlotId
+            : undefined,
+        targetMuscles: input.requestedIntent === "body_part" ? targetMuscles : undefined,
       }),
     });
 
@@ -157,46 +199,97 @@ export function IntentWorkoutCard({
       const body = await response.json().catch(() => ({}));
       setError(body.error ?? "Failed to generate workout");
       setLoading(false);
-      return;
+      return null;
     }
 
     const body: GenerateFromIntentResponse = await response.json();
-    setWorkout(body.workout);
-    setGeneratedMetadata({
+    const metadata = {
       selectionMode: body.selectionMode,
       sessionIntent: body.sessionIntent,
       selectionMetadata: body.selectionMetadata,
       filteredExercises: body.filteredExercises ?? [],
       selectionSummary: body.selectionSummary,
-    });
+    };
+    setWorkout(body.workout);
+    setGeneratedMetadata(metadata);
     setLoading(false);
+    return { workout: body.workout, metadata };
+  };
+
+  const handleGenerate = async () => {
+    await generateWorkout({
+      requestedIntent: intent,
+      requestedSlotId: initialSlotId,
+    });
+  };
+
+  const handlePreviewCustomize = async () => {
+    setShowCustomize(true);
+    if (!workout) {
+      await handleGenerate();
+    }
+  };
+
+  const handleStartWorkout = async () => {
+    if (startInFlightRef.current) {
+      return;
+    }
+
+    startInFlightRef.current = true;
+    setStarting(true);
+    setError(null);
+    setSavedId(null);
+
+    const generated = await generateWorkout({
+      requestedIntent: initialIntent,
+      requestedSlotId: initialSlotId,
+    });
+
+    if (!generated) {
+      startInFlightRef.current = false;
+      setStarting(false);
+      return;
+    }
+
+    setSaving(true);
+    const payload = buildSaveWorkoutPayload({
+      workout: generated.workout,
+      metadata: generated.metadata,
+      fallbackIntent: initialIntent,
+    });
+
+    const response = await fetch("/api/workouts/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      setError(body.error ?? "Failed to save workout");
+      setSaving(false);
+      setStarting(false);
+      startInFlightRef.current = false;
+      return;
+    }
+
+    const body = await response.json().catch(() => ({}));
+    const workoutId = typeof body.workoutId === "string" ? body.workoutId : generated.workout.id;
+    router.push(`/log/${workoutId}`);
+    setSaving(false);
+    setStarting(false);
   };
 
   const handleSave = async () => {
-    if (!workout) return;
+    if (!workout || !generatedMetadata) return;
     setSaving(true);
     setError(null);
 
-    const payload: SaveWorkoutRequestPayload = {
-      workoutId: workout.id,
-      scheduledDate: workout.scheduledDate,
-      estimatedMinutes: workout.estimatedMinutes,
-      selectionMode: generatedMetadata?.selectionMode ?? "INTENT",
-      sessionIntent: toDbSessionIntent(generatedMetadata?.sessionIntent ?? intent),
-      selectionMetadata: generatedMetadata?.selectionMetadata,
-      filteredExercises: generatedMetadata?.filteredExercises,
-      exercises: allExercises.map(({ exercise, section }) => ({
-        section: toSaveExerciseSection(section),
-        exerciseId: exercise.exercise.id,
-        sets: exercise.sets.map((set) => ({
-          setIndex: set.setIndex,
-          targetReps: set.targetReps,
-          targetRepRange: set.targetRepRange,
-          targetRpe: set.targetRpe,
-          targetLoad: set.targetLoad,
-        })),
-      })),
-    };
+    const payload = buildSaveWorkoutPayload({
+      workout,
+      metadata: generatedMetadata,
+      fallbackIntent: intent,
+    });
 
     const response = await fetch("/api/workouts/save", {
       method: "POST",
@@ -235,24 +328,24 @@ export function IntentWorkoutCard({
         </div>
       ) : null}
 
-      <div className="mt-4 grid gap-3">
-        <label className="flex flex-col gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Intent</span>
-          <select
-            className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
-            value={intent}
-            onChange={(event) => setIntent(event.target.value as SessionIntent)}
-          >
-            {INTENT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+      {showCustomize ? (
+        <div className="mt-4 grid gap-3">
+          <label className="flex flex-col gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Intent</span>
+            <select
+              className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+              value={intent}
+              onChange={(event) => setIntent(event.target.value as SessionIntent)}
+            >
+              {INTENT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
 
-        {intent === "body_part" ? (
-          <>
+          {intent === "body_part" ? (
             <label className="flex flex-col gap-2">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Target Muscles (comma-separated)
@@ -264,20 +357,28 @@ export function IntentWorkoutCard({
                 placeholder="e.g., chest, triceps"
               />
             </label>
-          </>
-        ) : null}
-      </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="mt-4 grid gap-2 sm:flex sm:flex-wrap sm:gap-3">
         <button
           type="button"
           className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white disabled:opacity-60 sm:w-auto"
-          onClick={handleGenerate}
-          disabled={loading}
+          onClick={handleStartWorkout}
+          disabled={starting || loading || saving}
         >
-          {loading ? "Preparing..." : primaryAction.label}
+          {starting ? "Starting..." : primaryAction.label}
         </button>
-        {workout ? (
+        <button
+          type="button"
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-300 px-5 py-2 text-sm font-semibold disabled:opacity-60 sm:w-auto"
+          onClick={handlePreviewCustomize}
+          disabled={starting || loading || saving}
+        >
+          {loading && !starting ? "Preparing..." : "Preview / Customize"}
+        </button>
+        {showCustomize && workout ? (
           <button
             type="button"
             className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-slate-900 px-5 py-2 text-sm font-semibold disabled:opacity-60 sm:w-auto"
@@ -338,7 +439,7 @@ export function IntentWorkoutCard({
         </div>
       ) : null}
 
-      {workout ? (
+      {showCustomize && workout ? (
         <div className="mt-6 space-y-4">
           <div className="rounded-xl border border-slate-200 p-4">
             <p className="text-sm text-slate-500">Estimated time</p>

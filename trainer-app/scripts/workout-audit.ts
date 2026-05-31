@@ -426,7 +426,7 @@ type PreSessionDoseDiagnostic =
 type ProjectedWeekMuscleRow = ProjectedWeekVolumeAuditPayload["fullWeekByMuscle"][number];
 type ProjectedWeekSession = ProjectedWeekVolumeAuditPayload["projectedSessions"][number];
 type DoseClosureRecommendation = {
-  kind: "priority" | "optional";
+  kind: "priority" | "optional" | "floor_buffer";
   muscle: string;
   line: string;
   addonLine: string;
@@ -456,6 +456,8 @@ const LOWER_BODY_MUSCLES = new Set([
 ]);
 const TARGET_TIER_MEANINGFUL = new Set(["A_PRIMARY", "B_SUPPORT"]);
 const MAX_BOUNDED_TOP_UP_RAW_SETS = 5;
+const FLOOR_BUFFER_MARGIN_SETS = 1;
+const ALREADY_COVERED_NEXT_SESSION_SETS = 4;
 const DELOAD_DO_NOT_CHASE_VOLUME_MESSAGE =
   "Deload is intentionally reduced volume; do not chase MEV/target deficits.";
 
@@ -516,7 +518,12 @@ function getLowFatigueIsolationLabel(input: {
 }): string {
   const exerciseName = input.exerciseName;
   if (input.muscle === "Chest") {
-    if (exerciseName?.toLowerCase().includes("fly")) {
+    const normalized = exerciseName?.toLowerCase();
+    if (
+      normalized?.includes("fly") ||
+      normalized?.includes("crossover") ||
+      normalized?.includes("pec deck")
+    ) {
       return `${exerciseName} or Pec Deck`;
     }
     return "Cable Fly or Pec Deck";
@@ -552,6 +559,38 @@ function getLowFatigueIsolationLabel(input: {
       : "Calf Raise";
   }
   return exerciseName ?? "low-fatigue isolation";
+}
+
+function findLowFatigueIsolationExercise(input: {
+  muscle: string;
+  nextSession: ProjectedWeekSession | undefined;
+}): string | undefined {
+  const exercises = input.nextSession?.exercises ?? [];
+  const matches = (tokens: string[]) =>
+    exercises.find((exercise) => {
+      const normalized = exercise.name.toLowerCase();
+      return tokens.some((token) => normalized.includes(token));
+    })?.name;
+
+  if (input.muscle === "Chest") {
+    return matches(["crossover", "fly", "pec deck"]);
+  }
+  if (input.muscle === "Triceps") {
+    return matches(["pushdown", "extension"]);
+  }
+  if (input.muscle === "Biceps") {
+    return matches(["curl"]);
+  }
+  if (input.muscle === "Side Delts") {
+    return matches(["lateral"]);
+  }
+  if (input.muscle === "Rear Delts") {
+    return matches(["rear delt", "reverse pec", "face pull"]);
+  }
+  if (input.muscle === "Calves") {
+    return matches(["calf"]);
+  }
+  return undefined;
 }
 
 function getDoseClosureAddonCaveat(muscle: string): string {
@@ -705,6 +744,65 @@ function buildOptionalDoseClosureRecommendation(input: {
   };
 }
 
+function buildFloorBufferRecommendation(input: {
+  row: ProjectedWeekMuscleRow;
+  isolation: string;
+}): DoseClosureRecommendation {
+  const projection = formatMevProjection({
+    effectiveSets: input.row.projectedFullWeekEffectiveSets,
+    mev: input.row.mev,
+  });
+  const margin = Math.max(
+    0,
+    input.row.projectedFullWeekEffectiveSets - input.row.mev
+  );
+  return {
+    kind: "floor_buffer",
+    muscle: input.row.muscle,
+    line: `- ${input.row.muscle}: ${projection}; floor margin ${formatWeightedSetGap(margin)}. Optional +1 ${input.isolation} ${getDoseClosureAddonCaveat(input.row.muscle)} as a session-local buffer only. Expected outcome: add a thin MEV cushion without changing the accepted seed; low-fatigue isolation only.`,
+    addonLine: `- Optional session-local +1 ${input.isolation} ${getDoseClosureAddonCaveat(input.row.muscle)} for floor buffer only.`,
+  };
+}
+
+function isMeaningfulFatigueOrReadinessLimited(
+  diagnostic: PreSessionDoseDiagnostic | undefined
+): boolean {
+  return (
+    diagnostic?.fatigueDensityConcern.level === "meaningful" ||
+    diagnostic?.fatigueDensityConcern.level === "high" ||
+    diagnostic?.recoveryReadinessCaveat.status === "local_soreness" ||
+    diagnostic?.recoveryReadinessCaveat.status === "low_overall_readiness" ||
+    diagnostic?.recoveryReadinessCaveat.status === "pain_or_fatigue_flag"
+  );
+}
+
+function shouldOfferFloorBuffer(input: {
+  row: ProjectedWeekMuscleRow;
+  diagnostic: PreSessionDoseDiagnostic | undefined;
+  nextSession: ProjectedWeekSession | undefined;
+  projectedSessions: ProjectedWeekVolumeAuditPayload["projectedSessions"];
+}): boolean {
+  const margin = input.row.projectedFullWeekEffectiveSets - input.row.mev;
+  const nextContribution =
+    input.nextSession?.projectedContributionByMuscle[input.row.muscle] ?? 0;
+  const finalOpportunity = isFinalPracticalOpportunity({
+    muscle: input.row.muscle,
+    nextSession: input.nextSession,
+    projectedSessions: input.projectedSessions,
+  });
+
+  return (
+    input.row.mev > 0 &&
+    margin >= 0 &&
+    margin <= FLOOR_BUFFER_MARGIN_SETS &&
+    finalOpportunity &&
+    nextContribution > 0 &&
+    nextContribution <= ALREADY_COVERED_NEXT_SESSION_SETS &&
+    input.row.deltaToMav < -FLOOR_BUFFER_MARGIN_SETS &&
+    !isMeaningfulFatigueOrReadinessLimited(input.diagnostic)
+  );
+}
+
 function buildDoseClosurePlan(input: {
   diagnostics: PreSessionDoseDiagnostic[];
   fullWeekRows: ProjectedWeekVolumeAuditPayload["fullWeekByMuscle"];
@@ -775,6 +873,28 @@ function buildDoseClosurePlan(input: {
         priority.push(recommendation.line);
         recommendations.push(recommendation);
       }
+      continue;
+    }
+
+    if (
+      shouldOfferFloorBuffer({
+        row,
+        diagnostic,
+        nextSession: input.nextSession,
+        projectedSessions: input.projectedSessions,
+      })
+    ) {
+      const isolation = getLowFatigueIsolationLabel({
+        muscle: row.muscle,
+        exerciseName:
+          findLowFatigueIsolationExercise({
+            muscle: row.muscle,
+            nextSession: input.nextSession,
+          }) ?? diagnostic?.recommendedAction.exerciseName,
+      });
+      const recommendation = buildFloorBufferRecommendation({ row, isolation });
+      optional.push(recommendation.line);
+      recommendations.push(recommendation);
       continue;
     }
 
@@ -873,6 +993,9 @@ function buildPreSessionAvoidList(input: {
       (diagnostic) =>
         diagnostic.muscle === "Chest" &&
         diagnostic.recommendedAction.setDelta > 0
+    ) ||
+    input.doseClosureRecommendations.some(
+      (recommendation) => recommendation.muscle === "Chest"
     )
   ) {
     avoid.add("extra pressing");
@@ -920,6 +1043,105 @@ function buildPreSessionAvoidList(input: {
   }
 
   return Array.from(avoid);
+}
+
+function buildSessionLocalCoachingReadout(input: {
+  isActiveDeload: boolean;
+  generated: NonNullable<WorkoutAuditArtifact["sessionSnapshot"]>["generated"] | undefined;
+  exercises: Array<
+    NonNullable<
+      NonNullable<WorkoutAuditArtifact["sessionSnapshot"]>["generated"]
+    >["exercises"][number]
+  >;
+  diagnostics: PreSessionDoseDiagnostic[];
+  doseClosureRecommendations: DoseClosureRecommendation[];
+  fatigueRows: string[];
+  sessionRisks: NonNullable<ProjectedWeekVolumeAuditPayload["sessionRisks"]>;
+  avoid: string[];
+}): string[] {
+  const lines = [
+    "",
+    "Session-Local Coaching Readout",
+    "Default: run seed as prescribed. All suggestions are optional, session-local, and do not mutate the accepted seed.",
+    "Floor-buffer opportunities:",
+  ];
+
+  if (input.isActiveDeload) {
+    lines.push("- none - deload context suppresses hypertrophy top-ups");
+  } else {
+    const floorBuffers = input.doseClosureRecommendations.filter(
+      (recommendation) => recommendation.kind === "floor_buffer"
+    );
+    lines.push(
+      ...(floorBuffers.length > 0
+        ? floorBuffers.map((recommendation) => recommendation.line)
+        : ["- none"])
+    );
+  }
+
+  lines.push("Prescription confidence watches:");
+  const confidenceWatches = input.exercises.flatMap((exercise) => {
+    const trace = input.generated?.traces.progression[exercise.exerciseId];
+    if (!trace) {
+      return [`- ${exercise.exerciseName}: progression trace unavailable; verify load by feel and keep prescribed RPE cap`];
+    }
+    const confidence = trace.confidence.combinedScale;
+    const reasons = trace.confidence.reasons.slice(0, 2).join(",") || "standard";
+    if (
+      confidence < 0.75 ||
+      trace.outcome.action === "decrease" ||
+      reasons.includes("estimate") ||
+      reasons.includes("low")
+    ) {
+      return [
+        `- ${exercise.exerciseName}: action=${trace.outcome.action} confidence=${formatAuditDecimal(confidence)} reasons=${reasons}`,
+      ];
+    }
+    return [];
+  });
+  lines.push(...(confidenceWatches.length > 0 ? confidenceWatches : ["- none"]));
+
+  lines.push("Fatigue cautions:");
+  const diagnosticFatigue = input.diagnostics.flatMap((diagnostic) => {
+    if (diagnostic.fatigueDensityConcern.level === "none") {
+      return [];
+    }
+    const drivers = diagnostic.fatigueDensityConcern.drivers
+      .slice(0, 2)
+      .map((driver) => driver.exerciseName)
+      .join(", ") || "projected session";
+    return [
+      `- ${diagnostic.muscle}: ${diagnostic.fatigueDensityConcern.level} fatigue watch via ${drivers}`,
+    ];
+  });
+  const fatigueCautions = Array.from(
+    new Set([
+      ...input.fatigueRows.map((row) => `- ${row}`),
+      ...input.sessionRisks.map((risk) => `- ${risk.slotId}: ${risk.issue}`),
+      ...diagnosticFatigue,
+    ])
+  );
+  lines.push(...(fatigueCautions.length > 0 ? fatigueCautions.slice(0, 6) : ["- none"]));
+
+  lines.push("Safe optional add-ons:");
+  if (input.isActiveDeload || input.doseClosureRecommendations.length === 0) {
+    lines.push("- none");
+  } else {
+    lines.push(
+      ...input.doseClosureRecommendations
+        .slice(0, 4)
+        .map((recommendation) => recommendation.addonLine)
+    );
+  }
+
+  lines.push("Suppress / avoid:");
+  if (input.isActiveDeload) {
+    lines.push("- all hypertrophy add-ons / MEV closure top-ups during ACTIVE_DELOAD");
+  } else {
+    lines.push(...(input.avoid.length > 0 ? input.avoid.slice(0, 6).map((item) => `- ${item}`) : ["- no extra work beyond session-local readiness judgment"]));
+  }
+
+  return lines;
 }
 
 function buildSafeToTrain(input: {
@@ -4084,6 +4306,19 @@ export function buildPreSessionReadinessSummary(input: {
     nextSession: nextProjectedSession,
     doseClosureRecommendations: doseClosurePlan.recommendations,
   });
+
+  lines.push(
+    ...buildSessionLocalCoachingReadout({
+      isActiveDeload,
+      generated,
+      exercises,
+      diagnostics: doseDiagnostics,
+      doseClosureRecommendations: doseClosurePlan.recommendations,
+      fatigueRows,
+      sessionRisks: projectedWeek?.sessionRisks ?? [],
+      avoid,
+    })
+  );
 
   lines.push("", "Session-Local Add-On Recommendation");
   lines.push(isActiveDeload ? "Run deload seed as prescribed." : "Run seed as prescribed.");

@@ -261,12 +261,14 @@ Important interpretation rule:
 - `Session-Local Add-On Recommendation` must stay consistent with `Dose Closure Guidance`: if Dose Closure prints a low-fatigue MEV-floor top-up for the next slot, the add-on section should list that same session-local action rather than saying no optional add-ons
 - `Session-Local Coaching Readout` groups the same read-only evidence into floor-buffer opportunities, prescription-confidence watches, fatigue cautions, safe optional add-ons, and suppress/avoid guidance. Exact-floor or thin-margin buffers must stay optional, session-local, and isolation-biased (for example Cable Crossover/Pec Deck-style Chest work instead of extra pressing).
 - Weighted top-up sizing is explanatory only: it uses existing projected exercise contribution data, keeps recommendations bounded to low-fatigue isolation, and warns operators to accept the miss when full closure would require excessive raw volume
+- Planned incomplete workouts are not all blockers. A planned workout is startable/resumable when it matches the active mesocycle's next expected week/session or slot, is backed by `persisted_slot_plan_seed`, its exercise order and set counts match the active `slotPlanSeedJson`, and it has no set logs. In that case the readout reports `matching_next_planned_workout` and preserves the existing workout id so the UI/logging flow can resume without creating a duplicate.
+- Stale or mismatched planned workouts still block readiness when they point at a different mesocycle, week/session, slot, seed exercise plan, or already have logged set state. In-progress workouts are resumable rather than treated as unsafe blockers.
 - it does not mutate `slotPlanSeedJson`, runtime replay, receipts, progression anchors, workouts, logs, sessions, analytics semantics, planner/materializer policy, or DB state
 - `--no-artifact` keeps the check stdout-only; without it, the normal audit artifact behavior still applies
 
 Common red flags:
 - `Safe to train: no`
-- incomplete workout blocker is present
+- stale/mismatched incomplete workout blocker is present
 - final accumulation lifecycle/data blocker is present; target deficits alone should be review evidence, not a reason to expect another accumulation session before deload generation
 - requested mesocycle id does not match the active mesocycle
 - generated preview is missing or generation failed

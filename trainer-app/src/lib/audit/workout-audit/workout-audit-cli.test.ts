@@ -4972,6 +4972,109 @@ describe("buildPreSessionReadinessSummary", () => {
     expect(joined).not.toContain("accumulation seed set counts preserved");
   });
 
+  it("treats a matching planned next workout as ready instead of an incomplete blocker", () => {
+    const artifact = buildWeek4UpperBPreSessionArtifact();
+    artifact.nextSession = {
+      ...artifact.nextSession,
+      source: "existing_incomplete",
+      existingWorkoutId: "planned-next",
+      isExisting: true,
+      selectedIncompleteStatus: "planned",
+      selectedIncompleteReadiness: {
+        classification: "matching_next_planned_workout",
+        safeToTrain: true,
+        action: "start_logging",
+        reason:
+          "Planned workout matches the next expected seeded slot, exercise order, and set counts; start or resume logging it.",
+      },
+    } as never;
+
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: true,
+      artifact: artifact as never,
+    });
+    const joined = summary?.join("\n") ?? "";
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          "incomplete_workout_blocker=none incomplete_workout_readiness=matching_next_planned_workout (start_logging)"
+        ),
+        "Existing workout action: Planned workout matches the next expected seeded slot, exercise order, and set counts; start or resume logging it.",
+        "Safe to train: yes",
+      ])
+    );
+    expect(joined).not.toContain("incomplete workout blocker: planned-next");
+  });
+
+  it("keeps a stale planned workout as an unsafe incomplete blocker", () => {
+    const artifact = buildWeek4UpperBPreSessionArtifact();
+    artifact.nextSession = {
+      ...artifact.nextSession,
+      source: "existing_incomplete",
+      existingWorkoutId: "stale-plan",
+      isExisting: true,
+      selectedIncompleteStatus: "planned",
+      selectedIncompleteReadiness: {
+        classification: "stale_or_mismatched_incomplete_workout",
+        safeToTrain: false,
+        action: "block_or_cleanup",
+        reason:
+          "Incomplete planned workout does not match the next expected seeded slot, seed exercise plan, mesocycle, or clean planned state.",
+      },
+    } as never;
+
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: true,
+      artifact: artifact as never,
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          "incomplete_workout_blocker=stale-plan (planned) incomplete_workout_readiness=stale_or_mismatched_incomplete_workout (block_or_cleanup)"
+        ),
+        "Existing workout action: Incomplete planned workout does not match the next expected seeded slot, seed exercise plan, mesocycle, or clean planned state.",
+        "Safe to train: no",
+        "Reason: incomplete workout blocker: stale-plan (planned)",
+      ])
+    );
+  });
+
+  it("treats an in-progress workout as resumable instead of an incomplete blocker", () => {
+    const artifact = buildWeek4UpperBPreSessionArtifact();
+    artifact.nextSession = {
+      ...artifact.nextSession,
+      source: "existing_incomplete",
+      existingWorkoutId: "in-progress-next",
+      isExisting: true,
+      selectedIncompleteStatus: "in_progress",
+      selectedIncompleteReadiness: {
+        classification: "in_progress_workout",
+        safeToTrain: true,
+        action: "resume_logging",
+        reason: "Existing workout is already started; resume it instead of generating another workout.",
+      },
+    } as never;
+
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: true,
+      artifact: artifact as never,
+    });
+    const joined = summary?.join("\n") ?? "";
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          "incomplete_workout_blocker=none incomplete_workout_readiness=in_progress_workout (resume_logging)"
+        ),
+        "Existing workout action: Existing workout is already started; resume it instead of generating another workout.",
+        "Safe to train: yes",
+      ])
+    );
+    expect(joined).not.toContain("incomplete workout blocker: in-progress-next");
+  });
+
   it("labels ACTIVE_DELOAD status lines as deload diagnostics with accumulation reference week", () => {
     const line = buildWorkoutAuditModeLine({
       mode: "pre-session-readiness",

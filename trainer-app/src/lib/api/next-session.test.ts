@@ -13,6 +13,101 @@ describe("resolveNextWorkoutContext", () => {
     state: "ACTIVE_ACCUMULATION" as const,
     slotSequenceJson: null,
   };
+  const upperLowerSlotSequence = {
+    version: 1,
+    source: "handoff_draft",
+    sequenceMode: "ordered_flexible",
+    slots: [
+      { slotId: "upper_a", intent: "UPPER" },
+      { slotId: "lower_a", intent: "LOWER" },
+      { slotId: "upper_b", intent: "UPPER" },
+      { slotId: "lower_b", intent: "LOWER" },
+    ],
+  };
+
+  function seedBackedMetadata(input: {
+    mesocycleId: string;
+    slotId: string;
+    intent: string;
+    sequenceIndex: number;
+  }) {
+    return {
+      sessionDecisionReceipt: {
+        version: 1,
+        cycleContext: {
+          weekInMeso: 1,
+          weekInBlock: 1,
+          phase: "accumulation",
+          blockType: "accumulation",
+          isDeload: false,
+          source: "computed",
+        },
+        lifecycleVolume: { source: "unknown" },
+        sorenessSuppressedMuscles: [],
+        deloadDecision: {
+          mode: "none",
+          reason: [],
+          reductionPercent: 0,
+          appliedTo: "none",
+        },
+        readiness: {
+          wasAutoregulated: false,
+          signalAgeHours: null,
+          fatigueScoreOverall: null,
+          intensityScaling: {
+            applied: false,
+            exerciseIds: [],
+            scaledUpCount: 0,
+            scaledDownCount: 0,
+          },
+        },
+        sessionSlot: {
+          slotId: input.slotId,
+          intent: input.intent,
+          sequenceIndex: input.sequenceIndex,
+          sequenceLength: 4,
+          source: "mesocycle_slot_sequence",
+        },
+        sessionProvenance: {
+          mesocycleId: input.mesocycleId,
+          compositionSource: "persisted_slot_plan_seed",
+        },
+      },
+    };
+  }
+
+  function slotPlanSeedJson() {
+    return {
+      version: 1,
+      source: "v2_materialized_seed",
+      slots: [
+        {
+          slotId: "upper_a",
+          exercises: [{ exerciseId: "bench", role: "CORE_COMPOUND", setCount: 4 }],
+        },
+        {
+          slotId: "lower_a",
+          exercises: [
+            { exerciseId: "squat", role: "CORE_COMPOUND", setCount: 4 },
+            { exerciseId: "leg-extension", role: "ACCESSORY", setCount: 2 },
+          ],
+        },
+        {
+          slotId: "upper_b",
+          exercises: [{ exerciseId: "row", role: "CORE_COMPOUND", setCount: 3 }],
+        },
+        {
+          slotId: "lower_b",
+          exercises: [{ exerciseId: "leg-curl", role: "ACCESSORY", setCount: 2 }],
+        },
+      ],
+    };
+  }
+
+  const lowerAPlannedExercises = [
+    { exerciseId: "squat", setCount: 4 },
+    { exerciseId: "leg-extension", setCount: 2 },
+  ];
 
   it("prefers the highest-priority incomplete workout over rotation intent", () => {
     const context = resolveNextWorkoutContext({
@@ -41,6 +136,234 @@ describe("resolveNextWorkoutContext", () => {
     expect(context.slotId).toBeNull();
     expect(context.weekInMeso).toBeNull();
     expect(context.sessionInWeek).toBeNull();
+    expect(context.selectedIncompleteReadiness).toMatchObject({
+      classification: "in_progress_workout",
+      safeToTrain: true,
+      action: "resume_logging",
+    });
+  });
+
+  it("classifies a planned workout matching the next seeded slot as ready to start logging", () => {
+    const mesocycleId = "meso-next";
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        id: mesocycleId,
+        sessionsPerWeek: 4,
+        accumulationSessionsCompleted: 1,
+        slotSequenceJson: upperLowerSlotSequence,
+        slotPlanSeedJson: slotPlanSeedJson(),
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      incompleteWorkouts: [
+        {
+          id: "planned-lower-a",
+          status: "PLANNED",
+          scheduledDate: new Date("2026-06-01T02:33:43.391Z"),
+          sessionIntent: "lower",
+          mesocycleId,
+          mesocycleWeekSnapshot: 1,
+          mesoSessionSnapshot: 2,
+          performedSetLogCount: 0,
+          totalSetLogCount: 0,
+          plannedExercises: lowerAPlannedExercises,
+          selectionMetadata: seedBackedMetadata({
+            mesocycleId,
+            slotId: "lower_a",
+            intent: "lower",
+            sequenceIndex: 1,
+          }),
+        },
+      ],
+      performedAdvancingSlotIdsThisWeek: ["upper_a"],
+      performedAdvancingIntentsThisWeek: ["upper"],
+    });
+
+    expect(context.source).toBe("existing_incomplete");
+    expect(context.existingWorkoutId).toBe("planned-lower-a");
+    expect(context.slotId).toBe("lower_a");
+    expect(context.intent).toBe("lower");
+    expect(context.selectedIncompleteReadiness).toEqual({
+      classification: "matching_next_planned_workout",
+      safeToTrain: true,
+      action: "start_logging",
+      reason:
+        "Planned workout matches the next expected seeded slot, exercise order, and set counts; start or resume logging it.",
+    });
+    expect(context.derivationTrace).toContain(
+      "selected_incomplete_readiness=matching_next_planned_workout"
+    );
+  });
+
+  it("classifies a stale planned workout for an old week as an unsafe blocker", () => {
+    const mesocycleId = "meso-next";
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        id: mesocycleId,
+        sessionsPerWeek: 4,
+        accumulationSessionsCompleted: 5,
+        slotSequenceJson: upperLowerSlotSequence,
+        slotPlanSeedJson: slotPlanSeedJson(),
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      incompleteWorkouts: [
+        {
+          id: "stale-lower-a",
+          status: "PLANNED",
+          scheduledDate: new Date("2026-05-25T02:33:43.391Z"),
+          sessionIntent: "lower",
+          mesocycleId,
+          mesocycleWeekSnapshot: 1,
+          mesoSessionSnapshot: 2,
+          performedSetLogCount: 0,
+          totalSetLogCount: 0,
+          plannedExercises: lowerAPlannedExercises,
+          selectionMetadata: seedBackedMetadata({
+            mesocycleId,
+            slotId: "lower_a",
+            intent: "lower",
+            sequenceIndex: 1,
+          }),
+        },
+      ],
+      performedAdvancingSlotIdsThisWeek: ["upper_a"],
+      performedAdvancingIntentsThisWeek: ["upper"],
+    });
+
+    expect(context.selectedIncompleteReadiness).toMatchObject({
+      classification: "stale_or_mismatched_incomplete_workout",
+      safeToTrain: false,
+      action: "block_or_cleanup",
+    });
+  });
+
+  it("classifies a mismatched planned slot as an unsafe blocker", () => {
+    const mesocycleId = "meso-next";
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        id: mesocycleId,
+        sessionsPerWeek: 4,
+        accumulationSessionsCompleted: 1,
+        slotSequenceJson: upperLowerSlotSequence,
+        slotPlanSeedJson: slotPlanSeedJson(),
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      incompleteWorkouts: [
+        {
+          id: "planned-upper-b",
+          status: "PLANNED",
+          scheduledDate: new Date("2026-06-01T02:33:43.391Z"),
+          sessionIntent: "upper",
+          mesocycleId,
+          mesocycleWeekSnapshot: 1,
+          mesoSessionSnapshot: 3,
+          performedSetLogCount: 0,
+          totalSetLogCount: 0,
+          plannedExercises: [{ exerciseId: "row", setCount: 3 }],
+          selectionMetadata: seedBackedMetadata({
+            mesocycleId,
+            slotId: "upper_b",
+            intent: "upper",
+            sequenceIndex: 2,
+          }),
+        },
+      ],
+      performedAdvancingSlotIdsThisWeek: ["upper_a"],
+      performedAdvancingIntentsThisWeek: ["upper"],
+    });
+
+    expect(context.intent).toBe("upper");
+    expect(context.slotId).toBe("upper_b");
+    expect(context.selectedIncompleteReadiness).toMatchObject({
+      classification: "stale_or_mismatched_incomplete_workout",
+      safeToTrain: false,
+    });
+  });
+
+  it("classifies a same-session planned workout with the wrong slot as an unsafe blocker", () => {
+    const mesocycleId = "meso-next";
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        id: mesocycleId,
+        sessionsPerWeek: 4,
+        accumulationSessionsCompleted: 1,
+        slotSequenceJson: upperLowerSlotSequence,
+        slotPlanSeedJson: slotPlanSeedJson(),
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      incompleteWorkouts: [
+        {
+          id: "planned-wrong-slot",
+          status: "PLANNED",
+          scheduledDate: new Date("2026-06-01T02:33:43.391Z"),
+          sessionIntent: "upper",
+          mesocycleId,
+          mesocycleWeekSnapshot: 1,
+          mesoSessionSnapshot: 2,
+          performedSetLogCount: 0,
+          totalSetLogCount: 0,
+          plannedExercises: [{ exerciseId: "row", setCount: 3 }],
+          selectionMetadata: seedBackedMetadata({
+            mesocycleId,
+            slotId: "upper_b",
+            intent: "upper",
+            sequenceIndex: 2,
+          }),
+        },
+      ],
+      performedAdvancingSlotIdsThisWeek: ["upper_a"],
+      performedAdvancingIntentsThisWeek: ["upper"],
+    });
+
+    expect(context.selectedIncompleteReadiness).toMatchObject({
+      classification: "stale_or_mismatched_incomplete_workout",
+      safeToTrain: false,
+    });
+  });
+
+  it("classifies a planned workout with edited seed exercises as an unsafe blocker", () => {
+    const mesocycleId = "meso-next";
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        id: mesocycleId,
+        sessionsPerWeek: 4,
+        accumulationSessionsCompleted: 1,
+        slotSequenceJson: upperLowerSlotSequence,
+        slotPlanSeedJson: slotPlanSeedJson(),
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      incompleteWorkouts: [
+        {
+          id: "planned-lower-a-edited",
+          status: "PLANNED",
+          scheduledDate: new Date("2026-06-01T02:33:43.391Z"),
+          sessionIntent: "lower",
+          mesocycleId,
+          mesocycleWeekSnapshot: 1,
+          mesoSessionSnapshot: 2,
+          performedSetLogCount: 0,
+          totalSetLogCount: 0,
+          plannedExercises: [{ exerciseId: "squat", setCount: 4 }],
+          selectionMetadata: seedBackedMetadata({
+            mesocycleId,
+            slotId: "lower_a",
+            intent: "lower",
+            sequenceIndex: 1,
+          }),
+        },
+      ],
+      performedAdvancingSlotIdsThisWeek: ["upper_a"],
+      performedAdvancingIntentsThisWeek: ["upper"],
+    });
+
+    expect(context.selectedIncompleteReadiness).toMatchObject({
+      classification: "stale_or_mismatched_incomplete_workout",
+      safeToTrain: false,
+    });
   });
 
   it("ignores closeout workouts when selecting the next canonical incomplete session", () => {

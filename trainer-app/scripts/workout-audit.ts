@@ -243,6 +243,24 @@ function formatRepTarget(
   return formatAuditDecimal(set.targetReps);
 }
 
+function formatIncompleteWorkoutReadiness(
+  nextSession: Pick<
+    NonNullable<WorkoutAuditArtifact["nextSession"]>,
+    "selectedIncompleteReadiness" | "existingWorkoutId" | "selectedIncompleteStatus"
+  > | undefined
+): string {
+  if (!nextSession?.existingWorkoutId) {
+    return "none";
+  }
+
+  const readiness = nextSession.selectedIncompleteReadiness;
+  if (!readiness) {
+    return `unclassified (${nextSession.selectedIncompleteStatus ?? "unknown"})`;
+  }
+
+  return `${readiness.classification} (${readiness.action})`;
+}
+
 function buildFutureWeekSafeToTrain(input: {
   artifact: Pick<
     WorkoutAuditArtifact,
@@ -262,7 +280,10 @@ function buildFutureWeekSafeToTrain(input: {
   if (!input.artifact.sessionSnapshot?.generated && !input.artifact.generation) {
     blockers.push("missing generated session preview");
   }
-  if (input.artifact.nextSession?.source === "existing_incomplete") {
+  if (
+    input.artifact.nextSession?.source === "existing_incomplete" &&
+    input.artifact.nextSession.selectedIncompleteReadiness?.safeToTrain !== true
+  ) {
     blockers.push(
       `incomplete workout blocker: ${input.artifact.nextSession.existingWorkoutId ?? "unknown"} (${input.artifact.nextSession.selectedIncompleteStatus ?? "unknown"})`
     );
@@ -1165,7 +1186,10 @@ function buildSafeToTrain(input: {
   if (!input.artifact.sessionSnapshot?.generated && !input.artifact.generation) {
     reasons.push("missing generated session preview");
   }
-  if (input.artifact.nextSession?.source === "existing_incomplete") {
+  if (
+    input.artifact.nextSession?.source === "existing_incomplete" &&
+    input.artifact.nextSession.selectedIncompleteReadiness?.safeToTrain !== true
+  ) {
     reasons.push(
       `incomplete workout blocker: ${input.artifact.nextSession.existingWorkoutId ?? "unknown"} (${input.artifact.nextSession.selectedIncompleteStatus ?? "unknown"})`
     );
@@ -4186,7 +4210,8 @@ export function buildPreSessionReadinessSummary(input: {
   const lines = [
     "Pre-Session Readiness",
     "---------------------",
-    `Current app state: owner=${input.artifact.identity.ownerEmail ?? input.artifact.identity.userId} active_mesocycle=${active.mesocycleId ?? "unknown"} state=${active.state ?? "unknown"} completed_accumulation_sessions=${formatAuditValue(active.completedAccumulationSessions)} current_week=${formatAuditValue(active.currentWeek)} current_session=${formatAuditValue(active.currentSession)} next_slot=${nextSession?.slotId ?? "unknown"} incomplete_workout_blocker=${nextSession?.source === "existing_incomplete" ? `${nextSession.existingWorkoutId ?? "unknown"} (${nextSession.selectedIncompleteStatus ?? "unknown"})` : "none"}`,
+    `Current app state: owner=${input.artifact.identity.ownerEmail ?? input.artifact.identity.userId} active_mesocycle=${active.mesocycleId ?? "unknown"} state=${active.state ?? "unknown"} completed_accumulation_sessions=${formatAuditValue(active.completedAccumulationSessions)} current_week=${formatAuditValue(active.currentWeek)} current_session=${formatAuditValue(active.currentSession)} next_slot=${nextSession?.slotId ?? "unknown"} incomplete_workout_blocker=${nextSession?.source === "existing_incomplete" && nextSession.selectedIncompleteReadiness?.safeToTrain !== true ? `${nextSession.existingWorkoutId ?? "unknown"} (${nextSession.selectedIncompleteStatus ?? "unknown"})` : "none"} incomplete_workout_readiness=${formatIncompleteWorkoutReadiness(nextSession)}`,
+    `Existing workout action: ${nextSession?.selectedIncompleteReadiness?.reason ?? "none"}`,
     deloadProgressLine,
     deloadPositionLine,
     `Lifecycle blocker: ${nextSession?.source === "final_week_close_pending" ? nextSession.lifecycleBlocker?.message ?? "final accumulation closeout is pending" : "none"}`,

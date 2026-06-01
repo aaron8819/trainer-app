@@ -13,8 +13,12 @@ import {
   readRuntimeSlotSequence,
 } from "./mesocycle-slot-runtime";
 import { resolveMesocycleSlotContract } from "./mesocycle-slot-contract";
-import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
+import {
+  readSessionDecisionReceipt,
+  readSessionSlotSnapshot,
+} from "@/lib/evidence/session-decision-receipt";
 import type { SessionSlotSnapshot } from "@/lib/evidence/types";
+import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
 
 type MesoSessionInput = {
   id?: string;
@@ -24,6 +28,7 @@ type MesoSessionInput = {
   sessionsPerWeek: number;
   state: "ACTIVE_ACCUMULATION" | "ACTIVE_DELOAD" | "AWAITING_HANDOFF" | "COMPLETED";
   slotSequenceJson?: unknown;
+  slotPlanSeedJson?: unknown;
 };
 
 export type FinalAccumulationWeekClosePendingBlocker = {
@@ -44,6 +49,18 @@ export type NextWorkoutSource =
   | "handoff_pending"
   | "final_week_close_pending";
 
+export type IncompleteWorkoutReadinessClassification =
+  | "matching_next_planned_workout"
+  | "stale_or_mismatched_incomplete_workout"
+  | "in_progress_workout";
+
+export type IncompleteWorkoutReadiness = {
+  classification: IncompleteWorkoutReadinessClassification;
+  safeToTrain: boolean;
+  action: "start_logging" | "resume_logging" | "block_or_cleanup";
+  reason: string;
+};
+
 export type NextWorkoutContext = {
   intent: string | null;
   slotId: string | null;
@@ -57,6 +74,7 @@ export type NextWorkoutContext = {
   sessionInWeek: number | null;
   derivationTrace: string[];
   selectedIncompleteStatus: string | null;
+  selectedIncompleteReadiness?: IncompleteWorkoutReadiness | null;
   lifecycleBlocker?: FinalAccumulationWeekClosePendingBlocker | null;
 };
 
@@ -65,7 +83,18 @@ type IncompleteWorkoutCandidate = {
   status: string;
   scheduledDate: Date;
   sessionIntent: string | null;
+  mesocycleId?: string | null;
+  mesocycleWeekSnapshot?: number | null;
+  mesoSessionSnapshot?: number | null;
+  performedSetLogCount?: number;
+  totalSetLogCount?: number;
+  plannedExercises?: PlannedIncompleteExercise[];
   selectionMetadata?: unknown;
+};
+
+type PlannedIncompleteExercise = {
+  exerciseId: string;
+  setCount: number;
 };
 
 export type PerformedAdvancingWorkoutCandidate = {
@@ -116,6 +145,160 @@ function pickTopIncompleteWorkout(
     }
     return left.scheduledDate.getTime() - right.scheduledDate.getTime();
     })[0] ?? null;
+}
+
+function sameNormalizedIntent(
+  left: string | null | undefined,
+  right: string | null | undefined
+): boolean {
+  return Boolean(left && right && left.toLowerCase() === right.toLowerCase());
+}
+
+function readSeedSlotExercisePlan(input: {
+  slotPlanSeedJson: unknown;
+  slotId?: string | null;
+}): PlannedIncompleteExercise[] | null {
+  if (!input.slotId) {
+    return null;
+  }
+
+  const seed = parseSlotPlanSeedJson(input.slotPlanSeedJson);
+  const slot = seed?.slots.find((candidate) => candidate.slotId === input.slotId);
+  if (!slot || slot.exercises.length === 0) {
+    return null;
+  }
+
+  const exercises = slot.exercises.map((exercise) => {
+    if (exercise.setCount == null) {
+      return null;
+    }
+
+    return {
+      exerciseId: exercise.exerciseId,
+      setCount: exercise.setCount,
+    };
+  });
+
+  if (exercises.some((exercise) => exercise == null)) {
+    return null;
+  }
+
+  return exercises as PlannedIncompleteExercise[];
+}
+
+function plannedExercisesMatchSeed(input: {
+  plannedExercises?: PlannedIncompleteExercise[];
+  slotPlanSeedJson: unknown;
+  slotId?: string | null;
+}): boolean {
+  const seedExercises = readSeedSlotExercisePlan({
+    slotPlanSeedJson: input.slotPlanSeedJson,
+    slotId: input.slotId,
+  });
+  const plannedExercises = input.plannedExercises ?? [];
+
+  return Boolean(
+    seedExercises &&
+      seedExercises.length === plannedExercises.length &&
+      seedExercises.every(
+        (exercise, index) =>
+          exercise.exerciseId === plannedExercises[index]?.exerciseId &&
+          exercise.setCount === plannedExercises[index]?.setCount
+      )
+  );
+}
+
+function hasContradictingSnapshot(input: {
+  workout: IncompleteWorkoutCandidate;
+  derived: ReturnType<typeof deriveNextRuntimeSlotSession> | null;
+}): boolean {
+  if (!input.derived) {
+    return false;
+  }
+
+  return (
+    (input.workout.mesocycleWeekSnapshot != null &&
+      input.workout.mesocycleWeekSnapshot !== input.derived.week) ||
+    (input.workout.mesoSessionSnapshot != null &&
+      input.workout.mesoSessionSnapshot !== input.derived.session)
+  );
+}
+
+function classifySelectedIncompleteWorkout(input: {
+  workout: IncompleteWorkoutCandidate;
+  activeMesocycleId?: string | null;
+  activeMesocycleSlotPlanSeedJson?: unknown;
+  derived: ReturnType<typeof deriveNextRuntimeSlotSession> | null;
+}): IncompleteWorkoutReadiness {
+  const normalizedStatus = input.workout.status.toUpperCase();
+  if (normalizedStatus === "IN_PROGRESS" || normalizedStatus === "PARTIAL") {
+    return {
+      classification: "in_progress_workout",
+      safeToTrain: true,
+      action: "resume_logging",
+      reason: "Existing workout is already started; resume it instead of generating another workout.",
+    };
+  }
+
+  const receipt = readSessionDecisionReceipt(input.workout.selectionMetadata);
+  const slot = readSessionSlotSnapshot(input.workout.selectionMetadata);
+  const derived = input.derived;
+  const sameActiveMesocycle =
+    Boolean(input.activeMesocycleId) &&
+    input.workout.mesocycleId === input.activeMesocycleId &&
+    receipt?.sessionProvenance?.mesocycleId === input.activeMesocycleId;
+  const sameWeekSession =
+    Boolean(derived) &&
+    input.workout.mesocycleWeekSnapshot === derived?.week &&
+    input.workout.mesoSessionSnapshot === derived?.session;
+  const hasWeekSessionSnapshot =
+    input.workout.mesocycleWeekSnapshot != null &&
+    input.workout.mesoSessionSnapshot != null;
+  const sameSlot =
+    Boolean(derived?.slotId && slot?.slotId) &&
+    slot?.slotId === derived?.slotId &&
+    sameNormalizedIntent(slot?.intent, derived?.intent);
+  const seedBacked =
+    receipt?.sessionProvenance?.compositionSource === "persisted_slot_plan_seed";
+  const matchesSeedPlan = plannedExercisesMatchSeed({
+    plannedExercises: input.workout.plannedExercises,
+    slotPlanSeedJson: input.activeMesocycleSlotPlanSeedJson,
+    slotId: slot?.slotId,
+  });
+  const hasNoLoggedSets =
+    (input.workout.performedSetLogCount ?? 0) === 0 &&
+    (input.workout.totalSetLogCount ?? 0) === 0;
+  const contradictsDerivedSnapshot = hasContradictingSnapshot({
+    workout: input.workout,
+    derived,
+  });
+  const matchesNextPlannedWorkout =
+    normalizedStatus === "PLANNED" &&
+    sameActiveMesocycle &&
+    seedBacked &&
+    matchesSeedPlan &&
+    hasNoLoggedSets &&
+    sameSlot &&
+    !contradictsDerivedSnapshot &&
+    (!hasWeekSessionSnapshot || sameWeekSession);
+
+  if (matchesNextPlannedWorkout) {
+    return {
+      classification: "matching_next_planned_workout",
+      safeToTrain: true,
+      action: "start_logging",
+      reason:
+        "Planned workout matches the next expected seeded slot, exercise order, and set counts; start or resume logging it.",
+    };
+  }
+
+  return {
+    classification: "stale_or_mismatched_incomplete_workout",
+    safeToTrain: false,
+    action: "block_or_cleanup",
+    reason:
+      "Incomplete planned workout does not match the next expected seeded slot, seed exercise plan, mesocycle, or clean planned state.",
+  };
 }
 
 export function buildAdvancingPerformedSlots(
@@ -316,13 +499,21 @@ export function resolveNextWorkoutContext(input: {
       sessionInWeek: null,
       derivationTrace: trace,
       selectedIncompleteStatus: null,
+      selectedIncompleteReadiness: null,
       lifecycleBlocker: blocker,
     };
   }
 
   if (topIncomplete) {
     const incompleteSlot = readSessionSlotSnapshot(topIncomplete.selectionMetadata);
+    const readiness = classifySelectedIncompleteWorkout({
+      workout: topIncomplete,
+      activeMesocycleId: input.mesocycle?.id ?? null,
+      activeMesocycleSlotPlanSeedJson: input.mesocycle?.slotPlanSeedJson,
+      derived,
+    });
     trace.push(`selected_incomplete id=${topIncomplete.id} status=${topIncomplete.status}`);
+    trace.push(`selected_incomplete_readiness=${readiness.classification}`);
     return {
       intent: topIncomplete.sessionIntent?.toLowerCase() ?? null,
       slotId: incompleteSlot?.slotId ?? null,
@@ -336,6 +527,7 @@ export function resolveNextWorkoutContext(input: {
       sessionInWeek: null,
       derivationTrace: trace,
       selectedIncompleteStatus: topIncomplete.status.toLowerCase(),
+      selectedIncompleteReadiness: readiness,
     };
   }
 
@@ -358,6 +550,7 @@ export function resolveNextWorkoutContext(input: {
     sessionInWeek: derived?.session ?? null,
     derivationTrace: trace,
     selectedIncompleteStatus: null,
+    selectedIncompleteReadiness: null,
   };
 }
 
@@ -379,6 +572,7 @@ export async function loadNextWorkoutContext(
       sessionInWeek: null,
       derivationTrace: [`pending_handoff mesocycle=${pendingHandoff.mesocycleId}`],
       selectedIncompleteStatus: null,
+      selectedIncompleteReadiness: null,
       lifecycleBlocker: null,
     };
   }
@@ -394,6 +588,7 @@ export async function loadNextWorkoutContext(
         sessionsPerWeek: true,
         state: true,
         slotSequenceJson: true,
+        slotPlanSeedJson: true,
       },
     }),
     prisma.constraints.findUnique({
@@ -415,10 +610,28 @@ export async function loadNextWorkoutContext(
         take: 20,
         select: {
           id: true,
+          mesocycleId: true,
+          mesocycleWeekSnapshot: true,
+          mesoSessionSnapshot: true,
           sessionIntent: true,
           status: true,
           scheduledDate: true,
           selectionMetadata: true,
+          exercises: {
+            orderBy: { orderIndex: "asc" },
+            select: {
+              exerciseId: true,
+              sets: {
+                select: {
+                  logs: {
+                    select: {
+                      wasSkipped: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       }),
       mesocycle
@@ -464,13 +677,29 @@ export async function loadNextWorkoutContext(
   return resolveNextWorkoutContext({
     mesocycle,
     weeklySchedule,
-    incompleteWorkouts: rawIncomplete.map((workout) => ({
-      id: workout.id,
-      status: workout.status,
-      scheduledDate: workout.scheduledDate,
-      sessionIntent: workout.sessionIntent?.toLowerCase() ?? null,
-      selectionMetadata: workout.selectionMetadata,
-    })),
+    incompleteWorkouts: rawIncomplete.map((workout) => {
+      const exercises = workout.exercises ?? [];
+      const setLogs = exercises.flatMap((exercise) =>
+        exercise.sets.flatMap((set) => set.logs)
+      );
+
+      return {
+        id: workout.id,
+        status: workout.status,
+        scheduledDate: workout.scheduledDate,
+        sessionIntent: workout.sessionIntent?.toLowerCase() ?? null,
+        mesocycleId: workout.mesocycleId,
+        mesocycleWeekSnapshot: workout.mesocycleWeekSnapshot,
+        mesoSessionSnapshot: workout.mesoSessionSnapshot,
+        performedSetLogCount: setLogs.filter((log) => !log.wasSkipped).length,
+        totalSetLogCount: setLogs.length,
+        plannedExercises: exercises.map((exercise) => ({
+          exerciseId: exercise.exerciseId,
+          setCount: exercise.sets.length,
+        })),
+        selectionMetadata: workout.selectionMetadata,
+      };
+    }),
     performedAdvancingSlotIdsThisWeek: performedAdvancingSlotsThisWeek
       .map((workout) => workout.slotId ?? null)
       .filter(
@@ -503,6 +732,7 @@ export async function loadRequestedAdvancingSlotSnapshot(input: {
         sessionsPerWeek: true,
         state: true,
         slotSequenceJson: true,
+        slotPlanSeedJson: true,
       },
     }),
     prisma.constraints.findUnique({

@@ -197,6 +197,7 @@
 | 2026-05-29 | self | A live `finish-deload` call to localhost:3000 returned a branded 404 because port 3000 was serving another Next app, not Trainer. | When a live Trainer route returns an HTML/branded 404, verify the owning process/app for the port before treating it as a route or DB ownership failure; if needed, start Trainer on a free port and call the same implemented app route there. |
 | 2026-05-29 | self | Adding a third V2 Chest exposure initially diluted the ownership allocation enough to drop the existing chest anchor from 4 sets to 3, which would have kept Chest below its hard floor. | When adding V2 ownership rows, rerun set-distribution/materializer tests before trusting the policy; preserve anchor budgets explicitly when extra support ownership is added. |
 | 2026-05-29 | self | `tsc --noEmit` caught a helper copied from the materializer into base-plan validation without a local definition. | After moving validation semantics across V2 materialization files, run `tsc` even when Vitest passes; localize tiny helper logic instead of reaching into materializer internals. |
+| 2026-06-01 | self | The first pre-session readiness seed-match pass assumed Prisma test mocks would include newly selected `exercises`, causing old read-model mocks to throw on `flatMap`. | When extending Prisma selects in shared read seams, map optional relation arrays defensively or update all mocks before broad focused tests. |
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.

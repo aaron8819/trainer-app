@@ -82,9 +82,10 @@ Sources of truth:
 - `GET /api/workouts/[id]/logging-weekly-volume-check` is a read-only logging support contract owned by `src/lib/api/logging-weekly-volume-guidance.ts`. It is intentionally narrow:
   - request identity comes from the route param plus `resolveOwner()`
   - response returns `shouldShow`, active week identity when available, and flagged-muscle rows only
+  - `summary.status="no_addons_recommended"` is returned when no rows need attention
   - each row carries session-local projection fields: `performedSoFar`, `plannedRemaining`, `projectedFinish`, `MEV`, `MAV`, `status`, `recommendationKind`, `reasonCopy`, and `optionalOrSuppress`
   - row semantics frame below-MEV as floor risk, exact/thin MEV landings as optional low-fatigue floor buffers, above-MEV/below-preferred rows as productive-zone watches with no add-on recommendation, and near/over-MAV rows as suppress-extra guidance
-  - empty rows mean the compact card should render `No add-ons recommended`
+  - empty rows mean the compact card should render the server-provided `No add-ons recommended` summary
   - projection is server-owned and uses the canonical equation `performed baseline excluding current workout + persisted current-workout actuals so far + projected remaining week`
   - current-workout actuals are recomputed from persisted workout structure and logged non-skipped sets, including runtime-added sets and runtime-added exercises
 - `GET /api/workouts/[id]/bonus-suggestions` remains a read-only, non-persistent shortlist endpoint for the Add Exercise sheet.

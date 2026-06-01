@@ -420,12 +420,14 @@ function reasonCopyForStatus(status: LoggingWeeklyVolumeProjectionStatus): strin
 function buildGuidanceRows(input: {
   activeMesocycle: NonNullable<WorkoutForGuidance["mesocycle"]>;
   currentWeek: number;
-  doneNowByMuscle: Map<string, number>;
+  performedSoFarByMuscle: Map<string, number>;
   projectedRemainingByMuscle: Map<string, number>;
 }): LoggingWeeklyVolumeGuidanceRow[] {
   return getExposedVolumeLandmarkEntries()
     .map(([muscle, landmarks]) => {
-      const performedSoFar = roundToTenth(input.doneNowByMuscle.get(muscle) ?? 0);
+      const performedSoFar = roundToTenth(
+        input.performedSoFarByMuscle.get(muscle) ?? 0
+      );
       const plannedRemaining = roundToTenth(
         input.projectedRemainingByMuscle.get(muscle) ?? 0
       );
@@ -772,7 +774,7 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
   const rows = buildGuidanceRows({
     activeMesocycle: workout.mesocycle,
     currentWeek,
-    doneNowByMuscle: baselineDoneNowByMuscle,
+    performedSoFarByMuscle: baselineDoneNowByMuscle,
     projectedRemainingByMuscle,
   });
 

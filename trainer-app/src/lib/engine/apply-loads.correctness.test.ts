@@ -3,7 +3,11 @@
  * Why it matters: Load progression must reward actual performance and ignore unperformed/planned history.
  */
 import { describe, expect, it } from "vitest";
-import { applyLoads, applyLoadsWithAudit } from "./apply-loads";
+import {
+  applyLoads,
+  applyLoadsWithAudit,
+  EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE,
+} from "./apply-loads";
 import type { Exercise, WorkoutHistoryEntry, WorkoutPlan } from "./types";
 
 const bench: Exercise = {
@@ -114,6 +118,38 @@ const latPulldown: Exercise = {
   fatigueCost: 3,
   equipment: ["cable"],
   primaryMuscles: ["Lats", "Upper Back"],
+  repRangeMin: 6,
+  repRangeMax: 12,
+};
+
+const closeGripCableRow: Exercise = {
+  id: "close-grip-cable-row",
+  name: "Close-Grip Seated Cable Row",
+  movementPatterns: ["horizontal_pull"],
+  splitTags: ["pull"],
+  jointStress: "medium",
+  isMainLiftEligible: true,
+  isCompound: true,
+  fatigueCost: 3,
+  equipment: ["cable"],
+  primaryMuscles: ["Upper Back", "Lats"],
+  secondaryMuscles: ["Biceps"],
+  repRangeMin: 6,
+  repRangeMax: 12,
+};
+
+const machineRowDonor: Exercise = {
+  id: "machine-row-donor",
+  name: "Machine Row Donor",
+  movementPatterns: ["horizontal_pull"],
+  splitTags: ["pull"],
+  jointStress: "medium",
+  isMainLiftEligible: true,
+  isCompound: true,
+  fatigueCost: 3,
+  equipment: ["machine"],
+  primaryMuscles: ["Upper Back", "Lats"],
+  secondaryMuscles: ["Biceps"],
   repRangeMin: 6,
   repRangeMax: 12,
 };
@@ -670,7 +706,7 @@ describe("applyLoads correctness", () => {
     );
   });
 
-  it("does not increase SLDL load when the next target raises reps and lowers target RPE materially", () => {
+  it("downshifts same-history anchors when the next target raises reps and lowers target RPE materially", () => {
     const workout: WorkoutPlan = {
       id: "w-sldl",
       scheduledDate: "2026-05-02T00:00:00.000Z",
@@ -729,9 +765,101 @@ describe("applyLoads correctness", () => {
       isFirstSessionInMesocycle: true,
     });
 
-    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(135);
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(112.5);
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBeLessThan(135);
     expect(result.audit.progressionTraces.sldl.outcome.reasonCodes).toContain(
       "overshoot_blocked_by_target_effort_mismatch"
+    );
+    expect(result.audit.progressionTraces.sldl.outcome.reasonCodes).toContain(
+      EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE
+    );
+  });
+
+  it("keeps exact same-exercise history preferred while translating a high-effort lower-rep Week 4 anchor", () => {
+    const workout: WorkoutPlan = {
+      id: "w-close-grip-row",
+      scheduledDate: "2026-05-02T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "we-close-grip-row",
+          exercise: closeGripCableRow,
+          orderIndex: 0,
+          isMainLift: true,
+          sets: [
+            { setIndex: 1, targetReps: 10, targetRpe: 6.5 },
+            { setIndex: 2, targetReps: 10, targetRpe: 6.5 },
+            { setIndex: 3, targetReps: 10, targetRpe: 6.5 },
+          ],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 35,
+    };
+
+    const result = applyLoadsWithAudit(workout, {
+      history: [
+        {
+          date: "2026-04-16T16:13:22.403Z",
+          completed: true,
+          status: "COMPLETED",
+          progressionEligible: true,
+          sessionIntent: "upper",
+          selectionMode: "INTENT",
+          confidence: 1,
+          mesocycleSnapshot: { phase: "ACCUMULATION", week: 4, session: 1 },
+          exercises: [
+            {
+              exerciseId: "close-grip-cable-row",
+              sets: [
+                {
+                  exerciseId: "close-grip-cable-row",
+                  setIndex: 1,
+                  reps: 6,
+                  rpe: 8.5,
+                  load: 57.5,
+                },
+                {
+                  exerciseId: "close-grip-cable-row",
+                  setIndex: 2,
+                  reps: 6,
+                  rpe: 8.5,
+                  load: 57.5,
+                },
+              ],
+            },
+            {
+              exerciseId: "machine-row-donor",
+              sets: [
+                {
+                  exerciseId: "machine-row-donor",
+                  setIndex: 1,
+                  reps: 10,
+                  rpe: 7,
+                  load: 100,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: {
+        "close-grip-cable-row": closeGripCableRow,
+        "machine-row-donor": machineRowDonor,
+      },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "upper",
+      isFirstSessionInMesocycle: true,
+    });
+
+    const targetLoad = result.workout.mainLifts[0].sets[0].targetLoad;
+    expect(result.audit.resolvedLoads["close-grip-cable-row"]?.source).toBe("history");
+    expect(targetLoad).toBe(47.5);
+    expect(targetLoad).toBeLessThan(57.5);
+    expect(result.audit.progressionTraces["close-grip-cable-row"].outcome.reasonCodes).toContain(
+      EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE
     );
   });
 

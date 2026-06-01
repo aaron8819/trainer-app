@@ -1,4 +1,8 @@
-import { computeDoubleProgressionDecision, computeNextLoad } from "./progression";
+import {
+  computeDoubleProgressionDecision,
+  computeNextLoad,
+  PROGRESSION_CONFIG,
+} from "./progression";
 import {
   filterPerformanceHistory,
   filterProgressionHistory,
@@ -102,6 +106,10 @@ const CROSS_INTENT_MAIN_LIFT_MIGRATION_DISCOUNT = 0.9;
 const CROSS_INTENT_MAIN_LIFT_ESTIMATE_CAP_MULTIPLIER = 1.25;
 const CROSS_INTENT_RPE_LOAD_ADJUSTMENT_PER_POINT = 0.04;
 const CALIBRATED_HINGE_NAME_TOKENS = ["stiff", "sldl", "romanian", "rdl"];
+export const EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE =
+  "exact_history_translated_from_high_effort_lower_rep_anchor";
+const EXACT_HISTORY_TRANSLATED_CONTEXT_CONFIDENCE_REASON =
+  "Exact same-exercise history was translated down because the prior anchor was lower-rep and higher-effort than this target.";
 
 const BASE_BODYWEIGHT_RATIO: Record<LoadEquipment, { compound: number; isolation: number }> = {
   barbell: { compound: 0.65, isolation: 0.35 },
@@ -145,16 +153,15 @@ export function applyLoadsWithAudit(
   options: ApplyLoadsOptions
 ): { workout: WorkoutPlan; audit: ApplyLoadsAudit } {
   const periodization = options.periodization;
+  const useNewMesocycleBaselineSource =
+    options.isFirstSessionInMesocycle === true ||
+    (options.accumulationSessionsCompleted ?? -1) === 0;
   const historyIndex = buildHistoryIndex(options.history ?? [], {
     sessionIntent: options.sessionIntent,
-    useNewMesocycleBaselineSource:
-      options.isFirstSessionInMesocycle === true ||
-      (options.accumulationSessionsCompleted ?? -1) === 0,
+    useNewMesocycleBaselineSource,
   });
   const crossIntentHistoryIndex = buildHistoryIndex(options.history ?? [], {
-    useNewMesocycleBaselineSource:
-      options.isFirstSessionInMesocycle === true ||
-      (options.accumulationSessionsCompleted ?? -1) === 0,
+    useNewMesocycleBaselineSource,
   });
   const historyTopLoadIndex = buildHistoryTopLoadIndex(historyIndex);
   const accumulationHistoryIndex = periodization?.isDeload
@@ -214,7 +221,8 @@ export function applyLoadsWithAudit(
         periodization,
         options.weekInBlock,
         preferredContext,
-        options.sessionIntent
+        options.sessionIntent,
+        useNewMesocycleBaselineSource
       );
     if (resolvedLoad.progressionTrace) {
       progressionTraces[exercise.id] = resolvedLoad.progressionTrace;
@@ -621,7 +629,8 @@ function resolveLoadForExercise(
   periodization: PeriodizationModifiers | undefined,
   weekInBlock: number | undefined,
   preferredContext: string,
-  sessionIntent: SplitDay | undefined
+  sessionIntent: SplitDay | undefined,
+  useNewMesocycleBaselineSource: boolean
 ): {
   load?: number;
   progressionTrace?: ProgressionDecisionTrace;
@@ -692,6 +701,23 @@ function resolveLoadForExercise(
       ? (decision?.anchorLoad ?? weightedHistoryModalLoad ?? getModalSessionLoad(latestSets))
       : workingSetLoad;
     const modalRpe = getModalSessionRpe(latestSetsForDecision);
+    const exactHistoryContextCalibration = resolveExactHistoryTargetContextCalibration({
+      enabled:
+        useNewMesocycleBaselineSource &&
+        !periodization?.isDeload &&
+        sessionIntent != null,
+      decisionTrace: decision?.trace,
+      anchorLoad,
+      targetReps,
+      targetRpe,
+    });
+    if (exactHistoryContextCalibration) {
+      return {
+        load: exactHistoryContextCalibration.load,
+        progressionTrace: exactHistoryContextCalibration.trace,
+        source: "history",
+      };
+    }
     if (anchorLoad !== undefined && modalRpe !== undefined && modalRpe >= 9) {
       return { load: anchorLoad, progressionTrace: decision?.trace, source: "history" };
     }
@@ -988,6 +1014,88 @@ function translateLoadToTargetContext(input: {
   return repTranslatedLoad * effortScale;
 }
 
+function resolveExactHistoryTargetContextCalibration(input: {
+  enabled: boolean;
+  decisionTrace: ProgressionDecisionTrace | undefined;
+  anchorLoad: number | undefined;
+  targetReps: number | undefined;
+  targetRpe: number;
+}): { load: number; trace: ProgressionDecisionTrace } | null {
+  const trace = input.decisionTrace;
+  if (
+    !input.enabled ||
+    !trace ||
+    !Number.isFinite(input.anchorLoad) ||
+    !Number.isFinite(input.targetReps) ||
+    !Number.isFinite(input.targetRpe)
+  ) {
+    return null;
+  }
+
+  const priorReps = trace.metrics.medianReps;
+  const priorRpe = trace.metrics.modalRpe;
+  if (!Number.isFinite(priorReps) || !Number.isFinite(priorRpe)) {
+    return null;
+  }
+
+  const repsGap = (input.targetReps as number) - priorReps;
+  const rpeGap = (priorRpe as number) - input.targetRpe;
+  if (
+    repsGap < PROGRESSION_CONFIG.targetEffortMismatchRepGap ||
+    rpeGap < PROGRESSION_CONFIG.targetEffortMismatchRpeGap
+  ) {
+    return null;
+  }
+
+  const translatedLoad = roundToHalf(
+    translateLoadToTargetContext({
+      priorLoad: input.anchorLoad as number,
+      priorReps,
+      priorRpe: priorRpe as number,
+      targetReps: input.targetReps as number,
+      targetRpe: input.targetRpe,
+    })
+  );
+  if (
+    !Number.isFinite(translatedLoad) ||
+    translatedLoad <= 0 ||
+    translatedLoad >= trace.metrics.nextLoad
+  ) {
+    return null;
+  }
+
+  return {
+    load: translatedLoad,
+    trace: {
+      ...trace,
+      confidence: {
+        ...trace.confidence,
+        reasons: [
+          ...trace.confidence.reasons,
+          EXACT_HISTORY_TRANSLATED_CONTEXT_CONFIDENCE_REASON,
+        ],
+      },
+      metrics: {
+        ...trace.metrics,
+        nextLoad: translatedLoad,
+        loadDelta: Number((translatedLoad - (input.anchorLoad as number)).toFixed(2)),
+      },
+      outcome: {
+        ...trace.outcome,
+        action: "decrease",
+        reasonCodes: [
+          ...trace.outcome.reasonCodes,
+          EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE,
+        ],
+      },
+      decisionLog: [
+        ...trace.decisionLog,
+        `Exact-history context calibration: translated prior ${formatNumber(priorReps)} reps @ RPE ${formatNumber(priorRpe as number)} to current target ${formatNumber(input.targetReps as number)} reps @ RPE ${formatNumber(input.targetRpe)}; load downshifted from ${formatNumber(input.anchorLoad as number)} to ${formatNumber(translatedLoad)}.`,
+      ],
+    },
+  };
+}
+
 function estimateFromDonors(
   target: Exercise,
   baselineIndex: Map<string, number>,
@@ -1271,6 +1379,10 @@ function buildWarmupSets(
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function formatNumber(value: number): string {
+  return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
 }
 
 function getPreferredBaselineContext(primaryGoal: Goals["primary"]) {

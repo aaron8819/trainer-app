@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { finalizeDeloadSessionResult } from "./finalize-session";
 import { buildPrescriptionConfidenceReadouts } from "@/lib/api/prescription-confidence-readout";
-import type { ApplyLoadsAudit } from "@/lib/engine/apply-loads";
+import {
+  EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE,
+  type ApplyLoadsAudit,
+} from "@/lib/engine/apply-loads";
 import type { WorkoutPlan } from "@/lib/engine/types";
 import type { ProgressionDecisionTrace } from "@/lib/evidence/session-audit-types";
 
@@ -58,6 +61,8 @@ function progressionTrace(input: {
   modalRpe: number;
   nextLoad: number;
   combinedScale?: number;
+  reasonCodes?: string[];
+  confidenceReasons?: string[];
 }): ProgressionDecisionTrace {
   return {
     version: 1,
@@ -81,7 +86,7 @@ function progressionTrace(input: {
       sampleScale: 1,
       historyScale: input.combinedScale ?? 1,
       combinedScale: input.combinedScale ?? 1,
-      reasons: [],
+      reasons: input.confidenceReasons ?? [],
     },
     metrics: {
       medianReps: input.medianReps,
@@ -92,7 +97,7 @@ function progressionTrace(input: {
     outcome: {
       path: "fallback_hold",
       action: "hold",
-      reasonCodes: ["held_for_test_fixture"],
+      reasonCodes: input.reasonCodes ?? ["held_for_test_fixture"],
     },
     decisionLog: [],
   };
@@ -158,6 +163,51 @@ describe("buildPrescriptionConfidenceReadouts", () => {
       },
     });
     expect(readouts[0]?.cautionReason).toContain("target_effort_load_mismatch");
+  });
+
+  it("flags exact-history anchors translated from high-effort lower-rep context", () => {
+    const readouts = buildPrescriptionConfidenceReadouts({
+      workout: workoutWithOneExercise({
+        exerciseId: "close-grip-cable-row",
+        exerciseName: "Close-Grip Seated Cable Row",
+        targetLoad: 47.5,
+        targetReps: 10,
+        targetRpe: 6.5,
+        equipment: ["cable"],
+      }),
+      loadAudit: loadAuditFor({
+        exerciseId: "close-grip-cable-row",
+        source: "history",
+        targetLoad: 47.5,
+        trace: progressionTrace({
+          anchorLoad: 57.5,
+          medianReps: 6,
+          modalRpe: 8.5,
+          nextLoad: 47.5,
+          reasonCodes: [EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE],
+          confidenceReasons: [
+            "Exact same-exercise history was translated down because the prior anchor was lower-rep and higher-effort than this target.",
+          ],
+        }),
+      }),
+    });
+
+    expect(readouts[0]).toMatchObject({
+      exerciseId: "close-grip-cable-row",
+      loadSource: "history",
+      confidence: "low",
+      cautionLevel: "caution",
+      suggestedAdjustmentRange: {
+        minLoad: 45,
+        maxLoad: 47.5,
+        unit: "lb",
+        basis: EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE,
+      },
+    });
+    expect(readouts[0]?.cautionReason).toContain(
+      EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE
+    );
+    expect(readouts[0]?.cautionReason).toContain("translated down");
   });
 
   it("keeps a history-backed target clean when recent evidence supports it", () => {

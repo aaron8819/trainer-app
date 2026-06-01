@@ -1,4 +1,7 @@
-import type { ApplyLoadsAudit } from "@/lib/engine/apply-loads";
+import {
+  EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE,
+  type ApplyLoadsAudit,
+} from "@/lib/engine/apply-loads";
 import type {
   Exercise,
   WorkoutExercise,
@@ -30,7 +33,10 @@ type TargetEffortLoadMismatchInput = {
 
 export type TargetEffortLoadMismatchClassification = {
   isMismatch: boolean;
-  reasonCode: "target_effort_load_mismatch" | null;
+  reasonCode:
+    | "target_effort_load_mismatch"
+    | typeof EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE
+    | null;
 };
 
 export function classifyTargetEffortLoadMismatch(
@@ -48,6 +54,13 @@ export function classifyTargetEffortLoadMismatch(
     !Number.isFinite(targetRpe)
   ) {
     return { isMismatch: false, reasonCode: null };
+  }
+
+  if (trace.outcome.reasonCodes.includes(EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE)) {
+    return {
+      isMismatch: true,
+      reasonCode: EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE,
+    };
   }
 
   const anchorLoad = trace.anchor.anchorLoad;
@@ -214,7 +227,9 @@ function resolveCaution(input: {
     return {
       level: "caution",
       reason:
-        "target_effort_load_mismatch: prior reps and effort do not clearly support the easier target at this load.",
+        input.mismatch.reasonCode === EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE
+          ? `${EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE}: prior high-effort lower-rep history was translated down for this easier target.`
+          : "target_effort_load_mismatch: prior reps and effort do not clearly support the easier target at this load.",
     };
   }
 
@@ -256,10 +271,18 @@ function buildSuggestedAdjustmentRange(input: {
     minLoad,
     maxLoad,
     unit: "lb",
-    basis: input.cautionReason.startsWith("target_effort_load_mismatch")
-      ? "target_effort_load_mismatch"
-      : input.cautionReason,
+    basis: resolveAdjustmentBasis(input.cautionReason),
   };
+}
+
+function resolveAdjustmentBasis(cautionReason: string): string {
+  if (cautionReason.startsWith("target_effort_load_mismatch")) {
+    return "target_effort_load_mismatch";
+  }
+  if (cautionReason.startsWith(EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE)) {
+    return EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE;
+  }
+  return cautionReason;
 }
 
 function resolveAdjustmentStep(load: number): number {

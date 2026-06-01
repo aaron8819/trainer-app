@@ -23,6 +23,8 @@ import type {
   RuntimeEditInterpretation,
   WeeklyRetroExerciseLoadCalibrationRow,
   WeeklyRetroExerciseReviewBucket,
+  WeeklyRetroPostSessionCalibrationRow,
+  WeeklyRetroPostSessionCalibrationRole,
   WeeklyRetroReplacementLikePair,
   WeeklyRetroAuditPayload,
   WeeklyRetroPlanAdherence,
@@ -35,6 +37,10 @@ const DEFAULT_FALLBACK_LANDMARK = {
   mav: 10,
 };
 
+const MAIN_LIFT_LOAD_DELTA_FLAG_PCT = 10;
+const ACCESSORY_LOAD_DELTA_FLAG_PCT = 12;
+const UNKNOWN_ROLE_LOAD_DELTA_FLAG_PCT = 15;
+const MATERIAL_RPE_DELTA = 1;
 const PERFORMED_WORKOUT_STATUSES = new Set(["COMPLETED", "PARTIAL"]);
 const FUTURE_INCOMPLETE_WORKOUT_STATUSES = new Set(["PLANNED", "IN_PROGRESS"]);
 
@@ -293,6 +299,27 @@ function resolveTargetPrescription(input: {
   };
 }
 
+function resolveCalibrationRole(input: {
+  generatedExercise?: SessionAuditExerciseSnapshot;
+}): WeeklyRetroPostSessionCalibrationRole {
+  const generatedRole = input.generatedExercise?.role?.toLowerCase();
+  if (
+    input.generatedExercise?.isMainLift ||
+    input.generatedExercise?.section === "main" ||
+    generatedRole?.includes("main")
+  ) {
+    return "main_lift";
+  }
+  if (
+    input.generatedExercise?.section === "accessory" ||
+    generatedRole?.includes("accessory") ||
+    generatedRole?.includes("support")
+  ) {
+    return "accessory";
+  }
+  return "unknown";
+}
+
 function summarizePerformedLoad(
   sets: WeeklyRetroRuntimeWorkoutSet[],
   targetLoad: number | undefined
@@ -324,6 +351,189 @@ function summarizePerformedLoad(
         ? roundToTenth(((medianLoad - targetLoad) / targetLoad) * 100)
         : undefined,
   };
+}
+
+function formatCalibrationSet(input: {
+  load?: number;
+  reps?: number;
+  rpe?: number;
+}): string {
+  const load = input.load == null ? "unknown" : `${input.load}`;
+  const reps = input.reps == null ? "unknown" : `${input.reps}`;
+  const rpe = input.rpe == null ? "unknown" : `${input.rpe}`;
+  return `${load} x ${reps} @${rpe}`;
+}
+
+function buildPostSessionCalibrationNote(
+  row: WeeklyRetroExerciseLoadCalibrationRow,
+  classification: WeeklyRetroPostSessionCalibrationRow["classification"]
+): string {
+  const performed = formatCalibrationSet({
+    load: row.performedLoadSummary.medianLoad,
+    reps: row.performedLoadSummary.medianReps,
+    rpe: row.performedLoadSummary.modalRpe,
+  });
+  if (classification === "stale_main_anchor") {
+    return `Re-anchor next exposure from performed median ${performed}; target was stale for a main lift.`;
+  }
+  if (classification === "accessory_equipment_scaling") {
+    return `Treat as accessory equipment scaling and calibrate next exposure from performed median ${performed}.`;
+  }
+  if (classification === "performed_recalibration_needed") {
+    return `Recalibrate next exposure from performed median ${performed}.`;
+  }
+  if (classification === "target_ok") {
+    return "Target matched the representative performed set; no calibration action.";
+  }
+  return "Need completed target and performed load/reps/RPE to classify.";
+}
+
+function classifyPostSessionCalibrationRow(
+  row: WeeklyRetroExerciseLoadCalibrationRow
+): Pick<
+  WeeklyRetroPostSessionCalibrationRow,
+  "classification" | "reasonCodes" | "nextExposureNote"
+> {
+  const loadDeltaPct = row.performedLoadSummary.loadDeltaPct;
+  const rpeDelta =
+    typeof row.performedLoadSummary.modalRpe === "number" &&
+    typeof row.targetRpe === "number"
+      ? roundToTenth(row.performedLoadSummary.modalRpe - row.targetRpe)
+      : undefined;
+  const missingEvidence =
+    row.plannedSetCount <= 0 ||
+    row.performedSetCount <= 0 ||
+    typeof row.targetLoad !== "number" ||
+    typeof row.targetRpe !== "number" ||
+    typeof row.performedLoadSummary.medianLoad !== "number" ||
+    typeof row.performedLoadSummary.medianReps !== "number" ||
+    typeof row.performedLoadSummary.modalRpe !== "number" ||
+    typeof loadDeltaPct !== "number";
+
+  if (missingEvidence) {
+    const classification = "insufficient_evidence";
+    return {
+      classification,
+      reasonCodes: ["missing_completed_target_or_performed_evidence"],
+      nextExposureNote: buildPostSessionCalibrationNote(row, classification),
+    };
+  }
+
+  const materialRpeDelta =
+    typeof rpeDelta === "number" && Math.abs(rpeDelta) >= MATERIAL_RPE_DELTA;
+  const absLoadDeltaPct = Math.abs(loadDeltaPct);
+  const role = row.role ?? "unknown";
+
+  if (
+    role === "main_lift" &&
+    loadDeltaPct > MAIN_LIFT_LOAD_DELTA_FLAG_PCT
+  ) {
+    const classification = "stale_main_anchor";
+    return {
+      classification,
+      reasonCodes: ["main_lift_performed_load_above_target"],
+      nextExposureNote: buildPostSessionCalibrationNote(row, classification),
+    };
+  }
+
+  if (
+    role === "accessory" &&
+    absLoadDeltaPct > ACCESSORY_LOAD_DELTA_FLAG_PCT
+  ) {
+    const classification = "accessory_equipment_scaling";
+    return {
+      classification,
+      reasonCodes: ["accessory_load_scale_materially_different"],
+      nextExposureNote: buildPostSessionCalibrationNote(row, classification),
+    };
+  }
+
+  if (
+    role === "main_lift" &&
+    (loadDeltaPct < -MAIN_LIFT_LOAD_DELTA_FLAG_PCT || materialRpeDelta)
+  ) {
+    const classification = "performed_recalibration_needed";
+    return {
+      classification,
+      reasonCodes: [
+        loadDeltaPct < -MAIN_LIFT_LOAD_DELTA_FLAG_PCT
+          ? "main_lift_performed_load_below_target"
+          : "material_rpe_delta",
+      ],
+      nextExposureNote: buildPostSessionCalibrationNote(row, classification),
+    };
+  }
+
+  if (
+    role === "unknown" &&
+    (absLoadDeltaPct > UNKNOWN_ROLE_LOAD_DELTA_FLAG_PCT || materialRpeDelta)
+  ) {
+    const classification = "performed_recalibration_needed";
+    return {
+      classification,
+      reasonCodes: [
+        absLoadDeltaPct > UNKNOWN_ROLE_LOAD_DELTA_FLAG_PCT
+          ? "unknown_role_material_load_delta"
+          : "material_rpe_delta",
+      ],
+      nextExposureNote: buildPostSessionCalibrationNote(row, classification),
+    };
+  }
+
+  if (materialRpeDelta) {
+    const classification = "performed_recalibration_needed";
+    return {
+      classification,
+      reasonCodes: ["material_rpe_delta"],
+      nextExposureNote: buildPostSessionCalibrationNote(row, classification),
+    };
+  }
+
+  const classification = "target_ok";
+  return {
+    classification,
+    reasonCodes: ["target_and_performed_representative_set_close"],
+    nextExposureNote: buildPostSessionCalibrationNote(row, classification),
+  };
+}
+
+function buildPostSessionCalibrationRows(
+  rows: WeeklyRetroExerciseLoadCalibrationRow[]
+): WeeklyRetroPostSessionCalibrationRow[] {
+  return rows
+    .filter((row) => row.reviewBucket === "completed_session")
+    .filter((row) => row.classification !== "runtime_added")
+    .filter((row) => row.classification !== "replacement_like")
+    .map((row) => {
+      const classification = classifyPostSessionCalibrationRow(row);
+      const rpeDelta =
+        typeof row.performedLoadSummary.modalRpe === "number" &&
+        typeof row.targetRpe === "number"
+          ? roundToTenth(row.performedLoadSummary.modalRpe - row.targetRpe)
+          : undefined;
+      return {
+        week: row.week,
+        workoutId: row.workoutId,
+        slotId: row.slotId,
+        sessionLabel: row.sessionLabel,
+        exerciseId: row.exerciseId,
+        exerciseName: row.exerciseName,
+        role: row.role ?? "unknown",
+        target: {
+          load: row.targetLoad,
+          repRange: row.targetRepRange,
+          rpe: row.targetRpe,
+        },
+        performed: {
+          load: row.performedLoadSummary.medianLoad,
+          reps: row.performedLoadSummary.medianReps,
+          rpe: row.performedLoadSummary.modalRpe,
+        },
+        loadDeltaPct: row.performedLoadSummary.loadDeltaPct,
+        rpeDelta,
+        ...classification,
+      };
+    });
 }
 
 function classifyExerciseLoadCalibration(input: {
@@ -940,6 +1150,7 @@ function buildExerciseLoadCalibrationRows(input: {
       const skippedSetCount = countSkippedSets(pair.savedExercise?.sets ?? []);
       const addedSetCount = Math.max(0, savedSetCount - plannedSetCount);
       const target = resolveTargetPrescription(pair);
+      const role = resolveCalibrationRole(pair);
       const performedLoadSummary = summarizePerformedLoad(
         pair.savedExercise?.sets ?? [],
         target.targetLoad
@@ -968,6 +1179,7 @@ function buildExerciseLoadCalibrationRows(input: {
         exerciseId: pair.generatedExercise?.exerciseId ?? pair.savedExercise?.exerciseId ?? "unknown",
         exerciseName:
           pair.generatedExercise?.exerciseName ?? pair.savedExercise?.exercise.name ?? "Unknown exercise",
+        role,
         plannedSetCount,
         savedSetCount,
         performedSetCount,
@@ -1373,6 +1585,9 @@ export async function buildWeeklyRetroAuditPayload(input: {
     compositionSourceByWorkoutId,
     sessionReviewBucketByWorkoutId,
   });
+  const postSessionCalibrationRows = buildPostSessionCalibrationRows(
+    exerciseLoadCalibrationRows
+  );
   const slotIdentityIssueCount =
     missingSlotIdentityWorkoutIds.length + duplicateSlots.length + intentMismatches.length;
 
@@ -1707,6 +1922,7 @@ export async function buildWeeklyRetroAuditPayload(input: {
       readOnly: true,
       seedRuntimeChanged: false,
       plannerMaterializerChanged: false,
+      calibrationRows: postSessionCalibrationRows,
       completedWorkoutIds,
       futurePlannedIncompleteWorkouts,
     },

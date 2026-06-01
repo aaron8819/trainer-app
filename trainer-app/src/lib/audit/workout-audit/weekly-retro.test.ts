@@ -6,18 +6,27 @@ const mocks = vi.hoisted(() => {
   const getWeeklyVolumeTarget = vi.fn();
   const mesocycleFindFirst = vi.fn();
   const workoutFindMany = vi.fn();
+  const workoutUpdate = vi.fn();
+  const workoutCreate = vi.fn();
+  const mesocycleUpdate = vi.fn();
   return {
     buildHistoricalWeekAuditPayload,
     loadMesocycleWeekMuscleVolume,
     getWeeklyVolumeTarget,
     mesocycleFindFirst,
     workoutFindMany,
+    workoutUpdate,
+    workoutCreate,
+    mesocycleUpdate,
     prisma: {
       mesocycle: {
         findFirst: mesocycleFindFirst,
+        update: mesocycleUpdate,
       },
       workout: {
         findMany: workoutFindMany,
+        update: workoutUpdate,
+        create: workoutCreate,
       },
     },
   };
@@ -1072,6 +1081,208 @@ describe("buildWeeklyRetroAuditPayload", () => {
     });
   });
 
+  it("adds completed post-session calibration deltas by main-lift and accessory role without mutating runtime state", async () => {
+    mocks.buildHistoricalWeekAuditPayload.mockResolvedValue({
+      version: 1,
+      week: 1,
+      mesocycleId: "9b861675-c98f-42f7-bc8c-64a7de411b77",
+      sessions: [
+        makeHistoricalSession({
+          workoutId: "lower-1",
+          scheduledDate: "2026-05-27T10:00:00.000Z",
+          status: "COMPLETED",
+          sessionIntent: "LOWER",
+          mesoSession: 1,
+          generatedExercises: [
+            makeGeneratedCalibrationExercise({
+              exerciseId: "back-squat",
+              exerciseName: "Barbell Back Squat",
+              orderIndex: 0,
+              prescribedSetCount: 4,
+              isMainLift: true,
+              section: "main",
+              targetLoad: 72.5,
+              targetReps: 8,
+              targetRpe: 6.5,
+            }),
+            makeGeneratedCalibrationExercise({
+              exerciseId: "leg-extension",
+              exerciseName: "Leg Extension",
+              orderIndex: 1,
+              prescribedSetCount: 2,
+              isMainLift: false,
+              section: "accessory",
+              targetLoad: 85,
+              targetReps: 10,
+              targetRpe: 6.5,
+            }),
+            makeGeneratedCalibrationExercise({
+              exerciseId: "lying-leg-curl",
+              exerciseName: "Lying Leg Curl",
+              orderIndex: 2,
+              prescribedSetCount: 2,
+              isMainLift: false,
+              section: "accessory",
+              targetLoad: 70,
+              targetReps: 10,
+              targetRpe: 6.5,
+            }),
+            makeGeneratedCalibrationExercise({
+              exerciseId: "seated-calf-raise",
+              exerciseName: "Seated Calf Raise",
+              orderIndex: 3,
+              prescribedSetCount: 4,
+              isMainLift: false,
+              section: "accessory",
+              targetLoad: 80,
+              targetReps: 10,
+              targetRpe: 6.5,
+            }),
+            makeGeneratedCalibrationExercise({
+              exerciseId: "close-accessory",
+              exerciseName: "Close Accessory",
+              orderIndex: 4,
+              prescribedSetCount: 2,
+              isMainLift: false,
+              section: "accessory",
+              targetLoad: 100,
+              targetReps: 10,
+              targetRpe: 7,
+            }),
+          ],
+          addedExerciseIds: [],
+        }),
+      ],
+      summary: {
+        sessionCount: 1,
+        advancingCount: 1,
+        gapFillCount: 0,
+        supplementalCount: 0,
+        deloadCount: 0,
+        progressionEligibleCount: 1,
+        progressionExcludedCount: 0,
+        weekCloseRelevantCount: 0,
+        persistedSnapshotCount: 1,
+        reconstructedSnapshotCount: 0,
+        mutationDriftCount: 0,
+        statusCounts: { COMPLETED: 1 },
+        intentCounts: { LOWER: 1 },
+      },
+      comparabilityCoverage: {
+        comparableSessionCount: 1,
+        missingGeneratedSnapshotCount: 0,
+        persistedSnapshotCount: 1,
+        reconstructedSnapshotCount: 0,
+        generatedLayerCoverage: "full",
+        limitations: [],
+      },
+    });
+    mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({});
+    mocks.workoutFindMany.mockResolvedValue([
+      {
+        id: "lower-1",
+        selectionMetadata: {
+          slot: {
+            slotId: "lower_a",
+            intent: "lower",
+            sequenceIndex: 0,
+            source: "mesocycle_slot_sequence",
+          },
+          receipt: {
+            sessionProvenance: {
+              mesocycleId: "9b861675-c98f-42f7-bc8c-64a7de411b77",
+              compositionSource: "persisted_slot_plan_seed",
+            },
+          },
+        },
+        exercises: [
+          makeRuntimeExercise("back-squat", "Barbell Back Squat", 0, [
+            makeRuntimeSet(0, 95, 8, 7),
+            makeRuntimeSet(1, 95, 8, 7),
+            makeRuntimeSet(2, 95, 8, 7),
+            makeRuntimeSet(3, 95, 8, 7),
+          ]),
+          makeRuntimeExercise("leg-extension", "Leg Extension", 1, [
+            makeRuntimeSet(0, 70, 10, 7),
+            makeRuntimeSet(1, 70, 10, 7),
+          ]),
+          makeRuntimeExercise("lying-leg-curl", "Lying Leg Curl", 2, [
+            makeRuntimeSet(0, 60, 10, 6.5),
+            makeRuntimeSet(1, 60, 10, 6.5),
+          ]),
+          makeRuntimeExercise("seated-calf-raise", "Seated Calf Raise", 3, [
+            makeRuntimeSet(0, 70, 13, 7),
+            makeRuntimeSet(1, 70, 12, 7),
+            makeRuntimeSet(2, 70, 12, 7),
+            makeRuntimeSet(3, 70, 12, 7),
+          ]),
+          makeRuntimeExercise("close-accessory", "Close Accessory", 4, [
+            makeRuntimeSet(0, 105, 10, 7),
+            makeRuntimeSet(1, 105, 10, 7),
+          ]),
+        ],
+      },
+    ]);
+    mocks.getWeeklyVolumeTarget.mockReturnValue(0);
+
+    const payload = await buildWeeklyRetroAuditPayload({
+      userId: "user-1",
+      week: 1,
+      mesocycleId: "9b861675-c98f-42f7-bc8c-64a7de411b77",
+    });
+    const calibrationByExercise = new Map(
+      (payload.postSessionReview?.calibrationRows ?? []).map((row) => [
+        row.exerciseId,
+        row,
+      ])
+    );
+
+    expect(payload.postSessionReview).toMatchObject({
+      readOnly: true,
+      seedRuntimeChanged: false,
+      plannerMaterializerChanged: false,
+    });
+    expect(calibrationByExercise.get("back-squat")).toMatchObject({
+      role: "main_lift",
+      target: { load: 72.5, repRange: { min: 8, max: 8 }, rpe: 6.5 },
+      performed: { load: 95, reps: 8, rpe: 7 },
+      loadDeltaPct: 31,
+      rpeDelta: 0.5,
+      classification: "stale_main_anchor",
+      reasonCodes: ["main_lift_performed_load_above_target"],
+    });
+    expect(calibrationByExercise.get("leg-extension")).toMatchObject({
+      role: "accessory",
+      performed: { load: 70, reps: 10, rpe: 7 },
+      loadDeltaPct: -17.6,
+      rpeDelta: 0.5,
+      classification: "accessory_equipment_scaling",
+    });
+    expect(calibrationByExercise.get("lying-leg-curl")).toMatchObject({
+      role: "accessory",
+      performed: { load: 60, reps: 10, rpe: 6.5 },
+      loadDeltaPct: -14.3,
+      rpeDelta: 0,
+      classification: "accessory_equipment_scaling",
+    });
+    expect(calibrationByExercise.get("seated-calf-raise")).toMatchObject({
+      role: "accessory",
+      performed: { load: 70, reps: 12, rpe: 7 },
+      loadDeltaPct: -12.5,
+      rpeDelta: 0.5,
+      classification: "accessory_equipment_scaling",
+    });
+    expect(calibrationByExercise.get("close-accessory")).toMatchObject({
+      role: "accessory",
+      loadDeltaPct: 5,
+      rpeDelta: 0,
+      classification: "target_ok",
+    });
+    expect(mocks.workoutUpdate).not.toHaveBeenCalled();
+    expect(mocks.workoutCreate).not.toHaveBeenCalled();
+    expect(mocks.mesocycleUpdate).not.toHaveBeenCalled();
+  });
+
   it("separates completed post-session reconciliation from future planned work and likely replacements", async () => {
     mocks.buildHistoricalWeekAuditPayload.mockResolvedValue({
       version: 1,
@@ -1380,6 +1591,33 @@ function makeGeneratedExercise(
       targetReps: 10,
       targetRpe: 8,
       targetLoad: 100,
+    })),
+  };
+}
+
+function makeGeneratedCalibrationExercise(input: {
+  exerciseId: string;
+  exerciseName: string;
+  orderIndex: number;
+  prescribedSetCount: number;
+  isMainLift: boolean;
+  section: "main" | "accessory";
+  targetLoad: number;
+  targetReps: number;
+  targetRpe: number;
+}) {
+  return {
+    exerciseId: input.exerciseId,
+    exerciseName: input.exerciseName,
+    orderIndex: input.orderIndex,
+    section: input.section,
+    isMainLift: input.isMainLift,
+    prescribedSetCount: input.prescribedSetCount,
+    prescribedSets: Array.from({ length: input.prescribedSetCount }, (_, setIndex) => ({
+      setIndex,
+      targetReps: input.targetReps,
+      targetRpe: input.targetRpe,
+      targetLoad: input.targetLoad,
     })),
   };
 }

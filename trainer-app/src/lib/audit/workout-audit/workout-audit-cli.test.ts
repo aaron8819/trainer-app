@@ -6586,6 +6586,65 @@ describe("buildWeeklyRetroOperatorSummary", () => {
               notes: [],
             },
           ],
+          postSessionReview: {
+            readOnly: true,
+            seedRuntimeChanged: false,
+            plannerMaterializerChanged: false,
+            completedWorkoutIds: ["workout-lower-a"],
+            futurePlannedIncompleteWorkouts: [],
+            calibrationRows: [
+              {
+                week: 4,
+                workoutId: "workout-lower-a",
+                slotId: "lower_a",
+                sessionLabel: "lower_a",
+                exerciseId: "back-squat",
+                exerciseName: "Barbell Back Squat",
+                role: "main_lift",
+                target: {
+                  load: 72.5,
+                  repRange: { min: 8, max: 8 },
+                  rpe: 6.5,
+                },
+                performed: {
+                  load: 95,
+                  reps: 8,
+                  rpe: 7,
+                },
+                loadDeltaPct: 31,
+                rpeDelta: 0.5,
+                classification: "stale_main_anchor",
+                reasonCodes: ["main_lift_performed_load_above_target"],
+                nextExposureNote:
+                  "Re-anchor next exposure from performed median 95 x 8 @7; target was stale for a main lift.",
+              },
+              {
+                week: 4,
+                workoutId: "workout-lower-a",
+                slotId: "lower_a",
+                sessionLabel: "lower_a",
+                exerciseId: "leg-extension",
+                exerciseName: "Leg Extension",
+                role: "accessory",
+                target: {
+                  load: 85,
+                  repRange: { min: 10, max: 10 },
+                  rpe: 6.5,
+                },
+                performed: {
+                  load: 70,
+                  reps: 10,
+                  rpe: 7,
+                },
+                loadDeltaPct: -17.6,
+                rpeDelta: 0.5,
+                classification: "accessory_equipment_scaling",
+                reasonCodes: ["accessory_load_scale_materially_different"],
+                nextExposureNote:
+                  "Treat as accessory equipment scaling and calibrate next exposure from performed median 70 x 10 @7.",
+              },
+            ],
+          },
         } as never,
       },
     });
@@ -6599,6 +6658,10 @@ describe("buildWeeklyRetroOperatorSummary", () => {
         "Seated Calf Raise | lower_a | 4 | 0 | 0 | 0 | 0 | skipped_or_low_coverage | substitute / replacement-like pattern",
         "Standing Calf Raise | lower_a | 0 | 4 | 4 | 0 | 4 | runtime_added | substitute / replacement-like pattern; added exercise, session-local performed reality",
         "Duplicate Calf Raise | lower_a | 2 | 2 | 2 | 0 | 0 | clean | same-exercise duplicate logging",
+        "Post-Session Calibration Deltas",
+        "Exercise | Role | Target load/reps/RPE | Performed load/reps/RPE | Load delta % | RPE delta | Classification | Next exposure note",
+        "Barbell Back Squat | main_lift | 72.5 x 8 @6.5 | 95 x 8 @7 | 31 | 0.5 | stale_main_anchor | Re-anchor next exposure from performed median 95 x 8 @7; target was stale for a main lift.",
+        "Leg Extension | accessory | 85 x 10 @6.5 | 70 x 10 @7 | -17.6 | 0.5 | accessory_equipment_scaling | Treat as accessory equipment scaling and calibrate next exposure from performed median 70 x 10 @7.",
       ]),
     );
   });

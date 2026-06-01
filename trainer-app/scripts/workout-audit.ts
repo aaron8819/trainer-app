@@ -243,6 +243,33 @@ function formatRepTarget(
   return formatAuditDecimal(set.targetReps);
 }
 
+function formatCalibrationRepTarget(
+  range: { min: number; max: number } | undefined
+): string {
+  if (!range) {
+    return "unknown";
+  }
+  if (range.min === range.max) {
+    return formatAuditDecimal(range.min);
+  }
+  return `${formatAuditDecimal(range.min)}-${formatAuditDecimal(range.max)}`;
+}
+
+function formatCalibrationPrescription(input: {
+  load?: number;
+  repRange?: { min: number; max: number };
+  reps?: number;
+  rpe?: number;
+}): string {
+  const load = formatAuditMaybeNumber(input.load);
+  const reps =
+    typeof input.reps === "number"
+      ? formatAuditDecimal(input.reps)
+      : formatCalibrationRepTarget(input.repRange);
+  const rpe = formatAuditMaybeNumber(input.rpe);
+  return `${load} x ${reps} @${rpe}`;
+}
+
 function formatIncompleteWorkoutReadiness(
   nextSession: Pick<
     NonNullable<WorkoutAuditArtifact["nextSession"]>,
@@ -4553,6 +4580,46 @@ function buildWeeklySetSummaryTable(weeklyRetro: WeeklyRetroPayload): string[] {
   ];
 }
 
+function buildPostSessionCalibrationDeltaTable(
+  weeklyRetro: WeeklyRetroPayload
+): string[] {
+  const rows = weeklyRetro.postSessionReview?.calibrationRows ?? [];
+  if (rows.length === 0) {
+    return [
+      "",
+      "Post-Session Calibration Deltas",
+      "Exercise | Role | Target load/reps/RPE | Performed load/reps/RPE | Load delta % | RPE delta | Classification | Next exposure note",
+      "none | n/a | n/a | n/a | n/a | n/a | n/a | no completed calibration rows available",
+    ];
+  }
+
+  return [
+    "",
+    "Post-Session Calibration Deltas",
+    "Exercise | Role | Target load/reps/RPE | Performed load/reps/RPE | Load delta % | RPE delta | Classification | Next exposure note",
+    ...rows.map((row) =>
+      [
+        row.exerciseName,
+        row.role,
+        formatCalibrationPrescription({
+          load: row.target.load,
+          repRange: row.target.repRange,
+          rpe: row.target.rpe,
+        }),
+        formatCalibrationPrescription({
+          load: row.performed.load,
+          reps: row.performed.reps,
+          rpe: row.performed.rpe,
+        }),
+        formatAuditMaybeNumber(row.loadDeltaPct),
+        formatAuditMaybeNumber(row.rpeDelta),
+        row.classification,
+        row.nextExposureNote,
+      ].join(" | ")
+    ),
+  ];
+}
+
 function buildCompletedSessionReconciliationTable(
   weeklyRetro: WeeklyRetroPayload
 ): string[] {
@@ -4807,6 +4874,7 @@ export function buildWeeklyRetroOperatorSummary(input: {
     lines.push(...buildWeeklySetSummaryTable(weeklyRetro));
     lines.push(...buildWeeklyMuscleVolumeTable(weeklyRetro));
     lines.push(...buildWeeklyRetroExerciseReconciliationTable(weeklyRetro));
+    lines.push(...buildPostSessionCalibrationDeltaTable(weeklyRetro));
   }
 
   return lines;

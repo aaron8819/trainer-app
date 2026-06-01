@@ -410,6 +410,18 @@ export type WeeklyRetroExerciseLoadCalibrationClassification =
   | "skipped_or_low_coverage"
   | "replacement_like";
 
+export type WeeklyRetroPostSessionCalibrationRole =
+  | "main_lift"
+  | "accessory"
+  | "unknown";
+
+export type WeeklyRetroPostSessionCalibrationClassification =
+  | "stale_main_anchor"
+  | "accessory_equipment_scaling"
+  | "performed_recalibration_needed"
+  | "target_ok"
+  | "insufficient_evidence";
+
 export type WeeklyRetroExerciseReviewBucket =
   | "completed_session"
   | "future_planned_incomplete"
@@ -436,6 +448,7 @@ export type WeeklyRetroExerciseLoadCalibrationRow = {
   reviewBucket?: WeeklyRetroExerciseReviewBucket;
   exerciseId: string;
   exerciseName: string;
+  role?: WeeklyRetroPostSessionCalibrationRole;
   plannedSetCount: number;
   savedSetCount: number;
   performedSetCount: number;
@@ -458,6 +471,34 @@ export type WeeklyRetroExerciseLoadCalibrationRow = {
   reasonCodes: string[];
   notes: string[];
   replacementLike?: WeeklyRetroReplacementLikePair;
+};
+
+export type WeeklyRetroPostSessionCalibrationRow = {
+  week: number;
+  workoutId: string;
+  slotId?: string;
+  sessionLabel: string;
+  exerciseId: string;
+  exerciseName: string;
+  role: WeeklyRetroPostSessionCalibrationRole;
+  target: {
+    load?: number;
+    repRange?: {
+      min: number;
+      max: number;
+    };
+    rpe?: number;
+  };
+  performed: {
+    load?: number;
+    reps?: number;
+    rpe?: number;
+  };
+  loadDeltaPct?: number;
+  rpeDelta?: number;
+  classification: WeeklyRetroPostSessionCalibrationClassification;
+  reasonCodes: string[];
+  nextExposureNote: string;
 };
 
 export type WeeklyRetroAuditSessionExecutionRow = {
@@ -557,6 +598,7 @@ export type WeeklyRetroAuditPayload = {
     readOnly: true;
     seedRuntimeChanged: false;
     plannerMaterializerChanged: false;
+    calibrationRows?: WeeklyRetroPostSessionCalibrationRow[];
     completedWorkoutIds: string[];
     futurePlannedIncompleteWorkouts: Array<{
       workoutId: string;

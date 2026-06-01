@@ -134,20 +134,50 @@ function makeWeeklyVolumeCheckResponse(
     shouldShow: boolean;
     rows: Array<{
       muscle: string;
-      doneNow: number;
-      projectedRemainingWeek: number;
-      projectedEndOfWeek: number;
-      weeklyTarget: number;
-      deltaToTarget: number;
-      mev: number;
-      mav: number;
-      mrv: number;
-      status: "below_mev" | "in_range" | "near_target" | "on_target" | "near_mrv" | "at_mrv";
+      performedSoFar: number;
+      plannedRemaining: number;
+      projectedFinish: number;
+      MEV: number;
+      MAV: number;
+      status:
+        | "floor_risk"
+        | "on_track"
+        | "productive"
+        | "optional_floor_buffer"
+        | "ahead_suppress_extras"
+        | "near_cap"
+        | "over_cap"
+        | "no_addons_recommended";
       statusLabel: string;
-      topUpHint: string | null;
+      recommendationKind:
+        | "add_low_fatigue_buffer_optional"
+        | "suppress_extras"
+        | "no_action"
+        | "watch";
+      reasonCopy: string;
+      optionalOrSuppress: boolean;
     }>;
   }> = {}
 ) {
+  const rows =
+    overrides.rows ??
+    [
+      {
+        muscle: "Chest",
+        performedSoFar: 6,
+        plannedRemaining: 2,
+        projectedFinish: 8,
+        MEV: 10,
+        MAV: 16,
+        status: "floor_risk" as const,
+        statusLabel: "Floor risk",
+        recommendationKind: "add_low_fatigue_buffer_optional" as const,
+        reasonCopy:
+          "Projected below the MEV floor. Optional low-fatigue isolation only if readiness and time allow; do not chase extra volume.",
+        optionalOrSuppress: true,
+      },
+    ];
+
   return {
     data: {
       workoutId: "workout-1",
@@ -158,24 +188,16 @@ function makeWeeklyVolumeCheckResponse(
         blockType: "accumulation",
       },
       shouldShow: overrides.shouldShow ?? true,
-      rows:
-        overrides.rows ??
-        [
-          {
-            muscle: "Chest",
-            doneNow: 6,
-            projectedRemainingWeek: 2,
-            projectedEndOfWeek: 8,
-            weeklyTarget: 10,
-            deltaToTarget: -2,
-            mev: 8,
-            mav: 16,
-            mrv: 20,
-            status: "below_mev",
-            statusLabel: "Below MEV",
-            topUpHint: "Likely needs ~1-2 more hard sets",
-          },
-        ],
+      summary:
+        rows.length === 0
+          ? {
+              status: "no_addons_recommended" as const,
+              recommendationKind: "no_action" as const,
+              reasonCopy:
+                "Relevant muscles are covered by performed work and the remaining projection. No add-ons recommended.",
+            }
+          : null,
+      rows,
     },
     error: null,
   };
@@ -1086,17 +1108,17 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
         rows: [
           {
             muscle: "Chest",
-            doneNow: 6,
-            projectedRemainingWeek: 2,
-            projectedEndOfWeek: 8,
-            weeklyTarget: 10,
-            deltaToTarget: -2,
-            mev: 8,
-            mav: 16,
-            mrv: 20,
-            status: "below_mev",
-            statusLabel: "Below MEV",
-            topUpHint: "Likely needs ~1-2 more hard sets",
+            performedSoFar: 6,
+            plannedRemaining: 2,
+            projectedFinish: 8,
+            MEV: 10,
+            MAV: 16,
+            status: "floor_risk",
+            statusLabel: "Floor risk",
+            recommendationKind: "add_low_fatigue_buffer_optional",
+            reasonCopy:
+              "Projected below the MEV floor. Optional low-fatigue isolation only if readiness and time allow; do not chase extra volume.",
+            optionalOrSuppress: true,
           },
         ],
       })
@@ -1110,6 +1132,40 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(screen.queryByTestId("weekly-volume-row-Quads")).not.toBeInTheDocument();
   });
 
+  it("uses projection safety copy without likely-needs or target-deficit language", async () => {
+    const user = userEvent.setup();
+    mockedLoadWeeklyVolumeCheckRequest.mockResolvedValueOnce(
+      makeWeeklyVolumeCheckResponse({
+        rows: [
+          {
+            muscle: "Chest",
+            performedSoFar: 10,
+            plannedRemaining: 2,
+            projectedFinish: 12,
+            MEV: 10,
+            MAV: 16,
+            status: "productive",
+            statusLabel: "Productive zone",
+            recommendationKind: "watch",
+            reasonCopy: "MEV floor is covered. No add-ons recommended from this card.",
+            optionalOrSuppress: false,
+          },
+        ],
+      })
+    );
+
+    renderClient();
+    await logAllSets(user);
+
+    const card = await screen.findByTestId("weekly-volume-check");
+    expect(within(card).getByText("Weekly projection")).toBeInTheDocument();
+    expect(within(card).getByText("Productive zone")).toBeInTheDocument();
+    expect(within(card).getByText(/No add-ons recommended from this card/i)).toBeInTheDocument();
+    expect(within(card).queryByText(/likely needs/i)).not.toBeInTheDocument();
+    expect(within(card).queryByText(/below target/i)).not.toBeInTheDocument();
+    expect(within(card).queryByText(/target deficit/i)).not.toBeInTheDocument();
+  });
+
   it("refreshes the weekly volume check after a top-up add-set action and keeps finishing non-blocking", async () => {
     const user = userEvent.setup();
     mockedLoadWeeklyVolumeCheckRequest.mockReset();
@@ -1119,17 +1175,17 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
           rows: [
             {
               muscle: "Chest",
-              doneNow: 6,
-              projectedRemainingWeek: 2,
-              projectedEndOfWeek: 8,
-              weeklyTarget: 10,
-              deltaToTarget: -2,
-              mev: 8,
-              mav: 16,
-              mrv: 20,
-              status: "below_mev",
-              statusLabel: "Below MEV",
-              topUpHint: "Likely needs ~1-2 more hard sets",
+              performedSoFar: 6,
+              plannedRemaining: 2,
+              projectedFinish: 8,
+              MEV: 10,
+              MAV: 16,
+              status: "floor_risk",
+              statusLabel: "Floor risk",
+              recommendationKind: "add_low_fatigue_buffer_optional",
+              reasonCopy:
+                "Projected below the MEV floor. Optional low-fatigue isolation only if readiness and time allow; do not chase extra volume.",
+              optionalOrSuppress: true,
             },
           ],
         })
@@ -1139,17 +1195,17 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
           rows: [
             {
               muscle: "Chest",
-              doneNow: 7,
-              projectedRemainingWeek: 2,
-              projectedEndOfWeek: 9,
-              weeklyTarget: 10,
-              deltaToTarget: -1,
-              mev: 8,
-              mav: 16,
-              mrv: 20,
-              status: "near_target",
-              statusLabel: "Near target",
-              topUpHint: "Likely needs ~1 more hard set",
+              performedSoFar: 7,
+              plannedRemaining: 2,
+              projectedFinish: 9,
+              MEV: 10,
+              MAV: 16,
+              status: "floor_risk",
+              statusLabel: "Floor risk",
+              recommendationKind: "add_low_fatigue_buffer_optional",
+              reasonCopy:
+                "Projected below the MEV floor. Optional low-fatigue isolation only if readiness and time allow; do not chase extra volume.",
+              optionalOrSuppress: true,
             },
           ],
         })
@@ -1159,14 +1215,14 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     renderClient();
     await logAllSets(user);
 
-    await screen.findByText(/Likely needs ~1-2 more hard sets/);
+    await screen.findByText(/Projected finish 8/i);
     await user.click(screen.getByRole("button", { name: "+ Add set" }));
 
-    await screen.findByText(/Likely needs ~1 more hard set/);
+    await screen.findByText(/Projected finish 9/i);
     expect(screen.getByTestId("weekly-volume-check")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Log set" }));
-    await screen.findByText(/no muscles are currently projected below target/i);
+    await screen.findByText(/No add-ons recommended/i);
     await user.click(screen.getByRole("button", { name: "Finish workout" }));
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 

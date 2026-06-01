@@ -15,8 +15,6 @@ const mocks = vi.hoisted(() => {
   const buildRemainingFutureSlotsFromRuntime = vi.fn();
   const buildAdvancingPerformedSlots = vi.fn();
   const getWeeklyVolumeTarget = vi.fn();
-  const getWeeklyMuscleStatus = vi.fn();
-  const formatWeeklyMuscleStatusLabel = vi.fn();
   const deriveSessionSemantics = vi.fn();
   const getEffectiveStimulusByMuscle = vi.fn();
 
@@ -35,8 +33,6 @@ const mocks = vi.hoisted(() => {
     buildRemainingFutureSlotsFromRuntime,
     buildAdvancingPerformedSlots,
     getWeeklyVolumeTarget,
-    getWeeklyMuscleStatus,
-    formatWeeklyMuscleStatusLabel,
     deriveSessionSemantics,
     getEffectiveStimulusByMuscle,
     prisma: {
@@ -88,12 +84,6 @@ vi.mock("./next-session", () => ({
 
 vi.mock("./mesocycle-lifecycle-math", () => ({
   getWeeklyVolumeTarget: (...args: unknown[]) => mocks.getWeeklyVolumeTarget(...args),
-}));
-
-vi.mock("@/lib/ui/weekly-muscle-status", () => ({
-  getWeeklyMuscleStatus: (...args: unknown[]) => mocks.getWeeklyMuscleStatus(...args),
-  formatWeeklyMuscleStatusLabel: (...args: unknown[]) =>
-    mocks.formatWeeklyMuscleStatusLabel(...args),
 }));
 
 vi.mock("@/lib/session-semantics/derive-session-semantics", () => ({
@@ -311,10 +301,6 @@ describe("loadLoggingWeeklyVolumeGuidance", () => {
       exercises: [],
     });
     mocks.listWorkoutExerciseNames.mockReturnValue(["Projected Exercise"]);
-    mocks.getWeeklyMuscleStatus.mockImplementation(
-      ({ effectiveSets, target }: { effectiveSets: number; target: number }) =>
-        effectiveSets < target ? "below_mev" : "on_target"
-    );
     mocks.getWeeklyVolumeTarget.mockImplementation(
       (_mesocycle: unknown, muscle: string) => {
         if (muscle === "Chest") return 10;
@@ -322,9 +308,6 @@ describe("loadLoggingWeeklyVolumeGuidance", () => {
         if (muscle === "Biceps") return 4;
         return 0;
       }
-    );
-    mocks.formatWeeklyMuscleStatusLabel.mockImplementation((status: string) =>
-      status === "below_mev" ? "Below MEV" : "On target"
     );
     mocks.deriveSessionSemantics.mockReturnValue({
       advancesLifecycle: true,
@@ -380,14 +363,15 @@ describe("loadLoggingWeeklyVolumeGuidance", () => {
     expect(result.shouldShow).toBe(true);
     expect(result.rows.find((row) => row.muscle === "Chest")).toMatchObject({
       muscle: "Chest",
-      doneNow: 6,
-      projectedRemainingWeek: 2,
-      projectedEndOfWeek: 8,
-      weeklyTarget: 10,
-      deltaToTarget: -2,
-      status: "below_mev",
-      statusLabel: "Below MEV",
-      topUpHint: "Likely needs ~1-2 more hard sets",
+      performedSoFar: 6,
+      plannedRemaining: 2,
+      projectedFinish: 8,
+      MEV: 10,
+      MAV: 16,
+      status: "floor_risk",
+      statusLabel: "Floor risk",
+      recommendationKind: "add_low_fatigue_buffer_optional",
+      optionalOrSuppress: true,
     });
   });
 
@@ -428,10 +412,9 @@ describe("loadLoggingWeeklyVolumeGuidance", () => {
     );
     expect(result.rows.map((row) => row.muscle)).not.toContain("Abs");
     expect(result.rows.find((row) => row.muscle === "Core")).toMatchObject({
-      doneNow: 2,
-      projectedRemainingWeek: 0,
-      projectedEndOfWeek: 2,
-      weeklyTarget: 4,
+      performedSoFar: 2,
+      plannedRemaining: 0,
+      projectedFinish: 2,
     });
   });
 
@@ -470,9 +453,9 @@ describe("loadLoggingWeeklyVolumeGuidance", () => {
 
     expect(result.rows.find((row) => row.muscle === "Chest")).toMatchObject({
       muscle: "Chest",
-      doneNow: 7,
-      projectedRemainingWeek: 0,
-      projectedEndOfWeek: 7,
+      performedSoFar: 7,
+      plannedRemaining: 0,
+      projectedFinish: 7,
     });
   });
 
@@ -523,29 +506,24 @@ describe("loadLoggingWeeklyVolumeGuidance", () => {
     );
     expect(result.rows.map((row) => row.muscle)).toContain("Biceps");
     expect(result.rows.find((row) => row.muscle === "Biceps")).toMatchObject({
-      doneNow: 1,
-      projectedRemainingWeek: 0,
-      projectedEndOfWeek: 1,
+      performedSoFar: 1,
+      plannedRemaining: 0,
+      projectedFinish: 1,
     });
   });
 
-  it("uses the shared weekly status seam and only returns flagged muscles", async () => {
+  it("classifies above-MEV but below-target rows as productive without recommending add-ons", async () => {
     mocks.workoutFindFirst.mockResolvedValue(buildWorkout());
     mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({
-      Chest: { directSets: 4, indirectSets: 0, effectiveSets: 4 },
-      Quads: { directSets: 7, indirectSets: 0, effectiveSets: 7 },
+      Chest: { directSets: 8, indirectSets: 0, effectiveSets: 8 },
     });
     mocks.getWeeklyVolumeTarget.mockImplementation(
       (_mesocycle: unknown, muscle: string) => {
-        if (muscle === "Chest") return 10;
-        if (muscle === "Quads") return 7;
+        if (muscle === "Chest") return 14;
         return 0;
       }
     );
-    mocks.getWeeklyMuscleStatus
-      .mockReturnValueOnce("near_target")
-      .mockReturnValueOnce("on_target");
-    mocks.formatWeeklyMuscleStatusLabel.mockReturnValue("Shared label");
+    mocks.computeWorkoutContributionByMuscle.mockReset();
     mocks.computeWorkoutContributionByMuscle
       .mockReturnValueOnce({ Chest: 2 })
       .mockReturnValueOnce({});
@@ -555,13 +533,133 @@ describe("loadLoggingWeeklyVolumeGuidance", () => {
       workoutId: "workout-1",
     });
 
-    expect(mocks.getWeeklyMuscleStatus).toHaveBeenCalled();
-    expect(mocks.formatWeeklyMuscleStatusLabel).toHaveBeenCalledWith("near_target");
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0]).toMatchObject({
       muscle: "Chest",
-      status: "near_target",
-      statusLabel: "Shared label",
+      performedSoFar: 10,
+      plannedRemaining: 2,
+      projectedFinish: 12,
+      MEV: 10,
+      MAV: 16,
+      status: "productive",
+      recommendationKind: "watch",
+      optionalOrSuppress: false,
+    });
+  });
+
+  it("shows floor risk when the projected finish remains below MEV", async () => {
+    mocks.workoutFindFirst.mockResolvedValue(buildWorkout());
+    mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({
+      Chest: { directSets: 4, indirectSets: 0, effectiveSets: 4 },
+    });
+    mocks.getWeeklyVolumeTarget.mockImplementation(
+      (_mesocycle: unknown, muscle: string) => (muscle === "Chest" ? 12 : 0)
+    );
+    mocks.computeWorkoutContributionByMuscle.mockReset();
+    mocks.computeWorkoutContributionByMuscle.mockReturnValue({});
+
+    const result = await loadLoggingWeeklyVolumeGuidance({
+      userId: "user-1",
+      workoutId: "workout-1",
+    });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      muscle: "Chest",
+      performedSoFar: 6,
+      projectedFinish: 6,
+      status: "floor_risk",
+      statusLabel: "Floor risk",
+      recommendationKind: "add_low_fatigue_buffer_optional",
+    });
+  });
+
+  it("shows exact-floor projection as an optional low-fatigue buffer, not a requirement", async () => {
+    mocks.workoutFindFirst.mockResolvedValue(buildWorkout());
+    mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({
+      Chest: { directSets: 8, indirectSets: 0, effectiveSets: 8 },
+    });
+    mocks.getWeeklyVolumeTarget.mockImplementation(
+      (_mesocycle: unknown, muscle: string) => (muscle === "Chest" ? 14 : 0)
+    );
+    mocks.computeWorkoutContributionByMuscle.mockReset();
+    mocks.computeWorkoutContributionByMuscle.mockReturnValue({});
+
+    const result = await loadLoggingWeeklyVolumeGuidance({
+      userId: "user-1",
+      workoutId: "workout-1",
+    });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      muscle: "Chest",
+      performedSoFar: 10,
+      projectedFinish: 10,
+      status: "optional_floor_buffer",
+      statusLabel: "Optional low-fatigue buffer",
+      recommendationKind: "add_low_fatigue_buffer_optional",
+      optionalOrSuppress: true,
+    });
+    expect(result.rows[0]?.reasonCopy).toContain("Optional +1 low-fatigue buffer");
+  });
+
+  it("suppresses extras near and over MAV", async () => {
+    mocks.workoutFindFirst.mockResolvedValue(buildWorkout());
+    mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({
+      Chest: { directSets: 14, indirectSets: 0, effectiveSets: 14 },
+      Quads: { directSets: 19, indirectSets: 0, effectiveSets: 19 },
+    });
+    mocks.getWeeklyVolumeTarget.mockImplementation(
+      (_mesocycle: unknown, muscle: string) => {
+        if (muscle === "Chest") return 16;
+        if (muscle === "Quads") return 12;
+        return 0;
+      }
+    );
+    mocks.computeWorkoutContributionByMuscle.mockReset();
+    mocks.computeWorkoutContributionByMuscle.mockReturnValue({});
+
+    const result = await loadLoggingWeeklyVolumeGuidance({
+      userId: "user-1",
+      workoutId: "workout-1",
+    });
+
+    expect(result.rows.find((row) => row.muscle === "Chest")).toMatchObject({
+      projectedFinish: 16,
+      status: "near_cap",
+      recommendationKind: "suppress_extras",
+      optionalOrSuppress: true,
+    });
+    expect(result.rows.find((row) => row.muscle === "Quads")).toMatchObject({
+      projectedFinish: 19,
+      status: "over_cap",
+      recommendationKind: "suppress_extras",
+      optionalOrSuppress: true,
+    });
+  });
+
+  it("returns no rows when the relevant week is covered with no floor or cap issue", async () => {
+    mocks.workoutFindFirst.mockResolvedValue(buildWorkout());
+    mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({
+      Chest: { directSets: 10, indirectSets: 0, effectiveSets: 10 },
+    });
+    mocks.getWeeklyVolumeTarget.mockImplementation(
+      (_mesocycle: unknown, muscle: string) => (muscle === "Chest" ? 12 : 0)
+    );
+    mocks.computeWorkoutContributionByMuscle.mockReset();
+    mocks.computeWorkoutContributionByMuscle.mockReturnValue({});
+
+    const result = await loadLoggingWeeklyVolumeGuidance({
+      userId: "user-1",
+      workoutId: "workout-1",
+    });
+
+    expect(result.rows).toEqual([]);
+    expect(result.summary).toEqual({
+      status: "no_addons_recommended",
+      recommendationKind: "no_action",
+      reasonCopy:
+        "Relevant muscles are covered by performed work and the remaining projection. No add-ons recommended.",
     });
   });
 });

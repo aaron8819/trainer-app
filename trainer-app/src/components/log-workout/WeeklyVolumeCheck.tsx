@@ -10,18 +10,20 @@ function formatVolume(value: number): string {
 
 function statusClasses(status: LoggingWeeklyVolumeGuidance["rows"][number]["status"]): string {
   switch (status) {
-    case "below_mev":
+    case "floor_risk":
       return "bg-rose-100 text-rose-700";
-    case "in_range":
+    case "optional_floor_buffer":
       return "bg-amber-100 text-amber-800";
-    case "near_target":
-      return "bg-sky-100 text-sky-800";
-    case "on_target":
+    case "productive":
+    case "on_track":
       return "bg-emerald-100 text-emerald-700";
-    case "near_mrv":
+    case "ahead_suppress_extras":
+    case "near_cap":
       return "bg-orange-100 text-orange-800";
-    case "at_mrv":
+    case "over_cap":
       return "bg-fuchsia-100 text-fuchsia-800";
+    case "no_addons_recommended":
+      return "bg-slate-100 text-slate-700";
   }
 }
 
@@ -80,15 +82,15 @@ export function WeeklyVolumeCheck({
 
   return (
     <section
-      aria-label="Weekly Volume Check"
+      aria-label="Weekly projection"
       className="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm"
       data-testid="weekly-volume-check"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Weekly Volume Check</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Weekly projection</h2>
           <p className="mt-1 text-xs text-slate-600">
-            If you finish now, this is where flagged muscles are projected to land by week end.
+            Final session-local check from performed work, this workout, and remaining projected sessions.
           </p>
         </div>
       </div>
@@ -97,7 +99,8 @@ export function WeeklyVolumeCheck({
         <p className="mt-3 text-sm text-amber-700">{error}</p>
       ) : rows.length === 0 ? (
         <p className="mt-3 text-sm text-slate-700">
-          If you finish now, no muscles are currently projected below target.
+          {data?.summary?.reasonCopy ??
+            "No add-ons recommended. Finish the session and let review reconcile the completed work."}
         </p>
       ) : (
         <div className="mt-3 space-y-3">
@@ -116,12 +119,12 @@ export function WeeklyVolumeCheck({
                 </span>
               </div>
               <p className="mt-2 text-sm text-slate-700">
-                Done now {formatVolume(row.doneNow)} • Projected {formatVolume(row.projectedEndOfWeek)} •
-                Target {formatVolume(row.weeklyTarget)} • Delta {formatVolume(row.deltaToTarget)}
+                Performed {formatVolume(row.performedSoFar)} | Remaining plan{" "}
+                {formatVolume(row.plannedRemaining)} | Projected finish{" "}
+                {formatVolume(row.projectedFinish)} | MEV {formatVolume(row.MEV)} | MAV{" "}
+                {formatVolume(row.MAV)}
               </p>
-              {row.topUpHint ? (
-                <p className="mt-1 text-xs font-medium text-slate-600">{row.topUpHint}</p>
-              ) : null}
+              <p className="mt-1 text-xs font-medium text-slate-600">{row.reasonCopy}</p>
             </article>
           ))}
         </div>

@@ -11,11 +11,6 @@ import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import {
-  formatWeeklyMuscleStatusLabel,
-  getWeeklyMuscleStatus,
-  type WeeklyMuscleStatus,
-} from "@/lib/ui/weekly-muscle-status";
-import {
   readRuntimeAddedExerciseIds,
   readRuntimeAddedSetIds,
 } from "@/lib/ui/selection-metadata";
@@ -133,19 +128,34 @@ type WorkoutForGuidance = Prisma.WorkoutGetPayload<{
   };
 }>;
 
+export type LoggingWeeklyVolumeProjectionStatus =
+  | "floor_risk"
+  | "on_track"
+  | "productive"
+  | "optional_floor_buffer"
+  | "ahead_suppress_extras"
+  | "near_cap"
+  | "over_cap"
+  | "no_addons_recommended";
+
+export type LoggingWeeklyVolumeRecommendationKind =
+  | "add_low_fatigue_buffer_optional"
+  | "suppress_extras"
+  | "no_action"
+  | "watch";
+
 export type LoggingWeeklyVolumeGuidanceRow = {
   muscle: string;
-  doneNow: number;
-  projectedRemainingWeek: number;
-  projectedEndOfWeek: number;
-  weeklyTarget: number;
-  deltaToTarget: number;
-  mev: number;
-  mav: number;
-  mrv: number;
-  status: WeeklyMuscleStatus;
+  performedSoFar: number;
+  plannedRemaining: number;
+  projectedFinish: number;
+  MEV: number;
+  MAV: number;
+  status: LoggingWeeklyVolumeProjectionStatus;
   statusLabel: string;
-  topUpHint: string | null;
+  recommendationKind: LoggingWeeklyVolumeRecommendationKind;
+  reasonCopy: string;
+  optionalOrSuppress: boolean;
 };
 
 export type LoggingWeeklyVolumeGuidance = {
@@ -157,6 +167,11 @@ export type LoggingWeeklyVolumeGuidance = {
     blockType: string | null;
   } | null;
   shouldShow: boolean;
+  summary: {
+    status: "no_addons_recommended";
+    recommendationKind: "no_action";
+    reasonCopy: string;
+  } | null;
   rows: LoggingWeeklyVolumeGuidanceRow[];
 };
 
@@ -305,18 +320,101 @@ function buildCurrentWorkoutHistoryEntry(input: {
   };
 }
 
-function buildTopUpHint(deltaToTarget: number): string | null {
-  const deficit = roundToTenth(Math.max(0, -deltaToTarget));
-  if (deficit <= 0) {
-    return null;
+const NEAR_MAV_BUFFER_SETS = 2;
+const FLOOR_BUFFER_SETS = 1;
+
+function classifyProjection(input: {
+  projectedFinish: number;
+  weeklyTarget: number;
+  mev: number;
+  mav: number;
+}): LoggingWeeklyVolumeProjectionStatus {
+  if (input.mav > 0 && input.projectedFinish > input.mav) {
+    return "over_cap";
   }
-  if (deficit <= 1.25) {
-    return "Likely needs ~1 more hard set";
+  if (
+    input.mav > 0 &&
+    input.projectedFinish >= input.mav - NEAR_MAV_BUFFER_SETS
+  ) {
+    return "near_cap";
   }
-  if (deficit <= 2.5) {
-    return "Likely needs ~1-2 more hard sets";
+  if (input.mev > 0 && input.projectedFinish < input.mev) {
+    return "floor_risk";
   }
-  return null;
+  if (
+    input.mev > 0 &&
+    input.projectedFinish <= input.mev + FLOOR_BUFFER_SETS
+  ) {
+    return "optional_floor_buffer";
+  }
+  if (input.weeklyTarget > 0 && input.projectedFinish > input.weeklyTarget) {
+    return "ahead_suppress_extras";
+  }
+  if (input.weeklyTarget > 0 && input.projectedFinish >= input.weeklyTarget) {
+    return "on_track";
+  }
+  return "productive";
+}
+
+function recommendationKindForStatus(
+  status: LoggingWeeklyVolumeProjectionStatus
+): LoggingWeeklyVolumeRecommendationKind {
+  switch (status) {
+    case "floor_risk":
+    case "optional_floor_buffer":
+      return "add_low_fatigue_buffer_optional";
+    case "ahead_suppress_extras":
+    case "near_cap":
+    case "over_cap":
+      return "suppress_extras";
+    case "productive":
+      return "watch";
+    case "on_track":
+    case "no_addons_recommended":
+      return "no_action";
+  }
+}
+
+function statusLabel(status: LoggingWeeklyVolumeProjectionStatus): string {
+  switch (status) {
+    case "floor_risk":
+      return "Floor risk";
+    case "on_track":
+      return "On track";
+    case "productive":
+      return "Productive zone";
+    case "optional_floor_buffer":
+      return "Optional low-fatigue buffer";
+    case "ahead_suppress_extras":
+      return "Ahead — suppress extras";
+    case "near_cap":
+      return "Near cap";
+    case "over_cap":
+      return "Over cap";
+    case "no_addons_recommended":
+      return "No add-ons recommended";
+  }
+}
+
+function reasonCopyForStatus(status: LoggingWeeklyVolumeProjectionStatus): string {
+  switch (status) {
+    case "floor_risk":
+      return "Projected below the MEV floor. Optional low-fatigue isolation only if readiness and time allow; do not chase extra volume.";
+    case "optional_floor_buffer":
+      return "Projected right at the MEV floor. Optional +1 low-fatigue buffer only if it feels easy.";
+    case "productive":
+      return "MEV floor is covered. No add-ons recommended from this card.";
+    case "on_track":
+      return "Projected in the productive zone. No add-ons recommended.";
+    case "ahead_suppress_extras":
+      return "Projected ahead of useful weekly dose. Suppress extras here.";
+    case "near_cap":
+      return "Projected near MAV. Suppress extras to protect recovery.";
+    case "over_cap":
+      return "Projected over MAV. Avoid extra work here.";
+    case "no_addons_recommended":
+      return "Relevant muscles are covered by performed work and the remaining projection. No add-ons recommended.";
+  }
 }
 
 function buildGuidanceRows(input: {
@@ -327,53 +425,69 @@ function buildGuidanceRows(input: {
 }): LoggingWeeklyVolumeGuidanceRow[] {
   return getExposedVolumeLandmarkEntries()
     .map(([muscle, landmarks]) => {
-      const doneNow = roundToTenth(input.doneNowByMuscle.get(muscle) ?? 0);
-      const projectedRemainingWeek = roundToTenth(
+      const performedSoFar = roundToTenth(input.doneNowByMuscle.get(muscle) ?? 0);
+      const plannedRemaining = roundToTenth(
         input.projectedRemainingByMuscle.get(muscle) ?? 0
       );
-      const projectedEndOfWeek = roundToTenth(doneNow + projectedRemainingWeek);
+      const projectedFinish = roundToTenth(performedSoFar + plannedRemaining);
       const weeklyTarget = getWeeklyVolumeTarget(
         input.activeMesocycle,
         muscle,
         input.currentWeek
       );
-      const deltaToTarget = roundToTenth(projectedEndOfWeek - weeklyTarget);
-      const status = getWeeklyMuscleStatus({
-        effectiveSets: projectedEndOfWeek,
-        target: weeklyTarget,
-        mev: landmarks.mev,
-        mrv: landmarks.mrv,
-      });
-
-      return {
-        muscle,
-        doneNow,
-        projectedRemainingWeek,
-        projectedEndOfWeek,
+      const status = classifyProjection({
+        projectedFinish,
         weeklyTarget,
-        deltaToTarget,
         mev: landmarks.mev,
         mav: landmarks.mav,
-        mrv: landmarks.mrv,
-        status,
-        statusLabel: formatWeeklyMuscleStatusLabel(status),
-        topUpHint: buildTopUpHint(deltaToTarget),
-      } satisfies LoggingWeeklyVolumeGuidanceRow;
+      });
+      const recommendationKind = recommendationKindForStatus(status);
+
+      return {
+        weeklyTarget,
+        row: {
+          muscle,
+          performedSoFar,
+          plannedRemaining,
+          projectedFinish,
+          MEV: landmarks.mev,
+          MAV: landmarks.mav,
+          status,
+          statusLabel: statusLabel(status),
+          recommendationKind,
+          reasonCopy: reasonCopyForStatus(status),
+          optionalOrSuppress:
+            recommendationKind === "add_low_fatigue_buffer_optional" ||
+            recommendationKind === "suppress_extras",
+        } satisfies LoggingWeeklyVolumeGuidanceRow,
+      };
     })
-    .filter((row) => {
+    .filter(({ row, weeklyTarget }) => {
       if (
-        row.weeklyTarget <= 0 &&
-        row.doneNow <= 0 &&
-        row.projectedEndOfWeek <= 0
+        weeklyTarget <= 0 &&
+        row.performedSoFar <= 0 &&
+        row.projectedFinish <= 0
       ) {
         return false;
       }
 
-      return row.projectedEndOfWeek < row.weeklyTarget || row.status === "below_mev";
+      return row.status !== "on_track";
     })
+    .map(({ row }) => row)
     .sort((left, right) => {
-      if (left.deltaToTarget !== right.deltaToTarget) {
-        return left.deltaToTarget - right.deltaToTarget;
+      const priority: Record<LoggingWeeklyVolumeProjectionStatus, number> = {
+        floor_risk: 0,
+        optional_floor_buffer: 1,
+        near_cap: 2,
+        over_cap: 3,
+        ahead_suppress_extras: 4,
+        productive: 5,
+        on_track: 6,
+        no_addons_recommended: 7,
+      };
+      const priorityDelta = priority[left.status] - priority[right.status];
+      if (priorityDelta !== 0) {
+        return priorityDelta;
       }
       return left.muscle.localeCompare(right.muscle);
     });
@@ -490,6 +604,7 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
       workoutId: workout.id,
       currentWeek: null,
       shouldShow,
+      summary: null,
       rows: [],
     };
   }
@@ -654,6 +769,13 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
     });
   }
 
+  const rows = buildGuidanceRows({
+    activeMesocycle: workout.mesocycle,
+    currentWeek,
+    doneNowByMuscle: baselineDoneNowByMuscle,
+    projectedRemainingByMuscle,
+  });
+
   return {
     workoutId: workout.id,
     currentWeek: {
@@ -663,11 +785,14 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
       blockType: mapped.cycleContext.blockType,
     },
     shouldShow: true,
-    rows: buildGuidanceRows({
-      activeMesocycle: workout.mesocycle,
-      currentWeek,
-      doneNowByMuscle: baselineDoneNowByMuscle,
-      projectedRemainingByMuscle,
-    }),
+    summary:
+      rows.length === 0
+        ? {
+            status: "no_addons_recommended",
+            recommendationKind: "no_action",
+            reasonCopy: reasonCopyForStatus("no_addons_recommended"),
+          }
+        : null,
+    rows,
   };
 }

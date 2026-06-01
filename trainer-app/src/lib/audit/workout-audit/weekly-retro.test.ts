@@ -37,6 +37,8 @@ vi.mock("@/lib/api/mesocycle-lifecycle-math", () => ({
 }));
 
 vi.mock("@/lib/evidence/session-decision-receipt", () => ({
+  readSessionDecisionReceipt: (selectionMetadata: unknown) =>
+    (selectionMetadata as { receipt?: unknown })?.receipt,
   readSessionSlotSnapshot: (selectionMetadata: unknown) =>
     (selectionMetadata as { slot?: unknown })?.slot,
 }));
@@ -1069,7 +1071,318 @@ describe("buildWeeklyRetroAuditPayload", () => {
       ],
     });
   });
+
+  it("separates completed post-session reconciliation from future planned work and likely replacements", async () => {
+    mocks.buildHistoricalWeekAuditPayload.mockResolvedValue({
+      version: 1,
+      week: 1,
+      mesocycleId: "9b861675-c98f-42f7-bc8c-64a7de411b77",
+      sessions: [
+        makeHistoricalSession({
+          workoutId: "upper-1",
+          scheduledDate: "2026-05-25T10:00:00.000Z",
+          status: "COMPLETED",
+          sessionIntent: "UPPER",
+          mesoSession: 1,
+          generatedExercises: [
+            makeGeneratedExercise("close-grip-lat-pulldown", "Close-Grip Lat Pulldown", 0, 3),
+            makeGeneratedExercise("machine-chest-press", "Machine Chest Press", 1, 3),
+            makeGeneratedExercise("face-pull", "Face Pull", 2, 2),
+            makeGeneratedExercise("db-curl", "Dumbbell Curl", 3, 2),
+          ],
+          addedExerciseIds: ["iso-front-lat-pulldown", "cable-crunch"],
+        }),
+        makeHistoricalSession({
+          workoutId: "lower-1",
+          scheduledDate: "2026-05-27T10:00:00.000Z",
+          status: "PLANNED",
+          sessionIntent: "LOWER",
+          mesoSession: 2,
+          generatedExercises: [
+            makeGeneratedExercise("leg-press", "Leg Press", 0, 4),
+          ],
+          addedExerciseIds: [],
+        }),
+      ],
+      summary: {
+        sessionCount: 2,
+        advancingCount: 2,
+        gapFillCount: 0,
+        supplementalCount: 0,
+        deloadCount: 0,
+        progressionEligibleCount: 1,
+        progressionExcludedCount: 1,
+        weekCloseRelevantCount: 0,
+        persistedSnapshotCount: 2,
+        reconstructedSnapshotCount: 0,
+        mutationDriftCount: 1,
+        statusCounts: { COMPLETED: 1, PLANNED: 1 },
+        intentCounts: { UPPER: 1, LOWER: 1 },
+      },
+      comparabilityCoverage: {
+        comparableSessionCount: 2,
+        missingGeneratedSnapshotCount: 0,
+        persistedSnapshotCount: 2,
+        reconstructedSnapshotCount: 0,
+        generatedLayerCoverage: "full",
+        limitations: [],
+      },
+    });
+    mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({});
+    mocks.workoutFindMany.mockResolvedValue([
+      {
+        id: "upper-1",
+        selectionMetadata: {
+          slot: {
+            slotId: "upper_a",
+            intent: "upper",
+            sequenceIndex: 0,
+            source: "mesocycle_slot_sequence",
+          },
+          receipt: {
+            sessionProvenance: {
+              mesocycleId: "9b861675-c98f-42f7-bc8c-64a7de411b77",
+              compositionSource: "persisted_slot_plan_seed",
+            },
+          },
+        },
+        exercises: [
+          makeRuntimeExercise("close-grip-lat-pulldown", "Close-Grip Lat Pulldown", 0, [
+            makeSkippedRuntimeSet(0, 100),
+            makeSkippedRuntimeSet(1, 100),
+            makeSkippedRuntimeSet(2, 100),
+          ]),
+          makeRuntimeExercise("machine-chest-press", "Machine Chest Press", 1, [
+            makeRuntimeSet(0, 80, 10, 8),
+            makeRuntimeSet(1, 80, 10, 8),
+            makeRuntimeSet(2, 80, 10, 8),
+          ]),
+          makeRuntimeExercise("face-pull", "Face Pull", 2, [
+            makeSkippedRuntimeSet(0, 30),
+            makeSkippedRuntimeSet(1, 30),
+          ]),
+          makeRuntimeExercise("db-curl", "Dumbbell Curl", 3, [
+            makeRuntimeSet(0, 25, 12, 8),
+            makeRuntimeSet(1, 25, 12, 8),
+          ]),
+          makeRuntimeExercise("iso-front-lat-pulldown", "Iso-Lateral Front Lat Pulldown", 4, [
+            makeRuntimeSet(0, 90, 10, 8),
+            makeRuntimeSet(1, 90, 10, 8),
+            makeRuntimeSet(2, 90, 10, 8),
+          ]),
+          makeRuntimeExercise("cable-crunch", "Cable Crunch", 5, [
+            makeRuntimeSet(0, 40, 12, 8),
+            makeRuntimeSet(1, 40, 12, 8),
+          ]),
+        ],
+      },
+      {
+        id: "lower-1",
+        selectionMetadata: {
+          slot: {
+            slotId: "lower_a",
+            intent: "lower",
+            sequenceIndex: 1,
+            source: "mesocycle_slot_sequence",
+          },
+          receipt: {
+            sessionProvenance: {
+              mesocycleId: "9b861675-c98f-42f7-bc8c-64a7de411b77",
+              compositionSource: "persisted_slot_plan_seed",
+            },
+          },
+        },
+        exercises: [
+          makeRuntimeExercise("leg-press", "Leg Press", 0, [
+            makeUnperformedRuntimeSet(0, 200),
+            makeUnperformedRuntimeSet(1, 200),
+            makeUnperformedRuntimeSet(2, 200),
+            makeUnperformedRuntimeSet(3, 200),
+          ]),
+        ],
+      },
+    ]);
+    mocks.getWeeklyVolumeTarget.mockReturnValue(0);
+
+    const payload = await buildWeeklyRetroAuditPayload({
+      userId: "user-1",
+      week: 1,
+      mesocycleId: "9b861675-c98f-42f7-bc8c-64a7de411b77",
+    });
+    const rowsByExercise = new Map(
+      payload.exerciseLoadCalibrationRows?.map((row) => [row.exerciseId, row])
+    );
+
+    expect(payload.planAdherence).toMatchObject({
+      plannedWorkTotalSets: 10,
+      plannedWorkCompletedSets: 8,
+      plannedWorkMissedSets: 2,
+    });
+    expect(payload.postSessionReview).toMatchObject({
+      readOnly: true,
+      seedRuntimeChanged: false,
+      plannerMaterializerChanged: false,
+      completedWorkoutIds: ["upper-1"],
+      futurePlannedIncompleteWorkouts: [
+        expect.objectContaining({
+          workoutId: "lower-1",
+          slotId: "lower_a",
+          status: "PLANNED",
+          mesocycleWeek: 1,
+          mesoSession: 2,
+          compositionSource: "persisted_slot_plan_seed",
+        }),
+      ],
+    });
+    expect(rowsByExercise.get("leg-press")).toMatchObject({
+      reviewBucket: "future_planned_incomplete",
+      classification: "skipped_or_low_coverage",
+    });
+    expect(rowsByExercise.get("close-grip-lat-pulldown")).toMatchObject({
+      classification: "replacement_like",
+      reviewBucket: "completed_session",
+      replacementLike: expect.objectContaining({
+        pairedExerciseId: "iso-front-lat-pulldown",
+        movementPattern: "vertical_pull",
+        seedMutation: false,
+      }),
+    });
+    expect(rowsByExercise.get("iso-front-lat-pulldown")).toMatchObject({
+      classification: "replacement_like",
+      plannedSetCount: 0,
+      performedSetCount: 3,
+    });
+    expect(rowsByExercise.get("face-pull")).toMatchObject({
+      classification: "skipped_or_low_coverage",
+      plannedSetCount: 2,
+      performedSetCount: 0,
+    });
+    expect(rowsByExercise.get("cable-crunch")).toMatchObject({
+      classification: "runtime_added",
+      plannedSetCount: 0,
+      performedSetCount: 2,
+    });
+  });
 });
+
+function makeHistoricalSession(input: {
+  workoutId: string;
+  scheduledDate: string;
+  status: string;
+  sessionIntent: string;
+  mesoSession: number;
+  generatedExercises: Array<{
+    exerciseId: string;
+    exerciseName: string;
+    orderIndex: number;
+    prescribedSetCount: number;
+    prescribedSets: Array<{
+      setIndex: number;
+      targetReps: number;
+      targetRpe: number;
+      targetLoad: number;
+    }>;
+  }>;
+  addedExerciseIds: string[];
+}) {
+  return {
+    workoutId: input.workoutId,
+    scheduledDate: input.scheduledDate,
+    status: input.status,
+    sessionIntent: input.sessionIntent,
+    selectionMode: "INTENT",
+    snapshotSource: "persisted",
+    sessionSnapshot: {
+      generated: {
+        selectionMode: "INTENT",
+        sessionIntent: input.sessionIntent,
+        semantics: {
+          kind: "advancing",
+          isCloseout: false,
+          isDeload: false,
+          consumesWeeklyScheduleIntent: true,
+          countsTowardProgressionHistory: input.status === "COMPLETED",
+          countsTowardPerformanceHistory: input.status === "COMPLETED",
+          updatesProgressionAnchor: input.status === "COMPLETED",
+        },
+        exerciseCount: input.generatedExercises.length,
+        hardSetCount: input.generatedExercises.reduce(
+          (sum, exercise) => sum + exercise.prescribedSetCount,
+          0
+        ),
+        exercises: input.generatedExercises,
+        traces: { progression: {} },
+      },
+      saved: {
+        workoutId: input.workoutId,
+        status: input.status,
+        advancesSplit: true,
+        mesocycleSnapshot: {
+          mesocycleId: "9b861675-c98f-42f7-bc8c-64a7de411b77",
+          week: 1,
+          session: input.mesoSession,
+          phase: "accumulation",
+        },
+        semantics: {
+          kind: "advancing",
+          isCloseout: false,
+          isDeload: false,
+          consumesWeeklyScheduleIntent: true,
+          countsTowardProgressionHistory: input.status === "COMPLETED",
+          countsTowardPerformanceHistory: input.status === "COMPLETED",
+          updatesProgressionAnchor: input.status === "COMPLETED",
+          reasons: ["advances_split_true"],
+        },
+      },
+    },
+    canonicalSemantics: {
+      sourceLayer: "saved",
+      phase: "accumulation",
+      isDeload: false,
+      countsTowardProgressionHistory: input.status === "COMPLETED",
+      countsTowardPerformanceHistory: input.status === "COMPLETED",
+      updatesProgressionAnchor: input.status === "COMPLETED",
+    },
+    progressionEvidence: {
+      countsTowardProgressionHistory: input.status === "COMPLETED",
+      countsTowardPerformanceHistory: input.status === "COMPLETED",
+      updatesProgressionAnchor: input.status === "COMPLETED",
+      reasonCodes: ["advances_split_true"],
+    },
+    reconciliation: {
+      version: 1,
+      comparisonState: "comparable",
+      hasDrift: input.addedExerciseIds.length > 0,
+      changedFields: input.addedExerciseIds.length > 0 ? ["exercise_added"] : [],
+      addedExerciseIds: input.addedExerciseIds,
+      removedExerciseIds: [],
+      exercisesWithSetCountChanges: [],
+      exercisesWithPrescriptionChanges: [],
+    },
+  };
+}
+
+function makeGeneratedExercise(
+  exerciseId: string,
+  exerciseName: string,
+  orderIndex: number,
+  prescribedSetCount: number
+) {
+  return {
+    exerciseId,
+    exerciseName,
+    orderIndex,
+    section: "accessory",
+    isMainLift: false,
+    prescribedSetCount,
+    prescribedSets: Array.from({ length: prescribedSetCount }, (_, setIndex) => ({
+      setIndex,
+      targetReps: 10,
+      targetRpe: 8,
+      targetLoad: 100,
+    })),
+  };
+}
 
 function makeRuntimeExercise(
   exerciseId: string,
@@ -1130,5 +1443,14 @@ function makeSkippedRuntimeSet(setIndex: number, targetLoad: number) {
         wasSkipped: true,
       },
     ],
+  };
+}
+
+function makeUnperformedRuntimeSet(setIndex: number, targetLoad: number) {
+  return {
+    setIndex,
+    targetReps: 10,
+    targetLoad,
+    logs: [],
   };
 }

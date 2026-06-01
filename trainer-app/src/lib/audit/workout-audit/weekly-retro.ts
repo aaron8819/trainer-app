@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { prisma } from "@/lib/db/prisma";
 import { getExposedVolumeLandmarkEntries } from "@/lib/engine/volume-landmarks";
-import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
+import {
+  readSessionDecisionReceipt,
+  readSessionSlotSnapshot,
+} from "@/lib/evidence/session-decision-receipt";
 import { getWeeklyVolumeTarget } from "@/lib/api/mesocycle-lifecycle-math";
 import { loadMesocycleWeekMuscleVolume } from "@/lib/api/weekly-volume";
 import { readRuntimeEditReconciliation } from "@/lib/ui/selection-metadata";
@@ -19,6 +22,8 @@ import type {
   RuntimeEditIntent,
   RuntimeEditInterpretation,
   WeeklyRetroExerciseLoadCalibrationRow,
+  WeeklyRetroExerciseReviewBucket,
+  WeeklyRetroReplacementLikePair,
   WeeklyRetroAuditPayload,
   WeeklyRetroPlanAdherence,
   WeeklyRetroAuditSessionExecutionRow,
@@ -29,6 +34,9 @@ const DEFAULT_FALLBACK_LANDMARK = {
   mev: 0,
   mav: 10,
 };
+
+const PERFORMED_WORKOUT_STATUSES = new Set(["COMPLETED", "PARTIAL"]);
+const FUTURE_INCOMPLETE_WORKOUT_STATUSES = new Set(["PLANNED", "IN_PROGRESS"]);
 
 type WeeklyRetroRuntimeWorkoutRow = {
   id: string;
@@ -92,6 +100,51 @@ function resolveSessionSemantics(session: HistoricalWeekAuditSession) {
 
 function normalizeIntent(intent: string | undefined): string | undefined {
   return typeof intent === "string" ? intent.trim().toLowerCase() : undefined;
+}
+
+function isPerformedWorkoutStatus(status: string | undefined): boolean {
+  return PERFORMED_WORKOUT_STATUSES.has((status ?? "").toUpperCase());
+}
+
+function isFutureIncompleteWorkoutStatus(status: string | undefined): boolean {
+  return FUTURE_INCOMPLETE_WORKOUT_STATUSES.has((status ?? "").toUpperCase());
+}
+
+function findLatestPerformedScheduledDate(
+  sessions: HistoricalWeekAuditSession[]
+): string | undefined {
+  return sessions
+    .filter((session) => isPerformedWorkoutStatus(session.status))
+    .map((session) => session.scheduledDate)
+    .sort((left, right) => right.localeCompare(left))[0];
+}
+
+function buildSessionReviewBucketMap(
+  sessions: HistoricalWeekAuditSession[]
+): Map<string, WeeklyRetroExerciseReviewBucket> {
+  const latestPerformedScheduledDate = findLatestPerformedScheduledDate(sessions);
+  return new Map(
+    sessions.map((session) => {
+      let bucket: WeeklyRetroExerciseReviewBucket = "other_incomplete_or_skipped";
+      if (isPerformedWorkoutStatus(session.status)) {
+        bucket = "completed_session";
+      } else if (
+        latestPerformedScheduledDate &&
+        isFutureIncompleteWorkoutStatus(session.status) &&
+        session.scheduledDate > latestPerformedScheduledDate
+      ) {
+        bucket = "future_planned_incomplete";
+      }
+      return [session.workoutId, bucket] as const;
+    })
+  );
+}
+
+function getSessionCompositionSource(
+  selectionMetadata: unknown
+): WeeklyRetroExerciseLoadCalibrationRow["compositionSource"] {
+  return readSessionDecisionReceipt(selectionMetadata)?.sessionProvenance
+    ?.compositionSource;
 }
 
 function sumPositiveSetDeltas(
@@ -389,6 +442,161 @@ function buildReplacementMap(
   return replacements;
 }
 
+function normalizeExerciseText(value: string | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function inferMovementPattern(exerciseName: string | undefined): string | undefined {
+  const text = normalizeExerciseText(exerciseName);
+  if (!text) {
+    return undefined;
+  }
+  if (
+    text.includes("pulldown") ||
+    text.includes("pull down") ||
+    text.includes("pullup") ||
+    text.includes("pull up") ||
+    text.includes("chin up") ||
+    text.includes("chinup")
+  ) {
+    return "vertical_pull";
+  }
+  if (text.includes(" row")) {
+    return "horizontal_pull";
+  }
+  if (text.includes("bench") || text.includes("chest press")) {
+    return "horizontal_press";
+  }
+  if (text.includes("shoulder press") || text.includes("overhead press")) {
+    return "vertical_press";
+  }
+  if (text.includes("squat") || text.includes("leg press")) {
+    return "squat_pattern";
+  }
+  if (
+    text.includes("deadlift") ||
+    text.includes("rdl") ||
+    text.includes("stiff leg") ||
+    text.includes("hinge")
+  ) {
+    return "hinge";
+  }
+  if (text.includes("leg extension")) {
+    return "knee_extension";
+  }
+  if (text.includes("leg curl")) {
+    return "knee_flexion";
+  }
+  if (text.includes("calf")) {
+    return "calf_raise";
+  }
+  if (text.includes("curl")) {
+    return "elbow_flexion";
+  }
+  if (
+    text.includes("triceps") ||
+    text.includes("pushdown") ||
+    text.includes("pressdown") ||
+    text.includes("extension")
+  ) {
+    return "elbow_extension";
+  }
+  if (text.includes("lateral raise")) {
+    return "lateral_raise";
+  }
+  if (text.includes("fly") || text.includes("pec deck") || text.includes("crossover")) {
+    return "chest_fly";
+  }
+  return undefined;
+}
+
+function inferTargetTags(exerciseName: string | undefined): Set<string> {
+  const text = normalizeExerciseText(exerciseName);
+  const tags = new Set<string>();
+  const tagPatterns: Array<[string, string[]]> = [
+    ["lat", ["lat", "lats"]],
+    ["upper_back", ["upper back", "back"]],
+    ["chest", ["chest", "pec"]],
+    ["shoulder", ["shoulder", "delt"]],
+    ["triceps", ["triceps", "pushdown", "pressdown"]],
+    ["biceps", ["biceps", "curl"]],
+    ["quads", ["quad", "leg extension", "squat", "leg press"]],
+    ["hamstrings", ["hamstring", "leg curl", "stiff leg", "rdl"]],
+    ["glutes", ["glute", "hip thrust"]],
+    ["calves", ["calf", "calves"]],
+  ];
+  for (const [tag, patterns] of tagPatterns) {
+    if (patterns.some((pattern) => text.includes(pattern))) {
+      tags.add(tag);
+    }
+  }
+  return tags;
+}
+
+function buildReplacementLikePair(input: {
+  plannedExerciseId: string;
+  plannedExerciseName: string;
+  performedExerciseId: string;
+  performedExerciseName: string;
+}): WeeklyRetroReplacementLikePair | undefined {
+  const plannedPattern = inferMovementPattern(input.plannedExerciseName);
+  const performedPattern = inferMovementPattern(input.performedExerciseName);
+  if (!plannedPattern || plannedPattern !== performedPattern) {
+    return undefined;
+  }
+
+  const plannedTargets = inferTargetTags(input.plannedExerciseName);
+  const performedTargets = inferTargetTags(input.performedExerciseName);
+  const sharedTargets = Array.from(plannedTargets).filter((tag) =>
+    performedTargets.has(tag)
+  );
+  if (sharedTargets.length === 0) {
+    return undefined;
+  }
+
+  return {
+    pairedExerciseId: input.performedExerciseId,
+    pairedExerciseName: input.performedExerciseName,
+    movementPattern: plannedPattern,
+    confidence: "likely",
+    basis: [
+      `movement_pattern:${plannedPattern}`,
+      `target:${sharedTargets.sort().join(",")}`,
+      "session-local replacement inference; no seed mutation",
+    ],
+    seedMutation: false,
+  };
+}
+
+function findReplacementLikePerformedExercise(input: {
+  plannedExerciseId: string;
+  plannedExerciseName: string;
+  savedExercises: WeeklyRetroRuntimeWorkoutExercise[];
+  generatedExerciseIds: Set<string>;
+  usedPerformedExerciseIds: Set<string>;
+}): WeeklyRetroRuntimeWorkoutExercise | undefined {
+  return input.savedExercises.find((savedExercise) => {
+    if (
+      input.generatedExerciseIds.has(savedExercise.exerciseId) ||
+      input.usedPerformedExerciseIds.has(savedExercise.exerciseId) ||
+      countPerformedOrStructuredSets(savedExercise.sets) <= 0
+    ) {
+      return false;
+    }
+    return Boolean(
+      buildReplacementLikePair({
+        plannedExerciseId: input.plannedExerciseId,
+        plannedExerciseName: input.plannedExerciseName,
+        performedExerciseId: savedExercise.exerciseId,
+        performedExerciseName: savedExercise.exercise.name,
+      })
+    );
+  });
+}
+
 function computePlannedSetCompletion(input: {
   session: HistoricalWeekAuditSession;
   workout?: WeeklyRetroRuntimeWorkoutRow;
@@ -398,18 +606,48 @@ function computePlannedSetCompletion(input: {
   missed: number;
 } {
   const generatedSetCounts = buildGeneratedSetCounts(input.session);
+  const generatedExercisesById = new Map(
+    (input.session.sessionSnapshot.generated?.exercises ?? []).map((exercise) => [
+      exercise.exerciseId,
+      exercise,
+    ])
+  );
+  const generatedExerciseIds = new Set(generatedSetCounts.keys());
+  const savedExercises = input.workout?.exercises ?? [];
   const savedSetCounts = buildSavedSetCounts(input.workout);
   const replacementByOriginal = buildReplacementMap(
     readRuntimeEditReconciliation(input.workout?.selectionMetadata)
   );
+  const usedReplacementLikeExerciseIds = new Set<string>();
   let completed = 0;
 
   for (const [exerciseId, plannedSets] of generatedSetCounts) {
     const replacementExerciseId = replacementByOriginal.get(exerciseId);
+    const replacementLikeExercise =
+      replacementExerciseId || !input.workout
+        ? undefined
+        : findReplacementLikePerformedExercise({
+            plannedExerciseId: exerciseId,
+            plannedExerciseName:
+              generatedExercisesById.get(exerciseId)?.exerciseName ?? exerciseId,
+            savedExercises,
+            generatedExerciseIds,
+            usedPerformedExerciseIds: usedReplacementLikeExerciseIds,
+          });
+    if (replacementLikeExercise) {
+      usedReplacementLikeExerciseIds.add(replacementLikeExercise.exerciseId);
+    }
+    const directSavedSets = savedSetCounts.get(exerciseId);
+    const replacementSavedSets = replacementExerciseId
+      ? savedSetCounts.get(replacementExerciseId)
+      : undefined;
+    const replacementLikeSavedSets = replacementLikeExercise
+      ? countPerformedOrStructuredSets(replacementLikeExercise.sets)
+      : undefined;
     const savedSets =
-      savedSetCounts.get(exerciseId) ??
-      (replacementExerciseId ? savedSetCounts.get(replacementExerciseId) : undefined) ??
-      0;
+      directSavedSets && directSavedSets > 0
+        ? directSavedSets
+        : (replacementSavedSets ?? replacementLikeSavedSets ?? directSavedSets ?? 0);
     completed += Math.min(plannedSets, savedSets);
   }
 
@@ -504,11 +742,15 @@ function buildPlanAdherence(input: {
   workoutsById: Map<string, WeeklyRetroRuntimeWorkoutRow>;
   volumeRows: WeeklyRetroAuditVolumeRow[];
   legacyLimitedSessionCount: number;
+  futurePlannedIncompleteWorkoutIds?: Set<string>;
 }): WeeklyRetroPlanAdherence {
   const targetContext = buildTargetContext(input.volumeRows);
   const exerciseContexts = buildExerciseContexts(Array.from(input.workoutsById.values()));
   const interpretations: RuntimeEditInterpretation[] = [];
-  const finalAdvancingWorkoutId = input.sessions
+  const sessionsForPlanAdherence = input.sessions.filter(
+    (session) => !input.futurePlannedIncompleteWorkoutIds?.has(session.workoutId)
+  );
+  const finalAdvancingWorkoutId = sessionsForPlanAdherence
     .filter(
       (session) =>
         resolveSessionSemantics(session)?.consumesWeeklyScheduleIntent === true
@@ -519,7 +761,7 @@ function buildPlanAdherence(input: {
   let plannedWorkTotalSets = 0;
   let plannedWorkCompletedSets = 0;
 
-  for (const session of input.sessions) {
+  for (const session of sessionsForPlanAdherence) {
     const workout = input.workoutsById.get(session.workoutId);
     const completion = computePlannedSetCompletion({ session, workout });
     plannedWorkTotalSets += completion.total;
@@ -613,6 +855,11 @@ function buildPlanAdherence(input: {
 function buildSessionExecutionRows(input: {
   sessions: HistoricalWeekAuditSession[];
   slotIdentityByWorkoutId: Map<string, ReturnType<typeof readSessionSlotSnapshot>>;
+  compositionSourceByWorkoutId: Map<
+    string,
+    WeeklyRetroExerciseLoadCalibrationRow["compositionSource"]
+  >;
+  sessionReviewBucketByWorkoutId: Map<string, WeeklyRetroExerciseReviewBucket>;
 }): WeeklyRetroAuditSessionExecutionRow[] {
   return input.sessions.map((session) => {
     const semantics = resolveSessionSemantics(session);
@@ -627,6 +874,8 @@ function buildSessionExecutionRows(input: {
       consumesWeeklyScheduleIntent: semantics?.consumesWeeklyScheduleIntent ?? false,
       isCloseout: semantics?.isCloseout ?? false,
       isDeload: semantics?.isDeload ?? false,
+      reviewBucket: input.sessionReviewBucketByWorkoutId.get(session.workoutId),
+      compositionSource: input.compositionSourceByWorkoutId.get(session.workoutId),
       slot: input.slotIdentityByWorkoutId.get(session.workoutId),
       mesocycleSnapshot: session.sessionSnapshot.saved?.mesocycleSnapshot,
       cycleContext: session.sessionSnapshot.generated?.cycleContext,
@@ -643,6 +892,11 @@ function buildExerciseLoadCalibrationRows(input: {
   sessions: HistoricalWeekAuditSession[];
   workoutsById: Map<string, WeeklyRetroRuntimeWorkoutRow>;
   slotIdentityByWorkoutId: Map<string, ReturnType<typeof readSessionSlotSnapshot>>;
+  compositionSourceByWorkoutId: Map<
+    string,
+    WeeklyRetroExerciseLoadCalibrationRow["compositionSource"]
+  >;
+  sessionReviewBucketByWorkoutId: Map<string, WeeklyRetroExerciseReviewBucket>;
 }): WeeklyRetroExerciseLoadCalibrationRow[] {
   const rows: WeeklyRetroExerciseLoadCalibrationRow[] = [];
 
@@ -659,6 +913,7 @@ function buildExerciseLoadCalibrationRows(input: {
       [session.sessionIntent, session.scheduledDate.slice(0, 10)]
         .filter((value): value is string => Boolean(value))
         .join(":");
+    const mesocycleSnapshot = session.sessionSnapshot.saved?.mesocycleSnapshot;
 
     const exercisePairs: Array<{
       generatedExercise?: SessionAuditExerciseSnapshot;
@@ -703,8 +958,13 @@ function buildExerciseLoadCalibrationRows(input: {
       rows.push({
         week: input.week,
         workoutId: session.workoutId,
+        sessionStatus: session.status,
         slotId: slot?.slotId,
         sessionLabel,
+        mesocycleWeek: mesocycleSnapshot?.week ?? undefined,
+        mesoSession: mesocycleSnapshot?.session ?? undefined,
+        compositionSource: input.compositionSourceByWorkoutId.get(session.workoutId),
+        reviewBucket: input.sessionReviewBucketByWorkoutId.get(session.workoutId),
         exerciseId: pair.generatedExercise?.exerciseId ?? pair.savedExercise?.exerciseId ?? "unknown",
         exerciseName:
           pair.generatedExercise?.exerciseName ?? pair.savedExercise?.exercise.name ?? "Unknown exercise",
@@ -720,7 +980,99 @@ function buildExerciseLoadCalibrationRows(input: {
     }
   }
 
-  return rows;
+  return applyReplacementLikePairing(rows);
+}
+
+function applyReplacementLikePairing(
+  rows: WeeklyRetroExerciseLoadCalibrationRow[]
+): WeeklyRetroExerciseLoadCalibrationRow[] {
+  const byWorkoutId = new Map<string, WeeklyRetroExerciseLoadCalibrationRow[]>();
+  for (const row of rows) {
+    const workoutRows = byWorkoutId.get(row.workoutId) ?? [];
+    workoutRows.push(row);
+    byWorkoutId.set(row.workoutId, workoutRows);
+  }
+
+  const replacementByExerciseId = new Map<string, WeeklyRetroReplacementLikePair>();
+  const usedAddedExerciseIds = new Set<string>();
+  for (const workoutRows of byWorkoutId.values()) {
+    const plannedCandidates = workoutRows.filter(
+      (row) =>
+        row.reviewBucket !== "future_planned_incomplete" &&
+        row.plannedSetCount > 0 &&
+        row.performedSetCount < Math.max(1, Math.ceil(row.plannedSetCount / 2))
+    );
+    const addedCandidates = workoutRows.filter(
+      (row) =>
+        row.reviewBucket !== "future_planned_incomplete" &&
+        row.plannedSetCount === 0 &&
+        row.performedSetCount > 0
+    );
+
+    for (const planned of plannedCandidates) {
+      const added = addedCandidates.find((candidate) => {
+        if (usedAddedExerciseIds.has(candidate.exerciseId)) {
+          return false;
+        }
+        return Boolean(
+          buildReplacementLikePair({
+            plannedExerciseId: planned.exerciseId,
+            plannedExerciseName: planned.exerciseName,
+            performedExerciseId: candidate.exerciseId,
+            performedExerciseName: candidate.exerciseName,
+          })
+        );
+      });
+      if (!added) {
+        continue;
+      }
+
+      const plannedPair = buildReplacementLikePair({
+        plannedExerciseId: planned.exerciseId,
+        plannedExerciseName: planned.exerciseName,
+        performedExerciseId: added.exerciseId,
+        performedExerciseName: added.exerciseName,
+      });
+      const addedPair = buildReplacementLikePair({
+        plannedExerciseId: added.exerciseId,
+        plannedExerciseName: added.exerciseName,
+        performedExerciseId: planned.exerciseId,
+        performedExerciseName: planned.exerciseName,
+      });
+      if (!plannedPair || !addedPair) {
+        continue;
+      }
+      replacementByExerciseId.set(planned.exerciseId, plannedPair);
+      replacementByExerciseId.set(added.exerciseId, addedPair);
+      usedAddedExerciseIds.add(added.exerciseId);
+    }
+  }
+
+  return rows.map((row) => {
+    const replacementLike = replacementByExerciseId.get(row.exerciseId);
+    if (!replacementLike) {
+      return row;
+    }
+    return {
+      ...row,
+      classification: "replacement_like",
+      reasonCodes: Array.from(
+        new Set([
+          ...row.reasonCodes,
+          "replacement_like",
+          `replacement_like_${replacementLike.movementPattern}`,
+        ])
+      ),
+      notes: Array.from(
+        new Set([
+          ...row.notes,
+          `replacement_like:${replacementLike.pairedExerciseName}`,
+          "seed_mutation:no",
+        ])
+      ),
+      replacementLike,
+    };
+  });
 }
 
 function sortVolumeRows(
@@ -868,9 +1220,25 @@ export async function buildWeeklyRetroAuditPayload(input: {
   const slotIdentityByWorkoutId = new Map(
     slotIdentityRows.map((row) => [row.id, readSessionSlotSnapshot(row.selectionMetadata)])
   );
+  const compositionSourceByWorkoutId = new Map(
+    slotIdentityRows.map((row) => [
+      row.id,
+      getSessionCompositionSource(row.selectionMetadata),
+    ])
+  );
+  const sessionReviewBucketByWorkoutId = buildSessionReviewBucketMap(
+    historicalWeek.sessions
+  );
+  const futurePlannedIncompleteWorkoutIds = new Set(
+    Array.from(sessionReviewBucketByWorkoutId.entries())
+      .filter(([, bucket]) => bucket === "future_planned_incomplete")
+      .map(([workoutId]) => workoutId)
+  );
   const sessionExecutionRows = buildSessionExecutionRows({
     sessions: historicalWeek.sessions,
     slotIdentityByWorkoutId,
+    compositionSourceByWorkoutId,
+    sessionReviewBucketByWorkoutId,
   });
   const advancingSessions = historicalWeek.sessions.filter(
     (session) => resolveSessionSemantics(session)?.consumesWeeklyScheduleIntent === true
@@ -995,12 +1363,15 @@ export async function buildWeeklyRetroAuditPayload(input: {
     workoutsById: runtimeWorkoutsById,
     volumeRows,
     legacyLimitedSessionCount,
+    futurePlannedIncompleteWorkoutIds,
   });
   const exerciseLoadCalibrationRows = buildExerciseLoadCalibrationRows({
     week: input.week,
     sessions: historicalWeek.sessions,
     workoutsById: runtimeWorkoutsById,
     slotIdentityByWorkoutId,
+    compositionSourceByWorkoutId,
+    sessionReviewBucketByWorkoutId,
   });
   const slotIdentityIssueCount =
     missingSlotIdentityWorkoutIds.length + duplicateSlots.length + intentMismatches.length;
@@ -1239,6 +1610,21 @@ export async function buildWeeklyRetroAuditPayload(input: {
       return priorityRank[left.priority] - priorityRank[right.priority];
     })
     .map((entry) => entry.summary);
+  const completedWorkoutIds = sessionExecutionRows
+    .filter((session) => session.reviewBucket === "completed_session")
+    .map((session) => session.workoutId);
+  const futurePlannedIncompleteWorkouts = sessionExecutionRows
+    .filter((session) => session.reviewBucket === "future_planned_incomplete")
+    .map((session) => ({
+      workoutId: session.workoutId,
+      scheduledDate: session.scheduledDate,
+      status: session.status,
+      sessionIntent: session.sessionIntent,
+      slotId: session.slot?.slotId,
+      mesocycleWeek: session.mesocycleSnapshot?.week ?? undefined,
+      mesoSession: session.mesocycleSnapshot?.session ?? undefined,
+      compositionSource: session.compositionSource,
+    }));
 
   const payload: WeeklyRetroAuditPayload = {
     version: WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION,
@@ -1317,6 +1703,13 @@ export async function buildWeeklyRetroAuditPayload(input: {
     },
     planAdherence,
     exerciseLoadCalibrationRows,
+    postSessionReview: {
+      readOnly: true,
+      seedRuntimeChanged: false,
+      plannerMaterializerChanged: false,
+      completedWorkoutIds,
+      futurePlannedIncompleteWorkouts,
+    },
     interventions,
     rootCauses,
     recommendedPriorities,

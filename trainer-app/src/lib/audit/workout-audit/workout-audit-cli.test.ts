@@ -6500,6 +6500,262 @@ describe("buildWeeklyRetroOperatorSummary", () => {
     );
   });
 
+  it("separates completed-session reconciliation from future planned workouts in operator-debug weekly-retro", () => {
+    const summary = buildWeeklyRetroOperatorSummary({
+      operatorDebug: true,
+      artifact: {
+        weeklyRetro: {
+          loadCalibration: {
+            status: "aligned",
+            comparableSessionCount: 1,
+            driftSessionCount: 0,
+            prescriptionChangeCount: 0,
+            selectionDriftCount: 0,
+            legacyLimitedSessionCount: 0,
+            highlightedSessions: [],
+          },
+          sessionExecution: {
+            summary: {
+              sessionCount: 2,
+              advancingCount: 2,
+              gapFillCount: 0,
+              supplementalCount: 0,
+              deloadCount: 0,
+              progressionEligibleCount: 1,
+              progressionExcludedCount: 1,
+              weekCloseRelevantCount: 0,
+              persistedSnapshotCount: 2,
+              reconstructedSnapshotCount: 0,
+              mutationDriftCount: 0,
+              statusCounts: { COMPLETED: 1, PLANNED: 1 },
+              intentCounts: { UPPER: 1, LOWER: 1 },
+            },
+            sessions: [
+              {
+                workoutId: "upper-1",
+                scheduledDate: "2026-05-25T10:00:00.000Z",
+                status: "COMPLETED",
+                sessionIntent: "UPPER",
+                snapshotSource: "persisted",
+                semanticKind: "advancing",
+                consumesWeeklyScheduleIntent: true,
+                isCloseout: false,
+                isDeload: false,
+                reviewBucket: "completed_session",
+                compositionSource: "persisted_slot_plan_seed",
+                slot: {
+                  slotId: "upper_a",
+                  intent: "upper",
+                  sequenceIndex: 0,
+                  source: "mesocycle_slot_sequence",
+                },
+                mesocycleSnapshot: {
+                  mesocycleId: "meso-1",
+                  week: 1,
+                  session: 1,
+                  phase: "accumulation",
+                },
+                canonicalSemantics: {
+                  sourceLayer: "saved",
+                  phase: "accumulation",
+                  isDeload: false,
+                  countsTowardProgressionHistory: true,
+                  countsTowardPerformanceHistory: true,
+                  updatesProgressionAnchor: true,
+                },
+                progressionEvidence: {
+                  countsTowardProgressionHistory: true,
+                  countsTowardPerformanceHistory: true,
+                  updatesProgressionAnchor: true,
+                  reasonCodes: [],
+                },
+                reconciliation: {
+                  version: 1,
+                  comparisonState: "comparable",
+                  hasDrift: false,
+                  changedFields: [],
+                  addedExerciseIds: [],
+                  removedExerciseIds: [],
+                  exercisesWithSetCountChanges: [],
+                  exercisesWithPrescriptionChanges: [],
+                },
+              },
+            ],
+          },
+          volumeTargeting: {
+            muscles: [],
+          },
+          planAdherence: {
+            plannedWorkCompletedPercent: 100,
+            plannedWorkMissedSets: 0,
+            plannedWorkTotalSets: 3,
+            plannedWorkCompletedSets: 3,
+            explainedAdditions: {
+              totalSets: 0,
+              byIntent: {},
+            },
+            substitutions: 0,
+            painFatigueDeviations: 0,
+            unclassifiedDrift: 0,
+            engineConfidenceImpact: "none",
+            interpretations: [],
+          },
+          postSessionReview: {
+            readOnly: true,
+            seedRuntimeChanged: false,
+            plannerMaterializerChanged: false,
+            completedWorkoutIds: ["upper-1"],
+            futurePlannedIncompleteWorkouts: [
+              {
+                workoutId: "lower-1",
+                scheduledDate: "2026-05-27T10:00:00.000Z",
+                status: "PLANNED",
+                sessionIntent: "LOWER",
+                slotId: "lower_a",
+                mesocycleWeek: 1,
+                mesoSession: 2,
+                compositionSource: "persisted_slot_plan_seed",
+              },
+            ],
+          },
+          interventions: [],
+          recommendedPriorities: [],
+          exerciseLoadCalibrationRows: [
+            {
+              week: 1,
+              workoutId: "upper-1",
+              sessionStatus: "COMPLETED",
+              slotId: "upper_a",
+              sessionLabel: "upper_a",
+              mesocycleWeek: 1,
+              mesoSession: 1,
+              compositionSource: "persisted_slot_plan_seed",
+              reviewBucket: "completed_session",
+              exerciseId: "upper-row",
+              exerciseName: "Upper Row",
+              plannedSetCount: 3,
+              savedSetCount: 3,
+              performedSetCount: 3,
+              skippedSetCount: 0,
+              addedSetCount: 0,
+              performedLoadSummary: {},
+              classification: "clean",
+              reasonCodes: [],
+              notes: [],
+            },
+            {
+              week: 1,
+              workoutId: "lower-1",
+              sessionStatus: "PLANNED",
+              slotId: "lower_a",
+              sessionLabel: "lower_a",
+              mesocycleWeek: 1,
+              mesoSession: 2,
+              compositionSource: "persisted_slot_plan_seed",
+              reviewBucket: "future_planned_incomplete",
+              exerciseId: "leg-press",
+              exerciseName: "Leg Press",
+              plannedSetCount: 4,
+              savedSetCount: 4,
+              performedSetCount: 0,
+              skippedSetCount: 0,
+              addedSetCount: 0,
+              performedLoadSummary: {},
+              classification: "skipped_or_low_coverage",
+              reasonCodes: ["planned_exercise_low_performed_coverage"],
+              notes: ["coverage:0%"],
+            },
+          ],
+        } as never,
+      },
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Completed Session Reconciliation",
+        "upper-1 | 1 | 1 | upper_a | COMPLETED | persisted_slot_plan_seed | unchanged | 3 | 3 | 0 | 0 | 0",
+        "Future Planned / Incomplete Workouts",
+        "lower-1 | 1 | 2 | lower_a | PLANNED | persisted_slot_plan_seed | scheduled next; not missed work in post-session context",
+        "3 | 3 | 3 | 0 | 0 | 3/3",
+        "Upper Row | upper_a | 3 | 3 | 3 | 0 | 0 | clean | none",
+      ])
+    );
+    expect(summary).not.toContain(
+      "Leg Press | lower_a | 4 | 4 | 0 | 0 | 0 | skipped_or_low_coverage | planned low performed coverage"
+    );
+  });
+
+  it("prints replacement_like notes without implying seed mutation", () => {
+    const summary = buildWeeklyRetroOperatorSummary({
+      operatorDebug: true,
+      artifact: {
+        weeklyRetro: {
+          loadCalibration: {
+            status: "aligned",
+            comparableSessionCount: 1,
+            driftSessionCount: 0,
+            prescriptionChangeCount: 0,
+            selectionDriftCount: 0,
+            legacyLimitedSessionCount: 0,
+            highlightedSessions: [],
+          },
+          volumeTargeting: {
+            muscles: [],
+          },
+          planAdherence: {
+            plannedWorkCompletedPercent: 100,
+            plannedWorkMissedSets: 0,
+            plannedWorkTotalSets: 3,
+            plannedWorkCompletedSets: 3,
+            explainedAdditions: {
+              totalSets: 0,
+              byIntent: {},
+            },
+            substitutions: 0,
+            painFatigueDeviations: 0,
+            unclassifiedDrift: 0,
+            engineConfidenceImpact: "none",
+            interpretations: [],
+          },
+          interventions: [],
+          recommendedPriorities: [],
+          exerciseLoadCalibrationRows: [
+            {
+              week: 1,
+              workoutId: "upper-1",
+              slotId: "upper_a",
+              sessionLabel: "upper_a",
+              reviewBucket: "completed_session",
+              exerciseId: "close-grip-lat-pulldown",
+              exerciseName: "Close-Grip Lat Pulldown",
+              plannedSetCount: 3,
+              savedSetCount: 3,
+              performedSetCount: 0,
+              skippedSetCount: 3,
+              addedSetCount: 0,
+              performedLoadSummary: {},
+              classification: "replacement_like",
+              reasonCodes: ["replacement_like_vertical_pull"],
+              notes: ["replacement_like:Iso-Lateral Front Lat Pulldown", "seed_mutation:no"],
+              replacementLike: {
+                pairedExerciseId: "iso-front-lat-pulldown",
+                pairedExerciseName: "Iso-Lateral Front Lat Pulldown",
+                movementPattern: "vertical_pull",
+                confidence: "likely",
+                basis: ["movement_pattern:vertical_pull", "target:lat"],
+                seedMutation: false,
+              },
+            },
+          ],
+        } as never,
+      },
+    });
+
+    expect(summary).toContain(
+      "Close-Grip Lat Pulldown | upper_a | 3 | 3 | 0 | 3 | 0 | replacement_like | replacement_like vertical_pull with Iso-Lateral Front Lat Pulldown; seed mutation no; 3 skipped planned sets"
+    );
+  });
+
   it("keeps the exercise reconciliation table out of normal weekly-retro output", () => {
     const summary = buildWeeklyRetroOperatorSummary({
       artifact: {

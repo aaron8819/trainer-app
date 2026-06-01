@@ -407,13 +407,33 @@ export type WeeklyRetroExerciseLoadCalibrationClassification =
   | "recalibrated_hold"
   | "insufficient_evidence"
   | "runtime_added"
-  | "skipped_or_low_coverage";
+  | "skipped_or_low_coverage"
+  | "replacement_like";
+
+export type WeeklyRetroExerciseReviewBucket =
+  | "completed_session"
+  | "future_planned_incomplete"
+  | "other_incomplete_or_skipped";
+
+export type WeeklyRetroReplacementLikePair = {
+  pairedExerciseId: string;
+  pairedExerciseName: string;
+  movementPattern: string;
+  confidence: "likely";
+  basis: string[];
+  seedMutation: false;
+};
 
 export type WeeklyRetroExerciseLoadCalibrationRow = {
   week: number;
   workoutId: string;
+  sessionStatus?: string;
   slotId?: string;
   sessionLabel: string;
+  mesocycleWeek?: number;
+  mesoSession?: number;
+  compositionSource?: SessionCompositionSource;
+  reviewBucket?: WeeklyRetroExerciseReviewBucket;
   exerciseId: string;
   exerciseName: string;
   plannedSetCount: number;
@@ -437,6 +457,7 @@ export type WeeklyRetroExerciseLoadCalibrationRow = {
   classification: WeeklyRetroExerciseLoadCalibrationClassification;
   reasonCodes: string[];
   notes: string[];
+  replacementLike?: WeeklyRetroReplacementLikePair;
 };
 
 export type WeeklyRetroAuditSessionExecutionRow = {
@@ -454,6 +475,8 @@ export type WeeklyRetroAuditSessionExecutionRow = {
   consumesWeeklyScheduleIntent: boolean;
   isCloseout: boolean;
   isDeload: boolean;
+  reviewBucket?: WeeklyRetroExerciseReviewBucket;
+  compositionSource?: SessionCompositionSource;
   slot?: SessionSlotSnapshot;
   mesocycleSnapshot?: NonNullable<
     HistoricalWeekAuditSession["sessionSnapshot"]["saved"]
@@ -530,6 +553,22 @@ export type WeeklyRetroAuditPayload = {
   };
   planAdherence: WeeklyRetroPlanAdherence;
   exerciseLoadCalibrationRows?: WeeklyRetroExerciseLoadCalibrationRow[];
+  postSessionReview?: {
+    readOnly: true;
+    seedRuntimeChanged: false;
+    plannerMaterializerChanged: false;
+    completedWorkoutIds: string[];
+    futurePlannedIncompleteWorkouts: Array<{
+      workoutId: string;
+      scheduledDate: string;
+      status: string;
+      sessionIntent?: string;
+      slotId?: string;
+      mesocycleWeek?: number;
+      mesoSession?: number;
+      compositionSource?: SessionCompositionSource;
+    }>;
+  };
   projectionDeliveryDrift?: ProjectionDeliveryDriftPayload;
   interventions: Array<{
     priority: "high" | "medium" | "low";

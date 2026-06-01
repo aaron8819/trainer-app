@@ -4373,6 +4373,16 @@ function hasDuplicateEvidence(row: WeeklyRetroExerciseReconciliationRow): boolea
   );
 }
 
+function getCompletedExerciseReconciliationRows(
+  weeklyRetro: WeeklyRetroPayload
+): WeeklyRetroExerciseReconciliationRow[] {
+  const rows = weeklyRetro.exerciseLoadCalibrationRows ?? [];
+  if (!rows.some((row) => row.reviewBucket)) {
+    return rows;
+  }
+  return rows.filter((row) => row.reviewBucket === "completed_session");
+}
+
 function formatExerciseReconciliationNotes(input: {
   row: WeeklyRetroExerciseReconciliationRow;
   interpretations: WeeklyRetroPayload["planAdherence"]["interpretations"];
@@ -4387,6 +4397,12 @@ function formatExerciseReconciliationNotes(input: {
       )
   );
   const notes: string[] = [];
+
+  if (row.replacementLike) {
+    notes.push(
+      `replacement_like ${row.replacementLike.movementPattern} with ${row.replacementLike.pairedExerciseName}; seed mutation no`
+    );
+  }
 
   if (matchingInterpretations.some((interpretation) => interpretation.intent === "substitution")) {
     notes.push("substitute / replacement-like pattern");
@@ -4451,7 +4467,7 @@ function formatExerciseReconciliationNotes(input: {
 function buildWeeklyRetroExerciseReconciliationTable(
   weeklyRetro: WeeklyRetroPayload
 ): string[] {
-  const rows = weeklyRetro.exerciseLoadCalibrationRows ?? [];
+  const rows = getCompletedExerciseReconciliationRows(weeklyRetro);
   if (rows.length === 0) {
     return [
       "",
@@ -4485,7 +4501,7 @@ function buildWeeklyRetroExerciseReconciliationTable(
 }
 
 function buildWeeklySetSummaryTable(weeklyRetro: WeeklyRetroPayload): string[] {
-  const rows = weeklyRetro.exerciseLoadCalibrationRows ?? [];
+  const rows = getCompletedExerciseReconciliationRows(weeklyRetro);
   const sumRows = (
     selector: (row: WeeklyRetroExerciseReconciliationRow) => number
   ): string => {
@@ -4509,6 +4525,100 @@ function buildWeeklySetSummaryTable(weeklyRetro: WeeklyRetroPayload): string[] {
       sumRows((row) => row.addedSetCount),
       `${formatSetCount(plannedCompleted)}/${formatSetCount(planned)}`,
     ].join(" | "),
+  ];
+}
+
+function buildCompletedSessionReconciliationTable(
+  weeklyRetro: WeeklyRetroPayload
+): string[] {
+  const sessions =
+    weeklyRetro.sessionExecution?.sessions?.filter((session) =>
+      session.reviewBucket
+        ? session.reviewBucket === "completed_session"
+        : ["COMPLETED", "PARTIAL"].includes(session.status)
+    ) ?? [];
+  if (sessions.length === 0) {
+    return [
+      "",
+      "Completed Session Reconciliation",
+      "Workout | Week | Session | Slot | Status | Composition | Seed/runtime | Planned | Performed | Skipped | Added | Replacement-like",
+      "none | n/a | n/a | n/a | n/a | n/a | unchanged | 0 | 0 | 0 | 0 | 0",
+    ];
+  }
+
+  const exerciseRows = getCompletedExerciseReconciliationRows(weeklyRetro);
+  return [
+    "",
+    "Completed Session Reconciliation",
+    "Workout | Week | Session | Slot | Status | Composition | Seed/runtime | Planned | Performed | Skipped | Added | Replacement-like",
+    ...sessions.map((session) => {
+      const rows = exerciseRows.filter((row) => row.workoutId === session.workoutId);
+      const sum = (selector: (row: WeeklyRetroExerciseReconciliationRow) => number) =>
+        rows.reduce((total, row) => total + selector(row), 0);
+      const replacementLikeCount = rows.filter(
+        (row) => row.classification === "replacement_like" && row.plannedSetCount > 0
+      ).length;
+      return [
+        session.workoutId,
+        session.mesocycleSnapshot?.week ?? "n/a",
+        session.mesocycleSnapshot?.session ?? "n/a",
+        session.slot?.slotId ?? "n/a",
+        session.status,
+        session.compositionSource ?? "unknown",
+        "unchanged",
+        formatSetCount(sum((row) => row.plannedSetCount)),
+        formatSetCount(sum((row) => row.performedSetCount)),
+        formatSetCount(sum((row) => row.skippedSetCount)),
+        formatSetCount(sum((row) => row.addedSetCount)),
+        formatSetCount(replacementLikeCount),
+      ].join(" | ");
+    }),
+  ];
+}
+
+function buildFuturePlannedIncompleteTable(
+  weeklyRetro: WeeklyRetroPayload
+): string[] {
+  const rows =
+    weeklyRetro.postSessionReview?.futurePlannedIncompleteWorkouts ??
+    weeklyRetro.sessionExecution?.sessions
+      ?.filter((session) => session.reviewBucket === "future_planned_incomplete")
+      .map((session) => ({
+        workoutId: session.workoutId,
+        scheduledDate: session.scheduledDate,
+        status: session.status,
+        sessionIntent: session.sessionIntent,
+        slotId: session.slot?.slotId,
+        mesocycleWeek: session.mesocycleSnapshot?.week ?? undefined,
+        mesoSession: session.mesocycleSnapshot?.session ?? undefined,
+        compositionSource: session.compositionSource,
+      })) ??
+    [];
+
+  if (rows.length === 0) {
+    return [
+      "",
+      "Future Planned / Incomplete Workouts",
+      "Workout | Week | Session | Slot | Status | Composition | Interpretation",
+      "none | n/a | n/a | n/a | n/a | n/a | no future planned/incomplete workouts in this readout",
+    ];
+  }
+
+  return [
+    "",
+    "Future Planned / Incomplete Workouts",
+    "Workout | Week | Session | Slot | Status | Composition | Interpretation",
+    ...rows.map((row) =>
+      [
+        row.workoutId,
+        row.mesocycleWeek ?? "n/a",
+        row.mesoSession ?? "n/a",
+        row.slotId ?? row.sessionIntent ?? "n/a",
+        row.status,
+        row.compositionSource ?? "unknown",
+        "scheduled next; not missed work in post-session context",
+      ].join(" | ")
+    ),
   ];
 }
 
@@ -4667,6 +4777,8 @@ export function buildWeeklyRetroOperatorSummary(input: {
   }
 
   if (input.operatorDebug === true) {
+    lines.push(...buildCompletedSessionReconciliationTable(weeklyRetro));
+    lines.push(...buildFuturePlannedIncompleteTable(weeklyRetro));
     lines.push(...buildWeeklySetSummaryTable(weeklyRetro));
     lines.push(...buildWeeklyMuscleVolumeTable(weeklyRetro));
     lines.push(...buildWeeklyRetroExerciseReconciliationTable(weeklyRetro));

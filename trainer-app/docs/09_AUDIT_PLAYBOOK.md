@@ -136,6 +136,8 @@ npm run audit:workout -- --env-file .env.local --mode weekly-retro --owner <owne
 - `--operator-debug` prints an `Exercise Reconciliation` table from `weeklyRetro.exerciseLoadCalibrationRows`.
 - `--operator-debug` also prints compact stdout-only `Weekly Set Summary` and `Weekly Muscle Volume` tables from the existing `weeklyRetro.planAdherence`, `weeklyRetro.exerciseLoadCalibrationRows`, and `weeklyRetro.volumeTargeting.muscles` payload. These tables do not change weekly volume math, contribution weights, saved workouts, or artifact writing behavior.
 - The table is read-only stdout over existing audit rows: planned, saved, performed, skipped, added, classification, and short notes for additions, skipped work, substitutions when already classified, duplicate evidence when present, and load target mismatch.
+- For mid-week post-session review, `weeklyRetro.postSessionReview` and `--operator-debug` separate completed-session reconciliation from future planned/incomplete workouts. Future scheduled sessions after the latest performed session remain visible as next work, but they are not counted as missed planned work in the completed-session reconciliation.
+- Replacement-like rows may be labeled `replacement_like` when a planned exercise has low/no performed coverage and a same-session performed addition conservatively matches both movement pattern and target, such as vertical-pull lat-pulldown variants. This is readout-only session-local reconciliation and does not mutate the seed, runtime replay, planner, materializer, workouts, logs, or sessions.
 - `--no-artifact` still suppresses the main artifact and debug sidecar writes.
 
 Fast operator loop:

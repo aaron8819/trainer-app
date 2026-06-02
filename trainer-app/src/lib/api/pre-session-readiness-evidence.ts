@@ -61,6 +61,7 @@ export type PreSessionReadinessSessionRiskEvidence = {
 
 export type PreSessionReadinessProjectedWeekEvidence =
   ProjectedWeekVolumeReport & {
+    version: 1;
     currentWeekAudit?: PreSessionReadinessCurrentWeekAuditEvidence;
     interventionHints?: PreSessionReadinessInterventionHintEvidence[];
     sessionRisks?: PreSessionReadinessSessionRiskEvidence[];

@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => {
   const loadActiveMesocycle = vi.fn();
   const deriveCurrentMesocycleSession = vi.fn();
   const loadProjectedWeekVolumeReport = vi.fn();
+  const buildPreSessionReadinessProjectedWeekEvidence = vi.fn();
   const generateSessionFromIntent = vi.fn();
   const generateDeloadSessionFromIntent = vi.fn();
   const buildWeeklyRetroAuditPayload = vi.fn();
@@ -18,6 +19,7 @@ const mocks = vi.hoisted(() => {
     loadActiveMesocycle,
     deriveCurrentMesocycleSession,
     loadProjectedWeekVolumeReport,
+    buildPreSessionReadinessProjectedWeekEvidence,
     generateSessionFromIntent,
     generateDeloadSessionFromIntent,
     buildWeeklyRetroAuditPayload,
@@ -41,6 +43,11 @@ vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
 vi.mock("@/lib/api/projected-week-volume", () => ({
   loadProjectedWeekVolumeReport: (...args: unknown[]) =>
     mocks.loadProjectedWeekVolumeReport(...args),
+}));
+
+vi.mock("@/lib/api/pre-session-readiness-evidence-builder", () => ({
+  buildPreSessionReadinessProjectedWeekEvidence: (...args: unknown[]) =>
+    mocks.buildPreSessionReadinessProjectedWeekEvidence(...args),
 }));
 
 vi.mock("@/lib/api/template-session", () => ({
@@ -126,6 +133,29 @@ describe("runWorkoutAuditGeneration", () => {
       completedVolumeByMuscle: {},
       projectedSessions: [],
       fullWeekByMuscle: [],
+    });
+    mocks.buildPreSessionReadinessProjectedWeekEvidence.mockResolvedValue({
+      version: 1,
+      currentWeek: {
+        mesocycleId: "meso-1",
+        week: 2,
+        phase: "accumulation",
+        blockType: "accumulation",
+      },
+      projectionNotes: [],
+      completedVolumeByMuscle: {},
+      projectedSessions: [],
+      fullWeekByMuscle: [],
+      currentWeekAudit: {
+        belowMEV: [],
+        overMAV: [],
+        underTargetClusters: [],
+        belowPreferred: [],
+        fatigueRisks: [],
+      },
+      interventionHints: [],
+      sessionRisks: [],
+      runtimeDoseAdjustmentDiagnostics: [],
     });
     mocks.buildWeeklyRetroAuditPayload.mockResolvedValue({
       version: 1,
@@ -750,7 +780,8 @@ describe("runWorkoutAuditGeneration", () => {
   });
 
   it("routes current-week-audit through projection and attaches audit-only guidance", async () => {
-    mocks.loadProjectedWeekVolumeReport.mockResolvedValueOnce({
+    mocks.buildPreSessionReadinessProjectedWeekEvidence.mockResolvedValueOnce({
+      version: 1,
       currentWeek: {
         mesocycleId: "meso-1",
         week: 4,
@@ -799,6 +830,69 @@ describe("runWorkoutAuditGeneration", () => {
           deltaToMav: -10,
         },
       ],
+      currentWeekAudit: {
+        belowMEV: ["Chest"],
+        overMAV: [],
+        underTargetClusters: [],
+        belowPreferred: [],
+        fatigueRisks: [],
+      },
+      interventionHints: [
+        {
+          muscle: "Chest",
+          suggestedSets: 2,
+          reason: "below_mev: projected 2.0 sets below MEV; bounded floor closure only",
+        },
+      ],
+      sessionRisks: [
+        {
+          slotId: "upper_b",
+          issue: "redundant pattern stacking: horizontal pull appears 3 times",
+        },
+        {
+          slotId: "upper_b",
+          issue: "excessive pull vs push imbalance: pull-pattern exercises 4 vs push 1",
+        },
+      ],
+      runtimeDoseAdjustmentDiagnostics: [
+        {
+          muscle: "Chest",
+          plannedRemainingVolume: {
+            effectiveSets: 6,
+            bySlot: [],
+          },
+          performedWeekToDateVolume: {
+            effectiveSets: 0,
+            source: "weekly_volume_read_model",
+          },
+          projectedEndOfWeekVolume: {
+            effectiveSets: 6,
+            weeklyTarget: 12,
+            mev: 8,
+            mav: 16,
+          },
+          targetStatus: "below_mev",
+          fatigueDensityConcern: {
+            level: "none",
+            drivers: [],
+          },
+          recoveryReadinessCaveat: {
+            status: "none",
+          },
+          recommendedAction: {
+            kind: "add_set",
+            slotId: "upper_b",
+            exerciseName: "Dumbbell Bench Press",
+            setDelta: 1,
+          },
+          reasonCode: "mev_floor_deficit",
+          guidance:
+            "below MEV floor; bounded low-fatigue closure if readiness and time allow",
+          confidence: 0.8,
+          readOnly: true,
+          affectsAcceptedSeed: false,
+        },
+      ],
     });
     const context: WorkoutAuditContext = {
       mode: "current-week-audit",
@@ -812,7 +906,9 @@ describe("runWorkoutAuditGeneration", () => {
 
     const run = await runWorkoutAuditGeneration(context);
 
-    expect(mocks.loadProjectedWeekVolumeReport).toHaveBeenCalledWith({
+    expect(
+      mocks.buildPreSessionReadinessProjectedWeekEvidence
+    ).toHaveBeenCalledWith({
       userId: "user-1",
       plannerDiagnosticsMode: "debug",
     });
@@ -895,7 +991,8 @@ describe("runWorkoutAuditGeneration", () => {
         ],
       },
     });
-    mocks.loadProjectedWeekVolumeReport.mockResolvedValueOnce({
+    mocks.buildPreSessionReadinessProjectedWeekEvidence.mockResolvedValueOnce({
+      version: 1,
       currentWeek: {
         mesocycleId: "meso-1",
         week: 4,
@@ -936,6 +1033,52 @@ describe("runWorkoutAuditGeneration", () => {
           deltaToTarget: -2,
           deltaToMev: 0,
           deltaToMav: -8,
+        },
+      ],
+      currentWeekAudit: {
+        belowMEV: [],
+        overMAV: [],
+        underTargetClusters: [],
+        belowPreferred: [],
+        fatigueRisks: [],
+      },
+      interventionHints: [],
+      sessionRisks: [],
+      runtimeDoseAdjustmentDiagnostics: [
+        {
+          muscle: "Chest",
+          plannedRemainingVolume: {
+            effectiveSets: 8,
+            bySlot: [],
+          },
+          performedWeekToDateVolume: {
+            effectiveSets: 4,
+            source: "weekly_volume_read_model",
+          },
+          projectedEndOfWeekVolume: {
+            effectiveSets: 8,
+            weeklyTarget: 10,
+            mev: 8,
+            mav: 16,
+          },
+          targetStatus: "below_preferred",
+          fatigueDensityConcern: {
+            level: "none",
+            drivers: [],
+          },
+          recoveryReadinessCaveat: {
+            status: "none",
+          },
+          recommendedAction: {
+            kind: "hold_seed",
+            setDelta: 0,
+          },
+          reasonCode: "below_preferred_monitor",
+          guidance:
+            "productive floor achieved; below preferred target; monitor, no default add-on",
+          confidence: 0.8,
+          readOnly: true,
+          affectsAcceptedSeed: false,
         },
       ],
     });
@@ -993,7 +1136,9 @@ describe("runWorkoutAuditGeneration", () => {
       },
       plannerDiagnosticsMode: "debug",
     });
-    expect(mocks.loadProjectedWeekVolumeReport).toHaveBeenCalledWith({
+    expect(
+      mocks.buildPreSessionReadinessProjectedWeekEvidence
+    ).toHaveBeenCalledWith({
       userId: "user-1",
       plannerDiagnosticsMode: "debug",
     });
@@ -1083,7 +1228,8 @@ describe("runWorkoutAuditGeneration", () => {
       session: 2,
       phase: "DELOAD",
     });
-    mocks.loadProjectedWeekVolumeReport.mockResolvedValueOnce({
+    mocks.buildPreSessionReadinessProjectedWeekEvidence.mockResolvedValueOnce({
+      version: 1,
       currentWeek: {
         mesocycleId: "meso-1",
         week: 5,
@@ -1094,6 +1240,16 @@ describe("runWorkoutAuditGeneration", () => {
       completedVolumeByMuscle: {},
       projectedSessions: [],
       fullWeekByMuscle: [],
+      currentWeekAudit: {
+        belowMEV: [],
+        overMAV: [],
+        underTargetClusters: [],
+        belowPreferred: [],
+        fatigueRisks: [],
+      },
+      interventionHints: [],
+      sessionRisks: [],
+      runtimeDoseAdjustmentDiagnostics: [],
     });
     mocks.generateDeloadSessionFromIntent.mockResolvedValueOnce({
       ...okGenerationResult,
@@ -1173,7 +1329,8 @@ describe("runWorkoutAuditGeneration", () => {
       session: 4,
       phase: "ACCUMULATION",
     });
-    mocks.loadProjectedWeekVolumeReport.mockResolvedValueOnce({
+    mocks.buildPreSessionReadinessProjectedWeekEvidence.mockResolvedValueOnce({
+      version: 1,
       currentWeek: {
         mesocycleId: "meso-1",
         week: 4,
@@ -1186,6 +1343,16 @@ describe("runWorkoutAuditGeneration", () => {
       completedVolumeByMuscle: {},
       projectedSessions: [],
       fullWeekByMuscle: [],
+      currentWeekAudit: {
+        belowMEV: [],
+        overMAV: [],
+        underTargetClusters: [],
+        belowPreferred: [],
+        fatigueRisks: [],
+      },
+      interventionHints: [],
+      sessionRisks: [],
+      runtimeDoseAdjustmentDiagnostics: [],
     });
     const context: WorkoutAuditContext = {
       mode: "pre-session-readiness",

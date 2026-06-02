@@ -5,7 +5,7 @@ import {
 } from "@/lib/api/mesocycle-lifecycle";
 import { evaluateAcceptedMesocycleSeedProvenance } from "@/lib/api/accepted-mesocycle-seed-provenance";
 import { loadProjectedWeekVolumeReport } from "@/lib/api/projected-week-volume";
-import { buildRuntimeDoseAdjustmentDiagnostics } from "@/lib/api/runtime-dose-guidance";
+import { buildPreSessionReadinessProjectedWeekEvidence } from "@/lib/api/pre-session-readiness-evidence-builder";
 import {
   generateDeloadSessionFromIntent,
   generateSessionFromIntent,
@@ -16,7 +16,6 @@ import {
 } from "@/lib/evidence/session-audit-snapshot";
 import { PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION } from "./constants";
 import { buildActiveMesocycleSlotReseedAuditPayload } from "./active-mesocycle-slot-reseed";
-import { buildCurrentWeekAuditEvaluation } from "./current-week-audit";
 import { buildHistoricalWeekAuditPayload } from "./historical-week";
 import { buildMesocycleExplainAuditPayload } from "./mesocycle-explain";
 import { buildNextMesocycleAcceptanceGateAuditPayload } from "./next-mesocycle-acceptance-gate";
@@ -94,25 +93,20 @@ async function buildProjectedWeekAuditPayload(input: {
   plannerDiagnosticsMode: WorkoutAuditContext["plannerDiagnosticsMode"];
   includeCurrentWeekGuidance: boolean;
 }): Promise<ProjectedWeekVolumeAuditPayload> {
+  if (input.includeCurrentWeekGuidance) {
+    return buildPreSessionReadinessProjectedWeekEvidence({
+      userId: input.userId,
+      plannerDiagnosticsMode: input.plannerDiagnosticsMode,
+    });
+  }
+
   const projectedWeekVolume = await loadProjectedWeekVolumeReport({
     userId: input.userId,
     plannerDiagnosticsMode: input.plannerDiagnosticsMode,
   });
-  const payload = {
+  return {
     version: PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
     ...projectedWeekVolume,
-  };
-  const currentWeekAuditFields = input.includeCurrentWeekGuidance
-    ? {
-        ...buildCurrentWeekAuditEvaluation(payload),
-        runtimeDoseAdjustmentDiagnostics:
-          buildRuntimeDoseAdjustmentDiagnostics(payload),
-      }
-    : {};
-
-  return {
-    ...payload,
-    ...currentWeekAuditFields,
   };
 }
 

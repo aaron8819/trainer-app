@@ -7,14 +7,12 @@ const mocks = vi.hoisted(() => {
   const deriveCurrentMesocycleSession = vi.fn();
   const getDeloadSessionThreshold = vi.fn();
   const loadNextWorkoutContext = vi.fn();
-  const loadProjectedWeekVolumeReport = vi.fn();
-  const buildRuntimeDoseAdjustmentDiagnostics = vi.fn();
+  const buildPreSessionReadinessProjectedWeekEvidence = vi.fn();
+  const buildPreSessionReadinessWeeklyRetroEvidence = vi.fn();
   const generateSessionFromIntent = vi.fn();
   const generateDeloadSessionFromIntent = vi.fn();
   const buildGeneratedSessionAuditSnapshot = vi.fn();
   const buildPreSessionReadinessContract = vi.fn();
-  const buildCurrentWeekAuditEvaluation = vi.fn();
-  const buildWeeklyRetroAuditPayload = vi.fn();
   const evaluateAcceptedMesocycleSeedProvenance = vi.fn();
   const loadCurrentPreSessionReadinessSnapshotIdentity = vi.fn();
   const invalidatePreSessionReadinessSnapshotsForIdentity = vi.fn();
@@ -25,14 +23,12 @@ const mocks = vi.hoisted(() => {
     deriveCurrentMesocycleSession,
     getDeloadSessionThreshold,
     loadNextWorkoutContext,
-    loadProjectedWeekVolumeReport,
-    buildRuntimeDoseAdjustmentDiagnostics,
+    buildPreSessionReadinessProjectedWeekEvidence,
+    buildPreSessionReadinessWeeklyRetroEvidence,
     generateSessionFromIntent,
     generateDeloadSessionFromIntent,
     buildGeneratedSessionAuditSnapshot,
     buildPreSessionReadinessContract,
-    buildCurrentWeekAuditEvaluation,
-    buildWeeklyRetroAuditPayload,
     evaluateAcceptedMesocycleSeedProvenance,
     loadCurrentPreSessionReadinessSnapshotIdentity,
     invalidatePreSessionReadinessSnapshotsForIdentity,
@@ -54,16 +50,6 @@ vi.mock("@/lib/api/next-session", () => ({
     mocks.loadNextWorkoutContext(...args),
 }));
 
-vi.mock("@/lib/api/projected-week-volume", () => ({
-  loadProjectedWeekVolumeReport: (...args: unknown[]) =>
-    mocks.loadProjectedWeekVolumeReport(...args),
-}));
-
-vi.mock("@/lib/api/runtime-dose-guidance", () => ({
-  buildRuntimeDoseAdjustmentDiagnostics: (...args: unknown[]) =>
-    mocks.buildRuntimeDoseAdjustmentDiagnostics(...args),
-}));
-
 vi.mock("@/lib/api/template-session", () => ({
   generateSessionFromIntent: (...args: unknown[]) =>
     mocks.generateSessionFromIntent(...args),
@@ -81,14 +67,11 @@ vi.mock("./pre-session-readiness-contract-builder", () => ({
     mocks.buildPreSessionReadinessContract(...args),
 }));
 
-vi.mock("@/lib/audit/workout-audit/current-week-audit", () => ({
-  buildCurrentWeekAuditEvaluation: (...args: unknown[]) =>
-    mocks.buildCurrentWeekAuditEvaluation(...args),
-}));
-
-vi.mock("@/lib/audit/workout-audit/weekly-retro", () => ({
-  buildWeeklyRetroAuditPayload: (...args: unknown[]) =>
-    mocks.buildWeeklyRetroAuditPayload(...args),
+vi.mock("./pre-session-readiness-evidence-builder", () => ({
+  buildPreSessionReadinessProjectedWeekEvidence: (...args: unknown[]) =>
+    mocks.buildPreSessionReadinessProjectedWeekEvidence(...args),
+  buildPreSessionReadinessWeeklyRetroEvidence: (...args: unknown[]) =>
+    mocks.buildPreSessionReadinessWeeklyRetroEvidence(...args),
 }));
 
 vi.mock("@/lib/api/accepted-mesocycle-seed-provenance", () => ({
@@ -299,7 +282,8 @@ describe("preparePreSessionReadinessSnapshot", () => {
     mocks.buildGeneratedSessionAuditSnapshot.mockReturnValue({
       generated: { exercises: [], traces: { progression: {} } },
     });
-    mocks.loadProjectedWeekVolumeReport.mockResolvedValue({
+    mocks.buildPreSessionReadinessProjectedWeekEvidence.mockResolvedValue({
+      version: 1,
       currentWeek: {
         mesocycleId: "meso-1",
         week: 2,
@@ -319,8 +303,6 @@ describe("preparePreSessionReadinessSnapshot", () => {
         },
       ],
       fullWeekByMuscle: [],
-    });
-    mocks.buildCurrentWeekAuditEvaluation.mockReturnValue({
       currentWeekAudit: {
         belowMEV: [],
         overMAV: [],
@@ -330,9 +312,9 @@ describe("preparePreSessionReadinessSnapshot", () => {
       },
       interventionHints: [],
       sessionRisks: [],
+      runtimeDoseAdjustmentDiagnostics: [],
     });
-    mocks.buildRuntimeDoseAdjustmentDiagnostics.mockReturnValue([]);
-    mocks.buildWeeklyRetroAuditPayload.mockResolvedValue({
+    mocks.buildPreSessionReadinessWeeklyRetroEvidence.mockResolvedValue({
       volumeTargeting: {
         overMav: [],
         overTargetOnly: [],
@@ -500,6 +482,8 @@ describe("preparePreSessionReadinessSnapshot", () => {
 
     expect(source).toContain("./pre-session-readiness-contract-builder");
     expect(source).toContain("./pre-session-readiness-evidence");
+    expect(source).toContain("./pre-session-readiness-evidence-builder");
+    expect(source).not.toContain("@/lib/audit/workout-audit");
     expect(source).not.toContain(
       "@/lib/audit/workout-audit/pre-session-readiness-contract"
     );

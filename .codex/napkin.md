@@ -213,6 +213,7 @@
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.
 
 ## Patterns That Work
+- For pre-session readiness producer ownership, move current-week guidance and narrow prior-week fatigue evidence into `src/lib/api/pre-session-readiness-evidence-builder.ts`; keep full `weeklyRetro` reconciliation/operator payloads in workout-audit and let audit import the app builder/facade instead of the app producer importing audit producers.
 - For pre-session readiness evidence ownership, keep builder input DTOs in `src/lib/api/pre-session-readiness-evidence.ts`; let audit payloads adapt into those DTOs at the audit boundary instead of importing `workout-audit/types` into the app builder.
 - For pre-session readiness snapshot work, keep the shared typed contract, validator, and Home gym-card adapter under `src/lib/api/pre-session-readiness-*`; workout-audit is only an `audit_readout` producer, and Home should not require `auditOnly=true` / `consumedByProduction=false` to trust future app-owned snapshots.
 - For mid-week post-session weekly-retro readouts, classify future `PLANNED`/`IN_PROGRESS` sessions scheduled after the latest `COMPLETED`/`PARTIAL` workout as future planned/incomplete work, not missed completed-session work; replacement-like pair counts should count planned-side pairs, not both planned and added rows.

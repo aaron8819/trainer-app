@@ -5,12 +5,8 @@ import {
   getDeloadSessionThreshold,
   loadActiveMesocycle,
 } from "@/lib/api/mesocycle-lifecycle";
-import type {
-  NextWorkoutContext,
-} from "@/lib/api/next-session";
+import type { NextWorkoutContext } from "@/lib/api/next-session";
 import { loadNextWorkoutContext } from "@/lib/api/next-session";
-import { loadProjectedWeekVolumeReport } from "@/lib/api/projected-week-volume";
-import { buildRuntimeDoseAdjustmentDiagnostics } from "@/lib/api/runtime-dose-guidance";
 import {
   generateDeloadSessionFromIntent,
   generateSessionFromIntent,
@@ -20,13 +16,14 @@ import type { SessionIntent } from "@/lib/engine/session-types";
 import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 import { buildGeneratedSessionAuditSnapshot } from "@/lib/evidence/session-audit-snapshot";
 import type { SessionAuditSnapshot } from "@/lib/evidence/session-audit-types";
-import { buildCurrentWeekAuditEvaluation } from "@/lib/audit/workout-audit/current-week-audit";
-import { buildWeeklyRetroAuditPayload } from "@/lib/audit/workout-audit/weekly-retro";
 import type {
   PreSessionReadinessEvidence,
   PreSessionReadinessGenerationPathEvidence,
-  PreSessionReadinessProjectedWeekEvidence,
 } from "./pre-session-readiness-evidence";
+import {
+  buildPreSessionReadinessProjectedWeekEvidence,
+  buildPreSessionReadinessWeeklyRetroEvidence,
+} from "./pre-session-readiness-evidence-builder";
 import {
   buildPreSessionReadinessGymCardDto,
   type PreSessionReadinessGymCardDto,
@@ -152,27 +149,6 @@ function resolveAdvancingSlotSnapshot(
     sequenceIndex: nextSession.slotSequenceIndex,
     sequenceLength: nextSession.slotSequenceLength ?? undefined,
     source: nextSession.slotSource,
-  };
-}
-
-async function buildProjectedWeekEvidence(input: {
-  userId: string;
-  plannerDiagnosticsMode: "standard" | "debug";
-}): Promise<PreSessionReadinessProjectedWeekEvidence> {
-  const report = await loadProjectedWeekVolumeReport({
-    userId: input.userId,
-    plannerDiagnosticsMode: input.plannerDiagnosticsMode,
-  });
-  const payload = {
-    version: 1 as const,
-    ...report,
-  };
-
-  return {
-    ...payload,
-    ...buildCurrentWeekAuditEvaluation(payload),
-    runtimeDoseAdjustmentDiagnostics:
-      buildRuntimeDoseAdjustmentDiagnostics(payload),
   };
 }
 
@@ -313,19 +289,17 @@ export async function preparePreSessionReadinessSnapshot(
       intent: nextSession.intent,
       plannerDiagnosticsMode,
     }),
-    buildProjectedWeekEvidence({
+    buildPreSessionReadinessProjectedWeekEvidence({
       userId,
       plannerDiagnosticsMode,
     }),
   ]);
   const weeklyRetro =
     projectedWeek.currentWeek.week > 1
-      ? await buildWeeklyRetroAuditPayload({
+      ? await buildPreSessionReadinessWeeklyRetroEvidence({
           userId,
-          ownerEmail: options.ownerEmail,
           week: projectedWeek.currentWeek.week - 1,
           mesocycleId: projectedWeek.currentWeek.mesocycleId,
-          projectionArtifactPath: undefined,
         })
       : undefined;
   const receiptCompositionSource =

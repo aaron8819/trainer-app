@@ -163,12 +163,14 @@ describe("pre-session readiness gym-card adapter", () => {
     expect(dto).toMatchObject({
       safeToTrain: true,
       action: "start",
-      sessionLabel: "Week 4 Session 3 - upper_b upper",
-      primaryInstruction: "Run the seeded session as prescribed.",
+      sessionLabel: "Upper 2",
+      primaryInstruction:
+        "Run the planned workout. Keep effort around the prescribed RPE cap.",
       rpeCap: "prescribed",
-      mainPriority: "Run the prescribed session without extra add-ons.",
+      mainPriority: "Run the planned workout; no extra work needed today.",
       optionalAddOns: {
         status: "none",
+        reason: "No add-ons recommended.",
         items: [],
       },
       blockers: [],
@@ -224,6 +226,7 @@ describe("pre-session readiness gym-card adapter", () => {
     expect(dto.rpeCap).toBeNull();
     expect(dto.optionalAddOns).toMatchObject({
       status: "none",
+      reason: "Skip add-ons until the blocker is resolved.",
       items: [],
     });
     expect(dto.blockers).toEqual([
@@ -267,25 +270,29 @@ describe("pre-session readiness gym-card adapter", () => {
 
     expect(dto.optionalAddOns).toMatchObject({
       status: "none",
+      reason: "No add-ons recommended.",
       items: [],
     });
     expect(dto.avoid).toEqual([
-      "Avoid Barbell Curl for Chest (candidate_muscle_mismatch).",
+      "Avoid Barbell Curl for Chest: does not match today's add-on need.",
     ]);
     expect(dto.warnings).toEqual([
       "optional_add_on_matches_flagged_muscle:warning",
-      "Avoid Barbell Curl for Chest (candidate_muscle_mismatch).",
+      "Avoid Barbell Curl for Chest: does not match today's add-on need.",
     ]);
   });
 
-  it("includes short display-safe calibration watches in the DTO", () => {
+  it("translates calibration watches into display-safe coaching notes", () => {
     const dto = buildPreSessionReadinessGymCardDto(
       baseContract({
         calibrationWatches: {
-          prescriptionConfidence: ["- Incline Press: confidence=0.6"],
+          prescriptionConfidence: [
+            "- Incline Press: progression trace unavailable; verify load by feel and keep prescribed RPE cap",
+            "- Bench Press: action=hold confidence=0.8 reasons=stable_history",
+          ],
           recoveryCaveats: ["Chest:local_soreness"],
           fatigue: [
-            "- Glutes: meaningful fatigue watch via Hip Thrust and Back Extension",
+            "- Cable Row: equipment scaled during early exposure",
           ],
         },
       })
@@ -295,7 +302,12 @@ describe("pre-session readiness gym-card adapter", () => {
     expect(dto.calibrationNotes).toEqual([
       {
         kind: "prescription_confidence",
-        message: "Incline Press: confidence=0.6",
+        message: "Incline Press: Use the target as a starting point; adjust by feel.",
+      },
+      {
+        kind: "prescription_confidence",
+        message:
+          "Bench Press: Hold the target load unless the first set feels clearly too easy or too hard.",
       },
       {
         kind: "recovery_caveat",
@@ -303,9 +315,13 @@ describe("pre-session readiness gym-card adapter", () => {
       },
       {
         kind: "fatigue",
-        message: "Glutes: meaningful fatigue watch via Hip Thrust and Back Extension",
+        message: "Cable Row: Machine/cable target may need calibration.",
       },
     ]);
+    expect(JSON.stringify(dto)).not.toContain("progression trace unavailable");
+    expect(JSON.stringify(dto)).not.toContain("action=");
+    expect(JSON.stringify(dto)).not.toContain("confidence=");
+    expect(JSON.stringify(dto)).not.toContain("reasons=");
   });
 
   it("does not let poisoned CLI/render strings affect adapter output", () => {

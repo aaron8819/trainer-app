@@ -15,6 +15,7 @@ import type {
   PreSessionReadinessContract,
   PreSessionReadinessContractProducerMode,
 } from "./pre-session-readiness-contract";
+import { formatSessionIdentityLabel } from "@/lib/ui/session-identity";
 
 export type PreSessionReadinessGymCardAction =
   | "start"
@@ -54,15 +55,25 @@ export type PreSessionReadinessGymCardDto = {
 
 function formatSessionLabel(contract: PreSessionReadinessContract): string {
   const identity = contract.nextSessionIdentity;
-  const week = identity.currentWeek == null ? "Week ?" : `Week ${identity.currentWeek}`;
-  const session =
-    identity.currentSession == null
-      ? "Session ?"
-      : `Session ${identity.currentSession}`;
-  const slot = identity.nextSlotId ?? "unslotted";
-  const intent = identity.nextIntent ?? "unknown intent";
+  const label = formatSessionIdentityLabel({
+    intent: identity.nextIntent,
+    slotId: identity.nextSlotId,
+  });
 
-  return `${week} ${session} - ${slot} ${intent}`;
+  if (label !== "Workout") {
+    return label;
+  }
+
+  if (identity.currentWeek != null || identity.currentSession != null) {
+    const week = identity.currentWeek == null ? "Week ?" : `Week ${identity.currentWeek}`;
+    const session =
+      identity.currentSession == null
+        ? "Session ?"
+        : `Session ${identity.currentSession}`;
+    return `${week} ${session}`;
+  }
+
+  return label;
 }
 
 function getAction(input: {
@@ -95,14 +106,11 @@ function getPrimaryInstruction(input: {
     return "Resolve readiness blocker before training.";
   }
   if (input.action === "resume") {
-    return "Resume the existing planned workout.";
-  }
-  if (input.action === "watch") {
-    return "Review watches, then run the prescribed seed if readiness is normal.";
+    return "Resume the planned workout. Keep effort around the prescribed RPE cap.";
   }
   return input.contract.startability.action === "run_deload_seed_as_prescribed"
-    ? "Run the deload seed as prescribed."
-    : "Run the seeded session as prescribed.";
+    ? "Run the planned deload. Keep effort easy and stay under the prescribed cap."
+    : "Run the planned workout. Keep effort around the prescribed RPE cap.";
 }
 
 function getRpeCap(
@@ -125,25 +133,39 @@ function getMainPriority(input: {
   if (input.blocked) {
     return "Resolve blockers before any start or add-on decision.";
   }
-  const firstAddOn = input.optionalAddOns[0];
-  if (firstAddOn) {
-    return `Optional ${firstAddOn.targetMuscle} add-on: ${firstAddOn.candidateExerciseName}.`;
+  if (input.optionalAddOns.length > 0) {
+    return "Planned workout first; add optional work only if warm-ups feel normal.";
   }
   if (input.contract.projectedWeekStatus.status === "watch") {
-    return "Monitor readiness and prescription confidence before starting.";
+    return "Use the written targets as starting points and adjust by feel.";
   }
-  return "Run the prescribed session without extra add-ons.";
+  return "Run the planned workout; no extra work needed today.";
+}
+
+function formatSuppressionReason(reason: string): string {
+  switch (reason) {
+    case "over_mav":
+      return "weekly cap already high";
+    case "near_mav":
+      return "close to weekly cap";
+    case "target_muscle_suppressed":
+      return "not a good add-on target today";
+    case "candidate_muscle_mismatch":
+      return "does not match today's add-on need";
+    default:
+      return reason.replaceAll("_", " ");
+  }
 }
 
 function formatSuppressedTarget(target: ReadinessSuppressedTarget): string {
-  const reason = target.reasons.join(", ");
+  const reason = target.reasons.map(formatSuppressionReason).join(", ");
   if (target.targetMuscle === "all") {
-    return `Avoid optional add-ons (${reason}).`;
+    return `Avoid optional add-ons: ${reason}.`;
   }
   if (target.candidateExerciseName) {
-    return `Avoid ${target.candidateExerciseName} for ${target.targetMuscle} (${reason}).`;
+    return `Avoid ${target.candidateExerciseName} for ${target.targetMuscle}: ${reason}.`;
   }
-  return `Avoid extra ${target.targetMuscle} (${reason}).`;
+  return `Avoid extra ${target.targetMuscle}: ${reason}.`;
 }
 
 function getBlockers(input: {
@@ -179,11 +201,44 @@ function formatWarnings(input: {
 function toDisplaySafeWatchRow(
   row: ReadinessCalibrationWatchRow
 ): ReadinessCalibrationWatchRow {
-  const message = row.message.replace(/^\s*-\s*/, "").trim();
+  const rawMessage = row.message.replace(/^\s*-\s*/, "").trim();
+  const subject = rawMessage.includes(":")
+    ? rawMessage.split(":")[0]?.trim()
+    : null;
+  const prefix = subject ? `${subject}: ` : "";
+  let message = rawMessage;
+
+  if (/progression trace unavailable/i.test(rawMessage)) {
+    message = `${prefix}Use the target as a starting point; adjust by feel.`;
+  } else if (/action=hold\b/i.test(rawMessage)) {
+    message = `${prefix}Hold the target load unless the first set feels clearly too easy or too hard.`;
+  } else if (/action=/i.test(rawMessage) || /confidence=/i.test(rawMessage) || /reasons=/i.test(rawMessage)) {
+    message = `${prefix}Use the written target as guidance and calibrate from the first working set.`;
+  } else if (/equipment scaled during early exposure/i.test(rawMessage)) {
+    message = `${prefix}Machine/cable target may need calibration.`;
+  }
+
   return {
     ...row,
     message: message.length > 140 ? `${message.slice(0, 137)}...` : message,
   };
+}
+
+function formatOptionalAddOnReason(input: {
+  blocked: boolean;
+  hasItems: boolean;
+  status: PreSessionReadinessContract["sessionLocalCoaching"]["addOnState"]["status"];
+}): string {
+  if (input.blocked) {
+    return "Skip add-ons until the blocker is resolved.";
+  }
+  if (input.hasItems) {
+    return "Optional only; skip it if the planned work feels heavy.";
+  }
+  if (input.status === "deload_suppressed") {
+    return "No add-ons recommended during deload.";
+  }
+  return "No add-ons recommended.";
 }
 
 export function buildPreSessionReadinessGymCardDto(
@@ -222,10 +277,11 @@ export function buildPreSessionReadinessGymCardDto(
         optionalAddOns.length > 0
           ? contract.sessionLocalCoaching.addOnState.status
           : "none",
-      reason:
-        optionalAddOns.length > 0
-          ? contract.sessionLocalCoaching.addOnState.reason
-          : "No valid session-local optional add-ons from the typed readiness contract.",
+      reason: formatOptionalAddOnReason({
+        blocked,
+        hasItems: optionalAddOns.length > 0,
+        status: contract.sessionLocalCoaching.addOnState.status,
+      }),
       items: optionalAddOns,
     },
     calibrationNotes,

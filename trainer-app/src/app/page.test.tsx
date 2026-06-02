@@ -405,7 +405,9 @@ describe("Home page", () => {
       },
       closeout: null,
       preSessionReadinessCard: {
-        sessionLabel: "Week 2 Session 2 - lower_a lower",
+        safeToTrain: false,
+        action: "blocked",
+        sessionLabel: "Lower 1",
       },
       headerContext: "Week 2 - Accumulation",
       recentActivity: [],
@@ -423,7 +425,7 @@ describe("Home page", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "HomePreSessionReadinessPanel:prepare:Week 2 Session 2 - lower_a lower"
+        "HomePreSessionReadinessPanel:prepare:Lower 1"
       )
     ).toBeInTheDocument();
   });

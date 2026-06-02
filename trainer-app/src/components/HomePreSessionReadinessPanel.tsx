@@ -14,22 +14,77 @@ function formatActionLabel(action: PreSessionReadinessGymCardDto["action"]): str
     case "blocked":
       return "Blocked";
     case "resume":
-      return "Resume";
+      return "Resume planned workout";
     case "watch":
-      return "Watch";
+      return "Calibration day";
     default:
-      return "Start";
+      return "Start planned workout";
   }
 }
 
 function formatRpeCap(value: PreSessionReadinessGymCardDto["rpeCap"]): string | null {
   if (value === "deload_prescribed") {
-    return "Deload prescribed";
+    return "Use the deload cap";
   }
   if (value === "prescribed") {
-    return "Prescribed";
+    return "Use the prescribed cap";
   }
   return null;
+}
+
+function formatStatusLine(input: {
+  action: PreSessionReadinessGymCardDto["action"];
+  safeToTrain: boolean;
+}): string {
+  if (!input.safeToTrain || input.action === "blocked") {
+    return "Not safe to start - Resolve blockers first";
+  }
+  if (input.action === "watch") {
+    return "Safe to train - Use calibration judgment";
+  }
+  if (input.action === "resume") {
+    return "Safe to train - Resume the planned workout";
+  }
+  return "Safe to train - Run the planned workout";
+}
+
+function mainPriorityDuplicatesAddOn(
+  mainPriority: string,
+  item: PreSessionReadinessGymCardDto["optionalAddOns"]["items"][number] | undefined
+): boolean {
+  if (!item) {
+    return false;
+  }
+
+  return mainPriority
+    .toLocaleLowerCase()
+    .includes(item.candidateExerciseName.toLocaleLowerCase());
+}
+
+function formatTodayFocus(card: PreSessionReadinessGymCardDto): string {
+  if (
+    mainPriorityDuplicatesAddOn(
+      card.mainPriority,
+      card.optionalAddOns.items[0]
+    )
+  ) {
+    return "Planned workout first; add optional work only if warm-ups feel normal.";
+  }
+
+  return card.mainPriority;
+}
+
+function formatOptionalAddOn(
+  item: PreSessionReadinessGymCardDto["optionalAddOns"]["items"][number]
+): string {
+  return `Optional: ${item.candidateExerciseName}`;
+}
+
+function limitList(items: string[], maxItems = 4): string[] {
+  if (items.length <= maxItems) {
+    return items;
+  }
+  return [...items.slice(0, maxItems), `+${items.length - maxItems} more`];
 }
 
 function readErrorMessage(body: unknown): string | null {
@@ -107,6 +162,20 @@ export function HomePreSessionReadinessPanel({
 
   const blocked = card.action === "blocked" || card.safeToTrain === false;
   const rpeCap = formatRpeCap(card.rpeCap);
+  const statusLine = formatStatusLine({
+    action: card.action,
+    safeToTrain: card.safeToTrain,
+  });
+  const focus = formatTodayFocus(card);
+  const calibrationNotes = limitList(
+    card.calibrationNotes.map((note) => note.message)
+  );
+  const avoid = limitList(card.avoid);
+  const warnings = limitList(card.warnings);
+  const blockers = blocked ? limitList(card.blockers) : [];
+  const headingTitle = blocked
+    ? `Readiness blocked for ${card.sessionLabel}`
+    : `Ready for ${card.sessionLabel}`;
 
   return (
     <section
@@ -120,10 +189,10 @@ export function HomePreSessionReadinessPanel({
             Readiness
           </p>
           <h2 className="mt-2 text-lg font-semibold text-slate-900">
-            {card.sessionLabel}
+            {headingTitle}
           </h2>
           <p className="mt-2 text-sm font-medium text-slate-800">
-            {card.primaryInstruction}
+            {statusLine}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -136,76 +205,98 @@ export function HomePreSessionReadinessPanel({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <div className="rounded-xl border border-white/70 bg-white/80 p-4">
+      <div className="mt-5 space-y-4">
+        <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Main Priority
+            Today&apos;s Plan
           </p>
-          <p className="mt-1 text-sm text-slate-700">{card.mainPriority}</p>
+          <p className="mt-1 text-sm text-slate-700">{card.primaryInstruction}</p>
           {rpeCap ? (
             <p className="mt-2 text-xs font-semibold text-slate-600">
-              RPE cap: {rpeCap}
+              {rpeCap}
             </p>
           ) : null}
         </div>
 
-        <div className="rounded-xl border border-white/70 bg-white/80 p-4">
+        <div className="border-t border-white/70 pt-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Today&apos;s Focus
+          </p>
+          <p className="mt-1 text-sm text-slate-700">{focus}</p>
+        </div>
+
+        <div className="border-t border-white/70 pt-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
             Optional Add-ons
           </p>
           {card.optionalAddOns.items.length > 0 ? (
             <ul className="mt-2 space-y-1 text-sm text-slate-700">
-              {card.optionalAddOns.items.map((item) => (
+              {card.optionalAddOns.items.slice(0, 4).map((item) => (
                 <li key={`${item.targetMuscle}:${item.candidateExerciseName}`}>
-                  {item.targetMuscle}: {item.candidateExerciseName}
+                  {formatOptionalAddOn(item)}
                 </li>
               ))}
+              {card.optionalAddOns.items.length > 4 ? (
+                <li>+{card.optionalAddOns.items.length - 4} more</li>
+              ) : null}
             </ul>
           ) : (
             <p className="mt-1 text-sm text-slate-700">No add-ons recommended.</p>
           )}
-          <p className="mt-2 text-xs text-slate-500">{card.optionalAddOns.reason}</p>
         </div>
+
+        {avoid.length > 0 ? (
+          <div className="border-t border-white/70 pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Avoid
+            </p>
+            <ul className="mt-2 space-y-1 text-sm text-slate-700">
+              {avoid.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {calibrationNotes.length > 0 ? (
+          <div className="border-t border-white/70 pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Load Notes
+            </p>
+            <ul className="mt-2 space-y-1 text-sm text-slate-700">
+              {calibrationNotes.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {warnings.length > 0 ? (
+          <div className="border-t border-white/70 pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Warnings
+            </p>
+            <ul className="mt-2 space-y-1 text-sm text-slate-700">
+              {warnings.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {blockers.length > 0 ? (
+          <div className="border-t border-white/70 pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Blockers
+            </p>
+            <ul className="mt-2 space-y-1 text-sm text-slate-700">
+              {blockers.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
-
-      {card.avoid.length > 0 ? (
-        <div className="mt-4 rounded-xl border border-white/70 bg-white/80 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Avoid
-          </p>
-          <ul className="mt-2 space-y-1 text-sm text-slate-700">
-            {card.avoid.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {card.blockers.length > 0 || card.warnings.length > 0 ? (
-        <div className="mt-4 rounded-xl border border-white/70 bg-white/80 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            {blocked ? "Blockers" : "Warnings"}
-          </p>
-          <ul className="mt-2 space-y-1 text-sm text-slate-700">
-            {[...card.blockers, ...card.warnings].map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {card.calibrationNotes.length > 0 ? (
-        <div className="mt-4 rounded-xl border border-white/70 bg-white/80 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Calibration
-          </p>
-          <ul className="mt-2 space-y-1 text-sm text-slate-700">
-            {card.calibrationNotes.map((note) => (
-              <li key={`${note.kind}:${note.message}`}>{note.message}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
     </section>
   );
 }

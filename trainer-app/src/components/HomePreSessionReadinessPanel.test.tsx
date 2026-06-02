@@ -18,12 +18,12 @@ function makeCard(
 ): PreSessionReadinessGymCardDto {
   return {
     safeToTrain: true,
-    action: "start",
-    sessionLabel: "Week 2 Session 2 - lower_a lower",
-    primaryInstruction: "Run the seeded session as prescribed.",
+    action: "watch",
+    sessionLabel: "Upper 2",
+    primaryInstruction: "Run the planned workout. Keep effort around the prescribed RPE cap.",
     rpeCap: "prescribed",
     mainPriority: "Optional Chest add-on: Cable Fly.",
-    avoid: ["Avoid extra Side Delts (over_mav)."],
+    avoid: ["Avoid extra Side Delts: weekly cap already high."],
     optionalAddOns: {
       status: "available",
       reason: "Contract has session-local optional add-on rows.",
@@ -40,7 +40,7 @@ function makeCard(
     calibrationNotes: [
       {
         kind: "prescription_confidence",
-        message: "Bench target ran hot last week.",
+        message: "Bench Press: Hold the target load unless the first set feels clearly too easy or too hard.",
       },
     ],
     blockers: [],
@@ -123,26 +123,40 @@ describe("HomePreSessionReadinessPanel", () => {
     expect(mocks.refresh).not.toHaveBeenCalled();
   });
 
-  it("renders readiness card DTO fields without parsing render strings", () => {
+  it("renders the readiness card as compact coaching copy", () => {
     render(<HomePreSessionReadinessPanel card={makeCard()} canPrepare={true} />);
 
     expect(screen.getByText("Safe to train")).toBeInTheDocument();
-    expect(screen.getByText("Start")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Week 2 Session 2 - lower_a lower" })).toBeInTheDocument();
-    expect(screen.getByText("Run the seeded session as prescribed.")).toBeInTheDocument();
-    expect(screen.getByText("RPE cap: Prescribed")).toBeInTheDocument();
-    expect(screen.getByText("Optional Chest add-on: Cable Fly.")).toBeInTheDocument();
-    expect(screen.getByText("Chest: Cable Fly")).toBeInTheDocument();
-    expect(screen.getByText("Avoid extra Side Delts (over_mav).")).toBeInTheDocument();
+    expect(screen.getByText("Calibration day")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Ready for Upper 2" })).toBeInTheDocument();
+    expect(screen.getByText("Safe to train - Use calibration judgment")).toBeInTheDocument();
+    expect(
+      screen.getByText("Run the planned workout. Keep effort around the prescribed RPE cap.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Use the prescribed cap")).toBeInTheDocument();
+    expect(
+      screen.getByText("Planned workout first; add optional work only if warm-ups feel normal.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Optional: Cable Fly")).toBeInTheDocument();
+    expect(screen.queryByText("Optional Chest add-on: Cable Fly.")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Avoid extra Side Delts: weekly cap already high.")
+    ).toBeInTheDocument();
     expect(screen.getByText("Watch posterior-chain fatigue.")).toBeInTheDocument();
-    expect(screen.getByText("Bench target ran hot last week.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Bench Press: Hold the target load unless the first set feels clearly too easy or too hard."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Contract has session-local optional add-on rows.")).not.toBeInTheDocument();
   });
 
   it("renders explicit no-add-ons copy when no optional add-ons are present", () => {
     render(
       <HomePreSessionReadinessPanel
         card={makeCard({
-          mainPriority: "Run the prescribed session without extra add-ons.",
+          action: "start",
+          mainPriority: "Run the planned workout; no extra work needed today.",
           optionalAddOns: {
             status: "none",
             reason: "No valid session-local optional add-ons from the typed readiness contract.",
@@ -155,8 +169,46 @@ describe("HomePreSessionReadinessPanel", () => {
 
     expect(screen.getByText("No add-ons recommended.")).toBeInTheDocument();
     expect(
-      screen.getByText("No valid session-local optional add-ons from the typed readiness contract.")
+      screen.getByText("Run the planned workout; no extra work needed today.")
     ).toBeInTheDocument();
+    expect(
+      screen.queryByText("No valid session-local optional add-ons from the typed readiness contract.")
+    ).not.toBeInTheDocument();
+  });
+
+  it("suppresses empty optional sections", () => {
+    render(
+      <HomePreSessionReadinessPanel
+        card={makeCard({
+          action: "start",
+          avoid: [],
+          warnings: [],
+          blockers: [],
+          calibrationNotes: [],
+          optionalAddOns: {
+            status: "none",
+            reason: "No add-ons recommended.",
+            items: [],
+          },
+        })}
+        canPrepare={true}
+      />
+    );
+
+    expect(screen.queryByText("Avoid")).not.toBeInTheDocument();
+    expect(screen.queryByText("Warnings")).not.toBeInTheDocument();
+    expect(screen.queryByText("Blockers")).not.toBeInTheDocument();
+    expect(screen.queryByText("Load Notes")).not.toBeInTheDocument();
+  });
+
+  it("does not render internal debug strings in the coaching card", () => {
+    render(<HomePreSessionReadinessPanel card={makeCard()} canPrepare={true} />);
+
+    expect(screen.queryByText(/Contract has/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/progression trace unavailable/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/action=/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/confidence=/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/reasons=/i)).not.toBeInTheDocument();
   });
 
   it("renders blocked readiness without normal start coaching", () => {
@@ -182,9 +234,17 @@ describe("HomePreSessionReadinessPanel", () => {
 
     expect(screen.getByText("Not safe to start")).toBeInTheDocument();
     expect(screen.getByText("Blocked")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Readiness blocked for Upper 2" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Not safe to start - Resolve blockers first")
+    ).toBeInTheDocument();
     expect(screen.getByText("Resolve readiness blocker before training.")).toBeInTheDocument();
     expect(screen.getByText("Resolve closeout first.")).toBeInTheDocument();
-    expect(screen.queryByText("Run the seeded session as prescribed.")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Run the planned workout. Keep effort around the prescribed RPE cap.")
+    ).not.toBeInTheDocument();
   });
 
   it("does not import audit modules or parse CLI/render strings", () => {
@@ -199,6 +259,10 @@ describe("HomePreSessionReadinessPanel", () => {
     expect(source).not.toContain("runWorkoutAuditGeneration");
     expect(source).not.toContain("buildWorkoutAuditContext");
     expect(source).not.toContain("artifacts/audits");
+    expect(source).not.toContain("action=");
+    expect(source).not.toContain("confidence=");
+    expect(source).not.toContain("reasons=");
+    expect(source).not.toContain("progression trace unavailable");
     expect(source).not.toMatch(/\.(line|addonLine)\b/);
   });
 });

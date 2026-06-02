@@ -561,9 +561,10 @@ describe("loadHomePageData", () => {
     expect(result.preSessionReadinessCard).toMatchObject({
       safeToTrain: true,
       action: "start",
-      sessionLabel: "Week 2 Session 2 - lower_a lower",
+      sessionLabel: "Lower 1",
       optionalAddOns: {
         status: "available",
+        reason: "Optional only; skip it if the planned work feels heavy.",
         items: [
           {
             kind: "priority",
@@ -627,6 +628,7 @@ describe("loadHomePageData", () => {
       action: "start",
       optionalAddOns: {
         status: "available",
+        reason: "Optional only; skip it if the planned work feels heavy.",
         items: [
           {
             kind: "priority",
@@ -748,11 +750,11 @@ describe("loadHomePageData", () => {
 
     expect(result.preSessionReadinessCard?.optionalAddOns).toEqual({
       status: "none",
-      reason: "No valid session-local optional add-ons from the typed readiness contract.",
+      reason: "No add-ons recommended.",
       items: [],
     });
     expect(result.preSessionReadinessCard?.mainPriority).toBe(
-      "Run the prescribed session without extra add-ons."
+      "Run the planned workout; no extra work needed today."
     );
   });
 
@@ -802,8 +804,8 @@ describe("loadHomePageData", () => {
     });
     expect(result.preSessionReadinessCard?.avoid).toEqual(
       expect.arrayContaining([
-        "Avoid Cable Lateral Raise for Side Delts (target_muscle_suppressed).",
-        "Avoid extra Side Delts (over_mav).",
+        "Avoid Cable Lateral Raise for Side Delts: not a good add-on target today.",
+        "Avoid extra Side Delts: weekly cap already high.",
       ])
     );
   });

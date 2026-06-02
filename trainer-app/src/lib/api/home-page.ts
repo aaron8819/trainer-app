@@ -28,6 +28,10 @@ import {
   type PreSessionReadinessGymCardDto,
 } from "@/lib/audit/workout-audit/pre-session-readiness-gym-card";
 import type { PreSessionReadinessContract } from "@/lib/audit/workout-audit/types";
+import {
+  loadLatestHomePreSessionReadinessContractCandidate,
+  resolveHomePreSessionReadinessContract,
+} from "./home-pre-session-readiness";
 
 export type HomeDecisionSummary = {
   nextSessionLabel: string | null;
@@ -127,12 +131,23 @@ export type HomePageReadinessInput = {
   preSessionReadinessContract?: PreSessionReadinessContract | null;
 };
 
-function buildHomePreSessionReadinessCard(
-  input?: HomePageReadinessInput
-): PreSessionReadinessGymCardDto | null {
-  return input?.preSessionReadinessContract
-    ? buildPreSessionReadinessGymCardDto(input.preSessionReadinessContract)
-    : null;
+async function loadHomePreSessionReadinessCard(input: {
+  userId: string;
+  readinessInput?: HomePageReadinessInput;
+}): Promise<PreSessionReadinessGymCardDto | null> {
+  const candidate =
+    input.readinessInput && "preSessionReadinessContract" in input.readinessInput
+      ? {
+          contract: input.readinessInput.preSessionReadinessContract,
+          source: "typed_read_model" as const,
+        }
+      : await loadLatestHomePreSessionReadinessContractCandidate(input.userId);
+  const contract = resolveHomePreSessionReadinessContract({
+    userId: input.userId,
+    candidate,
+  });
+
+  return contract ? buildPreSessionReadinessGymCardDto(contract) : null;
 }
 
 function formatPhaseLabel(blockType: string | null | undefined): string | null {
@@ -534,7 +549,10 @@ export async function loadHomePageData(
   if (fixture?.home) {
     return fixture.home;
   }
-  const preSessionReadinessCard = buildHomePreSessionReadinessCard(readinessInput);
+  const preSessionReadinessCard = await loadHomePreSessionReadinessCard({
+    userId,
+    readinessInput,
+  });
 
   const [pendingHandoff, latestCompletedRow, recentActivityRows] = await Promise.all([
     loadPendingMesocycleHandoff(userId),

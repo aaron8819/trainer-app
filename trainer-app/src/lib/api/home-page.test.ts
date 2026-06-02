@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
   const loadPendingMesocycleHandoff = vi.fn();
   const loadProgramDashboardData = vi.fn();
   const loadHomeProgramSupport = vi.fn();
+  const loadLatestHomePreSessionReadinessContractCandidate = vi.fn();
 
   return {
     workoutFindFirst,
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => {
     loadPendingMesocycleHandoff,
     loadProgramDashboardData,
     loadHomeProgramSupport,
+    loadLatestHomePreSessionReadinessContractCandidate,
     prisma: {
       workout: {
         findFirst: workoutFindFirst,
@@ -47,6 +49,17 @@ vi.mock("./program", () => ({
 vi.mock("@/lib/ui-audit-fixtures/server", () => ({
   getUiAuditFixtureForServer: vi.fn(async () => null),
 }));
+
+vi.mock("./home-pre-session-readiness", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./home-pre-session-readiness")>();
+
+  return {
+    ...actual,
+    loadLatestHomePreSessionReadinessContractCandidate: (...args: unknown[]) =>
+      mocks.loadLatestHomePreSessionReadinessContractCandidate(...args),
+  };
+});
 
 import { loadHomePageData } from "./home-page";
 
@@ -264,6 +277,7 @@ describe("loadHomePageData", () => {
     vi.clearAllMocks();
 
     mocks.loadPendingMesocycleHandoff.mockResolvedValue(null);
+    mocks.loadLatestHomePreSessionReadinessContractCandidate.mockResolvedValue(null);
     mocks.workoutFindFirst.mockResolvedValue(makeWorkoutRow());
     mocks.workoutFindMany.mockResolvedValue([
       makeWorkoutRow({ id: "activity-1" }),
@@ -567,6 +581,61 @@ describe("loadHomePageData", () => {
     });
   });
 
+  it("exposes the readiness gym-card DTO from a valid producer contract", async () => {
+    const base = makeReadinessContract();
+    const contract = makeReadinessContract({
+      projectedWeekStatus: {
+        ...base.projectedWeekStatus,
+        status: "top_up_candidate",
+        belowMev: ["Chest"],
+      },
+      doseClosure: {
+        ...base.doseClosure,
+        recommendations: [
+          readinessRecommendation({
+            kind: "priority",
+            muscle: "Chest",
+            targetMuscle: "Chest",
+            candidateExerciseName: "Cable Fly",
+          }),
+        ],
+      },
+      sessionLocalCoaching: {
+        ...base.sessionLocalCoaching,
+        addOnState: {
+          status: "available",
+          reason: "Contract has session-local optional add-on rows.",
+        },
+      },
+    });
+    mocks.loadLatestHomePreSessionReadinessContractCandidate.mockResolvedValue({
+      contract,
+      source: "typed_read_model",
+    });
+
+    const result = await loadHomePageData("user-1");
+
+    expect(
+      mocks.loadLatestHomePreSessionReadinessContractCandidate
+    ).toHaveBeenCalledWith("user-1");
+    expect(result.preSessionReadinessCard).toMatchObject({
+      safeToTrain: true,
+      action: "start",
+      optionalAddOns: {
+        status: "available",
+        items: [
+          {
+            kind: "priority",
+            muscle: "Chest",
+            targetMuscle: "Chest",
+            candidateExerciseName: "Cable Fly",
+            source: "dose_closure_recommendation",
+          },
+        ],
+      },
+    });
+  });
+
   it("returns null readiness card when no typed readiness contract is supplied", async () => {
     const result = await loadHomePageData("user-1");
 
@@ -581,6 +650,44 @@ describe("loadHomePageData", () => {
       reasonLabel: "Next in sequence",
       reason: "Nothing earlier is still open, so Lower 1 is next this week.",
     });
+  });
+
+  it("returns null readiness card when the producer marks the candidate stale", async () => {
+    mocks.loadLatestHomePreSessionReadinessContractCandidate.mockResolvedValue({
+      contract: makeReadinessContract(),
+      source: "audit_artifact",
+      stale: true,
+    });
+
+    const result = await loadHomePageData("user-1");
+
+    expect(result.preSessionReadinessCard).toBeNull();
+    expect(result.primaryAction).toEqual({
+      state: "planned",
+      mode: "generate",
+      label: "Start workout",
+      action: "generate-required-workout",
+      initialIntent: "lower",
+      initialSlotId: "lower_a",
+      reasonLabel: "Next in sequence",
+      reason: "Nothing earlier is still open, so Lower 1 is next this week.",
+    });
+  });
+
+  it("returns null readiness card when the producer candidate is invalid or mismatched", async () => {
+    mocks.loadLatestHomePreSessionReadinessContractCandidate.mockResolvedValue({
+      contract: makeReadinessContract({
+        nextSessionIdentity: {
+          ...makeReadinessContract().nextSessionIdentity,
+          userId: "other-user",
+        },
+      }),
+      source: "audit_artifact",
+    });
+
+    const result = await loadHomePageData("user-1");
+
+    expect(result.preSessionReadinessCard).toBeNull();
   });
 
   it("surfaces blocked readiness in the DTO without changing the existing Home CTA", async () => {
@@ -754,13 +861,27 @@ describe("loadHomePageData", () => {
 
   it("does not parse workout-audit CLI prose or render strings in the Home read model", () => {
     const source = readFileSync("src/lib/api/home-page.ts", "utf8");
+    const producerSource = readFileSync(
+      "src/lib/api/home-pre-session-readiness.ts",
+      "utf8"
+    );
 
     expect(source).toContain("buildPreSessionReadinessGymCardDto");
     expect(source).not.toContain("workout-audit-cli");
     expect(source).not.toContain("buildPreSessionReadinessSummary");
+    expect(source).not.toContain("runWorkoutAuditGeneration");
+    expect(source).not.toContain("buildWorkoutAuditContext");
+    expect(source).not.toContain("generateSessionFromIntent");
+    expect(source).not.toContain("loadProjectedWeekVolumeReport");
     expect(source).not.toMatch(/doseClosure\.(heading|priority|optional|monitor|suppress|guardrails)/);
     expect(source).not.toMatch(/sessionLocalCoaching\.(defaultInstruction|safeOptionalAddOns|suppressAvoid|floorBufferOpportunities|prescriptionConfidenceWatches|fatigueCautions)/);
     expect(source).not.toMatch(/\.(line|addonLine)\b/);
+    expect(producerSource).not.toContain("workout-audit-cli");
+    expect(producerSource).not.toContain("buildPreSessionReadinessSummary");
+    expect(producerSource).not.toContain("runWorkoutAuditGeneration");
+    expect(producerSource).not.toContain("buildWorkoutAuditContext");
+    expect(producerSource).not.toContain("generateSessionFromIntent");
+    expect(producerSource).not.toContain("loadProjectedWeekVolumeReport");
   });
 
   it("returns recent activity without loading program seams when handoff is pending", async () => {

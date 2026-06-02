@@ -4,6 +4,7 @@ import {
   type PreSessionReadinessCoachingRecommendation,
   type PreSessionReadinessConsistencyCheck,
   type PreSessionReadinessContract,
+  type PreSessionReadinessPrescriptionConfidenceWatchRow,
 } from "./pre-session-readiness-contract";
 import type {
   PreSessionReadinessContractBuildInput,
@@ -792,28 +793,87 @@ function buildAvoidList(input: {
 
 function buildPrescriptionConfidenceWatches(
   generated: SessionAuditSnapshot["generated"] | undefined
-): string[] {
-  return (generated?.exercises ?? []).flatMap((exercise) => {
+): PreSessionReadinessPrescriptionConfidenceWatchRow[] {
+  return (generated?.exercises ?? []).flatMap<PreSessionReadinessPrescriptionConfidenceWatchRow>((exercise) => {
     const trace = generated?.traces.progression[exercise.exerciseId];
     if (!trace) {
       return [
-        `- ${exercise.exerciseName}: progression trace unavailable; verify load by feel and keep prescribed RPE cap`,
+        {
+          exerciseLabel: exercise.exerciseName,
+          watchType: "prescription_confidence",
+          reasonCode: "progression_trace_unavailable",
+          displayActionCode: "use_target_as_starting_point",
+          severity: "warning",
+          source: "generated_progression_trace",
+        },
       ];
     }
     const confidence = trace.confidence.combinedScale;
-    const reasons = trace.confidence.reasons.slice(0, 2).join(",") || "standard";
+    const reasons = trace.confidence.reasons.slice(0, 2);
+    const hasEstimateOrLowSignal = reasons.some(
+      (reason) =>
+        reason.toLowerCase().includes("estimate") ||
+        reason.toLowerCase().includes("low")
+    );
+    const hasLoadCalibrationSignal = reasons.some((reason) => {
+      const normalized = reason.toLowerCase();
+      return (
+        normalized.includes("calibration") ||
+        normalized.includes("equipment") ||
+        normalized.includes("machine") ||
+        normalized.includes("cable")
+      );
+    });
     if (
       confidence < 0.75 ||
       trace.outcome.action === "decrease" ||
-      reasons.includes("estimate") ||
-      reasons.includes("low")
+      hasEstimateOrLowSignal ||
+      hasLoadCalibrationSignal
     ) {
+      const reasonCode =
+        trace.outcome.action === "decrease"
+          ? "decrease_recommended"
+          : hasLoadCalibrationSignal
+            ? "load_calibration"
+            : hasEstimateOrLowSignal
+              ? "estimate_or_low_signal"
+              : "low_confidence";
+      const displayActionCode =
+        hasLoadCalibrationSignal
+          ? "machine_or_cable_target_may_need_calibration"
+          : trace.outcome.action === "hold"
+            ? "hold_target_load"
+            : "calibrate_from_first_working_set";
+
       return [
-        `- ${exercise.exerciseName}: action=${trace.outcome.action} confidence=${formatAuditDecimal(confidence)} reasons=${reasons}`,
+        {
+          exerciseLabel: exercise.exerciseName,
+          watchType: "prescription_confidence",
+          reasonCode,
+          displayActionCode,
+          severity: confidence < 0.75 ? "warning" : "info",
+          confidence,
+          source: "generated_progression_trace",
+        },
       ];
     }
     return [];
   });
+}
+
+function formatPrescriptionConfidenceWatchMessage(
+  row: PreSessionReadinessPrescriptionConfidenceWatchRow
+): string {
+  switch (row.displayActionCode) {
+    case "use_target_as_starting_point":
+      return `- ${row.exerciseLabel}: use the target as a starting point; adjust by feel.`;
+    case "hold_target_load":
+      return `- ${row.exerciseLabel}: hold the target load unless the first set feels clearly too easy or too hard.`;
+    case "machine_or_cable_target_may_need_calibration":
+      return `- ${row.exerciseLabel}: machine/cable target may need calibration.`;
+    default:
+      return `- ${row.exerciseLabel}: use the written target as guidance and calibrate from the first working set.`;
+  }
 }
 
 function buildStartability(input: {
@@ -1123,6 +1183,8 @@ export function buildPreSessionReadinessContract(
     producer: "workout_audit" as const,
     provenance: "operator_audit" as const,
   };
+  const prescriptionConfidenceWatchMessages =
+    prescriptionConfidenceWatches.map(formatPrescriptionConfidenceWatchMessage);
   const boundaryNotes = input.boundaryNotes ?? [
     "contract is audit/readout only",
     "no workout/session/log/seed/progression mutation",
@@ -1183,8 +1245,8 @@ export function buildPreSessionReadinessContract(
             .filter((recommendation) => recommendation.kind === "floor_buffer")
             .map((recommendation) => recommendation.line),
       prescriptionConfidenceWatches:
-        prescriptionConfidenceWatches.length > 0
-          ? prescriptionConfidenceWatches
+        prescriptionConfidenceWatchMessages.length > 0
+          ? prescriptionConfidenceWatchMessages
           : ["- none"],
       fatigueCautions:
         fatigueCautions.length > 0 ? fatigueCautions.slice(0, 6) : ["- none"],

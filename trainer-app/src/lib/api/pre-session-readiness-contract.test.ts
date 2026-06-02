@@ -143,6 +143,31 @@ describe("pre-session readiness contract", () => {
     ).toBe(true);
   });
 
+  it("accepts structured and legacy prescription calibration watch rows", () => {
+    const contract = makeContract({
+      mode: "pre-session-readiness",
+      ownerSeam: "api/pre-session-readiness-contract",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+    });
+    contract.calibrationWatches.prescriptionConfidence = [
+      {
+        exerciseLabel: "Bench Press",
+        watchType: "prescription_confidence",
+        reasonCode: "estimate_or_low_signal",
+        displayActionCode: "hold_target_load",
+        severity: "warning",
+        confidence: 0.6,
+        source: "generated_progression_trace",
+      },
+      "Incline Press: confidence=0.6",
+    ];
+
+    expect(
+      isPreSessionReadinessContract(contract, { userId: "user-1" })
+    ).toBe(true);
+  });
+
   it("keeps the app-owned builder free of CLI, artifact, and broad audit runner paths", () => {
     const source = readFileSync(
       "src/lib/api/pre-session-readiness-contract-builder.ts",

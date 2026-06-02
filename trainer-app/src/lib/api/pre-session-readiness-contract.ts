@@ -45,6 +45,29 @@ export type PreSessionReadinessCoachingRecommendation = {
   suppressionReasons: string[];
 };
 
+export type PreSessionReadinessPrescriptionConfidenceWatchRow = {
+  exerciseLabel: string;
+  watchType: "prescription_confidence";
+  reasonCode:
+    | "progression_trace_unavailable"
+    | "low_confidence"
+    | "decrease_recommended"
+    | "estimate_or_low_signal"
+    | "load_calibration";
+  displayActionCode:
+    | "use_target_as_starting_point"
+    | "hold_target_load"
+    | "calibrate_from_first_working_set"
+    | "machine_or_cable_target_may_need_calibration";
+  severity: "info" | "warning";
+  confidence?: number;
+  source: "generated_progression_trace";
+};
+
+export type PreSessionReadinessPrescriptionConfidenceWatch =
+  | string
+  | PreSessionReadinessPrescriptionConfidenceWatchRow;
+
 export type PreSessionReadinessContract = {
   contractVersion: 1;
   scope: {
@@ -146,7 +169,7 @@ export type PreSessionReadinessContract = {
     };
   };
   calibrationWatches: {
-    prescriptionConfidence: string[];
+    prescriptionConfidence: PreSessionReadinessPrescriptionConfidenceWatch[];
     recoveryCaveats: string[];
     fatigue: string[];
   };
@@ -182,6 +205,10 @@ function isBoolean(value: unknown): value is boolean {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isOptionalFiniteNumber(value: unknown): boolean {
+  return value == null || (typeof value === "number" && Number.isFinite(value));
 }
 
 function isOwnerSeam(value: unknown): value is PreSessionReadinessContractOwnerSeam {
@@ -380,10 +407,39 @@ function hasValidSessionLocalCoaching(sessionLocalCoaching: unknown): boolean {
   );
 }
 
+function hasValidPrescriptionConfidenceWatch(
+  value: unknown
+): value is PreSessionReadinessPrescriptionConfidenceWatch {
+  if (typeof value === "string") {
+    return true;
+  }
+
+  return (
+    isRecord(value) &&
+    typeof value.exerciseLabel === "string" &&
+    value.watchType === "prescription_confidence" &&
+    (value.reasonCode === "progression_trace_unavailable" ||
+      value.reasonCode === "low_confidence" ||
+      value.reasonCode === "decrease_recommended" ||
+      value.reasonCode === "estimate_or_low_signal" ||
+      value.reasonCode === "load_calibration") &&
+    (value.displayActionCode === "use_target_as_starting_point" ||
+      value.displayActionCode === "hold_target_load" ||
+      value.displayActionCode === "calibrate_from_first_working_set" ||
+      value.displayActionCode === "machine_or_cable_target_may_need_calibration") &&
+    (value.severity === "info" || value.severity === "warning") &&
+    isOptionalFiniteNumber(value.confidence) &&
+    value.source === "generated_progression_trace"
+  );
+}
+
 function hasValidCalibrationWatches(calibrationWatches: unknown): boolean {
   return (
     isRecord(calibrationWatches) &&
-    isStringArray(calibrationWatches.prescriptionConfidence) &&
+    Array.isArray(calibrationWatches.prescriptionConfidence) &&
+    calibrationWatches.prescriptionConfidence.every(
+      hasValidPrescriptionConfidenceWatch
+    ) &&
     isStringArray(calibrationWatches.recoveryCaveats) &&
     isStringArray(calibrationWatches.fatigue)
   );

@@ -293,13 +293,34 @@ describe("pre-session readiness contract consumers", () => {
   it("exposes calibration watches from contract rows", () => {
     const contract = baseContract({
       calibrationWatches: {
-        prescriptionConfidence: ["Incline Press: confidence=0.6"],
+        prescriptionConfidence: [
+          {
+            exerciseLabel: "Bench Press",
+            watchType: "prescription_confidence",
+            reasonCode: "estimate_or_low_signal",
+            displayActionCode: "hold_target_load",
+            severity: "warning",
+            confidence: 0.6,
+            source: "generated_progression_trace",
+          },
+          "Incline Press: confidence=0.6",
+        ],
         recoveryCaveats: ["Chest:local_soreness"],
         fatigue: ["- Glutes: meaningful fatigue watch"],
       },
     });
 
     expect(getCalibrationWatchRows(contract)).toEqual([
+      {
+        kind: "prescription_confidence",
+        message: "Bench Press",
+        exerciseLabel: "Bench Press",
+        reasonCode: "estimate_or_low_signal",
+        displayActionCode: "hold_target_load",
+        severity: "warning",
+        confidence: 0.6,
+        source: "generated_progression_trace",
+      },
       {
         kind: "prescription_confidence",
         message: "Incline Press: confidence=0.6",
@@ -313,6 +334,131 @@ describe("pre-session readiness contract consumers", () => {
         message: "- Glutes: meaningful fatigue watch",
       },
     ]);
+  });
+
+  it("builder emits structured calibration rows instead of debug strings", () => {
+    const contract = buildPreSessionReadinessContract({
+      userId: "user-1",
+      ownerEmail: "owner@test.local",
+      evidence: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByProduction: false,
+        wouldWriteTransaction: false,
+        activeMesocycle: {
+          mesocycleId: "meso-1",
+          state: "ACTIVE_ACCUMULATION",
+          completedAccumulationSessions: 6,
+          deloadSessionsCompleted: 0,
+          deloadSessionsExpected: 4,
+          deloadSessionPosition: null,
+          currentWeek: 2,
+          currentSession: 2,
+          requestedMesocycleId: "meso-1",
+          mesocycleIdMatchesRequest: true,
+        },
+      },
+      nextSession: {
+        intent: "upper",
+        slotId: "upper_a",
+        slotSequenceIndex: 0,
+        slotSequenceLength: 4,
+        slotSource: "mesocycle_slot_sequence",
+        existingWorkoutId: null,
+        isExisting: false,
+        source: "rotation",
+        weekInMeso: 2,
+        sessionInWeek: 2,
+        derivationTrace: [],
+        selectedIncompleteStatus: null,
+      } as never,
+      sessionSnapshot: {
+        version: 1,
+        generated: {
+          exercises: [
+            {
+              exerciseId: "bench",
+              exerciseName: "Bench Press",
+            },
+            {
+              exerciseId: "incline",
+              exerciseName: "Incline Press",
+            },
+          ],
+          traces: {
+            progression: {
+              bench: {
+                confidence: {
+                  combinedScale: 0.65,
+                  reasons: ["low_history"],
+                },
+                outcome: {
+                  action: "hold",
+                },
+              },
+            },
+          },
+        },
+      } as never,
+      generationPath: {
+        requestedMode: "pre-session-readiness",
+        executionMode: "standard_generation",
+        generator: "generateSessionFromIntent",
+        reason: "standard_future_week_or_preview",
+      },
+      projectedWeek: {
+        version: 1,
+        currentWeek: {
+          mesocycleId: "meso-1",
+          week: 2,
+          phase: "accumulation",
+          blockType: "accumulation",
+        },
+        projectionNotes: [],
+        completedVolumeByMuscle: {},
+        projectedSessions: [],
+        fullWeekByMuscle: [],
+        currentWeekAudit: {
+          belowMEV: [],
+          overMAV: [],
+          underTargetClusters: [],
+          belowPreferred: [],
+          fatigueRisks: [],
+        },
+        runtimeDoseAdjustmentDiagnostics: [],
+      } as never,
+    });
+
+    expect(contract.calibrationWatches.prescriptionConfidence).toEqual([
+      {
+        exerciseLabel: "Bench Press",
+        watchType: "prescription_confidence",
+        reasonCode: "estimate_or_low_signal",
+        displayActionCode: "hold_target_load",
+        severity: "warning",
+        confidence: 0.65,
+        source: "generated_progression_trace",
+      },
+      {
+        exerciseLabel: "Incline Press",
+        watchType: "prescription_confidence",
+        reasonCode: "progression_trace_unavailable",
+        displayActionCode: "use_target_as_starting_point",
+        severity: "warning",
+        source: "generated_progression_trace",
+      },
+    ]);
+    expect(JSON.stringify(contract.calibrationWatches)).not.toContain(
+      "progression trace unavailable"
+    );
+    expect(JSON.stringify(contract.calibrationWatches)).not.toContain("action=");
+    expect(JSON.stringify(contract.calibrationWatches)).not.toContain("confidence=");
+    expect(JSON.stringify(contract.calibrationWatches)).not.toContain("reasons=");
+    expect(JSON.stringify(contract.sessionLocalCoaching)).not.toContain("action=");
+    expect(JSON.stringify(contract.sessionLocalCoaching)).not.toContain(
+      "confidence="
+    );
+    expect(JSON.stringify(contract.sessionLocalCoaching)).not.toContain("reasons=");
   });
 
   it("surfaces consistency warnings without mutating or recalculating readiness", () => {

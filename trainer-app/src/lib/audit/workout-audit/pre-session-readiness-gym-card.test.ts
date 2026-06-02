@@ -282,7 +282,73 @@ describe("pre-session readiness gym-card adapter", () => {
     ]);
   });
 
-  it("translates calibration watches into display-safe coaching notes", () => {
+  it("maps structured calibration watches into display-safe coaching notes", () => {
+    const dto = buildPreSessionReadinessGymCardDto(
+      baseContract({
+        calibrationWatches: {
+          prescriptionConfidence: [
+            {
+              exerciseLabel: "Incline Press",
+              watchType: "prescription_confidence",
+              reasonCode: "progression_trace_unavailable",
+              displayActionCode: "use_target_as_starting_point",
+              severity: "warning",
+              source: "generated_progression_trace",
+            },
+            {
+              exerciseLabel: "Bench Press",
+              watchType: "prescription_confidence",
+              reasonCode: "estimate_or_low_signal",
+              displayActionCode: "hold_target_load",
+              severity: "info",
+              confidence: 0.8,
+              source: "generated_progression_trace",
+            },
+            {
+              exerciseLabel: "Cable Row",
+              watchType: "prescription_confidence",
+              reasonCode: "load_calibration",
+              displayActionCode: "machine_or_cable_target_may_need_calibration",
+              severity: "warning",
+              confidence: 0.7,
+              source: "generated_progression_trace",
+            },
+          ],
+          recoveryCaveats: [],
+          fatigue: [],
+        },
+      })
+    );
+
+    expect(dto.action).toBe("watch");
+    expect(dto.calibrationNotes).toEqual([
+      expect.objectContaining({
+        kind: "prescription_confidence",
+        exerciseLabel: "Incline Press",
+        reasonCode: "progression_trace_unavailable",
+        displayActionCode: "use_target_as_starting_point",
+        message: "Incline Press: Use the target as a starting point; adjust by feel.",
+      }),
+      expect.objectContaining({
+        kind: "prescription_confidence",
+        exerciseLabel: "Bench Press",
+        confidence: 0.8,
+        message:
+          "Bench Press: Hold the target load unless the first set feels clearly too easy or too hard.",
+      }),
+      expect.objectContaining({
+        kind: "prescription_confidence",
+        exerciseLabel: "Cable Row",
+        message: "Cable Row: Machine/cable target may need calibration.",
+      }),
+    ]);
+    expect(JSON.stringify(dto)).not.toContain("progression trace unavailable");
+    expect(JSON.stringify(dto)).not.toContain("action=");
+    expect(JSON.stringify(dto)).not.toContain("confidence=");
+    expect(JSON.stringify(dto)).not.toContain("reasons=");
+  });
+
+  it("keeps legacy debug-shaped calibration watches display-safe", () => {
     const dto = buildPreSessionReadinessGymCardDto(
       baseContract({
         calibrationWatches: {

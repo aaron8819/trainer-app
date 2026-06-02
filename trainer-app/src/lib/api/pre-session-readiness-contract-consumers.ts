@@ -2,6 +2,8 @@ import type {
   PreSessionReadinessCoachingRecommendation,
   PreSessionReadinessConsistencyCheck,
   PreSessionReadinessContract,
+  PreSessionReadinessPrescriptionConfidenceWatch,
+  PreSessionReadinessPrescriptionConfidenceWatchRow,
 } from "./pre-session-readiness-contract";
 
 export type ReadinessStartAction = {
@@ -31,6 +33,12 @@ export type ReadinessSuppressedTarget = {
 export type ReadinessCalibrationWatchRow = {
   kind: "prescription_confidence" | "recovery_caveat" | "fatigue";
   message: string;
+  exerciseLabel?: string;
+  reasonCode?: PreSessionReadinessPrescriptionConfidenceWatchRow["reasonCode"];
+  displayActionCode?: PreSessionReadinessPrescriptionConfidenceWatchRow["displayActionCode"];
+  severity?: PreSessionReadinessPrescriptionConfidenceWatchRow["severity"];
+  confidence?: number;
+  source?: PreSessionReadinessPrescriptionConfidenceWatchRow["source"];
 };
 
 export type ReadinessContractConsistencyAssertion = {
@@ -147,11 +155,12 @@ export function getSuppressedMusclesOrTargets(
 export function getCalibrationWatchRows(
   contract: PreSessionReadinessContract
 ): ReadinessCalibrationWatchRow[] {
+  const prescriptionConfidence = contract.calibrationWatches.prescriptionConfidence.map(
+    (watch) => toPrescriptionConfidenceWatchRow(watch)
+  );
+
   return [
-    ...contract.calibrationWatches.prescriptionConfidence.map((message) => ({
-      kind: "prescription_confidence" as const,
-      message,
-    })),
+    ...prescriptionConfidence,
     ...contract.calibrationWatches.recoveryCaveats.map((message) => ({
       kind: "recovery_caveat" as const,
       message,
@@ -161,6 +170,28 @@ export function getCalibrationWatchRows(
       message,
     })),
   ];
+}
+
+function toPrescriptionConfidenceWatchRow(
+  watch: PreSessionReadinessPrescriptionConfidenceWatch
+): ReadinessCalibrationWatchRow {
+  if (typeof watch === "string") {
+    return {
+      kind: "prescription_confidence",
+      message: watch,
+    };
+  }
+
+  return {
+    kind: "prescription_confidence",
+    message: watch.exerciseLabel,
+    exerciseLabel: watch.exerciseLabel,
+    reasonCode: watch.reasonCode,
+    displayActionCode: watch.displayActionCode,
+    severity: watch.severity,
+    ...(watch.confidence == null ? {} : { confidence: watch.confidence }),
+    source: watch.source,
+  };
 }
 
 export function assertReadinessContractConsistency(

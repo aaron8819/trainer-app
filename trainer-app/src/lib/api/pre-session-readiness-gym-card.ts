@@ -201,6 +201,23 @@ function formatWarnings(input: {
 function toDisplaySafeWatchRow(
   row: ReadinessCalibrationWatchRow
 ): ReadinessCalibrationWatchRow {
+  if (row.displayActionCode) {
+    const prefix = row.exerciseLabel ? `${row.exerciseLabel}: ` : "";
+    const message =
+      row.displayActionCode === "use_target_as_starting_point"
+        ? `${prefix}Use the target as a starting point; adjust by feel.`
+        : row.displayActionCode === "hold_target_load"
+          ? `${prefix}Hold the target load unless the first set feels clearly too easy or too hard.`
+          : row.displayActionCode === "machine_or_cable_target_may_need_calibration"
+            ? `${prefix}Machine/cable target may need calibration.`
+            : `${prefix}Use the written target as guidance and calibrate from the first working set.`;
+
+    return {
+      ...row,
+      message: message.length > 140 ? `${message.slice(0, 137)}...` : message,
+    };
+  }
+
   const rawMessage = row.message.replace(/^\s*-\s*/, "").trim();
   const subject = rawMessage.includes(":")
     ? rawMessage.split(":")[0]?.trim()

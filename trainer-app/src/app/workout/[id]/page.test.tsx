@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -11,6 +12,7 @@ vi.mock("next/link", () => ({
 
 const mocks = vi.hoisted(() => ({
   resolveOwner: vi.fn(),
+  loadCompletedWorkoutReviewReadModel: vi.fn(),
   generateWorkoutExplanation: vi.fn(),
   workoutFindFirst: vi.fn(),
   injuryFindMany: vi.fn(),
@@ -18,6 +20,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/api/workout-context", () => ({
   resolveOwner: (...args: unknown[]) => mocks.resolveOwner(...args),
+}));
+
+vi.mock("@/lib/api/completed-workout-review", () => ({
+  loadCompletedWorkoutReviewReadModel: (...args: unknown[]) =>
+    mocks.loadCompletedWorkoutReviewReadModel(...args),
 }));
 
 vi.mock("@/lib/api/explainability", () => ({
@@ -38,6 +45,9 @@ vi.mock("@/lib/db/prisma", () => ({
 describe("WorkoutDetailPage", { timeout: 15000 }, () => {
   beforeEach(() => {
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.loadCompletedWorkoutReviewReadModel.mockResolvedValue({
+      postSessionReview: null,
+    });
     mocks.generateWorkoutExplanation.mockResolvedValue({ error: "unavailable" });
     mocks.injuryFindMany.mockResolvedValue([]);
   });
@@ -127,6 +137,26 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
   });
 
   it("renders the post-workout insights hierarchy for performed workouts", async () => {
+    mocks.loadCompletedWorkoutReviewReadModel.mockResolvedValue({
+      postSessionReview: {
+        status: "reviewed",
+        headline: "Post-session review ready",
+        summaryBullets: ["Completed planned work", "No seed or plan changes made"],
+        completion: null,
+        exerciseChanges: [],
+        loadCalibration: [],
+        nextExposureNotes: [],
+        weeklyImpact: [],
+        learningSignals: [],
+        warnings: [],
+        source: {
+          ownerSeam: "api/post-session-review-display",
+          readOnly: true,
+          evidenceOnly: true,
+          noMutationNote: "No seed or plan changes made",
+        },
+      },
+    });
     mocks.generateWorkoutExplanation.mockResolvedValue({
       confidence: { level: "high", summary: "ok", missingSignals: [] },
       sessionContext: {
@@ -253,6 +283,37 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
     expect(screen.getByText(/Next exposure: hold load\./)).toBeInTheDocument();
     expect(screen.getAllByText("Program impact")).toHaveLength(1);
     expect(screen.getByText(/Actual: 8 reps \| 40 lbs \| RPE 8 OK/)).toHaveClass("text-emerald-700");
+    expect(screen.getByText("Post-session review ready")).toBeInTheDocument();
+    expect(screen.getByText("Completed planned work")).toBeInTheDocument();
+    expect(screen.getAllByText(/No seed or plan changes made/).length).toBeGreaterThan(0);
+    expect(mocks.loadCompletedWorkoutReviewReadModel).toHaveBeenCalledWith(
+      "user-1",
+      "workout-1"
+    );
+  });
+
+  it("does not render the post-session review card when the read model has no review", async () => {
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      userId: "user-1",
+      status: "COMPLETED",
+      estimatedMinutes: 55,
+      selectionMetadata: null,
+      sessionIntent: "PULL",
+      exercises: [],
+    });
+
+    const { default: WorkoutDetailPage } = await import("./page");
+    const ui = await WorkoutDetailPage({ params: Promise.resolve({ id: "workout-1" }) });
+
+    render(ui);
+
+    expect(screen.queryByLabelText("Post-session review")).not.toBeInTheDocument();
+    expect(screen.getByText("Session Review")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Audit" })).toHaveAttribute(
+      "href",
+      "/workout/workout-1/audit"
+    );
   });
 
   it("labels runtime-added sets explicitly on workout detail surfaces", async () => {
@@ -589,5 +650,20 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
       )
     ).toBeInTheDocument();
     expect(screen.queryByText("Added exercise")).not.toBeInTheDocument();
+  });
+
+  it("keeps the workout detail page out of audit, contract, producer, and immediate-review paths", () => {
+    const source = readFileSync("src/app/workout/[id]/page.tsx", "utf8");
+
+    expect(source).toContain("@/lib/api/completed-workout-review");
+    expect(source).toContain("@/components/post-workout/PostSessionReviewCard");
+    expect(source).not.toContain("@/lib/audit/workout-audit");
+    expect(source).not.toContain("workout-audit-cli");
+    expect(source).not.toContain("scripts/workout-audit");
+    expect(source).not.toContain("artifacts/audits");
+    expect(source).not.toContain("post-session-review-contract");
+    expect(source).not.toContain("post-session-review-evidence");
+    expect(source).not.toContain("post-session-review-producer");
+    expect(source).not.toContain("@/components/log-workout/CompletedWorkoutReview");
   });
 });

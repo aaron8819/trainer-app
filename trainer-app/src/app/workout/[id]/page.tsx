@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { loadCompletedWorkoutReviewReadModel } from "@/lib/api/completed-workout-review";
 import { generateWorkoutExplanation } from "@/lib/api/explainability";
 import { resolveOwner } from "@/lib/api/workout-context";
+import { PostSessionReviewCard } from "@/components/post-workout/PostSessionReviewCard";
 import { PostWorkoutInsights } from "@/components/post-workout/PostWorkoutInsights";
 import { SessionContextCard } from "@/components/explainability";
 import { prisma } from "@/lib/db/prisma";
@@ -138,10 +140,15 @@ export default async function WorkoutDetailPage({
     );
   }
 
-  const [injuries, explanationResult] = await Promise.all([
+  const hasPerformedStatus = isPerformedWorkoutStatus(workout.status);
+  const [injuries, explanationResult, completedWorkoutReview] = await Promise.all([
     prisma.injury.findMany({ where: { userId: workout.userId, isActive: true } }),
     generateWorkoutExplanation(workout.id),
+    hasPerformedStatus
+      ? loadCompletedWorkoutReviewReadModel(owner.id, workout.id)
+      : Promise.resolve({ postSessionReview: null }),
   ]);
+  const postSessionReview = completedWorkoutReview.postSessionReview;
 
   const explanation = "error" in explanationResult ? null : explanationResult;
   const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
@@ -157,7 +164,6 @@ export default async function WorkoutDetailPage({
   const sessionTechnicalLabel = formatSessionSlotTechnicalLabel(
     sessionDecisionReceipt?.sessionSlot?.slotId ?? null
   );
-  const hasPerformedStatus = isPerformedWorkoutStatus(workout.status);
   const workflow = getWorkoutWorkflowState(workout.status, {
     mesocycleId: workout.mesocycleId,
     mesocycleState: workout.mesocycle?.state ?? null,
@@ -257,6 +263,10 @@ export default async function WorkoutDetailPage({
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
               {workflow.resumeBlockedReason}
             </div>
+          ) : null}
+
+          {postSessionReview ? (
+            <PostSessionReviewCard review={postSessionReview} />
           ) : null}
 
           {hasPerformedStatus && executionSummary.duplicateAddedExercises.length > 0 ? (

@@ -57,7 +57,7 @@ export type PreSessionReadinessSnapshotCandidate = Pick<
   | "invalidatedReason"
 >;
 
-type CurrentSnapshotIdentity = SnapshotIdentity & {
+export type PreSessionReadinessCurrentSnapshotIdentity = SnapshotIdentity & {
   slotPlanSeedHash: string | null;
   slotSequenceHash: string | null;
 };
@@ -168,9 +168,9 @@ function toSnapshotIdentity(
   };
 }
 
-async function loadCurrentSnapshotIdentity(
+export async function loadCurrentPreSessionReadinessSnapshotIdentity(
   userId: string
-): Promise<CurrentSnapshotIdentity | null> {
+): Promise<PreSessionReadinessCurrentSnapshotIdentity | null> {
   const [activeMesocycle, nextWorkoutContext] = await Promise.all([
     prisma.mesocycle.findFirst({
       where: { macroCycle: { userId }, isActive: true },
@@ -239,7 +239,7 @@ async function loadCurrentSnapshotIdentity(
 
 function identityMatchesCurrent(input: {
   snapshot: PreSessionReadinessSnapshotCandidate;
-  current: CurrentSnapshotIdentity;
+  current: PreSessionReadinessCurrentSnapshotIdentity;
 }): boolean {
   const snapshotIdentity = toSnapshotIdentity(input.snapshot);
   return (
@@ -332,7 +332,7 @@ export async function validatePreSessionReadinessSnapshotForHome(input: {
     return null;
   }
 
-  const current = await loadCurrentSnapshotIdentity(input.userId);
+  const current = await loadCurrentPreSessionReadinessSnapshotIdentity(input.userId);
   if (!current || !identityMatchesCurrent({ snapshot, current })) {
     return null;
   }

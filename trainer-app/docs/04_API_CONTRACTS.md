@@ -36,7 +36,7 @@ Sources of truth:
 - Logging support reads: `GET /api/workouts/[id]/logging-weekly-volume-check` (`src/app/api/workouts/[id]/logging-weekly-volume-check/route.ts`)
 - Mesocycles: `GET /api/mesocycles` (`src/app/api/mesocycles/route.ts`) plus handoff endpoints `POST /api/mesocycles/[id]/finish-deload`, `PATCH /api/mesocycles/[id]/draft`, `POST /api/mesocycles/[id]/refresh-next-seed-draft`, and `POST /api/mesocycles/[id]/accept-next-cycle`
 - Week-close workflow: `POST /api/mesocycles/week-close/[id]/dismiss` and `POST|GET /api/mesocycles/week-close/[id]/closeout`
-- Program/periodization/readiness: `src/app/api/program/route.ts`, `src/app/api/periodization/macro/route.ts`, `src/app/api/readiness/submit/route.ts`, `src/app/api/stalls/route.ts`
+- Program/periodization/readiness: `src/app/api/program/route.ts`, `src/app/api/periodization/macro/route.ts`, `src/app/api/readiness/submit/route.ts`, `src/app/api/pre-session-readiness/prepare/route.ts`, `src/app/api/stalls/route.ts`
 - Templates: `src/app/api/templates/**`
 - Exercises and preferences: `src/app/api/exercises/**`, `src/app/api/preferences/route.ts`
   - `GET /api/exercises/search?q=<query>&limit=<n>` is the bounded typed-search route for discovery surfaces such as Add Exercise. Ranking is server-owned in `src/lib/api/exercise-library.ts` and may combine name, alias, muscle, muscle-group, and equipment signals; it is intentionally separate from full-library hydration reads.
@@ -59,6 +59,7 @@ Sources of truth:
 - Historical `GET /api/program?week=N` responses still carry those opportunity fields, but the current UI only renders `opportunityState` for the live current week because opportunity currently uses present recency/readiness context rather than a historical as-of timestamp.
 - `ProgramDashboardData.deloadReadiness` saturation logic now keys off weighted `effectiveSets` rather than primary-only direct sets (`src/lib/api/program.ts`, `src/lib/api/weekly-volume.ts`).
 - `GET /api/program` and `PATCH /api/program` now return `409` with `{ error: "Mesocycle handoff pending.", handoff }` while any mesocycle is in `AWAITING_HANDOFF`. Program controls are intentionally blocked until the next cycle is explicitly accepted.
+- `POST /api/pre-session-readiness/prepare` is the explicit app-owned pre-session readiness snapshot producer action. It resolves the owner through `resolveOwner()`, delegates to `preparePreSessionReadinessSnapshot()` in `src/lib/api/pre-session-readiness-producer.ts`, may write only `PreSessionReadinessSnapshot`, and returns `{ ok: true, status: "prepared", snapshotId, invalidatedSnapshotCount, replacementPolicy, preSessionReadinessContract, preSessionReadinessCard }` on success. Blocked/no-op cases return `409` with `{ ok: false, status: "blocked", reason, message }`. The route must not create workouts/logs, call the audit CLI, read audit artifacts, mutate seed/runtime replay, or change Home rendering.
 
 ## Analytics response notes
 - Shared analytics semantics helpers now live in `src/lib/api/analytics-semantics.ts`. That helper is the canonical source for analytics counting vocabulary (`generated`, `performed`, `completed`) and explicit time-window descriptors (`all_time`, `rolling_days`, `rolling_iso_weeks`, `date_range`).

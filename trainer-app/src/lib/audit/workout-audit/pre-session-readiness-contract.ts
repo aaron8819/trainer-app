@@ -1016,6 +1016,9 @@ export function buildPreSessionReadinessContract(input: {
   seedConsistency?: AcceptedMesocycleSeedProvenanceConsistency;
   projectedWeek?: ProjectedWeekVolumeAuditPayload;
   weeklyRetro?: WeeklyRetroAuditPayload;
+  contractSource?: PreSessionReadinessContract["scope"]["source"];
+  auditOnly?: boolean;
+  boundaryNotes?: string[];
 }): PreSessionReadinessContract {
   const active = input.payload.activeMesocycle;
   const isActiveDeload = active.state === "ACTIVE_DELOAD";
@@ -1126,19 +1129,25 @@ export function buildPreSessionReadinessContract(input: {
     : avoid.length > 0
       ? avoid.slice(0, 6).map((item) => `- ${item}`)
       : ["- no extra work beyond session-local readiness judgment"];
+  const contractSource = input.contractSource ?? {
+    producerMode: "audit_readout" as const,
+    producer: "workout_audit" as const,
+    provenance: "operator_audit" as const,
+  };
+  const boundaryNotes = input.boundaryNotes ?? [
+    "contract is audit/readout only",
+    "no workout/session/log/seed/progression mutation",
+    "seed/runtime proof is evidence only",
+  ];
 
   const contractBase = {
     contractVersion: 1 as const,
     scope: {
       mode: "pre-session-readiness" as const,
       ownerSeam: PRE_SESSION_READINESS_CONTRACT_OWNER_SEAM,
-      source: {
-        producerMode: "audit_readout" as const,
-        producer: "workout_audit" as const,
-        provenance: "operator_audit" as const,
-      },
+      source: contractSource,
       readOnly: true as const,
-      auditOnly: true as const,
+      auditOnly: input.auditOnly ?? true,
       affectsScoringOrGeneration: false as const,
       consumedByProduction: false as const,
     },
@@ -1222,11 +1231,7 @@ export function buildPreSessionReadinessContract(input: {
       workoutLogSessionCreated: false as const,
       seedRuntimeChanged: false as const,
       plannerMaterializerChanged: false as const,
-      notes: [
-        "contract is audit/readout only",
-        "no workout/session/log/seed/progression mutation",
-        "seed/runtime proof is evidence only",
-      ],
+      notes: boundaryNotes,
     },
   };
 

@@ -26,7 +26,7 @@ Sources of truth:
 - User context: `User`, `Profile`, `Goals`, `Constraints`, `Injury`, `UserPreference`
 - Workout execution: `Workout`, `WorkoutExercise`, `WorkoutSet`, `SetLog`, `FilteredExercise`
 - Catalog/template: `Exercise`, `Muscle`, `Equipment`, `WorkoutTemplate`, `WorkoutTemplateExercise`
-- Adaptive systems: `ReadinessSignal`, `ExerciseExposure`, `MacroCycle`, `Mesocycle`, `TrainingBlock`, `MesocycleExerciseRole`
+- Adaptive systems: `ReadinessSignal`, `PreSessionReadinessSnapshot`, `ExerciseExposure`, `MacroCycle`, `Mesocycle`, `TrainingBlock`, `MesocycleExerciseRole`
 
 ## Runtime-critical enums
 - `WorkoutStatus`: `PLANNED`, `IN_PROGRESS`, `PARTIAL`, `COMPLETED`, `SKIPPED`
@@ -47,6 +47,7 @@ Canonical machine-readable values in `docs/contracts/runtime-contracts.json` cur
 - Exercise ordering is deterministic per workout via unique index `WorkoutExercise(workoutId, orderIndex)` in `prisma/schema.prisma` (materialized in baseline migration `prisma/migrations/20260222_baseline/migration.sql`).
 - Workouts tied to a non-active mesocycle remain readable, but save/log/resume is fenced at the route/workflow layer when the parent mesocycle is `AWAITING_HANDOFF` or `COMPLETED` (`src/app/api/workouts/save/lifecycle-contract.ts`, `src/app/api/logs/set/route.ts`, `src/lib/workout-workflow.ts`).
 - `SessionCheckIn` remains in `prisma/schema.prisma` as historical/compatibility persistence only. Current readiness writes and reads use `ReadinessSignal` through `src/app/api/readiness/submit/route.ts` and `src/lib/api/readiness.ts`.
+- `PreSessionReadinessSnapshot` stores the latest app-owned typed pre-session readiness contract for Home/read-model consumption. `src/lib/api/pre-session-readiness-snapshot.ts` validates identity and freshness against the active mesocycle plus `loadNextWorkoutContext()`, rejects expired/invalidated rows, validates `contractJson` through `src/lib/api/pre-session-readiness-contract.ts`, and does not create workouts, logs, audit artifacts, generation output, or runtime seed changes.
 
 ## Mesocycle lifecycle fields
 - `Mesocycle.state` (`MesocycleState`)

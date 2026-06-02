@@ -2,11 +2,19 @@ import {
   isPreSessionReadinessContract,
   type PreSessionReadinessContract,
 } from "./pre-session-readiness-contract";
+import {
+  loadLatestPreSessionReadinessSnapshotCandidate,
+  validatePreSessionReadinessSnapshotForHome,
+} from "./pre-session-readiness-snapshot";
 
 export type HomePreSessionReadinessContractCandidate = {
   contract: unknown;
   stale?: boolean;
-  source?: "typed_read_model" | "audit_artifact" | "in_memory_audit_payload";
+  source?:
+    | "typed_read_model"
+    | "persisted_snapshot"
+    | "audit_artifact"
+    | "in_memory_audit_payload";
 };
 
 export function resolveHomePreSessionReadinessContract(input: {
@@ -27,6 +35,11 @@ export function resolveHomePreSessionReadinessContract(input: {
 export async function loadLatestHomePreSessionReadinessContractCandidate(
   userId: string
 ): Promise<HomePreSessionReadinessContractCandidate | null> {
-  void userId;
-  return null;
+  const snapshot = await loadLatestPreSessionReadinessSnapshotCandidate(userId);
+  const contract = await validatePreSessionReadinessSnapshotForHome({
+    userId,
+    snapshot,
+  });
+
+  return contract ? { contract, source: "persisted_snapshot" } : null;
 }

@@ -239,6 +239,7 @@ model User {
   exerciseExposures ExerciseExposure[]
   readinessSignals  ReadinessSignal[]
   integrations      UserIntegration[]
+  preSessionReadinessSnapshots PreSessionReadinessSnapshot[]
 }
 
 model UserPreference {
@@ -430,6 +431,7 @@ model Workout {
   exercises         WorkoutExercise[]
   sessionCheckIns   SessionCheckIn[]
   filteredExercises FilteredExercise[]
+  preSessionReadinessSnapshots PreSessionReadinessSnapshot[]
 
   @@index([userId, scheduledDate])
   @@index([trainingBlockId])
@@ -640,6 +642,7 @@ model Mesocycle {
   workouts      Workout[]
   exerciseRoles MesocycleExerciseRole[]
   weekCloses    MesocycleWeekClose[]
+  preSessionReadinessSnapshots PreSessionReadinessSnapshot[]
 
   @@unique([macroCycleId, mesoNumber])
   @@index([macroCycleId])
@@ -666,6 +669,36 @@ model MesocycleWeekClose {
 
   @@unique([mesocycleId, targetWeek])
   @@index([mesocycleId, status])
+}
+
+model PreSessionReadinessSnapshot {
+  id                     String         @id @default(uuid())
+  userId                 String
+  user                   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeMesocycleId      String
+  activeMesocycle        Mesocycle      @relation(fields: [activeMesocycleId], references: [id], onDelete: Cascade)
+  mesocycleState         MesocycleState
+  weekInMeso             Int
+  sessionInWeek          Int
+  slotId                 String
+  slotIntent             String
+  plannedWorkoutId       String?
+  plannedWorkout         Workout?       @relation(fields: [plannedWorkoutId], references: [id], onDelete: SetNull)
+  plannedWorkoutRevision Int?
+  contractVersion        Int
+  contractJson           Json
+  sourceStateHash        String?
+  slotPlanSeedHash       String?
+  slotSequenceHash       String?
+  createdAt              DateTime       @default(now())
+  expiresAt              DateTime?
+  invalidatedAt          DateTime?
+  invalidatedReason      String?
+
+  @@index([userId, createdAt(sort: Desc)], map: "psrs_user_created_idx")
+  @@index([userId, activeMesocycleId, weekInMeso, sessionInWeek, slotId, contractVersion], map: "psrs_identity_lookup_idx")
+  @@index([plannedWorkoutId], map: "psrs_planned_workout_idx")
+  @@index([userId, invalidatedAt, expiresAt, createdAt(sort: Desc)], map: "psrs_freshness_idx")
 }
 
 model TrainingBlock {

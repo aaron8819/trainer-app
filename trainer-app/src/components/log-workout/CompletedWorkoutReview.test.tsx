@@ -1,6 +1,8 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompletedWorkoutReview } from "./CompletedWorkoutReview";
+import type { PostSessionReviewDisplayDto } from "@/lib/api/post-session-review-display";
 
 vi.mock("next/link", () => ({
   default: ({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) => (
@@ -9,6 +11,38 @@ vi.mock("next/link", () => ({
     </a>
   ),
 }));
+
+function makePostSessionReview(
+  overrides: Partial<PostSessionReviewDisplayDto> = {}
+): PostSessionReviewDisplayDto {
+  return {
+    status: "reviewed",
+    headline: "Post-session review ready",
+    summaryBullets: ["Completed planned work", "No seed or plan changes made"],
+    completion: {
+      plannedSetCount: 1,
+      completedSetCount: 1,
+      skippedSetCount: 0,
+      extraSetCount: 0,
+      missingLogSetCount: 0,
+      completionPct: 100,
+      label: "100% of planned/session-local work logged",
+    },
+    exerciseChanges: [],
+    loadCalibration: [],
+    nextExposureNotes: [],
+    weeklyImpact: [],
+    learningSignals: [],
+    warnings: [],
+    source: {
+      ownerSeam: "api/post-session-review-display",
+      readOnly: true,
+      evidenceOnly: true,
+      noMutationNote: "No seed or plan changes made",
+    },
+    ...overrides,
+  };
+}
 
 describe("CompletedWorkoutReview", () => {
   beforeEach(() => {
@@ -406,5 +440,144 @@ describe("CompletedWorkoutReview", () => {
     expect(
       screen.getByText(/Cable Rear Delt Fly was planned but skipped while the same exercise was logged as an added exercise/)
     ).toBeInTheDocument();
+  });
+
+  it("renders the post-session review card after the completion summary when the DTO is available", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.endsWith("/post-session-review")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              postSessionReview: makePostSessionReview({
+                loadCalibration: [
+                  {
+                    exerciseName: "Bench Press",
+                    status: "watch",
+                    headline: "Bench Press target looked too light",
+                    detail: "Performed median load 130 vs target 100.",
+                    nextExposureNote: "Next exposure: raise starting point modestly.",
+                    evidenceOnly: true,
+                  },
+                ],
+              }),
+            }),
+          });
+        }
+        return Promise.resolve({ ok: false, json: async () => ({}) });
+      })
+    );
+
+    const { container } = render(
+      <CompletedWorkoutReview
+        workoutId="workout-1"
+        rpeAdherence={null}
+        sessionIdentityLabel="Upper 1"
+        sessionTechnicalLabel="Slot ID: upper_a"
+        performanceSummary={[
+          {
+            exerciseId: "ex-1",
+            name: "Bench Press",
+            equipment: ["barbell"],
+            isMainLift: true,
+            section: "main",
+            sets: [
+              {
+                setIndex: 1,
+                targetReps: 10,
+                targetLoad: 100,
+                targetRpe: 8,
+                actualReps: 12,
+                actualLoad: 130,
+                actualRpe: 8,
+                wasLogged: true,
+                wasSkipped: false,
+              },
+            ],
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText("Session complete!")).toBeInTheDocument();
+    expect(screen.getByText("Detailed set log")).toBeInTheDocument();
+    expect(screen.getByText("What's next")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByLabelText("Post-session review")).toBeInTheDocument()
+    );
+    expect(screen.getByText("Post-session review ready")).toBeInTheDocument();
+    expect(screen.getByText("Bench Press target looked too light")).toBeInTheDocument();
+    expect(screen.getAllByText("No seed or plan changes made").length).toBeGreaterThan(0);
+
+    const visibleText = container.textContent ?? "";
+    expect(visibleText.indexOf("Session complete!")).toBeLessThan(
+      visibleText.indexOf("Post-session review ready")
+    );
+    expect(visibleText).not.toContain("runtime_edit_reconciliation");
+    expect(visibleText).not.toContain("decisionLog");
+    expect(visibleText).not.toContain("policyMutation");
+    expect(visibleText).not.toContain("seedMutation");
+    expect(visibleText).not.toContain("selectionMetadata");
+    expect(visibleText).not.toContain("automatically changed your plan");
+    expect(visibleText).not.toContain("updated your plan");
+  });
+
+  it("omits the post-session review section when the DTO is unavailable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.endsWith("/post-session-review")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ postSessionReview: null }),
+          });
+        }
+        return Promise.resolve({ ok: false, json: async () => ({}) });
+      })
+    );
+
+    render(
+      <CompletedWorkoutReview
+        workoutId="workout-1"
+        rpeAdherence={null}
+        sessionIdentityLabel="Upper 1"
+        sessionTechnicalLabel="Slot ID: upper_a"
+        performanceSummary={[]}
+      />
+    );
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/workouts/workout-1/post-session-review",
+        { cache: "no-store" }
+      )
+    );
+    expect(screen.queryByLabelText("Post-session review")).not.toBeInTheDocument();
+    expect(screen.getByText("Session complete!")).toBeInTheDocument();
+    expect(screen.getByText("What's next")).toBeInTheDocument();
+  });
+
+  it("keeps the immediate review out of audit, producer, contract, and mutation paths", () => {
+    const source = readFileSync(
+      "src/components/log-workout/CompletedWorkoutReview.tsx",
+      "utf8"
+    );
+
+    expect(source).toContain("PostSessionReviewCard");
+    expect(source).toContain("PostSessionReviewDisplayDto");
+    expect(source).not.toContain("@/lib/audit/workout-audit");
+    expect(source).not.toContain("workout-audit-cli");
+    expect(source).not.toContain("scripts/workout-audit");
+    expect(source).not.toContain("artifacts/audits");
+    expect(source).not.toContain("post-session-review-contract");
+    expect(source).not.toContain("post-session-review-evidence");
+    expect(source).not.toContain("post-session-review-producer");
+    expect(source).not.toContain("@/lib/db/prisma");
+    expect(source).not.toContain("prisma.");
+    expect(source).not.toContain("create(");
+    expect(source).not.toContain("update(");
+    expect(source).not.toContain("upsert(");
+    expect(source).not.toContain("delete(");
   });
 });

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { PostSessionReviewCard } from "@/components/post-workout/PostSessionReviewCard";
 import { PostWorkoutInsights } from "@/components/post-workout/PostWorkoutInsights";
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { isDumbbellEquipment, toDisplayLoad } from "@/lib/ui/load-display";
@@ -10,6 +11,7 @@ import { evaluateTargetReps } from "@/lib/session-semantics/target-evaluation";
 import { hydrateWorkoutExplanation, type WorkoutExplanationResponse } from "@/lib/ui/workout-explanation-response";
 import { buildWorkoutExecutionSummary } from "@/lib/ui/workout-execution-summary";
 import type { WorkoutExplanation } from "@/lib/engine/explainability";
+import type { PostSessionReviewDisplayDto } from "@/lib/api/post-session-review-display";
 import {
   RUNTIME_ADDED_EXERCISE_BADGE_LABEL,
   SWAPPED_EXERCISE_BADGE_LABEL,
@@ -42,6 +44,8 @@ export function CompletedWorkoutReview({
   sessionIdentityLabel,
 }: CompletedWorkoutReviewProps) {
   const [explanation, setExplanation] = useState<WorkoutExplanation | null>(null);
+  const [postSessionReview, setPostSessionReview] =
+    useState<PostSessionReviewDisplayDto | null>(null);
   const [isLoadingExplanation, setIsLoadingExplanation] = useState(true);
   const executionSummary = buildWorkoutExecutionSummary(
     performanceSummary.map((exercise) => ({
@@ -77,6 +81,36 @@ export function CompletedWorkoutReview({
     }
 
     void fetchExplanation();
+
+    return () => {
+      mounted = false;
+    };
+  }, [workoutId]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function fetchPostSessionReview() {
+      try {
+        const response = await fetch(`/api/workouts/${workoutId}/post-session-review`, {
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          throw new Error("Failed to load post-session review");
+        }
+        const data: { postSessionReview?: PostSessionReviewDisplayDto | null } =
+          await response.json();
+        if (mounted) {
+          setPostSessionReview(data.postSessionReview ?? null);
+        }
+      } catch {
+        if (mounted) {
+          setPostSessionReview(null);
+        }
+      }
+    }
+
+    void fetchPostSessionReview();
 
     return () => {
       mounted = false;
@@ -142,6 +176,10 @@ export function CompletedWorkoutReview({
           </div>
         ) : null}
       </section>
+
+      {postSessionReview ? (
+        <PostSessionReviewCard review={postSessionReview} />
+      ) : null}
 
       {isLoadingExplanation ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">

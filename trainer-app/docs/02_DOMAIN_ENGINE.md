@@ -166,6 +166,7 @@ SetLog / logged performance
 - `selectionMetadata.workoutStructureState` is the canonical persisted mutation-reconciliation context. It stores the current saved structure summary plus generated-vs-saved reconciliation, and mutation writers own keeping it current.
 - Original generation receipt truth and current saved-structure truth are intentionally distinct. Mutation reconciliation must not overwrite `sessionDecisionReceipt` to mimic the mutated workout.
 - Post-workout explanation is a read-side interpretation surface. It may explain canonical behavior, but it should not redefine the behavior that generator/progression seams will use for the next exposure.
+- App-owned post-session review contracts live in `src/lib/api/post-session-review-contract.ts`, with app-safe evidence DTOs in `src/lib/api/post-session-review-evidence.ts` and pure construction in `src/lib/api/post-session-review-contract-builder.ts`. This seam is read-only evidence over one completed or partial workout: it can summarize set-log performed facts, current workout structure, runtime edit evidence, next-exposure explainability rows, prescription-calibration watch rows, and safe weekly volume impact rows, but it must not mutate workouts/logs, `selectionMetadata.sessionDecisionReceipt`, accepted seed/runtime replay, planner/materializer behavior, progression scoring, weekly-retro output, or persistence.
 - Canonical next-exposure progression remains server-side in `src/lib/engine/apply-loads.ts` and `src/lib/engine/progression.ts`.
 
 ## Rep target interpretation

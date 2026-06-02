@@ -213,6 +213,7 @@
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.
 
 ## Patterns That Work
+- For Home pre-session readiness UX, keep the page as a manual snapshot workflow: show `Check readiness` only when a next start/resume action exists and no valid `preSessionReadinessCard` is loaded, POST the existing prepare route, `router.refresh()` on success, and render only the DTO fields. Do not auto-generate readiness on Home load or gate Start Workout behind readiness.
 - For pre-session readiness producer ownership, move current-week guidance and narrow prior-week fatigue evidence into `src/lib/api/pre-session-readiness-evidence-builder.ts`; keep full `weeklyRetro` reconciliation/operator payloads in workout-audit and let audit import the app builder/facade instead of the app producer importing audit producers.
 - For pre-session readiness evidence ownership, keep builder input DTOs in `src/lib/api/pre-session-readiness-evidence.ts`; let audit payloads adapt into those DTOs at the audit boundary instead of importing `workout-audit/types` into the app builder.
 - For pre-session readiness snapshot work, keep the shared typed contract, validator, and Home gym-card adapter under `src/lib/api/pre-session-readiness-*`; workout-audit is only an `audit_readout` producer, and Home should not require `auditOnly=true` / `consumedByProduction=false` to trust future app-owned snapshots.

@@ -5,6 +5,7 @@ import RecentWorkouts from "@/components/RecentWorkouts";
 import { ProgramStatusCard } from "@/components/ProgramStatusCard";
 import { CloseoutCard } from "@/components/CloseoutCard";
 import { OptionalWeekCompletion } from "@/components/OptionalWeekCompletion";
+import { HomePreSessionReadinessPanel } from "@/components/HomePreSessionReadinessPanel";
 import { loadHomePageData } from "@/lib/api/home-page";
 import { getWorkoutListPrimaryLabel } from "@/lib/ui/workout-list-items";
 
@@ -152,6 +153,10 @@ export default async function Home() {
   const priorWeekCloseout =
     closeout && homeProgram.closeout.isPriorWeek === true ? closeout : null;
   const activeWeekSessions = decision.activeWeekSessions ?? [];
+  const canPrepareReadiness =
+    primaryAction.state === "active" ||
+    (primaryAction.state === "planned" &&
+      (primaryAction.mode === "existing" || primaryAction.mode === "generate"));
 
   return (
     <main className="min-h-screen bg-white text-slate-900">
@@ -289,6 +294,15 @@ export default async function Home() {
             </div>
           )}
         </section>
+
+        {homePage.preSessionReadinessCard || canPrepareReadiness ? (
+          <section className="mt-8 md:mt-10">
+            <HomePreSessionReadinessPanel
+              card={homePage.preSessionReadinessCard ?? null}
+              canPrepare={canPrepareReadiness}
+            />
+          </section>
+        ) : null}
 
         <section className="mt-8 md:mt-10">
           <div className="rounded-2xl border border-slate-200 p-5">

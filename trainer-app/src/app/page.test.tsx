@@ -71,6 +71,20 @@ vi.mock("@/components/OptionalWeekCompletion", () => ({
   ),
 }));
 
+vi.mock("@/components/HomePreSessionReadinessPanel", () => ({
+  HomePreSessionReadinessPanel: ({
+    card,
+    canPrepare,
+  }: {
+    card?: { sessionLabel?: string } | null;
+    canPrepare: boolean;
+  }) => (
+    <div>
+      {`HomePreSessionReadinessPanel:${canPrepare ? "prepare" : "no-prepare"}:${card?.sessionLabel ?? "no-card"}`}
+    </div>
+  ),
+}));
+
 vi.mock("@/components/CloseoutCard", () => ({
   CloseoutCard: ({ closeout }: { closeout: { title: string; actionLabel: string } }) => (
     <div>{`CloseoutCard:${closeout.title}:${closeout.actionLabel}`}</div>
@@ -268,6 +282,9 @@ describe("Home page", () => {
         "DashboardGenerateSection:lower:lower_a:Start workout:Lower 1:First lower session this week"
       )
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("HomePreSessionReadinessPanel:prepare:no-card")
+    ).toBeInTheDocument();
     expect(screen.getByText("Continuity")).toBeInTheDocument();
     expect(screen.getByText("Active Week")).toBeInTheDocument();
     expect(screen.getByText("Upper 1")).toBeInTheDocument();
@@ -282,6 +299,133 @@ describe("Home page", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("Explore")).not.toBeInTheDocument();
     expect(screen.queryByText("Next Session")).not.toBeInTheDocument();
+  });
+
+  it("renders an existing readiness card without hiding Start workout", async () => {
+    mocks.loadHomePageData.mockResolvedValueOnce({
+      pendingHandoff: null,
+      programData: {
+        activeMeso: {
+          mesoNumber: 2,
+          focus: "Strength-Hypertrophy",
+          durationWeeks: 5,
+          completedSessions: 4,
+          volumeTarget: "moderate",
+          currentBlockType: "accumulation",
+          blocks: [],
+        },
+        currentWeek: 2,
+        viewedWeek: 2,
+        viewedBlockType: "accumulation",
+        sessionsUntilDeload: 6,
+        volumeThisWeek: [],
+        deloadReadiness: null,
+        rirTarget: { min: 2, max: 3 },
+        coachingCue: "Build volume with crisp execution.",
+      },
+      homeProgram: {
+        nextSession: {
+          intent: "lower",
+          slotId: "lower_a",
+          slotSequenceIndex: 1,
+          slotSequenceLength: 4,
+          slotSource: "mesocycle_slot_sequence",
+          weekInMeso: 2,
+          sessionInWeek: 2,
+          workoutId: null,
+          isExisting: false,
+        },
+        activeWeek: 2,
+        completedAdvancingSessionsThisWeek: 1,
+        totalAdvancingSessionsThisWeek: 4,
+        lastSessionSkipped: false,
+        latestIncomplete: null,
+        gapFill: {
+          eligible: false,
+          visible: false,
+          reason: "no_pending_week_close",
+          weekCloseId: null,
+          anchorWeek: null,
+          targetWeek: null,
+          targetPhase: null,
+          resolution: null,
+          workflowState: null,
+          deficitState: null,
+          remainingDeficitSets: 0,
+          targetMuscles: [],
+          deficitSummary: [],
+          alreadyUsedThisWeek: false,
+          suppressedByStartedNextWeek: false,
+          linkedWorkout: null,
+          policy: {
+            requiredSessionsPerWeek: 4,
+            maxOptionalGapFillSessionsPerWeek: 1,
+            maxGeneratedHardSets: 12,
+            maxGeneratedExercises: 4,
+          },
+        },
+        closeout: {
+          visible: false,
+          workoutId: null,
+          weekCloseId: null,
+          status: null,
+          targetWeek: null,
+          isIncomplete: false,
+          isPriorWeek: false,
+          canCreate: false,
+        },
+      },
+      primaryAction: {
+        state: "planned",
+        mode: "generate",
+        label: "Start workout",
+        action: "generate-required-workout",
+        initialIntent: "lower",
+        initialSlotId: "lower_a",
+        reasonLabel: "Next in sequence",
+        reason: "Nothing earlier is still open, so Lower 1 is next this week.",
+      },
+      decision: {
+        nextSessionLabel: "Lower 1",
+        nextSessionDescription: "First lower session this week",
+        nextSessionReasonLabel: "Next in sequence",
+        nextSessionReason: "Nothing earlier is still open, so Lower 1 is next this week.",
+        activeWeekLabel: "Week 2 - 1 of 4 sessions complete",
+        activeWeekPlanSource: null,
+        activeWeekSessions: [],
+        completedAdvancingSessionsThisWeek: 1,
+        totalAdvancingSessionsThisWeek: 4,
+      },
+      continuity: {
+        summary: null,
+        lastCompleted: null,
+        lastCompletedDescriptor: null,
+        nextDueLabel: "Lower 1",
+        nextDueDescriptor: "First lower session this week",
+      },
+      closeout: null,
+      preSessionReadinessCard: {
+        sessionLabel: "Week 2 Session 2 - lower_a lower",
+      },
+      headerContext: "Week 2 - Accumulation",
+      recentActivity: [],
+    });
+
+    const { default: HomePage } = await import("./page");
+    const ui = await HomePage();
+
+    render(ui);
+
+    expect(
+      screen.getByText(
+        "DashboardGenerateSection:lower:lower_a:Start workout:Lower 1:First lower session this week"
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "HomePreSessionReadinessPanel:prepare:Week 2 Session 2 - lower_a lower"
+      )
+    ).toBeInTheDocument();
   });
 
   it("renders active-week custom work in optional completion without replacing the main next-session surface", async () => {

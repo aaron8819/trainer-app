@@ -36,11 +36,14 @@ function baseContract(
     contractVersion: 1,
     scope: {
       mode: "pre-session-readiness",
-      ownerSeam: "workout-audit/pre-session-readiness",
+      ownerSeam: "api/pre-session-readiness-contract",
+      source: {
+        producerMode: "persisted_snapshot",
+        producer: "in_memory_read_model",
+        provenance: "app_read_model",
+      },
       readOnly: true,
-      auditOnly: true,
       affectsScoringOrGeneration: false,
-      consumedByProduction: false,
     },
     nextSessionIdentity: {
       userId: "user-1",

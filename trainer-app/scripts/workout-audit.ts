@@ -12,11 +12,11 @@ import {
   runAuditPreflight,
 } from "./audit-cli-support";
 import type {
-  PreSessionReadinessContract,
   ProjectedWeekVolumeAuditPayload,
   WorkoutAuditArtifact,
   WorkoutAuditRequest,
 } from "@/lib/audit/workout-audit/types";
+import type { PreSessionReadinessContract } from "@/lib/api/pre-session-readiness-contract";
 import {
   buildSerializedTopLevelSizeBreakdown,
   getSerializedJsonSizeBytes,

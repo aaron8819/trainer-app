@@ -59,6 +59,15 @@ import type {
   WorkoutAuditRequestMode,
 } from "./constants";
 import type { AcceptedMesocycleSeedProvenanceConsistency } from "@/lib/api/accepted-mesocycle-seed-provenance";
+import type { PreSessionReadinessContract } from "@/lib/api/pre-session-readiness-contract";
+export type {
+  PreSessionReadinessCoachingRecommendation,
+  PreSessionReadinessConsistencyCheck,
+  PreSessionReadinessContract,
+  PreSessionReadinessContractOwnerSeam,
+  PreSessionReadinessContractProducerMode,
+  PreSessionReadinessContractSource,
+} from "@/lib/api/pre-session-readiness-contract";
 
 export type AuditBasisDescriptor = {
   sourceModule: string;
@@ -688,143 +697,6 @@ export type PreSessionReadinessAuditPayload = {
     mesocycleIdMatchesRequest?: boolean;
   };
   contract?: PreSessionReadinessContract;
-};
-
-export type PreSessionReadinessConsistencyCheck = {
-  id:
-    | "optional_add_on_matches_flagged_muscle"
-    | "optional_add_on_not_suppressed_muscle"
-    | "no_add_on_state_explicit"
-    | "blocked_state_no_normal_start_coaching"
-    | "seed_runtime_proof_read_only";
-  status: "pass" | "warning" | "fail";
-  severity: "info" | "warning" | "error";
-  message: string;
-  evidence: string[];
-};
-
-export type PreSessionReadinessCoachingRecommendation = {
-  kind: "priority" | "optional" | "floor_buffer";
-  muscle: string;
-  targetMuscle: string;
-  candidateExerciseName: string;
-  line: string;
-  addonLine: string;
-  suppressed: boolean;
-  suppressionReasons: string[];
-};
-
-export type PreSessionReadinessContract = {
-  contractVersion: 1;
-  scope: {
-    mode: "pre-session-readiness";
-    ownerSeam: "workout-audit/pre-session-readiness";
-    readOnly: true;
-    auditOnly: true;
-    affectsScoringOrGeneration: false;
-    consumedByProduction: false;
-  };
-  nextSessionIdentity: {
-    userId: string;
-    ownerEmail?: string;
-    activeMesocycleId: string | null;
-    requestedMesocycleId?: string;
-    mesocycleIdMatchesRequest?: boolean;
-    activeState: string | null;
-    currentWeek: number | null;
-    currentSession: number | null;
-    nextSlotId: string | null;
-    nextIntent: string | null;
-    existingWorkoutId: string | null;
-    incompleteWorkoutStatus: string | null;
-    incompleteWorkoutReadiness: string;
-    existingWorkoutAction: string;
-    generationPath: string;
-    generator: string;
-  };
-  startability: {
-    status: "startable" | "blocked" | "not_runnable";
-    safeToTrain: boolean;
-    normalStartCoachingAllowed: boolean;
-    action:
-      | "run_seed_as_prescribed"
-      | "run_deload_seed_as_prescribed"
-      | "resolve_blocker_first";
-    reasons: string[];
-    blockerSummary: string;
-  };
-  seedRuntimeProof: {
-    status: "valid" | "warning" | "not_available";
-    compositionSource: string | null;
-    receiptMesocycleId: string | null;
-    seedSource: string | null;
-    seedExecutableShape: string | null;
-    seedOrderSetCountsRespected: boolean | null;
-    readOnlyEvidenceOnly: true;
-    seedRuntimeChanged: false;
-    proofLines: string[];
-  };
-  projectedWeekStatus: {
-    status:
-      | "no_further_action"
-      | "top_up_candidate"
-      | "watch"
-      | "blocked"
-      | "deload_non_actionable";
-    currentWeek: number | null;
-    phase: string | null;
-    belowMev: string[];
-    overMav: string[];
-    fatigueRisks: string[];
-    projectionNotes: string[];
-    doseGuidanceRows: Array<{
-      muscle: string;
-      projectedVsTargets: string;
-      status: string;
-      recommendedAction: string;
-      confidence: string;
-      line: string;
-    }>;
-    noAddOnReason?: string;
-  };
-  doseClosure: {
-    heading: string;
-    priority: string[];
-    optional: string[];
-    monitor: string[];
-    suppress: string[];
-    guardrails: string[];
-    recommendations: PreSessionReadinessCoachingRecommendation[];
-  };
-  sessionLocalCoaching: {
-    defaultInstruction: string;
-    floorBufferOpportunities: string[];
-    prescriptionConfidenceWatches: string[];
-    fatigueCautions: string[];
-    safeOptionalAddOns: string[];
-    suppressAvoid: string[];
-    addOnState: {
-      status: "available" | "none" | "suppressed" | "deload_suppressed" | "blocked";
-      reason: string;
-    };
-  };
-  calibrationWatches: {
-    prescriptionConfidence: string[];
-    recoveryCaveats: string[];
-    fatigue: string[];
-  };
-  consistencyChecks: PreSessionReadinessConsistencyCheck[];
-  boundaries: {
-    readOnly: true;
-    affectsScoringOrGeneration: false;
-    consumedByProduction: false;
-    wouldWriteTransaction: false;
-    dbMutation: false;
-    workoutLogSessionCreated: false;
-    seedRuntimeChanged: false;
-    plannerMaterializerChanged: false;
-    notes: string[];
-  };
 };
 
 export type CurrentWeekAuditEvaluation = {

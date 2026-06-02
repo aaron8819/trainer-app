@@ -1,9 +1,12 @@
 import type { SessionGenerationResult } from "@/lib/api/template-session/types";
+import {
+  PRE_SESSION_READINESS_CONTRACT_OWNER_SEAM,
+  type PreSessionReadinessCoachingRecommendation,
+  type PreSessionReadinessConsistencyCheck,
+  type PreSessionReadinessContract,
+} from "@/lib/api/pre-session-readiness-contract";
 import type {
   PreSessionReadinessAuditPayload,
-  PreSessionReadinessCoachingRecommendation,
-  PreSessionReadinessConsistencyCheck,
-  PreSessionReadinessContract,
   ProjectedWeekVolumeAuditPayload,
   WeeklyRetroAuditPayload,
   WorkoutAuditGenerationPath,
@@ -1128,7 +1131,12 @@ export function buildPreSessionReadinessContract(input: {
     contractVersion: 1 as const,
     scope: {
       mode: "pre-session-readiness" as const,
-      ownerSeam: "workout-audit/pre-session-readiness" as const,
+      ownerSeam: PRE_SESSION_READINESS_CONTRACT_OWNER_SEAM,
+      source: {
+        producerMode: "audit_readout" as const,
+        producer: "workout_audit" as const,
+        provenance: "operator_audit" as const,
+      },
       readOnly: true as const,
       auditOnly: true as const,
       affectsScoringOrGeneration: false as const,

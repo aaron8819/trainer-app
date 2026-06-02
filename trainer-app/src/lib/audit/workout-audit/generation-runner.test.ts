@@ -1027,7 +1027,12 @@ describe("runWorkoutAuditGeneration", () => {
       contractVersion: 1,
       scope: {
         mode: "pre-session-readiness",
-        ownerSeam: "workout-audit/pre-session-readiness",
+        ownerSeam: "api/pre-session-readiness-contract",
+        source: {
+          producerMode: "audit_readout",
+          producer: "workout_audit",
+          provenance: "operator_audit",
+        },
         readOnly: true,
         auditOnly: true,
         affectsScoringOrGeneration: false,

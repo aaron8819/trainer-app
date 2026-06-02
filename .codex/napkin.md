@@ -209,6 +209,7 @@
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.
 
 ## Patterns That Work
+- For pre-session readiness snapshot work, keep the shared typed contract, validator, and Home gym-card adapter under `src/lib/api/pre-session-readiness-*`; workout-audit is only an `audit_readout` producer, and Home should not require `auditOnly=true` / `consumedByProduction=false` to trust future app-owned snapshots.
 - For mid-week post-session weekly-retro readouts, classify future `PLANNED`/`IN_PROGRESS` sessions scheduled after the latest `COMPLETED`/`PARTIAL` workout as future planned/incomplete work, not missed completed-session work; replacement-like pair counts should count planned-side pairs, not both planned and added rows.
 - For V2 accepted-seed handoff retries, guard every existing-successor return path before any source-state update: both `COMPLETED` and still-`AWAITING_HANDOFF` sources must compare the successor `slotPlanSeedJson` against `nextSeedDraftJson.acceptedSeedDraft.slotPlanSeedJson` when present.
 - For V2 handoff accept regressions, keep `handoffSummaryJson.recommendedNextSeed` legacy while `nextSeedDraftJson.acceptedSeedDraft` is V2 in the fixture. Mirroring V2 into both places masks sanitize/fallback bugs that only appear in the real stored-draft path.

@@ -28,11 +28,14 @@ function baseContract(
     contractVersion: 1,
     scope: {
       mode: "pre-session-readiness",
-      ownerSeam: "workout-audit/pre-session-readiness",
+      ownerSeam: "api/pre-session-readiness-contract",
+      source: {
+        producerMode: "persisted_snapshot",
+        producer: "in_memory_read_model",
+        provenance: "app_read_model",
+      },
       readOnly: true,
-      auditOnly: true,
       affectsScoringOrGeneration: false,
-      consumedByProduction: false,
     },
     nextSessionIdentity: {
       userId: "user-1",
@@ -173,9 +176,10 @@ describe("pre-session readiness gym-card adapter", () => {
       source: {
         contractVersion: 1,
         kind: "typed_pre_session_readiness_contract",
-        ownerSeam: "workout-audit/pre-session-readiness",
+        ownerSeam: "api/pre-session-readiness-contract",
         readOnly: true,
-        auditOnly: true,
+        auditOnly: false,
+        producerMode: "persisted_snapshot",
       },
     });
   });
@@ -357,7 +361,7 @@ describe("pre-session readiness gym-card adapter", () => {
 
   it("uses typed helper API and avoids CLI/render string fields", () => {
     const source = readFileSync(
-      "src/lib/audit/workout-audit/pre-session-readiness-gym-card.ts",
+      "src/lib/api/pre-session-readiness-gym-card.ts",
       "utf8"
     );
 

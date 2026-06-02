@@ -258,6 +258,7 @@ Inspect first:
 Important interpretation rule:
 - this mode composes existing read-only generation, projected-week, current-week dose guidance, and prior-week retrospective readouts
 - recommendations are session-local operator guidance only
+- the typed readiness contract is owned by `src/lib/api/pre-session-readiness-contract.ts`; this audit mode is only one producer (`audit_readout`), and Home/future persisted snapshots should consume the shared app-safe contract/validator rather than CLI prose or audit-only artifact metadata
 - `Dose Closure Guidance` is a formatter/readout layer over projected current-week rows and runtime dose diagnostics; when the next slot is the final practical upper/lower opportunity, it prints the projected weighted sets, MEV floor, weighted gap, candidate contribution when available, raw-set estimate, and whether the add-on is expected to close the floor or only reduce the deficit
 - `Session-Local Add-On Recommendation` must stay consistent with `Dose Closure Guidance`: if Dose Closure prints a low-fatigue MEV-floor top-up for the next slot, the add-on section should list that same session-local action rather than saying no optional add-ons
 - `Session-Local Coaching Readout` groups the same read-only evidence into floor-buffer opportunities, prescription-confidence watches, fatigue cautions, safe optional add-ons, and suppress/avoid guidance. Exact-floor or thin-margin buffers must stay optional, session-local, and isolation-biased (for example Cable Crossover/Pec Deck-style Chest work instead of extra pressing).

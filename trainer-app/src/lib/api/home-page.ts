@@ -26,8 +26,8 @@ import { getWorkoutWorkflowState } from "@/lib/workout-workflow";
 import {
   buildPreSessionReadinessGymCardDto,
   type PreSessionReadinessGymCardDto,
-} from "@/lib/audit/workout-audit/pre-session-readiness-gym-card";
-import type { PreSessionReadinessContract } from "@/lib/audit/workout-audit/types";
+} from "@/lib/api/pre-session-readiness-gym-card";
+import type { PreSessionReadinessContract } from "@/lib/api/pre-session-readiness-contract";
 import {
   loadLatestHomePreSessionReadinessContractCandidate,
   resolveHomePreSessionReadinessContract,

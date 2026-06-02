@@ -22,12 +22,11 @@ import { buildGeneratedSessionAuditSnapshot } from "@/lib/evidence/session-audit
 import type { SessionAuditSnapshot } from "@/lib/evidence/session-audit-types";
 import { buildCurrentWeekAuditEvaluation } from "@/lib/audit/workout-audit/current-week-audit";
 import { buildWeeklyRetroAuditPayload } from "@/lib/audit/workout-audit/weekly-retro";
-import { PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION } from "@/lib/audit/workout-audit/constants";
 import type {
-  PreSessionReadinessAuditPayload,
-  ProjectedWeekVolumeAuditPayload,
-  WorkoutAuditGenerationPath,
-} from "@/lib/audit/workout-audit/types";
+  PreSessionReadinessEvidence,
+  PreSessionReadinessGenerationPathEvidence,
+  PreSessionReadinessProjectedWeekEvidence,
+} from "./pre-session-readiness-evidence";
 import {
   buildPreSessionReadinessGymCardDto,
   type PreSessionReadinessGymCardDto,
@@ -156,16 +155,16 @@ function resolveAdvancingSlotSnapshot(
   };
 }
 
-async function buildProjectedWeekAuditPayload(input: {
+async function buildProjectedWeekEvidence(input: {
   userId: string;
   plannerDiagnosticsMode: "standard" | "debug";
-}): Promise<ProjectedWeekVolumeAuditPayload> {
+}): Promise<PreSessionReadinessProjectedWeekEvidence> {
   const report = await loadProjectedWeekVolumeReport({
     userId: input.userId,
     plannerDiagnosticsMode: input.plannerDiagnosticsMode,
   });
   const payload = {
-    version: PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION,
+    version: 1 as const,
     ...report,
   };
 
@@ -186,7 +185,7 @@ async function buildGeneratedSessionFields(input: {
 }): Promise<{
   generation: SessionGenerationResult;
   sessionSnapshot?: SessionAuditSnapshot;
-  generationPath: WorkoutAuditGenerationPath;
+  generationPath: PreSessionReadinessGenerationPathEvidence;
 }> {
   const useDeloadGeneration = input.activeMesocycle.state === "ACTIVE_DELOAD";
   const generation = useDeloadGeneration
@@ -202,7 +201,7 @@ async function buildGeneratedSessionFields(input: {
         ),
         plannerDiagnosticsMode: input.plannerDiagnosticsMode,
       });
-  const generationPath: WorkoutAuditGenerationPath = useDeloadGeneration
+  const generationPath: PreSessionReadinessGenerationPathEvidence = useDeloadGeneration
     ? {
         requestedMode: "pre-session-readiness",
         executionMode: "active_deload_reroute",
@@ -240,9 +239,9 @@ async function buildGeneratedSessionFields(input: {
   };
 }
 
-function buildReadinessPayload(input: {
+function buildReadinessEvidence(input: {
   activeMesocycle: ActiveMesocycle;
-}): PreSessionReadinessAuditPayload {
+}): PreSessionReadinessEvidence {
   const currentSession = deriveCurrentMesocycleSession(input.activeMesocycle);
   const deloadSessionsExpected = getDeloadSessionThreshold(input.activeMesocycle);
   const deloadSessionPosition =
@@ -314,7 +313,7 @@ export async function preparePreSessionReadinessSnapshot(
       intent: nextSession.intent,
       plannerDiagnosticsMode,
     }),
-    buildProjectedWeekAuditPayload({
+    buildProjectedWeekEvidence({
       userId,
       plannerDiagnosticsMode,
     }),
@@ -346,7 +345,7 @@ export async function preparePreSessionReadinessSnapshot(
   const contract = buildPreSessionReadinessContract({
     userId,
     ownerEmail: options.ownerEmail,
-    payload: buildReadinessPayload({ activeMesocycle }),
+    evidence: buildReadinessEvidence({ activeMesocycle }),
     nextSession,
     generation: generated.generation,
     sessionSnapshot: generated.sessionSnapshot,

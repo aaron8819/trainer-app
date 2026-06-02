@@ -150,6 +150,7 @@ describe("pre-session readiness contract", () => {
     );
 
     expect(source).not.toContain("workout-audit-cli");
+    expect(source).not.toContain("@/lib/audit/workout-audit");
     expect(source).not.toContain("buildPreSessionReadinessSummary");
     expect(source).not.toContain("runWorkoutAuditGeneration");
     expect(source).not.toContain("buildWorkoutAuditContext");
@@ -164,9 +165,16 @@ describe("pre-session readiness contract", () => {
       "src/lib/audit/workout-audit/pre-session-readiness-contract.ts",
       "utf8"
     );
+    const adapterSource = readFileSync(
+      "src/lib/audit/workout-audit/pre-session-readiness-evidence.ts",
+      "utf8"
+    );
 
     expect(source).toContain(
       "@/lib/api/pre-session-readiness-contract-builder"
+    );
+    expect(adapterSource).toContain(
+      "@/lib/api/pre-session-readiness-evidence"
     );
   });
 

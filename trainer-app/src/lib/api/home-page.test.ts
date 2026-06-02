@@ -871,6 +871,7 @@ describe("loadHomePageData", () => {
     );
 
     expect(source).toContain("buildPreSessionReadinessGymCardDto");
+    expect(source).not.toContain("@/lib/audit/workout-audit");
     expect(source).not.toContain("workout-audit-cli");
     expect(source).not.toContain("buildPreSessionReadinessSummary");
     expect(source).not.toContain("runWorkoutAuditGeneration");
@@ -881,6 +882,7 @@ describe("loadHomePageData", () => {
     expect(source).not.toMatch(/sessionLocalCoaching\.(defaultInstruction|safeOptionalAddOns|suppressAvoid|floorBufferOpportunities|prescriptionConfidenceWatches|fatigueCautions)/);
     expect(source).not.toMatch(/\.(line|addonLine)\b/);
     expect(producerSource).not.toContain("workout-audit-cli");
+    expect(producerSource).not.toContain("@/lib/audit/workout-audit");
     expect(producerSource).not.toContain("buildPreSessionReadinessSummary");
     expect(producerSource).not.toContain("runWorkoutAuditGeneration");
     expect(producerSource).not.toContain("buildWorkoutAuditContext");

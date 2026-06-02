@@ -5,6 +5,11 @@ import {
   type V2MesocycleStrategyInput,
 } from "@/lib/engine/planning/v2";
 import { buildPreSessionReadinessContract } from "./pre-session-readiness-contract";
+import {
+  toPreSessionReadinessEvidence,
+  toPreSessionReadinessProjectedWeekEvidence,
+  toPreSessionReadinessWeeklyRetroEvidence,
+} from "./pre-session-readiness-evidence";
 import type { PreSessionReadinessAuditPayload } from "./types";
 import { buildV2LaneSelectionIntentAudit } from "@/lib/engine/planning/v2/lane-selection-intent-audit";
 import {
@@ -4603,14 +4608,18 @@ describe("buildPreSessionReadinessSummary", () => {
     preSessionReadiness.contract = buildPreSessionReadinessContract({
       userId: artifact.identity.userId,
       ownerEmail: artifact.identity.ownerEmail,
-      payload: preSessionReadiness,
+      evidence: toPreSessionReadinessEvidence(preSessionReadiness),
       nextSession: artifact.nextSession as never,
       sessionSnapshot: artifact.sessionSnapshot as never,
       generationPath: artifact.generationPath as never,
       seedConsistency:
         artifact.generationProvenance.seed.provenanceConsistency as never,
-      projectedWeek: artifact.projectedWeekVolume as never,
-      weeklyRetro: artifact.weeklyRetro as never,
+      projectedWeek: toPreSessionReadinessProjectedWeekEvidence(
+        artifact.projectedWeekVolume as never
+      ),
+      weeklyRetro: toPreSessionReadinessWeeklyRetroEvidence(
+        artifact.weeklyRetro as never
+      ),
     });
     return {
       ...artifact,

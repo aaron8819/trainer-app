@@ -24,6 +24,11 @@ import { buildNextMesocycleHandoffDryRunAuditPayload } from "./next-mesocycle-ha
 import { buildNextMesocyclePostAcceptVerificationAuditPayload } from "./next-mesocycle-post-accept-verification";
 import { buildProgressionAnchorAuditPayload } from "./progression-anchor";
 import { buildPreSessionReadinessContract } from "@/lib/api/pre-session-readiness-contract-builder";
+import {
+  toPreSessionReadinessEvidence,
+  toPreSessionReadinessProjectedWeekEvidence,
+  toPreSessionReadinessWeeklyRetroEvidence,
+} from "./pre-session-readiness-evidence";
 import { buildV2AcceptedSeedPrepareCompareAuditPayload } from "./v2-accepted-seed-prepare-compare";
 import { buildWeeklyRetroAuditPayload } from "./weekly-retro";
 import type {
@@ -466,14 +471,15 @@ export async function runWorkoutAuditGeneration(
       contract: buildPreSessionReadinessContract({
         userId: context.userId,
         ownerEmail: context.ownerEmail,
-        payload: preSessionReadinessPayload,
+        evidence: toPreSessionReadinessEvidence(preSessionReadinessPayload),
         nextSession: context.nextSession,
         generation: generatedFields.generationResult,
         sessionSnapshot: generatedFields.sessionSnapshot,
         generationPath: generatedFields.generationPath,
         seedConsistency: generatedFields.acceptedSeedProvenanceConsistency,
-        projectedWeek: projectedWeekVolume,
-        weeklyRetro,
+        projectedWeek:
+          toPreSessionReadinessProjectedWeekEvidence(projectedWeekVolume),
+        weeklyRetro: toPreSessionReadinessWeeklyRetroEvidence(weeklyRetro),
       }),
     } satisfies NonNullable<WorkoutAuditRun["preSessionReadiness"]>;
 

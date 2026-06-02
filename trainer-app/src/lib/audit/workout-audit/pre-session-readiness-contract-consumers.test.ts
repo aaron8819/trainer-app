@@ -388,7 +388,7 @@ describe("pre-session readiness contract consumers", () => {
     const contract = buildPreSessionReadinessContract({
       userId: "user-1",
       ownerEmail: "owner@test.local",
-      payload: {
+      evidence: {
         readOnly: true,
         affectsScoringOrGeneration: false,
         consumedByProduction: false,

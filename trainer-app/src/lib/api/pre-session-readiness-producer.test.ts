@@ -379,6 +379,12 @@ describe("preparePreSessionReadinessSnapshot", () => {
     });
     expect(mocks.buildPreSessionReadinessContract).toHaveBeenCalledWith(
       expect.objectContaining({
+        evidence: expect.objectContaining({
+          activeMesocycle: expect.objectContaining({
+            mesocycleId: "meso-1",
+            state: "ACTIVE_ACCUMULATION",
+          }),
+        }),
         contractSource: {
           producerMode: "persisted_snapshot",
           producer: "pre_session_readiness_snapshot",
@@ -493,9 +499,14 @@ describe("preparePreSessionReadinessSnapshot", () => {
     );
 
     expect(source).toContain("./pre-session-readiness-contract-builder");
+    expect(source).toContain("./pre-session-readiness-evidence");
     expect(source).not.toContain(
       "@/lib/audit/workout-audit/pre-session-readiness-contract"
     );
+    expect(source).not.toContain("@/lib/audit/workout-audit/types");
+    expect(source).not.toContain("PreSessionReadinessAuditPayload");
+    expect(source).not.toContain("ProjectedWeekVolumeAuditPayload");
+    expect(source).not.toContain("WorkoutAuditGenerationPath");
     expect(source).not.toContain("workout-audit-cli");
     expect(source).not.toContain("buildPreSessionReadinessSummary");
     expect(source).not.toContain("runWorkoutAuditGeneration");

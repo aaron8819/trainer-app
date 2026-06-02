@@ -6,20 +6,21 @@ import {
   type PreSessionReadinessContract,
 } from "./pre-session-readiness-contract";
 import type {
-  PreSessionReadinessAuditPayload,
-  ProjectedWeekVolumeAuditPayload,
-  WeeklyRetroAuditPayload,
-  WorkoutAuditGenerationPath,
-} from "@/lib/audit/workout-audit/types";
+  PreSessionReadinessContractBuildInput,
+  PreSessionReadinessEvidence,
+  PreSessionReadinessProjectedWeekEvidence,
+} from "./pre-session-readiness-evidence";
 import type { NextWorkoutContext } from "@/lib/api/next-session";
 import type { AcceptedMesocycleSeedProvenanceConsistency } from "@/lib/api/accepted-mesocycle-seed-provenance";
 import type { SessionAuditSnapshot } from "@/lib/evidence/session-audit-types";
 
 type PreSessionDoseDiagnostic = NonNullable<
-  ProjectedWeekVolumeAuditPayload["runtimeDoseAdjustmentDiagnostics"]
+  PreSessionReadinessProjectedWeekEvidence["runtimeDoseAdjustmentDiagnostics"]
 >[number];
-type ProjectedWeekMuscleRow = ProjectedWeekVolumeAuditPayload["fullWeekByMuscle"][number];
-type ProjectedWeekSession = ProjectedWeekVolumeAuditPayload["projectedSessions"][number];
+type ProjectedWeekMuscleRow =
+  PreSessionReadinessProjectedWeekEvidence["fullWeekByMuscle"][number];
+type ProjectedWeekSession =
+  PreSessionReadinessProjectedWeekEvidence["projectedSessions"][number];
 
 const UPPER_BODY_MUSCLES = new Set([
   "Chest",
@@ -85,7 +86,7 @@ function sessionMatchesRegion(
 function isFinalPracticalOpportunity(input: {
   muscle: string;
   nextSession: ProjectedWeekSession | undefined;
-  projectedSessions: ProjectedWeekVolumeAuditPayload["projectedSessions"];
+  projectedSessions: PreSessionReadinessProjectedWeekEvidence["projectedSessions"];
 }): boolean {
   const region = getMuscleRegion(input.muscle);
   if (!region || !sessionMatchesRegion(input.nextSession, region)) {
@@ -410,7 +411,7 @@ function shouldOfferFloorBuffer(input: {
   row: ProjectedWeekMuscleRow;
   diagnostic: PreSessionDoseDiagnostic | undefined;
   nextSession: ProjectedWeekSession | undefined;
-  projectedSessions: ProjectedWeekVolumeAuditPayload["projectedSessions"];
+  projectedSessions: PreSessionReadinessProjectedWeekEvidence["projectedSessions"];
 }): boolean {
   const margin = input.row.projectedFullWeekEffectiveSets - input.row.mev;
   const nextContribution =
@@ -455,8 +456,8 @@ function buildSuppressedMuscles(
 function buildDoseClosure(input: {
   isActiveDeload: boolean;
   diagnostics: PreSessionDoseDiagnostic[];
-  fullWeekRows: ProjectedWeekVolumeAuditPayload["fullWeekByMuscle"];
-  projectedSessions: ProjectedWeekVolumeAuditPayload["projectedSessions"];
+  fullWeekRows: PreSessionReadinessProjectedWeekEvidence["fullWeekByMuscle"];
+  projectedSessions: PreSessionReadinessProjectedWeekEvidence["projectedSessions"];
   nextSession: ProjectedWeekSession | undefined;
 }): PreSessionReadinessContract["doseClosure"] {
   if (input.isActiveDeload) {
@@ -678,7 +679,7 @@ function formatDoseStatus(diagnostic: PreSessionDoseDiagnostic): string {
 
 function buildProjectedWeekStatus(input: {
   isActiveDeload: boolean;
-  projectedWeek: ProjectedWeekVolumeAuditPayload | undefined;
+  projectedWeek: PreSessionReadinessProjectedWeekEvidence | undefined;
   doseDiagnostics: PreSessionDoseDiagnostic[];
   startable: boolean;
   hasAvailableAddOns: boolean;
@@ -733,7 +734,7 @@ function buildProjectedWeekStatus(input: {
 
 function buildAvoidList(input: {
   diagnostics: PreSessionDoseDiagnostic[];
-  sessionRisks: NonNullable<ProjectedWeekVolumeAuditPayload["sessionRisks"]>;
+  sessionRisks: NonNullable<PreSessionReadinessProjectedWeekEvidence["sessionRisks"]>;
   nextSession: ProjectedWeekSession | undefined;
   recommendations: PreSessionReadinessCoachingRecommendation[];
 }): string[] {
@@ -819,8 +820,8 @@ function buildStartability(input: {
   generation: SessionGenerationResult | undefined;
   nextSession: NextWorkoutContext | undefined;
   sessionSnapshot: SessionAuditSnapshot | undefined;
-  projectedWeek: ProjectedWeekVolumeAuditPayload | undefined;
-  payload: PreSessionReadinessAuditPayload;
+  projectedWeek: PreSessionReadinessProjectedWeekEvidence | undefined;
+  evidence: PreSessionReadinessEvidence;
   isActiveDeload: boolean;
 }): PreSessionReadinessContract["startability"] {
   const reasons: string[] = [];
@@ -844,7 +845,7 @@ function buildStartability(input: {
         "final accumulation closeout is pending"
     );
   }
-  if (input.payload.activeMesocycle.mesocycleIdMatchesRequest === false) {
+  if (input.evidence.activeMesocycle.mesocycleIdMatchesRequest === false) {
     reasons.push("requested mesocycle id does not match the active mesocycle");
   }
   if (!input.projectedWeek) {
@@ -1005,22 +1006,10 @@ function buildConsistencyChecks(input: {
   ];
 }
 
-export function buildPreSessionReadinessContract(input: {
-  userId: string;
-  ownerEmail?: string;
-  payload: PreSessionReadinessAuditPayload;
-  nextSession?: NextWorkoutContext;
-  generation?: SessionGenerationResult;
-  sessionSnapshot?: SessionAuditSnapshot;
-  generationPath?: WorkoutAuditGenerationPath;
-  seedConsistency?: AcceptedMesocycleSeedProvenanceConsistency;
-  projectedWeek?: ProjectedWeekVolumeAuditPayload;
-  weeklyRetro?: WeeklyRetroAuditPayload;
-  contractSource?: PreSessionReadinessContract["scope"]["source"];
-  auditOnly?: boolean;
-  boundaryNotes?: string[];
-}): PreSessionReadinessContract {
-  const active = input.payload.activeMesocycle;
+export function buildPreSessionReadinessContract(
+  input: PreSessionReadinessContractBuildInput
+): PreSessionReadinessContract {
+  const active = input.evidence.activeMesocycle;
   const isActiveDeload = active.state === "ACTIVE_DELOAD";
   const generated = input.sessionSnapshot?.generated;
   const nextProjectedSession =
@@ -1032,7 +1021,7 @@ export function buildPreSessionReadinessContract(input: {
     nextSession: input.nextSession,
     sessionSnapshot: input.sessionSnapshot,
     projectedWeek: input.projectedWeek,
-    payload: input.payload,
+    evidence: input.evidence,
     isActiveDeload,
   });
   const receiptProvenance =

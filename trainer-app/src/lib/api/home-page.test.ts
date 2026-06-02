@@ -1,4 +1,10 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  PreSessionReadinessCoachingRecommendation,
+  PreSessionReadinessConsistencyCheck,
+  PreSessionReadinessContract,
+} from "@/lib/audit/workout-audit/types";
 
 const mocks = vi.hoisted(() => {
   const workoutFindFirst = vi.fn();
@@ -103,6 +109,152 @@ function makeWorkoutRow(overrides: Record<string, unknown> = {}) {
     },
     _count: { exercises: 5 },
     exercises: [],
+    ...overrides,
+  };
+}
+
+function readinessCheck(
+  id: PreSessionReadinessConsistencyCheck["id"],
+  status: PreSessionReadinessConsistencyCheck["status"] = "pass"
+): PreSessionReadinessConsistencyCheck {
+  return {
+    id,
+    status,
+    severity:
+      status === "fail" ? "error" : status === "warning" ? "warning" : "info",
+    message: `${id}:${status}`,
+    evidence: [`evidence:${id}`],
+  };
+}
+
+function readinessRecommendation(
+  overrides: Partial<PreSessionReadinessCoachingRecommendation> = {}
+): PreSessionReadinessCoachingRecommendation {
+  return {
+    kind: overrides.kind ?? "optional",
+    muscle: overrides.muscle ?? "Chest",
+    targetMuscle: overrides.targetMuscle ?? overrides.muscle ?? "Chest",
+    candidateExerciseName: overrides.candidateExerciseName ?? "Cable Fly",
+    line: overrides.line ?? "render-only recommendation text",
+    addonLine: overrides.addonLine ?? "render-only add-on text",
+    suppressed: overrides.suppressed ?? false,
+    suppressionReasons: overrides.suppressionReasons ?? [],
+  };
+}
+
+function makeReadinessContract(
+  overrides: Partial<PreSessionReadinessContract> = {}
+): PreSessionReadinessContract {
+  const contract: PreSessionReadinessContract = {
+    contractVersion: 1,
+    scope: {
+      mode: "pre-session-readiness",
+      ownerSeam: "workout-audit/pre-session-readiness",
+      readOnly: true,
+      auditOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+    },
+    nextSessionIdentity: {
+      userId: "user-1",
+      ownerEmail: "owner@test.local",
+      activeMesocycleId: "meso-1",
+      requestedMesocycleId: "meso-1",
+      mesocycleIdMatchesRequest: true,
+      activeState: "ACTIVE_ACCUMULATION",
+      currentWeek: 2,
+      currentSession: 2,
+      nextSlotId: "lower_a",
+      nextIntent: "lower",
+      existingWorkoutId: null,
+      incompleteWorkoutStatus: null,
+      incompleteWorkoutReadiness: "none",
+      existingWorkoutAction: "none",
+      generationPath: "standard_generation",
+      generator: "generateSessionFromIntent",
+    },
+    startability: {
+      status: "startable",
+      safeToTrain: true,
+      normalStartCoachingAllowed: true,
+      action: "run_seed_as_prescribed",
+      reasons: ["no blocking audit, state, or generation blockers detected"],
+      blockerSummary: "none",
+    },
+    seedRuntimeProof: {
+      status: "valid",
+      compositionSource: "persisted_slot_plan_seed",
+      receiptMesocycleId: "meso-1",
+      seedSource: "handoff_slot_plan_projection",
+      seedExecutableShape: "set_aware",
+      seedOrderSetCountsRespected: true,
+      readOnlyEvidenceOnly: true,
+      seedRuntimeChanged: false,
+      proofLines: ["seed proof"],
+    },
+    projectedWeekStatus: {
+      status: "no_further_action",
+      currentWeek: 2,
+      phase: "accumulation",
+      belowMev: [],
+      overMav: [],
+      fatigueRisks: [],
+      projectionNotes: [],
+      doseGuidanceRows: [],
+      noAddOnReason:
+        "Projected week status is no_further_action; no optional add-ons are recommended.",
+    },
+    doseClosure: {
+      heading: "Dose Closure Guidance",
+      priority: ["render-only priority"],
+      optional: ["render-only optional"],
+      monitor: ["render-only monitor"],
+      suppress: ["render-only suppress"],
+      guardrails: ["render-only guardrail"],
+      recommendations: [],
+    },
+    sessionLocalCoaching: {
+      defaultInstruction: "Default: run seed as prescribed.",
+      floorBufferOpportunities: ["render-only floor buffer"],
+      prescriptionConfidenceWatches: ["render-only confidence"],
+      fatigueCautions: ["render-only fatigue"],
+      safeOptionalAddOns: [
+        "- none - Projected week status is no_further_action; no optional add-ons are recommended.",
+      ],
+      suppressAvoid: ["render-only suppress/avoid"],
+      addOnState: {
+        status: "none",
+        reason:
+          "Projected week status is no_further_action; no optional add-ons are recommended.",
+      },
+    },
+    calibrationWatches: {
+      prescriptionConfidence: [],
+      recoveryCaveats: [],
+      fatigue: [],
+    },
+    consistencyChecks: [
+      readinessCheck("optional_add_on_matches_flagged_muscle"),
+      readinessCheck("optional_add_on_not_suppressed_muscle"),
+      readinessCheck("no_add_on_state_explicit"),
+      readinessCheck("blocked_state_no_normal_start_coaching"),
+      readinessCheck("seed_runtime_proof_read_only"),
+    ],
+    boundaries: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      wouldWriteTransaction: false,
+      dbMutation: false,
+      workoutLogSessionCreated: false,
+      seedRuntimeChanged: false,
+      plannerMaterializerChanged: false,
+      notes: ["contract is audit/readout only"],
+    },
+  };
+
+  return {
+    ...contract,
     ...overrides,
   };
 }
@@ -282,6 +434,7 @@ describe("loadHomePageData", () => {
     const result = await loadHomePageData("user-1");
 
     expect(result.pendingHandoff).toBeNull();
+    expect(result.preSessionReadinessCard).toBeNull();
     expect(result.headerContext).toBe("Week 2 - Accumulation");
     expect(result.primaryAction).toEqual({
       state: "planned",
@@ -354,6 +507,260 @@ describe("loadHomePageData", () => {
         take: 10,
       })
     );
+  });
+
+  it("exposes the readiness gym-card DTO from a typed readiness contract", async () => {
+    const base = makeReadinessContract();
+    const contract = makeReadinessContract({
+      projectedWeekStatus: {
+        ...base.projectedWeekStatus,
+        status: "top_up_candidate",
+        belowMev: ["Chest"],
+      },
+      doseClosure: {
+        ...base.doseClosure,
+        recommendations: [
+          readinessRecommendation({
+            kind: "priority",
+            muscle: "Chest",
+            targetMuscle: "Chest",
+            candidateExerciseName: "Cable Fly",
+          }),
+        ],
+      },
+      sessionLocalCoaching: {
+        ...base.sessionLocalCoaching,
+        addOnState: {
+          status: "available",
+          reason: "Contract has session-local optional add-on rows.",
+        },
+      },
+    });
+
+    const result = await loadHomePageData("user-1", {
+      preSessionReadinessContract: contract,
+    });
+
+    expect(result.preSessionReadinessCard).toMatchObject({
+      safeToTrain: true,
+      action: "start",
+      sessionLabel: "Week 2 Session 2 - lower_a lower",
+      optionalAddOns: {
+        status: "available",
+        items: [
+          {
+            kind: "priority",
+            muscle: "Chest",
+            targetMuscle: "Chest",
+            candidateExerciseName: "Cable Fly",
+            source: "dose_closure_recommendation",
+          },
+        ],
+      },
+      source: {
+        contractVersion: 1,
+        kind: "typed_pre_session_readiness_contract",
+        ownerSeam: "workout-audit/pre-session-readiness",
+        readOnly: true,
+        auditOnly: true,
+      },
+    });
+  });
+
+  it("returns null readiness card when no typed readiness contract is supplied", async () => {
+    const result = await loadHomePageData("user-1");
+
+    expect(result.preSessionReadinessCard).toBeNull();
+    expect(result.primaryAction).toEqual({
+      state: "planned",
+      mode: "generate",
+      label: "Start workout",
+      action: "generate-required-workout",
+      initialIntent: "lower",
+      initialSlotId: "lower_a",
+      reasonLabel: "Next in sequence",
+      reason: "Nothing earlier is still open, so Lower 1 is next this week.",
+    });
+  });
+
+  it("surfaces blocked readiness in the DTO without changing the existing Home CTA", async () => {
+    const base = makeReadinessContract();
+    const contract = makeReadinessContract({
+      startability: {
+        ...base.startability,
+        status: "blocked",
+        safeToTrain: false,
+        normalStartCoachingAllowed: false,
+        action: "resolve_blocker_first",
+        reasons: ["incomplete workout blocker: stale plan"],
+        blockerSummary: "incomplete workout blocker: stale plan",
+      },
+      projectedWeekStatus: {
+        ...base.projectedWeekStatus,
+        status: "blocked",
+      },
+      sessionLocalCoaching: {
+        ...base.sessionLocalCoaching,
+        addOnState: {
+          status: "blocked",
+          reason: "Readiness is blocked; resolve blocker before considering add-ons.",
+        },
+      },
+    });
+
+    const result = await loadHomePageData("user-1", {
+      preSessionReadinessContract: contract,
+    });
+
+    expect(result.preSessionReadinessCard).toMatchObject({
+      safeToTrain: false,
+      action: "blocked",
+      rpeCap: null,
+      blockers: ["incomplete workout blocker: stale plan"],
+    });
+    expect(result.primaryAction).toEqual({
+      state: "planned",
+      mode: "generate",
+      label: "Start workout",
+      action: "generate-required-workout",
+      initialIntent: "lower",
+      initialSlotId: "lower_a",
+      reasonLabel: "Next in sequence",
+      reason: "Nothing earlier is still open, so Lower 1 is next this week.",
+    });
+  });
+
+  it("keeps a valid no-add-on readiness state explicit", async () => {
+    const result = await loadHomePageData("user-1", {
+      preSessionReadinessContract: makeReadinessContract(),
+    });
+
+    expect(result.preSessionReadinessCard?.optionalAddOns).toEqual({
+      status: "none",
+      reason: "No valid session-local optional add-ons from the typed readiness contract.",
+      items: [],
+    });
+    expect(result.preSessionReadinessCard?.mainPriority).toBe(
+      "Run the prescribed session without extra add-ons."
+    );
+  });
+
+  it("does not surface contradictory or suppressed add-ons as valid optional add-ons", async () => {
+    const base = makeReadinessContract();
+    const contract = makeReadinessContract({
+      projectedWeekStatus: {
+        ...base.projectedWeekStatus,
+        status: "top_up_candidate",
+        overMav: ["Side Delts"],
+      },
+      doseClosure: {
+        ...base.doseClosure,
+        recommendations: [
+          readinessRecommendation({
+            muscle: "Side Delts",
+            targetMuscle: "Side Delts",
+            candidateExerciseName: "Cable Lateral Raise",
+            suppressed: true,
+            suppressionReasons: ["target_muscle_suppressed"],
+          }),
+        ],
+      },
+      sessionLocalCoaching: {
+        ...base.sessionLocalCoaching,
+        addOnState: {
+          status: "available",
+          reason: "Contract has session-local optional add-on rows.",
+        },
+      },
+      consistencyChecks: [
+        readinessCheck("optional_add_on_matches_flagged_muscle"),
+        readinessCheck("optional_add_on_not_suppressed_muscle", "warning"),
+        readinessCheck("no_add_on_state_explicit"),
+        readinessCheck("blocked_state_no_normal_start_coaching"),
+        readinessCheck("seed_runtime_proof_read_only"),
+      ],
+    });
+
+    const result = await loadHomePageData("user-1", {
+      preSessionReadinessContract: contract,
+    });
+
+    expect(result.preSessionReadinessCard?.optionalAddOns).toMatchObject({
+      status: "none",
+      items: [],
+    });
+    expect(result.preSessionReadinessCard?.avoid).toEqual(
+      expect.arrayContaining([
+        "Avoid Cable Lateral Raise for Side Delts (target_muscle_suppressed).",
+        "Avoid extra Side Delts (over_mav).",
+      ])
+    );
+  });
+
+  it("ignores poisoned CLI and render strings when exposing the Home read-model DTO", async () => {
+    const base = makeReadinessContract();
+    const contract = makeReadinessContract({
+      projectedWeekStatus: {
+        ...base.projectedWeekStatus,
+        status: "top_up_candidate",
+      },
+      doseClosure: {
+        heading: "poison heading",
+        priority: ["poison priority"],
+        optional: ["poison optional"],
+        monitor: ["poison monitor"],
+        suppress: ["poison suppress"],
+        guardrails: ["poison guardrail"],
+        recommendations: [
+          readinessRecommendation({
+            muscle: "Biceps",
+            targetMuscle: "Biceps",
+            candidateExerciseName: "Cable Curl",
+            line: "poison recommendation line",
+            addonLine: "poison addon line",
+          }),
+        ],
+      },
+      sessionLocalCoaching: {
+        ...base.sessionLocalCoaching,
+        defaultInstruction: "poison default instruction",
+        floorBufferOpportunities: ["poison floor buffer"],
+        prescriptionConfidenceWatches: ["poison confidence"],
+        fatigueCautions: ["poison fatigue"],
+        safeOptionalAddOns: ["poison safe optional add-on"],
+        suppressAvoid: ["poison suppress avoid"],
+        addOnState: {
+          status: "available",
+          reason: "typed add-on state",
+        },
+      },
+    });
+
+    const result = await loadHomePageData("user-1", {
+      preSessionReadinessContract: contract,
+    });
+
+    expect(result.preSessionReadinessCard?.optionalAddOns.items).toEqual([
+      {
+        kind: "optional",
+        muscle: "Biceps",
+        targetMuscle: "Biceps",
+        candidateExerciseName: "Cable Curl",
+        source: "dose_closure_recommendation",
+      },
+    ]);
+    expect(JSON.stringify(result.preSessionReadinessCard)).not.toContain("poison");
+  });
+
+  it("does not parse workout-audit CLI prose or render strings in the Home read model", () => {
+    const source = readFileSync("src/lib/api/home-page.ts", "utf8");
+
+    expect(source).toContain("buildPreSessionReadinessGymCardDto");
+    expect(source).not.toContain("workout-audit-cli");
+    expect(source).not.toContain("buildPreSessionReadinessSummary");
+    expect(source).not.toMatch(/doseClosure\.(heading|priority|optional|monitor|suppress|guardrails)/);
+    expect(source).not.toMatch(/sessionLocalCoaching\.(defaultInstruction|safeOptionalAddOns|suppressAvoid|floorBufferOpportunities|prescriptionConfidenceWatches|fatigueCautions)/);
+    expect(source).not.toMatch(/\.(line|addonLine)\b/);
   });
 
   it("returns recent activity without loading program seams when handoff is pending", async () => {

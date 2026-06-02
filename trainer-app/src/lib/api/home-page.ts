@@ -23,6 +23,11 @@ import { loadPendingMesocycleHandoff } from "./mesocycle-handoff";
 import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
 import type { CanonicalUiState } from "@/lib/ui-state-contract";
 import { getWorkoutWorkflowState } from "@/lib/workout-workflow";
+import {
+  buildPreSessionReadinessGymCardDto,
+  type PreSessionReadinessGymCardDto,
+} from "@/lib/audit/workout-audit/pre-session-readiness-gym-card";
+import type { PreSessionReadinessContract } from "@/lib/audit/workout-audit/types";
 
 export type HomeDecisionSummary = {
   nextSessionLabel: string | null;
@@ -113,9 +118,22 @@ export type HomePageData = {
   decision: HomeDecisionSummary | null;
   continuity: HomeContinuitySummary | null;
   closeout: HomeCloseoutSummary | null;
+  preSessionReadinessCard?: PreSessionReadinessGymCardDto | null;
   headerContext: string;
   recentActivity: WorkoutListSurfaceSummary[];
 };
+
+export type HomePageReadinessInput = {
+  preSessionReadinessContract?: PreSessionReadinessContract | null;
+};
+
+function buildHomePreSessionReadinessCard(
+  input?: HomePageReadinessInput
+): PreSessionReadinessGymCardDto | null {
+  return input?.preSessionReadinessContract
+    ? buildPreSessionReadinessGymCardDto(input.preSessionReadinessContract)
+    : null;
+}
 
 function formatPhaseLabel(blockType: string | null | undefined): string | null {
   const normalized = blockType?.trim();
@@ -508,11 +526,15 @@ function buildHomePrimaryAction(input: {
   };
 }
 
-export async function loadHomePageData(userId: string): Promise<HomePageData> {
+export async function loadHomePageData(
+  userId: string,
+  readinessInput?: HomePageReadinessInput
+): Promise<HomePageData> {
   const fixture = await getUiAuditFixtureForServer();
   if (fixture?.home) {
     return fixture.home;
   }
+  const preSessionReadinessCard = buildHomePreSessionReadinessCard(readinessInput);
 
   const [pendingHandoff, latestCompletedRow, recentActivityRows] = await Promise.all([
     loadPendingMesocycleHandoff(userId),
@@ -555,6 +577,7 @@ export async function loadHomePageData(userId: string): Promise<HomePageData> {
         homeProgram: null,
       }),
       closeout: null,
+      preSessionReadinessCard,
       headerContext: "Training is paused until you accept the next cycle.",
       recentActivity,
     };
@@ -583,6 +606,7 @@ export async function loadHomePageData(userId: string): Promise<HomePageData> {
       homeProgram,
     }),
     closeout,
+    preSessionReadinessCard,
     headerContext: buildHeaderContext(programData),
     recentActivity,
   };

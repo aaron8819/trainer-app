@@ -23,7 +23,7 @@ import { buildNextMesocycleAcceptanceGateAuditPayload } from "./next-mesocycle-a
 import { buildNextMesocycleHandoffDryRunAuditPayload } from "./next-mesocycle-handoff-dry-run";
 import { buildNextMesocyclePostAcceptVerificationAuditPayload } from "./next-mesocycle-post-accept-verification";
 import { buildProgressionAnchorAuditPayload } from "./progression-anchor";
-import { buildPreSessionReadinessContract } from "./pre-session-readiness-contract";
+import { buildPreSessionReadinessContract } from "@/lib/api/pre-session-readiness-contract-builder";
 import { buildV2AcceptedSeedPrepareCompareAuditPayload } from "./v2-accepted-seed-prepare-compare";
 import { buildWeeklyRetroAuditPayload } from "./weekly-retro";
 import type {

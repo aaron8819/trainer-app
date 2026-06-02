@@ -20,7 +20,6 @@ import type { SessionIntent } from "@/lib/engine/session-types";
 import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 import { buildGeneratedSessionAuditSnapshot } from "@/lib/evidence/session-audit-snapshot";
 import type { SessionAuditSnapshot } from "@/lib/evidence/session-audit-types";
-import { buildPreSessionReadinessContract } from "@/lib/audit/workout-audit/pre-session-readiness-contract";
 import { buildCurrentWeekAuditEvaluation } from "@/lib/audit/workout-audit/current-week-audit";
 import { buildWeeklyRetroAuditPayload } from "@/lib/audit/workout-audit/weekly-retro";
 import { PROJECTED_WEEK_VOLUME_AUDIT_PAYLOAD_VERSION } from "@/lib/audit/workout-audit/constants";
@@ -33,6 +32,7 @@ import {
   buildPreSessionReadinessGymCardDto,
   type PreSessionReadinessGymCardDto,
 } from "./pre-session-readiness-gym-card";
+import { buildPreSessionReadinessContract } from "./pre-session-readiness-contract-builder";
 import {
   isPreSessionReadinessContract,
   type PreSessionReadinessContract,

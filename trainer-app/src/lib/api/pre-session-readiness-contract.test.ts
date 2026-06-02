@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   isPreSessionReadinessContract,
@@ -140,6 +141,33 @@ describe("pre-session readiness contract", () => {
     expect(
       isPreSessionReadinessContract(contract, { userId: "user-1" })
     ).toBe(true);
+  });
+
+  it("keeps the app-owned builder free of CLI, artifact, and broad audit runner paths", () => {
+    const source = readFileSync(
+      "src/lib/api/pre-session-readiness-contract-builder.ts",
+      "utf8"
+    );
+
+    expect(source).not.toContain("workout-audit-cli");
+    expect(source).not.toContain("buildPreSessionReadinessSummary");
+    expect(source).not.toContain("runWorkoutAuditGeneration");
+    expect(source).not.toContain("buildWorkoutAuditContext");
+    expect(source).not.toContain("artifacts/audits");
+    expect(source).not.toContain("artifact-serialization");
+    expect(source).not.toContain("serializer");
+    expect(source).not.toContain("writeFile");
+  });
+
+  it("keeps workout-audit as a compatibility consumer of the app-owned builder", () => {
+    const source = readFileSync(
+      "src/lib/audit/workout-audit/pre-session-readiness-contract.ts",
+      "utf8"
+    );
+
+    expect(source).toContain(
+      "@/lib/api/pre-session-readiness-contract-builder"
+    );
   });
 
   it("rejects contracts for another user", () => {

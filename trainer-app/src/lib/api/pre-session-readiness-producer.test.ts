@@ -76,7 +76,7 @@ vi.mock("@/lib/evidence/session-audit-snapshot", () => ({
     mocks.buildGeneratedSessionAuditSnapshot(...args),
 }));
 
-vi.mock("@/lib/audit/workout-audit/pre-session-readiness-contract", () => ({
+vi.mock("./pre-session-readiness-contract-builder", () => ({
   buildPreSessionReadinessContract: (...args: unknown[]) =>
     mocks.buildPreSessionReadinessContract(...args),
 }));
@@ -492,6 +492,10 @@ describe("preparePreSessionReadinessSnapshot", () => {
       "utf8"
     );
 
+    expect(source).toContain("./pre-session-readiness-contract-builder");
+    expect(source).not.toContain(
+      "@/lib/audit/workout-audit/pre-session-readiness-contract"
+    );
     expect(source).not.toContain("workout-audit-cli");
     expect(source).not.toContain("buildPreSessionReadinessSummary");
     expect(source).not.toContain("runWorkoutAuditGeneration");

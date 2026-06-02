@@ -23,6 +23,7 @@ import { buildNextMesocycleAcceptanceGateAuditPayload } from "./next-mesocycle-a
 import { buildNextMesocycleHandoffDryRunAuditPayload } from "./next-mesocycle-handoff-dry-run";
 import { buildNextMesocyclePostAcceptVerificationAuditPayload } from "./next-mesocycle-post-accept-verification";
 import { buildProgressionAnchorAuditPayload } from "./progression-anchor";
+import { buildPreSessionReadinessContract } from "./pre-session-readiness-contract";
 import { buildV2AcceptedSeedPrepareCompareAuditPayload } from "./v2-accepted-seed-prepare-compare";
 import { buildWeeklyRetroAuditPayload } from "./weekly-retro";
 import type {
@@ -435,6 +436,46 @@ export async function runWorkoutAuditGeneration(
             projectionArtifactPath: undefined,
           })
         : undefined;
+    const preSessionReadinessPayload = {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      wouldWriteTransaction: false,
+      activeMesocycle: {
+        mesocycleId: activeMesocycle?.id ?? null,
+        state: activeMesocycle?.state ?? null,
+        completedAccumulationSessions:
+          activeMesocycle?.accumulationSessionsCompleted ?? null,
+        deloadSessionsCompleted:
+          activeMesocycle?.deloadSessionsCompleted ?? null,
+        deloadSessionsExpected,
+        deloadSessionPosition,
+        currentWeek: currentSession?.week ?? null,
+        currentSession: currentSession?.session ?? null,
+        ...(requestedMesocycleId ? { requestedMesocycleId } : {}),
+        ...(requestedMesocycleId
+          ? {
+              mesocycleIdMatchesRequest:
+                activeMesocycle?.id === requestedMesocycleId,
+            }
+          : {}),
+      },
+    } satisfies NonNullable<WorkoutAuditRun["preSessionReadiness"]>;
+    const preSessionReadiness = {
+      ...preSessionReadinessPayload,
+      contract: buildPreSessionReadinessContract({
+        userId: context.userId,
+        ownerEmail: context.ownerEmail,
+        payload: preSessionReadinessPayload,
+        nextSession: context.nextSession,
+        generation: generatedFields.generationResult,
+        sessionSnapshot: generatedFields.sessionSnapshot,
+        generationPath: generatedFields.generationPath,
+        seedConsistency: generatedFields.acceptedSeedProvenanceConsistency,
+        projectedWeek: projectedWeekVolume,
+        weeklyRetro,
+      }),
+    } satisfies NonNullable<WorkoutAuditRun["preSessionReadiness"]>;
 
     return {
       context,
@@ -442,31 +483,7 @@ export async function runWorkoutAuditGeneration(
       ...generatedFields,
       projectedWeekVolume,
       ...(weeklyRetro ? { weeklyRetro } : {}),
-      preSessionReadiness: {
-        readOnly: true,
-        affectsScoringOrGeneration: false,
-        consumedByProduction: false,
-        wouldWriteTransaction: false,
-        activeMesocycle: {
-          mesocycleId: activeMesocycle?.id ?? null,
-          state: activeMesocycle?.state ?? null,
-          completedAccumulationSessions:
-            activeMesocycle?.accumulationSessionsCompleted ?? null,
-          deloadSessionsCompleted:
-            activeMesocycle?.deloadSessionsCompleted ?? null,
-          deloadSessionsExpected,
-          deloadSessionPosition,
-          currentWeek: currentSession?.week ?? null,
-          currentSession: currentSession?.session ?? null,
-          ...(requestedMesocycleId ? { requestedMesocycleId } : {}),
-          ...(requestedMesocycleId
-            ? {
-                mesocycleIdMatchesRequest:
-                  activeMesocycle?.id === requestedMesocycleId,
-              }
-            : {}),
-        },
-      },
+      preSessionReadiness,
     };
   }
 

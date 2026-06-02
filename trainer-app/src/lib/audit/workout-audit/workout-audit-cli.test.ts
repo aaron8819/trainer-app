@@ -4,6 +4,8 @@ import {
   buildV2MesocycleStrategyDiagnostic,
   type V2MesocycleStrategyInput,
 } from "@/lib/engine/planning/v2";
+import { buildPreSessionReadinessContract } from "./pre-session-readiness-contract";
+import type { PreSessionReadinessAuditPayload } from "./types";
 import { buildV2LaneSelectionIntentAudit } from "@/lib/engine/planning/v2/lane-selection-intent-audit";
 import {
   buildAuditTimingSummaryLines,
@@ -4593,6 +4595,29 @@ describe("buildPreSessionReadinessSummary", () => {
     };
   }
 
+  function attachReadinessContract<T extends ReturnType<typeof buildWeek4UpperBPreSessionArtifact>>(
+    artifact: T
+  ): T & { preSessionReadiness: PreSessionReadinessAuditPayload } {
+    const preSessionReadiness =
+      artifact.preSessionReadiness as PreSessionReadinessAuditPayload;
+    preSessionReadiness.contract = buildPreSessionReadinessContract({
+      userId: artifact.identity.userId,
+      ownerEmail: artifact.identity.ownerEmail,
+      payload: preSessionReadiness,
+      nextSession: artifact.nextSession as never,
+      sessionSnapshot: artifact.sessionSnapshot as never,
+      generationPath: artifact.generationPath as never,
+      seedConsistency:
+        artifact.generationProvenance.seed.provenanceConsistency as never,
+      projectedWeek: artifact.projectedWeekVolume as never,
+      weeklyRetro: artifact.weeklyRetro as never,
+    });
+    return {
+      ...artifact,
+      preSessionReadiness,
+    };
+  }
+
   it("prints generated preview, dose guidance, add-ons, and safe-to-train status", () => {
     const summary = buildPreSessionReadinessSummary({
       operatorDebug: false,
@@ -5349,6 +5374,56 @@ describe("buildPreSessionReadinessSummary", () => {
     expect(joined).not.toContain("- Add +1 Machine Chest Press");
   });
 
+  it("does not treat Iso-Lateral pulldown text as side-delt isolation", () => {
+    const artifact = attachReadinessContract(
+      buildWeek4UpperBPreSessionArtifact({
+        projectedSessions: [
+          {
+            slotId: "upper_b",
+            intent: "upper",
+            isNext: true,
+            exerciseCount: 2,
+            totalSets: 7,
+            exercises: [
+              {
+                exerciseId: "lat-pulldown",
+                name: "Iso-Lateral Front Lat Pulldown",
+                setCount: 3,
+                role: "primary",
+                effectiveStimulusByMuscle: { Lats: 3 },
+              },
+              {
+                exerciseId: "cable-lateral-raise",
+                name: "Cable Lateral Raise",
+                setCount: 4,
+                role: "accessory",
+                effectiveStimulusByMuscle: { "Side Delts": 4 },
+              },
+            ],
+            projectedContributionByMuscle: { Lats: 3, "Side Delts": 4 },
+          },
+        ],
+        fullWeekByMuscle: [
+          buildFullWeekRow("Side Delts", 6, 8, 6, 16, "B_SUPPORT"),
+          buildFullWeekRow("Lats", 12, 12, 8, 16, "A_PRIMARY"),
+        ],
+        runtimeDoseAdjustmentDiagnostics: [
+          buildDoseDiagnostic("Side Delts", 6, 8, 6, 16, "hold_seed", undefined),
+          buildDoseDiagnostic("Lats", 12, 12, 8, 16, "hold_seed", undefined),
+        ],
+      })
+    );
+
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: artifact as never,
+    });
+    const joined = summary?.join("\n") ?? "";
+
+    expect(joined).toContain("Optional +1 Cable Lateral Raise");
+    expect(joined).not.toContain("Optional +1 Iso-Lateral Front Lat Pulldown");
+  });
+
   it("reports a fatigue watch for a squat plus hinge week before optional add-ons", () => {
     const artifact = buildWeek4UpperBPreSessionArtifact({
       projectedSessions: [
@@ -5739,6 +5814,211 @@ describe("buildPreSessionReadinessSummary", () => {
         "- none",
       ])
     );
+  });
+
+  it("uses the typed contract to make no-add-ons explicit when projected week needs no further action", () => {
+    const artifact = attachReadinessContract(
+      buildWeek4UpperBPreSessionArtifact({
+        fullWeekByMuscle: [
+          buildFullWeekRow("Chest", 12, 12, 10, 16, "A_PRIMARY"),
+          buildFullWeekRow("Triceps", 8, 8, 6, 12, "B_SUPPORT"),
+        ],
+        runtimeDoseAdjustmentDiagnostics: [
+          buildDoseDiagnostic("Chest", 12, 12, 10, 16, "hold_seed", undefined),
+          buildDoseDiagnostic("Triceps", 8, 8, 6, 12, "hold_seed", undefined),
+        ],
+        currentWeekAudit: {
+          belowMEV: [],
+          overMAV: [],
+          underTargetClusters: [],
+          belowPreferred: [],
+          fatigueRisks: [],
+        },
+      })
+    );
+
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: artifact as never,
+    });
+
+    expect(artifact.preSessionReadiness.contract?.projectedWeekStatus.status).toBe(
+      "no_further_action"
+    );
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Projected week status is no_further_action; no optional add-ons are recommended.",
+        "- none - Projected week status is no_further_action; no optional add-ons are recommended.",
+        "Safe to train: yes",
+      ])
+    );
+  });
+
+  it("suppresses a mismatched optional add-on candidate and emits a consistency warning", () => {
+    const artifact = attachReadinessContract(
+      buildWeek4UpperBPreSessionArtifact({
+        projectedSessions: [
+          {
+            slotId: "upper_b",
+            intent: "upper",
+            isNext: true,
+            exerciseCount: 1,
+            totalSets: 3,
+            exercises: [
+              {
+                exerciseId: "barbell-curl",
+                name: "Barbell Curl",
+                setCount: 3,
+                role: "accessory",
+                effectiveStimulusByMuscle: { Biceps: 3 },
+              },
+            ],
+            projectedContributionByMuscle: { Biceps: 3 },
+          },
+        ],
+        fullWeekByMuscle: [buildFullWeekRow("Chest", 7, 12, 10, 16, "A_PRIMARY")],
+        runtimeDoseAdjustmentDiagnostics: [
+          buildDoseDiagnostic("Chest", 7, 12, 10, 16, "add_set", "Barbell Curl"),
+        ],
+      })
+    );
+
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: artifact as never,
+    });
+    const joined = summary?.join("\n") ?? "";
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "- Chest: add-on candidate Barbell Curl does not match the flagged muscle need; hold seed.",
+        "- none - No safe session-local optional add-ons from current contract evidence.",
+        "warning: optional_add_on_matches_flagged_muscle - One or more optional add-on candidates did not match the flagged muscle need and were suppressed. Evidence: Chest:Barbell Curl",
+      ])
+    );
+    expect(joined).not.toContain("- Add +1 Barbell Curl");
+    expect(joined).not.toContain("Use Dose Closure Guidance for MEV-floor top-ups");
+  });
+
+  it("suppresses an optional add-on targeting a suppressed muscle", () => {
+    const artifact = buildWeek4UpperBPreSessionArtifact({
+      projectedSessions: [
+        {
+          slotId: "upper_b",
+          intent: "upper",
+          isNext: true,
+          exerciseCount: 1,
+          totalSets: 3,
+          exercises: [
+            {
+              exerciseId: "cable-crossover",
+              name: "Cable Crossover",
+              setCount: 3,
+              role: "accessory",
+              effectiveStimulusByMuscle: { Chest: 3 },
+            },
+          ],
+          projectedContributionByMuscle: { Chest: 3 },
+        },
+      ],
+      fullWeekByMuscle: [buildFullWeekRow("Chest", 10, 12, 10, 16, "A_PRIMARY")],
+      runtimeDoseAdjustmentDiagnostics: [
+        {
+          ...buildDoseDiagnostic("Chest", 10, 12, 10, 16, "hold_seed", undefined),
+          targetStatus: "over_mav",
+          reasonCode: "over_mav_caution",
+          guidance: "over MAV; caution and suppress add-ons",
+        },
+      ],
+    });
+    const contracted = attachReadinessContract(artifact);
+
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: contracted as never,
+    });
+    const joined = summary?.join("\n") ?? "";
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "- Chest: optional floor-buffer add-on suppressed because this muscle is in suppress/avoid guidance.",
+        "- none - No safe session-local optional add-ons from current contract evidence.",
+        "warning: optional_add_on_not_suppressed_muscle - One or more optional add-ons targeted a suppressed muscle and were suppressed. Evidence: Chest",
+      ])
+    );
+    expect(joined).not.toContain("Optional session-local +1 Cable Crossover");
+  });
+
+  it("does not emit normal start coaching when the contract startability is blocked", () => {
+    const artifact = buildWeek4UpperBPreSessionArtifact();
+    artifact.nextSession = {
+      ...artifact.nextSession,
+      source: "existing_incomplete",
+      existingWorkoutId: "stale-plan",
+      isExisting: true,
+      selectedIncompleteStatus: "planned",
+      selectedIncompleteReadiness: {
+        classification: "stale_or_mismatched_incomplete_workout",
+        safeToTrain: false,
+        action: "block_or_cleanup",
+        reason:
+          "Incomplete planned workout does not match the next expected seeded slot, seed exercise plan, mesocycle, or clean planned state.",
+      },
+    } as never;
+    const contracted = attachReadinessContract(artifact);
+
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: contracted as never,
+    });
+    const joined = summary?.join("\n") ?? "";
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "Resolve blocker before starting; do not start this as a normal session.",
+        "Resolve blocker before starting.",
+        "Safe to train: no",
+      ])
+    );
+    expect(joined).not.toContain("Run seed as prescribed.");
+    expect(joined).not.toContain("Default: run seed as prescribed.");
+  });
+
+  it("prints CLI add-on output from contract fields", () => {
+    const artifact = attachReadinessContract(buildWeek4UpperBPreSessionArtifact());
+    artifact.preSessionReadiness.contract?.sessionLocalCoaching.safeOptionalAddOns.splice(
+      0,
+      artifact.preSessionReadiness.contract.sessionLocalCoaching.safeOptionalAddOns.length,
+      "- contract-only add-on row"
+    );
+
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: artifact as never,
+    });
+
+    expect(summary).toEqual(expect.arrayContaining(["- contract-only add-on row"]));
+  });
+
+  it("keeps the structured contract audit-only with no DB, seed, or runtime mutation flags", () => {
+    const artifact = attachReadinessContract(buildWeek4UpperBPreSessionArtifact());
+    const contract = artifact.preSessionReadiness.contract;
+
+    expect(contract?.boundaries).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      wouldWriteTransaction: false,
+      dbMutation: false,
+      workoutLogSessionCreated: false,
+      seedRuntimeChanged: false,
+      plannerMaterializerChanged: false,
+    });
+    expect(
+      contract?.consistencyChecks.find(
+        (check) => check.id === "seed_runtime_proof_read_only"
+      )
+    ).toMatchObject({ status: "pass" });
   });
 });
 

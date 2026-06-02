@@ -12,6 +12,7 @@ import {
   runAuditPreflight,
 } from "./audit-cli-support";
 import type {
+  PreSessionReadinessContract,
   ProjectedWeekVolumeAuditPayload,
   WorkoutAuditArtifact,
   WorkoutAuditRequest,
@@ -585,8 +586,10 @@ function getLowFatigueIsolationLabel(input: {
     return exerciseName?.toLowerCase().includes("curl") ? exerciseName : "Curl";
   }
   if (input.muscle === "Side Delts") {
-    return exerciseName?.toLowerCase().includes("lateral")
-      ? exerciseName
+    const normalized = exerciseName?.toLowerCase();
+    return normalized?.includes("lateral raise") ||
+      normalized?.includes("side raise")
+      ? exerciseName ?? "Lateral Raise"
       : "Lateral Raise";
   }
   if (input.muscle === "Rear Delts") {
@@ -630,7 +633,7 @@ function findLowFatigueIsolationExercise(input: {
     return matches(["curl"]);
   }
   if (input.muscle === "Side Delts") {
-    return matches(["lateral"]);
+    return matches(["lateral raise", "side raise"]);
   }
   if (input.muscle === "Rear Delts") {
     return matches(["rear delt", "reverse pec", "face pull"]);
@@ -1241,6 +1244,194 @@ function buildSafeToTrain(input: {
     safe: reasons.length === 0,
     reasons: reasons.length > 0 ? reasons : ["no blocking audit, state, or generation blockers detected"],
   };
+}
+
+function buildPreSessionReadinessSummaryFromContract(input: {
+  artifact: Pick<
+    WorkoutAuditArtifact,
+    | "sessionSnapshot"
+    | "weeklyRetro"
+    | "preSessionReadiness"
+  >;
+  contract: PreSessionReadinessContract;
+}): string[] {
+  const contract = input.contract;
+  const generated = input.artifact.sessionSnapshot?.generated;
+  const active = input.artifact.preSessionReadiness?.activeMesocycle;
+  const exercises = [...(generated?.exercises ?? [])].sort(
+    (left, right) => left.orderIndex - right.orderIndex
+  );
+  const isActiveDeload = contract.nextSessionIdentity.activeState === "ACTIVE_DELOAD";
+  const lines = [
+    "Pre-Session Readiness",
+    "---------------------",
+    `Current app state: owner=${contract.nextSessionIdentity.ownerEmail ?? contract.nextSessionIdentity.userId} active_mesocycle=${contract.nextSessionIdentity.activeMesocycleId ?? "unknown"} state=${contract.nextSessionIdentity.activeState ?? "unknown"} completed_accumulation_sessions=${formatAuditValue(active?.completedAccumulationSessions)} current_week=${formatAuditValue(contract.nextSessionIdentity.currentWeek)} current_session=${formatAuditValue(contract.nextSessionIdentity.currentSession)} next_slot=${contract.nextSessionIdentity.nextSlotId ?? "unknown"} incomplete_workout_blocker=${contract.startability.safeToTrain ? "none" : contract.nextSessionIdentity.existingWorkoutId ?? "none"} incomplete_workout_readiness=${contract.nextSessionIdentity.incompleteWorkoutReadiness}`,
+    `Existing workout action: ${contract.nextSessionIdentity.existingWorkoutAction}`,
+    isActiveDeload
+      ? `Deload sessions completed: ${formatAuditValue(active?.deloadSessionsCompleted)}`
+      : "Deload sessions completed: n/a",
+    isActiveDeload
+      ? `Deload session position: ${
+          active?.deloadSessionPosition
+            ? `${active.deloadSessionPosition.current} of ${active.deloadSessionPosition.total}`
+            : "n/a"
+        }`
+      : "Deload session position: n/a",
+    `Lifecycle blocker: ${
+      contract.nextSessionIdentity.generationPath === "blocked_closeout_required"
+        ? contract.startability.blockerSummary
+        : "none"
+    }`,
+    `Generation: path=${contract.nextSessionIdentity.generationPath} generator=${contract.nextSessionIdentity.generator} composition_source=${contract.seedRuntimeProof.compositionSource ?? "unknown"} receipt_mesocycle=${contract.seedRuntimeProof.receiptMesocycleId ?? "unknown"} seed_source=${contract.seedRuntimeProof.seedSource ?? "unknown"} seed_shape=${contract.seedRuntimeProof.seedExecutableShape ?? "unknown"} seed_or_slot_hash=not_available`,
+    ...contract.seedRuntimeProof.proofLines,
+    "",
+    "Generated Preview",
+    "Order | Exercise | Sets | Load | Rep target/range | RPE",
+  ];
+
+  if (exercises.length === 0) {
+    lines.push("none | no generated exercises available | n/a | n/a | n/a | n/a");
+  } else {
+    for (const exercise of exercises) {
+      const firstSet = exercise.prescribedSets[0];
+      lines.push(
+        `${exercise.orderIndex + 1} | ${exercise.exerciseName} | ${exercise.prescribedSetCount} | ${formatAuditDecimal(firstSet?.targetLoad)} | ${formatRepTarget(firstSet)} | ${formatAuditDecimal(firstSet?.targetRpe)}`
+      );
+    }
+  }
+
+  lines.push("", "Prescription Confidence / Cautions");
+  lines.push(
+    ...(contract.sessionLocalCoaching.prescriptionConfidenceWatches.length > 0
+      ? contract.sessionLocalCoaching.prescriptionConfidenceWatches.map((line) =>
+          line.startsWith("- ") ? line.slice(2) : line
+        )
+      : ["none"])
+  );
+
+  lines.push(
+    "",
+    isActiveDeload
+      ? "Current-Week Dose Guidance (Deload Context)"
+      : "Current-Week Dose Guidance"
+  );
+  if (isActiveDeload) {
+    lines.push(DELOAD_DO_NOT_CHASE_VOLUME_MESSAGE);
+  }
+  lines.push("Muscle | projected vs MEV/target/MAV | status | recommended action | confidence");
+  if (contract.projectedWeekStatus.doseGuidanceRows.length === 0) {
+    lines.push(
+      isActiveDeload
+        ? "none | deload-context volume deficits are non-actionable | n/a | run deload prescription; no MEV/top-up work | n/a"
+        : "none | no relevant dose diagnostics | n/a | hold seed | n/a"
+    );
+  } else {
+    lines.push(...contract.projectedWeekStatus.doseGuidanceRows.map((row) => row.line));
+  }
+
+  lines.push("", contract.doseClosure.heading);
+  if (isActiveDeload) {
+    lines.push(DELOAD_DO_NOT_CHASE_VOLUME_MESSAGE);
+  }
+  lines.push("Priority:");
+  lines.push(...contract.doseClosure.priority);
+  lines.push("Optional:");
+  lines.push(...contract.doseClosure.optional);
+  if (contract.doseClosure.monitor.length > 0) {
+    lines.push("Monitor / defer:");
+    lines.push(...contract.doseClosure.monitor);
+  }
+  lines.push("Suppress:");
+  lines.push(...contract.doseClosure.suppress);
+  lines.push("Guardrails:");
+  lines.push(...contract.doseClosure.guardrails);
+
+  const retro = input.artifact.weeklyRetro;
+  lines.push("", "Prior-Week / Fatigue Context");
+  lines.push(
+    retro
+      ? `prior_week=${retro.week} planned_completed=${retro.planAdherence.plannedWorkCompletedSets}/${retro.planAdherence.plannedWorkTotalSets} performed_planned_sets missed=${retro.planAdherence.plannedWorkMissedSets} added_sets=${formatSignedSetDelta(retro.planAdherence.explainedAdditions.totalSets)} confidence_impact=${retro.planAdherence.engineConfidenceImpact}`
+      : "prior_week=not_available"
+  );
+  lines.push(
+    `fatigue_notes=${
+      contract.calibrationWatches.fatigue.length > 0
+        ? contract.calibrationWatches.fatigue
+            .map((line) => line.replace(/^- /, ""))
+            .slice(0, 6)
+            .join("; ")
+        : "none"
+    }`
+  );
+  lines.push(
+    `recovery_caveats=${
+      contract.calibrationWatches.recoveryCaveats.length > 0
+        ? contract.calibrationWatches.recoveryCaveats.join("; ")
+        : "none"
+    }`
+  );
+
+  lines.push("", "Session-Local Coaching Readout");
+  lines.push(contract.sessionLocalCoaching.defaultInstruction);
+  lines.push("Floor-buffer opportunities:");
+  lines.push(
+    ...(contract.sessionLocalCoaching.floorBufferOpportunities.length > 0
+      ? contract.sessionLocalCoaching.floorBufferOpportunities
+      : ["- none"])
+  );
+  lines.push("Prescription confidence watches:");
+  lines.push(...contract.sessionLocalCoaching.prescriptionConfidenceWatches);
+  lines.push("Fatigue cautions:");
+  lines.push(...contract.sessionLocalCoaching.fatigueCautions);
+  lines.push("Safe optional add-ons:");
+  lines.push(...contract.sessionLocalCoaching.safeOptionalAddOns);
+  lines.push("Suppress / avoid:");
+  lines.push(...contract.sessionLocalCoaching.suppressAvoid);
+
+  lines.push("", "Session-Local Add-On Recommendation");
+  if (contract.startability.safeToTrain) {
+    lines.push(
+      contract.startability.action === "run_deload_seed_as_prescribed"
+        ? "Run deload seed as prescribed."
+        : "Run seed as prescribed."
+    );
+    lines.push(
+      isActiveDeload
+        ? DELOAD_DO_NOT_CHASE_VOLUME_MESSAGE
+        : contract.sessionLocalCoaching.addOnState.status === "available"
+          ? "Use Dose Closure Guidance for MEV-floor top-ups; session-local only."
+          : contract.sessionLocalCoaching.addOnState.reason
+    );
+  } else {
+    lines.push("Resolve blocker before starting.");
+    lines.push(contract.startability.blockerSummary);
+  }
+  lines.push("Optional add-ons:");
+  lines.push(...contract.sessionLocalCoaching.safeOptionalAddOns);
+  lines.push("Avoid:");
+  lines.push(...contract.sessionLocalCoaching.suppressAvoid);
+  lines.push(
+    "Boundary: recommendations only; no workout/session/log/seed/progression mutation."
+  );
+
+  const checkWarnings = contract.consistencyChecks.filter(
+    (check) => check.status !== "pass"
+  );
+  if (checkWarnings.length > 0) {
+    lines.push("", "Consistency Checks");
+    for (const check of checkWarnings) {
+      lines.push(
+        `${check.status}: ${check.id} - ${check.message}${
+          check.evidence.length > 0 ? ` Evidence: ${check.evidence.join(", ")}` : ""
+        }`
+      );
+    }
+  }
+
+  lines.push("", `Safe to train: ${contract.startability.safeToTrain ? "yes" : "no"}`);
+  lines.push(`Reason: ${contract.startability.reasons.join("; ")}`);
+
+  return lines;
 }
 
 export function buildWorkoutAuditModeLine(input: {
@@ -4198,6 +4389,12 @@ export function buildPreSessionReadinessSummary(input: {
   const payload = input.artifact.preSessionReadiness;
   if (!payload) {
     return null;
+  }
+  if (payload.contract) {
+    return buildPreSessionReadinessSummaryFromContract({
+      artifact: input.artifact,
+      contract: payload.contract,
+    });
   }
 
   const projectedWeek = input.artifact.projectedWeekVolume;

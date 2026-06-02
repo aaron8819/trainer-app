@@ -1023,6 +1023,28 @@ describe("runWorkoutAuditGeneration", () => {
         mesocycleIdMatchesRequest: true,
       },
     });
+    expect(run.preSessionReadiness?.contract).toMatchObject({
+      contractVersion: 1,
+      scope: {
+        mode: "pre-session-readiness",
+        ownerSeam: "workout-audit/pre-session-readiness",
+        readOnly: true,
+        auditOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByProduction: false,
+      },
+      startability: {
+        safeToTrain: true,
+        normalStartCoachingAllowed: true,
+      },
+      boundaries: {
+        readOnly: true,
+        dbMutation: false,
+        workoutLogSessionCreated: false,
+        seedRuntimeChanged: false,
+        plannerMaterializerChanged: false,
+      },
+    });
     expect(run.projectedWeekVolume?.runtimeDoseAdjustmentDiagnostics?.[0]).toMatchObject({
       muscle: "Chest",
       readOnly: true,

@@ -47,6 +47,7 @@ export function CompletedWorkoutReview({
   const [postSessionReview, setPostSessionReview] =
     useState<PostSessionReviewDisplayDto | null>(null);
   const [isLoadingExplanation, setIsLoadingExplanation] = useState(true);
+  const [isLoadingPostSessionReview, setIsLoadingPostSessionReview] = useState(true);
   const executionSummary = buildWorkoutExecutionSummary(
     performanceSummary.map((exercise) => ({
       exerciseId: exercise.sourceExerciseId,
@@ -91,6 +92,8 @@ export function CompletedWorkoutReview({
     let mounted = true;
 
     async function fetchPostSessionReview() {
+      setIsLoadingPostSessionReview(true);
+      setPostSessionReview(null);
       try {
         const response = await fetch(`/api/workouts/${workoutId}/post-session-review`, {
           cache: "no-store",
@@ -106,6 +109,10 @@ export function CompletedWorkoutReview({
       } catch {
         if (mounted) {
           setPostSessionReview(null);
+        }
+      } finally {
+        if (mounted) {
+          setIsLoadingPostSessionReview(false);
         }
       }
     }
@@ -177,7 +184,22 @@ export function CompletedWorkoutReview({
         ) : null}
       </section>
 
-      {postSessionReview ? (
+      {isLoadingPostSessionReview ? (
+        <section
+          aria-label="Post-session review loading"
+          className="min-h-[112px] rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"
+        >
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Post-session review
+          </p>
+          <h2 className="mt-1 text-base font-semibold text-slate-900">
+            Preparing your post-session review...
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Checking completed work, load calibration, and next-exposure notes.
+          </p>
+        </section>
+      ) : postSessionReview ? (
         <PostSessionReviewCard review={postSessionReview} />
       ) : null}
 

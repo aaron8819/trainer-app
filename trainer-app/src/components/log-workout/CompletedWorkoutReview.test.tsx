@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CompletedWorkoutReview } from "./CompletedWorkoutReview";
 import type { PostSessionReviewDisplayDto } from "@/lib/api/post-session-review-display";
+import type { WorkoutExplanationResponse } from "@/lib/ui/workout-explanation-response";
 
 vi.mock("next/link", () => ({
   default: ({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) => (
@@ -41,6 +42,95 @@ function makePostSessionReview(
       noMutationNote: "No seed or plan changes made",
     },
     ...overrides,
+  };
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+
+  return { promise, resolve, reject };
+}
+
+function makeExplanationResponse(): WorkoutExplanationResponse {
+  return {
+    confidence: {
+      level: "high",
+      summary: "ok",
+      missingSignals: [],
+    },
+    sessionContext: {
+      blockPhase: {
+        blockType: "accumulation",
+        weekInBlock: 2,
+        totalWeeksInBlock: 4,
+        primaryGoal: "build",
+      },
+      volumeStatus: {
+        muscleStatuses: new Map(),
+        overallSummary: "ok",
+      },
+      readinessStatus: {
+        overall: "moderate",
+        signalAge: 0,
+        availability: "recent",
+        label: "Recent readiness",
+        perMuscleFatigue: new Map(),
+        sorenessSuppressedMuscles: [],
+        adaptations: [],
+      },
+      progressionContext: {
+        weekInMesocycle: 2,
+        volumeProgression: "building",
+        intensityProgression: "ramping",
+        nextMilestone: "keep building",
+      },
+      cycleSource: "computed",
+      narrative: "narrative",
+    },
+    coachMessages: [],
+    exerciseRationales: {},
+    prescriptionRationales: {},
+    progressionReceipts: {
+      "ex-1": {
+        lastPerformed: {
+          reps: 10,
+          load: 95,
+          rpe: 8,
+          performedAt: "2026-06-01T00:00:00.000Z",
+        },
+        todayPrescription: {
+          reps: 10,
+          load: 100,
+          rpe: 8,
+        },
+        delta: {
+          load: 5,
+          loadPercent: 5.26,
+          reps: 0,
+          rpe: 0,
+        },
+        trigger: "double_progression",
+        decisionLog: [],
+      },
+    },
+    nextExposureDecisions: {
+      "ex-1": {
+        action: "hold",
+        summary: "Next exposure: hold load.",
+        reason: "Median reps stayed in range, so keep building reps before adding load.",
+        anchorLoad: 100,
+        repRange: { min: 8, max: 12 },
+        modalRpe: 8,
+        medianReps: 10,
+      },
+    },
+    filteredExercises: [],
+    volumeCompliance: [],
   };
 }
 
@@ -442,28 +532,107 @@ describe("CompletedWorkoutReview", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the post-session review card after the completion summary when the DTO is available", async () => {
+  it("reserves the post-session review area while the DTO fetch is pending", async () => {
+    const postSessionReviewResponse = createDeferred<{
+      ok: boolean;
+      json: () => Promise<{ postSessionReview: null }>;
+    }>();
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string) => {
         if (url.endsWith("/post-session-review")) {
+          return postSessionReviewResponse.promise;
+        }
+        if (url.endsWith("/explanation")) {
           return Promise.resolve({
             ok: true,
-            json: async () => ({
-              postSessionReview: makePostSessionReview({
-                loadCalibration: [
-                  {
-                    exerciseName: "Bench Press",
-                    status: "watch",
-                    headline: "Bench Press target looked too light",
-                    detail: "Performed median load 130 vs target 100.",
-                    nextExposureNote: "Next exposure: raise starting point modestly.",
-                    evidenceOnly: true,
-                  },
-                ],
-              }),
-            }),
+            json: async () => makeExplanationResponse(),
           });
+        }
+        return Promise.resolve({ ok: false, json: async () => ({}) });
+      })
+    );
+
+    const { container } = render(
+      <CompletedWorkoutReview
+        workoutId="workout-1"
+        rpeAdherence={null}
+        sessionIdentityLabel="Upper 1"
+        sessionTechnicalLabel="Slot ID: upper_a"
+        performanceSummary={[
+          {
+            exerciseId: "ex-1",
+            name: "Bench Press",
+            equipment: ["barbell"],
+            isMainLift: true,
+            section: "main",
+            sets: [
+              {
+                setIndex: 1,
+                targetReps: 10,
+                targetLoad: 100,
+                targetRpe: 8,
+                actualReps: 10,
+                actualLoad: 100,
+                actualRpe: 8,
+                wasLogged: true,
+                wasSkipped: false,
+              },
+            ],
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText("Session complete!")).toBeInTheDocument();
+    expect(
+      screen.getByText("Preparing your post-session review...")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Checking completed work, load calibration, and next-exposure notes.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Detailed set log")).toBeInTheDocument();
+    expect(screen.getByText("What's next")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View full review" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Generate next workout" })).toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByText("Session outcome")).toBeInTheDocument());
+    expect(
+      screen.getByText("Preparing your post-session review...")
+    ).toBeInTheDocument();
+
+    const visibleText = container.textContent ?? "";
+    expect(visibleText.indexOf("Session complete!")).toBeLessThan(
+      visibleText.indexOf("Preparing your post-session review...")
+    );
+    expect(visibleText.indexOf("Preparing your post-session review...")).toBeLessThan(
+      visibleText.indexOf("Session outcome")
+    );
+    expect(visibleText.indexOf("Session outcome")).toBeLessThan(
+      visibleText.indexOf("Detailed set log")
+    );
+
+    postSessionReviewResponse.resolve({
+      ok: true,
+      json: async () => ({ postSessionReview: null }),
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Preparing your post-session review...")
+      ).not.toBeInTheDocument()
+    );
+  });
+
+  it("renders the post-session review card after the completion summary when the DTO is available", async () => {
+    const postSessionReviewResponse = createDeferred<{
+      ok: boolean;
+      json: () => Promise<{ postSessionReview: PostSessionReviewDisplayDto }>;
+    }>();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.endsWith("/post-session-review")) {
+          return postSessionReviewResponse.promise;
         }
         return Promise.resolve({ ok: false, json: async () => ({}) });
       })
@@ -501,11 +670,34 @@ describe("CompletedWorkoutReview", () => {
     );
 
     expect(screen.getByText("Session complete!")).toBeInTheDocument();
+    expect(
+      screen.getByText("Preparing your post-session review...")
+    ).toBeInTheDocument();
     expect(screen.getByText("Detailed set log")).toBeInTheDocument();
     expect(screen.getByText("What's next")).toBeInTheDocument();
+    postSessionReviewResponse.resolve({
+      ok: true,
+      json: async () => ({
+        postSessionReview: makePostSessionReview({
+          loadCalibration: [
+            {
+              exerciseName: "Bench Press",
+              status: "watch",
+              headline: "Bench Press target looked too light",
+              detail: "Performed median load 130 vs target 100.",
+              nextExposureNote: "Next exposure: raise starting point modestly.",
+              evidenceOnly: true,
+            },
+          ],
+        }),
+      }),
+    });
     await waitFor(() =>
       expect(screen.getByLabelText("Post-session review")).toBeInTheDocument()
     );
+    expect(
+      screen.queryByText("Preparing your post-session review...")
+    ).not.toBeInTheDocument();
     expect(screen.getByText("Post-session review ready")).toBeInTheDocument();
     expect(screen.getByText("Bench Press target looked too light")).toBeInTheDocument();
     expect(screen.getAllByText("No seed or plan changes made").length).toBeGreaterThan(0);
@@ -524,14 +716,15 @@ describe("CompletedWorkoutReview", () => {
   });
 
   it("omits the post-session review section when the DTO is unavailable", async () => {
+    const postSessionReviewResponse = createDeferred<{
+      ok: boolean;
+      json: () => Promise<{ postSessionReview: null }>;
+    }>();
     vi.stubGlobal(
       "fetch",
       vi.fn((url: string) => {
         if (url.endsWith("/post-session-review")) {
-          return Promise.resolve({
-            ok: true,
-            json: async () => ({ postSessionReview: null }),
-          });
+          return postSessionReviewResponse.promise;
         }
         return Promise.resolve({ ok: false, json: async () => ({}) });
       })
@@ -547,11 +740,65 @@ describe("CompletedWorkoutReview", () => {
       />
     );
 
+    expect(
+      screen.getByText("Preparing your post-session review...")
+    ).toBeInTheDocument();
+    postSessionReviewResponse.resolve({
+      ok: true,
+      json: async () => ({ postSessionReview: null }),
+    });
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         "/api/workouts/workout-1/post-session-review",
         { cache: "no-store" }
       )
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Preparing your post-session review...")
+      ).not.toBeInTheDocument()
+    );
+    expect(screen.queryByLabelText("Post-session review")).not.toBeInTheDocument();
+    expect(screen.getByText("Session complete!")).toBeInTheDocument();
+    expect(screen.getByText("What's next")).toBeInTheDocument();
+  });
+
+  it("collapses the post-session review placeholder silently when the DTO fetch fails", async () => {
+    const postSessionReviewResponse = createDeferred<{
+      ok: boolean;
+      json: () => Promise<Record<string, never>>;
+    }>();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.endsWith("/post-session-review")) {
+          return postSessionReviewResponse.promise;
+        }
+        return Promise.resolve({ ok: false, json: async () => ({}) });
+      })
+    );
+
+    render(
+      <CompletedWorkoutReview
+        workoutId="workout-1"
+        rpeAdherence={null}
+        sessionIdentityLabel="Upper 1"
+        sessionTechnicalLabel="Slot ID: upper_a"
+        performanceSummary={[]}
+      />
+    );
+
+    expect(
+      screen.getByText("Preparing your post-session review...")
+    ).toBeInTheDocument();
+    postSessionReviewResponse.resolve({
+      ok: false,
+      json: async () => ({}),
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Preparing your post-session review...")
+      ).not.toBeInTheDocument()
     );
     expect(screen.queryByLabelText("Post-session review")).not.toBeInTheDocument();
     expect(screen.getByText("Session complete!")).toBeInTheDocument();

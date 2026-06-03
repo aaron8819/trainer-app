@@ -3,6 +3,7 @@ import { finalizeDeloadSessionResult } from "./finalize-session";
 import { buildPrescriptionConfidenceReadouts } from "@/lib/api/prescription-confidence-readout";
 import {
   EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE,
+  RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
   type ApplyLoadsAudit,
 } from "@/lib/engine/apply-loads";
 import type { WorkoutPlan } from "@/lib/engine/types";
@@ -265,6 +266,37 @@ describe("buildPrescriptionConfidenceReadouts", () => {
       cautionReason: "estimate_load_no_exact_history",
     });
     expect(readouts[0]?.cautionReason).not.toContain("target_effort_load_mismatch");
+  });
+
+  it("surfaces runtime-added same-exercise calibration as lower-trust provenance", () => {
+    const readouts = buildPrescriptionConfidenceReadouts({
+      workout: workoutWithOneExercise({
+        exerciseId: "cable-lateral-raise",
+        exerciseName: "Cable Lateral Raise",
+        targetLoad: 10,
+        targetReps: 12,
+        targetRpe: 8,
+        equipment: ["cable"],
+      }),
+      loadAudit: loadAuditFor({
+        exerciseId: "cable-lateral-raise",
+        source: RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
+        targetLoad: 10,
+      }),
+    });
+
+    expect(readouts[0]).toMatchObject({
+      loadSource: RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
+      confidence: "medium",
+      cautionLevel: "notice",
+      cautionReason: RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
+      suggestedAdjustmentRange: {
+        minLoad: 7.5,
+        maxLoad: 10,
+        unit: "lb",
+        basis: RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
+      },
+    });
   });
 });
 

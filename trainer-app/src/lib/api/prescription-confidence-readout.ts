@@ -1,5 +1,6 @@
 import {
   EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE,
+  RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
   type ApplyLoadsAudit,
 } from "@/lib/engine/apply-loads";
 import type {
@@ -212,6 +213,9 @@ function resolveConfidence(input: {
   if (input.loadSource === "history") {
     return "medium";
   }
+  if (input.loadSource === RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE) {
+    return "medium";
+  }
   if (input.loadSource === "baseline" || input.loadSource === "existing_target_load") {
     return "medium";
   }
@@ -237,6 +241,13 @@ function resolveCaution(input: {
     return {
       level: "notice",
       reason: "estimate_load_no_exact_history",
+    };
+  }
+
+  if (input.loadSource === RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE) {
+    return {
+      level: "notice",
+      reason: RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
     };
   }
 

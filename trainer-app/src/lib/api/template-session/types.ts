@@ -72,6 +72,7 @@ export type PrescriptionConfidenceLoadSource =
   | "baseline"
   | "estimate"
   | "existing_target_load"
+  | "runtime_added_same_exercise_calibration_anchor"
   | "bodyweight"
   | "none"
   | "unknown";

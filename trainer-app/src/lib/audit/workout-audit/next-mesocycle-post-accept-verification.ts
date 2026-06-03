@@ -202,6 +202,10 @@ function classifyPrescriptionReadout(
     return "stale_history";
   }
 
+  if (readout.loadSource === "runtime_added_same_exercise_calibration_anchor") {
+    return "recent_history";
+  }
+
   if (readout.loadSource === "bodyweight") {
     return readout.confidence === "low" ? "missing" : "exact_history";
   }

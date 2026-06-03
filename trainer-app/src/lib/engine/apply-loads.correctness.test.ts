@@ -7,6 +7,7 @@ import {
   applyLoads,
   applyLoadsWithAudit,
   EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE,
+  RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
 } from "./apply-loads";
 import type { Exercise, WorkoutHistoryEntry, WorkoutPlan } from "./types";
 
@@ -45,6 +46,51 @@ const cableMachineCurl: Exercise = {
   id: "cable-machine-curl",
   name: "Cable Machine Curl",
   equipment: ["machine", "cable"],
+};
+
+const cableLateralRaise: Exercise = {
+  id: "cable-lateral-raise",
+  name: "Cable Lateral Raise",
+  movementPatterns: ["abduction", "isolation"],
+  splitTags: ["push"],
+  jointStress: "low",
+  isMainLiftEligible: false,
+  isCompound: false,
+  fatigueCost: 1,
+  equipment: ["cable"],
+  primaryMuscles: ["Side Delts"],
+  repRangeMin: 10,
+  repRangeMax: 20,
+};
+
+const machineLateralRaise: Exercise = {
+  id: "machine-lateral-raise",
+  name: "Machine Lateral Raise",
+  movementPatterns: ["abduction", "isolation"],
+  splitTags: ["push"],
+  jointStress: "low",
+  isMainLiftEligible: false,
+  isCompound: false,
+  fatigueCost: 1,
+  equipment: ["machine"],
+  primaryMuscles: ["Side Delts"],
+  repRangeMin: 10,
+  repRangeMax: 20,
+};
+
+const cableCrossover: Exercise = {
+  id: "cable-crossover",
+  name: "Cable Crossover",
+  movementPatterns: ["horizontal_push", "isolation"],
+  splitTags: ["push"],
+  jointStress: "low",
+  isMainLiftEligible: false,
+  isCompound: false,
+  fatigueCost: 1,
+  equipment: ["cable"],
+  primaryMuscles: ["Chest"],
+  repRangeMin: 10,
+  repRangeMax: 20,
 };
 
 const bayesianCurl: Exercise = {
@@ -250,6 +296,28 @@ const upperAccessoryWorkout: WorkoutPlan = {
   ],
   estimatedMinutes: 20,
 };
+
+function accessoryWorkoutFor(exercise: Exercise): WorkoutPlan {
+  return {
+    id: `w-${exercise.id}`,
+    scheduledDate: "2026-03-28T00:00:00.000Z",
+    warmup: [],
+    mainLifts: [],
+    accessories: [
+      {
+        id: `we-${exercise.id}`,
+        exercise,
+        orderIndex: 0,
+        isMainLift: false,
+        sets: [
+          { setIndex: 1, targetReps: 12, targetRpe: 8 },
+          { setIndex: 2, targetReps: 12, targetRpe: 8 },
+        ],
+      },
+    ],
+    estimatedMinutes: 20,
+  };
+}
 
 const lowerMainLiftWorkout: WorkoutPlan = {
   id: "w-lower-main",
@@ -1982,6 +2050,130 @@ describe("applyLoads correctness", () => {
 
     expect(result.audit.resolvedLoads["cable-curl"]?.source).toBe("estimate");
     expect(result.workout.accessories[0].sets[0].targetLoad).toBe(35);
+  });
+
+  it("uses exact runtime-added same-exercise calibration before same-pattern donor estimates", () => {
+    const result = applyLoadsWithAudit(accessoryWorkoutFor(cableLateralRaise), {
+      history: [
+        {
+          date: "2026-03-21T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          selectionMode: "INTENT",
+          exercises: [
+            {
+              exerciseId: "machine-lateral-raise",
+              sets: [
+                { exerciseId: "machine-lateral-raise", setIndex: 1, reps: 12, rpe: 8, load: 30 },
+                { exerciseId: "machine-lateral-raise", setIndex: 2, reps: 12, rpe: 8, load: 30 },
+              ],
+            },
+          ],
+          calibrationExercises: [
+            {
+              exerciseId: "cable-lateral-raise",
+              source: "runtime_added_same_exercise",
+              sets: [
+                { exerciseId: "cable-lateral-raise", setIndex: 1, reps: 15, rpe: 7, load: 10 },
+                { exerciseId: "cable-lateral-raise", setIndex: 2, reps: 14, rpe: 7.5, load: 10 },
+                { exerciseId: "cable-lateral-raise", setIndex: 3, reps: 12, rpe: 8, load: 5 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: {
+        "cable-lateral-raise": cableLateralRaise,
+        "machine-lateral-raise": machineLateralRaise,
+      },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "push",
+    });
+
+    expect(result.audit.resolvedLoads["cable-lateral-raise"]?.source).toBe(
+      RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE
+    );
+    expect(result.workout.accessories[0].sets[0].targetLoad).toBe(10);
+    expect(result.audit.progressionTraces["cable-lateral-raise"]).toBeUndefined();
+  });
+
+  it("uses exact runtime-added cable crossover calibration instead of cold estimates", () => {
+    const result = applyLoadsWithAudit(accessoryWorkoutFor(cableCrossover), {
+      history: [
+        {
+          date: "2026-03-21T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          selectionMode: "INTENT",
+          exercises: [],
+          calibrationExercises: [
+            {
+              exerciseId: "cable-crossover",
+              source: "runtime_added_same_exercise",
+              sets: [
+                { exerciseId: "cable-crossover", setIndex: 1, reps: 12, rpe: 7.5, load: 12.5 },
+                { exerciseId: "cable-crossover", setIndex: 2, reps: 12, rpe: 8, load: 12.5 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "cable-crossover": cableCrossover },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "push",
+    });
+
+    expect(result.audit.resolvedLoads["cable-crossover"]?.source).toBe(
+      RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE
+    );
+    expect(result.workout.accessories[0].sets[0].targetLoad).toBe(12.5);
+  });
+
+  it("keeps planned exact history ahead of runtime-added same-exercise calibration", () => {
+    const result = applyLoadsWithAudit(accessoryWorkoutFor(cableLateralRaise), {
+      history: [
+        {
+          date: "2026-03-21T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          selectionMode: "INTENT",
+          exercises: [
+            {
+              exerciseId: "cable-lateral-raise",
+              sets: [
+                { exerciseId: "cable-lateral-raise", setIndex: 1, reps: 12, rpe: 8, load: 20 },
+                { exerciseId: "cable-lateral-raise", setIndex: 2, reps: 12, rpe: 8, load: 20 },
+              ],
+            },
+          ],
+          calibrationExercises: [
+            {
+              exerciseId: "cable-lateral-raise",
+              source: "runtime_added_same_exercise",
+              sets: [
+                { exerciseId: "cable-lateral-raise", setIndex: 1, reps: 15, rpe: 7, load: 10 },
+                { exerciseId: "cable-lateral-raise", setIndex: 2, reps: 15, rpe: 7, load: 10 },
+              ],
+            },
+          ],
+        },
+      ],
+      baselines: [],
+      exerciseById: { "cable-lateral-raise": cableLateralRaise },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "push",
+    });
+
+    expect(result.audit.resolvedLoads["cable-lateral-raise"]?.source).toBe("history");
+    expect(result.workout.accessories[0].sets[0].targetLoad).toBeGreaterThanOrEqual(20);
   });
 
   it("resolves mixed cable and machine equipment as cable for cold-start estimates", () => {

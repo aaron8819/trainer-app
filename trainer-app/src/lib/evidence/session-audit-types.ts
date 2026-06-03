@@ -143,8 +143,15 @@ export type DeloadExerciseTransformationTrace = {
     | "baseline"
     | "estimate"
     | "existing_target_load"
+    | "runtime_added_same_exercise_calibration_anchor"
     | "none";
-  resolvedLoadSource?: "history" | "baseline" | "estimate" | "existing_target_load" | "none";
+  resolvedLoadSource?:
+    | "history"
+    | "baseline"
+    | "estimate"
+    | "existing_target_load"
+    | "runtime_added_same_exercise_calibration_anchor"
+    | "none";
   resolvedTopSetLoad?: number | null;
   resolvedBackoffLoad?: number | null;
   resolvedSetLoads?: number[];

@@ -245,6 +245,11 @@ export type WorkoutHistoryEntry = {
     primaryMuscles?: string[];
     sets: SetLog[];
   }[];
+  calibrationExercises?: {
+    exerciseId: string;
+    source: "runtime_added_same_exercise";
+    sets: SetLog[];
+  }[];
   readinessScore?: 1 | 2 | 3 | 4 | 5;
   sorenessNotes?: string;
   painFlags?: Record<string, 0 | 1 | 2 | 3>;

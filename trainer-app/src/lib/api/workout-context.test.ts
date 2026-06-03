@@ -623,6 +623,25 @@ describe("mapHistory", () => {
     expect(history).toHaveLength(1);
     expect(history[0].exercises).toHaveLength(1);
     expect(history[0].exercises[0]?.exerciseId).toBe("bench");
+    expect(history[0].calibrationExercises).toEqual([
+      {
+        exerciseId: "pec-deck",
+        source: "runtime_added_same_exercise",
+        sets: [
+          {
+            exerciseId: "pec-deck",
+            setIndex: 1,
+            reps: 12,
+            rpe: 7,
+            load: 80,
+            targetLoad: 80,
+            targetReps: 12,
+            targetRepMin: 10,
+            targetRepMax: 15,
+          },
+        ],
+      },
+    ]);
   });
 
   it("keeps swapped replacements on the replacement exercise history instead of treating them as extras", () => {

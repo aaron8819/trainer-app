@@ -76,12 +76,19 @@ export type ApplyLoadsOptions = {
   isFirstSessionInMesocycle?: boolean;
 };
 
+export type ApplyLoadsResolvedLoadSource =
+  | "history"
+  | "baseline"
+  | "estimate"
+  | "existing_target_load"
+  | "runtime_added_same_exercise_calibration_anchor";
+
 export type ApplyLoadsAudit = {
   progressionTraces: Record<string, ProgressionDecisionTrace>;
   resolvedLoads: Record<
     string,
     {
-      source: "history" | "baseline" | "estimate" | "existing_target_load";
+      source: ApplyLoadsResolvedLoadSource;
       canonicalSourceLoad: number | null;
       resolvedTopSetLoad: number | null;
       resolvedSetLoads: number[];
@@ -108,6 +115,8 @@ const CROSS_INTENT_RPE_LOAD_ADJUSTMENT_PER_POINT = 0.04;
 const CALIBRATED_HINGE_NAME_TOKENS = ["stiff", "sldl", "romanian", "rdl"];
 export const EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE =
   "exact_history_translated_from_high_effort_lower_rep_anchor";
+export const RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE =
+  "runtime_added_same_exercise_calibration_anchor";
 const EXACT_HISTORY_TRANSLATED_CONTEXT_CONFIDENCE_REASON =
   "Exact same-exercise history was translated down because the prior anchor was lower-rep and higher-effort than this target.";
 
@@ -163,6 +172,12 @@ export function applyLoadsWithAudit(
   const crossIntentHistoryIndex = buildHistoryIndex(options.history ?? [], {
     useNewMesocycleBaselineSource,
   });
+  const runtimeAddedCalibrationHistoryIndex = buildRuntimeAddedCalibrationHistoryIndex(
+    options.history ?? [],
+    {
+      useNewMesocycleBaselineSource,
+    }
+  );
   const historyTopLoadIndex = buildHistoryTopLoadIndex(historyIndex);
   const accumulationHistoryIndex = periodization?.isDeload
     ? buildAccumulationPerformanceHistoryIndex(options.history ?? [], {
@@ -211,6 +226,7 @@ export function applyLoadsWithAudit(
         baselineIndex.get(exercise.id),
         baselineLoadIndex,
         historyTopLoadIndex,
+        runtimeAddedCalibrationHistoryIndex.get(exercise.id),
         options.exerciseById,
         options.profile?.weightKg,
         repRange,
@@ -364,6 +380,45 @@ function buildHistoryIndex(history: WorkoutHistoryEntry[], options: BuildHistory
     ? selectNewMesocycleBaselineHistory(sorted)
     : sorted;
   return buildSessionHistoryIndex(sourceEntries, options);
+}
+
+function buildRuntimeAddedCalibrationHistoryIndex(
+  history: WorkoutHistoryEntry[],
+  options: BuildHistoryIndexOptions = {}
+) {
+  const sorted = sortHistoryByDateDesc(filterPerformanceHistory(history));
+  const sourceEntries = options.useNewMesocycleBaselineSource
+    ? selectNewMesocycleBaselineHistory(sorted)
+    : sorted;
+  const index = new Map<string, WorkoutSessionHistory[]>();
+  for (const entry of sourceEntries) {
+    const entryConfidence =
+      typeof entry.confidence === "number" && Number.isFinite(entry.confidence)
+        ? entry.confidence
+        : resolveBaseSelectionModeConfidence(entry);
+    for (const exercise of entry.calibrationExercises ?? []) {
+      if (
+        exercise.source !== "runtime_added_same_exercise" ||
+        exercise.sets.length === 0
+      ) {
+        continue;
+      }
+      if (!index.has(exercise.exerciseId)) {
+        index.set(exercise.exerciseId, []);
+      }
+      index.get(exercise.exerciseId)?.push({
+        sets: exercise.sets,
+        confidence: Math.min(entryConfidence, 0.65),
+        selectionMode: entry.selectionMode,
+        sessionIntent: entry.sessionIntent,
+        confidenceNotes: [
+          ...(entry.confidenceNotes ?? []),
+          "Runtime-added same-exercise calibration evidence is lower trust than planned exact history.",
+        ],
+      });
+    }
+  }
+  return index;
 }
 
 function buildAccumulationPerformanceHistoryIndex(
@@ -619,6 +674,7 @@ function resolveLoadForExercise(
   baselineSelection: BaselineSelection | undefined,
   baselineLoadIndex: Map<string, number>,
   historyTopLoadIndex: Map<string, number>,
+  runtimeAddedCalibrationSessions: WorkoutSessionHistory[] | undefined,
   exerciseById: Record<string, Exercise>,
   weightKg: number | undefined,
   repRange: [number, number],
@@ -634,7 +690,7 @@ function resolveLoadForExercise(
 ): {
   load?: number;
   progressionTrace?: ProgressionDecisionTrace;
-  source: "history" | "baseline" | "estimate";
+  source: "history" | "baseline" | "estimate" | typeof RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE;
 } {
   const latestSetsRaw = historySessions?.[0]?.sets;
   const useModalAnchoring = shouldUseModalAnchoring(exercise);
@@ -775,6 +831,17 @@ function resolveLoadForExercise(
     };
   }
 
+  const runtimeAddedCalibrationLoad = resolveRuntimeAddedCalibrationLoad(
+    exercise,
+    runtimeAddedCalibrationSessions
+  );
+  if (runtimeAddedCalibrationLoad !== undefined) {
+    return {
+      load: runtimeAddedCalibrationLoad,
+      source: RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
+    };
+  }
+
   return {
     load: estimateLoad(
       exercise,
@@ -785,6 +852,33 @@ function resolveLoadForExercise(
     ),
     source: "estimate",
   };
+}
+
+function resolveRuntimeAddedCalibrationLoad(
+  exercise: Exercise,
+  historySessions: WorkoutSessionHistory[] | undefined
+): number | undefined {
+  const latestSets = historySessions?.[0]?.sets;
+  if (!latestSets || latestSets.length === 0) {
+    return undefined;
+  }
+
+  const load = shouldUseModalAnchoring(exercise)
+    ? getModalSessionLoad(latestSets)
+    : resolveWorkingSetLoad({
+        isMainLiftEligible: exercise.isMainLiftEligible,
+        sets: latestSets.map((set) => ({
+          setIndex: set.setIndex ?? 0,
+          load: set.load,
+          targetLoad: set.targetLoad,
+          rpe: set.rpe,
+        })),
+      });
+
+  if (!Number.isFinite(load) || (load ?? 0) < 0) {
+    return undefined;
+  }
+  return roundToHalf(load as number);
 }
 
 function resolveDeloadReferenceLoad(

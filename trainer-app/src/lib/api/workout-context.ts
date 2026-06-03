@@ -302,32 +302,19 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
           : undefined,
       exercises: workout.exercises
         .filter((exercise) => !runtimeAddedExerciseIds.has(exercise.id))
+        .map(mapWorkoutExerciseHistory),
+      calibrationExercises: workout.exercises
+        .filter(
+          (exercise) =>
+            runtimeAddedExerciseIds.has(exercise.id) &&
+            exercise.section !== "WARMUP"
+        )
+        .map(mapWorkoutExerciseHistory)
+        .filter((exercise) => exercise.sets.length > 0)
         .map((exercise) => ({
           exerciseId: exercise.exerciseId,
-          primaryMuscles:
-            exercise.exercise.exerciseMuscles
-              ?.filter((m) => m.role === "PRIMARY")
-              .map((m) => m.muscle.name) ?? [],
-          sets: exercise.sets.flatMap((set) => {
-            const log = set.logs[0];
-            const classification = classifySetLog(log);
-            if (!classification.isSignal) {
-              return [];
-            }
-            return [
-              {
-                exerciseId: exercise.exerciseId,
-                setIndex: set.setIndex,
-                reps: log.actualReps ?? 0,
-                rpe: log.actualRpe ?? undefined,
-                load: log.actualLoad ?? undefined,
-                targetLoad: set.targetLoad ?? undefined,
-                targetReps: set.targetReps ?? undefined,
-                targetRepMin: set.targetRepMin ?? undefined,
-                targetRepMax: set.targetRepMax ?? undefined,
-              },
-            ];
-          }),
+          source: "runtime_added_same_exercise" as const,
+          sets: exercise.sets,
         })),
     };
   });
@@ -399,6 +386,38 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
   }
 
   return mapped;
+}
+
+function mapWorkoutExerciseHistory(
+  exercise: WorkoutWithRelations["exercises"][number]
+): WorkoutHistoryEntry["exercises"][number] {
+  return {
+    exerciseId: exercise.exerciseId,
+    primaryMuscles:
+      exercise.exercise.exerciseMuscles
+        ?.filter((m) => m.role === "PRIMARY")
+        .map((m) => m.muscle.name) ?? [],
+    sets: exercise.sets.flatMap((set) => {
+      const log = set.logs[0];
+      const classification = classifySetLog(log);
+      if (!classification.isSignal) {
+        return [];
+      }
+      return [
+        {
+          exerciseId: exercise.exerciseId,
+          setIndex: set.setIndex,
+          reps: log.actualReps ?? 0,
+          rpe: log.actualRpe ?? undefined,
+          load: log.actualLoad ?? undefined,
+          targetLoad: set.targetLoad ?? undefined,
+          targetReps: set.targetReps ?? undefined,
+          targetRepMin: set.targetRepMin ?? undefined,
+          targetRepMax: set.targetRepMax ?? undefined,
+        },
+      ];
+    }),
+  };
 }
 
 function resolveExerciseModalLoad(

@@ -32,6 +32,15 @@ function formatRpeCap(value: PreSessionReadinessGymCardDto["rpeCap"]): string | 
   return null;
 }
 
+function formatEffortLine(card: PreSessionReadinessGymCardDto): string | null {
+  const parts = [
+    card.workoutPreview.targetRpeLabel,
+    formatRpeCap(card.rpeCap),
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.length > 0 ? `Target effort: ${parts.join(". ")}.` : null;
+}
+
 function formatStatusLine(input: {
   action: PreSessionReadinessGymCardDto["action"];
   safeToTrain: boolean;
@@ -48,43 +57,79 @@ function formatStatusLine(input: {
   return "Safe to train - Run the planned workout";
 }
 
-function mainPriorityDuplicatesAddOn(
-  mainPriority: string,
-  item: PreSessionReadinessGymCardDto["optionalAddOns"]["items"][number] | undefined
-): boolean {
-  if (!item) {
-    return false;
+function getSpecificTodayFocus(card: PreSessionReadinessGymCardDto): string | null {
+  const focus = card.mainPriority.trim();
+  if (!focus) {
+    return null;
   }
 
-  return mainPriority
-    .toLocaleLowerCase()
-    .includes(item.candidateExerciseName.toLocaleLowerCase());
+  const normalized = focus.toLocaleLowerCase();
+  const genericPatterns = [
+    "planned workout first",
+    "add optional work only if warm-ups feel normal",
+    "run the planned workout",
+    "no extra work needed today",
+    "use the written targets as starting points",
+    "resolve blockers before any start or add-on decision",
+  ];
+
+  return genericPatterns.some((pattern) => normalized.includes(pattern))
+    ? null
+    : focus;
 }
 
-function formatTodayFocus(card: PreSessionReadinessGymCardDto): string {
-  if (
-    mainPriorityDuplicatesAddOn(
-      card.mainPriority,
-      card.optionalAddOns.items[0]
-    )
-  ) {
-    return "Planned workout first; add optional work only if warm-ups feel normal.";
-  }
+function formatWorkoutRowMeta(
+  exercise: PreSessionReadinessGymCardDto["workoutPreview"]["exercises"][number]
+): string {
+  const parts = [
+    `${exercise.setCount} ${exercise.setCount === 1 ? "set" : "sets"}`,
+    exercise.repTargetLabel,
+    exercise.targetLoadLabel ? `load ${exercise.targetLoadLabel}` : null,
+  ].filter((part): part is string => Boolean(part));
 
-  return card.mainPriority;
+  return parts.join(" - ");
 }
 
-function formatOptionalAddOn(
+function formatOptionalAddOnTitle(
   item: PreSessionReadinessGymCardDto["optionalAddOns"]["items"][number]
 ): string {
-  return `Optional: ${item.candidateExerciseName}`;
+  return `${item.candidateExerciseName} - ${item.reason}`;
 }
 
-function limitList(items: string[], maxItems = 4): string[] {
-  if (items.length <= maxItems) {
-    return items;
+function groupCalibrationNotes(
+  notes: PreSessionReadinessGymCardDto["calibrationNotes"]
+): string[] {
+  const targetStartingPointExercises: string[] = [];
+  const writtenTargetExercises: string[] = [];
+  const specific: string[] = [];
+
+  for (const note of notes) {
+    if (
+      note.displayActionCode === "use_target_as_starting_point" &&
+      note.exerciseLabel
+    ) {
+      targetStartingPointExercises.push(note.exerciseLabel);
+      continue;
+    }
+    if (
+      note.displayActionCode === "calibrate_from_first_working_set" &&
+      note.exerciseLabel
+    ) {
+      writtenTargetExercises.push(note.exerciseLabel);
+      continue;
+    }
+    specific.push(note.message);
   }
-  return [...items.slice(0, maxItems), `+${items.length - maxItems} more`];
+
+  return [
+    targetStartingPointExercises.length > 0
+      ? `Use targets as starting points for ${targetStartingPointExercises.join(", ")}; adjust by feel.`
+      : null,
+    writtenTargetExercises.length > 0
+      ? `Calibrate from the first working set for ${writtenTargetExercises.join(", ")}.`
+      : null,
+    ...specific,
+  ].filter((item): item is string => Boolean(item));
 }
 
 function readErrorMessage(body: unknown): string | null {
@@ -161,18 +206,17 @@ export function HomePreSessionReadinessPanel({
   }
 
   const blocked = card.action === "blocked" || card.safeToTrain === false;
-  const rpeCap = formatRpeCap(card.rpeCap);
   const statusLine = formatStatusLine({
     action: card.action,
     safeToTrain: card.safeToTrain,
   });
-  const focus = formatTodayFocus(card);
-  const calibrationNotes = limitList(
-    card.calibrationNotes.map((note) => note.message)
-  );
-  const avoid = limitList(card.avoid);
-  const warnings = limitList(card.warnings);
-  const blockers = blocked ? limitList(card.blockers) : [];
+  const focus = getSpecificTodayFocus(card);
+  const effortLine = formatEffortLine(card);
+  const workoutExercises = card.workoutPreview.exercises;
+  const calibrationNotes = groupCalibrationNotes(card.calibrationNotes);
+  const avoid = card.avoid;
+  const warnings = card.warnings;
+  const blockers = blocked ? card.blockers : [];
   const headingTitle = blocked
     ? `Readiness blocked for ${card.sessionLabel}`
     : `Ready for ${card.sessionLabel}`;
@@ -208,42 +252,60 @@ export function HomePreSessionReadinessPanel({
       <div className="mt-5 space-y-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Today&apos;s Plan
+            Today&apos;s Workout
           </p>
-          <p className="mt-1 text-sm text-slate-700">{card.primaryInstruction}</p>
-          {rpeCap ? (
+          {workoutExercises.length > 0 ? (
+            <div className="mt-2 divide-y divide-white/70 rounded-lg bg-white/70">
+              {workoutExercises.map((exercise) => (
+                <div
+                  key={exercise.exerciseId}
+                  className="grid gap-1 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-3"
+                >
+                  <p className="min-w-0 text-sm font-semibold text-slate-900">
+                    {exercise.exerciseName}
+                  </p>
+                  <p className="text-sm text-slate-700 sm:text-right">
+                    {formatWorkoutRowMeta(exercise)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-1 text-sm text-slate-700">{card.primaryInstruction}</p>
+          )}
+          {effortLine ? (
             <p className="mt-2 text-xs font-semibold text-slate-600">
-              {rpeCap}
+              {effortLine}
             </p>
           ) : null}
         </div>
 
-        <div className="border-t border-white/70 pt-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Today&apos;s Focus
-          </p>
-          <p className="mt-1 text-sm text-slate-700">{focus}</p>
-        </div>
+        {focus ? (
+          <div className="border-t border-white/70 pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Today&apos;s Focus
+            </p>
+            <p className="mt-1 text-sm text-slate-700">{focus}</p>
+          </div>
+        ) : null}
 
-        <div className="border-t border-white/70 pt-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Optional Add-ons
-          </p>
-          {card.optionalAddOns.items.length > 0 ? (
-            <ul className="mt-2 space-y-1 text-sm text-slate-700">
-              {card.optionalAddOns.items.slice(0, 4).map((item) => (
+        {card.optionalAddOns.items.length > 0 ? (
+          <div className="border-t border-white/70 pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Optional Add-ons
+            </p>
+            <ul className="mt-2 space-y-2 text-sm text-slate-700">
+              {card.optionalAddOns.items.map((item) => (
                 <li key={`${item.targetMuscle}:${item.candidateExerciseName}`}>
-                  {formatOptionalAddOn(item)}
+                  <p className="font-semibold text-slate-900">
+                    {formatOptionalAddOnTitle(item)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-600">{item.guardrail}</p>
                 </li>
               ))}
-              {card.optionalAddOns.items.length > 4 ? (
-                <li>+{card.optionalAddOns.items.length - 4} more</li>
-              ) : null}
             </ul>
-          ) : (
-            <p className="mt-1 text-sm text-slate-700">No add-ons recommended.</p>
-          )}
-        </div>
+          </div>
+        ) : null}
 
         {avoid.length > 0 ? (
           <div className="border-t border-white/70 pt-4">
@@ -261,7 +323,7 @@ export function HomePreSessionReadinessPanel({
         {calibrationNotes.length > 0 ? (
           <div className="border-t border-white/70 pt-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Load Notes
+              Load Calibration
             </p>
             <ul className="mt-2 space-y-1 text-sm text-slate-700">
               {calibrationNotes.map((item) => (
@@ -271,26 +333,16 @@ export function HomePreSessionReadinessPanel({
           </div>
         ) : null}
 
-        {warnings.length > 0 ? (
+        {warnings.length > 0 || blockers.length > 0 ? (
           <div className="border-t border-white/70 pt-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Warnings
-            </p>
-            <ul className="mt-2 space-y-1 text-sm text-slate-700">
-              {warnings.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        {blockers.length > 0 ? (
-          <div className="border-t border-white/70 pt-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Blockers
+              Warnings &amp; Blockers
             </p>
             <ul className="mt-2 space-y-1 text-sm text-slate-700">
               {blockers.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+              {warnings.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>

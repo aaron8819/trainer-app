@@ -860,6 +860,8 @@ describe("loadHomePageData", () => {
         targetMuscle: "Biceps",
         candidateExerciseName: "Cable Curl",
         source: "dose_closure_recommendation",
+        reason: "Biceps has a small useful session-local gap.",
+        guardrail: "Skip it if the planned workout feels heavy.",
       },
     ]);
     expect(JSON.stringify(result.preSessionReadinessCard)).not.toContain("poison");

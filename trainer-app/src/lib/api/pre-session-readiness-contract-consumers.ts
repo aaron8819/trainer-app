@@ -21,6 +21,8 @@ export type ReadinessOptionalAddOn = Pick<
   "kind" | "muscle" | "targetMuscle" | "candidateExerciseName"
 > & {
   source: "dose_closure_recommendation";
+  reason: string;
+  guardrail: string;
 };
 
 export type ReadinessSuppressedTarget = {
@@ -85,6 +87,31 @@ function getActiveRecommendations(
   );
 }
 
+function getAddOnReason(
+  recommendation: PreSessionReadinessCoachingRecommendation
+): string {
+  if (recommendation.kind === "floor_buffer") {
+    return `${recommendation.targetMuscle} is the useful floor-buffer today.`;
+  }
+  if (recommendation.kind === "priority") {
+    return `${recommendation.targetMuscle} is the highest-value session-local gap.`;
+  }
+  return `${recommendation.targetMuscle} has a small useful session-local gap.`;
+}
+
+function getAddOnGuardrail(
+  recommendation: PreSessionReadinessCoachingRecommendation
+): string {
+  const exercise = recommendation.candidateExerciseName;
+  if (recommendation.kind === "floor_buffer") {
+    return `Add only if planned ${exercise} work feels clean.`;
+  }
+  if (recommendation.kind === "priority") {
+    return `Add only if warm-ups and planned ${exercise} work feel normal.`;
+  }
+  return `Skip it if the planned workout feels heavy.`;
+}
+
 export function getReadinessStartAction(
   contract: PreSessionReadinessContract
 ): ReadinessStartAction {
@@ -115,6 +142,8 @@ export function getValidOptionalAddOns(
     targetMuscle: recommendation.targetMuscle,
     candidateExerciseName: recommendation.candidateExerciseName,
     source: "dose_closure_recommendation",
+    reason: getAddOnReason(recommendation),
+    guardrail: getAddOnGuardrail(recommendation),
   }));
 }
 

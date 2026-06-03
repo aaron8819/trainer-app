@@ -68,6 +68,21 @@ export type PreSessionReadinessPrescriptionConfidenceWatch =
   | string
   | PreSessionReadinessPrescriptionConfidenceWatchRow;
 
+export type PreSessionReadinessWorkoutPreviewExercise = {
+  exerciseId: string;
+  exerciseName: string;
+  setCount: number;
+  repTargetLabel: string;
+  targetLoadLabel: string | null;
+  targetRpeLabel: string | null;
+};
+
+export type PreSessionReadinessWorkoutPreview = {
+  source: "generated_session_audit_snapshot";
+  exercises: PreSessionReadinessWorkoutPreviewExercise[];
+  targetRpeLabel: string | null;
+};
+
 export type PreSessionReadinessContract = {
   contractVersion: 1;
   scope: {
@@ -173,6 +188,7 @@ export type PreSessionReadinessContract = {
     recoveryCaveats: string[];
     fatigue: string[];
   };
+  workoutPreview?: PreSessionReadinessWorkoutPreview;
   consistencyChecks: PreSessionReadinessConsistencyCheck[];
   boundaries: {
     readOnly: true;
@@ -445,6 +461,31 @@ function hasValidCalibrationWatches(calibrationWatches: unknown): boolean {
   );
 }
 
+function hasValidWorkoutPreviewExercise(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.exerciseId === "string" &&
+    typeof value.exerciseName === "string" &&
+    typeof value.setCount === "number" &&
+    Number.isFinite(value.setCount) &&
+    value.setCount >= 0 &&
+    typeof value.repTargetLabel === "string" &&
+    (typeof value.targetLoadLabel === "string" ||
+      value.targetLoadLabel === null) &&
+    (typeof value.targetRpeLabel === "string" || value.targetRpeLabel === null)
+  );
+}
+
+function hasValidWorkoutPreview(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    value.source === "generated_session_audit_snapshot" &&
+    Array.isArray(value.exercises) &&
+    value.exercises.every(hasValidWorkoutPreviewExercise) &&
+    (typeof value.targetRpeLabel === "string" || value.targetRpeLabel === null)
+  );
+}
+
 function hasValidConsistencyCheck(check: unknown): boolean {
   return (
     isRecord(check) &&
@@ -479,6 +520,8 @@ export function isPreSessionReadinessContract(
     hasValidDoseClosure(value.doseClosure) &&
     hasValidSessionLocalCoaching(value.sessionLocalCoaching) &&
     hasValidCalibrationWatches(value.calibrationWatches) &&
+    (value.workoutPreview == null ||
+      hasValidWorkoutPreview(value.workoutPreview)) &&
     Array.isArray(value.consistencyChecks) &&
     value.consistencyChecks.every(hasValidConsistencyCheck) &&
     hasReadOnlyBoundaries(value.boundaries)

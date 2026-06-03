@@ -22,7 +22,29 @@ function makeCard(
     sessionLabel: "Upper 2",
     primaryInstruction: "Run the planned workout. Keep effort around the prescribed RPE cap.",
     rpeCap: "prescribed",
-    mainPriority: "Optional Chest add-on: Cable Fly.",
+    workoutPreview: {
+      source: "generated_session_audit_snapshot",
+      targetRpeLabel: "RPE 8",
+      exercises: [
+        {
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          setCount: 3,
+          repTargetLabel: "6-10 reps",
+          targetLoadLabel: "185 lb",
+          targetRpeLabel: "RPE 8",
+        },
+        {
+          exerciseId: "row",
+          exerciseName: "Chest-Supported Row",
+          setCount: 2,
+          repTargetLabel: "8-12 reps",
+          targetLoadLabel: null,
+          targetRpeLabel: "RPE 8",
+        },
+      ],
+    },
+    mainPriority: "Bench should be crisp before adding chest isolation.",
     avoid: ["Avoid extra Side Delts: weekly cap already high."],
     optionalAddOns: {
       status: "available",
@@ -34,13 +56,30 @@ function makeCard(
           targetMuscle: "Chest",
           candidateExerciseName: "Cable Fly",
           source: "dose_closure_recommendation",
+          reason: "Chest is the highest-value session-local gap.",
+          guardrail: "Add only if warm-ups and planned Cable Fly work feel normal.",
         },
       ],
     },
     calibrationNotes: [
       {
         kind: "prescription_confidence",
-        message: "Bench Press: Hold the target load unless the first set feels clearly too easy or too hard.",
+        exerciseLabel: "Bench Press",
+        displayActionCode: "use_target_as_starting_point",
+        message: "Bench Press: Use the target as a starting point; adjust by feel.",
+      },
+      {
+        kind: "prescription_confidence",
+        exerciseLabel: "Chest-Supported Row",
+        displayActionCode: "use_target_as_starting_point",
+        message: "Chest-Supported Row: Use the target as a starting point; adjust by feel.",
+      },
+      {
+        kind: "prescription_confidence",
+        exerciseLabel: "Cable Fly",
+        displayActionCode: "hold_target_load",
+        message:
+          "Cable Fly: Hold the target load unless the first set feels clearly too easy or too hard.",
       },
     ],
     blockers: [],
@@ -130,28 +169,40 @@ describe("HomePreSessionReadinessPanel", () => {
     expect(screen.getByText("Calibration day")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Ready for Upper 2" })).toBeInTheDocument();
     expect(screen.getByText("Safe to train - Use calibration judgment")).toBeInTheDocument();
+    expect(screen.getByText("Today's Workout")).toBeInTheDocument();
+    expect(screen.getByText("Bench Press")).toBeInTheDocument();
+    expect(screen.getByText("3 sets - 6-10 reps - load 185 lb")).toBeInTheDocument();
+    expect(screen.getByText("Chest-Supported Row")).toBeInTheDocument();
+    expect(screen.getByText("2 sets - 8-12 reps")).toBeInTheDocument();
+    expect(screen.getAllByText(/RPE 8/)).toHaveLength(1);
+    expect(screen.getByText("Target effort: RPE 8. Use the prescribed cap.")).toBeInTheDocument();
     expect(
-      screen.getByText("Run the planned workout. Keep effort around the prescribed RPE cap.")
+      screen.getByText("Bench should be crisp before adding chest isolation.")
     ).toBeInTheDocument();
-    expect(screen.getByText("Use the prescribed cap")).toBeInTheDocument();
     expect(
-      screen.getByText("Planned workout first; add optional work only if warm-ups feel normal.")
+      screen.getByText("Cable Fly - Chest is the highest-value session-local gap.")
     ).toBeInTheDocument();
-    expect(screen.getByText("Optional: Cable Fly")).toBeInTheDocument();
-    expect(screen.queryByText("Optional Chest add-on: Cable Fly.")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Add only if warm-ups and planned Cable Fly work feel normal.")
+    ).toBeInTheDocument();
     expect(
       screen.getByText("Avoid extra Side Delts: weekly cap already high.")
     ).toBeInTheDocument();
     expect(screen.getByText("Watch posterior-chain fatigue.")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Bench Press: Hold the target load unless the first set feels clearly too easy or too hard."
+        "Use targets as starting points for Bench Press, Chest-Supported Row; adjust by feel."
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Cable Fly: Hold the target load unless the first set feels clearly too easy or too hard."
       )
     ).toBeInTheDocument();
     expect(screen.queryByText("Contract has session-local optional add-on rows.")).not.toBeInTheDocument();
   });
 
-  it("renders explicit no-add-ons copy when no optional add-ons are present", () => {
+  it("suppresses generic Today's Focus copy when no optional add-ons are present", () => {
     render(
       <HomePreSessionReadinessPanel
         card={makeCard({
@@ -167,13 +218,63 @@ describe("HomePreSessionReadinessPanel", () => {
       />
     );
 
-    expect(screen.getByText("No add-ons recommended.")).toBeInTheDocument();
     expect(
-      screen.getByText("Run the planned workout; no extra work needed today.")
-    ).toBeInTheDocument();
+      screen.queryByText("Run the planned workout; no extra work needed today.")
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Today's Focus")).not.toBeInTheDocument();
+    expect(screen.queryByText("Optional Add-ons")).not.toBeInTheDocument();
     expect(
       screen.queryByText("No valid session-local optional add-ons from the typed readiness contract.")
     ).not.toBeInTheDocument();
+  });
+
+  it("renders high-signal Today's Focus when present", () => {
+    render(
+      <HomePreSessionReadinessPanel
+        card={makeCard({
+          mainPriority: "Keep hinges submaximal because posterior-chain fatigue is elevated.",
+          optionalAddOns: {
+            status: "none",
+            reason: "No add-ons recommended.",
+            items: [],
+          },
+        })}
+        canPrepare={true}
+      />
+    );
+
+    expect(screen.getByText("Today's Focus")).toBeInTheDocument();
+    expect(
+      screen.getByText("Keep hinges submaximal because posterior-chain fatigue is elevated.")
+    ).toBeInTheDocument();
+  });
+
+  it("does not truncate long guidance lists with +N more", () => {
+    render(
+      <HomePreSessionReadinessPanel
+        card={makeCard({
+          avoid: [
+            "Avoid extra rows.",
+            "Avoid extra pulldowns.",
+            "Avoid extra chest pressing.",
+            "Avoid extra lateral raises.",
+            "Avoid extra curls.",
+          ],
+          warnings: [
+            "Watch warning 1.",
+            "Watch warning 2.",
+            "Watch warning 3.",
+            "Watch warning 4.",
+            "Watch warning 5.",
+          ],
+        })}
+        canPrepare={true}
+      />
+    );
+
+    expect(screen.getByText("Avoid extra curls.")).toBeInTheDocument();
+    expect(screen.getByText("Watch warning 5.")).toBeInTheDocument();
+    expect(screen.queryByText(/\+\d+ more/)).not.toBeInTheDocument();
   });
 
   it("suppresses empty optional sections", () => {
@@ -196,9 +297,9 @@ describe("HomePreSessionReadinessPanel", () => {
     );
 
     expect(screen.queryByText("Avoid")).not.toBeInTheDocument();
-    expect(screen.queryByText("Warnings")).not.toBeInTheDocument();
-    expect(screen.queryByText("Blockers")).not.toBeInTheDocument();
-    expect(screen.queryByText("Load Notes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Optional Add-ons")).not.toBeInTheDocument();
+    expect(screen.queryByText("Warnings & Blockers")).not.toBeInTheDocument();
+    expect(screen.queryByText("Load Calibration")).not.toBeInTheDocument();
   });
 
   it("does not render internal debug strings in the coaching card", () => {
@@ -240,7 +341,6 @@ describe("HomePreSessionReadinessPanel", () => {
     expect(
       screen.getByText("Not safe to start - Resolve blockers first")
     ).toBeInTheDocument();
-    expect(screen.getByText("Resolve readiness blocker before training.")).toBeInTheDocument();
     expect(screen.getByText("Resolve closeout first.")).toBeInTheDocument();
     expect(
       screen.queryByText("Run the planned workout. Keep effort around the prescribed RPE cap.")

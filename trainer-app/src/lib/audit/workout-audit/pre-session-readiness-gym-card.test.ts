@@ -436,6 +436,8 @@ describe("pre-session readiness gym-card adapter", () => {
         targetMuscle: "Side Delts",
         candidateExerciseName: "Cable Lateral Raise",
         source: "dose_closure_recommendation",
+        reason: "Side Delts has a small useful session-local gap.",
+        guardrail: "Skip it if the planned workout feels heavy.",
       },
     ]);
     expect(JSON.stringify(dto)).not.toContain("poison");

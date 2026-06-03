@@ -38,12 +38,21 @@ export type PreSessionReadinessGymCardSource = {
   producerMode: PreSessionReadinessContractProducerMode | "unknown";
 };
 
+export type PreSessionReadinessGymCardWorkoutPreview =
+  | NonNullable<PreSessionReadinessContract["workoutPreview"]>
+  | {
+      source: "unavailable";
+      exercises: [];
+      targetRpeLabel: null;
+    };
+
 export type PreSessionReadinessGymCardDto = {
   safeToTrain: boolean;
   action: PreSessionReadinessGymCardAction;
   sessionLabel: string;
   primaryInstruction: string;
   rpeCap: "prescribed" | "deload_prescribed" | null;
+  workoutPreview: PreSessionReadinessGymCardWorkoutPreview;
   mainPriority: string;
   avoid: string[];
   optionalAddOns: PreSessionReadinessGymCardOptionalAddOns;
@@ -123,6 +132,18 @@ function getRpeCap(
   return contract.startability.action === "run_deload_seed_as_prescribed"
     ? "deload_prescribed"
     : "prescribed";
+}
+
+function getWorkoutPreview(
+  contract: PreSessionReadinessContract
+): PreSessionReadinessGymCardWorkoutPreview {
+  return (
+    contract.workoutPreview ?? {
+      source: "unavailable",
+      exercises: [],
+      targetRpeLabel: null,
+    }
+  );
 }
 
 function getMainPriority(input: {
@@ -283,6 +304,7 @@ export function buildPreSessionReadinessGymCardDto(
     sessionLabel: formatSessionLabel(contract),
     primaryInstruction: getPrimaryInstruction({ action, contract }),
     rpeCap: getRpeCap(contract, blocked),
+    workoutPreview: getWorkoutPreview(contract),
     mainPriority: getMainPriority({
       blocked,
       optionalAddOns,

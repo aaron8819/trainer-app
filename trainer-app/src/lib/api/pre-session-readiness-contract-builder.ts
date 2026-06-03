@@ -5,6 +5,7 @@ import {
   type PreSessionReadinessConsistencyCheck,
   type PreSessionReadinessContract,
   type PreSessionReadinessPrescriptionConfidenceWatchRow,
+  type PreSessionReadinessWorkoutPreview,
 } from "./pre-session-readiness-contract";
 import type {
   PreSessionReadinessContractBuildInput,
@@ -22,6 +23,9 @@ type ProjectedWeekMuscleRow =
   PreSessionReadinessProjectedWeekEvidence["fullWeekByMuscle"][number];
 type ProjectedWeekSession =
   PreSessionReadinessProjectedWeekEvidence["projectedSessions"][number];
+type GeneratedSession = NonNullable<SessionAuditSnapshot["generated"]>;
+type GeneratedExercise = GeneratedSession["exercises"][number];
+type GeneratedSet = GeneratedExercise["prescribedSets"][number];
 
 const UPPER_BODY_MUSCLES = new Set([
   "Chest",
@@ -229,6 +233,95 @@ function formatWeightedSetGap(value: number): string {
 
 function formatRawSetCount(value: number): string {
   return `${value} raw ${value === 1 ? "set" : "sets"}`;
+}
+
+function formatPreviewNumber(value: number): string {
+  return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+}
+
+function formatPreviewRepTarget(
+  set: GeneratedSet | undefined
+): string {
+  if (!set) {
+    return "-- reps";
+  }
+  const range = set.targetRepRange;
+  if (range) {
+    return range.min === range.max
+      ? `${range.min} reps`
+      : `${range.min}-${range.max} reps`;
+  }
+  return typeof set.targetReps === "number" && Number.isFinite(set.targetReps)
+    ? `${set.targetReps} reps`
+    : "-- reps";
+}
+
+function formatCommonLoadLabel(
+  sets: GeneratedExercise["prescribedSets"]
+): string | null {
+  const loads = sets
+    .map((set) => set.targetLoad)
+    .filter((load): load is number => typeof load === "number" && Number.isFinite(load) && load >= 0);
+  if (loads.length !== sets.length || loads.length === 0) {
+    return null;
+  }
+  const [first] = loads;
+  return loads.every((load) => load === first)
+    ? `${formatPreviewNumber(first)} lb`
+    : null;
+}
+
+function formatRpeValues(values: number[]): string | null {
+  const unique = Array.from(new Set(values)).sort((left, right) => left - right);
+  if (unique.length === 0) {
+    return null;
+  }
+  if (unique.length === 1) {
+    return `RPE ${formatPreviewNumber(unique[0])}`;
+  }
+  return `RPE ${formatPreviewNumber(unique[0])}-${formatPreviewNumber(unique[unique.length - 1])}`;
+}
+
+function buildWorkoutPreview(
+  generated: GeneratedSession | undefined
+): PreSessionReadinessWorkoutPreview | undefined {
+  if (!generated?.exercises?.length) {
+    return undefined;
+  }
+
+  const exercises = generated.exercises
+    .slice()
+    .sort((left, right) => left.orderIndex - right.orderIndex)
+    .map((exercise) => {
+      const prescribedSets = exercise.prescribedSets ?? [];
+      const targetRpeLabel = formatRpeValues(
+        prescribedSets
+          .map((set) => set.targetRpe)
+          .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+      );
+
+      return {
+        exerciseId: exercise.exerciseId,
+        exerciseName: exercise.exerciseName,
+        setCount: exercise.prescribedSetCount,
+        repTargetLabel: formatPreviewRepTarget(prescribedSets[0]),
+        targetLoadLabel: formatCommonLoadLabel(prescribedSets),
+        targetRpeLabel,
+      };
+    });
+  const targetRpeLabel = formatRpeValues(
+    generated.exercises.flatMap((exercise) =>
+      exercise.prescribedSets
+        .map((set) => set.targetRpe)
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value))
+    )
+  );
+
+  return {
+    source: "generated_session_audit_snapshot",
+    exercises,
+    targetRpeLabel,
+  };
 }
 
 function getCandidateContributionEstimate(input: {
@@ -1126,6 +1219,7 @@ export function buildPreSessionReadinessContract(
     recommendations: doseClosure.recommendations,
   });
   const prescriptionConfidenceWatches = buildPrescriptionConfidenceWatches(generated);
+  const workoutPreview = buildWorkoutPreview(generated);
   const diagnosticFatigue = doseDiagnostics.flatMap((diagnostic) => {
     if (diagnostic.fatigueDensityConcern.level === "none") {
       return [];
@@ -1273,6 +1367,7 @@ export function buildPreSessionReadinessContract(
         ),
       fatigue: fatigueCautions,
     },
+    ...(workoutPreview ? { workoutPreview } : {}),
     boundaries: {
       readOnly: true as const,
       affectsScoringOrGeneration: false as const,

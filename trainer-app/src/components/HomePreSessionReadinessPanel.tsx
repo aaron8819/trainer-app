@@ -101,6 +101,7 @@ function groupCalibrationNotes(
 ): string[] {
   const targetStartingPointExercises: string[] = [];
   const writtenTargetExercises: string[] = [];
+  const machineOrCableExercises: string[] = [];
   const specific: string[] = [];
 
   for (const note of notes) {
@@ -118,15 +119,32 @@ function groupCalibrationNotes(
       writtenTargetExercises.push(note.exerciseLabel);
       continue;
     }
+    if (
+      note.displayActionCode === "machine_or_cable_target_may_need_calibration" &&
+      note.exerciseLabel
+    ) {
+      machineOrCableExercises.push(note.exerciseLabel);
+      continue;
+    }
     specific.push(note.message);
   }
 
-  return [
+  const grouped = [
+    machineOrCableExercises.length > 0
+      ? `Use the first working set to dial in these machine/cable targets: ${machineOrCableExercises.join(", ")}.`
+      : null,
     targetStartingPointExercises.length > 0
-      ? `Use targets as starting points for ${targetStartingPointExercises.join(", ")}; adjust by feel.`
+      ? `Use the first working set to dial in these targets: ${targetStartingPointExercises.join(", ")}.`
       : null,
     writtenTargetExercises.length > 0
-      ? `Calibrate from the first working set for ${writtenTargetExercises.join(", ")}.`
+      ? `Use the written target as guidance for ${writtenTargetExercises.join(", ")}; calibrate from the first working set.`
+      : null,
+  ].filter((item): item is string => Boolean(item));
+
+  return [
+    ...grouped,
+    grouped.length > 0
+      ? "Adjust to stay near the target RPE. Hold if reps and form match the target; reduce if form breaks or RPE jumps."
       : null,
     ...specific,
   ].filter((item): item is string => Boolean(item));
@@ -215,6 +233,7 @@ export function HomePreSessionReadinessPanel({
   const workoutExercises = card.workoutPreview.exercises;
   const calibrationNotes = groupCalibrationNotes(card.calibrationNotes);
   const avoid = card.avoid;
+  const fatigueWatch = card.fatigueWatch;
   const warnings = card.warnings;
   const blockers = blocked ? card.blockers : [];
   const headingTitle = blocked
@@ -327,6 +346,19 @@ export function HomePreSessionReadinessPanel({
             </p>
             <ul className="mt-2 space-y-1 text-sm text-slate-700">
               {calibrationNotes.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {fatigueWatch.length > 0 ? (
+          <div className="border-t border-white/70 pt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Fatigue Watch
+            </p>
+            <ul className="mt-2 space-y-1 text-sm text-slate-700">
+              {fatigueWatch.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>

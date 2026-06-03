@@ -57,6 +57,7 @@ export type PreSessionReadinessGymCardDto = {
   avoid: string[];
   optionalAddOns: PreSessionReadinessGymCardOptionalAddOns;
   calibrationNotes: ReadinessCalibrationWatchRow[];
+  fatigueWatch: string[];
   blockers: string[];
   warnings: string[];
   source: PreSessionReadinessGymCardSource;
@@ -166,19 +167,29 @@ function getMainPriority(input: {
 function formatSuppressionReason(reason: string): string {
   switch (reason) {
     case "over_mav":
-      return "weekly cap already high";
+      return "weekly volume is already covered";
     case "near_mav":
-      return "close to weekly cap";
+      return "weekly volume is close to covered";
     case "target_muscle_suppressed":
       return "not a good add-on target today";
     case "candidate_muscle_mismatch":
       return "does not match today's add-on need";
+    case "blocked":
+      return "readiness blocker is unresolved";
+    case "deload_suppressed":
+      return "deload work should stay easy";
+    case "suppressed":
+      return "not a good add-on target today";
     default:
       return reason.replaceAll("_", " ");
   }
 }
 
-function formatSuppressedTarget(target: ReadinessSuppressedTarget): string {
+function formatSuppressedTarget(target: ReadinessSuppressedTarget): string | null {
+  if (target.source === "projected_week_over_mav") {
+    return null;
+  }
+
   const reason = target.reasons.map(formatSuppressionReason).join(", ");
   if (target.targetMuscle === "all") {
     return `Avoid optional add-ons: ${reason}.`;
@@ -187,6 +198,62 @@ function formatSuppressedTarget(target: ReadinessSuppressedTarget): string {
     return `Avoid ${target.candidateExerciseName} for ${target.targetMuscle}: ${reason}.`;
   }
   return `Avoid extra ${target.targetMuscle}: ${reason}.`;
+}
+
+function formatMuscleList(muscles: string[]): string {
+  if (muscles.length <= 1) {
+    return muscles[0] ?? "";
+  }
+  if (muscles.length === 2) {
+    return `${muscles[0]} and ${muscles[1]}`;
+  }
+  return `${muscles.slice(0, -1).join(", ")}, and ${muscles[muscles.length - 1]}`;
+}
+
+function getOverVolumeMuscleFromMessage(message: string): string | null {
+  const normalized = message.replace(/^\s*-\s*/, "").trim();
+  const match = normalized.match(/^([^:]+):\s*over\s+(?:mav|target)\s*$/i);
+  return match?.[1]?.trim() || null;
+}
+
+function getFatigueMuscleFromMessage(message: string): string | null {
+  const normalized = message.replace(/^\s*-\s*/, "").trim();
+  const match = normalized.match(/^([^:]+):/);
+  return match?.[1]?.trim() || null;
+}
+
+function isLowerBodyMuscle(muscle: string): boolean {
+  return /^(glutes|hamstrings|quads|adductors|calves)$/i.test(muscle.trim());
+}
+
+function formatAvoidGuidance(input: {
+  suppressedTargets: ReadinessSuppressedTarget[];
+  calibrationRows: ReadinessCalibrationWatchRow[];
+}): string[] {
+  const overVolumeMuscles = Array.from(
+    new Set([
+      ...input.suppressedTargets
+        .filter((target) => target.source === "projected_week_over_mav")
+        .map((target) => target.targetMuscle),
+      ...input.calibrationRows
+        .filter((row) => row.kind === "fatigue")
+        .map((row) => getOverVolumeMuscleFromMessage(row.message))
+        .filter((muscle): muscle is string => Boolean(muscle)),
+    ])
+  );
+  const specificAvoid = input.suppressedTargets
+    .map(formatSuppressedTarget)
+    .filter((item): item is string => Boolean(item));
+  const volumeAvoid =
+    overVolumeMuscles.length >= 4
+      ? [
+          "No extra volume. Weekly volume is already covered across most muscle groups.",
+        ]
+      : overVolumeMuscles.map(
+          (muscle) => `No extra ${muscle}; weekly volume is already covered.`
+        );
+
+  return Array.from(new Set([...specificAvoid, ...volumeAvoid]));
 }
 
 function getBlockers(input: {
@@ -207,16 +274,8 @@ function getBlockers(input: {
   );
 }
 
-function formatWarnings(input: {
-  consistencyWarnings: PreSessionReadinessConsistencyCheck[];
-  suppressedTargets: ReadinessSuppressedTarget[];
-}): string[] {
-  return Array.from(
-    new Set([
-      ...input.consistencyWarnings.map((warning) => warning.message),
-      ...input.suppressedTargets.map(formatSuppressedTarget),
-    ])
-  );
+function formatWarnings(): string[] {
+  return [];
 }
 
 function toDisplaySafeWatchRow(
@@ -262,6 +321,57 @@ function toDisplaySafeWatchRow(
   };
 }
 
+function getLoadCalibrationNotes(
+  rows: ReadinessCalibrationWatchRow[]
+): ReadinessCalibrationWatchRow[] {
+  return rows
+    .filter((row) => row.kind === "prescription_confidence")
+    .map(toDisplaySafeWatchRow);
+}
+
+function formatRecoveryCaveat(message: string): string | null {
+  const normalized = message.replace(/^\s*-\s*/, "").trim();
+  const [rawMuscle, rawReason] = normalized.split(":");
+  const muscle = rawReason ? rawMuscle?.trim() : null;
+  const reason = rawReason?.trim().replaceAll("_", " ");
+
+  if (!muscle || !reason) {
+    return null;
+  }
+
+  return `Keep extra ${muscle} work off the table if ${reason} affects warm-ups.`;
+}
+
+function formatFatigueWatch(input: ReadinessCalibrationWatchRow[]): string[] {
+  const fatigueMessages = input.filter((row) => row.kind === "fatigue");
+  const fatigueMuscles = Array.from(
+    new Set(
+      fatigueMessages
+        .filter((row) => !getOverVolumeMuscleFromMessage(row.message))
+        .map((row) => getFatigueMuscleFromMessage(row.message))
+        .filter((muscle): muscle is string => Boolean(muscle))
+    )
+  );
+  const lowerMuscles = fatigueMuscles.filter(isLowerBodyMuscle);
+  const recoveryCaveats = input
+    .filter((row) => row.kind === "recovery_caveat")
+    .map((row) => formatRecoveryCaveat(row.message))
+    .filter((item): item is string => Boolean(item));
+  const fatigueWatch =
+    lowerMuscles.length >= 2
+      ? [
+          `Keep lower-body add-ons off the table today; ${formatMuscleList(
+            lowerMuscles.map((muscle) => muscle.toLocaleLowerCase())
+          )} are already carrying fatigue.`,
+        ]
+      : fatigueMuscles.map(
+          (muscle) =>
+            `Keep extra ${muscle} work off the table today; fatigue is already elevated.`
+        );
+
+  return Array.from(new Set([...fatigueWatch, ...recoveryCaveats]));
+}
+
 function formatOptionalAddOnReason(input: {
   blocked: boolean;
   hasItems: boolean;
@@ -286,9 +396,9 @@ export function buildPreSessionReadinessGymCardDto(
   const summary = getReadinessGymCard(contract);
   const optionalAddOns = getValidOptionalAddOns(contract);
   const suppressedTargets = getSuppressedMusclesOrTargets(contract);
-  const calibrationNotes = getCalibrationWatchRows(contract).map(
-    toDisplaySafeWatchRow
-  );
+  const calibrationRows = getCalibrationWatchRows(contract);
+  const calibrationNotes = getLoadCalibrationNotes(calibrationRows);
+  const fatigueWatch = formatFatigueWatch(calibrationRows);
   const consistency = assertReadinessContractConsistency(contract);
   const blocked = hasBlockingReadinessIssue(contract);
   const action = getAction({
@@ -310,7 +420,7 @@ export function buildPreSessionReadinessGymCardDto(
       optionalAddOns,
       contract,
     }),
-    avoid: suppressedTargets.map(formatSuppressedTarget),
+    avoid: formatAvoidGuidance({ suppressedTargets, calibrationRows }),
     optionalAddOns: {
       status:
         optionalAddOns.length > 0
@@ -324,15 +434,13 @@ export function buildPreSessionReadinessGymCardDto(
       items: optionalAddOns,
     },
     calibrationNotes,
+    fatigueWatch,
     blockers: getBlockers({
       blocked,
       contract,
       failures: consistency.failures,
     }),
-    warnings: formatWarnings({
-      consistencyWarnings: consistency.warnings,
-      suppressedTargets,
-    }),
+    warnings: formatWarnings(),
     source: {
       contractVersion: contract.contractVersion,
       kind: "typed_pre_session_readiness_contract",

@@ -237,6 +237,85 @@ describe("pre-session readiness gym-card adapter", () => {
     });
   });
 
+  it("keeps Load Calibration exercise-level and moves fatigue or volume guidance elsewhere", () => {
+    const base = baseContract();
+    const dto = buildPreSessionReadinessGymCardDto(
+      baseContract({
+        projectedWeekStatus: {
+          ...base.projectedWeekStatus,
+          overMav: ["Chest", "Lats", "Upper Back", "Quads"],
+        },
+        calibrationWatches: {
+          prescriptionConfidence: [
+            {
+              exerciseLabel: "Close-Grip Seated Cable Row",
+              watchType: "prescription_confidence",
+              reasonCode: "load_calibration",
+              displayActionCode:
+                "machine_or_cable_target_may_need_calibration",
+              severity: "warning",
+              confidence: 0.72,
+              source: "generated_progression_trace",
+            },
+            {
+              exerciseLabel: "Cable Triceps Pushdown",
+              watchType: "prescription_confidence",
+              reasonCode: "estimate_or_low_signal",
+              displayActionCode: "hold_target_load",
+              severity: "info",
+              confidence: 0.82,
+              source: "generated_progression_trace",
+            },
+            "- Incline Press: action=hold confidence=0.8 reasons=stable_history",
+          ],
+          recoveryCaveats: ["Chest:local_soreness"],
+          fatigue: [
+            "- Chest: over target",
+            "- Lats: over target",
+            "- Upper Back: over target",
+            "- Quads: over target",
+            "- Glutes: high fatigue watch via Bulgarian Split Squat",
+            "- Hamstrings: watch fatigue watch via Seated Leg Curl",
+          ],
+        },
+      })
+    );
+
+    expect(dto.calibrationNotes).toEqual([
+      expect.objectContaining({
+        kind: "prescription_confidence",
+        exerciseLabel: "Close-Grip Seated Cable Row",
+        message:
+          "Close-Grip Seated Cable Row: Machine/cable target may need calibration.",
+      }),
+      expect.objectContaining({
+        kind: "prescription_confidence",
+        exerciseLabel: "Cable Triceps Pushdown",
+        message:
+          "Cable Triceps Pushdown: Hold the target load unless the first set feels clearly too easy or too hard.",
+      }),
+      {
+        kind: "prescription_confidence",
+        message:
+          "Incline Press: Hold the target load unless the first set feels clearly too easy or too hard.",
+      },
+    ]);
+    expect(dto.avoid).toEqual([
+      "No extra volume. Weekly volume is already covered across most muscle groups.",
+    ]);
+    expect(dto.fatigueWatch).toEqual([
+      "Keep lower-body add-ons off the table today; glutes and hamstrings are already carrying fatigue.",
+      "Keep extra Chest work off the table if local soreness affects warm-ups.",
+    ]);
+    expect(JSON.stringify(dto.calibrationNotes)).not.toContain("over target");
+    expect(JSON.stringify(dto.calibrationNotes)).not.toContain("fatigue");
+    expect(JSON.stringify(dto)).not.toContain("over target");
+    expect(JSON.stringify(dto)).not.toContain("watch fatigue watch");
+    expect(JSON.stringify(dto)).not.toContain("action=");
+    expect(JSON.stringify(dto)).not.toContain("confidence=");
+    expect(JSON.stringify(dto)).not.toContain("reasons=");
+  });
+
   it("does not import audit modules or parse CLI/render strings", () => {
     const source = readFileSync(
       "src/lib/api/pre-session-readiness-gym-card.ts",

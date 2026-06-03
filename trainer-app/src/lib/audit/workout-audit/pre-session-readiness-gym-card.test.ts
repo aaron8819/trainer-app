@@ -276,10 +276,7 @@ describe("pre-session readiness gym-card adapter", () => {
     expect(dto.avoid).toEqual([
       "Avoid Barbell Curl for Chest: does not match today's add-on need.",
     ]);
-    expect(dto.warnings).toEqual([
-      "optional_add_on_matches_flagged_muscle:warning",
-      "Avoid Barbell Curl for Chest: does not match today's add-on need.",
-    ]);
+    expect(dto.warnings).toEqual([]);
   });
 
   it("maps structured calibration watches into display-safe coaching notes", () => {
@@ -348,7 +345,7 @@ describe("pre-session readiness gym-card adapter", () => {
     expect(JSON.stringify(dto)).not.toContain("reasons=");
   });
 
-  it("keeps legacy debug-shaped calibration watches display-safe", () => {
+  it("keeps legacy debug-shaped calibration watches display-safe and split by section", () => {
     const dto = buildPreSessionReadinessGymCardDto(
       baseContract({
         calibrationWatches: {
@@ -358,7 +355,7 @@ describe("pre-session readiness gym-card adapter", () => {
           ],
           recoveryCaveats: ["Chest:local_soreness"],
           fatigue: [
-            "- Cable Row: equipment scaled during early exposure",
+            "- Glutes: watch fatigue watch via Bulgarian Split Squat",
           ],
         },
       })
@@ -375,19 +372,16 @@ describe("pre-session readiness gym-card adapter", () => {
         message:
           "Bench Press: Hold the target load unless the first set feels clearly too easy or too hard.",
       },
-      {
-        kind: "recovery_caveat",
-        message: "Chest:local_soreness",
-      },
-      {
-        kind: "fatigue",
-        message: "Cable Row: Machine/cable target may need calibration.",
-      },
+    ]);
+    expect(dto.fatigueWatch).toEqual([
+      "Keep extra Glutes work off the table today; fatigue is already elevated.",
+      "Keep extra Chest work off the table if local soreness affects warm-ups.",
     ]);
     expect(JSON.stringify(dto)).not.toContain("progression trace unavailable");
     expect(JSON.stringify(dto)).not.toContain("action=");
     expect(JSON.stringify(dto)).not.toContain("confidence=");
     expect(JSON.stringify(dto)).not.toContain("reasons=");
+    expect(JSON.stringify(dto)).not.toContain("watch fatigue watch");
   });
 
   it("does not let poisoned CLI/render strings affect adapter output", () => {

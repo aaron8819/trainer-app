@@ -805,8 +805,11 @@ describe("loadHomePageData", () => {
     expect(result.preSessionReadinessCard?.avoid).toEqual(
       expect.arrayContaining([
         "Avoid Cable Lateral Raise for Side Delts: not a good add-on target today.",
-        "Avoid extra Side Delts: weekly cap already high.",
+        "No extra Side Delts; weekly volume is already covered.",
       ])
+    );
+    expect(JSON.stringify(result.preSessionReadinessCard)).not.toContain(
+      "over target"
     );
   });
 

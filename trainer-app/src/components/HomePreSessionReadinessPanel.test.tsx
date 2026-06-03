@@ -76,6 +76,12 @@ function makeCard(
       },
       {
         kind: "prescription_confidence",
+        exerciseLabel: "Cable Rear Delt Fly",
+        displayActionCode: "machine_or_cable_target_may_need_calibration",
+        message: "Cable Rear Delt Fly: Machine/cable target may need calibration.",
+      },
+      {
+        kind: "prescription_confidence",
         exerciseLabel: "Cable Fly",
         displayActionCode: "hold_target_load",
         message:
@@ -83,7 +89,8 @@ function makeCard(
       },
     ],
     blockers: [],
-    warnings: ["Watch posterior-chain fatigue."],
+    fatigueWatch: ["Keep lower-body add-ons off the table today; glutes and hamstrings are already carrying fatigue."],
+    warnings: [],
     source: {
       contractVersion: 1,
       kind: "typed_pre_session_readiness_contract",
@@ -188,10 +195,25 @@ describe("HomePreSessionReadinessPanel", () => {
     expect(
       screen.getByText("Avoid extra Side Delts: weekly cap already high.")
     ).toBeInTheDocument();
-    expect(screen.getByText("Watch posterior-chain fatigue.")).toBeInTheDocument();
+    expect(screen.getByText("Fatigue Watch")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Use targets as starting points for Bench Press, Chest-Supported Row; adjust by feel."
+        "Keep lower-body add-ons off the table today; glutes and hamstrings are already carrying fatigue."
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Use the first working set to dial in these machine/cable targets: Cable Rear Delt Fly."
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Use the first working set to dial in these targets: Bench Press, Chest-Supported Row."
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Adjust to stay near the target RPE. Hold if reps and form match the target; reduce if form breaks or RPE jumps."
       )
     ).toBeInTheDocument();
     expect(
@@ -200,6 +222,58 @@ describe("HomePreSessionReadinessPanel", () => {
       )
     ).toBeInTheDocument();
     expect(screen.queryByText("Contract has session-local optional add-on rows.")).not.toBeInTheDocument();
+  });
+
+  it("keeps weekly volume and fatigue guidance out of Load Calibration", () => {
+    render(
+      <HomePreSessionReadinessPanel
+        card={makeCard({
+          avoid: [
+            "No extra volume. Weekly volume is already covered across most muscle groups.",
+          ],
+          fatigueWatch: [
+            "Keep lower-body add-ons off the table today; glutes and hamstrings are already carrying fatigue.",
+          ],
+          calibrationNotes: [
+            {
+              kind: "prescription_confidence",
+              exerciseLabel: "Close-Grip Seated Cable Row",
+              displayActionCode: "machine_or_cable_target_may_need_calibration",
+              message:
+                "Close-Grip Seated Cable Row: Machine/cable target may need calibration.",
+            },
+            {
+              kind: "prescription_confidence",
+              exerciseLabel: "Close-Grip Lat Pulldown",
+              displayActionCode: "machine_or_cable_target_may_need_calibration",
+              message:
+                "Close-Grip Lat Pulldown: Machine/cable target may need calibration.",
+            },
+          ],
+        })}
+        canPrepare={true}
+      />
+    );
+
+    const loadCalibration = screen
+      .getByText("Load Calibration")
+      .closest("div");
+    expect(loadCalibration).toHaveTextContent(
+      "Use the first working set to dial in these machine/cable targets: Close-Grip Seated Cable Row, Close-Grip Lat Pulldown."
+    );
+    expect(loadCalibration).not.toHaveTextContent("over target");
+    expect(loadCalibration).not.toHaveTextContent("fatigue");
+    expect(
+      screen.getByText(
+        "No extra volume. Weekly volume is already covered across most muscle groups."
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Keep lower-body add-ons off the table today; glutes and hamstrings are already carrying fatigue."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/watch fatigue watch/i)).not.toBeInTheDocument();
   });
 
   it("suppresses generic Today's Focus copy when no optional add-ons are present", () => {
@@ -267,6 +341,9 @@ describe("HomePreSessionReadinessPanel", () => {
             "Watch warning 4.",
             "Watch warning 5.",
           ],
+          fatigueWatch: [
+            "Keep extra Glutes work off the table today; fatigue is already elevated.",
+          ],
         })}
         canPrepare={true}
       />
@@ -274,6 +351,11 @@ describe("HomePreSessionReadinessPanel", () => {
 
     expect(screen.getByText("Avoid extra curls.")).toBeInTheDocument();
     expect(screen.getByText("Watch warning 5.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Keep extra Glutes work off the table today; fatigue is already elevated."
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByText(/\+\d+ more/)).not.toBeInTheDocument();
   });
 
@@ -286,6 +368,7 @@ describe("HomePreSessionReadinessPanel", () => {
           warnings: [],
           blockers: [],
           calibrationNotes: [],
+          fatigueWatch: [],
           optionalAddOns: {
             status: "none",
             reason: "No add-ons recommended.",
@@ -300,6 +383,7 @@ describe("HomePreSessionReadinessPanel", () => {
     expect(screen.queryByText("Optional Add-ons")).not.toBeInTheDocument();
     expect(screen.queryByText("Warnings & Blockers")).not.toBeInTheDocument();
     expect(screen.queryByText("Load Calibration")).not.toBeInTheDocument();
+    expect(screen.queryByText("Fatigue Watch")).not.toBeInTheDocument();
   });
 
   it("does not render internal debug strings in the coaching card", () => {
@@ -310,6 +394,8 @@ describe("HomePreSessionReadinessPanel", () => {
     expect(screen.queryByText(/action=/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/confidence=/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/reasons=/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/over target/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/watch fatigue watch/i)).not.toBeInTheDocument();
   });
 
   it("renders blocked readiness without normal start coaching", () => {

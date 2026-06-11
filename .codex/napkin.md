@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
+| 2026-06-11 | self | While fixing runtime swaps for Close-Grip Lat Pulldown -> Chin-Up, the first pure eligibility fix made Chin-Up eligible but a catalog-shaped probe showed pullover-style `vertical_pull` metadata could still outrank true pull-up/chin-up class matches in the initial shortlist. | For swap-menu fixes, validate both eligibility and lane-aware ranking against catalog-shaped candidates; true taxonomy class matches should outrank broad movement-metadata fallbacks before calling the user-facing issue fixed. |
 | 2026-06-03 | self | While adding a one-off DB repair script, the dry-run executed under `tsx` but `tsc --noEmit` caught that I had typed the root Prisma client as `Prisma.TransactionClient`, hiding `$transaction`, and had loosened a next-session helper input type too far. | For one-off Trainer repair scripts, type the root app client as `PrismaClient`, transaction callbacks as `Prisma.TransactionClient`, and run `npx tsc --noEmit` after the first successful dry-run because `tsx` can miss static contract drift. |
 | 2026-06-03 | self | While adding runtime-added exact-exercise load calibration, first scoped calibration history to the current session intent even though the request only required same owner and exact same exercise; `tsc --noEmit` also exposed that deload/evidence load-source unions needed the new source value. | Keep runtime-added calibration exact-exercise keyed, not same-intent keyed, and after adding any `ApplyLoadsAudit.resolvedLoads.source` value update readouts plus evidence/audit source unions before trusting focused Vitest. |
 | 2026-06-03 | self | During a read-only prescription calibration probe, assumed the Prisma `Goals` row used `primary` / `secondary`; the live model uses `primaryGoal` / `secondaryGoal`, causing the first replay script to fail before `applyLoadsWithAudit()`. | For live DB probes that call `mapGoals()`, select/pass `goals.primaryGoal` and `goals.secondaryGoal`; verify Prisma field names before wiring app mappers into stdin `tsx` snippets. |
@@ -220,6 +221,7 @@
 
 ## User Preferences
 - Keep Trainer implementation and audit work concise, direct, and production-friendly.
+- In the long-running planning/facilitation thread, create new-session prompts with best judgment rather than reusing a fixed template; omit prompts for already-addressed work.
 
 ## Patterns That Work
 - For Home pre-session readiness card IA, add display-only fields at the app-owned contract/DTO seam (`pre-session-readiness-contract` -> `pre-session-readiness-gym-card`) when Home lacks safe data such as workout preview rows; keep the component rendering DTO fields only and avoid raw contract/audit prose parsing.

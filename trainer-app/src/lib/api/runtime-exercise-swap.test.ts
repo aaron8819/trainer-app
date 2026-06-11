@@ -549,4 +549,84 @@ describe("runtime exercise swap constraints", () => {
       }),
     ]);
   });
+
+  it("surfaces chin-ups as warning-tier vertical-pull swaps for close-grip lat pulldowns", () => {
+    const candidates = buildRuntimeExerciseSwapCandidates({
+      current: {
+        id: "close-grip-lat-pulldown",
+        name: "Close-Grip Lat Pulldown",
+        fatigueCost: 2,
+        jointStress: "low",
+        isCompound: true,
+        isMainLift: false,
+        isMainLiftEligible: false,
+        movementPatterns: ["vertical_pull"],
+        primaryMuscles: ["lats"],
+        secondaryMuscles: ["biceps", "upper back"],
+        equipment: ["cable", "machine"],
+        sourceLane: {
+          slotId: "upper_a",
+          seedRole: "ACCESSORY",
+          laneId: "vertical_pull_anchor",
+          laneRole: "anchor",
+          primaryMuscles: ["Lats"],
+          acceptableExerciseClasses: ["vertical_pull"],
+          preferredExerciseClasses: ["vertical_pull"],
+        },
+      },
+      candidates: [
+        {
+          id: "chin-up",
+          name: "Chin-Up",
+          fatigueCost: 3,
+          jointStress: "medium",
+          isCompound: true,
+          isMainLiftEligible: true,
+          movementPatterns: ["vertical_pull"],
+          primaryMuscles: ["lats", "biceps"],
+          secondaryMuscles: ["upper back", "forearms"],
+          equipment: ["bodyweight"],
+        },
+        {
+          id: "cable-pullover",
+          name: "Cable Pullover",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: false,
+          isMainLiftEligible: false,
+          movementPatterns: ["vertical_pull"],
+          primaryMuscles: ["lats"],
+          equipment: ["cable"],
+        },
+        {
+          id: "straight-arm-pulldown",
+          name: "Straight-Arm Pulldown",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: false,
+          isMainLiftEligible: false,
+          movementPatterns: ["vertical_pull"],
+          primaryMuscles: ["lats"],
+          equipment: ["cable"],
+        },
+      ],
+    });
+
+    expect(candidates[0]).toEqual(
+      expect.objectContaining({
+        exerciseId: "chin-up",
+        exerciseName: "Chin-Up",
+        sourceV2Class: "vertical_pull",
+        swapFallbackTier: "useful_fallback_warning",
+        movementPatternMatch: "exact",
+        fatigueDelta: 1,
+        jointStressDelta: 1,
+      }),
+    );
+    expect(
+      candidates
+        .filter((candidate) => candidate.exerciseId !== "chin-up")
+        .map((candidate) => candidate.swapFallbackTier),
+    ).toEqual(["broad_same_muscle_fallback", "broad_same_muscle_fallback"]);
+  });
 });

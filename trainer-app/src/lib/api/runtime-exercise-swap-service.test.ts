@@ -867,6 +867,97 @@ describe("runtime exercise swap service", () => {
     ).toBe(false);
   });
 
+  it("lets typed search surface chin-ups for close-grip lat pulldown swaps", async () => {
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      exercises: [{ id: "we-1", exerciseId: "close-grip-lat-pulldown" }],
+      selectionMetadata: {},
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      id: "we-1",
+      workoutId: "workout-1",
+      exerciseId: "close-grip-lat-pulldown",
+      section: "MAIN",
+      isMainLift: false,
+      exercise: {
+        id: "close-grip-lat-pulldown",
+        name: "Close-Grip Lat Pulldown",
+        fatigueCost: 2,
+        jointStress: "LOW",
+        isMainLiftEligible: false,
+        isCompound: true,
+        movementPatterns: ["VERTICAL_PULL"],
+        exerciseEquipment: [
+          { equipment: { type: "CABLE" } },
+          { equipment: { type: "MACHINE" } },
+        ],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "SECONDARY", muscle: { name: "Biceps" } },
+          { role: "SECONDARY", muscle: { name: "Upper Back" } },
+        ],
+      },
+      sets: [
+        {
+          id: "set-1",
+          setIndex: 1,
+          targetRpe: 8,
+          restSeconds: 120,
+          logs: [],
+        },
+      ],
+    });
+    mocks.searchExerciseLibrary.mockResolvedValueOnce([
+      {
+        id: "chin-up",
+        name: "Chin-Up",
+        primaryMuscles: ["Lats", "Biceps"],
+        equipment: ["BODYWEIGHT"],
+      },
+    ]);
+    mocks.exerciseFindMany.mockResolvedValueOnce([
+      {
+        id: "chin-up",
+        name: "Chin-Up",
+        fatigueCost: 3,
+        jointStress: "MEDIUM",
+        isMainLiftEligible: true,
+        isCompound: true,
+        repRangeMin: 6,
+        repRangeMax: 12,
+        movementPatterns: ["VERTICAL_PULL"],
+        exerciseEquipment: [{ equipment: { type: "BODYWEIGHT" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "PRIMARY", muscle: { name: "Biceps" } },
+          { role: "SECONDARY", muscle: { name: "Upper Back" } },
+        ],
+      },
+    ]);
+
+    const candidates = await resolveRuntimeExerciseSwapCandidates({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      userId: "user-1",
+      query: "chin",
+      limit: 8,
+    });
+
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        exerciseId: "chin-up",
+        exerciseName: "Chin-Up",
+        swapFallbackTier: "useful_fallback_warning",
+        movementPatternMatch: "exact",
+        fatigueDelta: 1,
+        jointStressDelta: 1,
+      }),
+    ]);
+  });
+
   it("re-ranks typed search matches by lane fit after bounded text search", async () => {
     mocks.workoutFindFirst.mockResolvedValueOnce({
       id: "workout-1",

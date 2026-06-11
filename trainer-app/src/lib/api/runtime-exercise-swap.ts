@@ -466,6 +466,10 @@ function resolveSwapFallbackTier(input: {
       : "useful_fallback_warning";
   }
 
+  if (input.laneClassIds.length > 0 && !sameClass && !laneClassMatch) {
+    return "broad_same_muscle_fallback";
+  }
+
   return input.compatibility.movementMatch === "exact"
     ? "same_movement_class"
     : "broad_same_muscle_fallback";
@@ -594,6 +598,47 @@ function isEquivalentLateralRaiseFatigueException(input: {
   return (
     currentClasses.includes("lateral_raise") &&
     candidateClasses.includes("lateral_raise")
+  );
+}
+
+function hasV2ExerciseClass(
+  exercise: RuntimeExerciseSwapProfile,
+  classId: string,
+): boolean {
+  return matchV2ExerciseClasses(toV2MaterializationExercise(exercise)).some(
+    (match) => match.classId === classId,
+  );
+}
+
+function isBodyweightVerticalPullAlternative(
+  exercise: RuntimeExerciseSwapProfile,
+): boolean {
+  const equipment = normalizeList(exercise.equipment);
+  const text = normalizedSearchText([
+    exercise.name,
+    ...(exercise.aliases ?? []),
+    ...(exercise.movementPatterns ?? []),
+    ...equipment,
+  ]);
+
+  return (
+    equipment.includes("bodyweight") ||
+    hasText(text, ["pull up", "pullup", "chin up", "chinup"])
+  );
+}
+
+function isEquivalentVerticalPullBodyweightException(input: {
+  current: RuntimeExerciseSwapProfile;
+  candidate: RuntimeExerciseSwapProfile;
+  delta: number;
+}): boolean {
+  if (input.delta <= 0 || input.delta > 1) {
+    return false;
+  }
+  return (
+    hasV2ExerciseClass(input.current, "vertical_pull") &&
+    hasV2ExerciseClass(input.candidate, "vertical_pull") &&
+    isBodyweightVerticalPullAlternative(input.candidate)
   );
 }
 
@@ -777,7 +822,14 @@ export function evaluateRuntimeExerciseSwapEligibility(input: {
     return null;
   }
   const jointStressDelta = candidateJointStress - currentJointStress;
-  if (jointStressDelta > 0) {
+  if (
+    jointStressDelta > 0 &&
+    !isEquivalentVerticalPullBodyweightException({
+      current: input.current,
+      candidate: input.candidate,
+      delta: jointStressDelta,
+    })
+  ) {
     return null;
   }
 
@@ -794,6 +846,11 @@ export function evaluateRuntimeExerciseSwapEligibility(input: {
       current: input.current,
       candidate: input.candidate,
       fatigueDelta,
+    }) &&
+    !isEquivalentVerticalPullBodyweightException({
+      current: input.current,
+      candidate: input.candidate,
+      delta: fatigueDelta,
     })
   ) {
     return null;

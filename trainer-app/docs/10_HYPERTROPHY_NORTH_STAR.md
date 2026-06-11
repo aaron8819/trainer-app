@@ -9,12 +9,12 @@ This document is a strategy and migration map, not a claim about current runtime
 - Owner: `aaron8819@gmail.com`
 - Active mesocycle: `9b861675-c98f-42f7-bc8c-64a7de411b77`
 - Architecture signal: `mostly_repair_shaped`
-- Material repairs: `20`
-- Major repairs: `9`
-- Likely upstream-avoidable material repairs: `12`
+- Material repairs: `23`
+- Major repairs: `15`
+- Likely upstream-avoidable material repairs: `15`
 - Remaining material repairs after current V2 diagnostics: `8`
 - Suspicious repairs not eligible for promotion: `3`
-- Legacy repair quarantine: `evidence_only`, `behaviorCandidates=0`, `quarantined=39`, `staleArtifacts=12`
+- Legacy repair quarantine: `evidence_only`, `behaviorCandidates=0`, `quarantined=46`, `staleArtifacts=15`
 
 ## 1. Strategic Executive Summary
 
@@ -228,10 +228,10 @@ The durable checkpoint:
 
 - the active mesocycle is `9b861675-c98f-42f7-bc8c-64a7de411b77`
 - the latest mesocycle-explain architecture signal remains `mostly_repair_shaped`
-- material repair pressure is still real: `materialRepairCount=20`, `majorRepairCount=9`
-- current V2 diagnostics classify `likelyUpstreamAvoidableMaterialRepairs=12` while leaving `remainingMaterialRepairs=8`
+- material repair pressure is still real: `materialRepairCount=23`, `majorRepairCount=15`
+- current V2 diagnostics classify `likelyUpstreamAvoidableMaterialRepairs=15` while leaving `remainingMaterialRepairs=8`
 - suspicious downstream repairs are explicitly not promotion material: `suspiciousRepairsNotEligibleForPromotion=3`
-- legacy repaired projection is quarantined as evidence only: `behaviorCandidates=0`, `quarantined=39`, `staleArtifacts=12`
+- legacy repaired projection is quarantined as evidence only: `behaviorCandidates=0`, `quarantined=46`, `staleArtifacts=15`
 - runtime execution quality, performed-reality readouts, post-session calibration evidence, candidate evaluation, materializer comparison, and repair-readout quarantine are now coherent enough to guide the next architecture slice
 - no DB mutation, Prisma migration, reseed, seed/slot sequence mutation, active plan-shape change, runtime planner-metadata consumption, or receipt mirror was part of this milestone
 
@@ -242,6 +242,7 @@ The remaining architecture signal must stay visible:
 - production projection is still mostly repair-shaped
 - the current V2 path explains more of the desired upstream ownership, but it has not replaced production authoring
 - likely upstream-avoidable rows are hypotheses for planner-owned work, not behavior by themselves
+- `behaviorCandidates=0` is currently correct because every repaired row is classified as safety/repair-only, collateral/ambiguous, stale repaired-projection artifact, or missing an owner-specific measured gate before behavior
 - remaining repairs point at set distribution, concentration, capacity, and materializer-quality cleanup
 - suspicious/quarantined legacy repair rows must not be promoted
 - runtime replay remains correct only because it stays boring and consumes the persisted executable seed shape
@@ -1609,13 +1610,14 @@ and safe to promote into V2 policy without changing seed/runtime truth?
 Current near-term roadmap:
 
 1. Start from the current `mostly_repair_shaped` audit signal, not from repaired projection as a target.
-2. Review the `12` likely upstream-avoidable material repairs and keep only bounded, slot-owned, non-suspicious candidates.
+2. Review the `15` likely upstream-avoidable material repairs and keep only bounded, slot-owned, non-suspicious candidates.
 3. Treat the `8` remaining material repairs as set-distribution, concentration, capacity, or materializer-quality cleanup until proven otherwise.
 4. Keep the `3` suspicious repairs and all quarantined legacy repair rows evidence-only.
-5. Prefer read-only measured projections before behavior: compare current V2 policy, no-repair output, and materializer diagnostics without writing seeds or changing runtime.
-6. Promote behavior only through the rightful pure V2 owner seam with focused tests and audit comparison.
-7. Re-run mesocycle-explain and acceptance-style diagnostics after any behavior trial, then prove seed/runtime invariants remained unchanged.
-8. Keep V2 default-author promotion as a later gate after V2-authored output passes plan-quality, materialization-quality, integration, and runtime-readiness checks.
+5. Read `repairPromotionScoreboard.interpretation.quarantineGroups` before behavior work: only `upstreamOwnedCandidate` rows are behavior candidates; `safetyRepairOnly`, `collateralAmbiguous`, `staleArtifact`, and `missingEvidenceOrUnmeasuredGate` rows require their named proof gates first.
+6. Prefer read-only measured projections before behavior: compare current V2 policy, no-repair output, and materializer diagnostics without writing seeds or changing runtime.
+7. Promote behavior only through the rightful pure V2 owner seam with focused tests and audit comparison.
+8. Re-run mesocycle-explain and acceptance-style diagnostics after any behavior trial, then prove seed/runtime invariants remained unchanged.
+9. Keep V2 default-author promotion as a later gate after V2-authored output passes plan-quality, materialization-quality, integration, and runtime-readiness checks.
 
 ### Future Architecture Tracks For Engine Intelligence
 

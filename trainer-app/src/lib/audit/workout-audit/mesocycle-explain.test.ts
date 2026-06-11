@@ -3963,6 +3963,59 @@ describe("buildMesocycleExplainAuditPayload", () => {
         support_floor_design_needed: expect.any(Number),
       }),
     );
+    const quarantineGroups = scoreboard?.interpretation.quarantineGroups;
+    expect(quarantineGroups?.upstreamOwnedCandidate).toMatchObject({
+      count: 0,
+      evidenceQuality: "owner_specific_behavior_candidate",
+      ownerCounts: {},
+      requiredProof: [
+        "positive_slot_owned_likely_avoidable_row_not_demoted_by_v2_context",
+      ],
+    });
+    expect(
+      (quarantineGroups?.safetyRepairOnly.count ?? 0) +
+        (quarantineGroups?.collateralAmbiguous.count ?? 0) +
+        (quarantineGroups?.staleArtifact.count ?? 0) +
+        (quarantineGroups?.missingEvidenceOrUnmeasuredGate.count ?? 0),
+    ).toBe(scoreboard?.summary.doNotPromoteCount);
+    expect(quarantineGroups?.safetyRepairOnly).toMatchObject({
+      count: scoreboard?.summary.safetyNetCount,
+      evidenceQuality: "safety_or_legacy_only",
+    });
+    expect(quarantineGroups?.staleArtifact).toMatchObject({
+      evidenceQuality: "stale_repaired_projection_artifact",
+      requiredProof: expect.arrayContaining([
+        "do_not_copy_legacy_repaired_identity_or_set_bump",
+      ]),
+    });
+    expect(
+      scoreboard?.interpretation.missingProofBeforeBehaviorPromotion,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gate: "owner_specific_behavior_candidate",
+          status: "missing",
+          missingEvidence: [
+            "positive_slot_owned_likely_avoidable_row_not_demoted_by_v2_context",
+          ],
+        }),
+        expect.objectContaining({
+          gate: "current_v2_policy_gap",
+          status: "blocked",
+          missingEvidence: [
+            "resolve_or_measure_current_v2_policy_gaps_before_behavior",
+          ],
+        }),
+        expect.objectContaining({
+          gate: "measured_behavior_projection",
+          status: "missing",
+        }),
+        expect.objectContaining({
+          gate: "seed_runtime_non_consumption",
+          status: "required_before_promotion",
+        }),
+      ]),
+    );
     expect(scoreboard?.interpretation.legacyRepairQuarantine).toMatchObject({
       readOnly: true,
       affectsScoringOrGeneration: false,

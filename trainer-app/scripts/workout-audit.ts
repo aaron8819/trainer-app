@@ -1789,6 +1789,46 @@ function formatNameList(values: readonly string[] | null | undefined, limit = 12
   return remaining > 0 ? `${visible}, +${remaining} more` : visible;
 }
 
+function formatCountRecord(
+  counts: Readonly<Record<string, number>> | null | undefined,
+  limit = 5
+): string {
+  const entries = Object.entries(counts ?? {})
+    .filter(([, value]) => typeof value === "number" && value > 0)
+    .sort(
+      ([leftKey, leftValue], [rightKey, rightValue]) =>
+        rightValue - leftValue || leftKey.localeCompare(rightKey)
+    );
+  if (entries.length === 0) {
+    return "none";
+  }
+  const visible = entries
+    .slice(0, limit)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(" ");
+  const remaining = entries.length - limit;
+  return remaining > 0 ? `${visible} +${remaining} more` : visible;
+}
+
+function formatPromotionProofGates(
+  gates:
+    | ReadonlyArray<{
+        gate: string;
+        status: string;
+        ownerSeam: string;
+      }>
+    | null
+    | undefined
+): string {
+  const rows = asArray(gates);
+  if (rows.length === 0) {
+    return "not_available";
+  }
+  return rows
+    .map((row) => `${row.gate}:${row.status}@${row.ownerSeam}`)
+    .join("; ");
+}
+
 function formatPlanningRealityNumber(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "unknown";
 }
@@ -2873,6 +2913,10 @@ export function buildPlanningRealitySummary(input: {
   );
   const legacyRepairQuarantine =
     repairPromotionScoreboard?.interpretation.legacyRepairQuarantine;
+  const repairQuarantineGroups =
+    repairPromotionScoreboard?.interpretation.quarantineGroups;
+  const missingPromotionProof =
+    repairPromotionScoreboard?.interpretation.missingProofBeforeBehaviorPromotion;
   const preselectionDemands = asArray(
     input.artifact.mesocycleExplain?.preview?.projectionDiagnostics?.preselectionDemands
   );
@@ -3014,6 +3058,16 @@ export function buildPlanningRealitySummary(input: {
   if (legacyRepairQuarantine) {
     lines.push(
       `- legacyRepairQuarantine: evidence_only behaviorCandidates=${legacyRepairQuarantine.behaviorPromotionCandidateCount} quarantined=${legacyRepairQuarantine.quarantinedRowCount} staleArtifacts=${legacyRepairQuarantine.staleRepairedProjectionArtifactCount}`
+    );
+  }
+  if (repairQuarantineGroups) {
+    lines.push(
+      `- quarantineGroups: upstreamOwned=${repairQuarantineGroups.upstreamOwnedCandidate.count} safetyRepairOnly=${repairQuarantineGroups.safetyRepairOnly.count} collateralAmbiguous=${repairQuarantineGroups.collateralAmbiguous.count} staleArtifact=${repairQuarantineGroups.staleArtifact.count} missingEvidenceOrGate=${repairQuarantineGroups.missingEvidenceOrUnmeasuredGate.count}`
+    );
+  }
+  if (missingPromotionProof) {
+    lines.push(
+      `- missingProofBeforeBehaviorPromotion: ${formatPromotionProofGates(missingPromotionProof)}`
     );
   }
   const promotionCandidateSignal =
@@ -4245,6 +4299,10 @@ export function buildPlannerOnlyNoRepairSummary(input: {
   const repairScoreboard = noRepair.repairPromotionScoreboard;
   const legacyRepairQuarantine =
     repairScoreboard?.interpretation.legacyRepairQuarantine;
+  const repairQuarantineGroups =
+    repairScoreboard?.interpretation.quarantineGroups;
+  const missingPromotionProof =
+    repairScoreboard?.interpretation.missingProofBeforeBehaviorPromotion;
   const basePlanCompare = noRepair.v2BasePlanCompare;
   const shadowConsumption = noRepair.v2BasePlanShadowConsumptionTrial;
   const basePlanCompareLines = basePlanCompare
@@ -4288,6 +4346,13 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         legacyRepairQuarantine
           ? `Legacy repair quarantine: role=${legacyRepairQuarantine.repairedProjectionRole} behaviorCandidates=${legacyRepairQuarantine.behaviorPromotionCandidateCount} quarantined=${legacyRepairQuarantine.quarantinedRowCount} staleArtifacts=${legacyRepairQuarantine.staleRepairedProjectionArtifactCount}`
           : "Legacy repair quarantine: not_available",
+        repairQuarantineGroups
+          ? `Quarantine groups: upstreamOwned=${repairQuarantineGroups.upstreamOwnedCandidate.count} safetyRepairOnly=${repairQuarantineGroups.safetyRepairOnly.count} collateralAmbiguous=${repairQuarantineGroups.collateralAmbiguous.count} staleArtifact=${repairQuarantineGroups.staleArtifact.count} missingEvidenceOrGate=${repairQuarantineGroups.missingEvidenceOrUnmeasuredGate.count}`
+          : "Quarantine groups: not_available",
+        repairQuarantineGroups
+          ? `Top quarantine reasons: safety=${formatCountRecord(repairQuarantineGroups.safetyRepairOnly.topReasons, 3)} collateral=${formatCountRecord(repairQuarantineGroups.collateralAmbiguous.topReasons, 3)} stale=${formatCountRecord(repairQuarantineGroups.staleArtifact.topReasons, 3)} missing=${formatCountRecord(repairQuarantineGroups.missingEvidenceOrUnmeasuredGate.topReasons, 3)}`
+          : "Top quarantine reasons: not_available",
+        `Missing proof before behavior: ${formatPromotionProofGates(missingPromotionProof)}`,
         `Promotion candidates: ${repairScoreboard.summary.promotionCandidateCount}`,
         `Safety/do-not-promote: ${repairScoreboard.summary.safetyNetCount}`,
         `Collateral/diagnostic: ${repairScoreboard.summary.collateralDiagnosticCount + repairScoreboard.summary.diagnosticOnlyCount}`,

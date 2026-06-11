@@ -35,6 +35,12 @@ const STALE_REPAIRED_PROJECTION_REASONS = [
   "support_floor_design_needed",
 ] as const;
 
+type QuarantineGroupName =
+  | "safetyRepairOnly"
+  | "collateralAmbiguous"
+  | "staleArtifact"
+  | "missingEvidenceOrUnmeasuredGate";
+
 function uniqueSorted(values: string[]): string[] {
   return Array.from(
     new Set(values.filter((value) => value.trim().length > 0))
@@ -678,6 +684,206 @@ function countStaleRepairedProjectionArtifacts(
   };
 }
 
+function countByReason(rows: ReadonlyArray<V2RepairDoNotPromoteRow>): Record<string, number> {
+  return rows.reduce<Record<string, number>>((counts, row) => {
+    const reason = row.reason || "unknown";
+    counts[reason] = (counts[reason] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
+function countByOwner(
+  rows: ReadonlyArray<V2RepairPromotionCandidate>
+): V2RepairPromotionScoreboard["interpretation"]["quarantineGroups"]["upstreamOwnedCandidate"]["ownerCounts"] {
+  return rows.reduce<
+    V2RepairPromotionScoreboard["interpretation"]["quarantineGroups"]["upstreamOwnedCandidate"]["ownerCounts"]
+  >((counts, row) => {
+    counts[row.correctOwner] = (counts[row.correctOwner] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
+function isStaleArtifactRow(row: V2RepairDoNotPromoteRow): boolean {
+  return STALE_REPAIRED_PROJECTION_REASONS.some((reason) =>
+    row.demotionReasons.includes(reason)
+  );
+}
+
+function quarantineGroupForRow(row: V2RepairDoNotPromoteRow): QuarantineGroupName {
+  if (row.bucket === "safety_net") {
+    return "safetyRepairOnly";
+  }
+  if (isStaleArtifactRow(row)) {
+    return "staleArtifact";
+  }
+  if (row.bucket === "collateral_diagnostic") {
+    return "collateralAmbiguous";
+  }
+  return "missingEvidenceOrUnmeasuredGate";
+}
+
+function buildQuarantineGroups(input: {
+  promotionCandidates: ReadonlyArray<V2RepairPromotionCandidate>;
+  doNotPromoteRows: ReadonlyArray<V2RepairDoNotPromoteRow>;
+}): V2RepairPromotionScoreboard["interpretation"]["quarantineGroups"] {
+  const groupedRows: Record<QuarantineGroupName, V2RepairDoNotPromoteRow[]> = {
+    safetyRepairOnly: [],
+    collateralAmbiguous: [],
+    staleArtifact: [],
+    missingEvidenceOrUnmeasuredGate: [],
+  };
+  for (const row of input.doNotPromoteRows) {
+    groupedRows[quarantineGroupForRow(row)].push(row);
+  }
+
+  return {
+    upstreamOwnedCandidate: {
+      count: input.promotionCandidates.length,
+      evidenceQuality: "owner_specific_behavior_candidate",
+      ownerCounts: countByOwner(input.promotionCandidates),
+      requiredProof:
+        input.promotionCandidates.length > 0
+          ? [
+              "bounded_owner_specific_behavior_trial",
+              "measured_projection_non_regression",
+              "seed_runtime_non_consumption_verified",
+            ]
+          : ["positive_slot_owned_likely_avoidable_row_not_demoted_by_v2_context"],
+    },
+    safetyRepairOnly: {
+      count: groupedRows.safetyRepairOnly.length,
+      evidenceQuality: "safety_or_legacy_only",
+      topReasons: countByReason(groupedRows.safetyRepairOnly),
+      requiredProof: [
+        "prove_safety_guard_can_be_owned_upstream_without_regression",
+        "keep_repair_as_fallback_until_replaced",
+      ],
+    },
+    collateralAmbiguous: {
+      count: groupedRows.collateralAmbiguous.length,
+      evidenceQuality: "collateral_or_ambiguous",
+      topReasons: countByReason(groupedRows.collateralAmbiguous),
+      requiredProof: [
+        "prove_target_muscle_slot_ownership",
+        "separate_collateral_credit_from_direct_floor_satisfaction",
+      ],
+    },
+    staleArtifact: {
+      count: groupedRows.staleArtifact.length,
+      evidenceQuality: "stale_repaired_projection_artifact",
+      topReasons: countByReason(groupedRows.staleArtifact),
+      requiredProof: [
+        "compare_against_current_v2_no_repair_solution",
+        "do_not_copy_legacy_repaired_identity_or_set_bump",
+      ],
+    },
+    missingEvidenceOrUnmeasuredGate: {
+      count: groupedRows.missingEvidenceOrUnmeasuredGate.length,
+      evidenceQuality: "missing_or_unmeasured_gate",
+      topReasons: countByReason(groupedRows.missingEvidenceOrUnmeasuredGate),
+      requiredProof: [
+        "owner_specific_projection_delta",
+        "materializer_non_regression",
+        "cross_week_and_deload_projection",
+      ],
+    },
+  };
+}
+
+function currentV2PolicyGapEvidence(
+  gap: V2RepairPromotionScoreboard["interpretation"]["currentV2PolicyGap"]
+): string[] {
+  return Object.entries(gap)
+    .filter(([, value]) => value > 0)
+    .map(([key, value]) => `${key}=${value}`);
+}
+
+function currentV2PolicyGapOwnerSeams(
+  gap: V2RepairPromotionScoreboard["interpretation"]["currentV2PolicyGap"]
+): string[] {
+  const owners: string[] = [];
+  if (
+    gap.supportDirectFloorBlockerCount > 0 ||
+    gap.setDistributionCapacityGapCount > 0 ||
+    gap.setBudgetPolicyFailureCount > 0 ||
+    gap.capAwareExpansionLimitationCount > 0
+  ) {
+    owners.push("SetDistributionIntent");
+  }
+  if (
+    gap.selectionFeasibilityCapacityPressureCount > 0 ||
+    gap.selectionBlockerCount > 0
+  ) {
+    owners.push("ExerciseSelectionPlan");
+  }
+  if (gap.classTaxonomyMismatchCount > 0) {
+    owners.push("ExerciseClassDistributionBySlot");
+  }
+  if (gap.concentrationQualityGapCount > 0 || gap.optionalDiagnosticLaneCount > 0) {
+    owners.push("SlotDemandAllocationByWeek");
+  }
+  if (gap.staleWeek1ReadoutArtifactCount > 0) {
+    owners.push("audit_readout_cleanup");
+  }
+  return uniqueSorted(owners);
+}
+
+function buildMissingProofBeforeBehaviorPromotion(input: {
+  promotionCandidates: ReadonlyArray<V2RepairPromotionCandidate>;
+  currentV2PolicyGap: V2RepairPromotionScoreboard["interpretation"]["currentV2PolicyGap"];
+}): V2RepairPromotionScoreboard["interpretation"]["missingProofBeforeBehaviorPromotion"] {
+  const gapEvidence = currentV2PolicyGapEvidence(input.currentV2PolicyGap);
+  const gapOwnerSeams = currentV2PolicyGapOwnerSeams(input.currentV2PolicyGap);
+  return [
+    {
+      gate: "owner_specific_behavior_candidate",
+      status: input.promotionCandidates.length > 0 ? "pass" : "missing",
+      ownerSeam:
+        input.promotionCandidates.length > 0
+          ? uniqueSorted(input.promotionCandidates.map((row) => row.correctOwner)).join(",")
+          : "repairPromotionScoreboard",
+      missingEvidence:
+        input.promotionCandidates.length > 0
+          ? []
+          : ["positive_slot_owned_likely_avoidable_row_not_demoted_by_v2_context"],
+      evidence: [`behaviorPromotionCandidateCount=${input.promotionCandidates.length}`],
+    },
+    {
+      gate: "current_v2_policy_gap",
+      status: gapEvidence.length > 0 ? "blocked" : "pass",
+      ownerSeam: gapOwnerSeams.length > 0 ? gapOwnerSeams.join(",") : "none",
+      missingEvidence:
+        gapEvidence.length > 0
+          ? ["resolve_or_measure_current_v2_policy_gaps_before_behavior"]
+          : [],
+      evidence: gapEvidence.length > 0 ? gapEvidence : ["currentV2PolicyGap=none"],
+    },
+    {
+      gate: "measured_behavior_projection",
+      status: "missing",
+      ownerSeam: "read_only_projection_or_materializer_comparison",
+      missingEvidence: [
+        "measured_projection_delta",
+        "materializer_non_regression",
+        "cross_week_accumulation_projection",
+        "deload_projection",
+      ],
+      evidence: ["repair_scoreboard_is_repaired_projection_evidence_only"],
+    },
+    {
+      gate: "seed_runtime_non_consumption",
+      status: "required_before_promotion",
+      ownerSeam: "accepted_seed_runtime_replay",
+      missingEvidence: [
+        "focused_seed_runtime_guard_tests_for_any_future_behavior_promotion",
+      ],
+      evidence: [
+        "diagnostic_readout_does_not_change_slotPlanSeedJson_or_runtime_replay",
+      ],
+    },
+  ];
+}
+
 export function buildRepairPromotionScoreboard(
   planningReality: PlanningRealityDiagnostic | undefined,
   v2Context?: V2RepairPromotionReadoutContext
@@ -779,6 +985,16 @@ export function buildRepairPromotionScoreboard(
   };
   const staleRepairedProjectionArtifacts =
     countStaleRepairedProjectionArtifacts(doNotPromoteRows);
+  const currentV2PolicyGap = buildCurrentV2PolicyGap(v2Context);
+  const quarantineGroups = buildQuarantineGroups({
+    promotionCandidates,
+    doNotPromoteRows,
+  });
+  const missingProofBeforeBehaviorPromotion =
+    buildMissingProofBeforeBehaviorPromotion({
+      promotionCandidates,
+      currentV2PolicyGap,
+    });
 
   return {
     version: 1,
@@ -798,12 +1014,14 @@ export function buildRepairPromotionScoreboard(
         ...rawRepairEvidence,
         note: "raw_legacy_repair_evidence_not_behavior_promotion_pressure",
       },
-      currentV2PolicyGap: buildCurrentV2PolicyGap(v2Context),
+      currentV2PolicyGap,
       safetyNonRegressionRows: {
         count: safetyNetRows.length,
         includesSuspiciousRows: rawSuspiciousRows.length > 0,
       },
       staleRepairedProjectionArtifacts,
+      quarantineGroups,
+      missingProofBeforeBehaviorPromotion,
       legacyRepairQuarantine: {
         readOnly: true,
         affectsScoringOrGeneration: false,

@@ -3259,6 +3259,108 @@ describe("buildWorkoutAuditArtifact", () => {
               support_floor_design_needed: 0,
             },
           },
+          quarantineGroups: {
+            upstreamOwnedCandidate: {
+              count: 1,
+              evidenceQuality: "owner_specific_behavior_candidate",
+              ownerCounts: {
+                SlotDemandAllocationByWeek: 1,
+              },
+              requiredProof: [
+                "bounded_owner_specific_behavior_trial",
+                "measured_projection_non_regression",
+                "seed_runtime_non_consumption_verified",
+              ],
+            },
+            safetyRepairOnly: {
+              count: 1,
+              evidenceQuality: "safety_or_legacy_only",
+              topReasons: {
+                raw_suspicious_do_not_promote: 1,
+              },
+              requiredProof: [
+                "prove_safety_guard_can_be_owned_upstream_without_regression",
+                "keep_repair_as_fallback_until_replaced",
+              ],
+            },
+            collateralAmbiguous: {
+              count: 0,
+              evidenceQuality: "collateral_or_ambiguous",
+              topReasons: {},
+              requiredProof: [
+                "prove_target_muscle_slot_ownership",
+                "separate_collateral_credit_from_direct_floor_satisfaction",
+              ],
+            },
+            staleArtifact: {
+              count: 0,
+              evidenceQuality: "stale_repaired_projection_artifact",
+              topReasons: {},
+              requiredProof: [
+                "compare_against_current_v2_no_repair_solution",
+                "do_not_copy_legacy_repaired_identity_or_set_bump",
+              ],
+            },
+            missingEvidenceOrUnmeasuredGate: {
+              count: 1,
+              evidenceQuality: "missing_or_unmeasured_gate",
+              topReasons: {
+                materiality_none_or_diagnostic_denominator_artifact: 1,
+              },
+              requiredProof: [
+                "owner_specific_projection_delta",
+                "materializer_non_regression",
+                "cross_week_and_deload_projection",
+              ],
+            },
+          },
+          missingProofBeforeBehaviorPromotion: [
+            {
+              gate: "owner_specific_behavior_candidate",
+              status: "pass",
+              ownerSeam: "SlotDemandAllocationByWeek",
+              missingEvidence: [],
+              evidence: ["behaviorPromotionCandidateCount=1"],
+            },
+            {
+              gate: "current_v2_policy_gap",
+              status: "blocked",
+              ownerSeam: "SetDistributionIntent",
+              missingEvidence: [
+                "resolve_or_measure_current_v2_policy_gaps_before_behavior",
+              ],
+              evidence: [
+                "supportDirectFloorBlockerCount=3",
+                "setDistributionCapacityGapCount=1",
+                "setBudgetPolicyFailureCount=1",
+              ],
+            },
+            {
+              gate: "measured_behavior_projection",
+              status: "missing",
+              ownerSeam: "read_only_projection_or_materializer_comparison",
+              missingEvidence: [
+                "measured_projection_delta",
+                "materializer_non_regression",
+                "cross_week_accumulation_projection",
+                "deload_projection",
+              ],
+              evidence: [
+                "repair_scoreboard_is_repaired_projection_evidence_only",
+              ],
+            },
+            {
+              gate: "seed_runtime_non_consumption",
+              status: "required_before_promotion",
+              ownerSeam: "accepted_seed_runtime_replay",
+              missingEvidence: [
+                "focused_seed_runtime_guard_tests_for_any_future_behavior_promotion",
+              ],
+              evidence: [
+                "diagnostic_readout_does_not_change_slotPlanSeedJson_or_runtime_replay",
+              ],
+            },
+          ],
         },
       },
     });
@@ -4723,6 +4825,108 @@ function makeMesocycleExplainNoRepairPayload() {
               support_floor_design_needed: 0,
             },
           },
+          quarantineGroups: {
+            upstreamOwnedCandidate: {
+              count: 1,
+              evidenceQuality: "owner_specific_behavior_candidate",
+              ownerCounts: {
+                SlotDemandAllocationByWeek: 1,
+              },
+              requiredProof: [
+                "bounded_owner_specific_behavior_trial",
+                "measured_projection_non_regression",
+                "seed_runtime_non_consumption_verified",
+              ],
+            },
+            safetyRepairOnly: {
+              count: 1,
+              evidenceQuality: "safety_or_legacy_only",
+              topReasons: {
+                raw_suspicious_do_not_promote: 1,
+              },
+              requiredProof: [
+                "prove_safety_guard_can_be_owned_upstream_without_regression",
+                "keep_repair_as_fallback_until_replaced",
+              ],
+            },
+            collateralAmbiguous: {
+              count: 0,
+              evidenceQuality: "collateral_or_ambiguous",
+              topReasons: {},
+              requiredProof: [
+                "prove_target_muscle_slot_ownership",
+                "separate_collateral_credit_from_direct_floor_satisfaction",
+              ],
+            },
+            staleArtifact: {
+              count: 0,
+              evidenceQuality: "stale_repaired_projection_artifact",
+              topReasons: {},
+              requiredProof: [
+                "compare_against_current_v2_no_repair_solution",
+                "do_not_copy_legacy_repaired_identity_or_set_bump",
+              ],
+            },
+            missingEvidenceOrUnmeasuredGate: {
+              count: 1,
+              evidenceQuality: "missing_or_unmeasured_gate",
+              topReasons: {
+                materiality_none_or_diagnostic_denominator_artifact: 1,
+              },
+              requiredProof: [
+                "owner_specific_projection_delta",
+                "materializer_non_regression",
+                "cross_week_and_deload_projection",
+              ],
+            },
+          },
+          missingProofBeforeBehaviorPromotion: [
+            {
+              gate: "owner_specific_behavior_candidate",
+              status: "pass",
+              ownerSeam: "SlotDemandAllocationByWeek",
+              missingEvidence: [],
+              evidence: ["behaviorPromotionCandidateCount=1"],
+            },
+            {
+              gate: "current_v2_policy_gap",
+              status: "blocked",
+              ownerSeam: "SetDistributionIntent",
+              missingEvidence: [
+                "resolve_or_measure_current_v2_policy_gaps_before_behavior",
+              ],
+              evidence: [
+                "supportDirectFloorBlockerCount=3",
+                "setDistributionCapacityGapCount=1",
+                "setBudgetPolicyFailureCount=1",
+              ],
+            },
+            {
+              gate: "measured_behavior_projection",
+              status: "missing",
+              ownerSeam: "read_only_projection_or_materializer_comparison",
+              missingEvidence: [
+                "measured_projection_delta",
+                "materializer_non_regression",
+                "cross_week_accumulation_projection",
+                "deload_projection",
+              ],
+              evidence: [
+                "repair_scoreboard_is_repaired_projection_evidence_only",
+              ],
+            },
+            {
+              gate: "seed_runtime_non_consumption",
+              status: "required_before_promotion",
+              ownerSeam: "accepted_seed_runtime_replay",
+              missingEvidence: [
+                "focused_seed_runtime_guard_tests_for_any_future_behavior_promotion",
+              ],
+              evidence: [
+                "diagnostic_readout_does_not_change_slotPlanSeedJson_or_runtime_replay",
+              ],
+            },
+          ],
         },
         promotionCandidates: [
           {

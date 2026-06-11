@@ -37,6 +37,35 @@ const seedRuntimeFiles = [
     "mesocycle-handoff-slot-plan-projection.ts",
   ),
 ];
+const generationSeedRuntimeReceiptPersistenceFiles = [
+  ...seedRuntimeFiles,
+  path.join(process.cwd(), "src", "lib", "api", "template-session.ts"),
+  path.join(
+    process.cwd(),
+    "src",
+    "lib",
+    "api",
+    "template-session",
+    "deload-session.ts",
+  ),
+  path.join(process.cwd(), "src", "lib", "evidence", "session-decision-receipt.ts"),
+  path.join(process.cwd(), "prisma", "schema.prisma"),
+];
+const repairQuarantineDiagnosticKeys = [
+  "repairPromotionScoreboard",
+  "legacyRepairQuarantine",
+  "quarantineGroups",
+  "missingProofBeforeBehaviorPromotion",
+  "behaviorPromotionCandidateCount",
+];
+const nextMesocycleCandidateEvaluator = path.join(
+  process.cwd(),
+  "src",
+  "lib",
+  "audit",
+  "workout-audit",
+  "next-mesocycle-candidate-evaluator.ts",
+);
 const promotionReadinessContract = path.join(
   process.cwd(),
   "src",
@@ -433,6 +462,39 @@ describe("V2 planner policy module boundary", () => {
     });
 
     expect(violations).toEqual([]);
+  });
+
+  it("keeps repair quarantine diagnostics out of generation, seed, runtime, receipts, persistence, and acceptance thresholds", () => {
+    const boundaryViolations = generationSeedRuntimeReceiptPersistenceFiles.flatMap(
+      (file) => {
+        const text = fs.readFileSync(file, "utf8");
+        return repairQuarantineDiagnosticKeys.flatMap((key) =>
+          text.includes(key)
+            ? [`${path.relative(process.cwd(), file)} references ${key}`]
+            : []
+        );
+      },
+    );
+    const evaluatorText = fs.readFileSync(nextMesocycleCandidateEvaluator, "utf8");
+    const acceptanceThresholdViolations = [
+      "legacyRepairQuarantine",
+      "quarantineGroups",
+      "missingProofBeforeBehaviorPromotion",
+      "behaviorPromotionCandidateCount",
+      "promotionCandidates",
+      "doNotPromoteRows",
+    ].flatMap((key) =>
+      evaluatorText.includes(key)
+        ? [
+            `${path.relative(
+              process.cwd(),
+              nextMesocycleCandidateEvaluator,
+            )} consumes ${key}`,
+          ]
+        : []
+    );
+
+    expect([...boundaryViolations, ...acceptanceThresholdViolations]).toEqual([]);
   });
 
   it("does not add BasePlanValidation to audit artifact or sidecar schemas", () => {

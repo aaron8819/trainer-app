@@ -4159,6 +4159,108 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                     support_floor_design_needed: 4,
                   },
                 },
+                quarantineGroups: {
+                  upstreamOwnedCandidate: {
+                    count: 0,
+                    evidenceQuality: "owner_specific_behavior_candidate",
+                    ownerCounts: {},
+                    requiredProof: [
+                      "positive_slot_owned_likely_avoidable_row_not_demoted_by_v2_context",
+                    ],
+                  },
+                  safetyRepairOnly: {
+                    count: 12,
+                    evidenceQuality: "safety_or_legacy_only",
+                    topReasons: {
+                      cap_trim_removal_or_safety_guard: 12,
+                    },
+                    requiredProof: [
+                      "prove_safety_guard_can_be_owned_upstream_without_regression",
+                      "keep_repair_as_fallback_until_replaced",
+                    ],
+                  },
+                  collateralAmbiguous: {
+                    count: 17,
+                    evidenceQuality: "collateral_or_ambiguous",
+                    topReasons: {
+                      collateral_or_non_owned_muscle: 10,
+                      diagnostic_or_collateral_only: 7,
+                    },
+                    requiredProof: [
+                      "prove_target_muscle_slot_ownership",
+                      "separate_collateral_credit_from_direct_floor_satisfaction",
+                    ],
+                  },
+                  staleArtifact: {
+                    count: 9,
+                    evidenceQuality: "stale_repaired_projection_artifact",
+                    topReasons: {
+                      v2_already_solved_differently: 5,
+                      support_floor_design_needed: 4,
+                    },
+                    requiredProof: [
+                      "compare_against_current_v2_no_repair_solution",
+                      "do_not_copy_legacy_repaired_identity_or_set_bump",
+                    ],
+                  },
+                  missingEvidenceOrUnmeasuredGate: {
+                    count: 10,
+                    evidenceQuality: "missing_or_unmeasured_gate",
+                    topReasons: {
+                      taxonomy_bridge_needed: 6,
+                      set_distribution_design_needed: 4,
+                    },
+                    requiredProof: [
+                      "owner_specific_projection_delta",
+                      "materializer_non_regression",
+                      "cross_week_and_deload_projection",
+                    ],
+                  },
+                },
+                missingProofBeforeBehaviorPromotion: [
+                  {
+                    gate: "owner_specific_behavior_candidate",
+                    status: "missing",
+                    ownerSeam: "repairPromotionScoreboard",
+                    missingEvidence: [
+                      "positive_slot_owned_likely_avoidable_row_not_demoted_by_v2_context",
+                    ],
+                    evidence: ["behaviorPromotionCandidateCount=0"],
+                  },
+                  {
+                    gate: "current_v2_policy_gap",
+                    status: "blocked",
+                    ownerSeam:
+                      "ExerciseClassDistributionBySlot,ExerciseSelectionPlan,SetDistributionIntent,SlotDemandAllocationByWeek,audit_readout_cleanup",
+                    missingEvidence: [
+                      "resolve_or_measure_current_v2_policy_gaps_before_behavior",
+                    ],
+                    evidence: [
+                      "setDistributionCapacityGapCount=4",
+                      "setBudgetPolicyFailureCount=2",
+                    ],
+                  },
+                  {
+                    gate: "measured_behavior_projection",
+                    status: "missing",
+                    ownerSeam: "read_only_projection_or_materializer_comparison",
+                    missingEvidence: ["measured_projection_delta"],
+                    evidence: [
+                      "repair_scoreboard_is_repaired_projection_evidence_only",
+                    ],
+                  },
+                  {
+                    gate: "seed_runtime_non_consumption",
+                    status: "required_before_promotion",
+                    ownerSeam: "accepted_seed_runtime_replay",
+                    missingEvidence: [
+                      "focused_seed_runtime_guard_tests_for_any_future_behavior_promotion",
+                    ],
+                    evidence: [
+                      "diagnostic_readout_does_not_change_slotPlanSeedJson_or_runtime_replay",
+                    ],
+                  },
+                ],
                 legacyRepairQuarantine: {
                   readOnly: true,
                   affectsScoringOrGeneration: false,
@@ -4194,6 +4296,9 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
         "V2 Repair Promotion Scoreboard",
         "Raw repair evidence: material=19 major=8 likely-avoidable=9 remaining=10 suspicious=6",
         "Legacy repair quarantine: role=legacy_evidence_not_target_policy behaviorCandidates=0 quarantined=48 staleArtifacts=9",
+        "Quarantine groups: upstreamOwned=0 safetyRepairOnly=12 collateralAmbiguous=17 staleArtifact=9 missingEvidenceOrGate=10",
+        "Top quarantine reasons: safety=cap_trim_removal_or_safety_guard=12 collateral=collateral_or_non_owned_muscle=10 diagnostic_or_collateral_only=7 stale=v2_already_solved_differently=5 support_floor_design_needed=4 missing=taxonomy_bridge_needed=6 set_distribution_design_needed=4",
+        "Missing proof before behavior: owner_specific_behavior_candidate:missing@repairPromotionScoreboard; current_v2_policy_gap:blocked@ExerciseClassDistributionBySlot,ExerciseSelectionPlan,SetDistributionIntent,SlotDemandAllocationByWeek,audit_readout_cleanup; measured_behavior_projection:missing@read_only_projection_or_materializer_comparison; seed_runtime_non_consumption:required_before_promotion@accepted_seed_runtime_replay",
         "Promotion candidates: 0",
         "Safety/do-not-promote: 12",
         "Collateral/diagnostic: 36",

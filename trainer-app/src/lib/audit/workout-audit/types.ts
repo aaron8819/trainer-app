@@ -1884,6 +1884,57 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
         count: number;
         reasonCounts: Record<string, number>;
       };
+      quarantineGroups: {
+        upstreamOwnedCandidate: {
+          count: number;
+          evidenceQuality: "owner_specific_behavior_candidate";
+          ownerCounts: Partial<
+            Record<
+              | "ExerciseClassDistributionBySlot"
+              | "ExerciseSelectionPlan"
+              | "SetDistributionIntent"
+              | "SlotDemandAllocationByWeek",
+              number
+            >
+          >;
+          requiredProof: string[];
+        };
+        safetyRepairOnly: {
+          count: number;
+          evidenceQuality: "safety_or_legacy_only";
+          topReasons: Record<string, number>;
+          requiredProof: string[];
+        };
+        collateralAmbiguous: {
+          count: number;
+          evidenceQuality: "collateral_or_ambiguous";
+          topReasons: Record<string, number>;
+          requiredProof: string[];
+        };
+        staleArtifact: {
+          count: number;
+          evidenceQuality: "stale_repaired_projection_artifact";
+          topReasons: Record<string, number>;
+          requiredProof: string[];
+        };
+        missingEvidenceOrUnmeasuredGate: {
+          count: number;
+          evidenceQuality: "missing_or_unmeasured_gate";
+          topReasons: Record<string, number>;
+          requiredProof: string[];
+        };
+      };
+      missingProofBeforeBehaviorPromotion: Array<{
+        gate:
+          | "owner_specific_behavior_candidate"
+          | "current_v2_policy_gap"
+          | "measured_behavior_projection"
+          | "seed_runtime_non_consumption";
+        status: "pass" | "missing" | "blocked" | "required_before_promotion";
+        ownerSeam: string;
+        missingEvidence: string[];
+        evidence: string[];
+      }>;
       legacyRepairQuarantine?: {
         readOnly: true;
         affectsScoringOrGeneration: false;

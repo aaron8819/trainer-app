@@ -5266,11 +5266,11 @@ describe("buildMesocycleExplainAuditPayload", () => {
           {
             slotId: "upper_b",
             exerciseName: "Cable Fly",
-            setCount: 4,
+            setCount: 3,
             primaryMuscles: ["Chest"],
             movementPatterns: ["isolation"],
-            stimulus: { Chest: 4 },
-            percentages: { Chest: 57.1 },
+            stimulus: { Chest: 3 },
+            percentages: { Chest: 50 },
           },
           {
             slotId: "upper_b",
@@ -5303,22 +5303,24 @@ describe("buildMesocycleExplainAuditPayload", () => {
 
     expect(lane).toMatchObject({
       currentStatus: "partial",
-      gapCause: "set_distribution_gap",
-      migrationRecommendation: "needs_set_distribution_policy",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
       severity: "quality_warning",
       currentEvidence: {
         selectedExercises: [
           expect.objectContaining({
             name: "Cable Fly",
-            sets: 4,
+            sets: 3,
             matchedClass: "chest_isolation",
           }),
         ],
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:in_budget",
+          "setPolicy:allowed_expansion",
           "setBudget:above_preferred",
-          "setBudget:within_planned_max",
-          "target_delivery:below_preferred",
+          "setBudget:allowed_expansion",
+          "justification:low_systemic_fatigue",
+          "justification:phase_expansion",
+          "concentration:Cable Fly:Chest:50%",
         ]),
       },
     });
@@ -5332,7 +5334,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
       expect.arrayContaining([
         expect.objectContaining({
           muscle: "Chest",
-          projectedEffectiveSets: 9,
+          projectedEffectiveSets: 8,
           status: "within",
         }),
       ]),
@@ -5388,8 +5390,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
       severity: "quality_warning",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:quality_warning",
-          "setPolicyReason:warning_share",
+          "setPolicy:allowed_expansion",
+          "setBudget:allowed_expansion",
+          "justification:phase_expansion",
           "concentration:chest_primary",
           "concentration:second_exposure",
           "concentration:needs_distinct_exposure",
@@ -5401,7 +5404,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     );
   });
 
-  it("classifies clean chest_second exposure as a non-blocking readout note", () => {
+  it("keeps distinct chest_second expansion visible as a quality warning", () => {
     const noRepair = buildPlannerOnlyNoRepairComparison({
       noRepairPlanningReality: makeNoRepairConcentrationPlanningReality({
         exercises: [
@@ -5426,11 +5429,11 @@ describe("buildMesocycleExplainAuditPayload", () => {
           {
             slotId: "upper_b",
             exerciseName: "Cable Fly",
-            setCount: 4,
+            setCount: 3,
             primaryMuscles: ["Chest"],
             movementPatterns: ["isolation"],
-            stimulus: { Chest: 4 },
-            percentages: { Chest: 40 },
+            stimulus: { Chest: 3 },
+            percentages: { Chest: 33.3 },
           },
         ],
         demands: [
@@ -5438,8 +5441,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
             muscle: "Chest",
             priority: "primary",
             targetStatus: "hard",
-            minEffectiveSets: 10,
-            preferredEffectiveSets: 10,
+            minEffectiveSets: 9,
+            preferredEffectiveSets: 9,
             maxEffectiveSets: 16,
           },
         ],
@@ -5453,23 +5456,18 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ?.laneDiffs.find((row) => row.laneId === "chest_second_exposure");
 
     expect(lane).toMatchObject({
-      currentStatus: "satisfied",
-      gapCause: "none",
-      migrationRecommendation: "no_action",
-      severity: "pass",
+      currentStatus: "partial",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
+      severity: "quality_warning",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:in_budget",
+          "setPolicy:allowed_expansion",
           "setBudget:above_preferred",
-          "setBudget:within_planned_max",
-          "concentration:class_distinct",
-          "concentration:exercise_distinct",
-          "concentration:second_exposure",
-          "justification:class_distinct",
-          "justification:second_chest_exposure",
-          "justification:weekly_target_met",
-          "justification:upper_slot_distribution",
-          "readout_note:clean_chest_second_exposure",
+          "setBudget:allowed_expansion",
+          "justification:low_systemic_fatigue",
+          "justification:phase_expansion",
+          "Cable Fly:Chest:single_exercise_share_100%",
         ]),
       },
     });
@@ -5492,7 +5490,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
       identityStatus: "preserved",
       selectedIdentity: {
         exerciseName: "Cable Fly",
-        setCount: 4,
+        setCount: 3,
       },
     });
     expect(
@@ -5518,7 +5516,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
           exercises: [
             expect.objectContaining({
               exerciseName: "Cable Fly",
-              sets: 4,
+              sets: 3,
             }),
           ],
         }),
@@ -5586,9 +5584,12 @@ describe("buildMesocycleExplainAuditPayload", () => {
       severity: "quality_warning",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:in_budget",
-          "setBudget:within_preferred",
-          "target_delivery:below_preferred",
+          "setPolicy:allowed_expansion",
+          "setBudget:above_preferred",
+          "setBudget:allowed_expansion",
+          "justification:low_systemic_fatigue",
+          "justification:phase_expansion",
+          "Cable Fly:Chest:single_exercise_share_100%",
         ]),
       },
     });
@@ -5776,14 +5777,15 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ?.laneDiffs.find((row) => row.laneId === "chest_second_exposure");
 
     expect(lane).toMatchObject({
-      gapCause: "duplicate_policy_gap",
-      migrationRecommendation: "keep_diagnostic_only",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
       severity: "quality_warning",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "concentration:duplicate_exposure",
-          "concentration:needs_distinct_exposure",
-          "concentration:quality_warning",
+          "setPolicy:allowed_expansion",
+          "setBudget:allowed_expansion",
+          "justification:phase_expansion",
+          "concentration:Deficit Push-Up:Chest:55%",
         ]),
       },
     });
@@ -5847,7 +5849,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
       severity: "hard_blocker",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:quality_warning",
+          "setPolicy:allowed_expansion",
+          "setBudget:allowed_expansion",
+          "justification:target_underdelivery",
           "target_delivery:below_min",
         ]),
       },
@@ -5906,9 +5910,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
       severity: "quality_warning",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:quality_warning",
-          "concentration:needs_distinct_exposure",
-          "justification:none",
+          "setPolicy:allowed_expansion",
+          "setBudget:allowed_expansion",
+          "justification:phase_expansion",
+          "concentration:Machine Chest Press:Chest:55%",
         ]),
       },
     });
@@ -5960,16 +5965,16 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ?.laneDiffs.find((row) => row.laneId === "chest_second_exposure");
 
     expect(lane).toMatchObject({
-      currentStatus: "partial",
-      gapCause: "set_distribution_gap",
-      migrationRecommendation: "needs_set_distribution_policy",
-      severity: "quality_warning",
+      currentStatus: "blocked",
+      gapCause: "unknown",
+      migrationRecommendation: "blocked_do_not_promote",
+      severity: "hard_blocker",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:in_budget",
+          "setPolicy:allowed_expansion",
           "setBudget:above_preferred",
-          "setBudget:within_planned_max",
-          "target_delivery:below_preferred",
+          "setBudget:allowed_expansion",
+          "forbidden_slot_primary_solution:Chest:upper_b",
         ]),
       },
     });
@@ -7544,10 +7549,13 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ],
         relevantDiagnostics: expect.arrayContaining([
           "setPolicy:quality_warning",
-          "setBudget:above_preferred",
-          "setBudget:within_planned_max",
+          "setBudget:within_preferred",
+          "justification:low_systemic_fatigue",
+          "justification:small_target_denominator",
           "concentration:dirty_collateral",
+          "concentration:justified_direct_isolation",
           "concentration:quality_warning",
+          "concentration:small_denominator",
         ]),
       },
     });

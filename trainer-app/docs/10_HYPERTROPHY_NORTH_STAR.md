@@ -1,19 +1,20 @@
 # Hypertrophy Mesocycle Engine Strategy
 
 Owner: Aaron
-Last reviewed: 2026-05-30
+Last reviewed: 2026-06-11
 Purpose: Define the strategic direction for the V2 hypertrophy planner migration: V2 becomes the future plan author, accepted seed remains minimal executable truth, runtime replay remains stable, and performed reality informs future blocks without silently mutating the current one.
 
-This document is a strategy and migration map, not a claim about current runtime behavior. Current runtime truth remains the code, contract tests, and audit artifacts. The current mapping is grounded in the same live audit evidence previously used for this target doc plus the latest V2 factory-line, materializer, taxonomy, candidate-identity, and lane-selection-intent audit findings:
+This document is a strategy and migration map, not a claim about current runtime behavior. Current runtime truth remains the code, contract tests, and audit artifacts. The current mapping is grounded in live audit evidence, V2 factory-line/materializer diagnostics, candidate-evaluator readouts, runtime execution work, and the latest legacy repair quarantine findings:
 
-- `artifacts/audits/2026-04-27T13-46-09-620Z-mesocycle-explain.json`
 - Owner: `aaron8819@gmail.com`
-- Source mesocycle: `ceb2cff3-9d4d-4b3e-b309-c63ab28e62d4`
+- Active mesocycle: `9b861675-c98f-42f7-bc8c-64a7de411b77`
 - Architecture signal: `mostly_repair_shaped`
 - Material repairs: `20`
-- Major repairs: `10`
-- Likely upstream-avoidable material repairs: `10`
-- Suspicious repairs not eligible for promotion: `6`
+- Major repairs: `9`
+- Likely upstream-avoidable material repairs: `12`
+- Remaining material repairs after current V2 diagnostics: `8`
+- Suspicious repairs not eligible for promotion: `3`
+- Legacy repair quarantine: `evidence_only`, `behaviorCandidates=0`, `quarantined=39`, `staleArtifacts=12`
 
 ## 1. Strategic Executive Summary
 
@@ -221,35 +222,29 @@ Current infrastructure worth preserving:
 
 ### Current Live Checkpoint
 
-Current live validation has moved past accumulation and deload into the post-mesocycle / pre-next-mesocycle handoff state.
+Current live validation is in an active-mesocycle consolidation phase. The priority ladder from runtime execution quality through legacy repair quarantine has been completed without changing the seed/runtime source-of-truth boundary.
 
 The durable checkpoint:
 
-- the completed source mesocycle is `ceb2cff3-9d4d-4b3e-b309-c63ab28e62d4`
-- the accumulation block completed
-- deload started and was intentionally finished early through the supported `finish-deload` route
-- deload completion did not create fake performed work
-- the source mesocycle is now `AWAITING_HANDOFF`
-- `handoffSummaryJson` exists on the source mesocycle
-- `nextSeedDraftJson` exists on the source mesocycle
-- `next-mesocycle-handoff-dry-run` exists as a read-only rehearsal of the handoff preparation path
-- `next-mesocycle-acceptance-gate` exists and now judges real candidate truth, not only diagnostic preview evidence
-- `next-mesocycle-post-accept-verification` exists to prove successor/runtime readiness after acceptance
-- `v2-accepted-seed-prepare-compare` can prove V2 production eligibility in a read-only compare
-- an explicit `refresh-next-seed-draft` route can refresh the persisted draft to `source: "v2_materialized_seed"`
-- the refreshed V2 draft is real candidate truth once persisted, but it has not been accepted or proven through runtime yet
-- the current blocker is candidate quality, not lifecycle state
+- the active mesocycle is `9b861675-c98f-42f7-bc8c-64a7de411b77`
+- the latest mesocycle-explain architecture signal remains `mostly_repair_shaped`
+- material repair pressure is still real: `materialRepairCount=20`, `majorRepairCount=9`
+- current V2 diagnostics classify `likelyUpstreamAvoidableMaterialRepairs=12` while leaving `remainingMaterialRepairs=8`
+- suspicious downstream repairs are explicitly not promotion material: `suspiciousRepairsNotEligibleForPromotion=3`
+- legacy repaired projection is quarantined as evidence only: `behaviorCandidates=0`, `quarantined=39`, `staleArtifacts=12`
+- runtime execution quality, performed-reality readouts, post-session calibration evidence, candidate evaluation, materializer comparison, and repair-readout quarantine are now coherent enough to guide the next architecture slice
+- no DB mutation, Prisma migration, reseed, seed/slot sequence mutation, active plan-shape change, runtime planner-metadata consumption, or receipt mirror was part of this milestone
 
-The current rejected candidate state must stay visible:
+The completed milestone is not "V2 is now the default author." It is: the audit stack can now separate candidate truth, V2 diagnostic evidence, performed-reality evidence, remaining material repair pressure, and legacy repair artifacts without letting repaired projection become target policy.
 
-- Rear Delts are below MEV
-- Side Delts are below MEV
-- Triceps are below MEV
-- support-lane preservation through materialization is not yet good enough
-- materializer/support-lane quality issues are the immediate owner-seam work
-- acceptance should wait until the refreshed real candidate is `accepted` or `accepted_with_watch_items`
+The remaining architecture signal must stay visible:
 
-The completed accumulation block and early-finished deload are important validation points, not new sources of executable truth. The next accepted seed still has to be judged from the real persisted candidate and then proven after acceptance through runtime-readiness verification.
+- production projection is still mostly repair-shaped
+- the current V2 path explains more of the desired upstream ownership, but it has not replaced production authoring
+- likely upstream-avoidable rows are hypotheses for planner-owned work, not behavior by themselves
+- remaining repairs point at set distribution, concentration, capacity, and materializer-quality cleanup
+- suspicious/quarantined legacy repair rows must not be promoted
+- runtime replay remains correct only because it stays boring and consumes the persisted executable seed shape
 
 The latest factory-line finding resolved the downstream suspicion:
 
@@ -347,7 +342,7 @@ Strategic interpretation:
 - Calves lack cross-lower-slot duplicate and variant policy.
 - `upper_a:chest_secondary` exists in the target skeleton but is absent from the final materializer-facing `ExerciseSelectionPlan`; treat it as skeleton-only ghost intent until it is intentionally restored, retired, or mapped into materializer-facing policy.
 
-Current legacy production projection remains repair-shaped and should not stay as an equal parallel planner indefinitely. V2 is not live default. Historical personalization is not implemented as production strategy. Repair has not yet been demoted. The latest work proves that V2 eligibility can be checked read-only, that a persisted draft can be explicitly refreshed to V2 materialized seed truth, and that the acceptance gate can judge that real draft. It does not prove that the current V2 candidate has been accepted, trained, or proven through runtime.
+Current legacy production projection remains repair-shaped and should not stay as an equal parallel planner indefinitely. V2 is not live default. Historical personalization is not implemented as production strategy. Repair has not been removed as a safety net. The latest work proves that legacy repair readouts can be quarantined as evidence, that suspicious repairs can be excluded from promotion, and that current V2 gaps can be read from V2-owned diagnostics instead of copied from repaired projection. It does not prove that V2 is the supported default author, that repaired projection is obsolete, or that any diagnostic row may feed seed/runtime behavior.
 
 Provenance also needs careful layer boundaries. `slotPlanSeedJson.source` is explanatory seed provenance, not executable truth. It can now distinguish legacy projection-authored seeds from guarded V2 materialized-seed writes, but it still must not be collapsed with planner metadata, transaction evidence, runtime composition, or UI read-model source. `slotPlanSeedJson.source`, `acceptedPlannerIntent.source`, runtime `compositionSource`, and UI `exerciseSource` can describe different layers and must not be collapsed into one authorship claim.
 
@@ -1602,26 +1597,25 @@ These are strategic decision gates, not claims that current production already p
 - Do not claim historical personalization is implemented while it remains diagnostic or roadmap work.
 - Do not delete safety repair paths before V2 owns the responsibility they currently protect.
 
-## 13. Immediate Next Strategic Step: Candidate Quality Before Acceptance
+## 13. Immediate Next Strategic Step: Promote Only Proven Upstream Ownership
 
 The next question:
 
 ```txt
-Can the refreshed V2 next-mesocycle candidate become trainable:
-meeting support floors, preserving support lanes through materialization,
-passing the acceptance gate, and then proving runtime readiness after acceptance?
+Which remaining repair pressure is truly planner-owned, bounded, measurable,
+and safe to promote into V2 policy without changing seed/runtime truth?
 ```
 
 Current near-term roadmap:
 
-1. Fix refreshed V2 candidate support-floor failures for Rear Delts, Side Delts, and Triceps.
-2. Preserve authored/budgeted support lanes through materialization instead of letting them disappear after selection.
-3. Refresh the V2 draft again through the explicit refresh path.
-4. Run handoff dry-run and acceptance gate against the real persisted draft.
-5. Accept only if the result is `accepted` or `accepted_with_watch_items`.
-6. Run post-accept verification after successor persistence.
-7. Train Week 1 with the normal pre-session/post-session loop from persisted seed truth.
-8. After successful V2 path proof, plan legacy projection deprecation.
+1. Start from the current `mostly_repair_shaped` audit signal, not from repaired projection as a target.
+2. Review the `12` likely upstream-avoidable material repairs and keep only bounded, slot-owned, non-suspicious candidates.
+3. Treat the `8` remaining material repairs as set-distribution, concentration, capacity, or materializer-quality cleanup until proven otherwise.
+4. Keep the `3` suspicious repairs and all quarantined legacy repair rows evidence-only.
+5. Prefer read-only measured projections before behavior: compare current V2 policy, no-repair output, and materializer diagnostics without writing seeds or changing runtime.
+6. Promote behavior only through the rightful pure V2 owner seam with focused tests and audit comparison.
+7. Re-run mesocycle-explain and acceptance-style diagnostics after any behavior trial, then prove seed/runtime invariants remained unchanged.
+8. Keep V2 default-author promotion as a later gate after V2-authored output passes plan-quality, materialization-quality, integration, and runtime-readiness checks.
 
 ### Future Architecture Tracks For Engine Intelligence
 

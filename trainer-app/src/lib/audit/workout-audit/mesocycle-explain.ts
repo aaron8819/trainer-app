@@ -61,6 +61,7 @@ import {
   type V2ExerciseMaterializationInput,
   type V2MaterializationExercise,
   type V2MesocycleStrategyInput,
+  type V2PlannerSlotId,
   type V2SetDistributionIntent,
   type V2StrategyHypothesisPreShadowCandidateFilter,
   type V2StrategyHypothesisProjectionCoverageRow,
@@ -78,7 +79,10 @@ import {
 } from "@/lib/api/planning-reality";
 import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 import { MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION } from "./constants";
-import { buildRepairPromotionScoreboard } from "./mesocycle-explain-v2-repair-scoreboard";
+import {
+  buildRepairPromotionScoreboard,
+  selectTaxonomyMismatchMaterializerTarget,
+} from "./mesocycle-explain-v2-repair-scoreboard";
 import {
   buildV2BasePlanCompareFromLiveContext,
   buildV2BasePlanShadowConsumptionTrialFromLiveContext,
@@ -108,6 +112,15 @@ import type {
   MesocycleExplainReasonSource,
   MesocycleExplainSlotRow,
 } from "./types";
+
+function isV2PlannerSlotId(value: string): value is V2PlannerSlotId {
+  return (
+    value === "upper_a" ||
+    value === "lower_a" ||
+    value === "upper_b" ||
+    value === "lower_b"
+  );
+}
 
 type ExplainMesocycleRow = Prisma.MesocycleGetPayload<{
   include: {
@@ -8681,10 +8694,22 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         ...input.v2BasePlanCompareContext,
       })
     : undefined;
+  const taxonomyMismatchMaterializerTarget =
+    selectTaxonomyMismatchMaterializerTarget(v2ExerciseSelectionPlanDiagnostic);
   const v2LaneIntentMaterializerProjection = input.v2BasePlanCompareContext
     ? buildV2LaneIntentMaterializerProjectionFromLiveContext({
         plannerPolicy,
         ...input.v2BasePlanCompareContext,
+        ...(taxonomyMismatchMaterializerTarget &&
+        isV2PlannerSlotId(taxonomyMismatchMaterializerTarget.slotId)
+          ? {
+              targetLane: {
+                slotId: taxonomyMismatchMaterializerTarget.slotId,
+                laneId: taxonomyMismatchMaterializerTarget.laneId,
+                trialId: taxonomyMismatchMaterializerTarget.trialId,
+              },
+            }
+          : {}),
       })
     : undefined;
   const lowAxialHipExtensionLimitation =

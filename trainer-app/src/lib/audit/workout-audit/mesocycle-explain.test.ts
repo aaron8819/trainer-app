@@ -4027,6 +4027,28 @@ describe("buildMesocycleExplainAuditPayload", () => {
         }),
       ]),
     );
+    expect(scoreboard?.interpretation.taxonomyMismatchInventory).toMatchObject({
+      version: 1,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      source: "v2_exercise_selection_plan_diagnostic",
+      summary: expect.objectContaining({
+        mismatchRowCount:
+          scoreboard?.interpretation.currentV2PolicyGap
+            .classTaxonomyMismatchCount,
+      }),
+    });
+    expect(scoreboard?.interpretation.taxonomyMismatchInventory?.rows[0]).toMatchObject({
+      mismatchId: expect.any(String),
+      likelyOwnerSeam: expect.any(String),
+      affectsSelectedIdentities: expect.any(Boolean),
+      missingProof: expect.arrayContaining([
+        "taxonomy_bridge_no_drift_materializer_probe",
+        "seed_runtime_non_consumption_gate",
+      ]),
+      nextMeasurement: "build_taxonomy_bridge_no_drift_probe",
+    });
     expect(scoreboard?.interpretation.selectedGapProof).toMatchObject({
       readOnly: true,
       affectsScoringOrGeneration: false,
@@ -8472,27 +8494,29 @@ describe("buildMesocycleExplainAuditPayload", () => {
       }),
       safeForBehaviorPromotion: false,
     });
-    expect(
-      noRepair.repairPromotionScoreboard?.interpretation.gapInventory[0],
-    ).toMatchObject({
-      gapId: "selection_capacity_pressure",
-      evidenceQuality: "measured_materializer_projection",
-      status: "measured_no_candidate_impact",
-      measurableNextStep: expect.any(String),
-    });
+    expect(noRepair.repairPromotionScoreboard?.interpretation.gapInventory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gapId: "selection_capacity_pressure",
+          evidenceQuality: "measured_materializer_projection",
+          status: "measured_no_candidate_impact",
+          measurableNextStep: expect.any(String),
+        }),
+      ]),
+    );
     expect(
       noRepair.repairPromotionScoreboard?.interpretation.selectedGapProof,
     ).toMatchObject({
-      gapId: "selection_capacity_pressure",
-      classification: "materializer_owned",
-      proofResult: "measured_no_candidate_impact",
-      rightfulOwnerSeam: "SelectionCapacityPlan -> v2_materialization_dry_run",
       readOnly: true,
       affectsScoringOrGeneration: false,
       consumedByProduction: false,
       safeForBehaviorPromotion: false,
       nextSafeAction: expect.any(String),
     });
+    expect(
+      noRepair.repairPromotionScoreboard?.interpretation.selectedGapProof
+        ?.proofResult,
+    ).not.toBe("measured_no_candidate_impact");
     expect(rearDeltLane).toMatchObject({
       currentStatus: "blocked",
       gapCause: "concentration_policy_gap",

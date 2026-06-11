@@ -1857,10 +1857,31 @@ function formatGapInventory(
     .join("; ");
 }
 
+function formatTaxonomyMismatchInventory(
+  inventory:
+    | {
+        summary?: {
+          mismatchRowCount?: number;
+          selectedIdentityAffectedCount?: number;
+          cleanAlternativeAvailableCount?: number;
+          ownerCounts?: Record<string, number>;
+          selectedMismatchId?: string | null;
+        };
+      }
+    | null
+    | undefined
+): string {
+  if (!inventory?.summary) {
+    return "not_available";
+  }
+  return `rows=${inventory.summary.mismatchRowCount ?? 0} selectedIdentityAffected=${inventory.summary.selectedIdentityAffectedCount ?? 0} cleanAlternatives=${inventory.summary.cleanAlternativeAvailableCount ?? 0} selected=${inventory.summary.selectedMismatchId ?? "none"} owners=${formatCountRecord(inventory.summary.ownerCounts, 4)}`;
+}
+
 function formatSelectedGapProof(
   proof:
     | {
         gapId: string;
+        selectedMismatchId?: string;
         classification: string;
         proofResult: string;
         rightfulOwnerSeam: string;
@@ -1875,7 +1896,7 @@ function formatSelectedGapProof(
   if (!proof) {
     return "not_available";
   }
-  return `${proof.gapId}:${proof.proofResult}@${proof.rightfulOwnerSeam} classification=${proof.classification} consumedByProduction=${proof.consumedByProduction ? "yes" : "no"} safeForBehavior=${proof.safeForBehaviorPromotion ? "yes" : "no"} missing=${formatNameList(proof.missingGates, 4)} next=${proof.nextSafeAction}`;
+  return `${proof.gapId}:${proof.proofResult}@${proof.rightfulOwnerSeam} classification=${proof.classification}${proof.selectedMismatchId ? ` selected=${proof.selectedMismatchId}` : ""} consumedByProduction=${proof.consumedByProduction ? "yes" : "no"} safeForBehavior=${proof.safeForBehaviorPromotion ? "yes" : "no"} missing=${formatNameList(proof.missingGates, 4)} next=${proof.nextSafeAction}`;
 }
 
 function formatPlanningRealityNumber(value: number | null | undefined): string {
@@ -2969,6 +2990,8 @@ export function buildPlanningRealitySummary(input: {
   const gapInventory = repairPromotionScoreboard?.interpretation.gapInventory;
   const selectedGapProof =
     repairPromotionScoreboard?.interpretation.selectedGapProof;
+  const taxonomyMismatchInventory =
+    repairPromotionScoreboard?.interpretation.taxonomyMismatchInventory;
   const preselectionDemands = asArray(
     input.artifact.mesocycleExplain?.preview?.projectionDiagnostics?.preselectionDemands
   );
@@ -3124,6 +3147,11 @@ export function buildPlanningRealitySummary(input: {
   }
   if (gapInventory) {
     lines.push(`- rankedGapInventory: ${formatGapInventory(gapInventory)}`);
+  }
+  if (taxonomyMismatchInventory) {
+    lines.push(
+      `- taxonomyMismatchInventory: ${formatTaxonomyMismatchInventory(taxonomyMismatchInventory)}`
+    );
   }
   if (selectedGapProof) {
     lines.push(`- selectedGapProof: ${formatSelectedGapProof(selectedGapProof)}`);
@@ -4363,6 +4391,8 @@ export function buildPlannerOnlyNoRepairSummary(input: {
     repairScoreboard?.interpretation.missingProofBeforeBehaviorPromotion;
   const gapInventory = repairScoreboard?.interpretation.gapInventory;
   const selectedGapProof = repairScoreboard?.interpretation.selectedGapProof;
+  const taxonomyMismatchInventory =
+    repairScoreboard?.interpretation.taxonomyMismatchInventory;
   const basePlanCompare = noRepair.v2BasePlanCompare;
   const shadowConsumption = noRepair.v2BasePlanShadowConsumptionTrial;
   const basePlanCompareLines = basePlanCompare
@@ -4414,6 +4444,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
           : "Top quarantine reasons: not_available",
         `Missing proof before behavior: ${formatPromotionProofGates(missingPromotionProof)}`,
         `Ranked gap inventory: ${formatGapInventory(gapInventory)}`,
+        `Taxonomy mismatch inventory: ${formatTaxonomyMismatchInventory(taxonomyMismatchInventory)}`,
         `Selected gap proof: ${formatSelectedGapProof(selectedGapProof)}`,
         `Promotion candidates: ${repairScoreboard.summary.promotionCandidateCount}`,
         `Safety/do-not-promote: ${repairScoreboard.summary.safetyNetCount}`,

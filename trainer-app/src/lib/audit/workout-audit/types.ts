@@ -1959,20 +1959,83 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
         status:
           | "selected_for_measured_proof"
           | "measured_no_candidate_impact"
+          | "measured_no_drift"
           | "blocked_by_missing_evidence"
           | "diagnostic_only"
           | "stale_or_ambiguous";
       }>;
+      taxonomyMismatchInventory?: {
+        version: 1;
+        readOnly: true;
+        affectsScoringOrGeneration: false;
+        consumedByProduction: false;
+        source: "v2_exercise_selection_plan_diagnostic";
+        summary: {
+          mismatchRowCount: number;
+          selectedIdentityAffectedCount: number;
+          cleanAlternativeAvailableCount: number;
+          ownerCounts: Partial<
+            Record<
+              | "ExerciseClassDistributionBySlot"
+              | "ExerciseSelectionPlan"
+              | "materializer_taxonomy_bridge"
+              | "audit_readout_cleanup",
+              number
+            >
+          >;
+          selectedMismatchId: string | null;
+        };
+        rows: Array<{
+          rank: number;
+          mismatchId: string;
+          week: 1 | 2 | 3 | 4;
+          slotId: string;
+          laneId: string;
+          muscles: string[];
+          plannedClasses: string[];
+          selectedExerciseName: string | null;
+          selectedExerciseId: string | null;
+          selectedClass: string | null;
+          laneClassStatus: "mismatch";
+          likelyOwnerSeam:
+            | "ExerciseClassDistributionBySlot"
+            | "ExerciseSelectionPlan"
+            | "materializer_taxonomy_bridge"
+            | "audit_readout_cleanup";
+          evidenceQuality:
+            | "selected_identity_lane_mismatch"
+            | "candidate_alternative_available"
+            | "diagnostic_only"
+            | "stale_or_ambiguous";
+          trainingImportance: "high" | "medium" | "low";
+          affectsSelectedIdentities: boolean;
+          affectsSelectedIdentitySets: number;
+          evidence: string[];
+          missingProof: string[];
+          nextMeasurement: string;
+          classification:
+            | "true_v2_policy_class_taxonomy_gap"
+            | "materializer_taxonomy_bridge_gap"
+            | "diagnostic_only_mismatch"
+            | "stale_or_ambiguous"
+            | "blocked_by_missing_evidence";
+        }>;
+      };
       selectedGapProof?: {
         gapId: string;
+        selectedMismatchId?: string;
         classification:
           | "materializer_owned"
           | "planner_policy_owned"
+          | "true_v2_policy_class_taxonomy_gap"
+          | "materializer_taxonomy_bridge_gap"
+          | "diagnostic_only_mismatch"
           | "blocked_by_missing_evidence"
           | "stale_or_ambiguous"
           | "safety_repair_only";
         proofResult:
           | "measured_no_candidate_impact"
+          | "measured_no_drift"
           | "measured_with_missing_gates"
           | "blocked_by_missing_evidence";
         rightfulOwnerSeam: string;

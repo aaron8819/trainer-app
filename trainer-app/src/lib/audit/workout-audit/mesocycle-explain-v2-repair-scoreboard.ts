@@ -892,6 +892,10 @@ type GapInventoryRow =
 type GapInventoryCandidate = Omit<GapInventoryRow, "rank"> & {
   score: number;
 };
+type TaxonomyMismatchInventory = NonNullable<
+  V2RepairPromotionScoreboard["interpretation"]["taxonomyMismatchInventory"]
+>;
+type TaxonomyMismatchRow = TaxonomyMismatchInventory["rows"][number];
 
 function importanceScore(importance: GapInventoryRow["trainingImportance"]): number {
   if (importance === "high") {
@@ -919,6 +923,227 @@ function buildGapCandidate(
       measuredProjectionBonus(input.evidenceQuality) +
       input.gapCount,
   };
+}
+
+function taxonomyMismatchId(input: {
+  week: number;
+  slotId: string;
+  laneId: string;
+}): string {
+  return `week_${input.week}:${input.slotId}:${input.laneId}`;
+}
+
+function taxonomyMismatchOwner(
+  lane: V2RepairPromotionReadoutContext["v2ExerciseSelectionPlanDiagnostic"]["weeks"][number]["slots"][number]["lanes"][number],
+): TaxonomyMismatchRow["likelyOwnerSeam"] {
+  if (
+    lane.inventoryStatus === "classification_gap" ||
+    lane.selectedIdentity == null
+  ) {
+    return "ExerciseClassDistributionBySlot";
+  }
+  if (lane.cleanAlternatives.length > 0) {
+    return "ExerciseSelectionPlan";
+  }
+  if (
+    lane.evidenceRefs.some((ref) =>
+      /readout_note|diagnostic_only|keep_diagnostic_only/i.test(ref),
+    )
+  ) {
+    return "audit_readout_cleanup";
+  }
+  return "ExerciseClassDistributionBySlot";
+}
+
+function taxonomyMismatchEvidenceQuality(
+  lane: V2RepairPromotionReadoutContext["v2ExerciseSelectionPlanDiagnostic"]["weeks"][number]["slots"][number]["lanes"][number],
+): TaxonomyMismatchRow["evidenceQuality"] {
+  if (lane.cleanAlternatives.length > 0) {
+    return "candidate_alternative_available";
+  }
+  if (
+    lane.evidenceRefs.some((ref) =>
+      /readout_note|diagnostic_only|keep_diagnostic_only/i.test(ref),
+    )
+  ) {
+    return "diagnostic_only";
+  }
+  return "selected_identity_lane_mismatch";
+}
+
+function taxonomyMismatchTrainingImportance(
+  lane: V2RepairPromotionReadoutContext["v2ExerciseSelectionPlanDiagnostic"]["weeks"][number]["slots"][number]["lanes"][number],
+): TaxonomyMismatchRow["trainingImportance"] {
+  if (
+    lane.selectedIdentity &&
+    lane.selectedIdentity.setCount >= 2 &&
+    lane.primaryMuscles.some((muscle) =>
+      ["Chest", "Hamstrings", "Quads", "Lats", "Side Delts"].includes(muscle),
+    )
+  ) {
+    return "high";
+  }
+  return lane.selectedIdentity ? "medium" : "low";
+}
+
+function taxonomyMismatchScore(row: Omit<TaxonomyMismatchRow, "rank">): number {
+  return (
+    importanceScore(row.trainingImportance) +
+    (row.affectsSelectedIdentities ? 30 : 0) +
+    (row.evidenceQuality === "candidate_alternative_available" ? 20 : 0) +
+    row.affectsSelectedIdentitySets
+  );
+}
+
+function taxonomyMismatchClassification(
+  row: Omit<TaxonomyMismatchRow, "rank">,
+): TaxonomyMismatchRow["classification"] {
+  if (row.evidenceQuality === "diagnostic_only") {
+    return "diagnostic_only_mismatch";
+  }
+  if (row.evidenceQuality === "stale_or_ambiguous") {
+    return "stale_or_ambiguous";
+  }
+  return row.likelyOwnerSeam === "ExerciseClassDistributionBySlot"
+    ? "true_v2_policy_class_taxonomy_gap"
+    : "blocked_by_missing_evidence";
+}
+
+function buildTaxonomyMismatchInventoryForDiagnostic(
+  diagnostic: V2RepairPromotionReadoutContext["v2ExerciseSelectionPlanDiagnostic"],
+): TaxonomyMismatchInventory | undefined {
+  const candidates = diagnostic.weeks.flatMap((week) =>
+    week.slots.flatMap((slot) =>
+      slot.lanes
+        .filter((lane) => lane.laneClassStatus === "mismatch")
+        .map((lane) => {
+          const owner = taxonomyMismatchOwner(lane);
+          const evidenceQuality = taxonomyMismatchEvidenceQuality(lane);
+          const base = {
+            mismatchId: taxonomyMismatchId({
+              week: week.week,
+              slotId: slot.slotId,
+              laneId: lane.laneId,
+            }),
+            week: week.week,
+            slotId: slot.slotId,
+            laneId: lane.laneId,
+            muscles: lane.primaryMuscles,
+            plannedClasses: lane.plannedClass,
+            selectedExerciseName: lane.selectedIdentity?.exerciseName ?? null,
+            selectedExerciseId: lane.selectedIdentity?.exerciseId ?? null,
+            selectedClass:
+              lane.selectedIdentity && lane.selectedIdentity.exerciseName
+                ? lane.evidenceRefs
+                    .find((ref) => ref.startsWith("selectedClass:"))
+                    ?.replace(/^selectedClass:/, "") ?? null
+                : null,
+            laneClassStatus: "mismatch" as const,
+            likelyOwnerSeam: owner,
+            evidenceQuality,
+            trainingImportance: taxonomyMismatchTrainingImportance(lane),
+            affectsSelectedIdentities: Boolean(lane.selectedIdentity),
+            affectsSelectedIdentitySets: lane.selectedIdentity?.setCount ?? 0,
+            evidence: uniqueSorted([
+              `week=${week.week}`,
+              `slot=${slot.slotId}`,
+              `lane=${lane.laneId}`,
+              `plannedClasses=${lane.plannedClass.join(",")}`,
+              ...(lane.selectedIdentity
+                ? [
+                    `selectedIdentity=${lane.selectedIdentity.exerciseName}`,
+                    `selectedSets=${lane.selectedIdentity.setCount}`,
+                  ]
+                : ["selectedIdentity=none"]),
+              `inventoryStatus=${lane.inventoryStatus}`,
+              `identityStatus=${lane.identityStatus}`,
+              ...lane.evidenceRefs.slice(0, 6),
+            ]),
+            missingProof: uniqueSorted([
+              "taxonomy_bridge_no_drift_materializer_probe",
+              "selected_identity_non_regression",
+              "seed_runtime_non_consumption_gate",
+              ...(lane.cleanAlternatives.length > 0
+                ? ["exercise_selection_alternative_ranking_proof"]
+                : ["taxonomy_bridge_fixture"]),
+            ]),
+            nextMeasurement: "build_taxonomy_bridge_no_drift_probe",
+            classification: "blocked_by_missing_evidence" as const,
+          };
+          return {
+            ...base,
+            classification: taxonomyMismatchClassification(base),
+            score: taxonomyMismatchScore(base),
+          };
+        }),
+    ),
+  );
+
+  const rows = candidates
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        left.mismatchId.localeCompare(right.mismatchId),
+    )
+    .map((row, index) => {
+      const { score, ...rest } = row;
+      void score;
+      return { ...rest, rank: index + 1 };
+    });
+  if (rows.length === 0) {
+    return undefined;
+  }
+  const ownerCounts = rows.reduce<TaxonomyMismatchInventory["summary"]["ownerCounts"]>(
+    (counts, row) => {
+      counts[row.likelyOwnerSeam] = (counts[row.likelyOwnerSeam] ?? 0) + 1;
+      return counts;
+    },
+    {},
+  );
+
+  return {
+    version: 1,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByProduction: false,
+    source: "v2_exercise_selection_plan_diagnostic",
+    summary: {
+      mismatchRowCount: rows.length,
+      selectedIdentityAffectedCount: rows.filter(
+        (row) => row.affectsSelectedIdentities,
+      ).length,
+      cleanAlternativeAvailableCount: rows.filter(
+        (row) => row.evidenceQuality === "candidate_alternative_available",
+      ).length,
+      ownerCounts,
+      selectedMismatchId: rows[0]?.mismatchId ?? null,
+    },
+    rows,
+  };
+}
+
+function buildTaxonomyMismatchInventory(
+  context?: V2RepairPromotionReadoutContext,
+): TaxonomyMismatchInventory | undefined {
+  return context
+    ? buildTaxonomyMismatchInventoryForDiagnostic(
+        context.v2ExerciseSelectionPlanDiagnostic,
+      )
+    : undefined;
+}
+
+export function selectTaxonomyMismatchMaterializerTarget(
+  diagnostic: V2RepairPromotionReadoutContext["v2ExerciseSelectionPlanDiagnostic"],
+): { slotId: string; laneId: string; trialId: string } | undefined {
+  const inventory = buildTaxonomyMismatchInventoryForDiagnostic(diagnostic);
+  const row = selectTaxonomyMismatchRow({ inventory });
+  return row
+    ? {
+        slotId: row.slotId,
+        laneId: row.laneId,
+        trialId: `${row.slotId}_${row.laneId}_taxonomy_bridge_shadow`,
+      }
+    : undefined;
 }
 
 function materializerGateSummary(
@@ -969,12 +1194,87 @@ function materializerMissingGates(
   ]);
 }
 
+function taxonomyProjectionMatchesRow(input: {
+  row: TaxonomyMismatchRow;
+  projection?: V2RepairPromotionReadoutContext["v2LaneIntentMaterializerProjection"];
+}): boolean {
+  return Boolean(
+    input.projection &&
+      input.projection.targetLane.slotId === input.row.slotId &&
+      input.projection.targetLane.laneId === input.row.laneId,
+  );
+}
+
+function selectTaxonomyMismatchRow(input: {
+  inventory?: TaxonomyMismatchInventory;
+  projection?: V2RepairPromotionReadoutContext["v2LaneIntentMaterializerProjection"];
+}): TaxonomyMismatchRow | undefined {
+  if (!input.inventory) {
+    return undefined;
+  }
+  const projectedRow = input.inventory.rows.find((row) =>
+    taxonomyProjectionMatchesRow({ row, projection: input.projection }),
+  );
+  return projectedRow ?? input.inventory.rows[0];
+}
+
+function taxonomyMaterializerGateSummary(
+  projection: NonNullable<
+    V2RepairPromotionReadoutContext["v2LaneIntentMaterializerProjection"]
+  >,
+): string[] {
+  return [
+    `taxonomyBridgeTrialId=${projection.trialId}`,
+    `taxonomyBridgeStatus=${projection.status}`,
+    `candidateImpact.selectedIdentityDelta=${projection.candidateImpact.selectedIdentityDelta}`,
+    `candidateImpact.totalSetDelta=${projection.candidateImpact.totalSetDelta}`,
+    `candidateImpact.targetLaneExerciseDelta=${projection.candidateImpact.targetLaneExerciseDelta}`,
+    `candidateImpact.materializerBlockerDelta=${projection.candidateImpact.materializerBlockerDelta}`,
+    `candidateImpact.regressionCount=${projection.candidateImpact.regressionCount}`,
+    `materializer.baseline=${projection.materializer.baselineStatus}`,
+    `materializer.trial=${projection.materializer.trialStatus}`,
+    `targetLane.baselineConsumedByProduction=${projection.targetLane.baselineConsumedByProduction}`,
+    `targetLane.trialConsumesLaneIntent=${projection.targetLane.trialConsumesLaneIntent}`,
+  ];
+}
+
+function taxonomyMaterializerMissingGates(
+  projection?: V2RepairPromotionReadoutContext["v2LaneIntentMaterializerProjection"],
+): string[] {
+  if (!projection) {
+    return [
+      "taxonomy_bridge_fixture",
+      "materializer_identity_non_regression",
+      "seed_runtime_non_consumption_gate",
+    ];
+  }
+  return uniqueSorted([
+    ...projection.blockersBeforeBehavior,
+    ...(projection.materializer.trialSeedShapeCompatible
+      ? []
+      : ["trial_seed_shape_incompatible"]),
+    ...(projection.consumedByProduction
+      ? ["projection_must_not_be_consumed_by_production"]
+      : []),
+    ...(projection.consumedByDemandOrMaterializer
+      ? ["projection_must_not_feed_demand_or_materializer_policy"]
+      : []),
+  ]);
+}
+
 function buildGapInventory(input: {
   currentV2PolicyGap: V2RepairPromotionScoreboard["interpretation"]["currentV2PolicyGap"];
+  taxonomyMismatchInventory?: TaxonomyMismatchInventory;
   context?: V2RepairPromotionReadoutContext;
 }): V2RepairPromotionScoreboard["interpretation"]["gapInventory"] {
   const gap = input.currentV2PolicyGap;
   const capacityProjection = input.context?.v2CapacityMaterializerProjection;
+  const taxonomyProjection = input.context?.v2LaneIntentMaterializerProjection;
+  const taxonomyInventory = input.taxonomyMismatchInventory;
+  const selectedTaxonomyRow = selectTaxonomyMismatchRow({
+    inventory: taxonomyInventory,
+    projection: taxonomyProjection,
+  });
   const candidates: GapInventoryCandidate[] = [];
 
   if (
@@ -996,7 +1296,7 @@ function buildGapInventory(input: {
         evidenceQuality: capacityProjection
           ? "measured_materializer_projection"
           : "diagnostic_count",
-        trainingImportance: "high",
+        trainingImportance: measuredNoImpact ? "low" : "high",
         gapCount: gap.selectionFeasibilityCapacityPressureCount,
         currentEvidence: uniqueSorted([
           `selectionFeasibilityCapacityPressureCount=${gap.selectionFeasibilityCapacityPressureCount}`,
@@ -1043,24 +1343,66 @@ function buildGapInventory(input: {
   }
 
   if (gap.classTaxonomyMismatchCount > 0) {
+    const taxonomyProjectionMatches =
+      selectedTaxonomyRow &&
+      taxonomyProjectionMatchesRow({
+        row: selectedTaxonomyRow,
+        projection: taxonomyProjection,
+      });
+    const taxonomyNoDrift =
+      taxonomyProjectionMatches &&
+      taxonomyProjection &&
+      taxonomyProjection.candidateImpact.selectedIdentityDelta === 0 &&
+      taxonomyProjection.candidateImpact.totalSetDelta === 0 &&
+      taxonomyProjection.candidateImpact.targetLaneExerciseDelta === 0 &&
+      taxonomyProjection.candidateImpact.materializerBlockerDelta === 0 &&
+      taxonomyProjection.candidateImpact.regressionCount === 0;
     candidates.push(
       buildGapCandidate({
         gapId: "class_taxonomy_mismatch",
         description:
           "Exercise class/taxonomy mismatches block trusting selected identities as lane-fit proof.",
-        likelyOwnerSeam: "ExerciseClassDistributionBySlot",
+        likelyOwnerSeam:
+          selectedTaxonomyRow?.likelyOwnerSeam ?? "ExerciseClassDistributionBySlot",
         evidenceQuality: "diagnostic_count",
         trainingImportance: "high",
-        gapCount: gap.classTaxonomyMismatchCount,
-        currentEvidence: [
+        gapCount:
+          taxonomyInventory?.summary.mismatchRowCount ??
+          gap.classTaxonomyMismatchCount,
+        currentEvidence: uniqueSorted([
           `classTaxonomyMismatchCount=${gap.classTaxonomyMismatchCount}`,
-        ],
-        missingProof: [
-          "taxonomy_bridge_fixture",
-          "materializer_identity_non_regression",
-        ],
-        measurableNextStep: "build_taxonomy_bridge_no_drift_probe",
-        status: "blocked_by_missing_evidence",
+          ...(taxonomyInventory
+            ? [
+                `inventoryRows=${taxonomyInventory.summary.mismatchRowCount}`,
+                `selectedIdentityAffected=${taxonomyInventory.summary.selectedIdentityAffectedCount}`,
+              ]
+            : []),
+          ...(selectedTaxonomyRow
+            ? [
+                `selectedMismatchId=${selectedTaxonomyRow.mismatchId}`,
+                `selectedLane=${selectedTaxonomyRow.slotId}:${selectedTaxonomyRow.laneId}`,
+                `selectedOwner=${selectedTaxonomyRow.likelyOwnerSeam}`,
+              ]
+            : []),
+          ...(taxonomyProjectionMatches && taxonomyProjection
+            ? taxonomyMaterializerGateSummary(taxonomyProjection)
+            : []),
+        ]),
+        missingProof: taxonomyProjectionMatches
+          ? taxonomyMaterializerMissingGates(taxonomyProjection)
+          : selectedTaxonomyRow?.missingProof ?? [
+              "taxonomy_bridge_fixture",
+              "materializer_identity_non_regression",
+            ],
+        measurableNextStep:
+          taxonomyProjectionMatches && taxonomyProjection
+            ? taxonomyProjection.nextSafeAction
+            : "build_taxonomy_bridge_no_drift_probe",
+        status: taxonomyNoDrift
+          ? "measured_no_drift"
+          : taxonomyProjectionMatches
+            ? "selected_for_measured_proof"
+            : "blocked_by_missing_evidence",
       }),
     );
   }
@@ -1184,12 +1526,30 @@ function buildGapInventory(input: {
 
 function buildSelectedGapProof(input: {
   gapInventory: ReadonlyArray<GapInventoryRow>;
+  taxonomyMismatchInventory?: TaxonomyMismatchInventory;
   context?: V2RepairPromotionReadoutContext;
 }): V2RepairPromotionScoreboard["interpretation"]["selectedGapProof"] {
+  const taxonomyProjection = input.context?.v2LaneIntentMaterializerProjection;
+  const selectedTaxonomyRow = selectTaxonomyMismatchRow({
+    inventory: input.taxonomyMismatchInventory,
+    projection: taxonomyProjection,
+  });
+  const taxonomyGap = input.gapInventory.find(
+    (row) => row.gapId === "class_taxonomy_mismatch",
+  );
   const selected =
+    (taxonomyGap &&
+    (input.gapInventory[0]?.gapId === "selection_capacity_pressure"
+      ? input.gapInventory[0].status === "measured_no_candidate_impact"
+      : true)
+      ? taxonomyGap
+      : undefined) ??
     input.gapInventory.find(
-      (row) => row.evidenceQuality === "measured_materializer_projection",
-    ) ?? input.gapInventory[0];
+      (row) =>
+        row.evidenceQuality === "measured_materializer_projection" &&
+        row.status !== "measured_no_candidate_impact",
+    ) ??
+    input.gapInventory[0];
   if (!selected) {
     return undefined;
   }
@@ -1217,6 +1577,68 @@ function buildSelectedGapProof(input: {
       measuredEvidence: selected.currentEvidence,
       missingGates: selected.missingProof,
       nextSafeAction: capacityProjection.nextSafeAction,
+    };
+  }
+  if (selected.gapId === "class_taxonomy_mismatch") {
+    const projectionMatches =
+      selectedTaxonomyRow &&
+      taxonomyProjectionMatchesRow({
+        row: selectedTaxonomyRow,
+        projection: taxonomyProjection,
+      });
+    const noDrift =
+      projectionMatches &&
+      taxonomyProjection &&
+      taxonomyProjection.candidateImpact.selectedIdentityDelta === 0 &&
+      taxonomyProjection.candidateImpact.totalSetDelta === 0 &&
+      taxonomyProjection.candidateImpact.targetLaneExerciseDelta === 0 &&
+      taxonomyProjection.candidateImpact.materializerBlockerDelta === 0 &&
+      taxonomyProjection.candidateImpact.regressionCount === 0;
+    const candidateDelta =
+      projectionMatches &&
+      taxonomyProjection &&
+      !noDrift &&
+      (taxonomyProjection.candidateImpact.selectedIdentityDelta !== 0 ||
+        taxonomyProjection.candidateImpact.totalSetDelta !== 0 ||
+        taxonomyProjection.candidateImpact.targetLaneExerciseDelta !== 0 ||
+        taxonomyProjection.candidateImpact.materializerBlockerDelta !== 0);
+
+    return {
+      gapId: selected.gapId,
+      ...(selectedTaxonomyRow
+        ? { selectedMismatchId: selectedTaxonomyRow.mismatchId }
+        : {}),
+      classification: noDrift
+        ? "diagnostic_only_mismatch"
+        : candidateDelta
+          ? "materializer_taxonomy_bridge_gap"
+          : selectedTaxonomyRow?.classification ??
+            "blocked_by_missing_evidence",
+      proofResult: noDrift
+        ? "measured_no_drift"
+        : projectionMatches
+          ? "measured_with_missing_gates"
+          : "blocked_by_missing_evidence",
+      rightfulOwnerSeam:
+        selectedTaxonomyRow?.likelyOwnerSeam ?? selected.likelyOwnerSeam,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      safeForBehaviorPromotion: false,
+      measuredEvidence: uniqueSorted([
+        ...selected.currentEvidence,
+        ...(selectedTaxonomyRow ? selectedTaxonomyRow.evidence : []),
+        ...(projectionMatches && taxonomyProjection
+          ? taxonomyMaterializerGateSummary(taxonomyProjection)
+          : []),
+      ]),
+      missingGates: projectionMatches
+        ? taxonomyMaterializerMissingGates(taxonomyProjection)
+        : selectedTaxonomyRow?.missingProof ?? selected.missingProof,
+      nextSafeAction:
+        projectionMatches && taxonomyProjection
+          ? taxonomyProjection.nextSafeAction
+          : selected.measurableNextStep,
     };
   }
   return {
@@ -1348,12 +1770,15 @@ export function buildRepairPromotionScoreboard(
       promotionCandidates,
       currentV2PolicyGap,
     });
+  const taxonomyMismatchInventory = buildTaxonomyMismatchInventory(v2Context);
   const gapInventory = buildGapInventory({
     currentV2PolicyGap,
+    taxonomyMismatchInventory,
     context: v2Context,
   });
   const selectedGapProof = buildSelectedGapProof({
     gapInventory,
+    taxonomyMismatchInventory,
     context: v2Context,
   });
 
@@ -1384,6 +1809,7 @@ export function buildRepairPromotionScoreboard(
       quarantineGroups,
       missingProofBeforeBehaviorPromotion,
       gapInventory,
+      ...(taxonomyMismatchInventory ? { taxonomyMismatchInventory } : {}),
       ...(selectedGapProof ? { selectedGapProof } : {}),
       legacyRepairQuarantine: {
         readOnly: true,

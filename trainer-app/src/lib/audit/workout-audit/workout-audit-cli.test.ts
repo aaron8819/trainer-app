@@ -4261,6 +4261,42 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                     ],
                   },
                 ],
+                gapInventory: [
+                  {
+                    rank: 1,
+                    gapId: "class_taxonomy_mismatch",
+                    description:
+                      "Exercise class/taxonomy mismatches block trusting selected identities as lane-fit proof.",
+                    likelyOwnerSeam: "ExerciseClassDistributionBySlot",
+                    evidenceQuality: "diagnostic_count",
+                    trainingImportance: "high",
+                    gapCount: 20,
+                    currentEvidence: ["classTaxonomyMismatchCount=20"],
+                    missingProof: [
+                      "taxonomy_bridge_fixture",
+                      "materializer_identity_non_regression",
+                    ],
+                    measurableNextStep:
+                      "build_taxonomy_bridge_no_drift_probe",
+                    status: "blocked_by_missing_evidence",
+                  },
+                ],
+                selectedGapProof: {
+                  gapId: "class_taxonomy_mismatch",
+                  classification: "blocked_by_missing_evidence",
+                  proofResult: "blocked_by_missing_evidence",
+                  rightfulOwnerSeam: "ExerciseClassDistributionBySlot",
+                  readOnly: true,
+                  affectsScoringOrGeneration: false,
+                  consumedByProduction: false,
+                  safeForBehaviorPromotion: false,
+                  measuredEvidence: ["classTaxonomyMismatchCount=20"],
+                  missingGates: [
+                    "taxonomy_bridge_fixture",
+                    "materializer_identity_non_regression",
+                  ],
+                  nextSafeAction: "build_taxonomy_bridge_no_drift_probe",
+                },
                 legacyRepairQuarantine: {
                   readOnly: true,
                   affectsScoringOrGeneration: false,
@@ -4299,6 +4335,8 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
         "Quarantine groups: upstreamOwned=0 safetyRepairOnly=12 collateralAmbiguous=17 staleArtifact=9 missingEvidenceOrGate=10",
         "Top quarantine reasons: safety=cap_trim_removal_or_safety_guard=12 collateral=collateral_or_non_owned_muscle=10 diagnostic_or_collateral_only=7 stale=v2_already_solved_differently=5 support_floor_design_needed=4 missing=taxonomy_bridge_needed=6 set_distribution_design_needed=4",
         "Missing proof before behavior: owner_specific_behavior_candidate:missing@repairPromotionScoreboard; current_v2_policy_gap:blocked@ExerciseClassDistributionBySlot,ExerciseSelectionPlan,SetDistributionIntent,SlotDemandAllocationByWeek,audit_readout_cleanup; measured_behavior_projection:missing@read_only_projection_or_materializer_comparison; seed_runtime_non_consumption:required_before_promotion@accepted_seed_runtime_replay",
+        "Ranked gap inventory: #1 class_taxonomy_mismatch@ExerciseClassDistributionBySlot count=20 importance=high evidence=diagnostic_count status=blocked_by_missing_evidence next=build_taxonomy_bridge_no_drift_probe",
+        "Selected gap proof: class_taxonomy_mismatch:blocked_by_missing_evidence@ExerciseClassDistributionBySlot classification=blocked_by_missing_evidence consumedByProduction=no safeForBehavior=no missing=materializer_identity_non_regression, taxonomy_bridge_fixture next=build_taxonomy_bridge_no_drift_probe",
         "Promotion candidates: 0",
         "Safety/do-not-promote: 12",
         "Collateral/diagnostic: 36",

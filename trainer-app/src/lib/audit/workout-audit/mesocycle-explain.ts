@@ -8455,6 +8455,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         v2TargetVsNoRepairDiff,
         v2SupportLaneProjectionDiagnostic,
         v2ExerciseSelectionPlanDiagnostic,
+        ...(v2BasePlanShadowConsumptionTrial
+          ? { v2BasePlanShadowConsumptionTrial }
+          : {}),
       },
     );
     const v2DeloadProjectionDiagnostic = buildV2DeloadProjectionDiagnostic({
@@ -8716,6 +8719,15 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       v2TargetVsNoRepairDiff,
       v2SupportLaneProjectionDiagnostic,
       v2ExerciseSelectionPlanDiagnostic,
+      ...(v2CapacityMaterializerProjection
+        ? { v2CapacityMaterializerProjection }
+        : {}),
+      ...(v2LaneIntentMaterializerProjection
+        ? { v2LaneIntentMaterializerProjection }
+        : {}),
+      ...(v2BasePlanShadowConsumptionTrial
+        ? { v2BasePlanShadowConsumptionTrial }
+        : {}),
     },
   );
 

@@ -3361,6 +3361,27 @@ describe("buildWorkoutAuditArtifact", () => {
               ],
             },
           ],
+          gapInventory: [
+            {
+              rank: 1,
+              gapId: "support_direct_floor",
+              description:
+                "Support muscles still need direct-floor ownership separated from collateral credit.",
+              likelyOwnerSeam: "SetDistributionIntent",
+              evidenceQuality: "diagnostic_count",
+              trainingImportance: "high",
+              gapCount: 3,
+              currentEvidence: ["supportDirectFloorBlockerCount=3"],
+              missingProof: [
+                "owner_specific_projection_delta",
+                "materializer_non_regression",
+                "cross_week_direct_floor_projection",
+              ],
+              measurableNextStep:
+                "measure_support_floor_materializer_projection",
+              status: "blocked_by_missing_evidence",
+            },
+          ],
         },
       },
     });
@@ -4925,6 +4946,27 @@ function makeMesocycleExplainNoRepairPayload() {
               evidence: [
                 "diagnostic_readout_does_not_change_slotPlanSeedJson_or_runtime_replay",
               ],
+            },
+          ],
+          gapInventory: [
+            {
+              rank: 1,
+              gapId: "support_direct_floor",
+              description:
+                "Support muscles still need direct-floor ownership separated from collateral credit.",
+              likelyOwnerSeam: "SetDistributionIntent",
+              evidenceQuality: "diagnostic_count",
+              trainingImportance: "high",
+              gapCount: 3,
+              currentEvidence: ["supportDirectFloorBlockerCount=3"],
+              missingProof: [
+                "owner_specific_projection_delta",
+                "materializer_non_regression",
+                "cross_week_direct_floor_projection",
+              ],
+              measurableNextStep:
+                "measure_support_floor_materializer_projection",
+              status: "blocked_by_missing_evidence",
             },
           ],
         },

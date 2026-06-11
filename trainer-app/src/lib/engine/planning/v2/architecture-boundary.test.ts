@@ -55,6 +55,8 @@ const repairQuarantineDiagnosticKeys = [
   "repairPromotionScoreboard",
   "legacyRepairQuarantine",
   "quarantineGroups",
+  "gapInventory",
+  "selectedGapProof",
   "missingProofBeforeBehaviorPromotion",
   "behaviorPromotionCandidateCount",
 ];
@@ -479,6 +481,8 @@ describe("V2 planner policy module boundary", () => {
     const acceptanceThresholdViolations = [
       "legacyRepairQuarantine",
       "quarantineGroups",
+      "gapInventory",
+      "selectedGapProof",
       "missingProofBeforeBehaviorPromotion",
       "behaviorPromotionCandidateCount",
       "promotionCandidates",

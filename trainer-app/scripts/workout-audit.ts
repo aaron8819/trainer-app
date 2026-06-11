@@ -1829,6 +1829,55 @@ function formatPromotionProofGates(
     .join("; ");
 }
 
+function formatGapInventory(
+  rows:
+    | ReadonlyArray<{
+        rank: number;
+        gapId: string;
+        likelyOwnerSeam: string;
+        evidenceQuality: string;
+        trainingImportance: string;
+        gapCount: number;
+        status: string;
+        measurableNextStep: string;
+      }>
+    | null
+    | undefined
+): string {
+  const inventory = asArray(rows);
+  if (inventory.length === 0) {
+    return "not_available";
+  }
+  return inventory
+    .slice(0, 5)
+    .map(
+      (row) =>
+        `#${row.rank} ${row.gapId}@${row.likelyOwnerSeam} count=${row.gapCount} importance=${row.trainingImportance} evidence=${row.evidenceQuality} status=${row.status} next=${row.measurableNextStep}`
+    )
+    .join("; ");
+}
+
+function formatSelectedGapProof(
+  proof:
+    | {
+        gapId: string;
+        classification: string;
+        proofResult: string;
+        rightfulOwnerSeam: string;
+        consumedByProduction: boolean;
+        safeForBehaviorPromotion: boolean;
+        missingGates: readonly string[];
+        nextSafeAction: string;
+      }
+    | null
+    | undefined
+): string {
+  if (!proof) {
+    return "not_available";
+  }
+  return `${proof.gapId}:${proof.proofResult}@${proof.rightfulOwnerSeam} classification=${proof.classification} consumedByProduction=${proof.consumedByProduction ? "yes" : "no"} safeForBehavior=${proof.safeForBehaviorPromotion ? "yes" : "no"} missing=${formatNameList(proof.missingGates, 4)} next=${proof.nextSafeAction}`;
+}
+
 function formatPlanningRealityNumber(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "unknown";
 }
@@ -2917,6 +2966,9 @@ export function buildPlanningRealitySummary(input: {
     repairPromotionScoreboard?.interpretation.quarantineGroups;
   const missingPromotionProof =
     repairPromotionScoreboard?.interpretation.missingProofBeforeBehaviorPromotion;
+  const gapInventory = repairPromotionScoreboard?.interpretation.gapInventory;
+  const selectedGapProof =
+    repairPromotionScoreboard?.interpretation.selectedGapProof;
   const preselectionDemands = asArray(
     input.artifact.mesocycleExplain?.preview?.projectionDiagnostics?.preselectionDemands
   );
@@ -3069,6 +3121,12 @@ export function buildPlanningRealitySummary(input: {
     lines.push(
       `- missingProofBeforeBehaviorPromotion: ${formatPromotionProofGates(missingPromotionProof)}`
     );
+  }
+  if (gapInventory) {
+    lines.push(`- rankedGapInventory: ${formatGapInventory(gapInventory)}`);
+  }
+  if (selectedGapProof) {
+    lines.push(`- selectedGapProof: ${formatSelectedGapProof(selectedGapProof)}`);
   }
   const promotionCandidateSignal =
     repairPromotionScoreboard
@@ -4303,6 +4361,8 @@ export function buildPlannerOnlyNoRepairSummary(input: {
     repairScoreboard?.interpretation.quarantineGroups;
   const missingPromotionProof =
     repairScoreboard?.interpretation.missingProofBeforeBehaviorPromotion;
+  const gapInventory = repairScoreboard?.interpretation.gapInventory;
+  const selectedGapProof = repairScoreboard?.interpretation.selectedGapProof;
   const basePlanCompare = noRepair.v2BasePlanCompare;
   const shadowConsumption = noRepair.v2BasePlanShadowConsumptionTrial;
   const basePlanCompareLines = basePlanCompare
@@ -4353,6 +4413,8 @@ export function buildPlannerOnlyNoRepairSummary(input: {
           ? `Top quarantine reasons: safety=${formatCountRecord(repairQuarantineGroups.safetyRepairOnly.topReasons, 3)} collateral=${formatCountRecord(repairQuarantineGroups.collateralAmbiguous.topReasons, 3)} stale=${formatCountRecord(repairQuarantineGroups.staleArtifact.topReasons, 3)} missing=${formatCountRecord(repairQuarantineGroups.missingEvidenceOrUnmeasuredGate.topReasons, 3)}`
           : "Top quarantine reasons: not_available",
         `Missing proof before behavior: ${formatPromotionProofGates(missingPromotionProof)}`,
+        `Ranked gap inventory: ${formatGapInventory(gapInventory)}`,
+        `Selected gap proof: ${formatSelectedGapProof(selectedGapProof)}`,
         `Promotion candidates: ${repairScoreboard.summary.promotionCandidateCount}`,
         `Safety/do-not-promote: ${repairScoreboard.summary.safetyNetCount}`,
         `Collateral/diagnostic: ${repairScoreboard.summary.collateralDiagnosticCount + repairScoreboard.summary.diagnosticOnlyCount}`,

@@ -26,6 +26,9 @@ type V2RepairPromotionReadoutContext = {
   v2TargetVsNoRepairDiff: V2TargetVsNoRepairDiff;
   v2SupportLaneProjectionDiagnostic: MesocycleExplainPlannerOnlyNoRepair["v2SupportLaneProjectionDiagnostic"];
   v2ExerciseSelectionPlanDiagnostic: MesocycleExplainPlannerOnlyNoRepair["v2ExerciseSelectionPlanDiagnostic"];
+  v2CapacityMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2CapacityMaterializerProjection"];
+  v2LaneIntentMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2LaneIntentMaterializerProjection"];
+  v2BasePlanShadowConsumptionTrial?: MesocycleExplainPlannerOnlyNoRepair["v2BasePlanShadowConsumptionTrial"];
 };
 
 const STALE_REPAIRED_PROJECTION_REASONS = [
@@ -884,6 +887,356 @@ function buildMissingProofBeforeBehaviorPromotion(input: {
   ];
 }
 
+type GapInventoryRow =
+  V2RepairPromotionScoreboard["interpretation"]["gapInventory"][number];
+type GapInventoryCandidate = Omit<GapInventoryRow, "rank"> & {
+  score: number;
+};
+
+function importanceScore(importance: GapInventoryRow["trainingImportance"]): number {
+  if (importance === "high") {
+    return 60;
+  }
+  if (importance === "medium") {
+    return 30;
+  }
+  return 10;
+}
+
+function measuredProjectionBonus(
+  evidenceQuality: GapInventoryRow["evidenceQuality"],
+): number {
+  return evidenceQuality === "measured_materializer_projection" ? 50 : 0;
+}
+
+function buildGapCandidate(
+  input: Omit<GapInventoryCandidate, "score">,
+): GapInventoryCandidate {
+  return {
+    ...input,
+    score:
+      importanceScore(input.trainingImportance) +
+      measuredProjectionBonus(input.evidenceQuality) +
+      input.gapCount,
+  };
+}
+
+function materializerGateSummary(
+  projection?: V2RepairPromotionReadoutContext["v2CapacityMaterializerProjection"],
+): string[] {
+  if (!projection) {
+    return [];
+  }
+  const gateCounts = projection.gates.reduce<Record<string, number>>(
+    (counts, gate) => {
+      counts[gate.status] = (counts[gate.status] ?? 0) + 1;
+      return counts;
+    },
+    {},
+  );
+  return [
+    `capacityMaterializerStatus=${projection.status}`,
+    `candidateImpact.selectedIdentityDelta=${projection.candidateImpact.selectedIdentityDelta}`,
+    `candidateImpact.totalSetDelta=${projection.candidateImpact.totalSetDelta}`,
+    `candidateImpact.targetSlotExerciseDelta=${projection.candidateImpact.targetSlotExerciseDelta}`,
+    `candidateImpact.regressionCount=${projection.candidateImpact.regressionCount}`,
+    `materializer.baseline=${projection.materializer.baselineStatus}`,
+    `materializer.trial=${projection.materializer.trialStatus}`,
+    `gates.pass=${gateCounts.pass ?? 0}`,
+    `gates.fail=${gateCounts.fail ?? 0}`,
+    `gates.unknown=${gateCounts.unknown ?? 0}`,
+  ];
+}
+
+function materializerMissingGates(
+  projection?: V2RepairPromotionReadoutContext["v2CapacityMaterializerProjection"],
+): string[] {
+  if (!projection) {
+    return [
+      "read_only_materializer_projection",
+      "candidate_identity_delta",
+      "seed_runtime_non_consumption_gate",
+    ];
+  }
+  return uniqueSorted([
+    ...projection.blockersBeforeBehavior,
+    ...projection.gates
+      .filter((gate) => gate.status !== "pass" || !gate.measured)
+      .flatMap((gate) => [
+        `${gate.gateId}:${gate.status}`,
+        ...gate.requiredNextEvidence,
+      ]),
+  ]);
+}
+
+function buildGapInventory(input: {
+  currentV2PolicyGap: V2RepairPromotionScoreboard["interpretation"]["currentV2PolicyGap"];
+  context?: V2RepairPromotionReadoutContext;
+}): V2RepairPromotionScoreboard["interpretation"]["gapInventory"] {
+  const gap = input.currentV2PolicyGap;
+  const capacityProjection = input.context?.v2CapacityMaterializerProjection;
+  const candidates: GapInventoryCandidate[] = [];
+
+  if (
+    gap.selectionFeasibilityCapacityPressureCount > 0 ||
+    capacityProjection
+  ) {
+    const measuredNoImpact =
+      capacityProjection &&
+      capacityProjection.candidateImpact.selectedIdentityDelta === 0 &&
+      capacityProjection.candidateImpact.totalSetDelta === 0 &&
+      capacityProjection.candidateImpact.targetSlotExerciseDelta === 0 &&
+      capacityProjection.candidateImpact.regressionCount === 0;
+    candidates.push(
+      buildGapCandidate({
+        gapId: "selection_capacity_pressure",
+        description:
+          "Selection capacity pressure needs proof that extra slot capacity changes materialized identities or sets.",
+        likelyOwnerSeam: "SelectionCapacityPlan -> v2_materialization_dry_run",
+        evidenceQuality: capacityProjection
+          ? "measured_materializer_projection"
+          : "diagnostic_count",
+        trainingImportance: "high",
+        gapCount: gap.selectionFeasibilityCapacityPressureCount,
+        currentEvidence: uniqueSorted([
+          `selectionFeasibilityCapacityPressureCount=${gap.selectionFeasibilityCapacityPressureCount}`,
+          ...(capacityProjection?.trialId
+            ? [`trialId=${capacityProjection.trialId}`]
+            : []),
+          ...materializerGateSummary(capacityProjection),
+        ]),
+        missingProof: materializerMissingGates(capacityProjection),
+        measurableNextStep:
+          capacityProjection?.nextSafeAction ??
+          "run_read_only_materializer_capacity_projection",
+        status: measuredNoImpact
+          ? "measured_no_candidate_impact"
+          : capacityProjection
+            ? "selected_for_measured_proof"
+            : "blocked_by_missing_evidence",
+      }),
+    );
+  }
+
+  if (gap.supportDirectFloorBlockerCount > 0) {
+    candidates.push(
+      buildGapCandidate({
+        gapId: "support_direct_floor",
+        description:
+          "Support muscles still need direct-floor ownership separated from collateral credit.",
+        likelyOwnerSeam: "SetDistributionIntent",
+        evidenceQuality: "diagnostic_count",
+        trainingImportance: "high",
+        gapCount: gap.supportDirectFloorBlockerCount,
+        currentEvidence: [
+          `supportDirectFloorBlockerCount=${gap.supportDirectFloorBlockerCount}`,
+        ],
+        missingProof: [
+          "owner_specific_projection_delta",
+          "materializer_non_regression",
+          "cross_week_direct_floor_projection",
+        ],
+        measurableNextStep: "measure_support_floor_materializer_projection",
+        status: "blocked_by_missing_evidence",
+      }),
+    );
+  }
+
+  if (gap.classTaxonomyMismatchCount > 0) {
+    candidates.push(
+      buildGapCandidate({
+        gapId: "class_taxonomy_mismatch",
+        description:
+          "Exercise class/taxonomy mismatches block trusting selected identities as lane-fit proof.",
+        likelyOwnerSeam: "ExerciseClassDistributionBySlot",
+        evidenceQuality: "diagnostic_count",
+        trainingImportance: "high",
+        gapCount: gap.classTaxonomyMismatchCount,
+        currentEvidence: [
+          `classTaxonomyMismatchCount=${gap.classTaxonomyMismatchCount}`,
+        ],
+        missingProof: [
+          "taxonomy_bridge_fixture",
+          "materializer_identity_non_regression",
+        ],
+        measurableNextStep: "build_taxonomy_bridge_no_drift_probe",
+        status: "blocked_by_missing_evidence",
+      }),
+    );
+  }
+
+  if (
+    gap.setDistributionCapacityGapCount > 0 ||
+    gap.setBudgetPolicyFailureCount > 0
+  ) {
+    candidates.push(
+      buildGapCandidate({
+        gapId: "set_distribution_budget",
+        description:
+          "Lane set budgets still need owner-specific proof before changing planner policy.",
+        likelyOwnerSeam: "SetDistributionIntent",
+        evidenceQuality: "diagnostic_count",
+        trainingImportance: "high",
+        gapCount:
+          gap.setDistributionCapacityGapCount +
+          gap.setBudgetPolicyFailureCount,
+        currentEvidence: [
+          `setDistributionCapacityGapCount=${gap.setDistributionCapacityGapCount}`,
+          `setBudgetPolicyFailureCount=${gap.setBudgetPolicyFailureCount}`,
+        ],
+        missingProof: [
+          "bounded_set_budget_projection_delta",
+          "session_size_non_regression",
+          "materializer_non_regression",
+        ],
+        measurableNextStep: "measure_set_distribution_projection_delta",
+        status: "blocked_by_missing_evidence",
+      }),
+    );
+  }
+
+  if (gap.concentrationQualityGapCount > 0) {
+    candidates.push(
+      buildGapCandidate({
+        gapId: "concentration_quality",
+        description:
+          "Concentration warnings need proof they are planner policy gaps rather than diagnostic readout noise.",
+        likelyOwnerSeam: "SlotDemandAllocationByWeek",
+        evidenceQuality: "diagnostic_count",
+        trainingImportance: "medium",
+        gapCount: gap.concentrationQualityGapCount,
+        currentEvidence: [
+          `concentrationQualityGapCount=${gap.concentrationQualityGapCount}`,
+        ],
+        missingProof: [
+          "weekly_distribution_non_regression",
+          "fatigue_concentration_delta",
+        ],
+        measurableNextStep: "measure_concentration_projection_delta",
+        status: "blocked_by_missing_evidence",
+      }),
+    );
+  }
+
+  if (gap.staleWeek1ReadoutArtifactCount > 0) {
+    candidates.push(
+      buildGapCandidate({
+        gapId: "stale_week1_readout",
+        description:
+          "Some Week 1 gaps are stale readout artifacts and must not become policy.",
+        likelyOwnerSeam: "audit_readout_cleanup",
+        evidenceQuality: "stale_or_ambiguous",
+        trainingImportance: "low",
+        gapCount: gap.staleWeek1ReadoutArtifactCount,
+        currentEvidence: [
+          `staleWeek1ReadoutArtifactCount=${gap.staleWeek1ReadoutArtifactCount}`,
+        ],
+        missingProof: ["compare_against_current_v2_no_repair_solution"],
+        measurableNextStep: "clean_stale_readout_before_policy_work",
+        status: "stale_or_ambiguous",
+      }),
+    );
+  }
+
+  if (gap.optionalDiagnosticLaneCount > 0) {
+    candidates.push(
+      buildGapCandidate({
+        gapId: "optional_diagnostic_lane",
+        description:
+          "Optional lane misses are diagnostic until a direct behavior gate proves need and recoverability.",
+        likelyOwnerSeam: "SlotDemandAllocationByWeek",
+        evidenceQuality: "diagnostic_count",
+        trainingImportance: "low",
+        gapCount: gap.optionalDiagnosticLaneCount,
+        currentEvidence: [
+          `optionalDiagnosticLaneCount=${gap.optionalDiagnosticLaneCount}`,
+        ],
+        missingProof: [
+          "optional_activation_need",
+          "recoverability_non_regression",
+        ],
+        measurableNextStep: "keep_optional_lane_diagnostic_only",
+        status: "diagnostic_only",
+      }),
+    );
+  }
+
+  return candidates
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        left.gapId.localeCompare(right.gapId),
+    )
+    .map((row, index) => ({
+      gapId: row.gapId,
+      description: row.description,
+      likelyOwnerSeam: row.likelyOwnerSeam,
+      evidenceQuality: row.evidenceQuality,
+      trainingImportance: row.trainingImportance,
+      gapCount: row.gapCount,
+      currentEvidence: row.currentEvidence,
+      missingProof: row.missingProof,
+      measurableNextStep: row.measurableNextStep,
+      status: row.status,
+      rank: index + 1,
+    }));
+}
+
+function buildSelectedGapProof(input: {
+  gapInventory: ReadonlyArray<GapInventoryRow>;
+  context?: V2RepairPromotionReadoutContext;
+}): V2RepairPromotionScoreboard["interpretation"]["selectedGapProof"] {
+  const selected =
+    input.gapInventory.find(
+      (row) => row.evidenceQuality === "measured_materializer_projection",
+    ) ?? input.gapInventory[0];
+  if (!selected) {
+    return undefined;
+  }
+  const capacityProjection = input.context?.v2CapacityMaterializerProjection;
+  if (
+    selected.gapId === "selection_capacity_pressure" &&
+    capacityProjection
+  ) {
+    const noCandidateImpact =
+      capacityProjection.candidateImpact.selectedIdentityDelta === 0 &&
+      capacityProjection.candidateImpact.totalSetDelta === 0 &&
+      capacityProjection.candidateImpact.targetSlotExerciseDelta === 0 &&
+      capacityProjection.candidateImpact.regressionCount === 0;
+    return {
+      gapId: selected.gapId,
+      classification: "materializer_owned",
+      proofResult: noCandidateImpact
+        ? "measured_no_candidate_impact"
+        : "measured_with_missing_gates",
+      rightfulOwnerSeam: selected.likelyOwnerSeam,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      safeForBehaviorPromotion: false,
+      measuredEvidence: selected.currentEvidence,
+      missingGates: selected.missingProof,
+      nextSafeAction: capacityProjection.nextSafeAction,
+    };
+  }
+  return {
+    gapId: selected.gapId,
+    classification:
+      selected.status === "stale_or_ambiguous"
+        ? "stale_or_ambiguous"
+        : "blocked_by_missing_evidence",
+    proofResult: "blocked_by_missing_evidence",
+    rightfulOwnerSeam: selected.likelyOwnerSeam,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByProduction: false,
+    safeForBehaviorPromotion: false,
+    measuredEvidence: selected.currentEvidence,
+    missingGates: selected.missingProof,
+    nextSafeAction: selected.measurableNextStep,
+  };
+}
+
 export function buildRepairPromotionScoreboard(
   planningReality: PlanningRealityDiagnostic | undefined,
   v2Context?: V2RepairPromotionReadoutContext
@@ -995,6 +1348,14 @@ export function buildRepairPromotionScoreboard(
       promotionCandidates,
       currentV2PolicyGap,
     });
+  const gapInventory = buildGapInventory({
+    currentV2PolicyGap,
+    context: v2Context,
+  });
+  const selectedGapProof = buildSelectedGapProof({
+    gapInventory,
+    context: v2Context,
+  });
 
   return {
     version: 1,
@@ -1022,6 +1383,8 @@ export function buildRepairPromotionScoreboard(
       staleRepairedProjectionArtifacts,
       quarantineGroups,
       missingProofBeforeBehaviorPromotion,
+      gapInventory,
+      ...(selectedGapProof ? { selectedGapProof } : {}),
       legacyRepairQuarantine: {
         readOnly: true,
         affectsScoringOrGeneration: false,

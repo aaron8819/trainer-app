@@ -1935,6 +1935,55 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
         missingEvidence: string[];
         evidence: string[];
       }>;
+      gapInventory: Array<{
+        rank: number;
+        gapId:
+          | "selection_capacity_pressure"
+          | "support_direct_floor"
+          | "class_taxonomy_mismatch"
+          | "set_distribution_budget"
+          | "concentration_quality"
+          | "stale_week1_readout"
+          | "optional_diagnostic_lane";
+        description: string;
+        likelyOwnerSeam: string;
+        evidenceQuality:
+          | "measured_materializer_projection"
+          | "diagnostic_count"
+          | "stale_or_ambiguous";
+        trainingImportance: "high" | "medium" | "low";
+        gapCount: number;
+        currentEvidence: string[];
+        missingProof: string[];
+        measurableNextStep: string;
+        status:
+          | "selected_for_measured_proof"
+          | "measured_no_candidate_impact"
+          | "blocked_by_missing_evidence"
+          | "diagnostic_only"
+          | "stale_or_ambiguous";
+      }>;
+      selectedGapProof?: {
+        gapId: string;
+        classification:
+          | "materializer_owned"
+          | "planner_policy_owned"
+          | "blocked_by_missing_evidence"
+          | "stale_or_ambiguous"
+          | "safety_repair_only";
+        proofResult:
+          | "measured_no_candidate_impact"
+          | "measured_with_missing_gates"
+          | "blocked_by_missing_evidence";
+        rightfulOwnerSeam: string;
+        readOnly: true;
+        affectsScoringOrGeneration: false;
+        consumedByProduction: false;
+        safeForBehaviorPromotion: false;
+        measuredEvidence: string[];
+        missingGates: string[];
+        nextSafeAction: string;
+      };
       legacyRepairQuarantine?: {
         readOnly: true;
         affectsScoringOrGeneration: false;

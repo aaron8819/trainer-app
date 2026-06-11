@@ -4016,6 +4016,23 @@ describe("buildMesocycleExplainAuditPayload", () => {
         }),
       ]),
     );
+    expect(scoreboard?.interpretation.gapInventory.length).toBeGreaterThan(0);
+    expect(scoreboard?.interpretation.gapInventory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gapId: "class_taxonomy_mismatch",
+          likelyOwnerSeam: "ExerciseClassDistributionBySlot",
+          evidenceQuality: "diagnostic_count",
+          status: "blocked_by_missing_evidence",
+        }),
+      ]),
+    );
+    expect(scoreboard?.interpretation.selectedGapProof).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      safeForBehaviorPromotion: false,
+    });
     expect(scoreboard?.interpretation.legacyRepairQuarantine).toMatchObject({
       readOnly: true,
       affectsScoringOrGeneration: false,
@@ -8454,6 +8471,27 @@ describe("buildMesocycleExplainAuditPayload", () => {
         trialConsumesLaneIntent: true,
       }),
       safeForBehaviorPromotion: false,
+    });
+    expect(
+      noRepair.repairPromotionScoreboard?.interpretation.gapInventory[0],
+    ).toMatchObject({
+      gapId: "selection_capacity_pressure",
+      evidenceQuality: "measured_materializer_projection",
+      status: "measured_no_candidate_impact",
+      measurableNextStep: expect.any(String),
+    });
+    expect(
+      noRepair.repairPromotionScoreboard?.interpretation.selectedGapProof,
+    ).toMatchObject({
+      gapId: "selection_capacity_pressure",
+      classification: "materializer_owned",
+      proofResult: "measured_no_candidate_impact",
+      rightfulOwnerSeam: "SelectionCapacityPlan -> v2_materialization_dry_run",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      safeForBehaviorPromotion: false,
+      nextSafeAction: expect.any(String),
     });
     expect(rearDeltLane).toMatchObject({
       currentStatus: "blocked",

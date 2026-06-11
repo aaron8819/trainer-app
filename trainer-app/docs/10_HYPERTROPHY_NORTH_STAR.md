@@ -232,6 +232,7 @@ The durable checkpoint:
 - current V2 diagnostics classify `likelyUpstreamAvoidableMaterialRepairs=15` while leaving `remainingMaterialRepairs=8`
 - suspicious downstream repairs are explicitly not promotion material: `suspiciousRepairsNotEligibleForPromotion=3`
 - legacy repaired projection is quarantined as evidence only: `behaviorCandidates=0`, `quarantined=46`, `staleArtifacts=15`
+- the current ranked gap inventory selects `selection_capacity_pressure` first because it has measured materializer evidence, but the proof result is `measured_no_candidate_impact`: the `upper_a` capacity/materializer trial changes no selected identities, sets, target-slot exercise count, or materializer blockers, stays non-consumed by production, and should pivot to a higher-ROI gap instead of behavior promotion
 - runtime execution quality, performed-reality readouts, post-session calibration evidence, candidate evaluation, materializer comparison, and repair-readout quarantine are now coherent enough to guide the next architecture slice
 - no DB mutation, Prisma migration, reseed, seed/slot sequence mutation, active plan-shape change, runtime planner-metadata consumption, or receipt mirror was part of this milestone
 
@@ -244,6 +245,7 @@ The remaining architecture signal must stay visible:
 - likely upstream-avoidable rows are hypotheses for planner-owned work, not behavior by themselves
 - `behaviorCandidates=0` is currently correct because every repaired row is classified as safety/repair-only, collateral/ambiguous, stale repaired-projection artifact, or missing an owner-specific measured gate before behavior
 - remaining repairs point at set distribution, concentration, capacity, and materializer-quality cleanup
+- after the no-impact capacity proof, the next safer upstream proof target is a higher-ranked non-measured gap such as class/taxonomy bridge no-drift evidence or bounded set-distribution projection, not a capacity cap-delta promotion
 - suspicious/quarantined legacy repair rows must not be promoted
 - runtime replay remains correct only because it stays boring and consumes the persisted executable seed shape
 

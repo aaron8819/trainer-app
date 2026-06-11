@@ -110,6 +110,27 @@ export type PostSessionReviewCalibrationClassification =
   | "runtime_added"
   | "replacement_like";
 
+export type PostSessionReviewRepRangeResult =
+  | "below_target"
+  | "in_range"
+  | "above_target"
+  | "unknown";
+
+export type PostSessionReviewEffortResult =
+  | "below_target"
+  | "near_target"
+  | "above_target"
+  | "unknown";
+
+export type PostSessionReviewPerformedRealityCoherence =
+  | "coherent"
+  | "load_too_heavy"
+  | "load_too_light"
+  | "mixed_signal"
+  | "insufficient_evidence"
+  | "low_coverage"
+  | "session_local";
+
 export type PostSessionReviewPrescriptionCalibrationRow = {
   exerciseId: string;
   exerciseName: string;
@@ -119,14 +140,39 @@ export type PostSessionReviewPrescriptionCalibrationRow = {
   skippedSetCount: number;
   addedSetCount: number;
   targetLoad: number | null;
+  targetRepRange: { min: number | null; max: number | null };
+  targetRpe: number | null;
   medianPerformedLoad: number | null;
   anchorLoad: number | null;
   loadDeltaPct: number | null;
   medianReps: number | null;
+  medianActualRpe: number | null;
+  rpeDelta: number | null;
+  repRangeResult: PostSessionReviewRepRangeResult;
+  effortResult: PostSessionReviewEffortResult;
+  performedRealityCoherence: PostSessionReviewPerformedRealityCoherence;
   reasonCodes: string[];
   notes: string[];
   evidenceOnly: true;
   affectsPrescriptionPolicy: false;
+};
+
+export type PostSessionReviewRecentExposureCalibrationSummaryRow = {
+  exerciseId: string;
+  exerciseName: string;
+  priorExposureCount: number;
+  lookbackWorkoutLimit: number;
+  latestPerformedAt: string | null;
+  coherentCount: number;
+  loadTooHeavyCount: number;
+  loadTooLightCount: number;
+  mixedSignalCount: number;
+  lowCoverageCount: number;
+  insufficientEvidenceCount: number;
+  sessionLocalCount: number;
+  evidenceOnly: true;
+  affectsPrescriptionPolicy: false;
+  affectsProgressionPolicy: false;
 };
 
 export type PostSessionReviewWeeklyImpactRow = {
@@ -197,6 +243,19 @@ export type PostSessionReviewContract = {
       targetTooLowCount: number;
       insufficientEvidenceCount: number;
       skippedOrLowCoverageCount: number;
+      coherentCount: number;
+      loadTooHeavyCount: number;
+      loadTooLightCount: number;
+      mixedSignalCount: number;
+      lowCoverageCount: number;
+      sessionLocalCount: number;
+    };
+    recentExposureSummary?: {
+      source: "exact_exercise_prior_performed_workouts";
+      rows: PostSessionReviewRecentExposureCalibrationSummaryRow[];
+      readOnly: true;
+      affectsPrescriptionPolicy: false;
+      affectsProgressionPolicy: false;
     };
     readOnly: true;
   };
@@ -358,6 +417,38 @@ function hasValidConsistencyCheck(check: unknown): boolean {
   );
 }
 
+function hasValidRecentExposureSummary(summary: unknown): boolean {
+  if (!isRecord(summary)) {
+    return false;
+  }
+  return (
+    summary.source === "exact_exercise_prior_performed_workouts" &&
+    Array.isArray(summary.rows) &&
+    summary.rows.every(
+      (row) =>
+        isRecord(row) &&
+        isString(row.exerciseId) &&
+        isString(row.exerciseName) &&
+        isOptionalNumber(row.priorExposureCount) &&
+        isOptionalNumber(row.lookbackWorkoutLimit) &&
+        (row.latestPerformedAt == null || typeof row.latestPerformedAt === "string") &&
+        isOptionalNumber(row.coherentCount) &&
+        isOptionalNumber(row.loadTooHeavyCount) &&
+        isOptionalNumber(row.loadTooLightCount) &&
+        isOptionalNumber(row.mixedSignalCount) &&
+        isOptionalNumber(row.lowCoverageCount) &&
+        isOptionalNumber(row.insufficientEvidenceCount) &&
+        isOptionalNumber(row.sessionLocalCount) &&
+        row.evidenceOnly === true &&
+        row.affectsPrescriptionPolicy === false &&
+        row.affectsProgressionPolicy === false
+    ) &&
+    summary.readOnly === true &&
+    summary.affectsPrescriptionPolicy === false &&
+    summary.affectsProgressionPolicy === false
+  );
+}
+
 export function isPostSessionReviewContract(
   value: unknown,
   options: { userId?: string; workoutId?: string } = {}
@@ -380,6 +471,10 @@ export function isPostSessionReviewContract(
     value.prescriptionCalibration.source === "set_log_vs_workout_set_targets" &&
     Array.isArray(value.prescriptionCalibration.rows) &&
     isRecord(value.prescriptionCalibration.summary) &&
+    (value.prescriptionCalibration.recentExposureSummary == null ||
+      hasValidRecentExposureSummary(
+        value.prescriptionCalibration.recentExposureSummary
+      )) &&
     value.prescriptionCalibration.readOnly === true &&
     (value.weeklyImpact == null ||
       (isRecord(value.weeklyImpact) &&

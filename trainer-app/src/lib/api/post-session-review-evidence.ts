@@ -80,6 +80,12 @@ export type PostSessionReviewExerciseEvidence = {
   sets: PostSessionReviewSetEvidence[];
 };
 
+export type PostSessionReviewRecentExerciseExposureEvidence =
+  PostSessionReviewExerciseEvidence & {
+    workoutId: string;
+    performedAt: string;
+  };
+
 export type PostSessionReviewNextExposureEvidence = {
   exerciseId: string;
   exerciseName?: string;
@@ -96,6 +102,7 @@ export type PostSessionReviewContractBuildInput = {
   sourceTruth: PostSessionReviewSourceTruthEvidence;
   sessionSemantics?: PostSessionReviewSessionSemanticsEvidence;
   exercises: PostSessionReviewExerciseEvidence[];
+  recentExerciseExposures?: PostSessionReviewRecentExerciseExposureEvidence[];
   nextExposureDecisions?: PostSessionReviewNextExposureEvidence[];
   weeklyImpact?: PostSessionReviewWeeklyImpactEvidence;
   boundaryNotes?: string[];

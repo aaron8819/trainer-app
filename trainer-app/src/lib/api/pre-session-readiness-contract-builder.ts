@@ -1,4 +1,7 @@
-import type { SessionGenerationResult } from "@/lib/api/template-session/types";
+import type {
+  PrescriptionConfidenceReadout,
+  SessionGenerationResult,
+} from "@/lib/api/template-session/types";
 import {
   PRE_SESSION_READINESS_CONTRACT_OWNER_SEAM,
   type PreSessionReadinessCoachingRecommendation,
@@ -26,6 +29,20 @@ type ProjectedWeekSession =
 type GeneratedSession = NonNullable<SessionAuditSnapshot["generated"]>;
 type GeneratedExercise = GeneratedSession["exercises"][number];
 type GeneratedSet = GeneratedExercise["prescribedSets"][number];
+type PrescriptionReadoutFields = Pick<
+  PreSessionReadinessPrescriptionConfidenceWatchRow,
+  | "targetLoad"
+  | "targetReps"
+  | "repRange"
+  | "targetRpe"
+  | "targetRir"
+  | "loadSource"
+  | "loadConfidence"
+  | "cautionLevel"
+  | "cautionReason"
+  | "adjustmentRangeBasis"
+  | "suggestedAdjustmentRange"
+>;
 
 const UPPER_BODY_MUSCLES = new Set([
   "Chest",
@@ -885,10 +902,17 @@ function buildAvoidList(input: {
 }
 
 function buildPrescriptionConfidenceWatches(
-  generated: SessionAuditSnapshot["generated"] | undefined
+  generated: SessionAuditSnapshot["generated"] | undefined,
+  prescriptionReadouts: PrescriptionConfidenceReadout[] | undefined
 ): PreSessionReadinessPrescriptionConfidenceWatchRow[] {
+  const readoutsByExerciseId = new Map(
+    (prescriptionReadouts ?? []).map((readout) => [readout.exerciseId, readout])
+  );
+
   return (generated?.exercises ?? []).flatMap<PreSessionReadinessPrescriptionConfidenceWatchRow>((exercise) => {
     const trace = generated?.traces.progression[exercise.exerciseId];
+    const readout = readoutsByExerciseId.get(exercise.exerciseId);
+    const readoutFields = buildPrescriptionReadoutFields(readout);
     if (!trace) {
       return [
         {
@@ -898,6 +922,7 @@ function buildPrescriptionConfidenceWatches(
           displayActionCode: "use_target_as_starting_point",
           severity: "warning",
           source: "generated_progression_trace",
+          ...readoutFields,
         },
       ];
     }
@@ -947,6 +972,7 @@ function buildPrescriptionConfidenceWatches(
           severity: confidence < 0.75 ? "warning" : "info",
           confidence,
           source: "generated_progression_trace",
+          ...readoutFields,
         },
       ];
     }
@@ -954,18 +980,78 @@ function buildPrescriptionConfidenceWatches(
   });
 }
 
+function buildPrescriptionReadoutFields(
+  readout: PrescriptionConfidenceReadout | undefined
+): Partial<PrescriptionReadoutFields> {
+  if (!readout) {
+    return {};
+  }
+
+  const suggestedAdjustmentRange = readout.suggestedAdjustmentRange
+    ? {
+        minLoad: readout.suggestedAdjustmentRange.minLoad,
+        maxLoad: readout.suggestedAdjustmentRange.maxLoad,
+        unit: readout.suggestedAdjustmentRange.unit,
+        basis: readout.suggestedAdjustmentRange.basis,
+      }
+    : null;
+  const hasTargetLoad =
+    typeof readout.targetLoad === "number" && Number.isFinite(readout.targetLoad);
+
+  return {
+    targetLoad: readout.targetLoad,
+    targetReps: readout.targetReps,
+    repRange: readout.repRange
+      ? { min: readout.repRange.min, max: readout.repRange.max }
+      : null,
+    targetRpe: readout.targetRpe,
+    targetRir: readout.targetRir,
+    loadSource: readout.loadSource,
+    loadConfidence: readout.confidence,
+    cautionLevel: readout.cautionLevel,
+    cautionReason: readout.cautionReason,
+    adjustmentRangeBasis: suggestedAdjustmentRange
+      ? "exact_range"
+      : hasTargetLoad
+        ? "target_load_start"
+        : "not_available",
+    suggestedAdjustmentRange,
+  };
+}
+
 function formatPrescriptionConfidenceWatchMessage(
   row: PreSessionReadinessPrescriptionConfidenceWatchRow
 ): string {
+  if (row.suggestedAdjustmentRange) {
+    const target =
+      row.targetLoad == null
+        ? "the written target"
+        : `${formatPreviewNumber(row.targetLoad)} lb`;
+    return `- ${row.exerciseLabel}: start at ${target}; use ${formatPreviewNumber(row.suggestedAdjustmentRange.minLoad)}-${formatPreviewNumber(row.suggestedAdjustmentRange.maxLoad)} ${row.suggestedAdjustmentRange.unit} if first-set reps or RPE are off.`;
+  }
+
+  const targetLoad =
+    typeof row.targetLoad === "number" && Number.isFinite(row.targetLoad)
+      ? `${formatPreviewNumber(row.targetLoad)} lb`
+      : null;
+
   switch (row.displayActionCode) {
     case "use_target_as_starting_point":
-      return `- ${row.exerciseLabel}: use the target as a starting point; adjust by feel.`;
+      return targetLoad
+        ? `- ${row.exerciseLabel}: start at ${targetLoad}; adjust by feel.`
+        : `- ${row.exerciseLabel}: use the target as a starting point; adjust by feel.`;
     case "hold_target_load":
-      return `- ${row.exerciseLabel}: hold the target load unless the first set feels clearly too easy or too hard.`;
+      return targetLoad
+        ? `- ${row.exerciseLabel}: start at ${targetLoad}; hold unless the first set feels clearly too easy or too hard.`
+        : `- ${row.exerciseLabel}: hold the target load unless the first set feels clearly too easy or too hard.`;
     case "machine_or_cable_target_may_need_calibration":
-      return `- ${row.exerciseLabel}: machine/cable target may need calibration.`;
+      return targetLoad
+        ? `- ${row.exerciseLabel}: start at ${targetLoad}; first working set calibrates this machine/cable target; reduce one load step if reps fall short or RPE jumps.`
+        : `- ${row.exerciseLabel}: first working set calibrates this machine/cable target; reduce one load step if reps fall short or RPE jumps.`;
     default:
-      return `- ${row.exerciseLabel}: use the written target as guidance and calibrate from the first working set.`;
+      return targetLoad
+        ? `- ${row.exerciseLabel}: start at ${targetLoad}; calibrate from the first working set.`
+        : `- ${row.exerciseLabel}: use the written target as guidance and calibrate from the first working set.`;
   }
 }
 
@@ -1218,7 +1304,12 @@ export function buildPreSessionReadinessContract(
     nextSession: nextProjectedSession,
     recommendations: doseClosure.recommendations,
   });
-  const prescriptionConfidenceWatches = buildPrescriptionConfidenceWatches(generated);
+  const prescriptionConfidenceWatches = buildPrescriptionConfidenceWatches(
+    generated,
+    input.generation && !("error" in input.generation)
+      ? input.generation.prescriptionReadouts
+      : undefined
+  );
   const workoutPreview = buildWorkoutPreview(generated);
   const diagnosticFatigue = doseDiagnostics.flatMap((diagnostic) => {
     if (diagnostic.fatigueDensityConcern.level === "none") {

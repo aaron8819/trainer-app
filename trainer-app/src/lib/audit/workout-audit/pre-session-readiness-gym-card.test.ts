@@ -299,6 +299,8 @@ describe("pre-session readiness gym-card adapter", () => {
               displayActionCode: "hold_target_load",
               severity: "info",
               confidence: 0.8,
+              targetLoad: 185,
+              adjustmentRangeBasis: "target_load_start",
               source: "generated_progression_trace",
             },
             {
@@ -308,6 +310,14 @@ describe("pre-session readiness gym-card adapter", () => {
               displayActionCode: "machine_or_cable_target_may_need_calibration",
               severity: "warning",
               confidence: 0.7,
+              targetLoad: 80,
+              adjustmentRangeBasis: "exact_range",
+              suggestedAdjustmentRange: {
+                minLoad: 70,
+                maxLoad: 80,
+                unit: "lb",
+                basis: "target_effort_load_mismatch",
+              },
               source: "generated_progression_trace",
             },
           ],
@@ -331,12 +341,13 @@ describe("pre-session readiness gym-card adapter", () => {
         exerciseLabel: "Bench Press",
         confidence: 0.8,
         message:
-          "Bench Press: Hold the target load unless the first set feels clearly too easy or too hard.",
+          "Bench Press: Start at 185 lb; hold unless the first set feels clearly too easy or too hard.",
       }),
       expect.objectContaining({
         kind: "prescription_confidence",
         exerciseLabel: "Cable Row",
-        message: "Cable Row: Machine/cable target may need calibration.",
+        message:
+          "Cable Row: Start at 80 lb; use 70-80 lb if first-set reps or RPE are off.",
       }),
     ]);
     expect(JSON.stringify(dto)).not.toContain("progression trace unavailable");

@@ -33,6 +33,20 @@ type MeasuredRedistributionProjectionRow =
   MeasuredRedistributionProjection["rows"][number];
 type AlternateCandidateDiagnostic =
   MeasuredRedistributionProjection["alternateCandidateDiagnostic"];
+type MeasuredRedistributionGateKey =
+  keyof MeasuredRedistributionProjectionRow["gates"];
+
+const MEASURED_REDISTRIBUTION_GATE_KEYS: readonly MeasuredRedistributionGateKey[] =
+  [
+    "downstreamContextAvailable",
+    "measuredShadowProjection",
+    "donorOffsetMeasured",
+    "noNetNewVolume",
+    "floorPreservation",
+    "concentrationNonRegression",
+    "materializerNonRegression",
+    "acceptanceRisk",
+  ];
 
 function demandByMuscle(
   demand: V2MesocycleDemand,
@@ -849,6 +863,12 @@ function measuredRedistributionBlockerSummary(input: {
   const acceptanceRiskCount = input.rows.filter(
     (row) => row.gates.acceptanceRisk === "fail",
   ).length;
+  const unmeasuredGateCounts = Object.fromEntries(
+    MEASURED_REDISTRIBUTION_GATE_KEYS.map((gateKey) => [
+      gateKey,
+      input.rows.filter((row) => row.gates[gateKey] === "unknown").length,
+    ]),
+  ) as MeasuredRedistributionProjection["blockerSummary"]["unmeasuredGateCounts"];
   const nextRequiredEvidence = uniqueSorted([
     ...(input.rows.length > 0 &&
     input.projectionDiff?.shadowProjection?.candidateProjection ===
@@ -897,6 +917,7 @@ function measuredRedistributionBlockerSummary(input: {
     materializerRegressionCount,
     acceptanceRiskCount,
     unknownEvidenceCount,
+    unmeasuredGateCounts,
     failedComputedGates,
     nextRequiredEvidence,
   };

@@ -1,3 +1,5 @@
+import type { PrescriptionConfidenceLoadSource } from "@/lib/api/template-session/types";
+
 export const PRE_SESSION_READINESS_CONTRACT_OWNER_SEAM =
   "api/pre-session-readiness-contract" as const;
 
@@ -61,6 +63,22 @@ export type PreSessionReadinessPrescriptionConfidenceWatchRow = {
     | "machine_or_cable_target_may_need_calibration";
   severity: "info" | "warning";
   confidence?: number;
+  targetLoad?: number | null;
+  targetReps?: number | null;
+  repRange?: { min: number; max: number } | null;
+  targetRpe?: number | null;
+  targetRir?: number | null;
+  loadSource?: PrescriptionConfidenceLoadSource;
+  loadConfidence?: "high" | "medium" | "low";
+  cautionLevel?: "none" | "notice" | "caution";
+  cautionReason?: string | null;
+  adjustmentRangeBasis?: "exact_range" | "target_load_start" | "not_available";
+  suggestedAdjustmentRange?: {
+    minLoad: number;
+    maxLoad: number;
+    unit: "lb";
+    basis: string;
+  } | null;
   source: "generated_progression_trace";
 };
 
@@ -225,6 +243,43 @@ function isStringArray(value: unknown): value is string[] {
 
 function isOptionalFiniteNumber(value: unknown): boolean {
   return value == null || (typeof value === "number" && Number.isFinite(value));
+}
+
+function hasValidOptionalRepRange(value: unknown): boolean {
+  return (
+    value == null ||
+    (isRecord(value) &&
+      typeof value.min === "number" &&
+      Number.isFinite(value.min) &&
+      typeof value.max === "number" &&
+      Number.isFinite(value.max))
+  );
+}
+
+function hasValidOptionalAdjustmentRange(value: unknown): boolean {
+  return (
+    value == null ||
+    (isRecord(value) &&
+      typeof value.minLoad === "number" &&
+      Number.isFinite(value.minLoad) &&
+      typeof value.maxLoad === "number" &&
+      Number.isFinite(value.maxLoad) &&
+      value.unit === "lb" &&
+      typeof value.basis === "string")
+  );
+}
+
+function isLoadSource(value: unknown): value is PrescriptionConfidenceLoadSource {
+  return (
+    value === "history" ||
+    value === "baseline" ||
+    value === "estimate" ||
+    value === "existing_target_load" ||
+    value === "runtime_added_same_exercise_calibration_anchor" ||
+    value === "bodyweight" ||
+    value === "none" ||
+    value === "unknown"
+  );
 }
 
 function isOwnerSeam(value: unknown): value is PreSessionReadinessContractOwnerSeam {
@@ -445,6 +500,26 @@ function hasValidPrescriptionConfidenceWatch(
       value.displayActionCode === "machine_or_cable_target_may_need_calibration") &&
     (value.severity === "info" || value.severity === "warning") &&
     isOptionalFiniteNumber(value.confidence) &&
+    isOptionalFiniteNumber(value.targetLoad) &&
+    isOptionalFiniteNumber(value.targetReps) &&
+    hasValidOptionalRepRange(value.repRange) &&
+    isOptionalFiniteNumber(value.targetRpe) &&
+    isOptionalFiniteNumber(value.targetRir) &&
+    (value.loadSource == null || isLoadSource(value.loadSource)) &&
+    (value.loadConfidence == null ||
+      value.loadConfidence === "high" ||
+      value.loadConfidence === "medium" ||
+      value.loadConfidence === "low") &&
+    (value.cautionLevel == null ||
+      value.cautionLevel === "none" ||
+      value.cautionLevel === "notice" ||
+      value.cautionLevel === "caution") &&
+    (value.cautionReason == null || typeof value.cautionReason === "string") &&
+    (value.adjustmentRangeBasis == null ||
+      value.adjustmentRangeBasis === "exact_range" ||
+      value.adjustmentRangeBasis === "target_load_start" ||
+      value.adjustmentRangeBasis === "not_available") &&
+    hasValidOptionalAdjustmentRange(value.suggestedAdjustmentRange) &&
     value.source === "generated_progression_trace"
   );
 }

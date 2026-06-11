@@ -1489,6 +1489,15 @@ type PlanningRealitySummaryArtifact = {
         preselectionDemands?: PreselectionDemandDiagnostic[] | null;
       } | null;
     } | null;
+    plannerOnlyNoRepair?: {
+      repairPromotionScoreboard?:
+        | NonNullable<
+            NonNullable<
+              NonNullable<WorkoutAuditArtifact["mesocycleExplain"]>["plannerOnlyNoRepair"]
+            >["repairPromotionScoreboard"]
+          >
+        | null;
+    } | null;
   } | null;
 };
 
@@ -2857,6 +2866,13 @@ export function buildPlanningRealitySummary(input: {
   const shadowRepairSummary =
     planningReality.shadowRepairSummary ?? deriveShadowRepairSummary(shadowRepairMateriality);
   const promotionCandidates = asArray(planningReality.promotionCandidates);
+  const repairPromotionScoreboard =
+    input.artifact.mesocycleExplain?.plannerOnlyNoRepair?.repairPromotionScoreboard;
+  const scoreboardPromotionCandidates = asArray(
+    repairPromotionScoreboard?.promotionCandidates
+  );
+  const legacyRepairQuarantine =
+    repairPromotionScoreboard?.interpretation.legacyRepairQuarantine;
   const preselectionDemands = asArray(
     input.artifact.mesocycleExplain?.preview?.projectionDiagnostics?.preselectionDemands
   );
@@ -2995,8 +3011,18 @@ export function buildPlanningRealitySummary(input: {
   lines.push(
     `- suspiciousRepairsNotEligibleForPromotion: ${suspiciousRepairsForOutput.length}`
   );
+  if (legacyRepairQuarantine) {
+    lines.push(
+      `- legacyRepairQuarantine: evidence_only behaviorCandidates=${legacyRepairQuarantine.behaviorPromotionCandidateCount} quarantined=${legacyRepairQuarantine.quarantinedRowCount} staleArtifacts=${legacyRepairQuarantine.staleRepairedProjectionArtifactCount}`
+    );
+  }
   const promotionCandidateSignal =
-    promotionCandidates.length > 0
+    repairPromotionScoreboard
+      ? scoreboardPromotionCandidates
+          .map((row) => `${row.slotId} ${row.muscle} -> ${row.correctOwner}`)
+          .slice(0, 6)
+          .join("; ")
+      : promotionCandidates.length > 0
       ? promotionCandidates
           .map((row) => `${row.slotId} ${row.muscle} -> ${row.suggestedPromotion}`)
           .slice(0, 6)
@@ -3051,8 +3077,21 @@ export function buildPlanningRealitySummary(input: {
   lines.push(...formatShadowRepairList(remainingRepairCleanupRows).split("; ").map((row) => `- ${row}`));
   lines.push("", "Suspicious repairs not eligible for promotion:");
   lines.push(...formatSuspiciousRepairs(suspiciousRepairsForOutput));
-  lines.push("", "Promotion candidates:");
-  if (promotionCandidates.length > 0) {
+  lines.push("", repairPromotionScoreboard ? "Behavior promotion candidates:" : "Promotion candidates:");
+  if (repairPromotionScoreboard) {
+    if (scoreboardPromotionCandidates.length === 0) {
+      lines.push("- none");
+    } else {
+      lines.push(
+        ...scoreboardPromotionCandidates
+          .slice(0, 8)
+          .map(
+            (row) =>
+              `- ${row.slotId}: ${row.muscle} (${row.action}, ${row.materiality}) -> ${row.correctOwner}`
+          )
+      );
+    }
+  } else if (promotionCandidates.length > 0) {
     lines.push(...formatPromotionCandidates(promotionCandidates));
   } else {
     lines.push(...formatShadowRepairList(likelyAvoidableRepairs).split("; ").map((row) => `- ${row}`));
@@ -4204,6 +4243,8 @@ export function buildPlannerOnlyNoRepairSummary(input: {
       ]
     : [];
   const repairScoreboard = noRepair.repairPromotionScoreboard;
+  const legacyRepairQuarantine =
+    repairScoreboard?.interpretation.legacyRepairQuarantine;
   const basePlanCompare = noRepair.v2BasePlanCompare;
   const shadowConsumption = noRepair.v2BasePlanShadowConsumptionTrial;
   const basePlanCompareLines = basePlanCompare
@@ -4244,6 +4285,9 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         "V2 Repair Promotion Scoreboard",
         "------------------------------",
         `Raw repair evidence: material=${repairScoreboard.rawRepairEvidence.materialRepairCount} major=${repairScoreboard.rawRepairEvidence.majorRepairCount} likely-avoidable=${repairScoreboard.rawRepairEvidence.likelyAvoidableMaterialRepairCount} remaining=${repairScoreboard.rawRepairEvidence.remainingMaterialRepairCount} suspicious=${repairScoreboard.rawRepairEvidence.suspiciousRepairCount}`,
+        legacyRepairQuarantine
+          ? `Legacy repair quarantine: role=${legacyRepairQuarantine.repairedProjectionRole} behaviorCandidates=${legacyRepairQuarantine.behaviorPromotionCandidateCount} quarantined=${legacyRepairQuarantine.quarantinedRowCount} staleArtifacts=${legacyRepairQuarantine.staleRepairedProjectionArtifactCount}`
+          : "Legacy repair quarantine: not_available",
         `Promotion candidates: ${repairScoreboard.summary.promotionCandidateCount}`,
         `Safety/do-not-promote: ${repairScoreboard.summary.safetyNetCount}`,
         `Collateral/diagnostic: ${repairScoreboard.summary.collateralDiagnosticCount + repairScoreboard.summary.diagnosticOnlyCount}`,

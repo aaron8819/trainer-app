@@ -4,14 +4,19 @@ import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-rec
 
 const mocks = vi.hoisted(() => {
   const workoutFindFirst = vi.fn();
+  const workoutExerciseFindMany = vi.fn();
   const generateWorkoutExplanation = vi.fn();
 
   return {
     workoutFindFirst,
+    workoutExerciseFindMany,
     generateWorkoutExplanation,
     prisma: {
       workout: {
         findFirst: workoutFindFirst,
+      },
+      workoutExercise: {
+        findMany: workoutExerciseFindMany,
       },
     },
   };
@@ -181,6 +186,52 @@ function makeExercise(
   };
 }
 
+function makeRecentWorkoutExercise(
+  id: string,
+  input: {
+    workoutId?: string;
+    exerciseId?: string;
+    name?: string;
+    scheduledDate?: Date;
+    completedAt?: Date | null;
+    advancesSplit?: boolean;
+    selectionMode?: "INTENT" | "MANUAL";
+    sessionIntent?: "UPPER" | "BODY_PART";
+    selectionMetadata?: Record<string, unknown>;
+    sets?: ReturnType<typeof makeSet>[];
+  } = {}
+) {
+  return {
+    id,
+    workoutId: input.workoutId ?? `${id}-workout`,
+    exerciseId: input.exerciseId ?? "bench",
+    orderIndex: 0,
+    section: "MAIN",
+    isMainLift: true,
+    exercise: {
+      name: input.name ?? "Bench Press",
+    },
+    workout: {
+      id: input.workoutId ?? `${id}-workout`,
+      scheduledDate: input.scheduledDate ?? new Date("2026-05-25T12:00:00.000Z"),
+      completedAt: input.completedAt ?? new Date("2026-05-25T13:00:00.000Z"),
+      selectionMetadata: {
+        sessionDecisionReceipt: makeReceipt(),
+        ...(input.selectionMetadata ?? {}),
+      },
+      advancesSplit: input.advancesSplit ?? true,
+      selectionMode: input.selectionMode ?? "INTENT",
+      sessionIntent: input.sessionIntent ?? "UPPER",
+      templateId: null,
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+    },
+    sets: input.sets ?? [
+      makeSet(`${id}-set-1`, { actualLoad: 100, actualReps: 10, actualRpe: 8 }),
+      makeSet(`${id}-set-2`, { actualLoad: 100, actualReps: 10, actualRpe: 8 }),
+    ],
+  };
+}
+
 function makeWorkout(
   overrides: Record<string, unknown> = {},
   selectionMetadata: Record<string, unknown> = {}
@@ -273,6 +324,7 @@ function mockExplanation(input: {
 describe("loadPostSessionReviewContractForWorkout", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.workoutExerciseFindMany.mockResolvedValue([]);
     mockExplanation();
   });
 
@@ -287,6 +339,18 @@ describe("loadPostSessionReviewContractForWorkout", () => {
     expect(mocks.workoutFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "workout-1", userId: "user-1" },
+      })
+    );
+    expect(mocks.workoutExerciseFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          exerciseId: { in: ["bench"] },
+          workoutId: { not: "workout-1" },
+          workout: expect.objectContaining({
+            userId: "user-1",
+            scheduledDate: { lt: new Date("2026-06-01T12:00:00.000Z") },
+          }),
+        }),
       })
     );
     expect(result.status).toBe("ready");
@@ -336,6 +400,93 @@ describe("loadPostSessionReviewContractForWorkout", () => {
       reason: "not_ready",
     });
     expect(mocks.generateWorkoutExplanation).not.toHaveBeenCalled();
+    expect(mocks.workoutExerciseFindMany).not.toHaveBeenCalled();
+  });
+
+  it("includes bounded exact-exercise recent calibration history as read-only evidence", async () => {
+    mocks.workoutFindFirst.mockResolvedValue(makeWorkout());
+    mocks.workoutExerciseFindMany.mockResolvedValue([
+      makeRecentWorkoutExercise("prior-heavy", {
+        workoutId: "prior-heavy-workout",
+        scheduledDate: new Date("2026-05-25T12:00:00.000Z"),
+        completedAt: new Date("2026-05-25T13:00:00.000Z"),
+        sets: [
+          makeSet("prior-heavy-set-1", {
+            actualLoad: 100,
+            actualReps: 10,
+            actualRpe: 9.5,
+          }),
+          makeSet("prior-heavy-set-2", {
+            actualLoad: 100,
+            actualReps: 10,
+            actualRpe: 9.5,
+          }),
+        ],
+      }),
+      makeRecentWorkoutExercise("prior-clean", {
+        workoutId: "prior-clean-workout",
+        scheduledDate: new Date("2026-05-20T12:00:00.000Z"),
+        completedAt: new Date("2026-05-20T13:00:00.000Z"),
+      }),
+      makeRecentWorkoutExercise("prior-gap-fill", {
+        workoutId: "prior-gap-fill-workout",
+        scheduledDate: new Date("2026-05-18T12:00:00.000Z"),
+        completedAt: new Date("2026-05-18T13:00:00.000Z"),
+        advancesSplit: false,
+        sessionIntent: "BODY_PART",
+        selectionMetadata: {
+          sessionDecisionReceipt: {
+            ...makeReceipt(),
+            exceptions: ["optional_gap_fill"],
+          },
+        },
+      }),
+    ]);
+
+    const result = await loadPostSessionReviewContractForWorkout(
+      "user-1",
+      "workout-1"
+    );
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") {
+      throw new Error("expected ready contract");
+    }
+    expect(result.contract.prescriptionCalibration.recentExposureSummary).toEqual({
+      source: "exact_exercise_prior_performed_workouts",
+      readOnly: true,
+      affectsPrescriptionPolicy: false,
+      affectsProgressionPolicy: false,
+      rows: [
+        {
+          exerciseId: "bench",
+          exerciseName: "Bench Press",
+          priorExposureCount: 3,
+          lookbackWorkoutLimit: 3,
+          latestPerformedAt: "2026-05-25T13:00:00.000Z",
+          coherentCount: 2,
+          loadTooHeavyCount: 1,
+          loadTooLightCount: 0,
+          mixedSignalCount: 0,
+          lowCoverageCount: 0,
+          insufficientEvidenceCount: 0,
+          sessionLocalCount: 0,
+          evidenceOnly: true,
+          affectsPrescriptionPolicy: false,
+          affectsProgressionPolicy: false,
+        },
+      ],
+    });
+    expect(result.contract.learningSignals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "calibration_signal",
+          severity: "watch",
+          summary:
+            "Recent exact-exercise calibration history has watch evidence for 1 exercise(s).",
+        }),
+      ])
+    );
   });
 
   it("includes SetLog-derived performed and skipped reality", async () => {
@@ -375,6 +526,11 @@ describe("loadPostSessionReviewContractForWorkout", () => {
       skippedSetCount: 1,
       medianPerformedLoad: 110,
       medianReps: 12,
+      targetRpe: 8,
+      medianActualRpe: 8,
+      repRangeResult: "in_range",
+      effortResult: "near_target",
+      performedRealityCoherence: "low_coverage",
     });
   });
 

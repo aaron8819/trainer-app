@@ -255,6 +255,14 @@ describe("pre-session readiness gym-card adapter", () => {
                 "machine_or_cable_target_may_need_calibration",
               severity: "warning",
               confidence: 0.72,
+              targetLoad: 80,
+              adjustmentRangeBasis: "exact_range",
+              suggestedAdjustmentRange: {
+                minLoad: 70,
+                maxLoad: 80,
+                unit: "lb",
+                basis: "target_effort_load_mismatch",
+              },
               source: "generated_progression_trace",
             },
             {
@@ -264,6 +272,8 @@ describe("pre-session readiness gym-card adapter", () => {
               displayActionCode: "hold_target_load",
               severity: "info",
               confidence: 0.82,
+              targetLoad: 45,
+              adjustmentRangeBasis: "target_load_start",
               source: "generated_progression_trace",
             },
             "- Incline Press: action=hold confidence=0.8 reasons=stable_history",
@@ -286,13 +296,13 @@ describe("pre-session readiness gym-card adapter", () => {
         kind: "prescription_confidence",
         exerciseLabel: "Close-Grip Seated Cable Row",
         message:
-          "Close-Grip Seated Cable Row: Machine/cable target may need calibration.",
+          "Close-Grip Seated Cable Row: Start at 80 lb; use 70-80 lb if first-set reps or RPE are off.",
       }),
       expect.objectContaining({
         kind: "prescription_confidence",
         exerciseLabel: "Cable Triceps Pushdown",
         message:
-          "Cable Triceps Pushdown: Hold the target load unless the first set feels clearly too easy or too hard.",
+          "Cable Triceps Pushdown: Start at 45 lb; hold unless the first set feels clearly too easy or too hard.",
       }),
       {
         kind: "prescription_confidence",

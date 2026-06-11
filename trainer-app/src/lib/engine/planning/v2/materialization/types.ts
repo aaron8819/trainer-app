@@ -55,6 +55,16 @@ export type V2MaterializedSelection = {
   duplicateFamily: string;
 };
 
+export type V2MaterializationDiagnosticLaneSelectionIntentOverride = {
+  version: 1;
+  source: "v2_materializer_diagnostic_lane_selection_intent_override";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  dryRunOnly: true;
+  reason: "read_only_materializer_comparison_trial";
+  consumeScopedLaneIds: string[];
+};
+
 export type V2ExerciseMaterializationInput = {
   exerciseSelectionPlan: V2ExerciseSelectionPlan;
   inventory: V2MaterializationExercise[];
@@ -70,6 +80,7 @@ export type V2ExerciseMaterializationInput = {
     priorMaterializedSelections?: V2MaterializedSelection[];
     identityPreservationMode?: "preserve_exact_lane_identity";
   };
+  diagnosticLaneSelectionIntentOverride?: V2MaterializationDiagnosticLaneSelectionIntentOverride;
 };
 
 export type V2ExerciseMaterializationPlan = {

@@ -13,6 +13,7 @@ export { buildV2MaterializationDryRunReport } from "./materialization/dry-run-re
 export { buildV2MaterializationPromotionReadiness } from "./materialization/promotion-readiness";
 export { buildV2MaterializationPreparationEvidence } from "./materialization/preparation-evidence";
 export { buildV2ExerciseMaterializationPlan } from "./materialization/materializer";
+export { compareV2MaterializedPlans } from "./materialization/materialized-plan-compare";
 export { buildV2MesocycleDemand } from "./mesocycle-demand";
 export {
   buildV2DonorSurplusEvidence,
@@ -183,6 +184,10 @@ export type {
   V2BasePlanShadowConsumptionTrial,
   V2BasePlanShadowConsumptionTrialNextSafeAction,
 } from "./materialization/base-plan-compare";
+export type {
+  V2MaterializedPlanComparison,
+  V2MaterializedPlanComparisonSlot,
+} from "./materialization/materialized-plan-compare";
 export type {
   V2BasePlanValidation,
   V2BasePlanValidationInput,

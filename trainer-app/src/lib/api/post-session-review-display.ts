@@ -109,6 +109,58 @@ function formatLoad(value: number | null): string {
     : "not captured";
 }
 
+function formatRepRangeResult(
+  row: PostSessionReviewPrescriptionCalibrationRow
+): string | null {
+  if (row.medianReps == null) {
+    return null;
+  }
+
+  const repLabel = `${formatLoad(row.medianReps)} median reps`;
+  switch (row.repRangeResult) {
+    case "below_target":
+      return `${repLabel}, below the target rep range`;
+    case "above_target":
+      return `${repLabel}, above the target rep range`;
+    case "in_range":
+      return `${repLabel}, in the target rep range`;
+    case "unknown":
+      return `${repLabel}`;
+  }
+}
+
+function formatEffortResult(
+  row: PostSessionReviewPrescriptionCalibrationRow
+): string | null {
+  if (row.medianActualRpe == null) {
+    return null;
+  }
+
+  const rpeLabel = `RPE ${formatLoad(row.medianActualRpe)}`;
+  switch (row.effortResult) {
+    case "above_target":
+      return `${rpeLabel}, harder than target`;
+    case "below_target":
+      return `${rpeLabel}, easier than target`;
+    case "near_target":
+      return `${rpeLabel}, near target`;
+    case "unknown":
+      return rpeLabel;
+  }
+}
+
+function performedRealityDetail(
+  row: PostSessionReviewPrescriptionCalibrationRow
+): string {
+  const parts = [
+    `Performed median load ${formatLoad(row.medianPerformedLoad)} vs target ${formatLoad(row.targetLoad)}`,
+    formatRepRangeResult(row),
+    formatEffortResult(row),
+  ].filter((part): part is string => Boolean(part));
+
+  return `${parts.join("; ")}.`;
+}
+
 function buildCompletion(
   contract: PostSessionReviewContract
 ): PostSessionReviewDisplayCompletion {
@@ -253,14 +305,14 @@ function calibrationCopy(
       return {
         status: "watch",
         headline: `${row.exerciseName} target looked too heavy`,
-        detail: `Performed median load ${formatLoad(row.medianPerformedLoad)} vs target ${formatLoad(row.targetLoad)}.`,
+        detail: performedRealityDetail(row),
         nextExposureNote: "Next exposure: review the starting point before increasing.",
       };
     case "target_too_low":
       return {
         status: "watch",
         headline: `${row.exerciseName} target looked too light`,
-        detail: `Performed median load ${formatLoad(row.medianPerformedLoad)} vs target ${formatLoad(row.targetLoad)}.`,
+        detail: performedRealityDetail(row),
         nextExposureNote: "Next exposure: raise starting point modestly.",
       };
     case "recalibrated_hold":
@@ -407,7 +459,7 @@ function learningSignalCopy(signal: PostSessionReviewLearningSignal): {
     case "calibration_signal":
       return {
         label: "Load calibration",
-        summary: "Load targets include review-worthy calibration evidence.",
+        summary: signal.summary,
       };
     case "weekly_volume_signal":
       return {

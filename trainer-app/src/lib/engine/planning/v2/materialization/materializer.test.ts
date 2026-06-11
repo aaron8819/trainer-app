@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildV2CapacityMaterializerProjectionFromLiveContext,
+  buildV2LaneIntentMaterializerProjectionFromLiveContext,
   buildV2LiveContextMaterializationDryRunHarness,
   normalizeLiveInventoryForV2Materialization,
 } from "@/lib/audit/workout-audit/v2-materialization-live-context-dry-run";
@@ -9,6 +10,7 @@ import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { buildV2PlannerMesocyclePolicy } from "../mesocycle-policy";
 import { buildV2MaterializationDryRunReport } from "./dry-run-report";
 import { buildV2ExerciseMaterializationPlan } from "./materializer";
+import { compareV2MaterializedPlans } from "./materialized-plan-compare";
 import { buildV2MaterializationPromotionReadiness } from "./promotion-readiness";
 import { DEFAULT_V2_EXERCISE_CLASS_TAXONOMY } from "./taxonomy";
 import type { V2ExerciseSelectionPlan } from "../types";
@@ -168,6 +170,7 @@ function materialize(input: {
   favoriteExerciseIds?: string[];
   painConflictExerciseIds?: string[];
   continuity?: V2ExerciseMaterializationInput["continuity"];
+  diagnosticLaneSelectionIntentOverride?: V2ExerciseMaterializationInput["diagnosticLaneSelectionIntentOverride"];
 }) {
   return buildV2ExerciseMaterializationPlan({
     exerciseSelectionPlan: input.plan,
@@ -179,6 +182,12 @@ function materialize(input: {
       painConflictExerciseIds: input.painConflictExerciseIds ?? [],
     },
     ...(input.continuity ? { continuity: input.continuity } : {}),
+    ...(input.diagnosticLaneSelectionIntentOverride
+      ? {
+          diagnosticLaneSelectionIntentOverride:
+            input.diagnosticLaneSelectionIntentOverride,
+        }
+      : {}),
   });
 }
 
@@ -220,6 +229,31 @@ const chestBiasedPressSupportIntent = laneSelectionIntent({
   laneJob: "support_coverage",
   requiredMovementPattern: "chest_press",
   allowedExerciseClasses: ["chest_press", "chest_biased_press_support"],
+  disallowedExerciseClasses: ["shoulder_biased_press"],
+  directnessRequirement: "high_directness",
+  minimumTargetStimulus: {
+    muscle: "Chest",
+    minimumPerSetStimulus: 0.75,
+  },
+  stabilityPreference: "stable_preferred",
+  fatiguePreference: "moderate_or_low",
+  duplicatePolicy: "prefer_variation_if_clean",
+  capacityPriority: "high",
+  fallbackPolicy: "allow_labeled_fallback",
+  identityPreservationMode: "variation_allowed_within_lane_job",
+});
+
+const chestSecondExposureIntent = laneSelectionIntent({
+  version: 0,
+  source: "v2_planner_policy",
+  contract: "laneSelectionIntent",
+  readOnly: true,
+  affectsScoringOrGeneration: false,
+  consumedByMaterializer: false,
+  laneJob: "support_coverage",
+  requiredMovementPattern: "chest_press_or_fly",
+  preferredMovementPatterns: ["chest_press"],
+  allowedExerciseClasses: ["chest_press", "chest_fly"],
   disallowedExerciseClasses: ["shoulder_biased_press"],
   directnessRequirement: "high_directness",
   minimumTargetStimulus: {
@@ -3679,6 +3713,76 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     ]);
   });
 
+  it("keeps chest-second laneSelectionIntent diagnostic override out of normal materialization", () => {
+    const selectionPlan = multiSlotPlan([
+      {
+        slotId: "upper_b",
+        slotIndex: 0,
+        lanes: [
+          lane({
+            laneId: "chest_second_exposure",
+            role: "support",
+            primaryMuscles: ["Chest"],
+            acceptableExerciseClasses: ["distinct_chest_press_or_fly"],
+            laneSelectionIntent: chestSecondExposureIntent,
+          }),
+        ],
+      },
+    ]);
+    const lowStimulusPress = exercise({
+      exerciseId: "low-stimulus-press",
+      name: "Low Stimulus Chest Press",
+      movementPatterns: ["horizontal_press"],
+      primaryMuscles: ["Chest"],
+      stimulusByMusclePerSet: { Chest: 0.4 },
+    });
+
+    const baseline = materialize({
+      plan: selectionPlan,
+      inventory: [lowStimulusPress],
+    });
+    const trial = materialize({
+      plan: selectionPlan,
+      inventory: [lowStimulusPress],
+      diagnosticLaneSelectionIntentOverride: {
+        version: 1,
+        source: "v2_materializer_diagnostic_lane_selection_intent_override",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        dryRunOnly: true,
+        reason: "read_only_materializer_comparison_trial",
+        consumeScopedLaneIds: ["upper_b:chest_second_exposure"],
+      },
+    });
+
+    expect(baseline).toMatchObject({
+      status: "materialized",
+      blockers: [],
+      slots: [
+        {
+          slotId: "upper_b",
+          exercises: [
+            {
+              exerciseId: "low-stimulus-press",
+              laneIds: ["chest_second_exposure"],
+            },
+          ],
+        },
+      ],
+    });
+    expect(trial).toMatchObject({
+      status: "blocked",
+      blockers: [
+        {
+          slotId: "upper_b",
+          laneId: "chest_second_exposure",
+          reason: "no_class_match",
+        },
+      ],
+      slots: [{ slotId: "upper_b", exercises: [] }],
+    });
+  });
+
   it("builds a compact live-context dry-run harness result from normalized inventory", () => {
     const result = buildV2LiveContextMaterializationDryRunHarness({
       ownerContext: { userId: "user-1", ownerEmail: "owner@test.local" },
@@ -3746,6 +3850,55 @@ describe("buildV2ExerciseMaterializationPlan", () => {
         "production_acceptance_write_path",
         "slotPlanSeedJson_write_gate",
         "runtime_replay_consumption",
+      ]),
+    );
+  });
+
+  it("projects a chest-second lane-intent shadow trial without production consumption", () => {
+    const plannerPolicy = buildV2PlannerMesocyclePolicy();
+    const result = buildV2LaneIntentMaterializerProjectionFromLiveContext({
+      plannerPolicy,
+      inventory: representativeV2Inventory,
+    });
+
+    expect(result).toMatchObject({
+      version: 1,
+      source: "v2_lane_intent_materializer_projection",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      dryRunOnly: true,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+      projectionMode: "lane_intent_shadow_materializer_dry_run",
+      trialId: "upper_b_chest_second_exposure_lane_intent_shadow",
+      comparedPlans: {
+        baselineAvailable: true,
+        trialAvailable: true,
+        inventoryExerciseCount: representativeV2Inventory.length,
+      },
+      targetLane: {
+        scopedLaneId: "upper_b:chest_second_exposure",
+        slotId: "upper_b",
+        laneId: "chest_second_exposure",
+        intentAvailable: true,
+        baselineConsumedByProduction: false,
+        trialConsumesLaneIntent: true,
+      },
+      safeForBehaviorPromotion: false,
+    });
+    expect(result.blockersBeforeBehavior).toEqual(
+      expect.arrayContaining([
+        "acceptance_gate_not_rerun",
+        "diagnostic_lane_intent_override_not_consumed_by_runtime",
+        "production_materializer_allowlist_unchanged",
+      ]),
+    );
+    expect(result.limitations).toEqual(
+      expect.arrayContaining([
+        "does_not_change_lane_selection_intent_allowlist",
+        "does_not_feed_production_materializer",
+        "does_not_write_executable_seed_truth",
+        "does_not_change_runtime_replay",
       ]),
     );
   });
@@ -3824,6 +3977,8 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       regressionCount: 0,
       improvements: [],
       regressions: [],
+      changedSlotCount: 0,
+      changedSlots: [],
     });
     expect(result.nextSafeAction).toBe("pivot_to_higher_roi_track");
     expect(result.blockersBeforeBehavior).toEqual(
@@ -3838,6 +3993,91 @@ describe("buildV2ExerciseMaterializationPlan", () => {
         "capacity_trial_did_not_change_candidate_identity_or_sets",
       ]),
     );
+  });
+
+  it("compares materialized baseline and trial plans without executable policy", () => {
+    const baselinePlan: V2ExerciseMaterializationPlan = {
+      version: 1,
+      source: "v2_exercise_materialization",
+      dryRunOnly: true,
+      status: "materialized",
+      slots: [
+        {
+          slotId: "upper_a",
+          exercises: [
+            {
+              exerciseId: "machine-chest-press",
+              role: "CORE_COMPOUND",
+              setCount: 3,
+              laneIds: ["chest_anchor"],
+            },
+          ],
+        },
+      ],
+      blockers: [],
+      omissions: [],
+    };
+    const trialPlan: V2ExerciseMaterializationPlan = {
+      ...baselinePlan,
+      slots: [
+        {
+          slotId: "upper_a",
+          exercises: [
+            ...baselinePlan.slots[0].exercises,
+            {
+              exerciseId: "cable-fly",
+              role: "ACCESSORY",
+              setCount: 2,
+              laneIds: ["chest_second_exposure"],
+            },
+          ],
+        },
+      ],
+    };
+
+    const comparison = compareV2MaterializedPlans({
+      baselinePlan,
+      trialPlan,
+      baselineBlockerCount: 1,
+      trialBlockerCount: 0,
+      trialMaterializerStatus: "materialized",
+      trialSeedShapeCompatible: true,
+    });
+
+    expect(comparison).toMatchObject({
+      version: 1,
+      source: "v2_materialized_plan_comparison",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      baselineAvailable: true,
+      trialAvailable: true,
+      summary: {
+        selectedIdentityDelta: 1,
+        totalSetDelta: 2,
+        materializerBlockerDelta: -1,
+        changedSlotCount: 1,
+        addedIdentityCount: 1,
+        removedIdentityCount: 0,
+      },
+      slots: [
+        {
+          slotId: "upper_a",
+          baselineExerciseCount: 1,
+          trialExerciseCount: 2,
+          exerciseCountDelta: 1,
+          baselineSetCount: 3,
+          trialSetCount: 5,
+          setDelta: 2,
+          addedExerciseIds: ["cable-fly"],
+          removedExerciseIds: [],
+        },
+      ],
+      improvements: [
+        "added_identities:1",
+        "materializer_blockers_reduced:1",
+      ],
+      regressions: [],
+    });
   });
 
   it("normalizes live exercise rows into materializer inventory without seed fields", () => {

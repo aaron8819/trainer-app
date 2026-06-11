@@ -83,6 +83,7 @@ import {
   buildV2BasePlanCompareFromLiveContext,
   buildV2BasePlanShadowConsumptionTrialFromLiveContext,
   buildV2CapacityMaterializerProjectionFromLiveContext,
+  buildV2LaneIntentMaterializerProjectionFromLiveContext,
   normalizeLiveInventoryForV2Materialization,
 } from "./v2-materialization-live-context-dry-run";
 import {
@@ -8677,6 +8678,12 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         ...input.v2BasePlanCompareContext,
       })
     : undefined;
+  const v2LaneIntentMaterializerProjection = input.v2BasePlanCompareContext
+    ? buildV2LaneIntentMaterializerProjectionFromLiveContext({
+        plannerPolicy,
+        ...input.v2BasePlanCompareContext,
+      })
+    : undefined;
   const lowAxialHipExtensionLimitation =
     buildLowAxialHipExtensionLimitation({
       noRepair,
@@ -8742,6 +8749,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     v2SelectionCapacityPlanDiagnostic,
     ...(v2CapacityMaterializerProjection
       ? { v2CapacityMaterializerProjection }
+      : {}),
+    ...(v2LaneIntentMaterializerProjection
+      ? { v2LaneIntentMaterializerProjection }
       : {}),
     plannerOwnedAccumulationProjection,
     v2ExerciseSelectionPlanDiagnostic,

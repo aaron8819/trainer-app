@@ -333,6 +333,23 @@ function buildNextSessionDescriptor(nextSession: HomeProgramSupportData["nextSes
   return intentLabel === "Workout" ? null : `${intentLabel} session`;
 }
 
+function buildContinuitySummaryLine(input: {
+  lastCompletedDescriptor: string | null;
+  nextDueLabel: string | null;
+  nextDueDescriptor: string | null;
+}): string | null {
+  if (!input.lastCompletedDescriptor && !input.nextDueLabel) {
+    return null;
+  }
+
+  const last = input.lastCompletedDescriptor ?? "No completed sessions yet";
+  const next = input.nextDueLabel
+    ? `${input.nextDueLabel}${input.nextDueDescriptor ? ` (${input.nextDueDescriptor})` : ""}`
+    : "No next session yet";
+
+  return `Last completed: ${last}. Next due: ${next}.`;
+}
+
 function buildDecisionSummary(
   homeProgram: HomeProgramSupportData
 ): HomeDecisionSummary {
@@ -365,7 +382,11 @@ function buildContinuitySummary(input: {
     : null;
 
   return {
-    summary: null,
+    summary: buildContinuitySummaryLine({
+      lastCompletedDescriptor,
+      nextDueLabel,
+      nextDueDescriptor,
+    }),
     lastCompleted: input.lastCompleted,
     lastCompletedDescriptor,
     nextDueLabel,

@@ -96,6 +96,51 @@ function formatOptionalAddOnTitle(
   return `${item.candidateExerciseName} - ${item.reason}`;
 }
 
+function formatLoad(value: number): string {
+  return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+}
+
+function formatCalibrationRange(
+  note: PreSessionReadinessGymCardDto["calibrationNotes"][number]
+): string | null {
+  const range = note.suggestedAdjustmentRange;
+  if (
+    note.adjustmentRangeBasis !== "exact_range" ||
+    !range ||
+    !note.exerciseLabel
+  ) {
+    return null;
+  }
+
+  const target =
+    note.targetLoad == null ? "the written target" : `${formatLoad(note.targetLoad)} lb`;
+  return `${note.exerciseLabel}: start at ${target}; use ${formatLoad(range.minLoad)}-${formatLoad(range.maxLoad)} ${range.unit} if first-set reps or RPE are off.`;
+}
+
+function formatCalibrationTargetLoad(
+  note: PreSessionReadinessGymCardDto["calibrationNotes"][number]
+): string | null {
+  if (
+    note.adjustmentRangeBasis !== "target_load_start" &&
+    note.adjustmentRangeBasis !== undefined
+  ) {
+    return null;
+  }
+  if (
+    !note.exerciseLabel ||
+    typeof note.targetLoad !== "number" ||
+    !Number.isFinite(note.targetLoad)
+  ) {
+    return null;
+  }
+
+  if (note.displayActionCode === "hold_target_load") {
+    return `${note.exerciseLabel}: start at ${formatLoad(note.targetLoad)} lb; hold unless the first set feels clearly too easy or too hard.`;
+  }
+
+  return `${note.exerciseLabel}: start at ${formatLoad(note.targetLoad)} lb; calibrate from first-set reps and RPE.`;
+}
+
 function groupCalibrationNotes(
   notes: PreSessionReadinessGymCardDto["calibrationNotes"]
 ): string[] {
@@ -105,6 +150,16 @@ function groupCalibrationNotes(
   const specific: string[] = [];
 
   for (const note of notes) {
+    const calibrationRange = formatCalibrationRange(note);
+    if (calibrationRange) {
+      specific.push(calibrationRange);
+      continue;
+    }
+    const calibrationTargetLoad = formatCalibrationTargetLoad(note);
+    if (calibrationTargetLoad) {
+      specific.push(calibrationTargetLoad);
+      continue;
+    }
     if (
       note.displayActionCode === "use_target_as_starting_point" &&
       note.exerciseLabel
@@ -144,7 +199,7 @@ function groupCalibrationNotes(
   return [
     ...grouped,
     grouped.length > 0
-      ? "Adjust to stay near the target RPE. Hold if reps and form match the target; reduce if form breaks or RPE jumps."
+      ? "Adjust to stay near the target RPE. Hold if reps and form match the target; reduce one load step if reps fall short, form breaks, or RPE jumps."
       : null,
     ...specific,
   ].filter((item): item is string => Boolean(item));

@@ -233,6 +233,8 @@ describe("pre-session readiness contract consumers", () => {
         targetMuscle: "Side Delts",
         candidateExerciseName: "Cable Lateral Raise",
         source: "dose_closure_recommendation",
+        reason: "Side Delts has a small useful session-local gap.",
+        guardrail: "Skip it if the planned workout feels heavy.",
       },
     ]);
     expect(getSuppressedMusclesOrTargets(contract)).toEqual([
@@ -301,6 +303,14 @@ describe("pre-session readiness contract consumers", () => {
             displayActionCode: "hold_target_load",
             severity: "warning",
             confidence: 0.6,
+            targetLoad: 185,
+            adjustmentRangeBasis: "exact_range",
+            suggestedAdjustmentRange: {
+              minLoad: 175,
+              maxLoad: 185,
+              unit: "lb",
+              basis: "target_effort_load_mismatch",
+            },
             source: "generated_progression_trace",
           },
           "Incline Press: confidence=0.6",
@@ -319,6 +329,14 @@ describe("pre-session readiness contract consumers", () => {
         displayActionCode: "hold_target_load",
         severity: "warning",
         confidence: 0.6,
+        targetLoad: 185,
+        adjustmentRangeBasis: "exact_range",
+        suggestedAdjustmentRange: {
+          minLoad: 175,
+          maxLoad: 185,
+          unit: "lb",
+          basis: "target_effort_load_mismatch",
+        },
         source: "generated_progression_trace",
       },
       {
@@ -372,6 +390,44 @@ describe("pre-session readiness contract consumers", () => {
         derivationTrace: [],
         selectedIncompleteStatus: null,
       } as never,
+      generation: {
+        selection: {},
+        prescriptionReadouts: [
+          {
+            exerciseId: "bench",
+            exerciseName: "Bench Press",
+            targetLoad: 185,
+            targetReps: null,
+            repRange: { min: 6, max: 10 },
+            targetRpe: 8,
+            targetRir: null,
+            loadSource: "estimate",
+            confidence: "low",
+            cautionLevel: "caution",
+            cautionReason: "target_effort_load_mismatch",
+            suggestedAdjustmentRange: {
+              minLoad: 175,
+              maxLoad: 185,
+              unit: "lb",
+              basis: "target_effort_load_mismatch",
+            },
+          },
+          {
+            exerciseId: "incline",
+            exerciseName: "Incline Press",
+            targetLoad: 95,
+            targetReps: null,
+            repRange: { min: 8, max: 12 },
+            targetRpe: 8,
+            targetRir: 2,
+            loadSource: "history",
+            confidence: "medium",
+            cautionLevel: "none",
+            cautionReason: null,
+            suggestedAdjustmentRange: null,
+          },
+        ],
+      } as never,
       sessionSnapshot: {
         version: 1,
         generated: {
@@ -379,10 +435,16 @@ describe("pre-session readiness contract consumers", () => {
             {
               exerciseId: "bench",
               exerciseName: "Bench Press",
+              orderIndex: 0,
+              prescribedSetCount: 3,
+              prescribedSets: [],
             },
             {
               exerciseId: "incline",
               exerciseName: "Incline Press",
+              orderIndex: 1,
+              prescribedSetCount: 3,
+              prescribedSets: [],
             },
           ],
           traces: {
@@ -437,6 +499,22 @@ describe("pre-session readiness contract consumers", () => {
         displayActionCode: "hold_target_load",
         severity: "warning",
         confidence: 0.65,
+        targetLoad: 185,
+        targetReps: null,
+        repRange: { min: 6, max: 10 },
+        targetRpe: 8,
+        targetRir: null,
+        loadSource: "estimate",
+        loadConfidence: "low",
+        cautionLevel: "caution",
+        cautionReason: "target_effort_load_mismatch",
+        adjustmentRangeBasis: "exact_range",
+        suggestedAdjustmentRange: {
+          minLoad: 175,
+          maxLoad: 185,
+          unit: "lb",
+          basis: "target_effort_load_mismatch",
+        },
         source: "generated_progression_trace",
       },
       {
@@ -445,11 +523,28 @@ describe("pre-session readiness contract consumers", () => {
         reasonCode: "progression_trace_unavailable",
         displayActionCode: "use_target_as_starting_point",
         severity: "warning",
+        targetLoad: 95,
+        targetReps: null,
+        repRange: { min: 8, max: 12 },
+        targetRpe: 8,
+        targetRir: 2,
+        loadSource: "history",
+        loadConfidence: "medium",
+        cautionLevel: "none",
+        cautionReason: null,
+        adjustmentRangeBasis: "target_load_start",
+        suggestedAdjustmentRange: null,
         source: "generated_progression_trace",
       },
     ]);
     expect(JSON.stringify(contract.calibrationWatches)).not.toContain(
       "progression trace unavailable"
+    );
+    expect(contract.sessionLocalCoaching.prescriptionConfidenceWatches).toContain(
+      "- Bench Press: start at 185 lb; use 175-185 lb if first-set reps or RPE are off."
+    );
+    expect(contract.sessionLocalCoaching.prescriptionConfidenceWatches).toContain(
+      "- Incline Press: start at 95 lb; adjust by feel."
     );
     expect(JSON.stringify(contract.calibrationWatches)).not.toContain("action=");
     expect(JSON.stringify(contract.calibrationWatches)).not.toContain("confidence=");
@@ -525,6 +620,8 @@ describe("pre-session readiness contract consumers", () => {
         targetMuscle: "Side Delts",
         candidateExerciseName: "Cable Lateral Raise",
         source: "dose_closure_recommendation",
+        reason: "Side Delts has a small useful session-local gap.",
+        guardrail: "Skip it if the planned workout feels heavy.",
       },
     ]);
     expect(JSON.stringify(getReadinessGymCard(contract))).not.toContain("poison");
@@ -711,6 +808,9 @@ describe("pre-session readiness contract consumers", () => {
         targetMuscle: "Side Delts",
         candidateExerciseName: "Cable Lateral Raise",
         source: "dose_closure_recommendation",
+        reason: "Side Delts is the useful floor-buffer today.",
+        guardrail:
+          "Add only if planned Cable Lateral Raise work feels clean.",
       },
     ]);
     expect(JSON.stringify(getValidOptionalAddOns(contract))).not.toContain(

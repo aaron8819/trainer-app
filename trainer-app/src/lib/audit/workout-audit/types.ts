@@ -26,7 +26,10 @@ import type {
   V2SelectionCapacityPlanDiagnostic,
   V2SupportLaneProjectionDiagnostic,
 } from "@/lib/api/planning-reality";
-import type { V2CapacityMaterializerProjection } from "./v2-materialization-live-context-dry-run";
+import type {
+  V2CapacityMaterializerProjection,
+  V2LaneIntentMaterializerProjection,
+} from "./v2-materialization-live-context-dry-run";
 import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection.diagnostics";
 import type { V2AcceptedSeedPreparationCompareResult } from "@/lib/api/mesocycle-handoff";
 import type { SlotPreselectionDemandDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection";
@@ -1830,6 +1833,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
   v2BasePlanCompare?: V2BasePlanCompare;
   v2BasePlanShadowConsumptionTrial?: V2BasePlanShadowConsumptionTrial;
   v2CapacityMaterializerProjection?: V2CapacityMaterializerProjection;
+  v2LaneIntentMaterializerProjection?: V2LaneIntentMaterializerProjection;
   repairPromotionScoreboard?: {
     version: 1;
     readOnly: true;
@@ -1879,6 +1883,20 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
       staleRepairedProjectionArtifacts: {
         count: number;
         reasonCounts: Record<string, number>;
+      };
+      legacyRepairQuarantine?: {
+        readOnly: true;
+        affectsScoringOrGeneration: false;
+        repairedProjectionRole: "legacy_evidence_not_target_policy";
+        policyPromotionBasis: "positive_slot_owned_likely_avoidable_rows_only";
+        rawLegacyEvidenceRowCount: number;
+        behaviorPromotionCandidateCount: number;
+        quarantinedRowCount: number;
+        safetyNetCount: number;
+        collateralDiagnosticCount: number;
+        diagnosticOnlyCount: number;
+        staleRepairedProjectionArtifactCount: number;
+        suspiciousRepairCount: number;
       };
     };
     promotionCandidates: Array<{

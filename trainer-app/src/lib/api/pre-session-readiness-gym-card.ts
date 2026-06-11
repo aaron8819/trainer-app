@@ -278,19 +278,53 @@ function formatWarnings(): string[] {
   return [];
 }
 
+function formatLoad(value: number): string {
+  return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+}
+
+function formatAdjustmentRange(row: ReadinessCalibrationWatchRow): string | null {
+  const range = row.suggestedAdjustmentRange;
+  if (!range) {
+    return null;
+  }
+
+  const target =
+    row.targetLoad == null ? "the written target" : `${formatLoad(row.targetLoad)} lb`;
+  return `Start at ${target}; use ${formatLoad(range.minLoad)}-${formatLoad(range.maxLoad)} ${range.unit} if first-set reps or RPE are off.`;
+}
+
+function formatTargetLoadStart(row: ReadinessCalibrationWatchRow): string | null {
+  if (typeof row.targetLoad !== "number" || !Number.isFinite(row.targetLoad)) {
+    return null;
+  }
+  return `Start at ${formatLoad(row.targetLoad)} lb`;
+}
+
 function toDisplaySafeWatchRow(
   row: ReadinessCalibrationWatchRow
 ): ReadinessCalibrationWatchRow {
   if (row.displayActionCode) {
     const prefix = row.exerciseLabel ? `${row.exerciseLabel}: ` : "";
+    const adjustmentRange = formatAdjustmentRange(row);
+    const targetLoadStart = formatTargetLoadStart(row);
     const message =
-      row.displayActionCode === "use_target_as_starting_point"
-        ? `${prefix}Use the target as a starting point; adjust by feel.`
+      adjustmentRange
+        ? `${prefix}${adjustmentRange}`
+        : row.displayActionCode === "use_target_as_starting_point"
+        ? targetLoadStart
+          ? `${prefix}${targetLoadStart}; adjust by feel.`
+          : `${prefix}Use the target as a starting point; adjust by feel.`
         : row.displayActionCode === "hold_target_load"
-          ? `${prefix}Hold the target load unless the first set feels clearly too easy or too hard.`
+          ? targetLoadStart
+            ? `${prefix}${targetLoadStart}; hold unless the first set feels clearly too easy or too hard.`
+            : `${prefix}Hold the target load unless the first set feels clearly too easy or too hard.`
           : row.displayActionCode === "machine_or_cable_target_may_need_calibration"
-            ? `${prefix}Machine/cable target may need calibration.`
-            : `${prefix}Use the written target as guidance and calibrate from the first working set.`;
+            ? targetLoadStart
+              ? `${prefix}${targetLoadStart}; first working set calibrates this machine/cable target; reduce one load step if reps fall short or RPE jumps.`
+              : `${prefix}First working set calibrates this machine/cable target; reduce one load step if reps fall short or RPE jumps.`
+            : targetLoadStart
+              ? `${prefix}${targetLoadStart}; calibrate from the first working set.`
+              : `${prefix}Use the written target as guidance and calibrate from the first working set.`;
 
     return {
       ...row,
@@ -312,7 +346,7 @@ function toDisplaySafeWatchRow(
   } else if (/action=/i.test(rawMessage) || /confidence=/i.test(rawMessage) || /reasons=/i.test(rawMessage)) {
     message = `${prefix}Use the written target as guidance and calibrate from the first working set.`;
   } else if (/equipment scaled during early exposure/i.test(rawMessage)) {
-    message = `${prefix}Machine/cable target may need calibration.`;
+    message = `${prefix}First working set calibrates this machine/cable target; reduce one load step if reps fall short or RPE jumps.`;
   }
 
   return {

@@ -19,6 +19,7 @@ import {
 import type {
   PostSessionReviewContractBuildInput,
   PostSessionReviewExerciseEvidence,
+  PostSessionReviewRecentExerciseExposureEvidence,
   PostSessionReviewReplacementEvidence,
 } from "./post-session-review-evidence";
 
@@ -69,6 +70,54 @@ type ReviewWorkout = Prisma.WorkoutGetPayload<{
                 wasSkipped: true;
               };
             };
+          };
+        };
+      };
+    };
+  };
+}>;
+
+type RecentReviewWorkoutExercise = Prisma.WorkoutExerciseGetPayload<{
+  select: {
+    id: true;
+    workoutId: true;
+    exerciseId: true;
+    orderIndex: true;
+    section: true;
+    isMainLift: true;
+    exercise: { select: { name: true } };
+    workout: {
+      select: {
+        id: true;
+        scheduledDate: true;
+        completedAt: true;
+        selectionMetadata: true;
+        advancesSplit: true;
+        selectionMode: true;
+        sessionIntent: true;
+        templateId: true;
+        mesocyclePhaseSnapshot: true;
+      };
+    };
+    sets: {
+      orderBy: [{ setIndex: "asc" }, { id: "asc" }];
+      select: {
+        id: true;
+        setIndex: true;
+        targetReps: true;
+        targetRepMin: true;
+        targetRepMax: true;
+        targetRpe: true;
+        targetLoad: true;
+        logs: {
+          orderBy: { completedAt: "desc" };
+          take: 1;
+          select: {
+            actualReps: true;
+            actualLoad: true;
+            actualRpe: true;
+            completedAt: true;
+            wasSkipped: true;
           };
         };
       };
@@ -192,6 +241,131 @@ function buildExerciseEvidence(
   });
 }
 
+function toRecentExerciseExposureEvidence(
+  row: RecentReviewWorkoutExercise
+): PostSessionReviewRecentExerciseExposureEvidence {
+  const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(
+    row.workout.selectionMetadata
+  );
+  const runtimeAddedSetIds = readRuntimeAddedSetIds(row.workout.selectionMetadata);
+  const isRuntimeAddedExercise = runtimeAddedExerciseIds.has(row.id);
+
+  return {
+    workoutId: row.workoutId,
+    workoutExerciseId: row.id,
+    exerciseId: row.exerciseId,
+    exerciseName: row.exercise.name,
+    orderIndex: row.orderIndex,
+    section: row.section,
+    isMainLift: row.isMainLift,
+    isRuntimeAdded: isRuntimeAddedExercise,
+    performedAt: (row.workout.completedAt ?? row.workout.scheduledDate).toISOString(),
+    sets: row.sets.map((set) => {
+      const log = set.logs[0];
+      return {
+        workoutSetId: set.id,
+        setIndex: set.setIndex,
+        isRuntimeAdded:
+          isRuntimeAddedExercise ? false : runtimeAddedSetIds.has(set.id),
+        targetReps: set.targetReps,
+        targetRepMin: set.targetRepMin,
+        targetRepMax: set.targetRepMax,
+        targetRpe: set.targetRpe,
+        targetLoad: set.targetLoad,
+        wasLogged: Boolean(log),
+        wasSkipped: log?.wasSkipped === true,
+        actualReps: log?.actualReps ?? null,
+        actualLoad: log?.actualLoad ?? null,
+        actualRpe: log?.actualRpe ?? null,
+        completedAt: toNullableIsoString(log?.completedAt),
+      };
+    }),
+  };
+}
+
+async function loadRecentExerciseExposureEvidence(
+  workout: ReviewWorkout
+): Promise<PostSessionReviewRecentExerciseExposureEvidence[]> {
+  const exerciseIds = Array.from(
+    new Set(workout.exercises.map((exercise) => exercise.exerciseId))
+  );
+  if (exerciseIds.length === 0) {
+    return [];
+  }
+
+  const rows = await prisma.workoutExercise.findMany({
+    where: {
+      exerciseId: { in: exerciseIds },
+      workoutId: { not: workout.id },
+      workout: {
+        userId: workout.userId,
+        scheduledDate: { lt: workout.scheduledDate },
+        status: { in: [...PERFORMED_WORKOUT_STATUSES] },
+      },
+    },
+    orderBy: [{ workout: { scheduledDate: "desc" } }, { orderIndex: "asc" }],
+    take: Math.max(exerciseIds.length * 8, 8),
+    select: {
+      id: true,
+      workoutId: true,
+      exerciseId: true,
+      orderIndex: true,
+      section: true,
+      isMainLift: true,
+      exercise: { select: { name: true } },
+      workout: {
+        select: {
+          id: true,
+          scheduledDate: true,
+          completedAt: true,
+          selectionMetadata: true,
+          advancesSplit: true,
+          selectionMode: true,
+          sessionIntent: true,
+          templateId: true,
+          mesocyclePhaseSnapshot: true,
+        },
+      },
+      sets: {
+        orderBy: [{ setIndex: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          setIndex: true,
+          targetReps: true,
+          targetRepMin: true,
+          targetRepMax: true,
+          targetRpe: true,
+          targetLoad: true,
+          logs: {
+            orderBy: { completedAt: "desc" },
+            take: 1,
+            select: {
+              actualReps: true,
+              actualLoad: true,
+              actualRpe: true,
+              completedAt: true,
+              wasSkipped: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return rows
+    .filter((row) =>
+      deriveSessionSemantics({
+        advancesSplit: row.workout.advancesSplit,
+        selectionMetadata: row.workout.selectionMetadata,
+        selectionMode: row.workout.selectionMode,
+        sessionIntent: row.workout.sessionIntent,
+        templateId: row.workout.templateId,
+        mesocyclePhase: row.workout.mesocyclePhaseSnapshot,
+      }).countsTowardPerformanceHistory
+    )
+    .map(toRecentExerciseExposureEvidence);
+}
+
 function buildSessionSemanticsEvidence(
   workout: ReviewWorkout
 ): PostSessionReviewContractBuildInput["sessionSemantics"] {
@@ -248,7 +422,8 @@ function buildContractInput(
   explainabilityEvidence: Pick<
     PostSessionReviewContractBuildInput,
     "nextExposureDecisions" | "weeklyImpact"
-  >
+  >,
+  recentExerciseExposures: PostSessionReviewRecentExerciseExposureEvidence[]
 ): PostSessionReviewContractBuildInput {
   const receipt = readSessionDecisionReceipt(workout.selectionMetadata);
   const workoutStructureState = readWorkoutStructureState(workout.selectionMetadata);
@@ -283,11 +458,13 @@ function buildContractInput(
     },
     sessionSemantics: buildSessionSemanticsEvidence(workout),
     exercises: buildExerciseEvidence(workout),
+    recentExerciseExposures,
     ...explainabilityEvidence,
     boundaryNotes: [
       "producer is a read-only app-owned adapter over persisted workout structure and SetLog reality",
       "selectionMetadata.sessionDecisionReceipt is read as source truth and is not mutated",
       "runtime edit reconciliation labels session-local deviations as evidence only",
+      "recent exact-exercise calibration history is read-only diagnostic evidence",
       "explainability next-exposure and volume rows remain read-only evidence",
       "no workout/log/seed/runtime/planner/progression persistence changed",
     ],
@@ -370,8 +547,13 @@ export async function loadPostSessionReviewContractForWorkout(
     );
   }
 
+  const [explainabilityEvidence, recentExerciseExposures] = await Promise.all([
+    buildExplainabilityEvidence(workout),
+    loadRecentExerciseExposureEvidence(workout),
+  ]);
+
   const contract = buildPostSessionReviewContract(
-    buildContractInput(workout, await buildExplainabilityEvidence(workout))
+    buildContractInput(workout, explainabilityEvidence, recentExerciseExposures)
   );
 
   if (!isPostSessionReviewContract(contract, { userId, workoutId })) {

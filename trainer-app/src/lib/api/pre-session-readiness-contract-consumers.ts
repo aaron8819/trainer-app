@@ -40,6 +40,17 @@ export type ReadinessCalibrationWatchRow = {
   displayActionCode?: PreSessionReadinessPrescriptionConfidenceWatchRow["displayActionCode"];
   severity?: PreSessionReadinessPrescriptionConfidenceWatchRow["severity"];
   confidence?: number;
+  targetLoad?: PreSessionReadinessPrescriptionConfidenceWatchRow["targetLoad"];
+  targetReps?: PreSessionReadinessPrescriptionConfidenceWatchRow["targetReps"];
+  repRange?: PreSessionReadinessPrescriptionConfidenceWatchRow["repRange"];
+  targetRpe?: PreSessionReadinessPrescriptionConfidenceWatchRow["targetRpe"];
+  targetRir?: PreSessionReadinessPrescriptionConfidenceWatchRow["targetRir"];
+  loadSource?: PreSessionReadinessPrescriptionConfidenceWatchRow["loadSource"];
+  loadConfidence?: PreSessionReadinessPrescriptionConfidenceWatchRow["loadConfidence"];
+  cautionLevel?: PreSessionReadinessPrescriptionConfidenceWatchRow["cautionLevel"];
+  cautionReason?: PreSessionReadinessPrescriptionConfidenceWatchRow["cautionReason"];
+  adjustmentRangeBasis?: PreSessionReadinessPrescriptionConfidenceWatchRow["adjustmentRangeBasis"];
+  suggestedAdjustmentRange?: PreSessionReadinessPrescriptionConfidenceWatchRow["suggestedAdjustmentRange"];
   source?: PreSessionReadinessPrescriptionConfidenceWatchRow["source"];
 };
 
@@ -219,6 +230,27 @@ function toPrescriptionConfidenceWatchRow(
     displayActionCode: watch.displayActionCode,
     severity: watch.severity,
     ...(watch.confidence == null ? {} : { confidence: watch.confidence }),
+    ...(watch.targetLoad === undefined ? {} : { targetLoad: watch.targetLoad }),
+    ...(watch.targetReps === undefined ? {} : { targetReps: watch.targetReps }),
+    ...(watch.repRange === undefined ? {} : { repRange: watch.repRange }),
+    ...(watch.targetRpe === undefined ? {} : { targetRpe: watch.targetRpe }),
+    ...(watch.targetRir === undefined ? {} : { targetRir: watch.targetRir }),
+    ...(watch.loadSource === undefined ? {} : { loadSource: watch.loadSource }),
+    ...(watch.loadConfidence === undefined
+      ? {}
+      : { loadConfidence: watch.loadConfidence }),
+    ...(watch.cautionLevel === undefined
+      ? {}
+      : { cautionLevel: watch.cautionLevel }),
+    ...(watch.cautionReason === undefined
+      ? {}
+      : { cautionReason: watch.cautionReason }),
+    ...(watch.adjustmentRangeBasis === undefined
+      ? {}
+      : { adjustmentRangeBasis: watch.adjustmentRangeBasis }),
+    ...(watch.suggestedAdjustmentRange === undefined
+      ? {}
+      : { suggestedAdjustmentRange: watch.suggestedAdjustmentRange }),
     source: watch.source,
   };
 }

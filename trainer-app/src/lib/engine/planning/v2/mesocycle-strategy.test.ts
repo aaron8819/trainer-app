@@ -3586,6 +3586,9 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
       },
       netNewVolumeRegressionCount: 1,
       acceptanceRiskCount: 1,
+      unmeasuredGateCounts: expect.objectContaining({
+        materializerNonRegression: 1,
+      }),
       nextRequiredEvidence: expect.arrayContaining([
         "all_measured_non_regression_gates_pass_before_behavior_trial",
         "independent_or_alternate_candidate_shadow_projection",

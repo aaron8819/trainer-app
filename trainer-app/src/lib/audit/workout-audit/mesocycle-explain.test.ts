@@ -3963,6 +3963,23 @@ describe("buildMesocycleExplainAuditPayload", () => {
         support_floor_design_needed: expect.any(Number),
       }),
     );
+    expect(scoreboard?.interpretation.legacyRepairQuarantine).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      repairedProjectionRole: "legacy_evidence_not_target_policy",
+      policyPromotionBasis: "positive_slot_owned_likely_avoidable_rows_only",
+      rawLegacyEvidenceRowCount: scoreboard?.rawRepairEvidence.rawRowCount,
+      behaviorPromotionCandidateCount:
+        scoreboard?.summary.promotionCandidateCount,
+      quarantinedRowCount: scoreboard?.summary.doNotPromoteCount,
+      safetyNetCount: scoreboard?.summary.safetyNetCount,
+      collateralDiagnosticCount: scoreboard?.summary.collateralDiagnosticCount,
+      diagnosticOnlyCount: scoreboard?.summary.diagnosticOnlyCount,
+      staleRepairedProjectionArtifactCount:
+        scoreboard?.interpretation.staleRepairedProjectionArtifacts.count,
+      suspiciousRepairCount:
+        scoreboard?.rawRepairEvidence.suspiciousRepairCount,
+    });
     expect(scoreboard?.safetyNetRows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -8361,6 +8378,21 @@ describe("buildMesocycleExplainAuditPayload", () => {
           ]),
         },
       },
+    });
+    expect(noRepair.v2LaneIntentMaterializerProjection).toMatchObject({
+      source: "v2_lane_intent_materializer_projection",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+      projectionMode: "lane_intent_shadow_materializer_dry_run",
+      trialId: "upper_b_chest_second_exposure_lane_intent_shadow",
+      targetLane: expect.objectContaining({
+        scopedLaneId: "upper_b:chest_second_exposure",
+        baselineConsumedByProduction: false,
+        trialConsumesLaneIntent: true,
+      }),
+      safeForBehaviorPromotion: false,
     });
     expect(rearDeltLane).toMatchObject({
       currentStatus: "blocked",

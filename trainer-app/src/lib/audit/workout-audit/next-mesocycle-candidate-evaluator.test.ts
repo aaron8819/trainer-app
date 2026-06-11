@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 import type {
   MesocycleExplainAuditPayload,
   NextMesocycleAcceptanceGatePayload,
+  WeeklyRetroAuditPayload,
 } from "./types";
 import {
+  buildCompletedBlockEvidenceAssessment,
   buildCandidateDecisionSummary,
   buildCandidateEvaluationAssessments,
   buildCandidateRepairBurdenAssessment,
   buildMaterializerGuardrailAssessment,
+  buildPriorRiskRows,
   buildShadowConsumptionAssessment,
   buildSupportLaneBoundaryAssessment,
 } from "./next-mesocycle-candidate-evaluator";
@@ -86,7 +89,172 @@ function preview(input?: {
   } as unknown as MesocycleExplainAuditPayload;
 }
 
+function weeklyRetro(input: {
+  week: number;
+  chestActual?: number;
+  chestMev?: number;
+  addedSets?: number;
+  loadCalibrationClassification?:
+    | "target_too_low"
+    | "target_too_high"
+    | "recalibrated_hold";
+}): WeeklyRetroAuditPayload {
+  const chestMev = input.chestMev ?? 10;
+  const chestActual = input.chestActual ?? chestMev;
+
+  return {
+    week: input.week,
+    volumeTargeting: {
+      belowMev: chestActual < chestMev ? ["Chest"] : [],
+      underTargetOnly: [],
+      overMav: [],
+      overTargetOnly: [],
+      muscles: [
+        {
+          muscle: "Chest",
+          actualEffectiveSets: chestActual,
+          weeklyTarget: chestMev + 2,
+          mev: chestMev,
+          mav: chestMev + 6,
+          deltaToTarget: chestActual - (chestMev + 2),
+          deltaToMev: chestActual - chestMev,
+          deltaToMav: chestActual - (chestMev + 6),
+          status: chestActual < chestMev ? "below_mev" : "within_target_band",
+          topContributors: [],
+        },
+      ],
+    },
+    planAdherence: {
+      explainedAdditions: {
+        totalSets: input.addedSets ?? 0,
+        byIntent: input.addedSets
+          ? { final_weekly_opportunity_mev_closure: input.addedSets }
+          : {},
+      },
+      interpretations: input.addedSets
+        ? [
+            {
+              opKind: "add_set",
+              intent: "final_weekly_opportunity_mev_closure",
+              confidence: "high",
+              source: "audit_inferred",
+              setDelta: input.addedSets,
+              muscles: ["Chest"],
+              evidence: ["fixture"],
+            },
+          ]
+        : [],
+    },
+    exerciseLoadCalibrationRows: input.loadCalibrationClassification
+      ? [
+          {
+            week: input.week,
+            workoutId: `workout-${input.week}`,
+            sessionLabel: "upper_a",
+            exerciseId: `exercise-${input.week}`,
+            exerciseName: "Incline Machine Press",
+            plannedSetCount: 3,
+            savedSetCount: 3,
+            performedSetCount: 3,
+            skippedSetCount: 0,
+            addedSetCount: 0,
+            performedLoadSummary: {},
+            classification: input.loadCalibrationClassification,
+            reasonCodes: [],
+            notes: [],
+          },
+        ]
+      : [],
+  } as unknown as WeeklyRetroAuditPayload;
+}
+
 describe("next mesocycle candidate evaluator", () => {
+  it("builds prior-risk rows from candidate weekly volume at the evaluator seam", () => {
+    const result = buildPriorRiskRows([
+      {
+        muscle: "Chest",
+        projectedSets: 10,
+        mev: 10,
+        productiveTarget: 12,
+        mav: 16,
+        status: "productive_zone",
+        severity: "pass",
+        notes: "inside productive zone",
+      },
+      {
+        muscle: "Calves",
+        projectedSets: 7,
+        mev: 8,
+        productiveTarget: 10,
+        mav: 14,
+        status: "below_mev_fail",
+        severity: "high_risk",
+        notes: "below MEV blocks acceptance",
+      },
+    ]);
+
+    expect(result).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          risk: "Chest MEV fragility",
+          status: "warning",
+        }),
+        expect.objectContaining({
+          risk: "Calves MEV fragility",
+          status: "fail",
+          severity: "high_risk",
+        }),
+      ]),
+    );
+  });
+
+  it("builds completed-block quality assessment without owning gate decisions", () => {
+    const result = buildCompletedBlockEvidenceAssessment({
+      candidateFound: true,
+      retros: [
+        weeklyRetro({
+          week: 4,
+          chestActual: 9,
+          chestMev: 10,
+          addedSets: 2,
+          loadCalibrationClassification: "target_too_low",
+        }),
+      ],
+      weeklyRows: [
+        {
+          muscle: "Chest",
+          projectedSets: 9,
+          mev: 10,
+          productiveTarget: 12,
+          mav: 16,
+          status: "below_mev_fail",
+          severity: "high_risk",
+          notes: "below MEV blocks acceptance",
+        },
+      ],
+    });
+
+    expect(result.candidateFailureRisks).toEqual(
+      expect.arrayContaining([
+        "Chest MEV fragility",
+        "Optional gap-fill dependency risk",
+      ]),
+    );
+    expect(result.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          risk: "Load calibration drift",
+          severity: "warning",
+          ownerSeam: "prescription/readout",
+        }),
+        expect.objectContaining({
+          risk: "Repeated runtime add-ons",
+          mustFixBeforeWeek1: false,
+        }),
+      ]),
+    );
+  });
+
   it("classifies repair-heavy trainable candidates as architecture debt", () => {
     const result = buildCandidateRepairBurdenAssessment({
       candidateFound: true,
@@ -119,6 +287,22 @@ describe("next mesocycle candidate evaluator", () => {
     });
 
     expect(result.repairBurdenClassification).toBe("candidate_truth");
+  });
+
+  it("does not label diagnostic-preview failures as candidate truth", () => {
+    const result = buildCandidateRepairBurdenAssessment({
+      candidateFound: false,
+      candidateTruthFailure: true,
+      preview: preview({
+        planningShape: "mostly_repair_shaped",
+        materialRepairCount: 8,
+        majorRepairCount: 2,
+      }),
+    });
+
+    expect(result.repairBurdenClassification).toBe(
+      "legacy_diagnostic_context",
+    );
   });
 
   it("classifies read-only shadow consumption gains as diagnostic evidence needing inspection", () => {
@@ -197,6 +381,26 @@ describe("next mesocycle candidate evaluator", () => {
             classMismatchCount: 1,
             duplicateRequiresJustificationCount: 0,
           },
+          weeks: [
+            {
+              week: 1,
+              slots: [
+                {
+                  slotId: "upper_a",
+                  lanes: [
+                    {
+                      laneId: "chest_anchor",
+                      laneClassStatus: "mismatch",
+                      inventoryStatus: "classification_gap",
+                      selectedIdentity: {
+                        exerciseName: "Machine Chest Press",
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
           blockers: [],
         },
       }),
@@ -206,9 +410,16 @@ describe("next mesocycle candidate evaluator", () => {
       materializerGuardrailClassification: "exercise_metadata_gap",
       materializerGuardrailNextSafeAction: "inspect_exercise_metadata",
       inventoryClassificationGapCount: 1,
+      inventoryMetadataGapExamples: [
+        "upper_a:Chest:direct:exercise_inventory_classification",
+        "week_1:upper_a:chest_anchor:Machine_Chest_Press:mismatch/classification_gap",
+      ],
     });
     expect(result.materializerGuardrailEvidence).toContain(
       "classification=exercise_metadata_gap",
+    );
+    expect(result.materializerGuardrailEvidence).toContain(
+      "metadataGapExamples=upper_a:Chest:direct:exercise_inventory_classification,week_1:upper_a:chest_anchor:Machine_Chest_Press:mismatch/classification_gap",
     );
   });
 

@@ -1172,6 +1172,16 @@ export type V2StrategyToDemandProjection = {
         materializerRegressionCount: number;
         acceptanceRiskCount: number;
         unknownEvidenceCount: number;
+        unmeasuredGateCounts: {
+          downstreamContextAvailable: number;
+          measuredShadowProjection: number;
+          donorOffsetMeasured: number;
+          noNetNewVolume: number;
+          floorPreservation: number;
+          concentrationNonRegression: number;
+          materializerNonRegression: number;
+          acceptanceRisk: number;
+        };
         failedComputedGates: string[];
         nextRequiredEvidence: string[];
       };

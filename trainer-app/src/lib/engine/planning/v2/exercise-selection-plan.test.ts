@@ -351,6 +351,20 @@ describe("buildV2ExerciseSelectionPlan", () => {
         consumedByMaterializer: true,
       },
     });
+    expect(lane(1, "upper_b", "chest_second_exposure")).toMatchObject({
+      laneSelectionIntent: {
+        laneJob: "support_coverage",
+        requiredMovementPattern: "chest_press_or_fly",
+        preferredMovementPatterns: ["chest_press"],
+        allowedExerciseClasses: ["chest_press", "chest_fly"],
+        directnessRequirement: "high_directness",
+        minimumTargetStimulus: {
+          muscle: "Chest",
+          minimumPerSetStimulus: 0.75,
+        },
+        consumedByMaterializer: false,
+      },
+    });
     expect(lane(1, "upper_b", "row_support")).toMatchObject({
       laneSelectionIntent: {
         laneJob: "support_coverage",

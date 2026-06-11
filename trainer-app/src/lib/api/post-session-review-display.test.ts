@@ -244,16 +244,40 @@ describe("post-session review display adapter", () => {
           exerciseId: "too-high",
           exerciseName: "Shoulder Press",
           sets: [
-            performedSet("set-1", { targetLoad: 100, actualLoad: 70 }),
-            performedSet("set-2", { targetLoad: 100, actualLoad: 70 }),
+            performedSet("set-1", {
+              targetLoad: 100,
+              actualLoad: 100,
+              actualReps: 10,
+              targetRpe: 8,
+              actualRpe: 9.5,
+            }),
+            performedSet("set-2", {
+              targetLoad: 100,
+              actualLoad: 100,
+              actualReps: 10,
+              targetRpe: 8,
+              actualRpe: 9.5,
+            }),
           ],
         }),
         exercise({
           exerciseId: "too-low",
           exerciseName: "Bench Press",
           sets: [
-            performedSet("set-3", { targetLoad: 100, actualLoad: 130 }),
-            performedSet("set-4", { targetLoad: 100, actualLoad: 130 }),
+            performedSet("set-3", {
+              targetLoad: 100,
+              actualLoad: 130,
+              actualReps: 14,
+              targetRpe: 8,
+              actualRpe: 6.5,
+            }),
+            performedSet("set-4", {
+              targetLoad: 100,
+              actualLoad: 130,
+              actualReps: 14,
+              targetRpe: 8,
+              actualRpe: 6.5,
+            }),
           ],
         }),
       ],
@@ -264,15 +288,29 @@ describe("post-session review display adapter", () => {
         exerciseName: "Shoulder Press",
         status: "watch",
         headline: "Shoulder Press target looked too heavy",
+        detail:
+          "Performed median load 100 vs target 100; 10 median reps, in the target rep range; RPE 9.5, harder than target.",
         nextExposureNote: "Next exposure: review the starting point before increasing.",
       }),
       expect.objectContaining({
         exerciseName: "Bench Press",
         status: "watch",
         headline: "Bench Press target looked too light",
+        detail:
+          "Performed median load 130 vs target 100; 14 median reps, above the target rep range; RPE 6.5, easier than target.",
         nextExposureNote: "Next exposure: raise starting point modestly.",
       }),
     ]);
+    expect(display.learningSignals).toEqual(
+      expect.arrayContaining([
+        {
+          label: "Load calibration",
+          severity: "watch",
+          summary:
+            "Prescription calibration evidence: 1 looked too heavy, 1 looked too light.",
+        },
+      ])
+    );
   });
 
   it("renders next-exposure rows as recommendations, not mutations", () => {
@@ -403,6 +441,10 @@ describe("post-session review display adapter", () => {
     expect(serialized).not.toContain("runtime_edit_reconciliation");
     expect(serialized).not.toContain("replacement_like");
     expect(serialized).not.toContain("target_too_low");
+    expect(serialized).not.toContain("target_too_high");
+    expect(serialized).not.toContain("load_too_light");
+    expect(serialized).not.toContain("load_too_heavy");
+    expect(serialized).not.toContain("performedRealityCoherence");
     expect(serialized).not.toContain("policyMutation");
     expect(serialized).not.toContain("seedMutation");
     expect(serialized).not.toContain("affectsProgressionPolicy");
@@ -410,6 +452,51 @@ describe("post-session review display adapter", () => {
     expect(serialized).not.toContain("selectionMetadata");
     expect(serialized).not.toContain("raw summary should not leak");
     expect(serialized).not.toContain("raw decision log should not leak");
+  });
+
+  it("maps recent exact-exercise calibration history to safe learning copy", () => {
+    const display = buildDisplay({
+      recentExerciseExposures: [
+        {
+          ...exercise({
+            workoutExerciseId: "prior-heavy",
+            exerciseId: "bench",
+            exerciseName: "Bench Press",
+            sets: [
+              performedSet("prior-heavy-set-1", {
+                targetLoad: 100,
+                actualLoad: 100,
+                actualReps: 10,
+                targetRpe: 8,
+                actualRpe: 9.5,
+              }),
+              performedSet("prior-heavy-set-2", {
+                targetLoad: 100,
+                actualLoad: 100,
+                actualReps: 10,
+                targetRpe: 8,
+                actualRpe: 9.5,
+              }),
+            ],
+          }),
+          workoutId: "prior-heavy-workout",
+          performedAt: "2026-05-25T13:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(display.learningSignals).toEqual(
+      expect.arrayContaining([
+        {
+          label: "Load calibration",
+          severity: "watch",
+          summary:
+            "Recent exact-exercise calibration history has watch evidence for 1 exercise(s).",
+        },
+      ])
+    );
+    expect(JSON.stringify(display)).not.toContain("load_too_heavy");
+    expect(JSON.stringify(display)).not.toContain("prior_exposures");
   });
 
   it("maps blocked producer-style results to safe blocked DTOs", () => {

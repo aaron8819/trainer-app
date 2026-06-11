@@ -544,6 +544,9 @@ describe("next mesocycle acceptance gate", () => {
       severity: "blocker",
       notes: "diagnostic previews are evidence only and cannot be accepted",
     });
+    expect(payload.decisionSummary.repairBurdenClassification).toBe(
+      "legacy_diagnostic_context",
+    );
     expect(payload.gateResult).toBe("not_runnable");
   });
 

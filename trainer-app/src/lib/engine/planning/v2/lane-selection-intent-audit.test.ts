@@ -70,6 +70,7 @@ describe("buildV2LaneSelectionIntentAudit", () => {
       ["upper_a", "rear_delt"],
       ["upper_a", "triceps"],
       ["upper_b", "biceps"],
+      ["upper_b", "chest_second_exposure"],
       ["upper_b", "row_support"],
     ] as const) {
       const lane = auditLane(audit, slotId, laneId);
@@ -243,6 +244,13 @@ describe("buildV2LaneSelectionIntentAudit", () => {
 
     expect(secondExposure.notes).toContain("high_risk_lane_family:chest");
     expect(secondExposure.availableIntent).toMatchObject({
+      laneSelectionIntent: {
+        laneJob: "support_coverage",
+        requiredMovementPattern: "chest_press_or_fly",
+        preferredMovementPatterns: ["chest_press"],
+        allowedExerciseClasses: ["chest_press", "chest_fly"],
+        consumedByMaterializer: false,
+      },
       classRequirementsPreferences: {
         acceptableExerciseClasses: [
           "distinct_chest_press_or_fly",

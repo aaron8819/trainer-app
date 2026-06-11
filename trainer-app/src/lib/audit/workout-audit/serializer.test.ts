@@ -3297,6 +3297,10 @@ describe("buildWorkoutAuditArtifact", () => {
         v2BasePlanShadowConsumptionStatus: "available",
         v2BasePlanShadowConsumptionRepairDependencyDelta: -8,
         v2BasePlanShadowConsumptionRegressionCount: 0,
+        v2LaneIntentMaterializerProjectionStatus:
+          "projected_with_limitations",
+        v2LaneIntentMaterializerProjectionIdentityDelta: 0,
+        v2LaneIntentMaterializerProjectionTotalSetDelta: 0,
         writtenShardCount: 8,
         skippedShardCount: 0,
       },
@@ -3421,6 +3425,31 @@ describe("buildWorkoutAuditArtifact", () => {
             unknown: 2,
           },
           nextSafeAction: "inspect_materializer_capacity_projection",
+        },
+        v2LaneIntentMaterializerProjection: {
+          status: "projected_with_limitations",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByProduction: false,
+          consumedByDemandOrMaterializer: false,
+          projectionMode: "lane_intent_shadow_materializer_dry_run",
+          trialId: "upper_b_chest_second_exposure_lane_intent_shadow",
+          targetLane: {
+            scopedLaneId: "upper_b:chest_second_exposure",
+            slotId: "upper_b",
+            laneId: "chest_second_exposure",
+            intentAvailable: true,
+            baselineConsumedByProduction: false,
+            trialConsumesLaneIntent: true,
+          },
+          candidateImpact: {
+            selectedIdentityDelta: 0,
+            totalSetDelta: 0,
+            targetLaneExerciseDelta: 0,
+            materializerBlockerDelta: 0,
+            regressionCount: 0,
+          },
+          nextSafeAction: "pivot_to_higher_roi_track",
         },
       },
     });
@@ -3794,6 +3823,27 @@ describe("buildWorkoutAuditArtifact", () => {
           selectedIdentityDelta: 1,
           totalSetDelta: 2,
         }),
+      },
+      v2LaneIntentMaterializerProjection: {
+        source: "v2_lane_intent_materializer_projection",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByProduction: false,
+        consumedByDemandOrMaterializer: false,
+        targetLane: expect.objectContaining({
+          scopedLaneId: "upper_b:chest_second_exposure",
+          baselineConsumedByProduction: false,
+          trialConsumesLaneIntent: true,
+        }),
+        candidateImpact: expect.objectContaining({
+          selectedIdentityDelta: 0,
+          totalSetDelta: 0,
+          targetLaneExerciseDelta: 0,
+        }),
+        blockersBeforeBehavior: expect.arrayContaining([
+          "diagnostic_lane_intent_override_not_consumed_by_runtime",
+          "production_materializer_allowlist_unchanged",
+        ]),
       },
     });
     expect(crossWeekShard.artifact.data).toMatchObject({
@@ -4404,6 +4454,16 @@ function makeV2CapacityMaterializerProjectionFixture() {
       regressionCount: 0,
       regressions: [],
       improvements: ["added_identities:1"],
+      changedSlotCount: 1,
+      changedSlots: [
+        {
+          slotId: "upper_a",
+          exerciseCountDelta: 1,
+          setDelta: 2,
+          addedIdentityCount: 1,
+          removedIdentityCount: 0,
+        },
+      ],
     },
     gates: [
       ["hard_floors", "pass"],
@@ -4431,6 +4491,74 @@ function makeV2CapacityMaterializerProjectionFixture() {
     ],
     nextSafeAction: "inspect_materializer_capacity_projection",
     limitations: ["read_only_materializer_dry_run_only"],
+    safeForBehaviorPromotion: false,
+  };
+}
+
+function makeV2LaneIntentMaterializerProjectionFixture() {
+  return {
+    version: 1,
+    source: "v2_lane_intent_materializer_projection",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    dryRunOnly: true,
+    consumedByProduction: false,
+    consumedByDemandOrMaterializer: false,
+    status: "projected_with_limitations",
+    projectionMode: "lane_intent_shadow_materializer_dry_run",
+    trialId: "upper_b_chest_second_exposure_lane_intent_shadow",
+    comparedPlans: {
+      baselineAvailable: true,
+      trialAvailable: true,
+      inventoryExerciseCount: 20,
+    },
+    targetLane: {
+      scopedLaneId: "upper_b:chest_second_exposure",
+      slotId: "upper_b",
+      laneId: "chest_second_exposure",
+      intentAvailable: true,
+      baselineConsumedByProduction: false,
+      trialConsumesLaneIntent: true,
+      baselineExerciseCount: 1,
+      trialExerciseCount: 1,
+      baselineSetCount: 2,
+      trialSetCount: 2,
+      addedIdentities: [],
+      removedIdentities: [],
+    },
+    materializer: {
+      baselineStatus: "materialized",
+      trialStatus: "materialized",
+      baselineBlockerCount: 0,
+      trialBlockerCount: 0,
+      baselineSeedShapeCompatible: true,
+      trialSeedShapeCompatible: true,
+    },
+    candidateImpact: {
+      selectedIdentityDelta: 0,
+      totalSetDelta: 0,
+      targetLaneExerciseDelta: 0,
+      materializerBlockerDelta: 0,
+      regressionCount: 0,
+      regressions: [],
+      improvements: [],
+      changedSlotCount: 0,
+      changedSlots: [],
+    },
+    blockersBeforeBehavior: [
+      "acceptance_gate_not_rerun",
+      "diagnostic_lane_intent_override_not_consumed_by_runtime",
+      "lane_intent_trial_no_candidate_impact",
+      "production_materializer_allowlist_unchanged",
+    ],
+    nextSafeAction: "pivot_to_higher_roi_track",
+    limitations: [
+      "read_only_materializer_dry_run_only",
+      "does_not_change_lane_selection_intent_allowlist",
+      "does_not_feed_production_materializer",
+      "does_not_write_executable_seed_truth",
+      "does_not_change_runtime_replay",
+    ],
     safeForBehaviorPromotion: false,
   };
 }
@@ -4683,6 +4811,8 @@ function makeMesocycleExplainNoRepairPayload() {
         makeV2BasePlanShadowConsumptionTrialFixture(),
       v2CapacityMaterializerProjection:
         makeV2CapacityMaterializerProjectionFixture(),
+      v2LaneIntentMaterializerProjection:
+        makeV2LaneIntentMaterializerProjectionFixture(),
       crossWeekProjectionGate: {
         readOnly: true,
         affectsScoringOrGeneration: false,

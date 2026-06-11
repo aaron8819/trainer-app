@@ -4078,6 +4078,130 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
     );
   });
 
+  it("prints legacy repair quarantine status when the repair scoreboard is present", () => {
+    const summary = buildPlannerOnlyNoRepairSummary({
+      artifact: {
+        mesocycleExplain: {
+          plannerOnlyNoRepair: {
+            acceptanceClassification: {
+              basicMesocycleShapeStatus: "pass_with_warnings",
+              replacementReadinessStatus: "not_ready",
+              hardBlockers: [],
+              qualityWarnings: [],
+              diagnosticOnly: [],
+              sessionShaping: [],
+              migrationScoreboard: {
+                materialRepairCount: 19,
+                majorRepairCount: 8,
+                suspiciousRepairs: 6,
+                canReplaceRepairedProjection: false,
+                reason: "not_ready",
+              },
+            },
+            v2MesocyclePlan: {
+              planStatus: "experimental",
+              deloadTransform: {
+                projectionStatus: "partially_modelled",
+              },
+            },
+            repairPromotionScoreboard: {
+              version: 1,
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              source: "repaired_planning_reality",
+              rawRepairEvidence: {
+                rawRowCount: 48,
+                materialRepairCount: 19,
+                majorRepairCount: 8,
+                likelyAvoidableMaterialRepairCount: 9,
+                remainingMaterialRepairCount: 10,
+                suspiciousRepairCount: 6,
+              },
+              summary: {
+                promotionCandidateCount: 0,
+                doNotPromoteCount: 48,
+                safetyNetCount: 12,
+                collateralDiagnosticCount: 17,
+                diagnosticOnlyCount: 19,
+              },
+              interpretation: {
+                legacyRepairPressure: {
+                  rawRowCount: 48,
+                  materialRepairCount: 19,
+                  majorRepairCount: 8,
+                  likelyAvoidableMaterialRepairCount: 9,
+                  remainingMaterialRepairCount: 10,
+                  suspiciousRepairCount: 6,
+                  note: "raw_legacy_repair_evidence_not_behavior_promotion_pressure",
+                },
+                currentV2PolicyGap: {
+                  supportDirectFloorBlockerCount: 0,
+                  setDistributionCapacityGapCount: 4,
+                  setBudgetPolicyFailureCount: 2,
+                  selectionFeasibilityCapacityPressureCount: 1,
+                  staleWeek1ReadoutArtifactCount: 1,
+                  capAwareExpansionLimitationCount: 1,
+                  concentrationQualityGapCount: 7,
+                  optionalDiagnosticLaneCount: 1,
+                  selectionBlockerCount: 0,
+                  classTaxonomyMismatchCount: 20,
+                },
+                safetyNonRegressionRows: {
+                  count: 12,
+                  includesSuspiciousRows: true,
+                },
+                staleRepairedProjectionArtifacts: {
+                  count: 9,
+                  reasonCounts: {
+                    v2_already_solved_differently: 5,
+                    collateral_support_accounting: 4,
+                    legacy_repaired_artifact: 5,
+                    support_floor_design_needed: 4,
+                  },
+                },
+                legacyRepairQuarantine: {
+                  readOnly: true,
+                  affectsScoringOrGeneration: false,
+                  repairedProjectionRole: "legacy_evidence_not_target_policy",
+                  policyPromotionBasis:
+                    "positive_slot_owned_likely_avoidable_rows_only",
+                  rawLegacyEvidenceRowCount: 48,
+                  behaviorPromotionCandidateCount: 0,
+                  quarantinedRowCount: 48,
+                  safetyNetCount: 12,
+                  collateralDiagnosticCount: 17,
+                  diagnosticOnlyCount: 19,
+                  staleRepairedProjectionArtifactCount: 9,
+                  suspiciousRepairCount: 6,
+                },
+              },
+              promotionCandidates: [],
+              doNotPromoteRows: [],
+              safetyNetRows: [],
+              collateralDiagnosticRows: [],
+              diagnosticRows: [],
+              rawSuspiciousRows: [],
+            },
+          },
+        },
+      } as unknown as Parameters<
+        typeof buildPlannerOnlyNoRepairSummary
+      >[0]["artifact"],
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "V2 Repair Promotion Scoreboard",
+        "Raw repair evidence: material=19 major=8 likely-avoidable=9 remaining=10 suspicious=6",
+        "Legacy repair quarantine: role=legacy_evidence_not_target_policy behaviorCandidates=0 quarantined=48 staleArtifacts=9",
+        "Promotion candidates: 0",
+        "Safety/do-not-promote: 12",
+        "Collateral/diagnostic: 36",
+        "Candidate rows: none",
+      ]),
+    );
+  });
+
   it("prints compact promotion diff gate details for ready read-only hypotheses", () => {
     const summary = buildPlannerOnlyNoRepairSummary({
       artifact: {

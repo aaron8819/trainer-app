@@ -675,13 +675,17 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
   const capacityMaterializer = asRecord(
     noRepair.v2CapacityMaterializerProjection,
   );
+  const laneIntentMaterializer = asRecord(
+    noRepair.v2LaneIntentMaterializerProjection,
+  );
   if (
     !v2Plan &&
     !setDistribution &&
     !supportPolicy &&
     !basePlanCompare &&
     !shadowConsumption &&
-    !capacityMaterializer
+    !capacityMaterializer &&
+    !laneIntentMaterializer
   ) {
     return null;
   }
@@ -719,6 +723,9 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
       : {}),
     ...(capacityMaterializer
       ? { v2CapacityMaterializerProjection: capacityMaterializer }
+      : {}),
+    ...(laneIntentMaterializer
+      ? { v2LaneIntentMaterializerProjection: laneIntentMaterializer }
       : {}),
     materializedSeedWriteStatus: "not_available_in_audit_artifact",
   };
@@ -1126,6 +1133,12 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
   const capacityMaterializerImpact = asRecord(
     capacityMaterializer?.candidateImpact,
   );
+  const laneIntentMaterializer = asRecord(
+    noRepair.v2LaneIntentMaterializerProjection,
+  );
+  const laneIntentMaterializerImpact = asRecord(
+    laneIntentMaterializer?.candidateImpact,
+  );
 
   return {
     summary: {
@@ -1235,6 +1248,50 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
             typeof capacityMaterializer.nextSafeAction === "string"
               ? capacityMaterializer.nextSafeAction
               : "inspect_materializer_capacity_projection",
+        }
+      : undefined,
+    v2LaneIntentMaterializerProjection: laneIntentMaterializer
+      ? {
+          status: laneIntentMaterializer.status ?? "not_available",
+          readOnly: laneIntentMaterializer.readOnly === true,
+          affectsScoringOrGeneration:
+            laneIntentMaterializer.affectsScoringOrGeneration === true
+              ? true
+              : false,
+          consumedByProduction:
+            laneIntentMaterializer.consumedByProduction === true ? true : false,
+          consumedByDemandOrMaterializer:
+            laneIntentMaterializer.consumedByDemandOrMaterializer === true
+              ? true
+              : false,
+          projectionMode:
+            laneIntentMaterializer.projectionMode ??
+            "lane_intent_shadow_materializer_dry_run",
+          trialId: laneIntentMaterializer.trialId ?? null,
+          targetLane: pickRecordFields(laneIntentMaterializer.targetLane, [
+            "scopedLaneId",
+            "slotId",
+            "laneId",
+            "intentAvailable",
+            "baselineConsumedByProduction",
+            "trialConsumesLaneIntent",
+          ]),
+          candidateImpact: laneIntentMaterializerImpact
+            ? {
+                selectedIdentityDelta:
+                  laneIntentMaterializerImpact.selectedIdentityDelta,
+                totalSetDelta: laneIntentMaterializerImpact.totalSetDelta,
+                targetLaneExerciseDelta:
+                  laneIntentMaterializerImpact.targetLaneExerciseDelta,
+                materializerBlockerDelta:
+                  laneIntentMaterializerImpact.materializerBlockerDelta,
+                regressionCount: laneIntentMaterializerImpact.regressionCount,
+              }
+            : {},
+          nextSafeAction:
+            typeof laneIntentMaterializer.nextSafeAction === "string"
+              ? laneIntentMaterializer.nextSafeAction
+              : "inspect_lane_intent_materializer_projection",
         }
       : undefined,
     v2TargetVsNoRepairDiff: {
@@ -1456,6 +1513,12 @@ function buildIndexSummary(input: {
   const capacityMaterializerImpact = asRecord(
     capacityMaterializer?.candidateImpact,
   );
+  const laneIntentMaterializer = asRecord(
+    input.noRepair.v2LaneIntentMaterializerProjection,
+  );
+  const laneIntentMaterializerImpact = asRecord(
+    laneIntentMaterializer?.candidateImpact,
+  );
   return {
     status: asRecord(input.noRepair.summary)?.status ?? "unknown",
     basicMesocycleShapeStatus:
@@ -1483,6 +1546,12 @@ function buildIndexSummary(input: {
       capacityMaterializerImpact?.selectedIdentityDelta ?? null,
     v2CapacityMaterializerProjectionTotalSetDelta:
       capacityMaterializerImpact?.totalSetDelta ?? null,
+    v2LaneIntentMaterializerProjectionStatus:
+      laneIntentMaterializer?.status ?? "not_available",
+    v2LaneIntentMaterializerProjectionIdentityDelta:
+      laneIntentMaterializerImpact?.selectedIdentityDelta ?? null,
+    v2LaneIntentMaterializerProjectionTotalSetDelta:
+      laneIntentMaterializerImpact?.totalSetDelta ?? null,
     writtenShardCount: input.shardMetadata.filter(
       (shard) => shard.status === "written",
     ).length,

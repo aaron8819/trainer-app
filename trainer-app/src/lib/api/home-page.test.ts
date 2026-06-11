@@ -515,7 +515,8 @@ describe("loadHomePageData", () => {
       nextDueLabel: "Lower 1",
       lastCompletedDescriptor: "First upper session this week",
       nextDueDescriptor: "First lower session this week",
-      summary: null,
+      summary:
+        "Last completed: First upper session this week. Next due: Lower 1 (First lower session this week).",
     });
     expect(result.closeout).toBeNull();
     expect(result.recentActivity).toHaveLength(3);

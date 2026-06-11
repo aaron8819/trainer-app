@@ -777,6 +777,8 @@ export function buildRepairPromotionScoreboard(
         .length,
     suspiciousRepairCount: rawSuspiciousRows.length,
   };
+  const staleRepairedProjectionArtifacts =
+    countStaleRepairedProjectionArtifacts(doNotPromoteRows);
 
   return {
     version: 1,
@@ -801,8 +803,22 @@ export function buildRepairPromotionScoreboard(
         count: safetyNetRows.length,
         includesSuspiciousRows: rawSuspiciousRows.length > 0,
       },
-      staleRepairedProjectionArtifacts:
-        countStaleRepairedProjectionArtifacts(doNotPromoteRows),
+      staleRepairedProjectionArtifacts,
+      legacyRepairQuarantine: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        repairedProjectionRole: "legacy_evidence_not_target_policy",
+        policyPromotionBasis: "positive_slot_owned_likely_avoidable_rows_only",
+        rawLegacyEvidenceRowCount: repairRows.length,
+        behaviorPromotionCandidateCount: promotionCandidates.length,
+        quarantinedRowCount: doNotPromoteRows.length,
+        safetyNetCount: safetyNetRows.length,
+        collateralDiagnosticCount: collateralDiagnosticRows.length,
+        diagnosticOnlyCount: diagnosticRows.length,
+        staleRepairedProjectionArtifactCount:
+          staleRepairedProjectionArtifacts.count,
+        suspiciousRepairCount: rawSuspiciousRows.length,
+      },
     },
     promotionCandidates,
     doNotPromoteRows,

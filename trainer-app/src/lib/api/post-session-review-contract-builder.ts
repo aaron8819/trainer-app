@@ -7,12 +7,16 @@ import {
   type PostSessionReviewExecutionSummary,
   type PostSessionReviewLearningSignal,
   type PostSessionReviewPrescriptionCalibrationRow,
+  type PostSessionReviewRecentExposureCalibrationSummaryRow,
 } from "./post-session-review-contract";
 import type {
   PostSessionReviewContractBuildInput,
   PostSessionReviewExerciseEvidence,
+  PostSessionReviewRecentExerciseExposureEvidence,
   PostSessionReviewSetEvidence,
 } from "./post-session-review-evidence";
+
+const RECENT_EXPOSURE_LOOKBACK_WORKOUT_LIMIT = 3;
 
 function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
@@ -68,6 +72,13 @@ function resolveTargetLoad(sets: PostSessionReviewSetEvidence[]): number | null 
   return median(targetLoads);
 }
 
+function resolveTargetRpe(sets: PostSessionReviewSetEvidence[]): number | null {
+  const targetRpes = sets
+    .map((set) => set.targetRpe)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  return median(targetRpes);
+}
+
 function resolveTargetRepRange(
   sets: PostSessionReviewSetEvidence[]
 ): { min: number | null; max: number | null } {
@@ -102,11 +113,15 @@ function summarizePerformedLoad(sets: PostSessionReviewSetEvidence[]) {
   const performedReps = performed
     .map((set) => set.actualReps)
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const performedRpes = performed
+    .map((set) => set.actualRpe)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
 
   return {
     medianLoad: median(performedLoads),
     anchorLoad: performedLoads.length > 0 ? Math.max(...performedLoads) : null,
     medianReps: median(performedReps),
+    medianRpe: median(performedRpes),
   };
 }
 
@@ -121,6 +136,9 @@ function classifyCalibration(input: {
   loadDeltaPct: number | null;
   medianReps: number | null;
   lowerRepTarget: number | null;
+  upperRepTarget: number | null;
+  targetRpe: number | null;
+  medianActualRpe: number | null;
 }): Pick<
   PostSessionReviewPrescriptionCalibrationRow,
   "classification" | "reasonCodes" | "notes"
@@ -170,6 +188,18 @@ function classifyCalibration(input: {
     typeof input.medianReps === "number" &&
     typeof input.lowerRepTarget === "number" &&
     input.medianReps < input.lowerRepTarget - 1;
+  const repsAboveTarget =
+    typeof input.medianReps === "number" &&
+    typeof input.upperRepTarget === "number" &&
+    input.medianReps > input.upperRepTarget + 1;
+  const effortAboveTarget =
+    typeof input.medianActualRpe === "number" &&
+    typeof input.targetRpe === "number" &&
+    input.medianActualRpe > input.targetRpe + 1;
+  const effortBelowTarget =
+    typeof input.medianActualRpe === "number" &&
+    typeof input.targetRpe === "number" &&
+    input.medianActualRpe < input.targetRpe - 1;
 
   if (
     typeof input.targetLoad !== "number" ||
@@ -186,23 +216,41 @@ function classifyCalibration(input: {
     };
   }
 
-  if (input.loadDeltaPct <= -15 || repsBelowTarget) {
+  if (input.loadDeltaPct <= -15 || repsBelowTarget || effortAboveTarget) {
     return {
       classification: "target_too_high",
       reasonCodes: [
-        input.loadDeltaPct <= -15
-          ? "performed_load_materially_below_target"
-          : "median_reps_below_target",
+        ...(input.loadDeltaPct <= -15
+          ? ["performed_load_materially_below_target"]
+          : []),
+        ...(repsBelowTarget ? ["median_reps_below_target"] : []),
+        ...(effortAboveTarget ? ["median_rpe_above_target"] : []),
       ],
-      notes: [`load_delta_pct:${input.loadDeltaPct}`],
+      notes: [
+        `load_delta_pct:${input.loadDeltaPct}`,
+        ...(typeof input.medianActualRpe === "number"
+          ? [`median_rpe:${input.medianActualRpe}`]
+          : []),
+      ],
     };
   }
 
-  if (input.loadDeltaPct >= 15 && !repsBelowTarget) {
+  if ((input.loadDeltaPct >= 15 || (repsAboveTarget && effortBelowTarget)) && !repsBelowTarget) {
     return {
       classification: "target_too_low",
-      reasonCodes: ["performed_load_materially_above_target"],
-      notes: [`load_delta_pct:${input.loadDeltaPct}`],
+      reasonCodes: [
+        ...(input.loadDeltaPct >= 15
+          ? ["performed_load_materially_above_target"]
+          : []),
+        ...(repsAboveTarget ? ["median_reps_above_target"] : []),
+        ...(effortBelowTarget ? ["median_rpe_below_target"] : []),
+      ],
+      notes: [
+        `load_delta_pct:${input.loadDeltaPct}`,
+        ...(typeof input.medianActualRpe === "number"
+          ? [`median_rpe:${input.medianActualRpe}`]
+          : []),
+      ],
     };
   }
 
@@ -215,6 +263,82 @@ function classifyCalibration(input: {
       ...(input.skippedSetCount > 0 ? [`skipped_sets:${input.skippedSetCount}`] : []),
     ],
   };
+}
+
+function resolveRepRangeResult(input: {
+  medianReps: number | null;
+  lowerRepTarget: number | null;
+  upperRepTarget: number | null;
+}): PostSessionReviewPrescriptionCalibrationRow["repRangeResult"] {
+  if (typeof input.medianReps !== "number") {
+    return "unknown";
+  }
+  if (
+    typeof input.lowerRepTarget === "number" &&
+    input.medianReps < input.lowerRepTarget - 1
+  ) {
+    return "below_target";
+  }
+  if (
+    typeof input.upperRepTarget === "number" &&
+    input.medianReps > input.upperRepTarget + 1
+  ) {
+    return "above_target";
+  }
+  if (
+    typeof input.lowerRepTarget === "number" ||
+    typeof input.upperRepTarget === "number"
+  ) {
+    return "in_range";
+  }
+  return "unknown";
+}
+
+function resolveEffortResult(input: {
+  targetRpe: number | null;
+  medianActualRpe: number | null;
+}): PostSessionReviewPrescriptionCalibrationRow["effortResult"] {
+  if (
+    typeof input.targetRpe !== "number" ||
+    typeof input.medianActualRpe !== "number"
+  ) {
+    return "unknown";
+  }
+  const delta = input.medianActualRpe - input.targetRpe;
+  if (delta > 1) {
+    return "above_target";
+  }
+  if (delta < -1) {
+    return "below_target";
+  }
+  return "near_target";
+}
+
+function resolvePerformedRealityCoherence(input: {
+  classification: PostSessionReviewCalibrationClassification;
+  repRangeResult: PostSessionReviewPrescriptionCalibrationRow["repRangeResult"];
+  effortResult: PostSessionReviewPrescriptionCalibrationRow["effortResult"];
+}): PostSessionReviewPrescriptionCalibrationRow["performedRealityCoherence"] {
+  switch (input.classification) {
+    case "target_too_high":
+      return "load_too_heavy";
+    case "target_too_low":
+      return "load_too_light";
+    case "insufficient_evidence":
+      return "insufficient_evidence";
+    case "skipped_or_low_coverage":
+      return "low_coverage";
+    case "runtime_added":
+    case "replacement_like":
+      return "session_local";
+    case "recalibrated_hold":
+      return "mixed_signal";
+    case "clean":
+      return input.repRangeResult === "in_range" &&
+        (input.effortResult === "near_target" || input.effortResult === "unknown")
+        ? "coherent"
+        : "mixed_signal";
+  }
 }
 
 function buildExerciseRows(
@@ -301,6 +425,7 @@ function buildCalibrationRows(
         ? countPerformed(exercise.sets)
         : countPerformed(addedSets);
     const targetLoad = resolveTargetLoad(plannedSets);
+    const targetRpe = resolveTargetRpe(plannedSets);
     const performedLoad = summarizePerformedLoad(plannedSets);
     const targetRepRange = resolveTargetRepRange(plannedSets);
     const loadDeltaPct =
@@ -320,6 +445,27 @@ function buildCalibrationRows(
       loadDeltaPct,
       medianReps: performedLoad.medianReps,
       lowerRepTarget: targetRepRange.min,
+      upperRepTarget: targetRepRange.max,
+      targetRpe,
+      medianActualRpe: performedLoad.medianRpe,
+    });
+    const rpeDelta =
+      typeof targetRpe === "number" && typeof performedLoad.medianRpe === "number"
+        ? roundToTenth(performedLoad.medianRpe - targetRpe)
+        : null;
+    const repRangeResult = resolveRepRangeResult({
+      medianReps: performedLoad.medianReps,
+      lowerRepTarget: targetRepRange.min,
+      upperRepTarget: targetRepRange.max,
+    });
+    const effortResult = resolveEffortResult({
+      targetRpe,
+      medianActualRpe: performedLoad.medianRpe,
+    });
+    const performedRealityCoherence = resolvePerformedRealityCoherence({
+      classification: classification.classification,
+      repRangeResult,
+      effortResult,
     });
 
     return {
@@ -331,10 +477,17 @@ function buildCalibrationRows(
       skippedSetCount,
       addedSetCount,
       targetLoad,
+      targetRepRange,
+      targetRpe,
       medianPerformedLoad: performedLoad.medianLoad,
       anchorLoad: performedLoad.anchorLoad,
       loadDeltaPct,
       medianReps: performedLoad.medianReps,
+      medianActualRpe: performedLoad.medianRpe,
+      rpeDelta,
+      repRangeResult,
+      effortResult,
+      performedRealityCoherence,
       evidenceOnly: true,
       affectsPrescriptionPolicy: false,
     };
@@ -345,6 +498,7 @@ function buildLearningSignals(input: {
   executionSummary: PostSessionReviewExecutionSummary;
   rows: PostSessionReviewExerciseReconciliationRow[];
   calibrationRows: PostSessionReviewPrescriptionCalibrationRow[];
+  recentExposureRows: PostSessionReviewRecentExposureCalibrationSummaryRow[];
   contractInput: PostSessionReviewContractBuildInput;
 }): PostSessionReviewLearningSignal[] {
   const signals: PostSessionReviewLearningSignal[] = [
@@ -383,12 +537,57 @@ function buildLearningSignals(input: {
     (row) => row.classification !== "clean"
   );
   if (calibrationRows.length > 0) {
+    const summary = buildCalibrationSummary(input.calibrationRows);
+    const summaryParts = [
+      summary.coherentCount > 0 ? `${summary.coherentCount} coherent` : null,
+      summary.loadTooHeavyCount > 0
+        ? `${summary.loadTooHeavyCount} looked too heavy`
+        : null,
+      summary.loadTooLightCount > 0
+        ? `${summary.loadTooLightCount} looked too light`
+        : null,
+      summary.mixedSignalCount > 0 ? `${summary.mixedSignalCount} mixed` : null,
+      summary.lowCoverageCount > 0
+        ? `${summary.lowCoverageCount} low coverage`
+        : null,
+      summary.sessionLocalCount > 0
+        ? `${summary.sessionLocalCount} session-local`
+        : null,
+      summary.insufficientEvidenceCount > 0
+        ? `${summary.insufficientEvidenceCount} incomplete`
+        : null,
+    ].filter((part): part is string => Boolean(part));
     signals.push({
       kind: "calibration_signal",
       severity: "watch",
-      summary: "Prescription calibration rows contain watch evidence.",
+      summary:
+        summaryParts.length > 0
+          ? `Prescription calibration evidence: ${summaryParts.join(", ")}.`
+          : "Prescription calibration rows contain watch evidence.",
       evidence: calibrationRows.map(
         (row) => `${row.exerciseName}:${row.classification}`
+      ),
+    });
+  }
+
+  if (input.recentExposureRows.length > 0) {
+    const watchedRows = input.recentExposureRows.filter(
+      (row) =>
+        row.loadTooHeavyCount > 0 ||
+        row.loadTooLightCount > 0 ||
+        row.mixedSignalCount > 0 ||
+        row.lowCoverageCount > 0 ||
+        row.insufficientEvidenceCount > 0
+    );
+    signals.push({
+      kind: "calibration_signal",
+      severity: watchedRows.length > 0 ? "watch" : "info",
+      summary:
+        watchedRows.length > 0
+          ? `Recent exact-exercise calibration history has watch evidence for ${watchedRows.length} exercise(s).`
+          : "Recent exact-exercise calibration history was coherent.",
+      evidence: input.recentExposureRows.map(
+        (row) => `${row.exerciseName}:prior_exposures:${row.priorExposureCount}`
       ),
     });
   }
@@ -527,12 +726,99 @@ function buildConsistencyChecks(input: {
 function buildCalibrationSummary(rows: PostSessionReviewPrescriptionCalibrationRow[]) {
   const count = (classification: PostSessionReviewCalibrationClassification) =>
     rows.filter((row) => row.classification === classification).length;
+  const countCoherence = (
+    coherence: PostSessionReviewPrescriptionCalibrationRow["performedRealityCoherence"]
+  ) => rows.filter((row) => row.performedRealityCoherence === coherence).length;
   return {
     targetTooHighCount: count("target_too_high"),
     targetTooLowCount: count("target_too_low"),
     insufficientEvidenceCount: count("insufficient_evidence"),
     skippedOrLowCoverageCount: count("skipped_or_low_coverage"),
+    coherentCount: countCoherence("coherent"),
+    loadTooHeavyCount: countCoherence("load_too_heavy"),
+    loadTooLightCount: countCoherence("load_too_light"),
+    mixedSignalCount: countCoherence("mixed_signal"),
+    lowCoverageCount: countCoherence("low_coverage"),
+    sessionLocalCount: countCoherence("session_local"),
   };
+}
+
+function summarizeRecentExposureRows(input: {
+  exerciseId: string;
+  exerciseName: string;
+  rows: PostSessionReviewPrescriptionCalibrationRow[];
+  performedAtValues: Array<string | null | undefined>;
+}): PostSessionReviewRecentExposureCalibrationSummaryRow {
+  const countCoherence = (
+    coherence: PostSessionReviewPrescriptionCalibrationRow["performedRealityCoherence"]
+  ) => input.rows.filter((row) => row.performedRealityCoherence === coherence).length;
+  const latestPerformedAt =
+    input.performedAtValues
+      .filter((value): value is string => typeof value === "string" && value.length > 0)
+      .sort()
+      .at(-1) ?? null;
+
+  return {
+    exerciseId: input.exerciseId,
+    exerciseName: input.exerciseName,
+    priorExposureCount: input.rows.length,
+    lookbackWorkoutLimit: RECENT_EXPOSURE_LOOKBACK_WORKOUT_LIMIT,
+    latestPerformedAt,
+    coherentCount: countCoherence("coherent"),
+    loadTooHeavyCount: countCoherence("load_too_heavy"),
+    loadTooLightCount: countCoherence("load_too_light"),
+    mixedSignalCount: countCoherence("mixed_signal"),
+    lowCoverageCount: countCoherence("low_coverage"),
+    insufficientEvidenceCount: countCoherence("insufficient_evidence"),
+    sessionLocalCount: countCoherence("session_local"),
+    evidenceOnly: true,
+    affectsPrescriptionPolicy: false,
+    affectsProgressionPolicy: false,
+  };
+}
+
+function buildRecentExposureSummaryRows(input: {
+  currentRows: PostSessionReviewPrescriptionCalibrationRow[];
+  recentExposures: PostSessionReviewRecentExerciseExposureEvidence[] | undefined;
+}): PostSessionReviewRecentExposureCalibrationSummaryRow[] {
+  const currentExerciseIds = new Set(input.currentRows.map((row) => row.exerciseId));
+  const exposuresByExerciseId = new Map<
+    string,
+    PostSessionReviewRecentExerciseExposureEvidence[]
+  >();
+
+  for (const exposure of input.recentExposures ?? []) {
+    if (!currentExerciseIds.has(exposure.exerciseId)) {
+      continue;
+    }
+    const existing = exposuresByExerciseId.get(exposure.exerciseId) ?? [];
+    existing.push(exposure);
+    exposuresByExerciseId.set(exposure.exerciseId, existing);
+  }
+
+  return Array.from(exposuresByExerciseId.entries()).flatMap(
+    ([exerciseId, exposures]) => {
+      const limitedExposures = exposures
+        .slice()
+        .sort((left, right) => right.performedAt.localeCompare(left.performedAt))
+        .slice(0, RECENT_EXPOSURE_LOOKBACK_WORKOUT_LIMIT);
+      if (limitedExposures.length === 0) {
+        return [];
+      }
+      const calibrationRows = buildCalibrationRows(limitedExposures);
+      const exerciseName =
+        input.currentRows.find((row) => row.exerciseId === exerciseId)?.exerciseName ??
+        limitedExposures[0]?.exerciseName ??
+        exerciseId;
+
+      return summarizeRecentExposureRows({
+        exerciseId,
+        exerciseName,
+        rows: calibrationRows,
+        performedAtValues: limitedExposures.map((exposure) => exposure.performedAt),
+      });
+    }
+  );
 }
 
 export function buildPostSessionReviewContract(
@@ -541,6 +827,10 @@ export function buildPostSessionReviewContract(
   const exerciseRows = buildExerciseRows(input.exercises);
   const executionSummary = buildExecutionSummary(exerciseRows);
   const calibrationRows = buildCalibrationRows(input.exercises);
+  const recentExposureRows = buildRecentExposureSummaryRows({
+    currentRows: calibrationRows,
+    recentExposures: input.recentExerciseExposures,
+  });
   const boundaries = {
     readOnly: true as const,
     affectsScoringOrGeneration: false as const,
@@ -628,6 +918,17 @@ export function buildPostSessionReviewContract(
       source: "set_log_vs_workout_set_targets" as const,
       rows: calibrationRows,
       summary: buildCalibrationSummary(calibrationRows),
+      ...(recentExposureRows.length > 0
+        ? {
+            recentExposureSummary: {
+              source: "exact_exercise_prior_performed_workouts" as const,
+              rows: recentExposureRows,
+              readOnly: true as const,
+              affectsPrescriptionPolicy: false as const,
+              affectsProgressionPolicy: false as const,
+            },
+          }
+        : {}),
       readOnly: true as const,
     },
     ...(input.weeklyImpact
@@ -643,6 +944,7 @@ export function buildPostSessionReviewContract(
       executionSummary,
       rows: exerciseRows,
       calibrationRows,
+      recentExposureRows,
       contractInput: input,
     }),
     boundaries,

@@ -237,11 +237,43 @@ describe("post-session review contract", () => {
             ],
           }),
           exercise({
+            exerciseId: "effort-high",
+            exerciseName: "High Effort Press",
+            sets: [
+              performedSet("set-6", {
+                targetLoad: 100,
+                actualLoad: 100,
+                actualReps: 10,
+                targetRpe: 8,
+                actualRpe: 9.5,
+              }),
+              performedSet("set-7", {
+                targetLoad: 100,
+                actualLoad: 100,
+                actualReps: 10,
+                targetRpe: 8,
+                actualRpe: 9.5,
+              }),
+            ],
+          }),
+          exercise({
             exerciseId: "too-low",
             exerciseName: "Too Low Row",
             sets: [
-              performedSet("set-3", { targetLoad: 100, actualLoad: 130, actualReps: 10 }),
-              performedSet("set-4", { targetLoad: 100, actualLoad: 130, actualReps: 10 }),
+              performedSet("set-3", {
+                targetLoad: 100,
+                actualLoad: 130,
+                actualReps: 14,
+                targetRpe: 8,
+                actualRpe: 6.5,
+              }),
+              performedSet("set-4", {
+                targetLoad: 100,
+                actualLoad: 130,
+                actualReps: 14,
+                targetRpe: 8,
+                actualRpe: 6.5,
+              }),
             ],
           }),
           exercise({
@@ -268,14 +300,124 @@ describe("post-session review contract", () => {
       )
     ).toEqual({
       "too-high": "target_too_high",
+      "effort-high": "target_too_high",
       "too-low": "target_too_low",
       insufficient: "insufficient_evidence",
     });
     expect(contract.prescriptionCalibration.summary).toMatchObject({
-      targetTooHighCount: 1,
+      targetTooHighCount: 2,
       targetTooLowCount: 1,
       insufficientEvidenceCount: 1,
+      coherentCount: 0,
+      loadTooHeavyCount: 2,
+      loadTooLightCount: 1,
+      mixedSignalCount: 0,
+      lowCoverageCount: 0,
+      sessionLocalCount: 0,
     });
+    expect(contract.learningSignals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "calibration_signal",
+          severity: "watch",
+          summary:
+            "Prescription calibration evidence: 2 looked too heavy, 1 looked too light, 1 incomplete.",
+        }),
+      ])
+    );
+    expect(
+      contract.prescriptionCalibration.rows.find(
+        (row) => row.exerciseId === "effort-high"
+      )
+    ).toMatchObject({
+      targetRpe: 8,
+      medianActualRpe: 9.5,
+      rpeDelta: 1.5,
+      repRangeResult: "in_range",
+      effortResult: "above_target",
+      performedRealityCoherence: "load_too_heavy",
+      affectsPrescriptionPolicy: false,
+    });
+    expect(
+      contract.prescriptionCalibration.rows.find((row) => row.exerciseId === "too-low")
+    ).toMatchObject({
+      targetRepRange: { min: 8, max: 12 },
+      medianReps: 14,
+      medianActualRpe: 6.5,
+      repRangeResult: "above_target",
+      effortResult: "below_target",
+      performedRealityCoherence: "load_too_light",
+    });
+  });
+
+  it("summarizes exact-exercise recent calibration exposure without policy impact", () => {
+    const contract = buildPostSessionReviewContract(
+      buildInput({
+        recentExerciseExposures: [
+          {
+            ...exercise({
+              workoutExerciseId: "prior-heavy",
+              exerciseId: "ex-1",
+              exerciseName: "Bench Press",
+              sets: [
+                performedSet("prior-heavy-set-1", {
+                  targetLoad: 100,
+                  actualLoad: 100,
+                  actualReps: 10,
+                  targetRpe: 8,
+                  actualRpe: 9.5,
+                }),
+                performedSet("prior-heavy-set-2", {
+                  targetLoad: 100,
+                  actualLoad: 100,
+                  actualReps: 10,
+                  targetRpe: 8,
+                  actualRpe: 9.5,
+                }),
+              ],
+            }),
+            workoutId: "prior-heavy-workout",
+            performedAt: "2026-05-25T13:00:00.000Z",
+          },
+          {
+            ...exercise({
+              workoutExerciseId: "prior-clean",
+              exerciseId: "ex-1",
+              exerciseName: "Bench Press",
+            }),
+            workoutId: "prior-clean-workout",
+            performedAt: "2026-05-20T13:00:00.000Z",
+          },
+        ],
+      })
+    );
+
+    expect(contract.prescriptionCalibration.recentExposureSummary).toEqual({
+      source: "exact_exercise_prior_performed_workouts",
+      readOnly: true,
+      affectsPrescriptionPolicy: false,
+      affectsProgressionPolicy: false,
+      rows: [
+        {
+          exerciseId: "ex-1",
+          exerciseName: "Bench Press",
+          priorExposureCount: 2,
+          lookbackWorkoutLimit: 3,
+          latestPerformedAt: "2026-05-25T13:00:00.000Z",
+          coherentCount: 1,
+          loadTooHeavyCount: 1,
+          loadTooLightCount: 0,
+          mixedSignalCount: 0,
+          lowCoverageCount: 0,
+          insufficientEvidenceCount: 0,
+          sessionLocalCount: 0,
+          evidenceOnly: true,
+          affectsPrescriptionPolicy: false,
+          affectsProgressionPolicy: false,
+        },
+      ],
+    });
+    expect(isPostSessionReviewContract(contract)).toBe(true);
   });
 
   it("includes next-exposure rows when explainability evidence exists", () => {

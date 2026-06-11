@@ -5,6 +5,7 @@ export type V2LaneSelectionIntentLaneJob =
 
 export type V2LaneSelectionIntentMovementPattern =
   | "calf_raise"
+  | "chest_press_or_fly"
   | "chest_press"
   | "elbow_extension"
   | "elbow_flexion"
@@ -20,6 +21,7 @@ export type V2LaneSelectionIntentExerciseClass =
   | "back_extension"
   | "biceps_isolation"
   | "calf_isolation"
+  | "chest_fly"
   | "chest_biased_press_support"
   | "chest_press"
   | "chin_up"
@@ -204,6 +206,10 @@ function isChestBiasedPressSupportLane(
   );
 }
 
+function isChestSecondExposureLane(lane: LaneSelectionIntentSourceLane): boolean {
+  return lane.laneId === "chest_second_exposure";
+}
+
 function isHamstringCurlLane(lane: LaneSelectionIntentSourceLane): boolean {
   return (
     lane.laneId === "hamstring_curl" ||
@@ -223,6 +229,26 @@ function isBicepsDirectLane(lane: LaneSelectionIntentSourceLane): boolean {
 export function buildV2LaneSelectionIntentV0ForPlanLane(
   lane: LaneSelectionIntentSourceLane,
 ): V2LaneSelectionIntentV0 | undefined {
+  if (isChestSecondExposureLane(lane)) {
+    return baseIntent({
+      laneJob: "support_coverage",
+      requiredMovementPattern: "chest_press_or_fly",
+      preferredMovementPatterns: ["chest_press"],
+      allowedExerciseClasses: ["chest_press", "chest_fly"],
+      directnessRequirement: "high_directness",
+      minimumTargetStimulus: {
+        muscle: "Chest",
+        minimumPerSetStimulus: 0.75,
+      },
+      stabilityPreference: "stable_preferred",
+      fatiguePreference: "moderate_or_low",
+      duplicatePolicy: "prefer_variation_if_clean",
+      capacityPriority: "high",
+      fallbackPolicy: "allow_labeled_fallback",
+      identityPreservationMode: "variation_allowed_within_lane_job",
+    });
+  }
+
   if (isChestBiasedPressSupportLane(lane)) {
     return baseIntent(
       {

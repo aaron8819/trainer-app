@@ -3,6 +3,7 @@ import type {
   V2ExerciseClassTaxonomy,
   V2ExerciseMaterializationInput,
   V2ExerciseMaterializationPlan,
+  V2MaterializationDiagnosticLaneSelectionIntentOverride,
   V2MaterializationExercise,
   V2MaterializedSelection,
 } from "./types";
@@ -58,6 +59,10 @@ export function buildV2ExerciseMaterializationPlan(
   const selected: V2MaterializedSelection[] = [
     ...(input.continuity?.priorMaterializedSelections ?? []),
   ];
+  const diagnosticLaneIntentOverride =
+    resolveDiagnosticLaneSelectionIntentOverride(
+      input.diagnosticLaneSelectionIntentOverride,
+    );
   const slots: V2ExerciseMaterializationPlan["slots"] = [];
   const blockers: V2ExerciseMaterializationPlan["blockers"] = [];
   const omissions: V2ExerciseMaterializationPlan["omissions"] = [];
@@ -80,6 +85,7 @@ export function buildV2ExerciseMaterializationPlan(
         carryForwardExerciseIds:
           input.continuity?.carryForwardExerciseIdsByLane ?? {},
         identityPreservationMode: input.continuity?.identityPreservationMode,
+        diagnosticLaneIntentOverride,
         selected,
         materializedSlot,
       });
@@ -200,6 +206,7 @@ function materializeLane(input: {
         V2ExerciseMaterializationInput["continuity"]
       >["identityPreservationMode"]
     | undefined;
+  diagnosticLaneIntentOverride: ReadonlySet<string>;
   selected: V2MaterializedSelection[];
   materializedSlot: V2ExerciseMaterializationPlan["slots"][number];
 }):
@@ -242,12 +249,21 @@ function materializeLane(input: {
       input.taxonomy,
       input.lane.preferredExerciseClasses,
     ),
+    consumedLaneSelectionIntent: consumedLaneSelectionIntentForLane({
+      lane: input.lane,
+      scopedLaneId: scopedLaneId(input.slot.slotId, input.lane.laneId),
+      diagnosticLaneIntentOverride: input.diagnosticLaneIntentOverride,
+    }),
   });
   if (!classCandidates.length) {
     return { kind: "unmaterialized", reason: "no_class_match" };
   }
 
-  const consumedLaneSelectionIntent = consumedLaneSelectionIntentForLane(input.lane);
+  const consumedLaneSelectionIntent = consumedLaneSelectionIntentForLane({
+    lane: input.lane,
+    scopedLaneId: scopedLaneId(input.slot.slotId, input.lane.laneId),
+    diagnosticLaneIntentOverride: input.diagnosticLaneIntentOverride,
+  });
   const intentCandidates = consumedLaneSelectionIntent
     ? filterCandidatesByLaneSelectionIntent({
         lane: input.lane,
@@ -325,12 +341,41 @@ function materializeLane(input: {
   };
 }
 
-function consumedLaneSelectionIntentForLane(
-  lane: PlanLane,
-): V2LaneSelectionIntentV0 | undefined {
-  return isV2LaneSelectionIntentConsumedByMaterializer(lane)
-    ? lane.laneSelectionIntent
-    : undefined;
+function resolveDiagnosticLaneSelectionIntentOverride(
+  override:
+    | V2MaterializationDiagnosticLaneSelectionIntentOverride
+    | undefined,
+): ReadonlySet<string> {
+  if (
+    !override ||
+    override.version !== 1 ||
+    override.source !==
+      "v2_materializer_diagnostic_lane_selection_intent_override" ||
+    override.readOnly !== true ||
+    override.affectsScoringOrGeneration !== false ||
+    override.dryRunOnly !== true ||
+    override.reason !== "read_only_materializer_comparison_trial"
+  ) {
+    return new Set();
+  }
+  return new Set(override.consumeScopedLaneIds);
+}
+
+function consumedLaneSelectionIntentForLane(input: {
+  lane: PlanLane;
+  scopedLaneId?: string;
+  diagnosticLaneIntentOverride?: ReadonlySet<string>;
+}): V2LaneSelectionIntentV0 | undefined {
+  if (isV2LaneSelectionIntentConsumedByMaterializer(input.lane)) {
+    return input.lane.laneSelectionIntent;
+  }
+  if (
+    input.scopedLaneId &&
+    input.diagnosticLaneIntentOverride?.has(input.scopedLaneId)
+  ) {
+    return input.lane.laneSelectionIntent;
+  }
+  return undefined;
 }
 
 function filterCandidatesByLaneSelectionIntent(input: {
@@ -428,6 +473,7 @@ function buildCandidates(input: {
         V2ExerciseMaterializationInput["continuity"]
       >["identityPreservationMode"]
     | undefined;
+  consumedLaneSelectionIntent?: V2LaneSelectionIntentV0;
 }): Candidate[] {
   const resolved = new Set(input.resolvedClasses);
   return input.inventory.flatMap(({ exercise, matches }) => {
@@ -467,7 +513,12 @@ function buildCandidates(input: {
           exercise.exerciseId,
           input.favoriteExerciseIds,
         ),
-        laneIntent: laneIntentPreferenceScore(input.lane, match, exercise),
+        laneIntent: laneIntentPreferenceScore(
+          input.lane,
+          match,
+          exercise,
+          input.consumedLaneSelectionIntent,
+        ),
         stimulusToFatigue: stimulusToFatigueScore(input.lane, match, exercise),
         fatigue: exercise.fatigueCost ?? 0,
         favorite: input.favoriteExerciseIds.has(exercise.exerciseId) ? 0 : 1,
@@ -643,10 +694,14 @@ function laneIntentPreferenceScore(
   lane: PlanLane,
   match: V2ExerciseClassMatch,
   exercise: V2MaterializationExercise,
+  consumedLaneSelectionIntent?: V2LaneSelectionIntentV0,
 ): number {
-  const consumedIntent = consumedLaneSelectionIntentForLane(lane);
-  if (consumedIntent) {
-    return laneSelectionIntentRankingScore(consumedIntent, match, exercise);
+  if (consumedLaneSelectionIntent) {
+    return laneSelectionIntentRankingScore(
+      consumedLaneSelectionIntent,
+      match,
+      exercise,
+    );
   }
 
   const targetStimulus = averageTargetStimulus(lane, match, exercise);
@@ -662,6 +717,10 @@ function laneIntentPreferenceScore(
     (exercise.isMainLiftEligible ? 2 : 0) +
     (!targetsLowerBack && lowerBackStimulus >= 0.5 ? 1 : 0)
   );
+}
+
+function scopedLaneId(slotId: string, laneId: string): string {
+  return `${slotId}:${laneId}`;
 }
 
 function laneSelectionIntentRankingScore(
@@ -789,6 +848,7 @@ function classIdsForLaneSelectionIntentClass(
 ): string[] {
   switch (exerciseClass) {
     case "chest_biased_press_support":
+    case "chest_fly":
     case "chest_press":
       return ["distinct_chest_press_or_fly"];
     case "hamstring_curl":
@@ -852,6 +912,9 @@ function exerciseTextMatchesLaneSelectionIntentClass(
         hasAnyNormalizedPhrase(text, ["row"]);
     case "row_only":
       return hasAnyNormalizedPhrase(text, ["row"]);
+    case "chest_fly":
+      return hasAnyMovementPattern(exercise, ["fly"]) ||
+        hasAnyNormalizedPhrase(text, ["fly", "crossover", "pec deck"]);
     case "shoulder_biased_press":
       return hasAnyMovementPattern(exercise, ["vertical_press", "overhead_press"]) ||
         hasAnyNormalizedPhrase(text, ["landmine press", "shoulder press", "overhead press"]);
@@ -897,6 +960,12 @@ function matchesRequiredMovementPattern(
           "machine press",
           "iso lateral press",
         ])
+      );
+    case "chest_press_or_fly":
+      return (
+        matchesRequiredMovementPattern(exercise, "chest_press") ||
+        hasAnyMovementPattern(exercise, ["fly"]) ||
+        hasAnyNormalizedPhrase(text, ["fly", "crossover", "pec deck"])
       );
     case "knee_flexion":
       return (

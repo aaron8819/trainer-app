@@ -78,7 +78,8 @@ function makeCard(
         kind: "prescription_confidence",
         exerciseLabel: "Cable Rear Delt Fly",
         displayActionCode: "machine_or_cable_target_may_need_calibration",
-        message: "Cable Rear Delt Fly: Machine/cable target may need calibration.",
+        message:
+          "Cable Rear Delt Fly: First working set calibrates this machine/cable target; reduce one load step if reps fall short or RPE jumps.",
       },
       {
         kind: "prescription_confidence",
@@ -213,7 +214,7 @@ describe("HomePreSessionReadinessPanel", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Adjust to stay near the target RPE. Hold if reps and form match the target; reduce if form breaks or RPE jumps."
+        "Adjust to stay near the target RPE. Hold if reps and form match the target; reduce one load step if reps fall short, form breaks, or RPE jumps."
       )
     ).toBeInTheDocument();
     expect(
@@ -240,14 +241,14 @@ describe("HomePreSessionReadinessPanel", () => {
               exerciseLabel: "Close-Grip Seated Cable Row",
               displayActionCode: "machine_or_cable_target_may_need_calibration",
               message:
-                "Close-Grip Seated Cable Row: Machine/cable target may need calibration.",
+                "Close-Grip Seated Cable Row: First working set calibrates this machine/cable target; reduce one load step if reps fall short or RPE jumps.",
             },
             {
               kind: "prescription_confidence",
               exerciseLabel: "Close-Grip Lat Pulldown",
               displayActionCode: "machine_or_cable_target_may_need_calibration",
               message:
-                "Close-Grip Lat Pulldown: Machine/cable target may need calibration.",
+                "Close-Grip Lat Pulldown: First working set calibrates this machine/cable target; reduce one load step if reps fall short or RPE jumps.",
             },
           ],
         })}
@@ -274,6 +275,88 @@ describe("HomePreSessionReadinessPanel", () => {
       )
     ).toBeInTheDocument();
     expect(screen.queryByText(/watch fatigue watch/i)).not.toBeInTheDocument();
+  });
+
+  it("renders exact adjustment ranges when the readiness DTO provides them", () => {
+    render(
+      <HomePreSessionReadinessPanel
+        card={makeCard({
+          calibrationNotes: [
+            {
+              kind: "prescription_confidence",
+              exerciseLabel: "Cable Row",
+              displayActionCode: "machine_or_cable_target_may_need_calibration",
+              message:
+                "Cable Row: Start at 80 lb; use 70-80 lb if first-set reps or RPE are off.",
+              targetLoad: 80,
+              adjustmentRangeBasis: "exact_range",
+              suggestedAdjustmentRange: {
+                minLoad: 70,
+                maxLoad: 80,
+                unit: "lb",
+                basis: "target_effort_load_mismatch",
+              },
+            },
+            {
+              kind: "prescription_confidence",
+              exerciseLabel: "Cable Rear Delt Fly",
+              displayActionCode: "machine_or_cable_target_may_need_calibration",
+              message:
+                "Cable Rear Delt Fly: First working set calibrates this machine/cable target; reduce one load step if reps fall short or RPE jumps.",
+            },
+          ],
+        })}
+        canPrepare={true}
+      />
+    );
+
+    const loadCalibration = screen
+      .getByText("Load Calibration")
+      .closest("div");
+    expect(loadCalibration).toHaveTextContent(
+      "Cable Row: start at 80 lb; use 70-80 lb if first-set reps or RPE are off."
+    );
+    expect(loadCalibration).toHaveTextContent(
+      "Use the first working set to dial in these machine/cable targets: Cable Rear Delt Fly."
+    );
+  });
+
+  it("renders target-load start guidance when no exact adjustment range exists", () => {
+    render(
+      <HomePreSessionReadinessPanel
+        card={makeCard({
+          calibrationNotes: [
+            {
+              kind: "prescription_confidence",
+              exerciseLabel: "Cable Triceps Pushdown",
+              displayActionCode: "hold_target_load",
+              message:
+                "Cable Triceps Pushdown: Start at 45 lb; hold unless the first set feels clearly too easy or too hard.",
+              targetLoad: 45,
+              adjustmentRangeBasis: "target_load_start",
+            },
+            {
+              kind: "prescription_confidence",
+              exerciseLabel: "Cable Rear Delt Fly",
+              displayActionCode: "machine_or_cable_target_may_need_calibration",
+              message:
+                "Cable Rear Delt Fly: First working set calibrates this machine/cable target; reduce one load step if reps fall short or RPE jumps.",
+            },
+          ],
+        })}
+        canPrepare={true}
+      />
+    );
+
+    const loadCalibration = screen
+      .getByText("Load Calibration")
+      .closest("div");
+    expect(loadCalibration).toHaveTextContent(
+      "Cable Triceps Pushdown: start at 45 lb; hold unless the first set feels clearly too easy or too hard."
+    );
+    expect(loadCalibration).toHaveTextContent(
+      "Use the first working set to dial in these machine/cable targets: Cable Rear Delt Fly."
+    );
   });
 
   it("suppresses generic Today's Focus copy when no optional add-ons are present", () => {

@@ -8505,8 +8505,31 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ]),
     );
     expect(
+      noRepair.repairPromotionScoreboard?.interpretation.setBudgetGapInventory,
+    ).toMatchObject({
+      version: 1,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      source: "v2_target_vs_no_repair_diff",
+      summary: expect.objectContaining({
+        gapRowCount: expect.any(Number),
+        selectedGapId: expect.any(String),
+      }),
+    });
+    expect(noRepair.v2SetBudgetMaterializerProjection).toMatchObject({
+      source: "v2_set_budget_materializer_projection",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+      projectionMode: "set_budget_shadow_materializer_dry_run",
+      safeForBehaviorPromotion: false,
+    });
+    expect(
       noRepair.repairPromotionScoreboard?.interpretation.selectedGapProof,
     ).toMatchObject({
+      gapId: "set_distribution_budget",
       readOnly: true,
       affectsScoringOrGeneration: false,
       consumedByProduction: false,
@@ -8515,8 +8538,21 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
     expect(
       noRepair.repairPromotionScoreboard?.interpretation.selectedGapProof
-        ?.proofResult,
-    ).not.toBe("measured_no_candidate_impact");
+        ?.selectedSetBudgetGapId,
+    ).toBe(
+      noRepair.repairPromotionScoreboard?.interpretation.setBudgetGapInventory
+        ?.summary.selectedGapId,
+    );
+    expect(
+      noRepair.repairPromotionScoreboard?.interpretation.selectedGapProof
+        ?.measuredEvidence,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("candidateImpact.selectedIdentityDelta="),
+        expect.stringContaining("candidateImpact.totalSetDelta="),
+        expect.stringContaining("candidateImpact.materializerBlockerDelta="),
+      ]),
+    );
     expect(rearDeltLane).toMatchObject({
       currentStatus: "blocked",
       gapCause: "concentration_policy_gap",

@@ -81,6 +81,7 @@ import { resolveSessionSlotPolicy } from "@/lib/planning/session-slot-profile";
 import { MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION } from "./constants";
 import {
   buildRepairPromotionScoreboard,
+  selectSetBudgetMaterializerTarget,
   selectTaxonomyMismatchMaterializerTarget,
 } from "./mesocycle-explain-v2-repair-scoreboard";
 import {
@@ -88,6 +89,7 @@ import {
   buildV2BasePlanShadowConsumptionTrialFromLiveContext,
   buildV2CapacityMaterializerProjectionFromLiveContext,
   buildV2LaneIntentMaterializerProjectionFromLiveContext,
+  buildV2SetBudgetMaterializerProjectionFromLiveContext,
   normalizeLiveInventoryForV2Materialization,
 } from "./v2-materialization-live-context-dry-run";
 import {
@@ -8712,6 +8714,43 @@ export function buildPlannerOnlyNoRepairComparison(input: {
           : {}),
       })
     : undefined;
+  const setBudgetMaterializerTarget = selectSetBudgetMaterializerTarget({
+    weeklyMuscleTotals,
+    slotPlans,
+    v2MesocyclePlan,
+    v2SetDistributionIntent,
+    v2TargetVsNoRepairDiff,
+    v2SupportLaneProjectionDiagnostic,
+    v2ExerciseSelectionPlanDiagnostic,
+    ...(v2CapacityMaterializerProjection
+      ? { v2CapacityMaterializerProjection }
+      : {}),
+    ...(v2LaneIntentMaterializerProjection
+      ? { v2LaneIntentMaterializerProjection }
+      : {}),
+    ...(v2BasePlanShadowConsumptionTrial
+      ? { v2BasePlanShadowConsumptionTrial }
+      : {}),
+  });
+  const v2SetBudgetMaterializerProjection =
+    input.v2BasePlanCompareContext &&
+    setBudgetMaterializerTarget &&
+    isV2PlannerSlotId(setBudgetMaterializerTarget.slotId)
+      ? buildV2SetBudgetMaterializerProjectionFromLiveContext({
+          plannerPolicy,
+          ...input.v2BasePlanCompareContext,
+          targetLane: {
+            week: setBudgetMaterializerTarget.week,
+            slotId: setBudgetMaterializerTarget.slotId,
+            laneId: setBudgetMaterializerTarget.laneId,
+            trialId: setBudgetMaterializerTarget.trialId,
+            currentBudget: setBudgetMaterializerTarget.currentBudget,
+            suspectedNeededBudget:
+              setBudgetMaterializerTarget.suspectedNeededBudget,
+            muscles: setBudgetMaterializerTarget.muscles,
+          },
+        })
+      : undefined;
   const lowAxialHipExtensionLimitation =
     buildLowAxialHipExtensionLimitation({
       noRepair,
@@ -8749,6 +8788,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         : {}),
       ...(v2LaneIntentMaterializerProjection
         ? { v2LaneIntentMaterializerProjection }
+        : {}),
+      ...(v2SetBudgetMaterializerProjection
+        ? { v2SetBudgetMaterializerProjection }
         : {}),
       ...(v2BasePlanShadowConsumptionTrial
         ? { v2BasePlanShadowConsumptionTrial }
@@ -8789,6 +8831,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       : {}),
     ...(v2LaneIntentMaterializerProjection
       ? { v2LaneIntentMaterializerProjection }
+      : {}),
+    ...(v2SetBudgetMaterializerProjection
+      ? { v2SetBudgetMaterializerProjection }
       : {}),
     plannerOwnedAccumulationProjection,
     v2ExerciseSelectionPlanDiagnostic,

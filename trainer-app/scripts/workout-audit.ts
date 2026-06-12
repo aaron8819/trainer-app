@@ -1877,11 +1877,33 @@ function formatTaxonomyMismatchInventory(
   return `rows=${inventory.summary.mismatchRowCount ?? 0} selectedIdentityAffected=${inventory.summary.selectedIdentityAffectedCount ?? 0} cleanAlternatives=${inventory.summary.cleanAlternativeAvailableCount ?? 0} selected=${inventory.summary.selectedMismatchId ?? "none"} owners=${formatCountRecord(inventory.summary.ownerCounts, 4)}`;
 }
 
+function formatSetBudgetGapInventory(
+  inventory:
+    | {
+        summary?: {
+          gapRowCount?: number;
+          setDistributionIntentOwnedCount?: number;
+          downstreamMaterializerOrCapacityCount?: number;
+          diagnosticOnlyOrStaleCount?: number;
+          selectedGapId?: string | null;
+          ownerCounts?: Record<string, number>;
+        };
+      }
+    | null
+    | undefined
+): string {
+  if (!inventory?.summary) {
+    return "not_available";
+  }
+  return `rows=${inventory.summary.gapRowCount ?? 0} setDistributionOwned=${inventory.summary.setDistributionIntentOwnedCount ?? 0} downstreamOrCapacity=${inventory.summary.downstreamMaterializerOrCapacityCount ?? 0} diagnosticOrStale=${inventory.summary.diagnosticOnlyOrStaleCount ?? 0} selected=${inventory.summary.selectedGapId ?? "none"} owners=${formatCountRecord(inventory.summary.ownerCounts, 4)}`;
+}
+
 function formatSelectedGapProof(
   proof:
     | {
         gapId: string;
         selectedMismatchId?: string;
+        selectedSetBudgetGapId?: string;
         classification: string;
         proofResult: string;
         rightfulOwnerSeam: string;
@@ -1896,7 +1918,8 @@ function formatSelectedGapProof(
   if (!proof) {
     return "not_available";
   }
-  return `${proof.gapId}:${proof.proofResult}@${proof.rightfulOwnerSeam} classification=${proof.classification}${proof.selectedMismatchId ? ` selected=${proof.selectedMismatchId}` : ""} consumedByProduction=${proof.consumedByProduction ? "yes" : "no"} safeForBehavior=${proof.safeForBehaviorPromotion ? "yes" : "no"} missing=${formatNameList(proof.missingGates, 4)} next=${proof.nextSafeAction}`;
+  const selectedId = proof.selectedMismatchId ?? proof.selectedSetBudgetGapId;
+  return `${proof.gapId}:${proof.proofResult}@${proof.rightfulOwnerSeam} classification=${proof.classification}${selectedId ? ` selected=${selectedId}` : ""} consumedByProduction=${proof.consumedByProduction ? "yes" : "no"} safeForBehavior=${proof.safeForBehaviorPromotion ? "yes" : "no"} missing=${formatNameList(proof.missingGates, 4)} next=${proof.nextSafeAction}`;
 }
 
 function formatPlanningRealityNumber(value: number | null | undefined): string {
@@ -4393,6 +4416,8 @@ export function buildPlannerOnlyNoRepairSummary(input: {
   const selectedGapProof = repairScoreboard?.interpretation.selectedGapProof;
   const taxonomyMismatchInventory =
     repairScoreboard?.interpretation.taxonomyMismatchInventory;
+  const setBudgetGapInventory =
+    repairScoreboard?.interpretation.setBudgetGapInventory;
   const basePlanCompare = noRepair.v2BasePlanCompare;
   const shadowConsumption = noRepair.v2BasePlanShadowConsumptionTrial;
   const basePlanCompareLines = basePlanCompare
@@ -4445,6 +4470,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Missing proof before behavior: ${formatPromotionProofGates(missingPromotionProof)}`,
         `Ranked gap inventory: ${formatGapInventory(gapInventory)}`,
         `Taxonomy mismatch inventory: ${formatTaxonomyMismatchInventory(taxonomyMismatchInventory)}`,
+        `Set-budget gap inventory: ${formatSetBudgetGapInventory(setBudgetGapInventory)}`,
         `Selected gap proof: ${formatSelectedGapProof(selectedGapProof)}`,
         `Promotion candidates: ${repairScoreboard.summary.promotionCandidateCount}`,
         `Safety/do-not-promote: ${repairScoreboard.summary.safetyNetCount}`,

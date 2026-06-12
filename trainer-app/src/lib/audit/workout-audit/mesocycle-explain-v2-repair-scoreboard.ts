@@ -28,6 +28,7 @@ type V2RepairPromotionReadoutContext = {
   v2ExerciseSelectionPlanDiagnostic: MesocycleExplainPlannerOnlyNoRepair["v2ExerciseSelectionPlanDiagnostic"];
   v2CapacityMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2CapacityMaterializerProjection"];
   v2LaneIntentMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2LaneIntentMaterializerProjection"];
+  v2SetBudgetMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2SetBudgetMaterializerProjection"];
   v2BasePlanShadowConsumptionTrial?: MesocycleExplainPlannerOnlyNoRepair["v2BasePlanShadowConsumptionTrial"];
 };
 
@@ -896,6 +897,10 @@ type TaxonomyMismatchInventory = NonNullable<
   V2RepairPromotionScoreboard["interpretation"]["taxonomyMismatchInventory"]
 >;
 type TaxonomyMismatchRow = TaxonomyMismatchInventory["rows"][number];
+type SetBudgetGapInventory = NonNullable<
+  V2RepairPromotionScoreboard["interpretation"]["setBudgetGapInventory"]
+>;
+type SetBudgetGapRow = SetBudgetGapInventory["rows"][number];
 
 function importanceScore(importance: GapInventoryRow["trainingImportance"]): number {
   if (importance === "high") {
@@ -1132,6 +1137,324 @@ function buildTaxonomyMismatchInventory(
     : undefined;
 }
 
+function setBudgetGapId(input: {
+  week: number;
+  slotId: string;
+  laneId: string;
+}): string {
+  return `week_${input.week}:${input.slotId}:${input.laneId}`;
+}
+
+function findSetDistributionLane(input: {
+  context: V2RepairPromotionReadoutContext;
+  week: number;
+  slotId: string;
+  laneId: string;
+}):
+  | V2RepairPromotionReadoutContext["v2SetDistributionIntent"]["weeks"][number]["slots"][number]["lanes"][number]
+  | undefined {
+  return input.context.v2SetDistributionIntent.weeks
+    .find((week) => week.week === input.week)
+    ?.slots.find((slot) => slot.slotId === input.slotId)
+    ?.lanes.find((lane) => lane.laneId === input.laneId);
+}
+
+function selectedExerciseSetCount(
+  lane: V2TargetVsNoRepairLaneDiff,
+): number {
+  return lane.currentEvidence.selectedExercises.reduce(
+    (sum, exercise) => sum + exercise.sets,
+    0,
+  );
+}
+
+function setBudgetGapOwner(
+  lane: V2TargetVsNoRepairLaneDiff,
+): SetBudgetGapRow["likelyOwnerSeam"] {
+  if (
+    lane.gapCause === "set_distribution_gap" ||
+    lane.migrationRecommendation === "needs_set_budget_justification" ||
+    lane.migrationRecommendation === "needs_set_distribution_policy"
+  ) {
+    return "SetDistributionIntent";
+  }
+  if (
+    lane.gapCause === "capacity_gap" ||
+    lane.gapCause === "selection_feasibility_pressure"
+  ) {
+    return "ExerciseSelectionPlan";
+  }
+  if (lane.gapCause === "stale_week1_readout_artifact") {
+    return "audit_readout_cleanup";
+  }
+  return "v2_materialization_dry_run";
+}
+
+function setBudgetGapEvidenceQuality(
+  lane: V2TargetVsNoRepairLaneDiff,
+): SetBudgetGapRow["evidenceQuality"] {
+  if (lane.gapCause === "stale_week1_readout_artifact") {
+    return "stale_or_ambiguous";
+  }
+  if (
+    lane.severity === "diagnostic_only" ||
+    lane.migrationRecommendation === "keep_diagnostic_only"
+  ) {
+    return "diagnostic_only";
+  }
+  if (
+    lane.gapCause === "capacity_gap" ||
+    lane.gapCause === "selection_feasibility_pressure"
+  ) {
+    return "capacity_or_materializer_pressure";
+  }
+  return "set_budget_failure";
+}
+
+function setBudgetGapTrainingImportance(
+  lane: V2TargetVsNoRepairLaneDiff,
+): SetBudgetGapRow["trainingImportance"] {
+  const hardMuscle = lane.targetPrimaryMuscles.some((muscle) =>
+    ["Chest", "Hamstrings", "Quads", "Lats", "Side Delts"].includes(muscle),
+  );
+  if (hardMuscle && lane.targetRole !== "optional") {
+    return "high";
+  }
+  return lane.targetRole === "optional" ? "low" : "medium";
+}
+
+function setBudgetGapClassification(input: {
+  lane: V2TargetVsNoRepairLaneDiff;
+  owner: SetBudgetGapRow["likelyOwnerSeam"];
+  evidenceQuality: SetBudgetGapRow["evidenceQuality"];
+}): SetBudgetGapRow["classification"] {
+  if (input.evidenceQuality === "stale_or_ambiguous") {
+    return "stale_or_ambiguous";
+  }
+  if (input.evidenceQuality === "diagnostic_only") {
+    return "diagnostic_only_no_impact";
+  }
+  if (input.owner !== "SetDistributionIntent") {
+    return "downstream_materializer_or_capacity_issue";
+  }
+  if (
+    input.lane.gapCause === "set_distribution_gap" ||
+    input.lane.migrationRecommendation === "needs_set_budget_justification" ||
+    input.lane.migrationRecommendation === "needs_set_distribution_policy"
+  ) {
+    return "true_set_distribution_intent_gap";
+  }
+  return "blocked_by_missing_evidence";
+}
+
+function suspectedNeededBudget(input: {
+  lane: V2TargetVsNoRepairLaneDiff;
+  currentBudget: SetBudgetGapRow["currentBudget"];
+}): SetBudgetGapRow["suspectedNeededBudget"] {
+  const selectedSets = selectedExerciseSetCount(input.lane);
+  const preferred = Math.max(
+    input.currentBudget.preferred,
+    input.lane.targetSets.preferred,
+    selectedSets,
+  );
+  const min = Math.max(input.currentBudget.min, input.lane.targetSets.min);
+  const max = Math.max(input.currentBudget.max, input.lane.targetSets.max, preferred);
+  return { min, preferred, max };
+}
+
+function setBudgetGapScore(row: Omit<SetBudgetGapRow, "rank">): number {
+  return (
+    importanceScore(row.trainingImportance) +
+    (row.classification === "true_set_distribution_intent_gap" ? 40 : 0) +
+    (row.evidenceQuality === "set_budget_failure" ? 20 : 0) +
+    row.selectedExerciseSets
+  );
+}
+
+function buildSetBudgetGapInventory(
+  context?: V2RepairPromotionReadoutContext,
+): SetBudgetGapInventory | undefined {
+  if (!context) {
+    return undefined;
+  }
+  const candidates = context.v2TargetVsNoRepairDiff.slotDiffs.flatMap((slot) =>
+    slot.laneDiffs.flatMap((lane) => {
+      const isSetBudgetGap =
+        lane.gapCause === "set_distribution_gap" ||
+        lane.gapCause === "capacity_gap" ||
+        lane.gapCause === "selection_feasibility_pressure" ||
+        lane.gapCause === "cap_aware_expansion_limitation" ||
+        lane.gapCause === "stale_week1_readout_artifact" ||
+        lane.migrationRecommendation === "needs_set_budget_justification" ||
+        lane.migrationRecommendation === "needs_set_distribution_policy" ||
+        lane.currentEvidence.relevantDiagnostics.some(
+          (diagnostic) =>
+            diagnostic.startsWith("setPolicy:") ||
+            diagnostic.startsWith("setBudget:") ||
+            diagnostic.startsWith("capAwareExpansion:"),
+        );
+      if (!isSetBudgetGap) {
+        return [];
+      }
+      const week = 1;
+      const intentLane = findSetDistributionLane({
+        context,
+        week,
+        slotId: slot.slotId,
+        laneId: lane.laneId,
+      });
+      const currentBudget = intentLane?.setBudget
+        ? {
+            min: intentLane.setBudget.min,
+            preferred: intentLane.setBudget.preferred,
+            max: intentLane.setBudget.max,
+          }
+        : lane.targetSets;
+      const owner = setBudgetGapOwner(lane);
+      const evidenceQuality = setBudgetGapEvidenceQuality(lane);
+      const base = {
+        setBudgetGapId: setBudgetGapId({
+          week,
+          slotId: slot.slotId,
+          laneId: lane.laneId,
+        }),
+        week: week as 1,
+        slotId: slot.slotId,
+        laneId: lane.laneId,
+        muscles: lane.targetPrimaryMuscles,
+        currentBudget,
+        suspectedNeededBudget: suspectedNeededBudget({ lane, currentBudget }),
+        selectedExerciseSets: selectedExerciseSetCount(lane),
+        gapCause: lane.gapCause as SetBudgetGapRow["gapCause"],
+        migrationRecommendation: lane.migrationRecommendation,
+        likelyOwnerSeam: owner,
+        evidenceQuality,
+        trainingImportance: setBudgetGapTrainingImportance(lane),
+        evidence: uniqueSorted([
+          `week=${week}`,
+          `slot=${slot.slotId}`,
+          `lane=${lane.laneId}`,
+          `status=${lane.currentStatus}`,
+          `gapCause=${lane.gapCause}`,
+          `migration=${lane.migrationRecommendation}`,
+          `currentBudget=${currentBudget.min}/${currentBudget.preferred}/${currentBudget.max}`,
+          `targetSets=${lane.targetSets.min}/${lane.targetSets.preferred}/${lane.targetSets.max}`,
+          `selectedSets=${selectedExerciseSetCount(lane)}`,
+          ...lane.currentEvidence.relevantDiagnostics.slice(0, 8),
+        ]),
+        missingProof: uniqueSorted([
+          "bounded_set_budget_materializer_projection",
+          "identity_set_blocker_non_regression",
+          "session_size_non_regression",
+          "cross_week_projection_gate",
+          "seed_runtime_non_consumption_gate",
+        ]),
+        nextMeasurement: "measure_set_distribution_projection_delta",
+        classification: "blocked_by_missing_evidence" as const,
+      };
+      const classified = {
+        ...base,
+        classification: setBudgetGapClassification({
+          lane,
+          owner,
+          evidenceQuality,
+        }),
+      };
+      return [{ ...classified, score: setBudgetGapScore(classified) }];
+    }),
+  );
+  const rows = candidates
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        left.setBudgetGapId.localeCompare(right.setBudgetGapId),
+    )
+    .map((row, index) => {
+      const { score, ...rest } = row;
+      void score;
+      return { ...rest, rank: index + 1 };
+    });
+  if (rows.length === 0) {
+    return undefined;
+  }
+  const ownerCounts = rows.reduce<SetBudgetGapInventory["summary"]["ownerCounts"]>(
+    (counts, row) => {
+      counts[row.likelyOwnerSeam] = (counts[row.likelyOwnerSeam] ?? 0) + 1;
+      return counts;
+    },
+    {},
+  );
+  return {
+    version: 1,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByProduction: false,
+    source: "v2_target_vs_no_repair_diff",
+    summary: {
+      gapRowCount: rows.length,
+      setDistributionIntentOwnedCount: rows.filter(
+        (row) => row.likelyOwnerSeam === "SetDistributionIntent",
+      ).length,
+      downstreamMaterializerOrCapacityCount: rows.filter(
+        (row) =>
+          row.likelyOwnerSeam === "ExerciseSelectionPlan" ||
+          row.likelyOwnerSeam === "v2_materialization_dry_run",
+      ).length,
+      diagnosticOnlyOrStaleCount: rows.filter(
+        (row) =>
+          row.classification === "diagnostic_only_no_impact" ||
+          row.classification === "stale_or_ambiguous",
+      ).length,
+      selectedGapId: rows[0]?.setBudgetGapId ?? null,
+      ownerCounts,
+    },
+    rows,
+  };
+}
+
+function setBudgetProjectionMatchesRow(input: {
+  row: SetBudgetGapRow;
+  projection?: V2RepairPromotionReadoutContext["v2SetBudgetMaterializerProjection"];
+}): boolean {
+  return Boolean(
+    input.projection &&
+      input.projection.targetLane.week === input.row.week &&
+      input.projection.targetLane.slotId === input.row.slotId &&
+      input.projection.targetLane.laneId === input.row.laneId,
+  );
+}
+
+function selectSetBudgetGapRow(input: {
+  inventory?: SetBudgetGapInventory;
+  projection?: V2RepairPromotionReadoutContext["v2SetBudgetMaterializerProjection"];
+}): SetBudgetGapRow | undefined {
+  if (!input.inventory) {
+    return undefined;
+  }
+  const projectedRow = input.inventory.rows.find((row) =>
+    setBudgetProjectionMatchesRow({ row, projection: input.projection }),
+  );
+  return projectedRow ?? input.inventory.rows[0];
+}
+
+export function selectSetBudgetMaterializerTarget(
+  context: V2RepairPromotionReadoutContext,
+): { week: number; slotId: string; laneId: string; trialId: string; currentBudget: { min: number; preferred: number; max: number }; suspectedNeededBudget: { min: number; preferred: number; max: number }; muscles: string[] } | undefined {
+  const inventory = buildSetBudgetGapInventory(context);
+  const row = selectSetBudgetGapRow({ inventory });
+  return row
+    ? {
+        week: row.week,
+        slotId: row.slotId,
+        laneId: row.laneId,
+        trialId: `${row.slotId}_${row.laneId}_set_budget_shadow`,
+        currentBudget: row.currentBudget,
+        suspectedNeededBudget: row.suspectedNeededBudget,
+        muscles: row.muscles,
+      }
+    : undefined;
+}
+
 export function selectTaxonomyMismatchMaterializerTarget(
   diagnostic: V2RepairPromotionReadoutContext["v2ExerciseSelectionPlanDiagnostic"],
 ): { slotId: string; laneId: string; trialId: string } | undefined {
@@ -1262,15 +1585,63 @@ function taxonomyMaterializerMissingGates(
   ]);
 }
 
+function setBudgetMaterializerGateSummary(
+  projection: NonNullable<
+    V2RepairPromotionReadoutContext["v2SetBudgetMaterializerProjection"]
+  >,
+): string[] {
+  return [
+    `setBudgetTrialId=${projection.trialId}`,
+    `setBudgetStatus=${projection.status}`,
+    `candidateImpact.selectedIdentityDelta=${projection.candidateImpact.selectedIdentityDelta}`,
+    `candidateImpact.totalSetDelta=${projection.candidateImpact.totalSetDelta}`,
+    `candidateImpact.targetLaneSetDelta=${projection.candidateImpact.targetLaneSetDelta}`,
+    `candidateImpact.targetLaneExerciseDelta=${projection.candidateImpact.targetLaneExerciseDelta}`,
+    `candidateImpact.materializerBlockerDelta=${projection.candidateImpact.materializerBlockerDelta}`,
+    `candidateImpact.regressionCount=${projection.candidateImpact.regressionCount}`,
+    `materializer.baseline=${projection.materializer.baselineStatus}`,
+    `materializer.trial=${projection.materializer.trialStatus}`,
+    `targetLane.currentBudget=${projection.targetLane.currentBudget.min}/${projection.targetLane.currentBudget.preferred}/${projection.targetLane.currentBudget.max}`,
+    `targetLane.trialBudget=${projection.targetLane.trialBudget.min}/${projection.targetLane.trialBudget.preferred}/${projection.targetLane.trialBudget.max}`,
+  ];
+}
+
+function setBudgetMaterializerMissingGates(
+  projection?: V2RepairPromotionReadoutContext["v2SetBudgetMaterializerProjection"],
+): string[] {
+  if (!projection) {
+    return [
+      "bounded_set_budget_materializer_projection",
+      "identity_set_blocker_non_regression",
+      "seed_runtime_non_consumption_gate",
+    ];
+  }
+  return uniqueSorted([
+    ...projection.blockersBeforeBehavior,
+    ...(projection.materializer.trialSeedShapeCompatible
+      ? []
+      : ["trial_seed_shape_incompatible"]),
+    ...(projection.consumedByProduction
+      ? ["projection_must_not_be_consumed_by_production"]
+      : []),
+    ...(projection.consumedByDemandOrMaterializer
+      ? ["projection_must_not_feed_demand_or_materializer_policy"]
+      : []),
+  ]);
+}
+
 function buildGapInventory(input: {
   currentV2PolicyGap: V2RepairPromotionScoreboard["interpretation"]["currentV2PolicyGap"];
   taxonomyMismatchInventory?: TaxonomyMismatchInventory;
+  setBudgetGapInventory?: SetBudgetGapInventory;
   context?: V2RepairPromotionReadoutContext;
 }): V2RepairPromotionScoreboard["interpretation"]["gapInventory"] {
   const gap = input.currentV2PolicyGap;
   const capacityProjection = input.context?.v2CapacityMaterializerProjection;
   const taxonomyProjection = input.context?.v2LaneIntentMaterializerProjection;
+  const setBudgetProjection = input.context?.v2SetBudgetMaterializerProjection;
   const taxonomyInventory = input.taxonomyMismatchInventory;
+  const setBudgetInventory = input.setBudgetGapInventory;
   const selectedTaxonomyRow = selectTaxonomyMismatchRow({
     inventory: taxonomyInventory,
     projection: taxonomyProjection,
@@ -1411,28 +1782,78 @@ function buildGapInventory(input: {
     gap.setDistributionCapacityGapCount > 0 ||
     gap.setBudgetPolicyFailureCount > 0
   ) {
+    const selectedSetBudgetRow = selectSetBudgetGapRow({
+      inventory: setBudgetInventory,
+      projection: setBudgetProjection,
+    });
+    const projectionMatches =
+      selectedSetBudgetRow &&
+      setBudgetProjectionMatchesRow({
+        row: selectedSetBudgetRow,
+        projection: setBudgetProjection,
+      });
+    const measuredNoImpact =
+      projectionMatches &&
+      setBudgetProjection &&
+      setBudgetProjection.candidateImpact.selectedIdentityDelta === 0 &&
+      setBudgetProjection.candidateImpact.totalSetDelta === 0 &&
+      setBudgetProjection.candidateImpact.targetLaneSetDelta === 0 &&
+      setBudgetProjection.candidateImpact.targetLaneExerciseDelta === 0 &&
+      setBudgetProjection.candidateImpact.materializerBlockerDelta === 0 &&
+      setBudgetProjection.candidateImpact.regressionCount === 0;
     candidates.push(
       buildGapCandidate({
         gapId: "set_distribution_budget",
         description:
           "Lane set budgets still need owner-specific proof before changing planner policy.",
         likelyOwnerSeam: "SetDistributionIntent",
-        evidenceQuality: "diagnostic_count",
-        trainingImportance: "high",
+        evidenceQuality: projectionMatches
+          ? "measured_materializer_projection"
+          : "diagnostic_count",
+        trainingImportance: measuredNoImpact ? "medium" : "high",
         gapCount:
+          setBudgetInventory?.summary.gapRowCount ??
           gap.setDistributionCapacityGapCount +
-          gap.setBudgetPolicyFailureCount,
-        currentEvidence: [
+            gap.setBudgetPolicyFailureCount,
+        currentEvidence: uniqueSorted([
           `setDistributionCapacityGapCount=${gap.setDistributionCapacityGapCount}`,
           `setBudgetPolicyFailureCount=${gap.setBudgetPolicyFailureCount}`,
-        ],
-        missingProof: [
-          "bounded_set_budget_projection_delta",
-          "session_size_non_regression",
-          "materializer_non_regression",
-        ],
-        measurableNextStep: "measure_set_distribution_projection_delta",
-        status: "blocked_by_missing_evidence",
+          ...(setBudgetInventory
+            ? [
+                `inventoryRows=${setBudgetInventory.summary.gapRowCount}`,
+                `setDistributionOwned=${setBudgetInventory.summary.setDistributionIntentOwnedCount}`,
+                `downstreamOrCapacity=${setBudgetInventory.summary.downstreamMaterializerOrCapacityCount}`,
+              ]
+            : []),
+          ...(selectedSetBudgetRow
+            ? [
+                `selectedSetBudgetGapId=${selectedSetBudgetRow.setBudgetGapId}`,
+                `selectedLane=${selectedSetBudgetRow.slotId}:${selectedSetBudgetRow.laneId}`,
+                `selectedOwner=${selectedSetBudgetRow.likelyOwnerSeam}`,
+                `selectedBudget=${selectedSetBudgetRow.currentBudget.min}/${selectedSetBudgetRow.currentBudget.preferred}/${selectedSetBudgetRow.currentBudget.max}`,
+                `suspectedNeededBudget=${selectedSetBudgetRow.suspectedNeededBudget.min}/${selectedSetBudgetRow.suspectedNeededBudget.preferred}/${selectedSetBudgetRow.suspectedNeededBudget.max}`,
+              ]
+            : []),
+          ...(projectionMatches && setBudgetProjection
+            ? setBudgetMaterializerGateSummary(setBudgetProjection)
+            : []),
+        ]),
+        missingProof: projectionMatches
+          ? setBudgetMaterializerMissingGates(setBudgetProjection)
+          : selectedSetBudgetRow?.missingProof ?? [
+              "bounded_set_budget_projection_delta",
+              "session_size_non_regression",
+              "materializer_non_regression",
+            ],
+        measurableNextStep:
+          projectionMatches && setBudgetProjection
+            ? setBudgetProjection.nextSafeAction
+            : "measure_set_distribution_projection_delta",
+        status: measuredNoImpact
+          ? "measured_no_candidate_impact"
+          : projectionMatches
+            ? "selected_for_measured_proof"
+            : "blocked_by_missing_evidence",
       }),
     );
   }
@@ -1527,17 +1948,30 @@ function buildGapInventory(input: {
 function buildSelectedGapProof(input: {
   gapInventory: ReadonlyArray<GapInventoryRow>;
   taxonomyMismatchInventory?: TaxonomyMismatchInventory;
+  setBudgetGapInventory?: SetBudgetGapInventory;
   context?: V2RepairPromotionReadoutContext;
 }): V2RepairPromotionScoreboard["interpretation"]["selectedGapProof"] {
   const taxonomyProjection = input.context?.v2LaneIntentMaterializerProjection;
+  const setBudgetProjection = input.context?.v2SetBudgetMaterializerProjection;
   const selectedTaxonomyRow = selectTaxonomyMismatchRow({
     inventory: input.taxonomyMismatchInventory,
     projection: taxonomyProjection,
   });
+  const selectedSetBudgetRow = selectSetBudgetGapRow({
+    inventory: input.setBudgetGapInventory,
+    projection: setBudgetProjection,
+  });
   const taxonomyGap = input.gapInventory.find(
     (row) => row.gapId === "class_taxonomy_mismatch",
   );
+  const setBudgetGap = input.gapInventory.find(
+    (row) => row.gapId === "set_distribution_budget",
+  );
+  const taxonomyMeasuredNoDrift = taxonomyGap?.status === "measured_no_drift";
   const selected =
+    (setBudgetGap && (taxonomyMeasuredNoDrift || !taxonomyGap)
+      ? setBudgetGap
+      : undefined) ??
     (taxonomyGap &&
     (input.gapInventory[0]?.gapId === "selection_capacity_pressure"
       ? input.gapInventory[0].status === "measured_no_candidate_impact"
@@ -1638,6 +2072,70 @@ function buildSelectedGapProof(input: {
       nextSafeAction:
         projectionMatches && taxonomyProjection
           ? taxonomyProjection.nextSafeAction
+          : selected.measurableNextStep,
+    };
+  }
+  if (selected.gapId === "set_distribution_budget") {
+    const projectionMatches =
+      selectedSetBudgetRow &&
+      setBudgetProjectionMatchesRow({
+        row: selectedSetBudgetRow,
+        projection: setBudgetProjection,
+      });
+    const noImpact =
+      projectionMatches &&
+      setBudgetProjection &&
+      setBudgetProjection.candidateImpact.selectedIdentityDelta === 0 &&
+      setBudgetProjection.candidateImpact.totalSetDelta === 0 &&
+      setBudgetProjection.candidateImpact.targetLaneSetDelta === 0 &&
+      setBudgetProjection.candidateImpact.targetLaneExerciseDelta === 0 &&
+      setBudgetProjection.candidateImpact.materializerBlockerDelta === 0 &&
+      setBudgetProjection.candidateImpact.regressionCount === 0;
+    const materialDelta =
+      projectionMatches &&
+      setBudgetProjection &&
+      !noImpact &&
+      (setBudgetProjection.candidateImpact.selectedIdentityDelta !== 0 ||
+        setBudgetProjection.candidateImpact.totalSetDelta !== 0 ||
+        setBudgetProjection.candidateImpact.targetLaneSetDelta !== 0 ||
+        setBudgetProjection.candidateImpact.targetLaneExerciseDelta !== 0 ||
+        setBudgetProjection.candidateImpact.materializerBlockerDelta !== 0);
+    return {
+      gapId: selected.gapId,
+      ...(selectedSetBudgetRow
+        ? { selectedSetBudgetGapId: selectedSetBudgetRow.setBudgetGapId }
+        : {}),
+      classification: noImpact
+        ? "diagnostic_only_no_impact"
+        : materialDelta
+          ? selectedSetBudgetRow?.classification ??
+            "true_set_distribution_intent_gap"
+          : selectedSetBudgetRow?.classification ??
+            "blocked_by_missing_evidence",
+      proofResult: noImpact
+        ? "measured_no_candidate_impact"
+        : projectionMatches
+          ? "measured_with_missing_gates"
+          : "blocked_by_missing_evidence",
+      rightfulOwnerSeam:
+        selectedSetBudgetRow?.likelyOwnerSeam ?? selected.likelyOwnerSeam,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      safeForBehaviorPromotion: false,
+      measuredEvidence: uniqueSorted([
+        ...selected.currentEvidence,
+        ...(selectedSetBudgetRow ? selectedSetBudgetRow.evidence : []),
+        ...(projectionMatches && setBudgetProjection
+          ? setBudgetMaterializerGateSummary(setBudgetProjection)
+          : []),
+      ]),
+      missingGates: projectionMatches
+        ? setBudgetMaterializerMissingGates(setBudgetProjection)
+        : selectedSetBudgetRow?.missingProof ?? selected.missingProof,
+      nextSafeAction:
+        projectionMatches && setBudgetProjection
+          ? setBudgetProjection.nextSafeAction
           : selected.measurableNextStep,
     };
   }
@@ -1771,14 +2269,17 @@ export function buildRepairPromotionScoreboard(
       currentV2PolicyGap,
     });
   const taxonomyMismatchInventory = buildTaxonomyMismatchInventory(v2Context);
+  const setBudgetGapInventory = buildSetBudgetGapInventory(v2Context);
   const gapInventory = buildGapInventory({
     currentV2PolicyGap,
     taxonomyMismatchInventory,
+    setBudgetGapInventory,
     context: v2Context,
   });
   const selectedGapProof = buildSelectedGapProof({
     gapInventory,
     taxonomyMismatchInventory,
+    setBudgetGapInventory,
     context: v2Context,
   });
 
@@ -1810,6 +2311,7 @@ export function buildRepairPromotionScoreboard(
       missingProofBeforeBehaviorPromotion,
       gapInventory,
       ...(taxonomyMismatchInventory ? { taxonomyMismatchInventory } : {}),
+      ...(setBudgetGapInventory ? { setBudgetGapInventory } : {}),
       ...(selectedGapProof ? { selectedGapProof } : {}),
       legacyRepairQuarantine: {
         readOnly: true,

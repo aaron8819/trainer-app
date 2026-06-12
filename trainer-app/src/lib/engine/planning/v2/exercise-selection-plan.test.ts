@@ -139,7 +139,12 @@ describe("buildV2ExerciseSelectionPlan", () => {
       optionalActivation: {
         type: "activate_only_if_weekly_target_below_range",
       },
+      duplicatePolicy: {
+        scope: "same_week",
+        sameExerciseAllowedOnlyWithJustification: true,
+      },
       cleanAlternativePolicy: {
+        requiredBeforeDuplicate: true,
         evaluationTiming: "future_inventory_selection",
       },
     });

@@ -416,8 +416,16 @@ function buildFatigueDistributionGate(
   );
   const warnings = selection.weeks.flatMap((week) =>
     week.slots.flatMap((slot) =>
-      slot.lanes.filter((lane) => lane.fatigueStatus === "quality_warning"),
+      slot.lanes
+        .filter((lane) => lane.fatigueStatus === "quality_warning")
+        .map((lane) => ({ week: week.week, slotId: slot.slotId, lane })),
     ),
+  );
+  const warningsFromConcentration = warnings.filter(
+    ({ lane }) => lane.concentrationStatus === "quality_warning",
+  );
+  const warningsWithFatigueEvidence = warnings.filter(({ lane }) =>
+    lane.evidenceRefs.some((row) => /fatigue|collateral/i.test(row)),
   );
   return gate({
     gate: "fatigue_distribution",
@@ -428,6 +436,28 @@ function buildFatigueDistributionGate(
     evidence: [
       numberEvidence("fatigueBlocked", blocked.length),
       numberEvidence("fatigueWarnings", warnings.length),
+      numberEvidence(
+        "fatigueWarningsFromConcentration",
+        warningsFromConcentration.length,
+      ),
+      numberEvidence(
+        "fatigueWarningsWithFatigueOrCollateralEvidence",
+        warningsWithFatigueEvidence.length,
+      ),
+      ...warnings.slice(0, 4).map(
+        ({ week, slotId, lane }) =>
+          `fatigueWarning:${[
+            `week_${week}`,
+            slotId,
+            lane.laneId,
+            `concentration=${lane.concentrationStatus}`,
+            `duplicate=${lane.duplicateStatus}`,
+            `identity=${lane.identityStatus}`,
+            `capacity=${lane.capacityStatus}`,
+          ].join(":")}`,
+      ),
+      "no_repair_projection_not_pure_v2_policy",
+      "concentration_quality_gap_requires_measured_projection_delta",
     ],
     missingEvidence: selection.missingInputs,
   });

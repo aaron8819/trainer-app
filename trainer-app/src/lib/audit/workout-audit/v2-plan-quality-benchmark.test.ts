@@ -634,4 +634,110 @@ describe("V2 plan quality benchmark", () => {
       ]),
     );
   });
+
+  it("source-attributes fatigue warnings to exact no-repair diagnostic reasons", () => {
+    const result = buildV2PlanQualityBenchmark(
+      noRepairFixture({
+        v2ExerciseSelectionPlanDiagnostic: {
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          status: "projected_with_limitations",
+          summary: {
+            weeksEvaluated: 1,
+            lanesEvaluated: 2,
+            preservedIdentityCount: 2,
+            candidateAvailableCount: 2,
+            missingCandidateCount: 0,
+            classMismatchCount: 0,
+            duplicateRequiresJustificationCount: 0,
+            concentrationWarningCount: 1,
+            blockedLaneCount: 0,
+          },
+          weeks: [
+            {
+              week: 1,
+              phase: "entry_calibration",
+              slots: [
+                {
+                  slotId: "upper_a",
+                  lanes: [
+                    {
+                      laneId: "chest_anchor",
+                      plannedClass: ["distinct_chest_press_or_fly"],
+                      primaryMuscles: ["Chest"],
+                      selectedIdentity: {
+                        exerciseId: "incline-db-press",
+                        exerciseName: "Incline DB Press",
+                        sourceWeek: 1,
+                        setCount: 5,
+                      },
+                      identityStatus: "preserved",
+                      laneClassStatus: "matched",
+                      setBudgetStatus: "within_budget",
+                      duplicateStatus: "pass",
+                      concentrationStatus: "quality_warning",
+                      fatigueStatus: "quality_warning",
+                      inventoryStatus: "available",
+                      capacityStatus: "within_capacity",
+                      cleanAlternatives: [],
+                      unresolvedDemand: [],
+                      evidenceRefs: ["concentration:Chest:50%"],
+                    },
+                    {
+                      laneId: "row_anchor",
+                      plannedClass: ["horizontal_pull_support"],
+                      primaryMuscles: ["Upper Back"],
+                      selectedIdentity: {
+                        exerciseId: "t-bar-row",
+                        exerciseName: "T-Bar Row",
+                        sourceWeek: 1,
+                        setCount: 4,
+                      },
+                      identityStatus: "preserved",
+                      laneClassStatus: "matched",
+                      setBudgetStatus: "within_budget",
+                      duplicateStatus: "pass",
+                      concentrationStatus: "pass",
+                      fatigueStatus: "quality_warning",
+                      inventoryStatus: "available",
+                      capacityStatus: "within_capacity",
+                      cleanAlternatives: [],
+                      unresolvedDemand: [],
+                      evidenceRefs: ["risk:systemic_fatigue"],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          blockers: [],
+          warnings: [],
+          missingInputs: [],
+          safeForBehaviorPromotion: false,
+        } as unknown as MesocycleExplainPlannerOnlyNoRepair["v2ExerciseSelectionPlanDiagnostic"],
+      }),
+    );
+
+    expect(result.gates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gate: "fatigue_distribution",
+          status: "warning",
+          ownerSeam: "v2ExerciseSelectionPlanDiagnostic",
+          evidenceSource: "no_repair_projection",
+          evidence: expect.arrayContaining([
+            "fatigueWarnings=2",
+            "fatigueWarningsFromConcentration=1",
+            "fatigueWarningsWithFatigueOrCollateralEvidence=1",
+            "fatigueWarning:week_1:upper_a:chest_anchor:concentration=quality_warning:duplicate=pass:identity=preserved:capacity=within_capacity",
+            "no_repair_projection_not_pure_v2_policy",
+            "concentration_quality_gap_requires_measured_projection_delta",
+          ]),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(result)).not.toMatch(
+      /slotPlanSeedJson|sessionDecisionReceipt|runtimeReplay|acceptedPlannerIntent/,
+    );
+  });
 });

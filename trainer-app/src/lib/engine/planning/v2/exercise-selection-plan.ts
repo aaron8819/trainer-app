@@ -173,6 +173,9 @@ function duplicatePolicyForLane(input: {
 }
 
 function duplicateScopeForLane(lane: IntentLane): DuplicatePolicy["scope"] {
+  if (lane.optionalActivation?.requiresCleanAlternative) {
+    return "same_week";
+  }
   if (lane.laneId === "calves" || lane.laneId === "side_delt_isolation") {
     return "same_week";
   }
@@ -266,7 +269,8 @@ export function buildV2ExerciseSelectionPlan(
               ...(optionalActivation ? { optionalActivation } : {}),
               duplicatePolicy,
               cleanAlternativePolicy: {
-                requiredBeforeDuplicate: false,
+                requiredBeforeDuplicate:
+                  optionalActivation?.requiresCleanAlternative === true,
                 evaluationTiming: "future_inventory_selection",
               },
               perExerciseCap: {

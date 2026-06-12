@@ -941,6 +941,93 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     }
   });
 
+  it("uses a clean triceps variant for an activated optional weekly top-up", () => {
+    const result = materialize({
+      plan: multiSlotPlan([
+        {
+          slotId: "upper_a",
+          slotIndex: 0,
+          lanes: [
+            lane({
+              laneId: "triceps",
+              role: "accessory",
+              primaryMuscles: ["Triceps"],
+              acceptableExerciseClasses: ["triceps_isolation"],
+              laneSelectionIntent: tricepsDirectIntent,
+              duplicatePolicy: {
+                scope: "same_week",
+                classDistinctness: "preferred",
+                sameExerciseAllowedOnlyWithJustification: true,
+              },
+            }),
+          ],
+        },
+        {
+          slotId: "upper_b",
+          slotIndex: 1,
+          lanes: [
+            lane({
+              laneId: "optional_triceps_if_under_target",
+              role: "optional",
+              primaryMuscles: ["Triceps"],
+              acceptableExerciseClasses: ["triceps_isolation"],
+              setBudget: { min: 2, preferred: 2, max: 2 },
+              optionalActivation: {
+                type: "activate_only_if_weekly_target_below_range",
+                weeklyFloorSets: 6,
+                requiresSlotExerciseHeadroom: true,
+                requiresCleanAlternative: true,
+                requiresRecoverability: true,
+              },
+              duplicatePolicy: {
+                scope: "same_week",
+                classDistinctness: "preferred",
+                sameExerciseAllowedOnlyWithJustification: true,
+              },
+              cleanAlternativePolicy: {
+                requiredBeforeDuplicate: true,
+                evaluationTiming: "future_inventory_selection",
+              },
+            }),
+          ],
+        },
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "cable-triceps-pushdown",
+          name: "Cable Triceps Pushdown",
+          primaryMuscles: ["Triceps"],
+          stimulusByMusclePerSet: { Triceps: 1 },
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "overhead-triceps-extension",
+          name: "Overhead Triceps Extension",
+          primaryMuscles: ["Triceps"],
+          stimulusByMusclePerSet: { Triceps: 1 },
+          fatigueCost: 1,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "upper_a", "triceps")).toMatchObject({
+      exerciseId: "cable-triceps-pushdown",
+      setCount: 3,
+    });
+    expect(
+      exerciseForLane(result, "upper_b", "optional_triceps_if_under_target"),
+    ).toMatchObject({
+      exerciseId: "overhead-triceps-extension",
+      setCount: 2,
+    });
+    expect(
+      result.slots.flatMap((slot) =>
+        slot.exercises.map((exerciseRow) => exerciseRow.exerciseId),
+      ),
+    ).toEqual(["cable-triceps-pushdown", "overhead-triceps-extension"]);
+  });
+
   it("side_delt_direct consumes intent and rejects vertical press collateral", () => {
     const result = materialize({
       plan: plan([
@@ -3310,8 +3397,15 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(result.dryRunOnly).toBe(true);
     expect(result.status).toBe("materialized");
     expect(result.blockers).toEqual([]);
-    expect(materializedLaneIds).toEqual(
-      [...requiredLaneIds, "upper_b:optional_triceps_if_under_target"].sort(),
+    expect(materializedLaneIds).toEqual(requiredLaneIds.sort());
+    expect(result.omissions).toEqual(
+      expect.arrayContaining([
+        {
+          slotId: "upper_b",
+          laneId: "optional_triceps_if_under_target",
+          reason: "optional_no_match",
+        },
+      ]),
     );
     expect(exerciseForLane(result, "upper_a", "chest_anchor")).toMatchObject({
       exerciseId: "machine-chest-press",
@@ -3350,14 +3444,9 @@ describe("buildV2ExerciseMaterializationPlan", () => {
         exerciseId: "incline-machine-press",
         setCount: 3,
       });
-    expect(exerciseForLane(result, "upper_b", "optional_triceps_if_under_target"))
-      .toMatchObject({
-        exerciseId: "rope-pressdown",
-        setCount: 2,
-      });
     expect(
       result.slots.find((slotRow) => slotRow.slotId === "upper_b")?.exercises,
-    ).toHaveLength(7);
+    ).toHaveLength(6);
     expect(exerciseForLane(result, "upper_a", "rear_delt")).toMatchObject({
       exerciseId: "rear-delt-fly",
       setCount: 4,
@@ -3831,7 +3920,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(result.executablePreviewCountBySlot).toEqual([
       { slotId: "upper_a", exerciseCount: 6 },
       { slotId: "lower_a", exerciseCount: 4 },
-      { slotId: "upper_b", exerciseCount: 7 },
+      { slotId: "upper_b", exerciseCount: 6 },
       { slotId: "lower_b", exerciseCount: 4 },
     ]);
     expect(result.requiredLaneCoverageBySlot).toEqual(

@@ -2940,6 +2940,8 @@ function emptyConcentrationDonorOffsetRedistributionProjection(input: {
       eligibleDonorSlotCount: 0,
       measuredDonorCapacityPassCount: 0,
       measuredDonorCapacityFailCount: 0,
+      measuredDonorCapacityUnderAbsorptionCount: 0,
+      measuredDonorCapacityOverAbsorptionCount: 0,
       protectedCoverageRegressionCount: 0,
       materializerRegressionCount: 0,
       netWeeklySetDelta: 0,
@@ -3782,12 +3784,14 @@ function buildConcentrationDonorOffsetCandidateProjection(input: {
       laneId: input.sourceLaneId,
       muscle: input.donor.protectedMuscles[0] ?? "",
       setDelta: -1,
+      baselineSetCount: input.sourceLane.setBudget.preferred,
     },
     donor: {
       slotId: input.donor.slotId,
       laneId: input.donor.laneId,
       muscle: input.donor.protectedMuscles[0] ?? "",
       setDelta: 1,
+      baselineSetCount: input.donor.selectionLane.setBudget.preferred,
     },
   });
   const trialPlannerPolicy = rebuildPlannerPolicyWithSlotDemandAllocation({

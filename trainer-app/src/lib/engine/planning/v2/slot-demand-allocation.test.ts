@@ -505,6 +505,8 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
         passingRowCount: 0,
         blockedRowCount: 1,
         measuredDonorCapacityFailCount: 1,
+        measuredDonorCapacityUnderAbsorptionCount: 1,
+        measuredDonorCapacityOverAbsorptionCount: 0,
         protectedCoverageRegressionCount: 1,
         netWeeklySetDelta: -1,
         behaviorReadiness: "blocked_by_evidence",
@@ -623,6 +625,90 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
     });
   });
 
+  it("keeps exact source and donor movement through fractional downstream set distribution", () => {
+    const { allocation, targetSkeleton } = buildFixture();
+    const baselineClassDistribution = buildV2ExerciseClassDistributionBySlot({
+      slotDemandAllocationByWeek: allocation,
+    });
+    const baselineSetDistribution = buildV2SetDistributionIntent({
+      slotDemandAllocationByWeek: allocation,
+      exerciseClassDistributionBySlot: baselineClassDistribution,
+      v2SupportLanePolicy: buildV2SupportLanePolicy({ targetSkeleton }),
+      weeklyProgressionModel: buildV2WeeklyProgressionModel(),
+    });
+    const baselineWeek = baselineSetDistribution.weeks.find(
+      (week) => week.week === 4,
+    );
+    const baselineLane = (slotId: "lower_a" | "lower_b") =>
+      baselineWeek?.slots
+        .find((slot) => slot.slotId === slotId)
+        ?.lanes.find((lane) => lane.laneId === "calves");
+
+    const trial = buildV2SlotWeekAllocationPolicyTrial({
+      slotDemandAllocationByWeek: allocation,
+      week: 4,
+      source: {
+        slotId: "lower_a",
+        laneId: "calves",
+        muscle: "Calves",
+        setDelta: -1,
+        baselineSetCount: baselineLane("lower_a")?.setBudget.preferred,
+      },
+      donor: {
+        slotId: "lower_b",
+        laneId: "calves",
+        setDelta: 1,
+        baselineSetCount: baselineLane("lower_b")?.setBudget.preferred,
+      },
+    });
+    const trialClassDistribution = buildV2ExerciseClassDistributionBySlot({
+      slotDemandAllocationByWeek: trial.slotDemandAllocationByWeek,
+    });
+    const trialSetDistribution = buildV2SetDistributionIntent({
+      slotDemandAllocationByWeek: trial.slotDemandAllocationByWeek,
+      exerciseClassDistributionBySlot: trialClassDistribution,
+      v2SupportLanePolicy: buildV2SupportLanePolicy({ targetSkeleton }),
+      weeklyProgressionModel: buildV2WeeklyProgressionModel(),
+    });
+    const trialWeek = trialSetDistribution.weeks.find((week) => week.week === 4);
+    const trialLane = (slotId: "lower_a" | "lower_b") =>
+      trialWeek?.slots
+        .find((slot) => slot.slotId === slotId)
+        ?.lanes.find((lane) => lane.laneId === "calves");
+
+    expect(baselineLane("lower_a")?.setBudget.preferred).toBe(4);
+    expect(baselineLane("lower_b")?.setBudget.preferred).toBe(4);
+    expect(trial.trial.exactSetMovementGuard).toMatchObject({
+      enabled: true,
+      sourceBaselineSetCount: 4,
+      sourceTargetSetCount: 3,
+      donorBaselineSetCount: 4,
+      donorTargetSetCount: 5,
+      netWeeklySetIntentDelta: 0,
+      status: "exact",
+    });
+    expect(trial.trial.sourcePressureRow).toMatchObject({
+      baselineAllocatedSets: { preferred: 4.5 },
+      trialAllocatedSets: { preferred: 3 },
+      setDelta: -1,
+    });
+    expect(trial.trial.selectedDonorLane).toMatchObject({
+      baselineAllocatedSets: { preferred: 4.5 },
+      trialAllocatedSets: { preferred: 5 },
+      setDelta: 1,
+    });
+    expect(trialLane("lower_a")?.setBudget).toMatchObject({
+      min: 3,
+      preferred: 3,
+      max: 3,
+    });
+    expect(trialLane("lower_b")?.setBudget).toMatchObject({
+      min: 3,
+      preferred: 5,
+      max: 5,
+    });
+  });
+
   it("blocks the allocation policy trial when no same-muscle slot-owned donor row exists", () => {
     const allocation = buildAllocation();
     const trial = buildV2SlotWeekAllocationPolicyTrial({
@@ -674,6 +760,8 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
         blockedRowCount: 0,
         measuredDonorCapacityPassCount: 1,
         measuredDonorCapacityFailCount: 0,
+        measuredDonorCapacityUnderAbsorptionCount: 0,
+        measuredDonorCapacityOverAbsorptionCount: 0,
         protectedCoverageRegressionCount: 0,
         netWeeklySetDelta: 0,
         behaviorReadiness: "candidate_for_acceptance_projection",
@@ -737,6 +825,8 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
     expect(projection.summary).toMatchObject({
       measuredDonorCapacityPassCount: 0,
       measuredDonorCapacityFailCount: 1,
+      measuredDonorCapacityUnderAbsorptionCount: 0,
+      measuredDonorCapacityOverAbsorptionCount: 1,
       protectedCoverageRegressionCount: 0,
       netWeeklySetDelta: 1,
       behaviorReadiness: "blocked_by_evidence",
@@ -744,7 +834,7 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
     });
     expect(projection.rows[0].blockingReasons).toEqual(
       expect.arrayContaining([
-        "donor_capacity_did_not_absorb_required_sets",
+        "donor_capacity_over_absorbed_required_sets",
         "net_weekly_volume_changed",
       ]),
     );

@@ -886,6 +886,8 @@ describe("V2 plan quality benchmark", () => {
                 eligibleDonorSlotCount: 1,
                 measuredDonorCapacityPassCount: 1,
                 measuredDonorCapacityFailCount: 0,
+                measuredDonorCapacityUnderAbsorptionCount: 0,
+                measuredDonorCapacityOverAbsorptionCount: 0,
                 protectedCoverageRegressionCount: 0,
                 materializerRegressionCount: 0,
                 netWeeklySetDelta: 0,

@@ -46,12 +46,14 @@ export type V2SlotWeekAllocationPolicyTrialInput = {
     laneId: string;
     muscle: string;
     setDelta: number;
+    baselineSetCount?: number;
   };
   donor: {
     slotId: string;
     laneId: string;
     muscle?: string;
     setDelta: number;
+    baselineSetCount?: number;
   };
 };
 
@@ -88,6 +90,15 @@ export type V2SlotWeekAllocationPolicyTrial = {
     requestedDonorAbsorption: number;
     netWeeklySetIntentDelta: number;
     sameMuscle: boolean;
+  };
+  exactSetMovementGuard: {
+    enabled: boolean;
+    sourceBaselineSetCount: number | null;
+    sourceTargetSetCount: number | null;
+    donorBaselineSetCount: number | null;
+    donorTargetSetCount: number | null;
+    netWeeklySetIntentDelta: number | null;
+    status: "exact" | "blocked" | "unavailable";
   };
   donorCapacity: {
     before: {
@@ -135,6 +146,8 @@ export type V2SlotWeekDonorCapacityProjection = {
     eligibleDonorSlotCount: number;
     measuredDonorCapacityPassCount: number;
     measuredDonorCapacityFailCount: number;
+    measuredDonorCapacityUnderAbsorptionCount: number;
+    measuredDonorCapacityOverAbsorptionCount: number;
     protectedCoverageRegressionCount: number;
     materializerRegressionCount: number;
     netWeeklySetDelta: number;
@@ -177,7 +190,7 @@ export type V2SlotWeekDonorCapacityProjection = {
       donorSetDelta: number;
       absorbedRequiredSets: boolean;
       headroomSets: number;
-      status: "absorbed" | "insufficient" | "unmeasured";
+      status: "absorbed" | "insufficient" | "over_absorbed" | "unmeasured";
     };
     protectedCoverageImpact: {
       status: "preserved" | "regressed" | "unknown";
@@ -688,6 +701,19 @@ function addDeltaToRange(input: {
   return { min, preferred, max };
 }
 
+function exactPreferredRange(input: {
+  range: V2PlannerSetRange;
+  preferred: number;
+}): V2PlannerSetRange {
+  const preferred = Math.max(0, roundToTenth(input.preferred));
+  const min = Math.min(preferred, input.range.min);
+  return {
+    min,
+    preferred,
+    max: preferred,
+  };
+}
+
 function subtractRanges(
   left: V2PlannerSetRange,
   right: V2PlannerSetRange,
@@ -859,6 +885,7 @@ function applyLaneSetDelta(input: {
     | undefined;
   muscle: string;
   delta: number;
+  exactPreferredSetCount?: number;
 }): V2PlannerSetRange {
   const row = input.lane?.allocatedMuscles.find(
     (candidate) => candidate.muscle === input.muscle,
@@ -866,23 +893,48 @@ function applyLaneSetDelta(input: {
   if (!input.slot || !input.lane || !row) {
     return emptyTrialRange();
   }
-  row.targetSetRange = addDeltaToRange({
-    range: row.targetSetRange,
-    delta: input.delta,
-    preserveMin: true,
-  });
+  row.targetSetRange =
+    input.exactPreferredSetCount == null
+      ? addDeltaToRange({
+          range: row.targetSetRange,
+          delta: input.delta,
+          preserveMin: true,
+        })
+      : exactPreferredRange({
+          range: row.targetSetRange,
+          preferred: input.exactPreferredSetCount,
+        });
   row.allocationBasis = "target_lane";
-  input.lane.setBudget = addDeltaToRange({
-    range: input.lane.setBudget,
-    delta: input.delta,
-    preserveMin: true,
-  });
+  input.lane.setBudget =
+    input.exactPreferredSetCount == null
+      ? addDeltaToRange({
+          range: input.lane.setBudget,
+          delta: input.delta,
+          preserveMin: true,
+        })
+      : exactPreferredRange({
+          range: input.lane.setBudget,
+          preferred: input.exactPreferredSetCount,
+        });
   input.slot.targetSessionSets = addDeltaToRange({
     range: input.slot.targetSessionSets,
     delta: input.delta,
     preserveMin: true,
   });
   return { ...row.targetSetRange };
+}
+
+function finiteNumber(value: number | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function exactMovementTarget(
+  baselineSetCount: number | undefined,
+  delta: number,
+): number | null {
+  return finiteNumber(baselineSetCount)
+    ? Math.max(0, roundToTenth(baselineSetCount + delta))
+    : null;
 }
 
 export function buildV2SlotWeekAllocationPolicyTrial(
@@ -921,6 +973,29 @@ export function buildV2SlotWeekAllocationPolicyTrial(
   const sameMuscle = input.source.muscle === donorMuscle;
   const requestedDonorAbsorption = Math.max(0, input.donor.setDelta);
   const requiredSourceReduction = Math.max(0, -input.source.setDelta);
+  const exactGuardEnabled =
+    finiteNumber(input.source.baselineSetCount) ||
+    finiteNumber(input.donor.baselineSetCount);
+  const sourceTargetSetCount = exactMovementTarget(
+    input.source.baselineSetCount,
+    input.source.setDelta,
+  );
+  const donorTargetSetCount = exactMovementTarget(
+    input.donor.baselineSetCount,
+    input.donor.setDelta,
+  );
+  const exactNetWeeklySetIntentDelta =
+    sourceTargetSetCount != null &&
+    donorTargetSetCount != null &&
+    finiteNumber(input.source.baselineSetCount) &&
+    finiteNumber(input.donor.baselineSetCount)
+      ? roundToTenth(
+          sourceTargetSetCount -
+            input.source.baselineSetCount +
+            donorTargetSetCount -
+            input.donor.baselineSetCount,
+        )
+      : null;
   const blockingReasons = uniqueSorted([
     ...(sourceLane ? [] : ["source_lane_missing"]),
     ...(donorLane ? [] : ["donor_lane_missing"]),
@@ -933,6 +1008,13 @@ export function buildV2SlotWeekAllocationPolicyTrial(
     requiredSourceReduction > 0
       ? []
       : ["donor_absorption_intent_insufficient"]),
+    ...(exactGuardEnabled &&
+    (sourceTargetSetCount == null || donorTargetSetCount == null)
+      ? ["exact_set_movement_baseline_missing"]
+      : []),
+    ...(exactGuardEnabled && exactNetWeeklySetIntentDelta !== 0
+      ? ["exact_set_movement_not_net_zero"]
+      : []),
   ]);
   const status = blockingReasons.length === 0 ? "applied" : "blocked";
   const sourceAfter =
@@ -942,6 +1024,9 @@ export function buildV2SlotWeekAllocationPolicyTrial(
           lane: sourceLane,
           muscle: input.source.muscle,
           delta: input.source.setDelta,
+          ...(sourceTargetSetCount != null
+            ? { exactPreferredSetCount: sourceTargetSetCount }
+            : {}),
         })
       : { ...sourceBefore };
   const donorAfter =
@@ -951,10 +1036,19 @@ export function buildV2SlotWeekAllocationPolicyTrial(
           lane: donorLane,
           muscle: donorMuscle,
           delta: input.donor.setDelta,
+          ...(donorTargetSetCount != null
+            ? { exactPreferredSetCount: donorTargetSetCount }
+            : {}),
         })
       : { ...donorBefore };
-  const sourceSetDelta = subtractRanges(sourceAfter, sourceBefore).preferred;
-  const donorSetDelta = subtractRanges(donorAfter, donorBefore).preferred;
+  const sourceSetDelta =
+    exactGuardEnabled && finiteNumber(input.source.baselineSetCount)
+      ? roundToTenth(sourceAfter.preferred - input.source.baselineSetCount)
+      : subtractRanges(sourceAfter, sourceBefore).preferred;
+  const donorSetDelta =
+    exactGuardEnabled && finiteNumber(input.donor.baselineSetCount)
+      ? roundToTenth(donorAfter.preferred - input.donor.baselineSetCount)
+      : subtractRanges(donorAfter, donorBefore).preferred;
   const donorHeadroomBefore = Math.max(
     0,
     roundToTenth(donorBefore.max - donorBefore.preferred),
@@ -1001,6 +1095,24 @@ export function buildV2SlotWeekAllocationPolicyTrial(
           input.source.setDelta + input.donor.setDelta,
         ),
         sameMuscle,
+      },
+      exactSetMovementGuard: {
+        enabled: exactGuardEnabled,
+        sourceBaselineSetCount: finiteNumber(input.source.baselineSetCount)
+          ? input.source.baselineSetCount
+          : null,
+        sourceTargetSetCount,
+        donorBaselineSetCount: finiteNumber(input.donor.baselineSetCount)
+          ? input.donor.baselineSetCount
+          : null,
+        donorTargetSetCount,
+        netWeeklySetIntentDelta: exactNetWeeklySetIntentDelta,
+        status:
+          !exactGuardEnabled
+            ? "unavailable"
+            : blockingReasons.some((reason) => reason.startsWith("exact_"))
+              ? "blocked"
+              : "exact",
       },
       donorCapacity: {
         before: {
@@ -1050,7 +1162,7 @@ function buildDonorCapacityProjectionRow(input: {
   const requiredSetAbsorption = Math.max(0, -input.row.sourceSetDelta);
   const absorbedRequiredSets =
     requiredSetAbsorption > 0 &&
-    input.row.donorSetDelta >= requiredSetAbsorption &&
+    input.row.donorSetDelta === requiredSetAbsorption &&
     input.row.netWeeklySetDelta === 0;
   const donorMeasured = Boolean(input.row.donorSlotId && input.row.donorLaneId);
   const donorCapacityStatus =
@@ -1058,7 +1170,10 @@ function buildDonorCapacityProjectionRow(input: {
       ? "unmeasured"
       : absorbedRequiredSets
         ? "absorbed"
-        : "insufficient";
+        : input.row.donorSetDelta > requiredSetAbsorption ||
+            input.row.netWeeklySetDelta > 0
+          ? "over_absorbed"
+          : "insufficient";
   const materializerNonRegressionStatus =
     input.row.materializerRegressionCount > 0 ||
     input.row.materializerBlockerDelta > 0
@@ -1072,7 +1187,9 @@ function buildDonorCapacityProjectionRow(input: {
     ...(donors.length > 0 ? [] : ["eligible_slot_owned_donor_missing"]),
     ...(donorCapacityStatus === "absorbed"
       ? []
-      : ["donor_capacity_did_not_absorb_required_sets"]),
+      : donorCapacityStatus === "over_absorbed"
+        ? ["donor_capacity_over_absorbed_required_sets"]
+        : ["donor_capacity_did_not_absorb_required_sets"]),
     ...(input.row.netWeeklySetDelta === 0
       ? []
       : ["net_weekly_volume_changed"]),
@@ -1160,7 +1277,15 @@ export function buildV2SlotWeekDonorCapacityProjection(
     (row) => row.donorCapacity.status === "absorbed",
   ).length;
   const measuredDonorCapacityFailCount = rows.filter(
+    (row) =>
+      row.donorCapacity.status === "insufficient" ||
+      row.donorCapacity.status === "over_absorbed",
+  ).length;
+  const measuredDonorCapacityUnderAbsorptionCount = rows.filter(
     (row) => row.donorCapacity.status === "insufficient",
+  ).length;
+  const measuredDonorCapacityOverAbsorptionCount = rows.filter(
+    (row) => row.donorCapacity.status === "over_absorbed",
   ).length;
   const protectedCoverageRegressionCount = rows.filter(
     (row) => row.protectedCoverageImpact.status === "regressed",
@@ -1217,6 +1342,8 @@ export function buildV2SlotWeekDonorCapacityProjection(
       ),
       measuredDonorCapacityPassCount,
       measuredDonorCapacityFailCount,
+      measuredDonorCapacityUnderAbsorptionCount,
+      measuredDonorCapacityOverAbsorptionCount,
       protectedCoverageRegressionCount,
       materializerRegressionCount,
       netWeeklySetDelta,

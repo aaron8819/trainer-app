@@ -4473,6 +4473,9 @@ export function buildPlannerOnlyNoRepairSummary(input: {
     repairScoreboard?.interpretation.setBudgetGapInventory;
   const supportFloorGapInventory =
     repairScoreboard?.interpretation.supportFloorGapInventory;
+  const repairDeprecationReadiness =
+    repairScoreboard?.interpretation.repairDeprecationReadiness;
+  const planQualityBenchmark = noRepair.v2PlanQualityBenchmark;
   const basePlanCompare = noRepair.v2BasePlanCompare;
   const shadowConsumption = noRepair.v2BasePlanShadowConsumptionTrial;
   const basePlanCompareLines = basePlanCompare
@@ -4503,6 +4506,17 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Read-only/no generation impact: ${shadowConsumption.readOnly && !shadowConsumption.affectsScoringOrGeneration ? "yes" : "no"}`,
       ]
     : [];
+  const planQualityBenchmarkLines = planQualityBenchmark
+    ? [
+        "V2 Plan Quality Benchmark",
+        "-------------------------",
+        `Status: ${formatStatus(planQualityBenchmark.status)} deprecation=${formatStatus(planQualityBenchmark.deprecationReadiness.status)}`,
+        `Gates: pass=${planQualityBenchmark.summary.passCount} warn=${planQualityBenchmark.summary.warningCount} fail=${planQualityBenchmark.summary.failCount} missing=${planQualityBenchmark.summary.missingEvidenceCount} mustFixW1=${planQualityBenchmark.summary.mustFixBeforeWeek1Count}`,
+        `Gate detail: ${planQualityBenchmark.gates.map((row) => `${row.gate}:${row.status}`).join("; ")}`,
+        `Next safe action: ${formatStatus(planQualityBenchmark.summary.nextSafeAction)}`,
+        `Guardrails: seedRuntimeChanged=${planQualityBenchmark.guardrails.seedRuntimeChanged ? "yes" : "no"} productionMaterializerChanged=${planQualityBenchmark.guardrails.productionMaterializerChanged ? "yes" : "no"} acceptanceThresholdChanged=${planQualityBenchmark.guardrails.acceptanceThresholdChanged ? "yes" : "no"} persistenceChanged=${planQualityBenchmark.guardrails.persistenceChanged ? "yes" : "no"}`,
+      ]
+    : [];
   const materializationShardLines = basePlanCompare || shadowConsumption
     ? [
         "V2 base-plan compare/shadow detail: v2-materialization shard when --v2-debug-artifact is enabled",
@@ -4528,6 +4542,9 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Set-budget gap inventory: ${formatSetBudgetGapInventory(setBudgetGapInventory)}`,
         `Support-floor gap inventory: ${formatSupportFloorGapInventory(supportFloorGapInventory)}`,
         `Selected gap proof: ${formatSelectedGapProof(selectedGapProof)}`,
+        repairDeprecationReadiness
+          ? `Repair deprecation readiness: safetyNet=${repairDeprecationReadiness.summary.safetyNetCount} planAuthoring=${repairDeprecationReadiness.summary.planAuthoringLeftoverCount} obsoleteNoImpact=${repairDeprecationReadiness.summary.obsoleteNoImpactCount} stillUnproven=${repairDeprecationReadiness.summary.stillUnprovenCount} readyForReview=${repairDeprecationReadiness.summary.readyForDeprecationReviewCount} executable=${repairDeprecationReadiness.deprecationIsExecutable ? "yes" : "no"} next=${formatStatus(repairDeprecationReadiness.nextSafeAction)}`
+          : "Repair deprecation readiness: not_available",
         `Promotion candidates: ${repairScoreboard.summary.promotionCandidateCount}`,
         `Safety/do-not-promote: ${repairScoreboard.summary.safetyNetCount}`,
         `Collateral/diagnostic: ${repairScoreboard.summary.collateralDiagnosticCount + repairScoreboard.summary.diagnosticOnlyCount}`,
@@ -4571,6 +4588,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
     `Replacement readiness: ${formatStatus(classification.replacementReadinessStatus)}`,
     ...basePlanCompareLines,
     ...shadowConsumptionLines,
+    ...planQualityBenchmarkLines,
     ...materializationShardLines,
     ...repairScoreboardLines,
     ...diffLines,

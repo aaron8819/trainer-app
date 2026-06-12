@@ -65,6 +65,8 @@ const repairQuarantineDiagnosticKeys = [
   "selectedGapProof",
   "v2SetBudgetMaterializerProjection",
   "v2SupportFloorMaterializerProjection",
+  "v2PlanQualityBenchmark",
+  "repairDeprecationReadiness",
   "missingProofBeforeBehaviorPromotion",
   "behaviorPromotionCandidateCount",
 ];
@@ -130,6 +132,8 @@ const diagnosticReadoutKeys = [
   "debugArtifact",
   "diagnosticCatalogs",
   "laneEvidence",
+  "v2PlanQualityBenchmark",
+  "repairDeprecationReadiness",
 ];
 
 const acceptedPlannerIntentCandidateWhitelist: string[] = [
@@ -499,6 +503,8 @@ describe("V2 planner policy module boundary", () => {
       "selectedGapProof",
       "v2SetBudgetMaterializerProjection",
       "v2SupportFloorMaterializerProjection",
+      "v2PlanQualityBenchmark",
+      "repairDeprecationReadiness",
       "missingProofBeforeBehaviorPromotion",
       "behaviorPromotionCandidateCount",
       "promotionCandidates",

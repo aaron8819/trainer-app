@@ -1085,6 +1085,13 @@ function compactPlannerOnlyNoRepair(
   const v2BasePlanShadowComparedPlans = asRecord(
     v2BasePlanShadowConsumptionTrial?.comparedPlans,
   );
+  const v2PlanQualityBenchmark = asRecord(noRepair.v2PlanQualityBenchmark);
+  const v2PlanQualityBenchmarkSummary = asRecord(
+    v2PlanQualityBenchmark?.summary,
+  );
+  const v2PlanQualityBenchmarkDeprecationReadiness = asRecord(
+    v2PlanQualityBenchmark?.deprecationReadiness,
+  );
   const v2PhaseStrategy = asRecord(
     v2MesocycleStrategyDiagnostic?.phaseStrategy,
   );
@@ -1226,6 +1233,37 @@ function compactPlannerOnlyNoRepair(
         ? replacementReadinessImpact.blockers
         : [],
     },
+    v2PlanQualityBenchmark: v2PlanQualityBenchmark
+      ? {
+          status: v2PlanQualityBenchmark.status ?? "blocked_by_missing_evidence",
+          readOnly: v2PlanQualityBenchmark.readOnly === true,
+          affectsScoringOrGeneration:
+            v2PlanQualityBenchmark.affectsScoringOrGeneration === true
+              ? true
+              : false,
+          consumedByProduction:
+            v2PlanQualityBenchmark.consumedByProduction === true
+              ? true
+              : false,
+          repairedProjectionUsedAs:
+            v2PlanQualityBenchmark.repairedProjectionUsedAs ??
+            "evidence_only_not_target_policy",
+          summary: v2PlanQualityBenchmarkSummary ?? {},
+          deprecationReadiness:
+            v2PlanQualityBenchmarkDeprecationReadiness ?? {},
+          gateStatuses: asRecordArray(v2PlanQualityBenchmark.gates).map(
+            (row) => ({
+              gate: row.gate,
+              status: row.status,
+              ownerSeam: row.ownerSeam,
+              candidateImpact: row.candidateImpact,
+              mustFixBeforeWeek1: row.mustFixBeforeWeek1 === true,
+              missingEvidenceCount: asStringArray(row.missingEvidence).length,
+            }),
+          ),
+          guardrails: asRecord(v2PlanQualityBenchmark.guardrails) ?? {},
+        }
+      : undefined,
     v2Summary: {
       planStatus: v2Plan?.planStatus,
       split: v2PlanSkeleton?.split,

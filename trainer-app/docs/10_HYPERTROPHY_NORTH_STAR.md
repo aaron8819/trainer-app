@@ -1601,25 +1601,26 @@ These are strategic decision gates, not claims that current production already p
 - Do not claim historical personalization is implemented while it remains diagnostic or roadmap work.
 - Do not delete safety repair paths before V2 owns the responsibility they currently protect.
 
-## 13. Immediate Next Strategic Step: Promote Only Proven Upstream Ownership
+## 13. Immediate Next Strategic Step: Benchmark V2 Candidate Quality Before Repair Deprecation
 
 The next question:
 
 ```txt
-Which remaining repair pressure is truly planner-owned, bounded, measurable,
-and safe to promote into V2 policy without changing seed/runtime truth?
+Does the V2 candidate itself satisfy first-principles plan quality well enough
+to classify legacy repair paths as safety nets, obsolete readouts, or still
+unproven leftovers without changing seed/runtime truth?
 ```
 
 Current near-term roadmap:
 
-1. Start from the current `mostly_repair_shaped` audit signal, not from repaired projection as a target.
-2. Review the `15` likely upstream-avoidable material repairs and keep only bounded, slot-owned, non-suspicious candidates.
-3. Treat the `8` remaining material repairs as set-distribution, concentration, capacity, or materializer-quality cleanup until proven otherwise.
-4. Keep the `3` suspicious repairs and all quarantined legacy repair rows evidence-only.
-5. Read `repairPromotionScoreboard.interpretation.quarantineGroups` before behavior work: only `upstreamOwnedCandidate` rows are behavior candidates; `safetyRepairOnly`, `collateralAmbiguous`, `staleArtifact`, and `missingEvidenceOrUnmeasuredGate` rows require their named proof gates first.
-6. Prefer read-only measured projections before behavior: compare current V2 policy, no-repair output, and materializer diagnostics without writing seeds or changing runtime.
-7. Promote behavior only through the rightful pure V2 owner seam with focused tests and audit comparison.
-8. Re-run mesocycle-explain and acceptance-style diagnostics after any behavior trial, then prove seed/runtime invariants remained unchanged.
+1. Evaluate `plannerOnlyNoRepair.v2PlanQualityBenchmark` first. Its gates are support floors, direct work, lane preservation, session size, fatigue distribution, duplicate/concentration risk, materializer omissions, and Week 1 trainability.
+2. Treat missing benchmark evidence as missing, not as pass-by-absence. Do not use repaired projection as target policy.
+3. Read `repairPromotionScoreboard.interpretation.repairDeprecationReadiness` after the benchmark. Its roles are `safety_net`, `plan_authoring_leftover`, `obsolete_no_impact`, and `still_unproven`.
+4. Keep `safety_net` paths until the V2 owner seam proves equivalent safety/non-regression.
+5. Treat `obsolete_no_impact` as ready for deprecation review only, not removal. Removal still requires non-regression proof and a separate explicit cleanup slice.
+6. Treat `plan_authoring_leftover` as evidence that some repair responsibility may belong upstream, but promote behavior only through the rightful pure V2 owner seam with measured projection proof.
+7. Treat `still_unproven` as blocked until the named benchmark gate, materializer, cross-week, acceptance, and seed/runtime non-consumption evidence exists.
+8. Re-run mesocycle-explain and acceptance-style diagnostics after any future behavior trial, then prove seed/runtime invariants remained unchanged.
 9. Keep V2 default-author promotion as a later gate after V2-authored output passes plan-quality, materialization-quality, integration, and runtime-readiness checks.
 
 ### Future Architecture Tracks For Engine Intelligence

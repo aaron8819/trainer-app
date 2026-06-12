@@ -1787,6 +1787,55 @@ export type MesocycleExplainPlannerOnlyDryRun = {
   };
 };
 
+export type V2PlanQualityBenchmark = {
+  version: 1;
+  source: "v2_candidate_quality_benchmark";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByProduction: false;
+  repairedProjectionUsedAs: "evidence_only_not_target_policy";
+  status: "pass" | "warning" | "fail" | "blocked_by_missing_evidence";
+  summary: {
+    passCount: number;
+    warningCount: number;
+    failCount: number;
+    missingEvidenceCount: number;
+    mustFixBeforeWeek1Count: number;
+    nextSafeAction: string;
+  };
+  gates: Array<{
+    gate:
+      | "support_floors"
+      | "direct_work"
+      | "lane_preservation"
+      | "session_size"
+      | "fatigue_distribution"
+      | "duplicate_concentration_risk"
+      | "materializer_omissions"
+      | "week_1_trainability";
+    status: "pass" | "warning" | "fail" | "missing_evidence";
+    ownerSeam: string;
+    evidence: string[];
+    missingEvidence: string[];
+    candidateImpact:
+      | "supports_deprecation_review"
+      | "blocks_deprecation"
+      | "needs_more_evidence";
+    mustFixBeforeWeek1: boolean;
+  }>;
+  deprecationReadiness: {
+    status: "ready_for_review" | "not_ready" | "blocked";
+    evidence: string[];
+    missingEvidence: string[];
+  };
+  guardrails: {
+    seedRuntimeChanged: false;
+    productionMaterializerChanged: false;
+    acceptanceThresholdChanged: false;
+    persistenceChanged: false;
+  };
+};
+
 export type MesocycleExplainPlannerOnlyNoRepair = {
   enabled: true;
   readOnly: true;
@@ -1838,6 +1887,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
   v2LaneIntentMaterializerProjection?: V2LaneIntentMaterializerProjection;
   v2SetBudgetMaterializerProjection?: V2SetBudgetMaterializerProjection;
   v2SupportFloorMaterializerProjection?: V2SupportFloorMaterializerProjection;
+  v2PlanQualityBenchmark?: V2PlanQualityBenchmark;
   repairPromotionScoreboard?: {
     version: 1;
     readOnly: true;
@@ -2188,6 +2238,35 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
         diagnosticOnlyCount: number;
         staleRepairedProjectionArtifactCount: number;
         suspiciousRepairCount: number;
+      };
+      repairDeprecationReadiness?: {
+        version: 1;
+        readOnly: true;
+        affectsScoringOrGeneration: false;
+        deprecationIsExecutable: false;
+        summary: {
+          safetyNetCount: number;
+          planAuthoringLeftoverCount: number;
+          obsoleteNoImpactCount: number;
+          stillUnprovenCount: number;
+          readyForDeprecationReviewCount: number;
+        };
+        roles: Array<{
+          role:
+            | "safety_net"
+            | "plan_authoring_leftover"
+            | "obsolete_no_impact"
+            | "still_unproven";
+          count: number;
+          readiness:
+            | "keep"
+            | "ready_for_deprecation_review"
+            | "needs_benchmark_evidence"
+            | "needs_non_regression_proof";
+          evidence: string[];
+          missingEvidence: string[];
+        }>;
+        nextSafeAction: string;
       };
     };
     promotionCandidates: Array<{

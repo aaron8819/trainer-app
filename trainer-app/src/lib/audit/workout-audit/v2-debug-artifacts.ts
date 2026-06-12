@@ -684,6 +684,7 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
   const supportFloorMaterializer = asRecord(
     noRepair.v2SupportFloorMaterializerProjection,
   );
+  const planQualityBenchmark = asRecord(noRepair.v2PlanQualityBenchmark);
   if (
     !v2Plan &&
     !setDistribution &&
@@ -693,7 +694,8 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
     !capacityMaterializer &&
     !laneIntentMaterializer &&
     !setBudgetMaterializer &&
-    !supportFloorMaterializer
+    !supportFloorMaterializer &&
+    !planQualityBenchmark
   ) {
     return null;
   }
@@ -740,6 +742,9 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
       : {}),
     ...(supportFloorMaterializer
       ? { v2SupportFloorMaterializerProjection: supportFloorMaterializer }
+      : {}),
+    ...(planQualityBenchmark
+      ? { v2PlanQualityBenchmark: planQualityBenchmark }
       : {}),
     materializedSeedWriteStatus: "not_available_in_audit_artifact",
   };
@@ -1662,6 +1667,11 @@ function buildIndexSummary(input: {
   const supportFloorMaterializerImpact = asRecord(
     supportFloorMaterializer?.candidateImpact,
   );
+  const planQualityBenchmark = asRecord(input.noRepair.v2PlanQualityBenchmark);
+  const planQualitySummary = asRecord(planQualityBenchmark?.summary);
+  const planQualityDeprecationReadiness = asRecord(
+    planQualityBenchmark?.deprecationReadiness,
+  );
   return {
     status: asRecord(input.noRepair.summary)?.status ?? "unknown",
     basicMesocycleShapeStatus:
@@ -1711,6 +1721,14 @@ function buildIndexSummary(input: {
       supportFloorMaterializerImpact?.totalSetDelta ?? null,
     v2SupportFloorMaterializerProjectionTargetLaneSetDelta:
       supportFloorMaterializerImpact?.targetLaneSetDelta ?? null,
+    v2PlanQualityBenchmarkStatus:
+      planQualityBenchmark?.status ?? "not_available",
+    v2PlanQualityBenchmarkFailedGates:
+      planQualitySummary?.failCount ?? null,
+    v2PlanQualityBenchmarkMissingEvidenceGates:
+      planQualitySummary?.missingEvidenceCount ?? null,
+    v2PlanQualityDeprecationReadiness:
+      planQualityDeprecationReadiness?.status ?? "not_available",
     writtenShardCount: input.shardMetadata.filter(
       (shard) => shard.status === "written",
     ).length,

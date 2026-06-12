@@ -45,6 +45,8 @@ type QuarantineGroupName =
   | "collateralAmbiguous"
   | "staleArtifact"
   | "missingEvidenceOrUnmeasuredGate";
+type RepairDeprecationReadiness =
+  V2RepairPromotionScoreboard["interpretation"]["repairDeprecationReadiness"];
 
 function uniqueSorted(values: string[]): string[] {
   return Array.from(
@@ -792,6 +794,138 @@ function buildQuarantineGroups(input: {
         "cross_week_and_deload_projection",
       ],
     },
+  };
+}
+
+function buildRepairDeprecationReadiness(input: {
+  promotionCandidates: ReadonlyArray<V2RepairPromotionCandidate>;
+  safetyNetRows: ReadonlyArray<Omit<V2RepairDoNotPromoteRow, "bucket">>;
+  collateralDiagnosticRows: ReadonlyArray<Omit<V2RepairDoNotPromoteRow, "bucket">>;
+  diagnosticRows: ReadonlyArray<Omit<V2RepairDoNotPromoteRow, "bucket">>;
+  gapInventory: ReadonlyArray<GapInventoryRow>;
+  selectedGapProof?: V2RepairPromotionScoreboard["interpretation"]["selectedGapProof"];
+}): RepairDeprecationReadiness {
+  const noImpactGaps = input.gapInventory.filter(
+    (row) =>
+      row.status === "measured_no_candidate_impact" ||
+      row.status === "measured_no_drift",
+  );
+  const staleDiagnosticRows = input.diagnosticRows.filter((row) =>
+    row.demotionReasons.some((reason) =>
+      [
+        "v2_already_solved_differently",
+        "legacy_repaired_artifact",
+        "readout_cleanup_needed",
+        "materiality_none_or_diagnostic_denominator_artifact",
+      ].includes(reason),
+    ),
+  );
+  const planAuthoringLeftoverCount = input.promotionCandidates.length;
+  const obsoleteNoImpactCount = noImpactGaps.length + staleDiagnosticRows.length;
+  const stillUnprovenCount =
+    input.collateralDiagnosticRows.length +
+    input.diagnosticRows.length -
+    staleDiagnosticRows.length +
+    input.gapInventory.filter((row) =>
+      [
+        "blocked_by_missing_evidence",
+        "selected_for_measured_proof",
+        "stale_or_ambiguous",
+      ].includes(row.status),
+    ).length;
+  const readyForDeprecationReviewCount = obsoleteNoImpactCount;
+
+  return {
+    version: 1,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    deprecationIsExecutable: false,
+    summary: {
+      safetyNetCount: input.safetyNetRows.length,
+      planAuthoringLeftoverCount,
+      obsoleteNoImpactCount,
+      stillUnprovenCount,
+      readyForDeprecationReviewCount,
+    },
+    roles: [
+      {
+        role: "safety_net",
+        count: input.safetyNetRows.length,
+        readiness: "keep",
+        evidence: input.safetyNetRows
+          .slice(0, 4)
+          .map((row) => `${row.reason}:${row.slotId ?? "unknown_slot"}`),
+        missingEvidence:
+          input.safetyNetRows.length > 0
+            ? ["upstream_safety_owner_non_regression_proof"]
+            : [],
+      },
+      {
+        role: "plan_authoring_leftover",
+        count: planAuthoringLeftoverCount,
+        readiness:
+          planAuthoringLeftoverCount > 0
+            ? "needs_benchmark_evidence"
+            : "ready_for_deprecation_review",
+        evidence: input.promotionCandidates
+          .slice(0, 4)
+          .map((row) => `${row.slotId}:${row.muscle}->${row.correctOwner}`),
+        missingEvidence:
+          planAuthoringLeftoverCount > 0
+            ? [
+                "first_principles_v2_benchmark_pass",
+                "measured_non_regression_without_repair_authoring",
+              ]
+            : [],
+      },
+      {
+        role: "obsolete_no_impact",
+        count: obsoleteNoImpactCount,
+        readiness:
+          obsoleteNoImpactCount > 0
+            ? "ready_for_deprecation_review"
+            : "needs_benchmark_evidence",
+        evidence: [
+          ...noImpactGaps
+            .slice(0, 4)
+            .map((row) => `${row.gapId}:${row.status}`),
+          ...staleDiagnosticRows
+            .slice(0, 4)
+            .map((row) => `${row.reason}:${row.slotId ?? "unknown_slot"}`),
+        ],
+        missingEvidence:
+          obsoleteNoImpactCount > 0
+            ? ["non_regression_proof_before_removal"]
+            : ["measured_no_impact_or_no_drift_projection"],
+      },
+      {
+        role: "still_unproven",
+        count: Math.max(0, stillUnprovenCount),
+        readiness: "needs_non_regression_proof",
+        evidence: [
+          ...(input.selectedGapProof
+            ? [
+                `selectedGap=${input.selectedGapProof.gapId}:${input.selectedGapProof.proofResult}`,
+              ]
+            : []),
+          ...input.gapInventory
+            .filter((row) => row.status === "blocked_by_missing_evidence")
+            .slice(0, 4)
+            .map((row) => `${row.gapId}:blocked_by_missing_evidence`),
+        ],
+        missingEvidence: [
+          "first_principles_benchmark_gate_passes",
+          "cross_week_non_regression",
+          "seed_runtime_non_consumption_verification",
+        ],
+      },
+    ],
+    nextSafeAction:
+      planAuthoringLeftoverCount > 0 || stillUnprovenCount > 0
+        ? "run_v2_plan_quality_benchmark_before_deprecation"
+        : obsoleteNoImpactCount > 0
+          ? "review_obsolete_no_impact_paths_for_future_deprecation"
+          : "keep_repair_paths_classified_as_safety_net",
   };
 }
 
@@ -2802,6 +2936,14 @@ export function buildRepairPromotionScoreboard(
     supportFloorGapInventory,
     context: v2Context,
   });
+  const repairDeprecationReadiness = buildRepairDeprecationReadiness({
+    promotionCandidates,
+    safetyNetRows,
+    collateralDiagnosticRows,
+    diagnosticRows,
+    gapInventory,
+    selectedGapProof,
+  });
 
   return {
     version: 1,
@@ -2849,6 +2991,7 @@ export function buildRepairPromotionScoreboard(
           staleRepairedProjectionArtifacts.count,
         suspiciousRepairCount: rawSuspiciousRows.length,
       },
+      repairDeprecationReadiness,
     },
     promotionCandidates,
     doNotPromoteRows,

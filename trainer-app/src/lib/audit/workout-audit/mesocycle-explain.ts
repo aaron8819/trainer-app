@@ -85,6 +85,7 @@ import {
   selectSupportFloorMaterializerTarget,
   selectTaxonomyMismatchMaterializerTarget,
 } from "./mesocycle-explain-v2-repair-scoreboard";
+import { buildV2PlanQualityBenchmark } from "./v2-plan-quality-benchmark";
 import {
   buildV2BasePlanCompareFromLiveContext,
   buildV2BasePlanShadowConsumptionTrialFromLiveContext,
@@ -8491,7 +8492,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       v2ExerciseSelectionPlanDiagnostic,
       v2DeloadProjectionDiagnostic,
     });
-    return {
+    const result: MesocycleExplainPlannerOnlyNoRepair = {
       enabled: true,
       readOnly: true,
       affectsScoringOrGeneration: false,
@@ -8542,6 +8543,10 @@ export function buildPlannerOnlyNoRepairComparison(input: {
             },
           }
         : {}),
+    };
+    return {
+      ...result,
+      v2PlanQualityBenchmark: buildV2PlanQualityBenchmark(result),
     };
   }
 
@@ -8857,7 +8862,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     },
   );
 
-  return {
+  const result: MesocycleExplainPlannerOnlyNoRepair = {
     enabled: true,
     readOnly: true,
     affectsScoringOrGeneration: false,
@@ -8920,6 +8925,10 @@ export function buildPlannerOnlyNoRepairComparison(input: {
           },
         }
       : {}),
+  };
+  return {
+    ...result,
+    v2PlanQualityBenchmark: buildV2PlanQualityBenchmark(result),
   };
 }
 

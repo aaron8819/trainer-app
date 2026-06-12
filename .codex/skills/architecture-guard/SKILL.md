@@ -1,6 +1,6 @@
 ---
 name: architecture-guard
-description: Enforce Trainer app canonical ownership and prevent architectural drift. Use for any non-trivial change involving src/app, src/lib/*, Prisma, or docs.
+description: Enforce Trainer app canonical ownership and prevent architectural drift. Use for non-trivial app behavior or architecture changes involving trainer-app/src, trainer-app/prisma, or canonical behavior docs. For prompt-writing, skill edits, and docs-only workflow changes, use a lightweight ownership/verification note unless app behavior or contracts change.
 ---
 
 # Architecture Guard
@@ -9,9 +9,21 @@ Protect canonical seams. Do not allow drift.
 
 ---
 
+## Scope Note
+
+For app behavior/code changes, run the full guard below before editing.
+
+For prompt-generation, skill maintenance, or workflow-doc-only edits that do not change app behavior, contracts, seed/runtime truth, or DB shape, do a lightweight check instead:
+
+- identify whether any Trainer app runtime seam is affected
+- state that no production behavior/contract path changes
+- validate with diff/format checks rather than app test suites unless the edit claims behavior changed
+
+---
+
 ## HARD RULE
 
-Do not write or modify code until a complete architecture audit is produced.
+Do not write or modify app code until a complete architecture audit is produced.
 
 ---
 

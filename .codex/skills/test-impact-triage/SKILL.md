@@ -63,6 +63,7 @@ Work in one of two modes:
    - `src/lib/validation.ts`, `docs/contracts/runtime-contracts.json` -> contract seam
    - `prisma/schema.prisma`, migrations, Prisma scripts -> persistence seam
    - `trainer-app/docs/**` -> documentation seam
+   - `.codex/skills/**`, `.Codex/napkin.md`, `AGENTS.md` -> workflow / agent-instruction seam
 3. Find the nearest focused tests for the owner.
 4. Decide whether one or more seam boundaries were crossed:
    - surface -> shared lib
@@ -177,6 +178,26 @@ Escalate when:
 - the docs update exposes that the underlying code or verification command also changed and needs validation
 
 Docs changes do not erase the need for code verification; they follow it.
+
+### 7. Workflow / skill / agent-instruction change
+
+Typical shape:
+- `.codex/skills/**/SKILL.md`
+- `.Codex/napkin.md` / `.codex/napkin.md`
+- `AGENTS.md`
+- prompt templates or process docs that guide future Codex sessions
+
+Minimum:
+- inspect the changed instructions for trigger accuracy, contradictions, and stale workflow assumptions
+- run `git diff --check` on the touched files
+- no app tests when the edit does not claim app behavior, contracts, generated output, seed/runtime behavior, or DB behavior changed
+
+Escalate when:
+- the instruction changes canonical app behavior expectations
+- the instruction changes required verification for app seams
+- the edit updates canonical behavior docs alongside workflow guidance
+
+In that case, triage the underlying app seam and run the relevant focused tests.
 
 ## Mandatory escalation triggers
 

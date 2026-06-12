@@ -1,6 +1,6 @@
 ---
 name: audit-workflow
-description: Standardize Trainer audit-harness routing and artifact interpretation. Use when running or reading workout-audit artifacts, choosing between `future-week` and `projected-week-volume`, checking audit CLI runtime targeting or owner resolution, or improving audit/reporting workflows without changing generation policy.
+description: Standardize Trainer audit-harness routing and artifact interpretation. Use when running or reading workout-audit artifacts, choosing between audit modes, interpreting V2 plan-quality benchmark gates, checking audit CLI runtime targeting or owner resolution, or improving audit/reporting workflows without changing generation policy.
 ---
 
 # Audit Workflow
@@ -95,6 +95,26 @@ Interpretation frame:
 - If likely avoidable repairs exist, recommend promoting only bounded, slot-owned, non-suspicious demand into pre-selection planning.
 - Before implementing any shadow-demand promotion, follow the `Safe Promotion Trial Protocol` in `trainer-app/docs/09_AUDIT_PLAYBOOK.md`: baseline `mesocycle-explain --operator-debug`, change one candidate class, re-run the same audit, keep only improving/non-regressing deltas, and revert if material/major/suspicious repairs or cross-region smells worsen. Never promote candidates wholesale.
 - If remaining repairs are mostly cap cleanup, recommend set distribution / concentration policy rather than demand allocation.
+
+## Interpret V2 plan-quality benchmark gates
+
+When the artifact includes a V2 plan-quality benchmark, treat it as the primary first-principles work queue before repair-row probes.
+
+Read each gate with its source attribution:
+
+- `pure_v2_base_plan` / V2 compare evidence: candidate-quality truth for V2-authored plan shape.
+- `v2_shadow` / projection diagnostics: high-fidelity preview or stress evidence, not accepted candidate truth by itself.
+- `planner_only_no_repair`: legacy/no-repair projection evidence; useful for handoff risk, not proof that pure V2 failed.
+- `repaired_projection`: safety-net evidence only; never a target policy.
+- acceptance/no-repair readouts: candidate trainability watch items, not planner authorship.
+
+Rules:
+
+- Do not infer a pure V2 failure from a no-repair projection failure when pure V2 base-plan evidence exists.
+- Gates should report status, owner seam, evidence source, and smallest safe next move.
+- Use failing benchmark gates as the work queue. Use warning gates as watch items unless they expose a must-fix-before-Week-1 risk.
+- Repair quarantine/readouts are useful for cleanup and deprecation decisions, but should not be the default V2 planner improvement loop once plan-quality benchmark coverage exists.
+- Deprecate repair behavior only after source-attributed benchmark evidence and non-regression checks show it is not needed for accepted candidate quality or safety.
 
 ## Classify the issue
 

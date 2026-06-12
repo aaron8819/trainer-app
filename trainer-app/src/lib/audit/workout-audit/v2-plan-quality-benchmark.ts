@@ -438,11 +438,23 @@ function buildFatigueDistributionGate(
   const projectionEvidence = concentrationProjectionMeasured
     ? [
         `concentrationProjectionStatus=${concentrationProjection.status}`,
-        `concentrationTrialId=${concentrationProjection.trialId}`,
         numberEvidence(
           "concentrationWarningDelta",
           concentrationProjection.concentrationDelta.warningDelta,
         ),
+        `behaviorReadiness=${
+          concentrationProjection.safeForBehaviorPromotion
+            ? "ready_for_behavior_review"
+            : "diagnostic_only"
+        }`,
+        numberEvidence(
+          "behaviorBlockers",
+          concentrationProjection.blockersBeforeBehavior.length,
+        ),
+        ...concentrationProjection.blockersBeforeBehavior
+          .slice(0, 6)
+          .map((blocker) => `promotionGateMissing:${blocker}`),
+        `concentrationTrialId=${concentrationProjection.trialId}`,
         numberEvidence(
           "concentrationMaxShareDelta",
           concentrationProjection.concentrationDelta.maxShareDelta,
@@ -486,6 +498,8 @@ function buildFatigueDistributionGate(
         "fatigueWarningsWithFatigueOrCollateralEvidence",
         warningsWithFatigueEvidence.length,
       ),
+      "no_repair_projection_not_pure_v2_policy",
+      ...projectionEvidence,
       ...warnings.slice(0, 4).map(
         ({ week, slotId, lane }) =>
           `fatigueWarning:${[
@@ -498,8 +512,6 @@ function buildFatigueDistributionGate(
             `capacity=${lane.capacityStatus}`,
           ].join(":")}`,
       ),
-      "no_repair_projection_not_pure_v2_policy",
-      ...projectionEvidence,
     ],
     missingEvidence: concentrationProjectionMeasured
       ? selection.missingInputs

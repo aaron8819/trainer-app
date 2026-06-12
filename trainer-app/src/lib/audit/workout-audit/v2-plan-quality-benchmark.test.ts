@@ -899,6 +899,12 @@ describe("V2 plan quality benchmark", () => {
           evidence: expect.arrayContaining([
             "concentrationProjectionStatus=projected_with_limitations",
             "concentrationWarningDelta=0",
+            "behaviorReadiness=diagnostic_only",
+            "behaviorBlockers=4",
+            "promotionGateMissing:acceptance_gate_not_rerun",
+            "promotionGateMissing:production_materializer_not_consuming_trial",
+            "promotionGateMissing:production_set_distribution_intent_unchanged",
+            "promotionGateMissing:production_slot_demand_allocation_unchanged",
             "concentrationMaxShareDelta=-6.7",
             "highFatigueSetDelta=-1",
             "targetLaneSetDelta=-1",

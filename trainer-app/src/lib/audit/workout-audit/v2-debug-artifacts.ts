@@ -1814,6 +1814,14 @@ function buildIndexSummary(input: {
       concentrationMaterializerImpact?.totalSetDelta ?? null,
     v2ConcentrationMaterializerProjectionWarningDelta:
       concentrationMaterializerDelta?.warningDelta ?? null,
+    v2ConcentrationMaterializerProjectionSafeForBehaviorPromotion:
+      concentrationMaterializer?.safeForBehaviorPromotion === true,
+    v2ConcentrationMaterializerProjectionBehaviorBlockers:
+      Array.isArray(concentrationMaterializer?.blockersBeforeBehavior)
+        ? concentrationMaterializer.blockersBeforeBehavior.length
+        : null,
+    v2ConcentrationMaterializerProjectionNextSafeAction:
+      concentrationMaterializer?.nextSafeAction ?? null,
     v2PlanQualityBenchmarkStatus:
       planQualityBenchmark?.status ?? "not_available",
     v2PlanQualityBenchmarkFailedGates:

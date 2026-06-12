@@ -1,6 +1,6 @@
 ---
 name: v2-planner-migration-guard
-description: Guard Trainer V2 hypertrophy planner migration work from architectural seam drift. Use for any task touching or near src/lib/engine/planning/v2, V2 strategy, demand, weekly curve, slot allocation, materialization dry-run, strategy evidence, recommendations, promotion readiness, projection diffs, planning-reality diagnostics, audit artifact serialization, V2 debug shards, handoff acceptance, accepted seed creation, slotPlanSeedJson, acceptedPlannerIntent, runtime seed replay, repair promotion/materiality, no-repair versus repaired projection comparisons, or mesocycle-explain audit output.
+description: Guard Trainer V2 hypertrophy planner migration work from architectural seam drift. Use for any task touching or near src/lib/engine/planning/v2, V2 plan-quality benchmark gates, V2 strategy, demand, weekly curve, slot allocation, materialization dry-run, strategy evidence, recommendations, promotion readiness, projection diffs, planning-reality diagnostics, audit artifact serialization, V2 debug shards, handoff acceptance, accepted seed creation, slotPlanSeedJson, acceptedPlannerIntent, runtime seed replay, repair promotion/deprecation/materiality, no-repair versus repaired projection comparisons, or mesocycle-explain audit output.
 ---
 
 # V2 Planner Migration Guard Skill
@@ -15,6 +15,7 @@ Use this skill for any task touching or near:
 - V2 strategy / demand / weekly curve / slot allocation
 - V2 materialization dry-run
 - V2 strategy evidence / recommendations / promotion readiness / projection diffs
+- V2 plan-quality benchmark gates and source attribution
 - planning-reality diagnostics
 - audit artifact serialization / V2 debug shards
 - handoff acceptance / accepted seed creation
@@ -22,6 +23,7 @@ Use this skill for any task touching or near:
 - `acceptedPlannerIntent`
 - runtime seed replay
 - repair promotion / repair materiality
+- repair deprecation or cleanup
 - no-repair / repaired projection comparisons
 - mesocycle-explain audit output
 
@@ -134,6 +136,24 @@ For audits, prove or state:
 - slot plans unchanged unless explicitly intended
 - raw repair evidence unchanged unless explicitly intended
 - unflagged/default output unchanged unless explicitly intended
+
+## Step 4b: V2 Plan-Quality Benchmark Guardrails
+
+For V2 plan-quality benchmark work, separate evidence sources before changing behavior:
+
+- Pure V2 base-plan / compare evidence = candidate-quality truth for V2-authored plan shape.
+- V2 shadow/projection evidence = high-fidelity preview or stress evidence.
+- Planner-only no-repair evidence = handoff/projection risk, not automatic pure V2 failure.
+- Repaired projection = safety-net evidence only, never target policy.
+- Acceptance/no-repair readouts = trainability watch items unless explicitly promoted through the acceptance gate.
+
+Rules:
+
+- A benchmark gate must name status, owner seam, evidence source, and smallest safe next move.
+- Use failing benchmark gates as the default work queue before repair-row probes.
+- Do not claim V2 failed from no-repair evidence when pure V2 candidate evidence passes.
+- Do not claim repair is obsolete from `no candidate impact` alone; require source-attributed benchmark coverage and non-regression proof.
+- Repair deprecation must be a cleanup change with explicit safety evidence, not a side effect of planner policy work.
 
 ## Step 5: Seed / Runtime Source Of Truth
 
@@ -270,6 +290,12 @@ For audit artifact/readout work:
 npm run test -- src/lib/audit/workout-audit/artifact-serialization.test.ts src/lib/audit/workout-audit/serializer.test.ts src/lib/audit/workout-audit/workout-audit-cli.test.ts src/lib/audit/workout-audit/mesocycle-explain-compare.test.ts
 ```
 
+For V2 plan-quality benchmark work:
+
+```bash
+npm run test -- src/lib/audit/workout-audit/v2-plan-quality-benchmark.test.ts src/lib/engine/planning/v2/architecture-boundary.test.ts
+```
+
 For seed/runtime work:
 
 ```bash
@@ -308,7 +334,7 @@ majorRepairCount
 suspicious repair count
 ```
 
-For skill/docs-only edits, `npm run verify:contracts` is sufficient unless a docs lint command exists.
+For skill/workflow-doc-only edits with no app behavior or contract claims, app verification is not required; run `git diff --check` on touched files and inspect the instruction diff for contradictions. If canonical behavior docs or contracts changed, triage that underlying seam normally.
 
 ## Step 11: Required Output Format For Codex Using This Skill
 

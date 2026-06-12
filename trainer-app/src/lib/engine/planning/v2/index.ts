@@ -23,7 +23,10 @@ export {
 export { buildV2PlannerMesocyclePolicy } from "./mesocycle-policy";
 export { buildV2SelectionCapacityPlan } from "./selection-capacity-plan";
 export { buildV2SetDistributionIntent } from "./set-distribution-intent";
-export { buildV2SlotDemandAllocationByWeek } from "./slot-demand-allocation";
+export {
+  buildV2SlotDemandAllocationByWeek,
+  buildV2SlotWeekDonorCapacityProjection,
+} from "./slot-demand-allocation";
 export { buildV2StrategyToDemandProjection } from "./strategy-to-demand-projection";
 export {
   buildV2SupportLanePolicy,
@@ -196,6 +199,11 @@ export type {
   V2BasePlanValidationStatus,
 } from "./materialization/base-plan-validation";
 export type { V2SelectionCapacityPlanInput } from "./selection-capacity-plan";
+export type {
+  V2SlotWeekDonorCapacityMeasuredRow,
+  V2SlotWeekDonorCapacityProjection,
+  V2SlotWeekDonorCapacityProjectionInput,
+} from "./slot-demand-allocation";
 export type {
   V2SupportLaneActivationEvaluation,
   V2SupportLaneExpansionPolicy,

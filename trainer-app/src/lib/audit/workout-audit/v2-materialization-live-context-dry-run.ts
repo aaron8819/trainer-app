@@ -9,6 +9,7 @@ import {
   buildV2MaterializationDryRunReport,
   buildV2PlannerMesocyclePolicy,
   buildV2SelectionCapacityPlan,
+  buildV2SlotWeekDonorCapacityProjection,
   compareV2MaterializedPlans,
   DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
   matchV2ExerciseClasses,
@@ -23,6 +24,8 @@ import {
   type V2PlannerSetRange,
   type V2PlannerSlotId,
   type V2SetDistributionIntent,
+  type V2SlotWeekDonorCapacityMeasuredRow,
+  type V2SlotWeekDonorCapacityProjection,
 } from "@/lib/engine/planning/v2";
 import { isV2LaneSelectionIntentConsumedByMaterializer } from "@/lib/engine/planning/v2/lane-selection-intent";
 import type {
@@ -574,7 +577,13 @@ export type V2ConcentrationDonorOffsetRedistributionProjection = {
       | "select_alternate_donor_offset"
       | "pivot_to_higher_roi_track"
       | "keep_diagnostic_only";
+    slotWeekAllocationReadiness:
+      V2SlotWeekDonorCapacityProjection["summary"]["behaviorReadiness"];
+    slotWeekAllocationNextSafeSlice:
+      V2SlotWeekDonorCapacityProjection["summary"]["nextSafeSlice"];
+    slotWeekAllocationBlockedRowCount: number;
   };
+  slotWeekAllocationProjection: V2SlotWeekDonorCapacityProjection;
   rows: Array<{
     week: number;
     phase: string;
@@ -2535,8 +2544,42 @@ function buildConcentrationDonorOffsetRedistributionProjection(input: {
   const selectedAlternateWeekCount = rows.filter(
     (row) => row.selectedDonorKind === "alternate",
   ).length;
+  const slotWeekAllocationProjection = buildV2SlotWeekDonorCapacityProjection({
+    slotDemandAllocationByWeek: input.plannerPolicy.slotDemandAllocationByWeek,
+    measuredRows: rows.flatMap((row): V2SlotWeekDonorCapacityMeasuredRow[] => {
+      if (!row.donor) {
+        return [];
+      }
+      const protectedMuscles =
+        row.protectedCoverageImpact.protectedMuscles.length > 0
+          ? row.protectedCoverageImpact.protectedMuscles
+          : row.source.muscles;
+      return protectedMuscles.map((muscle) => ({
+        week: row.week,
+        muscle,
+        sourceSlotId: row.source.slotId,
+        sourceLaneId: row.source.laneId,
+        sourceBeforeSets: row.source.baselineSetCount,
+        sourceAfterSets: row.source.trialSetCount,
+        sourceSetDelta: row.source.setDelta,
+        donorSlotId: row.donor?.slotId ?? null,
+        donorLaneId: row.donor?.laneId ?? null,
+        donorBeforeSets: row.donor?.baselineSetCount ?? 0,
+        donorAfterSets: row.donor?.trialSetCount ?? 0,
+        donorSetDelta: row.donor?.setDelta ?? 0,
+        netWeeklySetDelta: row.protectedCoverageImpact.netWeeklySetDelta,
+        protectedCoverageStatus: row.protectedCoverageImpact.status,
+        materializerRegressionCount: row.materializerDelta.regressionCount,
+        materializerBlockerDelta: row.materializerDelta.materializerBlockerDelta,
+        concentrationWarningDelta: row.concentrationWarningDelta,
+      }));
+    }),
+  });
   const blockersBeforeBehavior = uniqueSorted([
     ...rows.flatMap((row) => row.blockers),
+    ...slotWeekAllocationProjection.rows.flatMap((row) =>
+      row.blockingReasons.map((reason) => `slot_week_allocation:${reason}`),
+    ),
     ...(projectedRows.length === 0 ? ["donor_offset_candidate_unavailable"] : []),
     "acceptance_gate_not_rerun_for_donor_offset_projection",
     "production_slot_demand_allocation_unchanged",
@@ -2614,7 +2657,14 @@ function buildConcentrationDonorOffsetRedistributionProjection(input: {
       behaviorReadinessDecision,
       blockerCount: blockersBeforeBehavior.length,
       nextSafeSlice,
+      slotWeekAllocationReadiness:
+        slotWeekAllocationProjection.summary.behaviorReadiness,
+      slotWeekAllocationNextSafeSlice:
+        slotWeekAllocationProjection.summary.nextSafeSlice,
+      slotWeekAllocationBlockedRowCount:
+        slotWeekAllocationProjection.summary.blockedRowCount,
     },
+    slotWeekAllocationProjection,
     rows,
     blockersBeforeBehavior,
     limitations: [
@@ -2860,6 +2910,42 @@ function emptyConcentrationDonorOffsetRedistributionProjection(input: {
     ...input.blockersBeforeBehavior,
     "donor_offset_candidate_unavailable",
   ]);
+  const slotWeekAllocationProjection: V2SlotWeekDonorCapacityProjection = {
+    version: 1,
+    source: "v2_slot_week_donor_capacity_projection",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: false,
+    status: "not_available",
+    designDecision: {
+      policy:
+        "only_relieve_concentration_when_slot_owned_donor_absorbs_required_sets",
+      requireMeasuredDonorAbsorption: true,
+      requireNetWeeklyVolumePreserved: true,
+      requireProtectedCoveragePreserved: true,
+      requireMaterializerNonRegression: true,
+    },
+    summary: {
+      rowCount: 0,
+      passingRowCount: 0,
+      blockedRowCount: 0,
+      eligibleDonorSlotCount: 0,
+      measuredDonorCapacityPassCount: 0,
+      measuredDonorCapacityFailCount: 0,
+      protectedCoverageRegressionCount: 0,
+      materializerRegressionCount: 0,
+      netWeeklySetDelta: 0,
+      behaviorReadiness: "not_available",
+      nextSafeSlice: "keep_diagnostic_only",
+    },
+    rows: [],
+    limitations: [
+      "projection_not_available_without_measured_donor_offset_rows",
+      "does_not_mutate_slot_demand_allocation_by_week",
+      "does_not_feed_materializer_ranking",
+      "does_not_write_seed_runtime_receipt_or_db_state",
+    ],
+  };
   return {
     version: 1,
     source: "v2_concentration_donor_offset_redistribution_projection",
@@ -2897,7 +2983,14 @@ function emptyConcentrationDonorOffsetRedistributionProjection(input: {
       behaviorReadinessDecision: "not_available",
       blockerCount: blockersBeforeBehavior.length,
       nextSafeSlice: "select_alternate_donor_offset",
+      slotWeekAllocationReadiness:
+        slotWeekAllocationProjection.summary.behaviorReadiness,
+      slotWeekAllocationNextSafeSlice:
+        slotWeekAllocationProjection.summary.nextSafeSlice,
+      slotWeekAllocationBlockedRowCount:
+        slotWeekAllocationProjection.summary.blockedRowCount,
     },
+    slotWeekAllocationProjection,
     rows: [],
     blockersBeforeBehavior,
     limitations: [

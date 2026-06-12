@@ -1195,6 +1195,9 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
   const concentrationDonorOffsetSummary = asRecord(
     concentrationDonorOffset?.summary,
   );
+  const concentrationSlotWeekAllocation = asRecord(
+    concentrationDonorOffset?.slotWeekAllocationProjection,
+  );
 
   return {
     summary: {
@@ -1537,6 +1540,54 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
                     ? true
                     : false,
                 summary: concentrationDonorOffsetSummary ?? {},
+                slotWeekAllocationProjection: concentrationSlotWeekAllocation
+                  ? {
+                      status:
+                        concentrationSlotWeekAllocation.status ??
+                        "not_available",
+                      readOnly:
+                        concentrationSlotWeekAllocation.readOnly === true,
+                      affectsScoringOrGeneration:
+                        concentrationSlotWeekAllocation.affectsScoringOrGeneration ===
+                        true
+                          ? true
+                          : false,
+                      consumedByDemandOrMaterializer:
+                        concentrationSlotWeekAllocation.consumedByDemandOrMaterializer ===
+                        true
+                          ? true
+                          : false,
+                      designDecision:
+                        asRecord(concentrationSlotWeekAllocation.designDecision) ??
+                        {},
+                      summary:
+                        asRecord(concentrationSlotWeekAllocation.summary) ?? {},
+                      rows: asRecordArray(
+                        concentrationSlotWeekAllocation.rows,
+                      ).map((allocationRow) => ({
+                        week: allocationRow.week,
+                        muscle: allocationRow.muscle,
+                        protectedWeeklyDemand:
+                          asRecord(allocationRow.protectedWeeklyDemand) ?? {},
+                        sourceLanePressure:
+                          asRecord(allocationRow.sourceLanePressure) ?? {},
+                        eligibleDonorSlots: asRecordArray(
+                          allocationRow.eligibleDonorSlots,
+                        ),
+                        donorCapacity:
+                          asRecord(allocationRow.donorCapacity) ?? {},
+                        protectedCoverageImpact:
+                          asRecord(allocationRow.protectedCoverageImpact) ?? {},
+                        materializerNonRegressionStatus:
+                          allocationRow.materializerNonRegressionStatus,
+                        behaviorReadiness: allocationRow.behaviorReadiness,
+                        blockingReasons: asStringArray(
+                          allocationRow.blockingReasons,
+                        ),
+                        nextSafeSlice: allocationRow.nextSafeSlice,
+                      })),
+                    }
+                  : {},
                 rowCount: countArray(concentrationDonorOffset.rows),
                 rows: asRecordArray(concentrationDonorOffset.rows).map((row) => ({
                   week: row.week,
@@ -1825,6 +1876,9 @@ function buildIndexSummary(input: {
   const concentrationDonorOffsetSummary = asRecord(
     concentrationDonorOffset?.summary,
   );
+  const concentrationSlotWeekAllocationSummary = asRecord(
+    asRecord(concentrationDonorOffset?.slotWeekAllocationProjection)?.summary,
+  );
   const planQualityBenchmark = asRecord(input.noRepair.v2PlanQualityBenchmark);
   const planQualitySummary = asRecord(planQualityBenchmark?.summary);
   const planQualityDeprecationReadiness = asRecord(
@@ -1916,6 +1970,12 @@ function buildIndexSummary(input: {
       concentrationDonorOffsetSummary?.concentrationWarningDelta ?? null,
     v2ConcentrationDonorOffsetProjectionNextSafeSlice:
       concentrationDonorOffsetSummary?.nextSafeSlice ?? null,
+    v2ConcentrationSlotWeekAllocationReadiness:
+      concentrationSlotWeekAllocationSummary?.behaviorReadiness ?? null,
+    v2ConcentrationSlotWeekAllocationBlockedRows:
+      concentrationSlotWeekAllocationSummary?.blockedRowCount ?? null,
+    v2ConcentrationSlotWeekAllocationNextSafeSlice:
+      concentrationSlotWeekAllocationSummary?.nextSafeSlice ?? null,
     v2PlanQualityBenchmarkStatus:
       planQualityBenchmark?.status ?? "not_available",
     v2PlanQualityBenchmarkFailedGates:

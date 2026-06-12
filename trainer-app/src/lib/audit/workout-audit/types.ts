@@ -1809,6 +1809,17 @@ export type V2PlanQualityBenchmark = {
       | V2ConcentrationMaterializerProjection["crossWeekReadiness"]["nextSafeSlice"]
       | null;
     concentrationReadinessBlockerCount: number | null;
+    slotWeekAllocationReadiness:
+      | "candidate_for_acceptance_projection"
+      | "blocked_by_evidence"
+      | "not_available";
+    slotWeekAllocationBlockedRowCount: number;
+    slotWeekAllocationNextSafeSlice:
+      | "run_acceptance_non_regression_projection"
+      | "design_slot_week_allocation_policy"
+      | "inspect_materializer_regressions"
+      | "keep_diagnostic_only"
+      | null;
     nextSafeAction: string;
   };
   gates: Array<{

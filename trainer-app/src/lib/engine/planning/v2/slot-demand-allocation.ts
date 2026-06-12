@@ -13,6 +13,116 @@ export type V2SlotDemandAllocationByWeekInput = {
   weeklyDemandCurve: V2WeeklyDemandCurve;
 };
 
+export type V2SlotWeekDonorCapacityMeasuredRow = {
+  week: number;
+  muscle: string;
+  sourceSlotId: string;
+  sourceLaneId: string;
+  sourceBeforeSets: number;
+  sourceAfterSets: number;
+  sourceSetDelta: number;
+  donorSlotId: string | null;
+  donorLaneId: string | null;
+  donorBeforeSets: number;
+  donorAfterSets: number;
+  donorSetDelta: number;
+  netWeeklySetDelta: number;
+  protectedCoverageStatus: "preserved" | "regressed" | "unknown";
+  materializerRegressionCount: number;
+  materializerBlockerDelta: number;
+  concentrationWarningDelta: number;
+};
+
+export type V2SlotWeekDonorCapacityProjectionInput = {
+  slotDemandAllocationByWeek: V2SlotDemandAllocationByWeek;
+  measuredRows: V2SlotWeekDonorCapacityMeasuredRow[];
+};
+
+export type V2SlotWeekDonorCapacityProjection = {
+  version: 1;
+  source: "v2_slot_week_donor_capacity_projection";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByDemandOrMaterializer: false;
+  status: "available" | "blocked" | "not_available";
+  designDecision: {
+    policy:
+      "only_relieve_concentration_when_slot_owned_donor_absorbs_required_sets";
+    requireMeasuredDonorAbsorption: true;
+    requireNetWeeklyVolumePreserved: true;
+    requireProtectedCoveragePreserved: true;
+    requireMaterializerNonRegression: true;
+  };
+  summary: {
+    rowCount: number;
+    passingRowCount: number;
+    blockedRowCount: number;
+    eligibleDonorSlotCount: number;
+    measuredDonorCapacityPassCount: number;
+    measuredDonorCapacityFailCount: number;
+    protectedCoverageRegressionCount: number;
+    materializerRegressionCount: number;
+    netWeeklySetDelta: number;
+    behaviorReadiness:
+      | "candidate_for_acceptance_projection"
+      | "blocked_by_evidence"
+      | "not_available";
+    nextSafeSlice:
+      | "run_acceptance_non_regression_projection"
+      | "design_slot_week_allocation_policy"
+      | "inspect_materializer_regressions"
+      | "keep_diagnostic_only";
+  };
+  rows: Array<{
+    week: number;
+    muscle: string;
+    protectedWeeklyDemand: V2PlannerSetRange;
+    sourceLanePressure: {
+      slotId: string;
+      laneId: string;
+      allocatedPreferredSets: number;
+      baselineSetCount: number;
+      trialSetCount: number;
+      setDelta: number;
+      pressureRelieved: boolean;
+    };
+    eligibleDonorSlots: Array<{
+      slotId: string;
+      laneId: string;
+      allocatedPreferredSets: number;
+      ownershipKind: V2AllocatedMuscle["ownershipKind"];
+      measured: boolean;
+    }>;
+    donorCapacity: {
+      requiredSetAbsorption: number;
+      donorSlotId: string | null;
+      donorLaneId: string | null;
+      donorBeforeSets: number;
+      donorAfterSets: number;
+      donorSetDelta: number;
+      absorbedRequiredSets: boolean;
+      headroomSets: number;
+      status: "absorbed" | "insufficient" | "unmeasured";
+    };
+    protectedCoverageImpact: {
+      status: "preserved" | "regressed" | "unknown";
+      netWeeklySetDelta: number;
+    };
+    materializerNonRegressionStatus: "pass" | "fail" | "unknown";
+    behaviorReadiness:
+      | "candidate_for_acceptance_projection"
+      | "blocked_by_evidence"
+      | "not_available";
+    blockingReasons: string[];
+    nextSafeSlice:
+      | "run_acceptance_non_regression_projection"
+      | "design_slot_week_allocation_policy"
+      | "inspect_materializer_regressions"
+      | "keep_diagnostic_only";
+  }>;
+  limitations: string[];
+};
+
 type V2WeeklyDemandMuscle =
   V2WeeklyDemandCurve["weeks"][number]["muscles"][number];
 type V2AllocatedMuscle =
@@ -316,6 +426,12 @@ function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+function uniqueSorted(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean))).sort((left, right) =>
+    left.localeCompare(right),
+  );
+}
+
 function scaleRange(range: V2PlannerSetRange, multiplier: number): V2PlannerSetRange {
   return {
     min: roundToTenth(range.min * multiplier),
@@ -470,6 +586,298 @@ function buildAllocatedMuscle(input: {
       phase: input.phase,
       ownershipKind: input.spec.ownershipKind,
     }),
+  };
+}
+
+function addRanges(
+  left: V2PlannerSetRange,
+  right: V2PlannerSetRange,
+): V2PlannerSetRange {
+  return {
+    min: roundToTenth(left.min + right.min),
+    preferred: roundToTenth(left.preferred + right.preferred),
+    max: roundToTenth(left.max + right.max),
+  };
+}
+
+function allocationWeekFor(
+  allocation: V2SlotDemandAllocationByWeek,
+  weekNumber: number,
+): V2SlotDemandAllocationByWeek["weeks"][number] | undefined {
+  return allocation.weeks.find((week) => week.week === weekNumber);
+}
+
+function laneAllocatedMuscle(input: {
+  week: V2SlotDemandAllocationByWeek["weeks"][number] | undefined;
+  slotId: string;
+  laneId: string;
+  muscle: string;
+}): V2AllocatedMuscle | undefined {
+  return input.week?.slots
+    .find((slot) => slot.slotId === input.slotId)
+    ?.lanes.find((lane) => lane.laneId === input.laneId)
+    ?.allocatedMuscles.find((row) => row.muscle === input.muscle);
+}
+
+function protectedWeeklyDemand(input: {
+  week: V2SlotDemandAllocationByWeek["weeks"][number] | undefined;
+  muscle: string;
+}): V2PlannerSetRange {
+  return (
+    input.week?.slots
+      .flatMap((slot) => slot.lanes)
+      .flatMap((lane) => lane.allocatedMuscles)
+      .filter(
+        (row) =>
+          row.muscle === input.muscle &&
+          row.ownershipKind !== "managed_collateral" &&
+          row.ownershipKind !== "optional_if_needed",
+      )
+      .map((row) => row.targetSetRange)
+      .reduce(addRanges, zeroRange()) ?? zeroRange()
+  );
+}
+
+function eligibleDonorSlots(input: {
+  week: V2SlotDemandAllocationByWeek["weeks"][number] | undefined;
+  row: V2SlotWeekDonorCapacityMeasuredRow;
+}): V2SlotWeekDonorCapacityProjection["rows"][number]["eligibleDonorSlots"] {
+  return (
+    input.week?.slots.flatMap((slot) =>
+      slot.lanes.flatMap((lane) => {
+        if (
+          slot.slotId === input.row.sourceSlotId &&
+          lane.laneId === input.row.sourceLaneId
+        ) {
+          return [];
+        }
+        const muscle = lane.allocatedMuscles.find(
+          (candidate) =>
+            candidate.muscle === input.row.muscle &&
+            candidate.ownershipKind !== "managed_collateral" &&
+            candidate.ownershipKind !== "optional_if_needed" &&
+            candidate.targetSetRange.preferred > 0,
+        );
+        return muscle
+          ? [
+              {
+                slotId: slot.slotId,
+                laneId: lane.laneId,
+                allocatedPreferredSets: muscle.targetSetRange.preferred,
+                ownershipKind: muscle.ownershipKind,
+                measured:
+                  slot.slotId === input.row.donorSlotId &&
+                  lane.laneId === input.row.donorLaneId,
+              },
+            ]
+          : [];
+      }),
+    ) ?? []
+  ).sort(
+    (left, right) =>
+      Number(right.measured) - Number(left.measured) ||
+      left.slotId.localeCompare(right.slotId) ||
+      left.laneId.localeCompare(right.laneId),
+  );
+}
+
+function buildDonorCapacityProjectionRow(input: {
+  allocation: V2SlotDemandAllocationByWeek;
+  row: V2SlotWeekDonorCapacityMeasuredRow;
+}): V2SlotWeekDonorCapacityProjection["rows"][number] {
+  const week = allocationWeekFor(input.allocation, input.row.week);
+  const sourceAllocation = laneAllocatedMuscle({
+    week,
+    slotId: input.row.sourceSlotId,
+    laneId: input.row.sourceLaneId,
+    muscle: input.row.muscle,
+  });
+  const requiredSetAbsorption = Math.max(0, -input.row.sourceSetDelta);
+  const absorbedRequiredSets =
+    requiredSetAbsorption > 0 &&
+    input.row.donorSetDelta >= requiredSetAbsorption &&
+    input.row.netWeeklySetDelta === 0;
+  const donorMeasured = Boolean(input.row.donorSlotId && input.row.donorLaneId);
+  const donorCapacityStatus =
+    !donorMeasured || requiredSetAbsorption === 0
+      ? "unmeasured"
+      : absorbedRequiredSets
+        ? "absorbed"
+        : "insufficient";
+  const materializerNonRegressionStatus =
+    input.row.materializerRegressionCount > 0 ||
+    input.row.materializerBlockerDelta > 0
+      ? "fail"
+      : donorMeasured
+        ? "pass"
+        : "unknown";
+  const donors = eligibleDonorSlots({ week, row: input.row });
+  const blockingReasons = uniqueSorted([
+    ...(requiredSetAbsorption > 0 ? [] : ["source_pressure_not_relieved"]),
+    ...(donors.length > 0 ? [] : ["eligible_slot_owned_donor_missing"]),
+    ...(donorCapacityStatus === "absorbed"
+      ? []
+      : ["donor_capacity_did_not_absorb_required_sets"]),
+    ...(input.row.netWeeklySetDelta === 0
+      ? []
+      : ["net_weekly_volume_changed"]),
+    ...(input.row.protectedCoverageStatus === "preserved"
+      ? []
+      : ["protected_coverage_not_preserved"]),
+    ...(materializerNonRegressionStatus === "pass"
+      ? []
+      : ["materializer_non_regression_not_proven"]),
+  ]);
+  const behaviorReadiness =
+    blockingReasons.length === 0
+      ? "candidate_for_acceptance_projection"
+      : donorMeasured || donors.length > 0
+        ? "blocked_by_evidence"
+        : "not_available";
+  const nextSafeSlice =
+    behaviorReadiness === "candidate_for_acceptance_projection"
+      ? "run_acceptance_non_regression_projection"
+      : materializerNonRegressionStatus === "fail"
+        ? "inspect_materializer_regressions"
+        : behaviorReadiness === "blocked_by_evidence"
+          ? "design_slot_week_allocation_policy"
+          : "keep_diagnostic_only";
+
+  return {
+    week: input.row.week,
+    muscle: input.row.muscle,
+    protectedWeeklyDemand: protectedWeeklyDemand({
+      week,
+      muscle: input.row.muscle,
+    }),
+    sourceLanePressure: {
+      slotId: input.row.sourceSlotId,
+      laneId: input.row.sourceLaneId,
+      allocatedPreferredSets:
+        sourceAllocation?.targetSetRange.preferred ?? input.row.sourceBeforeSets,
+      baselineSetCount: input.row.sourceBeforeSets,
+      trialSetCount: input.row.sourceAfterSets,
+      setDelta: input.row.sourceSetDelta,
+      pressureRelieved: input.row.sourceSetDelta < 0,
+    },
+    eligibleDonorSlots: donors,
+    donorCapacity: {
+      requiredSetAbsorption,
+      donorSlotId: input.row.donorSlotId,
+      donorLaneId: input.row.donorLaneId,
+      donorBeforeSets: input.row.donorBeforeSets,
+      donorAfterSets: input.row.donorAfterSets,
+      donorSetDelta: input.row.donorSetDelta,
+      absorbedRequiredSets,
+      headroomSets: Math.max(
+        0,
+        roundToTenth(input.row.donorSetDelta - requiredSetAbsorption),
+      ),
+      status: donorCapacityStatus,
+    },
+    protectedCoverageImpact: {
+      status: input.row.protectedCoverageStatus,
+      netWeeklySetDelta: input.row.netWeeklySetDelta,
+    },
+    materializerNonRegressionStatus,
+    behaviorReadiness,
+    blockingReasons,
+    nextSafeSlice,
+  };
+}
+
+export function buildV2SlotWeekDonorCapacityProjection(
+  input: V2SlotWeekDonorCapacityProjectionInput,
+): V2SlotWeekDonorCapacityProjection {
+  const rows = input.measuredRows.map((row) =>
+    buildDonorCapacityProjectionRow({
+      allocation: input.slotDemandAllocationByWeek,
+      row,
+    }),
+  );
+  const passingRowCount = rows.filter(
+    (row) => row.behaviorReadiness === "candidate_for_acceptance_projection",
+  ).length;
+  const blockedRowCount = rows.filter(
+    (row) => row.behaviorReadiness === "blocked_by_evidence",
+  ).length;
+  const measuredDonorCapacityPassCount = rows.filter(
+    (row) => row.donorCapacity.status === "absorbed",
+  ).length;
+  const measuredDonorCapacityFailCount = rows.filter(
+    (row) => row.donorCapacity.status === "insufficient",
+  ).length;
+  const protectedCoverageRegressionCount = rows.filter(
+    (row) => row.protectedCoverageImpact.status === "regressed",
+  ).length;
+  const materializerRegressionCount = rows.filter(
+    (row) => row.materializerNonRegressionStatus === "fail",
+  ).length;
+  const netWeeklySetDelta = rows.reduce(
+    (sum, row) => roundToTenth(sum + row.protectedCoverageImpact.netWeeklySetDelta),
+    0,
+  );
+  const behaviorReadiness =
+    rows.length === 0
+      ? "not_available"
+      : rows.length === passingRowCount
+        ? "candidate_for_acceptance_projection"
+        : "blocked_by_evidence";
+  const nextSafeSlice =
+    behaviorReadiness === "candidate_for_acceptance_projection"
+      ? "run_acceptance_non_regression_projection"
+      : materializerRegressionCount > 0
+        ? "inspect_materializer_regressions"
+        : rows.length > 0
+          ? "design_slot_week_allocation_policy"
+          : "keep_diagnostic_only";
+
+  return {
+    version: 1,
+    source: "v2_slot_week_donor_capacity_projection",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: false,
+    status:
+      rows.length === 0
+        ? "not_available"
+        : passingRowCount === rows.length
+          ? "available"
+          : "blocked",
+    designDecision: {
+      policy:
+        "only_relieve_concentration_when_slot_owned_donor_absorbs_required_sets",
+      requireMeasuredDonorAbsorption: true,
+      requireNetWeeklyVolumePreserved: true,
+      requireProtectedCoveragePreserved: true,
+      requireMaterializerNonRegression: true,
+    },
+    summary: {
+      rowCount: rows.length,
+      passingRowCount,
+      blockedRowCount,
+      eligibleDonorSlotCount: rows.reduce(
+        (sum, row) => sum + row.eligibleDonorSlots.length,
+        0,
+      ),
+      measuredDonorCapacityPassCount,
+      measuredDonorCapacityFailCount,
+      protectedCoverageRegressionCount,
+      materializerRegressionCount,
+      netWeeklySetDelta,
+      behaviorReadiness,
+      nextSafeSlice,
+    },
+    rows,
+    limitations: [
+      "read_only_projection_only",
+      "requires_measured_materializer_absorption_before_policy_design",
+      "does_not_mutate_slot_demand_allocation_by_week",
+      "does_not_change_set_distribution_intent",
+      "does_not_feed_materializer_ranking",
+      "does_not_feed_generation_or_repair",
+      "does_not_write_seed_runtime_receipt_or_db_state",
+    ],
   };
 }
 

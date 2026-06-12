@@ -309,7 +309,23 @@ describe("V2 live-context materializer projections", () => {
         alternateCandidateCount: 3,
         alternatePassingCandidateCount: 0,
         selectedAlternateWeekCount: 0,
+        slotWeekAllocationReadiness: "blocked_by_evidence",
+        slotWeekAllocationBlockedRowCount: 3,
+        slotWeekAllocationNextSafeSlice: "inspect_materializer_regressions",
         nextSafeSlice: "inspect_donor_offset_regressions",
+      },
+      slotWeekAllocationProjection: {
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByDemandOrMaterializer: false,
+        status: "blocked",
+        summary: {
+          rowCount: 3,
+          blockedRowCount: 3,
+          measuredDonorCapacityPassCount: 3,
+          behaviorReadiness: "blocked_by_evidence",
+          nextSafeSlice: "inspect_materializer_regressions",
+        },
       },
     });
     expect(result.donorOffsetRedistributionProjection.rows).toHaveLength(3);
@@ -378,6 +394,16 @@ describe("V2 live-context materializer projections", () => {
         alternateCandidateCount: 0,
         alternatePassingCandidateCount: 0,
         selectedAlternateWeekCount: 0,
+        slotWeekAllocationReadiness: "not_available",
+        slotWeekAllocationBlockedRowCount: 0,
+        slotWeekAllocationNextSafeSlice: "keep_diagnostic_only",
+      },
+      slotWeekAllocationProjection: {
+        status: "not_available",
+        summary: {
+          behaviorReadiness: "not_available",
+          nextSafeSlice: "keep_diagnostic_only",
+        },
       },
       safeForBehaviorPromotion: false,
     });

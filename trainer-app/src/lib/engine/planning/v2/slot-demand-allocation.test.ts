@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildV2MesocycleDemand } from "./mesocycle-demand";
-import { buildV2SlotDemandAllocationByWeek } from "./slot-demand-allocation";
+import {
+  buildV2SlotDemandAllocationByWeek,
+  buildV2SlotWeekDonorCapacityProjection,
+  type V2SlotWeekDonorCapacityMeasuredRow,
+} from "./slot-demand-allocation";
 import { buildV2TargetSkeleton } from "./target-skeleton";
 import type {
   V2MesocycleDemand,
@@ -142,6 +146,31 @@ function groupPreferredBySlot(rows: AllocationRow[]): Record<string, number> {
       ) / 10;
     return acc;
   }, {});
+}
+
+function donorCapacityRow(
+  overrides: Partial<V2SlotWeekDonorCapacityMeasuredRow> = {},
+): V2SlotWeekDonorCapacityMeasuredRow {
+  return {
+    week: 2,
+    muscle: "Calves",
+    sourceSlotId: "lower_a",
+    sourceLaneId: "calves",
+    sourceBeforeSets: 4,
+    sourceAfterSets: 3,
+    sourceSetDelta: -1,
+    donorSlotId: "lower_b",
+    donorLaneId: "calves",
+    donorBeforeSets: 4,
+    donorAfterSets: 4,
+    donorSetDelta: 0,
+    netWeeklySetDelta: -1,
+    protectedCoverageStatus: "regressed",
+    materializerRegressionCount: 0,
+    materializerBlockerDelta: 0,
+    concentrationWarningDelta: -1,
+    ...overrides,
+  };
 }
 
 describe("buildV2SlotDemandAllocationByWeek", () => {
@@ -446,5 +475,170 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
       );
       expect(allocated.max).toBeLessThanOrEqual(demand.targetSetRange.max);
     }
+  });
+
+  it("blocks concentration relief when the slot-owned donor does not absorb the required set", () => {
+    const projection = buildV2SlotWeekDonorCapacityProjection({
+      slotDemandAllocationByWeek: buildAllocation(),
+      measuredRows: [donorCapacityRow()],
+    });
+
+    expect(projection).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "blocked",
+      designDecision: {
+        policy:
+          "only_relieve_concentration_when_slot_owned_donor_absorbs_required_sets",
+        requireMeasuredDonorAbsorption: true,
+        requireNetWeeklyVolumePreserved: true,
+        requireProtectedCoveragePreserved: true,
+        requireMaterializerNonRegression: true,
+      },
+      summary: {
+        rowCount: 1,
+        passingRowCount: 0,
+        blockedRowCount: 1,
+        measuredDonorCapacityFailCount: 1,
+        protectedCoverageRegressionCount: 1,
+        netWeeklySetDelta: -1,
+        behaviorReadiness: "blocked_by_evidence",
+        nextSafeSlice: "design_slot_week_allocation_policy",
+      },
+    });
+    expect(projection.rows[0]).toMatchObject({
+      muscle: "Calves",
+      protectedWeeklyDemand: { preferred: 8 },
+      sourceLanePressure: {
+        slotId: "lower_a",
+        laneId: "calves",
+        allocatedPreferredSets: 4,
+        setDelta: -1,
+        pressureRelieved: true,
+      },
+      donorCapacity: {
+        donorSlotId: "lower_b",
+        donorLaneId: "calves",
+        requiredSetAbsorption: 1,
+        donorSetDelta: 0,
+        absorbedRequiredSets: false,
+        status: "insufficient",
+      },
+      blockingReasons: expect.arrayContaining([
+        "donor_capacity_did_not_absorb_required_sets",
+        "net_weekly_volume_changed",
+        "protected_coverage_not_preserved",
+      ]),
+    });
+  });
+
+  it("passes only when a slot-owned donor absorbs the source reduction without net volume loss", () => {
+    const projection = buildV2SlotWeekDonorCapacityProjection({
+      slotDemandAllocationByWeek: buildAllocation(),
+      measuredRows: [
+        donorCapacityRow({
+          donorAfterSets: 5,
+          donorSetDelta: 1,
+          netWeeklySetDelta: 0,
+          protectedCoverageStatus: "preserved",
+          materializerRegressionCount: 0,
+          materializerBlockerDelta: 0,
+        }),
+      ],
+    });
+
+    expect(projection).toMatchObject({
+      status: "available",
+      summary: {
+        passingRowCount: 1,
+        blockedRowCount: 0,
+        measuredDonorCapacityPassCount: 1,
+        measuredDonorCapacityFailCount: 0,
+        protectedCoverageRegressionCount: 0,
+        netWeeklySetDelta: 0,
+        behaviorReadiness: "candidate_for_acceptance_projection",
+        nextSafeSlice: "run_acceptance_non_regression_projection",
+      },
+    });
+    expect(projection.rows[0]).toMatchObject({
+      donorCapacity: {
+        requiredSetAbsorption: 1,
+        donorSetDelta: 1,
+        absorbedRequiredSets: true,
+        status: "absorbed",
+      },
+      protectedCoverageImpact: {
+        status: "preserved",
+        netWeeklySetDelta: 0,
+      },
+      materializerNonRegressionStatus: "pass",
+      behaviorReadiness: "candidate_for_acceptance_projection",
+      blockingReasons: [],
+    });
+  });
+
+  it("blocks when protected coverage regresses even if donor absorption is measured", () => {
+    const projection = buildV2SlotWeekDonorCapacityProjection({
+      slotDemandAllocationByWeek: buildAllocation(),
+      measuredRows: [
+        donorCapacityRow({
+          donorAfterSets: 5,
+          donorSetDelta: 1,
+          netWeeklySetDelta: 0,
+          protectedCoverageStatus: "regressed",
+        }),
+      ],
+    });
+
+    expect(projection.summary).toMatchObject({
+      measuredDonorCapacityPassCount: 1,
+      protectedCoverageRegressionCount: 1,
+      behaviorReadiness: "blocked_by_evidence",
+      nextSafeSlice: "design_slot_week_allocation_policy",
+    });
+    expect(projection.rows[0].blockingReasons).toEqual([
+      "protected_coverage_not_preserved",
+    ]);
+  });
+
+  it("blocks when net weekly volume changes even if donor set delta and coverage pass", () => {
+    const projection = buildV2SlotWeekDonorCapacityProjection({
+      slotDemandAllocationByWeek: buildAllocation(),
+      measuredRows: [
+        donorCapacityRow({
+          donorAfterSets: 5,
+          donorSetDelta: 1,
+          netWeeklySetDelta: 1,
+          protectedCoverageStatus: "preserved",
+        }),
+      ],
+    });
+
+    expect(projection.summary).toMatchObject({
+      measuredDonorCapacityPassCount: 0,
+      measuredDonorCapacityFailCount: 1,
+      protectedCoverageRegressionCount: 0,
+      netWeeklySetDelta: 1,
+      behaviorReadiness: "blocked_by_evidence",
+      nextSafeSlice: "design_slot_week_allocation_policy",
+    });
+    expect(projection.rows[0].blockingReasons).toEqual(
+      expect.arrayContaining([
+        "donor_capacity_did_not_absorb_required_sets",
+        "net_weekly_volume_changed",
+      ]),
+    );
+  });
+
+  it("stays read-only and does not expose seed, runtime, receipt, or repair policy inputs", () => {
+    const projection = buildV2SlotWeekDonorCapacityProjection({
+      slotDemandAllocationByWeek: buildAllocation(),
+      measuredRows: [donorCapacityRow()],
+    });
+
+    expect(JSON.stringify(projection)).not.toMatch(
+      /exerciseId|exerciseName|selectedExercise|repairMateriality|slotPlanSeedJson|sessionDecisionReceipt|runtimeReplay|acceptedPlannerIntent/,
+    );
   });
 });

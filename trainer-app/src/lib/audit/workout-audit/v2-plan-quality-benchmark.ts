@@ -519,6 +519,18 @@ function buildFatigueDistributionGate(
           "donorOffsetAlternatePassing",
           donorOffsetProjection?.summary.alternatePassingCandidateCount ?? 0,
         ),
+        `slotWeekAllocationReadiness=${
+          donorOffsetProjection?.summary.slotWeekAllocationReadiness ??
+          "not_available"
+        }`,
+        numberEvidence(
+          "slotWeekAllocationBlockedRows",
+          donorOffsetProjection?.summary.slotWeekAllocationBlockedRowCount ?? 0,
+        ),
+        `slotWeekAllocationNextSafeSlice=${
+          donorOffsetProjection?.summary.slotWeekAllocationNextSafeSlice ??
+          "not_available"
+        }`,
         ...(donorOffsetProjection?.summary.regressionCauseCounts
           ? Object.entries(
               donorOffsetProjection.summary.regressionCauseCounts,
@@ -782,6 +794,18 @@ export function buildV2PlanQualityBenchmark(
       concentrationReadinessBlockerCount:
         noRepair.v2ConcentrationMaterializerProjection?.crossWeekReadiness
           .blockerCount ?? null,
+      slotWeekAllocationReadiness:
+        noRepair.v2ConcentrationMaterializerProjection
+          ?.donorOffsetRedistributionProjection.summary
+          .slotWeekAllocationReadiness ?? "not_available",
+      slotWeekAllocationBlockedRowCount:
+        noRepair.v2ConcentrationMaterializerProjection
+          ?.donorOffsetRedistributionProjection.summary
+          .slotWeekAllocationBlockedRowCount ?? 0,
+      slotWeekAllocationNextSafeSlice:
+        noRepair.v2ConcentrationMaterializerProjection
+          ?.donorOffsetRedistributionProjection.summary
+          .slotWeekAllocationNextSafeSlice ?? null,
       nextSafeAction:
         failCount > 0
           ? "fix_failed_first_principles_gates"

@@ -4512,6 +4512,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         "-------------------------",
         `Status: ${formatStatus(planQualityBenchmark.status)} deprecation=${formatStatus(planQualityBenchmark.deprecationReadiness.status)}`,
         `Gates: pass=${planQualityBenchmark.summary.passCount} warn=${planQualityBenchmark.summary.warningCount} fail=${planQualityBenchmark.summary.failCount} missing=${planQualityBenchmark.summary.missingEvidenceCount} mustFixW1=${planQualityBenchmark.summary.mustFixBeforeWeek1Count}`,
+        `Slot/week allocation: readiness=${formatStatus(planQualityBenchmark.summary.slotWeekAllocationReadiness)} blockedRows=${planQualityBenchmark.summary.slotWeekAllocationBlockedRowCount} next=${formatStatus(planQualityBenchmark.summary.slotWeekAllocationNextSafeSlice ?? "none")}`,
         `Gate detail: ${planQualityBenchmark.gates.map((row) => `${row.gate}:${row.status}:${row.evidenceSource}`).join("; ")}`,
         `Warning evidence: ${
           planQualityBenchmark.gates

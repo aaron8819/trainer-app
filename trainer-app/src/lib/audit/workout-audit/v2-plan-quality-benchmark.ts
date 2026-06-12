@@ -36,6 +36,7 @@ function gate(input: {
   gate: BenchmarkGate["gate"];
   status: BenchmarkStatus;
   ownerSeam: string;
+  evidenceSource: BenchmarkGate["evidenceSource"];
   evidence: string[];
   missingEvidence?: string[];
   mustFixBeforeWeek1?: boolean;
@@ -44,6 +45,7 @@ function gate(input: {
     gate: input.gate,
     status: input.status,
     ownerSeam: input.ownerSeam,
+    evidenceSource: input.evidenceSource,
     evidence: input.evidence,
     missingEvidence: input.missingEvidence ?? [],
     candidateImpact:
@@ -124,6 +126,7 @@ function buildSupportFloorsGate(
       gate: "support_floors",
       status: "pass",
       ownerSeam: "v2_base_plan_validation.support_direct_floors",
+      evidenceSource: "pure_v2_base_plan",
       evidence: [
         `baseValidationStatus=${pureV2.baseValidationStatus}`,
         numberEvidence("baseRegressions", pureV2.baseRegressionCount),
@@ -140,6 +143,7 @@ function buildSupportFloorsGate(
       gate: "support_floors",
       status: "missing_evidence",
       ownerSeam: "v2SupportLaneProjectionDiagnostic",
+      evidenceSource: "missing_evidence",
       evidence: ["support_lane_projection_diagnostic_missing"],
       missingEvidence: ["support_lane_direct_floor_status"],
     });
@@ -159,6 +163,7 @@ function buildSupportFloorsGate(
           ? "warning"
           : "pass",
     ownerSeam: "v2SupportLaneProjectionDiagnostic",
+    evidenceSource: "no_repair_projection",
     evidence: [
       numberEvidence("directFloorsMet", diagnostic.summary.directFloorsMet),
       numberEvidence("directFloorsBelow", diagnostic.summary.directFloorsBelow),
@@ -181,6 +186,7 @@ function buildDirectWorkGate(
       gate: "direct_work",
       status: "pass",
       ownerSeam: "v2_base_plan_validation.muscle_coverage",
+      evidenceSource: "pure_v2_base_plan",
       evidence: [
         `baseValidationStatus=${pureV2.baseValidationStatus}`,
         numberEvidence("baseRegressions", pureV2.baseRegressionCount),
@@ -202,6 +208,7 @@ function buildDirectWorkGate(
       gate: "direct_work",
       status: "missing_evidence",
       ownerSeam: "weeklyMuscleTotals",
+      evidenceSource: "missing_evidence",
       evidence: ["weekly_muscle_totals_missing"],
       missingEvidence: ["week_1_direct_work_totals"],
     });
@@ -210,6 +217,7 @@ function buildDirectWorkGate(
     gate: "direct_work",
     status: belowFloor.length > 0 ? "fail" : "pass",
     ownerSeam: "weeklyMuscleTotals",
+    evidenceSource: "no_repair_projection",
     evidence:
       belowFloor.length > 0
         ? belowFloor
@@ -238,6 +246,7 @@ function buildLanePreservationGate(
       gate: "lane_preservation",
       status,
       ownerSeam: "v2_base_plan_shadow_consumption_trial",
+      evidenceSource: "shadow_diagnostic",
       evidence: [
         `baseValidationStatus=${pureV2.baseValidationStatus}`,
         numberEvidence("baseRegressions", pureV2.baseRegressionCount),
@@ -260,6 +269,7 @@ function buildLanePreservationGate(
           ? "warning"
           : "pass",
     ownerSeam: "v2TargetVsNoRepairDiff",
+    evidenceSource: "no_repair_projection",
     evidence: [
       numberEvidence("target", summary.targetLaneCount),
       numberEvidence("satisfied", summary.satisfiedLaneCount),
@@ -274,12 +284,74 @@ function buildLanePreservationGate(
 function buildSessionSizeGate(
   noRepair: MesocycleExplainPlannerOnlyNoRepair,
 ): BenchmarkGate {
+  const pureV2 = pureV2BaseEvidence(noRepair);
+  const slotShape = pureV2.baseCompare?.comparisons?.slotShape;
+  if (pureV2BaseIsValid(pureV2) && slotShape?.v2Base) {
+    const slotShapeRegression =
+      slotShape.classification === "v2_regresses" ||
+      slotShape.rows.some((row) => row.classification === "v2_regresses");
+    const slotShapeUnclear =
+      slotShape.classification === "unclear" ||
+      slotShape.rows.some((row) => row.classification === "unclear");
+    return gate({
+      gate: "session_size",
+      status: slotShapeRegression ? "fail" : slotShapeUnclear ? "warning" : "pass",
+      ownerSeam: "v2_base_plan_validation.slot_shape",
+      evidenceSource: "pure_v2_base_plan",
+      evidence: [
+        `baseValidationStatus=${pureV2.baseValidationStatus}`,
+        numberEvidence("baseRegressions", pureV2.baseRegressionCount),
+        `slotShapeClassification=${slotShape.classification}`,
+        numberEvidence("v2MaxSlotSets", slotShape.v2Base.maxSlotSets),
+        numberEvidence("v2ExerciseCount", slotShape.v2Base.exerciseCount),
+        ...slotShape.v2Base.setsBySlot
+          .slice(0, 4)
+          .map(
+            (slot) =>
+              `${slot.slotId}:exercises_${slot.exerciseCount}:sets_${slot.setCount}`,
+          ),
+        "legacy_no_repair_projection_not_used_as_target_policy",
+      ],
+      mustFixBeforeWeek1: slotShapeRegression,
+    });
+  }
+
+  const materializerProjection = noRepair.v2CapacityMaterializerProjection;
+  const materializerSessionGate = materializerProjection?.gates.find(
+    (row) => row.gateId === "session_size",
+  );
+  if (
+    materializerProjection?.readOnly === true &&
+    materializerProjection.affectsScoringOrGeneration === false &&
+    materializerProjection.dryRunOnly === true &&
+    materializerProjection.consumedByProduction === false &&
+    materializerProjection.consumedByDemandOrMaterializer === false &&
+    materializerSessionGate?.measured === true
+  ) {
+    return gate({
+      gate: "session_size",
+      status: materializerSessionGate.status === "fail" ? "fail" : "pass",
+      ownerSeam: "v2_capacity_materializer_projection.session_size",
+      evidenceSource: "pure_v2_materializer_projection",
+      evidence: [
+        `projectionStatus=${materializerProjection.status}`,
+        `trialId=${materializerProjection.trialId ?? "none"}`,
+        `gateStatus=${materializerSessionGate.status}`,
+        ...materializerSessionGate.evidence.slice(0, 4),
+        ...materializerSessionGate.regressions.slice(0, 4),
+        "capacity_materializer_projection_is_diagnostic_only",
+      ],
+      mustFixBeforeWeek1: materializerSessionGate.status === "fail",
+    });
+  }
+
   const capacity = noRepair.v2SelectionCapacityPlanDiagnostic;
   if (!capacity) {
     return gate({
       gate: "session_size",
       status: "missing_evidence",
       ownerSeam: "v2SelectionCapacityPlanDiagnostic",
+      evidenceSource: "missing_evidence",
       evidence: ["selection_capacity_diagnostic_missing"],
       missingEvidence: ["session_size_capacity_projection"],
     });
@@ -294,6 +366,7 @@ function buildSessionSizeGate(
           ? "warning"
           : "pass",
     ownerSeam: "v2SelectionCapacityPlanDiagnostic",
+    evidenceSource: "no_repair_projection",
     evidence: [
       numberEvidence("blockers", capacity.summary.blockerCount),
       numberEvidence("capacityPressure", capacity.summary.capacityPressureCount),
@@ -316,6 +389,7 @@ function buildFatigueDistributionGate(
       gate: "fatigue_distribution",
       status: "missing_evidence",
       ownerSeam: "v2ExerciseSelectionPlanDiagnostic",
+      evidenceSource: "missing_evidence",
       evidence: ["exercise_selection_plan_diagnostic_missing"],
       missingEvidence: ["fatigue_distribution_projection"],
     });
@@ -335,6 +409,7 @@ function buildFatigueDistributionGate(
     status:
       blocked.length > 0 ? "fail" : warnings.length > 0 ? "warning" : "pass",
     ownerSeam: "v2ExerciseSelectionPlanDiagnostic",
+    evidenceSource: "no_repair_projection",
     evidence: [
       numberEvidence("fatigueBlocked", blocked.length),
       numberEvidence("fatigueWarnings", warnings.length),
@@ -346,12 +421,51 @@ function buildFatigueDistributionGate(
 function buildDuplicateConcentrationGate(
   noRepair: MesocycleExplainPlannerOnlyNoRepair,
 ): BenchmarkGate {
+  const pureV2 = pureV2BaseEvidence(noRepair);
+  const exerciseIdentity = pureV2.baseCompare?.comparisons?.exerciseIdentity;
+  if (pureV2BaseIsValid(pureV2) && exerciseIdentity) {
+    const exactDuplicateCount =
+      exerciseIdentity.duplicateExactExercises.v2Base.length;
+    const duplicateFamilyCount =
+      exerciseIdentity.duplicateClassFamilies.v2Base.length;
+    const status: BenchmarkStatus =
+      exerciseIdentity.classification === "v2_regresses"
+        ? "fail"
+        : exerciseIdentity.classification === "unclear" ||
+            exactDuplicateCount > 0 ||
+            duplicateFamilyCount > 0
+          ? "warning"
+          : "pass";
+    return gate({
+      gate: "duplicate_concentration_risk",
+      status,
+      ownerSeam: "v2_base_plan_validation.duplicate_distinctness",
+      evidenceSource: "pure_v2_base_plan",
+      evidence: [
+        `baseValidationStatus=${pureV2.baseValidationStatus}`,
+        numberEvidence("baseRegressions", pureV2.baseRegressionCount),
+        `exerciseIdentityClassification=${exerciseIdentity.classification}`,
+        numberEvidence("v2DuplicateExactExercises", exactDuplicateCount),
+        numberEvidence("v2DuplicateClassFamilies", duplicateFamilyCount),
+        ...exerciseIdentity.duplicateExactExercises.v2Base
+          .slice(0, 4)
+          .map((exercise) => `v2DuplicateExact:${exercise}`),
+        ...exerciseIdentity.duplicateClassFamilies.v2Base
+          .slice(0, 4)
+          .map((family) => `v2DuplicateFamily:${family}`),
+        "legacy_no_repair_projection_not_used_as_target_policy",
+      ],
+      mustFixBeforeWeek1: exerciseIdentity.classification === "v2_regresses",
+    });
+  }
+
   const selection = noRepair.v2ExerciseSelectionPlanDiagnostic;
   if (!selection) {
     return gate({
       gate: "duplicate_concentration_risk",
       status: "missing_evidence",
       ownerSeam: "v2ExerciseSelectionPlanDiagnostic",
+      evidenceSource: "missing_evidence",
       evidence: ["exercise_selection_plan_diagnostic_missing"],
       missingEvidence: ["duplicate_and_concentration_diagnostics"],
     });
@@ -366,6 +480,7 @@ function buildDuplicateConcentrationGate(
           ? "warning"
           : "pass",
     ownerSeam: "v2ExerciseSelectionPlanDiagnostic",
+    evidenceSource: "no_repair_projection",
     evidence: [
       numberEvidence("blockedLanes", selection.summary.blockedLaneCount),
       numberEvidence(
@@ -393,6 +508,7 @@ function buildMaterializerOmissionsGate(
       gate: "materializer_omissions",
       status: "missing_evidence",
       ownerSeam: "v2_materialization_dry_run",
+      evidenceSource: "missing_evidence",
       evidence: ["v2_materializer_dry_run_evidence_missing"],
       missingEvidence: ["base_plan_compare_or_shadow_consumption_trial"],
     });
@@ -406,6 +522,9 @@ function buildMaterializerOmissionsGate(
           ? "warning"
           : "pass",
     ownerSeam: "v2_materialization_dry_run",
+    evidenceSource: basePlanCompare
+      ? "pure_v2_base_plan"
+      : "shadow_diagnostic",
     evidence: [
       `baseStatus=${basePlanCompare?.status ?? "not_available"}`,
       numberEvidence("baseRegressions", baseRegressions),
@@ -430,6 +549,7 @@ function buildWeekOneTrainabilityGate(
           ? "warning"
           : "pass",
     ownerSeam: "plannerOnlyNoRepair.acceptanceClassification",
+    evidenceSource: "acceptance_classification_no_repair",
     evidence: [
       `basicMesocycleShapeStatus=${classification.basicMesocycleShapeStatus}`,
       `replacementReadinessStatus=${classification.replacementReadinessStatus}`,

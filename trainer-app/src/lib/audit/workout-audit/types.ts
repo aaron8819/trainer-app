@@ -1815,6 +1815,13 @@ export type V2PlanQualityBenchmark = {
       | "week_1_trainability";
     status: "pass" | "warning" | "fail" | "missing_evidence";
     ownerSeam: string;
+    evidenceSource:
+      | "pure_v2_base_plan"
+      | "pure_v2_materializer_projection"
+      | "shadow_diagnostic"
+      | "no_repair_projection"
+      | "acceptance_classification_no_repair"
+      | "missing_evidence";
     evidence: string[];
     missingEvidence: string[];
     candidateImpact:

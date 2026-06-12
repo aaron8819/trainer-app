@@ -1256,6 +1256,7 @@ function compactPlannerOnlyNoRepair(
               gate: row.gate,
               status: row.status,
               ownerSeam: row.ownerSeam,
+              evidenceSource: row.evidenceSource,
               candidateImpact: row.candidateImpact,
               mustFixBeforeWeek1: row.mustFixBeforeWeek1 === true,
               missingEvidenceCount: asStringArray(row.missingEvidence).length,

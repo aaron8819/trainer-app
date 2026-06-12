@@ -35,7 +35,36 @@ function pureV2BasePlanCompareFixture(
       unclearCount: 6,
     },
     comparisons: {
-      slotShape: {} as NonNullable<
+      slotShape: {
+        classification: "v2_preserves",
+        v2Base: {
+          slotCount: 4,
+          exerciseCount: 20,
+          totalSets: 66,
+          maxSlotSets: 21,
+          optionalLaneMaterializationCount: 0,
+          standaloneOneSetExerciseCount: 0,
+          fiveSetStackCount: 0,
+          setsBySlot: [
+            { slotId: "upper_a", exerciseCount: 6, setCount: 20 },
+            { slotId: "lower_a", exerciseCount: 4, setCount: 12 },
+            { slotId: "upper_b", exerciseCount: 6, setCount: 21 },
+            { slotId: "lower_b", exerciseCount: 4, setCount: 13 },
+          ],
+        },
+        rows: [
+          {
+            item: "max_slot_sets",
+            classification: "v2_preserves",
+            evidence: ["v2:21", "repaired:21"],
+          },
+          {
+            item: "five_set_stacking",
+            classification: "v2_improves",
+            evidence: ["v2_five_set:0"],
+          },
+        ],
+      } as NonNullable<
         MesocycleExplainPlannerOnlyNoRepair["v2BasePlanCompare"]
       >["comparisons"]["slotShape"],
       muscleCoverage: {
@@ -63,7 +92,21 @@ function pureV2BasePlanCompareFixture(
           },
         ],
       },
-      exerciseIdentity: {} as NonNullable<
+      exerciseIdentity: {
+        classification: "v2_preserves",
+        duplicateExactExercises: {
+          v2Base: [],
+          plannerOnlyNoRepair: ["Cable Lateral Raise"],
+          repairedPlan: [],
+        },
+        duplicateClassFamilies: {
+          v2Base: [],
+          plannerOnlyNoRepair: ["lateral_raise"],
+          repairedPlan: [],
+        },
+        slots: [],
+        materializerDifferences: [],
+      } as NonNullable<
         MesocycleExplainPlannerOnlyNoRepair["v2BasePlanCompare"]
       >["comparisons"]["exerciseIdentity"],
       deloadReadiness: {} as NonNullable<
@@ -438,6 +481,94 @@ describe("V2 plan quality benchmark", () => {
     });
     expect(JSON.stringify(result)).not.toMatch(
       /slotPlanSeedJson|sessionDecisionReceipt|runtimeReplay/,
+    );
+  });
+
+  it("source-attributes session size and duplicate risk to pure V2 before no-repair projection fallback", () => {
+    const baseCompare = pureV2BasePlanCompareFixture();
+    const result = buildV2PlanQualityBenchmark(
+      noRepairFixture({
+        v2BasePlanCompare: pureV2BasePlanCompareFixture({
+          comparisons: {
+            ...baseCompare.comparisons,
+            exerciseIdentity: {
+              ...baseCompare.comparisons.exerciseIdentity,
+              classification: "v2_preserves",
+              duplicateExactExercises: {
+                v2Base: ["Standing Calf Raise"],
+                plannerOnlyNoRepair: [
+                  "Standing Calf Raise",
+                  "Cable Lateral Raise",
+                ],
+                repairedPlan: [],
+              },
+            },
+          },
+        }),
+        v2SelectionCapacityPlanDiagnostic: {
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          summary: {
+            blockerCount: 3,
+            capacityPressureCount: 4,
+            capAwareExpansionNeededCount: 2,
+            optionalSuppressedCount: 1,
+          },
+          missingInputs: [],
+        } as unknown as MesocycleExplainPlannerOnlyNoRepair["v2SelectionCapacityPlanDiagnostic"],
+        v2ExerciseSelectionPlanDiagnostic: {
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          summary: {
+            blockedLaneCount: 5,
+            duplicateRequiresJustificationCount: 3,
+            concentrationWarningCount: 2,
+          },
+          weeks: [],
+          missingInputs: [],
+        } as unknown as MesocycleExplainPlannerOnlyNoRepair["v2ExerciseSelectionPlanDiagnostic"],
+      }),
+    );
+
+    expect(result.gates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gate: "session_size",
+          status: "pass",
+          ownerSeam: "v2_base_plan_validation.slot_shape",
+          evidenceSource: "pure_v2_base_plan",
+        }),
+        expect.objectContaining({
+          gate: "duplicate_concentration_risk",
+          status: "warning",
+          ownerSeam: "v2_base_plan_validation.duplicate_distinctness",
+          evidenceSource: "pure_v2_base_plan",
+          candidateImpact: "needs_more_evidence",
+        }),
+        expect.objectContaining({
+          gate: "support_floors",
+          status: "pass",
+          evidenceSource: "pure_v2_base_plan",
+        }),
+        expect.objectContaining({
+          gate: "direct_work",
+          status: "pass",
+          evidenceSource: "pure_v2_base_plan",
+        }),
+      ]),
+    );
+    expect(result.summary.failCount).toBe(0);
+    expect(result.repairedProjectionUsedAs).toBe(
+      "evidence_only_not_target_policy",
+    );
+    expect(result.guardrails).toEqual({
+      seedRuntimeChanged: false,
+      productionMaterializerChanged: false,
+      acceptanceThresholdChanged: false,
+      persistenceChanged: false,
+    });
+    expect(JSON.stringify(result)).not.toMatch(
+      /slotPlanSeedJson|sessionDecisionReceipt|runtimeReplay|acceptedPlannerIntent/,
     );
   });
 });

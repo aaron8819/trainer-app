@@ -4512,7 +4512,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         "-------------------------",
         `Status: ${formatStatus(planQualityBenchmark.status)} deprecation=${formatStatus(planQualityBenchmark.deprecationReadiness.status)}`,
         `Gates: pass=${planQualityBenchmark.summary.passCount} warn=${planQualityBenchmark.summary.warningCount} fail=${planQualityBenchmark.summary.failCount} missing=${planQualityBenchmark.summary.missingEvidenceCount} mustFixW1=${planQualityBenchmark.summary.mustFixBeforeWeek1Count}`,
-        `Gate detail: ${planQualityBenchmark.gates.map((row) => `${row.gate}:${row.status}`).join("; ")}`,
+        `Gate detail: ${planQualityBenchmark.gates.map((row) => `${row.gate}:${row.status}:${row.evidenceSource}`).join("; ")}`,
         `Next safe action: ${formatStatus(planQualityBenchmark.summary.nextSafeAction)}`,
         `Guardrails: seedRuntimeChanged=${planQualityBenchmark.guardrails.seedRuntimeChanged ? "yes" : "no"} productionMaterializerChanged=${planQualityBenchmark.guardrails.productionMaterializerChanged ? "yes" : "no"} acceptanceThresholdChanged=${planQualityBenchmark.guardrails.acceptanceThresholdChanged ? "yes" : "no"} persistenceChanged=${planQualityBenchmark.guardrails.persistenceChanged ? "yes" : "no"}`,
       ]

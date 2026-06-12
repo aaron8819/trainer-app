@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import type { WorkoutSessionIntent } from "@prisma/client";
 import {
   buildV2ExerciseMaterializationPlan,
+  buildV2ExerciseClassDistributionBySlot,
   buildV2ExerciseSelectionPlan,
   buildV2BasePlanCompare,
   buildV2BasePlanShadowConsumptionTrial,
@@ -9,6 +10,8 @@ import {
   buildV2MaterializationDryRunReport,
   buildV2PlannerMesocyclePolicy,
   buildV2SelectionCapacityPlan,
+  buildV2SetDistributionIntent,
+  buildV2SlotWeekAllocationPolicyTrial,
   buildV2SlotWeekDonorCapacityProjection,
   compareV2MaterializedPlans,
   DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
@@ -24,6 +27,7 @@ import {
   type V2PlannerSetRange,
   type V2PlannerSlotId,
   type V2SetDistributionIntent,
+  type V2SlotWeekAllocationPolicyTrial,
   type V2SlotWeekDonorCapacityMeasuredRow,
   type V2SlotWeekDonorCapacityProjection,
 } from "@/lib/engine/planning/v2";
@@ -610,6 +614,7 @@ export type V2ConcentrationDonorOffsetRedistributionProjection = {
       trialSetCount: number;
       setDelta: number;
     } | null;
+    allocationPolicyTrial: V2SlotWeekAllocationPolicyTrial | null;
     protectedCoverageImpact: {
       protectedMuscles: string[];
       sourceFloorSets: number;
@@ -2730,6 +2735,7 @@ function buildConcentrationDonorOffsetRedistributionRow(input: {
       setDelta: 0,
     },
     donor: null,
+    allocationPolicyTrial: null,
     protectedCoverageImpact: {
       protectedMuscles: input.target.muscles,
       sourceFloorSets: sourceLane?.setBudget.min ?? 0,
@@ -2781,6 +2787,7 @@ function buildConcentrationDonorOffsetRedistributionRow(input: {
   const candidateProjections = donorCandidates.map((donor, index) =>
     buildConcentrationDonorOffsetCandidateProjection({
       plannerPolicy: weeklyPolicy,
+      week: input.week.week,
       sourceLane,
       sourceSlotId: input.target.slotId,
       sourceLaneId: input.target.laneId,
@@ -2860,6 +2867,7 @@ function buildConcentrationDonorOffsetRedistributionRow(input: {
       trialSetCount: donorAfterSets,
       setDelta: donorSetDelta,
     },
+    allocationPolicyTrial: selectedCandidate.allocationPolicyTrial,
     protectedCoverageImpact: {
       protectedMuscles: selectedCandidate.donor.protectedMuscles,
       sourceFloorSets: sourceLane.setBudget.min,
@@ -3592,13 +3600,75 @@ function concentrationTrialBudget(
   };
 }
 
-function donorOffsetTrialBudget(
-  currentBudget: V2PlannerSetRange,
-): V2PlannerSetRange {
+function rebuildPlannerPolicyWithSlotDemandAllocation(input: {
+  plannerPolicy: V2PlannerMesocyclePolicy;
+  slotDemandAllocationByWeek: V2PlannerMesocyclePolicy["slotDemandAllocationByWeek"];
+}): V2PlannerMesocyclePolicy {
+  const trialLaneKeys = new Set(
+    input.slotDemandAllocationByWeek.weeks.flatMap((week) =>
+      week.slots.flatMap((slot) =>
+        slot.lanes.flatMap((lane) =>
+          lane.allocatedMuscles.some(
+            (muscle) => muscle.allocationBasis === "target_lane",
+          )
+            ? [`${week.week}:${slot.slotId}:${lane.laneId}`]
+            : [],
+        ),
+      ),
+    ),
+  );
+  const exerciseClassDistributionBySlot = buildV2ExerciseClassDistributionBySlot({
+    slotDemandAllocationByWeek: input.slotDemandAllocationByWeek,
+  });
+  const v2SetDistributionIntent = buildV2SetDistributionIntent({
+    slotDemandAllocationByWeek: input.slotDemandAllocationByWeek,
+    exerciseClassDistributionBySlot,
+    v2SupportLanePolicy: input.plannerPolicy.v2SupportLanePolicy,
+    weeklyProgressionModel: input.plannerPolicy.weeklyProgressionModel,
+  });
+  const selectionCapacityPlan = buildV2SelectionCapacityPlan({
+    exerciseClassDistributionBySlot,
+    v2SetDistributionIntent,
+    v2SupportLanePolicy: input.plannerPolicy.v2SupportLanePolicy,
+  });
+  const baseExerciseSelectionPlan = buildV2ExerciseSelectionPlan({
+    exerciseClassDistributionBySlot,
+    v2SetDistributionIntent,
+    v2SupportLanePolicy: input.plannerPolicy.v2SupportLanePolicy,
+    selectionCapacityPlan,
+  });
+  const exerciseSelectionPlan = {
+    ...baseExerciseSelectionPlan,
+    weeks: baseExerciseSelectionPlan.weeks.map((week) => ({
+      ...week,
+      slots: week.slots.map((slot) => ({
+        ...slot,
+        lanes: slot.lanes.map((lane) => {
+          if (!trialLaneKeys.has(`${week.week}:${slot.slotId}:${lane.laneId}`)) {
+            return lane;
+          }
+          return {
+            ...lane,
+            perExerciseCap: {
+              ...lane.perExerciseCap,
+              maxSetsWithoutJustification: Math.max(
+                lane.perExerciseCap.maxSetsWithoutJustification,
+                lane.setBudget.preferred,
+              ),
+            },
+          };
+        }),
+      })),
+    })),
+  };
+
   return {
-    min: currentBudget.min,
-    preferred: currentBudget.preferred + 1,
-    max: Math.max(currentBudget.max + 1, currentBudget.preferred + 1),
+    ...input.plannerPolicy,
+    slotDemandAllocationByWeek: input.slotDemandAllocationByWeek,
+    exerciseClassDistributionBySlot,
+    v2SetDistributionIntent,
+    selectionCapacityPlan,
+    exerciseSelectionPlan,
   };
 }
 
@@ -3619,36 +3689,6 @@ function cloneExerciseSelectionPlanWithLaneBudget(input: {
             ? { ...lane, setBudget: { ...input.trialBudget } }
             : lane,
         ),
-      })),
-    })),
-  };
-}
-
-function cloneExerciseSelectionPlanWithLaneBudgetChanges(input: {
-  exerciseSelectionPlan: V2PlannerMesocyclePolicy["exerciseSelectionPlan"];
-  changes: Array<{
-    slotId: string;
-    laneId: string;
-    trialBudget: V2PlannerSetRange;
-  }>;
-}): V2PlannerMesocyclePolicy["exerciseSelectionPlan"] {
-  const budgetByLane = new Map(
-    input.changes.map((change) => [
-      `${change.slotId}:${change.laneId}`,
-      change.trialBudget,
-    ]),
-  );
-
-  return {
-    ...input.exerciseSelectionPlan,
-    weeks: input.exerciseSelectionPlan.weeks.map((week) => ({
-      ...week,
-      slots: week.slots.map((slot) => ({
-        ...slot,
-        lanes: slot.lanes.map((lane) => {
-          const trialBudget = budgetByLane.get(`${slot.slotId}:${lane.laneId}`);
-          return trialBudget ? { ...lane, setBudget: { ...trialBudget } } : lane;
-        }),
       })),
     })),
   };
@@ -3722,6 +3762,7 @@ function findConcentrationDonorOffsetLanes(input: {
 
 function buildConcentrationDonorOffsetCandidateProjection(input: {
   plannerPolicy: V2PlannerMesocyclePolicy;
+  week: number;
   sourceLane: V2ExerciseSelectionLane;
   sourceSlotId: string;
   sourceLaneId: string;
@@ -3733,30 +3774,38 @@ function buildConcentrationDonorOffsetCandidateProjection(input: {
   constraints: V2ExerciseMaterializationInput["constraints"];
   continuity?: V2ExerciseMaterializationInput["continuity"];
 }) {
-  const sourceBudget = concentrationTrialBudget(input.sourceLane.setBudget);
-  const donorBudget = donorOffsetTrialBudget(input.donor.selectionLane.setBudget);
-  const trialExerciseSelectionPlan =
-    cloneExerciseSelectionPlanWithLaneBudgetChanges({
-      exerciseSelectionPlan: input.plannerPolicy.exerciseSelectionPlan,
-      changes: [
-        {
-          slotId: input.sourceSlotId,
-          laneId: input.sourceLaneId,
-          trialBudget: sourceBudget,
-        },
-        {
-          slotId: input.donor.slotId,
-          laneId: input.donor.laneId,
-          trialBudget: donorBudget,
-        },
-      ],
-    });
-  const trialPlannerPolicy: V2PlannerMesocyclePolicy = {
-    ...input.plannerPolicy,
-    exerciseSelectionPlan: trialExerciseSelectionPlan,
-  };
+  const allocationPolicyTrial = buildV2SlotWeekAllocationPolicyTrial({
+    slotDemandAllocationByWeek: input.plannerPolicy.slotDemandAllocationByWeek,
+    week: input.week,
+    source: {
+      slotId: input.sourceSlotId,
+      laneId: input.sourceLaneId,
+      muscle: input.donor.protectedMuscles[0] ?? "",
+      setDelta: -1,
+    },
+    donor: {
+      slotId: input.donor.slotId,
+      laneId: input.donor.laneId,
+      muscle: input.donor.protectedMuscles[0] ?? "",
+      setDelta: 1,
+    },
+  });
+  const trialPlannerPolicy = rebuildPlannerPolicyWithSlotDemandAllocation({
+    plannerPolicy: input.plannerPolicy,
+    slotDemandAllocationByWeek:
+      allocationPolicyTrial.slotDemandAllocationByWeek,
+  });
+  const trialWeek = trialPlannerPolicy.exerciseSelectionPlan.weeks.find(
+    (week) => week.week === input.week,
+  );
+  const trialWeeklyPolicy = trialWeek
+    ? plannerPolicyForSingleWeek({
+        plannerPolicy: trialPlannerPolicy,
+        week: trialWeek,
+      })
+    : trialPlannerPolicy;
   const trialPlan = buildV2ExerciseMaterializationPlan({
-    exerciseSelectionPlan: trialExerciseSelectionPlan,
+    exerciseSelectionPlan: trialWeeklyPolicy.exerciseSelectionPlan,
     inventory: [...input.inventory],
     taxonomy: input.taxonomy,
     constraints: input.constraints,
@@ -3771,7 +3820,7 @@ function buildConcentrationDonorOffsetCandidateProjection(input: {
     materializedPlan: input.baselinePlan,
   });
   const trialReport = buildV2MaterializationDryRunReport({
-    plannerPolicy: trialPlannerPolicy,
+    plannerPolicy: trialWeeklyPolicy,
     taxonomy: input.taxonomy,
     inventory: [...input.inventory],
     constraints: input.constraints,
@@ -3837,6 +3886,9 @@ function buildConcentrationDonorOffsetCandidateProjection(input: {
     donorSetDelta === 0 &&
     concentrationDelta.warningDelta === 0;
   const blockers = uniqueSorted([
+    ...allocationPolicyTrial.trial.blockingReasons.map(
+      (blocker) => `slot_week_allocation_policy_trial:${blocker}`,
+    ),
     ...protectedBlockers,
     ...(materializerRegressed
       ? ["donor_offset_materializer_identity_set_or_blocker_regression"]
@@ -3848,7 +3900,10 @@ function buildConcentrationDonorOffsetCandidateProjection(input: {
     "acceptance_gate_not_rerun_for_donor_offset_projection",
   ]);
   const behaviorReadinessDecision: V2ConcentrationDonorOffsetRedistributionProjection["rows"][number]["behaviorReadinessDecision"] =
-    protectedBlockers.length > 0 || materializerRegressed || concentrationRegressed
+    allocationPolicyTrial.trial.status !== "applied" ||
+    protectedBlockers.length > 0 ||
+    materializerRegressed ||
+    concentrationRegressed
       ? "blocked_by_evidence"
       : improved
         ? "candidate_for_acceptance_projection"
@@ -3866,6 +3921,7 @@ function buildConcentrationDonorOffsetCandidateProjection(input: {
   return {
     donor: input.donor,
     isPrimary: input.isPrimary,
+    allocationPolicyTrial: allocationPolicyTrial.trial,
     comparison,
     concentrationDelta,
     sourceBeforeSets,

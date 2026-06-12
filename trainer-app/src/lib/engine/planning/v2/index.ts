@@ -25,6 +25,7 @@ export { buildV2SelectionCapacityPlan } from "./selection-capacity-plan";
 export { buildV2SetDistributionIntent } from "./set-distribution-intent";
 export {
   buildV2SlotDemandAllocationByWeek,
+  buildV2SlotWeekAllocationPolicyTrial,
   buildV2SlotWeekDonorCapacityProjection,
 } from "./slot-demand-allocation";
 export { buildV2StrategyToDemandProjection } from "./strategy-to-demand-projection";
@@ -200,6 +201,9 @@ export type {
 } from "./materialization/base-plan-validation";
 export type { V2SelectionCapacityPlanInput } from "./selection-capacity-plan";
 export type {
+  V2SlotWeekAllocationPolicyTrial,
+  V2SlotWeekAllocationPolicyTrialInput,
+  V2SlotWeekAllocationPolicyTrialResult,
   V2SlotWeekDonorCapacityMeasuredRow,
   V2SlotWeekDonorCapacityProjection,
   V2SlotWeekDonorCapacityProjectionInput,

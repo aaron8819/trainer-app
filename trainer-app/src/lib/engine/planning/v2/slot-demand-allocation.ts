@@ -38,6 +38,81 @@ export type V2SlotWeekDonorCapacityProjectionInput = {
   measuredRows: V2SlotWeekDonorCapacityMeasuredRow[];
 };
 
+export type V2SlotWeekAllocationPolicyTrialInput = {
+  slotDemandAllocationByWeek: V2SlotDemandAllocationByWeek;
+  week: number;
+  source: {
+    slotId: string;
+    laneId: string;
+    muscle: string;
+    setDelta: number;
+  };
+  donor: {
+    slotId: string;
+    laneId: string;
+    muscle?: string;
+    setDelta: number;
+  };
+};
+
+export type V2SlotWeekAllocationPolicyTrial = {
+  version: 1;
+  source: "v2_slot_week_allocation_policy_trial";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByProduction: false;
+  dryRunOnly: true;
+  status: "applied" | "blocked";
+  ownerSeam: "SlotDemandAllocationByWeek";
+  week: number;
+  sourcePressureRow: {
+    slotId: string;
+    laneId: string;
+    muscle: string;
+    baselineAllocatedSets: V2PlannerSetRange;
+    trialAllocatedSets: V2PlannerSetRange;
+    setDelta: number;
+    pressureRelieved: boolean;
+  };
+  selectedDonorLane: {
+    slotId: string;
+    laneId: string;
+    muscle: string;
+    baselineAllocatedSets: V2PlannerSetRange;
+    trialAllocatedSets: V2PlannerSetRange;
+    setDelta: number;
+    eligibleSlotOwnedDonor: boolean;
+  };
+  setMovementIntent: {
+    requiredSourceReduction: number;
+    requestedDonorAbsorption: number;
+    netWeeklySetIntentDelta: number;
+    sameMuscle: boolean;
+  };
+  donorCapacity: {
+    before: {
+      preferredSets: number;
+      maxSets: number;
+      headroomSets: number;
+    };
+    after: {
+      preferredSets: number;
+      maxSets: number;
+      headroomSets: number;
+    };
+    capacityDelta: number;
+    headroomDelta: number;
+    status: "capacity_created" | "no_capacity_created";
+  };
+  blockingReasons: string[];
+  limitations: string[];
+};
+
+export type V2SlotWeekAllocationPolicyTrialResult = {
+  trial: V2SlotWeekAllocationPolicyTrial;
+  slotDemandAllocationByWeek: V2SlotDemandAllocationByWeek;
+};
+
 export type V2SlotWeekDonorCapacityProjection = {
   version: 1;
   source: "v2_slot_week_donor_capacity_projection";
@@ -600,6 +675,30 @@ function addRanges(
   };
 }
 
+function addDeltaToRange(input: {
+  range: V2PlannerSetRange;
+  delta: number;
+  preserveMin?: boolean;
+}): V2PlannerSetRange {
+  const min = input.preserveMin
+    ? input.range.min
+    : Math.max(0, roundToTenth(input.range.min + input.delta));
+  const preferred = Math.max(min, roundToTenth(input.range.preferred + input.delta));
+  const max = Math.max(preferred, roundToTenth(input.range.max + input.delta));
+  return { min, preferred, max };
+}
+
+function subtractRanges(
+  left: V2PlannerSetRange,
+  right: V2PlannerSetRange,
+): V2PlannerSetRange {
+  return {
+    min: roundToTenth(left.min - right.min),
+    preferred: roundToTenth(left.preferred - right.preferred),
+    max: roundToTenth(left.max - right.max),
+  };
+}
+
 function allocationWeekFor(
   allocation: V2SlotDemandAllocationByWeek,
   weekNumber: number,
@@ -679,6 +778,262 @@ function eligibleDonorSlots(input: {
       left.slotId.localeCompare(right.slotId) ||
       left.laneId.localeCompare(right.laneId),
   );
+}
+
+function emptyTrialRange(): V2PlannerSetRange {
+  return zeroRange();
+}
+
+function cloneSlotDemandAllocationByWeek(
+  allocation: V2SlotDemandAllocationByWeek,
+): V2SlotDemandAllocationByWeek {
+  return {
+    ...allocation,
+    exposureOwnershipPolicy: { ...allocation.exposureOwnershipPolicy },
+    weeks: allocation.weeks.map((week) => ({
+      ...week,
+      slots: week.slots.map((slot) => ({
+        ...slot,
+        targetSessionSets: { ...slot.targetSessionSets },
+        lanes: slot.lanes.map((lane) => ({
+          ...lane,
+          primaryMuscles: [...lane.primaryMuscles],
+          preferredExerciseClasses: [...lane.preferredExerciseClasses],
+          setBudget: { ...lane.setBudget },
+          allocatedMuscles: lane.allocatedMuscles.map((muscle) => ({
+            ...muscle,
+            targetSetRange: { ...muscle.targetSetRange },
+          })),
+        })),
+      })),
+    })),
+    guardrails: { ...allocation.guardrails },
+  };
+}
+
+function findMutableAllocationLane(input: {
+  allocation: V2SlotDemandAllocationByWeek;
+  week: number;
+  slotId: string;
+  laneId: string;
+}):
+  | V2SlotDemandAllocationByWeek["weeks"][number]["slots"][number]["lanes"][number]
+  | undefined {
+  return input.allocation.weeks
+    .find((week) => week.week === input.week)
+    ?.slots.find((slot) => slot.slotId === input.slotId)
+    ?.lanes.find((lane) => lane.laneId === input.laneId);
+}
+
+function findMutableAllocationSlot(input: {
+  allocation: V2SlotDemandAllocationByWeek;
+  week: number;
+  slotId: string;
+}): V2SlotDemandAllocationByWeek["weeks"][number]["slots"][number] | undefined {
+  return input.allocation.weeks
+    .find((week) => week.week === input.week)
+    ?.slots.find((slot) => slot.slotId === input.slotId);
+}
+
+function slotOwnedProtectedMuscle(
+  lane:
+    | V2SlotDemandAllocationByWeek["weeks"][number]["slots"][number]["lanes"][number]
+    | undefined,
+  muscle: string,
+): V2AllocatedMuscle | undefined {
+  return lane?.allocatedMuscles.find(
+    (row) =>
+      row.muscle === muscle &&
+      row.ownershipKind !== "managed_collateral" &&
+      row.ownershipKind !== "optional_if_needed" &&
+      row.targetSetRange.preferred > 0,
+  );
+}
+
+function applyLaneSetDelta(input: {
+  slot:
+    | V2SlotDemandAllocationByWeek["weeks"][number]["slots"][number]
+    | undefined;
+  lane:
+    | V2SlotDemandAllocationByWeek["weeks"][number]["slots"][number]["lanes"][number]
+    | undefined;
+  muscle: string;
+  delta: number;
+}): V2PlannerSetRange {
+  const row = input.lane?.allocatedMuscles.find(
+    (candidate) => candidate.muscle === input.muscle,
+  );
+  if (!input.slot || !input.lane || !row) {
+    return emptyTrialRange();
+  }
+  row.targetSetRange = addDeltaToRange({
+    range: row.targetSetRange,
+    delta: input.delta,
+    preserveMin: true,
+  });
+  row.allocationBasis = "target_lane";
+  input.lane.setBudget = addDeltaToRange({
+    range: input.lane.setBudget,
+    delta: input.delta,
+    preserveMin: true,
+  });
+  input.slot.targetSessionSets = addDeltaToRange({
+    range: input.slot.targetSessionSets,
+    delta: input.delta,
+    preserveMin: true,
+  });
+  return { ...row.targetSetRange };
+}
+
+export function buildV2SlotWeekAllocationPolicyTrial(
+  input: V2SlotWeekAllocationPolicyTrialInput,
+): V2SlotWeekAllocationPolicyTrialResult {
+  const donorMuscle = input.donor.muscle ?? input.source.muscle;
+  const trialAllocation = cloneSlotDemandAllocationByWeek(
+    input.slotDemandAllocationByWeek,
+  );
+  const sourceLane = findMutableAllocationLane({
+    allocation: trialAllocation,
+    week: input.week,
+    slotId: input.source.slotId,
+    laneId: input.source.laneId,
+  });
+  const donorLane = findMutableAllocationLane({
+    allocation: trialAllocation,
+    week: input.week,
+    slotId: input.donor.slotId,
+    laneId: input.donor.laneId,
+  });
+  const sourceSlot = findMutableAllocationSlot({
+    allocation: trialAllocation,
+    week: input.week,
+    slotId: input.source.slotId,
+  });
+  const donorSlot = findMutableAllocationSlot({
+    allocation: trialAllocation,
+    week: input.week,
+    slotId: input.donor.slotId,
+  });
+  const sourceRow = slotOwnedProtectedMuscle(sourceLane, input.source.muscle);
+  const donorRow = slotOwnedProtectedMuscle(donorLane, donorMuscle);
+  const sourceBefore = sourceRow?.targetSetRange ?? emptyTrialRange();
+  const donorBefore = donorRow?.targetSetRange ?? emptyTrialRange();
+  const sameMuscle = input.source.muscle === donorMuscle;
+  const requestedDonorAbsorption = Math.max(0, input.donor.setDelta);
+  const requiredSourceReduction = Math.max(0, -input.source.setDelta);
+  const blockingReasons = uniqueSorted([
+    ...(sourceLane ? [] : ["source_lane_missing"]),
+    ...(donorLane ? [] : ["donor_lane_missing"]),
+    ...(sourceRow ? [] : ["source_pressure_row_missing_or_not_slot_owned"]),
+    ...(donorRow ? [] : ["donor_row_missing_or_not_slot_owned"]),
+    ...(sameMuscle ? [] : ["source_and_donor_muscle_mismatch"]),
+    ...(input.source.setDelta < 0 ? [] : ["source_delta_must_reduce_sets"]),
+    ...(input.donor.setDelta > 0 ? [] : ["donor_delta_must_absorb_sets"]),
+    ...(requestedDonorAbsorption >= requiredSourceReduction &&
+    requiredSourceReduction > 0
+      ? []
+      : ["donor_absorption_intent_insufficient"]),
+  ]);
+  const status = blockingReasons.length === 0 ? "applied" : "blocked";
+  const sourceAfter =
+    status === "applied"
+      ? applyLaneSetDelta({
+          slot: sourceSlot,
+          lane: sourceLane,
+          muscle: input.source.muscle,
+          delta: input.source.setDelta,
+        })
+      : { ...sourceBefore };
+  const donorAfter =
+    status === "applied"
+      ? applyLaneSetDelta({
+          slot: donorSlot,
+          lane: donorLane,
+          muscle: donorMuscle,
+          delta: input.donor.setDelta,
+        })
+      : { ...donorBefore };
+  const sourceSetDelta = subtractRanges(sourceAfter, sourceBefore).preferred;
+  const donorSetDelta = subtractRanges(donorAfter, donorBefore).preferred;
+  const donorHeadroomBefore = Math.max(
+    0,
+    roundToTenth(donorBefore.max - donorBefore.preferred),
+  );
+  const donorHeadroomAfter = Math.max(
+    0,
+    roundToTenth(donorAfter.max - donorAfter.preferred),
+  );
+  const donorCapacityDelta = roundToTenth(donorAfter.max - donorBefore.max);
+
+  return {
+    trial: {
+      version: 1,
+      source: "v2_slot_week_allocation_policy_trial",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      dryRunOnly: true,
+      status,
+      ownerSeam: "SlotDemandAllocationByWeek",
+      week: input.week,
+      sourcePressureRow: {
+        slotId: input.source.slotId,
+        laneId: input.source.laneId,
+        muscle: input.source.muscle,
+        baselineAllocatedSets: { ...sourceBefore },
+        trialAllocatedSets: { ...sourceAfter },
+        setDelta: sourceSetDelta,
+        pressureRelieved: sourceSetDelta < 0,
+      },
+      selectedDonorLane: {
+        slotId: input.donor.slotId,
+        laneId: input.donor.laneId,
+        muscle: donorMuscle,
+        baselineAllocatedSets: { ...donorBefore },
+        trialAllocatedSets: { ...donorAfter },
+        setDelta: donorSetDelta,
+        eligibleSlotOwnedDonor: Boolean(donorRow),
+      },
+      setMovementIntent: {
+        requiredSourceReduction,
+        requestedDonorAbsorption,
+        netWeeklySetIntentDelta: roundToTenth(
+          input.source.setDelta + input.donor.setDelta,
+        ),
+        sameMuscle,
+      },
+      donorCapacity: {
+        before: {
+          preferredSets: donorBefore.preferred,
+          maxSets: donorBefore.max,
+          headroomSets: donorHeadroomBefore,
+        },
+        after: {
+          preferredSets: donorAfter.preferred,
+          maxSets: donorAfter.max,
+          headroomSets: donorHeadroomAfter,
+        },
+        capacityDelta: donorCapacityDelta,
+        headroomDelta: roundToTenth(donorHeadroomAfter - donorHeadroomBefore),
+        status:
+          status === "applied" && donorSetDelta >= requiredSourceReduction
+            ? "capacity_created"
+            : "no_capacity_created",
+      },
+      blockingReasons,
+      limitations: [
+        "read_only_allocation_projection_only",
+        "same_muscle_slot_owned_donor_required",
+        "does_not_mutate_canonical_slot_demand_allocation",
+        "does_not_feed_production_generation_or_repair",
+        "does_not_write_seed_runtime_receipt_or_db_state",
+      ],
+    },
+    slotDemandAllocationByWeek:
+      status === "applied"
+        ? trialAllocation
+        : cloneSlotDemandAllocationByWeek(input.slotDemandAllocationByWeek),
+  };
 }
 
 function buildDonorCapacityProjectionRow(input: {

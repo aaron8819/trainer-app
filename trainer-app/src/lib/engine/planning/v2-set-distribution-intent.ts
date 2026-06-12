@@ -286,6 +286,10 @@ function isCalfDirectLane(lane: ClassLane): boolean {
   return hasClassIntent(lane, "calf_isolation");
 }
 
+function isSlotWeekAllocationPolicyTrialLane(lane: ClassLane): boolean {
+  return lane.ownershipRows.some((row) => row.allocationBasis === "target_lane");
+}
+
 function hasHardTargetOwnership(rows: ReadonlyArray<OwnershipRow>): boolean {
   return rows.some((row) => row.targetStatus === "hard");
 }
@@ -401,6 +405,20 @@ function buildSetBudget(input: {
   optionalActivationPolicy: SupportLane | undefined;
   phase: V2SetDistributionIntentPhase;
 }): IntentLane["setBudget"] {
+  if (isSlotWeekAllocationPolicyTrialLane(input.lane)) {
+    return {
+      min: roundSetCount(input.lane.setBudget.min),
+      preferred: roundSetCount(input.lane.setBudget.preferred),
+      max: Math.max(
+        roundSetCount(input.lane.setBudget.preferred),
+        roundSetCount(input.lane.setBudget.max),
+      ),
+      basis:
+        input.phase === "deload"
+          ? "deload_transform"
+          : "class_ownership_allocation",
+    };
+  }
   if (isManagedCollateralLane(input.lane)) {
     return {
       ...ZERO_SET_RANGE,

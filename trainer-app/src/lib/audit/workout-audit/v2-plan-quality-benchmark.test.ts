@@ -918,6 +918,7 @@ describe("V2 plan quality benchmark", () => {
                   trialSetCount: 3,
                   setDelta: 1,
                 },
+                allocationPolicyTrial: null,
                 protectedCoverageImpact: {
                   protectedMuscles: ["Quads"],
                   sourceFloorSets: 3,

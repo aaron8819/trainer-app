@@ -1595,6 +1595,7 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
                   status: row.status,
                   source: asRecord(row.source) ?? {},
                   donor: asRecord(row.donor) ?? null,
+                  allocationPolicyTrial: asRecord(row.allocationPolicyTrial) ?? null,
                   protectedCoverageImpact:
                     asRecord(row.protectedCoverageImpact) ?? {},
                   materializerDelta: asRecord(row.materializerDelta) ?? {},

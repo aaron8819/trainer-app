@@ -322,7 +322,7 @@ describe("V2 live-context materializer projections", () => {
         summary: {
           rowCount: 3,
           blockedRowCount: 3,
-          measuredDonorCapacityPassCount: 3,
+          measuredDonorCapacityPassCount: 2,
           behaviorReadiness: "blocked_by_evidence",
           nextSafeSlice: "inspect_materializer_regressions",
         },
@@ -341,6 +341,11 @@ describe("V2 live-context materializer projections", () => {
     expect(
       result.donorOffsetRedistributionProjection.rows.every(
         (row) =>
+          row.allocationPolicyTrial?.status === "applied" &&
+          row.allocationPolicyTrial.sourcePressureRow.setDelta === -1 &&
+          row.allocationPolicyTrial.selectedDonorLane.setDelta === 1 &&
+          row.allocationPolicyTrial.setMovementIntent.netWeeklySetIntentDelta ===
+            0 &&
           row.selectedDonorKind === "primary" &&
           row.primaryDonorCandidate?.scopedLaneId ===
             "lower_b:quad_support" &&

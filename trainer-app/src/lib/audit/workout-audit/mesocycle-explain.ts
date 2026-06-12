@@ -8817,6 +8817,7 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     ? buildV2ConcentrationMaterializerProjectionFromLiveContext({
         plannerPolicy,
         selectionDiagnostic: v2ExerciseSelectionPlanDiagnostic,
+        acceptanceClassification,
         ...input.v2BasePlanCompareContext,
       })
     : undefined;

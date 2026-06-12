@@ -1186,6 +1186,9 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
   const concentrationDelta = asRecord(
     concentrationMaterializer?.concentrationDelta,
   );
+  const concentrationReadiness = asRecord(
+    concentrationMaterializer?.crossWeekReadiness,
+  );
 
   return {
     summary: {
@@ -1500,6 +1503,17 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
                   concentrationDelta.fatigueWeightedSetDelta,
               }
             : {},
+          crossWeekReadiness: concentrationReadiness
+            ? {
+                decision: concentrationReadiness.decision,
+                projectedWeekCount: concentrationReadiness.projectedWeekCount,
+                improvedWeekCount: concentrationReadiness.improvedWeekCount,
+                regressedWeekCount: concentrationReadiness.regressedWeekCount,
+                noImpactWeekCount: concentrationReadiness.noImpactWeekCount,
+                blockerCount: concentrationReadiness.blockerCount,
+                nextSafeSlice: concentrationReadiness.nextSafeSlice,
+              }
+            : {},
           nextSafeAction:
             typeof concentrationMaterializer.nextSafeAction === "string"
               ? concentrationMaterializer.nextSafeAction
@@ -1752,6 +1766,9 @@ function buildIndexSummary(input: {
   const concentrationMaterializerDelta = asRecord(
     concentrationMaterializer?.concentrationDelta,
   );
+  const concentrationReadiness = asRecord(
+    concentrationMaterializer?.crossWeekReadiness,
+  );
   const planQualityBenchmark = asRecord(input.noRepair.v2PlanQualityBenchmark);
   const planQualitySummary = asRecord(planQualityBenchmark?.summary);
   const planQualityDeprecationReadiness = asRecord(
@@ -1814,6 +1831,16 @@ function buildIndexSummary(input: {
       concentrationMaterializerImpact?.totalSetDelta ?? null,
     v2ConcentrationMaterializerProjectionWarningDelta:
       concentrationMaterializerDelta?.warningDelta ?? null,
+    v2ConcentrationMaterializerProjectionReadinessDecision:
+      concentrationReadiness?.decision ?? "not_available",
+    v2ConcentrationMaterializerProjectionProjectedWeeks:
+      concentrationReadiness?.projectedWeekCount ?? null,
+    v2ConcentrationMaterializerProjectionImprovedWeeks:
+      concentrationReadiness?.improvedWeekCount ?? null,
+    v2ConcentrationMaterializerProjectionReadinessBlockers:
+      concentrationReadiness?.blockerCount ?? null,
+    v2ConcentrationMaterializerProjectionNextSafeSlice:
+      concentrationReadiness?.nextSafeSlice ?? null,
     v2ConcentrationMaterializerProjectionSafeForBehaviorPromotion:
       concentrationMaterializer?.safeForBehaviorPromotion === true,
     v2ConcentrationMaterializerProjectionBehaviorBlockers:

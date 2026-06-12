@@ -223,12 +223,66 @@ describe("V2 live-context materializer projections", () => {
     expect(result.candidateImpact.targetLaneSetDelta).toBe(-1);
     expect(result.candidateImpact.totalSetDelta).toBe(-1);
     expect(result.concentrationDelta.fatigueWeightedSetDelta).toBeLessThan(0);
+    expect(result.crossWeekReadiness).toMatchObject({
+      decision: "blocked_by_evidence",
+      sourceAttribution: {
+        materializerProjection: "baseline_vs_trial_dry_run",
+        noRepairProjection: "selected_warning_from_exercise_selection_diagnostic",
+        repairedProjection: "evidence_only_not_target_policy",
+        acceptanceNoRepair: "not_provided",
+      },
+      projectedWeekCount: 3,
+      improvedWeekCount: 0,
+      regressedWeekCount: 3,
+      nextSafeSlice: "inspect_materializer_regressions",
+    });
+    expect(result.crossWeekReadiness.gates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gateId: "cross_week_coverage",
+          status: "pass",
+          evidenceSource: "pure_v2_materializer_projection",
+        }),
+        expect.objectContaining({
+          gateId: "redistribution_donor_offset",
+          status: "unknown",
+          ownerSeam: "SlotDemandAllocationByWeek",
+          blockers: expect.arrayContaining([
+            "redistribution_donor_offset_not_projected",
+          ]),
+        }),
+        expect.objectContaining({
+          gateId: "acceptance_or_week_1_trainability",
+          status: "unknown",
+          evidenceSource: "acceptance_classification_no_repair",
+        }),
+        expect.objectContaining({
+          gateId: "materializer_identity_set_blocker_non_regression",
+          status: "fail",
+          blockers: expect.arrayContaining([
+            "materializer_identity_set_or_blocker_regression",
+          ]),
+        }),
+        expect.objectContaining({
+          gateId: "seed_runtime_receipt_db_non_consumption",
+          status: "pass",
+        }),
+      ]),
+    );
+    expect(result.crossWeekReadiness.rows).toHaveLength(3);
+    expect(
+      result.crossWeekReadiness.rows.every(
+        (row) => row.evidenceSource === "pure_v2_materializer_projection",
+      ),
+    ).toBe(true);
     expect(result.blockersBeforeBehavior).toEqual(
       expect.arrayContaining([
         "production_slot_demand_allocation_unchanged",
         "production_set_distribution_intent_unchanged",
         "production_materializer_not_consuming_trial",
         "weekly_distribution_redistribution_not_projected",
+        "redistribution_donor_offset_not_projected",
+        "materializer_identity_set_or_blocker_regression",
       ]),
     );
     expect(JSON.stringify(result)).not.toMatch(

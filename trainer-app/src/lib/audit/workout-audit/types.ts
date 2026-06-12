@@ -1802,6 +1802,13 @@ export type V2PlanQualityBenchmark = {
     failCount: number;
     missingEvidenceCount: number;
     mustFixBeforeWeek1Count: number;
+    concentrationReadinessDecision:
+      | V2ConcentrationMaterializerProjection["crossWeekReadiness"]["decision"]
+      | "not_available";
+    concentrationNextSafeSlice:
+      | V2ConcentrationMaterializerProjection["crossWeekReadiness"]["nextSafeSlice"]
+      | null;
+    concentrationReadinessBlockerCount: number | null;
     nextSafeAction: string;
   };
   gates: Array<{

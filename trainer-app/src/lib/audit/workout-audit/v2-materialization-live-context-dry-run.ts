@@ -445,6 +445,78 @@ export type V2ConcentrationMaterializerProjection = {
     trialFatigueWeightedSets: number;
     fatigueWeightedSetDelta: number;
   };
+  crossWeekReadiness: {
+    decision:
+      | "diagnostic_only"
+      | "candidate_for_bounded_policy_design"
+      | "blocked_by_evidence"
+      | "not_worth_pursuing";
+    sourceAttribution: {
+      pureV2BasePlan: "not_evaluated_by_concentration_projection";
+      materializerProjection: "baseline_vs_trial_dry_run";
+      noRepairProjection: "selected_warning_from_exercise_selection_diagnostic";
+      repairedProjection: "evidence_only_not_target_policy";
+      acceptanceNoRepair:
+        | "week_1_trainability_shape_only"
+        | "not_provided";
+    };
+    representativeAccumulationWeeks: number[];
+    projectedWeekCount: number;
+    improvedWeekCount: number;
+    regressedWeekCount: number;
+    noImpactWeekCount: number;
+    blockerCount: number;
+    nextSafeSlice:
+      | "design_slot_demand_redistribution_projection"
+      | "run_acceptance_non_regression_projection"
+      | "inspect_materializer_regressions"
+      | "pivot_to_higher_roi_track"
+      | "keep_diagnostic_only";
+    gates: Array<{
+      gateId:
+        | "cross_week_coverage"
+        | "redistribution_donor_offset"
+        | "acceptance_or_week_1_trainability"
+        | "materializer_identity_set_blocker_non_regression"
+        | "duplicate_concentration_non_regression"
+        | "production_materializer_non_consumption"
+        | "seed_runtime_receipt_db_non_consumption";
+      status: "pass" | "fail" | "unknown";
+      measured: boolean;
+      ownerSeam: string;
+      evidenceSource:
+        | "pure_v2_base_plan"
+        | "pure_v2_materializer_projection"
+        | "no_repair_projection"
+        | "repaired_projection"
+        | "acceptance_classification_no_repair";
+      evidence: string[];
+      blockers: string[];
+      requiredNextEvidence: string[];
+    }>;
+    rows: Array<{
+      week: number;
+      phase: string;
+      scopedLaneId: string;
+      status:
+        | "improved"
+        | "regressed"
+        | "no_candidate_impact"
+        | "blocked";
+      evidenceSource: "pure_v2_materializer_projection";
+      baselineMaterializerStatus: V2MaterializationDryRunReport["materializer"]["status"];
+      trialMaterializerStatus: V2MaterializationDryRunReport["materializer"]["status"];
+      selectedIdentityDelta: number;
+      totalSetDelta: number;
+      targetLaneSetDelta: number;
+      materializerBlockerDelta: number;
+      warningDelta: number;
+      maxShareDelta: number;
+      highFatigueSetDelta: number;
+      regressionCount: number;
+      changedSlotCount: number;
+    }>;
+  };
   blockersBeforeBehavior: string[];
   nextSafeAction:
     | "inspect_concentration_materializer_projection"
@@ -452,6 +524,17 @@ export type V2ConcentrationMaterializerProjection = {
     | "pivot_to_higher_roi_track";
   limitations: string[];
   safeForBehaviorPromotion: false;
+};
+
+type ConcentrationAcceptanceEvidence = {
+  basicMesocycleShapeStatus:
+    | "pass"
+    | "pass_with_warnings"
+    | "partial"
+    | "fail";
+  replacementReadinessStatus: "ready" | "not_ready" | "blocked";
+  hardBlockers: ReadonlyArray<{ code: string; evidence: string[] }>;
+  qualityWarnings: ReadonlyArray<{ code: string; evidence: string[] }>;
 };
 
 export type V2SupportFloorMaterializerProjection = Omit<
@@ -1230,6 +1313,7 @@ export function buildV2SetBudgetMaterializerProjectionFromLiveContext(input: {
 export function buildV2ConcentrationMaterializerProjectionFromLiveContext(input: {
   plannerPolicy?: V2PlannerMesocyclePolicy;
   selectionDiagnostic?: V2ExerciseSelectionPlanDiagnostic | null;
+  acceptanceClassification?: ConcentrationAcceptanceEvidence;
   taxonomy?: V2ExerciseClassTaxonomy;
   inventory?: V2MaterializationExercise[] | null;
   constraints?: V2ExerciseMaterializationInput["constraints"];
@@ -1314,6 +1398,14 @@ export function buildV2ConcentrationMaterializerProjectionFromLiveContext(input:
     trialPlan,
     inventory,
   });
+  const crossWeekRows = buildConcentrationCrossWeekProjectionRows({
+    plannerPolicy,
+    target,
+    taxonomy,
+    inventory,
+    constraints,
+    ...(input.continuity ? { continuity: input.continuity } : {}),
+  });
   const noCandidateImpact =
     candidateImpact.selectedIdentityDelta === 0 &&
     candidateImpact.totalSetDelta === 0 &&
@@ -1332,6 +1424,20 @@ export function buildV2ConcentrationMaterializerProjectionFromLiveContext(input:
     concentrationDelta.over60Delta < 0 ||
     concentrationDelta.maxShareDelta < 0 ||
     concentrationDelta.highFatigueSetDelta < 0;
+  const crossWeekReadiness = buildConcentrationCrossWeekReadiness({
+    status: trialBlocked ? "blocked" : "projected_with_limitations",
+    rows: crossWeekRows,
+    representativeAccumulationWeeks: representativeAccumulationWeeks(
+      plannerPolicy,
+    ).map((week) => week.week),
+    topLevelNoCandidateImpact: noCandidateImpact,
+    topLevelConcentrationImproved: concentrationImproved,
+    candidateImpact,
+    concentrationDelta,
+    acceptanceClassification: input.acceptanceClassification,
+    productionMaterializerConsumed: false,
+    seedRuntimeReceiptDbConsumed: false,
+  });
 
   return {
     version: 1,
@@ -1361,6 +1467,7 @@ export function buildV2ConcentrationMaterializerProjectionFromLiveContext(input:
     },
     candidateImpact,
     concentrationDelta,
+    crossWeekReadiness,
     blockersBeforeBehavior: uniqueSorted([
       ...(trialBlocked ? ["concentration_trial_materializer_blocked"] : []),
       ...(noCandidateImpact
@@ -1369,6 +1476,7 @@ export function buildV2ConcentrationMaterializerProjectionFromLiveContext(input:
       ...(concentrationImproved
         ? []
         : ["concentration_trial_did_not_improve_warning_metrics"]),
+      ...crossWeekReadiness.gates.flatMap((gate) => gate.blockers),
       ...(trialReport.seedShapeCompatibility.compatible
         ? []
         : ["trial_seed_shape_incompatible"]),
@@ -1377,7 +1485,6 @@ export function buildV2ConcentrationMaterializerProjectionFromLiveContext(input:
       "production_set_distribution_intent_unchanged",
       "production_materializer_not_consuming_trial",
       "representative_lane_projection_only",
-      "cross_week_projection_not_rerun",
       "weekly_distribution_redistribution_not_projected",
     ]),
     nextSafeAction: trialBlocked
@@ -1997,6 +2104,44 @@ function emptyConcentrationMaterializerProjection(input: {
       trialFatigueWeightedSets: 0,
       fatigueWeightedSetDelta: 0,
     },
+    crossWeekReadiness: buildConcentrationCrossWeekReadiness({
+      status: "not_available",
+      rows: [],
+      representativeAccumulationWeeks: [],
+      topLevelNoCandidateImpact: true,
+      topLevelConcentrationImproved: false,
+      candidateImpact: {
+        selectedIdentityDelta: 0,
+        totalSetDelta: 0,
+        targetLaneSetDelta: 0,
+        targetLaneExerciseDelta: 0,
+        materializerBlockerDelta: 0,
+        regressionCount: 0,
+        regressions: [],
+        improvements: [],
+        changedSlotCount: 0,
+        changedSlots: [],
+      },
+      concentrationDelta: {
+        baselineWarningCount: 0,
+        trialWarningCount: 0,
+        warningDelta: 0,
+        baselineOver60Count: 0,
+        trialOver60Count: 0,
+        over60Delta: 0,
+        baselineMaxSharePercent: 0,
+        trialMaxSharePercent: 0,
+        maxShareDelta: 0,
+        baselineHighFatigueSetCount: 0,
+        trialHighFatigueSetCount: 0,
+        baselineFatigueWeightedSets: 0,
+        trialFatigueWeightedSets: 0,
+        highFatigueSetDelta: 0,
+        fatigueWeightedSetDelta: 0,
+      },
+      productionMaterializerConsumed: false,
+      seedRuntimeReceiptDbConsumed: false,
+    }),
     blockersBeforeBehavior: uniqueSorted(input.blockersBeforeBehavior),
     nextSafeAction: "inspect_concentration_materializer_projection",
     limitations: [
@@ -2007,6 +2152,375 @@ function emptyConcentrationMaterializerProjection(input: {
       "does_not_change_seed_or_runtime_replay",
     ],
     safeForBehaviorPromotion: false,
+  };
+}
+
+function buildConcentrationCrossWeekProjectionRows(input: {
+  plannerPolicy: V2PlannerMesocyclePolicy;
+  target: ConcentrationProjectionTarget;
+  taxonomy: V2ExerciseClassTaxonomy;
+  inventory: ReadonlyArray<V2MaterializationExercise>;
+  constraints: V2ExerciseMaterializationInput["constraints"];
+  continuity?: V2ExerciseMaterializationInput["continuity"];
+}): V2ConcentrationMaterializerProjection["crossWeekReadiness"]["rows"] {
+  return representativeAccumulationWeeks(input.plannerPolicy).flatMap((week) => {
+    const slot = week.slots.find((row) => row.slotId === input.target.slotId);
+    const lane = slot?.lanes.find((row) => row.laneId === input.target.laneId);
+    if (!slot || !lane) {
+      return [];
+    }
+    const weeklyPolicy = plannerPolicyForSingleWeek({
+      plannerPolicy: input.plannerPolicy,
+      week,
+    });
+    const trialBudget = concentrationTrialBudget(lane.setBudget);
+    const trialExerciseSelectionPlan = cloneExerciseSelectionPlanWithLaneBudget({
+      exerciseSelectionPlan: weeklyPolicy.exerciseSelectionPlan,
+      slotId: input.target.slotId,
+      laneId: input.target.laneId,
+      trialBudget,
+    });
+    const trialPlannerPolicy: V2PlannerMesocyclePolicy = {
+      ...weeklyPolicy,
+      exerciseSelectionPlan: trialExerciseSelectionPlan,
+    };
+    const baselinePlan = buildV2ExerciseMaterializationPlan({
+      exerciseSelectionPlan: weeklyPolicy.exerciseSelectionPlan,
+      inventory: [...input.inventory],
+      taxonomy: input.taxonomy,
+      constraints: input.constraints,
+      ...(input.continuity ? { continuity: input.continuity } : {}),
+    });
+    const trialPlan = buildV2ExerciseMaterializationPlan({
+      exerciseSelectionPlan: trialExerciseSelectionPlan,
+      inventory: [...input.inventory],
+      taxonomy: input.taxonomy,
+      constraints: input.constraints,
+      ...(input.continuity ? { continuity: input.continuity } : {}),
+    });
+    const baselineReport = buildV2MaterializationDryRunReport({
+      plannerPolicy: weeklyPolicy,
+      taxonomy: input.taxonomy,
+      inventory: [...input.inventory],
+      constraints: input.constraints,
+      ...(input.continuity ? { continuity: input.continuity } : {}),
+      materializedPlan: baselinePlan,
+    });
+    const trialReport = buildV2MaterializationDryRunReport({
+      plannerPolicy: trialPlannerPolicy,
+      taxonomy: input.taxonomy,
+      inventory: [...input.inventory],
+      constraints: input.constraints,
+      ...(input.continuity ? { continuity: input.continuity } : {}),
+      materializedPlan: trialPlan,
+    });
+    const targetLane = summarizeConcentrationProjectionLane({
+      target: {
+        ...input.target,
+        week: week.week,
+        currentBudget: lane.setBudget,
+      },
+      trialBudget,
+      baselinePlan,
+      trialPlan,
+      inventory: input.inventory,
+    });
+    const candidateImpact = summarizeConcentrationProjectionImpact({
+      baselinePlan,
+      trialPlan,
+      baselineReport,
+      trialReport,
+      targetLane,
+    });
+    const concentrationDelta = summarizeConcentrationDelta({
+      baselinePlan,
+      trialPlan,
+      inventory: input.inventory,
+    });
+    const blocked =
+      trialReport.status === "blocked" ||
+      trialPlan.status === "blocked";
+    const regressed =
+      candidateImpact.regressionCount > 0 ||
+      candidateImpact.materializerBlockerDelta > 0 ||
+      concentrationDelta.warningDelta > 0 ||
+      concentrationDelta.over60Delta > 0 ||
+      concentrationDelta.maxShareDelta > 0 ||
+      concentrationDelta.highFatigueSetDelta > 0;
+    const improved =
+      concentrationDelta.warningDelta < 0 ||
+      concentrationDelta.over60Delta < 0 ||
+      concentrationDelta.maxShareDelta < 0 ||
+      concentrationDelta.highFatigueSetDelta < 0;
+    const noImpact =
+      candidateImpact.selectedIdentityDelta === 0 &&
+      candidateImpact.totalSetDelta === 0 &&
+      candidateImpact.targetLaneSetDelta === 0 &&
+      candidateImpact.materializerBlockerDelta === 0 &&
+      candidateImpact.regressionCount === 0 &&
+      !improved;
+
+    return [
+      {
+        week: week.week,
+        phase: week.phase,
+        scopedLaneId: input.target.scopedLaneId,
+        status: blocked
+          ? "blocked"
+          : regressed
+            ? "regressed"
+            : improved
+              ? "improved"
+              : noImpact
+                ? "no_candidate_impact"
+                : "no_candidate_impact",
+        evidenceSource: "pure_v2_materializer_projection",
+        baselineMaterializerStatus: baselineReport.materializer.status,
+        trialMaterializerStatus: trialReport.materializer.status,
+        selectedIdentityDelta: candidateImpact.selectedIdentityDelta,
+        totalSetDelta: candidateImpact.totalSetDelta,
+        targetLaneSetDelta: candidateImpact.targetLaneSetDelta,
+        materializerBlockerDelta: candidateImpact.materializerBlockerDelta,
+        warningDelta: concentrationDelta.warningDelta,
+        maxShareDelta: concentrationDelta.maxShareDelta,
+        highFatigueSetDelta: concentrationDelta.highFatigueSetDelta,
+        regressionCount: candidateImpact.regressionCount,
+        changedSlotCount: candidateImpact.changedSlotCount,
+      },
+    ];
+  });
+}
+
+function buildConcentrationCrossWeekReadiness(input: {
+  status: V2ConcentrationMaterializerProjection["status"];
+  rows: V2ConcentrationMaterializerProjection["crossWeekReadiness"]["rows"];
+  representativeAccumulationWeeks: number[];
+  topLevelNoCandidateImpact: boolean;
+  topLevelConcentrationImproved: boolean;
+  candidateImpact: V2ConcentrationMaterializerProjection["candidateImpact"];
+  concentrationDelta: V2ConcentrationMaterializerProjection["concentrationDelta"];
+  acceptanceClassification?: ConcentrationAcceptanceEvidence;
+  productionMaterializerConsumed: boolean;
+  seedRuntimeReceiptDbConsumed: boolean;
+}): V2ConcentrationMaterializerProjection["crossWeekReadiness"] {
+  const projectedWeekCount = input.rows.length;
+  const improvedWeekCount = input.rows.filter(
+    (row) => row.status === "improved",
+  ).length;
+  const regressedWeekCount = input.rows.filter(
+    (row) => row.status === "regressed" || row.status === "blocked",
+  ).length;
+  const noImpactWeekCount = input.rows.filter(
+    (row) => row.status === "no_candidate_impact",
+  ).length;
+  const coveragePass =
+    input.representativeAccumulationWeeks.length > 0 &&
+    projectedWeekCount === input.representativeAccumulationWeeks.length;
+  const materializerRegression =
+    input.candidateImpact.regressionCount > 0 ||
+    input.candidateImpact.materializerBlockerDelta > 0 ||
+    input.rows.some(
+      (row) =>
+        row.regressionCount > 0 ||
+        row.materializerBlockerDelta > 0 ||
+        row.trialMaterializerStatus !== "materialized",
+    );
+  const concentrationRegression =
+    input.concentrationDelta.warningDelta > 0 ||
+    input.concentrationDelta.over60Delta > 0 ||
+    input.concentrationDelta.maxShareDelta > 0 ||
+    input.concentrationDelta.highFatigueSetDelta > 0 ||
+    input.rows.some(
+      (row) =>
+        row.warningDelta > 0 ||
+        row.maxShareDelta > 0 ||
+        row.highFatigueSetDelta > 0,
+    );
+  const acceptance = input.acceptanceClassification;
+  const week1TrainabilityPass =
+    acceptance?.basicMesocycleShapeStatus === "pass" ||
+    acceptance?.basicMesocycleShapeStatus === "pass_with_warnings";
+  const acceptanceNeedsRerun =
+    input.candidateImpact.totalSetDelta !== 0 ||
+    input.candidateImpact.selectedIdentityDelta !== 0 ||
+    input.rows.some(
+      (row) => row.totalSetDelta !== 0 || row.selectedIdentityDelta !== 0,
+    );
+  const gates: V2ConcentrationMaterializerProjection["crossWeekReadiness"]["gates"] =
+    [
+      {
+        gateId: "cross_week_coverage",
+        status:
+          input.status === "not_available"
+            ? "unknown"
+            : coveragePass
+              ? "pass"
+              : "unknown",
+        measured: projectedWeekCount > 0,
+        ownerSeam: "v2_concentration_materializer_projection",
+        evidenceSource: "pure_v2_materializer_projection",
+        evidence: [
+          `representativeAccumulationWeeks=${input.representativeAccumulationWeeks.join(",") || "none"}`,
+          `projectedWeekCount=${projectedWeekCount}`,
+          `improvedWeekCount=${improvedWeekCount}`,
+          `regressedWeekCount=${regressedWeekCount}`,
+        ],
+        blockers: coveragePass ? [] : ["cross_week_coverage_not_proven"],
+        requiredNextEvidence: coveragePass
+          ? []
+          : ["representative_accumulation_week_materializer_rows"],
+      },
+      {
+        gateId: "redistribution_donor_offset",
+        status: "unknown",
+        measured: false,
+        ownerSeam: "SlotDemandAllocationByWeek",
+        evidenceSource: "pure_v2_base_plan",
+        evidence: [
+          `topLevelTotalSetDelta=${input.candidateImpact.totalSetDelta}`,
+          `projectedTotalSetDeltas=${input.rows.map((row) => `${row.week}:${row.totalSetDelta}`).join(",") || "none"}`,
+          "one_step_lane_set_cap_has_no_donor_offset_model",
+        ],
+        blockers: ["redistribution_donor_offset_not_projected"],
+        requiredNextEvidence: [
+          "slot_owned_donor_offset_projection",
+          "net_new_volume_preservation_or_explicit_tradeoff",
+        ],
+      },
+      {
+        gateId: "acceptance_or_week_1_trainability",
+        status:
+          acceptance && week1TrainabilityPass && !acceptanceNeedsRerun
+            ? "pass"
+            : "unknown",
+        measured: Boolean(acceptance),
+        ownerSeam: "plannerOnlyNoRepair.acceptanceClassification",
+        evidenceSource: "acceptance_classification_no_repair",
+        evidence: [
+          `basicMesocycleShapeStatus=${acceptance?.basicMesocycleShapeStatus ?? "not_provided"}`,
+          `replacementReadinessStatus=${acceptance?.replacementReadinessStatus ?? "not_provided"}`,
+          `hardBlockers=${acceptance?.hardBlockers.length ?? "unknown"}`,
+          `qualityWarnings=${acceptance?.qualityWarnings.length ?? "unknown"}`,
+          `acceptanceNeedsRerun=${acceptanceNeedsRerun}`,
+        ],
+        blockers:
+          acceptance && week1TrainabilityPass && !acceptanceNeedsRerun
+            ? []
+            : ["read_only_acceptance_projection_not_rerun_for_trial"],
+        requiredNextEvidence:
+          acceptance && week1TrainabilityPass && !acceptanceNeedsRerun
+            ? []
+            : ["candidate_evaluator_or_acceptance_result_for_projected_trial"],
+      },
+      {
+        gateId: "materializer_identity_set_blocker_non_regression",
+        status: materializerRegression ? "fail" : "pass",
+        measured: input.status !== "not_available",
+        ownerSeam: "v2_materialization_dry_run",
+        evidenceSource: "pure_v2_materializer_projection",
+        evidence: [
+          `selectedIdentityDelta=${input.candidateImpact.selectedIdentityDelta}`,
+          `totalSetDelta=${input.candidateImpact.totalSetDelta}`,
+          `materializerBlockerDelta=${input.candidateImpact.materializerBlockerDelta}`,
+          `regressionCount=${input.candidateImpact.regressionCount}`,
+        ],
+        blockers: materializerRegression
+          ? ["materializer_identity_set_or_blocker_regression"]
+          : [],
+        requiredNextEvidence: [],
+      },
+      {
+        gateId: "duplicate_concentration_non_regression",
+        status: concentrationRegression ? "fail" : "pass",
+        measured: input.status !== "not_available",
+        ownerSeam: "v2_concentration_materializer_projection",
+        evidenceSource: "pure_v2_materializer_projection",
+        evidence: [
+          `warningDelta=${input.concentrationDelta.warningDelta}`,
+          `over60Delta=${input.concentrationDelta.over60Delta}`,
+          `maxShareDelta=${input.concentrationDelta.maxShareDelta}`,
+          `highFatigueSetDelta=${input.concentrationDelta.highFatigueSetDelta}`,
+        ],
+        blockers: concentrationRegression
+          ? ["duplicate_or_concentration_regression"]
+          : [],
+        requiredNextEvidence: [],
+      },
+      {
+        gateId: "production_materializer_non_consumption",
+        status: input.productionMaterializerConsumed ? "fail" : "pass",
+        measured: true,
+        ownerSeam: "production_materializer_policy",
+        evidenceSource: "pure_v2_materializer_projection",
+        evidence: [
+          `consumedByProduction=${input.productionMaterializerConsumed}`,
+          "diagnostic_trial_not_in_materializer_allowlist",
+        ],
+        blockers: input.productionMaterializerConsumed
+          ? ["production_materializer_consumes_concentration_trial"]
+          : [],
+        requiredNextEvidence: [],
+      },
+      {
+        gateId: "seed_runtime_receipt_db_non_consumption",
+        status: input.seedRuntimeReceiptDbConsumed ? "fail" : "pass",
+        measured: true,
+        ownerSeam: "seed_runtime_receipt_persistence_boundary",
+        evidenceSource: "pure_v2_materializer_projection",
+        evidence: [
+          `seedRuntimeReceiptDbConsumed=${input.seedRuntimeReceiptDbConsumed}`,
+          "dry_run_only_no_seed_runtime_receipt_db_writes",
+        ],
+        blockers: input.seedRuntimeReceiptDbConsumed
+          ? ["seed_runtime_receipt_or_db_consumes_concentration_trial"]
+          : [],
+        requiredNextEvidence: [],
+      },
+    ];
+  const blockerCount = gates.reduce(
+    (sum, gate) => sum + gate.blockers.length,
+    0,
+  );
+  const hardFailed = gates.some((gate) => gate.status === "fail");
+  const hasMeasuredImprovement =
+    input.topLevelConcentrationImproved || improvedWeekCount > 0;
+  const decision: V2ConcentrationMaterializerProjection["crossWeekReadiness"]["decision"] =
+    hardFailed
+      ? "blocked_by_evidence"
+      : input.topLevelNoCandidateImpact && noImpactWeekCount === projectedWeekCount
+        ? "not_worth_pursuing"
+        : hasMeasuredImprovement && coveragePass
+          ? "candidate_for_bounded_policy_design"
+          : "diagnostic_only";
+  const nextSafeSlice: V2ConcentrationMaterializerProjection["crossWeekReadiness"]["nextSafeSlice"] =
+    decision === "candidate_for_bounded_policy_design"
+      ? "design_slot_demand_redistribution_projection"
+      : hardFailed
+        ? "inspect_materializer_regressions"
+        : decision === "not_worth_pursuing"
+          ? "pivot_to_higher_roi_track"
+          : "keep_diagnostic_only";
+
+  return {
+    decision,
+    sourceAttribution: {
+      pureV2BasePlan: "not_evaluated_by_concentration_projection",
+      materializerProjection: "baseline_vs_trial_dry_run",
+      noRepairProjection: "selected_warning_from_exercise_selection_diagnostic",
+      repairedProjection: "evidence_only_not_target_policy",
+      acceptanceNoRepair: acceptance
+        ? "week_1_trainability_shape_only"
+        : "not_provided",
+    },
+    representativeAccumulationWeeks: input.representativeAccumulationWeeks,
+    projectedWeekCount,
+    improvedWeekCount,
+    regressedWeekCount,
+    noImpactWeekCount,
+    blockerCount,
+    nextSafeSlice,
+    gates,
+    rows: input.rows,
   };
 }
 
@@ -2270,7 +2784,13 @@ function selectConcentrationWarningTarget(input: {
     if (!isV2PlannerSlotId(row.slotId)) {
       continue;
     }
-    const representativeLane = findRepresentativeSelectionLane({
+    const exactWeekLane = findSelectionLaneForWeek({
+      plannerPolicy: input.plannerPolicy,
+      week: row.week,
+      slotId: row.slotId,
+      laneId: row.lane.laneId,
+    });
+    const representativeLane = exactWeekLane ?? findRepresentativeSelectionLane({
       plannerPolicy: input.plannerPolicy,
       slotId: row.slotId,
       laneId: row.lane.laneId,
@@ -2954,6 +3474,31 @@ function duplicateExerciseIds(
   return [...duplicated].sort((left, right) => left.localeCompare(right));
 }
 
+function representativeAccumulationWeeks(
+  plannerPolicy: V2PlannerMesocyclePolicy,
+): V2PlannerMesocyclePolicy["exerciseSelectionPlan"]["weeks"] {
+  return [...plannerPolicy.exerciseSelectionPlan.weeks]
+    .filter((week) =>
+      ["accumulation", "hard_accumulation", "peak_overreach_lite"].includes(
+        week.phase,
+      ),
+    )
+    .sort((left, right) => left.week - right.week);
+}
+
+function plannerPolicyForSingleWeek(input: {
+  plannerPolicy: V2PlannerMesocyclePolicy;
+  week: V2PlannerMesocyclePolicy["exerciseSelectionPlan"]["weeks"][number];
+}): V2PlannerMesocyclePolicy {
+  return {
+    ...input.plannerPolicy,
+    exerciseSelectionPlan: {
+      ...input.plannerPolicy.exerciseSelectionPlan,
+      weeks: [input.week],
+    },
+  };
+}
+
 function uniqueSorted(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean))).sort((left, right) =>
     left.localeCompare(right),
@@ -2995,6 +3540,20 @@ function findRepresentativeSelectionLane(input: {
     }
   }
   return undefined;
+}
+
+function findSelectionLaneForWeek(input: {
+  plannerPolicy: V2PlannerMesocyclePolicy;
+  week: number;
+  slotId: string;
+  laneId: string;
+}):
+  | V2PlannerMesocyclePolicy["exerciseSelectionPlan"]["weeks"][number]["slots"][number]["lanes"][number]
+  | undefined {
+  return input.plannerPolicy.exerciseSelectionPlan.weeks
+    .find((week) => week.week === input.week)
+    ?.slots.find((slot) => slot.slotId === input.slotId)
+    ?.lanes.find((lane) => lane.laneId === input.laneId);
 }
 
 function materializerScopedLaneId(slotId: string, laneId: string): string {

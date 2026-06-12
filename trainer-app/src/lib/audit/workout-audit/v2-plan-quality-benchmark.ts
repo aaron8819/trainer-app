@@ -438,14 +438,27 @@ function buildFatigueDistributionGate(
   const projectionEvidence = concentrationProjectionMeasured
     ? [
         `concentrationProjectionStatus=${concentrationProjection.status}`,
+        `crossWeekReadiness=${
+          concentrationProjection.crossWeekReadiness.decision
+        }`,
+        numberEvidence(
+          "crossWeekProjectedWeeks",
+          concentrationProjection.crossWeekReadiness.projectedWeekCount,
+        ),
+        numberEvidence(
+          "crossWeekImprovedWeeks",
+          concentrationProjection.crossWeekReadiness.improvedWeekCount,
+        ),
+        numberEvidence(
+          "readinessBlockers",
+          concentrationProjection.crossWeekReadiness.blockerCount,
+        ),
         numberEvidence(
           "concentrationWarningDelta",
           concentrationProjection.concentrationDelta.warningDelta,
         ),
         `behaviorReadiness=${
-          concentrationProjection.safeForBehaviorPromotion
-            ? "ready_for_behavior_review"
-            : "diagnostic_only"
+          concentrationProjection.crossWeekReadiness.decision
         }`,
         numberEvidence(
           "behaviorBlockers",
@@ -472,6 +485,7 @@ function buildFatigueDistributionGate(
           concentrationProjection.candidateImpact.materializerBlockerDelta,
         ),
         `nextSafeAction=${concentrationProjection.nextSafeAction}`,
+        `nextSafeSlice=${concentrationProjection.crossWeekReadiness.nextSafeSlice}`,
         "concentration_materializer_projection_is_diagnostic_only",
       ]
     : [
@@ -514,7 +528,12 @@ function buildFatigueDistributionGate(
       ),
     ],
     missingEvidence: concentrationProjectionMeasured
-      ? selection.missingInputs
+      ? [
+          ...selection.missingInputs,
+          ...concentrationProjection.crossWeekReadiness.gates.flatMap((gate) =>
+            gate.status === "pass" ? [] : gate.requiredNextEvidence,
+          ),
+        ]
       : [...selection.missingInputs, "concentration_projection_delta"],
   });
 }
@@ -711,6 +730,15 @@ export function buildV2PlanQualityBenchmark(
       failCount,
       missingEvidenceCount,
       mustFixBeforeWeek1Count,
+      concentrationReadinessDecision:
+        noRepair.v2ConcentrationMaterializerProjection?.crossWeekReadiness
+          .decision ?? "not_available",
+      concentrationNextSafeSlice:
+        noRepair.v2ConcentrationMaterializerProjection?.crossWeekReadiness
+          .nextSafeSlice ?? null,
+      concentrationReadinessBlockerCount:
+        noRepair.v2ConcentrationMaterializerProjection?.crossWeekReadiness
+          .blockerCount ?? null,
       nextSafeAction:
         failCount > 0
           ? "fix_failed_first_principles_gates"

@@ -5,6 +5,12 @@ import type {
 
 type BenchmarkGate = V2PlanQualityBenchmark["gates"][number];
 type BenchmarkStatus = BenchmarkGate["status"];
+type BasePlanCompare = NonNullable<
+  MesocycleExplainPlannerOnlyNoRepair["v2BasePlanCompare"]
+>;
+type ShadowConsumptionTrial = NonNullable<
+  MesocycleExplainPlannerOnlyNoRepair["v2BasePlanShadowConsumptionTrial"]
+>;
 
 function countByStatus(
   gates: BenchmarkGate[],
@@ -55,9 +61,79 @@ function numberEvidence(label: string, value: number | null | undefined): string
   return `${label}=${typeof value === "number" ? value : "unknown"}`;
 }
 
+function pureV2BaseEvidence(noRepair: MesocycleExplainPlannerOnlyNoRepair): {
+  baseCompare?: BasePlanCompare;
+  shadowTrial?: ShadowConsumptionTrial;
+  baseAvailable: boolean;
+  shadowAvailable: boolean;
+  baseValidationStatus: string;
+  baseRegressionCount: number;
+  shadowRegressionCount: number;
+  shadowUnclearCount: number;
+} {
+  const baseCompare = noRepair.v2BasePlanCompare;
+  const shadowTrial = noRepair.v2BasePlanShadowConsumptionTrial;
+  return {
+    ...(baseCompare ? { baseCompare } : {}),
+    ...(shadowTrial ? { shadowTrial } : {}),
+    baseAvailable:
+      baseCompare?.readOnly === true &&
+      baseCompare.affectsScoringOrGeneration === false &&
+      (baseCompare.status === "available" ||
+        baseCompare.status === "available_with_limitations"),
+    shadowAvailable:
+      shadowTrial?.readOnly === true &&
+      shadowTrial.affectsScoringOrGeneration === false &&
+      shadowTrial.consumedByProduction === false &&
+      (shadowTrial.status === "available" ||
+        shadowTrial.status === "available_with_limitations"),
+    baseValidationStatus:
+      baseCompare?.summary.v2BaseValidationStatus ?? "not_available",
+    baseRegressionCount: baseCompare?.summary.v2RegressionCount ?? 0,
+    shadowRegressionCount: shadowTrial?.summary.regressionCount ?? 0,
+    shadowUnclearCount: shadowTrial?.summary.unclearCount ?? 0,
+  };
+}
+
+function pureV2BaseIsValid(
+  evidence: ReturnType<typeof pureV2BaseEvidence>,
+): boolean {
+  return (
+    evidence.baseAvailable &&
+    (evidence.baseValidationStatus === "pass" ||
+      evidence.baseValidationStatus === "pass_with_warnings") &&
+    evidence.baseRegressionCount === 0
+  );
+}
+
 function buildSupportFloorsGate(
   noRepair: MesocycleExplainPlannerOnlyNoRepair,
 ): BenchmarkGate {
+  const pureV2 = pureV2BaseEvidence(noRepair);
+  const supportResponsibility =
+    pureV2.baseCompare?.comparisons?.repairDependency.responsibilities.find(
+      (row) => row.item === "support-floor closure as planner author",
+    );
+  if (
+    pureV2BaseIsValid(pureV2) &&
+    supportResponsibility &&
+    (supportResponsibility.classification === "v2_improves" ||
+      supportResponsibility.classification === "v2_preserves")
+  ) {
+    return gate({
+      gate: "support_floors",
+      status: "pass",
+      ownerSeam: "v2_base_plan_validation.support_direct_floors",
+      evidence: [
+        `baseValidationStatus=${pureV2.baseValidationStatus}`,
+        numberEvidence("baseRegressions", pureV2.baseRegressionCount),
+        `supportFloorClassification=${supportResponsibility.classification}`,
+        ...supportResponsibility.evidence.slice(0, 4),
+        "legacy_no_repair_projection_not_used_as_target_policy",
+      ],
+    });
+  }
+
   const diagnostic = noRepair.v2SupportLaneProjectionDiagnostic;
   if (!diagnostic) {
     return gate({
@@ -97,6 +173,27 @@ function buildSupportFloorsGate(
 function buildDirectWorkGate(
   noRepair: MesocycleExplainPlannerOnlyNoRepair,
 ): BenchmarkGate {
+  const pureV2 = pureV2BaseEvidence(noRepair);
+  const underHitMuscles =
+    pureV2.baseCompare?.comparisons?.muscleCoverage.underHitMuscles ?? [];
+  if (pureV2BaseIsValid(pureV2) && underHitMuscles.length === 0) {
+    return gate({
+      gate: "direct_work",
+      status: "pass",
+      ownerSeam: "v2_base_plan_validation.muscle_coverage",
+      evidence: [
+        `baseValidationStatus=${pureV2.baseValidationStatus}`,
+        numberEvidence("baseRegressions", pureV2.baseRegressionCount),
+        numberEvidence(
+          "v2TotalSets",
+          pureV2.baseCompare?.summary.v2TotalSets,
+        ),
+        numberEvidence("underHitMuscles", underHitMuscles.length),
+        "legacy_no_repair_projection_not_used_as_target_policy",
+      ],
+    });
+  }
+
   const belowFloor = noRepair.weeklyMuscleTotals.filter(
     (row) => row.targetMin != null && row.projectedEffectiveSets < row.targetMin,
   );
@@ -129,6 +226,30 @@ function buildDirectWorkGate(
 function buildLanePreservationGate(
   noRepair: MesocycleExplainPlannerOnlyNoRepair,
 ): BenchmarkGate {
+  const pureV2 = pureV2BaseEvidence(noRepair);
+  if (pureV2BaseIsValid(pureV2) && pureV2.shadowAvailable) {
+    const status: BenchmarkStatus =
+      pureV2.shadowRegressionCount > 0
+        ? "fail"
+        : pureV2.shadowUnclearCount > 0
+          ? "warning"
+          : "pass";
+    return gate({
+      gate: "lane_preservation",
+      status,
+      ownerSeam: "v2_base_plan_shadow_consumption_trial",
+      evidence: [
+        `baseValidationStatus=${pureV2.baseValidationStatus}`,
+        numberEvidence("baseRegressions", pureV2.baseRegressionCount),
+        numberEvidence("shadowRegressions", pureV2.shadowRegressionCount),
+        numberEvidence("shadowUnclear", pureV2.shadowUnclearCount),
+        `shadowStatus=${pureV2.shadowTrial?.status ?? "not_available"}`,
+        "shadow_consumption_is_diagnostic_only",
+      ],
+      mustFixBeforeWeek1: pureV2.shadowRegressionCount > 0,
+    });
+  }
+
   const summary = noRepair.v2TargetVsNoRepairDiff.summary;
   return gate({
     gate: "lane_preservation",

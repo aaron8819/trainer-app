@@ -2,6 +2,175 @@ import { describe, expect, it } from "vitest";
 import type { MesocycleExplainPlannerOnlyNoRepair } from "./types";
 import { buildV2PlanQualityBenchmark } from "./v2-plan-quality-benchmark";
 
+function pureV2BasePlanCompareFixture(
+  overrides: Partial<
+    NonNullable<MesocycleExplainPlannerOnlyNoRepair["v2BasePlanCompare"]>
+  > = {},
+): NonNullable<MesocycleExplainPlannerOnlyNoRepair["v2BasePlanCompare"]> {
+  return {
+    version: 1,
+    source: "v2_base_plan_compare",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    status: "available",
+    comparedPlans: {
+      v2BasePlanAvailable: true,
+      plannerOnlyNoRepairAvailable: true,
+      repairedPlanAvailable: true,
+    },
+    interpretationRules: {
+      v2BasePlanIsCandidateStaticNorthStar: true,
+      repairedPlanIsEvidenceNotTarget: true,
+      noRepairOutputShowsCurrentPlannerBeforeRepair: true,
+      differencesDoNotImplyV2WrongBecauseItDiffersFromRepairedPlan: true,
+    },
+    summary: {
+      v2BaseValidationStatus: "pass",
+      v2TotalSets: 66,
+      noRepairTotalSets: 58,
+      repairedTotalSets: 69,
+      repairDependencyCount: 72,
+      v2ImprovementCount: 16,
+      v2RegressionCount: 0,
+      unclearCount: 6,
+    },
+    comparisons: {
+      slotShape: {} as NonNullable<
+        MesocycleExplainPlannerOnlyNoRepair["v2BasePlanCompare"]
+      >["comparisons"]["slotShape"],
+      muscleCoverage: {
+        classification: "v2_improves",
+        underHitMuscles: [],
+        overConcentratedMuscles: [],
+        managedCollateralExposure: [],
+        rows: [],
+      },
+      exerciseClassCoverage: {} as NonNullable<
+        MesocycleExplainPlannerOnlyNoRepair["v2BasePlanCompare"]
+      >["comparisons"]["exerciseClassCoverage"],
+      repairDependency: {
+        classification: "v2_improves",
+        dependencyCount: 72,
+        responsibilities: [
+          {
+            item: "support-floor closure as planner author",
+            classification: "v2_improves",
+            dependencyCount: 4,
+            evidence: [
+              "directSupportFloorsMissed=0",
+              "repaired_projection_is_evidence_only",
+            ],
+          },
+        ],
+      },
+      exerciseIdentity: {} as NonNullable<
+        MesocycleExplainPlannerOnlyNoRepair["v2BasePlanCompare"]
+      >["comparisons"]["exerciseIdentity"],
+      deloadReadiness: {} as NonNullable<
+        MesocycleExplainPlannerOnlyNoRepair["v2BasePlanCompare"]
+      >["comparisons"]["deloadReadiness"],
+    },
+    blockersBeforeBehaviorPromotion: [
+      "shadow_consumption_trial_not_run",
+      "accepted_seed_runtime_consumption_gate_not_changed",
+    ],
+    nextSafeAction: "add_shadow_consumption_trial",
+    guardrails: {
+      doesNotUseHistoricalStrategyRecommendations: true,
+      doesNotTreatRepairedPlanAsTargetPolicy: true,
+      doesNotFeedProductionProjection: true,
+      doesNotAffectGeneration: true,
+      doesNotAffectSelectionV2: true,
+      doesNotAffectRepair: true,
+      doesNotAffectSeedSerialization: true,
+      doesNotAffectRuntimeReplay: true,
+      doesNotAffectReceipts: true,
+      consumedByDemandOrMaterializer: false,
+    },
+    ...overrides,
+  };
+}
+
+function pureV2ShadowTrialFixture(
+  overrides: Partial<
+    NonNullable<
+      MesocycleExplainPlannerOnlyNoRepair["v2BasePlanShadowConsumptionTrial"]
+    >
+  > = {},
+): NonNullable<
+  MesocycleExplainPlannerOnlyNoRepair["v2BasePlanShadowConsumptionTrial"]
+> {
+  return {
+    version: 1,
+    source: "v2_base_plan_shadow_consumption_trial",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    status: "available",
+    consumedByProduction: false,
+    shadowAdapter: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      sourcePlan: "v2_base_plan",
+      adapter: "v2_base_plan_to_projection_plan_view",
+      productionProjectionRerun: false,
+      writesSeed: false,
+      writesRuntime: false,
+      writesReceipts: false,
+      limitations: ["diagnostic_only"],
+    },
+    comparedPlans: {
+      v2BasePlanAvailable: true,
+      shadowConsumedPlanAvailable: true,
+      plannerOnlyNoRepairAvailable: true,
+      repairedPlanAvailable: true,
+    },
+    interpretationRules: {
+      shadowConsumptionIsDiagnosticOnly: true,
+      repairedPlanIsEvidenceNotTarget: true,
+      noRepairOutputShowsCurrentPlannerBeforeRepair: true,
+      differencesFromRepairedPlanDoNotImplyV2Wrong: true,
+    },
+    summary: {
+      shadowTotalSets: 66,
+      v2BaseTotalSets: 66,
+      noRepairTotalSets: 58,
+      repairedTotalSets: 69,
+      currentRepairDependencyCount: 72,
+      shadowRemainingRepairDependencyCount: 0,
+      repairDependencyDelta: -72,
+      improvementCount: 13,
+      preservationCount: 22,
+      regressionCount: 0,
+      unclearCount: 1,
+      notComparableCount: 0,
+      categorizedIdentityDifferenceCount: 4,
+    },
+    changes: {} as NonNullable<
+      MesocycleExplainPlannerOnlyNoRepair["v2BasePlanShadowConsumptionTrial"]
+    >["changes"],
+    blockersBeforeBehaviorPromotion: [
+      "production_projection_not_consuming_shadow",
+      "accepted_seed_runtime_consumption_gate_not_changed",
+    ],
+    nextSafeAction: "inspect_shadow_consumption",
+    guardrails: {
+      doesNotUseHistoricalStrategyRecommendations: true,
+      doesNotTreatRepairedPlanAsTargetPolicy: true,
+      doesNotFeedProductionProjection: true,
+      doesNotAffectGeneration: true,
+      doesNotAffectSelectionV2: true,
+      doesNotAffectRepair: true,
+      doesNotAffectSeedSerialization: true,
+      doesNotAffectRuntimeReplay: true,
+      doesNotAffectReceipts: true,
+      doesNotPersistV2Output: true,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+    },
+    ...overrides,
+  };
+}
+
 function noRepairFixture(
   overrides: Partial<MesocycleExplainPlannerOnlyNoRepair> = {},
 ): MesocycleExplainPlannerOnlyNoRepair {
@@ -94,14 +263,7 @@ function noRepairFixture(
     } as unknown as MesocycleExplainPlannerOnlyNoRepair["v2ExerciseSelectionPlanDiagnostic"],
     v2LaneSelectionIntentAudit: {} as MesocycleExplainPlannerOnlyNoRepair["v2LaneSelectionIntentAudit"],
     lowAxialHipExtensionLimitation: {} as MesocycleExplainPlannerOnlyNoRepair["lowAxialHipExtensionLimitation"],
-    v2BasePlanCompare: {
-      status: "available",
-      readOnly: true,
-      affectsScoringOrGeneration: false,
-      summary: {
-        v2RegressionCount: 0,
-      },
-    } as MesocycleExplainPlannerOnlyNoRepair["v2BasePlanCompare"],
+    v2BasePlanCompare: pureV2BasePlanCompareFixture(),
     slotPlans: [],
     weeklyMuscleTotals: [
       {
@@ -198,5 +360,84 @@ describe("V2 plan quality benchmark", () => {
       ]),
     );
     expect(result.deprecationReadiness.status).toBe("blocked");
+  });
+
+  it("uses pure V2 base-plan evidence to resolve stale no-repair support/direct failures without changing guardrails", () => {
+    const result = buildV2PlanQualityBenchmark(
+      noRepairFixture({
+        weeklyMuscleTotals: [
+          {
+            muscle: "Side Delts",
+            projectedEffectiveSets: 0,
+            targetMin: 8,
+            targetPreferred: 12,
+            status: "below",
+          },
+        ],
+        v2SupportLaneProjectionDiagnostic: {
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          summary: {
+            directFloorsMet: 0,
+            directFloorsBelow: 4,
+            authoredDroppedCount: 4,
+            highRiskDroppedCount: 4,
+          },
+          laneBoundaryRows: [
+            {
+              mustFixBeforeWeek1: true,
+              severity: "high_risk",
+            },
+          ],
+          missingInputs: [],
+        } as unknown as MesocycleExplainPlannerOnlyNoRepair["v2SupportLaneProjectionDiagnostic"],
+        v2TargetVsNoRepairDiff: {
+          ...noRepairFixture().v2TargetVsNoRepairDiff,
+          summary: {
+            targetLaneCount: 8,
+            satisfiedLaneCount: 4,
+            partialLaneCount: 0,
+            missingLaneCount: 2,
+            blockedLaneCount: 1,
+            repairDependentLaneCount: 0,
+            migrationCandidateCount: 0,
+            suspiciousOrBlockedCount: 3,
+          },
+        },
+        v2BasePlanShadowConsumptionTrial: pureV2ShadowTrialFixture(),
+      }),
+    );
+
+    expect(result.gates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gate: "support_floors",
+          status: "pass",
+          ownerSeam: "v2_base_plan_validation.support_direct_floors",
+        }),
+        expect.objectContaining({
+          gate: "direct_work",
+          status: "pass",
+          ownerSeam: "v2_base_plan_validation.muscle_coverage",
+        }),
+        expect.objectContaining({
+          gate: "lane_preservation",
+          status: "warning",
+          ownerSeam: "v2_base_plan_shadow_consumption_trial",
+          candidateImpact: "needs_more_evidence",
+        }),
+      ]),
+    );
+    expect(result.summary.failCount).toBe(0);
+    expect(result.summary.warningCount).toBeGreaterThan(0);
+    expect(result.guardrails).toEqual({
+      seedRuntimeChanged: false,
+      productionMaterializerChanged: false,
+      acceptanceThresholdChanged: false,
+      persistenceChanged: false,
+    });
+    expect(JSON.stringify(result)).not.toMatch(
+      /slotPlanSeedJson|sessionDecisionReceipt|runtimeReplay/,
+    );
   });
 });

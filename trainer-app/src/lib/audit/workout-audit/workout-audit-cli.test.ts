@@ -515,6 +515,64 @@ function makeV2BasePlanShadowConsumptionTrialFixture() {
   };
 }
 
+function makeV2PlanQualityBenchmarkFixture() {
+  return {
+    version: 1,
+    source: "v2_candidate_quality_benchmark",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByProduction: false,
+    repairedProjectionUsedAs: "evidence_only_not_target_policy",
+    status: "warning",
+    summary: {
+      passCount: 6,
+      warningCount: 2,
+      failCount: 0,
+      missingEvidenceCount: 0,
+      mustFixBeforeWeek1Count: 0,
+      nextSafeAction: "review_warning_gates_before_deprecation",
+    },
+    gates: [
+      {
+        gate: "session_size",
+        status: "pass",
+        ownerSeam: "v2_base_plan_validation.slot_shape",
+        evidenceSource: "pure_v2_base_plan",
+        evidence: ["sessionSizeUnclearRows=none"],
+        missingEvidence: [],
+        candidateImpact: "supports_deprecation_review",
+        mustFixBeforeWeek1: false,
+      },
+      {
+        gate: "duplicate_concentration_risk",
+        status: "warning",
+        ownerSeam: "v2_base_plan_validation.duplicate_distinctness",
+        evidenceSource: "pure_v2_base_plan",
+        evidence: [
+          "exerciseIdentityClassification=v2_preserves",
+          "v2DuplicateExactExercises=1",
+          "watch:exact_duplicate_reuse_needs_variant_or_continuity_justification",
+          "v2DuplicateExact:Standing Calf Raise",
+        ],
+        missingEvidence: [],
+        candidateImpact: "needs_more_evidence",
+        mustFixBeforeWeek1: false,
+      },
+    ],
+    deprecationReadiness: {
+      status: "ready_for_review",
+      evidence: ["session_size:pass"],
+      missingEvidence: [],
+    },
+    guardrails: {
+      seedRuntimeChanged: false,
+      productionMaterializerChanged: false,
+      acceptanceThresholdChanged: false,
+      persistenceChanged: false,
+    },
+  };
+}
+
 describe("normalizeAuditIntentArg", () => {
   it("normalizes uppercase explicit intents into canonical lower-case session intents", () => {
     expect(normalizeAuditIntentArg("UPPER")).toBe("upper");
@@ -4074,6 +4132,54 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
         "Next safe action: inspect-shadow-consumption",
         "Read-only/no generation impact: yes",
         "V2 base-plan compare/shadow detail: v2-materialization shard when --v2-debug-artifact is enabled",
+      ]),
+    );
+  });
+
+  it("prints compact V2 plan-quality warning evidence with source attribution", () => {
+    const summary = buildPlannerOnlyNoRepairSummary({
+      artifact: {
+        mesocycleExplain: {
+          plannerOnlyNoRepair: {
+            acceptanceClassification: {
+              basicMesocycleShapeStatus: "pass_with_warnings",
+              replacementReadinessStatus: "not_ready",
+              hardBlockers: [],
+              qualityWarnings: [],
+              diagnosticOnly: [],
+              sessionShaping: [],
+              migrationScoreboard: {
+                materialRepairCount: 0,
+                majorRepairCount: 0,
+                suspiciousRepairs: 0,
+                canReplaceRepairedProjection: false,
+                reason: "not_ready",
+              },
+            },
+            v2MesocyclePlan: {
+              planStatus: "full_mesocycle_limited",
+              deloadTransform: {
+                projectionStatus: "partially_modeled",
+              },
+            },
+            v2PlanQualityBenchmark: makeV2PlanQualityBenchmarkFixture(),
+          },
+        },
+      } as unknown as Parameters<
+        typeof buildPlannerOnlyNoRepairSummary
+      >[0]["artifact"],
+    });
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        "V2 Plan Quality Benchmark",
+        "-------------------------",
+        "Status: warning deprecation=ready-for-review",
+        "Gates: pass=6 warn=2 fail=0 missing=0 mustFixW1=0",
+        "Gate detail: session_size:pass:pure_v2_base_plan; duplicate_concentration_risk:warning:pure_v2_base_plan",
+        "Warning evidence: duplicate_concentration_risk@v2_base_plan_validation.duplicate_distinctness: exerciseIdentityClassification=v2_preserves, v2DuplicateExact:Standing Calf Raise, v2DuplicateExactExercises=1, watch:exact_duplicate_reuse_needs_variant_or_continuity_justification",
+        "Next safe action: review-warning-gates-before-deprecation",
+        "Guardrails: seedRuntimeChanged=no productionMaterializerChanged=no acceptanceThresholdChanged=no persistenceChanged=no",
       ]),
     );
   });

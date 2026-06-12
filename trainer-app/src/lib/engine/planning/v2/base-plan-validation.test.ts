@@ -874,9 +874,20 @@ describe("buildV2BasePlanValidation", () => {
         painConflictExerciseIds: [],
       },
     });
+    const duplicateCalfPlan = replaceLaneExercise({
+      plan: replaceLaneExercise({
+        plan: materializedPlan,
+        slotId: "lower_a",
+        laneId: "calves",
+        exerciseId: "standing-calf-raise",
+      }),
+      slotId: "lower_b",
+      laneId: "calves",
+      exerciseId: "standing-calf-raise",
+    });
     const validation = buildV2BasePlanValidation({
       plannerPolicy: policy,
-      materializedPlan,
+      materializedPlan: duplicateCalfPlan,
       inventory: inventoryWithCalfVariant,
       taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
     });

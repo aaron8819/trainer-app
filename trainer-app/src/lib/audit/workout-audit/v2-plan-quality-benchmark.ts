@@ -12,6 +12,8 @@ type ShadowConsumptionTrial = NonNullable<
   MesocycleExplainPlannerOnlyNoRepair["v2BasePlanShadowConsumptionTrial"]
 >;
 
+const V2_BASE_SESSION_SIZE_WATCH_SET_CAP = 21;
+
 function countByStatus(
   gates: BenchmarkGate[],
   status: BenchmarkStatus,
@@ -290,18 +292,31 @@ function buildSessionSizeGate(
     const slotShapeRegression =
       slotShape.classification === "v2_regresses" ||
       slotShape.rows.some((row) => row.classification === "v2_regresses");
-    const slotShapeUnclear =
-      slotShape.classification === "unclear" ||
-      slotShape.rows.some((row) => row.classification === "unclear");
+    const sessionSizeUnclearRows = slotShape.rows.filter(
+      (row) =>
+        row.classification === "unclear" &&
+        (row.item === "standalone_one_set_exercises" ||
+          row.item === "five_set_stacking" ||
+          (row.item === "max_slot_sets" &&
+            slotShape.v2Base.maxSlotSets > V2_BASE_SESSION_SIZE_WATCH_SET_CAP)),
+    );
     return gate({
       gate: "session_size",
-      status: slotShapeRegression ? "fail" : slotShapeUnclear ? "warning" : "pass",
+      status: slotShapeRegression
+        ? "fail"
+        : sessionSizeUnclearRows.length > 0
+          ? "warning"
+          : "pass",
       ownerSeam: "v2_base_plan_validation.slot_shape",
       evidenceSource: "pure_v2_base_plan",
       evidence: [
         `baseValidationStatus=${pureV2.baseValidationStatus}`,
         numberEvidence("baseRegressions", pureV2.baseRegressionCount),
         `slotShapeClassification=${slotShape.classification}`,
+        numberEvidence("sessionSizeWatchSetCap", V2_BASE_SESSION_SIZE_WATCH_SET_CAP),
+        `sessionSizeUnclearRows=${
+          sessionSizeUnclearRows.map((row) => row.item).join(",") || "none"
+        }`,
         numberEvidence("v2MaxSlotSets", slotShape.v2Base.maxSlotSets),
         numberEvidence("v2ExerciseCount", slotShape.v2Base.exerciseCount),
         ...slotShape.v2Base.setsBySlot
@@ -447,6 +462,15 @@ function buildDuplicateConcentrationGate(
         `exerciseIdentityClassification=${exerciseIdentity.classification}`,
         numberEvidence("v2DuplicateExactExercises", exactDuplicateCount),
         numberEvidence("v2DuplicateClassFamilies", duplicateFamilyCount),
+        ...(exerciseIdentity.classification === "unclear"
+          ? ["watch:identity_differs_from_projection_evidence"]
+          : []),
+        ...(exactDuplicateCount > 0
+          ? ["watch:exact_duplicate_reuse_needs_variant_or_continuity_justification"]
+          : []),
+        ...(duplicateFamilyCount > 0
+          ? ["watch:class_family_reuse_needs_distinctness_policy"]
+          : []),
         ...exerciseIdentity.duplicateExactExercises.v2Base
           .slice(0, 4)
           .map((exercise) => `v2DuplicateExact:${exercise}`),

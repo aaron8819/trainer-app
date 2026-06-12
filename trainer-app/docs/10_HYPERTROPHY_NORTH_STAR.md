@@ -1613,7 +1613,7 @@ unproven leftovers without changing seed/runtime truth?
 
 Current near-term roadmap:
 
-1. Evaluate `plannerOnlyNoRepair.v2PlanQualityBenchmark` first. Its gates are support floors, direct work, lane preservation, session size, fatigue distribution, duplicate/concentration risk, materializer omissions, and Week 1 trainability. For support floors, direct work, and lane preservation, read-only pure V2 base-plan evidence is the candidate-quality source when present; legacy no-repair projection remains fallback evidence about the old path.
+1. Evaluate `plannerOnlyNoRepair.v2PlanQualityBenchmark` first. Its gates are support floors, direct work, lane preservation, session size, fatigue distribution, duplicate/concentration risk, materializer omissions, and Week 1 trainability. For support floors, direct work, lane preservation, session size, and duplicate/concentration risk, read-only pure V2 base-plan evidence is the candidate-quality source when present; legacy no-repair projection remains fallback evidence about the old path. Session-size warnings should reflect pure slot-shape risk, while duplicate/concentration warnings should name exact reuse as a watch item unless regression evidence exists.
 2. Treat missing benchmark evidence as missing, not as pass-by-absence. Do not use repaired projection as target policy.
 3. Read `repairPromotionScoreboard.interpretation.repairDeprecationReadiness` after the benchmark. Its roles are `safety_net`, `plan_authoring_leftover`, `obsolete_no_impact`, and `still_unproven`.
 4. Keep `safety_net` paths until the V2 owner seam proves equivalent safety/non-regression.

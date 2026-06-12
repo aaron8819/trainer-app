@@ -491,6 +491,18 @@ describe("V2 plan quality benchmark", () => {
         v2BasePlanCompare: pureV2BasePlanCompareFixture({
           comparisons: {
             ...baseCompare.comparisons,
+            slotShape: {
+              ...baseCompare.comparisons.slotShape,
+              classification: "unclear",
+              rows: [
+                ...baseCompare.comparisons.slotShape.rows,
+                {
+                  item: "total_weekly_sets",
+                  classification: "unclear",
+                  evidence: ["v2:66", "noRepair:58", "repaired:69"],
+                },
+              ],
+            },
             exerciseIdentity: {
               ...baseCompare.comparisons.exerciseIdentity,
               classification: "v2_preserves",
@@ -537,6 +549,10 @@ describe("V2 plan quality benchmark", () => {
           status: "pass",
           ownerSeam: "v2_base_plan_validation.slot_shape",
           evidenceSource: "pure_v2_base_plan",
+          evidence: expect.arrayContaining([
+            "slotShapeClassification=unclear",
+            "sessionSizeUnclearRows=none",
+          ]),
         }),
         expect.objectContaining({
           gate: "duplicate_concentration_risk",
@@ -544,6 +560,10 @@ describe("V2 plan quality benchmark", () => {
           ownerSeam: "v2_base_plan_validation.duplicate_distinctness",
           evidenceSource: "pure_v2_base_plan",
           candidateImpact: "needs_more_evidence",
+          evidence: expect.arrayContaining([
+            "watch:exact_duplicate_reuse_needs_variant_or_continuity_justification",
+            "v2DuplicateExact:Standing Calf Raise",
+          ]),
         }),
         expect.objectContaining({
           gate: "support_floors",
@@ -569,6 +589,49 @@ describe("V2 plan quality benchmark", () => {
     });
     expect(JSON.stringify(result)).not.toMatch(
       /slotPlanSeedJson|sessionDecisionReceipt|runtimeReplay|acceptedPlannerIntent/,
+    );
+  });
+
+  it("keeps session-size warning when pure V2 max-slot ambiguity exceeds the base cap", () => {
+    const baseCompare = pureV2BasePlanCompareFixture();
+    const result = buildV2PlanQualityBenchmark(
+      noRepairFixture({
+        v2BasePlanCompare: pureV2BasePlanCompareFixture({
+          comparisons: {
+            ...baseCompare.comparisons,
+            slotShape: {
+              ...baseCompare.comparisons.slotShape,
+              classification: "unclear",
+              v2Base: {
+                ...baseCompare.comparisons.slotShape.v2Base,
+                maxSlotSets: 22,
+              },
+              rows: [
+                ...baseCompare.comparisons.slotShape.rows,
+                {
+                  item: "max_slot_sets",
+                  classification: "unclear",
+                  evidence: ["v2:22", "repaired:21"],
+                },
+              ],
+            },
+          },
+        }),
+      }),
+    );
+
+    expect(result.gates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gate: "session_size",
+          status: "warning",
+          ownerSeam: "v2_base_plan_validation.slot_shape",
+          evidence: expect.arrayContaining([
+            "sessionSizeWatchSetCap=21",
+            "sessionSizeUnclearRows=max_slot_sets",
+          ]),
+        }),
+      ]),
     );
   });
 });

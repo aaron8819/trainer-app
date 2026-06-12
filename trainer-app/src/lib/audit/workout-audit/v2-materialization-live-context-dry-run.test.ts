@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildV2PlannerMesocyclePolicy } from "@/lib/engine/planning/v2";
+import {
+  buildV2PlannerMesocyclePolicy,
+  type V2PlannerMesocyclePolicy,
+} from "@/lib/engine/planning/v2";
 import type { V2ExerciseSelectionPlanDiagnostic } from "@/lib/api/planning-reality";
 import type { V2MaterializationExercise } from "@/lib/engine/planning/v2";
 import { buildV2ConcentrationMaterializerProjectionFromLiveContext } from "./v2-materialization-live-context-dry-run";
@@ -198,6 +201,28 @@ function concentrationDiagnostic(): V2ExerciseSelectionPlanDiagnostic {
   };
 }
 
+function withoutDonorOffsetCandidates(
+  policy: V2PlannerMesocyclePolicy,
+): V2PlannerMesocyclePolicy {
+  return {
+    ...policy,
+    slotDemandAllocationByWeek: {
+      ...policy.slotDemandAllocationByWeek,
+      weeks: policy.slotDemandAllocationByWeek.weeks.map((week) => ({
+        ...week,
+        slots: week.slots.map((slot) => ({
+          ...slot,
+          lanes: slot.lanes.map((lane) =>
+            slot.slotId === "lower_a" && lane.laneId === "squat_anchor"
+              ? lane
+              : { ...lane, allocatedMuscles: [] },
+          ),
+        })),
+      })),
+    },
+  };
+}
+
 describe("V2 live-context materializer projections", () => {
   it("measures concentration trial deltas without feeding production seams", () => {
     const result = buildV2ConcentrationMaterializerProjectionFromLiveContext({
@@ -245,10 +270,10 @@ describe("V2 live-context materializer projections", () => {
         }),
         expect.objectContaining({
           gateId: "redistribution_donor_offset",
-          status: "unknown",
+          status: "fail",
           ownerSeam: "SlotDemandAllocationByWeek",
           blockers: expect.arrayContaining([
-            "redistribution_donor_offset_not_projected",
+            "redistribution_donor_offset_regressed",
           ]),
         }),
         expect.objectContaining({
@@ -270,6 +295,27 @@ describe("V2 live-context materializer projections", () => {
       ]),
     );
     expect(result.crossWeekReadiness.rows).toHaveLength(3);
+    expect(result.donorOffsetRedistributionProjection).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+      status: "blocked",
+      summary: {
+        projectedWeekCount: 3,
+        behaviorReadinessDecision: "blocked_by_evidence",
+      },
+    });
+    expect(result.donorOffsetRedistributionProjection.rows).toHaveLength(3);
+    expect(
+      result.donorOffsetRedistributionProjection.rows.every(
+        (row) =>
+          row.source.slotId === "lower_a" &&
+          row.source.laneId === "squat_anchor" &&
+          row.donor?.slotId === "lower_b" &&
+          row.donor.laneId === "quad_support",
+      ),
+    ).toBe(true);
     expect(
       result.crossWeekReadiness.rows.every(
         (row) => row.evidenceSource === "pure_v2_materializer_projection",
@@ -280,13 +326,43 @@ describe("V2 live-context materializer projections", () => {
         "production_slot_demand_allocation_unchanged",
         "production_set_distribution_intent_unchanged",
         "production_materializer_not_consuming_trial",
-        "weekly_distribution_redistribution_not_projected",
-        "redistribution_donor_offset_not_projected",
+        "redistribution_donor_offset_regressed",
         "materializer_identity_set_or_blocker_regression",
+        "donor_offset_materializer_identity_set_or_blocker_regression",
       ]),
     );
     expect(JSON.stringify(result)).not.toMatch(
       /slotPlanSeedJson|sessionDecisionReceipt|runtimeReplay|acceptedPlannerIntent/,
+    );
+  });
+
+  it("keeps donor-offset readiness unavailable when no slot-owned donor lane exists", () => {
+    const result = buildV2ConcentrationMaterializerProjectionFromLiveContext({
+      plannerPolicy: withoutDonorOffsetCandidates(buildV2PlannerMesocyclePolicy()),
+      selectionDiagnostic: concentrationDiagnostic(),
+      inventory: INVENTORY,
+    });
+
+    expect(result.donorOffsetRedistributionProjection).toMatchObject({
+      status: "not_available",
+      summary: {
+        behaviorReadinessDecision: "not_available",
+        projectedWeekCount: 0,
+      },
+      safeForBehaviorPromotion: false,
+    });
+    expect(result.crossWeekReadiness.gates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gateId: "redistribution_donor_offset",
+          status: "unknown",
+          measured: false,
+          blockers: expect.arrayContaining([
+            "redistribution_donor_offset_not_projected",
+            "donor_offset_candidate_unavailable",
+          ]),
+        }),
+      ]),
     );
   });
 });

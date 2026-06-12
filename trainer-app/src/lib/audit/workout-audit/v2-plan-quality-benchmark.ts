@@ -435,6 +435,8 @@ function buildFatigueDistributionGate(
     concentrationProjection.consumedByProduction === false &&
     concentrationProjection.consumedByDemandOrMaterializer === false &&
     concentrationProjection.status !== "not_available";
+  const donorOffsetProjection =
+    concentrationProjection?.donorOffsetRedistributionProjection;
   const projectionEvidence = concentrationProjectionMeasured
     ? [
         `concentrationProjectionStatus=${concentrationProjection.status}`,
@@ -486,6 +488,24 @@ function buildFatigueDistributionGate(
         ),
         `nextSafeAction=${concentrationProjection.nextSafeAction}`,
         `nextSafeSlice=${concentrationProjection.crossWeekReadiness.nextSafeSlice}`,
+        `donorOffsetStatus=${
+          donorOffsetProjection?.status ?? "not_available"
+        }`,
+        `donorOffsetReadiness=${
+          donorOffsetProjection?.summary.behaviorReadinessDecision ??
+          "not_available"
+        }`,
+        numberEvidence(
+          "donorOffsetProjectedWeeks",
+          donorOffsetProjection?.summary.projectedWeekCount ?? 0,
+        ),
+        numberEvidence(
+          "donorOffsetWarningDelta",
+          donorOffsetProjection?.summary.concentrationWarningDelta ?? 0,
+        ),
+        `donorOffsetNextSafeSlice=${
+          donorOffsetProjection?.summary.nextSafeSlice ?? "not_available"
+        }`,
         "concentration_materializer_projection_is_diagnostic_only",
       ]
     : [

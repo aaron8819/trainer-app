@@ -1189,6 +1189,12 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
   const concentrationReadiness = asRecord(
     concentrationMaterializer?.crossWeekReadiness,
   );
+  const concentrationDonorOffset = asRecord(
+    concentrationMaterializer?.donorOffsetRedistributionProjection,
+  );
+  const concentrationDonorOffsetSummary = asRecord(
+    concentrationDonorOffset?.summary,
+  );
 
   return {
     summary: {
@@ -1514,6 +1520,43 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
                 nextSafeSlice: concentrationReadiness.nextSafeSlice,
               }
             : {},
+          donorOffsetRedistributionProjection: concentrationDonorOffset
+            ? {
+                status: concentrationDonorOffset.status ?? "not_available",
+                readOnly: concentrationDonorOffset.readOnly === true,
+                affectsScoringOrGeneration:
+                  concentrationDonorOffset.affectsScoringOrGeneration === true
+                    ? true
+                    : false,
+                consumedByProduction:
+                  concentrationDonorOffset.consumedByProduction === true
+                    ? true
+                    : false,
+                consumedByDemandOrMaterializer:
+                  concentrationDonorOffset.consumedByDemandOrMaterializer === true
+                    ? true
+                    : false,
+                summary: concentrationDonorOffsetSummary ?? {},
+                rowCount: countArray(concentrationDonorOffset.rows),
+                rows: asRecordArray(concentrationDonorOffset.rows).map((row) => ({
+                  week: row.week,
+                  phase: row.phase,
+                  status: row.status,
+                  source: asRecord(row.source) ?? {},
+                  donor: asRecord(row.donor) ?? null,
+                  protectedCoverageImpact:
+                    asRecord(row.protectedCoverageImpact) ?? {},
+                  materializerDelta: asRecord(row.materializerDelta) ?? {},
+                  concentrationWarningDelta: row.concentrationWarningDelta,
+                  behaviorReadinessDecision: row.behaviorReadinessDecision,
+                  blockers: asStringArray(row.blockers),
+                  nextSafeSlice: row.nextSafeSlice,
+                })),
+                blockersBeforeBehavior: asStringArray(
+                  concentrationDonorOffset.blockersBeforeBehavior,
+                ),
+              }
+            : {},
           nextSafeAction:
             typeof concentrationMaterializer.nextSafeAction === "string"
               ? concentrationMaterializer.nextSafeAction
@@ -1769,6 +1812,12 @@ function buildIndexSummary(input: {
   const concentrationReadiness = asRecord(
     concentrationMaterializer?.crossWeekReadiness,
   );
+  const concentrationDonorOffset = asRecord(
+    concentrationMaterializer?.donorOffsetRedistributionProjection,
+  );
+  const concentrationDonorOffsetSummary = asRecord(
+    concentrationDonorOffset?.summary,
+  );
   const planQualityBenchmark = asRecord(input.noRepair.v2PlanQualityBenchmark);
   const planQualitySummary = asRecord(planQualityBenchmark?.summary);
   const planQualityDeprecationReadiness = asRecord(
@@ -1849,6 +1898,17 @@ function buildIndexSummary(input: {
         : null,
     v2ConcentrationMaterializerProjectionNextSafeAction:
       concentrationMaterializer?.nextSafeAction ?? null,
+    v2ConcentrationDonorOffsetProjectionStatus:
+      concentrationDonorOffset?.status ?? "not_available",
+    v2ConcentrationDonorOffsetProjectionReadiness:
+      concentrationDonorOffsetSummary?.behaviorReadinessDecision ??
+      "not_available",
+    v2ConcentrationDonorOffsetProjectionProjectedWeeks:
+      concentrationDonorOffsetSummary?.projectedWeekCount ?? null,
+    v2ConcentrationDonorOffsetProjectionWarningDelta:
+      concentrationDonorOffsetSummary?.concentrationWarningDelta ?? null,
+    v2ConcentrationDonorOffsetProjectionNextSafeSlice:
+      concentrationDonorOffsetSummary?.nextSafeSlice ?? null,
     v2PlanQualityBenchmarkStatus:
       planQualityBenchmark?.status ?? "not_available",
     v2PlanQualityBenchmarkFailedGates:

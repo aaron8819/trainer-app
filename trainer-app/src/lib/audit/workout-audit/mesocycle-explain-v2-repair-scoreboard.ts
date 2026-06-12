@@ -29,6 +29,7 @@ type V2RepairPromotionReadoutContext = {
   v2CapacityMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2CapacityMaterializerProjection"];
   v2LaneIntentMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2LaneIntentMaterializerProjection"];
   v2SetBudgetMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2SetBudgetMaterializerProjection"];
+  v2SupportFloorMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2SupportFloorMaterializerProjection"];
   v2BasePlanShadowConsumptionTrial?: MesocycleExplainPlannerOnlyNoRepair["v2BasePlanShadowConsumptionTrial"];
 };
 
@@ -901,6 +902,10 @@ type SetBudgetGapInventory = NonNullable<
   V2RepairPromotionScoreboard["interpretation"]["setBudgetGapInventory"]
 >;
 type SetBudgetGapRow = SetBudgetGapInventory["rows"][number];
+type SupportFloorGapInventory = NonNullable<
+  V2RepairPromotionScoreboard["interpretation"]["supportFloorGapInventory"]
+>;
+type SupportFloorGapRow = SupportFloorGapInventory["rows"][number];
 
 function importanceScore(importance: GapInventoryRow["trainingImportance"]): number {
   if (importance === "high") {
@@ -1412,6 +1417,259 @@ function buildSetBudgetGapInventory(
   };
 }
 
+function supportFloorGapId(input: {
+  week: number;
+  slotId: string;
+  laneId: string;
+  muscle: string;
+}): string {
+  return `week_${input.week}:${input.slotId}:${input.laneId}:${input.muscle
+    .toLowerCase()
+    .replace(/\s+/g, "_")}`;
+}
+
+function supportFloorGapOwner(
+  owner: NonNullable<
+    V2RepairPromotionReadoutContext["v2SupportLaneProjectionDiagnostic"]
+  >["laneBoundaryRows"][number]["likelyOwnerSeam"],
+): SupportFloorGapRow["likelyOwnerSeam"] {
+  if (owner === "set_distribution_intent") {
+    return "SetDistributionIntent";
+  }
+  if (owner === "materializer_exercise_selection_capacity") {
+    return "materializer_exercise_selection_capacity";
+  }
+  if (owner === "support_lane_policy") {
+    return "support_lane_policy";
+  }
+  return "audit_readout_cleanup";
+}
+
+function supportFloorEvidenceQuality(input: {
+  row: NonNullable<
+    V2RepairPromotionReadoutContext["v2SupportLaneProjectionDiagnostic"]
+  >["laneBoundaryRows"][number];
+  directFloorDelivered: number;
+  directFloorExpected: number;
+}): SupportFloorGapRow["evidenceQuality"] {
+  if (input.row.status === "authored_support_lane_dropped") {
+    return "authored_lane_dropped";
+  }
+  if (input.directFloorDelivered < input.directFloorExpected) {
+    return "direct_floor_below";
+  }
+  if (
+    input.row.status === "not_evaluated" ||
+    input.row.likelyOwnerSeam === "none" ||
+    input.row.likelyOwnerSeam === "not_evaluated"
+  ) {
+    return "stale_or_ambiguous";
+  }
+  return "diagnostic_only";
+}
+
+function supportFloorGapClassification(input: {
+  owner: SupportFloorGapRow["likelyOwnerSeam"];
+  evidenceQuality: SupportFloorGapRow["evidenceQuality"];
+}): SupportFloorGapRow["classification"] {
+  if (input.evidenceQuality === "stale_or_ambiguous") {
+    return "stale_or_ambiguous";
+  }
+  if (input.evidenceQuality === "diagnostic_only") {
+    return "diagnostic_only_no_impact";
+  }
+  if (input.owner === "materializer_exercise_selection_capacity") {
+    return "downstream_materializer_or_capacity_issue";
+  }
+  if (
+    input.owner === "SetDistributionIntent" ||
+    input.owner === "support_lane_policy"
+  ) {
+    return "true_support_direct_floor_gap";
+  }
+  return "blocked_by_missing_evidence";
+}
+
+function supportFloorGapScore(row: Omit<SupportFloorGapRow, "rank">): number {
+  const shortfall = Math.max(
+    0,
+    row.directFloorExpected - row.directFloorDelivered,
+  );
+  return (
+    importanceScore(row.trainingImportance) +
+    (row.classification === "true_support_direct_floor_gap" ? 40 : 0) +
+    (row.evidenceQuality === "authored_lane_dropped" ? 30 : 0) +
+    (row.evidenceQuality === "direct_floor_below" ? 20 : 0) +
+    shortfall
+  );
+}
+
+function buildSupportFloorGapInventory(
+  context?: V2RepairPromotionReadoutContext,
+): SupportFloorGapInventory | undefined {
+  const diagnostic = context?.v2SupportLaneProjectionDiagnostic;
+  if (!diagnostic) {
+    return undefined;
+  }
+  const candidates = diagnostic.laneBoundaryRows.flatMap((row) => {
+    if (row.laneKind !== "direct_floor") {
+      return [];
+    }
+    const muscleRow =
+      diagnostic.muscles.find(
+        (muscle) =>
+          muscle.muscle === row.muscle &&
+          muscle.ownerSlots.includes(row.slotId),
+      ) ??
+      diagnostic.muscles.find((muscle) => muscle.muscle === row.muscle);
+    const directFloorExpected =
+      muscleRow?.directFloor ?? row.setBudget?.min ?? 0;
+    const directFloorDelivered = muscleRow?.currentDirectSets ?? 0;
+    const includeRow =
+      row.status !== "support_lane_preserved" ||
+      directFloorDelivered < directFloorExpected ||
+      row.severity === "high_risk";
+    if (!includeRow) {
+      return [];
+    }
+    const currentBudget = row.setBudget
+      ? {
+          min: row.setBudget.min,
+          preferred: row.setBudget.preferred,
+          max: row.setBudget.max,
+        }
+      : null;
+    const suspectedNeededBudget = {
+      min: Math.max(currentBudget?.min ?? 0, directFloorExpected),
+      preferred: Math.max(
+        currentBudget?.preferred ?? 0,
+        muscleRow?.preferredDirectSets ?? directFloorExpected,
+        directFloorExpected,
+      ),
+      max: Math.max(
+        currentBudget?.max ?? 0,
+        muscleRow?.preferredDirectSets ?? directFloorExpected,
+        directFloorExpected,
+      ),
+    };
+    const owner = supportFloorGapOwner(row.likelyOwnerSeam);
+    const evidenceQuality = supportFloorEvidenceQuality({
+      row,
+      directFloorDelivered,
+      directFloorExpected,
+    });
+    const base = {
+      supportFloorGapId: supportFloorGapId({
+        week: 1,
+        slotId: row.slotId,
+        laneId: row.laneId,
+        muscle: row.muscle,
+      }),
+      week: 1 as const,
+      slotId: row.slotId,
+      laneId: row.laneId,
+      muscle: row.muscle,
+      directFloorExpected,
+      directFloorDelivered,
+      currentBudget,
+      suspectedNeededBudget,
+      likelyOwnerSeam: owner,
+      evidenceQuality,
+      trainingImportance:
+        directFloorDelivered < directFloorExpected || row.severity === "high_risk"
+          ? ("high" as const)
+          : ("medium" as const),
+      evidence: uniqueSorted([
+        `week=1`,
+        `slot=${row.slotId}`,
+        `lane=${row.laneId}`,
+        `muscle=${row.muscle}`,
+        `status=${row.status}`,
+        `severity=${row.severity}`,
+        `directFloorExpected=${directFloorExpected}`,
+        `directFloorDelivered=${directFloorDelivered}`,
+        `directFloorStatus=${muscleRow?.directFloorStatus ?? "unknown"}`,
+        `supportPolicyAuthored=${row.supportPolicyAuthored}`,
+        `setDistributionBudgeted=${row.setDistributionBudgeted}`,
+        `exerciseSelectionPreserved=${row.exerciseSelectionPreserved}`,
+        `owner=${owner}`,
+        ...(currentBudget
+          ? [
+              `currentBudget=${currentBudget.min}/${currentBudget.preferred}/${currentBudget.max}`,
+              `suspectedNeededBudget=${suspectedNeededBudget.min}/${suspectedNeededBudget.preferred}/${suspectedNeededBudget.max}`,
+            ]
+          : [`currentBudget=missing`]),
+        ...row.evidence.slice(0, 8),
+        ...(muscleRow ? muscleRow.rationale.slice(0, 4) : []),
+      ]),
+      missingProof: uniqueSorted([
+        "support_floor_materializer_projection_delta",
+        "identity_set_blocker_non_regression",
+        "session_size_non_regression",
+        "cross_week_direct_floor_projection",
+        "seed_runtime_non_consumption_gate",
+      ]),
+      nextMeasurement: "measure_support_floor_materializer_projection",
+      classification: "blocked_by_missing_evidence" as const,
+    };
+    const classified = {
+      ...base,
+      classification: supportFloorGapClassification({
+        owner,
+        evidenceQuality,
+      }),
+    };
+    return [{ ...classified, score: supportFloorGapScore(classified) }];
+  });
+  const rows = candidates
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        left.supportFloorGapId.localeCompare(right.supportFloorGapId),
+    )
+    .map((row, index) => {
+      const { score, ...rest } = row;
+      void score;
+      return { ...rest, rank: index + 1 };
+    });
+  if (rows.length === 0) {
+    return undefined;
+  }
+  const ownerCounts = rows.reduce<SupportFloorGapInventory["summary"]["ownerCounts"]>(
+    (counts, row) => {
+      counts[row.likelyOwnerSeam] = (counts[row.likelyOwnerSeam] ?? 0) + 1;
+      return counts;
+    },
+    {},
+  );
+  return {
+    version: 1,
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByProduction: false,
+    source: "v2_support_lane_projection_diagnostic",
+    summary: {
+      gapRowCount: rows.length,
+      setDistributionIntentOwnedCount: rows.filter(
+        (row) => row.likelyOwnerSeam === "SetDistributionIntent",
+      ).length,
+      downstreamMaterializerOrCapacityCount: rows.filter(
+        (row) =>
+          row.likelyOwnerSeam ===
+          "materializer_exercise_selection_capacity",
+      ).length,
+      diagnosticOnlyOrStaleCount: rows.filter(
+        (row) =>
+          row.classification === "diagnostic_only_no_impact" ||
+          row.classification === "stale_or_ambiguous",
+      ).length,
+      selectedGapId: rows[0]?.supportFloorGapId ?? null,
+      ownerCounts,
+    },
+    rows,
+  };
+}
+
 function setBudgetProjectionMatchesRow(input: {
   row: SetBudgetGapRow;
   projection?: V2RepairPromotionReadoutContext["v2SetBudgetMaterializerProjection"];
@@ -1451,6 +1709,69 @@ export function selectSetBudgetMaterializerTarget(
         currentBudget: row.currentBudget,
         suspectedNeededBudget: row.suspectedNeededBudget,
         muscles: row.muscles,
+      }
+    : undefined;
+}
+
+function supportFloorProjectionMatchesRow(input: {
+  row: SupportFloorGapRow;
+  projection?: V2RepairPromotionReadoutContext["v2SupportFloorMaterializerProjection"];
+}): boolean {
+  return Boolean(
+    input.projection &&
+      input.projection.targetLane.supportFloorGapId ===
+        input.row.supportFloorGapId,
+  );
+}
+
+function selectSupportFloorGapRow(input: {
+  inventory?: SupportFloorGapInventory;
+  projection?: V2RepairPromotionReadoutContext["v2SupportFloorMaterializerProjection"];
+}): SupportFloorGapRow | undefined {
+  if (!input.inventory) {
+    return undefined;
+  }
+  const projectedRow = input.inventory.rows.find((row) =>
+    supportFloorProjectionMatchesRow({ row, projection: input.projection }),
+  );
+  return projectedRow ?? input.inventory.rows[0];
+}
+
+export function selectSupportFloorMaterializerTarget(
+  context: V2RepairPromotionReadoutContext,
+): {
+  week: number;
+  slotId: string;
+  laneId: string;
+  trialId: string;
+  supportFloorGapId: string;
+  muscle: string;
+  directFloorExpected: number;
+  directFloorDelivered: number;
+  directFloorStatus: string;
+  likelyOwnerSeam: string;
+  currentBudget?: { min: number; preferred: number; max: number };
+  suspectedNeededBudget: { min: number; preferred: number; max: number };
+} | undefined {
+  const inventory = buildSupportFloorGapInventory(context);
+  const row = selectSupportFloorGapRow({ inventory });
+  return row
+    ? {
+        week: row.week,
+        slotId: row.slotId,
+        laneId: row.laneId,
+        trialId: `${row.slotId}_${row.laneId}_support_floor_shadow`,
+        supportFloorGapId: row.supportFloorGapId,
+        muscle: row.muscle,
+        directFloorExpected: row.directFloorExpected,
+        directFloorDelivered: row.directFloorDelivered,
+        directFloorStatus:
+          row.directFloorDelivered < row.directFloorExpected
+            ? "below"
+            : "met_or_diagnostic",
+        likelyOwnerSeam: row.likelyOwnerSeam,
+        ...(row.currentBudget ? { currentBudget: row.currentBudget } : {}),
+        suspectedNeededBudget: row.suspectedNeededBudget,
       }
     : undefined;
 }
@@ -1630,18 +1951,70 @@ function setBudgetMaterializerMissingGates(
   ]);
 }
 
+function supportFloorMaterializerGateSummary(
+  projection: NonNullable<
+    V2RepairPromotionReadoutContext["v2SupportFloorMaterializerProjection"]
+  >,
+): string[] {
+  return [
+    `supportFloorTrialId=${projection.trialId}`,
+    `supportFloorStatus=${projection.status}`,
+    `selectedSupportFloorGapId=${projection.targetLane.supportFloorGapId}`,
+    `candidateImpact.selectedIdentityDelta=${projection.candidateImpact.selectedIdentityDelta}`,
+    `candidateImpact.totalSetDelta=${projection.candidateImpact.totalSetDelta}`,
+    `candidateImpact.targetLaneSetDelta=${projection.candidateImpact.targetLaneSetDelta}`,
+    `candidateImpact.targetLaneExerciseDelta=${projection.candidateImpact.targetLaneExerciseDelta}`,
+    `candidateImpact.materializerBlockerDelta=${projection.candidateImpact.materializerBlockerDelta}`,
+    `candidateImpact.regressionCount=${projection.candidateImpact.regressionCount}`,
+    `materializer.baseline=${projection.materializer.baselineStatus}`,
+    `materializer.trial=${projection.materializer.trialStatus}`,
+    `targetLane.currentBudget=${projection.targetLane.currentBudget.min}/${projection.targetLane.currentBudget.preferred}/${projection.targetLane.currentBudget.max}`,
+    `targetLane.trialBudget=${projection.targetLane.trialBudget.min}/${projection.targetLane.trialBudget.preferred}/${projection.targetLane.trialBudget.max}`,
+    `consumedByProduction=${projection.consumedByProduction}`,
+    `consumedByDemandOrMaterializer=${projection.consumedByDemandOrMaterializer}`,
+  ];
+}
+
+function supportFloorMaterializerMissingGates(
+  projection?: V2RepairPromotionReadoutContext["v2SupportFloorMaterializerProjection"],
+): string[] {
+  if (!projection) {
+    return [
+      "support_floor_materializer_projection_delta",
+      "identity_set_blocker_non_regression",
+      "seed_runtime_non_consumption_gate",
+    ];
+  }
+  return uniqueSorted([
+    ...projection.blockersBeforeBehavior,
+    ...(projection.materializer.trialSeedShapeCompatible
+      ? []
+      : ["trial_seed_shape_incompatible"]),
+    ...(projection.consumedByProduction
+      ? ["projection_must_not_be_consumed_by_production"]
+      : []),
+    ...(projection.consumedByDemandOrMaterializer
+      ? ["projection_must_not_feed_demand_or_materializer_policy"]
+      : []),
+  ]);
+}
+
 function buildGapInventory(input: {
   currentV2PolicyGap: V2RepairPromotionScoreboard["interpretation"]["currentV2PolicyGap"];
   taxonomyMismatchInventory?: TaxonomyMismatchInventory;
   setBudgetGapInventory?: SetBudgetGapInventory;
+  supportFloorGapInventory?: SupportFloorGapInventory;
   context?: V2RepairPromotionReadoutContext;
 }): V2RepairPromotionScoreboard["interpretation"]["gapInventory"] {
   const gap = input.currentV2PolicyGap;
   const capacityProjection = input.context?.v2CapacityMaterializerProjection;
   const taxonomyProjection = input.context?.v2LaneIntentMaterializerProjection;
   const setBudgetProjection = input.context?.v2SetBudgetMaterializerProjection;
+  const supportFloorProjection =
+    input.context?.v2SupportFloorMaterializerProjection;
   const taxonomyInventory = input.taxonomyMismatchInventory;
   const setBudgetInventory = input.setBudgetGapInventory;
+  const supportFloorInventory = input.supportFloorGapInventory;
   const selectedTaxonomyRow = selectTaxonomyMismatchRow({
     inventory: taxonomyInventory,
     projection: taxonomyProjection,
@@ -1689,26 +2062,85 @@ function buildGapInventory(input: {
     );
   }
 
-  if (gap.supportDirectFloorBlockerCount > 0) {
+  if (gap.supportDirectFloorBlockerCount > 0 || supportFloorProjection) {
+    const selectedSupportFloorRow = selectSupportFloorGapRow({
+      inventory: supportFloorInventory,
+      projection: supportFloorProjection,
+    });
+    const projectionMatches =
+      selectedSupportFloorRow &&
+      supportFloorProjectionMatchesRow({
+        row: selectedSupportFloorRow,
+        projection: supportFloorProjection,
+      });
+    const measuredNoImpact =
+      projectionMatches &&
+      supportFloorProjection &&
+      supportFloorProjection.candidateImpact.selectedIdentityDelta === 0 &&
+      supportFloorProjection.candidateImpact.totalSetDelta === 0 &&
+      supportFloorProjection.candidateImpact.targetLaneSetDelta === 0 &&
+      supportFloorProjection.candidateImpact.targetLaneExerciseDelta === 0 &&
+      supportFloorProjection.candidateImpact.materializerBlockerDelta === 0 &&
+      supportFloorProjection.candidateImpact.regressionCount === 0;
     candidates.push(
       buildGapCandidate({
         gapId: "support_direct_floor",
         description:
           "Support muscles still need direct-floor ownership separated from collateral credit.",
-        likelyOwnerSeam: "SetDistributionIntent",
-        evidenceQuality: "diagnostic_count",
-        trainingImportance: "high",
-        gapCount: gap.supportDirectFloorBlockerCount,
-        currentEvidence: [
+        likelyOwnerSeam:
+          selectedSupportFloorRow?.likelyOwnerSeam ?? "SetDistributionIntent",
+        evidenceQuality: projectionMatches
+          ? "measured_materializer_projection"
+          : "diagnostic_count",
+        trainingImportance: measuredNoImpact ? "medium" : "high",
+        gapCount:
+          supportFloorInventory?.summary.gapRowCount ??
+          gap.supportDirectFloorBlockerCount,
+        currentEvidence: uniqueSorted([
           `supportDirectFloorBlockerCount=${gap.supportDirectFloorBlockerCount}`,
-        ],
-        missingProof: [
-          "owner_specific_projection_delta",
-          "materializer_non_regression",
-          "cross_week_direct_floor_projection",
-        ],
-        measurableNextStep: "measure_support_floor_materializer_projection",
-        status: "blocked_by_missing_evidence",
+          ...(supportFloorInventory
+            ? [
+                `inventoryRows=${supportFloorInventory.summary.gapRowCount}`,
+                `setDistributionOwned=${supportFloorInventory.summary.setDistributionIntentOwnedCount}`,
+                `downstreamOrCapacity=${supportFloorInventory.summary.downstreamMaterializerOrCapacityCount}`,
+              ]
+            : []),
+          ...(selectedSupportFloorRow
+            ? [
+                `selectedSupportFloorGapId=${selectedSupportFloorRow.supportFloorGapId}`,
+                `selectedLane=${selectedSupportFloorRow.slotId}:${selectedSupportFloorRow.laneId}`,
+                `selectedMuscle=${selectedSupportFloorRow.muscle}`,
+                `selectedOwner=${selectedSupportFloorRow.likelyOwnerSeam}`,
+                `directFloorExpected=${selectedSupportFloorRow.directFloorExpected}`,
+                `directFloorDelivered=${selectedSupportFloorRow.directFloorDelivered}`,
+                ...(selectedSupportFloorRow.currentBudget
+                  ? [
+                      `selectedBudget=${selectedSupportFloorRow.currentBudget.min}/${selectedSupportFloorRow.currentBudget.preferred}/${selectedSupportFloorRow.currentBudget.max}`,
+                    ]
+                  : [`selectedBudget=missing`]),
+                `suspectedNeededBudget=${selectedSupportFloorRow.suspectedNeededBudget.min}/${selectedSupportFloorRow.suspectedNeededBudget.preferred}/${selectedSupportFloorRow.suspectedNeededBudget.max}`,
+              ]
+            : []),
+          ...(projectionMatches && supportFloorProjection
+            ? supportFloorMaterializerGateSummary(supportFloorProjection)
+            : []),
+        ]),
+        missingProof: projectionMatches
+          ? supportFloorMaterializerMissingGates(supportFloorProjection)
+          : selectedSupportFloorRow?.missingProof ?? [
+              "support_floor_materializer_projection_delta",
+              "identity_set_blocker_non_regression",
+              "cross_week_direct_floor_projection",
+            ],
+        measurableNextStep:
+          projectionMatches && supportFloorProjection
+            ? supportFloorProjection.nextSafeAction
+            : "measure_support_floor_materializer_projection",
+        status: measuredNoImpact
+          ? "measured_no_candidate_impact"
+          : projectionMatches
+            ? "selected_for_measured_proof"
+            : "blocked_by_missing_evidence",
       }),
     );
   }
@@ -1949,10 +2381,13 @@ function buildSelectedGapProof(input: {
   gapInventory: ReadonlyArray<GapInventoryRow>;
   taxonomyMismatchInventory?: TaxonomyMismatchInventory;
   setBudgetGapInventory?: SetBudgetGapInventory;
+  supportFloorGapInventory?: SupportFloorGapInventory;
   context?: V2RepairPromotionReadoutContext;
 }): V2RepairPromotionScoreboard["interpretation"]["selectedGapProof"] {
   const taxonomyProjection = input.context?.v2LaneIntentMaterializerProjection;
   const setBudgetProjection = input.context?.v2SetBudgetMaterializerProjection;
+  const supportFloorProjection =
+    input.context?.v2SupportFloorMaterializerProjection;
   const selectedTaxonomyRow = selectTaxonomyMismatchRow({
     inventory: input.taxonomyMismatchInventory,
     projection: taxonomyProjection,
@@ -1961,21 +2396,36 @@ function buildSelectedGapProof(input: {
     inventory: input.setBudgetGapInventory,
     projection: setBudgetProjection,
   });
+  const selectedSupportFloorRow = selectSupportFloorGapRow({
+    inventory: input.supportFloorGapInventory,
+    projection: supportFloorProjection,
+  });
   const taxonomyGap = input.gapInventory.find(
     (row) => row.gapId === "class_taxonomy_mismatch",
   );
   const setBudgetGap = input.gapInventory.find(
     (row) => row.gapId === "set_distribution_budget",
   );
+  const supportFloorGap = input.gapInventory.find(
+    (row) => row.gapId === "support_direct_floor",
+  );
+  const capacityGap = input.gapInventory.find(
+    (row) => row.gapId === "selection_capacity_pressure",
+  );
+  const capacityMeasuredNoImpact =
+    capacityGap?.status === "measured_no_candidate_impact";
   const taxonomyMeasuredNoDrift = taxonomyGap?.status === "measured_no_drift";
+  const setBudgetMeasuredNoImpact =
+    setBudgetGap?.status === "measured_no_candidate_impact";
   const selected =
+    (supportFloorGap && setBudgetMeasuredNoImpact
+      ? supportFloorGap
+      : undefined) ??
     (setBudgetGap && (taxonomyMeasuredNoDrift || !taxonomyGap)
       ? setBudgetGap
       : undefined) ??
     (taxonomyGap &&
-    (input.gapInventory[0]?.gapId === "selection_capacity_pressure"
-      ? input.gapInventory[0].status === "measured_no_candidate_impact"
-      : true)
+    (capacityGap ? capacityMeasuredNoImpact : true)
       ? taxonomyGap
       : undefined) ??
     input.gapInventory.find(
@@ -2139,6 +2589,73 @@ function buildSelectedGapProof(input: {
           : selected.measurableNextStep,
     };
   }
+  if (selected.gapId === "support_direct_floor") {
+    const projectionMatches =
+      selectedSupportFloorRow &&
+      supportFloorProjectionMatchesRow({
+        row: selectedSupportFloorRow,
+        projection: supportFloorProjection,
+      });
+    const noImpact =
+      projectionMatches &&
+      supportFloorProjection &&
+      supportFloorProjection.candidateImpact.selectedIdentityDelta === 0 &&
+      supportFloorProjection.candidateImpact.totalSetDelta === 0 &&
+      supportFloorProjection.candidateImpact.targetLaneSetDelta === 0 &&
+      supportFloorProjection.candidateImpact.targetLaneExerciseDelta === 0 &&
+      supportFloorProjection.candidateImpact.materializerBlockerDelta === 0 &&
+      supportFloorProjection.candidateImpact.regressionCount === 0;
+    const materialDelta =
+      projectionMatches &&
+      supportFloorProjection &&
+      !noImpact &&
+      (supportFloorProjection.candidateImpact.selectedIdentityDelta !== 0 ||
+        supportFloorProjection.candidateImpact.totalSetDelta !== 0 ||
+        supportFloorProjection.candidateImpact.targetLaneSetDelta !== 0 ||
+        supportFloorProjection.candidateImpact.targetLaneExerciseDelta !== 0 ||
+        supportFloorProjection.candidateImpact.materializerBlockerDelta !== 0);
+    return {
+      gapId: selected.gapId,
+      ...(selectedSupportFloorRow
+        ? {
+            selectedSupportFloorGapId:
+              selectedSupportFloorRow.supportFloorGapId,
+          }
+        : {}),
+      classification: noImpact
+        ? "diagnostic_only_no_impact"
+        : materialDelta
+          ? selectedSupportFloorRow?.classification ??
+            "true_support_direct_floor_gap"
+          : selectedSupportFloorRow?.classification ??
+            "blocked_by_missing_evidence",
+      proofResult: noImpact
+        ? "measured_no_candidate_impact"
+        : projectionMatches
+          ? "measured_with_missing_gates"
+          : "blocked_by_missing_evidence",
+      rightfulOwnerSeam:
+        selectedSupportFloorRow?.likelyOwnerSeam ?? selected.likelyOwnerSeam,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      safeForBehaviorPromotion: false,
+      measuredEvidence: uniqueSorted([
+        ...selected.currentEvidence,
+        ...(selectedSupportFloorRow ? selectedSupportFloorRow.evidence : []),
+        ...(projectionMatches && supportFloorProjection
+          ? supportFloorMaterializerGateSummary(supportFloorProjection)
+          : []),
+      ]),
+      missingGates: projectionMatches
+        ? supportFloorMaterializerMissingGates(supportFloorProjection)
+        : selectedSupportFloorRow?.missingProof ?? selected.missingProof,
+      nextSafeAction:
+        projectionMatches && supportFloorProjection
+          ? supportFloorProjection.nextSafeAction
+          : selected.measurableNextStep,
+    };
+  }
   return {
     gapId: selected.gapId,
     classification:
@@ -2270,16 +2787,19 @@ export function buildRepairPromotionScoreboard(
     });
   const taxonomyMismatchInventory = buildTaxonomyMismatchInventory(v2Context);
   const setBudgetGapInventory = buildSetBudgetGapInventory(v2Context);
+  const supportFloorGapInventory = buildSupportFloorGapInventory(v2Context);
   const gapInventory = buildGapInventory({
     currentV2PolicyGap,
     taxonomyMismatchInventory,
     setBudgetGapInventory,
+    supportFloorGapInventory,
     context: v2Context,
   });
   const selectedGapProof = buildSelectedGapProof({
     gapInventory,
     taxonomyMismatchInventory,
     setBudgetGapInventory,
+    supportFloorGapInventory,
     context: v2Context,
   });
 
@@ -2312,6 +2832,7 @@ export function buildRepairPromotionScoreboard(
       gapInventory,
       ...(taxonomyMismatchInventory ? { taxonomyMismatchInventory } : {}),
       ...(setBudgetGapInventory ? { setBudgetGapInventory } : {}),
+      ...(supportFloorGapInventory ? { supportFloorGapInventory } : {}),
       ...(selectedGapProof ? { selectedGapProof } : {}),
       legacyRepairQuarantine: {
         readOnly: true,

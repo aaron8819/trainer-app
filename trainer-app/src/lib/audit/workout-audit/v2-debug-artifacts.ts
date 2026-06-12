@@ -681,6 +681,9 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
   const setBudgetMaterializer = asRecord(
     noRepair.v2SetBudgetMaterializerProjection,
   );
+  const supportFloorMaterializer = asRecord(
+    noRepair.v2SupportFloorMaterializerProjection,
+  );
   if (
     !v2Plan &&
     !setDistribution &&
@@ -689,7 +692,8 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
     !shadowConsumption &&
     !capacityMaterializer &&
     !laneIntentMaterializer &&
-    !setBudgetMaterializer
+    !setBudgetMaterializer &&
+    !supportFloorMaterializer
   ) {
     return null;
   }
@@ -733,6 +737,9 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
       : {}),
     ...(setBudgetMaterializer
       ? { v2SetBudgetMaterializerProjection: setBudgetMaterializer }
+      : {}),
+    ...(supportFloorMaterializer
+      ? { v2SupportFloorMaterializerProjection: supportFloorMaterializer }
       : {}),
     materializedSeedWriteStatus: "not_available_in_audit_artifact",
   };
@@ -1152,6 +1159,12 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
   const setBudgetMaterializerImpact = asRecord(
     setBudgetMaterializer?.candidateImpact,
   );
+  const supportFloorMaterializer = asRecord(
+    noRepair.v2SupportFloorMaterializerProjection,
+  );
+  const supportFloorMaterializerImpact = asRecord(
+    supportFloorMaterializer?.candidateImpact,
+  );
 
   return {
     summary: {
@@ -1352,6 +1365,64 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
             typeof setBudgetMaterializer.nextSafeAction === "string"
               ? setBudgetMaterializer.nextSafeAction
               : "inspect_set_budget_materializer_projection",
+        }
+      : undefined,
+    v2SupportFloorMaterializerProjection: supportFloorMaterializer
+      ? {
+          status: supportFloorMaterializer.status ?? "not_available",
+          readOnly: supportFloorMaterializer.readOnly === true,
+          affectsScoringOrGeneration:
+            supportFloorMaterializer.affectsScoringOrGeneration === true
+              ? true
+              : false,
+          consumedByProduction:
+            supportFloorMaterializer.consumedByProduction === true
+              ? true
+              : false,
+          consumedByDemandOrMaterializer:
+            supportFloorMaterializer.consumedByDemandOrMaterializer === true
+              ? true
+              : false,
+          projectionMode:
+            supportFloorMaterializer.projectionMode ??
+            "support_direct_floor_shadow_materializer_dry_run",
+          trialId: supportFloorMaterializer.trialId ?? null,
+          targetLane: pickRecordFields(
+            supportFloorMaterializer.targetLane,
+            [
+              "scopedLaneId",
+              "week",
+              "slotId",
+              "laneId",
+              "supportFloorGapId",
+              "muscle",
+              "directFloorExpected",
+              "directFloorDelivered",
+              "currentBudget",
+              "trialBudget",
+              "suspectedNeededBudget",
+              "likelyOwnerSeam",
+            ],
+          ),
+          candidateImpact: supportFloorMaterializerImpact
+            ? {
+                selectedIdentityDelta:
+                  supportFloorMaterializerImpact.selectedIdentityDelta,
+                totalSetDelta: supportFloorMaterializerImpact.totalSetDelta,
+                targetLaneSetDelta:
+                  supportFloorMaterializerImpact.targetLaneSetDelta,
+                targetLaneExerciseDelta:
+                  supportFloorMaterializerImpact.targetLaneExerciseDelta,
+                materializerBlockerDelta:
+                  supportFloorMaterializerImpact.materializerBlockerDelta,
+                regressionCount:
+                  supportFloorMaterializerImpact.regressionCount,
+              }
+            : {},
+          nextSafeAction:
+            typeof supportFloorMaterializer.nextSafeAction === "string"
+              ? supportFloorMaterializer.nextSafeAction
+              : "inspect_support_floor_materializer_projection",
         }
       : undefined,
     v2TargetVsNoRepairDiff: {
@@ -1585,6 +1656,12 @@ function buildIndexSummary(input: {
   const setBudgetMaterializerImpact = asRecord(
     setBudgetMaterializer?.candidateImpact,
   );
+  const supportFloorMaterializer = asRecord(
+    input.noRepair.v2SupportFloorMaterializerProjection,
+  );
+  const supportFloorMaterializerImpact = asRecord(
+    supportFloorMaterializer?.candidateImpact,
+  );
   return {
     status: asRecord(input.noRepair.summary)?.status ?? "unknown",
     basicMesocycleShapeStatus:
@@ -1626,6 +1703,14 @@ function buildIndexSummary(input: {
       setBudgetMaterializerImpact?.totalSetDelta ?? null,
     v2SetBudgetMaterializerProjectionTargetLaneSetDelta:
       setBudgetMaterializerImpact?.targetLaneSetDelta ?? null,
+    v2SupportFloorMaterializerProjectionStatus:
+      supportFloorMaterializer?.status ?? "not_available",
+    v2SupportFloorMaterializerProjectionIdentityDelta:
+      supportFloorMaterializerImpact?.selectedIdentityDelta ?? null,
+    v2SupportFloorMaterializerProjectionTotalSetDelta:
+      supportFloorMaterializerImpact?.totalSetDelta ?? null,
+    v2SupportFloorMaterializerProjectionTargetLaneSetDelta:
+      supportFloorMaterializerImpact?.targetLaneSetDelta ?? null,
     writtenShardCount: input.shardMetadata.filter(
       (shard) => shard.status === "written",
     ).length,

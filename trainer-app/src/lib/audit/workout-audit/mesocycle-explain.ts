@@ -82,6 +82,7 @@ import { MESOCYCLE_EXPLAIN_AUDIT_PAYLOAD_VERSION } from "./constants";
 import {
   buildRepairPromotionScoreboard,
   selectSetBudgetMaterializerTarget,
+  selectSupportFloorMaterializerTarget,
   selectTaxonomyMismatchMaterializerTarget,
 } from "./mesocycle-explain-v2-repair-scoreboard";
 import {
@@ -90,6 +91,7 @@ import {
   buildV2CapacityMaterializerProjectionFromLiveContext,
   buildV2LaneIntentMaterializerProjectionFromLiveContext,
   buildV2SetBudgetMaterializerProjectionFromLiveContext,
+  buildV2SupportFloorMaterializerProjectionFromLiveContext,
   normalizeLiveInventoryForV2Materialization,
 } from "./v2-materialization-live-context-dry-run";
 import {
@@ -8751,6 +8753,60 @@ export function buildPlannerOnlyNoRepairComparison(input: {
           },
         })
       : undefined;
+  const supportFloorMaterializerTarget = selectSupportFloorMaterializerTarget({
+    weeklyMuscleTotals,
+    slotPlans,
+    v2MesocyclePlan,
+    v2SetDistributionIntent,
+    v2TargetVsNoRepairDiff,
+    v2SupportLaneProjectionDiagnostic,
+    v2ExerciseSelectionPlanDiagnostic,
+    ...(v2CapacityMaterializerProjection
+      ? { v2CapacityMaterializerProjection }
+      : {}),
+    ...(v2LaneIntentMaterializerProjection
+      ? { v2LaneIntentMaterializerProjection }
+      : {}),
+    ...(v2SetBudgetMaterializerProjection
+      ? { v2SetBudgetMaterializerProjection }
+      : {}),
+    ...(v2BasePlanShadowConsumptionTrial
+      ? { v2BasePlanShadowConsumptionTrial }
+      : {}),
+  });
+  const v2SupportFloorMaterializerProjection =
+    input.v2BasePlanCompareContext &&
+    supportFloorMaterializerTarget &&
+    isV2PlannerSlotId(supportFloorMaterializerTarget.slotId)
+      ? buildV2SupportFloorMaterializerProjectionFromLiveContext({
+          plannerPolicy,
+          ...input.v2BasePlanCompareContext,
+          targetLane: {
+            week: supportFloorMaterializerTarget.week,
+            slotId: supportFloorMaterializerTarget.slotId,
+            laneId: supportFloorMaterializerTarget.laneId,
+            trialId: supportFloorMaterializerTarget.trialId,
+            supportFloorGapId:
+              supportFloorMaterializerTarget.supportFloorGapId,
+            muscle: supportFloorMaterializerTarget.muscle,
+            directFloorExpected:
+              supportFloorMaterializerTarget.directFloorExpected,
+            directFloorDelivered:
+              supportFloorMaterializerTarget.directFloorDelivered,
+            directFloorStatus:
+              supportFloorMaterializerTarget.directFloorStatus,
+            likelyOwnerSeam: supportFloorMaterializerTarget.likelyOwnerSeam,
+            ...(supportFloorMaterializerTarget.currentBudget
+              ? {
+                  currentBudget:
+                    supportFloorMaterializerTarget.currentBudget,
+                }
+              : {}),
+            suspectedNeededBudget:
+              supportFloorMaterializerTarget.suspectedNeededBudget,
+          },
+        })
+      : undefined;
   const lowAxialHipExtensionLimitation =
     buildLowAxialHipExtensionLimitation({
       noRepair,
@@ -8791,6 +8847,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         : {}),
       ...(v2SetBudgetMaterializerProjection
         ? { v2SetBudgetMaterializerProjection }
+        : {}),
+      ...(v2SupportFloorMaterializerProjection
+        ? { v2SupportFloorMaterializerProjection }
         : {}),
       ...(v2BasePlanShadowConsumptionTrial
         ? { v2BasePlanShadowConsumptionTrial }
@@ -8834,6 +8893,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       : {}),
     ...(v2SetBudgetMaterializerProjection
       ? { v2SetBudgetMaterializerProjection }
+      : {}),
+    ...(v2SupportFloorMaterializerProjection
+      ? { v2SupportFloorMaterializerProjection }
       : {}),
     plannerOwnedAccumulationProjection,
     v2ExerciseSelectionPlanDiagnostic,

@@ -1898,12 +1898,55 @@ function formatSetBudgetGapInventory(
   return `rows=${inventory.summary.gapRowCount ?? 0} setDistributionOwned=${inventory.summary.setDistributionIntentOwnedCount ?? 0} downstreamOrCapacity=${inventory.summary.downstreamMaterializerOrCapacityCount ?? 0} diagnosticOrStale=${inventory.summary.diagnosticOnlyOrStaleCount ?? 0} selected=${inventory.summary.selectedGapId ?? "none"} owners=${formatCountRecord(inventory.summary.ownerCounts, 4)}`;
 }
 
+function formatSupportFloorGapInventory(
+  inventory:
+    | {
+        summary?: {
+          gapRowCount?: number;
+          setDistributionIntentOwnedCount?: number;
+          downstreamMaterializerOrCapacityCount?: number;
+          diagnosticOnlyOrStaleCount?: number;
+          selectedGapId?: string | null;
+          ownerCounts?: Record<string, number>;
+        };
+        rows?: ReadonlyArray<{
+          rank?: number;
+          supportFloorGapId?: string;
+          week?: number;
+          slotId?: string;
+          laneId?: string;
+          muscle?: string;
+          directFloorExpected?: number;
+          directFloorDelivered?: number;
+          likelyOwnerSeam?: string;
+          evidenceQuality?: string;
+          trainingImportance?: string;
+          classification?: string;
+        }>;
+      }
+    | null
+    | undefined
+): string {
+  if (!inventory?.summary) {
+    return "not_available";
+  }
+  const selectedId = inventory.summary.selectedGapId;
+  const selectedRow = asArray(inventory.rows).find(
+    (row) => row.supportFloorGapId === selectedId
+  );
+  const selectedDetail = selectedRow
+    ? ` selectedDetail=week_${selectedRow.week ?? "?"}:${selectedRow.slotId ?? "unknown"}:${selectedRow.laneId ?? "unknown"}:${selectedRow.muscle ?? "unknown"} floor=${selectedRow.directFloorDelivered ?? "?"}/${selectedRow.directFloorExpected ?? "?"} owner=${selectedRow.likelyOwnerSeam ?? "unknown"} evidence=${selectedRow.evidenceQuality ?? "unknown"} class=${selectedRow.classification ?? "unknown"}`
+    : "";
+  return `rows=${inventory.summary.gapRowCount ?? 0} setDistributionOwned=${inventory.summary.setDistributionIntentOwnedCount ?? 0} downstreamOrCapacity=${inventory.summary.downstreamMaterializerOrCapacityCount ?? 0} diagnosticOrStale=${inventory.summary.diagnosticOnlyOrStaleCount ?? 0} selected=${selectedId ?? "none"} owners=${formatCountRecord(inventory.summary.ownerCounts, 4)}${selectedDetail}`;
+}
+
 function formatSelectedGapProof(
   proof:
     | {
         gapId: string;
         selectedMismatchId?: string;
         selectedSetBudgetGapId?: string;
+        selectedSupportFloorGapId?: string;
         classification: string;
         proofResult: string;
         rightfulOwnerSeam: string;
@@ -1918,7 +1961,10 @@ function formatSelectedGapProof(
   if (!proof) {
     return "not_available";
   }
-  const selectedId = proof.selectedMismatchId ?? proof.selectedSetBudgetGapId;
+  const selectedId =
+    proof.selectedMismatchId ??
+    proof.selectedSetBudgetGapId ??
+    proof.selectedSupportFloorGapId;
   return `${proof.gapId}:${proof.proofResult}@${proof.rightfulOwnerSeam} classification=${proof.classification}${selectedId ? ` selected=${selectedId}` : ""} consumedByProduction=${proof.consumedByProduction ? "yes" : "no"} safeForBehavior=${proof.safeForBehaviorPromotion ? "yes" : "no"} missing=${formatNameList(proof.missingGates, 4)} next=${proof.nextSafeAction}`;
 }
 
@@ -3015,6 +3061,8 @@ export function buildPlanningRealitySummary(input: {
     repairPromotionScoreboard?.interpretation.selectedGapProof;
   const taxonomyMismatchInventory =
     repairPromotionScoreboard?.interpretation.taxonomyMismatchInventory;
+  const supportFloorGapInventory =
+    repairPromotionScoreboard?.interpretation.supportFloorGapInventory;
   const preselectionDemands = asArray(
     input.artifact.mesocycleExplain?.preview?.projectionDiagnostics?.preselectionDemands
   );
@@ -3174,6 +3222,11 @@ export function buildPlanningRealitySummary(input: {
   if (taxonomyMismatchInventory) {
     lines.push(
       `- taxonomyMismatchInventory: ${formatTaxonomyMismatchInventory(taxonomyMismatchInventory)}`
+    );
+  }
+  if (supportFloorGapInventory) {
+    lines.push(
+      `- supportFloorGapInventory: ${formatSupportFloorGapInventory(supportFloorGapInventory)}`
     );
   }
   if (selectedGapProof) {
@@ -4418,6 +4471,8 @@ export function buildPlannerOnlyNoRepairSummary(input: {
     repairScoreboard?.interpretation.taxonomyMismatchInventory;
   const setBudgetGapInventory =
     repairScoreboard?.interpretation.setBudgetGapInventory;
+  const supportFloorGapInventory =
+    repairScoreboard?.interpretation.supportFloorGapInventory;
   const basePlanCompare = noRepair.v2BasePlanCompare;
   const shadowConsumption = noRepair.v2BasePlanShadowConsumptionTrial;
   const basePlanCompareLines = basePlanCompare
@@ -4471,6 +4526,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Ranked gap inventory: ${formatGapInventory(gapInventory)}`,
         `Taxonomy mismatch inventory: ${formatTaxonomyMismatchInventory(taxonomyMismatchInventory)}`,
         `Set-budget gap inventory: ${formatSetBudgetGapInventory(setBudgetGapInventory)}`,
+        `Support-floor gap inventory: ${formatSupportFloorGapInventory(supportFloorGapInventory)}`,
         `Selected gap proof: ${formatSelectedGapProof(selectedGapProof)}`,
         `Promotion candidates: ${repairScoreboard.summary.promotionCandidateCount}`,
         `Safety/do-not-promote: ${repairScoreboard.summary.safetyNetCount}`,

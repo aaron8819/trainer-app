@@ -8527,9 +8527,32 @@ describe("buildMesocycleExplainAuditPayload", () => {
       safeForBehaviorPromotion: false,
     });
     expect(
+      noRepair.repairPromotionScoreboard?.interpretation
+        .supportFloorGapInventory,
+    ).toMatchObject({
+      version: 1,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      source: "v2_support_lane_projection_diagnostic",
+      summary: expect.objectContaining({
+        gapRowCount: expect.any(Number),
+        selectedGapId: expect.any(String),
+      }),
+    });
+    expect(noRepair.v2SupportFloorMaterializerProjection).toMatchObject({
+      source: "v2_support_floor_materializer_projection",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+      projectionMode: "support_direct_floor_shadow_materializer_dry_run",
+      safeForBehaviorPromotion: false,
+    });
+    expect(
       noRepair.repairPromotionScoreboard?.interpretation.selectedGapProof,
     ).toMatchObject({
-      gapId: "set_distribution_budget",
+      gapId: "support_direct_floor",
       readOnly: true,
       affectsScoringOrGeneration: false,
       consumedByProduction: false,
@@ -8538,9 +8561,9 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
     expect(
       noRepair.repairPromotionScoreboard?.interpretation.selectedGapProof
-        ?.selectedSetBudgetGapId,
+        ?.selectedSupportFloorGapId,
     ).toBe(
-      noRepair.repairPromotionScoreboard?.interpretation.setBudgetGapInventory
+      noRepair.repairPromotionScoreboard?.interpretation.supportFloorGapInventory
         ?.summary.selectedGapId,
     );
     expect(

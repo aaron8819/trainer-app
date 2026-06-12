@@ -30,6 +30,7 @@ import type {
   V2CapacityMaterializerProjection,
   V2LaneIntentMaterializerProjection,
   V2SetBudgetMaterializerProjection,
+  V2SupportFloorMaterializerProjection,
 } from "./v2-materialization-live-context-dry-run";
 import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection.diagnostics";
 import type { V2AcceptedSeedPreparationCompareResult } from "@/lib/api/mesocycle-handoff";
@@ -1836,6 +1837,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
   v2CapacityMaterializerProjection?: V2CapacityMaterializerProjection;
   v2LaneIntentMaterializerProjection?: V2LaneIntentMaterializerProjection;
   v2SetBudgetMaterializerProjection?: V2SetBudgetMaterializerProjection;
+  v2SupportFloorMaterializerProjection?: V2SupportFloorMaterializerProjection;
   repairPromotionScoreboard?: {
     version: 1;
     readOnly: true;
@@ -2029,6 +2031,61 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
             | "blocked_by_missing_evidence";
         }>;
       };
+      supportFloorGapInventory?: {
+        version: 1;
+        readOnly: true;
+        affectsScoringOrGeneration: false;
+        consumedByProduction: false;
+        source: "v2_support_lane_projection_diagnostic";
+        summary: {
+          gapRowCount: number;
+          setDistributionIntentOwnedCount: number;
+          downstreamMaterializerOrCapacityCount: number;
+          diagnosticOnlyOrStaleCount: number;
+          selectedGapId: string | null;
+          ownerCounts: Partial<
+            Record<
+              | "SetDistributionIntent"
+              | "support_lane_policy"
+              | "materializer_exercise_selection_capacity"
+              | "audit_readout_cleanup",
+              number
+            >
+          >;
+        };
+        rows: Array<{
+          rank: number;
+          supportFloorGapId: string;
+          week: 1;
+          slotId: string;
+          laneId: string;
+          muscle: string;
+          directFloorExpected: number;
+          directFloorDelivered: number;
+          currentBudget: { min: number; preferred: number; max: number } | null;
+          suspectedNeededBudget: { min: number; preferred: number; max: number };
+          likelyOwnerSeam:
+            | "SetDistributionIntent"
+            | "support_lane_policy"
+            | "materializer_exercise_selection_capacity"
+            | "audit_readout_cleanup";
+          evidenceQuality:
+            | "direct_floor_below"
+            | "authored_lane_dropped"
+            | "diagnostic_only"
+            | "stale_or_ambiguous";
+          trainingImportance: "high" | "medium" | "low";
+          evidence: string[];
+          missingProof: string[];
+          nextMeasurement: string;
+          classification:
+            | "true_support_direct_floor_gap"
+            | "downstream_materializer_or_capacity_issue"
+            | "diagnostic_only_no_impact"
+            | "stale_or_ambiguous"
+            | "blocked_by_missing_evidence";
+        }>;
+      };
       taxonomyMismatchInventory?: {
         version: 1;
         readOnly: true;
@@ -2090,9 +2147,11 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
         gapId: string;
         selectedMismatchId?: string;
         selectedSetBudgetGapId?: string;
+        selectedSupportFloorGapId?: string;
         classification:
           | "materializer_owned"
           | "planner_policy_owned"
+          | "true_support_direct_floor_gap"
           | "true_set_distribution_intent_gap"
           | "downstream_materializer_or_capacity_issue"
           | "diagnostic_only_no_impact"

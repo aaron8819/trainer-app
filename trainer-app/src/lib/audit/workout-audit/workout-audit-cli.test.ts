@@ -4328,6 +4328,57 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                     },
                   ],
                 },
+                supportFloorGapInventory: {
+                  version: 1,
+                  readOnly: true,
+                  affectsScoringOrGeneration: false,
+                  consumedByProduction: false,
+                  source: "v2_support_lane_projection_diagnostic",
+                  summary: {
+                    gapRowCount: 4,
+                    setDistributionIntentOwnedCount: 1,
+                    downstreamMaterializerOrCapacityCount: 0,
+                    diagnosticOnlyOrStaleCount: 3,
+                    ownerCounts: {
+                      SetDistributionIntent: 1,
+                      audit_readout_cleanup: 3,
+                    },
+                    selectedGapId:
+                      "week_1:upper_b:side_delt_isolation:side_delts",
+                  },
+                  rows: [
+                    {
+                      rank: 1,
+                      supportFloorGapId:
+                        "week_1:upper_b:side_delt_isolation:side_delts",
+                      week: 1,
+                      slotId: "upper_b",
+                      laneId: "side_delt_isolation",
+                      muscle: "Side Delts",
+                      directFloorExpected: 8,
+                      directFloorDelivered: 6,
+                      currentBudget: { min: 4, preferred: 4, max: 4 },
+                      suspectedNeededBudget: {
+                        min: 8,
+                        preferred: 8,
+                        max: 8,
+                      },
+                      likelyOwnerSeam: "SetDistributionIntent",
+                      evidenceQuality: "direct_floor_below",
+                      trainingImportance: "high",
+                      evidence: [
+                        "slot=upper_b",
+                        "lane=side_delt_isolation",
+                      ],
+                      missingProof: [
+                        "support_floor_materializer_projection_delta",
+                      ],
+                      nextMeasurement:
+                        "measure_support_floor_materializer_projection",
+                      classification: "true_support_direct_floor_gap",
+                    },
+                  ],
+                },
                 selectedGapProof: {
                   gapId: "class_taxonomy_mismatch",
                   selectedMismatchId: "week_1:upper_b:chest_second_exposure",
@@ -4385,6 +4436,7 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
         "Missing proof before behavior: owner_specific_behavior_candidate:missing@repairPromotionScoreboard; current_v2_policy_gap:blocked@ExerciseClassDistributionBySlot,ExerciseSelectionPlan,SetDistributionIntent,SlotDemandAllocationByWeek,audit_readout_cleanup; measured_behavior_projection:missing@read_only_projection_or_materializer_comparison; seed_runtime_non_consumption:required_before_promotion@accepted_seed_runtime_replay",
         "Ranked gap inventory: #1 class_taxonomy_mismatch@ExerciseClassDistributionBySlot count=20 importance=high evidence=diagnostic_count status=blocked_by_missing_evidence next=build_taxonomy_bridge_no_drift_probe",
         "Taxonomy mismatch inventory: rows=20 selectedIdentityAffected=12 cleanAlternatives=3 selected=week_1:upper_b:chest_second_exposure owners=ExerciseClassDistributionBySlot=14 ExerciseSelectionPlan=6",
+        "Support-floor gap inventory: rows=4 setDistributionOwned=1 downstreamOrCapacity=0 diagnosticOrStale=3 selected=week_1:upper_b:side_delt_isolation:side_delts owners=audit_readout_cleanup=3 SetDistributionIntent=1 selectedDetail=week_1:upper_b:side_delt_isolation:Side Delts floor=6/8 owner=SetDistributionIntent evidence=direct_floor_below class=true_support_direct_floor_gap",
         "Selected gap proof: class_taxonomy_mismatch:blocked_by_missing_evidence@ExerciseClassDistributionBySlot classification=blocked_by_missing_evidence selected=week_1:upper_b:chest_second_exposure consumedByProduction=no safeForBehavior=no missing=materializer_identity_non_regression, taxonomy_bridge_fixture next=build_taxonomy_bridge_no_drift_probe",
         "Promotion candidates: 0",
         "Safety/do-not-promote: 12",

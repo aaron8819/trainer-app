@@ -367,6 +367,26 @@ export type V2SetBudgetMaterializerProjection = {
   safeForBehaviorPromotion: false;
 };
 
+export type V2SupportFloorMaterializerProjection = Omit<
+  V2SetBudgetMaterializerProjection,
+  "source" | "projectionMode" | "targetLane" | "nextSafeAction"
+> & {
+  source: "v2_support_floor_materializer_projection";
+  projectionMode: "support_direct_floor_shadow_materializer_dry_run";
+  targetLane: V2SetBudgetMaterializerProjection["targetLane"] & {
+    supportFloorGapId: string;
+    muscle: string;
+    directFloorExpected: number;
+    directFloorDelivered: number;
+    directFloorStatus: string;
+    likelyOwnerSeam: string;
+  };
+  nextSafeAction:
+    | "inspect_support_floor_materializer_projection"
+    | "run_read_only_acceptance_projection"
+    | "pivot_to_higher_roi_track";
+};
+
 const EMPTY_CONSTRAINTS: V2ExerciseMaterializationInput["constraints"] = {
   avoidExerciseIds: [],
   favoriteExerciseIds: [],
@@ -1116,6 +1136,125 @@ export function buildV2SetBudgetMaterializerProjectionFromLiveContext(input: {
       "does_not_write_executable_seed_truth",
       "does_not_change_runtime_replay",
     ],
+    safeForBehaviorPromotion: false,
+  };
+}
+
+export function buildV2SupportFloorMaterializerProjectionFromLiveContext(input: {
+  plannerPolicy?: V2PlannerMesocyclePolicy;
+  taxonomy?: V2ExerciseClassTaxonomy;
+  inventory?: V2MaterializationExercise[] | null;
+  constraints?: V2ExerciseMaterializationInput["constraints"];
+  continuity?: V2ExerciseMaterializationInput["continuity"];
+  targetLane?: {
+    week?: number;
+    slotId?: V2PlannerSlotId;
+    laneId?: string;
+    trialId?: string;
+    supportFloorGapId?: string;
+    muscle?: string;
+    directFloorExpected?: number;
+    directFloorDelivered?: number;
+    directFloorStatus?: string;
+    likelyOwnerSeam?: string;
+    currentBudget?: V2PlannerSetRange;
+    suspectedNeededBudget?: V2PlannerSetRange;
+  };
+}): V2SupportFloorMaterializerProjection {
+  const targetSlotId = input.targetLane?.slotId ?? "upper_a";
+  const targetLaneId = input.targetLane?.laneId ?? "unknown_lane";
+  const directFloorExpected = input.targetLane?.directFloorExpected ?? 0;
+  const currentBudget = input.targetLane?.currentBudget;
+  const suspectedNeededBudget =
+    input.targetLane?.suspectedNeededBudget ??
+    (currentBudget
+      ? {
+          min: Math.max(currentBudget.min, directFloorExpected),
+          preferred: Math.max(currentBudget.preferred, directFloorExpected),
+          max: Math.max(currentBudget.max, directFloorExpected),
+        }
+      : undefined);
+  const base = buildV2SetBudgetMaterializerProjectionFromLiveContext({
+    plannerPolicy: input.plannerPolicy,
+    taxonomy: input.taxonomy,
+    inventory: input.inventory,
+    constraints: input.constraints,
+    continuity: input.continuity,
+    targetLane: {
+      week: input.targetLane?.week ?? 1,
+      slotId: targetSlotId,
+      laneId: targetLaneId,
+      trialId:
+        input.targetLane?.trialId ??
+        `${targetSlotId}_${targetLaneId}_support_floor_shadow`,
+      ...(currentBudget ? { currentBudget } : {}),
+      ...(suspectedNeededBudget ? { suspectedNeededBudget } : {}),
+      muscles: input.targetLane?.muscle ? [input.targetLane.muscle] : [],
+    },
+  });
+  const noCandidateImpact =
+    base.candidateImpact.selectedIdentityDelta === 0 &&
+    base.candidateImpact.totalSetDelta === 0 &&
+    base.candidateImpact.targetLaneSetDelta === 0 &&
+    base.candidateImpact.targetLaneExerciseDelta === 0 &&
+    base.candidateImpact.materializerBlockerDelta === 0 &&
+    base.candidateImpact.regressionCount === 0 &&
+    base.candidateImpact.improvements.length === 0;
+
+  return {
+    ...base,
+    source: "v2_support_floor_materializer_projection",
+    projectionMode: "support_direct_floor_shadow_materializer_dry_run",
+    targetLane: {
+      ...base.targetLane,
+      supportFloorGapId:
+        input.targetLane?.supportFloorGapId ??
+        `${targetSlotId}:${targetLaneId}:support_floor`,
+      muscle: input.targetLane?.muscle ?? base.targetLane.muscles[0] ?? "unknown",
+      directFloorExpected,
+      directFloorDelivered: input.targetLane?.directFloorDelivered ?? 0,
+      directFloorStatus:
+        input.targetLane?.directFloorStatus ?? "not_evaluated",
+      likelyOwnerSeam:
+        input.targetLane?.likelyOwnerSeam ?? "SetDistributionIntent",
+    },
+    blockersBeforeBehavior: uniqueSorted([
+      ...base.blockersBeforeBehavior.filter(
+        (blocker) =>
+          blocker !== "set_budget_trial_no_candidate_impact" &&
+          blocker !== "production_set_distribution_intent_unchanged" &&
+          blocker !== "production_materializer_not_consuming_trial_budget",
+      ),
+      ...(noCandidateImpact
+        ? ["support_floor_trial_no_candidate_impact"]
+        : []),
+      "production_support_floor_policy_unchanged",
+      "production_materializer_not_consuming_support_floor_trial",
+    ]),
+    nextSafeAction:
+      base.status === "blocked"
+        ? "inspect_support_floor_materializer_projection"
+        : noCandidateImpact
+          ? "pivot_to_higher_roi_track"
+          : "run_read_only_acceptance_projection",
+    limitations: uniqueSorted([
+      ...base.limitations.filter(
+        (limitation) =>
+          limitation !== "trial_set_distribution_intent_is_projection_copy_only" &&
+          limitation !==
+            "set_budget_trial_did_not_change_candidate_identity_or_sets",
+      ),
+      "trial_support_floor_budget_is_projection_copy_only",
+      ...(noCandidateImpact
+        ? ["support_floor_trial_did_not_change_candidate_identity_or_sets"]
+        : []),
+      "does_not_change_v2_support_lane_policy",
+      "does_not_change_v2_set_distribution_intent",
+      "does_not_feed_production_materializer",
+      "does_not_feed_acceptance_scoring",
+      "does_not_write_executable_seed_truth",
+      "does_not_change_runtime_replay",
+    ]),
     safeForBehaviorPromotion: false,
   };
 }

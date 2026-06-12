@@ -1,7 +1,7 @@
 # Hypertrophy Mesocycle Engine Strategy
 
 Owner: Aaron
-Last reviewed: 2026-06-11
+Last reviewed: 2026-06-12
 Purpose: Define the strategic direction for the V2 hypertrophy planner migration: V2 becomes the future plan author, accepted seed remains minimal executable truth, runtime replay remains stable, and performed reality informs future blocks without silently mutating the current one.
 
 This document is a strategy and migration map, not a claim about current runtime behavior. Current runtime truth remains the code, contract tests, and audit artifacts. The current mapping is grounded in live audit evidence, V2 factory-line/materializer diagnostics, candidate-evaluator readouts, runtime execution work, and the latest legacy repair quarantine findings:
@@ -9,12 +9,12 @@ This document is a strategy and migration map, not a claim about current runtime
 - Owner: `aaron8819@gmail.com`
 - Active mesocycle: `9b861675-c98f-42f7-bc8c-64a7de411b77`
 - Architecture signal: `mostly_repair_shaped`
-- Material repairs: `23`
-- Major repairs: `15`
-- Likely upstream-avoidable material repairs: `15`
+- Material repairs: `21`
+- Major repairs: `12`
+- Likely upstream-avoidable material repairs: `13`
 - Remaining material repairs after current V2 diagnostics: `8`
 - Suspicious repairs not eligible for promotion: `3`
-- Legacy repair quarantine: `evidence_only`, `behaviorCandidates=0`, `quarantined=46`, `staleArtifacts=15`
+- Legacy repair quarantine: `evidence_only`, `behaviorCandidates=0`, `quarantined=42`, `staleArtifacts=13`
 
 ## 1. Strategic Executive Summary
 
@@ -228,11 +228,12 @@ The durable checkpoint:
 
 - the active mesocycle is `9b861675-c98f-42f7-bc8c-64a7de411b77`
 - the latest mesocycle-explain architecture signal remains `mostly_repair_shaped`
-- material repair pressure is still real: `materialRepairCount=23`, `majorRepairCount=15`
-- current V2 diagnostics classify `likelyUpstreamAvoidableMaterialRepairs=15` while leaving `remainingMaterialRepairs=8`
+- material repair pressure is still real: `materialRepairCount=21`, `majorRepairCount=12`
+- current V2 diagnostics classify `likelyUpstreamAvoidableMaterialRepairs=13` while leaving `remainingMaterialRepairs=8`
 - suspicious downstream repairs are explicitly not promotion material: `suspiciousRepairsNotEligibleForPromotion=3`
-- legacy repaired projection is quarantined as evidence only: `behaviorCandidates=0`, `quarantined=46`, `staleArtifacts=15`
-- the current ranked gap inventory selects `selection_capacity_pressure` first because it has measured materializer evidence, but the proof result is `measured_no_candidate_impact`: the `upper_a` capacity/materializer trial changes no selected identities, sets, target-slot exercise count, or materializer blockers, stays non-consumed by production, and should pivot to a higher-ROI gap instead of behavior promotion
+- legacy repaired projection is quarantined as evidence only: `behaviorCandidates=0`, `quarantined=42`, `staleArtifacts=13`
+- the repair-quarantine ladder has now measured four representative slices without finding promotion-ready behavior: `selection_capacity_pressure` measured no candidate impact, `class_taxonomy_mismatch` measured no drift, selected `set_distribution_budget` measured no candidate impact, and selected `support_direct_floor` also measured no candidate impact
+- the selected support-floor proof is `week_1:upper_a:side_delt_isolation:side_delts`, direct floor `0/4`, likely owner `audit_readout_cleanup`, classification `diagnostic_only_no_impact`, with `consumedByProduction=false` and `safeForBehaviorPromotion=false`; the next safe slice should clean or disprove support-floor readout evidence before changing SetDistributionIntent or support policy
 - runtime execution quality, performed-reality readouts, post-session calibration evidence, candidate evaluation, materializer comparison, and repair-readout quarantine are now coherent enough to guide the next architecture slice
 - no DB mutation, Prisma migration, reseed, seed/slot sequence mutation, active plan-shape change, runtime planner-metadata consumption, or receipt mirror was part of this milestone
 

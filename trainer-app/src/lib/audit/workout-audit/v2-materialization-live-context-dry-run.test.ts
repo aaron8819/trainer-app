@@ -304,6 +304,12 @@ describe("V2 live-context materializer projections", () => {
       summary: {
         projectedWeekCount: 3,
         behaviorReadinessDecision: "blocked_by_evidence",
+        materializerRegressionCount: 3,
+        concentrationRegressionCount: 0,
+        alternateCandidateCount: 3,
+        alternatePassingCandidateCount: 0,
+        selectedAlternateWeekCount: 0,
+        nextSafeSlice: "inspect_donor_offset_regressions",
       },
     });
     expect(result.donorOffsetRedistributionProjection.rows).toHaveLength(3);
@@ -316,6 +322,27 @@ describe("V2 live-context materializer projections", () => {
           row.donor.laneId === "quad_support",
       ),
     ).toBe(true);
+    expect(
+      result.donorOffsetRedistributionProjection.rows.every(
+        (row) =>
+          row.selectedDonorKind === "primary" &&
+          row.primaryDonorCandidate?.scopedLaneId ===
+            "lower_b:quad_support" &&
+          row.alternateDonorCandidates.length === 1 &&
+          row.alternateDonorCandidates[0]?.scopedLaneId ===
+            "lower_a:quad_isolation" &&
+          row.alternateDonorCandidates[0]?.status === "blocked" &&
+          row.materializerDelta.regressions.includes(
+            "trial_seed_shape_incompatible",
+          ) &&
+          row.regressionCauses.includes("lane_identity"),
+      ),
+    ).toBe(true);
+    expect(
+      result.donorOffsetRedistributionProjection.summary.regressionCauseCounts,
+    ).toMatchObject({
+      lane_identity: 3,
+    });
     expect(
       result.crossWeekReadiness.rows.every(
         (row) => row.evidenceSource === "pure_v2_materializer_projection",
@@ -348,6 +375,9 @@ describe("V2 live-context materializer projections", () => {
       summary: {
         behaviorReadinessDecision: "not_available",
         projectedWeekCount: 0,
+        alternateCandidateCount: 0,
+        alternatePassingCandidateCount: 0,
+        selectedAlternateWeekCount: 0,
       },
       safeForBehaviorPromotion: false,
     });

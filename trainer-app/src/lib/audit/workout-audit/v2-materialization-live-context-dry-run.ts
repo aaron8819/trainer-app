@@ -555,8 +555,12 @@ export type V2ConcentrationDonorOffsetRedistributionProjection = {
     protectedCoveragePassCount: number;
     materializerRegressionCount: number;
     concentrationRegressionCount: number;
+    regressionCauseCounts: Partial<Record<DonorOffsetRegressionCause, number>>;
     totalSetDelta: number;
     concentrationWarningDelta: number;
+    alternateCandidateCount: number;
+    alternatePassingCandidateCount: number;
+    selectedAlternateWeekCount: number;
     acceptanceTrainabilityStatus: string;
     behaviorReadinessDecision:
       | "candidate_for_acceptance_projection"
@@ -613,8 +617,14 @@ export type V2ConcentrationDonorOffsetRedistributionProjection = {
       totalSetDelta: number;
       materializerBlockerDelta: number;
       regressionCount: number;
+      regressions: string[];
+      changedSlotCount: number;
     };
     concentrationWarningDelta: number;
+    regressionCauses: DonorOffsetRegressionCause[];
+    primaryDonorCandidate: DonorOffsetCandidateSummary | null;
+    alternateDonorCandidates: DonorOffsetCandidateSummary[];
+    selectedDonorKind: "primary" | "alternate" | "none";
     acceptanceTrainabilityStatus: string;
     behaviorReadinessDecision:
       | "candidate_for_acceptance_projection"
@@ -632,6 +642,47 @@ export type V2ConcentrationDonorOffsetRedistributionProjection = {
   blockersBeforeBehavior: string[];
   limitations: string[];
   safeForBehaviorPromotion: false;
+};
+
+type DonorOffsetRegressionCause =
+  | "donor_choice"
+  | "slot_capacity"
+  | "lane_identity"
+  | "protected_coverage"
+  | "taxonomy"
+  | "materializer_ranking";
+
+type DonorOffsetCandidateSummary = {
+  slotId: string;
+  laneId: string;
+  scopedLaneId: string;
+  muscles: string[];
+  baselineSetCount: number;
+  trialSetCount: number;
+  setDelta: number;
+  status: "pass" | "blocked" | "no_candidate_impact";
+  protectedCoverageStatus: "preserved" | "regressed" | "unknown";
+  materializerDelta: {
+    selectedIdentityDelta: number;
+    totalSetDelta: number;
+    materializerBlockerDelta: number;
+    regressionCount: number;
+  };
+  concentrationWarningDelta: number;
+  regressionCauses: DonorOffsetRegressionCause[];
+  blockers: string[];
+};
+
+type V2ExerciseSelectionLane =
+  V2PlannerMesocyclePolicy["exerciseSelectionPlan"]["weeks"][number]["slots"][number]["lanes"][number];
+
+type DonorOffsetLaneCandidate = {
+  slotId: V2PlannerSlotId;
+  slotIndex: number;
+  laneId: string;
+  required: boolean;
+  protectedMuscles: string[];
+  selectionLane: V2ExerciseSelectionLane;
 };
 
 type ConcentrationAcceptanceEvidence = {
@@ -2461,6 +2512,7 @@ function buildConcentrationDonorOffsetRedistributionProjection(input: {
   const concentrationRegressionCount = rows.filter(
     (row) => row.concentrationWarningDelta > 0,
   ).length;
+  const regressionCauseCounts = countDonorOffsetRegressionCauses(rows);
   const totalSetDelta = rows.reduce(
     (sum, row) => sum + row.materializerDelta.totalSetDelta,
     0,
@@ -2469,6 +2521,20 @@ function buildConcentrationDonorOffsetRedistributionProjection(input: {
     (sum, row) => sum + row.concentrationWarningDelta,
     0,
   );
+  const alternateCandidateCount = rows.reduce(
+    (sum, row) => sum + row.alternateDonorCandidates.length,
+    0,
+  );
+  const alternatePassingCandidateCount = rows.reduce(
+    (sum, row) =>
+      sum +
+      row.alternateDonorCandidates.filter((candidate) => candidate.status === "pass")
+        .length,
+    0,
+  );
+  const selectedAlternateWeekCount = rows.filter(
+    (row) => row.selectedDonorKind === "alternate",
+  ).length;
   const blockersBeforeBehavior = uniqueSorted([
     ...rows.flatMap((row) => row.blockers),
     ...(projectedRows.length === 0 ? ["donor_offset_candidate_unavailable"] : []),
@@ -2536,8 +2602,12 @@ function buildConcentrationDonorOffsetRedistributionProjection(input: {
       protectedCoveragePassCount,
       materializerRegressionCount,
       concentrationRegressionCount,
+      regressionCauseCounts,
       totalSetDelta,
       concentrationWarningDelta,
+      alternateCandidateCount,
+      alternatePassingCandidateCount,
+      selectedAlternateWeekCount,
       acceptanceTrainabilityStatus:
         input.acceptanceClassification?.basicMesocycleShapeStatus ??
         "not_provided",
@@ -2626,8 +2696,14 @@ function buildConcentrationDonorOffsetRedistributionRow(input: {
       totalSetDelta: 0,
       materializerBlockerDelta: 0,
       regressionCount: 0,
+      regressions: [],
+      changedSlotCount: 0,
     },
     concentrationWarningDelta: 0,
+    regressionCauses: [],
+    primaryDonorCandidate: null,
+    alternateDonorCandidates: [],
+    selectedDonorKind: "none",
     acceptanceTrainabilityStatus:
       input.acceptanceClassification?.basicMesocycleShapeStatus ??
       "not_provided",
@@ -2640,7 +2716,7 @@ function buildConcentrationDonorOffsetRedistributionRow(input: {
     return unavailable(["source_lane_unavailable_for_donor_offset_projection"]);
   }
 
-  const donor = selectConcentrationDonorOffsetLane({
+  const donorCandidates = findConcentrationDonorOffsetLanes({
     plannerPolicy: weeklyPolicy,
     week: input.week.week,
     sourceSlotId: input.target.slotId,
@@ -2648,124 +2724,59 @@ function buildConcentrationDonorOffsetRedistributionRow(input: {
     sourceMuscles: input.target.muscles,
   });
 
-  if (!donor) {
+  if (donorCandidates.length === 0) {
     return unavailable(["slot_owned_donor_offset_lane_unavailable"]);
   }
 
-  const sourceBudget = concentrationTrialBudget(sourceLane.setBudget);
-  const donorBudget = donorOffsetTrialBudget(donor.selectionLane.setBudget);
-  const trialExerciseSelectionPlan = cloneExerciseSelectionPlanWithLaneBudgetChanges({
-    exerciseSelectionPlan: weeklyPolicy.exerciseSelectionPlan,
-    changes: [
-      {
-        slotId: input.target.slotId,
-        laneId: input.target.laneId,
-        trialBudget: sourceBudget,
-      },
-      {
-        slotId: donor.slotId,
-        laneId: donor.laneId,
-        trialBudget: donorBudget,
-      },
-    ],
+  const candidateProjections = donorCandidates.map((donor, index) =>
+    buildConcentrationDonorOffsetCandidateProjection({
+      plannerPolicy: weeklyPolicy,
+      sourceLane,
+      sourceSlotId: input.target.slotId,
+      sourceLaneId: input.target.laneId,
+      donor,
+      isPrimary: index === 0,
+      baselinePlan,
+      taxonomy: input.taxonomy,
+      inventory: input.inventory,
+      constraints: input.constraints,
+      ...(input.continuity ? { continuity: input.continuity } : {}),
+    }),
+  );
+  const primaryCandidate = candidateProjections[0];
+  const alternatePassingCandidate = candidateProjections
+    .slice(1)
+    .find(
+      (candidate) =>
+        candidate.behaviorReadinessDecision ===
+        "candidate_for_acceptance_projection",
+    );
+  const selectedCandidate = alternatePassingCandidate ?? primaryCandidate;
+  const primaryDonorCandidate = primaryCandidate
+    ? summarizeDonorOffsetCandidate(primaryCandidate, {
+        hasPassingAlternate: Boolean(alternatePassingCandidate),
+      })
+    : null;
+  const alternateDonorCandidates = candidateProjections
+    .slice(1)
+    .map((candidate) =>
+      summarizeDonorOffsetCandidate(candidate, {
+        hasPassingAlternate: false,
+      }),
+    );
+  const selectedSummary = summarizeDonorOffsetCandidate(selectedCandidate, {
+    hasPassingAlternate: false,
   });
-  const trialPlannerPolicy: V2PlannerMesocyclePolicy = {
-    ...weeklyPolicy,
-    exerciseSelectionPlan: trialExerciseSelectionPlan,
-  };
-  const trialPlan = buildV2ExerciseMaterializationPlan({
-    exerciseSelectionPlan: trialExerciseSelectionPlan,
-    inventory: [...input.inventory],
-    taxonomy: input.taxonomy,
-    constraints: input.constraints,
-    ...(input.continuity ? { continuity: input.continuity } : {}),
-  });
-  const baselineReport = buildV2MaterializationDryRunReport({
-    plannerPolicy: weeklyPolicy,
-    taxonomy: input.taxonomy,
-    inventory: [...input.inventory],
-    constraints: input.constraints,
-    ...(input.continuity ? { continuity: input.continuity } : {}),
-    materializedPlan: baselinePlan,
-  });
-  const trialReport = buildV2MaterializationDryRunReport({
-    plannerPolicy: trialPlannerPolicy,
-    taxonomy: input.taxonomy,
-    inventory: [...input.inventory],
-    constraints: input.constraints,
-    ...(input.continuity ? { continuity: input.continuity } : {}),
-    materializedPlan: trialPlan,
-  });
-  const sourceTrial = materializedExercisesForLane({
-    plan: trialPlan,
-    slotId: input.target.slotId,
-    laneId: input.target.laneId,
-  });
-  const donorBaseline = materializedExercisesForLane({
-    plan: baselinePlan,
-    slotId: donor.slotId,
-    laneId: donor.laneId,
-  });
-  const donorTrial = materializedExercisesForLane({
-    plan: trialPlan,
-    slotId: donor.slotId,
-    laneId: donor.laneId,
-  });
-  const comparison = compareV2MaterializedPlans({
-    baselinePlan,
-    trialPlan,
-    baselineBlockerCount: baselineReport.materializer.blockerCount,
-    trialBlockerCount: trialReport.materializer.blockerCount,
-    trialMaterializerStatus: trialReport.materializer.status,
-    trialSeedShapeCompatible: trialReport.seedShapeCompatibility.compatible,
-  });
-  const concentrationDelta = summarizeConcentrationDelta({
-    baselinePlan,
-    trialPlan,
-    inventory: input.inventory,
-  });
-  const sourceBeforeSets = sumMaterializedExerciseSets(sourceBaseline);
-  const sourceAfterSets = sumMaterializedExerciseSets(sourceTrial);
-  const donorBeforeSets = sumMaterializedExerciseSets(donorBaseline);
-  const donorAfterSets = sumMaterializedExerciseSets(donorTrial);
-  const sourceSetDelta = sourceAfterSets - sourceBeforeSets;
-  const donorSetDelta = donorAfterSets - donorBeforeSets;
-  const netWeeklySetDelta = comparison.summary.totalSetDelta;
-  const protectedBlockers = uniqueSorted([
-    ...(sourceAfterSets >= sourceLane.setBudget.min
-      ? []
-      : ["source_lane_protected_floor_regressed"]),
-    ...(netWeeklySetDelta === 0 ? [] : ["donor_offset_net_volume_changed"]),
-  ]);
-  const materializerRegressed =
-    comparison.regressions.length > 0 ||
-    comparison.summary.materializerBlockerDelta > 0 ||
-    trialReport.materializer.status !== "materialized";
-  const concentrationRegressed = concentrationDelta.warningDelta > 0;
-  const improved = concentrationDelta.warningDelta < 0;
-  const noImpact =
-    comparison.summary.selectedIdentityDelta === 0 &&
-    comparison.summary.totalSetDelta === 0 &&
-    sourceSetDelta === 0 &&
-    donorSetDelta === 0 &&
-    concentrationDelta.warningDelta === 0;
-  const blockers = uniqueSorted([
-    ...protectedBlockers,
-    ...(materializerRegressed
-      ? ["donor_offset_materializer_identity_set_or_blocker_regression"]
-      : []),
-    ...(concentrationRegressed
-      ? ["donor_offset_concentration_regression"]
-      : []),
-    ...(noImpact ? ["donor_offset_no_candidate_impact"] : []),
-    "acceptance_gate_not_rerun_for_donor_offset_projection",
-  ]);
-  const behaviorReadinessDecision: V2ConcentrationDonorOffsetRedistributionProjection["rows"][number]["behaviorReadinessDecision"] =
-    protectedBlockers.length > 0 || materializerRegressed || concentrationRegressed
-      ? "blocked_by_evidence"
-      : improved
-        ? "candidate_for_acceptance_projection"
-        : "not_worth_pursuing";
+  const sourceBeforeSets = selectedCandidate.sourceBeforeSets;
+  const sourceAfterSets = selectedCandidate.sourceAfterSets;
+  const sourceSetDelta = selectedCandidate.sourceSetDelta;
+  const donorBeforeSets = selectedCandidate.donorBeforeSets;
+  const donorAfterSets = selectedCandidate.donorAfterSets;
+  const donorSetDelta = selectedCandidate.donorSetDelta;
+  const netWeeklySetDelta = selectedCandidate.netWeeklySetDelta;
+  const behaviorReadinessDecision =
+    selectedCandidate.behaviorReadinessDecision;
+  const blockers = selectedCandidate.blockers;
 
   return {
     week: input.week.week,
@@ -2773,9 +2784,9 @@ function buildConcentrationDonorOffsetRedistributionRow(input: {
     status:
       behaviorReadinessDecision === "blocked_by_evidence"
         ? "blocked"
-        : improved
+        : behaviorReadinessDecision === "candidate_for_acceptance_projection"
           ? "improved"
-          : noImpact
+          : selectedSummary.status === "no_candidate_impact"
             ? "no_candidate_impact"
             : "no_candidate_impact",
     source: {
@@ -2788,35 +2799,46 @@ function buildConcentrationDonorOffsetRedistributionRow(input: {
       setDelta: sourceSetDelta,
     },
     donor: {
-      slotId: donor.slotId,
-      laneId: donor.laneId,
-      scopedLaneId: materializerScopedLaneId(donor.slotId, donor.laneId),
-      muscles: donor.protectedMuscles,
+      slotId: selectedCandidate.donor.slotId,
+      laneId: selectedCandidate.donor.laneId,
+      scopedLaneId: materializerScopedLaneId(
+        selectedCandidate.donor.slotId,
+        selectedCandidate.donor.laneId,
+      ),
+      muscles: selectedCandidate.donor.protectedMuscles,
       baselineSetCount: donorBeforeSets,
       trialSetCount: donorAfterSets,
       setDelta: donorSetDelta,
     },
     protectedCoverageImpact: {
-      protectedMuscles: donor.protectedMuscles,
+      protectedMuscles: selectedCandidate.donor.protectedMuscles,
       sourceFloorSets: sourceLane.setBudget.min,
       sourceBeforeSets,
       sourceAfterSets,
       sourceSetDelta,
       donorSetDelta,
       netWeeklySetDelta,
-      status:
-        protectedBlockers.length > 0
-          ? "regressed"
-          : "preserved",
-      blockers: protectedBlockers,
+      status: selectedCandidate.protectedCoverageStatus,
+      blockers: selectedCandidate.protectedBlockers,
     },
     materializerDelta: {
-      selectedIdentityDelta: comparison.summary.selectedIdentityDelta,
-      totalSetDelta: comparison.summary.totalSetDelta,
-      materializerBlockerDelta: comparison.summary.materializerBlockerDelta,
-      regressionCount: comparison.regressions.length,
+      selectedIdentityDelta:
+        selectedCandidate.comparison.summary.selectedIdentityDelta,
+      totalSetDelta: selectedCandidate.comparison.summary.totalSetDelta,
+      materializerBlockerDelta:
+        selectedCandidate.comparison.summary.materializerBlockerDelta,
+      regressionCount: selectedCandidate.comparison.regressions.length,
+      regressions: selectedCandidate.comparison.regressions,
+      changedSlotCount:
+        selectedCandidate.comparison.summary.changedSlotCount,
     },
-    concentrationWarningDelta: concentrationDelta.warningDelta,
+    concentrationWarningDelta:
+      selectedCandidate.concentrationDelta.warningDelta,
+    regressionCauses: selectedSummary.regressionCauses,
+    primaryDonorCandidate,
+    alternateDonorCandidates,
+    selectedDonorKind:
+      selectedCandidate === primaryCandidate ? "primary" : "alternate",
     acceptanceTrainabilityStatus:
       input.acceptanceClassification?.basicMesocycleShapeStatus ??
       "not_provided",
@@ -2865,8 +2887,12 @@ function emptyConcentrationDonorOffsetRedistributionProjection(input: {
       protectedCoveragePassCount: 0,
       materializerRegressionCount: 0,
       concentrationRegressionCount: 0,
+      regressionCauseCounts: {},
       totalSetDelta: 0,
       concentrationWarningDelta: 0,
+      alternateCandidateCount: 0,
+      alternatePassingCandidateCount: 0,
+      selectedAlternateWeekCount: 0,
       acceptanceTrainabilityStatus: "not_provided",
       behaviorReadinessDecision: "not_available",
       blockerCount: blockersBeforeBehavior.length,
@@ -3535,25 +3561,18 @@ function cloneExerciseSelectionPlanWithLaneBudgetChanges(input: {
   };
 }
 
-function selectConcentrationDonorOffsetLane(input: {
+function findConcentrationDonorOffsetLanes(input: {
   plannerPolicy: V2PlannerMesocyclePolicy;
   week: number;
   sourceSlotId: string;
   sourceLaneId: string;
   sourceMuscles: string[];
-}):
-  | {
-      slotId: V2PlannerSlotId;
-      laneId: string;
-      protectedMuscles: string[];
-      selectionLane: V2PlannerMesocyclePolicy["exerciseSelectionPlan"]["weeks"][number]["slots"][number]["lanes"][number];
-    }
-  | null {
+}): DonorOffsetLaneCandidate[] {
   const allocationWeek = input.plannerPolicy.slotDemandAllocationByWeek.weeks.find(
     (week) => week.week === input.week,
   );
   if (!allocationWeek) {
-    return null;
+    return [];
   }
   const sourceMuscles = new Set(input.sourceMuscles);
   const candidates = allocationWeek.slots.flatMap((slot) =>
@@ -3598,23 +3617,283 @@ function selectConcentrationDonorOffsetLane(input: {
     }),
   );
 
-  const selected = candidates.sort(
+  return candidates.sort(
     (left, right) =>
       Number(left.slotId === input.sourceSlotId) -
         Number(right.slotId === input.sourceSlotId) ||
       Number(right.required) - Number(left.required) ||
       left.slotIndex - right.slotIndex ||
       left.laneId.localeCompare(right.laneId),
-  )[0];
+  );
+}
 
-  return selected
-    ? {
-        slotId: selected.slotId,
-        laneId: selected.laneId,
-        protectedMuscles: selected.protectedMuscles,
-        selectionLane: selected.selectionLane,
+function buildConcentrationDonorOffsetCandidateProjection(input: {
+  plannerPolicy: V2PlannerMesocyclePolicy;
+  sourceLane: V2ExerciseSelectionLane;
+  sourceSlotId: string;
+  sourceLaneId: string;
+  donor: DonorOffsetLaneCandidate;
+  isPrimary: boolean;
+  baselinePlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  taxonomy: V2ExerciseClassTaxonomy;
+  inventory: ReadonlyArray<V2MaterializationExercise>;
+  constraints: V2ExerciseMaterializationInput["constraints"];
+  continuity?: V2ExerciseMaterializationInput["continuity"];
+}) {
+  const sourceBudget = concentrationTrialBudget(input.sourceLane.setBudget);
+  const donorBudget = donorOffsetTrialBudget(input.donor.selectionLane.setBudget);
+  const trialExerciseSelectionPlan =
+    cloneExerciseSelectionPlanWithLaneBudgetChanges({
+      exerciseSelectionPlan: input.plannerPolicy.exerciseSelectionPlan,
+      changes: [
+        {
+          slotId: input.sourceSlotId,
+          laneId: input.sourceLaneId,
+          trialBudget: sourceBudget,
+        },
+        {
+          slotId: input.donor.slotId,
+          laneId: input.donor.laneId,
+          trialBudget: donorBudget,
+        },
+      ],
+    });
+  const trialPlannerPolicy: V2PlannerMesocyclePolicy = {
+    ...input.plannerPolicy,
+    exerciseSelectionPlan: trialExerciseSelectionPlan,
+  };
+  const trialPlan = buildV2ExerciseMaterializationPlan({
+    exerciseSelectionPlan: trialExerciseSelectionPlan,
+    inventory: [...input.inventory],
+    taxonomy: input.taxonomy,
+    constraints: input.constraints,
+    ...(input.continuity ? { continuity: input.continuity } : {}),
+  });
+  const baselineReport = buildV2MaterializationDryRunReport({
+    plannerPolicy: input.plannerPolicy,
+    taxonomy: input.taxonomy,
+    inventory: [...input.inventory],
+    constraints: input.constraints,
+    ...(input.continuity ? { continuity: input.continuity } : {}),
+    materializedPlan: input.baselinePlan,
+  });
+  const trialReport = buildV2MaterializationDryRunReport({
+    plannerPolicy: trialPlannerPolicy,
+    taxonomy: input.taxonomy,
+    inventory: [...input.inventory],
+    constraints: input.constraints,
+    ...(input.continuity ? { continuity: input.continuity } : {}),
+    materializedPlan: trialPlan,
+  });
+  const sourceBaseline = materializedExercisesForLane({
+    plan: input.baselinePlan,
+    slotId: input.sourceSlotId,
+    laneId: input.sourceLaneId,
+  });
+  const sourceTrial = materializedExercisesForLane({
+    plan: trialPlan,
+    slotId: input.sourceSlotId,
+    laneId: input.sourceLaneId,
+  });
+  const donorBaseline = materializedExercisesForLane({
+    plan: input.baselinePlan,
+    slotId: input.donor.slotId,
+    laneId: input.donor.laneId,
+  });
+  const donorTrial = materializedExercisesForLane({
+    plan: trialPlan,
+    slotId: input.donor.slotId,
+    laneId: input.donor.laneId,
+  });
+  const comparison = compareV2MaterializedPlans({
+    baselinePlan: input.baselinePlan,
+    trialPlan,
+    baselineBlockerCount: baselineReport.materializer.blockerCount,
+    trialBlockerCount: trialReport.materializer.blockerCount,
+    trialMaterializerStatus: trialReport.materializer.status,
+    trialSeedShapeCompatible: trialReport.seedShapeCompatibility.compatible,
+  });
+  const concentrationDelta = summarizeConcentrationDelta({
+    baselinePlan: input.baselinePlan,
+    trialPlan,
+    inventory: input.inventory,
+  });
+  const sourceBeforeSets = sumMaterializedExerciseSets(sourceBaseline);
+  const sourceAfterSets = sumMaterializedExerciseSets(sourceTrial);
+  const donorBeforeSets = sumMaterializedExerciseSets(donorBaseline);
+  const donorAfterSets = sumMaterializedExerciseSets(donorTrial);
+  const sourceSetDelta = sourceAfterSets - sourceBeforeSets;
+  const donorSetDelta = donorAfterSets - donorBeforeSets;
+  const netWeeklySetDelta = comparison.summary.totalSetDelta;
+  const protectedBlockers = uniqueSorted([
+    ...(sourceAfterSets >= input.sourceLane.setBudget.min
+      ? []
+      : ["source_lane_protected_floor_regressed"]),
+    ...(netWeeklySetDelta === 0 ? [] : ["donor_offset_net_volume_changed"]),
+  ]);
+  const materializerRegressed =
+    comparison.regressions.length > 0 ||
+    comparison.summary.materializerBlockerDelta > 0 ||
+    trialReport.materializer.status !== "materialized";
+  const concentrationRegressed = concentrationDelta.warningDelta > 0;
+  const improved = concentrationDelta.warningDelta < 0;
+  const noImpact =
+    comparison.summary.selectedIdentityDelta === 0 &&
+    comparison.summary.totalSetDelta === 0 &&
+    sourceSetDelta === 0 &&
+    donorSetDelta === 0 &&
+    concentrationDelta.warningDelta === 0;
+  const blockers = uniqueSorted([
+    ...protectedBlockers,
+    ...(materializerRegressed
+      ? ["donor_offset_materializer_identity_set_or_blocker_regression"]
+      : []),
+    ...(concentrationRegressed
+      ? ["donor_offset_concentration_regression"]
+      : []),
+    ...(noImpact ? ["donor_offset_no_candidate_impact"] : []),
+    "acceptance_gate_not_rerun_for_donor_offset_projection",
+  ]);
+  const behaviorReadinessDecision: V2ConcentrationDonorOffsetRedistributionProjection["rows"][number]["behaviorReadinessDecision"] =
+    protectedBlockers.length > 0 || materializerRegressed || concentrationRegressed
+      ? "blocked_by_evidence"
+      : improved
+        ? "candidate_for_acceptance_projection"
+        : "not_worth_pursuing";
+  const regressionCauses = classifyDonorOffsetRegressionCauses({
+    protectedBlockers,
+    sourceSetDelta,
+    donorSetDelta,
+    netWeeklySetDelta,
+    comparison,
+    trialReport,
+    concentrationRegressed,
+  });
+
+  return {
+    donor: input.donor,
+    isPrimary: input.isPrimary,
+    comparison,
+    concentrationDelta,
+    sourceBeforeSets,
+    sourceAfterSets,
+    donorBeforeSets,
+    donorAfterSets,
+    sourceSetDelta,
+    donorSetDelta,
+    netWeeklySetDelta,
+    protectedBlockers,
+    protectedCoverageStatus:
+      protectedBlockers.length > 0
+        ? ("regressed" as const)
+        : ("preserved" as const),
+    blockers,
+    behaviorReadinessDecision,
+    regressionCauses,
+  };
+}
+
+function classifyDonorOffsetRegressionCauses(input: {
+  protectedBlockers: string[];
+  sourceSetDelta: number;
+  donorSetDelta: number;
+  netWeeklySetDelta: number;
+  comparison: ReturnType<typeof compareV2MaterializedPlans>;
+  trialReport: V2MaterializationDryRunReport;
+  concentrationRegressed: boolean;
+}): DonorOffsetRegressionCause[] {
+  const trialBlockerReasons = input.trialReport.blockers.map((blocker) =>
+    blocker.reason.toLowerCase(),
+  );
+  return uniqueSorted([
+    ...(input.protectedBlockers.length > 0 ? ["protected_coverage"] : []),
+    ...(input.sourceSetDelta < 0 &&
+    (input.donorSetDelta < Math.abs(input.sourceSetDelta) ||
+      input.netWeeklySetDelta !== 0)
+      ? ["slot_capacity"]
+      : []),
+    ...(input.comparison.summary.selectedIdentityDelta > 0 ||
+    input.comparison.regressions.some((regression) =>
+      regression.startsWith("removed_identities:"),
+    ) ||
+    input.trialReport.seedShapeCompatibility.duplicateExerciseIdWithinSlotCount >
+      0 ||
+    trialBlockerReasons.some((reason) => reason.includes("duplicate"))
+      ? ["lane_identity"]
+      : []),
+    ...(input.comparison.regressions.length > 0 &&
+    (input.comparison.summary.changedSlotCount > 1 ||
+      (input.comparison.summary.selectedIdentityDelta > 0 &&
+        input.comparison.summary.materializerBlockerDelta === 0))
+      ? ["materializer_ranking"]
+      : []),
+    ...(trialBlockerReasons.some(
+      (reason) =>
+        reason.includes("taxonomy") ||
+        reason.includes("class") ||
+        reason.includes("unsupported") ||
+        reason.includes("candidate"),
+    )
+      ? ["taxonomy"]
+      : []),
+    ...(input.concentrationRegressed ? ["materializer_ranking"] : []),
+  ] as DonorOffsetRegressionCause[]) as DonorOffsetRegressionCause[];
+}
+
+function summarizeDonorOffsetCandidate(
+  candidate: ReturnType<typeof buildConcentrationDonorOffsetCandidateProjection>,
+  options: { hasPassingAlternate: boolean },
+): DonorOffsetCandidateSummary {
+  const regressionCauses = uniqueSorted([
+    ...candidate.regressionCauses,
+    ...(options.hasPassingAlternate ? ["donor_choice"] : []),
+  ] as DonorOffsetRegressionCause[]) as DonorOffsetRegressionCause[];
+  return {
+    slotId: candidate.donor.slotId,
+    laneId: candidate.donor.laneId,
+    scopedLaneId: materializerScopedLaneId(
+      candidate.donor.slotId,
+      candidate.donor.laneId,
+    ),
+    muscles: candidate.donor.protectedMuscles,
+    baselineSetCount: candidate.donorBeforeSets,
+    trialSetCount: candidate.donorAfterSets,
+    setDelta: candidate.donorSetDelta,
+    status:
+      candidate.behaviorReadinessDecision ===
+      "candidate_for_acceptance_projection"
+        ? "pass"
+        : candidate.behaviorReadinessDecision === "not_worth_pursuing"
+          ? "no_candidate_impact"
+        : candidate.blockers.includes("donor_offset_no_candidate_impact")
+          ? "no_candidate_impact"
+          : "blocked",
+    protectedCoverageStatus: candidate.protectedCoverageStatus,
+    materializerDelta: {
+      selectedIdentityDelta: candidate.comparison.summary.selectedIdentityDelta,
+      totalSetDelta: candidate.comparison.summary.totalSetDelta,
+      materializerBlockerDelta:
+        candidate.comparison.summary.materializerBlockerDelta,
+      regressionCount: candidate.comparison.regressions.length,
+    },
+    concentrationWarningDelta: candidate.concentrationDelta.warningDelta,
+    regressionCauses,
+    blockers: candidate.blockers,
+  };
+}
+
+function countDonorOffsetRegressionCauses(
+  rows: ReadonlyArray<V2ConcentrationDonorOffsetRedistributionProjection["rows"][number]>,
+): Partial<Record<DonorOffsetRegressionCause, number>> {
+  return rows.reduce<Partial<Record<DonorOffsetRegressionCause, number>>>(
+    (counts, row) => {
+      for (const cause of row.regressionCauses) {
+        counts[cause] = (counts[cause] ?? 0) + 1;
       }
-    : null;
+      return counts;
+    },
+    {},
+  );
 }
 
 function summarizeConcentrationProjectionLane(input: {

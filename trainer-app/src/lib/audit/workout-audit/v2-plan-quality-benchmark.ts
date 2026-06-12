@@ -503,6 +503,29 @@ function buildFatigueDistributionGate(
           "donorOffsetWarningDelta",
           donorOffsetProjection?.summary.concentrationWarningDelta ?? 0,
         ),
+        numberEvidence(
+          "donorOffsetMaterializerRegressions",
+          donorOffsetProjection?.summary.materializerRegressionCount ?? 0,
+        ),
+        numberEvidence(
+          "donorOffsetConcentrationRegressions",
+          donorOffsetProjection?.summary.concentrationRegressionCount ?? 0,
+        ),
+        numberEvidence(
+          "donorOffsetAlternateCandidates",
+          donorOffsetProjection?.summary.alternateCandidateCount ?? 0,
+        ),
+        numberEvidence(
+          "donorOffsetAlternatePassing",
+          donorOffsetProjection?.summary.alternatePassingCandidateCount ?? 0,
+        ),
+        ...(donorOffsetProjection?.summary.regressionCauseCounts
+          ? Object.entries(
+              donorOffsetProjection.summary.regressionCauseCounts,
+            ).map(([cause, count]) =>
+              numberEvidence(`donorOffsetCause:${cause}`, count ?? 0),
+            )
+          : []),
         `donorOffsetNextSafeSlice=${
           donorOffsetProjection?.summary.nextSafeSlice ?? "not_available"
         }`,

@@ -1548,6 +1548,13 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
                     asRecord(row.protectedCoverageImpact) ?? {},
                   materializerDelta: asRecord(row.materializerDelta) ?? {},
                   concentrationWarningDelta: row.concentrationWarningDelta,
+                  regressionCauses: asStringArray(row.regressionCauses),
+                  selectedDonorKind: row.selectedDonorKind ?? "none",
+                  primaryDonorCandidate:
+                    asRecord(row.primaryDonorCandidate) ?? null,
+                  alternateDonorCandidates: asRecordArray(
+                    row.alternateDonorCandidates,
+                  ),
                   behaviorReadinessDecision: row.behaviorReadinessDecision,
                   blockers: asStringArray(row.blockers),
                   nextSafeSlice: row.nextSafeSlice,

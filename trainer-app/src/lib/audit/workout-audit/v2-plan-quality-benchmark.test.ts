@@ -740,4 +740,177 @@ describe("V2 plan quality benchmark", () => {
       /slotPlanSeedJson|sessionDecisionReceipt|runtimeReplay|acceptedPlannerIntent/,
     );
   });
+
+  it("uses measured concentration projection deltas instead of reporting missing concentration proof", () => {
+    const result = buildV2PlanQualityBenchmark(
+      noRepairFixture({
+        v2ConcentrationMaterializerProjection: {
+          version: 1,
+          source: "v2_concentration_materializer_projection",
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          dryRunOnly: true,
+          consumedByProduction: false,
+          consumedByDemandOrMaterializer: false,
+          status: "projected_with_limitations",
+          projectionMode: "concentration_set_cap_shadow_materializer_dry_run",
+          trialId: "lower_a_squat_anchor_concentration_set_cap_shadow",
+          comparedPlans: {
+            baselineAvailable: true,
+            trialAvailable: true,
+            inventoryExerciseCount: 12,
+          },
+          targetLane: {
+            scopedLaneId: "lower_a:squat_anchor",
+            week: 1,
+            slotId: "lower_a",
+            laneId: "squat_anchor",
+            muscles: ["Quads"],
+            warningEvidence: ["concentration:Quads:over_50_percent"],
+            currentBudget: { min: 3, preferred: 4, max: 4 },
+            trialBudget: { min: 3, preferred: 3, max: 3 },
+            baselineExerciseCount: 1,
+            trialExerciseCount: 1,
+            baselineSetCount: 4,
+            trialSetCount: 3,
+            addedIdentities: [],
+            removedIdentities: [],
+          },
+          materializer: {
+            baselineStatus: "materialized",
+            trialStatus: "materialized",
+            baselineBlockerCount: 0,
+            trialBlockerCount: 0,
+            baselineSeedShapeCompatible: true,
+            trialSeedShapeCompatible: true,
+          },
+          candidateImpact: {
+            selectedIdentityDelta: 0,
+            totalSetDelta: -1,
+            targetLaneSetDelta: -1,
+            targetLaneExerciseDelta: 0,
+            materializerBlockerDelta: 0,
+            regressionCount: 0,
+            regressions: [],
+            improvements: ["target_lane_sets_reduced:1"],
+            changedSlotCount: 1,
+            changedSlots: [
+              {
+                slotId: "lower_a",
+                exerciseCountDelta: 0,
+                setDelta: -1,
+                addedIdentityCount: 0,
+                removedIdentityCount: 0,
+              },
+            ],
+          },
+          concentrationDelta: {
+            baselineWarningCount: 2,
+            trialWarningCount: 2,
+            warningDelta: 0,
+            baselineOver60Count: 1,
+            trialOver60Count: 1,
+            over60Delta: 0,
+            baselineMaxSharePercent: 66.7,
+            trialMaxSharePercent: 60,
+            maxShareDelta: -6.7,
+            baselineHighFatigueSetCount: 4,
+            trialHighFatigueSetCount: 3,
+            highFatigueSetDelta: -1,
+            baselineFatigueWeightedSets: 18,
+            trialFatigueWeightedSets: 15,
+            fatigueWeightedSetDelta: -3,
+          },
+          blockersBeforeBehavior: [
+            "acceptance_gate_not_rerun",
+            "production_slot_demand_allocation_unchanged",
+            "production_set_distribution_intent_unchanged",
+            "production_materializer_not_consuming_trial",
+          ],
+          nextSafeAction: "run_read_only_acceptance_projection",
+          limitations: ["read_only_materializer_dry_run_only"],
+          safeForBehaviorPromotion: false,
+        },
+        v2ExerciseSelectionPlanDiagnostic: {
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          status: "projected_with_limitations",
+          summary: {
+            weeksEvaluated: 1,
+            lanesEvaluated: 1,
+            preservedIdentityCount: 1,
+            candidateAvailableCount: 1,
+            missingCandidateCount: 0,
+            classMismatchCount: 0,
+            duplicateRequiresJustificationCount: 0,
+            concentrationWarningCount: 1,
+            blockedLaneCount: 0,
+          },
+          weeks: [
+            {
+              week: 1,
+              phase: "entry_calibration",
+              slots: [
+                {
+                  slotId: "lower_a",
+                  lanes: [
+                    {
+                      laneId: "squat_anchor",
+                      plannedClass: ["squat_pattern"],
+                      primaryMuscles: ["Quads"],
+                      selectedIdentity: {
+                        exerciseId: "hack-squat",
+                        exerciseName: "Hack Squat",
+                        sourceWeek: 1,
+                        setCount: 4,
+                      },
+                      identityStatus: "preserved",
+                      laneClassStatus: "match",
+                      setBudgetStatus: "requires_justification",
+                      duplicateStatus: "pass",
+                      concentrationStatus: "quality_warning",
+                      fatigueStatus: "quality_warning",
+                      inventoryStatus: "available",
+                      capacityStatus: "within_capacity",
+                      cleanAlternatives: [],
+                      unresolvedDemand: [],
+                      evidenceRefs: ["concentration:Quads:over_50_percent"],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          blockers: [],
+          warnings: [],
+          missingInputs: [],
+          safeForBehaviorPromotion: false,
+        } as unknown as MesocycleExplainPlannerOnlyNoRepair["v2ExerciseSelectionPlanDiagnostic"],
+      }),
+    );
+
+    expect(result.gates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gate: "fatigue_distribution",
+          status: "warning",
+          ownerSeam: "v2_concentration_materializer_projection",
+          evidenceSource: "pure_v2_materializer_projection",
+          evidence: expect.arrayContaining([
+            "concentrationProjectionStatus=projected_with_limitations",
+            "concentrationWarningDelta=0",
+            "concentrationMaxShareDelta=-6.7",
+            "highFatigueSetDelta=-1",
+            "targetLaneSetDelta=-1",
+            "materializerBlockerDelta=0",
+            "concentration_materializer_projection_is_diagnostic_only",
+          ]),
+          missingEvidence: [],
+        }),
+      ]),
+    );
+    expect(JSON.stringify(result)).not.toContain(
+      "concentration_quality_gap_requires_measured_projection_delta",
+    );
+  });
 });

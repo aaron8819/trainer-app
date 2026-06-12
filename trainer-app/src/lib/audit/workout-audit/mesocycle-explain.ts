@@ -90,6 +90,7 @@ import {
   buildV2BasePlanCompareFromLiveContext,
   buildV2BasePlanShadowConsumptionTrialFromLiveContext,
   buildV2CapacityMaterializerProjectionFromLiveContext,
+  buildV2ConcentrationMaterializerProjectionFromLiveContext,
   buildV2LaneIntentMaterializerProjectionFromLiveContext,
   buildV2SetBudgetMaterializerProjectionFromLiveContext,
   buildV2SupportFloorMaterializerProjectionFromLiveContext,
@@ -8812,6 +8813,13 @@ export function buildPlannerOnlyNoRepairComparison(input: {
           },
         })
       : undefined;
+  const v2ConcentrationMaterializerProjection = input.v2BasePlanCompareContext
+    ? buildV2ConcentrationMaterializerProjectionFromLiveContext({
+        plannerPolicy,
+        selectionDiagnostic: v2ExerciseSelectionPlanDiagnostic,
+        ...input.v2BasePlanCompareContext,
+      })
+    : undefined;
   const lowAxialHipExtensionLimitation =
     buildLowAxialHipExtensionLimitation({
       noRepair,
@@ -8855,6 +8863,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         : {}),
       ...(v2SupportFloorMaterializerProjection
         ? { v2SupportFloorMaterializerProjection }
+        : {}),
+      ...(v2ConcentrationMaterializerProjection
+        ? { v2ConcentrationMaterializerProjection }
         : {}),
       ...(v2BasePlanShadowConsumptionTrial
         ? { v2BasePlanShadowConsumptionTrial }
@@ -8901,6 +8912,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       : {}),
     ...(v2SupportFloorMaterializerProjection
       ? { v2SupportFloorMaterializerProjection }
+      : {}),
+    ...(v2ConcentrationMaterializerProjection
+      ? { v2ConcentrationMaterializerProjection }
       : {}),
     plannerOwnedAccumulationProjection,
     v2ExerciseSelectionPlanDiagnostic,

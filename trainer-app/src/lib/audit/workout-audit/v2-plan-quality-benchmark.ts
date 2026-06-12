@@ -399,6 +399,7 @@ function buildFatigueDistributionGate(
   noRepair: MesocycleExplainPlannerOnlyNoRepair,
 ): BenchmarkGate {
   const selection = noRepair.v2ExerciseSelectionPlanDiagnostic;
+  const concentrationProjection = noRepair.v2ConcentrationMaterializerProjection;
   if (!selection) {
     return gate({
       gate: "fatigue_distribution",
@@ -427,12 +428,53 @@ function buildFatigueDistributionGate(
   const warningsWithFatigueEvidence = warnings.filter(({ lane }) =>
     lane.evidenceRefs.some((row) => /fatigue|collateral/i.test(row)),
   );
+  const concentrationProjectionMeasured =
+    concentrationProjection?.readOnly === true &&
+    concentrationProjection.affectsScoringOrGeneration === false &&
+    concentrationProjection.dryRunOnly === true &&
+    concentrationProjection.consumedByProduction === false &&
+    concentrationProjection.consumedByDemandOrMaterializer === false &&
+    concentrationProjection.status !== "not_available";
+  const projectionEvidence = concentrationProjectionMeasured
+    ? [
+        `concentrationProjectionStatus=${concentrationProjection.status}`,
+        `concentrationTrialId=${concentrationProjection.trialId}`,
+        numberEvidence(
+          "concentrationWarningDelta",
+          concentrationProjection.concentrationDelta.warningDelta,
+        ),
+        numberEvidence(
+          "concentrationMaxShareDelta",
+          concentrationProjection.concentrationDelta.maxShareDelta,
+        ),
+        numberEvidence(
+          "highFatigueSetDelta",
+          concentrationProjection.concentrationDelta.highFatigueSetDelta,
+        ),
+        numberEvidence(
+          "targetLaneSetDelta",
+          concentrationProjection.candidateImpact.targetLaneSetDelta,
+        ),
+        numberEvidence(
+          "materializerBlockerDelta",
+          concentrationProjection.candidateImpact.materializerBlockerDelta,
+        ),
+        `nextSafeAction=${concentrationProjection.nextSafeAction}`,
+        "concentration_materializer_projection_is_diagnostic_only",
+      ]
+    : [
+        "concentration_quality_gap_requires_measured_projection_delta",
+      ];
   return gate({
     gate: "fatigue_distribution",
     status:
       blocked.length > 0 ? "fail" : warnings.length > 0 ? "warning" : "pass",
-    ownerSeam: "v2ExerciseSelectionPlanDiagnostic",
-    evidenceSource: "no_repair_projection",
+    ownerSeam: concentrationProjectionMeasured
+      ? "v2_concentration_materializer_projection"
+      : "v2ExerciseSelectionPlanDiagnostic",
+    evidenceSource: concentrationProjectionMeasured
+      ? "pure_v2_materializer_projection"
+      : "no_repair_projection",
     evidence: [
       numberEvidence("fatigueBlocked", blocked.length),
       numberEvidence("fatigueWarnings", warnings.length),
@@ -457,9 +499,11 @@ function buildFatigueDistributionGate(
           ].join(":")}`,
       ),
       "no_repair_projection_not_pure_v2_policy",
-      "concentration_quality_gap_requires_measured_projection_delta",
+      ...projectionEvidence,
     ],
-    missingEvidence: selection.missingInputs,
+    missingEvidence: concentrationProjectionMeasured
+      ? selection.missingInputs
+      : [...selection.missingInputs, "concentration_projection_delta"],
   });
 }
 

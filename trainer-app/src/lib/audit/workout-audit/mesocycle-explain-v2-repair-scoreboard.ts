@@ -30,6 +30,7 @@ type V2RepairPromotionReadoutContext = {
   v2LaneIntentMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2LaneIntentMaterializerProjection"];
   v2SetBudgetMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2SetBudgetMaterializerProjection"];
   v2SupportFloorMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2SupportFloorMaterializerProjection"];
+  v2ConcentrationMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2ConcentrationMaterializerProjection"];
   v2BasePlanShadowConsumptionTrial?: MesocycleExplainPlannerOnlyNoRepair["v2BasePlanShadowConsumptionTrial"];
 };
 
@@ -2133,6 +2134,58 @@ function supportFloorMaterializerMissingGates(
   ]);
 }
 
+function concentrationMaterializerGateSummary(
+  projection: NonNullable<
+    V2RepairPromotionReadoutContext["v2ConcentrationMaterializerProjection"]
+  >,
+): string[] {
+  return [
+    `concentrationTrialId=${projection.trialId}`,
+    `concentrationStatus=${projection.status}`,
+    `candidateImpact.selectedIdentityDelta=${projection.candidateImpact.selectedIdentityDelta}`,
+    `candidateImpact.totalSetDelta=${projection.candidateImpact.totalSetDelta}`,
+    `candidateImpact.targetLaneSetDelta=${projection.candidateImpact.targetLaneSetDelta}`,
+    `candidateImpact.targetLaneExerciseDelta=${projection.candidateImpact.targetLaneExerciseDelta}`,
+    `candidateImpact.materializerBlockerDelta=${projection.candidateImpact.materializerBlockerDelta}`,
+    `candidateImpact.regressionCount=${projection.candidateImpact.regressionCount}`,
+    `concentration.warningDelta=${projection.concentrationDelta.warningDelta}`,
+    `concentration.over60Delta=${projection.concentrationDelta.over60Delta}`,
+    `concentration.maxShareDelta=${projection.concentrationDelta.maxShareDelta}`,
+    `fatigue.highFatigueSetDelta=${projection.concentrationDelta.highFatigueSetDelta}`,
+    `fatigue.weightedSetDelta=${projection.concentrationDelta.fatigueWeightedSetDelta}`,
+    `materializer.baseline=${projection.materializer.baselineStatus}`,
+    `materializer.trial=${projection.materializer.trialStatus}`,
+    `targetLane.currentBudget=${projection.targetLane.currentBudget.min}/${projection.targetLane.currentBudget.preferred}/${projection.targetLane.currentBudget.max}`,
+    `targetLane.trialBudget=${projection.targetLane.trialBudget.min}/${projection.targetLane.trialBudget.preferred}/${projection.targetLane.trialBudget.max}`,
+    `consumedByProduction=${projection.consumedByProduction}`,
+    `consumedByDemandOrMaterializer=${projection.consumedByDemandOrMaterializer}`,
+  ];
+}
+
+function concentrationMaterializerMissingGates(
+  projection?: V2RepairPromotionReadoutContext["v2ConcentrationMaterializerProjection"],
+): string[] {
+  if (!projection) {
+    return [
+      "concentration_materializer_projection_delta",
+      "fatigue_concentration_delta",
+      "seed_runtime_non_consumption_gate",
+    ];
+  }
+  return uniqueSorted([
+    ...projection.blockersBeforeBehavior,
+    ...(projection.materializer.trialSeedShapeCompatible
+      ? []
+      : ["trial_seed_shape_incompatible"]),
+    ...(projection.consumedByProduction
+      ? ["projection_must_not_be_consumed_by_production"]
+      : []),
+    ...(projection.consumedByDemandOrMaterializer
+      ? ["projection_must_not_feed_demand_or_materializer_policy"]
+      : []),
+  ]);
+}
+
 function buildGapInventory(input: {
   currentV2PolicyGap: V2RepairPromotionScoreboard["interpretation"]["currentV2PolicyGap"];
   taxonomyMismatchInventory?: TaxonomyMismatchInventory;
@@ -2146,6 +2199,8 @@ function buildGapInventory(input: {
   const setBudgetProjection = input.context?.v2SetBudgetMaterializerProjection;
   const supportFloorProjection =
     input.context?.v2SupportFloorMaterializerProjection;
+  const concentrationProjection =
+    input.context?.v2ConcentrationMaterializerProjection;
   const taxonomyInventory = input.taxonomyMismatchInventory;
   const setBudgetInventory = input.setBudgetGapInventory;
   const supportFloorInventory = input.supportFloorGapInventory;
@@ -2424,25 +2479,54 @@ function buildGapInventory(input: {
     );
   }
 
-  if (gap.concentrationQualityGapCount > 0) {
+  if (gap.concentrationQualityGapCount > 0 || concentrationProjection) {
+    const measuredNoImpact =
+      concentrationProjection &&
+      concentrationProjection.candidateImpact.selectedIdentityDelta === 0 &&
+      concentrationProjection.candidateImpact.totalSetDelta === 0 &&
+      concentrationProjection.candidateImpact.targetLaneSetDelta === 0 &&
+      concentrationProjection.candidateImpact.targetLaneExerciseDelta === 0 &&
+      concentrationProjection.candidateImpact.materializerBlockerDelta === 0 &&
+      concentrationProjection.candidateImpact.regressionCount === 0 &&
+      concentrationProjection.concentrationDelta.warningDelta === 0 &&
+      concentrationProjection.concentrationDelta.maxShareDelta === 0 &&
+      concentrationProjection.concentrationDelta.highFatigueSetDelta === 0;
+    const improved =
+      concentrationProjection &&
+      (concentrationProjection.concentrationDelta.warningDelta < 0 ||
+        concentrationProjection.concentrationDelta.over60Delta < 0 ||
+        concentrationProjection.concentrationDelta.maxShareDelta < 0 ||
+        concentrationProjection.concentrationDelta.highFatigueSetDelta < 0);
     candidates.push(
       buildGapCandidate({
         gapId: "concentration_quality",
         description:
           "Concentration warnings need proof they are planner policy gaps rather than diagnostic readout noise.",
-        likelyOwnerSeam: "SlotDemandAllocationByWeek",
-        evidenceQuality: "diagnostic_count",
-        trainingImportance: "medium",
+        likelyOwnerSeam: improved
+          ? "SlotDemandAllocationByWeek -> SetDistributionIntent -> v2_materialization_dry_run"
+          : "audit_readout_cleanup",
+        evidenceQuality: concentrationProjection
+          ? "measured_materializer_projection"
+          : "diagnostic_count",
+        trainingImportance: measuredNoImpact ? "low" : "medium",
         gapCount: gap.concentrationQualityGapCount,
-        currentEvidence: [
+        currentEvidence: uniqueSorted([
           `concentrationQualityGapCount=${gap.concentrationQualityGapCount}`,
-        ],
-        missingProof: [
-          "weekly_distribution_non_regression",
-          "fatigue_concentration_delta",
-        ],
-        measurableNextStep: "measure_concentration_projection_delta",
-        status: "blocked_by_missing_evidence",
+          ...(concentrationProjection
+            ? concentrationMaterializerGateSummary(concentrationProjection)
+            : []),
+        ]),
+        missingProof: concentrationMaterializerMissingGates(
+          concentrationProjection,
+        ),
+        measurableNextStep:
+          concentrationProjection?.nextSafeAction ??
+          "measure_concentration_projection_delta",
+        status: measuredNoImpact
+          ? "measured_no_candidate_impact"
+          : concentrationProjection
+            ? "selected_for_measured_proof"
+            : "blocked_by_missing_evidence",
       }),
     );
   }
@@ -2522,6 +2606,8 @@ function buildSelectedGapProof(input: {
   const setBudgetProjection = input.context?.v2SetBudgetMaterializerProjection;
   const supportFloorProjection =
     input.context?.v2SupportFloorMaterializerProjection;
+  const concentrationProjection =
+    input.context?.v2ConcentrationMaterializerProjection;
   const selectedTaxonomyRow = selectTaxonomyMismatchRow({
     inventory: input.taxonomyMismatchInventory,
     projection: taxonomyProjection,
@@ -2542,6 +2628,9 @@ function buildSelectedGapProof(input: {
   );
   const supportFloorGap = input.gapInventory.find(
     (row) => row.gapId === "support_direct_floor",
+  );
+  const concentrationGap = input.gapInventory.find(
+    (row) => row.gapId === "concentration_quality",
   );
   const capacityGap = input.gapInventory.find(
     (row) => row.gapId === "selection_capacity_pressure",
@@ -2788,6 +2877,55 @@ function buildSelectedGapProof(input: {
         projectionMatches && supportFloorProjection
           ? supportFloorProjection.nextSafeAction
           : selected.measurableNextStep,
+    };
+  }
+  if (selected.gapId === "concentration_quality") {
+    const noImpact =
+      concentrationProjection &&
+      concentrationProjection.candidateImpact.selectedIdentityDelta === 0 &&
+      concentrationProjection.candidateImpact.totalSetDelta === 0 &&
+      concentrationProjection.candidateImpact.targetLaneSetDelta === 0 &&
+      concentrationProjection.candidateImpact.targetLaneExerciseDelta === 0 &&
+      concentrationProjection.candidateImpact.materializerBlockerDelta === 0 &&
+      concentrationProjection.candidateImpact.regressionCount === 0 &&
+      concentrationProjection.concentrationDelta.warningDelta === 0 &&
+      concentrationProjection.concentrationDelta.maxShareDelta === 0 &&
+      concentrationProjection.concentrationDelta.highFatigueSetDelta === 0;
+    const improved =
+      concentrationProjection &&
+      (concentrationProjection.concentrationDelta.warningDelta < 0 ||
+        concentrationProjection.concentrationDelta.over60Delta < 0 ||
+        concentrationProjection.concentrationDelta.maxShareDelta < 0 ||
+        concentrationProjection.concentrationDelta.highFatigueSetDelta < 0);
+    return {
+      gapId: selected.gapId,
+      classification: noImpact
+        ? "diagnostic_only_no_impact"
+        : improved
+          ? "planner_policy_owned"
+          : "blocked_by_missing_evidence",
+      proofResult: concentrationProjection
+        ? noImpact
+          ? "measured_no_candidate_impact"
+          : "measured_with_missing_gates"
+        : "blocked_by_missing_evidence",
+      rightfulOwnerSeam:
+        concentrationGap?.likelyOwnerSeam ?? selected.likelyOwnerSeam,
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      safeForBehaviorPromotion: false,
+      measuredEvidence: uniqueSorted([
+        ...selected.currentEvidence,
+        ...(concentrationProjection
+          ? concentrationMaterializerGateSummary(concentrationProjection)
+          : []),
+      ]),
+      missingGates: concentrationMaterializerMissingGates(
+        concentrationProjection,
+      ),
+      nextSafeAction:
+        concentrationProjection?.nextSafeAction ?? selected.measurableNextStep,
     };
   }
   return {

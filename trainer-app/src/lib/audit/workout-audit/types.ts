@@ -28,6 +28,7 @@ import type {
 } from "@/lib/api/planning-reality";
 import type {
   V2CapacityMaterializerProjection,
+  V2ConcentrationMaterializerProjection,
   V2LaneIntentMaterializerProjection,
   V2SetBudgetMaterializerProjection,
   V2SupportFloorMaterializerProjection,
@@ -1894,6 +1895,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
   v2LaneIntentMaterializerProjection?: V2LaneIntentMaterializerProjection;
   v2SetBudgetMaterializerProjection?: V2SetBudgetMaterializerProjection;
   v2SupportFloorMaterializerProjection?: V2SupportFloorMaterializerProjection;
+  v2ConcentrationMaterializerProjection?: V2ConcentrationMaterializerProjection;
   v2PlanQualityBenchmark?: V2PlanQualityBenchmark;
   repairPromotionScoreboard?: {
     version: 1;

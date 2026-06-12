@@ -684,6 +684,9 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
   const supportFloorMaterializer = asRecord(
     noRepair.v2SupportFloorMaterializerProjection,
   );
+  const concentrationMaterializer = asRecord(
+    noRepair.v2ConcentrationMaterializerProjection,
+  );
   const planQualityBenchmark = asRecord(noRepair.v2PlanQualityBenchmark);
   if (
     !v2Plan &&
@@ -695,6 +698,7 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
     !laneIntentMaterializer &&
     !setBudgetMaterializer &&
     !supportFloorMaterializer &&
+    !concentrationMaterializer &&
     !planQualityBenchmark
   ) {
     return null;
@@ -742,6 +746,9 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
       : {}),
     ...(supportFloorMaterializer
       ? { v2SupportFloorMaterializerProjection: supportFloorMaterializer }
+      : {}),
+    ...(concentrationMaterializer
+      ? { v2ConcentrationMaterializerProjection: concentrationMaterializer }
       : {}),
     ...(planQualityBenchmark
       ? { v2PlanQualityBenchmark: planQualityBenchmark }
@@ -1170,6 +1177,15 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
   const supportFloorMaterializerImpact = asRecord(
     supportFloorMaterializer?.candidateImpact,
   );
+  const concentrationMaterializer = asRecord(
+    noRepair.v2ConcentrationMaterializerProjection,
+  );
+  const concentrationMaterializerImpact = asRecord(
+    concentrationMaterializer?.candidateImpact,
+  );
+  const concentrationDelta = asRecord(
+    concentrationMaterializer?.concentrationDelta,
+  );
 
   return {
     summary: {
@@ -1430,6 +1446,66 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
               : "inspect_support_floor_materializer_projection",
         }
       : undefined,
+    v2ConcentrationMaterializerProjection: concentrationMaterializer
+      ? {
+          status: concentrationMaterializer.status ?? "not_available",
+          readOnly: concentrationMaterializer.readOnly === true,
+          affectsScoringOrGeneration:
+            concentrationMaterializer.affectsScoringOrGeneration === true
+              ? true
+              : false,
+          consumedByProduction:
+            concentrationMaterializer.consumedByProduction === true
+              ? true
+              : false,
+          consumedByDemandOrMaterializer:
+            concentrationMaterializer.consumedByDemandOrMaterializer === true
+              ? true
+              : false,
+          projectionMode:
+            concentrationMaterializer.projectionMode ??
+            "concentration_set_cap_shadow_materializer_dry_run",
+          trialId: concentrationMaterializer.trialId ?? null,
+          targetLane: pickRecordFields(concentrationMaterializer.targetLane, [
+            "scopedLaneId",
+            "week",
+            "slotId",
+            "laneId",
+            "muscles",
+            "currentBudget",
+            "trialBudget",
+          ]),
+          candidateImpact: concentrationMaterializerImpact
+            ? {
+                selectedIdentityDelta:
+                  concentrationMaterializerImpact.selectedIdentityDelta,
+                totalSetDelta: concentrationMaterializerImpact.totalSetDelta,
+                targetLaneSetDelta:
+                  concentrationMaterializerImpact.targetLaneSetDelta,
+                targetLaneExerciseDelta:
+                  concentrationMaterializerImpact.targetLaneExerciseDelta,
+                materializerBlockerDelta:
+                  concentrationMaterializerImpact.materializerBlockerDelta,
+                regressionCount:
+                  concentrationMaterializerImpact.regressionCount,
+              }
+            : {},
+          concentrationDelta: concentrationDelta
+            ? {
+                warningDelta: concentrationDelta.warningDelta,
+                over60Delta: concentrationDelta.over60Delta,
+                maxShareDelta: concentrationDelta.maxShareDelta,
+                highFatigueSetDelta: concentrationDelta.highFatigueSetDelta,
+                fatigueWeightedSetDelta:
+                  concentrationDelta.fatigueWeightedSetDelta,
+              }
+            : {},
+          nextSafeAction:
+            typeof concentrationMaterializer.nextSafeAction === "string"
+              ? concentrationMaterializer.nextSafeAction
+              : "inspect_concentration_materializer_projection",
+        }
+      : undefined,
     v2TargetVsNoRepairDiff: {
       summary: v2DiffSummary ?? {},
       replacementReadinessImpact: replacementReadinessImpact ?? {},
@@ -1667,6 +1743,15 @@ function buildIndexSummary(input: {
   const supportFloorMaterializerImpact = asRecord(
     supportFloorMaterializer?.candidateImpact,
   );
+  const concentrationMaterializer = asRecord(
+    input.noRepair.v2ConcentrationMaterializerProjection,
+  );
+  const concentrationMaterializerImpact = asRecord(
+    concentrationMaterializer?.candidateImpact,
+  );
+  const concentrationMaterializerDelta = asRecord(
+    concentrationMaterializer?.concentrationDelta,
+  );
   const planQualityBenchmark = asRecord(input.noRepair.v2PlanQualityBenchmark);
   const planQualitySummary = asRecord(planQualityBenchmark?.summary);
   const planQualityDeprecationReadiness = asRecord(
@@ -1721,6 +1806,14 @@ function buildIndexSummary(input: {
       supportFloorMaterializerImpact?.totalSetDelta ?? null,
     v2SupportFloorMaterializerProjectionTargetLaneSetDelta:
       supportFloorMaterializerImpact?.targetLaneSetDelta ?? null,
+    v2ConcentrationMaterializerProjectionStatus:
+      concentrationMaterializer?.status ?? "not_available",
+    v2ConcentrationMaterializerProjectionIdentityDelta:
+      concentrationMaterializerImpact?.selectedIdentityDelta ?? null,
+    v2ConcentrationMaterializerProjectionTotalSetDelta:
+      concentrationMaterializerImpact?.totalSetDelta ?? null,
+    v2ConcentrationMaterializerProjectionWarningDelta:
+      concentrationMaterializerDelta?.warningDelta ?? null,
     v2PlanQualityBenchmarkStatus:
       planQualityBenchmark?.status ?? "not_available",
     v2PlanQualityBenchmarkFailedGates:

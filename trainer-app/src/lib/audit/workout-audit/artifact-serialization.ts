@@ -1092,6 +1092,18 @@ function compactPlannerOnlyNoRepair(
   const v2PlanQualityBenchmarkDeprecationReadiness = asRecord(
     v2PlanQualityBenchmark?.deprecationReadiness,
   );
+  const v2PromotionCandidateEvaluator = asRecord(
+    noRepair.v2PromotionCandidateEvaluator,
+  );
+  const v2PromotionCandidateEvaluatorSummary = asRecord(
+    v2PromotionCandidateEvaluator?.summary,
+  );
+  const v2PromotionCandidateRecommendation = asRecord(
+    v2PromotionCandidateEvaluator?.recommendation,
+  );
+  const v2PromotionCandidateRows = asRecordArray(
+    v2PromotionCandidateEvaluator?.candidates,
+  );
   const v2PlanQualitySlotWeekAcceptance = asRecord(
     asRecord(v2PlanQualityBenchmark?.slotWeekAllocationAcceptanceProjection)
       ?.acceptance,
@@ -1317,6 +1329,45 @@ function compactPlannerOnlyNoRepair(
             }),
           ),
           guardrails: asRecord(v2PlanQualityBenchmark.guardrails) ?? {},
+        }
+      : undefined,
+    v2PromotionCandidateEvaluator: v2PromotionCandidateEvaluator
+      ? {
+          status: v2PromotionCandidateEvaluator.status ?? "none_ready",
+          readOnly: v2PromotionCandidateEvaluator.readOnly === true,
+          affectsScoringOrGeneration:
+            v2PromotionCandidateEvaluator.affectsScoringOrGeneration === true
+              ? true
+              : false,
+          consumedByProduction:
+            v2PromotionCandidateEvaluator.consumedByProduction === true,
+          consumedByDemandOrMaterializer:
+            v2PromotionCandidateEvaluator.consumedByDemandOrMaterializer ===
+            true,
+          repairedProjectionUsedAs:
+            v2PromotionCandidateEvaluator.repairedProjectionUsedAs ??
+            "evidence_only_not_target_policy",
+          summary: v2PromotionCandidateEvaluatorSummary ?? {},
+          recommendation: v2PromotionCandidateRecommendation ?? {},
+          topCandidates: v2PromotionCandidateRows.slice(0, 5).map((row) => ({
+            rank: row.rank ?? null,
+            candidateId: row.candidateId,
+            label: row.label,
+            ownerSeam: row.ownerSeam,
+            status: row.status,
+            priorProbe: row.priorProbe,
+            sourceSurface: row.sourceSurface,
+            score: asRecord(row.score)?.total ?? null,
+            stopReasons: asStringArray(row.stopReasons),
+            nextSafeAction: row.nextSafeAction,
+          })),
+          omittedCandidateCount: Math.max(
+            0,
+            v2PromotionCandidateRows.length - 5,
+          ),
+          stopReasonCounts:
+            asRecord(v2PromotionCandidateEvaluator.stopReasonCounts) ?? {},
+          guardrails: asRecord(v2PromotionCandidateEvaluator.guardrails) ?? {},
         }
       : undefined,
     v2Summary: {

@@ -1984,6 +1984,96 @@ export type V2PlanQualityBenchmark = {
   };
 };
 
+export type V2PromotionCandidateStopReason =
+  | "diagnostic_artifact"
+  | "measured_no_impact"
+  | "stale_noise"
+  | "combined_shadow_only"
+  | "repair_only_evidence"
+  | "missing_bounded_delta"
+  | "materializer_regression"
+  | "already_promoted_baseline"
+  | "missing_acceptance_or_watch_clearance"
+  | "missing_seed_runtime_receipt_db_non_consumption";
+
+export type V2PromotionCandidateEvaluator = {
+  version: 1;
+  source: "v2_promotion_candidate_evaluator";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByProduction: false;
+  consumedByDemandOrMaterializer: false;
+  repairedProjectionUsedAs: "evidence_only_not_target_policy";
+  status: "candidate_ready" | "none_ready" | "blocked_by_missing_evidence";
+  summary: {
+    evaluatedCandidateCount: number;
+    readyCandidateCount: number;
+    stoppedCandidateCount: number;
+    watchCandidateCount: number;
+    topCandidateId: string | null;
+    topRecommendation:
+      | "recommend_next_safe_slice"
+      | "none_ready"
+      | "collect_more_evidence";
+    nextSafeAction: string;
+  };
+  recommendation: {
+    decision:
+      | "recommend_next_safe_slice"
+      | "none_ready"
+      | "collect_more_evidence";
+    candidateId: string | null;
+    label: string;
+    ownerSeam: string | null;
+    reason: string;
+    nextSafeAction: string;
+    score: number | null;
+  };
+  candidates: Array<{
+    rank: number | null;
+    candidateId: string;
+    label: string;
+    ownerSeam: string;
+    sourceSurface:
+      | "v2_plan_quality_benchmark"
+      | "repair_promotion_scoreboard"
+      | "strategy_to_demand_projection"
+      | "strategy_row_materializer_projection";
+    priorProbe:
+      | "promoted"
+      | "measured_no_impact"
+      | "stale_noise"
+      | "bounded_watch"
+      | "blocked"
+      | "unmeasured"
+      | "measured_positive";
+    status: "ready" | "stopped" | "watch" | "blocked";
+    stopReasons: V2PromotionCandidateStopReason[];
+    score: {
+      total: number;
+      measuredOwnerSpecificPositiveImpact: number;
+      materializerNonRegression: number;
+      protectedCoverage: number;
+      acceptanceWatchStatus: number;
+      seedRuntimeReceiptDbNonConsumption: number;
+      sourceAttributionQuality: number;
+      priorProbeAdjustment: number;
+      implementationScope: number;
+    };
+    evidence: string[];
+    missingProof: string[];
+    nextSafeAction: string;
+  }>;
+  stopReasonCounts: Partial<Record<V2PromotionCandidateStopReason, number>>;
+  guardrails: {
+    seedRuntimeChanged: false;
+    receiptChanged: false;
+    persistenceChanged: false;
+    productionMaterializerChanged: false;
+    acceptanceThresholdChanged: false;
+  };
+};
+
 export type MesocycleExplainPlannerOnlyNoRepair = {
   enabled: true;
   readOnly: true;
@@ -2038,6 +2128,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
   v2StrategyRowMaterializerProjection?: V2StrategyRowMaterializerProjection;
   v2ConcentrationMaterializerProjection?: V2ConcentrationMaterializerProjection;
   v2PlanQualityBenchmark?: V2PlanQualityBenchmark;
+  v2PromotionCandidateEvaluator?: V2PromotionCandidateEvaluator;
   repairPromotionScoreboard?: {
     version: 1;
     readOnly: true;

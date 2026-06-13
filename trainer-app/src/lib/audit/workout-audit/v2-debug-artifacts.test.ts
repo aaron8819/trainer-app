@@ -130,6 +130,70 @@ describe("buildV2DebugArtifacts", () => {
             limitations: ["read_only_materializer_dry_run_only"],
             safeForBehaviorPromotion: false,
           },
+          v2PromotionCandidateEvaluator: {
+            version: 1,
+            source: "v2_promotion_candidate_evaluator",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            consumedByProduction: false,
+            consumedByDemandOrMaterializer: false,
+            repairedProjectionUsedAs: "evidence_only_not_target_policy",
+            status: "none_ready",
+            summary: {
+              evaluatedCandidateCount: 1,
+              readyCandidateCount: 0,
+              stoppedCandidateCount: 1,
+              watchCandidateCount: 0,
+              topCandidateId: null,
+              topRecommendation: "none_ready",
+              nextSafeAction: "pivot_to_new_owner_specific_candidate_inventory",
+            },
+            recommendation: {
+              decision: "none_ready",
+              candidateId: null,
+              label: "none ready",
+              ownerSeam: null,
+              reason: "measured no-impact",
+              nextSafeAction: "pivot_to_new_owner_specific_candidate_inventory",
+              score: null,
+            },
+            candidates: [
+              {
+                rank: null,
+                candidateId: "side_delts_protect_floor",
+                label: "Side Delts protect-floor strategy row",
+                ownerSeam: "SlotDemandAllocationByWeek",
+                sourceSurface: "strategy_row_materializer_projection",
+                priorProbe: "measured_no_impact",
+                status: "stopped",
+                stopReasons: ["measured_no_impact"],
+                score: {
+                  total: 15,
+                  measuredOwnerSpecificPositiveImpact: 0,
+                  materializerNonRegression: 20,
+                  protectedCoverage: 15,
+                  acceptanceWatchStatus: 0,
+                  seedRuntimeReceiptDbNonConsumption: 20,
+                  sourceAttributionQuality: 15,
+                  priorProbeAdjustment: -35,
+                  implementationScope: 8,
+                },
+                evidence: ["identityDelta=0"],
+                missingProof: ["acceptance_projection"],
+                nextSafeAction: "pivot_to_higher_roi_track",
+              },
+            ],
+            stopReasonCounts: {
+              measured_no_impact: 1,
+            },
+            guardrails: {
+              seedRuntimeChanged: false,
+              receiptChanged: false,
+              persistenceChanged: false,
+              productionMaterializerChanged: false,
+              acceptanceThresholdChanged: false,
+            },
+          },
         },
       },
     } as unknown as WorkoutAuditArtifact;
@@ -165,6 +229,12 @@ describe("buildV2DebugArtifacts", () => {
       v2StrategyRowMaterializerProjectionSetBudgetBasisBlocker: null,
       v2StrategyRowMaterializerProjectionNextSafeSlice:
         "keep_blocked_until_owner_donor_or_acceptance_proof",
+      v2PromotionCandidateEvaluatorStatus: "none_ready",
+      v2PromotionCandidateEvaluatorReady: 0,
+      v2PromotionCandidateEvaluatorStopped: 1,
+      v2PromotionCandidateEvaluatorWatch: 0,
+      v2PromotionCandidateEvaluatorRecommendation: "none_ready",
+      v2PromotionCandidateEvaluatorTopCandidate: null,
     });
     const materializationShard = built?.shards.find(
       (shard) => shard.metadata.id === "materialization",
@@ -201,6 +271,23 @@ describe("buildV2DebugArtifacts", () => {
         demandOrMaterializer: false,
         seedRuntimeReceiptDb: false,
         acceptanceThreshold: false,
+      },
+    });
+    const promotionReadinessShard = built?.shards.find(
+      (shard) => shard.metadata.id === "promotion-readiness",
+    )?.artifact;
+    expect(promotionReadinessShard?.data).toMatchObject({
+      v2PromotionCandidateEvaluator: {
+        status: "none_ready",
+        recommendation: {
+          decision: "none_ready",
+        },
+        candidates: [
+          expect.objectContaining({
+            candidateId: "side_delts_protect_floor",
+            stopReasons: ["measured_no_impact"],
+          }),
+        ],
       },
     });
   });

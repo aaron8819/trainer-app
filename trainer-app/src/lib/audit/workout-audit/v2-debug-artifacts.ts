@@ -624,35 +624,79 @@ function compactStrategyToDemandProjection(value: unknown): JsonRecord {
   };
 }
 
-function compactPromotionReadiness(value: unknown): JsonRecord {
+function compactPromotionReadiness(
+  value: unknown,
+  candidateEvaluator?: unknown,
+): JsonRecord {
   const diagnostic = asRecord(value);
   const readiness = asRecord(diagnostic?.strategyHypothesisPromotionReadiness);
-  if (!readiness) {
+  const evaluator = asRecord(candidateEvaluator);
+  const evaluatorRows = asRecordArray(evaluator?.candidates);
+  if (!readiness && !evaluator) {
     return { status: "not_available" };
   }
-  const rows = asRecordArray(readiness.hypothesisReadiness);
+  const rows = readiness ? asRecordArray(readiness.hypothesisReadiness) : [];
   return {
-    strategyHypothesisPromotionReadiness: {
-      status: readiness.status ?? "not_ready",
-      readOnly: readiness.readOnly === true,
-      affectsScoringOrGeneration:
-        readiness.affectsScoringOrGeneration === true ? true : false,
-      globalBlockers: asStringArray(readiness.globalBlockers).slice(0, 12),
-      hypothesisReadiness: rows.map((row) => ({
-        hypothesisId: row.hypothesisId,
-        readiness: row.readiness,
-        proposedOwner: row.proposedOwner,
-        nextSafeAction: row.nextSafeAction,
-        missingEvidence: asStringArray(row.missingEvidence).slice(0, 8),
-        requiredEvidenceCount: countArray(row.requiredEvidence),
-        nonRegressionGateCount: countArray(row.requiredNonRegressionGates),
-        knownRiskCount: countArray(row.knownRisks),
-        rollbackCriterionCount: countArray(row.rollbackCriteria),
-      })),
-      readinessCounts: countBy(rows, "readiness"),
-      proposedOwnerCounts: countBy(rows, "proposedOwner"),
-      nextSafeActionCounts: countBy(rows, "nextSafeAction"),
-    },
+    ...(readiness
+      ? {
+          strategyHypothesisPromotionReadiness: {
+            status: readiness.status ?? "not_ready",
+            readOnly: readiness.readOnly === true,
+            affectsScoringOrGeneration:
+              readiness.affectsScoringOrGeneration === true ? true : false,
+            globalBlockers: asStringArray(readiness.globalBlockers).slice(0, 12),
+            hypothesisReadiness: rows.map((row) => ({
+              hypothesisId: row.hypothesisId,
+              readiness: row.readiness,
+              proposedOwner: row.proposedOwner,
+              nextSafeAction: row.nextSafeAction,
+              missingEvidence: asStringArray(row.missingEvidence).slice(0, 8),
+              requiredEvidenceCount: countArray(row.requiredEvidence),
+              nonRegressionGateCount: countArray(row.requiredNonRegressionGates),
+              knownRiskCount: countArray(row.knownRisks),
+              rollbackCriterionCount: countArray(row.rollbackCriteria),
+            })),
+            readinessCounts: countBy(rows, "readiness"),
+            proposedOwnerCounts: countBy(rows, "proposedOwner"),
+            nextSafeActionCounts: countBy(rows, "nextSafeAction"),
+          },
+        }
+      : {}),
+    ...(evaluator
+      ? {
+          v2PromotionCandidateEvaluator: {
+            status: evaluator.status ?? "none_ready",
+            readOnly: evaluator.readOnly === true,
+            affectsScoringOrGeneration:
+              evaluator.affectsScoringOrGeneration === true ? true : false,
+            consumedByProduction: evaluator.consumedByProduction === true,
+            consumedByDemandOrMaterializer:
+              evaluator.consumedByDemandOrMaterializer === true,
+            summary: asRecord(evaluator.summary) ?? {},
+            recommendation: asRecord(evaluator.recommendation) ?? {},
+            candidates: evaluatorRows.slice(0, COMPACT_TOP_ROW_LIMIT).map((row) => ({
+              rank: row.rank ?? null,
+              candidateId: row.candidateId,
+              label: row.label,
+              ownerSeam: row.ownerSeam,
+              sourceSurface: row.sourceSurface,
+              status: row.status,
+              priorProbe: row.priorProbe,
+              score: asRecord(row.score)?.total ?? null,
+              stopReasons: asStringArray(row.stopReasons),
+              missingProofCount: countArray(row.missingProof),
+              evidenceCount: countArray(row.evidence),
+              nextSafeAction: row.nextSafeAction,
+            })),
+            omittedCandidateCount: Math.max(
+              0,
+              evaluatorRows.length - COMPACT_TOP_ROW_LIMIT,
+            ),
+            stopReasonCounts: asRecord(evaluator.stopReasonCounts) ?? {},
+            guardrails: asRecord(evaluator.guardrails) ?? {},
+          },
+        }
+      : {}),
   };
 }
 
@@ -1039,11 +1083,22 @@ function buildFullShardData(
         : null;
     case "promotion-readiness":
       return asRecord(noRepair.v2MesocycleStrategyDiagnostic)
-        ?.strategyHypothesisPromotionReadiness
+        ?.strategyHypothesisPromotionReadiness || noRepair.v2PromotionCandidateEvaluator
         ? {
-            strategyHypothesisPromotionReadiness: asRecord(
-              noRepair.v2MesocycleStrategyDiagnostic,
-            )?.strategyHypothesisPromotionReadiness,
+            ...(asRecord(noRepair.v2MesocycleStrategyDiagnostic)
+              ?.strategyHypothesisPromotionReadiness
+              ? {
+                  strategyHypothesisPromotionReadiness: asRecord(
+                    noRepair.v2MesocycleStrategyDiagnostic,
+                  )?.strategyHypothesisPromotionReadiness,
+                }
+              : {}),
+            ...(noRepair.v2PromotionCandidateEvaluator
+              ? {
+                  v2PromotionCandidateEvaluator:
+                    noRepair.v2PromotionCandidateEvaluator,
+                }
+              : {}),
           }
         : null;
     case "promotion-diffs":
@@ -1110,7 +1165,10 @@ function buildCompactShardData(
         ),
       };
     case "promotion-readiness":
-      return compactPromotionReadiness(noRepair.v2MesocycleStrategyDiagnostic);
+      return compactPromotionReadiness(
+        noRepair.v2MesocycleStrategyDiagnostic,
+        noRepair.v2PromotionCandidateEvaluator,
+      );
     case "promotion-diffs":
       return compactPromotionDiffs(noRepair);
     case "repair-evidence":
@@ -2094,6 +2152,15 @@ function buildIndexSummary(input: {
   const planQualityDeprecationReadiness = asRecord(
     planQualityBenchmark?.deprecationReadiness,
   );
+  const promotionCandidateEvaluator = asRecord(
+    input.noRepair.v2PromotionCandidateEvaluator,
+  );
+  const promotionCandidateEvaluatorSummary = asRecord(
+    promotionCandidateEvaluator?.summary,
+  );
+  const promotionCandidateRecommendation = asRecord(
+    promotionCandidateEvaluator?.recommendation,
+  );
   const strategyToDemandProjection = asRecord(
     input.noRepair.strategyToDemandProjection,
   );
@@ -2251,6 +2318,18 @@ function buildIndexSummary(input: {
       planQualitySummary?.missingEvidenceCount ?? null,
     v2PlanQualityDeprecationReadiness:
       planQualityDeprecationReadiness?.status ?? "not_available",
+    v2PromotionCandidateEvaluatorStatus:
+      promotionCandidateEvaluator?.status ?? "not_available",
+    v2PromotionCandidateEvaluatorReady:
+      promotionCandidateEvaluatorSummary?.readyCandidateCount ?? null,
+    v2PromotionCandidateEvaluatorStopped:
+      promotionCandidateEvaluatorSummary?.stoppedCandidateCount ?? null,
+    v2PromotionCandidateEvaluatorWatch:
+      promotionCandidateEvaluatorSummary?.watchCandidateCount ?? null,
+    v2PromotionCandidateEvaluatorRecommendation:
+      promotionCandidateRecommendation?.decision ?? "not_available",
+    v2PromotionCandidateEvaluatorTopCandidate:
+      promotionCandidateRecommendation?.candidateId ?? null,
     v2SlotWeekAllocationAcceptanceDecision:
       slotWeekAllocationAcceptanceProjection?.decision ?? "not_available",
     v2SlotWeekAllocationAcceptanceWatchItems: Array.isArray(

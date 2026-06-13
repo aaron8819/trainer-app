@@ -3160,6 +3160,72 @@ describe("buildWorkoutAuditArtifact", () => {
         persistenceChanged: false,
       },
     };
+    mesocycleExplain!.plannerOnlyNoRepair!.v2PromotionCandidateEvaluator = {
+      version: 1,
+      source: "v2_promotion_candidate_evaluator",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+      repairedProjectionUsedAs: "evidence_only_not_target_policy",
+      status: "none_ready",
+      summary: {
+        evaluatedCandidateCount: 2,
+        readyCandidateCount: 0,
+        stoppedCandidateCount: 1,
+        watchCandidateCount: 1,
+        topCandidateId: null,
+        topRecommendation: "none_ready",
+        nextSafeAction: "pivot_to_new_owner_specific_candidate_inventory",
+      },
+      recommendation: {
+        decision: "none_ready",
+        candidateId: null,
+        label: "none ready",
+        ownerSeam: null,
+        reason:
+          "no candidate has measured owner-specific positive impact with bounded delta, non-regression, acceptance/watch clearance, and seed/runtime/receipt/DB non-consumption",
+        nextSafeAction: "pivot_to_new_owner_specific_candidate_inventory",
+        score: null,
+      },
+      candidates: [
+        {
+          rank: null,
+          candidateId: "support_direct_floor",
+          label: "Support floor diagnostic",
+          ownerSeam: "SetDistributionIntent",
+          sourceSurface: "repair_promotion_scoreboard",
+          priorProbe: "measured_no_impact",
+          status: "stopped",
+          stopReasons: ["measured_no_impact"],
+          score: {
+            total: 10,
+            measuredOwnerSpecificPositiveImpact: 0,
+            materializerNonRegression: 20,
+            protectedCoverage: 0,
+            acceptanceWatchStatus: 0,
+            seedRuntimeReceiptDbNonConsumption: 20,
+            sourceAttributionQuality: 15,
+            priorProbeAdjustment: -35,
+            implementationScope: 0,
+          },
+          evidence: ["supportFloorStatus=no_candidate_impact"],
+          missingProof: [],
+          nextSafeAction: "pivot_to_higher_roi_track",
+        },
+      ],
+      stopReasonCounts: {
+        measured_no_impact: 1,
+        missing_bounded_delta: 1,
+      },
+      guardrails: {
+        seedRuntimeChanged: false,
+        receiptChanged: false,
+        persistenceChanged: false,
+        productionMaterializerChanged: false,
+        acceptanceThresholdChanged: false,
+      },
+    };
     mesocycleExplain!.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.slotDiffs[0]?.laneDiffs.push(
       {
         laneId: "biceps",
@@ -3708,6 +3774,34 @@ describe("buildWorkoutAuditArtifact", () => {
           },
           nextSafeAction: "pivot_to_higher_roi_track",
         },
+      },
+    });
+    expect(mainNoRepair.v2PromotionCandidateEvaluator).toMatchObject({
+      status: "none_ready",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+      recommendation: {
+        decision: "none_ready",
+        candidateId: null,
+      },
+      topCandidates: [
+        expect.objectContaining({
+          candidateId: "support_direct_floor",
+          stopReasons: ["measured_no_impact"],
+        }),
+      ],
+      stopReasonCounts: {
+        measured_no_impact: 1,
+        missing_bounded_delta: 1,
+      },
+      guardrails: {
+        seedRuntimeChanged: false,
+        receiptChanged: false,
+        persistenceChanged: false,
+        productionMaterializerChanged: false,
+        acceptanceThresholdChanged: false,
       },
     });
 

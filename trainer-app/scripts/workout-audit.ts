@@ -4512,6 +4512,9 @@ export function buildPlannerOnlyNoRepairSummary(input: {
   const repairDeprecationReadiness =
     repairScoreboard?.interpretation.repairDeprecationReadiness;
   const planQualityBenchmark = noRepair.v2PlanQualityBenchmark;
+  const promotionCandidateEvaluator = noRepair.v2PromotionCandidateEvaluator;
+  const promotionCandidateRecommendation =
+    promotionCandidateEvaluator?.recommendation;
   const slotWeekAcceptance =
     planQualityBenchmark?.slotWeekAllocationAcceptanceProjection?.acceptance;
   const slotWeekClassificationCounts =
@@ -4567,6 +4570,18 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         }`,
         `Next safe action: ${formatStatus(planQualityBenchmark.summary.nextSafeAction)}`,
         `Guardrails: seedRuntimeChanged=${planQualityBenchmark.guardrails.seedRuntimeChanged ? "yes" : "no"} productionMaterializerChanged=${planQualityBenchmark.guardrails.productionMaterializerChanged ? "yes" : "no"} acceptanceThresholdChanged=${planQualityBenchmark.guardrails.acceptanceThresholdChanged ? "yes" : "no"} persistenceChanged=${planQualityBenchmark.guardrails.persistenceChanged ? "yes" : "no"}`,
+      ]
+    : [];
+  const promotionCandidateEvaluatorLines = promotionCandidateEvaluator
+    ? [
+        "V2 Promotion Candidate Evaluator",
+        "--------------------------------",
+        `Status: ${formatStatus(promotionCandidateEvaluator.status)} evaluated=${promotionCandidateEvaluator.summary.evaluatedCandidateCount} ready=${promotionCandidateEvaluator.summary.readyCandidateCount} stopped=${promotionCandidateEvaluator.summary.stoppedCandidateCount} watch=${promotionCandidateEvaluator.summary.watchCandidateCount}`,
+        `Recommendation: ${formatStatus(promotionCandidateRecommendation?.decision ?? "none_ready")} top=${formatStatus(promotionCandidateRecommendation?.candidateId ?? "none")} owner=${formatStatus(promotionCandidateRecommendation?.ownerSeam ?? "none")} score=${promotionCandidateRecommendation?.score ?? "n/a"}`,
+        `Reason: ${promotionCandidateRecommendation?.reason ?? "none"}`,
+        `Stop reasons: ${formatNameList(Object.entries(promotionCandidateEvaluator.stopReasonCounts).map(([reason, count]) => `${reason}=${count}`), 8)}`,
+        `Next safe action: ${formatStatus(promotionCandidateRecommendation?.nextSafeAction ?? promotionCandidateEvaluator.summary.nextSafeAction)}`,
+        `Non-consumption: production=${promotionCandidateEvaluator.consumedByProduction ? "yes" : "no"} demandOrMaterializer=${promotionCandidateEvaluator.consumedByDemandOrMaterializer ? "yes" : "no"} seedRuntime=${promotionCandidateEvaluator.guardrails.seedRuntimeChanged ? "changed" : "unchanged"} receipts=${promotionCandidateEvaluator.guardrails.receiptChanged ? "changed" : "unchanged"} persistence=${promotionCandidateEvaluator.guardrails.persistenceChanged ? "changed" : "unchanged"}`,
       ]
     : [];
   const materializationShardLines = basePlanCompare || shadowConsumption
@@ -4641,6 +4656,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
     ...basePlanCompareLines,
     ...shadowConsumptionLines,
     ...planQualityBenchmarkLines,
+    ...promotionCandidateEvaluatorLines,
     ...materializationShardLines,
     ...repairScoreboardLines,
     ...diffLines,

@@ -86,6 +86,7 @@ import {
   selectTaxonomyMismatchMaterializerTarget,
 } from "./mesocycle-explain-v2-repair-scoreboard";
 import { buildV2PlanQualityBenchmark } from "./v2-plan-quality-benchmark";
+import { buildV2PromotionCandidateEvaluator } from "./v2-promotion-candidate-evaluator";
 import {
   buildV2BasePlanCompareFromLiveContext,
   buildV2BasePlanShadowConsumptionTrialFromLiveContext,
@@ -8546,9 +8547,15 @@ export function buildPlannerOnlyNoRepairComparison(input: {
           }
         : {}),
     };
-    return {
+    const v2PlanQualityBenchmark = buildV2PlanQualityBenchmark(result);
+    const resultWithBenchmark = {
       ...result,
-      v2PlanQualityBenchmark: buildV2PlanQualityBenchmark(result),
+      v2PlanQualityBenchmark,
+    };
+    return {
+      ...resultWithBenchmark,
+      v2PromotionCandidateEvaluator:
+        buildV2PromotionCandidateEvaluator(resultWithBenchmark),
     };
   }
 
@@ -8965,9 +8972,15 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         }
       : {}),
   };
-  return {
+  const v2PlanQualityBenchmark = buildV2PlanQualityBenchmark(result);
+  const resultWithBenchmark = {
     ...result,
-    v2PlanQualityBenchmark: buildV2PlanQualityBenchmark(result),
+    v2PlanQualityBenchmark,
+  };
+  return {
+    ...resultWithBenchmark,
+    v2PromotionCandidateEvaluator:
+      buildV2PromotionCandidateEvaluator(resultWithBenchmark),
   };
 }
 

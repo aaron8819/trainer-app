@@ -8,6 +8,7 @@ This document is a strategy and migration map, not a claim about current runtime
 
 - Owner: `aaron8819@gmail.com`
 - Active mesocycle: `9b861675-c98f-42f7-bc8c-64a7de411b77`
+- Current bounded Calves readout, 2026-06-13: Weeks 2-4 `lower_a:calves` 4 -> 3 and `lower_b:calves` 4 -> 5 are promoted baseline planner policy. Remaining materializer/readout diagnostics should report that exact shape as idempotent bounded-owner evidence, not a new slot-allocation target or no-impact pressure.
 - Architecture signal: `mostly_repair_shaped`
 - Material repairs: `21`
 - Major repairs: `12`

@@ -4,6 +4,8 @@ Owner: Aaron
 Last reviewed: 2026-03-19
 Purpose: Canonical reference for workout-generation domain logic, including selection, progression, periodization, readiness, and explainability.
 
+Current V2 Calves readout note, 2026-06-13: the promoted Weeks 2-4 Calves allocation (`lower_a:calves` 4 -> 3, `lower_b:calves` 4 -> 5) is baseline planner policy in pure `SlotDemandAllocationByWeek`. Audit materializer/readout code should classify that exact proof as `measured_promoted_baseline_idempotent` / bounded-owner watch evidence, not no-impact pressure, while keeping all detail diagnostic-only and out of seed/runtime/receipt/DB behavior.
+
 This doc covers:
 - Selection and session construction
 - Progression/load assignment

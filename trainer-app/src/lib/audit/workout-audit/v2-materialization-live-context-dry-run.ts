@@ -1623,6 +1623,8 @@ export function buildV2ConcentrationMaterializerProjectionFromLiveContext(input:
     productionMaterializerConsumed: false,
     seedRuntimeReceiptDbConsumed: false,
   });
+  const promotedBoundedCalvesBaselineProof =
+    hasPromotedBoundedCalvesBaselineProof(donorOffsetRedistributionProjection);
 
   return {
     version: 1,
@@ -1656,19 +1658,27 @@ export function buildV2ConcentrationMaterializerProjectionFromLiveContext(input:
     crossWeekReadiness,
     blockersBeforeBehavior: uniqueSorted([
       ...(trialBlocked ? ["concentration_trial_materializer_blocked"] : []),
-      ...(noCandidateImpact
+      ...(noCandidateImpact && !promotedBoundedCalvesBaselineProof
         ? ["concentration_trial_no_candidate_impact"]
         : []),
-      ...(concentrationImproved
+      ...(concentrationImproved || promotedBoundedCalvesBaselineProof
         ? []
         : ["concentration_trial_did_not_improve_warning_metrics"]),
       ...crossWeekReadiness.gates.flatMap((gate) => gate.blockers),
-      ...donorOffsetRedistributionProjection.blockersBeforeBehavior,
+      ...donorOffsetRedistributionProjection.blockersBeforeBehavior.filter(
+        (blocker) =>
+          !(
+            promotedBoundedCalvesBaselineProof &&
+            blocker === "production_slot_demand_allocation_unchanged"
+          ),
+      ),
       ...(trialReport.seedShapeCompatibility.compatible
         ? []
         : ["trial_seed_shape_incompatible"]),
       "acceptance_gate_not_rerun",
-      "production_slot_demand_allocation_unchanged",
+      ...(promotedBoundedCalvesBaselineProof
+        ? []
+        : ["production_slot_demand_allocation_unchanged"]),
       "production_set_distribution_intent_unchanged",
       "production_materializer_not_consuming_trial",
       "representative_lane_projection_only",
@@ -1680,7 +1690,9 @@ export function buildV2ConcentrationMaterializerProjectionFromLiveContext(input:
     nextSafeAction: trialBlocked ||
       crossWeekReadiness.decision === "blocked_by_evidence"
       ? "inspect_concentration_materializer_projection"
-      : noCandidateImpact || !concentrationImproved
+      : promotedBoundedCalvesBaselineProof
+        ? "run_read_only_acceptance_projection"
+        : noCandidateImpact || !concentrationImproved
         ? "pivot_to_higher_roi_track"
         : crossWeekReadiness.nextSafeSlice ===
             "run_acceptance_non_regression_projection"
@@ -3082,6 +3094,8 @@ function buildConcentrationCrossWeekReadiness(input: {
         row.materializerDelta.regressionCount === 0 &&
         row.concentrationWarningDelta <= 0,
     );
+  const promotedBoundedCalvesBaselineProof =
+    hasPromotedBoundedCalvesBaselineProof(donorOffset);
   const donorGateFail =
     donorOffset.status === "blocked" ||
     donorOffset.rows.some(
@@ -3091,6 +3105,8 @@ function buildConcentrationCrossWeekReadiness(input: {
         row.materializerDelta.regressionCount > 0 ||
         row.concentrationWarningDelta > 0,
     );
+  const effectiveMaterializerRegression =
+    materializerRegression && !promotedBoundedCalvesBaselineProof;
   const gates: V2ConcentrationMaterializerProjection["crossWeekReadiness"]["gates"] =
     [
       {
@@ -3130,6 +3146,7 @@ function buildConcentrationCrossWeekReadiness(input: {
           `donorTotalSetDelta=${donorOffset.summary.totalSetDelta}`,
           `donorConcentrationWarningDelta=${donorOffset.summary.concentrationWarningDelta}`,
           `donorBehaviorReadiness=${donorOffset.summary.behaviorReadinessDecision}`,
+          `promotedBoundedCalvesBaselineIdempotent=${promotedBoundedCalvesBaselineProof}`,
         ],
         blockers: donorGatePass
           ? []
@@ -3178,7 +3195,7 @@ function buildConcentrationCrossWeekReadiness(input: {
       },
       {
         gateId: "materializer_identity_set_blocker_non_regression",
-        status: materializerRegression ? "fail" : "pass",
+        status: effectiveMaterializerRegression ? "fail" : "pass",
         measured: input.status !== "not_available",
         ownerSeam: "v2_materialization_dry_run",
         evidenceSource: "pure_v2_materializer_projection",
@@ -3187,8 +3204,9 @@ function buildConcentrationCrossWeekReadiness(input: {
           `totalSetDelta=${input.candidateImpact.totalSetDelta}`,
           `materializerBlockerDelta=${input.candidateImpact.materializerBlockerDelta}`,
           `regressionCount=${input.candidateImpact.regressionCount}`,
+          `promotedBaselineIdempotent=${promotedBoundedCalvesBaselineProof}`,
         ],
-        blockers: materializerRegression
+        blockers: effectiveMaterializerRegression
           ? ["materializer_identity_set_or_blocker_regression"]
           : [],
         requiredNextEvidence: [],
@@ -3247,10 +3265,14 @@ function buildConcentrationCrossWeekReadiness(input: {
   );
   const hardFailed = gates.some((gate) => gate.status === "fail");
   const hasMeasuredImprovement =
-    input.topLevelConcentrationImproved || improvedWeekCount > 0;
+    input.topLevelConcentrationImproved ||
+    improvedWeekCount > 0 ||
+    promotedBoundedCalvesBaselineProof;
   const decision: V2ConcentrationMaterializerProjection["crossWeekReadiness"]["decision"] =
     hardFailed
       ? "blocked_by_evidence"
+      : promotedBoundedCalvesBaselineProof && coveragePass
+        ? "candidate_for_bounded_policy_design"
       : input.topLevelNoCandidateImpact && noImpactWeekCount === projectedWeekCount
         ? "not_worth_pursuing"
         : hasMeasuredImprovement && coveragePass
@@ -3288,6 +3310,62 @@ function buildConcentrationCrossWeekReadiness(input: {
     gates,
     rows: input.rows,
   };
+}
+
+export function hasPromotedBoundedCalvesBaselineProof(
+  donorOffset: V2ConcentrationDonorOffsetRedistributionProjection,
+): boolean {
+  const allocation = donorOffset.slotWeekAllocationProjection;
+  const summary = allocation.summary;
+  const rows = allocation.rows;
+  const expectedWeeks = [2, 3, 4];
+  return (
+    donorOffset.status === "projected_with_limitations" &&
+    donorOffset.summary.behaviorReadinessDecision ===
+      "candidate_for_acceptance_projection" &&
+    donorOffset.summary.materializerRegressionCount === 0 &&
+    donorOffset.summary.concentrationRegressionCount === 0 &&
+    donorOffset.summary.totalSetDelta === 0 &&
+    allocation.status === "available" &&
+    summary.behaviorReadiness === "candidate_for_acceptance_projection" &&
+    summary.blockedRowCount === 0 &&
+    summary.passingRowCount === expectedWeeks.length &&
+    summary.netWeeklySetDelta === 0 &&
+    rows.length === expectedWeeks.length &&
+    rows.every(
+      (row) =>
+        expectedWeeks.includes(row.week) &&
+        row.muscle === V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.muscle &&
+        row.sourceLanePressure.slotId ===
+          V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceSlotId &&
+        row.sourceLanePressure.laneId ===
+          V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.laneId &&
+        row.sourceLanePressure.allocatedPreferredSets ===
+          V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceTargetSetCount &&
+        row.sourceLanePressure.baselineSetCount ===
+          V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceBaselineSetCount &&
+        row.sourceLanePressure.trialSetCount ===
+          V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceTargetSetCount &&
+        row.sourceLanePressure.setDelta === -1 &&
+        row.sourceLanePressure.pressureRelieved === true &&
+        row.donorCapacity.donorSlotId ===
+          V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.donorSlotId &&
+        row.donorCapacity.donorLaneId ===
+          V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.laneId &&
+        row.donorCapacity.donorBeforeSets ===
+          V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.donorBaselineSetCount &&
+        row.donorCapacity.donorAfterSets ===
+          V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.donorTargetSetCount &&
+        row.donorCapacity.donorSetDelta === 1 &&
+        row.donorCapacity.absorbedRequiredSets === true &&
+        row.donorCapacity.status === "absorbed" &&
+        row.protectedCoverageImpact.status === "preserved" &&
+        row.protectedCoverageImpact.netWeeklySetDelta === 0 &&
+        row.materializerNonRegressionStatus === "pass" &&
+        row.behaviorReadiness === "candidate_for_acceptance_projection" &&
+        row.blockingReasons.length === 0,
+    )
+  );
 }
 
 function isV2PlannerSlotId(value: string): value is V2PlannerSlotId {

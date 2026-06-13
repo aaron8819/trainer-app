@@ -2160,6 +2160,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
         measurableNextStep: string;
         status:
           | "selected_for_measured_proof"
+          | "measured_promoted_baseline_idempotent"
           | "measured_no_candidate_impact"
           | "measured_no_drift"
           | "blocked_by_missing_evidence"
@@ -2348,6 +2349,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
         selectedSupportFloorGapId?: string;
         classification:
           | "materializer_owned"
+          | "bounded_owner_watch"
           | "planner_policy_owned"
           | "true_support_direct_floor_gap"
           | "true_set_distribution_intent_gap"
@@ -2361,6 +2363,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
           | "safety_repair_only";
         proofResult:
           | "measured_no_candidate_impact"
+          | "measured_promoted_baseline_idempotent"
           | "measured_no_drift"
           | "measured_with_missing_gates"
           | "blocked_by_missing_evidence";

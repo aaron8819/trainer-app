@@ -5,6 +5,8 @@ Use this together with `docs/09_AUDIT_PLAYBOOK.md`.
 - It covers environment prerequisites, preflight, and exact commands against a real database.
 - The recurring operational workflow, field-reading order, red flags, and escalation rules live in `docs/09_AUDIT_PLAYBOOK.md`.
 
+Current V2 Calves validation note, 2026-06-13: live `mesocycle-explain --planner-only-no-repair --compare-repaired` should report the promoted `lower_a:calves` 4 -> 3 / `lower_b:calves` 4 -> 5 shape as `measured_promoted_baseline_idempotent` in ranked gap inventory, with fatigue/concentration still a bounded-owner watch and no seed/runtime/receipt/DB/materializer production consumption.
+
 Use this when validating the audit foundation against a real database instead of mocked unit inputs.
 
 ## Prerequisites

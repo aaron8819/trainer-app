@@ -189,6 +189,9 @@ function warningClassificationForGate(
     };
   }
   if (gateRow.gate === "fatigue_distribution") {
+    const promotedBaselineIdempotent = gateRow.evidence.some(
+      (row) => row === "promotedBoundedCalvesBaselineIdempotent=true",
+    );
     const slotWeekCandidate = gateRow.evidence.some(
       (row) => row === "slotWeekAllocationReadiness=candidate_for_acceptance_projection",
     );
@@ -211,12 +214,14 @@ function warningClassificationForGate(
       slotWeekUnblocked &&
       materializerNonRegression &&
       concentrationNonRegression &&
-      warningImproved
+      (warningImproved || promotedBaselineIdempotent)
     ) {
       return {
         classification: "bounded_owner_watch",
         materiality:
-          "bounded fatigue/concentration watch; slot-owned donor absorption improves concentration without weekly-volume, protected-coverage, or materializer regression",
+          promotedBaselineIdempotent
+            ? "bounded fatigue/concentration watch; promoted Calves slot allocation is idempotent baseline with no weekly-volume, protected-coverage, materializer, or concentration regression"
+            : "bounded fatigue/concentration watch; slot-owned donor absorption improves concentration without weekly-volume, protected-coverage, or materializer regression",
         smallestSafeNextAction:
           "carry as a bounded promotion-review watch; require Weeks 2-4 donor absorption, net-zero weekly sets, preserved protected coverage, and materializer non-regression",
       };
@@ -771,6 +776,11 @@ function buildFatigueDistributionGate(
     concentrationProjection.status !== "not_available";
   const donorOffsetProjection =
     concentrationProjection?.donorOffsetRedistributionProjection;
+  const promotedBoundedCalvesBaselineIdempotent =
+    concentrationProjectionMeasured &&
+    concentrationProjection
+      ? hasPromotedBoundedCalvesBaselineEvidence(concentrationProjection)
+      : false;
   const projectionEvidence = concentrationProjectionMeasured
     ? [
         `concentrationProjectionStatus=${concentrationProjection.status}`,
@@ -845,6 +855,15 @@ function buildFatigueDistributionGate(
           "donorOffsetConcentrationRegressions",
           donorOffsetProjection?.summary.concentrationRegressionCount ?? 0,
         ),
+        `promotedBoundedCalvesBaselineIdempotent=${promotedBoundedCalvesBaselineIdempotent}`,
+        ...(promotedBoundedCalvesBaselineIdempotent
+            ? [
+              "promotedCalvesMuscle=Calves",
+              "promotedCalvesSource=lower_a:calves:4->3",
+              "promotedCalvesDonor=lower_b:calves:4->5",
+              "promotedCalvesWeeks=2,3,4",
+            ]
+          : []),
         numberEvidence(
           "donorOffsetAlternateCandidates",
           donorOffsetProjection?.summary.alternateCandidateCount ?? 0,
@@ -925,6 +944,58 @@ function buildFatigueDistributionGate(
         ]
       : [...selection.missingInputs, "concentration_projection_delta"],
   });
+}
+
+function hasPromotedBoundedCalvesBaselineEvidence(
+  projection: NonNullable<
+    MesocycleExplainPlannerOnlyNoRepair["v2ConcentrationMaterializerProjection"]
+  >,
+): boolean {
+  const donorOffset = projection.donorOffsetRedistributionProjection;
+  const allocation = donorOffset.slotWeekAllocationProjection;
+  const rows = allocation.rows;
+  const expectedWeeks = [2, 3, 4];
+  return (
+    projection.crossWeekReadiness.decision ===
+      "candidate_for_bounded_policy_design" &&
+    donorOffset.status === "projected_with_limitations" &&
+    donorOffset.summary.behaviorReadinessDecision ===
+      "candidate_for_acceptance_projection" &&
+    donorOffset.summary.totalSetDelta === 0 &&
+    donorOffset.summary.materializerRegressionCount === 0 &&
+    donorOffset.summary.concentrationRegressionCount === 0 &&
+    allocation.status === "available" &&
+    allocation.summary.behaviorReadiness ===
+      "candidate_for_acceptance_projection" &&
+    allocation.summary.blockedRowCount === 0 &&
+    allocation.summary.passingRowCount === expectedWeeks.length &&
+    allocation.summary.netWeeklySetDelta === 0 &&
+    rows.length === expectedWeeks.length &&
+    rows.every(
+      (row) =>
+        expectedWeeks.includes(row.week) &&
+        row.muscle === "Calves" &&
+        row.sourceLanePressure.slotId === "lower_a" &&
+        row.sourceLanePressure.laneId === "calves" &&
+        row.sourceLanePressure.baselineSetCount === 4 &&
+        row.sourceLanePressure.trialSetCount === 3 &&
+        row.sourceLanePressure.allocatedPreferredSets === 3 &&
+        row.sourceLanePressure.setDelta === -1 &&
+        row.sourceLanePressure.pressureRelieved === true &&
+        row.donorCapacity.donorSlotId === "lower_b" &&
+        row.donorCapacity.donorLaneId === "calves" &&
+        row.donorCapacity.donorBeforeSets === 4 &&
+        row.donorCapacity.donorAfterSets === 5 &&
+        row.donorCapacity.donorSetDelta === 1 &&
+        row.donorCapacity.absorbedRequiredSets === true &&
+        row.donorCapacity.status === "absorbed" &&
+        row.protectedCoverageImpact.status === "preserved" &&
+        row.protectedCoverageImpact.netWeeklySetDelta === 0 &&
+        row.materializerNonRegressionStatus === "pass" &&
+        row.behaviorReadiness === "candidate_for_acceptance_projection" &&
+        row.blockingReasons.length === 0,
+    )
+  );
 }
 
 function buildDuplicateConcentrationGate(

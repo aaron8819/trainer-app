@@ -2,6 +2,7 @@ import type {
   MesocycleExplainPlannerOnlyNoRepair,
   MesocycleExplainProjectionDiagnostics,
 } from "./types";
+import { hasPromotedBoundedCalvesBaselineProof } from "./v2-materialization-live-context-dry-run";
 
 type PlanningRealityDiagnostic = NonNullable<
   MesocycleExplainProjectionDiagnostics["planningReality"]
@@ -2480,6 +2481,13 @@ function buildGapInventory(input: {
   }
 
   if (gap.concentrationQualityGapCount > 0 || concentrationProjection) {
+    const promotedBoundedCalvesBaseline =
+      concentrationProjection &&
+      hasPromotedBoundedCalvesBaselineProof(
+        concentrationProjection.donorOffsetRedistributionProjection,
+      ) &&
+      concentrationProjection.crossWeekReadiness.decision ===
+        "candidate_for_bounded_policy_design";
     const measuredNoImpact =
       concentrationProjection &&
       concentrationProjection.candidateImpact.selectedIdentityDelta === 0 &&
@@ -2502,7 +2510,9 @@ function buildGapInventory(input: {
         gapId: "concentration_quality",
         description:
           "Concentration warnings need proof they are planner policy gaps rather than diagnostic readout noise.",
-        likelyOwnerSeam: improved
+        likelyOwnerSeam: promotedBoundedCalvesBaseline
+          ? "SlotDemandAllocationByWeek -> v2_materialization_dry_run"
+          : improved
           ? "SlotDemandAllocationByWeek -> SetDistributionIntent -> v2_materialization_dry_run"
           : "audit_readout_cleanup",
         evidenceQuality: concentrationProjection
@@ -2522,7 +2532,9 @@ function buildGapInventory(input: {
         measurableNextStep:
           concentrationProjection?.nextSafeAction ??
           "measure_concentration_projection_delta",
-        status: measuredNoImpact
+        status: promotedBoundedCalvesBaseline
+          ? "measured_promoted_baseline_idempotent"
+          : measuredNoImpact
           ? "measured_no_candidate_impact"
           : concentrationProjection
             ? "selected_for_measured_proof"
@@ -2880,6 +2892,13 @@ function buildSelectedGapProof(input: {
     };
   }
   if (selected.gapId === "concentration_quality") {
+    const promotedBoundedCalvesBaseline =
+      concentrationProjection &&
+      hasPromotedBoundedCalvesBaselineProof(
+        concentrationProjection.donorOffsetRedistributionProjection,
+      ) &&
+      concentrationProjection.crossWeekReadiness.decision ===
+        "candidate_for_bounded_policy_design";
     const noImpact =
       concentrationProjection &&
       concentrationProjection.candidateImpact.selectedIdentityDelta === 0 &&
@@ -2899,13 +2918,17 @@ function buildSelectedGapProof(input: {
         concentrationProjection.concentrationDelta.highFatigueSetDelta < 0);
     return {
       gapId: selected.gapId,
-      classification: noImpact
+      classification: promotedBoundedCalvesBaseline
+        ? "bounded_owner_watch"
+        : noImpact
         ? "diagnostic_only_no_impact"
         : improved
           ? "planner_policy_owned"
           : "blocked_by_missing_evidence",
       proofResult: concentrationProjection
-        ? noImpact
+        ? promotedBoundedCalvesBaseline
+          ? "measured_promoted_baseline_idempotent"
+          : noImpact
           ? "measured_no_candidate_impact"
           : "measured_with_missing_gates"
         : "blocked_by_missing_evidence",

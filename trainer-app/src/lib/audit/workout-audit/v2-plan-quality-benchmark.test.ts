@@ -532,7 +532,48 @@ function measuredSlotWeekAcceptanceProjectionFixture(
           behaviorReadiness: "candidate_for_acceptance_projection",
           nextSafeSlice: "run_acceptance_non_regression_projection",
         },
-        rows: [],
+        rows: rows.map((row) => ({
+          week: row.week,
+          muscle: "Calves",
+          protectedWeeklyDemand: { min: 6, preferred: 8, max: 8 },
+          sourceLanePressure: {
+            slotId: "lower_a",
+            laneId: "calves",
+            allocatedPreferredSets: 3,
+            baselineSetCount: 4,
+            trialSetCount: 3,
+            setDelta: -1,
+            pressureRelieved: true,
+          },
+          eligibleDonorSlots: [
+            {
+              slotId: "lower_b",
+              laneId: "calves",
+              allocatedPreferredSets: 5,
+              ownershipKind: "direct_support",
+              measured: true,
+            },
+          ],
+          donorCapacity: {
+            requiredSetAbsorption: 1,
+            donorSlotId: "lower_b",
+            donorLaneId: "calves",
+            donorBeforeSets: 4,
+            donorAfterSets: 5,
+            donorSetDelta: 1,
+            absorbedRequiredSets: true,
+            headroomSets: 0,
+            status: "absorbed",
+          },
+          protectedCoverageImpact: {
+            status: "preserved",
+            netWeeklySetDelta: 0,
+          },
+          materializerNonRegressionStatus: "pass",
+          behaviorReadiness: "candidate_for_acceptance_projection",
+          blockingReasons: [],
+          nextSafeSlice: "run_acceptance_non_regression_projection",
+        })),
         limitations: ["test_fixture_compact"],
       },
       rows,
@@ -1735,5 +1776,192 @@ describe("V2 plan quality benchmark", () => {
     expect(JSON.stringify(result)).not.toContain(
       "concentration_quality_gap_requires_measured_projection_delta",
     );
+  });
+
+  it("classifies the promoted Calves 3/5 shape as idempotent bounded-owner evidence", () => {
+    const promotedBaselineProjection = measuredSlotWeekAcceptanceProjectionFixture({
+      targetLane: {
+        scopedLaneId: "lower_a:calves",
+        week: 1,
+        slotId: "lower_a",
+        laneId: "calves",
+        muscles: ["Calves"],
+        warningEvidence: [
+          "concentration:Seated Calf Raise:Calves:50%",
+          "readout_note:stale_calves_shortfall_suppressed_weekly_within_lane_satisfied",
+        ],
+        currentBudget: { min: 3, preferred: 4, max: 4 },
+        trialBudget: { min: 3, preferred: 3, max: 3 },
+        baselineExerciseCount: 1,
+        trialExerciseCount: 1,
+        baselineSetCount: 3,
+        trialSetCount: 3,
+        addedIdentities: [],
+        removedIdentities: [],
+      },
+      candidateImpact: {
+        selectedIdentityDelta: 0,
+        totalSetDelta: 0,
+        targetLaneSetDelta: 0,
+        targetLaneExerciseDelta: 0,
+        materializerBlockerDelta: 0,
+        regressionCount: 0,
+        regressions: [],
+        improvements: [],
+        changedSlotCount: 0,
+        changedSlots: [],
+      },
+      concentrationDelta: {
+        baselineWarningCount: 3,
+        trialWarningCount: 3,
+        warningDelta: 0,
+        baselineOver60Count: 0,
+        trialOver60Count: 0,
+        over60Delta: 0,
+        baselineMaxSharePercent: 50,
+        trialMaxSharePercent: 50,
+        maxShareDelta: 0,
+        baselineHighFatigueSetCount: 0,
+        trialHighFatigueSetCount: 0,
+        highFatigueSetDelta: 0,
+        baselineFatigueWeightedSets: 9,
+        trialFatigueWeightedSets: 9,
+        fatigueWeightedSetDelta: 0,
+      },
+      crossWeekReadiness: {
+        decision: "candidate_for_bounded_policy_design",
+        sourceAttribution: {
+          pureV2BasePlan: "not_evaluated_by_concentration_projection",
+          materializerProjection: "baseline_vs_trial_dry_run",
+          noRepairProjection:
+            "selected_warning_from_exercise_selection_diagnostic",
+          repairedProjection: "evidence_only_not_target_policy",
+          acceptanceNoRepair: "week_1_trainability_shape_only",
+        },
+        representativeAccumulationWeeks: [2, 3, 4],
+        projectedWeekCount: 3,
+        improvedWeekCount: 0,
+        regressedWeekCount: 0,
+        noImpactWeekCount: 3,
+        blockerCount: 0,
+        nextSafeSlice: "run_acceptance_non_regression_projection",
+        gates: [],
+        rows: [],
+      },
+      blockersBeforeBehavior: [
+        "acceptance_gate_not_rerun",
+        "production_materializer_not_consuming_trial",
+      ],
+      nextSafeAction: "run_read_only_acceptance_projection",
+    });
+    const result = buildV2PlanQualityBenchmark(
+      noRepairFixture({
+        v2ConcentrationMaterializerProjection: promotedBaselineProjection,
+        v2ExerciseSelectionPlanDiagnostic: {
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          status: "projected_with_limitations",
+          summary: {
+            weeksEvaluated: 1,
+            lanesEvaluated: 1,
+            preservedIdentityCount: 1,
+            candidateAvailableCount: 1,
+            missingCandidateCount: 0,
+            classMismatchCount: 0,
+            duplicateRequiresJustificationCount: 0,
+            concentrationWarningCount: 1,
+            blockedLaneCount: 0,
+          },
+          weeks: [
+            {
+              week: 1,
+              phase: "entry_calibration",
+              slots: [
+                {
+                  slotId: "lower_a",
+                  lanes: [
+                    {
+                      laneId: "calves",
+                      plannedClass: ["calf_isolation"],
+                      primaryMuscles: ["Calves"],
+                      selectedIdentity: {
+                        exerciseId: "seated-calf-raise",
+                        exerciseName: "Seated Calf Raise",
+                        sourceWeek: 1,
+                        setCount: 4,
+                      },
+                      identityStatus: "class_mismatch",
+                      laneClassStatus: "match",
+                      setBudgetStatus: "within_preferred",
+                      duplicateStatus: "pass",
+                      concentrationStatus: "quality_warning",
+                      fatigueStatus: "quality_warning",
+                      inventoryStatus: "available",
+                      capacityStatus: "within_capacity",
+                      cleanAlternatives: [],
+                      unresolvedDemand: [],
+                      evidenceRefs: [
+                        "concentration:Seated Calf Raise:Calves:50%",
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          blockers: [],
+          warnings: [],
+          missingInputs: [],
+          safeForBehaviorPromotion: false,
+        } as unknown as MesocycleExplainPlannerOnlyNoRepair["v2ExerciseSelectionPlanDiagnostic"],
+      }),
+    );
+
+    const fatigueGate = result.gates.find(
+      (row) => row.gate === "fatigue_distribution",
+    );
+    expect(fatigueGate).toMatchObject({
+      status: "warning",
+      ownerSeam: "v2_concentration_materializer_projection",
+      evidenceSource: "pure_v2_materializer_projection",
+      evidence: expect.arrayContaining([
+        "crossWeekReadiness=candidate_for_bounded_policy_design",
+        "crossWeekImprovedWeeks=0",
+        "concentrationWarningDelta=0",
+        "promotedBoundedCalvesBaselineIdempotent=true",
+        "promotedCalvesMuscle=Calves",
+        "promotedCalvesSource=lower_a:calves:4->3",
+        "promotedCalvesDonor=lower_b:calves:4->5",
+        "promotedCalvesWeeks=2,3,4",
+      ]),
+    });
+    expect(
+      result.slotWeekAllocationAcceptanceProjection.acceptance
+        .itemClassifications,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gate: "fatigue_distribution",
+          classification: "bounded_owner_watch",
+          affected: expect.objectContaining({
+            weeks: expect.arrayContaining([2, 3, 4]),
+            slots: expect.arrayContaining(["lower_a", "lower_b"]),
+            lanes: ["calves"],
+            muscles: ["Calves"],
+          }),
+          materiality: expect.stringContaining(
+            "promoted Calves slot allocation is idempotent baseline",
+          ),
+        }),
+      ]),
+    );
+    expect(
+      result.slotWeekAllocationAcceptanceProjection.acceptance
+        .classificationCounts,
+    ).toMatchObject({
+      boundedOwnerWatch: 1,
+      ownerSpecificNextFix: 0,
+      blocker: 0,
+    });
   });
 });

@@ -133,6 +133,42 @@ function countProjectionGateStatuses(value: unknown): JsonRecord {
   };
 }
 
+function hasPromotedBoundedCalvesBaselineRows(rowsValue: unknown): boolean {
+  const rows = asRecordArray(rowsValue);
+  const expectedWeeks = [2, 3, 4];
+  return (
+    rows.length === expectedWeeks.length &&
+    rows.every((row) => {
+      const source = asRecord(row.sourceLanePressure);
+      const donor = asRecord(row.donorCapacity);
+      const coverage = asRecord(row.protectedCoverageImpact);
+      return (
+        expectedWeeks.includes(typeof row.week === "number" ? row.week : -1) &&
+        row.muscle === "Calves" &&
+        source?.slotId === "lower_a" &&
+        source?.laneId === "calves" &&
+        source?.baselineSetCount === 4 &&
+        source?.trialSetCount === 3 &&
+        source?.allocatedPreferredSets === 3 &&
+        source?.setDelta === -1 &&
+        source?.pressureRelieved === true &&
+        donor?.donorSlotId === "lower_b" &&
+        donor?.donorLaneId === "calves" &&
+        donor?.donorBeforeSets === 4 &&
+        donor?.donorAfterSets === 5 &&
+        donor?.donorSetDelta === 1 &&
+        donor?.absorbedRequiredSets === true &&
+        donor?.status === "absorbed" &&
+        coverage?.status === "preserved" &&
+        coverage?.netWeeklySetDelta === 0 &&
+        row.materializerNonRegressionStatus === "pass" &&
+        row.behaviorReadiness === "candidate_for_acceptance_projection" &&
+        asStringArray(row.blockingReasons).length === 0
+      );
+    })
+  );
+}
+
 function countConflictTypes(conflicts: unknown): JsonRecord {
   return asRecordArray(conflicts).reduce<JsonRecord>((counts, conflict) => {
     const type =
@@ -687,6 +723,32 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
   const concentrationMaterializer = asRecord(
     noRepair.v2ConcentrationMaterializerProjection,
   );
+  const concentrationDonorOffset = asRecord(
+    concentrationMaterializer?.donorOffsetRedistributionProjection,
+  );
+  const concentrationSlotWeekAllocation = asRecord(
+    concentrationDonorOffset?.slotWeekAllocationProjection,
+  );
+  const promotedBoundedCalvesBaselineIdempotent =
+    hasPromotedBoundedCalvesBaselineRows(
+      asRecord(concentrationSlotWeekAllocation)?.rows,
+    );
+  const concentrationCrossWeekReadiness = asRecord(
+    concentrationMaterializer?.crossWeekReadiness,
+  );
+  const concentrationMaterializerWithBaselineFlag = concentrationMaterializer
+    ? {
+        ...concentrationMaterializer,
+        ...(concentrationCrossWeekReadiness
+          ? {
+              crossWeekReadiness: {
+                ...concentrationCrossWeekReadiness,
+                promotedBoundedCalvesBaselineIdempotent,
+              },
+            }
+          : {}),
+      }
+    : null;
   const planQualityBenchmark = asRecord(noRepair.v2PlanQualityBenchmark);
   if (
     !v2Plan &&
@@ -747,8 +809,11 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
     ...(supportFloorMaterializer
       ? { v2SupportFloorMaterializerProjection: supportFloorMaterializer }
       : {}),
-    ...(concentrationMaterializer
-      ? { v2ConcentrationMaterializerProjection: concentrationMaterializer }
+    ...(concentrationMaterializerWithBaselineFlag
+      ? {
+          v2ConcentrationMaterializerProjection:
+            concentrationMaterializerWithBaselineFlag,
+        }
       : {}),
     ...(planQualityBenchmark
       ? { v2PlanQualityBenchmark: planQualityBenchmark }
@@ -1198,6 +1263,10 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
   const concentrationSlotWeekAllocation = asRecord(
     concentrationDonorOffset?.slotWeekAllocationProjection,
   );
+  const promotedBoundedCalvesBaselineIdempotent =
+    hasPromotedBoundedCalvesBaselineRows(
+      asRecord(concentrationSlotWeekAllocation)?.rows,
+    );
   const planQualityBenchmark = asRecord(noRepair.v2PlanQualityBenchmark);
   const slotWeekAllocationAcceptanceProjection = asRecord(
     planQualityBenchmark?.slotWeekAllocationAcceptanceProjection,
@@ -1525,6 +1594,7 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
                 noImpactWeekCount: concentrationReadiness.noImpactWeekCount,
                 blockerCount: concentrationReadiness.blockerCount,
                 nextSafeSlice: concentrationReadiness.nextSafeSlice,
+                promotedBoundedCalvesBaselineIdempotent,
               }
             : {},
           donorOffsetRedistributionProjection: concentrationDonorOffset
@@ -1886,6 +1956,10 @@ function buildIndexSummary(input: {
   const concentrationSlotWeekAllocationSummary = asRecord(
     asRecord(concentrationDonorOffset?.slotWeekAllocationProjection)?.summary,
   );
+  const promotedBoundedCalvesBaselineIdempotent =
+    hasPromotedBoundedCalvesBaselineRows(
+      asRecord(concentrationDonorOffset?.slotWeekAllocationProjection)?.rows,
+    );
   const planQualityBenchmark = asRecord(input.noRepair.v2PlanQualityBenchmark);
   const planQualitySummary = asRecord(planQualityBenchmark?.summary);
   const planQualityDeprecationReadiness = asRecord(
@@ -1992,6 +2066,8 @@ function buildIndexSummary(input: {
       concentrationSlotWeekAllocationSummary?.blockedRowCount ?? null,
     v2ConcentrationSlotWeekAllocationNextSafeSlice:
       concentrationSlotWeekAllocationSummary?.nextSafeSlice ?? null,
+    v2ConcentrationPromotedBoundedCalvesBaselineIdempotent:
+      promotedBoundedCalvesBaselineIdempotent,
     v2PlanQualityBenchmarkStatus:
       planQualityBenchmark?.status ?? "not_available",
     v2PlanQualityBenchmarkFailedGates:

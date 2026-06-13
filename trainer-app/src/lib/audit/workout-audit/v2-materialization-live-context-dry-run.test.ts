@@ -5,7 +5,11 @@ import {
 } from "@/lib/engine/planning/v2";
 import type { V2ExerciseSelectionPlanDiagnostic } from "@/lib/api/planning-reality";
 import type { V2MaterializationExercise } from "@/lib/engine/planning/v2";
-import { buildV2ConcentrationMaterializerProjectionFromLiveContext } from "./v2-materialization-live-context-dry-run";
+import {
+  buildV2ConcentrationMaterializerProjectionFromLiveContext,
+  hasPromotedBoundedCalvesBaselineProof,
+  type V2ConcentrationDonorOffsetRedistributionProjection,
+} from "./v2-materialization-live-context-dry-run";
 
 function exercise(input: {
   id: string;
@@ -428,5 +432,92 @@ describe("V2 live-context materializer projections", () => {
         }),
       ]),
     );
+  });
+
+  it("recognizes the promoted Calves 3/5 slot allocation proof as idempotent baseline evidence", () => {
+    const rows: V2ConcentrationDonorOffsetRedistributionProjection["slotWeekAllocationProjection"]["rows"] =
+      [2, 3, 4].map((week) => ({
+        week,
+        muscle: "Calves",
+        protectedWeeklyDemand: { min: 6, preferred: 8, max: 8 },
+        sourceLanePressure: {
+          slotId: "lower_a",
+          laneId: "calves",
+          allocatedPreferredSets: 3,
+          baselineSetCount: 4,
+          trialSetCount: 3,
+          setDelta: -1,
+          pressureRelieved: true,
+        },
+        eligibleDonorSlots: [
+          {
+            slotId: "lower_b",
+            laneId: "calves",
+            allocatedPreferredSets: 5,
+            ownershipKind: "direct_support",
+            measured: true,
+          },
+        ],
+        donorCapacity: {
+          requiredSetAbsorption: 1,
+          donorSlotId: "lower_b",
+          donorLaneId: "calves",
+          donorBeforeSets: 4,
+          donorAfterSets: 5,
+          donorSetDelta: 1,
+          absorbedRequiredSets: true,
+          headroomSets: 0,
+          status: "absorbed",
+        },
+        protectedCoverageImpact: {
+          status: "preserved",
+          netWeeklySetDelta: 0,
+        },
+        materializerNonRegressionStatus: "pass",
+        behaviorReadiness: "candidate_for_acceptance_projection",
+        blockingReasons: [],
+        nextSafeSlice: "run_acceptance_non_regression_projection",
+      }));
+    const donorOffset = {
+      status: "projected_with_limitations",
+      summary: {
+        behaviorReadinessDecision: "candidate_for_acceptance_projection",
+        materializerRegressionCount: 0,
+        concentrationRegressionCount: 0,
+        totalSetDelta: 0,
+      },
+      slotWeekAllocationProjection: {
+        status: "available",
+        summary: {
+          behaviorReadiness: "candidate_for_acceptance_projection",
+          blockedRowCount: 0,
+          passingRowCount: 3,
+          netWeeklySetDelta: 0,
+        },
+        rows,
+      },
+    } as V2ConcentrationDonorOffsetRedistributionProjection;
+
+    expect(hasPromotedBoundedCalvesBaselineProof(donorOffset)).toBe(true);
+    expect(
+      hasPromotedBoundedCalvesBaselineProof({
+        ...donorOffset,
+        slotWeekAllocationProjection: {
+          ...donorOffset.slotWeekAllocationProjection,
+          rows: [
+            {
+              ...rows[0]!,
+              donorCapacity: {
+                ...rows[0]!.donorCapacity,
+                donorAfterSets: 4,
+                absorbedRequiredSets: false,
+                status: "insufficient",
+              },
+            },
+            ...rows.slice(1),
+          ],
+        },
+      }),
+    ).toBe(false);
   });
 });

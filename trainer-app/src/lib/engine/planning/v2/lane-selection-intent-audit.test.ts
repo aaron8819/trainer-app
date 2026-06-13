@@ -8,6 +8,7 @@ import {
   buildV2LaneSelectionIntentAudit,
   type V2LaneSelectionIntentAudit,
 } from "./lane-selection-intent-audit";
+import { buildV2LaneSelectionIntentBenchmark } from "./lane-selection-intent-benchmark";
 import type { V2ExerciseSelectionPlan } from "./types";
 
 function buildAudit(): V2LaneSelectionIntentAudit {
@@ -349,5 +350,104 @@ describe("buildV2LaneSelectionIntentAudit", () => {
 
     expect(policy.exerciseSelectionPlan).toEqual(selectionPlanBefore);
     expect(materializedAfter).toEqual(materializedBefore);
+  });
+});
+
+describe("buildV2LaneSelectionIntentBenchmark", () => {
+  it("benchmarks high-risk lane jobs without changing scoring, generation, or materialization", () => {
+    const benchmark = buildV2LaneSelectionIntentBenchmark(buildAudit());
+
+    expect(benchmark).toMatchObject({
+      version: 1,
+      source: "v2_lane_selection_intent_benchmark",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      status: "warning",
+      summary: {
+        laneJobCount: 7,
+        passCount: 6,
+        warningCount: 1,
+        failCount: 0,
+        missingEvidenceCount: 0,
+        materializerConsumedCount: 6,
+        diagnosticOnlyCount: 1,
+      },
+    });
+    expect(benchmark.lanes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          laneJob: "calf_direct",
+          status: "pass",
+          materializerConsumed: true,
+          evidence: expect.arrayContaining([
+            "movement=calf_raise",
+            "classes=calf_isolation",
+          ]),
+        }),
+        expect.objectContaining({
+          laneJob: "hamstring_curl",
+          status: "pass",
+          materializerConsumed: true,
+          evidence: expect.arrayContaining([
+            "movement=knee_flexion",
+            "classes=hamstring_curl",
+          ]),
+        }),
+        expect.objectContaining({
+          laneJob: "chest_biased_press_support",
+          status: "pass",
+          materializerConsumed: true,
+          evidence: expect.arrayContaining([
+            "movement=chest_press",
+            "classes=chest_press,chest_biased_press_support",
+          ]),
+        }),
+        expect.objectContaining({
+          laneJob: "vertical_pull_anchor",
+          status: "pass",
+          materializerConsumed: true,
+          evidence: expect.arrayContaining([
+            "movement=vertical_pull",
+            "classes=vertical_pull",
+          ]),
+        }),
+        expect.objectContaining({
+          laneJob: "low_axial_hip_extension",
+          status: "warning",
+          required: false,
+          materializerConsumed: false,
+          missingEvidence: ["laneSelectionIntent"],
+          nextSafeAction: "keep_diagnostic_watch",
+        }),
+      ]),
+    );
+  });
+
+  it("fails required lane jobs when expected movement, class, or failure policy is absent", () => {
+    const audit = buildAudit();
+    const hamstringCurl = audit.lanes.find(
+      (lane) => lane.slotId === "lower_a" && lane.laneId === "hamstring_curl",
+    );
+    if (!hamstringCurl?.proposedLaneSelectionIntent) {
+      throw new Error("Missing hamstring curl lane intent fixture");
+    }
+    hamstringCurl.proposedLaneSelectionIntent.allowedExerciseClasses = ["hinge"];
+
+    const benchmark = buildV2LaneSelectionIntentBenchmark(audit);
+
+    expect(benchmark.status).toBe("fail");
+    expect(benchmark.lanes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          laneJob: "hamstring_curl",
+          status: "fail",
+          missingEvidence: expect.arrayContaining([
+            "allowedExerciseClasses:hamstring_curl",
+          ]),
+          nextSafeAction: "fix_lane_selection_intent_mismatch",
+        }),
+      ]),
+    );
   });
 });

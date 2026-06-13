@@ -2,6 +2,7 @@ import type {
   MesocycleExplainPlannerOnlyNoRepair,
   V2PlanQualityBenchmark,
 } from "./types";
+import { buildV2LaneSelectionIntentBenchmark } from "@/lib/engine/planning/v2/lane-selection-intent-benchmark";
 
 type BenchmarkGate = V2PlanQualityBenchmark["gates"][number];
 type BenchmarkStatus = BenchmarkGate["status"];
@@ -231,7 +232,16 @@ function warningClassificationForGate(
       materiality:
         "bounded fatigue/concentration watch; non-regression passes but distribution quality still needs owner review",
       smallestSafeNextAction:
-        "resolve concentration/fatigue projection warnings in the V2 materializer or slot-allocation diagnostic before promotion review",
+      "resolve concentration/fatigue projection warnings in the V2 materializer or slot-allocation diagnostic before promotion review",
+    };
+  }
+  if (gateRow.gate === "lane_intent_explicitness") {
+    return {
+      classification: "bounded_owner_watch",
+      materiality:
+        "read-only lane-intent benchmark watch; high-risk lane jobs are explicit enough to audit, while remaining warning rows are contract-design evidence only",
+      smallestSafeNextAction:
+        "use the lane-intent benchmark as ontology cleanup or lane-intent contract design input before any materializer ranking trial",
     };
   }
   if (gateRow.gate === "week_1_trainability") {
@@ -619,6 +629,66 @@ function buildLanePreservationGate(
       numberEvidence("blocked", summary.blockedLaneCount),
       numberEvidence("repairDependent", summary.repairDependentLaneCount),
     ],
+  });
+}
+
+function buildLaneIntentExplicitnessGate(
+  noRepair: MesocycleExplainPlannerOnlyNoRepair,
+): BenchmarkGate {
+  const benchmark = buildV2LaneSelectionIntentBenchmark(
+    noRepair.v2LaneSelectionIntentAudit,
+  );
+  const failingLanes = benchmark.lanes.filter((lane) => lane.status === "fail");
+  const missingLanes = benchmark.lanes.filter(
+    (lane) => lane.status === "missing_evidence",
+  );
+  const warningLanes = benchmark.lanes.filter(
+    (lane) => lane.status === "warning",
+  );
+
+  return gate({
+    gate: "lane_intent_explicitness",
+    status: benchmark.status,
+    ownerSeam: "V2LaneSelectionIntentAudit",
+    evidenceSource: "pure_v2_lane_selection_intent_audit",
+    evidence: [
+      numberEvidence("laneJobs", benchmark.summary.laneJobCount),
+      numberEvidence("pass", benchmark.summary.passCount),
+      numberEvidence("warning", benchmark.summary.warningCount),
+      numberEvidence("fail", benchmark.summary.failCount),
+      numberEvidence("missing", benchmark.summary.missingEvidenceCount),
+      numberEvidence(
+        "materializerConsumed",
+        benchmark.summary.materializerConsumedCount,
+      ),
+      numberEvidence("diagnosticOnly", benchmark.summary.diagnosticOnlyCount),
+      ...benchmark.lanes.map(
+        (lane) =>
+          `${lane.laneJob}:${lane.status}:${lane.slotId}:${lane.laneId}:consumed=${lane.materializerConsumed}`,
+      ),
+      "lane_intent_benchmark_is_read_only",
+      "lane_intent_evidence_does_not_change_materializer_ranking",
+    ],
+    missingEvidence: [
+      ...missingLanes.flatMap((lane) =>
+        lane.missingEvidence.map(
+          (missing) => `${lane.laneJob}:${missing}`,
+        ),
+      ),
+      ...failingLanes.flatMap((lane) =>
+        lane.missingEvidence.map(
+          (missing) => `${lane.laneJob}:${missing}`,
+        ),
+      ),
+      ...warningLanes.flatMap((lane) =>
+        lane.required
+          ? lane.missingEvidence.map(
+              (missing) => `${lane.laneJob}:${missing}`,
+            )
+          : [],
+      ),
+    ],
+    mustFixBeforeWeek1: failingLanes.some((lane) => lane.required),
   });
 }
 
@@ -1417,6 +1487,7 @@ export function buildV2PlanQualityBenchmark(
     buildSupportFloorsGate(noRepair),
     buildDirectWorkGate(noRepair),
     buildLanePreservationGate(noRepair),
+    buildLaneIntentExplicitnessGate(noRepair),
     buildSessionSizeGate(noRepair),
     buildFatigueDistributionGate(noRepair),
     buildDuplicateConcentrationGate(noRepair),

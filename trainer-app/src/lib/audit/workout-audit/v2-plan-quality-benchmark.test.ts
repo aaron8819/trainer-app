@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
+import { buildV2PlannerMesocyclePolicy } from "@/lib/engine/planning/v2";
+import { buildV2LaneSelectionIntentAudit } from "@/lib/engine/planning/v2/lane-selection-intent-audit";
 import type { MesocycleExplainPlannerOnlyNoRepair } from "./types";
 import { buildV2PlanQualityBenchmark } from "./v2-plan-quality-benchmark";
+
+function laneSelectionIntentAuditFixture(): MesocycleExplainPlannerOnlyNoRepair["v2LaneSelectionIntentAudit"] {
+  const policy = buildV2PlannerMesocyclePolicy();
+  return buildV2LaneSelectionIntentAudit({
+    exerciseSelectionPlan: policy.exerciseSelectionPlan,
+    targetSkeleton: policy.targetSkeleton,
+  });
+}
 
 function pureV2BasePlanCompareFixture(
   overrides: Partial<
@@ -304,7 +314,7 @@ function noRepairFixture(
       weeks: [],
       missingInputs: [],
     } as unknown as MesocycleExplainPlannerOnlyNoRepair["v2ExerciseSelectionPlanDiagnostic"],
-    v2LaneSelectionIntentAudit: {} as MesocycleExplainPlannerOnlyNoRepair["v2LaneSelectionIntentAudit"],
+    v2LaneSelectionIntentAudit: laneSelectionIntentAuditFixture(),
     lowAxialHipExtensionLimitation: {} as MesocycleExplainPlannerOnlyNoRepair["lowAxialHipExtensionLimitation"],
     v2BasePlanCompare: pureV2BasePlanCompareFixture(),
     slotPlans: [],
@@ -612,7 +622,7 @@ function measuredSlotWeekAcceptanceProjectionFixture(
 }
 
 describe("V2 plan quality benchmark", () => {
-  it("marks the exact slot/week allocation trial behavior-ready only when all acceptance and non-regression gates pass", () => {
+  it("keeps the exact slot/week allocation trial accepted with watch items while lane intent remains diagnostic", () => {
     const result = buildV2PlanQualityBenchmark(
       noRepairFixture({
         v2ConcentrationMaterializerProjection:
@@ -622,7 +632,7 @@ describe("V2 plan quality benchmark", () => {
 
     expect(result.summary).toMatchObject({
       passCount: 8,
-      warningCount: 0,
+      warningCount: 1,
       failCount: 0,
       missingEvidenceCount: 0,
       slotWeekAllocationReadiness: "candidate_for_acceptance_projection",
@@ -638,7 +648,7 @@ describe("V2 plan quality benchmark", () => {
       evidenceSource:
         "v2_plan_quality_benchmark_and_donor_offset_materializer_projection",
       representativeAccumulationWeeks: [2, 3, 4],
-      decision: "behavior_ready_candidate",
+      decision: "accepted_with_watch_items",
       protectedVolumeCoverage: {
         status: "pass",
         projectedWeekCount: 3,
@@ -721,7 +731,7 @@ describe("V2 plan quality benchmark", () => {
         .classificationCounts,
     ).toEqual({
       acceptedWatch: 3,
-      boundedOwnerWatch: 1,
+      boundedOwnerWatch: 2,
       blocker: 0,
       staleOrDiagnosticNoise: 0,
       ownerSpecificNextFix: 0,
@@ -953,7 +963,7 @@ describe("V2 plan quality benchmark", () => {
     );
   });
 
-  it("passes first-principles gates from V2 candidate evidence without using repaired projection as target policy", () => {
+  it("surfaces first-principles gates from V2 candidate evidence without using repaired projection as target policy", () => {
     const result = buildV2PlanQualityBenchmark(noRepairFixture());
 
     expect(result).toMatchObject({
@@ -961,7 +971,7 @@ describe("V2 plan quality benchmark", () => {
       affectsScoringOrGeneration: false,
       consumedByProduction: false,
       repairedProjectionUsedAs: "evidence_only_not_target_policy",
-      status: "pass",
+      status: "warning",
       deprecationReadiness: {
         status: "ready_for_review",
       },
@@ -976,6 +986,7 @@ describe("V2 plan quality benchmark", () => {
       "support_floors",
       "direct_work",
       "lane_preservation",
+      "lane_intent_explicitness",
       "session_size",
       "fatigue_distribution",
       "duplicate_concentration_risk",
@@ -984,6 +995,30 @@ describe("V2 plan quality benchmark", () => {
     ]);
     expect(result.summary.failCount).toBe(0);
     expect(result.summary.missingEvidenceCount).toBe(0);
+    expect(result.gates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gate: "lane_intent_explicitness",
+          status: "warning",
+          ownerSeam: "V2LaneSelectionIntentAudit",
+          evidenceSource: "pure_v2_lane_selection_intent_audit",
+          evidence: expect.arrayContaining([
+            "laneJobs=7",
+            "pass=6",
+            "warning=1",
+            "fail=0",
+            "missing=0",
+            "materializerConsumed=6",
+            "diagnosticOnly=1",
+            "low_axial_hip_extension:warning:lower_b:hinge_anchor:consumed=false",
+            "lane_intent_benchmark_is_read_only",
+            "lane_intent_evidence_does_not_change_materializer_ranking",
+          ]),
+          missingEvidence: [],
+          mustFixBeforeWeek1: false,
+        }),
+      ]),
+    );
   });
 
   it("fails closed when floors fail and materializer evidence is missing", () => {
@@ -1959,7 +1994,7 @@ describe("V2 plan quality benchmark", () => {
       result.slotWeekAllocationAcceptanceProjection.acceptance
         .classificationCounts,
     ).toMatchObject({
-      boundedOwnerWatch: 1,
+      boundedOwnerWatch: 2,
       ownerSpecificNextFix: 0,
       blocker: 0,
     });

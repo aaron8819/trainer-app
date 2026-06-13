@@ -1894,6 +1894,7 @@ export type V2PlanQualityBenchmark = {
           | "session_size"
           | "fatigue_distribution"
           | "duplicate_concentration_risk"
+          | "lane_intent_explicitness"
           | "materializer_omissions"
           | "week_1_trainability"
           | "acceptance_projection";
@@ -1907,6 +1908,7 @@ export type V2PlanQualityBenchmark = {
         evidenceSource:
           | "pure_v2_base_plan"
           | "pure_v2_materializer_projection"
+          | "pure_v2_lane_selection_intent_audit"
           | "shadow_diagnostic"
           | "no_repair_projection"
           | "acceptance_classification_no_repair"
@@ -1953,6 +1955,7 @@ export type V2PlanQualityBenchmark = {
       | "session_size"
       | "fatigue_distribution"
       | "duplicate_concentration_risk"
+      | "lane_intent_explicitness"
       | "materializer_omissions"
       | "week_1_trainability";
     status: "pass" | "warning" | "fail" | "missing_evidence";
@@ -1960,6 +1963,7 @@ export type V2PlanQualityBenchmark = {
     evidenceSource:
       | "pure_v2_base_plan"
       | "pure_v2_materializer_projection"
+      | "pure_v2_lane_selection_intent_audit"
       | "shadow_diagnostic"
       | "no_repair_projection"
       | "acceptance_classification_no_repair"

@@ -30,6 +30,7 @@ import type {
   V2CapacityMaterializerProjection,
   V2ConcentrationMaterializerProjection,
   V2LaneIntentMaterializerProjection,
+  V2PreselectionMaterializerProjection,
   V2SetBudgetMaterializerProjection,
   V2StrategyRowMaterializerProjection,
   V2SupportFloorMaterializerProjection,
@@ -2039,6 +2040,7 @@ export type V2PromotionCandidateEvaluator = {
       | "repair_promotion_scoreboard"
       | "strategy_to_demand_projection"
       | "strategy_row_materializer_projection"
+      | "preselection_materializer_projection"
       | "fresh_owner_specific_inventory";
     priorProbe:
       | "promoted"
@@ -2127,6 +2129,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
   v2SetBudgetMaterializerProjection?: V2SetBudgetMaterializerProjection;
   v2SupportFloorMaterializerProjection?: V2SupportFloorMaterializerProjection;
   v2StrategyRowMaterializerProjection?: V2StrategyRowMaterializerProjection;
+  v2PreselectionMaterializerProjection?: V2PreselectionMaterializerProjection;
   v2ConcentrationMaterializerProjection?: V2ConcentrationMaterializerProjection;
   v2PlanQualityBenchmark?: V2PlanQualityBenchmark;
   v2PromotionCandidateEvaluator?: V2PromotionCandidateEvaluator;

@@ -7,6 +7,7 @@ import type { V2ExerciseSelectionPlanDiagnostic } from "@/lib/api/planning-reali
 import type { V2MaterializationExercise } from "@/lib/engine/planning/v2";
 import {
   buildV2ConcentrationMaterializerProjectionFromLiveContext,
+  buildV2PreselectionMaterializerProjectionFromLiveContext,
   buildV2StrategyRowMaterializerProjectionFromLiveContext,
   hasPromotedBoundedCalvesBaselineProof,
   type V2ConcentrationDonorOffsetRedistributionProjection,
@@ -229,6 +230,107 @@ function withoutDonorOffsetCandidates(
 }
 
 describe("V2 live-context materializer projections", () => {
+  it("measures lower-b Hamstrings clean preselection through materializer deltas", () => {
+    const result = buildV2PreselectionMaterializerProjectionFromLiveContext({
+      plannerPolicy: buildV2PlannerMesocyclePolicy(),
+      inventory: INVENTORY,
+      planningReality: {
+        preselectionFeasibility: [
+          {
+            slotId: "lower_b",
+            muscle: "Hamstrings",
+            role: "primary",
+            targetStatus: "hard",
+            demandType: "primary_hard_target",
+            candidateStatus: "clean_candidate",
+            targetEffectiveSets: 6,
+            currentInitialEffectiveSets: 3,
+            currentFinalEffectiveSets: 6,
+            shortfallBeforeRepair: 3,
+            preferredCleanPath: [
+              {
+                exerciseClass: "knee_flexion_curl",
+                available: true,
+                evidence: ["Leg Curl available"],
+              },
+            ],
+            dirtyClosureSignals: [],
+            collateralEstimate: {
+              glutesDelta: 0,
+              lowerBackDelta: 0,
+            },
+            candidateInventory: [
+              {
+                exerciseId: "leg-curl",
+                exerciseName: "Leg Curl",
+                candidateClass: "knee_flexion_curl",
+                primaryMuscles: ["Hamstrings"],
+                secondaryMuscles: [],
+                movementPatterns: ["knee_flexion"],
+                hamstringsStimulusPerSet: 1,
+                glutesStimulusPerSet: 0,
+                lowerBackStimulusPerSet: 0,
+                lowerSlotCompatible: true,
+                lowerBCompatible: true,
+                alreadySelectedInWeek: false,
+                alreadySelectedSlotIds: [],
+                selectedInLowerBInitial: false,
+                selectedInLowerBFinal: false,
+                availability: "available_but_capacity_blocked",
+                reasons: ["clean_knee_flexion_candidate_visible"],
+              },
+            ],
+            recommendation: "safe_to_trial_preselection",
+            reasons: ["clean_knee_flexion_path_evidence_present"],
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+          },
+        ],
+      } as unknown as Parameters<
+        typeof buildV2PreselectionMaterializerProjectionFromLiveContext
+      >[0]["planningReality"],
+    });
+
+    expect(result).toMatchObject({
+      source: "v2_preselection_materializer_projection",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      dryRunOnly: true,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+      candidateId: "fresh_preselection_lower_b_hamstrings",
+      ownerSeam: "ExerciseClassDistributionBySlot -> ExerciseSelectionPlan",
+      sourceSurface: "clean_preselection_feasibility",
+      row: {
+        slotId: "lower_b",
+        laneId: "knee_flexion_curl",
+        muscle: "Hamstrings",
+        cleanCandidateCount: 1,
+      },
+      downstreamProjection: {
+        classDistributionStatus: "measured",
+        capacityPlanStatus: "measured",
+        exerciseSelectionStatus: "measured",
+      },
+      protectedCoverageImpact: {
+        status: "regressed",
+      },
+      nonConsumption: {
+        demandOrMaterializer: false,
+        seedRuntimeReceiptDb: false,
+        acceptanceThreshold: false,
+      },
+      safeForBehaviorPromotion: false,
+    });
+    expect(result.readiness).toBe("blocked");
+    expect(result.deltas.targetLaneSetDelta).toBeLessThan(0);
+    expect(result.deltas.materializerBlockerDelta).toBe(1);
+    expect(result.deltas.blockerOmissionDelta).toBe(1);
+    expect(result.blockersBeforeBehavior).toContain(
+      "preselection_protected_coverage_regression",
+    );
+  });
+
   it("measures the Side Delts strategy row through downstream policy and materializer deltas", () => {
     const result = buildV2StrategyRowMaterializerProjectionFromLiveContext({
       plannerPolicy: buildV2PlannerMesocyclePolicy(),

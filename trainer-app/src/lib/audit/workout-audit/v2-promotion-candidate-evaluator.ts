@@ -518,15 +518,117 @@ function buildCleanPreselectionCandidate(row: CleanPreselectionRow): Candidate {
   });
 }
 
+function buildMeasuredPreselectionCandidate(
+  projection: MesocycleExplainPlannerOnlyNoRepair["v2PreselectionMaterializerProjection"],
+): Candidate[] {
+  if (!projection) {
+    return [];
+  }
+  const deltas = projection.deltas;
+  const hasPositiveImpact =
+    deltas.selectedIdentityDelta > 0 ||
+    deltas.totalSetDelta > 0 ||
+    deltas.targetLaneSetDelta > 0 ||
+    projection.protectedCoverageImpact.status === "improved";
+  const noImpact =
+    deltas.selectedIdentityDelta === 0 &&
+    deltas.totalSetDelta === 0 &&
+    deltas.targetLaneSetDelta === 0 &&
+    deltas.targetLaneExerciseDelta === 0 &&
+    deltas.materializerBlockerDelta === 0 &&
+    deltas.regressionCount === 0;
+  const regressed =
+    deltas.regressionCount > 0 ||
+    projection.protectedCoverageImpact.status === "regressed" ||
+    projection.duplicateConcentrationImpact.status === "regressed" ||
+    deltas.materializerBlockerDelta > 0 ||
+    projection.status === "blocked";
+  const stopReasons: V2PromotionCandidateStopReason[] = [
+    ...noConsumptionStopReasons({
+      consumedByProduction: projection.consumedByProduction,
+      consumedByDemandOrMaterializer: projection.consumedByDemandOrMaterializer,
+    }),
+  ];
+  if (regressed) {
+    stopReasons.push("materializer_regression");
+  } else if (noImpact) {
+    stopReasons.push("measured_no_impact");
+  }
+  if (projection.readiness !== "candidate_for_bounded_review") {
+    stopReasons.push("missing_acceptance_or_watch_clearance");
+  }
+
+  return [
+    candidate({
+      candidateId: projection.candidateId,
+      label: "lower_b Hamstrings clean preselection feasibility",
+      ownerSeam: projection.ownerSeam,
+      sourceSurface: "preselection_materializer_projection",
+      priorProbe: hasPositiveImpact ? "measured_positive" : "measured_no_impact",
+      stopReasons,
+      score: scoreInput({
+        measuredOwnerSpecificPositiveImpact: hasPositiveImpact ? 35 : 0,
+        materializerNonRegression: regressed ? -100 : 20,
+        protectedCoverage:
+          projection.protectedCoverageImpact.status === "improved"
+            ? 20
+            : projection.protectedCoverageImpact.status === "preserved"
+              ? 15
+              : 0,
+        acceptanceWatchStatus:
+          projection.readiness === "candidate_for_bounded_review" ? 15 : 0,
+        sourceAttributionQuality: 16,
+        priorProbeAdjustment: noImpact ? -35 : 0,
+        implementationScope: 8,
+      }),
+      evidence: uniqueSorted([
+        `source=${projection.sourceSurface}`,
+        `trialId=${projection.trialId}`,
+        `status=${projection.status}`,
+        `readiness=${projection.readiness}`,
+        `baselineHamstrings=${projection.materializedHamstrings.baselineIdentities
+          .map((row) => `${row.exerciseName}:${row.setCount}`)
+          .join("|")}`,
+        `trialHamstrings=${projection.materializedHamstrings.trialIdentities
+          .map((row) => `${row.exerciseName}:${row.setCount}`)
+          .join("|")}`,
+        `identityDelta=${deltas.selectedIdentityDelta}`,
+        `totalSetDelta=${deltas.totalSetDelta}`,
+        `targetLaneSetDelta=${deltas.targetLaneSetDelta}`,
+        `blockerDelta=${deltas.materializerBlockerDelta}`,
+        `protectedCoverage=${projection.protectedCoverageImpact.status}`,
+        `duplicateConcentration=${projection.duplicateConcentrationImpact.status}`,
+        `consumedByProduction=${projection.consumedByProduction}`,
+        `consumedByDemandOrMaterializer=${projection.consumedByDemandOrMaterializer}`,
+      ]),
+      missingProof: projection.remainingProofBeforeBehavior,
+      nextSafeAction: projection.nextSafeSlice,
+    }),
+  ];
+}
+
 function buildCleanPreselectionCandidates(
+  noRepair: MesocycleExplainPlannerOnlyNoRepair,
   planningReality: SlotPlanPlanningRealityDiagnostic | undefined,
 ): Candidate[] {
+  const measuredCandidates = buildMeasuredPreselectionCandidate(
+    noRepair.v2PreselectionMaterializerProjection,
+  );
+  const measuredCandidateIds = new Set(
+    measuredCandidates.map((row) => row.candidateId),
+  );
   return (
     planningReality?.preselectionFeasibility
       .filter((row) => row.recommendation === "safe_to_trial_preselection")
       .filter((row) => row.candidateStatus === "clean_candidate")
+      .filter(
+        (row) =>
+          !measuredCandidateIds.has(
+            `fresh_preselection_${slug(row.slotId)}_${slug(row.muscle)}`,
+          ),
+      )
       .map(buildCleanPreselectionCandidate) ?? []
-  );
+  ).concat(measuredCandidates);
 }
 
 function buildFreshOwnerSpecificCandidates(
@@ -534,7 +636,7 @@ function buildFreshOwnerSpecificCandidates(
   options: BuildV2PromotionCandidateEvaluatorOptions,
 ): Candidate[] {
   const candidates = [
-    ...buildCleanPreselectionCandidates(options.planningReality),
+    ...buildCleanPreselectionCandidates(noRepair, options.planningReality),
     ...buildStrategyInventoryCandidates(noRepair),
   ];
   return candidates.filter(

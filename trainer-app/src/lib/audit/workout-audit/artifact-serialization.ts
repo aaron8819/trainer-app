@@ -1174,6 +1174,18 @@ function compactPlannerOnlyNoRepair(
   const v2StrategyRowDuplicateConcentration = asRecord(
     v2StrategyRowMaterializerProjection?.duplicateConcentrationImpact,
   );
+  const v2PreselectionMaterializerProjection = asRecord(
+    noRepair.v2PreselectionMaterializerProjection,
+  );
+  const v2PreselectionMaterializerDeltas = asRecord(
+    v2PreselectionMaterializerProjection?.deltas,
+  );
+  const v2PreselectionProtectedCoverage = asRecord(
+    v2PreselectionMaterializerProjection?.protectedCoverageImpact,
+  );
+  const v2PreselectionDuplicateConcentration = asRecord(
+    v2PreselectionMaterializerProjection?.duplicateConcentrationImpact,
+  );
   const v2StrategyRecommendation = asRecord(
     v2MesocycleStrategyDiagnostic?.strategyRecommendation,
   );
@@ -1964,6 +1976,101 @@ function compactPlannerOnlyNoRepair(
                       {},
                     limitationCount: asStringArray(
                       v2StrategyRowMaterializerProjection.limitations,
+                    ).length,
+                  }
+                : undefined,
+            preselectionMaterializerProjection:
+              v2PreselectionMaterializerProjection
+                ? {
+                    status:
+                      typeof v2PreselectionMaterializerProjection.status ===
+                      "string"
+                        ? v2PreselectionMaterializerProjection.status
+                        : "not_available",
+                    readOnly:
+                      v2PreselectionMaterializerProjection.readOnly === true,
+                    affectsScoringOrGeneration:
+                      v2PreselectionMaterializerProjection
+                        .affectsScoringOrGeneration === true
+                        ? true
+                        : false,
+                    consumedByDemandOrMaterializer:
+                      v2PreselectionMaterializerProjection
+                        .consumedByDemandOrMaterializer === true
+                        ? true
+                        : false,
+                    projectionMode:
+                      v2PreselectionMaterializerProjection.projectionMode,
+                    candidateId:
+                      v2PreselectionMaterializerProjection.candidateId,
+                    ownerSeam: v2PreselectionMaterializerProjection.ownerSeam,
+                    sourceSurface:
+                      v2PreselectionMaterializerProjection.sourceSurface,
+                    row: asRecord(v2PreselectionMaterializerProjection.row) ?? {},
+                    downstreamProjection:
+                      asRecord(
+                        v2PreselectionMaterializerProjection
+                          .downstreamProjection,
+                      ) ?? {},
+                    materializer:
+                      asRecord(v2PreselectionMaterializerProjection.materializer) ??
+                      {},
+                    deltas: {
+                      selectedIdentityDelta:
+                        v2PreselectionMaterializerDeltas
+                          ?.selectedIdentityDelta ?? 0,
+                      totalSetDelta:
+                        v2PreselectionMaterializerDeltas?.totalSetDelta ?? 0,
+                      targetLaneSetDelta:
+                        v2PreselectionMaterializerDeltas?.targetLaneSetDelta ??
+                        0,
+                      materializerBlockerDelta:
+                        v2PreselectionMaterializerDeltas
+                          ?.materializerBlockerDelta ?? 0,
+                      blockerOmissionDelta:
+                        v2PreselectionMaterializerDeltas
+                          ?.blockerOmissionDelta ?? 0,
+                      regressionCount:
+                        v2PreselectionMaterializerDeltas?.regressionCount ?? 0,
+                      changedSlotCount:
+                        v2PreselectionMaterializerDeltas?.changedSlotCount ?? 0,
+                    },
+                    selectedHamstrings:
+                      asRecord(
+                        v2PreselectionMaterializerProjection
+                          .selectedHamstrings,
+                      ) ?? {},
+                    materializedHamstrings:
+                      asRecord(
+                        v2PreselectionMaterializerProjection
+                          .materializedHamstrings,
+                      ) ?? {},
+                    protectedCoverageImpact:
+                      v2PreselectionProtectedCoverage ?? {},
+                    duplicateConcentrationImpact:
+                      v2PreselectionDuplicateConcentration ?? {},
+                    acceptanceWatchStatus:
+                      v2PreselectionMaterializerProjection
+                        .acceptanceWatchStatus ?? "missing_proof",
+                    readiness:
+                      v2PreselectionMaterializerProjection.readiness ??
+                      "blocked",
+                    blockerCount: asStringArray(
+                      v2PreselectionMaterializerProjection
+                        .blockersBeforeBehavior,
+                    ).length,
+                    remainingProofCount: asStringArray(
+                      v2PreselectionMaterializerProjection
+                        .remainingProofBeforeBehavior,
+                    ).length,
+                    nextSafeSlice:
+                      v2PreselectionMaterializerProjection.nextSafeSlice ??
+                      "keep_blocked_until_clean_preselection_projection_exists",
+                    nonConsumption:
+                      asRecord(v2PreselectionMaterializerProjection.nonConsumption) ??
+                      {},
+                    limitationCount: asStringArray(
+                      v2PreselectionMaterializerProjection.limitations,
                     ).length,
                   }
                 : undefined,

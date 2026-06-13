@@ -93,6 +93,7 @@ import {
   buildV2CapacityMaterializerProjectionFromLiveContext,
   buildV2ConcentrationMaterializerProjectionFromLiveContext,
   buildV2LaneIntentMaterializerProjectionFromLiveContext,
+  buildV2PreselectionMaterializerProjectionFromLiveContext,
   buildV2SetBudgetMaterializerProjectionFromLiveContext,
   buildV2StrategyRowMaterializerProjectionFromLiveContext,
   buildV2SupportFloorMaterializerProjectionFromLiveContext,
@@ -8838,6 +8839,13 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         },
       })
     : undefined;
+  const v2PreselectionMaterializerProjection = input.v2BasePlanCompareContext
+    ? buildV2PreselectionMaterializerProjectionFromLiveContext({
+        plannerPolicy,
+        planningReality: input.repairedPlanningReality ?? noRepair,
+        ...input.v2BasePlanCompareContext,
+      })
+    : undefined;
   const v2ConcentrationMaterializerProjection = input.v2BasePlanCompareContext
     ? buildV2ConcentrationMaterializerProjectionFromLiveContext({
         plannerPolicy,
@@ -8893,6 +8901,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       ...(v2StrategyRowMaterializerProjection
         ? { v2StrategyRowMaterializerProjection }
         : {}),
+      ...(v2PreselectionMaterializerProjection
+        ? { v2PreselectionMaterializerProjection }
+        : {}),
       ...(v2ConcentrationMaterializerProjection
         ? { v2ConcentrationMaterializerProjection }
         : {}),
@@ -8944,6 +8955,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       : {}),
     ...(v2StrategyRowMaterializerProjection
       ? { v2StrategyRowMaterializerProjection }
+      : {}),
+    ...(v2PreselectionMaterializerProjection
+      ? { v2PreselectionMaterializerProjection }
       : {}),
     ...(v2ConcentrationMaterializerProjection
       ? { v2ConcentrationMaterializerProjection }

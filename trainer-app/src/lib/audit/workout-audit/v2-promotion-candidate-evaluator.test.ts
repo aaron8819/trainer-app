@@ -358,6 +358,102 @@ function makeSideDeltsProjection(
   };
 }
 
+function makePreselectionProjection(
+  input: Partial<
+    NonNullable<
+      MesocycleExplainPlannerOnlyNoRepair["v2PreselectionMaterializerProjection"]
+    >
+  > = {},
+): MesocycleExplainPlannerOnlyNoRepair["v2PreselectionMaterializerProjection"] {
+  return {
+    version: 1,
+    source: "v2_preselection_materializer_projection",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    dryRunOnly: true,
+    consumedByProduction: false,
+    consumedByDemandOrMaterializer: false,
+    status: "projected_with_limitations",
+    projectionMode: "clean_preselection_selection_plan_materializer_dry_run",
+    candidateId: "fresh_preselection_lower_b_hamstrings",
+    ownerSeam: "ExerciseClassDistributionBySlot -> ExerciseSelectionPlan",
+    sourceSurface: "clean_preselection_feasibility",
+    trialId: "lower_b_hamstrings_clean_preselection_shadow",
+    row: {
+      slotId: "lower_b",
+      laneId: "knee_flexion_curl",
+      muscle: "Hamstrings",
+      candidateStatus: "clean_candidate",
+      recommendation: "safe_to_trial_preselection",
+      cleanCandidateCount: 3,
+    },
+    downstreamProjection: {
+      classDistributionStatus: "measured",
+      capacityPlanStatus: "measured",
+      exerciseSelectionStatus: "measured",
+      baselineClassLaneCount: 10,
+      trialClassLaneCount: 10,
+      baselineCapacityLaneCount: 10,
+      trialCapacityLaneCount: 10,
+      baselineSelectionLaneCount: 10,
+      trialSelectionLaneCount: 10,
+    },
+    selectedHamstrings: {
+      baselineIdentities: [{ exerciseName: "Seated Leg Curl", setCount: 3 }],
+      trialIdentities: [{ exerciseName: "Seated Leg Curl", setCount: 3 }],
+    },
+    materializedHamstrings: {
+      baselineIdentities: [{ exerciseName: "Seated Leg Curl", setCount: 3 }],
+      trialIdentities: [{ exerciseName: "Seated Leg Curl", setCount: 3 }],
+    },
+    materializer: {
+      baselineStatus: "materialized",
+      trialStatus: "materialized",
+      baselineBlockerCount: 0,
+      trialBlockerCount: 0,
+      baselineSeedShapeCompatible: true,
+      trialSeedShapeCompatible: true,
+    },
+    deltas: {
+      selectedIdentityDelta: 0,
+      totalSetDelta: 0,
+      targetLaneSetDelta: 0,
+      targetLaneExerciseDelta: 0,
+      materializerBlockerDelta: 0,
+      blockerOmissionDelta: 0,
+      regressionCount: 0,
+      changedSlotCount: 0,
+      changedSlots: [],
+    },
+    protectedCoverageImpact: {
+      status: "preserved",
+      baselineTargetLaneSets: 3,
+      trialTargetLaneSets: 3,
+      targetLaneSetDelta: 0,
+      netWeeklySetDelta: 0,
+    },
+    duplicateConcentrationImpact: {
+      status: "preserved",
+      warningDelta: 0,
+      maxShareDelta: 0,
+      highFatigueSetDelta: 0,
+    },
+    acceptanceWatchStatus: "missing_proof",
+    readiness: "diagnostic_no_impact",
+    blockersBeforeBehavior: ["preselection_trial_no_candidate_impact"],
+    remainingProofBeforeBehavior: ["read_only_acceptance_gate_result_for_projected_candidate"],
+    nextSafeSlice: "pivot_to_higher_roi_track",
+    nonConsumption: {
+      demandOrMaterializer: false,
+      seedRuntimeReceiptDb: false,
+      acceptanceThreshold: false,
+    },
+    limitations: [],
+    safeForBehaviorPromotion: false,
+    ...input,
+  };
+}
+
 describe("V2 promotion candidate evaluator", () => {
   it("stops the current known candidates instead of recommending row chasing", () => {
     const evaluator = buildV2PromotionCandidateEvaluator(
@@ -571,6 +667,57 @@ describe("V2 promotion candidate evaluator", () => {
         "missing_acceptance_or_watch_clearance",
       ],
       nextSafeAction: "run_one_read_only_preselection_materializer_projection",
+    });
+  });
+
+  it("uses measured clean-preselection projection instead of keeping the row unmeasured", () => {
+    const evaluator = buildV2PromotionCandidateEvaluator(
+      makeNoRepair({
+        v2PreselectionMaterializerProjection: makePreselectionProjection(),
+      }),
+      {
+        planningReality: {
+          preselectionFeasibility: [
+            {
+              slotId: "lower_b",
+              muscle: "Hamstrings",
+              role: "primary",
+              targetStatus: "hard",
+              demandType: "primary_hard_target",
+              candidateStatus: "clean_candidate",
+              targetEffectiveSets: 6,
+              currentInitialEffectiveSets: 3,
+              currentFinalEffectiveSets: 6,
+              shortfallBeforeRepair: 3,
+              preferredCleanPath: [],
+              dirtyClosureSignals: [],
+              collateralEstimate: {
+                glutesDelta: 0,
+                lowerBackDelta: 0,
+              },
+              candidateInventory: [],
+              recommendation: "safe_to_trial_preselection",
+              reasons: ["clean_knee_flexion_path_evidence_present"],
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+            },
+          ],
+        } as unknown as SlotPlanPlanningRealityDiagnostic,
+      },
+    );
+
+    expect(evaluator.status).toBe("none_ready");
+    expect(evaluator.summary.evaluatedCandidateCount).toBe(1);
+    expect(evaluator.stopReasonCounts).toMatchObject({
+      measured_no_impact: 1,
+      missing_acceptance_or_watch_clearance: 1,
+    });
+    expect(evaluator.candidates[0]).toMatchObject({
+      candidateId: "fresh_preselection_lower_b_hamstrings",
+      sourceSurface: "preselection_materializer_projection",
+      status: "stopped",
+      priorProbe: "measured_no_impact",
+      nextSafeAction: "pivot_to_higher_roi_track",
     });
   });
 

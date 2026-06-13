@@ -865,6 +865,9 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
   const strategyRowMaterializer = asRecord(
     noRepair.v2StrategyRowMaterializerProjection,
   );
+  const preselectionMaterializer = asRecord(
+    noRepair.v2PreselectionMaterializerProjection,
+  );
   const concentrationMaterializer = asRecord(
     noRepair.v2ConcentrationMaterializerProjection,
   );
@@ -906,6 +909,7 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
     !setBudgetMaterializer &&
     !supportFloorMaterializer &&
     !strategyRowMaterializer &&
+    !preselectionMaterializer &&
     !concentrationMaterializer &&
     !planQualityBenchmark
   ) {
@@ -957,6 +961,9 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
       : {}),
     ...(strategyRowMaterializer
       ? { v2StrategyRowMaterializerProjection: strategyRowMaterializer }
+      : {}),
+    ...(preselectionMaterializer
+      ? { v2PreselectionMaterializerProjection: preselectionMaterializer }
       : {}),
     ...(concentrationMaterializerWithBaselineFlag
       ? {
@@ -1415,6 +1422,12 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
   const concentrationMaterializerImpact = asRecord(
     concentrationMaterializer?.candidateImpact,
   );
+  const preselectionMaterializer = asRecord(
+    noRepair.v2PreselectionMaterializerProjection,
+  );
+  const preselectionMaterializerDeltas = asRecord(
+    preselectionMaterializer?.deltas,
+  );
   const concentrationDelta = asRecord(
     concentrationMaterializer?.concentrationDelta,
   );
@@ -1638,6 +1651,64 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
             typeof setBudgetMaterializer.nextSafeAction === "string"
               ? setBudgetMaterializer.nextSafeAction
               : "inspect_set_budget_materializer_projection",
+        }
+      : undefined,
+    v2PreselectionMaterializerProjection: preselectionMaterializer
+      ? {
+          status: preselectionMaterializer.status ?? "not_available",
+          readOnly: preselectionMaterializer.readOnly === true,
+          affectsScoringOrGeneration:
+            preselectionMaterializer.affectsScoringOrGeneration === true
+              ? true
+              : false,
+          consumedByProduction:
+            preselectionMaterializer.consumedByProduction === true
+              ? true
+              : false,
+          consumedByDemandOrMaterializer:
+            preselectionMaterializer.consumedByDemandOrMaterializer === true
+              ? true
+              : false,
+          projectionMode:
+            preselectionMaterializer.projectionMode ??
+            "clean_preselection_selection_plan_materializer_dry_run",
+          trialId: preselectionMaterializer.trialId ?? null,
+          candidateId: preselectionMaterializer.candidateId ?? null,
+          ownerSeam: preselectionMaterializer.ownerSeam ?? null,
+          sourceSurface: preselectionMaterializer.sourceSurface ?? null,
+          row: pickRecordFields(preselectionMaterializer.row, [
+            "slotId",
+            "laneId",
+            "muscle",
+            "candidateStatus",
+            "recommendation",
+            "cleanCandidateCount",
+          ]),
+          deltas: preselectionMaterializerDeltas
+            ? {
+                selectedIdentityDelta:
+                  preselectionMaterializerDeltas.selectedIdentityDelta,
+                totalSetDelta: preselectionMaterializerDeltas.totalSetDelta,
+                targetLaneSetDelta:
+                  preselectionMaterializerDeltas.targetLaneSetDelta,
+                materializerBlockerDelta:
+                  preselectionMaterializerDeltas.materializerBlockerDelta,
+                blockerOmissionDelta:
+                  preselectionMaterializerDeltas.blockerOmissionDelta,
+                regressionCount: preselectionMaterializerDeltas.regressionCount,
+              }
+            : {},
+          materializedHamstrings:
+            asRecord(preselectionMaterializer.materializedHamstrings) ?? {},
+          protectedCoverageImpact:
+            asRecord(preselectionMaterializer.protectedCoverageImpact) ?? {},
+          duplicateConcentrationImpact:
+            asRecord(preselectionMaterializer.duplicateConcentrationImpact) ??
+            {},
+          readiness: preselectionMaterializer.readiness ?? "blocked",
+          nextSafeSlice:
+            preselectionMaterializer.nextSafeSlice ??
+            "keep_blocked_until_clean_preselection_projection_exists",
         }
       : undefined,
     v2SupportFloorMaterializerProjection: supportFloorMaterializer
@@ -2114,6 +2185,12 @@ function buildIndexSummary(input: {
   const strategyRowMaterializerSetBudgetBasisCheck = asRecord(
     strategyRowMaterializer?.setBudgetBasisCheck,
   );
+  const preselectionMaterializer = asRecord(
+    input.noRepair.v2PreselectionMaterializerProjection,
+  );
+  const preselectionMaterializerDeltas = asRecord(
+    preselectionMaterializer?.deltas,
+  );
   const repairScoreboard = asRecord(input.noRepair.repairPromotionScoreboard);
   const supportFloorGapInventory = asRecord(
     asRecord(repairScoreboard?.interpretation)?.supportFloorGapInventory,
@@ -2255,6 +2332,20 @@ function buildIndexSummary(input: {
       strategyRowMaterializerSetBudgetBasisCheck?.blocker ?? null,
     v2StrategyRowMaterializerProjectionNextSafeSlice:
       strategyRowMaterializer?.nextSafeSlice ?? null,
+    v2PreselectionMaterializerProjectionStatus:
+      preselectionMaterializer?.status ?? "not_available",
+    v2PreselectionMaterializerProjectionReadiness:
+      preselectionMaterializer?.readiness ?? "not_available",
+    v2PreselectionMaterializerProjectionIdentityDelta:
+      preselectionMaterializerDeltas?.selectedIdentityDelta ?? null,
+    v2PreselectionMaterializerProjectionTotalSetDelta:
+      preselectionMaterializerDeltas?.totalSetDelta ?? null,
+    v2PreselectionMaterializerProjectionTargetLaneSetDelta:
+      preselectionMaterializerDeltas?.targetLaneSetDelta ?? null,
+    v2PreselectionMaterializerProjectionBlockerDelta:
+      preselectionMaterializerDeltas?.materializerBlockerDelta ?? null,
+    v2PreselectionMaterializerProjectionNextSafeSlice:
+      preselectionMaterializer?.nextSafeSlice ?? null,
     v2SupportFloorReadoutTrueOwnerCount:
       supportFloorGapSummary?.trueOwnerSpecificGapCount ?? null,
     v2SupportFloorReadoutMeasuredNoImpactCount:

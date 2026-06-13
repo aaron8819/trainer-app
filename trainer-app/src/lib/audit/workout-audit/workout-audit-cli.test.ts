@@ -4134,6 +4134,7 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
       "Strategy-to-demand measured blockers: not-available scope=not-projected independent=no floor=none donors=none required=none",
       "Strategy-to-demand alternate donors: not-available scope=not-projected current=none alternateEligible=0 excluded=none required=none next=keep-diagnostic-only",
       "Strategy row materializer projection: not-available row=not-available target=none readiness=blocked identityDelta=0 setDelta=0 laneSetDelta=0 blockerDelta=0 protected=not-measured setBudgetBasis=not-measured basisChanged=no lossCause=not-measured lossPrimary=not-measured lossOwner=unknown concentration=not-measured next=keep-blocked-until-owner-donor-or-acceptance-proof",
+      "Preselection materializer projection: not-available candidate=not-available owner=unknown readiness=blocked baseline=none trial=none identityDelta=0 setDelta=0 laneSetDelta=0 blockerDelta=0 blockerOmissionDelta=0 protected=not-measured concentration=not-measured acceptance=missing-proof next=keep-blocked-until-clean-preselection-projection-exists",
       "Strategy-to-demand fallback capacity inspection: projected-with-limitations blockers=0 pressure=1 capAwareExpansion=0 optionalSuppressed=0 safeForPromotion=no",
       "Strategy-to-demand projection consumed by demand/materializer: no",
       "Strategy recommendation: not-available phase=unknown confidence=low hypotheses=0",

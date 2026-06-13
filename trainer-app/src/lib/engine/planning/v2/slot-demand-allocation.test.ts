@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildV2ExerciseClassDistributionBySlot } from "./exercise-class-distribution";
 import { buildV2MesocycleDemand } from "./mesocycle-demand";
 import {
+  V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION,
   buildV2SlotDemandAllocationByWeek,
   buildV2SlotWeekAllocationPolicyTrial,
   buildV2SlotWeekDonorCapacityProjection,
@@ -150,6 +151,16 @@ function groupPreferredBySlot(rows: AllocationRow[]): Record<string, number> {
       ) / 10;
     return acc;
   }, {});
+}
+
+function groupPreferredBySlotForWeek(
+  allocation: V2SlotDemandAllocationByWeek,
+  muscle: string,
+  weekNumber: number,
+): Record<string, number> {
+  return groupPreferredBySlot(
+    positiveRowsForMuscle(allocation, muscle, weekNumber),
+  );
 }
 
 function donorCapacityRow(
@@ -304,19 +315,70 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
     expect(sumRanges(curlRows).preferred).toBe(4.2);
   });
 
-  it("distributes Calves across both lower slots", () => {
+  it("applies the bounded Calves lower-slot redistribution only in accumulation Weeks 2-4", () => {
     const { weeklyDemandCurve, allocation } = buildFixture();
-    const rows = positiveRowsForMuscle(allocation, "Calves");
+    const week2Rows = positiveRowsForMuscle(allocation, "Calves", 2);
 
-    expect(rows.map((row) => `${row.slotId}:${row.laneId}`)).toEqual([
+    expect(V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION).toMatchObject({
+      weeks: [2, 3, 4],
+      phases: ["accumulation", "hard_accumulation", "peak_overreach_lite"],
+      muscle: "Calves",
+      laneId: "calves",
+      sourceSlotId: "lower_a",
+      donorSlotId: "lower_b",
+      sourceBaselineSetCount: 4,
+      donorBaselineSetCount: 4,
+      sourceSetDelta: -1,
+      donorSetDelta: 1,
+      sourceTargetSetCount: 3,
+      donorTargetSetCount: 5,
+      netWeeklySetDelta: 0,
+    });
+    expect(week2Rows.map((row) => `${row.slotId}:${row.laneId}`)).toEqual([
       "lower_a:calves",
       "lower_b:calves",
     ]);
-    expect(groupPreferredBySlot(rows)).toEqual({
-      lower_a: 4,
-      lower_b: 4,
+    expect(groupPreferredBySlotForWeek(allocation, "Calves", 1)).toEqual({
+      lower_a: 3.5,
+      lower_b: 3.5,
     });
-    expect(sumRanges(rows)).toEqual(weekDemand(weeklyDemandCurve, 2, "Calves"));
+    for (const weekNumber of [2, 3, 4]) {
+      expect(groupPreferredBySlotForWeek(allocation, "Calves", weekNumber)).toEqual(
+        {
+          lower_a: 3,
+          lower_b: 5,
+        },
+      );
+      const total = sumRanges(positiveRowsForMuscle(allocation, "Calves", weekNumber));
+      expect(total.preferred).toBe(weekDemand(weeklyDemandCurve, 2, "Calves").preferred);
+      expect(total.max).toBe(8);
+    }
+    expect(groupPreferredBySlotForWeek(allocation, "Calves", 5)).toEqual({
+      lower_a: 2,
+      lower_b: 2,
+    });
+  });
+
+  it("does not redistribute wrong slots or wrong muscles", () => {
+    const { allocation } = buildFixture();
+
+    expect(groupPreferredBySlotForWeek(allocation, "Quads", 2)).toEqual({
+      lower_a: 6,
+      lower_b: 3,
+    });
+    expect(groupPreferredBySlotForWeek(allocation, "Hamstrings", 2)).toEqual({
+      lower_a: 2.1,
+      lower_b: 5.9,
+    });
+    expect(groupPreferredBySlotForWeek(allocation, "Side Delts", 2)).toEqual({
+      upper_a: 2,
+      upper_b: 4,
+    });
+    expect(
+      positiveRowsForMuscle(allocation, "Calves", 2).map(
+        (row) => `${row.slotId}:${row.laneId}:${row.muscle.muscle}`,
+      ),
+    ).toEqual(["lower_a:calves:Calves", "lower_b:calves:Calves"]);
   });
 
   it("assigns Side Delts direct low-collateral ownership to both upper slots", () => {
@@ -519,7 +581,7 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
       sourceLanePressure: {
         slotId: "lower_a",
         laneId: "calves",
-        allocatedPreferredSets: 4,
+        allocatedPreferredSets: 3,
         setDelta: -1,
         pressureRelieved: true,
       },
@@ -539,11 +601,11 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
     });
   });
 
-  it("applies a read-only slot/week allocation policy trial that creates donor absorption before set distribution", () => {
+  it("applies a read-only slot/week allocation policy trial before set distribution", () => {
     const { allocation, targetSkeleton } = buildFixture();
     const trial = buildV2SlotWeekAllocationPolicyTrial({
       slotDemandAllocationByWeek: allocation,
-      week: 2,
+      week: 1,
       source: {
         slotId: "lower_a",
         laneId: "calves",
@@ -566,11 +628,11 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
       weeklyProgressionModel: buildV2WeeklyProgressionModel(),
     });
     const sourceLane = trialSetDistribution.weeks
-      .find((week) => week.week === 2)
+      .find((week) => week.week === 1)
       ?.slots.find((slot) => slot.slotId === "lower_a")
       ?.lanes.find((lane) => lane.laneId === "calves");
     const donorLane = trialSetDistribution.weeks
-      .find((week) => week.week === 2)
+      .find((week) => week.week === 1)
       ?.slots.find((slot) => slot.slotId === "lower_b")
       ?.lanes.find((lane) => lane.laneId === "calves");
 
@@ -585,7 +647,6 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
         slotId: "lower_a",
         laneId: "calves",
         muscle: "Calves",
-        setDelta: -1,
         pressureRelieved: true,
       },
       selectedDonorLane: {
@@ -602,111 +663,54 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
         sameMuscle: true,
       },
       donorCapacity: {
-        before: { preferredSets: 4, maxSets: 5, headroomSets: 1 },
-        after: { preferredSets: 5, maxSets: 6, headroomSets: 1 },
+        before: { preferredSets: 3.5 },
+        after: { preferredSets: 4.5 },
         capacityDelta: 1,
         status: "capacity_created",
       },
       blockingReasons: [],
     });
     expect(sourceLane?.setBudget).toMatchObject({
-      min: 3,
       preferred: 3,
-      max: 3,
     });
     expect(donorLane?.setBudget).toMatchObject({
-      min: 3,
       preferred: 5,
-      max: 5,
     });
     expect(groupPreferredBySlot(positiveRowsForMuscle(allocation, "Calves"))).toEqual({
-      lower_a: 4,
-      lower_b: 4,
+      lower_a: 3,
+      lower_b: 5,
     });
   });
 
-  it("keeps exact source and donor movement through fractional downstream set distribution", () => {
+  it("propagates exact bounded Calves movement through downstream set distribution", () => {
     const { allocation, targetSkeleton } = buildFixture();
-    const baselineClassDistribution = buildV2ExerciseClassDistributionBySlot({
+    const classDistribution = buildV2ExerciseClassDistributionBySlot({
       slotDemandAllocationByWeek: allocation,
     });
-    const baselineSetDistribution = buildV2SetDistributionIntent({
+    const setDistribution = buildV2SetDistributionIntent({
       slotDemandAllocationByWeek: allocation,
-      exerciseClassDistributionBySlot: baselineClassDistribution,
+      exerciseClassDistributionBySlot: classDistribution,
       v2SupportLanePolicy: buildV2SupportLanePolicy({ targetSkeleton }),
       weeklyProgressionModel: buildV2WeeklyProgressionModel(),
     });
-    const baselineWeek = baselineSetDistribution.weeks.find(
-      (week) => week.week === 4,
-    );
-    const baselineLane = (slotId: "lower_a" | "lower_b") =>
-      baselineWeek?.slots
-        .find((slot) => slot.slotId === slotId)
-        ?.lanes.find((lane) => lane.laneId === "calves");
+    const lane = (weekNumber: number, slotId: "lower_a" | "lower_b") =>
+      setDistribution.weeks
+        .find((week) => week.week === weekNumber)
+        ?.slots.find((slot) => slot.slotId === slotId)
+        ?.lanes.find((row) => row.laneId === "calves");
 
-    const trial = buildV2SlotWeekAllocationPolicyTrial({
-      slotDemandAllocationByWeek: allocation,
-      week: 4,
-      source: {
-        slotId: "lower_a",
-        laneId: "calves",
-        muscle: "Calves",
-        setDelta: -1,
-        baselineSetCount: baselineLane("lower_a")?.setBudget.preferred,
-      },
-      donor: {
-        slotId: "lower_b",
-        laneId: "calves",
-        setDelta: 1,
-        baselineSetCount: baselineLane("lower_b")?.setBudget.preferred,
-      },
-    });
-    const trialClassDistribution = buildV2ExerciseClassDistributionBySlot({
-      slotDemandAllocationByWeek: trial.slotDemandAllocationByWeek,
-    });
-    const trialSetDistribution = buildV2SetDistributionIntent({
-      slotDemandAllocationByWeek: trial.slotDemandAllocationByWeek,
-      exerciseClassDistributionBySlot: trialClassDistribution,
-      v2SupportLanePolicy: buildV2SupportLanePolicy({ targetSkeleton }),
-      weeklyProgressionModel: buildV2WeeklyProgressionModel(),
-    });
-    const trialWeek = trialSetDistribution.weeks.find((week) => week.week === 4);
-    const trialLane = (slotId: "lower_a" | "lower_b") =>
-      trialWeek?.slots
-        .find((slot) => slot.slotId === slotId)
-        ?.lanes.find((lane) => lane.laneId === "calves");
-
-    expect(baselineLane("lower_a")?.setBudget.preferred).toBe(4);
-    expect(baselineLane("lower_b")?.setBudget.preferred).toBe(4);
-    expect(trial.trial.exactSetMovementGuard).toMatchObject({
-      enabled: true,
-      sourceBaselineSetCount: 4,
-      sourceTargetSetCount: 3,
-      donorBaselineSetCount: 4,
-      donorTargetSetCount: 5,
-      netWeeklySetIntentDelta: 0,
-      status: "exact",
-    });
-    expect(trial.trial.sourcePressureRow).toMatchObject({
-      baselineAllocatedSets: { preferred: 4.5 },
-      trialAllocatedSets: { preferred: 3 },
-      setDelta: -1,
-    });
-    expect(trial.trial.selectedDonorLane).toMatchObject({
-      baselineAllocatedSets: { preferred: 4.5 },
-      trialAllocatedSets: { preferred: 5 },
-      setDelta: 1,
-    });
-    expect(trialLane("lower_a")?.setBudget).toMatchObject({
-      min: 3,
-      preferred: 3,
-      max: 3,
-    });
-    expect(trialLane("lower_b")?.setBudget).toMatchObject({
-      min: 3,
-      preferred: 5,
-      max: 5,
-    });
+    for (const weekNumber of [2, 3, 4]) {
+      expect(lane(weekNumber, "lower_a")?.setBudget).toMatchObject({
+        min: 3,
+        preferred: 3,
+        max: 3,
+      });
+      expect(lane(weekNumber, "lower_b")?.setBudget).toMatchObject({
+        min: 3,
+        preferred: 5,
+        max: 5,
+      });
+    }
   });
 
   it("blocks the allocation policy trial when no same-muscle slot-owned donor row exists", () => {
@@ -733,8 +737,8 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
       expect.arrayContaining(["donor_row_missing_or_not_slot_owned"]),
     );
     expect(groupPreferredBySlot(positiveRowsForMuscle(allocation, "Calves"))).toEqual({
-      lower_a: 4,
-      lower_b: 4,
+      lower_a: 3,
+      lower_b: 5,
     });
   });
 

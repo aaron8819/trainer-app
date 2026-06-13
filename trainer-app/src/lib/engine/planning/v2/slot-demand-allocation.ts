@@ -226,6 +226,22 @@ type V2StaticSlotExposureOwnership = {
   ownershipKind: V2AllocatedMuscle["ownershipKind"];
 };
 
+export const V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION = {
+  weeks: [2, 3, 4],
+  phases: ["accumulation", "hard_accumulation", "peak_overreach_lite"],
+  muscle: "Calves",
+  laneId: "calves",
+  sourceSlotId: "lower_a",
+  donorSlotId: "lower_b",
+  sourceBaselineSetCount: 4,
+  donorBaselineSetCount: 4,
+  sourceSetDelta: -1,
+  donorSetDelta: 1,
+  sourceTargetSetCount: 3,
+  donorTargetSetCount: 5,
+  netWeeklySetDelta: 0,
+} as const;
+
 const ZERO_SET_RANGE: V2PlannerSetRange = { min: 0, preferred: 0, max: 0 };
 
 const V2_STATIC_SLOT_EXPOSURE_OWNERSHIP: V2StaticSlotExposureOwnership[] = [
@@ -1148,6 +1164,97 @@ export function buildV2SlotWeekAllocationPolicyTrial(
   };
 }
 
+function boundedCalvesRedistributionGatePassed(
+  trial: V2SlotWeekAllocationPolicyTrial,
+): boolean {
+  return (
+    trial.status === "applied" &&
+    trial.ownerSeam === "SlotDemandAllocationByWeek" &&
+    trial.sourcePressureRow.slotId ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceSlotId &&
+    trial.sourcePressureRow.laneId ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.laneId &&
+    trial.sourcePressureRow.muscle ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.muscle &&
+    trial.sourcePressureRow.setDelta ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceSetDelta &&
+    trial.sourcePressureRow.trialAllocatedSets.preferred ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceTargetSetCount &&
+    trial.selectedDonorLane.slotId ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.donorSlotId &&
+    trial.selectedDonorLane.laneId ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.laneId &&
+    trial.selectedDonorLane.muscle ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.muscle &&
+    trial.selectedDonorLane.setDelta ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.donorSetDelta &&
+    trial.selectedDonorLane.trialAllocatedSets.preferred ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.donorTargetSetCount &&
+    trial.setMovementIntent.sameMuscle &&
+    trial.setMovementIntent.netWeeklySetIntentDelta ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.netWeeklySetDelta &&
+    trial.exactSetMovementGuard.status === "exact" &&
+    trial.exactSetMovementGuard.sourceBaselineSetCount ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceBaselineSetCount &&
+    trial.exactSetMovementGuard.donorBaselineSetCount ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.donorBaselineSetCount &&
+    trial.exactSetMovementGuard.sourceTargetSetCount ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceTargetSetCount &&
+    trial.exactSetMovementGuard.donorTargetSetCount ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.donorTargetSetCount &&
+    trial.exactSetMovementGuard.netWeeklySetIntentDelta ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.netWeeklySetDelta &&
+    trial.blockingReasons.length === 0
+  );
+}
+
+function applyBoundedCalvesSlotDemandRedistribution(
+  allocation: V2SlotDemandAllocationByWeek,
+): V2SlotDemandAllocationByWeek {
+  let nextAllocation = allocation;
+
+  for (const weekNumber of V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.weeks) {
+    const week = allocationWeekFor(nextAllocation, weekNumber);
+    if (
+      !week ||
+      !(
+        V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.phases as readonly string[]
+      ).includes(week.phase)
+    ) {
+      return allocation;
+    }
+
+    const result = buildV2SlotWeekAllocationPolicyTrial({
+      slotDemandAllocationByWeek: nextAllocation,
+      week: weekNumber,
+      source: {
+        slotId: V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceSlotId,
+        laneId: V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.laneId,
+        muscle: V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.muscle,
+        setDelta: V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceSetDelta,
+        baselineSetCount:
+          V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceBaselineSetCount,
+      },
+      donor: {
+        slotId: V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.donorSlotId,
+        laneId: V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.laneId,
+        muscle: V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.muscle,
+        setDelta: V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.donorSetDelta,
+        baselineSetCount:
+          V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.donorBaselineSetCount,
+      },
+    });
+
+    if (!boundedCalvesRedistributionGatePassed(result.trial)) {
+      return allocation;
+    }
+
+    nextAllocation = result.slotDemandAllocationByWeek;
+  }
+
+  return nextAllocation;
+}
+
 function buildDonorCapacityProjectionRow(input: {
   allocation: V2SlotDemandAllocationByWeek;
   row: V2SlotWeekDonorCapacityMeasuredRow;
@@ -1413,7 +1520,7 @@ export function buildV2SlotDemandAllocationByWeek(
   });
   const ownershipByLane = buildOwnershipByLane();
 
-  return {
+  const baseAllocation: V2SlotDemandAllocationByWeek = {
     version: 1,
     source: "v2_planner_policy",
     readOnly: true,
@@ -1470,4 +1577,6 @@ export function buildV2SlotDemandAllocationByWeek(
     }),
     guardrails: V2_POLICY_GUARDRAILS,
   };
+
+  return applyBoundedCalvesSlotDemandRedistribution(baseAllocation);
 }

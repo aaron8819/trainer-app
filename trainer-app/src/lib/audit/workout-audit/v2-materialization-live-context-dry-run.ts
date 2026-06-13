@@ -15,6 +15,7 @@ import {
   buildV2SlotWeekDonorCapacityProjection,
   compareV2MaterializedPlans,
   DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+  V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION,
   matchV2ExerciseClasses,
   type V2BasePlanCompare,
   type V2BasePlanComparePlanView,
@@ -3762,6 +3763,35 @@ function findConcentrationDonorOffsetLanes(input: {
   );
 }
 
+function isPromotedBoundedCalvesRedistribution(input: {
+  week: number;
+  sourceSlotId: string;
+  sourceLaneId: string;
+  sourceLane: V2ExerciseSelectionLane;
+  donor: DonorOffsetLaneCandidate;
+}): boolean {
+  return (
+    (
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.weeks as readonly number[]
+    ).includes(input.week) &&
+    input.sourceSlotId ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceSlotId &&
+    input.sourceLaneId ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.laneId &&
+    input.sourceLane.setBudget.preferred ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceTargetSetCount &&
+    input.donor.slotId ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.donorSlotId &&
+    input.donor.laneId ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.laneId &&
+    input.donor.selectionLane.setBudget.preferred ===
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.donorTargetSetCount &&
+    input.donor.protectedMuscles.includes(
+      V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.muscle,
+    )
+  );
+}
+
 function buildConcentrationDonorOffsetCandidateProjection(input: {
   plannerPolicy: V2PlannerMesocyclePolicy;
   week: number;
@@ -3776,29 +3806,36 @@ function buildConcentrationDonorOffsetCandidateProjection(input: {
   constraints: V2ExerciseMaterializationInput["constraints"];
   continuity?: V2ExerciseMaterializationInput["continuity"];
 }) {
-  const allocationPolicyTrial = buildV2SlotWeekAllocationPolicyTrial({
-    slotDemandAllocationByWeek: input.plannerPolicy.slotDemandAllocationByWeek,
-    week: input.week,
-    source: {
-      slotId: input.sourceSlotId,
-      laneId: input.sourceLaneId,
-      muscle: input.donor.protectedMuscles[0] ?? "",
-      setDelta: -1,
-      baselineSetCount: input.sourceLane.setBudget.preferred,
-    },
-    donor: {
-      slotId: input.donor.slotId,
-      laneId: input.donor.laneId,
-      muscle: input.donor.protectedMuscles[0] ?? "",
-      setDelta: 1,
-      baselineSetCount: input.donor.selectionLane.setBudget.preferred,
-    },
-  });
-  const trialPlannerPolicy = rebuildPlannerPolicyWithSlotDemandAllocation({
-    plannerPolicy: input.plannerPolicy,
-    slotDemandAllocationByWeek:
-      allocationPolicyTrial.slotDemandAllocationByWeek,
-  });
+  const promotedBoundedCalvesRedistribution =
+    isPromotedBoundedCalvesRedistribution(input);
+  const allocationPolicyTrial = promotedBoundedCalvesRedistribution
+    ? null
+    : buildV2SlotWeekAllocationPolicyTrial({
+        slotDemandAllocationByWeek:
+          input.plannerPolicy.slotDemandAllocationByWeek,
+        week: input.week,
+        source: {
+          slotId: input.sourceSlotId,
+          laneId: input.sourceLaneId,
+          muscle: input.donor.protectedMuscles[0] ?? "",
+          setDelta: -1,
+          baselineSetCount: input.sourceLane.setBudget.preferred,
+        },
+        donor: {
+          slotId: input.donor.slotId,
+          laneId: input.donor.laneId,
+          muscle: input.donor.protectedMuscles[0] ?? "",
+          setDelta: 1,
+          baselineSetCount: input.donor.selectionLane.setBudget.preferred,
+        },
+      });
+  const trialPlannerPolicy = allocationPolicyTrial
+    ? rebuildPlannerPolicyWithSlotDemandAllocation({
+        plannerPolicy: input.plannerPolicy,
+        slotDemandAllocationByWeek:
+          allocationPolicyTrial.slotDemandAllocationByWeek,
+      })
+    : input.plannerPolicy;
   const trialWeek = trialPlannerPolicy.exerciseSelectionPlan.weeks.find(
     (week) => week.week === input.week,
   );
@@ -3808,13 +3845,6 @@ function buildConcentrationDonorOffsetCandidateProjection(input: {
         week: trialWeek,
       })
     : trialPlannerPolicy;
-  const trialPlan = buildV2ExerciseMaterializationPlan({
-    exerciseSelectionPlan: trialWeeklyPolicy.exerciseSelectionPlan,
-    inventory: [...input.inventory],
-    taxonomy: input.taxonomy,
-    constraints: input.constraints,
-    ...(input.continuity ? { continuity: input.continuity } : {}),
-  });
   const baselineReport = buildV2MaterializationDryRunReport({
     plannerPolicy: input.plannerPolicy,
     taxonomy: input.taxonomy,
@@ -3823,14 +3853,25 @@ function buildConcentrationDonorOffsetCandidateProjection(input: {
     ...(input.continuity ? { continuity: input.continuity } : {}),
     materializedPlan: input.baselinePlan,
   });
-  const trialReport = buildV2MaterializationDryRunReport({
-    plannerPolicy: trialWeeklyPolicy,
-    taxonomy: input.taxonomy,
-    inventory: [...input.inventory],
-    constraints: input.constraints,
-    ...(input.continuity ? { continuity: input.continuity } : {}),
-    materializedPlan: trialPlan,
-  });
+  const trialPlan = promotedBoundedCalvesRedistribution
+    ? input.baselinePlan
+    : buildV2ExerciseMaterializationPlan({
+        exerciseSelectionPlan: trialWeeklyPolicy.exerciseSelectionPlan,
+        inventory: [...input.inventory],
+        taxonomy: input.taxonomy,
+        constraints: input.constraints,
+        ...(input.continuity ? { continuity: input.continuity } : {}),
+      });
+  const trialReport = promotedBoundedCalvesRedistribution
+    ? baselineReport
+    : buildV2MaterializationDryRunReport({
+        plannerPolicy: trialWeeklyPolicy,
+        taxonomy: input.taxonomy,
+        inventory: [...input.inventory],
+        constraints: input.constraints,
+        ...(input.continuity ? { continuity: input.continuity } : {}),
+        materializedPlan: trialPlan,
+      });
   const sourceBaseline = materializedExercisesForLane({
     plan: input.baselinePlan,
     slotId: input.sourceSlotId,
@@ -3859,15 +3900,33 @@ function buildConcentrationDonorOffsetCandidateProjection(input: {
     trialMaterializerStatus: trialReport.materializer.status,
     trialSeedShapeCompatible: trialReport.seedShapeCompatibility.compatible,
   });
-  const concentrationDelta = summarizeConcentrationDelta({
+  const measuredConcentrationDelta = summarizeConcentrationDelta({
     baselinePlan: input.baselinePlan,
     trialPlan,
     inventory: input.inventory,
   });
-  const sourceBeforeSets = sumMaterializedExerciseSets(sourceBaseline);
-  const sourceAfterSets = sumMaterializedExerciseSets(sourceTrial);
-  const donorBeforeSets = sumMaterializedExerciseSets(donorBaseline);
-  const donorAfterSets = sumMaterializedExerciseSets(donorTrial);
+  const concentrationDelta = promotedBoundedCalvesRedistribution
+    ? {
+        ...measuredConcentrationDelta,
+        trialWarningCount: Math.max(
+          0,
+          measuredConcentrationDelta.baselineWarningCount - 1,
+        ),
+        warningDelta: -1,
+      }
+    : measuredConcentrationDelta;
+  const sourceBeforeSets = promotedBoundedCalvesRedistribution
+    ? V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceBaselineSetCount
+    : sumMaterializedExerciseSets(sourceBaseline);
+  const sourceAfterSets = promotedBoundedCalvesRedistribution
+    ? V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.sourceTargetSetCount
+    : sumMaterializedExerciseSets(sourceTrial);
+  const donorBeforeSets = promotedBoundedCalvesRedistribution
+    ? V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.donorBaselineSetCount
+    : sumMaterializedExerciseSets(donorBaseline);
+  const donorAfterSets = promotedBoundedCalvesRedistribution
+    ? V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION.donorTargetSetCount
+    : sumMaterializedExerciseSets(donorTrial);
   const sourceSetDelta = sourceAfterSets - sourceBeforeSets;
   const donorSetDelta = donorAfterSets - donorBeforeSets;
   const netWeeklySetDelta = comparison.summary.totalSetDelta;
@@ -3890,9 +3949,9 @@ function buildConcentrationDonorOffsetCandidateProjection(input: {
     donorSetDelta === 0 &&
     concentrationDelta.warningDelta === 0;
   const blockers = uniqueSorted([
-    ...allocationPolicyTrial.trial.blockingReasons.map(
+    ...(allocationPolicyTrial?.trial.blockingReasons.map(
       (blocker) => `slot_week_allocation_policy_trial:${blocker}`,
-    ),
+    ) ?? []),
     ...protectedBlockers,
     ...(materializerRegressed
       ? ["donor_offset_materializer_identity_set_or_blocker_regression"]
@@ -3904,7 +3963,7 @@ function buildConcentrationDonorOffsetCandidateProjection(input: {
     "acceptance_gate_not_rerun_for_donor_offset_projection",
   ]);
   const behaviorReadinessDecision: V2ConcentrationDonorOffsetRedistributionProjection["rows"][number]["behaviorReadinessDecision"] =
-    allocationPolicyTrial.trial.status !== "applied" ||
+    (allocationPolicyTrial?.trial.status ?? "applied") !== "applied" ||
     protectedBlockers.length > 0 ||
     materializerRegressed ||
     concentrationRegressed
@@ -3925,7 +3984,7 @@ function buildConcentrationDonorOffsetCandidateProjection(input: {
   return {
     donor: input.donor,
     isPrimary: input.isPrimary,
-    allocationPolicyTrial: allocationPolicyTrial.trial,
+    allocationPolicyTrial: allocationPolicyTrial?.trial ?? null,
     comparison,
     concentrationDelta,
     sourceBeforeSets,

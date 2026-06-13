@@ -322,10 +322,10 @@ describe("V2 live-context materializer projections", () => {
         summary: {
           rowCount: 3,
           blockedRowCount: 3,
-          measuredDonorCapacityPassCount: 3,
-          measuredDonorCapacityFailCount: 0,
+          measuredDonorCapacityPassCount: 0,
+          measuredDonorCapacityFailCount: 3,
           measuredDonorCapacityUnderAbsorptionCount: 0,
-          measuredDonorCapacityOverAbsorptionCount: 0,
+          measuredDonorCapacityOverAbsorptionCount: 3,
           behaviorReadiness: "blocked_by_evidence",
           nextSafeSlice: "inspect_materializer_regressions",
         },

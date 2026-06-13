@@ -24,6 +24,7 @@ export { buildV2PlannerMesocyclePolicy } from "./mesocycle-policy";
 export { buildV2SelectionCapacityPlan } from "./selection-capacity-plan";
 export { buildV2SetDistributionIntent } from "./set-distribution-intent";
 export {
+  V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION,
   buildV2SlotDemandAllocationByWeek,
   buildV2SlotWeekAllocationPolicyTrial,
   buildV2SlotWeekDonorCapacityProjection,

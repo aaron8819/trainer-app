@@ -33,6 +33,9 @@ type MeasuredRedistributionProjectionRow =
   MeasuredRedistributionProjection["rows"][number];
 type CandidateInventory = V2StrategyToDemandProjection["candidateInventory"];
 type CandidateInventoryRow = CandidateInventory["rows"][number];
+type OwnerScopedProjection =
+  V2StrategyToDemandProjection["ownerScopedProjection"];
+type OwnerScopedProjectionRow = OwnerScopedProjection["rows"][number];
 type AlternateCandidateDiagnostic =
   MeasuredRedistributionProjection["alternateCandidateDiagnostic"];
 type MeasuredRedistributionGateKey =
@@ -1524,6 +1527,420 @@ function buildCandidateInventory(input: {
   };
 }
 
+function slotAllocationContextForRow(input: {
+  row: ProjectionRow;
+  slotDemandAllocationByWeek?: V2SlotDemandAllocationByWeek;
+}): {
+  slotIds: string[];
+  laneIds: string[];
+  weekNumbers: number[];
+  rowCount: number;
+} {
+  const slotIds = new Set<string>();
+  const laneIds = new Set<string>();
+  const weekNumbers = new Set<number>();
+  let rowCount = 0;
+
+  for (const week of allocationAccumulationWeeks(
+    input.slotDemandAllocationByWeek,
+  )) {
+    for (const slot of week.slots) {
+      for (const lane of slot.lanes) {
+        const matches = lane.allocatedMuscles.filter(
+          (muscle) =>
+            muscle.muscle === input.row.muscle &&
+            muscle.targetSetRange.max > 0,
+        );
+        if (matches.length === 0) {
+          continue;
+        }
+        slotIds.add(slot.slotId);
+        laneIds.add(lane.laneId);
+        weekNumbers.add(week.week);
+        rowCount += matches.length;
+      }
+    }
+  }
+
+  return {
+    slotIds: uniqueSorted(Array.from(slotIds)),
+    laneIds: uniqueSorted(Array.from(laneIds)),
+    weekNumbers: Array.from(weekNumbers).sort((left, right) => left - right),
+    rowCount,
+  };
+}
+
+function setDistributionContextForRow(input: {
+  row: ProjectionRow;
+  v2SetDistributionIntent?: V2SetDistributionIntent;
+}): { laneCount: number } {
+  let laneCount = 0;
+  for (const week of setDistributionAccumulationWeeks(
+    input.v2SetDistributionIntent,
+  )) {
+    for (const slot of week.slots) {
+      laneCount += slot.lanes.filter((lane) =>
+        laneTargetsMuscle({ lane, muscle: input.row.muscle }),
+      ).length;
+    }
+  }
+  return { laneCount };
+}
+
+function protectedRowForOwnerScopedProjection(input: {
+  row: ProjectionRow;
+  slotOwnedPlan?: V2SlotOwnedDemandAdjustmentPlan;
+}): V2SlotOwnedDemandAdjustmentPlan["protectedDemand"][number] | undefined {
+  return input.slotOwnedPlan?.protectedDemand.find(
+    (protectedRow) => protectedRow.muscle === input.row.muscle,
+  );
+}
+
+function ownerScopedSlotContext(input: {
+  row: ProjectionRow;
+  slotOwnedPlan?: V2SlotOwnedDemandAdjustmentPlan;
+}): OwnerScopedProjectionRow["slotOwnedContext"] {
+  const protectedRow = protectedRowForOwnerScopedProjection(input);
+  const eligibleDonors =
+    input.slotOwnedPlan?.donorDemand.filter((row) => row.eligible) ?? [];
+  const status: OwnerScopedProjectionRow["slotOwnedContext"]["status"] =
+    !protectedRow
+      ? "missing"
+      : protectedRow.status === "owned" && eligibleDonors.length > 0
+        ? "available"
+        : "blocked";
+  const blockingReasons = uniqueSorted([
+    ...(input.slotOwnedPlan?.feasibility.blockingReasons ?? []),
+    ...(!protectedRow ? ["slot_owned_protected_row_missing"] : []),
+    ...(protectedRow && protectedRow.status !== "owned"
+      ? [`protected_status_${protectedRow.status}`]
+      : []),
+    ...(eligibleDonors.length === 0 ? ["eligible_donor_missing"] : []),
+  ]);
+
+  return {
+    status,
+    ...(protectedRow ? { protectedStatus: protectedRow.status } : {}),
+    candidateSlotOwners: uniqueSorted([
+      ...(protectedRow?.candidateSlotOwners ?? []),
+    ]),
+    eligibleDonorCount: eligibleDonors.length,
+    eligibleDonorMuscles: uniqueSorted(eligibleDonors.map((row) => row.muscle)),
+    donorSourceLogic:
+      !protectedRow
+        ? "missing_slot_owned_context"
+        : eligibleDonors.length > 0
+          ? "eligible_donor_available"
+          : "no_eligible_donor",
+    blockingReasons,
+  };
+}
+
+function ownerScopedMaterializationImpact(
+  projectionDiff?: V2StrategyHypothesisProjectionDiff,
+): OwnerScopedProjectionRow["materializationImpact"] {
+  const beforeSlots =
+    projectionDiff?.projectedDeltas.sessionSize.beforeTotalSetsBySlot;
+  const afterSlots =
+    projectionDiff?.projectedDeltas.sessionSize.afterTotalSetsBySlot;
+  const slotSetDeltaBySlot =
+    beforeSlots && afterSlots
+      ? Object.fromEntries(
+          Object.keys({ ...beforeSlots, ...afterSlots }).map((slotId) => [
+            slotId,
+            numericDelta(beforeSlots[slotId] ?? 0, afterSlots[slotId] ?? 0) ??
+              0,
+          ]),
+        )
+      : {};
+  const projectionScope =
+    projectionDiff?.shadowProjection?.candidateProjection ??
+    projectionDiff?.projectionMode ??
+    "not_projected";
+  const status = projectionDiff ? "not_owner_specific" : "not_measured";
+
+  return {
+    projectionScope,
+    identityDeltaStatus: status,
+    setDeltaStatus: status,
+    blockerDeltaStatus: status,
+    slotSetDeltaBySlot,
+    ...(projectionDiff
+      ? {
+          materialRepairDelta:
+            projectionDiff.projectedDeltas.repairPressure.materialRepairDelta,
+          majorRepairDelta:
+            projectionDiff.projectedDeltas.repairPressure.majorRepairDelta,
+          suspiciousRepairDelta:
+            projectionDiff.projectedDeltas.repairPressure.suspiciousRepairDelta,
+        }
+      : {}),
+  };
+}
+
+function ownerScopedProtectedCoverage(input: {
+  row: ProjectionRow;
+  projectionDiff?: V2StrategyHypothesisProjectionDiff;
+}): OwnerScopedProjectionRow["protectedCoverageImpact"] {
+  const beforeProtected = coverageByMuscle(
+    input.projectionDiff?.shadowProjection?.before.laggingMuscleCoverage,
+  );
+  const afterProtected = coverageByMuscle(
+    input.projectionDiff?.shadowProjection?.after.laggingMuscleCoverage,
+  );
+  const before = input.row.muscle
+    ? beforeProtected.get(input.row.muscle)
+    : undefined;
+  const after = input.row.muscle
+    ? afterProtected.get(input.row.muscle)
+    : undefined;
+
+  return {
+    status: floorGate({ before, after }),
+    beforeSets: before?.sets,
+    afterSets: after?.sets,
+    deltaSets: numericDelta(before?.sets, after?.sets),
+    floorSets: before?.minSets ?? after?.minSets,
+    beforeStatus: before?.status ?? "unknown",
+    afterStatus: after?.status ?? "unknown",
+  };
+}
+
+function ownerScopedReadiness(input: {
+  row: ProjectionRow;
+  boundedDeltaStatus: V2StrategyHypothesisProjectionGateStatus;
+  slotContext: OwnerScopedProjectionRow["slotOwnedContext"];
+  downstreamProjection: OwnerScopedProjectionRow["downstreamProjection"];
+  materializationImpact: OwnerScopedProjectionRow["materializationImpact"];
+  protectedCoverageImpact: OwnerScopedProjectionRow["protectedCoverageImpact"];
+}): OwnerScopedProjectionRow["readiness"] {
+  if (
+    input.row.readiness === "blocked" ||
+    input.boundedDeltaStatus !== "pass" ||
+    input.slotContext.status !== "available" ||
+    input.protectedCoverageImpact.status === "fail"
+  ) {
+    return "blocked";
+  }
+  if (
+    input.downstreamProjection.exerciseClassDistributionStatus === "not_measured" ||
+    input.downstreamProjection.selectionCapacityStatus === "not_measured" ||
+    input.downstreamProjection.exerciseSelectionStatus === "not_measured" ||
+    input.materializationImpact.identityDeltaStatus !== "measured_no_delta" ||
+    input.materializationImpact.setDeltaStatus !== "measured_no_delta" ||
+    input.materializationImpact.blockerDeltaStatus !== "measured_no_delta"
+  ) {
+    return "blocked";
+  }
+  return "candidate_for_bounded_review";
+}
+
+function ownerScopedRequiredProof(input: {
+  row: ProjectionRow;
+  trialRow: BoundedTrialRow | undefined;
+  downstreamRow: DownstreamBehaviorProjectionRow | undefined;
+  readiness: OwnerScopedProjectionRow["readiness"];
+}): string[] {
+  if (input.readiness === "diagnostic_no_impact") {
+    return [
+      "preserve_non_consumption_if_reopened",
+      "repaired_projection_must_remain_evidence_only_not_target_policy",
+    ];
+  }
+
+  return uniqueSorted([
+    ...input.row.behaviorPromotion.requiredEvidence,
+    ...(input.trialRow?.blockingReasons ?? []),
+    ...(input.downstreamRow?.blockingReasons ?? []),
+    "owner_specific_class_distribution_projection",
+    "owner_specific_selection_capacity_projection",
+    "owner_specific_exercise_selection_projection",
+    "owner_specific_materializer_identity_set_blocker_deltas",
+    "protected_coverage_non_regression",
+    "seed_runtime_receipt_db_non_consumption_must_remain_proven",
+    "repaired_projection_must_remain_evidence_only_not_target_policy",
+  ]);
+}
+
+function buildOwnerScopedProjectionRow(input: {
+  row: ProjectionRow;
+  boundedBehaviorTrial: BoundedTrial;
+  slotOwnedPlan?: V2SlotOwnedDemandAdjustmentPlan;
+  slotDemandAllocationByWeek?: V2SlotDemandAllocationByWeek;
+  v2SetDistributionIntent?: V2SetDistributionIntent;
+  strategyProjectionDiff?: V2StrategyHypothesisProjectionDiff;
+}): OwnerScopedProjectionRow {
+  const trialRow = input.boundedBehaviorTrial.rows.find((candidate) =>
+    sameProjectionScope({ left: input.row, right: candidate }),
+  );
+  const downstreamRow =
+    input.boundedBehaviorTrial.downstreamBehaviorProjection.rows.find(
+      (candidate) => sameProjectionScope({ left: input.row, right: candidate }),
+    );
+  const slotContext = ownerScopedSlotContext({
+    row: input.row,
+    slotOwnedPlan: input.slotOwnedPlan,
+  });
+  const slotAllocation = slotAllocationContextForRow({
+    row: input.row,
+    slotDemandAllocationByWeek: input.slotDemandAllocationByWeek,
+  });
+  const setDistribution = setDistributionContextForRow({
+    row: input.row,
+    v2SetDistributionIntent: input.v2SetDistributionIntent,
+  });
+  const boundedDeltaStatus: V2StrategyHypothesisProjectionGateStatus =
+    input.row.readiness === "read_only_diff" &&
+    input.row.baseDemand.available &&
+    input.row.owner === "SlotDemandAllocation" &&
+    input.row.action === "protect_floor"
+      ? "pass"
+      : "unknown";
+  const downstreamProjection: OwnerScopedProjectionRow["downstreamProjection"] = {
+    slotAllocationStatus: slotAllocation.rowCount > 0 ? "pass" : "unknown",
+    slotAllocationRowCount: slotAllocation.rowCount,
+    setDistributionStatus: setDistribution.laneCount > 0 ? "pass" : "unknown",
+    setDistributionLaneCount: setDistribution.laneCount,
+    exerciseClassDistributionStatus: "not_measured",
+    selectionCapacityStatus: "not_measured",
+    exerciseSelectionStatus: "not_measured",
+  };
+  const materializationImpact = ownerScopedMaterializationImpact(
+    input.strategyProjectionDiff,
+  );
+  const protectedCoverageImpact = ownerScopedProtectedCoverage({
+    row: input.row,
+    projectionDiff: input.strategyProjectionDiff,
+  });
+  const readiness = ownerScopedReadiness({
+    row: input.row,
+    boundedDeltaStatus,
+    slotContext,
+    downstreamProjection,
+    materializationImpact,
+    protectedCoverageImpact,
+  });
+
+  return {
+    rowKey: `SlotDemandAllocationByWeek:${input.row.muscle ?? "unknown"}:${input.row.action}`,
+    sourceEvidence: [...input.row.evidence],
+    affected: {
+      muscle: input.row.muscle ?? "unknown",
+      slotIds: uniqueSorted([
+        ...slotAllocation.slotIds,
+        ...slotContext.candidateSlotOwners,
+      ]),
+      laneIds: slotAllocation.laneIds,
+      weekNumbers: slotAllocation.weekNumbers,
+    },
+    proposedOwnerSeam: "SlotDemandAllocationByWeek",
+    suggestedFutureActionType: "protect_floor",
+    boundedDelta: {
+      status: boundedDeltaStatus,
+      type: "single_set_floor_buffer",
+      proposedSetDelta: { min: 1, preferred: 1, max: 1 },
+      netWeeklySetDeltaStatus:
+        materializationImpact.setDeltaStatus === "measured_no_delta"
+          ? "preserved"
+          : materializationImpact.setDeltaStatus === "not_owner_specific"
+            ? "not_owner_specific"
+            : "not_measured",
+    },
+    slotOwnedContext: slotContext,
+    downstreamProjection,
+    materializationImpact,
+    protectedCoverageImpact,
+    readiness,
+    requiredProofBeforeBehavior: ownerScopedRequiredProof({
+      row: input.row,
+      trialRow,
+      downstreamRow,
+      readiness,
+    }),
+    nonConsumption: {
+      demandOrMaterializer: false,
+      seedRuntimeReceiptDb: false,
+      acceptanceThreshold: false,
+    },
+  };
+}
+
+function buildOwnerScopedProjection(input: {
+  rows: ProjectionRow[];
+  boundedBehaviorTrial: BoundedTrial;
+  slotOwnedPlan?: V2SlotOwnedDemandAdjustmentPlan;
+  slotDemandAllocationByWeek?: V2SlotDemandAllocationByWeek;
+  v2SetDistributionIntent?: V2SetDistributionIntent;
+  strategyProjectionDiff?: V2StrategyHypothesisProjectionDiff;
+}): OwnerScopedProjection {
+  const rows = input.rows
+    .filter(
+      (row) =>
+        row.owner === "SlotDemandAllocation" &&
+        row.action === "protect_floor" &&
+        row.muscle === "Side Delts",
+    )
+    .map((row) =>
+      buildOwnerScopedProjectionRow({
+        row,
+        boundedBehaviorTrial: input.boundedBehaviorTrial,
+        slotOwnedPlan: input.slotOwnedPlan,
+        slotDemandAllocationByWeek: input.slotDemandAllocationByWeek,
+        v2SetDistributionIntent: input.v2SetDistributionIntent,
+        strategyProjectionDiff: input.strategyProjectionDiff,
+      }),
+    );
+  const blockedCount = rows.filter((row) => row.readiness === "blocked").length;
+  const diagnosticNoImpactCount = rows.filter(
+    (row) => row.readiness === "diagnostic_no_impact",
+  ).length;
+  const candidateForBoundedReviewCount = rows.filter(
+    (row) => row.readiness === "candidate_for_bounded_review",
+  ).length;
+  const topRow = rows[0];
+
+  return {
+    version: 1,
+    source: "v2_strategy_to_demand_owner_scoped_projection",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: false,
+    projectionMode: "slot_demand_allocation_row_projection",
+    status:
+      rows.length === 0
+        ? "not_available"
+        : blockedCount > 0
+          ? "blocked"
+          : candidateForBoundedReviewCount > 0
+            ? "candidate_for_bounded_review"
+            : "diagnostic_no_impact",
+    rows,
+    summary: {
+      rowCount: rows.length,
+      blockedCount,
+      diagnosticNoImpactCount,
+      candidateForBoundedReviewCount,
+      ...(topRow
+        ? {
+            topRow: {
+              rowKey: topRow.rowKey,
+              muscle: topRow.affected.muscle,
+              readiness: topRow.readiness,
+              requiredProofBeforeBehavior:
+                topRow.requiredProofBeforeBehavior.slice(0, 6),
+            },
+          }
+        : {}),
+    },
+    limitations: [
+      "owner_scoped_projection_is_read_only_and_non_binding",
+      "targets_only_the_side_delts_slot_allocation_floor_row",
+      "does_not_mutate_mesocycle_demand_weekly_curve_slot_allocation_set_distribution_materializer_seed_runtime_receipts_or_db",
+      "combined_strategy_shadow_projection_is_not_owner_specific_materializer_proof",
+    ],
+  };
+}
+
 function buildBoundedBehaviorTrial(input: {
   rows: ProjectionRow[];
   slotOwnedPlan?: V2SlotOwnedDemandAdjustmentPlan;
@@ -1712,6 +2129,14 @@ export function buildV2StrategyToDemandProjection(
     rows,
     boundedBehaviorTrial,
   });
+  const ownerScopedProjection = buildOwnerScopedProjection({
+    rows,
+    boundedBehaviorTrial,
+    slotOwnedPlan: input.slotOwnedDemandAdjustmentPlan,
+    slotDemandAllocationByWeek: input.slotDemandAllocationByWeek,
+    v2SetDistributionIntent: input.v2SetDistributionIntent,
+    strategyProjectionDiff: input.strategyProjectionDiff,
+  });
 
   return {
     version: 1,
@@ -1772,6 +2197,7 @@ export function buildV2StrategyToDemandProjection(
     },
     boundedBehaviorTrial,
     candidateInventory,
+    ownerScopedProjection,
     nonMutationGates: {
       noMesocycleDemandMutation: "pass",
       noWeeklyCurveMutation: "pass",

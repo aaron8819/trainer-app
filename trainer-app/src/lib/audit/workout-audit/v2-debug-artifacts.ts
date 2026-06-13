@@ -533,6 +533,8 @@ function compactStrategyToDemandProjection(value: unknown): JsonRecord {
   }
   const candidateInventory = asRecord(projection.candidateInventory);
   const candidateRows = asRecordArray(candidateInventory?.rows);
+  const ownerScopedProjection = asRecord(projection.ownerScopedProjection);
+  const ownerScopedRows = asRecordArray(ownerScopedProjection?.rows);
   return {
     status: projection.status ?? "not_available",
     readOnly: projection.readOnly === true,
@@ -575,6 +577,43 @@ function compactStrategyToDemandProjection(value: unknown): JsonRecord {
             nonConsumption: asRecord(row.nonConsumption) ?? {},
           })),
           limitationCount: countArray(candidateInventory.limitations),
+        }
+      : undefined,
+    ownerScopedProjection: ownerScopedProjection
+      ? {
+          status: ownerScopedProjection.status ?? "not_available",
+          readOnly: ownerScopedProjection.readOnly === true,
+          affectsScoringOrGeneration:
+            ownerScopedProjection.affectsScoringOrGeneration === true
+              ? true
+              : false,
+          consumedByDemandOrMaterializer:
+            ownerScopedProjection.consumedByDemandOrMaterializer === true
+              ? true
+              : false,
+          projectionMode:
+            ownerScopedProjection.projectionMode ??
+            "slot_demand_allocation_row_projection",
+          summary: asRecord(ownerScopedProjection.summary) ?? {},
+          rows: ownerScopedRows.map((row) => ({
+            rowKey: row.rowKey,
+            sourceEvidence: asStringArray(row.sourceEvidence),
+            affected: asRecord(row.affected) ?? {},
+            proposedOwnerSeam: row.proposedOwnerSeam,
+            suggestedFutureActionType: row.suggestedFutureActionType,
+            boundedDelta: asRecord(row.boundedDelta) ?? {},
+            slotOwnedContext: asRecord(row.slotOwnedContext) ?? {},
+            downstreamProjection: asRecord(row.downstreamProjection) ?? {},
+            materializationImpact: asRecord(row.materializationImpact) ?? {},
+            protectedCoverageImpact:
+              asRecord(row.protectedCoverageImpact) ?? {},
+            readiness: row.readiness,
+            requiredProofBeforeBehavior: asStringArray(
+              row.requiredProofBeforeBehavior,
+            ),
+            nonConsumption: asRecord(row.nonConsumption) ?? {},
+          })),
+          limitationCount: countArray(ownerScopedProjection.limitations),
         }
       : undefined,
     nonMutationGates: asRecord(projection.nonMutationGates) ?? {},

@@ -3058,6 +3058,74 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
         }),
       ]),
     );
+    expect(policy.strategyToDemandProjection.ownerScopedProjection).toMatchObject({
+      version: 1,
+      source: "v2_strategy_to_demand_owner_scoped_projection",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      projectionMode: "slot_demand_allocation_row_projection",
+      status: "blocked",
+      summary: {
+        rowCount: 1,
+        blockedCount: 1,
+        diagnosticNoImpactCount: 0,
+        candidateForBoundedReviewCount: 0,
+        topRow: {
+          rowKey: "SlotDemandAllocationByWeek:Side Delts:protect_floor",
+          muscle: "Side Delts",
+          readiness: "blocked",
+        },
+      },
+      rows: [
+        expect.objectContaining({
+          rowKey: "SlotDemandAllocationByWeek:Side Delts:protect_floor",
+          sourceEvidence: expect.arrayContaining([
+            "meso-any-1:floor:Side Delts:below_target_or_mev_evidence",
+          ]),
+          affected: expect.objectContaining({
+            muscle: "Side Delts",
+            slotIds: expect.arrayContaining(["upper_a", "upper_b"]),
+            weekNumbers: expect.arrayContaining([1, 2, 3, 4]),
+          }),
+          proposedOwnerSeam: "SlotDemandAllocationByWeek",
+          suggestedFutureActionType: "protect_floor",
+          boundedDelta: expect.objectContaining({
+            status: "unknown",
+            type: "single_set_floor_buffer",
+            proposedSetDelta: { min: 1, preferred: 1, max: 1 },
+          }),
+          slotOwnedContext: expect.objectContaining({
+            status: "blocked",
+            candidateSlotOwners: expect.arrayContaining(["upper_a", "upper_b"]),
+          }),
+          downstreamProjection: expect.objectContaining({
+            slotAllocationStatus: "pass",
+            setDistributionStatus: "pass",
+            exerciseClassDistributionStatus: "not_measured",
+            selectionCapacityStatus: "not_measured",
+            exerciseSelectionStatus: "not_measured",
+          }),
+          materializationImpact: expect.objectContaining({
+            projectionScope: "read_only_estimate",
+            identityDeltaStatus: "not_owner_specific",
+            setDeltaStatus: "not_owner_specific",
+            blockerDeltaStatus: "not_owner_specific",
+          }),
+          readiness: "blocked",
+          requiredProofBeforeBehavior: expect.arrayContaining([
+            "owner_specific_materializer_identity_set_blocker_deltas",
+            "repaired_projection_must_remain_evidence_only_not_target_policy",
+            "seed_runtime_receipt_db_non_consumption_must_remain_proven",
+          ]),
+          nonConsumption: {
+            demandOrMaterializer: false,
+            seedRuntimeReceiptDb: false,
+            acceptanceThreshold: false,
+          },
+        }),
+      ],
+    });
     expect(policyKeys.indexOf("mesocycleStrategyDiagnostic")).toBeLessThan(
       policyKeys.indexOf("mesocycleDemand"),
     );

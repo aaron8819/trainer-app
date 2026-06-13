@@ -1129,6 +1129,9 @@ function compactPlannerOnlyNoRepair(
   const v2StrategyToDemandCandidateInventory = asRecord(
     v2StrategyToDemandProjection?.candidateInventory,
   );
+  const v2StrategyToDemandOwnerScopedProjection = asRecord(
+    v2StrategyToDemandProjection?.ownerScopedProjection,
+  );
   const v2StrategyToDemandBehaviorTrial = asRecord(
     v2StrategyToDemandProjection?.boundedBehaviorTrial,
   );
@@ -1581,6 +1584,42 @@ function compactPlannerOnlyNoRepair(
                         ).length,
                       }
                     : undefined,
+                  ownerScopedProjection:
+                    v2StrategyToDemandOwnerScopedProjection
+                      ? {
+                          status:
+                            typeof v2StrategyToDemandOwnerScopedProjection
+                              .status === "string"
+                              ? v2StrategyToDemandOwnerScopedProjection.status
+                              : "not_available",
+                          readOnly:
+                            v2StrategyToDemandOwnerScopedProjection.readOnly ===
+                            true,
+                          affectsScoringOrGeneration:
+                            v2StrategyToDemandOwnerScopedProjection
+                              .affectsScoringOrGeneration === true
+                              ? true
+                              : false,
+                          consumedByDemandOrMaterializer:
+                            v2StrategyToDemandOwnerScopedProjection
+                              .consumedByDemandOrMaterializer === true
+                              ? true
+                              : false,
+                          projectionMode:
+                            typeof v2StrategyToDemandOwnerScopedProjection
+                              .projectionMode === "string"
+                              ? v2StrategyToDemandOwnerScopedProjection
+                                  .projectionMode
+                              : "slot_demand_allocation_row_projection",
+                          summary:
+                            asRecord(
+                              v2StrategyToDemandOwnerScopedProjection.summary,
+                            ) ?? {},
+                          limitationCount: asStringArray(
+                            v2StrategyToDemandOwnerScopedProjection.limitations,
+                          ).length,
+                        }
+                      : undefined,
                   boundedBehaviorTrial:
                     v2StrategyToDemandBehaviorTrial
                       ? {

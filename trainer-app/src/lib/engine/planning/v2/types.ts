@@ -1368,6 +1368,126 @@ export type V2StrategyToDemandProjection = {
     };
     limitations: string[];
   };
+  ownerScopedProjection: {
+    version: 1;
+    source: "v2_strategy_to_demand_owner_scoped_projection";
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    consumedByDemandOrMaterializer: false;
+    projectionMode: "slot_demand_allocation_row_projection";
+    status:
+      | "not_available"
+      | "blocked"
+      | "diagnostic_no_impact"
+      | "candidate_for_bounded_review";
+    rows: Array<{
+      rowKey: string;
+      sourceEvidence: string[];
+      affected: {
+        muscle: string;
+        slotIds: string[];
+        laneIds: string[];
+        weekNumbers: number[];
+      };
+      proposedOwnerSeam: "SlotDemandAllocationByWeek";
+      suggestedFutureActionType: "protect_floor";
+      boundedDelta: {
+        status: V2StrategyHypothesisProjectionGateStatus;
+        type: "single_set_floor_buffer";
+        proposedSetDelta: V2PlannerSetRange;
+        netWeeklySetDeltaStatus:
+          | "not_measured"
+          | "not_owner_specific"
+          | "preserved"
+          | "regressed";
+      };
+      slotOwnedContext: {
+        status: "available" | "blocked" | "missing";
+        protectedStatus?: V2SlotOwnedDemandAdjustmentProtectedStatus;
+        candidateSlotOwners: string[];
+        eligibleDonorCount: number;
+        eligibleDonorMuscles: string[];
+        donorSourceLogic:
+          | "floor_protection_requires_slot_owned_source_or_donor"
+          | "eligible_donor_available"
+          | "no_eligible_donor"
+          | "missing_slot_owned_context";
+        blockingReasons: string[];
+      };
+      downstreamProjection: {
+        slotAllocationStatus: V2StrategyHypothesisProjectionGateStatus;
+        slotAllocationRowCount: number;
+        setDistributionStatus: V2StrategyHypothesisProjectionGateStatus;
+        setDistributionLaneCount: number;
+        exerciseClassDistributionStatus:
+          | V2StrategyHypothesisProjectionGateStatus
+          | "not_measured";
+        selectionCapacityStatus:
+          | V2StrategyHypothesisProjectionGateStatus
+          | "not_measured";
+        exerciseSelectionStatus:
+          | V2StrategyHypothesisProjectionGateStatus
+          | "not_measured";
+      };
+      materializationImpact: {
+        projectionScope: string;
+        identityDeltaStatus:
+          | "not_measured"
+          | "not_owner_specific"
+          | "measured_no_delta"
+          | "measured_delta";
+        setDeltaStatus:
+          | "not_measured"
+          | "not_owner_specific"
+          | "measured_no_delta"
+          | "measured_delta";
+        blockerDeltaStatus:
+          | "not_measured"
+          | "not_owner_specific"
+          | "measured_no_delta"
+          | "measured_delta";
+        slotSetDeltaBySlot: Record<string, number>;
+        materialRepairDelta?: number;
+        majorRepairDelta?: number;
+        suspiciousRepairDelta?: number;
+      };
+      protectedCoverageImpact: {
+        status: V2StrategyHypothesisProjectionGateStatus;
+        beforeSets?: number;
+        afterSets?: number;
+        deltaSets?: number;
+        floorSets?: number;
+        beforeStatus: string;
+        afterStatus: string;
+      };
+      readiness:
+        | "blocked"
+        | "diagnostic_no_impact"
+        | "candidate_for_bounded_review";
+      requiredProofBeforeBehavior: string[];
+      nonConsumption: {
+        demandOrMaterializer: false;
+        seedRuntimeReceiptDb: false;
+        acceptanceThreshold: false;
+      };
+    }>;
+    summary: {
+      rowCount: number;
+      blockedCount: number;
+      diagnosticNoImpactCount: number;
+      candidateForBoundedReviewCount: number;
+      topRow?: {
+        rowKey: string;
+        muscle: string;
+        readiness:
+          | "blocked"
+          | "diagnostic_no_impact"
+          | "candidate_for_bounded_review";
+        requiredProofBeforeBehavior: string[];
+      };
+    };
+    limitations: string[];
+  };
   nonMutationGates: {
     noMesocycleDemandMutation: "pass";
     noWeeklyCurveMutation: "pass";

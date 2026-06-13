@@ -4127,6 +4127,7 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
       "Strategy-to-demand projection: not-available rows=0 baseMatched=0 noMutation=0 measuredCurrent=0 behaviorUnknown=0 blocked=0 monitor=0 next=keep-diagnostic-only",
       "Strategy-to-demand current measurement: measured=0 pass=0 unknown=0 maxDelta=0 netNew=0 behaviorMeasured=no",
       "Strategy-to-demand candidate inventory: not-available rows=0 performed=0 benchmarkWatch=0 noRepair=0 repairOnly=0 candidate=0 blocked=0 diagnostic=0 top=none proof=none",
+      "Strategy-to-demand owner-scoped projection: not-available rows=0 blocked=0 diagnosticNoImpact=0 candidate=0 top=none proof=none",
       "Strategy-to-demand bounded behavior trial: not-available candidates=0 ready=0 blocked=0 monitor=0 netNewFail=0 redistributionReady=0 redistributionMissing=0 downstreamUnknown=0 materializerUnknown=0 next=collect-more-evidence",
       "Strategy-to-demand downstream context: not-available candidates=0 weeklyReady=0 slotReady=0 setReady=0 netNewUnknown=0 materializerUnknown=0 ready=0 next=collect-more-evidence",
       "Strategy-to-demand measured redistribution: not-available candidates=0 measured=0 ready=0 blocked=0 pass=0 fail=0 unknown=0 netNew=0 materialRepairDelta=0 concentrationDelta=0 next=keep-diagnostic-only",

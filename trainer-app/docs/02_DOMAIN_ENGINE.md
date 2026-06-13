@@ -6,6 +6,8 @@ Purpose: Canonical reference for workout-generation domain logic, including sele
 
 Current V2 readout note, 2026-06-13: the promoted Weeks 2-4 Calves allocation (`lower_a:calves` 4 -> 3, `lower_b:calves` 4 -> 5) is baseline planner policy in pure `SlotDemandAllocationByWeek`. Audit materializer/readout code should classify that exact proof as `measured_promoted_baseline_idempotent` / bounded-owner watch evidence, not no-impact pressure. Support-floor/readout rows should preserve raw source evidence such as `direct_floor_below`, but carry a separate compact readout classification so measured no-impact or stale audit-cleanup rows do not become owner-policy work. All detail remains diagnostic-only and out of seed/runtime/receipt/DB behavior.
 
+Current V2 strategy-to-demand note, 2026-06-13: `V2PlannerMesocyclePolicy.strategyToDemandProjection.ownerScopedProjection` now gives the blocked owner-specific Side Delts floor row a compact read-only projection. The live owner row is `SlotDemandAllocationByWeek:Side Delts:protect_floor` and remains `blocked`: performed floor/protection evidence is present, current static demand is unchanged, Side Delts slot/lane/week context is visible, and seed/runtime/receipt/DB non-consumption is explicit, but bounded delta, downstream class/capacity/selection projection, and owner-specific materializer identity/set/blocker deltas are not proven. Row detail belongs in the V2 strategy debug shard/index; the main audit output keeps only status/count/top-proof fields. No current-block behavior is promoted.
+
 This doc covers:
 - Selection and session construction
 - Progression/load assignment

@@ -293,35 +293,41 @@ describe("V2 live-context materializer projections", () => {
     expect(result.materializer.trialBlockerCount).toBeGreaterThanOrEqual(0);
     expect(result.materializerDeltas.changedSlotCount).toBeGreaterThanOrEqual(0);
     expect(result.readiness).toBe("blocked");
-    expect(result.protectedCoverageImpact.status).toBe("regressed");
-    expect(result.materializerDeltas.targetLaneSetDelta).toBeLessThan(0);
+    expect(result.protectedCoverageImpact).toMatchObject({
+      status: "preserved",
+      baselineTargetLaneSets: 4,
+      trialTargetLaneSets: 4,
+      targetLaneSetDelta: 0,
+      netWeeklySetDelta: 0,
+    });
+    expect(result.materializerDeltas.targetLaneSetDelta).toBe(0);
+    expect(result.setBudgetBasisCheck).toMatchObject({
+      status: "preserved",
+      baselineSetBudgetBasis: "support_direct_floor",
+      trialSetBudgetBasis: "support_direct_floor",
+      selectionSetBudgetDelta: 0,
+      markerChangedSetBudgetBasis: false,
+      blocker: null,
+    });
     expect(result.protectedCoverageLossCause).toMatchObject({
-      classification: "diagnostic_artifact",
-      primaryCause: "target_lane_marker_changes_set_budget_basis",
-      ownerSeam: "v2_strategy_row_materializer_projection",
+      classification: "not_measured",
+      primaryCause: "target_lane_not_regressed",
+      ownerSeam: "unknown",
       targetLane: {
         week: 1,
         slotId: "upper_b",
         laneId: "side_delt_isolation",
         baselineSetBudget: { min: 4, preferred: 4, max: 4 },
-        trialSetBudget: { min: 3, preferred: 3, max: 3 },
+        trialSetBudget: { min: 4, preferred: 4, max: 4 },
         baselineSetBudgetBasis: "support_direct_floor",
-        trialSetBudgetBasis: "class_ownership_allocation",
+        trialSetBudgetBasis: "support_direct_floor",
         baselineMaterializedSets: 4,
-        trialMaterializedSets: 3,
-        selectionSetBudgetDelta: -1,
-        materializedSetDelta: -1,
+        trialMaterializedSets: 4,
+        selectionSetBudgetDelta: 0,
+        materializedSetDelta: 0,
       },
     });
-    expect(result.protectedCoverageLossCause.collateralLaneSetDeltas).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          laneId: "chest_second_exposure",
-          selectionSetBudgetDelta: 1,
-          materializedSetDelta: 1,
-        }),
-      ]),
-    );
+    expect(result.protectedCoverageLossCause.collateralLaneSetDeltas).toEqual([]);
     expect(result.nextSafeSlice).toBe(
       "inspect_materializer_or_concentration_regressions",
     );
@@ -330,16 +336,20 @@ describe("V2 live-context materializer projections", () => {
         "acceptance_gate_not_rerun",
         "production_slot_demand_allocation_unchanged",
         "production_materializer_not_consuming_strategy_row_trial",
-        "strategy_row_protected_coverage_regression",
       ]),
+    );
+    expect(result.blockersBeforeBehavior).not.toContain(
+      "strategy_row_protected_coverage_regression",
     );
     expect(result.remainingProofBeforeBehavior).toEqual(
       expect.arrayContaining([
-        "protected_coverage_non_regression",
         "read_only_acceptance_gate_result_for_projected_candidate",
         "seed_runtime_receipt_db_non_consumption_must_remain_proven",
         "repaired_projection_must_remain_evidence_only_not_target_policy",
       ]),
+    );
+    expect(result.remainingProofBeforeBehavior).not.toContain(
+      "protected_coverage_non_regression",
     );
     expect(JSON.stringify(result)).not.toMatch(
       /slotPlanSeedJson|sessionDecisionReceipt|runtimeReplay|acceptedPlannerIntent/,

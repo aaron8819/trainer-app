@@ -1156,6 +1156,9 @@ function compactPlannerOnlyNoRepair(
   const v2StrategyRowProtectedCoverageLossCause = asRecord(
     v2StrategyRowMaterializerProjection?.protectedCoverageLossCause,
   );
+  const v2StrategyRowSetBudgetBasisCheck = asRecord(
+    v2StrategyRowMaterializerProjection?.setBudgetBasisCheck,
+  );
   const v2StrategyRowDuplicateConcentration = asRecord(
     v2StrategyRowMaterializerProjection?.duplicateConcentrationImpact,
   );
@@ -1878,6 +1881,18 @@ function compactPlannerOnlyNoRepair(
                             ).length,
                           }
                         : undefined,
+                    setBudgetBasisCheck: v2StrategyRowSetBudgetBasisCheck
+                      ? {
+                          status:
+                            v2StrategyRowSetBudgetBasisCheck.status ??
+                            "not_measured",
+                          markerChangedSetBudgetBasis:
+                            v2StrategyRowSetBudgetBasisCheck
+                              .markerChangedSetBudgetBasis === true,
+                          blocker:
+                            v2StrategyRowSetBudgetBasisCheck.blocker ?? null,
+                        }
+                      : undefined,
                     duplicateConcentrationImpact:
                       v2StrategyRowDuplicateConcentration ?? {},
                     readiness:

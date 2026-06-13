@@ -2053,6 +2053,9 @@ function buildIndexSummary(input: {
   const strategyRowMaterializerLossCause = asRecord(
     strategyRowMaterializer?.protectedCoverageLossCause,
   );
+  const strategyRowMaterializerSetBudgetBasisCheck = asRecord(
+    strategyRowMaterializer?.setBudgetBasisCheck,
+  );
   const repairScoreboard = asRecord(input.noRepair.repairPromotionScoreboard);
   const supportFloorGapInventory = asRecord(
     asRecord(repairScoreboard?.interpretation)?.supportFloorGapInventory,
@@ -2176,6 +2179,13 @@ function buildIndexSummary(input: {
       strategyRowMaterializerLossCause?.primaryCause ?? null,
     v2StrategyRowMaterializerProjectionLossOwnerSeam:
       strategyRowMaterializerLossCause?.ownerSeam ?? null,
+    v2StrategyRowMaterializerProjectionSetBudgetBasisStatus:
+      strategyRowMaterializerSetBudgetBasisCheck?.status ?? null,
+    v2StrategyRowMaterializerProjectionSetBudgetBasisChanged:
+      strategyRowMaterializerSetBudgetBasisCheck?.markerChangedSetBudgetBasis ??
+      null,
+    v2StrategyRowMaterializerProjectionSetBudgetBasisBlocker:
+      strategyRowMaterializerSetBudgetBasisCheck?.blocker ?? null,
     v2StrategyRowMaterializerProjectionNextSafeSlice:
       strategyRowMaterializer?.nextSafeSlice ?? null,
     v2SupportFloorReadoutTrueOwnerCount:

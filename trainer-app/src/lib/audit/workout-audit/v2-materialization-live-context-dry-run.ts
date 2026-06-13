@@ -801,6 +801,15 @@ export type V2StrategyRowMaterializerProjection = {
     targetLaneSetDelta: number;
     netWeeklySetDelta: number;
   };
+  setBudgetBasisCheck: {
+    status: "preserved" | "changed" | "not_measured";
+    baselineSetBudgetBasis: string;
+    trialSetBudgetBasis: string;
+    selectionSetBudgetDelta: number;
+    markerChangedSetBudgetBasis: boolean;
+    blocker: "diagnostic_marker_changed_set_budget_basis" | null;
+    evidence: string[];
+  };
   protectedCoverageLossCause: {
     classification:
       | "materializer_ranking"
@@ -2035,6 +2044,13 @@ export function buildV2StrategyRowMaterializerProjectionFromLiveContext(input: {
   const trialPlannerPolicy = rebuildPlannerPolicyWithSlotDemandAllocation({
     plannerPolicy,
     slotDemandAllocationByWeek: trialAllocation,
+    diagnosticTrialLaneKeys: [
+      slotDemandAllocationTrialLaneKey({
+        week: targetWeek,
+        slotId: targetSlotId,
+        laneId: targetLaneId,
+      }),
+    ],
   });
   const baselineWeek = plannerPolicy.exerciseSelectionPlan.weeks.find(
     (week) => week.week === targetWeek,
@@ -2147,6 +2163,9 @@ export function buildV2StrategyRowMaterializerProjectionFromLiveContext(input: {
     protectedCoverageRegressed,
     materializerRegressed,
   });
+  const setBudgetBasisCheck = strategyRowSetBudgetBasisCheck(
+    protectedCoverageLossCause.targetLane,
+  );
   const readiness: V2StrategyRowMaterializerProjection["readiness"] =
     materializerRegressed ||
     protectedCoverageRegressed ||
@@ -2235,6 +2254,7 @@ export function buildV2StrategyRowMaterializerProjectionFromLiveContext(input: {
       targetLaneSetDelta: trialLaneSets - baselineLaneSets,
       netWeeklySetDelta: comparison.summary.totalSetDelta,
     },
+    setBudgetBasisCheck,
     protectedCoverageLossCause,
     duplicateConcentrationImpact: {
       status: concentrationRegressed
@@ -2782,6 +2802,15 @@ function emptyStrategyRowMaterializerProjection(input: {
       trialTargetLaneSets: 0,
       targetLaneSetDelta: 0,
       netWeeklySetDelta: 0,
+    },
+    setBudgetBasisCheck: {
+      status: "not_measured",
+      baselineSetBudgetBasis: "unknown",
+      trialSetBudgetBasis: "unknown",
+      selectionSetBudgetDelta: 0,
+      markerChangedSetBudgetBasis: false,
+      blocker: null,
+      evidence: ["target_lane_not_measured"],
     },
     protectedCoverageLossCause: emptyStrategyRowProtectedCoverageLossCause({
       week: input.week,
@@ -4036,7 +4065,6 @@ function cloneSlotDemandAllocationWithMuscleDelta(input: {
                     range: muscle.targetSetRange,
                     delta: input.delta,
                   }),
-                  allocationBasis: "target_lane",
                 }
               : muscle,
           ),
@@ -4360,19 +4388,25 @@ function concentrationTrialBudget(
 function rebuildPlannerPolicyWithSlotDemandAllocation(input: {
   plannerPolicy: V2PlannerMesocyclePolicy;
   slotDemandAllocationByWeek: V2PlannerMesocyclePolicy["slotDemandAllocationByWeek"];
+  diagnosticTrialLaneKeys?: string[];
 }): V2PlannerMesocyclePolicy {
   const trialLaneKeys = new Set(
-    input.slotDemandAllocationByWeek.weeks.flatMap((week) =>
-      week.slots.flatMap((slot) =>
-        slot.lanes.flatMap((lane) =>
-          lane.allocatedMuscles.some(
-            (muscle) => muscle.allocationBasis === "target_lane",
-          )
-            ? [`${week.week}:${slot.slotId}:${lane.laneId}`]
-            : [],
+    input.diagnosticTrialLaneKeys ??
+      input.slotDemandAllocationByWeek.weeks.flatMap((week) =>
+        week.slots.flatMap((slot) =>
+          slot.lanes.flatMap((lane) =>
+            lane.allocatedMuscles.some(
+              (muscle) => muscle.allocationBasis === "target_lane",
+            )
+              ? [slotDemandAllocationTrialLaneKey({
+                  week: week.week,
+                  slotId: slot.slotId,
+                  laneId: lane.laneId,
+                })]
+              : [],
+          ),
         ),
       ),
-    ),
   );
   const exerciseClassDistributionBySlot = buildV2ExerciseClassDistributionBySlot({
     slotDemandAllocationByWeek: input.slotDemandAllocationByWeek,
@@ -4427,6 +4461,14 @@ function rebuildPlannerPolicyWithSlotDemandAllocation(input: {
     selectionCapacityPlan,
     exerciseSelectionPlan,
   };
+}
+
+function slotDemandAllocationTrialLaneKey(input: {
+  week: number;
+  slotId: string;
+  laneId: string;
+}): string {
+  return `${input.week}:${input.slotId}:${input.laneId}`;
 }
 
 function cloneExerciseSelectionPlanWithLaneBudget(input: {
@@ -5533,6 +5575,39 @@ function strategyRowLaneBudgetTrace(input: {
     selectionSetBudgetDelta:
       trialSetBudget.preferred - baselineSetBudget.preferred,
     materializedSetDelta: trialMaterializedSets - baselineMaterializedSets,
+  };
+}
+
+function strategyRowSetBudgetBasisCheck(
+  targetLane: V2StrategyRowMaterializerProjection["protectedCoverageLossCause"]["targetLane"],
+): V2StrategyRowMaterializerProjection["setBudgetBasisCheck"] {
+  const markerChangedSetBudgetBasis =
+    targetLane.baselineSetBudgetBasis === "support_direct_floor" &&
+    targetLane.trialSetBudgetBasis === "class_ownership_allocation";
+
+  return {
+    status: markerChangedSetBudgetBasis
+      ? "changed"
+      : targetLane.baselineSetBudgetBasis === "unknown" ||
+          targetLane.trialSetBudgetBasis === "unknown"
+        ? "not_measured"
+        : "preserved",
+    baselineSetBudgetBasis: targetLane.baselineSetBudgetBasis,
+    trialSetBudgetBasis: targetLane.trialSetBudgetBasis,
+    selectionSetBudgetDelta: targetLane.selectionSetBudgetDelta,
+    markerChangedSetBudgetBasis,
+    blocker: markerChangedSetBudgetBasis
+      ? "diagnostic_marker_changed_set_budget_basis"
+      : null,
+    evidence: [
+      `baselineSetBudgetBasis=${targetLane.baselineSetBudgetBasis}`,
+      `trialSetBudgetBasis=${targetLane.trialSetBudgetBasis}`,
+      `selectionSetBudgetDelta=${targetLane.selectionSetBudgetDelta}`,
+      `baselineSetBudgetPreferred=${targetLane.baselineSetBudget.preferred}`,
+      `trialSetBudgetPreferred=${targetLane.trialSetBudget.preferred}`,
+      `baselineMaterializedSets=${targetLane.baselineMaterializedSets}`,
+      `trialMaterializedSets=${targetLane.trialMaterializedSets}`,
+    ],
   };
 }
 

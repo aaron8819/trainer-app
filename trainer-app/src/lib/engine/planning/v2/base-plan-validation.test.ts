@@ -476,8 +476,8 @@ describe("buildV2BasePlanValidation", () => {
       status: "pass",
       summary: {
         slotCount: 4,
-        exerciseCount: 21,
-        totalSets: 66,
+        exerciseCount: 20,
+        totalSets: 64,
         blockerCount: 0,
         warningCount: 0,
         materializerStatus: "materialized",
@@ -841,7 +841,6 @@ describe("buildV2BasePlanValidation", () => {
       .toBe(true);
     expect(validation.checks.duplicateDistinctness.duplicateExerciseIds).toEqual([
       "cable-lateral-raise",
-      "rope-pressdown",
       "standing-calf-raise",
     ]);
     expect(validation.checks.duplicateDistinctness.calfDuplicatePolicy).toBe(
@@ -930,7 +929,7 @@ describe("buildV2BasePlanValidation", () => {
       validation.checks.exerciseClassCoverage
         .managedCollateralLanesNotMaterializedAsDirectDemand,
     ).toBe(true);
-    expect(validation.checks.slotShape.optionalLaneMaterializedCount).toBe(1);
+    expect(validation.checks.slotShape.optionalLaneMaterializedCount).toBe(0);
     expect(validation.checks.slotShape.managedCollateralLaneMaterializedCount)
       .toBe(0);
   });
@@ -1099,9 +1098,9 @@ describe("buildV2BasePlanValidation", () => {
     });
     expect(compare.summary).toMatchObject({
       v2BaseValidationStatus: "pass",
-      v2TotalSets: 66,
+      v2TotalSets: 64,
       noRepairTotalSets: 25,
-      repairedTotalSets: 66,
+      repairedTotalSets: 64,
       repairDependencyCount: 9,
     });
     expect(compare.nextSafeAction).toBe("add_shadow_consumption_trial");
@@ -1149,17 +1148,17 @@ describe("buildV2BasePlanValidation", () => {
 
     expect(compare.comparisons.slotShape.v2Base).toMatchObject({
       slotCount: 4,
-      exerciseCount: 21,
-      totalSets: 66,
-      maxSlotSets: 21,
-      optionalLaneMaterializationCount: 1,
+      exerciseCount: 20,
+      totalSets: 64,
+      maxSlotSets: 20,
+      optionalLaneMaterializationCount: 0,
       standaloneOneSetExerciseCount: 0,
       fiveSetStackCount: 0,
     });
     expect(compare.comparisons.slotShape.v2Base.setsBySlot).toEqual([
       { slotId: "upper_a", exerciseCount: 6, setCount: 20 },
       { slotId: "lower_a", exerciseCount: 4, setCount: 12 },
-      { slotId: "upper_b", exerciseCount: 7, setCount: 21 },
+      { slotId: "upper_b", exerciseCount: 6, setCount: 19 },
       { slotId: "lower_b", exerciseCount: 4, setCount: 13 },
     ]);
     expect(compare.comparisons.exerciseClassCoverage.rows).toEqual(
@@ -1314,10 +1313,10 @@ describe("buildV2BasePlanValidation", () => {
       },
     });
     expect(trial.summary).toMatchObject({
-      shadowTotalSets: 66,
-      v2BaseTotalSets: 66,
+      shadowTotalSets: 64,
+      v2BaseTotalSets: 64,
       noRepairTotalSets: 25,
-      repairedTotalSets: 66,
+      repairedTotalSets: 64,
       currentRepairDependencyCount: 9,
       shadowRemainingRepairDependencyCount: 1,
       repairDependencyDelta: -8,

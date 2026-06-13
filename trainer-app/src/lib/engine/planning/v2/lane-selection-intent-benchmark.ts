@@ -56,6 +56,10 @@ type BenchmarkLaneExpectation = {
     fallbackPolicy?: V2LaneSelectionIntentFallbackPolicy;
     identityPreservationMode?: V2LaneSelectionIntentIdentityPreservationMode;
   };
+  coverageGaps?: {
+    laneIntentContract?: string[];
+    ontologyInventory?: string[];
+  };
   failureMeaning: string;
 };
 
@@ -84,6 +88,10 @@ export type V2LaneSelectionIntentBenchmark = {
     materializerConsumed: boolean;
     evidence: string[];
     missingEvidence: string[];
+    coverageGaps: {
+      laneIntentContract: string[];
+      ontologyInventory: string[];
+    };
     failureMeaning: string;
     nextSafeAction:
       | "no_action"
@@ -225,6 +233,15 @@ const HIGH_RISK_LANE_EXPECTATIONS: BenchmarkLaneExpectation[] = [
       duplicatePolicy: "prefer_variation_if_clean",
       fallbackPolicy: "allow_labeled_fallback",
       identityPreservationMode: "variation_allowed_within_lane_job",
+    },
+    coverageGaps: {
+      laneIntentContract: [
+        "missing hip-extension movement-pattern value; current v0 can only proxy the family through allowedExerciseClasses=hip_thrust",
+        "lower_b:hinge_anchor has no proposed support_coverage laneSelectionIntent for low-axial Glutes support",
+      ],
+      ontologyInventory: [
+        "Reverse Hyperextension has low-axial Glutes/Hamstrings metadata but currently misses low_axial_hip_extension_anchor because taxonomy phrase coverage matches reverse hyper, not reverse hyperextension",
+      ],
     },
     failureMeaning:
       "low-axial hip-extension intent remains a watch item until the planner can separate low-axial glute-biased posterior-chain support from true hinge overload, knee-flexion curl work, generic glute accessories, and axial-fatigue-heavy hinge or back-extension patterns",
@@ -402,6 +419,17 @@ function missingExpectedFields(
   return missing;
 }
 
+function coverageGapEvidence(expectation: BenchmarkLaneExpectation): string[] {
+  return [
+    ...(expectation.coverageGaps?.laneIntentContract ?? []).map(
+      (gap) => `coverageGap:laneIntentContract:${gap}`,
+    ),
+    ...(expectation.coverageGaps?.ontologyInventory ?? []).map(
+      (gap) => `coverageGap:ontologyInventory:${gap}`,
+    ),
+  ];
+}
+
 export function buildV2LaneSelectionIntentBenchmark(
   audit: LaneSelectionIntentBenchmarkAuditInput | undefined,
 ): V2LaneSelectionIntentBenchmark {
@@ -448,8 +476,17 @@ export function buildV2LaneSelectionIntentBenchmark(
               `failureMeaning=${expectation.failureMeaning}`,
             ]
           : [`failureMeaning=${expectation.failureMeaning}`]),
+        ...coverageGapEvidence(expectation),
       ],
       missingEvidence,
+      coverageGaps: {
+        laneIntentContract: [
+          ...(expectation.coverageGaps?.laneIntentContract ?? []),
+        ],
+        ontologyInventory: [
+          ...(expectation.coverageGaps?.ontologyInventory ?? []),
+        ],
+      },
       failureMeaning: expectation.failureMeaning,
       nextSafeAction,
     };

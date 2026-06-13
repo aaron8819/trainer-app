@@ -666,6 +666,14 @@ function buildLaneIntentExplicitnessGate(
         (lane) =>
           `${lane.laneJob}:${lane.status}:${lane.slotId}:${lane.laneId}:consumed=${lane.materializerConsumed}`,
       ),
+      ...benchmark.lanes.flatMap((lane) => [
+        ...lane.coverageGaps.laneIntentContract.map(
+          (gap) => `${lane.laneJob}:laneIntentContractGap:${gap}`,
+        ),
+        ...lane.coverageGaps.ontologyInventory.map(
+          (gap) => `${lane.laneJob}:ontologyInventoryGap:${gap}`,
+        ),
+      ]),
       "lane_intent_benchmark_is_read_only",
       "lane_intent_evidence_does_not_change_materializer_ranking",
     ],

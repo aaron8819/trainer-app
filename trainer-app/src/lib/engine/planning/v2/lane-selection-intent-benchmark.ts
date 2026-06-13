@@ -48,6 +48,7 @@ type BenchmarkLaneExpectation = {
     allowedExerciseClasses?: V2LaneSelectionIntentExerciseClass[];
     disallowedExerciseClasses?: V2LaneSelectionIntentExerciseClass[];
     directnessRequirement?: V2LaneSelectionIntentDirectnessRequirement;
+    minimumTargetStimulus?: V2LaneSelectionIntentV0["minimumTargetStimulus"];
     stabilityPreference?: V2LaneSelectionIntentStabilityPreference;
     fatiguePreference?: V2LaneSelectionIntentFatiguePreference;
     loadabilityPreference?: V2LaneSelectionIntentLoadabilityPreference;
@@ -211,10 +212,22 @@ const HIGH_RISK_LANE_EXPECTATIONS: BenchmarkLaneExpectation[] = [
     laneId: "hinge_anchor",
     required: false,
     expected: {
+      laneJob: "support_coverage",
+      allowedExerciseClasses: ["hip_thrust"],
+      disallowedExerciseClasses: ["hinge", "hamstring_curl", "back_extension"],
+      directnessRequirement: "direct_or_high_support",
+      minimumTargetStimulus: {
+        muscle: "Glutes",
+        minimumPerSetStimulus: 0.75,
+      },
       fatiguePreference: "low_axial",
+      loadabilityPreference: "moderate_or_high",
+      duplicatePolicy: "prefer_variation_if_clean",
+      fallbackPolicy: "allow_labeled_fallback",
+      identityPreservationMode: "variation_allowed_within_lane_job",
     },
     failureMeaning:
-      "low-axial hip-extension intent remains a watch item until the planner can separate hinge overload from low-axial posterior-chain support",
+      "low-axial hip-extension intent remains a watch item until the planner can separate low-axial glute-biased posterior-chain support from true hinge overload, knee-flexion curl work, generic glute accessories, and axial-fatigue-heavy hinge or back-extension patterns",
   },
 ];
 
@@ -242,13 +255,68 @@ function includesAll<T>(actual: T[] | undefined, expected: T[] | undefined): boo
   return expected.every((value) => actual?.includes(value));
 }
 
+function expectedEvidenceFields(expectation: BenchmarkLaneExpectation): string[] {
+  const expected = expectation.expected;
+  const fields: string[] = [];
+  if (expected.laneJob) {
+    fields.push(`laneJob:${expected.laneJob}`);
+  }
+  if (expected.requiredMovementPattern) {
+    fields.push(`requiredMovementPattern:${expected.requiredMovementPattern}`);
+  }
+  if (expected.preferredMovementPatterns?.length) {
+    fields.push(
+      `preferredMovementPatterns:${expected.preferredMovementPatterns.join(",")}`,
+    );
+  }
+  if (expected.allowedExerciseClasses?.length) {
+    fields.push(
+      `allowedExerciseClasses:${expected.allowedExerciseClasses.join(",")}`,
+    );
+  }
+  if (expected.disallowedExerciseClasses?.length) {
+    fields.push(
+      `disallowedExerciseClasses:${expected.disallowedExerciseClasses.join(",")}`,
+    );
+  }
+  if (expected.directnessRequirement) {
+    fields.push(`directnessRequirement:${expected.directnessRequirement}`);
+  }
+  if (expected.minimumTargetStimulus) {
+    fields.push(
+      `minimumTargetStimulus:${expected.minimumTargetStimulus.muscle}:${expected.minimumTargetStimulus.minimumPerSetStimulus}`,
+    );
+  }
+  if (expected.stabilityPreference) {
+    fields.push(`stabilityPreference:${expected.stabilityPreference}`);
+  }
+  if (expected.fatiguePreference) {
+    fields.push(`fatiguePreference:${expected.fatiguePreference}`);
+  }
+  if (expected.loadabilityPreference) {
+    fields.push(`loadabilityPreference:${expected.loadabilityPreference}`);
+  }
+  if (expected.duplicatePolicy) {
+    fields.push(`duplicatePolicy:${expected.duplicatePolicy}`);
+  }
+  if (expected.fallbackPolicy) {
+    fields.push(`fallbackPolicy:${expected.fallbackPolicy}`);
+  }
+  if (expected.identityPreservationMode) {
+    fields.push(`identityPreservationMode:${expected.identityPreservationMode}`);
+  }
+  return fields.length ? fields : ["laneSelectionIntent"];
+}
+
 function missingExpectedFields(
   lane: LaneSelectionIntentBenchmarkAuditInput["lanes"][number] | undefined,
   expectation: BenchmarkLaneExpectation,
 ): string[] {
   const intent = lane?.proposedLaneSelectionIntent;
   if (!lane || !intent) {
-    return ["laneSelectionIntent"];
+    return expectation.required
+      ? ["laneSelectionIntent"]
+      : expectedEvidenceFields(expectation);
   }
 
   const missing: string[] = [];
@@ -289,6 +357,17 @@ function missingExpectedFields(
     intent.directnessRequirement !== expected.directnessRequirement
   ) {
     missing.push(`directnessRequirement:${expected.directnessRequirement}`);
+  }
+  if (
+    expected.minimumTargetStimulus &&
+    (intent.minimumTargetStimulus?.muscle !==
+      expected.minimumTargetStimulus.muscle ||
+      intent.minimumTargetStimulus?.minimumPerSetStimulus !==
+        expected.minimumTargetStimulus.minimumPerSetStimulus)
+  ) {
+    missing.push(
+      `minimumTargetStimulus:${expected.minimumTargetStimulus.muscle}:${expected.minimumTargetStimulus.minimumPerSetStimulus}`,
+    );
   }
   if (
     expected.stabilityPreference &&

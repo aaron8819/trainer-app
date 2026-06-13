@@ -7,6 +7,7 @@ import type { V2ExerciseSelectionPlanDiagnostic } from "@/lib/api/planning-reali
 import type { V2MaterializationExercise } from "@/lib/engine/planning/v2";
 import {
   buildV2ConcentrationMaterializerProjectionFromLiveContext,
+  buildV2StrategyRowMaterializerProjectionFromLiveContext,
   hasPromotedBoundedCalvesBaselineProof,
   type V2ConcentrationDonorOffsetRedistributionProjection,
 } from "./v2-materialization-live-context-dry-run";
@@ -228,6 +229,96 @@ function withoutDonorOffsetCandidates(
 }
 
 describe("V2 live-context materializer projections", () => {
+  it("measures the Side Delts strategy row through downstream policy and materializer deltas", () => {
+    const result = buildV2StrategyRowMaterializerProjectionFromLiveContext({
+      plannerPolicy: buildV2PlannerMesocyclePolicy(),
+      inventory: INVENTORY,
+      sourcePerformedEvidence: [
+        "meso-any-1:floor:Side Delts:below_target_or_mev_evidence",
+      ],
+    });
+
+    expect(result).toMatchObject({
+      version: 1,
+      source: "v2_strategy_row_materializer_projection",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      dryRunOnly: true,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+      projectionMode: "strategy_row_slot_allocation_materializer_dry_run",
+      row: {
+        rowKey: "SlotDemandAllocationByWeek:Side Delts:protect_floor",
+        muscle: "Side Delts",
+        ownerSeam: "SlotDemandAllocationByWeek",
+        action: "protect_floor",
+      },
+      boundedDeltaAttempted: {
+        type: "single_set_floor_buffer",
+        week: 1,
+        slotId: "upper_b",
+        laneId: "side_delt_isolation",
+        muscle: "Side Delts",
+        setDelta: 1,
+      },
+      downstreamProjection: {
+        classDistributionStatus: "measured",
+        capacityPlanStatus: "measured",
+        exerciseSelectionStatus: "measured",
+      },
+      nonConsumption: {
+        demandOrMaterializer: false,
+        seedRuntimeReceiptDb: false,
+        acceptanceThreshold: false,
+      },
+      safeForBehaviorPromotion: false,
+    });
+    expect(result.sourcePerformedEvidence).toEqual([
+      "meso-any-1:floor:Side Delts:below_target_or_mev_evidence",
+    ]);
+    expect(result.boundedDeltaAttempted.trialAllocatedSets.preferred).toBe(
+      result.boundedDeltaAttempted.baselineAllocatedSets.preferred + 1,
+    );
+    expect(result.downstreamProjection.trialClassLaneCount).toBe(
+      result.downstreamProjection.baselineClassLaneCount,
+    );
+    expect(result.downstreamProjection.trialCapacityLaneCount).toBe(
+      result.downstreamProjection.baselineCapacityLaneCount,
+    );
+    expect(result.downstreamProjection.trialSelectionLaneCount).toBe(
+      result.downstreamProjection.baselineSelectionLaneCount,
+    );
+    expect(result.status).not.toBe("not_available");
+    expect(result.materializer.baselineBlockerCount).toBeGreaterThanOrEqual(0);
+    expect(result.materializer.trialBlockerCount).toBeGreaterThanOrEqual(0);
+    expect(result.materializerDeltas.changedSlotCount).toBeGreaterThanOrEqual(0);
+    expect(result.readiness).toBe("blocked");
+    expect(result.protectedCoverageImpact.status).toBe("regressed");
+    expect(result.materializerDeltas.targetLaneSetDelta).toBeLessThan(0);
+    expect(result.nextSafeSlice).toBe(
+      "inspect_materializer_or_concentration_regressions",
+    );
+    expect(result.blockersBeforeBehavior).toEqual(
+      expect.arrayContaining([
+        "acceptance_gate_not_rerun",
+        "production_slot_demand_allocation_unchanged",
+        "production_materializer_not_consuming_strategy_row_trial",
+        "strategy_row_protected_coverage_regression",
+      ]),
+    );
+    expect(result.remainingProofBeforeBehavior).toEqual(
+      expect.arrayContaining([
+        "protected_coverage_non_regression",
+        "read_only_acceptance_gate_result_for_projected_candidate",
+        "seed_runtime_receipt_db_non_consumption_must_remain_proven",
+        "repaired_projection_must_remain_evidence_only_not_target_policy",
+      ]),
+    );
+    expect(JSON.stringify(result)).not.toMatch(
+      /slotPlanSeedJson|sessionDecisionReceipt|runtimeReplay|acceptedPlannerIntent/,
+    );
+  });
+
   it("measures concentration trial deltas without feeding production seams", () => {
     const result = buildV2ConcentrationMaterializerProjectionFromLiveContext({
       plannerPolicy: buildV2PlannerMesocyclePolicy(),

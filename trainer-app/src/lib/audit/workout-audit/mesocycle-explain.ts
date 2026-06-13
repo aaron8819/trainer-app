@@ -93,6 +93,7 @@ import {
   buildV2ConcentrationMaterializerProjectionFromLiveContext,
   buildV2LaneIntentMaterializerProjectionFromLiveContext,
   buildV2SetBudgetMaterializerProjectionFromLiveContext,
+  buildV2StrategyRowMaterializerProjectionFromLiveContext,
   buildV2SupportFloorMaterializerProjectionFromLiveContext,
   normalizeLiveInventoryForV2Materialization,
 } from "./v2-materialization-live-context-dry-run";
@@ -8813,6 +8814,23 @@ export function buildPlannerOnlyNoRepairComparison(input: {
           },
         })
       : undefined;
+  const sideDeltsStrategyRow =
+    plannerPolicy.strategyToDemandProjection.ownerScopedProjection.rows.find(
+      (row) =>
+        row.rowKey === "SlotDemandAllocationByWeek:Side Delts:protect_floor",
+    );
+  const v2StrategyRowMaterializerProjection = input.v2BasePlanCompareContext
+    ? buildV2StrategyRowMaterializerProjectionFromLiveContext({
+        plannerPolicy,
+        ...input.v2BasePlanCompareContext,
+        sourcePerformedEvidence: sideDeltsStrategyRow?.sourceEvidence ?? [],
+        target: {
+          week: 1,
+          slotId: "upper_b",
+          laneId: "side_delt_isolation",
+        },
+      })
+    : undefined;
   const v2ConcentrationMaterializerProjection = input.v2BasePlanCompareContext
     ? buildV2ConcentrationMaterializerProjectionFromLiveContext({
         plannerPolicy,
@@ -8865,6 +8883,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       ...(v2SupportFloorMaterializerProjection
         ? { v2SupportFloorMaterializerProjection }
         : {}),
+      ...(v2StrategyRowMaterializerProjection
+        ? { v2StrategyRowMaterializerProjection }
+        : {}),
       ...(v2ConcentrationMaterializerProjection
         ? { v2ConcentrationMaterializerProjection }
         : {}),
@@ -8913,6 +8934,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       : {}),
     ...(v2SupportFloorMaterializerProjection
       ? { v2SupportFloorMaterializerProjection }
+      : {}),
+    ...(v2StrategyRowMaterializerProjection
+      ? { v2StrategyRowMaterializerProjection }
       : {}),
     ...(v2ConcentrationMaterializerProjection
       ? { v2ConcentrationMaterializerProjection }

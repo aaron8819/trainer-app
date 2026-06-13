@@ -31,6 +31,7 @@ import type {
   V2ConcentrationMaterializerProjection,
   V2LaneIntentMaterializerProjection,
   V2SetBudgetMaterializerProjection,
+  V2StrategyRowMaterializerProjection,
   V2SupportFloorMaterializerProjection,
 } from "./v2-materialization-live-context-dry-run";
 import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/mesocycle-handoff-slot-plan-projection.diagnostics";
@@ -2034,6 +2035,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
   v2LaneIntentMaterializerProjection?: V2LaneIntentMaterializerProjection;
   v2SetBudgetMaterializerProjection?: V2SetBudgetMaterializerProjection;
   v2SupportFloorMaterializerProjection?: V2SupportFloorMaterializerProjection;
+  v2StrategyRowMaterializerProjection?: V2StrategyRowMaterializerProjection;
   v2ConcentrationMaterializerProjection?: V2ConcentrationMaterializerProjection;
   v2PlanQualityBenchmark?: V2PlanQualityBenchmark;
   repairPromotionScoreboard?: {

@@ -818,6 +818,9 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
   const supportFloorMaterializer = asRecord(
     noRepair.v2SupportFloorMaterializerProjection,
   );
+  const strategyRowMaterializer = asRecord(
+    noRepair.v2StrategyRowMaterializerProjection,
+  );
   const concentrationMaterializer = asRecord(
     noRepair.v2ConcentrationMaterializerProjection,
   );
@@ -858,6 +861,7 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
     !laneIntentMaterializer &&
     !setBudgetMaterializer &&
     !supportFloorMaterializer &&
+    !strategyRowMaterializer &&
     !concentrationMaterializer &&
     !planQualityBenchmark
   ) {
@@ -906,6 +910,9 @@ function compactMaterialization(noRepair: JsonRecord): JsonRecord | null {
       : {}),
     ...(supportFloorMaterializer
       ? { v2SupportFloorMaterializerProjection: supportFloorMaterializer }
+      : {}),
+    ...(strategyRowMaterializer
+      ? { v2StrategyRowMaterializerProjection: strategyRowMaterializer }
       : {}),
     ...(concentrationMaterializerWithBaselineFlag
       ? {
@@ -2037,6 +2044,12 @@ function buildIndexSummary(input: {
   const supportFloorMaterializerImpact = asRecord(
     supportFloorMaterializer?.candidateImpact,
   );
+  const strategyRowMaterializer = asRecord(
+    input.noRepair.v2StrategyRowMaterializerProjection,
+  );
+  const strategyRowMaterializerDeltas = asRecord(
+    strategyRowMaterializer?.materializerDeltas,
+  );
   const repairScoreboard = asRecord(input.noRepair.repairPromotionScoreboard);
   const supportFloorGapInventory = asRecord(
     asRecord(repairScoreboard?.interpretation)?.supportFloorGapInventory,
@@ -2142,6 +2155,20 @@ function buildIndexSummary(input: {
       supportFloorMaterializerImpact?.totalSetDelta ?? null,
     v2SupportFloorMaterializerProjectionTargetLaneSetDelta:
       supportFloorMaterializerImpact?.targetLaneSetDelta ?? null,
+    v2StrategyRowMaterializerProjectionStatus:
+      strategyRowMaterializer?.status ?? "not_available",
+    v2StrategyRowMaterializerProjectionReadiness:
+      strategyRowMaterializer?.readiness ?? "not_available",
+    v2StrategyRowMaterializerProjectionIdentityDelta:
+      strategyRowMaterializerDeltas?.selectedIdentityDelta ?? null,
+    v2StrategyRowMaterializerProjectionTotalSetDelta:
+      strategyRowMaterializerDeltas?.totalSetDelta ?? null,
+    v2StrategyRowMaterializerProjectionTargetLaneSetDelta:
+      strategyRowMaterializerDeltas?.targetLaneSetDelta ?? null,
+    v2StrategyRowMaterializerProjectionBlockerDelta:
+      strategyRowMaterializerDeltas?.materializerBlockerDelta ?? null,
+    v2StrategyRowMaterializerProjectionNextSafeSlice:
+      strategyRowMaterializer?.nextSafeSlice ?? null,
     v2SupportFloorReadoutTrueOwnerCount:
       supportFloorGapSummary?.trueOwnerSpecificGapCount ?? null,
     v2SupportFloorReadoutMeasuredNoImpactCount:

@@ -1144,6 +1144,18 @@ function compactPlannerOnlyNoRepair(
   const v2StrategyToDemandMeasuredRedistributionRows = asRecordArray(
     v2StrategyToDemandMeasuredRedistribution?.rows,
   );
+  const v2StrategyRowMaterializerProjection = asRecord(
+    noRepair.v2StrategyRowMaterializerProjection,
+  );
+  const v2StrategyRowMaterializerDeltas = asRecord(
+    v2StrategyRowMaterializerProjection?.materializerDeltas,
+  );
+  const v2StrategyRowProtectedCoverage = asRecord(
+    v2StrategyRowMaterializerProjection?.protectedCoverageImpact,
+  );
+  const v2StrategyRowDuplicateConcentration = asRecord(
+    v2StrategyRowMaterializerProjection?.duplicateConcentrationImpact,
+  );
   const v2StrategyRecommendation = asRecord(
     v2MesocycleStrategyDiagnostic?.strategyRecommendation,
   );
@@ -1791,6 +1803,83 @@ function compactPlannerOnlyNoRepair(
                   ).length,
                 }
               : undefined,
+            strategyRowMaterializerProjection:
+              v2StrategyRowMaterializerProjection
+                ? {
+                    status:
+                      typeof v2StrategyRowMaterializerProjection.status ===
+                      "string"
+                        ? v2StrategyRowMaterializerProjection.status
+                        : "not_available",
+                    readOnly:
+                      v2StrategyRowMaterializerProjection.readOnly === true,
+                    affectsScoringOrGeneration:
+                      v2StrategyRowMaterializerProjection
+                        .affectsScoringOrGeneration === true
+                        ? true
+                        : false,
+                    consumedByDemandOrMaterializer:
+                      v2StrategyRowMaterializerProjection
+                        .consumedByDemandOrMaterializer === true
+                        ? true
+                        : false,
+                    projectionMode:
+                      v2StrategyRowMaterializerProjection.projectionMode,
+                    row: asRecord(v2StrategyRowMaterializerProjection.row) ?? {},
+                    boundedDeltaAttempted:
+                      asRecord(
+                        v2StrategyRowMaterializerProjection
+                          .boundedDeltaAttempted,
+                      ) ?? {},
+                    downstreamProjection:
+                      asRecord(
+                        v2StrategyRowMaterializerProjection
+                          .downstreamProjection,
+                      ) ?? {},
+                    materializer:
+                      asRecord(v2StrategyRowMaterializerProjection.materializer) ??
+                      {},
+                    materializerDeltas: {
+                      selectedIdentityDelta:
+                        v2StrategyRowMaterializerDeltas
+                          ?.selectedIdentityDelta ?? 0,
+                      totalSetDelta:
+                        v2StrategyRowMaterializerDeltas?.totalSetDelta ?? 0,
+                      targetLaneSetDelta:
+                        v2StrategyRowMaterializerDeltas?.targetLaneSetDelta ??
+                        0,
+                      materializerBlockerDelta:
+                        v2StrategyRowMaterializerDeltas
+                          ?.materializerBlockerDelta ?? 0,
+                      regressionCount:
+                        v2StrategyRowMaterializerDeltas?.regressionCount ?? 0,
+                      changedSlotCount:
+                        v2StrategyRowMaterializerDeltas?.changedSlotCount ?? 0,
+                    },
+                    protectedCoverageImpact: v2StrategyRowProtectedCoverage ?? {},
+                    duplicateConcentrationImpact:
+                      v2StrategyRowDuplicateConcentration ?? {},
+                    readiness:
+                      v2StrategyRowMaterializerProjection.readiness ??
+                      "blocked",
+                    blockerCount: asStringArray(
+                      v2StrategyRowMaterializerProjection.blockersBeforeBehavior,
+                    ).length,
+                    remainingProofCount: asStringArray(
+                      v2StrategyRowMaterializerProjection
+                        .remainingProofBeforeBehavior,
+                    ).length,
+                    nextSafeSlice:
+                      v2StrategyRowMaterializerProjection.nextSafeSlice ??
+                      "keep_blocked_until_owner_donor_or_acceptance_proof",
+                    nonConsumption:
+                      asRecord(v2StrategyRowMaterializerProjection.nonConsumption) ??
+                      {},
+                    limitationCount: asStringArray(
+                      v2StrategyRowMaterializerProjection.limitations,
+                    ).length,
+                  }
+                : undefined,
             strategyRecommendation: v2StrategyRecommendation
               ? {
                   status:

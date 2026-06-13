@@ -31,6 +31,7 @@ type V2RepairPromotionReadoutContext = {
   v2LaneIntentMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2LaneIntentMaterializerProjection"];
   v2SetBudgetMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2SetBudgetMaterializerProjection"];
   v2SupportFloorMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2SupportFloorMaterializerProjection"];
+  v2StrategyRowMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2StrategyRowMaterializerProjection"];
   v2ConcentrationMaterializerProjection?: MesocycleExplainPlannerOnlyNoRepair["v2ConcentrationMaterializerProjection"];
   v2BasePlanShadowConsumptionTrial?: MesocycleExplainPlannerOnlyNoRepair["v2BasePlanShadowConsumptionTrial"];
 };

@@ -320,8 +320,10 @@ function buildStrategyRowCandidate(
 
   return [
     candidate({
-      candidateId: "side_delts_protect_floor",
-      label: "Side Delts protect-floor strategy row",
+      candidateId: `fresh_strategy_${slug(projection.row.ownerSeam)}_${slug(
+        projection.row.muscle,
+      )}_${slug(projection.row.action)}`,
+      label: `${projection.row.muscle} ${projection.row.action} strategy row`,
       ownerSeam: projection.row.ownerSeam,
       sourceSurface: "strategy_row_materializer_projection",
       priorProbe: hasPositiveImpact ? "measured_positive" : "measured_no_impact",
@@ -392,6 +394,7 @@ function strategyInventoryPriority(row: StrategyInventoryRow): number {
 
 function buildStrategyInventoryCandidates(
   noRepair: MesocycleExplainPlannerOnlyNoRepair,
+  excludedCandidateIds: ReadonlySet<string> = new Set(),
 ): Candidate[] {
   return (noRepair.strategyToDemandProjection?.candidateInventory?.rows ?? [])
     .filter((row) => row.evidenceSource === "performed_reality")
@@ -412,6 +415,7 @@ function buildStrategyInventoryCandidates(
         ),
     )
     .slice(0, 5)
+    .filter((row) => !excludedCandidateIds.has(strategyInventoryCandidateId(row)))
     .map((row) => {
       const candidateId = strategyInventoryCandidateId(row);
       const stopReasons: V2PromotionCandidateStopReason[] = [
@@ -634,10 +638,11 @@ function buildCleanPreselectionCandidates(
 function buildFreshOwnerSpecificCandidates(
   noRepair: MesocycleExplainPlannerOnlyNoRepair,
   options: BuildV2PromotionCandidateEvaluatorOptions,
+  excludedCandidateIds: ReadonlySet<string> = new Set(),
 ): Candidate[] {
   const candidates = [
     ...buildCleanPreselectionCandidates(noRepair, options.planningReality),
-    ...buildStrategyInventoryCandidates(noRepair),
+    ...buildStrategyInventoryCandidates(noRepair, excludedCandidateIds),
   ];
   return candidates.filter(
     (row) => !EXHAUSTED_CANDIDATE_IDS.has(row.candidateId),
@@ -677,11 +682,21 @@ export function buildV2PromotionCandidateEvaluator(
     noRepair.repairPromotionScoreboard?.interpretation.gapInventory.map(
       candidateFromGapRow,
     ) ?? [];
+  const measuredStrategyCandidates = buildStrategyRowCandidate(
+    noRepair.v2StrategyRowMaterializerProjection,
+  );
+  const measuredStrategyCandidateIds = new Set(
+    measuredStrategyCandidates.map((row) => row.candidateId),
+  );
   const candidates = rankCandidates([
     ...gapCandidates,
     ...buildBenchmarkCandidates(noRepair.v2PlanQualityBenchmark),
-    ...buildStrategyRowCandidate(noRepair.v2StrategyRowMaterializerProjection),
-    ...buildFreshOwnerSpecificCandidates(noRepair, options),
+    ...measuredStrategyCandidates,
+    ...buildFreshOwnerSpecificCandidates(
+      noRepair,
+      options,
+      measuredStrategyCandidateIds,
+    ),
   ]);
   const readyCandidates = candidates.filter((row) => row.status === "ready");
   const stoppedCandidates = candidates.filter((row) => row.status === "stopped");

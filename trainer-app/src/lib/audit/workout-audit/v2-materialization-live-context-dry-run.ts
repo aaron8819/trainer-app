@@ -744,8 +744,8 @@ export type V2StrategyRowMaterializerProjection = {
   projectionMode: "strategy_row_slot_allocation_materializer_dry_run";
   sourcePerformedEvidence: string[];
   row: {
-    rowKey: "SlotDemandAllocationByWeek:Side Delts:protect_floor";
-    muscle: "Side Delts";
+    rowKey: string;
+    muscle: string;
     ownerSeam: "SlotDemandAllocationByWeek";
     action: "protect_floor";
   };
@@ -754,7 +754,7 @@ export type V2StrategyRowMaterializerProjection = {
     week: number;
     slotId: V2PlannerSlotId | "unknown";
     laneId: string;
-    muscle: "Side Delts";
+    muscle: string;
     setDelta: 1;
     baselineAllocatedSets: V2PlannerSetRange;
     trialAllocatedSets: V2PlannerSetRange;
@@ -777,6 +777,14 @@ export type V2StrategyRowMaterializerProjection = {
     trialBlockerCount: number;
     baselineSeedShapeCompatible: boolean;
     trialSeedShapeCompatible: boolean;
+  };
+  selectedTargetLane: {
+    baselineIdentities: Array<{ exerciseName: string; setCount: number }>;
+    trialIdentities: Array<{ exerciseName: string; setCount: number }>;
+  };
+  materializedTargetLane: {
+    baselineIdentities: Array<{ exerciseName: string; setCount: number }>;
+    trialIdentities: Array<{ exerciseName: string; setCount: number }>;
   };
   materializerDeltas: {
     selectedIdentityDelta: number;
@@ -2104,6 +2112,8 @@ export function buildV2StrategyRowMaterializerProjectionFromLiveContext(input: {
     week?: number;
     slotId?: V2PlannerSlotId;
     laneId?: string;
+    muscle?: string;
+    rowKey?: string;
   };
 }): V2StrategyRowMaterializerProjection {
   const plannerPolicy = input.plannerPolicy ?? buildV2PlannerMesocyclePolicy();
@@ -2113,12 +2123,16 @@ export function buildV2StrategyRowMaterializerProjectionFromLiveContext(input: {
   const targetWeek = input.target?.week ?? 1;
   const targetSlotId = input.target?.slotId ?? "upper_b";
   const targetLaneId = input.target?.laneId ?? "side_delt_isolation";
+  const targetMuscle = input.target?.muscle ?? "Side Delts";
+  const targetRowKey =
+    input.target?.rowKey ??
+    `SlotDemandAllocationByWeek:${targetMuscle}:protect_floor`;
   const targetAllocation = allocationMuscleRow({
     slotDemandAllocationByWeek: plannerPolicy.slotDemandAllocationByWeek,
     week: targetWeek,
     slotId: targetSlotId,
     laneId: targetLaneId,
-    muscle: "Side Delts",
+    muscle: targetMuscle,
   });
 
   if (!inventory.length || !targetAllocation) {
@@ -2127,10 +2141,12 @@ export function buildV2StrategyRowMaterializerProjectionFromLiveContext(input: {
       week: targetWeek,
       slotId: targetSlotId,
       laneId: targetLaneId,
+      muscle: targetMuscle,
+      rowKey: targetRowKey,
       blockersBeforeBehavior: uniqueSorted([
         ...(!inventory.length ? ["inventory_unavailable"] : []),
         ...(!targetAllocation
-          ? ["side_delts_slot_allocation_row_not_found"]
+          ? [`${diagnosticKey(targetMuscle)}_slot_allocation_row_not_found`]
           : []),
       ]),
     });
@@ -2141,7 +2157,7 @@ export function buildV2StrategyRowMaterializerProjectionFromLiveContext(input: {
     week: targetWeek,
     slotId: targetSlotId,
     laneId: targetLaneId,
-    muscle: "Side Delts",
+    muscle: targetMuscle,
     delta: 1,
   });
   const trialPlannerPolicy = rebuildPlannerPolicyWithSlotDemandAllocation({
@@ -2168,6 +2184,8 @@ export function buildV2StrategyRowMaterializerProjectionFromLiveContext(input: {
       week: targetWeek,
       slotId: targetSlotId,
       laneId: targetLaneId,
+      muscle: targetMuscle,
+      rowKey: targetRowKey,
       blockersBeforeBehavior: ["target_week_selection_plan_not_found"],
     });
   }
@@ -2290,8 +2308,8 @@ export function buildV2StrategyRowMaterializerProjectionFromLiveContext(input: {
     projectionMode: "strategy_row_slot_allocation_materializer_dry_run",
     sourcePerformedEvidence: input.sourcePerformedEvidence ?? [],
     row: {
-      rowKey: "SlotDemandAllocationByWeek:Side Delts:protect_floor",
-      muscle: "Side Delts",
+      rowKey: targetRowKey,
+      muscle: targetMuscle,
       ownerSeam: "SlotDemandAllocationByWeek",
       action: "protect_floor",
     },
@@ -2300,7 +2318,7 @@ export function buildV2StrategyRowMaterializerProjectionFromLiveContext(input: {
       week: targetWeek,
       slotId: targetSlotId,
       laneId: targetLaneId,
-      muscle: "Side Delts",
+      muscle: targetMuscle,
       setDelta: 1,
       baselineAllocatedSets: { ...targetAllocation.targetSetRange },
       trialAllocatedSets: addDeltaToPlannerRange({
@@ -2327,6 +2345,26 @@ export function buildV2StrategyRowMaterializerProjectionFromLiveContext(input: {
       baselineSeedShapeCompatible:
         baselineReport.seedShapeCompatibility.compatible,
       trialSeedShapeCompatible: trialReport.seedShapeCompatibility.compatible,
+    },
+    selectedTargetLane: {
+      baselineIdentities: summarizeMaterializedLaneIdentities({
+        selections: baselineLaneExercises,
+        inventory,
+      }),
+      trialIdentities: summarizeMaterializedLaneIdentities({
+        selections: trialLaneExercises,
+        inventory,
+      }),
+    },
+    materializedTargetLane: {
+      baselineIdentities: summarizeMaterializedLaneIdentities({
+        selections: baselineLaneExercises,
+        inventory,
+      }),
+      trialIdentities: summarizeMaterializedLaneIdentities({
+        selections: trialLaneExercises,
+        inventory,
+      }),
     },
     materializerDeltas: {
       selectedIdentityDelta: comparison.summary.selectedIdentityDelta,
@@ -2423,7 +2461,7 @@ export function buildV2StrategyRowMaterializerProjectionFromLiveContext(input: {
     limitations: [
       "read_only_materializer_dry_run_only",
       "trial_slot_demand_allocation_is_projection_copy_only",
-      "targets_only_week_1_upper_b_side_delt_isolation",
+      `targets_only_week_${targetWeek}_${targetSlotId}_${targetLaneId}`,
       "does_not_change_slot_demand_allocation_by_week",
       "does_not_change_v2_set_distribution_intent",
       "does_not_feed_production_materializer",
@@ -3178,6 +3216,8 @@ function emptyStrategyRowMaterializerProjection(input: {
   week: number;
   slotId: V2PlannerSlotId | "unknown";
   laneId: string;
+  muscle: string;
+  rowKey: string;
   blockersBeforeBehavior: string[];
 }): V2StrategyRowMaterializerProjection {
   const zeroRange: V2PlannerSetRange = { min: 0, preferred: 0, max: 0 };
@@ -3193,8 +3233,8 @@ function emptyStrategyRowMaterializerProjection(input: {
     projectionMode: "strategy_row_slot_allocation_materializer_dry_run",
     sourcePerformedEvidence: input.sourcePerformedEvidence,
     row: {
-      rowKey: "SlotDemandAllocationByWeek:Side Delts:protect_floor",
-      muscle: "Side Delts",
+      rowKey: input.rowKey,
+      muscle: input.muscle,
       ownerSeam: "SlotDemandAllocationByWeek",
       action: "protect_floor",
     },
@@ -3203,7 +3243,7 @@ function emptyStrategyRowMaterializerProjection(input: {
       week: input.week,
       slotId: input.slotId,
       laneId: input.laneId,
-      muscle: "Side Delts",
+      muscle: input.muscle,
       setDelta: 1,
       baselineAllocatedSets: zeroRange,
       trialAllocatedSets: zeroRange,
@@ -3226,6 +3266,14 @@ function emptyStrategyRowMaterializerProjection(input: {
       trialBlockerCount: 0,
       baselineSeedShapeCompatible: false,
       trialSeedShapeCompatible: false,
+    },
+    selectedTargetLane: {
+      baselineIdentities: [],
+      trialIdentities: [],
+    },
+    materializedTargetLane: {
+      baselineIdentities: [],
+      trialIdentities: [],
     },
     materializerDeltas: {
       selectedIdentityDelta: 0,
@@ -6500,6 +6548,13 @@ function uniqueSorted(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean))).sort((left, right) =>
     left.localeCompare(right),
   );
+}
+
+function diagnosticKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function roundToTenth(value: number): number {

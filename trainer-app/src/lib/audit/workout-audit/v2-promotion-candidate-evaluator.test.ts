@@ -291,6 +291,14 @@ function makeSideDeltsProjection(
       baselineSeedShapeCompatible: true,
       trialSeedShapeCompatible: true,
     },
+    selectedTargetLane: {
+      baselineIdentities: [{ exerciseName: "Dumbbell Lateral Raise", setCount: 4 }],
+      trialIdentities: [{ exerciseName: "Dumbbell Lateral Raise", setCount: 4 }],
+    },
+    materializedTargetLane: {
+      baselineIdentities: [{ exerciseName: "Dumbbell Lateral Raise", setCount: 4 }],
+      trialIdentities: [{ exerciseName: "Dumbbell Lateral Raise", setCount: 4 }],
+    },
     materializerDeltas: {
       selectedIdentityDelta: 0,
       totalSetDelta: 0,
@@ -500,7 +508,7 @@ describe("V2 promotion candidate evaluator", () => {
         "class_taxonomy_mismatch",
         "duplicate_class_family_distinctness",
         "lane_preservation_shadow_readout",
-        "side_delts_protect_floor",
+        "fresh_strategy_slotdemandallocationbyweek_side_delts_protect_floor",
       ]),
     );
   });
@@ -542,12 +550,15 @@ describe("V2 promotion candidate evaluator", () => {
     expect(evaluator.status).toBe("candidate_ready");
     expect(evaluator.recommendation).toMatchObject({
       decision: "recommend_next_safe_slice",
-      candidateId: "side_delts_protect_floor",
+      candidateId:
+        "fresh_strategy_slotdemandallocationbyweek_side_delts_protect_floor",
       ownerSeam: "SlotDemandAllocationByWeek",
     });
     expect(
       evaluator.candidates.find(
-        (row) => row.candidateId === "side_delts_protect_floor",
+        (row) =>
+          row.candidateId ===
+          "fresh_strategy_slotdemandallocationbyweek_side_delts_protect_floor",
       ),
     ).toMatchObject({
       rank: 1,

@@ -632,10 +632,18 @@ function buildCurrentV2PolicyGap(
   ).length;
   const capAwareExpansionLimitationCount = activeNonOptionalLanes.filter(
     (lane) =>
-      lane.gapCause === "cap_aware_expansion_limitation" ||
-      lane.currentEvidence.relevantDiagnostics.includes(
-        "capAwareExpansion:preferred_exceeds_single_exercise_cap"
-      )
+      lane.currentStatus !== "satisfied" &&
+      lane.severity !== "pass" &&
+      !(
+        lane.gapCause === "stale_week1_readout_artifact" ||
+        lane.currentEvidence.relevantDiagnostics.includes(
+          "readout_note:stale_calves_shortfall_suppressed_weekly_within_lane_satisfied"
+        )
+      ) &&
+      (lane.gapCause === "cap_aware_expansion_limitation" ||
+        lane.currentEvidence.relevantDiagnostics.includes(
+          "capAwareExpansion:preferred_exceeds_single_exercise_cap"
+        ))
   ).length;
   return {
     supportDirectFloorBlockerCount:

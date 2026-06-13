@@ -8822,20 +8822,22 @@ export function buildPlannerOnlyNoRepairComparison(input: {
           },
         })
       : undefined;
-  const sideDeltsStrategyRow =
+  const selectedStrategyRow =
     plannerPolicy.strategyToDemandProjection.ownerScopedProjection.rows.find(
       (row) =>
-        row.rowKey === "SlotDemandAllocationByWeek:Side Delts:protect_floor",
+        row.rowKey === "SlotDemandAllocationByWeek:Biceps:protect_floor",
     );
   const v2StrategyRowMaterializerProjection = input.v2BasePlanCompareContext
     ? buildV2StrategyRowMaterializerProjectionFromLiveContext({
         plannerPolicy,
         ...input.v2BasePlanCompareContext,
-        sourcePerformedEvidence: sideDeltsStrategyRow?.sourceEvidence ?? [],
+        sourcePerformedEvidence: selectedStrategyRow?.sourceEvidence ?? [],
         target: {
           week: 1,
           slotId: "upper_b",
-          laneId: "side_delt_isolation",
+          laneId: "biceps",
+          muscle: "Biceps",
+          rowKey: "SlotDemandAllocationByWeek:Biceps:protect_floor",
         },
       })
     : undefined;

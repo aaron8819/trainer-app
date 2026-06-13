@@ -458,6 +458,80 @@ describe("V2 live-context materializer projections", () => {
     );
   });
 
+  it("measures the Biceps protect-floor strategy row through the same read-only materializer seam", () => {
+    const result = buildV2StrategyRowMaterializerProjectionFromLiveContext({
+      plannerPolicy: buildV2PlannerMesocyclePolicy(),
+      inventory: INVENTORY,
+      sourcePerformedEvidence: [
+        "meso-any-1:floor:Biceps:below_target_or_mev_evidence",
+      ],
+      target: {
+        week: 1,
+        slotId: "upper_b",
+        laneId: "biceps",
+        muscle: "Biceps",
+        rowKey: "SlotDemandAllocationByWeek:Biceps:protect_floor",
+      },
+    });
+
+    expect(result).toMatchObject({
+      version: 1,
+      source: "v2_strategy_row_materializer_projection",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      dryRunOnly: true,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+      row: {
+        rowKey: "SlotDemandAllocationByWeek:Biceps:protect_floor",
+        muscle: "Biceps",
+        ownerSeam: "SlotDemandAllocationByWeek",
+        action: "protect_floor",
+      },
+      boundedDeltaAttempted: {
+        type: "single_set_floor_buffer",
+        week: 1,
+        slotId: "upper_b",
+        laneId: "biceps",
+        muscle: "Biceps",
+        setDelta: 1,
+      },
+      downstreamProjection: {
+        classDistributionStatus: "measured",
+        capacityPlanStatus: "measured",
+        exerciseSelectionStatus: "measured",
+      },
+      nonConsumption: {
+        demandOrMaterializer: false,
+        seedRuntimeReceiptDb: false,
+        acceptanceThreshold: false,
+      },
+      safeForBehaviorPromotion: false,
+    });
+    expect(result.sourcePerformedEvidence).toEqual([
+      "meso-any-1:floor:Biceps:below_target_or_mev_evidence",
+    ]);
+    expect(result.boundedDeltaAttempted.trialAllocatedSets.preferred).toBe(
+      result.boundedDeltaAttempted.baselineAllocatedSets.preferred + 1,
+    );
+    expect(result.status).not.toBe("not_available");
+    expect(result.materializer.baselineBlockerCount).toBeGreaterThanOrEqual(0);
+    expect(result.materializer.trialBlockerCount).toBeGreaterThanOrEqual(0);
+    expect(result.materializerDeltas.targetLaneSetDelta).toBe(
+      result.protectedCoverageImpact.targetLaneSetDelta,
+    );
+    expect(result.remainingProofBeforeBehavior).toEqual(
+      expect.arrayContaining([
+        "read_only_acceptance_gate_result_for_projected_candidate",
+        "seed_runtime_receipt_db_non_consumption_must_remain_proven",
+        "repaired_projection_must_remain_evidence_only_not_target_policy",
+      ]),
+    );
+    expect(JSON.stringify(result)).not.toMatch(
+      /slotPlanSeedJson|sessionDecisionReceipt|runtimeReplay|acceptedPlannerIntent/,
+    );
+  });
+
   it("measures concentration trial deltas without feeding production seams", () => {
     const result = buildV2ConcentrationMaterializerProjectionFromLiveContext({
       plannerPolicy: buildV2PlannerMesocyclePolicy(),

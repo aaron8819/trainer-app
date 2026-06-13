@@ -160,7 +160,8 @@ describe("buildV2DebugArtifacts", () => {
             candidates: [
               {
                 rank: null,
-                candidateId: "side_delts_protect_floor",
+                candidateId:
+                  "fresh_strategy_slotdemandallocationbyweek_side_delts_protect_floor",
                 label: "Side Delts protect-floor strategy row",
                 ownerSeam: "SlotDemandAllocationByWeek",
                 sourceSurface: "strategy_row_materializer_projection",
@@ -284,7 +285,8 @@ describe("buildV2DebugArtifacts", () => {
         },
         candidates: [
           expect.objectContaining({
-            candidateId: "side_delts_protect_floor",
+            candidateId:
+              "fresh_strategy_slotdemandallocationbyweek_side_delts_protect_floor",
             stopReasons: ["measured_no_impact"],
           }),
         ],

@@ -83,7 +83,6 @@ import {
   buildRepairPromotionScoreboard,
   selectSetBudgetMaterializerTarget,
   selectSupportFloorMaterializerTarget,
-  selectTaxonomyMismatchMaterializerTarget,
 } from "./mesocycle-explain-v2-repair-scoreboard";
 import { buildV2PlanQualityBenchmark } from "./v2-plan-quality-benchmark";
 import { buildV2PromotionCandidateEvaluator } from "./v2-promotion-candidate-evaluator";
@@ -8713,22 +8712,16 @@ export function buildPlannerOnlyNoRepairComparison(input: {
         ...input.v2BasePlanCompareContext,
       })
     : undefined;
-  const taxonomyMismatchMaterializerTarget =
-    selectTaxonomyMismatchMaterializerTarget(v2ExerciseSelectionPlanDiagnostic);
   const v2LaneIntentMaterializerProjection = input.v2BasePlanCompareContext
     ? buildV2LaneIntentMaterializerProjectionFromLiveContext({
         plannerPolicy,
         ...input.v2BasePlanCompareContext,
-        ...(taxonomyMismatchMaterializerTarget &&
-        isV2PlannerSlotId(taxonomyMismatchMaterializerTarget.slotId)
-          ? {
-              targetLane: {
-                slotId: taxonomyMismatchMaterializerTarget.slotId,
-                laneId: taxonomyMismatchMaterializerTarget.laneId,
-                trialId: taxonomyMismatchMaterializerTarget.trialId,
-              },
-            }
-          : {}),
+        targetLane: {
+          slotId: "lower_b",
+          laneId: "hinge_anchor",
+          trialId: "lower_b_hinge_anchor_low_axial_support_coverage_shadow",
+          diagnosticContract: "low_axial_support_coverage",
+        },
       })
     : undefined;
   const setBudgetMaterializerTarget = selectSetBudgetMaterializerTarget({

@@ -33,7 +33,10 @@ import {
   type V2SlotWeekDonorCapacityMeasuredRow,
   type V2SlotWeekDonorCapacityProjection,
 } from "@/lib/engine/planning/v2";
-import { isV2LaneSelectionIntentConsumedByMaterializer } from "@/lib/engine/planning/v2/lane-selection-intent";
+import {
+  isV2LaneSelectionIntentConsumedByMaterializer,
+  type V2LaneSelectionIntentV0,
+} from "@/lib/engine/planning/v2/lane-selection-intent";
 import type {
   V2ExerciseSelectionPlanDiagnostic,
   V2SelectionCapacityPlanDiagnostic,
@@ -302,6 +305,71 @@ export type V2LaneIntentMaterializerProjection = {
       addedIdentityCount: number;
       removedIdentityCount: number;
     }>;
+  };
+  contractTrial: {
+    appliedContract:
+      | "low_axial_support_coverage"
+      | "lane_selection_intent_v0";
+    exactFutureContractApplied: boolean;
+    representedThrough:
+      | "audit_only_selection_plan_class_override"
+      | "laneSelectionIntent_v0_diagnostic_override";
+    futureMovementPattern: "low_axial_hip_extension" | null;
+    futureExerciseClass: "low_axial_hip_extension_anchor" | null;
+    v0CanExpressFutureMovementAndClass: false | null;
+    v0ProxyAllowedExerciseClasses: string[];
+    evidence: string[];
+  };
+  relevantLowerBPosteriorChainLanes: Array<{
+    slotId: string;
+    laneId: string;
+    baseline: Array<{ exerciseName: string; setCount: number }>;
+    trial: Array<{ exerciseName: string; setCount: number }>;
+    identityDelta: number;
+    setDelta: number;
+  }>;
+  lowAxialClosureStatus: {
+    baseline:
+      | "closed_with_low_axial_anchor"
+      | "closed_without_low_axial_anchor"
+      | "not_closed";
+    trial:
+      | "closed_with_low_axial_anchor"
+      | "closed_without_low_axial_anchor"
+      | "not_closed";
+    status:
+      | "improved"
+      | "preserved"
+      | "regressed"
+      | "not_measured";
+    evidence: string[];
+  };
+  protectedCoverage: {
+    status: "improved" | "preserved" | "regressed" | "not_measured";
+    protectedMuscles: string[];
+    baselineLowAxialSets: number;
+    trialLowAxialSets: number;
+    lowAxialSetDelta: number;
+  };
+  duplicateConcentrationFatigueImpact: {
+    status: "improved" | "preserved" | "regressed" | "not_measured";
+    duplicateExerciseDelta: number;
+    highFatigueSetDelta: number;
+    fatigueWeightedSetDelta: number;
+  };
+  exclusionProof: {
+    trueHingesExcluded: boolean;
+    hamstringCurlsExcluded: boolean;
+    backExtensionClosureExcluded: boolean;
+    genericGluteAccessoriesExcluded: boolean;
+    selectedExcludedIdentities: string[];
+    evidence: string[];
+  };
+  nonConsumption: {
+    productionPlannerMaterializerRanking: false;
+    seedRuntimeReceiptDb: false;
+    acceptanceThreshold: false;
+    repairBehavior: false;
   };
   blockersBeforeBehavior: string[];
   nextSafeAction:
@@ -1373,6 +1441,7 @@ export function buildV2LaneIntentMaterializerProjectionFromLiveContext(input: {
     slotId?: V2PlannerSlotId;
     laneId?: string;
     trialId?: string;
+    diagnosticContract?: "low_axial_support_coverage";
   };
 }): V2LaneIntentMaterializerProjection {
   const plannerPolicy = input.plannerPolicy ?? buildV2PlannerMesocyclePolicy();
@@ -1385,6 +1454,8 @@ export function buildV2LaneIntentMaterializerProjectionFromLiveContext(input: {
     input.targetLane?.laneId ?? DEFAULT_LANE_INTENT_MATERIALIZER_TRIAL.laneId;
   const trialId =
     input.targetLane?.trialId ?? DEFAULT_LANE_INTENT_MATERIALIZER_TRIAL.trialId;
+  const diagnosticContract =
+    input.targetLane?.diagnosticContract;
   const scopedLaneId = materializerScopedLaneId(targetSlotId, targetLaneId);
   const targetLane = findRepresentativeSelectionLane({
     plannerPolicy,
@@ -1410,7 +1481,7 @@ export function buildV2LaneIntentMaterializerProjectionFromLiveContext(input: {
       blockersBeforeBehavior: [`target_lane_not_found:${scopedLaneId}`],
     });
   }
-  if (!targetLane.laneSelectionIntent) {
+  if (!targetLane.laneSelectionIntent && !diagnosticContract) {
     return emptyLaneIntentMaterializerProjection({
       scopedLaneId,
       slotId: targetSlotId,
@@ -1420,6 +1491,33 @@ export function buildV2LaneIntentMaterializerProjectionFromLiveContext(input: {
     });
   }
 
+  const trialPlannerPolicy =
+    diagnosticContract === "low_axial_support_coverage"
+      ? withLowAxialSupportCoverageTrialLane({
+          plannerPolicy,
+          slotId: targetSlotId,
+          laneId: targetLaneId,
+        })
+      : plannerPolicy;
+  const trialLane = findRepresentativeSelectionLane({
+    plannerPolicy: trialPlannerPolicy,
+    slotId: targetSlotId,
+    laneId: targetLaneId,
+  });
+  const diagnosticLaneIntentOverride =
+    trialLane?.laneSelectionIntent && diagnosticContract !== "low_axial_support_coverage"
+      ? {
+          version: 1 as const,
+          source:
+            "v2_materializer_diagnostic_lane_selection_intent_override" as const,
+          readOnly: true as const,
+          affectsScoringOrGeneration: false as const,
+          dryRunOnly: true as const,
+          reason: "read_only_materializer_comparison_trial" as const,
+          consumeScopedLaneIds: [scopedLaneId],
+        }
+      : undefined;
+
   const baselinePlan = buildV2ExerciseMaterializationPlan({
     exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
     inventory,
@@ -1428,20 +1526,14 @@ export function buildV2LaneIntentMaterializerProjectionFromLiveContext(input: {
     ...(input.continuity ? { continuity: input.continuity } : {}),
   });
   const trialPlan = buildV2ExerciseMaterializationPlan({
-    exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
+    exerciseSelectionPlan: trialPlannerPolicy.exerciseSelectionPlan,
     inventory,
     taxonomy,
     constraints,
     ...(input.continuity ? { continuity: input.continuity } : {}),
-    diagnosticLaneSelectionIntentOverride: {
-      version: 1,
-      source: "v2_materializer_diagnostic_lane_selection_intent_override",
-      readOnly: true,
-      affectsScoringOrGeneration: false,
-      dryRunOnly: true,
-      reason: "read_only_materializer_comparison_trial",
-      consumeScopedLaneIds: [scopedLaneId],
-    },
+    ...(diagnosticLaneIntentOverride
+      ? { diagnosticLaneSelectionIntentOverride: diagnosticLaneIntentOverride }
+      : {}),
   });
   const baselineReport = buildV2MaterializationDryRunReport({
     plannerPolicy,
@@ -1452,7 +1544,7 @@ export function buildV2LaneIntentMaterializerProjectionFromLiveContext(input: {
     materializedPlan: baselinePlan,
   });
   const trialReport = buildV2MaterializationDryRunReport({
-    plannerPolicy,
+    plannerPolicy: trialPlannerPolicy,
     taxonomy,
     inventory,
     constraints,
@@ -1463,6 +1555,9 @@ export function buildV2LaneIntentMaterializerProjectionFromLiveContext(input: {
     scopedLaneId,
     slotId: targetSlotId,
     laneId: targetLaneId,
+    intentAvailable: Boolean(targetLane.laneSelectionIntent),
+    trialConsumesLaneIntent:
+      diagnosticContract !== "low_axial_support_coverage",
     baselineConsumedByProduction:
       isV2LaneSelectionIntentConsumedByMaterializer(targetLane),
     baselinePlan,
@@ -1485,6 +1580,46 @@ export function buildV2LaneIntentMaterializerProjectionFromLiveContext(input: {
     candidateImpact.improvements.length === 0;
   const trialBlocked =
     trialReport.status === "blocked" || trialPlan.status === "blocked";
+  const contractTrial = summarizeLaneIntentContractTrial({
+    diagnosticContract,
+    trialLane,
+  });
+  const relevantLowerBPosteriorChainLanes =
+    summarizeLowerBPosteriorChainLanes({
+      baselinePlan,
+      trialPlan,
+      inventory,
+    });
+  const lowAxialClosureStatus = summarizeLowAxialClosureStatus({
+    baselinePlan,
+    trialPlan,
+    taxonomy,
+    inventory,
+    targetSlotId,
+    targetLaneId,
+  });
+  const protectedCoverage = summarizeLowAxialProtectedCoverage({
+    baselinePlan,
+    trialPlan,
+    taxonomy,
+    inventory,
+    targetSlotId,
+    targetLaneId,
+  });
+  const duplicateConcentrationFatigueImpact =
+    summarizeDuplicateConcentrationFatigueImpact({
+      baselinePlan,
+      trialPlan,
+      inventory,
+      slotId: targetSlotId,
+    });
+  const exclusionProof = summarizeLowAxialExclusionProof({
+    trialPlan,
+    taxonomy,
+    inventory,
+    targetSlotId,
+    targetLaneId,
+  });
 
   return {
     version: 1,
@@ -1513,9 +1648,24 @@ export function buildV2LaneIntentMaterializerProjectionFromLiveContext(input: {
       trialSeedShapeCompatible: trialReport.seedShapeCompatibility.compatible,
     },
     candidateImpact,
+    contractTrial,
+    relevantLowerBPosteriorChainLanes,
+    lowAxialClosureStatus,
+    protectedCoverage,
+    duplicateConcentrationFatigueImpact,
+    exclusionProof,
+    nonConsumption: {
+      productionPlannerMaterializerRanking: false,
+      seedRuntimeReceiptDb: false,
+      acceptanceThreshold: false,
+      repairBehavior: false,
+    },
     blockersBeforeBehavior: uniqueSorted([
       ...(trialBlocked ? ["lane_intent_trial_materializer_blocked"] : []),
       ...(noCandidateImpact ? ["lane_intent_trial_no_candidate_impact"] : []),
+      ...(exclusionProof.selectedExcludedIdentities.length
+        ? ["low_axial_exclusion_regression"]
+        : []),
       "acceptance_gate_not_rerun",
       "production_materializer_allowlist_unchanged",
       "diagnostic_lane_intent_override_not_consumed_by_runtime",
@@ -3126,6 +3276,50 @@ function emptyLaneIntentMaterializerProjection(input: {
       changedSlotCount: 0,
       changedSlots: [],
     },
+    contractTrial: {
+      appliedContract: "lane_selection_intent_v0",
+      exactFutureContractApplied: false,
+      representedThrough: "laneSelectionIntent_v0_diagnostic_override",
+      futureMovementPattern: null,
+      futureExerciseClass: null,
+      v0CanExpressFutureMovementAndClass: null,
+      v0ProxyAllowedExerciseClasses: [],
+      evidence: ["projection_not_available"],
+    },
+    relevantLowerBPosteriorChainLanes: [],
+    lowAxialClosureStatus: {
+      baseline: "not_closed",
+      trial: "not_closed",
+      status: "not_measured",
+      evidence: ["projection_not_available"],
+    },
+    protectedCoverage: {
+      status: "not_measured",
+      protectedMuscles: [],
+      baselineLowAxialSets: 0,
+      trialLowAxialSets: 0,
+      lowAxialSetDelta: 0,
+    },
+    duplicateConcentrationFatigueImpact: {
+      status: "not_measured",
+      duplicateExerciseDelta: 0,
+      highFatigueSetDelta: 0,
+      fatigueWeightedSetDelta: 0,
+    },
+    exclusionProof: {
+      trueHingesExcluded: false,
+      hamstringCurlsExcluded: false,
+      backExtensionClosureExcluded: false,
+      genericGluteAccessoriesExcluded: false,
+      selectedExcludedIdentities: [],
+      evidence: ["projection_not_available"],
+    },
+    nonConsumption: {
+      productionPlannerMaterializerRanking: false,
+      seedRuntimeReceiptDb: false,
+      acceptanceThreshold: false,
+      repairBehavior: false,
+    },
     blockersBeforeBehavior: uniqueSorted(input.blockersBeforeBehavior),
     nextSafeAction: "inspect_lane_intent_materializer_projection",
     limitations: [
@@ -3136,6 +3330,480 @@ function emptyLaneIntentMaterializerProjection(input: {
     ],
     safeForBehaviorPromotion: false,
   };
+}
+
+function withLowAxialSupportCoverageTrialLane(input: {
+  plannerPolicy: V2PlannerMesocyclePolicy;
+  slotId: V2PlannerSlotId;
+  laneId: string;
+}): V2PlannerMesocyclePolicy {
+  return {
+    ...input.plannerPolicy,
+    exerciseSelectionPlan: {
+      ...input.plannerPolicy.exerciseSelectionPlan,
+      weeks: input.plannerPolicy.exerciseSelectionPlan.weeks.map((week) => ({
+        ...week,
+        slots: week.slots.map((slot) =>
+          slot.slotId !== input.slotId
+            ? slot
+            : {
+                ...slot,
+                lanes: slot.lanes.map((lane) =>
+                  lane.laneId !== input.laneId
+                    ? lane
+                    : {
+                        ...lane,
+                        role: "support",
+                        primaryMuscles: ["Glutes"],
+                        supportMuscles: ["Hamstrings"],
+                        managedCollateralMuscles: uniqueSorted([
+                          ...lane.managedCollateralMuscles,
+                          "Hamstrings",
+                        ]),
+                        acceptableExerciseClasses: [
+                          "low_axial_hip_extension_anchor",
+                        ],
+                        preferredExerciseClasses: [
+                          "low_axial_hip_extension_anchor",
+                        ],
+                        laneSelectionIntent:
+                          lowAxialSupportCoverageV0ProxyIntent(),
+                      },
+                ),
+              },
+        ),
+      })),
+    },
+  };
+}
+
+function lowAxialSupportCoverageV0ProxyIntent(): V2LaneSelectionIntentV0 {
+  return {
+    version: 0,
+    source: "v2_planner_policy",
+    contract: "laneSelectionIntent",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByMaterializer: false,
+    laneJob: "support_coverage",
+    requiredMovementPattern: "calf_raise",
+    allowedExerciseClasses: ["hip_thrust"],
+    disallowedExerciseClasses: ["hinge", "hamstring_curl", "back_extension"],
+    directnessRequirement: "direct_or_high_support",
+    minimumTargetStimulus: {
+      muscle: "Glutes",
+      minimumPerSetStimulus: 0.75,
+    },
+    fatiguePreference: "low_axial",
+    loadabilityPreference: "moderate_or_high",
+    duplicatePolicy: "prefer_variation_if_clean",
+    capacityPriority: "high",
+    fallbackPolicy: "allow_labeled_fallback",
+    identityPreservationMode: "variation_allowed_within_lane_job",
+  };
+}
+
+function summarizeLaneIntentContractTrial(input: {
+  diagnosticContract?: "low_axial_support_coverage";
+  trialLane:
+    | V2PlannerMesocyclePolicy["exerciseSelectionPlan"]["weeks"][number]["slots"][number]["lanes"][number]
+    | undefined;
+}): V2LaneIntentMaterializerProjection["contractTrial"] {
+  if (input.diagnosticContract === "low_axial_support_coverage") {
+    return {
+      appliedContract: "low_axial_support_coverage",
+      exactFutureContractApplied: true,
+      representedThrough: "audit_only_selection_plan_class_override",
+      futureMovementPattern: "low_axial_hip_extension",
+      futureExerciseClass: "low_axial_hip_extension_anchor",
+      v0CanExpressFutureMovementAndClass: false,
+      v0ProxyAllowedExerciseClasses: ["hip_thrust"],
+      evidence: [
+        "trial_lane.acceptableExerciseClasses=low_axial_hip_extension_anchor",
+        "trial_lane.preferredExerciseClasses=low_axial_hip_extension_anchor",
+        "trial_lane.role=support",
+        "futureMovementPattern=low_axial_hip_extension_not_expressible_in_v0",
+        "futureExerciseClass=low_axial_hip_extension_anchor_not_expressible_in_v0",
+        `trialLaneFound=${Boolean(input.trialLane)}`,
+      ],
+    };
+  }
+  return {
+    appliedContract: "lane_selection_intent_v0",
+    exactFutureContractApplied: false,
+    representedThrough: "laneSelectionIntent_v0_diagnostic_override",
+    futureMovementPattern: null,
+    futureExerciseClass: null,
+    v0CanExpressFutureMovementAndClass: null,
+    v0ProxyAllowedExerciseClasses:
+      input.trialLane?.laneSelectionIntent?.allowedExerciseClasses ?? [],
+    evidence: ["trial_consumes_existing_laneSelectionIntent_v0"],
+  };
+}
+
+function summarizeLowerBPosteriorChainLanes(input: {
+  baselinePlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  trialPlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  inventory: ReadonlyArray<V2MaterializationExercise>;
+}): V2LaneIntentMaterializerProjection["relevantLowerBPosteriorChainLanes"] {
+  return ["hinge_anchor", "knee_flexion_curl", "optional_glute_core_if_recoverable"]
+    .map((laneId) => {
+      const baseline = summarizeMaterializedLaneIdentities({
+        selections: materializedExercisesForLane({
+          plan: input.baselinePlan,
+          slotId: "lower_b",
+          laneId,
+        }),
+        inventory: input.inventory,
+      });
+      const trial = summarizeMaterializedLaneIdentities({
+        selections: materializedExercisesForLane({
+          plan: input.trialPlan,
+          slotId: "lower_b",
+          laneId,
+        }),
+        inventory: input.inventory,
+      });
+      const baselineNames = new Set(baseline.map((row) => row.exerciseName));
+      const trialNames = new Set(trial.map((row) => row.exerciseName));
+      return {
+        slotId: "lower_b",
+        laneId,
+        baseline,
+        trial,
+        identityDelta:
+          [...baselineNames].filter((name) => !trialNames.has(name)).length +
+          [...trialNames].filter((name) => !baselineNames.has(name)).length,
+        setDelta:
+          trial.reduce((sum, row) => sum + row.setCount, 0) -
+          baseline.reduce((sum, row) => sum + row.setCount, 0),
+      };
+    })
+    .filter(
+      (row) =>
+        row.baseline.length > 0 || row.trial.length > 0 || row.setDelta !== 0,
+    );
+}
+
+function summarizeLowAxialClosureStatus(input: {
+  baselinePlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  trialPlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  taxonomy: V2ExerciseClassTaxonomy;
+  inventory: ReadonlyArray<V2MaterializationExercise>;
+  targetSlotId: string;
+  targetLaneId: string;
+}): V2LaneIntentMaterializerProjection["lowAxialClosureStatus"] {
+  const baseline = lowAxialClosureForLane({
+    plan: input.baselinePlan,
+    taxonomy: input.taxonomy,
+    inventory: input.inventory,
+    slotId: input.targetSlotId,
+    laneId: input.targetLaneId,
+  });
+  const trial = lowAxialClosureForLane({
+    plan: input.trialPlan,
+    taxonomy: input.taxonomy,
+    inventory: input.inventory,
+    slotId: input.targetSlotId,
+    laneId: input.targetLaneId,
+  });
+  return {
+    baseline: baseline.status,
+    trial: trial.status,
+    status:
+      baseline.status !== "closed_with_low_axial_anchor" &&
+      trial.status === "closed_with_low_axial_anchor"
+        ? "improved"
+        : baseline.status === trial.status
+          ? "preserved"
+          : trial.status === "not_closed"
+            ? "regressed"
+            : "not_measured",
+    evidence: [
+      `baseline=${baseline.exerciseNames.join(",") || "none"}`,
+      `trial=${trial.exerciseNames.join(",") || "none"}`,
+    ],
+  };
+}
+
+function summarizeLowAxialProtectedCoverage(input: {
+  baselinePlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  trialPlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  taxonomy: V2ExerciseClassTaxonomy;
+  inventory: ReadonlyArray<V2MaterializationExercise>;
+  targetSlotId: string;
+  targetLaneId: string;
+}): V2LaneIntentMaterializerProjection["protectedCoverage"] {
+  const baselineLowAxialSets = lowAxialSetCountForLane({
+    plan: input.baselinePlan,
+    taxonomy: input.taxonomy,
+    inventory: input.inventory,
+    slotId: input.targetSlotId,
+    laneId: input.targetLaneId,
+  });
+  const trialLowAxialSets = lowAxialSetCountForLane({
+    plan: input.trialPlan,
+    taxonomy: input.taxonomy,
+    inventory: input.inventory,
+    slotId: input.targetSlotId,
+    laneId: input.targetLaneId,
+  });
+  const lowAxialSetDelta = trialLowAxialSets - baselineLowAxialSets;
+  return {
+    status:
+      lowAxialSetDelta > 0
+        ? "improved"
+        : lowAxialSetDelta === 0
+          ? "preserved"
+          : "regressed",
+    protectedMuscles: ["Glutes"],
+    baselineLowAxialSets,
+    trialLowAxialSets,
+    lowAxialSetDelta,
+  };
+}
+
+function summarizeDuplicateConcentrationFatigueImpact(input: {
+  baselinePlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  trialPlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  inventory: ReadonlyArray<V2MaterializationExercise>;
+  slotId: string;
+}): V2LaneIntentMaterializerProjection["duplicateConcentrationFatigueImpact"] {
+  const baseline = slotFatigueSummary({
+    plan: input.baselinePlan,
+    inventory: input.inventory,
+    slotId: input.slotId,
+  });
+  const trial = slotFatigueSummary({
+    plan: input.trialPlan,
+    inventory: input.inventory,
+    slotId: input.slotId,
+  });
+  const duplicateExerciseDelta =
+    trial.duplicateExerciseCount - baseline.duplicateExerciseCount;
+  const highFatigueSetDelta =
+    trial.highFatigueSetCount - baseline.highFatigueSetCount;
+  const fatigueWeightedSetDelta = roundToTenth(
+    trial.fatigueWeightedSets - baseline.fatigueWeightedSets,
+  );
+  return {
+    status:
+      duplicateExerciseDelta < 0 ||
+      highFatigueSetDelta < 0 ||
+      fatigueWeightedSetDelta < 0
+        ? "improved"
+        : duplicateExerciseDelta === 0 &&
+            highFatigueSetDelta === 0 &&
+            fatigueWeightedSetDelta === 0
+          ? "preserved"
+          : "regressed",
+    duplicateExerciseDelta,
+    highFatigueSetDelta,
+    fatigueWeightedSetDelta,
+  };
+}
+
+function summarizeLowAxialExclusionProof(input: {
+  trialPlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  taxonomy: V2ExerciseClassTaxonomy;
+  inventory: ReadonlyArray<V2MaterializationExercise>;
+  targetSlotId: string;
+  targetLaneId: string;
+}): V2LaneIntentMaterializerProjection["exclusionProof"] {
+  const excluded = materializedExercisesForLane({
+    plan: input.trialPlan,
+    slotId: input.targetSlotId,
+    laneId: input.targetLaneId,
+  })
+    .map((selection) => {
+      const exercise = exerciseForSelection(selection.exerciseId, input.inventory);
+      if (!exercise) {
+        return null;
+      }
+      return excludedLowAxialReason({
+        exercise,
+        taxonomy: input.taxonomy,
+      })
+        ? exercise.name
+        : null;
+    })
+    .filter((name): name is string => Boolean(name));
+
+  return {
+    trueHingesExcluded: !excluded.some((name) =>
+      name.match(/deadlift|rdl|stiff|good morning/i),
+    ),
+    hamstringCurlsExcluded: !excluded.some((name) =>
+      name.match(/leg curl|hamstring curl|nordic/i),
+    ),
+    backExtensionClosureExcluded: !excluded.some((name) =>
+      isBackExtensionName(name),
+    ),
+    genericGluteAccessoriesExcluded: !excluded.some((name) =>
+      isGenericGluteAccessoryName(name),
+    ),
+    selectedExcludedIdentities: uniqueSorted(excluded),
+    evidence: [
+      `selectedExcludedIdentityCount=${excluded.length}`,
+      "true_hinge_overload_not_selected_for_low_axial_trial",
+      "hamstring_curl_not_selected_for_low_axial_trial",
+      "back_extension_not_selected_for_low_axial_trial",
+      "generic_glute_accessory_not_selected_for_low_axial_trial",
+    ],
+  };
+}
+
+function lowAxialClosureForLane(input: {
+  plan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  taxonomy: V2ExerciseClassTaxonomy;
+  inventory: ReadonlyArray<V2MaterializationExercise>;
+  slotId: string;
+  laneId: string;
+}): {
+  status:
+    | "closed_with_low_axial_anchor"
+    | "closed_without_low_axial_anchor"
+    | "not_closed";
+  exerciseNames: string[];
+} {
+  const selections = materializedExercisesForLane(input);
+  if (!selections.length) {
+    return { status: "not_closed", exerciseNames: [] };
+  }
+  const lowAxialSelections = selections.filter((selection) =>
+    selectionHasClass({
+      exerciseId: selection.exerciseId,
+      classId: "low_axial_hip_extension_anchor",
+      taxonomy: input.taxonomy,
+      inventory: input.inventory,
+    }),
+  );
+  return {
+    status: lowAxialSelections.length
+      ? "closed_with_low_axial_anchor"
+      : "closed_without_low_axial_anchor",
+    exerciseNames: summarizeMaterializedLaneIdentities({
+      selections,
+      inventory: input.inventory,
+    }).map((row) => `${row.exerciseName}:${row.setCount}`),
+  };
+}
+
+function lowAxialSetCountForLane(input: {
+  plan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  taxonomy: V2ExerciseClassTaxonomy;
+  inventory: ReadonlyArray<V2MaterializationExercise>;
+  slotId: string;
+  laneId: string;
+}): number {
+  return materializedExercisesForLane(input)
+    .filter((selection) =>
+      selectionHasClass({
+        exerciseId: selection.exerciseId,
+        classId: "low_axial_hip_extension_anchor",
+        taxonomy: input.taxonomy,
+        inventory: input.inventory,
+      }),
+    )
+    .reduce((sum, selection) => sum + selection.setCount, 0);
+}
+
+function selectionHasClass(input: {
+  exerciseId: string;
+  classId: string;
+  taxonomy: V2ExerciseClassTaxonomy;
+  inventory: ReadonlyArray<V2MaterializationExercise>;
+}): boolean {
+  const exercise = exerciseForSelection(input.exerciseId, input.inventory);
+  return exercise
+    ? matchV2ExerciseClasses(exercise, input.taxonomy).some(
+        (match) => match.classId === input.classId,
+      )
+    : false;
+}
+
+function slotFatigueSummary(input: {
+  plan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  inventory: ReadonlyArray<V2MaterializationExercise>;
+  slotId: string;
+}): {
+  duplicateExerciseCount: number;
+  highFatigueSetCount: number;
+  fatigueWeightedSets: number;
+} {
+  const slot = input.plan.slots.find((row) => row.slotId === input.slotId);
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  let highFatigueSetCount = 0;
+  let fatigueWeightedSets = 0;
+  for (const selection of slot?.exercises ?? []) {
+    if (seen.has(selection.exerciseId)) {
+      duplicates.add(selection.exerciseId);
+    }
+    seen.add(selection.exerciseId);
+    const exercise = exerciseForSelection(selection.exerciseId, input.inventory);
+    const fatigue = exercise?.fatigueCost ?? 1;
+    if (fatigue >= 3) {
+      highFatigueSetCount += selection.setCount;
+    }
+    fatigueWeightedSets += selection.setCount * fatigue;
+  }
+  return {
+    duplicateExerciseCount: duplicates.size,
+    highFatigueSetCount,
+    fatigueWeightedSets: roundToTenth(fatigueWeightedSets),
+  };
+}
+
+function exerciseForSelection(
+  exerciseId: string,
+  inventory: ReadonlyArray<V2MaterializationExercise>,
+): V2MaterializationExercise | undefined {
+  return inventory.find((exercise) => exercise.exerciseId === exerciseId);
+}
+
+function excludedLowAxialReason(input: {
+  exercise: V2MaterializationExercise;
+  taxonomy: V2ExerciseClassTaxonomy;
+}): string | null {
+  const classIds = matchV2ExerciseClasses(input.exercise, input.taxonomy).map(
+    (match) => match.classId,
+  );
+  if (classIds.includes("hinge_compound")) {
+    return "true_hinge";
+  }
+  if (classIds.includes("knee_flexion_curl")) {
+    return "hamstring_curl";
+  }
+  if (isBackExtensionName(input.exercise.name)) {
+    return "back_extension";
+  }
+  if (
+    isGenericGluteAccessoryName(input.exercise.name) &&
+    !classIds.includes("low_axial_hip_extension_anchor")
+  ) {
+    return "generic_glute_accessory";
+  }
+  return null;
+}
+
+function isBackExtensionName(name: string): boolean {
+  const normalized = diagnosticKey(name);
+  return (
+    normalized.includes("back_extension") ||
+    (normalized.includes("hyperextension") &&
+      !normalized.includes("reverse_hyperextension"))
+  );
+}
+
+function isGenericGluteAccessoryName(name: string): boolean {
+  const normalized = diagnosticKey(name);
+  return (
+    normalized.includes("glute") &&
+    !normalized.includes("glute_bridge") &&
+    !normalized.includes("hip_thrust") &&
+    !normalized.includes("reverse_hyperextension")
+  );
 }
 
 function emptySetBudgetMaterializerProjection(input: {
@@ -4905,6 +5573,8 @@ function summarizeLaneIntentProjectionLane(input: {
   scopedLaneId: string;
   slotId: string;
   laneId: string;
+  intentAvailable: boolean;
+  trialConsumesLaneIntent: boolean;
   baselineConsumedByProduction: boolean;
   baselinePlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
   trialPlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
@@ -4929,9 +5599,9 @@ function summarizeLaneIntentProjectionLane(input: {
     scopedLaneId: input.scopedLaneId,
     slotId: input.slotId,
     laneId: input.laneId,
-    intentAvailable: true,
+    intentAvailable: input.intentAvailable,
     baselineConsumedByProduction: input.baselineConsumedByProduction,
-    trialConsumesLaneIntent: true,
+    trialConsumesLaneIntent: input.trialConsumesLaneIntent,
     baselineExerciseCount: baselineExercises.length,
     trialExerciseCount: trialExercises.length,
     baselineSetCount: sumMaterializedExerciseSets(baselineExercises),

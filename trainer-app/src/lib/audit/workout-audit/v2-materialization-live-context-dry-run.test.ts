@@ -7,6 +7,7 @@ import type { V2ExerciseSelectionPlanDiagnostic } from "@/lib/api/planning-reali
 import type { V2MaterializationExercise } from "@/lib/engine/planning/v2";
 import {
   buildV2ConcentrationMaterializerProjectionFromLiveContext,
+  buildV2LaneIntentMaterializerProjectionFromLiveContext,
   buildV2PreselectionMaterializerProjectionFromLiveContext,
   buildV2StrategyRowMaterializerProjectionFromLiveContext,
   hasPromotedBoundedCalvesBaselineProof,
@@ -141,6 +142,30 @@ const INVENTORY: V2MaterializationExercise[] = [
     stimulus: { Hamstrings: 1, Glutes: 0.5, "Lower Back": 0.25 },
     compound: true,
     fatigue: 3,
+  }),
+  exercise({
+    id: "reverse-hyperextension",
+    name: "Reverse Hyperextension",
+    patterns: ["hip_extension"],
+    primaryMuscles: ["Glutes"],
+    stimulus: { Glutes: 1, Hamstrings: 0.35, "Lower Back": 0.1 },
+    fatigue: 1,
+  }),
+  exercise({
+    id: "back-extension",
+    name: "Back Extension",
+    patterns: ["extension"],
+    primaryMuscles: ["Lower Back"],
+    stimulus: { "Lower Back": 1, Glutes: 0.35, Hamstrings: 0.25 },
+    fatigue: 2,
+  }),
+  exercise({
+    id: "glute-kickback",
+    name: "Cable Glute Kickback",
+    patterns: ["isolation"],
+    primaryMuscles: ["Glutes"],
+    stimulus: { Glutes: 0.8 },
+    fatigue: 1,
   }),
 ];
 
@@ -525,6 +550,102 @@ describe("V2 live-context materializer projections", () => {
         "read_only_acceptance_gate_result_for_projected_candidate",
         "seed_runtime_receipt_db_non_consumption_must_remain_proven",
         "repaired_projection_must_remain_evidence_only_not_target_policy",
+      ]),
+    );
+    expect(JSON.stringify(result)).not.toMatch(
+      /slotPlanSeedJson|sessionDecisionReceipt|runtimeReplay|acceptedPlannerIntent/,
+    );
+  });
+
+  it("measures the low-axial support-coverage contract as an audit-only materializer projection", () => {
+    const result = buildV2LaneIntentMaterializerProjectionFromLiveContext({
+      plannerPolicy: buildV2PlannerMesocyclePolicy(),
+      inventory: INVENTORY,
+      targetLane: {
+        slotId: "lower_b",
+        laneId: "hinge_anchor",
+        trialId: "lower_b_hinge_anchor_low_axial_support_coverage_shadow",
+        diagnosticContract: "low_axial_support_coverage",
+      },
+    });
+
+    expect(result).toMatchObject({
+      version: 1,
+      source: "v2_lane_intent_materializer_projection",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      dryRunOnly: true,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+      projectionMode: "lane_intent_shadow_materializer_dry_run",
+      trialId: "lower_b_hinge_anchor_low_axial_support_coverage_shadow",
+      targetLane: {
+        scopedLaneId: "lower_b:hinge_anchor",
+        slotId: "lower_b",
+        laneId: "hinge_anchor",
+        intentAvailable: false,
+        baselineConsumedByProduction: false,
+        trialConsumesLaneIntent: false,
+      },
+      contractTrial: {
+        appliedContract: "low_axial_support_coverage",
+        exactFutureContractApplied: true,
+        representedThrough: "audit_only_selection_plan_class_override",
+        futureMovementPattern: "low_axial_hip_extension",
+        futureExerciseClass: "low_axial_hip_extension_anchor",
+        v0CanExpressFutureMovementAndClass: false,
+        v0ProxyAllowedExerciseClasses: ["hip_thrust"],
+      },
+      lowAxialClosureStatus: {
+        baseline: "closed_without_low_axial_anchor",
+        trial: "closed_with_low_axial_anchor",
+        status: "improved",
+      },
+      protectedCoverage: {
+        status: "improved",
+        protectedMuscles: ["Glutes"],
+        baselineLowAxialSets: 0,
+        trialLowAxialSets: 3,
+        lowAxialSetDelta: 3,
+      },
+      exclusionProof: {
+        trueHingesExcluded: true,
+        hamstringCurlsExcluded: true,
+        backExtensionClosureExcluded: true,
+        genericGluteAccessoriesExcluded: true,
+        selectedExcludedIdentities: [],
+      },
+      nonConsumption: {
+        productionPlannerMaterializerRanking: false,
+        seedRuntimeReceiptDb: false,
+        acceptanceThreshold: false,
+        repairBehavior: false,
+      },
+      safeForBehaviorPromotion: false,
+    });
+    expect(
+      result.relevantLowerBPosteriorChainLanes.find(
+        (row) => row.laneId === "hinge_anchor",
+      ),
+    ).toMatchObject({
+      baseline: [{ exerciseName: "Romanian Deadlift", setCount: 3 }],
+      trial: [{ exerciseName: "Reverse Hyperextension", setCount: 3 }],
+      identityDelta: 2,
+      setDelta: 0,
+    });
+    expect(result.candidateImpact.selectedIdentityDelta).toBeGreaterThan(0);
+    expect(result.candidateImpact.totalSetDelta).toBe(0);
+    expect(result.candidateImpact.materializerBlockerDelta).toBe(0);
+    expect(result.duplicateConcentrationFatigueImpact).toMatchObject({
+      status: "improved",
+      duplicateExerciseDelta: 0,
+      highFatigueSetDelta: -3,
+    });
+    expect(result.blockersBeforeBehavior).toEqual(
+      expect.arrayContaining([
+        "acceptance_gate_not_rerun",
+        "production_materializer_allowlist_unchanged",
+        "diagnostic_lane_intent_override_not_consumed_by_runtime",
       ]),
     );
     expect(JSON.stringify(result)).not.toMatch(

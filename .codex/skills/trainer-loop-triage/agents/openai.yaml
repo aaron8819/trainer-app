@@ -1,0 +1,4 @@
+interface:
+  display_name: "Trainer Loop Triage"
+  short_description: "Classify safe Trainer loops"
+  default_prompt: "Use $trainer-loop-triage to inspect the current Trainer repo state, classify safe next work, and draft one bounded /goal prompt."

@@ -1042,6 +1042,9 @@ type SupportFloorGapInventory = NonNullable<
   V2RepairPromotionScoreboard["interpretation"]["supportFloorGapInventory"]
 >;
 type SupportFloorGapRow = SupportFloorGapInventory["rows"][number];
+type SupportFloorReadoutClassification = NonNullable<
+  SupportFloorGapRow["readoutClassification"]
+>;
 
 function importanceScore(importance: GapInventoryRow["trainingImportance"]): number {
   if (importance === "high") {
@@ -1626,6 +1629,43 @@ function supportFloorGapClassification(input: {
   return "blocked_by_missing_evidence";
 }
 
+function supportFloorProjectionNoImpact(
+  projection?: V2RepairPromotionReadoutContext["v2SupportFloorMaterializerProjection"],
+): boolean {
+  return Boolean(
+    projection &&
+      projection.candidateImpact.selectedIdentityDelta === 0 &&
+      projection.candidateImpact.totalSetDelta === 0 &&
+      projection.candidateImpact.targetLaneSetDelta === 0 &&
+      projection.candidateImpact.targetLaneExerciseDelta === 0 &&
+      projection.candidateImpact.materializerBlockerDelta === 0 &&
+      projection.candidateImpact.regressionCount === 0,
+  );
+}
+
+function supportFloorReadoutClassification(input: {
+  owner: SupportFloorGapRow["likelyOwnerSeam"];
+  evidenceQuality: SupportFloorGapRow["evidenceQuality"];
+  classification: SupportFloorGapRow["classification"];
+  projectionMatches: boolean;
+  projectionNoImpact: boolean;
+}): SupportFloorReadoutClassification {
+  if (input.projectionMatches && input.projectionNoImpact) {
+    return "measured_no_impact";
+  }
+  if (input.classification === "true_support_direct_floor_gap") {
+    return "true_owner_specific_gap";
+  }
+  if (
+    input.evidenceQuality === "stale_or_ambiguous" ||
+    input.classification === "stale_or_ambiguous" ||
+    input.owner === "audit_readout_cleanup"
+  ) {
+    return "stale_noise";
+  }
+  return "blocker";
+}
+
 function supportFloorGapScore(row: Omit<SupportFloorGapRow, "rank">): number {
   const shortfall = Math.max(
     0,
@@ -1644,6 +1684,8 @@ function buildSupportFloorGapInventory(
   context?: V2RepairPromotionReadoutContext,
 ): SupportFloorGapInventory | undefined {
   const diagnostic = context?.v2SupportLaneProjectionDiagnostic;
+  const projection = context?.v2SupportFloorMaterializerProjection;
+  const projectionNoImpact = supportFloorProjectionNoImpact(projection);
   if (!diagnostic) {
     return undefined;
   }
@@ -1755,7 +1797,27 @@ function buildSupportFloorGapInventory(
         evidenceQuality,
       }),
     };
-    return [{ ...classified, score: supportFloorGapScore(classified) }];
+    const projectionMatches = Boolean(
+      projection &&
+        projection.targetLane.supportFloorGapId ===
+          classified.supportFloorGapId,
+    );
+    const withReadoutClassification = {
+      ...classified,
+      readoutClassification: supportFloorReadoutClassification({
+        owner,
+        evidenceQuality,
+        classification: classified.classification,
+        projectionMatches,
+        projectionNoImpact,
+      }),
+    };
+    return [
+      {
+        ...withReadoutClassification,
+        score: supportFloorGapScore(withReadoutClassification),
+      },
+    ];
   });
   const rows = candidates
     .sort(
@@ -1778,6 +1840,13 @@ function buildSupportFloorGapInventory(
     },
     {},
   );
+  const readoutClassificationCounts = rows.reduce<
+    NonNullable<SupportFloorGapInventory["summary"]["readoutClassificationCounts"]>
+  >((counts, row) => {
+    const classification = row.readoutClassification ?? "blocker";
+    counts[classification] = (counts[classification] ?? 0) + 1;
+    return counts;
+  }, {});
   return {
     version: 1,
     readOnly: true,
@@ -1797,9 +1866,18 @@ function buildSupportFloorGapInventory(
       diagnosticOnlyOrStaleCount: rows.filter(
         (row) =>
           row.classification === "diagnostic_only_no_impact" ||
-          row.classification === "stale_or_ambiguous",
+          row.classification === "stale_or_ambiguous" ||
+          row.readoutClassification === "measured_no_impact" ||
+          row.readoutClassification === "stale_noise",
       ).length,
+      trueOwnerSpecificGapCount:
+        readoutClassificationCounts.true_owner_specific_gap ?? 0,
+      staleNoiseCount: readoutClassificationCounts.stale_noise ?? 0,
+      measuredNoImpactCount:
+        readoutClassificationCounts.measured_no_impact ?? 0,
+      blockerCount: readoutClassificationCounts.blocker ?? 0,
       selectedGapId: rows[0]?.supportFloorGapId ?? null,
+      readoutClassificationCounts,
       ownerCounts,
     },
     rows,

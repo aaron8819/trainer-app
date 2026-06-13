@@ -1906,7 +1906,12 @@ function formatSupportFloorGapInventory(
           setDistributionIntentOwnedCount?: number;
           downstreamMaterializerOrCapacityCount?: number;
           diagnosticOnlyOrStaleCount?: number;
+          trueOwnerSpecificGapCount?: number;
+          staleNoiseCount?: number;
+          measuredNoImpactCount?: number;
+          blockerCount?: number;
           selectedGapId?: string | null;
+          readoutClassificationCounts?: Record<string, number>;
           ownerCounts?: Record<string, number>;
         };
         rows?: ReadonlyArray<{
@@ -1922,6 +1927,7 @@ function formatSupportFloorGapInventory(
           evidenceQuality?: string;
           trainingImportance?: string;
           classification?: string;
+          readoutClassification?: string;
         }>;
       }
     | null
@@ -1934,10 +1940,13 @@ function formatSupportFloorGapInventory(
   const selectedRow = asArray(inventory.rows).find(
     (row) => row.supportFloorGapId === selectedId
   );
-  const selectedDetail = selectedRow
-    ? ` selectedDetail=week_${selectedRow.week ?? "?"}:${selectedRow.slotId ?? "unknown"}:${selectedRow.laneId ?? "unknown"}:${selectedRow.muscle ?? "unknown"} floor=${selectedRow.directFloorDelivered ?? "?"}/${selectedRow.directFloorExpected ?? "?"} owner=${selectedRow.likelyOwnerSeam ?? "unknown"} evidence=${selectedRow.evidenceQuality ?? "unknown"} class=${selectedRow.classification ?? "unknown"}`
+  const readoutSummary = inventory.summary.readoutClassificationCounts
+    ? ` readout=${formatCountRecord(inventory.summary.readoutClassificationCounts, 6)}`
     : "";
-  return `rows=${inventory.summary.gapRowCount ?? 0} setDistributionOwned=${inventory.summary.setDistributionIntentOwnedCount ?? 0} downstreamOrCapacity=${inventory.summary.downstreamMaterializerOrCapacityCount ?? 0} diagnosticOrStale=${inventory.summary.diagnosticOnlyOrStaleCount ?? 0} selected=${selectedId ?? "none"} owners=${formatCountRecord(inventory.summary.ownerCounts, 4)}${selectedDetail}`;
+  const selectedDetail = selectedRow
+    ? ` selectedDetail=week_${selectedRow.week ?? "?"}:${selectedRow.slotId ?? "unknown"}:${selectedRow.laneId ?? "unknown"}:${selectedRow.muscle ?? "unknown"} floor=${selectedRow.directFloorDelivered ?? "?"}/${selectedRow.directFloorExpected ?? "?"} owner=${selectedRow.likelyOwnerSeam ?? "unknown"} evidence=${selectedRow.evidenceQuality ?? "unknown"} class=${selectedRow.classification ?? "unknown"} readout=${selectedRow.readoutClassification ?? "unknown"}`
+    : "";
+  return `rows=${inventory.summary.gapRowCount ?? 0} setDistributionOwned=${inventory.summary.setDistributionIntentOwnedCount ?? 0} downstreamOrCapacity=${inventory.summary.downstreamMaterializerOrCapacityCount ?? 0} diagnosticOrStale=${inventory.summary.diagnosticOnlyOrStaleCount ?? 0} measuredNoImpact=${inventory.summary.measuredNoImpactCount ?? 0} staleNoise=${inventory.summary.staleNoiseCount ?? 0} trueOwner=${inventory.summary.trueOwnerSpecificGapCount ?? 0} blockers=${inventory.summary.blockerCount ?? 0} selected=${selectedId ?? "none"} owners=${formatCountRecord(inventory.summary.ownerCounts, 4)}${readoutSummary}${selectedDetail}`;
 }
 
 function formatSelectedGapProof(

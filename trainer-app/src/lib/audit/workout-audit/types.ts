@@ -2241,7 +2241,22 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
           setDistributionIntentOwnedCount: number;
           downstreamMaterializerOrCapacityCount: number;
           diagnosticOnlyOrStaleCount: number;
+          trueOwnerSpecificGapCount?: number;
+          staleNoiseCount?: number;
+          measuredNoImpactCount?: number;
+          blockerCount?: number;
           selectedGapId: string | null;
+          readoutClassificationCounts?: Partial<
+            Record<
+              | "true_owner_specific_gap"
+              | "bounded_accepted_watch"
+              | "stale_noise"
+              | "measured_no_impact"
+              | "already_promoted_baseline_idempotent"
+              | "blocker",
+              number
+            >
+          >;
           ownerCounts: Partial<
             Record<
               | "SetDistributionIntent"
@@ -2283,6 +2298,13 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
             | "diagnostic_only_no_impact"
             | "stale_or_ambiguous"
             | "blocked_by_missing_evidence";
+          readoutClassification?:
+            | "true_owner_specific_gap"
+            | "bounded_accepted_watch"
+            | "stale_noise"
+            | "measured_no_impact"
+            | "already_promoted_baseline_idempotent"
+            | "blocker";
         }>;
       };
       taxonomyMismatchInventory?: {

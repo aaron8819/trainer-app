@@ -1935,6 +1935,14 @@ function buildIndexSummary(input: {
   const supportFloorMaterializerImpact = asRecord(
     supportFloorMaterializer?.candidateImpact,
   );
+  const repairScoreboard = asRecord(input.noRepair.repairPromotionScoreboard);
+  const supportFloorGapInventory = asRecord(
+    asRecord(repairScoreboard?.interpretation)?.supportFloorGapInventory,
+  );
+  const supportFloorGapSummary = asRecord(supportFloorGapInventory?.summary);
+  const supportFloorReadoutCounts = asRecord(
+    supportFloorGapSummary?.readoutClassificationCounts,
+  );
   const concentrationMaterializer = asRecord(
     input.noRepair.v2ConcentrationMaterializerProjection,
   );
@@ -2023,6 +2031,16 @@ function buildIndexSummary(input: {
       supportFloorMaterializerImpact?.totalSetDelta ?? null,
     v2SupportFloorMaterializerProjectionTargetLaneSetDelta:
       supportFloorMaterializerImpact?.targetLaneSetDelta ?? null,
+    v2SupportFloorReadoutTrueOwnerCount:
+      supportFloorGapSummary?.trueOwnerSpecificGapCount ?? null,
+    v2SupportFloorReadoutMeasuredNoImpactCount:
+      supportFloorGapSummary?.measuredNoImpactCount ?? null,
+    v2SupportFloorReadoutStaleNoiseCount:
+      supportFloorGapSummary?.staleNoiseCount ?? null,
+    v2SupportFloorReadoutBlockerCount:
+      supportFloorGapSummary?.blockerCount ?? null,
+    v2SupportFloorReadoutClassificationCounts:
+      supportFloorReadoutCounts ?? {},
     v2ConcentrationMaterializerProjectionStatus:
       concentrationMaterializer?.status ?? "not_available",
     v2ConcentrationMaterializerProjectionIdentityDelta:

@@ -4557,6 +4557,14 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                     setDistributionIntentOwnedCount: 1,
                     downstreamMaterializerOrCapacityCount: 0,
                     diagnosticOnlyOrStaleCount: 3,
+                    trueOwnerSpecificGapCount: 1,
+                    staleNoiseCount: 3,
+                    measuredNoImpactCount: 0,
+                    blockerCount: 0,
+                    readoutClassificationCounts: {
+                      true_owner_specific_gap: 1,
+                      stale_noise: 3,
+                    },
                     ownerCounts: {
                       SetDistributionIntent: 1,
                       audit_readout_cleanup: 3,
@@ -4594,6 +4602,7 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
                       nextMeasurement:
                         "measure_support_floor_materializer_projection",
                       classification: "true_support_direct_floor_gap",
+                      readoutClassification: "true_owner_specific_gap",
                     },
                   ],
                 },
@@ -4654,7 +4663,7 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
         "Missing proof before behavior: owner_specific_behavior_candidate:missing@repairPromotionScoreboard; current_v2_policy_gap:blocked@ExerciseClassDistributionBySlot,ExerciseSelectionPlan,SetDistributionIntent,SlotDemandAllocationByWeek,audit_readout_cleanup; measured_behavior_projection:missing@read_only_projection_or_materializer_comparison; seed_runtime_non_consumption:required_before_promotion@accepted_seed_runtime_replay",
         "Ranked gap inventory: #1 class_taxonomy_mismatch@ExerciseClassDistributionBySlot count=20 importance=high evidence=diagnostic_count status=blocked_by_missing_evidence next=build_taxonomy_bridge_no_drift_probe",
         "Taxonomy mismatch inventory: rows=20 selectedIdentityAffected=12 cleanAlternatives=3 selected=week_1:upper_b:chest_second_exposure owners=ExerciseClassDistributionBySlot=14 ExerciseSelectionPlan=6",
-        "Support-floor gap inventory: rows=4 setDistributionOwned=1 downstreamOrCapacity=0 diagnosticOrStale=3 selected=week_1:upper_b:side_delt_isolation:side_delts owners=audit_readout_cleanup=3 SetDistributionIntent=1 selectedDetail=week_1:upper_b:side_delt_isolation:Side Delts floor=6/8 owner=SetDistributionIntent evidence=direct_floor_below class=true_support_direct_floor_gap",
+        "Support-floor gap inventory: rows=4 setDistributionOwned=1 downstreamOrCapacity=0 diagnosticOrStale=3 measuredNoImpact=0 staleNoise=3 trueOwner=1 blockers=0 selected=week_1:upper_b:side_delt_isolation:side_delts owners=audit_readout_cleanup=3 SetDistributionIntent=1 readout=stale_noise=3 true_owner_specific_gap=1 selectedDetail=week_1:upper_b:side_delt_isolation:Side Delts floor=6/8 owner=SetDistributionIntent evidence=direct_floor_below class=true_support_direct_floor_gap readout=true_owner_specific_gap",
         "Selected gap proof: class_taxonomy_mismatch:blocked_by_missing_evidence@ExerciseClassDistributionBySlot classification=blocked_by_missing_evidence selected=week_1:upper_b:chest_second_exposure consumedByProduction=no safeForBehavior=no missing=materializer_identity_non_regression, taxonomy_bridge_fixture next=build_taxonomy_bridge_no_drift_probe",
         "Promotion candidates: 0",
         "Safety/do-not-promote: 12",

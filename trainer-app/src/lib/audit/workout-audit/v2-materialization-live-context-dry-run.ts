@@ -316,7 +316,7 @@ export type V2LaneIntentMaterializerProjection = {
       | "laneSelectionIntent_v0_diagnostic_override";
     futureMovementPattern: "low_axial_hip_extension" | null;
     futureExerciseClass: "low_axial_hip_extension_anchor" | null;
-    v0CanExpressFutureMovementAndClass: false | null;
+    v0CanExpressFutureMovementAndClass: boolean | null;
     v0ProxyAllowedExerciseClasses: string[];
     evidence: string[];
   };
@@ -1491,8 +1491,18 @@ export function buildV2LaneIntentMaterializerProjectionFromLiveContext(input: {
     });
   }
 
+  const baselinePlannerPolicy =
+    diagnosticContract === "low_axial_support_coverage" &&
+    targetLane.laneSelectionIntent
+      ? withoutLaneSelectionIntentForTrialLane({
+          plannerPolicy,
+          slotId: targetSlotId,
+          laneId: targetLaneId,
+        })
+      : plannerPolicy;
   const trialPlannerPolicy =
-    diagnosticContract === "low_axial_support_coverage"
+    diagnosticContract === "low_axial_support_coverage" &&
+    !targetLane.laneSelectionIntent
       ? withLowAxialSupportCoverageTrialLane({
           plannerPolicy,
           slotId: targetSlotId,
@@ -1519,7 +1529,7 @@ export function buildV2LaneIntentMaterializerProjectionFromLiveContext(input: {
       : undefined;
 
   const baselinePlan = buildV2ExerciseMaterializationPlan({
-    exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
+    exerciseSelectionPlan: baselinePlannerPolicy.exerciseSelectionPlan,
     inventory,
     taxonomy,
     constraints,
@@ -1536,7 +1546,7 @@ export function buildV2LaneIntentMaterializerProjectionFromLiveContext(input: {
       : {}),
   });
   const baselineReport = buildV2MaterializationDryRunReport({
-    plannerPolicy,
+    plannerPolicy: baselinePlannerPolicy,
     taxonomy,
     inventory,
     constraints,
@@ -1580,6 +1590,8 @@ export function buildV2LaneIntentMaterializerProjectionFromLiveContext(input: {
     candidateImpact.improvements.length === 0;
   const trialBlocked =
     trialReport.status === "blocked" || trialPlan.status === "blocked";
+  const productionAlreadyConsumesLaneIntent =
+    targetLaneSummary.baselineConsumedByProduction === true;
   const contractTrial = summarizeLaneIntentContractTrial({
     diagnosticContract,
     trialLane,
@@ -1667,7 +1679,9 @@ export function buildV2LaneIntentMaterializerProjectionFromLiveContext(input: {
         ? ["low_axial_exclusion_regression"]
         : []),
       "acceptance_gate_not_rerun",
-      "production_materializer_allowlist_unchanged",
+      ...(productionAlreadyConsumesLaneIntent
+        ? []
+        : ["production_materializer_allowlist_unchanged"]),
       "diagnostic_lane_intent_override_not_consumed_by_runtime",
     ]),
     nextSafeAction: trialBlocked
@@ -1681,8 +1695,12 @@ export function buildV2LaneIntentMaterializerProjectionFromLiveContext(input: {
       ...(noCandidateImpact
         ? ["lane_intent_trial_did_not_change_candidate_identity_or_sets"]
         : []),
-      "does_not_change_lane_selection_intent_allowlist",
-      "does_not_feed_production_materializer",
+      ...(productionAlreadyConsumesLaneIntent
+        ? ["production_materializer_consumes_matching_lane_intent_baseline"]
+        : [
+            "does_not_change_lane_selection_intent_allowlist",
+            "does_not_feed_production_materializer",
+          ]),
       "does_not_feed_acceptance_scoring",
       "does_not_write_executable_seed_truth",
       "does_not_change_runtime_replay",
@@ -3377,6 +3395,37 @@ function withLowAxialSupportCoverageTrialLane(input: {
   };
 }
 
+function withoutLaneSelectionIntentForTrialLane(input: {
+  plannerPolicy: V2PlannerMesocyclePolicy;
+  slotId: V2PlannerSlotId;
+  laneId: string;
+}): V2PlannerMesocyclePolicy {
+  return {
+    ...input.plannerPolicy,
+    exerciseSelectionPlan: {
+      ...input.plannerPolicy.exerciseSelectionPlan,
+      weeks: input.plannerPolicy.exerciseSelectionPlan.weeks.map((week) => ({
+        ...week,
+        slots: week.slots.map((slot) =>
+          slot.slotId !== input.slotId
+            ? slot
+            : {
+                ...slot,
+                lanes: slot.lanes.map((lane) => {
+                  if (lane.laneId !== input.laneId) {
+                    return lane;
+                  }
+                  const rest = { ...lane };
+                  delete rest.laneSelectionIntent;
+                  return rest;
+                }),
+              },
+        ),
+      })),
+    },
+  };
+}
+
 function lowAxialSupportCoverageV0ProxyIntent(): V2LaneSelectionIntentV0 {
   return {
     version: 0,
@@ -3386,8 +3435,9 @@ function lowAxialSupportCoverageV0ProxyIntent(): V2LaneSelectionIntentV0 {
     affectsScoringOrGeneration: false,
     consumedByMaterializer: false,
     laneJob: "support_coverage",
-    requiredMovementPattern: "calf_raise",
-    allowedExerciseClasses: ["hip_thrust"],
+    requiredMovementPattern: "low_axial_hip_extension",
+    preferredMovementPatterns: ["low_axial_hip_extension"],
+    allowedExerciseClasses: ["low_axial_hip_extension_anchor"],
     disallowedExerciseClasses: ["hinge", "hamstring_curl", "back_extension"],
     directnessRequirement: "direct_or_high_support",
     minimumTargetStimulus: {
@@ -3413,17 +3463,20 @@ function summarizeLaneIntentContractTrial(input: {
     return {
       appliedContract: "low_axial_support_coverage",
       exactFutureContractApplied: true,
-      representedThrough: "audit_only_selection_plan_class_override",
+      representedThrough: "laneSelectionIntent_v0_diagnostic_override",
       futureMovementPattern: "low_axial_hip_extension",
       futureExerciseClass: "low_axial_hip_extension_anchor",
-      v0CanExpressFutureMovementAndClass: false,
-      v0ProxyAllowedExerciseClasses: ["hip_thrust"],
+      v0CanExpressFutureMovementAndClass: true,
+      v0ProxyAllowedExerciseClasses:
+        input.trialLane?.laneSelectionIntent?.allowedExerciseClasses ?? [
+          "low_axial_hip_extension_anchor",
+        ],
       evidence: [
         "trial_lane.acceptableExerciseClasses=low_axial_hip_extension_anchor",
         "trial_lane.preferredExerciseClasses=low_axial_hip_extension_anchor",
         "trial_lane.role=support",
-        "futureMovementPattern=low_axial_hip_extension_not_expressible_in_v0",
-        "futureExerciseClass=low_axial_hip_extension_anchor_not_expressible_in_v0",
+        "laneSelectionIntentV0.requiredMovementPattern=low_axial_hip_extension",
+        "laneSelectionIntentV0.allowedExerciseClasses=low_axial_hip_extension_anchor",
         `trialLaneFound=${Boolean(input.trialLane)}`,
       ],
     };

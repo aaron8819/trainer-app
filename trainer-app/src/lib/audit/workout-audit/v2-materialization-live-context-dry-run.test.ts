@@ -583,18 +583,18 @@ describe("V2 live-context materializer projections", () => {
         scopedLaneId: "lower_b:hinge_anchor",
         slotId: "lower_b",
         laneId: "hinge_anchor",
-        intentAvailable: false,
-        baselineConsumedByProduction: false,
+        intentAvailable: true,
+        baselineConsumedByProduction: true,
         trialConsumesLaneIntent: false,
       },
       contractTrial: {
         appliedContract: "low_axial_support_coverage",
         exactFutureContractApplied: true,
-        representedThrough: "audit_only_selection_plan_class_override",
+        representedThrough: "laneSelectionIntent_v0_diagnostic_override",
         futureMovementPattern: "low_axial_hip_extension",
         futureExerciseClass: "low_axial_hip_extension_anchor",
-        v0CanExpressFutureMovementAndClass: false,
-        v0ProxyAllowedExerciseClasses: ["hip_thrust"],
+        v0CanExpressFutureMovementAndClass: true,
+        v0ProxyAllowedExerciseClasses: ["low_axial_hip_extension_anchor"],
       },
       lowAxialClosureStatus: {
         baseline: "closed_without_low_axial_anchor",
@@ -644,7 +644,6 @@ describe("V2 live-context materializer projections", () => {
     expect(result.blockersBeforeBehavior).toEqual(
       expect.arrayContaining([
         "acceptance_gate_not_rerun",
-        "production_materializer_allowlist_unchanged",
         "diagnostic_lane_intent_override_not_consumed_by_runtime",
       ]),
     );

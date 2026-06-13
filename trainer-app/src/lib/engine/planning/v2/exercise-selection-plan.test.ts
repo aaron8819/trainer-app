@@ -379,6 +379,27 @@ describe("buildV2ExerciseSelectionPlan", () => {
         consumedByMaterializer: true,
       },
     });
+    expect(lane(1, "lower_b", "hinge_anchor")).toMatchObject({
+      laneSelectionIntent: {
+        laneJob: "support_coverage",
+        requiredMovementPattern: "low_axial_hip_extension",
+        preferredMovementPatterns: ["low_axial_hip_extension"],
+        allowedExerciseClasses: ["low_axial_hip_extension_anchor"],
+        disallowedExerciseClasses: [
+          "hinge",
+          "hamstring_curl",
+          "back_extension",
+        ],
+        directnessRequirement: "direct_or_high_support",
+        minimumTargetStimulus: {
+          muscle: "Glutes",
+          minimumPerSetStimulus: 0.75,
+        },
+        fatiguePreference: "low_axial",
+        loadabilityPreference: "moderate_or_high",
+        consumedByMaterializer: true,
+      },
+    });
     expect(JSON.stringify(lane(2, "upper_b", "vertical_press").laneSelectionIntent)).not.toMatch(
       /exerciseId|exerciseName|slotPlanSeedJson|runtimeReplay/,
     );

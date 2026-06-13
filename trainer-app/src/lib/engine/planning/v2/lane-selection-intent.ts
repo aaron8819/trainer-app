@@ -12,6 +12,7 @@ export type V2LaneSelectionIntentMovementPattern =
   | "horizontal_pull"
   | "knee_extension"
   | "knee_flexion"
+  | "low_axial_hip_extension"
   | "rear_delt_fly"
   | "shoulder_abduction"
   | "shoulder_horizontal_abduction"
@@ -30,6 +31,7 @@ export type V2LaneSelectionIntentExerciseClass =
   | "hip_thrust"
   | "lateral_raise"
   | "leg_press"
+  | "low_axial_hip_extension_anchor"
   | "lunge"
   | "pullover"
   | "quad_isolation"
@@ -137,6 +139,7 @@ export const V2_LANE_SELECTION_INTENT_V0_FIELD_REQUIREMENTS: Record<
 };
 
 type LaneSelectionIntentSourceLane = {
+  slotId?: string;
   laneId: string;
   role: string;
   primaryMuscles: string[];
@@ -216,6 +219,12 @@ function isHamstringCurlLane(lane: LaneSelectionIntentSourceLane): boolean {
     lane.laneId === "knee_flexion_curl" ||
     hasClass(lane, "hamstring_curl")
   );
+}
+
+function isLowAxialSupportCoverageLane(
+  lane: LaneSelectionIntentSourceLane,
+): boolean {
+  return lane.slotId === "lower_b" && lane.laneId === "hinge_anchor";
 }
 
 function isTricepsDirectLane(lane: LaneSelectionIntentSourceLane): boolean {
@@ -305,6 +314,34 @@ export function buildV2LaneSelectionIntentV0ForPlanLane(
       fallbackPolicy: "block_if_floor_critical",
       identityPreservationMode: "variation_allowed_within_lane_job",
     }, { consumedByMaterializer: lane.laneId === "hamstring_curl" });
+  }
+
+  if (isLowAxialSupportCoverageLane(lane)) {
+    return baseIntent(
+      {
+        laneJob: "support_coverage",
+        requiredMovementPattern: "low_axial_hip_extension",
+        preferredMovementPatterns: ["low_axial_hip_extension"],
+        allowedExerciseClasses: ["low_axial_hip_extension_anchor"],
+        disallowedExerciseClasses: [
+          "hinge",
+          "hamstring_curl",
+          "back_extension",
+        ],
+        directnessRequirement: "direct_or_high_support",
+        minimumTargetStimulus: {
+          muscle: "Glutes",
+          minimumPerSetStimulus: 0.75,
+        },
+        fatiguePreference: "low_axial",
+        loadabilityPreference: "moderate_or_high",
+        duplicatePolicy: "prefer_variation_if_clean",
+        capacityPriority: "high",
+        fallbackPolicy: "allow_labeled_fallback",
+        identityPreservationMode: "variation_allowed_within_lane_job",
+      },
+      { consumedByMaterializer: true },
+    );
   }
 
   if (lane.laneId === "quad_isolation") {
@@ -498,6 +535,15 @@ export function isV2LaneSelectionIntentConsumedByMaterializer(
     lane.laneId === "quad_isolation" &&
     intent.requiredMovementPattern === "knee_extension" &&
     intent.allowedExerciseClasses.includes("quad_isolation")
+  ) {
+    return true;
+  }
+
+  if (
+    lane.laneId === "hinge_anchor" &&
+    intent.laneJob === "support_coverage" &&
+    intent.requiredMovementPattern === "low_axial_hip_extension" &&
+    intent.allowedExerciseClasses.includes("low_axial_hip_extension_anchor")
   ) {
     return true;
   }

@@ -243,6 +243,7 @@ export function buildV2ExerciseSelectionPlan(
               lane.optionalActivation,
             );
             const laneSelectionIntent = buildV2LaneSelectionIntentV0ForPlanLane({
+              slotId: slot.slotId,
               laneId: lane.laneId,
               role: lane.role,
               primaryMuscles: [...lane.primaryMuscles],

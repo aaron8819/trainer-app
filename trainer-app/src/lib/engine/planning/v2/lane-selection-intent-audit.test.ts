@@ -73,6 +73,7 @@ describe("buildV2LaneSelectionIntentAudit", () => {
       ["upper_b", "biceps"],
       ["upper_b", "chest_second_exposure"],
       ["upper_b", "row_support"],
+      ["lower_b", "hinge_anchor"],
     ] as const) {
       const lane = auditLane(audit, slotId, laneId);
       const stageCConsumed =
@@ -84,7 +85,8 @@ describe("buildV2LaneSelectionIntentAudit", () => {
         (slotId === "upper_b" && laneId === "side_delt_isolation") ||
         (slotId === "upper_a" && laneId === "rear_delt") ||
         (slotId === "upper_a" && laneId === "triceps") ||
-        (slotId === "upper_b" && laneId === "row_support");
+        (slotId === "upper_b" && laneId === "row_support") ||
+        (slotId === "lower_b" && laneId === "hinge_anchor");
 
       expect(lane.proposedLaneSelectionIntent).toMatchObject({
         version: 0,
@@ -363,15 +365,15 @@ describe("buildV2LaneSelectionIntentBenchmark", () => {
       readOnly: true,
       affectsScoringOrGeneration: false,
       consumedByDemandOrMaterializer: false,
-      status: "warning",
+      status: "pass",
       summary: {
         laneJobCount: 7,
-        passCount: 6,
-        warningCount: 1,
+        passCount: 7,
+        warningCount: 0,
         failCount: 0,
         missingEvidenceCount: 0,
-        materializerConsumedCount: 6,
-        diagnosticOnlyCount: 1,
+        materializerConsumedCount: 7,
+        diagnosticOnlyCount: 0,
       },
     });
     expect(benchmark.lanes).toEqual(
@@ -414,45 +416,19 @@ describe("buildV2LaneSelectionIntentBenchmark", () => {
         }),
         expect.objectContaining({
           laneJob: "low_axial_hip_extension",
-          status: "warning",
+          status: "pass",
           required: false,
-          materializerConsumed: false,
+          materializerConsumed: true,
           evidence: expect.arrayContaining([
-            "coverageGap:laneIntentContract:requiredMovementPattern=low_axial_hip_extension is not expressible in laneSelectionIntent v0 yet",
-            "coverageGap:laneIntentContract:stimulusExpectation=meaningful Glutes stimulus minimumTargetStimulus:Glutes:0.75; Hamstrings are support/collateral only and must not be delivered by adding Glute Bridge sets alone",
-            "coverageGap:laneIntentContract:substitutionFamily=low_axial_hip_extension_family only; true hinges, hamstring curls, back extensions, and generic glute accessories are not equivalent substitutions",
+            "movement=low_axial_hip_extension",
+            "classes=low_axial_hip_extension_anchor",
           ]),
-          missingEvidence: [
-            "laneJob:support_coverage",
-            "allowedExerciseClasses:hip_thrust",
-            "disallowedExerciseClasses:hinge,hamstring_curl,back_extension",
-            "directnessRequirement:direct_or_high_support",
-            "minimumTargetStimulus:Glutes:0.75",
-            "fatiguePreference:low_axial",
-            "loadabilityPreference:moderate_or_high",
-            "duplicatePolicy:prefer_variation_if_clean",
-            "fallbackPolicy:allow_labeled_fallback",
-            "identityPreservationMode:variation_allowed_within_lane_job",
-          ],
+          missingEvidence: [],
           coverageGaps: {
-            laneIntentContract: [
-              "lower_b:hinge_anchor has no proposed support_coverage laneSelectionIntent for low-axial Glutes support",
-              "requiredRole=laneJob:support_coverage for optional lower_b posterior-chain support, not anchor_overload or direct_floor",
-              "requiredMovementPattern=low_axial_hip_extension is not expressible in laneSelectionIntent v0 yet",
-              "requiredExerciseClass=low_axial_hip_extension_anchor is not expressible in laneSelectionIntent v0 yet; current v0 can only proxy the family through allowedExerciseClasses=hip_thrust",
-              "preferredPatterns=hip_thrust,glute_bridge,cable_pull_through,reverse_hyperextension when a clean variation exists",
-              "allowedClasses=low_axial_hip_extension_anchor hip-thrust/bridge/pull-through/reverse-hyper family",
-              "disallowedClasses=hinge_compound/hinge,knee_flexion_curl/hamstring_curl,back_extension,generic_glute_accessory",
-              "stimulusExpectation=meaningful Glutes stimulus minimumTargetStimulus:Glutes:0.75; Hamstrings are support/collateral only and must not be delivered by adding Glute Bridge sets alone",
-              "fatigueAndLoadability=low_axial fatiguePreference with moderate_or_high loadabilityPreference",
-              "directness=direct_or_high_support hip-extension support, not generic same-muscle accessory work",
-              "substitutionFamily=low_axial_hip_extension_family only; true hinges, hamstring curls, back extensions, and generic glute accessories are not equivalent substitutions",
-              "duplicateFamily=low_axial_hip_extension_anchor family with prefer_variation_if_clean before same-family reuse",
-              "failureMeaning=unresolved planner-owned lane-intent contract; keep diagnostic until a measured materializer projection proves value",
-            ],
+            laneIntentContract: [],
             ontologyInventory: [],
           },
-          nextSafeAction: "keep_diagnostic_watch",
+          nextSafeAction: "no_action",
         }),
       ]),
     );

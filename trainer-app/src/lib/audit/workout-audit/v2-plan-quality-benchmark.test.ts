@@ -650,8 +650,8 @@ function lowAxialLaneIntentProjectionFixture(
       scopedLaneId: "lower_b:hinge_anchor",
       slotId: "lower_b",
       laneId: "hinge_anchor",
-      intentAvailable: false,
-      baselineConsumedByProduction: false,
+      intentAvailable: true,
+      baselineConsumedByProduction: true,
       trialConsumesLaneIntent: false,
       baselineExerciseCount: 1,
       trialExerciseCount: 1,
@@ -690,14 +690,14 @@ function lowAxialLaneIntentProjectionFixture(
     contractTrial: {
       appliedContract: "low_axial_support_coverage",
       exactFutureContractApplied: true,
-      representedThrough: "audit_only_selection_plan_class_override",
+      representedThrough: "laneSelectionIntent_v0_diagnostic_override",
       futureMovementPattern: "low_axial_hip_extension",
       futureExerciseClass: "low_axial_hip_extension_anchor",
-      v0CanExpressFutureMovementAndClass: false,
-      v0ProxyAllowedExerciseClasses: ["hip_thrust"],
+      v0CanExpressFutureMovementAndClass: true,
+      v0ProxyAllowedExerciseClasses: ["low_axial_hip_extension_anchor"],
       evidence: [
-        "futureMovementPattern=low_axial_hip_extension_not_expressible_in_v0",
-        "futureExerciseClass=low_axial_hip_extension_anchor_not_expressible_in_v0",
+        "laneSelectionIntentV0.requiredMovementPattern=low_axial_hip_extension",
+        "laneSelectionIntentV0.allowedExerciseClasses=low_axial_hip_extension_anchor",
       ],
     },
     relevantLowerBPosteriorChainLanes: [
@@ -771,7 +771,7 @@ function lowAxialLaneIntentProjectionFixture(
 }
 
 describe("V2 plan quality benchmark", () => {
-  it("accepts the low-axial support-coverage trial with bounded watch items", () => {
+  it("accepts the low-axial support-coverage trial after explicit production consumption is represented", () => {
     const result = buildV2PlanQualityBenchmark(
       noRepairFixture({
         v2LaneIntentMaterializerProjection:
@@ -791,7 +791,7 @@ describe("V2 plan quality benchmark", () => {
         slotId: "lower_b",
         laneId: "hinge_anchor",
       },
-      decision: "accepted_with_watch_items",
+      decision: "accepted",
       week1Trainability: {
         status: "pass",
         hardBlockerCount: 0,
@@ -847,28 +847,13 @@ describe("V2 plan quality benchmark", () => {
     ).toEqual([]);
     expect(
       result.laneIntentAcceptanceProjection?.acceptance.watchItems,
-    ).toEqual(
-      expect.arrayContaining([
-        "lane_intent_explicitness:V2LaneSelectionIntentAudit",
-        "lane_intent_contract_design:low_axial_future_fields_not_in_v0",
-        "behavior_design_scope:production_consumption_requires_separate_slice",
-      ]),
-    );
+    ).toEqual([]);
     expect(
       result.laneIntentAcceptanceProjection?.acceptance.itemClassifications,
-    ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          item: "lane_intent_contract_design:low_axial_future_fields_not_in_v0",
-          status: "watch",
-          ownerSeam: "V2LaneSelectionIntent -> ExerciseSelectionPlan",
-          mustFixBeforeWeek1: false,
-        }),
-      ]),
-    );
+    ).toEqual([]);
     expect(
       result.laneIntentAcceptanceProjection?.acceptance.nextSafeSlice,
-    ).toBe("bounded_behavior_design_slice");
+    ).toBe("behavior_design_slice");
   });
 
   it("rejects the low-axial support-coverage trial when protected coverage regresses", () => {
@@ -916,7 +901,7 @@ describe("V2 plan quality benchmark", () => {
     });
   });
 
-  it("keeps the exact slot/week allocation trial accepted with watch items while lane intent remains diagnostic", () => {
+  it("keeps the exact slot/week allocation trial behavior-ready once lane intent passes", () => {
     const result = buildV2PlanQualityBenchmark(
       noRepairFixture({
         v2ConcentrationMaterializerProjection:
@@ -925,8 +910,8 @@ describe("V2 plan quality benchmark", () => {
     );
 
     expect(result.summary).toMatchObject({
-      passCount: 8,
-      warningCount: 1,
+      passCount: 9,
+      warningCount: 0,
       failCount: 0,
       missingEvidenceCount: 0,
       slotWeekAllocationReadiness: "candidate_for_acceptance_projection",
@@ -942,7 +927,7 @@ describe("V2 plan quality benchmark", () => {
       evidenceSource:
         "v2_plan_quality_benchmark_and_donor_offset_materializer_projection",
       representativeAccumulationWeeks: [2, 3, 4],
-      decision: "accepted_with_watch_items",
+      decision: "behavior_ready_candidate",
       protectedVolumeCoverage: {
         status: "pass",
         projectedWeekCount: 3,
@@ -1025,7 +1010,7 @@ describe("V2 plan quality benchmark", () => {
         .classificationCounts,
     ).toEqual({
       acceptedWatch: 3,
-      boundedOwnerWatch: 2,
+      boundedOwnerWatch: 1,
       blocker: 0,
       staleOrDiagnosticNoise: 0,
       ownerSpecificNextFix: 0,
@@ -1265,7 +1250,7 @@ describe("V2 plan quality benchmark", () => {
       affectsScoringOrGeneration: false,
       consumedByProduction: false,
       repairedProjectionUsedAs: "evidence_only_not_target_policy",
-      status: "warning",
+      status: "pass",
       deprecationReadiness: {
         status: "ready_for_review",
       },
@@ -1293,21 +1278,18 @@ describe("V2 plan quality benchmark", () => {
       expect.arrayContaining([
         expect.objectContaining({
           gate: "lane_intent_explicitness",
-          status: "warning",
+          status: "pass",
           ownerSeam: "V2LaneSelectionIntentAudit",
           evidenceSource: "pure_v2_lane_selection_intent_audit",
           evidence: expect.arrayContaining([
             "laneJobs=7",
-            "pass=6",
-            "warning=1",
+            "pass=7",
+            "warning=0",
             "fail=0",
             "missing=0",
-            "materializerConsumed=6",
-            "diagnosticOnly=1",
-            "low_axial_hip_extension:warning:lower_b:hinge_anchor:consumed=false",
-            "low_axial_hip_extension:laneIntentContractGap:requiredMovementPattern=low_axial_hip_extension is not expressible in laneSelectionIntent v0 yet",
-            "low_axial_hip_extension:laneIntentContractGap:requiredExerciseClass=low_axial_hip_extension_anchor is not expressible in laneSelectionIntent v0 yet; current v0 can only proxy the family through allowedExerciseClasses=hip_thrust",
-            "low_axial_hip_extension:laneIntentContractGap:failureMeaning=unresolved planner-owned lane-intent contract; keep diagnostic until a measured materializer projection proves value",
+            "materializerConsumed=7",
+            "diagnosticOnly=0",
+            "low_axial_hip_extension:pass:lower_b:hinge_anchor:consumed=true",
             "lane_intent_benchmark_is_read_only",
             "lane_intent_evidence_does_not_change_materializer_ranking",
           ]),
@@ -2291,7 +2273,7 @@ describe("V2 plan quality benchmark", () => {
       result.slotWeekAllocationAcceptanceProjection.acceptance
         .classificationCounts,
     ).toMatchObject({
-      boundedOwnerWatch: 2,
+      boundedOwnerWatch: 1,
       ownerSpecificNextFix: 0,
       blocker: 0,
     });

@@ -63,21 +63,6 @@ type BenchmarkLaneExpectation = {
   failureMeaning: string;
 };
 
-const LOW_AXIAL_SUPPORT_COVERAGE_CONTRACT_GAPS = [
-  "requiredRole=laneJob:support_coverage for optional lower_b posterior-chain support, not anchor_overload or direct_floor",
-  "requiredMovementPattern=low_axial_hip_extension is not expressible in laneSelectionIntent v0 yet",
-  "requiredExerciseClass=low_axial_hip_extension_anchor is not expressible in laneSelectionIntent v0 yet; current v0 can only proxy the family through allowedExerciseClasses=hip_thrust",
-  "preferredPatterns=hip_thrust,glute_bridge,cable_pull_through,reverse_hyperextension when a clean variation exists",
-  "allowedClasses=low_axial_hip_extension_anchor hip-thrust/bridge/pull-through/reverse-hyper family",
-  "disallowedClasses=hinge_compound/hinge,knee_flexion_curl/hamstring_curl,back_extension,generic_glute_accessory",
-  "stimulusExpectation=meaningful Glutes stimulus minimumTargetStimulus:Glutes:0.75; Hamstrings are support/collateral only and must not be delivered by adding Glute Bridge sets alone",
-  "fatigueAndLoadability=low_axial fatiguePreference with moderate_or_high loadabilityPreference",
-  "directness=direct_or_high_support hip-extension support, not generic same-muscle accessory work",
-  "substitutionFamily=low_axial_hip_extension_family only; true hinges, hamstring curls, back extensions, and generic glute accessories are not equivalent substitutions",
-  "duplicateFamily=low_axial_hip_extension_anchor family with prefer_variation_if_clean before same-family reuse",
-  "failureMeaning=unresolved planner-owned lane-intent contract; keep diagnostic until a measured materializer projection proves value",
-];
-
 export type V2LaneSelectionIntentBenchmark = {
   version: 1;
   source: "v2_lane_selection_intent_benchmark";
@@ -236,7 +221,9 @@ const HIGH_RISK_LANE_EXPECTATIONS: BenchmarkLaneExpectation[] = [
     required: false,
     expected: {
       laneJob: "support_coverage",
-      allowedExerciseClasses: ["hip_thrust"],
+      requiredMovementPattern: "low_axial_hip_extension",
+      preferredMovementPatterns: ["low_axial_hip_extension"],
+      allowedExerciseClasses: ["low_axial_hip_extension_anchor"],
       disallowedExerciseClasses: ["hinge", "hamstring_curl", "back_extension"],
       directnessRequirement: "direct_or_high_support",
       minimumTargetStimulus: {
@@ -249,14 +236,8 @@ const HIGH_RISK_LANE_EXPECTATIONS: BenchmarkLaneExpectation[] = [
       fallbackPolicy: "allow_labeled_fallback",
       identityPreservationMode: "variation_allowed_within_lane_job",
     },
-    coverageGaps: {
-      laneIntentContract: [
-        "lower_b:hinge_anchor has no proposed support_coverage laneSelectionIntent for low-axial Glutes support",
-        ...LOW_AXIAL_SUPPORT_COVERAGE_CONTRACT_GAPS,
-      ],
-    },
     failureMeaning:
-      "low-axial hip-extension support remains a planner-owned contract watch until laneSelectionIntent can express a support_coverage job for loadable low-axial hip extension with meaningful Glutes stimulus, Hamstrings support-only semantics, low axial fatigue, clean low-axial variation preference, and explicit disallowance of true hinge overload, knee-flexion curl substitution, back-extension/lower-back-heavy closure, and generic glute accessory work; taxonomy now recognizes Reverse Hyperextension as low_axial_hip_extension_anchor",
+      "low-axial hip-extension support must stay planner-owned and materializer-consumed without falling back to true hinge overload, knee-flexion curl substitution, back-extension/lower-back-heavy closure, or generic glute accessory work",
   },
 ];
 

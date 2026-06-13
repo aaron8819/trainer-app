@@ -862,6 +862,7 @@ function classIdsForLaneSelectionIntentClass(
     case "hinge":
       return ["hinge_compound"];
     case "hip_thrust":
+    case "low_axial_hip_extension_anchor":
       return ["low_axial_hip_extension_anchor"];
     case "shoulder_biased_press":
     case "vertical_press":
@@ -897,13 +898,25 @@ function exerciseTextMatchesLaneSelectionIntentClass(
   const text = normalizedExerciseText(exercise);
   switch (exerciseClass) {
     case "back_extension":
-      return hasAnyNormalizedPhrase(text, ["back extension", "hyperextension"]);
+      return (
+        hasAnyNormalizedPhrase(text, ["back extension", "hyperextension"]) &&
+        !hasAnyNormalizedPhrase(text, ["reverse hyper", "reverse hyperextension"])
+      );
     case "pullover":
       return hasAnyNormalizedPhrase(text, ["pullover", "pull over"]);
     case "straight_arm_pulldown":
       return hasAnyNormalizedPhrase(text, ["straight arm pulldown", "straight arm"]);
     case "hip_thrust":
       return hasAnyNormalizedPhrase(text, ["hip thrust", "glute bridge"]);
+    case "low_axial_hip_extension_anchor":
+      return hasAnyNormalizedPhrase(text, [
+        "hip thrust",
+        "glute bridge",
+        "pull through",
+        "pull-through",
+        "reverse hyper",
+        "reverse hyperextension",
+      ]);
     case "hinge":
       return hasAnyMovementPattern(exercise, ["hinge"]) ||
         hasAnyNormalizedPhrase(text, ["deadlift", "rdl", "stiff leg", "good morning"]);
@@ -972,6 +985,15 @@ function matchesRequiredMovementPattern(
         hasAnyMovementPattern(exercise, ["knee_flexion", "flexion", "isolation"]) ||
         hasAnyNormalizedPhrase(text, ["leg curl", "hamstring curl", "nordic"])
       );
+    case "low_axial_hip_extension":
+      return hasAnyNormalizedPhrase(text, [
+        "hip thrust",
+        "glute bridge",
+        "pull through",
+        "pull-through",
+        "reverse hyper",
+        "reverse hyperextension",
+      ]);
     case "calf_raise":
       return hasAnyMovementPattern(exercise, ["isolation"]) ||
         hasAnyNormalizedPhrase(text, ["calf raise"]);

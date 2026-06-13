@@ -286,6 +286,31 @@ const hamstringCurlIntent = laneSelectionIntent({
   identityPreservationMode: "variation_allowed_within_lane_job",
 });
 
+const lowAxialSupportIntent = laneSelectionIntent({
+  version: 0,
+  source: "v2_planner_policy",
+  contract: "laneSelectionIntent",
+  readOnly: true,
+  affectsScoringOrGeneration: false,
+  consumedByMaterializer: true,
+  laneJob: "support_coverage",
+  requiredMovementPattern: "low_axial_hip_extension",
+  preferredMovementPatterns: ["low_axial_hip_extension"],
+  allowedExerciseClasses: ["low_axial_hip_extension_anchor"],
+  disallowedExerciseClasses: ["hinge", "hamstring_curl", "back_extension"],
+  directnessRequirement: "direct_or_high_support",
+  minimumTargetStimulus: {
+    muscle: "Glutes",
+    minimumPerSetStimulus: 0.75,
+  },
+  fatiguePreference: "low_axial",
+  loadabilityPreference: "moderate_or_high",
+  duplicatePolicy: "prefer_variation_if_clean",
+  capacityPriority: "high",
+  fallbackPolicy: "allow_labeled_fallback",
+  identityPreservationMode: "variation_allowed_within_lane_job",
+});
+
 const calfDirectSupportIntent = laneSelectionIntent({
   version: 0,
   source: "v2_planner_policy",
@@ -2115,6 +2140,130 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       .toBe("cable-pull-through");
   });
 
+  it("consumes low-axial hinge-anchor support intent without accepting hinge, curl, back-extension, or generic glute fallback", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "hinge_anchor",
+          role: "anchor",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          acceptableExerciseClasses: [
+            "hinge_compound",
+            "knee_flexion_curl",
+            "low_axial_hip_extension_anchor",
+          ],
+          laneSelectionIntent: lowAxialSupportIntent,
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "romanian-deadlift",
+          name: "Romanian Deadlift",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: {
+            Hamstrings: 1,
+            Glutes: 0.8,
+            "Lower Back": 0.25,
+          },
+          isCompound: true,
+          isMainLiftEligible: true,
+          fatigueCost: 2,
+        }),
+        exercise({
+          exerciseId: "seated-leg-curl",
+          name: "Seated Leg Curl",
+          primaryMuscles: ["Hamstrings"],
+          movementPatterns: ["flexion", "isolation"],
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "back-extension",
+          name: "45-Degree Back Extension",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          secondaryMuscles: ["Lower Back"],
+          movementPatterns: ["extension"],
+          stimulusByMusclePerSet: { Glutes: 0.65, "Lower Back": 0.35 },
+          isCompound: true,
+          fatigueCost: 2,
+        }),
+        exercise({
+          exerciseId: "glute-kickback",
+          name: "Cable Glute Kickback",
+          primaryMuscles: ["Glutes"],
+          movementPatterns: ["isolation"],
+          stimulusByMusclePerSet: { Glutes: 1, "Lower Back": 0 },
+          fatigueCost: 1,
+        }),
+        exercise({
+          exerciseId: "barbell-hip-thrust",
+          name: "Barbell Hip Thrust",
+          primaryMuscles: ["Glutes", "Hamstrings"],
+          stimulusByMusclePerSet: {
+            Glutes: 1,
+            Hamstrings: 0.2,
+            "Lower Back": 0.25,
+          },
+          isCompound: true,
+          fatigueCost: 2,
+        }),
+        exercise({
+          exerciseId: "cable-pull-through",
+          name: "Cable Pull-Through",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: {
+            Hamstrings: 0.8,
+            Glutes: 0.8,
+            "Lower Back": 0.1,
+          },
+          isCompound: true,
+          fatigueCost: 1,
+        }),
+      ],
+    });
+
+    expect(result.blockers).toEqual([]);
+    expect(exerciseForLane(result, "upper_a", "hinge_anchor").exerciseId)
+      .toBe("barbell-hip-thrust");
+  });
+
+  it("blocks the low-axial support intent when no low-axial candidate exists", () => {
+    const result = materialize({
+      plan: plan([
+        lane({
+          laneId: "hinge_anchor",
+          role: "anchor",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          acceptableExerciseClasses: [
+            "hinge_compound",
+            "low_axial_hip_extension_anchor",
+          ],
+          laneSelectionIntent: lowAxialSupportIntent,
+        }),
+      ]),
+      inventory: [
+        exercise({
+          exerciseId: "romanian-deadlift",
+          name: "Romanian Deadlift",
+          primaryMuscles: ["Hamstrings", "Glutes"],
+          movementPatterns: ["hinge"],
+          stimulusByMusclePerSet: { Hamstrings: 1, Glutes: 0.8 },
+          isCompound: true,
+          isMainLiftEligible: true,
+          fatigueCost: 2,
+        }),
+      ],
+    });
+
+    expect(result.status).toBe("blocked");
+    expect(result.blockers).toContainEqual({
+      slotId: "upper_a",
+      laneId: "hinge_anchor",
+      reason: "no_class_match",
+    });
+  });
+
   it("keeps RDL and SLDL valid as hinge anchors", () => {
     const hingeVariants = [
       ["rdl", "Romanian Deadlift"],
@@ -3452,7 +3601,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       setCount: 4,
     });
     expect(exerciseForLane(result, "lower_b", "hinge_anchor")).toMatchObject({
-      exerciseId: "romanian-deadlift",
+      exerciseId: "barbell-hip-thrust",
       setCount: 3,
     });
     expect(exerciseForLane(result, "lower_b", "knee_flexion_curl"))

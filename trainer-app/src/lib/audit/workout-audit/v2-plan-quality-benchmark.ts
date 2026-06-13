@@ -1584,7 +1584,8 @@ function buildLaneIntentAcceptanceProjection(input: {
     ...(projection?.contractTrial.v0CanExpressFutureMovementAndClass === false
       ? ["lane_intent_contract_design:low_axial_future_fields_not_in_v0"]
       : []),
-    ...(projection?.nextSafeAction === "run_read_only_acceptance_projection"
+    ...(projection?.nextSafeAction === "run_read_only_acceptance_projection" &&
+    projection.targetLane.baselineConsumedByProduction !== true
       ? ["behavior_design_scope:production_consumption_requires_separate_slice"]
       : []),
   ]);

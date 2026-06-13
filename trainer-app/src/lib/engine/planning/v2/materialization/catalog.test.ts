@@ -180,6 +180,12 @@ describe("V2 materialization exercise catalog coverage", () => {
     expect(classIdsForCatalogExercise("Preacher Curl")).toContain(
       "biceps_isolation",
     );
+    expect(classIdsForCatalogExercise("Reverse Hyperextension")).toEqual([
+      "low_axial_hip_extension_anchor",
+    ]);
+    expect(classIdsForCatalogExercise("Back Extension (45 Degree)")).not.toContain(
+      "low_axial_hip_extension_anchor",
+    );
 
     const landminePress = materializationExercise("Landmine Press");
     const landmineChestClass = matchV2ExerciseClasses(landminePress).find(

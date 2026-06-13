@@ -419,7 +419,6 @@ describe("buildV2LaneSelectionIntentBenchmark", () => {
           materializerConsumed: false,
           evidence: expect.arrayContaining([
             "coverageGap:laneIntentContract:missing hip-extension movement-pattern value; current v0 can only proxy the family through allowedExerciseClasses=hip_thrust",
-            "coverageGap:ontologyInventory:Reverse Hyperextension has low-axial Glutes/Hamstrings metadata but currently misses low_axial_hip_extension_anchor because taxonomy phrase coverage matches reverse hyper, not reverse hyperextension",
           ]),
           missingEvidence: [
             "laneJob:support_coverage",
@@ -438,9 +437,7 @@ describe("buildV2LaneSelectionIntentBenchmark", () => {
               "missing hip-extension movement-pattern value; current v0 can only proxy the family through allowedExerciseClasses=hip_thrust",
               "lower_b:hinge_anchor has no proposed support_coverage laneSelectionIntent for low-axial Glutes support",
             ],
-            ontologyInventory: [
-              "Reverse Hyperextension has low-axial Glutes/Hamstrings metadata but currently misses low_axial_hip_extension_anchor because taxonomy phrase coverage matches reverse hyper, not reverse hyperextension",
-            ],
+            ontologyInventory: [],
           },
           nextSafeAction: "keep_diagnostic_watch",
         }),

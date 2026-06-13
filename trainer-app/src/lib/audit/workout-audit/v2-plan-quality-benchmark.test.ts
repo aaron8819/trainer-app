@@ -1012,7 +1012,6 @@ describe("V2 plan quality benchmark", () => {
             "diagnosticOnly=1",
             "low_axial_hip_extension:warning:lower_b:hinge_anchor:consumed=false",
             "low_axial_hip_extension:laneIntentContractGap:missing hip-extension movement-pattern value; current v0 can only proxy the family through allowedExerciseClasses=hip_thrust",
-            "low_axial_hip_extension:ontologyInventoryGap:Reverse Hyperextension has low-axial Glutes/Hamstrings metadata but currently misses low_axial_hip_extension_anchor because taxonomy phrase coverage matches reverse hyper, not reverse hyperextension",
             "lane_intent_benchmark_is_read_only",
             "lane_intent_evidence_does_not_change_materializer_ranking",
           ]),

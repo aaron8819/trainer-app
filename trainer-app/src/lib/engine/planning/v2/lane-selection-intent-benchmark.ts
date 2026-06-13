@@ -239,12 +239,9 @@ const HIGH_RISK_LANE_EXPECTATIONS: BenchmarkLaneExpectation[] = [
         "missing hip-extension movement-pattern value; current v0 can only proxy the family through allowedExerciseClasses=hip_thrust",
         "lower_b:hinge_anchor has no proposed support_coverage laneSelectionIntent for low-axial Glutes support",
       ],
-      ontologyInventory: [
-        "Reverse Hyperextension has low-axial Glutes/Hamstrings metadata but currently misses low_axial_hip_extension_anchor because taxonomy phrase coverage matches reverse hyper, not reverse hyperextension",
-      ],
     },
     failureMeaning:
-      "low-axial hip-extension intent remains a watch item until the planner can separate low-axial glute-biased posterior-chain support from true hinge overload, knee-flexion curl work, generic glute accessories, and axial-fatigue-heavy hinge or back-extension patterns",
+      "low-axial hip-extension intent remains a watch item until the planner can separate low-axial glute-biased posterior-chain support from true hinge overload, knee-flexion curl work, generic glute accessories, and axial-fatigue-heavy hinge or back-extension patterns; taxonomy now recognizes Reverse Hyperextension as low_axial_hip_extension_anchor",
   },
 ];
 

@@ -341,6 +341,42 @@ describe("V2 exercise class taxonomy", () => {
     }
   });
 
+  it("classifies reverse hyperextension as low-axial hip-extension without crossing hinge or curl lanes", () => {
+    const reverseHyperextension = exercise({
+      exerciseId: "reverse-hyperextension",
+      name: "Reverse Hyperextension",
+      primaryMuscles: ["Glutes", "Hamstrings"],
+      secondaryMuscles: ["Lower Back"],
+      movementPatterns: ["extension"],
+      equipment: ["machine"],
+      stimulusByMusclePerSet: {
+        Glutes: 0.9,
+        Hamstrings: 0.5,
+        "Lower Back": 0.25,
+      },
+      isCompound: true,
+    });
+
+    expect(classIds(reverseHyperextension)).toEqual([
+      "low_axial_hip_extension_anchor",
+    ]);
+    expect(classIds(reverseHyperextension)).not.toContain("hinge_compound");
+    expect(classIds(reverseHyperextension)).not.toContain("knee_flexion_curl");
+
+    expect(
+      classIds(
+        exercise({
+          exerciseId: "cable-glute-kickback",
+          name: "Cable Glute Kickback",
+          primaryMuscles: ["Glutes"],
+          movementPatterns: ["isolation"],
+          equipment: ["cable"],
+          stimulusByMusclePerSet: { Glutes: 1, "Lower Back": 0 },
+        }),
+      ),
+    ).not.toContain("low_axial_hip_extension_anchor");
+  });
+
   it("classifies newly available machine variants without crossing guarded lanes", () => {
     expect(
       classIds(

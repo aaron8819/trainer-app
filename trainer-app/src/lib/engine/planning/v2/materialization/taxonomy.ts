@@ -387,6 +387,7 @@ function isTrueHingeAnchor(exercise: V2MaterializationExercise): boolean {
       "glute bridge",
       "hip thrust",
       "reverse hyper",
+      "reverse hyperextension",
       "back extension",
     ])
   );
@@ -608,6 +609,7 @@ function matchesClass(
           "hip thrust",
           "pull through",
           "reverse hyper",
+          "reverse hyperextension",
         ]) &&
         lowerBackStimulus(exercise) <= 0.5 &&
         !hasAnyText(text, ["deadlift", "rdl", "sldl"])

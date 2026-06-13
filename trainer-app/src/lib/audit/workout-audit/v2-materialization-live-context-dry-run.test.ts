@@ -295,6 +295,33 @@ describe("V2 live-context materializer projections", () => {
     expect(result.readiness).toBe("blocked");
     expect(result.protectedCoverageImpact.status).toBe("regressed");
     expect(result.materializerDeltas.targetLaneSetDelta).toBeLessThan(0);
+    expect(result.protectedCoverageLossCause).toMatchObject({
+      classification: "diagnostic_artifact",
+      primaryCause: "target_lane_marker_changes_set_budget_basis",
+      ownerSeam: "v2_strategy_row_materializer_projection",
+      targetLane: {
+        week: 1,
+        slotId: "upper_b",
+        laneId: "side_delt_isolation",
+        baselineSetBudget: { min: 4, preferred: 4, max: 4 },
+        trialSetBudget: { min: 3, preferred: 3, max: 3 },
+        baselineSetBudgetBasis: "support_direct_floor",
+        trialSetBudgetBasis: "class_ownership_allocation",
+        baselineMaterializedSets: 4,
+        trialMaterializedSets: 3,
+        selectionSetBudgetDelta: -1,
+        materializedSetDelta: -1,
+      },
+    });
+    expect(result.protectedCoverageLossCause.collateralLaneSetDeltas).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          laneId: "chest_second_exposure",
+          selectionSetBudgetDelta: 1,
+          materializedSetDelta: 1,
+        }),
+      ]),
+    );
     expect(result.nextSafeSlice).toBe(
       "inspect_materializer_or_concentration_regressions",
     );

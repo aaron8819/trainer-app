@@ -1153,6 +1153,9 @@ function compactPlannerOnlyNoRepair(
   const v2StrategyRowProtectedCoverage = asRecord(
     v2StrategyRowMaterializerProjection?.protectedCoverageImpact,
   );
+  const v2StrategyRowProtectedCoverageLossCause = asRecord(
+    v2StrategyRowMaterializerProjection?.protectedCoverageLossCause,
+  );
   const v2StrategyRowDuplicateConcentration = asRecord(
     v2StrategyRowMaterializerProjection?.duplicateConcentrationImpact,
   );
@@ -1857,6 +1860,24 @@ function compactPlannerOnlyNoRepair(
                         v2StrategyRowMaterializerDeltas?.changedSlotCount ?? 0,
                     },
                     protectedCoverageImpact: v2StrategyRowProtectedCoverage ?? {},
+                    protectedCoverageLossCause:
+                      v2StrategyRowProtectedCoverageLossCause
+                        ? {
+                            classification:
+                              v2StrategyRowProtectedCoverageLossCause
+                                .classification ?? "not_measured",
+                            primaryCause:
+                              v2StrategyRowProtectedCoverageLossCause
+                                .primaryCause ?? "not_measured",
+                            ownerSeam:
+                              v2StrategyRowProtectedCoverageLossCause
+                                .ownerSeam ?? "unknown",
+                            collateralLaneSetDeltaCount: asRecordArray(
+                              v2StrategyRowProtectedCoverageLossCause
+                                .collateralLaneSetDeltas,
+                            ).length,
+                          }
+                        : undefined,
                     duplicateConcentrationImpact:
                       v2StrategyRowDuplicateConcentration ?? {},
                     readiness:

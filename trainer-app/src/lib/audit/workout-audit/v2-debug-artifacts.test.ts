@@ -85,6 +85,39 @@ describe("buildV2DebugArtifacts", () => {
               targetLaneSetDelta: 1,
               netWeeklySetDelta: 1,
             },
+            protectedCoverageLossCause: {
+              classification: "diagnostic_artifact",
+              primaryCause: "target_lane_marker_changes_set_budget_basis",
+              ownerSeam: "v2_strategy_row_materializer_projection",
+              summary: "projection-only trial changed the lane budget basis",
+              targetLane: {
+                week: 1,
+                slotId: "upper_b",
+                laneId: "side_delt_isolation",
+                baselineSetBudget: { min: 4, preferred: 4, max: 4 },
+                trialSetBudget: { min: 3, preferred: 3, max: 3 },
+                baselineSetBudgetBasis: "support_direct_floor",
+                trialSetBudgetBasis: "class_ownership_allocation",
+                baselineMaterializedSets: 4,
+                trialMaterializedSets: 3,
+                selectionSetBudgetDelta: -1,
+                materializedSetDelta: -1,
+              },
+              collateralLaneSetDeltas: [
+                {
+                  slotId: "upper_b",
+                  laneId: "chest_second_exposure",
+                  baselineSetBudget: { min: 2, preferred: 2, max: 2 },
+                  trialSetBudget: { min: 2, preferred: 3, max: 3 },
+                  baselineSetBudgetBasis: "class_ownership_allocation",
+                  trialSetBudgetBasis: "class_ownership_allocation",
+                  baselineMaterializedSets: 2,
+                  trialMaterializedSets: 3,
+                  selectionSetBudgetDelta: 1,
+                  materializedSetDelta: 1,
+                },
+              ],
+            },
             duplicateConcentrationImpact: {
               status: "preserved",
               warningDelta: 0,
@@ -131,6 +164,11 @@ describe("buildV2DebugArtifacts", () => {
       v2StrategyRowMaterializerProjectionTotalSetDelta: 1,
       v2StrategyRowMaterializerProjectionTargetLaneSetDelta: 1,
       v2StrategyRowMaterializerProjectionBlockerDelta: 0,
+      v2StrategyRowMaterializerProjectionLossCause: "diagnostic_artifact",
+      v2StrategyRowMaterializerProjectionLossPrimaryCause:
+        "target_lane_marker_changes_set_budget_basis",
+      v2StrategyRowMaterializerProjectionLossOwnerSeam:
+        "v2_strategy_row_materializer_projection",
       v2StrategyRowMaterializerProjectionNextSafeSlice:
         "keep_blocked_until_owner_donor_or_acceptance_proof",
     });
@@ -152,6 +190,14 @@ describe("buildV2DebugArtifacts", () => {
       materializerDeltas: {
         totalSetDelta: 1,
         targetLaneSetDelta: 1,
+      },
+      protectedCoverageLossCause: {
+        classification: "diagnostic_artifact",
+        primaryCause: "target_lane_marker_changes_set_budget_basis",
+        targetLane: {
+          baselineSetBudgetBasis: "support_direct_floor",
+          trialSetBudgetBasis: "class_ownership_allocation",
+        },
       },
       nonConsumption: {
         demandOrMaterializer: false,

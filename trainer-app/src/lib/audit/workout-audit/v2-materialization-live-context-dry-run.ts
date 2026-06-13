@@ -801,6 +801,56 @@ export type V2StrategyRowMaterializerProjection = {
     targetLaneSetDelta: number;
     netWeeklySetDelta: number;
   };
+  protectedCoverageLossCause: {
+    classification:
+      | "materializer_ranking"
+      | "class_distribution"
+      | "capacity_selection"
+      | "taxonomy_lane_mapping"
+      | "diagnostic_artifact"
+      | "no_safe_fix"
+      | "not_measured";
+    primaryCause:
+      | "target_lane_marker_changes_set_budget_basis"
+      | "selection_budget_reduced_before_materialization"
+      | "selected_identity_changed"
+      | "materializer_blocked_or_seed_incompatible"
+      | "target_lane_not_regressed"
+      | "not_measured";
+    ownerSeam:
+      | "v2_strategy_row_materializer_projection"
+      | "V2SetDistributionIntent"
+      | "ExerciseSelectionPlan"
+      | "V2Materializer"
+      | "V2ExerciseClassTaxonomy"
+      | "unknown";
+    summary: string;
+    targetLane: {
+      week: number;
+      slotId: V2PlannerSlotId | "unknown";
+      laneId: string;
+      baselineSetBudget: V2PlannerSetRange;
+      trialSetBudget: V2PlannerSetRange;
+      baselineSetBudgetBasis: string;
+      trialSetBudgetBasis: string;
+      baselineMaterializedSets: number;
+      trialMaterializedSets: number;
+      selectionSetBudgetDelta: number;
+      materializedSetDelta: number;
+    };
+    collateralLaneSetDeltas: Array<{
+      slotId: string;
+      laneId: string;
+      baselineSetBudget: V2PlannerSetRange;
+      trialSetBudget: V2PlannerSetRange;
+      baselineSetBudgetBasis: string;
+      trialSetBudgetBasis: string;
+      baselineMaterializedSets: number;
+      trialMaterializedSets: number;
+      selectionSetBudgetDelta: number;
+      materializedSetDelta: number;
+    }>;
+  };
   duplicateConcentrationImpact: {
     status: "improved" | "preserved" | "regressed" | "not_measured";
     warningDelta: number;
@@ -2086,6 +2136,17 @@ export function buildV2StrategyRowMaterializerProjectionFromLiveContext(input: {
     concentrationDelta.warningDelta === 0 &&
     concentrationDelta.maxShareDelta === 0 &&
     concentrationDelta.highFatigueSetDelta === 0;
+  const protectedCoverageLossCause = summarizeStrategyRowProtectedCoverageLossCause({
+    baselinePlannerPolicy: baselineWeeklyPolicy,
+    trialPlannerPolicy: trialWeeklyPolicy,
+    baselinePlan,
+    trialPlan,
+    targetWeek,
+    targetSlotId,
+    targetLaneId,
+    protectedCoverageRegressed,
+    materializerRegressed,
+  });
   const readiness: V2StrategyRowMaterializerProjection["readiness"] =
     materializerRegressed ||
     protectedCoverageRegressed ||
@@ -2174,6 +2235,7 @@ export function buildV2StrategyRowMaterializerProjectionFromLiveContext(input: {
       targetLaneSetDelta: trialLaneSets - baselineLaneSets,
       netWeeklySetDelta: comparison.summary.totalSetDelta,
     },
+    protectedCoverageLossCause,
     duplicateConcentrationImpact: {
       status: concentrationRegressed
         ? "regressed"
@@ -2721,6 +2783,11 @@ function emptyStrategyRowMaterializerProjection(input: {
       targetLaneSetDelta: 0,
       netWeeklySetDelta: 0,
     },
+    protectedCoverageLossCause: emptyStrategyRowProtectedCoverageLossCause({
+      week: input.week,
+      slotId: input.slotId,
+      laneId: input.laneId,
+    }),
     duplicateConcentrationImpact: {
       status: "not_measured",
       warningDelta: 0,
@@ -5380,6 +5447,249 @@ function sumMaterializedExerciseSets(
   >["slots"][number]["exercises"],
 ): number {
   return exercises.reduce((sum, exercise) => sum + exercise.setCount, 0);
+}
+
+function selectionLaneFor(input: {
+  plannerPolicy: V2PlannerMesocyclePolicy;
+  slotId: string;
+  laneId: string;
+}):
+  | V2PlannerMesocyclePolicy["exerciseSelectionPlan"]["weeks"][number]["slots"][number]["lanes"][number]
+  | undefined {
+  return input.plannerPolicy.exerciseSelectionPlan.weeks
+    .flatMap((week) => week.slots)
+    .find((slot) => slot.slotId === input.slotId)
+    ?.lanes.find((lane) => lane.laneId === input.laneId);
+}
+
+function materializedSetCountForLane(input: {
+  plan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  slotId: string;
+  laneId: string;
+}): number {
+  return sumMaterializedExerciseSets(materializedExercisesForLane(input));
+}
+
+function setBudgetOrZero(
+  lane:
+    | V2PlannerMesocyclePolicy["exerciseSelectionPlan"]["weeks"][number]["slots"][number]["lanes"][number]
+    | undefined,
+): V2PlannerSetRange {
+  return {
+    min: lane?.setBudget.min ?? 0,
+    preferred: lane?.setBudget.preferred ?? 0,
+    max: lane?.setBudget.max ?? 0,
+  };
+}
+
+function setBudgetBasis(
+  lane:
+    | V2PlannerMesocyclePolicy["exerciseSelectionPlan"]["weeks"][number]["slots"][number]["lanes"][number]
+    | undefined,
+): string {
+  return lane?.setBudgetBasis ?? "unknown";
+}
+
+function strategyRowLaneBudgetTrace(input: {
+  baselinePlannerPolicy: V2PlannerMesocyclePolicy;
+  trialPlannerPolicy: V2PlannerMesocyclePolicy;
+  baselinePlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  trialPlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  slotId: string;
+  laneId: string;
+}): V2StrategyRowMaterializerProjection["protectedCoverageLossCause"]["collateralLaneSetDeltas"][number] {
+  const baselineLane = selectionLaneFor({
+    plannerPolicy: input.baselinePlannerPolicy,
+    slotId: input.slotId,
+    laneId: input.laneId,
+  });
+  const trialLane = selectionLaneFor({
+    plannerPolicy: input.trialPlannerPolicy,
+    slotId: input.slotId,
+    laneId: input.laneId,
+  });
+  const baselineSetBudget = setBudgetOrZero(baselineLane);
+  const trialSetBudget = setBudgetOrZero(trialLane);
+  const baselineMaterializedSets = materializedSetCountForLane({
+    plan: input.baselinePlan,
+    slotId: input.slotId,
+    laneId: input.laneId,
+  });
+  const trialMaterializedSets = materializedSetCountForLane({
+    plan: input.trialPlan,
+    slotId: input.slotId,
+    laneId: input.laneId,
+  });
+
+  return {
+    slotId: input.slotId,
+    laneId: input.laneId,
+    baselineSetBudget,
+    trialSetBudget,
+    baselineSetBudgetBasis: setBudgetBasis(baselineLane),
+    trialSetBudgetBasis: setBudgetBasis(trialLane),
+    baselineMaterializedSets,
+    trialMaterializedSets,
+    selectionSetBudgetDelta:
+      trialSetBudget.preferred - baselineSetBudget.preferred,
+    materializedSetDelta: trialMaterializedSets - baselineMaterializedSets,
+  };
+}
+
+function summarizeStrategyRowProtectedCoverageLossCause(input: {
+  baselinePlannerPolicy: V2PlannerMesocyclePolicy;
+  trialPlannerPolicy: V2PlannerMesocyclePolicy;
+  baselinePlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  trialPlan: ReturnType<typeof buildV2ExerciseMaterializationPlan>;
+  targetWeek: number;
+  targetSlotId: V2PlannerSlotId;
+  targetLaneId: string;
+  protectedCoverageRegressed: boolean;
+  materializerRegressed: boolean;
+}): V2StrategyRowMaterializerProjection["protectedCoverageLossCause"] {
+  const targetTrace = strategyRowLaneBudgetTrace({
+    baselinePlannerPolicy: input.baselinePlannerPolicy,
+    trialPlannerPolicy: input.trialPlannerPolicy,
+    baselinePlan: input.baselinePlan,
+    trialPlan: input.trialPlan,
+    slotId: input.targetSlotId,
+    laneId: input.targetLaneId,
+  });
+  const baselineTargetSlot =
+    input.baselinePlannerPolicy.exerciseSelectionPlan.weeks[0]?.slots.find(
+      (slot) => slot.slotId === input.targetSlotId,
+    );
+  const trialTargetSlot =
+    input.trialPlannerPolicy.exerciseSelectionPlan.weeks[0]?.slots.find(
+      (slot) => slot.slotId === input.targetSlotId,
+    );
+  const laneIds = uniqueSorted([
+    ...(baselineTargetSlot?.lanes.map((lane) => lane.laneId) ?? []),
+    ...(trialTargetSlot?.lanes.map((lane) => lane.laneId) ?? []),
+    ...((input.baselinePlan.slots.find((slot) => slot.slotId === input.targetSlotId)
+      ?.exercises.flatMap((exercise) => exercise.laneIds) ?? [])),
+    ...((input.trialPlan.slots.find((slot) => slot.slotId === input.targetSlotId)
+      ?.exercises.flatMap((exercise) => exercise.laneIds) ?? [])),
+  ]);
+  const collateralLaneSetDeltas = laneIds
+    .filter((laneId) => laneId !== input.targetLaneId)
+    .map((laneId) =>
+      strategyRowLaneBudgetTrace({
+        baselinePlannerPolicy: input.baselinePlannerPolicy,
+        trialPlannerPolicy: input.trialPlannerPolicy,
+        baselinePlan: input.baselinePlan,
+        trialPlan: input.trialPlan,
+        slotId: input.targetSlotId,
+        laneId,
+      }),
+    )
+    .filter(
+      (row) =>
+        row.selectionSetBudgetDelta !== 0 || row.materializedSetDelta !== 0,
+    );
+
+  const targetLane = {
+    week: input.targetWeek,
+    slotId: input.targetSlotId,
+    laneId: input.targetLaneId,
+    baselineSetBudget: targetTrace.baselineSetBudget,
+    trialSetBudget: targetTrace.trialSetBudget,
+    baselineSetBudgetBasis: targetTrace.baselineSetBudgetBasis,
+    trialSetBudgetBasis: targetTrace.trialSetBudgetBasis,
+    baselineMaterializedSets: targetTrace.baselineMaterializedSets,
+    trialMaterializedSets: targetTrace.trialMaterializedSets,
+    selectionSetBudgetDelta: targetTrace.selectionSetBudgetDelta,
+    materializedSetDelta: targetTrace.materializedSetDelta,
+  };
+
+  if (!input.protectedCoverageRegressed) {
+    return {
+      classification: "not_measured",
+      primaryCause: "target_lane_not_regressed",
+      ownerSeam: "unknown",
+      summary: "target lane did not lose materialized sets",
+      targetLane,
+      collateralLaneSetDeltas,
+    };
+  }
+
+  if (
+    targetTrace.baselineSetBudgetBasis === "support_direct_floor" &&
+    targetTrace.trialSetBudgetBasis === "class_ownership_allocation" &&
+    targetTrace.selectionSetBudgetDelta < 0
+  ) {
+    return {
+      classification: "diagnostic_artifact",
+      primaryCause: "target_lane_marker_changes_set_budget_basis",
+      ownerSeam: "v2_strategy_row_materializer_projection",
+      summary:
+        "projection-only target_lane marker switches the target lane from support_direct_floor budgeting to class_ownership_allocation, reducing the selected Side Delts lane budget before materialization",
+      targetLane,
+      collateralLaneSetDeltas,
+    };
+  }
+
+  if (targetTrace.selectionSetBudgetDelta < 0) {
+    return {
+      classification: "capacity_selection",
+      primaryCause: "selection_budget_reduced_before_materialization",
+      ownerSeam: "ExerciseSelectionPlan",
+      summary:
+        "target lane set budget is reduced before exact exercise materialization",
+      targetLane,
+      collateralLaneSetDeltas,
+    };
+  }
+
+  if (input.materializerRegressed) {
+    return {
+      classification: "materializer_ranking",
+      primaryCause: "materializer_blocked_or_seed_incompatible",
+      ownerSeam: "V2Materializer",
+      summary:
+        "materializer comparison reports a blocker or seed-shape regression while target lane sets fall",
+      targetLane,
+      collateralLaneSetDeltas,
+    };
+  }
+
+  return {
+    classification: "no_safe_fix",
+    primaryCause: "not_measured",
+    ownerSeam: "unknown",
+    summary:
+      "target lane regressed, but the current diagnostic does not isolate a safe owner",
+    targetLane,
+    collateralLaneSetDeltas,
+  };
+}
+
+function emptyStrategyRowProtectedCoverageLossCause(input: {
+  week: number;
+  slotId: V2PlannerSlotId | "unknown";
+  laneId: string;
+}): V2StrategyRowMaterializerProjection["protectedCoverageLossCause"] {
+  const zeroRange = { min: 0, preferred: 0, max: 0 };
+  return {
+    classification: "not_measured",
+    primaryCause: "not_measured",
+    ownerSeam: "unknown",
+    summary: "strategy row materializer projection was not measured",
+    targetLane: {
+      week: input.week,
+      slotId: input.slotId,
+      laneId: input.laneId,
+      baselineSetBudget: zeroRange,
+      trialSetBudget: zeroRange,
+      baselineSetBudgetBasis: "unknown",
+      trialSetBudgetBasis: "unknown",
+      baselineMaterializedSets: 0,
+      trialMaterializedSets: 0,
+      selectionSetBudgetDelta: 0,
+      materializedSetDelta: 0,
+    },
+    collateralLaneSetDeltas: [],
+  };
 }
 
 function exerciseNamesForIds(input: {

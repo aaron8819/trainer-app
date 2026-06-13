@@ -2050,6 +2050,9 @@ function buildIndexSummary(input: {
   const strategyRowMaterializerDeltas = asRecord(
     strategyRowMaterializer?.materializerDeltas,
   );
+  const strategyRowMaterializerLossCause = asRecord(
+    strategyRowMaterializer?.protectedCoverageLossCause,
+  );
   const repairScoreboard = asRecord(input.noRepair.repairPromotionScoreboard);
   const supportFloorGapInventory = asRecord(
     asRecord(repairScoreboard?.interpretation)?.supportFloorGapInventory,
@@ -2167,6 +2170,12 @@ function buildIndexSummary(input: {
       strategyRowMaterializerDeltas?.targetLaneSetDelta ?? null,
     v2StrategyRowMaterializerProjectionBlockerDelta:
       strategyRowMaterializerDeltas?.materializerBlockerDelta ?? null,
+    v2StrategyRowMaterializerProjectionLossCause:
+      strategyRowMaterializerLossCause?.classification ?? null,
+    v2StrategyRowMaterializerProjectionLossPrimaryCause:
+      strategyRowMaterializerLossCause?.primaryCause ?? null,
+    v2StrategyRowMaterializerProjectionLossOwnerSeam:
+      strategyRowMaterializerLossCause?.ownerSeam ?? null,
     v2StrategyRowMaterializerProjectionNextSafeSlice:
       strategyRowMaterializer?.nextSafeSlice ?? null,
     v2SupportFloorReadoutTrueOwnerCount:

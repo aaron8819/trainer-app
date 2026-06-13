@@ -1126,6 +1126,9 @@ function compactPlannerOnlyNoRepair(
   const v2StrategyToDemandProjection = asRecord(
     noRepair.strategyToDemandProjection,
   );
+  const v2StrategyToDemandCandidateInventory = asRecord(
+    v2StrategyToDemandProjection?.candidateInventory,
+  );
   const v2StrategyToDemandBehaviorTrial = asRecord(
     v2StrategyToDemandProjection?.boundedBehaviorTrial,
   );
@@ -1546,6 +1549,38 @@ function compactPlannerOnlyNoRepair(
                       v2StrategyToDemandProjection
                         .measuredCurrentNonRegressionSummary,
                     ) ?? {},
+                  candidateInventory: v2StrategyToDemandCandidateInventory
+                    ? {
+                        status:
+                          typeof v2StrategyToDemandCandidateInventory.status ===
+                          "string"
+                            ? v2StrategyToDemandCandidateInventory.status
+                            : "not_available",
+                        readOnly:
+                          v2StrategyToDemandCandidateInventory.readOnly === true,
+                        affectsScoringOrGeneration:
+                          v2StrategyToDemandCandidateInventory
+                            .affectsScoringOrGeneration === true
+                            ? true
+                            : false,
+                        consumedByDemandOrMaterializer:
+                          v2StrategyToDemandCandidateInventory
+                            .consumedByDemandOrMaterializer === true
+                            ? true
+                            : false,
+                        repairProjectionEvidenceUse:
+                          v2StrategyToDemandCandidateInventory
+                            .repairProjectionEvidenceUse ??
+                          "evidence_only_never_target_policy",
+                        summary:
+                          asRecord(
+                            v2StrategyToDemandCandidateInventory.summary,
+                          ) ?? {},
+                        limitationCount: asStringArray(
+                          v2StrategyToDemandCandidateInventory.limitations,
+                        ).length,
+                      }
+                    : undefined,
                   boundedBehaviorTrial:
                     v2StrategyToDemandBehaviorTrial
                       ? {

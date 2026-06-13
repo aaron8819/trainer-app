@@ -31,6 +31,8 @@ type MeasuredRedistributionProjection =
   BoundedTrial["measuredRedistributionProjection"];
 type MeasuredRedistributionProjectionRow =
   MeasuredRedistributionProjection["rows"][number];
+type CandidateInventory = V2StrategyToDemandProjection["candidateInventory"];
+type CandidateInventoryRow = CandidateInventory["rows"][number];
 type AlternateCandidateDiagnostic =
   MeasuredRedistributionProjection["alternateCandidateDiagnostic"];
 type MeasuredRedistributionGateKey =
@@ -1292,6 +1294,236 @@ function buildMeasuredRedistributionProjection(input: {
   };
 }
 
+function sameProjectionScope(input: {
+  left: Pick<ProjectionRow, "zone" | "scope" | "muscle" | "owner" | "action">;
+  right: Pick<ProjectionRow, "zone" | "scope" | "muscle" | "owner" | "action">;
+}): boolean {
+  return (
+    input.left.zone === input.right.zone &&
+    input.left.scope === input.right.scope &&
+    input.left.muscle === input.right.muscle &&
+    input.left.owner === input.right.owner &&
+    input.left.action === input.right.action
+  );
+}
+
+function ownerSeamForInventory(
+  owner: ProjectionRow["owner"],
+): CandidateInventoryRow["proposedOwnerSeam"] {
+  if (owner === "SlotDemandAllocation") {
+    return "SlotDemandAllocationByWeek";
+  }
+  return owner;
+}
+
+function evidenceSourceForInventory(input: {
+  row: ProjectionRow;
+  measuredRow: MeasuredRedistributionProjectionRow | undefined;
+}): CandidateInventoryRow["evidenceSource"] {
+  if (input.measuredRow) {
+    return "no_repair_projection";
+  }
+  return "performed_reality";
+}
+
+function candidateReadinessForInventory(input: {
+  row: ProjectionRow;
+  trialRow: BoundedTrialRow | undefined;
+  downstreamRow: DownstreamBehaviorProjectionRow | undefined;
+  measuredRow: MeasuredRedistributionProjectionRow | undefined;
+}): CandidateInventoryRow["readiness"] {
+  if (
+    input.row.readiness === "blocked" ||
+    input.trialRow?.trialStatus === "blocked" ||
+    input.measuredRow?.readiness === "blocked_by_measured_regression"
+  ) {
+    return "blocked";
+  }
+  if (
+    input.downstreamRow?.readiness === "needs_measured_redistribution_projection" ||
+    input.measuredRow?.readiness === "needs_more_measured_evidence"
+  ) {
+    return "candidate_for_read_only_projection";
+  }
+  return "diagnostic_only";
+}
+
+function requiredProofForInventory(input: {
+  row: ProjectionRow;
+  trialRow: BoundedTrialRow | undefined;
+  downstreamRow: DownstreamBehaviorProjectionRow | undefined;
+  measuredRow: MeasuredRedistributionProjectionRow | undefined;
+  measuredProjection: MeasuredRedistributionProjection;
+}): string[] {
+  return uniqueSorted([
+    ...input.row.behaviorPromotion.requiredEvidence,
+    ...(input.trialRow?.blockingReasons ?? []),
+    ...(input.downstreamRow?.blockingReasons ?? []),
+    ...(input.measuredRow?.blockingReasons ?? []),
+    ...(input.measuredRow
+      ? input.measuredProjection.blockerSummary.nextRequiredEvidence
+      : []),
+    "seed_runtime_receipt_db_non_consumption_must_remain_proven",
+    "repaired_projection_must_remain_evidence_only_not_target_policy",
+  ]);
+}
+
+function affectedSlotIds(input: {
+  trialRow: BoundedTrialRow | undefined;
+  downstreamRow: DownstreamBehaviorProjectionRow | undefined;
+  measuredRow: MeasuredRedistributionProjectionRow | undefined;
+}): string[] {
+  return uniqueSorted([
+    ...(input.trialRow?.redistributionContext.candidateSlotOwners ?? []),
+    ...(input.downstreamRow?.candidateSlotOwners ?? []),
+    ...(input.measuredRow?.candidateSlotOwners ?? []),
+    ...(input.measuredRow
+      ? Object.keys(input.measuredRow.impact.slotSetDeltaBySlot)
+      : []),
+  ]);
+}
+
+function buildCandidateInventory(input: {
+  rows: ProjectionRow[];
+  boundedBehaviorTrial: BoundedTrial;
+}): CandidateInventory {
+  const downstreamRows =
+    input.boundedBehaviorTrial.downstreamBehaviorProjection.rows;
+  const measuredProjection =
+    input.boundedBehaviorTrial.measuredRedistributionProjection;
+  const measuredRows = measuredProjection.rows;
+  const inventoryRows: CandidateInventoryRow[] = input.rows.map((row) => {
+    const trialRow = input.boundedBehaviorTrial.rows.find((candidate) =>
+      sameProjectionScope({ left: row, right: candidate }),
+    );
+    const downstreamRow = downstreamRows.find((candidate) =>
+      sameProjectionScope({ left: row, right: candidate }),
+    );
+    const measuredRow = measuredRows.find((candidate) =>
+      sameProjectionScope({ left: row, right: candidate }),
+    );
+    const evidenceSource = evidenceSourceForInventory({ row, measuredRow });
+    const readiness = candidateReadinessForInventory({
+      row,
+      trialRow,
+      downstreamRow,
+      measuredRow,
+    });
+
+    return {
+      evidenceSource,
+      affected: {
+        ...(row.muscle ? { muscle: row.muscle } : {}),
+        slotIds: affectedSlotIds({ trialRow, downstreamRow, measuredRow }),
+        laneIds: [],
+        weekNumbers: [],
+      },
+      proposedOwnerSeam: ownerSeamForInventory(row.owner),
+      suggestedFutureActionType: row.action,
+      evidenceClass: evidenceSource,
+      readiness,
+      requiredProofBeforeBehavior: requiredProofForInventory({
+        row,
+        trialRow,
+        downstreamRow,
+        measuredRow,
+        measuredProjection,
+      }),
+      sourceAttribution: uniqueSorted([
+        ...row.evidence,
+        ...(measuredRow
+          ? [
+              measuredProjection.source,
+              measuredProjection.projectionMode,
+              measuredProjection.blockerSummary.projectionScope,
+            ]
+          : []),
+      ]),
+      nonConsumption: {
+        demandOrMaterializer: false,
+        seedRuntimeReceiptDb: false,
+        acceptanceThreshold: false,
+      },
+    };
+  });
+  const ownerCounts: CandidateInventory["summary"]["ownerCounts"] = {
+    MesocycleDemand: 0,
+    WeeklyDemandCurve: 0,
+    SlotDemandAllocationByWeek: 0,
+    SetDistributionIntent: 0,
+    unknown: 0,
+  };
+  for (const row of inventoryRows) {
+    ownerCounts[row.proposedOwnerSeam] += 1;
+  }
+  const topCandidate =
+    inventoryRows.find(
+      (row) => row.readiness === "candidate_for_read_only_projection",
+    ) ?? inventoryRows[0];
+
+  return {
+    version: 1,
+    source: "v2_strategy_to_demand_candidate_inventory",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: false,
+    repairProjectionEvidenceUse: "evidence_only_never_target_policy",
+    status:
+      inventoryRows.length === 0
+        ? "not_available"
+        : inventoryRows.every((row) => row.readiness === "blocked")
+          ? "blocked"
+          : "available_with_limitations",
+    rows: inventoryRows,
+    summary: {
+      rowCount: inventoryRows.length,
+      performedRealityCount: inventoryRows.filter(
+        (row) => row.evidenceSource === "performed_reality",
+      ).length,
+      benchmarkWatchCount: inventoryRows.filter(
+        (row) => row.evidenceSource === "benchmark_watch",
+      ).length,
+      noRepairProjectionCount: inventoryRows.filter(
+        (row) => row.evidenceSource === "no_repair_projection",
+      ).length,
+      repairOnlyCount: inventoryRows.filter(
+        (row) => row.evidenceSource === "repair_only",
+      ).length,
+      blockedCount: inventoryRows.filter((row) => row.readiness === "blocked")
+        .length,
+      diagnosticOnlyCount: inventoryRows.filter(
+        (row) => row.readiness === "diagnostic_only",
+      ).length,
+      candidateForReadOnlyProjectionCount: inventoryRows.filter(
+        (row) => row.readiness === "candidate_for_read_only_projection",
+      ).length,
+      ownerCounts,
+      ...(topCandidate
+        ? {
+            topCandidate: {
+              evidenceSource: topCandidate.evidenceSource,
+              ...(topCandidate.affected.muscle
+                ? { muscle: topCandidate.affected.muscle }
+                : {}),
+              proposedOwnerSeam: topCandidate.proposedOwnerSeam,
+              suggestedFutureActionType:
+                topCandidate.suggestedFutureActionType,
+              readiness: topCandidate.readiness,
+              requiredProofBeforeBehavior:
+                topCandidate.requiredProofBeforeBehavior.slice(0, 6),
+            },
+          }
+        : {}),
+    },
+    limitations: [
+      "candidate_inventory_is_read_only_and_non_binding",
+      "row_detail_is_for_debug_artifact_not_main_artifact_policy",
+      "benchmark_watch_and_repair_only_sources_are_counted_only_when_explicit_evidence_is_wired",
+      "does_not_mutate_mesocycle_demand_weekly_curve_slot_allocation_set_distribution_materializer_seed_runtime_receipts_or_db",
+    ],
+  };
+}
+
 function buildBoundedBehaviorTrial(input: {
   rows: ProjectionRow[];
   slotOwnedPlan?: V2SlotOwnedDemandAdjustmentPlan;
@@ -1476,6 +1708,10 @@ export function buildV2StrategyToDemandProjection(
     v2SetDistributionIntent: input.v2SetDistributionIntent,
     strategyProjectionDiff: input.strategyProjectionDiff,
   });
+  const candidateInventory = buildCandidateInventory({
+    rows,
+    boundedBehaviorTrial,
+  });
 
   return {
     version: 1,
@@ -1535,6 +1771,7 @@ export function buildV2StrategyToDemandProjection(
       totalNetNewVolumeDelta,
     },
     boundedBehaviorTrial,
+    candidateInventory,
     nonMutationGates: {
       noMesocycleDemandMutation: "pass",
       noWeeklyCurveMutation: "pass",

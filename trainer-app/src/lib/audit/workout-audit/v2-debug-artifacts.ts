@@ -526,6 +526,65 @@ function compactStrategyDiagnostic(value: unknown): JsonRecord {
   };
 }
 
+function compactStrategyToDemandProjection(value: unknown): JsonRecord {
+  const projection = asRecord(value);
+  if (!projection) {
+    return { status: "not_available" };
+  }
+  const candidateInventory = asRecord(projection.candidateInventory);
+  const candidateRows = asRecordArray(candidateInventory?.rows);
+  return {
+    status: projection.status ?? "not_available",
+    readOnly: projection.readOnly === true,
+    affectsScoringOrGeneration:
+      projection.affectsScoringOrGeneration === true ? true : false,
+    consumedByDemandOrMaterializer:
+      projection.consumedByDemandOrMaterializer === true ? true : false,
+    projectionMode:
+      projection.projectionMode ?? "read_only_non_mutating_join",
+    summary: asRecord(projection.summary) ?? {},
+    measuredCurrentNonRegressionSummary:
+      asRecord(projection.measuredCurrentNonRegressionSummary) ?? {},
+    candidateInventory: candidateInventory
+      ? {
+          status: candidateInventory.status ?? "not_available",
+          readOnly: candidateInventory.readOnly === true,
+          affectsScoringOrGeneration:
+            candidateInventory.affectsScoringOrGeneration === true
+              ? true
+              : false,
+          consumedByDemandOrMaterializer:
+            candidateInventory.consumedByDemandOrMaterializer === true
+              ? true
+              : false,
+          repairProjectionEvidenceUse:
+            candidateInventory.repairProjectionEvidenceUse ??
+            "evidence_only_never_target_policy",
+          summary: asRecord(candidateInventory.summary) ?? {},
+          rows: candidateRows.map((row) => ({
+            evidenceSource: row.evidenceSource,
+            affected: asRecord(row.affected) ?? {},
+            proposedOwnerSeam: row.proposedOwnerSeam,
+            suggestedFutureActionType: row.suggestedFutureActionType,
+            evidenceClass: row.evidenceClass,
+            readiness: row.readiness,
+            requiredProofBeforeBehavior: asStringArray(
+              row.requiredProofBeforeBehavior,
+            ),
+            sourceAttribution: asStringArray(row.sourceAttribution),
+            nonConsumption: asRecord(row.nonConsumption) ?? {},
+          })),
+          limitationCount: countArray(candidateInventory.limitations),
+        }
+      : undefined,
+    nonMutationGates: asRecord(projection.nonMutationGates) ?? {},
+    nextSafeAction:
+      typeof projection.nextSafeAction === "string"
+        ? projection.nextSafeAction
+        : "collect_more_evidence",
+  };
+}
+
 function compactPromotionReadiness(value: unknown): JsonRecord {
   const diagnostic = asRecord(value);
   const readiness = asRecord(diagnostic?.strategyHypothesisPromotionReadiness);
@@ -929,6 +988,7 @@ function buildFullShardData(
         ? {
             v2MesocycleStrategyDiagnostic:
               noRepair.v2MesocycleStrategyDiagnostic,
+            strategyToDemandProjection: noRepair.strategyToDemandProjection,
           }
         : null;
     case "promotion-readiness":
@@ -998,6 +1058,9 @@ function buildCompactShardData(
       return {
         v2MesocycleStrategyDiagnostic: compactStrategyDiagnostic(
           noRepair.v2MesocycleStrategyDiagnostic,
+        ),
+        strategyToDemandProjection: compactStrategyToDemandProjection(
+          noRepair.strategyToDemandProjection,
         ),
       };
     case "promotion-readiness":
@@ -1973,6 +2036,15 @@ function buildIndexSummary(input: {
   const planQualityDeprecationReadiness = asRecord(
     planQualityBenchmark?.deprecationReadiness,
   );
+  const strategyToDemandProjection = asRecord(
+    input.noRepair.strategyToDemandProjection,
+  );
+  const strategyToDemandCandidateInventory = asRecord(
+    strategyToDemandProjection?.candidateInventory,
+  );
+  const strategyToDemandCandidateSummary = asRecord(
+    strategyToDemandCandidateInventory?.summary,
+  );
   const slotWeekAllocationAcceptanceProjection = asRecord(
     planQualityBenchmark?.slotWeekAllocationAcceptanceProjection,
   );
@@ -2118,6 +2190,17 @@ function buildIndexSummary(input: {
       slotWeekAllocationClassificationCounts?.blocker ?? null,
     v2SlotWeekAllocationAcceptanceNextSafeSlice:
       slotWeekAllocationAcceptance?.nextSafeSlice ?? null,
+    v2StrategyToDemandCandidateInventoryStatus:
+      strategyToDemandCandidateInventory?.status ?? "not_available",
+    v2StrategyToDemandCandidateInventoryRows:
+      strategyToDemandCandidateSummary?.rowCount ?? null,
+    v2StrategyToDemandCandidateForReadOnlyProjection:
+      strategyToDemandCandidateSummary?.candidateForReadOnlyProjectionCount ??
+      null,
+    v2StrategyToDemandCandidateBlocked:
+      strategyToDemandCandidateSummary?.blockedCount ?? null,
+    v2StrategyToDemandCandidateDiagnosticOnly:
+      strategyToDemandCandidateSummary?.diagnosticOnlyCount ?? null,
     writtenShardCount: input.shardMetadata.filter(
       (shard) => shard.status === "written",
     ).length,

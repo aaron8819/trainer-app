@@ -1279,6 +1279,95 @@ export type V2StrategyToDemandProjection = {
       | "keep_diagnostic_only";
     limitations: string[];
   };
+  candidateInventory: {
+    version: 1;
+    source: "v2_strategy_to_demand_candidate_inventory";
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    consumedByDemandOrMaterializer: false;
+    repairProjectionEvidenceUse: "evidence_only_never_target_policy";
+    status:
+      | "not_available"
+      | "available_with_limitations"
+      | "blocked";
+    rows: Array<{
+      evidenceSource:
+        | "performed_reality"
+        | "benchmark_watch"
+        | "no_repair_projection"
+        | "repair_only";
+      affected: {
+        muscle?: string;
+        slotIds: string[];
+        laneIds: string[];
+        weekNumbers: number[];
+      };
+      proposedOwnerSeam:
+        | "MesocycleDemand"
+        | "WeeklyDemandCurve"
+        | "SlotDemandAllocationByWeek"
+        | "SetDistributionIntent"
+        | "unknown";
+      suggestedFutureActionType:
+        V2StrategyToDemandDiff["rows"][number]["action"];
+      evidenceClass:
+        | "performed_reality"
+        | "benchmark_watch"
+        | "no_repair_projection"
+        | "repair_only";
+      readiness:
+        | "blocked"
+        | "diagnostic_only"
+        | "candidate_for_read_only_projection";
+      requiredProofBeforeBehavior: string[];
+      sourceAttribution: string[];
+      nonConsumption: {
+        demandOrMaterializer: false;
+        seedRuntimeReceiptDb: false;
+        acceptanceThreshold: false;
+      };
+    }>;
+    summary: {
+      rowCount: number;
+      performedRealityCount: number;
+      benchmarkWatchCount: number;
+      noRepairProjectionCount: number;
+      repairOnlyCount: number;
+      blockedCount: number;
+      diagnosticOnlyCount: number;
+      candidateForReadOnlyProjectionCount: number;
+      ownerCounts: Record<
+        | "MesocycleDemand"
+        | "WeeklyDemandCurve"
+        | "SlotDemandAllocationByWeek"
+        | "SetDistributionIntent"
+        | "unknown",
+        number
+      >;
+      topCandidate?: {
+        evidenceSource:
+          | "performed_reality"
+          | "benchmark_watch"
+          | "no_repair_projection"
+          | "repair_only";
+        muscle?: string;
+        proposedOwnerSeam:
+          | "MesocycleDemand"
+          | "WeeklyDemandCurve"
+          | "SlotDemandAllocationByWeek"
+          | "SetDistributionIntent"
+          | "unknown";
+        suggestedFutureActionType:
+          V2StrategyToDemandDiff["rows"][number]["action"];
+        readiness:
+          | "blocked"
+          | "diagnostic_only"
+          | "candidate_for_read_only_projection";
+        requiredProofBeforeBehavior: string[];
+      };
+    };
+    limitations: string[];
+  };
   nonMutationGates: {
     noMesocycleDemandMutation: "pass";
     noWeeklyCurveMutation: "pass";

@@ -3497,6 +3497,60 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
     );
     expect(projection.nextSafeAction).toBe("add_measured_redistribution_projection");
     expect(projection.consumedByDemandOrMaterializer).toBe(false);
+    expect(projection.candidateInventory).toMatchObject({
+      version: 1,
+      source: "v2_strategy_to_demand_candidate_inventory",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      repairProjectionEvidenceUse: "evidence_only_never_target_policy",
+      status: "available_with_limitations",
+      summary: {
+        rowCount: 1,
+        performedRealityCount: 1,
+        noRepairProjectionCount: 0,
+        repairOnlyCount: 0,
+        candidateForReadOnlyProjectionCount: 1,
+        ownerCounts: {
+          SlotDemandAllocationByWeek: 1,
+        },
+        topCandidate: {
+          evidenceSource: "performed_reality",
+          muscle: "Calves",
+          proposedOwnerSeam: "SlotDemandAllocationByWeek",
+          suggestedFutureActionType: "protect_floor",
+          readiness: "candidate_for_read_only_projection",
+        },
+      },
+    });
+    expect(projection.candidateInventory.rows[0]).toMatchObject({
+      evidenceSource: "performed_reality",
+      affected: {
+        muscle: "Calves",
+        slotIds: ["lower_a", "lower_b"],
+        laneIds: [],
+        weekNumbers: [],
+      },
+      proposedOwnerSeam: "SlotDemandAllocationByWeek",
+      suggestedFutureActionType: "protect_floor",
+      evidenceClass: "performed_reality",
+      readiness: "candidate_for_read_only_projection",
+      sourceAttribution: ["Calves:recurring_under_hit"],
+      nonConsumption: {
+        demandOrMaterializer: false,
+        seedRuntimeReceiptDb: false,
+        acceptanceThreshold: false,
+      },
+    });
+    expect(
+      projection.candidateInventory.rows[0].requiredProofBeforeBehavior,
+    ).toEqual(
+      expect.arrayContaining([
+        "materializer_non_regression_not_measured",
+        "repaired_projection_must_remain_evidence_only_not_target_policy",
+        "seed_runtime_receipt_db_non_consumption_must_remain_proven",
+      ]),
+    );
 
     const strategyProjectionDiff = buildV2MesocycleStrategyDiagnostic({
       strategyInput: buildStrategyInput(),
@@ -3622,6 +3676,34 @@ describe("buildV2MesocycleStrategyDiagnostic", () => {
       measuredProjection.boundedBehaviorTrial.measuredRedistributionProjection
         .nextSafeAction,
     ).toBe("resolve_measured_redistribution_regressions");
+    expect(measuredProjection.candidateInventory).toMatchObject({
+      summary: {
+        performedRealityCount: 0,
+        noRepairProjectionCount: 1,
+        blockedCount: 1,
+        candidateForReadOnlyProjectionCount: 0,
+      },
+    });
+    expect(measuredProjection.candidateInventory.rows[0]).toMatchObject({
+      evidenceSource: "no_repair_projection",
+      evidenceClass: "no_repair_projection",
+      readiness: "blocked",
+      sourceAttribution: [
+        "Calves:recurring_under_hit",
+        "combined_strategy_shadow_planner_only_no_repair",
+        "measured_shadow_projection",
+        "v2_strategy_to_demand_measured_redistribution_projection",
+      ],
+    });
+    expect(
+      measuredProjection.candidateInventory.rows[0].requiredProofBeforeBehavior,
+    ).toEqual(
+      expect.arrayContaining([
+        "net_new_volume_regression",
+        "projection_diff_not_ready_for_behavior_trial",
+        "repaired_projection_must_remain_evidence_only_not_target_policy",
+      ]),
+    );
     expect(measuredProjection.consumedByDemandOrMaterializer).toBe(false);
   });
 });

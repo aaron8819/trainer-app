@@ -621,7 +621,301 @@ function measuredSlotWeekAcceptanceProjectionFixture(
   >;
 }
 
+function lowAxialLaneIntentProjectionFixture(
+  overrides: Partial<
+    NonNullable<
+      MesocycleExplainPlannerOnlyNoRepair["v2LaneIntentMaterializerProjection"]
+    >
+  > = {},
+): NonNullable<
+  MesocycleExplainPlannerOnlyNoRepair["v2LaneIntentMaterializerProjection"]
+> {
+  return {
+    version: 1,
+    source: "v2_lane_intent_materializer_projection",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    dryRunOnly: true,
+    consumedByProduction: false,
+    consumedByDemandOrMaterializer: false,
+    status: "projected_with_limitations",
+    projectionMode: "lane_intent_shadow_materializer_dry_run",
+    trialId: "lower_b_hinge_anchor_low_axial_support_coverage_shadow",
+    comparedPlans: {
+      baselineAvailable: true,
+      trialAvailable: true,
+      inventoryExerciseCount: 40,
+    },
+    targetLane: {
+      scopedLaneId: "lower_b:hinge_anchor",
+      slotId: "lower_b",
+      laneId: "hinge_anchor",
+      intentAvailable: false,
+      baselineConsumedByProduction: false,
+      trialConsumesLaneIntent: false,
+      baselineExerciseCount: 1,
+      trialExerciseCount: 1,
+      baselineSetCount: 3,
+      trialSetCount: 3,
+      addedIdentities: ["Cable Pull-Through"],
+      removedIdentities: ["Stiff-Legged Deadlift"],
+    },
+    materializer: {
+      baselineStatus: "materialized",
+      trialStatus: "materialized",
+      baselineBlockerCount: 0,
+      trialBlockerCount: 0,
+      baselineSeedShapeCompatible: true,
+      trialSeedShapeCompatible: true,
+    },
+    candidateImpact: {
+      selectedIdentityDelta: 2,
+      totalSetDelta: 0,
+      targetLaneExerciseDelta: 0,
+      materializerBlockerDelta: 0,
+      regressionCount: 0,
+      regressions: [],
+      improvements: ["low_axial_glutes_support_coverage_improved"],
+      changedSlotCount: 1,
+      changedSlots: [
+        {
+          slotId: "lower_b",
+          exerciseCountDelta: 0,
+          setDelta: 0,
+          addedIdentityCount: 1,
+          removedIdentityCount: 1,
+        },
+      ],
+    },
+    contractTrial: {
+      appliedContract: "low_axial_support_coverage",
+      exactFutureContractApplied: true,
+      representedThrough: "audit_only_selection_plan_class_override",
+      futureMovementPattern: "low_axial_hip_extension",
+      futureExerciseClass: "low_axial_hip_extension_anchor",
+      v0CanExpressFutureMovementAndClass: false,
+      v0ProxyAllowedExerciseClasses: ["hip_thrust"],
+      evidence: [
+        "futureMovementPattern=low_axial_hip_extension_not_expressible_in_v0",
+        "futureExerciseClass=low_axial_hip_extension_anchor_not_expressible_in_v0",
+      ],
+    },
+    relevantLowerBPosteriorChainLanes: [
+      {
+        slotId: "lower_b",
+        laneId: "hinge_anchor",
+        baseline: [{ exerciseName: "Stiff-Legged Deadlift", setCount: 3 }],
+        trial: [{ exerciseName: "Cable Pull-Through", setCount: 3 }],
+        identityDelta: 2,
+        setDelta: 0,
+      },
+      {
+        slotId: "lower_b",
+        laneId: "knee_flexion_curl",
+        baseline: [{ exerciseName: "Seated Leg Curl", setCount: 3 }],
+        trial: [{ exerciseName: "Seated Leg Curl", setCount: 3 }],
+        identityDelta: 0,
+        setDelta: 0,
+      },
+    ],
+    lowAxialClosureStatus: {
+      baseline: "closed_without_low_axial_anchor",
+      trial: "closed_with_low_axial_anchor",
+      status: "improved",
+      evidence: ["low_axial_closure:improved"],
+    },
+    protectedCoverage: {
+      status: "improved",
+      protectedMuscles: ["Glutes"],
+      baselineLowAxialSets: 0,
+      trialLowAxialSets: 3,
+      lowAxialSetDelta: 3,
+    },
+    duplicateConcentrationFatigueImpact: {
+      status: "improved",
+      duplicateExerciseDelta: 0,
+      highFatigueSetDelta: -3,
+      fatigueWeightedSetDelta: -9,
+    },
+    exclusionProof: {
+      trueHingesExcluded: true,
+      hamstringCurlsExcluded: true,
+      backExtensionClosureExcluded: true,
+      genericGluteAccessoriesExcluded: true,
+      selectedExcludedIdentities: [],
+      evidence: [
+        "true_hinge_overload_not_selected_for_low_axial_trial",
+        "hamstring_curl_not_selected_for_low_axial_trial",
+        "back_extension_not_selected_for_low_axial_trial",
+        "generic_glute_accessory_not_selected_for_low_axial_trial",
+      ],
+    },
+    nonConsumption: {
+      productionPlannerMaterializerRanking: false,
+      seedRuntimeReceiptDb: false,
+      acceptanceThreshold: false,
+      repairBehavior: false,
+    },
+    blockersBeforeBehavior: [
+      "acceptance_gate_not_rerun",
+      "production_materializer_allowlist_unchanged",
+      "diagnostic_lane_intent_override_not_consumed_by_runtime",
+    ],
+    nextSafeAction: "run_read_only_acceptance_projection",
+    limitations: ["audit_only_low_axial_lane_intent_shadow_trial"],
+    safeForBehaviorPromotion: false,
+    ...overrides,
+  } as unknown as NonNullable<
+    MesocycleExplainPlannerOnlyNoRepair["v2LaneIntentMaterializerProjection"]
+  >;
+}
+
 describe("V2 plan quality benchmark", () => {
+  it("accepts the low-axial support-coverage trial with bounded watch items", () => {
+    const result = buildV2PlanQualityBenchmark(
+      noRepairFixture({
+        v2LaneIntentMaterializerProjection:
+          lowAxialLaneIntentProjectionFixture(),
+      }),
+    );
+
+    expect(result.laneIntentAcceptanceProjection).toMatchObject({
+      source: "v2_low_axial_lane_intent_acceptance_non_regression_projection",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      candidateSource: "V2LaneSelectionIntent",
+      trialId: "lower_b_hinge_anchor_low_axial_support_coverage_shadow",
+      targetLane: {
+        scopedLaneId: "lower_b:hinge_anchor",
+        slotId: "lower_b",
+        laneId: "hinge_anchor",
+      },
+      decision: "accepted_with_watch_items",
+      week1Trainability: {
+        status: "pass",
+        hardBlockerCount: 0,
+        mustFixBeforeWeek1: false,
+      },
+      protectedCoverage: {
+        status: "pass",
+        protectedMuscles: ["Glutes"],
+        glutesLowAxialSetDelta: 3,
+        hamstringsCurlPreserved: true,
+        lowerBPosteriorChainSetDelta: 0,
+      },
+      directSupportFloorPreservation: {
+        status: "pass",
+        supportFloorsGateStatus: "pass",
+        directWorkGateStatus: "pass",
+      },
+      materializerNonRegression: {
+        status: "pass",
+        selectedIdentityDelta: 2,
+        totalSetDelta: 0,
+        materializerBlockerDelta: 0,
+        regressionCount: 0,
+        seedShapeCompatible: true,
+      },
+      sessionSizeFatigueDistribution: {
+        status: "pass",
+        sessionSizeGateStatus: "pass",
+        highFatigueSetDelta: -3,
+      },
+      duplicateConcentrationImpact: {
+        status: "pass",
+        duplicateExerciseDelta: 0,
+      },
+      exclusions: {
+        status: "pass",
+        trueHingesExcluded: true,
+        hamstringCurlsExcluded: true,
+        backExtensionClosureExcluded: true,
+        genericGluteAccessoriesExcluded: true,
+        selectedExcludedIdentityCount: 0,
+      },
+      nonConsumption: {
+        seedRuntimeReceiptDbConsumed: false,
+        productionMaterializerConsumed: false,
+        acceptanceThresholdChanged: false,
+        persistenceChanged: false,
+        repairBehaviorChanged: false,
+      },
+    });
+    expect(
+      result.laneIntentAcceptanceProjection?.acceptance.blockers,
+    ).toEqual([]);
+    expect(
+      result.laneIntentAcceptanceProjection?.acceptance.watchItems,
+    ).toEqual(
+      expect.arrayContaining([
+        "lane_intent_explicitness:V2LaneSelectionIntentAudit",
+        "lane_intent_contract_design:low_axial_future_fields_not_in_v0",
+        "behavior_design_scope:production_consumption_requires_separate_slice",
+      ]),
+    );
+    expect(
+      result.laneIntentAcceptanceProjection?.acceptance.itemClassifications,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          item: "lane_intent_contract_design:low_axial_future_fields_not_in_v0",
+          status: "watch",
+          ownerSeam: "V2LaneSelectionIntent -> ExerciseSelectionPlan",
+          mustFixBeforeWeek1: false,
+        }),
+      ]),
+    );
+    expect(
+      result.laneIntentAcceptanceProjection?.acceptance.nextSafeSlice,
+    ).toBe("bounded_behavior_design_slice");
+  });
+
+  it("rejects the low-axial support-coverage trial when protected coverage regresses", () => {
+    const result = buildV2PlanQualityBenchmark(
+      noRepairFixture({
+        v2LaneIntentMaterializerProjection:
+          lowAxialLaneIntentProjectionFixture({
+            relevantLowerBPosteriorChainLanes: [
+              {
+                slotId: "lower_b",
+                laneId: "hinge_anchor",
+                baseline: [
+                  { exerciseName: "Stiff-Legged Deadlift", setCount: 3 },
+                ],
+                trial: [{ exerciseName: "Cable Pull-Through", setCount: 3 }],
+                identityDelta: 2,
+                setDelta: 0,
+              },
+              {
+                slotId: "lower_b",
+                laneId: "knee_flexion_curl",
+                baseline: [{ exerciseName: "Seated Leg Curl", setCount: 3 }],
+                trial: [],
+                identityDelta: 1,
+                setDelta: -3,
+              },
+            ],
+          }),
+      }),
+    );
+
+    expect(result.laneIntentAcceptanceProjection).toMatchObject({
+      decision: "rejected",
+      protectedCoverage: {
+        status: "fail",
+        hamstringsCurlPreserved: false,
+        lowerBPosteriorChainSetDelta: -3,
+      },
+      acceptance: {
+        blockers: expect.arrayContaining([
+          "protected_glutes_hamstrings_or_lower_body_coverage_regressed",
+        ]),
+        nextSafeSlice: "fix_acceptance_or_non_regression_blockers",
+      },
+    });
+  });
+
   it("keeps the exact slot/week allocation trial accepted with watch items while lane intent remains diagnostic", () => {
     const result = buildV2PlanQualityBenchmark(
       noRepairFixture({

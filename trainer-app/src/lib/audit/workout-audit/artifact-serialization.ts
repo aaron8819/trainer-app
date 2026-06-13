@@ -1108,6 +1108,12 @@ function compactPlannerOnlyNoRepair(
     asRecord(v2PlanQualityBenchmark?.slotWeekAllocationAcceptanceProjection)
       ?.acceptance,
   );
+  const v2PlanQualityLaneIntentAcceptanceProjection = asRecord(
+    v2PlanQualityBenchmark?.laneIntentAcceptanceProjection,
+  );
+  const v2PlanQualityLaneIntentAcceptance = asRecord(
+    v2PlanQualityLaneIntentAcceptanceProjection?.acceptance,
+  );
   const v2PhaseStrategy = asRecord(
     v2MesocycleStrategyDiagnostic?.phaseStrategy,
   );
@@ -1327,6 +1333,58 @@ function compactPlannerOnlyNoRepair(
                 nextSafeSlice: v2PlanQualitySlotWeekAcceptance.nextSafeSlice,
               }
             : undefined,
+          laneIntentAcceptanceProjection:
+            v2PlanQualityLaneIntentAcceptanceProjection
+              ? {
+                  decision: v2PlanQualityLaneIntentAcceptanceProjection.decision,
+                  trialId: v2PlanQualityLaneIntentAcceptanceProjection.trialId,
+                  targetLane:
+                    asRecord(
+                      v2PlanQualityLaneIntentAcceptanceProjection.targetLane,
+                    ) ?? {},
+                  watchItemCount: asStringArray(
+                    v2PlanQualityLaneIntentAcceptance?.watchItems,
+                  ).length,
+                  blockerCount: asStringArray(
+                    v2PlanQualityLaneIntentAcceptance?.blockers,
+                  ).length,
+                  nextSafeSlice:
+                    v2PlanQualityLaneIntentAcceptance?.nextSafeSlice,
+                  week1Trainability:
+                    asRecord(
+                      v2PlanQualityLaneIntentAcceptanceProjection
+                        .week1Trainability,
+                    ) ?? {},
+                  protectedCoverage:
+                    asRecord(
+                      v2PlanQualityLaneIntentAcceptanceProjection
+                        .protectedCoverage,
+                    ) ?? {},
+                  materializerNonRegression:
+                    asRecord(
+                      v2PlanQualityLaneIntentAcceptanceProjection
+                        .materializerNonRegression,
+                    ) ?? {},
+                  sessionSizeFatigueDistribution:
+                    asRecord(
+                      v2PlanQualityLaneIntentAcceptanceProjection
+                        .sessionSizeFatigueDistribution,
+                    ) ?? {},
+                  duplicateConcentrationImpact:
+                    asRecord(
+                      v2PlanQualityLaneIntentAcceptanceProjection
+                        .duplicateConcentrationImpact,
+                    ) ?? {},
+                  exclusions:
+                    asRecord(
+                      v2PlanQualityLaneIntentAcceptanceProjection.exclusions,
+                    ) ?? {},
+                  nonConsumption:
+                    asRecord(
+                      v2PlanQualityLaneIntentAcceptanceProjection.nonConsumption,
+                    ) ?? {},
+                }
+              : undefined,
           deprecationReadiness:
             v2PlanQualityBenchmarkDeprecationReadiness ?? {},
           gateStatuses: asRecordArray(v2PlanQualityBenchmark.gates).map(

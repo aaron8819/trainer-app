@@ -1947,6 +1947,123 @@ export type V2PlanQualityBenchmark = {
       persistenceChanged: false;
     };
   };
+  laneIntentAcceptanceProjection?: {
+    version: 1;
+    source: "v2_low_axial_lane_intent_acceptance_non_regression_projection";
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    consumedByProduction: false;
+    candidateSource: "V2LaneSelectionIntent";
+    evidenceSource: "v2_lane_intent_materializer_projection_and_plan_quality_benchmark";
+    trialId: string | null;
+    targetLane: {
+      scopedLaneId: string;
+      slotId: string;
+      laneId: string;
+    };
+    decision:
+      | "accepted"
+      | "accepted_with_watch_items"
+      | "rejected"
+      | "not_runnable";
+    week1Trainability: {
+      status: MesocycleExplainPlannerOnlyNoRepair["acceptanceClassification"]["basicMesocycleShapeStatus"];
+      replacementReadinessStatus: MesocycleExplainPlannerOnlyNoRepair["acceptanceClassification"]["replacementReadinessStatus"];
+      hardBlockerCount: number;
+      qualityWarningCount: number;
+      mustFixBeforeWeek1: boolean;
+    };
+    protectedCoverage: {
+      status: "pass" | "fail" | "unknown";
+      protectedMuscles: string[];
+      glutesLowAxialSetDelta: number | null;
+      hamstringsCurlPreserved: boolean;
+      lowerBPosteriorChainSetDelta: number | null;
+    };
+    directSupportFloorPreservation: {
+      status: "pass" | "fail" | "unknown";
+      supportFloorsGateStatus:
+        | "pass"
+        | "warning"
+        | "fail"
+        | "missing_evidence";
+      directWorkGateStatus:
+        | "pass"
+        | "warning"
+        | "fail"
+        | "missing_evidence";
+    };
+    materializerNonRegression: {
+      status: "pass" | "fail" | "unknown";
+      selectedIdentityDelta: number | null;
+      totalSetDelta: number | null;
+      materializerBlockerDelta: number | null;
+      regressionCount: number | null;
+      seedShapeCompatible: boolean | null;
+    };
+    sessionSizeFatigueDistribution: {
+      status: "pass" | "watch" | "fail" | "unknown";
+      sessionSizeGateStatus:
+        | "pass"
+        | "warning"
+        | "fail"
+        | "missing_evidence";
+      fatigueDistributionGateStatus:
+        | "pass"
+        | "warning"
+        | "fail"
+        | "missing_evidence";
+      highFatigueSetDelta: number | null;
+      fatigueWeightedSetDelta: number | null;
+    };
+    duplicateConcentrationImpact: {
+      status: "pass" | "watch" | "fail" | "unknown";
+      duplicateConcentrationGateStatus:
+        | "pass"
+        | "warning"
+        | "fail"
+        | "missing_evidence";
+      duplicateExerciseDelta: number | null;
+    };
+    exclusions: {
+      status: "pass" | "fail" | "unknown";
+      trueHingesExcluded: boolean;
+      hamstringCurlsExcluded: boolean;
+      backExtensionClosureExcluded: boolean;
+      genericGluteAccessoriesExcluded: boolean;
+      selectedExcludedIdentityCount: number | null;
+    };
+    acceptance: {
+      decision:
+        | "accepted"
+        | "accepted_with_watch_items"
+        | "rejected"
+        | "not_runnable";
+      watchItems: string[];
+      blockers: string[];
+      itemClassifications: Array<{
+        item: string;
+        status: "watch" | "blocker";
+        ownerSeam: string;
+        materiality: string;
+        mustFixBeforeWeek1: boolean;
+        smallestSafeNextAction: string;
+        evidence: string[];
+      }>;
+      nextSafeSlice:
+        | "behavior_design_slice"
+        | "bounded_behavior_design_slice"
+        | "fix_acceptance_or_non_regression_blockers"
+        | "collect_missing_projection_evidence";
+    };
+    nonConsumption: {
+      seedRuntimeReceiptDbConsumed: false;
+      productionMaterializerConsumed: false;
+      acceptanceThresholdChanged: false;
+      persistenceChanged: false;
+      repairBehaviorChanged: false;
+    };
+  };
   gates: Array<{
     gate:
       | "support_floors"

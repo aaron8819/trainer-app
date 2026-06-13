@@ -8,6 +8,9 @@ type BenchmarkGate = V2PlanQualityBenchmark["gates"][number];
 type BenchmarkStatus = BenchmarkGate["status"];
 type SlotWeekAllocationAcceptanceProjection =
   V2PlanQualityBenchmark["slotWeekAllocationAcceptanceProjection"];
+type LaneIntentAcceptanceProjection = NonNullable<
+  V2PlanQualityBenchmark["laneIntentAcceptanceProjection"]
+>;
 type AcceptanceItemClassification =
   SlotWeekAllocationAcceptanceProjection["acceptance"]["itemClassifications"][number];
 type AcceptanceClassificationCounts =
@@ -1488,6 +1491,313 @@ function buildSlotWeekAllocationAcceptanceProjection(input: {
   };
 }
 
+function buildLaneIntentAcceptanceProjection(input: {
+  noRepair: MesocycleExplainPlannerOnlyNoRepair;
+  gates: BenchmarkGate[];
+}): LaneIntentAcceptanceProjection {
+  const projection = input.noRepair.v2LaneIntentMaterializerProjection;
+  const acceptance = input.noRepair.acceptanceClassification;
+  const gateStatusFor = (name: BenchmarkGate["gate"]) =>
+    gateStatus(input.gates, name);
+  const lowerBPosteriorSetDelta =
+    projection?.relevantLowerBPosteriorChainLanes.reduce(
+      (sum, row) => sum + row.setDelta,
+      0,
+    ) ?? null;
+  const hamstringsCurlPreserved =
+    projection?.relevantLowerBPosteriorChainLanes.some(
+      (row) =>
+        row.laneId === "knee_flexion_curl" &&
+        row.identityDelta === 0 &&
+        row.setDelta === 0,
+    ) ?? false;
+  const materializerNonRegression =
+    projection != null &&
+    projection.materializer.trialStatus === "materialized" &&
+    projection.materializer.trialSeedShapeCompatible === true &&
+    projection.candidateImpact.totalSetDelta === 0 &&
+    projection.candidateImpact.materializerBlockerDelta === 0 &&
+    projection.candidateImpact.regressionCount === 0;
+  const protectedCoveragePass =
+    projection != null &&
+    projection.protectedCoverage.status !== "regressed" &&
+    projection.protectedCoverage.lowAxialSetDelta >= 0 &&
+    hamstringsCurlPreserved &&
+    lowerBPosteriorSetDelta === 0;
+  const exclusionsPass =
+    projection != null &&
+    projection.exclusionProof.trueHingesExcluded &&
+    projection.exclusionProof.hamstringCurlsExcluded &&
+    projection.exclusionProof.backExtensionClosureExcluded &&
+    projection.exclusionProof.genericGluteAccessoriesExcluded &&
+    projection.exclusionProof.selectedExcludedIdentities.length === 0;
+  const nonConsumptionPass =
+    projection != null &&
+    projection.readOnly === true &&
+    projection.affectsScoringOrGeneration === false &&
+    projection.dryRunOnly === true &&
+    projection.consumedByProduction === false &&
+    projection.consumedByDemandOrMaterializer === false &&
+    projection.nonConsumption.productionPlannerMaterializerRanking === false &&
+    projection.nonConsumption.seedRuntimeReceiptDb === false &&
+    projection.nonConsumption.acceptanceThreshold === false &&
+    projection.nonConsumption.repairBehavior === false;
+  const measured =
+    projection != null &&
+    projection.status === "projected_with_limitations" &&
+    projection.contractTrial.appliedContract === "low_axial_support_coverage" &&
+    projection.contractTrial.exactFutureContractApplied === true &&
+    projection.targetLane.slotId === "lower_b" &&
+    projection.targetLane.laneId === "hinge_anchor";
+
+  const blockers = uniqueSorted([
+    ...(measured ? [] : ["low_axial_lane_intent_projection_not_measured"]),
+    ...(acceptance.hardBlockers.length > 0
+      ? acceptance.hardBlockers.map((row) => `week_1_trainability:${row.code}`)
+      : []),
+    ...(gateStatusFor("week_1_trainability") === "fail"
+      ? ["week_1_trainability_gate_failed"]
+      : []),
+    ...(gateStatusFor("session_size") === "fail"
+      ? ["session_size_gate_failed"]
+      : []),
+    ...(gateStatusFor("support_floors") === "fail" ||
+    gateStatusFor("direct_work") === "fail"
+      ? ["direct_or_support_floor_gate_failed"]
+      : []),
+    ...(materializerNonRegression
+      ? []
+      : ["materializer_identity_set_or_blocker_regression"]),
+    ...(protectedCoveragePass
+      ? []
+      : ["protected_glutes_hamstrings_or_lower_body_coverage_regressed"]),
+    ...(exclusionsPass ? [] : ["low_axial_exclusion_regression"]),
+    ...(nonConsumptionPass
+      ? []
+      : ["seed_runtime_receipt_db_or_production_consumption_boundary_failed"]),
+  ]);
+
+  const warningGates = input.gates.filter((row) => row.status === "warning");
+  const watchItems = uniqueSorted([
+    ...warningGates.map((row) => `${row.gate}:${row.ownerSeam}`),
+    ...acceptance.qualityWarnings.map((row) => `week_1_quality:${row.code}`),
+    ...(projection?.contractTrial.v0CanExpressFutureMovementAndClass === false
+      ? ["lane_intent_contract_design:low_axial_future_fields_not_in_v0"]
+      : []),
+    ...(projection?.nextSafeAction === "run_read_only_acceptance_projection"
+      ? ["behavior_design_scope:production_consumption_requires_separate_slice"]
+      : []),
+  ]);
+
+  const itemClassifications: LaneIntentAcceptanceProjection["acceptance"]["itemClassifications"] =
+    [
+      ...warningGates.map((row) => {
+        const warning = warningClassificationForGate(row);
+        return {
+          item: `${row.gate}:${row.ownerSeam}`,
+          status: "watch" as const,
+          ownerSeam: row.ownerSeam,
+          materiality: warning.materiality,
+          mustFixBeforeWeek1: row.mustFixBeforeWeek1,
+          smallestSafeNextAction: warning.smallestSafeNextAction,
+          evidence: row.evidence.slice(0, 8),
+        };
+      }),
+      ...acceptance.qualityWarnings.map((row) => ({
+        item: `week_1_quality:${row.code}`,
+        status: "watch" as const,
+        ownerSeam: "plannerOnlyNoRepair.acceptanceClassification",
+        materiality: "Week 1 quality watch; no hard trainability blocker",
+        mustFixBeforeWeek1: false,
+        smallestSafeNextAction:
+          "carry into post-accept verification before behavior promotion",
+        evidence: row.evidence.slice(0, 8),
+      })),
+      ...(projection?.contractTrial.v0CanExpressFutureMovementAndClass === false
+        ? [
+            {
+              item: "lane_intent_contract_design:low_axial_future_fields_not_in_v0",
+              status: "watch" as const,
+              ownerSeam: "V2LaneSelectionIntent -> ExerciseSelectionPlan",
+              materiality:
+                "bounded lane-intent design watch; the measured low-axial trial uses an audit-only class override because v0 cannot express the future movement/class contract",
+              mustFixBeforeWeek1: false,
+              smallestSafeNextAction:
+                "design explicit low-axial lane intent and materializer consumption in a separate behavior slice",
+              evidence: projection.contractTrial.evidence.slice(0, 8),
+            },
+          ]
+        : []),
+      ...blockers.map((blocker) => ({
+        item: blocker,
+        status: "blocker" as const,
+        ownerSeam: blocker.startsWith("week_1_trainability")
+          ? "plannerOnlyNoRepair.acceptanceClassification"
+          : blocker.includes("materializer")
+            ? "v2_lane_intent_materializer_projection"
+            : blocker.includes("coverage")
+              ? "V2LaneSelectionIntent -> ExerciseSelectionPlan"
+              : blocker.includes("consumption")
+                ? "seed_runtime_receipt_persistence_boundary"
+                : "v2_lane_intent_acceptance_projection",
+        materiality: "blocks behavior-design readiness for this low-axial trial",
+        mustFixBeforeWeek1: blocker.startsWith("week_1_trainability"),
+        smallestSafeNextAction:
+          "resolve the named low-axial acceptance/non-regression blocker before behavior design",
+        evidence: [blocker],
+      })),
+    ];
+
+  const decision: LaneIntentAcceptanceProjection["decision"] =
+    !measured
+      ? "not_runnable"
+      : blockers.length > 0
+        ? "rejected"
+        : watchItems.length > 0
+          ? "accepted_with_watch_items"
+          : "accepted";
+
+  return {
+    version: 1,
+    source: "v2_low_axial_lane_intent_acceptance_non_regression_projection",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByProduction: false,
+    candidateSource: "V2LaneSelectionIntent",
+    evidenceSource:
+      "v2_lane_intent_materializer_projection_and_plan_quality_benchmark",
+    trialId: projection?.trialId ?? null,
+    targetLane: {
+      scopedLaneId: projection?.targetLane.scopedLaneId ?? "not_available",
+      slotId: projection?.targetLane.slotId ?? "not_available",
+      laneId: projection?.targetLane.laneId ?? "not_available",
+    },
+    decision,
+    week1Trainability: {
+      status: acceptance.basicMesocycleShapeStatus,
+      replacementReadinessStatus: acceptance.replacementReadinessStatus,
+      hardBlockerCount: acceptance.hardBlockers.length,
+      qualityWarningCount: acceptance.qualityWarnings.length,
+      mustFixBeforeWeek1: acceptance.hardBlockers.length > 0,
+    },
+    protectedCoverage: {
+      status: protectedCoveragePass
+        ? "pass"
+        : projection == null
+          ? "unknown"
+          : "fail",
+      protectedMuscles: projection?.protectedCoverage.protectedMuscles ?? [],
+      glutesLowAxialSetDelta:
+        projection?.protectedCoverage.lowAxialSetDelta ?? null,
+      hamstringsCurlPreserved,
+      lowerBPosteriorChainSetDelta: lowerBPosteriorSetDelta,
+    },
+    directSupportFloorPreservation: {
+      status:
+        gateStatusFor("support_floors") === "fail" ||
+        gateStatusFor("direct_work") === "fail"
+          ? "fail"
+          : gateStatusFor("support_floors") === "missing_evidence" ||
+              gateStatusFor("direct_work") === "missing_evidence"
+            ? "unknown"
+            : "pass",
+      supportFloorsGateStatus: gateStatusFor("support_floors"),
+      directWorkGateStatus: gateStatusFor("direct_work"),
+    },
+    materializerNonRegression: {
+      status: materializerNonRegression
+        ? "pass"
+        : projection == null
+          ? "unknown"
+          : "fail",
+      selectedIdentityDelta:
+        projection?.candidateImpact.selectedIdentityDelta ?? null,
+      totalSetDelta: projection?.candidateImpact.totalSetDelta ?? null,
+      materializerBlockerDelta:
+        projection?.candidateImpact.materializerBlockerDelta ?? null,
+      regressionCount: projection?.candidateImpact.regressionCount ?? null,
+      seedShapeCompatible:
+        projection?.materializer.trialSeedShapeCompatible ?? null,
+    },
+    sessionSizeFatigueDistribution: {
+      status:
+        gateStatusFor("session_size") === "fail" ||
+        gateStatusFor("fatigue_distribution") === "fail"
+          ? "fail"
+          : gateStatusFor("session_size") === "missing_evidence" ||
+              gateStatusFor("fatigue_distribution") === "missing_evidence"
+            ? "unknown"
+            : gateStatusFor("session_size") === "warning" ||
+                gateStatusFor("fatigue_distribution") === "warning"
+              ? "watch"
+              : "pass",
+      sessionSizeGateStatus: gateStatusFor("session_size"),
+      fatigueDistributionGateStatus: gateStatusFor("fatigue_distribution"),
+      highFatigueSetDelta:
+        projection?.duplicateConcentrationFatigueImpact.highFatigueSetDelta ??
+        null,
+      fatigueWeightedSetDelta:
+        projection?.duplicateConcentrationFatigueImpact
+          .fatigueWeightedSetDelta ?? null,
+    },
+    duplicateConcentrationImpact: {
+      status:
+        gateStatusFor("duplicate_concentration_risk") === "fail"
+          ? "fail"
+          : projection?.duplicateConcentrationFatigueImpact.status ===
+                "improved" ||
+              projection?.duplicateConcentrationFatigueImpact.status ===
+                "preserved"
+            ? gateStatusFor("duplicate_concentration_risk") === "warning"
+              ? "watch"
+              : "pass"
+            : projection == null
+              ? "unknown"
+              : "fail",
+      duplicateConcentrationGateStatus: gateStatusFor(
+        "duplicate_concentration_risk",
+      ),
+      duplicateExerciseDelta:
+        projection?.duplicateConcentrationFatigueImpact
+          .duplicateExerciseDelta ?? null,
+    },
+    exclusions: {
+      status: exclusionsPass ? "pass" : projection == null ? "unknown" : "fail",
+      trueHingesExcluded:
+        projection?.exclusionProof.trueHingesExcluded ?? false,
+      hamstringCurlsExcluded:
+        projection?.exclusionProof.hamstringCurlsExcluded ?? false,
+      backExtensionClosureExcluded:
+        projection?.exclusionProof.backExtensionClosureExcluded ?? false,
+      genericGluteAccessoriesExcluded:
+        projection?.exclusionProof.genericGluteAccessoriesExcluded ?? false,
+      selectedExcludedIdentityCount:
+        projection?.exclusionProof.selectedExcludedIdentities.length ?? null,
+    },
+    acceptance: {
+      decision,
+      watchItems,
+      blockers,
+      itemClassifications,
+      nextSafeSlice:
+        decision === "accepted"
+          ? "behavior_design_slice"
+          : decision === "accepted_with_watch_items"
+            ? "bounded_behavior_design_slice"
+            : decision === "rejected"
+              ? "fix_acceptance_or_non_regression_blockers"
+              : "collect_missing_projection_evidence",
+    },
+    nonConsumption: {
+      seedRuntimeReceiptDbConsumed: false,
+      productionMaterializerConsumed: false,
+      acceptanceThresholdChanged: false,
+      persistenceChanged: false,
+      repairBehaviorChanged: false,
+    },
+  };
+}
+
 export function buildV2PlanQualityBenchmark(
   noRepair: MesocycleExplainPlannerOnlyNoRepair,
 ): V2PlanQualityBenchmark {
@@ -1513,6 +1823,8 @@ export function buildV2PlanQualityBenchmark(
     status === "pass" || (status === "warning" && mustFixBeforeWeek1Count === 0);
   const slotWeekAllocationAcceptanceProjection =
     buildSlotWeekAllocationAcceptanceProjection({ noRepair, gates });
+  const laneIntentAcceptanceProjection =
+    buildLaneIntentAcceptanceProjection({ noRepair, gates });
 
   return {
     version: 1,
@@ -1559,6 +1871,7 @@ export function buildV2PlanQualityBenchmark(
               : "review_legacy_repair_deprecation_candidates",
     },
     slotWeekAllocationAcceptanceProjection,
+    laneIntentAcceptanceProjection,
     gates,
     deprecationReadiness: {
       status: deprecationReady

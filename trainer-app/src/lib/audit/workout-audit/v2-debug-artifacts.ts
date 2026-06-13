@@ -2256,6 +2256,12 @@ function buildIndexSummary(input: {
   const slotWeekAllocationClassificationCounts = asRecord(
     slotWeekAllocationAcceptance?.classificationCounts,
   );
+  const laneIntentAcceptanceProjection = asRecord(
+    planQualityBenchmark?.laneIntentAcceptanceProjection,
+  );
+  const laneIntentAcceptance = asRecord(
+    laneIntentAcceptanceProjection?.acceptance,
+  );
   return {
     status: asRecord(input.noRepair.summary)?.status ?? "unknown",
     basicMesocycleShapeStatus:
@@ -2445,6 +2451,20 @@ function buildIndexSummary(input: {
       slotWeekAllocationClassificationCounts?.blocker ?? null,
     v2SlotWeekAllocationAcceptanceNextSafeSlice:
       slotWeekAllocationAcceptance?.nextSafeSlice ?? null,
+    v2LaneIntentAcceptanceDecision:
+      laneIntentAcceptanceProjection?.decision ?? "not_available",
+    v2LaneIntentAcceptanceWatchItems: Array.isArray(
+      laneIntentAcceptance?.watchItems,
+    )
+      ? laneIntentAcceptance.watchItems.length
+      : null,
+    v2LaneIntentAcceptanceBlockers: Array.isArray(
+      laneIntentAcceptance?.blockers,
+    )
+      ? laneIntentAcceptance.blockers.length
+      : null,
+    v2LaneIntentAcceptanceNextSafeSlice:
+      laneIntentAcceptance?.nextSafeSlice ?? null,
     v2StrategyToDemandCandidateInventoryStatus:
       strategyToDemandCandidateInventory?.status ?? "not_available",
     v2StrategyToDemandCandidateInventoryRows:

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/planning-reality";
 import type { MesocycleExplainPlannerOnlyNoRepair } from "./types";
 import { buildV2PromotionCandidateEvaluator } from "./v2-promotion-candidate-evaluator";
 
@@ -492,6 +493,159 @@ describe("V2 promotion candidate evaluator", () => {
       ownerSeam: "SetDistributionIntent",
       evidence: ["selectedSetBudgetGapId=week_1:upper_b"],
       stopReasons: ["missing_bounded_delta"],
+    });
+  });
+
+  it("gates fresh clean-preselection inventory behind bounded projection proof", () => {
+    const evaluator = buildV2PromotionCandidateEvaluator(
+      makeNoRepair({}),
+      {
+        planningReality: {
+          preselectionFeasibility: [
+            {
+              slotId: "lower_b",
+              muscle: "Hamstrings",
+              role: "primary",
+              targetStatus: "hard",
+              demandType: "primary_hard_target",
+              candidateStatus: "clean_candidate",
+              targetEffectiveSets: 6,
+              currentInitialEffectiveSets: 3,
+              currentFinalEffectiveSets: 6,
+              shortfallBeforeRepair: 3,
+              preferredCleanPath: [
+                {
+                  exerciseClass: "knee_flexion_curl",
+                  available: true,
+                  evidence: ["Lying Leg Curl available"],
+                },
+              ],
+              dirtyClosureSignals: [],
+              collateralEstimate: {
+                glutesDelta: 0,
+                lowerBackDelta: 0,
+              },
+              candidateInventory: [
+                {
+                  exerciseId: "lying-leg-curl",
+                  exerciseName: "Lying Leg Curl",
+                  candidateClass: "knee_flexion_curl",
+                  primaryMuscles: ["Hamstrings"],
+                  secondaryMuscles: [],
+                  movementPatterns: ["knee_flexion"],
+                  hamstringsStimulusPerSet: 1,
+                  glutesStimulusPerSet: 0,
+                  lowerBackStimulusPerSet: 0,
+                  lowerSlotCompatible: true,
+                  lowerBCompatible: true,
+                  alreadySelectedInWeek: false,
+                  alreadySelectedSlotIds: [],
+                  selectedInLowerBInitial: false,
+                  selectedInLowerBFinal: false,
+                  availability: "available_but_capacity_blocked",
+                  reasons: ["clean_knee_flexion_candidate_visible"],
+                },
+              ],
+              recommendation: "safe_to_trial_preselection",
+              reasons: ["clean_knee_flexion_path_evidence_present"],
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+            },
+          ],
+        } as unknown as SlotPlanPlanningRealityDiagnostic,
+      },
+    );
+
+    expect(evaluator.status).toBe("blocked_by_missing_evidence");
+    expect(evaluator.recommendation).toMatchObject({
+      decision: "collect_more_evidence",
+      candidateId: null,
+    });
+    expect(evaluator.candidates[0]).toMatchObject({
+      candidateId: "fresh_preselection_lower_b_hamstrings",
+      sourceSurface: "fresh_owner_specific_inventory",
+      ownerSeam: "ExerciseClassDistributionBySlot -> ExerciseSelectionPlan",
+      status: "blocked",
+      stopReasons: [
+        "missing_bounded_delta",
+        "missing_acceptance_or_watch_clearance",
+      ],
+      nextSafeAction: "run_one_read_only_preselection_materializer_projection",
+    });
+  });
+
+  it("adds performed-reality strategy inventory without re-adding exhausted Side Delts", () => {
+    const evaluator = buildV2PromotionCandidateEvaluator(
+      makeNoRepair({
+        strategyToDemandProjection: {
+          candidateInventory: {
+            rows: [
+              {
+                evidenceSource: "performed_reality",
+                affected: {
+                  muscle: "Side Delts",
+                  slotIds: ["upper_b"],
+                  laneIds: [],
+                  weekNumbers: [],
+                },
+                proposedOwnerSeam: "SlotDemandAllocationByWeek",
+                suggestedFutureActionType: "protect_floor",
+                evidenceClass: "performed_reality",
+                readiness: "blocked",
+                requiredProofBeforeBehavior: ["bounded_delta_not_available"],
+                sourceAttribution: ["side_delts_known_no_impact"],
+                nonConsumption: {
+                  demandOrMaterializer: false,
+                  seedRuntimeReceiptDb: false,
+                  acceptanceThreshold: false,
+                },
+              },
+              {
+                evidenceSource: "performed_reality",
+                affected: {
+                  muscle: "Chest",
+                  slotIds: ["upper_a", "upper_b"],
+                  laneIds: [],
+                  weekNumbers: [],
+                },
+                proposedOwnerSeam: "SetDistributionIntent",
+                suggestedFutureActionType: "redistribute_or_cap",
+                evidenceClass: "performed_reality",
+                readiness: "blocked",
+                requiredProofBeforeBehavior: [
+                  "owner_specific_bounded_delta_projection",
+                ],
+                sourceAttribution: [
+                  "Chest:under_hit_in_3_performed_block_response",
+                ],
+                nonConsumption: {
+                  demandOrMaterializer: false,
+                  seedRuntimeReceiptDb: false,
+                  acceptanceThreshold: false,
+                },
+              },
+            ],
+          },
+        } as unknown as MesocycleExplainPlannerOnlyNoRepair["strategyToDemandProjection"],
+      }),
+    );
+
+    expect(
+      evaluator.candidates.some(
+        (row) =>
+          row.candidateId ===
+          "fresh_strategy_slotdemandallocationbyweek_side_delts_protect_floor",
+      ),
+    ).toBe(false);
+    expect(evaluator.candidates[0]).toMatchObject({
+      candidateId: "fresh_strategy_setdistributionintent_chest_redistribute_or_cap",
+      sourceSurface: "fresh_owner_specific_inventory",
+      ownerSeam: "SetDistributionIntent",
+      status: "blocked",
+      stopReasons: [
+        "missing_bounded_delta",
+        "missing_acceptance_or_watch_clearance",
+      ],
     });
   });
 });

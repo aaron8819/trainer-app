@@ -1,10 +1,17 @@
 # Hypertrophy Mesocycle Engine Strategy
 
 Owner: Aaron
-Last reviewed: 2026-06-12
+Last reviewed: 2026-06-13
 Purpose: Define the strategic direction for the V2 hypertrophy planner migration: V2 becomes the future plan author, accepted seed remains minimal executable truth, runtime replay remains stable, and performed reality informs future blocks without silently mutating the current one.
 
 This document is a strategy and migration map, not a claim about current runtime behavior. Current runtime truth remains the code, contract tests, and audit artifacts. The current mapping is grounded in live audit evidence, V2 factory-line/materializer diagnostics, candidate-evaluator readouts, runtime execution work, and the latest legacy repair quarantine findings:
+
+Read this document in two layers:
+
+- Constitution: the durable ownership model, source-of-truth boundaries, training principles, and "what not to do" rules. These should change rarely.
+- Migration map: the current checkpoints, live audit counts, evaluator readouts, and next slices. These should change as evidence improves.
+
+When the migration map conflicts with the constitution, the constitution wins. Current behavior is evidence, not authority.
 
 - Owner: `aaron8819@gmail.com`
 - Active mesocycle: `9b861675-c98f-42f7-bc8c-64a7de411b77`
@@ -26,9 +33,13 @@ The Trainer app should generate high-quality hypertrophy mesocycles from explici
 The shorter architecture thesis:
 
 ```txt
+Strategy decides why.
 Planner authors the plan.
+Materializer translates intent.
+Evaluator judges candidate quality.
+Acceptance decides whether to accept.
 Seed stores executable truth.
-Runtime executes the plan.
+Runtime executes and coaches.
 Logs capture performed reality.
 Review learns from reality.
 Next planner iteration improves.
@@ -78,6 +89,7 @@ Success means:
 
 - A supported user can accept a V2-authored mesocycle whose plan quality is strong before repair.
 - Planner-owned lane intent is explicit enough that materializer ranking does not infer core training meaning from coarse taxonomy aliases.
+- The exercise ontology is rich enough to distinguish training jobs, not just primary muscles.
 - The accepted seed remains minimal and deterministic.
 - Runtime replay does not become V2-aware.
 - Runtime prescriptions are coherent with performance evidence, lifecycle week, rep target, and effort target.
@@ -86,6 +98,7 @@ Success means:
 - Logs capture what actually happened.
 - Review turns performed reality into future planning evidence.
 - Repair drops from normal plan author to bounded safety net.
+- Benchmarks, evaluators, and audit artifacts are first-class quality infrastructure, not one-off migration scaffolding.
 
 ## 2. North-Star Operating Model
 
@@ -138,6 +151,8 @@ Planner metadata is explanatory, not executable. `acceptedPlannerIntent`, proven
 The first priority is an excellent default V2 mesocycle. Historical personalization matters, but it should not arrive before the base planner can produce a clean, balanced, explainable block from training principles alone.
 
 A personalized bad plan is still a bad plan. Build the default planner until its ordinary output has sane session sizes, balanced coverage, direct support work where required, reasonable fatigue distribution, deload compatibility, and minimal repair dependency.
+
+Design the planner interfaces for personalization early, but keep behavior conservative until the base plan is strong. User history, equipment, tolerance, adherence, preferences, and recovery context should plug into clear strategy and demand seams rather than becoming late repair pressure or runtime mutation.
 
 ### Principle 2 - Strategy Before Muscle Targets
 
@@ -204,11 +219,21 @@ The planner should say whether a lane requires, prefers, allows, or disallows sp
 
 The materializer should consume those semantics. It should not invent them.
 
+The exercise ontology and lane-intent contract are central product assets. An elite trainer app must understand that `side_delt_isolation`, `vertical_pull_anchor`, `low_axial_hip_extension`, `chest_biased_press_support`, `hamstring_curl`, and `calf_direct` are different training jobs, not interchangeable same-muscle labels. Primary muscle is only one dimension; movement pattern, directness, stability, loadability, fatigue cost, substitution family, duplicate family, and collateral stimulus all affect whether an exercise preserves the plan.
+
 ### Principle 11 - Policies Should Be Evidence-Aligned, Not Rigid
 
 Planner policy should be grounded in hypertrophy principles and allow justified exceptions. Avoid arbitrary always/never rules.
 
 Examples: no default 5-set stacking is a quality guard, not a universal law. Duplicate exercises can be justified by productive continuity, inventory limits, specialization, or lack of clean alternatives, but the reason must be explicit.
+
+### Principle 12 - Evaluation Infrastructure Is Product Infrastructure
+
+The benchmark, candidate evaluator, audit artifacts, debug shards, and smoke tests are not temporary migration scaffolding. They are the plan-quality lab for the product.
+
+An elite planner needs permanent evaluation coverage across fixture athletes, split structures, equipment constraints, exercise inventory limitations, fatigue and recovery contexts, Week 1 trainability, progression cases, substitution pressure, and completed-block learning scenarios. Evaluators should separate candidate truth, high-fidelity preview, diagnostic stress test, repair-only evidence, and runtime truth before recommending behavior work.
+
+The evaluator's job is to prevent row-chasing. A warning, repair row, or diagnostic delta should not become implementation work until it has a rightful owner seam, bounded delta, measured positive impact, non-regression proof, acceptance/watch clearance, and seed/runtime/receipt/DB non-consumption proof.
 
 ## 4. Current Migration Position
 
@@ -1557,6 +1582,8 @@ These are strategic decision gates, not claims that current production already p
 
 - Do not let diagnostics become behavior.
 - Do not copy repaired projection as target policy.
+- Do not treat evaluator warnings, benchmark watches, or audit rows as behavior candidates without bounded owner-specific proof.
+- Do not keep chasing low-ROI diagnostic rows after they are classified as measured no-impact, stale/noise, diagnostic artifact, already-promoted baseline, or repair-only evidence.
 - Do not make the materializer a second planner.
 - Do not let runtime consume planner metadata.
 - Do not let runtime edits mutate canonical seed.
@@ -1605,6 +1632,7 @@ These are strategic decision gates, not claims that current production already p
 - Do not claim repair has been demoted while production projection still depends on repair for normal shape.
 - Do not claim historical personalization is implemented while it remains diagnostic or roadmap work.
 - Do not delete safety repair paths before V2 owns the responsibility they currently protect.
+- Do not treat benchmarks, evaluator readouts, debug shards, or smoke tests as disposable migration scaffolding; keep reusable quality checks first-class and compact.
 
 ## 13. Immediate Next Strategic Step: Benchmark V2 Candidate Quality Before Repair Deprecation
 
@@ -1670,9 +1698,9 @@ Architecture design/refinement can happen before a full V2 mesocycle is complete
 
 Future engine intelligence tracks:
 
-1. `laneSelectionIntent v0`: planner defines the lane's actual training job so materializer no longer guesses core meaning from broad taxonomy, names, or class aliases. Start with high-risk lanes: chest-biased press support, vertical pull anchor, hamstring curl, quad isolation, calf direct, side/rear delt direct, rows, and arms.
-2. Candidate evaluator core: separate reusable candidate-quality computation from the acceptance-gate decision wrapper so dry-run, acceptance, post-accept verification, and audit readouts can share coherent quality logic where appropriate.
-3. Exercise inventory / metadata quality system: treat inventory metadata as downstream engine input, not labels. Track movement pattern, class, weighted stimulus, directness, fatigue, stability, loadability, joint/axial stress, duplicate family, substitution family, and forbidden lanes.
+1. Exercise ontology / metadata quality system: treat inventory metadata as downstream engine input, not labels. Track movement pattern, class, weighted stimulus, directness, fatigue, stability, loadability, joint/axial stress, duplicate family, substitution family, and forbidden lanes.
+2. `laneSelectionIntent v0`: planner defines the lane's actual training job so materializer no longer guesses core meaning from broad taxonomy, names, or class aliases. Start with high-risk lanes: chest-biased press support, vertical pull anchor, hamstring curl, quad isolation, calf direct, side/rear delt direct, rows, and arms.
+3. Candidate evaluator and benchmark lab: keep reusable candidate-quality computation separate from the acceptance-gate decision wrapper, and maintain fixture scenarios that test plan quality across user profiles, equipment constraints, inventory limits, fatigue contexts, substitutions, and Week 1 trainability.
 4. Materializer ranking and capacity framework: rank by lane job, weighted stimulus, stimulus-to-fatigue, stability/loadability, capacity priority, duplicate policy, and variation policy. Capacity should be training-principled, not arbitrary lane dropping.
 5. Demand model as floor / productive / stretch / cap ranges: keep moving away from single target-as-quota. Planner, runtime coaching, analytics, and acceptance should reason in zones.
 6. Prior-block evidence learning loop: use performed reality, not repair-shaped prescribed plans. Evidence includes missed MEV, repeated add-ons, swaps, pain/tolerance, load calibration, fatigue, adherence, and progression.

@@ -8980,7 +8980,9 @@ export function buildPlannerOnlyNoRepairComparison(input: {
   return {
     ...resultWithBenchmark,
     v2PromotionCandidateEvaluator:
-      buildV2PromotionCandidateEvaluator(resultWithBenchmark),
+      buildV2PromotionCandidateEvaluator(resultWithBenchmark, {
+        planningReality: input.repairedPlanningReality ?? noRepair,
+      }),
   };
 }
 

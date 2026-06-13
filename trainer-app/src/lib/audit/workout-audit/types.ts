@@ -2038,7 +2038,8 @@ export type V2PromotionCandidateEvaluator = {
       | "v2_plan_quality_benchmark"
       | "repair_promotion_scoreboard"
       | "strategy_to_demand_projection"
-      | "strategy_row_materializer_projection";
+      | "strategy_row_materializer_projection"
+      | "fresh_owner_specific_inventory";
     priorProbe:
       | "promoted"
       | "measured_no_impact"

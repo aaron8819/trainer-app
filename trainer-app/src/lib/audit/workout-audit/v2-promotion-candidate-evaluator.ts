@@ -4,6 +4,7 @@ import type {
   V2PromotionCandidateEvaluator,
   V2PromotionCandidateStopReason,
 } from "./types";
+import type { SlotPlanPlanningRealityDiagnostic } from "@/lib/api/planning-reality";
 
 type Candidate = V2PromotionCandidateEvaluator["candidates"][number];
 type CandidateInput = Omit<Candidate, "rank" | "score" | "status"> & {
@@ -15,9 +16,32 @@ type RepairScoreboard = NonNullable<
 type GapInventoryRow =
   RepairScoreboard["interpretation"]["gapInventory"][number];
 type BenchmarkGate = V2PlanQualityBenchmark["gates"][number];
+type StrategyInventoryRow =
+  MesocycleExplainPlannerOnlyNoRepair["strategyToDemandProjection"]["candidateInventory"]["rows"][number];
+type CleanPreselectionRow =
+  SlotPlanPlanningRealityDiagnostic["preselectionFeasibility"][number];
+type BuildV2PromotionCandidateEvaluatorOptions = {
+  planningReality?: SlotPlanPlanningRealityDiagnostic;
+};
+
+const EXHAUSTED_CANDIDATE_IDS = new Set([
+  "side_delts_protect_floor",
+  "set_distribution_budget",
+  "support_direct_floor",
+  "class_taxonomy_mismatch",
+  "concentration_quality",
+  "selection_capacity_pressure",
+]);
 
 function uniqueSorted(values: string[]): string[] {
   return [...new Set(values.filter((value) => value.length > 0))].sort();
+}
+
+function slug(value: string | undefined): string {
+  return (value ?? "unknown")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function countStopReasons(
@@ -336,6 +360,188 @@ function buildStrategyRowCandidate(
   ];
 }
 
+function strategyInventoryCandidateId(row: StrategyInventoryRow): string {
+  return `fresh_strategy_${slug(row.proposedOwnerSeam)}_${slug(
+    row.affected.muscle,
+  )}_${slug(row.suggestedFutureActionType)}`;
+}
+
+function strategyInventoryPriority(row: StrategyInventoryRow): number {
+  const actionPriority =
+    row.suggestedFutureActionType === "protect_floor"
+      ? 40
+      : row.suggestedFutureActionType === "redistribute_or_cap"
+        ? 35
+        : row.suggestedFutureActionType === "monitor_productive"
+          ? 20
+          : 5;
+  const ownerPriority =
+    row.proposedOwnerSeam === "SlotDemandAllocationByWeek"
+      ? 20
+      : row.proposedOwnerSeam === "SetDistributionIntent"
+        ? 18
+        : row.proposedOwnerSeam === "WeeklyDemandCurve"
+          ? 14
+          : row.proposedOwnerSeam === "MesocycleDemand"
+            ? 12
+            : 0;
+  const readinessPriority =
+    row.readiness === "candidate_for_read_only_projection" ? 20 : 0;
+  return actionPriority + ownerPriority + readinessPriority;
+}
+
+function buildStrategyInventoryCandidates(
+  noRepair: MesocycleExplainPlannerOnlyNoRepair,
+): Candidate[] {
+  return (noRepair.strategyToDemandProjection?.candidateInventory?.rows ?? [])
+    .filter((row) => row.evidenceSource === "performed_reality")
+    .filter((row) => row.readiness !== "diagnostic_only")
+    .filter((row) => {
+      const muscle = row.affected.muscle;
+      return !(
+        row.proposedOwnerSeam === "SlotDemandAllocationByWeek" &&
+        row.suggestedFutureActionType === "protect_floor" &&
+        muscle === "Side Delts"
+      );
+    })
+    .sort(
+      (left, right) =>
+        strategyInventoryPriority(right) - strategyInventoryPriority(left) ||
+        strategyInventoryCandidateId(left).localeCompare(
+          strategyInventoryCandidateId(right),
+        ),
+    )
+    .slice(0, 5)
+    .map((row) => {
+      const candidateId = strategyInventoryCandidateId(row);
+      const stopReasons: V2PromotionCandidateStopReason[] = [
+        "missing_bounded_delta",
+        "missing_acceptance_or_watch_clearance",
+        ...noConsumptionStopReasons({
+          consumedByProduction: false,
+          consumedByDemandOrMaterializer:
+            row.nonConsumption.demandOrMaterializer,
+        }),
+      ];
+      return candidate({
+        candidateId,
+        label: `${row.affected.muscle ?? "Block"} ${row.suggestedFutureActionType} inventory row`,
+        ownerSeam: row.proposedOwnerSeam,
+        sourceSurface: "fresh_owner_specific_inventory",
+        priorProbe:
+          row.readiness === "candidate_for_read_only_projection"
+            ? "blocked"
+            : "unmeasured",
+        stopReasons,
+        score: scoreInput({
+          sourceAttributionQuality: 14,
+          implementationScope:
+            row.suggestedFutureActionType === "protect_floor" ? 10 : 8,
+          priorProbeAdjustment: -10,
+        }),
+        evidence: uniqueSorted([
+          `source=${row.evidenceSource}`,
+          `readiness=${row.readiness}`,
+          `futureAction=${row.suggestedFutureActionType}`,
+          `ownerSeam=${row.proposedOwnerSeam}`,
+          ...(row.affected.muscle ? [`muscle=${row.affected.muscle}`] : []),
+          ...(row.affected.slotIds.length > 0
+            ? [`slotIds=${row.affected.slotIds.join("|")}`]
+            : []),
+          ...row.sourceAttribution.slice(0, 8),
+          `demandOrMaterializerConsumed=${row.nonConsumption.demandOrMaterializer}`,
+          `seedRuntimeReceiptDbConsumed=${row.nonConsumption.seedRuntimeReceiptDb}`,
+        ]),
+        missingProof: uniqueSorted([
+          ...row.requiredProofBeforeBehavior,
+          "owner_specific_bounded_delta_projection",
+          "acceptance_watch_clearance",
+        ]),
+        nextSafeAction: "one_bounded_owner_specific_projection_or_pivot",
+      });
+    });
+}
+
+function buildCleanPreselectionCandidate(row: CleanPreselectionRow): Candidate {
+  const cleanCandidateCount = row.candidateInventory.filter((candidateRow) =>
+    [
+      "clean_available",
+      "available_but_capacity_blocked",
+      "available_but_duplicate_blocked",
+      "available_but_already_used_elsewhere",
+    ].includes(candidateRow.availability),
+  ).length;
+  return candidate({
+    candidateId: `fresh_preselection_${slug(row.slotId)}_${slug(row.muscle)}`,
+    label: `${row.slotId} ${row.muscle} clean preselection feasibility`,
+    ownerSeam: "ExerciseClassDistributionBySlot -> ExerciseSelectionPlan",
+    sourceSurface: "fresh_owner_specific_inventory",
+    priorProbe: "unmeasured",
+    stopReasons: [
+      "missing_bounded_delta",
+      "missing_acceptance_or_watch_clearance",
+    ],
+    score: scoreInput({
+      sourceAttributionQuality: 16,
+      implementationScope: row.role === "primary" ? 12 : 8,
+      priorProbeAdjustment: -5,
+    }),
+    evidence: uniqueSorted([
+      "source=clean_preselection_feasibility",
+      `slotId=${row.slotId}`,
+      `muscle=${row.muscle}`,
+      `role=${row.role}`,
+      `targetStatus=${row.targetStatus}`,
+      `recommendation=${row.recommendation}`,
+      `candidateStatus=${row.candidateStatus}`,
+      `targetEffectiveSets=${row.targetEffectiveSets ?? "unknown"}`,
+      `initialEffectiveSets=${row.currentInitialEffectiveSets ?? "unknown"}`,
+      `finalEffectiveSets=${row.currentFinalEffectiveSets ?? "unknown"}`,
+      `shortfallBeforeRepair=${row.shortfallBeforeRepair ?? "unknown"}`,
+      `cleanCandidateCount=${cleanCandidateCount}`,
+      `dirtyClosureSignalCount=${row.dirtyClosureSignals.length}`,
+      `glutesCollateralDelta=${row.collateralEstimate.glutesDelta ?? "unknown"}`,
+      `lowerBackCollateralDelta=${row.collateralEstimate.lowerBackDelta ?? "unknown"}`,
+      ...row.preferredCleanPath.map(
+        (path) => `cleanPath=${path.exerciseClass}:${path.available}`,
+      ),
+      ...row.reasons.slice(0, 6),
+    ]),
+    missingProof: [
+      "owner_specific_preselection_materializer_projection",
+      "cross_week_non_regression",
+      "acceptance_watch_clearance",
+      "seed_runtime_receipt_db_non_consumption_must_remain_proven",
+      "production_materializer_non_consumption_must_remain_proven",
+    ],
+    nextSafeAction: "run_one_read_only_preselection_materializer_projection",
+  });
+}
+
+function buildCleanPreselectionCandidates(
+  planningReality: SlotPlanPlanningRealityDiagnostic | undefined,
+): Candidate[] {
+  return (
+    planningReality?.preselectionFeasibility
+      .filter((row) => row.recommendation === "safe_to_trial_preselection")
+      .filter((row) => row.candidateStatus === "clean_candidate")
+      .map(buildCleanPreselectionCandidate) ?? []
+  );
+}
+
+function buildFreshOwnerSpecificCandidates(
+  noRepair: MesocycleExplainPlannerOnlyNoRepair,
+  options: BuildV2PromotionCandidateEvaluatorOptions,
+): Candidate[] {
+  const candidates = [
+    ...buildCleanPreselectionCandidates(options.planningReality),
+    ...buildStrategyInventoryCandidates(noRepair),
+  ];
+  return candidates.filter(
+    (row) => !EXHAUSTED_CANDIDATE_IDS.has(row.candidateId),
+  );
+}
+
 function rankCandidates(candidates: Candidate[]): Candidate[] {
   const ready = candidates.filter((row) => row.status === "ready");
   const readyIds = new Map(
@@ -363,6 +569,7 @@ function rankCandidates(candidates: Candidate[]): Candidate[] {
 
 export function buildV2PromotionCandidateEvaluator(
   noRepair: MesocycleExplainPlannerOnlyNoRepair,
+  options: BuildV2PromotionCandidateEvaluatorOptions = {},
 ): V2PromotionCandidateEvaluator {
   const gapCandidates =
     noRepair.repairPromotionScoreboard?.interpretation.gapInventory.map(
@@ -372,6 +579,7 @@ export function buildV2PromotionCandidateEvaluator(
     ...gapCandidates,
     ...buildBenchmarkCandidates(noRepair.v2PlanQualityBenchmark),
     ...buildStrategyRowCandidate(noRepair.v2StrategyRowMaterializerProjection),
+    ...buildFreshOwnerSpecificCandidates(noRepair, options),
   ]);
   const readyCandidates = candidates.filter((row) => row.status === "ready");
   const stoppedCandidates = candidates.filter((row) => row.status === "stopped");

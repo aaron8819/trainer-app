@@ -329,7 +329,465 @@ function noRepairFixture(
   };
 }
 
+function measuredSlotWeekAcceptanceProjectionFixture(
+  overrides: Partial<
+    NonNullable<
+      MesocycleExplainPlannerOnlyNoRepair["v2ConcentrationMaterializerProjection"]
+    >
+  > = {},
+): NonNullable<
+  MesocycleExplainPlannerOnlyNoRepair["v2ConcentrationMaterializerProjection"]
+> {
+  const rows = [2, 3, 4].map((week) => ({
+    week,
+    phase: "accumulation",
+    status: "improved",
+    source: {
+      slotId: "lower_a",
+      laneId: "calves",
+      scopedLaneId: "lower_a:calves",
+      muscles: ["Calves"],
+      baselineSetCount: 4,
+      trialSetCount: 3,
+      setDelta: -1,
+    },
+    donor: {
+      slotId: "lower_b",
+      laneId: "calves",
+      scopedLaneId: "lower_b:calves",
+      muscles: ["Calves"],
+      baselineSetCount: 4,
+      trialSetCount: 5,
+      setDelta: 1,
+    },
+    allocationPolicyTrial: null,
+    protectedCoverageImpact: {
+      protectedMuscles: ["Calves"],
+      sourceFloorSets: 3,
+      sourceBeforeSets: 4,
+      sourceAfterSets: 3,
+      sourceSetDelta: -1,
+      donorSetDelta: 1,
+      netWeeklySetDelta: 0,
+      status: "preserved",
+      blockers: [],
+    },
+    materializerDelta: {
+      selectedIdentityDelta: 0,
+      totalSetDelta: 0,
+      materializerBlockerDelta: 0,
+      regressionCount: 0,
+      regressions: [],
+      changedSlotCount: 0,
+    },
+    concentrationWarningDelta: -1,
+    regressionCauses: [],
+    primaryDonorCandidate: null,
+    alternateDonorCandidates: [],
+    selectedDonorKind: "alternate",
+    acceptanceTrainabilityStatus: "pass",
+    behaviorReadinessDecision: "candidate_for_acceptance_projection",
+    blockers: [],
+    nextSafeSlice: "run_acceptance_non_regression_projection",
+  }));
+
+  return {
+    version: 1,
+    source: "v2_concentration_materializer_projection",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    dryRunOnly: true,
+    consumedByProduction: false,
+    consumedByDemandOrMaterializer: false,
+    status: "projected_with_limitations",
+    projectionMode: "concentration_set_cap_shadow_materializer_dry_run",
+    trialId: "lower_a_calves_slot_week_allocation_acceptance_projection",
+    comparedPlans: {
+      baselineAvailable: true,
+      trialAvailable: true,
+      inventoryExerciseCount: 12,
+    },
+    targetLane: {
+      scopedLaneId: "lower_a:calves",
+      week: 2,
+      slotId: "lower_a",
+      laneId: "calves",
+      muscles: ["Calves"],
+      warningEvidence: ["concentration:Calves:over_50_percent"],
+      currentBudget: { min: 3, preferred: 4, max: 4 },
+      trialBudget: { min: 3, preferred: 3, max: 3 },
+      baselineExerciseCount: 1,
+      trialExerciseCount: 1,
+      baselineSetCount: 4,
+      trialSetCount: 3,
+      addedIdentities: [],
+      removedIdentities: [],
+    },
+    materializer: {
+      baselineStatus: "materialized",
+      trialStatus: "materialized",
+      baselineBlockerCount: 0,
+      trialBlockerCount: 0,
+      baselineSeedShapeCompatible: true,
+      trialSeedShapeCompatible: true,
+    },
+    candidateImpact: {
+      selectedIdentityDelta: 0,
+      totalSetDelta: 0,
+      targetLaneSetDelta: -1,
+      targetLaneExerciseDelta: 0,
+      materializerBlockerDelta: 0,
+      regressionCount: 0,
+      regressions: [],
+      improvements: ["concentration_warning_reduced"],
+      changedSlotCount: 0,
+      changedSlots: [],
+    },
+    concentrationDelta: {
+      baselineWarningCount: 3,
+      trialWarningCount: 0,
+      warningDelta: -3,
+      baselineOver60Count: 3,
+      trialOver60Count: 0,
+      over60Delta: -3,
+      baselineMaxSharePercent: 66.7,
+      trialMaxSharePercent: 50,
+      maxShareDelta: -16.7,
+      baselineHighFatigueSetCount: 12,
+      trialHighFatigueSetCount: 9,
+      highFatigueSetDelta: -3,
+      baselineFatigueWeightedSets: 36,
+      trialFatigueWeightedSets: 27,
+      fatigueWeightedSetDelta: -9,
+    },
+    donorOffsetRedistributionProjection: {
+      version: 1,
+      source: "v2_concentration_donor_offset_redistribution_projection",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      dryRunOnly: true,
+      consumedByProduction: false,
+      consumedByDemandOrMaterializer: false,
+      status: "projected_with_limitations",
+      projectionMode:
+        "source_lane_cap_with_slot_owned_donor_offset_shadow_materializer_dry_run",
+      sourceAttribution: {
+        sourceLane: "pure_v2_materializer_projection",
+        donorSelection: "SlotDemandAllocationByWeek",
+        materializerProjection: "baseline_vs_donor_offset_trial_dry_run",
+        noRepairProjection: "not_used_as_target_policy",
+        repairedProjection: "evidence_only_not_target_policy",
+        acceptanceNoRepair: "week_1_trainability_shape_only",
+      },
+      summary: {
+        projectedWeekCount: 3,
+        improvedWeekCount: 3,
+        noImpactWeekCount: 0,
+        blockedWeekCount: 0,
+        protectedCoveragePassCount: 3,
+        materializerRegressionCount: 0,
+        concentrationRegressionCount: 0,
+        regressionCauseCounts: {},
+        totalSetDelta: 0,
+        concentrationWarningDelta: -3,
+        alternateCandidateCount: 3,
+        alternatePassingCandidateCount: 3,
+        selectedAlternateWeekCount: 3,
+        acceptanceTrainabilityStatus: "pass",
+        behaviorReadinessDecision: "candidate_for_acceptance_projection",
+        blockerCount: 0,
+        nextSafeSlice: "run_acceptance_non_regression_projection",
+        slotWeekAllocationReadiness: "candidate_for_acceptance_projection",
+        slotWeekAllocationNextSafeSlice:
+          "run_acceptance_non_regression_projection",
+        slotWeekAllocationBlockedRowCount: 0,
+      },
+      slotWeekAllocationProjection: {
+        version: 1,
+        source: "v2_slot_week_donor_capacity_projection",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByDemandOrMaterializer: false,
+        status: "available",
+        designDecision: {
+          policy:
+            "only_relieve_concentration_when_slot_owned_donor_absorbs_required_sets",
+          requireMeasuredDonorAbsorption: true,
+          requireNetWeeklyVolumePreserved: true,
+          requireProtectedCoveragePreserved: true,
+          requireMaterializerNonRegression: true,
+        },
+        summary: {
+          rowCount: 3,
+          passingRowCount: 3,
+          blockedRowCount: 0,
+          eligibleDonorSlotCount: 3,
+          measuredDonorCapacityPassCount: 3,
+          measuredDonorCapacityFailCount: 0,
+          measuredDonorCapacityUnderAbsorptionCount: 0,
+          measuredDonorCapacityOverAbsorptionCount: 0,
+          protectedCoverageRegressionCount: 0,
+          materializerRegressionCount: 0,
+          netWeeklySetDelta: 0,
+          behaviorReadiness: "candidate_for_acceptance_projection",
+          nextSafeSlice: "run_acceptance_non_regression_projection",
+        },
+        rows: [],
+        limitations: ["test_fixture_compact"],
+      },
+      rows,
+      blockersBeforeBehavior: [],
+      limitations: ["read_only_donor_offset_materializer_dry_run_only"],
+      safeForBehaviorPromotion: false,
+    },
+    crossWeekReadiness: {
+      decision: "candidate_for_bounded_policy_design",
+      sourceAttribution: {
+        pureV2BasePlan: "not_evaluated_by_concentration_projection",
+        materializerProjection: "baseline_vs_trial_dry_run",
+        noRepairProjection:
+          "selected_warning_from_exercise_selection_diagnostic",
+        repairedProjection: "evidence_only_not_target_policy",
+        acceptanceNoRepair: "week_1_trainability_shape_only",
+      },
+      representativeAccumulationWeeks: [2, 3, 4],
+      projectedWeekCount: 3,
+      improvedWeekCount: 3,
+      regressedWeekCount: 0,
+      noImpactWeekCount: 0,
+      blockerCount: 0,
+      nextSafeSlice: "run_acceptance_non_regression_projection",
+      gates: [],
+      rows: [],
+    },
+    blockersBeforeBehavior: [],
+    nextSafeAction: "run_read_only_acceptance_projection",
+    limitations: ["read_only_materializer_dry_run_only"],
+    safeForBehaviorPromotion: false,
+    ...overrides,
+  } as unknown as NonNullable<
+    MesocycleExplainPlannerOnlyNoRepair["v2ConcentrationMaterializerProjection"]
+  >;
+}
+
 describe("V2 plan quality benchmark", () => {
+  it("marks the exact slot/week allocation trial behavior-ready only when all acceptance and non-regression gates pass", () => {
+    const result = buildV2PlanQualityBenchmark(
+      noRepairFixture({
+        v2ConcentrationMaterializerProjection:
+          measuredSlotWeekAcceptanceProjectionFixture(),
+      }),
+    );
+
+    expect(result.summary).toMatchObject({
+      passCount: 8,
+      warningCount: 0,
+      failCount: 0,
+      missingEvidenceCount: 0,
+      slotWeekAllocationReadiness: "candidate_for_acceptance_projection",
+      slotWeekAllocationBlockedRowCount: 0,
+      slotWeekAllocationNextSafeSlice:
+        "run_acceptance_non_regression_projection",
+    });
+    expect(result.slotWeekAllocationAcceptanceProjection).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      candidateSource: "SlotDemandAllocationByWeek",
+      evidenceSource:
+        "v2_plan_quality_benchmark_and_donor_offset_materializer_projection",
+      representativeAccumulationWeeks: [2, 3, 4],
+      decision: "behavior_ready_candidate",
+      protectedVolumeCoverage: {
+        status: "pass",
+        projectedWeekCount: 3,
+        protectedCoveragePassCount: 3,
+        blockedRowCount: 0,
+        netWeeklySetDelta: 0,
+      },
+      materializerNonRegression: {
+        status: "pass",
+        totalSetDelta: 0,
+        materializerBlockerDelta: 0,
+        regressionCount: 0,
+      },
+      nonConsumption: {
+        seedRuntimeReceiptDbConsumed: false,
+        productionMaterializerConsumed: false,
+        acceptanceThresholdChanged: false,
+        persistenceChanged: false,
+      },
+    });
+    expect(
+      result.slotWeekAllocationAcceptanceProjection.acceptance.blockers,
+    ).toEqual([]);
+  });
+
+  it("accepts the exact slot/week allocation trial with watch items when non-regression passes but benchmark warnings remain", () => {
+    const baseCompare = pureV2BasePlanCompareFixture();
+    const result = buildV2PlanQualityBenchmark(
+      noRepairFixture({
+        acceptanceClassification: {
+          ...noRepairFixture().acceptanceClassification,
+          basicMesocycleShapeStatus: "pass_with_warnings",
+          qualityWarnings: [{ code: "duplicate_family_watch", evidence: [] }],
+        },
+        v2BasePlanCompare: pureV2BasePlanCompareFixture({
+          comparisons: {
+            ...baseCompare.comparisons,
+            exerciseIdentity: {
+              ...baseCompare.comparisons.exerciseIdentity,
+              duplicateClassFamilies: {
+                v2Base: ["calf_raise"],
+                plannerOnlyNoRepair: [],
+                repairedPlan: [],
+              },
+            },
+          },
+        }),
+        v2ConcentrationMaterializerProjection:
+          measuredSlotWeekAcceptanceProjectionFixture(),
+      }),
+    );
+
+    expect(result.slotWeekAllocationAcceptanceProjection).toMatchObject({
+      decision: "accepted_with_watch_items",
+      week1Trainability: {
+        status: "pass_with_warnings",
+        hardBlockerCount: 0,
+        qualityWarningCount: 1,
+      },
+      duplicateConcentrationRisk: {
+        status: "watch",
+        duplicateConcentrationGateStatus: "warning",
+      },
+      acceptance: {
+        nextSafeSlice: "resolve_watch_items_before_behavior_promotion",
+        blockers: [],
+      },
+    });
+    expect(
+      result.slotWeekAllocationAcceptanceProjection.acceptance.watchItems,
+    ).toEqual(
+      expect.arrayContaining([
+        "duplicate_concentration_risk:v2_base_plan_validation.duplicate_distinctness",
+        "week_1_trainability:pass_with_warnings",
+        "week_1_quality:duplicate_family_watch",
+      ]),
+    );
+  });
+
+  it("blocks the slot/week allocation acceptance projection on protected coverage or materializer regression", () => {
+    const projection = measuredSlotWeekAcceptanceProjectionFixture();
+    const donorOffset = projection.donorOffsetRedistributionProjection;
+    const result = buildV2PlanQualityBenchmark(
+      noRepairFixture({
+        v2ConcentrationMaterializerProjection: {
+          ...projection,
+          donorOffsetRedistributionProjection: {
+            ...donorOffset,
+            summary: {
+              ...donorOffset.summary,
+              protectedCoveragePassCount: 2,
+              materializerRegressionCount: 1,
+              totalSetDelta: 1,
+              slotWeekAllocationBlockedRowCount: 1,
+            },
+            slotWeekAllocationProjection: {
+              ...donorOffset.slotWeekAllocationProjection,
+              summary: {
+                ...donorOffset.slotWeekAllocationProjection.summary,
+                blockedRowCount: 1,
+                materializerRegressionCount: 1,
+                netWeeklySetDelta: 1,
+              },
+            },
+            rows: donorOffset.rows.map((row, index) =>
+              index === 0
+                ? {
+                    ...row,
+                    protectedCoverageImpact: {
+                      ...row.protectedCoverageImpact,
+                      status: "regressed",
+                      netWeeklySetDelta: 1,
+                    },
+                    materializerDelta: {
+                      ...row.materializerDelta,
+                      totalSetDelta: 1,
+                      materializerBlockerDelta: 1,
+                      regressionCount: 1,
+                    },
+                  }
+                : row,
+            ),
+          },
+        },
+      }),
+    );
+
+    expect(result.slotWeekAllocationAcceptanceProjection).toMatchObject({
+      decision: "blocked_by_acceptance_trainability_or_non_regression",
+      protectedVolumeCoverage: {
+        status: "fail",
+        blockedRowCount: 1,
+        netWeeklySetDelta: 1,
+      },
+      materializerNonRegression: {
+        status: "fail",
+        totalSetDelta: 1,
+        materializerBlockerDelta: 1,
+        regressionCount: 1,
+      },
+      acceptance: {
+        nextSafeSlice: "fix_acceptance_or_non_regression_blockers",
+      },
+    });
+    expect(
+      result.slotWeekAllocationAcceptanceProjection.acceptance.blockers,
+    ).toEqual(
+      expect.arrayContaining([
+        "protected_volume_or_coverage_regressed",
+        "materializer_identity_set_or_blocker_regression",
+      ]),
+    );
+  });
+
+  it("keeps the slot/week allocation acceptance projection diagnostic-only when projection or non-consumption evidence is missing", () => {
+    const missingProjection = buildV2PlanQualityBenchmark(noRepairFixture());
+    expect(
+      missingProjection.slotWeekAllocationAcceptanceProjection,
+    ).toMatchObject({
+      decision: "diagnostic_only",
+      acceptance: {
+        nextSafeSlice: "collect_missing_acceptance_projection_evidence",
+      },
+    });
+
+    const consumed = buildV2PlanQualityBenchmark(
+      noRepairFixture({
+        v2ConcentrationMaterializerProjection:
+          measuredSlotWeekAcceptanceProjectionFixture({
+            consumedByProduction: true,
+          } as unknown as Partial<
+            NonNullable<
+              MesocycleExplainPlannerOnlyNoRepair["v2ConcentrationMaterializerProjection"]
+            >
+          >),
+      }),
+    );
+    expect(consumed.slotWeekAllocationAcceptanceProjection).toMatchObject({
+      decision: "diagnostic_only",
+      acceptance: {
+        blockers: expect.arrayContaining([
+          "read_only_non_consumption_boundary_not_proven",
+        ]),
+      },
+    });
+    expect(JSON.stringify(consumed)).not.toMatch(
+      /slotPlanSeedJson|sessionDecisionReceipt|runtimeReplay|acceptedPlannerIntent/,
+    );
+  });
+
   it("passes first-principles gates from V2 candidate evidence without using repaired projection as target policy", () => {
     const result = buildV2PlanQualityBenchmark(noRepairFixture());
 

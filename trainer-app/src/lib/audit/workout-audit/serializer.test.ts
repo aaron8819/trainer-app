@@ -3036,6 +3036,101 @@ describe("buildWorkoutAuditArtifact", () => {
         preShadowCandidateFilter: makePromotionDiffPreShadowCandidateFilter(),
         strategyShadowProjection: makePromotionDiffShadowProjectionEvidence(),
       }).mesocycleStrategyDiagnostic;
+    mesocycleExplain!.plannerOnlyNoRepair!.v2PlanQualityBenchmark = {
+      version: 1,
+      source: "v2_candidate_quality_benchmark",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      repairedProjectionUsedAs: "evidence_only_not_target_policy",
+      status: "warning",
+      summary: {
+        passCount: 4,
+        warningCount: 4,
+        failCount: 0,
+        missingEvidenceCount: 0,
+        mustFixBeforeWeek1Count: 0,
+        concentrationReadinessDecision: "candidate_for_bounded_policy_design",
+        concentrationNextSafeSlice: "run_acceptance_non_regression_projection",
+        concentrationReadinessBlockerCount: 0,
+        slotWeekAllocationReadiness: "candidate_for_acceptance_projection",
+        slotWeekAllocationBlockedRowCount: 0,
+        slotWeekAllocationNextSafeSlice:
+          "run_acceptance_non_regression_projection",
+        nextSafeAction: "review_warning_gates_before_deprecation",
+      },
+      slotWeekAllocationAcceptanceProjection: {
+        version: 1,
+        source:
+          "v2_slot_week_allocation_acceptance_non_regression_projection",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByProduction: false,
+        candidateSource: "SlotDemandAllocationByWeek",
+        evidenceSource:
+          "v2_plan_quality_benchmark_and_donor_offset_materializer_projection",
+        representativeAccumulationWeeks: [2, 3, 4],
+        decision: "accepted_with_watch_items",
+        week1Trainability: {
+          status: "pass_with_warnings",
+          replacementReadinessStatus: "not_ready",
+          hardBlockerCount: 0,
+          qualityWarningCount: 4,
+        },
+        protectedVolumeCoverage: {
+          status: "pass",
+          projectedWeekCount: 3,
+          protectedCoveragePassCount: 3,
+          blockedRowCount: 0,
+          netWeeklySetDelta: 0,
+        },
+        materializerNonRegression: {
+          status: "pass",
+          selectedIdentityDelta: 0,
+          totalSetDelta: 0,
+          materializerBlockerDelta: 0,
+          regressionCount: 0,
+        },
+        sessionSizeFatigueConcentrationImpact: {
+          status: "watch",
+          sessionSizeGateStatus: "pass",
+          fatigueDistributionGateStatus: "warning",
+          concentrationWarningDelta: -3,
+        },
+        duplicateConcentrationRisk: {
+          status: "watch",
+          duplicateConcentrationGateStatus: "warning",
+          watchItemCount: 2,
+        },
+        acceptance: {
+          decision: "accepted_with_watch_items",
+          watchItems: [
+            "duplicate_concentration_risk:v2_base_plan_validation.duplicate_distinctness",
+            "week_1_trainability:pass_with_warnings",
+          ],
+          blockers: [],
+          nextSafeSlice: "resolve_watch_items_before_behavior_promotion",
+        },
+        nonConsumption: {
+          seedRuntimeReceiptDbConsumed: false,
+          productionMaterializerConsumed: false,
+          acceptanceThresholdChanged: false,
+          persistenceChanged: false,
+        },
+      },
+      gates: [],
+      deprecationReadiness: {
+        status: "ready_for_review",
+        evidence: [],
+        missingEvidence: [],
+      },
+      guardrails: {
+        seedRuntimeChanged: false,
+        productionMaterializerChanged: false,
+        acceptanceThresholdChanged: false,
+        persistenceChanged: false,
+      },
+    };
     mesocycleExplain!.plannerOnlyNoRepair?.v2TargetVsNoRepairDiff.slotDiffs[0]?.laneDiffs.push(
       {
         laneId: "biceps",
@@ -3424,6 +3519,15 @@ describe("buildWorkoutAuditArtifact", () => {
           "projected_with_limitations",
         v2LaneIntentMaterializerProjectionIdentityDelta: 0,
         v2LaneIntentMaterializerProjectionTotalSetDelta: 0,
+        v2PlanQualityBenchmarkStatus: "warning",
+        v2PlanQualityBenchmarkFailedGates: 0,
+        v2PlanQualityBenchmarkMissingEvidenceGates: 0,
+        v2SlotWeekAllocationAcceptanceDecision:
+          "accepted_with_watch_items",
+        v2SlotWeekAllocationAcceptanceWatchItems: 2,
+        v2SlotWeekAllocationAcceptanceBlockers: 0,
+        v2SlotWeekAllocationAcceptanceNextSafeSlice:
+          "resolve_watch_items_before_behavior_promotion",
         writtenShardCount: 8,
         skippedShardCount: 0,
       },
@@ -3594,6 +3698,21 @@ describe("buildWorkoutAuditArtifact", () => {
     const crossWeekShard = findShard("cross-week-projection");
     const selectionShard = findShard("selection-alignment");
     const planningRealityShard = findShard("planning-reality");
+    expect(materializationShard.artifact.data).toMatchObject({
+      v2PlanQualityBenchmark: {
+        slotWeekAllocationAcceptanceProjection: {
+          decision: "accepted_with_watch_items",
+          acceptance: {
+            watchItems: [
+              "duplicate_concentration_risk:v2_base_plan_validation.duplicate_distinctness",
+              "week_1_trainability:pass_with_warnings",
+            ],
+            blockers: [],
+            nextSafeSlice: "resolve_watch_items_before_behavior_promotion",
+          },
+        },
+      },
+    });
 
     const mainPlanningReality = output.serializedArtifact.mesocycleExplain
       ?.preview.projectionDiagnostics.planningReality as unknown as Record<

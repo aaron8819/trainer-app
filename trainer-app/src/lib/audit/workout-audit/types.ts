@@ -1822,6 +1822,80 @@ export type V2PlanQualityBenchmark = {
       | null;
     nextSafeAction: string;
   };
+  slotWeekAllocationAcceptanceProjection: {
+    version: 1;
+    source: "v2_slot_week_allocation_acceptance_non_regression_projection";
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    consumedByProduction: false;
+    candidateSource: "SlotDemandAllocationByWeek";
+    evidenceSource: "v2_plan_quality_benchmark_and_donor_offset_materializer_projection";
+    representativeAccumulationWeeks: number[];
+    decision:
+      | "behavior_ready_candidate"
+      | "accepted_with_watch_items"
+      | "blocked_by_acceptance_trainability_or_non_regression"
+      | "diagnostic_only";
+    week1Trainability: {
+      status: MesocycleExplainPlannerOnlyNoRepair["acceptanceClassification"]["basicMesocycleShapeStatus"];
+      replacementReadinessStatus: MesocycleExplainPlannerOnlyNoRepair["acceptanceClassification"]["replacementReadinessStatus"];
+      hardBlockerCount: number;
+      qualityWarningCount: number;
+    };
+    protectedVolumeCoverage: {
+      status: "pass" | "fail" | "unknown";
+      projectedWeekCount: number;
+      protectedCoveragePassCount: number;
+      blockedRowCount: number;
+      netWeeklySetDelta: number;
+    };
+    materializerNonRegression: {
+      status: "pass" | "fail" | "unknown";
+      selectedIdentityDelta: number;
+      totalSetDelta: number;
+      materializerBlockerDelta: number;
+      regressionCount: number;
+    };
+    sessionSizeFatigueConcentrationImpact: {
+      status: "pass" | "watch" | "fail" | "unknown";
+      sessionSizeGateStatus: "pass" | "warning" | "fail" | "missing_evidence";
+      fatigueDistributionGateStatus:
+        | "pass"
+        | "warning"
+        | "fail"
+        | "missing_evidence";
+      concentrationWarningDelta: number;
+    };
+    duplicateConcentrationRisk: {
+      status: "pass" | "watch" | "fail" | "unknown";
+      duplicateConcentrationGateStatus:
+        | "pass"
+        | "warning"
+        | "fail"
+        | "missing_evidence";
+      watchItemCount: number;
+    };
+    acceptance: {
+      decision:
+        | "behavior_ready_candidate"
+        | "accepted_with_watch_items"
+        | "blocked_by_acceptance_trainability_or_non_regression"
+        | "diagnostic_only";
+      watchItems: string[];
+      blockers: string[];
+      nextSafeSlice:
+        | "behavior_promotion_review"
+        | "resolve_watch_items_before_behavior_promotion"
+        | "fix_acceptance_or_non_regression_blockers"
+        | "collect_missing_acceptance_projection_evidence";
+    };
+    nonConsumption: {
+      seedRuntimeReceiptDbConsumed: false;
+      productionMaterializerConsumed: false;
+      acceptanceThresholdChanged: false;
+      persistenceChanged: false;
+    };
+  };
   gates: Array<{
     gate:
       | "support_floors"

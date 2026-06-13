@@ -535,6 +535,64 @@ function makeV2PlanQualityBenchmarkFixture() {
       slotWeekAllocationNextSafeSlice: "design_slot_week_allocation_policy",
       nextSafeAction: "review_warning_gates_before_deprecation",
     },
+    slotWeekAllocationAcceptanceProjection: {
+      version: 1,
+      source: "v2_slot_week_allocation_acceptance_non_regression_projection",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByProduction: false,
+      candidateSource: "SlotDemandAllocationByWeek",
+      evidenceSource:
+        "v2_plan_quality_benchmark_and_donor_offset_materializer_projection",
+      representativeAccumulationWeeks: [2, 3, 4],
+      decision: "accepted_with_watch_items",
+      week1Trainability: {
+        status: "pass_with_warnings",
+        replacementReadinessStatus: "not_ready",
+        hardBlockerCount: 0,
+        qualityWarningCount: 4,
+      },
+      protectedVolumeCoverage: {
+        status: "pass",
+        projectedWeekCount: 3,
+        protectedCoveragePassCount: 3,
+        blockedRowCount: 0,
+        netWeeklySetDelta: 0,
+      },
+      materializerNonRegression: {
+        status: "pass",
+        selectedIdentityDelta: 0,
+        totalSetDelta: 0,
+        materializerBlockerDelta: 0,
+        regressionCount: 0,
+      },
+      sessionSizeFatigueConcentrationImpact: {
+        status: "watch",
+        sessionSizeGateStatus: "pass",
+        fatigueDistributionGateStatus: "warning",
+        concentrationWarningDelta: -3,
+      },
+      duplicateConcentrationRisk: {
+        status: "watch",
+        duplicateConcentrationGateStatus: "warning",
+        watchItemCount: 2,
+      },
+      acceptance: {
+        decision: "accepted_with_watch_items",
+        watchItems: [
+          "duplicate_concentration_risk:v2_base_plan_validation.duplicate_distinctness",
+          "week_1_trainability:pass_with_warnings",
+        ],
+        blockers: [],
+        nextSafeSlice: "resolve_watch_items_before_behavior_promotion",
+      },
+      nonConsumption: {
+        seedRuntimeReceiptDbConsumed: false,
+        productionMaterializerConsumed: false,
+        acceptanceThresholdChanged: false,
+        persistenceChanged: false,
+      },
+    },
     gates: [
       {
         gate: "session_size",
@@ -4180,6 +4238,7 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
         "Status: warning deprecation=ready-for-review",
         "Gates: pass=6 warn=2 fail=0 missing=0 mustFixW1=0",
         "Slot/week allocation: readiness=blocked-by-evidence blockedRows=1 next=design-slot-week-allocation-policy",
+        "Slot/week acceptance projection: decision=accepted-with-watch-items weeks=W2, W3, W4 watch=2 blockers=0 next=resolve-watch-items-before-behavior-promotion",
         "Gate detail: session_size:pass:pure_v2_base_plan; duplicate_concentration_risk:warning:pure_v2_base_plan",
         "Warning evidence: duplicate_concentration_risk@v2_base_plan_validation.duplicate_distinctness: exerciseIdentityClassification=v2_preserves, v2DuplicateExact:Standing Calf Raise, v2DuplicateExactExercises=1, watch:exact_duplicate_reuse_needs_variant_or_continuity_justification",
         "Next safe action: review-warning-gates-before-deprecation",

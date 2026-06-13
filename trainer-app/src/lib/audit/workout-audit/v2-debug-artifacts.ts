@@ -1198,6 +1198,10 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
   const concentrationSlotWeekAllocation = asRecord(
     concentrationDonorOffset?.slotWeekAllocationProjection,
   );
+  const planQualityBenchmark = asRecord(noRepair.v2PlanQualityBenchmark);
+  const slotWeekAllocationAcceptanceProjection = asRecord(
+    planQualityBenchmark?.slotWeekAllocationAcceptanceProjection,
+  );
 
   return {
     summary: {
@@ -1616,6 +1620,8 @@ function buildIndexNoRepair(noRepair: JsonRecord): JsonRecord {
                 ),
               }
             : {},
+          slotWeekAllocationAcceptanceProjection:
+            slotWeekAllocationAcceptanceProjection ?? {},
           nextSafeAction:
             typeof concentrationMaterializer.nextSafeAction === "string"
               ? concentrationMaterializer.nextSafeAction
@@ -1885,6 +1891,12 @@ function buildIndexSummary(input: {
   const planQualityDeprecationReadiness = asRecord(
     planQualityBenchmark?.deprecationReadiness,
   );
+  const slotWeekAllocationAcceptanceProjection = asRecord(
+    planQualityBenchmark?.slotWeekAllocationAcceptanceProjection,
+  );
+  const slotWeekAllocationAcceptance = asRecord(
+    slotWeekAllocationAcceptanceProjection?.acceptance,
+  );
   return {
     status: asRecord(input.noRepair.summary)?.status ?? "unknown",
     basicMesocycleShapeStatus:
@@ -1985,6 +1997,20 @@ function buildIndexSummary(input: {
       planQualitySummary?.missingEvidenceCount ?? null,
     v2PlanQualityDeprecationReadiness:
       planQualityDeprecationReadiness?.status ?? "not_available",
+    v2SlotWeekAllocationAcceptanceDecision:
+      slotWeekAllocationAcceptanceProjection?.decision ?? "not_available",
+    v2SlotWeekAllocationAcceptanceWatchItems: Array.isArray(
+      slotWeekAllocationAcceptance?.watchItems,
+    )
+      ? slotWeekAllocationAcceptance.watchItems.length
+      : null,
+    v2SlotWeekAllocationAcceptanceBlockers: Array.isArray(
+      slotWeekAllocationAcceptance?.blockers,
+    )
+      ? slotWeekAllocationAcceptance.blockers.length
+      : null,
+    v2SlotWeekAllocationAcceptanceNextSafeSlice:
+      slotWeekAllocationAcceptance?.nextSafeSlice ?? null,
     writtenShardCount: input.shardMetadata.filter(
       (shard) => shard.status === "written",
     ).length,

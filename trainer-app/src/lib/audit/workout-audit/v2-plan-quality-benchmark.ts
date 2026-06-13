@@ -5,6 +5,8 @@ import type {
 
 type BenchmarkGate = V2PlanQualityBenchmark["gates"][number];
 type BenchmarkStatus = BenchmarkGate["status"];
+type SlotWeekAllocationAcceptanceProjection =
+  V2PlanQualityBenchmark["slotWeekAllocationAcceptanceProjection"];
 type BasePlanCompare = NonNullable<
   MesocycleExplainPlannerOnlyNoRepair["v2BasePlanCompare"]
 >;
@@ -63,6 +65,10 @@ function gate(input: {
 
 function numberEvidence(label: string, value: number | null | undefined): string {
   return `${label}=${typeof value === "number" ? value : "unknown"}`;
+}
+
+function uniqueSorted(values: string[]): string[] {
+  return [...new Set(values.filter((value) => value.length > 0))].sort();
 }
 
 function pureV2BaseEvidence(noRepair: MesocycleExplainPlannerOnlyNoRepair): {
@@ -748,6 +754,246 @@ function buildWeekOneTrainabilityGate(
   });
 }
 
+function gateStatus(
+  gates: BenchmarkGate[],
+  gateName: BenchmarkGate["gate"],
+): BenchmarkStatus {
+  return (
+    gates.find((row) => row.gate === gateName)?.status ?? "missing_evidence"
+  );
+}
+
+function gateWatchItems(gates: BenchmarkGate[]): string[] {
+  return gates
+    .filter((row) => row.status === "warning")
+    .map((row) => `${row.gate}:${row.ownerSeam}`);
+}
+
+function gateBlockers(gates: BenchmarkGate[]): string[] {
+  return gates
+    .filter((row) => row.status === "fail" || row.status === "missing_evidence")
+    .flatMap((row) => [
+      `${row.gate}:${row.status}:${row.ownerSeam}`,
+      ...row.missingEvidence.map((missing) => `${row.gate}:missing:${missing}`),
+    ]);
+}
+
+function riskStatusFromGate(status: BenchmarkStatus):
+  | "pass"
+  | "watch"
+  | "fail"
+  | "unknown" {
+  return status === "pass"
+    ? "pass"
+    : status === "warning"
+      ? "watch"
+      : status === "fail"
+        ? "fail"
+        : "unknown";
+}
+
+function buildSlotWeekAllocationAcceptanceProjection(input: {
+  noRepair: MesocycleExplainPlannerOnlyNoRepair;
+  gates: BenchmarkGate[];
+}): SlotWeekAllocationAcceptanceProjection {
+  const concentrationProjection =
+    input.noRepair.v2ConcentrationMaterializerProjection;
+  const donorOffset =
+    concentrationProjection?.donorOffsetRedistributionProjection;
+  const slotWeekAllocation = donorOffset?.slotWeekAllocationProjection;
+  const acceptance = input.noRepair.acceptanceClassification;
+  const representativeAccumulationWeeks =
+    concentrationProjection?.crossWeekReadiness.representativeAccumulationWeeks ??
+    [];
+  const projectedRows = donorOffset?.rows ?? [];
+  const projectedWeekCount = donorOffset?.summary.projectedWeekCount ?? 0;
+  const protectedCoveragePassCount =
+    donorOffset?.summary.protectedCoveragePassCount ?? 0;
+  const blockedRowCount =
+    slotWeekAllocation?.summary.blockedRowCount ??
+    donorOffset?.summary.slotWeekAllocationBlockedRowCount ??
+    0;
+  const netWeeklySetDelta =
+    slotWeekAllocation?.summary.netWeeklySetDelta ??
+    donorOffset?.summary.totalSetDelta ??
+    0;
+  const protectedVolumeCoverageStatus =
+    projectedWeekCount === 0
+      ? "unknown"
+      : projectedWeekCount === protectedCoveragePassCount &&
+          blockedRowCount === 0 &&
+          netWeeklySetDelta === 0
+        ? "pass"
+        : "fail";
+  const materializerRegressionCount =
+    donorOffset?.summary.materializerRegressionCount ?? 0;
+  const materializerBlockerDelta = projectedRows.reduce(
+    (sum, row) => sum + row.materializerDelta.materializerBlockerDelta,
+    0,
+  );
+  const selectedIdentityDelta = projectedRows.reduce(
+    (sum, row) => sum + row.materializerDelta.selectedIdentityDelta,
+    0,
+  );
+  const totalSetDelta = donorOffset?.summary.totalSetDelta ?? 0;
+  const materializerNonRegressionStatus =
+    projectedWeekCount === 0
+      ? "unknown"
+      : materializerRegressionCount === 0 &&
+          materializerBlockerDelta === 0 &&
+          totalSetDelta === 0
+        ? "pass"
+        : "fail";
+  const sessionSizeGateStatus = gateStatus(input.gates, "session_size");
+  const fatigueDistributionGateStatus = gateStatus(
+    input.gates,
+    "fatigue_distribution",
+  );
+  const duplicateConcentrationGateStatus = gateStatus(
+    input.gates,
+    "duplicate_concentration_risk",
+  );
+  const concentrationWarningDelta =
+    donorOffset?.summary.concentrationWarningDelta ??
+    concentrationProjection?.concentrationDelta.warningDelta ??
+    0;
+  const readOnlyProjectionBoundary =
+    concentrationProjection?.readOnly === true &&
+    concentrationProjection.affectsScoringOrGeneration === false &&
+    concentrationProjection.consumedByProduction === false &&
+    donorOffset?.readOnly === true &&
+    donorOffset.affectsScoringOrGeneration === false &&
+    donorOffset.consumedByProduction === false &&
+    donorOffset.consumedByDemandOrMaterializer === false;
+  const blockerCandidates = uniqueSorted([
+    ...gateBlockers(input.gates),
+    ...(readOnlyProjectionBoundary
+      ? []
+      : ["read_only_non_consumption_boundary_not_proven"]),
+    ...(protectedVolumeCoverageStatus === "fail"
+      ? ["protected_volume_or_coverage_regressed"]
+      : protectedVolumeCoverageStatus === "unknown"
+        ? ["protected_volume_or_coverage_not_projected"]
+        : []),
+    ...(materializerNonRegressionStatus === "fail"
+      ? ["materializer_identity_set_or_blocker_regression"]
+      : materializerNonRegressionStatus === "unknown"
+        ? ["materializer_non_regression_not_projected"]
+        : []),
+    ...(acceptance.hardBlockers.length > 0
+      ? acceptance.hardBlockers.map((row) => `week_1_trainability:${row.code}`)
+      : []),
+    ...(donorOffset?.summary.behaviorReadinessDecision ===
+    "candidate_for_acceptance_projection"
+      ? []
+      : ["slot_week_allocation_not_candidate_for_acceptance_projection"]),
+  ]);
+  const watchItems = uniqueSorted([
+    ...gateWatchItems(input.gates),
+    ...acceptance.qualityWarnings.map((row) => `week_1_quality:${row.code}`),
+    ...(acceptance.basicMesocycleShapeStatus === "pass_with_warnings"
+      ? ["week_1_trainability:pass_with_warnings"]
+      : []),
+    ...(duplicateConcentrationGateStatus === "warning"
+      ? ["duplicate_concentration_risk:watch_item"]
+      : []),
+    ...(fatigueDistributionGateStatus === "warning"
+      ? ["fatigue_distribution:watch_item"]
+      : []),
+  ]);
+  const hasEvidence =
+    readOnlyProjectionBoundary &&
+    representativeAccumulationWeeks.length > 0 &&
+    projectedWeekCount === representativeAccumulationWeeks.length;
+  const hardPass =
+    hasEvidence &&
+    blockerCandidates.length === 0 &&
+    protectedVolumeCoverageStatus === "pass" &&
+    materializerNonRegressionStatus === "pass";
+  const decision: SlotWeekAllocationAcceptanceProjection["decision"] =
+    !hasEvidence
+      ? "diagnostic_only"
+      : !hardPass
+        ? "blocked_by_acceptance_trainability_or_non_regression"
+        : watchItems.length > 0
+          ? "accepted_with_watch_items"
+          : "behavior_ready_candidate";
+  const nextSafeSlice: SlotWeekAllocationAcceptanceProjection["acceptance"]["nextSafeSlice"] =
+    decision === "behavior_ready_candidate"
+      ? "behavior_promotion_review"
+      : decision === "accepted_with_watch_items"
+        ? "resolve_watch_items_before_behavior_promotion"
+        : decision === "blocked_by_acceptance_trainability_or_non_regression"
+          ? "fix_acceptance_or_non_regression_blockers"
+          : "collect_missing_acceptance_projection_evidence";
+
+  return {
+    version: 1,
+    source: "v2_slot_week_allocation_acceptance_non_regression_projection",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByProduction: false,
+    candidateSource: "SlotDemandAllocationByWeek",
+    evidenceSource:
+      "v2_plan_quality_benchmark_and_donor_offset_materializer_projection",
+    representativeAccumulationWeeks,
+    decision,
+    week1Trainability: {
+      status: acceptance.basicMesocycleShapeStatus,
+      replacementReadinessStatus: acceptance.replacementReadinessStatus,
+      hardBlockerCount: acceptance.hardBlockers.length,
+      qualityWarningCount: acceptance.qualityWarnings.length,
+    },
+    protectedVolumeCoverage: {
+      status: protectedVolumeCoverageStatus,
+      projectedWeekCount,
+      protectedCoveragePassCount,
+      blockedRowCount,
+      netWeeklySetDelta,
+    },
+    materializerNonRegression: {
+      status: materializerNonRegressionStatus,
+      selectedIdentityDelta,
+      totalSetDelta,
+      materializerBlockerDelta,
+      regressionCount: materializerRegressionCount,
+    },
+    sessionSizeFatigueConcentrationImpact: {
+      status:
+        sessionSizeGateStatus === "fail" || fatigueDistributionGateStatus === "fail"
+          ? "fail"
+          : sessionSizeGateStatus === "missing_evidence" ||
+              fatigueDistributionGateStatus === "missing_evidence"
+            ? "unknown"
+            : sessionSizeGateStatus === "warning" ||
+                fatigueDistributionGateStatus === "warning"
+              ? "watch"
+              : "pass",
+      sessionSizeGateStatus,
+      fatigueDistributionGateStatus,
+      concentrationWarningDelta,
+    },
+    duplicateConcentrationRisk: {
+      status: riskStatusFromGate(duplicateConcentrationGateStatus),
+      duplicateConcentrationGateStatus,
+      watchItemCount:
+        duplicateConcentrationGateStatus === "warning" ? watchItems.length : 0,
+    },
+    acceptance: {
+      decision,
+      watchItems,
+      blockers: blockerCandidates,
+      nextSafeSlice,
+    },
+    nonConsumption: {
+      seedRuntimeReceiptDbConsumed: false,
+      productionMaterializerConsumed: false,
+      acceptanceThresholdChanged: false,
+      persistenceChanged: false,
+    },
+  };
+}
+
 export function buildV2PlanQualityBenchmark(
   noRepair: MesocycleExplainPlannerOnlyNoRepair,
 ): V2PlanQualityBenchmark {
@@ -770,6 +1016,8 @@ export function buildV2PlanQualityBenchmark(
   const status = benchmarkStatus(gates);
   const deprecationReady =
     status === "pass" || (status === "warning" && mustFixBeforeWeek1Count === 0);
+  const slotWeekAllocationAcceptanceProjection =
+    buildSlotWeekAllocationAcceptanceProjection({ noRepair, gates });
 
   return {
     version: 1,
@@ -815,6 +1063,7 @@ export function buildV2PlanQualityBenchmark(
               ? "review_warning_gates_before_deprecation"
               : "review_legacy_repair_deprecation_candidates",
     },
+    slotWeekAllocationAcceptanceProjection,
     gates,
     deprecationReadiness: {
       status: deprecationReady

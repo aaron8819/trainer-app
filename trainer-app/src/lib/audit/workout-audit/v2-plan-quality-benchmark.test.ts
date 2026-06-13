@@ -675,6 +675,74 @@ describe("V2 plan quality benchmark", () => {
         "week_1_quality:duplicate_family_watch",
       ]),
     );
+    expect(
+      result.slotWeekAllocationAcceptanceProjection.acceptance
+        .classificationCounts,
+    ).toEqual({
+      acceptedWatch: 3,
+      blocker: 0,
+      staleOrDiagnosticNoise: 0,
+      ownerSpecificNextFix: 2,
+    });
+    expect(
+      result.slotWeekAllocationAcceptanceProjection.acceptance
+        .itemClassifications,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          item: "week_1_quality:duplicate_family_watch",
+          classification: "accepted_watch",
+          evidenceSource: "acceptance_classification_no_repair",
+          mustFixBeforeWeek1: false,
+        }),
+        expect.objectContaining({
+          item: "duplicate_concentration_risk:watch_item",
+          classification: "owner_specific_next_fix",
+          ownerSeam: "v2_base_plan_validation.duplicate_distinctness",
+        }),
+      ]),
+    );
+  });
+
+  it("classifies diagnostic-only shadow ambiguity as stale/noise instead of a blocker", () => {
+    const result = buildV2PlanQualityBenchmark(
+      noRepairFixture({
+        v2BasePlanShadowConsumptionTrial: pureV2ShadowTrialFixture({
+          summary: {
+            ...pureV2ShadowTrialFixture().summary,
+            regressionCount: 0,
+            unclearCount: 2,
+          },
+        }),
+        v2ConcentrationMaterializerProjection:
+          measuredSlotWeekAcceptanceProjectionFixture(),
+      }),
+    );
+
+    expect(result.gates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gate: "lane_preservation",
+          status: "warning",
+          evidenceSource: "shadow_diagnostic",
+          mustFixBeforeWeek1: false,
+        }),
+      ]),
+    );
+    expect(
+      result.slotWeekAllocationAcceptanceProjection.acceptance
+        .itemClassifications,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          item: "lane_preservation:v2_base_plan_shadow_consumption_trial",
+          classification: "stale_or_diagnostic_noise",
+          materiality:
+            "diagnostic-only shadow ambiguity with no measured regression or production consumption",
+          mustFixBeforeWeek1: false,
+        }),
+      ]),
+    );
   });
 
   it("blocks the slot/week allocation acceptance projection on protected coverage or materializer regression", () => {
@@ -748,6 +816,61 @@ describe("V2 plan quality benchmark", () => {
       expect.arrayContaining([
         "protected_volume_or_coverage_regressed",
         "materializer_identity_set_or_blocker_regression",
+      ]),
+    );
+    expect(
+      result.slotWeekAllocationAcceptanceProjection.acceptance
+        .classificationCounts.blocker,
+    ).toBeGreaterThanOrEqual(2);
+    expect(
+      result.slotWeekAllocationAcceptanceProjection.acceptance
+        .itemClassifications,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          item: "protected_volume_or_coverage_regressed",
+          classification: "blocker",
+          ownerSeam: "SlotDemandAllocationByWeek",
+        }),
+        expect.objectContaining({
+          item: "materializer_identity_set_or_blocker_regression",
+          classification: "blocker",
+          ownerSeam: "v2_materialization_dry_run",
+        }),
+      ]),
+    );
+  });
+
+  it("marks acceptance hard blockers as must-fix before Week 1", () => {
+    const result = buildV2PlanQualityBenchmark(
+      noRepairFixture({
+        acceptanceClassification: {
+          ...noRepairFixture().acceptanceClassification,
+          basicMesocycleShapeStatus: "fail",
+          hardBlockers: [
+            {
+              code: "seed_shape_incompatible",
+              evidence: ["week_1:seed_shape_incompatible"],
+            },
+          ],
+        },
+        v2ConcentrationMaterializerProjection:
+          measuredSlotWeekAcceptanceProjectionFixture(),
+      }),
+    );
+
+    expect(result.summary.mustFixBeforeWeek1Count).toBe(1);
+    expect(
+      result.slotWeekAllocationAcceptanceProjection.acceptance
+        .itemClassifications,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          item: "week_1_trainability:seed_shape_incompatible",
+          classification: "blocker",
+          mustFixBeforeWeek1: true,
+          ownerSeam: "plannerOnlyNoRepair.acceptanceClassification",
+        }),
       ]),
     );
   });

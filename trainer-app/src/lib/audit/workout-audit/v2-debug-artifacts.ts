@@ -1897,6 +1897,9 @@ function buildIndexSummary(input: {
   const slotWeekAllocationAcceptance = asRecord(
     slotWeekAllocationAcceptanceProjection?.acceptance,
   );
+  const slotWeekAllocationClassificationCounts = asRecord(
+    slotWeekAllocationAcceptance?.classificationCounts,
+  );
   return {
     status: asRecord(input.noRepair.summary)?.status ?? "unknown",
     basicMesocycleShapeStatus:
@@ -2009,6 +2012,14 @@ function buildIndexSummary(input: {
     )
       ? slotWeekAllocationAcceptance.blockers.length
       : null,
+    v2SlotWeekAllocationAcceptanceAcceptedWatchCount:
+      slotWeekAllocationClassificationCounts?.acceptedWatch ?? null,
+    v2SlotWeekAllocationAcceptanceOwnerFixCount:
+      slotWeekAllocationClassificationCounts?.ownerSpecificNextFix ?? null,
+    v2SlotWeekAllocationAcceptanceStaleNoiseCount:
+      slotWeekAllocationClassificationCounts?.staleOrDiagnosticNoise ?? null,
+    v2SlotWeekAllocationAcceptanceClassifiedBlockerCount:
+      slotWeekAllocationClassificationCounts?.blocker ?? null,
     v2SlotWeekAllocationAcceptanceNextSafeSlice:
       slotWeekAllocationAcceptance?.nextSafeSlice ?? null,
     writtenShardCount: input.shardMetadata.filter(

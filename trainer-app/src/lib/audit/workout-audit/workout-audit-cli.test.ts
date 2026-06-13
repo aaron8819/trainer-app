@@ -584,6 +584,53 @@ function makeV2PlanQualityBenchmarkFixture() {
           "week_1_trainability:pass_with_warnings",
         ],
         blockers: [],
+        itemClassifications: [
+          {
+            item: "duplicate_concentration_risk:v2_base_plan_validation.duplicate_distinctness",
+            gate: "duplicate_concentration_risk",
+            status: "watch",
+            classification: "owner_specific_next_fix",
+            evidenceSource: "pure_v2_base_plan",
+            affected: {
+              weeks: [],
+              slots: [],
+              lanes: [],
+              muscles: [],
+            },
+            evidence: ["v2DuplicateExact:Standing Calf Raise"],
+            ownerSeam: "v2_base_plan_validation.duplicate_distinctness",
+            materiality:
+              "bounded distinctness watch; behavior promotion waits on duplicate/class-family owner proof",
+            mustFixBeforeWeek1: false,
+            smallestSafeNextAction:
+              "resolve exact duplicate or class-family distinctness in V2 base-plan validation before promotion review",
+          },
+          {
+            item: "week_1_trainability:pass_with_warnings",
+            gate: "week_1_trainability",
+            status: "watch",
+            classification: "accepted_watch",
+            evidenceSource: "acceptance_classification_no_repair",
+            affected: {
+              weeks: [1],
+              slots: [],
+              lanes: [],
+              muscles: [],
+            },
+            evidence: ["basicMesocycleShapeStatus=pass_with_warnings"],
+            ownerSeam: "plannerOnlyNoRepair.acceptanceClassification",
+            materiality: "Week 1 trainability passes with warnings",
+            mustFixBeforeWeek1: false,
+            smallestSafeNextAction:
+              "bound the Week 1 warning criteria before behavior-promotion review",
+          },
+        ],
+        classificationCounts: {
+          acceptedWatch: 1,
+          blocker: 0,
+          staleOrDiagnosticNoise: 0,
+          ownerSpecificNextFix: 1,
+        },
         nextSafeSlice: "resolve_watch_items_before_behavior_promotion",
       },
       nonConsumption: {
@@ -4239,6 +4286,7 @@ describe("buildPlannerOnlyNoRepairSummary", () => {
         "Gates: pass=6 warn=2 fail=0 missing=0 mustFixW1=0",
         "Slot/week allocation: readiness=blocked-by-evidence blockedRows=1 next=design-slot-week-allocation-policy",
         "Slot/week acceptance projection: decision=accepted-with-watch-items weeks=W2, W3, W4 watch=2 blockers=0 next=resolve-watch-items-before-behavior-promotion",
+        "Slot/week watch classification: accepted=1 ownerFix=1 staleNoise=0 blockers=0",
         "Gate detail: session_size:pass:pure_v2_base_plan; duplicate_concentration_risk:warning:pure_v2_base_plan",
         "Warning evidence: duplicate_concentration_risk@v2_base_plan_validation.duplicate_distinctness: exerciseIdentityClassification=v2_preserves, v2DuplicateExact:Standing Calf Raise, v2DuplicateExactExercises=1, watch:exact_duplicate_reuse_needs_variant_or_continuity_justification",
         "Next safe action: review-warning-gates-before-deprecation",

@@ -1092,6 +1092,10 @@ function compactPlannerOnlyNoRepair(
   const v2PlanQualityBenchmarkDeprecationReadiness = asRecord(
     v2PlanQualityBenchmark?.deprecationReadiness,
   );
+  const v2PlanQualitySlotWeekAcceptance = asRecord(
+    asRecord(v2PlanQualityBenchmark?.slotWeekAllocationAcceptanceProjection)
+      ?.acceptance,
+  );
   const v2PhaseStrategy = asRecord(
     v2MesocycleStrategyDiagnostic?.phaseStrategy,
   );
@@ -1249,6 +1253,32 @@ function compactPlannerOnlyNoRepair(
             v2PlanQualityBenchmark.repairedProjectionUsedAs ??
             "evidence_only_not_target_policy",
           summary: v2PlanQualityBenchmarkSummary ?? {},
+          slotWeekAllocationAcceptanceProjection: v2PlanQualitySlotWeekAcceptance
+            ? {
+                decision: asRecord(
+                  v2PlanQualityBenchmark?.slotWeekAllocationAcceptanceProjection,
+                )?.decision,
+                representativeAccumulationWeeks: Array.isArray(
+                  asRecord(
+                    v2PlanQualityBenchmark?.slotWeekAllocationAcceptanceProjection,
+                  )?.representativeAccumulationWeeks,
+                )
+                  ? asRecord(
+                      v2PlanQualityBenchmark?.slotWeekAllocationAcceptanceProjection,
+                    )?.representativeAccumulationWeeks
+                  : [],
+                watchItemCount: asStringArray(
+                  v2PlanQualitySlotWeekAcceptance.watchItems,
+                ).length,
+                blockerCount: asStringArray(
+                  v2PlanQualitySlotWeekAcceptance.blockers,
+                ).length,
+                classificationCounts:
+                  asRecord(v2PlanQualitySlotWeekAcceptance.classificationCounts) ??
+                  {},
+                nextSafeSlice: v2PlanQualitySlotWeekAcceptance.nextSafeSlice,
+              }
+            : undefined,
           deprecationReadiness:
             v2PlanQualityBenchmarkDeprecationReadiness ?? {},
           gateStatuses: asRecordArray(v2PlanQualityBenchmark.gates).map(

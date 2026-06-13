@@ -7,6 +7,10 @@ type BenchmarkGate = V2PlanQualityBenchmark["gates"][number];
 type BenchmarkStatus = BenchmarkGate["status"];
 type SlotWeekAllocationAcceptanceProjection =
   V2PlanQualityBenchmark["slotWeekAllocationAcceptanceProjection"];
+type AcceptanceItemClassification =
+  SlotWeekAllocationAcceptanceProjection["acceptance"]["itemClassifications"][number];
+type AcceptanceClassificationCounts =
+  SlotWeekAllocationAcceptanceProjection["acceptance"]["classificationCounts"];
 type BasePlanCompare = NonNullable<
   MesocycleExplainPlannerOnlyNoRepair["v2BasePlanCompare"]
 >;
@@ -69,6 +73,312 @@ function numberEvidence(label: string, value: number | null | undefined): string
 
 function uniqueSorted(values: string[]): string[] {
   return [...new Set(values.filter((value) => value.length > 0))].sort();
+}
+
+function emptyClassificationCounts(): AcceptanceClassificationCounts {
+  return {
+    acceptedWatch: 0,
+    blocker: 0,
+    staleOrDiagnosticNoise: 0,
+    ownerSpecificNextFix: 0,
+  };
+}
+
+function countClassifications(
+  rows: AcceptanceItemClassification[],
+): AcceptanceClassificationCounts {
+  return rows.reduce((counts, row) => {
+    if (row.classification === "accepted_watch") {
+      counts.acceptedWatch += 1;
+    } else if (row.classification === "blocker") {
+      counts.blocker += 1;
+    } else if (row.classification === "stale_or_diagnostic_noise") {
+      counts.staleOrDiagnosticNoise += 1;
+    } else {
+      counts.ownerSpecificNextFix += 1;
+    }
+    return counts;
+  }, emptyClassificationCounts());
+}
+
+function affectedFromEvidence(input: {
+  evidence: string[];
+  fallbackWeeks?: number[];
+  fallbackMuscles?: string[];
+}): AcceptanceItemClassification["affected"] {
+  const joined = input.evidence.join(" ");
+  const weeks = uniqueSorted(
+    [
+      ...(input.fallbackWeeks ?? []).map((week) => String(week)),
+      ...Array.from(joined.matchAll(/week[_:-](\d+)/gi)).map((match) => match[1]),
+    ],
+  ).map((week) => Number(week));
+  const slots = uniqueSorted(
+    Array.from(
+      joined.matchAll(/\b(upper_a|upper_b|lower_a|lower_b|full_body|push|pull|legs)\b/gi),
+    ).map((match) => match[1].toLowerCase()),
+  );
+  const lanes = uniqueSorted(
+    Array.from(
+      joined.matchAll(
+        /\b(chest_anchor|row_anchor|vertical_pull|horizontal_pull|squat_anchor|hinge_anchor|quad_support|hamstrings|calves|side_delt_isolation|rear_delt_direct|biceps|triceps)\b/gi,
+      ),
+    ).map((match) => match[1].toLowerCase()),
+  );
+  const muscles = uniqueSorted([
+    ...(input.fallbackMuscles ?? []),
+    ...Array.from(
+      joined.matchAll(
+        /\b(Chest|Lats|Quads|Hamstrings|Calves|Side Delts|Rear Delts|Biceps|Triceps|Glutes|Upper Back|Front Delts)\b/g,
+      ),
+    ).map((match) => match[1]),
+  ]);
+  return { weeks, slots, lanes, muscles };
+}
+
+function warningClassificationForGate(
+  gateRow: BenchmarkGate,
+): Pick<
+  AcceptanceItemClassification,
+  "classification" | "materiality" | "smallestSafeNextAction"
+> {
+  if (
+    gateRow.gate === "lane_preservation" &&
+    gateRow.evidenceSource === "shadow_diagnostic"
+  ) {
+    return {
+      classification: "stale_or_diagnostic_noise",
+      materiality:
+        "diagnostic-only shadow ambiguity with no measured regression or production consumption",
+      smallestSafeNextAction:
+        "keep in debug evidence and review shadow differences before any behavior-promotion review",
+    };
+  }
+  if (gateRow.gate === "duplicate_concentration_risk") {
+    return {
+      classification: "owner_specific_next_fix",
+      materiality:
+        "bounded distinctness watch; behavior promotion waits on duplicate/class-family owner proof",
+      smallestSafeNextAction:
+        "resolve exact duplicate or class-family distinctness in V2 base-plan validation before promotion review",
+    };
+  }
+  if (gateRow.gate === "fatigue_distribution") {
+    return {
+      classification: "owner_specific_next_fix",
+      materiality:
+        "bounded fatigue/concentration watch; non-regression passes but distribution quality still needs owner review",
+      smallestSafeNextAction:
+        "resolve concentration/fatigue projection warnings in the V2 materializer or slot-allocation diagnostic before promotion review",
+    };
+  }
+  if (gateRow.gate === "week_1_trainability") {
+    return {
+      classification: "accepted_watch",
+      materiality:
+        "Week 1 is trainable with warnings and no hard blockers",
+      smallestSafeNextAction:
+        "carry as a Week 1/post-accept verification watch; do not promote behavior while warnings remain unbounded",
+    };
+  }
+  return {
+    classification: "accepted_watch",
+    materiality: "non-blocking warning gate with no must-fix Week 1 signal",
+    smallestSafeNextAction:
+      "keep as a bounded watch and resolve before behavior-promotion review",
+  };
+}
+
+function acceptanceProjectionBlockerClassification(
+  blocker: string,
+): AcceptanceItemClassification {
+  const isWeek1 = blocker.startsWith("week_1_trainability:");
+  const isNonConsumption = blocker === "read_only_non_consumption_boundary_not_proven";
+  const isMaterializer = blocker === "materializer_identity_set_or_blocker_regression";
+  const isProtectedCoverage =
+    blocker === "protected_volume_or_coverage_regressed" ||
+    blocker === "protected_volume_or_coverage_not_projected";
+  return {
+    item: blocker,
+    gate: "acceptance_projection",
+    status: "blocker",
+    classification: "blocker",
+    evidenceSource: "acceptance_projection",
+    affected: affectedFromEvidence({
+      evidence: [blocker],
+      fallbackWeeks: isWeek1 ? [1] : undefined,
+    }),
+    evidence: [blocker],
+    ownerSeam: isWeek1
+      ? "plannerOnlyNoRepair.acceptanceClassification"
+      : isNonConsumption
+        ? "seed_runtime_receipt_persistence_boundary"
+        : isMaterializer
+          ? "v2_materialization_dry_run"
+          : isProtectedCoverage
+            ? "SlotDemandAllocationByWeek"
+            : "slot_week_acceptance_projection",
+    materiality: isWeek1
+      ? "real Week 1 trainability blocker"
+      : "blocks behavior-promotion readiness for this projection",
+    mustFixBeforeWeek1: isWeek1,
+    smallestSafeNextAction: isWeek1
+      ? "fix acceptance/trainability before Week 1"
+      : "resolve the named acceptance/non-regression blocker before any behavior-promotion review",
+  };
+}
+
+function buildAcceptanceItemClassifications(input: {
+  gates: BenchmarkGate[];
+  acceptance: MesocycleExplainPlannerOnlyNoRepair["acceptanceClassification"];
+  blockerCandidates: string[];
+  watchItems: string[];
+  representativeAccumulationWeeks: number[];
+}): AcceptanceItemClassification[] {
+  const rows: AcceptanceItemClassification[] = [];
+  const seen = new Set<string>();
+  const push = (row: AcceptanceItemClassification) => {
+    if (seen.has(row.item)) {
+      return;
+    }
+    seen.add(row.item);
+    rows.push(row);
+  };
+
+  for (const gateRow of input.gates) {
+    if (gateRow.status === "warning") {
+      const classification = warningClassificationForGate(gateRow);
+      push({
+        item: `${gateRow.gate}:${gateRow.ownerSeam}`,
+        gate: gateRow.gate,
+        status: "watch",
+        evidenceSource: gateRow.evidenceSource,
+        affected: affectedFromEvidence({
+          evidence: gateRow.evidence,
+          fallbackWeeks:
+            gateRow.gate === "fatigue_distribution"
+              ? input.representativeAccumulationWeeks
+              : undefined,
+        }),
+        evidence: gateRow.evidence.slice(0, 8),
+        ownerSeam: gateRow.ownerSeam,
+        mustFixBeforeWeek1: gateRow.mustFixBeforeWeek1,
+        ...classification,
+      });
+    } else if (gateRow.status === "fail" || gateRow.status === "missing_evidence") {
+      push({
+        item: `${gateRow.gate}:${gateRow.status}:${gateRow.ownerSeam}`,
+        gate: gateRow.gate,
+        status: "blocker",
+        classification: "blocker",
+        evidenceSource: gateRow.evidenceSource,
+        affected: affectedFromEvidence({ evidence: gateRow.evidence }),
+        evidence: [
+          ...gateRow.evidence.slice(0, 6),
+          ...gateRow.missingEvidence.slice(0, 4).map((row) => `missing:${row}`),
+        ],
+        ownerSeam: gateRow.ownerSeam,
+        materiality:
+          gateRow.status === "fail"
+            ? "real benchmark blocker"
+            : "missing required benchmark evidence",
+        mustFixBeforeWeek1: gateRow.mustFixBeforeWeek1,
+        smallestSafeNextAction:
+          gateRow.status === "fail"
+            ? "fix the failed owner gate before Week 1 or behavior review as indicated"
+            : "collect the missing source-attributed evidence before promotion review",
+      });
+    }
+  }
+
+  for (const warning of input.acceptance.qualityWarnings) {
+    push({
+      item: `week_1_quality:${warning.code}`,
+      gate: "week_1_trainability",
+      status: "watch",
+      classification: "accepted_watch",
+      evidenceSource: "acceptance_classification_no_repair",
+      affected: affectedFromEvidence({
+        evidence: warning.evidence,
+        fallbackWeeks: [1],
+      }),
+      evidence: warning.evidence.slice(0, 8),
+      ownerSeam: "plannerOnlyNoRepair.acceptanceClassification",
+      materiality: "Week 1 quality watch; no hard trainability blocker",
+      mustFixBeforeWeek1: false,
+      smallestSafeNextAction:
+        "carry into post-accept verification or resolve the underlying readout before behavior promotion",
+    });
+  }
+
+  if (input.acceptance.basicMesocycleShapeStatus === "pass_with_warnings") {
+    push({
+      item: "week_1_trainability:pass_with_warnings",
+      gate: "week_1_trainability",
+      status: "watch",
+      classification: "accepted_watch",
+      evidenceSource: "acceptance_classification_no_repair",
+      affected: affectedFromEvidence({
+        evidence: ["week_1_trainability:pass_with_warnings"],
+        fallbackWeeks: [1],
+      }),
+      evidence: ["basicMesocycleShapeStatus=pass_with_warnings"],
+      ownerSeam: "plannerOnlyNoRepair.acceptanceClassification",
+      materiality: "Week 1 trainability passes with warnings",
+      mustFixBeforeWeek1: false,
+      smallestSafeNextAction:
+        "bound the Week 1 warning criteria before behavior-promotion review",
+    });
+  }
+
+  if (input.watchItems.includes("duplicate_concentration_risk:watch_item")) {
+    push({
+      item: "duplicate_concentration_risk:watch_item",
+      gate: "duplicate_concentration_risk",
+      status: "watch",
+      classification: "owner_specific_next_fix",
+      evidenceSource: "pure_v2_base_plan",
+      affected: affectedFromEvidence({
+        evidence: ["duplicate_concentration_risk:watch_item"],
+      }),
+      evidence: ["duplicate_or_class_family_distinctness_watch"],
+      ownerSeam: "v2_base_plan_validation.duplicate_distinctness",
+      materiality: "owner-specific distinctness watch before promotion",
+      mustFixBeforeWeek1: false,
+      smallestSafeNextAction:
+        "add or accept bounded duplicate/class-family distinctness criteria before behavior-promotion review",
+    });
+  }
+
+  if (input.watchItems.includes("fatigue_distribution:watch_item")) {
+    push({
+      item: "fatigue_distribution:watch_item",
+      gate: "fatigue_distribution",
+      status: "watch",
+      classification: "owner_specific_next_fix",
+      evidenceSource: "pure_v2_materializer_projection",
+      affected: affectedFromEvidence({
+        evidence: ["fatigue_distribution:watch_item"],
+        fallbackWeeks: input.representativeAccumulationWeeks,
+      }),
+      evidence: ["fatigue_or_concentration_distribution_watch"],
+      ownerSeam: "v2_concentration_materializer_projection",
+      materiality: "owner-specific distribution watch before promotion",
+      mustFixBeforeWeek1: false,
+      smallestSafeNextAction:
+        "resolve or explicitly bound fatigue/concentration watch criteria before behavior-promotion review",
+    });
+  }
+
+  for (const blocker of input.blockerCandidates) {
+    if (!seen.has(blocker)) {
+      push(acceptanceProjectionBlockerClassification(blocker));
+    }
+  }
+
+  return rows.filter(
+    (row) => row.status === "blocker" || input.watchItems.includes(row.item),
+  );
 }
 
 function pureV2BaseEvidence(noRepair: MesocycleExplainPlannerOnlyNoRepair): {
@@ -901,6 +1211,14 @@ function buildSlotWeekAllocationAcceptanceProjection(input: {
       ? ["fatigue_distribution:watch_item"]
       : []),
   ]);
+  const itemClassifications = buildAcceptanceItemClassifications({
+    gates: input.gates,
+    acceptance,
+    blockerCandidates,
+    watchItems,
+    representativeAccumulationWeeks,
+  });
+  const classificationCounts = countClassifications(itemClassifications);
   const hasEvidence =
     readOnlyProjectionBoundary &&
     representativeAccumulationWeeks.length > 0 &&
@@ -983,6 +1301,8 @@ function buildSlotWeekAllocationAcceptanceProjection(input: {
       decision,
       watchItems,
       blockers: blockerCandidates,
+      itemClassifications,
+      classificationCounts,
       nextSafeSlice,
     },
     nonConsumption: {

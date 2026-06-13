@@ -3109,6 +3109,34 @@ describe("buildWorkoutAuditArtifact", () => {
             "week_1_trainability:pass_with_warnings",
           ],
           blockers: [],
+          itemClassifications: [
+            {
+              item: "duplicate_concentration_risk:v2_base_plan_validation.duplicate_distinctness",
+              gate: "duplicate_concentration_risk",
+              status: "watch",
+              classification: "owner_specific_next_fix",
+              evidenceSource: "pure_v2_base_plan",
+              affected: {
+                weeks: [],
+                slots: [],
+                lanes: [],
+                muscles: [],
+              },
+              evidence: ["v2DuplicateFamily:calf_isolation"],
+              ownerSeam: "v2_base_plan_validation.duplicate_distinctness",
+              materiality:
+                "bounded distinctness watch; behavior promotion waits on duplicate/class-family owner proof",
+              mustFixBeforeWeek1: false,
+              smallestSafeNextAction:
+                "resolve exact duplicate or class-family distinctness in V2 base-plan validation before promotion review",
+            },
+          ],
+          classificationCounts: {
+            acceptedWatch: 1,
+            blocker: 0,
+            staleOrDiagnosticNoise: 0,
+            ownerSpecificNextFix: 1,
+          },
           nextSafeSlice: "resolve_watch_items_before_behavior_promotion",
         },
         nonConsumption: {

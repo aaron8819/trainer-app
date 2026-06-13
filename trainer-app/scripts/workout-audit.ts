@@ -4476,6 +4476,10 @@ export function buildPlannerOnlyNoRepairSummary(input: {
   const repairDeprecationReadiness =
     repairScoreboard?.interpretation.repairDeprecationReadiness;
   const planQualityBenchmark = noRepair.v2PlanQualityBenchmark;
+  const slotWeekAcceptance =
+    planQualityBenchmark?.slotWeekAllocationAcceptanceProjection?.acceptance;
+  const slotWeekClassificationCounts =
+    slotWeekAcceptance?.classificationCounts;
   const basePlanCompare = noRepair.v2BasePlanCompare;
   const shadowConsumption = noRepair.v2BasePlanShadowConsumptionTrial;
   const basePlanCompareLines = basePlanCompare
@@ -4514,6 +4518,7 @@ export function buildPlannerOnlyNoRepairSummary(input: {
         `Gates: pass=${planQualityBenchmark.summary.passCount} warn=${planQualityBenchmark.summary.warningCount} fail=${planQualityBenchmark.summary.failCount} missing=${planQualityBenchmark.summary.missingEvidenceCount} mustFixW1=${planQualityBenchmark.summary.mustFixBeforeWeek1Count}`,
         `Slot/week allocation: readiness=${formatStatus(planQualityBenchmark.summary.slotWeekAllocationReadiness)} blockedRows=${planQualityBenchmark.summary.slotWeekAllocationBlockedRowCount} next=${formatStatus(planQualityBenchmark.summary.slotWeekAllocationNextSafeSlice ?? "none")}`,
         `Slot/week acceptance projection: decision=${formatStatus(planQualityBenchmark.slotWeekAllocationAcceptanceProjection?.decision ?? "not_available")} weeks=${formatNameList((planQualityBenchmark.slotWeekAllocationAcceptanceProjection?.representativeAccumulationWeeks ?? []).map((week) => `W${week}`), 8)} watch=${planQualityBenchmark.slotWeekAllocationAcceptanceProjection?.acceptance.watchItems.length ?? 0} blockers=${planQualityBenchmark.slotWeekAllocationAcceptanceProjection?.acceptance.blockers.length ?? 0} next=${formatStatus(planQualityBenchmark.slotWeekAllocationAcceptanceProjection?.acceptance.nextSafeSlice ?? "none")}`,
+        `Slot/week watch classification: accepted=${slotWeekClassificationCounts?.acceptedWatch ?? 0} ownerFix=${slotWeekClassificationCounts?.ownerSpecificNextFix ?? 0} staleNoise=${slotWeekClassificationCounts?.staleOrDiagnosticNoise ?? 0} blockers=${slotWeekClassificationCounts?.blocker ?? 0}`,
         `Gate detail: ${planQualityBenchmark.gates.map((row) => `${row.gate}:${row.status}:${row.evidenceSource}`).join("; ")}`,
         `Warning evidence: ${
           planQualityBenchmark.gates

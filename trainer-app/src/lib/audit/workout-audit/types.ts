@@ -1883,6 +1883,50 @@ export type V2PlanQualityBenchmark = {
         | "diagnostic_only";
       watchItems: string[];
       blockers: string[];
+      itemClassifications: Array<{
+        item: string;
+        gate:
+          | "support_floors"
+          | "direct_work"
+          | "lane_preservation"
+          | "session_size"
+          | "fatigue_distribution"
+          | "duplicate_concentration_risk"
+          | "materializer_omissions"
+          | "week_1_trainability"
+          | "acceptance_projection";
+        status: "watch" | "blocker";
+        classification:
+          | "accepted_watch"
+          | "blocker"
+          | "stale_or_diagnostic_noise"
+          | "owner_specific_next_fix";
+        evidenceSource:
+          | "pure_v2_base_plan"
+          | "pure_v2_materializer_projection"
+          | "shadow_diagnostic"
+          | "no_repair_projection"
+          | "acceptance_classification_no_repair"
+          | "acceptance_projection"
+          | "missing_evidence";
+        affected: {
+          weeks: number[];
+          slots: string[];
+          lanes: string[];
+          muscles: string[];
+        };
+        evidence: string[];
+        ownerSeam: string;
+        materiality: string;
+        mustFixBeforeWeek1: boolean;
+        smallestSafeNextAction: string;
+      }>;
+      classificationCounts: {
+        acceptedWatch: number;
+        blocker: number;
+        staleOrDiagnosticNoise: number;
+        ownerSpecificNextFix: number;
+      };
       nextSafeSlice:
         | "behavior_promotion_review"
         | "resolve_watch_items_before_behavior_promotion"

@@ -78,6 +78,7 @@ function uniqueSorted(values: string[]): string[] {
 function emptyClassificationCounts(): AcceptanceClassificationCounts {
   return {
     acceptedWatch: 0,
+    boundedOwnerWatch: 0,
     blocker: 0,
     staleOrDiagnosticNoise: 0,
     ownerSpecificNextFix: 0,
@@ -92,6 +93,8 @@ function countClassifications(
       counts.acceptedWatch += 1;
     } else if (row.classification === "blocker") {
       counts.blocker += 1;
+    } else if (row.classification === "bounded_owner_watch") {
+      counts.boundedOwnerWatch += 1;
     } else if (row.classification === "stale_or_diagnostic_noise") {
       counts.staleOrDiagnosticNoise += 1;
     } else {
@@ -155,6 +158,28 @@ function warningClassificationForGate(
     };
   }
   if (gateRow.gate === "duplicate_concentration_risk") {
+    const noExactDuplicateReuse = gateRow.evidence.some(
+      (row) => row === "v2DuplicateExactExercises=0",
+    );
+    const baseNonRegression = gateRow.evidence.some(
+      (row) => row === "baseRegressions=0",
+    );
+    const noRegressionClassification = !gateRow.evidence.some(
+      (row) => row === "exerciseIdentityClassification=v2_regresses",
+    );
+    if (
+      noExactDuplicateReuse &&
+      baseNonRegression &&
+      noRegressionClassification
+    ) {
+      return {
+        classification: "bounded_owner_watch",
+        materiality:
+          "bounded distinctness watch; pure V2 has no exact duplicate reuse and no base-plan regression, while class-family reuse remains review evidence",
+        smallestSafeNextAction:
+          "carry class-family reuse as a bounded promotion-review watch; require no exact duplicate reuse, no base regression, and debug-shard row review before any behavior slice",
+      };
+    }
     return {
       classification: "owner_specific_next_fix",
       materiality:
@@ -164,6 +189,38 @@ function warningClassificationForGate(
     };
   }
   if (gateRow.gate === "fatigue_distribution") {
+    const slotWeekCandidate = gateRow.evidence.some(
+      (row) => row === "slotWeekAllocationReadiness=candidate_for_acceptance_projection",
+    );
+    const slotWeekUnblocked = gateRow.evidence.some(
+      (row) => row === "slotWeekAllocationBlockedRows=0",
+    );
+    const materializerNonRegression = gateRow.evidence.some(
+      (row) => row === "donorOffsetMaterializerRegressions=0",
+    );
+    const concentrationNonRegression = gateRow.evidence.some(
+      (row) => row === "donorOffsetConcentrationRegressions=0",
+    );
+    const warningDelta = gateRow.evidence.find((row) =>
+      row.startsWith("donorOffsetWarningDelta="),
+    );
+    const warningImproved =
+      warningDelta != null && Number(warningDelta.split("=")[1]) < 0;
+    if (
+      slotWeekCandidate &&
+      slotWeekUnblocked &&
+      materializerNonRegression &&
+      concentrationNonRegression &&
+      warningImproved
+    ) {
+      return {
+        classification: "bounded_owner_watch",
+        materiality:
+          "bounded fatigue/concentration watch; slot-owned donor absorption improves concentration without weekly-volume, protected-coverage, or materializer regression",
+        smallestSafeNextAction:
+          "carry as a bounded promotion-review watch; require Weeks 2-4 donor absorption, net-zero weekly sets, preserved protected coverage, and materializer non-regression",
+      };
+    }
     return {
       classification: "owner_specific_next_fix",
       materiality:
@@ -328,45 +385,6 @@ function buildAcceptanceItemClassifications(input: {
       mustFixBeforeWeek1: false,
       smallestSafeNextAction:
         "bound the Week 1 warning criteria before behavior-promotion review",
-    });
-  }
-
-  if (input.watchItems.includes("duplicate_concentration_risk:watch_item")) {
-    push({
-      item: "duplicate_concentration_risk:watch_item",
-      gate: "duplicate_concentration_risk",
-      status: "watch",
-      classification: "owner_specific_next_fix",
-      evidenceSource: "pure_v2_base_plan",
-      affected: affectedFromEvidence({
-        evidence: ["duplicate_concentration_risk:watch_item"],
-      }),
-      evidence: ["duplicate_or_class_family_distinctness_watch"],
-      ownerSeam: "v2_base_plan_validation.duplicate_distinctness",
-      materiality: "owner-specific distinctness watch before promotion",
-      mustFixBeforeWeek1: false,
-      smallestSafeNextAction:
-        "add or accept bounded duplicate/class-family distinctness criteria before behavior-promotion review",
-    });
-  }
-
-  if (input.watchItems.includes("fatigue_distribution:watch_item")) {
-    push({
-      item: "fatigue_distribution:watch_item",
-      gate: "fatigue_distribution",
-      status: "watch",
-      classification: "owner_specific_next_fix",
-      evidenceSource: "pure_v2_materializer_projection",
-      affected: affectedFromEvidence({
-        evidence: ["fatigue_distribution:watch_item"],
-        fallbackWeeks: input.representativeAccumulationWeeks,
-      }),
-      evidence: ["fatigue_or_concentration_distribution_watch"],
-      ownerSeam: "v2_concentration_materializer_projection",
-      materiality: "owner-specific distribution watch before promotion",
-      mustFixBeforeWeek1: false,
-      smallestSafeNextAction:
-        "resolve or explicitly bound fatigue/concentration watch criteria before behavior-promotion review",
     });
   }
 
@@ -1205,10 +1223,10 @@ function buildSlotWeekAllocationAcceptanceProjection(input: {
       ? ["week_1_trainability:pass_with_warnings"]
       : []),
     ...(duplicateConcentrationGateStatus === "warning"
-      ? ["duplicate_concentration_risk:watch_item"]
+      ? []
       : []),
     ...(fatigueDistributionGateStatus === "warning"
-      ? ["fatigue_distribution:watch_item"]
+      ? []
       : []),
   ]);
   const itemClassifications = buildAcceptanceItemClassifications({
@@ -1240,7 +1258,10 @@ function buildSlotWeekAllocationAcceptanceProjection(input: {
     decision === "behavior_ready_candidate"
       ? "behavior_promotion_review"
       : decision === "accepted_with_watch_items"
-        ? "resolve_watch_items_before_behavior_promotion"
+        ? classificationCounts.ownerSpecificNextFix === 0 &&
+          classificationCounts.blocker === 0
+          ? "bounded_behavior_promotion_review"
+          : "resolve_watch_items_before_behavior_promotion"
         : decision === "blocked_by_acceptance_trainability_or_non_regression"
           ? "fix_acceptance_or_non_regression_blockers"
           : "collect_missing_acceptance_projection_evidence";
@@ -1295,7 +1316,11 @@ function buildSlotWeekAllocationAcceptanceProjection(input: {
       status: riskStatusFromGate(duplicateConcentrationGateStatus),
       duplicateConcentrationGateStatus,
       watchItemCount:
-        duplicateConcentrationGateStatus === "warning" ? watchItems.length : 0,
+        duplicateConcentrationGateStatus === "warning"
+          ? watchItems.filter((item) =>
+              item.startsWith("duplicate_concentration_risk:"),
+            ).length
+          : 0,
     },
     acceptance: {
       decision,

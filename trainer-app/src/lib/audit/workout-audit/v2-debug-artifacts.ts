@@ -2014,6 +2014,8 @@ function buildIndexSummary(input: {
       : null,
     v2SlotWeekAllocationAcceptanceAcceptedWatchCount:
       slotWeekAllocationClassificationCounts?.acceptedWatch ?? null,
+    v2SlotWeekAllocationAcceptanceBoundedOwnerWatchCount:
+      slotWeekAllocationClassificationCounts?.boundedOwnerWatch ?? null,
     v2SlotWeekAllocationAcceptanceOwnerFixCount:
       slotWeekAllocationClassificationCounts?.ownerSpecificNextFix ?? null,
     v2SlotWeekAllocationAcceptanceStaleNoiseCount:

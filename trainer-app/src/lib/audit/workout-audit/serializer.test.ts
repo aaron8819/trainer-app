@@ -3114,7 +3114,7 @@ describe("buildWorkoutAuditArtifact", () => {
               item: "duplicate_concentration_risk:v2_base_plan_validation.duplicate_distinctness",
               gate: "duplicate_concentration_risk",
               status: "watch",
-              classification: "owner_specific_next_fix",
+              classification: "bounded_owner_watch",
               evidenceSource: "pure_v2_base_plan",
               affected: {
                 weeks: [],
@@ -3125,19 +3125,20 @@ describe("buildWorkoutAuditArtifact", () => {
               evidence: ["v2DuplicateFamily:calf_isolation"],
               ownerSeam: "v2_base_plan_validation.duplicate_distinctness",
               materiality:
-                "bounded distinctness watch; behavior promotion waits on duplicate/class-family owner proof",
+                "bounded distinctness watch; pure V2 has no exact duplicate reuse and no base-plan regression, while class-family reuse remains review evidence",
               mustFixBeforeWeek1: false,
               smallestSafeNextAction:
-                "resolve exact duplicate or class-family distinctness in V2 base-plan validation before promotion review",
+                "carry class-family reuse as a bounded promotion-review watch; require no exact duplicate reuse, no base regression, and debug-shard row review before any behavior slice",
             },
           ],
           classificationCounts: {
             acceptedWatch: 1,
+            boundedOwnerWatch: 1,
             blocker: 0,
             staleOrDiagnosticNoise: 0,
-            ownerSpecificNextFix: 1,
+            ownerSpecificNextFix: 0,
           },
-          nextSafeSlice: "resolve_watch_items_before_behavior_promotion",
+          nextSafeSlice: "bounded_behavior_promotion_review",
         },
         nonConsumption: {
           seedRuntimeReceiptDbConsumed: false,
@@ -3554,8 +3555,9 @@ describe("buildWorkoutAuditArtifact", () => {
           "accepted_with_watch_items",
         v2SlotWeekAllocationAcceptanceWatchItems: 2,
         v2SlotWeekAllocationAcceptanceBlockers: 0,
+        v2SlotWeekAllocationAcceptanceBoundedOwnerWatchCount: 1,
         v2SlotWeekAllocationAcceptanceNextSafeSlice:
-          "resolve_watch_items_before_behavior_promotion",
+          "bounded_behavior_promotion_review",
         writtenShardCount: 8,
         skippedShardCount: 0,
       },
@@ -3736,7 +3738,7 @@ describe("buildWorkoutAuditArtifact", () => {
               "week_1_trainability:pass_with_warnings",
             ],
             blockers: [],
-            nextSafeSlice: "resolve_watch_items_before_behavior_promotion",
+            nextSafeSlice: "bounded_behavior_promotion_review",
           },
         },
       },

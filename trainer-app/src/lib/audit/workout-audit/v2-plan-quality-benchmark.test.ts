@@ -662,7 +662,7 @@ describe("V2 plan quality benchmark", () => {
         duplicateConcentrationGateStatus: "warning",
       },
       acceptance: {
-        nextSafeSlice: "resolve_watch_items_before_behavior_promotion",
+        nextSafeSlice: "bounded_behavior_promotion_review",
         blockers: [],
       },
     });
@@ -680,9 +680,10 @@ describe("V2 plan quality benchmark", () => {
         .classificationCounts,
     ).toEqual({
       acceptedWatch: 3,
+      boundedOwnerWatch: 1,
       blocker: 0,
       staleOrDiagnosticNoise: 0,
-      ownerSpecificNextFix: 2,
+      ownerSpecificNextFix: 0,
     });
     expect(
       result.slotWeekAllocationAcceptanceProjection.acceptance
@@ -696,8 +697,8 @@ describe("V2 plan quality benchmark", () => {
           mustFixBeforeWeek1: false,
         }),
         expect.objectContaining({
-          item: "duplicate_concentration_risk:watch_item",
-          classification: "owner_specific_next_fix",
+          item: "duplicate_concentration_risk:v2_base_plan_validation.duplicate_distinctness",
+          classification: "bounded_owner_watch",
           ownerSeam: "v2_base_plan_validation.duplicate_distinctness",
         }),
       ]),

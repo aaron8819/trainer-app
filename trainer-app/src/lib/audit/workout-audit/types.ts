@@ -1898,6 +1898,7 @@ export type V2PlanQualityBenchmark = {
         status: "watch" | "blocker";
         classification:
           | "accepted_watch"
+          | "bounded_owner_watch"
           | "blocker"
           | "stale_or_diagnostic_noise"
           | "owner_specific_next_fix";
@@ -1923,12 +1924,14 @@ export type V2PlanQualityBenchmark = {
       }>;
       classificationCounts: {
         acceptedWatch: number;
+        boundedOwnerWatch: number;
         blocker: number;
         staleOrDiagnosticNoise: number;
         ownerSpecificNextFix: number;
       };
       nextSafeSlice:
         | "behavior_promotion_review"
+        | "bounded_behavior_promotion_review"
         | "resolve_watch_items_before_behavior_promotion"
         | "fix_acceptance_or_non_regression_blockers"
         | "collect_missing_acceptance_projection_evidence";

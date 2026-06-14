@@ -1711,6 +1711,20 @@ Future engine intelligence tracks:
 9. Swap equivalence engine: swaps must preserve lane job, not just primary muscle. Movement, directness, fatigue, loadability, and collision context matter.
 10. Runtime coaching loop: runtime stays seed-inert but becomes execution-smart through load adjustments, rest, set-level coaching, skips, swaps, session-local add-ons, and pain/fatigue responses.
 
+Current next high-ROI track after the low-axial lane-intent arc: candidate-quality benchmark/lab fixtures.
+
+Why this is first: the low-axial slice proved the reusable promotion path from ontology to lane contract, audit-only projection, acceptance/non-regression, tiny owner-seam materializer behavior, and seed/runtime boundary review. The next leverage point is to make that proof reusable across lanes, inventories, equipment constraints, and watch-item states before adding more lane behavior. Benchmark/lab fixtures improve semantic correctness, ownership, benchmark fidelity, and safety even when a measured slice produces no materialized change.
+
+This track should produce compact fixtures and gates that answer:
+
+- whether lane intent is explicit enough before materialization
+- whether the materializer preserves the lane job instead of same-muscle substitution
+- whether acceptance warnings are trainability watches, owner fixes, stale/noise, or blockers
+- whether no-impact or idempotent projections should stop a local lane thread
+- whether seed/runtime/receipt/persistence remain non-consumers
+
+Keep the general lane-intent framework as the second track, fed by benchmark gaps rather than hand-picked lanes. Defer the V2 architecture simplification map until benchmark evidence shows which abstractions are stable, and defer user-facing runtime execution quality only where training can continue safely without a display/read-model defect.
+
 ### Training Continuity Guardrail
 
 Do not block real training indefinitely for non-critical coaching improvements.

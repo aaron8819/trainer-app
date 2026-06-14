@@ -2,6 +2,10 @@ import type {
   V2LaneSelectionIntentBenchmark,
   V2LaneSelectionIntentBenchmarkLaneJob,
 } from "./lane-selection-intent-benchmark";
+import {
+  buildV2SingleExerciseMaterializedPlanFixture,
+  compareV2MaterializedPlans,
+} from "./materialization/materialized-plan-compare";
 
 export type V2CandidateQualityLabOutcome =
   | "pass"
@@ -16,6 +20,52 @@ export type V2CandidateQualityLabGapKind =
   | "materializer_ranking_gap"
   | "acceptance_watch_gap"
   | "seed_runtime_boundary_issue";
+
+export type V2CandidateQualityLabMaterializerDeltaEvidence = {
+  version: 1;
+  source: "v2_candidate_quality_lab_materializer_delta_fixture";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByDemandOrMaterializer: false;
+  dryRunOnly: true;
+  scenarioId: string;
+  evidenceSource: "pure_v2_materialized_plan_comparison_fixture";
+  baseline: {
+    identitySummary: string[];
+    identityCount: number;
+    setCount: number;
+    blockerCount: number;
+  };
+  trial: {
+    identitySummary: string[];
+    identityCount: number;
+    setCount: number;
+    blockerCount: number;
+  };
+  deltas: {
+    selectedIdentityDelta: number;
+    totalSetDelta: number;
+    materializerBlockerDelta: number;
+    changedSlotCount: number;
+  };
+  protectedCoverage: {
+    status: "improved" | "preserved" | "regressed" | "not_measured";
+    protectedMuscles: string[];
+    baselineSetCount: number;
+    trialSetCount: number;
+    setDelta: number;
+  };
+  nonConsumption: {
+    productionPlannerMaterializerRanking: false;
+    seedRuntimeReceiptDb: false;
+    acceptanceThreshold: false;
+    repairBehavior: false;
+  };
+  nextSafeAction:
+    | "run_read_only_acceptance_projection"
+    | "pivot_to_higher_roi_track"
+    | "no_action";
+};
 
 type CandidateQualityScenarioFixture = {
   scenarioId: string;
@@ -46,6 +96,8 @@ export type V2CandidateQualityLabFixtures = {
     watchCount: number;
     goldenStableCount: number;
     nonConsumingScenarioCount: number;
+    materializerDeltaScenarioCount: number;
+    materializerDeltaMeasuredCount: number;
   };
   architectureBoundary: {
     noProductionPlannerChange: true;
@@ -74,6 +126,9 @@ export type V2CandidateQualityLabFixtures = {
     noImpactArchitectureReview: boolean;
     labConsumedByDemandOrMaterializer: false;
     seedRuntimeBoundaryIssue: boolean;
+    materializerDeltaEvidence:
+      | V2CandidateQualityLabMaterializerDeltaEvidence
+      | null;
   }>;
 };
 
@@ -220,6 +275,136 @@ const HIGH_RISK_LAB_SCENARIOS: CandidateQualityScenarioFixture[] = [
   },
 ];
 
+type MaterializerDeltaFixtureDefinition = {
+  scenarioId: string;
+  baselinePlan: ReturnType<typeof buildV2SingleExerciseMaterializedPlanFixture>;
+  trialPlan: ReturnType<typeof buildV2SingleExerciseMaterializedPlanFixture>;
+  baselineIdentitySummary: string[];
+  trialIdentitySummary: string[];
+  protectedCoverage: {
+    status: "improved" | "preserved" | "regressed" | "not_measured";
+    protectedMuscles: string[];
+    baselineSetCount: number;
+    trialSetCount: number;
+  };
+  nextSafeAction: V2CandidateQualityLabMaterializerDeltaEvidence["nextSafeAction"];
+};
+
+const MATERIALIZER_DELTA_FIXTURES: MaterializerDeltaFixtureDefinition[] = [
+  {
+    scenarioId: "low_axial_hip_extension_golden",
+    baselinePlan: buildV2SingleExerciseMaterializedPlanFixture({
+      slotId: "lower_b",
+      exerciseId: "stiff-legged-deadlift",
+      laneId: "hinge_anchor",
+      role: "CORE_COMPOUND",
+      setCount: 3,
+    }),
+    trialPlan: buildV2SingleExerciseMaterializedPlanFixture({
+      slotId: "lower_b",
+      exerciseId: "cable-pull-through",
+      laneId: "hinge_anchor",
+      role: "CORE_COMPOUND",
+      setCount: 3,
+    }),
+    baselineIdentitySummary: ["Stiff-Legged Deadlift:3"],
+    trialIdentitySummary: ["Cable Pull-Through:3"],
+    protectedCoverage: {
+      status: "improved",
+      protectedMuscles: ["Glutes"],
+      baselineSetCount: 0,
+      trialSetCount: 3,
+    },
+    nextSafeAction: "run_read_only_acceptance_projection",
+  },
+  {
+    scenarioId: "vertical_pull_anchor_true_pull",
+    baselinePlan: buildV2SingleExerciseMaterializedPlanFixture({
+      slotId: "upper_b",
+      exerciseId: "straight-arm-pulldown",
+      laneId: "vertical_pull_anchor",
+      role: "CORE_COMPOUND",
+      setCount: 3,
+    }),
+    trialPlan: buildV2SingleExerciseMaterializedPlanFixture({
+      slotId: "upper_b",
+      exerciseId: "assisted-pull-up",
+      laneId: "vertical_pull_anchor",
+      role: "CORE_COMPOUND",
+      setCount: 3,
+    }),
+    baselineIdentitySummary: ["Straight-Arm Pulldown:3"],
+    trialIdentitySummary: ["Assisted Pull-Up:3"],
+    protectedCoverage: {
+      status: "improved",
+      protectedMuscles: ["Lats"],
+      baselineSetCount: 0,
+      trialSetCount: 3,
+    },
+    nextSafeAction: "run_read_only_acceptance_projection",
+  },
+];
+
+function materializerDeltaEvidenceForScenario(
+  scenarioId: string,
+): V2CandidateQualityLabMaterializerDeltaEvidence | null {
+  const fixture = MATERIALIZER_DELTA_FIXTURES.find(
+    (row) => row.scenarioId === scenarioId,
+  );
+  if (!fixture) {
+    return null;
+  }
+
+  const comparison = compareV2MaterializedPlans({
+    baselinePlan: fixture.baselinePlan,
+    trialPlan: fixture.trialPlan,
+    trialMaterializerStatus: fixture.trialPlan.status,
+    trialSeedShapeCompatible: true,
+  });
+
+  return {
+    version: 1,
+    source: "v2_candidate_quality_lab_materializer_delta_fixture",
+    readOnly: true,
+    affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: comparison.consumedByDemandOrMaterializer,
+    dryRunOnly: true,
+    scenarioId,
+    evidenceSource: "pure_v2_materialized_plan_comparison_fixture",
+    baseline: {
+      identitySummary: fixture.baselineIdentitySummary,
+      identityCount: comparison.summary.baselineIdentityCount,
+      setCount: comparison.summary.baselineSetCount,
+      blockerCount: comparison.summary.baselineMaterializerBlockerCount,
+    },
+    trial: {
+      identitySummary: fixture.trialIdentitySummary,
+      identityCount: comparison.summary.trialIdentityCount,
+      setCount: comparison.summary.trialSetCount,
+      blockerCount: comparison.summary.trialMaterializerBlockerCount,
+    },
+    deltas: {
+      selectedIdentityDelta: comparison.summary.selectedIdentityDelta,
+      totalSetDelta: comparison.summary.totalSetDelta,
+      materializerBlockerDelta: comparison.summary.materializerBlockerDelta,
+      changedSlotCount: comparison.summary.changedSlotCount,
+    },
+    protectedCoverage: {
+      ...fixture.protectedCoverage,
+      setDelta:
+        fixture.protectedCoverage.trialSetCount -
+        fixture.protectedCoverage.baselineSetCount,
+    },
+    nonConsumption: {
+      productionPlannerMaterializerRanking: false,
+      seedRuntimeReceiptDb: false,
+      acceptanceThreshold: false,
+      repairBehavior: false,
+    },
+    nextSafeAction: fixture.nextSafeAction,
+  };
+}
+
 function labOutcomeFromLaneStatus(
   status: V2LaneSelectionIntentBenchmark["lanes"][number]["status"] | undefined,
 ): V2CandidateQualityLabOutcome {
@@ -273,6 +458,9 @@ export function buildV2CandidateQualityLabFixtures(
     const missingEvidence = lane?.missingEvidence ?? ["lane_benchmark_row"];
     const seedRuntimeBoundaryIssue = actualOutcome !== "pass" &&
       fixture.gapKindsUnderTest.includes("seed_runtime_boundary_issue");
+    const materializerDeltaEvidence = materializerDeltaEvidenceForScenario(
+      fixture.scenarioId,
+    );
 
     return {
       scenarioId: fixture.scenarioId,
@@ -307,6 +495,7 @@ export function buildV2CandidateQualityLabFixtures(
       noImpactArchitectureReview: fixture.noImpactArchitectureReview,
       labConsumedByDemandOrMaterializer: false as const,
       seedRuntimeBoundaryIssue,
+      materializerDeltaEvidence,
     };
   });
 
@@ -340,6 +529,15 @@ export function buildV2CandidateQualityLabFixtures(
       ).length,
       nonConsumingScenarioCount: scenarios.filter(
         (scenario) => !scenario.labConsumedByDemandOrMaterializer,
+      ).length,
+      materializerDeltaScenarioCount: scenarios.filter(
+        (scenario) => scenario.materializerDeltaEvidence !== null,
+      ).length,
+      materializerDeltaMeasuredCount: scenarios.filter(
+        (scenario) =>
+          scenario.materializerDeltaEvidence?.readOnly === true &&
+          scenario.materializerDeltaEvidence.consumedByDemandOrMaterializer ===
+            false,
       ).length,
     },
     architectureBoundary: {

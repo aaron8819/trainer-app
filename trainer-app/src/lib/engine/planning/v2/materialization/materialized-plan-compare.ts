@@ -17,11 +17,18 @@ export type V2MaterializedPlanComparison = {
   source: "v2_materialized_plan_comparison";
   readOnly: true;
   affectsScoringOrGeneration: false;
+  consumedByDemandOrMaterializer: false;
   baselineAvailable: boolean;
   trialAvailable: boolean;
   summary: {
+    baselineIdentityCount: number;
+    trialIdentityCount: number;
     selectedIdentityDelta: number;
+    baselineSetCount: number;
+    trialSetCount: number;
     totalSetDelta: number;
+    baselineMaterializerBlockerCount: number;
+    trialMaterializerBlockerCount: number;
     materializerBlockerDelta: number;
     changedSlotCount: number;
     addedIdentityCount: number;
@@ -31,6 +38,36 @@ export type V2MaterializedPlanComparison = {
   regressions: string[];
   improvements: string[];
 };
+
+export function buildV2SingleExerciseMaterializedPlanFixture(input: {
+  slotId: string;
+  exerciseId: string;
+  laneId: string;
+  role: "CORE_COMPOUND" | "ACCESSORY";
+  setCount: number;
+}): V2ExerciseMaterializationPlan {
+  return {
+    version: 1,
+    source: "v2_exercise_materialization",
+    dryRunOnly: true,
+    status: "materialized",
+    slots: [
+      {
+        slotId: input.slotId,
+        exercises: [
+          {
+            exerciseId: input.exerciseId,
+            role: input.role,
+            setCount: input.setCount,
+            laneIds: [input.laneId],
+          },
+        ],
+      },
+    ],
+    blockers: [],
+    omissions: [],
+  };
+}
 
 export function compareV2MaterializedPlans(input: {
   baselinePlan?: V2ExerciseMaterializationPlan | null;
@@ -53,6 +90,12 @@ export function compareV2MaterializedPlans(input: {
   const materializerBlockerDelta =
     (input.trialBlockerCount ?? trialPlan?.blockers.length ?? 0) -
     (input.baselineBlockerCount ?? baselinePlan?.blockers.length ?? 0);
+  const baselineSetCount = sumMaterializedPlanSets(baselinePlan);
+  const trialSetCount = sumMaterializedPlanSets(trialPlan);
+  const baselineMaterializerBlockerCount =
+    input.baselineBlockerCount ?? baselinePlan?.blockers.length ?? 0;
+  const trialMaterializerBlockerCount =
+    input.trialBlockerCount ?? trialPlan?.blockers.length ?? 0;
   const slots = compareSlots({ baselinePlan, trialPlan });
   const regressions = uniqueSorted([
     ...(removedIdentityCount > 0
@@ -78,12 +121,18 @@ export function compareV2MaterializedPlans(input: {
     source: "v2_materialized_plan_comparison",
     readOnly: true,
     affectsScoringOrGeneration: false,
+    consumedByDemandOrMaterializer: false,
     baselineAvailable: Boolean(baselinePlan),
     trialAvailable: Boolean(trialPlan),
     summary: {
+      baselineIdentityCount: baselineIds.size,
+      trialIdentityCount: trialIds.size,
       selectedIdentityDelta: addedIdentityCount + removedIdentityCount,
-      totalSetDelta:
-        sumMaterializedPlanSets(trialPlan) - sumMaterializedPlanSets(baselinePlan),
+      baselineSetCount,
+      trialSetCount,
+      totalSetDelta: trialSetCount - baselineSetCount,
+      baselineMaterializerBlockerCount,
+      trialMaterializerBlockerCount,
       materializerBlockerDelta,
       changedSlotCount: slots.length,
       addedIdentityCount,

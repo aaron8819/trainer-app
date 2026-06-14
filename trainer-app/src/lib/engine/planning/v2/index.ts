@@ -147,6 +147,7 @@ export type {
 export type {
   V2CandidateQualityLabFixtures,
   V2CandidateQualityLabGapKind,
+  V2CandidateQualityLabMaterializerDeltaEvidence,
   V2CandidateQualityLabOutcome,
 } from "./candidate-quality-lab-fixtures";
 export type {

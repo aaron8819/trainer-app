@@ -482,6 +482,8 @@ describe("buildV2CandidateQualityLabFixtures", () => {
         watchCount: 0,
         goldenStableCount: 1,
         nonConsumingScenarioCount: 7,
+        materializerDeltaScenarioCount: 2,
+        materializerDeltaMeasuredCount: 2,
       },
       architectureBoundary: {
         noProductionPlannerChange: true,
@@ -521,6 +523,38 @@ describe("buildV2CandidateQualityLabFixtures", () => {
           ]),
           labConsumedByDemandOrMaterializer: false,
           seedRuntimeBoundaryIssue: false,
+          materializerDeltaEvidence: expect.objectContaining({
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            consumedByDemandOrMaterializer: false,
+            baseline: expect.objectContaining({
+              identitySummary: ["Stiff-Legged Deadlift:3"],
+              setCount: 3,
+              blockerCount: 0,
+            }),
+            trial: expect.objectContaining({
+              identitySummary: ["Cable Pull-Through:3"],
+              setCount: 3,
+              blockerCount: 0,
+            }),
+            deltas: expect.objectContaining({
+              selectedIdentityDelta: 2,
+              totalSetDelta: 0,
+              materializerBlockerDelta: 0,
+            }),
+            protectedCoverage: expect.objectContaining({
+              status: "improved",
+              protectedMuscles: ["Glutes"],
+              setDelta: 3,
+            }),
+            nonConsumption: {
+              productionPlannerMaterializerRanking: false,
+              seedRuntimeReceiptDb: false,
+              acceptanceThreshold: false,
+              repairBehavior: false,
+            },
+            nextSafeAction: "run_read_only_acceptance_projection",
+          }),
         }),
         expect.objectContaining({
           scenarioId: "vertical_pull_anchor_true_pull",
@@ -531,6 +565,24 @@ describe("buildV2CandidateQualityLabFixtures", () => {
           inventoryConstraints: expect.arrayContaining([
             "exclude row, pullover, and straight-arm pulldown as anchor substitutions",
           ]),
+          materializerDeltaEvidence: expect.objectContaining({
+            baseline: expect.objectContaining({
+              identitySummary: ["Straight-Arm Pulldown:3"],
+            }),
+            trial: expect.objectContaining({
+              identitySummary: ["Assisted Pull-Up:3"],
+            }),
+            deltas: expect.objectContaining({
+              selectedIdentityDelta: 2,
+              totalSetDelta: 0,
+              materializerBlockerDelta: 0,
+            }),
+            protectedCoverage: expect.objectContaining({
+              status: "improved",
+              protectedMuscles: ["Lats"],
+              setDelta: 3,
+            }),
+          }),
         }),
         expect.objectContaining({
           scenarioId: "hamstring_curl_direct_floor",
@@ -582,6 +634,8 @@ describe("buildV2CandidateQualityLabFixtures", () => {
       warnCount: 0,
       watchCount: 0,
       goldenStableCount: 1,
+      materializerDeltaScenarioCount: 2,
+      materializerDeltaMeasuredCount: 2,
     });
     expect(lab.scenarios).toEqual(
       expect.arrayContaining([
@@ -609,6 +663,8 @@ describe("buildV2CandidateQualityLabFixtures", () => {
       watchCount: 0,
       goldenStableCount: 0,
       nonConsumingScenarioCount: 7,
+      materializerDeltaScenarioCount: 2,
+      materializerDeltaMeasuredCount: 2,
     });
     expect(lab.scenarios).toEqual(
       expect.arrayContaining([

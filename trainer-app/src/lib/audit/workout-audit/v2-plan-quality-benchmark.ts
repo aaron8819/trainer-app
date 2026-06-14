@@ -745,6 +745,31 @@ function buildCandidateQualityLab(
       labConsumedByDemandOrMaterializer:
         scenario.labConsumedByDemandOrMaterializer,
       seedRuntimeBoundaryIssue: scenario.seedRuntimeBoundaryIssue,
+      materializerDeltaEvidence: scenario.materializerDeltaEvidence
+        ? {
+            readOnly: scenario.materializerDeltaEvidence.readOnly,
+            affectsScoringOrGeneration:
+              scenario.materializerDeltaEvidence.affectsScoringOrGeneration,
+            consumedByDemandOrMaterializer:
+              scenario.materializerDeltaEvidence.consumedByDemandOrMaterializer,
+            baselineIdentitySummary:
+              scenario.materializerDeltaEvidence.baseline.identitySummary,
+            trialIdentitySummary:
+              scenario.materializerDeltaEvidence.trial.identitySummary,
+            selectedIdentityDelta:
+              scenario.materializerDeltaEvidence.deltas.selectedIdentityDelta,
+            totalSetDelta:
+              scenario.materializerDeltaEvidence.deltas.totalSetDelta,
+            materializerBlockerDelta:
+              scenario.materializerDeltaEvidence.deltas
+                .materializerBlockerDelta,
+            protectedCoverageStatus:
+              scenario.materializerDeltaEvidence.protectedCoverage.status,
+            protectedCoverageSetDelta:
+              scenario.materializerDeltaEvidence.protectedCoverage.setDelta,
+            nextSafeAction: scenario.materializerDeltaEvidence.nextSafeAction,
+          }
+        : null,
     }),
   );
   const topAttentionFixture =
@@ -776,6 +801,10 @@ function buildCandidateQualityLab(
           scenario.actualOutcome === "pass",
       ).length,
       nonConsumingFixtureCount: lab.summary.nonConsumingScenarioCount,
+      materializerDeltaScenarioCount:
+        lab.summary.materializerDeltaScenarioCount,
+      materializerDeltaMeasuredCount:
+        lab.summary.materializerDeltaMeasuredCount,
       nextSafeAction: topAttentionFixture?.nextSafeAction ?? "no_action",
     },
     topAttentionFixture: topAttentionFixture

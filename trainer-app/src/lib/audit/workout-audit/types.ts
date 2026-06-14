@@ -1812,6 +1812,8 @@ export type V2PlanQualityBenchmark = {
       watchCount: number;
       lowAxialGoldenCount: number;
       nonConsumingFixtureCount: number;
+      materializerDeltaScenarioCount: number;
+      materializerDeltaMeasuredCount: number;
       nextSafeAction: string;
     };
     topAttentionFixture: {
@@ -1851,6 +1853,23 @@ export type V2PlanQualityBenchmark = {
       noImpactArchitectureReview: boolean;
       labConsumedByDemandOrMaterializer: false;
       seedRuntimeBoundaryIssue: boolean;
+      materializerDeltaEvidence: {
+        readOnly: true;
+        affectsScoringOrGeneration: false;
+        consumedByDemandOrMaterializer: false;
+        baselineIdentitySummary: string[];
+        trialIdentitySummary: string[];
+        selectedIdentityDelta: number;
+        totalSetDelta: number;
+        materializerBlockerDelta: number;
+        protectedCoverageStatus:
+          | "improved"
+          | "preserved"
+          | "regressed"
+          | "not_measured";
+        protectedCoverageSetDelta: number;
+        nextSafeAction: string;
+      } | null;
     }>;
     architectureBoundary: {
       noProductionPlannerChange: true;

@@ -2436,6 +2436,10 @@ function buildIndexSummary(input: {
       planQualityCandidateLabSummary?.watchCount ?? null,
     v2CandidateQualityLabLowAxialGoldenCount:
       planQualityCandidateLabSummary?.lowAxialGoldenCount ?? null,
+    v2CandidateQualityLabMaterializerDeltaScenarioCount:
+      planQualityCandidateLabSummary?.materializerDeltaScenarioCount ?? null,
+    v2CandidateQualityLabMaterializerDeltaMeasuredCount:
+      planQualityCandidateLabSummary?.materializerDeltaMeasuredCount ?? null,
     v2CandidateQualityLabTopAttentionFixture:
       planQualityCandidateLabTopAttention?.scenarioId ?? null,
     v2CandidateQualityLabNextSafeAction:

@@ -1286,6 +1286,8 @@ describe("V2 plan quality benchmark", () => {
         watchCount: 0,
         lowAxialGoldenCount: 1,
         nonConsumingFixtureCount: 7,
+        materializerDeltaScenarioCount: 2,
+        materializerDeltaMeasuredCount: 2,
         nextSafeAction: "no_action",
       },
       topAttentionFixture: null,
@@ -1305,6 +1307,33 @@ describe("V2 plan quality benchmark", () => {
         observedGapKind: "none",
         labConsumedByDemandOrMaterializer: false,
         seedRuntimeBoundaryIssue: false,
+        materializerDeltaEvidence: expect.objectContaining({
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByDemandOrMaterializer: false,
+          baselineIdentitySummary: ["Stiff-Legged Deadlift:3"],
+          trialIdentitySummary: ["Cable Pull-Through:3"],
+          selectedIdentityDelta: 2,
+          totalSetDelta: 0,
+          materializerBlockerDelta: 0,
+          protectedCoverageStatus: "improved",
+          protectedCoverageSetDelta: 3,
+          nextSafeAction: "run_read_only_acceptance_projection",
+        }),
+      }),
+    );
+    expect(result.candidateQualityLab?.scenarioDetailTop).toContainEqual(
+      expect.objectContaining({
+        scenarioId: "vertical_pull_anchor_true_pull",
+        materializerDeltaEvidence: expect.objectContaining({
+          baselineIdentitySummary: ["Straight-Arm Pulldown:3"],
+          trialIdentitySummary: ["Assisted Pull-Up:3"],
+          selectedIdentityDelta: 2,
+          totalSetDelta: 0,
+          materializerBlockerDelta: 0,
+          protectedCoverageStatus: "improved",
+          protectedCoverageSetDelta: 3,
+        }),
       }),
     );
     expect(result.gates).toEqual(

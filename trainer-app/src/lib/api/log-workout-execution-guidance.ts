@@ -16,12 +16,18 @@ export type LogWorkoutExecutionGuidance = {
   adjustmentRangeLabel?: string;
 };
 
-export type LogWorkoutExecutionGuidanceByExercise = Record<
-  string,
-  LogWorkoutExecutionGuidance[]
->;
+export type LogWorkoutExecutionGuidanceByExercise = {
+  byExerciseId: Record<string, LogWorkoutExecutionGuidance[]>;
+  byExerciseName: Record<string, LogWorkoutExecutionGuidance[]>;
+};
 
-function normalizeExerciseLabel(value: string | null | undefined): string | null {
+function emptyLogWorkoutExecutionGuidanceByExercise(): LogWorkoutExecutionGuidanceByExercise {
+  return { byExerciseId: {}, byExerciseName: {} };
+}
+
+export function normalizeLogWorkoutGuidanceExerciseLabel(
+  value: string | null | undefined
+): string | null {
   const normalized = value?.trim().toLocaleLowerCase();
   return normalized ? normalized : null;
 }
@@ -105,16 +111,51 @@ function hasUsefulDisplaySignal(
   );
 }
 
+function buildUniquePreviewExerciseIdByLabel(
+  preview: PreSessionReadinessGymCardDto["workoutPreview"]
+): Map<string, string | null> {
+  const previewExercises =
+    preview.source === "generated_session_audit_snapshot"
+      ? preview.exercises
+      : [];
+  const exerciseIdsByLabel = new Map<string, Set<string>>();
+
+  for (const exercise of previewExercises) {
+    const key = normalizeLogWorkoutGuidanceExerciseLabel(exercise.exerciseName);
+    if (!key) {
+      continue;
+    }
+
+    const ids = exerciseIdsByLabel.get(key) ?? new Set<string>();
+    ids.add(exercise.exerciseId);
+    exerciseIdsByLabel.set(key, ids);
+  }
+
+  return new Map(
+    Array.from(exerciseIdsByLabel.entries()).map(([key, ids]) => [
+      key,
+      ids.size === 1 ? Array.from(ids)[0] : null,
+    ])
+  );
+}
+
 export function buildLogWorkoutExecutionGuidanceByExercise(
   card: PreSessionReadinessGymCardDto | null | undefined
 ): LogWorkoutExecutionGuidanceByExercise {
   if (!card) {
-    return {};
+    return emptyLogWorkoutExecutionGuidanceByExercise();
   }
 
-  const rows: LogWorkoutExecutionGuidanceByExercise = {};
+  const rows: LogWorkoutExecutionGuidanceByExercise = {
+    byExerciseId: {},
+    byExerciseName: {},
+  };
+  const previewExerciseIdByLabel = buildUniquePreviewExerciseIdByLabel(
+    card.workoutPreview
+  );
+
   for (const note of card.calibrationNotes) {
-    const key = normalizeExerciseLabel(note.exerciseLabel);
+    const key = normalizeLogWorkoutGuidanceExerciseLabel(note.exerciseLabel);
     if (note.kind !== "prescription_confidence" || !key || !hasUsefulDisplaySignal(note)) {
       continue;
     }
@@ -136,7 +177,18 @@ export function buildLogWorkoutExecutionGuidanceByExercise(
         : {}),
     };
 
-    rows[key] = [...(rows[key] ?? []), guidance];
+    const exerciseId = previewExerciseIdByLabel.get(key);
+    if (exerciseId) {
+      rows.byExerciseId[exerciseId] = [
+        ...(rows.byExerciseId[exerciseId] ?? []),
+        guidance,
+      ];
+    } else if (exerciseId === undefined) {
+      rows.byExerciseName[key] = [
+        ...(rows.byExerciseName[key] ?? []),
+        guidance,
+      ];
+    }
   }
 
   return rows;
@@ -144,10 +196,25 @@ export function buildLogWorkoutExecutionGuidanceByExercise(
 
 export function getLogWorkoutExecutionGuidanceForExercise(
   guidanceByExercise: LogWorkoutExecutionGuidanceByExercise,
-  exerciseName: string
+  exercise: {
+    exerciseId?: string | null;
+    name: string;
+    hasAmbiguousName?: boolean;
+  }
 ): LogWorkoutExecutionGuidance[] {
-  const key = normalizeExerciseLabel(exerciseName);
-  return key ? guidanceByExercise[key] ?? [] : [];
+  const idGuidance = exercise.exerciseId
+    ? guidanceByExercise.byExerciseId[exercise.exerciseId]
+    : undefined;
+  if (idGuidance) {
+    return idGuidance;
+  }
+
+  if (exercise.hasAmbiguousName) {
+    return [];
+  }
+
+  const key = normalizeLogWorkoutGuidanceExerciseLabel(exercise.name);
+  return key ? guidanceByExercise.byExerciseName[key] ?? [] : [];
 }
 
 export async function loadLogWorkoutExecutionGuidance(input: {
@@ -161,7 +228,7 @@ export async function loadLogWorkoutExecutionGuidance(input: {
   });
 
   if (!contract || contract.nextSessionIdentity.existingWorkoutId !== input.workoutId) {
-    return {};
+    return emptyLogWorkoutExecutionGuidanceByExercise();
   }
 
   return buildLogWorkoutExecutionGuidanceByExercise(

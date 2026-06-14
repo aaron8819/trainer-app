@@ -43,7 +43,16 @@ function makeCard(
     workoutPreview: {
       source: "generated_session_audit_snapshot",
       targetRpeLabel: "RPE 8",
-      exercises: [],
+      exercises: [
+        {
+          exerciseId: "cable-row",
+          exerciseName: "Cable Row",
+          setCount: 3,
+          repTargetLabel: "10 reps",
+          targetLoadLabel: "80 lb",
+          targetRpeLabel: "RPE 8",
+        },
+      ],
     },
     mainPriority: "Run the planned workout.",
     avoid: [],
@@ -106,7 +115,12 @@ describe("log workout execution guidance", () => {
   it("serializes only display-safe prescription guidance for matching exercises", () => {
     const guidance = buildLogWorkoutExecutionGuidanceByExercise(makeCard());
 
-    expect(getLogWorkoutExecutionGuidanceForExercise(guidance, "Cable Row")).toEqual([
+    expect(
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {
+        exerciseId: "cable-row",
+        name: "Cable Row",
+      })
+    ).toEqual([
       {
         title: "Prescription guidance",
         message:
@@ -117,7 +131,98 @@ describe("log workout execution guidance", () => {
         adjustmentRangeLabel: "70-80 lb",
       },
     ]);
-    expect(getLogWorkoutExecutionGuidanceForExercise(guidance, "Bench Press")).toEqual([]);
+    expect(
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {
+        exerciseId: "bench-press",
+        name: "Bench Press",
+      })
+    ).toEqual([]);
+  });
+
+  it("attaches by exercise id when duplicate display names would make name matching ambiguous", () => {
+    const guidance = buildLogWorkoutExecutionGuidanceByExercise(makeCard());
+
+    expect(
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {
+        exerciseId: "cable-row",
+        name: "Cable Row",
+        hasAmbiguousName: true,
+      })
+    ).toHaveLength(1);
+    expect(
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {
+        exerciseId: "different-cable-row",
+        name: "Cable Row",
+        hasAmbiguousName: true,
+      })
+    ).toEqual([]);
+  });
+
+  it("keeps legacy name fallback only when the workout exercise name is unambiguous", () => {
+    const guidance = buildLogWorkoutExecutionGuidanceByExercise(
+      makeCard({
+        workoutPreview: {
+          source: "generated_session_audit_snapshot",
+          targetRpeLabel: "RPE 8",
+          exercises: [],
+        },
+      })
+    );
+
+    expect(
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {
+        name: "Cable Row",
+        hasAmbiguousName: false,
+      })
+    ).toHaveLength(1);
+    expect(
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {
+        name: "Cable Row",
+        hasAmbiguousName: true,
+      })
+    ).toEqual([]);
+  });
+
+  it("hides guidance when the snapshot preview has duplicate labels with different exercise ids", () => {
+    const guidance = buildLogWorkoutExecutionGuidanceByExercise(
+      makeCard({
+        workoutPreview: {
+          source: "generated_session_audit_snapshot",
+          targetRpeLabel: "RPE 8",
+          exercises: [
+            {
+              exerciseId: "cable-row-a",
+              exerciseName: "Cable Row",
+              setCount: 3,
+              repTargetLabel: "10 reps",
+              targetLoadLabel: "80 lb",
+              targetRpeLabel: "RPE 8",
+            },
+            {
+              exerciseId: "cable-row-b",
+              exerciseName: "Cable Row",
+              setCount: 3,
+              repTargetLabel: "10 reps",
+              targetLoadLabel: "75 lb",
+              targetRpeLabel: "RPE 8",
+            },
+          ],
+        },
+      })
+    );
+
+    expect(
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {
+        exerciseId: "cable-row-a",
+        name: "Cable Row",
+      })
+    ).toEqual([]);
+    expect(
+      getLogWorkoutExecutionGuidanceForExercise(guidance, {
+        name: "Cable Row",
+        hasAmbiguousName: false,
+      })
+    ).toEqual([]);
   });
 
   it("does not leak raw classifications, evidence codes, traces, or mutation flags", () => {
@@ -154,7 +259,9 @@ describe("log workout execution guidance", () => {
         workoutId: "workout-1",
       })
     ).resolves.toMatchObject({
-      "cable row": [expect.objectContaining({ sourceLabel: "History" })],
+      byExerciseId: {
+        "cable-row": [expect.objectContaining({ sourceLabel: "History" })],
+      },
     });
 
     await expect(
@@ -162,7 +269,7 @@ describe("log workout execution guidance", () => {
         userId: "user-1",
         workoutId: "other-workout",
       })
-    ).resolves.toEqual({});
+    ).resolves.toEqual({ byExerciseId: {}, byExerciseName: {} });
   });
 
   it("does not import audit artifacts, generation internals, or mutation writers", () => {

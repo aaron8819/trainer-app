@@ -18,7 +18,17 @@ import {
 } from "./mesocycle-handoff-presentation";
 import { getWeeklyVolumeTarget } from "./mesocycle-lifecycle-math";
 import { classifyMuscleOutcome, type MuscleOutcomeStatus } from "./muscle-outcome-review";
+import { buildPostSessionReviewContract } from "./post-session-review-contract-builder";
+import type {
+  PostSessionReviewContractBuildInput,
+  PostSessionReviewExerciseEvidence,
+} from "./post-session-review-evidence";
 import { countCompletedSets } from "./weekly-volume";
+import {
+  buildWeeklyRetroCalibrationContract,
+  type WeeklyRetroCalibrationContract,
+  type WeeklyRetroCalibrationSummaryKind,
+} from "./weekly-retro-calibration-contract";
 
 type MesocycleReviewReader =
   | Pick<Prisma.TransactionClient, "mesocycle" | "workout">
@@ -48,6 +58,7 @@ type ReviewMesocycleRow = {
 
 type ReviewWorkoutRow = {
   id: string;
+  revision: number | null;
   scheduledDate: Date;
   completedAt: Date | null;
   status: WorkoutStatus;
@@ -55,10 +66,16 @@ type ReviewWorkoutRow = {
   selectionMode: string | null;
   selectionMetadata: unknown;
   advancesSplit: boolean;
+  mesocycleId: string | null;
   mesocyclePhaseSnapshot: MesocyclePhase | null;
   mesocycleWeekSnapshot: number | null;
+  mesoSessionSnapshot: number | null;
   exercises: Array<{
+    id: string;
     exerciseId: string;
+    orderIndex: number;
+    section: string | null;
+    isMainLift: boolean;
     exercise: {
       id: string;
       name: string;
@@ -69,12 +86,19 @@ type ReviewWorkoutRow = {
       }>;
     };
     sets: Array<{
+      id: string;
       setIndex: number;
+      targetReps: number | null;
+      targetRepMin: number | null;
+      targetRepMax: number | null;
+      targetRpe: number | null;
+      targetLoad: number | null;
       logs: Array<{
         wasSkipped: boolean;
         actualReps: number | null;
         actualLoad: number | null;
         actualRpe: number | null;
+        completedAt: Date | null;
       }>;
     }>;
   }>;
@@ -144,6 +168,22 @@ export type MesocycleReviewMuscleRow = {
   }>;
 };
 
+export type MesocycleReviewWeeklyRetroCalibration = {
+  status: "info" | "watch";
+  headline: string;
+  detail: string;
+  bullets: string[];
+  rowCount: number;
+  patternCount: number;
+  source: {
+    ownerSeam: "api/mesocycle-review";
+    contractOwnerSeam: WeeklyRetroCalibrationContract["scope"]["ownerSeam"];
+    readOnly: true;
+    evidenceOnly: true;
+    noMutationNote: "No seed or plan changes made";
+  };
+};
+
 export type MesocycleReviewData = {
   mesocycleId: string;
   mesoNumber: number;
@@ -163,6 +203,7 @@ export type MesocycleReviewData = {
     weeklyBreakdown: MesocycleReviewWeekRow[];
     topProgressedExercises: MesocycleReviewProgressRow[];
     muscleVolumeSummary: MesocycleReviewMuscleRow[];
+    weeklyRetroCalibration?: MesocycleReviewWeeklyRetroCalibration | null;
   };
 };
 
@@ -182,6 +223,142 @@ function formatLoad(value: number | null): string | null {
     return null;
   }
   return Number.isInteger(value) ? `${value}` : value.toFixed(1);
+}
+
+function toNullableIsoString(value: Date | string | null | undefined): string | null {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return typeof value === "string" ? value : null;
+}
+
+function weeklyRetroDisplayStatus(
+  kind: WeeklyRetroCalibrationSummaryKind
+): MesocycleReviewWeeklyRetroCalibration["status"] {
+  return kind === "stable_as_planned" ? "info" : "watch";
+}
+
+function toPostSessionReviewExerciseEvidence(
+  workoutExercise: ReviewWorkoutRow["exercises"][number]
+): PostSessionReviewExerciseEvidence {
+  return {
+    workoutExerciseId: workoutExercise.id,
+    exerciseId: workoutExercise.exerciseId,
+    exerciseName: workoutExercise.exercise.name,
+    orderIndex: workoutExercise.orderIndex,
+    section: workoutExercise.section,
+    isMainLift: workoutExercise.isMainLift,
+    sets: workoutExercise.sets.map((set) => {
+      const log = set.logs[0];
+      return {
+        workoutSetId: set.id,
+        setIndex: set.setIndex,
+        targetReps: set.targetReps,
+        targetRepMin: set.targetRepMin,
+        targetRepMax: set.targetRepMax,
+        targetRpe: set.targetRpe,
+        targetLoad: set.targetLoad,
+        wasLogged: Boolean(log),
+        wasSkipped: log?.wasSkipped === true,
+        actualReps: log?.actualReps ?? null,
+        actualLoad: log?.actualLoad ?? null,
+        actualRpe: log?.actualRpe ?? null,
+        completedAt: toNullableIsoString(log?.completedAt),
+      };
+    }),
+  };
+}
+
+function buildPostSessionReviewInputForMesocycleReview(input: {
+  userId: string;
+  workout: ReviewWorkoutRow;
+}): PostSessionReviewContractBuildInput {
+  const semantics = getReviewWorkoutSemantics(input.workout);
+
+  return {
+    workoutIdentity: {
+      userId: input.userId,
+      workoutId: input.workout.id,
+      status: input.workout.status,
+      revision: input.workout.revision,
+      scheduledDate: input.workout.scheduledDate.toISOString(),
+      selectionMode: input.workout.selectionMode,
+      sessionIntent: input.workout.sessionIntent,
+      advancesSplit: input.workout.advancesSplit,
+      mesocycleId: input.workout.mesocycleId,
+      mesocycleWeekSnapshot: input.workout.mesocycleWeekSnapshot,
+      mesoSessionSnapshot: input.workout.mesoSessionSnapshot,
+      mesocyclePhaseSnapshot: input.workout.mesocyclePhaseSnapshot,
+    },
+    sourceTruth: {
+      setLogsAvailable: true,
+      workoutStructureAvailable: true,
+      sessionDecisionReceiptAvailable: false,
+      workoutStructureStateAvailable: false,
+      runtimeEditReconciliationAvailable: false,
+    },
+    sessionSemantics: {
+      kind: semantics.kind,
+      isDeload: semantics.isDeload,
+      countsTowardWeeklyVolume: semantics.countsTowardWeeklyVolume,
+      countsTowardProgressionHistory: semantics.countsTowardProgressionHistory,
+      countsTowardPerformanceHistory: semantics.countsTowardPerformanceHistory,
+      updatesProgressionAnchor: semantics.updatesProgressionAnchor,
+      reasons: semantics.reasons.map((reason) => reason.code),
+    },
+    exercises: input.workout.exercises.map(toPostSessionReviewExerciseEvidence),
+    boundaryNotes: [
+      "mesocycle review adapts persisted workout structure and SetLog reality into post-session performed-reality rows",
+      "block calibration is read-only evidence and does not inspect audit artifacts",
+      "does not mutate progression, prescription, receipts, seed/runtime replay, workouts, logs, or DB state",
+    ],
+  };
+}
+
+function buildWeeklyRetroCalibrationForReview(input: {
+  userId: string;
+  mesocycleId: string;
+  workouts: ReviewWorkoutRow[];
+}): MesocycleReviewWeeklyRetroCalibration | null {
+  const reviews = input.workouts
+    .filter((workout) => isPerformedWorkoutStatus(workout.status))
+    .map((workout) =>
+      buildPostSessionReviewContract(
+        buildPostSessionReviewInputForMesocycleReview({
+          userId: input.userId,
+          workout,
+        })
+      )
+    );
+
+  const contract = buildWeeklyRetroCalibrationContract({
+    userId: input.userId,
+    mesocycleId: input.mesocycleId,
+    reviews,
+  });
+
+  if (
+    contract.summary.kind === "no_history" ||
+    contract.sourceEvidence.rowCount === 0
+  ) {
+    return null;
+  }
+
+  return {
+    status: weeklyRetroDisplayStatus(contract.summary.kind),
+    headline: contract.summary.headline,
+    detail: contract.summary.detail,
+    bullets: contract.summary.bullets,
+    rowCount: contract.sourceEvidence.rowCount,
+    patternCount: contract.patterns.length,
+    source: {
+      ownerSeam: "api/mesocycle-review",
+      contractOwnerSeam: contract.scope.ownerSeam,
+      readOnly: true,
+      evidenceOnly: true,
+      noMutationNote: "No seed or plan changes made",
+    },
+  };
 }
 
 function buildMesoStartDate(macroStartDate: Date, mesocycleStartWeek: number): Date {
@@ -658,6 +835,7 @@ async function loadMesocycleWorkouts(
     orderBy: [{ scheduledDate: "asc" }, { id: "asc" }],
     select: {
       id: true,
+      revision: true,
       scheduledDate: true,
       completedAt: true,
       status: true,
@@ -665,12 +843,18 @@ async function loadMesocycleWorkouts(
       selectionMode: true,
       selectionMetadata: true,
       advancesSplit: true,
+      mesocycleId: true,
       mesocyclePhaseSnapshot: true,
       mesocycleWeekSnapshot: true,
+      mesoSessionSnapshot: true,
       exercises: {
         orderBy: { orderIndex: "asc" },
         select: {
+          id: true,
           exerciseId: true,
+          orderIndex: true,
+          section: true,
+          isMainLift: true,
           exercise: {
             select: {
               id: true,
@@ -695,7 +879,13 @@ async function loadMesocycleWorkouts(
           sets: {
             orderBy: { setIndex: "asc" },
             select: {
+              id: true,
               setIndex: true,
+              targetReps: true,
+              targetRepMin: true,
+              targetRepMax: true,
+              targetRpe: true,
+              targetLoad: true,
               logs: {
                 orderBy: { completedAt: "desc" },
                 take: 1,
@@ -704,6 +894,7 @@ async function loadMesocycleWorkouts(
                   actualReps: true,
                   actualLoad: true,
                   actualRpe: true,
+                  completedAt: true,
                 },
               },
             },
@@ -757,6 +948,11 @@ export async function loadMesocycleReview(
       weeklyBreakdown: buildWeekRows(workouts, scopedMesocycle),
       topProgressedExercises: buildTopProgressedExercises(workouts),
       muscleVolumeSummary: buildMuscleVolumeSummary(workouts, mesocycle),
+      weeklyRetroCalibration: buildWeeklyRetroCalibrationForReview({
+        userId: input.userId,
+        mesocycleId: mesocycle.id,
+        workouts,
+      }),
     },
   };
 }

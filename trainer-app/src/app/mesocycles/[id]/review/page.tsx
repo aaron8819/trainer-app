@@ -57,6 +57,10 @@ function formatSignedValue(value: number): string {
   return `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
 }
 
+function plural(value: number, singular: string, pluralLabel = `${singular}s`): string {
+  return `${value} ${value === 1 ? singular : pluralLabel}`;
+}
+
 function getStatusClasses(status: MesocycleReviewMuscleRow["status"]): string {
   switch (status) {
     case "on_target":
@@ -70,6 +74,12 @@ function getStatusClasses(status: MesocycleReviewMuscleRow["status"]): string {
     case "meaningfully_high":
       return "bg-indigo-50 text-indigo-700";
   }
+}
+
+function getCalibrationStatusClasses(status: "info" | "watch"): string {
+  return status === "watch"
+    ? "border-amber-200 bg-amber-50 text-amber-800"
+    : "border-emerald-200 bg-emerald-50 text-emerald-800";
 }
 
 function formatStatusLabel(status: MesocycleReviewMuscleRow["status"]): string {
@@ -179,6 +189,54 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
             x/week • Focus: {frozenSummary.training.focus}
           </p>
         </section>
+
+        {review.derived.weeklyRetroCalibration ? (
+          <section className="mt-8 rounded-2xl border border-slate-200 p-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Review evidence
+            </p>
+            <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold">Execution calibration</h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  {review.derived.weeklyRetroCalibration.detail}
+                </p>
+              </div>
+              <span
+                className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getCalibrationStatusClasses(
+                  review.derived.weeklyRetroCalibration.status
+                )}`}
+              >
+                Evidence only
+              </span>
+            </div>
+            <h3 className="mt-5 text-base font-semibold text-slate-900">
+              {review.derived.weeklyRetroCalibration.headline}
+            </h3>
+            {review.derived.weeklyRetroCalibration.bullets.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {review.derived.weeklyRetroCalibration.bullets.map((bullet) => (
+                  <span
+                    key={bullet}
+                    className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700"
+                  >
+                    {bullet}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            <p className="mt-4 text-xs text-slate-500">
+              {`${plural(
+                review.derived.weeklyRetroCalibration.rowCount,
+                "performed-reality row"
+              )}, ${plural(
+                review.derived.weeklyRetroCalibration.patternCount,
+                "repeated pattern group"
+              )}. `}
+              {review.derived.weeklyRetroCalibration.source.noMutationNote}.
+            </p>
+          </section>
+        ) : null}
 
         <section className="mt-8 rounded-2xl border border-slate-200 p-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">

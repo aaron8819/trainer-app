@@ -139,6 +139,22 @@ function buildReview(overrides?: Record<string, unknown>) {
           topContributors: [{ exerciseName: "Bench Press", effectiveSets: 20 }],
         },
       ],
+      weeklyRetroCalibration: {
+        status: "watch",
+        headline: "Repeated under-plan execution",
+        detail:
+          "2 rows came in under the written plan. Review evidence only; no automatic plan change.",
+        bullets: ["2 under plan", "No seed or plan changes made"],
+        rowCount: 2,
+        patternCount: 1,
+        source: {
+          ownerSeam: "api/mesocycle-review",
+          contractOwnerSeam: "api/weekly-retro-calibration-contract",
+          readOnly: true,
+          evidenceOnly: true,
+          noMutationNote: "No seed or plan changes made",
+        },
+      },
     },
     ...overrides,
   };
@@ -168,6 +184,10 @@ describe("MesocycleReviewPage", () => {
     expect(
       screen.getByText(/They do not change the saved recommendation saved at handoff/i)
     ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Execution calibration" })).toBeInTheDocument();
+    expect(screen.getByText("Repeated under-plan execution")).toBeInTheDocument();
+    expect(screen.getByText("2 under plan")).toBeInTheDocument();
+    expect(screen.getByText(/2 performed-reality rows/i)).toBeInTheDocument();
     expect(screen.getAllByText("Bench Press").length).toBeGreaterThan(0);
     expect(
       screen.getByText(/This saved recommendation is the evidence-based design baseline saved at handoff close/i)
@@ -198,5 +218,24 @@ describe("MesocycleReviewPage", () => {
     expect(screen.getByText("Historical Closeout Archive")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Review and edit next-cycle setup" })).not.toBeInTheDocument();
     expect(screen.getByText(/editable handoff workflow is no longer available/i)).toBeInTheDocument();
+  });
+
+  it("hides weekly calibration when the read model has no useful evidence", async () => {
+    mocks.loadMesocycleReviewFromPrisma.mockResolvedValueOnce(
+      buildReview({
+        derived: {
+          ...buildReview().derived,
+          weeklyRetroCalibration: null,
+        },
+      })
+    );
+
+    const { default: MesocycleReviewPage } = await import("./page");
+    const ui = await MesocycleReviewPage({ params: Promise.resolve({ id: "meso-1" }) });
+
+    render(ui);
+
+    expect(screen.queryByRole("heading", { name: "Execution calibration" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/performed-reality rows/i)).not.toBeInTheDocument();
   });
 });

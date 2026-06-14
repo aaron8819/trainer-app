@@ -1,3 +1,5 @@
+import type { LogWorkoutExecutionGuidance } from "@/lib/api/log-workout-execution-guidance";
+
 export type LogSetInput = {
   setId: string;
   setIndex: number;
@@ -46,6 +48,7 @@ export type LogExerciseInput = {
   isMainLift: boolean;
   section?: "WARMUP" | "MAIN" | "ACCESSORY";
   sessionNote?: string;
+  executionGuidance?: LogWorkoutExecutionGuidance[];
   capabilities?: LogExerciseCapabilities;
   sets: LogSetInput[];
 };

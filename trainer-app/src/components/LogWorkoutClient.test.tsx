@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
@@ -495,6 +496,70 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     renderClient();
     expect(screen.getByLabelText("Reps")).toHaveValue(10);
     expect(mockedLogSetRequest).not.toHaveBeenCalled();
+  });
+
+  it("surfaces display-safe prescription guidance on the active set without changing log payloads", async () => {
+    const user = userEvent.setup();
+    render(
+      <LogWorkoutClient
+        workoutId="workout-1"
+        exercises={[
+          {
+            workoutExerciseId: "ex-row",
+            name: "Cable Row",
+            equipment: ["cable"],
+            isMainLift: false,
+            executionGuidance: [
+              {
+                title: "Prescription guidance",
+                message:
+                  "Cable Row: Start at 80 lb; use 70-80 lb if first-set reps or RPE are off.",
+                confidenceLabel: "Low confidence",
+                sourceLabel: "History",
+                cautionLabel: "Caution",
+                adjustmentRangeLabel: "70-80 lb",
+              },
+            ],
+            sets: [
+              {
+                setId: "set-row-1",
+                setIndex: 1,
+                targetReps: 10,
+                targetLoad: 80,
+                targetRpe: 8,
+                restSeconds: 90,
+              },
+            ],
+          },
+        ]}
+      />
+    );
+
+    const guidance = screen.getByTestId("active-set-execution-guidance");
+    expect(within(guidance).getByText("Prescription guidance")).toBeInTheDocument();
+    expect(
+      within(guidance).getByText(
+        "Cable Row: Start at 80 lb; use 70-80 lb if first-set reps or RPE are off."
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(guidance).getByText("Low confidence - Source: History - Caution - Range: 70-80 lb")
+    ).toBeInTheDocument();
+    expect(JSON.stringify(guidance.textContent)).not.toContain("target_effort_load_mismatch");
+    expect(JSON.stringify(guidance.textContent)).not.toContain("generated_progression_trace");
+    expect(JSON.stringify(guidance.textContent)).not.toContain("reasonCode");
+
+    await user.click(screen.getByRole("button", { name: "Log set" }));
+
+    await waitFor(() => {
+      expect(mockedLogSetRequest).toHaveBeenCalledWith({
+        workoutSetId: "set-row-1",
+        actualReps: 10,
+        actualLoad: 80,
+        actualRpe: 8,
+        wasSkipped: false,
+      });
+    });
   });
 
   it("does not show a session elapsed timer in the active log UI", () => {
@@ -3141,6 +3206,28 @@ describe("4d - Active card edit mode", () => {
     expect(
       screen.getByText("Dark chip is the selected set. Logged chips reopen the active card in edit mode.")
     ).toBeInTheDocument();
+  });
+
+  it("does not import audit artifacts or readiness internals into log UI components", () => {
+    const clientSource = readFileSync("src/components/LogWorkoutClient.tsx", "utf8");
+    const activeCardSource = readFileSync(
+      "src/components/log-workout/WorkoutActiveSetCard.tsx",
+      "utf8"
+    );
+    const queueSource = readFileSync(
+      "src/components/log-workout/WorkoutExerciseQueue.tsx",
+      "utf8"
+    );
+    const pageSource = readFileSync("src/app/log/[id]/page.tsx", "utf8");
+    const combined = [clientSource, activeCardSource, queueSource, pageSource].join("\n");
+
+    expect(combined).not.toContain("@/lib/audit/workout-audit");
+    expect(combined).not.toContain("workout-audit-cli");
+    expect(combined).not.toContain("artifacts/audits");
+    expect(combined).not.toContain("buildPreSessionReadinessSummary");
+    expect(combined).not.toContain("runWorkoutAuditGeneration");
+    expect(combined).not.toContain("calibrationWatches");
+    expect(combined).not.toContain("prescriptionConfidenceWatches");
   });
 });
 

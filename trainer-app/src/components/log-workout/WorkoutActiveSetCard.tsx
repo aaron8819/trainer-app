@@ -169,6 +169,7 @@ export function WorkoutActiveSetCard({
   });
   const canSubmit = setValidity.valid;
   const validationMessage = setValidity.reason ?? null;
+  const executionGuidance = activeSet.exercise.executionGuidance ?? [];
 
   return (
     <section
@@ -232,6 +233,35 @@ export function WorkoutActiveSetCard({
         </p>
         {autoregHintMessage ? (
           <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">{autoregHintMessage}</p>
+        ) : null}
+        {executionGuidance.length > 0 ? (
+          <div
+            className="mt-2 space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"
+            data-testid="active-set-execution-guidance"
+          >
+            {executionGuidance.map((item) => {
+              const meta = [
+                item.confidenceLabel,
+                item.sourceLabel ? `Source: ${item.sourceLabel}` : null,
+                item.cautionLabel,
+                item.adjustmentRangeLabel
+                  ? `Range: ${item.adjustmentRangeLabel}`
+                  : null,
+              ].filter((part): part is string => Boolean(part));
+
+              return (
+                <div key={`${item.title}:${item.message}`}>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                    {item.title}
+                  </p>
+                  <p className="mt-1 text-xs font-medium text-amber-900">{item.message}</p>
+                  {meta.length > 0 ? (
+                    <p className="mt-1 text-[11px] text-amber-800">{meta.join(" - ")}</p>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         ) : null}
       </div>
       {shouldUseBodyweightLoadLabel(activeSet.exercise, activeSet.set) ? (

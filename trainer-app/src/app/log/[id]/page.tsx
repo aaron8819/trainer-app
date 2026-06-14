@@ -15,6 +15,11 @@ import {
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 import { getLogWorkoutPageState } from "@/lib/workout-workflow";
 import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
+import {
+  getLogWorkoutExecutionGuidanceForExercise,
+  loadLogWorkoutExecutionGuidance,
+  type LogWorkoutExecutionGuidanceByExercise,
+} from "@/lib/api/log-workout-execution-guidance";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -95,6 +100,27 @@ function attachLogExerciseCapabilities(
           !(exercise.isSwapped ?? false),
       },
     };
+  };
+
+  return {
+    warmup: exercises.warmup?.map(attach) ?? [],
+    main: exercises.main.map(attach),
+    accessory: exercises.accessory?.map(attach) ?? [],
+  };
+}
+
+function attachLogExerciseExecutionGuidance(
+  exercises: SectionedExercises,
+  guidanceByExercise: LogWorkoutExecutionGuidanceByExercise
+): SectionedExercises {
+  const attach = (exercise: LogExerciseInput): LogExerciseInput => {
+    const executionGuidance = getLogWorkoutExecutionGuidanceForExercise(
+      guidanceByExercise,
+      exercise.name
+    );
+    return executionGuidance.length > 0
+      ? { ...exercise, executionGuidance }
+      : exercise;
   };
 
   return {
@@ -241,6 +267,14 @@ export default async function LogWorkoutPage({
   }
 
   const exercises = splitExercises(workout.exercises, workout.selectionMetadata);
+  const executionGuidanceByExercise = await loadLogWorkoutExecutionGuidance({
+    userId: owner.id,
+    workoutId: workout.id,
+  });
+  const exercisesWithExecutionGuidance = attachLogExerciseExecutionGuidance(
+    exercises,
+    executionGuidanceByExercise
+  );
   const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
   const sessionDecisionReceipt = selectionMetadata.sessionDecisionReceipt;
   const sessionIdentityLabel = formatSessionIdentityLabel({
@@ -272,7 +306,10 @@ export default async function LogWorkoutPage({
 
         <LogWorkoutClient
           workoutId={workout.id}
-          exercises={attachLogExerciseCapabilities(exercises, logCapabilities)}
+          exercises={attachLogExerciseCapabilities(
+            exercisesWithExecutionGuidance,
+            logCapabilities
+          )}
           allowBonusExerciseAdd={!isStrictGapFill}
           allowRuntimeExerciseSwap={pageState.mutability === "editable"}
           capabilities={logCapabilities}

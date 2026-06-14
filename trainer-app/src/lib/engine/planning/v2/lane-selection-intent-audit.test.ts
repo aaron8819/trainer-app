@@ -9,6 +9,7 @@ import {
   type V2LaneSelectionIntentAudit,
 } from "./lane-selection-intent-audit";
 import { buildV2LaneSelectionIntentBenchmark } from "./lane-selection-intent-benchmark";
+import { buildV2CandidateQualityLabFixtures } from "./candidate-quality-lab-fixtures";
 import type { V2ExerciseSelectionPlan } from "./types";
 
 function buildAudit(): V2LaneSelectionIntentAudit {
@@ -456,6 +457,169 @@ describe("buildV2LaneSelectionIntentBenchmark", () => {
             "allowedExerciseClasses:hamstring_curl",
           ]),
           nextSafeAction: "fix_lane_selection_intent_mismatch",
+        }),
+      ]),
+    );
+  });
+});
+
+describe("buildV2CandidateQualityLabFixtures", () => {
+  it("turns high-risk lane jobs into reusable read-only lab fixtures", () => {
+    const benchmark = buildV2LaneSelectionIntentBenchmark(buildAudit());
+    const lab = buildV2CandidateQualityLabFixtures(benchmark);
+
+    expect(lab).toMatchObject({
+      version: 1,
+      source: "v2_candidate_quality_lab_fixtures",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      scenarioCount: 7,
+      summary: {
+        passCount: 7,
+        warnCount: 0,
+        failCount: 0,
+        watchCount: 0,
+        goldenStableCount: 1,
+        nonConsumingScenarioCount: 7,
+      },
+      architectureBoundary: {
+        noProductionPlannerChange: true,
+        noProductionMaterializerRankingChange: true,
+        noSeedRuntimeReceiptDbChange: true,
+        noAcceptanceThresholdChange: true,
+        noRepairBehaviorChange: true,
+      },
+    });
+    expect(lab.scenarios).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          scenarioId: "low_axial_hip_extension_golden",
+          laneJob: "low_axial_hip_extension",
+          scenarioRole: "golden_reference",
+          expectedOutcome: "pass",
+          actualOutcome: "pass",
+          observedGapKind: "none",
+          noImpactArchitectureReview: true,
+          nextSafeAction: "no_action",
+          equipmentConstraints: expect.arrayContaining([
+            "low-axial hip-extension option exists",
+          ]),
+          inventoryConstraints: expect.arrayContaining([
+            "allow hip-thrust, bridge, pull-through, or reverse-hyper family",
+          ]),
+          gapKindsUnderTest: expect.arrayContaining([
+            "ontology_gap",
+            "lane_contract_gap",
+            "materializer_ranking_gap",
+            "acceptance_watch_gap",
+            "seed_runtime_boundary_issue",
+          ]),
+          evidence: expect.arrayContaining([
+            "actualOutcome=pass",
+            "noImpactArchitectureReview=true",
+          ]),
+          labConsumedByDemandOrMaterializer: false,
+          seedRuntimeBoundaryIssue: false,
+        }),
+        expect.objectContaining({
+          scenarioId: "vertical_pull_anchor_true_pull",
+          laneJob: "vertical_pull_anchor",
+          actualOutcome: "pass",
+          ownerSeam:
+            "V2LaneSelectionIntent -> ExerciseSelectionPlan -> V2 materializer consumption",
+          inventoryConstraints: expect.arrayContaining([
+            "exclude row, pullover, and straight-arm pulldown as anchor substitutions",
+          ]),
+        }),
+        expect.objectContaining({
+          scenarioId: "hamstring_curl_direct_floor",
+          laneJob: "hamstring_curl",
+          actualOutcome: "pass",
+          noImpactArchitectureReview: true,
+        }),
+        expect.objectContaining({
+          scenarioId: "side_delt_direct_isolation",
+          laneJob: "side_delt_direct",
+          actualOutcome: "pass",
+        }),
+        expect.objectContaining({
+          scenarioId: "rear_delt_direct_isolation",
+          laneJob: "rear_delt_direct",
+          actualOutcome: "pass",
+        }),
+        expect.objectContaining({
+          scenarioId: "calf_direct_floor",
+          laneJob: "calf_direct",
+          actualOutcome: "pass",
+        }),
+        expect.objectContaining({
+          scenarioId: "chest_biased_press_support",
+          laneJob: "chest_biased_press_support",
+          actualOutcome: "pass",
+        }),
+      ]),
+    );
+  });
+
+  it("classifies fixture gaps by owner when benchmark evidence fails", () => {
+    const audit = buildAudit();
+    const hamstringCurl = audit.lanes.find(
+      (lane) => lane.slotId === "lower_a" && lane.laneId === "hamstring_curl",
+    );
+    if (!hamstringCurl?.proposedLaneSelectionIntent) {
+      throw new Error("Missing hamstring curl lane intent fixture");
+    }
+    hamstringCurl.proposedLaneSelectionIntent.allowedExerciseClasses = ["hinge"];
+
+    const lab = buildV2CandidateQualityLabFixtures(
+      buildV2LaneSelectionIntentBenchmark(audit),
+    );
+
+    expect(lab.summary).toMatchObject({
+      passCount: 6,
+      failCount: 1,
+      warnCount: 0,
+      watchCount: 0,
+      goldenStableCount: 1,
+    });
+    expect(lab.scenarios).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          scenarioId: "hamstring_curl_direct_floor",
+          actualOutcome: "fail",
+          observedGapKind: "ontology_gap",
+          missingEvidence: expect.arrayContaining([
+            "allowedExerciseClasses:hamstring_curl",
+          ]),
+          nextSafeAction: "fix_lane_selection_intent_mismatch",
+          seedRuntimeBoundaryIssue: false,
+        }),
+      ]),
+    );
+  });
+
+  it("keeps missing benchmark input non-consuming and actionable", () => {
+    const lab = buildV2CandidateQualityLabFixtures(undefined);
+
+    expect(lab.summary).toMatchObject({
+      passCount: 0,
+      warnCount: 7,
+      failCount: 0,
+      watchCount: 0,
+      goldenStableCount: 0,
+      nonConsumingScenarioCount: 7,
+    });
+    expect(lab.scenarios).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          scenarioId: "low_axial_hip_extension_golden",
+          actualOutcome: "warn",
+          observedGapKind: "lane_contract_gap",
+          missingEvidence: ["lane_benchmark_row"],
+          nextSafeAction: "complete_lane_selection_intent_contract",
+          labConsumedByDemandOrMaterializer: false,
+          seedRuntimeBoundaryIssue: true,
         }),
       ]),
     );

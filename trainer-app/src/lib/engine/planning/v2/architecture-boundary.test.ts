@@ -18,6 +18,15 @@ const acceptanceMaterializedSeedHelper = path.join(
   "api",
   "mesocycle-handoff-v2-materialized-seed.ts",
 );
+const candidateQualityLabFixtureHelper = path.join(
+  process.cwd(),
+  "src",
+  "lib",
+  "engine",
+  "planning",
+  "v2",
+  "candidate-quality-lab-fixtures.ts",
+);
 const seedRuntimeFiles = [
   path.join(process.cwd(), "src", "lib", "api", "slot-plan-seed-parser.ts"),
   path.join(
@@ -476,6 +485,50 @@ describe("V2 planner policy module boundary", () => {
     });
 
     expect(violations).toEqual([]);
+  });
+
+  it("keeps candidate-quality lab fixtures read-only and outside execution seams", () => {
+    const labText = fs.readFileSync(candidateQualityLabFixtureHelper, "utf8");
+    const forbiddenLabPatterns = [
+      /buildMesocycleSlotPlanSeed/,
+      /parseSlotPlanSeedJson/,
+      /resolveSeededSlotPlan/,
+      /slotPlanSeedJson/,
+      /sessionDecisionReceipt/,
+      /workouts\/save/,
+      /save-workout/,
+      /runtimeReplay/,
+      /template-session\/slot-plan-seed/,
+      /\.create\s*\(/,
+      /\.createMany\s*\(/,
+      /\.update\s*\(/,
+      /\.updateMany\s*\(/,
+      /\.upsert\s*\(/,
+      /\.delete\s*\(/,
+      /\.deleteMany\s*\(/,
+    ];
+    const directViolations = forbiddenLabPatterns.flatMap((pattern) =>
+      pattern.test(labText)
+        ? [`candidate-quality lab fixtures match ${String(pattern)}`]
+        : [],
+    );
+    const seamViolations = generationSeedRuntimeReceiptPersistenceFiles.flatMap(
+      (file) => {
+        const text = fs.readFileSync(file, "utf8");
+        return /buildV2CandidateQualityLabFixtures|v2_candidate_quality_lab_fixtures/.test(
+          text,
+        )
+          ? [
+              `${path.relative(
+                process.cwd(),
+                file,
+              )} references candidate-quality lab fixtures`,
+            ]
+          : [];
+      },
+    );
+
+    expect([...directViolations, ...seamViolations]).toEqual([]);
   });
 
   it("keeps repair quarantine diagnostics out of generation, seed, runtime, receipts, persistence, and acceptance thresholds", () => {

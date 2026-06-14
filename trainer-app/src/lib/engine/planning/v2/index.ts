@@ -10,6 +10,7 @@ export {
   V2_LANE_SELECTION_INTENT_V0_FIELD_REQUIREMENTS,
 } from "./lane-selection-intent";
 export { buildV2LaneSelectionIntentBenchmark } from "./lane-selection-intent-benchmark";
+export { buildV2CandidateQualityLabFixtures } from "./candidate-quality-lab-fixtures";
 export { buildV2MaterializationDryRunReport } from "./materialization/dry-run-report";
 export { buildV2MaterializationPromotionReadiness } from "./materialization/promotion-readiness";
 export { buildV2MaterializationPreparationEvidence } from "./materialization/preparation-evidence";
@@ -143,6 +144,11 @@ export type {
   V2LaneSelectionIntentBenchmarkLaneJob,
   V2LaneSelectionIntentBenchmarkStatus,
 } from "./lane-selection-intent-benchmark";
+export type {
+  V2CandidateQualityLabFixtures,
+  V2CandidateQualityLabGapKind,
+  V2CandidateQualityLabOutcome,
+} from "./candidate-quality-lab-fixtures";
 export type {
   V2LaneSelectionIntentCapacityPriority,
   V2LaneSelectionIntentDirectnessRequirement,

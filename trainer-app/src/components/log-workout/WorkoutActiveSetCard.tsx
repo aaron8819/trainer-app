@@ -237,11 +237,12 @@ export function WorkoutActiveSetCard({
         {executionGuidance.length > 0 ? (
           <div
             className="mt-2 space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"
+            aria-label="Set guidance"
             data-testid="active-set-execution-guidance"
           >
             {executionGuidance.map((item) => {
               const meta = [
-                item.confidenceLabel,
+                item.confidenceLabel ? `Confidence: ${item.confidenceLabel}` : null,
                 item.sourceLabel ? `Source: ${item.sourceLabel}` : null,
                 item.cautionLabel,
                 item.adjustmentRangeLabel
@@ -250,13 +251,22 @@ export function WorkoutActiveSetCard({
               ].filter((part): part is string => Boolean(part));
 
               return (
-                <div key={`${item.title}:${item.message}`}>
+                <div key={`${item.title}:${item.message}`} className="space-y-1.5">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
                     {item.title}
                   </p>
-                  <p className="mt-1 text-xs font-medium text-amber-900">{item.message}</p>
+                  <p className="text-sm font-semibold leading-snug text-amber-950">{item.message}</p>
                   {meta.length > 0 ? (
-                    <p className="mt-1 text-[11px] text-amber-800">{meta.join(" - ")}</p>
+                    <div className="flex flex-wrap gap-1.5" aria-label="Guidance details">
+                      {meta.map((part) => (
+                        <span
+                          key={part}
+                          className="rounded-full border border-amber-200 bg-white/70 px-2 py-0.5 text-[11px] font-medium text-amber-800"
+                        >
+                          {part}
+                        </span>
+                      ))}
+                    </div>
                   ) : null}
                 </div>
               );

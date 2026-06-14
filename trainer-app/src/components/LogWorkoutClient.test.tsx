@@ -536,15 +536,18 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     );
 
     const guidance = screen.getByTestId("active-set-execution-guidance");
+    expect(guidance).toHaveAccessibleName("Set guidance");
     expect(within(guidance).getByText("Prescription guidance")).toBeInTheDocument();
     expect(
       within(guidance).getByText(
         "Cable Row: Start at 80 lb; use 70-80 lb if first-set reps or RPE are off."
       )
     ).toBeInTheDocument();
-    expect(
-      within(guidance).getByText("Low confidence - Source: History - Caution - Range: 70-80 lb")
-    ).toBeInTheDocument();
+    const details = within(guidance).getByLabelText("Guidance details");
+    expect(within(details).getByText("Confidence: Low confidence")).toBeInTheDocument();
+    expect(within(details).getByText("Source: History")).toBeInTheDocument();
+    expect(within(details).getByText("Caution")).toBeInTheDocument();
+    expect(within(details).getByText("Range: 70-80 lb")).toBeInTheDocument();
     expect(JSON.stringify(guidance.textContent)).not.toContain("target_effort_load_mismatch");
     expect(JSON.stringify(guidance.textContent)).not.toContain("generated_progression_trace");
     expect(JSON.stringify(guidance.textContent)).not.toContain("reasonCode");

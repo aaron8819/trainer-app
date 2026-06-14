@@ -201,6 +201,56 @@ describe("post-session review display adapter", () => {
         evidenceOnly: true,
       },
     ]);
+    expect(display.performedReality).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          exerciseName: "Cable Curls",
+          label: "Performed as planned",
+          detail:
+            "2 session-local sets performed; target 8-12 reps, load 100, RPE 8; actual median 10 reps, load 100, RPE 8.",
+          evidenceOnly: true,
+        }),
+      ])
+    );
+  });
+
+  it("maps runtime-added exercises without logs as needing actuals", () => {
+    const display = buildDisplay({
+      sourceTruth: {
+        ...buildInput().sourceTruth,
+        runtimeEditReconciliationAvailable: true,
+      },
+      exercises: [
+        exercise({
+          exerciseId: "cable-curls",
+          workoutExerciseId: "we-added",
+          exerciseName: "Cable Curls",
+          isRuntimeAdded: true,
+          isMainLift: false,
+          section: "ACCESSORY",
+          sets: [
+            performedSet("set-10", {
+              wasLogged: false,
+              actualReps: null,
+              actualLoad: null,
+              actualRpe: null,
+            }),
+          ],
+        }),
+      ],
+    });
+
+    expect(display.performedReality).toEqual([
+      expect.objectContaining({
+        exerciseName: "Cable Curls",
+        status: "watch",
+        label: "Needs actuals",
+        headline: "Cable Curls needs more actuals",
+        detail:
+          "No session-local set actuals were captured; target 8-12 reps, load 100, RPE 8; actual median reps not captured, load not captured, RPE not captured.",
+        evidenceOnly: true,
+      }),
+    ]);
   });
 
   it("maps replacement-like evidence as evidence, not automatic policy", () => {

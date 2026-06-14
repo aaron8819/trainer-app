@@ -55,6 +55,10 @@ function getAddedSets(exercise: PostSessionReviewExerciseEvidence) {
   return exercise.sets.filter((set) => !isPlannedSet(exercise, set));
 }
 
+function getCalibrationSets(exercise: PostSessionReviewExerciseEvidence) {
+  return exercise.isRuntimeAdded === true ? exercise.sets : getPlannedSets(exercise);
+}
+
 function countPerformed(sets: PostSessionReviewSetEvidence[]): number {
   return sets.filter(isPerformedSet).length;
 }
@@ -435,6 +439,9 @@ function resolvePerformedRealityLabel(input: {
   const completionStatus = resolvePerformedRealityCompletionStatus(input.exerciseRow);
   if (
     completionStatus === "unlogged" ||
+    (completionStatus === "session_local" &&
+      input.calibrationRow.classification === "runtime_added" &&
+      input.calibrationRow.performedSetCount === 0) ||
     input.calibrationRow.classification === "insufficient_evidence"
   ) {
     return "missing_actuals";
@@ -480,10 +487,21 @@ function performedRealityDetail(input: {
   calibrationRow: PostSessionReviewPrescriptionCalibrationRow;
 }): string {
   const row = input.calibrationRow;
+  const completionDetail =
+    input.exerciseRow.runtimeAdded || input.exerciseRow.plannedSetCount === 0
+      ? row.performedSetCount > 0
+        ? `${row.performedSetCount} session-local sets performed`
+        : "No session-local set actuals were captured"
+      : `${input.exerciseRow.performedSetCount} of ${input.exerciseRow.plannedSetCount} prescribed sets performed`;
+  const actualReps =
+    typeof row.medianReps === "number"
+      ? `${formatValue(row.medianReps)} reps`
+      : "reps not captured";
+
   return [
-    `${input.exerciseRow.performedSetCount} of ${input.exerciseRow.plannedSetCount} prescribed sets performed`,
+    completionDetail,
     `target ${formatTargetRange(row)}, load ${formatValue(row.targetLoad)}, RPE ${formatValue(row.targetRpe)}`,
-    `actual median ${formatValue(row.medianReps)} reps, load ${formatValue(row.medianPerformedLoad)}, RPE ${formatValue(row.medianActualRpe)}`,
+    `actual median ${actualReps}, load ${formatValue(row.medianPerformedLoad)}, RPE ${formatValue(row.medianActualRpe)}`,
   ].join("; ") + ".";
 }
 
@@ -516,6 +534,10 @@ function buildPerformedRealityRows(input: {
     }
 
     const label = resolvePerformedRealityLabel({ exerciseRow, calibrationRow });
+    const performedSetCount =
+      exerciseRow.runtimeAdded || exerciseRow.plannedSetCount === 0
+        ? calibrationRow.performedSetCount
+        : exerciseRow.performedSetCount;
     return {
       workoutExerciseId: exerciseRow.workoutExerciseId,
       exerciseId: exerciseRow.exerciseId,
@@ -523,7 +545,7 @@ function buildPerformedRealityRows(input: {
       label,
       completionStatus: resolvePerformedRealityCompletionStatus(exerciseRow),
       plannedSetCount: exerciseRow.plannedSetCount,
-      performedSetCount: exerciseRow.performedSetCount,
+      performedSetCount,
       skippedSetCount: exerciseRow.skippedSetCount,
       missingLogSetCount: exerciseRow.missingLogSetCount,
       target: {
@@ -579,17 +601,18 @@ function buildCalibrationRows(
   return exercises.map((exercise) => {
     const plannedSets = getPlannedSets(exercise);
     const addedSets = getAddedSets(exercise);
+    const calibrationSets = getCalibrationSets(exercise);
     const plannedSetCount = plannedSets.length;
-    const performedSetCount = countPerformed(plannedSets);
-    const skippedSetCount = countSkipped(plannedSets);
+    const performedSetCount = countPerformed(calibrationSets);
+    const skippedSetCount = countSkipped(calibrationSets);
     const addedSetCount =
       exercise.isRuntimeAdded === true
         ? countPerformed(exercise.sets)
         : countPerformed(addedSets);
-    const targetLoad = resolveTargetLoad(plannedSets);
-    const targetRpe = resolveTargetRpe(plannedSets);
-    const performedLoad = summarizePerformedLoad(plannedSets);
-    const targetRepRange = resolveTargetRepRange(plannedSets);
+    const targetLoad = resolveTargetLoad(calibrationSets);
+    const targetRpe = resolveTargetRpe(calibrationSets);
+    const performedLoad = summarizePerformedLoad(calibrationSets);
+    const targetRepRange = resolveTargetRepRange(calibrationSets);
     const loadDeltaPct =
       typeof targetLoad === "number" &&
       targetLoad > 0 &&

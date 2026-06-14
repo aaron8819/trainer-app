@@ -635,6 +635,26 @@ describe("loadPostSessionReviewContractForWorkout", () => {
       seedMutation: false,
       policyMutation: false,
     });
+    expect(
+      result.contract.performedReality.rows.find(
+        (row) => row.workoutExerciseId === "we-added"
+      )
+    ).toMatchObject({
+      exerciseId: "curl",
+      label: "performed_as_planned",
+      completionStatus: "session_local",
+      plannedSetCount: 0,
+      performedSetCount: 2,
+      actual: {
+        medianReps: 10,
+        medianLoad: 100,
+        medianRpe: 8,
+      },
+      evidenceOnly: true,
+      affectsProgressionPolicy: false,
+      affectsPrescriptionPolicy: false,
+      seedRuntimeChanged: false,
+    });
   });
 
   it("does not double-count runtime-added exercise and set evidence", async () => {

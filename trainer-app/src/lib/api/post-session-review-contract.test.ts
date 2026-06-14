@@ -208,8 +208,109 @@ describe("post-session review contract", () => {
     });
     expect(contract.prescriptionCalibration.rows.find(
       (row) => row.exerciseId === "bonus-curl"
-    )?.classification).toBe("runtime_added");
+    )).toMatchObject({
+      classification: "runtime_added",
+      plannedSetCount: 0,
+      performedSetCount: 2,
+      targetLoad: 100,
+      targetRepRange: { min: 8, max: 12 },
+      targetRpe: 8,
+      medianPerformedLoad: 100,
+      medianReps: 10,
+      medianActualRpe: 8,
+      performedRealityCoherence: "session_local",
+      affectsPrescriptionPolicy: false,
+    });
+    expect(contract.performedReality.rows.find(
+      (row) => row.exerciseId === "bonus-curl"
+    )).toMatchObject({
+      workoutExerciseId: "we-added",
+      label: "performed_as_planned",
+      completionStatus: "session_local",
+      plannedSetCount: 0,
+      performedSetCount: 2,
+      target: {
+        reps: { min: 8, max: 12 },
+        load: 100,
+        rpe: 8,
+      },
+      actual: {
+        medianReps: 10,
+        medianLoad: 100,
+        medianRpe: 8,
+      },
+      detail:
+        "2 session-local sets performed; target 8-12 reps, load 100, RPE 8; actual median 10 reps, load 100, RPE 8.",
+      evidenceOnly: true,
+      affectsProgressionPolicy: false,
+      affectsPrescriptionPolicy: false,
+      seedRuntimeChanged: false,
+    });
     expect(contract.boundaries.workoutChanged).toBe(false);
+  });
+
+  it("keeps runtime-added exercises with no logs as missing actuals", () => {
+    const contract = buildPostSessionReviewContract(
+      buildInput({
+        sourceTruth: {
+          ...buildInput().sourceTruth,
+          runtimeEditReconciliationAvailable: true,
+        },
+        exercises: [
+          exercise({
+            exerciseId: "bonus-curl",
+            workoutExerciseId: "we-added-empty",
+            exerciseName: "Bonus Cable Curl",
+            isRuntimeAdded: true,
+            isMainLift: false,
+            section: "ACCESSORY",
+            sets: [
+              performedSet("set-10", {
+                wasLogged: false,
+                actualReps: null,
+                actualLoad: null,
+                actualRpe: null,
+              }),
+              performedSet("set-11", {
+                wasLogged: false,
+                actualReps: null,
+                actualLoad: null,
+                actualRpe: null,
+              }),
+            ],
+          }),
+        ],
+      })
+    );
+
+    expect(contract.prescriptionCalibration.rows[0]).toMatchObject({
+      classification: "runtime_added",
+      plannedSetCount: 0,
+      performedSetCount: 0,
+      medianPerformedLoad: null,
+      medianReps: null,
+      medianActualRpe: null,
+      performedRealityCoherence: "session_local",
+    });
+    expect(contract.performedReality.rows[0]).toMatchObject({
+      workoutExerciseId: "we-added-empty",
+      label: "missing_actuals",
+      completionStatus: "session_local",
+      plannedSetCount: 0,
+      performedSetCount: 0,
+      actual: {
+        medianReps: null,
+        medianLoad: null,
+        medianRpe: null,
+      },
+      detail:
+        "No session-local set actuals were captured; target 8-12 reps, load 100, RPE 8; actual median reps not captured, load not captured, RPE not captured.",
+      evidenceOnly: true,
+      affectsProgressionPolicy: false,
+      affectsPrescriptionPolicy: false,
+      seedRuntimeChanged: false,
+    });
+    expect(isPostSessionReviewContract(contract)).toBe(true);
   });
 
   it("represents replacement-like swaps as evidence, not policy mutation", () => {
@@ -730,6 +831,58 @@ describe("post-session review contract", () => {
       }),
     ]);
     expect(overGroup?.priorExposureCount).toBe(1);
+  });
+
+  it("preserves duplicate current workout rows in performed reality", () => {
+    const contract = buildPostSessionReviewContract(
+      buildInput({
+        exercises: [
+          exercise({
+            workoutExerciseId: "we-cable-curl-planned",
+            exerciseId: "cable-curl",
+            exerciseName: "Cable Curl",
+            sets: [performedSet("planned-curl-set-1")],
+          }),
+          exercise({
+            workoutExerciseId: "we-cable-curl-added",
+            exerciseId: "cable-curl",
+            exerciseName: "Cable Curl",
+            isRuntimeAdded: true,
+            section: "ACCESSORY",
+            isMainLift: false,
+            sets: [
+              performedSet("added-curl-set-1", {
+                actualLoad: 35,
+                actualReps: 12,
+                actualRpe: 8.5,
+              }),
+            ],
+          }),
+        ],
+      })
+    );
+
+    expect(contract.performedReality.rows).toEqual([
+      expect.objectContaining({
+        workoutExerciseId: "we-cable-curl-planned",
+        exerciseId: "cable-curl",
+        completionStatus: "complete",
+        plannedSetCount: 1,
+        performedSetCount: 1,
+      }),
+      expect.objectContaining({
+        workoutExerciseId: "we-cable-curl-added",
+        exerciseId: "cable-curl",
+        completionStatus: "session_local",
+        plannedSetCount: 0,
+        performedSetCount: 1,
+        actual: {
+          medianReps: 12,
+          medianLoad: 35,
+          medianRpe: 8.5,
+        },
+      }),
+    ]);
   });
 
   it("includes next-exposure rows when explainability evidence exists", () => {

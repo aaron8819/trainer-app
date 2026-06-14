@@ -81,6 +81,26 @@ describe("PostSessionReviewCard", () => {
               evidenceOnly: true,
             },
           ],
+          performedReality: [
+            {
+              exerciseName: "Bench Press",
+              status: "info",
+              label: "Performed as planned",
+              headline: "Bench Press matched the plan",
+              detail:
+                "3 of 3 prescribed sets performed; target 8-12 reps, load 100, RPE 8; actual median 10 reps, load 100, RPE 8.",
+              evidenceOnly: true,
+            },
+            {
+              exerciseName: "Lat Pulldown",
+              status: "watch",
+              label: "Under plan",
+              headline: "Lat Pulldown came in under the plan",
+              detail:
+                "1 of 3 prescribed sets performed; target 8-12 reps, load 100, RPE 8; actual median 8 reps, load 90, RPE 9.",
+              evidenceOnly: true,
+            },
+          ],
           loadCalibration: [
             {
               exerciseName: "Bench Press",
@@ -122,6 +142,11 @@ describe("PostSessionReviewCard", () => {
     expect(screen.getByText("Skipped planned Lat Pulldown")).toBeInTheDocument();
     expect(screen.getByText("Added Cable Curl")).toBeInTheDocument();
     expect(screen.getByText("Used Machine Row instead of Barbell Row")).toBeInTheDocument();
+    expect(screen.getByText("Performed reality")).toBeInTheDocument();
+    expect(screen.getByText("Bench Press matched the plan")).toBeInTheDocument();
+    expect(screen.getByText("Lat Pulldown came in under the plan")).toBeInTheDocument();
+    expect(screen.getByText("Performed as planned")).toBeInTheDocument();
+    expect(screen.getByText("Under plan")).toBeInTheDocument();
     expect(screen.getByText("Load calibration")).toBeInTheDocument();
     expect(screen.getByText("Bench Press target looked too light")).toBeInTheDocument();
     expect(screen.getByText("Next exposure notes")).toBeInTheDocument();
@@ -136,6 +161,7 @@ describe("PostSessionReviewCard", () => {
     render(<PostSessionReviewCard review={review()} />);
 
     expect(screen.queryByText("Exercise changes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Performed reality")).not.toBeInTheDocument();
     expect(screen.queryByText("Load calibration")).not.toBeInTheDocument();
     expect(screen.queryByText("Next exposure notes")).not.toBeInTheDocument();
     expect(screen.queryByText("Weekly impact")).not.toBeInTheDocument();
@@ -194,6 +220,9 @@ describe("PostSessionReviewCard", () => {
     expect(visibleText).not.toContain("runtime_edit_reconciliation");
     expect(visibleText).not.toContain("replacement_like");
     expect(visibleText).not.toContain("target_too_low");
+    expect(visibleText).not.toContain("under_performed");
+    expect(visibleText).not.toContain("over_performed");
+    expect(visibleText).not.toContain("missing_actuals");
     expect(visibleText).not.toContain("decisionLog");
     expect(visibleText).not.toContain("policyMutation");
     expect(visibleText).not.toContain("seedMutation");

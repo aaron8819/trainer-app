@@ -100,6 +100,26 @@ describe("post-session review contract", () => {
       skippedSetCount: 0,
       extraSetCount: 0,
     });
+    expect(contract.performedReality).toMatchObject({
+      source: "set_log_vs_workout_set_targets",
+      readOnly: true,
+      affectsProgressionPolicy: false,
+      affectsPrescriptionPolicy: false,
+      seedRuntimeChanged: false,
+      rows: [
+        expect.objectContaining({
+          exerciseName: "Bench Press",
+          label: "performed_as_planned",
+          completionStatus: "complete",
+          plannedSetCount: 3,
+          performedSetCount: 3,
+          evidenceOnly: true,
+          affectsProgressionPolicy: false,
+          affectsPrescriptionPolicy: false,
+          seedRuntimeChanged: false,
+        }),
+      ],
+    });
     expect(contract.sourceTruth.receipt).toEqual({
       source: "selectionMetadata.sessionDecisionReceipt",
       available: true,
@@ -137,6 +157,18 @@ describe("post-session review contract", () => {
       status: "partial",
       skippedSetCount: 1,
       evidenceOnly: true,
+    });
+    expect(contract.performedReality.rows[0]).toMatchObject({
+      label: "under_performed",
+      completionStatus: "partial",
+      plannedSetCount: 3,
+      performedSetCount: 1,
+      skippedSetCount: 1,
+      missingLogSetCount: 1,
+      headline: "Bench Press came in under the plan",
+      affectsProgressionPolicy: false,
+      affectsPrescriptionPolicy: false,
+      seedRuntimeChanged: false,
     });
     expect(isPostSessionReviewContract(contract)).toBe(true);
   });
@@ -348,6 +380,26 @@ describe("post-session review contract", () => {
       effortResult: "below_target",
       performedRealityCoherence: "load_too_light",
     });
+    expect(
+      Object.fromEntries(
+        contract.performedReality.rows.map((row) => [row.exerciseId, row.label])
+      )
+    ).toEqual({
+      "too-high": "under_performed",
+      "effort-high": "under_performed",
+      "too-low": "over_performed",
+      insufficient: "missing_actuals",
+    });
+    expect(contract.performedReality.rows.find((row) => row.exerciseId === "too-low"))
+      .toMatchObject({
+        headline: "Too Low Row exceeded the plan",
+        detail:
+          "2 of 2 prescribed sets performed; target 8-12 reps, load 100, RPE 8; actual median 14 reps, load 130, RPE 6.5.",
+        evidenceOnly: true,
+        affectsProgressionPolicy: false,
+        affectsPrescriptionPolicy: false,
+        seedRuntimeChanged: false,
+      });
   });
 
   it("summarizes exact-exercise recent calibration exposure without policy impact", () => {

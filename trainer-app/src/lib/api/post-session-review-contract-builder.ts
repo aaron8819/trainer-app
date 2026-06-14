@@ -6,6 +6,7 @@ import {
   type PostSessionReviewExerciseReconciliationRow,
   type PostSessionReviewExecutionSummary,
   type PostSessionReviewLearningSignal,
+  type PostSessionReviewPerformedRealityRow,
   type PostSessionReviewPrescriptionCalibrationRow,
   type PostSessionReviewRecentExposureCalibrationSummaryRow,
 } from "./post-session-review-contract";
@@ -383,6 +384,166 @@ function buildExerciseRows(
       evidenceOnly: true,
       policyMutation: false,
       seedMutation: false,
+    };
+  });
+}
+
+function formatTargetRange(row: PostSessionReviewPrescriptionCalibrationRow): string {
+  const min = row.targetRepRange.min;
+  const max = row.targetRepRange.max;
+  if (typeof min === "number" && typeof max === "number") {
+    return min === max ? `${min} reps` : `${min}-${max} reps`;
+  }
+  if (typeof min === "number") {
+    return `${min}+ reps`;
+  }
+  if (typeof max === "number") {
+    return `up to ${max} reps`;
+  }
+  return "reps not prescribed";
+}
+
+function formatValue(value: number | null): string {
+  return typeof value === "number" && Number.isFinite(value)
+    ? `${Math.round(value * 10) / 10}`
+    : "not captured";
+}
+
+function resolvePerformedRealityCompletionStatus(
+  row: PostSessionReviewExerciseReconciliationRow
+): PostSessionReviewPerformedRealityRow["completionStatus"] {
+  if (row.runtimeAdded || row.plannedSetCount === 0) {
+    return "session_local";
+  }
+  if (row.status === "skipped") {
+    return "skipped";
+  }
+  if (row.status === "unlogged") {
+    return "unlogged";
+  }
+  if (row.status === "partial") {
+    return "partial";
+  }
+  return "complete";
+}
+
+function resolvePerformedRealityLabel(input: {
+  exerciseRow: PostSessionReviewExerciseReconciliationRow;
+  calibrationRow: PostSessionReviewPrescriptionCalibrationRow;
+}): PostSessionReviewPerformedRealityRow["label"] {
+  const completionStatus = resolvePerformedRealityCompletionStatus(input.exerciseRow);
+  if (
+    completionStatus === "unlogged" ||
+    input.calibrationRow.classification === "insufficient_evidence"
+  ) {
+    return "missing_actuals";
+  }
+  if (
+    completionStatus === "partial" ||
+    completionStatus === "skipped" ||
+    input.calibrationRow.classification === "skipped_or_low_coverage" ||
+    input.calibrationRow.classification === "target_too_high" ||
+    input.calibrationRow.repRangeResult === "below_target" ||
+    input.calibrationRow.effortResult === "above_target"
+  ) {
+    return "under_performed";
+  }
+  if (
+    input.calibrationRow.classification === "target_too_low" ||
+    (input.calibrationRow.repRangeResult === "above_target" &&
+      input.calibrationRow.effortResult === "below_target")
+  ) {
+    return "over_performed";
+  }
+  return "performed_as_planned";
+}
+
+function performedRealityHeadline(input: {
+  exerciseName: string;
+  label: PostSessionReviewPerformedRealityRow["label"];
+}): string {
+  switch (input.label) {
+    case "performed_as_planned":
+      return `${input.exerciseName} matched the plan`;
+    case "under_performed":
+      return `${input.exerciseName} came in under the plan`;
+    case "over_performed":
+      return `${input.exerciseName} exceeded the plan`;
+    case "missing_actuals":
+      return `${input.exerciseName} needs more actuals`;
+  }
+}
+
+function performedRealityDetail(input: {
+  exerciseRow: PostSessionReviewExerciseReconciliationRow;
+  calibrationRow: PostSessionReviewPrescriptionCalibrationRow;
+}): string {
+  const row = input.calibrationRow;
+  return [
+    `${input.exerciseRow.performedSetCount} of ${input.exerciseRow.plannedSetCount} prescribed sets performed`,
+    `target ${formatTargetRange(row)}, load ${formatValue(row.targetLoad)}, RPE ${formatValue(row.targetRpe)}`,
+    `actual median ${formatValue(row.medianReps)} reps, load ${formatValue(row.medianPerformedLoad)}, RPE ${formatValue(row.medianActualRpe)}`,
+  ].join("; ") + ".";
+}
+
+function buildPerformedRealityRows(input: {
+  exerciseRows: PostSessionReviewExerciseReconciliationRow[];
+  calibrationRows: PostSessionReviewPrescriptionCalibrationRow[];
+}): PostSessionReviewPerformedRealityRow[] {
+  return input.exerciseRows.map((exerciseRow, index) => {
+    const calibrationRow = input.calibrationRows[index];
+    if (!calibrationRow) {
+      return {
+        workoutExerciseId: exerciseRow.workoutExerciseId,
+        exerciseId: exerciseRow.exerciseId,
+        exerciseName: exerciseRow.exerciseName,
+        label: "missing_actuals",
+        completionStatus: resolvePerformedRealityCompletionStatus(exerciseRow),
+        plannedSetCount: exerciseRow.plannedSetCount,
+        performedSetCount: exerciseRow.performedSetCount,
+        skippedSetCount: exerciseRow.skippedSetCount,
+        missingLogSetCount: exerciseRow.missingLogSetCount,
+        target: { reps: { min: null, max: null }, load: null, rpe: null },
+        actual: { medianReps: null, medianLoad: null, medianRpe: null },
+        headline: `${exerciseRow.exerciseName} needs more actuals`,
+        detail: `${exerciseRow.performedSetCount} of ${exerciseRow.plannedSetCount} prescribed sets performed; target and actual set evidence was not complete.`,
+        evidenceOnly: true,
+        affectsProgressionPolicy: false,
+        affectsPrescriptionPolicy: false,
+        seedRuntimeChanged: false,
+      };
+    }
+
+    const label = resolvePerformedRealityLabel({ exerciseRow, calibrationRow });
+    return {
+      workoutExerciseId: exerciseRow.workoutExerciseId,
+      exerciseId: exerciseRow.exerciseId,
+      exerciseName: exerciseRow.exerciseName,
+      label,
+      completionStatus: resolvePerformedRealityCompletionStatus(exerciseRow),
+      plannedSetCount: exerciseRow.plannedSetCount,
+      performedSetCount: exerciseRow.performedSetCount,
+      skippedSetCount: exerciseRow.skippedSetCount,
+      missingLogSetCount: exerciseRow.missingLogSetCount,
+      target: {
+        reps: calibrationRow.targetRepRange,
+        load: calibrationRow.targetLoad,
+        rpe: calibrationRow.targetRpe,
+      },
+      actual: {
+        medianReps: calibrationRow.medianReps,
+        medianLoad: calibrationRow.medianPerformedLoad,
+        medianRpe: calibrationRow.medianActualRpe,
+      },
+      headline: performedRealityHeadline({
+        exerciseName: exerciseRow.exerciseName,
+        label,
+      }),
+      detail: performedRealityDetail({ exerciseRow, calibrationRow }),
+      evidenceOnly: true,
+      affectsProgressionPolicy: false,
+      affectsPrescriptionPolicy: false,
+      seedRuntimeChanged: false,
     };
   });
 }
@@ -827,6 +988,10 @@ export function buildPostSessionReviewContract(
   const exerciseRows = buildExerciseRows(input.exercises);
   const executionSummary = buildExecutionSummary(exerciseRows);
   const calibrationRows = buildCalibrationRows(input.exercises);
+  const performedRealityRows = buildPerformedRealityRows({
+    exerciseRows,
+    calibrationRows,
+  });
   const recentExposureRows = buildRecentExposureSummaryRows({
     currentRows: calibrationRows,
     recentExposures: input.recentExerciseExposures,
@@ -894,6 +1059,14 @@ export function buildPostSessionReviewContract(
     executionSummary,
     exerciseReconciliation: {
       rows: exerciseRows,
+    },
+    performedReality: {
+      source: "set_log_vs_workout_set_targets" as const,
+      rows: performedRealityRows,
+      readOnly: true as const,
+      affectsProgressionPolicy: false as const,
+      affectsPrescriptionPolicy: false as const,
+      seedRuntimeChanged: false as const,
     },
     nextExposure: {
       source: "explainability.nextExposureDecisions" as const,

@@ -113,6 +113,15 @@ describe("post-session review display adapter", () => {
         completionPct: 100,
       },
       exerciseChanges: [],
+      performedReality: [
+        expect.objectContaining({
+          exerciseName: "Bench Press",
+          status: "info",
+          label: "Performed as planned",
+          headline: "Bench Press matched the plan",
+          evidenceOnly: true,
+        }),
+      ],
       loadCalibration: [],
       nextExposureNotes: [],
       weeklyImpact: [],
@@ -313,6 +322,94 @@ describe("post-session review display adapter", () => {
     );
   });
 
+  it("maps performed-reality labels to display-safe review rows", () => {
+    const display = buildDisplay({
+      exercises: [
+        exercise({ exerciseId: "as-planned", exerciseName: "Bench Press" }),
+        exercise({
+          exerciseId: "under",
+          exerciseName: "Shoulder Press",
+          sets: [
+            performedSet("set-1", {
+              actualLoad: 100,
+              actualReps: 10,
+              targetRpe: 8,
+              actualRpe: 9.5,
+            }),
+            performedSet("set-2", {
+              actualLoad: 100,
+              actualReps: 10,
+              targetRpe: 8,
+              actualRpe: 9.5,
+            }),
+          ],
+        }),
+        exercise({
+          exerciseId: "over",
+          exerciseName: "Cable Row",
+          sets: [
+            performedSet("set-3", {
+              targetLoad: 100,
+              actualLoad: 130,
+              actualReps: 14,
+              targetRpe: 8,
+              actualRpe: 6.5,
+            }),
+            performedSet("set-4", {
+              targetLoad: 100,
+              actualLoad: 130,
+              actualReps: 14,
+              targetRpe: 8,
+              actualRpe: 6.5,
+            }),
+          ],
+        }),
+        exercise({
+          exerciseId: "missing",
+          exerciseName: "Lateral Raise",
+          sets: [
+            performedSet("set-5", {
+              wasLogged: false,
+              actualLoad: null,
+              actualReps: null,
+              actualRpe: null,
+            }),
+          ],
+        }),
+      ],
+    });
+
+    expect(display.performedReality).toEqual([
+      expect.objectContaining({
+        exerciseName: "Bench Press",
+        status: "info",
+        label: "Performed as planned",
+        headline: "Bench Press matched the plan",
+      }),
+      expect.objectContaining({
+        exerciseName: "Shoulder Press",
+        status: "watch",
+        label: "Under plan",
+        headline: "Shoulder Press came in under the plan",
+      }),
+      expect.objectContaining({
+        exerciseName: "Cable Row",
+        status: "watch",
+        label: "Over plan",
+        headline: "Cable Row exceeded the plan",
+      }),
+      expect.objectContaining({
+        exerciseName: "Lateral Raise",
+        status: "watch",
+        label: "Needs actuals",
+        headline: "Lateral Raise needs more actuals",
+      }),
+    ]);
+    expect(JSON.stringify(display.performedReality)).not.toContain("under_performed");
+    expect(JSON.stringify(display.performedReality)).not.toContain("over_performed");
+    expect(JSON.stringify(display.performedReality)).not.toContain("missing_actuals");
+  });
+
   it("renders next-exposure rows as recommendations, not mutations", () => {
     const display = buildDisplay({
       nextExposureDecisions: [
@@ -442,6 +539,9 @@ describe("post-session review display adapter", () => {
     expect(serialized).not.toContain("replacement_like");
     expect(serialized).not.toContain("target_too_low");
     expect(serialized).not.toContain("target_too_high");
+    expect(serialized).not.toContain("under_performed");
+    expect(serialized).not.toContain("over_performed");
+    expect(serialized).not.toContain("missing_actuals");
     expect(serialized).not.toContain("load_too_light");
     expect(serialized).not.toContain("load_too_heavy");
     expect(serialized).not.toContain("performedRealityCoherence");

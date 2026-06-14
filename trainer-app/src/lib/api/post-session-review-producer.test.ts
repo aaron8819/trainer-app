@@ -532,6 +532,29 @@ describe("loadPostSessionReviewContractForWorkout", () => {
       effortResult: "near_target",
       performedRealityCoherence: "low_coverage",
     });
+    expect(result.contract.performedReality.rows[0]).toMatchObject({
+      exerciseId: "bench",
+      label: "under_performed",
+      completionStatus: "partial",
+      plannedSetCount: 3,
+      performedSetCount: 1,
+      skippedSetCount: 1,
+      missingLogSetCount: 1,
+      target: {
+        reps: { min: 8, max: 12 },
+        load: 100,
+        rpe: 8,
+      },
+      actual: {
+        medianReps: 12,
+        medianLoad: 110,
+        medianRpe: 8,
+      },
+      evidenceOnly: true,
+      affectsProgressionPolicy: false,
+      affectsPrescriptionPolicy: false,
+      seedRuntimeChanged: false,
+    });
   });
 
   it("includes skipped planned exercise evidence", async () => {

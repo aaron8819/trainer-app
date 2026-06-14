@@ -3,6 +3,7 @@ import type {
   PostSessionReviewExerciseReconciliationRow,
   PostSessionReviewLearningSignal,
   PostSessionReviewNextExposureRow,
+  PostSessionReviewPerformedRealityRow,
   PostSessionReviewPrescriptionCalibrationRow,
   PostSessionReviewWeeklyImpactRow,
 } from "./post-session-review-contract";
@@ -42,6 +43,19 @@ export type PostSessionReviewDisplayLoadCalibration = {
   evidenceOnly: true;
 };
 
+export type PostSessionReviewDisplayPerformedReality = {
+  exerciseName: string;
+  status: "info" | "watch";
+  label:
+    | "Performed as planned"
+    | "Under plan"
+    | "Over plan"
+    | "Needs actuals";
+  headline: string;
+  detail: string;
+  evidenceOnly: true;
+};
+
 export type PostSessionReviewDisplayNextExposureNote = {
   exerciseName: string;
   recommendation: string;
@@ -78,6 +92,7 @@ export type PostSessionReviewDisplayDto = {
   summaryBullets: string[];
   completion: PostSessionReviewDisplayCompletion | null;
   exerciseChanges: PostSessionReviewDisplayExerciseChange[];
+  performedReality?: PostSessionReviewDisplayPerformedReality[];
   loadCalibration: PostSessionReviewDisplayLoadCalibration[];
   nextExposureNotes: PostSessionReviewDisplayNextExposureNote[];
   weeklyImpact: PostSessionReviewDisplayWeeklyImpact[];
@@ -369,6 +384,34 @@ function mapLoadCalibration(
     .filter((row): row is PostSessionReviewDisplayLoadCalibration => row !== null);
 }
 
+function displayPerformedRealityLabel(
+  label: PostSessionReviewPerformedRealityRow["label"]
+): PostSessionReviewDisplayPerformedReality["label"] {
+  switch (label) {
+    case "performed_as_planned":
+      return "Performed as planned";
+    case "under_performed":
+      return "Under plan";
+    case "over_performed":
+      return "Over plan";
+    case "missing_actuals":
+      return "Needs actuals";
+  }
+}
+
+function mapPerformedReality(
+  rows: PostSessionReviewPerformedRealityRow[]
+): PostSessionReviewDisplayPerformedReality[] {
+  return rows.map((row) => ({
+    exerciseName: row.exerciseName,
+    status: row.label === "performed_as_planned" ? "info" : "watch",
+    label: displayPerformedRealityLabel(row.label),
+    headline: row.headline,
+    detail: row.detail,
+    evidenceOnly: true,
+  }));
+}
+
 function nextExposureRecommendation(row: PostSessionReviewNextExposureRow): string {
   switch (row.action) {
     case "increase":
@@ -523,6 +566,7 @@ export function adaptPostSessionReviewContractToDisplay(
     summaryBullets: buildSummaryBullets(contract),
     completion: buildCompletion(contract),
     exerciseChanges: mapExerciseChanges(contract.exerciseReconciliation.rows),
+    performedReality: mapPerformedReality(contract.performedReality.rows),
     loadCalibration: mapLoadCalibration(contract.prescriptionCalibration.rows),
     nextExposureNotes: mapNextExposure(contract.nextExposure.rows),
     weeklyImpact: mapWeeklyImpact(contract.weeklyImpact?.rows),
@@ -552,6 +596,7 @@ export function adaptBlockedPostSessionReviewToDisplay(
     summaryBullets: ["No seed or plan changes made"],
     completion: null,
     exerciseChanges: [],
+    performedReality: [],
     loadCalibration: [],
     nextExposureNotes: [],
     weeklyImpact: [],

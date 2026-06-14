@@ -131,6 +131,47 @@ export type PostSessionReviewPerformedRealityCoherence =
   | "low_coverage"
   | "session_local";
 
+export type PostSessionReviewPerformedRealityLabel =
+  | "performed_as_planned"
+  | "under_performed"
+  | "over_performed"
+  | "missing_actuals";
+
+export type PostSessionReviewPerformedRealityCompletionStatus =
+  | "complete"
+  | "partial"
+  | "skipped"
+  | "unlogged"
+  | "session_local";
+
+export type PostSessionReviewPerformedRealityRow = {
+  workoutExerciseId: string;
+  exerciseId: string;
+  exerciseName: string;
+  label: PostSessionReviewPerformedRealityLabel;
+  completionStatus: PostSessionReviewPerformedRealityCompletionStatus;
+  plannedSetCount: number;
+  performedSetCount: number;
+  skippedSetCount: number;
+  missingLogSetCount: number;
+  target: {
+    reps: { min: number | null; max: number | null };
+    load: number | null;
+    rpe: number | null;
+  };
+  actual: {
+    medianReps: number | null;
+    medianLoad: number | null;
+    medianRpe: number | null;
+  };
+  headline: string;
+  detail: string;
+  evidenceOnly: true;
+  affectsProgressionPolicy: false;
+  affectsPrescriptionPolicy: false;
+  seedRuntimeChanged: false;
+};
+
 export type PostSessionReviewPrescriptionCalibrationRow = {
   exerciseId: string;
   exerciseName: string;
@@ -228,6 +269,14 @@ export type PostSessionReviewContract = {
   executionSummary: PostSessionReviewExecutionSummary;
   exerciseReconciliation: {
     rows: PostSessionReviewExerciseReconciliationRow[];
+  };
+  performedReality: {
+    source: "set_log_vs_workout_set_targets";
+    rows: PostSessionReviewPerformedRealityRow[];
+    readOnly: true;
+    affectsProgressionPolicy: false;
+    affectsPrescriptionPolicy: false;
+    seedRuntimeChanged: false;
   };
   nextExposure: {
     source: "explainability.nextExposureDecisions";
@@ -449,6 +498,61 @@ function hasValidRecentExposureSummary(summary: unknown): boolean {
   );
 }
 
+function hasValidPerformedRealityRow(row: unknown): boolean {
+  if (!isRecord(row)) {
+    return false;
+  }
+  const target = row.target;
+  const actual = row.actual;
+  return (
+    isString(row.workoutExerciseId) &&
+    isString(row.exerciseId) &&
+    isString(row.exerciseName) &&
+    (row.label === "performed_as_planned" ||
+      row.label === "under_performed" ||
+      row.label === "over_performed" ||
+      row.label === "missing_actuals") &&
+    (row.completionStatus === "complete" ||
+      row.completionStatus === "partial" ||
+      row.completionStatus === "skipped" ||
+      row.completionStatus === "unlogged" ||
+      row.completionStatus === "session_local") &&
+    isOptionalNumber(row.plannedSetCount) &&
+    isOptionalNumber(row.performedSetCount) &&
+    isOptionalNumber(row.skippedSetCount) &&
+    isOptionalNumber(row.missingLogSetCount) &&
+    isRecord(target) &&
+    isRecord(target.reps) &&
+    isNumberOrNull(target.reps.min) &&
+    isNumberOrNull(target.reps.max) &&
+    isNumberOrNull(target.load) &&
+    isNumberOrNull(target.rpe) &&
+    isRecord(actual) &&
+    isNumberOrNull(actual.medianReps) &&
+    isNumberOrNull(actual.medianLoad) &&
+    isNumberOrNull(actual.medianRpe) &&
+    typeof row.headline === "string" &&
+    typeof row.detail === "string" &&
+    row.evidenceOnly === true &&
+    row.affectsProgressionPolicy === false &&
+    row.affectsPrescriptionPolicy === false &&
+    row.seedRuntimeChanged === false
+  );
+}
+
+function hasValidPerformedReality(performedReality: unknown): boolean {
+  return (
+    isRecord(performedReality) &&
+    performedReality.source === "set_log_vs_workout_set_targets" &&
+    Array.isArray(performedReality.rows) &&
+    performedReality.rows.every(hasValidPerformedRealityRow) &&
+    performedReality.readOnly === true &&
+    performedReality.affectsProgressionPolicy === false &&
+    performedReality.affectsPrescriptionPolicy === false &&
+    performedReality.seedRuntimeChanged === false
+  );
+}
+
 export function isPostSessionReviewContract(
   value: unknown,
   options: { userId?: string; workoutId?: string } = {}
@@ -462,6 +566,7 @@ export function isPostSessionReviewContract(
     isRecord(value.executionSummary) &&
     isRecord(value.exerciseReconciliation) &&
     Array.isArray(value.exerciseReconciliation.rows) &&
+    hasValidPerformedReality(value.performedReality) &&
     isRecord(value.nextExposure) &&
     value.nextExposure.source === "explainability.nextExposureDecisions" &&
     typeof value.nextExposure.available === "boolean" &&

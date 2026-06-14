@@ -1798,6 +1798,68 @@ export type V2PlanQualityBenchmark = {
   consumedByProduction: false;
   repairedProjectionUsedAs: "evidence_only_not_target_policy";
   status: "pass" | "warning" | "fail" | "blocked_by_missing_evidence";
+  candidateQualityLab?: {
+    version: 1;
+    source: "v2_candidate_quality_lab_fixtures";
+    readOnly: true;
+    affectsScoringOrGeneration: false;
+    consumedByDemandOrMaterializer: false;
+    summary: {
+      fixtureCount: number;
+      passCount: number;
+      warnCount: number;
+      failCount: number;
+      watchCount: number;
+      lowAxialGoldenCount: number;
+      nonConsumingFixtureCount: number;
+      nextSafeAction: string;
+    };
+    topAttentionFixture: {
+      scenarioId: string;
+      label: string;
+      expectedOutcome: "pass" | "warn" | "fail" | "watch";
+      actualOutcome: "pass" | "warn" | "fail" | "watch";
+      observedGapKind:
+        | "none"
+        | "ontology_gap"
+        | "lane_contract_gap"
+        | "materializer_ranking_gap"
+        | "acceptance_watch_gap"
+        | "seed_runtime_boundary_issue";
+      ownerSeam: string;
+      evidenceSource: string;
+      nextSafeAction: string;
+    } | null;
+    scenarioDetailTop: Array<{
+      scenarioId: string;
+      label: string;
+      scenarioRole: "golden_reference" | "diagnostic_fixture";
+      expectedOutcome: "pass" | "warn" | "fail" | "watch";
+      actualOutcome: "pass" | "warn" | "fail" | "watch";
+      observedGapKind:
+        | "none"
+        | "ontology_gap"
+        | "lane_contract_gap"
+        | "materializer_ranking_gap"
+        | "acceptance_watch_gap"
+        | "seed_runtime_boundary_issue";
+      ownerSeam: string;
+      evidenceSource: string;
+      evidenceCount: number;
+      missingEvidenceCount: number;
+      nextSafeAction: string;
+      noImpactArchitectureReview: boolean;
+      labConsumedByDemandOrMaterializer: false;
+      seedRuntimeBoundaryIssue: boolean;
+    }>;
+    architectureBoundary: {
+      noProductionPlannerChange: true;
+      noProductionMaterializerRankingChange: true;
+      noSeedRuntimeReceiptDbChange: true;
+      noAcceptanceThresholdChange: true;
+      noRepairBehaviorChange: true;
+    };
+  };
   summary: {
     passCount: number;
     warningCount: number;

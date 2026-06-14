@@ -3059,6 +3059,50 @@ describe("buildWorkoutAuditArtifact", () => {
           "run_acceptance_non_regression_projection",
         nextSafeAction: "review_warning_gates_before_deprecation",
       },
+      candidateQualityLab: {
+        version: 1,
+        source: "v2_candidate_quality_lab_fixtures",
+        readOnly: true,
+        affectsScoringOrGeneration: false,
+        consumedByDemandOrMaterializer: false,
+        summary: {
+          fixtureCount: 7,
+          passCount: 7,
+          warnCount: 0,
+          failCount: 0,
+          watchCount: 0,
+          lowAxialGoldenCount: 1,
+          nonConsumingFixtureCount: 7,
+          nextSafeAction: "no_action",
+        },
+        topAttentionFixture: null,
+        scenarioDetailTop: [
+          {
+            scenarioId: "low_axial_hip_extension_golden",
+            label: "Low-axial hip-extension support golden",
+            scenarioRole: "golden_reference",
+            expectedOutcome: "pass",
+            actualOutcome: "pass",
+            observedGapKind: "none",
+            ownerSeam:
+              "V2LaneSelectionIntent -> ExerciseSelectionPlan -> V2 materializer consumption",
+            evidenceSource: "v2_lane_selection_intent_benchmark",
+            evidenceCount: 8,
+            missingEvidenceCount: 0,
+            nextSafeAction: "no_action",
+            noImpactArchitectureReview: true,
+            labConsumedByDemandOrMaterializer: false,
+            seedRuntimeBoundaryIssue: false,
+          },
+        ],
+        architectureBoundary: {
+          noProductionPlannerChange: true,
+          noProductionMaterializerRankingChange: true,
+          noSeedRuntimeReceiptDbChange: true,
+          noAcceptanceThresholdChange: true,
+          noRepairBehaviorChange: true,
+        },
+      },
       slotWeekAllocationAcceptanceProjection: {
         version: 1,
         source:
@@ -3617,6 +3661,14 @@ describe("buildWorkoutAuditArtifact", () => {
         v2PlanQualityBenchmarkStatus: "warning",
         v2PlanQualityBenchmarkFailedGates: 0,
         v2PlanQualityBenchmarkMissingEvidenceGates: 0,
+        v2CandidateQualityLabFixtureCount: 7,
+        v2CandidateQualityLabPassCount: 7,
+        v2CandidateQualityLabWarnCount: 0,
+        v2CandidateQualityLabFailCount: 0,
+        v2CandidateQualityLabWatchCount: 0,
+        v2CandidateQualityLabLowAxialGoldenCount: 1,
+        v2CandidateQualityLabTopAttentionFixture: null,
+        v2CandidateQualityLabNextSafeAction: "no_action",
         v2SlotWeekAllocationAcceptanceDecision:
           "accepted_with_watch_items",
         v2SlotWeekAllocationAcceptanceWatchItems: 2,
@@ -3824,6 +3876,22 @@ describe("buildWorkoutAuditArtifact", () => {
     const planningRealityShard = findShard("planning-reality");
     expect(materializationShard.artifact.data).toMatchObject({
       v2PlanQualityBenchmark: {
+        candidateQualityLab: {
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          consumedByDemandOrMaterializer: false,
+          summary: {
+            fixtureCount: 7,
+            passCount: 7,
+            warnCount: 0,
+            failCount: 0,
+            watchCount: 0,
+            lowAxialGoldenCount: 1,
+            nonConsumingFixtureCount: 7,
+            nextSafeAction: "no_action",
+          },
+          topAttentionFixture: null,
+        },
         slotWeekAllocationAcceptanceProjection: {
           decision: "accepted_with_watch_items",
           acceptance: {
@@ -3837,6 +3905,10 @@ describe("buildWorkoutAuditArtifact", () => {
         },
       },
     });
+    expect(
+      output.serializedArtifact.mesocycleExplain?.plannerOnlyNoRepair
+        ?.v2PlanQualityBenchmark?.candidateQualityLab,
+    ).not.toHaveProperty("scenarioDetailTop");
 
     const mainPlanningReality = output.serializedArtifact.mesocycleExplain
       ?.preview.projectionDiagnostics.planningReality as unknown as Record<
@@ -4210,6 +4282,19 @@ describe("buildWorkoutAuditArtifact", () => {
           "diagnostic_lane_intent_override_not_consumed_by_runtime",
           "production_materializer_allowlist_unchanged",
         ]),
+      },
+    });
+    expect(materializationShard.artifact.data).toMatchObject({
+      v2PlanQualityBenchmark: {
+        candidateQualityLab: {
+          scenarioDetailTop: [
+            expect.objectContaining({
+              scenarioId: "low_axial_hip_extension_golden",
+              actualOutcome: "pass",
+              labConsumedByDemandOrMaterializer: false,
+            }),
+          ],
+        },
       },
     });
     expect(crossWeekShard.artifact.data).toMatchObject({

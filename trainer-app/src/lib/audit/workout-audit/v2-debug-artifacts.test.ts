@@ -14,6 +14,36 @@ describe("buildV2DebugArtifacts", () => {
         },
         plannerOnlyNoRepair: {
           summary: { status: "pass_with_warnings" },
+          v2PlanQualityBenchmark: {
+            status: "pass",
+            summary: {
+              failCount: 0,
+              missingEvidenceCount: 0,
+            },
+            candidateQualityLab: {
+              readOnly: true,
+              affectsScoringOrGeneration: false,
+              consumedByDemandOrMaterializer: false,
+              summary: {
+                fixtureCount: 7,
+                passCount: 7,
+                warnCount: 0,
+                failCount: 0,
+                watchCount: 0,
+                lowAxialGoldenCount: 1,
+                nonConsumingFixtureCount: 7,
+                nextSafeAction: "no_action",
+              },
+              topAttentionFixture: null,
+              scenarioDetailTop: [
+                {
+                  scenarioId: "low_axial_hip_extension_golden",
+                  actualOutcome: "pass",
+                  labConsumedByDemandOrMaterializer: false,
+                },
+              ],
+            },
+          },
           v2StrategyRowMaterializerProjection: {
             version: 1,
             source: "v2_strategy_row_materializer_projection",
@@ -236,6 +266,14 @@ describe("buildV2DebugArtifacts", () => {
       v2PromotionCandidateEvaluatorWatch: 0,
       v2PromotionCandidateEvaluatorRecommendation: "none_ready",
       v2PromotionCandidateEvaluatorTopCandidate: null,
+      v2CandidateQualityLabFixtureCount: 7,
+      v2CandidateQualityLabPassCount: 7,
+      v2CandidateQualityLabWarnCount: 0,
+      v2CandidateQualityLabFailCount: 0,
+      v2CandidateQualityLabWatchCount: 0,
+      v2CandidateQualityLabLowAxialGoldenCount: 1,
+      v2CandidateQualityLabTopAttentionFixture: null,
+      v2CandidateQualityLabNextSafeAction: "no_action",
     });
     const materializationShard = built?.shards.find(
       (shard) => shard.metadata.id === "materialization",
@@ -288,6 +326,19 @@ describe("buildV2DebugArtifacts", () => {
             candidateId:
               "fresh_strategy_slotdemandallocationbyweek_side_delts_protect_floor",
             stopReasons: ["measured_no_impact"],
+          }),
+        ],
+      },
+    });
+    expect(
+      materializationShard?.data.v2PlanQualityBenchmark,
+    ).toMatchObject({
+      candidateQualityLab: {
+        scenarioDetailTop: [
+          expect.objectContaining({
+            scenarioId: "low_axial_hip_extension_golden",
+            actualOutcome: "pass",
+            labConsumedByDemandOrMaterializer: false,
           }),
         ],
       },

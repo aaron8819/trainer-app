@@ -2226,6 +2226,15 @@ function buildIndexSummary(input: {
     );
   const planQualityBenchmark = asRecord(input.noRepair.v2PlanQualityBenchmark);
   const planQualitySummary = asRecord(planQualityBenchmark?.summary);
+  const planQualityCandidateLab = asRecord(
+    planQualityBenchmark?.candidateQualityLab,
+  );
+  const planQualityCandidateLabSummary = asRecord(
+    planQualityCandidateLab?.summary,
+  );
+  const planQualityCandidateLabTopAttention = asRecord(
+    planQualityCandidateLab?.topAttentionFixture,
+  );
   const planQualityDeprecationReadiness = asRecord(
     planQualityBenchmark?.deprecationReadiness,
   );
@@ -2415,6 +2424,22 @@ function buildIndexSummary(input: {
       planQualitySummary?.missingEvidenceCount ?? null,
     v2PlanQualityDeprecationReadiness:
       planQualityDeprecationReadiness?.status ?? "not_available",
+    v2CandidateQualityLabFixtureCount:
+      planQualityCandidateLabSummary?.fixtureCount ?? null,
+    v2CandidateQualityLabPassCount:
+      planQualityCandidateLabSummary?.passCount ?? null,
+    v2CandidateQualityLabWarnCount:
+      planQualityCandidateLabSummary?.warnCount ?? null,
+    v2CandidateQualityLabFailCount:
+      planQualityCandidateLabSummary?.failCount ?? null,
+    v2CandidateQualityLabWatchCount:
+      planQualityCandidateLabSummary?.watchCount ?? null,
+    v2CandidateQualityLabLowAxialGoldenCount:
+      planQualityCandidateLabSummary?.lowAxialGoldenCount ?? null,
+    v2CandidateQualityLabTopAttentionFixture:
+      planQualityCandidateLabTopAttention?.scenarioId ?? null,
+    v2CandidateQualityLabNextSafeAction:
+      planQualityCandidateLabSummary?.nextSafeAction ?? null,
     v2PromotionCandidateEvaluatorStatus:
       promotionCandidateEvaluator?.status ?? "not_available",
     v2PromotionCandidateEvaluatorReady:

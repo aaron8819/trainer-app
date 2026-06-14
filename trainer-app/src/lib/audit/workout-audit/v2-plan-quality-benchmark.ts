@@ -2,6 +2,7 @@ import type {
   MesocycleExplainPlannerOnlyNoRepair,
   V2PlanQualityBenchmark,
 } from "./types";
+import { buildV2CandidateQualityLabFixtures } from "@/lib/engine/planning/v2/candidate-quality-lab-fixtures";
 import { buildV2LaneSelectionIntentBenchmark } from "@/lib/engine/planning/v2/lane-selection-intent-benchmark";
 
 type BenchmarkGate = V2PlanQualityBenchmark["gates"][number];
@@ -15,6 +16,10 @@ type AcceptanceItemClassification =
   SlotWeekAllocationAcceptanceProjection["acceptance"]["itemClassifications"][number];
 type AcceptanceClassificationCounts =
   SlotWeekAllocationAcceptanceProjection["acceptance"]["classificationCounts"];
+type CandidateQualityLab = NonNullable<
+  V2PlanQualityBenchmark["candidateQualityLab"]
+>;
+type CandidateQualityLabScenario = CandidateQualityLab["scenarioDetailTop"][number];
 type BasePlanCompare = NonNullable<
   MesocycleExplainPlannerOnlyNoRepair["v2BasePlanCompare"]
 >;
@@ -701,6 +706,93 @@ function buildLaneIntentExplicitnessGate(
     ],
     mustFixBeforeWeek1: failingLanes.some((lane) => lane.required),
   });
+}
+
+function labOutcomeRank(outcome: CandidateQualityLabScenario["actualOutcome"]) {
+  if (outcome === "fail") {
+    return 0;
+  }
+  if (outcome === "warn") {
+    return 1;
+  }
+  if (outcome === "watch") {
+    return 2;
+  }
+  return 3;
+}
+
+function buildCandidateQualityLab(
+  noRepair: MesocycleExplainPlannerOnlyNoRepair,
+): CandidateQualityLab {
+  const laneIntentBenchmark = buildV2LaneSelectionIntentBenchmark(
+    noRepair.v2LaneSelectionIntentAudit,
+  );
+  const lab = buildV2CandidateQualityLabFixtures(laneIntentBenchmark);
+  const scenarioDetailTop: CandidateQualityLabScenario[] = lab.scenarios.map(
+    (scenario) => ({
+      scenarioId: scenario.scenarioId,
+      label: scenario.label,
+      scenarioRole: scenario.scenarioRole,
+      expectedOutcome: scenario.expectedOutcome,
+      actualOutcome: scenario.actualOutcome,
+      observedGapKind: scenario.observedGapKind,
+      ownerSeam: scenario.ownerSeam,
+      evidenceSource: scenario.evidenceSource,
+      evidenceCount: scenario.evidence.length,
+      missingEvidenceCount: scenario.missingEvidence.length,
+      nextSafeAction: scenario.nextSafeAction,
+      noImpactArchitectureReview: scenario.noImpactArchitectureReview,
+      labConsumedByDemandOrMaterializer:
+        scenario.labConsumedByDemandOrMaterializer,
+      seedRuntimeBoundaryIssue: scenario.seedRuntimeBoundaryIssue,
+    }),
+  );
+  const topAttentionFixture =
+    scenarioDetailTop
+      .filter((scenario) => scenario.actualOutcome !== "pass")
+      .sort(
+        (left, right) =>
+          labOutcomeRank(left.actualOutcome) -
+          labOutcomeRank(right.actualOutcome),
+      )[0] ?? null;
+
+  return {
+    version: lab.version,
+    source: lab.source,
+    readOnly: lab.readOnly,
+    affectsScoringOrGeneration: lab.affectsScoringOrGeneration,
+    consumedByDemandOrMaterializer: lab.consumedByDemandOrMaterializer,
+    summary: {
+      fixtureCount: lab.scenarioCount,
+      passCount: lab.summary.passCount,
+      warnCount: lab.summary.warnCount,
+      failCount: lab.summary.failCount,
+      watchCount: lab.summary.watchCount,
+      lowAxialGoldenCount: lab.scenarios.filter(
+        (scenario) =>
+          scenario.scenarioId === "low_axial_hip_extension_golden" &&
+          scenario.scenarioRole === "golden_reference" &&
+          scenario.expectedOutcome === "pass" &&
+          scenario.actualOutcome === "pass",
+      ).length,
+      nonConsumingFixtureCount: lab.summary.nonConsumingScenarioCount,
+      nextSafeAction: topAttentionFixture?.nextSafeAction ?? "no_action",
+    },
+    topAttentionFixture: topAttentionFixture
+      ? {
+          scenarioId: topAttentionFixture.scenarioId,
+          label: topAttentionFixture.label,
+          expectedOutcome: topAttentionFixture.expectedOutcome,
+          actualOutcome: topAttentionFixture.actualOutcome,
+          observedGapKind: topAttentionFixture.observedGapKind,
+          ownerSeam: topAttentionFixture.ownerSeam,
+          evidenceSource: topAttentionFixture.evidenceSource,
+          nextSafeAction: topAttentionFixture.nextSafeAction,
+        }
+      : null,
+    scenarioDetailTop,
+    architectureBoundary: lab.architectureBoundary,
+  };
 }
 
 function buildSessionSizeGate(
@@ -1826,6 +1918,7 @@ export function buildV2PlanQualityBenchmark(
     buildSlotWeekAllocationAcceptanceProjection({ noRepair, gates });
   const laneIntentAcceptanceProjection =
     buildLaneIntentAcceptanceProjection({ noRepair, gates });
+  const candidateQualityLab = buildCandidateQualityLab(noRepair);
 
   return {
     version: 1,
@@ -1835,6 +1928,7 @@ export function buildV2PlanQualityBenchmark(
     consumedByProduction: false,
     repairedProjectionUsedAs: "evidence_only_not_target_policy",
     status,
+    candidateQualityLab,
     summary: {
       passCount: countByStatus(gates, "pass"),
       warningCount,

@@ -1274,6 +1274,39 @@ describe("V2 plan quality benchmark", () => {
     ]);
     expect(result.summary.failCount).toBe(0);
     expect(result.summary.missingEvidenceCount).toBe(0);
+    expect(result.candidateQualityLab).toMatchObject({
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      consumedByDemandOrMaterializer: false,
+      summary: {
+        fixtureCount: 7,
+        passCount: 7,
+        warnCount: 0,
+        failCount: 0,
+        watchCount: 0,
+        lowAxialGoldenCount: 1,
+        nonConsumingFixtureCount: 7,
+        nextSafeAction: "no_action",
+      },
+      topAttentionFixture: null,
+      architectureBoundary: {
+        noProductionPlannerChange: true,
+        noProductionMaterializerRankingChange: true,
+        noSeedRuntimeReceiptDbChange: true,
+        noAcceptanceThresholdChange: true,
+        noRepairBehaviorChange: true,
+      },
+    });
+    expect(result.candidateQualityLab?.scenarioDetailTop).toHaveLength(7);
+    expect(result.candidateQualityLab?.scenarioDetailTop).toContainEqual(
+      expect.objectContaining({
+        scenarioId: "low_axial_hip_extension_golden",
+        actualOutcome: "pass",
+        observedGapKind: "none",
+        labConsumedByDemandOrMaterializer: false,
+        seedRuntimeBoundaryIssue: false,
+      }),
+    );
     expect(result.gates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

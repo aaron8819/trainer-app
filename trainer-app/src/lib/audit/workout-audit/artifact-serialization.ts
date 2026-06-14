@@ -1089,6 +1089,15 @@ function compactPlannerOnlyNoRepair(
   const v2PlanQualityBenchmarkSummary = asRecord(
     v2PlanQualityBenchmark?.summary,
   );
+  const v2PlanQualityCandidateLab = asRecord(
+    v2PlanQualityBenchmark?.candidateQualityLab,
+  );
+  const v2PlanQualityCandidateLabSummary = asRecord(
+    v2PlanQualityCandidateLab?.summary,
+  );
+  const v2PlanQualityCandidateLabTopAttention = asRecord(
+    v2PlanQualityCandidateLab?.topAttentionFixture,
+  );
   const v2PlanQualityBenchmarkDeprecationReadiness = asRecord(
     v2PlanQualityBenchmark?.deprecationReadiness,
   );
@@ -1307,6 +1316,23 @@ function compactPlannerOnlyNoRepair(
             v2PlanQualityBenchmark.repairedProjectionUsedAs ??
             "evidence_only_not_target_policy",
           summary: v2PlanQualityBenchmarkSummary ?? {},
+          candidateQualityLab: v2PlanQualityCandidateLab
+            ? {
+                readOnly: v2PlanQualityCandidateLab.readOnly === true,
+                affectsScoringOrGeneration:
+                  v2PlanQualityCandidateLab.affectsScoringOrGeneration === true
+                    ? true
+                    : false,
+                consumedByDemandOrMaterializer:
+                  v2PlanQualityCandidateLab.consumedByDemandOrMaterializer ===
+                  true
+                    ? true
+                    : false,
+                summary: v2PlanQualityCandidateLabSummary ?? {},
+                topAttentionFixture:
+                  v2PlanQualityCandidateLabTopAttention ?? null,
+              }
+            : undefined,
           slotWeekAllocationAcceptanceProjection: v2PlanQualitySlotWeekAcceptance
             ? {
                 decision: asRecord(

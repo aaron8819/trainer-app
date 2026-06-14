@@ -3,6 +3,7 @@ import type {
   V2LaneSelectionIntentBenchmarkLaneJob,
 } from "./lane-selection-intent-benchmark";
 import {
+  buildV2MaterializedPlanFixture,
   buildV2SingleExerciseMaterializedPlanFixture,
   compareV2MaterializedPlans,
 } from "./materialization/materialized-plan-compare";
@@ -277,8 +278,8 @@ const HIGH_RISK_LAB_SCENARIOS: CandidateQualityScenarioFixture[] = [
 
 type MaterializerDeltaFixtureDefinition = {
   scenarioId: string;
-  baselinePlan: ReturnType<typeof buildV2SingleExerciseMaterializedPlanFixture>;
-  trialPlan: ReturnType<typeof buildV2SingleExerciseMaterializedPlanFixture>;
+  baselinePlan: ReturnType<typeof buildV2MaterializedPlanFixture>;
+  trialPlan: ReturnType<typeof buildV2MaterializedPlanFixture>;
   baselineIdentitySummary: string[];
   trialIdentitySummary: string[];
   protectedCoverage: {
@@ -340,6 +341,102 @@ const MATERIALIZER_DELTA_FIXTURES: MaterializerDeltaFixtureDefinition[] = [
       protectedMuscles: ["Lats"],
       baselineSetCount: 0,
       trialSetCount: 3,
+    },
+    nextSafeAction: "run_read_only_acceptance_projection",
+  },
+  {
+    scenarioId: "hamstring_curl_direct_floor",
+    baselinePlan: buildV2SingleExerciseMaterializedPlanFixture({
+      slotId: "lower_a",
+      exerciseId: "back-extension",
+      laneId: "hamstring_curl",
+      role: "ACCESSORY",
+      setCount: 3,
+    }),
+    trialPlan: buildV2SingleExerciseMaterializedPlanFixture({
+      slotId: "lower_a",
+      exerciseId: "seated-leg-curl",
+      laneId: "hamstring_curl",
+      role: "ACCESSORY",
+      setCount: 3,
+    }),
+    baselineIdentitySummary: ["Back Extension:3"],
+    trialIdentitySummary: ["Seated Leg Curl:3"],
+    protectedCoverage: {
+      status: "improved",
+      protectedMuscles: ["Hamstrings"],
+      baselineSetCount: 0,
+      trialSetCount: 3,
+    },
+    nextSafeAction: "run_read_only_acceptance_projection",
+  },
+  {
+    scenarioId: "calf_direct_floor",
+    baselinePlan: buildV2MaterializedPlanFixture({
+      slots: [
+        {
+          slotId: "lower_a",
+          exercises: [
+            {
+              exerciseId: "standing-calf-raise",
+              laneId: "calves",
+              role: "ACCESSORY",
+              setCount: 4,
+            },
+          ],
+        },
+        {
+          slotId: "lower_b",
+          exercises: [
+            {
+              exerciseId: "standing-calf-raise",
+              laneId: "calves",
+              role: "ACCESSORY",
+              setCount: 4,
+            },
+          ],
+        },
+      ],
+    }),
+    trialPlan: buildV2MaterializedPlanFixture({
+      slots: [
+        {
+          slotId: "lower_a",
+          exercises: [
+            {
+              exerciseId: "standing-calf-raise",
+              laneId: "calves",
+              role: "ACCESSORY",
+              setCount: 4,
+            },
+          ],
+        },
+        {
+          slotId: "lower_b",
+          exercises: [
+            {
+              exerciseId: "seated-calf-raise",
+              laneId: "calves",
+              role: "ACCESSORY",
+              setCount: 4,
+            },
+          ],
+        },
+      ],
+    }),
+    baselineIdentitySummary: [
+      "Lower A Standing Calf Raise:4",
+      "Lower B Standing Calf Raise:4",
+    ],
+    trialIdentitySummary: [
+      "Lower A Standing Calf Raise:4",
+      "Lower B Seated Calf Raise:4",
+    ],
+    protectedCoverage: {
+      status: "preserved",
+      protectedMuscles: ["Calves"],
+      baselineSetCount: 8,
+      trialSetCount: 8,
     },
     nextSafeAction: "run_read_only_acceptance_projection",
   },

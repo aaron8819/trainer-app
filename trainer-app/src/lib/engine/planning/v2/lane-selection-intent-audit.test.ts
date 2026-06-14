@@ -482,8 +482,8 @@ describe("buildV2CandidateQualityLabFixtures", () => {
         watchCount: 0,
         goldenStableCount: 1,
         nonConsumingScenarioCount: 7,
-        materializerDeltaScenarioCount: 2,
-        materializerDeltaMeasuredCount: 2,
+        materializerDeltaScenarioCount: 4,
+        materializerDeltaMeasuredCount: 4,
       },
       architectureBoundary: {
         noProductionPlannerChange: true,
@@ -589,6 +589,24 @@ describe("buildV2CandidateQualityLabFixtures", () => {
           laneJob: "hamstring_curl",
           actualOutcome: "pass",
           noImpactArchitectureReview: true,
+          materializerDeltaEvidence: expect.objectContaining({
+            baseline: expect.objectContaining({
+              identitySummary: ["Back Extension:3"],
+            }),
+            trial: expect.objectContaining({
+              identitySummary: ["Seated Leg Curl:3"],
+            }),
+            deltas: expect.objectContaining({
+              selectedIdentityDelta: 2,
+              totalSetDelta: 0,
+              materializerBlockerDelta: 0,
+            }),
+            protectedCoverage: expect.objectContaining({
+              status: "improved",
+              protectedMuscles: ["Hamstrings"],
+              setDelta: 3,
+            }),
+          }),
         }),
         expect.objectContaining({
           scenarioId: "side_delt_direct_isolation",
@@ -604,6 +622,30 @@ describe("buildV2CandidateQualityLabFixtures", () => {
           scenarioId: "calf_direct_floor",
           laneJob: "calf_direct",
           actualOutcome: "pass",
+          materializerDeltaEvidence: expect.objectContaining({
+            baseline: expect.objectContaining({
+              identitySummary: [
+                "Lower A Standing Calf Raise:4",
+                "Lower B Standing Calf Raise:4",
+              ],
+            }),
+            trial: expect.objectContaining({
+              identitySummary: [
+                "Lower A Standing Calf Raise:4",
+                "Lower B Seated Calf Raise:4",
+              ],
+            }),
+            deltas: expect.objectContaining({
+              selectedIdentityDelta: 1,
+              totalSetDelta: 0,
+              materializerBlockerDelta: 0,
+            }),
+            protectedCoverage: expect.objectContaining({
+              status: "preserved",
+              protectedMuscles: ["Calves"],
+              setDelta: 0,
+            }),
+          }),
         }),
         expect.objectContaining({
           scenarioId: "chest_biased_press_support",
@@ -634,8 +676,8 @@ describe("buildV2CandidateQualityLabFixtures", () => {
       warnCount: 0,
       watchCount: 0,
       goldenStableCount: 1,
-      materializerDeltaScenarioCount: 2,
-      materializerDeltaMeasuredCount: 2,
+      materializerDeltaScenarioCount: 4,
+      materializerDeltaMeasuredCount: 4,
     });
     expect(lab.scenarios).toEqual(
       expect.arrayContaining([
@@ -663,8 +705,8 @@ describe("buildV2CandidateQualityLabFixtures", () => {
       watchCount: 0,
       goldenStableCount: 0,
       nonConsumingScenarioCount: 7,
-      materializerDeltaScenarioCount: 2,
-      materializerDeltaMeasuredCount: 2,
+      materializerDeltaScenarioCount: 4,
+      materializerDeltaMeasuredCount: 4,
     });
     expect(lab.scenarios).toEqual(
       expect.arrayContaining([

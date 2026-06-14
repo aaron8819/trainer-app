@@ -39,6 +39,38 @@ export type V2MaterializedPlanComparison = {
   improvements: string[];
 };
 
+export function buildV2MaterializedPlanFixture(input: {
+  slots: Array<{
+    slotId: string;
+    exercises: Array<{
+      exerciseId: string;
+      laneId: string;
+      role: "CORE_COMPOUND" | "ACCESSORY";
+      setCount: number;
+    }>;
+  }>;
+  blockers?: V2ExerciseMaterializationPlan["blockers"];
+  omissions?: V2ExerciseMaterializationPlan["omissions"];
+}): V2ExerciseMaterializationPlan {
+  return {
+    version: 1,
+    source: "v2_exercise_materialization",
+    dryRunOnly: true,
+    status: input.blockers?.length ? "blocked" : "materialized",
+    slots: input.slots.map((slot) => ({
+      slotId: slot.slotId,
+      exercises: slot.exercises.map((exercise) => ({
+        exerciseId: exercise.exerciseId,
+        role: exercise.role,
+        setCount: exercise.setCount,
+        laneIds: [exercise.laneId],
+      })),
+    })),
+    blockers: input.blockers ?? [],
+    omissions: input.omissions ?? [],
+  };
+}
+
 export function buildV2SingleExerciseMaterializedPlanFixture(input: {
   slotId: string;
   exerciseId: string;
@@ -46,27 +78,21 @@ export function buildV2SingleExerciseMaterializedPlanFixture(input: {
   role: "CORE_COMPOUND" | "ACCESSORY";
   setCount: number;
 }): V2ExerciseMaterializationPlan {
-  return {
-    version: 1,
-    source: "v2_exercise_materialization",
-    dryRunOnly: true,
-    status: "materialized",
+  return buildV2MaterializedPlanFixture({
     slots: [
       {
         slotId: input.slotId,
         exercises: [
           {
             exerciseId: input.exerciseId,
+            laneId: input.laneId,
             role: input.role,
             setCount: input.setCount,
-            laneIds: [input.laneId],
           },
         ],
       },
     ],
-    blockers: [],
-    omissions: [],
-  };
+  });
 }
 
 export function compareV2MaterializedPlans(input: {

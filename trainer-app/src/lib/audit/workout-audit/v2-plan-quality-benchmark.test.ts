@@ -1286,8 +1286,8 @@ describe("V2 plan quality benchmark", () => {
         watchCount: 0,
         lowAxialGoldenCount: 1,
         nonConsumingFixtureCount: 7,
-        materializerDeltaScenarioCount: 2,
-        materializerDeltaMeasuredCount: 2,
+        materializerDeltaScenarioCount: 4,
+        materializerDeltaMeasuredCount: 4,
         nextSafeAction: "no_action",
       },
       topAttentionFixture: null,
@@ -1333,6 +1333,42 @@ describe("V2 plan quality benchmark", () => {
           materializerBlockerDelta: 0,
           protectedCoverageStatus: "improved",
           protectedCoverageSetDelta: 3,
+        }),
+      }),
+    );
+    expect(result.candidateQualityLab?.scenarioDetailTop).toContainEqual(
+      expect.objectContaining({
+        scenarioId: "hamstring_curl_direct_floor",
+        materializerDeltaEvidence: expect.objectContaining({
+          baselineIdentitySummary: ["Back Extension:3"],
+          trialIdentitySummary: ["Seated Leg Curl:3"],
+          selectedIdentityDelta: 2,
+          totalSetDelta: 0,
+          materializerBlockerDelta: 0,
+          protectedCoverageStatus: "improved",
+          protectedCoverageSetDelta: 3,
+          nextSafeAction: "run_read_only_acceptance_projection",
+        }),
+      }),
+    );
+    expect(result.candidateQualityLab?.scenarioDetailTop).toContainEqual(
+      expect.objectContaining({
+        scenarioId: "calf_direct_floor",
+        materializerDeltaEvidence: expect.objectContaining({
+          baselineIdentitySummary: [
+            "Lower A Standing Calf Raise:4",
+            "Lower B Standing Calf Raise:4",
+          ],
+          trialIdentitySummary: [
+            "Lower A Standing Calf Raise:4",
+            "Lower B Seated Calf Raise:4",
+          ],
+          selectedIdentityDelta: 1,
+          totalSetDelta: 0,
+          materializerBlockerDelta: 0,
+          protectedCoverageStatus: "preserved",
+          protectedCoverageSetDelta: 0,
+          nextSafeAction: "run_read_only_acceptance_projection",
         }),
       }),
     );

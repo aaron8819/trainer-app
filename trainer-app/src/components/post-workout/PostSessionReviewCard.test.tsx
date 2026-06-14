@@ -101,6 +101,16 @@ describe("PostSessionReviewCard", () => {
               evidenceOnly: true,
             },
           ],
+          performedRealityTrends: [
+            {
+              status: "watch",
+              label: "Repeated under plan",
+              headline: "Lat Pulldown has repeated under-plan evidence",
+              detail:
+                "1 recent row in the last 3 eligible exposure(s) also came in under plan. Review evidence only; no automatic plan change.",
+              evidenceOnly: true,
+            },
+          ],
           loadCalibration: [
             {
               exerciseName: "Bench Press",
@@ -142,6 +152,11 @@ describe("PostSessionReviewCard", () => {
     expect(screen.getByText("Skipped planned Lat Pulldown")).toBeInTheDocument();
     expect(screen.getByText("Added Cable Curl")).toBeInTheDocument();
     expect(screen.getByText("Used Machine Row instead of Barbell Row")).toBeInTheDocument();
+    expect(screen.getByText("Recent trends")).toBeInTheDocument();
+    expect(screen.getByText("Repeated under plan")).toBeInTheDocument();
+    expect(
+      screen.getByText("Lat Pulldown has repeated under-plan evidence")
+    ).toBeInTheDocument();
     expect(screen.getByText("Performed reality")).toBeInTheDocument();
     expect(screen.getByText("Bench Press matched the plan")).toBeInTheDocument();
     expect(screen.getByText("Lat Pulldown came in under the plan")).toBeInTheDocument();
@@ -161,6 +176,7 @@ describe("PostSessionReviewCard", () => {
     render(<PostSessionReviewCard review={review()} />);
 
     expect(screen.queryByText("Exercise changes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recent trends")).not.toBeInTheDocument();
     expect(screen.queryByText("Performed reality")).not.toBeInTheDocument();
     expect(screen.queryByText("Load calibration")).not.toBeInTheDocument();
     expect(screen.queryByText("Next exposure notes")).not.toBeInTheDocument();
@@ -223,6 +239,9 @@ describe("PostSessionReviewCard", () => {
     expect(visibleText).not.toContain("under_performed");
     expect(visibleText).not.toContain("over_performed");
     expect(visibleText).not.toContain("missing_actuals");
+    expect(visibleText).not.toContain("repeated_underperformance");
+    expect(visibleText).not.toContain("repeated_overperformance");
+    expect(visibleText).not.toContain("missing_actuals_pattern");
     expect(visibleText).not.toContain("decisionLog");
     expect(visibleText).not.toContain("policyMutation");
     expect(visibleText).not.toContain("seedMutation");

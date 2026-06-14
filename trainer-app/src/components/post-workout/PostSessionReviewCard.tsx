@@ -117,6 +117,27 @@ export function PostSessionReviewCard({ review }: Props) {
           </Section>
         ) : null}
 
+        {review.performedRealityTrends?.length ? (
+          <Section title="Recent trends">
+            <div className="space-y-2">
+              {review.performedRealityTrends.map((row) => (
+                <div
+                  key={rowKey(row.label, row.headline)}
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {row.label}
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">
+                    {row.headline}
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">{row.detail}</p>
+                </div>
+              ))}
+            </div>
+          </Section>
+        ) : null}
+
         {review.performedReality?.length ? (
           <Section title="Performed reality">
             <div className="space-y-2">

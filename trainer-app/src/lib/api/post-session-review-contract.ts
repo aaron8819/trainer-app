@@ -172,6 +172,36 @@ export type PostSessionReviewPerformedRealityRow = {
   seedRuntimeChanged: false;
 };
 
+export type PostSessionReviewPerformedRealityTrendKind =
+  | "repeated_underperformance"
+  | "repeated_overperformance"
+  | "stable_as_planned"
+  | "missing_actuals_pattern";
+
+export type PostSessionReviewPerformedRealityTrendCurrentRow = {
+  workoutExerciseId: string;
+  exerciseId: string;
+  exerciseName: string;
+  sourceOrder: number;
+  currentLabel: PostSessionReviewPerformedRealityLabel;
+  recentLabels: PostSessionReviewPerformedRealityLabel[];
+};
+
+export type PostSessionReviewPerformedRealityTrendGroup = {
+  kind: PostSessionReviewPerformedRealityTrendKind;
+  currentRowCount: number;
+  priorExposureCount: number;
+  lookbackWorkoutLimit: number;
+  latestPerformedAt: string | null;
+  currentRows: PostSessionReviewPerformedRealityTrendCurrentRow[];
+  evidenceOnly: true;
+  affectsProgressionPolicy: false;
+  affectsPrescriptionPolicy: false;
+  seedRuntimeChanged: false;
+  plannerMaterializerChanged: false;
+  receiptMutated: false;
+};
+
 export type PostSessionReviewPrescriptionCalibrationRow = {
   exerciseId: string;
   exerciseName: string;
@@ -273,6 +303,7 @@ export type PostSessionReviewContract = {
   performedReality: {
     source: "set_log_vs_workout_set_targets";
     rows: PostSessionReviewPerformedRealityRow[];
+    trendGroups: PostSessionReviewPerformedRealityTrendGroup[];
     readOnly: true;
     affectsProgressionPolicy: false;
     affectsPrescriptionPolicy: false;
@@ -540,12 +571,58 @@ function hasValidPerformedRealityRow(row: unknown): boolean {
   );
 }
 
+function hasValidPerformedRealityTrendCurrentRow(row: unknown): boolean {
+  return (
+    isRecord(row) &&
+    isString(row.workoutExerciseId) &&
+    isString(row.exerciseId) &&
+    isString(row.exerciseName) &&
+    isOptionalNumber(row.sourceOrder) &&
+    (row.currentLabel === "performed_as_planned" ||
+      row.currentLabel === "under_performed" ||
+      row.currentLabel === "over_performed" ||
+      row.currentLabel === "missing_actuals") &&
+    Array.isArray(row.recentLabels) &&
+    row.recentLabels.every(
+      (label) =>
+        label === "performed_as_planned" ||
+        label === "under_performed" ||
+        label === "over_performed" ||
+        label === "missing_actuals"
+    )
+  );
+}
+
+function hasValidPerformedRealityTrendGroup(group: unknown): boolean {
+  return (
+    isRecord(group) &&
+    (group.kind === "repeated_underperformance" ||
+      group.kind === "repeated_overperformance" ||
+      group.kind === "stable_as_planned" ||
+      group.kind === "missing_actuals_pattern") &&
+    isOptionalNumber(group.currentRowCount) &&
+    isOptionalNumber(group.priorExposureCount) &&
+    isOptionalNumber(group.lookbackWorkoutLimit) &&
+    (group.latestPerformedAt == null || typeof group.latestPerformedAt === "string") &&
+    Array.isArray(group.currentRows) &&
+    group.currentRows.every(hasValidPerformedRealityTrendCurrentRow) &&
+    group.evidenceOnly === true &&
+    group.affectsProgressionPolicy === false &&
+    group.affectsPrescriptionPolicy === false &&
+    group.seedRuntimeChanged === false &&
+    group.plannerMaterializerChanged === false &&
+    group.receiptMutated === false
+  );
+}
+
 function hasValidPerformedReality(performedReality: unknown): boolean {
   return (
     isRecord(performedReality) &&
     performedReality.source === "set_log_vs_workout_set_targets" &&
     Array.isArray(performedReality.rows) &&
     performedReality.rows.every(hasValidPerformedRealityRow) &&
+    Array.isArray(performedReality.trendGroups) &&
+    performedReality.trendGroups.every(hasValidPerformedRealityTrendGroup) &&
     performedReality.readOnly === true &&
     performedReality.affectsProgressionPolicy === false &&
     performedReality.affectsPrescriptionPolicy === false &&

@@ -122,6 +122,7 @@ describe("post-session review display adapter", () => {
           evidenceOnly: true,
         }),
       ],
+      performedRealityTrends: [],
       loadCalibration: [],
       nextExposureNotes: [],
       weeklyImpact: [],
@@ -410,6 +411,86 @@ describe("post-session review display adapter", () => {
     expect(JSON.stringify(display.performedReality)).not.toContain("missing_actuals");
   });
 
+  it("maps recent performed-reality trends to display-safe grouping copy", () => {
+    const display = buildDisplay({
+      exercises: [
+        exercise({
+          exerciseId: "under",
+          exerciseName: "Hard Press",
+          sets: [
+            performedSet("under-set-1", { actualRpe: 9.5 }),
+            performedSet("under-set-2", { actualRpe: 9.5 }),
+          ],
+        }),
+        exercise({ exerciseId: "stable", exerciseName: "Stable Row" }),
+      ],
+      recentExerciseExposures: [
+        {
+          ...exercise({
+            exerciseId: "under",
+            exerciseName: "Hard Press",
+            sets: [
+              performedSet("prior-under-set-1", { actualRpe: 9.5 }),
+              performedSet("prior-under-set-2", { actualRpe: 9.5 }),
+            ],
+          }),
+          workoutId: "prior-under",
+          performedAt: "2026-05-25T13:00:00.000Z",
+        },
+        {
+          ...exercise({ exerciseId: "stable", exerciseName: "Stable Row" }),
+          workoutId: "prior-stable",
+          performedAt: "2026-05-24T13:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(display.performedRealityTrends).toEqual([
+      {
+        status: "watch",
+        label: "Repeated under plan",
+        headline: "Hard Press has repeated under-plan evidence",
+        detail:
+          "1 recent row in the last 3 eligible exposure(s) also came in under plan. Review evidence only; no automatic plan change.",
+        evidenceOnly: true,
+      },
+      {
+        status: "info",
+        label: "Stable as planned",
+        headline: "Stable Row is tracking as planned",
+        detail:
+          "1 recent row in the last 3 eligible exposure(s) also matched plan. Review evidence only; no automatic plan change.",
+        evidenceOnly: true,
+      },
+    ]);
+    expect(JSON.stringify(display.performedRealityTrends)).not.toContain(
+      "under_performed"
+    );
+    expect(JSON.stringify(display.performedRealityTrends)).not.toContain(
+      "performed_as_planned"
+    );
+    expect(JSON.stringify(display.performedRealityTrends)).not.toContain(
+      "workoutExerciseId"
+    );
+  });
+
+  it("omits recent performed-reality trends when there is no eligible history", () => {
+    const display = buildDisplay({
+      exercises: [
+        exercise({
+          exerciseId: "under",
+          exerciseName: "Hard Press",
+          sets: [
+            performedSet("under-set-1", { actualRpe: 9.5 }),
+            performedSet("under-set-2", { actualRpe: 9.5 }),
+          ],
+        }),
+      ],
+    });
+
+    expect(display.performedRealityTrends).toEqual([]);
+  });
+
   it("renders next-exposure rows as recommendations, not mutations", () => {
     const display = buildDisplay({
       nextExposureDecisions: [
@@ -542,6 +623,9 @@ describe("post-session review display adapter", () => {
     expect(serialized).not.toContain("under_performed");
     expect(serialized).not.toContain("over_performed");
     expect(serialized).not.toContain("missing_actuals");
+    expect(serialized).not.toContain("repeated_underperformance");
+    expect(serialized).not.toContain("repeated_overperformance");
+    expect(serialized).not.toContain("missing_actuals_pattern");
     expect(serialized).not.toContain("load_too_light");
     expect(serialized).not.toContain("load_too_heavy");
     expect(serialized).not.toContain("performedRealityCoherence");
@@ -636,6 +720,11 @@ describe("post-session review display adapter", () => {
     );
 
     expect(source).not.toContain("@/lib/audit/workout-audit");
+    expect(source).not.toContain("@/lib/engine/apply-loads");
+    expect(source).not.toContain("@/lib/engine/progression");
+    expect(source).not.toContain("@/lib/progression");
+    expect(source).not.toContain("computeDoubleProgressionDecision");
+    expect(source).not.toContain("slotPlanSeedJson");
     expect(source).not.toContain("workout-audit-cli");
     expect(source).not.toContain("scripts/workout-audit");
     expect(source).not.toContain("artifacts/audits");

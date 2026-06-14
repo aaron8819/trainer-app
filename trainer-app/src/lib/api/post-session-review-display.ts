@@ -4,6 +4,7 @@ import type {
   PostSessionReviewLearningSignal,
   PostSessionReviewNextExposureRow,
   PostSessionReviewPerformedRealityRow,
+  PostSessionReviewPerformedRealityTrendGroup,
   PostSessionReviewPrescriptionCalibrationRow,
   PostSessionReviewWeeklyImpactRow,
 } from "./post-session-review-contract";
@@ -56,6 +57,18 @@ export type PostSessionReviewDisplayPerformedReality = {
   evidenceOnly: true;
 };
 
+export type PostSessionReviewDisplayPerformedRealityTrend = {
+  status: "info" | "watch";
+  label:
+    | "Repeated under plan"
+    | "Repeated over plan"
+    | "Stable as planned"
+    | "Missing actuals pattern";
+  headline: string;
+  detail: string;
+  evidenceOnly: true;
+};
+
 export type PostSessionReviewDisplayNextExposureNote = {
   exerciseName: string;
   recommendation: string;
@@ -93,6 +106,7 @@ export type PostSessionReviewDisplayDto = {
   completion: PostSessionReviewDisplayCompletion | null;
   exerciseChanges: PostSessionReviewDisplayExerciseChange[];
   performedReality?: PostSessionReviewDisplayPerformedReality[];
+  performedRealityTrends?: PostSessionReviewDisplayPerformedRealityTrend[];
   loadCalibration: PostSessionReviewDisplayLoadCalibration[];
   nextExposureNotes: PostSessionReviewDisplayNextExposureNote[];
   weeklyImpact: PostSessionReviewDisplayWeeklyImpact[];
@@ -412,6 +426,70 @@ function mapPerformedReality(
   }));
 }
 
+function trendExerciseLabel(group: PostSessionReviewPerformedRealityTrendGroup): string {
+  const uniqueNames = Array.from(
+    new Set(group.currentRows.map((row) => row.exerciseName))
+  );
+  if (uniqueNames.length === 0) {
+    return "Recent work";
+  }
+  if (uniqueNames.length === 1) {
+    const suffix = group.currentRowCount > 1 ? ` (${group.currentRowCount} rows)` : "";
+    return `${uniqueNames[0]}${suffix}`;
+  }
+  return `${uniqueNames.slice(0, 2).join(", ")}${
+    uniqueNames.length > 2 ? ` +${uniqueNames.length - 2} more` : ""
+  }`;
+}
+
+function trendCopy(group: PostSessionReviewPerformedRealityTrendGroup): Pick<
+  PostSessionReviewDisplayPerformedRealityTrend,
+  "status" | "label" | "headline" | "detail"
+> {
+  const exerciseLabel = trendExerciseLabel(group);
+  const exposureCopy = `${plural(group.priorExposureCount, "recent row")} in the last ${group.lookbackWorkoutLimit} eligible exposure(s)`;
+
+  switch (group.kind) {
+    case "repeated_underperformance":
+      return {
+        status: "watch",
+        label: "Repeated under plan",
+        headline: `${exerciseLabel} has repeated under-plan evidence`,
+        detail: `${exposureCopy} also came in under plan. Review evidence only; no automatic plan change.`,
+      };
+    case "repeated_overperformance":
+      return {
+        status: "watch",
+        label: "Repeated over plan",
+        headline: `${exerciseLabel} has repeated over-plan evidence`,
+        detail: `${exposureCopy} also exceeded plan. Review evidence only; no automatic plan change.`,
+      };
+    case "stable_as_planned":
+      return {
+        status: "info",
+        label: "Stable as planned",
+        headline: `${exerciseLabel} is tracking as planned`,
+        detail: `${exposureCopy} also matched plan. Review evidence only; no automatic plan change.`,
+      };
+    case "missing_actuals_pattern":
+      return {
+        status: "watch",
+        label: "Missing actuals pattern",
+        headline: `${exerciseLabel} has a missing-actuals pattern`,
+        detail: `${exposureCopy} also needed actuals. Review evidence only; no automatic plan change.`,
+      };
+  }
+}
+
+function mapPerformedRealityTrends(
+  groups: PostSessionReviewPerformedRealityTrendGroup[]
+): PostSessionReviewDisplayPerformedRealityTrend[] {
+  return groups.map((group) => ({
+    ...trendCopy(group),
+    evidenceOnly: true,
+  }));
+}
+
 function nextExposureRecommendation(row: PostSessionReviewNextExposureRow): string {
   switch (row.action) {
     case "increase":
@@ -567,6 +645,9 @@ export function adaptPostSessionReviewContractToDisplay(
     completion: buildCompletion(contract),
     exerciseChanges: mapExerciseChanges(contract.exerciseReconciliation.rows),
     performedReality: mapPerformedReality(contract.performedReality.rows),
+    performedRealityTrends: mapPerformedRealityTrends(
+      contract.performedReality.trendGroups
+    ),
     loadCalibration: mapLoadCalibration(contract.prescriptionCalibration.rows),
     nextExposureNotes: mapNextExposure(contract.nextExposure.rows),
     weeklyImpact: mapWeeklyImpact(contract.weeklyImpact?.rows),
@@ -597,6 +678,7 @@ export function adaptBlockedPostSessionReviewToDisplay(
     completion: null,
     exerciseChanges: [],
     performedReality: [],
+    performedRealityTrends: [],
     loadCalibration: [],
     nextExposureNotes: [],
     weeklyImpact: [],

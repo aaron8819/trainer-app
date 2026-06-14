@@ -7,6 +7,7 @@ import {
   type PostSessionReviewExecutionSummary,
   type PostSessionReviewLearningSignal,
   type PostSessionReviewPerformedRealityRow,
+  type PostSessionReviewPerformedRealityTrendGroup,
   type PostSessionReviewPrescriptionCalibrationRow,
   type PostSessionReviewRecentExposureCalibrationSummaryRow,
 } from "./post-session-review-contract";
@@ -982,6 +983,168 @@ function buildRecentExposureSummaryRows(input: {
   );
 }
 
+type RecentPerformedRealityRow = PostSessionReviewPerformedRealityRow & {
+  workoutId: string;
+  performedAt: string;
+};
+
+function buildRecentPerformedRealityRows(
+  recentExposures: PostSessionReviewRecentExerciseExposureEvidence[] | undefined
+): RecentPerformedRealityRow[] {
+  const exposures = recentExposures ?? [];
+  if (exposures.length === 0) {
+    return [];
+  }
+
+  const exerciseRows = buildExerciseRows(exposures);
+  const calibrationRows = buildCalibrationRows(exposures);
+  return buildPerformedRealityRows({ exerciseRows, calibrationRows }).map(
+    (row, index) => ({
+      ...row,
+      workoutId: exposures[index]?.workoutId ?? row.workoutExerciseId,
+      performedAt: exposures[index]?.performedAt ?? "",
+    })
+  );
+}
+
+function trendKindForLabels(input: {
+  currentLabel: PostSessionReviewPerformedRealityRow["label"];
+  recentLabels: PostSessionReviewPerformedRealityRow["label"][];
+}): PostSessionReviewPerformedRealityTrendGroup["kind"] | null {
+  const recentCount = (label: PostSessionReviewPerformedRealityRow["label"]) =>
+    input.recentLabels.filter((value) => value === label).length;
+
+  if (
+    input.currentLabel === "under_performed" &&
+    recentCount("under_performed") > 0
+  ) {
+    return "repeated_underperformance";
+  }
+  if (
+    input.currentLabel === "over_performed" &&
+    recentCount("over_performed") > 0
+  ) {
+    return "repeated_overperformance";
+  }
+  if (
+    input.currentLabel === "missing_actuals" &&
+    recentCount("missing_actuals") > 0
+  ) {
+    return "missing_actuals_pattern";
+  }
+  if (
+    input.currentLabel === "performed_as_planned" &&
+    input.recentLabels.length > 0 &&
+    input.recentLabels.every((label) => label === "performed_as_planned")
+  ) {
+    return "stable_as_planned";
+  }
+  return null;
+}
+
+function trendRelevantLabel(
+  kind: PostSessionReviewPerformedRealityTrendGroup["kind"]
+): PostSessionReviewPerformedRealityRow["label"] {
+  switch (kind) {
+    case "repeated_underperformance":
+      return "under_performed";
+    case "repeated_overperformance":
+      return "over_performed";
+    case "missing_actuals_pattern":
+      return "missing_actuals";
+    case "stable_as_planned":
+      return "performed_as_planned";
+  }
+}
+
+function buildPerformedRealityTrendGroups(input: {
+  currentRows: PostSessionReviewPerformedRealityRow[];
+  recentExposures: PostSessionReviewRecentExerciseExposureEvidence[] | undefined;
+}): PostSessionReviewPerformedRealityTrendGroup[] {
+  const recentRows = buildRecentPerformedRealityRows(input.recentExposures);
+  if (recentRows.length === 0) {
+    return [];
+  }
+
+  const groups = new Map<
+    PostSessionReviewPerformedRealityTrendGroup["kind"],
+    PostSessionReviewPerformedRealityTrendGroup
+  >();
+
+  input.currentRows.forEach((currentRow, sourceOrder) => {
+    const matchingRecentRows = recentRows
+      .filter((row) => row.exerciseId === currentRow.exerciseId)
+      .sort((left, right) => right.performedAt.localeCompare(left.performedAt))
+      .slice(0, RECENT_EXPOSURE_LOOKBACK_WORKOUT_LIMIT);
+    const recentLabels = matchingRecentRows.map((row) => row.label);
+    const kind = trendKindForLabels({
+      currentLabel: currentRow.label,
+      recentLabels,
+    });
+    if (!kind) {
+      return;
+    }
+
+    const relevantRecentRows = matchingRecentRows.filter(
+      (row) => row.label === trendRelevantLabel(kind)
+    );
+    const existing = groups.get(kind);
+    const currentEvidence = {
+      workoutExerciseId: currentRow.workoutExerciseId,
+      exerciseId: currentRow.exerciseId,
+      exerciseName: currentRow.exerciseName,
+      sourceOrder,
+      currentLabel: currentRow.label,
+      recentLabels,
+    };
+    if (existing) {
+      const latestPerformedAt =
+        [...relevantRecentRows.map((row) => row.performedAt), existing.latestPerformedAt]
+          .filter((value): value is string => typeof value === "string" && value.length > 0)
+          .sort()
+          .at(-1) ?? null;
+      groups.set(kind, {
+        ...existing,
+        currentRowCount: existing.currentRowCount + 1,
+        priorExposureCount: existing.priorExposureCount + relevantRecentRows.length,
+        latestPerformedAt,
+        currentRows: [...existing.currentRows, currentEvidence],
+      });
+      return;
+    }
+
+    groups.set(kind, {
+      kind,
+      currentRowCount: 1,
+      priorExposureCount: relevantRecentRows.length,
+      lookbackWorkoutLimit: RECENT_EXPOSURE_LOOKBACK_WORKOUT_LIMIT,
+      latestPerformedAt:
+        relevantRecentRows
+          .map((row) => row.performedAt)
+          .filter((value): value is string => value.length > 0)
+          .sort()
+          .at(-1) ?? null,
+      currentRows: [currentEvidence],
+      evidenceOnly: true,
+      affectsProgressionPolicy: false,
+      affectsPrescriptionPolicy: false,
+      seedRuntimeChanged: false,
+      plannerMaterializerChanged: false,
+      receiptMutated: false,
+    });
+  });
+
+  return Array.from(groups.values()).sort((left, right) => {
+    const order: Record<PostSessionReviewPerformedRealityTrendGroup["kind"], number> = {
+      repeated_underperformance: 0,
+      repeated_overperformance: 1,
+      missing_actuals_pattern: 2,
+      stable_as_planned: 3,
+    };
+    return order[left.kind] - order[right.kind];
+  });
+}
+
 export function buildPostSessionReviewContract(
   input: PostSessionReviewContractBuildInput
 ): PostSessionReviewContract {
@@ -994,6 +1157,10 @@ export function buildPostSessionReviewContract(
   });
   const recentExposureRows = buildRecentExposureSummaryRows({
     currentRows: calibrationRows,
+    recentExposures: input.recentExerciseExposures,
+  });
+  const performedRealityTrendGroups = buildPerformedRealityTrendGroups({
+    currentRows: performedRealityRows,
     recentExposures: input.recentExerciseExposures,
   });
   const boundaries = {
@@ -1063,6 +1230,7 @@ export function buildPostSessionReviewContract(
     performedReality: {
       source: "set_log_vs_workout_set_targets" as const,
       rows: performedRealityRows,
+      trendGroups: performedRealityTrendGroups,
       readOnly: true as const,
       affectsProgressionPolicy: false as const,
       affectsPrescriptionPolicy: false as const,

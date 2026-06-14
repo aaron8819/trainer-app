@@ -119,6 +119,7 @@ describe("post-session review contract", () => {
           seedRuntimeChanged: false,
         }),
       ],
+      trendGroups: [],
     });
     expect(contract.sourceTruth.receipt).toEqual({
       source: "selectionMetadata.sessionDecisionReceipt",
@@ -472,6 +473,265 @@ describe("post-session review contract", () => {
     expect(isPostSessionReviewContract(contract)).toBe(true);
   });
 
+  it("groups recent performed-reality trends without policy, seed, planner, or receipt impact", () => {
+    const contract = buildPostSessionReviewContract(
+      buildInput({
+        exercises: [
+          exercise({ exerciseId: "stable", exerciseName: "Stable Press" }),
+          exercise({
+            exerciseId: "under",
+            exerciseName: "Hard Press",
+            sets: [
+              performedSet("under-set-1", { actualRpe: 9.5 }),
+              performedSet("under-set-2", { actualRpe: 9.5 }),
+            ],
+          }),
+          exercise({
+            exerciseId: "over",
+            exerciseName: "Light Row",
+            sets: [
+              performedSet("over-set-1", {
+                actualLoad: 130,
+                actualReps: 14,
+                actualRpe: 6.5,
+              }),
+              performedSet("over-set-2", {
+                actualLoad: 130,
+                actualReps: 14,
+                actualRpe: 6.5,
+              }),
+            ],
+          }),
+          exercise({
+            exerciseId: "missing",
+            exerciseName: "Unlogged Raise",
+            sets: [
+              performedSet("missing-set-1", {
+                wasLogged: false,
+                actualLoad: null,
+                actualReps: null,
+                actualRpe: null,
+              }),
+            ],
+          }),
+        ],
+        recentExerciseExposures: [
+          {
+            ...exercise({ exerciseId: "stable", exerciseName: "Stable Press" }),
+            workoutId: "prior-stable",
+            performedAt: "2026-05-25T13:00:00.000Z",
+          },
+          {
+            ...exercise({
+              exerciseId: "under",
+              exerciseName: "Hard Press",
+              sets: [
+                performedSet("prior-under-set-1", { actualRpe: 9.5 }),
+                performedSet("prior-under-set-2", { actualRpe: 9.5 }),
+              ],
+            }),
+            workoutId: "prior-under",
+            performedAt: "2026-05-24T13:00:00.000Z",
+          },
+          {
+            ...exercise({
+              exerciseId: "over",
+              exerciseName: "Light Row",
+              sets: [
+                performedSet("prior-over-set-1", {
+                  actualLoad: 130,
+                  actualReps: 14,
+                  actualRpe: 6.5,
+                }),
+                performedSet("prior-over-set-2", {
+                  actualLoad: 130,
+                  actualReps: 14,
+                  actualRpe: 6.5,
+                }),
+              ],
+            }),
+            workoutId: "prior-over",
+            performedAt: "2026-05-23T13:00:00.000Z",
+          },
+          {
+            ...exercise({
+              exerciseId: "missing",
+              exerciseName: "Unlogged Raise",
+              sets: [
+                performedSet("prior-missing-set-1", {
+                  wasLogged: false,
+                  actualLoad: null,
+                  actualReps: null,
+                  actualRpe: null,
+                }),
+              ],
+            }),
+            workoutId: "prior-missing",
+            performedAt: "2026-05-22T13:00:00.000Z",
+          },
+        ],
+      })
+    );
+
+    expect(contract.performedReality.trendGroups.map((group) => group.kind)).toEqual([
+      "repeated_underperformance",
+      "repeated_overperformance",
+      "missing_actuals_pattern",
+      "stable_as_planned",
+    ]);
+    expect(contract.performedReality.trendGroups).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "repeated_underperformance",
+          priorExposureCount: 1,
+          currentRows: [
+            expect.objectContaining({
+              workoutExerciseId: "under",
+              exerciseId: "under",
+              sourceOrder: 1,
+              currentLabel: "under_performed",
+              recentLabels: ["under_performed"],
+            }),
+          ],
+          evidenceOnly: true,
+          affectsProgressionPolicy: false,
+          affectsPrescriptionPolicy: false,
+          seedRuntimeChanged: false,
+          plannerMaterializerChanged: false,
+          receiptMutated: false,
+        }),
+        expect.objectContaining({
+          kind: "repeated_overperformance",
+          currentRows: [
+            expect.objectContaining({
+              currentLabel: "over_performed",
+              recentLabels: ["over_performed"],
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          kind: "missing_actuals_pattern",
+          currentRows: [
+            expect.objectContaining({
+              currentLabel: "missing_actuals",
+              recentLabels: ["missing_actuals"],
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          kind: "stable_as_planned",
+          currentRows: [
+            expect.objectContaining({
+              currentLabel: "performed_as_planned",
+              recentLabels: ["performed_as_planned"],
+            }),
+          ],
+        }),
+      ])
+    );
+    expect(contract.boundaries).toMatchObject({
+      seedRuntimeChanged: false,
+      plannerMaterializerChanged: false,
+      receiptMutated: false,
+    });
+    expect(isPostSessionReviewContract(contract)).toBe(true);
+  });
+
+  it("preserves duplicate current workout-row identity in trend groups", () => {
+    const contract = buildPostSessionReviewContract(
+      buildInput({
+        exercises: [
+          exercise({
+            workoutExerciseId: "we-bench-a",
+            exerciseId: "bench",
+            exerciseName: "Bench Press",
+            sets: [
+              performedSet("bench-a-set-1", { actualRpe: 9.5 }),
+              performedSet("bench-a-set-2", { actualRpe: 9.5 }),
+            ],
+          }),
+          exercise({
+            workoutExerciseId: "we-bench-b",
+            exerciseId: "bench",
+            exerciseName: "Bench Press",
+            sets: [
+              performedSet("bench-b-set-1", {
+                actualLoad: 130,
+                actualReps: 14,
+                actualRpe: 6.5,
+              }),
+              performedSet("bench-b-set-2", {
+                actualLoad: 130,
+                actualReps: 14,
+                actualRpe: 6.5,
+              }),
+            ],
+          }),
+        ],
+        recentExerciseExposures: [
+          {
+            ...exercise({
+              workoutExerciseId: "prior-bench-under",
+              exerciseId: "bench",
+              exerciseName: "Bench Press",
+              sets: [
+                performedSet("prior-bench-under-set-1", { actualRpe: 9.5 }),
+                performedSet("prior-bench-under-set-2", { actualRpe: 9.5 }),
+              ],
+            }),
+            workoutId: "prior-bench-under-workout",
+            performedAt: "2026-05-25T13:00:00.000Z",
+          },
+          {
+            ...exercise({
+              workoutExerciseId: "prior-bench-over",
+              exerciseId: "bench",
+              exerciseName: "Bench Press",
+              sets: [
+                performedSet("prior-bench-over-set-1", {
+                  actualLoad: 130,
+                  actualReps: 14,
+                  actualRpe: 6.5,
+                }),
+                performedSet("prior-bench-over-set-2", {
+                  actualLoad: 130,
+                  actualReps: 14,
+                  actualRpe: 6.5,
+                }),
+              ],
+            }),
+            workoutId: "prior-bench-over-workout",
+            performedAt: "2026-05-20T13:00:00.000Z",
+          },
+        ],
+      })
+    );
+
+    const underGroup = contract.performedReality.trendGroups.find(
+      (group) => group.kind === "repeated_underperformance"
+    );
+    const overGroup = contract.performedReality.trendGroups.find(
+      (group) => group.kind === "repeated_overperformance"
+    );
+
+    expect(underGroup?.currentRows).toEqual([
+      expect.objectContaining({
+        workoutExerciseId: "we-bench-a",
+        sourceOrder: 0,
+        currentLabel: "under_performed",
+      }),
+    ]);
+    expect(underGroup?.priorExposureCount).toBe(1);
+    expect(overGroup?.currentRows).toEqual([
+      expect.objectContaining({
+        workoutExerciseId: "we-bench-b",
+        sourceOrder: 1,
+        currentLabel: "over_performed",
+      }),
+    ]);
+    expect(overGroup?.priorExposureCount).toBe(1);
+  });
+
   it("includes next-exposure rows when explainability evidence exists", () => {
     const contract = buildPostSessionReviewContract(
       buildInput({
@@ -560,6 +820,11 @@ describe("post-session review contract", () => {
     const combined = `${builderSource}\n${contractSource}\n${evidenceSource}`;
 
     expect(combined).not.toContain("@/lib/audit/workout-audit");
+    expect(combined).not.toContain("@/lib/engine/apply-loads");
+    expect(combined).not.toContain("@/lib/engine/progression");
+    expect(combined).not.toContain("@/lib/progression");
+    expect(combined).not.toContain("computeDoubleProgressionDecision");
+    expect(combined).not.toContain("slotPlanSeedJson");
     expect(combined).not.toContain("workout-audit-cli");
     expect(combined).not.toContain("weekly-retro");
     expect(combined).not.toContain("serializer");

@@ -105,6 +105,7 @@ export type RuntimeExerciseSwapCandidate = {
 };
 
 export const DEFAULT_RUNTIME_EXERCISE_SWAP_CANDIDATE_LIMIT = 8;
+const DEFAULT_TEXT_SEARCH_PRESERVATION_RANK_LIMIT = 2;
 
 const GUIDED_EQUIPMENT = new Set(["machine", "cable", "band", "sled"]);
 const FREE_WEIGHT_EQUIPMENT = new Set(["dumbbell", "kettlebell"]);
@@ -431,6 +432,116 @@ function tierValue(
     case "unknown":
       return 0;
   }
+}
+
+function compareRuntimeExerciseSwapCandidates(
+  left: RuntimeExerciseSwapCandidate,
+  right: RuntimeExerciseSwapCandidate,
+): number {
+  if (Boolean(left.caution) !== Boolean(right.caution)) {
+    return left.caution ? 1 : -1;
+  }
+  const leftTier = tierRank(left.swapFallbackTier);
+  const rightTier = tierRank(right.swapFallbackTier);
+  if (rightTier !== leftTier) {
+    return rightTier - leftTier;
+  }
+  if (right.swapLaneFitScore !== left.swapLaneFitScore) {
+    return right.swapLaneFitScore - left.swapLaneFitScore;
+  }
+  const movementRank = (entry: RuntimeExerciseSwapCandidate) =>
+    entry.compatibility.movementMatch === "exact" ? 2 : 1;
+  if (movementRank(right) !== movementRank(left)) {
+    return movementRank(right) - movementRank(left);
+  }
+  if (
+    right.compatibility.primaryMuscleOverlap.length !==
+    left.compatibility.primaryMuscleOverlap.length
+  ) {
+    return (
+      right.compatibility.primaryMuscleOverlap.length -
+      left.compatibility.primaryMuscleOverlap.length
+    );
+  }
+  if (right.compatibility.roleMatch !== left.compatibility.roleMatch) {
+    return right.compatibility.roleMatch ? 1 : -1;
+  }
+  if (
+    left.compatibility.equipmentDemandDelta !==
+    right.compatibility.equipmentDemandDelta
+  ) {
+    return (
+      left.compatibility.equipmentDemandDelta -
+      right.compatibility.equipmentDemandDelta
+    );
+  }
+  if (
+    left.compatibility.jointStressDelta !==
+    right.compatibility.jointStressDelta
+  ) {
+    return left.compatibility.jointStressDelta - right.compatibility.jointStressDelta;
+  }
+  if (left.compatibility.fatigueDelta !== right.compatibility.fatigueDelta) {
+    return left.compatibility.fatigueDelta - right.compatibility.fatigueDelta;
+  }
+  if (right.loadabilityTier !== left.loadabilityTier) {
+    return tierValue(right.loadabilityTier) - tierValue(left.loadabilityTier);
+  }
+  if (right.stabilityTier !== left.stabilityTier) {
+    return tierValue(right.stabilityTier) - tierValue(left.stabilityTier);
+  }
+  if (right.compatibility.historyMatch !== left.compatibility.historyMatch) {
+    return right.compatibility.historyMatch ? 1 : -1;
+  }
+  return left.exerciseName.localeCompare(right.exerciseName);
+}
+
+type RankedRuntimeExerciseSwapCandidate = {
+  candidate: RuntimeExerciseSwapCandidate;
+  searchRank: number;
+};
+
+function applyTextSearchPreservation(input: {
+  candidates: RankedRuntimeExerciseSwapCandidate[];
+  limit: number;
+}): RankedRuntimeExerciseSwapCandidate[] {
+  const limited = input.candidates.slice(0, input.limit);
+  const limitedIds = new Set(limited.map((entry) => entry.candidate.exerciseId));
+  const protectedSearchMatches = input.candidates
+    .filter((entry) => entry.searchRank < DEFAULT_TEXT_SEARCH_PRESERVATION_RANK_LIMIT)
+    .sort((left, right) => left.searchRank - right.searchRank);
+
+  for (const protectedMatch of protectedSearchMatches) {
+    if (limitedIds.has(protectedMatch.candidate.exerciseId)) {
+      continue;
+    }
+
+    if (limited.length < input.limit) {
+      limited.push(protectedMatch);
+      limitedIds.add(protectedMatch.candidate.exerciseId);
+      continue;
+    }
+
+    const replacementIndex = [...limited]
+      .map((entry, index) => ({ entry, index }))
+      .reverse()
+      .find(
+        ({ entry }) =>
+          entry.searchRank >= DEFAULT_TEXT_SEARCH_PRESERVATION_RANK_LIMIT,
+      )?.index;
+
+    if (replacementIndex == null) {
+      continue;
+    }
+
+    limitedIds.delete(limited[replacementIndex].candidate.exerciseId);
+    limited[replacementIndex] = protectedMatch;
+    limitedIds.add(protectedMatch.candidate.exerciseId);
+  }
+
+  return limited.sort((left, right) =>
+    compareRuntimeExerciseSwapCandidates(left.candidate, right.candidate),
+  );
 }
 
 function resolveSwapFallbackTier(input: {
@@ -954,6 +1065,21 @@ function evaluateRuntimeExerciseSwapCautionEligibility(input: {
     return null;
   }
 
+  const currentText = normalizedSearchText([
+    input.current.name,
+    ...(input.current.aliases ?? []),
+    ...(input.current.movementPatterns ?? []),
+  ]);
+  if (
+    input.candidate.isMainLiftEligible &&
+    normalizeList(input.candidate.equipment).includes("barbell") &&
+    candidatePatterns.includes("horizontal_push") &&
+    primaryMuscleOverlap.includes("chest") &&
+    hasText(currentText, ["fly"])
+  ) {
+    return null;
+  }
+
   const currentJointStress = resolveJointStressDemand(input.current);
   const candidateJointStress = resolveJointStressDemand(input.candidate);
   if (currentJointStress == null || candidateJointStress == null) {
@@ -1016,9 +1142,10 @@ export function buildRuntimeExerciseSwapCandidates(input: {
   excludedExerciseIds?: Set<string>;
   limit?: number;
   includeCautionTier?: boolean;
+  preserveTopTextSearchMatches?: boolean;
 }): RuntimeExerciseSwapCandidate[] {
-  return input.candidates
-    .flatMap((candidate) => {
+  const rankedCandidates = input.candidates
+    .flatMap((candidate, searchRank): RankedRuntimeExerciseSwapCandidate[] => {
       if (input.excludedExerciseIds?.has(candidate.id)) {
         return [];
       }
@@ -1057,83 +1184,28 @@ export function buildRuntimeExerciseSwapCandidates(input: {
 
       return [
         {
-          exerciseId: candidate.id,
-          exerciseName: candidate.name,
-          primaryMuscles: normalizeList(candidate.primaryMuscles),
-          equipment: normalizeList(candidate.equipment),
-          compatibility,
-          ...(caution ? { caution } : {}),
-          reason: diagnostics.swapCandidateReason || buildReason(compatibility),
-          ...diagnostics,
-        } satisfies RuntimeExerciseSwapCandidate,
+          candidate: {
+            exerciseId: candidate.id,
+            exerciseName: candidate.name,
+            primaryMuscles: normalizeList(candidate.primaryMuscles),
+            equipment: normalizeList(candidate.equipment),
+            compatibility,
+            ...(caution ? { caution } : {}),
+            reason: diagnostics.swapCandidateReason || buildReason(compatibility),
+            ...diagnostics,
+          },
+          searchRank,
+        },
       ];
     })
     .sort((left, right) => {
-      if (Boolean(left.caution) !== Boolean(right.caution)) {
-        return left.caution ? 1 : -1;
-      }
-      const leftTier = tierRank(left.swapFallbackTier);
-      const rightTier = tierRank(right.swapFallbackTier);
-      if (rightTier !== leftTier) {
-        return rightTier - leftTier;
-      }
-      if (right.swapLaneFitScore !== left.swapLaneFitScore) {
-        return right.swapLaneFitScore - left.swapLaneFitScore;
-      }
-      const movementRank = (entry: RuntimeExerciseSwapCandidate) =>
-        entry.compatibility.movementMatch === "exact" ? 2 : 1;
-      if (movementRank(right) !== movementRank(left)) {
-        return movementRank(right) - movementRank(left);
-      }
-      if (
-        right.compatibility.primaryMuscleOverlap.length !==
-        left.compatibility.primaryMuscleOverlap.length
-      ) {
-        return (
-          right.compatibility.primaryMuscleOverlap.length -
-          left.compatibility.primaryMuscleOverlap.length
-        );
-      }
-      if (right.compatibility.roleMatch !== left.compatibility.roleMatch) {
-        return right.compatibility.roleMatch ? 1 : -1;
-      }
-      if (
-        left.compatibility.equipmentDemandDelta !==
-        right.compatibility.equipmentDemandDelta
-      ) {
-        return (
-          left.compatibility.equipmentDemandDelta -
-          right.compatibility.equipmentDemandDelta
-        );
-      }
-      if (
-        left.compatibility.jointStressDelta !==
-        right.compatibility.jointStressDelta
-      ) {
-        return (
-          left.compatibility.jointStressDelta -
-          right.compatibility.jointStressDelta
-        );
-      }
-      if (
-        left.compatibility.fatigueDelta !== right.compatibility.fatigueDelta
-      ) {
-        return (
-          left.compatibility.fatigueDelta - right.compatibility.fatigueDelta
-        );
-      }
-      if (right.loadabilityTier !== left.loadabilityTier) {
-        return tierValue(right.loadabilityTier) - tierValue(left.loadabilityTier);
-      }
-      if (right.stabilityTier !== left.stabilityTier) {
-        return tierValue(right.stabilityTier) - tierValue(left.stabilityTier);
-      }
-      if (
-        right.compatibility.historyMatch !== left.compatibility.historyMatch
-      ) {
-        return right.compatibility.historyMatch ? 1 : -1;
-      }
-      return left.exerciseName.localeCompare(right.exerciseName);
-    })
-    .slice(0, input.limit ?? DEFAULT_RUNTIME_EXERCISE_SWAP_CANDIDATE_LIMIT);
+      return compareRuntimeExerciseSwapCandidates(left.candidate, right.candidate);
+    });
+
+  const limit = input.limit ?? DEFAULT_RUNTIME_EXERCISE_SWAP_CANDIDATE_LIMIT;
+  const limitedCandidates = input.preserveTopTextSearchMatches
+    ? applyTextSearchPreservation({ candidates: rankedCandidates, limit })
+    : rankedCandidates.slice(0, limit);
+
+  return limitedCandidates.map((entry) => entry.candidate);
 }

@@ -997,4 +997,180 @@ describe("runtime exercise swap constraints", () => {
     expect(candidates[0].caution).toBeUndefined();
     expect(candidates[1].caution).toBeDefined();
   });
+
+  it("preserves top typed-search caution matches without changing default discovery", () => {
+    const strictCurlAlternatives = Array.from({ length: 8 }, (_, index) => ({
+      id: `strict-curl-${index + 1}`,
+      name: `Strict Curl ${index + 1}`,
+      fatigueCost: 1,
+      jointStress: "low",
+      isCompound: false,
+      isMainLiftEligible: false,
+      movementPatterns: ["flexion"],
+      primaryMuscles: ["biceps"],
+      equipment: ["ez_bar"],
+    }));
+    const current = {
+      id: "barbell-curl",
+      name: "Barbell Curl",
+      fatigueCost: 1,
+      jointStress: "low",
+      isCompound: false,
+      isMainLift: false,
+      isMainLiftEligible: false,
+      movementPatterns: ["flexion"],
+      primaryMuscles: ["biceps"],
+      equipment: ["barbell"],
+    };
+    const dumbbellCurl = {
+      id: "dumbbell-curl",
+      name: "Dumbbell Curl",
+      fatigueCost: 2,
+      jointStress: "low",
+      isCompound: false,
+      isMainLiftEligible: false,
+      movementPatterns: ["flexion"],
+      primaryMuscles: ["biceps"],
+      equipment: ["dumbbell"],
+    };
+
+    const defaultCandidates = buildRuntimeExerciseSwapCandidates({
+      current,
+      candidates: [dumbbellCurl, ...strictCurlAlternatives],
+      includeCautionTier: true,
+      limit: 8,
+    });
+    expect(defaultCandidates.map((candidate) => candidate.exerciseId)).not.toContain(
+      "dumbbell-curl",
+    );
+
+    const typedSearchCandidates = buildRuntimeExerciseSwapCandidates({
+      current,
+      candidates: [dumbbellCurl, ...strictCurlAlternatives],
+      includeCautionTier: true,
+      preserveTopTextSearchMatches: true,
+      limit: 8,
+    });
+
+    expect(typedSearchCandidates).toHaveLength(8);
+    expect(typedSearchCandidates.map((candidate) => candidate.exerciseId)).toContain(
+      "dumbbell-curl",
+    );
+    expect(typedSearchCandidates.at(-1)).toMatchObject({
+      exerciseId: "dumbbell-curl",
+      caution: expect.objectContaining({ level: "caution" }),
+    });
+  });
+
+  it("blocks isolation fly sources from caution-surfacing barbell main-lift presses", () => {
+    const candidates = buildRuntimeExerciseSwapCandidates({
+      current: {
+        id: "cable-fly",
+        name: "Cable Fly",
+        fatigueCost: 2,
+        jointStress: "low",
+        isCompound: false,
+        isMainLift: false,
+        isMainLiftEligible: false,
+        movementPatterns: ["horizontal_push"],
+        primaryMuscles: ["chest"],
+        equipment: ["cable"],
+      },
+      candidates: [
+        {
+          id: "barbell-bench-press",
+          name: "Barbell Bench Press",
+          fatigueCost: 4,
+          jointStress: "medium",
+          isCompound: true,
+          isMainLiftEligible: true,
+          movementPatterns: ["horizontal_push"],
+          primaryMuscles: ["chest", "triceps"],
+          secondaryMuscles: ["front delts"],
+          equipment: ["barbell", "bench"],
+        },
+      ],
+      includeCautionTier: true,
+      preserveTopTextSearchMatches: true,
+    });
+
+    expect(candidates).toEqual([]);
+  });
+
+  it("keeps strict blockers closed for leg-extension and leg-curl typed searches", () => {
+    expect(
+      buildRuntimeExerciseSwapCandidates({
+        current: {
+          id: "leg-extension",
+          name: "Leg Extension",
+          fatigueCost: 1,
+          jointStress: "low",
+          isCompound: false,
+          isMainLift: false,
+          isMainLiftEligible: false,
+          movementPatterns: ["extension", "isolation"],
+          primaryMuscles: ["quads"],
+          equipment: ["machine"],
+        },
+        candidates: [
+          {
+            id: "barbell-back-squat",
+            name: "Barbell Back Squat",
+            fatigueCost: 4,
+            jointStress: "high",
+            isCompound: true,
+            isMainLiftEligible: true,
+            movementPatterns: ["squat"],
+            primaryMuscles: ["quads", "glutes"],
+            equipment: ["barbell", "rack"],
+          },
+        ],
+        includeCautionTier: true,
+        preserveTopTextSearchMatches: true,
+      }),
+    ).toEqual([]);
+
+    expect(
+      buildRuntimeExerciseSwapCandidates({
+        current: {
+          id: "seated-leg-curl",
+          name: "Seated Leg Curl",
+          fatigueCost: 1,
+          jointStress: "low",
+          isCompound: false,
+          isMainLift: false,
+          isMainLiftEligible: false,
+          movementPatterns: ["flexion", "isolation"],
+          primaryMuscles: ["hamstrings"],
+          equipment: ["machine"],
+        },
+        candidates: [
+          {
+            id: "romanian-deadlift",
+            name: "Romanian Deadlift",
+            fatigueCost: 3,
+            jointStress: "medium",
+            isCompound: true,
+            isMainLiftEligible: true,
+            movementPatterns: ["hinge"],
+            primaryMuscles: ["hamstrings", "glutes"],
+            equipment: ["barbell"],
+          },
+          {
+            id: "stiff-legged-deadlift",
+            name: "Stiff-Legged Deadlift",
+            fatigueCost: 3,
+            jointStress: "medium",
+            isCompound: true,
+            isMainLiftEligible: true,
+            movementPatterns: ["hinge"],
+            primaryMuscles: ["hamstrings", "glutes"],
+            equipment: ["barbell"],
+          },
+        ],
+        includeCautionTier: true,
+        preserveTopTextSearchMatches: true,
+      }),
+    ).toEqual([]);
+  });
 });

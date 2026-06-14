@@ -613,6 +613,7 @@ function selectEligibleReplacement(input: {
         excludedExerciseIds: input.existingExerciseIds,
         limit: input.typedSearchLimit ?? DEFAULT_SWAP_SEARCH_LIMIT,
         includeCautionTier: true,
+        preserveTopTextSearchMatches: true,
       }).find((candidate) => candidate.exerciseId === replacementExercise.id)
     : undefined;
 
@@ -753,6 +754,7 @@ export async function resolveRuntimeExerciseSwapCandidates(input: {
       excludedExerciseIds: toExistingWorkoutExerciseIds(context),
       limit,
       includeCautionTier: true,
+      preserveTopTextSearchMatches: true,
     });
     return searchMatchedCandidates;
   }

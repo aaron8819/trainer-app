@@ -1339,6 +1339,252 @@ describe("runtime exercise swap service", () => {
     });
   });
 
+  it("keeps top typed-search incline dumbbell press matches visible after swap re-ranking", async () => {
+    const inclineMachinePress = {
+      id: "incline-machine-press",
+      name: "Incline Machine Press",
+      fatigueCost: 2,
+      jointStress: "LOW",
+      isMainLiftEligible: false,
+      isCompound: true,
+      repRangeMin: 6,
+      repRangeMax: 12,
+      movementPatterns: ["HORIZONTAL_PUSH"],
+      exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+      exerciseMuscles: [
+        { role: "PRIMARY", muscle: { name: "Chest" } },
+        { role: "SECONDARY", muscle: { name: "Triceps" } },
+        { role: "SECONDARY", muscle: { name: "Front Delts" } },
+      ],
+    };
+    const inclineDumbbellBenchPress = {
+      id: "incline-dumbbell-bench-press",
+      name: "Incline Dumbbell Bench Press",
+      fatigueCost: 3,
+      jointStress: "MEDIUM",
+      isMainLiftEligible: true,
+      isCompound: true,
+      repRangeMin: 6,
+      repRangeMax: 10,
+      movementPatterns: ["HORIZONTAL_PUSH"],
+      exerciseEquipment: [{ equipment: { type: "DUMBBELL" } }],
+      exerciseMuscles: [
+        { role: "PRIMARY", muscle: { name: "Chest" } },
+        { role: "PRIMARY", muscle: { name: "Triceps" } },
+        { role: "SECONDARY", muscle: { name: "Front Delts" } },
+      ],
+    };
+    const strictPresses = Array.from({ length: 8 }, (_, index) => ({
+      id: `strict-press-${index + 1}`,
+      name: `Strict Machine Press ${index + 1}`,
+      fatigueCost: 2,
+      jointStress: "LOW",
+      isMainLiftEligible: false,
+      isCompound: true,
+      repRangeMin: 8,
+      repRangeMax: 12,
+      movementPatterns: ["HORIZONTAL_PUSH"],
+      exerciseEquipment: [{ equipment: { type: "MACHINE" } }],
+      exerciseMuscles: [
+        { role: "PRIMARY", muscle: { name: "Chest" } },
+        { role: "SECONDARY", muscle: { name: "Triceps" } },
+      ],
+    }));
+
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "PUSH",
+      exercises: [{ id: "we-1", exerciseId: "incline-machine-press" }],
+      selectionMetadata: {},
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      id: "we-1",
+      workoutId: "workout-1",
+      exerciseId: "incline-machine-press",
+      section: "MAIN",
+      isMainLift: false,
+      exercise: inclineMachinePress,
+      sets: [
+        {
+          id: "set-1",
+          setIndex: 1,
+          targetRpe: 8,
+          restSeconds: 120,
+          logs: [],
+        },
+      ],
+    });
+    mocks.searchExerciseLibrary.mockResolvedValueOnce([
+      {
+        id: "incline-dumbbell-bench-press",
+        name: "Incline Dumbbell Bench Press",
+        primaryMuscles: ["Chest", "Triceps"],
+        equipment: ["DUMBBELL"],
+      },
+      ...strictPresses.map((exercise) => ({
+        id: exercise.id,
+        name: exercise.name,
+        primaryMuscles: ["Chest"],
+        equipment: ["MACHINE"],
+      })),
+    ]);
+    mocks.exerciseFindMany.mockResolvedValueOnce([
+      inclineDumbbellBenchPress,
+      ...strictPresses,
+    ]);
+
+    const candidates = await resolveRuntimeExerciseSwapCandidates({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      userId: "user-1",
+      query: "incline dumbbell press",
+      limit: 8,
+    });
+
+    expect(mocks.searchExerciseLibrary).toHaveBeenCalledWith(
+      "incline dumbbell press",
+      48,
+    );
+    expect(candidates).toHaveLength(8);
+    expect(candidates).toContainEqual(
+      expect.objectContaining({
+        exerciseId: "incline-dumbbell-bench-press",
+        exerciseName: "Incline Dumbbell Bench Press",
+        fatigueDelta: 1,
+        jointStressDelta: 1,
+        caution: expect.objectContaining({ level: "caution" }),
+      }),
+    );
+  });
+
+  it("keeps second-ranked typed-search dumbbell curl matches visible after swap re-ranking", async () => {
+    const barbellCurl = {
+      id: "barbell-curl",
+      name: "Barbell Curl",
+      fatigueCost: 1,
+      jointStress: "LOW",
+      isMainLiftEligible: false,
+      isCompound: false,
+      repRangeMin: 8,
+      repRangeMax: 15,
+      movementPatterns: ["FLEXION"],
+      exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+      exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Biceps" } }],
+    };
+    const ezBarCurl = {
+      id: "ez-bar-curl",
+      name: "EZ-Bar Curl",
+      fatigueCost: 1,
+      jointStress: "LOW",
+      isMainLiftEligible: false,
+      isCompound: false,
+      repRangeMin: 8,
+      repRangeMax: 15,
+      movementPatterns: ["FLEXION"],
+      exerciseEquipment: [{ equipment: { type: "EZ_BAR" } }],
+      exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Biceps" } }],
+    };
+    const dumbbellCurl = {
+      id: "dumbbell-curl",
+      name: "Dumbbell Curl",
+      fatigueCost: 2,
+      jointStress: "LOW",
+      isMainLiftEligible: false,
+      isCompound: false,
+      repRangeMin: 8,
+      repRangeMax: 15,
+      movementPatterns: ["FLEXION"],
+      exerciseEquipment: [{ equipment: { type: "DUMBBELL" } }],
+      exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Biceps" } }],
+    };
+    const strictCurls = Array.from({ length: 8 }, (_, index) => ({
+      id: `strict-curl-${index + 1}`,
+      name: `Strict Curl ${index + 1}`,
+      fatigueCost: 1,
+      jointStress: "LOW",
+      isMainLiftEligible: false,
+      isCompound: false,
+      repRangeMin: 8,
+      repRangeMax: 15,
+      movementPatterns: ["FLEXION"],
+      exerciseEquipment: [{ equipment: { type: "EZ_BAR" } }],
+      exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Biceps" } }],
+    }));
+
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      exercises: [{ id: "we-1", exerciseId: "barbell-curl" }],
+      selectionMetadata: {},
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      id: "we-1",
+      workoutId: "workout-1",
+      exerciseId: "barbell-curl",
+      section: "ACCESSORY",
+      isMainLift: false,
+      exercise: barbellCurl,
+      sets: [
+        {
+          id: "set-1",
+          setIndex: 1,
+          targetRpe: 8,
+          restSeconds: 90,
+          logs: [],
+        },
+      ],
+    });
+    mocks.searchExerciseLibrary.mockResolvedValueOnce([
+      {
+        id: "ez-bar-curl",
+        name: "EZ-Bar Curl",
+        primaryMuscles: ["Biceps"],
+        equipment: ["EZ_BAR"],
+      },
+      {
+        id: "dumbbell-curl",
+        name: "Dumbbell Curl",
+        primaryMuscles: ["Biceps"],
+        equipment: ["DUMBBELL"],
+      },
+      ...strictCurls.map((exercise) => ({
+        id: exercise.id,
+        name: exercise.name,
+        primaryMuscles: ["Biceps"],
+        equipment: ["EZ_BAR"],
+      })),
+    ]);
+    mocks.exerciseFindMany.mockResolvedValueOnce([
+      ezBarCurl,
+      dumbbellCurl,
+      ...strictCurls,
+    ]);
+
+    const candidates = await resolveRuntimeExerciseSwapCandidates({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      userId: "user-1",
+      query: "dumbbell curl",
+      limit: 8,
+    });
+
+    expect(mocks.searchExerciseLibrary).toHaveBeenCalledWith("dumbbell curl", 48);
+    expect(candidates).toHaveLength(8);
+    expect(candidates).toContainEqual(
+      expect.objectContaining({
+        exerciseId: "dumbbell-curl",
+        exerciseName: "Dumbbell Curl",
+        caution: expect.objectContaining({ level: "caution" }),
+      }),
+    );
+    expect(candidates[0]).toMatchObject({ exerciseId: "ez-bar-curl" });
+    expect(candidates[0].caution).toBeUndefined();
+  });
+
   it("swaps an unlogged main lift only to a main-lift eligible movement-family match", async () => {
     mocks.workoutFindFirst.mockResolvedValueOnce({
       id: "workout-1",

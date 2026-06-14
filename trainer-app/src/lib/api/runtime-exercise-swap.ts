@@ -74,12 +74,18 @@ export type RuntimeExerciseSwapEligibility = {
   score: number;
 };
 
+export type RuntimeExerciseSwapCaution = {
+  level: "caution";
+  copy: string;
+};
+
 export type RuntimeExerciseSwapCandidate = {
   exerciseId: string;
   exerciseName: string;
   primaryMuscles: string[];
   equipment: string[];
   compatibility: RuntimeExerciseSwapEligibility;
+  caution?: RuntimeExerciseSwapCaution;
   reason: string;
   swapLaneFitScore: number;
   swapCandidateReason: string;
@@ -208,6 +214,21 @@ function buildReason(input: RuntimeExerciseSwapEligibility): string {
     : "with a different equipment demand";
 
   return `Keeps ${muscleText}, matches ${patternText}, and ${fatigueText} ${equipmentText}.`;
+}
+
+function buildCautionCopy(input: RuntimeExerciseSwapEligibility): string {
+  const fatigueText =
+    input.fatigueDelta > 0
+      ? `fatigue +${input.fatigueDelta}`
+      : "fatigue unchanged";
+  const stressText =
+    input.jointStressDelta > 0
+      ? `joint stress +${input.jointStressDelta}`
+      : "joint stress unchanged";
+  const muscleText = input.primaryMuscleOverlap.join(", ");
+  const patternText = input.movementPatternOverlap.join(", ");
+
+  return `Caution: typed search found a same-pattern replacement for ${muscleText} (${patternText}), but it is higher demand (${fatigueText}, ${stressText}). Use only if you intentionally want this swap for this session.`;
 }
 
 function normalizedSearchText(values: Array<string | undefined | null>): string {
@@ -891,11 +912,110 @@ export function evaluateRuntimeExerciseSwapEligibility(input: {
   };
 }
 
+function evaluateRuntimeExerciseSwapCautionEligibility(input: {
+  current: RuntimeExerciseSwapProfile;
+  candidate: RuntimeExerciseSwapProfile;
+}): RuntimeExerciseSwapEligibility | null {
+  if (input.current.id === input.candidate.id) {
+    return null;
+  }
+
+  if (
+    !hasSufficientExerciseMetadata(input.current) ||
+    !hasSufficientExerciseMetadata(input.candidate)
+  ) {
+    return null;
+  }
+
+  if (input.current.isMainLift) {
+    return null;
+  }
+
+  const currentPrimary = normalizeList(input.current.primaryMuscles);
+  const candidatePrimary = normalizeList(input.candidate.primaryMuscles);
+  const currentPatterns = normalizeList(input.current.movementPatterns);
+  const candidatePatterns = normalizeList(input.candidate.movementPatterns);
+
+  const primaryMuscleOverlap = intersect(currentPrimary, candidatePrimary);
+  if (primaryMuscleOverlap.length === 0) {
+    return null;
+  }
+
+  const movementPatternOverlap = intersect(currentPatterns, candidatePatterns);
+  if (movementPatternOverlap.length === 0) {
+    return null;
+  }
+
+  const movementFamilyOverlap = intersect(
+    resolveMovementFamilies(currentPatterns),
+    resolveMovementFamilies(candidatePatterns),
+  );
+  if (movementFamilyOverlap.length === 0) {
+    return null;
+  }
+
+  const currentJointStress = resolveJointStressDemand(input.current);
+  const candidateJointStress = resolveJointStressDemand(input.candidate);
+  if (currentJointStress == null || candidateJointStress == null) {
+    return null;
+  }
+  if (candidateJointStress > JOINT_STRESS_DEMAND.medium) {
+    return null;
+  }
+  const jointStressDelta = candidateJointStress - currentJointStress;
+  if (jointStressDelta > 1) {
+    return null;
+  }
+
+  const currentFatigue = input.current.fatigueCost ?? 3;
+  const candidateFatigue = input.candidate.fatigueCost ?? 3;
+  if (candidateFatigue >= 5) {
+    return null;
+  }
+  const fatigueDelta = candidateFatigue - currentFatigue;
+  if (fatigueDelta > 2) {
+    return null;
+  }
+
+  const candidateEquipmentDemand = resolveEquipmentDemand(input.candidate);
+  const currentEquipmentDemand = resolveEquipmentDemand(input.current);
+  const equipmentDemandDelta =
+    candidateEquipmentDemand - currentEquipmentDemand;
+  const equipmentDemandStayedAtOrBelowOriginal = equipmentDemandDelta <= 0;
+  const roleMatch =
+    Boolean(input.current.isMainLift) ===
+    Boolean(input.candidate.isMainLiftEligible);
+  const historyMatch = Boolean(input.candidate.hasRecentHistory);
+
+  return {
+    primaryMuscleOverlap,
+    movementPatternOverlap,
+    movementFamilyOverlap,
+    movementMatch: "exact",
+    roleMatch,
+    equipmentDemandStayedAtOrBelowOriginal,
+    equipmentDemandDelta,
+    jointStressDelta,
+    fatigueDelta,
+    historyMatch,
+    score:
+      50 +
+      primaryMuscleOverlap.length * 5 +
+      movementPatternOverlap.length * 4 +
+      (roleMatch ? 3 : 0) +
+      Math.max(0, -equipmentDemandDelta) +
+      Math.max(0, -jointStressDelta) +
+      Math.max(0, -fatigueDelta) +
+      (historyMatch ? 1 : 0),
+  };
+}
+
 export function buildRuntimeExerciseSwapCandidates(input: {
   current: RuntimeExerciseSwapProfile;
   candidates: RuntimeExerciseSwapProfile[];
   excludedExerciseIds?: Set<string>;
   limit?: number;
+  includeCautionTier?: boolean;
 }): RuntimeExerciseSwapCandidate[] {
   return input.candidates
     .flatMap((candidate) => {
@@ -903,10 +1023,18 @@ export function buildRuntimeExerciseSwapCandidates(input: {
         return [];
       }
 
-      const compatibility = evaluateRuntimeExerciseSwapEligibility({
+      const strictCompatibility = evaluateRuntimeExerciseSwapEligibility({
         current: input.current,
         candidate,
       });
+      const cautionCompatibility =
+        !strictCompatibility && input.includeCautionTier
+          ? evaluateRuntimeExerciseSwapCautionEligibility({
+              current: input.current,
+              candidate,
+            })
+          : null;
+      const compatibility = strictCompatibility ?? cautionCompatibility;
       if (!compatibility) {
         return [];
       }
@@ -915,6 +1043,17 @@ export function buildRuntimeExerciseSwapCandidates(input: {
         candidate,
         compatibility,
       });
+      const caution =
+        cautionCompatibility &&
+        diagnostics.swapFallbackTier !== "broad_same_muscle_fallback"
+          ? ({
+              level: "caution",
+              copy: buildCautionCopy(cautionCompatibility),
+            } satisfies RuntimeExerciseSwapCaution)
+          : undefined;
+      if (cautionCompatibility && !caution) {
+        return [];
+      }
 
       return [
         {
@@ -923,12 +1062,16 @@ export function buildRuntimeExerciseSwapCandidates(input: {
           primaryMuscles: normalizeList(candidate.primaryMuscles),
           equipment: normalizeList(candidate.equipment),
           compatibility,
+          ...(caution ? { caution } : {}),
           reason: diagnostics.swapCandidateReason || buildReason(compatibility),
           ...diagnostics,
         } satisfies RuntimeExerciseSwapCandidate,
       ];
     })
     .sort((left, right) => {
+      if (Boolean(left.caution) !== Boolean(right.caution)) {
+        return left.caution ? 1 : -1;
+      }
       const leftTier = tierRank(left.swapFallbackTier);
       const rightTier = tierRank(right.swapFallbackTier);
       if (rightTier !== leftTier) {

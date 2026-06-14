@@ -70,6 +70,38 @@ describe("GET /api/workouts/[id]/swap-exercise-preview", () => {
     });
   });
 
+  it("forwards typed search context for caution-tier preview revalidation", async () => {
+    mocks.resolveRuntimeExerciseSwapPreview.mockResolvedValue({
+      workoutExerciseId: "we-1",
+      exerciseId: "cable-curl",
+      name: "Cable Curl",
+      equipment: ["CABLE"],
+      movementPatterns: ["flexion", "isolation"],
+      isMainLift: false,
+      isSwapped: true,
+      section: "ACCESSORY",
+      sessionNote:
+        "Swapped from Barbell Curl. Session-only; future progression stays exercise-specific.",
+      sets: [],
+    });
+
+    const response = await GET(
+      new Request(
+        "http://localhost/api/workouts/workout-1/swap-exercise-preview?workoutExerciseId=we-1&exerciseId=cable-curl&q=cable%20curl",
+      ),
+      { params: Promise.resolve({ id: "workout-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.resolveRuntimeExerciseSwapPreview).toHaveBeenCalledWith({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      replacementExerciseId: "cable-curl",
+      userId: "user-1",
+      searchQuery: "cable curl",
+    });
+  });
+
   it("returns canonical swap preview error codes from the service", async () => {
     mocks.resolveRuntimeExerciseSwapPreview.mockRejectedValue(
       Object.assign(

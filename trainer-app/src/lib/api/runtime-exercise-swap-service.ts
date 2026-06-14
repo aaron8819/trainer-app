@@ -526,6 +526,11 @@ function mapSwapProfilePool(input: {
   );
 }
 
+function normalizeTypedSwapSearchQuery(query: string | undefined): string {
+  const trimmedQuery = query?.trim() ?? "";
+  return trimmedQuery.length >= 2 ? trimmedQuery : "";
+}
+
 async function loadSearchMatchedExercisePool(input: {
   query: string;
   limit: number;
@@ -569,6 +574,8 @@ async function loadRecentExerciseLoad(input: {
 function selectEligibleReplacement(input: {
   currentProfile: RuntimeExerciseSwapProfile;
   exercisePool: ExerciseRecord[];
+  typedSearchExercisePool?: ExerciseRecord[];
+  typedSearchLimit?: number;
   replacementExerciseId: string;
   existingExerciseIds: Set<string>;
   recentlyUsedExerciseIds: Set<string>;
@@ -596,7 +603,20 @@ function selectEligibleReplacement(input: {
     (candidate) => candidate.exerciseId === replacementExercise.id,
   );
 
-  if (!selectedCandidate) {
+  const selectedTypedSearchCandidate = input.typedSearchExercisePool
+    ? buildRuntimeExerciseSwapCandidates({
+        current: input.currentProfile,
+        candidates: mapSwapProfilePool({
+          exercisePool: input.typedSearchExercisePool,
+          recentlyUsedExerciseIds: input.recentlyUsedExerciseIds,
+        }),
+        excludedExerciseIds: input.existingExerciseIds,
+        limit: input.typedSearchLimit ?? DEFAULT_SWAP_SEARCH_LIMIT,
+        includeCautionTier: true,
+      }).find((candidate) => candidate.exerciseId === replacementExercise.id)
+    : undefined;
+
+  if (!selectedCandidate && !selectedTypedSearchCandidate) {
     throw buildRuntimeExerciseSwapError(
       "Replacement exercise is not an eligible runtime swap.",
       {
@@ -614,6 +634,7 @@ async function resolveRuntimeExerciseSwap(input: {
   workoutExerciseId: string;
   replacementExerciseId: string;
   userId: string;
+  searchQuery?: string;
 }): Promise<RuntimeExerciseSwapResolution> {
   const context = await loadRuntimeExerciseSwapContext({
     workoutId: input.workoutId,
@@ -627,9 +648,19 @@ async function resolveRuntimeExerciseSwap(input: {
     exerciseIds: exercisePool.map((exercise) => exercise.id),
   });
   const currentProfile = mapSourceSwapProfile(context);
+  const typedSearchQuery = normalizeTypedSwapSearchQuery(input.searchQuery);
+  const typedSearchExercisePool =
+    typedSearchQuery.length > 0
+      ? await loadSearchMatchedExercisePool({
+          query: typedSearchQuery,
+          limit: DEFAULT_SWAP_SEARCH_LIMIT,
+        })
+      : undefined;
   const replacementExercise = selectEligibleReplacement({
     currentProfile,
     exercisePool,
+    typedSearchExercisePool,
+    typedSearchLimit: DEFAULT_SWAP_SEARCH_LIMIT,
     replacementExerciseId: input.replacementExerciseId,
     existingExerciseIds: toExistingWorkoutExerciseIds(context),
     recentlyUsedExerciseIds,
@@ -721,6 +752,7 @@ export async function resolveRuntimeExerciseSwapCandidates(input: {
       }),
       excludedExerciseIds: toExistingWorkoutExerciseIds(context),
       limit,
+      includeCautionTier: true,
     });
     return searchMatchedCandidates;
   }
@@ -747,6 +779,7 @@ export async function resolveRuntimeExerciseSwapPreview(input: {
   workoutExerciseId: string;
   replacementExerciseId: string;
   userId: string;
+  searchQuery?: string;
 }): Promise<RuntimeExerciseSwapExercisePayload> {
   const resolution = await resolveRuntimeExerciseSwap(input);
   return resolution.exercise;
@@ -757,6 +790,7 @@ export async function applyRuntimeExerciseSwap(input: {
   workoutExerciseId: string;
   replacementExerciseId: string;
   userId: string;
+  searchQuery?: string;
 }): Promise<RuntimeExerciseSwapExercisePayload> {
   const resolution = await resolveRuntimeExerciseSwap(input);
 

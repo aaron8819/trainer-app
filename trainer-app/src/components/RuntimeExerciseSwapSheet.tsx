@@ -13,6 +13,10 @@ type RuntimeExerciseSwapCandidate = {
   primaryMuscles: string[];
   equipment: string[];
   reason: string;
+  caution?: {
+    level: "caution";
+    copy: string;
+  };
 };
 
 type Props = {
@@ -80,12 +84,21 @@ export function RuntimeExerciseSwapSheet({
         return;
       }
 
-      if (!force && requestedPreviewIdsRef.current.has(replacementExerciseId)) {
+      const previewQuery = searchQueryRef.current.length >= 2 ? searchQueryRef.current : "";
+      const previewRequestKey = `${replacementExerciseId}::${previewQuery}`;
+      if (!force && requestedPreviewIdsRef.current.has(previewRequestKey)) {
         return;
       }
 
-      requestedPreviewIdsRef.current.add(replacementExerciseId);
+      requestedPreviewIdsRef.current.add(previewRequestKey);
       const previewScope = previewScopeRef.current;
+      const previewParams = new URLSearchParams({
+        workoutExerciseId: exercise.workoutExerciseId,
+        exerciseId: replacementExerciseId,
+      });
+      if (previewQuery.length > 0) {
+        previewParams.set("q", previewQuery);
+      }
       setPreviewStateByExerciseId((prev) => ({
         ...prev,
         [replacementExerciseId]: { status: "loading" },
@@ -93,9 +106,7 @@ export function RuntimeExerciseSwapSheet({
 
       try {
         const response = await fetch(
-          `/api/workouts/${workoutId}/swap-exercise-preview?workoutExerciseId=${encodeURIComponent(
-            exercise.workoutExerciseId
-          )}&exerciseId=${encodeURIComponent(replacementExerciseId)}`,
+          `/api/workouts/${workoutId}/swap-exercise-preview?${previewParams.toString()}`,
           {
             cache: "no-store",
           }
@@ -317,6 +328,9 @@ export function RuntimeExerciseSwapSheet({
         body: JSON.stringify({
           workoutExerciseId: exercise.workoutExerciseId,
           replacementExerciseId,
+          ...(trimmedSearchQuery.length >= 2
+            ? { searchQuery: trimmedSearchQuery }
+            : {}),
         }),
       });
       const body = await response.json().catch(() => ({}));
@@ -403,6 +417,12 @@ export function RuntimeExerciseSwapSheet({
                     {candidate.equipment.length > 0 ? ` | ${candidate.equipment[0]}` : ""}
                   </p>
                   <p className="mt-1 text-xs text-amber-700">{candidate.reason}</p>
+
+                  {candidate.caution ? (
+                    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                      {candidate.caution.copy}
+                    </div>
+                  ) : null}
 
                   {previewState?.status === "loading" ? (
                     <p className="mt-2 text-xs text-slate-500">

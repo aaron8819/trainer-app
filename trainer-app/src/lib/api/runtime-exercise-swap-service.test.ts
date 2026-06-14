@@ -1084,6 +1084,147 @@ describe("runtime exercise swap service", () => {
     ]);
   });
 
+  it("surfaces caution-tier typed-search candidates and requires search context for preview/commit", async () => {
+    const barbellCurlExercise = {
+      id: "barbell-curl",
+      name: "Barbell Curl",
+      fatigueCost: 1,
+      jointStress: "LOW",
+      isMainLiftEligible: false,
+      isCompound: false,
+      repRangeMin: 8,
+      repRangeMax: 12,
+      movementPatterns: ["FLEXION", "ISOLATION"],
+      exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+      exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Biceps" } }],
+    };
+    const cableCurlExercise = {
+      id: "cable-curl",
+      name: "Cable Curl",
+      fatigueCost: 2,
+      jointStress: "LOW",
+      isMainLiftEligible: false,
+      isCompound: false,
+      repRangeMin: 10,
+      repRangeMax: 14,
+      movementPatterns: ["FLEXION", "ISOLATION"],
+      exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+      exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Biceps" } }],
+    };
+
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      exercises: [{ id: "we-1", exerciseId: "barbell-curl" }],
+      selectionMetadata: {},
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValue({
+      id: "we-1",
+      workoutId: "workout-1",
+      exerciseId: "barbell-curl",
+      section: "ACCESSORY",
+      isMainLift: false,
+      exercise: barbellCurlExercise,
+      sets: [
+        {
+          id: "set-1",
+          setIndex: 1,
+          targetRpe: 8,
+          restSeconds: 90,
+          logs: [],
+        },
+      ],
+    });
+    mocks.searchExerciseLibrary.mockResolvedValue([
+      {
+        id: "cable-curl",
+        name: "Cable Curl",
+        primaryMuscles: ["Biceps"],
+        equipment: ["CABLE"],
+      },
+    ]);
+    mocks.exerciseFindMany.mockResolvedValueOnce([cableCurlExercise]);
+
+    const candidates = await resolveRuntimeExerciseSwapCandidates({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      userId: "user-1",
+      query: "cable curl",
+      limit: 8,
+    });
+
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        exerciseId: "cable-curl",
+        exerciseName: "Cable Curl",
+        movementPatternMatch: "exact",
+        fatigueDelta: 1,
+        jointStressDelta: 0,
+        caution: expect.objectContaining({
+          level: "caution",
+          copy: expect.stringContaining("higher demand"),
+        }),
+      }),
+    ]);
+
+    mocks.exerciseFindMany.mockResolvedValueOnce([
+      barbellCurlExercise,
+      cableCurlExercise,
+    ]);
+    await expect(
+      resolveRuntimeExerciseSwapPreview({
+        workoutId: "workout-1",
+        workoutExerciseId: "we-1",
+        replacementExerciseId: "cable-curl",
+        userId: "user-1",
+      }),
+    ).rejects.toMatchObject({ code: "REPLACEMENT_NOT_ELIGIBLE" });
+
+    mocks.exerciseFindMany
+      .mockResolvedValueOnce([barbellCurlExercise, cableCurlExercise])
+      .mockResolvedValueOnce([cableCurlExercise]);
+    await expect(
+      resolveRuntimeExerciseSwapPreview({
+        workoutId: "workout-1",
+        workoutExerciseId: "we-1",
+        replacementExerciseId: "cable-curl",
+        userId: "user-1",
+        searchQuery: "cable curl",
+      }),
+    ).resolves.toMatchObject({
+      workoutExerciseId: "we-1",
+      exerciseId: "cable-curl",
+      name: "Cable Curl",
+      sets: [{ targetReps: 12, targetRepRange: { min: 10, max: 14 } }],
+    });
+
+    mocks.exerciseFindMany
+      .mockResolvedValueOnce([barbellCurlExercise, cableCurlExercise])
+      .mockResolvedValueOnce([cableCurlExercise]);
+    await expect(
+      applyRuntimeExerciseSwap({
+        workoutId: "workout-1",
+        workoutExerciseId: "we-1",
+        replacementExerciseId: "cable-curl",
+        userId: "user-1",
+        searchQuery: "cable curl",
+      }),
+    ).resolves.toMatchObject({
+      workoutExerciseId: "we-1",
+      exerciseId: "cable-curl",
+      name: "Cable Curl",
+    });
+    expect(mocks.txWorkoutExerciseUpdate).toHaveBeenLastCalledWith({
+      where: { id: "we-1" },
+      data: {
+        exerciseId: "cable-curl",
+        movementPatterns: ["FLEXION", "ISOLATION"],
+      },
+    });
+  });
+
   it("re-ranks typed search matches by lane fit after bounded text search", async () => {
     mocks.workoutFindFirst.mockResolvedValueOnce({
       id: "workout-1",

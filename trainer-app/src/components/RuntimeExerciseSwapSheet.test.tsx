@@ -38,6 +38,11 @@ function createFetchMock() {
                 primaryMuscles: ["lats", "upper back"],
                 equipment: ["machine"],
                 reason: "Keeps lats, matches horizontal pull, and reduces setup demands.",
+                caution: {
+                  level: "caution",
+                  copy:
+                    "Caution: typed search found a same-pattern replacement, but it is higher demand. Use only if intentional for this session.",
+                },
               },
             ],
           }),
@@ -467,6 +472,11 @@ describe("RuntimeExerciseSwapSheet", () => {
 
     expect(await screen.findByText("Machine Row")).toBeInTheDocument();
     expect(
+      screen.getByText(
+        "Caution: typed search found a same-pattern replacement, but it is higher demand. Use only if intentional for this session."
+      )
+    ).toBeInTheDocument();
+    expect(
       fetchMock.mock.calls.some(
         ([requestUrl]) =>
           String(requestUrl) ===
@@ -483,6 +493,7 @@ describe("RuntimeExerciseSwapSheet", () => {
         String(requestUrl).includes("exerciseId=machine-row")
     );
     expect(machinePreviewCalls).toHaveLength(1);
+    expect(String(machinePreviewCalls[0][0])).toContain("q=machine");
 
     const previewCallsAfterSearch = fetchMock.mock.calls.filter(([requestUrl]) =>
       String(requestUrl).startsWith("/api/workouts/workout-1/swap-exercise-preview?")

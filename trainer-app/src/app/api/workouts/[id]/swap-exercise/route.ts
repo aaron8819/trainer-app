@@ -14,6 +14,7 @@ export const runtime = "nodejs";
 const swapExerciseSchema = z.object({
   workoutExerciseId: z.string().min(1),
   replacementExerciseId: z.string().min(1),
+  searchQuery: z.string().optional(),
 });
 
 function parseLimit(rawLimit: string | null, fallback: number): number {
@@ -104,6 +105,7 @@ export async function POST(
       workoutExerciseId: parsed.data.workoutExerciseId,
       replacementExerciseId: parsed.data.replacementExerciseId,
       userId: owner.id,
+      searchQuery: parsed.data.searchQuery,
     });
 
     return NextResponse.json({ exercise });

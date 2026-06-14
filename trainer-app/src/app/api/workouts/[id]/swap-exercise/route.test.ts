@@ -139,6 +139,44 @@ describe("/api/workouts/[id]/swap-exercise route", () => {
     });
   });
 
+  it("forwards typed search context for caution-tier swap commits", async () => {
+    mocks.applyRuntimeExerciseSwap.mockResolvedValue({
+      workoutExerciseId: "we-1",
+      exerciseId: "cable-curl",
+      name: "Cable Curl",
+      equipment: ["CABLE"],
+      movementPatterns: ["flexion", "isolation"],
+      isMainLift: false,
+      isSwapped: true,
+      section: "ACCESSORY",
+      sessionNote:
+        "Swapped from Barbell Curl. Session-only; future progression stays exercise-specific.",
+      sets: [],
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/swap-exercise", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutExerciseId: "we-1",
+          replacementExerciseId: "cable-curl",
+          searchQuery: "cable curl",
+        }),
+      }),
+      { params: Promise.resolve({ id: "workout-1" }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.applyRuntimeExerciseSwap).toHaveBeenCalledWith({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      replacementExerciseId: "cable-curl",
+      userId: "user-1",
+      searchQuery: "cable curl",
+    });
+  });
+
   it("keeps POST thin and returns the shared swap payload", async () => {
     mocks.applyRuntimeExerciseSwap.mockResolvedValue({
       workoutExerciseId: "we-1",

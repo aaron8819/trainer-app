@@ -28,6 +28,7 @@ export async function GET(
   const searchParams = new URL(request.url).searchParams;
   const workoutExerciseId = searchParams.get("workoutExerciseId");
   const replacementExerciseId = searchParams.get("exerciseId");
+  const searchQuery = searchParams.get("q")?.trim() ?? "";
 
   if (!workoutId || !workoutExerciseId || !replacementExerciseId) {
     return NextResponse.json(
@@ -44,6 +45,7 @@ export async function GET(
       workoutExerciseId,
       replacementExerciseId,
       userId: owner.id,
+      ...(searchQuery.length > 0 ? { searchQuery } : {}),
     });
 
     return NextResponse.json({ exercise });

@@ -803,4 +803,198 @@ describe("runtime exercise swap constraints", () => {
       }),
     ).toBeNull();
   });
+
+  it("surfaces bounded caution-tier replacements only when explicitly requested", () => {
+    const inclineMachinePress: RuntimeExerciseSwapProfile = {
+      id: "incline-machine-press",
+      name: "Incline Machine Press",
+      fatigueCost: 2,
+      jointStress: "low",
+      isCompound: true,
+      isMainLift: false,
+      isMainLiftEligible: false,
+      movementPatterns: ["horizontal_push"],
+      primaryMuscles: ["chest"],
+      secondaryMuscles: ["triceps", "front delts"],
+      equipment: ["machine"],
+    };
+    const inclineBarbellBenchPress: RuntimeExerciseSwapProfile = {
+      id: "incline-barbell-bench-press",
+      name: "Incline Barbell Bench Press",
+      fatigueCost: 3,
+      jointStress: "medium",
+      isCompound: true,
+      isMainLiftEligible: true,
+      movementPatterns: ["horizontal_push"],
+      primaryMuscles: ["chest"],
+      secondaryMuscles: ["triceps", "front delts"],
+      equipment: ["barbell", "bench", "rack"],
+    };
+    const barbellCurl: RuntimeExerciseSwapProfile = {
+      id: "barbell-curl",
+      name: "Barbell Curl",
+      fatigueCost: 1,
+      jointStress: "low",
+      isCompound: false,
+      isMainLift: false,
+      isMainLiftEligible: false,
+      movementPatterns: ["flexion", "isolation"],
+      primaryMuscles: ["biceps"],
+      equipment: ["barbell"],
+    };
+    const cableCurl: RuntimeExerciseSwapProfile = {
+      id: "cable-curl",
+      name: "Cable Curl",
+      fatigueCost: 2,
+      jointStress: "low",
+      isCompound: false,
+      isMainLiftEligible: false,
+      movementPatterns: ["flexion", "isolation"],
+      primaryMuscles: ["biceps"],
+      equipment: ["cable"],
+    };
+
+    expect(
+      buildRuntimeExerciseSwapCandidates({
+        current: inclineMachinePress,
+        candidates: [inclineBarbellBenchPress],
+      }),
+    ).toEqual([]);
+    expect(
+      buildRuntimeExerciseSwapCandidates({
+        current: barbellCurl,
+        candidates: [cableCurl],
+      }),
+    ).toEqual([]);
+
+    expect(
+      buildRuntimeExerciseSwapCandidates({
+        current: inclineMachinePress,
+        candidates: [inclineBarbellBenchPress],
+        includeCautionTier: true,
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        exerciseId: "incline-barbell-bench-press",
+        movementPatternMatch: "exact",
+        fatigueDelta: 1,
+        jointStressDelta: 1,
+        caution: expect.objectContaining({
+          level: "caution",
+          copy: expect.stringContaining("higher demand"),
+        }),
+      }),
+    ]);
+    expect(
+      buildRuntimeExerciseSwapCandidates({
+        current: barbellCurl,
+        candidates: [cableCurl],
+        includeCautionTier: true,
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        exerciseId: "cable-curl",
+        movementPatternMatch: "exact",
+        fatigueDelta: 1,
+        jointStressDelta: 0,
+        caution: expect.objectContaining({
+          level: "caution",
+          copy: expect.stringContaining("same-pattern replacement"),
+        }),
+      }),
+    ]);
+  });
+
+  it("keeps caution-tier blocked for broad fallback and extreme demand", () => {
+    const candidates = buildRuntimeExerciseSwapCandidates({
+      current: {
+        id: "leg-extension",
+        name: "Leg Extension",
+        fatigueCost: 1,
+        jointStress: "low",
+        isCompound: false,
+        isMainLift: false,
+        isMainLiftEligible: false,
+        movementPatterns: ["extension", "isolation"],
+        primaryMuscles: ["quads"],
+        equipment: ["machine"],
+      },
+      candidates: [
+        {
+          id: "barbell-back-squat",
+          name: "Barbell Back Squat",
+          fatigueCost: 4,
+          jointStress: "high",
+          isCompound: true,
+          isMainLiftEligible: true,
+          movementPatterns: ["squat"],
+          primaryMuscles: ["quads", "glutes"],
+          equipment: ["barbell", "rack"],
+        },
+        {
+          id: "high-fatigue-leg-extension",
+          name: "High Fatigue Leg Extension",
+          fatigueCost: 5,
+          jointStress: "medium",
+          isCompound: false,
+          isMainLiftEligible: false,
+          movementPatterns: ["extension", "isolation"],
+          primaryMuscles: ["quads"],
+          equipment: ["machine"],
+        },
+      ],
+      includeCautionTier: true,
+    });
+
+    expect(candidates).toEqual([]);
+  });
+
+  it("ranks caution-tier matches below strict matches", () => {
+    const candidates = buildRuntimeExerciseSwapCandidates({
+      current: {
+        id: "barbell-curl",
+        name: "Barbell Curl",
+        fatigueCost: 1,
+        jointStress: "low",
+        isCompound: false,
+        isMainLift: false,
+        isMainLiftEligible: false,
+        movementPatterns: ["flexion", "isolation"],
+        primaryMuscles: ["biceps"],
+        equipment: ["barbell"],
+      },
+      candidates: [
+        {
+          id: "cable-curl",
+          name: "Cable Curl",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: false,
+          isMainLiftEligible: false,
+          movementPatterns: ["flexion", "isolation"],
+          primaryMuscles: ["biceps"],
+          equipment: ["cable"],
+        },
+        {
+          id: "ez-bar-curl",
+          name: "EZ-Bar Curl",
+          fatigueCost: 1,
+          jointStress: "low",
+          isCompound: false,
+          isMainLiftEligible: false,
+          movementPatterns: ["flexion", "isolation"],
+          primaryMuscles: ["biceps"],
+          equipment: ["ez_bar"],
+        },
+      ],
+      includeCautionTier: true,
+    });
+
+    expect(candidates.map((candidate) => candidate.exerciseId)).toEqual([
+      "ez-bar-curl",
+      "cable-curl",
+    ]);
+    expect(candidates[0].caution).toBeUndefined();
+    expect(candidates[1].caution).toBeDefined();
+  });
 });

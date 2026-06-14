@@ -20,6 +20,7 @@ vi.mock("next/link", () => ({
 const mocks = vi.hoisted(() => ({
   resolveOwner: vi.fn(),
   workoutFindFirst: vi.fn(),
+  preSessionReadinessSnapshotFindFirst: vi.fn(),
   getUiAuditFixtureForServer: vi.fn(),
 }));
 
@@ -31,6 +32,10 @@ vi.mock("@/lib/db/prisma", () => ({
   prisma: {
     workout: {
       findFirst: (...args: unknown[]) => mocks.workoutFindFirst(...args),
+    },
+    preSessionReadinessSnapshot: {
+      findFirst: (...args: unknown[]) =>
+        mocks.preSessionReadinessSnapshotFindFirst(...args),
     },
   },
 }));
@@ -48,6 +53,7 @@ describe("LogWorkoutPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.preSessionReadinessSnapshotFindFirst.mockResolvedValue(null);
     mocks.getUiAuditFixtureForServer.mockResolvedValue(null);
   });
 

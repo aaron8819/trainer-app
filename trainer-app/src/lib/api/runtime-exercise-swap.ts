@@ -98,6 +98,8 @@ export type RuntimeExerciseSwapCandidate = {
   weeklyCollisionWarnings: string[];
 };
 
+export const DEFAULT_RUNTIME_EXERCISE_SWAP_CANDIDATE_LIMIT = 8;
+
 const GUIDED_EQUIPMENT = new Set(["machine", "cable", "band", "sled"]);
 const FREE_WEIGHT_EQUIPMENT = new Set(["dumbbell", "kettlebell"]);
 const TECHNICAL_EQUIPMENT = new Set(["barbell", "ez_bar", "trap_bar", "rack"]);
@@ -990,5 +992,5 @@ export function buildRuntimeExerciseSwapCandidates(input: {
       }
       return left.exerciseName.localeCompare(right.exerciseName);
     })
-    .slice(0, input.limit ?? 5);
+    .slice(0, input.limit ?? DEFAULT_RUNTIME_EXERCISE_SWAP_CANDIDATE_LIMIT);
 }

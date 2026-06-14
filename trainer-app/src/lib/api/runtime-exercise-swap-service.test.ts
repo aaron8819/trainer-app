@@ -772,6 +772,132 @@ describe("runtime exercise swap service", () => {
     expect(mocks.exerciseFindMany).toHaveBeenCalledTimes(1);
   });
 
+  it("includes a sixth-ranked eligible vertical-pull fallback in initial discovery", async () => {
+    mocks.workoutFindFirst.mockResolvedValueOnce({
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "PULL",
+      exercises: [{ id: "we-1", exerciseId: "close-grip-lat-pulldown" }],
+      selectionMetadata: {},
+    });
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      id: "we-1",
+      workoutId: "workout-1",
+      exerciseId: "close-grip-lat-pulldown",
+      section: "MAIN",
+      isMainLift: false,
+      exercise: {
+        id: "close-grip-lat-pulldown",
+        name: "Close-Grip Lat Pulldown",
+        fatigueCost: 2,
+        jointStress: "LOW",
+        isMainLiftEligible: false,
+        isCompound: true,
+        movementPatterns: ["VERTICAL_PULL"],
+        exerciseEquipment: [
+          { equipment: { type: "CABLE" } },
+          { equipment: { type: "MACHINE" } },
+        ],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "SECONDARY", muscle: { name: "Biceps" } },
+          { role: "SECONDARY", muscle: { name: "Upper Back" } },
+        ],
+      },
+      sets: [
+        {
+          id: "set-1",
+          setIndex: 1,
+          targetRpe: 8,
+          restSeconds: 120,
+          logs: [],
+        },
+      ],
+    });
+    const exactVerticalPulls = [
+      ["assisted-pull-up-machine", "Assisted Pull-Up Machine"],
+      ["close-neutral-lat-pulldown", "Close Neutral Lat Pulldown"],
+      ["mag-grip-lat-pulldown", "MAG-Grip Lat Pulldown"],
+      ["neutral-grip-lat-pulldown", "Neutral-Grip Lat Pulldown"],
+      ["wide-grip-lat-pulldown", "Wide-Grip Lat Pulldown"],
+    ].map(([id, name]) => ({
+      id,
+      name,
+      fatigueCost: 2,
+      jointStress: "LOW",
+      isMainLiftEligible: false,
+      isCompound: true,
+      repRangeMin: 8,
+      repRangeMax: 12,
+      movementPatterns: ["VERTICAL_PULL"],
+      exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+      exerciseMuscles: [
+        { role: "PRIMARY", muscle: { name: "Lats" } },
+        { role: "SECONDARY", muscle: { name: "Biceps" } },
+        { role: "SECONDARY", muscle: { name: "Upper Back" } },
+      ],
+    }));
+    mocks.exerciseFindMany.mockResolvedValueOnce([
+      {
+        id: "close-grip-lat-pulldown",
+        name: "Close-Grip Lat Pulldown",
+        fatigueCost: 2,
+        jointStress: "LOW",
+        isMainLiftEligible: false,
+        isCompound: true,
+        repRangeMin: 8,
+        repRangeMax: 12,
+        movementPatterns: ["VERTICAL_PULL"],
+        exerciseEquipment: [
+          { equipment: { type: "CABLE" } },
+          { equipment: { type: "MACHINE" } },
+        ],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "SECONDARY", muscle: { name: "Biceps" } },
+          { role: "SECONDARY", muscle: { name: "Upper Back" } },
+        ],
+      },
+      ...exactVerticalPulls,
+      {
+        id: "chin-up",
+        name: "Chin-Up",
+        fatigueCost: 3,
+        jointStress: "MEDIUM",
+        isMainLiftEligible: true,
+        isCompound: true,
+        repRangeMin: 6,
+        repRangeMax: 12,
+        movementPatterns: ["VERTICAL_PULL"],
+        exerciseEquipment: [{ equipment: { type: "BODYWEIGHT" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "PRIMARY", muscle: { name: "Biceps" } },
+          { role: "SECONDARY", muscle: { name: "Upper Back" } },
+        ],
+      },
+    ]);
+
+    const candidates = await resolveRuntimeExerciseSwapCandidates({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      userId: "user-1",
+    });
+
+    expect(mocks.searchExerciseLibrary).not.toHaveBeenCalled();
+    expect(candidates.findIndex((candidate) => candidate.exerciseId === "chin-up")).toBe(
+      5,
+    );
+    expect(candidates[5]).toMatchObject({
+      exerciseId: "chin-up",
+      exerciseName: "Chin-Up",
+      swapFallbackTier: "useful_fallback_warning",
+      fatigueDelta: 1,
+      jointStressDelta: 1,
+    });
+  });
+
   it("uses server-backed typed search and filters results back through swap eligibility", async () => {
     mocks.searchExerciseLibrary.mockResolvedValue([
       {

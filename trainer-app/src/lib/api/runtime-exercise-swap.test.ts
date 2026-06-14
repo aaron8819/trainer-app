@@ -629,4 +629,178 @@ describe("runtime exercise swap constraints", () => {
         .map((candidate) => candidate.swapFallbackTier),
     ).toEqual(["broad_same_muscle_fallback", "broad_same_muscle_fallback"]);
   });
+
+  it("keeps rank-six vertical-pull swaps visible in the default shortlist", () => {
+    const candidates = buildRuntimeExerciseSwapCandidates({
+      current: {
+        id: "close-grip-lat-pulldown",
+        name: "Close-Grip Lat Pulldown",
+        fatigueCost: 2,
+        jointStress: "low",
+        isCompound: true,
+        isMainLift: false,
+        isMainLiftEligible: false,
+        movementPatterns: ["vertical_pull"],
+        primaryMuscles: ["lats"],
+        secondaryMuscles: ["biceps", "upper back"],
+        equipment: ["cable", "machine"],
+        sourceLane: {
+          slotId: "upper_a",
+          seedRole: "ACCESSORY",
+          laneId: "vertical_pull_anchor",
+          laneRole: "anchor",
+          primaryMuscles: ["Lats"],
+          acceptableExerciseClasses: ["vertical_pull"],
+          preferredExerciseClasses: ["vertical_pull"],
+        },
+      },
+      candidates: [
+        {
+          id: "assisted-pull-up-machine",
+          name: "Assisted Pull-Up Machine",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: true,
+          isMainLiftEligible: false,
+          movementPatterns: ["vertical_pull"],
+          primaryMuscles: ["lats"],
+          secondaryMuscles: ["biceps", "upper back"],
+          equipment: ["machine"],
+        },
+        {
+          id: "close-neutral-lat-pulldown",
+          name: "Close Neutral Lat Pulldown",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: true,
+          isMainLiftEligible: false,
+          movementPatterns: ["vertical_pull"],
+          primaryMuscles: ["lats"],
+          secondaryMuscles: ["biceps", "upper back"],
+          equipment: ["cable", "machine"],
+        },
+        {
+          id: "mag-grip-lat-pulldown",
+          name: "MAG-Grip Lat Pulldown",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: true,
+          isMainLiftEligible: false,
+          movementPatterns: ["vertical_pull"],
+          primaryMuscles: ["lats"],
+          secondaryMuscles: ["biceps", "upper back"],
+          equipment: ["cable", "machine"],
+        },
+        {
+          id: "neutral-grip-lat-pulldown",
+          name: "Neutral-Grip Lat Pulldown",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: true,
+          isMainLiftEligible: false,
+          movementPatterns: ["vertical_pull"],
+          primaryMuscles: ["lats"],
+          secondaryMuscles: ["biceps", "upper back"],
+          equipment: ["cable", "machine"],
+        },
+        {
+          id: "wide-grip-lat-pulldown",
+          name: "Wide-Grip Lat Pulldown",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: true,
+          isMainLiftEligible: false,
+          movementPatterns: ["vertical_pull"],
+          primaryMuscles: ["lats"],
+          secondaryMuscles: ["biceps", "upper back"],
+          equipment: ["cable", "machine"],
+        },
+        {
+          id: "chin-up",
+          name: "Chin-Up",
+          fatigueCost: 3,
+          jointStress: "medium",
+          isCompound: true,
+          isMainLiftEligible: true,
+          movementPatterns: ["vertical_pull"],
+          primaryMuscles: ["lats", "biceps"],
+          secondaryMuscles: ["upper back", "forearms"],
+          equipment: ["bodyweight"],
+        },
+      ],
+    });
+
+    expect(candidates.map((candidate) => candidate.exerciseId)).toContain(
+      "chin-up",
+    );
+    expect(candidates.findIndex((candidate) => candidate.exerciseId === "chin-up")).toBe(
+      5,
+    );
+    expect(candidates[5]).toMatchObject({
+      exerciseId: "chin-up",
+      swapFallbackTier: "useful_fallback_warning",
+      fatigueDelta: 1,
+      jointStressDelta: 1,
+    });
+  });
+
+  it("keeps stress and fatigue increase filters closed for non-exempt swaps", () => {
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: {
+          id: "incline-machine-press",
+          name: "Incline Machine Press",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: true,
+          isMainLift: false,
+          isMainLiftEligible: false,
+          movementPatterns: ["horizontal_push"],
+          primaryMuscles: ["chest"],
+          secondaryMuscles: ["triceps", "front delts"],
+          equipment: ["machine"],
+        },
+        candidate: {
+          id: "incline-barbell-bench-press",
+          name: "Incline Barbell Bench Press",
+          fatigueCost: 3,
+          jointStress: "medium",
+          isCompound: true,
+          isMainLiftEligible: true,
+          movementPatterns: ["horizontal_push"],
+          primaryMuscles: ["chest"],
+          secondaryMuscles: ["triceps", "front delts"],
+          equipment: ["barbell", "bench", "rack"],
+        },
+      }),
+    ).toBeNull();
+
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: {
+          id: "barbell-curl",
+          name: "Barbell Curl",
+          fatigueCost: 1,
+          jointStress: "low",
+          isCompound: false,
+          isMainLift: false,
+          isMainLiftEligible: false,
+          movementPatterns: ["flexion", "isolation"],
+          primaryMuscles: ["biceps"],
+          equipment: ["barbell"],
+        },
+        candidate: {
+          id: "cable-curl",
+          name: "Cable Curl",
+          fatigueCost: 2,
+          jointStress: "low",
+          isCompound: false,
+          isMainLiftEligible: false,
+          movementPatterns: ["flexion", "isolation"],
+          primaryMuscles: ["biceps"],
+          equipment: ["cable"],
+        },
+      }),
+    ).toBeNull();
+  });
 });

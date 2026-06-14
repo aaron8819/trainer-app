@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
 import { searchExerciseLibrary } from "@/lib/api/exercise-library";
 import {
+  DEFAULT_RUNTIME_EXERCISE_SWAP_CANDIDATE_LIMIT,
   buildRuntimeExerciseSwapCandidates,
   isSwapEligible,
   resolveRuntimeExerciseSwapSourceLaneContext,
@@ -82,7 +83,8 @@ type PersistedExerciseRecord = {
   }>;
 };
 
-const DEFAULT_SWAP_SUGGESTION_LIMIT = 5;
+export const DEFAULT_SWAP_SUGGESTION_LIMIT =
+  DEFAULT_RUNTIME_EXERCISE_SWAP_CANDIDATE_LIMIT;
 const DEFAULT_SWAP_SEARCH_LIMIT = 8;
 const SWAP_SEARCH_SCAN_MULTIPLIER = 6;
 const MIN_SWAP_SEARCH_SCAN_LIMIT = 24;

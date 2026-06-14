@@ -10,6 +10,7 @@ vi.mock("@/lib/api/workout-context", () => ({
 }));
 
 vi.mock("@/lib/api/runtime-exercise-swap-service", () => ({
+  DEFAULT_SWAP_SUGGESTION_LIMIT: 8,
   resolveRuntimeExerciseSwapCandidates:
     mocks.resolveRuntimeExerciseSwapCandidates,
   applyRuntimeExerciseSwap: mocks.applyRuntimeExerciseSwap,
@@ -65,7 +66,7 @@ describe("/api/workouts/[id]/swap-exercise route", () => {
       workoutExerciseId: "we-1",
       userId: "user-1",
       query: "",
-      limit: 5,
+      limit: 8,
     });
   });
 

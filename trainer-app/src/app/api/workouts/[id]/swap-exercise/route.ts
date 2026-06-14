@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { resolveOwner } from "@/lib/api/workout-context";
 import {
+  DEFAULT_SWAP_SUGGESTION_LIMIT,
   applyRuntimeExerciseSwap,
   isRuntimeExerciseSwapError,
   resolveRuntimeExerciseSwapCandidates,
@@ -48,7 +49,10 @@ export async function GET(
   const searchParams = new URL(request.url).searchParams;
   const workoutExerciseId = searchParams.get("workoutExerciseId");
   const query = searchParams.get("q")?.trim() ?? "";
-  const limit = parseLimit(searchParams.get("limit"), query.length > 0 ? 8 : 5);
+  const limit = parseLimit(
+    searchParams.get("limit"),
+    query.length > 0 ? 8 : DEFAULT_SWAP_SUGGESTION_LIMIT,
+  );
 
   if (!workoutId || !workoutExerciseId) {
     return NextResponse.json(

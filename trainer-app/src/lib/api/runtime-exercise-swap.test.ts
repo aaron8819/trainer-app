@@ -33,6 +33,55 @@ const currentMainLift: RuntimeExerciseSwapProfile = {
   equipment: ["barbell", "bench", "rack"],
 };
 
+const currentRowAnchorMainLift: RuntimeExerciseSwapProfile = {
+  id: "close-grip-seated-cable-row",
+  name: "Close-Grip Seated Cable Row",
+  fatigueCost: 2,
+  jointStress: "low",
+  isMainLift: true,
+  isMainLiftEligible: false,
+  isCompound: true,
+  movementPatterns: ["horizontal_pull"],
+  primaryMuscles: ["lats", "upper back"],
+  secondaryMuscles: ["biceps", "rear delts"],
+  equipment: ["cable", "machine"],
+  sourceLane: {
+    slotId: "upper_a",
+    seedRole: "CORE_COMPOUND",
+    laneId: "row_anchor",
+    laneRole: "anchor",
+    primaryMuscles: ["Upper Back", "Lats"],
+    acceptableExerciseClasses: ["horizontal_pull_support"],
+    preferredExerciseClasses: ["horizontal_pull_support"],
+  },
+};
+
+const chestSupportedDumbbellRow: RuntimeExerciseSwapProfile = {
+  id: "chest-supported-db-row",
+  name: "Chest-Supported Dumbbell Row",
+  fatigueCost: 2,
+  jointStress: "low",
+  isMainLiftEligible: false,
+  isCompound: true,
+  movementPatterns: ["horizontal_pull"],
+  primaryMuscles: ["upper back", "lats"],
+  secondaryMuscles: ["biceps", "rear delts"],
+  equipment: ["dumbbell", "bench"],
+};
+
+const chestSupportedTBarRow: RuntimeExerciseSwapProfile = {
+  id: "chest-supported-t-bar-row",
+  name: "Chest-Supported T-Bar Row",
+  fatigueCost: 2,
+  jointStress: "low",
+  isMainLiftEligible: false,
+  isCompound: true,
+  movementPatterns: ["horizontal_pull"],
+  primaryMuscles: ["upper back", "lats"],
+  secondaryMuscles: ["biceps", "rear delts"],
+  equipment: ["barbell", "machine"],
+};
+
 describe("runtime exercise swap constraints", () => {
   it("marks open unlogged exercises with sufficient metadata as swap eligible", () => {
     expect(
@@ -175,6 +224,38 @@ describe("runtime exercise swap constraints", () => {
     expect(candidates.map((entry) => entry.exerciseId)).toEqual([
       "dumbbell-bench-press",
     ]);
+  });
+
+  it("allows row-anchor core-compound main lifts to use stable loadable row substitutes", () => {
+    const candidates = buildRuntimeExerciseSwapCandidates({
+      current: currentRowAnchorMainLift,
+      candidates: [chestSupportedDumbbellRow, chestSupportedTBarRow],
+    });
+
+    expect(candidates.map((entry) => entry.exerciseId)).toEqual([
+      "chest-supported-t-bar-row",
+      "chest-supported-db-row",
+    ]);
+    expect(candidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          exerciseId: "chest-supported-db-row",
+          sourceV2Class: "horizontal_pull_support",
+          swapFallbackTier: "exact_lane_equivalent",
+          movementPatternMatch: "exact",
+          fatigueDelta: 0,
+          jointStressDelta: 0,
+        }),
+        expect.objectContaining({
+          exerciseId: "chest-supported-t-bar-row",
+          sourceV2Class: "horizontal_pull_support",
+          swapFallbackTier: "exact_lane_equivalent",
+          movementPatternMatch: "exact",
+          fatigueDelta: 0,
+          jointStressDelta: 0,
+        }),
+      ]),
+    );
   });
 
   it("excludes exercises already present in the workout", () => {
@@ -1172,5 +1253,118 @@ describe("runtime exercise swap constraints", () => {
         preserveTopTextSearchMatches: true,
       }),
     ).toEqual([]);
+  });
+
+  it("keeps row-anchor main-lift exception closed outside strict row-equivalent guardrails", () => {
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: {
+          id: "seated-cable-row",
+          name: "Seated Cable Row",
+          fatigueCost: 2,
+          jointStress: "low",
+          isMainLift: true,
+          isMainLiftEligible: false,
+          isCompound: true,
+          movementPatterns: ["horizontal_pull"],
+          primaryMuscles: ["lats", "upper back"],
+          equipment: ["cable", "machine"],
+          sourceLane: {
+            slotId: "upper_a",
+            seedRole: "CORE_COMPOUND",
+            laneId: "row_anchor",
+            laneRole: "anchor",
+            primaryMuscles: ["Upper Back", "Lats"],
+            acceptableExerciseClasses: ["horizontal_pull_support"],
+            preferredExerciseClasses: ["horizontal_pull_support"],
+          },
+        },
+        candidate: {
+          id: "barbell-row",
+          name: "Barbell Row",
+          fatigueCost: 4,
+          jointStress: "high",
+          isMainLiftEligible: true,
+          isCompound: true,
+          movementPatterns: ["horizontal_pull"],
+          primaryMuscles: ["lats", "upper back"],
+          equipment: ["barbell"],
+        },
+      }),
+    ).toBeNull();
+
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: {
+          id: "lat-pulldown",
+          name: "Lat Pulldown",
+          fatigueCost: 2,
+          jointStress: "low",
+          isMainLift: true,
+          isMainLiftEligible: false,
+          isCompound: true,
+          movementPatterns: ["vertical_pull"],
+          primaryMuscles: ["lats"],
+          equipment: ["cable", "machine"],
+          sourceLane: {
+            slotId: "upper_a",
+            seedRole: "CORE_COMPOUND",
+            laneId: "vertical_pull_anchor",
+            laneRole: "anchor",
+            primaryMuscles: ["Lats"],
+            acceptableExerciseClasses: ["vertical_pull"],
+            preferredExerciseClasses: ["vertical_pull"],
+          },
+        },
+        candidate: {
+          id: "barbell-row",
+          name: "Barbell Row",
+          fatigueCost: 4,
+          jointStress: "high",
+          isMainLiftEligible: true,
+          isCompound: true,
+          movementPatterns: ["horizontal_pull"],
+          primaryMuscles: ["lats", "upper back"],
+          equipment: ["barbell"],
+        },
+      }),
+    ).toBeNull();
+
+    expect(
+      evaluateRuntimeExerciseSwapEligibility({
+        current: {
+          id: "machine-shoulder-press",
+          name: "Machine Shoulder Press",
+          fatigueCost: 2,
+          jointStress: "low",
+          isMainLift: true,
+          isMainLiftEligible: false,
+          isCompound: true,
+          movementPatterns: ["vertical_push"],
+          primaryMuscles: ["front delts", "side delts"],
+          equipment: ["machine"],
+          sourceLane: {
+            slotId: "upper_b",
+            seedRole: "CORE_COMPOUND",
+            laneId: "vertical_press",
+            laneRole: "anchor",
+            primaryMuscles: ["Front Delts", "Side Delts"],
+            acceptableExerciseClasses: ["vertical_press"],
+            preferredExerciseClasses: ["vertical_press"],
+          },
+        },
+        candidate: {
+          id: "db-shoulder-press",
+          name: "Dumbbell Shoulder Press",
+          fatigueCost: 2,
+          jointStress: "low",
+          isMainLiftEligible: false,
+          isCompound: true,
+          movementPatterns: ["vertical_push"],
+          primaryMuscles: ["front delts", "side delts"],
+          equipment: ["dumbbell"],
+        },
+      }),
+    ).toBeNull();
   });
 });

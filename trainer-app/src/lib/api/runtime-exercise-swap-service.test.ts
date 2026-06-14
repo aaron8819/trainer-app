@@ -221,6 +221,69 @@ function buildLowerBSlotPlanSeedJson() {
   };
 }
 
+function buildUpperARowSelectionMetadata() {
+  return {
+    sessionDecisionReceipt: {
+      version: 1,
+      cycleContext: {
+        weekInMeso: 1,
+        weekInBlock: 1,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      sessionSlot: {
+        slotId: "upper_a",
+        intent: "UPPER",
+        sequenceIndex: 1,
+        sequenceLength: 4,
+        source: "mesocycle_slot_sequence",
+      },
+      lifecycleVolume: { source: "lifecycle", targets: {} },
+      sorenessSuppressedMuscles: [],
+      deloadDecision: {
+        mode: "none",
+        reason: [],
+        reductionPercent: 0,
+        appliedTo: "none",
+      },
+      readiness: {
+        wasAutoregulated: false,
+        signalAgeHours: null,
+        fatigueScoreOverall: null,
+        intensityScaling: {
+          applied: false,
+          exerciseIds: [],
+          scaledUpCount: 0,
+          scaledDownCount: 0,
+        },
+      },
+      exceptions: [],
+    },
+  };
+}
+
+function buildUpperARowSlotPlanSeedJson() {
+  return {
+    version: 1,
+    source: "v2_materialized_seed",
+    acceptedPlannerIntent: buildV2AcceptedPlannerIntentDto(),
+    slots: [
+      {
+        slotId: "upper_a",
+        exercises: [
+          {
+            exerciseId: "close-grip-seated-cable-row",
+            role: "CORE_COMPOUND",
+            setCount: 3,
+          },
+        ],
+      },
+    ],
+  };
+}
+
 describe("runtime exercise swap service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1337,6 +1400,224 @@ describe("runtime exercise swap service", () => {
       exerciseId: "goblet-squat",
       swapFallbackTier: "useful_fallback_warning",
     });
+  });
+
+  it("surfaces row-anchor main-lift substitutes through default and typed discovery", async () => {
+    const rowWorkout = {
+      id: "workout-1",
+      status: "IN_PROGRESS",
+      selectionMode: "INTENT",
+      sessionIntent: "UPPER",
+      exercises: [{ id: "we-1", exerciseId: "close-grip-seated-cable-row" }],
+      selectionMetadata: buildUpperARowSelectionMetadata(),
+      mesocycle: { slotPlanSeedJson: buildUpperARowSlotPlanSeedJson() },
+    };
+    const rowWorkoutExercise = {
+      id: "we-1",
+      workoutId: "workout-1",
+      exerciseId: "close-grip-seated-cable-row",
+      section: "MAIN",
+      isMainLift: true,
+      exercise: {
+        id: "close-grip-seated-cable-row",
+        name: "Close-Grip Seated Cable Row",
+        fatigueCost: 2,
+        jointStress: "LOW",
+        isMainLiftEligible: false,
+        isCompound: true,
+        movementPatterns: ["HORIZONTAL_PULL"],
+        exerciseEquipment: [
+          { equipment: { type: "CABLE" } },
+          { equipment: { type: "MACHINE" } },
+        ],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Upper Back" } },
+          { role: "PRIMARY", muscle: { name: "Lats" } },
+          { role: "SECONDARY", muscle: { name: "Biceps" } },
+          { role: "SECONDARY", muscle: { name: "Rear Delts" } },
+        ],
+      },
+      sets: [
+        {
+          id: "set-1",
+          setIndex: 1,
+          targetRpe: 8,
+          restSeconds: 120,
+          logs: [],
+        },
+      ],
+    };
+    const chestSupportedDumbbellRow = {
+      id: "chest-supported-db-row",
+      name: "Chest-Supported Dumbbell Row",
+      fatigueCost: 2,
+      jointStress: "LOW",
+      isMainLiftEligible: false,
+      isCompound: true,
+      repRangeMin: 8,
+      repRangeMax: 12,
+      movementPatterns: ["HORIZONTAL_PULL"],
+      exerciseEquipment: [
+        { equipment: { type: "DUMBBELL" } },
+        { equipment: { type: "BENCH" } },
+      ],
+      exerciseMuscles: [
+        { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        { role: "PRIMARY", muscle: { name: "Lats" } },
+        { role: "SECONDARY", muscle: { name: "Biceps" } },
+        { role: "SECONDARY", muscle: { name: "Rear Delts" } },
+      ],
+    };
+    const chestSupportedTBarRow = {
+      id: "chest-supported-t-bar-row",
+      name: "Chest-Supported T-Bar Row",
+      fatigueCost: 2,
+      jointStress: "LOW",
+      isMainLiftEligible: false,
+      isCompound: true,
+      repRangeMin: 8,
+      repRangeMax: 12,
+      movementPatterns: ["HORIZONTAL_PULL"],
+      exerciseEquipment: [
+        { equipment: { type: "BARBELL" } },
+        { equipment: { type: "MACHINE" } },
+      ],
+      exerciseMuscles: [
+        { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        { role: "PRIMARY", muscle: { name: "Lats" } },
+        { role: "SECONDARY", muscle: { name: "Biceps" } },
+        { role: "SECONDARY", muscle: { name: "Rear Delts" } },
+      ],
+    };
+    const barbellRow = {
+      id: "barbell-row",
+      name: "Barbell Row",
+      fatigueCost: 4,
+      jointStress: "HIGH",
+      isMainLiftEligible: true,
+      isCompound: true,
+      repRangeMin: 6,
+      repRangeMax: 10,
+      movementPatterns: ["HORIZONTAL_PULL"],
+      exerciseEquipment: [{ equipment: { type: "BARBELL" } }],
+      exerciseMuscles: [
+        { role: "PRIMARY", muscle: { name: "Upper Back" } },
+        { role: "PRIMARY", muscle: { name: "Lats" } },
+      ],
+    };
+    const mockRowContextOnce = () => {
+      mocks.workoutFindFirst.mockResolvedValueOnce(rowWorkout);
+      mocks.workoutExerciseFindFirst.mockResolvedValueOnce(rowWorkoutExercise);
+    };
+
+    mockRowContextOnce();
+    mocks.exerciseFindMany.mockResolvedValueOnce([
+      rowWorkoutExercise.exercise,
+      chestSupportedDumbbellRow,
+      chestSupportedTBarRow,
+      barbellRow,
+    ]);
+
+    const defaultCandidates = await resolveRuntimeExerciseSwapCandidates({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      userId: "user-1",
+    });
+
+    expect(defaultCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          exerciseId: "chest-supported-db-row",
+          exerciseName: "Chest-Supported Dumbbell Row",
+          sourceLaneRole: "anchor",
+          sourceV2Class: "horizontal_pull_support",
+          swapFallbackTier: "exact_lane_equivalent",
+        }),
+        expect.objectContaining({
+          exerciseId: "chest-supported-t-bar-row",
+          exerciseName: "Chest-Supported T-Bar Row",
+          sourceLaneRole: "anchor",
+          sourceV2Class: "horizontal_pull_support",
+          swapFallbackTier: "exact_lane_equivalent",
+        }),
+      ]),
+    );
+    expect(
+      defaultCandidates.find(
+        (candidate) => candidate.exerciseId === "chest-supported-db-row",
+      )?.caution,
+    ).toBeUndefined();
+    expect(
+      defaultCandidates.find(
+        (candidate) => candidate.exerciseId === "chest-supported-t-bar-row",
+      )?.caution,
+    ).toBeUndefined();
+    expect(defaultCandidates.map((candidate) => candidate.exerciseId)).not.toContain(
+      "barbell-row",
+    );
+
+    mockRowContextOnce();
+    mocks.searchExerciseLibrary.mockResolvedValueOnce([
+      {
+        id: "chest-supported-db-row",
+        name: "Chest-Supported Dumbbell Row",
+        primaryMuscles: ["Upper Back", "Lats"],
+        equipment: ["DUMBBELL", "BENCH"],
+      },
+      {
+        id: "chest-supported-t-bar-row",
+        name: "Chest-Supported T-Bar Row",
+        primaryMuscles: ["Upper Back", "Lats"],
+        equipment: ["BARBELL", "MACHINE"],
+      },
+      {
+        id: "barbell-row",
+        name: "Barbell Row",
+        primaryMuscles: ["Upper Back", "Lats"],
+        equipment: ["BARBELL"],
+      },
+    ]);
+    mocks.exerciseFindMany.mockResolvedValueOnce([
+      chestSupportedDumbbellRow,
+      chestSupportedTBarRow,
+      barbellRow,
+    ]);
+
+    const typedCandidates = await resolveRuntimeExerciseSwapCandidates({
+      workoutId: "workout-1",
+      workoutExerciseId: "we-1",
+      userId: "user-1",
+      query: "chest supported row",
+      limit: 8,
+    });
+
+    expect(mocks.searchExerciseLibrary).toHaveBeenCalledWith(
+      "chest supported row",
+      48,
+    );
+    expect(typedCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          exerciseId: "chest-supported-db-row",
+        }),
+        expect.objectContaining({
+          exerciseId: "chest-supported-t-bar-row",
+        }),
+      ]),
+    );
+    expect(
+      typedCandidates.find(
+        (candidate) => candidate.exerciseId === "chest-supported-db-row",
+      )?.caution,
+    ).toBeUndefined();
+    expect(
+      typedCandidates.find(
+        (candidate) => candidate.exerciseId === "chest-supported-t-bar-row",
+      )?.caution,
+    ).toBeUndefined();
+    expect(typedCandidates.map((candidate) => candidate.exerciseId)).not.toContain(
+      "barbell-row",
+    );
   });
 
   it("keeps top typed-search incline dumbbell press matches visible after swap re-ranking", async () => {

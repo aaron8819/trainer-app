@@ -776,6 +776,45 @@ function isEquivalentVerticalPullBodyweightException(input: {
   );
 }
 
+function isRowAnchorMainLiftSubstituteException(input: {
+  current: RuntimeExerciseSwapProfile;
+  candidate: RuntimeExerciseSwapProfile;
+  currentPatterns: string[];
+  candidatePatterns: string[];
+  fatigueDelta: number;
+  jointStressDelta: number;
+}): boolean {
+  if (input.current.isMainLift !== true) {
+    return false;
+  }
+  if (
+    input.current.sourceLane?.seedRole &&
+    input.current.sourceLane.seedRole !== "CORE_COMPOUND"
+  ) {
+    return false;
+  }
+
+  const laneId = input.current.sourceLane?.laneId;
+  const sourceAndCandidateAreRows =
+    hasV2ExerciseClass(input.current, "horizontal_pull_support") &&
+    hasV2ExerciseClass(input.candidate, "horizontal_pull_support");
+  const rowAnchorContext = laneId
+    ? laneId === "row_anchor"
+    : sourceAndCandidateAreRows;
+  if (!rowAnchorContext || !sourceAndCandidateAreRows) {
+    return false;
+  }
+
+  return (
+    input.currentPatterns.includes("horizontal_pull") &&
+    input.candidatePatterns.includes("horizontal_pull") &&
+    input.candidate.isCompound === true &&
+    !input.candidatePatterns.includes("isolation") &&
+    input.fatigueDelta <= 0 &&
+    input.jointStressDelta <= 0
+  );
+}
+
 type SourceLanePolicy =
   V2AcceptedPlannerIntentDto["weekPolicies"][number]["slots"][number]["lanes"][number];
 
@@ -942,20 +981,32 @@ export function evaluateRuntimeExerciseSwapEligibility(input: {
     return null;
   }
 
-  if (
-    input.current.isMainLift &&
-    (!(input.candidate.isMainLiftEligible ?? false) ||
-      candidatePatterns.includes("isolation"))
-  ) {
-    return null;
-  }
-
   const currentJointStress = resolveJointStressDemand(input.current);
   const candidateJointStress = resolveJointStressDemand(input.candidate);
   if (currentJointStress == null || candidateJointStress == null) {
     return null;
   }
   const jointStressDelta = candidateJointStress - currentJointStress;
+
+  const fatigueDelta =
+    (input.candidate.fatigueCost ?? 3) - (input.current.fatigueCost ?? 3);
+
+  if (
+    input.current.isMainLift &&
+    (!(input.candidate.isMainLiftEligible ?? false) ||
+      candidatePatterns.includes("isolation")) &&
+    !isRowAnchorMainLiftSubstituteException({
+      current: input.current,
+      candidate: input.candidate,
+      currentPatterns,
+      candidatePatterns,
+      fatigueDelta,
+      jointStressDelta,
+    })
+  ) {
+    return null;
+  }
+
   if (
     jointStressDelta > 0 &&
     !isEquivalentVerticalPullBodyweightException({
@@ -967,8 +1018,6 @@ export function evaluateRuntimeExerciseSwapEligibility(input: {
     return null;
   }
 
-  const fatigueDelta =
-    (input.candidate.fatigueCost ?? 3) - (input.current.fatigueCost ?? 3);
   if (
     fatigueDelta > 0 &&
     !isEquivalentCalfIsolationFatigueException({

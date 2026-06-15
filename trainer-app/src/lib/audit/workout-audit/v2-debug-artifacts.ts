@@ -2452,8 +2452,16 @@ function buildIndexSummary(input: {
       promotionCandidateEvaluatorSummary?.stoppedCandidateCount ?? null,
     v2PromotionCandidateEvaluatorWatch:
       promotionCandidateEvaluatorSummary?.watchCandidateCount ?? null,
+    v2PromotionCandidateEvaluatorActionableMissingProof:
+      promotionCandidateEvaluatorSummary?.actionableMissingProofCandidateCount ??
+      null,
+    v2PromotionCandidateEvaluatorNoAction:
+      promotionCandidateEvaluatorSummary?.noActionCandidateCount ?? null,
     v2PromotionCandidateEvaluatorRecommendation:
       promotionCandidateRecommendation?.decision ?? "not_available",
+    v2PromotionCandidateEvaluatorNextProjection:
+      promotionCandidateEvaluatorSummary?.nextProjectionRecommendation ??
+      "not_available",
     v2PromotionCandidateEvaluatorTopCandidate:
       promotionCandidateRecommendation?.candidateId ?? null,
     v2SlotWeekAllocationAcceptanceDecision:

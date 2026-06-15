@@ -131,7 +131,9 @@ function makeScoreboard(
   } as unknown as MesocycleExplainPlannerOnlyNoRepair["repairPromotionScoreboard"];
 }
 
-function makeBenchmark(): MesocycleExplainPlannerOnlyNoRepair["v2PlanQualityBenchmark"] {
+function makeBenchmark(): NonNullable<
+  MesocycleExplainPlannerOnlyNoRepair["v2PlanQualityBenchmark"]
+> {
   return {
     version: 1,
     source: "v2_candidate_quality_benchmark",
@@ -235,7 +237,9 @@ function makeBenchmark(): MesocycleExplainPlannerOnlyNoRepair["v2PlanQualityBenc
       acceptanceThresholdChanged: false,
       persistenceChanged: false,
     },
-  } as unknown as MesocycleExplainPlannerOnlyNoRepair["v2PlanQualityBenchmark"];
+  } as unknown as NonNullable<
+    MesocycleExplainPlannerOnlyNoRepair["v2PlanQualityBenchmark"]
+  >;
 }
 
 function makeSideDeltsProjection(
@@ -490,10 +494,17 @@ describe("V2 promotion candidate evaluator", () => {
       }),
     );
 
-    expect(evaluator.status).toBe("none_ready");
+    expect(evaluator.status).toBe("no_action_roi_cutoff");
     expect(evaluator.recommendation).toMatchObject({
-      decision: "none_ready",
+      decision: "no_next_projection_recommended",
       candidateId: null,
+      nextSafeAction: "no_next_projection_recommended",
+    });
+    expect(evaluator.summary).toMatchObject({
+      actionableMissingProofCandidateCount: 0,
+      noActionCandidateCount: 5,
+      watchOnlyBenchmarkCandidateCount: 1,
+      nextProjectionRecommendation: "no_next_projection_recommended",
     });
     expect(evaluator.stopReasonCounts).toMatchObject({
       already_promoted_baseline: 1,
@@ -663,11 +674,15 @@ describe("V2 promotion candidate evaluator", () => {
       },
     );
 
-    expect(evaluator.status).toBe("blocked_by_missing_evidence");
+    expect(evaluator.status).toBe("blocked_actionable_missing_proof");
     expect(evaluator.recommendation).toMatchObject({
-      decision: "collect_more_evidence",
+      decision: "collect_actionable_missing_proof",
       candidateId: null,
+      nextSafeAction: "collect_actionable_missing_proof",
     });
+    expect(evaluator.summary.nextProjectionRecommendation).toBe(
+      "collect_actionable_missing_proof",
+    );
     expect(evaluator.candidates[0]).toMatchObject({
       candidateId: "fresh_preselection_lower_b_hamstrings",
       sourceSurface: "fresh_owner_specific_inventory",
@@ -717,8 +732,11 @@ describe("V2 promotion candidate evaluator", () => {
       },
     );
 
-    expect(evaluator.status).toBe("none_ready");
+    expect(evaluator.status).toBe("no_action_roi_cutoff");
     expect(evaluator.summary.evaluatedCandidateCount).toBe(1);
+    expect(evaluator.summary.nextProjectionRecommendation).toBe(
+      "no_next_projection_recommended",
+    );
     expect(evaluator.stopReasonCounts).toMatchObject({
       measured_no_impact: 1,
       missing_acceptance_or_watch_clearance: 1,
@@ -799,11 +817,42 @@ describe("V2 promotion candidate evaluator", () => {
       candidateId: "fresh_strategy_setdistributionintent_chest_redistribute_or_cap",
       sourceSurface: "fresh_owner_specific_inventory",
       ownerSeam: "SetDistributionIntent",
-      status: "blocked",
-      stopReasons: [
-        "missing_bounded_delta",
-        "missing_acceptance_or_watch_clearance",
-      ],
+      status: "stopped",
+      stopReasons: ["too_broad_or_low_roi"],
+      nextSafeAction: "no_next_projection_recommended_roi_cutoff",
+    });
+  });
+
+  it("keeps benchmark warnings as watch-only when no row deserves projection", () => {
+    const benchmark = makeBenchmark();
+    const evaluator = buildV2PromotionCandidateEvaluator(
+      makeNoRepair({
+        v2PlanQualityBenchmark: {
+          ...benchmark,
+          gates: benchmark.gates.filter(
+            (gate) => gate.gate === "duplicate_concentration_risk",
+          ),
+        },
+      }),
+    );
+
+    expect(evaluator.status).toBe("watch_only_benchmark_item");
+    expect(evaluator.recommendation).toMatchObject({
+      decision: "keep_watch_only_benchmark_items",
+      candidateId: null,
+      nextSafeAction: "keep_watch_only_no_projection_recommended",
+    });
+    expect(evaluator.summary).toMatchObject({
+      readyCandidateCount: 0,
+      actionableMissingProofCandidateCount: 0,
+      noActionCandidateCount: 0,
+      watchOnlyBenchmarkCandidateCount: 1,
+      nextProjectionRecommendation: "watch_only_no_projection_recommended",
+    });
+    expect(evaluator.candidates[0]).toMatchObject({
+      candidateId: "duplicate_class_family_distinctness",
+      status: "watch",
+      stopReasons: ["missing_bounded_delta"],
     });
   });
 });

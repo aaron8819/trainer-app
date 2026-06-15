@@ -76,6 +76,7 @@ function statusForCandidate(input: {
     input.stopReasons.includes("stale_noise") ||
     input.stopReasons.includes("diagnostic_artifact") ||
     input.stopReasons.includes("already_promoted_baseline") ||
+    input.stopReasons.includes("too_broad_or_low_roi") ||
     input.stopReasons.includes("materializer_regression")
   ) {
     return "stopped";
@@ -418,9 +419,15 @@ function buildStrategyInventoryCandidates(
     .filter((row) => !excludedCandidateIds.has(strategyInventoryCandidateId(row)))
     .map((row) => {
       const candidateId = strategyInventoryCandidateId(row);
+      const actionableMissingProof =
+        row.readiness === "candidate_for_read_only_projection";
       const stopReasons: V2PromotionCandidateStopReason[] = [
-        "missing_bounded_delta",
-        "missing_acceptance_or_watch_clearance",
+        ...(actionableMissingProof
+          ? ([
+              "missing_bounded_delta",
+              "missing_acceptance_or_watch_clearance",
+            ] as const)
+          : (["too_broad_or_low_roi"] as const)),
         ...noConsumptionStopReasons({
           consumedByProduction: false,
           consumedByDemandOrMaterializer:
@@ -433,15 +440,13 @@ function buildStrategyInventoryCandidates(
         ownerSeam: row.proposedOwnerSeam,
         sourceSurface: "fresh_owner_specific_inventory",
         priorProbe:
-          row.readiness === "candidate_for_read_only_projection"
-            ? "blocked"
-            : "unmeasured",
+          actionableMissingProof ? "blocked" : "unmeasured",
         stopReasons,
         score: scoreInput({
           sourceAttributionQuality: 14,
           implementationScope:
             row.suggestedFutureActionType === "protect_floor" ? 10 : 8,
-          priorProbeAdjustment: -10,
+          priorProbeAdjustment: actionableMissingProof ? -10 : -30,
         }),
         evidence: uniqueSorted([
           `source=${row.evidenceSource}`,
@@ -458,10 +463,16 @@ function buildStrategyInventoryCandidates(
         ]),
         missingProof: uniqueSorted([
           ...row.requiredProofBeforeBehavior,
-          "owner_specific_bounded_delta_projection",
-          "acceptance_watch_clearance",
+          ...(actionableMissingProof
+            ? [
+                "owner_specific_bounded_delta_projection",
+                "acceptance_watch_clearance",
+              ]
+            : []),
         ]),
-        nextSafeAction: "one_bounded_owner_specific_projection_or_pivot",
+        nextSafeAction: actionableMissingProof
+          ? "one_bounded_owner_specific_projection_or_pivot"
+          : "no_next_projection_recommended_roi_cutoff",
       });
     });
 }
@@ -703,16 +714,46 @@ export function buildV2PromotionCandidateEvaluator(
   const watchCandidates = candidates.filter((row) => row.status === "watch");
   const blockedCandidates = candidates.filter((row) => row.status === "blocked");
   const topCandidate = readyCandidates[0] ?? null;
+  const noActionCandidates = stoppedCandidates;
+  const hasActionableMissingProof = blockedCandidates.length > 0;
+  const hasWatchOnlyBenchmarkItems = watchCandidates.length > 0;
   const decision = topCandidate
     ? "recommend_next_safe_slice"
-    : blockedCandidates.length > 0
-      ? "collect_more_evidence"
-      : "none_ready";
+    : hasActionableMissingProof
+      ? "collect_actionable_missing_proof"
+      : hasWatchOnlyBenchmarkItems && noActionCandidates.length === 0
+        ? "keep_watch_only_benchmark_items"
+        : "no_next_projection_recommended";
+  const status = topCandidate
+    ? "candidate_ready"
+    : hasActionableMissingProof
+      ? "blocked_actionable_missing_proof"
+      : hasWatchOnlyBenchmarkItems && noActionCandidates.length === 0
+        ? "watch_only_benchmark_item"
+        : "no_action_roi_cutoff";
+  const nextSafeAction =
+    topCandidate?.nextSafeAction ??
+    (decision === "collect_actionable_missing_proof"
+      ? "collect_actionable_missing_proof"
+      : decision === "keep_watch_only_benchmark_items"
+        ? "keep_watch_only_no_projection_recommended"
+        : "no_next_projection_recommended");
+  const nextProjectionRecommendation = topCandidate
+    ? "run_next_safe_slice"
+    : decision === "collect_actionable_missing_proof"
+      ? "collect_actionable_missing_proof"
+      : decision === "keep_watch_only_benchmark_items"
+        ? "watch_only_no_projection_recommended"
+        : "no_next_projection_recommended";
   const reason = topCandidate
     ? "candidate has measured owner-specific positive impact, non-regression, source attribution, and non-consumption proof"
     : candidates.length === 0
-      ? "no promotion candidates were available in the current read-only diagnostics"
-      : "no candidate has measured owner-specific positive impact with bounded delta, non-regression, acceptance/watch clearance, and seed/runtime/receipt/DB non-consumption";
+      ? "no promotion candidates were available in the current read-only diagnostics; no next projection is recommended"
+      : decision === "collect_actionable_missing_proof"
+        ? "at least one bounded owner-specific row has plausible positive impact but still lacks projection, acceptance/watch, or non-consumption proof"
+        : decision === "keep_watch_only_benchmark_items"
+          ? "remaining benchmark items are watch-only and do not justify a new projection"
+          : "remaining rows are measured no-impact, stale/readout, safety-net repair, diagnostic-only, or too broad/low ROI; no next projection is recommended";
 
   return {
     version: 1,
@@ -722,23 +763,19 @@ export function buildV2PromotionCandidateEvaluator(
     consumedByProduction: false,
     consumedByDemandOrMaterializer: false,
     repairedProjectionUsedAs: "evidence_only_not_target_policy",
-    status: topCandidate
-      ? "candidate_ready"
-      : blockedCandidates.length > 0
-        ? "blocked_by_missing_evidence"
-        : "none_ready",
+    status,
     summary: {
       evaluatedCandidateCount: candidates.length,
       readyCandidateCount: readyCandidates.length,
       stoppedCandidateCount: stoppedCandidates.length,
       watchCandidateCount: watchCandidates.length,
+      actionableMissingProofCandidateCount: blockedCandidates.length,
+      noActionCandidateCount: noActionCandidates.length,
+      watchOnlyBenchmarkCandidateCount: watchCandidates.length,
       topCandidateId: topCandidate?.candidateId ?? null,
       topRecommendation: decision,
-      nextSafeAction:
-        topCandidate?.nextSafeAction ??
-        (decision === "collect_more_evidence"
-          ? "collect_missing_bounded_delta_or_acceptance_evidence"
-          : "pivot_to_new_owner_specific_candidate_inventory"),
+      nextSafeAction,
+      nextProjectionRecommendation,
     },
     recommendation: {
       decision,
@@ -746,11 +783,7 @@ export function buildV2PromotionCandidateEvaluator(
       label: topCandidate?.label ?? "none ready",
       ownerSeam: topCandidate?.ownerSeam ?? null,
       reason,
-      nextSafeAction:
-        topCandidate?.nextSafeAction ??
-        (decision === "collect_more_evidence"
-          ? "collect_missing_bounded_delta_or_acceptance_evidence"
-          : "pivot_to_new_owner_specific_candidate_inventory"),
+      nextSafeAction,
       score: topCandidate?.score.total ?? null,
     },
     candidates,

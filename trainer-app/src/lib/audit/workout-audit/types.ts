@@ -2194,6 +2194,7 @@ export type V2PromotionCandidateStopReason =
   | "combined_shadow_only"
   | "repair_only_evidence"
   | "missing_bounded_delta"
+  | "too_broad_or_low_roi"
   | "materializer_regression"
   | "already_promoted_baseline"
   | "missing_acceptance_or_watch_clearance"
@@ -2207,24 +2208,44 @@ export type V2PromotionCandidateEvaluator = {
   consumedByProduction: false;
   consumedByDemandOrMaterializer: false;
   repairedProjectionUsedAs: "evidence_only_not_target_policy";
-  status: "candidate_ready" | "none_ready" | "blocked_by_missing_evidence";
+  status:
+    | "candidate_ready"
+    | "blocked_actionable_missing_proof"
+    | "no_action_roi_cutoff"
+    | "watch_only_benchmark_item"
+    | "none_ready"
+    | "blocked_by_missing_evidence";
   summary: {
     evaluatedCandidateCount: number;
     readyCandidateCount: number;
     stoppedCandidateCount: number;
     watchCandidateCount: number;
+    actionableMissingProofCandidateCount?: number;
+    noActionCandidateCount?: number;
+    watchOnlyBenchmarkCandidateCount?: number;
     topCandidateId: string | null;
     topRecommendation:
       | "recommend_next_safe_slice"
       | "none_ready"
-      | "collect_more_evidence";
+      | "collect_more_evidence"
+      | "collect_actionable_missing_proof"
+      | "no_next_projection_recommended"
+      | "keep_watch_only_benchmark_items";
     nextSafeAction: string;
+    nextProjectionRecommendation?:
+      | "run_next_safe_slice"
+      | "collect_actionable_missing_proof"
+      | "no_next_projection_recommended"
+      | "watch_only_no_projection_recommended";
   };
   recommendation: {
     decision:
       | "recommend_next_safe_slice"
       | "none_ready"
-      | "collect_more_evidence";
+      | "collect_more_evidence"
+      | "collect_actionable_missing_proof"
+      | "no_next_projection_recommended"
+      | "keep_watch_only_benchmark_items";
     candidateId: string | null;
     label: string;
     ownerSeam: string | null;

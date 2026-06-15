@@ -19,6 +19,7 @@ const mapCheckInMock = vi.fn();
 const applyLoadsMock = vi.fn();
 const loadPrescriptionAnchorHistoryForExercisesMock = vi.fn();
 const mergePrescriptionAnchorHistoryMock = vi.fn();
+const mergePrescriptionAnchorHistoryWithEvidenceMock = vi.fn();
 const loadActiveMesocycleMock = vi.fn();
 const loadExerciseExposureMock = vi.fn();
 const getCurrentMesoWeekMock = vi.fn();
@@ -40,6 +41,8 @@ vi.mock("@/lib/api/workout-context", () => ({
     loadPrescriptionAnchorHistoryForExercisesMock(...args),
   mergePrescriptionAnchorHistory: (...args: unknown[]) =>
     mergePrescriptionAnchorHistoryMock(...args),
+  mergePrescriptionAnchorHistoryWithEvidence: (...args: unknown[]) =>
+    mergePrescriptionAnchorHistoryWithEvidenceMock(...args),
 }));
 
 vi.mock("@/lib/api/exercise-exposure", () => ({
@@ -94,6 +97,12 @@ describe("selection correctness", () => {
     loadPrescriptionAnchorHistoryForExercisesMock.mockResolvedValue([]);
     mergePrescriptionAnchorHistoryMock.mockImplementation(
       (history: unknown[], anchorHistory: unknown[]) => [...history, ...anchorHistory]
+    );
+    mergePrescriptionAnchorHistoryWithEvidenceMock.mockImplementation(
+      (history: unknown[], anchorHistory: unknown[]) => ({
+        history: [...history, ...anchorHistory],
+        selectedAnchorEvidence: {},
+      })
     );
     loadActiveMesocycleMock.mockResolvedValue({
       id: "meso-1",

@@ -74,6 +74,7 @@ export type ApplyLoadsOptions = {
   sessionIntent?: SplitDay;
   accumulationSessionsCompleted?: number;
   isFirstSessionInMesocycle?: boolean;
+  selectedAnchorEvidence?: Record<string, SelectedAnchorLoadEvidence>;
 };
 
 export type ApplyLoadsResolvedLoadSource =
@@ -82,6 +83,20 @@ export type ApplyLoadsResolvedLoadSource =
   | "estimate"
   | "existing_target_load"
   | "runtime_added_same_exercise_calibration_anchor";
+
+export type SelectedAnchorLoadEvidence = {
+  selectedExerciseId: string;
+  normalHistoryHadUsableExactEvidence: boolean;
+  targetedAnchorBackfilled: boolean;
+  backfillReason: "exact_anchor_outside_general_window";
+  skippedOrUnperformedRowsIgnored: number;
+  anchorSourceSummary: {
+    source: "targeted_selected_exercise_history";
+    sessionCount: number;
+    setCount: number;
+    latestDate: string | null;
+  };
+};
 
 export type ApplyLoadsAudit = {
   progressionTraces: Record<string, ProgressionDecisionTrace>;
@@ -94,6 +109,7 @@ export type ApplyLoadsAudit = {
       resolvedSetLoads: number[];
     }
   >;
+  selectedAnchorEvidence?: Record<string, SelectedAnchorLoadEvidence>;
 };
 
 type LoadEquipment = LoadCalibrationEquipment;
@@ -365,6 +381,9 @@ export function applyLoadsWithAudit(
     audit: {
       progressionTraces,
       resolvedLoads,
+      ...(Object.keys(options.selectedAnchorEvidence ?? {}).length > 0
+        ? { selectedAnchorEvidence: options.selectedAnchorEvidence }
+        : {}),
     },
   };
 }

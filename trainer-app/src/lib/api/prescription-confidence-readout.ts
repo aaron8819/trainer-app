@@ -97,7 +97,10 @@ export function classifyTargetEffortLoadMismatch(
 
 export function buildPrescriptionConfidenceReadouts(input: {
   workout: WorkoutPlan;
-  loadAudit?: Pick<ApplyLoadsAudit, "progressionTraces" | "resolvedLoads">;
+  loadAudit?: Pick<
+    ApplyLoadsAudit,
+    "progressionTraces" | "resolvedLoads" | "selectedAnchorEvidence"
+  >;
 }): PrescriptionConfidenceReadout[] {
   return listWorkoutPlanExercisesInOrder(input.workout).flatMap(
     ({ section, exercise }) => {
@@ -114,6 +117,8 @@ export function buildPrescriptionConfidenceReadouts(input: {
         targetLoad: target.load,
         source: resolvedLoad?.source,
       });
+      const selectedAnchorEvidence =
+        input.loadAudit?.selectedAnchorEvidence?.[exerciseId];
       const mismatch = classifyTargetEffortLoadMismatch({ target, trace });
       const confidence = resolveConfidence({ trace, loadSource, mismatch });
       const caution = resolveCaution({ confidence, loadSource, mismatch });
@@ -134,6 +139,14 @@ export function buildPrescriptionConfidenceReadouts(input: {
           targetLoad: target.load,
           cautionReason: caution.reason,
         }),
+        ...(selectedAnchorEvidence
+          ? {
+              selectedAnchorEvidence: {
+                ...selectedAnchorEvidence,
+                selectedExerciseName: exercise.exercise.name,
+              },
+            }
+          : {}),
       }];
     }
   );

@@ -1,4 +1,7 @@
-import { applyLoads as applyLoadsEngine } from "@/lib/engine/apply-loads";
+import {
+  applyLoads as applyLoadsEngine,
+  type SelectedAnchorLoadEvidence,
+} from "@/lib/engine/apply-loads";
 import { resolveBaseSelectionModeConfidence } from "@/lib/engine/history";
 import { getExplicitStimulusProfileForExercise } from "@/lib/engine/stimulus";
 import type { PeriodizationModifiers } from "@/lib/engine/rules";
@@ -204,12 +207,28 @@ export function mergePrescriptionAnchorHistory(
   anchorHistory: WorkoutHistoryEntry[],
   selectedExerciseIds: string[]
 ): WorkoutHistoryEntry[] {
+  return mergePrescriptionAnchorHistoryWithEvidence(
+    history,
+    anchorHistory,
+    selectedExerciseIds
+  ).history;
+}
+
+export function mergePrescriptionAnchorHistoryWithEvidence(
+  history: WorkoutHistoryEntry[],
+  anchorHistory: WorkoutHistoryEntry[],
+  selectedExerciseIds: string[]
+): {
+  history: WorkoutHistoryEntry[];
+  selectedAnchorEvidence: Record<string, SelectedAnchorLoadEvidence>;
+} {
   const selected = new Set(selectedExerciseIds);
   if (selected.size === 0 || anchorHistory.length === 0) {
-    return history;
+    return { history, selectedAnchorEvidence: {} };
   }
 
   const alreadyHasUsableExactHistory = new Set<string>();
+  const ignoredRowsByExerciseId = countIgnoredSelectedAnchorRows(history, selected);
   for (const entry of history) {
     if (entry.progressionEligible === false || entry.performanceEligible === false) {
       continue;
@@ -226,7 +245,14 @@ export function mergePrescriptionAnchorHistory(
     Array.from(selected).filter((exerciseId) => !alreadyHasUsableExactHistory.has(exerciseId))
   );
 
-  return additions.length > 0 ? [...history, ...additions] : history;
+  if (additions.length === 0) {
+    return { history, selectedAnchorEvidence: {} };
+  }
+
+  return {
+    history: [...history, ...additions],
+    selectedAnchorEvidence: buildSelectedAnchorEvidence(additions, ignoredRowsByExerciseId),
+  };
 }
 
 function filterPrescriptionAnchorHistory(
@@ -246,6 +272,77 @@ function filterPrescriptionAnchorHistory(
     }
     return [{ ...entry, exercises, calibrationExercises: undefined }];
   });
+}
+
+function countIgnoredSelectedAnchorRows(
+  history: WorkoutHistoryEntry[],
+  selectedExerciseIds: Set<string>
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const entry of history) {
+    const entryIgnored =
+      entry.progressionEligible === false || entry.performanceEligible === false;
+    for (const exercise of entry.exercises) {
+      if (!selectedExerciseIds.has(exercise.exerciseId)) {
+        continue;
+      }
+      if (entryIgnored || exercise.sets.length === 0) {
+        counts.set(exercise.exerciseId, (counts.get(exercise.exerciseId) ?? 0) + 1);
+      }
+    }
+  }
+  return counts;
+}
+
+function buildSelectedAnchorEvidence(
+  additions: WorkoutHistoryEntry[],
+  ignoredRowsByExerciseId: Map<string, number>
+): Record<string, SelectedAnchorLoadEvidence> {
+  const summaries = new Map<
+    string,
+    SelectedAnchorLoadEvidence["anchorSourceSummary"]
+  >();
+
+  for (const entry of additions) {
+    const contributedExerciseIds = new Set<string>();
+    for (const exercise of entry.exercises) {
+      if (exercise.sets.length === 0) {
+        continue;
+      }
+      const current = summaries.get(exercise.exerciseId) ?? {
+        source: "targeted_selected_exercise_history" as const,
+        sessionCount: 0,
+        setCount: 0,
+        latestDate: null,
+      };
+      current.setCount += exercise.sets.length;
+      if (!current.latestDate || entry.date > current.latestDate) {
+        current.latestDate = entry.date;
+      }
+      summaries.set(exercise.exerciseId, current);
+      contributedExerciseIds.add(exercise.exerciseId);
+    }
+    for (const exerciseId of contributedExerciseIds) {
+      const current = summaries.get(exerciseId);
+      if (current) {
+        current.sessionCount += 1;
+      }
+    }
+  }
+
+  return Object.fromEntries(
+    Array.from(summaries.entries()).map(([exerciseId, summary]) => [
+      exerciseId,
+      {
+        selectedExerciseId: exerciseId,
+        normalHistoryHadUsableExactEvidence: false,
+        targetedAnchorBackfilled: true,
+        backfillReason: "exact_anchor_outside_general_window",
+        skippedOrUnperformedRowsIgnored: ignoredRowsByExerciseId.get(exerciseId) ?? 0,
+        anchorSourceSummary: summary,
+      },
+    ])
+  );
 }
 
 export function mapProfile(userId: string, profile: Profile, injuries: Injury[]): UserProfile {

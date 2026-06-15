@@ -30,6 +30,7 @@ const mapCheckInMock = vi.fn();
 const applyLoadsMock = vi.fn();
 const loadPrescriptionAnchorHistoryForExercisesMock = vi.fn();
 const mergePrescriptionAnchorHistoryMock = vi.fn();
+const mergePrescriptionAnchorHistoryWithEvidenceMock = vi.fn();
 const loadActiveMesocycleMock = vi.fn();
 const loadExerciseExposureMock = vi.fn();
 const getCurrentMesoWeekMock = vi.fn();
@@ -55,6 +56,8 @@ vi.mock("./workout-context", () => ({
     loadPrescriptionAnchorHistoryForExercisesMock(...args),
   mergePrescriptionAnchorHistory: (...args: unknown[]) =>
     mergePrescriptionAnchorHistoryMock(...args),
+  mergePrescriptionAnchorHistoryWithEvidence: (...args: unknown[]) =>
+    mergePrescriptionAnchorHistoryWithEvidenceMock(...args),
 }));
 
 vi.mock("./exercise-exposure", () => ({
@@ -255,6 +258,12 @@ describe("generateSessionFromIntent", () => {
     mergePrescriptionAnchorHistoryMock.mockImplementation(
       (history: unknown[], anchorHistory: unknown[]) => [...history, ...anchorHistory]
     );
+    mergePrescriptionAnchorHistoryWithEvidenceMock.mockImplementation(
+      (history: unknown[], anchorHistory: unknown[]) => ({
+        history: [...history, ...anchorHistory],
+        selectedAnchorEvidence: {},
+      })
+    );
     loadActiveMesocycleMock.mockResolvedValue({
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
@@ -429,6 +438,26 @@ describe("generateSessionFromIntent", () => {
         ],
       },
     ]);
+    mergePrescriptionAnchorHistoryWithEvidenceMock.mockImplementation(
+      (history: unknown[], anchorHistory: unknown[]) => ({
+        history: [...history, ...anchorHistory],
+        selectedAnchorEvidence: {
+          "close-grip-lat-pulldown": {
+            selectedExerciseId: "close-grip-lat-pulldown",
+            normalHistoryHadUsableExactEvidence: false,
+            targetedAnchorBackfilled: true,
+            backfillReason: "exact_anchor_outside_general_window",
+            skippedOrUnperformedRowsIgnored: 1,
+            anchorSourceSummary: {
+              source: "targeted_selected_exercise_history",
+              sessionCount: 1,
+              setCount: 1,
+              latestDate: "2026-03-01T00:00:00.000Z",
+            },
+          },
+        },
+      })
+    );
 
     const selectSpy = vi
       .spyOn(selectionV2, "selectExercisesOptimized")
@@ -448,11 +477,30 @@ describe("generateSessionFromIntent", () => {
         (entry) => entry.exercise.id === "close-grip-lat-pulldown"
       );
       expect(pulldown?.sets[0]?.targetLoad).toBeGreaterThanOrEqual(80);
-      expect(result.prescriptionReadouts?.find(
+      const pulldownReadout = result.prescriptionReadouts?.find(
         (readout) => readout.exerciseId === "close-grip-lat-pulldown"
-      )).toMatchObject({
+      );
+      expect(pulldownReadout).toMatchObject({
         loadSource: "history",
+        selectedAnchorEvidence: {
+          selectedExerciseId: "close-grip-lat-pulldown",
+          selectedExerciseName: "Close-Grip Lat Pulldown",
+          normalHistoryHadUsableExactEvidence: false,
+          targetedAnchorBackfilled: true,
+          backfillReason: "exact_anchor_outside_general_window",
+          skippedOrUnperformedRowsIgnored: 1,
+          anchorSourceSummary: {
+            source: "targeted_selected_exercise_history",
+            sessionCount: 1,
+            setCount: 1,
+            latestDate: "2026-03-01T00:00:00.000Z",
+          },
+        },
       });
+      const rowReadout = result.prescriptionReadouts?.find(
+        (readout) => readout.exerciseId === "seated-cable-row"
+      );
+      expect(rowReadout?.selectedAnchorEvidence).toBeUndefined();
     } finally {
       selectSpy.mockRestore();
     }

@@ -24,8 +24,9 @@ import {
 } from "./template-session/finalize-session";
 import {
   loadPrescriptionAnchorHistoryForExercises,
-  mergePrescriptionAnchorHistory,
+  mergePrescriptionAnchorHistoryWithEvidence,
 } from "./workout-context";
+import type { SelectedAnchorLoadEvidence } from "@/lib/engine/apply-loads";
 import {
   buildSelectionObjective,
   mapSelectionResult,
@@ -282,21 +283,23 @@ async function mergeSelectedPrescriptionAnchorHistory(input: {
   userId: string;
   mapped: MappedGenerationContext;
   workout: PreLoadSessionGenerationResult["workout"];
-}): Promise<void> {
+}): Promise<Record<string, SelectedAnchorLoadEvidence>> {
   const selectedExerciseIds = getPrescriptionAnchorExerciseIds(input.workout);
   if (selectedExerciseIds.length === 0) {
-    return;
+    return {};
   }
 
   const anchorHistory = await loadPrescriptionAnchorHistoryForExercises(
     input.userId,
     selectedExerciseIds
   );
-  input.mapped.history = mergePrescriptionAnchorHistory(
+  const merged = mergePrescriptionAnchorHistoryWithEvidence(
     input.mapped.history,
     anchorHistory,
     selectedExerciseIds
   );
+  input.mapped.history = merged.history;
+  return merged.selectedAnchorEvidence;
 }
 
 const CLOSURE_ACTION_SCORE_EPSILON = 1e-6;
@@ -3247,7 +3250,7 @@ async function generateSessionFromMappedContextWithPrescriptionAnchors(
     return composed;
   }
 
-  await mergeSelectedPrescriptionAnchorHistory({
+  const selectedAnchorEvidence = await mergeSelectedPrescriptionAnchorHistory({
     userId,
     mapped,
     workout: composed.result.workout,
@@ -3259,7 +3262,8 @@ async function generateSessionFromMappedContextWithPrescriptionAnchors(
     composed.filteredExercises,
     input.plannerDiagnosticsMode ?? "standard",
     composed.resolvedSessionSlot,
-    composed.compositionSource
+    composed.compositionSource,
+    selectedAnchorEvidence
   );
 }
 

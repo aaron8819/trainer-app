@@ -109,7 +109,11 @@ function loadAuditFor(input: {
   source: ApplyLoadsAudit["resolvedLoads"][string]["source"];
   targetLoad: number;
   trace?: ProgressionDecisionTrace;
-}): Pick<ApplyLoadsAudit, "progressionTraces" | "resolvedLoads"> {
+  selectedAnchorEvidence?: ApplyLoadsAudit["selectedAnchorEvidence"];
+}): Pick<
+  ApplyLoadsAudit,
+  "progressionTraces" | "resolvedLoads" | "selectedAnchorEvidence"
+> {
   return {
     progressionTraces: input.trace ? { [input.exerciseId]: input.trace } : {},
     resolvedLoads: {
@@ -120,6 +124,9 @@ function loadAuditFor(input: {
         resolvedSetLoads: [input.targetLoad],
       },
     },
+    ...(input.selectedAnchorEvidence
+      ? { selectedAnchorEvidence: input.selectedAnchorEvidence }
+      : {}),
   };
 }
 
@@ -295,6 +302,59 @@ describe("buildPrescriptionConfidenceReadouts", () => {
         maxLoad: 10,
         unit: "lb",
         basis: RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
+      },
+    });
+  });
+
+  it("adds selected-anchor evidence only for targeted backfilled prescription anchors", () => {
+    const readouts = buildPrescriptionConfidenceReadouts({
+      workout: workoutWithOneExercise({
+        exerciseId: "close-grip-lat-pulldown",
+        exerciseName: "Close-Grip Lat Pulldown",
+        targetLoad: 80,
+        targetReps: 10,
+        targetRpe: 8,
+        equipment: ["cable"],
+      }),
+      loadAudit: loadAuditFor({
+        exerciseId: "close-grip-lat-pulldown",
+        source: "history",
+        targetLoad: 80,
+        selectedAnchorEvidence: {
+          "close-grip-lat-pulldown": {
+            selectedExerciseId: "close-grip-lat-pulldown",
+            normalHistoryHadUsableExactEvidence: false,
+            targetedAnchorBackfilled: true,
+            backfillReason: "exact_anchor_outside_general_window",
+            skippedOrUnperformedRowsIgnored: 1,
+            anchorSourceSummary: {
+              source: "targeted_selected_exercise_history",
+              sessionCount: 1,
+              setCount: 1,
+              latestDate: "2026-03-01T00:00:00.000Z",
+            },
+          },
+        },
+      }),
+    });
+
+    expect(readouts[0]).toMatchObject({
+      exerciseId: "close-grip-lat-pulldown",
+      exerciseName: "Close-Grip Lat Pulldown",
+      loadSource: "history",
+      selectedAnchorEvidence: {
+        selectedExerciseId: "close-grip-lat-pulldown",
+        selectedExerciseName: "Close-Grip Lat Pulldown",
+        normalHistoryHadUsableExactEvidence: false,
+        targetedAnchorBackfilled: true,
+        backfillReason: "exact_anchor_outside_general_window",
+        skippedOrUnperformedRowsIgnored: 1,
+        anchorSourceSummary: {
+          source: "targeted_selected_exercise_history",
+          sessionCount: 1,
+          setCount: 1,
+          latestDate: "2026-03-01T00:00:00.000Z",
+        },
       },
     });
   });

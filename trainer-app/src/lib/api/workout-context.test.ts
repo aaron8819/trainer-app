@@ -8,6 +8,7 @@ import {
   loadPrescriptionAnchorHistoryForExercises,
   mapHistory,
   mergePrescriptionAnchorHistory,
+  mergePrescriptionAnchorHistoryWithEvidence,
 } from "./workout-context";
 
 const prismaMock = vi.hoisted(() => ({
@@ -1092,11 +1093,12 @@ describe("mergePrescriptionAnchorHistory", () => {
       }),
     ]);
 
-    const merged = mergePrescriptionAnchorHistory(
+    const mergedWithEvidence = mergePrescriptionAnchorHistoryWithEvidence(
       [...skippedOnlyNormal, ...usableNormal],
       anchorHistory,
       ["close-grip-lat-pulldown", "seated-cable-row"]
     );
+    const merged = mergedWithEvidence.history;
 
     expect(merged).toHaveLength(3);
     expect(
@@ -1106,5 +1108,27 @@ describe("mergePrescriptionAnchorHistory", () => {
         )
       )
     ).toEqual(["seated-cable-row:90", "close-grip-lat-pulldown:80"]);
+    expect(mergedWithEvidence.selectedAnchorEvidence).toEqual({
+      "close-grip-lat-pulldown": {
+        selectedExerciseId: "close-grip-lat-pulldown",
+        normalHistoryHadUsableExactEvidence: false,
+        targetedAnchorBackfilled: true,
+        backfillReason: "exact_anchor_outside_general_window",
+        skippedOrUnperformedRowsIgnored: 1,
+        anchorSourceSummary: {
+          source: "targeted_selected_exercise_history",
+          sessionCount: 1,
+          setCount: 1,
+          latestDate: "2026-03-01T00:00:00.000Z",
+        },
+      },
+    });
+    expect(
+      mergePrescriptionAnchorHistory(
+        [...skippedOnlyNormal, ...usableNormal],
+        anchorHistory,
+        ["close-grip-lat-pulldown", "seated-cable-row"]
+      )
+    ).toEqual(merged);
   });
 });

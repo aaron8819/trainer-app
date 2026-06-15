@@ -11,10 +11,7 @@ import type {
   SlotPreselectionDemand,
 } from "@/lib/engine/selection-v2";
 import type { SaveableSelectionMetadata } from "@/lib/ui/selection-metadata";
-import type {
-  DeloadTransformationTrace,
-  ProgressionDecisionTrace,
-} from "@/lib/evidence/session-audit-types";
+import type { DeloadTransformationTrace } from "@/lib/evidence/session-audit-types";
 import type {
   CycleContextSnapshot,
   DeloadDecision,
@@ -36,6 +33,10 @@ import type {
 import type { loadExerciseExposure } from "@/lib/api/exercise-exposure";
 import type { Mesocycle } from "@prisma/client";
 import type { GenerationPhaseBlockContext } from "@/lib/api/generation-phase-block-context";
+import type {
+  ApplyLoadsAudit,
+  SelectedAnchorLoadEvidence,
+} from "@/lib/engine/apply-loads";
 
 export type GenerateTemplateSessionParams = {
   pinnedExerciseIds?: string[];
@@ -95,6 +96,9 @@ export type PrescriptionConfidenceReadout = {
     unit: "lb";
     basis: string;
   } | null;
+  selectedAnchorEvidence?: SelectedAnchorLoadEvidence & {
+    selectedExerciseName: string;
+  };
 };
 
 export type SessionGenerationResult =
@@ -111,8 +115,7 @@ export type SessionGenerationResult =
       };
       filteredExercises?: FilteredExerciseSummary[];
       prescriptionReadouts?: PrescriptionConfidenceReadout[];
-      audit?: {
-        progressionTraces: Record<string, ProgressionDecisionTrace>;
+      audit?: Pick<ApplyLoadsAudit, "progressionTraces" | "selectedAnchorEvidence"> & {
         deloadTrace?: DeloadTransformationTrace;
       };
     }

@@ -4,7 +4,10 @@ import type { SraWarning } from "@/lib/engine/sra";
 import type { SelectionOutput, SessionIntent } from "@/lib/engine/session-types";
 import type { WorkoutPlan } from "@/lib/engine/types";
 import type { FilteredExerciseSummary } from "@/lib/engine/explainability";
-import { applyLoadsWithAudit } from "@/lib/engine/apply-loads";
+import {
+  applyLoadsWithAudit,
+  type SelectedAnchorLoadEvidence,
+} from "@/lib/engine/apply-loads";
 import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import type { DeloadTransformationTrace } from "@/lib/evidence/session-audit-types";
 import type {
@@ -157,7 +160,8 @@ export function finalizePostLoadResult(
   filteredExercises?: FilteredExerciseSummary[],
   plannerDiagnosticsMode: PlannerDiagnosticsMode = "standard",
   sessionSlot?: SessionSlotSnapshot,
-  compositionSource: SessionCompositionSource = "runtime_selection"
+  compositionSource: SessionCompositionSource = "runtime_selection",
+  selectedAnchorEvidence?: Record<string, SelectedAnchorLoadEvidence>
 ): SessionGenerationResult {
   const exerciseById = Object.fromEntries(
     mapped.exerciseLibrary.map((exercise) => [exercise.id, exercise])
@@ -174,6 +178,7 @@ export function finalizePostLoadResult(
     accumulationSessionsCompleted: mapped.activeMesocycle?.accumulationSessionsCompleted ?? undefined,
     isFirstSessionInMesocycle:
       (mapped.activeMesocycle?.accumulationSessionsCompleted ?? -1) === 0,
+    selectedAnchorEvidence,
   });
   const volumePlanByMuscle = buildPostLoadVolumePlan(mapped, withLoads);
 

@@ -500,12 +500,10 @@ describe("artifact serialization helpers", () => {
       artifact.mesocycleExplain?.preview.projectionDiagnostics.planningReality as Record<string, unknown>;
     const compactPlanningReality =
       compact.mesocycleExplain?.preview.projectionDiagnostics.planningReality as Record<string, unknown>;
-    const compactAccumulation =
-      compactPlanningReality.accumulationWeekProjection as Record<string, unknown>;
-    const compactSlotIntents =
-      compactPlanningReality.slotPrescriptionIntents as Record<string, unknown>;
-    const compactFeasibility =
-      (compactPlanningReality.preselectionFeasibility as Array<Record<string, unknown>>)[0];
+    const detailFieldSummaries = compactPlanningReality.detailFieldSummaries as Record<
+      string,
+      Record<string, unknown>
+    >;
 
     expect(compact).not.toBe(artifact);
     expect(getSerializedJsonSizeBytes(compact)).toBeLessThan(
@@ -521,22 +519,34 @@ describe("artifact serialization helpers", () => {
     expect(compactPlanningReality.distributionGuardActions).toEqual(
       originalPlanningReality.distributionGuardActions
     );
-    expect(compactAccumulation.summary).toMatchObject({
-      projectedWeeks: [2, 3, 4],
-      repeatedShapeBasis: "weeks_share_representative_projected_muscles_and_slot_risks",
+    expect(compactPlanningReality.detailArtifact).toMatchObject({
+      kind: "v2_debug_shard",
+      shardId: "planning-reality",
+      created: false,
+      enableWith: "--v2-debug-artifact",
     });
-    expect(compactAccumulation.representativeProjectedMuscles).toHaveLength(2);
-    expect(
-      ((compactAccumulation.weeks as Array<Record<string, unknown>>)[1]
-        .projectedMusclesRef)
-    ).toBe("representativeProjectedMuscles");
-    expect(
-      (compactSlotIntents.catalogs as Record<string, Record<string, unknown>>).arrays
-    ).toBeTruthy();
-    expect(compactFeasibility.candidateInventorySummary).toMatchObject({
-      totalRows: 16,
-      omittedCount: 4,
+    expect(detailFieldSummaries.accumulationWeekProjection).toMatchObject({
+      kind: "object",
+      source: "diagnostic_shadow_planner",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
     });
+    expect(detailFieldSummaries.slotPrescriptionIntents).toMatchObject({
+      kind: "array",
+      rowCount: 1,
+    });
+    expect(detailFieldSummaries.preselectionFeasibility).toMatchObject({
+      kind: "array",
+      rowCount: 1,
+    });
+    expect(compactPlanningReality).not.toHaveProperty(
+      "accumulationWeekProjection",
+    );
+    expect(compactPlanningReality).not.toHaveProperty("slotPrescriptionIntents");
+    expect(compactPlanningReality).not.toHaveProperty("preselectionFeasibility");
+    expect(JSON.stringify(compactPlanningReality)).not.toContain(
+      "Candidate 15",
+    );
   });
 
   it("summarizes main planningReality and links the detailed shard when available", () => {
@@ -872,6 +882,54 @@ describe("artifact serialization helpers", () => {
                   legacy_repaired_artifact: 5,
                   support_floor_design_needed: 4,
                 },
+              },
+              setBudgetGapInventory: {
+                version: 1,
+                source: "v2_set_budget_gap_inventory",
+                readOnly: true,
+                affectsScoringOrGeneration: false,
+                consumedByProduction: false,
+                summary: {
+                  rowCount: 4,
+                  selectedGapId: "gap-1",
+                },
+                rows: Array.from({ length: 4 }, (_, index) => ({
+                  gapId: `gap-${index + 1}`,
+                  scopedLaneId: `week_1:upper_b:lane_${index + 1}`,
+                  week: 1,
+                  slotId: "upper_b",
+                  laneId: `lane_${index + 1}`,
+                  muscle: "Side Delts",
+                  likelyOwnerSeam: "SetDistributionIntent",
+                  evidenceClass: "measured_materializer_projection",
+                  readiness: "measured_no_candidate_impact",
+                  verboseEvidence: [
+                    "full_row_detail_belongs_in_v2_repair_evidence_shard",
+                  ],
+                })),
+              },
+              selectedGapProof: {
+                gapId: "gap-1",
+                selectedSupportFloorGapId: "support-gap-1",
+                proofResult: "measured_no_candidate_impact",
+                classification: "diagnostic_only_no_impact",
+                rightfulOwnerSeam: "audit_readout_cleanup",
+                readOnly: true,
+                affectsScoringOrGeneration: false,
+                consumedByProduction: false,
+                safeForBehaviorPromotion: false,
+                measuredEvidence: [
+                  "identityDelta=0",
+                  "setDelta=0",
+                  "laneSetDelta=0",
+                  "blockerDelta=0",
+                  "protectedCoverage=preserved",
+                ],
+                missingGates: [
+                  "acceptance_gate_not_rerun",
+                  "cross_week_projection_not_rerun",
+                ],
+                nextSafeAction: "pivot_to_higher_roi_track",
               },
             },
             promotionCandidates: [
@@ -1255,6 +1313,45 @@ describe("artifact serialization helpers", () => {
                 support_floor_design_needed: 4,
               },
             },
+            setBudgetGapInventory: {
+              summary: {
+                rowCount: 4,
+                selectedGapId: "gap-1",
+              },
+              rowCount: 4,
+              topRows: [
+                expect.objectContaining({
+                  gapId: "gap-1",
+                  scopedLaneId: "week_1:upper_b:lane_1",
+                  likelyOwnerSeam: "SetDistributionIntent",
+                  readiness: "measured_no_candidate_impact",
+                }),
+                expect.objectContaining({
+                  gapId: "gap-2",
+                }),
+                expect.objectContaining({
+                  gapId: "gap-3",
+                }),
+              ],
+              omittedRowCount: 1,
+            },
+            selectedGapProof: {
+              gapId: "gap-1",
+              measuredEvidenceTop: [
+                "identityDelta=0",
+                "setDelta=0",
+                "laneSetDelta=0",
+                "blockerDelta=0",
+              ],
+              measuredEvidenceCount: 5,
+              missingGateCount: 2,
+              safeForBehaviorPromotion: false,
+              nextSafeAction: "pivot_to_higher_roi_track",
+            },
+            detailRows: {
+              fullRepairEvidenceShard: "v2-repair-evidence",
+              enableWith: "--v2-debug-artifact",
+            },
           },
         },
       },
@@ -1295,6 +1392,9 @@ describe("artifact serialization helpers", () => {
     expect(noRepair).not.toHaveProperty("v2BasePlanCompare");
     expect(noRepair).not.toHaveProperty("plannerOwnedAccumulationProjection");
     expect(JSON.stringify(noRepair.v2Summary)).not.toContain("slotShape");
+    expect(serialized).not.toContain(
+      "full_row_detail_belongs_in_v2_repair_evidence_shard",
+    );
     expect(
       (noRepair.crossWeekProjectionGate as Record<string, unknown>)
         .accumulationWeeksStatus,

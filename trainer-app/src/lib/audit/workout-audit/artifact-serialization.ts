@@ -1042,6 +1042,142 @@ function compactStrategyPromotionDiff(value: unknown): JsonRecord | undefined {
   };
 }
 
+function compactInventoryRowsForMain(
+  value: unknown,
+  rowLimit = 3,
+): JsonRecord | undefined {
+  const inventory = asRecord(value);
+  if (!inventory) {
+    return undefined;
+  }
+  const rows = asRecordArray(inventory.rows);
+  return {
+    version: inventory.version,
+    source: inventory.source,
+    readOnly: inventory.readOnly === true,
+    affectsScoringOrGeneration:
+      inventory.affectsScoringOrGeneration === true ? true : false,
+    consumedByProduction:
+      inventory.consumedByProduction === true ? true : false,
+    summary: asRecord(inventory.summary) ?? {},
+    rowCount: rows.length,
+    topRows: rows.slice(0, rowLimit).map((row) => ({
+      gapId: row.gapId,
+      scopedLaneId: row.scopedLaneId,
+      week: row.week,
+      slotId: row.slotId,
+      laneId: row.laneId,
+      muscle: row.muscle,
+      exerciseName: row.exerciseName,
+      likelyOwnerSeam: row.likelyOwnerSeam,
+      evidenceClass: row.evidenceClass,
+      currentReadoutClassification: row.currentReadoutClassification,
+      readiness: row.readiness,
+      status: row.status,
+      nextSafeAction: row.nextSafeAction,
+    })),
+    omittedRowCount: Math.max(0, rows.length - rowLimit),
+  };
+}
+
+function compactSelectedGapProofForMain(value: unknown): JsonRecord | undefined {
+  const proof = asRecord(value);
+  if (!proof) {
+    return undefined;
+  }
+  return {
+    gapId: proof.gapId,
+    selectedSupportFloorGapId: proof.selectedSupportFloorGapId,
+    proofResult: proof.proofResult,
+    classification: proof.classification,
+    rightfulOwnerSeam: proof.rightfulOwnerSeam,
+    readOnly: proof.readOnly === true,
+    affectsScoringOrGeneration:
+      proof.affectsScoringOrGeneration === true ? true : false,
+    consumedByProduction: proof.consumedByProduction === true ? true : false,
+    safeForBehaviorPromotion:
+      proof.safeForBehaviorPromotion === true ? true : false,
+    measuredEvidenceTop: asStringArray(proof.measuredEvidence).slice(0, 4),
+    measuredEvidenceCount: countArray(proof.measuredEvidence),
+    missingGateTop: asStringArray(proof.missingGates).slice(0, 4),
+    missingGateCount: countArray(proof.missingGates),
+    nextSafeAction: proof.nextSafeAction,
+  };
+}
+
+function compactRepairDeprecationReadinessForMain(
+  value: unknown,
+): JsonRecord | undefined {
+  const readiness = asRecord(value);
+  if (!readiness) {
+    return undefined;
+  }
+  const roles = asRecordArray(readiness.roles);
+  return {
+    version: readiness.version,
+    readOnly: readiness.readOnly === true,
+    affectsScoringOrGeneration:
+      readiness.affectsScoringOrGeneration === true ? true : false,
+    deprecationIsExecutable:
+      readiness.deprecationIsExecutable === true ? true : false,
+    summary: asRecord(readiness.summary) ?? {},
+    roleCount: roles.length,
+    roleStatusCounts: countBy(roles, "status"),
+    roleReadinessCounts: countBy(roles, "readiness"),
+    nextSafeAction: readiness.nextSafeAction,
+  };
+}
+
+function compactRepairPromotionInterpretationForMain(
+  value: unknown,
+): JsonRecord {
+  const interpretation = asRecord(value);
+  if (!interpretation) {
+    return {};
+  }
+  return {
+    legacyRepairPressure:
+      asRecord(interpretation.legacyRepairPressure) ?? {},
+    currentV2PolicyGap:
+      asRecord(interpretation.currentV2PolicyGap) ?? {},
+    safetyNonRegressionRows:
+      asRecord(interpretation.safetyNonRegressionRows) ?? {},
+    staleRepairedProjectionArtifacts:
+      asRecord(interpretation.staleRepairedProjectionArtifacts) ?? {},
+    legacyRepairQuarantine:
+      asRecord(interpretation.legacyRepairQuarantine) ?? {},
+    quarantineGroups: asRecord(interpretation.quarantineGroups) ?? {},
+    missingProofBeforeBehaviorPromotion:
+      interpretation.missingProofBeforeBehaviorPromotion,
+    gapInventory: Array.isArray(interpretation.gapInventory)
+      ? interpretation.gapInventory.slice(0, 8)
+      : [],
+    omittedGapInventoryCount: Math.max(
+      0,
+      countArray(interpretation.gapInventory) - 8,
+    ),
+    taxonomyMismatchInventory: compactInventoryRowsForMain(
+      interpretation.taxonomyMismatchInventory,
+    ),
+    setBudgetGapInventory: compactInventoryRowsForMain(
+      interpretation.setBudgetGapInventory,
+    ),
+    supportFloorGapInventory: compactInventoryRowsForMain(
+      interpretation.supportFloorGapInventory,
+    ),
+    selectedGapProof: compactSelectedGapProofForMain(
+      interpretation.selectedGapProof,
+    ),
+    repairDeprecationReadiness: compactRepairDeprecationReadinessForMain(
+      interpretation.repairDeprecationReadiness,
+    ),
+    detailRows: {
+      fullRepairEvidenceShard: "v2-repair-evidence",
+      enableWith: "--v2-debug-artifact",
+    },
+  };
+}
+
 function compactPlannerOnlyNoRepair(
   value: unknown,
   debugArtifact?: PlannerOnlyNoRepairDebugArtifactLink,
@@ -2381,7 +2517,9 @@ function compactPlannerOnlyNoRepair(
         ? {
             rawRepairEvidence: repairPromotionRawEvidence ?? {},
             summary: repairPromotionSummary ?? {},
-            interpretation: repairPromotionInterpretation ?? {},
+            interpretation: compactRepairPromotionInterpretationForMain(
+              repairPromotionInterpretation,
+            ),
           }
         : undefined,
       exerciseSelectionPlanDiagnostic: {
@@ -2570,24 +2708,28 @@ function summarizePlanningRealitySection(value: unknown): JsonRecord {
 }
 
 function buildPlanningRealityDetailManifest(
-  debugArtifact: PlanningRealityDebugArtifactLink,
+  debugArtifact: PlanningRealityDebugArtifactLink | undefined,
 ): JsonRecord {
   return {
     kind: "v2_debug_shard",
     shardId: "planning-reality",
-    created: true,
-    fileName: debugArtifact.fileName,
-    relativePath: debugArtifact.relativePath,
-    sizeBytes: debugArtifact.sizeBytes,
-    sha256: debugArtifact.sha256,
-    detailLevel: debugArtifact.detailLevel ?? "compact",
+    created: Boolean(debugArtifact),
+    ...(debugArtifact
+      ? {
+          fileName: debugArtifact.fileName,
+          relativePath: debugArtifact.relativePath,
+          sizeBytes: debugArtifact.sizeBytes,
+          sha256: debugArtifact.sha256,
+          detailLevel: debugArtifact.detailLevel ?? "compact",
+        }
+      : { enableWith: "--v2-debug-artifact", detailLevel: "compact" }),
     contains: ["planningReality"],
   };
 }
 
 function compactPlanningRealityForMainArtifact(
   value: unknown,
-  debugArtifact: PlanningRealityDebugArtifactLink,
+  debugArtifact?: PlanningRealityDebugArtifactLink,
 ): unknown {
   const planningReality = asRecord(value);
   if (!planningReality) {
@@ -2654,10 +2796,7 @@ function compactPlanningReality(
   value: unknown,
   debugArtifact?: PlanningRealityDebugArtifactLink,
 ): unknown {
-  if (debugArtifact) {
-    return compactPlanningRealityForMainArtifact(value, debugArtifact);
-  }
-  return compactPlanningRealityDetail(value);
+  return compactPlanningRealityForMainArtifact(value, debugArtifact);
 }
 
 export function compactWorkoutAuditArtifactForSerialization(

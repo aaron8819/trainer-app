@@ -8,6 +8,7 @@ import type {
   MuscleId,
 } from "@/lib/engine/types";
 import { summarizeFilteredExercises } from "@/lib/engine/explainability";
+import type { FilteredExerciseSummary } from "@/lib/engine/explainability";
 import {
   getEffectiveStimulusByMuscle,
   getEffectiveStimulusByMuscleId,
@@ -21,6 +22,10 @@ import {
   finalizePostLoadResult,
   runSessionGeneration,
 } from "./template-session/finalize-session";
+import {
+  loadPrescriptionAnchorHistoryForExercises,
+  mergePrescriptionAnchorHistory,
+} from "./workout-context";
 import {
   buildSelectionObjective,
   mapSelectionResult,
@@ -72,6 +77,7 @@ import type {
   GenerateTemplateSessionParams,
   IntentSessionCompositionResult,
   MappedGenerationContext,
+  PreLoadSessionGenerationResult,
   SessionGenerationResult,
 } from "./template-session/types";
 import {
@@ -258,6 +264,39 @@ function sortPinnedFirst(
   const pinned = allIds.filter((id) => pinnedIds.has(id));
   const unpinned = allIds.filter((id) => !pinnedIds.has(id));
   return [...pinned, ...unpinned];
+}
+
+function getPrescriptionAnchorExerciseIds(
+  workout: PreLoadSessionGenerationResult["workout"]
+): string[] {
+  return Array.from(
+    new Set(
+      [...workout.mainLifts, ...workout.accessories]
+        .map((entry) => entry.exercise.id)
+        .filter(Boolean)
+    )
+  );
+}
+
+async function mergeSelectedPrescriptionAnchorHistory(input: {
+  userId: string;
+  mapped: MappedGenerationContext;
+  workout: PreLoadSessionGenerationResult["workout"];
+}): Promise<void> {
+  const selectedExerciseIds = getPrescriptionAnchorExerciseIds(input.workout);
+  if (selectedExerciseIds.length === 0) {
+    return;
+  }
+
+  const anchorHistory = await loadPrescriptionAnchorHistoryForExercises(
+    input.userId,
+    selectedExerciseIds
+  );
+  input.mapped.history = mergePrescriptionAnchorHistory(
+    input.mapped.history,
+    anchorHistory,
+    selectedExerciseIds
+  );
 }
 
 const CLOSURE_ACTION_SCORE_EPSILON = 1e-6;
@@ -2191,6 +2230,12 @@ export async function generateSessionFromTemplate(
     return result;
   }
 
+  await mergeSelectedPrescriptionAnchorHistory({
+    userId,
+    mapped,
+    workout: result.workout,
+  });
+
   return finalizePostLoadResult(result, mapped);
 }
 
@@ -2268,7 +2313,7 @@ export async function generateSessionFromIntent(
     return { error: "Failed to load generation context" };
   }
 
-  return generateSessionFromMappedContext(mapped, input);
+  return generateSessionFromMappedContextWithPrescriptionAnchors(userId, mapped, input);
 }
 
 export function composeIntentSessionFromMappedContext(
@@ -3136,10 +3181,17 @@ export function composeIntentSessionFromMappedContext(
   };
 }
 
-export function generateSessionFromMappedContext(
+type FinalizablePostLoadSession = {
+  result: PreLoadSessionGenerationResult;
+  filteredExercises: FilteredExerciseSummary[];
+  resolvedSessionSlot?: SessionSlotSnapshot;
+  compositionSource: SessionCompositionSource;
+};
+
+function composePostLoadSessionFromMappedContext(
   mapped: MappedGenerationContext,
   input: GenerateIntentSessionInput
-): SessionGenerationResult {
+): FinalizablePostLoadSession | { error: string } {
   const resolvedSessionSlot = resolveGenerationSessionSlotSnapshot(mapped, input);
   const normalizedInput =
     resolvedSessionSlot || input.advancingSlot
@@ -3177,12 +3229,55 @@ export function generateSessionFromMappedContext(
     }
   }
 
-  return finalizePostLoadResult(
-    composed.generation,
-    mapped,
+  return {
+    result: composed.generation,
     filteredExercises,
-    input.plannerDiagnosticsMode ?? "standard",
     resolvedSessionSlot,
+    compositionSource: composed.compositionSource,
+  };
+}
+
+async function generateSessionFromMappedContextWithPrescriptionAnchors(
+  userId: string,
+  mapped: MappedGenerationContext,
+  input: GenerateIntentSessionInput
+): Promise<SessionGenerationResult> {
+  const composed = composePostLoadSessionFromMappedContext(mapped, input);
+  if ("error" in composed) {
+    return composed;
+  }
+
+  await mergeSelectedPrescriptionAnchorHistory({
+    userId,
+    mapped,
+    workout: composed.result.workout,
+  });
+
+  return finalizePostLoadResult(
+    composed.result,
+    mapped,
+    composed.filteredExercises,
+    input.plannerDiagnosticsMode ?? "standard",
+    composed.resolvedSessionSlot,
+    composed.compositionSource
+  );
+}
+
+export function generateSessionFromMappedContext(
+  mapped: MappedGenerationContext,
+  input: GenerateIntentSessionInput
+): SessionGenerationResult {
+  const composed = composePostLoadSessionFromMappedContext(mapped, input);
+  if ("error" in composed) {
+    return composed;
+  }
+
+  return finalizePostLoadResult(
+    composed.result,
+    mapped,
+    composed.filteredExercises,
+    input.plannerDiagnosticsMode ?? "standard",
+    composed.resolvedSessionSlot,
     composed.compositionSource
   );
 }

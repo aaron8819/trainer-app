@@ -3209,4 +3209,106 @@ describe("artifact serialization helpers", () => {
 
     expect(compactWorkoutAuditArtifactForSerialization(artifact)).toBe(artifact);
   });
+
+  it("keeps the V2 default-author readiness map compact in the main artifact", () => {
+    const concepts = Array.from({ length: 8 }, (_, index) => ({
+      concept:
+        index === 0
+          ? "MesocycleDemand"
+          : index === 1
+            ? "WeeklyDemandCurve"
+            : index === 2
+              ? "SlotDemandAllocationByWeek"
+              : index === 3
+                ? "SetDistributionIntent"
+                : index === 4
+                  ? "ExerciseClassDistributionBySlot"
+                  : index === 5
+                    ? "ExerciseSelectionPlan / selection capacity"
+                    : index === 6
+                      ? "V2 materializer"
+                      : "Acceptance / promotion readiness",
+      ownerSeam: "SetDistributionIntent",
+      evidenceSource: "repair_safety_net",
+      readiness: index === 3 ? "blocked" : "watch",
+      blockerCategory: index === 3 ? "missing_bounded_projection" : null,
+      nextSafeAction: "collect_concept_level_owner_proof_before_behavior_or_pivot",
+      evidence: [
+        "evidence-1",
+        "evidence-2",
+        "evidence-3",
+        "evidence-4",
+        "evidence-5-should-be-omitted",
+      ],
+    }));
+    const artifact = {
+      mesocycleExplain: {
+        preview: {
+          projectionDiagnostics: {},
+        },
+        plannerOnlyNoRepair: {
+          enabled: true,
+          readOnly: true,
+          affectsScoringOrGeneration: false,
+          v2DefaultAuthorReadinessMap: {
+            version: 1,
+            source: "v2_default_author_readiness_map",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            consumedByProduction: false,
+            consumedByDemandOrMaterializer: false,
+            repairedProjectionUsedAs: "evidence_only_not_target_policy",
+            summary: {
+              conceptCount: 8,
+              readyCount: 0,
+              watchCount: 7,
+              blockedCount: 1,
+              diagnosticOnlyCount: 0,
+              noActionCount: 0,
+              actionableConceptCount: 8,
+              repairSafetyNetSymptomCount: 36,
+              nextSafeAction:
+                "resolve_blocked_concept_owner_proof_before_behavior",
+            },
+            concepts,
+            guardrails: {
+              seedRuntimeChanged: false,
+              receiptChanged: false,
+              persistenceChanged: false,
+              productionMaterializerChanged: false,
+              acceptanceThresholdChanged: false,
+              repairBehaviorChanged: false,
+            },
+          },
+        },
+      },
+    } as unknown as WorkoutAuditArtifact;
+
+    const compact = compactWorkoutAuditArtifactForSerialization(artifact);
+    const map = compact.mesocycleExplain?.plannerOnlyNoRepair
+      ?.v2DefaultAuthorReadinessMap as Record<string, unknown>;
+    const rows = map.concepts as Array<Record<string, unknown>>;
+
+    expect(map).toMatchObject({
+      summary: {
+        conceptCount: 8,
+        blockedCount: 1,
+        repairSafetyNetSymptomCount: 36,
+      },
+      repairedProjectionUsedAs: "evidence_only_not_target_policy",
+    });
+    expect(rows).toHaveLength(8);
+    expect(rows[3]).toMatchObject({
+      concept: "SetDistributionIntent",
+      readiness: "blocked",
+      blockerCategory: "missing_bounded_projection",
+    });
+    expect(rows[3]?.evidence).toEqual([
+      "evidence-1",
+      "evidence-2",
+      "evidence-3",
+      "evidence-4",
+    ]);
+    expect(JSON.stringify(map)).not.toContain("evidence-5-should-be-omitted");
+  });
 });

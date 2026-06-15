@@ -28,6 +28,8 @@ const mapHistoryMock = vi.fn();
 const mapPreferencesMock = vi.fn();
 const mapCheckInMock = vi.fn();
 const applyLoadsMock = vi.fn();
+const loadPrescriptionAnchorHistoryForExercisesMock = vi.fn();
+const mergePrescriptionAnchorHistoryMock = vi.fn();
 const loadActiveMesocycleMock = vi.fn();
 const loadExerciseExposureMock = vi.fn();
 const getCurrentMesoWeekMock = vi.fn();
@@ -49,6 +51,10 @@ vi.mock("./workout-context", () => ({
   mapPreferences: (...args: unknown[]) => mapPreferencesMock(...args),
   mapCheckIn: (...args: unknown[]) => mapCheckInMock(...args),
   applyLoads: (...args: unknown[]) => applyLoadsMock(...args),
+  loadPrescriptionAnchorHistoryForExercises: (...args: unknown[]) =>
+    loadPrescriptionAnchorHistoryForExercisesMock(...args),
+  mergePrescriptionAnchorHistory: (...args: unknown[]) =>
+    mergePrescriptionAnchorHistoryMock(...args),
 }));
 
 vi.mock("./exercise-exposure", () => ({
@@ -245,6 +251,10 @@ describe("generateSessionFromIntent", () => {
     mapPreferencesMock.mockReturnValue(undefined);
     mapCheckInMock.mockReturnValue(undefined);
     applyLoadsMock.mockImplementation((workout: unknown) => workout);
+    loadPrescriptionAnchorHistoryForExercisesMock.mockResolvedValue([]);
+    mergePrescriptionAnchorHistoryMock.mockImplementation(
+      (history: unknown[], anchorHistory: unknown[]) => [...history, ...anchorHistory]
+    );
     loadActiveMesocycleMock.mockResolvedValue({
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
@@ -331,6 +341,122 @@ describe("generateSessionFromIntent", () => {
       expect(result.selection.selectedExerciseIds.length).toBeGreaterThan(0);
     }
   );
+
+  it("loads selected-exercise prescription anchors before assigning loads", async () => {
+    const customLibrary: Exercise[] = [
+      makeCustomExercise({
+        id: "close-grip-lat-pulldown",
+        name: "Close-Grip Lat Pulldown",
+        movementPatterns: ["vertical_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Lats"],
+        secondaryMuscles: ["Biceps"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["cable"],
+      }),
+      makeCustomExercise({
+        id: "seated-cable-row",
+        name: "Seated Cable Row",
+        movementPatterns: ["horizontal_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Upper Back"],
+        secondaryMuscles: ["Lats", "Biceps"],
+        isMainLiftEligible: false,
+        fatigueCost: 2,
+        equipment: ["cable"],
+      }),
+      makeCustomExercise({
+        id: "face-pull",
+        name: "Face Pull",
+        movementPatterns: ["horizontal_pull"],
+        splitTags: ["pull"],
+        primaryMuscles: ["Rear Delts"],
+        secondaryMuscles: ["Upper Back"],
+        isMainLiftEligible: false,
+        isCompound: false,
+        fatigueCost: 2,
+        equipment: ["cable"],
+      }),
+    ];
+    mapExercisesMock.mockReturnValue(customLibrary);
+    mapHistoryMock.mockReturnValue([
+      {
+        date: "2026-04-10T00:00:00.000Z",
+        completed: true,
+        status: "COMPLETED",
+        selectionMode: "INTENT",
+        sessionIntent: "pull",
+        progressionEligible: true,
+        performanceEligible: true,
+        exercises: [
+          {
+            exerciseId: "close-grip-lat-pulldown",
+            primaryMuscles: ["Lats"],
+            sets: [],
+          },
+        ],
+      },
+    ]);
+    loadPrescriptionAnchorHistoryForExercisesMock.mockResolvedValue([
+      {
+        date: "2026-03-01T00:00:00.000Z",
+        completed: true,
+        status: "COMPLETED",
+        selectionMode: "INTENT",
+        sessionIntent: "pull",
+        progressionEligible: true,
+        performanceEligible: true,
+        exercises: [
+          {
+            exerciseId: "close-grip-lat-pulldown",
+            primaryMuscles: ["Lats"],
+            sets: [
+              {
+                exerciseId: "close-grip-lat-pulldown",
+                setIndex: 1,
+                reps: 10,
+                rpe: 8,
+                load: 80,
+                targetLoad: 80,
+                targetReps: 10,
+                targetRepMin: 8,
+                targetRepMax: 12,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const selectSpy = vi
+      .spyOn(selectionV2, "selectExercisesOptimized")
+      .mockReturnValue(buildMockSelectionResult(customLibrary));
+
+    try {
+      const result = await generateSessionFromIntent("user-1", { intent: "pull" });
+
+      expect("error" in result).toBe(false);
+      if ("error" in result) return;
+
+      expect(loadPrescriptionAnchorHistoryForExercisesMock).toHaveBeenCalledWith(
+        "user-1",
+        expect.arrayContaining(["close-grip-lat-pulldown"])
+      );
+      const pulldown = [...result.workout.mainLifts, ...result.workout.accessories].find(
+        (entry) => entry.exercise.id === "close-grip-lat-pulldown"
+      );
+      expect(pulldown?.sets[0]?.targetLoad).toBeGreaterThanOrEqual(80);
+      expect(result.prescriptionReadouts?.find(
+        (readout) => readout.exerciseId === "close-grip-lat-pulldown"
+      )).toMatchObject({
+        loadSource: "history",
+      });
+    } finally {
+      selectSpy.mockRestore();
+    }
+  });
 
   it("suppresses front raise when pressing compounds already cover front delts", async () => {
     const customLibrary: Exercise[] = [

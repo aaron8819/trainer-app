@@ -2,9 +2,120 @@
  * Protects: Performed-work-only adaptation: no planned fallback in history/progression/explainability/readiness.
  * Why it matters: Mapping planned targets as completed work would poison adaptation decisions.
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkoutStatus } from "@prisma/client";
-import { mapHistory } from "./workout-context";
+import {
+  loadPrescriptionAnchorHistoryForExercises,
+  mapHistory,
+  mergePrescriptionAnchorHistory,
+} from "./workout-context";
+
+const prismaMock = vi.hoisted(() => ({
+  workout: {
+    findMany: vi.fn(),
+  },
+}));
+
+vi.mock("@/lib/db/prisma", () => ({
+  prisma: prismaMock,
+}));
+
+beforeEach(() => {
+  prismaMock.workout.findMany.mockReset();
+});
+
+function workoutRow(input: {
+  id: string;
+  scheduledDate: string;
+  status?: WorkoutStatus;
+  exerciseId: string;
+  exerciseName: string;
+  wasSkipped?: boolean;
+  actualLoad?: number | null;
+  actualReps?: number | null;
+  actualRpe?: number | null;
+}) {
+  return {
+    id: input.id,
+    userId: "u1",
+    templateId: null,
+    scheduledDate: new Date(input.scheduledDate),
+    completedAt: new Date(input.scheduledDate),
+    status: input.status ?? WorkoutStatus.COMPLETED,
+    estimatedMinutes: 45,
+    notes: null,
+    selectionMode: "INTENT",
+    sessionIntent: "PULL",
+    selectionMetadata: null,
+    revision: 1,
+    forcedSplit: null,
+    advancesSplit: true,
+    trainingBlockId: null,
+    weekInBlock: null,
+    mesocycleWeekSnapshot: 3,
+    mesoSessionSnapshot: 1,
+    mesocyclePhaseSnapshot: "ACCUMULATION",
+    exercises: [
+      {
+        id: `${input.id}-${input.exerciseId}`,
+        workoutId: input.id,
+        exerciseId: input.exerciseId,
+        orderIndex: 0,
+        section: "MAIN",
+        isMainLift: false,
+        movementPatterns: [],
+        notes: null,
+        exercise: {
+          id: input.exerciseId,
+          name: input.exerciseName,
+          movementPatterns: [],
+          splitTags: [],
+          jointStress: "LOW",
+          isMainLiftEligible: false,
+          isCompound: false,
+          fatigueCost: 2,
+          stimulusBias: [],
+          contraindications: null,
+          timePerSetSec: 90,
+          sfrScore: 3,
+          lengthPositionScore: 3,
+          difficulty: "INTERMEDIATE",
+          isUnilateral: false,
+          repRangeMin: 8,
+          repRangeMax: 12,
+          exerciseMuscles: [
+            { role: "PRIMARY", muscle: { name: "Lats", sraHours: 48 } },
+          ],
+        },
+        sets: [
+          {
+            id: `${input.id}-s1`,
+            workoutExerciseId: `${input.id}-${input.exerciseId}`,
+            setIndex: 1,
+            targetReps: 10,
+            targetRepMin: 8,
+            targetRepMax: 12,
+            targetRpe: 8,
+            targetLoad: input.actualLoad ?? 80,
+            restSeconds: 90,
+            logs: [
+              {
+                id: `${input.id}-l1`,
+                workoutSetId: `${input.id}-s1`,
+                actualReps: input.actualReps ?? (input.wasSkipped ? null : 10),
+                actualRpe: input.actualRpe ?? (input.wasSkipped ? null : 8),
+                actualLoad: input.actualLoad ?? (input.wasSkipped ? null : 80),
+                completedAt: new Date(input.scheduledDate),
+                notes: null,
+                wasSkipped: input.wasSkipped ?? false,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  } as never;
+}
 
 describe("mapHistory", () => {
   it("uses only performed non-skipped logs and never falls back to planned targets", () => {
@@ -881,5 +992,119 @@ describe("mapHistory", () => {
     expect(history[0].progressionEligible).toBe(false);
     expect(history[0].performanceEligible).toBe(false);
     expect(history[0].advancesSplit).toBe(true);
+  });
+});
+
+describe("loadPrescriptionAnchorHistoryForExercises", () => {
+  it("loads only selected exact performed anchors and ignores skipped-only rows", async () => {
+    prismaMock.workout.findMany.mockResolvedValue([
+      workoutRow({
+        id: "w-skipped",
+        scheduledDate: "2026-04-10T00:00:00.000Z",
+        exerciseId: "close-grip-lat-pulldown",
+        exerciseName: "Close-Grip Lat Pulldown",
+        wasSkipped: true,
+      }),
+      workoutRow({
+        id: "w-older-performed",
+        scheduledDate: "2026-03-01T00:00:00.000Z",
+        exerciseId: "close-grip-lat-pulldown",
+        exerciseName: "Close-Grip Lat Pulldown",
+        actualLoad: 80,
+      }),
+      workoutRow({
+        id: "w-unrelated",
+        scheduledDate: "2026-03-02T00:00:00.000Z",
+        exerciseId: "wide-grip-lat-pulldown",
+        exerciseName: "Wide-Grip Lat Pulldown",
+        actualLoad: 100,
+      }),
+    ]);
+
+    const history = await loadPrescriptionAnchorHistoryForExercises(
+      "u1",
+      ["close-grip-lat-pulldown"]
+    );
+
+    expect(prismaMock.workout.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: "u1",
+          exercises: {
+            some: {
+              exerciseId: { in: ["close-grip-lat-pulldown"] },
+            },
+          },
+        }),
+        take: 24,
+      })
+    );
+    expect(history).toHaveLength(1);
+    expect(history[0].exercises).toEqual([
+      expect.objectContaining({
+        exerciseId: "close-grip-lat-pulldown",
+        sets: [
+          expect.objectContaining({
+            load: 80,
+            reps: 10,
+            rpe: 8,
+          }),
+        ],
+      }),
+    ]);
+  });
+});
+
+describe("mergePrescriptionAnchorHistory", () => {
+  it("backfills missing selected exact evidence without overriding usable normal history", () => {
+    const skippedOnlyNormal = mapHistory([
+      workoutRow({
+        id: "w-skipped-normal",
+        scheduledDate: "2026-04-10T00:00:00.000Z",
+        exerciseId: "close-grip-lat-pulldown",
+        exerciseName: "Close-Grip Lat Pulldown",
+        wasSkipped: true,
+      }),
+    ]);
+    const usableNormal = mapHistory([
+      workoutRow({
+        id: "w-usable-normal",
+        scheduledDate: "2026-04-08T00:00:00.000Z",
+        exerciseId: "seated-cable-row",
+        exerciseName: "Seated Cable Row",
+        actualLoad: 90,
+      }),
+    ]);
+    const anchorHistory = mapHistory([
+      workoutRow({
+        id: "w-anchor",
+        scheduledDate: "2026-03-01T00:00:00.000Z",
+        exerciseId: "close-grip-lat-pulldown",
+        exerciseName: "Close-Grip Lat Pulldown",
+        actualLoad: 80,
+      }),
+      workoutRow({
+        id: "w-row-anchor",
+        scheduledDate: "2026-03-01T00:00:00.000Z",
+        exerciseId: "seated-cable-row",
+        exerciseName: "Seated Cable Row",
+        actualLoad: 70,
+      }),
+    ]);
+
+    const merged = mergePrescriptionAnchorHistory(
+      [...skippedOnlyNormal, ...usableNormal],
+      anchorHistory,
+      ["close-grip-lat-pulldown", "seated-cable-row"]
+    );
+
+    expect(merged).toHaveLength(3);
+    expect(
+      merged.flatMap((entry) =>
+        entry.exercises.flatMap((exercise) =>
+          exercise.sets.length > 0 ? [`${exercise.exerciseId}:${exercise.sets[0]?.load}`] : []
+        )
+      )
+    ).toEqual(["seated-cable-row:90", "close-grip-lat-pulldown:80"]);
   });
 });

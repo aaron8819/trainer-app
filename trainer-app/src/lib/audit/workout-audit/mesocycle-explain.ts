@@ -86,6 +86,7 @@ import {
 } from "./mesocycle-explain-v2-repair-scoreboard";
 import { buildV2PlanQualityBenchmark } from "./v2-plan-quality-benchmark";
 import { buildV2PromotionCandidateEvaluator } from "./v2-promotion-candidate-evaluator";
+import { buildV2DefaultAuthorReadinessMap } from "./v2-default-author-readiness-map";
 import {
   buildV2BasePlanCompareFromLiveContext,
   buildV2BasePlanShadowConsumptionTrialFromLiveContext,
@@ -8552,10 +8553,15 @@ export function buildPlannerOnlyNoRepairComparison(input: {
       ...result,
       v2PlanQualityBenchmark,
     };
-    return {
+    const resultWithEvaluator = {
       ...resultWithBenchmark,
       v2PromotionCandidateEvaluator:
         buildV2PromotionCandidateEvaluator(resultWithBenchmark),
+    };
+    return {
+      ...resultWithEvaluator,
+      v2DefaultAuthorReadinessMap:
+        buildV2DefaultAuthorReadinessMap(resultWithEvaluator),
     };
   }
 
@@ -8986,12 +8992,17 @@ export function buildPlannerOnlyNoRepairComparison(input: {
     ...result,
     v2PlanQualityBenchmark,
   };
-  return {
+  const resultWithEvaluator = {
     ...resultWithBenchmark,
     v2PromotionCandidateEvaluator:
       buildV2PromotionCandidateEvaluator(resultWithBenchmark, {
         planningReality: input.repairedPlanningReality ?? noRepair,
       }),
+  };
+  return {
+    ...resultWithEvaluator,
+    v2DefaultAuthorReadinessMap:
+      buildV2DefaultAuthorReadinessMap(resultWithEvaluator),
   };
 }
 

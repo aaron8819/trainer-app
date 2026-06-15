@@ -24,6 +24,7 @@ import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-s
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
 import { readRuntimeAddedExerciseIds } from "@/lib/ui/selection-metadata";
+import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import type {
   Constraints,
   EquipmentType,
@@ -152,6 +153,99 @@ export async function loadWorkoutContext(userId: string) {
     preferences,
     checkIns: normalizedCheckIns,
   };
+}
+
+export async function loadPrescriptionAnchorHistoryForExercises(
+  userId: string,
+  exerciseIds: string[],
+  options: { take?: number } = {}
+): Promise<WorkoutHistoryEntry[]> {
+  const selectedExerciseIds = Array.from(
+    new Set(exerciseIds.map((id) => id.trim()).filter(Boolean))
+  );
+  if (selectedExerciseIds.length === 0) {
+    return [];
+  }
+
+  const workouts = await prisma.workout.findMany({
+    where: {
+      userId,
+      status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
+      exercises: {
+        some: {
+          exerciseId: { in: selectedExerciseIds },
+        },
+      },
+    },
+    orderBy: { scheduledDate: "desc" },
+    take: options.take ?? Math.min(80, Math.max(24, selectedExerciseIds.length * 12)),
+    include: {
+      exercises: {
+        where: {
+          exerciseId: { in: selectedExerciseIds },
+        },
+        include: {
+          exercise: {
+            include: {
+              exerciseMuscles: { include: { muscle: true } },
+            },
+          },
+          sets: { include: { logs: { orderBy: { completedAt: "desc" }, take: 1 } } },
+        },
+      },
+    },
+  });
+
+  return filterPrescriptionAnchorHistory(mapHistory(workouts), selectedExerciseIds);
+}
+
+export function mergePrescriptionAnchorHistory(
+  history: WorkoutHistoryEntry[],
+  anchorHistory: WorkoutHistoryEntry[],
+  selectedExerciseIds: string[]
+): WorkoutHistoryEntry[] {
+  const selected = new Set(selectedExerciseIds);
+  if (selected.size === 0 || anchorHistory.length === 0) {
+    return history;
+  }
+
+  const alreadyHasUsableExactHistory = new Set<string>();
+  for (const entry of history) {
+    if (entry.progressionEligible === false || entry.performanceEligible === false) {
+      continue;
+    }
+    for (const exercise of entry.exercises) {
+      if (selected.has(exercise.exerciseId) && exercise.sets.length > 0) {
+        alreadyHasUsableExactHistory.add(exercise.exerciseId);
+      }
+    }
+  }
+
+  const additions = filterPrescriptionAnchorHistory(
+    anchorHistory,
+    Array.from(selected).filter((exerciseId) => !alreadyHasUsableExactHistory.has(exerciseId))
+  );
+
+  return additions.length > 0 ? [...history, ...additions] : history;
+}
+
+function filterPrescriptionAnchorHistory(
+  history: WorkoutHistoryEntry[],
+  exerciseIds: string[]
+): WorkoutHistoryEntry[] {
+  const selected = new Set(exerciseIds);
+  return history.flatMap((entry) => {
+    if (entry.progressionEligible === false || entry.performanceEligible === false) {
+      return [];
+    }
+    const exercises = entry.exercises.filter(
+      (exercise) => selected.has(exercise.exerciseId) && exercise.sets.length > 0
+    );
+    if (exercises.length === 0) {
+      return [];
+    }
+    return [{ ...entry, exercises, calibrationExercises: undefined }];
+  });
 }
 
 export function mapProfile(userId: string, profile: Profile, injuries: Injury[]): UserProfile {

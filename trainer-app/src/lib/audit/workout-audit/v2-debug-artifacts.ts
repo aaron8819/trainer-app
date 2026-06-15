@@ -627,16 +627,50 @@ function compactStrategyToDemandProjection(value: unknown): JsonRecord {
 function compactPromotionReadiness(
   value: unknown,
   candidateEvaluator?: unknown,
+  defaultAuthorReadinessMap?: unknown,
 ): JsonRecord {
   const diagnostic = asRecord(value);
   const readiness = asRecord(diagnostic?.strategyHypothesisPromotionReadiness);
   const evaluator = asRecord(candidateEvaluator);
   const evaluatorRows = asRecordArray(evaluator?.candidates);
-  if (!readiness && !evaluator) {
+  const defaultAuthorMap = asRecord(defaultAuthorReadinessMap);
+  const defaultAuthorRows = asRecordArray(defaultAuthorMap?.concepts);
+  if (!readiness && !evaluator && !defaultAuthorMap) {
     return { status: "not_available" };
   }
   const rows = readiness ? asRecordArray(readiness.hypothesisReadiness) : [];
   return {
+    ...(defaultAuthorMap
+      ? {
+          v2DefaultAuthorReadinessMap: {
+            readOnly: defaultAuthorMap.readOnly === true,
+            affectsScoringOrGeneration:
+              defaultAuthorMap.affectsScoringOrGeneration === true
+                ? true
+                : false,
+            consumedByProduction:
+              defaultAuthorMap.consumedByProduction === true,
+            consumedByDemandOrMaterializer:
+              defaultAuthorMap.consumedByDemandOrMaterializer === true,
+            repairedProjectionUsedAs:
+              defaultAuthorMap.repairedProjectionUsedAs ??
+              "evidence_only_not_target_policy",
+            summary: asRecord(defaultAuthorMap.summary) ?? {},
+            concepts: defaultAuthorRows.slice(0, COMPACT_TOP_ROW_LIMIT).map(
+              (row) => ({
+                concept: row.concept,
+                ownerSeam: row.ownerSeam,
+                evidenceSource: row.evidenceSource,
+                readiness: row.readiness,
+                blockerCategory: row.blockerCategory ?? null,
+                nextSafeAction: row.nextSafeAction,
+                evidence: asStringArray(row.evidence).slice(0, 4),
+              }),
+            ),
+            guardrails: asRecord(defaultAuthorMap.guardrails) ?? {},
+          },
+        }
+      : {}),
     ...(readiness
       ? {
           strategyHypothesisPromotionReadiness: {
@@ -1090,8 +1124,16 @@ function buildFullShardData(
         : null;
     case "promotion-readiness":
       return asRecord(noRepair.v2MesocycleStrategyDiagnostic)
-        ?.strategyHypothesisPromotionReadiness || noRepair.v2PromotionCandidateEvaluator
+        ?.strategyHypothesisPromotionReadiness ||
+        noRepair.v2PromotionCandidateEvaluator ||
+        noRepair.v2DefaultAuthorReadinessMap
         ? {
+            ...(noRepair.v2DefaultAuthorReadinessMap
+              ? {
+                  v2DefaultAuthorReadinessMap:
+                    noRepair.v2DefaultAuthorReadinessMap,
+                }
+              : {}),
             ...(asRecord(noRepair.v2MesocycleStrategyDiagnostic)
               ?.strategyHypothesisPromotionReadiness
               ? {
@@ -1175,6 +1217,7 @@ function buildCompactShardData(
       return compactPromotionReadiness(
         noRepair.v2MesocycleStrategyDiagnostic,
         noRepair.v2PromotionCandidateEvaluator,
+        noRepair.v2DefaultAuthorReadinessMap,
       );
     case "promotion-diffs":
       return compactPromotionDiffs(noRepair);
@@ -2238,6 +2281,12 @@ function buildIndexSummary(input: {
   const planQualityDeprecationReadiness = asRecord(
     planQualityBenchmark?.deprecationReadiness,
   );
+  const defaultAuthorReadinessMap = asRecord(
+    input.noRepair.v2DefaultAuthorReadinessMap,
+  );
+  const defaultAuthorReadinessSummary = asRecord(
+    defaultAuthorReadinessMap?.summary,
+  );
   const promotionCandidateEvaluator = asRecord(
     input.noRepair.v2PromotionCandidateEvaluator,
   );
@@ -2424,6 +2473,22 @@ function buildIndexSummary(input: {
       planQualitySummary?.missingEvidenceCount ?? null,
     v2PlanQualityDeprecationReadiness:
       planQualityDeprecationReadiness?.status ?? "not_available",
+    v2DefaultAuthorReadinessConcepts:
+      defaultAuthorReadinessSummary?.conceptCount ?? null,
+    v2DefaultAuthorReadinessReady:
+      defaultAuthorReadinessSummary?.readyCount ?? null,
+    v2DefaultAuthorReadinessWatch:
+      defaultAuthorReadinessSummary?.watchCount ?? null,
+    v2DefaultAuthorReadinessBlocked:
+      defaultAuthorReadinessSummary?.blockedCount ?? null,
+    v2DefaultAuthorReadinessDiagnosticOnly:
+      defaultAuthorReadinessSummary?.diagnosticOnlyCount ?? null,
+    v2DefaultAuthorReadinessNoAction:
+      defaultAuthorReadinessSummary?.noActionCount ?? null,
+    v2DefaultAuthorReadinessRepairSafetyNetSymptoms:
+      defaultAuthorReadinessSummary?.repairSafetyNetSymptomCount ?? null,
+    v2DefaultAuthorReadinessNextSafeAction:
+      defaultAuthorReadinessSummary?.nextSafeAction ?? null,
     v2CandidateQualityLabFixtureCount:
       planQualityCandidateLabSummary?.fixtureCount ?? null,
     v2CandidateQualityLabPassCount:

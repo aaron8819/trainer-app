@@ -1790,6 +1790,79 @@ export type MesocycleExplainPlannerOnlyDryRun = {
   };
 };
 
+export type V2DefaultAuthorReadinessEvidenceSource =
+  | "pure_v2_candidate"
+  | "audit_projection"
+  | "planning_reality_diagnostic"
+  | "repair_safety_net"
+  | "stale_noise"
+  | "unknown";
+
+export type V2DefaultAuthorReadiness =
+  | "ready"
+  | "watch"
+  | "blocked"
+  | "diagnostic_only"
+  | "no_action";
+
+export type V2DefaultAuthorReadinessConcept =
+  | "MesocycleDemand"
+  | "WeeklyDemandCurve"
+  | "SlotDemandAllocationByWeek"
+  | "SetDistributionIntent"
+  | "ExerciseClassDistributionBySlot"
+  | "ExerciseSelectionPlan / selection capacity"
+  | "V2 materializer"
+  | "Acceptance / promotion readiness";
+
+export type V2DefaultAuthorBlockerCategory =
+  | "missing_candidate_truth"
+  | "missing_bounded_projection"
+  | "watch_only_benchmark"
+  | "planning_reality_diagnostic_only"
+  | "repair_rows_quarantined"
+  | "materializer_non_regression"
+  | "acceptance_or_promotion_blocked"
+  | "seed_runtime_non_consumption_required";
+
+export type V2DefaultAuthorReadinessMap = {
+  version: 1;
+  source: "v2_default_author_readiness_map";
+  readOnly: true;
+  affectsScoringOrGeneration: false;
+  consumedByProduction: false;
+  consumedByDemandOrMaterializer: false;
+  repairedProjectionUsedAs: "evidence_only_not_target_policy";
+  summary: {
+    conceptCount: number;
+    readyCount: number;
+    watchCount: number;
+    blockedCount: number;
+    diagnosticOnlyCount: number;
+    noActionCount: number;
+    actionableConceptCount: number;
+    repairSafetyNetSymptomCount: number;
+    nextSafeAction: string;
+  };
+  concepts: Array<{
+    concept: V2DefaultAuthorReadinessConcept;
+    ownerSeam: string;
+    evidenceSource: V2DefaultAuthorReadinessEvidenceSource;
+    readiness: V2DefaultAuthorReadiness;
+    blockerCategory: V2DefaultAuthorBlockerCategory | null;
+    nextSafeAction: string;
+    evidence: string[];
+  }>;
+  guardrails: {
+    seedRuntimeChanged: false;
+    receiptChanged: false;
+    persistenceChanged: false;
+    productionMaterializerChanged: false;
+    acceptanceThresholdChanged: false;
+    repairBehaviorChanged: false;
+  };
+};
+
 export type V2PlanQualityBenchmark = {
   version: 1;
   source: "v2_candidate_quality_benchmark";
@@ -2356,6 +2429,7 @@ export type MesocycleExplainPlannerOnlyNoRepair = {
   v2ConcentrationMaterializerProjection?: V2ConcentrationMaterializerProjection;
   v2PlanQualityBenchmark?: V2PlanQualityBenchmark;
   v2PromotionCandidateEvaluator?: V2PromotionCandidateEvaluator;
+  v2DefaultAuthorReadinessMap?: V2DefaultAuthorReadinessMap;
   repairPromotionScoreboard?: {
     version: 1;
     readOnly: true;

@@ -1237,6 +1237,12 @@ function compactPlannerOnlyNoRepair(
   const v2PlanQualityBenchmarkDeprecationReadiness = asRecord(
     v2PlanQualityBenchmark?.deprecationReadiness,
   );
+  const v2DefaultAuthorReadinessMap = asRecord(
+    noRepair.v2DefaultAuthorReadinessMap,
+  );
+  const v2DefaultAuthorReadinessRows = asRecordArray(
+    v2DefaultAuthorReadinessMap?.concepts,
+  );
   const v2PromotionCandidateEvaluator = asRecord(
     noRepair.v2PromotionCandidateEvaluator,
   );
@@ -1561,6 +1567,33 @@ function compactPlannerOnlyNoRepair(
             }),
           ),
           guardrails: asRecord(v2PlanQualityBenchmark.guardrails) ?? {},
+        }
+      : undefined,
+    v2DefaultAuthorReadinessMap: v2DefaultAuthorReadinessMap
+      ? {
+          readOnly: v2DefaultAuthorReadinessMap.readOnly === true,
+          affectsScoringOrGeneration:
+            v2DefaultAuthorReadinessMap.affectsScoringOrGeneration === true
+              ? true
+              : false,
+          consumedByProduction:
+            v2DefaultAuthorReadinessMap.consumedByProduction === true,
+          consumedByDemandOrMaterializer:
+            v2DefaultAuthorReadinessMap.consumedByDemandOrMaterializer === true,
+          repairedProjectionUsedAs:
+            v2DefaultAuthorReadinessMap.repairedProjectionUsedAs ??
+            "evidence_only_not_target_policy",
+          summary: asRecord(v2DefaultAuthorReadinessMap.summary) ?? {},
+          concepts: v2DefaultAuthorReadinessRows.map((row) => ({
+            concept: row.concept,
+            ownerSeam: row.ownerSeam,
+            evidenceSource: row.evidenceSource,
+            readiness: row.readiness,
+            blockerCategory: row.blockerCategory ?? null,
+            nextSafeAction: row.nextSafeAction,
+            evidence: asStringArray(row.evidence).slice(0, 4),
+          })),
+          guardrails: asRecord(v2DefaultAuthorReadinessMap.guardrails) ?? {},
         }
       : undefined,
     v2PromotionCandidateEvaluator: v2PromotionCandidateEvaluator

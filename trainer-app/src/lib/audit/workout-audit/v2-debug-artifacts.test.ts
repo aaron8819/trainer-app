@@ -236,6 +236,47 @@ describe("buildV2DebugArtifacts", () => {
               acceptanceThresholdChanged: false,
             },
           },
+          v2DefaultAuthorReadinessMap: {
+            version: 1,
+            source: "v2_default_author_readiness_map",
+            readOnly: true,
+            affectsScoringOrGeneration: false,
+            consumedByProduction: false,
+            consumedByDemandOrMaterializer: false,
+            repairedProjectionUsedAs: "evidence_only_not_target_policy",
+            summary: {
+              conceptCount: 8,
+              readyCount: 3,
+              watchCount: 2,
+              blockedCount: 1,
+              diagnosticOnlyCount: 1,
+              noActionCount: 1,
+              actionableConceptCount: 3,
+              repairSafetyNetSymptomCount: 36,
+              nextSafeAction:
+                "resolve_blocked_concept_owner_proof_before_behavior",
+            },
+            concepts: [
+              {
+                concept: "SetDistributionIntent",
+                ownerSeam: "SetDistributionIntent",
+                evidenceSource: "repair_safety_net",
+                readiness: "blocked",
+                blockerCategory: "missing_bounded_projection",
+                nextSafeAction:
+                  "collect_concept_level_owner_proof_before_behavior_or_pivot",
+                evidence: ["blockedCandidate=set_distribution_budget"],
+              },
+            ],
+            guardrails: {
+              seedRuntimeChanged: false,
+              receiptChanged: false,
+              persistenceChanged: false,
+              productionMaterializerChanged: false,
+              acceptanceThresholdChanged: false,
+              repairBehaviorChanged: false,
+            },
+          },
         },
       },
     } as unknown as WorkoutAuditArtifact;
@@ -277,6 +318,15 @@ describe("buildV2DebugArtifacts", () => {
       v2PromotionCandidateEvaluatorWatch: 0,
       v2PromotionCandidateEvaluatorRecommendation: "none_ready",
       v2PromotionCandidateEvaluatorTopCandidate: null,
+      v2DefaultAuthorReadinessConcepts: 8,
+      v2DefaultAuthorReadinessReady: 3,
+      v2DefaultAuthorReadinessWatch: 2,
+      v2DefaultAuthorReadinessBlocked: 1,
+      v2DefaultAuthorReadinessDiagnosticOnly: 1,
+      v2DefaultAuthorReadinessNoAction: 1,
+      v2DefaultAuthorReadinessRepairSafetyNetSymptoms: 36,
+      v2DefaultAuthorReadinessNextSafeAction:
+        "resolve_blocked_concept_owner_proof_before_behavior",
       v2CandidateQualityLabFixtureCount: 7,
       v2CandidateQualityLabPassCount: 7,
       v2CandidateQualityLabWarnCount: 0,
@@ -329,6 +379,19 @@ describe("buildV2DebugArtifacts", () => {
       (shard) => shard.metadata.id === "promotion-readiness",
     )?.artifact;
     expect(promotionReadinessShard?.data).toMatchObject({
+      v2DefaultAuthorReadinessMap: {
+        summary: {
+          conceptCount: 8,
+          blockedCount: 1,
+        },
+        concepts: [
+          expect.objectContaining({
+            concept: "SetDistributionIntent",
+            evidenceSource: "repair_safety_net",
+            readiness: "blocked",
+          }),
+        ],
+      },
       v2PromotionCandidateEvaluator: {
         status: "none_ready",
         recommendation: {

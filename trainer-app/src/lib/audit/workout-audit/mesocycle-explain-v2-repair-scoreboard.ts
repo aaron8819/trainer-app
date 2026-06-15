@@ -2,6 +2,12 @@ import type {
   MesocycleExplainPlannerOnlyNoRepair,
   MesocycleExplainProjectionDiagnostics,
 } from "./types";
+import {
+  DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+  matchV2ExerciseClasses,
+  resolveV2ExerciseClassIds,
+} from "@/lib/engine/planning/v2/materialization/taxonomy";
+import type { V2MaterializationExercise } from "@/lib/engine/planning/v2/materialization/types";
 import { hasPromotedBoundedCalvesBaselineProof } from "./v2-materialization-live-context-dry-run";
 
 type PlanningRealityDiagnostic = NonNullable<
@@ -645,6 +651,16 @@ function buildCurrentV2PolicyGap(
           "capAwareExpansion:preferred_exceeds_single_exercise_cap"
         ))
   ).length;
+  const taxonomyMismatchInventory = buildTaxonomyMismatchInventoryForDiagnostic(
+    context.v2ExerciseSelectionPlanDiagnostic,
+  );
+  const classTaxonomyMismatchPressureCount =
+    taxonomyMismatchInventory?.rows.filter(
+      (row) =>
+        row.classification !== "stale_or_ambiguous" &&
+        row.classification !== "diagnostic_only_mismatch",
+    ).length ?? 0;
+
   return {
     supportDirectFloorBlockerCount:
       context.v2SupportLaneProjectionDiagnostic.summary.directFloorsBelow,
@@ -671,8 +687,7 @@ function buildCurrentV2PolicyGap(
     ).length,
     selectionBlockerCount:
       context.v2ExerciseSelectionPlanDiagnostic.summary.blockedLaneCount,
-    classTaxonomyMismatchCount:
-      context.v2ExerciseSelectionPlanDiagnostic.summary.classMismatchCount,
+    classTaxonomyMismatchCount: classTaxonomyMismatchPressureCount,
   };
 }
 
@@ -1156,6 +1171,9 @@ function taxonomyMismatchScore(row: Omit<TaxonomyMismatchRow, "rank">): number {
 function taxonomyMismatchClassification(
   row: Omit<TaxonomyMismatchRow, "rank">,
 ): TaxonomyMismatchRow["classification"] {
+  if (row.likelyOwnerSeam === "audit_readout_cleanup") {
+    return "stale_or_ambiguous";
+  }
   if (row.evidenceQuality === "diagnostic_only") {
     return "diagnostic_only_mismatch";
   }
@@ -1167,6 +1185,72 @@ function taxonomyMismatchClassification(
     : "blocked_by_missing_evidence";
 }
 
+type SelectionDiagnosticLane =
+  V2RepairPromotionReadoutContext["v2ExerciseSelectionPlanDiagnostic"]["weeks"][number]["slots"][number]["lanes"][number];
+
+function selectedClassFromEvidenceRefs(
+  lane: SelectionDiagnosticLane,
+): string | null {
+  if (!lane.selectedIdentity?.exerciseName) {
+    return null;
+  }
+  const selectedClass = lane.evidenceRefs
+    .find((ref) => ref.startsWith("selectedClass:"))
+    ?.replace(/^selectedClass:/, "");
+  return selectedClass && selectedClass !== "null" ? selectedClass : null;
+}
+
+function materializerExerciseForSelectedIdentity(
+  lane: SelectionDiagnosticLane,
+): V2MaterializationExercise | null {
+  if (!lane.selectedIdentity?.exerciseName) {
+    return null;
+  }
+  return {
+    exerciseId: lane.selectedIdentity.exerciseId ?? lane.selectedIdentity.exerciseName,
+    name: lane.selectedIdentity.exerciseName,
+    aliases: [],
+    movementPatterns: [],
+    primaryMuscles: lane.primaryMuscles,
+    secondaryMuscles: [],
+    equipment: [],
+    isCompound: false,
+    isMainLiftEligible: false,
+    fatigueCost: 1,
+    stimulusByMusclePerSet: Object.fromEntries(
+      lane.primaryMuscles.map((muscle) => [muscle, 1]),
+    ),
+  };
+}
+
+function selectedClassFromMaterializerTaxonomy(
+  lane: SelectionDiagnosticLane,
+): string | null {
+  const exercise = materializerExerciseForSelectedIdentity(lane);
+  return exercise ? matchV2ExerciseClasses(exercise)[0]?.classId ?? null : null;
+}
+
+function selectedClassSatisfiesPlannedClasses(input: {
+  selectedClass: string | null;
+  plannedClasses: ReadonlyArray<string>;
+}): boolean {
+  if (!input.selectedClass) {
+    return false;
+  }
+  if (input.plannedClasses.includes(input.selectedClass)) {
+    return true;
+  }
+  const resolvedPlanned = resolveV2ExerciseClassIds(
+    DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+    [...input.plannedClasses],
+  );
+  const resolvedSelected = resolveV2ExerciseClassIds(
+    DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+    [input.selectedClass],
+  );
+  return resolvedSelected.some((classId) => resolvedPlanned.includes(classId));
+}
+
 function buildTaxonomyMismatchInventoryForDiagnostic(
   diagnostic: V2RepairPromotionReadoutContext["v2ExerciseSelectionPlanDiagnostic"],
 ): TaxonomyMismatchInventory | undefined {
@@ -1175,8 +1259,21 @@ function buildTaxonomyMismatchInventoryForDiagnostic(
       slot.lanes
         .filter((lane) => lane.laneClassStatus === "mismatch")
         .map((lane) => {
-          const owner = taxonomyMismatchOwner(lane);
-          const evidenceQuality = taxonomyMismatchEvidenceQuality(lane);
+          const evidenceSelectedClass = selectedClassFromEvidenceRefs(lane);
+          const materializerSelectedClass =
+            selectedClassFromMaterializerTaxonomy(lane);
+          const selectedClass = materializerSelectedClass ?? evidenceSelectedClass;
+          const materializerTaxonomyAligned =
+            selectedClassSatisfiesPlannedClasses({
+              selectedClass: materializerSelectedClass,
+              plannedClasses: lane.plannedClass,
+            });
+          const owner = materializerTaxonomyAligned
+            ? "audit_readout_cleanup"
+            : taxonomyMismatchOwner(lane);
+          const evidenceQuality = materializerTaxonomyAligned
+            ? "stale_or_ambiguous"
+            : taxonomyMismatchEvidenceQuality(lane);
           const base = {
             mismatchId: taxonomyMismatchId({
               week: week.week,
@@ -1190,12 +1287,7 @@ function buildTaxonomyMismatchInventoryForDiagnostic(
             plannedClasses: lane.plannedClass,
             selectedExerciseName: lane.selectedIdentity?.exerciseName ?? null,
             selectedExerciseId: lane.selectedIdentity?.exerciseId ?? null,
-            selectedClass:
-              lane.selectedIdentity && lane.selectedIdentity.exerciseName
-                ? lane.evidenceRefs
-                    .find((ref) => ref.startsWith("selectedClass:"))
-                    ?.replace(/^selectedClass:/, "") ?? null
-                : null,
+            selectedClass,
             laneClassStatus: "mismatch" as const,
             likelyOwnerSeam: owner,
             evidenceQuality,
@@ -1215,17 +1307,29 @@ function buildTaxonomyMismatchInventoryForDiagnostic(
                 : ["selectedIdentity=none"]),
               `inventoryStatus=${lane.inventoryStatus}`,
               `identityStatus=${lane.identityStatus}`,
+              ...(materializerSelectedClass
+                ? [
+                    `materializerTaxonomySelectedClass=${materializerSelectedClass}`,
+                  ]
+                : []),
+              ...(materializerTaxonomyAligned
+                ? ["readoutClassification=taxonomy_aligned_stale_noise"]
+                : []),
               ...lane.evidenceRefs.slice(0, 6),
             ]),
-            missingProof: uniqueSorted([
-              "taxonomy_bridge_no_drift_materializer_probe",
-              "selected_identity_non_regression",
-              "seed_runtime_non_consumption_gate",
-              ...(lane.cleanAlternatives.length > 0
-                ? ["exercise_selection_alternative_ranking_proof"]
-                : ["taxonomy_bridge_fixture"]),
-            ]),
-            nextMeasurement: "build_taxonomy_bridge_no_drift_probe",
+            missingProof: materializerTaxonomyAligned
+              ? []
+              : uniqueSorted([
+                  "taxonomy_bridge_no_drift_materializer_probe",
+                  "selected_identity_non_regression",
+                  "seed_runtime_non_consumption_gate",
+                  ...(lane.cleanAlternatives.length > 0
+                    ? ["exercise_selection_alternative_ranking_proof"]
+                    : ["taxonomy_bridge_fixture"]),
+                ]),
+            nextMeasurement: materializerTaxonomyAligned
+              ? "no_behavior_action_readout_label_aligned"
+              : "build_taxonomy_bridge_no_drift_probe",
             classification: "blocked_by_missing_evidence" as const,
           };
           return {

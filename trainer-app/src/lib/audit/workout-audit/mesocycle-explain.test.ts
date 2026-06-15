@@ -3792,6 +3792,12 @@ describe("buildMesocycleExplainAuditPayload", () => {
     const laneDiffs = noRepair.v2TargetVsNoRepairDiff.slotDiffs.flatMap(
       (slot) => slot.laneDiffs,
     );
+    const activeTaxonomyMismatchPressureCount =
+      scoreboard?.interpretation.taxonomyMismatchInventory?.rows.filter(
+        (row) =>
+          row.classification !== "stale_or_ambiguous" &&
+          row.classification !== "diagnostic_only_mismatch",
+      ).length ?? 0;
     expect(scoreboard?.interpretation.currentV2PolicyGap).toEqual({
       supportDirectFloorBlockerCount:
         noRepair.v2SupportLaneProjectionDiagnostic.summary.directFloorsBelow,
@@ -3847,8 +3853,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ).length,
       selectionBlockerCount:
         noRepair.v2ExerciseSelectionPlanDiagnostic.summary.blockedLaneCount,
-      classTaxonomyMismatchCount:
-        noRepair.v2ExerciseSelectionPlanDiagnostic.summary.classMismatchCount,
+      classTaxonomyMismatchCount: activeTaxonomyMismatchPressureCount,
     });
     expect(scoreboard?.summary.promotionCandidateCount).toBe(0);
     expect(scoreboard?.promotionCandidates).toEqual([]);
@@ -4035,8 +4040,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
       source: "v2_exercise_selection_plan_diagnostic",
       summary: expect.objectContaining({
         mismatchRowCount:
-          scoreboard?.interpretation.currentV2PolicyGap
-            .classTaxonomyMismatchCount,
+          noRepair.v2ExerciseSelectionPlanDiagnostic.summary
+            .classMismatchCount,
       }),
     });
     expect(scoreboard?.interpretation.taxonomyMismatchInventory?.rows[0]).toMatchObject({

@@ -220,4 +220,224 @@ describe("mesocycle explain V2 repair scoreboard", () => {
       safeForBehaviorPromotion: false,
     });
   });
+
+  it("labels selected Calves identities through pure materializer taxonomy without changing readout evidence", () => {
+    const repairEvidence = [
+      repairRow({
+        action: "set_bumped",
+        materiality: "moderate",
+        muscle: "Calves",
+        exerciseName: "Seated Calf Raise",
+        rawSetDelta: 1,
+        effectiveStimulusDelta: 1,
+        likelyAvoidableWithShadowAllocation: true,
+        shadowAllocationBasis: "slot_owned_muscle_before_selection",
+      }),
+    ];
+    const slotPlans = [
+      {
+        slotId: "lower_a",
+        exercises: [
+          {
+            exerciseName: "Seated Calf Raise",
+            lane: "calves",
+            exerciseClass: "calf_isolation",
+            sets: 3,
+          },
+        ],
+        missingLanes: [],
+        unresolvedDemand: [],
+        validationFailures: [],
+      },
+      {
+        slotId: "lower_b",
+        exercises: [
+          {
+            exerciseName: "Leg Press Calf Raise",
+            lane: "calves",
+            exerciseClass: "calf_isolation",
+            sets: 5,
+          },
+        ],
+        missingLanes: [],
+        unresolvedDemand: [],
+        validationFailures: [],
+      },
+    ];
+
+    const scoreboard = buildRepairPromotionScoreboard(
+      {
+        repairMaterialityAfterShadowAllocation: repairEvidence,
+        suspiciousRepairsNotEligibleForPromotion: [],
+        shadowRepairSummary: {
+          materialRepairCount: 1,
+          majorRepairCount: 0,
+          likelyAvoidableMaterialRepairCount: 1,
+          remainingMaterialRepairCount: 0,
+          likelyAvoidableMajorRepairCount: 0,
+          remainingMajorRepairCount: 0,
+          likelyAvoidableByMuscle: { Calves: 1 },
+          remainingByMuscle: {},
+        },
+      } as unknown as PlanningReality,
+      {
+        weeklyMuscleTotals: [],
+        slotPlans,
+        v2MesocyclePlan: {},
+        v2SetDistributionIntent: {},
+        v2TargetVsNoRepairDiff: { slotDiffs: [] },
+        v2SupportLaneProjectionDiagnostic: {
+          summary: {
+            directFloorsMet: 0,
+            directFloorsBelow: 0,
+            authoredDroppedCount: 0,
+            highRiskDroppedCount: 0,
+          },
+          missingInputs: [],
+          muscles: [],
+          laneBoundaryRows: [],
+        },
+        v2ExerciseSelectionPlanDiagnostic: {
+          summary: {
+            weeksEvaluated: 1,
+            lanesEvaluated: 2,
+            preservedIdentityCount: 2,
+            candidateAvailableCount: 0,
+            missingCandidateCount: 0,
+            classMismatchCount: 2,
+            duplicateRequiresJustificationCount: 0,
+            concentrationWarningCount: 0,
+            blockedLaneCount: 0,
+          },
+          weeks: [
+            {
+              week: 1,
+              slots: [
+                {
+                  slotId: "lower_a",
+                  lanes: [
+                    {
+                      laneId: "calves",
+                      plannedClass: ["calf_isolation"],
+                      primaryMuscles: ["Calves"],
+                      selectedIdentity: {
+                        exerciseId: "seated-calf-raise",
+                        exerciseName: "Seated Calf Raise",
+                        sourceWeek: 1,
+                        setCount: 3,
+                      },
+                      identityStatus: "preserved",
+                      laneClassStatus: "mismatch",
+                      setBudgetStatus: "within_budget",
+                      duplicateStatus: "pass",
+                      concentrationStatus: "pass",
+                      fatigueStatus: "pass",
+                      inventoryStatus: "classification_gap",
+                      capacityStatus: "within_capacity",
+                      cleanAlternatives: [],
+                      unresolvedDemand: [],
+                      evidenceRefs: ["selectedClass:null"],
+                      limitations: [],
+                    },
+                  ],
+                },
+                {
+                  slotId: "lower_b",
+                  lanes: [
+                    {
+                      laneId: "calves",
+                      plannedClass: ["calf_isolation"],
+                      primaryMuscles: ["Calves"],
+                      selectedIdentity: {
+                        exerciseId: "leg-press-calf-raise",
+                        exerciseName: "Leg Press Calf Raise",
+                        sourceWeek: 1,
+                        setCount: 5,
+                      },
+                      identityStatus: "preserved",
+                      laneClassStatus: "mismatch",
+                      setBudgetStatus: "within_budget",
+                      duplicateStatus: "pass",
+                      concentrationStatus: "pass",
+                      fatigueStatus: "pass",
+                      inventoryStatus: "classification_gap",
+                      capacityStatus: "within_capacity",
+                      cleanAlternatives: [],
+                      unresolvedDemand: [],
+                      evidenceRefs: [],
+                      limitations: [],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+          blockers: [],
+          warnings: [],
+          missingInputs: [],
+        },
+      } as unknown as Parameters<typeof buildRepairPromotionScoreboard>[1],
+    );
+
+    const rows =
+      scoreboard?.interpretation.taxonomyMismatchInventory?.rows ?? [];
+
+    expect(rows).toHaveLength(2);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          selectedExerciseName: "Seated Calf Raise",
+          selectedClass: "calf_isolation",
+          likelyOwnerSeam: "audit_readout_cleanup",
+          evidenceQuality: "stale_or_ambiguous",
+          classification: "stale_or_ambiguous",
+          affectsSelectedIdentitySets: 3,
+          missingProof: [],
+          nextMeasurement: "no_behavior_action_readout_label_aligned",
+          evidence: expect.arrayContaining([
+            "materializerTaxonomySelectedClass=calf_isolation",
+            "readoutClassification=taxonomy_aligned_stale_noise",
+          ]),
+        }),
+        expect.objectContaining({
+          selectedExerciseName: "Leg Press Calf Raise",
+          selectedClass: "calf_isolation",
+          affectsSelectedIdentitySets: 5,
+        }),
+      ]),
+    );
+    expect(
+      scoreboard?.interpretation.currentV2PolicyGap.classTaxonomyMismatchCount,
+    ).toBe(0);
+    expect(
+      scoreboard?.interpretation.gapInventory.find(
+        (row) => row.gapId === "class_taxonomy_mismatch",
+      ),
+    ).toBeUndefined();
+    expect(scoreboard?.rawRepairEvidence).toMatchObject({
+      rawRowCount: 1,
+      materialRepairCount: 1,
+      likelyAvoidableMaterialRepairCount: 1,
+    });
+    expect(slotPlans).toEqual([
+      expect.objectContaining({
+        slotId: "lower_a",
+        exercises: [
+          expect.objectContaining({
+            exerciseName: "Seated Calf Raise",
+            sets: 3,
+          }),
+        ],
+      }),
+      expect.objectContaining({
+        slotId: "lower_b",
+        exercises: [
+          expect.objectContaining({
+            exerciseName: "Leg Press Calf Raise",
+            sets: 5,
+          }),
+        ],
+      }),
+    ]);
+  });
 });

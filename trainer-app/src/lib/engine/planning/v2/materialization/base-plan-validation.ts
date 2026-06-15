@@ -727,6 +727,21 @@ function hasLane(input: {
   );
 }
 
+function hasLaneWithAnyClass(input: {
+  evidence: ReadonlyArray<MaterializedLaneEvidence>;
+  slotId: string;
+  laneId: string;
+  classIds: string[];
+}): boolean {
+  const classIds = new Set(input.classIds);
+  return input.evidence.some(
+    (row) =>
+      row.slotId === input.slotId &&
+      row.laneId === input.laneId &&
+      Boolean(row.match?.classId && classIds.has(row.match.classId)),
+  );
+}
+
 function inventoryStimulusForMuscle(
   exercise: V2MaterializationExercise,
   muscle: string,
@@ -862,11 +877,11 @@ function buildExerciseClassCoverage(input: {
       classId: "rear_delt_isolation",
     }),
     hamstringsHingeAndCurl:
-      hasLane({
+      hasLaneWithAnyClass({
         evidence: input.evidence,
         slotId: "lower_b",
         laneId: "hinge_anchor",
-        classId: "hinge_compound",
+        classIds: ["hinge_compound", "low_axial_hip_extension_anchor"],
       }) &&
       hasLane({
         evidence: input.evidence,
@@ -1082,11 +1097,21 @@ function buildAnchorLaneQuality(input: {
         isV2AnchorLaneQualityChecked(row.laneId),
     )
     .map((row) => {
-      const quality = evaluateV2AnchorLaneQuality(
+      const baseQuality = evaluateV2AnchorLaneQuality(
         row.laneId,
         row.inventoryExercise as V2MaterializationExercise,
         row.match,
       );
+      const quality = isLowAxialSupportCoverageSelection(row)
+        ? {
+            ...baseQuality,
+            tier: "ideal" as const,
+            reasons: [
+              ...baseQuality.reasons,
+              "low_axial_intent_authorized_support_coverage",
+            ],
+          }
+        : baseQuality;
       const idealAlternativeCount = countIdealAnchorAlternatives({
         lane: row.planLane as PlanLane,
         inventory: input.inventory,
@@ -1159,6 +1184,21 @@ function buildAnchorLaneQuality(input: {
   });
 
   return { rows, blockers, warnings };
+}
+
+function isLowAxialSupportCoverageSelection(
+  row: MaterializedLaneEvidence,
+): boolean {
+  const intent = row.planLane?.laneSelectionIntent;
+  return (
+    row.slotId === "lower_b" &&
+    row.laneId === "hinge_anchor" &&
+    row.match?.classId === "low_axial_hip_extension_anchor" &&
+    intent?.version === 0 &&
+    intent.consumedByMaterializer === true &&
+    intent.requiredMovementPattern === "low_axial_hip_extension" &&
+    intent.allowedExerciseClasses.includes("low_axial_hip_extension_anchor")
+  );
 }
 
 function anchorQualityIssue(input: {

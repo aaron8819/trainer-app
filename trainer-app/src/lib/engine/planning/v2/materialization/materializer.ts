@@ -834,11 +834,15 @@ function classDisallowedByLaneSelectionIntent(
   if (!disallowed.length) {
     return false;
   }
+  const explicitlyAllowedClassIds = new Set(
+    intent.allowedExerciseClasses.flatMap(classIdsForLaneSelectionIntentClass),
+  );
   const disallowedClassIds = new Set(disallowed.flatMap(classIdsForLaneSelectionIntentClass));
   if (disallowedClassIds.has(candidate.match.classId)) {
     return true;
   }
   return disallowed.some((exerciseClass) =>
+    !explicitlyAllowedClassIds.has(candidate.match.classId) &&
     exerciseTextMatchesLaneSelectionIntentClass(candidate.exercise, exerciseClass),
   );
 }

@@ -174,6 +174,19 @@ const representativeV2Inventory: V2MaterializationExercise[] = [
     fatigueCost: 2,
   }),
   exercise({
+    exerciseId: "cable-pull-through",
+    name: "Cable Pull-Through",
+    primaryMuscles: ["Hamstrings", "Glutes"],
+    movementPatterns: ["hinge"],
+    stimulusByMusclePerSet: {
+      Hamstrings: 0.8,
+      Glutes: 0.8,
+      "Lower Back": 0.1,
+    },
+    isCompound: true,
+    fatigueCost: 1,
+  }),
+  exercise({
     exerciseId: "romanian-deadlift",
     name: "Romanian Deadlift",
     primaryMuscles: ["Hamstrings", "Glutes"],
@@ -656,9 +669,6 @@ describe("buildV2BasePlanValidation", () => {
           "squat_anchor_support_only_selected_while_loadable_alternative_exists:lower_a:Goblet Squat",
         ),
         expect.stringContaining(
-          "hinge_anchor_accessory_selected_while_true_hinge_exists:lower_b:Cable Pull-Through",
-        ),
-        expect.stringContaining(
           "row_anchor_lacks_loadability_while_loadable_row_exists:upper_b:row_support:Inverted Row",
         ),
       ]),
@@ -1108,6 +1118,77 @@ describe("buildV2BasePlanValidation", () => {
     expect(compare.nextSafeAction).toBe("add_shadow_consumption_trial");
   });
 
+  it("keeps failed V2 materialized plans diagnostically available while blocking promotion", () => {
+    const { validation, materializedPlan } = buildFixture();
+    const failedValidation: V2BasePlanValidation = {
+      ...validation,
+      status: "fail",
+      blockers: [
+        {
+          category: "exercise_class_coverage",
+          reason: "hamstrings_hinge_plus_curl_missing",
+          slotId: "lower_b",
+          laneId: "hinge_anchor",
+        },
+      ],
+      summary: {
+        ...validation.summary,
+        blockerCount: 1,
+      },
+    };
+
+    const compare = buildV2BasePlanCompare({
+      v2BasePlanValidation: failedValidation,
+      v2MaterializedPlan: materializedPlan,
+      inventory: representativeV2Inventory,
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      plannerOnlyNoRepairPlan: representativeNoRepairPlan(),
+      repairedPlan: representativeRepairedPlan(materializedPlan),
+    });
+    const shadow = buildV2BasePlanShadowConsumptionTrial({
+      v2BasePlanValidation: failedValidation,
+      v2MaterializedPlan: materializedPlan,
+      inventory: representativeV2Inventory,
+      taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+      plannerOnlyNoRepairPlan: representativeNoRepairPlan(),
+      repairedPlan: representativeRepairedPlan(materializedPlan),
+    });
+
+    expect(compare).toMatchObject({
+      status: "available_with_limitations",
+      comparedPlans: {
+        v2BasePlanAvailable: true,
+        plannerOnlyNoRepairAvailable: true,
+        repairedPlanAvailable: true,
+      },
+      summary: {
+        v2BaseValidationStatus: "fail",
+        v2TotalSets: 63,
+      },
+      nextSafeAction: "fix_v2_base_plan",
+    });
+    expect(compare.blockersBeforeBehaviorPromotion).toContain(
+      "v2_base_validation_failed",
+    );
+    expect(compare.blockersBeforeBehaviorPromotion).not.toContain(
+      "v2_base_plan_unavailable",
+    );
+    expect(shadow).toMatchObject({
+      status: "blocked",
+      comparedPlans: {
+        v2BasePlanAvailable: true,
+        shadowConsumedPlanAvailable: true,
+      },
+      nextSafeAction: "fix_v2_base_plan",
+    });
+    expect(shadow.blockersBeforeBehaviorPromotion).toContain(
+      "v2_base_validation_failed",
+    );
+    expect(shadow.blockersBeforeBehaviorPromotion).not.toContain(
+      "shadow_consumed_plan_unavailable",
+    );
+  });
+
   it("classifies differences as improvement, preservation, regression, unclear, or not comparable", () => {
     const { validation, materializedPlan } = buildFixture();
     const compare = buildV2BasePlanCompare({
@@ -1369,8 +1450,8 @@ describe("buildV2BasePlanValidation", () => {
         }),
         expect.objectContaining({
           slotId: "lower_b",
-          relationship: "same_class_family",
-          classification: "v2_preserves",
+          relationship: "different_acceptable_clean_alternative",
+          classification: "v2_improves",
         }),
       ]),
     );

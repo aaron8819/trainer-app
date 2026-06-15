@@ -647,6 +647,19 @@ const representativeV2Inventory = [
     fatigueCost: 2,
   }),
   exercise({
+    exerciseId: "cable-pull-through",
+    name: "Cable Pull-Through",
+    primaryMuscles: ["Hamstrings", "Glutes"],
+    movementPatterns: ["hinge"],
+    stimulusByMusclePerSet: {
+      Hamstrings: 0.8,
+      Glutes: 0.8,
+      "Lower Back": 0.1,
+    },
+    isCompound: true,
+    fatigueCost: 1,
+  }),
+  exercise({
     exerciseId: "romanian-deadlift",
     name: "Romanian Deadlift",
     primaryMuscles: ["Hamstrings", "Glutes"],
@@ -2225,7 +2238,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
 
     expect(result.blockers).toEqual([]);
     expect(exerciseForLane(result, "upper_a", "hinge_anchor").exerciseId)
-      .toBe("barbell-hip-thrust");
+      .toBe("cable-pull-through");
   });
 
   it("blocks the low-axial support intent when no low-axial candidate exists", () => {
@@ -3601,7 +3614,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       setCount: 4,
     });
     expect(exerciseForLane(result, "lower_b", "hinge_anchor")).toMatchObject({
-      exerciseId: "barbell-hip-thrust",
+      exerciseId: "cable-pull-through",
       setCount: 3,
     });
     expect(exerciseForLane(result, "lower_b", "knee_flexion_curl"))

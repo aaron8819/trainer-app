@@ -690,9 +690,7 @@ function buildV2PlanView(input: {
   );
   return {
     planId: "v2_base_plan",
-    available:
-      input.materializedPlan?.status === "materialized" &&
-      input.validation?.status !== "fail",
+    available: input.materializedPlan?.status === "materialized",
     source: "v2_exercise_materialization",
     slots:
       input.materializedPlan?.slots.map((slot) => ({
@@ -1597,6 +1595,9 @@ function compareStatus(input: {
   if (!input.comparedPlans.v2BasePlanAvailable || !input.validation) {
     return "not_available";
   }
+  if (input.validation.status === "fail") {
+    return "available_with_limitations";
+  }
   if (
     !input.comparedPlans.plannerOnlyNoRepairAvailable ||
     !input.comparedPlans.repairedPlanAvailable
@@ -1823,9 +1824,14 @@ function hasHingeAndCurl(
     const name = exercise.exerciseName.toLowerCase();
     return (
       (exercise.classIds ?? []).includes("hinge_compound") ||
+      (exercise.classIds ?? []).includes("low_axial_hip_extension_anchor") ||
       (exercise.movementPatterns ?? []).some((pattern) => pattern.includes("hinge")) ||
       name.includes("deadlift") ||
-      name.includes("rdl")
+      name.includes("rdl") ||
+      name.includes("hip thrust") ||
+      name.includes("pull-through") ||
+      name.includes("pull through") ||
+      name.includes("reverse hyper")
     );
   });
   const hasCurl = exercises.some((exercise) => {

@@ -165,6 +165,55 @@ function formatVirtualWarmupSectionLabel(section: ExerciseSection): string {
   return section === "main" ? "Main Lifts" : section === "accessory" ? "Accessories" : "Warmup";
 }
 
+function resolveSelectedWarmupActiveSet(
+  data: Required<SectionedExercises>,
+  selectedWarmupExerciseId: string | null
+): FlatSetItem | null {
+  if (!selectedWarmupExerciseId) {
+    return null;
+  }
+
+  for (const section of SECTION_ORDER) {
+    const exerciseIndex = data[section].findIndex(
+      (exercise) => exercise.workoutExerciseId === selectedWarmupExerciseId
+    );
+    if (exerciseIndex === -1) {
+      continue;
+    }
+
+    const exercise = data[section][exerciseIndex];
+    if (exercise.sets.some(isWarmupSet)) {
+      return null;
+    }
+
+    const firstWorkSet = exercise.sets.find((set) => !isWarmupSet(set));
+    if (!firstWorkSet) {
+      return null;
+    }
+
+    return {
+      section,
+      sectionLabel: formatVirtualWarmupSectionLabel(section),
+      exerciseIndex,
+      setIndex: -1,
+      exercise,
+      set: {
+        setId: buildVirtualWarmupSetId(exercise.workoutExerciseId),
+        setIndex: 0,
+        isRuntimeAdded: true,
+        setIntent: "WARMUP",
+        targetReps: firstWorkSet.targetReps,
+        targetRepRange: firstWorkSet.targetRepRange,
+        targetLoad: firstWorkSet.targetLoad,
+        targetRpe: firstWorkSet.targetRpe,
+        restSeconds: 60,
+      },
+    };
+  }
+
+  return null;
+}
+
 export default function LogWorkoutClient({
   workoutId,
   exercises,
@@ -229,51 +278,10 @@ export default function LogWorkoutClient({
     }
   }, [initialRestTimer, restoreTimer, workoutId]);
 
-  const selectedWarmupActiveSet = useMemo<FlatSetItem | null>(() => {
-    if (!selectedWarmupExerciseId) {
-      return null;
-    }
-
-    for (const section of SECTION_ORDER) {
-      const exerciseIndex = data[section].findIndex(
-        (exercise) => exercise.workoutExerciseId === selectedWarmupExerciseId
-      );
-      if (exerciseIndex === -1) {
-        continue;
-      }
-
-      const exercise = data[section][exerciseIndex];
-      if (exercise.sets.some(isWarmupSet)) {
-        return null;
-      }
-
-      const firstWorkSet = exercise.sets.find((set) => !isWarmupSet(set));
-      if (!firstWorkSet) {
-        return null;
-      }
-
-      return {
-        section,
-        sectionLabel: formatVirtualWarmupSectionLabel(section),
-        exerciseIndex,
-        setIndex: -1,
-        exercise,
-        set: {
-          setId: buildVirtualWarmupSetId(exercise.workoutExerciseId),
-          setIndex: 0,
-          isRuntimeAdded: true,
-          setIntent: "WARMUP",
-          targetReps: firstWorkSet.targetReps,
-          targetRepRange: firstWorkSet.targetRepRange,
-          targetLoad: firstWorkSet.targetLoad,
-          targetRpe: firstWorkSet.targetRpe,
-          restSeconds: 60,
-        },
-      };
-    }
-
-    return null;
-  }, [data, selectedWarmupExerciseId]);
+  const selectedWarmupActiveSet = useMemo(
+    () => resolveSelectedWarmupActiveSet(data, selectedWarmupExerciseId),
+    [data, selectedWarmupExerciseId]
+  );
   const visibleActiveSet = selectedWarmupActiveSet ?? activeSet;
   const workFlatSets = useMemo(
     () => flatSets.filter((item) => !isWarmupSet(item.set)),

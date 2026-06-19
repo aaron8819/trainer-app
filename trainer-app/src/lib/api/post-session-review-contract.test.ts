@@ -504,6 +504,135 @@ describe("post-session review contract", () => {
       });
   });
 
+  it("aligns clean-looking calibration rows with next-exposure target-too-high evidence", () => {
+    const contract = buildPostSessionReviewContract(
+      buildInput({
+        exercises: [
+          exercise({
+            exerciseId: "leg-extension",
+            exerciseName: "Leg Extension",
+            sets: [
+              performedSet("set-1", {
+                targetLoad: 70,
+                targetRepMin: 10,
+                targetRepMax: 15,
+                targetRpe: 8.5,
+                actualLoad: 55,
+                actualReps: 12,
+                actualRpe: 8,
+              }),
+              performedSet("set-2", {
+                targetLoad: 70,
+                targetRepMin: 10,
+                targetRepMax: 15,
+                targetRpe: 8.5,
+                actualLoad: 70,
+                actualReps: 12,
+                actualRpe: 8.5,
+              }),
+            ],
+          }),
+        ],
+        nextExposureDecisions: [
+          {
+            exerciseId: "leg-extension",
+            exerciseName: "Leg Extension",
+            decision: {
+              action: "target_too_high",
+              summary: "Next exposure: review the starting point before increasing.",
+              reason: "Written target missed, but reps and effort were otherwise clean.",
+              anchorLoad: 55,
+              repRange: { min: 10, max: 15 },
+              modalRpe: 8.5,
+              medianReps: 12,
+              decisionLog: ["Review-quality guard: downward recalibrated hold."],
+            },
+          },
+        ],
+      })
+    );
+
+    expect(contract.prescriptionCalibration.rows[0]).toMatchObject({
+      exerciseId: "leg-extension",
+      classification: "target_too_high",
+      reasonCodes: ["next_exposure_target_too_high"],
+      loadDeltaPct: -10.7,
+      performedRealityCoherence: "load_too_heavy",
+      affectsPrescriptionPolicy: false,
+    });
+    expect(contract.performedReality.rows[0]).toMatchObject({
+      exerciseId: "leg-extension",
+      label: "under_performed",
+      evidenceOnly: true,
+      affectsProgressionPolicy: false,
+      affectsPrescriptionPolicy: false,
+    });
+    expect(contract.prescriptionCalibration.summary).toMatchObject({
+      targetTooHighCount: 1,
+      loadTooHeavyCount: 1,
+      coherentCount: 0,
+    });
+  });
+
+  it("aligns clean-looking calibration rows with next-exposure recalibrated holds", () => {
+    const contract = buildPostSessionReviewContract(
+      buildInput({
+        exercises: [
+          exercise({
+            exerciseId: "cable-crossover",
+            exerciseName: "Cable Crossover",
+            sets: [
+              performedSet("set-1", {
+                targetLoad: 15,
+                actualLoad: 16.5,
+                actualReps: 10,
+                targetRpe: 8,
+                actualRpe: 8,
+              }),
+              performedSet("set-2", {
+                targetLoad: 15,
+                actualLoad: 16.5,
+                actualReps: 10,
+                targetRpe: 8,
+                actualRpe: 8,
+              }),
+            ],
+          }),
+        ],
+        nextExposureDecisions: [
+          {
+            exerciseId: "cable-crossover",
+            exerciseName: "Cable Crossover",
+            decision: {
+              action: "hold_at_recalibrated_anchor",
+              summary: "Next exposure: hold the recalibrated starting point.",
+              reason: "Performed anchor was above the written target.",
+              anchorLoad: 16.5,
+              repRange: { min: 8, max: 12 },
+              modalRpe: 8,
+              medianReps: 10,
+              decisionLog: ["Review-quality guard: upward recalibrated hold."],
+            },
+          },
+        ],
+      })
+    );
+
+    expect(contract.prescriptionCalibration.rows[0]).toMatchObject({
+      exerciseId: "cable-crossover",
+      classification: "recalibrated_hold",
+      reasonCodes: ["next_exposure_recalibrated_hold"],
+      loadDeltaPct: 10,
+      performedRealityCoherence: "mixed_signal",
+      affectsPrescriptionPolicy: false,
+    });
+    expect(contract.prescriptionCalibration.summary).toMatchObject({
+      targetTooHighCount: 0,
+      targetTooLowCount: 0,
+      mixedSignalCount: 1,
+    });
+  });
+
   it("summarizes exact-exercise recent calibration exposure without policy impact", () => {
     const contract = buildPostSessionReviewContract(
       buildInput({

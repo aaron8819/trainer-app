@@ -14,6 +14,7 @@ import {
 import type {
   PostSessionReviewContractBuildInput,
   PostSessionReviewExerciseEvidence,
+  PostSessionReviewNextExposureEvidence,
   PostSessionReviewRecentExerciseExposureEvidence,
   PostSessionReviewSetEvidence,
 } from "./post-session-review-evidence";
@@ -145,6 +146,7 @@ function classifyCalibration(input: {
   upperRepTarget: number | null;
   targetRpe: number | null;
   medianActualRpe: number | null;
+  nextExposureDecision?: PostSessionReviewNextExposureEvidence["decision"];
 }): Pick<
   PostSessionReviewPrescriptionCalibrationRow,
   "classification" | "reasonCodes" | "notes"
@@ -222,6 +224,20 @@ function classifyCalibration(input: {
     };
   }
 
+  if (input.nextExposureDecision?.action === "target_too_high") {
+    return {
+      classification: "target_too_high",
+      reasonCodes: ["next_exposure_target_too_high"],
+      notes: [
+        `next_exposure_action:${input.nextExposureDecision.action}`,
+        `load_delta_pct:${input.loadDeltaPct}`,
+        ...(typeof input.nextExposureDecision.anchorLoad === "number"
+          ? [`next_exposure_anchor_load:${input.nextExposureDecision.anchorLoad}`]
+          : []),
+      ],
+    };
+  }
+
   if (input.loadDeltaPct <= -15 || repsBelowTarget || effortAboveTarget) {
     return {
       classification: "target_too_high",
@@ -255,6 +271,20 @@ function classifyCalibration(input: {
         `load_delta_pct:${input.loadDeltaPct}`,
         ...(typeof input.medianActualRpe === "number"
           ? [`median_rpe:${input.medianActualRpe}`]
+          : []),
+      ],
+    };
+  }
+
+  if (input.nextExposureDecision?.action === "hold_at_recalibrated_anchor") {
+    return {
+      classification: "recalibrated_hold",
+      reasonCodes: ["next_exposure_recalibrated_hold"],
+      notes: [
+        `next_exposure_action:${input.nextExposureDecision.action}`,
+        `load_delta_pct:${input.loadDeltaPct}`,
+        ...(typeof input.nextExposureDecision.anchorLoad === "number"
+          ? [`next_exposure_anchor_load:${input.nextExposureDecision.anchorLoad}`]
           : []),
       ],
     };
@@ -596,8 +626,12 @@ function buildExecutionSummary(
 }
 
 function buildCalibrationRows(
-  exercises: PostSessionReviewExerciseEvidence[]
+  exercises: PostSessionReviewExerciseEvidence[],
+  nextExposureDecisions: PostSessionReviewNextExposureEvidence[] = []
 ): PostSessionReviewPrescriptionCalibrationRow[] {
+  const nextExposureByExerciseId = new Map(
+    nextExposureDecisions.map((row) => [row.exerciseId, row.decision])
+  );
   return exercises.map((exercise) => {
     const plannedSets = getPlannedSets(exercise);
     const addedSets = getAddedSets(exercise);
@@ -633,6 +667,7 @@ function buildCalibrationRows(
       upperRepTarget: targetRepRange.max,
       targetRpe,
       medianActualRpe: performedLoad.medianRpe,
+      nextExposureDecision: nextExposureByExerciseId.get(exercise.exerciseId),
     });
     const rpeDelta =
       typeof targetRpe === "number" && typeof performedLoad.medianRpe === "number"
@@ -1173,7 +1208,10 @@ export function buildPostSessionReviewContract(
 ): PostSessionReviewContract {
   const exerciseRows = buildExerciseRows(input.exercises);
   const executionSummary = buildExecutionSummary(exerciseRows);
-  const calibrationRows = buildCalibrationRows(input.exercises);
+  const calibrationRows = buildCalibrationRows(
+    input.exercises,
+    input.nextExposureDecisions
+  );
   const performedRealityRows = buildPerformedRealityRows({
     exerciseRows,
     calibrationRows,

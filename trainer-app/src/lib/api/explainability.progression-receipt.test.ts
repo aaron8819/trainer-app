@@ -1026,10 +1026,25 @@ describe("generateWorkoutExplanation progression receipt", () => {
     });
   });
 
-  it("keeps nextExposureDecision aligned with a standard non-discounted increment", async () => {
-    const currentPerformedSets = [
-      { setIndex: 1, actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false },
+  it("keeps nextExposureDecision aligned with work sets when warmup/ramp sets are logged", async () => {
+    const currentPerformedSets: Array<{
+      setIndex: number;
+      setIntent?: "WORK" | "WARMUP";
+      actualReps: number;
+      actualLoad: number;
+      actualRpe: number;
+      wasSkipped: boolean;
+    }> = [
+      {
+        setIndex: 1,
+        setIntent: "WARMUP" as const,
+        actualReps: 12,
+        actualLoad: 35,
+        actualRpe: 7,
+        wasSkipped: false,
+      },
       { setIndex: 2, actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false },
+      { setIndex: 3, actualReps: 12, actualLoad: 40, actualRpe: 7, wasSkipped: false },
     ];
     const performedSemantics = derivePerformedExerciseSemantics({
       isMainLiftEligible: false,
@@ -1080,6 +1095,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
                 actualReps: set.actualReps,
                 actualLoad: set.actualLoad,
                 actualRpe: set.actualRpe,
+                setIntent: set.setIntent ?? "WORK",
                 wasSkipped: set.wasSkipped,
               },
             ],

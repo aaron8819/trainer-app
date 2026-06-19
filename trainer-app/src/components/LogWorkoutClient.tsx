@@ -120,15 +120,16 @@ function normalizeLoadInput(raw: string, isDumbbell: boolean): number | null {
 
 function formatQueueSetSummary(set: LogSetInput, isLogged: boolean, isDumbbell: boolean): string {
   const setPrefix = set.isRuntimeAdded ? `Set ${set.setIndex} Extra set` : `Set ${set.setIndex}`;
+  const intentSuffix = set.setIntent === "WARMUP" ? " Warmup/ramp" : "";
   if (!isLogged) {
-    return setPrefix;
+    return `${setPrefix}${intentSuffix}`;
   }
 
   if (set.wasSkipped) {
-    return `${setPrefix} skipped`;
+    return `${setPrefix}${intentSuffix} skipped`;
   }
 
-  const parts: string[] = [`${setPrefix} OK`];
+  const parts: string[] = [`${setPrefix}${intentSuffix} OK`];
   if (set.actualLoad != null && set.actualReps != null) {
     parts.push(`${toDisplayLoad(set.actualLoad, isDumbbell) ?? set.actualLoad} x ${set.actualReps}`);
   } else if (set.actualReps != null) {
@@ -300,6 +301,7 @@ export default function LogWorkoutClient({
           sets: exercise.sets.map((set) => ({
             setIndex: set.setIndex,
             isRuntimeAdded: set.isRuntimeAdded,
+            setIntent: set.setIntent ?? "WORK",
             targetReps: set.targetReps,
             targetRepRange: set.targetRepRange,
             targetLoad: set.targetLoad,
@@ -763,6 +765,7 @@ export default function LogWorkoutClient({
           actualReps: item.set.actualReps ?? null,
           actualLoad: item.set.actualLoad ?? null,
           actualRpe: item.set.actualRpe ?? null,
+          setIntent: item.set.setIntent ?? "WORK",
           wasSkipped: item.set.wasSkipped ?? false,
         }))
       ),
@@ -784,6 +787,7 @@ export default function LogWorkoutClient({
 
     const success = await actions.logSet(activeSet.set.setId, {
       ...resolvedActiveSetValues,
+      setIntent: activeSet.set.setIntent ?? "WORK",
       wasSkipped:
         resolvedActiveSetValues.actualReps != null ||
         resolvedActiveSetValues.actualLoad != null ||
@@ -804,7 +808,10 @@ export default function LogWorkoutClient({
       return false;
     }
 
-    const success = await actions.logSet(activeSet.set.setId, { wasSkipped: true });
+    const success = await actions.logSet(activeSet.set.setId, {
+      setIntent: activeSet.set.setIntent ?? "WORK",
+      wasSkipped: true,
+    });
     if (success && activeCardMode.kind === "edit") {
       exitEditMode({ restoreLiveSet: true, discardChanges: false });
     }
@@ -946,6 +953,9 @@ export default function LogWorkoutClient({
     handleLoadFocus,
     markFieldTouched,
     setFieldPrefilled,
+    setSetIntentValue: (setId, value) => {
+      updateSetFields(setId, (set) => ({ ...set, setIntent: value }));
+    },
     setRepsValue,
     commitLoadValue,
     setRpeValue,

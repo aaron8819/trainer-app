@@ -214,4 +214,121 @@ describe("buildProgressionAnchorAuditPayload", () => {
       "low load-reliability equipment scaled during early exposure."
     );
   });
+
+  it("excludes warmup/ramp sets from progression anchor audit signal sets", async () => {
+    mocks.workoutExerciseFindMany.mockResolvedValue([
+      {
+        exerciseId: "leg-extension",
+        exercise: {
+          name: "Leg Extension",
+          isMainLiftEligible: false,
+          isCompound: false,
+          exerciseEquipment: [
+            {
+              equipment: {
+                type: "machine",
+              },
+            },
+          ],
+        },
+        workout: {
+          id: "workout-leg-extension",
+          scheduledDate: new Date("2026-03-11T17:00:05.413Z"),
+          revision: 1,
+          status: "COMPLETED",
+          advancesSplit: true,
+          selectionMode: "INTENT",
+          sessionIntent: "LEGS",
+          selectionMetadata: {},
+          mesocycleId: "meso-1",
+          mesocycleWeekSnapshot: 2,
+          mesoSessionSnapshot: 2,
+          mesocyclePhaseSnapshot: "ACCUMULATION",
+        },
+        sets: [
+          {
+            setIndex: 1,
+            targetLoad: 70,
+            targetReps: null,
+            targetRepMin: 10,
+            targetRepMax: 15,
+            logs: [
+              {
+                actualLoad: 55,
+                actualReps: 12,
+                actualRpe: 8,
+                setIntent: "WARMUP",
+                wasSkipped: false,
+              },
+            ],
+          },
+          {
+            setIndex: 2,
+            targetLoad: 70,
+            targetReps: null,
+            targetRepMin: 10,
+            targetRepMax: 15,
+            logs: [
+              {
+                actualLoad: 70,
+                actualReps: 12,
+                actualRpe: 8.5,
+                setIntent: "WORK",
+                wasSkipped: false,
+              },
+            ],
+          },
+          {
+            setIndex: 3,
+            targetLoad: 75,
+            targetReps: null,
+            targetRepMin: 10,
+            targetRepMax: 15,
+            logs: [
+              {
+                actualLoad: 75,
+                actualReps: 12,
+                actualRpe: 8.5,
+                setIntent: "WORK",
+                wasSkipped: false,
+              },
+            ],
+          },
+          {
+            setIndex: 4,
+            targetLoad: 75,
+            targetReps: null,
+            targetRepMin: 10,
+            targetRepMax: 15,
+            logs: [
+              {
+                actualLoad: 75,
+                actualReps: 12,
+                actualRpe: 8.5,
+                setIntent: "WORK",
+                wasSkipped: false,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const payload = await buildProgressionAnchorAuditPayload({
+      userId: "user-1",
+      workoutId: "workout-leg-extension",
+      exerciseId: "leg-extension",
+    });
+
+    expect(payload.trace.anchor).toMatchObject({
+      anchorLoad: 75,
+      signalSetCount: 3,
+      minSignalLoad: 70,
+      maxSignalLoad: 75,
+    });
+    expect(payload.trace.metrics).toMatchObject({
+      medianReps: 12,
+      modalRpe: 8.5,
+    });
+  });
 });

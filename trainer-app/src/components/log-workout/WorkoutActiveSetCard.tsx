@@ -65,6 +65,7 @@ export type WorkoutActiveSetCardFormActions = {
   handleLoadFocus: () => void;
   markFieldTouched: (setId: string, field: keyof PrefilledFieldState) => void;
   setFieldPrefilled: (setId: string, field: keyof PrefilledFieldState, isPrefilled: boolean) => void;
+  setSetIntentValue: (setId: string, value: "WORK" | "WARMUP") => void;
   setRepsValue: (setId: string, value: number | null) => void;
   commitLoadValue: (setId: string, rawValue: string, isDumbbell: boolean) => void;
   setRpeValue: (setId: string, rawValue: string, options?: { commit?: boolean }) => void;
@@ -128,6 +129,7 @@ export function WorkoutActiveSetCard({
     handleLoadFocus,
     markFieldTouched,
     setFieldPrefilled,
+    setSetIntentValue,
     setRepsValue,
     commitLoadValue,
     setRpeValue,
@@ -160,6 +162,7 @@ export function WorkoutActiveSetCard({
   const repsDraft = draftBuffersBySet[setId]?.reps ?? toInputNumberString(activeSet.set.actualReps);
   const loadDraft = draftBuffersBySet[setId]?.load ?? toInputNumberString(activeSet.set.actualLoad);
   const rpeDraft = draftBuffersBySet[setId]?.rpe ?? toInputNumberString(activeSet.set.actualRpe);
+  const isWarmup = activeSet.set.setIntent === "WARMUP";
   const { actualReps, actualLoad, actualRpe } = resolvedValues;
   const setValidity = getSetValidity({
     actualReps,
@@ -277,6 +280,17 @@ export function WorkoutActiveSetCard({
       {shouldUseBodyweightLoadLabel(activeSet.exercise, activeSet.set) ? (
         <p className="mt-2 text-xs text-slate-500">Bodyweight movement (load optional for weighted variation).</p>
       ) : null}
+      <label className="mt-3 flex min-h-10 items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
+        <input
+          type="checkbox"
+          className="h-4 w-4 rounded border-slate-300 text-slate-900"
+          checked={isWarmup}
+          onChange={(event) => {
+            setSetIntentValue(setId, event.target.checked ? "WARMUP" : "WORK");
+          }}
+        />
+        Warmup/ramp
+      </label>
       <div className="mt-2 min-h-5">
         {showDraftRestored ? <p className="text-xs text-slate-400">Draft restored</p> : null}
         {savingDraftSetId === setId ? (

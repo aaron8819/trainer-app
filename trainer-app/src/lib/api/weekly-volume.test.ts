@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { loadMesocycleWeekMuscleVolume } from "./weekly-volume";
 
+function workSets(count: number) {
+  return Array.from({ length: count }, () => ({
+    logs: [{ wasSkipped: false, actualReps: 10, actualRpe: 8, actualLoad: 100, setIntent: "WORK" }],
+  }));
+}
+
 describe("loadMesocycleWeekMuscleVolume", () => {
   it("derives per-exercise contribution breakdowns from the canonical weighted accounting", async () => {
     const findMany = vi.fn().mockResolvedValue([
@@ -18,7 +24,7 @@ describe("loadMesocycleWeekMuscleVolume", () => {
                 { role: "SECONDARY", muscle: { name: "Biceps" } },
               ],
             },
-            sets: Array.from({ length: 3 }, () => ({ logs: [{ wasSkipped: false }] })),
+            sets: workSets(3),
           },
           {
             exercise: {
@@ -31,7 +37,7 @@ describe("loadMesocycleWeekMuscleVolume", () => {
                 { role: "SECONDARY", muscle: { name: "Upper Back" } },
               ],
             },
-            sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+            sets: workSets(2),
           },
           {
             exercise: {
@@ -43,7 +49,7 @@ describe("loadMesocycleWeekMuscleVolume", () => {
                 { role: "SECONDARY", muscle: { name: "Forearms" } },
               ],
             },
-            sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+            sets: workSets(2),
           },
         ],
       },
@@ -105,7 +111,7 @@ describe("loadMesocycleWeekMuscleVolume", () => {
                 { role: "SECONDARY", muscle: { name: "Core" } },
               ],
             },
-            sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+            sets: workSets(2),
           },
         ],
       },
@@ -157,7 +163,7 @@ describe("loadMesocycleWeekMuscleVolume", () => {
                 { role: "SECONDARY", muscle: { name: "Forearms" } },
               ],
             },
-            sets: Array.from({ length: 3 }, () => ({ logs: [{ wasSkipped: false }] })),
+            sets: workSets(3),
           },
           {
             exercise: {
@@ -171,7 +177,7 @@ describe("loadMesocycleWeekMuscleVolume", () => {
                 { role: "SECONDARY", muscle: { name: "Forearms" } },
               ],
             },
-            sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+            sets: workSets(2),
           },
           {
             exercise: {
@@ -183,7 +189,7 @@ describe("loadMesocycleWeekMuscleVolume", () => {
                 { role: "PRIMARY", muscle: { name: "Hamstrings" } },
               ],
             },
-            sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+            sets: workSets(2),
           },
         ],
       },
@@ -223,7 +229,7 @@ describe("loadMesocycleWeekMuscleVolume", () => {
                 { role: "SECONDARY", muscle: { name: "Lower Back" } },
               ],
             },
-            sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+            sets: workSets(2),
           },
         ],
       },
@@ -248,6 +254,63 @@ describe("loadMesocycleWeekMuscleVolume", () => {
     });
   });
 
+  it("excludes warmup/ramp sets from weekly volume", async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        id: "workout-1",
+        exercises: [
+          {
+            exercise: {
+              id: "leg-extension",
+              name: "Leg Extension",
+              aliases: [],
+              exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Quads" } }],
+            },
+            sets: [
+              {
+                logs: [
+                  {
+                    wasSkipped: false,
+                    actualReps: 12,
+                    actualRpe: 8,
+                    actualLoad: 55,
+                    setIntent: "WARMUP",
+                  },
+                ],
+              },
+              ...workSets(2),
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const result = await loadMesocycleWeekMuscleVolume(
+      { workout: { findMany } } as never,
+      {
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        targetWeek: 1,
+        weekStart: new Date("2026-03-02T00:00:00.000Z"),
+        includeBreakdowns: true,
+      }
+    );
+
+    expect(result.Quads).toMatchObject({
+      directSets: 2,
+      effectiveSets: 2,
+      contributions: [
+        {
+          exerciseId: "leg-extension",
+          exerciseName: "Leg Extension",
+          effectiveSets: 2,
+          performedSets: 2,
+          directSets: 2,
+        },
+      ],
+    });
+  });
+
   it("includes performed closeout sessions in actual weekly volume totals", async () => {
     const findMany = vi.fn().mockResolvedValue([
       {
@@ -269,7 +332,7 @@ describe("loadMesocycleWeekMuscleVolume", () => {
               aliases: [],
               exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Biceps" } }],
             },
-            sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+            sets: workSets(2),
           },
         ],
       },

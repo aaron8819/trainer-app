@@ -7,6 +7,7 @@ import {
 } from "@/lib/evidence/session-decision-receipt";
 import { getWeeklyVolumeTarget } from "@/lib/api/mesocycle-lifecycle-math";
 import { loadMesocycleWeekMuscleVolume } from "@/lib/api/weekly-volume";
+import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { readRuntimeEditReconciliation } from "@/lib/ui/selection-metadata";
 import type { SessionAuditExerciseSnapshot } from "@/lib/evidence/session-audit-types";
 import { WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION } from "./constants";
@@ -61,6 +62,7 @@ type WeeklyRetroRuntimeWorkoutRow = {
         actualReps?: number | null;
         actualRpe?: number | null;
         actualLoad?: number | null;
+        setIntent?: "WORK" | "WARMUP" | null;
         wasSkipped: boolean;
       }>;
     }>;
@@ -201,7 +203,7 @@ function countPerformedOrStructuredSets(
   sets: WeeklyRetroRuntimeWorkoutRow["exercises"][number]["sets"]
 ): number {
   if (sets.some((set) => Array.isArray(set.logs))) {
-    return sets.filter((set) => (set.logs?.length ?? 0) > 0 && !set.logs?.[0]?.wasSkipped).length;
+    return sets.filter((set) => classifySetLog(set.logs?.[0]).isWorkEvidence).length;
   }
   return sets.length;
 }
@@ -213,7 +215,7 @@ function countSavedSets(sets: WeeklyRetroRuntimeWorkoutSet[]): number {
 function countPerformedSets(sets: WeeklyRetroRuntimeWorkoutSet[]): number {
   return sets.filter((set) => {
     const latestLog = set.logs?.[0];
-    return latestLog && !latestLog.wasSkipped;
+    return classifySetLog(latestLog).isWorkEvidence;
   }).length;
 }
 
@@ -327,7 +329,7 @@ function summarizePerformedLoad(
   const performedSets = sets
     .filter((set) => {
       const latestLog = set.logs?.[0];
-      return latestLog && !latestLog.wasSkipped;
+      return classifySetLog(latestLog).isWorkEvidence;
     })
     .sort((left, right) => left.setIndex - right.setIndex);
   const loads = performedSets
@@ -1396,6 +1398,7 @@ export async function buildWeeklyRetroAuditPayload(input: {
                     actualReps: true,
                     actualRpe: true,
                     actualLoad: true,
+                    setIntent: true,
                     wasSkipped: true,
                   },
                 },

@@ -61,6 +61,7 @@ export async function POST(request: Request) {
       return { error: blockedReason, status: 409 as const };
     }
     const wasSkipped = parsed.data.wasSkipped ?? false;
+    const setIntent = parsed.data.setIntent ?? "WORK";
     const normalizedActualLoad =
       (parsed.data.actualLoad != null ? quantizeLoad(parsed.data.actualLoad) : undefined) ??
       (!wasSkipped && setRecord.targetLoad === 0 ? 0 : undefined);
@@ -82,6 +83,7 @@ export async function POST(request: Request) {
         actualReps: true,
         actualRpe: true,
         actualLoad: true,
+        setIntent: true,
         wasSkipped: true,
         notes: true,
       },
@@ -93,6 +95,7 @@ export async function POST(request: Request) {
         actualReps: parsed.data.actualReps ?? undefined,
         actualRpe: parsed.data.actualRpe ?? undefined,
         actualLoad: normalizedActualLoad,
+        setIntent,
         wasSkipped,
         notes: parsed.data.notes ?? undefined,
         completedAt: new Date(),
@@ -102,6 +105,7 @@ export async function POST(request: Request) {
         actualReps: parsed.data.actualReps ?? undefined,
         actualRpe: parsed.data.actualRpe ?? undefined,
         actualLoad: normalizedActualLoad,
+        setIntent,
         wasSkipped,
         notes: parsed.data.notes ?? undefined,
       },

@@ -7,6 +7,7 @@ describe("classifySetLog", () => {
       isSkipped: true,
       isResolved: true,
       isPerformed: false,
+      isWorkEvidence: false,
       isSignal: false,
       countsTowardVolume: false,
     });
@@ -17,6 +18,7 @@ describe("classifySetLog", () => {
       isSkipped: false,
       isResolved: false,
       isPerformed: false,
+      isWorkEvidence: false,
       isSignal: false,
       countsTowardVolume: false,
     });
@@ -27,6 +29,7 @@ describe("classifySetLog", () => {
       isSkipped: false,
       isResolved: true,
       isPerformed: true,
+      isWorkEvidence: true,
       isSignal: true,
       countsTowardVolume: true,
     });
@@ -37,6 +40,7 @@ describe("classifySetLog", () => {
       isSkipped: false,
       isResolved: true,
       isPerformed: false,
+      isWorkEvidence: false,
       isSignal: false,
       countsTowardVolume: false,
     });
@@ -47,8 +51,22 @@ describe("classifySetLog", () => {
       isSkipped: false,
       isResolved: true,
       isPerformed: true,
+      isWorkEvidence: true,
       isSignal: false,
       countsTowardVolume: true,
+    });
+  });
+
+  it("keeps warmup/ramp sets performed but excludes them from work evidence", () => {
+    expect(
+      classifySetLog({ setIntent: "WARMUP", actualReps: 12, actualRpe: 8, actualLoad: 55 })
+    ).toEqual({
+      isSkipped: false,
+      isResolved: true,
+      isPerformed: true,
+      isWorkEvidence: false,
+      isSignal: false,
+      countsTowardVolume: false,
     });
   });
 });

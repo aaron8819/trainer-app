@@ -125,6 +125,11 @@ enum WorkoutExerciseSection {
   ACCESSORY
 }
 
+enum SetIntent {
+  WORK
+  WARMUP
+}
+
 enum StimulusBias {
   MECHANICAL
   METABOLIC
@@ -486,6 +491,7 @@ model SetLog {
   id           String     @id @default(uuid())
   workoutSetId String     @unique
   workoutSet   WorkoutSet @relation(fields: [workoutSetId], references: [id])
+  setIntent    SetIntent  @default(WORK)
   actualReps   Int?
   actualRpe    Float?
   actualLoad   Float?

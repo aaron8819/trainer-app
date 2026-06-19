@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { normalizeExposedMuscle } from "@/lib/engine/volume-landmarks";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
+import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { roundToTenth } from "./volume-read-model-helpers";
 
@@ -41,9 +42,17 @@ type WeeklyMuscleVolumeAccumulator = WeeklyMuscleVolumeRow & {
 };
 
 export function countCompletedSets(
-  sets: Array<{ logs: Array<{ wasSkipped: boolean }> }>
+  sets: Array<{
+    logs: Array<{
+      setIntent?: "WORK" | "WARMUP" | null;
+      actualReps?: number | null;
+      actualRpe?: number | null;
+      actualLoad?: number | null;
+      wasSkipped: boolean;
+    }>;
+  }>
 ): number {
-  return sets.filter((set) => set.logs.length > 0 && !set.logs[0]?.wasSkipped).length;
+  return sets.filter((set) => classifySetLog(set.logs[0]).countsTowardVolume).length;
 }
 
 function getOrCreateMuscleRow(

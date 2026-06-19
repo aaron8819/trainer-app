@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { WorkoutStatus } from "@prisma/client";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
+import { classifySetLog } from "@/lib/session-semantics/set-classification";
 
 export type ExerciseSession = {
   date: string;
@@ -69,7 +70,7 @@ export async function loadExerciseHistory(
       date: we.workout.scheduledDate.toISOString(),
       sets: we.sets.flatMap((set) => {
         const log = set.logs[0];
-        if (!log || log.wasSkipped) {
+        if (!log || !classifySetLog(log).isWorkEvidence) {
           return [];
         }
         return {

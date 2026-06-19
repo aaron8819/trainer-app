@@ -31,6 +31,7 @@ type WorkoutExercise = {
     targetRpe?: number | null;
     restSeconds?: number | null;
     logs?: {
+      setIntent?: "WORK" | "WARMUP" | null;
       actualReps: number | null;
       actualRpe: number | null;
       actualLoad: number | null;
@@ -107,6 +108,7 @@ export function splitExercises(
               actualReps: set.logs[0].actualReps ?? null,
               actualLoad: set.logs[0].actualLoad ?? null,
               actualRpe: set.logs[0].actualRpe ?? null,
+              setIntent: set.logs[0].setIntent ?? "WORK",
               wasSkipped: set.logs[0].wasSkipped ?? false,
             }
           : {}),

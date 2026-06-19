@@ -18,6 +18,7 @@ export const WORKOUT_SESSION_INTENT_DB_VALUES = [
   "BODY_PART",
 ] as const;
 export const WORKOUT_EXERCISE_SECTION_VALUES = ["WARMUP", "MAIN", "ACCESSORY"] as const;
+export const SET_INTENT_VALUES = ["WORK", "WARMUP"] as const;
 
 const optionalNumber = (schema: z.ZodNumber) =>
   z.preprocess((value) => {
@@ -181,6 +182,7 @@ export const saveWorkoutSchema = saveWorkoutPayloadSchema;
 export const setLogSchema = z.object({
   workoutSetId: z.string(),
   workoutExerciseId: z.string().optional(),
+  setIntent: z.enum(SET_INTENT_VALUES).optional(),
   actualReps: z.number().int().min(0).optional(),
   actualRpe: z
     .number()

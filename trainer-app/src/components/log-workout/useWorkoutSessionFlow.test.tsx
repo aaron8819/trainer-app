@@ -413,6 +413,7 @@ describe("useWorkoutSessionFlow", () => {
           actualReps: 10,
           actualLoad: 50,
           actualRpe: 6,
+          setIntent: "WORK",
         })
       );
       expect(screen.getByTestId("logged-ids")).toHaveTextContent("set-1");
@@ -426,6 +427,27 @@ describe("useWorkoutSessionFlow", () => {
     expect(callbacks.clearDraftSpy).toHaveBeenCalledWith("set-1");
     expect(callbacks.clearDraftInputBuffersSpy).toHaveBeenCalledWith("set-1");
     expect(callbacks.setFieldPrefilledSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("passes warmup/ramp set intent through log requests", async () => {
+    const callbacks = createCallbacks();
+    const exercises = makeExercises();
+    exercises.main[0].sets[0] = {
+      ...exercises.main[0].sets[0],
+      setIntent: "WARMUP",
+    };
+
+    render(<WorkoutSessionFlowHarness callbacks={callbacks} exercises={exercises} />);
+    fireEvent.click(screen.getByRole("button", { name: "log-first" }));
+
+    await waitFor(() => {
+      expect(mockedLogSetRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workoutSetId: "set-1",
+          setIntent: "WARMUP",
+        })
+      );
+    });
   });
 
   it("adds a set, appends it to the exercise, keeps unresolved planned work active, and leaves the timer unchanged", async () => {

@@ -221,6 +221,7 @@ export function useWorkoutSessionFlow({
       try {
         const response = await logSetRequest({
           workoutSetId: targetSet.set.setId,
+          setIntent: normalizedSet.setIntent ?? "WORK",
           actualReps: normalizedSet.actualReps ?? undefined,
           actualLoad: normalizedSet.actualLoad ?? undefined,
           actualRpe: normalizedSet.actualRpe ?? undefined,
@@ -361,6 +362,7 @@ export function useWorkoutSessionFlow({
 
         const restoreResponse = await logSetRequest({
           workoutSetId: undoSnapshot.setId,
+          setIntent: undoSnapshot.previousLog?.setIntent ?? "WORK",
           actualReps: undoSnapshot.previousLog?.actualReps ?? undefined,
           actualLoad: undoSnapshot.previousLog?.actualLoad ?? undefined,
           actualRpe: undoSnapshot.previousLog?.actualRpe ?? undefined,

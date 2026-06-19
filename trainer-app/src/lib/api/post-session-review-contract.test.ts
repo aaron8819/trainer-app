@@ -574,6 +574,82 @@ describe("post-session review contract", () => {
     });
   });
 
+  it("shows warmup/ramp context while calibrating only from work sets", () => {
+    const contract = buildPostSessionReviewContract(
+      buildInput({
+        exercises: [
+          exercise({
+            exerciseId: "leg-extension",
+            exerciseName: "Leg Extension",
+            isMainLift: false,
+            section: "ACCESSORY",
+            sets: [
+              performedSet("set-1", {
+                setIntent: "WARMUP",
+                targetLoad: 70,
+                targetRepMin: 10,
+                targetRepMax: 15,
+                targetRpe: 8.5,
+                actualLoad: 55,
+                actualReps: 12,
+                actualRpe: 8,
+              }),
+              performedSet("set-2", {
+                targetLoad: 70,
+                targetRepMin: 10,
+                targetRepMax: 15,
+                targetRpe: 8.5,
+                actualLoad: 70,
+                actualReps: 12,
+                actualRpe: 8.5,
+              }),
+              performedSet("set-3", {
+                targetLoad: 75,
+                targetRepMin: 10,
+                targetRepMax: 15,
+                targetRpe: 8.5,
+                actualLoad: 75,
+                actualReps: 12,
+                actualRpe: 8.5,
+              }),
+            ],
+          }),
+        ],
+      })
+    );
+
+    expect(contract.executionSummary).toMatchObject({
+      completedSetCount: 3,
+    });
+    expect(contract.prescriptionCalibration.rows[0]).toMatchObject({
+      exerciseId: "leg-extension",
+      classification: "clean",
+      plannedSetCount: 2,
+      performedSetCount: 2,
+      targetLoad: 72.5,
+      medianPerformedLoad: 72.5,
+      medianReps: 12,
+      medianActualRpe: 8.5,
+      affectsPrescriptionPolicy: false,
+    });
+    expect(contract.performedReality.rows[0]).toMatchObject({
+      exerciseId: "leg-extension",
+      plannedSetCount: 3,
+      performedSetCount: 3,
+      actual: {
+        medianLoad: 72.5,
+        medianReps: 12,
+        medianRpe: 8.5,
+      },
+      evidenceOnly: true,
+    });
+    expect(contract.prescriptionCalibration.summary).toMatchObject({
+      coherentCount: 1,
+      targetTooHighCount: 0,
+      loadTooHeavyCount: 0,
+    });
+  });
+
   it("aligns clean-looking calibration rows with next-exposure recalibrated holds", () => {
     const contract = buildPostSessionReviewContract(
       buildInput({

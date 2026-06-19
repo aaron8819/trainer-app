@@ -299,6 +299,7 @@ export async function generateWorkoutExplanation(
         actualLoad: set.logs[0]?.actualLoad ?? null,
         actualReps: set.logs[0]?.actualReps ?? null,
         actualRpe: set.logs[0]?.actualRpe ?? null,
+        setIntent: set.logs[0]?.setIntent ?? "WORK",
         wasSkipped: set.logs[0]?.wasSkipped ?? false,
       })),
     });
@@ -332,6 +333,7 @@ export async function generateWorkoutExplanation(
           setIndex: set.setIndex,
           log: set.logs[0]
             ? {
+                setIntent: set.logs[0].setIntent,
                 actualRpe: set.logs[0].actualRpe,
                 actualLoad: set.logs[0].actualLoad,
               }
@@ -349,6 +351,7 @@ export async function generateWorkoutExplanation(
             actualLoad: set.logs[0]?.actualLoad ?? null,
             actualReps: set.logs[0]?.actualReps ?? null,
             actualRpe: set.logs[0]?.actualRpe ?? null,
+            setIntent: set.logs[0]?.setIntent ?? "WORK",
             wasSkipped: set.logs[0]?.wasSkipped ?? false,
           })),
         hasTransitionBackfillSubstitution:
@@ -924,6 +927,7 @@ async function loadLatestPerformedSetSummary(
       actualLoad: set.logs[0]?.actualLoad ?? null,
       actualReps: set.logs[0]?.actualReps ?? null,
       actualRpe: set.logs[0]?.actualRpe ?? null,
+      setIntent: set.logs[0]?.setIntent ?? "WORK",
       wasSkipped: set.logs[0]?.wasSkipped ?? false,
     })),
   });
@@ -972,7 +976,13 @@ type ExplainabilityConfidenceInput = {
   scheduledDate?: Date;
   performedLogs: Array<{
     setIndex: number;
-    log?: { actualRpe: number | null; actualLoad: number | null } | undefined;
+    log?:
+      | {
+          setIntent?: "WORK" | "WARMUP" | null;
+          actualRpe: number | null;
+          actualLoad: number | null;
+        }
+      | undefined;
   }>;
 };
 
@@ -986,6 +996,7 @@ type NextExposurePlannedSetInput = {
   actualLoad?: number | null;
   actualReps?: number | null;
   actualRpe?: number | null;
+  setIntent?: "WORK" | "WARMUP" | null;
   wasSkipped?: boolean;
 };
 
@@ -1187,11 +1198,20 @@ async function findLatestProgressionEligibleWorkoutExercise(input: {
 function resolvePerformedModalLoad(
   performedLogs: Array<{
     setIndex: number;
-    log?: { actualRpe: number | null; actualLoad: number | null } | undefined;
+    log?:
+      | {
+          setIntent?: "WORK" | "WARMUP" | null;
+          actualRpe: number | null;
+          actualLoad: number | null;
+        }
+      | undefined;
   }>
 ): number | null {
   const frequency = new Map<number, number>();
   for (const entry of performedLogs) {
+    if (!classifySetLog(entry.log).isSignal) {
+      continue;
+    }
     if (
       entry.log?.actualRpe != null &&
       Number.isFinite(entry.log.actualRpe) &&
@@ -1579,17 +1599,18 @@ function summarizeNextExposureTargetAdherence(input: {
   performedSemantics: NonNullable<ReturnType<typeof derivePerformedExerciseSemantics>>;
   anchorLoad: number;
 }): NextExposureTargetAdherence {
-  const plannedSetCount = input.plannedSets.length;
-  const performedSetCount = input.plannedSets.filter(
+  const workSets = input.plannedSets.filter((set) => set.setIntent !== "WARMUP");
+  const plannedSetCount = workSets.length;
+  const performedSetCount = workSets.filter(
     isPerformedNextExposureSet
   ).length;
-  const signalSetCount = input.plannedSets.filter(isCleanNextExposureSignalSet).length;
-  const skippedSetCount = input.plannedSets.filter((set) => set.wasSkipped).length;
+  const signalSetCount = workSets.filter(isCleanNextExposureSignalSet).length;
+  const skippedSetCount = workSets.filter((set) => set.wasSkipped).length;
   const targetLoad = resolveRepresentativeTargetLoad(
-    input.plannedSets,
+    workSets,
     input.performedSemantics.anchorStrategy
   );
-  const targetRpe = resolveRepresentativeTargetRpe(input.plannedSets);
+  const targetRpe = resolveRepresentativeTargetRpe(workSets);
   const targetMissRatio =
     targetLoad != null && targetLoad > 0 && input.anchorLoad < targetLoad
       ? (targetLoad - input.anchorLoad) / targetLoad
@@ -1615,7 +1636,7 @@ function summarizeNextExposureTargetAdherence(input: {
 
 function isPerformedNextExposureSet(set: NextExposurePlannedSetInput): boolean {
   return (
-    !set.wasSkipped &&
+    classifySetLog(set).isWorkEvidence &&
     Number.isFinite(set.actualLoad) &&
     (set.actualLoad ?? 0) >= 0 &&
     Number.isFinite(set.actualReps) &&
@@ -1626,7 +1647,7 @@ function isPerformedNextExposureSet(set: NextExposurePlannedSetInput): boolean {
 function isCleanNextExposureSignalSet(set: NextExposurePlannedSetInput): boolean {
   return (
     isPerformedNextExposureSet(set) &&
-    (set.actualRpe == null || set.actualRpe >= 6)
+    classifySetLog(set).isSignal
   );
 }
 
@@ -1831,6 +1852,7 @@ async function loadExplainabilityProgressionSessions(
           setIndex: set.setIndex,
           log: set.logs[0]
             ? {
+                setIntent: set.logs[0].setIntent,
                 actualRpe: set.logs[0].actualRpe,
                 actualLoad: set.logs[0].actualLoad,
               }
@@ -1995,7 +2017,7 @@ async function computeVolumeCompliance(
   const plannedEffectiveVolumeThisSession = new Map<string, number>();
   for (const we of workout.exercises) {
     const prescribedSets = we.sets.filter(
-      (s) => !classifySetLog(s.logs[0]).isSkipped
+      (s) => !classifySetLog(s.logs[0]).isSkipped && s.logs[0]?.setIntent !== "WARMUP"
     ).length;
     const exercise = exerciseById.get(we.exerciseId);
     if (!exercise || prescribedSets === 0) {

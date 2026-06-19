@@ -35,6 +35,7 @@ function buildHistorySession(entry: {
       actualLoad: number | null;
       actualReps: number | null;
       actualRpe: number | null;
+      setIntent?: "WORK" | "WARMUP" | null;
       wasSkipped: boolean;
     }>;
   }>;
@@ -50,6 +51,7 @@ function buildHistorySession(entry: {
       actualLoad: set.logs[0]?.actualLoad ?? null,
       actualReps: set.logs[0]?.actualReps ?? null,
       actualRpe: set.logs[0]?.actualRpe ?? null,
+      setIntent: set.logs[0]?.setIntent ?? "WORK",
       wasSkipped: set.logs[0]?.wasSkipped ?? false,
     })),
   });
@@ -134,6 +136,7 @@ export async function buildProgressionAnchorAuditPayload(input: {
       actualLoad: set.logs[0]?.actualLoad ?? null,
       actualReps: set.logs[0]?.actualReps ?? null,
       actualRpe: set.logs[0]?.actualRpe ?? null,
+      setIntent: set.logs[0]?.setIntent ?? "WORK",
       wasSkipped: set.logs[0]?.wasSkipped ?? false,
     })),
   });

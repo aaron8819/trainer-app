@@ -112,6 +112,7 @@ describe("exercise exposure", () => {
           logs: {
             some: {
               wasSkipped: false,
+              setIntent: "WORK",
               OR: [{ actualReps: { not: null } }, { actualRpe: { not: null } }],
             },
           },
@@ -208,6 +209,38 @@ describe("exercise exposure", () => {
     expect(mocks.exerciseExposureUpsert).not.toHaveBeenCalled();
   });
 
+  it("does not treat warmup/ramp rows as performed exposure stimulus", async () => {
+    mocks.workoutFindUnique.mockResolvedValue({
+      id: "workout-1",
+      status: "COMPLETED",
+      selectionMetadata: {},
+      exercises: [
+        {
+          id: "we-leg-extension",
+          exercise: { name: "Leg Extension" },
+          sets: [
+            {
+              logs: [
+                {
+                  actualLoad: 55,
+                  actualReps: 12,
+                  actualRpe: 8,
+                  setIntent: "WARMUP",
+                  wasSkipped: false,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    await updateExerciseExposure("user-1", "workout-1");
+
+    expect(mocks.workoutExerciseFindMany).not.toHaveBeenCalled();
+    expect(mocks.exerciseExposureUpsert).not.toHaveBeenCalled();
+  });
+
   it("preserves selection history for genuinely performed exercises", async () => {
     mocks.exerciseExposureFindMany.mockResolvedValue([
       {
@@ -245,6 +278,7 @@ describe("exercise exposure", () => {
               logs: {
                 some: {
                   wasSkipped: false,
+                  setIntent: "WORK",
                   OR: [{ actualReps: { not: null } }, { actualRpe: { not: null } }],
                 },
               },

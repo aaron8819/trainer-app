@@ -114,6 +114,57 @@ describe("POST /api/logs/set", () => {
     );
   });
 
+  it("defaults omitted set intent to work", async () => {
+    mocks.setLogFindUnique.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/logs/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutSetId: "set-1",
+          actualReps: 8,
+          actualRpe: 8,
+          actualLoad: 90,
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.setLogUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ setIntent: "WORK" }),
+        create: expect.objectContaining({ setIntent: "WORK" }),
+      })
+    );
+  });
+
+  it("persists warmup/ramp set intent when provided", async () => {
+    mocks.setLogFindUnique.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/logs/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutSetId: "set-1",
+          actualReps: 12,
+          actualRpe: 8,
+          actualLoad: 55,
+          setIntent: "WARMUP",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.setLogUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({ setIntent: "WARMUP" }),
+        create: expect.objectContaining({ setIntent: "WARMUP" }),
+      })
+    );
+  });
+
   it("normalizes bodyweight performed-set load to 0 when targetLoad is 0 and actualLoad is omitted", async () => {
     mocks.workoutSetFindFirst.mockResolvedValueOnce({
       id: "set-bw",

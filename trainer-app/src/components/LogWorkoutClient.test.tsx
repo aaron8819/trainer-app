@@ -560,6 +560,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
         actualReps: 10,
         actualLoad: 80,
         actualRpe: 8,
+        setIntent: "WORK",
         wasSkipped: false,
       });
     });
@@ -1122,6 +1123,27 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(submitButton).toBeDisabled();
     expect(screen.getByText("Load alone will not save. Add reps or RPE, or skip the set.")).toBeInTheDocument();
     expect(mockedLogSetRequest).not.toHaveBeenCalled();
+  });
+
+  it("lets the active set be marked as warmup/ramp and keeps it visible after logging", async () => {
+    const user = userEvent.setup();
+    renderClient();
+
+    await user.click(screen.getByLabelText("Warmup/ramp"));
+    await clickResolvedSubmitButton(user);
+
+    await waitFor(() => {
+      expect(mockedLogSetRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          workoutSetId: "set-1",
+          setIntent: "WARMUP",
+          wasSkipped: false,
+        })
+      );
+      expect(
+        screen.getByRole("button", { name: /Set 1 Warmup\/ramp OK 50 x 10 @8/i })
+      ).toBeInTheDocument();
+    });
   });
 
   it("updates reps immediately from increment buttons even while input buffer is active", async () => {

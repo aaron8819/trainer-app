@@ -66,6 +66,34 @@ describe("derivePerformedExerciseSemantics", () => {
     });
     expect(semantics?.signalSets).toHaveLength(1);
   });
+
+  it("excludes warmup/ramp sets from anchors and signal sets", () => {
+    const semantics = derivePerformedExerciseSemantics({
+      isMainLiftEligible: false,
+      sets: [
+        {
+          setIndex: 1,
+          setIntent: "WARMUP",
+          targetLoad: 70,
+          actualLoad: 55,
+          actualReps: 12,
+          actualRpe: 8,
+        },
+        { setIndex: 2, targetLoad: 70, actualLoad: 70, actualReps: 12, actualRpe: 8.5 },
+        { setIndex: 3, targetLoad: 75, actualLoad: 75, actualReps: 12, actualRpe: 8.5 },
+        { setIndex: 4, targetLoad: 75, actualLoad: 75, actualReps: 12, actualRpe: 8.5 },
+      ],
+    });
+
+    expect(semantics).toMatchObject({
+      anchorStrategy: "modal",
+      anchorLoad: 75,
+      workingSetLoad: 75,
+      medianReps: 12,
+      modalRpe: 8.5,
+    });
+    expect(semantics?.signalSets.map((set) => set.load)).toEqual([70, 75, 75]);
+  });
 });
 
 describe("derivePlannedSetStructure", () => {

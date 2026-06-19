@@ -894,6 +894,7 @@ async function loadMesocycleWorkouts(
                   actualReps: true,
                   actualLoad: true,
                   actualRpe: true,
+                  setIntent: true,
                   completedAt: true,
                 },
               },

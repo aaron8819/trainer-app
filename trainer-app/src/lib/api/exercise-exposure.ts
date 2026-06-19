@@ -14,6 +14,7 @@ import type { RotationContext, PerformanceTrend } from "../engine/selection-v2/t
 
 const performedSetLogWhere = {
   wasSkipped: false,
+  setIntent: "WORK",
   OR: [
     { actualReps: { not: null } },
     { actualRpe: { not: null } },
@@ -26,11 +27,12 @@ function hasPerformedSet(
       actualReps: number | null;
       actualRpe: number | null;
       actualLoad?: number | null;
+      setIntent?: "WORK" | "WARMUP" | null;
       wasSkipped: boolean;
     }>;
   }>
 ): boolean {
-  return sets.some((set) => classifySetLog(set.logs[0]).isPerformed);
+  return sets.some((set) => classifySetLog(set.logs[0]).isWorkEvidence);
 }
 
 function isRuntimeAddedWorkoutExercise(
@@ -140,6 +142,7 @@ export async function updateExerciseExposure(
                   actualReps: true,
                   actualRpe: true,
                   actualLoad: true,
+                  setIntent: true,
                   wasSkipped: true,
                 },
               },
@@ -203,7 +206,7 @@ export async function updateExerciseExposure(
       .reduce(
         (sum, exercise) =>
           sum +
-          exercise.sets.filter((set) => classifySetLog(set.logs[0]).isPerformed).length,
+          exercise.sets.filter((set) => classifySetLog(set.logs[0]).isWorkEvidence).length,
         0
       );
     const avgSetsPerWeek = Number((timesUsedL4W > 0 ? touchedSetCount / 4 : 0).toFixed(2));
@@ -287,6 +290,7 @@ export async function assessPerformanceTrend(
             select: {
               actualLoad: true,
               actualReps: true,
+              setIntent: true,
             },
             take: 1,
           },

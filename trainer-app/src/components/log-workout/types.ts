@@ -4,6 +4,7 @@ export type LogSetInput = {
   setId: string;
   setIndex: number;
   isRuntimeAdded?: boolean;
+  setIntent?: "WORK" | "WARMUP";
   targetReps: number;
   targetRepRange?: { min: number; max: number };
   targetLoad?: number | null;
@@ -87,6 +88,7 @@ export type UndoSnapshot = {
     actualReps?: number | null;
     actualRpe?: number | null;
     actualLoad?: number | null;
+    setIntent?: "WORK" | "WARMUP" | null;
     wasSkipped?: boolean | null;
     notes?: string | null;
   } | null;
@@ -119,6 +121,7 @@ export type AutoregHint = {
 export type CompletedWorkoutSetSummary = {
   setIndex: number;
   isRuntimeAdded?: boolean;
+  setIntent?: "WORK" | "WARMUP";
   targetReps: number;
   targetRepRange?: { min: number; max: number };
   targetLoad?: number | null;

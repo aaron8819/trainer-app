@@ -42,6 +42,7 @@ export type PostSessionReviewSetEvidence = {
   workoutSetId: string;
   setIndex: number;
   isRuntimeAdded?: boolean;
+  setIntent?: "WORK" | "WARMUP";
   targetReps?: number | null;
   targetRepMin?: number | null;
   targetRepMax?: number | null;

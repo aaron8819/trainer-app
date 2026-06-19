@@ -6,11 +6,11 @@ import {
   type ProgressionAnchorStrategy,
   type PlannedLoadStructure,
 } from "@/lib/progression/anchoring";
-
-const EFFECTIVE_RPE_MIN = 6;
+import { classifySetLog } from "./set-classification";
 
 export type PerformedExerciseSetInput = {
   setIndex: number;
+  setIntent?: "WORK" | "WARMUP" | null;
   targetLoad?: number | null;
   actualLoad?: number | null;
   actualReps?: number | null;
@@ -39,15 +39,14 @@ export function derivePerformedExerciseSemantics(input: {
     isMainLiftEligible: input.isMainLiftEligible,
   });
   const plannedSetStructure = derivePlannedSetStructure(input.sets);
-  const signalSets = input.sets
+  const signalSourceSets = input.sets.filter((set) => classifySetLog(set).isSignal);
+  const signalSets = signalSourceSets
     .filter(
       (set) =>
-        !set.wasSkipped &&
         Number.isFinite(set.actualReps) &&
         (set.actualReps ?? 0) > 0 &&
         Number.isFinite(set.actualLoad) &&
-        (set.actualLoad ?? 0) >= 0 &&
-        (set.actualRpe == null || set.actualRpe >= EFFECTIVE_RPE_MIN)
+        (set.actualLoad ?? 0) >= 0
     )
     .map((set) => ({
       reps: set.actualReps as number,
@@ -62,7 +61,7 @@ export function derivePerformedExerciseSemantics(input: {
 
   const workingSetLoad = resolveWorkingSetLoad({
     isMainLiftEligible: input.isMainLiftEligible,
-    sets: input.sets.map((set) => ({
+    sets: signalSourceSets.map((set) => ({
       setIndex: set.setIndex,
       load: set.actualLoad,
       targetLoad: set.targetLoad,

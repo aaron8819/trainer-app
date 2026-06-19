@@ -255,6 +255,7 @@ export function CompletedWorkoutReview({
                       actualReps: set.actualReps,
                       actualLoad: set.actualLoad,
                       actualRpe: set.actualRpe,
+                      setIntent: set.setIntent,
                       wasSkipped: set.wasSkipped,
                     });
                     const repEvaluation = evaluateTargetReps({
@@ -305,6 +306,11 @@ export function CompletedWorkoutReview({
                             {set.isRuntimeAdded ? (
                               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
                                 Extra set
+                              </span>
+                            ) : null}
+                            {set.setIntent === "WARMUP" ? (
+                              <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                                Warmup/ramp
                               </span>
                             ) : null}
                           </span>

@@ -58,6 +58,7 @@ async function parseJsonResponse<T>(response: Response): Promise<ApiResult<T>> {
 
 export async function logSetRequest(payload: {
   workoutSetId: string;
+  setIntent?: "WORK" | "WARMUP";
   actualReps?: number | null;
   actualLoad?: number | null;
   actualRpe?: number | null;
@@ -69,6 +70,7 @@ export async function logSetRequest(payload: {
     actualReps?: number | null;
     actualRpe?: number | null;
     actualLoad?: number | null;
+    setIntent?: "WORK" | "WARMUP" | null;
     wasSkipped?: boolean | null;
     notes?: string | null;
   } | null;

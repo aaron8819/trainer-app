@@ -118,6 +118,7 @@ type WorkoutForGuidance = Prisma.WorkoutGetPayload<{
                 actualReps: true;
                 actualRpe: true;
                 actualLoad: true;
+                setIntent: true;
                 wasSkipped: true;
               };
             };
@@ -586,6 +587,7 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
                   actualReps: true,
                   actualRpe: true,
                   actualLoad: true,
+                  setIntent: true,
                   wasSkipped: true,
                 },
               },

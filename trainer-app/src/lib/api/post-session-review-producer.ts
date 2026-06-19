@@ -67,6 +67,7 @@ type ReviewWorkout = Prisma.WorkoutGetPayload<{
                 actualLoad: true;
                 actualRpe: true;
                 completedAt: true;
+                setIntent: true;
                 wasSkipped: true;
               };
             };
@@ -117,6 +118,7 @@ type RecentReviewWorkoutExercise = Prisma.WorkoutExerciseGetPayload<{
             actualLoad: true;
             actualRpe: true;
             completedAt: true;
+            setIntent: true;
             wasSkipped: true;
           };
         };
@@ -229,6 +231,7 @@ function buildExerciseEvidence(
           targetRepMax: set.targetRepMax,
           targetRpe: set.targetRpe,
           targetLoad: set.targetLoad,
+          setIntent: log?.setIntent ?? "WORK",
           wasLogged: Boolean(log),
           wasSkipped: log?.wasSkipped === true,
           actualReps: log?.actualReps ?? null,
@@ -272,6 +275,7 @@ function toRecentExerciseExposureEvidence(
         targetRepMax: set.targetRepMax,
         targetRpe: set.targetRpe,
         targetLoad: set.targetLoad,
+        setIntent: log?.setIntent ?? "WORK",
         wasLogged: Boolean(log),
         wasSkipped: log?.wasSkipped === true,
         actualReps: log?.actualReps ?? null,
@@ -344,6 +348,7 @@ async function loadRecentExerciseExposureEvidence(
               actualLoad: true,
               actualRpe: true,
               completedAt: true,
+              setIntent: true,
               wasSkipped: true,
             },
           },
@@ -523,6 +528,7 @@ export async function loadPostSessionReviewContractForWorkout(
                   actualLoad: true,
                   actualRpe: true,
                   completedAt: true,
+                  setIntent: true,
                   wasSkipped: true,
                 },
               },

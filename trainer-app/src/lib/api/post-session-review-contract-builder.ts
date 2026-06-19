@@ -48,6 +48,14 @@ function isPerformedSet(set: PostSessionReviewSetEvidence): boolean {
   return set.wasLogged && !set.wasSkipped;
 }
 
+function isWorkSet(set: PostSessionReviewSetEvidence): boolean {
+  return set.setIntent !== "WARMUP";
+}
+
+function isPerformedWorkSet(set: PostSessionReviewSetEvidence): boolean {
+  return isPerformedSet(set) && isWorkSet(set);
+}
+
 function getPlannedSets(exercise: PostSessionReviewExerciseEvidence) {
   return exercise.sets.filter((set) => isPlannedSet(exercise, set));
 }
@@ -57,11 +65,17 @@ function getAddedSets(exercise: PostSessionReviewExerciseEvidence) {
 }
 
 function getCalibrationSets(exercise: PostSessionReviewExerciseEvidence) {
-  return exercise.isRuntimeAdded === true ? exercise.sets : getPlannedSets(exercise);
+  const candidateSets =
+    exercise.isRuntimeAdded === true ? exercise.sets : getPlannedSets(exercise);
+  return candidateSets.filter(isWorkSet);
 }
 
 function countPerformed(sets: PostSessionReviewSetEvidence[]): number {
   return sets.filter(isPerformedSet).length;
+}
+
+function countPerformedWorkSets(sets: PostSessionReviewSetEvidence[]): number {
+  return sets.filter(isPerformedWorkSet).length;
 }
 
 function countSkipped(sets: PostSessionReviewSetEvidence[]): number {
@@ -633,16 +647,15 @@ function buildCalibrationRows(
     nextExposureDecisions.map((row) => [row.exerciseId, row.decision])
   );
   return exercises.map((exercise) => {
-    const plannedSets = getPlannedSets(exercise);
     const addedSets = getAddedSets(exercise);
     const calibrationSets = getCalibrationSets(exercise);
-    const plannedSetCount = plannedSets.length;
-    const performedSetCount = countPerformed(calibrationSets);
+    const plannedSetCount = exercise.isRuntimeAdded === true ? 0 : calibrationSets.length;
+    const performedSetCount = countPerformedWorkSets(calibrationSets);
     const skippedSetCount = countSkipped(calibrationSets);
     const addedSetCount =
       exercise.isRuntimeAdded === true
-        ? countPerformed(exercise.sets)
-        : countPerformed(addedSets);
+        ? countPerformedWorkSets(exercise.sets)
+        : countPerformedWorkSets(addedSets);
     const targetLoad = resolveTargetLoad(calibrationSets);
     const targetRpe = resolveTargetRpe(calibrationSets);
     const performedLoad = summarizePerformedLoad(calibrationSets);

@@ -4,6 +4,7 @@ export type ExerciseSetChip = {
   isLogged: boolean;
   isActive: boolean;
   isSaving: boolean;
+  variant?: "work" | "warmup";
 };
 
 type ExerciseSetChipsEditorAction = {
@@ -42,9 +43,13 @@ export function ExerciseSetChipsEditor({
             className={`inline-flex min-h-11 items-center justify-center rounded-full border px-3 text-xs font-semibold ${
               chip.isActive
                 ? "border-slate-900 bg-slate-900 text-white shadow-sm ring-2 ring-slate-200"
-                : chip.isLogged
-                ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                : "border-slate-300 text-slate-700"
+                : chip.variant === "warmup" && chip.isLogged
+                  ? "border-slate-200 bg-slate-50 text-slate-500"
+                  : chip.variant === "warmup"
+                    ? "border-dashed border-slate-300 bg-white text-slate-500"
+                    : chip.isLogged
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                      : "border-slate-300 text-slate-700"
             } ${chip.isSaving ? "opacity-60" : ""}`}
             onClick={() => onSelectSet(chip.setId)}
             type="button"

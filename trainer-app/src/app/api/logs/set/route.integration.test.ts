@@ -6,15 +6,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const workoutSetFindFirst = vi.fn();
+  const workoutSetCreate = vi.fn();
+  const workoutExerciseFindFirst = vi.fn();
+  const workoutExerciseFindMany = vi.fn();
   const setLogFindUnique = vi.fn();
   const setLogUpsert = vi.fn();
+  const setLogCreate = vi.fn();
   const workoutUpdate = vi.fn();
 
   const tx = {
-    workoutSet: { findFirst: workoutSetFindFirst },
+    workoutSet: { findFirst: workoutSetFindFirst, create: workoutSetCreate },
+    workoutExercise: {
+      findFirst: workoutExerciseFindFirst,
+      findMany: workoutExerciseFindMany,
+    },
     setLog: {
       findUnique: setLogFindUnique,
       upsert: setLogUpsert,
+      create: setLogCreate,
       deleteMany: vi.fn(),
     },
     workout: { update: workoutUpdate },
@@ -27,8 +36,12 @@ const mocks = vi.hoisted(() => {
   return {
     prisma,
     workoutSetFindFirst,
+    workoutSetCreate,
+    workoutExerciseFindFirst,
+    workoutExerciseFindMany,
     setLogFindUnique,
     setLogUpsert,
+    setLogCreate,
     workoutUpdate,
   };
 });
@@ -51,6 +64,7 @@ describe("POST /api/logs/set", () => {
       },
     });
     mocks.setLogUpsert.mockResolvedValue({ id: "log-1" });
+    mocks.setLogCreate.mockResolvedValue({ id: "warmup-log-1" });
     mocks.workoutUpdate.mockResolvedValue({ id: "workout-1", status: "IN_PROGRESS" });
   });
 
@@ -163,6 +177,185 @@ describe("POST /api/logs/set", () => {
         create: expect.objectContaining({ setIntent: "WARMUP" }),
       })
     );
+  });
+
+  it("creates and logs a session-local warmup set by workoutExerciseId", async () => {
+    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+      id: "we-1",
+      exerciseId: "bench",
+      section: "MAIN",
+      isMainLift: true,
+      workout: {
+        id: "workout-1",
+        status: "PLANNED",
+        selectionMetadata: {
+          sessionDecisionReceipt: {
+            version: 1,
+            cycleContext: {
+              weekInMeso: 1,
+              weekInBlock: 1,
+              phase: "accumulation",
+              blockType: "accumulation",
+              isDeload: false,
+              source: "computed",
+            },
+            lifecycleVolume: { source: "unknown" },
+            sorenessSuppressedMuscles: [],
+            deloadDecision: {
+              mode: "none",
+              reason: [],
+              reductionPercent: 0,
+              appliedTo: "none",
+            },
+            readiness: {
+              wasAutoregulated: false,
+              signalAgeHours: null,
+              fatigueScoreOverall: null,
+              intensityScaling: {
+                applied: false,
+                exerciseIds: [],
+                scaledUpCount: 0,
+                scaledDownCount: 0,
+              },
+            },
+            exceptions: [],
+          },
+          sessionAuditSnapshot: {
+            version: 1,
+            generated: {
+              selectionMode: "INTENT",
+              sessionIntent: "push",
+              exerciseCount: 1,
+              hardSetCount: 2,
+              exercises: [
+                {
+                  exerciseId: "bench",
+                  exerciseName: "Bench Press",
+                  orderIndex: 0,
+                  section: "main",
+                  isMainLift: true,
+                  prescribedSetCount: 2,
+                  prescribedSets: [
+                    { setIndex: 1, targetReps: 8, targetRpe: 8 },
+                    { setIndex: 2, targetReps: 8, targetRpe: 8 },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        selectionMode: "INTENT",
+        sessionIntent: "PUSH",
+        mesocycleId: null,
+        mesocycle: null,
+      },
+      sets: [
+        {
+          setIndex: 1,
+          targetReps: 8,
+          targetRepMin: 6,
+          targetRepMax: 10,
+          targetRpe: 8,
+          targetLoad: 185,
+          restSeconds: 180,
+        },
+      ],
+    });
+    mocks.workoutSetCreate.mockResolvedValueOnce({
+      id: "warmup-set-1",
+      setIndex: 0,
+      targetReps: 8,
+      targetRepMin: 6,
+      targetRepMax: 10,
+      targetRpe: 8,
+      targetLoad: 185,
+      restSeconds: 60,
+    });
+    mocks.workoutExerciseFindMany.mockResolvedValueOnce([
+      {
+        exerciseId: "bench",
+        orderIndex: 0,
+        section: "MAIN",
+        exercise: { name: "Bench Press" },
+        sets: [
+          { setIndex: 0, targetReps: 8, targetRepMin: 6, targetRepMax: 10, targetRpe: 8 },
+          { setIndex: 1, targetReps: 8, targetRepMin: 6, targetRepMax: 10, targetRpe: 8 },
+          { setIndex: 2, targetReps: 8, targetRepMin: 6, targetRepMax: 10, targetRpe: 8 },
+        ],
+      },
+    ]);
+
+    const response = await POST(
+      new Request("http://localhost/api/logs/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutExerciseId: "we-1",
+          actualReps: 8,
+          actualRpe: 6,
+          actualLoad: 95,
+          setIntent: "WARMUP",
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.workoutSetCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          workoutExerciseId: "we-1",
+          setIndex: 0,
+          restSeconds: 60,
+        }),
+      })
+    );
+    expect(mocks.setLogCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        workoutSetId: "warmup-set-1",
+        setIntent: "WARMUP",
+        actualReps: 8,
+        actualRpe: 6,
+        actualLoad: 95,
+        wasSkipped: false,
+      }),
+    });
+    expect(mocks.workoutUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "workout-1" },
+        data: expect.objectContaining({
+          status: "IN_PROGRESS",
+          revision: { increment: 1 },
+          selectionMetadata: expect.objectContaining({
+            runtimeEditReconciliation: expect.objectContaining({
+              ops: [
+                expect.objectContaining({
+                  kind: "add_set",
+                  source: "api_workouts_add_set",
+                  scope: "current_workout_only",
+                  facts: expect.objectContaining({
+                    workoutExerciseId: "we-1",
+                    workoutSetId: "warmup-set-1",
+                    setIndex: 0,
+                    clonedFromSetIndex: 1,
+                  }),
+                }),
+              ],
+            }),
+          }),
+        }),
+      })
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      status: "logged",
+      wasCreated: true,
+      set: {
+        setId: "warmup-set-1",
+        setIndex: 0,
+        setIntent: "WARMUP",
+        isRuntimeAdded: true,
+        restSeconds: 60,
+      },
+    });
   });
 
   it("normalizes bodyweight performed-set load to 0 when targetLoad is 0 and actualLoad is omitted", async () => {

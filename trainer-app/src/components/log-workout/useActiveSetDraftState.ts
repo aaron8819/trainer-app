@@ -220,6 +220,9 @@ export function useActiveSetDraftState({
     if (hasExistingActuals || (activeSet.set.wasSkipped ?? false)) {
       return;
     }
+    if (activeSet.set.setIntent === "WARMUP") {
+      return;
+    }
 
     const previousLoggedSet = findPreviousLoggedSet(activeSet.exercise, activeSet.setIndex);
     const prefillValues = previousLoggedSet

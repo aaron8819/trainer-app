@@ -9,6 +9,7 @@ import type {
   ActiveSetDraftState,
   CompletedWorkoutExerciseSummary,
   ExerciseSection,
+  FlatSetItem,
   LogExerciseMuscleTagGroups,
   LogExerciseInput,
   LogWorkoutCapabilities,
@@ -45,6 +46,7 @@ import { isSetSatisfied } from "@/components/log-workout/useWorkoutLogState";
 export type { LogExerciseInput, LogSetInput } from "@/components/log-workout/types";
 
 const SECTION_ORDER: ExerciseSection[] = ["warmup", "main", "accessory"];
+const VIRTUAL_WARMUP_SET_PREFIX = "warmup:";
 
 type ActiveCardMode =
   | { kind: "live" }
@@ -119,17 +121,20 @@ function normalizeLoadInput(raw: string, isDumbbell: boolean): number | null {
 }
 
 function formatQueueSetSummary(set: LogSetInput, isLogged: boolean, isDumbbell: boolean): string {
+  if (set.setIntent === "WARMUP") {
+    return isLogged ? "Warmup recorded" : "Warmup";
+  }
+
   const setPrefix = set.isRuntimeAdded ? `Set ${set.setIndex} Extra set` : `Set ${set.setIndex}`;
-  const intentSuffix = set.setIntent === "WARMUP" ? " Warmup/ramp" : "";
   if (!isLogged) {
-    return `${setPrefix}${intentSuffix}`;
+    return setPrefix;
   }
 
   if (set.wasSkipped) {
-    return `${setPrefix}${intentSuffix} skipped`;
+    return `${setPrefix} skipped`;
   }
 
-  const parts: string[] = [`${setPrefix}${intentSuffix} OK`];
+  const parts: string[] = [`${setPrefix} OK`];
   if (set.actualLoad != null && set.actualReps != null) {
     parts.push(`${toDisplayLoad(set.actualLoad, isDumbbell) ?? set.actualLoad} x ${set.actualReps}`);
   } else if (set.actualReps != null) {
@@ -140,6 +145,24 @@ function formatQueueSetSummary(set: LogSetInput, isLogged: boolean, isDumbbell: 
   }
 
   return parts.join(" ");
+}
+
+function buildVirtualWarmupSetId(workoutExerciseId: string): string {
+  return `${VIRTUAL_WARMUP_SET_PREFIX}${workoutExerciseId}`;
+}
+
+function parseVirtualWarmupSetId(setId: string): string | null {
+  return setId.startsWith(VIRTUAL_WARMUP_SET_PREFIX)
+    ? setId.slice(VIRTUAL_WARMUP_SET_PREFIX.length)
+    : null;
+}
+
+function isWarmupSet(set: LogSetInput): boolean {
+  return set.setIntent === "WARMUP";
+}
+
+function formatVirtualWarmupSectionLabel(section: ExerciseSection): string {
+  return section === "main" ? "Main Lifts" : section === "accessory" ? "Accessories" : "Warmup";
 }
 
 export default function LogWorkoutClient({
@@ -187,6 +210,7 @@ export default function LogWorkoutClient({
   const [showBonusSheet, setShowBonusSheet] = useState(false);
   const [selectedSwapExerciseId, setSelectedSwapExerciseId] = useState<string | null>(null);
   const [activeCardMode, setActiveCardMode] = useState<ActiveCardMode>({ kind: "live" });
+  const [selectedWarmupExerciseId, setSelectedWarmupExerciseId] = useState<string | null>(null);
   const [showDiscardEditConfirm, setShowDiscardEditConfirm] = useState(false);
   const [timerHudHeight, setTimerHudHeight] = useState(0);
   const activeCardModeRef = useRef<ActiveCardMode>(activeCardMode);
@@ -205,7 +229,57 @@ export default function LogWorkoutClient({
     }
   }, [initialRestTimer, restoreTimer, workoutId]);
 
-  const totalSets = flatSets.length;
+  const selectedWarmupActiveSet = useMemo<FlatSetItem | null>(() => {
+    if (!selectedWarmupExerciseId) {
+      return null;
+    }
+
+    for (const section of SECTION_ORDER) {
+      const exerciseIndex = data[section].findIndex(
+        (exercise) => exercise.workoutExerciseId === selectedWarmupExerciseId
+      );
+      if (exerciseIndex === -1) {
+        continue;
+      }
+
+      const exercise = data[section][exerciseIndex];
+      if (exercise.sets.some(isWarmupSet)) {
+        return null;
+      }
+
+      const firstWorkSet = exercise.sets.find((set) => !isWarmupSet(set));
+      if (!firstWorkSet) {
+        return null;
+      }
+
+      return {
+        section,
+        sectionLabel: formatVirtualWarmupSectionLabel(section),
+        exerciseIndex,
+        setIndex: -1,
+        exercise,
+        set: {
+          setId: buildVirtualWarmupSetId(exercise.workoutExerciseId),
+          setIndex: 0,
+          isRuntimeAdded: true,
+          setIntent: "WARMUP",
+          targetReps: firstWorkSet.targetReps,
+          targetRepRange: firstWorkSet.targetRepRange,
+          targetLoad: firstWorkSet.targetLoad,
+          targetRpe: firstWorkSet.targetRpe,
+          restSeconds: 60,
+        },
+      };
+    }
+
+    return null;
+  }, [data, selectedWarmupExerciseId]);
+  const visibleActiveSet = selectedWarmupActiveSet ?? activeSet;
+  const workFlatSets = useMemo(
+    () => flatSets.filter((item) => !isWarmupSet(item.set)),
+    [flatSets]
+  );
+  const totalSets = workFlatSets.length;
   const selectedSwapExercise = useMemo(() => {
     for (const section of SECTION_ORDER) {
       const match = data[section].find((exercise) => exercise.workoutExerciseId === selectedSwapExerciseId);
@@ -224,25 +298,35 @@ export default function LogWorkoutClient({
       ),
     [flatSets, loggedSetIds]
   );
-  const loggedCount = satisfiedSetIds.size;
   const completedSetCount = useMemo(
     () =>
-      flatSets.filter((item) => satisfiedSetIds.has(item.set.setId) && !(item.set.wasSkipped ?? false)).length,
-    [flatSets, satisfiedSetIds]
+      workFlatSets.filter((item) => satisfiedSetIds.has(item.set.setId) && !(item.set.wasSkipped ?? false)).length,
+    [satisfiedSetIds, workFlatSets]
   );
   const skippedSetCount = useMemo(
-    () => flatSets.filter((item) => satisfiedSetIds.has(item.set.setId) && (item.set.wasSkipped ?? false)).length,
-    [flatSets, satisfiedSetIds]
+    () => workFlatSets.filter((item) => satisfiedSetIds.has(item.set.setId) && (item.set.wasSkipped ?? false)).length,
+    [satisfiedSetIds, workFlatSets]
   );
+  const workLoggedCount = useMemo(
+    () => workFlatSets.filter((item) => satisfiedSetIds.has(item.set.setId)).length,
+    [satisfiedSetIds, workFlatSets]
+  );
+  const loggedCount = workLoggedCount;
   const remainingCount = Math.max(0, totalSets - loggedCount);
-  const resolvedActiveSetId = activeSet?.set.setId ?? null;
+  const resolvedActiveSetId = visibleActiveSet?.set.setId ?? null;
   const resolvedActiveSetIdRef = useRef<string | null>(resolvedActiveSetId);
   const loggedSetIdsRef = useRef(loggedSetIds);
   const flatSetsRef = useRef(flatSets);
-  const activeSetIds = useMemo(() => flatSets.map((item) => item.set.setId), [flatSets]);
+  const activeSetIds = useMemo(
+    () => [
+      ...flatSets.map((item) => item.set.setId),
+      ...(selectedWarmupActiveSet ? [selectedWarmupActiveSet.set.setId] : []),
+    ],
+    [flatSets, selectedWarmupActiveSet]
+  );
   const resumableSetIds = useMemo(
-    () => flatSets.filter((item) => !loggedSetIds.has(item.set.setId)).map((item) => item.set.setId),
-    [flatSets, loggedSetIds]
+    () => workFlatSets.filter((item) => !loggedSetIds.has(item.set.setId)).map((item) => item.set.setId),
+    [loggedSetIds, workFlatSets]
   );
   const resumeTargetSetId = useMemo(() => {
     if (activeCardMode.kind === "edit") {
@@ -320,6 +404,7 @@ export default function LogWorkoutClient({
     const setsWithBothRpe = flatSets.filter(
       (item) =>
         loggedSetIds.has(item.set.setId) &&
+        !isWarmupSet(item.set) &&
         !(item.set.wasSkipped ?? false) &&
         item.set.actualRpe != null &&
         item.set.targetRpe != null
@@ -423,7 +508,7 @@ export default function LogWorkoutClient({
   } = useActiveSetDraftState({
     workoutId,
     activeSetIds,
-    activeSet,
+    activeSet: visibleActiveSet,
     flatSets,
     loggedSetIds,
     resolvedActiveSetId,
@@ -557,10 +642,23 @@ export default function LogWorkoutClient({
 
   const navigateToSet = useCallback(
     (setId: string) => {
+      const virtualWarmupExerciseId = parseVirtualWarmupSetId(setId);
+      if (virtualWarmupExerciseId) {
+        const currentMode = activeCardModeRef.current;
+        if (currentMode.kind === "edit") {
+          exitEditMode({ restoreLiveSet: false, discardChanges: true });
+        }
+        setActiveCardMode({ kind: "live" });
+        setSelectedWarmupExerciseId(virtualWarmupExerciseId);
+        jumpToActiveSet();
+        return;
+      }
+
       const selected = flatSetsRef.current.find((item) => item.set.setId === setId);
       if (!selected) {
         return;
       }
+      setSelectedWarmupExerciseId(null);
 
       const currentMode = activeCardModeRef.current;
       const currentResolvedActiveSetId = resolvedActiveSetIdRef.current;
@@ -635,13 +733,16 @@ export default function LogWorkoutClient({
           collapsedSummaries: sectionItems.map((exercise) => ({
             exerciseId: exercise.workoutExerciseId,
             exerciseName: exercise.name,
-            loggedCount: exercise.sets.filter((set) => satisfiedSetIds.has(set.setId)).length,
-            totalSets: exercise.sets.length,
+            loggedCount: exercise.sets.filter((set) => !isWarmupSet(set) && satisfiedSetIds.has(set.setId)).length,
+            totalSets: exercise.sets.filter((set) => !isWarmupSet(set)).length,
           })),
           exercises: sectionItems.map((exercise) => {
-            const loggedCountForExercise = exercise.sets.filter((set) => satisfiedSetIds.has(set.setId)).length;
+            const workSets = exercise.sets.filter((set) => !isWarmupSet(set));
+            const warmupSet = exercise.sets.find(isWarmupSet);
+            const virtualWarmupSetId = buildVirtualWarmupSetId(exercise.workoutExerciseId);
+            const loggedCountForExercise = workSets.filter((set) => satisfiedSetIds.has(set.setId)).length;
             const nextSet =
-              exercise.sets.find((set) => !satisfiedSetIds.has(set.setId)) ?? exercise.sets[0] ?? null;
+              workSets.find((set) => !satisfiedSetIds.has(set.setId)) ?? workSets[0] ?? null;
             const exerciseCapabilities = exercise.capabilities;
             const canSwapFromServer =
               exerciseCapabilities?.canSwap ?? capabilities.canSwapExercise;
@@ -667,9 +768,9 @@ export default function LogWorkoutClient({
               isRuntimeAdded: exercise.isRuntimeAdded ?? false,
               sessionNote: exercise.sessionNote,
               loggedCount: loggedCountForExercise,
-              totalSets: exercise.sets.length,
+              totalSets: workSets.length,
               allSetsLogged:
-                loggedCountForExercise === exercise.sets.length && exercise.sets.length > 0,
+                loggedCountForExercise === workSets.length && workSets.length > 0,
               isExpanded: expandedExerciseId === exercise.workoutExerciseId,
               nextSetId: nextSet?.setId ?? null,
               canSwap: canSwapFromServer && swapDisabledReason == null,
@@ -679,17 +780,41 @@ export default function LogWorkoutClient({
               isSwapping: selectedSwapExerciseId === exercise.workoutExerciseId,
               canRemove: canRemoveFromServer,
               isRemoving: removingExerciseId === exercise.workoutExerciseId,
-              chips: exercise.sets.map((set) => ({
-                setId: set.setId,
-                label: formatQueueSetSummary(
-                  set,
-                  satisfiedSetIds.has(set.setId),
-                  isDumbbellExercise(exercise)
-                ),
-                isLogged: satisfiedSetIds.has(set.setId),
-                isActive: resolvedActiveSetId === set.setId,
-                isSaving: savingSetId === set.setId,
-              })),
+              chips: [
+                warmupSet
+                  ? {
+                      setId: warmupSet.setId,
+                      label: formatQueueSetSummary(
+                        warmupSet,
+                        satisfiedSetIds.has(warmupSet.setId),
+                        isDumbbellExercise(exercise)
+                      ),
+                      isLogged: satisfiedSetIds.has(warmupSet.setId),
+                      isActive: resolvedActiveSetId === warmupSet.setId,
+                      isSaving: savingSetId === warmupSet.setId,
+                      variant: "warmup" as const,
+                    }
+                  : {
+                      setId: virtualWarmupSetId,
+                      label: "Warmup",
+                      isLogged: false,
+                      isActive: resolvedActiveSetId === virtualWarmupSetId,
+                      isSaving: savingSetId === virtualWarmupSetId,
+                      variant: "warmup" as const,
+                    },
+                ...workSets.map((set) => ({
+                  setId: set.setId,
+                  label: formatQueueSetSummary(
+                    set,
+                    satisfiedSetIds.has(set.setId),
+                    isDumbbellExercise(exercise)
+                  ),
+                  isLogged: satisfiedSetIds.has(set.setId),
+                  isActive: resolvedActiveSetId === set.setId,
+                  isSaving: savingSetId === set.setId,
+                  variant: "work" as const,
+                })),
+              ],
             };
           }),
         },
@@ -724,18 +849,20 @@ export default function LogWorkoutClient({
   const allSetsSkipped = allSetsLogged && skippedSetCount === totalSets && completedSetCount === 0;
   const showAutoregHint =
     autoregHint !== null &&
-    activeSet !== null &&
-    autoregHint.exerciseId === activeSet.exercise.workoutExerciseId;
+    visibleActiveSet !== null &&
+    autoregHint.exerciseId === visibleActiveSet.exercise.workoutExerciseId;
   const sessionTerminated = completion.completed || completion.skipped;
   const showFinishBar = capabilities.canFinish && !sessionTerminated && allSetsLogged;
   const shouldShowActiveEditor =
-    !sessionTerminated && activeSet != null && (activeCardMode.kind === "edit" || !allSetsLogged);
+    !sessionTerminated &&
+    visibleActiveSet != null &&
+    (selectedWarmupActiveSet != null || activeCardMode.kind === "edit" || !allSetsLogged);
   const plannedSetSummary = useMemo(() => {
     let plannedTotal = 0;
     let plannedResolved = 0;
 
     for (const item of flatSets) {
-      if (item.exercise.isRuntimeAdded || item.set.isRuntimeAdded) {
+      if (item.exercise.isRuntimeAdded || item.set.isRuntimeAdded || isWarmupSet(item.set)) {
         continue;
       }
 
@@ -775,25 +902,38 @@ export default function LogWorkoutClient({
   const discardEditConfirmOpen = activeCardMode.kind === "edit" && showDiscardEditConfirm;
   const resolvedActiveSetValues = useMemo(
     () =>
-      activeSet
-        ? resolveDraftNumericValues(activeSet.set, activeSet.exercise)
+      visibleActiveSet
+        ? resolveDraftNumericValues(visibleActiveSet.set, visibleActiveSet.exercise)
         : { actualReps: null, actualLoad: null, actualRpe: null },
-    [activeSet, resolveDraftNumericValues]
+    [resolveDraftNumericValues, visibleActiveSet]
   );
   const submitActiveSet = useCallback(async () => {
-    if (!activeSet) {
+    if (!visibleActiveSet) {
       return false;
     }
 
-    const success = await actions.logSet(activeSet.set.setId, {
+    if (selectedWarmupActiveSet) {
+      const loggedWarmupSet = await actions.logWarmupSet({
+        workoutExerciseId: selectedWarmupActiveSet.exercise.workoutExerciseId,
+        virtualSetId: selectedWarmupActiveSet.set.setId,
+        values: resolvedActiveSetValues,
+      });
+      if (loggedWarmupSet) {
+        setSelectedWarmupExerciseId(null);
+        jumpToActiveSet();
+      }
+      return Boolean(loggedWarmupSet);
+    }
+
+    const success = await actions.logSet(visibleActiveSet.set.setId, {
       ...resolvedActiveSetValues,
-      setIntent: activeSet.set.setIntent ?? "WORK",
+      setIntent: visibleActiveSet.set.setIntent ?? "WORK",
       wasSkipped:
         resolvedActiveSetValues.actualReps != null ||
         resolvedActiveSetValues.actualLoad != null ||
         resolvedActiveSetValues.actualRpe != null
           ? false
-          : (activeSet.set.wasSkipped ?? false),
+          : (visibleActiveSet.set.wasSkipped ?? false),
     });
 
     if (success && activeCardMode.kind === "edit") {
@@ -801,15 +941,36 @@ export default function LogWorkoutClient({
     }
 
     return success;
-  }, [activeCardMode.kind, activeSet, actions, exitEditMode, resolvedActiveSetValues]);
+  }, [
+    activeCardMode.kind,
+    actions,
+    exitEditMode,
+    jumpToActiveSet,
+    resolvedActiveSetValues,
+    selectedWarmupActiveSet,
+    visibleActiveSet,
+  ]);
 
   const skipActiveSet = useCallback(async () => {
-    if (!activeSet) {
+    if (!visibleActiveSet) {
       return false;
     }
 
-    const success = await actions.logSet(activeSet.set.setId, {
-      setIntent: activeSet.set.setIntent ?? "WORK",
+    if (selectedWarmupActiveSet) {
+      clearDraft(selectedWarmupActiveSet.set.setId);
+      clearDraftInputBuffers(selectedWarmupActiveSet.set.setId);
+      setSelectedWarmupExerciseId(null);
+      setActiveSetId(
+        selectedWarmupActiveSet.exercise.sets.find((set) => !isWarmupSet(set))?.setId ??
+          selectedWarmupActiveSet.exercise.sets[0]?.setId ??
+          null
+      );
+      jumpToActiveSet();
+      return true;
+    }
+
+    const success = await actions.logSet(visibleActiveSet.set.setId, {
+      setIntent: visibleActiveSet.set.setIntent ?? "WORK",
       wasSkipped: true,
     });
     if (success && activeCardMode.kind === "edit") {
@@ -817,12 +978,23 @@ export default function LogWorkoutClient({
     }
 
     return success;
-  }, [activeCardMode.kind, activeSet, actions, exitEditMode]);
+  }, [
+    activeCardMode.kind,
+    actions,
+    clearDraft,
+    clearDraftInputBuffers,
+    exitEditMode,
+    jumpToActiveSet,
+    selectedWarmupActiveSet,
+    setActiveSetId,
+    visibleActiveSet,
+  ]);
 
   const handleAddExercise = useCallback(
     (exercise: LogExerciseInput) => {
       requestEditModeExit(() => {
         exitEditMode({ restoreLiveSet: false, discardChanges: true });
+        setSelectedWarmupExerciseId(null);
         setExpandedSections((prev) => ({ ...prev, accessory: true }));
         setExpandedExerciseId(exercise.workoutExerciseId);
         addExerciseAction(exercise);
@@ -845,6 +1017,7 @@ export default function LogWorkoutClient({
     (exerciseId: string, section: ExerciseSection) => {
       requestEditModeExit(() => {
         exitEditMode({ restoreLiveSet: false, discardChanges: true });
+        setSelectedWarmupExerciseId(null);
         setActiveSetId(null);
         setExpandedSections((prev) => ({ ...prev, [section]: true }));
         setExpandedExerciseId(exerciseId);
@@ -870,6 +1043,7 @@ export default function LogWorkoutClient({
     (exerciseId: string) => {
       requestEditModeExit(() => {
         exitEditMode({ restoreLiveSet: false, discardChanges: true });
+        setSelectedWarmupExerciseId(null);
         void (async () => {
           const success = await removeExerciseAction(exerciseId);
           if (success) {
@@ -917,6 +1091,7 @@ export default function LogWorkoutClient({
       if (activeCardModeRef.current.kind === "edit") {
         exitEditMode({ restoreLiveSet: false, discardChanges: false });
       }
+      setSelectedWarmupExerciseId(null);
       setExpandedSections((prev) => ({ ...prev, [resolvedSection]: true }));
       setExpandedExerciseId(exercise.workoutExerciseId);
       if (nextActiveSetId) {
@@ -953,9 +1128,6 @@ export default function LogWorkoutClient({
     handleLoadFocus,
     markFieldTouched,
     setFieldPrefilled,
-    setSetIntentValue: (setId, value) => {
-      updateSetFields(setId, (set) => ({ ...set, setIntent: value }));
-    },
     setRepsValue,
     commitLoadValue,
     setRpeValue,
@@ -986,10 +1158,10 @@ export default function LogWorkoutClient({
         />
       ) : null}
 
-      {shouldShowActiveEditor ? (
+      {shouldShowActiveEditor && visibleActiveSet ? (
         <ActiveSetPanel>
           <WorkoutActiveSetCard
-            activeSet={activeSet}
+            activeSet={visibleActiveSet}
             activeSetPanelRef={activeSetPanelRef}
             summary={activeSetSummary}
             draftState={activeSetDraftState}

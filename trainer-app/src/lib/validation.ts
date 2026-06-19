@@ -179,23 +179,39 @@ const saveWorkoutPayloadSchema = z.object({
 
 export const saveWorkoutSchema = saveWorkoutPayloadSchema;
 
-export const setLogSchema = z.object({
-  workoutSetId: z.string(),
-  workoutExerciseId: z.string().optional(),
-  setIntent: z.enum(SET_INTENT_VALUES).optional(),
-  actualReps: z.number().int().min(0).optional(),
-  actualRpe: z
-    .number()
-    .min(1)
-    .max(10)
-    .refine((value) => Number.isInteger(value * 2), {
-      message: "actualRpe must use 0.5 increments",
-    })
-    .optional(),
-  actualLoad: z.number().min(0).optional(),
-  wasSkipped: z.boolean().optional(),
-  notes: z.string().optional(),
-});
+export const setLogSchema = z
+  .object({
+    workoutSetId: z.string().optional(),
+    workoutExerciseId: z.string().optional(),
+    setIntent: z.enum(SET_INTENT_VALUES).optional(),
+    actualReps: z.number().int().min(0).optional(),
+    actualRpe: z
+      .number()
+      .min(1)
+      .max(10)
+      .refine((value) => Number.isInteger(value * 2), {
+        message: "actualRpe must use 0.5 increments",
+      })
+      .optional(),
+    actualLoad: z.number().min(0).optional(),
+    wasSkipped: z.boolean().optional(),
+    notes: z.string().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.workoutSetId) {
+      return;
+    }
+
+    if (value.setIntent === "WARMUP" && value.workoutExerciseId) {
+      return;
+    }
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["workoutSetId"],
+      message: "workoutSetId is required unless logging a warmup by workoutExerciseId",
+    });
+  });
 
 export const analyticsSummarySchema = z.object({
   dateFrom: z.string().optional(),

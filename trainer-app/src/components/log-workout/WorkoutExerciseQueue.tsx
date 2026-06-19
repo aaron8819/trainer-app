@@ -72,7 +72,8 @@ function areChipsEqual(previous: ExerciseSetChip[], next: ExerciseSetChip[]) {
       chip.label === nextChip.label &&
       chip.isLogged === nextChip.isLogged &&
       chip.isActive === nextChip.isActive &&
-      chip.isSaving === nextChip.isSaving
+      chip.isSaving === nextChip.isSaving &&
+      chip.variant === nextChip.variant
     );
   });
 }

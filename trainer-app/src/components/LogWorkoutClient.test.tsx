@@ -332,7 +332,7 @@ async function openRestTimerControls(user: ReturnType<typeof userEvent.setup>) {
 }
 
 async function clickResolvedSubmitButton(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole("button", { name: /Log set|Update set/ }));
+  await user.click(await screen.findByRole("button", { name: /Log set|Update set|Log warmup/ }));
 }
 
 async function logVisibleSets(user: ReturnType<typeof userEvent.setup>, count: number) {
@@ -1125,24 +1125,56 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(mockedLogSetRequest).not.toHaveBeenCalled();
   });
 
-  it("lets the active set be marked as warmup/ramp and keeps it visible after logging", async () => {
+  it("logs an optional warmup chip before Set 1 without completing prescribed work", async () => {
     const user = userEvent.setup();
     renderClient();
 
-    await user.click(screen.getByLabelText("Warmup/ramp"));
+    const chipList = within(screen.getByTestId("exercise-set-chip-list"));
+    const chipLabels = chipList.getAllByRole("button").map((button) => button.textContent);
+    expect(chipLabels.slice(0, 3)).toEqual(["Warmup", "Set 1", "Set 2"]);
+    expect(screen.getByText("0/2")).toBeInTheDocument();
+    expect(screen.getByText(/Main Lifts .* Set 1 of 2/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Warmup/ramp")).not.toBeInTheDocument();
+
+    await user.click(chipList.getByRole("button", { name: "Warmup" }));
+    expect(screen.getByText("Warmup/ramp before Set 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log warmup" })).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Reps"), "8");
+    await user.click(screen.getByRole("button", { name: "6" }));
+    mockedLogSetRequest.mockResolvedValueOnce({
+      data: {
+        status: "logged",
+        wasCreated: true,
+        set: {
+          setId: "warmup-set-1",
+          setIndex: 0,
+          targetReps: 10,
+          targetLoad: 50,
+          targetRpe: 8,
+          restSeconds: 60,
+          isRuntimeAdded: true,
+          setIntent: "WARMUP",
+        },
+      },
+      error: null,
+    });
+
     await clickResolvedSubmitButton(user);
 
     await waitFor(() => {
       expect(mockedLogSetRequest).toHaveBeenCalledWith(
         expect.objectContaining({
-          workoutSetId: "set-1",
+          workoutExerciseId: "ex-1",
           setIntent: "WARMUP",
           wasSkipped: false,
         })
       );
       expect(
-        screen.getByRole("button", { name: /Set 1 Warmup\/ramp OK 50 x 10 @8/i })
+        screen.getByRole("button", { name: /Warmup recorded/i })
       ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Set 1" })).toBeInTheDocument();
+      expect(screen.getByText("0/2")).toBeInTheDocument();
+      expect(screen.getByText(/Main Lifts .* Set 1 of 2/)).toBeInTheDocument();
     });
   });
 

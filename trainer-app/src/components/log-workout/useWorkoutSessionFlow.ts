@@ -32,6 +32,11 @@ import { getLoadRecommendation } from "@/lib/progression/load-coaching";
 
 export type WorkoutSessionActions = {
   logSet: (setId: string, overrides?: Partial<LogSetInput>) => Promise<boolean>;
+  logWarmupSet: (input: {
+    workoutExerciseId: string;
+    virtualSetId: string;
+    values: Pick<LogSetInput, "actualReps" | "actualLoad" | "actualRpe">;
+  }) => Promise<LogSetInput | null>;
   undo: () => Promise<void>;
   addExercise: (exercise: LogExerciseInput) => void;
   addSet: (workoutExerciseId: string) => Promise<boolean>;
@@ -389,6 +394,132 @@ export function useWorkoutSessionFlow({
     }
   }, [clearFeedback, restoreTimer, setActiveSetId, setLoggedSetIds, showError, showStatus, undoSnapshot, updateSetFields]);
 
+  const handleLogWarmupSet = useCallback(
+    async ({
+      workoutExerciseId,
+      virtualSetId,
+      values,
+    }: {
+      workoutExerciseId: string;
+      virtualSetId: string;
+      values: Pick<LogSetInput, "actualReps" | "actualLoad" | "actualRpe">;
+    }): Promise<LogSetInput | null> => {
+      clearFeedback();
+      const targetExercise = flatSetsRef.current.find(
+        (item) => item.exercise.workoutExerciseId === workoutExerciseId
+      )?.exercise;
+      if (!targetExercise) {
+        showError("Unable to find exercise");
+        return null;
+      }
+
+      const validity = getSetValidity({
+        actualReps: values.actualReps,
+        actualRpe: values.actualRpe,
+        actualLoad: values.actualLoad,
+        wasSkipped: false,
+      });
+      if (!validity.valid) {
+        showError(validity.reason ?? "Unable to log warmup");
+        return null;
+      }
+
+      setSavingSetId(virtualSetId);
+
+      try {
+        const response = await logSetRequest({
+          workoutExerciseId,
+          setIntent: "WARMUP",
+          actualReps: values.actualReps ?? undefined,
+          actualLoad: values.actualLoad ?? undefined,
+          actualRpe: values.actualRpe ?? undefined,
+          wasSkipped: false,
+        });
+
+        if (response.error) {
+          showError(response.error);
+          return null;
+        }
+        if (!response.data?.set) {
+          showError("Failed to log warmup");
+          return null;
+        }
+
+        const warmupSet: LogSetInput = {
+          ...response.data.set,
+          setIntent: "WARMUP",
+          actualReps: values.actualReps ?? null,
+          actualLoad: values.actualLoad ?? null,
+          actualRpe: values.actualRpe ?? null,
+          wasSkipped: false,
+        };
+
+        setData((prev) => {
+          for (const section of Object.keys(prev) as Array<keyof NormalizedExercises>) {
+            const exerciseIndex = prev[section].findIndex(
+              (exercise) => exercise.workoutExerciseId === workoutExerciseId
+            );
+            if (exerciseIndex === -1) {
+              continue;
+            }
+
+            const nextSection = [...prev[section]];
+            const exercise = nextSection[exerciseIndex];
+            nextSection[exerciseIndex] = {
+              ...exercise,
+              sets: [warmupSet, ...exercise.sets.filter((set) => set.setIntent !== "WARMUP")],
+            };
+
+            return {
+              ...prev,
+              [section]: nextSection,
+            };
+          }
+
+          return prev;
+        });
+        setLoggedSetIds((prev) => {
+          const next = new Set(prev);
+          next.add(warmupSet.setId);
+          return next;
+        });
+        clearDraft(virtualSetId);
+        clearDraftInputBuffers(virtualSetId);
+        setSetInputFieldsPrefilled(virtualSetId, setFieldPrefilled, false);
+        setActiveSetId(
+          targetExercise.sets.find((set) => set.setIntent !== "WARMUP")?.setId ??
+            targetExercise.sets[0]?.setId ??
+            null
+        );
+        startTimer(warmupSet.restSeconds ?? resolveRestSeconds({
+          section: "warmup",
+          sectionLabel: "Warmup",
+          exerciseIndex: 0,
+          setIndex: 0,
+          exercise: targetExercise,
+          set: warmupSet,
+        }));
+        setAutoregHint(null);
+        showStatus("Warmup logged.");
+        return warmupSet;
+      } finally {
+        setSavingSetId(null);
+      }
+    },
+    [
+      clearDraft,
+      clearDraftInputBuffers,
+      clearFeedback,
+      setActiveSetId,
+      setData,
+      setFieldPrefilled,
+      setLoggedSetIds,
+      showError,
+      showStatus,
+      startTimer,
+    ]
+  );
+
   const handleAddExercise = useCallback(
     (exercise: LogExerciseInput) => {
       setData((prev) => ({
@@ -571,12 +702,13 @@ export function useWorkoutSessionFlow({
   const actions = useMemo<WorkoutSessionActions>(
     () => ({
       logSet: handleLogSet,
+      logWarmupSet: handleLogWarmupSet,
       undo: handleUndo,
       addExercise: handleAddExercise,
       addSet: handleAddSet,
       removeExercise: handleRemoveExercise,
     }),
-    [handleAddExercise, handleAddSet, handleLogSet, handleRemoveExercise, handleUndo]
+    [handleAddExercise, handleAddSet, handleLogSet, handleLogWarmupSet, handleRemoveExercise, handleUndo]
   );
 
   return {

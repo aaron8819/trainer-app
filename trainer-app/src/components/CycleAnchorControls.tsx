@@ -2,19 +2,23 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import type { CycleAnchorAction } from "@/lib/api/program";
 
-type Action = "deload" | "extend_phase" | "reset";
+type Action = CycleAnchorAction;
 
 const ACTION_LABELS: Record<Action, string> = {
   deload: "Take a deload",
   extend_phase: "Extend this phase (+1 wk)",
   reset: "Reset mesocycle",
+  end_early: "End mesocycle early",
 };
 
 const ACTION_DESCRIPTIONS: Record<Action, string> = {
   deload: "Marks the next session as a deload — lighter loads and reduced volume.",
   extend_phase: "Adds one more week to the current phase before advancing.",
   reset: "Resets session count to week 1. Use if you're starting fresh.",
+  end_early:
+    "Closes this mesocycle without counting unfinished sessions as performed. You'll review the handoff before starting the next cycle at Week 1.",
 };
 
 export function CycleAnchorControls({

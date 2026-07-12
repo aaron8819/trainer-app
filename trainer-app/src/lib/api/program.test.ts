@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => {
     )
   );
   const getLatestReadinessSignal = vi.fn(async () => null);
+  const finishMesocycleEarly = vi.fn();
 
   return {
     mesocycleFindFirst,
@@ -39,6 +40,7 @@ const mocks = vi.hoisted(() => {
     findRelevantWeekCloseForUser,
     loadRecentMuscleStimulus,
     getLatestReadinessSignal,
+    finishMesocycleEarly,
     prisma: {
       mesocycle: { findFirst: mesocycleFindFirst, update: mesocycleUpdate },
       constraints: { findUnique: constraintsFindUnique },
@@ -63,9 +65,13 @@ vi.mock("./recent-muscle-stimulus", () => ({
 vi.mock("./readiness", () => ({
   getLatestReadinessSignal: mocks.getLatestReadinessSignal,
 }));
+vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
+  finishMesocycleEarly: (...args: unknown[]) => mocks.finishMesocycleEarly(...args),
+}));
 
 import {
   computeMesoWeekStart,
+  applyCycleAnchor,
   loadHomeProgramSupport,
   loadProgramDashboardData,
 } from "./program";
@@ -128,6 +134,32 @@ const BASE_MESO: BaseMesoRecord = {
   blocks: [],
   macroCycle: { startDate: new Date("2026-01-01T00:00:00.000Z") },
 };
+
+describe("applyCycleAnchor", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("delegates early close to the canonical lifecycle seam", async () => {
+    mocks.mesocycleFindFirst.mockResolvedValue({
+      id: "meso-1",
+      accumulationSessionsCompleted: 11,
+      durationWeeks: 5,
+    });
+    mocks.constraintsFindUnique.mockResolvedValue({ daysPerWeek: 4 });
+    mocks.finishMesocycleEarly.mockResolvedValue({
+      mesocycle: { id: "meso-1", state: "AWAITING_HANDOFF" },
+    });
+
+    await applyCycleAnchor("user-1", "end_early");
+
+    expect(mocks.finishMesocycleEarly).toHaveBeenCalledWith({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+    });
+    expect(mocks.mesocycleUpdate).not.toHaveBeenCalled();
+  });
+});
 
 function makeSelectionMetadata(input: {
   weekInMeso?: number;

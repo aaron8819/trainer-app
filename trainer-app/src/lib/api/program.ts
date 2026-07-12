@@ -5,6 +5,7 @@
 
 import { WorkoutSessionIntent, WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { finishMesocycleEarly } from "@/lib/api/mesocycle-lifecycle";
 import {
   VOLUME_LANDMARKS,
   getExposedVolumeLandmarkEntries,
@@ -1477,7 +1478,7 @@ export async function loadProgramDashboardData(
   };
 }
 
-export type CycleAnchorAction = "deload" | "extend_phase" | "reset";
+export type CycleAnchorAction = "deload" | "extend_phase" | "reset" | "end_early";
 
 export async function applyCycleAnchor(userId: string, action: CycleAnchorAction): Promise<void> {
   const meso = await prisma.mesocycle.findFirst({
@@ -1523,6 +1524,10 @@ export async function applyCycleAnchor(userId: string, action: CycleAnchorAction
         where: { id: meso.id },
         data: { completedSessions: 0, accumulationSessionsCompleted: 0, deloadSessionsCompleted: 0 },
       });
+      break;
+    }
+    case "end_early": {
+      await finishMesocycleEarly({ userId, mesocycleId: meso.id });
       break;
     }
   }

@@ -77,6 +77,8 @@ import {
   deriveNextAdvancingSession,
   finishDeloadEarly,
   FinishDeloadEarlyBlockedWorkoutError,
+  finishMesocycleEarly,
+  FinishMesocycleEarlyBlockedWorkoutError,
   getLifecycleSetTargets,
   getCurrentMesoWeek,
   getRirTarget,
@@ -202,6 +204,159 @@ describe("mesocycle-lifecycle", () => {
         }),
       })
     );
+  });
+
+  it("finishes accumulation early through the handoff seam without inflating lifecycle counters", async () => {
+    const closedAt = new Date("2026-07-12T00:00:00.000Z");
+    const plannedWorkout = {
+      id: "planned-lower",
+      status: "PLANNED",
+      advancesSplit: true,
+      selectionMode: "INTENT",
+      sessionIntent: "LOWER",
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+      selectionMetadata: { sessionDecisionReceipt: { version: 1 } },
+      exercises: [{ sets: [{ logs: [] }] }],
+    };
+    mocks.txMesoFindFirst.mockResolvedValue({
+      id: "m1",
+      state: "ACTIVE_ACCUMULATION",
+      isActive: true,
+      handoffSummaryJson: null,
+      nextSeedDraftJson: null,
+      closedAt: null,
+    });
+    mocks.txWorkoutFindMany
+      .mockResolvedValueOnce([plannedWorkout])
+      .mockResolvedValueOnce([]);
+    mocks.txWorkoutUpdate.mockResolvedValue({ id: "planned-lower", status: "SKIPPED" });
+    mocks.txMesoFindUnique.mockResolvedValue({
+      id: "m1",
+      state: "ACTIVE_ACCUMULATION",
+      macroCycleId: "macro-1",
+      mesoNumber: 4,
+      startWeek: 15,
+      focus: "Strength-Hypertrophy",
+      volumeTarget: "MODERATE",
+      intensityBias: "HYPERTROPHY",
+      isActive: true,
+      accumulationSessionsCompleted: 11,
+      deloadSessionsCompleted: 0,
+      durationWeeks: 5,
+      sessionsPerWeek: 4,
+      daysPerWeek: 4,
+      splitType: "UPPER_LOWER",
+      slotSequenceJson: {},
+      macroCycle: { userId: "user-1" },
+      blocks: [],
+    });
+    mocks.txMesoUpdate.mockResolvedValue({
+      id: "m1",
+      state: "AWAITING_HANDOFF",
+      isActive: false,
+      closedAt,
+      handoffSummaryJson: { version: 1 },
+      nextSeedDraftJson: { version: 1 },
+      accumulationSessionsCompleted: 11,
+      deloadSessionsCompleted: 0,
+    });
+    mocks.txConstraintsFindUnique.mockResolvedValue({
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+    });
+    mocks.txRoleFindMany.mockResolvedValue([]);
+    mocks.txReadinessFindFirst.mockResolvedValue(null);
+
+    const result = await finishMesocycleEarly({
+      userId: "user-1",
+      mesocycleId: "m1",
+    });
+
+    expect(result.mesocycle.state).toBe("AWAITING_HANDOFF");
+    expect(result.skippedWorkoutIds).toEqual(["planned-lower"]);
+    expect(result.handoffSummaryCreated).toBe(true);
+    expect(result.nextSeedDraftCreated).toBe(true);
+    expect(mocks.txWorkoutUpdate).toHaveBeenCalledWith({
+      where: { id: "planned-lower" },
+      data: {
+        status: "SKIPPED",
+        selectionMetadata: expect.objectContaining({
+          finishMesocycleEarly: expect.objectContaining({
+            reason: "user_ended_accumulation_early",
+            terminalStatus: "SKIPPED",
+          }),
+          sessionDecisionReceipt: { version: 1 },
+        }),
+      },
+    });
+    expect(mocks.txMesoUpdate).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          accumulationSessionsCompleted: expect.anything(),
+          deloadSessionsCompleted: expect.anything(),
+        }),
+      })
+    );
+  });
+
+  it("rejects accumulation early-close when an incomplete workout has performed logs", async () => {
+    mocks.txMesoFindFirst.mockResolvedValue({
+      id: "m1",
+      state: "ACTIVE_ACCUMULATION",
+      isActive: true,
+      handoffSummaryJson: null,
+      nextSeedDraftJson: null,
+      closedAt: null,
+    });
+    mocks.txWorkoutFindMany.mockResolvedValue([
+      {
+        id: "partial-lower",
+        status: "PARTIAL",
+        advancesSplit: true,
+        selectionMode: "INTENT",
+        sessionIntent: "LOWER",
+        mesocyclePhaseSnapshot: "ACCUMULATION",
+        selectionMetadata: {},
+        exercises: [
+          {
+            sets: [
+              {
+                logs: [
+                  {
+                    wasSkipped: false,
+                    actualReps: 8,
+                    actualRpe: 8,
+                    actualLoad: 100,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    await expect(
+      finishMesocycleEarly({ userId: "user-1", mesocycleId: "m1" })
+    ).rejects.toBeInstanceOf(FinishMesocycleEarlyBlockedWorkoutError);
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
+    expect(mocks.txMesoUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects accumulation early-close outside an active accumulation mesocycle", async () => {
+    mocks.txMesoFindFirst.mockResolvedValue({
+      id: "m1",
+      state: "ACTIVE_DELOAD",
+      isActive: true,
+      handoffSummaryJson: null,
+      nextSeedDraftJson: null,
+      closedAt: null,
+    });
+
+    await expect(
+      finishMesocycleEarly({ userId: "user-1", mesocycleId: "m1" })
+    ).rejects.toThrow("MESOCYCLE_FINISH_EARLY_INVALID_STATE");
+    expect(mocks.txWorkoutUpdate).not.toHaveBeenCalled();
+    expect(mocks.txMesoUpdate).not.toHaveBeenCalled();
   });
 
   it("finishes deload early through the handoff seam without inflating deload counters", async () => {

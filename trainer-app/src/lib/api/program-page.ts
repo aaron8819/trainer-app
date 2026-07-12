@@ -19,6 +19,7 @@ import {
   isCloseoutWeekInScope,
   loadProgramDashboardData,
   type CloseoutSupportData,
+  type CycleAnchorAction,
   type DeloadReadiness,
   type ProgramDashboardData,
   type ProgramMesoBlock,
@@ -237,7 +238,7 @@ export type ProgramPageData = {
     dashboard: ProgramDashboardData;
   };
   advancedActions: {
-    availableActions: Array<"deload" | "extend_phase" | "reset">;
+    availableActions: CycleAnchorAction[];
   };
 };
 
@@ -1455,7 +1456,14 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
       dashboard,
     },
     advancedActions: {
-      availableActions: ["deload", "extend_phase", "reset"],
+      availableActions: [
+        "deload",
+        "extend_phase",
+        "reset",
+        ...(activeMesocycle?.state === "ACTIVE_ACCUMULATION"
+          ? (["end_early"] satisfies CycleAnchorAction[])
+          : []),
+      ],
     },
   };
 }

@@ -455,7 +455,7 @@ describe("ProgramPage", () => {
         },
       },
       advancedActions: {
-        availableActions: ["deload", "extend_phase", "reset"],
+        availableActions: ["deload", "extend_phase", "reset", "end_early"],
       },
     });
   });
@@ -628,7 +628,7 @@ describe("ProgramPage", () => {
     expect(hasTextOutsideDetails("Lats", projectedSection)).toBe(false);
     expect(screen.getByText("ProgramStatusCard:volumeOnly")).toBeInTheDocument();
     expect(
-      screen.getByText("CycleAnchorControls:deload,extend_phase,reset"),
+      screen.getByText("CycleAnchorControls:deload,extend_phase,reset,end_early"),
     ).toBeInTheDocument();
     expect(screen.queryByText("Next Views")).not.toBeInTheDocument();
     expect(screen.queryByText("Session History")).not.toBeInTheDocument();

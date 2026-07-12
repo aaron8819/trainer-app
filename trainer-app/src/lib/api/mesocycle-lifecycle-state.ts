@@ -43,13 +43,13 @@ export async function initializeNextMesocycle(
 
 type LifecycleTx = Prisma.TransactionClient;
 
-const FINISH_DELOAD_INCOMPLETE_WORKOUT_STATUSES = [
+const EARLY_FINISH_INCOMPLETE_WORKOUT_STATUSES = [
   WorkoutStatus.PLANNED,
   WorkoutStatus.IN_PROGRESS,
   WorkoutStatus.PARTIAL,
 ] as const;
 
-type FinishDeloadWorkoutRow = {
+type EarlyFinishWorkoutRow = {
   id: string;
   status: WorkoutStatus;
   advancesSplit: boolean | null;
@@ -77,6 +77,8 @@ export type FinishDeloadEarlyResult = {
   nextSeedDraftCreated: boolean;
 };
 
+export type FinishMesocycleEarlyResult = FinishDeloadEarlyResult;
+
 export class FinishDeloadEarlyBlockedWorkoutError extends Error {
   readonly workoutIds: string[];
 
@@ -87,11 +89,21 @@ export class FinishDeloadEarlyBlockedWorkoutError extends Error {
   }
 }
 
+export class FinishMesocycleEarlyBlockedWorkoutError extends Error {
+  readonly workoutIds: string[];
+
+  constructor(workoutIds: string[]) {
+    super("MESOCYCLE_FINISH_EARLY_WORKOUT_HAS_PERFORMED_LOGS");
+    this.name = "FinishMesocycleEarlyBlockedWorkoutError";
+    this.workoutIds = workoutIds;
+  }
+}
+
 function isJsonObject(value: Prisma.JsonValue | null): value is Prisma.JsonObject {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function hasPerformedLog(workout: FinishDeloadWorkoutRow): boolean {
+function hasPerformedLog(workout: EarlyFinishWorkoutRow): boolean {
   return workout.exercises.some((exercise) =>
     exercise.sets.some((set) =>
       set.logs.some(
@@ -103,7 +115,7 @@ function hasPerformedLog(workout: FinishDeloadWorkoutRow): boolean {
   );
 }
 
-function isDeloadWorkout(workout: FinishDeloadWorkoutRow): boolean {
+function isDeloadWorkout(workout: EarlyFinishWorkoutRow): boolean {
   return deriveSessionSemantics({
     advancesSplit: workout.advancesSplit,
     selectionMode: workout.selectionMode,
@@ -127,6 +139,123 @@ function withFinishDeloadSkippedMetadata(
       terminalStatus: WorkoutStatus.SKIPPED,
     },
   };
+}
+
+function withFinishMesocycleSkippedMetadata(
+  selectionMetadata: Prisma.JsonValue | null,
+  skippedAt: string
+): Prisma.InputJsonValue {
+  const base = isJsonObject(selectionMetadata) ? selectionMetadata : {};
+  return {
+    ...base,
+    finishMesocycleEarly: {
+      version: 1,
+      reason: "user_ended_accumulation_early",
+      skippedAt,
+      terminalStatus: WorkoutStatus.SKIPPED,
+    },
+  };
+}
+
+export async function finishMesocycleEarlyInTransaction(
+  tx: LifecycleTx,
+  input: { userId: string; mesocycleId: string }
+): Promise<FinishMesocycleEarlyResult> {
+  const mesocycle = await tx.mesocycle.findFirst({
+    where: {
+      id: input.mesocycleId,
+      macroCycle: { userId: input.userId },
+    },
+    select: {
+      id: true,
+      state: true,
+      isActive: true,
+      handoffSummaryJson: true,
+      nextSeedDraftJson: true,
+      closedAt: true,
+    },
+  });
+
+  if (!mesocycle) {
+    throw new Error("MESOCYCLE_FINISH_EARLY_NOT_FOUND");
+  }
+  if (mesocycle.state !== "ACTIVE_ACCUMULATION" || !mesocycle.isActive) {
+    throw new Error("MESOCYCLE_FINISH_EARLY_INVALID_STATE");
+  }
+  if (mesocycle.handoffSummaryJson || mesocycle.nextSeedDraftJson || mesocycle.closedAt) {
+    throw new Error("MESOCYCLE_FINISH_EARLY_HANDOFF_EXISTS");
+  }
+
+  const incompleteWorkouts: EarlyFinishWorkoutRow[] = await tx.workout.findMany({
+    where: {
+      userId: input.userId,
+      mesocycleId: input.mesocycleId,
+      status: { in: [...EARLY_FINISH_INCOMPLETE_WORKOUT_STATUSES] },
+    },
+    orderBy: { scheduledDate: "asc" },
+    select: {
+      id: true,
+      status: true,
+      advancesSplit: true,
+      selectionMode: true,
+      sessionIntent: true,
+      selectionMetadata: true,
+      mesocyclePhaseSnapshot: true,
+      exercises: {
+        select: {
+          sets: {
+            select: {
+              logs: {
+                select: {
+                  wasSkipped: true,
+                  actualReps: true,
+                  actualRpe: true,
+                  actualLoad: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const blockedWorkoutIds = incompleteWorkouts
+    .filter((workout) => workout.status === WorkoutStatus.PARTIAL || hasPerformedLog(workout))
+    .map((workout) => workout.id);
+  if (blockedWorkoutIds.length > 0) {
+    throw new FinishMesocycleEarlyBlockedWorkoutError(blockedWorkoutIds);
+  }
+
+  const skippedAt = new Date().toISOString();
+  for (const workout of incompleteWorkouts) {
+    await tx.workout.update({
+      where: { id: workout.id },
+      data: {
+        status: WorkoutStatus.SKIPPED,
+        selectionMetadata: withFinishMesocycleSkippedMetadata(
+          workout.selectionMetadata,
+          skippedAt
+        ),
+      },
+    });
+  }
+
+  const updated = await enterMesocycleHandoffInTransaction(tx, input.mesocycleId);
+  return {
+    mesocycle: updated,
+    skippedWorkoutIds: incompleteWorkouts.map((workout) => workout.id),
+    skippedWorkoutCount: incompleteWorkouts.length,
+    handoffSummaryCreated: Boolean(updated.handoffSummaryJson),
+    nextSeedDraftCreated: Boolean(updated.nextSeedDraftJson),
+  };
+}
+
+export async function finishMesocycleEarly(input: {
+  userId: string;
+  mesocycleId: string;
+}): Promise<FinishMesocycleEarlyResult> {
+  return prisma.$transaction((tx) => finishMesocycleEarlyInTransaction(tx, input));
 }
 
 export async function transitionMesocycleStateInTransaction(
@@ -212,11 +341,11 @@ export async function finishDeloadEarlyInTransaction(
     throw new Error("MESOCYCLE_FINISH_DELOAD_HANDOFF_EXISTS");
   }
 
-  const incompleteWorkouts: FinishDeloadWorkoutRow[] = await tx.workout.findMany({
+  const incompleteWorkouts: EarlyFinishWorkoutRow[] = await tx.workout.findMany({
     where: {
       userId: input.userId,
       mesocycleId: input.mesocycleId,
-      status: { in: [...FINISH_DELOAD_INCOMPLETE_WORKOUT_STATUSES] },
+      status: { in: [...EARLY_FINISH_INCOMPLETE_WORKOUT_STATUSES] },
     },
     orderBy: { scheduledDate: "asc" },
     select: {

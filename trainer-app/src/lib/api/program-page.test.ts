@@ -1278,6 +1278,7 @@ describe("loadProgramPageData", () => {
       "deload",
       "extend_phase",
       "reset",
+      "end_early",
     ]);
   });
 

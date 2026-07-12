@@ -115,6 +115,13 @@ Sources of truth:
   - ownership: route resolves the owner through `resolveOwner()` and delegates lifecycle behavior to `finishDeloadEarly()` in `src/lib/api/mesocycle-lifecycle-state.ts`
   - semantics: this is an explicit user action to end the remaining deload without performing the remaining scheduled deload workouts; it does not create `SetLog` rows, does not create fake completed workouts, does not increment `deloadSessionsCompleted`, does not mutate `slotPlanSeedJson`, and does not change runtime replay
   - incomplete deload workouts: unperformed `PLANNED`/`IN_PROGRESS` workouts in the source mesocycle are marked `SKIPPED` with additive `selectionMetadata.finishDeloadEarly` audit metadata before entering handoff; `PARTIAL` workouts or workouts with performed non-skipped logs are rejected with `409`
+
+- `PATCH /api/program` action `end_early` (`src/app/api/program/route.ts`)
+  - purpose: intentionally close the active accumulation mesocycle without fabricating completion, then expose the existing handoff review/accept flow
+  - ownership: the route resolves the owner and delegates through `applyCycleAnchor()` to canonical `finishMesocycleEarly()` lifecycle behavior
+  - incomplete workouts: untouched `PLANNED`/`IN_PROGRESS` workouts are marked `SKIPPED` with additive `selectionMetadata.finishMesocycleEarly`; canonical `sessionDecisionReceipt` data is preserved
+  - conflicts: `PARTIAL` workouts, any incomplete workout with performed non-skipped logs, non-`ACTIVE_ACCUMULATION` state, or existing handoff artifacts return `409`
+  - invariants: accumulation/deload counters, accepted seed, runtime replay, performed logs, and successor acceptance behavior are unchanged
   - handoff: success calls the same canonical handoff entry seam as normal deload completion, freezing `handoffSummaryJson` and seeding `nextSeedDraftJson`; successor creation remains reserved for `POST /api/mesocycles/[id]/accept-next-cycle`
 - `POST /api/mesocycles/[id]/setup-preview` (`src/app/api/mesocycles/[id]/setup-preview/route.ts`)
   - state gate: target mesocycle must exist for the owner and be in `AWAITING_HANDOFF`

@@ -968,7 +968,12 @@ function buildSetCountQuality(input: {
   belowPreferredMuscles: string[];
 }): V2BasePlanValidation["checks"]["setCountQuality"] {
   const exercisesAtFiveOrMore = input.evidence
-    .filter((row) => row.exercise.setCount >= 5)
+    .filter(
+      (row) =>
+        row.exercise.setCount >= 5 &&
+        row.exercise.setCount >
+          (row.planLane?.perExerciseCap.maxSetsWithoutJustification ?? 4),
+    )
     .map((row) => `${row.slotId}:${row.laneId}:${row.exerciseName}`);
   const standaloneOneSetExercises = input.evidence
     .filter((row) => row.exercise.setCount === 1)

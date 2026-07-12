@@ -230,7 +230,7 @@ The exercise ontology and lane-intent contract are central product assets. An el
 
 Planner policy should be grounded in hypertrophy principles and allow justified exceptions. Avoid arbitrary always/never rules.
 
-Examples: no default 5-set stacking is a quality guard, not a universal law. Duplicate exercises can be justified by productive continuity, inventory limits, specialization, or lack of clean alternatives, but the reason must be explicit.
+Examples: no default 5-set stacking is a quality guard, not a universal law. A planner-authored five-set lane is valid when it is the bounded, explicit way to conserve a weekly floor across exposures and remains within session size, recovery, MAV, and concentration checks. Duplicate exercises can be justified by productive continuity, inventory limits, specialization, or lack of clean alternatives, but the reason must be explicit.
 
 ### Principle 12 - Evaluation Infrastructure Is Product Infrastructure
 

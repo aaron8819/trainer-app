@@ -238,13 +238,13 @@ describe("buildV2SetDistributionIntent", () => {
     });
     expect(lane(plan, "lower_b", "calves")).toMatchObject({
       role: "accessory",
-      setBudget: { min: 3, preferred: 4, max: 4 },
+      setBudget: { min: 3, preferred: 5, max: 5 },
     });
     expect(
       week(plan).slots
         .flatMap((slotRow) => slotRow.lanes)
         .filter((laneRow) => laneRow.setBudget.preferred === 4),
-    ).toHaveLength(7);
+    ).toHaveLength(6);
   });
 
   it("keeps Hamstrings hinge and curl split within balanced demand", () => {
@@ -270,12 +270,12 @@ describe("buildV2SetDistributionIntent", () => {
     expect(lane(plan, "lower_a", "calves")).toMatchObject({
       classLaneKind: "support_class_lane",
       primaryMuscles: ["Calves"],
-      setBudget: { min: 3, preferred: 4, max: 4 },
+      setBudget: { min: 3, preferred: 3, max: 3 },
     });
     expect(lane(plan, "lower_b", "calves")).toMatchObject({
       classLaneKind: "support_class_lane",
       primaryMuscles: ["Calves"],
-      setBudget: { min: 3, preferred: 4, max: 4 },
+      setBudget: { min: 3, preferred: 5, max: 5 },
     });
     expect(setBudgetTotalForMuscle(plan, "Calves")).toBeGreaterThanOrEqual(
       VOLUME_LANDMARKS.Calves.mev,
@@ -355,7 +355,9 @@ describe("buildV2SetDistributionIntent", () => {
     for (const planWeek of plan.weeks) {
       for (const planSlot of planWeek.slots) {
         for (const planLane of planSlot.lanes) {
-          expect(planLane.setBudget.preferred).toBeLessThanOrEqual(4);
+          expect(planLane.setBudget.preferred).toBeLessThanOrEqual(
+            planLane.laneId === "calves" ? 5 : 4,
+          );
         }
       }
     }
@@ -455,10 +457,12 @@ describe("buildV2SetDistributionIntent", () => {
           allocationSlot?.targetSessionSets.max ?? Number.POSITIVE_INFINITY,
         );
         for (const planLane of planSlot.lanes) {
-          expect(planLane.setBudget.max).toBeLessThanOrEqual(4);
+          expect(planLane.setBudget.max).toBeLessThanOrEqual(
+            planLane.laneId === "calves" ? 5 : 4,
+          );
           expect(
             planLane.capPolicy.maxSetsPerExerciseWithoutJustification,
-          ).toBeLessThanOrEqual(4);
+          ).toBeLessThanOrEqual(planLane.laneId === "calves" ? 5 : 4);
         }
       }
     }

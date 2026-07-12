@@ -844,8 +844,13 @@ function buildSlotShapeCompare(input: {
     {
       item: "five_set_stacking",
       classification:
-        v2Base.fiveSetStackCount === 0 ? "v2_improves" : "v2_regresses",
-      evidence: [`v2_five_set:${v2Base.fiveSetStackCount}`],
+        input.validation?.checks.setCountQuality.exercisesAtFiveOrMore.length === 0
+          ? "v2_improves"
+          : "v2_regresses",
+      evidence: [
+        `v2_five_set:${v2Base.fiveSetStackCount}`,
+        `unjustified_five_set:${input.validation?.checks.setCountQuality.exercisesAtFiveOrMore.length ?? v2Base.fiveSetStackCount}`,
+      ],
     },
   ];
 

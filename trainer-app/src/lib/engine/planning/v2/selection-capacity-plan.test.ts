@@ -116,23 +116,27 @@ describe("buildV2SelectionCapacityPlan", () => {
     );
   });
 
-  it("keeps Week 4 calf budgets capped instead of planning 5-set stacking", () => {
+  it("preserves the bounded 3/5 calf allocation with an explicit 5-set lane cap", () => {
     expect(lane(4, "lower_a", "calves")).toMatchObject({
       role: "accessory",
-      setBudget: { min: 3, preferred: 4, max: 4 },
+      setBudget: { min: 3, preferred: 3, max: 3 },
       perExerciseCap: {
-        maxSetsWithoutJustification: 4,
+        maxSetsWithoutJustification: 5,
         maxDirectExercises: 1,
         allowAboveFiveSetsOnlyWithJustification: true,
       },
       laneHeadroomPolicy: {
-        preferredRequiresHeadroom: true,
-        cleanAlternativeRequiredForExpansion: true,
+        preferredRequiresHeadroom: false,
+        cleanAlternativeRequiredForExpansion: false,
         capAwareExpansion: "not_needed",
       },
     });
-    expect(lane(4, "lower_b", "calves").laneHeadroomPolicy).toMatchObject({
-      capAwareExpansion: "not_needed",
+    expect(lane(4, "lower_b", "calves")).toMatchObject({
+      setBudget: { min: 3, preferred: 5, max: 5 },
+      perExerciseCap: { maxSetsWithoutJustification: 5 },
+      laneHeadroomPolicy: {
+        capAwareExpansion: "not_needed",
+      },
     });
   });
 
@@ -180,13 +184,13 @@ describe("buildV2SelectionCapacityPlan", () => {
       slotId: "upper_b",
       slotIndex: 2,
       maxExerciseCount: 7,
-      targetSessionSets: { min: 15, preferred: 20, max: 21 },
+      targetSessionSets: { min: 15, preferred: 21, max: 21 },
     });
     expect(slot(2, "lower_b")).toMatchObject({
       slotId: "lower_b",
       slotIndex: 3,
       maxExerciseCount: 6,
-      targetSessionSets: { min: 10, preferred: 12, max: 14 },
+      targetSessionSets: { min: 10, preferred: 14, max: 15 },
     });
   });
 

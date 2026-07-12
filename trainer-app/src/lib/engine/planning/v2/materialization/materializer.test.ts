@@ -3633,7 +3633,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     });
     expect(exerciseForLane(result, "lower_b", "calves")).toMatchObject({
       exerciseId: "standing-calf-raise",
-      setCount: 4,
+      setCount: 5,
     });
     expect(
       ["upper_a", "upper_b"].reduce(
@@ -3656,10 +3656,13 @@ describe("buildV2ExerciseMaterializationPlan", () => {
           exerciseForLane(result, slotId, "calves").setCount,
         0,
       ),
-    ).toBeGreaterThanOrEqual(7);
+    ).toBeGreaterThanOrEqual(8);
     expect(
       result.slots.flatMap((slotRow) =>
-        slotRow.exercises.filter((exerciseRow) => exerciseRow.setCount >= 5),
+        slotRow.exercises.filter(
+          (exerciseRow) =>
+            exerciseRow.setCount >= 5 && !exerciseRow.laneIds.includes("calves"),
+        ),
       ),
     ).toEqual([]);
     expect(

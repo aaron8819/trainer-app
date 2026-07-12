@@ -139,7 +139,12 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
               ? "Pending Handoff Review"
               : "Historical Closeout Archive"}
           </p>
-          <h1 className="page-title mt-2">Meso {review.mesoNumber} complete</h1>
+          <h1 className="page-title mt-2">
+            Meso {review.mesoNumber}{" "}
+            {review.closeout.kind === "ended_early_during_accumulation"
+              ? "ended early"
+              : "complete"}
+          </h1>
           <p className="mt-2 text-sm text-slate-600">
             Closeout review for {review.focus}. The saved recommendation is the handoff
             design decision, and the analysis below explains the closeout without redefining it.
@@ -150,17 +155,21 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
           <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
             Saved handoff summary
           </p>
-          <h2 className="mt-2 text-2xl font-semibold">Mesocycle complete</h2>
+          <h2 className="mt-2 text-2xl font-semibold">
+            {review.closeout.kind === "ended_early_during_accumulation"
+              ? "Cycle ended early during accumulation"
+              : "Mesocycle completed with deload"}
+          </h2>
           <p className="mt-2 text-sm text-slate-700">
             {buildMesocycleReviewPlainEnglishSummary(review)}
           </p>
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-amber-200 bg-white/80 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Duration
+                Planned duration
               </p>
               <p className="mt-2 text-xl font-semibold">
-                {frozenSummary.lifecycle.durationWeeks} weeks
+                {review.closeout.plannedDurationWeeks} weeks
               </p>
               <p className="mt-1 text-sm text-slate-600">Closed {formatDate(frozenSummary.closedAt)}</p>
             </div>
@@ -176,11 +185,15 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
             </div>
             <div className="rounded-xl border border-amber-200 bg-white/80 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Deload
+                Deload performed
               </p>
-              <p className="mt-2 text-xl font-semibold">Complete</p>
+              <p className="mt-2 text-xl font-semibold">
+                {review.closeout.deloadPerformed ? "Yes" : "No"}
+              </p>
               <p className="mt-1 text-sm text-slate-600">
-                Excluded from next-cycle baseline by design
+                {review.closeout.deloadPerformed
+                  ? `${review.closeout.deloadSessionsCompleted} deload session${review.closeout.deloadSessionsCompleted === 1 ? "" : "s"} completed`
+                  : "The training break is not recorded as a deload"}
               </p>
             </div>
           </div>
@@ -188,6 +201,14 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
             {formatSplitType(frozenSummary.training.splitType)} • {frozenSummary.training.sessionsPerWeek}
             x/week • Focus: {frozenSummary.training.focus}
           </p>
+          {review.closeout.unperformedPlannedWeeks > 0 ? (
+            <p className="mt-3 text-sm text-slate-700">
+              {review.closeout.performedTrainingWeeks} of {review.closeout.plannedDurationWeeks}{" "}
+              planned training weeks contained performed core work; the remaining{" "}
+              {review.closeout.unperformedPlannedWeeks} planned week
+              {review.closeout.unperformedPlannedWeeks === 1 ? " was" : "s were"} not performed.
+            </p>
+          ) : null}
         </section>
 
         {review.derived.weeklyRetroCalibration ? (
@@ -297,7 +318,13 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
                         {week.performedSessions}/{week.plannedSessions} core sessions
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {week.phase === "DELOAD" ? "Deload week" : "Accumulation week"}
+                        {week.performedSessions > 0
+                          ? week.phase === "DELOAD"
+                            ? "Performed deload week"
+                            : "Performed accumulation week"
+                          : week.plannedSessions > 0
+                            ? "Planned but not performed"
+                            : "No scoped core session performed"}
                       </p>
                     </div>
                   ))}
@@ -307,7 +334,7 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
 
             <div className="rounded-2xl bg-slate-50 p-5">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Top progressed exercises
+                Observed exercise trends
               </h3>
               {review.derived.topProgressedExercises.length > 0 ? (
                 <div className="mt-4 space-y-3">
@@ -343,9 +370,12 @@ export default async function MesocycleReviewPage({ params }: { params: Params }
           </p>
           <h2 className="mt-2 text-xl font-semibold">Muscle / volume summary</h2>
           <p className="mt-2 text-sm text-slate-600">
-            Targets are weekly targets summed across this mesocycle. Actuals are weighted
-            effective sets recomputed from mesocycle-scoped workouts. This table is informational
-            only and does not alter the saved handoff recommendation.
+            Targets are summed only across the {review.closeout.performedTrainingWeeks} training
+            week{review.closeout.performedTrainingWeeks === 1 ? "" : "s"} with performed core
+            work. Actuals are weighted effective sets recomputed from mesocycle-scoped performed
+            workouts. Planned weeks that were not performed are shown in adherence, not counted as
+            dosage misses. This table is informational only and does not alter the saved handoff
+            recommendation.
           </p>
 
           <div className="mt-5 overflow-x-auto">

@@ -20,6 +20,7 @@ vi.mock("next/link", () => ({
 const mocks = vi.hoisted(() => ({
   resolveOwner: vi.fn(),
   loadMesocycleSetupFromPrisma: vi.fn(),
+  loadMesocyclePreAcceptancePresentation: vi.fn(),
   notFound: vi.fn(),
 }));
 
@@ -35,6 +36,11 @@ vi.mock("@/lib/api/mesocycle-setup", () => ({
   loadMesocycleSetupFromPrisma: (...args: unknown[]) => mocks.loadMesocycleSetupFromPrisma(...args),
 }));
 
+vi.mock("@/lib/api/mesocycle-pre-acceptance-presentation", () => ({
+  loadMesocyclePreAcceptancePresentation: (...args: unknown[]) =>
+    mocks.loadMesocyclePreAcceptancePresentation(...args),
+}));
+
 vi.mock("@/components/MesocycleSetupEditor", () => ({
   MesocycleSetupEditor: ({ mesocycleId }: { mesocycleId: string }) => (
     <div>Setup editor for {mesocycleId}</div>
@@ -43,7 +49,11 @@ vi.mock("@/components/MesocycleSetupEditor", () => ({
 
 describe("MesocycleSetupPage", () => {
   beforeEach(() => {
-    mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+    mocks.resolveOwner.mockResolvedValue({ id: "user-1", email: "owner@local" });
+    mocks.loadMesocyclePreAcceptancePresentation.mockResolvedValue({
+      decision: "rejected",
+      findings: [],
+    });
     mocks.loadMesocycleSetupFromPrisma.mockResolvedValue({
       mesocycleId: "meso-1",
       mesoNumber: 3,

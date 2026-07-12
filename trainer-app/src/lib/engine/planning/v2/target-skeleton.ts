@@ -11,7 +11,7 @@ export const V2_TARGET_SLOT_SKELETON: V2PlannerSlotDefinition[] = [
   {
     slotId: "upper_a",
     intent: "horizontal push/pull + rear/side delt/triceps support",
-    targetSessionSets: { min: 15, max: 20 },
+    targetSessionSets: { min: 17, max: 24 },
     lanes: [
       {
         laneId: "chest_anchor",
@@ -52,7 +52,7 @@ export const V2_TARGET_SLOT_SKELETON: V2PlannerSlotDefinition[] = [
         role: "accessory",
         primaryMuscles: ["Rear Delts"],
         preferredExerciseClasses: ["rear_delt_isolation"],
-        targetSets: { min: 2, preferred: 2, max: 2 },
+        targetSets: { min: 4, preferred: 4, max: 4 },
       },
       {
         laneId: "side_delt_isolation",
@@ -61,7 +61,7 @@ export const V2_TARGET_SLOT_SKELETON: V2PlannerSlotDefinition[] = [
         role: "accessory",
         primaryMuscles: ["Side Delts"],
         preferredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
-        targetSets: { min: 2, preferred: 2, max: 2 },
+        targetSets: { min: 4, preferred: 4, max: 4 },
       },
       {
         laneId: "triceps",
@@ -69,7 +69,7 @@ export const V2_TARGET_SLOT_SKELETON: V2PlannerSlotDefinition[] = [
         role: "accessory",
         primaryMuscles: ["Triceps"],
         preferredExerciseClasses: ["triceps_isolation", "pressdown"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
+        targetSets: { min: 4, preferred: 4, max: 4 },
       },
     ],
   },
@@ -186,7 +186,7 @@ export const V2_TARGET_SLOT_SKELETON: V2PlannerSlotDefinition[] = [
         role: "optional",
         primaryMuscles: ["Triceps"],
         preferredExerciseClasses: ["triceps_isolation"],
-        targetSets: { min: 0, preferred: 1, max: 2 },
+        targetSets: { min: 1, preferred: 1, max: 2 },
       },
     ],
   },

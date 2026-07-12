@@ -532,7 +532,7 @@ function capPolicyForLane(
 ): IntentLane["capPolicy"] {
   return {
     maxSetsPerExerciseWithoutJustification:
-      lane.role === "optional" ? 3 : 4,
+      lane.role === "optional" ? 3 : isCalfDirectLane(lane) ? 5 : 4,
     maxDirectExercises:
       lane.role === "anchor" || lane.role === "support" ? 2 : 1,
     allowAboveFiveSetsOnlyWithJustification: true,

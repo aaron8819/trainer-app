@@ -130,6 +130,16 @@ function makeReview(): MesocycleReviewData {
     },
     frozenSummary: makeHandoffSummary(),
     recommendation: {} as MesocycleReviewData["recommendation"],
+    closeout: {
+      kind: "completed_with_deload",
+      plannedDurationWeeks: 5,
+      plannedAccumulationWeeks: 4,
+      performedTrainingWeeks: 5,
+      unperformedPlannedWeeks: 0,
+      accumulationSessionsCompleted: 15,
+      deloadSessionsCompleted: 1,
+      deloadPerformed: true,
+    },
     derived: {
       scopedWorkoutCount: 17,
       performedWorkoutCount: 16,

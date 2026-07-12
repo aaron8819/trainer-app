@@ -107,6 +107,12 @@ const representativeV2Inventory: V2MaterializationExercise[] = [
     fatigueCost: 1,
   }),
   exercise({
+    exerciseId: "overhead-triceps-extension",
+    name: "Overhead Triceps Extension",
+    primaryMuscles: ["Triceps"],
+    fatigueCost: 1,
+  }),
+  exercise({
     exerciseId: "machine-shoulder-press",
     name: "Machine Shoulder Press",
     aliases: ["OHP"],
@@ -486,20 +492,18 @@ describe("buildV2BasePlanValidation", () => {
       source: "v2_base_plan_validation",
       readOnly: true,
       affectsScoringOrGeneration: false,
-      status: "pass_with_warnings",
+      status: "pass",
       summary: {
         slotCount: 4,
-        exerciseCount: 20,
-        totalSets: 63,
+        exerciseCount: 21,
+        totalSets: 67,
         blockerCount: 0,
-        warningCount: 1,
+        warningCount: 0,
         materializerStatus: "materialized",
       },
     });
     expect(validation.blockers).toEqual([]);
-    expect(warningReasons(validation)).toEqual([
-      "flat_allocation_pattern:many_lanes_at_four_sets_while_support_muscles_remain_below_preferred",
-    ]);
+    expect(warningReasons(validation)).toEqual([]);
   });
 
   it("checks muscle coverage against balanced demand and direct floors", () => {
@@ -518,11 +522,9 @@ describe("buildV2BasePlanValidation", () => {
       expect.arrayContaining(["Chest", "Lats"]),
     );
     expect(coverage.belowPreferredMuscles).toEqual(
-      expect.arrayContaining([
-        "Biceps",
-        "Triceps",
-      ]),
+      expect.arrayContaining(["Biceps"]),
     );
+    expect(coverage.belowPreferredMuscles).not.toContain("Calves");
     expect(coverage.directSupportFloors.missed).toEqual([]);
     expect(coverage.directSupportFloors.met).toEqual(
       expect.arrayContaining([
@@ -941,7 +943,7 @@ describe("buildV2BasePlanValidation", () => {
       validation.checks.exerciseClassCoverage
         .managedCollateralLanesNotMaterializedAsDirectDemand,
     ).toBe(true);
-    expect(validation.checks.slotShape.optionalLaneMaterializedCount).toBe(0);
+    expect(validation.checks.slotShape.optionalLaneMaterializedCount).toBe(1);
     expect(validation.checks.slotShape.managedCollateralLaneMaterializedCount)
       .toBe(0);
   });
@@ -955,12 +957,12 @@ describe("buildV2BasePlanValidation", () => {
     );
   });
 
-  it("checks flat allocation warnings", () => {
+  it("does not report flat allocation when authored support floors are satisfied", () => {
     const { validation, materializedPlan, policy } = buildFixture();
 
     expect(validation.checks.setCountQuality.fourSetLaneCount).toBe(6);
-    expect(validation.checks.setCountQuality.flatAllocationWarning).toBe(true);
-    expect(warningReasons(validation)).toContain(
+    expect(validation.checks.setCountQuality.flatAllocationWarning).toBe(false);
+    expect(warningReasons(validation)).not.toContain(
       "flat_allocation_pattern:many_lanes_at_four_sets_while_support_muscles_remain_below_preferred",
     );
 
@@ -987,8 +989,8 @@ describe("buildV2BasePlanValidation", () => {
     expect(oldFlatPatternValidation.checks.setCountQuality.fourSetLaneCount)
       .toBeGreaterThanOrEqual(6);
     expect(oldFlatPatternValidation.checks.setCountQuality.flatAllocationWarning)
-      .toBe(true);
-    expect(warningReasons(oldFlatPatternValidation)).toContain(
+      .toBe(false);
+    expect(warningReasons(oldFlatPatternValidation)).not.toContain(
       "flat_allocation_pattern:many_lanes_at_four_sets_while_support_muscles_remain_below_preferred",
     );
   });
@@ -1109,10 +1111,10 @@ describe("buildV2BasePlanValidation", () => {
       },
     });
     expect(compare.summary).toMatchObject({
-      v2BaseValidationStatus: "pass_with_warnings",
-      v2TotalSets: 63,
+      v2BaseValidationStatus: "pass",
+      v2TotalSets: 67,
       noRepairTotalSets: 25,
-      repairedTotalSets: 63,
+      repairedTotalSets: 67,
       repairDependencyCount: 9,
     });
     expect(compare.nextSafeAction).toBe("add_shadow_consumption_trial");
@@ -1163,7 +1165,7 @@ describe("buildV2BasePlanValidation", () => {
       },
       summary: {
         v2BaseValidationStatus: "fail",
-        v2TotalSets: 63,
+        v2TotalSets: 67,
       },
       nextSafeAction: "fix_v2_base_plan",
     });
@@ -1231,18 +1233,18 @@ describe("buildV2BasePlanValidation", () => {
 
     expect(compare.comparisons.slotShape.v2Base).toMatchObject({
       slotCount: 4,
-      exerciseCount: 20,
-      totalSets: 63,
-      maxSlotSets: 20,
-      optionalLaneMaterializationCount: 0,
+      exerciseCount: 21,
+      totalSets: 67,
+      maxSlotSets: 21,
+      optionalLaneMaterializationCount: 1,
       standaloneOneSetExerciseCount: 0,
-      fiveSetStackCount: 0,
+      fiveSetStackCount: 1,
     });
     expect(compare.comparisons.slotShape.v2Base.setsBySlot).toEqual([
-      { slotId: "upper_a", exerciseCount: 6, setCount: 20 },
+      { slotId: "upper_a", exerciseCount: 6, setCount: 21 },
       { slotId: "lower_a", exerciseCount: 4, setCount: 11 },
-      { slotId: "upper_b", exerciseCount: 6, setCount: 19 },
-      { slotId: "lower_b", exerciseCount: 4, setCount: 13 },
+      { slotId: "upper_b", exerciseCount: 7, setCount: 21 },
+      { slotId: "lower_b", exerciseCount: 4, setCount: 14 },
     ]);
     expect(compare.comparisons.exerciseClassCoverage.rows).toEqual(
       expect.arrayContaining([
@@ -1396,10 +1398,10 @@ describe("buildV2BasePlanValidation", () => {
       },
     });
     expect(trial.summary).toMatchObject({
-      shadowTotalSets: 63,
-      v2BaseTotalSets: 63,
+      shadowTotalSets: 67,
+      v2BaseTotalSets: 67,
       noRepairTotalSets: 25,
-      repairedTotalSets: 63,
+      repairedTotalSets: 67,
       currentRepairDependencyCount: 9,
       shadowRemainingRepairDependencyCount: 1,
       repairDependencyDelta: -8,

@@ -12,6 +12,7 @@ import {
 } from "@/lib/api/mesocycle-handoff-contract";
 import type { FrozenRecommendationPresentation } from "@/lib/api/mesocycle-handoff-presentation";
 import type { MesocycleSetupPreview } from "@/lib/api/mesocycle-setup";
+import type { MesocyclePreAcceptancePresentation } from "@/lib/api/mesocycle-pre-acceptance-presentation";
 import { formatSessionIdentityLabel } from "@/lib/ui/session-identity";
 
 type MesocycleSetupEditorProps = {
@@ -20,6 +21,7 @@ type MesocycleSetupEditorProps = {
   frozenRecommendationDraft: NextCycleSeedDraft;
   initialDraft: NextCycleSeedDraft;
   initialPreview: MesocycleSetupPreview;
+  preAcceptance: MesocyclePreAcceptancePresentation;
 };
 
 const SPLIT_OPTIONS: Array<{ value: SplitType; label: string }> = [
@@ -52,6 +54,21 @@ function formatHandoffDisplayCopy(value: string): string {
   return value
     .replace(/\bfrozen\b/gi, "saved")
     .replace(/\bcanonical\s+/gi, "");
+}
+
+function formatAcceptanceDecision(
+  decision: MesocyclePreAcceptancePresentation["decision"]
+): string {
+  switch (decision) {
+    case "not_runnable":
+      return "Not runnable";
+    case "rejected":
+      return "Rejected";
+    case "accepted_with_watch_items":
+      return "Accepted with watch items";
+    case "accepted":
+      return "Accepted";
+  }
 }
 
 function formatSlotDisplayLabel(slot: { intent: WorkoutSessionIntent; slotId: string }): string {
@@ -204,6 +221,7 @@ export function MesocycleSetupEditor({
   frozenRecommendationDraft,
   initialDraft,
   initialPreview,
+  preAcceptance,
 }: MesocycleSetupEditorProps) {
   const router = useRouter();
   const [draft, setDraft] = useState(initialDraft);
@@ -783,6 +801,51 @@ export function MesocycleSetupEditor({
             </div>
           </div>
         ) : null}
+
+        <div className="mt-6 rounded-2xl border border-slate-300 bg-slate-50 p-5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Pre-acceptance result
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <h3 className="text-xl font-semibold text-slate-900">
+              {formatAcceptanceDecision(preAcceptance.decision)}
+            </h3>
+            <span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+              Read-only persisted candidate
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-slate-700">{preAcceptance.recommendation}</p>
+          {preAcceptance.findings.length > 0 ? (
+            <div className="mt-4 space-y-3">
+              {preAcceptance.findings.map((finding) => (
+                <div
+                  key={`${finding.finding}:${finding.ownerSeam}`}
+                  className="rounded-xl border border-slate-200 bg-white p-4"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-slate-900">{finding.finding}</p>
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                      {finding.severity.replaceAll("_", " ")}
+                    </span>
+                    {finding.mustFixBeforeWeek1 ? (
+                      <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                        Must fix before Week 1
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-sm text-slate-700">
+                    Owner: {finding.ownerSeam}. {finding.smallestSafeFix}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">{finding.evidence}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <p className="mt-4 text-xs text-slate-500">
+            This result evaluates the persisted candidate. Save or refresh a changed draft, then
+            rerun pre-acceptance before accepting it.
+          </p>
+        </div>
 
         <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
           <button

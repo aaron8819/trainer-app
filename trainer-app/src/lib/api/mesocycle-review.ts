@@ -168,6 +168,17 @@ export type MesocycleReviewMuscleRow = {
   }>;
 };
 
+export type MesocycleReviewCloseout = {
+  kind: "completed_with_deload" | "ended_early_during_accumulation";
+  plannedDurationWeeks: number;
+  plannedAccumulationWeeks: number;
+  performedTrainingWeeks: number;
+  unperformedPlannedWeeks: number;
+  accumulationSessionsCompleted: number;
+  deloadSessionsCompleted: number;
+  deloadPerformed: boolean;
+};
+
 export type MesocycleReviewWeeklyRetroCalibration = {
   status: "info" | "watch";
   headline: string;
@@ -196,6 +207,7 @@ export type MesocycleReviewData = {
   };
   frozenSummary: MesocycleHandoffSummary;
   recommendation: FrozenRecommendationPresentation;
+  closeout: MesocycleReviewCloseout;
   derived: {
     scopedWorkoutCount: number;
     performedWorkoutCount: number;
@@ -686,13 +698,20 @@ function getOrCreateContributionAccumulator(
 
 function buildMuscleVolumeSummary(
   workouts: ReviewWorkoutRow[],
-  mesocycle: ReviewMesocycleRow
+  mesocycle: ReviewMesocycleRow & { mesoStartDate: Date }
 ): MesocycleReviewMuscleRow[] {
   const actualByMuscle = new Map<string, MuscleVolumeAccumulator>();
+  const performedWeeks = new Set<number>();
 
   for (const workout of workouts) {
     if (!isPerformedWorkoutStatus(workout.status)) {
       continue;
+    }
+
+    const semantics = getReviewWorkoutSemantics(workout);
+    const week = resolveWorkoutWeek(workout, mesocycle);
+    if (week && semantics.countsTowardWeeklyVolume) {
+      performedWeeks.add(week);
     }
 
     for (const workoutExercise of workout.exercises) {
@@ -744,7 +763,7 @@ function buildMuscleVolumeSummary(
   return getExposedVolumeLandmarkEntries()
     .map(([muscle]) => {
       let targetSets = 0;
-      for (let week = 1; week <= mesocycle.durationWeeks; week += 1) {
+      for (const week of performedWeeks) {
         targetSets += getWeeklyVolumeTarget(mesocycle, muscle, week);
       }
 
@@ -780,6 +799,35 @@ function buildMuscleVolumeSummary(
       }
       return left.muscle.localeCompare(right.muscle);
     });
+}
+
+function buildCloseoutSummary(input: {
+  mesocycle: ReviewMesocycleRow;
+  frozenSummary: MesocycleHandoffSummary;
+  weeklyBreakdown: MesocycleReviewWeekRow[];
+}): MesocycleReviewCloseout {
+  const performedTrainingWeeks = input.weeklyBreakdown.filter(
+    (week) => week.performedSessions > 0
+  ).length;
+  const deloadSessionsCompleted = input.frozenSummary.lifecycle.deloadSessionsCompleted;
+
+  return {
+    kind:
+      deloadSessionsCompleted > 0
+        ? "completed_with_deload"
+        : "ended_early_during_accumulation",
+    plannedDurationWeeks: input.mesocycle.durationWeeks,
+    plannedAccumulationWeeks: Math.max(0, input.mesocycle.durationWeeks - 1),
+    performedTrainingWeeks,
+    unperformedPlannedWeeks: Math.max(
+      0,
+      input.mesocycle.durationWeeks - performedTrainingWeeks
+    ),
+    accumulationSessionsCompleted:
+      input.frozenSummary.lifecycle.accumulationSessionsCompleted,
+    deloadSessionsCompleted,
+    deloadPerformed: deloadSessionsCompleted > 0,
+  };
 }
 
 async function loadMesocycleRow(
@@ -926,6 +974,7 @@ export async function loadMesocycleReview(
   const workouts = await loadMesocycleWorkouts(client, input.userId, mesocycle.id);
   const mesoStartDate = buildMesoStartDate(mesocycle.macroCycle.startDate, mesocycle.startWeek);
   const scopedMesocycle = { ...mesocycle, mesoStartDate };
+  const weeklyBreakdown = buildWeekRows(workouts, scopedMesocycle);
 
   return {
     mesocycleId: mesocycle.id,
@@ -941,14 +990,20 @@ export async function loadMesocycleReview(
     recommendation: buildFrozenRecommendationPresentation({
       recommendationDraft: archive.summary.recommendedNextSeed,
       recommendedDesign: archive.summary.recommendedDesign,
+      deloadPerformed: archive.summary.lifecycle.deloadSessionsCompleted > 0,
+    }),
+    closeout: buildCloseoutSummary({
+      mesocycle,
+      frozenSummary: archive.summary,
+      weeklyBreakdown,
     }),
     derived: {
       scopedWorkoutCount: workouts.length,
       performedWorkoutCount: workouts.filter((workout) => isPerformedWorkoutStatus(workout.status)).length,
       adherence: buildAdherenceSummary(workouts),
-      weeklyBreakdown: buildWeekRows(workouts, scopedMesocycle),
+      weeklyBreakdown,
       topProgressedExercises: buildTopProgressedExercises(workouts),
-      muscleVolumeSummary: buildMuscleVolumeSummary(workouts, mesocycle),
+      muscleVolumeSummary: buildMuscleVolumeSummary(workouts, scopedMesocycle),
       weeklyRetroCalibration: buildWeeklyRetroCalibrationForReview({
         userId: input.userId,
         mesocycleId: mesocycle.id,
@@ -970,8 +1025,11 @@ export function buildMesocycleReviewPlainEnglishSummary(review: MesocycleReviewD
     review.frozenSummary.lifecycle.accumulationSessionsCompleted +
     review.frozenSummary.lifecycle.deloadSessionsCompleted;
   return [
-    `${review.frozenSummary.lifecycle.durationWeeks} weeks closed`,
+    review.closeout.kind === "ended_early_during_accumulation"
+      ? `ended early after ${review.closeout.performedTrainingWeeks} training weeks`
+      : `${review.closeout.performedTrainingWeeks} training weeks performed`,
     `${closedSessionCount} sessions finished`,
+    review.closeout.deloadPerformed ? "deload performed" : "no deload performed",
     `core adherence ${formatWholePercent(review.derived.adherence.adherenceRate)}`,
   ].join(" • ");
 }

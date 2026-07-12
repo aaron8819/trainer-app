@@ -327,8 +327,8 @@ describe("buildV2SetDistributionIntent", () => {
       setBudget: { min: 4, preferred: 4, max: 4, basis: "support_direct_floor" },
     });
     expect(lane(plan, "upper_a", "triceps")).toMatchObject({
-      directFloor: { muscle: "Triceps", minDirectSets: 3 },
-      setBudget: { min: 3, preferred: 3, max: 3, basis: "support_direct_floor" },
+      directFloor: { muscle: "Triceps", minDirectSets: 4 },
+      setBudget: { min: 4, preferred: 4, max: 4, basis: "support_direct_floor" },
     });
     expect(lane(plan, "upper_b", "biceps")).toMatchObject({
       directFloor: { muscle: "Biceps", minDirectSets: 2 },
@@ -433,9 +433,9 @@ describe("buildV2SetDistributionIntent", () => {
       0,
     );
 
-    expect(accumulationTotal).toBe(66);
+    expect(accumulationTotal).toBe(67);
     expect(accumulationTotal).toBeGreaterThanOrEqual(60);
-    expect(accumulationTotal).toBeLessThanOrEqual(66);
+    expect(accumulationTotal).toBeLessThanOrEqual(67);
   });
 
   it("prevents default 5-set stacking and stays within slot capacity", () => {

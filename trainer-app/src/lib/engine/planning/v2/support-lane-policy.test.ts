@@ -71,11 +71,11 @@ describe("buildV2SupportLanePolicy", () => {
       owningSlotId: "upper_a",
       owningLaneId: "triceps",
       directFloor: {
-        minDirectSets: 3,
+        minDirectSets: 4,
         requiredExerciseClasses: ["triceps_isolation", "pressdown"],
         collateralCanSatisfyDirectFloor: false,
       },
-      preferredDirectSets: { min: 2, preferred: 3, max: 3 },
+      preferredDirectSets: { min: 4, preferred: 4, max: 4 },
       collateralMaySupplement: true,
       collateralCanSatisfyDirectFloor: false,
     });
@@ -175,7 +175,7 @@ describe("buildV2SupportLanePolicy", () => {
       evaluateV2SupportLaneOptionalActivation({
         policy: triceps,
         candidateSlotId: "upper_b",
-        directSetsInOwningSlot: 3,
+        directSetsInOwningSlot: 4,
         reasonableCollateralEffectiveSets: 1,
         recoverable: true,
       }),

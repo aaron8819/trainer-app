@@ -87,6 +87,7 @@ function buildCarryForwardSummary(recommendationDraft: NextCycleSeedDraft): stri
 export function buildFrozenRecommendationPresentation(input: {
   recommendationDraft: NextCycleSeedDraft;
   recommendedDesign?: NextMesocycleDesign;
+  deloadPerformed?: boolean;
 }): FrozenRecommendationPresentation {
   return {
     summary: `${input.recommendationDraft.structure.sessionsPerWeek}x/week ${formatSplitType(
@@ -99,9 +100,15 @@ export function buildFrozenRecommendationPresentation(input: {
     slotOrderSummary:
       "Ordered-flexible keeps the slot order fixed while still allowing week-to-week scheduling flexibility.",
     startingPointSummary:
-      "The next cycle re-enters accumulation from a conservative baseline chosen from the closeout evidence, rather than carrying deload forward.",
+      input.deloadPerformed === false
+        ? "The next cycle enters accumulation from a conservative baseline chosen from the closeout evidence. No deload was performed in the prior cycle."
+        : "The next cycle re-enters accumulation from a conservative baseline chosen from the closeout evidence, rather than carrying deload forward.",
     startingPointReasons: formatReasonList(
-      input.recommendedDesign?.explainability.startingPointReasonCodes ?? []
+      (input.recommendedDesign?.explainability.startingPointReasonCodes ?? []).filter(
+        (reasonCode) =>
+          input.deloadPerformed !== false ||
+          reasonCode !== "conservative_entry_after_deload_boundary"
+      )
     ),
   };
 }

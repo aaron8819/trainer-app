@@ -180,7 +180,7 @@ describe("buildV2SelectionCapacityPlan", () => {
       slotId: "upper_b",
       slotIndex: 2,
       maxExerciseCount: 7,
-      targetSessionSets: { min: 15, preferred: 20, max: 21 },
+      targetSessionSets: { min: 15, preferred: 21, max: 21 },
     });
     expect(slot(2, "lower_b")).toMatchObject({
       slotId: "lower_b",

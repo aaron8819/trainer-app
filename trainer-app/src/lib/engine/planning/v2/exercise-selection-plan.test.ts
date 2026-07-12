@@ -105,7 +105,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
   it("represents required lanes and capacity sourced from SelectionCapacityPlan", () => {
     expect(slot(2, "upper_a")).toMatchObject({
       maxExerciseCount: 6,
-      targetSessionSets: { min: 15, preferred: 20, max: 20 },
+      targetSessionSets: { min: 17, preferred: 21, max: 23 },
     });
     expect(lane(2, "upper_a", "chest_anchor")).toMatchObject({
       requirement: "required",
@@ -166,7 +166,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
     expect(lane(1, "upper_a", "triceps")).toMatchObject({
       directFloor: {
         muscle: "Triceps",
-        minDirectSets: 3,
+        minDirectSets: 4,
         collateralCanSatisfy: false,
         requiredExerciseClasses: ["triceps_isolation", "pressdown"],
       },

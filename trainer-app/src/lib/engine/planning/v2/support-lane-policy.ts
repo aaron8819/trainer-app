@@ -138,8 +138,8 @@ const SUPPORT_LANE_SPECS: SupportLanePolicySpec[] = [
     muscle: "Triceps",
     owningSlotId: "upper_a",
     owningLaneId: "triceps",
-    directFloorMin: 3,
-    preferredDirectSets: { min: 2, preferred: 3, max: 3 },
+    directFloorMin: 4,
+    preferredDirectSets: { min: 4, preferred: 4, max: 4 },
     collateralCreditLimit: {
       maxWeeklyEffectiveSetsCreditable: 2,
       collateralSources: ["horizontal_press", "vertical_press"],

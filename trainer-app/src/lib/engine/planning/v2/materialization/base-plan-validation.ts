@@ -489,7 +489,13 @@ function sumLaneSetsByMuscle(
 ): Map<string, number> {
   const totals = new Map<string, number>();
   for (const row of evidence) {
-    for (const muscle of row.planLane?.primaryMuscles ?? []) {
+    const creditedMuscles = new Set([
+      ...(row.planLane?.primaryMuscles ?? []),
+      ...(row.planLane?.requirement !== "required"
+        ? row.planLane?.optionalMuscles ?? []
+        : []),
+    ]);
+    for (const muscle of creditedMuscles) {
       addToMap(totals, muscle, row.exercise.setCount);
     }
   }

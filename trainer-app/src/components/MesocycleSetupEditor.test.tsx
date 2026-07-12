@@ -199,6 +199,28 @@ function buildRecommendation() {
   };
 }
 
+function buildPreAcceptance() {
+  return {
+    decision: "rejected" as const,
+    candidateFound: true,
+    why: ["Volume floors: Rear Delts"],
+    recommendation: "Fix must-fix findings before Week 1.",
+    findings: [
+      {
+        finding: "Volume floors/zones",
+        severity: "high_risk" as const,
+        ownerSeam: "volume floors" as const,
+        smallestSafeFix: "Fix candidate weekly volume at the canonical owner.",
+        mustFixBeforeWeek1: true,
+        evidence: "Rear Delts:below_mev_fail",
+      },
+    ],
+    watchItems: [],
+    readOnly: true as const,
+    candidateBasis: "persisted_candidate" as const,
+  };
+}
+
 describe("MesocycleSetupEditor", () => {
   it("previews carry-forward conflicts immediately when the split removes a kept exercise intent", async () => {
     const user = userEvent.setup();
@@ -210,6 +232,7 @@ describe("MesocycleSetupEditor", () => {
         frozenRecommendationDraft={buildDraft()}
         initialDraft={buildDraft()}
         initialPreview={buildPreview()}
+        preAcceptance={buildPreAcceptance()}
       />
     );
 
@@ -231,6 +254,10 @@ describe("MesocycleSetupEditor", () => {
     expect(screen.getByRole("button", { name: "Fix all conflicts" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save draft" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Accept and create next cycle" })).toBeDisabled();
+    expect(screen.getByRole("heading", { name: "Rejected" })).toBeInTheDocument();
+    expect(screen.getByText("Read-only persisted candidate")).toBeInTheDocument();
+    expect(screen.getByText("Must fix before Week 1")).toBeInTheDocument();
+    expect(screen.getByText(/Owner: volume floors/i)).toBeInTheDocument();
     expect(screen.getByText("Resolve 1 carry-forward conflict to save or accept.")).toBeInTheDocument();
     expect(
       screen.getByText("Accept will save the current setup draft before creating the next cycle.")
@@ -247,6 +274,7 @@ describe("MesocycleSetupEditor", () => {
         frozenRecommendationDraft={buildDraft()}
         initialDraft={buildDraft()}
         initialPreview={buildPreview()}
+        preAcceptance={buildPreAcceptance()}
       />
     );
 
@@ -273,6 +301,7 @@ describe("MesocycleSetupEditor", () => {
         frozenRecommendationDraft={buildDraft()}
         initialDraft={buildDraft()}
         initialPreview={buildPreview()}
+        preAcceptance={buildPreAcceptance()}
       />
     );
 
@@ -361,6 +390,7 @@ describe("MesocycleSetupEditor", () => {
         frozenRecommendationDraft={buildDraft()}
         initialDraft={buildDraft()}
         initialPreview={buildPreview()}
+        preAcceptance={buildPreAcceptance()}
       />
     );
 

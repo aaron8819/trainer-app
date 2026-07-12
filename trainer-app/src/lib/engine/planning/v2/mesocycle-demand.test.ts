@@ -95,7 +95,7 @@ describe("buildV2MesocycleDemand", () => {
       role: "support",
       targetStatus: "soft",
       directness: expect.objectContaining({
-        directSetFloor: 4,
+        directSetFloor: 8,
         collateralCanSatisfyFloor: false,
       }),
     });
@@ -189,10 +189,10 @@ describe("buildV2MesocycleDemand", () => {
     expect(demandFor("Side Delts")).toMatchObject({
       role: "support",
       targetStatus: "soft",
-      baselineSetRange: { min: 4, preferred: 6, max: 8 },
+      baselineSetRange: { min: 8, preferred: 8, max: 12 },
       directness: {
-        directSetFloor: 4,
-        preferredDirectSets: 6,
+        directSetFloor: 8,
+        preferredDirectSets: 8,
         collateralCreditLimit: 2,
         collateralCanSatisfyFloor: false,
         requiredClassIntents: ["lateral_raise", "low_collateral_side_delt"],

@@ -99,6 +99,16 @@ function buildReview(overrides?: Record<string, unknown>) {
         "The next cycle re-enters accumulation from a conservative baseline chosen from the closeout evidence, rather than carrying deload forward.",
       startingPointReasons: ["The next cycle re-enters accumulation conservatively after the deload boundary."],
     },
+    closeout: {
+      kind: "completed_with_deload",
+      plannedDurationWeeks: 5,
+      plannedAccumulationWeeks: 4,
+      performedTrainingWeeks: 5,
+      unperformedPlannedWeeks: 0,
+      accumulationSessionsCompleted: 8,
+      deloadSessionsCompleted: 1,
+      deloadPerformed: true,
+    },
     derived: {
       scopedWorkoutCount: 10,
       performedWorkoutCount: 9,
@@ -218,6 +228,33 @@ describe("MesocycleReviewPage", () => {
     expect(screen.getByText("Historical Closeout Archive")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Review and edit next-cycle setup" })).not.toBeInTheDocument();
     expect(screen.getByText(/editable handoff workflow is no longer available/i)).toBeInTheDocument();
+  });
+
+  it("renders an early accumulation closeout without claiming completion or deload", async () => {
+    mocks.loadMesocycleReviewFromPrisma.mockResolvedValueOnce(
+      buildReview({
+        closeout: {
+          kind: "ended_early_during_accumulation",
+          plannedDurationWeeks: 5,
+          plannedAccumulationWeeks: 4,
+          performedTrainingWeeks: 3,
+          unperformedPlannedWeeks: 2,
+          accumulationSessionsCompleted: 11,
+          deloadSessionsCompleted: 0,
+          deloadPerformed: false,
+        },
+      })
+    );
+
+    const { default: MesocycleReviewPage } = await import("./page");
+    const ui = await MesocycleReviewPage({ params: Promise.resolve({ id: "meso-1" }) });
+    render(ui);
+
+    expect(screen.getByRole("heading", { name: "Meso 3 ended early" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Cycle ended early during accumulation" })).toBeInTheDocument();
+    expect(screen.getByText("The training break is not recorded as a deload")).toBeInTheDocument();
+    expect(screen.getByText(/3 of 5 planned training weeks/i)).toBeInTheDocument();
+    expect(screen.queryByText("Deload Complete")).not.toBeInTheDocument();
   });
 
   it("hides weekly calibration when the read model has no useful evidence", async () => {

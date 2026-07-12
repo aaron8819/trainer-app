@@ -61,7 +61,7 @@ describe("loadMesocycleReview", () => {
           terminalState: "AWAITING_HANDOFF",
           durationWeeks: 5,
           accumulationSessionsCompleted: 8,
-          deloadSessionsCompleted: 1,
+          deloadSessionsCompleted: 0,
           deloadExcludedFromNextBaseline: true,
         },
         training: {
@@ -204,6 +204,17 @@ describe("loadMesocycleReview", () => {
       isEditableHandoff: true,
     });
     expect(result?.frozenSummary.training.splitType).toBe("UPPER_LOWER");
+    expect(result?.closeout).toEqual({
+      kind: "ended_early_during_accumulation",
+      plannedDurationWeeks: 5,
+      plannedAccumulationWeeks: 4,
+      performedTrainingWeeks: 1,
+      unperformedPlannedWeeks: 4,
+      accumulationSessionsCompleted: 8,
+      deloadSessionsCompleted: 0,
+      deloadPerformed: false,
+    });
+    expect(result?.recommendation.startingPointSummary).toContain("No deload was performed");
     expect(result?.derived.adherence).toMatchObject({
       plannedSessions: 3,
       performedSessions: 2,

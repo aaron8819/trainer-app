@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { loadMesocycleSetupFromPrisma } from "@/lib/api/mesocycle-setup";
+import { loadMesocyclePreAcceptancePresentation } from "@/lib/api/mesocycle-pre-acceptance-presentation";
 import { MesocycleSetupEditor } from "@/components/MesocycleSetupEditor";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +14,14 @@ type Params = Promise<{ id: string }>;
 export default async function MesocycleSetupPage({ params }: { params: Params }) {
   const { id } = await params;
   const owner = await resolveOwner();
-  const setup = await loadMesocycleSetupFromPrisma({ userId: owner.id, mesocycleId: id });
+  const [setup, preAcceptance] = await Promise.all([
+    loadMesocycleSetupFromPrisma({ userId: owner.id, mesocycleId: id }),
+    loadMesocyclePreAcceptancePresentation({
+      userId: owner.id,
+      ownerEmail: owner.email,
+      sourceMesocycleId: id,
+    }),
+  ]);
 
   if (!setup) {
     notFound();
@@ -44,6 +52,7 @@ export default async function MesocycleSetupPage({ params }: { params: Params })
           frozenRecommendationDraft={setup.frozenRecommendationDraft}
           initialDraft={setup.editableDraft}
           initialPreview={setup.preview}
+          preAcceptance={preAcceptance}
         />
       </div>
     </main>

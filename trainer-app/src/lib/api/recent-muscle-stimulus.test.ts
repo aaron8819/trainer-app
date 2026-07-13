@@ -15,10 +15,13 @@ describe("loadRecentMuscleStimulus", () => {
               exerciseMuscles: [
                 { role: "PRIMARY", muscle: { name: "Chest", sraHours: 60 } },
                 { role: "SECONDARY", muscle: { name: "Front Delts", sraHours: 48 } },
-                { role: "SECONDARY", muscle: { name: "Triceps", sraHours: 48 } },
+                { role: "SECONDARY", muscle: { name: "Triceps", sraHours: 36 } },
               ],
             },
-            sets: [{ logs: [{ wasSkipped: false }] }, { logs: [{ wasSkipped: false }] }],
+            sets: [
+              { logs: [{ actualReps: 10, actualRpe: 8, wasSkipped: false }] },
+              { logs: [{ actualReps: 10, actualRpe: 8, wasSkipped: false }] },
+            ],
           },
         ],
       },

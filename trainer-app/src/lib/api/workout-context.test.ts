@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkoutStatus } from "@prisma/client";
 import {
   loadPrescriptionAnchorHistoryForExercises,
+  mapExercises,
   mapHistory,
   mergePrescriptionAnchorHistory,
   mergePrescriptionAnchorHistoryWithEvidence,
@@ -23,6 +24,28 @@ vi.mock("@/lib/db/prisma", () => ({
 
 beforeEach(() => {
   prismaMock.workout.findMany.mockReset();
+});
+
+describe("mapExercises", () => {
+  it("keeps DB muscle rows as identity metadata instead of SRA policy", () => {
+    const [exercise] = mapExercises([
+      {
+        id: "pressdown",
+        name: "Triceps Pressdown",
+        movementPatterns: ["ISOLATION"],
+        splitTags: ["PUSH"],
+        jointStress: "LOW",
+        exerciseEquipment: [{ equipment: { type: "CABLE" } }],
+        exerciseMuscles: [
+          { role: "PRIMARY", muscle: { name: "Triceps", sraHours: 36 } },
+        ],
+        aliases: [],
+      },
+    ] as never);
+
+    expect(exercise.primaryMuscles).toEqual(["Triceps"]);
+    expect(exercise).not.toHaveProperty("muscleSraHours");
+  });
 });
 
 function workoutRow(input: {

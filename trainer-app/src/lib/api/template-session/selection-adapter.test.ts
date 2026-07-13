@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildSelectionObjective,
   SESSION_CAPS,
@@ -8,6 +8,10 @@ import { DEFAULT_SELECTION_WEIGHTS } from "@/lib/engine/selection-v2";
 import { selectExercisesOptimized } from "@/lib/engine/selection-v2";
 import type { MappedGenerationContext } from "./types";
 import type { WorkoutHistoryEntry, Exercise } from "@/lib/engine/types";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function makeExercise(
   id: string,
@@ -142,6 +146,43 @@ function selectedCompoundPatterns(
 }
 
 describe("buildSelectionObjective continuity bias", () => {
+  it("uses the same canonical 48-hour Triceps SRA boundary as recovery evaluation", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-03-08T01:00:00.000Z"));
+
+    const exercise = makeExercise(
+      "pressdown",
+      "Triceps Pressdown",
+      ["isolation"],
+      ["push"],
+      ["Triceps"],
+      [],
+      { isMainLiftEligible: false, isCompound: false }
+    );
+    const mapped = makeMappedContext([], {
+      exerciseLibrary: [exercise],
+      weeklySchedule: ["push"],
+      splitType: "custom",
+      lifecycleVolumeTargets: { Triceps: 6 },
+    });
+    mapped.rotationContext.set(exercise.name, {
+      lastUsed: new Date("2026-03-06T02:00:00.000Z"),
+      weeksAgo: 0,
+      usageCount: 1,
+      trend: "stalled",
+    });
+
+    const beforeBoundary = buildSelectionObjective(mapped, "push");
+    expect(beforeBoundary.sraContext.get("Triceps")).toBeCloseTo(47 / 48, 6);
+
+    mapped.rotationContext.set(exercise.name, {
+      ...mapped.rotationContext.get(exercise.name)!,
+      lastUsed: new Date("2026-03-06T01:00:00.000Z"),
+    });
+    const atBoundary = buildSelectionObjective(mapped, "push");
+    expect(atBoundary.sraContext.get("Triceps")).toBe(1);
+  });
+
   it("uses the most recent performed workout of the same intent as continuity favorites", () => {
     const history: WorkoutHistoryEntry[] = [
       {

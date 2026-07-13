@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { getDefaultSraHours } from "@/lib/engine/muscle-policy";
 import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
@@ -63,9 +64,6 @@ export async function loadRecentMuscleStimulus(
   ]);
   const recentEffectiveSetsByMuscle = new Map<string, number>();
   const lastStimulatedAtByMuscle = new Map<string, Date>();
-  const sraHoursByMuscle = new Map<string, number>(
-    Object.entries(VOLUME_LANDMARKS).map(([muscle, landmark]) => [muscle, landmark.sraHours])
-  );
 
   for (const workout of workouts) {
     for (const workoutExercise of workout.exercises) {
@@ -77,14 +75,12 @@ export async function loadRecentMuscleStimulus(
       const primaryMuscles = workoutExercise.exercise.exerciseMuscles
         .filter((mapping) => mapping.role === "PRIMARY")
         .map((mapping) => {
-          sraHoursByMuscle.set(mapping.muscle.name, mapping.muscle.sraHours);
           allMuscles.add(mapping.muscle.name);
           return mapping.muscle.name;
         });
       const secondaryMuscles = workoutExercise.exercise.exerciseMuscles
         .filter((mapping) => mapping.role === "SECONDARY")
         .map((mapping) => {
-          sraHoursByMuscle.set(mapping.muscle.name, mapping.muscle.sraHours);
           allMuscles.add(mapping.muscle.name);
           return mapping.muscle.name;
         });
@@ -127,7 +123,7 @@ export async function loadRecentMuscleStimulus(
         const recentEffectiveSets = roundToTenth(recentEffectiveSetsByMuscle.get(muscle) ?? 0);
         const targetEffectiveSets = Math.max(input.targetByMuscle[muscle] ?? 0, 1);
         const recentStimulusRatio = roundToTenth(recentEffectiveSets / targetEffectiveSets);
-        const sraHours = sraHoursByMuscle.get(muscle) ?? VOLUME_LANDMARKS[muscle]?.sraHours ?? 48;
+        const sraHours = getDefaultSraHours(muscle);
 
         return [
           muscle,

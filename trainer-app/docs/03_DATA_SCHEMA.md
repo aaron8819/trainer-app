@@ -39,6 +39,8 @@ Sources of truth:
 Canonical machine-readable values in `docs/contracts/runtime-contracts.json` currently cover the validation-backed workout enums above. `SetIntent` and `MesocycleState` remain schema-owned in `prisma/schema.prisma`.
 
 ## Behavioral schema notes
+- `Muscle` is shared catalog identity and relationship metadata. Its `mv`, `mev`, `mav`, `mrv`, and `sraHours` columns are materialized compatibility copies derived by `prisma/muscle-seed-data.ts` from the canonical code policy in `src/lib/engine/muscle-policy.ts`; runtime generation, recovery, selection, analytics, and explainability do not treat those columns as policy overrides.
+- There is no current API, UI, or per-user persistence contract for muscle-policy customization. A future override feature must use a separate user-owned model and an explicit canonical resolution seam rather than mutating shared `Muscle` rows.
 - Workout saves rewrite workout exercises/sets when exercise payload is supplied (`/api/workouts/save`).
 - Set logging upserts by `workoutSetId` (`/api/logs/set`), making log state idempotent per set.
 - `SetLog.setIntent` persists performed-set intent. `WORK` is the default for old rows and omitted payloads; `WARMUP` marks a logged warmup/ramp set that remains visible as performed reality but is excluded from work-set evidence, progression/next-exposure anchors, prescription calibration, and weekly/effective volume. There is no automatic historical reclassification.

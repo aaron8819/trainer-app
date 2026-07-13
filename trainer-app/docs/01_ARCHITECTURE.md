@@ -47,6 +47,12 @@ Sources of truth:
 4. Engine returns deterministic plan/rationale outputs.
 5. API persists workout/log changes and returns response payloads.
 
+## Muscle policy boundary
+- `src/lib/engine/muscle-policy.ts` is the version-controlled authority for supported muscle identity, display names, volume landmarks (MV/MEV/MAV/MRV), and default SRA hours. Stable `MuscleId` values key the policy; display names are labels and relational lookup values.
+- `src/lib/engine/volume-landmarks.ts` is a compatibility facade derived from that policy. Generation, lifecycle, explainability, analytics, UI, and audit consumers must not author local landmark or SRA tables.
+- `prisma/muscle-seed-data.ts` derives Prisma seed rows from the same policy. Persisted `Muscle` rows remain catalog identity and relationship metadata plus a materialized compatibility copy of policy values; runtime policy does not accept those columns as overrides.
+- Future per-user customization requires a separate user-owned override model and one explicit resolution seam. Editing shared `Muscle` rows or reintroducing DB-first fallback logic is not an override contract.
+
 ## Live workout cue boundary
 - The in-session autoreg/load hint shown while logging is a UI-only coaching seam owned by `src/components/log-workout/useWorkoutSessionFlow.ts` and `src/lib/progression/load-coaching.ts`.
 - That hint is derived from the just-logged set plus the next unlogged set in the same exercise. It is not persisted and it is not a canonical progression artifact.

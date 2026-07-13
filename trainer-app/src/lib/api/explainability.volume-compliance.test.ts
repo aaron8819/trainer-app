@@ -198,7 +198,7 @@ function makePriorWorkoutWithSets(exerciseId: string, muscleName: string, setCou
           exerciseMuscles: [{ role: "PRIMARY", muscle: { name: muscleName } }],
         },
         sets: Array.from({ length: setCount }, () => ({
-          logs: [{ wasSkipped: false }],
+          logs: [{ actualReps: 10, actualRpe: 8, wasSkipped: false }],
         })),
       },
     ],
@@ -334,6 +334,43 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
     expect(chestRow?.status).toBe("UNDER_MEV");
   });
 
+  it("classifies Biceps with the canonical 6/14 landmarks", async () => {
+    mocks.workoutFindUnique.mockResolvedValue({
+      ...BASE_WORKOUT,
+      exercises: [makeBicepsExercise(1)],
+    });
+
+    compliancePriorWorkouts = [makePriorWorkoutWithSets("ex2", "Biceps", 4)];
+    const belowMev = await generateWorkoutExplanation("w1");
+    if ("error" in belowMev) return;
+    expect(belowMev.volumeCompliance.find((row) => row.muscle === "Biceps")).toMatchObject({
+      projectedEffectiveVolume: 5,
+      mev: 6,
+      mav: 14,
+      status: "UNDER_MEV",
+    });
+
+    compliancePriorWorkouts = [makePriorWorkoutWithSets("ex2", "Biceps", 5)];
+    const atMev = await generateWorkoutExplanation("w1");
+    if ("error" in atMev) return;
+    expect(atMev.volumeCompliance.find((row) => row.muscle === "Biceps")).toMatchObject({
+      projectedEffectiveVolume: 6,
+      mev: 6,
+      mav: 14,
+      status: "APPROACHING_TARGET",
+    });
+
+    compliancePriorWorkouts = [makePriorWorkoutWithSets("ex2", "Biceps", 13)];
+    const atMav = await generateWorkoutExplanation("w1");
+    if ("error" in atMav) return;
+    expect(atMav.volumeCompliance.find((row) => row.muscle === "Biceps")).toMatchObject({
+      projectedEffectiveVolume: 14,
+      mev: 6,
+      mav: 14,
+      status: "AT_MAV",
+    });
+  });
+
   it("computes ON_TARGET when projectedEffectiveVolume equals weeklyTarget", async () => {
     // Week 2 of 4 for Chest: target = MEV + 0.5*(MAV-MEV) = 10 + 3 = 13
     // prior=10, current=3 → projectedEffectiveVolume=13 = weeklyTarget
@@ -402,7 +439,7 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
   it("sorts results by severity descending: OVER_MAV first, UNDER_MEV last", async () => {
     // Two exercises: Chest (OVER_MAV) and Biceps (UNDER_MEV)
     // Chest MAV=16; prior=14 + current=3 = 17 → OVER_MAV
-    // Biceps MEV=8; prior=0 + current=1 = 1 → UNDER_MEV
+    // Biceps MEV=6; prior=0 + current=1 = 1 → UNDER_MEV
     mocks.workoutFindUnique.mockResolvedValue({
       ...BASE_WORKOUT,
       exercises: [makeChestExercise(3), makeBicepsExercise(1)],

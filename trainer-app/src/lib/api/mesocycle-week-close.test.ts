@@ -261,6 +261,35 @@ describe("mesocycle week close", () => {
     );
   });
 
+  it("uses canonical Front Delts and Glutes MEV values in Week 1 closure evidence", async () => {
+    mocks.workoutFindMany.mockResolvedValue([]);
+
+    const snapshot = await buildWeekCloseDeficitSnapshot(mocks.tx as never, {
+      userId: "user-1",
+      mesocycle: {
+        id: "meso-1",
+        durationWeeks: 5,
+        sessionsPerWeek: 3,
+        startWeek: 0,
+        macroCycle: {
+          startDate: new Date("2026-03-01T00:00:00.000Z"),
+        },
+      },
+      targetWeek: 1,
+    });
+
+    expect(snapshot.muscles.find((row) => row.muscle === "Front Delts")).toMatchObject({
+      target: 2,
+      actual: 0,
+      deficit: 2,
+    });
+    expect(snapshot.muscles.find((row) => row.muscle === "Glutes")).toMatchObject({
+      target: 4,
+      actual: 0,
+      deficit: 4,
+    });
+  });
+
   it("uses weighted effective weekly actuals for deficits instead of primary-only set counts", async () => {
     mocks.workoutFindMany.mockResolvedValue([
       {
@@ -276,8 +305,8 @@ describe("mesocycle week close", () => {
               ],
             },
             sets: [
-              { logs: [{ wasSkipped: false }] },
-              { logs: [{ wasSkipped: false }] },
+              { logs: [{ actualReps: 10, actualRpe: 8, wasSkipped: false }] },
+              { logs: [{ actualReps: 10, actualRpe: 8, wasSkipped: false }] },
             ],
           },
         ],
@@ -318,8 +347,8 @@ describe("mesocycle week close", () => {
               ],
             },
             sets: [
-              { logs: [{ wasSkipped: false }] },
-              { logs: [{ wasSkipped: false }] },
+              { logs: [{ actualReps: 30, actualRpe: 8, wasSkipped: false }] },
+              { logs: [{ actualReps: 30, actualRpe: 8, wasSkipped: false }] },
             ],
           },
         ],

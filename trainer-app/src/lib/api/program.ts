@@ -5,9 +5,9 @@
 
 import { WorkoutSessionIntent, WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { getDefaultSraHours } from "@/lib/engine/muscle-policy";
 import { finishMesocycleEarly } from "@/lib/api/mesocycle-lifecycle";
 import {
-  VOLUME_LANDMARKS,
   getExposedVolumeLandmarkEntries,
   getMuscleTargetSemantics,
   type MuscleDashboardGroup,
@@ -1298,7 +1298,7 @@ async function attachOpportunityToVolumeRows(
       hoursSinceStimulus: null,
       recentEffectiveSets: 0,
       recentStimulusRatio: 0,
-      sraHours: VOLUME_LANDMARKS[row.muscle]?.sraHours ?? 48,
+      sraHours: getDefaultSraHours(row.muscle),
     };
     const opportunity = computeMuscleOpportunity({
       muscle: row.muscle,

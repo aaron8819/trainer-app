@@ -1,3 +1,5 @@
+import type { CanonicalMuscleId } from "./muscle-policy";
+
 export type TrainingAge = "beginner" | "intermediate" | "advanced";
 export type PrimaryGoal =
   | "hypertrophy"
@@ -28,25 +30,7 @@ export type WorkoutMesocycleSnapshot = {
  * Represents muscle group names (e.g., "Chest", "Front Delts", "Quads")
  */
 export type Muscle = string;
-export type MuscleId =
-  | "chest"
-  | "front_delts"
-  | "side_delts"
-  | "rear_delts"
-  | "triceps"
-  | "biceps"
-  | "lats"
-  | "upper_back"
-  | "quads"
-  | "hamstrings"
-  | "glutes"
-  | "calves"
-  | "core"
-  | "lower_back"
-  | "forearms"
-  | "adductors"
-  | "abductors"
-  | "abs";
+export type MuscleId = CanonicalMuscleId;
 export type StimulusProfile = Partial<Record<MuscleId, number>>;
 export const CANONICAL_MOVEMENT_PATTERN_VALUES = [
   "horizontal_push",
@@ -173,7 +157,6 @@ export type Exercise = {
   primaryMuscles?: string[];
   secondaryMuscles?: string[];
   stimulusProfile?: StimulusProfile;
-  muscleSraHours?: Record<string, number>;
 };
 
 export type WorkoutSet = {

@@ -400,7 +400,7 @@ export function mapConstraints(constraints: ConstraintsRecord): Constraints {
 export function mapExercises(
   exercises: (Exercise & {
     exerciseEquipment: { equipment: { type: PrismaEquipmentType } }[];
-    exerciseMuscles: { role: string; muscle: { name: string; sraHours: number } }[];
+    exerciseMuscles: { role: string; muscle: { name: string } }[];
     aliases?: { alias: string }[];
   })[]
 ) {
@@ -442,9 +442,6 @@ export function mapExercises(
         name: exercise.name,
         aliases: (exercise.aliases ?? []).map((alias) => alias.alias),
       }),
-      muscleSraHours: Object.fromEntries(
-        exercise.exerciseMuscles.map((item) => [item.muscle.name, item.muscle.sraHours])
-      ),
     };
   });
 }
@@ -656,7 +653,7 @@ export function mapCheckIn(
 type ExerciseWithAliases = Exercise & {
   aliases?: { alias: string }[];
   exerciseEquipment: { equipment: { type: PrismaEquipmentType } }[];
-  exerciseMuscles: { role: string; muscle: { name: string; sraHours: number } }[];
+  exerciseMuscles: { role: string; muscle: { name: string } }[];
 };
 
 export function applyLoads(

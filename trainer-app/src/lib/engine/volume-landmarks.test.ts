@@ -8,6 +8,13 @@ import {
 } from "./volume-landmarks";
 
 describe("computeWeeklyVolumeTarget", () => {
+  it("preserves the canonical runtime values chosen over stale seed copies", () => {
+    expect(VOLUME_LANDMARKS.Biceps).toMatchObject({ mev: 6, mav: 14, mrv: 22 });
+    expect(VOLUME_LANDMARKS["Front Delts"].mev).toBe(2);
+    expect(VOLUME_LANDMARKS.Glutes.mev).toBe(4);
+    expect(VOLUME_LANDMARKS.Triceps.sraHours).toBe(48);
+  });
+
   it("returns MEV at week 1 and MAV at the last accumulation week", () => {
     const lats = VOLUME_LANDMARKS["Lats"];
     expect(computeWeeklyVolumeTarget(lats, 1, 4, false)).toBe(lats.mev);

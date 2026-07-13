@@ -1,5 +1,6 @@
 import { deriveFatigueState } from "@/lib/engine/volume";
 import { buildVolumeContext } from "@/lib/engine/volume";
+import { getDefaultSraHours } from "@/lib/engine/muscle-policy";
 import type { Muscle, Exercise, WorkoutHistoryEntry } from "@/lib/engine/types";
 import type { SelectionObjective, SelectionResult, RotationContext } from "@/lib/engine/selection-v2";
 import { DEFAULT_SELECTION_WEIGHTS } from "@/lib/engine/selection-v2";
@@ -229,7 +230,7 @@ function buildSraContext(
   const sraContext = new Map<Muscle, number>();
   for (const [muscle, lastTrained] of muscleLastTrained) {
     const hoursElapsed = (now.getTime() - lastTrained.getTime()) / 3_600_000;
-    const sraHours = VOLUME_LANDMARKS[muscle as string]?.sraHours ?? 48;
+    const sraHours = getDefaultSraHours(muscle);
     sraContext.set(muscle, Math.min(1.0, hoursElapsed / sraHours));
   }
   return sraContext;

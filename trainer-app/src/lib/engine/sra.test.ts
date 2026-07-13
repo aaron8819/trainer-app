@@ -13,6 +13,16 @@ const EXERCISES: Exercise[] = [
     primaryMuscles: ["Chest"],
     secondaryMuscles: ["Triceps", "Front Delts"],
   },
+  {
+    id: "pressdown",
+    name: "Triceps Pressdown",
+    movementPatterns: ["isolation"],
+    splitTags: ["push"],
+    jointStress: "low",
+    equipment: ["cable"],
+    primaryMuscles: ["Triceps"],
+    secondaryMuscles: [],
+  },
 ];
 
 describe("buildMuscleRecoveryMap", () => {
@@ -44,6 +54,39 @@ describe("buildMuscleRecoveryMap", () => {
       sraWindowHours: 60,
       isRecovered: false,
       recoveryPercent: 20,
+    });
+  });
+
+  it("uses the canonical 48-hour Triceps recovery boundary", () => {
+    const history: WorkoutHistoryEntry[] = [
+      {
+        date: "2026-03-06T01:00:00.000Z",
+        completed: true,
+        status: "COMPLETED",
+        exercises: [{ exerciseId: "pressdown", sets: [] }],
+      },
+    ];
+
+    const beforeBoundary = buildMuscleRecoveryMap(
+      history,
+      EXERCISES,
+      new Date("2026-03-08T00:00:00.000Z")
+    ).get("Triceps");
+    const atBoundary = buildMuscleRecoveryMap(
+      history,
+      EXERCISES,
+      new Date("2026-03-08T01:00:00.000Z")
+    ).get("Triceps");
+
+    expect(beforeBoundary).toMatchObject({
+      lastTrainedHoursAgo: 47,
+      sraWindowHours: 48,
+      isRecovered: false,
+    });
+    expect(atBoundary).toMatchObject({
+      lastTrainedHoursAgo: 48,
+      sraWindowHours: 48,
+      isRecovered: true,
     });
   });
 });

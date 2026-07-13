@@ -2,6 +2,7 @@ import {
   interpolateWeeklyVolumeTarget,
   type WeeklyVolumeTargetBlock,
 } from "./volume-targets";
+import { MUSCLE_POLICIES } from "./muscle-policy";
 
 export type VolumeLandmarks = {
   mv: number;
@@ -50,26 +51,13 @@ export type MuscleTargetSemantics = {
   dashboardGroup: MuscleDashboardGroup | null;
 };
 
-export const VOLUME_LANDMARKS: Record<string, VolumeLandmarks> = {
-  "Chest":       { mv: 6,  mev: 10, mav: 16, mrv: 22, sraHours: 60 },
-  "Lats":        { mv: 6,  mev: 8,  mav: 16, mrv: 24, sraHours: 60 },
-  "Upper Back":  { mv: 6,  mev: 6,  mav: 14, mrv: 22, sraHours: 48 },
-  "Front Delts": { mv: 0,  mev: 2,  mav: 7,  mrv: 14, sraHours: 48 },
-  "Side Delts":  { mv: 6,  mev: 8,  mav: 19, mrv: 26, sraHours: 36 },
-  "Rear Delts":  { mv: 6,  mev: 4,  mav: 12, mrv: 20, sraHours: 36 },
-  "Quads":       { mv: 6,  mev: 8,  mav: 18, mrv: 26, sraHours: 72 },
-  "Hamstrings":  { mv: 6,  mev: 6,  mav: 16, mrv: 24, sraHours: 72 },
-  "Glutes":      { mv: 0,  mev: 4,  mav: 8,  mrv: 16, sraHours: 72 },
-  "Biceps":      { mv: 6,  mev: 6,  mav: 14, mrv: 22, sraHours: 36 },
-  "Triceps":     { mv: 4,  mev: 6,  mav: 12, mrv: 20, sraHours: 48 },
-  "Calves":      { mv: 6,  mev: 8,  mav: 14, mrv: 20, sraHours: 36 },
-  "Core":        { mv: 0,  mev: 0,  mav: 12, mrv: 20, sraHours: 36 },
-  "Lower Back":  { mv: 0,  mev: 0,  mav: 4,  mrv: 10, sraHours: 72 },
-  "Forearms":    { mv: 0,  mev: 0,  mav: 6,  mrv: 12, sraHours: 36 },
-  "Adductors":   { mv: 0,  mev: 0,  mav: 8,  mrv: 16, sraHours: 48 },
-  "Abductors":   { mv: 0,  mev: 0,  mav: 6,  mrv: 12, sraHours: 36 },
-  "Abs":         { mv: 0,  mev: 0,  mav: 10, mrv: 16, sraHours: 36 },
-};
+export const VOLUME_LANDMARKS: Readonly<Record<string, VolumeLandmarks>> =
+  Object.fromEntries(
+    MUSCLE_POLICIES.map((policy) => [
+      policy.displayName,
+      { ...policy.volume, sraHours: policy.defaultSraHours },
+    ])
+  );
 
 export const SOFT_VOLUME_TARGET_RANGES: Record<string, VolumeSoftTargetRange> = {
   "Core": { min: 4, max: 6 },

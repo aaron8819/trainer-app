@@ -3,6 +3,8 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
+| 2026-07-13 | self | Ran `npx prettier --write` without confirming a repo-native formatter; npx fetched an alpha build and rewrote unrelated style, requiring a clean isolated-worktree restart to preserve a reviewable diff. | Check `package.json` and `node_modules/.bin` before formatter commands; when no formatter is configured, preserve local style with `apply_patch` and rely on lint/diff checks. |
+| 2026-07-13 | self | Focused landmark/SRA tests exposed that recent-stimulus, explainability-volume, and week-close fixtures used `{ wasSkipped:false }` as performed work; unchanged `master` fails because `classifySetLog()` requires reps or RPE. | Include representative `actualReps`/`actualRpe` in weekly-volume fixtures and compare failures with base before treating them as regressions. |
 | 2026-07-13 | self | Chained `git add` and `git commit` with a PowerShell semicolon even though the repo workflow asks for clean, separate command invocations. | Run Git state-changing steps as separate shell calls so failures are isolated and outputs stay unambiguous. |
 | 2026-07-13 | self | Repeated the documented Windows `rg` wildcard-path mistake while enumerating explanation tests, so `rg` rejected `explainability*.test.ts` and `golden-path-workout-*.test.ts`. | Search the containing directory and use `-g "explainability*.test.ts"` / `-g "golden-path-workout-*.test.ts"` filters instead of wildcard path segments. |
 | 2026-07-12 | self | A read-only stdin Node DB probe mixed CommonJS `require()` with top-level `await`, so Node 24 rejected the script before any connection attempt. | Wrap CommonJS stdin probes in an async IIFE, or use ESM imports consistently; do not treat module-format failure as DB evidence. |
@@ -430,3 +432,4 @@
 - Durable DB availability notes can become stale: `DATABASE_URL` pooler access is reachable again, while `DIRECT_URL` still fails DNS. Probe both read-only before classifying an app failure as product or schema drift.
 - Live state superseded the older Meso 4 acceptance queue: Meso 4 is `COMPLETED`, Meso 5 is `ACTIVE_ACCUMULATION`, and `next-mesocycle-post-accept-verification` passed all hard checks with zero must-fix Week 1 findings.
 - The accepted draft and successor seed hashes match, runtime/projection/read models replay persisted seed truth, and the only watch item is prescription confidence (two stale-history and two new-to-user exercises). Treat that as Week 1 coaching calibration, not planner/seed repair.
+- 2026-07-13: `rg` treats a pattern beginning with `--` as an option. Use `rg -n -- "--mode|..." <paths>` for CLI-flag searches.

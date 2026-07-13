@@ -1,9 +1,9 @@
 import type { Exercise, WorkoutHistoryEntry } from "./types";
-import { VOLUME_LANDMARKS } from "./volume-landmarks";
+import {
+  DEFAULT_UNKNOWN_MUSCLE_SRA_HOURS,
+  MUSCLE_POLICIES,
+} from "./muscle-policy";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
-
-const DEFAULT_SRA_WINDOW_HOURS = 48;
-const USE_DB_SRA_WINDOWS_ENV = "USE_DB_SRA_WINDOWS";
 
 export type MuscleRecoveryState = {
   muscle: string;
@@ -28,9 +28,6 @@ export function buildMuscleRecoveryMap(
   const nowMs = (now ?? new Date()).getTime();
   const byId = new Map(exerciseLibrary.map((e) => [e.id, e]));
   const defaultSraWindows = buildDefaultSraWindows();
-  const dbSraWindows = shouldUseDbSraWindows()
-    ? buildDbSraWindows(exerciseLibrary)
-    : new Map<string, { muscle: string; hours: number }>();
 
   // Find last trained time for each muscle
   const lastTrained = new Map<string, number>();
@@ -69,24 +66,21 @@ export function buildMuscleRecoveryMap(
 
   const allMuscleKeys = new Set<string>([
     ...defaultSraWindows.keys(),
-    ...dbSraWindows.keys(),
     ...lastTrained.keys(),
   ]);
 
   const recoveryMap = new Map<string, MuscleRecoveryState>();
 
   for (const muscleKey of allMuscleKeys) {
-    const dbSraWindow = dbSraWindows.get(muscleKey);
     const defaultSraWindow = defaultSraWindows.get(muscleKey);
     const muscle =
       muscleLabels.get(muscleKey) ??
-      dbSraWindow?.muscle ??
       defaultSraWindow?.muscle ??
       muscleKey;
     const lastMs = lastTrained.get(muscleKey);
     const hoursAgo = lastMs !== undefined ? (nowMs - lastMs) / (1000 * 60 * 60) : null;
     const sraWindow =
-      dbSraWindow?.hours ?? defaultSraWindow?.hours ?? DEFAULT_SRA_WINDOW_HOURS;
+      defaultSraWindow?.hours ?? DEFAULT_UNKNOWN_MUSCLE_SRA_HOURS;
 
     let recoveryPercent = 100;
     if (hoursAgo !== null) {
@@ -129,39 +123,13 @@ export function generateSraWarnings(
   return warnings;
 }
 
-function shouldUseDbSraWindows(): boolean {
-  const rawValue = process.env[USE_DB_SRA_WINDOWS_ENV];
-  if (!rawValue) {
-    return true;
-  }
-  const normalized = rawValue.trim().toLowerCase();
-  return ["1", "true", "yes", "on"].includes(normalized);
-}
-
 function buildDefaultSraWindows() {
   return new Map<string, { muscle: string; hours: number }>(
-    Object.entries(VOLUME_LANDMARKS).map(([muscle, landmark]) => [
-      normalizeMuscleKey(muscle),
-      { muscle, hours: landmark.sraHours },
+    MUSCLE_POLICIES.map((policy) => [
+      normalizeMuscleKey(policy.displayName),
+      { muscle: policy.displayName, hours: policy.defaultSraHours },
     ])
   );
-}
-
-function buildDbSraWindows(exerciseLibrary: Exercise[]) {
-  const windows = new Map<string, { muscle: string; hours: number }>();
-  for (const exercise of exerciseLibrary) {
-    const entries = Object.entries(exercise.muscleSraHours ?? {});
-    for (const [muscle, hours] of entries) {
-      if (!Number.isFinite(hours) || hours <= 0) {
-        continue;
-      }
-      const key = normalizeMuscleKey(muscle);
-      if (!windows.has(key)) {
-        windows.set(key, { muscle, hours: Math.round(hours) });
-      }
-    }
-  }
-  return windows;
 }
 
 function normalizeMuscleKey(muscle: string) {

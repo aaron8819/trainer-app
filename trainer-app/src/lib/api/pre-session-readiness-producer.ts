@@ -34,9 +34,9 @@ import {
   type PreSessionReadinessContract,
 } from "./pre-session-readiness-contract";
 import {
-  invalidatePreSessionReadinessSnapshotsForIdentity,
+  activatePreSessionReadinessSnapshot,
   loadCurrentPreSessionReadinessSnapshotIdentity,
-  savePreSessionReadinessSnapshot,
+  PreSessionReadinessSnapshotConflictError,
   type PreSessionReadinessCurrentSnapshotIdentity,
 } from "./pre-session-readiness-snapshot";
 
@@ -44,7 +44,8 @@ export type PreparePreSessionReadinessSnapshotBlockedReason =
   | "no_active_mesocycle"
   | "no_next_session"
   | "invalid_contract"
-  | "stale_identity";
+  | "stale_identity"
+  | "integrity_conflict";
 
 export type PreparePreSessionReadinessSnapshotResult =
   | {
@@ -53,7 +54,7 @@ export type PreparePreSessionReadinessSnapshotResult =
       gymCard: PreSessionReadinessGymCardDto;
       snapshot: PreSessionReadinessSnapshot;
       invalidatedSnapshotCount: number;
-      replacementPolicy: "replace_matching_identity";
+      replacementPolicy: "atomic_replace" | "reuse_equivalent";
     }
   | {
       status: "blocked";
@@ -87,28 +88,6 @@ function blocked(
 function normalizeIntent(value: string | null | undefined): string | null {
   const normalized = value?.trim().toLowerCase();
   return normalized ? normalized : null;
-}
-
-function identityMatchesPrepared(input: {
-  prepared: PreSessionReadinessCurrentSnapshotIdentity;
-  current: PreSessionReadinessCurrentSnapshotIdentity | null;
-}): boolean {
-  const { prepared, current } = input;
-  return Boolean(
-    current &&
-      prepared.userId === current.userId &&
-      prepared.activeMesocycleId === current.activeMesocycleId &&
-      prepared.mesocycleState === current.mesocycleState &&
-      prepared.weekInMeso === current.weekInMeso &&
-      prepared.sessionInWeek === current.sessionInWeek &&
-      prepared.slotId === current.slotId &&
-      normalizeIntent(prepared.slotIntent) === normalizeIntent(current.slotIntent) &&
-      prepared.plannedWorkoutId === current.plannedWorkoutId &&
-      prepared.plannedWorkoutRevision === current.plannedWorkoutRevision &&
-      prepared.contractVersion === current.contractVersion &&
-      prepared.slotPlanSeedHash === current.slotPlanSeedHash &&
-      prepared.slotSequenceHash === current.slotSequenceHash
-  );
 }
 
 function contractMatchesCurrentIdentity(input: {
@@ -348,12 +327,8 @@ export async function preparePreSessionReadinessSnapshot(
     );
   }
 
-  const currentIdentity =
-    await loadCurrentPreSessionReadinessSnapshotIdentity(userId);
   if (
-    !identityMatchesPrepared({ prepared: preparedIdentity, current: currentIdentity }) ||
-    !currentIdentity ||
-    !contractMatchesCurrentIdentity({ contract, current: currentIdentity })
+    !contractMatchesCurrentIdentity({ contract, current: preparedIdentity })
   ) {
     return blocked(
       "stale_identity",
@@ -361,38 +336,31 @@ export async function preparePreSessionReadinessSnapshot(
     );
   }
 
-  const invalidated = await invalidatePreSessionReadinessSnapshotsForIdentity({
-    userId,
-    activeMesocycleId: currentIdentity.activeMesocycleId,
-    weekInMeso: currentIdentity.weekInMeso,
-    sessionInWeek: currentIdentity.sessionInWeek,
-    slotId: currentIdentity.slotId,
-    slotIntent: currentIdentity.slotIntent,
-    contractVersion: currentIdentity.contractVersion,
-    invalidatedReason: "replaced_by_prepare_action",
-  });
-  const snapshot = await savePreSessionReadinessSnapshot({
-    userId,
-    activeMesocycleId: currentIdentity.activeMesocycleId,
-    mesocycleState: currentIdentity.mesocycleState,
-    weekInMeso: currentIdentity.weekInMeso,
-    sessionInWeek: currentIdentity.sessionInWeek,
-    slotId: currentIdentity.slotId,
-    slotIntent: currentIdentity.slotIntent,
-    plannedWorkoutId: currentIdentity.plannedWorkoutId,
-    plannedWorkoutRevision: currentIdentity.plannedWorkoutRevision,
-    contractVersion: currentIdentity.contractVersion,
-    contract,
-    slotPlanSeedHash: currentIdentity.slotPlanSeedHash,
-    slotSequenceHash: currentIdentity.slotSequenceHash,
-  });
+  let activation;
+  try {
+    activation = await activatePreSessionReadinessSnapshot({
+      preparedIdentity,
+      contract,
+    });
+  } catch (error) {
+    if (error instanceof PreSessionReadinessSnapshotConflictError) {
+      return blocked(
+        error.code === "PAYLOAD_INTEGRITY_CONFLICT"
+          ? "integrity_conflict"
+          : "stale_identity",
+        error.message
+      );
+    }
+    throw error;
+  }
 
   return {
     status: "prepared",
     contract,
     gymCard: buildPreSessionReadinessGymCardDto(contract),
-    snapshot,
-    invalidatedSnapshotCount: invalidated.count,
-    replacementPolicy: "replace_matching_identity",
+    snapshot: activation.snapshot,
+    invalidatedSnapshotCount: activation.invalidatedSnapshotCount,
+    replacementPolicy:
+      activation.outcome === "reused" ? "reuse_equivalent" : "atomic_replace",
   };
 }

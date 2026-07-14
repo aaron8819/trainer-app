@@ -744,6 +744,18 @@ model PreSessionReadinessSnapshot {
   plannedWorkoutRevision Int?
   contractVersion        Int
   contractJson           Json
+  identityStatus         String         @default("LEGACY_UNKNOWN")
+  identityContractVersion Int?
+  identityJson           Json?
+  identityHash           String?
+  targetHash             String?
+  payloadHash            String?
+  readinessEvidenceFingerprint String?
+  projectionFingerprint  String?
+  seedRevisionId         String?
+  seedRevisionNumber     Int?
+  seedPayloadHash        String?
+  prescriptionFingerprint String?
   sourceStateHash        String?
   slotPlanSeedHash       String?
   slotSequenceHash       String?
@@ -754,6 +766,8 @@ model PreSessionReadinessSnapshot {
 
   @@index([userId, createdAt(sort: Desc)], map: "psrs_user_created_idx")
   @@index([userId, activeMesocycleId, weekInMeso, sessionInWeek, slotId, contractVersion], map: "psrs_identity_lookup_idx")
+  @@index([userId, identityHash], map: "psrs_exact_identity_lookup_idx")
+  @@index([userId, targetHash, createdAt(sort: Desc)], map: "psrs_target_history_idx")
   @@index([plannedWorkoutId], map: "psrs_planned_workout_idx")
   @@index([userId, invalidatedAt, expiresAt, createdAt(sort: Desc)], map: "psrs_freshness_idx")
 }

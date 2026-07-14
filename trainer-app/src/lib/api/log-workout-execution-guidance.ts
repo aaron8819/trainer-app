@@ -3,7 +3,7 @@ import {
   type PreSessionReadinessGymCardDto,
 } from "./pre-session-readiness-gym-card";
 import {
-  loadLatestHomePreSessionReadinessContractCandidate,
+  loadCurrentHomePreSessionReadinessContractCandidate,
   resolveHomePreSessionReadinessContract,
 } from "./home-pre-session-readiness";
 
@@ -221,7 +221,7 @@ export async function loadLogWorkoutExecutionGuidance(input: {
   userId: string;
   workoutId: string;
 }): Promise<LogWorkoutExecutionGuidanceByExercise> {
-  const candidate = await loadLatestHomePreSessionReadinessContractCandidate(input.userId);
+  const candidate = await loadCurrentHomePreSessionReadinessContractCandidate(input.userId);
   const contract = resolveHomePreSessionReadinessContract({
     userId: input.userId,
     candidate,

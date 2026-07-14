@@ -15,8 +15,18 @@ const mocks = vi.hoisted(() => {
   const buildPreSessionReadinessContract = vi.fn();
   const evaluateAcceptedMesocycleSeedProvenance = vi.fn();
   const loadCurrentPreSessionReadinessSnapshotIdentity = vi.fn();
-  const invalidatePreSessionReadinessSnapshotsForIdentity = vi.fn();
-  const savePreSessionReadinessSnapshot = vi.fn();
+  const activatePreSessionReadinessSnapshot = vi.fn();
+  class PreSessionReadinessSnapshotConflictError extends Error {
+    constructor(
+      public readonly code:
+        | "STALE_PREPARATION"
+        | "PAYLOAD_INTEGRITY_CONFLICT"
+        | "CONCURRENT_TARGET_CONFLICT",
+      message: string
+    ) {
+      super(message);
+    }
+  }
 
   return {
     loadActiveMesocycle,
@@ -31,8 +41,8 @@ const mocks = vi.hoisted(() => {
     buildPreSessionReadinessContract,
     evaluateAcceptedMesocycleSeedProvenance,
     loadCurrentPreSessionReadinessSnapshotIdentity,
-    invalidatePreSessionReadinessSnapshotsForIdentity,
-    savePreSessionReadinessSnapshot,
+    activatePreSessionReadinessSnapshot,
+    PreSessionReadinessSnapshotConflictError,
   };
 });
 
@@ -82,10 +92,10 @@ vi.mock("@/lib/api/accepted-mesocycle-seed-provenance", () => ({
 vi.mock("./pre-session-readiness-snapshot", () => ({
   loadCurrentPreSessionReadinessSnapshotIdentity: (...args: unknown[]) =>
     mocks.loadCurrentPreSessionReadinessSnapshotIdentity(...args),
-  invalidatePreSessionReadinessSnapshotsForIdentity: (...args: unknown[]) =>
-    mocks.invalidatePreSessionReadinessSnapshotsForIdentity(...args),
-  savePreSessionReadinessSnapshot: (...args: unknown[]) =>
-    mocks.savePreSessionReadinessSnapshot(...args),
+  activatePreSessionReadinessSnapshot: (...args: unknown[]) =>
+    mocks.activatePreSessionReadinessSnapshot(...args),
+  PreSessionReadinessSnapshotConflictError:
+    mocks.PreSessionReadinessSnapshotConflictError,
 }));
 
 import { preparePreSessionReadinessSnapshot } from "./pre-session-readiness-producer";
@@ -102,8 +112,36 @@ function makeCurrentIdentity(overrides: Record<string, unknown> = {}) {
     plannedWorkoutId: null,
     plannedWorkoutRevision: null,
     contractVersion: 1,
+    identity: {
+      identityContractVersion: 1,
+      ownerId: "user-1",
+      activeMesocycleId: "meso-1",
+      mesocycleState: "ACTIVE_ACCUMULATION",
+      weekInMeso: 2,
+      sessionInWeek: 2,
+      target: {
+        kind: "future_slot",
+        mesocycleId: "meso-1",
+        weekInMeso: 2,
+        sessionInWeek: 2,
+        slotId: "lower_a",
+        slotIntent: "lower",
+        seedRevision: { status: "legacy_payload", payloadHash: "seed-hash" },
+        slotSequenceHash: "sequence-hash",
+      },
+      readinessEvidenceFingerprint: "readiness-hash",
+      projectionFingerprint: "projection-hash",
+    },
+    identityHash: "identity-hash",
+    targetHash: "target-hash",
+    readinessEvidenceFingerprint: "readiness-hash",
+    projectionFingerprint: "projection-hash",
     slotPlanSeedHash: "seed-hash",
     slotSequenceHash: "sequence-hash",
+    seedRevisionId: null,
+    seedRevisionNumber: null,
+    seedPayloadHash: "seed-hash",
+    prescriptionFingerprint: null,
     ...overrides,
   };
 }
@@ -246,9 +284,9 @@ describe("preparePreSessionReadinessSnapshot", () => {
       phase: "ACCUMULATION",
     });
     mocks.getDeloadSessionThreshold.mockReturnValue(4);
-    mocks.loadCurrentPreSessionReadinessSnapshotIdentity
-      .mockResolvedValueOnce(makeCurrentIdentity())
-      .mockResolvedValueOnce(makeCurrentIdentity());
+    mocks.loadCurrentPreSessionReadinessSnapshotIdentity.mockResolvedValue(
+      makeCurrentIdentity()
+    );
     mocks.loadNextWorkoutContext.mockResolvedValue({
       intent: "lower",
       slotId: "lower_a",
@@ -328,16 +366,16 @@ describe("preparePreSessionReadinessSnapshot", () => {
       },
     });
     mocks.buildPreSessionReadinessContract.mockReturnValue(makeContract());
-    mocks.invalidatePreSessionReadinessSnapshotsForIdentity.mockResolvedValue({
-      count: 2,
+    mocks.activatePreSessionReadinessSnapshot.mockResolvedValue({
+      outcome: "created",
+      invalidatedSnapshotCount: 2,
+      snapshot: {
+        id: "snapshot-1",
+        createdAt: new Date("2026-06-02T12:00:00.000Z"),
+        invalidatedAt: null,
+        invalidatedReason: null,
+      },
     });
-    mocks.savePreSessionReadinessSnapshot.mockImplementation(async (input) => ({
-      id: "snapshot-1",
-      createdAt: new Date("2026-06-02T12:00:00.000Z"),
-      invalidatedAt: null,
-      invalidatedReason: null,
-      ...input,
-    }));
   });
 
   it("prepares, replaces, saves, and returns a gym-card DTO", async () => {
@@ -351,7 +389,7 @@ describe("preparePreSessionReadinessSnapshot", () => {
     }
     expect(result.snapshot.id).toBe("snapshot-1");
     expect(result.invalidatedSnapshotCount).toBe(2);
-    expect(result.replacementPolicy).toBe("replace_matching_identity");
+    expect(result.replacementPolicy).toBe("atomic_replace");
     expect(result.gymCard).toMatchObject({
       action: "start",
       source: {
@@ -375,26 +413,12 @@ describe("preparePreSessionReadinessSnapshot", () => {
         auditOnly: false,
       })
     );
-    expect(
-      mocks.invalidatePreSessionReadinessSnapshotsForIdentity
-    ).toHaveBeenCalledWith(
+    expect(mocks.activatePreSessionReadinessSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({
-        userId: "user-1",
-        activeMesocycleId: "meso-1",
-        weekInMeso: 2,
-        sessionInWeek: 2,
-        slotId: "lower_a",
-        slotIntent: "lower",
-        invalidatedReason: "replaced_by_prepare_action",
-      })
-    );
-    expect(mocks.savePreSessionReadinessSnapshot).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: "user-1",
-        activeMesocycleId: "meso-1",
-        plannedWorkoutId: null,
-        slotPlanSeedHash: "seed-hash",
-        slotSequenceHash: "sequence-hash",
+        preparedIdentity: expect.objectContaining({
+          userId: "user-1",
+          identityHash: "identity-hash",
+        }),
         contract: result.contract,
       })
     );
@@ -409,10 +433,7 @@ describe("preparePreSessionReadinessSnapshot", () => {
       status: "blocked",
       reason: "no_active_mesocycle",
     });
-    expect(mocks.savePreSessionReadinessSnapshot).not.toHaveBeenCalled();
-    expect(
-      mocks.invalidatePreSessionReadinessSnapshotsForIdentity
-    ).not.toHaveBeenCalled();
+    expect(mocks.activatePreSessionReadinessSnapshot).not.toHaveBeenCalled();
   });
 
   it("does not save an invalid contract", async () => {
@@ -426,14 +447,49 @@ describe("preparePreSessionReadinessSnapshot", () => {
       status: "blocked",
       reason: "invalid_contract",
     });
-    expect(mocks.savePreSessionReadinessSnapshot).not.toHaveBeenCalled();
+    expect(mocks.activatePreSessionReadinessSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("returns the authoritative snapshot for an equivalent retry", async () => {
+    mocks.activatePreSessionReadinessSnapshot.mockResolvedValue({
+      outcome: "reused",
+      invalidatedSnapshotCount: 0,
+      snapshot: { id: "snapshot-existing" },
+    });
+
+    const result = await preparePreSessionReadinessSnapshot("user-1");
+
+    expect(result).toMatchObject({
+      status: "prepared",
+      snapshot: { id: "snapshot-existing" },
+      invalidatedSnapshotCount: 0,
+      replacementPolicy: "reuse_equivalent",
+    });
+  });
+
+  it("surfaces a same-identity payload integrity conflict", async () => {
+    mocks.activatePreSessionReadinessSnapshot.mockRejectedValue(
+      new mocks.PreSessionReadinessSnapshotConflictError(
+        "PAYLOAD_INTEGRITY_CONFLICT",
+        "Conflicting payload."
+      )
+    );
+
+    const result = await preparePreSessionReadinessSnapshot("user-1");
+
+    expect(result).toMatchObject({
+      status: "blocked",
+      reason: "integrity_conflict",
+    });
   });
 
   it("fails closed when next-session identity changes before save", async () => {
-    mocks.loadCurrentPreSessionReadinessSnapshotIdentity
-      .mockReset()
-      .mockResolvedValueOnce(makeCurrentIdentity({ plannedWorkoutRevision: 7 }))
-      .mockResolvedValueOnce(makeCurrentIdentity({ plannedWorkoutRevision: 8 }));
+    mocks.loadCurrentPreSessionReadinessSnapshotIdentity.mockResolvedValue(
+      makeCurrentIdentity({
+        plannedWorkoutId: "planned-1",
+        plannedWorkoutRevision: 7,
+      })
+    );
     mocks.loadNextWorkoutContext.mockResolvedValue({
       intent: "lower",
       slotId: "lower_a",
@@ -461,6 +517,12 @@ describe("preparePreSessionReadinessSnapshot", () => {
         },
       })
     );
+    mocks.activatePreSessionReadinessSnapshot.mockRejectedValue(
+      new mocks.PreSessionReadinessSnapshotConflictError(
+        "STALE_PREPARATION",
+        "Readiness evidence changed."
+      )
+    );
 
     const result = await preparePreSessionReadinessSnapshot("user-1");
 
@@ -468,10 +530,7 @@ describe("preparePreSessionReadinessSnapshot", () => {
       status: "blocked",
       reason: "stale_identity",
     });
-    expect(mocks.savePreSessionReadinessSnapshot).not.toHaveBeenCalled();
-    expect(
-      mocks.invalidatePreSessionReadinessSnapshotsForIdentity
-    ).not.toHaveBeenCalled();
+    expect(mocks.activatePreSessionReadinessSnapshot).toHaveBeenCalledOnce();
   });
 
   it("does not import CLI, artifact filesystem, broad audit runner, or mutation writers", () => {

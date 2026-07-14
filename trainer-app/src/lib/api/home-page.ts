@@ -29,7 +29,7 @@ import {
 } from "@/lib/api/pre-session-readiness-gym-card";
 import type { PreSessionReadinessContract } from "@/lib/api/pre-session-readiness-contract";
 import {
-  loadLatestHomePreSessionReadinessContractCandidate,
+  loadCurrentHomePreSessionReadinessContractCandidate,
   resolveHomePreSessionReadinessContract,
 } from "./home-pre-session-readiness";
 
@@ -141,7 +141,7 @@ async function loadHomePreSessionReadinessCard(input: {
           contract: input.readinessInput.preSessionReadinessContract,
           source: "typed_read_model" as const,
         }
-      : await loadLatestHomePreSessionReadinessContractCandidate(input.userId);
+      : await loadCurrentHomePreSessionReadinessContractCandidate(input.userId);
   const contract = resolveHomePreSessionReadinessContract({
     userId: input.userId,
     candidate,

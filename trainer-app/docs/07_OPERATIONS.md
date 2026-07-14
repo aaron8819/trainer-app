@@ -23,6 +23,16 @@ Sources of truth:
 - `trainer-app/prisma/seed.ts`
 - `trainer-app/package.json`
 
+## Pre-session readiness snapshot rollout
+
+1. Back up the target database and run `npm run test:db:readiness-snapshots` locally; this disposable command must pass before deployment.
+2. Apply migration `20260714210000_make_pre_session_readiness_snapshots_atomic` through the normal reviewed `prisma migrate deploy` path.
+3. Existing snapshots remain `LEGACY_UNKNOWN`; do not backfill or claim exact identity from incomplete historical evidence. New preparation writes create `EXACT` rows.
+4. Deploy the producer and exact-identity readers with the migration. Current Home/log reads intentionally treat legacy-only evidence as unavailable until the user explicitly prepares a new snapshot.
+5. Use the read-only pre-session audit diagnostics to confirm no duplicate active identity/target, hash mismatch, or active/current-evidence mismatch before considering rollout complete.
+
+Rollback before new exact rows are written may restore the pre-migration backup. After exact rows exist, roll forward; do not drop hashes/indexes or relabel legacy evidence as exact.
+
 ## Immutable seed revision rollout
 
 1. Back up the target database and stop seeded workout generation for the rollout window.

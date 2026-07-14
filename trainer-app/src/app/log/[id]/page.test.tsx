@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   resolveOwner: vi.fn(),
   workoutFindFirst: vi.fn(),
   preSessionReadinessSnapshotFindFirst: vi.fn(),
+  loadLogWorkoutExecutionGuidance: vi.fn(),
   getUiAuditFixtureForServer: vi.fn(),
 }));
 
@@ -45,6 +46,14 @@ vi.mock("@/lib/ui-audit-fixtures/server", () => ({
     mocks.getUiAuditFixtureForServer(...args),
 }));
 
+vi.mock("@/lib/api/log-workout-execution-guidance", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/lib/api/log-workout-execution-guidance")
+  >()),
+  loadLogWorkoutExecutionGuidance: (...args: unknown[]) =>
+    mocks.loadLogWorkoutExecutionGuidance(...args),
+}));
+
 vi.mock("@/components/LogWorkoutClient", () => ({
   default: () => <div>LogWorkoutClient mounted</div>,
 }));
@@ -54,6 +63,10 @@ describe("LogWorkoutPage", () => {
     vi.clearAllMocks();
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
     mocks.preSessionReadinessSnapshotFindFirst.mockResolvedValue(null);
+    mocks.loadLogWorkoutExecutionGuidance.mockResolvedValue({
+      byExerciseId: {},
+      byExerciseName: {},
+    });
     mocks.getUiAuditFixtureForServer.mockResolvedValue(null);
   });
 

@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => {
   const loadPendingMesocycleHandoff = vi.fn();
   const loadProgramDashboardData = vi.fn();
   const loadHomeProgramSupport = vi.fn();
-  const loadLatestHomePreSessionReadinessContractCandidate = vi.fn();
+  const loadCurrentHomePreSessionReadinessContractCandidate = vi.fn();
 
   return {
     workoutFindFirst,
@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => {
     loadPendingMesocycleHandoff,
     loadProgramDashboardData,
     loadHomeProgramSupport,
-    loadLatestHomePreSessionReadinessContractCandidate,
+    loadCurrentHomePreSessionReadinessContractCandidate,
     prisma: {
       workout: {
         findFirst: workoutFindFirst,
@@ -56,8 +56,8 @@ vi.mock("./home-pre-session-readiness", async (importOriginal) => {
 
   return {
     ...actual,
-    loadLatestHomePreSessionReadinessContractCandidate: (...args: unknown[]) =>
-      mocks.loadLatestHomePreSessionReadinessContractCandidate(...args),
+    loadCurrentHomePreSessionReadinessContractCandidate: (...args: unknown[]) =>
+      mocks.loadCurrentHomePreSessionReadinessContractCandidate(...args),
   };
 });
 
@@ -280,7 +280,7 @@ describe("loadHomePageData", () => {
     vi.clearAllMocks();
 
     mocks.loadPendingMesocycleHandoff.mockResolvedValue(null);
-    mocks.loadLatestHomePreSessionReadinessContractCandidate.mockResolvedValue(null);
+    mocks.loadCurrentHomePreSessionReadinessContractCandidate.mockResolvedValue(null);
     mocks.workoutFindFirst.mockResolvedValue(makeWorkoutRow());
     mocks.workoutFindMany.mockResolvedValue([
       makeWorkoutRow({ id: "activity-1" }),
@@ -614,7 +614,7 @@ describe("loadHomePageData", () => {
         },
       },
     });
-    mocks.loadLatestHomePreSessionReadinessContractCandidate.mockResolvedValue({
+    mocks.loadCurrentHomePreSessionReadinessContractCandidate.mockResolvedValue({
       contract,
       source: "typed_read_model",
     });
@@ -622,7 +622,7 @@ describe("loadHomePageData", () => {
     const result = await loadHomePageData("user-1");
 
     expect(
-      mocks.loadLatestHomePreSessionReadinessContractCandidate
+      mocks.loadCurrentHomePreSessionReadinessContractCandidate
     ).toHaveBeenCalledWith("user-1");
     expect(result.preSessionReadinessCard).toMatchObject({
       safeToTrain: true,
@@ -660,7 +660,7 @@ describe("loadHomePageData", () => {
   });
 
   it("returns null readiness card when the producer marks the candidate stale", async () => {
-    mocks.loadLatestHomePreSessionReadinessContractCandidate.mockResolvedValue({
+    mocks.loadCurrentHomePreSessionReadinessContractCandidate.mockResolvedValue({
       contract: makeReadinessContract(),
       source: "audit_artifact",
       stale: true,
@@ -682,7 +682,7 @@ describe("loadHomePageData", () => {
   });
 
   it("returns null readiness card when the producer candidate is invalid or mismatched", async () => {
-    mocks.loadLatestHomePreSessionReadinessContractCandidate.mockResolvedValue({
+    mocks.loadCurrentHomePreSessionReadinessContractCandidate.mockResolvedValue({
       contract: makeReadinessContract({
         nextSessionIdentity: {
           ...makeReadinessContract().nextSessionIdentity,

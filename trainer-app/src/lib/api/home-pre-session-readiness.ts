@@ -3,8 +3,7 @@ import {
   type PreSessionReadinessContract,
 } from "./pre-session-readiness-contract";
 import {
-  loadLatestPreSessionReadinessSnapshotCandidate,
-  validatePreSessionReadinessSnapshotForHome,
+  loadCurrentPreSessionReadinessSnapshot,
 } from "./pre-session-readiness-snapshot";
 
 export type HomePreSessionReadinessContractCandidate = {
@@ -32,14 +31,12 @@ export function resolveHomePreSessionReadinessContract(input: {
     : null;
 }
 
-export async function loadLatestHomePreSessionReadinessContractCandidate(
+export async function loadCurrentHomePreSessionReadinessContractCandidate(
   userId: string
 ): Promise<HomePreSessionReadinessContractCandidate | null> {
-  const snapshot = await loadLatestPreSessionReadinessSnapshotCandidate(userId);
-  const contract = await validatePreSessionReadinessSnapshotForHome({
-    userId,
-    snapshot,
-  });
+  const result = await loadCurrentPreSessionReadinessSnapshot(userId);
 
-  return contract ? { contract, source: "persisted_snapshot" } : null;
+  return result.status === "available"
+    ? { contract: result.contract, source: "persisted_snapshot" }
+    : null;
 }

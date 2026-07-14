@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
   const deriveCurrentMesocycleSession = vi.fn();
   const loadProjectedWeekVolumeReport = vi.fn();
   const buildPreSessionReadinessProjectedWeekEvidence = vi.fn();
+  const loadPreSessionReadinessSnapshotAuditDiagnostics = vi.fn();
   const generateSessionFromIntent = vi.fn();
   const generateDeloadSessionFromIntent = vi.fn();
   const buildWeeklyRetroAuditPayload = vi.fn();
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => {
     deriveCurrentMesocycleSession,
     loadProjectedWeekVolumeReport,
     buildPreSessionReadinessProjectedWeekEvidence,
+    loadPreSessionReadinessSnapshotAuditDiagnostics,
     generateSessionFromIntent,
     generateDeloadSessionFromIntent,
     buildWeeklyRetroAuditPayload,
@@ -48,6 +50,11 @@ vi.mock("@/lib/api/projected-week-volume", () => ({
 vi.mock("@/lib/api/pre-session-readiness-evidence-builder", () => ({
   buildPreSessionReadinessProjectedWeekEvidence: (...args: unknown[]) =>
     mocks.buildPreSessionReadinessProjectedWeekEvidence(...args),
+}));
+
+vi.mock("@/lib/api/pre-session-readiness-snapshot", () => ({
+  loadPreSessionReadinessSnapshotAuditDiagnostics: (...args: unknown[]) =>
+    mocks.loadPreSessionReadinessSnapshotAuditDiagnostics(...args),
 }));
 
 vi.mock("@/lib/api/template-session", () => ({
@@ -156,6 +163,18 @@ describe("runWorkoutAuditGeneration", () => {
       interventionHints: [],
       sessionRisks: [],
       runtimeDoseAdjustmentDiagnostics: [],
+    });
+    mocks.loadPreSessionReadinessSnapshotAuditDiagnostics.mockResolvedValue({
+      currentIdentityHash: null,
+      currentTargetHash: null,
+      currentSnapshotId: null,
+      activeSnapshotMatchesCurrentEvidence: false,
+      duplicateActiveIdentity: false,
+      duplicateActiveTarget: false,
+      sameIdentityDifferentPayloadHashes: false,
+      legacyUnknownCount: 0,
+      supersededSnapshotIds: [],
+      snapshots: [],
     });
     mocks.buildWeeklyRetroAuditPayload.mockResolvedValue({
       version: 1,
@@ -1188,7 +1207,15 @@ describe("runWorkoutAuditGeneration", () => {
         requestedMesocycleId: "meso-1",
         mesocycleIdMatchesRequest: true,
       },
+      snapshotDiagnostics: {
+        activeSnapshotMatchesCurrentEvidence: false,
+        duplicateActiveIdentity: false,
+        legacyUnknownCount: 0,
+      },
     });
+    expect(
+      mocks.loadPreSessionReadinessSnapshotAuditDiagnostics
+    ).toHaveBeenCalledWith("user-1");
     expect(run.preSessionReadiness?.contract).toMatchObject({
       contractVersion: 1,
       scope: {

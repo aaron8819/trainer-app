@@ -28,6 +28,7 @@
         "ops:backfill-post-session-reviews": "tsx scripts/backfill-post-session-reviews.ts",
         "audit:post-session-reviews": "tsx scripts/audit-post-session-reviews.ts",
     "test:seed-revision-concurrency": "tsx scripts/verify-seed-revision-concurrency.ts",
+        "test:db:readiness-snapshots": "tsx scripts/test-readiness-snapshot-postgres.ts --confirm-disposable",
         "audit:mesocycle-explain:compare": "tsx scripts/audit-mesocycle-explain-compare.ts",
         "audit:week": "tsx scripts/workout-audit.ts --env-file .env.local --mode projected-week-volume",
         "audit:week:debug": "tsx scripts/workout-audit.ts --env-file .env.local --mode projected-week-volume --operator-debug",

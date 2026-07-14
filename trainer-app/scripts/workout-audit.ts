@@ -4217,8 +4217,27 @@ export function buildProjectedWeekDebugSummary(input: {
 
   for (const [index, session] of projectedWeekVolume.projectedSessions.entries()) {
     lines.push(
-      `[workout-audit:week:debug] projected_session[${index + 1}] label=${formatProjectedWeekSessionLabel(session)} is_next=${session.isNext} exercises=${session.exerciseCount} total_sets=${session.totalSets} top_contributors=${formatTopSessionContributors(session.projectedContributionByMuscle)}`
+      `[workout-audit:week:debug] projected_session[${index + 1}] label=${formatProjectedWeekSessionLabel(session)} is_next=${session.isNext} category=${session.projectionCategory ?? "legacy"} reliable=${session.evidenceReliable ?? true} exercises=${session.exerciseCount} total_sets=${session.totalSets} performed=${formatTopSessionContributors(session.performedContributionByMuscle ?? {})} remaining=${formatTopSessionContributors(session.remainingContributionByMuscle ?? {})} top_contributors=${formatTopSessionContributors(session.projectedContributionByMuscle)}`
     );
+  }
+
+  if (projectedWeekVolume.volumeByCategory) {
+    const categories = projectedWeekVolume.volumeByCategory;
+    lines.push(
+      `[workout-audit:week:debug] volume_categories completed=${formatTopSessionContributors(categories.completedPerformed)} incomplete_performed=${formatTopSessionContributors(categories.incompletePerformed)} incomplete_remaining=${formatTopSessionContributors(categories.incompleteRemaining)} unmaterialized_future=${formatTopSessionContributors(categories.unmaterializedFutureProjected)}`
+    );
+  }
+
+  if (projectedWeekVolume.incompleteWorkoutProjections) {
+    if (projectedWeekVolume.incompleteWorkoutProjections.length === 0) {
+      lines.push("[workout-audit:week:debug] incomplete_projection=none");
+    } else {
+      for (const [index, projection] of projectedWeekVolume.incompleteWorkoutProjections.entries()) {
+        lines.push(
+          `[workout-audit:week:debug] incomplete_projection[${index + 1}] workout=${projection.workoutId} slot=${projection.slotId ?? "none"} status=${projection.status} source=${projection.evidence.source} snapshot_versions=${projection.evidence.snapshotVersions.join(",") || "none"} runtime_edit_attribution=${projection.evidence.runtimeEditAttribution} reasons=${projection.evidence.reasons.join(",") || "none"} performed=${formatTopSessionContributors(projection.performed.contributionsByMuscle)} remaining=${formatTopSessionContributors(projection.remaining.contributionsByMuscle)}`
+        );
+      }
+    }
   }
 
   return lines;

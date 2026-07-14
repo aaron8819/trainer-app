@@ -346,6 +346,28 @@ describe("buildWeeklyMuscleClosureDecisions", () => {
     );
   });
 
+  it("includes performed sets from reliable incomplete workouts in closure evidence", () => {
+    const [decision] = decisions({
+      rows: [
+        muscleRow("Biceps", {
+          completedEffectiveSets: 3,
+          incompletePerformedEffectiveSets: 1.5,
+        }),
+      ],
+      sessions: [
+        session({
+          slotId: "upper_b",
+          isNext: true,
+          muscle: "Biceps",
+          exerciseName: "Cable Curl",
+          evidenceSource: "immutable_workout_snapshot",
+        }),
+      ],
+    });
+
+    expect(decision.evidence.performedEffectiveSets).toBe(4.5);
+  });
+
   it("fails closed when current materialized evidence is unreliable", () => {
     const [decision] = decisions({
       rows: [muscleRow("Biceps")],

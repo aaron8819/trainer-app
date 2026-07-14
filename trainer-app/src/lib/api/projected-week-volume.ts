@@ -18,7 +18,11 @@ import {
   type WeeklyMuscleDisplayGroup,
 } from "@/lib/ui/weekly-muscle-status";
 import type { SessionIntent } from "@/lib/engine/session-types";
-import type { MovementPatternV2, WorkoutPlan } from "@/lib/engine/types";
+import type {
+  MovementPatternV2,
+  WorkoutHistoryEntry,
+  WorkoutPlan,
+} from "@/lib/engine/types";
 import { listWorkoutPlanExercisesInOrder } from "@/lib/engine/workout-plan-order";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
@@ -29,6 +33,10 @@ import {
 } from "./mesocycle-slot-runtime";
 import { deriveCurrentMesocycleSession, getWeeklyVolumeTarget } from "./mesocycle-lifecycle";
 import { loadNextWorkoutContext } from "./next-session";
+import {
+  loadPersistedIncompleteWorkoutProjections,
+  type IncompleteWorkoutProjection,
+} from "./persisted-incomplete-workout-projection";
 import {
   appendWorkoutHistoryEntryToMappedContext,
   buildMappedGenerationContextFromSnapshot,
@@ -54,6 +62,7 @@ type ProjectedWeekVolumeByMuscle = {
 };
 
 export type ProjectedWeekVolumeSessionSummary = {
+  workoutId?: string;
   slotId: string | null;
   intent: string;
   isNext: boolean;
@@ -63,6 +72,16 @@ export type ProjectedWeekVolumeSessionSummary = {
     | "accepted_seed_runtime_projection"
     | "current_policy_projection";
   evidenceReliable?: boolean;
+  projectionCategory?:
+    | "persisted_incomplete"
+    | "unmaterialized_future";
+  performedContributionByMuscle?: Record<string, number>;
+  remainingContributionByMuscle?: Record<string, number>;
+  immutableEvidence?: {
+    snapshotVersions: number[];
+    runtimeEditAttribution: IncompleteWorkoutProjection["evidence"]["runtimeEditAttribution"];
+    reasons: string[];
+  };
   exerciseCount: number;
   totalSets: number;
   exercises?: ProjectedWeekVolumeExerciseSummary[];
@@ -89,6 +108,9 @@ export type ProjectedWeekVolumeMuscleRow = {
   warningSeverity?: MuscleTargetWarningSeverity;
   dashboardGroup?: MuscleDashboardGroup | null;
   completedEffectiveSets: number;
+  incompletePerformedEffectiveSets?: number;
+  incompleteRemainingEffectiveSets?: number;
+  unmaterializedFutureProjectedEffectiveSets?: number;
   projectedNextSessionEffectiveSets: number;
   projectedRemainingWeekEffectiveSets: number;
   projectedFullWeekEffectiveSets: number;
@@ -101,6 +123,13 @@ export type ProjectedWeekVolumeMuscleRow = {
   deltaToMav: number;
 };
 
+export type ProjectedWeekVolumeCategoryTotals = {
+  completedPerformed: Record<string, number>;
+  incompletePerformed: Record<string, number>;
+  incompleteRemaining: Record<string, number>;
+  unmaterializedFutureProjected: Record<string, number>;
+};
+
 export type ProjectedWeekVolumeReport = {
   currentWeek: {
     mesocycleId: string;
@@ -110,6 +139,8 @@ export type ProjectedWeekVolumeReport = {
   };
   projectionNotes: string[];
   completedVolumeByMuscle: Record<string, ProjectedWeekVolumeByMuscle>;
+  volumeByCategory: ProjectedWeekVolumeCategoryTotals;
+  incompleteWorkoutProjections: IncompleteWorkoutProjection[];
   projectedSessions: ProjectedWeekVolumeSessionSummary[];
   fullWeekByMuscle: ProjectedWeekVolumeMuscleRow[];
 };
@@ -223,6 +254,207 @@ function summarizeWorkoutExercises(workout: WorkoutPlan): ProjectedWeekVolumeExe
     });
 }
 
+function summarizePersistedIncompleteProjection(
+  projection: IncompleteWorkoutProjection,
+  input: { isNext: boolean; consumeEvidence: boolean }
+): ProjectedWeekVolumeSessionSummary {
+  const exercises = projection.exercises
+    .filter((exercise) => exercise.totalProjected.qualifyingSets > 0)
+    .map((exercise) => ({
+      exerciseId: exercise.exerciseId,
+      name: exercise.exerciseName,
+      setCount: exercise.totalProjected.qualifyingSets,
+      role:
+        exercise.section === "MAIN"
+          ? ("primary" as const)
+          : ("accessory" as const),
+      movementPatterns: [...exercise.movementPatterns],
+      effectiveStimulusByMuscle:
+        exercise.totalProjected.contributionsByMuscle,
+    }));
+  const movementPatternCounts = new Map<string, number>();
+  for (const exercise of exercises) {
+    for (const pattern of exercise.movementPatterns ?? []) {
+      movementPatternCounts.set(
+        pattern,
+        (movementPatternCounts.get(pattern) ?? 0) + 1
+      );
+    }
+  }
+
+  return {
+    workoutId: projection.workoutId,
+    slotId: projection.slotId,
+    intent: projection.intent ?? "unknown",
+    isNext: input.isNext,
+    availability: projection.consumesWeeklyScheduleIntent
+      ? "available"
+      : "completed",
+    evidenceSource: "immutable_workout_snapshot",
+    evidenceReliable: input.consumeEvidence,
+    projectionCategory: "persisted_incomplete",
+    performedContributionByMuscle:
+      projection.performed.contributionsByMuscle,
+    remainingContributionByMuscle:
+      projection.remaining.contributionsByMuscle,
+    immutableEvidence: {
+      snapshotVersions: projection.evidence.snapshotVersions,
+      runtimeEditAttribution: projection.evidence.runtimeEditAttribution,
+      reasons: projection.evidence.reasons,
+    },
+    exerciseCount: exercises.length,
+    totalSets: projection.totalProjected.qualifyingSets,
+    exercises,
+    estimatedMinutes: null,
+    movementPatternCounts: Object.fromEntries(
+      Array.from(movementPatternCounts.entries()).sort(([left], [right]) =>
+        left.localeCompare(right)
+      )
+    ),
+    projectedContributionByMuscle:
+      projection.totalProjected.contributionsByMuscle,
+  };
+}
+
+function buildPersistedProjectionHistoryEntry(input: {
+  projection: IncompleteWorkoutProjection;
+  performedOnly: boolean;
+  mesocycleId: string;
+  week: number;
+}): WorkoutHistoryEntry {
+  return {
+    date: input.projection.scheduledDate,
+    completed: true,
+    status: "COMPLETED",
+    advancesSplit: input.projection.consumesWeeklyScheduleIntent,
+    progressionEligible:
+      input.projection.countsTowardProgressionHistory,
+    performanceEligible:
+      input.projection.countsTowardPerformanceHistory,
+    selectionMode: "INTENT",
+    sessionIntent: (input.projection.intent ?? "upper") as SessionIntent,
+    mesocycleSnapshot: {
+      mesocycleId: input.mesocycleId,
+      week: input.week,
+      session: input.projection.mesoSessionSnapshot ?? undefined,
+      slotId: input.projection.slotId,
+    },
+    exercises: input.projection.exercises.flatMap((exercise) => {
+      const sets = exercise.projectedSets.filter(
+        (set) => !input.performedOnly || set.category === "performed"
+      );
+      return sets.length > 0
+        ? [
+            {
+              exerciseId: exercise.exerciseId,
+              primaryMuscles: [...exercise.primaryMuscles],
+              sets: sets.map((set) => ({
+                exerciseId: exercise.exerciseId,
+                setIndex: set.setIndex,
+                reps: set.targetReps,
+                rpe: set.targetRpe ?? undefined,
+                targetLoad: set.targetLoad ?? undefined,
+              })),
+            },
+          ]
+        : [];
+    }),
+  };
+}
+
+function withProjectionReason(
+  projection: IncompleteWorkoutProjection,
+  reason: string
+): IncompleteWorkoutProjection {
+  return {
+    ...projection,
+    status: "unreliable",
+    evidence: {
+      ...projection.evidence,
+      runtimeEditAttribution:
+        projection.evidence.runtimeEditAttribution === "not_needed"
+          ? "not_needed"
+          : "ambiguous",
+      reasons: Array.from(
+        new Set([...projection.evidence.reasons, reason])
+      ).sort(),
+    },
+  };
+}
+
+function finalizeCategoryTotals(
+  totals: Map<string, number>
+): Record<string, number> {
+  return Object.fromEntries(
+    Array.from(totals.entries())
+      .map(
+        ([muscle, contribution]): [string, number] => [
+          muscle,
+          contribution === 0 ? 0 : Number(contribution.toFixed(6)),
+        ]
+      )
+      .filter(([, contribution]) => contribution !== 0)
+      .sort(([left], [right]) => left.localeCompare(right))
+  );
+}
+
+function buildVolumeByCategory(input: {
+  completedVolumeByMuscle: Record<string, ProjectedWeekVolumeByMuscle>;
+  projectedSessions: ProjectedWeekVolumeSessionSummary[];
+}): ProjectedWeekVolumeCategoryTotals {
+  const incompletePerformed = new Map<string, number>();
+  const incompleteRemaining = new Map<string, number>();
+  const unmaterializedFutureProjected = new Map<string, number>();
+
+  for (const session of input.projectedSessions) {
+    if (session.evidenceReliable === false) {
+      continue;
+    }
+    if (session.projectionCategory === "persisted_incomplete") {
+      for (const [muscle, contribution] of Object.entries(
+        session.performedContributionByMuscle ?? {}
+      )) {
+        incompletePerformed.set(
+          muscle,
+          (incompletePerformed.get(muscle) ?? 0) + contribution
+        );
+      }
+      for (const [muscle, contribution] of Object.entries(
+        session.remainingContributionByMuscle ?? {}
+      )) {
+        incompleteRemaining.set(
+          muscle,
+          (incompleteRemaining.get(muscle) ?? 0) + contribution
+        );
+      }
+      continue;
+    }
+    for (const [muscle, contribution] of Object.entries(
+      session.projectedContributionByMuscle
+    )) {
+      unmaterializedFutureProjected.set(
+        muscle,
+        (unmaterializedFutureProjected.get(muscle) ?? 0) + contribution
+      );
+    }
+  }
+
+  return {
+    completedPerformed: Object.fromEntries(
+      Object.entries(input.completedVolumeByMuscle)
+        .map(
+          ([muscle, row]): [string, number] => [muscle, row.effectiveSets]
+        )
+        .sort(([left], [right]) => left.localeCompare(right))
+    ),
+    incompletePerformed: finalizeCategoryTotals(incompletePerformed),
+    incompleteRemaining: finalizeCategoryTotals(incompleteRemaining),
+    unmaterializedFutureProjected: finalizeCategoryTotals(
+      unmaterializedFutureProjected
+    ),
+  };
+}
+
 function toProjectedWeekVolumeByMuscle(
   rows: Awaited<ReturnType<typeof loadMesocycleWeekMuscleVolume>>
 ): Record<string, ProjectedWeekVolumeByMuscle> {
@@ -243,17 +475,28 @@ function buildFullWeekRows(input: {
   week: number;
   completedVolumeByMuscle: Record<string, ProjectedWeekVolumeByMuscle>;
   projectedSessions: ProjectedWeekVolumeSessionSummary[];
+  volumeByCategory: ProjectedWeekVolumeCategoryTotals;
   includeImplicitRows?: boolean;
 }): ProjectedWeekVolumeMuscleRow[] {
+  const currentSession =
+    input.projectedSessions.find((session) => session.isNext) ??
+    input.projectedSessions[0];
   const nextSessionContribution = new Map<string, number>(
-    Object.entries(input.projectedSessions[0]?.projectedContributionByMuscle ?? {})
+    Object.entries(
+      currentSession?.evidenceReliable === false
+        ? {}
+        : currentSession?.projectedContributionByMuscle ?? {}
+    )
   );
   const remainingWeekContribution = new Map<string, number>();
   const totalProjectedContribution = new Map<string, number>();
 
-  for (const [index, session] of input.projectedSessions.entries()) {
+  for (const session of input.projectedSessions) {
+    if (session.evidenceReliable === false) {
+      continue;
+    }
     mergeContributionTotals(totalProjectedContribution, session.projectedContributionByMuscle);
-    if (index === 0) {
+    if (session === currentSession) {
       continue;
     }
     mergeContributionTotals(remainingWeekContribution, session.projectedContributionByMuscle);
@@ -268,6 +511,12 @@ function buildFullWeekRows(input: {
         nextSessionContribution.get(muscle) ?? 0;
       const projectedRemainingWeekEffectiveSets =
         remainingWeekContribution.get(muscle) ?? 0;
+      const incompletePerformedEffectiveSets =
+        input.volumeByCategory.incompletePerformed[muscle] ?? 0;
+      const incompleteRemainingEffectiveSets =
+        input.volumeByCategory.incompleteRemaining[muscle] ?? 0;
+      const unmaterializedFutureProjectedEffectiveSets =
+        input.volumeByCategory.unmaterializedFutureProjected[muscle] ?? 0;
       const projectedFullWeekEffectiveSets = roundToTenth(
         completedEffectiveSets + (totalProjectedContribution.get(muscle) ?? 0)
       );
@@ -305,6 +554,9 @@ function buildFullWeekRows(input: {
         warningSeverity: targetSemantics.warningSeverity,
         dashboardGroup,
         completedEffectiveSets,
+        incompletePerformedEffectiveSets,
+        incompleteRemainingEffectiveSets,
+        unmaterializedFutureProjectedEffectiveSets,
         projectedNextSessionEffectiveSets: roundToTenth(
           projectedNextSessionEffectiveSets
         ),
@@ -410,7 +662,23 @@ export async function loadProjectedWeekVolumeReport(input: {
   mesoStartDate.setDate(mesoStartDate.getDate() + activeMesocycle.startWeek * 7);
   const weekStart = computeMesoWeekStartDate(mesoStartDate, currentWeek);
 
-  const [snapshot, completedVolume, performedAdvancingSlots, nextWorkoutContext] =
+  // Load incomplete rows first, then exclude those identities from the performed
+  // query. If a workout transitions to PARTIAL between reads, this prevents the
+  // same persisted workout from contributing through both categories.
+  const loadedIncompleteWorkoutProjections =
+    await loadPersistedIncompleteWorkoutProjections(prisma, {
+      userId: input.userId,
+      mesocycleId: activeMesocycle.id,
+      targetWeek: currentWeek,
+      requireSlotIdentity: activeMesocycle.slotSequenceJson != null,
+    });
+
+  const [
+    snapshot,
+    completedVolume,
+    performedAdvancingSlots,
+    nextWorkoutContext,
+  ] =
     await Promise.all([
       loadPreloadedGenerationSnapshot(input.userId, {
         activeMesocycle,
@@ -420,6 +688,9 @@ export async function loadProjectedWeekVolumeReport(input: {
         mesocycleId: activeMesocycle.id,
         targetWeek: currentWeek,
         weekStart,
+        excludeWorkoutIds: loadedIncompleteWorkoutProjections.map(
+          (projection) => projection.workoutId
+        ),
       }),
       loadPerformedAdvancingSlots({
         userId: input.userId,
@@ -430,6 +701,8 @@ export async function loadProjectedWeekVolumeReport(input: {
     ]);
 
   const mapped = buildMappedGenerationContextFromSnapshot(input.userId, snapshot);
+  const completedVolumeByMuscle =
+    toProjectedWeekVolumeByMuscle(completedVolume);
   const performedAdvancingSlotIdsThisWeek = performedAdvancingSlots
     .map((entry) => entry.slotId ?? null)
     .filter((slotId): slotId is string => typeof slotId === "string" && slotId.length > 0);
@@ -443,6 +716,23 @@ export async function loadProjectedWeekVolumeReport(input: {
         "Final accumulation closeout is pending. Resolve or dismiss the optional gap-fill before generating the deload.",
     ];
 
+    const projectedSessions = loadedIncompleteWorkoutProjections
+      .filter(
+        (projection) =>
+          !projection.consumesWeeklyScheduleIntent &&
+          projection.performed.qualifyingSets > 0
+      )
+      .map((projection) =>
+        summarizePersistedIncompleteProjection(projection, {
+          isNext: false,
+          consumeEvidence: projection.status === "reliable",
+        })
+      );
+    const volumeByCategory = buildVolumeByCategory({
+      completedVolumeByMuscle,
+      projectedSessions,
+    });
+
     return {
       currentWeek: {
         mesocycleId: activeMesocycle.id,
@@ -451,13 +741,16 @@ export async function loadProjectedWeekVolumeReport(input: {
         blockType: mapped.cycleContext.blockType,
       },
       projectionNotes,
-      completedVolumeByMuscle: toProjectedWeekVolumeByMuscle(completedVolume),
-      projectedSessions: [],
+      completedVolumeByMuscle,
+      volumeByCategory,
+      incompleteWorkoutProjections: loadedIncompleteWorkoutProjections,
+      projectedSessions,
       fullWeekByMuscle: buildFullWeekRows({
         activeMesocycle,
         week: currentWeek,
-        completedVolumeByMuscle: toProjectedWeekVolumeByMuscle(completedVolume),
-        projectedSessions: [],
+        completedVolumeByMuscle,
+        projectedSessions,
+        volumeByCategory,
         includeImplicitRows: plannerDiagnosticsMode === "debug",
       }),
     };
@@ -494,10 +787,157 @@ export async function loadProjectedWeekVolumeReport(input: {
       ]
     : [];
 
+  const projectionNotes: string[] = [];
+  let incompleteWorkoutProjections = [
+    ...loadedIncompleteWorkoutProjections,
+  ];
+  const usedIncompleteWorkoutIds = new Set<string>();
   const projectedSessions: ProjectedWeekVolumeSessionSummary[] = [];
+  const nonAdvancingIncompleteSessions: ProjectedWeekVolumeSessionSummary[] = [];
   const projectionStartTime = new Date();
+  let downstreamEvidenceReliable = true;
+
+  const replaceProjection = (
+    nextProjection: IncompleteWorkoutProjection
+  ): void => {
+    incompleteWorkoutProjections = incompleteWorkoutProjections.map(
+      (projection) =>
+        projection.workoutId === nextProjection.workoutId
+          ? nextProjection
+          : projection
+    );
+  };
+
+  for (const projection of incompleteWorkoutProjections.filter(
+    (entry) => !entry.consumesWeeklyScheduleIntent
+  )) {
+    const consumeEvidence = projection.status === "reliable";
+    if (projection.performed.qualifyingSets > 0) {
+      nonAdvancingIncompleteSessions.push(
+        summarizePersistedIncompleteProjection(projection, {
+          isNext: false,
+          consumeEvidence,
+        })
+      );
+      if (consumeEvidence) {
+        appendWorkoutHistoryEntryToMappedContext({
+          mapped,
+          historyEntry: buildPersistedProjectionHistoryEntry({
+            projection,
+            performedOnly: true,
+            mesocycleId: activeMesocycle.id,
+            week: currentWeek,
+          }),
+          occurredAt: new Date(projection.scheduledDate),
+          rotationExerciseNames: projection.exercises
+            .filter((exercise) => exercise.performed.qualifyingSets > 0)
+            .map((exercise) => exercise.exerciseName),
+        });
+      }
+    }
+    usedIncompleteWorkoutIds.add(projection.workoutId);
+  }
 
   for (const [index, slot] of orderedProjectedSlots.entries()) {
+    const selectedIncompleteId =
+      index === 0 && nextWorkoutContext.source === "existing_incomplete"
+        ? nextWorkoutContext.existingWorkoutId
+        : null;
+    const slotCandidates = incompleteWorkoutProjections.filter(
+      (projection) =>
+        projection.consumesWeeklyScheduleIntent &&
+        !usedIncompleteWorkoutIds.has(projection.workoutId) &&
+        (selectedIncompleteId
+          ? projection.workoutId === selectedIncompleteId
+          : projection.slotId === slot.slotId)
+    );
+    let persistedProjection = slotCandidates[0];
+    if (slotCandidates.length > 1 && persistedProjection) {
+      persistedProjection = withProjectionReason(
+        persistedProjection,
+        `duplicate_materialized_slot:${slot.slotId ?? "unknown"}`
+      );
+      replaceProjection(persistedProjection);
+    }
+    if (
+      persistedProjection &&
+      (persistedProjection.slotId !== (slot.slotId ?? null) ||
+        persistedProjection.intent !== slot.intent)
+    ) {
+      persistedProjection = withProjectionReason(
+        persistedProjection,
+        `runtime_slot_placement_mismatch:${slot.slotId ?? "unknown"}`
+      );
+      replaceProjection(persistedProjection);
+    }
+
+    if (persistedProjection) {
+      usedIncompleteWorkoutIds.add(persistedProjection.workoutId);
+      const consumeEvidence = persistedProjection.status === "reliable";
+      projectedSessions.push(
+        summarizePersistedIncompleteProjection(persistedProjection, {
+          isNext: index === 0,
+          consumeEvidence,
+        })
+      );
+      projectionNotes.push(
+        consumeEvidence
+          ? `Projected persisted incomplete workout ${persistedProjection.workoutId} from immutable materialized sets, frozen stimulus snapshots, and performed logs.`
+          : `Persisted incomplete workout ${persistedProjection.workoutId} remained fail-closed: ${persistedProjection.evidence.reasons.join(",") || "unreliable_immutable_evidence"}.`
+      );
+      if (consumeEvidence) {
+        appendWorkoutHistoryEntryToMappedContext({
+          mapped,
+          historyEntry: buildPersistedProjectionHistoryEntry({
+            projection: persistedProjection,
+            performedOnly: false,
+            mesocycleId: activeMesocycle.id,
+            week: currentWeek,
+          }),
+          occurredAt: new Date(persistedProjection.scheduledDate),
+          rotationExerciseNames: persistedProjection.exercises
+            .filter(
+              (exercise) => exercise.totalProjected.qualifyingSets > 0
+            )
+            .map((exercise) => exercise.exerciseName),
+        });
+      } else {
+        downstreamEvidenceReliable = false;
+      }
+      continue;
+    }
+
+    if (selectedIncompleteId) {
+      downstreamEvidenceReliable = false;
+      projectionNotes.push(
+        `Persisted incomplete workout ${selectedIncompleteId} could not be loaded from the active mesocycle and remains fail-closed.`
+      );
+      projectedSessions.push({
+        workoutId: selectedIncompleteId,
+        slotId: slot.slotId ?? null,
+        intent: slot.intent,
+        isNext: true,
+        availability: "available",
+        evidenceSource: "immutable_workout_snapshot",
+        evidenceReliable: false,
+        projectionCategory: "persisted_incomplete",
+        performedContributionByMuscle: {},
+        remainingContributionByMuscle: {},
+        immutableEvidence: {
+          snapshotVersions: [],
+          runtimeEditAttribution: "ambiguous",
+          reasons: ["persisted_incomplete_workout_not_loadable"],
+        },
+        exerciseCount: 0,
+        totalSets: 0,
+        exercises: [],
+        estimatedMinutes: null,
+        movementPatternCounts: {},
+        projectedContributionByMuscle: {},
+      });
+      continue;
+    }
+
     const generation = await generateProjectedSession({
       userId: input.userId,
       mapped,
@@ -532,9 +972,8 @@ export async function loadProjectedWeekVolumeReport(input: {
         compositionSource === "persisted_slot_plan_seed"
           ? "accepted_seed_runtime_projection"
           : "current_policy_projection",
-      evidenceReliable: !(
-        index === 0 && nextWorkoutContext.existingWorkoutId != null
-      ),
+      evidenceReliable: downstreamEvidenceReliable,
+      projectionCategory: "unmaterialized_future",
       exerciseCount: countWorkoutExercises(projectedWorkout),
       totalSets: countWorkoutSets(projectedWorkout),
       exercises: summarizeWorkoutExercises(projectedWorkout),
@@ -543,7 +982,9 @@ export async function loadProjectedWeekVolumeReport(input: {
       projectedContributionByMuscle,
     });
 
-    const projectedAt = new Date(projectionStartTime.getTime() + index * 60_000);
+    const projectedAt = new Date(
+      projectionStartTime.getTime() + index * 60_000
+    );
     appendWorkoutHistoryEntryToMappedContext({
       mapped,
       historyEntry: buildProjectedWorkoutHistoryEntry({
@@ -560,12 +1001,32 @@ export async function loadProjectedWeekVolumeReport(input: {
     });
   }
 
-  const projectionNotes: string[] = [];
-  if (nextWorkoutContext.source === "existing_incomplete") {
+  for (const projection of incompleteWorkoutProjections.filter(
+    (entry) =>
+      entry.consumesWeeklyScheduleIntent &&
+      !usedIncompleteWorkoutIds.has(entry.workoutId)
+  )) {
+    const orphaned = withProjectionReason(
+      projection,
+      `materialized_incomplete_slot_not_projectable:${projection.slotId ?? "unknown"}`
+    );
+    replaceProjection(orphaned);
+    projectedSessions.push(
+      summarizePersistedIncompleteProjection(orphaned, {
+        isNext: false,
+        consumeEvidence: false,
+      })
+    );
     projectionNotes.push(
-      `Generation-centric projection ignored persisted incomplete workout ${nextWorkoutContext.existingWorkoutId ?? "unknown"} and projected remaining current-week advancing slots from canonical performed runtime state only.`
+      `Persisted incomplete workout ${orphaned.workoutId} did not map to a remaining runtime slot and remains fail-closed.`
     );
   }
+  projectedSessions.push(...nonAdvancingIncompleteSessions);
+
+  const volumeByCategory = buildVolumeByCategory({
+    completedVolumeByMuscle,
+    projectedSessions,
+  });
 
   return {
     currentWeek: {
@@ -575,13 +1036,16 @@ export async function loadProjectedWeekVolumeReport(input: {
       blockType: mapped.cycleContext.blockType,
     },
     projectionNotes,
-    completedVolumeByMuscle: toProjectedWeekVolumeByMuscle(completedVolume),
+    completedVolumeByMuscle,
+    volumeByCategory,
+    incompleteWorkoutProjections,
     projectedSessions,
     fullWeekByMuscle: buildFullWeekRows({
       activeMesocycle,
       week: currentWeek,
-      completedVolumeByMuscle: toProjectedWeekVolumeByMuscle(completedVolume),
+      completedVolumeByMuscle,
       projectedSessions,
+      volumeByCategory,
       includeImplicitRows: plannerDiagnosticsMode === "debug",
     }),
   };

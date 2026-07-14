@@ -155,6 +155,7 @@ export async function loadMesocycleWeekMuscleVolume(
     targetWeek: number;
     weekStart: Date;
     excludeWorkoutId?: string;
+    excludeWorkoutIds?: readonly string[];
     performedBefore?: Date;
     includeBreakdowns?: boolean;
   }
@@ -167,7 +168,11 @@ export async function loadMesocycleWeekMuscleVolume(
       userId: input.userId,
       mesocycleId: input.mesocycleId,
       status: { in: [...PERFORMED_WORKOUT_STATUSES] as WorkoutStatus[] },
-      ...(input.excludeWorkoutId ? { id: { not: input.excludeWorkoutId } } : {}),
+      ...(input.excludeWorkoutIds?.length
+        ? { id: { notIn: [...input.excludeWorkoutIds] } }
+        : input.excludeWorkoutId
+          ? { id: { not: input.excludeWorkoutId } }
+          : {}),
       ...(input.performedBefore ? { scheduledDate: { lt: input.performedBefore } } : {}),
       OR: [
         { mesocycleWeekSnapshot: input.targetWeek },

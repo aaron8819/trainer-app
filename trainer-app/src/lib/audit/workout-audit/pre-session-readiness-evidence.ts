@@ -18,7 +18,22 @@ export function toPreSessionReadinessEvidence(
 export function toPreSessionReadinessProjectedWeekEvidence(
   payload: ProjectedWeekVolumeAuditPayload
 ): PreSessionReadinessProjectedWeekEvidence {
-  return payload;
+  return {
+    ...payload,
+    volumeByCategory: payload.volumeByCategory ?? {
+      completedPerformed: Object.fromEntries(
+        Object.entries(payload.completedVolumeByMuscle).map(([muscle, row]) => [
+          muscle,
+          row.effectiveSets,
+        ])
+      ),
+      incompletePerformed: {},
+      incompleteRemaining: {},
+      unmaterializedFutureProjected: {},
+    },
+    incompleteWorkoutProjections:
+      payload.incompleteWorkoutProjections ?? [],
+  };
 }
 
 export function toPreSessionReadinessWeeklyRetroEvidence(

@@ -515,7 +515,10 @@ function buildDecision(input: {
     muscle: input.row.muscle,
     status: "not_needed",
     evidence: {
-      performedEffectiveSets: roundToTenth(input.row.completedEffectiveSets),
+      performedEffectiveSets: roundToTenth(
+        input.row.completedEffectiveSets +
+          (input.row.incompletePerformedEffectiveSets ?? 0)
+      ),
       projectedCurrentSessionEffectiveSets: roundToTenth(
         currentSession?.projectedContributionByMuscle[input.row.muscle] ?? 0
       ),

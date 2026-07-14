@@ -353,4 +353,27 @@ describe("loadMesocycleWeekMuscleVolume", () => {
       effectiveSets: 2,
     });
   });
+
+  it("excludes materialized incomplete workout identities from the performed query", async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+
+    await loadMesocycleWeekMuscleVolume(
+      { workout: { findMany } } as never,
+      {
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        targetWeek: 1,
+        weekStart: new Date("2026-03-02T00:00:00.000Z"),
+        excludeWorkoutIds: ["workout-in-progress", "workout-planned"],
+      }
+    );
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { notIn: ["workout-in-progress", "workout-planned"] },
+        }),
+      })
+    );
+  });
 });

@@ -340,24 +340,28 @@ npm run audit:week:debug
 Inspect first:
 - `projectedWeekVolume.currentWeek`
 - `projectedWeekVolume.projectionNotes`
+- `projectedWeekVolume.volumeByCategory`
+- `projectedWeekVolume.incompleteWorkoutProjections`
 - `projectedWeekVolume.projectedSessions`
 - `projectedWeekVolume.fullWeekByMuscle`
 
 Important interpretation rule:
-- this mode is intentionally generation-centric
-- if a persisted incomplete workout exists, the artifact documents that it was ignored and the report projects remaining advancing slots from canonical performed runtime state rather than trying to reuse incomplete saved-state structure
+- completed performed, incomplete performed, incomplete remaining, and unmaterialized future volume are distinct artifact categories
+- a persisted incomplete workout is projected only from its materialized exercises/sets, performed logs, frozen stimulus snapshots, receipt semantics, and persisted runtime-edit ledger
+- current catalog mappings, accepted seed shape, planner intent, and V2 diagnostics are not inputs to that immutable adapter
+- unreliable evidence remains visible with reasons and contributes no trusted projected volume; closure and downstream projections fail closed
 
 Common red flags:
 - projected session order does not match runtime slot order
 - `projectedSessions[0].isNext` does not align with the expected next advancing slot
 - `fullWeekByMuscle` suggests major under-target or over-MAV outcomes that contradict the chained projected sessions
 - support, secondary, or implicit rows are interpreted as hard blocking target failures rather than tiered readout context; hard warning buckets should come from Tier A primary-driver rows only
-- projection notes indicate an ignored incomplete workout when you expected saved-state continuation
+- an incomplete projection reports `status=unreliable`, unexpected snapshot versions, ambiguous runtime-edit attribution, or evidence reasons
 
 Escalate when:
 - runtime slot order looks wrong for ordered-flexible repeated intents
 - projected later sessions appear to ignore earlier projected-slot contributions
-- a saved incomplete workout is the real source of truth you need, since this mode intentionally does not redesign around that case
+- a materialized workout cannot be reconciled to a unique runtime slot or supported edit history
 
 ### `current-week-audit`
 
@@ -1073,7 +1077,7 @@ Escalate when:
 6. Read `projectionNotes` before interpreting the rest.
 7. Scan `projectedSessions` in order and confirm slot ids/intents look right.
 8. Read `fullWeekByMuscle` for projected full-week target / MEV / MAV comparisons.
-9. Escalate if slot order, chaining, or the generation-centric incomplete-workout note makes the answer insufficient.
+9. Escalate if slot order, chaining, or immutable incomplete-workout evidence is unreliable or insufficient.
 
 ### Current-week pre-execution guidance
 1. Run `npm run audit:workout -- --env-file .env.local --mode current-week-audit --owner <owner-email>`.
@@ -1188,7 +1192,7 @@ Read these fields in this order unless the audit type says otherwise.
 ### `projectionNotes`
 - Present for `projected-week-volume` and `current-week-audit`.
 - Read this before trusting a full-week projection when runtime state contains incomplete workouts.
-- The key question is whether the report is answering the generation-centric runtime-slot question you intended to ask.
+- The key question is whether each category answers the intended evidence question: completed reality, persisted incomplete performed/remaining work, or unmaterialized future generation.
 
 ### `currentWeekAudit`
 - Present for `current-week-audit`.

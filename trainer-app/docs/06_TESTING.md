@@ -154,4 +154,6 @@ Sources of truth:
 - Run focused contract tests: `npm run test -- src/lib/stimulus-accounting/`.
 - Run save/add/swap tests for atomic snapshot creation and runtime-edit evidence.
 - Run historical reader tests to prove policy/catalog edits do not change snapshotted results.
+- Run `src/lib/api/persisted-incomplete-workout-projection.test.ts` for exact performed/remaining partitioning, optional-session behavior, runtime add/swap/remove attribution, corrupt/duplicate evidence fail-closed behavior, deterministic ordering, and Prisma relation query shape.
+- Run projected-week and closure tests together to verify explicit completed/incomplete/future categories, immutable current-session evidence, transition-race identity exclusion, the `0.5` meaningful-later threshold, and unreliable-evidence suppression.
 - Validate the additive migration and both dry-run/write backfill modes only against disposable Postgres before rollout; do not execute migrations or `--write` against the configured shared database without explicit approval.

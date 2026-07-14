@@ -15,6 +15,13 @@ function buildPayload(
     },
     projectionNotes: [],
     completedVolumeByMuscle: {},
+    volumeByCategory: {
+      completedPerformed: {},
+      incompletePerformed: {},
+      incompleteRemaining: {},
+      unmaterializedFutureProjected: {},
+    },
+    incompleteWorkoutProjections: [],
     projectedSessions: [],
     fullWeekByMuscle: [],
     ...overrides,

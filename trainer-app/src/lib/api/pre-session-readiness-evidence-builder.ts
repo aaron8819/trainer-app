@@ -175,7 +175,10 @@ function buildInterventionHints(
 }
 
 export function buildPreSessionReadinessCurrentWeekEvidence(
-  projectedWeekVolume: PreSessionReadinessProjectedWeekEvidence
+  projectedWeekVolume: Pick<
+    PreSessionReadinessProjectedWeekEvidence,
+    "fullWeekByMuscle" | "projectedSessions"
+  >
 ): {
   currentWeekAudit: PreSessionReadinessCurrentWeekAuditEvidence;
   interventionHints: PreSessionReadinessInterventionHintEvidence[];

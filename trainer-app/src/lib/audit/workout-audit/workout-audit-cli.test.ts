@@ -1217,9 +1217,63 @@ describe("buildProjectedWeekDebugSummary", () => {
       "[workout-audit:week:debug] blocking_warning[1]=projection exploded once",
       "[workout-audit:week:debug] semantic_warning[1]=planner mismatch",
       "[workout-audit:week:debug] background_warning[1]=fallback mapper used",
-      "[workout-audit:week:debug] projected_session[1] label=push@slot-1 is_next=true exercises=6 total_sets=18 top_contributors=Chest:+3.0, Triceps:+2.0",
-      "[workout-audit:week:debug] projected_session[2] label=legs@slot-2 is_next=false exercises=5 total_sets=15 top_contributors=Calves:+1.5, Chest:+0.5",
+      "[workout-audit:week:debug] projected_session[1] label=push@slot-1 is_next=true category=legacy reliable=true exercises=6 total_sets=18 performed=none remaining=none top_contributors=Chest:+3.0, Triceps:+2.0",
+      "[workout-audit:week:debug] projected_session[2] label=legs@slot-2 is_next=false category=legacy reliable=true exercises=5 total_sets=15 performed=none remaining=none top_contributors=Calves:+1.5, Chest:+0.5",
     ]);
+  });
+
+  it("prints immutable incomplete-workout category and provenance evidence", () => {
+    const projection = {
+      workoutId: "w-in-progress",
+      status: "reliable" as const,
+      workoutStatus: "IN_PROGRESS",
+      slotId: "upper_b",
+      intent: "upper",
+      scheduledDate: "2026-03-24T00:00:00.000Z",
+      mesoSessionSnapshot: 3,
+      sessionKind: "advancing" as const,
+      consumesWeeklyScheduleIntent: true,
+      countsTowardProgressionHistory: true,
+      countsTowardPerformanceHistory: true,
+      performed: { qualifyingSets: 1, contributionsByMuscle: { Chest: 1 } },
+      remaining: { qualifyingSets: 2, contributionsByMuscle: { Chest: 2 } },
+      totalProjected: { qualifyingSets: 3, contributionsByMuscle: { Chest: 3 } },
+      exercises: [],
+      evidence: {
+        source: "persisted_immutable_workout" as const,
+        snapshotVersions: [1],
+        exerciseCount: 1,
+        runtimeEditAttribution: "not_needed" as const,
+        reasons: [],
+      },
+    };
+    const summary = buildProjectedWeekDebugSummary({
+      artifact: {
+        projectedWeekVolume: {
+          version: 1,
+          currentWeek: { mesocycleId: "meso-1", week: 2, phase: "accumulation", blockType: "accumulation" },
+          projectionNotes: [],
+          completedVolumeByMuscle: {},
+          volumeByCategory: {
+            completedPerformed: { Chest: 4 },
+            incompletePerformed: { Chest: 1 },
+            incompleteRemaining: { Chest: 2 },
+            unmaterializedFutureProjected: { Quads: 3 },
+          },
+          incompleteWorkoutProjections: [projection],
+          projectedSessions: [],
+          fullWeekByMuscle: [],
+        },
+        warningSummary: { blockingErrors: [], semanticWarnings: [], backgroundWarnings: [], counts: { blockingErrors: 0, semanticWarnings: 0, backgroundWarnings: 0 } },
+      },
+    });
+
+    expect(summary).toContain(
+      "[workout-audit:week:debug] volume_categories completed=Chest:+4.0 incomplete_performed=Chest:+1.0 incomplete_remaining=Chest:+2.0 unmaterialized_future=Quads:+3.0"
+    );
+    expect(summary).toContain(
+      "[workout-audit:week:debug] incomplete_projection[1] workout=w-in-progress slot=upper_b status=reliable source=persisted_immutable_workout snapshot_versions=1 runtime_edit_attribution=not_needed reasons=none performed=Chest:+1.0 remaining=Chest:+2.0"
+    );
   });
 
   it("prints explicit none markers when there is nothing deeper to inspect", () => {

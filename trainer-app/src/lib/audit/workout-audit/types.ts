@@ -15,7 +15,9 @@ import type {
 } from "@/lib/evidence/types";
 import type { NextWorkoutContext } from "@/lib/api/next-session";
 import type {
+  ProjectedWeekVolumeCategoryTotals,
   ProjectedWeekVolumeMuscleRow,
+  ProjectedWeekVolumeReport,
   ProjectedWeekVolumeSessionSummary,
 } from "@/lib/api/projected-week-volume";
 import type { RuntimeDoseAdjustmentDiagnostic } from "@/lib/api/runtime-dose-guidance";
@@ -695,6 +697,8 @@ export type ProjectedWeekVolumeAuditPayload = {
       effectiveSets: number;
     }
   >;
+  volumeByCategory?: ProjectedWeekVolumeCategoryTotals;
+  incompleteWorkoutProjections?: ProjectedWeekVolumeReport["incompleteWorkoutProjections"];
   projectedSessions: ProjectedWeekVolumeSessionSummary[];
   fullWeekByMuscle: ProjectedWeekVolumeMuscleRow[];
   currentWeekAudit?: CurrentWeekAuditEvaluation;

@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
   const generateDeloadSessionFromIntentContext = vi.fn();
   const finalizeDeloadSessionResult = vi.fn();
   const getEffectiveStimulusByMuscle = vi.fn();
+  const loadPersistedIncompleteWorkoutProjections = vi.fn();
 
   return {
     mesocycleFindFirst,
@@ -31,6 +32,7 @@ const mocks = vi.hoisted(() => {
     generateDeloadSessionFromIntentContext,
     finalizeDeloadSessionResult,
     getEffectiveStimulusByMuscle,
+    loadPersistedIncompleteWorkoutProjections,
     prisma: {
       mesocycle: {
         findFirst: mesocycleFindFirst,
@@ -56,6 +58,11 @@ vi.mock("./template-session/context-loader", () => ({
 vi.mock("./weekly-volume", () => ({
   loadMesocycleWeekMuscleVolume: (...args: unknown[]) =>
     mocks.loadMesocycleWeekMuscleVolume(...args),
+}));
+
+vi.mock("./persisted-incomplete-workout-projection", () => ({
+  loadPersistedIncompleteWorkoutProjections: (...args: unknown[]) =>
+    mocks.loadPersistedIncompleteWorkoutProjections(...args),
 }));
 
 vi.mock("./next-session", () => ({
@@ -165,9 +172,52 @@ function buildWorkoutWithSetCounts(input: {
   };
 }
 
+function buildIncompleteProjection() {
+  return {
+    workoutId: "w-in-progress",
+    status: "reliable",
+    scheduledDate: new Date("2026-03-24T00:00:00.000Z"),
+    slotId: "upper_b",
+    intent: "upper",
+    mesoSessionSnapshot: 3,
+    consumesWeeklyScheduleIntent: true,
+    countsTowardProgressionHistory: true,
+    countsTowardPerformanceHistory: true,
+    performed: { qualifyingSets: 1, contributionsByMuscle: { Chest: 1 } },
+    remaining: { qualifyingSets: 1, contributionsByMuscle: { Chest: 1 } },
+    totalProjected: { qualifyingSets: 2, contributionsByMuscle: { Chest: 2 } },
+    exercises: [
+      {
+        workoutExerciseId: "we-chest",
+        exerciseId: "Chest",
+        exerciseName: "Chest",
+        section: "MAIN",
+        primaryMuscles: ["Chest"],
+        movementPatterns: [],
+        performed: { qualifyingSets: 1, contributionsByMuscle: { Chest: 1 } },
+        remaining: { qualifyingSets: 1, contributionsByMuscle: { Chest: 1 } },
+        totalProjected: { qualifyingSets: 2, contributionsByMuscle: { Chest: 2 } },
+        projectedSets: [
+          { setIndex: 1, category: "performed", targetReps: 8, targetRpe: 8, targetLoad: 100 },
+          { setIndex: 2, category: "remaining", targetReps: 8, targetRpe: 8, targetLoad: 100 },
+        ],
+        evidenceReliable: true,
+        evidenceReasons: [],
+      },
+    ],
+    evidence: {
+      source: "persisted_workout_snapshot",
+      snapshotVersions: [1],
+      runtimeEditAttribution: "not_needed",
+      reasons: [],
+    },
+  };
+}
+
 describe("loadProjectedWeekVolumeReport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.loadPersistedIncompleteWorkoutProjections.mockResolvedValue([]);
 
     mocks.mesocycleFindFirst.mockResolvedValue({
       id: "meso-1",
@@ -238,8 +288,8 @@ describe("loadProjectedWeekVolumeReport", () => {
       Quads: { directSets: 3, indirectSets: 0, effectiveSets: 3 },
     });
     mocks.loadNextWorkoutContext.mockResolvedValue({
-      source: "existing_incomplete",
-      existingWorkoutId: "w-in-progress",
+      source: "derived",
+      existingWorkoutId: null,
     });
     mocks.deriveCurrentMesocycleSession.mockReturnValue({
       week: 1,
@@ -298,6 +348,24 @@ describe("loadProjectedWeekVolumeReport", () => {
   });
 
   it("chains remaining slots in runtime order and separates completed vs projected full-week totals", async () => {
+    mocks.loadNextWorkoutContext.mockResolvedValueOnce({
+      source: "existing_incomplete",
+      existingWorkoutId: "w-in-progress",
+    });
+    mocks.loadPersistedIncompleteWorkoutProjections.mockResolvedValueOnce([
+      buildIncompleteProjection(),
+    ]);
+    mocks.generateSessionFromMappedContext.mockReset();
+    mocks.generateSessionFromMappedContext.mockReturnValueOnce({
+      workout: buildWorkout(["Quads"]),
+      selection: {},
+      selectionMode: "INTENT",
+      sessionIntent: "lower",
+      sraWarnings: [],
+      substitutions: [],
+      volumePlanByMuscle: {},
+    });
+
     const report = await loadProjectedWeekVolumeReport({
       userId: "user-1",
       plannerDiagnosticsMode: "debug",
@@ -310,7 +378,7 @@ describe("loadProjectedWeekVolumeReport", () => {
       blockType: "accumulation",
     });
     expect(report.projectionNotes).toEqual([
-      "Generation-centric projection ignored persisted incomplete workout w-in-progress and projected remaining current-week advancing slots from canonical performed runtime state only.",
+      "Projected persisted incomplete workout w-in-progress from immutable materialized sets, frozen stimulus snapshots, and performed logs.",
     ]);
     expect(report.projectedSessions.map((session) => session.slotId)).toEqual([
       "upper_b",
@@ -320,17 +388,9 @@ describe("loadProjectedWeekVolumeReport", () => {
       true,
       false,
     ]);
+    expect(mocks.generateSessionFromMappedContext).toHaveBeenCalledTimes(1);
     expect(mocks.generateSessionFromMappedContext).toHaveBeenNthCalledWith(
       1,
-      expect.any(Object),
-      expect.objectContaining({
-        intent: "upper",
-        slotId: "upper_b",
-        plannerDiagnosticsMode: "debug",
-      })
-    );
-    expect(mocks.generateSessionFromMappedContext).toHaveBeenNthCalledWith(
-      2,
       expect.any(Object),
       expect.objectContaining({
         intent: "lower",
@@ -343,29 +403,33 @@ describe("loadProjectedWeekVolumeReport", () => {
       Chest: { directSets: 4, indirectSets: 0, effectiveSets: 4 },
       Quads: { directSets: 3, indirectSets: 0, effectiveSets: 3 },
     });
-    expect(report.projectedSessions).toEqual([
+    expect(report.projectedSessions).toMatchObject([
       {
+        workoutId: "w-in-progress",
         slotId: "upper_b",
         intent: "upper",
         isNext: true,
         availability: "available",
-        evidenceSource: "current_policy_projection",
-        evidenceReliable: false,
+        evidenceSource: "immutable_workout_snapshot",
+        evidenceReliable: true,
+        projectionCategory: "persisted_incomplete",
+        performedContributionByMuscle: { Chest: 1 },
+        remainingContributionByMuscle: { Chest: 1 },
         exerciseCount: 1,
-        totalSets: 1,
+        totalSets: 2,
         exercises: [
           {
             exerciseId: "Chest",
             name: "Chest",
-            setCount: 1,
+            setCount: 2,
             role: "primary",
             movementPatterns: [],
-            effectiveStimulusByMuscle: { Chest: 1 },
+            effectiveStimulusByMuscle: { Chest: 2 },
           },
         ],
-        estimatedMinutes: 45,
+        estimatedMinutes: null,
         movementPatternCounts: {},
-        projectedContributionByMuscle: { Chest: 1 },
+        projectedContributionByMuscle: { Chest: 2 },
       },
       {
         slotId: "lower_b",
@@ -374,6 +438,7 @@ describe("loadProjectedWeekVolumeReport", () => {
         availability: "available",
         evidenceSource: "current_policy_projection",
         evidenceReliable: true,
+        projectionCategory: "unmaterialized_future",
         exerciseCount: 1,
         totalSets: 1,
         exercises: [
@@ -402,11 +467,13 @@ describe("loadProjectedWeekVolumeReport", () => {
       warningSeverity: "hard",
       dashboardGroup: "primary_driver",
       completedEffectiveSets: 4,
-      projectedNextSessionEffectiveSets: 1,
+      incompletePerformedEffectiveSets: 1,
+      incompleteRemainingEffectiveSets: 1,
+      projectedNextSessionEffectiveSets: 2,
       projectedRemainingWeekEffectiveSets: 0,
-      projectedFullWeekEffectiveSets: 5,
+      projectedFullWeekEffectiveSets: 6,
       weeklyTarget: 10,
-      deltaToTarget: -5,
+      deltaToTarget: -4,
     });
     expect(quadsRow).toMatchObject({
       targetTier: "A_PRIMARY",

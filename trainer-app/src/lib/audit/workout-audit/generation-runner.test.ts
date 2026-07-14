@@ -657,6 +657,22 @@ describe("runWorkoutAuditGeneration", () => {
     mocks.loadActiveMesocycle.mockResolvedValue({
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",
+      currentSeedRevision: {
+        id: "seed-revision-1",
+        revision: 1,
+        payloadHash: "seed-hash-1",
+        provenanceStatus: "exact",
+      },
+      seedRevisions: [{
+        id: "seed-revision-1",
+        revision: 1,
+        payloadHash: "seed-hash-1",
+        provenanceStatus: "exact",
+        creationReason: "handoff_acceptance",
+        actorSource: "test",
+        sourceRevisionId: null,
+        activatedAt: new Date("2026-04-01T00:00:00.000Z"),
+      }],
       slotPlanSeedJson: {
         version: 1,
         source: "handoff_slot_plan_projection",
@@ -678,6 +694,11 @@ describe("runWorkoutAuditGeneration", () => {
           sessionProvenance: {
             mesocycleId: "meso-1",
             compositionSource: "persisted_slot_plan_seed",
+            seedProvenance: {
+              revisionId: "seed-revision-1",
+              revision: 1,
+              hash: "seed-hash-1",
+            },
           },
         },
       },

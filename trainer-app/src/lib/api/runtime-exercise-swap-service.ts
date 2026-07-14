@@ -37,6 +37,7 @@ type SwapWorkoutRecord = {
   selectionMetadata: unknown;
   selectionMode: string | null;
   sessionIntent: string | null;
+  seedRevision?: { seedPayload: unknown } | null;
   mesocycle?: { slotPlanSeedJson: unknown } | null;
   exercises?: Array<{ id: string; exerciseId: string }>;
 };
@@ -204,7 +205,10 @@ function mapSourceSwapProfile(context: SwapContext): RuntimeExerciseSwapProfile 
     isMainLift: context.workoutExercise.isMainLift,
   });
   const receipt = readSessionDecisionReceipt(context.workout.selectionMetadata);
-  const seed = parseSlotPlanSeedJson(context.workout.mesocycle?.slotPlanSeedJson);
+  const seed = parseSlotPlanSeedJson(
+    context.workout.seedRevision?.seedPayload ??
+      context.workout.mesocycle?.slotPlanSeedJson,
+  );
   const receiptSlotId = receipt?.sessionSlot?.slotId;
   const seedSlot =
     (receiptSlotId
@@ -365,6 +369,9 @@ async function loadRuntimeExerciseSwapContext(input: {
       selectionMetadata: true,
       selectionMode: true,
       sessionIntent: true,
+      seedRevision: {
+        select: { seedPayload: true },
+      },
       mesocycle: {
         select: {
           slotPlanSeedJson: true,

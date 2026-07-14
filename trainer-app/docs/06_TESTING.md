@@ -23,6 +23,8 @@ Sources of truth:
 
 ## Commands
 - `npm test`: full Vitest run
+- `npm run test:seed-revision-concurrency -- --confirm-disposable`: against a local disposable PostgreSQL database, verifies one-winner concurrent correction, generation/correction revision preservation, and full rollback after a failed correction. The command refuses non-local or unconfirmed targets.
+- Immutable seed changes require focused revision/receipt/save/runtime/audit tests, `npm run verify:contracts`, `npm run verify`, and a real `prisma migrate deploy` on disposable PostgreSQL.
 - `npm run lint`: ESLint with cache at `.eslintcache`; generated/local-only outputs such as `artifacts/`, `.tmp/`, `.vercel/`, `output/`, `playwright-report/`, and `test-results/` are ignored by ESLint
 - `npm run test:ui-audit`: Playwright core-route UI audit plus lightweight fixture-backed interaction checks against mobile and desktop projects
 - `npm run test:ui-audit:update`: update Playwright baseline screenshots after an intentional visual/UI baseline change

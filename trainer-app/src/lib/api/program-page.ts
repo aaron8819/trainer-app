@@ -1382,6 +1382,7 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
         state: true,
         slotSequenceJson: true,
         slotPlanSeedJson: true,
+        currentSeedRevision: { select: { seedPayload: true } },
         macroCycle: {
           select: { startDate: true },
         },
@@ -1389,6 +1390,10 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
     }),
     loadNextWorkoutContext(userId),
   ]);
+  if (activeMesocycle?.currentSeedRevision?.seedPayload) {
+    activeMesocycle.slotPlanSeedJson =
+      activeMesocycle.currentSeedRevision.seedPayload;
+  }
 
   const overview = buildProgramPageOverview(dashboard);
   const rawRelevantWeekClose = activeMesocycle

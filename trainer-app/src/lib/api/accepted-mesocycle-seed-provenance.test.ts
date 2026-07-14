@@ -242,6 +242,69 @@ describe("evaluateAcceptedMesocycleSeedProvenance", () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it("preserves an older workout revision after a later correction becomes current", () => {
+    const result = evaluateAcceptedMesocycleSeedProvenance({
+      mesocycleId: "meso-1",
+      mesocycleState: "ACTIVE_ACCUMULATION",
+      slotPlanSeedJson: setAwareSeed(),
+      receiptCompositionSource: "persisted_slot_plan_seed",
+      receiptSeedProvenance: {
+        revisionId: "seed-revision-1",
+        revision: 1,
+        hash: "hash-1",
+      },
+      currentRevision: {
+        id: "seed-revision-2",
+        revision: 2,
+        payloadHash: "hash-2",
+        provenanceStatus: "exact",
+      },
+      revisionHistory: [
+        {
+          id: "seed-revision-1",
+          revision: 1,
+          payloadHash: "hash-1",
+          provenanceStatus: "exact",
+          creationReason: "handoff_acceptance",
+          actorSource: "test",
+          sourceRevisionId: null,
+          activatedAt: "2026-04-01T00:00:00.000Z",
+        },
+        {
+          id: "seed-revision-2",
+          revision: 2,
+          payloadHash: "hash-2",
+          provenanceStatus: "exact",
+          creationReason: "corrective_reseed",
+          actorSource: "test",
+          sourceRevisionId: "seed-revision-1",
+          activatedAt: "2026-04-02T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(result.status).toBe("valid");
+    expect(warningCodes(result)).not.toContain("RECEIPT_SEED_PROVENANCE_MISMATCH");
+  });
+
+  it("flags an exact revision whose normalized payload no longer matches its stored hash", () => {
+    const result = evaluateAcceptedMesocycleSeedProvenance({
+      mesocycleId: "meso-1",
+      mesocycleState: "ACTIVE_ACCUMULATION",
+      slotPlanSeedJson: setAwareSeed(),
+      currentRevision: {
+        id: "seed-revision-1",
+        revision: 1,
+        seedPayload: setAwareSeed(),
+        payloadHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        provenanceStatus: "exact",
+      },
+    });
+
+    expect(result.status).toBe("invalid");
+    expect(warningCodes(result)).toContain("REVISION_PAYLOAD_HASH_MISMATCH");
+  });
+
   it("stays read-only and outside generation, materialization, and runtime consumption paths", () => {
     const helperPath = path.join(
       process.cwd(),

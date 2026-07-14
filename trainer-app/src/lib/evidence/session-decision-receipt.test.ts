@@ -433,6 +433,38 @@ describe("readSessionDecisionReceipt", () => {
     expect(receipt?.cycleContext.weekInMeso).toBe(2);
   });
 
+  it("round-trips exact immutable seed provenance in receipt version 2", () => {
+    const receipt = buildSessionDecisionReceipt({
+      cycleContext: {
+        weekInMeso: 2,
+        weekInBlock: 2,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      sessionProvenance: {
+        mesocycleId: "meso-1",
+        compositionSource: "persisted_slot_plan_seed",
+        seedProvenance: {
+          revisionId: "revision-2",
+          revision: 2,
+          hash: "a".repeat(64),
+        },
+      },
+    });
+
+    expect(receipt.version).toBe(2);
+    expect(
+      readSessionDecisionReceipt({ sessionDecisionReceipt: receipt })
+        ?.sessionProvenance?.seedProvenance,
+    ).toEqual({
+      revisionId: "revision-2",
+      revision: 2,
+      hash: "a".repeat(64),
+    });
+  });
+
   it("defaults to standard diagnostics mode and strips closure candidate trace", () => {
     const receipt = buildSessionDecisionReceipt({
       cycleContext: {

@@ -224,6 +224,11 @@ export type WorkoutAuditGenerationProvenanceSummary = {
   receiptProvenance: {
     mesocycleId: string | null;
     compositionSource: SessionCompositionSource | null;
+    seedProvenance: {
+      revisionId: string;
+      revision: number;
+      hash: string;
+    } | null;
   };
   auditOnly: {
     generationPath: WorkoutAuditGenerationPath | null;
@@ -251,6 +256,13 @@ export type HistoricalWeekAuditSession = {
   snapshotSource: "persisted" | "reconstructed_saved_only";
   sessionSnapshot: SessionAuditSnapshot;
   canonicalSemantics: AuditCanonicalSemantics;
+  seedProvenance?: {
+    status: "exact" | "legacy_unknown" | "missing";
+    revisionId: string | null;
+    revision: number | null;
+    hash: string | null;
+    receiptAgreement: "match" | "mismatch" | "unavailable";
+  };
   progressionEvidence: {
     countsTowardProgressionHistory: boolean;
     countsTowardPerformanceHistory: boolean;
@@ -297,6 +309,12 @@ export type HistoricalWeekAuditPayload = {
     persistedSnapshotCount: number;
     reconstructedSnapshotCount: number;
     mutationDriftCount: number;
+    exactSeedProvenanceCount?: number;
+    legacyUnknownSeedProvenanceCount?: number;
+    missingSeedProvenanceCount?: number;
+    receiptSeedProvenanceMatchCount?: number;
+    receiptSeedProvenanceMismatchCount?: number;
+    receiptSeedProvenanceUnavailableCount?: number;
     statusCounts: Record<string, number>;
     intentCounts: Record<string, number>;
   };
@@ -832,6 +850,20 @@ export type ActiveMesocycleSlotReseedAuditPayload = {
     week: number;
     splitType: string;
     targetSlotIds: string[];
+    seedProvenance?: {
+      status: "exact" | "legacy_unknown" | "missing";
+      currentRevisionId: string | null;
+      currentRevision: number | null;
+      currentHash: string | null;
+      history: Array<{
+        revisionId: string;
+        revision: number;
+        hash: string | null;
+        creationReason: string;
+        actorSource: string | null;
+        sourceRevisionId: string | null;
+      }>;
+    };
   };
   executiveSummary: string[];
   persistedSeedResolution: AuditBasisDescriptor;

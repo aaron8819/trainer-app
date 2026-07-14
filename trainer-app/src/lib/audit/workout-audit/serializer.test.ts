@@ -1385,6 +1385,7 @@ describe("buildWorkoutAuditArtifact", () => {
       receiptProvenance: {
         mesocycleId: "meso-1",
         compositionSource: "persisted_slot_plan_seed",
+        seedProvenance: null,
       },
       auditOnly: {
         generationPath: {
@@ -1444,6 +1445,7 @@ describe("buildWorkoutAuditArtifact", () => {
       receiptProvenance: {
         mesocycleId: null,
         compositionSource: null,
+        seedProvenance: null,
       },
       auditOnly: {
         generationPath: {

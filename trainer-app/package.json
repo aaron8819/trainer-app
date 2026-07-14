@@ -22,6 +22,8 @@
         "verify:exercise-library": "tsx scripts/verify-exercise-library.ts",
         "audit:workout": "tsx scripts/workout-audit.ts",
         "ops:refresh-next-seed-draft": "tsx scripts/ops-refresh-next-seed-draft.ts",
+    "ops:backfill-seed-revisions": "tsx scripts/backfill-immutable-seed-revisions.ts",
+    "test:seed-revision-concurrency": "tsx scripts/verify-seed-revision-concurrency.ts",
         "audit:mesocycle-explain:compare": "tsx scripts/audit-mesocycle-explain-compare.ts",
         "audit:week": "tsx scripts/workout-audit.ts --env-file .env.local --mode projected-week-volume",
         "audit:week:debug": "tsx scripts/workout-audit.ts --env-file .env.local --mode projected-week-volume --operator-debug",

@@ -424,6 +424,10 @@ model Workout {
   // Mesocycle lifecycle context (nullable for backward compat)
   mesocycleId            String?
   mesocycle              Mesocycle?      @relation(fields: [mesocycleId], references: [id], onDelete: SetNull)
+  seedRevisionId         String?
+  seedRevision           MesocycleSeedRevision? @relation("WorkoutSeedRevision", fields: [seedRevisionId], references: [id], onDelete: Restrict)
+  seedRevisionNumber     Int?
+  seedPayloadHash        String?
   mesocyclePhaseSnapshot MesocyclePhase?
   mesocycleWeekSnapshot  Int?
   mesoSessionSnapshot    Int?
@@ -441,6 +445,7 @@ model Workout {
   @@index([userId, scheduledDate])
   @@index([trainingBlockId])
   @@index([mesocycleId])
+  @@index([seedRevisionId])
 }
 
 model WorkoutExercise {
@@ -643,9 +648,12 @@ model Mesocycle {
   nextSeedDraftJson             Json?
   slotSequenceJson              Json?
   slotPlanSeedJson              Json?
+  currentSeedRevisionId         String?                  @unique
+  currentSeedRevision           MesocycleSeedRevision?   @relation("CurrentSeedRevision", fields: [currentSeedRevisionId], references: [id], onDelete: Restrict)
 
   blocks        TrainingBlock[]
   workouts      Workout[]
+  seedRevisions MesocycleSeedRevision[] @relation("MesocycleSeedRevisions")
   exerciseRoles MesocycleExerciseRole[]
   weekCloses    MesocycleWeekClose[]
   preSessionReadinessSnapshots PreSessionReadinessSnapshot[]
@@ -655,6 +663,31 @@ model Mesocycle {
   @@index([macroCycleId, isActive])
   @@index([macroCycleId, isActive, state])
   @@index([macroCycleId, state])
+}
+
+model MesocycleSeedRevision {
+  id                 String   @id @default(uuid())
+  mesocycleId        String
+  mesocycle          Mesocycle @relation("MesocycleSeedRevisions", fields: [mesocycleId], references: [id], onDelete: Restrict)
+  revision           Int
+  seedPayload        Json
+  payloadHash        String?
+  hashAlgorithm      String?
+  provenanceStatus   String
+  creationReason     String
+  actorSource        String?
+  sourceRevisionId   String?
+  sourceRevision     MesocycleSeedRevision? @relation("SeedRevisionDerivation", fields: [sourceRevisionId], references: [id], onDelete: Restrict)
+  derivedRevisions   MesocycleSeedRevision[] @relation("SeedRevisionDerivation")
+  activatedAt        DateTime @default(now())
+  createdAt          DateTime @default(now())
+  currentForMesocycle Mesocycle? @relation("CurrentSeedRevision")
+  workouts           Workout[] @relation("WorkoutSeedRevision")
+
+  @@unique([mesocycleId, revision])
+  @@unique([mesocycleId, payloadHash])
+  @@index([sourceRevisionId])
+  @@index([mesocycleId, activatedAt])
 }
 
 model MesocycleWeekClose {

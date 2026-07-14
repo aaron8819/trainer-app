@@ -64,6 +64,7 @@ import {
 import { buildMesocycleSlotSequence } from "./mesocycle-slot-contract";
 import { getLatestReadinessSignalForReader } from "./readiness";
 import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
+import { createInitialAcceptedSeedRevisionInTransaction } from "./mesocycle-seed-revision";
 import { loadPreloadedGenerationSnapshot } from "./template-session/context-loader";
 import {
   normalizeLiveInventoryForV2Materialization,
@@ -1580,12 +1581,19 @@ async function repairAcceptedSuccessorSeedInTransaction(
     return successor;
   }
 
-  return tx.mesocycle.update({
+  const updated = await tx.mesocycle.update({
     where: { id: successor.id },
     data: {
       slotPlanSeedJson: prepared.slotPlanSeed as Prisma.InputJsonValue,
     },
   });
+  await createInitialAcceptedSeedRevisionInTransaction(tx, {
+    mesocycleId: successor.id,
+    seedPayload: prepared.slotPlanSeed,
+    creationReason: "accepted_successor_seed_repair",
+    actorSource: "mesocycle_handoff",
+  });
+  return updated;
 }
 
 async function findAnySuccessorForRefresh(
@@ -1817,6 +1825,14 @@ export async function acceptPreparedMesocycleHandoffWithProvenanceInTransaction(
         : {}),
     },
   });
+  if (slotPlanSeed) {
+    await createInitialAcceptedSeedRevisionInTransaction(tx, {
+      mesocycleId: next.id,
+      seedPayload: slotPlanSeed,
+      creationReason: "mesocycle_handoff_acceptance",
+      actorSource: "mesocycle_handoff",
+    });
+  }
 
   await tx.mesocycle.updateMany({
     where: {

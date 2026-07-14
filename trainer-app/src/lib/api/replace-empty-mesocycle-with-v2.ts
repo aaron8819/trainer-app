@@ -20,6 +20,7 @@ import {
   type BuildV2MaterializedSeedForAcceptanceInput,
   type BuildV2MaterializedSeedForAcceptanceResult,
 } from "./mesocycle-handoff-v2-materialized-seed";
+import { createCorrectiveSeedRevisionInTransaction } from "./mesocycle-seed-revision";
 import {
   buildMesocycleSlotSequence,
   resolveMesocycleSlotContract,
@@ -106,6 +107,7 @@ type ReplacementMesocycleRow = {
   deloadSessionsCompleted: number;
   slotSequenceJson: unknown;
   slotPlanSeedJson: unknown;
+  currentSeedRevision?: { seedPayload: unknown } | null;
   macroCycle: {
     userId: string;
     user: {
@@ -440,6 +442,7 @@ async function inspectEmptyReplacementSafety(
       deloadSessionsCompleted: true,
       slotSequenceJson: true,
       slotPlanSeedJson: true,
+      currentSeedRevision: { select: { seedPayload: true } },
       macroCycle: {
         select: {
           userId: true,
@@ -450,6 +453,9 @@ async function inspectEmptyReplacementSafety(
       },
     },
   });
+  if (mesocycle?.currentSeedRevision?.seedPayload) {
+    mesocycle.slotPlanSeedJson = mesocycle.currentSeedRevision.seedPayload;
+  }
 
   if (!mesocycle) {
     return {
@@ -945,13 +951,15 @@ export async function replaceEmptyMesocycleWithV2(
       stableJson(current.mesocycle.slotPlanSeedJson) !==
       stableJson(v2Preparation.candidateSlotPlanSeedJson);
     if (dbWriteOccurred) {
-      await (tx as unknown as ReplacementTx).mesocycle.update({
-        where: { id: current.mesocycle.id },
-        data: {
-          slotPlanSeedJson:
-            v2Preparation.candidateSlotPlanSeedJson as Prisma.InputJsonValue,
+      await createCorrectiveSeedRevisionInTransaction(
+        tx as Prisma.TransactionClient,
+        {
+          mesocycleId: current.mesocycle.id,
+          seedPayload: v2Preparation.candidateSlotPlanSeedJson,
+          creationReason: "empty_active_mesocycle_v2_correction",
+          actorSource: "replace_empty_mesocycle_with_v2",
         },
-      });
+      );
     }
 
     return {

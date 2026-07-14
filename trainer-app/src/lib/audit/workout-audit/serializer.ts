@@ -177,6 +177,7 @@ function buildGenerationProvenanceSummary(input: {
     receiptProvenance: {
       mesocycleId: receiptProvenance?.mesocycleId ?? null,
       compositionSource: receiptProvenance?.compositionSource ?? null,
+      seedProvenance: receiptProvenance?.seedProvenance ?? null,
     },
     auditOnly: {
       generationPath: input.generationPath ?? null,

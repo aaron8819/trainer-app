@@ -5,6 +5,7 @@ import {
   parseSlotPlanSeedJson,
   type ParsedSlotPlanSeed,
 } from "./slot-plan-seed-parser";
+import { createCorrectiveSeedRevisionInTransaction } from "./mesocycle-seed-revision";
 
 const RECOVERY_SOURCE = "persisted_accepted_seed_draft_successor_recovery";
 const REPLACEMENT_SOURCE_PATH =
@@ -59,6 +60,7 @@ type RecoveryMesocycleRow = {
   deloadSessionsCompleted: number;
   slotSequenceJson?: unknown;
   slotPlanSeedJson?: unknown;
+  currentSeedRevision?: { seedPayload: unknown } | null;
   nextSeedDraftJson?: unknown;
   macroCycle: {
     userId: string;
@@ -193,7 +195,7 @@ export type AcceptedSeedDraftSuccessorRecoveryResult = {
     eligible: boolean;
     dbWriteOccurred: boolean;
     transactionStatus: "not_requested" | "no_write" | "success";
-    updatedFields: ["slotPlanSeedJson"] | [];
+    updatedFields: ["currentSeedRevisionId"] | [];
   };
   safety: {
     liveDbMutated: boolean;
@@ -428,6 +430,7 @@ async function loadMesocyclePair(
     deloadSessionsCompleted: true,
     slotSequenceJson: true,
     slotPlanSeedJson: true,
+    currentSeedRevision: { select: { seedPayload: true } },
     nextSeedDraftJson: true,
     macroCycle: {
       select: {
@@ -453,6 +456,13 @@ async function loadMesocyclePair(
       select,
     }),
   ]);
+
+  if (sourceMesocycle?.currentSeedRevision?.seedPayload) {
+    sourceMesocycle.slotPlanSeedJson = sourceMesocycle.currentSeedRevision.seedPayload;
+  }
+  if (targetSuccessor?.currentSeedRevision?.seedPayload) {
+    targetSuccessor.slotPlanSeedJson = targetSuccessor.currentSeedRevision.seedPayload;
+  }
 
   return { sourceMesocycle, targetSuccessor };
 }
@@ -813,7 +823,7 @@ function buildResult(input: {
       eligible: verdict === "safe_to_accept_upgrade",
       dbWriteOccurred: input.dbWriteOccurred,
       transactionStatus: input.transactionStatus,
-      updatedFields: input.dbWriteOccurred ? ["slotPlanSeedJson"] : [],
+      updatedFields: input.dbWriteOccurred ? ["currentSeedRevisionId"] : [],
     },
     safety: {
       liveDbMutated: input.dbWriteOccurred,
@@ -894,13 +904,15 @@ export async function replaceEmptySuccessorFromAcceptedSeedDraft(
       };
     }
 
-    await (tx as unknown as RecoveryTx).mesocycle.update({
-      where: { id: currentInspection.targetSuccessor.id },
-      data: {
-        slotPlanSeedJson:
-          currentInspection.candidateSeedJson as Prisma.InputJsonValue,
+    await createCorrectiveSeedRevisionInTransaction(
+      tx as Prisma.TransactionClient,
+      {
+        mesocycleId: currentInspection.targetSuccessor.id,
+        seedPayload: currentInspection.candidateSeedJson,
+        creationReason: "accepted_seed_draft_successor_correction",
+        actorSource: "replace_empty_successor_from_accepted_seed_draft",
       },
-    });
+    );
 
     return {
       inspection: currentInspection,

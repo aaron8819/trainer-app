@@ -570,6 +570,15 @@ function makeAcceptanceTx(input: {
       state: "ACTIVE_ACCUMULATION",
       mesoNumber: 2,
     });
+  const mesocycleSeedRevision = {
+    create: vi.fn().mockImplementation(async ({ data }) => ({
+      id: "seed-revision-1",
+      ...data,
+      actorSource: data.actorSource ?? null,
+      sourceRevisionId: data.sourceRevisionId ?? null,
+      activatedAt: new Date("2026-04-01T00:00:00.000Z"),
+    })),
+  };
   return {
     mesocycle: {
       findUnique: vi
@@ -615,8 +624,9 @@ function makeAcceptanceTx(input: {
         .mockResolvedValueOnce(null),
       create,
       update: input.update ?? vi.fn(),
-      updateMany: input.updateMany ?? vi.fn(),
+      updateMany: input.updateMany ?? vi.fn().mockResolvedValue({ count: 1 }),
     },
+    mesocycleSeedRevision,
     trainingBlock: {
       createMany: vi.fn(),
     },
@@ -1986,6 +1996,16 @@ describe("handoff draft persistence", () => {
           findUnique: mesocycleFindUnique,
           create: mesocycleCreate,
           update: mesocycleUpdate,
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        mesocycleSeedRevision: {
+          create: vi.fn().mockImplementation(async ({ data }) => ({
+            id: "seed-revision-1",
+            ...data,
+            actorSource: data.actorSource ?? null,
+            sourceRevisionId: data.sourceRevisionId ?? null,
+            activatedAt: new Date("2026-04-01T00:00:00.000Z"),
+          })),
         },
         trainingBlock: {
           createMany: vi.fn(),
@@ -2181,7 +2201,16 @@ describe("handoff draft persistence", () => {
           mesoNumber: 2,
         }),
         update: vi.fn(),
-        updateMany: vi.fn(),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      mesocycleSeedRevision: {
+        create: vi.fn().mockImplementation(async ({ data }) => ({
+          id: "seed-revision-1",
+          ...data,
+          actorSource: data.actorSource ?? null,
+          sourceRevisionId: data.sourceRevisionId ?? null,
+          activatedAt: new Date("2026-04-01T00:00:00.000Z"),
+        })),
       },
       trainingBlock: {
         createMany: vi.fn(),
@@ -3565,6 +3594,16 @@ describe("handoff draft persistence", () => {
             findUnique: mesocycleFindUnique,
             update: mesocycleUpdate,
             create: mesocycleCreate,
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          },
+          mesocycleSeedRevision: {
+            create: vi.fn().mockImplementation(async ({ data }) => ({
+              id: "seed-revision-1",
+              ...data,
+              actorSource: data.actorSource ?? null,
+              sourceRevisionId: data.sourceRevisionId ?? null,
+              activatedAt: new Date("2026-04-01T00:00:00.000Z"),
+            })),
           },
           mesocycleExerciseRole: {
             findMany: vi.fn().mockResolvedValue([

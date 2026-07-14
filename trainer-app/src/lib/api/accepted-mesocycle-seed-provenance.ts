@@ -1,4 +1,5 @@
 import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
+import { normalizeAcceptedSeedPayload } from "./mesocycle-seed-revision";
 
 export const ACCEPTED_SEED_PROVENANCE_WARNING_CODES = [
   "SEED_SOURCE_LEGACY_WITH_V2_PLANNER_METADATA",
@@ -9,6 +10,11 @@ export const ACCEPTED_SEED_PROVENANCE_WARNING_CODES = [
   "V2_PROVENANCE_REPORTED_WITHOUT_DB_WRITE",
   "UNKNOWN_ACCEPTED_SEED_SOURCE",
   "MISSING_EXECUTABLE_SET_COUNTS",
+  "ACTIVE_MESOCYCLE_REVISION_MISSING",
+  "CURRENT_REVISION_NOT_LATEST",
+  "RECEIPT_SEED_PROVENANCE_MISSING",
+  "RECEIPT_SEED_PROVENANCE_MISMATCH",
+  "REVISION_PAYLOAD_HASH_MISMATCH",
 ] as const;
 
 export type AcceptedSeedProvenanceWarningCode =
@@ -24,6 +30,28 @@ export type AcceptedMesocycleSeedProvenanceInput = {
   mesocycleState?: string;
   slotPlanSeedJson: unknown;
   receiptCompositionSource?: string | null;
+  receiptSeedProvenance?: {
+    revisionId: string;
+    revision: number;
+    hash: string;
+  } | null;
+  currentRevision?: {
+    id: string;
+    revision: number;
+    payloadHash: string | null;
+    provenanceStatus: string;
+    seedPayload?: unknown;
+  } | null;
+  revisionHistory?: Array<{
+    id: string;
+    revision: number;
+    payloadHash: string | null;
+    provenanceStatus: string;
+    creationReason: string;
+    actorSource: string | null;
+    sourceRevisionId: string | null;
+    activatedAt: Date | string;
+  }>;
   readModelExerciseSource?: string | null;
   v2DiagnosticSignals?: {
     dbWriteOccurred?: boolean;
@@ -45,6 +73,22 @@ export type AcceptedMesocycleSeedProvenanceConsistency = {
     plannerMetadataSource?: string;
     targetSkeletonId?: string;
     executableShape: "set_aware" | "identity_only" | "missing" | "unknown";
+    provenance?: "exact" | "legacy_unknown" | "missing";
+    activeRevision?: {
+      revisionId: string;
+      revision: number;
+      hash: string | null;
+    };
+    revisionHistory?: Array<{
+      revisionId: string;
+      revision: number;
+      hash: string | null;
+      provenance: string;
+      creationReason: string;
+      actorSource: string | null;
+      sourceRevisionId: string | null;
+      activatedAt: string;
+    }>;
   };
   warnings: Array<{
     code: AcceptedSeedProvenanceWarningCode;
@@ -154,6 +198,80 @@ export function evaluateAcceptedMesocycleSeedProvenance(
     plannerMetadataSource === "v2_planner_policy" && Boolean(targetSkeletonId);
   const v2SignalsPresent = hasV2DiagnosticSignals(input.v2DiagnosticSignals);
   const warnings: Warning[] = [];
+  const currentRevision = input.currentRevision;
+  const revisionHistory = input.revisionHistory ?? [];
+
+  if (
+    input.mesocycleState?.startsWith("ACTIVE_") &&
+    seedAvailable &&
+    !currentRevision
+  ) {
+    warnings.push({
+      code: "ACTIVE_MESOCYCLE_REVISION_MISSING",
+      severity: "error",
+      evidence: `mesocycleId=${input.mesocycleId} has executable seed but no active accepted revision`,
+    });
+  }
+  const highestRevision = revisionHistory.reduce(
+    (highest, revision) => Math.max(highest, revision.revision),
+    0,
+  );
+  if (currentRevision && highestRevision > currentRevision.revision) {
+    warnings.push({
+      code: "CURRENT_REVISION_NOT_LATEST",
+      severity: "error",
+      evidence: `currentRevision=${currentRevision.revision} highestRevision=${highestRevision}`,
+    });
+  }
+  if (
+    currentRevision?.provenanceStatus === "exact" &&
+    currentRevision.payloadHash &&
+    currentRevision.seedPayload !== undefined
+  ) {
+    let normalizedHash: string | null = null;
+    try {
+      normalizedHash = normalizeAcceptedSeedPayload(currentRevision.seedPayload).hash;
+    } catch {
+      normalizedHash = null;
+    }
+    if (normalizedHash !== currentRevision.payloadHash) {
+      warnings.push({
+        code: "REVISION_PAYLOAD_HASH_MISMATCH",
+        severity: "error",
+        evidence: `revisionId=${currentRevision.id} storedHash=${currentRevision.payloadHash} normalizedHash=${normalizedHash ?? "invalid_payload"}`,
+      });
+    }
+  }
+  if (
+    input.receiptCompositionSource &&
+    RUNTIME_REPLAY_SOURCES.has(input.receiptCompositionSource) &&
+    currentRevision?.provenanceStatus === "exact" &&
+    !input.receiptSeedProvenance
+  ) {
+    warnings.push({
+      code: "RECEIPT_SEED_PROVENANCE_MISSING",
+      severity: "error",
+      evidence: `compositionSource=${input.receiptCompositionSource} currentRevision=${currentRevision.revision}`,
+    });
+  }
+  const receiptRevision = input.receiptSeedProvenance
+    ? [
+        ...(currentRevision ? [currentRevision] : []),
+        ...revisionHistory,
+      ].find((revision) => revision.id === input.receiptSeedProvenance?.revisionId)
+    : null;
+  if (
+    input.receiptSeedProvenance &&
+    (!receiptRevision ||
+      input.receiptSeedProvenance.revision !== receiptRevision.revision ||
+      input.receiptSeedProvenance.hash !== receiptRevision.payloadHash)
+  ) {
+    warnings.push({
+      code: "RECEIPT_SEED_PROVENANCE_MISMATCH",
+      severity: "error",
+      evidence: `receiptRevisionId=${input.receiptSeedProvenance.revisionId} receiptRevision=${input.receiptSeedProvenance.revision} referencedRevision=${receiptRevision?.revision ?? "missing"}`,
+    });
+  }
 
   if (legacySeedSource && plannerMetadataSource === "v2_planner_policy") {
     warnings.push({
@@ -266,6 +384,34 @@ export function evaluateAcceptedMesocycleSeedProvenance(
       ...(plannerMetadataSource ? { plannerMetadataSource } : {}),
       ...(targetSkeletonId ? { targetSkeletonId } : {}),
       executableShape: shape,
+      provenance:
+        currentRevision?.provenanceStatus === "exact"
+          ? "exact"
+          : currentRevision
+            ? "legacy_unknown"
+            : "missing",
+      ...(currentRevision
+        ? {
+            activeRevision: {
+              revisionId: currentRevision.id,
+              revision: currentRevision.revision,
+              hash: currentRevision.payloadHash,
+            },
+          }
+        : {}),
+      revisionHistory: revisionHistory.map((revision) => ({
+        revisionId: revision.id,
+        revision: revision.revision,
+        hash: revision.payloadHash,
+        provenance: revision.provenanceStatus,
+        creationReason: revision.creationReason,
+        actorSource: revision.actorSource,
+        sourceRevisionId: revision.sourceRevisionId,
+        activatedAt:
+          revision.activatedAt instanceof Date
+            ? revision.activatedAt.toISOString()
+            : revision.activatedAt,
+      })),
     },
     warnings,
   };

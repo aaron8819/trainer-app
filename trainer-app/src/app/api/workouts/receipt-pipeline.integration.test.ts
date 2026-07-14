@@ -399,7 +399,7 @@ describe("canonical session decision receipt pipeline", () => {
     const generatedIntensityScaling = generatedReadiness.intensityScaling as Record<string, unknown>;
 
     expect(generatedSelectionMetadata.cycleContext).toBeUndefined();
-    expect(generatedReceipt.version).toBe(1);
+    expect(generatedReceipt.version).toBe(2);
     expect((generatedReceipt.cycleContext as Record<string, unknown>).weekInMeso).toBe(2);
     expect(generatedReadiness.wasAutoregulated).toBe(true);
     expect(generatedIntensityScaling.exerciseIds).toEqual(["ex1"]);

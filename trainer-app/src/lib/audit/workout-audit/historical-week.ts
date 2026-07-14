@@ -8,6 +8,7 @@ import {
   readWeekCloseDeficitSnapshot,
 } from "@/lib/api/mesocycle-week-close";
 import { readWeekCloseIdFromSelectionMetadata } from "@/lib/ui/selection-metadata";
+import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import { resolveAuditCanonicalSemantics } from "./canonical-semantics";
 import type { HistoricalWeekAuditPayload, HistoricalWeekAuditSession } from "./types";
 import {
@@ -125,6 +126,9 @@ export async function buildHistoricalWeekAuditPayload(input: {
       selectionMode: true,
       sessionIntent: true,
       selectionMetadata: true,
+      seedRevisionId: true,
+      seedRevisionNumber: true,
+      seedPayloadHash: true,
       mesocycleId: true,
       mesocycleWeekSnapshot: true,
       mesoSessionSnapshot: true,
@@ -236,6 +240,24 @@ export async function buildHistoricalWeekAuditPayload(input: {
       updatesProgressionAnchor: canonicalSemantics?.updatesProgressionAnchor ?? false,
       reasonCodes: semantics?.reasons.map((reason) => reason.code) ?? [],
     };
+    const receipt = readSessionDecisionReceipt(workout.selectionMetadata);
+    const receiptSeed = receipt?.sessionProvenance?.seedProvenance;
+    const receiptUsesAcceptedSeed =
+      receipt?.sessionProvenance?.compositionSource === "persisted_slot_plan_seed" ||
+      receipt?.sessionProvenance?.compositionSource === "deload_seed_replay";
+    const hasExactWorkoutSeed = Boolean(
+      workout.seedRevisionId &&
+        workout.seedRevisionNumber != null &&
+        workout.seedPayloadHash,
+    );
+    const receiptAgreement =
+      hasExactWorkoutSeed && receiptSeed
+        ? receiptSeed.revisionId === workout.seedRevisionId &&
+          receiptSeed.revision === workout.seedRevisionNumber &&
+          receiptSeed.hash === workout.seedPayloadHash
+          ? "match"
+          : "mismatch"
+        : "unavailable";
 
     return {
       workoutId: workout.id,
@@ -252,6 +274,17 @@ export async function buildHistoricalWeekAuditPayload(input: {
         countsTowardProgressionHistory: false,
         countsTowardPerformanceHistory: false,
         updatesProgressionAnchor: false,
+      },
+      seedProvenance: {
+        status: hasExactWorkoutSeed
+          ? "exact"
+          : receiptUsesAcceptedSeed
+            ? "missing"
+            : "legacy_unknown",
+        revisionId: workout.seedRevisionId,
+        revision: workout.seedRevisionNumber,
+        hash: workout.seedPayloadHash,
+        receiptAgreement,
       },
       progressionEvidence,
       weekClose: resolveHistoricalWeekClose({
@@ -283,6 +316,12 @@ export async function buildHistoricalWeekAuditPayload(input: {
   let comparableSessionCount = 0;
   let missingGeneratedSnapshotCount = 0;
   let mutationDriftCount = 0;
+  let exactSeedProvenanceCount = 0;
+  let legacyUnknownSeedProvenanceCount = 0;
+  let missingSeedProvenanceCount = 0;
+  let receiptSeedProvenanceMatchCount = 0;
+  let receiptSeedProvenanceMismatchCount = 0;
+  let receiptSeedProvenanceUnavailableCount = 0;
 
   for (const session of sessions) {
     statusCounts[session.status] = (statusCounts[session.status] ?? 0) + 1;
@@ -308,6 +347,20 @@ export async function buildHistoricalWeekAuditPayload(input: {
     }
     if (session.reconciliation.hasDrift) {
       mutationDriftCount += 1;
+    }
+    if (session.seedProvenance?.status === "exact") {
+      exactSeedProvenanceCount += 1;
+    } else if (session.seedProvenance?.status === "missing") {
+      missingSeedProvenanceCount += 1;
+    } else {
+      legacyUnknownSeedProvenanceCount += 1;
+    }
+    if (session.seedProvenance?.receiptAgreement === "match") {
+      receiptSeedProvenanceMatchCount += 1;
+    } else if (session.seedProvenance?.receiptAgreement === "mismatch") {
+      receiptSeedProvenanceMismatchCount += 1;
+    } else {
+      receiptSeedProvenanceUnavailableCount += 1;
     }
     if (!semantics) {
       continue;
@@ -360,6 +413,12 @@ export async function buildHistoricalWeekAuditPayload(input: {
       persistedSnapshotCount,
       reconstructedSnapshotCount,
       mutationDriftCount,
+      exactSeedProvenanceCount,
+      legacyUnknownSeedProvenanceCount,
+      missingSeedProvenanceCount,
+      receiptSeedProvenanceMatchCount,
+      receiptSeedProvenanceMismatchCount,
+      receiptSeedProvenanceUnavailableCount,
       statusCounts,
       intentCounts,
     },

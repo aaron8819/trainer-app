@@ -47,6 +47,12 @@ Sources of truth:
 4. Engine returns deterministic plan/rationale outputs.
 5. API persists workout/log changes and returns response payloads.
 
+## Immutable accepted-seed flow
+
+Accepted executable seed ownership is `Mesocycle.currentSeedRevision -> MesocycleSeedRevision.seedPayload`, managed only by `src/lib/api/mesocycle-seed-revision.ts`. Acceptance creates revision 1 in the handoff transaction. A correction creates revision N+1, links `sourceRevisionId`, and advances the mesocycle pointer with an optimistic compare-and-swap; it never updates an accepted revision or rewrites the compatibility `Mesocycle.slotPlanSeedJson` field.
+
+Runtime generation loads one immutable revision, composes only from its executable `exerciseId`, `role`, and `setCount` fields, and stamps that exact revision id/number/hash into `sessionDecisionReceipt.sessionProvenance.seedProvenance`. Save validates those values against the revision row and persists them on `Workout`. A later correction changes only future generation: already materialized workouts continue to reference their original revision.
+
 ## Muscle policy boundary
 - `src/lib/engine/muscle-policy.ts` is the version-controlled authority for supported muscle identity, display names, volume landmarks (MV/MEV/MAV/MRV), and default SRA hours. Stable `MuscleId` values key the policy; display names are labels and relational lookup values.
 - `src/lib/engine/volume-landmarks.ts` is a compatibility facade derived from that policy. Generation, lifecycle, explainability, analytics, UI, and audit consumers must not author local landmark or SRA tables.

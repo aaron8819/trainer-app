@@ -14,7 +14,10 @@ const mocks = vi.hoisted(() => {
     safe: true,
   };
   const txMesocycleFindFirst = vi.fn();
+  const txMesocycleFindUnique = vi.fn();
   const txMesocycleUpdate = vi.fn();
+  const txMesocycleUpdateMany = vi.fn();
+  const txSeedRevisionCreate = vi.fn();
   const txWorkoutFindMany = vi.fn();
   const txWorkoutCount = vi.fn(async (args: { where?: { status?: unknown } }) =>
     args.where?.status ? counts.completedOrPartial : counts.workout,
@@ -30,7 +33,12 @@ const mocks = vi.hoisted(() => {
     callback({
       mesocycle: {
         findFirst: txMesocycleFindFirst,
+        findUnique: txMesocycleFindUnique,
         update: txMesocycleUpdate,
+        updateMany: txMesocycleUpdateMany,
+      },
+      mesocycleSeedRevision: {
+        create: txSeedRevisionCreate,
       },
       workout: {
         count: txWorkoutCount,
@@ -58,7 +66,10 @@ const mocks = vi.hoisted(() => {
     counts,
     readiness,
     txMesocycleFindFirst,
+    txMesocycleFindUnique,
     txMesocycleUpdate,
+    txMesocycleUpdateMany,
+    txSeedRevisionCreate,
     txWorkoutFindMany,
     txWorkoutCount,
     txWorkoutExerciseCount,
@@ -298,6 +309,27 @@ describe("replaceEmptyMesocycleWithV2", () => {
     mocks.readiness.status = "eligible_for_guarded_write";
     mocks.readiness.safe = true;
     mocks.txMesocycleFindFirst.mockResolvedValue(safeMesocycle());
+    mocks.txMesocycleFindUnique.mockResolvedValue({
+      currentSeedRevision: {
+        id: "seed-revision-1",
+        mesocycleId: "meso-1",
+        revision: 1,
+        seedPayload: safeMesocycle().slotPlanSeedJson,
+        payloadHash: "legacy-hash",
+        hashAlgorithm: "sha256",
+        provenanceStatus: "exact",
+        creationReason: "handoff_acceptance",
+        actorSource: "test",
+        sourceRevisionId: null,
+        activatedAt: new Date("2026-04-01T00:00:00.000Z"),
+      },
+    });
+    mocks.txMesocycleUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.txSeedRevisionCreate.mockImplementation(async ({ data }) => ({
+      id: "seed-revision-2",
+      ...data,
+      activatedAt: new Date("2026-04-02T00:00:00.000Z"),
+    }));
     mocks.txWorkoutFindMany.mockResolvedValue([]);
     mocks.txExerciseFindMany.mockResolvedValue([
       {
@@ -485,10 +517,15 @@ describe("replaceEmptyMesocycleWithV2", () => {
         source: "v2_materialized_seed",
       }),
     );
-    expect(mocks.txMesocycleUpdate).toHaveBeenCalledWith({
-      where: { id: "meso-1" },
-      data: { slotPlanSeedJson: serializerSeed },
+    expect(mocks.txSeedRevisionCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        mesocycleId: "meso-1",
+        revision: 2,
+        sourceRevisionId: "seed-revision-1",
+        seedPayload: serializerSeed,
+      }),
     });
+    expect(mocks.txMesocycleUpdate).not.toHaveBeenCalled();
     expect(JSON.stringify(serializerSeed)).not.toContain("laneIds");
     expect(result.provenance).toMatchObject({
       source: "v2_materialized_seed",

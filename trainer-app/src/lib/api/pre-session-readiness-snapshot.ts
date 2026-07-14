@@ -178,11 +178,16 @@ export async function loadCurrentPreSessionReadinessSnapshotIdentity(
         id: true,
         state: true,
         slotPlanSeedJson: true,
+        currentSeedRevision: { select: { seedPayload: true } },
         slotSequenceJson: true,
       },
     }),
     loadNextWorkoutContext(userId),
   ]);
+  if (activeMesocycle?.currentSeedRevision?.seedPayload) {
+    activeMesocycle.slotPlanSeedJson =
+      activeMesocycle.currentSeedRevision.seedPayload;
+  }
 
   if (
     !activeMesocycle ||

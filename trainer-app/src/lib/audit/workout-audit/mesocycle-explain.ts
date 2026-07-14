@@ -139,6 +139,8 @@ type ExplainMesocycleRow = Prisma.MesocycleGetPayload<{
         userId: true;
       };
     };
+    currentSeedRevision: true;
+    seedRevisions: true;
   };
 }>;
 
@@ -9153,6 +9155,10 @@ async function loadExplainMesocycle(input: {
           userId: true,
         },
       },
+      currentSeedRevision: true,
+      seedRevisions: {
+        orderBy: { revision: "asc" },
+      },
     },
   });
 
@@ -9160,6 +9166,10 @@ async function loadExplainMesocycle(input: {
     throw new Error(
       `No mesocycle found for mesocycle-explain mesocycleId=${input.mesocycleId}.`,
     );
+  }
+
+  if (mesocycle.currentSeedRevision?.seedPayload) {
+    mesocycle.slotPlanSeedJson = mesocycle.currentSeedRevision.seedPayload;
   }
 
   return mesocycle;
@@ -10287,6 +10297,8 @@ export async function buildMesocycleExplainAuditPayload(input: {
     mesocycleId: retrospectiveMesocycle.id,
     mesocycleState: retrospectiveMesocycle.state,
     slotPlanSeedJson: retrospectiveMesocycle.slotPlanSeedJson,
+    currentRevision: retrospectiveMesocycle.currentSeedRevision,
+    revisionHistory: retrospectiveMesocycle.seedRevisions,
   });
 
   const reality = buildRealityRows({

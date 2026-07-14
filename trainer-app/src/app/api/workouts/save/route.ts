@@ -13,6 +13,7 @@ import {
   reconcileRuntimeEditSelectionMetadata,
   toObject,
 } from "@/lib/api/save-workout/receipt";
+import { resolveWorkoutSeedProvenanceForSave } from "@/lib/api/save-workout/seed-provenance";
 import {
   attachCloseoutSessionMetadata,
   readWeekCloseIdFromSelectionMetadata,
@@ -108,6 +109,9 @@ export async function POST(request: Request) {
           selectionMode: true,
           sessionIntent: true,
           selectionMetadata: true,
+          seedRevisionId: true,
+          seedRevisionNumber: true,
+          seedPayloadHash: true,
         },
       });
 
@@ -292,6 +296,11 @@ export async function POST(request: Request) {
       if (isCloseout) {
         selectionMetadata = stripCloseoutSlotIdentity(selectionMetadata);
       }
+      const seedProvenance = await resolveWorkoutSeedProvenanceForSave(tx, {
+        receipt,
+        resolvedMesocycleId,
+        existingWorkout,
+      });
 
       const workoutUpdateData = {
         scheduledDate,
@@ -318,6 +327,7 @@ export async function POST(request: Request) {
         id: workoutId,
         userId: user.id,
         ...workoutUpdateData,
+        ...(seedProvenance ?? {}),
       };
       if (existingWorkout && hasExerciseRewrite) {
         Object.assign(workoutUpdateData, { revision: { increment: 1 } });

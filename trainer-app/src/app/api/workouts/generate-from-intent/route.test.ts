@@ -326,7 +326,7 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
         cautionLevel: "none",
       }),
     ]);
-    expect(body.selectionMetadata.sessionDecisionReceipt.version).toBe(1);
+    expect(body.selectionMetadata.sessionDecisionReceipt.version).toBe(2);
     expect(mocks.generateSessionFromIntent).toHaveBeenCalledWith(
       "user-1",
       expect.objectContaining({

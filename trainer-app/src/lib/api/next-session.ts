@@ -589,6 +589,7 @@ export async function loadNextWorkoutContext(
         state: true,
         slotSequenceJson: true,
         slotPlanSeedJson: true,
+        currentSeedRevision: { select: { seedPayload: true } },
       },
     }),
     prisma.constraints.findUnique({
@@ -596,6 +597,9 @@ export async function loadNextWorkoutContext(
       select: { weeklySchedule: true },
     }),
   ]);
+  if (mesocycle?.currentSeedRevision?.seedPayload) {
+    mesocycle.slotPlanSeedJson = mesocycle.currentSeedRevision.seedPayload;
+  }
   const weeklySchedule = (constraints?.weeklySchedule ?? []).map((intent) => intent as string);
   const currentSession = mesocycle ? deriveCurrentMesocycleSession(mesocycle) : null;
   const [rawIncomplete, pendingWeekClose, rawPerformedAdvancingThisWeek] =
@@ -733,6 +737,7 @@ export async function loadRequestedAdvancingSlotSnapshot(input: {
         state: true,
         slotSequenceJson: true,
         slotPlanSeedJson: true,
+        currentSeedRevision: { select: { seedPayload: true } },
       },
     }),
     prisma.constraints.findUnique({
@@ -740,6 +745,9 @@ export async function loadRequestedAdvancingSlotSnapshot(input: {
       select: { weeklySchedule: true },
     }),
   ]);
+  if (mesocycle?.currentSeedRevision?.seedPayload) {
+    mesocycle.slotPlanSeedJson = mesocycle.currentSeedRevision.seedPayload;
+  }
   const weeklySchedule = (constraints?.weeklySchedule ?? []).map((intent) => intent as string);
   const currentSession = mesocycle ? deriveCurrentMesocycleSession(mesocycle) : null;
   const rawPerformedAdvancingThisWeek =

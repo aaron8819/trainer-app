@@ -13,7 +13,10 @@ const mocks = vi.hoisted(() => {
   };
   const exerciseCatalog = new Map<string, string>();
   const txMesocycleFindFirst = vi.fn();
+  const txMesocycleFindUnique = vi.fn();
   const txMesocycleUpdate = vi.fn();
+  const txMesocycleUpdateMany = vi.fn();
+  const txSeedRevisionCreate = vi.fn();
   const txWorkoutCount = vi.fn(async (args: { where?: { status?: unknown } }) =>
     args.where?.status ? counts.completedOrPartial : counts.workout,
   );
@@ -30,7 +33,12 @@ const mocks = vi.hoisted(() => {
     callback({
       mesocycle: {
         findFirst: txMesocycleFindFirst,
+        findUnique: txMesocycleFindUnique,
         update: txMesocycleUpdate,
+        updateMany: txMesocycleUpdateMany,
+      },
+      mesocycleSeedRevision: {
+        create: txSeedRevisionCreate,
       },
       workout: { count: txWorkoutCount },
       workoutExercise: { count: txWorkoutExerciseCount },
@@ -45,7 +53,10 @@ const mocks = vi.hoisted(() => {
     counts,
     exerciseCatalog,
     txMesocycleFindFirst,
+    txMesocycleFindUnique,
     txMesocycleUpdate,
+    txMesocycleUpdateMany,
+    txSeedRevisionCreate,
     txWorkoutCount,
     txWorkoutExerciseCount,
     txWorkoutSetCount,
@@ -192,6 +203,27 @@ describe("replaceEmptySuccessorFromAcceptedSeedDraft", () => {
     mocks.txMesocycleFindFirst.mockImplementation(async (args: { where?: { id?: string } }) =>
       args.where?.id === "source-1" ? sourceMesocycle() : successorMesocycle(),
     );
+    mocks.txMesocycleFindUnique.mockResolvedValue({
+      currentSeedRevision: {
+        id: "seed-revision-1",
+        mesocycleId: "successor-1",
+        revision: 1,
+        seedPayload: currentWrongSeed,
+        payloadHash: "legacy-hash",
+        hashAlgorithm: "sha256",
+        provenanceStatus: "exact",
+        creationReason: "handoff_acceptance",
+        actorSource: "test",
+        sourceRevisionId: null,
+        activatedAt: new Date("2026-04-01T00:00:00.000Z"),
+      },
+    });
+    mocks.txMesocycleUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.txSeedRevisionCreate.mockImplementation(async ({ data }) => ({
+      id: "seed-revision-2",
+      ...data,
+      activatedAt: new Date("2026-04-02T00:00:00.000Z"),
+    }));
   });
 
   it("dry-run returns safe_to_accept_upgrade for a completed source and empty active successor with stored V2 acceptedSeedDraft", async () => {
@@ -336,11 +368,15 @@ describe("replaceEmptySuccessorFromAcceptedSeedDraft", () => {
     expect(result.write).toMatchObject({
       dbWriteOccurred: true,
       transactionStatus: "success",
-      updatedFields: ["slotPlanSeedJson"],
+      updatedFields: ["currentSeedRevisionId"],
     });
-    expect(mocks.txMesocycleUpdate).toHaveBeenCalledWith({
-      where: { id: "successor-1" },
-      data: { slotPlanSeedJson: persistedAcceptedSeed },
+    expect(mocks.txSeedRevisionCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        mesocycleId: "successor-1",
+        revision: 2,
+        sourceRevisionId: "seed-revision-1",
+        seedPayload: persistedAcceptedSeed,
+      }),
     });
   });
 
@@ -355,7 +391,8 @@ describe("replaceEmptySuccessorFromAcceptedSeedDraft", () => {
       workoutsLogsSessionsCreated: false,
       liveDbMutated: true,
     });
-    expect(mocks.txMesocycleUpdate).toHaveBeenCalledTimes(1);
+    expect(mocks.txMesocycleUpdate).not.toHaveBeenCalled();
+    expect(mocks.txMesocycleUpdateMany).toHaveBeenCalledTimes(1);
   });
 
   it("keeps runtime replay unchanged and seed rows minimal", async () => {

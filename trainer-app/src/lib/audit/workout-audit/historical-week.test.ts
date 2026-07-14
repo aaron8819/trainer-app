@@ -143,7 +143,23 @@ describe("buildHistoricalWeekAuditPayload", () => {
         selectionMetadata: {
           weekCloseId: "wc-1",
           sessionAuditSnapshot: saved,
+          sessionDecisionReceipt: {
+            ...receipt,
+            version: 2 as const,
+            sessionProvenance: {
+              mesocycleId: "meso-1",
+              compositionSource: "persisted_slot_plan_seed",
+              seedProvenance: {
+                revisionId: "seed-revision-1",
+                revision: 1,
+                hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              },
+            },
+          },
         },
+        seedRevisionId: "seed-revision-1",
+        seedRevisionNumber: 1,
+        seedPayloadHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         mesocycleId: "meso-1",
         mesocycleWeekSnapshot: 4,
         mesoSessionSnapshot: 3,
@@ -214,6 +230,14 @@ describe("buildHistoricalWeekAuditPayload", () => {
     expect(payload.summary.progressionExcludedCount).toBe(1);
     expect(payload.summary.weekCloseRelevantCount).toBe(1);
     expect(payload.summary.mutationDriftCount).toBe(1);
+    expect(payload.summary).toMatchObject({
+      exactSeedProvenanceCount: 1,
+      legacyUnknownSeedProvenanceCount: 0,
+      missingSeedProvenanceCount: 0,
+      receiptSeedProvenanceMatchCount: 1,
+      receiptSeedProvenanceMismatchCount: 0,
+      receiptSeedProvenanceUnavailableCount: 0,
+    });
     expect(payload.comparabilityCoverage).toEqual({
       comparableSessionCount: 1,
       missingGeneratedSnapshotCount: 0,
@@ -310,6 +334,11 @@ describe("buildHistoricalWeekAuditPayload", () => {
       updatesProgressionAnchor: true,
     });
     expect(payload.sessions[0]?.reconciliation.comparisonState).toBe("missing_generated_snapshot");
+    expect(payload.summary).toMatchObject({
+      exactSeedProvenanceCount: 0,
+      legacyUnknownSeedProvenanceCount: 1,
+      missingSeedProvenanceCount: 0,
+    });
     expect(payload.comparabilityCoverage).toEqual({
       comparableSessionCount: 0,
       missingGeneratedSnapshotCount: 1,
@@ -321,5 +350,45 @@ describe("buildHistoricalWeekAuditPayload", () => {
         "1 session(s) were reconstructed from saved workout state only. [audit-guardrail:do-not-reconstruct] Do not reconstruct generated-layer truth from saved workout state; treat saved-only coverage as saved-state semantics only.",
       ],
     });
+  });
+
+  it("flags missing workout provenance when a seeded receipt is present", async () => {
+    mocks.workoutFindMany.mockResolvedValue([{
+      id: "seeded-without-workout-provenance",
+      scheduledDate: new Date("2026-03-12T00:00:00.000Z"),
+      status: "PLANNED",
+      revision: 1,
+      advancesSplit: true,
+      selectionMode: "INTENT",
+      sessionIntent: "UPPER",
+      selectionMetadata: {
+        sessionDecisionReceipt: {
+          ...receipt,
+          version: 2,
+          sessionProvenance: {
+            mesocycleId: "meso-1",
+            compositionSource: "persisted_slot_plan_seed",
+          },
+        },
+      },
+      seedRevisionId: null,
+      seedRevisionNumber: null,
+      seedPayloadHash: null,
+      mesocycleId: "meso-1",
+      mesocycleWeekSnapshot: 4,
+      mesoSessionSnapshot: 1,
+      mesocyclePhaseSnapshot: "ACCUMULATION",
+      exercises: [],
+    }]);
+    mocks.mesocycleWeekCloseFindMany.mockResolvedValue([]);
+
+    const payload = await buildHistoricalWeekAuditPayload({
+      userId: "user-1",
+      week: 4,
+      mesocycleId: "meso-1",
+    });
+
+    expect(payload.sessions[0]?.seedProvenance?.status).toBe("missing");
+    expect(payload.summary.missingSeedProvenanceCount).toBe(1);
   });
 });

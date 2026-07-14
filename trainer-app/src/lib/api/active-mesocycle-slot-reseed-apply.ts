@@ -6,6 +6,11 @@ import {
   type ParsedSlotPlanSeed,
   type ParsedSlotPlanSeedExercise,
 } from "./slot-plan-seed-parser";
+import {
+  createCorrectiveSeedRevisionInTransaction,
+  mapSeedRevisionWriteError,
+  normalizeAcceptedSeedPayload,
+} from "./mesocycle-seed-revision";
 
 const TARGET_SLOT_IDS = ["upper_a", "upper_b"] as const;
 const SAFE_FULL_UPGRADE_VERDICT = "safe_to_accept_upgrade";
@@ -27,6 +32,10 @@ export type ApplyActiveMesocycleBoundedUpperSlotReseedResult = {
   targetSlotIds: TargetSlotId[];
   changedSlotIds: TargetSlotId[];
   applied: boolean;
+  previousRevision: number;
+  revision: number;
+  previousHash: string;
+  hash: string;
 };
 
 export type AcceptActiveMesocycleSlotPlanSeedUpgradeInput = {
@@ -41,6 +50,10 @@ export type AcceptActiveMesocycleSlotPlanSeedUpgradeResult = {
   targetSlotIds: string[];
   changedSlotIds: string[];
   applied: boolean;
+  previousRevision: number;
+  revision: number;
+  previousHash: string;
+  hash: string;
 };
 
 function parseSeedRecord(slotPlanSeedJson: unknown): ParsedSeedRecord | null {
@@ -226,7 +239,10 @@ export async function applyActiveMesocycleBoundedUpperSlotReseed(
       },
       select: {
         id: true,
-        slotPlanSeedJson: true,
+        currentSeedRevisionId: true,
+        currentSeedRevision: {
+          select: { revision: true, seedPayload: true },
+        },
       },
     });
 
@@ -234,7 +250,12 @@ export async function applyActiveMesocycleBoundedUpperSlotReseed(
       throw new Error("ACTIVE_MESOCYCLE_RESEED_TARGET_NOT_FOUND");
     }
 
-    const persistedSeedRecord = parseSeedRecord(activeMesocycle.slotPlanSeedJson);
+    if (!activeMesocycle.currentSeedRevisionId || !activeMesocycle.currentSeedRevision) {
+      throw new Error("ACTIVE_MESOCYCLE_RESEED_CURRENT_REVISION_MISSING");
+    }
+    const persistedSeedRecord = parseSeedRecord(
+      activeMesocycle.currentSeedRevision.seedPayload,
+    );
     if (!persistedSeedRecord) {
       throw new Error("ACTIVE_MESOCYCLE_RESEED_PERSISTED_SEED_INVALID");
     }
@@ -249,11 +270,18 @@ export async function applyActiveMesocycleBoundedUpperSlotReseed(
     });
 
     if (changedSlotIds.length === 0) {
+      const hash = normalizeAcceptedSeedPayload(
+        activeMesocycle.currentSeedRevision.seedPayload,
+      ).hash;
       return {
         mesocycleId: activeMesocycle.id,
         targetSlotIds,
         changedSlotIds,
         applied: false,
+        previousRevision: activeMesocycle.currentSeedRevision.revision,
+        revision: activeMesocycle.currentSeedRevision.revision,
+        previousHash: hash,
+        hash,
       };
     }
 
@@ -280,11 +308,15 @@ export async function applyActiveMesocycleBoundedUpperSlotReseed(
       }),
     } satisfies Prisma.InputJsonValue;
 
-    await tx.mesocycle.update({
-      where: { id: activeMesocycle.id },
-      data: {
-        slotPlanSeedJson: patchedSeed,
-      },
+    const previousHash = normalizeAcceptedSeedPayload(
+      activeMesocycle.currentSeedRevision.seedPayload,
+    ).hash;
+    const correction = await createCorrectiveSeedRevisionInTransaction(tx, {
+      mesocycleId: activeMesocycle.id,
+      expectedCurrentRevisionId: activeMesocycle.currentSeedRevisionId,
+      seedPayload: patchedSeed,
+      creationReason: "bounded_upper_slot_correction",
+      actorSource: "workout_audit_apply_bounded_reseed",
     });
 
     return {
@@ -292,8 +324,12 @@ export async function applyActiveMesocycleBoundedUpperSlotReseed(
       targetSlotIds,
       changedSlotIds,
       applied: true,
+      previousRevision: activeMesocycle.currentSeedRevision.revision,
+      revision: correction.revision.revision,
+      previousHash,
+      hash: normalizeAcceptedSeedPayload(correction.revision.seedPayload).hash,
     };
-  });
+  }).catch(mapSeedRevisionWriteError);
 }
 
 export async function acceptActiveMesocycleSlotPlanSeedUpgrade(
@@ -320,7 +356,10 @@ export async function acceptActiveMesocycleSlotPlanSeedUpgrade(
       },
       select: {
         id: true,
-        slotPlanSeedJson: true,
+        currentSeedRevisionId: true,
+        currentSeedRevision: {
+          select: { revision: true, seedPayload: true },
+        },
       },
     });
 
@@ -328,7 +367,12 @@ export async function acceptActiveMesocycleSlotPlanSeedUpgrade(
       throw new Error("ACTIVE_MESOCYCLE_RESEED_TARGET_NOT_FOUND");
     }
 
-    const persistedSeedRecord = parseSeedRecord(activeMesocycle.slotPlanSeedJson);
+    if (!activeMesocycle.currentSeedRevisionId || !activeMesocycle.currentSeedRevision) {
+      throw new Error("ACTIVE_MESOCYCLE_RESEED_CURRENT_REVISION_MISSING");
+    }
+    const persistedSeedRecord = parseSeedRecord(
+      activeMesocycle.currentSeedRevision.seedPayload,
+    );
     if (!persistedSeedRecord) {
       throw new Error("ACTIVE_MESOCYCLE_RESEED_PERSISTED_SEED_INVALID");
     }
@@ -354,19 +398,30 @@ export async function acceptActiveMesocycleSlotPlanSeedUpgrade(
     }
 
     if (replacement.changedSlotIds.length === 0) {
+      const hash = normalizeAcceptedSeedPayload(
+        activeMesocycle.currentSeedRevision.seedPayload,
+      ).hash;
       return {
         mesocycleId: activeMesocycle.id,
         targetSlotIds: replacement.targetSlotIds,
         changedSlotIds: replacement.changedSlotIds,
         applied: false,
+        previousRevision: activeMesocycle.currentSeedRevision.revision,
+        revision: activeMesocycle.currentSeedRevision.revision,
+        previousHash: hash,
+        hash,
       };
     }
 
-    await tx.mesocycle.update({
-      where: { id: activeMesocycle.id },
-      data: {
-        slotPlanSeedJson: replacement.replacementSeed,
-      },
+    const previousHash = normalizeAcceptedSeedPayload(
+      activeMesocycle.currentSeedRevision.seedPayload,
+    ).hash;
+    const correction = await createCorrectiveSeedRevisionInTransaction(tx, {
+      mesocycleId: activeMesocycle.id,
+      expectedCurrentRevisionId: activeMesocycle.currentSeedRevisionId,
+      seedPayload: replacement.replacementSeed,
+      creationReason: "accepted_slot_plan_upgrade",
+      actorSource: "workout_audit_accept_slot_plan_upgrade",
     });
 
     return {
@@ -374,6 +429,10 @@ export async function acceptActiveMesocycleSlotPlanSeedUpgrade(
       targetSlotIds: replacement.targetSlotIds,
       changedSlotIds: replacement.changedSlotIds,
       applied: true,
+      previousRevision: activeMesocycle.currentSeedRevision.revision,
+      revision: correction.revision.revision,
+      previousHash,
+      hash: normalizeAcceptedSeedPayload(correction.revision.seedPayload).hash,
     };
-  });
+  }).catch(mapSeedRevisionWriteError);
 }

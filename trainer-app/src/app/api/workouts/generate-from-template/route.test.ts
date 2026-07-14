@@ -265,7 +265,7 @@ describe("POST /api/workouts/generate-from-template", () => {
         cautionLevel: "none",
       }),
     ]);
-    expect(body.selectionMetadata.sessionDecisionReceipt.version).toBe(1);
+    expect(body.selectionMetadata.sessionDecisionReceipt.version).toBe(2);
     expect(body.selectionMetadata.sessionDecisionReceipt.sessionSlot).toEqual({
       slotId: "push_a",
       intent: "push",

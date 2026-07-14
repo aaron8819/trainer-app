@@ -11,6 +11,8 @@ Current V2 candidate-selection note, 2026-06-13: live `mesocycle-explain --plann
 
 Use this when validating the audit foundation against a real database instead of mocked unit inputs.
 
+Seed provenance validation: `future-week` artifacts report the active revision and revision history; `historical-week` reports each workout's `exact`, `missing`, or `legacy_unknown` status, revision/hash, receipt agreement, and summary counts. Active reseed artifacts report revision history with creation reason, actor source, source revision, and hashes. Audit flags active seeded mesocycles without a revision, non-latest current pointers, stored payload/hash disagreement, missing seeded-workout provenance, and workout/receipt disagreement. A receipt may validly reference an older immutable revision after a correction; mismatch means the receipt tuple does not match its referenced revision, not merely that it differs from current.
+
 ## Prerequisites
 
 - Set `DATABASE_URL` for the target environment.

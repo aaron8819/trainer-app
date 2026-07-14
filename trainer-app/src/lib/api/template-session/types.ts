@@ -31,7 +31,7 @@ import type {
   mapProfile,
 } from "@/lib/api/workout-context";
 import type { loadExerciseExposure } from "@/lib/api/exercise-exposure";
-import type { Mesocycle } from "@prisma/client";
+import type { ActiveMesocycleWithBlocks } from "@/lib/api/mesocycle-lifecycle-state";
 import type { GenerationPhaseBlockContext } from "@/lib/api/generation-phase-block-context";
 import type {
   ApplyLoadsAudit,
@@ -184,7 +184,7 @@ export type MappedGenerationContext = {
   lifecycleRirTarget: { min: number; max: number };
   lifecycleVolumeTargets: Record<string, number>;
   sorenessSuppressedMuscles: string[];
-  activeMesocycle: Mesocycle | null;
+  activeMesocycle: ActiveMesocycleWithBlocks | null;
   effectivePeriodization: PeriodizationModifiers;
   adaptiveDeload: boolean;
   deloadDecision: DeloadDecision;

@@ -379,6 +379,13 @@ type BackfillMesocycleRow = {
   sessionsPerWeek: number;
   slotSequenceJson: unknown;
   slotPlanSeedJson: unknown;
+  currentSeedRevision?: {
+    id: string;
+    revision: number;
+    seedPayload: unknown;
+    payloadHash: string | null;
+    provenanceStatus: string;
+  } | null;
   macroCycle: {
     userId: string;
     user: {
@@ -956,6 +963,15 @@ async function inspectBackfillSafety(
       sessionsPerWeek: true,
       slotSequenceJson: true,
       slotPlanSeedJson: true,
+      currentSeedRevision: {
+        select: {
+          id: true,
+          revision: true,
+          seedPayload: true,
+          payloadHash: true,
+          provenanceStatus: true,
+        },
+      },
       macroCycle: {
         select: {
           userId: true,
@@ -967,6 +983,9 @@ async function inspectBackfillSafety(
 
   if (!mesocycle) {
     blockers.push("target_mesocycle_not_found");
+  }
+  if (mesocycle?.currentSeedRevision?.seedPayload) {
+    mesocycle.slotPlanSeedJson = mesocycle.currentSeedRevision.seedPayload;
   }
 
   if (mesocycle) {
@@ -1171,6 +1190,16 @@ function buildInitialSelectionMetadata(input: {
     sessionProvenance: {
       mesocycleId: input.mesocycle.id,
       compositionSource: "persisted_slot_plan_seed",
+      ...(input.mesocycle.currentSeedRevision?.provenanceStatus === "exact" &&
+      input.mesocycle.currentSeedRevision.payloadHash
+        ? {
+            seedProvenance: {
+              revisionId: input.mesocycle.currentSeedRevision.id,
+              revision: input.mesocycle.currentSeedRevision.revision,
+              hash: input.mesocycle.currentSeedRevision.payloadHash,
+            },
+          }
+        : {}),
     },
     sessionSlot: {
       slotId: input.session.slotId,
@@ -1391,6 +1420,13 @@ async function writeBackfillSessions(input: {
       session: plan.definition,
       reconciledAt: performedAt.toISOString(),
     });
+    const seedRevision = input.mesocycle.currentSeedRevision;
+    if (
+      seedRevision?.provenanceStatus !== "exact" ||
+      !seedRevision.payloadHash
+    ) {
+      throw new Error("BACKFILL_WEEK1_EXACT_SEED_PROVENANCE_REQUIRED");
+    }
 
     await input.tx.workout.create({
       data: {
@@ -1403,6 +1439,9 @@ async function writeBackfillSessions(input: {
         sessionIntent: plan.definition.intent,
         selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
         mesocycleId: input.mesocycle.id,
+        seedRevisionId: seedRevision.id,
+        seedRevisionNumber: seedRevision.revision,
+        seedPayloadHash: seedRevision.payloadHash,
         mesocycleWeekSnapshot: BACKFILL_WEEK,
         mesocyclePhaseSnapshot: "ACCUMULATION",
         mesoSessionSnapshot: plan.definition.mesoSessionSnapshot,

@@ -23,6 +23,12 @@ Sources of truth:
 ## Canonical runtime contracts
 - File: `docs/contracts/runtime-contracts.json`
 - Verification command: `npm run verify:contracts`
+
+## Seeded workout provenance contract
+
+- Seeded generation returns `selectionMetadata.sessionDecisionReceipt.sessionProvenance.seedProvenance = { revisionId, revision, hash }` from the immutable revision it actually consumed.
+- `POST /api/workouts/save` does not trust caller provenance as authority. `src/lib/api/save-workout/seed-provenance.ts` verifies the tuple against `MesocycleSeedRevision`, persists it on new workouts, rejects mismatches, and preserves the existing tuple on resume/update.
+- New seeded workouts fail closed when exact revision provenance is unavailable. Existing legacy workouts with null provenance remain readable and resumable without backfilled guesses.
 - Runtime enum sources:
   - `WORKOUT_STATUS_VALUES` in `src/lib/validation.ts`
   - `WORKOUT_SELECTION_MODE_VALUES` in `src/lib/validation.ts`

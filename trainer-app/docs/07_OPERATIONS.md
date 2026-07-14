@@ -23,6 +23,16 @@ Sources of truth:
 - `trainer-app/prisma/seed.ts`
 - `trainer-app/package.json`
 
+## Immutable seed revision rollout
+
+1. Back up the target database and stop seeded workout generation for the rollout window.
+2. Run `npx prisma migrate deploy`. Migration `20260713180000_add_immutable_mesocycle_seed_revisions` additively creates deterministic `legacy_unknown` revision-1 baselines for existing seeded mesocycles, selects them as current, and leaves historical workouts unassigned because exact prior provenance cannot be proven.
+3. Run `npm run ops:backfill-seed-revisions` and review the dry-run candidates and hashes.
+4. Run `npm run ops:backfill-seed-revisions -- --write` to append an exact normalized N+1 for each legacy current revision. Do not resume seeded generation until every active seeded mesocycle has exact current provenance.
+5. Run focused verification plus `npm run verify:contracts` and `npm run verify`.
+
+Rollback before application traffic may restore the pre-migration backup. After exact revisions or workouts reference the new model, roll forward; do not drop revision/workout provenance columns or rewrite accepted history. The configured application database must not be used for disposable migration/concurrency testing.
+
 ## Environment
 - Required: `DATABASE_URL`
 - Required for `prisma migrate dev` against Supabase: `SHADOW_DATABASE_URL` (or `SHADOW_URL`) so Prisma can create/apply shadow migrations (`prisma.config.ts`).

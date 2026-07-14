@@ -30,6 +30,7 @@ Invariants:
 - Runtime truth lives in the canonical audit artifacts plus the owning code seams referenced here.
 - When artifact output conflicts with prose, trust the artifact and the code owner it points to.
 - Environment setup, DB preflight, and direct CLI validation commands live in `docs/08_AUDIT_CLI_DB_VALIDATION.md`.
+- Seed provenance readouts distinguish exact revision truth from `legacy_unknown`. Never infer a historical workout's seed from the mesocycle's current revision. Read receipt agreement against the workout's referenced immutable revision; an older revision is expected after a correction.
 
 Sources of truth:
 - `trainer-app/scripts/workout-audit.ts`

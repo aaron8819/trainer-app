@@ -101,13 +101,29 @@ function parseSessionDecisionProvenance(value: unknown): SessionDecisionProvenan
 
   const hasMesocycleId = typeof record.mesocycleId === "string" || record.mesocycleId === null;
   const compositionSource = parseSessionCompositionSource(record.compositionSource);
-  if (!hasMesocycleId && !compositionSource) {
+  const seedRecord = toObject(record.seedProvenance);
+  const seedProvenance =
+    seedRecord &&
+    typeof seedRecord.revisionId === "string" &&
+    typeof seedRecord.revision === "number" &&
+    Number.isInteger(seedRecord.revision) &&
+    seedRecord.revision > 0 &&
+    typeof seedRecord.hash === "string" &&
+    /^[a-f0-9]{64}$/.test(seedRecord.hash)
+      ? {
+          revisionId: seedRecord.revisionId,
+          revision: seedRecord.revision,
+          hash: seedRecord.hash,
+        }
+      : undefined;
+  if (!hasMesocycleId && !compositionSource && !seedProvenance) {
     return undefined;
   }
 
   return {
     ...(hasMesocycleId ? { mesocycleId: record.mesocycleId as string | null } : {}),
     ...(compositionSource ? { compositionSource } : {}),
+    ...(seedProvenance ? { seedProvenance } : {}),
   };
 }
 
@@ -928,7 +944,7 @@ export function buildSessionDecisionReceipt(input: {
   const sessionProvenance = parseSessionDecisionProvenance(input.sessionProvenance);
 
   return {
-    version: 1,
+    version: 2,
     cycleContext: input.cycleContext,
     ...(sessionProvenance ? { sessionProvenance } : {}),
     sessionSlot: input.sessionSlot,
@@ -964,7 +980,7 @@ export function buildSessionDecisionReceipt(input: {
 
 function parsePersistedReceipt(value: unknown): SessionDecisionReceipt | undefined {
   const record = toObject(value);
-  if (!record || record.version !== 1) {
+  if (!record || (record.version !== 1 && record.version !== 2)) {
     return undefined;
   }
 
@@ -978,7 +994,7 @@ function parsePersistedReceipt(value: unknown): SessionDecisionReceipt | undefin
   const sessionProvenance = parseSessionDecisionProvenance(record.sessionProvenance);
 
   return {
-    version: 1,
+    version: record.version,
     cycleContext,
     ...(sessionProvenance ? { sessionProvenance } : {}),
     sessionSlot: parseSessionSlotSnapshot(record.sessionSlot),

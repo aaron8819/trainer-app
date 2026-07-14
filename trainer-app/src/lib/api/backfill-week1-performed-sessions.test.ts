@@ -248,6 +248,13 @@ function safeMesocycle(overrides: Record<string, unknown> = {}) {
     sessionsPerWeek: 4,
     slotSequenceJson: slotSequenceJson(),
     slotPlanSeedJson: seedSlotPlanJson(),
+    currentSeedRevision: {
+      id: "seed-revision-1",
+      revision: 1,
+      seedPayload: seedSlotPlanJson(),
+      payloadHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      provenanceStatus: "exact",
+    },
     macroCycle: {
       userId: "user-1",
       user: { email: TRANSITION_WEEK_BACKFILL_OWNER_EMAIL },

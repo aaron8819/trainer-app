@@ -42,6 +42,23 @@ type SuccessorMesocycleRow = SourceMesocycleRow & {
   sessionsPerWeek: number;
   slotSequenceJson: unknown;
   slotPlanSeedJson: unknown;
+  currentSeedRevision?: {
+    id: string;
+    revision: number;
+    seedPayload?: unknown;
+    payloadHash: string | null;
+    provenanceStatus: string;
+  } | null;
+  seedRevisions?: Array<{
+    id: string;
+    revision: number;
+    payloadHash: string | null;
+    provenanceStatus: string;
+    creationReason: string;
+    actorSource: string | null;
+    sourceRevisionId: string | null;
+    activatedAt: Date;
+  }>;
 };
 
 type PostAcceptEvidence = {
@@ -537,6 +554,11 @@ export function buildNextMesocyclePostAcceptVerificationFromEvidence(
       ? evidence.generationResult.selection.sessionDecisionReceipt?.sessionProvenance
           ?.compositionSource ?? null
       : null;
+  const receiptSeedProvenance =
+    evidence.generationResult && !("error" in evidence.generationResult)
+      ? evidence.generationResult.selection.sessionDecisionReceipt?.sessionProvenance
+          ?.seedProvenance ?? null
+      : null;
   const provenance =
     successor?.slotPlanSeedJson != null
       ? evaluateAcceptedMesocycleSeedProvenance({
@@ -544,6 +566,9 @@ export function buildNextMesocyclePostAcceptVerificationFromEvidence(
           mesocycleState: successor.state,
           slotPlanSeedJson: successor.slotPlanSeedJson,
           receiptCompositionSource,
+          receiptSeedProvenance,
+          currentRevision: successor.currentSeedRevision,
+          revisionHistory: successor.seedRevisions,
           readModelExerciseSource: "persisted_slot_plan_seed",
         })
       : null;
@@ -959,6 +984,28 @@ export async function buildNextMesocyclePostAcceptVerificationAuditPayload(input
           sessionsPerWeek: true,
           slotSequenceJson: true,
           slotPlanSeedJson: true,
+          currentSeedRevision: {
+            select: {
+              id: true,
+              revision: true,
+              seedPayload: true,
+              payloadHash: true,
+              provenanceStatus: true,
+            },
+          },
+          seedRevisions: {
+            select: {
+              id: true,
+              revision: true,
+              payloadHash: true,
+              provenanceStatus: true,
+              creationReason: true,
+              actorSource: true,
+              sourceRevisionId: true,
+              activatedAt: true,
+            },
+            orderBy: { revision: "asc" },
+          },
         },
       })
     : null;
@@ -973,6 +1020,9 @@ export async function buildNextMesocyclePostAcceptVerificationAuditPayload(input
     }),
     loadNextWorkoutContext(input.userId).catch(() => null),
   ]);
+  if (successorMesocycle?.currentSeedRevision?.seedPayload) {
+    successorMesocycle.slotPlanSeedJson = successorMesocycle.currentSeedRevision.seedPayload;
+  }
   const [seedExerciseNameById, generationResult, projectedWeekResult] =
     await Promise.all([
       loadExerciseNames(successorMesocycle?.slotPlanSeedJson),

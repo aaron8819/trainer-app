@@ -29,6 +29,7 @@ type HistoricalMesocycleSeedRow = {
   durationWeeks: number;
   closedAt: Date | null;
   slotPlanSeedJson: unknown;
+  currentSeedRevision?: { seedPayload: unknown } | null;
   macroCycle: {
     startDate: Date;
   };
@@ -584,6 +585,7 @@ export async function loadV2MesocycleStrategyHistoricalReviewEvidence(
       durationWeeks: true,
       closedAt: true,
       slotPlanSeedJson: true,
+      currentSeedRevision: { select: { seedPayload: true } },
       macroCycle: {
         select: {
           startDate: true,
@@ -591,6 +593,11 @@ export async function loadV2MesocycleStrategyHistoricalReviewEvidence(
       },
     },
   })) as HistoricalMesocycleSeedRow[];
+  for (const row of rows) {
+    if (row.currentSeedRevision?.seedPayload) {
+      row.slotPlanSeedJson = row.currentSeedRevision.seedPayload;
+    }
+  }
 
   const historicalMesocycleReviews = await Promise.all(
     rows.map(async (row) => {

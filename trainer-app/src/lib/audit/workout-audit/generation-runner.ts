@@ -189,6 +189,11 @@ async function buildGeneratedSessionRunFields(input: {
       ? null
       : (generationResult.selection.sessionDecisionReceipt?.sessionProvenance
           ?.compositionSource ?? null);
+  const receiptSeedProvenance =
+    "error" in generationResult
+      ? null
+      : (generationResult.selection.sessionDecisionReceipt?.sessionProvenance
+          ?.seedProvenance ?? null);
   const acceptedSeedProvenanceConsistency =
     activeMesocycle?.slotPlanSeedJson != null
       ? evaluateAcceptedMesocycleSeedProvenance({
@@ -196,6 +201,9 @@ async function buildGeneratedSessionRunFields(input: {
           mesocycleState: activeMesocycle.state,
           slotPlanSeedJson: activeMesocycle.slotPlanSeedJson,
           receiptCompositionSource,
+          receiptSeedProvenance,
+          currentRevision: activeMesocycle.currentSeedRevision,
+          revisionHistory: activeMesocycle.seedRevisions,
         })
       : undefined;
 

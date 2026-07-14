@@ -13,7 +13,7 @@ Invariants:
 - `prisma/schema.prisma` is canonical for all model and enum definitions.
 - `Workout.status`, `Workout.selectionMode`, and `WorkoutExercise.section` must stay aligned with runtime contracts.
 - `SetLog.workoutSetId` is unique, so set logging is one log record per set.
-- Mesocycle handoff state, frozen handoff artifacts, editable next-cycle draft, accepted slot sequence, and accepted slot-plan seeds all persist on `Mesocycle`.
+- Mesocycle handoff state, frozen handoff artifacts, editable next-cycle draft, and accepted slot sequence persist on `Mesocycle`; immutable accepted executable seeds persist as `MesocycleSeedRevision` rows selected by `Mesocycle.currentSeedRevisionId`.
 
 Sources of truth:
 - `trainer-app/prisma/schema.prisma`
@@ -26,7 +26,7 @@ Sources of truth:
 - User context: `User`, `Profile`, `Goals`, `Constraints`, `Injury`, `UserPreference`
 - Workout execution: `Workout`, `WorkoutExercise`, `WorkoutSet`, `SetLog`, `FilteredExercise`
 - Catalog/template: `Exercise`, `Muscle`, `Equipment`, `WorkoutTemplate`, `WorkoutTemplateExercise`
-- Adaptive systems: `ReadinessSignal`, `PreSessionReadinessSnapshot`, `ExerciseExposure`, `MacroCycle`, `Mesocycle`, `TrainingBlock`, `MesocycleExerciseRole`
+- Adaptive systems: `ReadinessSignal`, `PreSessionReadinessSnapshot`, `ExerciseExposure`, `MacroCycle`, `Mesocycle`, `MesocycleSeedRevision`, `TrainingBlock`, `MesocycleExerciseRole`
 
 ## Runtime-critical enums
 - `WorkoutStatus`: `PLANNED`, `IN_PROGRESS`, `PARTIAL`, `COMPLETED`, `SKIPPED`
@@ -67,14 +67,16 @@ Canonical machine-readable values in `docs/contracts/runtime-contracts.json` cur
 - `Mesocycle.nextSeedDraftJson`
 - `Mesocycle.slotSequenceJson`
 - `Mesocycle.slotPlanSeedJson`
+- `Mesocycle.currentSeedRevisionId`
 
 Lifecycle/handoff meanings:
 - `AWAITING_HANDOFF` means the prior mesocycle is closed, reviewable, and no successor mesocycle has been created yet.
 - `handoffSummaryJson` stores the frozen closeout snapshot: terminal lifecycle facts, final training structure, carry-forward recommendations, and the original recommended next-cycle seed.
 - The frozen handoff recommendation is explainability-bearing data, not a UI-local recomputation target. `recommendedDesign` now persists branch-owned structure explainability (`structureReasonCodes` plus `structureSignalQuality`) and each carry-forward recommendation persists the canonical returned `reasonCodes` plus `signalQuality` from the genesis policy seam.
-- `nextSeedDraftJson` stores the mutable pending setup draft while the mesocycle is in `AWAITING_HANDOFF`. It is not editable once the mesocycle is archived as `COMPLETED`. An explicit guarded V2 draft refresh may add `acceptedSeedDraft` while still in `AWAITING_HANDOFF`; that object records `source=v2_materialized_seed`, compact production-eligibility provenance, and a parser-compatible minimal `slotPlanSeedJson` candidate. It is draft candidate truth only until accept persists the successor `slotPlanSeedJson`.
+- `nextSeedDraftJson` stores the mutable pending setup draft while the mesocycle is in `AWAITING_HANDOFF`. It is not editable once the mesocycle is archived as `COMPLETED`. An explicit guarded V2 draft refresh may add `acceptedSeedDraft` while still in `AWAITING_HANDOFF`; that object records `source=v2_materialized_seed`, compact production-eligibility provenance, and a parser-compatible minimal seed candidate. It is draft candidate truth only until accept creates the successor's immutable revision 1 in the same transaction.
 - `slotSequenceJson` stores the accepted ordered-flexible slot sequence on the successor mesocycle and is the canonical runtime authority for slot-aware sequencing. Each persisted slot may now carry authored slot semantics alongside placement using the additive contract fields `slotArchetype`, `primaryLaneContract`, `supportCoverageContract`, and `continuityScope`.
-- `slotPlanSeedJson` stores the accepted minimal slot-plan seeds on the successor mesocycle as ordered `slotId -> exercises[{ exerciseId, role, setCount }]` data derived from the final repaired canonical raw handoff slot-plan projection or an explicitly guarded V2 materialized-seed acceptance path. Its top-level `source` label remains `handoff_slot_plan_projection` for legacy projection-authored seeds and is `v2_materialized_seed` only when the guarded V2 helper authors the executable rows. It must align with persisted `slotSequenceJson` slot ids and is the canonical runtime composition source for seeded mesocycles until the user explicitly edits a generated workout. It may include optional `acceptedPlannerIntent` metadata only when the value matches the seed-safe V2 accepted planner intent DTO; malformed metadata is ignored by the parser and does not block valid executable slot replay. Improved projections may replace this seed only through the explicit active-mesocycle slot-plan upgrade flow, which validates unchanged slot order, valid exercise identities, and explicit `setCount` values before atomically replacing the seed. Applied active reseed replacements intentionally omit `acceptedPlannerIntent`. Identity-only seed exercises without `setCount` are legacy-compatible only and use the prior seeded prescription fallback with an explicit runtime warning.
+- `MesocycleSeedRevision.seedPayload` stores the accepted minimal executable slot plan as ordered `slotId -> exercises[{ exerciseId, role, setCount }]`. `Mesocycle.currentSeedRevisionId` selects the runtime authority. Revision rows are append-only, uniquely numbered per mesocycle, hash the normalized executable payload with SHA-256, and link corrections through `sourceRevisionId`; a database trigger rejects updates and deletes. `slotPlanSeedJson` remains a transitional acceptance/legacy compatibility snapshot and is not rewritten by corrections or consumed when a current revision exists. Planner diagnostics, lane ids, accepted intent, and provenance sidecars are excluded from the executable hash and runtime replay.
+- `Workout.seedRevisionId`, `Workout.seedRevisionNumber`, and `Workout.seedPayloadHash` preserve the exact accepted seed revision used to materialize the workout. The same tuple is stored in `selectionMetadata.sessionDecisionReceipt.sessionProvenance.seedProvenance`. Exact tuples are immutable on resume/update; legacy workouts remain readable with null fields and are reported as `legacy_unknown` rather than assigned fabricated provenance.
 
 ## Training block fields
 - `TrainingBlock.mesocycleId`
@@ -104,7 +106,7 @@ Lifecycle/handoff meanings:
 - `Workout.mesoSessionSnapshot`
 - `trainingBlockId` / `weekInBlock` remain compatibility-oriented persisted context on the workout row; the canonical generation-time phase/block context is assembled from active `MacroCycle -> Mesocycle -> TrainingBlock` rows and stamped into `selectionMetadata.sessionDecisionReceipt.cycleContext`.
 - Slot-aware runtime identity is persisted alongside those snapshots in `Workout.selectionMetadata.sessionDecisionReceipt.sessionSlot`. That receipt snapshot carries `slotId`, `intent`, `sequenceIndex`, and `source` for the generated session.
-- Session-level generation provenance is persisted in `Workout.selectionMetadata.sessionDecisionReceipt.sessionProvenance`. The durable shape is `mesocycleId?: string | null` plus `compositionSource?: "persisted_slot_plan_seed" | "runtime_selection" | "deload_seed_replay" | "legacy_fallback" | "unknown"`; audit execution paths such as `generationPath` remain audit artifacts rather than receipt fields.
+- Session-level generation provenance is persisted in `Workout.selectionMetadata.sessionDecisionReceipt.sessionProvenance`. The durable shape is `mesocycleId?: string | null`, `compositionSource?: "persisted_slot_plan_seed" | "runtime_selection" | "deload_seed_replay" | "legacy_fallback" | "unknown"`, and exact seeded runs add `seedProvenance?: { revisionId, revision, hash }`; audit execution paths such as `generationPath` remain audit artifacts rather than receipt fields.
 
 ## Compatibility-only workout fields
 - `Workout.wasAutoregulated`

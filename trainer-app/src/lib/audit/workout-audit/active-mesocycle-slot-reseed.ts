@@ -676,6 +676,25 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
         week: deriveCurrentMesocycleSession(activeMesocycle).week,
         splitType: activeMesocycle.splitType,
         targetSlotIds,
+        seedProvenance: {
+          status: (
+            activeMesocycle.currentSeedRevision?.provenanceStatus === "exact"
+              ? "exact"
+              : activeMesocycle.currentSeedRevision
+                ? "legacy_unknown"
+                : "missing") as "exact" | "legacy_unknown" | "missing",
+          currentRevisionId: activeMesocycle.currentSeedRevision?.id ?? null,
+          currentRevision: activeMesocycle.currentSeedRevision?.revision ?? null,
+          currentHash: activeMesocycle.currentSeedRevision?.payloadHash ?? null,
+          history: (activeMesocycle.seedRevisions ?? []).map((revision) => ({
+            revisionId: revision.id,
+            revision: revision.revision,
+            hash: revision.payloadHash,
+            creationReason: revision.creationReason,
+            actorSource: revision.actorSource,
+            sourceRevisionId: revision.sourceRevisionId,
+          })),
+        },
       },
       executiveSummary: buildExecutiveSummary({
         recommendation,
@@ -822,6 +841,25 @@ export async function evaluateActiveMesocycleSlotReseed(input: {
       week: deriveCurrentMesocycleSession(activeMesocycle).week,
       splitType: activeMesocycle.splitType,
       targetSlotIds,
+      seedProvenance: {
+        status: (
+          activeMesocycle.currentSeedRevision?.provenanceStatus === "exact"
+            ? "exact"
+            : activeMesocycle.currentSeedRevision
+              ? "legacy_unknown"
+              : "missing") as "exact" | "legacy_unknown" | "missing",
+        currentRevisionId: activeMesocycle.currentSeedRevision?.id ?? null,
+        currentRevision: activeMesocycle.currentSeedRevision?.revision ?? null,
+        currentHash: activeMesocycle.currentSeedRevision?.payloadHash ?? null,
+        history: (activeMesocycle.seedRevisions ?? []).map((revision) => ({
+          revisionId: revision.id,
+          revision: revision.revision,
+          hash: revision.payloadHash,
+          creationReason: revision.creationReason,
+          actorSource: revision.actorSource,
+          sourceRevisionId: revision.sourceRevisionId,
+        })),
+      },
     },
     executiveSummary: buildExecutiveSummary({
       recommendation,

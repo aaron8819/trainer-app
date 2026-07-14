@@ -31,6 +31,11 @@ export type SessionCompositionSource =
 export type SessionDecisionProvenance = {
   mesocycleId?: string | null;
   compositionSource?: SessionCompositionSource;
+  seedProvenance?: {
+    revisionId: string;
+    revision: number;
+    hash: string;
+  };
 };
 
 export type DeloadDecisionMode = "none" | "scheduled" | "reactive" | "readiness";
@@ -77,7 +82,7 @@ export type SessionDecisionException = {
 export type PlannerDiagnosticsMode = "standard" | "debug";
 
 export type SessionDecisionReceipt = {
-  version: 1;
+  version: 1 | 2;
   cycleContext: CycleContextSnapshot;
   sessionProvenance?: SessionDecisionProvenance;
   sessionSlot?: SessionSlotSnapshot;

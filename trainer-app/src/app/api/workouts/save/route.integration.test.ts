@@ -1482,7 +1482,10 @@ describe("POST /api/workouts/save", () => {
       expect(upsert.update.selectionMetadata).toEqual(
         expect.objectContaining({
           selectedExerciseIds: ["bench"],
-          sessionDecisionReceipt: expect.objectContaining(persistedReceipt),
+          sessionDecisionReceipt: expect.objectContaining({
+            ...persistedReceipt,
+            version: 2,
+          }),
         })
       );
     }

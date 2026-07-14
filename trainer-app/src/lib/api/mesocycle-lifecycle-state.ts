@@ -24,7 +24,26 @@ type MesoWithLifecycle = Pick<
 
 export type ActiveMesocycleWithBlocks = Prisma.MesocycleGetPayload<{
   include: { blocks: true };
-}>;
+}> & {
+  currentSeedRevision?: {
+    id: string;
+    revision: number;
+    seedPayload: Prisma.JsonValue;
+    payloadHash: string | null;
+    hashAlgorithm: string | null;
+    provenanceStatus: string;
+  } | null;
+  seedRevisions?: Array<{
+    id: string;
+    revision: number;
+    payloadHash: string | null;
+    provenanceStatus: string;
+    creationReason: string;
+    actorSource: string | null;
+    sourceRevisionId: string | null;
+    activatedAt: Date;
+  }>;
+};
 
 function getAccumulationSessionThreshold(mesocycle: Pick<MesoWithLifecycle, "durationWeeks" | "sessionsPerWeek">): number {
   return getAccumulationWeeks(mesocycle.durationWeeks) * Math.max(1, mesocycle.sessionsPerWeek);
@@ -419,16 +438,47 @@ export async function finishDeloadEarly(input: {
 }
 
 export async function loadActiveMesocycle(userId: string): Promise<ActiveMesocycleWithBlocks | null> {
-  return prisma.mesocycle.findFirst({
+  const mesocycle = await prisma.mesocycle.findFirst({
     where: {
       isActive: true,
       macroCycle: { userId },
     },
     orderBy: [{ mesoNumber: "desc" }],
     include: {
+      currentSeedRevision: {
+        select: {
+          id: true,
+          revision: true,
+          seedPayload: true,
+          payloadHash: true,
+          hashAlgorithm: true,
+          provenanceStatus: true,
+        },
+      },
+      seedRevisions: {
+        orderBy: { revision: "asc" },
+        select: {
+          id: true,
+          revision: true,
+          payloadHash: true,
+          provenanceStatus: true,
+          creationReason: true,
+          actorSource: true,
+          sourceRevisionId: true,
+          activatedAt: true,
+        },
+      },
       blocks: {
         orderBy: { blockNumber: "asc" },
       },
     },
   });
+  if (!mesocycle) {
+    return null;
+  }
+  return {
+    ...mesocycle,
+    slotPlanSeedJson:
+      mesocycle.currentSeedRevision?.seedPayload ?? mesocycle.slotPlanSeedJson,
+  };
 }

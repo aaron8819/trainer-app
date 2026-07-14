@@ -94,9 +94,23 @@ function buildSessionProvenance(
   mapped: MappedGenerationContext,
   compositionSource: SessionCompositionSource
 ): SessionDecisionProvenance {
+  const revision = mapped.activeMesocycle?.currentSeedRevision;
+  const seedProvenance =
+    (compositionSource === "persisted_slot_plan_seed" ||
+      compositionSource === "deload_seed_replay") &&
+    revision?.provenanceStatus === "exact" &&
+    revision.hashAlgorithm === "sha256" &&
+    revision.payloadHash
+      ? {
+          revisionId: revision.id,
+          revision: revision.revision,
+          hash: revision.payloadHash,
+        }
+      : undefined;
   return {
     mesocycleId: mapped.activeMesocycle?.id ?? null,
     compositionSource,
+    ...(seedProvenance ? { seedProvenance } : {}),
   };
 }
 

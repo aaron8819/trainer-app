@@ -24,6 +24,8 @@
         "ops:refresh-next-seed-draft": "tsx scripts/ops-refresh-next-seed-draft.ts",
         "ops:backfill-seed-revisions": "tsx scripts/backfill-immutable-seed-revisions.ts",
         "ops:backfill-stimulus-accounting": "tsx scripts/backfill-workout-exercise-stimulus-accounting.ts",
+        "ops:backfill-post-session-reviews": "tsx scripts/backfill-post-session-reviews.ts",
+        "audit:post-session-reviews": "tsx scripts/audit-post-session-reviews.ts",
     "test:seed-revision-concurrency": "tsx scripts/verify-seed-revision-concurrency.ts",
         "audit:mesocycle-explain:compare": "tsx scripts/audit-mesocycle-explain-compare.ts",
         "audit:week": "tsx scripts/workout-audit.ts --env-file .env.local --mode projected-week-volume",

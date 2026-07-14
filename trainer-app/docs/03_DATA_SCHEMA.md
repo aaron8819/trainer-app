@@ -135,6 +135,16 @@ Lifecycle/handoff meanings:
 - Closeout persistence stays slotless by contract: `selectionMetadata.sessionDecisionReceipt.sessionSlot` must be absent on closeout workouts, and write-side helpers strip that slot snapshot rather than introducing a separate closeout slot mirror.
 - Next-cycle carry-forward compatibility is draft-validated rather than schema-enforced: if split/session edits remove a slot intent, `keep` selections for that prior intent are rejected before acceptance (`src/lib/api/mesocycle-handoff.ts`).
 
+## Immutable post-session review snapshots
+
+`PostSessionReviewSnapshot` is an optional one-to-one child of `Workout`. New `COMPLETED` transitions create one `exact` row in the same transaction as completion and lifecycle effects. Legacy completed workouts may remain without a row; controlled backfills create `legacy_derived` rows and never claim historical exactness.
+
+The row stores the semantic `PostSessionReviewContract` payload, `contractVersion`, independent `computationPolicyVersion`, SHA-256 payload hash, deterministic workout-evidence fingerprint, provenance, and finalization time. The database rejects application `UPDATE` and `DELETE` operations through an immutability trigger, and the parent foreign key restricts workout deletion while historical review evidence exists. Administrative destruction therefore requires a deliberate trigger/constraint-aware operation outside supported application paths.
+
+Contract version changes when the persisted semantic JSON shape or parser contract changes. Computation-policy version changes when interpretation rules can change conclusions without changing JSON shape. Display-only formatting, CSS, and copy changes outside the semantic contract require neither bump.
+
+The evidence fingerprint covers workout identity/status/revision, persisted session metadata and receipt, seed revision provenance fields, ordered workout exercises/sets, target prescription, latest set logs and set intent, and frozen stimulus-accounting snapshots. It excludes catalog display names, current policy tables, mutable current mesocycle state, and UI formatting.
+
 ## `WorkoutExercise.stimulusAccountingSnapshot`
 
 - Nullable JSONB, added additively for rollout compatibility.

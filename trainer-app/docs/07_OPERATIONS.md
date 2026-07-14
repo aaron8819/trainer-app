@@ -188,6 +188,17 @@ prisma.user.findFirst({
 Never use bare `findFirst()` for user resolution:
 - Test users exist in the live DB and may be returned first.
 
+## Immutable post-session review rollout
+
+1. Back up the database and pause workout-completion writes.
+2. Apply the additive `PostSessionReviewSnapshot` migration.
+3. Deploy compatibility readers and exact completion writers together; resume completion only after exact snapshot creation is active.
+4. Run `npm run ops:backfill-post-session-reviews -- --batch-size 100` for a dry-run report. Resume with `--after-id <id>` when needed.
+5. Review invalid/unproducible rows and hash distribution. Only with explicit database-write authorization, rerun with `--write`.
+6. Rerun the same command to confirm idempotence, then run `npm run audit:post-session-reviews` for the read-only integrity report. Add `--include-current-reinterpretation` only for an explicit diagnostic comparison.
+
+Backfilled rows are permanently `legacy_derived`; they do not represent what an older app version displayed. Ordinary GET/page reads never persist snapshots. Do not require historical backfill completion before new exact completion writes are enabled.
+
 ## Historical stimulus-accounting rollout
 
 1. Apply `20260714120000_add_workout_exercise_stimulus_snapshot` through the normal reviewed migration process.

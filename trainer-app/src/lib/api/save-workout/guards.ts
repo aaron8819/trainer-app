@@ -49,7 +49,6 @@ export function assertExistingWorkoutSaveAllowed(input: {
     throw new Error("WORKOUT_IMMUTABLE");
   }
   if (
-    input.hasExerciseRewrite &&
     input.expectedRevision != null &&
     input.expectedRevision !== existingWorkout.revision
   ) {

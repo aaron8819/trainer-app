@@ -10,7 +10,10 @@ import {
 } from "@/lib/ui/selection-metadata";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import type { Prisma } from "@prisma/client";
-import { generateWorkoutExplanation } from "./explainability";
+import {
+  generateWorkoutExplanation,
+  type ExplainabilityReader,
+} from "./explainability";
 import { buildPostSessionReviewContract } from "./post-session-review-contract-builder";
 import {
   isPostSessionReviewContract,
@@ -288,7 +291,8 @@ function toRecentExerciseExposureEvidence(
 }
 
 async function loadRecentExerciseExposureEvidence(
-  workout: ReviewWorkout
+  workout: ReviewWorkout,
+  client: ExplainabilityReader
 ): Promise<PostSessionReviewRecentExerciseExposureEvidence[]> {
   const exerciseIds = Array.from(
     new Set(workout.exercises.map((exercise) => exercise.exerciseId))
@@ -297,7 +301,7 @@ async function loadRecentExerciseExposureEvidence(
     return [];
   }
 
-  const rows = await prisma.workoutExercise.findMany({
+  const rows = await client.workoutExercise.findMany({
     where: {
       exerciseId: { in: exerciseIds },
       workoutId: { not: workout.id },
@@ -394,10 +398,13 @@ function buildSessionSemanticsEvidence(
   };
 }
 
-async function buildExplainabilityEvidence(workout: ReviewWorkout): Promise<
+async function buildExplainabilityEvidence(
+  workout: ReviewWorkout,
+  client: ExplainabilityReader
+): Promise<
   Pick<PostSessionReviewContractBuildInput, "nextExposureDecisions" | "weeklyImpact">
 > {
-  const explanation = await generateWorkoutExplanation(workout.id);
+  const explanation = await generateWorkoutExplanation(workout.id, client);
   if ("error" in explanation) {
     return {};
   }
@@ -476,11 +483,12 @@ function buildContractInput(
   };
 }
 
-export async function loadPostSessionReviewContractForWorkout(
+export async function produceCurrentPostSessionReviewInterpretation(
   userId: string,
-  workoutId: string
+  workoutId: string,
+  client: ExplainabilityReader = prisma
 ): Promise<PostSessionReviewProducerResult> {
-  const workout = await prisma.workout.findFirst({
+  const workout = await client.workout.findFirst({
     where: {
       id: workoutId,
       userId,
@@ -554,8 +562,8 @@ export async function loadPostSessionReviewContractForWorkout(
   }
 
   const [explainabilityEvidence, recentExerciseExposures] = await Promise.all([
-    buildExplainabilityEvidence(workout),
-    loadRecentExerciseExposureEvidence(workout),
+    buildExplainabilityEvidence(workout, client),
+    loadRecentExerciseExposureEvidence(workout, client),
   ]);
 
   const contract = buildPostSessionReviewContract(

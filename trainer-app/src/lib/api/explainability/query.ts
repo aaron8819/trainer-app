@@ -1,6 +1,11 @@
 import { prisma } from "@/lib/db/prisma";
 import type { Prisma } from "@prisma/client";
 
+type ExplainabilityQueryClient = Pick<
+  Prisma.TransactionClient,
+  "workout" | "exercise"
+>;
+
 export type WorkoutWithExplainabilityRelations = Prisma.WorkoutGetPayload<{
   include: {
     filteredExercises: true;
@@ -23,9 +28,10 @@ export type WorkoutWithExplainabilityRelations = Prisma.WorkoutGetPayload<{
 }>;
 
 export async function loadWorkoutWithExplainabilityRelations(
-  workoutId: string
+  workoutId: string,
+  client: ExplainabilityQueryClient = prisma
 ): Promise<WorkoutWithExplainabilityRelations | null> {
-  return prisma.workout.findUnique({
+  return client.workout.findUnique({
     where: { id: workoutId },
     include: {
       filteredExercises: true,
@@ -48,8 +54,10 @@ export async function loadWorkoutWithExplainabilityRelations(
   });
 }
 
-export async function loadExplainabilityExerciseLibrary() {
-  return prisma.exercise.findMany({
+export async function loadExplainabilityExerciseLibrary(
+  client: ExplainabilityQueryClient = prisma
+) {
+  return client.exercise.findMany({
     include: {
       exerciseEquipment: { include: { equipment: true } },
       exerciseMuscles: { include: { muscle: true } },

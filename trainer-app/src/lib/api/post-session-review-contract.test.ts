@@ -1192,6 +1192,6 @@ describe("post-session review contract", () => {
     expect(combined).not.toContain("writeFile");
 
     const schema = readFileSync("prisma/schema.prisma", "utf8");
-    expect(schema).not.toContain("PostSessionReviewSnapshot");
+    expect(schema).toContain("model PostSessionReviewSnapshot");
   });
 });

@@ -89,6 +89,16 @@ const LOW_SIGNAL_SET_COUNT = 2;
 const LOW_SIGNAL_COVERAGE_RATIO = 0.75;
 const NON_TRIVIAL_SKIPPED_RATIO = 0.25;
 
+export type ExplainabilityReader = Pick<
+  Prisma.TransactionClient,
+  | "workout"
+  | "workoutExercise"
+  | "exercise"
+  | "macroCycle"
+  | "constraints"
+  | "mesocycle"
+>;
+
 function roundToTenth(value: number): number {
   return Math.round(value * 10) / 10;
 }
@@ -144,26 +154,29 @@ function countsTowardCanonicalPerformanceHistory(input: {
 }
 
 export async function generateWorkoutExplanation(
-  workoutId: string
+  workoutId: string,
+  client: ExplainabilityReader = prisma
 ): Promise<WorkoutExplanation | { error: string }> {
   const workout: WorkoutWithExplainabilityRelations | null =
-    await loadWorkoutWithExplainabilityRelations(workoutId);
+    await loadWorkoutWithExplainabilityRelations(workoutId, client);
 
   if (!workout) {
     return { error: "Workout not found" };
   }
 
-  const exerciseLibrary = await loadExplainabilityExerciseLibrary();
+  const exerciseLibrary = await loadExplainabilityExerciseLibrary(client);
   const mappedExercises = mapExercises(exerciseLibrary);
   const exerciseById = new Map(mappedExercises.map((exercise) => [exercise.id, exercise]));
   const { blockContext, weekInMeso } = await loadCurrentBlockContext(
     workout.userId,
-    workout.scheduledDate
+    workout.scheduledDate,
+    client
   );
   const volumeByMuscle = await loadVolumeByMuscle(
     workout.userId,
     workout.scheduledDate,
-    exerciseById
+    exerciseById,
+    client
   );
 
   const sessionEvidence = buildSessionEvidence({
@@ -176,7 +189,12 @@ export async function generateWorkoutExplanation(
     sessionIntent: workout.sessionIntent,
   });
 
-  const workoutStats = await deriveWorkoutStats(workout, volumeByMuscle, exerciseById);
+  const workoutStats = await deriveWorkoutStats(
+    workout,
+    volumeByMuscle,
+    exerciseById,
+    client
+  );
   const coachMessages = generateCoachMessages({
     sessionContext,
     workoutStats,
@@ -291,7 +309,8 @@ export async function generateWorkoutExplanation(
       isMainLiftEligible,
       repRange,
       equipmentTypes,
-      exercise.isCompound ?? undefined
+      exercise.isCompound ?? undefined,
+      client
     );
     const todayPrescription = summarizeTodayTopSet(engineSets);
     const currentSemantics = derivePerformedExerciseSemantics({
@@ -360,6 +379,7 @@ export async function generateWorkoutExplanation(
         hasTransitionBackfillSubstitution:
           runtimeReplacedExercises.get(workoutExercise.id)?.reason ===
           "transition_week_backfill_substitution",
+        client,
       }
     );
     if (nextExposureDecision) {
@@ -385,7 +405,7 @@ export async function generateWorkoutExplanation(
       (workoutStats.musclesApproachingMRV?.length ?? 0) > 0,
   });
 
-  const volumeCompliance = await computeVolumeCompliance(workout, exerciseById);
+  const volumeCompliance = await computeVolumeCompliance(workout, exerciseById, client);
 
   return {
     confidence,
@@ -403,12 +423,13 @@ export async function generateWorkoutExplanation(
 async function loadVolumeByMuscle(
   userId: string,
   currentDate: Date,
-  exerciseById: Map<string, EngineExercise>
+  exerciseById: Map<string, EngineExercise>,
+  client: ExplainabilityReader
 ): Promise<Map<string, number>> {
   const sevenDaysAgo = new Date(currentDate);
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const recentWorkouts = await prisma.workout.findMany({
+  const recentWorkouts = await client.workout.findMany({
     where: {
       userId,
       scheduledDate: {
@@ -479,7 +500,8 @@ async function deriveWorkoutStats(
     >;
   },
   weeklyVolumeByMuscle: Map<string, number>,
-  exerciseById: Map<string, EngineExercise>
+  exerciseById: Map<string, EngineExercise>,
+  client: ExplainabilityReader
 ): Promise<{
   totalSets: number;
   hasPRPotential?: boolean;
@@ -493,7 +515,8 @@ async function deriveWorkoutStats(
     workout.scheduledDate,
     workout.id,
     exerciseById,
-    workout.sessionIntent ?? undefined
+    workout.sessionIntent ?? undefined,
+    client
   );
   const volumeSpikePercent = computeVolumeSpikePercent(currentWorkoutEffectiveSets, baselineEffectiveSets);
 
@@ -510,7 +533,8 @@ async function deriveWorkoutStats(
   const historyMaxByExercise = await loadHistoricalExercisePerformance(
     workout.userId,
     [...plannedByExercise.keys()],
-    workout.id
+    workout.id,
+    client
   );
 
   return {
@@ -596,9 +620,10 @@ async function loadHistoricalEffectiveSetTotals(
   currentDate: Date,
   excludeWorkoutId: string,
   exerciseById: Map<string, EngineExercise>,
-  sessionIntent?: string
+  sessionIntent: string | undefined,
+  client: ExplainabilityReader
 ): Promise<number[]> {
-  const workouts = await prisma.workout.findMany({
+  const workouts = await client.workout.findMany({
     where: {
       userId,
       id: { not: excludeWorkoutId },
@@ -639,7 +664,14 @@ async function loadHistoricalEffectiveSetTotals(
     .slice(0, 6);
 
   if (canonicalWorkouts.length === 0 && sessionIntent) {
-    return loadHistoricalEffectiveSetTotals(userId, currentDate, excludeWorkoutId, exerciseById);
+    return loadHistoricalEffectiveSetTotals(
+      userId,
+      currentDate,
+      excludeWorkoutId,
+      exerciseById,
+      undefined,
+      client
+    );
   }
 
   return canonicalWorkouts.map((entry) => computeWorkoutEffectiveSets(entry.exercises, exerciseById));
@@ -699,12 +731,13 @@ function getHistoricalEffectiveContribution(
 async function loadHistoricalExercisePerformance(
   userId: string,
   exerciseIds: string[],
-  excludeWorkoutId: string
+  excludeWorkoutId: string,
+  client: ExplainabilityReader
 ): Promise<Map<string, { maxLoad: number | null; maxReps: number | null }>> {
   const output = new Map<string, { maxLoad: number | null; maxReps: number | null }>(
     exerciseIds.map((exerciseId) => [exerciseId, { maxLoad: null, maxReps: null }])
   );
-  const rows = await prisma.workoutExercise.findMany({
+  const rows = await client.workoutExercise.findMany({
     where: {
       exerciseId: { in: exerciseIds },
       workout: {
@@ -934,12 +967,14 @@ async function loadLatestPerformedSetSummary(
   isMainLiftEligible: boolean,
   repRange: [number, number],
   equipment: string[],
-  isCompound?: boolean
+  isCompound: boolean | undefined,
+  client: ExplainabilityReader
 ): Promise<(ProgressionSetSummary & { decisionLog?: string[] }) | null> {
   const previous = await findLatestProgressionEligibleWorkoutExercise({
     userId,
     workoutId,
     exerciseId,
+    client,
   });
 
   if (!previous) return null;
@@ -980,6 +1015,7 @@ async function loadLatestPerformedSetSummary(
       scheduledDate: performedDate ?? undefined,
       exerciseId,
       performedLogs,
+      client,
     }
   );
   const decision = computeDoubleProgressionDecision(
@@ -1017,6 +1053,7 @@ type ExplainabilityConfidenceInput = {
         }
       | undefined;
   }>;
+  client: ExplainabilityReader;
 };
 
 type NextExposurePlannedSetInput = {
@@ -1074,6 +1111,7 @@ async function resolveExplainabilityHistoryConfidenceScale(
     workoutId: input.workoutId,
     exerciseId: input.exerciseId,
     requiredSelectionMode: "INTENT",
+    client: input.client,
   });
   return hasIntentHistory ? 0.7 : 1;
 }
@@ -1104,6 +1142,7 @@ async function resolveExplainabilityConfidenceNotes(
     workoutId: input.workoutId,
     exerciseId: input.exerciseId,
     requiredSelectionMode: "INTENT",
+    client: input.client,
   });
   notes.push(
     hasIntentHistory
@@ -1137,6 +1176,7 @@ async function resolveManualAnomalyFlags(
       exerciseId: input.exerciseId,
       scheduledBefore: input.scheduledDate,
       requiredSelectionMode: "INTENT",
+      client: input.client,
     });
 
     if (recentIntent) {
@@ -1165,11 +1205,12 @@ async function findLatestProgressionEligibleWorkoutExercise(input: {
   exerciseId: string;
   scheduledBefore?: Date;
   requiredSelectionMode?: WorkoutSelectionMode;
+  client: ExplainabilityReader;
 }) {
   let scheduledBefore = input.scheduledBefore;
 
   while (true) {
-    const candidate = await prisma.workoutExercise.findFirst({
+    const candidate = await input.client.workoutExercise.findFirst({
       where: {
         exerciseId: input.exerciseId,
         workout: {
@@ -1869,6 +1910,7 @@ async function loadExplainabilityProgressionSessions(
       workoutId: input.workoutId,
       exerciseId: input.exerciseId,
       scheduledBefore,
+      client: input.client,
     });
     if (!previous) {
       break;
@@ -1881,6 +1923,7 @@ async function loadExplainabilityProgressionSessions(
         exerciseId: input.exerciseId,
         selectionMode: previous.workout.selectionMode ?? undefined,
         scheduledDate: previous.workout.scheduledDate,
+        client: input.client,
         performedLogs: previous.sets.map((set) => ({
           setIndex: set.setIndex,
           log: set.logs[0]
@@ -2001,14 +2044,15 @@ function computeVolumeComplianceStatus(
 
 async function computeVolumeCompliance(
   workout: WorkoutWithExplainabilityRelations,
-  exerciseById: Map<string, EngineExercise>
+  exerciseById: Map<string, EngineExercise>,
+  client: ExplainabilityReader
 ): Promise<MuscleVolumeCompliance[]> {
   const mesocycleSnapshot = readPersistedWorkoutMesocycleSnapshot(workout);
   if (!mesocycleSnapshot) {
     return [];
   }
 
-  const meso = await prisma.mesocycle.findUnique({
+  const meso = await client.mesocycle.findUnique({
     where: { id: mesocycleSnapshot.mesocycleId },
     select: {
       durationWeeks: true,
@@ -2036,7 +2080,7 @@ async function computeVolumeCompliance(
   weekStart.setDate(weekStart.getDate() + (meso.startWeek + mesocycleSnapshot.week - 1) * 7);
   const performedEffectiveVolumeBeforeSession = new Map<string, number>(
     Object.entries(
-      await loadMesocycleWeekMuscleVolume(prisma, {
+      await loadMesocycleWeekMuscleVolume(client, {
         userId: workout.userId,
         mesocycleId: mesocycleSnapshot.mesocycleId,
         targetWeek: mesocycleSnapshot.week,

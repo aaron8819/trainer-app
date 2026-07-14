@@ -31,7 +31,7 @@ vi.mock("./explainability", () => ({
     mocks.generateWorkoutExplanation(...args),
 }));
 
-import { loadPostSessionReviewContractForWorkout } from "./post-session-review-producer";
+import { produceCurrentPostSessionReviewInterpretation as loadPostSessionReviewContractForWorkout } from "./post-session-review-producer";
 
 function makeReceipt() {
   return buildSessionDecisionReceipt({
@@ -321,7 +321,7 @@ function mockExplanation(input: {
   });
 }
 
-describe("loadPostSessionReviewContractForWorkout", () => {
+describe("produceCurrentPostSessionReviewInterpretation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.workoutExerciseFindMany.mockResolvedValue([]);
@@ -841,6 +841,6 @@ describe("loadPostSessionReviewContractForWorkout", () => {
     expect(source).not.toContain("@/lib/engine/apply-loads");
     expect(source).not.toContain("computeDoubleProgressionDecision");
     expect(source).not.toContain("reconcileRuntimeEditSelectionMetadata");
-    expect(schema).not.toContain("PostSessionReviewSnapshot");
+    expect(schema).toContain("model PostSessionReviewSnapshot");
   });
 });

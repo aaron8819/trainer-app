@@ -3,6 +3,10 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
+| 2026-07-14 | self | Chained `Start-Service` and `Get-Service`, which made the shell command exit 0 even though Docker service startup failed. | Run state-changing service startup and status inspection as separate commands so the startup exit code remains authoritative. |
+| 2026-07-14 | self | Guessed `save-workout/status.test.ts` and `guards.test.ts` during focused verification; neither test file exists, and the rejected parallel call hid the two useful test outputs. | Enumerate focused tests with `rg --files` before running them, and avoid fail-fast parallel orchestration when one uncertain path can suppress sibling results. |
+| 2026-07-14 | self | Chained three read-only `rg` checks with PowerShell semicolons after the napkin explicitly required separate calls. | Use separate parallel `shell_command` objects for every inspection pass so failures and outputs remain isolated. |
+| 2026-07-14 | self | Repeated the documented Windows wildcard-path mistake by passing `post-session-review*` as an `rg` path during review-seam discovery. | Search the containing directory and use `-g "post-session-review*"`; re-read the napkin immediately before broad Windows `rg` passes. |
 | 2026-07-14 | self | A read-only stdin `tsx` DB inventory used dynamic imports but still accessed named exports directly, repeating the documented wrapper-shape trap at cleanup. | Normalize every stdin `tsx` dynamic import with `const mod = imported.default ?? imported` before accessing exports, including cleanup helpers. |
 | 2026-07-14 | self | Repeated the documented PowerShell `$transaction` interpolation mistake in a parallel `rg` inspection command, producing an invalid regex. | Use PowerShell single-quoted regex patterns whenever searches include TypeScript `$` identifiers; never embed those patterns in a double-quoted command. |
 | 2026-07-13 | self | Raw broad-suite failure counts hid two branch-only receipt/audit regressions among a large known-red baseline. | Capture base and branch Vitest JSON under the same environment, normalize paths, and compare failed-test names before accepting a baseline-failure explanation. |
@@ -301,6 +305,7 @@
 - Keep goal prompts under 4k characters; write them as bounded execution loops with mission, context, allowed/forbidden scope, process, success criteria, stop conditions, and final report format.
 
 ## Patterns That Work
+- For transactionally frozen read models, inject the active `Prisma.TransactionClient` through the existing producer/query graph so the canonical policy code reads uncommitted finalized state; do not create a second in-transaction producer or use a global client that cannot see the transaction.
 - For planning-session handoffs, treat pasted implementation-session dumps as context but verify live `git status --short` before deciding whether the next prompt should consolidate dirty work or start fresh.
 - For Home pre-session readiness card IA, add display-only fields at the app-owned contract/DTO seam (`pre-session-readiness-contract` -> `pre-session-readiness-gym-card`) when Home lacks safe data such as workout preview rows; keep the component rendering DTO fields only and avoid raw contract/audit prose parsing.
 - For immediate post-save completed-review DTOs, add a narrow read-only route over the existing app read model (`resolveOwner()` -> `loadCompletedWorkoutReviewReadModel()` -> display DTO/null) and have the client render the shared card additively. Keep the explanation endpoint and producer/contract logic unchanged, and guard the client/route against audit, producer, contract, persistence, and mutation imports.
@@ -335,6 +340,7 @@
 - Do not promote suspicious downstream repair rows unless the owning V2 layer is clearly upstream and compatible with the target architecture.
 
 ## Domain Notes
+- `PARTIAL` workouts are reviewable but resumable (`PARTIAL -> COMPLETED` is supported), so a one-to-one immutable post-session review snapshot can only finalize at `COMPLETED`. Partial review remains current interpretation; skipped workouts have no review.
 - 2026-06-13 read-only next-track selection: after low-axial lane intent and candidate-quality/materializer-delta lab are complete/capped, pivot the next highest-ROI slice to runtime execution quality evidence (prescription confidence, readiness, swaps, post-session review, performed-reality loop) before more lane families or owner-specific V2 probes, unless fresh measured owner-specific evidence appears.
 - 2026-06-13 self: Repeated the Windows `rg` wildcard path mistake by searching `trainer-app\docs\0*.md` / `10*.md` directly. Use directory searches with `-g` filters in PowerShell (`rg ... trainer-app\docs -g "0*.md" -g "10*.md"`).
 - Repo skill review: keep the protective Trainer skills, but improve trigger precision instead of removing overlap. V2/audit skills should prefer source-attributed plan-quality benchmark gates over legacy repair-row probing as the default work queue. Skill/workflow-only edits should not require app verification unless they claim behavior, contracts, seed/runtime, or DB changes.

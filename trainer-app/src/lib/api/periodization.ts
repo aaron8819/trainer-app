@@ -2,6 +2,12 @@ import { prisma } from "@/lib/db/prisma";
 import { deriveBlockContext } from "@/lib/engine";
 import type { BlockContext } from "@/lib/engine";
 import { mapMacroCycle } from "./periodization-mappers";
+import type { Prisma } from "@prisma/client";
+
+type PeriodizationReader = Pick<
+  Prisma.TransactionClient,
+  "macroCycle" | "constraints"
+>;
 
 export type WeekInBlockHistoryEntry = {
   scheduledDate: Date;
@@ -59,10 +65,11 @@ export type BlockContextResult = {
  */
 export async function loadCurrentBlockContext(
   userId: string,
-  date: Date = new Date()
+  date: Date = new Date(),
+  client: PeriodizationReader = prisma
 ): Promise<BlockContextResult> {
   // Find macro cycle containing this date
-  const macro = await prisma.macroCycle.findFirst({
+  const macro = await client.macroCycle.findFirst({
     where: {
       userId,
       startDate: { lte: date },
@@ -84,7 +91,7 @@ export async function loadCurrentBlockContext(
   // ADR-080: use session count as primary week source when active meso is present
   const activeMeso = macro.mesocycles.find((m) => m.isActive);
   if (activeMeso) {
-    const constraints = await prisma.constraints.findUnique({
+    const constraints = await client.constraints.findUnique({
       where: { userId },
       select: { daysPerWeek: true },
     });

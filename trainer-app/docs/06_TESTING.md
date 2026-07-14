@@ -134,6 +134,16 @@ Sources of truth:
 - Recommended focused command:
   - `npm run test -- src/lib/api/mesocycle-week-close.test.ts src/app/api/workouts/save/route.integration.test.ts src/lib/api/program.test.ts src/lib/api/program-page.test.ts src/app/api/mesocycles/week-close/[id]/closeout/route.integration.test.ts src/app/api/workouts/generate-from-intent/route.test.ts src/app/api/workouts/save/lifecycle-contract.test.ts src/lib/ui/gap-fill.test.ts src/lib/ui/selection-metadata.test.ts src/lib/audit/workout-audit/optional-gap-fill.fixture-regression.test.ts`
 
+## Post-session review snapshot verification
+
+Run the focused snapshot, producer, loader, save-route, and audit tests before broad verification:
+
+```powershell
+npm run test -- src/lib/api/post-session-review-contract.test.ts src/lib/api/post-session-review-producer.test.ts src/lib/api/post-session-review-snapshot.test.ts src/lib/api/completed-workout-review.test.ts src/lib/api/post-session-review-audit.test.ts src/app/api/workouts/save/route.integration.test.ts
+```
+
+Disposable PostgreSQL verification must cover migration apply, unique one-to-one insertion, update/delete trigger rejection, transaction rollback, concurrent completion, and dry-run/write/idempotent backfill. Never use the configured application database for these tests.
+
 ## Configuration
 - Vitest include patterns: `src/**/*.test.ts` and `src/**/*.test.tsx`
 - Environment: `jsdom`

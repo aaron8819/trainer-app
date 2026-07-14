@@ -59,6 +59,7 @@ import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
 import type { SaveWorkoutResponse } from "@/lib/api/workout-save-contract";
+import { createPostSessionReviewSnapshotInTransaction } from "@/lib/api/post-session-review-snapshot";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -74,7 +75,7 @@ export async function POST(request: Request) {
   }
 
   const workoutId = parsed.data.workoutId;
-  const scheduledDate = parsed.data.scheduledDate
+  let scheduledDate = parsed.data.scheduledDate
     ? new Date(parsed.data.scheduledDate)
     : new Date();
   const hasExerciseRewrite = Boolean(
@@ -104,6 +105,8 @@ export async function POST(request: Request) {
           id: true,
           userId: true,
           status: true,
+          scheduledDate: true,
+          completedAt: true,
           revision: true,
           mesocycleId: true,
           mesocycleWeekSnapshot: true,
@@ -119,12 +122,29 @@ export async function POST(request: Request) {
         },
       });
 
+      if (!parsed.data.scheduledDate && existingWorkout?.scheduledDate) {
+        scheduledDate = existingWorkout.scheduledDate;
+      }
+
       assertExistingWorkoutSaveAllowed({
         existingWorkout,
         userId: user.id,
         hasExerciseRewrite,
         expectedRevision: parsed.data.expectedRevision,
       });
+      const isIdempotentTerminalRetry =
+        existingWorkout != null &&
+        ((action === "mark_completed" &&
+          existingWorkout.status === WorkoutStatus.COMPLETED) ||
+          (action === "mark_partial" &&
+            existingWorkout.status === WorkoutStatus.PARTIAL) ||
+          (action === "mark_skipped" &&
+            existingWorkout.status === WorkoutStatus.SKIPPED));
+      if (isIdempotentTerminalRetry) {
+        persistedRevision = existingWorkout.revision;
+        finalStatus = existingWorkout.status as PersistedStatus;
+        return;
+      }
       if (!existingWorkout && action !== "save_plan") {
         throw new Error("WORKOUT_NOT_FOUND");
       }
@@ -229,11 +249,17 @@ export async function POST(request: Request) {
         });
       }
 
-      const completedAt = finalStatus === "COMPLETED" ? new Date() : undefined;
+      const completedAt =
+        finalStatus === "COMPLETED"
+          ? (existingWorkout?.completedAt ?? new Date())
+          : undefined;
 
       const shouldTransitionPerformed =
         isLifecycleAdvancementStatus(finalStatus) &&
         !isLifecycleAdvancementStatus(existingWorkout?.status);
+      const shouldFinalizePostSessionReview =
+        finalStatus === "COMPLETED" &&
+        existingWorkout?.status !== WorkoutStatus.COMPLETED;
       const resolvedAdvancesSplit = resolvePersistedAdvancesSplit({
         persistedAdvancesSplit: existingWorkout?.advancesSplit,
         requestAdvancesSplit: parsed.data.advancesSplit,
@@ -355,6 +381,9 @@ export async function POST(request: Request) {
       if (existingWorkout && hasExerciseRewrite) {
         Object.assign(workoutUpdateData, { revision: { increment: 1 } });
       }
+      if (existingWorkout && shouldFinalizePostSessionReview) {
+        Object.assign(workoutUpdateData, { revision: { increment: 1 } });
+      }
 
       const { workout, wonLifecycleTransition } = await persistWorkoutRow(tx, {
         workoutId,
@@ -364,7 +393,10 @@ export async function POST(request: Request) {
         workoutUpdateData,
         workoutCreateData,
       });
-      persistedRevision = workout.revision;
+      persistedRevision =
+        existingWorkout && shouldFinalizePostSessionReview
+          ? existingWorkout.revision + 1
+          : workout.revision;
 
       if (isOptionalGapFill && linkedWeekCloseId) {
         const linkResult = await linkOptionalWorkoutToWeekClose(tx, {
@@ -432,6 +464,17 @@ export async function POST(request: Request) {
         workoutId,
         filteredExercises: parsed.data.filteredExercises,
       });
+
+      if (
+        shouldFinalizePostSessionReview &&
+        (!shouldAdvanceLifecycleTransition || wonLifecycleTransition)
+      ) {
+        await createPostSessionReviewSnapshotInTransaction(tx, {
+          userId: user.id,
+          workoutId: workout.id,
+          provenance: "exact",
+        });
+      }
     });
 
     // Update exercise exposure for rotation tracking (outside transaction)
@@ -496,6 +539,21 @@ export async function POST(request: Request) {
     if (error instanceof Error && error.message === "REVISION_CONFLICT") {
       return NextResponse.json(
         { error: "Workout revision conflict. Refresh and try again." },
+        { status: 409 },
+      );
+    }
+    if (
+      error instanceof Error &&
+      (error.message.startsWith("POST_SESSION_REVIEW_FINALIZATION_FAILED:") ||
+        error.message === "POST_SESSION_REVIEW_SNAPSHOT_CONFLICT")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            error.message === "POST_SESSION_REVIEW_SNAPSHOT_CONFLICT"
+              ? "Post-session review finalization conflict. Refresh and try again."
+              : "Post-session review could not be finalized; workout completion was rolled back.",
+        },
         { status: 409 },
       );
     }

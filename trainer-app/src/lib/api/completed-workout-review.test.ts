@@ -7,12 +7,28 @@ import type {
 } from "./post-session-review-evidence";
 
 const mocks = vi.hoisted(() => ({
-  loadPostSessionReviewContractForWorkout: vi.fn(),
+  loadHistoricalPostSessionReview: vi.fn(),
+  produceCurrentPostSessionReviewInterpretation: vi.fn(),
 }));
 
 vi.mock("./post-session-review-producer", () => ({
-  loadPostSessionReviewContractForWorkout: (...args: unknown[]) =>
-    mocks.loadPostSessionReviewContractForWorkout(...args),
+  produceCurrentPostSessionReviewInterpretation: (...args: unknown[]) =>
+    mocks.produceCurrentPostSessionReviewInterpretation(...args),
+}));
+
+vi.mock("./post-session-review-snapshot", () => ({
+  loadHistoricalPostSessionReview: (...args: unknown[]) =>
+    mocks.loadHistoricalPostSessionReview(...args),
+  legacyDerivedSnapshotMetadata: (contract: { contractVersion: number }) => ({
+    snapshotId: null,
+    provenance: "legacy_derived",
+    contractVersion: contract.contractVersion,
+    computationPolicyVersion: 1,
+    payloadHash: null,
+    evidenceFingerprint: null,
+    finalizedAt: null,
+    exactHistoricalInterpretation: false,
+  }),
 }));
 
 import { loadCompletedWorkoutReviewReadModel } from "./completed-workout-review";
@@ -105,14 +121,17 @@ function readyResult(overrides: Partial<PostSessionReviewContractBuildInput> = {
 describe("loadCompletedWorkoutReviewReadModel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.loadHistoricalPostSessionReview.mockResolvedValue({
+      status: "legacy_missing",
+    });
   });
 
   it("exposes a PostSessionReviewDisplayDto for a completed user-owned workout", async () => {
-    mocks.loadPostSessionReviewContractForWorkout.mockResolvedValue(readyResult());
+    mocks.produceCurrentPostSessionReviewInterpretation.mockResolvedValue(readyResult());
 
     const model = await loadCompletedWorkoutReviewReadModel("user-1", "workout-1");
 
-    expect(mocks.loadPostSessionReviewContractForWorkout).toHaveBeenCalledWith(
+    expect(mocks.produceCurrentPostSessionReviewInterpretation).toHaveBeenCalledWith(
       "user-1",
       "workout-1"
     );
@@ -134,8 +153,61 @@ describe("loadCompletedWorkoutReviewReadModel", () => {
     });
   });
 
+  it("returns the persisted exact historical review without current-policy recomputation", async () => {
+    const persisted = readyResult().contract;
+    mocks.loadHistoricalPostSessionReview.mockResolvedValue({
+      status: "ready",
+      contract: persisted,
+      metadata: {
+        snapshotId: "snapshot-1",
+        provenance: "exact",
+        contractVersion: 1,
+        computationPolicyVersion: 1,
+        payloadHash: "payload-hash",
+        evidenceFingerprint: "evidence-hash",
+        finalizedAt: "2026-07-14T12:00:00.000Z",
+        exactHistoricalInterpretation: true,
+      },
+    });
+
+    const model = await loadCompletedWorkoutReviewReadModel("user-1", "workout-1");
+
+    expect(model.postSessionReview?.status).toBe("reviewed");
+    expect(model.reviewEvidence).toMatchObject({
+      provenance: "exact",
+      snapshotId: "snapshot-1",
+    });
+    expect(mocks.produceCurrentPostSessionReviewInterpretation).not.toHaveBeenCalled();
+  });
+
+  it("surfaces persisted integrity failure without fabricating a current review", async () => {
+    mocks.loadHistoricalPostSessionReview.mockResolvedValue({
+      status: "integrity_error",
+      reason: "payload_hash_mismatch",
+      message: "Persisted review payload hash does not match.",
+      metadata: {
+        snapshotId: "snapshot-1",
+        provenance: "exact",
+        contractVersion: 1,
+        computationPolicyVersion: 1,
+        payloadHash: "bad-hash",
+        evidenceFingerprint: "evidence-hash",
+        finalizedAt: "2026-07-14T12:00:00.000Z",
+        exactHistoricalInterpretation: true,
+      },
+    });
+
+    const model = await loadCompletedWorkoutReviewReadModel("user-1", "workout-1");
+
+    expect(model.postSessionReview).toMatchObject({
+      status: "blocked",
+      headline: "Post-session review unavailable",
+    });
+    expect(mocks.produceCurrentPostSessionReviewInterpretation).not.toHaveBeenCalled();
+  });
+
   it("returns a safe blocked DTO for incomplete or not-ready workouts", async () => {
-    mocks.loadPostSessionReviewContractForWorkout.mockResolvedValue({
+    mocks.produceCurrentPostSessionReviewInterpretation.mockResolvedValue({
       status: "blocked",
       reason: "not_ready",
       message: "Workout is not completed or partial enough for post-session review.",
@@ -153,7 +225,7 @@ describe("loadCompletedWorkoutReviewReadModel", () => {
   });
 
   it("keeps missing or unauthorized workouts protected", async () => {
-    mocks.loadPostSessionReviewContractForWorkout.mockResolvedValue({
+    mocks.produceCurrentPostSessionReviewInterpretation.mockResolvedValue({
       status: "blocked",
       reason: "not_found_or_unauthorized",
       message: "Workout was not found for this user.",
@@ -166,7 +238,7 @@ describe("loadCompletedWorkoutReviewReadModel", () => {
   });
 
   it("carries skipped, runtime-added, and replacement evidence into display DTO rows", async () => {
-    mocks.loadPostSessionReviewContractForWorkout.mockResolvedValue(
+    mocks.produceCurrentPostSessionReviewInterpretation.mockResolvedValue(
       readyResult({
         sourceTruth: {
           ...buildInput().sourceTruth,
@@ -235,7 +307,7 @@ describe("loadCompletedWorkoutReviewReadModel", () => {
   });
 
   it("does not leak raw debug, evidence, or internal contract strings", async () => {
-    mocks.loadPostSessionReviewContractForWorkout.mockResolvedValue(
+    mocks.produceCurrentPostSessionReviewInterpretation.mockResolvedValue(
       readyResult({
         sourceTruth: {
           ...buildInput().sourceTruth,
@@ -300,6 +372,7 @@ describe("loadCompletedWorkoutReviewReadModel", () => {
     const pageSource = readFileSync("src/app/workout/[id]/page.tsx", "utf8");
 
     expect(source).toContain("./post-session-review-producer");
+    expect(source).toContain("./post-session-review-snapshot");
     expect(source).toContain("./post-session-review-display");
     expect(source).not.toContain("@/lib/audit/workout-audit");
     expect(source).not.toContain("workout-audit-cli");

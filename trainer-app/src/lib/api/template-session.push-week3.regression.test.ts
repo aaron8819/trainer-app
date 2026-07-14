@@ -624,12 +624,10 @@ function buildMappedContext(): MappedGenerationContext {
     blockContext: null,
     rotationContext: new Map(
       exerciseLibrary.map((e) => [
-        e.name,
+        e.id,
         {
           lastUsed: recentExposureDate,
           weeksAgo: 0,
-          usageCount: 6,
-          trend: "improving" as const,
         },
       ])
     ),

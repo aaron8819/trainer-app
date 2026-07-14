@@ -20,7 +20,7 @@ import {
   buildProjectedWorkoutHistoryEntry,
   computeWorkoutContributionByMuscle,
   generateProjectedSession,
-  listWorkoutExerciseNames,
+  listWorkoutExerciseIds,
   loadPreloadedGenerationSnapshot,
 } from "./projected-week-volume-shared";
 import {
@@ -266,7 +266,7 @@ function buildCurrentWorkoutHistoryEntry(input: {
 }): {
   historyEntry: WorkoutHistoryEntry;
   occurredAt: Date;
-  rotationExerciseNames: string[];
+  rotationExerciseIds: string[];
 } {
   const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(
     input.workout.selectionMetadata
@@ -326,9 +326,9 @@ function buildCurrentWorkoutHistoryEntry(input: {
         })),
     },
     occurredAt,
-    rotationExerciseNames: input.workout.exercises
+    rotationExerciseIds: input.workout.exercises
       .filter((exercise) => !runtimeAddedExerciseIds.has(exercise.id))
-      .map((exercise) => exercise.exercise.name),
+      .map((exercise) => exercise.exerciseId),
   };
 }
 
@@ -710,7 +710,7 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
     mapped,
     historyEntry: currentHistory.historyEntry,
     occurredAt: currentHistory.occurredAt,
-    rotationExerciseNames: currentHistory.rotationExerciseNames,
+    rotationExerciseIds: currentHistory.rotationExerciseIds,
   });
 
   const performedAdvancingSlotIdsThisWeek = performedAfterCurrent
@@ -781,7 +781,7 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
         occurredAt: projectedAt,
       }),
       occurredAt: projectedAt,
-      rotationExerciseNames: listWorkoutExerciseNames(generation.workout),
+      rotationExerciseIds: listWorkoutExerciseIds(generation.workout),
     });
   }
 

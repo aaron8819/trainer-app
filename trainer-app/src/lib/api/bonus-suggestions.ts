@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { loadRecentPerformedExerciseIds } from "./exercise-rotation-history";
 
 export type BonusSuggestion = {
   muscle: string | null;
@@ -23,24 +24,20 @@ export async function getBonusSuggestions(
     include: {
       exercises: {
         select: {
-          exercise: { select: { name: true } },
+          exercise: { select: { id: true, name: true } },
         },
       },
     },
   });
   if (!workout) return [];
 
-  const currentExerciseNames = new Set(workout.exercises.map((ex) => ex.exercise.name));
+  const currentExerciseIds = new Set(workout.exercises.map((ex) => ex.exercise.id));
   const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
-  const recentExposure = await prisma.exerciseExposure.findMany({
-    where: { userId, lastUsedAt: { gte: twoDaysAgo } },
-    select: { exerciseName: true },
-  });
-  const recentlyUsedNames = new Set(recentExposure.map((entry) => entry.exerciseName));
+  const recentlyUsedIds = await loadRecentPerformedExerciseIds(userId, twoDaysAgo);
 
   const candidates = await prisma.exercise.findMany({
     where: {
-      name: { notIn: [...currentExerciseNames, ...recentlyUsedNames] },
+      id: { notIn: [...currentExerciseIds, ...recentlyUsedIds] },
       isMainLiftEligible: false,
     },
     include: {

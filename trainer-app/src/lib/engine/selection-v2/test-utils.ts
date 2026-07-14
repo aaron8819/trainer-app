@@ -16,8 +16,7 @@ export function createMockExercise(
 ): Exercise {
   return {
     id,
-    // CRITICAL: Keep name same as id for test simplicity
-    // (RotationContext is keyed by name, so tests can use id as lookup key)
+    // Keep name same as id by default for readable fixtures.
     name: id,
     primaryMuscles,
     secondaryMuscles,

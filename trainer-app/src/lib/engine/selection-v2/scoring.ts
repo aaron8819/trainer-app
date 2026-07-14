@@ -130,9 +130,7 @@ export function scoreRotationNovelty(
   exercise: Exercise,
   rotationContext: RotationContext
 ): number {
-  // CRITICAL: RotationContext is keyed by exerciseName, not exerciseId
-  // (ExerciseExposure table uses exerciseName as the tracking key)
-  const exposure = rotationContext.get(exercise.name);
+  const exposure = rotationContext.get(exercise.id);
 
   // Never used → maximum novelty
   if (!exposure) return 1.0;

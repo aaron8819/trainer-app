@@ -241,7 +241,6 @@ model User {
   preferences       UserPreference?
   templates         WorkoutTemplate[]
   macroCycles       MacroCycle[]
-  exerciseExposures ExerciseExposure[]
   readinessSignals  ReadinessSignal[]
   integrations      UserIntegration[]
   preSessionReadinessSnapshots PreSessionReadinessSnapshot[]
@@ -780,10 +779,12 @@ model TrainingBlock {
   @@index([mesocycleId])
 }
 
-model ExerciseExposure {
+// Retained for a two-step retirement only. Production code derives rotation
+// freshness from performed WorkoutExercise/SetLog history by Exercise.id.
+// Drop this physical table in a later cleanup migration after rollout review.
+model LegacyExerciseExposure {
   id     String @id @default(uuid())
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   exerciseName  String
   lastUsedAt    DateTime
@@ -798,6 +799,8 @@ model ExerciseExposure {
 
   @@unique([userId, exerciseName])
   @@index([userId, lastUsedAt])
+  @@map("ExerciseExposure")
+  @@ignore
 }
 
 model MesocycleExerciseRole {

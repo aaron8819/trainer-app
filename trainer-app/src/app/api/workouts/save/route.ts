@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db/prisma";
 import { saveWorkoutSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { WorkoutStatus, Prisma } from "@prisma/client";
-import { updateExerciseExposure } from "@/lib/api/exercise-exposure";
 import {
   extractSessionDecisionReceipt,
   mergeSelectionMetadata,
@@ -92,8 +91,6 @@ export async function POST(request: Request) {
   let persistedRevision = 1;
   let finalStatus: PersistedStatus = (parsed.data.status ??
     WorkoutStatus.PLANNED) as PersistedStatus;
-  let didCompleteTransition = false;
-  let shouldUpdateExerciseExposure = false;
   let weekCloseResult: WeekCloseResult | null = null;
   const incomingSelectionMetadata = toObject(parsed.data.selectionMetadata);
 
@@ -449,8 +446,6 @@ export async function POST(request: Request) {
         existingWorkout?.status !== WorkoutStatus.COMPLETED &&
         (!shouldAdvanceLifecycleTransition || wonLifecycleTransition)
       ) {
-        didCompleteTransition = true;
-        shouldUpdateExerciseExposure = !isCloseout;
       }
 
       if (hasExerciseRewrite) {
@@ -476,19 +471,6 @@ export async function POST(request: Request) {
         });
       }
     });
-
-    // Update exercise exposure for rotation tracking (outside transaction)
-    if (
-      didCompleteTransition &&
-      finalStatus === "COMPLETED" &&
-      shouldUpdateExerciseExposure
-    ) {
-      try {
-        await updateExerciseExposure(user.id, workoutId);
-      } catch (exposureError) {
-        console.error("Failed to update exercise exposure:", exposureError);
-      }
-    }
   } catch (error) {
     if (error instanceof Error && error.message === "WORKOUT_FORBIDDEN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });

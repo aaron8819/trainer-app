@@ -32,7 +32,7 @@ const loadPrescriptionAnchorHistoryForExercisesMock = vi.fn();
 const mergePrescriptionAnchorHistoryMock = vi.fn();
 const mergePrescriptionAnchorHistoryWithEvidenceMock = vi.fn();
 const loadActiveMesocycleMock = vi.fn();
-const loadExerciseExposureMock = vi.fn();
+const loadExerciseRotationContextMock = vi.fn();
 const getCurrentMesoWeekMock = vi.fn();
 const getRirTargetMock = vi.fn();
 const getWeeklyVolumeTargetMock = vi.fn();
@@ -60,8 +60,8 @@ vi.mock("./workout-context", () => ({
     mergePrescriptionAnchorHistoryWithEvidenceMock(...args),
 }));
 
-vi.mock("./exercise-exposure", () => ({
-  loadExerciseExposure: (...args: unknown[]) => loadExerciseExposureMock(...args),
+vi.mock("./exercise-rotation-history", () => ({
+  loadExerciseRotationContext: (...args: unknown[]) => loadExerciseRotationContextMock(...args),
 }));
 
 vi.mock("@/lib/api/generation-phase-block-context", () => ({
@@ -273,7 +273,7 @@ describe("generateSessionFromIntent", () => {
     getCurrentMesoWeekMock.mockReturnValue(2);
     getRirTargetMock.mockReturnValue({ min: 2, max: 3 });
     getWeeklyVolumeTargetMock.mockImplementation(() => 12);
-    loadExerciseExposureMock.mockResolvedValue(new Map());
+    loadExerciseRotationContextMock.mockResolvedValue(new Map());
     loadGenerationPhaseBlockContextMock.mockResolvedValue({
       blockContext: {
         block: {

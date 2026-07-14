@@ -53,7 +53,7 @@ const mapCheckInMock = vi.fn();
 const applyLoadsMock = vi.fn();
 const loadPrescriptionAnchorHistoryForExercisesMock =
   vi.fn<typeof loadPrescriptionAnchorHistoryForExercises>();
-const loadExerciseExposureMock = vi.fn();
+const loadExerciseRotationContextMock = vi.fn();
 const loadActiveMesocycleMock = vi.fn();
 const getCurrentMesoWeekMock = vi.fn();
 const getRirTargetMock = vi.fn();
@@ -83,8 +83,8 @@ vi.mock("@/lib/api/workout-context", async (importOriginal) => {
   };
 });
 
-vi.mock("@/lib/api/exercise-exposure", () => ({
-  loadExerciseExposure: (...args: unknown[]) => loadExerciseExposureMock(...args),
+vi.mock("@/lib/api/exercise-rotation-history", () => ({
+  loadExerciseRotationContext: (...args: unknown[]) => loadExerciseRotationContextMock(...args),
 }));
 
 vi.mock("@/lib/api/generation-phase-block-context", () => ({
@@ -182,7 +182,7 @@ describe("workout audit explicit-intent future-week diagnostics matrix", () => {
     loadPrescriptionAnchorHistoryForExercisesMock.mockImplementation(
       createPrescriptionAnchorHistoryLoader()
     );
-    loadExerciseExposureMock.mockResolvedValue(new Map());
+    loadExerciseRotationContextMock.mockResolvedValue(new Map());
     macroCycleFindFirstMock.mockResolvedValue(null);
     genericFindFirstMock.mockResolvedValue(null);
     loadActiveMesocycleMock.mockResolvedValue({

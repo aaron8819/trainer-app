@@ -290,35 +290,24 @@ export interface RemainingWeekVolumeContext {
 /**
  * Rotation context: exercise exposure history
  *
- * CRITICAL: Keyed by exercise NAME, not ID
- * (ExerciseExposure table uses exerciseName as the tracking key)
+ * Keyed by stable Exercise.id.
  */
 export type RotationContext = Map<
-  string, // Exercise NAME (not ID!)
-  ExerciseExposure
+  string,
+  ExerciseRotationHistory
 >;
 
 /**
- * Exercise exposure data (from ExerciseExposure table + computed fields)
+ * Read-time rotation freshness derived from performed workout history.
  */
-export interface ExerciseExposure {
+export interface ExerciseRotationHistory {
   /** Last time this exercise was used */
   lastUsed: Date;
 
   /** Weeks since last use (computed) */
   weeksAgo: number;
 
-  /** Total usage count (all time) */
-  usageCount: number;
-
-  /** Performance trend */
-  trend: PerformanceTrend;
 }
-
-/**
- * Performance trend classification
- */
-export type PerformanceTrend = "improving" | "stalled" | "declining";
 
 /**
  * SRA (Stimulus-Recovery-Adaptation) context
@@ -535,7 +524,7 @@ export const DEFAULT_SELECTION_WEIGHTS: SelectionWeights = {
   lengthenedBias: 0.20,    // KB-confirmed (Maeo 2023: +40% triceps growth overhead vs pushdown)
   sfrEfficiency: 0.12,     // Moderate — efficiency matters
   movementDiversity: 0.07, // Beam state-aware — dynamically re-scored during expansion
-  sraReadiness: 0.05,      // Now active — SRAContext populated from ExerciseExposure history
+  sraReadiness: 0.05,      // Active — SRAContext populated from exact-ID performed history
   userPreference: 0.01,    // Tiebreaker
   // Sum: 1.00
 };

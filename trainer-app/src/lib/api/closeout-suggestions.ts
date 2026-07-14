@@ -6,6 +6,7 @@ import { buildRuntimeAddedExercisePreview } from "./runtime-added-exercise-previ
 import { loadProjectedWeekVolumeReport } from "./projected-week-volume";
 import { loadMesocycleWeekMuscleVolume } from "./weekly-volume";
 import type { BonusSuggestion } from "./bonus-suggestions";
+import { loadRecentPerformedExerciseIds } from "./exercise-rotation-history";
 
 const MIN_DEFICIT = 2.0;
 const HIGH_PRIORITY = 3.5;
@@ -255,14 +256,14 @@ function selectCandidateForMuscle(input: {
   targetMuscle: string;
   exercises: CandidateExercise[];
   selectedExerciseIds: Set<string>;
-  recentlyUsedNames: Set<string>;
+  recentlyUsedIds: Set<string>;
 }): CandidateExercise | undefined {
   const pool = input.exercises
     .filter((exercise) => !input.selectedExerciseIds.has(exercise.id))
     .filter((exercise) => toPrimaryMuscles(exercise.exerciseMuscles).includes(input.targetMuscle));
 
   const strictCandidate = [...pool]
-    .filter((exercise) => !input.recentlyUsedNames.has(exercise.name))
+    .filter((exercise) => !input.recentlyUsedIds.has(exercise.id))
     .sort((left, right) => compareExercisesForMuscle(input.targetMuscle, left, right))[0];
   if (strictCandidate) {
     return strictCandidate;
@@ -371,7 +372,7 @@ export async function getCloseoutSuggestions(input: {
   );
   const recentExposureCutoff = new Date(Date.now() - RECENT_EXPOSURE_HOURS * 60 * 60 * 1000);
 
-  const [projection, actualVolume, profile, goals, recentExposure] = await Promise.all([
+  const [projection, actualVolume, profile, goals, recentlyUsedIds] = await Promise.all([
     loadProjectedWeekVolumeReport({ userId: input.userId }),
     loadMesocycleWeekMuscleVolume(prisma, {
       userId: input.userId,
@@ -387,15 +388,7 @@ export async function getCloseoutSuggestions(input: {
       where: { userId: input.userId },
       select: { primaryGoal: true },
     }),
-    prisma.exerciseExposure.findMany({
-      where: {
-        userId: input.userId,
-        lastUsedAt: { gte: recentExposureCutoff },
-      },
-      select: {
-        exerciseName: true,
-      },
-    }),
+    loadRecentPerformedExerciseIds(input.userId, recentExposureCutoff),
   ]);
 
   if (
@@ -414,7 +407,6 @@ export async function getCloseoutSuggestions(input: {
     return [];
   }
 
-  const recentlyUsedNames = new Set(recentExposure.map((entry) => entry.exerciseName));
   const candidateMuscles = rankedDeficits.map((row) => row.muscle);
   const candidateExercises = await prisma.exercise.findMany({
     where: {
@@ -482,7 +474,7 @@ export async function getCloseoutSuggestions(input: {
       targetMuscle: deficit.muscle,
       exercises: filteredExercises,
       selectedExerciseIds,
-      recentlyUsedNames,
+      recentlyUsedIds,
     });
 
     if (!candidate) {

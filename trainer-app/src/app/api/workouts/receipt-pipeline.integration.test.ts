@@ -174,10 +174,6 @@ vi.mock("@/lib/api/autoregulation", () => ({
   applyAutoregulation: (...args: unknown[]) => mocks.applyAutoregulation(...args),
 }));
 
-vi.mock("@/lib/api/exercise-exposure", () => ({
-  updateExerciseExposure: vi.fn(async () => undefined),
-}));
-
 vi.mock("@/lib/api/periodization", () => ({
   loadCurrentBlockContext: (...args: unknown[]) => mocks.loadCurrentBlockContext(...args),
 }));

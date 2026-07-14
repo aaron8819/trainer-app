@@ -17,7 +17,6 @@ const mocks = vi.hoisted(() => {
   const linkOptionalWorkoutToWeekClose = vi.fn();
   const resolveWeekCloseOnOptionalGapFillCompletion = vi.fn();
   const dismissPendingWeekClose = vi.fn();
-  const updateExerciseExposure = vi.fn();
   const createPostSessionReviewSnapshotInTransaction = vi.fn();
 
   const tx = {
@@ -76,7 +75,6 @@ const mocks = vi.hoisted(() => {
     linkOptionalWorkoutToWeekClose,
     resolveWeekCloseOnOptionalGapFillCompletion,
     dismissPendingWeekClose,
-    updateExerciseExposure,
     createPostSessionReviewSnapshotInTransaction,
   };
 });
@@ -87,10 +85,6 @@ vi.mock("@/lib/db/prisma", () => ({
 
 vi.mock("@/lib/api/workout-context", () => ({
   resolveOwner: vi.fn(async () => ({ id: "user-1" })),
-}));
-
-vi.mock("@/lib/api/exercise-exposure", () => ({
-  updateExerciseExposure: mocks.updateExerciseExposure,
 }));
 
 vi.mock("@/lib/api/post-session-review-snapshot", () => ({
@@ -350,7 +344,6 @@ describe("POST /api/workouts/save", () => {
     mocks.linkOptionalWorkoutToWeekClose.mockReset();
     mocks.resolveWeekCloseOnOptionalGapFillCompletion.mockReset();
     mocks.dismissPendingWeekClose.mockReset();
-    mocks.updateExerciseExposure.mockReset();
     mocks.createPostSessionReviewSnapshotInTransaction.mockReset();
     mocks.createPostSessionReviewSnapshotInTransaction.mockResolvedValue({
       created: true,
@@ -453,7 +446,6 @@ describe("POST /api/workouts/save", () => {
       advancedLifecycle: false,
       outcome: "resolved",
     });
-    mocks.updateExerciseExposure.mockResolvedValue(undefined);
     mocks.tx.mesocycleWeekClose.findFirst.mockResolvedValue(null);
     mocks.tx.mesocycleWeekClose.findUnique.mockResolvedValue(null);
   });
@@ -613,7 +605,6 @@ describe("POST /api/workouts/save", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("rolled back"),
     });
-    expect(mocks.updateExerciseExposure).not.toHaveBeenCalled();
   });
 
   it("preserves persisted canonical selectionMetadata for mark_completed when the request omits it", async () => {
@@ -2646,7 +2637,6 @@ describe("POST /api/workouts/save", () => {
     expect(receipt.sessionSlot).toBeUndefined();
     expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
     expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
-    expect(mocks.updateExerciseExposure).not.toHaveBeenCalled();
   });
 
   it("resolves a linked optional gap-fill completion once and advances once transactionally", async () => {
@@ -2777,7 +2767,6 @@ describe("POST /api/workouts/save", () => {
     });
     expect(mocks.resolveWeekCloseOnOptionalGapFillCompletion).not.toHaveBeenCalled();
     expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
-    expect(mocks.updateExerciseExposure).not.toHaveBeenCalled();
   });
 
   it("rejects linked optional gap-fill completion with 409 when the week-close row is no longer pending", async () => {

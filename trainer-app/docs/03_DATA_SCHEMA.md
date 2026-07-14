@@ -26,7 +26,7 @@ Sources of truth:
 - User context: `User`, `Profile`, `Goals`, `Constraints`, `Injury`, `UserPreference`
 - Workout execution: `Workout`, `WorkoutExercise`, `WorkoutSet`, `SetLog`, `FilteredExercise`
 - Catalog/template: `Exercise`, `Muscle`, `Equipment`, `WorkoutTemplate`, `WorkoutTemplateExercise`
-- Adaptive systems: `ReadinessSignal`, `PreSessionReadinessSnapshot`, `ExerciseExposure`, `MacroCycle`, `Mesocycle`, `MesocycleSeedRevision`, `TrainingBlock`, `MesocycleExerciseRole`
+- Adaptive systems: `ReadinessSignal`, `PreSessionReadinessSnapshot`, `MacroCycle`, `Mesocycle`, `MesocycleSeedRevision`, `TrainingBlock`, `MesocycleExerciseRole`
 
 ## Runtime-critical enums
 - `WorkoutStatus`: `PLANNED`, `IN_PROGRESS`, `PARTIAL`, `COMPLETED`, `SKIPPED`
@@ -44,6 +44,7 @@ Canonical machine-readable values in `docs/contracts/runtime-contracts.json` cur
 - Workout saves rewrite workout exercises/sets when exercise payload is supplied (`/api/workouts/save`).
 - Set logging upserts by `workoutSetId` (`/api/logs/set`), making log state idempotent per set.
 - `SetLog.setIntent` persists performed-set intent. `WORK` is the default for old rows and omitted payloads; `WARMUP` marks a logged warmup/ramp set that remains visible as performed reality but is excluded from work-set evidence, progression/next-exposure anchors, prescription calibration, and weekly/effective volume. There is no automatic historical reclassification.
+- Performed `WorkoutExercise`/`SetLog` history keyed by `Exercise.id` is authoritative for exercise rotation and freshness. `LegacyExerciseExposure` maps the old physical `ExerciseExposure` table as `@@ignore` for read-only rollout comparison only; it has no generated Prisma client API, no production reader or writer, and its name-keyed counts and averages are untrusted. The transitional migration intentionally retains its data for a later explicit drop.
 - Filtered/rejected intent exercises are persisted to `FilteredExercise` for later explainability rendering.
 - `Constraints` now persists scheduling constraints as `daysPerWeek` and `splitType` (no `sessionMinutes` field) in `prisma/schema.prisma`, and is mapped into runtime constraints in `src/lib/api/workout-context.ts`.
 - Workout rewrites are revision-guarded by `Workout.revision` in `prisma/schema.prisma` and route enforcement in `src/app/api/workouts/save/route.ts`.

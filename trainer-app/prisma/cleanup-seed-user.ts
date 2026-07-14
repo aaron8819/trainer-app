@@ -52,9 +52,6 @@ async function main() {
     await tx.macroCycle.deleteMany({
       where: { userId: STALE_USER_ID },
     });
-    await tx.exerciseExposure.deleteMany({
-      where: { userId: STALE_USER_ID },
-    });
     await tx.readinessSignal.deleteMany({
       where: { userId: STALE_USER_ID },
     });

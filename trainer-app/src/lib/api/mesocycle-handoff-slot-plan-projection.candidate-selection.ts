@@ -281,12 +281,9 @@ export function applyProjectedSlotToMappedContext(input: {
 
   input.context.mapped.history = [...input.context.mapped.history, projectedHistoryEntry];
   for (const exercise of [...input.workout.mainLifts, ...input.workout.accessories]) {
-    const previous = input.context.mapped.rotationContext.get(exercise.exercise.name);
-    input.context.mapped.rotationContext.set(exercise.exercise.name, {
+    input.context.mapped.rotationContext.set(exercise.exercise.id, {
       lastUsed: input.projectedAt,
       weeksAgo: 0,
-      usageCount: (previous?.usageCount ?? 0) + 1,
-      trend: previous?.trend ?? "improving",
     });
   }
 }

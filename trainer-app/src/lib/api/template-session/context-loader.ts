@@ -1,6 +1,6 @@
 import { shouldDeload } from "@/lib/engine/progression";
 import { loadWorkoutContext, mapCheckIn, mapConstraints, mapExercises, mapGoals, mapHistory, mapPreferences, mapProfile } from "@/lib/api/workout-context";
-import { loadExerciseExposure } from "@/lib/api/exercise-exposure";
+import { loadExerciseRotationContext } from "@/lib/api/exercise-rotation-history";
 import type { MappedGenerationContext } from "./types";
 import type { CycleContextSnapshot, DeloadDecision } from "@/lib/evidence/types";
 import {
@@ -188,7 +188,7 @@ export async function loadPreloadedGenerationSnapshot(
   const lifecycleWeek = resolveLifecycleWeek(activeMesocycle, options);
   const [context, rotationContext, mesocycleRoleRows, phaseBlockContext] = await Promise.all([
     loadWorkoutContext(userId),
-    loadExerciseExposure(userId),
+    loadExerciseRotationContext(userId),
     loadMesocycleRoleRows(activeMesocycle?.id),
     loadGenerationPhaseBlockContext(userId, {
       activeMesocycle,

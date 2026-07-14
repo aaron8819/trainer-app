@@ -8,7 +8,7 @@ const mapExercisesMock = vi.fn();
 const mapHistoryMock = vi.fn();
 const mapPreferencesMock = vi.fn();
 const mapCheckInMock = vi.fn();
-const loadExerciseExposureMock = vi.fn();
+const loadExerciseRotationContextMock = vi.fn();
 const loadActiveMesocycleMock = vi.fn();
 const deriveCurrentMesocycleSessionMock = vi.fn();
 const getCurrentMesoWeekMock = vi.fn();
@@ -30,8 +30,8 @@ vi.mock("@/lib/api/workout-context", () => ({
   mapCheckIn: (...args: unknown[]) => mapCheckInMock(...args),
 }));
 
-vi.mock("@/lib/api/exercise-exposure", () => ({
-  loadExerciseExposure: (...args: unknown[]) => loadExerciseExposureMock(...args),
+vi.mock("@/lib/api/exercise-rotation-history", () => ({
+  loadExerciseRotationContext: (...args: unknown[]) => loadExerciseRotationContextMock(...args),
 }));
 
 vi.mock("@/lib/engine/progression", () => ({
@@ -103,7 +103,7 @@ describe("template-session context-loader mismatch policy", () => {
     ]);
     mapPreferencesMock.mockReturnValue(undefined);
     mapCheckInMock.mockReturnValue(undefined);
-    loadExerciseExposureMock.mockResolvedValue(new Map());
+    loadExerciseRotationContextMock.mockResolvedValue(new Map());
     loadActiveMesocycleMock.mockResolvedValue({
       id: "meso-1",
       state: "ACTIVE_ACCUMULATION",

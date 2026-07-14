@@ -1,9 +1,5 @@
 import "dotenv/config";
 import { prisma } from "../src/lib/db/prisma";
-import {
-  buildExerciseExposureRows,
-  performedExposureLogWhere,
-} from "../src/lib/api/exercise-exposure-backfill";
 
 const WORKOUT_ID = "cf1f4b62-308e-4ce6-a0f6-1ba71200871d";
 const REPAIR_NOTE =
@@ -29,7 +25,6 @@ type CliOptions = {
 };
 
 type WorkoutReader = Pick<typeof prisma, "workout">;
-type ExposureReader = Pick<typeof prisma, "exerciseExposure" | "workout">;
 
 type RepairSnapshot = {
   id: string;
@@ -200,84 +195,6 @@ async function loadWorkoutSnapshot(prismaClient: WorkoutReader): Promise<RepairS
   return snapshot;
 }
 
-async function previewExposureRebuild(prismaClient: ExposureReader, userId: string) {
-  const [existingRowCount, workouts] = await Promise.all([
-    prismaClient.exerciseExposure.count({ where: { userId } }),
-    prismaClient.workout.findMany({
-      where: {
-        userId,
-        status: "COMPLETED",
-        exercises: {
-          some: {
-            sets: {
-              some: {
-                logs: {
-                  some: performedExposureLogWhere,
-                },
-              },
-            },
-          },
-        },
-      },
-      select: {
-        completedAt: true,
-        scheduledDate: true,
-        exercises: {
-          select: {
-            exercise: {
-              select: {
-                name: true,
-              },
-            },
-            sets: {
-              select: {
-                logs: {
-                  orderBy: { completedAt: "desc" },
-                  take: 1,
-                  select: {
-                    actualLoad: true,
-                    actualReps: true,
-                    actualRpe: true,
-                    wasSkipped: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    }),
-  ]);
-
-  const rebuiltRows = buildExerciseExposureRows(userId, workouts, new Date());
-  return {
-    existingRowCount,
-    rebuiltRowCount: rebuiltRows.length,
-    rebuiltRows,
-  };
-}
-
-async function rebuildExerciseExposure(prismaClient: typeof prisma, userId: string) {
-  const preview = await previewExposureRebuild(prismaClient, userId);
-
-  await prismaClient.$transaction(async (tx) => {
-    await tx.exerciseExposure.deleteMany({
-      where: { userId },
-    });
-
-    if (preview.rebuiltRows.length > 0) {
-      await tx.exerciseExposure.createMany({
-        data: preview.rebuiltRows,
-      });
-    }
-  });
-
-  return {
-    existingRowCount: preview.existingRowCount,
-    rebuiltRowCount: preview.rebuiltRowCount,
-  };
-}
-
 async function main() {
   const options = parseArgs(process.argv.slice(2));
 
@@ -304,8 +221,6 @@ async function main() {
       .filter((row) => row.log.actualLoad !== EXPECTED_POST_REPAIR_LOAD)
       .map((row) => row.log.id);
     const pendingReplacementInsert = validation.replacementExercise == null;
-    const exposurePreview = await previewExposureRebuild(prisma, snapshot.userId);
-
     if (!options.apply) {
       console.log(
         JSON.stringify(
@@ -316,10 +231,7 @@ async function main() {
             status: snapshot.status,
             pendingLoadFixes,
             pendingReplacementInsert,
-            exposureRebuild: {
-              existingRowCount: exposurePreview.existingRowCount,
-              rebuiltRowCount: exposurePreview.rebuiltRowCount,
-            },
+            rotationHistory: "derived_from_performed_workout_history",
           },
           null,
           2
@@ -391,8 +303,6 @@ async function main() {
       };
     });
 
-    const exposureRebuild = await rebuildExerciseExposure(prisma, snapshot.userId);
-
     console.log(
       JSON.stringify(
         {
@@ -401,7 +311,7 @@ async function main() {
           userId: snapshot.userId,
           updatedLoadLogIds: applied.updatedLoadLogIds,
           createdWorkoutExerciseId: applied.createdWorkoutExerciseId,
-          exposureRebuild,
+          rotationHistory: "derived_from_performed_workout_history",
         },
         null,
         2

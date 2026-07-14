@@ -217,7 +217,7 @@ function buildSraContext(
 ): Map<Muscle, number> {
   const muscleLastTrained = new Map<Muscle, Date>();
   for (const exercise of exercisePool) {
-    const exposure = rotationContext.get(exercise.name);
+    const exposure = rotationContext.get(exercise.id);
     if (!exposure) continue;
     for (const muscle of exercise.primaryMuscles ?? []) {
       const current = muscleLastTrained.get(muscle as Muscle);

@@ -110,26 +110,6 @@ type Modules = {
     sessionsPerWeek: number;
     durationWeeks: number;
   }) => { week: number; session: number; phase: "ACCUMULATION" | "DELOAD" };
-  buildExerciseExposureRows: (
-    userId: string,
-    workouts: Array<{
-      completedAt: Date | null;
-      scheduledDate: Date;
-      exercises: Array<{
-        exercise: { name: string };
-        sets: Array<{
-          logs: Array<{
-            actualLoad: number | null;
-            actualReps: number | null;
-            actualRpe: number | null;
-            wasSkipped: boolean;
-          }>;
-        }>;
-      }>;
-    }>,
-    now?: Date
-  ) => Prisma.ExerciseExposureCreateManyInput[];
-  performedExposureLogWhere: Prisma.SetLogWhereInput;
   hashPreSessionReadinessSnapshotSource: (value: unknown) => string;
   performedWorkoutStatuses: readonly string[];
 };
@@ -150,12 +130,6 @@ type RepairPlan = {
   deleteWeekCloseId: string | null;
   invalidateReadinessSnapshotId: string | null;
   resetMesocycleCounters: typeof EXPECTED_REPAIRED_COUNTERS;
-  rebuildExerciseExposure: {
-    deleteExistingRows: number;
-    createRows: number;
-    existingExerciseNames: string[];
-    rebuiltExerciseNames: string[];
-  };
 };
 
 function boolArg(value: string | boolean | undefined): boolean {
@@ -210,7 +184,6 @@ async function loadModules(): Promise<Modules> {
     nextSessionModule,
     mesocycleMathModule,
     slotRuntimeModule,
-    exposureBackfillModule,
     snapshotModule,
     workoutStatusModule,
   ] = await Promise.all([
@@ -219,7 +192,6 @@ async function loadModules(): Promise<Modules> {
     import("@/lib/api/next-session"),
     import("@/lib/api/mesocycle-lifecycle-math"),
     import("@/lib/api/mesocycle-slot-runtime"),
-    import("@/lib/api/exercise-exposure-backfill"),
     import("@/lib/api/pre-session-readiness-snapshot"),
     import("@/lib/workout-status"),
   ]);
@@ -233,8 +205,6 @@ async function loadModules(): Promise<Modules> {
     buildAdvancingPerformedSlots: nextSessionModule.buildAdvancingPerformedSlots,
     readRuntimeSlotSequence: slotRuntimeModule.readRuntimeSlotSequence,
     deriveCurrentMesocycleSession: mesocycleMathModule.deriveCurrentMesocycleSession,
-    buildExerciseExposureRows: exposureBackfillModule.buildExerciseExposureRows,
-    performedExposureLogWhere: exposureBackfillModule.performedExposureLogWhere,
     hashPreSessionReadinessSnapshotSource:
       snapshotModule.hashPreSessionReadinessSnapshotSource,
     performedWorkoutStatuses: workoutStatusModule.PERFORMED_WORKOUT_STATUSES,
@@ -384,74 +354,6 @@ async function projectNextContext(input: {
       .filter((intent): intent is string => Boolean(intent)),
     pendingWeekClose,
   });
-}
-
-async function buildExposurePlan(input: {
-  client: DbClient;
-  modules: Modules;
-  userId: string;
-  excludeWorkoutIds: readonly string[];
-}) {
-  const [existingRows, workouts] = await Promise.all([
-    input.client.exerciseExposure.findMany({
-      where: { userId: input.userId },
-      select: { id: true, exerciseName: true },
-      orderBy: { exerciseName: "asc" },
-    }),
-    input.client.workout.findMany({
-      where: {
-        userId: input.userId,
-        status: "COMPLETED",
-        id: { notIn: [...input.excludeWorkoutIds] },
-        exercises: {
-          some: {
-            sets: {
-              some: {
-                logs: {
-                  some: input.modules.performedExposureLogWhere,
-                },
-              },
-            },
-          },
-        },
-      },
-      select: {
-        completedAt: true,
-        scheduledDate: true,
-        exercises: {
-          select: {
-            exercise: { select: { name: true } },
-            sets: {
-              select: {
-                logs: {
-                  orderBy: { completedAt: "desc" },
-                  take: 1,
-                  select: {
-                    actualLoad: true,
-                    actualReps: true,
-                    actualRpe: true,
-                    wasSkipped: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    }),
-  ]);
-
-  const rebuiltRows = input.modules.buildExerciseExposureRows(input.userId, workouts, new Date());
-  return {
-    existingRows,
-    rebuiltRows,
-    summary: {
-      deleteExistingRows: existingRows.length,
-      createRows: rebuiltRows.length,
-      existingExerciseNames: existingRows.map((row) => row.exerciseName),
-      rebuiltExerciseNames: rebuiltRows.map((row) => row.exerciseName),
-    },
-  };
 }
 
 async function buildRepairState(input: {
@@ -627,12 +529,6 @@ async function buildRepairState(input: {
       exercise.sets.flatMap((set) => set.logs.map((log) => log.id))
     )
   );
-  const exposurePlan = await buildExposurePlan({
-    client: input.client,
-    modules: input.modules,
-    userId: input.userId,
-    excludeWorkoutIds: QA_WORKOUT_IDS,
-  });
   const beforeNextSession = await input.modules.loadNextWorkoutContext(input.userId);
   const repairedMesocycle = mesocycle
     ? {
@@ -664,7 +560,6 @@ async function buildRepairState(input: {
     deleteWeekCloseId: weekClose?.id ?? null,
     invalidateReadinessSnapshotId: readinessSnapshot?.id ?? null,
     resetMesocycleCounters: EXPECTED_REPAIRED_COUNTERS,
-    rebuildExerciseExposure: exposurePlan.summary,
   };
 
   const seedHashes = mesocycle
@@ -698,7 +593,7 @@ async function buildRepairState(input: {
     seedHashes,
     beforeNextSession: compactNextContext(beforeNextSession),
     afterNextSession: compactNextContext(afterNextSession),
-    exposureRows: exposurePlan.rebuiltRows,
+    rotationHistory: "derived_from_performed_workout_history",
     plan,
   };
 }
@@ -920,17 +815,6 @@ async function executeRepair(input: {
         invalidatedReason: "invalidated_after_accidental_visual_qa_completion_repair",
       },
     });
-
-    const exposurePlan = await buildExposurePlan({
-      client: tx,
-      modules: input.modules,
-      userId: input.userId,
-      excludeWorkoutIds: QA_WORKOUT_IDS,
-    });
-    await tx.exerciseExposure.deleteMany({ where: { userId: input.userId } });
-    if (exposurePlan.rebuiltRows.length > 0) {
-      await tx.exerciseExposure.createMany({ data: exposurePlan.rebuiltRows });
-    }
 
     const repairedMesocycle = await tx.mesocycle.findUnique({
       where: { id: TARGET_MESOCYCLE_ID },

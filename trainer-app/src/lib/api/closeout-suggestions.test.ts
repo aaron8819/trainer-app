@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => {
   const workoutFindFirst = vi.fn();
   const profileFindUnique = vi.fn();
   const goalsFindUnique = vi.fn();
-  const exerciseExposureFindMany = vi.fn();
+  const loadRecentPerformedExerciseIds = vi.fn();
   const exerciseFindMany = vi.fn();
   const loadProjectedWeekVolumeReport = vi.fn();
   const loadMesocycleWeekMuscleVolume = vi.fn();
@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => {
     workoutFindFirst,
     profileFindUnique,
     goalsFindUnique,
-    exerciseExposureFindMany,
+    loadRecentPerformedExerciseIds,
     exerciseFindMany,
     loadProjectedWeekVolumeReport,
     loadMesocycleWeekMuscleVolume,
@@ -28,9 +28,6 @@ const mocks = vi.hoisted(() => {
       },
       goals: {
         findUnique: goalsFindUnique,
-      },
-      exerciseExposure: {
-        findMany: exerciseExposureFindMany,
       },
       exercise: {
         findMany: exerciseFindMany,
@@ -56,6 +53,11 @@ vi.mock("./weekly-volume", () => ({
 vi.mock("./runtime-added-exercise-preview", () => ({
   buildRuntimeAddedExercisePreview: (...args: unknown[]) =>
     mocks.buildRuntimeAddedExercisePreview(...args),
+}));
+
+vi.mock("./exercise-rotation-history", () => ({
+  loadRecentPerformedExerciseIds: (...args: unknown[]) =>
+    mocks.loadRecentPerformedExerciseIds(...args),
 }));
 
 import { getCloseoutSuggestions } from "./closeout-suggestions";
@@ -150,7 +152,7 @@ describe("getCloseoutSuggestions", () => {
     mocks.workoutFindFirst.mockResolvedValue(buildWorkout());
     mocks.profileFindUnique.mockResolvedValue({ trainingAge: "INTERMEDIATE" });
     mocks.goalsFindUnique.mockResolvedValue({ primaryGoal: "HYPERTROPHY" });
-    mocks.exerciseExposureFindMany.mockResolvedValue([]);
+    mocks.loadRecentPerformedExerciseIds.mockResolvedValue(new Set());
     mocks.loadProjectedWeekVolumeReport.mockResolvedValue({
       currentWeek: {
         mesocycleId: "meso-1",
@@ -383,7 +385,7 @@ describe("getCloseoutSuggestions", () => {
       Biceps: { directSets: 3, indirectSets: 0, effectiveSets: 3 },
       "Side Delts": { directSets: 4, indirectSets: 0, effectiveSets: 4 },
     });
-    mocks.exerciseExposureFindMany.mockResolvedValue([{ exerciseName: "Cable Curl" }]);
+    mocks.loadRecentPerformedExerciseIds.mockResolvedValue(new Set(["curl"]));
     mocks.exerciseFindMany.mockResolvedValue([
       buildExercise({
         id: "curl",
@@ -517,11 +519,9 @@ describe("getCloseoutSuggestions", () => {
     mocks.loadMesocycleWeekMuscleVolume.mockResolvedValue({
       Biceps: { directSets: 2, indirectSets: 0, effectiveSets: 2 },
     });
-    mocks.exerciseExposureFindMany.mockResolvedValue([
-      { exerciseName: "Cable Curl" },
-      { exerciseName: "Heavy Hammer Curl" },
-      { exerciseName: "Preacher Curl" },
-    ]);
+    mocks.loadRecentPerformedExerciseIds.mockResolvedValue(
+      new Set(["curl", "hammer-curl-heavy", "preacher-curl"])
+    );
     mocks.exerciseFindMany.mockResolvedValue([
       buildExercise({
         id: "curl",

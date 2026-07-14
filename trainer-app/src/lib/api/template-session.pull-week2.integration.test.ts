@@ -276,12 +276,10 @@ function buildMappedContext(): MappedGenerationContext {
   const recentWeek1Date = new Date("2026-02-10T01:40:25.252Z");
   const staleWeek1Exposure = new Map(
     week1ContinuityExercises.map((entry) => [
-      entry.name,
+      entry.id,
       {
         lastUsed: recentWeek1Date,
         weeksAgo: 0,
-        usageCount: 3,
-        trend: "improving" as const,
       },
     ])
   );

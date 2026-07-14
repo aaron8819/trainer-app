@@ -1,0 +1,6 @@
+-- Transitional retirement only: application reads and writes now derive from
+-- canonical performed WorkoutExercise/SetLog history keyed by Exercise.id.
+--
+-- The existing "ExerciseExposure" table is intentionally retained unchanged
+-- for read-only rollout comparison. A later reviewed migration may drop it
+-- after the retirement audit confirms no production readers or writers remain.

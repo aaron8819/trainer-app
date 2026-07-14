@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => {
   const computeWorkoutContributionByMuscle = vi.fn();
   const buildProjectedWorkoutHistoryEntry = vi.fn();
   const appendWorkoutHistoryEntryToMappedContext = vi.fn();
-  const listWorkoutExerciseNames = vi.fn();
+  const listWorkoutExerciseIds = vi.fn();
   const loadMesocycleWeekMuscleVolume = vi.fn();
   const deriveNextRuntimeSlotSession = vi.fn();
   const buildRemainingFutureSlotsFromRuntime = vi.fn();
@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => {
     computeWorkoutContributionByMuscle,
     buildProjectedWorkoutHistoryEntry,
     appendWorkoutHistoryEntryToMappedContext,
-    listWorkoutExerciseNames,
+    listWorkoutExerciseIds,
     loadMesocycleWeekMuscleVolume,
     deriveNextRuntimeSlotSession,
     buildRemainingFutureSlotsFromRuntime,
@@ -59,8 +59,8 @@ vi.mock("./projected-week-volume-shared", () => ({
     mocks.buildProjectedWorkoutHistoryEntry(...args),
   appendWorkoutHistoryEntryToMappedContext: (...args: unknown[]) =>
     mocks.appendWorkoutHistoryEntryToMappedContext(...args),
-  listWorkoutExerciseNames: (...args: unknown[]) =>
-    mocks.listWorkoutExerciseNames(...args),
+  listWorkoutExerciseIds: (...args: unknown[]) =>
+    mocks.listWorkoutExerciseIds(...args),
 }));
 
 vi.mock("./weekly-volume", () => ({
@@ -307,7 +307,7 @@ describe("loadLoggingWeeklyVolumeGuidance", () => {
       completed: true,
       exercises: [],
     });
-    mocks.listWorkoutExerciseNames.mockReturnValue(["Projected Exercise"]);
+    mocks.listWorkoutExerciseIds.mockReturnValue(["projected-exercise-id"]);
     mocks.getWeeklyVolumeTarget.mockImplementation(
       (_mesocycle: unknown, muscle: string) => {
         if (muscle === "Chest") return 10;

@@ -29,7 +29,7 @@ const mocks = vi.hoisted(() => {
   const generateProjectedSession = vi.fn();
   const appendWorkoutHistoryEntryToMappedContext = vi.fn();
   const buildProjectedWorkoutHistoryEntry = vi.fn();
-  const listWorkoutExerciseNames = vi.fn();
+  const listWorkoutExerciseIds = vi.fn();
   const getLatestReadinessSignalForReader = vi.fn();
   const readSessionSlotSnapshot = vi.fn();
   const resolvePersistedOrReconstructedSessionAuditSnapshot = vi.fn();
@@ -57,7 +57,7 @@ const mocks = vi.hoisted(() => {
     generateProjectedSession,
     appendWorkoutHistoryEntryToMappedContext,
     buildProjectedWorkoutHistoryEntry,
-    listWorkoutExerciseNames,
+    listWorkoutExerciseIds,
     getLatestReadinessSignalForReader,
     readSessionSlotSnapshot,
     resolvePersistedOrReconstructedSessionAuditSnapshot,
@@ -134,8 +134,8 @@ vi.mock("@/lib/api/projected-week-volume-shared", () => ({
     mocks.appendWorkoutHistoryEntryToMappedContext(...args),
   buildProjectedWorkoutHistoryEntry: (...args: unknown[]) =>
     mocks.buildProjectedWorkoutHistoryEntry(...args),
-  listWorkoutExerciseNames: (...args: unknown[]) =>
-    mocks.listWorkoutExerciseNames(...args),
+  listWorkoutExerciseIds: (...args: unknown[]) =>
+    mocks.listWorkoutExerciseIds(...args),
 }));
 
 vi.mock("@/lib/api/readiness", () => ({
@@ -2120,7 +2120,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
       },
     });
     mocks.buildProjectedWorkoutHistoryEntry.mockReturnValue({});
-    mocks.listWorkoutExerciseNames.mockReturnValue(["Incline Dumbbell Press"]);
+    mocks.listWorkoutExerciseIds.mockReturnValue(["incline-dumbbell-press"]);
     mocks.getLatestReadinessSignalForReader.mockResolvedValue(null);
     mocks.readSessionSlotSnapshot.mockReturnValue({
       slotId: "upper_a",

@@ -104,6 +104,8 @@ Sources of truth:
   - Matrix assertions keep standard/debug selection parity while verifying diagnostics gating for closure candidate trace persistence.
 
 ## Audit commands
+
+- Exercise rotation-history ownership: `npm run test -- src/lib/api/exercise-rotation-history.test.ts src/lib/api/exercise-rotation-history-ownership.test.ts src/lib/engine/selection-v2/scoring.rotation-history.test.ts`. These tests protect exact-ID rename stability, performed-set semantics, and the absence of legacy aggregate access.
 - `npm run audit:workout -- --env-file .env.local --mode future-week --owner owner@local`: canonical owner-scoped future-week artifact with preflight and conclusion blocks
 - `npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com`: canonical mesocycle preview vs accepted-seed vs runtime-drift artifact for the real runtime owner
 - `npm run audit:sequencing`: emits the focused sequencing audit artifact under `artifacts/audits/sequencing/`

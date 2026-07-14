@@ -30,7 +30,7 @@ import type {
   mapPreferences,
   mapProfile,
 } from "@/lib/api/workout-context";
-import type { loadExerciseExposure } from "@/lib/api/exercise-exposure";
+import type { loadExerciseRotationContext } from "@/lib/api/exercise-rotation-history";
 import type { ActiveMesocycleWithBlocks } from "@/lib/api/mesocycle-lifecycle-state";
 import type { GenerationPhaseBlockContext } from "@/lib/api/generation-phase-block-context";
 import type {
@@ -190,7 +190,7 @@ export type MappedGenerationContext = {
   deloadDecision: DeloadDecision;
   phaseBlockContext?: GenerationPhaseBlockContext;
   blockContext: BlockContext | null;
-  rotationContext: Awaited<ReturnType<typeof loadExerciseExposure>>;
+  rotationContext: Awaited<ReturnType<typeof loadExerciseRotationContext>>;
   cycleContext: CycleContextSnapshot;
   mesocycleRoleMapByIntent: Record<
     SessionIntent,

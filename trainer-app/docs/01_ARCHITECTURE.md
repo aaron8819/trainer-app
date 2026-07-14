@@ -92,6 +92,7 @@ SetLog / logged performance
 -> next workout generation / canonical progression
 ```
 - `SetLog` is the raw authoritative performed-work source. Logged reps, load, RPE, and skip state remain the only authoritative set-level performance data (`src/app/api/logs/set/route.ts`, `src/lib/api/workout-context.ts`).
+- Exercise history identity is always `Exercise.id`. Rotation freshness is a read-time projection from qualifying performed `WorkoutExercise`/`SetLog` rows in `src/lib/api/exercise-rotation-history.ts`; exercise names are display metadata and renames do not create history identities.
 - Workout save and status resolution are the authoritative performed-status and lifecycle-mutation boundary (`src/app/api/workouts/save/route.ts`, `src/app/api/workouts/save/status-machine.ts`, `src/app/api/workouts/save/lifecycle-contract.ts`).
 - `POST /api/workouts/save` now returns canonical `workoutStatus` on every success response via `src/lib/api/workout-save-contract.ts`. Client completion flows must treat `mark_completed` as intent only and derive terminal review state from the returned `workoutStatus`, not from the requested action.
 - `deriveSessionSemantics()` is the canonical session-level interpretation bridge. It does not own set-level progression math like modal load or anchor-load computation; it owns session-level meaning such as whether a workout is advancing, supplemental, or progression-eligible.

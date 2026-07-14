@@ -43,7 +43,7 @@ import {
   buildProjectedWorkoutHistoryEntry,
   computeWorkoutContributionByMuscle,
   generateProjectedSession,
-  listWorkoutExerciseNames,
+  listWorkoutExerciseIds,
   loadPreloadedGenerationSnapshot,
 } from "./projected-week-volume-shared";
 import { buildSlotSequenceEntries } from "./mesocycle-handoff-slot-plan-projection.coverage-evaluation";
@@ -829,9 +829,9 @@ export async function loadProjectedWeekVolumeReport(input: {
             week: currentWeek,
           }),
           occurredAt: new Date(projection.scheduledDate),
-          rotationExerciseNames: projection.exercises
+          rotationExerciseIds: projection.exercises
             .filter((exercise) => exercise.performed.qualifyingSets > 0)
-            .map((exercise) => exercise.exerciseName),
+            .map((exercise) => exercise.exerciseId),
         });
       }
     }
@@ -895,11 +895,11 @@ export async function loadProjectedWeekVolumeReport(input: {
             week: currentWeek,
           }),
           occurredAt: new Date(persistedProjection.scheduledDate),
-          rotationExerciseNames: persistedProjection.exercises
+          rotationExerciseIds: persistedProjection.exercises
             .filter(
               (exercise) => exercise.totalProjected.qualifyingSets > 0
             )
-            .map((exercise) => exercise.exerciseName),
+            .map((exercise) => exercise.exerciseId),
         });
       } else {
         downstreamEvidenceReliable = false;
@@ -997,7 +997,7 @@ export async function loadProjectedWeekVolumeReport(input: {
         occurredAt: projectedAt,
       }),
       occurredAt: projectedAt,
-      rotationExerciseNames: listWorkoutExerciseNames(projectedWorkout),
+      rotationExerciseIds: listWorkoutExerciseIds(projectedWorkout),
     });
   }
 

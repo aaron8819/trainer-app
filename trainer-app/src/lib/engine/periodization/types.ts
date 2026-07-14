@@ -48,16 +48,6 @@ export type MacroCycle = {
   mesocycles: Mesocycle[];
 };
 
-export type ExerciseExposure = {
-  exerciseName: string;
-  lastUsedAt: Date;
-  timesUsedL4W: number; // Last 4 weeks
-  timesUsedL8W: number; // Last 8 weeks
-  timesUsedL12W: number; // Last 12 weeks
-  avgSetsPerWeek: number;
-  avgVolumePerWeek: number; // Total reps per week
-};
-
 export type BlockContext = {
   block: TrainingBlock;
   weekInBlock: number; // 1-indexed for display

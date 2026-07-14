@@ -111,22 +111,19 @@ export function appendWorkoutHistoryEntryToMappedContext(input: {
   mapped: MappedGenerationContext;
   historyEntry: WorkoutHistoryEntry;
   occurredAt: Date;
-  rotationExerciseNames: string[];
+  rotationExerciseIds: string[];
 }): void {
   input.mapped.history = [...input.mapped.history, input.historyEntry];
 
-  for (const exerciseName of input.rotationExerciseNames) {
-    const previous = input.mapped.rotationContext.get(exerciseName);
-    input.mapped.rotationContext.set(exerciseName, {
+  for (const exerciseId of input.rotationExerciseIds) {
+    input.mapped.rotationContext.set(exerciseId, {
       lastUsed: input.occurredAt,
       weeksAgo: 0,
-      usageCount: (previous?.usageCount ?? 0) + 1,
-      trend: previous?.trend ?? "improving",
     });
   }
 }
 
-export function listWorkoutExerciseNames(
+export function listWorkoutExerciseIds(
   workout: WorkoutPlan,
   exerciseFilter?: (exercise: WorkoutPlan["mainLifts"][number]) => boolean
 ): string[] {
@@ -134,7 +131,7 @@ export function listWorkoutExerciseNames(
     .filter(({ section }) => section !== "warmup")
     .map(({ exercise }) => exercise)
     .filter(exerciseFilter ?? (() => true))
-    .map((exercise) => exercise.exercise.name);
+    .map((exercise) => exercise.exercise.id);
 }
 
 export async function generateProjectedSession(input: {

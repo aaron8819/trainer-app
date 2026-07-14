@@ -36,7 +36,7 @@ import {
   appendWorkoutHistoryEntryToMappedContext,
   buildProjectedWorkoutHistoryEntry,
   generateProjectedSession,
-  listWorkoutExerciseNames,
+  listWorkoutExerciseIds,
   loadPreloadedGenerationSnapshot,
   buildMappedGenerationContextFromSnapshot,
 } from "@/lib/api/projected-week-volume-shared";
@@ -9438,7 +9438,7 @@ async function buildPreviewProjectedSessions(input: {
         occurredAt: projectedAt,
       }),
       occurredAt: projectedAt,
-      rotationExerciseNames: listWorkoutExerciseNames(generation.workout),
+      rotationExerciseIds: listWorkoutExerciseIds(generation.workout),
     });
   }
 

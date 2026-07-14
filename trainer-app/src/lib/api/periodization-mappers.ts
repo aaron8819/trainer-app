@@ -5,7 +5,6 @@ import type {
   MacroCycle as PrismaMacro,
   Mesocycle as PrismaMeso,
   TrainingBlock as PrismaBlock,
-  ExerciseExposure as PrismaExposure,
   BlockType as PrismaBlockType,
   VolumeTarget as PrismaVolumeTarget,
   IntensityBias as PrismaIntensityBias,
@@ -17,7 +16,6 @@ import type {
   MacroCycle,
   Mesocycle,
   TrainingBlock,
-  ExerciseExposure,
   BlockType,
   VolumeTarget,
   IntensityBias,
@@ -203,17 +201,5 @@ export function mapMacroCycle(
     trainingAge: trainingAgeMap[prisma.trainingAge],
     primaryGoal: goalMap[prisma.primaryGoal],
     mesocycles: prisma.mesocycles.map(mapMesocycle),
-  };
-}
-
-export function mapExerciseExposure(prisma: PrismaExposure): ExerciseExposure {
-  return {
-    exerciseName: prisma.exerciseName,
-    lastUsedAt: prisma.lastUsedAt,
-    timesUsedL4W: prisma.timesUsedL4W,
-    timesUsedL8W: prisma.timesUsedL8W,
-    timesUsedL12W: prisma.timesUsedL12W,
-    avgSetsPerWeek: prisma.avgSetsPerWeek,
-    avgVolumePerWeek: prisma.avgVolumePerWeek,
   };
 }

@@ -165,18 +165,16 @@ describe("buildSelectionObjective continuity bias", () => {
       splitType: "custom",
       lifecycleVolumeTargets: { Triceps: 6 },
     });
-    mapped.rotationContext.set(exercise.name, {
+    mapped.rotationContext.set(exercise.id, {
       lastUsed: new Date("2026-03-06T02:00:00.000Z"),
       weeksAgo: 0,
-      usageCount: 1,
-      trend: "stalled",
     });
 
     const beforeBoundary = buildSelectionObjective(mapped, "push");
     expect(beforeBoundary.sraContext.get("Triceps")).toBeCloseTo(47 / 48, 6);
 
-    mapped.rotationContext.set(exercise.name, {
-      ...mapped.rotationContext.get(exercise.name)!,
+    mapped.rotationContext.set(exercise.id, {
+      ...mapped.rotationContext.get(exercise.id)!,
       lastUsed: new Date("2026-03-06T01:00:00.000Z"),
     });
     const atBoundary = buildSelectionObjective(mapped, "push");

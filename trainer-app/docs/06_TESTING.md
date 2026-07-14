@@ -148,3 +148,10 @@ Sources of truth:
   - `timer-visible`: fixture-backed log-workout state with one logged set and an active rest timer for direct layout audit coverage.
 - Use `npm run test:ui-audit:update` only after an intentional baseline change, then review screenshots under `tests/ui-audit/__screenshots__/`.
 - If `PLAYWRIGHT_BASE_URL` is set, Playwright targets that server instead of starting the managed fixture server. Start that server with `UI_AUDIT_FIXTURE_MODE=1` when the fixture-backed scenarios should be active.
+
+## Stimulus accounting verification
+
+- Run focused contract tests: `npm run test -- src/lib/stimulus-accounting/`.
+- Run save/add/swap tests for atomic snapshot creation and runtime-edit evidence.
+- Run historical reader tests to prove policy/catalog edits do not change snapshotted results.
+- Validate the additive migration and both dry-run/write backfill modes only against disposable Postgres before rollout; do not execute migrations or `--write` against the configured shared database without explicit approval.

@@ -15,6 +15,12 @@ import type { RuntimeExerciseReplaceReason } from "@/lib/ui/selection-metadata";
 import { getSetValidity } from "@/lib/logging/setValidity";
 import { quantizeLoad } from "@/lib/units/load-quantization";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
+import {
+  buildExerciseStimulusSnapshot,
+  toExerciseStimulusAccountingEvidence,
+  type ExerciseStimulusSnapshot,
+} from "@/lib/stimulus-accounting/snapshot";
+import { attachStimulusAccountingToSelectionMetadata } from "@/lib/evidence/session-decision-receipt";
 
 const BACKFILL_SOURCE = "v2_transition_week1_performed_sessions_backfill";
 export const TRANSITION_WEEK_BACKFILL_OWNER_EMAIL = "aaron8819@gmail.com";
@@ -367,6 +373,10 @@ type ExerciseRow = {
   name: string;
   movementPatterns?: string[] | null;
   aliases?: Array<{ alias: string }>;
+  exerciseMuscles?: Array<{
+    role: string;
+    muscle: { name: string };
+  }>;
 };
 
 type BackfillMesocycleRow = {
@@ -584,6 +594,7 @@ type ResolvedSessionPlan = {
   definition: BackfillSessionDefinition;
   seedExercises: ResolvedSeedExercise[];
   mappings: BackfillExerciseMappingRow[];
+  exerciseById: Map<string, ExerciseRow>;
 };
 
 function normalizeName(value: string): string {
@@ -859,6 +870,7 @@ function buildResolvedSessionPlans(input: {
       definition,
       seedExercises,
       mappings,
+      exerciseById,
     };
   });
 
@@ -1045,6 +1057,9 @@ async function inspectBackfillSafety(
             name: true,
             movementPatterns: true,
             aliases: { select: { alias: true } },
+            exerciseMuscles: {
+              select: { role: true, muscle: { select: { name: true } } },
+            },
           },
         }),
       ])
@@ -1241,6 +1256,7 @@ type PersistedExerciseForBackfill = {
   section: WorkoutSection;
   isMainLift: boolean;
   exercise: { name: string };
+  stimulusAccountingSnapshot: ExerciseStimulusSnapshot;
   sets: Array<{
     workoutSetId: string;
     setIndex: number;
@@ -1264,6 +1280,10 @@ function buildPersistedExercisesForBackfill(input: {
     const definition = input.plan.definition.performed[exerciseIndex]!;
     const workoutExerciseId = input.idFactory();
     const lastPerformed = definition.sets[definition.sets.length - 1];
+    const exercise = input.plan.exerciseById.get(mapping.performedExerciseId!);
+    if (!exercise) {
+      throw new Error(`BACKFILL_EXERCISE_NOT_FOUND:${mapping.performedExerciseId}`);
+    }
     return {
       workoutExerciseId,
       exerciseId: mapping.performedExerciseId!,
@@ -1271,6 +1291,20 @@ function buildPersistedExercisesForBackfill(input: {
       section: definition.section,
       isMainLift: definition.isMainLift,
       exercise: { name: mapping.resolvedExerciseName ?? definition.performedName },
+      stimulusAccountingSnapshot: buildExerciseStimulusSnapshot(
+        {
+          id: exercise.id,
+          name: exercise.name,
+          aliases: (exercise.aliases ?? []).map((entry) => entry.alias),
+          primaryMuscles: (exercise.exerciseMuscles ?? [])
+            .filter((entry) => entry.role === "PRIMARY")
+            .map((entry) => entry.muscle.name),
+          secondaryMuscles: (exercise.exerciseMuscles ?? [])
+            .filter((entry) => entry.role === "SECONDARY")
+            .map((entry) => entry.muscle.name),
+        },
+        "exact"
+      ),
       mapping,
       definition,
       sets: Array.from({ length: mapping.writeSetCount }, (_, setIndex) => {
@@ -1339,6 +1373,9 @@ function applyRuntimeEditMetadata(input: {
           toExerciseName: mapping.resolvedExerciseName ?? mapping.performedName,
           reason: REPLACEMENT_REASON,
           setCount: mapping.writeSetCount,
+          toStimulusAccounting: toExerciseStimulusAccountingEvidence(
+            exercise.stimulusAccountingSnapshot
+          ),
         },
       }).nextSelectionMetadata;
     }
@@ -1358,6 +1395,9 @@ function applyRuntimeEditMetadata(input: {
           section: exercise.section,
           setCount: mapping.writeSetCount,
           prescriptionSource: "generic_accessory_fallback",
+          stimulusAccounting: toExerciseStimulusAccountingEvidence(
+            exercise.stimulusAccountingSnapshot
+          ),
         },
       }).nextSelectionMetadata;
     }
@@ -1408,11 +1448,24 @@ async function writeBackfillSessions(input: {
       plan,
       idFactory: input.idFactory,
     });
-    const initialSelectionMetadata = buildInitialSelectionMetadata({
+    let initialSelectionMetadata = buildInitialSelectionMetadata({
       mesocycle: input.mesocycle,
       session: plan.definition,
       seedExercises: plan.seedExercises,
       workoutId,
+    });
+    initialSelectionMetadata = attachStimulusAccountingToSelectionMetadata({
+      selectionMetadata: initialSelectionMetadata,
+      stimulusAccounting: {
+        contractVersion: 1,
+        exercises: persistedExercises.map((exercise) => ({
+          orderIndex: exercise.orderIndex,
+          sourceExerciseId: exercise.exerciseId,
+          ...toExerciseStimulusAccountingEvidence(
+            exercise.stimulusAccountingSnapshot
+          ),
+        })),
+      },
     });
     const selectionMetadata = applyRuntimeEditMetadata({
       selectionMetadata: initialSelectionMetadata,
@@ -1461,6 +1514,8 @@ async function writeBackfillSessions(input: {
           section: exercise.section,
           isMainLift: exercise.isMainLift,
           movementPatterns: [],
+          stimulusAccountingSnapshot:
+            exercise.stimulusAccountingSnapshot as Prisma.InputJsonValue,
         },
         select: { id: true },
       });

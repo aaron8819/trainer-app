@@ -5,7 +5,6 @@ import {
   normalizeExposedMuscle,
 } from "@/lib/engine/volume-landmarks";
 import type { SessionIntent } from "@/lib/engine/session-types";
-import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import type { WorkoutHistoryEntry } from "@/lib/engine/types";
 import { readSessionSlotSnapshot } from "@/lib/evidence/session-decision-receipt";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
@@ -24,6 +23,10 @@ import {
   listWorkoutExerciseNames,
   loadPreloadedGenerationSnapshot,
 } from "./projected-week-volume-shared";
+import {
+  getEffectiveStimulusFromSnapshot,
+  resolveHistoricalStimulusAccounting,
+} from "@/lib/stimulus-accounting/snapshot";
 import {
   computeMesoWeekStartDate,
   mergeContributionTotals,
@@ -77,6 +80,7 @@ type WorkoutForGuidance = Prisma.WorkoutGetPayload<{
         orderIndex: true;
         section: true;
         exerciseId: true;
+        stimulusAccountingSnapshot: true;
         exercise: {
           select: {
             id: true;
@@ -221,14 +225,21 @@ function computeWorkoutActualContributionByMuscle(
       .filter((mapping) => mapping.role === "SECONDARY")
       .map((mapping) => mapping.muscle.name);
 
-    for (const [muscle, effectiveSets] of getEffectiveStimulusByMuscle(
-      {
+    const accounting = resolveHistoricalStimulusAccounting({
+      persistedSnapshot: workoutExercise.stimulusAccountingSnapshot,
+      exercise: {
         id: workoutExercise.exercise.id,
         name: workoutExercise.exercise.name,
         primaryMuscles,
         secondaryMuscles,
         aliases: workoutExercise.exercise.aliases.map((alias) => alias.alias),
       },
+    });
+    if (!accounting.snapshot) {
+      continue;
+    }
+    for (const [muscle, effectiveSets] of getEffectiveStimulusFromSnapshot(
+      accounting.snapshot,
       completedSets
     )) {
       const exposedMuscle = normalizeExposedMuscle(muscle);
@@ -546,6 +557,7 @@ export async function loadLoggingWeeklyVolumeGuidance(input: {
           orderIndex: true,
           section: true,
           exerciseId: true,
+          stimulusAccountingSnapshot: true,
           exercise: {
             select: {
               id: true,

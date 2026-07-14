@@ -1,4 +1,5 @@
 import type { PlannerDiagnostics } from "@/lib/planner-diagnostics/types";
+import type { ExerciseStimulusAccountingEvidence } from "@/lib/stimulus-accounting/snapshot";
 
 export type CyclePhase = "accumulation" | "intensification" | "realization" | "deload";
 
@@ -81,8 +82,18 @@ export type SessionDecisionException = {
 
 export type PlannerDiagnosticsMode = "standard" | "debug";
 
+export type SessionDecisionStimulusAccounting = {
+  contractVersion: 1;
+  exercises: Array<
+    ExerciseStimulusAccountingEvidence & {
+      orderIndex: number;
+      sourceExerciseId: string;
+    }
+  >;
+};
+
 export type SessionDecisionReceipt = {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   cycleContext: CycleContextSnapshot;
   sessionProvenance?: SessionDecisionProvenance;
   sessionSlot?: SessionSlotSnapshot;
@@ -96,6 +107,7 @@ export type SessionDecisionReceipt = {
   deloadDecision: DeloadDecision;
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;
   plannerDiagnostics?: PlannerDiagnostics;
+  stimulusAccounting?: SessionDecisionStimulusAccounting;
   readiness: {
     wasAutoregulated: boolean;
     signalAgeHours: number | null;

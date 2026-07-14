@@ -12,6 +12,10 @@ import {
   isPerformedHistoryEntry,
 } from "./history";
 import { getEffectiveStimulusByMuscle } from "./stimulus";
+import {
+  getEffectiveStimulusFromSnapshot,
+  getRelationshipMusclesFromSnapshot,
+} from "@/lib/stimulus-accounting/snapshot";
 
 export type VolumeContext = {
   recent: Record<string, number>;
@@ -74,10 +78,25 @@ export function buildVolumeContext(
       const exercise = byId.get(exerciseEntry.exerciseId);
       if (!exercise) continue;
 
-      const primaryMuscles = exercise.primaryMuscles ?? [];
-      const secondaryMuscles = exercise.secondaryMuscles ?? [];
+      const primaryMuscles = exerciseEntry.stimulusAccountingSnapshot
+        ? getRelationshipMusclesFromSnapshot(
+            exerciseEntry.stimulusAccountingSnapshot,
+            "primary"
+          )
+        : exercise.primaryMuscles ?? [];
+      const secondaryMuscles = exerciseEntry.stimulusAccountingSnapshot
+        ? getRelationshipMusclesFromSnapshot(
+            exerciseEntry.stimulusAccountingSnapshot,
+            "secondary"
+          )
+        : exercise.secondaryMuscles ?? [];
       const setsCount = exerciseEntry.sets.length;
-      const effectiveContribution = getEffectiveStimulusByMuscle(exercise, setsCount);
+      const effectiveContribution = exerciseEntry.stimulusAccountingSnapshot
+        ? getEffectiveStimulusFromSnapshot(
+            exerciseEntry.stimulusAccountingSnapshot,
+            setsCount
+          )
+        : getEffectiveStimulusByMuscle(exercise, setsCount);
 
       for (const [muscle, effectiveSets] of effectiveContribution) {
         target[muscle] = (target[muscle] ?? 0) + effectiveSets;

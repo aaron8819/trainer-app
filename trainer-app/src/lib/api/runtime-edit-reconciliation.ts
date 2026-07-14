@@ -11,6 +11,7 @@ import {
   type SaveableSelectionMetadata,
   type WorkoutStructureState,
 } from "@/lib/ui/selection-metadata";
+import type { ExerciseStimulusAccountingEvidence } from "@/lib/stimulus-accounting/snapshot";
 
 const CONSERVATIVE_RUNTIME_EDIT_DIRECTIVES: RuntimeEditDirectiveState = {
   continuityAlias: "none",
@@ -30,6 +31,7 @@ export type RuntimeEditMutation =
       prescriptionSource:
         | "session_accessory_defaults"
         | "generic_accessory_fallback";
+      stimulusAccounting?: ExerciseStimulusAccountingEvidence;
     }
   | {
       kind: "add_set";
@@ -56,6 +58,8 @@ export type RuntimeEditMutation =
       toExerciseName: string;
       reason: RuntimeExerciseReplaceReason;
       setCount: number;
+      fromStimulusAccounting?: ExerciseStimulusAccountingEvidence;
+      toStimulusAccounting?: ExerciseStimulusAccountingEvidence;
     }
   | {
       kind: "rewrite_structure";
@@ -123,6 +127,7 @@ function buildRuntimeEditOperation(input: {
         section: input.mutation.section,
         setCount: input.mutation.setCount,
         prescriptionSource: input.mutation.prescriptionSource,
+        stimulusAccounting: input.mutation.stimulusAccounting,
       },
     };
   }
@@ -173,6 +178,8 @@ function buildRuntimeEditOperation(input: {
         toExerciseName: input.mutation.toExerciseName,
         reason: input.mutation.reason,
         setCount: input.mutation.setCount,
+        fromStimulusAccounting: input.mutation.fromStimulusAccounting,
+        toStimulusAccounting: input.mutation.toStimulusAccounting,
       },
     };
   }

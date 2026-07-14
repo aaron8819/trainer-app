@@ -1312,3 +1312,11 @@ Boundary rules:
 - For deload, read load provenance fields together.
 - For progression-anchor, start with `action`, `path`, and `reasonCodes`.
 - Escalate when artifact fields contradict each other, omit needed truth because of legacy coverage, or fail to explain a meaningful runtime outcome.
+
+## Stimulus-accounting integrity in `weekly-retro`
+
+- Read `weeklyRetro.stimulusAccountingIntegrity` as persisted candidate truth, not planner or generation policy.
+- `exactVerifiedCount` confirms valid stored hashes. `legacyDerivedCount` is explicitly lower-fidelity reconstruction.
+- Escalate `invalidSnapshotCount` as corruption, `missingExactSnapshotCount` as a modern write-contract failure, and `evidenceMismatchCount` as receipt/runtime-edit evidence drift.
+- `legacyUnknownCount` means the historical contribution cannot be reconstructed safely. Do not silently substitute current policy for a present-but-invalid snapshot.
+- This readout is audit-only: it must not mutate rows, author plans, repair sessions, change acceptance, or feed runtime replay.

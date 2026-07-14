@@ -2,10 +2,13 @@ import type { Prisma } from "@prisma/client";
 import { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getDefaultSraHours } from "@/lib/engine/muscle-policy";
-import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { countCompletedSets } from "./weekly-volume";
+import {
+  getEffectiveStimulusFromSnapshot,
+  resolveHistoricalStimulusAccounting,
+} from "@/lib/stimulus-accounting/snapshot";
 
 type WorkoutReader = Pick<Prisma.TransactionClient, "workout"> | Pick<typeof prisma, "workout">;
 
@@ -85,14 +88,29 @@ export async function loadRecentMuscleStimulus(
           return mapping.muscle.name;
         });
 
-      const effectiveContribution = getEffectiveStimulusByMuscle(
-        {
-          id: workoutExercise.exercise.id ?? workoutExercise.exercise.name ?? "unknown-exercise",
-          name: workoutExercise.exercise.name ?? workoutExercise.exercise.id ?? "Unknown Exercise",
+      const accounting = resolveHistoricalStimulusAccounting({
+        persistedSnapshot: workoutExercise.stimulusAccountingSnapshot,
+        exercise: {
+          id:
+            workoutExercise.exercise.id ??
+            workoutExercise.exercise.name ??
+            "unknown-exercise",
+          name:
+            workoutExercise.exercise.name ??
+            workoutExercise.exercise.id ??
+            "Unknown Exercise",
           primaryMuscles,
           secondaryMuscles,
-          aliases: (workoutExercise.exercise.aliases ?? []).map((alias) => alias.alias),
+          aliases: (workoutExercise.exercise.aliases ?? []).map(
+            (alias) => alias.alias
+          ),
         },
+      });
+      if (!accounting.snapshot) {
+        continue;
+      }
+      const effectiveContribution = getEffectiveStimulusFromSnapshot(
+        accounting.snapshot,
         completedSets
       );
 

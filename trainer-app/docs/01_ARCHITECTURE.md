@@ -216,3 +216,11 @@ SetLog / logged performance
   - `live`: full internal identity context
   - `pii-safe`: redacted identity/request identifiers
   - Source: `src/lib/audit/workout-audit/types.ts`, `src/lib/audit/workout-audit/serializer.ts`, `scripts/workout-audit.ts`
+
+## Historical effective-set accounting
+
+- Exercise policy is resolved once when a `WorkoutExercise` is materialized and stored in `WorkoutExercise.stimulusAccountingSnapshot`.
+- The versioned snapshot contains the per-qualifying-set contribution vector, frozen primary/secondary relationships, source exercise ID, provenance, and a deterministic SHA-256 policy hash.
+- Historical volume, analytics, SRA, explainability, and audit consumers multiply that frozen vector by sets accepted by the canonical performed-set classifier. They must not re-resolve current exercise policy.
+- Save, runtime add, and unlogged runtime swap are the only application write seams. Snapshot persistence and the workout mutation share one transaction.
+- Planner/materializer diagnostics, accepted intent, and seed/runtime replay do not consume this snapshot. It is performed-history accounting truth only.

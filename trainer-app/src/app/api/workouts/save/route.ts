@@ -47,10 +47,14 @@ import {
 } from "@/lib/api/save-workout/status";
 import {
   buildPersistedExercisesForSave,
+  buildStimulusAccountingReceiptManifest,
   persistWorkoutRow,
+  prepareWorkoutExercisesForPersistence,
   replaceFilteredExercises,
   rewriteWorkoutExercises,
 } from "@/lib/api/save-workout/persistence";
+import { attachStimulusAccountingToSelectionMetadata } from "@/lib/evidence/session-decision-receipt";
+import { preservePersistedStimulusAccounting } from "@/lib/evidence/session-decision-receipt";
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
@@ -137,6 +141,12 @@ export async function POST(request: Request) {
         selectionMetadata: effectiveSelectionMetadata,
         cycleContext: receipt.cycleContext,
       });
+      if (!hasExerciseRewrite) {
+        selectionMetadata = preservePersistedStimulusAccounting({
+          selectionMetadata,
+          persistedSelectionMetadata: existingWorkout?.selectionMetadata,
+        });
+      }
       const isCloseout = isCloseoutSession(selectionMetadata);
       if (isCloseout) {
         selectionMetadata = stripCloseoutSlotIdentity(selectionMetadata);
@@ -168,6 +178,19 @@ export async function POST(request: Request) {
         templateId: parsed.data.templateId,
         userId: user.id,
       });
+      const preparedExercises = hasExerciseRewrite
+        ? await prepareWorkoutExercisesForPersistence(
+            tx,
+            parsed.data.exercises!,
+          )
+        : undefined;
+      if (preparedExercises) {
+        selectionMetadata = attachStimulusAccountingToSelectionMetadata({
+          selectionMetadata,
+          stimulusAccounting:
+            buildStimulusAccountingReceiptManifest(preparedExercises),
+        });
+      }
 
       if (action === "mark_completed") {
         const snapshot = await tx.workout.findUnique({
@@ -401,7 +424,7 @@ export async function POST(request: Request) {
       if (hasExerciseRewrite) {
         await rewriteWorkoutExercises(tx, {
           workoutId: workout.id,
-          exercises: parsed.data.exercises!,
+          exercises: preparedExercises!,
         });
       }
 

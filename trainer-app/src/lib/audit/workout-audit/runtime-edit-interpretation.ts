@@ -1,4 +1,7 @@
-import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
+import {
+  getEffectiveStimulusFromSnapshot,
+  resolveHistoricalStimulusAccounting,
+} from "@/lib/stimulus-accounting/snapshot";
 import { normalizeExposedMuscle } from "@/lib/engine/volume-landmarks";
 import type { SessionAuditMutationSummary } from "@/lib/evidence/session-audit-types";
 import type {
@@ -17,6 +20,7 @@ export type RuntimeEditExerciseContext = {
   primaryMuscles?: string[];
   secondaryMuscles?: string[];
   aliases?: string[];
+  stimulusAccountingSnapshot?: unknown;
 };
 
 export type RuntimeEditTargetContext = {
@@ -150,6 +154,7 @@ function getSetDelta(operation: RuntimeEditOperation): number {
 
 function getExerciseMuscles(input: {
   exerciseId: string | undefined;
+  workoutExerciseId?: string;
   exerciseMap: Map<string, RuntimeEditExerciseContext>;
   setDelta: number;
 }): string[] {
@@ -157,22 +162,31 @@ function getExerciseMuscles(input: {
     return [];
   }
 
-  const context = input.exerciseMap.get(input.exerciseId);
+  const context =
+    (input.workoutExerciseId
+      ? input.exerciseMap.get(input.workoutExerciseId)
+      : undefined) ?? input.exerciseMap.get(input.exerciseId);
   if (!context) {
     return [];
   }
 
-  const effective = getEffectiveStimulusByMuscle(
-    {
-      id: context.exerciseId,
-      name: context.exerciseName ?? context.exerciseId,
-      primaryMuscles: context.primaryMuscles ?? [],
-      secondaryMuscles: context.secondaryMuscles ?? [],
-      aliases: context.aliases ?? [],
-    },
-    Math.max(1, Math.abs(input.setDelta)),
-    { logFallback: false }
-  );
+  const exercise = {
+    id: context.exerciseId,
+    name: context.exerciseName ?? context.exerciseId,
+    primaryMuscles: context.primaryMuscles ?? [],
+    secondaryMuscles: context.secondaryMuscles ?? [],
+    aliases: context.aliases ?? [],
+  };
+  const accounting = resolveHistoricalStimulusAccounting({
+    persistedSnapshot: context.stimulusAccountingSnapshot,
+    exercise,
+  });
+  const effective = accounting.snapshot
+    ? getEffectiveStimulusFromSnapshot(
+        accounting.snapshot,
+        Math.max(1, Math.abs(input.setDelta))
+      )
+    : new Map();
 
   if (effective.size > 0) {
     return normalizeMuscles(effective.keys());
@@ -233,6 +247,7 @@ function findFinalMevClosureEvidence(input: {
 
 function buildContributionByMuscle(input: {
   exerciseId: string | undefined;
+  workoutExerciseId?: string;
   exerciseMap: Map<string, RuntimeEditExerciseContext>;
   setDelta: number;
 }): Map<string, number> {
@@ -240,22 +255,28 @@ function buildContributionByMuscle(input: {
     return new Map();
   }
 
-  const context = input.exerciseMap.get(input.exerciseId);
+  const context =
+    (input.workoutExerciseId
+      ? input.exerciseMap.get(input.workoutExerciseId)
+      : undefined) ?? input.exerciseMap.get(input.exerciseId);
   if (!context) {
     return new Map();
   }
 
-  const contribution = getEffectiveStimulusByMuscle(
-    {
-      id: context.exerciseId,
-      name: context.exerciseName ?? context.exerciseId,
-      primaryMuscles: context.primaryMuscles ?? [],
-      secondaryMuscles: context.secondaryMuscles ?? [],
-      aliases: context.aliases ?? [],
-    },
-    input.setDelta,
-    { logFallback: false }
-  );
+  const exercise = {
+    id: context.exerciseId,
+    name: context.exerciseName ?? context.exerciseId,
+    primaryMuscles: context.primaryMuscles ?? [],
+    secondaryMuscles: context.secondaryMuscles ?? [],
+    aliases: context.aliases ?? [],
+  };
+  const accounting = resolveHistoricalStimulusAccounting({
+    persistedSnapshot: context.stimulusAccountingSnapshot,
+    exercise,
+  });
+  const contribution = accounting.snapshot
+    ? getEffectiveStimulusFromSnapshot(accounting.snapshot, input.setDelta)
+    : new Map();
 
   return new Map(
     Array.from(contribution.entries()).map(([muscle, value]) => [
@@ -409,6 +430,7 @@ function interpretPersistedOperation(input: {
   const setDelta = getSetDelta(operation);
   const muscles = getExerciseMuscles({
     exerciseId,
+    workoutExerciseId,
     exerciseMap: input.exerciseMap,
     setDelta,
   });
@@ -455,6 +477,7 @@ function interpretPersistedOperation(input: {
   if (operation.kind === "add_exercise" || operation.kind === "add_set") {
     const contributionByMuscle = buildContributionByMuscle({
       exerciseId,
+      workoutExerciseId,
       exerciseMap: input.exerciseMap,
       setDelta,
     });

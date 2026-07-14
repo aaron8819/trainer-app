@@ -134,3 +134,10 @@ Lifecycle/handoff meanings:
 - Read-side consumers now centralize that interpretation in `src/lib/session-semantics/derive-session-semantics.ts`; no persisted `sessionKind` column or enum has been added.
 - Closeout persistence stays slotless by contract: `selectionMetadata.sessionDecisionReceipt.sessionSlot` must be absent on closeout workouts, and write-side helpers strip that slot snapshot rather than introducing a separate closeout slot mirror.
 - Next-cycle carry-forward compatibility is draft-validated rather than schema-enforced: if split/session edits remove a slot intent, `keep` selections for that prior intent are rejected before acceptance (`src/lib/api/mesocycle-handoff.ts`).
+
+## `WorkoutExercise.stimulusAccountingSnapshot`
+
+- Nullable JSONB, added additively for rollout compatibility.
+- Version 1 fields: `version`, `sourceExerciseId`, sorted `contributions`, sorted `relationships`, `policyHash`, and `provenance` (`exact` or `legacy_derived`).
+- `policyHash` covers the version, normalized contribution vector, and relationships. It does not depend on mutable display names.
+- New application-created rows must persist an `exact` snapshot. Legacy backfill writes only null rows and never changes set logs, workout totals, stimulus fractions, landmarks, or accepted seed shape.

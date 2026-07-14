@@ -3,6 +3,8 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
+| 2026-07-14 | self | A read-only stdin `tsx` DB inventory used dynamic imports but still accessed named exports directly, repeating the documented wrapper-shape trap at cleanup. | Normalize every stdin `tsx` dynamic import with `const mod = imported.default ?? imported` before accessing exports, including cleanup helpers. |
+| 2026-07-14 | self | Repeated the documented PowerShell `$transaction` interpolation mistake in a parallel `rg` inspection command, producing an invalid regex. | Use PowerShell single-quoted regex patterns whenever searches include TypeScript `$` identifiers; never embed those patterns in a double-quoted command. |
 | 2026-07-13 | self | Raw broad-suite failure counts hid two branch-only receipt/audit regressions among a large known-red baseline. | Capture base and branch Vitest JSON under the same environment, normalize paths, and compare failed-test names before accepting a baseline-failure explanation. |
 | 2026-07-13 | self | Initial seed-provenance audit checks verified pointer/history shape but could not detect payload corruption or a bypassed mutation guard. | Rehash the stored normalized executable revision payload and compare it with the immutable stored hash in audit output. |
 | 2026-07-13 | self | Repeated the known Windows wildcard-path mistake by passing `mesocycle-lifecycle*.ts` as a path to `rg`, which Windows rejected. | Search the containing directory and use `-g "mesocycle-lifecycle*.ts"` instead of wildcard path segments. |
@@ -437,3 +439,4 @@
 - Live state superseded the older Meso 4 acceptance queue: Meso 4 is `COMPLETED`, Meso 5 is `ACTIVE_ACCUMULATION`, and `next-mesocycle-post-accept-verification` passed all hard checks with zero must-fix Week 1 findings.
 - The accepted draft and successor seed hashes match, runtime/projection/read models replay persisted seed truth, and the only watch item is prescription confidence (two stale-history and two new-to-user exercises). Treat that as Week 1 coaching calibration, not planner/seed repair.
 - 2026-07-13: `rg` treats a pattern beginning with `--` as an option. Use `rg -n -- "--mode|..." <paths>` for CLI-flag searches.
+- 2026-07-14: Passing quoted PostgreSQL identifiers through `docker exec ... psql -c $sql` let argument parsing strip the quotes, and later commands masked the failed fixture insert. Pipe SQL through stdin with `docker exec -i ... psql -v ON_ERROR_STOP=1`, then stop before dependent validation if it fails.

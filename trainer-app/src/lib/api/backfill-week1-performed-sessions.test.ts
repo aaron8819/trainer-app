@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { deriveNextRuntimeSlotSession } from "@/lib/api/mesocycle-slot-runtime";
 import { buildMesocycleSlotSequence } from "@/lib/api/mesocycle-slot-contract";
 import { readRuntimeEditReconciliation } from "@/lib/ui/selection-metadata";
+import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import {
   backfillWeek1PerformedSessions,
   TRANSITION_WEEK_BACKFILL_MESOCYCLE_ID,
@@ -549,6 +550,29 @@ describe("backfillWeek1PerformedSessions", () => {
     expect(fixture.state.createdWorkoutExercises).toHaveLength(
       result.dryRunSummary.totals.workoutExercises,
     );
+    expect(
+      fixture.state.createdWorkoutExercises.every((exercise) => {
+        const snapshot = exercise.stimulusAccountingSnapshot as
+          | { version?: number; provenance?: string; policyHash?: string }
+          | undefined;
+        return (
+          snapshot?.version === 1 &&
+          snapshot.provenance === "exact" &&
+          /^[a-f0-9]{64}$/.test(snapshot.policyHash ?? "")
+        );
+      })
+    ).toBe(true);
+    expect(
+      fixture.state.createdWorkouts.every((workout) => {
+        const receipt = readSessionDecisionReceipt(workout.selectionMetadata);
+        return (
+          receipt?.version === 3 &&
+          receipt.stimulusAccounting?.exercises.every(
+            (entry) => entry.provenance === "exact"
+          ) === true
+        );
+      })
+    ).toBe(true);
     expect(fixture.state.createdWorkoutSets).toHaveLength(
       result.dryRunSummary.totals.workoutSets,
     );

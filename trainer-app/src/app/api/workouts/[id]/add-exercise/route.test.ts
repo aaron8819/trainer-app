@@ -567,6 +567,11 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
         orderIndex: 2,
         section: "ACCESSORY",
         isMainLift: false,
+        stimulusAccountingSnapshot: expect.objectContaining({
+          version: 1,
+          sourceExerciseId: "fly",
+          provenance: "exact",
+        }),
         sets: {
           create: [
             {
@@ -615,14 +620,18 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
             ops: [
               expect.objectContaining({
                 kind: "add_exercise",
-                facts: {
+                facts: expect.objectContaining({
                   workoutExerciseId: "we-2",
                   exerciseId: "fly",
                   orderIndex: 2,
                   section: "ACCESSORY",
                   setCount: 2,
                   prescriptionSource: "session_accessory_defaults",
-                },
+                  stimulusAccounting: expect.objectContaining({
+                    contractVersion: 1,
+                    provenance: "exact",
+                  }),
+                }),
               }),
             ],
           }),

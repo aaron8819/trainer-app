@@ -187,3 +187,13 @@ prisma.user.findFirst({
 
 Never use bare `findFirst()` for user resolution:
 - Test users exist in the live DB and may be returned first.
+
+## Historical stimulus-accounting rollout
+
+1. Apply `20260714120000_add_workout_exercise_stimulus_snapshot` through the normal reviewed migration process.
+2. Deploy application writers/readers. Null legacy rows remain readable as labeled `legacy_derived` or `legacy_unknown` during rollout.
+3. Run the default dry-run report: `npm run ops:backfill-stimulus-accounting -- --batch-size 100`. Review counts, unknown/invalid IDs, hash distribution, and the last scanned ID.
+4. Resume a bounded dry run with `--after-id <id>` and optionally `--limit <n>`.
+5. Only after explicit database-write approval, use `--write`. Updates are idempotent and conditional on the snapshot still being null; reruns report existing exact/derived rows without rewriting them.
+
+The schema has no immutable exercise rename or active/inactive history, so the report labels those historical capabilities unsupported instead of claiming exact reconstruction. Backfilled rows are `legacy_derived`, never `exact`.

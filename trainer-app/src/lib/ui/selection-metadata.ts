@@ -12,6 +12,7 @@ import {
 import type { SessionAuditSnapshot } from "@/lib/evidence/session-audit-types";
 import type { SessionAuditMutationSummary } from "@/lib/evidence/session-audit-types";
 import type { SessionDecisionReceipt, SessionSlotSnapshot } from "@/lib/evidence/types";
+import type { ExerciseStimulusAccountingEvidence } from "@/lib/stimulus-accounting/snapshot";
 
 export type SaveableSelectionMetadata = {
   rationale?: Record<string, unknown>;
@@ -97,6 +98,7 @@ export type RuntimeEditAddExerciseOperation = {
     prescriptionSource?:
       | "session_accessory_defaults"
       | "generic_accessory_fallback";
+    stimulusAccounting?: ExerciseStimulusAccountingEvidence;
   };
 };
 
@@ -113,6 +115,8 @@ export type RuntimeEditReplaceExerciseOperation = {
     toExerciseName?: string;
     reason: RuntimeExerciseReplaceReason;
     setCount: number;
+    fromStimulusAccounting?: ExerciseStimulusAccountingEvidence;
+    toStimulusAccounting?: ExerciseStimulusAccountingEvidence;
   };
 };
 
@@ -373,6 +377,26 @@ function parseRuntimeEditDirectiveState(value: unknown): RuntimeEditDirectiveSta
   };
 }
 
+function parseStimulusAccountingEvidence(
+  value: unknown
+): ExerciseStimulusAccountingEvidence | undefined {
+  const record = toObject(value);
+  if (
+    !record ||
+    record.contractVersion !== 1 ||
+    typeof record.snapshotHash !== "string" ||
+    !/^[a-f0-9]{64}$/.test(record.snapshotHash) ||
+    (record.provenance !== "exact" && record.provenance !== "legacy_derived")
+  ) {
+    return undefined;
+  }
+  return {
+    contractVersion: 1,
+    snapshotHash: record.snapshotHash,
+    provenance: record.provenance,
+  };
+}
+
 function parseRuntimeEditOperation(value: unknown): RuntimeEditOperation | undefined {
   const record = toObject(value);
   if (
@@ -393,6 +417,9 @@ function parseRuntimeEditOperation(value: unknown): RuntimeEditOperation | undef
     record.source === "api_workouts_add_exercise"
   ) {
     const section = normalizeWorkoutSection(facts.section);
+    const stimulusAccounting = parseStimulusAccountingEvidence(
+      facts.stimulusAccounting
+    );
     if (
       typeof facts.exerciseId !== "string" ||
       typeof facts.orderIndex !== "number" ||
@@ -420,6 +447,7 @@ function parseRuntimeEditOperation(value: unknown): RuntimeEditOperation | undef
           facts.prescriptionSource === "generic_accessory_fallback")
           ? { prescriptionSource: facts.prescriptionSource }
           : {}),
+        ...(stimulusAccounting ? { stimulusAccounting } : {}),
       },
     };
   }
@@ -491,6 +519,12 @@ function parseRuntimeEditOperation(value: unknown): RuntimeEditOperation | undef
     record.kind === "replace_exercise" &&
     record.source === "api_workouts_swap_exercise"
   ) {
+    const fromStimulusAccounting = parseStimulusAccountingEvidence(
+      facts.fromStimulusAccounting
+    );
+    const toStimulusAccounting = parseStimulusAccountingEvidence(
+      facts.toStimulusAccounting
+    );
     if (
       typeof facts.workoutExerciseId !== "string" ||
       typeof facts.fromExerciseId !== "string" ||
@@ -521,6 +555,8 @@ function parseRuntimeEditOperation(value: unknown): RuntimeEditOperation | undef
           : {}),
         reason: facts.reason,
         setCount: facts.setCount,
+        ...(fromStimulusAccounting ? { fromStimulusAccounting } : {}),
+        ...(toStimulusAccounting ? { toStimulusAccounting } : {}),
       },
     };
   }

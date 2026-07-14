@@ -1,5 +1,8 @@
-import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { countCompletedSets } from "./weekly-volume";
+import {
+  getEffectiveStimulusFromSnapshot,
+  resolveHistoricalStimulusAccounting,
+} from "@/lib/stimulus-accounting/snapshot";
 
 export type MuscleStimulusTimelineDay = {
   date: string;
@@ -15,6 +18,7 @@ export type MuscleStimulusTimeline = {
 type TimelineWorkout = {
   scheduledDate: Date;
   exercises: Array<{
+    stimulusAccountingSnapshot?: unknown;
     exercise: {
       id?: string | null;
       name?: string | null;
@@ -28,6 +32,9 @@ type TimelineWorkout = {
     };
     sets: Array<{
       logs: Array<{
+        actualReps?: number | null;
+        actualRpe?: number | null;
+        setIntent?: "WORK" | "WARMUP" | null;
         wasSkipped: boolean;
       }>;
     }>;
@@ -94,14 +101,29 @@ export function buildMuscleStimulusTimeline(
         .filter((mapping) => mapping.role === "SECONDARY")
         .map((mapping) => mapping.muscle.name);
 
-      const effectiveContribution = getEffectiveStimulusByMuscle(
-        {
-          id: workoutExercise.exercise.id ?? workoutExercise.exercise.name ?? "unknown-exercise",
-          name: workoutExercise.exercise.name ?? workoutExercise.exercise.id ?? "Unknown Exercise",
+      const accounting = resolveHistoricalStimulusAccounting({
+        persistedSnapshot: workoutExercise.stimulusAccountingSnapshot,
+        exercise: {
+          id:
+            workoutExercise.exercise.id ??
+            workoutExercise.exercise.name ??
+            "unknown-exercise",
+          name:
+            workoutExercise.exercise.name ??
+            workoutExercise.exercise.id ??
+            "Unknown Exercise",
           primaryMuscles,
           secondaryMuscles,
-          aliases: (workoutExercise.exercise.aliases ?? []).map((alias) => alias.alias),
+          aliases: (workoutExercise.exercise.aliases ?? []).map(
+            (alias) => alias.alias
+          ),
         },
+      });
+      if (!accounting.snapshot) {
+        continue;
+      }
+      const effectiveContribution = getEffectiveStimulusFromSnapshot(
+        accounting.snapshot,
         completedSets
       );
 

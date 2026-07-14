@@ -1,4 +1,5 @@
 import type { CanonicalMuscleId } from "./muscle-policy";
+import type { ExerciseStimulusSnapshot } from "@/lib/stimulus-accounting/snapshot";
 
 export type TrainingAge = "beginner" | "intermediate" | "advanced";
 export type PrimaryGoal =
@@ -226,6 +227,8 @@ export type WorkoutHistoryEntry = {
   exercises: {
     exerciseId: string;
     primaryMuscles?: string[];
+    secondaryMuscles?: string[];
+    stimulusAccountingSnapshot?: ExerciseStimulusSnapshot;
     sets: SetLog[];
   }[];
   calibrationExercises?: {

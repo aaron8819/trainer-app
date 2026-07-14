@@ -9,6 +9,8 @@ import { getWeeklyVolumeTarget } from "@/lib/api/mesocycle-lifecycle-math";
 import { loadMesocycleWeekMuscleVolume } from "@/lib/api/weekly-volume";
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { readRuntimeEditReconciliation } from "@/lib/ui/selection-metadata";
+import { auditStimulusAccountingIntegrity } from "@/lib/stimulus-accounting/integrity";
+import type { ExerciseStimulusAccountingEvidence } from "@/lib/stimulus-accounting/snapshot";
 import type { SessionAuditExerciseSnapshot } from "@/lib/evidence/session-audit-types";
 import { WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION } from "./constants";
 import { buildHistoricalWeekAuditPayload } from "./historical-week";
@@ -49,8 +51,10 @@ type WeeklyRetroRuntimeWorkoutRow = {
   id: string;
   selectionMetadata: unknown;
   exercises: Array<{
+    id: string;
     exerciseId: string;
     orderIndex: number;
+    stimulusAccountingSnapshot?: unknown;
     sets: Array<{
       setIndex: number;
       targetReps: number;
@@ -67,6 +71,7 @@ type WeeklyRetroRuntimeWorkoutRow = {
       }>;
     }>;
     exercise: {
+      id: string;
       name: string;
       aliases: Array<{ alias: string }>;
       exerciseMuscles: Array<{
@@ -153,6 +158,43 @@ function getSessionCompositionSource(
 ): WeeklyRetroExerciseLoadCalibrationRow["compositionSource"] {
   return readSessionDecisionReceipt(selectionMetadata)?.sessionProvenance
     ?.compositionSource;
+}
+
+function getExpectedStimulusAccounting(
+  workout: WeeklyRetroRuntimeWorkoutRow,
+  exercise: WeeklyRetroRuntimeWorkoutExercise
+): ExerciseStimulusAccountingEvidence | undefined {
+  const manifestEntry = readSessionDecisionReceipt(workout.selectionMetadata)
+    ?.stimulusAccounting?.exercises.find(
+      (entry) =>
+        entry.orderIndex === exercise.orderIndex &&
+        entry.sourceExerciseId === exercise.exerciseId
+    );
+  let expected = manifestEntry
+    ? {
+        contractVersion: manifestEntry.contractVersion,
+        snapshotHash: manifestEntry.snapshotHash,
+        provenance: manifestEntry.provenance,
+      }
+    : undefined;
+
+  for (const operation of readRuntimeEditReconciliation(workout.selectionMetadata)?.ops ?? []) {
+    if (
+      operation.kind === "add_exercise" &&
+      operation.facts.exerciseId === exercise.exerciseId &&
+      operation.facts.orderIndex === exercise.orderIndex
+    ) {
+      expected = operation.facts.stimulusAccounting ?? expected;
+    }
+    if (
+      operation.kind === "replace_exercise" &&
+      operation.facts.workoutExerciseId === exercise.id &&
+      operation.facts.toExerciseId === exercise.exerciseId
+    ) {
+      expected = operation.facts.toStimulusAccounting ?? expected;
+    }
+  }
+  return expected;
 }
 
 function sumPositiveSetDeltas(
@@ -877,10 +919,7 @@ function buildExerciseContexts(
   const byId = new Map<string, RuntimeEditExerciseContext>();
   for (const workout of workouts) {
     for (const workoutExercise of workout.exercises) {
-      if (byId.has(workoutExercise.exerciseId)) {
-        continue;
-      }
-      byId.set(workoutExercise.exerciseId, {
+      const context = {
         exerciseId: workoutExercise.exerciseId,
         exerciseName: workoutExercise.exercise.name,
         primaryMuscles: workoutExercise.exercise.exerciseMuscles
@@ -890,7 +929,13 @@ function buildExerciseContexts(
           .filter((mapping) => mapping.role === "SECONDARY")
           .map((mapping) => mapping.muscle.name),
         aliases: workoutExercise.exercise.aliases.map((alias) => alias.alias),
-      });
+        stimulusAccountingSnapshot:
+          workoutExercise.stimulusAccountingSnapshot,
+      };
+      byId.set(workoutExercise.id, context);
+      if (!byId.has(workoutExercise.exerciseId)) {
+        byId.set(workoutExercise.exerciseId, context);
+      }
     }
   }
   return Array.from(byId.values());
@@ -1377,8 +1422,10 @@ export async function buildWeeklyRetroAuditPayload(input: {
         exercises: {
           orderBy: [{ orderIndex: "asc" }, { id: "asc" }],
           select: {
+            id: true,
             exerciseId: true,
             orderIndex: true,
+            stimulusAccountingSnapshot: true,
             sets: {
               orderBy: { setIndex: "asc" },
               select: {
@@ -1406,6 +1453,7 @@ export async function buildWeeklyRetroAuditPayload(input: {
             },
             exercise: {
               select: {
+                id: true,
                 name: true,
                 aliases: {
                   select: {
@@ -1843,6 +1891,28 @@ export async function buildWeeklyRetroAuditPayload(input: {
       mesoSession: session.mesocycleSnapshot?.session ?? undefined,
       compositionSource: session.compositionSource,
     }));
+  const stimulusAccountingIntegrity = auditStimulusAccountingIntegrity(
+    slotIdentityRows.flatMap((workout) =>
+      workout.exercises.map((exercise) => ({
+        workoutId: workout.id,
+        workoutExerciseId: exercise.id,
+        exerciseId: exercise.exerciseId,
+        persistedSnapshot: exercise.stimulusAccountingSnapshot,
+        exercise: {
+          id: exercise.exercise.id,
+          name: exercise.exercise.name,
+          aliases: exercise.exercise.aliases.map((entry) => entry.alias),
+          primaryMuscles: exercise.exercise.exerciseMuscles
+            .filter((entry) => entry.role === "PRIMARY")
+            .map((entry) => entry.muscle.name),
+          secondaryMuscles: exercise.exercise.exerciseMuscles
+            .filter((entry) => entry.role === "SECONDARY")
+            .map((entry) => entry.muscle.name),
+        },
+        expectedEvidence: getExpectedStimulusAccounting(workout, exercise),
+      }))
+    )
+  );
 
   const payload: WeeklyRetroAuditPayload = {
     version: WEEKLY_RETRO_AUDIT_PAYLOAD_VERSION,
@@ -1856,7 +1926,10 @@ export async function buildWeeklyRetroAuditPayload(input: {
         belowMev.length > 0 ||
         nearMav.length > 0 ||
         overMav.length > 0 ||
-        slotIdentityIssueCount > 0
+        slotIdentityIssueCount > 0 ||
+        stimulusAccountingIntegrity.invalidSnapshotCount > 0 ||
+        stimulusAccountingIntegrity.missingExactSnapshotCount > 0 ||
+        stimulusAccountingIntegrity.evidenceMismatchCount > 0
           ? "attention_required"
           : "stable",
       generatedLayerCoverage: historicalWeek.comparabilityCoverage.generatedLayerCoverage,
@@ -1920,6 +1993,7 @@ export async function buildWeeklyRetroAuditPayload(input: {
       muscles: volumeRows,
     },
     planAdherence,
+    stimulusAccountingIntegrity,
     exerciseLoadCalibrationRows,
     postSessionReview: {
       readOnly: true,

@@ -22,6 +22,11 @@ import {
   buildExerciseMuscleDisplayGroups,
   type ExerciseMuscleTagGroups,
 } from "@/lib/ui/exercise-muscle-tags";
+import {
+  buildExerciseStimulusSnapshot,
+  resolveHistoricalStimulusAccounting,
+  toExerciseStimulusAccountingEvidence,
+} from "@/lib/stimulus-accounting/snapshot";
 
 type ExerciseRecord = Prisma.ExerciseGetPayload<{
   include: {
@@ -802,6 +807,39 @@ export async function applyRuntimeExerciseSwap(input: {
   searchQuery?: string;
 }): Promise<RuntimeExerciseSwapExercisePayload> {
   const resolution = await resolveRuntimeExerciseSwap(input);
+  const replacementStimulusAccountingSnapshot = buildExerciseStimulusSnapshot(
+    {
+      id: resolution.replacementExercise.id,
+      name: resolution.replacementExercise.name,
+      aliases: (resolution.replacementExercise.aliases ?? []).map((alias) => alias.alias),
+      primaryMuscles: (resolution.replacementExercise.exerciseMuscles ?? [])
+        .filter((mapping) => mapping.role === "PRIMARY")
+        .map((mapping) => mapping.muscle.name),
+      secondaryMuscles: (resolution.replacementExercise.exerciseMuscles ?? [])
+        .filter((mapping) => mapping.role === "SECONDARY")
+        .map((mapping) => mapping.muscle.name),
+    },
+    "exact"
+  );
+  const originalStimulusAccounting = resolveHistoricalStimulusAccounting({
+    persistedSnapshot:
+      resolution.context.workoutExercise.stimulusAccountingSnapshot,
+    exercise: {
+      id: resolution.context.workoutExercise.exercise.id,
+      name: resolution.context.workoutExercise.exercise.name,
+      aliases: (resolution.context.workoutExercise.exercise.aliases ?? []).map(
+        (alias) => alias.alias
+      ),
+      primaryMuscles:
+        (resolution.context.workoutExercise.exercise.exerciseMuscles ?? [])
+          .filter((mapping) => mapping.role === "PRIMARY")
+          .map((mapping) => mapping.muscle.name),
+      secondaryMuscles:
+        (resolution.context.workoutExercise.exercise.exerciseMuscles ?? [])
+          .filter((mapping) => mapping.role === "SECONDARY")
+          .map((mapping) => mapping.muscle.name),
+    },
+  });
 
   await prisma.$transaction(async (tx) => {
     const latestWorkout = await tx.workout.findUnique({
@@ -819,13 +857,25 @@ export async function applyRuntimeExerciseSwap(input: {
       });
     }
 
-    await tx.workoutExercise.update({
-      where: { id: resolution.context.workoutExercise.id },
+    const replaced = await tx.workoutExercise.updateMany({
+      where: {
+        id: resolution.context.workoutExercise.id,
+        exerciseId: resolution.context.workoutExercise.exerciseId,
+        sets: { none: { logs: { some: {} } } },
+      },
       data: {
         exerciseId: resolution.replacementExercise.id,
         movementPatterns: resolution.replacementExercise.movementPatterns,
+        stimulusAccountingSnapshot:
+          replacementStimulusAccountingSnapshot as unknown as Prisma.InputJsonValue,
       },
     });
+    if (replaced.count !== 1) {
+      throw buildRuntimeExerciseSwapError(
+        "Exercise changed or received logs before the swap could be saved.",
+        { status: 409, code: "SWAP_STATE_CHANGED" }
+      );
+    }
 
     for (const set of resolution.exercise.sets) {
       await tx.workoutSet.update({
@@ -880,6 +930,14 @@ export async function applyRuntimeExerciseSwap(input: {
         toExerciseName: resolution.replacementExercise.name,
         reason: "equipment_availability_equivalent_pull_swap",
         setCount: resolution.exercise.sets.length,
+        fromStimulusAccounting: originalStimulusAccounting.snapshot
+          ? toExerciseStimulusAccountingEvidence(
+              originalStimulusAccounting.snapshot
+            )
+          : undefined,
+        toStimulusAccounting: toExerciseStimulusAccountingEvidence(
+          replacementStimulusAccountingSnapshot
+        ),
       },
     }).nextSelectionMetadata;
 

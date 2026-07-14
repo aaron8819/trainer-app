@@ -16,7 +16,6 @@ const mocks = vi.hoisted(() => {
   const buildAdvancingPerformedSlots = vi.fn();
   const getWeeklyVolumeTarget = vi.fn();
   const deriveSessionSemantics = vi.fn();
-  const getEffectiveStimulusByMuscle = vi.fn();
 
   return {
     workoutFindFirst,
@@ -34,7 +33,6 @@ const mocks = vi.hoisted(() => {
     buildAdvancingPerformedSlots,
     getWeeklyVolumeTarget,
     deriveSessionSemantics,
-    getEffectiveStimulusByMuscle,
     prisma: {
       workout: {
         findFirst: workoutFindFirst,
@@ -90,10 +88,19 @@ vi.mock("@/lib/session-semantics/derive-session-semantics", () => ({
   deriveSessionSemantics: (...args: unknown[]) => mocks.deriveSessionSemantics(...args),
 }));
 
-vi.mock("@/lib/engine/stimulus", () => ({
-  getEffectiveStimulusByMuscle: (...args: unknown[]) =>
-    mocks.getEffectiveStimulusByMuscle(...args),
-}));
+vi.mock("@/lib/engine/stimulus", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/engine/stimulus")>();
+  return {
+    ...actual,
+    resolveStimulusProfile: (exercise: { primaryMuscles?: string[] }) =>
+      Object.fromEntries(
+        (exercise.primaryMuscles ?? []).flatMap((muscle) => {
+          const muscleId = actual.toMuscleId(muscle);
+          return muscleId ? [[muscleId, 1]] : [];
+        })
+      ),
+  };
+});
 
 import { loadLoggingWeeklyVolumeGuidance } from "./logging-weekly-volume-guidance";
 
@@ -316,10 +323,6 @@ describe("loadLoggingWeeklyVolumeGuidance", () => {
       countsTowardProgressionHistory: true,
       countsTowardPerformanceHistory: true,
     });
-    mocks.getEffectiveStimulusByMuscle.mockImplementation(
-      (exercise: { primaryMuscles?: string[] }, setCount: number) =>
-        new Map([[exercise.primaryMuscles?.[0] ?? "Unknown", setCount]])
-    );
     mocks.workoutFindMany.mockResolvedValue([
       {
         advancesSplit: true,

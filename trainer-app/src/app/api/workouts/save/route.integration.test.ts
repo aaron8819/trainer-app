@@ -353,7 +353,17 @@ describe("POST /api/workouts/save", () => {
     mocks.workoutUpdateMany.mockResolvedValue({ count: 1 });
     mocks.workoutUpsert.mockResolvedValue({ id: "workout-1", revision: 1 });
     mocks.workoutExerciseFindMany.mockResolvedValue([]);
-    mocks.exerciseFindUnique.mockResolvedValue({ movementPatterns: [] });
+    mocks.exerciseFindUnique.mockResolvedValue({
+      id: "bench",
+      name: "Bench Press",
+      movementPatterns: [],
+      aliases: [],
+      exerciseMuscles: [
+        { role: "PRIMARY", muscle: { name: "Chest" } },
+        { role: "SECONDARY", muscle: { name: "Triceps" } },
+        { role: "SECONDARY", muscle: { name: "Front Delts" } },
+      ],
+    });
     mocks.workoutExerciseCreate.mockResolvedValue({ id: "we-1" });
     mocks.tx.mesocycle.findUnique.mockResolvedValue(null);
     mocks.tx.mesocycle.findFirst.mockResolvedValue({
@@ -475,6 +485,35 @@ describe("POST /api/workouts/save", () => {
       const upsert = mocks.workoutUpsert.mock.calls[0][0];
       expect(upsert.create.status).toBe("PLANNED");
       expect(upsert.update.status).toBe("PLANNED");
+      const receipt = upsert.create.selectionMetadata.sessionDecisionReceipt;
+      expect(receipt).toMatchObject({
+        version: 3,
+        stimulusAccounting: {
+          contractVersion: 1,
+          exercises: [
+            expect.objectContaining({
+              orderIndex: 0,
+              sourceExerciseId: "bench",
+              contractVersion: 1,
+              provenance: "exact",
+              snapshotHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+            }),
+          ],
+        },
+      });
+      expect(mocks.workoutExerciseCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            exerciseId: "bench",
+            stimulusAccountingSnapshot: expect.objectContaining({
+              version: 1,
+              sourceExerciseId: "bench",
+              provenance: "exact",
+              policyHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+            }),
+          }),
+        })
+      );
     }
   );
 

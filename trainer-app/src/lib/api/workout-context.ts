@@ -46,6 +46,10 @@ import type {
 } from "@/lib/engine/types";
 
 import type { WeekInBlockHistoryEntry } from "./periodization";
+import {
+  getRelationshipMusclesFromSnapshot,
+  resolveHistoricalStimulusAccounting,
+} from "@/lib/stimulus-accounting/snapshot";
 
 type ExerciseWithMuscles = Exercise & {
   exerciseMuscles?: { role: string; muscle: { name: string } }[];
@@ -579,12 +583,30 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
 function mapWorkoutExerciseHistory(
   exercise: WorkoutWithRelations["exercises"][number]
 ): WorkoutHistoryEntry["exercises"][number] {
+  const accounting = resolveHistoricalStimulusAccounting({
+    persistedSnapshot: exercise.stimulusAccountingSnapshot,
+    exercise: {
+      id: exercise.exerciseId,
+      name: exercise.exercise.name,
+      primaryMuscles:
+        exercise.exercise.exerciseMuscles
+          ?.filter((mapping) => mapping.role === "PRIMARY")
+          .map((mapping) => mapping.muscle.name) ?? [],
+      secondaryMuscles:
+        exercise.exercise.exerciseMuscles
+          ?.filter((mapping) => mapping.role === "SECONDARY")
+          .map((mapping) => mapping.muscle.name) ?? [],
+    },
+  });
   return {
     exerciseId: exercise.exerciseId,
-    primaryMuscles:
-      exercise.exercise.exerciseMuscles
-        ?.filter((m) => m.role === "PRIMARY")
-        .map((m) => m.muscle.name) ?? [],
+    primaryMuscles: accounting.snapshot
+      ? getRelationshipMusclesFromSnapshot(accounting.snapshot, "primary")
+      : [],
+    secondaryMuscles: accounting.snapshot
+      ? getRelationshipMusclesFromSnapshot(accounting.snapshot, "secondary")
+      : [],
+    stimulusAccountingSnapshot: accounting.snapshot ?? undefined,
     sets: exercise.sets.flatMap((set) => {
       const log = set.logs[0];
       const classification = classifySetLog(log);

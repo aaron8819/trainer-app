@@ -322,3 +322,10 @@ Sources of truth:
   - high confidence means the audit has enough evidence to explain the session without major guesswork
   - medium confidence means one signal is being approximated
   - low confidence means the audit can only explain part of the session with confidence
+
+## Session-decision receipt accounting evidence
+
+- Receipt version 3 may include `stimulusAccounting.contractVersion=1` and one server-authored entry per initially materialized exercise: order index, source exercise ID, snapshot contract version, hash, and provenance.
+- The save route never trusts client-supplied accounting evidence. Exercise rewrites replace it from server-resolved snapshots; non-rewrite saves preserve only already-persisted evidence.
+- Runtime add/swap evidence is appended to `runtimeEditReconciliation` and includes the exact snapshot hash/provenance written in the same transaction.
+- The receipt and runtime-edit ledger are evidence manifests; `WorkoutExercise.stimulusAccountingSnapshot` remains the canonical accounting payload.

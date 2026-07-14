@@ -628,6 +628,7 @@ export type WeeklyRetroAuditPayload = {
     muscles: WeeklyRetroAuditVolumeRow[];
   };
   planAdherence: WeeklyRetroPlanAdherence;
+  stimulusAccountingIntegrity?: import("@/lib/stimulus-accounting/integrity").StimulusAccountingIntegritySummary;
   exerciseLoadCalibrationRows?: WeeklyRetroExerciseLoadCalibrationRow[];
   postSessionReview?: {
     readOnly: true;

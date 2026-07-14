@@ -4,9 +4,13 @@ import {
   getExposedVolumeLandmarkEntries,
   normalizeExposedMuscle,
 } from "@/lib/engine/volume-landmarks";
-import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { countCompletedSets } from "@/lib/api/weekly-volume";
+import {
+  getEffectiveStimulusFromSnapshot,
+  getRelationshipMusclesFromSnapshot,
+  resolveHistoricalStimulusAccounting,
+} from "@/lib/stimulus-accounting/snapshot";
 
 export type WeeklyMuscleVolume = {
   weekStart: string;
@@ -16,6 +20,7 @@ export type WeeklyMuscleVolume = {
 type AnalyticsWorkoutVolumeSource = {
   scheduledDate: Date;
   exercises: Array<{
+    stimulusAccountingSnapshot?: unknown;
     exercise: {
       id?: string | null;
       name?: string | null;
@@ -67,18 +72,33 @@ export function buildWeeklyMuscleVolumeSeries(
       const completedSets = countCompletedSets(we.sets);
       if (completedSets === 0) continue;
 
+      const accounting = resolveHistoricalStimulusAccounting({
+        persistedSnapshot: we.stimulusAccountingSnapshot,
+        exercise: {
+          id: we.exercise.id ?? we.exercise.name ?? "unknown-exercise",
+          name: we.exercise.name ?? we.exercise.id ?? "Unknown Exercise",
+          primaryMuscles: we.exercise.exerciseMuscles
+            .filter((mapping) => mapping.role === "PRIMARY")
+            .map((mapping) => mapping.muscle.name),
+          secondaryMuscles: we.exercise.exerciseMuscles
+            .filter((mapping) => mapping.role === "SECONDARY")
+            .map((mapping) => mapping.muscle.name),
+          aliases: (we.exercise.aliases ?? []).map((alias) => alias.alias),
+        },
+      });
+      if (!accounting.snapshot) continue;
       const primaryMuscles = Array.from(
         new Set(
-          we.exercise.exerciseMuscles
-        .filter((m) => m.role === "PRIMARY")
-        .map((m) => normalizeExposedMuscle(m.muscle.name))
+          getRelationshipMusclesFromSnapshot(accounting.snapshot, "primary").map(
+            normalizeExposedMuscle
+          )
         )
       );
       const secondaryMuscles = Array.from(
         new Set(
-          we.exercise.exerciseMuscles
-        .filter((m) => m.role === "SECONDARY")
-        .map((m) => normalizeExposedMuscle(m.muscle.name))
+          getRelationshipMusclesFromSnapshot(accounting.snapshot, "secondary").map(
+            normalizeExposedMuscle
+          )
         )
       );
 
@@ -89,16 +109,9 @@ export function buildWeeklyMuscleVolumeSeries(
         getOrCreateWeekMuscleRow(weekData, muscle).indirectSets += completedSets;
       }
 
-      const effectiveContribution = getEffectiveStimulusByMuscle(
-        {
-          id: we.exercise.id ?? we.exercise.name ?? "unknown-exercise",
-          name: we.exercise.name ?? we.exercise.id ?? "Unknown Exercise",
-          primaryMuscles,
-          secondaryMuscles,
-          aliases: (we.exercise.aliases ?? []).map((alias) => alias.alias),
-        },
-        completedSets,
-        { logFallback: false }
+      const effectiveContribution = getEffectiveStimulusFromSnapshot(
+        accounting.snapshot,
+        completedSets
       );
 
       for (const [muscle, effectiveSets] of effectiveContribution) {

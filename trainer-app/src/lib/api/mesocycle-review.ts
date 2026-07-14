@@ -4,7 +4,6 @@ import {
   getExposedVolumeLandmarkEntries,
   normalizeExposedMuscle,
 } from "@/lib/engine/volume-landmarks";
-import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import {
@@ -19,6 +18,10 @@ import {
 import { getWeeklyVolumeTarget } from "./mesocycle-lifecycle-math";
 import { classifyMuscleOutcome, type MuscleOutcomeStatus } from "./muscle-outcome-review";
 import { buildPostSessionReviewContract } from "./post-session-review-contract-builder";
+import {
+  getEffectiveStimulusFromSnapshot,
+  resolveHistoricalStimulusAccounting,
+} from "@/lib/stimulus-accounting/snapshot";
 import type {
   PostSessionReviewContractBuildInput,
   PostSessionReviewExerciseEvidence,
@@ -73,6 +76,7 @@ type ReviewWorkoutRow = {
   exercises: Array<{
     id: string;
     exerciseId: string;
+    stimulusAccountingSnapshot?: unknown;
     orderIndex: number;
     section: string | null;
     isMainLift: boolean;
@@ -735,14 +739,21 @@ function buildMuscleVolumeSummary(
         )
       );
 
-      const effectiveContribution = getEffectiveStimulusByMuscle(
-        {
+      const accounting = resolveHistoricalStimulusAccounting({
+        persistedSnapshot: workoutExercise.stimulusAccountingSnapshot,
+        exercise: {
           id: workoutExercise.exercise.id,
           name: workoutExercise.exercise.name,
           primaryMuscles,
           secondaryMuscles,
           aliases: workoutExercise.exercise.aliases.map((alias) => alias.alias),
         },
+      });
+      if (!accounting.snapshot) {
+        continue;
+      }
+      const effectiveContribution = getEffectiveStimulusFromSnapshot(
+        accounting.snapshot,
         completedSets
       );
 
@@ -900,6 +911,7 @@ async function loadMesocycleWorkouts(
         select: {
           id: true,
           exerciseId: true,
+          stimulusAccountingSnapshot: true,
           orderIndex: true,
           section: true,
           isMainLift: true,

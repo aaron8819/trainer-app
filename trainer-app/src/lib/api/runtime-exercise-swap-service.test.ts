@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => {
   const setLogFindFirst = vi.fn();
   const txWorkoutFindUnique = vi.fn();
   const txWorkoutUpdate = vi.fn();
-  const txWorkoutExerciseUpdate = vi.fn();
+  const txWorkoutExerciseUpdateMany = vi.fn();
   const txWorkoutExerciseFindMany = vi.fn();
   const txWorkoutSetUpdate = vi.fn();
 
@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => {
       update: txWorkoutUpdate,
     },
     workoutExercise: {
-      update: txWorkoutExerciseUpdate,
+      updateMany: txWorkoutExerciseUpdateMany,
       findMany: txWorkoutExerciseFindMany,
     },
     workoutSet: {
@@ -56,7 +56,7 @@ const mocks = vi.hoisted(() => {
     setLogFindFirst,
     txWorkoutFindUnique,
     txWorkoutUpdate,
-    txWorkoutExerciseUpdate,
+    txWorkoutExerciseUpdateMany,
     txWorkoutExerciseFindMany,
     txWorkoutSetUpdate,
     searchExerciseLibrary,
@@ -287,6 +287,7 @@ function buildUpperARowSlotPlanSeedJson() {
 describe("runtime exercise swap service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.txWorkoutExerciseUpdateMany.mockResolvedValue({ count: 1 });
 
     mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-1",
@@ -564,12 +565,17 @@ describe("runtime exercise swap service", () => {
         },
       ],
     });
-    expect(mocks.txWorkoutExerciseUpdate).toHaveBeenCalledWith({
-      where: { id: "we-1" },
-      data: {
+    expect(mocks.txWorkoutExerciseUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: "we-1",
+        exerciseId: "t-bar-row",
+        sets: { none: { logs: { some: {} } } },
+      },
+      data: expect.objectContaining({
         exerciseId: "chest-supported-db-row",
         movementPatterns: ["HORIZONTAL_PULL"],
-      },
+        stimulusAccountingSnapshot: expect.objectContaining({ provenance: "exact" }),
+      }),
     });
     expect(mocks.txWorkoutSetUpdate).toHaveBeenCalledTimes(2);
     expect(mocks.txWorkoutSetUpdate).toHaveBeenNthCalledWith(1, {
@@ -609,7 +615,7 @@ describe("runtime exercise swap service", () => {
                   kind: "replace_exercise",
                   source: "api_workouts_swap_exercise",
                   scope: "current_workout_only",
-                  facts: {
+                  facts: expect.objectContaining({
                     workoutExerciseId: "we-1",
                     fromExerciseId: "t-bar-row",
                     fromExerciseName: "T-Bar Row",
@@ -617,7 +623,13 @@ describe("runtime exercise swap service", () => {
                     toExerciseName: "Chest-Supported Dumbbell Row",
                     reason: "equipment_availability_equivalent_pull_swap",
                     setCount: 2,
-                  },
+                    fromStimulusAccounting: expect.objectContaining({
+                      provenance: "legacy_derived",
+                    }),
+                    toStimulusAccounting: expect.objectContaining({
+                      provenance: "exact",
+                    }),
+                  }),
                 }),
               ],
             }),
@@ -634,6 +646,20 @@ describe("runtime exercise swap service", () => {
         }),
       }),
     );
+  });
+
+  it("rejects a swap if logs arrive after preflight and before the conditional mutation", async () => {
+    mocks.txWorkoutExerciseUpdateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      applyRuntimeExerciseSwap({
+        workoutId: "workout-1",
+        workoutExerciseId: "we-1",
+        replacementExerciseId: "chest-supported-db-row",
+        userId: "user-1",
+      })
+    ).rejects.toMatchObject({ code: "SWAP_STATE_CHANGED", status: 409 });
+    expect(mocks.txWorkoutSetUpdate).not.toHaveBeenCalled();
   });
 
   it("swaps runtime-added unlogged rows while preserving runtime-added provenance", async () => {
@@ -1279,12 +1305,17 @@ describe("runtime exercise swap service", () => {
       exerciseId: "cable-curl",
       name: "Cable Curl",
     });
-    expect(mocks.txWorkoutExerciseUpdate).toHaveBeenLastCalledWith({
-      where: { id: "we-1" },
-      data: {
+    expect(mocks.txWorkoutExerciseUpdateMany).toHaveBeenLastCalledWith({
+      where: {
+        id: "we-1",
+        exerciseId: "barbell-curl",
+        sets: { none: { logs: { some: {} } } },
+      },
+      data: expect.objectContaining({
         exerciseId: "cable-curl",
         movementPatterns: ["FLEXION", "ISOLATION"],
-      },
+        stimulusAccountingSnapshot: expect.objectContaining({ provenance: "exact" }),
+      }),
     });
   });
 

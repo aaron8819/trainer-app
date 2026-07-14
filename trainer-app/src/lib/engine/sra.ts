@@ -4,6 +4,7 @@ import {
   MUSCLE_POLICIES,
 } from "./muscle-policy";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
+import { getRelationshipMusclesFromSnapshot } from "@/lib/stimulus-accounting/snapshot";
 
 export type MuscleRecoveryState = {
   muscle: string;
@@ -45,10 +46,15 @@ export function buildMuscleRecoveryMap(
       const exercise = byId.get(ex.exerciseId);
       if (!exercise) continue;
 
-      const muscles = [
-        ...(exercise.primaryMuscles ?? []),
-        ...(ex.primaryMuscles ?? []),
-      ];
+      const muscles = ex.stimulusAccountingSnapshot
+        ? getRelationshipMusclesFromSnapshot(
+            ex.stimulusAccountingSnapshot,
+            "primary"
+          )
+        : [
+            ...(exercise.primaryMuscles ?? []),
+            ...(ex.primaryMuscles ?? []),
+          ];
       const uniqueMuscles = [...new Set(muscles)];
 
       for (const muscle of uniqueMuscles) {

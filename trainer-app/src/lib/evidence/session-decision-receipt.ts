@@ -12,6 +12,7 @@ import type {
   SessionDecisionException,
   SessionDecisionReadinessScaling,
   SessionDecisionReceipt,
+  SessionDecisionStimulusAccounting,
   SessionDecisionVolumeTargetSource,
 } from "./types";
 import { getCanonicalDeloadReason } from "@/lib/deload/semantics";
@@ -215,6 +216,53 @@ function parseVolumeTargetSource(value: unknown): SessionDecisionVolumeTargetSou
 
 function parsePlannerDiagnosticsMode(value: unknown): PlannerDiagnosticsMode | undefined {
   return value === "standard" || value === "debug" ? value : undefined;
+}
+
+function parseStimulusAccounting(
+  value: unknown
+): SessionDecisionStimulusAccounting | undefined {
+  const record = toObject(value);
+  if (
+    !record ||
+    record.contractVersion !== 1 ||
+    !Array.isArray(record.exercises)
+  ) {
+    return undefined;
+  }
+
+  const exercises = record.exercises.flatMap((entry) => {
+    const item = toObject(entry);
+    if (
+      !item ||
+      typeof item.orderIndex !== "number" ||
+      !Number.isInteger(item.orderIndex) ||
+      item.orderIndex < 0 ||
+      typeof item.sourceExerciseId !== "string" ||
+      item.sourceExerciseId.length === 0 ||
+      item.contractVersion !== 1 ||
+      typeof item.snapshotHash !== "string" ||
+      !/^[a-f0-9]{64}$/.test(item.snapshotHash) ||
+      (item.provenance !== "exact" && item.provenance !== "legacy_derived")
+    ) {
+      return [];
+    }
+    return [
+      {
+        orderIndex: item.orderIndex,
+        sourceExerciseId: item.sourceExerciseId,
+        contractVersion: 1 as const,
+        snapshotHash: item.snapshotHash,
+        provenance: item.provenance as "exact" | "legacy_derived",
+      },
+    ];
+  });
+  if (
+    exercises.length !== record.exercises.length ||
+    new Set(exercises.map((entry) => entry.orderIndex)).size !== exercises.length
+  ) {
+    return undefined;
+  }
+  return { contractVersion: 1, exercises };
 }
 
 function parseRecordOfFiniteNumbers(value: unknown): Record<string, number> | undefined {
@@ -926,6 +974,7 @@ export function buildSessionDecisionReceipt(input: {
   autoregulation?: ReadinessReceiptInput;
   plannerDiagnostics?: PlannerDiagnostics;
   plannerDiagnosticsMode?: PlannerDiagnosticsMode;
+  stimulusAccounting?: SessionDecisionStimulusAccounting;
   additionalExceptions?: SessionDecisionException[];
 }): SessionDecisionReceipt {
   const sorenessSuppressedMuscles = input.sorenessSuppressedMuscles ?? [];
@@ -944,7 +993,7 @@ export function buildSessionDecisionReceipt(input: {
   const sessionProvenance = parseSessionDecisionProvenance(input.sessionProvenance);
 
   return {
-    version: 2,
+    version: input.stimulusAccounting ? 3 : 2,
     cycleContext: input.cycleContext,
     ...(sessionProvenance ? { sessionProvenance } : {}),
     sessionSlot: input.sessionSlot,
@@ -961,6 +1010,7 @@ export function buildSessionDecisionReceipt(input: {
       input.plannerDiagnostics,
       plannerDiagnosticsMode
     ),
+    stimulusAccounting: parseStimulusAccounting(input.stimulusAccounting),
     readiness: {
       wasAutoregulated:
         (input.autoregulation?.wasAutoregulated ?? false) || intensityScaling.applied,
@@ -980,7 +1030,10 @@ export function buildSessionDecisionReceipt(input: {
 
 function parsePersistedReceipt(value: unknown): SessionDecisionReceipt | undefined {
   const record = toObject(value);
-  if (!record || (record.version !== 1 && record.version !== 2)) {
+  if (
+    !record ||
+    (record.version !== 1 && record.version !== 2 && record.version !== 3)
+  ) {
     return undefined;
   }
 
@@ -1008,6 +1061,7 @@ function parsePersistedReceipt(value: unknown): SessionDecisionReceipt | undefin
     deloadDecision,
     plannerDiagnosticsMode: parsePlannerDiagnosticsMode(record.plannerDiagnosticsMode) ?? "standard",
     plannerDiagnostics: parsePlannerDiagnostics(record.plannerDiagnostics),
+    stimulusAccounting: parseStimulusAccounting(record.stimulusAccounting),
     readiness: {
       wasAutoregulated: readinessRecord.wasAutoregulated === true,
       signalAgeHours: toFiniteNumber(readinessRecord.signalAgeHours) ?? null,
@@ -1088,6 +1142,7 @@ export function normalizeSelectionMetadataWithReceipt(input: {
       deloadDecision: existingReceipt?.deloadDecision,
       plannerDiagnostics: existingReceipt?.plannerDiagnostics,
       plannerDiagnosticsMode: "standard",
+      stimulusAccounting: existingReceipt?.stimulusAccounting,
       additionalExceptions:
         existingReceipt?.exceptions.filter(
           (entry) =>
@@ -1105,5 +1160,58 @@ export function normalizeSelectionMetadataWithReceipt(input: {
           }
         : undefined,
     }),
+  };
+}
+
+export function attachStimulusAccountingToSelectionMetadata(input: {
+  selectionMetadata: unknown;
+  stimulusAccounting: SessionDecisionStimulusAccounting;
+}): JsonRecord {
+  const record = toObject(input.selectionMetadata) ?? {};
+  const receipt = extractSessionDecisionReceipt(record);
+  if (!receipt) {
+    throw new Error("WORKOUT_SELECTION_METADATA_REQUIRED");
+  }
+  const stimulusAccounting = parseStimulusAccounting(input.stimulusAccounting);
+  if (!stimulusAccounting) {
+    throw new Error("STIMULUS_ACCOUNTING_RECEIPT_INVALID");
+  }
+  return {
+    ...record,
+    sessionDecisionReceipt: {
+      ...receipt,
+      version: 3,
+      stimulusAccounting,
+    },
+  };
+}
+
+export function preservePersistedStimulusAccounting(input: {
+  selectionMetadata: unknown;
+  persistedSelectionMetadata: unknown;
+}): JsonRecord {
+  const record = toObject(input.selectionMetadata) ?? {};
+  const receipt = extractSessionDecisionReceipt(record);
+  if (!receipt) {
+    throw new Error("WORKOUT_SELECTION_METADATA_REQUIRED");
+  }
+  const persistedStimulusAccounting = extractSessionDecisionReceipt(
+    input.persistedSelectionMetadata
+  )?.stimulusAccounting;
+  const receiptWithoutAccounting = { ...receipt };
+  delete receiptWithoutAccounting.stimulusAccounting;
+
+  return {
+    ...record,
+    sessionDecisionReceipt: persistedStimulusAccounting
+      ? {
+          ...receiptWithoutAccounting,
+          version: 3,
+          stimulusAccounting: persistedStimulusAccounting,
+        }
+      : {
+          ...receiptWithoutAccounting,
+          version: receipt.version === 3 ? 2 : receipt.version,
+        },
   };
 }

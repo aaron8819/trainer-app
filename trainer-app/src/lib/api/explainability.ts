@@ -12,7 +12,10 @@ import {
   explainPrescriptionRationale,
   generateCoachMessages,
 } from "@/lib/engine/explainability";
-import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
+import {
+  getEffectiveStimulusFromSnapshot,
+  resolveHistoricalStimulusAccounting,
+} from "@/lib/stimulus-accounting/snapshot";
 import type { Exercise as EngineExercise, PrimaryGoal, WorkoutSelectionMode } from "@/lib/engine/types";
 import type { SelectionObjective, SelectionCandidate } from "@/lib/engine/selection-v2/types";
 import { loadCurrentBlockContext } from "./periodization";
@@ -448,7 +451,11 @@ async function loadVolumeByMuscle(
       if (!mappedExercise) {
         continue;
       }
-      for (const [muscle, effective] of getEffectiveStimulusByMuscle(mappedExercise, setCount)) {
+      for (const [muscle, effective] of getHistoricalEffectiveContribution(
+        exercise,
+        mappedExercise,
+        setCount
+      )) {
         volumeByMuscle.set(muscle, roundToTenth((volumeByMuscle.get(muscle) ?? 0) + effective));
       }
     }
@@ -538,7 +545,11 @@ function computeWorkoutEffectiveSets(
     if (!mappedExercise) {
       continue;
     }
-    for (const [, effective] of getEffectiveStimulusByMuscle(mappedExercise, setCount)) {
+    for (const [, effective] of getHistoricalEffectiveContribution(
+      exercise,
+      mappedExercise,
+      setCount
+    )) {
       total += effective;
     }
   }
@@ -569,7 +580,11 @@ function computeWorkoutEffectiveSetsByMuscle(
     if (!mappedExercise) {
       continue;
     }
-    for (const [muscle, effective] of getEffectiveStimulusByMuscle(mappedExercise, setCount)) {
+    for (const [muscle, effective] of getHistoricalEffectiveContribution(
+      exercise,
+      mappedExercise,
+      setCount
+    )) {
       output.set(muscle, roundToTenth((output.get(muscle) ?? 0) + effective));
     }
   }
@@ -665,6 +680,20 @@ function countLoggedPerformedSets(
     const latest = set.logs[0];
     return Boolean(latest) && !latest?.wasSkipped;
   }).length;
+}
+
+function getHistoricalEffectiveContribution(
+  workoutExercise: Pick<WorkoutExercise, "stimulusAccountingSnapshot">,
+  exercise: EngineExercise,
+  setCount: number
+): Map<string, number> {
+  const accounting = resolveHistoricalStimulusAccounting({
+    persistedSnapshot: workoutExercise.stimulusAccountingSnapshot,
+    exercise,
+  });
+  return accounting.snapshot
+    ? getEffectiveStimulusFromSnapshot(accounting.snapshot, setCount)
+    : new Map();
 }
 
 async function loadHistoricalExercisePerformance(
@@ -853,7 +882,11 @@ function buildSelectionCandidate(
 
   const performedSetCount = countLoggedPerformedSets(workoutExercise.sets);
   const setCount = performedSetCount > 0 ? performedSetCount : workoutExercise.sets?.length ?? 3;
-  const volumeContribution = getEffectiveStimulusByMuscle(exercise, setCount);
+  const volumeContribution = getHistoricalEffectiveContribution(
+    workoutExercise,
+    exercise,
+    setCount
+  );
   const fallback = {
     deficitFill: Math.min(1, setCount / 6),
     rotationNovelty: Math.min(1, Math.max(1, exercise.movementPatterns.length) / 3),
@@ -2023,7 +2056,11 @@ async function computeVolumeCompliance(
     if (!exercise || prescribedSets === 0) {
       continue;
     }
-    for (const [muscle, effective] of getEffectiveStimulusByMuscle(exercise, prescribedSets)) {
+    for (const [muscle, effective] of getHistoricalEffectiveContribution(
+      we,
+      exercise,
+      prescribedSets
+    )) {
       plannedEffectiveVolumeThisSession.set(
         muscle,
         roundToTenth((plannedEffectiveVolumeThisSession.get(muscle) ?? 0) + effective)

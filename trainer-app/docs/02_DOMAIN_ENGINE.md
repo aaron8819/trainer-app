@@ -450,3 +450,10 @@ SetLog / logged performance
   - Modal load below 50% of most recent INTENT modal load for same exercise flagged as implausible regression
   - `RPE=10` on >50% of sets flagged as unsustainable effort
   - Anomalous MANUAL entries remain included but are downgraded to confidence `0.3`
+
+## Frozen historical stimulus policy
+
+- Prospective planning continues to use the current canonical stimulus policy.
+- Once a workout exercise is materialized, historical effective sets use its immutable versioned contribution vector. A qualifying performed set contributes `snapshot.effectiveSetsPerQualifyingSet` for each muscle.
+- Set qualification remains owned by `classifySetLog()`; the snapshot freezes contribution policy, not performed-set evidence.
+- Legacy rows with no snapshot may be derived from the current catalog and are explicitly labeled `legacy_derived`. Missing/unresolvable legacy rows are `legacy_unknown`. A present but invalid snapshot is never silently replaced with current policy.

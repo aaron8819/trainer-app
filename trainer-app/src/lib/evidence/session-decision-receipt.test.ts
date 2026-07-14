@@ -4,6 +4,7 @@ import { buildV2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 import {
   buildSessionDecisionReceipt,
   normalizeSelectionMetadataWithReceipt,
+  preservePersistedStimulusAccounting,
   readSessionDecisionReceipt,
 } from "./session-decision-receipt";
 
@@ -735,5 +736,82 @@ describe("readSessionDecisionReceipt", () => {
         message: "Marked as closeout session.",
       },
     ]);
+  });
+
+  it("drops client-supplied accounting evidence when persistence has none", () => {
+    const receipt = buildSessionDecisionReceipt({
+      cycleContext: {
+        weekInMeso: 1,
+        weekInBlock: 1,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+      stimulusAccounting: {
+        contractVersion: 1,
+        exercises: [
+          {
+            orderIndex: 0,
+            sourceExerciseId: "client-exercise",
+            contractVersion: 1,
+            snapshotHash: "a".repeat(64),
+            provenance: "exact",
+          },
+        ],
+      },
+    });
+
+    const preserved = preservePersistedStimulusAccounting({
+      selectionMetadata: { sessionDecisionReceipt: receipt },
+      persistedSelectionMetadata: {},
+    });
+
+    expect(readSessionDecisionReceipt(preserved)?.stimulusAccounting).toBeUndefined();
+    expect(readSessionDecisionReceipt(preserved)?.version).toBe(2);
+  });
+
+  it("restores persisted accounting evidence over a client replacement", () => {
+    const base = buildSessionDecisionReceipt({
+      cycleContext: {
+        weekInMeso: 1,
+        weekInBlock: 1,
+        phase: "accumulation",
+        blockType: "accumulation",
+        isDeload: false,
+        source: "computed",
+      },
+    });
+    const persisted = {
+      contractVersion: 1 as const,
+      exercises: [
+        {
+          orderIndex: 0,
+          sourceExerciseId: "server-exercise",
+          contractVersion: 1 as const,
+          snapshotHash: "b".repeat(64),
+          provenance: "exact" as const,
+        },
+      ],
+    };
+
+    const preserved = preservePersistedStimulusAccounting({
+      selectionMetadata: {
+        sessionDecisionReceipt: {
+          ...base,
+          version: 3,
+          stimulusAccounting: { ...persisted, exercises: [] },
+        },
+      },
+      persistedSelectionMetadata: {
+        sessionDecisionReceipt: {
+          ...base,
+          version: 3,
+          stimulusAccounting: persisted,
+        },
+      },
+    });
+
+    expect(readSessionDecisionReceipt(preserved)?.stimulusAccounting).toEqual(persisted);
   });
 });

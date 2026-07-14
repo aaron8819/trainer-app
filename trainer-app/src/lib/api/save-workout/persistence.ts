@@ -1,5 +1,11 @@
-import { Prisma, WorkoutStatus } from "@prisma/client";
+import { MovementPatternV2, Prisma, WorkoutStatus } from "@prisma/client";
 import { ADVANCEMENT_WORKOUT_STATUSES } from "@/lib/workout-status";
+import {
+  buildExerciseStimulusSnapshot,
+  toExerciseStimulusAccountingEvidence,
+  type ExerciseStimulusSnapshot,
+} from "@/lib/stimulus-accounting/snapshot";
+import type { SessionDecisionStimulusAccounting } from "@/lib/evidence/types";
 
 export type SaveWorkoutExerciseInput = {
   exerciseId: string;
@@ -32,6 +38,11 @@ export type PersistedSaveWorkoutExercise = {
   }>;
 };
 
+export type PreparedWorkoutExercise = SaveWorkoutExerciseInput & {
+  movementPatterns: MovementPatternV2[];
+  stimulusAccountingSnapshot: ExerciseStimulusSnapshot;
+};
+
 export type FilteredExerciseInput = {
   exerciseId?: string | null;
   exerciseName: string;
@@ -56,6 +67,60 @@ export function buildPersistedExercisesForSave(
       restSeconds: set.restSeconds ?? null,
     })),
   }));
+}
+
+export async function prepareWorkoutExercisesForPersistence(
+  tx: Prisma.TransactionClient,
+  exercises: SaveWorkoutExerciseInput[]
+): Promise<PreparedWorkoutExercise[]> {
+  const prepared: PreparedWorkoutExercise[] = [];
+  for (const exercise of exercises) {
+    const exerciseRecord = await tx.exercise.findUnique({
+      where: { id: exercise.exerciseId },
+      include: {
+        aliases: true,
+        exerciseMuscles: { include: { muscle: true } },
+      },
+    });
+    if (!exerciseRecord) {
+      throw new Error(`EXERCISE_NOT_FOUND:${exercise.exerciseId}`);
+    }
+
+    prepared.push({
+      ...exercise,
+      movementPatterns: exerciseRecord.movementPatterns,
+      stimulusAccountingSnapshot: buildExerciseStimulusSnapshot(
+        {
+          id: exerciseRecord.id,
+          name: exerciseRecord.name,
+          aliases: exerciseRecord.aliases.map((alias) => alias.alias),
+          primaryMuscles: exerciseRecord.exerciseMuscles
+            .filter((mapping) => mapping.role === "PRIMARY")
+            .map((mapping) => mapping.muscle.name),
+          secondaryMuscles: exerciseRecord.exerciseMuscles
+            .filter((mapping) => mapping.role === "SECONDARY")
+            .map((mapping) => mapping.muscle.name),
+        },
+        "exact"
+      ),
+    });
+  }
+  return prepared;
+}
+
+export function buildStimulusAccountingReceiptManifest(
+  exercises: PreparedWorkoutExercise[]
+): SessionDecisionStimulusAccounting {
+  return {
+    contractVersion: 1,
+    exercises: exercises.map((exercise, orderIndex) => ({
+      orderIndex,
+      sourceExerciseId: exercise.exerciseId,
+      ...toExerciseStimulusAccountingEvidence(
+        exercise.stimulusAccountingSnapshot
+      ),
+    })),
+  };
 }
 
 export async function persistWorkoutRow(
@@ -112,7 +177,7 @@ export async function rewriteWorkoutExercises(
   tx: Prisma.TransactionClient,
   input: {
     workoutId: string;
-    exercises: SaveWorkoutExerciseInput[];
+    exercises: PreparedWorkoutExercise[];
   },
 ): Promise<void> {
   const existingExercises = await tx.workoutExercise.findMany({
@@ -129,10 +194,6 @@ export async function rewriteWorkoutExercises(
   }
 
   for (const [exerciseIndex, exercise] of input.exercises.entries()) {
-    const exerciseRecord = await tx.exercise.findUnique({
-      where: { id: exercise.exerciseId },
-    });
-
     const createdExercise = await tx.workoutExercise.create({
       data: {
         workoutId: input.workoutId,
@@ -140,7 +201,9 @@ export async function rewriteWorkoutExercises(
         orderIndex: exerciseIndex,
         section: exercise.section,
         isMainLift: exercise.section === "MAIN",
-        movementPatterns: exerciseRecord?.movementPatterns ?? [],
+        movementPatterns: exercise.movementPatterns,
+        stimulusAccountingSnapshot:
+          exercise.stimulusAccountingSnapshot as unknown as Prisma.InputJsonValue,
         sets: {
           create: exercise.sets.map((set) => ({
             setIndex: set.setIndex,

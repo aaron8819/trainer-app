@@ -449,16 +449,17 @@ model Workout {
 }
 
 model WorkoutExercise {
-  id               String                  @id @default(uuid())
-  workoutId        String
-  workout          Workout                 @relation(fields: [workoutId], references: [id])
-  exerciseId       String
-  exercise         Exercise                @relation(fields: [exerciseId], references: [id])
-  orderIndex       Int
-  section          WorkoutExerciseSection?
-  isMainLift       Boolean
-  movementPatterns MovementPatternV2[]     @default([])
-  notes            String?
+  id                         String                  @id @default(uuid())
+  workoutId                  String
+  workout                    Workout                 @relation(fields: [workoutId], references: [id])
+  exerciseId                 String
+  exercise                   Exercise                @relation(fields: [exerciseId], references: [id])
+  orderIndex                 Int
+  section                    WorkoutExerciseSection?
+  isMainLift                 Boolean
+  movementPatterns           MovementPatternV2[]     @default([])
+  stimulusAccountingSnapshot Json?
+  notes                      String?
 
   sets WorkoutSet[]
 

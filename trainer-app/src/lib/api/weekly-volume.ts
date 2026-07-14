@@ -1,12 +1,16 @@
 import type { Prisma } from "@prisma/client";
 import { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { getEffectiveStimulusByMuscle } from "@/lib/engine/stimulus";
 import { normalizeExposedMuscle } from "@/lib/engine/volume-landmarks";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { roundToTenth } from "./volume-read-model-helpers";
+import {
+  getEffectiveStimulusFromSnapshot,
+  getRelationshipMusclesFromSnapshot,
+  resolveHistoricalStimulusAccounting,
+} from "@/lib/stimulus-accounting/snapshot";
 
 type WorkoutReader = Pick<Prisma.TransactionClient, "workout"> | Pick<typeof prisma, "workout">;
 
@@ -207,15 +211,36 @@ export async function loadMesocycleWeekMuscleVolume(
         continue;
       }
 
+      const accounting = resolveHistoricalStimulusAccounting({
+        persistedSnapshot: workoutExercise.stimulusAccountingSnapshot,
+        exercise: {
+          id:
+            workoutExercise.exercise.id ??
+            workoutExercise.exercise.name ??
+            "unknown-exercise",
+          name:
+            workoutExercise.exercise.name ??
+            workoutExercise.exercise.id ??
+            "Unknown Exercise",
+          primaryMuscles: workoutExercise.exercise.exerciseMuscles
+            .filter((mapping) => mapping.role === "PRIMARY")
+            .map((mapping) => mapping.muscle.name),
+          secondaryMuscles: workoutExercise.exercise.exerciseMuscles
+            .filter((mapping) => mapping.role === "SECONDARY")
+            .map((mapping) => mapping.muscle.name),
+          aliases: (workoutExercise.exercise.aliases ?? []).map(
+            (alias) => alias.alias
+          ),
+        },
+      });
+      if (!accounting.snapshot) {
+        continue;
+      }
       const primaryMuscles = normalizeExposedMuscleList(
-        workoutExercise.exercise.exerciseMuscles
-        .filter((mapping) => mapping.role === "PRIMARY")
-        .map((mapping) => mapping.muscle.name)
+        getRelationshipMusclesFromSnapshot(accounting.snapshot, "primary")
       );
       const secondaryMuscles = normalizeExposedMuscleList(
-        workoutExercise.exercise.exerciseMuscles
-        .filter((mapping) => mapping.role === "SECONDARY")
-        .map((mapping) => mapping.muscle.name)
+        getRelationshipMusclesFromSnapshot(accounting.snapshot, "secondary")
       );
 
       for (const muscle of primaryMuscles) {
@@ -226,16 +251,7 @@ export async function loadMesocycleWeekMuscleVolume(
       }
 
       const effectiveContribution = normalizeEffectiveContributionByMuscle(
-        getEffectiveStimulusByMuscle(
-          {
-            id: workoutExercise.exercise.id ?? workoutExercise.exercise.name ?? "unknown-exercise",
-            name: workoutExercise.exercise.name ?? workoutExercise.exercise.id ?? "Unknown Exercise",
-            primaryMuscles,
-            secondaryMuscles,
-            aliases: (workoutExercise.exercise.aliases ?? []).map((alias) => alias.alias),
-          },
-          completedSets
-        )
+        getEffectiveStimulusFromSnapshot(accounting.snapshot, completedSets)
       );
       for (const [muscle, effectiveSets] of effectiveContribution) {
         const row = getOrCreateMuscleRow(muscles, muscle);

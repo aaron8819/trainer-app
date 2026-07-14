@@ -13,6 +13,10 @@ import type { TrainingAge, PrimaryGoal } from "@/lib/engine/types";
 import { Prisma } from "@prisma/client";
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
 import { getLogWorkoutPageState } from "@/lib/workout-workflow";
+import {
+  buildExerciseStimulusSnapshot,
+  toExerciseStimulusAccountingEvidence,
+} from "@/lib/stimulus-accounting/snapshot";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -263,6 +267,20 @@ export async function POST(
   if (!exercise) {
     return NextResponse.json({ error: "Exercise not found" }, { status: 404 });
   }
+  const stimulusAccountingSnapshot = buildExerciseStimulusSnapshot(
+    {
+      id: exercise.id,
+      name: exercise.name,
+      aliases: (exercise.aliases ?? []).map((alias) => alias.alias),
+      primaryMuscles: (exercise.exerciseMuscles ?? [])
+        .filter((mapping) => mapping.role === "PRIMARY")
+        .map((mapping) => mapping.muscle.name),
+      secondaryMuscles: (exercise.exerciseMuscles ?? [])
+        .filter((mapping) => mapping.role === "SECONDARY")
+        .map((mapping) => mapping.muscle.name),
+    },
+    "exact"
+  );
 
   // Use last logged load as the starting target — keeps prescription grounded in reality
   const targetLoad = recentSet?.actualLoad ?? null;
@@ -375,6 +393,8 @@ export async function POST(
           orderIndex: nextOrderIndex,
           section: preview.section,
           isMainLift: preview.isMainLift,
+          stimulusAccountingSnapshot:
+            stimulusAccountingSnapshot as unknown as Prisma.InputJsonValue,
           sets: {
             create: setIndices.map((setIndex) => ({
               setIndex,
@@ -432,6 +452,9 @@ export async function POST(
           section: preview.section,
           setCount: createdExercise.sets.length,
           prescriptionSource: preview.prescriptionSource,
+          stimulusAccounting: toExerciseStimulusAccountingEvidence(
+            stimulusAccountingSnapshot
+          ),
         },
       }).nextSelectionMetadata;
 

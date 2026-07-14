@@ -19,7 +19,10 @@ describe("buildMuscleStimulusTimeline", () => {
                   { role: "SECONDARY", muscle: { name: "Triceps" } },
                 ],
               },
-              sets: [{ logs: [{ wasSkipped: false }] }, { logs: [{ wasSkipped: false }] }],
+              sets: [
+                { logs: [{ actualReps: 8, actualRpe: 8, wasSkipped: false }] },
+                { logs: [{ actualReps: 8, actualRpe: 8, wasSkipped: false }] },
+              ],
             },
           ],
         },
@@ -63,7 +66,9 @@ describe("buildMuscleStimulusTimeline", () => {
                   { role: "SECONDARY", muscle: { name: "Biceps" } },
                 ],
               },
-              sets: [{ logs: [{ wasSkipped: false }] }],
+              sets: [
+                { logs: [{ actualReps: 8, actualRpe: 8, wasSkipped: false }] },
+              ],
             },
           ],
         },

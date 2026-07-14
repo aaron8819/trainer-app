@@ -1,8 +1,13 @@
 import type { ProjectedWeekVolumeReport } from "./projected-week-volume";
 import { roundToTenth } from "./volume-read-model-helpers";
+import {
+  buildWeeklyMuscleClosureDecisions,
+  type WeeklyMuscleClosureDecision,
+} from "./weekly-volume-closure";
 
 export type RuntimeDoseAdjustmentDiagnostic = {
   muscle: string;
+  closureDecision: WeeklyMuscleClosureDecision;
   plannedRemainingVolume: {
     effectiveSets: number;
     bySlot: Array<{
@@ -57,7 +62,7 @@ export type RuntimeDoseAdjustmentDiagnostic = {
       | "avoid_default_reduction";
     slotId?: string | null;
     exerciseName?: string;
-    setDelta: -1 | 0 | 1;
+    setDelta: number;
   };
   reasonCode:
     | "mev_floor_deficit"
@@ -69,6 +74,8 @@ export type RuntimeDoseAdjustmentDiagnostic = {
     | "fatigue_density_watch"
     | "posterior_fatigue_meaningful"
     | "readiness_limited"
+    | "not_final_opportunity_hold_seed"
+    | "closure_suppressed"
     | "hamstrings_on_target_no_default_reduction"
     | "no_candidate_hold_seed"
     | "seed_truth_preserved";
@@ -366,6 +373,7 @@ function buildRecommendation(input: {
   recoveryReadinessCaveat: RuntimeDoseAdjustmentDiagnostic["recoveryReadinessCaveat"];
   fatigueDensityConcern: RuntimeDoseAdjustmentDiagnostic["fatigueDensityConcern"];
   projectedSessions: RuntimeDoseProjectedSession[];
+  closureDecision: WeeklyMuscleClosureDecision;
 }): Pick<RuntimeDoseAdjustmentDiagnostic, "recommendedAction" | "reasonCode"> {
   const bestExercise = getBestExerciseForMuscle({
     muscle: input.muscle,
@@ -396,7 +404,22 @@ function buildRecommendation(input: {
   }
 
   if (input.targetStatus === "below_mev") {
-    if (!bestExercise) {
+    if (input.closureDecision.status === "not_final_opportunity") {
+      return {
+        recommendedAction: { kind: "hold_seed", setDelta: 0 },
+        reasonCode: "not_final_opportunity_hold_seed",
+      };
+    }
+    if (input.closureDecision.status === "suppressed") {
+      return {
+        recommendedAction: { kind: "hold_seed", setDelta: 0 },
+        reasonCode: "closure_suppressed",
+      };
+    }
+    if (
+      input.closureDecision.status !== "eligible" ||
+      !input.closureDecision.recommendation
+    ) {
       return {
         recommendedAction: { kind: "hold_seed", setDelta: 0 },
         reasonCode: "no_candidate_hold_seed",
@@ -407,9 +430,9 @@ function buildRecommendation(input: {
     return {
       recommendedAction: {
         kind: gapToMev <= 1.25 ? "optional_add_set" : "add_set",
-        slotId: bestExercise.slotId,
-        exerciseName: bestExercise.exerciseName,
-        setDelta: 1,
+        slotId: input.closureDecision.recommendation.sourceSlotId,
+        exerciseName: input.closureDecision.recommendation.exerciseName,
+        setDelta: input.closureDecision.recommendation.additionalSets,
       },
       reasonCode:
         gapToMev <= 1.25
@@ -478,11 +501,19 @@ function buildRecommendation(input: {
 function buildGuidance(input: {
   targetStatus: RuntimeDoseAdjustmentDiagnostic["targetStatus"];
   recommendedAction: RuntimeDoseAdjustmentDiagnostic["recommendedAction"];
+  closureDecision: WeeklyMuscleClosureDecision;
 }): string {
   if (input.targetStatus === "below_mev") {
-    return input.recommendedAction.setDelta > 0
-      ? "below MEV floor; bounded low-fatigue closure if readiness and time allow"
-      : "below MEV floor but no viable candidate; hold seed and do not recommend impossible add-ons";
+    if (input.closureDecision.status === "eligible") {
+      return "below MEV floor; bounded low-fatigue closure if readiness and time allow";
+    }
+    if (input.closureDecision.status === "not_final_opportunity") {
+      return "below MEV floor; later meaningful target contribution remains; hold seed for now";
+    }
+    if (input.closureDecision.status === "suppressed") {
+      return "below MEV floor; recovery, safety, or evidence suppression blocks closure";
+    }
+    return "below MEV floor but no viable candidate; hold seed and do not recommend impossible add-ons";
   }
   if (input.targetStatus === "below_preferred") {
     return "productive floor achieved; below preferred target; monitor, no default add-on";
@@ -528,7 +559,7 @@ export function buildRuntimeDoseAdjustmentDiagnostics(
     ? new Set(options.includeMuscles)
     : null;
 
-  return input.fullWeekByMuscle
+  const diagnosticInputs = input.fullWeekByMuscle
     .filter((row) => !includeMuscles || includeMuscles.has(row.muscle))
     .map((row) => {
       const targetStatus = getTargetStatus({
@@ -550,18 +581,67 @@ export function buildRuntimeDoseAdjustmentDiagnostics(
         projectedSessions: input.projectedSessions,
         fatigueEvidence: options.fatigueEvidence ?? [],
       });
-      const recommendation = buildRecommendation({
-        muscle: row.muscle,
+      return {
+        row,
         targetStatus,
-        deltaToMev: row.deltaToMev,
+        plannedRemainingVolume,
         recoveryReadinessCaveat,
         fatigueDensityConcern,
+      };
+    });
+  const hardSuppressionReasonsByMuscle = Object.fromEntries(
+    diagnosticInputs.flatMap((diagnostic) => {
+      const reasons: string[] = [];
+      if (
+        diagnostic.fatigueDensityConcern.level === "meaningful" ||
+        diagnostic.fatigueDensityConcern.level === "high"
+      ) {
+        reasons.push(`fatigue_density:${diagnostic.fatigueDensityConcern.level}`);
+      }
+      if (hasMeaningfulReadinessLimiter(diagnostic.recoveryReadinessCaveat)) {
+        reasons.push(
+          `recovery_readiness:${diagnostic.recoveryReadinessCaveat.status}`
+        );
+      }
+      if (
+        diagnostic.targetStatus === "near_mav" ||
+        diagnostic.targetStatus === "over_mav"
+      ) {
+        reasons.push(`weekly_volume:${diagnostic.targetStatus}`);
+      }
+      return reasons.length > 0 ? [[diagnostic.row.muscle, reasons] as const] : [];
+    })
+  );
+  const closureDecisionByMuscle = new Map(
+    buildWeeklyMuscleClosureDecisions({
+      fullWeekByMuscle: input.fullWeekByMuscle.filter(
+        (row) => !includeMuscles || includeMuscles.has(row.muscle)
+      ),
+      projectedSessions: input.projectedSessions,
+      hardSuppressionReasonsByMuscle,
+    }).map((decision) => [decision.muscle, decision])
+  );
+
+  return diagnosticInputs.map((diagnostic) => {
+      const { row } = diagnostic;
+      const closureDecision = closureDecisionByMuscle.get(row.muscle);
+      if (!closureDecision) {
+        throw new Error(`Missing weekly closure decision for ${row.muscle}.`);
+      }
+      const recommendation = buildRecommendation({
+        muscle: row.muscle,
+        targetStatus: diagnostic.targetStatus,
+        deltaToMev: row.deltaToMev,
+        recoveryReadinessCaveat: diagnostic.recoveryReadinessCaveat,
+        fatigueDensityConcern: diagnostic.fatigueDensityConcern,
         projectedSessions: input.projectedSessions,
+        closureDecision,
       });
 
       return {
         muscle: row.muscle,
-        plannedRemainingVolume,
+        closureDecision,
+        plannedRemainingVolume: diagnostic.plannedRemainingVolume,
         performedWeekToDateVolume: {
           effectiveSets: roundToTenth(
             input.completedVolumeByMuscle[row.muscle]?.effectiveSets ??
@@ -576,17 +656,18 @@ export function buildRuntimeDoseAdjustmentDiagnostics(
           mav: row.mav,
           ...(row.mrv != null ? { mrv: row.mrv } : {}),
         },
-        targetStatus,
-        fatigueDensityConcern,
-        recoveryReadinessCaveat,
+        targetStatus: diagnostic.targetStatus,
+        fatigueDensityConcern: diagnostic.fatigueDensityConcern,
+        recoveryReadinessCaveat: diagnostic.recoveryReadinessCaveat,
         ...recommendation,
         guidance: buildGuidance({
-          targetStatus,
+          targetStatus: diagnostic.targetStatus,
           recommendedAction: recommendation.recommendedAction,
+          closureDecision,
         }),
         confidence: computeConfidence({
           recommendedAction: recommendation.recommendedAction,
-          recoveryReadinessCaveat,
+          recoveryReadinessCaveat: diagnostic.recoveryReadinessCaveat,
         }),
         readOnly: true,
         affectsAcceptedSeed: false,

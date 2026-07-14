@@ -29,7 +29,11 @@ export type ReadinessSuppressedTarget = {
   targetMuscle: string;
   candidateExerciseName: string | null;
   reasons: string[];
-  source: "suppressed_recommendation" | "projected_week_over_mav" | "add_on_state";
+  source:
+    | "closure_decision"
+    | "suppressed_recommendation"
+    | "projected_week_over_mav"
+    | "add_on_state";
 };
 
 export type ReadinessCalibrationWatchRow = {
@@ -161,14 +165,31 @@ export function getValidOptionalAddOns(
 export function getSuppressedMusclesOrTargets(
   contract: PreSessionReadinessContract
 ): ReadinessSuppressedTarget[] {
-  const suppressedRecommendations = contract.doseClosure.recommendations
-    .filter((recommendation) => recommendation.suppressed)
-    .map((recommendation) => ({
-      targetMuscle: recommendation.targetMuscle,
-      candidateExerciseName: recommendation.candidateExerciseName,
-      reasons: [...recommendation.suppressionReasons],
-      source: "suppressed_recommendation" as const,
-    }));
+  const closureDecisions = contract.doseClosure.decisions;
+  const suppressedRecommendations = closureDecisions
+    ? closureDecisions
+        .filter(
+          (decision) =>
+            decision.status === "suppressed" ||
+            decision.status === "no_valid_candidate"
+        )
+        .map((decision) => ({
+          targetMuscle: decision.muscle,
+          candidateExerciseName: null,
+          reasons:
+            decision.constraints.reasons.length > 0
+              ? [...decision.constraints.reasons]
+              : [decision.status],
+          source: "closure_decision" as const,
+        }))
+    : contract.doseClosure.recommendations
+        .filter((recommendation) => recommendation.suppressed)
+        .map((recommendation) => ({
+          targetMuscle: recommendation.targetMuscle,
+          candidateExerciseName: recommendation.candidateExerciseName,
+          reasons: [...recommendation.suppressionReasons],
+          source: "suppressed_recommendation" as const,
+        }));
   const overMavTargets = contract.projectedWeekStatus.overMav.map((muscle) => ({
     targetMuscle: muscle,
     candidateExerciseName: null,

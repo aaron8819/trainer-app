@@ -440,3 +440,7 @@
 - The accepted draft and successor seed hashes match, runtime/projection/read models replay persisted seed truth, and the only watch item is prescription confidence (two stale-history and two new-to-user exercises). Treat that as Week 1 coaching calibration, not planner/seed repair.
 - 2026-07-13: `rg` treats a pattern beginning with `--` as an option. Use `rg -n -- "--mode|..." <paths>` for CLI-flag searches.
 - 2026-07-14: Passing quoted PostgreSQL identifiers through `docker exec ... psql -c $sql` let argument parsing strip the quotes, and later commands masked the failed fixture insert. Pipe SQL through stdin with `docker exec -i ... psql -v ON_ERROR_STOP=1`, then stop before dependent validation if it fails.
+## 2026-07-14 — Final weekly opportunity closure
+
+- When consolidating a multi-stage policy, encode the requested precedence directly in the canonical decision builder before formatting consumers. An early draft grouped recovery suppression with invalid evidence and therefore applied it before `not_needed` / `not_final_opportunity`; separating invalid-evidence reasons from hard-suppression reasons made the order explicit and testable.
+- A structured recommendation is not coherent if its explanatory decision says `additionalSets > 1` while the legacy runtime action remains fixed at `setDelta: 1`. Carry the canonical bounded set count through every downstream readout and widen narrow diagnostic types only when the contract is still read-only.

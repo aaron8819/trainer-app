@@ -184,6 +184,65 @@ describe("pre-session readiness contract", () => {
     ).toBe(true);
   });
 
+  it("validates structured weekly closure decisions instead of accepting any array", () => {
+    const contract = makeContract({
+      mode: "pre-session-readiness",
+      ownerSeam: "api/pre-session-readiness-contract",
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+    });
+    contract.doseClosure.decisions = [
+      {
+        muscle: "Chest",
+        status: "eligible",
+        evidence: {
+          performedEffectiveSets: 6,
+          projectedCurrentSessionEffectiveSets: 1,
+          projectedLaterEffectiveSets: 0,
+          projectedWeekEffectiveSets: 7,
+          mev: 8,
+          deficitToMev: 1,
+        },
+        opportunity: {
+          isFinalMeaningfulOpportunity: true,
+          minimumMeaningfulContribution: 0.5,
+          currentSlotId: "upper_b",
+          currentEvidenceSource: "accepted_seed_runtime_projection",
+          laterContributingSlots: [],
+        },
+        constraints: {
+          hardSuppressed: false,
+          forbiddenMovementClasses: ["horizontal_push"],
+          permittedMovementClasses: ["isolation"],
+          forbiddenExerciseIds: ["machine-press"],
+          maxAdditionalSets: 5,
+          reasons: [],
+          candidateFilterReasons: [],
+        },
+        recommendation: {
+          exerciseId: "pec-deck",
+          exerciseName: "Pec Deck",
+          movementClass: "isolation",
+          sourceSlotId: "upper_b",
+          additionalSets: 1,
+          effectiveSetsPerRawSet: 1,
+          projectedContribution: 1,
+        },
+      },
+    ];
+
+    expect(isPreSessionReadinessContract(contract, { userId: "user-1" })).toBe(
+      true
+    );
+
+    const invalid = structuredClone(contract) as PreSessionReadinessContract;
+    (invalid.doseClosure.decisions?.[0].evidence as { mev: unknown }).mev =
+      "eight";
+    expect(isPreSessionReadinessContract(invalid, { userId: "user-1" })).toBe(
+      false
+    );
+  });
+
   it("keeps the app-owned builder free of CLI, artifact, and broad audit runner paths", () => {
     const source = readFileSync(
       "src/lib/api/pre-session-readiness-contract-builder.ts",

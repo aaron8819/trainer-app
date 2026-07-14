@@ -627,7 +627,7 @@ describe("pre-session readiness contract consumers", () => {
     expect(JSON.stringify(getReadinessGymCard(contract))).not.toContain("poison");
   });
 
-  it("keeps Iso-Lateral pulldown text out of valid side-delt add-ons", () => {
+  it("does not synthesize a side-delt floor buffer from unrelated projected exercises", () => {
     const contract = buildPreSessionReadinessContract({
       userId: "user-1",
       ownerEmail: "owner@test.local",
@@ -801,18 +801,7 @@ describe("pre-session readiness contract consumers", () => {
       } as never,
     });
 
-    expect(getValidOptionalAddOns(contract)).toEqual([
-      {
-        kind: "floor_buffer",
-        muscle: "Side Delts",
-        targetMuscle: "Side Delts",
-        candidateExerciseName: "Cable Lateral Raise",
-        source: "dose_closure_recommendation",
-        reason: "Side Delts is the useful floor-buffer today.",
-        guardrail:
-          "Add only if planned Cable Lateral Raise work feels clean.",
-      },
-    ]);
+    expect(getValidOptionalAddOns(contract)).toEqual([]);
     expect(JSON.stringify(getValidOptionalAddOns(contract))).not.toContain(
       "Iso-Lateral"
     );

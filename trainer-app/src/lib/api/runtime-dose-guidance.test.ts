@@ -164,7 +164,7 @@ describe("buildRuntimeDoseAdjustmentDiagnostics", () => {
         kind: "add_set",
         slotId: "lower_a",
         exerciseName: "Leg Extension",
-        setDelta: 1,
+        setDelta: 2,
       },
       reasonCode: "mev_floor_deficit",
     });
@@ -265,7 +265,7 @@ describe("buildRuntimeDoseAdjustmentDiagnostics", () => {
         kind: "add_set",
         slotId: "lower_a",
         exerciseName: "Leg Extension",
-        setDelta: 1,
+        setDelta: 2,
       }),
       expect.objectContaining({
         kind: "optional_add_set",
@@ -647,6 +647,222 @@ describe("buildRuntimeDoseAdjustmentDiagnostics", () => {
       })
     );
     expectNonZeroSetDeltaActionsHaveCandidates(diagnostics);
+  });
+
+  it("defers a below-MEV target when a later slot has meaningful target contribution", () => {
+    const diagnostics = buildRuntimeDoseAdjustmentDiagnostics(
+      buildInput({
+        projectedSessions: [
+          {
+            slotId: "upper_a",
+            intent: "upper",
+            isNext: true,
+            exerciseCount: 1,
+            totalSets: 3,
+            exercises: [
+              {
+                exerciseId: "lat-pulldown",
+                name: "Lat Pulldown",
+                setCount: 3,
+                role: "primary",
+                movementPatterns: ["vertical_pull"],
+                effectiveStimulusByMuscle: { Lats: 3 },
+              },
+            ],
+            projectedContributionByMuscle: { Lats: 3 },
+          },
+          {
+            slotId: "upper_b",
+            intent: "upper",
+            isNext: false,
+            exerciseCount: 1,
+            totalSets: 2,
+            exercises: [
+              {
+                exerciseId: "cable-row",
+                name: "Seated Cable Row",
+                setCount: 2,
+                role: "primary",
+                movementPatterns: ["horizontal_pull"],
+                effectiveStimulusByMuscle: { Lats: 0.5, "Upper Back": 2 },
+              },
+            ],
+            projectedContributionByMuscle: { Lats: 0.5, "Upper Back": 2 },
+          },
+        ],
+        completedVolumeByMuscle: {
+          Lats: { directSets: 3, indirectSets: 0, effectiveSets: 3 },
+        },
+        fullWeekByMuscle: [
+          {
+            muscle: "Lats",
+            completedEffectiveSets: 3,
+            projectedNextSessionEffectiveSets: 3,
+            projectedRemainingWeekEffectiveSets: 0.5,
+            projectedFullWeekEffectiveSets: 6.5,
+            weeklyTarget: 10,
+            mev: 8,
+            mav: 16,
+            mrv: 22,
+            deltaToTarget: -3.5,
+            deltaToMev: -1.5,
+            deltaToMav: -9.5,
+          },
+        ],
+      })
+    );
+
+    expect(diagnostics[0]).toMatchObject({
+      reasonCode: "not_final_opportunity_hold_seed",
+      recommendedAction: { kind: "hold_seed", setDelta: 0 },
+      closureDecision: {
+        status: "not_final_opportunity",
+        opportunity: {
+          isFinalMeaningfulOpportunity: false,
+          laterContributingSlots: [
+            { slotId: "upper_b", projectedContribution: 0.5 },
+          ],
+        },
+      },
+    });
+  });
+
+  it("keeps the current Lats slot final when a later generic upper slot contributes zero", () => {
+    const diagnostics = buildRuntimeDoseAdjustmentDiagnostics(
+      buildInput({
+        projectedSessions: [
+          {
+            slotId: "upper_a",
+            intent: "upper",
+            isNext: true,
+            exerciseCount: 1,
+            totalSets: 3,
+            exercises: [
+              {
+                exerciseId: "lat-pulldown",
+                name: "Lat Pulldown",
+                setCount: 3,
+                role: "primary",
+                movementPatterns: ["vertical_pull"],
+                effectiveStimulusByMuscle: { Lats: 3 },
+              },
+            ],
+            projectedContributionByMuscle: { Lats: 3 },
+          },
+          {
+            slotId: "upper_b",
+            intent: "upper",
+            isNext: false,
+            exerciseCount: 1,
+            totalSets: 2,
+            exercises: [
+              {
+                exerciseId: "pec-deck",
+                name: "Pec Deck",
+                setCount: 2,
+                role: "accessory",
+                movementPatterns: ["isolation"],
+                effectiveStimulusByMuscle: { Chest: 2 },
+              },
+            ],
+            projectedContributionByMuscle: { Chest: 2 },
+          },
+        ],
+        fullWeekByMuscle: [
+          {
+            muscle: "Lats",
+            completedEffectiveSets: 3,
+            projectedNextSessionEffectiveSets: 3,
+            projectedRemainingWeekEffectiveSets: 0,
+            projectedFullWeekEffectiveSets: 6,
+            weeklyTarget: 10,
+            mev: 8,
+            mav: 16,
+            mrv: 22,
+            deltaToTarget: -4,
+            deltaToMev: -2,
+            deltaToMav: -10,
+          },
+        ],
+      })
+    );
+
+    expect(diagnostics[0]).toMatchObject({
+      reasonCode: "mev_floor_deficit",
+      recommendedAction: {
+        kind: "add_set",
+        exerciseName: "Lat Pulldown",
+        setDelta: 2,
+      },
+      closureDecision: {
+        status: "eligible",
+        opportunity: { isFinalMeaningfulOpportunity: true },
+        recommendation: {
+          exerciseName: "Lat Pulldown",
+          additionalSets: 2,
+        },
+      },
+    });
+  });
+
+  it("returns no candidate when the active pull-density constraint forbids the Lats exercise", () => {
+    const current = buildInput().projectedSessions[0];
+    const diagnostics = buildRuntimeDoseAdjustmentDiagnostics(
+      buildInput({
+        projectedSessions: [
+          {
+            ...current,
+            slotId: "upper_b",
+            intent: "upper",
+            movementPatternCounts: {
+              horizontal_pull: 2,
+              vertical_pull: 2,
+            },
+            exercises: [
+              {
+                exerciseId: "lat-pulldown",
+                name: "Lat Pulldown",
+                setCount: 3,
+                role: "primary",
+                movementPatterns: ["vertical_pull"],
+                effectiveStimulusByMuscle: { Lats: 3 },
+              },
+            ],
+            projectedContributionByMuscle: { Lats: 3 },
+          },
+        ],
+        fullWeekByMuscle: [
+          {
+            muscle: "Lats",
+            completedEffectiveSets: 3,
+            projectedNextSessionEffectiveSets: 3,
+            projectedRemainingWeekEffectiveSets: 0,
+            projectedFullWeekEffectiveSets: 6,
+            weeklyTarget: 10,
+            mev: 8,
+            mav: 16,
+            mrv: 22,
+            deltaToTarget: -4,
+            deltaToMev: -2,
+            deltaToMav: -10,
+          },
+        ],
+      })
+    );
+
+    expect(diagnostics[0]).toMatchObject({
+      reasonCode: "no_candidate_hold_seed",
+      recommendedAction: { kind: "hold_seed", setDelta: 0 },
+      closureDecision: {
+        status: "no_valid_candidate",
+        constraints: {
+          forbiddenMovementClasses: expect.arrayContaining([
+            "horizontal_pull",
+            "vertical_pull",
+          ]),
+        },
+      },
+    });
   });
 
   it("is read-only for every diagnostic and leaves accepted seed-shaped inputs unchanged", () => {

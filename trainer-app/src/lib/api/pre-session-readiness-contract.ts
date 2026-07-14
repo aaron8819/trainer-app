@@ -1,4 +1,8 @@
 import type { PrescriptionConfidenceLoadSource } from "@/lib/api/template-session/types";
+import {
+  isWeeklyMuscleClosureDecision,
+  type WeeklyMuscleClosureDecision,
+} from "./weekly-volume-closure";
 
 export const PRE_SESSION_READINESS_CONTRACT_OWNER_SEAM =
   "api/pre-session-readiness-contract" as const;
@@ -27,6 +31,9 @@ export type PreSessionReadinessConsistencyCheck = {
   id:
     | "optional_add_on_matches_flagged_muscle"
     | "optional_add_on_not_suppressed_muscle"
+    | "closure_recommendation_satisfies_constraints"
+    | "closure_recommendation_requires_eligible_final_opportunity"
+    | "closure_deficit_matches_projected_week"
     | "no_add_on_state_explicit"
     | "blocked_state_no_normal_start_coaching"
     | "seed_runtime_proof_read_only";
@@ -182,6 +189,7 @@ export type PreSessionReadinessContract = {
     monitor: string[];
     suppress: string[];
     guardrails: string[];
+    decisions?: WeeklyMuscleClosureDecision[];
     recommendations: PreSessionReadinessCoachingRecommendation[];
   };
   sessionLocalCoaching: {
@@ -450,6 +458,9 @@ function hasValidDoseClosure(doseClosure: unknown): boolean {
     isStringArray(doseClosure.monitor) &&
     isStringArray(doseClosure.suppress) &&
     isStringArray(doseClosure.guardrails) &&
+    (doseClosure.decisions == null ||
+      (Array.isArray(doseClosure.decisions) &&
+        doseClosure.decisions.every(isWeeklyMuscleClosureDecision))) &&
     Array.isArray(doseClosure.recommendations) &&
     doseClosure.recommendations.every(hasValidRecommendation)
   );
@@ -566,6 +577,10 @@ function hasValidConsistencyCheck(check: unknown): boolean {
     isRecord(check) &&
     (check.id === "optional_add_on_matches_flagged_muscle" ||
       check.id === "optional_add_on_not_suppressed_muscle" ||
+      check.id === "closure_recommendation_satisfies_constraints" ||
+      check.id ===
+        "closure_recommendation_requires_eligible_final_opportunity" ||
+      check.id === "closure_deficit_matches_projected_week" ||
       check.id === "no_add_on_state_explicit" ||
       check.id === "blocked_state_no_normal_start_coaching" ||
       check.id === "seed_runtime_proof_read_only") &&

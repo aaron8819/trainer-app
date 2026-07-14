@@ -5,6 +5,7 @@ import {
   type V2MesocycleStrategyInput,
 } from "@/lib/engine/planning/v2";
 import { buildPreSessionReadinessContract } from "./pre-session-readiness-contract";
+import { buildWeeklyMuscleClosureDecisions } from "@/lib/api/weekly-volume-closure";
 import {
   toPreSessionReadinessEvidence,
   toPreSessionReadinessProjectedWeekEvidence,
@@ -5253,6 +5254,43 @@ describe("buildPreSessionReadinessSummary", () => {
   function attachReadinessContract<T extends ReturnType<typeof buildWeek4UpperBPreSessionArtifact>>(
     artifact: T
   ): T & { preSessionReadiness: PreSessionReadinessAuditPayload } {
+    const diagnostics = artifact.projectedWeekVolume
+      .runtimeDoseAdjustmentDiagnostics as Array<{
+      muscle: string;
+      targetStatus: string;
+      fatigueDensityConcern: { level: string };
+      recoveryReadinessCaveat: { status: string };
+      closureDecision?: unknown;
+    }>;
+    const hardSuppressionReasonsByMuscle = Object.fromEntries(
+      diagnostics.flatMap((diagnostic) => {
+        const reasons = [
+          ...(diagnostic.targetStatus === "near_mav" ||
+          diagnostic.targetStatus === "over_mav"
+            ? [`target_status:${diagnostic.targetStatus}`]
+            : []),
+          ...(diagnostic.fatigueDensityConcern.level === "meaningful" ||
+          diagnostic.fatigueDensityConcern.level === "high"
+            ? [`fatigue_density:${diagnostic.fatigueDensityConcern.level}`]
+            : []),
+          ...(diagnostic.recoveryReadinessCaveat.status !== "none"
+            ? [`readiness:${diagnostic.recoveryReadinessCaveat.status}`]
+            : []),
+        ];
+        return reasons.length > 0 ? [[diagnostic.muscle, reasons]] : [];
+      })
+    );
+    const decisions = buildWeeklyMuscleClosureDecisions({
+      fullWeekByMuscle: artifact.projectedWeekVolume.fullWeekByMuscle as never,
+      projectedSessions: artifact.projectedWeekVolume.projectedSessions as never,
+      hardSuppressionReasonsByMuscle,
+    });
+    const decisionByMuscle = new Map(
+      decisions.map((decision) => [decision.muscle, decision])
+    );
+    for (const diagnostic of diagnostics) {
+      diagnostic.closureDecision = decisionByMuscle.get(diagnostic.muscle);
+    }
     const preSessionReadiness =
       artifact.preSessionReadiness as PreSessionReadinessAuditPayload;
     preSessionReadiness.contract = buildPreSessionReadinessContract({
@@ -5974,8 +6012,8 @@ describe("buildPreSessionReadinessSummary", () => {
     expect(artifact.projectedWeekVolume.fullWeekByMuscle).toEqual(volumeRowsBefore);
   });
 
-  it("surfaces a Chest exact-floor Cable Crossover buffer as session-local optional isolation", () => {
-    const artifact = buildWeek4UpperBPreSessionArtifact({
+  it("surfaces an exact eligible Chest closure candidate without synthesizing alternatives", () => {
+    const artifact = attachReadinessContract(buildWeek4UpperBPreSessionArtifact({
       projectedSessions: [
         {
           slotId: "upper_b",
@@ -6003,14 +6041,14 @@ describe("buildPreSessionReadinessSummary", () => {
         },
       ],
       fullWeekByMuscle: [
-        buildFullWeekRow("Chest", 10, 12, 10, 16, "A_PRIMARY"),
+        buildFullWeekRow("Chest", 9, 12, 10, 16, "A_PRIMARY"),
         buildFullWeekRow("Triceps", 8, 8, 6, 12, "B_SUPPORT"),
       ],
       runtimeDoseAdjustmentDiagnostics: [
-        buildDoseDiagnostic("Chest", 10, 12, 10, 16, "hold_seed", undefined),
+        buildDoseDiagnostic("Chest", 9, 12, 10, 16, "add_set", "Cable Crossover"),
         buildDoseDiagnostic("Triceps", 8, 8, 6, 12, "hold_seed", undefined),
       ],
-    });
+    }));
 
     const summary = buildPreSessionReadinessSummary({
       operatorDebug: false,
@@ -6021,16 +6059,21 @@ describe("buildPreSessionReadinessSummary", () => {
     expect(summary).toEqual(
       expect.arrayContaining([
         "Session-Local Coaching Readout",
-        "Floor-buffer opportunities:",
-        "- Chest: projected 10 / MEV 10; floor margin 0 weighted sets. Optional +1 Cable Crossover or Pec Deck if readiness/time allow as a session-local buffer only. Expected outcome: add a thin MEV cushion without changing the accepted seed; low-fatigue isolation only.",
+        "Optional:",
+        "- Chest: projected 9 / MEV 10; gap 1 weighted sets. Candidate: Cable Crossover. Recommended: +1 raw set if readiness/time allow. Expected contribution: ~1 weighted sets (1 per raw set).",
         "Safe optional add-ons:",
-        "- Optional session-local +1 Cable Crossover or Pec Deck if readiness/time allow for floor buffer only.",
+        "- Add +1 raw set of Cable Crossover if readiness/time allow.",
         "Suppress / avoid:",
         "- extra pressing",
       ])
     );
-    expect(joined).not.toContain("Optional +1 Machine Chest Press");
-    expect(joined).not.toContain("- Add +1 Machine Chest Press");
+    expect(joined).not.toContain("or Pec Deck");
+    expect(joined).not.toContain("Machine Chest Press if readiness");
+    expect(
+      artifact.preSessionReadiness.contract?.consistencyChecks
+        .filter((check) => check.id.startsWith("closure_"))
+        .map((check) => check.status)
+    ).toEqual(["pass", "pass", "pass"]);
   });
 
   it("does not treat Iso-Lateral pulldown text as side-delt isolation", () => {
@@ -6063,11 +6106,11 @@ describe("buildPreSessionReadinessSummary", () => {
           },
         ],
         fullWeekByMuscle: [
-          buildFullWeekRow("Side Delts", 6, 8, 6, 16, "B_SUPPORT"),
+          buildFullWeekRow("Side Delts", 5, 8, 6, 16, "B_SUPPORT"),
           buildFullWeekRow("Lats", 12, 12, 8, 16, "A_PRIMARY"),
         ],
         runtimeDoseAdjustmentDiagnostics: [
-          buildDoseDiagnostic("Side Delts", 6, 8, 6, 16, "hold_seed", undefined),
+          buildDoseDiagnostic("Side Delts", 5, 8, 6, 16, "add_set", "Cable Lateral Raise"),
           buildDoseDiagnostic("Lats", 12, 12, 8, 16, "hold_seed", undefined),
         ],
       })
@@ -6079,8 +6122,82 @@ describe("buildPreSessionReadinessSummary", () => {
     });
     const joined = summary?.join("\n") ?? "";
 
-    expect(joined).toContain("Optional +1 Cable Lateral Raise");
-    expect(joined).not.toContain("Optional +1 Iso-Lateral Front Lat Pulldown");
+    expect(joined).toContain("Candidate: Cable Lateral Raise. Recommended: +1 raw set");
+    expect(joined).not.toContain("Candidate: Iso-Lateral Front Lat Pulldown");
+  });
+
+  it("returns no valid Lats or Upper Back candidate when pull-density guardrails are active", () => {
+    const artifact = attachReadinessContract(
+      buildWeek4UpperBPreSessionArtifact({
+        projectedSessions: [
+          {
+            slotId: "upper_b",
+            intent: "upper",
+            isNext: true,
+            exerciseCount: 2,
+            totalSets: 6,
+            movementPatternCounts: {
+              horizontal_pull: 2,
+              vertical_pull: 2,
+            },
+            exercises: [
+              {
+                exerciseId: "lat-pulldown",
+                name: "Lat Pulldown",
+                setCount: 3,
+                role: "primary",
+                movementPatterns: ["vertical_pull"],
+                effectiveStimulusByMuscle: { Lats: 3, "Upper Back": 1 },
+              },
+              {
+                exerciseId: "cable-row",
+                name: "Seated Cable Row",
+                setCount: 3,
+                role: "primary",
+                movementPatterns: ["horizontal_pull"],
+                effectiveStimulusByMuscle: { "Upper Back": 3, Lats: 1 },
+              },
+            ],
+            projectedContributionByMuscle: { Lats: 4, "Upper Back": 4 },
+          },
+        ],
+        fullWeekByMuscle: [
+          buildFullWeekRow("Lats", 7, 12, 8, 16, "A_PRIMARY"),
+          buildFullWeekRow("Upper Back", 5, 10, 6, 14, "A_PRIMARY"),
+        ],
+        runtimeDoseAdjustmentDiagnostics: [
+          buildDoseDiagnostic("Lats", 7, 12, 8, 16, "add_set", "Lat Pulldown"),
+          buildDoseDiagnostic(
+            "Upper Back",
+            5,
+            10,
+            6,
+            14,
+            "add_set",
+            "Seated Cable Row"
+          ),
+        ],
+      })
+    );
+
+    const summary = buildPreSessionReadinessSummary({
+      operatorDebug: false,
+      artifact: artifact as never,
+    });
+    const joined = summary?.join("\n") ?? "";
+
+    expect(
+      artifact.preSessionReadiness.contract?.doseClosure.decisions
+        ?.filter((decision) =>
+          decision.muscle === "Lats" || decision.muscle === "Upper Back"
+        )
+        .map((decision) => decision.status)
+    ).toEqual(["no_valid_candidate", "no_valid_candidate"]);
+    expect(joined).toContain("- do not add extra rows/pulldowns");
+    expect(joined).toContain("- Lats: projected 7 / MEV 8. Final target opportunity");
+    expect(joined).toContain("- Upper Back: projected 5 / MEV 6. Final target opportunity");
+    expect(joined).not.toContain("Candidate: Lat Pulldown");
+    expect(joined).not.toContain("Candidate: Seated Cable Row");
   });
 
   it("reports a fatigue watch for a squat plus hinge week before optional add-ons", () => {
@@ -6513,7 +6630,7 @@ describe("buildPreSessionReadinessSummary", () => {
     );
   });
 
-  it("suppresses a mismatched optional add-on candidate and emits a consistency warning", () => {
+  it("filters a mismatched closure candidate before recommendation", () => {
     const artifact = attachReadinessContract(
       buildWeek4UpperBPreSessionArtifact({
         projectedSessions: [
@@ -6550,16 +6667,17 @@ describe("buildPreSessionReadinessSummary", () => {
 
     expect(summary).toEqual(
       expect.arrayContaining([
-        "- Chest: add-on candidate Barbell Curl does not match the flagged muscle need; hold seed.",
+        expect.stringContaining(
+          "- Chest: projected 7 / MEV 10. Final target opportunity, but no candidate satisfies the active movement and collateral constraints; hold seed."
+        ),
         "- none - No safe session-local optional add-ons from current contract evidence.",
-        "warning: optional_add_on_matches_flagged_muscle - One or more optional add-on candidates did not match the flagged muscle need and were suppressed. Evidence: Chest:Barbell Curl",
       ])
     );
     expect(joined).not.toContain("- Add +1 Barbell Curl");
     expect(joined).not.toContain("Use Dose Closure Guidance for MEV-floor top-ups");
   });
 
-  it("suppresses an optional add-on targeting a suppressed muscle", () => {
+  it("keeps an already-covered target recommendation-free while retaining suppression guidance", () => {
     const artifact = buildWeek4UpperBPreSessionArtifact({
       projectedSessions: [
         {
@@ -6600,9 +6718,9 @@ describe("buildPreSessionReadinessSummary", () => {
 
     expect(summary).toEqual(
       expect.arrayContaining([
-        "- Chest: optional floor-buffer add-on suppressed because this muscle is in suppress/avoid guidance.",
+        "- Chest: at MEV after seed; seed only.",
         "- none - No safe session-local optional add-ons from current contract evidence.",
-        "warning: optional_add_on_not_suppressed_muscle - One or more optional add-ons targeted a suppressed muscle and were suppressed. Evidence: Chest",
+        "- extra Chest",
       ])
     );
     expect(joined).not.toContain("Optional session-local +1 Cable Crossover");

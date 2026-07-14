@@ -57,6 +57,12 @@ export type ProjectedWeekVolumeSessionSummary = {
   slotId: string | null;
   intent: string;
   isNext: boolean;
+  availability?: "available" | "completed" | "skipped" | "unavailable";
+  evidenceSource?:
+    | "immutable_workout_snapshot"
+    | "accepted_seed_runtime_projection"
+    | "current_policy_projection";
+  evidenceReliable?: boolean;
   exerciseCount: number;
   totalSets: number;
   exercises?: ProjectedWeekVolumeExerciseSummary[];
@@ -70,6 +76,7 @@ export type ProjectedWeekVolumeExerciseSummary = {
   name: string;
   setCount: number;
   role: "primary" | "accessory";
+  movementPatterns?: string[];
   effectiveStimulusByMuscle?: Record<string, number>;
 };
 
@@ -206,6 +213,7 @@ function summarizeWorkoutExercises(workout: WorkoutPlan): ProjectedWeekVolumeExe
         name: exercise.exercise.name,
         setCount: exercise.sets.length,
         role: section === "main" ? ("primary" as const) : ("accessory" as const),
+        movementPatterns: [...(exercise.exercise.movementPatterns ?? [])],
         effectiveStimulusByMuscle: Object.fromEntries(
           Array.from(effectiveStimulusByMuscle.entries()).sort(([left], [right]) =>
             left.localeCompare(right)
@@ -512,10 +520,21 @@ export async function loadProjectedWeekVolumeReport(input: {
     const projectedContributionByMuscle = computeWorkoutContributionByMuscle(
       projectedWorkout
     );
+    const compositionSource =
+      generation.selection.sessionDecisionReceipt?.sessionProvenance
+        ?.compositionSource;
     projectedSessions.push({
       slotId: slot.slotId ?? null,
       intent: slot.intent,
       isNext: index === 0,
+      availability: "available",
+      evidenceSource:
+        compositionSource === "persisted_slot_plan_seed"
+          ? "accepted_seed_runtime_projection"
+          : "current_policy_projection",
+      evidenceReliable: !(
+        index === 0 && nextWorkoutContext.existingWorkoutId != null
+      ),
       exerciseCount: countWorkoutExercises(projectedWorkout),
       totalSets: countWorkoutSets(projectedWorkout),
       exercises: summarizeWorkoutExercises(projectedWorkout),

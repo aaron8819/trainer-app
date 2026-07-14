@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { loadPrescriptionAnchorHistoryForExercises } from "@/lib/api/workout-context";
 import { exampleExerciseLibrary, exampleGoals, exampleUser } from "@/lib/engine/sample-data";
 import type { SessionIntent } from "@/lib/engine/session-types";
 import { buildWorkoutAuditContext } from "./context-builder";
 import { runWorkoutAuditGeneration } from "./generation-runner";
 import { buildWorkoutAuditArtifact, serializeWorkoutAuditArtifact } from "./serializer";
+import { createPrescriptionAnchorHistoryLoader } from "./test-helpers/prescription-anchor-history-fixture";
 
 const mesocycleRoleFindManyMock = vi.fn();
 const userFindUniqueMock = vi.fn();
@@ -20,6 +22,8 @@ const mapHistoryMock = vi.fn();
 const mapPreferencesMock = vi.fn();
 const mapCheckInMock = vi.fn();
 const applyLoadsMock = vi.fn();
+const loadPrescriptionAnchorHistoryForExercisesMock =
+  vi.fn<typeof loadPrescriptionAnchorHistoryForExercises>();
 const loadExerciseExposureMock = vi.fn();
 const loadActiveMesocycleMock = vi.fn();
 const getCurrentMesoWeekMock = vi.fn();
@@ -70,17 +74,24 @@ vi.mock("@/lib/api/templates", () => ({
   loadTemplateDetail: (...args: unknown[]) => loadTemplateDetailMock(...args),
 }));
 
-vi.mock("@/lib/api/workout-context", () => ({
-  loadWorkoutContext: (...args: unknown[]) => loadWorkoutContextMock(...args),
-  mapProfile: (...args: unknown[]) => mapProfileMock(...args),
-  mapGoals: (...args: unknown[]) => mapGoalsMock(...args),
-  mapConstraints: (...args: unknown[]) => mapConstraintsMock(...args),
-  mapExercises: (...args: unknown[]) => mapExercisesMock(...args),
-  mapHistory: (...args: unknown[]) => mapHistoryMock(...args),
-  mapPreferences: (...args: unknown[]) => mapPreferencesMock(...args),
-  mapCheckIn: (...args: unknown[]) => mapCheckInMock(...args),
-  applyLoads: (...args: unknown[]) => applyLoadsMock(...args),
-}));
+vi.mock("@/lib/api/workout-context", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/api/workout-context")>();
+  return {
+    ...original,
+    loadWorkoutContext: (...args: unknown[]) => loadWorkoutContextMock(...args),
+    mapProfile: (...args: unknown[]) => mapProfileMock(...args),
+    mapGoals: (...args: unknown[]) => mapGoalsMock(...args),
+    mapConstraints: (...args: unknown[]) => mapConstraintsMock(...args),
+    mapExercises: (...args: unknown[]) => mapExercisesMock(...args),
+    mapHistory: (...args: unknown[]) => mapHistoryMock(...args),
+    mapPreferences: (...args: unknown[]) => mapPreferencesMock(...args),
+    mapCheckIn: (...args: unknown[]) => mapCheckInMock(...args),
+    applyLoads: (...args: unknown[]) => applyLoadsMock(...args),
+    loadPrescriptionAnchorHistoryForExercises: (
+      ...args: Parameters<typeof loadPrescriptionAnchorHistoryForExercises>
+    ) => loadPrescriptionAnchorHistoryForExercisesMock(...args),
+  };
+});
 
 vi.mock("@/lib/api/exercise-exposure", () => ({
   loadExerciseExposure: (...args: unknown[]) => loadExerciseExposureMock(...args),
@@ -185,6 +196,9 @@ describe("workout audit derived future-week diagnostics matrix", () => {
     mapPreferencesMock.mockReturnValue(undefined);
     mapCheckInMock.mockReturnValue(undefined);
     applyLoadsMock.mockImplementation((workout: unknown) => workout);
+    loadPrescriptionAnchorHistoryForExercisesMock.mockImplementation(
+      createPrescriptionAnchorHistoryLoader()
+    );
     loadExerciseExposureMock.mockResolvedValue(new Map());
     macroCycleFindFirstMock.mockResolvedValue(null);
     genericFindFirstMock.mockResolvedValue(null);

@@ -28,11 +28,17 @@ export type WorkoutWithExplainabilityRelations = Prisma.WorkoutGetPayload<{
 }>;
 
 export async function loadWorkoutWithExplainabilityRelations(
-  workoutId: string,
+  input: {
+    workoutId: string;
+    ownerId: string;
+  },
   client: ExplainabilityQueryClient = prisma
 ): Promise<WorkoutWithExplainabilityRelations | null> {
-  return client.workout.findUnique({
-    where: { id: workoutId },
+  return client.workout.findFirst({
+    where: {
+      id: input.workoutId,
+      userId: input.ownerId,
+    },
     include: {
       filteredExercises: true,
       exercises: {

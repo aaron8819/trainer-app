@@ -68,6 +68,7 @@ const mocks = vi.hoisted(() => {
     $transaction: vi.fn(async (callback: (trx: typeof tx) => Promise<void>) => callback(tx)),
     workout: {
       findUnique: (...args: unknown[]) => workoutFindUnique(...args),
+      findFirst: (...args: unknown[]) => workoutFindUnique(...args),
       findMany: (...args: unknown[]) => workoutFindMany(...args),
     },
     constraints: {
@@ -427,7 +428,10 @@ describe("canonical session decision receipt pipeline", () => {
     expect((persistedReceipt.cycleContext as Record<string, unknown>).weekInMeso).toBe(2);
     expect(((persistedReceipt.readiness as Record<string, unknown>).intensityScaling as Record<string, unknown>).exerciseIds).toEqual(["ex1"]);
 
-    const explanation = await generateWorkoutExplanation("workout-1");
+    const explanation = await generateWorkoutExplanation({
+      workoutId: "workout-1",
+      ownerId: "user-1",
+    });
     expect("error" in explanation).toBe(false);
     if ("error" in explanation) {
       return;

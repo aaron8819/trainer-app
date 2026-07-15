@@ -344,7 +344,10 @@ describe("golden-path completed workout increase regression", () => {
       path: "path_2",
     });
 
-    const explanation = await generateWorkoutExplanation("w-week4-pull-increase");
+    const explanation = await generateWorkoutExplanation({
+      workoutId: "w-week4-pull-increase",
+      ownerId: "u1",
+    });
 
     expect("error" in explanation).toBe(false);
     if ("error" in explanation || performedSemantics == null || canonicalDecision == null) {

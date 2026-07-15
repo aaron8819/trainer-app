@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/lib/db/prisma", () => ({
   prisma: {
     workout: {
-      findUnique: (...args: unknown[]) => mocks.workoutFindUnique(...args),
+      findFirst: (...args: unknown[]) => mocks.workoutFindUnique(...args),
       findMany: (...args: unknown[]) => mocks.workoutFindMany(...args),
     },
     readinessSignal: {
@@ -124,9 +124,13 @@ vi.mock("./workout-context", () => ({
 }));
 
 import {
-  generateWorkoutExplanation,
+  generateWorkoutExplanation as generateOwnerWorkoutExplanation,
   normalizeStoredSelectionRationaleComponents,
 } from "./explainability";
+
+function generateWorkoutExplanation(workoutId: string) {
+  return generateOwnerWorkoutExplanation({ workoutId, ownerId: "u1" });
+}
 
 const generatedSemanticsSnapshot = {
   kind: "advancing",

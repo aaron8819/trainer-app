@@ -306,6 +306,7 @@ Successful first transition to `COMPLETED` also creates the immutable exact post
 
 ## Workout explanation response contract
 - Route: `GET /api/workouts/[id]/explanation` (`src/app/api/workouts/[id]/explanation/route.ts`).
+- The route resolves the canonical local/authenticated owner through `resolveOwner()` and passes the required owner ID into `generateWorkoutExplanation()`. The application query matches both `Workout.id` and `Workout.userId`; missing and foreign-owned workout IDs therefore return the same `404 { error: "Workout not found" }` response.
 - Response includes `progressionReceipts` keyed by `exerciseId` in addition to `exerciseRationales` and `prescriptionRationales`.
 - Receipt payload shape is defined by `ProgressionReceipt` in `src/lib/evidence/types.ts` and populated by `generateWorkoutExplanation()` in `src/lib/api/explainability.ts`.
 - `ProgressionSetSummary` now supports `performedAt` for historical evidence timestamps (`src/lib/evidence/types.ts`), and receipt history is recency-bounded in `loadLatestPerformedSetSummary()` (`src/lib/api/explainability.ts`).

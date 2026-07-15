@@ -1,5 +1,4 @@
-import { MovementPatternV2, Prisma, WorkoutStatus } from "@prisma/client";
-import { ADVANCEMENT_WORKOUT_STATUSES } from "@/lib/workout-status";
+import { MovementPatternV2, Prisma } from "@prisma/client";
 import {
   buildExerciseStimulusSnapshot,
   toExerciseStimulusAccountingEvidence,
@@ -128,6 +127,8 @@ export async function persistWorkoutRow(
   input: {
     workoutId: string;
     existingWorkout: { id: string; revision: number } | null;
+    userId: string;
+    expectedRevision?: number;
     shouldAdvanceLifecycleTransition: boolean;
     resolvedMesocycleId: string | null;
     workoutUpdateData: Record<string, unknown>;
@@ -137,37 +138,45 @@ export async function persistWorkoutRow(
   workout: { id: string; revision: number; mesocycleId: string | null };
   wonLifecycleTransition: boolean;
 }> {
-  if (input.shouldAdvanceLifecycleTransition && input.existingWorkout) {
-    const conditionalTransition = await tx.workout.updateMany({
+  if (input.existingWorkout) {
+    if (input.expectedRevision == null) {
+      throw new Error("EXPECTED_REVISION_REQUIRED");
+    }
+
+    const conditionalUpdate = await tx.workout.updateMany({
       where: {
         id: input.workoutId,
-        status: {
-          notIn: [...ADVANCEMENT_WORKOUT_STATUSES] as WorkoutStatus[],
-        },
+        userId: input.userId,
+        revision: input.expectedRevision,
       },
-      data: input.workoutUpdateData as Prisma.WorkoutUpdateManyMutationInput,
+      data: {
+        ...input.workoutUpdateData,
+        revision: { increment: 1 },
+      } as Prisma.WorkoutUpdateManyMutationInput,
     });
-    const wonLifecycleTransition = conditionalTransition.count === 1;
-    const workout = wonLifecycleTransition
-      ? {
-          id: input.existingWorkout.id,
-          revision: input.existingWorkout.revision,
-          mesocycleId: input.resolvedMesocycleId,
-        }
-      : await tx.workout.findUnique({
-          where: { id: input.workoutId },
-          select: { id: true, revision: true, mesocycleId: true },
-        });
+    if (conditionalUpdate.count !== 1) {
+      const ownedWorkout = await tx.workout.findFirst({
+        where: { id: input.workoutId, userId: input.userId },
+        select: { id: true },
+      });
+      throw new Error(ownedWorkout ? "REVISION_CONFLICT" : "WORKOUT_NOT_FOUND");
+    }
+
+    const workout = await tx.workout.findFirst({
+      where: { id: input.workoutId, userId: input.userId },
+      select: { id: true, revision: true, mesocycleId: true },
+    });
     if (!workout) {
       throw new Error("WORKOUT_NOT_FOUND");
     }
-    return { workout, wonLifecycleTransition };
+    return {
+      workout,
+      wonLifecycleTransition: input.shouldAdvanceLifecycleTransition,
+    };
   }
 
-  const workout = await tx.workout.upsert({
-    where: { id: input.workoutId },
-    update: input.workoutUpdateData as Prisma.WorkoutUpdateInput,
-    create: input.workoutCreateData as Prisma.WorkoutCreateInput,
+  const workout = await tx.workout.create({
+    data: input.workoutCreateData as Prisma.WorkoutCreateInput,
     select: { id: true, revision: true, mesocycleId: true },
   });
   return { workout, wonLifecycleTransition: false };

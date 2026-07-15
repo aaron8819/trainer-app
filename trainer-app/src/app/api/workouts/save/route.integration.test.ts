@@ -6,7 +6,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const workoutFindUnique = vi.fn();
+  const workoutFindFirst = vi.fn();
   const workoutUpdateMany = vi.fn();
+  const workoutCreate = vi.fn();
   const workoutUpsert = vi.fn();
   const workoutExerciseFindMany = vi.fn();
   const workoutExerciseCreate = vi.fn();
@@ -22,7 +24,9 @@ const mocks = vi.hoisted(() => {
   const tx = {
     workout: {
       findUnique: workoutFindUnique,
+      findFirst: workoutFindFirst,
       updateMany: workoutUpdateMany,
+      create: workoutCreate,
       upsert: workoutUpsert,
     },
     workoutTemplate: {
@@ -64,7 +68,9 @@ const mocks = vi.hoisted(() => {
     tx,
     prisma,
     workoutFindUnique,
+    workoutFindFirst,
     workoutUpdateMany,
+    workoutCreate,
     workoutUpsert,
     workoutExerciseFindMany,
     workoutExerciseCreate,
@@ -112,7 +118,25 @@ vi.mock("@/lib/api/mesocycle-week-close", async (importOriginal) => {
   };
 });
 
-import { POST } from "./route";
+import { POST as saveWorkoutPost } from "./route";
+
+async function POST(request: Request) {
+  const body = (await request.clone().json()) as Record<string, unknown>;
+  if (
+    typeof body.action === "string" &&
+    body.action !== "save_plan" &&
+    body.expectedRevision == null
+  ) {
+    body.expectedRevision = 1;
+  }
+  return saveWorkoutPost(
+    new Request(request.url, {
+      method: request.method,
+      headers: request.headers,
+      body: JSON.stringify(body),
+    }),
+  );
+}
 
 function buildCanonicalSelectionMetadata(overrides?: Record<string, unknown>) {
   return {
@@ -333,7 +357,9 @@ function buildCloseoutSelectionMetadata() {
 describe("POST /api/workouts/save", () => {
   beforeEach(() => {
     mocks.workoutFindUnique.mockReset();
+    mocks.workoutFindFirst.mockReset();
     mocks.workoutUpdateMany.mockReset();
+    mocks.workoutCreate.mockReset();
     mocks.workoutUpsert.mockReset();
     mocks.workoutExerciseFindMany.mockReset();
     mocks.workoutExerciseCreate.mockReset();
@@ -355,7 +381,19 @@ describe("POST /api/workouts/save", () => {
     mocks.tx.mesocycleWeekClose.findFirst.mockReset();
     mocks.tx.mesocycleWeekClose.findUnique.mockReset();
     mocks.workoutFindUnique.mockResolvedValue(null);
-    mocks.workoutUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      revision: 2,
+      mesocycleId: null,
+    });
+    mocks.workoutUpdateMany.mockImplementation(async (args) => {
+      mocks.workoutUpsert({ update: args.data, create: args.data });
+      return { count: 1 };
+    });
+    mocks.workoutCreate.mockImplementation(async (args) => {
+      mocks.workoutUpsert({ update: args.data, create: args.data });
+      return { id: "workout-1", revision: 1, mesocycleId: null };
+    });
     mocks.workoutUpsert.mockResolvedValue({ id: "workout-1", revision: 1 });
     mocks.workoutExerciseFindMany.mockResolvedValue([]);
     mocks.exerciseFindUnique.mockResolvedValue({
@@ -1744,6 +1782,7 @@ describe("POST /api/workouts/save", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workoutId: "workout-1",
+          expectedRevision: 1,
           notes: "should fail cleanly",
         }),
       })
@@ -1843,6 +1882,7 @@ describe("POST /api/workouts/save", () => {
       revision: 3,
       selectionMetadata: buildCanonicalSelectionMetadata(),
     });
+    mocks.workoutUpdateMany.mockResolvedValueOnce({ count: 0 });
 
     const response = await POST(
       new Request("http://localhost/api/workouts/save", {
@@ -1867,6 +1907,79 @@ describe("POST /api/workouts/save", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: "Workout revision conflict. Refresh and try again.",
     });
+    expect(mocks.workoutUpdateMany).toHaveBeenCalledWith({
+      where: {
+        id: "workout-1",
+        userId: "user-1",
+        revision: 2,
+      },
+      data: expect.objectContaining({
+        revision: { increment: 1 },
+      }),
+    });
+    expect(mocks.tx.workoutSet.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.tx.workoutExercise.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.workoutExerciseCreate).not.toHaveBeenCalled();
+    expect(mocks.tx.filteredExercise.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
+  });
+
+  it("requires expectedRevision for every existing-workout save", async () => {
+    mocks.workoutFindUnique.mockResolvedValueOnce({
+      id: "workout-1",
+      userId: "user-1",
+      status: "PLANNED",
+      revision: 1,
+      selectionMetadata: buildCanonicalSelectionMetadata(),
+    });
+
+    const response = await saveWorkoutPost(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          action: "mark_partial",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "expectedRevision is required for existing workouts.",
+    });
+    expect(mocks.workoutUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns the same not-found response for missing and foreign-owned workouts", async () => {
+    mocks.workoutFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: "workout-foreign",
+        userId: "user-2",
+        status: "PLANNED",
+        revision: 1,
+        selectionMetadata: buildCanonicalSelectionMetadata(),
+      });
+
+    const makeRequest = (workoutId: string) =>
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId,
+          action: "mark_partial",
+          expectedRevision: 1,
+        }),
+      });
+    const missingResponse = await saveWorkoutPost(makeRequest("workout-missing"));
+    const foreignResponse = await saveWorkoutPost(makeRequest("workout-foreign"));
+
+    expect(missingResponse.status).toBe(404);
+    expect(foreignResponse.status).toBe(404);
+    await expect(missingResponse.json()).resolves.toEqual({ error: "Workout not found" });
+    await expect(foreignResponse.json()).resolves.toEqual({ error: "Workout not found" });
+    expect(mocks.workoutUpdateMany).not.toHaveBeenCalled();
   });
 
   it("increments revision for planned workout rewrites", async () => {
@@ -2400,6 +2513,7 @@ describe("POST /api/workouts/save", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workoutId: "workout-closeout",
+          expectedRevision: 1,
           selectionMode: "MANUAL",
           sessionIntent: "PUSH",
           advancesSplit: true,
@@ -2455,6 +2569,7 @@ describe("POST /api/workouts/save", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workoutId: "workout-closeout",
+          expectedRevision: 1,
           selectionMode: "MANUAL",
           sessionIntent: "PUSH",
           advancesSplit: true,
@@ -2518,6 +2633,7 @@ describe("POST /api/workouts/save", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workoutId: "workout-closeout",
+          expectedRevision: 1,
           selectionMode: "MANUAL",
           sessionIntent: "PUSH",
           notes: "repeat save",
@@ -2564,6 +2680,7 @@ describe("POST /api/workouts/save", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workoutId: "workout-supp",
+          expectedRevision: 1,
           selectionMode: "INTENT",
           sessionIntent: "BODY_PART",
           notes: "updated note",
@@ -2675,6 +2792,11 @@ describe("POST /api/workouts/save", () => {
       },
     });
     mocks.workoutUpsert.mockResolvedValueOnce({ id: "workout-gap", revision: 2, mesocycleId: "meso-1" });
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-gap",
+      revision: 2,
+      mesocycleId: "meso-1",
+    });
 
     const response = await POST(
       new Request("http://localhost/api/workouts/save", {
@@ -2734,6 +2856,11 @@ describe("POST /api/workouts/save", () => {
       },
     });
     mocks.workoutUpsert.mockResolvedValueOnce({
+      id: "workout-gap",
+      revision: 2,
+      mesocycleId: "meso-1",
+    });
+    mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-gap",
       revision: 2,
       mesocycleId: "meso-1",
@@ -3054,7 +3181,7 @@ describe("POST /api/workouts/save", () => {
     expect(mocks.tx.mesocycle.update).toHaveBeenCalledTimes(1);
   });
 
-  it("treats a lost concurrent first-completion transition as a lifecycle no-op", async () => {
+  it("returns a revision conflict when another request wins first completion", async () => {
     mocks.workoutFindUnique
       .mockResolvedValueOnce({
         id: "workout-1",
@@ -3098,7 +3225,10 @@ describe("POST /api/workouts/save", () => {
       })
     );
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Workout revision conflict. Refresh and try again.",
+    });
     expect(mocks.workoutUpdateMany).toHaveBeenCalledTimes(1);
     expect(mocks.tx.mesocycle.update).not.toHaveBeenCalled();
     expect(mocks.evaluateWeekCloseAtBoundary).not.toHaveBeenCalled();

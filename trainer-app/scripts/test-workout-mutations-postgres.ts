@@ -76,6 +76,11 @@ try {
     "src/lib/api/save-workout/persistence.db.test.ts",
     "src/lib/api/workout-mutation.db.test.ts",
   ], env);
+  run(process.execPath, [
+    join(process.cwd(), "node_modules/vitest/vitest.mjs"), "run",
+    "src/lib/api/workout-mutation.db.test.ts",
+    "-t", "runs the integrated workout lifecycle release gate",
+  ], env);
 } finally {
   spawnSync("docker", ["rm", "-f", containerName], { stdio: "ignore" });
 }

@@ -4,9 +4,11 @@ import { useState } from "react";
 
 export default function DeleteWorkoutButton({
   workoutId,
+  expectedRevision,
   onDeleted,
 }: {
   workoutId: string;
+  expectedRevision: number;
   onDeleted?: () => void;
 }) {
   const [deleting, setDeleting] = useState(false);
@@ -24,7 +26,7 @@ export default function DeleteWorkoutButton({
     const response = await fetch("/api/workouts/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workoutId }),
+      body: JSON.stringify({ workoutId, expectedRevision }),
     });
 
     if (!response.ok) {

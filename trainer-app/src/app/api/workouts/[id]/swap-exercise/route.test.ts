@@ -141,6 +141,7 @@ describe("/api/workouts/[id]/swap-exercise route", () => {
 
   it("forwards typed search context for caution-tier swap commits", async () => {
     mocks.applyRuntimeExerciseSwap.mockResolvedValue({
+      exercise: {
       workoutExerciseId: "we-1",
       exerciseId: "cable-curl",
       name: "Cable Curl",
@@ -152,6 +153,8 @@ describe("/api/workouts/[id]/swap-exercise route", () => {
       sessionNote:
         "Swapped from Barbell Curl. Session-only; future progression stays exercise-specific.",
       sets: [],
+      },
+      revision: 2,
     });
 
     const response = await POST(
@@ -162,6 +165,7 @@ describe("/api/workouts/[id]/swap-exercise route", () => {
           workoutExerciseId: "we-1",
           replacementExerciseId: "cable-curl",
           searchQuery: "cable curl",
+          expectedRevision: 1,
         }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) },
@@ -174,11 +178,13 @@ describe("/api/workouts/[id]/swap-exercise route", () => {
       replacementExerciseId: "cable-curl",
       userId: "user-1",
       searchQuery: "cable curl",
+      expectedRevision: 1,
     });
   });
 
   it("keeps POST thin and returns the shared swap payload", async () => {
     mocks.applyRuntimeExerciseSwap.mockResolvedValue({
+      exercise: {
       workoutExerciseId: "we-1",
       exerciseId: "chest-supported-db-row",
       name: "Chest-Supported Dumbbell Row",
@@ -200,6 +206,8 @@ describe("/api/workouts/[id]/swap-exercise route", () => {
           restSeconds: 120,
         },
       ],
+      },
+      revision: 2,
     });
 
     const response = await POST(
@@ -209,6 +217,7 @@ describe("/api/workouts/[id]/swap-exercise route", () => {
         body: JSON.stringify({
           workoutExerciseId: "we-1",
           replacementExerciseId: "chest-supported-db-row",
+          expectedRevision: 1,
         }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) },
@@ -221,12 +230,14 @@ describe("/api/workouts/[id]/swap-exercise route", () => {
         exerciseId: "chest-supported-db-row",
         name: "Chest-Supported Dumbbell Row",
       }),
+      revision: 2,
     });
     expect(mocks.applyRuntimeExerciseSwap).toHaveBeenCalledWith({
       workoutId: "workout-1",
       workoutExerciseId: "we-1",
       replacementExerciseId: "chest-supported-db-row",
       userId: "user-1",
+      expectedRevision: 1,
     });
   });
 });

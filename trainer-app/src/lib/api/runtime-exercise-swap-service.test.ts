@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => {
   const exerciseFindMany = vi.fn();
   const setLogFindFirst = vi.fn();
   const txWorkoutFindUnique = vi.fn();
+  const txWorkoutFindFirst = vi.fn();
+  const txWorkoutUpdateMany = vi.fn();
+  const txWorkoutExerciseFindFirst = vi.fn();
   const txWorkoutUpdate = vi.fn();
   const txWorkoutExerciseUpdateMany = vi.fn();
   const txWorkoutExerciseFindMany = vi.fn();
@@ -15,11 +18,14 @@ const mocks = vi.hoisted(() => {
   const tx = {
     workout: {
       findUnique: txWorkoutFindUnique,
+      findFirst: txWorkoutFindFirst,
+      updateMany: txWorkoutUpdateMany,
       update: txWorkoutUpdate,
     },
     workoutExercise: {
       updateMany: txWorkoutExerciseUpdateMany,
       findMany: txWorkoutExerciseFindMany,
+      findFirst: txWorkoutExerciseFindFirst,
     },
     workoutSet: {
       update: txWorkoutSetUpdate,
@@ -55,6 +61,9 @@ const mocks = vi.hoisted(() => {
     exerciseFindMany,
     setLogFindFirst,
     txWorkoutFindUnique,
+    txWorkoutFindFirst,
+    txWorkoutUpdateMany,
+    txWorkoutExerciseFindFirst,
     txWorkoutUpdate,
     txWorkoutExerciseUpdateMany,
     txWorkoutExerciseFindMany,
@@ -288,6 +297,18 @@ describe("runtime exercise swap service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.txWorkoutExerciseUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.txWorkoutUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.txWorkoutFindFirst
+      .mockResolvedValueOnce({
+        id: "workout-1",
+        revision: 2,
+        status: "IN_PROGRESS",
+        mesocycleId: null,
+      })
+      .mockImplementation(() => mocks.workoutFindFirst());
+    mocks.txWorkoutExerciseFindFirst.mockImplementation(() =>
+      mocks.workoutExerciseFindFirst(),
+    );
 
     mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-1",
@@ -524,12 +545,14 @@ describe("runtime exercise swap service", () => {
       workoutExerciseId: "we-1",
       replacementExerciseId: "chest-supported-db-row",
       userId: "user-1",
+      expectedRevision: 1,
     };
 
     const preview = await resolveRuntimeExerciseSwapPreview(input);
     const applied = await applyRuntimeExerciseSwap(input);
 
-    expect(preview).toEqual(applied);
+    expect(preview).toEqual(applied.exercise);
+    expect(applied.revision).toBe(2);
     expect(preview).toMatchObject({
       workoutExerciseId: "we-1",
       exerciseId: "chest-supported-db-row",
@@ -600,7 +623,6 @@ describe("runtime exercise swap service", () => {
       expect.objectContaining({
         where: { id: "workout-1" },
         data: expect.objectContaining({
-          revision: { increment: 1 },
           selectionMetadata: expect.objectContaining({
             runtimeEditReconciliation: expect.objectContaining({
               version: 1,
@@ -683,6 +705,7 @@ describe("runtime exercise swap service", () => {
       workoutExerciseId: "we-1",
       replacementExerciseId: "chest-supported-db-row",
       userId: "user-1",
+      expectedRevision: 1,
     };
 
     await expect(resolveRuntimeExerciseSwapPreview(input)).resolves.toMatchObject({
@@ -692,10 +715,13 @@ describe("runtime exercise swap service", () => {
       isSwapped: true,
     });
     await expect(applyRuntimeExerciseSwap(input)).resolves.toMatchObject({
-      workoutExerciseId: "we-1",
-      exerciseId: "chest-supported-db-row",
-      isRuntimeAdded: true,
-      isSwapped: true,
+      exercise: {
+        workoutExerciseId: "we-1",
+        exerciseId: "chest-supported-db-row",
+        isRuntimeAdded: true,
+        isSwapped: true,
+      },
+      revision: 2,
     });
 
     const updateCall = mocks.txWorkoutUpdate.mock.calls.at(-1)?.[0];
@@ -734,12 +760,16 @@ describe("runtime exercise swap service", () => {
         workoutExerciseId: "we-1",
         replacementExerciseId: "chest-supported-db-row",
         userId: "user-1",
+        expectedRevision: 1,
       }),
     ).resolves.toMatchObject({
-      workoutExerciseId: "we-1",
-      exerciseId: "chest-supported-db-row",
-      isRuntimeAdded: false,
-      isSwapped: true,
+      exercise: {
+        workoutExerciseId: "we-1",
+        exerciseId: "chest-supported-db-row",
+        isRuntimeAdded: false,
+        isSwapped: true,
+      },
+      revision: 2,
     });
 
     const updateCall = mocks.txWorkoutUpdate.mock.calls.at(-1)?.[0];
@@ -833,6 +863,7 @@ describe("runtime exercise swap service", () => {
       workoutExerciseId: "we-1",
       replacementExerciseId: "chest-supported-db-row",
       userId: "user-1",
+      expectedRevision: 1,
     };
 
     await expect(
@@ -841,7 +872,8 @@ describe("runtime exercise swap service", () => {
       section: "MAIN",
     });
     await expect(applyRuntimeExerciseSwap(input)).resolves.toMatchObject({
-      section: "MAIN",
+      exercise: { section: "MAIN" },
+      revision: 2,
     });
   });
 
@@ -1299,11 +1331,15 @@ describe("runtime exercise swap service", () => {
         replacementExerciseId: "cable-curl",
         userId: "user-1",
         searchQuery: "cable curl",
+        expectedRevision: 1,
       }),
     ).resolves.toMatchObject({
-      workoutExerciseId: "we-1",
-      exerciseId: "cable-curl",
-      name: "Cable Curl",
+      exercise: {
+        workoutExerciseId: "we-1",
+        exerciseId: "cable-curl",
+        name: "Cable Curl",
+      },
+      revision: 2,
     });
     expect(mocks.txWorkoutExerciseUpdateMany).toHaveBeenLastCalledWith({
       where: {

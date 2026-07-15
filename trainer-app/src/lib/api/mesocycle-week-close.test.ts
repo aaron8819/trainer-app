@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => {
   const workoutFindFirst = vi.fn();
   const workoutCreate = vi.fn();
   const workoutUpdate = vi.fn();
+  const workoutUpdateMany = vi.fn();
   const weekCloseFindFirst = vi.fn();
   const weekCloseFindUnique = vi.fn();
   const weekCloseUpsert = vi.fn();
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => {
     workoutFindFirst,
     workoutCreate,
     workoutUpdate,
+    workoutUpdateMany,
     weekCloseFindFirst,
     weekCloseFindUnique,
     weekCloseUpsert,
@@ -27,6 +29,7 @@ const mocks = vi.hoisted(() => {
         findFirst: workoutFindFirst,
         create: workoutCreate,
         update: workoutUpdate,
+        updateMany: workoutUpdateMany,
       },
       mesocycleWeekClose: {
         findFirst: weekCloseFindFirst,
@@ -65,6 +68,7 @@ describe("mesocycle week close", () => {
     vi.clearAllMocks();
     mocks.workoutFindMany.mockResolvedValue([]);
     mocks.workoutFindFirst.mockResolvedValue(null);
+    mocks.workoutUpdateMany.mockResolvedValue({ count: 1 });
     mocks.workoutCreate.mockResolvedValue({
       id: "workout-closeout-1",
       userId: "user-1",
@@ -865,7 +869,7 @@ describe("mesocycle week close", () => {
   });
 
   it("dismisses a planned closeout workout by marking selection metadata only", async () => {
-    mocks.workoutFindFirst.mockResolvedValueOnce({
+    mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-closeout-1",
       status: "PLANNED",
       selectionMetadata: {
@@ -913,6 +917,7 @@ describe("mesocycle week close", () => {
     const result = await dismissCloseoutSession(mocks.tx as never, {
       userId: "user-1",
       workoutId: "workout-closeout-1",
+      expectedRevision: 1,
     });
 
     expect(result.outcome).toBe("dismissed");
@@ -932,7 +937,6 @@ describe("mesocycle week close", () => {
             ],
           }),
         }),
-        revision: { increment: 1 },
       },
       select: {
         id: true,
@@ -946,7 +950,8 @@ describe("mesocycle week close", () => {
   });
 
   it("does not convert non-planned closeout workouts into dismissed rows", async () => {
-    mocks.workoutFindFirst.mockResolvedValueOnce({
+    mocks.workoutUpdateMany.mockResolvedValueOnce({ count: 0 });
+    mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-closeout-1",
       status: "COMPLETED",
       selectionMetadata: {
@@ -994,8 +999,9 @@ describe("mesocycle week close", () => {
       dismissCloseoutSession(mocks.tx as never, {
         userId: "user-1",
         workoutId: "workout-closeout-1",
+        expectedRevision: 1,
       })
-    ).rejects.toThrow("CLOSEOUT_DISMISSAL_REQUIRES_PLANNED");
+    ).rejects.toThrow("Workout is not editable in its current state.");
 
     expect(mocks.workoutUpdate).not.toHaveBeenCalled();
   });

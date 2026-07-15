@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db/prisma";
 import { deleteWorkoutSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { reconcileMesocycleLifecycle } from "@/lib/api/mesocycle-lifecycle-reconciliation";
+import { WorkoutStatus } from "@prisma/client";
+import {
+  executeWorkoutMutation,
+  isWorkoutMutationError,
+} from "@/lib/api/workout-mutation";
+
+class DeleteWorkoutError extends Error {
+  readonly status = 409 as const;
+}
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -13,35 +21,44 @@ export async function POST(request: Request) {
   }
 
   const owner = await resolveOwner();
-  const workout = await prisma.workout.findFirst({
-    where: { id: parsed.data.workoutId, userId: owner.id },
-    select: {
-      id: true,
-      mesocycleId: true,
-      mesocycle: {
-        select: {
-          id: true,
-          durationWeeks: true,
-          sessionsPerWeek: true,
-          state: true,
-          isActive: true,
+  try {
+    const mutation = await executeWorkoutMutation({
+      workoutId: parsed.data.workoutId,
+      userId: owner.id,
+      expectedRevision: parsed.data.expectedRevision,
+      editableStatuses: [
+        WorkoutStatus.PLANNED,
+        WorkoutStatus.IN_PROGRESS,
+        WorkoutStatus.PARTIAL,
+        WorkoutStatus.COMPLETED,
+        WorkoutStatus.SKIPPED,
+      ],
+    }, async (tx) => {
+    const workout = await tx.workout.findFirst({
+      where: { id: parsed.data.workoutId, userId: owner.id },
+      select: {
+        id: true,
+        mesocycleId: true,
+        mesocycle: {
+          select: {
+            id: true,
+            durationWeeks: true,
+            sessionsPerWeek: true,
+            state: true,
+            isActive: true,
+          },
         },
       },
-    },
-  });
-  if (!workout) {
-    return NextResponse.json({ error: "Workout not found" }, { status: 404 });
-  }
-  if (workout.mesocycle && !workout.mesocycle.isActive && workout.mesocycle.state === "COMPLETED") {
-    return NextResponse.json(
-      {
-        error: "Cannot delete a historical workout from a completed mesocycle after closeout finalized lifecycle history.",
-      },
-      { status: 409 }
-    );
-  }
+    });
+    if (!workout) {
+      throw new Error("WORKOUT_NOT_FOUND_AFTER_CLAIM");
+    }
+    if (workout.mesocycle && !workout.mesocycle.isActive && workout.mesocycle.state === "COMPLETED") {
+      throw new DeleteWorkoutError(
+        "Cannot delete a historical workout from a completed mesocycle after closeout finalized lifecycle history.",
+      );
+    }
 
-  await prisma.$transaction(async (tx) => {
     const exercises = await tx.workoutExercise.findMany({
       where: { workoutId: workout.id },
       select: { id: true },
@@ -69,7 +86,14 @@ export async function POST(request: Request) {
     ) {
       await reconcileMesocycleLifecycle(tx, workout.mesocycle);
     }
+    return { status: "deleted" as const };
   });
 
-  return NextResponse.json({ status: "deleted" });
+    return NextResponse.json({ ...mutation.result, revision: mutation.revision });
+  } catch (error) {
+    if (isWorkoutMutationError(error) || error instanceof DeleteWorkoutError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
+  }
 }

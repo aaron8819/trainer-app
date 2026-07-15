@@ -1292,6 +1292,7 @@ function buildWorkoutSummary(input: {
 }): WorkoutListSurfaceSummary {
   return {
     id: input.id,
+    revision: 1,
     scheduledDate: input.scheduledDate,
     completedAt: input.completedAt ?? null,
     status: input.status,

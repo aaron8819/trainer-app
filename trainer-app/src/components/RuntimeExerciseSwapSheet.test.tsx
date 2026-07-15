@@ -246,6 +246,8 @@ describe("RuntimeExerciseSwapSheet", () => {
         isOpen
         onClose={onClose}
         workoutId="workout-1"
+        expectedRevision={1}
+        onRevision={vi.fn()}
         exercise={{ workoutExerciseId: "we-1", name: "T-Bar Row" }}
         onSwap={onSwap}
       />
@@ -353,6 +355,8 @@ describe("RuntimeExerciseSwapSheet", () => {
         isOpen
         onClose={vi.fn()}
         workoutId="workout-1"
+        expectedRevision={1}
+        onRevision={vi.fn()}
         exercise={{ workoutExerciseId: "we-1", name: "T-Bar Row" }}
         onSwap={vi.fn()}
       />
@@ -436,6 +440,8 @@ describe("RuntimeExerciseSwapSheet", () => {
         isOpen
         onClose={vi.fn()}
         workoutId="workout-1"
+        expectedRevision={1}
+        onRevision={vi.fn()}
         exercise={{ workoutExerciseId: "we-1", name: "T-Bar Row" }}
         onSwap={vi.fn()}
       />
@@ -459,6 +465,8 @@ describe("RuntimeExerciseSwapSheet", () => {
         isOpen
         onClose={vi.fn()}
         workoutId="workout-1"
+        expectedRevision={1}
+        onRevision={vi.fn()}
         exercise={{ workoutExerciseId: "we-1", name: "T-Bar Row" }}
         onSwap={vi.fn()}
       />
@@ -524,6 +532,8 @@ describe("RuntimeExerciseSwapSheet", () => {
         isOpen
         onClose={vi.fn()}
         workoutId="workout-1"
+        expectedRevision={1}
+        onRevision={vi.fn()}
         exercise={{ workoutExerciseId: "we-1", name: "Closeout Cable Fly" }}
         onSwap={vi.fn()}
       />

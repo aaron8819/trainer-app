@@ -216,6 +216,7 @@ function resolveSelectedWarmupActiveSet(
 
 export default function LogWorkoutClient({
   workoutId,
+  initialRevision = 1,
   exercises,
   allowBonusExerciseAdd = true,
   allowRuntimeExerciseSwap = false,
@@ -233,6 +234,7 @@ export default function LogWorkoutClient({
   sessionTechnicalLabel,
 }: {
   workoutId: string;
+  initialRevision?: number;
   exercises: LogExerciseInput[] | SectionedExercises;
   allowBonusExerciseAdd?: boolean;
   allowRuntimeExerciseSwap?: boolean;
@@ -554,8 +556,11 @@ export default function LogWorkoutClient({
     completion,
     actions,
     dismissError,
+    revision,
+    setRevision,
   } = useWorkoutSessionFlow({
     workoutId,
+    initialRevision,
     flatSets,
     totalSets,
     completedSetCount,
@@ -1267,12 +1272,16 @@ export default function LogWorkoutClient({
         isOpen={showBonusSheet}
         onClose={() => setShowBonusSheet(false)}
         workoutId={workoutId}
+        expectedRevision={revision}
+        onRevision={setRevision}
         onAdd={handleAddExercise}
       />
       <RuntimeExerciseSwapSheet
         isOpen={selectedSwapExercise != null}
         onClose={() => setSelectedSwapExerciseId(null)}
         workoutId={workoutId}
+        expectedRevision={revision}
+        onRevision={setRevision}
         exercise={selectedSwapExercise}
         onSwap={handleSwapApplied}
       />

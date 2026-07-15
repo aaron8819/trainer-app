@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => {
   const setLogUpsert = vi.fn();
   const setLogCreate = vi.fn();
   const workoutUpdate = vi.fn();
+  const workoutUpdateMany = vi.fn();
+  const workoutFindFirst = vi.fn();
 
   const tx = {
     workoutSet: { findFirst: workoutSetFindFirst, create: workoutSetCreate },
@@ -26,10 +28,16 @@ const mocks = vi.hoisted(() => {
       create: setLogCreate,
       deleteMany: vi.fn(),
     },
-    workout: { update: workoutUpdate },
+    workout: {
+      update: workoutUpdate,
+      updateMany: workoutUpdateMany,
+      findFirst: workoutFindFirst,
+    },
   };
 
   const prisma = {
+    workoutSet: { findFirst: workoutSetFindFirst },
+    workoutExercise: { findFirst: workoutExerciseFindFirst },
     $transaction: vi.fn(async (callback: (trx: typeof tx) => Promise<unknown>) => callback(tx)),
   };
 
@@ -43,6 +51,8 @@ const mocks = vi.hoisted(() => {
     setLogUpsert,
     setLogCreate,
     workoutUpdate,
+    workoutUpdateMany,
+    workoutFindFirst,
   };
 });
 
@@ -56,10 +66,18 @@ import { POST } from "./route";
 describe("POST /api/logs/set", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.workoutUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.workoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      revision: 2,
+      status: "IN_PROGRESS",
+      mesocycleId: null,
+    });
     mocks.workoutSetFindFirst.mockResolvedValue({
       id: "set-1",
       targetLoad: 185,
       workoutExercise: {
+        workoutId: "workout-1",
         workout: { id: "workout-1", status: "PLANNED", mesocycleId: null, mesocycle: null },
       },
     });
@@ -82,6 +100,7 @@ describe("POST /api/logs/set", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          expectedRevision: 1,
           workoutSetId: "set-1",
           actualReps: 9,
           actualRpe: 8.5,
@@ -111,6 +130,7 @@ describe("POST /api/logs/set", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          expectedRevision: 1,
           workoutSetId: "set-1",
           actualReps: 8,
           actualRpe: 8,
@@ -136,6 +156,7 @@ describe("POST /api/logs/set", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          expectedRevision: 1,
           workoutSetId: "set-1",
           actualReps: 8,
           actualRpe: 8,
@@ -161,6 +182,7 @@ describe("POST /api/logs/set", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          expectedRevision: 1,
           workoutSetId: "set-1",
           actualReps: 12,
           actualRpe: 8,
@@ -180,8 +202,9 @@ describe("POST /api/logs/set", () => {
   });
 
   it("creates and logs a session-local warmup set by workoutExerciseId", async () => {
-    mocks.workoutExerciseFindFirst.mockResolvedValueOnce({
+    mocks.workoutExerciseFindFirst.mockResolvedValue({
       id: "we-1",
+      workoutId: "workout-1",
       exerciseId: "bench",
       section: "MAIN",
       isMainLift: true,
@@ -290,6 +313,7 @@ describe("POST /api/logs/set", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          expectedRevision: 1,
           workoutExerciseId: "we-1",
           actualReps: 8,
           actualRpe: 6,
@@ -324,7 +348,6 @@ describe("POST /api/logs/set", () => {
         where: { id: "workout-1" },
         data: expect.objectContaining({
           status: "IN_PROGRESS",
-          revision: { increment: 1 },
           selectionMetadata: expect.objectContaining({
             runtimeEditReconciliation: expect.objectContaining({
               ops: [
@@ -359,10 +382,11 @@ describe("POST /api/logs/set", () => {
   });
 
   it("normalizes bodyweight performed-set load to 0 when targetLoad is 0 and actualLoad is omitted", async () => {
-    mocks.workoutSetFindFirst.mockResolvedValueOnce({
+    mocks.workoutSetFindFirst.mockResolvedValue({
       id: "set-bw",
       targetLoad: 0,
       workoutExercise: {
+        workoutId: "workout-1",
         workout: { id: "workout-1", status: "PLANNED", mesocycleId: null, mesocycle: null },
       },
     });
@@ -373,6 +397,7 @@ describe("POST /api/logs/set", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          expectedRevision: 1,
           workoutSetId: "set-bw",
           actualReps: 10,
           actualRpe: 8,
@@ -397,6 +422,7 @@ describe("POST /api/logs/set", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          expectedRevision: 1,
           workoutSetId: "set-1",
         }),
       })
@@ -417,6 +443,7 @@ describe("POST /api/logs/set", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          expectedRevision: 1,
           workoutSetId: "set-1",
           actualLoad: 90,
         }),
@@ -431,10 +458,11 @@ describe("POST /api/logs/set", () => {
   });
 
   it("blocks set logging when the workout belongs to a closed mesocycle", async () => {
-    mocks.workoutSetFindFirst.mockResolvedValueOnce({
+    mocks.workoutSetFindFirst.mockResolvedValue({
       id: "set-1",
       targetLoad: 185,
       workoutExercise: {
+        workoutId: "workout-1",
         workout: {
           id: "workout-1",
           status: "PLANNED",
@@ -449,6 +477,7 @@ describe("POST /api/logs/set", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          expectedRevision: 1,
           workoutSetId: "set-1",
           actualReps: 8,
           actualRpe: 8,

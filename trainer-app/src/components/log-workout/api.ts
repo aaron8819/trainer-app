@@ -57,6 +57,7 @@ async function parseJsonResponse<T>(response: Response): Promise<ApiResult<T>> {
 }
 
 export async function logSetRequest(payload: {
+  expectedRevision: number;
   workoutSetId?: string;
   workoutExerciseId?: string;
   setIntent?: "WORK" | "WARMUP";
@@ -76,6 +77,7 @@ export async function logSetRequest(payload: {
     notes?: string | null;
   } | null;
   workoutStatusUpdated?: boolean;
+  revision: number;
   set?: {
     setId: string;
     setIndex: number;
@@ -96,11 +98,14 @@ export async function logSetRequest(payload: {
   return parseJsonResponse(response);
 }
 
-export async function deleteSetLogRequest(workoutSetId: string): Promise<ApiResult<{ status: string }>> {
+export async function deleteSetLogRequest(payload: {
+  workoutSetId: string;
+  expectedRevision: number;
+}): Promise<ApiResult<{ status: string; revision: number }>> {
   const response = await fetch("/api/logs/set", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workoutSetId }),
+    body: JSON.stringify(payload),
   });
   return parseJsonResponse(response);
 }
@@ -108,8 +113,10 @@ export async function deleteSetLogRequest(workoutSetId: string): Promise<ApiResu
 export async function addSetToExerciseRequest(payload: {
   workoutId: string;
   workoutExerciseId: string;
+  expectedRevision: number;
 }): Promise<
   ApiResult<{
+    revision: number;
     set: {
       setId: string;
       setIndex: number;
@@ -127,6 +134,7 @@ export async function addSetToExerciseRequest(payload: {
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expectedRevision: payload.expectedRevision }),
     }
   );
   return parseJsonResponse(response);
@@ -135,12 +143,14 @@ export async function addSetToExerciseRequest(payload: {
 export async function deleteWorkoutExerciseRequest(payload: {
   workoutId: string;
   workoutExerciseId: string;
-}): Promise<ApiResult<{ ok: true; removedWorkoutExerciseId: string }>> {
+  expectedRevision: number;
+}): Promise<ApiResult<{ ok: true; removedWorkoutExerciseId: string; revision: number }>> {
   const response = await fetch(
     `/api/workouts/${payload.workoutId}/exercises/${payload.workoutExerciseId}`,
     {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expectedRevision: payload.expectedRevision }),
     }
   );
   return parseJsonResponse(response);

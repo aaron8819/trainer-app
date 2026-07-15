@@ -235,6 +235,7 @@ export type GapFillSupportData = {
 export type CloseoutSupportData = {
   visible: boolean;
   workoutId: string | null;
+  workoutRevision?: number | null;
   weekCloseId: string | null;
   status: string | null;
   targetWeek: number | null;
@@ -551,6 +552,7 @@ export function isCloseoutWeekInScope(input: {
 
 type CloseoutWorkoutCandidate = {
   id: string;
+  revision?: number;
   status: WorkoutStatus;
   scheduledDate: Date;
   selectionMetadata: unknown;
@@ -628,6 +630,7 @@ export function buildCurrentWeekCloseoutSupport(input: {
   return {
     visible: Boolean(closeout) || canCreate,
     workoutId: closeout?.id ?? null,
+    workoutRevision: closeout?.revision ?? null,
     weekCloseId: input.weekCloseId,
     status: closeout?.status.toLowerCase() ?? null,
     targetWeek: resolvedTargetWeek,
@@ -875,6 +878,7 @@ async function loadHomeWeekProgress(input: {
     },
     select: {
       id: true,
+      revision: true,
       status: true,
       scheduledDate: true,
       advancesSplit: true,
@@ -1010,6 +1014,7 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
             orderBy: [{ scheduledDate: "asc" }, { id: "asc" }],
             select: {
               id: true,
+              revision: true,
               status: true,
               scheduledDate: true,
               selectionMetadata: true,

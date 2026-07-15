@@ -336,6 +336,7 @@ export default function HistoryClient({
                     <WorkoutRowActions workout={workout} />
                     <DeleteWorkoutButton
                       workoutId={workout.id}
+                      expectedRevision={workout.revision}
                       onDeleted={() => handleDeleted(workout.id)}
                     />
                   </div>

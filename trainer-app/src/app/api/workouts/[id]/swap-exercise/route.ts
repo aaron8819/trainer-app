@@ -15,6 +15,7 @@ const swapExerciseSchema = z.object({
   workoutExerciseId: z.string().min(1),
   replacementExerciseId: z.string().min(1),
   searchQuery: z.string().optional(),
+  expectedRevision: z.number().int().min(1),
 });
 
 function parseLimit(rawLimit: string | null, fallback: number): number {
@@ -100,15 +101,16 @@ export async function POST(
   const owner = await resolveOwner();
 
   try {
-    const exercise = await applyRuntimeExerciseSwap({
+    const result = await applyRuntimeExerciseSwap({
       workoutId: resolvedParams.id,
       workoutExerciseId: parsed.data.workoutExerciseId,
       replacementExerciseId: parsed.data.replacementExerciseId,
       userId: owner.id,
       searchQuery: parsed.data.searchQuery,
+      expectedRevision: parsed.data.expectedRevision,
     });
 
-    return NextResponse.json({ exercise });
+    return NextResponse.json(result);
   } catch (error) {
     return toErrorResponse(error);
   }

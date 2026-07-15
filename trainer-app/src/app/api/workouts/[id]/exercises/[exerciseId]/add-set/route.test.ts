@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => {
   const txWorkoutExerciseFindFirst = vi.fn();
   const txWorkoutSetCreate = vi.fn();
   const txWorkoutUpdate = vi.fn();
+  const txWorkoutUpdateMany = vi.fn();
+  const txWorkoutFindFirst = vi.fn();
   const txWorkoutExerciseFindMany = vi.fn();
 
   const tx = {
@@ -17,6 +19,8 @@ const mocks = vi.hoisted(() => {
     },
     workout: {
       update: txWorkoutUpdate,
+      updateMany: txWorkoutUpdateMany,
+      findFirst: txWorkoutFindFirst,
     },
   };
 
@@ -33,6 +37,8 @@ const mocks = vi.hoisted(() => {
     txWorkoutExerciseFindFirst,
     txWorkoutSetCreate,
     txWorkoutUpdate,
+    txWorkoutUpdateMany,
+    txWorkoutFindFirst,
     txWorkoutExerciseFindMany,
   };
 });
@@ -50,6 +56,14 @@ import { POST } from "./route";
 describe("POST /api/workouts/[id]/exercises/[exerciseId]/add-set", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
+    mocks.txWorkoutUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.txWorkoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      revision: 2,
+      status: "PLANNED",
+      mesocycleId: null,
+    });
 
     mocks.workoutExerciseFindFirst.mockResolvedValue({
       id: "we-1",
@@ -221,6 +235,8 @@ describe("POST /api/workouts/[id]/exercises/[exerciseId]/add-set", () => {
     const response = await POST(
       new Request("http://localhost/api/workouts/workout-1/exercises/we-1/add-set", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1", exerciseId: "we-1" }) }
     );
@@ -253,7 +269,6 @@ describe("POST /api/workouts/[id]/exercises/[exerciseId]/add-set", () => {
     expect(mocks.txWorkoutUpdate).toHaveBeenCalledWith({
       where: { id: "workout-1" },
       data: {
-        revision: { increment: 1 },
         selectionMetadata: expect.objectContaining({
           sessionDecisionReceipt: expect.objectContaining({
             version: 1,
@@ -299,6 +314,7 @@ describe("POST /api/workouts/[id]/exercises/[exerciseId]/add-set", () => {
       },
     });
     expect(body).toEqual({
+      revision: 2,
       set: {
         setId: "set-4",
         setIndex: 4,
@@ -334,6 +350,8 @@ describe("POST /api/workouts/[id]/exercises/[exerciseId]/add-set", () => {
     const response = await POST(
       new Request("http://localhost/api/workouts/workout-1/exercises/we-1/add-set", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1", exerciseId: "we-1" }) }
     );
@@ -363,6 +381,8 @@ describe("POST /api/workouts/[id]/exercises/[exerciseId]/add-set", () => {
     const response = await POST(
       new Request("http://localhost/api/workouts/workout-1/exercises/we-1/add-set", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1", exerciseId: "we-1" }) }
     );
@@ -408,6 +428,8 @@ describe("POST /api/workouts/[id]/exercises/[exerciseId]/add-set", () => {
       const response = await POST(
         new Request("http://localhost/api/workouts/workout-1/exercises/we-1/add-set", {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ expectedRevision: 1 }),
         }),
         { params: Promise.resolve({ id: "workout-1", exerciseId: "we-1" }) }
       );
@@ -496,6 +518,8 @@ describe("POST /api/workouts/[id]/exercises/[exerciseId]/add-set", () => {
     const response = await POST(
       new Request("http://localhost/api/workouts/workout-1/exercises/we-accessory/add-set", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1", exerciseId: "we-accessory" }) }
     );

@@ -1,8 +1,11 @@
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/db/prisma";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
 import { readRuntimeAddedExerciseIds } from "@/lib/ui/selection-metadata";
 import { getClosedMesocycleWorkoutFenceReason } from "@/lib/workout-workflow";
+import {
+  executeWorkoutMutation,
+  isWorkoutMutationError,
+} from "@/lib/api/workout-mutation";
 
 type RemovedWorkoutExerciseSnapshot = {
   workoutExerciseId: string;
@@ -87,14 +90,21 @@ function mapPersistedExercises(persistedExercises: PersistedExerciseRecord[]) {
 
 export type RuntimeExerciseRemoveResult = {
   removedWorkoutExerciseId: string;
+  revision: number;
 };
 
 export async function removeRuntimeAddedWorkoutExercise(input: {
   workoutId: string;
   workoutExerciseId: string;
   userId: string;
+  expectedRevision: number;
 }): Promise<RuntimeExerciseRemoveResult> {
-  return prisma.$transaction(async (tx) => {
+  try {
+    const mutation = await executeWorkoutMutation({
+      workoutId: input.workoutId,
+      userId: input.userId,
+      expectedRevision: input.expectedRevision,
+    }, async (tx) => {
     const workoutExercise = await tx.workoutExercise.findFirst({
       where: {
         id: input.workoutExerciseId,
@@ -250,7 +260,6 @@ export async function removeRuntimeAddedWorkoutExercise(input: {
     await tx.workout.update({
       where: { id: workoutExercise.workout.id },
       data: {
-        revision: { increment: 1 },
         selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
       },
     });
@@ -258,5 +267,15 @@ export async function removeRuntimeAddedWorkoutExercise(input: {
     return {
       removedWorkoutExerciseId: workoutExercise.id,
     };
-  });
+    });
+    return { ...mutation.result, revision: mutation.revision };
+  } catch (error) {
+    if (isWorkoutMutationError(error)) {
+      throw buildRuntimeExerciseRemoveError(error.message, {
+        status: error.status,
+        code: error.code,
+      });
+    }
+    throw error;
+  }
 }

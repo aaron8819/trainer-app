@@ -55,6 +55,7 @@ describe("CloseoutCard", () => {
           actionLabel: "Open custom session",
           dismissActionHref: "/api/workouts/workout-closeout/dismiss-closeout",
           dismissActionLabel: "Dismiss optional session",
+          workoutRevision: 1,
         }}
       />
     );
@@ -65,6 +66,8 @@ describe("CloseoutCard", () => {
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith("/api/workouts/workout-closeout/dismiss-closeout", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedRevision: 1 }),
       })
     );
     expect(mocks.refresh).toHaveBeenCalled();

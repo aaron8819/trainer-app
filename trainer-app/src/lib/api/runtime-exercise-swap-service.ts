@@ -27,6 +27,10 @@ import {
   resolveHistoricalStimulusAccounting,
   toExerciseStimulusAccountingEvidence,
 } from "@/lib/stimulus-accounting/snapshot";
+import {
+  executeWorkoutMutation,
+  isWorkoutMutationError,
+} from "@/lib/api/workout-mutation";
 
 type ExerciseRecord = Prisma.ExerciseGetPayload<{
   include: {
@@ -365,8 +369,8 @@ async function loadRuntimeExerciseSwapContext(input: {
   workoutId: string;
   workoutExerciseId: string;
   userId: string;
-}): Promise<SwapContext> {
-  const workout = await prisma.workout.findFirst({
+}, db: Pick<Prisma.TransactionClient, "workout" | "workoutExercise"> = prisma): Promise<SwapContext> {
+  const workout = await db.workout.findFirst({
     where: { id: input.workoutId, userId: input.userId },
     select: {
       id: true,
@@ -397,7 +401,7 @@ async function loadRuntimeExerciseSwapContext(input: {
     });
   }
 
-  const workoutExercise = await prisma.workoutExercise.findFirst({
+  const workoutExercise = await db.workoutExercise.findFirst({
     where: {
       id: input.workoutExerciseId,
       workoutId: workout.id,
@@ -805,7 +809,8 @@ export async function applyRuntimeExerciseSwap(input: {
   replacementExerciseId: string;
   userId: string;
   searchQuery?: string;
-}): Promise<RuntimeExerciseSwapExercisePayload> {
+  expectedRevision: number;
+}): Promise<{ exercise: RuntimeExerciseSwapExercisePayload; revision: number }> {
   const resolution = await resolveRuntimeExerciseSwap(input);
   const replacementStimulusAccountingSnapshot = buildExerciseStimulusSnapshot(
     {
@@ -841,20 +846,25 @@ export async function applyRuntimeExerciseSwap(input: {
     },
   });
 
-  await prisma.$transaction(async (tx) => {
-    const latestWorkout = await tx.workout.findUnique({
-      where: { id: resolution.context.workout.id },
-      select: {
-        selectionMetadata: true,
-        selectionMode: true,
-        sessionIntent: true,
-      },
-    });
-    if (!latestWorkout) {
-      throw buildRuntimeExerciseSwapError("Workout not found", {
-        status: 404,
-        code: "WORKOUT_NOT_FOUND",
-      });
+  try {
+    const mutation = await executeWorkoutMutation({
+      workoutId: input.workoutId,
+      userId: input.userId,
+      expectedRevision: input.expectedRevision,
+    }, async (tx) => {
+    const latestContext = await loadRuntimeExerciseSwapContext({
+      workoutId: input.workoutId,
+      workoutExerciseId: input.workoutExerciseId,
+      userId: input.userId,
+    }, tx);
+    if (
+      latestContext.workoutExercise.exerciseId !==
+      resolution.context.workoutExercise.exerciseId
+    ) {
+      throw buildRuntimeExerciseSwapError(
+        "Exercise changed since the swap was previewed.",
+        { status: 409, code: "WORKOUT_REVISION_CONFLICT" },
+      );
     }
 
     const replaced = await tx.workoutExercise.updateMany({
@@ -917,9 +927,9 @@ export async function applyRuntimeExerciseSwap(input: {
     });
 
     const selectionMetadata = reconcileRuntimeEditSelectionMetadata({
-      selectionMetadata: latestWorkout.selectionMetadata,
-      selectionMode: latestWorkout.selectionMode,
-      sessionIntent: latestWorkout.sessionIntent,
+      selectionMetadata: latestContext.workout.selectionMetadata,
+      selectionMode: latestContext.workout.selectionMode,
+      sessionIntent: latestContext.workout.sessionIntent,
       persistedExercises: mapPersistedExercises(persistedExercises),
       mutation: {
         kind: "replace_exercise",
@@ -944,11 +954,20 @@ export async function applyRuntimeExerciseSwap(input: {
     await tx.workout.update({
       where: { id: resolution.context.workout.id },
       data: {
-        revision: { increment: 1 },
         selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
       },
     });
-  });
+      return { exercise: resolution.exercise };
+    });
 
-  return resolution.exercise;
+    return { ...mutation.result, revision: mutation.revision };
+  } catch (error) {
+    if (isWorkoutMutationError(error)) {
+      throw buildRuntimeExerciseSwapError(error.message, {
+        status: error.status,
+        code: error.code,
+      });
+    }
+    throw error;
+  }
 }

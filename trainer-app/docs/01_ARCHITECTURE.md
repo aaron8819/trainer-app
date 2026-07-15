@@ -1,5 +1,9 @@
 # 01 Architecture
 
+## Existing-workout mutation ownership
+
+`src/lib/api/workout-mutation.ts` owns optimistic concurrency for supported runtime mutations of a materialized workout. Its owner-scoped `Workout.updateMany` compare-and-swap is the first transaction mutation; command-specific services perform child writes and reconciliation only after that claim. Initial workout creation remains outside this contract because no prior revision exists.
+
 Owner: Aaron  
 Last reviewed: 2026-03-17  
 Purpose: Defines the current runtime architecture for the single-user local-first Trainer app and the boundaries between UI, API routes, orchestration, engine, and persistence.

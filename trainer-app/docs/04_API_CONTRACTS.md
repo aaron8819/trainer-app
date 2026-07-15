@@ -184,6 +184,10 @@ Sources of truth:
 Successful first transition to `COMPLETED` also creates the immutable exact post-session review snapshot before the transaction commits. Snapshot production or insertion failure rolls back completion and lifecycle effects. Completion retries return the existing terminal state without rewriting workout evidence or the snapshot. `PARTIAL` remains resumable and does not finalize an immutable snapshot; `SKIPPED` remains review-ineligible.
 - Route: `POST /api/workouts/save` (`src/app/api/workouts/save/route.ts`).
 - Request action enum (validation source): `WORKOUT_SAVE_ACTION_VALUES` in `src/lib/validation.ts`.
+- `expectedRevision` is required for every update to an existing workout and omitted only for genuine creation. Persistence compares `{ id, userId, revision: expectedRevision }`, increments revision atomically, and returns the new revision. A stale predicate returns `409`; missing and foreign-owned workouts both return the same `404`; omission for an existing workout returns `400`.
+- Runtime mutation requests also require `expectedRevision`: add/remove/swap exercise, add set, set log/skip/unskip/delete (including persisted warmup creation), workout delete, and closeout dismissal. Each successful response includes `revision`; stale requests return `409` before child or reconciliation writes. The owner-scoped failed-claim read never reveals whether a foreign workout exists.
+- Mesocycle week-close acknowledgement that does not mutate a workout remains outside workout OCC. Dismissing a persisted closeout workout is inside OCC because it changes workout execution metadata.
+- The compare-and-swap is the first mutation inside the save transaction. Exercise/set replacement, filtered-exercise replacement, receipt/reconciliation metadata, status/completion changes, and save-owned lifecycle effects run only after it succeeds and roll back with it on any later error.
 - Terminal transitions are action-based:
   - `mark_completed` => finalize as `COMPLETED` or auto-normalize to `PARTIAL` when unresolved sets remain.
   - `mark_partial` => finalize as `PARTIAL`.
@@ -197,7 +201,7 @@ Successful first transition to `COMPLETED` also creates the immutable exact post
 - Mesocycle snapshots are duration-aware: `mesocycleWeekSnapshot` is derived from `durationWeeks`, `accumulationSessionsCompleted`, and `sessionsPerWeek`, and `mesoSessionSnapshot` during deload is capped by `sessionsPerWeek` rather than a fixed `3`.
 - Mesocycle lifecycle counter increment split:
   - Performed-signal readers use `COMPLETED` + `PARTIAL` (`src/lib/workout-status.ts`).
-- Lifecycle counters (`accumulationSessionsCompleted`, `deloadSessionsCompleted`) are incremented on any first transition to a performed status (`COMPLETED` or `PARTIAL`) atomically inside the save-workout transaction (`src/app/api/workouts/save/route.ts`); `transitionMesocycleState()` is then called post-transaction to apply threshold-based state transitions.
+- Lifecycle counters (`accumulationSessionsCompleted`, `deloadSessionsCompleted`) are incremented on any first transition to a performed status (`COMPLETED` or `PARTIAL`) after the workout compare-and-swap and inside the same save-workout transaction (`src/app/api/workouts/save/route.ts`).
 - Lifecycle thresholds are duration-aware: accumulation completes after `(durationWeeks - 1) * sessionsPerWeek` performed sessions and deload completes after `sessionsPerWeek` performed sessions.
 - Deload completion now transitions the source mesocycle into `AWAITING_HANDOFF`; it does not auto-create the successor. Successor creation is reserved for `POST /api/mesocycles/[id]/accept-next-cycle`.
 - Save route persists session-level cycle context only inside `selectionMetadata.sessionDecisionReceipt`; `POST /api/workouts/save` rejects writes that omit the canonical receipt instead of synthesizing fallback state (`src/app/api/workouts/save/route.ts`).

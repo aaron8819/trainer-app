@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as workoutApi from "@/components/log-workout/api";
@@ -25,17 +26,22 @@ type CompletionHarnessCallbacks = {
 
 function CompletionHarness({
   callbacks,
+  initialRevision = 1,
   totalSets = 2,
   completedSetCount = 1,
   skippedSetCount = 1,
 }: {
   callbacks: CompletionHarnessCallbacks;
+  initialRevision?: number;
   totalSets?: number;
   completedSetCount?: number;
   skippedSetCount?: number;
 }) {
+  const [revision, setRevision] = useState(initialRevision);
   const completion = useWorkoutSessionCompletion({
     workoutId: "workout-1",
+    revision,
+    onRevision: setRevision,
     totalSets,
     completedSetCount,
     skippedSetCount,
@@ -218,6 +224,38 @@ describe("useWorkoutSessionCompletion", () => {
         "Workout saved as partial (some planned sets were unresolved)"
       );
     });
+  });
+
+  it("sends the loaded revision and advances it after a successful partial save", async () => {
+    const callbacks = createCallbacks();
+    mockedSaveWorkoutRequest
+      .mockResolvedValueOnce(
+        makeSaveWorkoutResponse("PARTIAL", {
+          action: "mark_partial",
+          revision: 8,
+        }),
+      )
+      .mockResolvedValueOnce(
+        makeSaveWorkoutResponse("COMPLETED", {
+          action: "mark_completed",
+          revision: 9,
+        }),
+      );
+
+    render(<CompletionHarness callbacks={callbacks} initialRevision={7} />);
+    fireEvent.click(screen.getByRole("button", { name: "partial" }));
+    await waitFor(() => expect(mockedSaveWorkoutRequest).toHaveBeenCalledTimes(1));
+    expect(mockedSaveWorkoutRequest).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ expectedRevision: 7 }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "complete" }));
+    await waitFor(() => expect(mockedSaveWorkoutRequest).toHaveBeenCalledTimes(2));
+    expect(mockedSaveWorkoutRequest).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ expectedRevision: 8 }),
+    );
   });
 
   it("keeps the session active when mark_completed persists as partial", async () => {

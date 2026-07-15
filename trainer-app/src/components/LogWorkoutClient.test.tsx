@@ -405,6 +405,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
   beforeEach(() => {
     mockedAddSetToExerciseRequest.mockResolvedValue({
       data: {
+        revision: 2,
         set: {
           setId: "set-3",
           setIndex: 3,
@@ -418,11 +419,11 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       error: null,
     });
     mockedDeleteWorkoutExerciseRequest.mockResolvedValue({
-      data: { ok: true, removedWorkoutExerciseId: "ex-added" },
+      data: { ok: true, removedWorkoutExerciseId: "ex-added", revision: 2 },
       error: null,
     });
-    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
-    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
+    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true, revision: 2 }, error: null });
+    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok", revision: 2 }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
     mockedLoadWeeklyVolumeCheckRequest.mockResolvedValue(makeWeeklyVolumeCheckResponse());
     mockedFetch.mockResolvedValue({
@@ -556,6 +557,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
 
     await waitFor(() => {
       expect(mockedLogSetRequest).toHaveBeenCalledWith({
+        expectedRevision: 1,
         workoutSetId: "set-row-1",
         actualReps: 10,
         actualLoad: 80,
@@ -759,6 +761,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       expect(mockedDeleteWorkoutExerciseRequest).toHaveBeenCalledWith({
         workoutId: "workout-1",
         workoutExerciseId: "ex-added",
+        expectedRevision: 1,
       });
       expect(screen.queryByTestId("queue-row-ex-added")).not.toBeInTheDocument();
       expect(screen.queryByText("Pec Deck")).not.toBeInTheDocument();
@@ -1143,6 +1146,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     await user.click(screen.getByRole("button", { name: "6" }));
     mockedLogSetRequest.mockResolvedValueOnce({
       data: {
+        revision: 2,
         status: "logged",
         wasCreated: true,
         set: {
@@ -1473,6 +1477,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       expect(mockedAddSetToExerciseRequest).toHaveBeenCalledWith({
         workoutId: "workout-1",
         workoutExerciseId: "ex-1",
+        expectedRevision: 2,
       });
       expect(screen.getByRole("button", { name: /Set 3 Extra set/ })).toBeInTheDocument();
       expect(screen.getByText(/Set 3 of 3 · Extra set/)).toBeInTheDocument();
@@ -1524,6 +1529,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       expect(mockedAddSetToExerciseRequest).toHaveBeenCalledWith({
         workoutId: "workout-1",
         workoutExerciseId: "ex-1",
+        expectedRevision: 2,
       });
       expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Dumbbell Bench Press" })).toBeInTheDocument();
@@ -1541,6 +1547,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     const user = userEvent.setup();
     mockedAddSetToExerciseRequest.mockResolvedValueOnce({
       data: {
+        revision: 2,
         set: {
           setId: "added-set-2",
           setIndex: 2,
@@ -1587,6 +1594,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       expect(mockedAddSetToExerciseRequest).toHaveBeenCalledWith({
         workoutId: "workout-1",
         workoutExerciseId: "ex-added",
+        expectedRevision: 1,
       });
       expect(screen.getByText(/Set 2 of 2 .*Extra set/)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Set 2 Extra set/ })).toBeInTheDocument();
@@ -1598,6 +1606,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     mockedAddSetToExerciseRequest
       .mockResolvedValueOnce({
         data: {
+          revision: 2,
           set: {
             setId: "set-3",
             setIndex: 3,
@@ -1612,6 +1621,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       })
       .mockResolvedValueOnce({
         data: {
+          revision: 3,
           set: {
             setId: "set-4",
             setIndex: 4,
@@ -1644,6 +1654,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       expect(mockedAddSetToExerciseRequest).toHaveBeenNthCalledWith(1, {
         workoutId: "workout-1",
         workoutExerciseId: "ex-1",
+        expectedRevision: 2,
       });
       expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Set 3 Extra set/ })).toBeInTheDocument();
@@ -1679,6 +1690,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
       expect(mockedAddSetToExerciseRequest).toHaveBeenNthCalledWith(2, {
         workoutId: "workout-1",
         workoutExerciseId: "ex-1",
+        expectedRevision: 2,
       });
       expect(screen.queryByTestId("active-set-edit-banner")).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Set 4 Extra set/ })).toBeInTheDocument();
@@ -3005,8 +3017,8 @@ function makeQueuePerformanceExercises(): LogExerciseInput[] {
 
 describe("4d - Active card edit mode", () => {
   beforeEach(() => {
-    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
-    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
+    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true, revision: 2 }, error: null });
+    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok", revision: 2 }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
     window.localStorage.clear();
     window.sessionStorage.clear();
@@ -3290,8 +3302,8 @@ describe("4d - Active card edit mode", () => {
 
 describe("Queue render stability", () => {
   beforeEach(() => {
-    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
-    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
+    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true, revision: 2 }, error: null });
+    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok", revision: 2 }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
     window.localStorage.clear();
     window.sessionStorage.clear();
@@ -3373,8 +3385,8 @@ describe("Queue render stability", () => {
 
 describe("4i - Exercise queue expansion stays user-controlled", () => {
   beforeEach(() => {
-    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
-    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
+    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true, revision: 2 }, error: null });
+    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok", revision: 2 }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
     window.localStorage.clear();
     window.sessionStorage.clear();
@@ -3443,8 +3455,8 @@ describe("4i - Exercise queue expansion stays user-controlled", () => {
 
 describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
   beforeEach(() => {
-    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
-    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
+    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true, revision: 2 }, error: null });
+    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok", revision: 2 }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
     window.localStorage.clear();
     window.sessionStorage.clear();
@@ -3720,8 +3732,8 @@ describe("L-2/L-3/L-1/T-1/T-3 — Layout and UX fixes", () => {
 
 describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () => {
   beforeEach(() => {
-    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
-    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
+    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true, revision: 2 }, error: null });
+    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok", revision: 2 }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
     window.localStorage.clear();
     window.sessionStorage.clear();
@@ -3754,7 +3766,7 @@ describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () 
   });
 
   it("I-5: shows spinner in Log set button while saving", async () => {
-    let resolveLog!: (val: { data: { status: string; wasCreated: boolean }; error: null }) => void;
+    let resolveLog!: (val: { data: { status: string; wasCreated: boolean; revision: number }; error: null }) => void;
     mockedLogSetRequest.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -3769,7 +3781,7 @@ describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () 
       expect(screen.getByTestId("log-set-spinner")).toBeInTheDocument();
     });
 
-    resolveLog({ data: { status: "ok", wasCreated: true }, error: null });
+    resolveLog({ data: { status: "ok", wasCreated: true, revision: 2 }, error: null });
 
     await waitFor(() => {
       expect(screen.queryByTestId("log-set-spinner")).not.toBeInTheDocument();

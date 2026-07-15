@@ -17,6 +17,7 @@ function makeWorkout(
 ): WorkoutListSurfaceSummary {
   return {
     id: "w1",
+    revision: 1,
     scheduledDate: "2026-02-25T00:00:00.000Z",
     completedAt: null,
     status: "COMPLETED",

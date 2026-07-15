@@ -23,6 +23,7 @@ import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supp
 
 export const workoutListItemSelect = {
   id: true,
+  revision: true,
   scheduledDate: true,
   completedAt: true,
   status: true,
@@ -67,6 +68,7 @@ type WorkoutListItemRow = Prisma.WorkoutGetPayload<{
 
 export type WorkoutListSurfaceSummary = {
   id: string;
+  revision: number;
   scheduledDate: string;
   completedAt: string | null;
   status: string;
@@ -236,6 +238,7 @@ export function buildWorkoutListSurfaceSummary(
 
   return {
     id: row.id,
+    revision: row.revision,
     scheduledDate: row.scheduledDate.toISOString(),
     completedAt: row.completedAt?.toISOString() ?? null,
     status: row.status,

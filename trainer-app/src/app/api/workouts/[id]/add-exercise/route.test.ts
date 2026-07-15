@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => {
   const goalsFindUnique = vi.fn();
   const setLogFindFirst = vi.fn();
   const txWorkoutFindUnique = vi.fn();
+  const txWorkoutFindFirst = vi.fn();
+  const txWorkoutUpdateMany = vi.fn();
   const txWorkoutUpdate = vi.fn();
   const txWorkoutExerciseFindFirst = vi.fn();
   const txWorkoutExerciseCreate = vi.fn();
@@ -15,6 +17,8 @@ const mocks = vi.hoisted(() => {
   const tx = {
     workout: {
       findUnique: txWorkoutFindUnique,
+      findFirst: txWorkoutFindFirst,
+      updateMany: txWorkoutUpdateMany,
       update: txWorkoutUpdate,
     },
     workoutExercise: {
@@ -51,6 +55,8 @@ const mocks = vi.hoisted(() => {
     goalsFindUnique,
     setLogFindFirst,
     txWorkoutFindUnique,
+    txWorkoutFindFirst,
+    txWorkoutUpdateMany,
     txWorkoutUpdate,
     txWorkoutExerciseFindFirst,
     txWorkoutExerciseCreate,
@@ -172,6 +178,14 @@ function buildWorkoutSelectionMetadata(overrides?: Record<string, unknown>) {
 describe("POST /api/workouts/[id]/add-exercise", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
+    mocks.txWorkoutUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.txWorkoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      revision: 2,
+      status: "PLANNED",
+      mesocycleId: null,
+    });
 
     mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-1",
@@ -363,7 +377,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly" }),
+        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -416,7 +430,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly" }),
+        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -463,7 +477,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly", allowDuplicate: true }),
+        body: JSON.stringify({ exerciseId: "fly", allowDuplicate: true, expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -533,7 +547,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly", allowDuplicate: true }),
+        body: JSON.stringify({ exerciseId: "fly", allowDuplicate: true, expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -552,7 +566,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly" }),
+        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -613,7 +627,6 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
     expect(mocks.txWorkoutUpdate).toHaveBeenCalledWith({
       where: { id: "workout-1" },
       data: {
-        revision: { increment: 1 },
         selectionMetadata: expect.objectContaining({
           sessionDecisionReceipt: canonicalReceipt,
           runtimeEditReconciliation: expect.objectContaining({
@@ -683,7 +696,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly" }),
+        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -748,7 +761,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly" }),
+        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -811,7 +824,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
         new Request("http://localhost/api/workouts/workout-1/add-exercise", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ exerciseId: "fly" }),
+          body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
         }),
         { params: Promise.resolve({ id: "workout-1" }) }
       );
@@ -847,7 +860,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly" }),
+        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -874,7 +887,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly" }),
+        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -897,7 +910,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly" }),
+        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );
@@ -925,7 +938,7 @@ describe("POST /api/workouts/[id]/add-exercise", () => {
       new Request("http://localhost/api/workouts/workout-1/add-exercise", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exerciseId: "fly" }),
+        body: JSON.stringify({ exerciseId: "fly", expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1" }) }
     );

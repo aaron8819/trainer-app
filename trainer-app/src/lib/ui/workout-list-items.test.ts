@@ -15,6 +15,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
   it("derives session snapshot and logged-set counts from the shared row shape", () => {
     const summary = buildWorkoutListSurfaceSummary({
       id: "workout-1",
+      revision: 1,
       scheduledDate: new Date("2026-03-04T10:00:00.000Z"),
       completedAt: new Date("2026-03-04T11:00:00.000Z"),
       status: "COMPLETED",
@@ -79,6 +80,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
 
     expect(summary).toEqual({
       id: "workout-1",
+      revision: 1,
       scheduledDate: "2026-03-04T10:00:00.000Z",
       completedAt: "2026-03-04T11:00:00.000Z",
       status: "COMPLETED",
@@ -109,6 +111,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
   it("uses persisted gap-fill session snapshot and labels from canonical receipt", () => {
     const summary = buildWorkoutListSurfaceSummary({
       id: "workout-gap",
+      revision: 1,
       scheduledDate: new Date("2026-03-04T10:00:00.000Z"),
       completedAt: null,
       status: "PLANNED",
@@ -175,6 +178,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
   it("labels closeout sessions explicitly and ignores stale slot identity for list surfaces", () => {
     const summary = buildWorkoutListSurfaceSummary({
       id: "workout-closeout",
+      revision: 1,
       scheduledDate: new Date("2026-03-04T10:00:00.000Z"),
       completedAt: null,
       status: "PLANNED",
@@ -245,6 +249,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
   it("labels dismissed closeouts without changing the persisted workout status", () => {
     const summary = buildWorkoutListSurfaceSummary({
       id: "workout-closeout",
+      revision: 1,
       scheduledDate: new Date("2026-03-04T10:00:00.000Z"),
       completedAt: null,
       status: "PLANNED",
@@ -310,6 +315,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
   it("uses slot-aware identity labels when a saved receipt includes a session slot", () => {
     const summary = buildWorkoutListSurfaceSummary({
       id: "workout-upper-2",
+      revision: 1,
       scheduledDate: new Date("2026-03-04T10:00:00.000Z"),
       completedAt: null,
       status: "PLANNED",
@@ -373,6 +379,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
   it("marks strict supplemental deficit sessions without changing body-part primary labeling", () => {
     const summary = buildWorkoutListSurfaceSummary({
       id: "workout-supp",
+      revision: 1,
       scheduledDate: new Date("2026-03-04T10:00:00.000Z"),
       completedAt: null,
       status: "PLANNED",
@@ -436,6 +443,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
   it("marks deload sessions explicitly for history and recent-workout surfaces", () => {
     const summary = buildWorkoutListSurfaceSummary({
       id: "workout-deload",
+      revision: 1,
       scheduledDate: new Date("2026-03-04T10:00:00.000Z"),
       completedAt: new Date("2026-03-04T11:00:00.000Z"),
       status: "COMPLETED",

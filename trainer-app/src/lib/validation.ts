@@ -196,6 +196,7 @@ export const setLogSchema = z
     actualLoad: z.number().min(0).optional(),
     wasSkipped: z.boolean().optional(),
     notes: z.string().optional(),
+    expectedRevision: z.number().int().min(1),
   })
   .superRefine((value, ctx) => {
     if (value.workoutSetId) {
@@ -245,6 +246,7 @@ export const profileSetupSchema = z.object({
 
 export const deleteWorkoutSchema = z.object({
   workoutId: z.string(),
+  expectedRevision: z.number().int().min(1),
 });
 
 export const toggleFavoriteSchema = z.object({

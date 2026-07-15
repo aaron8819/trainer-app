@@ -56,6 +56,7 @@ export type HomeContinuitySummary = {
 export type HomeCloseoutSummary = {
   title: string;
   workoutId: string | null;
+  workoutRevision?: number | null;
   status: string;
   statusLabel: string;
   detail: string;
@@ -410,6 +411,7 @@ function buildHomeCloseoutSummary(
     return {
       title,
       workoutId: null,
+      workoutRevision: null,
       status: "available",
       statusLabel: "Available",
       detail: closeout.isPriorWeek
@@ -432,6 +434,7 @@ function buildHomeCloseoutSummary(
     return {
       title,
       workoutId: closeout.workoutId,
+      workoutRevision: closeout.workoutRevision,
       status: closeout.status,
       statusLabel,
       detail:
@@ -450,6 +453,7 @@ function buildHomeCloseoutSummary(
     return {
       title,
       workoutId: closeout.workoutId,
+      workoutRevision: closeout.workoutRevision,
       status: closeout.status,
       statusLabel,
       detail:
@@ -467,6 +471,7 @@ function buildHomeCloseoutSummary(
   return {
     title,
     workoutId: closeout.workoutId,
+    workoutRevision: closeout.workoutRevision,
     status: closeout.status,
     statusLabel,
     detail:

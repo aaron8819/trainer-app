@@ -47,6 +47,7 @@ type SetPrefilledField = keyof PrefilledFieldState;
 
 type UseWorkoutSessionFlowParams = {
   workoutId: string;
+  initialRevision?: number;
   flatSets: FlatSetItem[];
   totalSets: number;
   completedSetCount: number;
@@ -80,6 +81,7 @@ function setSetInputFieldsPrefilled(
 
 export function useWorkoutSessionFlow({
   workoutId,
+  initialRevision = 1,
   flatSets,
   totalSets,
   completedSetCount,
@@ -100,6 +102,7 @@ export function useWorkoutSessionFlow({
   isBodyweightExercise,
   onAdvanceSet,
 }: UseWorkoutSessionFlowParams) {
+  const [revision, setRevision] = useState(initialRevision);
   const [savingSetId, setSavingSetId] = useState<string | null>(null);
   const [addingSetExerciseId, setAddingSetExerciseId] = useState<string | null>(null);
   const [removingExerciseId, setRemovingExerciseId] = useState<string | null>(null);
@@ -225,6 +228,7 @@ export function useWorkoutSessionFlow({
 
       try {
         const response = await logSetRequest({
+          expectedRevision: revision,
           workoutSetId: targetSet.set.setId,
           setIntent: normalizedSet.setIntent ?? "WORK",
           actualReps: normalizedSet.actualReps ?? undefined,
@@ -239,6 +243,11 @@ export function useWorkoutSessionFlow({
         }
 
         const body = response.data;
+        if (!body) {
+          showError("Failed to log set");
+          return false;
+        }
+        setRevision(body.revision);
         updateSetFields(setId, (set) => ({ ...set, ...normalizedSet }));
 
         const nextLogged = new Set(loggedSetIds);
@@ -331,6 +340,7 @@ export function useWorkoutSessionFlow({
       startTimer,
       updateSetFields,
       onAdvanceSet,
+      revision,
     ]
   );
 
@@ -344,11 +354,19 @@ export function useWorkoutSessionFlow({
 
     try {
       if (undoSnapshot.wasCreated) {
-        const response = await deleteSetLogRequest(undoSnapshot.setId);
+        const response = await deleteSetLogRequest({
+          workoutSetId: undoSnapshot.setId,
+          expectedRevision: revision,
+        });
         if (response.error) {
           showError(response.error);
           return;
         }
+        if (!response.data) {
+          showError("Failed to undo set log");
+          return;
+        }
+        setRevision(response.data.revision);
 
         if (undoSnapshot.previousSet) {
           updateSetFields(undoSnapshot.setId, () => undoSnapshot.previousSet as LogSetInput);
@@ -359,13 +377,23 @@ export function useWorkoutSessionFlow({
           return next;
         });
       } else {
-        const deleteResponse = await deleteSetLogRequest(undoSnapshot.setId);
+        const deleteResponse = await deleteSetLogRequest({
+          workoutSetId: undoSnapshot.setId,
+          expectedRevision: revision,
+        });
         if (deleteResponse.error) {
           showError(deleteResponse.error);
           return;
         }
+        if (!deleteResponse.data) {
+          showError("Failed to undo set log");
+          return;
+        }
+        const revisionAfterDelete = deleteResponse.data.revision;
+        setRevision(revisionAfterDelete);
 
         const restoreResponse = await logSetRequest({
+          expectedRevision: revisionAfterDelete,
           workoutSetId: undoSnapshot.setId,
           setIntent: undoSnapshot.previousLog?.setIntent ?? "WORK",
           actualReps: undoSnapshot.previousLog?.actualReps ?? undefined,
@@ -377,6 +405,11 @@ export function useWorkoutSessionFlow({
           showError(restoreResponse.error);
           return;
         }
+        if (!restoreResponse.data) {
+          showError("Failed to restore set log");
+          return;
+        }
+        setRevision(restoreResponse.data.revision);
 
         if (undoSnapshot.previousSet) {
           updateSetFields(undoSnapshot.setId, () => undoSnapshot.previousSet as LogSetInput);
@@ -392,7 +425,7 @@ export function useWorkoutSessionFlow({
     } finally {
       setSavingSetId(null);
     }
-  }, [clearFeedback, restoreTimer, setActiveSetId, setLoggedSetIds, showError, showStatus, undoSnapshot, updateSetFields]);
+  }, [clearFeedback, restoreTimer, revision, setActiveSetId, setLoggedSetIds, showError, showStatus, undoSnapshot, updateSetFields]);
 
   const handleLogWarmupSet = useCallback(
     async ({
@@ -428,6 +461,7 @@ export function useWorkoutSessionFlow({
 
       try {
         const response = await logSetRequest({
+          expectedRevision: revision,
           workoutExerciseId,
           setIntent: "WARMUP",
           actualReps: values.actualReps ?? undefined,
@@ -444,6 +478,7 @@ export function useWorkoutSessionFlow({
           showError("Failed to log warmup");
           return null;
         }
+        setRevision(response.data.revision);
 
         const warmupSet: LogSetInput = {
           ...response.data.set,
@@ -517,6 +552,7 @@ export function useWorkoutSessionFlow({
       showError,
       showStatus,
       startTimer,
+      revision,
     ]
   );
 
@@ -542,6 +578,7 @@ export function useWorkoutSessionFlow({
         const response = await addSetToExerciseRequest({
           workoutId,
           workoutExerciseId,
+          expectedRevision: revision,
         });
 
         if (response.error) {
@@ -552,6 +589,7 @@ export function useWorkoutSessionFlow({
           showError("Failed to add set");
           return false;
         }
+        setRevision(response.data.revision);
 
         const nextSet = response.data.set;
         const nextFocusSetId = resolveAddSetFocusTarget({
@@ -592,7 +630,7 @@ export function useWorkoutSessionFlow({
         setAddingSetExerciseId(null);
       }
     },
-    [clearFeedback, setActiveSetId, setData, showError, showStatus, workoutId]
+    [clearFeedback, revision, setActiveSetId, setData, showError, showStatus, workoutId]
   );
 
   const handleRemoveExercise = useCallback(
@@ -616,12 +654,18 @@ export function useWorkoutSessionFlow({
         const response = await deleteWorkoutExerciseRequest({
           workoutId,
           workoutExerciseId,
+          expectedRevision: revision,
         });
 
         if (response.error) {
           showError(response.error);
           return false;
         }
+        if (!response.data) {
+          showError("Failed to remove exercise");
+          return false;
+        }
+        setRevision(response.data.revision);
 
         const removedSetIdSet = new Set(removedSetIds);
         const remainingFlatSets = currentFlatSets.filter(
@@ -684,12 +728,15 @@ export function useWorkoutSessionFlow({
       setLoggedSetIds,
       showError,
       showStatus,
+      revision,
       workoutId,
     ]
   );
 
   const completion: WorkoutSessionCompletionController = useWorkoutSessionCompletion({
     workoutId,
+    revision,
+    onRevision: setRevision,
     totalSets,
     completedSetCount,
     skippedSetCount,
@@ -712,6 +759,8 @@ export function useWorkoutSessionFlow({
   );
 
   return {
+    revision,
+    setRevision,
     addingSetExerciseId,
     removingExerciseId,
     savingSetId,

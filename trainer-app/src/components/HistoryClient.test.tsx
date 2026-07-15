@@ -29,6 +29,7 @@ vi.mock("./DeleteWorkoutButton", () => ({
 function makeWorkout(overrides: Partial<HistoryWorkoutItem> = {}): HistoryWorkoutItem {
   return {
     id: "w1",
+    revision: 1,
     scheduledDate: "2026-02-20T10:00:00.000Z",
     completedAt: null,
     status: "COMPLETED",

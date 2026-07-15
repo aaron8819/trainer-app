@@ -40,6 +40,8 @@ function toTerminalState(workoutStatus: WorkoutStatus): WorkoutSessionFlowState[
 
 type UseWorkoutSessionCompletionParams = {
   workoutId: string;
+  revision: number;
+  onRevision: (revision: number) => void;
   totalSets: number;
   completedSetCount: number;
   skippedSetCount: number;
@@ -52,6 +54,8 @@ type UseWorkoutSessionCompletionParams = {
 
 export function useWorkoutSessionCompletion({
   workoutId,
+  revision,
+  onRevision,
   totalSets,
   completedSetCount,
   skippedSetCount,
@@ -99,6 +103,7 @@ export function useWorkoutSessionCompletion({
         if (resolvedAction === "mark_skipped") {
           const response = await saveWorkoutRequest({
             workoutId,
+            expectedRevision: revision,
             action: "mark_skipped",
             status: "SKIPPED",
             notes: sessionFlow.skipReason ? `Skipped: ${sessionFlow.skipReason}` : "Skipped",
@@ -113,6 +118,7 @@ export function useWorkoutSessionCompletion({
             showError("Failed to complete workout action");
             return;
           }
+          onRevision(response.data.revision);
 
           const terminalState = toTerminalState(response.data.workoutStatus);
 
@@ -131,6 +137,7 @@ export function useWorkoutSessionCompletion({
 
         const response = await saveWorkoutRequest({
           workoutId,
+          expectedRevision: revision,
           action: resolvedAction,
           status: resolvedAction === "mark_partial" ? "PARTIAL" : "COMPLETED",
           exercises: [],
@@ -144,6 +151,7 @@ export function useWorkoutSessionCompletion({
           showError("Failed to complete workout action");
           return;
         }
+        onRevision(response.data.revision);
 
         const terminalState = toTerminalState(response.data.workoutStatus);
 
@@ -184,6 +192,8 @@ export function useWorkoutSessionCompletion({
       clearFeedback,
       clearTimer,
       resolveAction,
+      revision,
+      onRevision,
       sessionActionPending,
       sessionFlow.skipReason,
       showError,

@@ -29,6 +29,7 @@ describe("DELETE /api/workouts/[id]/exercises/[exerciseId]", () => {
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
     mocks.removeRuntimeAddedWorkoutExercise.mockResolvedValue({
       removedWorkoutExerciseId: "we-added",
+      revision: 2,
     });
   });
 
@@ -36,6 +37,8 @@ describe("DELETE /api/workouts/[id]/exercises/[exerciseId]", () => {
     const response = await DELETE(
       new Request("http://localhost/api/workouts/workout-1/exercises/we-added", {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1", exerciseId: "we-added" }) }
     );
@@ -43,12 +46,14 @@ describe("DELETE /api/workouts/[id]/exercises/[exerciseId]", () => {
     await expect(response.json()).resolves.toEqual({
       ok: true,
       removedWorkoutExerciseId: "we-added",
+      revision: 2,
     });
     expect(response.status).toBe(200);
     expect(mocks.removeRuntimeAddedWorkoutExercise).toHaveBeenCalledWith({
       workoutId: "workout-1",
       workoutExerciseId: "we-added",
       userId: "user-1",
+      expectedRevision: 1,
     });
   });
 
@@ -63,6 +68,8 @@ describe("DELETE /api/workouts/[id]/exercises/[exerciseId]", () => {
     const response = await DELETE(
       new Request("http://localhost/api/workouts/workout-1/exercises/we-added", {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-1", exerciseId: "we-added" }) }
     );

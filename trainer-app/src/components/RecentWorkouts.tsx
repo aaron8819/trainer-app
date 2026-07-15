@@ -102,7 +102,11 @@ export default function RecentWorkouts({
                   </span>
                   <WorkoutRowActions workout={workout} />
                   {showDeleteActions ? (
-                    <DeleteWorkoutButton workoutId={workout.id} onDeleted={handleDeleted} />
+                    <DeleteWorkoutButton
+                      workoutId={workout.id}
+                      expectedRevision={workout.revision}
+                      onDeleted={handleDeleted}
+                    />
                   ) : null}
                 </div>
               </div>

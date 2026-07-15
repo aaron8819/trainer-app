@@ -1,5 +1,9 @@
 # 05 UI Flows
 
+## Workout-session revision flow
+
+The logging session owns one current workout revision. Every successful runtime command replaces that state with the server-returned revision, and the next command or final save sends it as `expectedRevision`. The client never predicts a revision. A `409` leaves optimistic state unapplied and requires the existing refresh/reload recovery path.
+
 Owner: Aaron
 Last reviewed: 2026-03-17
 Purpose: Canonical reference for current UI routes and core user flows implemented in the Next.js App Router.

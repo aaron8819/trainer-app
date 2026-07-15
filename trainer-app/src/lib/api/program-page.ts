@@ -74,6 +74,7 @@ type ActiveProgramPageMesocycle = {
 
 type CurrentWeekWorkoutRow = {
   id: string;
+  revision?: number;
   status: WorkoutStatus;
   scheduledDate: Date;
   sessionIntent: string | null;
@@ -167,6 +168,7 @@ export type ProgramCurrentWeekPlan = {
 export type ProgramCloseoutSummary = {
   title: string;
   workoutId: string | null;
+  workoutRevision?: number | null;
   status: string;
   statusLabel: string;
   detail: string;
@@ -968,6 +970,7 @@ function buildProgramCloseoutSummary(
     return {
       title,
       workoutId: null,
+      workoutRevision: null,
       status: "available",
       statusLabel: "Available",
       detail: closeout.isPriorWeek
@@ -991,6 +994,7 @@ function buildProgramCloseoutSummary(
     return {
       title,
       workoutId: closeout.workoutId,
+      workoutRevision: closeout.workoutRevision,
       status: closeout.status,
       statusLabel,
       detail:
@@ -1011,6 +1015,7 @@ function buildProgramCloseoutSummary(
     return {
       title,
       workoutId: closeout.workoutId,
+      workoutRevision: closeout.workoutRevision,
       status: closeout.status,
       statusLabel,
       detail:
@@ -1030,6 +1035,7 @@ function buildProgramCloseoutSummary(
   return {
     title,
     workoutId: closeout.workoutId,
+    workoutRevision: closeout.workoutRevision,
     status: closeout.status,
     statusLabel,
     detail:
@@ -1257,6 +1263,7 @@ async function loadCurrentWeekWorkouts(input: {
     orderBy: [{ scheduledDate: "asc" }, { id: "asc" }],
     select: {
       id: true,
+      revision: true,
       status: true,
       scheduledDate: true,
       sessionIntent: true,

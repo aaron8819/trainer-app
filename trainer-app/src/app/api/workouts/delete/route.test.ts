@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const workoutFindFirst = vi.fn();
+  const workoutUpdateMany = vi.fn();
   const workoutDelete = vi.fn();
   const workoutExerciseFindMany = vi.fn();
   const setLogDeleteMany = vi.fn();
@@ -11,6 +12,8 @@ const mocks = vi.hoisted(() => {
 
   const tx = {
     workout: {
+      findFirst: workoutFindFirst,
+      updateMany: workoutUpdateMany,
       delete: workoutDelete,
     },
     workoutExercise: {
@@ -39,6 +42,7 @@ const mocks = vi.hoisted(() => {
     prisma,
     tx,
     workoutFindFirst,
+    workoutUpdateMany,
     workoutDelete,
     workoutExerciseFindMany,
     setLogDeleteMany,
@@ -66,17 +70,19 @@ describe("POST /api/workouts/delete", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.workoutExerciseFindMany.mockResolvedValue([]);
+    mocks.workoutUpdateMany.mockResolvedValue({ count: 1 });
     mocks.reconcileMesocycleLifecycle.mockResolvedValue({});
   });
 
   it("returns 404 when the workout does not exist", async () => {
-    mocks.workoutFindFirst.mockResolvedValueOnce(null);
+    mocks.workoutUpdateMany.mockResolvedValueOnce({ count: 0 });
+    mocks.workoutFindFirst.mockResolvedValue(null);
 
     const response = await POST(
       new Request("http://localhost/api/workouts/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workoutId: "missing-workout" }),
+        body: JSON.stringify({ workoutId: "missing-workout", expectedRevision: 1 }),
       })
     );
 
@@ -86,7 +92,7 @@ describe("POST /api/workouts/delete", () => {
   });
 
   it("reconciles active mesocycle lifecycle after deleting a workout", async () => {
-    mocks.workoutFindFirst.mockResolvedValueOnce({
+    mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-1",
       mesocycleId: "meso-1",
       mesocycle: {
@@ -103,7 +109,7 @@ describe("POST /api/workouts/delete", () => {
       new Request("http://localhost/api/workouts/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workoutId: "workout-1" }),
+        body: JSON.stringify({ workoutId: "workout-1", expectedRevision: 1 }),
       })
     );
 
@@ -130,7 +136,7 @@ describe("POST /api/workouts/delete", () => {
   });
 
   it("does not reopen a completed mesocycle during delete cleanup", async () => {
-    mocks.workoutFindFirst.mockResolvedValueOnce({
+    mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-1",
       mesocycleId: "meso-1",
       mesocycle: {
@@ -146,7 +152,7 @@ describe("POST /api/workouts/delete", () => {
       new Request("http://localhost/api/workouts/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workoutId: "workout-1" }),
+        body: JSON.stringify({ workoutId: "workout-1", expectedRevision: 1 }),
       })
     );
 
@@ -161,7 +167,7 @@ describe("POST /api/workouts/delete", () => {
   });
 
   it("still allows deleting an inactive but non-completed mesocycle workout", async () => {
-    mocks.workoutFindFirst.mockResolvedValueOnce({
+    mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-1",
       mesocycleId: "meso-1",
       mesocycle: {
@@ -177,7 +183,7 @@ describe("POST /api/workouts/delete", () => {
       new Request("http://localhost/api/workouts/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workoutId: "workout-1" }),
+        body: JSON.stringify({ workoutId: "workout-1", expectedRevision: 1 }),
       })
     );
 

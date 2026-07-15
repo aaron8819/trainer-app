@@ -11,6 +11,8 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   workoutId: string;
+  expectedRevision: number;
+  onRevision: (revision: number) => void;
   onAdd: (exercise: LogExerciseInput) => void;
 };
 
@@ -19,7 +21,14 @@ type DuplicateAddConfirmation = {
   message: string;
 };
 
-export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props) {
+export function BonusExerciseSheet({
+  isOpen,
+  onClose,
+  workoutId,
+  expectedRevision,
+  onRevision,
+  onAdd,
+}: Props) {
   const [suggestions, setSuggestions] = useState<BonusSuggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -190,6 +199,7 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           exerciseId,
+          expectedRevision,
           ...(options.allowDuplicate ? { allowDuplicate: true } : {}),
         }),
       });
@@ -205,6 +215,9 @@ export function BonusExerciseSheet({ isOpen, onClose, workoutId, onAdd }: Props)
       }
       const data = await res.json().catch(() => ({}));
       if (data.exercise) {
+        if (typeof data.revision === "number") {
+          onRevision(data.revision);
+        }
         onAdd(data.exercise as LogExerciseInput);
         onClose();
       }

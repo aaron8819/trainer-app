@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => {
   const txWorkoutExerciseDelete = vi.fn();
   const txWorkoutExerciseFindMany = vi.fn();
   const txWorkoutUpdate = vi.fn();
+  const txWorkoutUpdateMany = vi.fn();
+  const txWorkoutFindFirst = vi.fn();
 
   const tx = {
     workoutExercise: {
@@ -18,6 +20,8 @@ const mocks = vi.hoisted(() => {
     },
     workout: {
       update: txWorkoutUpdate,
+      updateMany: txWorkoutUpdateMany,
+      findFirst: txWorkoutFindFirst,
     },
   };
 
@@ -32,6 +36,8 @@ const mocks = vi.hoisted(() => {
     txWorkoutExerciseDelete,
     txWorkoutExerciseFindMany,
     txWorkoutUpdate,
+    txWorkoutUpdateMany,
+    txWorkoutFindFirst,
   };
 });
 
@@ -145,6 +151,14 @@ describe("removeRuntimeAddedWorkoutExercise", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
+    mocks.txWorkoutUpdateMany.mockResolvedValue({ count: 1 });
+    mocks.txWorkoutFindFirst.mockResolvedValue({
+      id: "workout-1",
+      revision: 2,
+      status: "IN_PROGRESS",
+      mesocycleId: "meso-1",
+    });
+
     mocks.txWorkoutExerciseFindFirst.mockResolvedValue(buildWorkoutExercise());
     mocks.txWorkoutSetDeleteMany.mockResolvedValue({ count: 2 });
     mocks.txWorkoutExerciseDelete.mockResolvedValue({ id: "we-added" });
@@ -166,8 +180,9 @@ describe("removeRuntimeAddedWorkoutExercise", () => {
         workoutId: "workout-1",
         workoutExerciseId: "we-added",
         userId: "user-1",
+        expectedRevision: 1,
       })
-    ).resolves.toEqual({ removedWorkoutExerciseId: "we-added" });
+    ).resolves.toEqual({ removedWorkoutExerciseId: "we-added", revision: 2 });
 
     expect(mocks.txWorkoutExerciseFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -187,7 +202,6 @@ describe("removeRuntimeAddedWorkoutExercise", () => {
     expect(mocks.txWorkoutUpdate).toHaveBeenCalledWith({
       where: { id: "workout-1" },
       data: {
-        revision: { increment: 1 },
         selectionMetadata: expect.objectContaining({
           runtimeEditReconciliation: expect.objectContaining({
             ops: [
@@ -275,8 +289,9 @@ describe("removeRuntimeAddedWorkoutExercise", () => {
         workoutId: "workout-1",
         workoutExerciseId: "we-added",
         userId: "user-1",
+        expectedRevision: 1,
       })
-    ).resolves.toEqual({ removedWorkoutExerciseId: "we-added" });
+    ).resolves.toEqual({ removedWorkoutExerciseId: "we-added", revision: 2 });
   });
 
   it("rejects canonical planned exercises", async () => {
@@ -297,6 +312,7 @@ describe("removeRuntimeAddedWorkoutExercise", () => {
         workoutId: "workout-1",
         workoutExerciseId: "we-planned",
         userId: "user-1",
+        expectedRevision: 1,
       })
     ).rejects.toMatchObject({
       status: 409,
@@ -320,6 +336,7 @@ describe("removeRuntimeAddedWorkoutExercise", () => {
         workoutId: "workout-1",
         workoutExerciseId: "we-added",
         userId: "user-1",
+        expectedRevision: 1,
       })
     ).rejects.toMatchObject({
       status: 409,

@@ -19,6 +19,7 @@ import {
 } from "@/lib/evidence/session-decision-receipt";
 import type { SessionSlotSnapshot } from "@/lib/evidence/types";
 import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
+import { normalizeAcceptedSeedPayload } from "./mesocycle-seed-revision";
 
 type MesoSessionInput = {
   id?: string;
@@ -86,6 +87,18 @@ type IncompleteWorkoutCandidate = {
   mesocycleId?: string | null;
   mesocycleWeekSnapshot?: number | null;
   mesoSessionSnapshot?: number | null;
+  seedRevisionId?: string | null;
+  seedRevisionNumber?: number | null;
+  seedPayloadHash?: string | null;
+  seedRevision?: {
+    id: string;
+    mesocycleId: string;
+    revision: number;
+    seedPayload: unknown;
+    payloadHash: string | null;
+    hashAlgorithm: string | null;
+    provenanceStatus: string;
+  } | null;
   performedSetLogCount?: number;
   totalSetLogCount?: number;
   plannedExercises?: PlannedIncompleteExercise[];
@@ -96,6 +109,21 @@ type PlannedIncompleteExercise = {
   exerciseId: string;
   setCount: number;
 };
+
+export type MaterializedSessionIdentity = {
+  weekInMeso: number;
+  sessionInWeek: number;
+  slotId: string;
+  sessionIntent: string;
+  slotSequenceIndex: number;
+  slotSequenceLength: number | null;
+  slotSource: "mesocycle_slot_sequence" | "legacy_weekly_schedule";
+  provenance: "exact" | "legacy_derived";
+};
+
+export type MaterializedSessionIdentityResolution =
+  | { status: "available"; identity: MaterializedSessionIdentity }
+  | { status: "unavailable"; reason: string };
 
 export type PerformedAdvancingWorkoutCandidate = {
   advancesSplit: boolean | null;
@@ -152,6 +180,181 @@ function sameNormalizedIntent(
   right: string | null | undefined
 ): boolean {
   return Boolean(left && right && left.toLowerCase() === right.toLowerCase());
+}
+
+function unavailableMaterializedIdentity(
+  reason: string
+): MaterializedSessionIdentityResolution {
+  return { status: "unavailable", reason };
+}
+
+function isPositiveInteger(value: number | null | undefined): value is number {
+  return Number.isInteger(value) && (value ?? 0) > 0;
+}
+
+export function resolveMaterializedSessionIdentity(input: {
+  workout: IncompleteWorkoutCandidate;
+  mesocycle: MesoSessionInput | null;
+  weeklySchedule: string[];
+}): MaterializedSessionIdentityResolution {
+  const { workout, mesocycle } = input;
+  if (!mesocycle?.id || workout.mesocycleId !== mesocycle.id) {
+    return unavailableMaterializedIdentity("workout_mesocycle_mismatch");
+  }
+
+  const receipt = readSessionDecisionReceipt(workout.selectionMetadata);
+  const receiptMesocycleId = receipt?.sessionProvenance?.mesocycleId;
+  if (receiptMesocycleId != null && receiptMesocycleId !== mesocycle.id) {
+    return unavailableMaterializedIdentity("receipt_mesocycle_mismatch");
+  }
+
+  const receiptWeek = receipt?.cycleContext.weekInMeso;
+  if (
+    workout.mesocycleWeekSnapshot != null &&
+    receiptWeek != null &&
+    workout.mesocycleWeekSnapshot !== receiptWeek
+  ) {
+    return unavailableMaterializedIdentity("week_snapshot_receipt_mismatch");
+  }
+  const weekInMeso = workout.mesocycleWeekSnapshot ?? receiptWeek;
+  if (
+    !isPositiveInteger(weekInMeso) ||
+    weekInMeso > mesocycle.durationWeeks ||
+    (receipt?.cycleContext.mesocycleLength != null &&
+      receipt.cycleContext.mesocycleLength !== mesocycle.durationWeeks)
+  ) {
+    return unavailableMaterializedIdentity("week_identity_invalid");
+  }
+
+  const slotContract = resolveMesocycleSlotContract({
+    slotSequenceJson: mesocycle.slotSequenceJson,
+    weeklySchedule: input.weeklySchedule,
+  });
+  const receiptSlot = receipt?.sessionSlot;
+  const receiptSession = receiptSlot ? receiptSlot.sequenceIndex + 1 : null;
+  if (
+    workout.mesoSessionSnapshot != null &&
+    receiptSession != null &&
+    workout.mesoSessionSnapshot !== receiptSession
+  ) {
+    return unavailableMaterializedIdentity("session_snapshot_receipt_mismatch");
+  }
+  const sessionInWeek = workout.mesoSessionSnapshot ?? receiptSession;
+  if (
+    !isPositiveInteger(sessionInWeek) ||
+    sessionInWeek > mesocycle.sessionsPerWeek ||
+    sessionInWeek > slotContract.slots.length
+  ) {
+    return unavailableMaterializedIdentity("session_identity_invalid");
+  }
+
+  const contractSlot = slotContract.slots[sessionInWeek - 1];
+  if (!contractSlot) {
+    return unavailableMaterializedIdentity("slot_identity_unavailable");
+  }
+  if (
+    receiptSlot &&
+    (receiptSlot.slotId !== contractSlot.slotId ||
+      receiptSlot.sequenceIndex !== contractSlot.sequenceIndex ||
+      (receiptSlot.sequenceLength != null &&
+        receiptSlot.sequenceLength !== slotContract.slots.length) ||
+      !sameNormalizedIntent(receiptSlot.intent, contractSlot.intent))
+  ) {
+    return unavailableMaterializedIdentity("receipt_slot_contract_mismatch");
+  }
+
+  const sessionIntent = workout.sessionIntent?.trim().toLowerCase() ?? null;
+  const resolvedSlot = receiptSlot ?? contractSlot;
+  if (!sessionIntent || !sameNormalizedIntent(sessionIntent, resolvedSlot.intent)) {
+    return unavailableMaterializedIdentity("session_intent_slot_mismatch");
+  }
+
+  const receiptSeed = receipt?.sessionProvenance?.seedProvenance;
+  const hasAnyWorkoutSeedEvidence = Boolean(
+    workout.seedRevisionId ||
+      workout.seedRevisionNumber != null ||
+      workout.seedPayloadHash
+  );
+  const hasCompleteWorkoutSeedEvidence = Boolean(
+    workout.seedRevisionId &&
+      workout.seedRevisionNumber != null &&
+      workout.seedPayloadHash
+  );
+  if (hasAnyWorkoutSeedEvidence !== hasCompleteWorkoutSeedEvidence) {
+    return unavailableMaterializedIdentity("workout_seed_provenance_incomplete");
+  }
+
+  const usesAcceptedSeed =
+    receipt?.sessionProvenance?.compositionSource === "persisted_slot_plan_seed" ||
+    receipt?.sessionProvenance?.compositionSource === "deload_seed_replay";
+  let exactSeedEvidence = false;
+  if (hasCompleteWorkoutSeedEvidence || receiptSeed) {
+    const revision = workout.seedRevision;
+    if (
+      !hasCompleteWorkoutSeedEvidence ||
+      !receiptSeed ||
+      !revision ||
+      revision.id !== workout.seedRevisionId ||
+      revision.mesocycleId !== mesocycle.id ||
+      revision.revision !== workout.seedRevisionNumber ||
+      revision.payloadHash !== workout.seedPayloadHash ||
+      revision.hashAlgorithm !== "sha256" ||
+      revision.provenanceStatus !== "exact" ||
+      receiptSeed.revisionId !== workout.seedRevisionId ||
+      receiptSeed.revision !== workout.seedRevisionNumber ||
+      receiptSeed.hash !== workout.seedPayloadHash
+    ) {
+      return unavailableMaterializedIdentity("seed_provenance_mismatch");
+    }
+    try {
+      const normalizedSeed = normalizeAcceptedSeedPayload(revision.seedPayload);
+      if (normalizedSeed.hash !== workout.seedPayloadHash) {
+        return unavailableMaterializedIdentity("seed_payload_hash_mismatch");
+      }
+    } catch {
+      return unavailableMaterializedIdentity("seed_payload_invalid");
+    }
+    const seed = parseSlotPlanSeedJson(revision.seedPayload);
+    if (!seed?.slots.some((slot) => slot.slotId === resolvedSlot.slotId)) {
+      return unavailableMaterializedIdentity("seed_slot_missing");
+    }
+    exactSeedEvidence = true;
+  } else if (usesAcceptedSeed) {
+    const legacySeed = parseSlotPlanSeedJson(mesocycle.slotPlanSeedJson);
+    if (!legacySeed?.slots.some((slot) => slot.slotId === resolvedSlot.slotId)) {
+      return unavailableMaterializedIdentity("legacy_seed_slot_missing");
+    }
+  }
+
+  const exactSchedulingEvidence = Boolean(
+    workout.mesocycleWeekSnapshot != null &&
+      workout.mesoSessionSnapshot != null &&
+      receipt &&
+      receiptMesocycleId === mesocycle.id &&
+      receiptSlot
+  );
+  if (usesAcceptedSeed && !exactSeedEvidence && hasAnyWorkoutSeedEvidence) {
+    return unavailableMaterializedIdentity("exact_seed_evidence_unavailable");
+  }
+
+  return {
+    status: "available",
+    identity: {
+      weekInMeso,
+      sessionInWeek,
+      slotId: resolvedSlot.slotId,
+      sessionIntent,
+      slotSequenceIndex: resolvedSlot.sequenceIndex,
+      slotSequenceLength:
+        receiptSlot?.sequenceLength ??
+        (slotContract.slots.length > 0 ? slotContract.slots.length : null),
+      slotSource: receiptSlot?.source ?? slotContract.source,
+      provenance:
+        exactSchedulingEvidence && (!usesAcceptedSeed || exactSeedEvidence)
+          ? "exact"
+          : "legacy_derived",
+    },
+  };
 }
 
 function readSeedSlotExercisePlan(input: {
@@ -505,7 +708,12 @@ export function resolveNextWorkoutContext(input: {
   }
 
   if (topIncomplete) {
-    const incompleteSlot = readSessionSlotSnapshot(topIncomplete.selectionMetadata);
+    const materializedIdentity = resolveMaterializedSessionIdentity({
+      workout: topIncomplete,
+      mesocycle: input.mesocycle,
+      weeklySchedule: normalizedSchedule,
+    });
+    const receiptSlot = readSessionSlotSnapshot(topIncomplete.selectionMetadata);
     const readiness = classifySelectedIncompleteWorkout({
       workout: topIncomplete,
       activeMesocycleId: input.mesocycle?.id ?? null,
@@ -514,17 +722,43 @@ export function resolveNextWorkoutContext(input: {
     });
     trace.push(`selected_incomplete id=${topIncomplete.id} status=${topIncomplete.status}`);
     trace.push(`selected_incomplete_readiness=${readiness.classification}`);
+    trace.push(
+      materializedIdentity.status === "available"
+        ? `materialized_identity=${materializedIdentity.identity.provenance}`
+        : `materialized_identity_unavailable=${materializedIdentity.reason}`
+    );
     return {
-      intent: topIncomplete.sessionIntent?.toLowerCase() ?? null,
-      slotId: incompleteSlot?.slotId ?? null,
-      slotSequenceIndex: incompleteSlot?.sequenceIndex ?? null,
-      slotSequenceLength: incompleteSlot?.sequenceLength ?? null,
-      slotSource: incompleteSlot?.source ?? null,
+      intent:
+        materializedIdentity.status === "available"
+          ? materializedIdentity.identity.sessionIntent
+          : topIncomplete.sessionIntent?.toLowerCase() ?? null,
+      slotId:
+        materializedIdentity.status === "available"
+          ? materializedIdentity.identity.slotId
+          : receiptSlot?.slotId ?? null,
+      slotSequenceIndex:
+        materializedIdentity.status === "available"
+          ? materializedIdentity.identity.slotSequenceIndex
+          : receiptSlot?.sequenceIndex ?? null,
+      slotSequenceLength:
+        materializedIdentity.status === "available"
+          ? materializedIdentity.identity.slotSequenceLength
+          : receiptSlot?.sequenceLength ?? null,
+      slotSource:
+        materializedIdentity.status === "available"
+          ? materializedIdentity.identity.slotSource
+          : receiptSlot?.source ?? null,
       existingWorkoutId: topIncomplete.id,
       isExisting: true,
       source: "existing_incomplete",
-      weekInMeso: null,
-      sessionInWeek: null,
+      weekInMeso:
+        materializedIdentity.status === "available"
+          ? materializedIdentity.identity.weekInMeso
+          : null,
+      sessionInWeek:
+        materializedIdentity.status === "available"
+          ? materializedIdentity.identity.sessionInWeek
+          : null,
       derivationTrace: trace,
       selectedIncompleteStatus: topIncomplete.status.toLowerCase(),
       selectedIncompleteReadiness: readiness,
@@ -617,6 +851,20 @@ export async function loadNextWorkoutContext(
           mesocycleId: true,
           mesocycleWeekSnapshot: true,
           mesoSessionSnapshot: true,
+          seedRevisionId: true,
+          seedRevisionNumber: true,
+          seedPayloadHash: true,
+          seedRevision: {
+            select: {
+              id: true,
+              mesocycleId: true,
+              revision: true,
+              seedPayload: true,
+              payloadHash: true,
+              hashAlgorithm: true,
+              provenanceStatus: true,
+            },
+          },
           sessionIntent: true,
           status: true,
           scheduledDate: true,
@@ -695,6 +943,10 @@ export async function loadNextWorkoutContext(
         mesocycleId: workout.mesocycleId,
         mesocycleWeekSnapshot: workout.mesocycleWeekSnapshot,
         mesoSessionSnapshot: workout.mesoSessionSnapshot,
+        seedRevisionId: workout.seedRevisionId,
+        seedRevisionNumber: workout.seedRevisionNumber,
+        seedPayloadHash: workout.seedPayloadHash,
+        seedRevision: workout.seedRevision,
         performedSetLogCount: setLogs.filter((log) => !log.wasSkipped).length,
         totalSetLogCount: setLogs.length,
         plannedExercises: exercises.map((exercise) => ({

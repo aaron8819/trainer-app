@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  resolveMaterializedSessionIdentity,
   resolveNextWorkoutContext,
   resolveRequestedAdvancingSlotSnapshot,
 } from "./next-session";
+import { normalizeAcceptedSeedPayload } from "./mesocycle-seed-revision";
 
 describe("resolveNextWorkoutContext", () => {
   const baseMeso = {
@@ -30,13 +32,21 @@ describe("resolveNextWorkoutContext", () => {
     slotId: string;
     intent: string;
     sequenceIndex: number;
+    weekInMeso?: number;
+    mesocycleLength?: number;
+    seedProvenance?: {
+      revisionId: string;
+      revision: number;
+      hash: string;
+    };
   }) {
     return {
       sessionDecisionReceipt: {
         version: 1,
         cycleContext: {
-          weekInMeso: 1,
+          weekInMeso: input.weekInMeso ?? 1,
           weekInBlock: 1,
+          mesocycleLength: input.mesocycleLength,
           phase: "accumulation",
           blockType: "accumulation",
           isDeload: false,
@@ -71,6 +81,7 @@ describe("resolveNextWorkoutContext", () => {
         sessionProvenance: {
           mesocycleId: input.mesocycleId,
           compositionSource: "persisted_slot_plan_seed",
+          seedProvenance: input.seedProvenance,
         },
       },
     };
@@ -192,6 +203,215 @@ describe("resolveNextWorkoutContext", () => {
     });
     expect(context.derivationTrace).toContain(
       "selected_incomplete_readiness=matching_next_planned_workout"
+    );
+  });
+
+  it("preserves exact materialized identity across pointer movement and runtime edits", () => {
+    const mesocycleId = "meso-exact";
+    const seedRevisionId = "seed-revision-1";
+    const seedPayload = slotPlanSeedJson();
+    const normalizedSeed = normalizeAcceptedSeedPayload(seedPayload);
+    const context = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        id: mesocycleId,
+        durationWeeks: 4,
+        sessionsPerWeek: 4,
+        accumulationSessionsCompleted: 10,
+        slotSequenceJson: upperLowerSlotSequence,
+        slotPlanSeedJson: seedPayload,
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      incompleteWorkouts: [
+        {
+          id: "partial-lower-a",
+          status: "PARTIAL",
+          scheduledDate: new Date("2026-06-01T02:33:43.391Z"),
+          sessionIntent: "lower",
+          mesocycleId,
+          mesocycleWeekSnapshot: 2,
+          mesoSessionSnapshot: 2,
+          seedRevisionId,
+          seedRevisionNumber: 1,
+          seedPayloadHash: normalizedSeed.hash,
+          seedRevision: {
+            id: seedRevisionId,
+            mesocycleId,
+            revision: 1,
+            seedPayload: normalizedSeed.canonicalPayload,
+            payloadHash: normalizedSeed.hash,
+            hashAlgorithm: "sha256",
+            provenanceStatus: "exact",
+          },
+          performedSetLogCount: 1,
+          totalSetLogCount: 1,
+          plannedExercises: [{ exerciseId: "runtime-added-exercise", setCount: 5 }],
+          selectionMetadata: seedBackedMetadata({
+            mesocycleId,
+            slotId: "lower_a",
+            intent: "lower",
+            sequenceIndex: 1,
+            weekInMeso: 2,
+            mesocycleLength: 4,
+            seedProvenance: {
+              revisionId: seedRevisionId,
+              revision: 1,
+              hash: normalizedSeed.hash,
+            },
+          }),
+        },
+      ],
+    });
+
+    expect(context).toMatchObject({
+      source: "existing_incomplete",
+      existingWorkoutId: "partial-lower-a",
+      weekInMeso: 2,
+      sessionInWeek: 2,
+      slotId: "lower_a",
+      intent: "lower",
+    });
+    expect(context.derivationTrace).toContain("materialized_identity=exact");
+  });
+
+  it("uses the workout immutable seed revision after a newer revision becomes current", () => {
+    const mesocycleId = "meso-corrected";
+    const originalSeed = normalizeAcceptedSeedPayload(slotPlanSeedJson());
+    const correctedSeed = normalizeAcceptedSeedPayload({
+      ...slotPlanSeedJson(),
+      source: "corrected_seed",
+      slots: slotPlanSeedJson().slots.map((slot) =>
+        slot.slotId === "lower_a"
+          ? {
+              ...slot,
+              exercises: [
+                { exerciseId: "corrected-squat", role: "CORE_COMPOUND", setCount: 3 },
+              ],
+            }
+          : slot
+      ),
+    });
+    const workout = {
+      id: "partial-under-revision-1",
+      status: "PARTIAL",
+      scheduledDate: new Date("2026-06-01T02:33:43.391Z"),
+      sessionIntent: "lower",
+      mesocycleId,
+      mesocycleWeekSnapshot: 1,
+      mesoSessionSnapshot: 2,
+      seedRevisionId: "seed-revision-1",
+      seedRevisionNumber: 1,
+      seedPayloadHash: originalSeed.hash,
+      seedRevision: {
+        id: "seed-revision-1",
+        mesocycleId,
+        revision: 1,
+        seedPayload: originalSeed.canonicalPayload,
+        payloadHash: originalSeed.hash,
+        hashAlgorithm: "sha256",
+        provenanceStatus: "exact",
+      },
+      selectionMetadata: seedBackedMetadata({
+        mesocycleId,
+        slotId: "lower_a",
+        intent: "lower",
+        sequenceIndex: 1,
+        seedProvenance: {
+          revisionId: "seed-revision-1",
+          revision: 1,
+          hash: originalSeed.hash,
+        },
+      }),
+    };
+    const resolution = resolveMaterializedSessionIdentity({
+      workout,
+      mesocycle: {
+        ...baseMeso,
+        id: mesocycleId,
+        durationWeeks: 4,
+        sessionsPerWeek: 4,
+        slotSequenceJson: upperLowerSlotSequence,
+        slotPlanSeedJson: correctedSeed.canonicalPayload,
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+    });
+
+    expect(originalSeed.hash).not.toBe(correctedSeed.hash);
+    expect(resolution).toMatchObject({
+      status: "available",
+      identity: {
+        weekInMeso: 1,
+        sessionInWeek: 2,
+        slotId: "lower_a",
+        provenance: "exact",
+      },
+    });
+  });
+
+  it("labels deterministic legacy identity and fails closed on contradictory evidence", () => {
+    const mesocycleId = "meso-legacy";
+    const mesocycle = {
+      ...baseMeso,
+      id: mesocycleId,
+      durationWeeks: 4,
+      sessionsPerWeek: 4,
+      slotSequenceJson: upperLowerSlotSequence,
+      slotPlanSeedJson: slotPlanSeedJson(),
+    };
+    const legacy = resolveMaterializedSessionIdentity({
+      mesocycle,
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      workout: {
+        id: "legacy-lower-a",
+        status: "PARTIAL",
+        scheduledDate: new Date("2026-06-01T02:33:43.391Z"),
+        sessionIntent: "lower",
+        mesocycleId,
+        mesocycleWeekSnapshot: 1,
+        mesoSessionSnapshot: 2,
+        selectionMetadata: seedBackedMetadata({
+          mesocycleId,
+          slotId: "lower_a",
+          intent: "lower",
+          sequenceIndex: 1,
+        }),
+      },
+    });
+    expect(legacy).toMatchObject({
+      status: "available",
+      identity: { provenance: "legacy_derived", weekInMeso: 1, sessionInWeek: 2 },
+    });
+
+    const contradictoryContext = resolveNextWorkoutContext({
+      mesocycle,
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      incompleteWorkouts: [
+        {
+          id: "contradictory-lower-a",
+          status: "PARTIAL",
+          scheduledDate: new Date("2026-06-01T02:33:43.391Z"),
+          sessionIntent: "lower",
+          mesocycleId,
+          mesocycleWeekSnapshot: 2,
+          mesoSessionSnapshot: 2,
+          selectionMetadata: seedBackedMetadata({
+            mesocycleId,
+            slotId: "lower_a",
+            intent: "lower",
+            sequenceIndex: 1,
+            weekInMeso: 1,
+          }),
+        },
+      ],
+    });
+    expect(contradictoryContext).toMatchObject({
+      source: "existing_incomplete",
+      existingWorkoutId: "contradictory-lower-a",
+      weekInMeso: null,
+      sessionInWeek: null,
+    });
+    expect(contradictoryContext.derivationTrace).toContain(
+      "materialized_identity_unavailable=week_snapshot_receipt_mismatch"
     );
   });
 

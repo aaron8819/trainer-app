@@ -1515,6 +1515,7 @@ describe("loadHomeProgramSupport", () => {
     expect(result.closeout).toEqual({
       visible: true,
       workoutId: "workout-closeout",
+      workoutRevision: null,
       weekCloseId: null,
       status: "planned",
       targetWeek: 4,
@@ -1605,6 +1606,7 @@ describe("loadHomeProgramSupport", () => {
     expect(result.closeout).toEqual({
       visible: false,
       workoutId: null,
+      workoutRevision: null,
       weekCloseId: "wc-4",
       status: null,
       targetWeek: null,
@@ -1669,6 +1671,7 @@ describe("loadHomeProgramSupport", () => {
     expect(result.closeout).toEqual({
       visible: true,
       workoutId: null,
+      workoutRevision: null,
       weekCloseId: "wc-3",
       status: null,
       targetWeek: 3,
@@ -1740,6 +1743,7 @@ describe("loadHomeProgramSupport", () => {
     expect(result.closeout).toEqual({
       visible: true,
       workoutId: "workout-closeout",
+      workoutRevision: null,
       weekCloseId: null,
       status: "skipped",
       targetWeek: 4,

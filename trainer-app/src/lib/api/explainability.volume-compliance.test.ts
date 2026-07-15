@@ -150,7 +150,14 @@ function generateWorkoutExplanation(workoutId: string) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeSet(setIndex: number, logs: { wasSkipped: boolean }[] = []) {
+function makeSet(
+  setIndex: number,
+  logs: Array<{
+    wasSkipped: boolean;
+    actualReps?: number;
+    actualRpe?: number;
+  }> = []
+) {
   return {
     setIndex,
     targetReps: 8,

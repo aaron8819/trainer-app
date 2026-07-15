@@ -1351,6 +1351,7 @@ describe("loadHomePageData", () => {
     expect(result.closeout).toEqual({
       title: "Week 3 optional session",
       workoutId: null,
+      workoutRevision: null,
       status: "available",
       statusLabel: "Available",
       detail:

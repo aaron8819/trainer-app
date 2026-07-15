@@ -9,6 +9,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import {
   persistWorkoutRow,
+  prepareWorkoutExercisesForPersistence,
   replaceFilteredExercises,
   rewriteWorkoutExercises,
 } from "./persistence";
@@ -29,6 +30,7 @@ describeDatabase("save-workout persistence CAS (PostgreSQL)", () => {
     prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
 
     const suffix = crypto.randomUUID();
+    const chest = await prisma.muscle.create({ data: { name: "Chest" } });
     const [owner, foreignOwner, exerciseA, exerciseB] = await Promise.all([
       prisma.user.create({ data: { email: `occ-owner-${suffix}@test.local` } }),
       prisma.user.create({ data: { email: `occ-foreign-${suffix}@test.local` } }),
@@ -36,12 +38,18 @@ describeDatabase("save-workout persistence CAS (PostgreSQL)", () => {
         data: {
           name: `OCC Exercise A ${suffix}`,
           jointStress: "LOW",
+          exerciseMuscles: {
+            create: { muscleId: chest.id, role: "PRIMARY" },
+          },
         },
       }),
       prisma.exercise.create({
         data: {
           name: `OCC Exercise B ${suffix}`,
           jointStress: "LOW",
+          exerciseMuscles: {
+            create: { muscleId: chest.id, role: "PRIMARY" },
+          },
         },
       }),
     ]);
@@ -79,13 +87,18 @@ describeDatabase("save-workout persistence CAS (PostgreSQL)", () => {
     });
   }
 
-  const rewrite = (exerciseId: string, targetReps: number) => [
-    {
-      exerciseId,
-      section: "MAIN" as const,
-      sets: [{ setIndex: 1, targetReps }],
-    },
-  ];
+  const rewrite = (
+    tx: Parameters<typeof prepareWorkoutExercisesForPersistence>[0],
+    exerciseId: string,
+    targetReps: number
+  ) =>
+    prepareWorkoutExercisesForPersistence(tx, [
+      {
+        exerciseId,
+        section: "MAIN" as const,
+        sets: [{ setIndex: 1, targetReps }],
+      },
+    ]);
 
   it("atomically updates the workout, increments revision, and persists child changes", async () => {
     const existing = await createWorkout({ notes: "before", exerciseId: exerciseAId });
@@ -103,7 +116,7 @@ describeDatabase("save-workout persistence CAS (PostgreSQL)", () => {
       });
       await rewriteWorkoutExercises(tx, {
         workoutId: existing.id,
-        exercises: rewrite(exerciseBId, 12),
+        exercises: await rewrite(tx, exerciseBId, 12),
       });
       await replaceFilteredExercises(tx, {
         workoutId: existing.id,
@@ -155,7 +168,7 @@ describeDatabase("save-workout persistence CAS (PostgreSQL)", () => {
         });
         await rewriteWorkoutExercises(tx, {
           workoutId: existing.id,
-          exercises: rewrite(exerciseBId, 15),
+          exercises: await rewrite(tx, exerciseBId, 15),
         });
       }),
     ).rejects.toThrow("REVISION_CONFLICT");
@@ -187,7 +200,7 @@ describeDatabase("save-workout persistence CAS (PostgreSQL)", () => {
         });
         await rewriteWorkoutExercises(tx, {
           workoutId: existing.id,
-          exercises: rewrite(exerciseId, targetReps),
+          exercises: await rewrite(tx, exerciseId, targetReps),
         });
         return persisted;
       });
@@ -233,7 +246,7 @@ describeDatabase("save-workout persistence CAS (PostgreSQL)", () => {
         });
         await rewriteWorkoutExercises(tx, {
           workoutId: existing.id,
-          exercises: rewrite(exerciseBId, 20),
+          exercises: await rewrite(tx, exerciseBId, 20),
         });
         throw new Error("FORCED_POST_CAS_FAILURE");
       }),
@@ -294,5 +307,45 @@ describeDatabase("save-workout persistence CAS (PostgreSQL)", () => {
     await expect(
       prisma.workout.findUniqueOrThrow({ where: { id: workoutId } }),
     ).resolves.toMatchObject({ revision: 1, userId: ownerId });
+  });
+
+  it("enforces immutable one-to-one post-session review snapshot storage", async () => {
+    const workout = await createWorkout();
+    const snapshot = await prisma.postSessionReviewSnapshot.create({
+      data: {
+        workoutId: workout.id,
+        contractVersion: 1,
+        computationPolicyVersion: 1,
+        payload: { contractVersion: 1, conclusion: "verified" },
+        payloadHash: "payload-hash",
+        evidenceFingerprint: "evidence-fingerprint",
+        provenance: "exact",
+        finalizedAt: new Date("2026-07-14T12:30:00.000Z"),
+      },
+    });
+
+    await expect(
+      prisma.postSessionReviewSnapshot.create({
+        data: {
+          workoutId: workout.id,
+          contractVersion: 1,
+          computationPolicyVersion: 1,
+          payload: { contractVersion: 1, conclusion: "duplicate" },
+          payloadHash: "duplicate-hash",
+          evidenceFingerprint: "duplicate-fingerprint",
+          provenance: "exact",
+          finalizedAt: new Date("2026-07-14T12:31:00.000Z"),
+        },
+      }),
+    ).rejects.toBeDefined();
+    await expect(
+      prisma.postSessionReviewSnapshot.update({
+        where: { id: snapshot.id },
+        data: { payloadHash: "mutated" },
+      }),
+    ).rejects.toBeDefined();
+    await expect(
+      prisma.postSessionReviewSnapshot.delete({ where: { id: snapshot.id } }),
+    ).rejects.toBeDefined();
   });
 });

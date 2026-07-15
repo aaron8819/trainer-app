@@ -1085,6 +1085,7 @@ describe("loadProgramPageData", () => {
     expect(result.closeout).toEqual({
       title: "Custom session",
       workoutId: "closeout-planned",
+      workoutRevision: null,
       status: "planned",
       statusLabel: "Planned",
       detail:
@@ -1986,6 +1987,7 @@ describe("loadProgramPageData", () => {
     expect(result.closeout).toEqual({
       title: "Week 3 optional session",
       workoutId: null,
+      workoutRevision: null,
       status: "available",
       statusLabel: "Available",
       detail:

@@ -350,7 +350,16 @@ describe("canonical session decision receipt pipeline", () => {
       mesocycleId: null,
     }));
     mocks.txWorkoutExerciseFindMany.mockResolvedValue([]);
-    mocks.txExerciseFindUnique.mockResolvedValue({ movementPatterns: [] });
+    mocks.txExerciseFindUnique.mockResolvedValue({
+      id: "ex1",
+      name: "Bench Press",
+      movementPatterns: [],
+      aliases: [],
+      exerciseMuscles: [
+        { role: "PRIMARY", muscle: { name: "Chest" } },
+        { role: "SECONDARY", muscle: { name: "Triceps" } },
+      ],
+    });
     mocks.txWorkoutExerciseCreate.mockResolvedValue({ id: "we-1" });
     mocks.txWorkoutCreate.mockImplementation(async (args: { data: { selectionMetadata: Record<string, unknown> } }) => {
       state.persistedSelectionMetadata = args.data.selectionMetadata;

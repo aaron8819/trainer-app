@@ -19,9 +19,24 @@ function run(executable: string, args: string[], env = process.env, quiet = fals
 
 function waitForPostgres(): void {
   for (let attempt = 0; attempt < 30; attempt += 1) {
-    const result = spawnSync("docker", [
-      "exec", containerName, "pg_isready", "-U", "trainer", "-d", "trainer",
-    ], { stdio: "ignore" });
+    const result = spawnSync(
+      "docker",
+      [
+        "exec",
+        "-i",
+        containerName,
+        "psql",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        "trainer",
+        "-d",
+        "trainer",
+        "-tAc",
+        "SELECT 1",
+      ],
+      { stdio: "ignore" },
+    );
     if (result.status === 0) return;
     const until = Date.now() + 500;
     while (Date.now() < until) {
@@ -52,11 +67,6 @@ try {
   const databaseUrl = `postgresql://trainer:trainer-workout-occ@127.0.0.1:${port}/trainer`;
   const env = { ...process.env, DATABASE_URL: databaseUrl, TEST_DATABASE_URL: databaseUrl };
   run(process.execPath, [join(process.cwd(), "node_modules/prisma/build/index.js"), "migrate", "deploy"], env);
-  run(process.execPath, [
-    join(process.cwd(), "node_modules/prisma/build/index.js"),
-    "db",
-    "push",
-  ], env);
   run(process.execPath, [
     join(process.cwd(), "node_modules/prisma/build/index.js"),
     "generate",

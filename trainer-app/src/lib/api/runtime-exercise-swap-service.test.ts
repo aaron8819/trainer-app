@@ -679,6 +679,7 @@ describe("runtime exercise swap service", () => {
         workoutExerciseId: "we-1",
         replacementExerciseId: "chest-supported-db-row",
         userId: "user-1",
+        expectedRevision: 1,
       })
     ).rejects.toMatchObject({ code: "SWAP_STATE_CHANGED", status: 409 });
     expect(mocks.txWorkoutSetUpdate).not.toHaveBeenCalled();

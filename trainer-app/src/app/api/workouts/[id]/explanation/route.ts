@@ -12,6 +12,7 @@
 
 import { NextResponse } from "next/server";
 import { generateWorkoutExplanation } from "@/lib/api/explainability";
+import { resolveOwner } from "@/lib/api/workout-context";
 
 export async function GET(
   request: Request,
@@ -23,7 +24,11 @@ export async function GET(
     return NextResponse.json({ error: "Workout ID required" }, { status: 400 });
   }
 
-  const result = await generateWorkoutExplanation(id);
+  const owner = await resolveOwner();
+  const result = await generateWorkoutExplanation({
+    workoutId: id,
+    ownerId: owner.id,
+  });
 
   if ("error" in result) {
     return NextResponse.json({ error: result.error }, { status: 404 });

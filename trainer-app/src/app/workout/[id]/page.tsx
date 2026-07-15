@@ -143,7 +143,7 @@ export default async function WorkoutDetailPage({
   const hasPerformedStatus = isPerformedWorkoutStatus(workout.status);
   const [injuries, explanationResult, completedWorkoutReview] = await Promise.all([
     prisma.injury.findMany({ where: { userId: workout.userId, isActive: true } }),
-    generateWorkoutExplanation(workout.id),
+    generateWorkoutExplanation({ workoutId: workout.id, ownerId: owner.id }),
     hasPerformedStatus
       ? loadCompletedWorkoutReviewReadModel(owner.id, workout.id)
       : Promise.resolve({ postSessionReview: null }),

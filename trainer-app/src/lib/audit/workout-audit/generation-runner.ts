@@ -6,6 +6,7 @@ import {
 import { evaluateAcceptedMesocycleSeedProvenance } from "@/lib/api/accepted-mesocycle-seed-provenance";
 import { loadProjectedWeekVolumeReport } from "@/lib/api/projected-week-volume";
 import { buildPreSessionReadinessProjectedWeekEvidence } from "@/lib/api/pre-session-readiness-evidence-builder";
+import { loadPreSessionReadinessSnapshotAuditDiagnostics } from "@/lib/api/pre-session-readiness-snapshot";
 import {
   generateDeloadSessionFromIntent,
   generateSessionFromIntent,
@@ -443,6 +444,8 @@ export async function runWorkoutAuditGeneration(
             projectionArtifactPath: undefined,
           })
         : undefined;
+    const snapshotDiagnostics =
+      await loadPreSessionReadinessSnapshotAuditDiagnostics(context.userId);
     const preSessionReadinessPayload = {
       readOnly: true,
       affectsScoringOrGeneration: false,
@@ -470,6 +473,7 @@ export async function runWorkoutAuditGeneration(
     } satisfies NonNullable<WorkoutAuditRun["preSessionReadiness"]>;
     const preSessionReadiness = {
       ...preSessionReadinessPayload,
+      snapshotDiagnostics,
       contract: buildPreSessionReadinessContract({
         userId: context.userId,
         ownerEmail: context.ownerEmail,

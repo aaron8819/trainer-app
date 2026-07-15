@@ -62,7 +62,10 @@ export default async function WorkoutAuditPage({
     );
   }
 
-  const explanationResult = await generateWorkoutExplanation(workout.id);
+  const explanationResult = await generateWorkoutExplanation({
+    workoutId: workout.id,
+    ownerId: owner.id,
+  });
   const explanation = "error" in explanationResult ? null : explanationResult;
   const selectionMetadata = parseExplainabilitySelectionMetadata(workout.selectionMetadata);
   const sessionDecisionReceipt = selectionMetadata.sessionDecisionReceipt;

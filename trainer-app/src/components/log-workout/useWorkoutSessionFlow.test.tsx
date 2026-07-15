@@ -378,6 +378,7 @@ describe("useWorkoutSessionFlow", () => {
   beforeEach(() => {
     mockedAddSetToExerciseRequest.mockResolvedValue({
       data: {
+        revision: 2,
         set: {
           setId: "set-3",
           setIndex: 3,
@@ -390,8 +391,8 @@ describe("useWorkoutSessionFlow", () => {
       },
       error: null,
     });
-    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true }, error: null });
-    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok" }, error: null });
+    mockedLogSetRequest.mockResolvedValue({ data: { status: "ok", wasCreated: true, revision: 2 }, error: null });
+    mockedDeleteSetLogRequest.mockResolvedValue({ data: { status: "ok", revision: 2 }, error: null });
     mockedSaveWorkoutRequest.mockResolvedValue(makeSaveWorkoutResponse("COMPLETED"));
   });
 
@@ -460,6 +461,7 @@ describe("useWorkoutSessionFlow", () => {
       expect(mockedAddSetToExerciseRequest).toHaveBeenCalledWith({
         workoutId: "workout-1",
         workoutExerciseId: "ex-1",
+        expectedRevision: 1,
       });
       expect(screen.getByTestId("set-ids")).toHaveTextContent("set-1,set-2,set-3");
       expect(screen.getByTestId("active-set-id")).toHaveTextContent("set-2");
@@ -472,6 +474,7 @@ describe("useWorkoutSessionFlow", () => {
     const callbacks = createCallbacks();
     mockedAddSetToExerciseRequest.mockResolvedValueOnce({
       data: {
+        revision: 2,
         set: {
           setId: "set-4",
           setIndex: 4,
@@ -512,7 +515,10 @@ describe("useWorkoutSessionFlow", () => {
     fireEvent.click(screen.getByRole("button", { name: "undo" }));
 
     await waitFor(() => {
-      expect(mockedDeleteSetLogRequest).toHaveBeenCalledWith("set-1");
+      expect(mockedDeleteSetLogRequest).toHaveBeenCalledWith({
+        workoutSetId: "set-1",
+        expectedRevision: 2,
+      });
       expect(screen.getByTestId("logged-ids")).toHaveTextContent("");
       expect(screen.getByTestId("active-set-id")).toHaveTextContent("set-1");
       expect(screen.getByTestId("status")).toHaveTextContent("Last set log reverted");

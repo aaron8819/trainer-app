@@ -192,6 +192,7 @@ export default async function LogWorkoutPage({
 
           <LogWorkoutClient
             workoutId={logFixture.workoutId}
+            initialRevision={1}
             exercises={attachLogExerciseCapabilities(logFixture.exercises, fixtureCapabilities)}
             allowBonusExerciseAdd={true}
             allowRuntimeExerciseSwap={true}
@@ -327,6 +328,7 @@ export default async function LogWorkoutPage({
 
         <LogWorkoutClient
           workoutId={workout.id}
+          initialRevision={workout.revision}
           exercises={attachLogExerciseCapabilities(
             exercisesWithExecutionGuidance,
             logCapabilities

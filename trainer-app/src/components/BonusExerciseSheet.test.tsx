@@ -176,6 +176,8 @@ describe("BonusExerciseSheet", () => {
         isOpen
         onClose={onClose}
         workoutId="workout-1"
+        expectedRevision={1}
+        onRevision={vi.fn()}
         onAdd={onAdd}
       />
     );
@@ -238,6 +240,8 @@ describe("BonusExerciseSheet", () => {
         isOpen
         onClose={vi.fn()}
         workoutId="workout-1"
+        expectedRevision={1}
+        onRevision={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -268,6 +272,8 @@ describe("BonusExerciseSheet", () => {
         isOpen
         onClose={vi.fn()}
         workoutId="workout-1"
+        expectedRevision={1}
+        onRevision={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -286,6 +292,8 @@ describe("BonusExerciseSheet", () => {
         isOpen={false}
         onClose={vi.fn()}
         workoutId="workout-1"
+        expectedRevision={1}
+        onRevision={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -295,6 +303,8 @@ describe("BonusExerciseSheet", () => {
         isOpen
         onClose={vi.fn()}
         workoutId="workout-1"
+        expectedRevision={1}
+        onRevision={vi.fn()}
         onAdd={vi.fn()}
       />
     );
@@ -366,6 +376,8 @@ describe("BonusExerciseSheet", () => {
         isOpen
         onClose={onClose}
         workoutId="workout-1"
+        expectedRevision={1}
+        onRevision={vi.fn()}
         onAdd={onAdd}
       />
     );

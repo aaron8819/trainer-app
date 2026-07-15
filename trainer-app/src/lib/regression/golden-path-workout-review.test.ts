@@ -361,7 +361,10 @@ describe("golden-path completed workout regression", () => {
     });
     expect(canonicalAction).toBe("increase");
 
-    const explanation = await generateWorkoutExplanation("w-week4-pull");
+    const explanation = await generateWorkoutExplanation({
+      workoutId: "w-week4-pull",
+      ownerId: "u1",
+    });
 
     expect("error" in explanation).toBe(false);
     if ("error" in explanation || performedSemantics == null || canonicalDecision == null) {

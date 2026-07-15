@@ -154,11 +154,14 @@ function countsTowardCanonicalPerformanceHistory(input: {
 }
 
 export async function generateWorkoutExplanation(
-  workoutId: string,
+  input: {
+    workoutId: string;
+    ownerId: string;
+  },
   client: ExplainabilityReader = prisma
 ): Promise<WorkoutExplanation | { error: string }> {
   const workout: WorkoutWithExplainabilityRelations | null =
-    await loadWorkoutWithExplainabilityRelations(workoutId, client);
+    await loadWorkoutWithExplainabilityRelations(input, client);
 
   if (!workout) {
     return { error: "Workout not found" };

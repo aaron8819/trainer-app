@@ -1,13 +1,30 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
 import { getLogWorkoutPageState } from "@/lib/workout-workflow";
 import { resolveDefaultRestSecondsForExecutionSet } from "@/lib/logging/rest-timer-policy";
+import {
+  executeWorkoutMutation,
+  isWorkoutMutationError,
+} from "@/lib/api/workout-mutation";
+import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+const addSetSchema = z.object({
+  expectedRevision: z.number().int().min(1),
+});
+
+class AddSetError extends Error {
+  constructor(
+    message: string,
+    readonly status: 404 | 409,
+  ) {
+    super(message);
+  }
+}
 
 type RuntimeEditableWorkoutState = {
   status: string | null;
@@ -29,7 +46,7 @@ function getRuntimeEditBlockedReason(workout: RuntimeEditableWorkoutState): stri
 }
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string; exerciseId: string }> }
 ) {
   const resolvedParams = await params;
@@ -40,23 +57,22 @@ export async function POST(
     );
   }
 
-  const owner = await resolveOwner();
-
-  const existingExercise = await prisma.workoutExercise.findFirst({
-    where: {
-      id: resolvedParams.exerciseId,
-      workoutId: resolvedParams.id,
-      workout: { userId: owner.id },
-    },
-    select: { id: true },
-  });
-
-  if (!existingExercise) {
-    return NextResponse.json({ error: "Workout exercise not found" }, { status: 404 });
+  const body = await request.json().catch(() => ({}));
+  const parsed = addSetSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const result = await prisma.$transaction(async (tx) => {
-    const workoutExercise = await tx.workoutExercise.findFirst({
+  const owner = await resolveOwner();
+  try {
+    const mutation = await executeWorkoutMutation(
+      {
+        workoutId: resolvedParams.id,
+        userId: owner.id,
+        expectedRevision: parsed.data.expectedRevision,
+      },
+      async (tx) => {
+        const workoutExercise = await tx.workoutExercise.findFirst({
       where: {
         id: resolvedParams.exerciseId,
         workoutId: resolvedParams.id,
@@ -100,20 +116,20 @@ export async function POST(
     });
 
     if (!workoutExercise) {
-      return { error: "Workout exercise not found" as const, status: 404 as const };
+      throw new AddSetError("Workout exercise not found", 404);
     }
 
     const blockedReason = getRuntimeEditBlockedReason(workoutExercise.workout);
     if (blockedReason) {
-      return { error: blockedReason, status: 409 as const };
+      throw new AddSetError(blockedReason, 409);
     }
 
     const lastSet = workoutExercise.sets[0];
     if (!lastSet) {
-      return {
-        error: "Cannot append a set to an exercise with no existing set.",
-        status: 409 as const,
-      };
+      throw new AddSetError(
+        "Cannot append a set to an exercise with no existing set.",
+        409,
+      );
     }
 
     const nextSet = await tx.workoutSet.create({
@@ -187,13 +203,12 @@ export async function POST(
     await tx.workout.update({
       where: { id: resolvedParams.id },
       data: {
-        revision: { increment: 1 },
         selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
       },
-    });
+        });
 
-    return {
-      set: {
+        return {
+          set: {
         setId: nextSet.id,
         setIndex: nextSet.setIndex,
         targetReps: nextSet.targetReps,
@@ -205,13 +220,16 @@ export async function POST(
         targetRpe: nextSet.targetRpe,
         restSeconds: nextSet.restSeconds,
         isRuntimeAdded: true as const,
+          },
+        };
       },
-    };
-  });
+    );
 
-  if ("error" in result) {
-    return NextResponse.json({ error: result.error }, { status: result.status });
+    return NextResponse.json({ ...mutation.result, revision: mutation.revision });
+  } catch (error) {
+    if (isWorkoutMutationError(error) || error instanceof AddSetError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
   }
-
-  return NextResponse.json(result);
 }

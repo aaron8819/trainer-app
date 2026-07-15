@@ -404,7 +404,13 @@ async function buildExplainabilityEvidence(
 ): Promise<
   Pick<PostSessionReviewContractBuildInput, "nextExposureDecisions" | "weeklyImpact">
 > {
-  const explanation = await generateWorkoutExplanation(workout.id, client);
+  const explanation = await generateWorkoutExplanation(
+    {
+      workoutId: workout.id,
+      ownerId: workout.userId,
+    },
+    client
+  );
   if ("error" in explanation) {
     return {};
   }

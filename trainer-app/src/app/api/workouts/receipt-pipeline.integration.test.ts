@@ -4,6 +4,7 @@ import { attachSupplementalSessionMetadata } from "@/lib/ui/selection-metadata";
 
 const state = vi.hoisted(() => ({
   persistedSelectionMetadata: null as Record<string, unknown> | null,
+  persistedRevision: null as number | null,
 }));
 
 const mocks = vi.hoisted(() => {
@@ -23,6 +24,9 @@ const mocks = vi.hoisted(() => {
   const workoutExerciseFindMany = vi.fn();
   const mesocycleFindFirst = vi.fn();
   const txWorkoutFindUnique = vi.fn();
+  const txWorkoutFindFirst = vi.fn();
+  const txWorkoutUpdateMany = vi.fn();
+  const txWorkoutCreate = vi.fn();
   const txWorkoutUpsert = vi.fn();
   const txWorkoutExerciseFindMany = vi.fn();
   const txWorkoutExerciseCreate = vi.fn();
@@ -33,6 +37,9 @@ const mocks = vi.hoisted(() => {
   const tx = {
     workout: {
       findUnique: txWorkoutFindUnique,
+      findFirst: txWorkoutFindFirst,
+      updateMany: txWorkoutUpdateMany,
+      create: txWorkoutCreate,
       upsert: txWorkoutUpsert,
     },
     workoutTemplate: {
@@ -68,6 +75,7 @@ const mocks = vi.hoisted(() => {
     $transaction: vi.fn(async (callback: (trx: typeof tx) => Promise<void>) => callback(tx)),
     workout: {
       findUnique: (...args: unknown[]) => workoutFindUnique(...args),
+      findFirst: (...args: unknown[]) => workoutFindUnique(...args),
       findMany: (...args: unknown[]) => workoutFindMany(...args),
     },
     constraints: {
@@ -109,6 +117,9 @@ const mocks = vi.hoisted(() => {
     workoutExerciseFindMany,
     mesocycleFindFirst,
     txWorkoutFindUnique,
+    txWorkoutFindFirst,
+    txWorkoutUpdateMany,
+    txWorkoutCreate,
     txWorkoutUpsert,
     txWorkoutExerciseFindMany,
     txWorkoutExerciseCreate,
@@ -236,6 +247,7 @@ describe("canonical session decision receipt pipeline", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     state.persistedSelectionMetadata = null;
+    state.persistedRevision = null;
 
     const initialReceipt = buildSessionDecisionReceipt({
       cycleContext: {
@@ -321,13 +333,43 @@ describe("canonical session decision receipt pipeline", () => {
       blockContext: null,
       weekInMeso: 1,
     });
-    mocks.txWorkoutFindUnique.mockResolvedValue(null);
+    mocks.txWorkoutFindUnique.mockImplementation(async () =>
+      state.persistedRevision == null
+        ? null
+        : {
+            id: "workout-1",
+            userId: "user-1",
+            status: "PLANNED",
+            revision: state.persistedRevision,
+            selectionMetadata: state.persistedSelectionMetadata,
+          },
+    );
+    mocks.txWorkoutFindFirst.mockImplementation(async () => ({
+      id: "workout-1",
+      revision: state.persistedRevision,
+      mesocycleId: null,
+    }));
     mocks.txWorkoutExerciseFindMany.mockResolvedValue([]);
-    mocks.txExerciseFindUnique.mockResolvedValue({ movementPatterns: [] });
+    mocks.txExerciseFindUnique.mockResolvedValue({
+      id: "ex1",
+      name: "Bench Press",
+      movementPatterns: [],
+      aliases: [],
+      exerciseMuscles: [
+        { role: "PRIMARY", muscle: { name: "Chest" } },
+        { role: "SECONDARY", muscle: { name: "Triceps" } },
+      ],
+    });
     mocks.txWorkoutExerciseCreate.mockResolvedValue({ id: "we-1" });
-    mocks.txWorkoutUpsert.mockImplementation(async (args: { create: { selectionMetadata: Record<string, unknown> } }) => {
-      state.persistedSelectionMetadata = args.create.selectionMetadata;
+    mocks.txWorkoutCreate.mockImplementation(async (args: { data: { selectionMetadata: Record<string, unknown> } }) => {
+      state.persistedSelectionMetadata = args.data.selectionMetadata;
+      state.persistedRevision = 1;
       return { id: "workout-1", revision: 1 };
+    });
+    mocks.txWorkoutUpdateMany.mockImplementation(async (args: { data: { selectionMetadata: Record<string, unknown> } }) => {
+      state.persistedSelectionMetadata = args.data.selectionMetadata;
+      state.persistedRevision = (state.persistedRevision ?? 0) + 1;
+      return { count: 1 };
     });
     mocks.getCurrentMesoWeek.mockReturnValue(1);
     mocks.transitionMesocycleStateInTransaction.mockResolvedValue({
@@ -427,7 +469,10 @@ describe("canonical session decision receipt pipeline", () => {
     expect((persistedReceipt.cycleContext as Record<string, unknown>).weekInMeso).toBe(2);
     expect(((persistedReceipt.readiness as Record<string, unknown>).intensityScaling as Record<string, unknown>).exerciseIds).toEqual(["ex1"]);
 
-    const explanation = await generateWorkoutExplanation("workout-1");
+    const explanation = await generateWorkoutExplanation({
+      workoutId: "workout-1",
+      ownerId: "user-1",
+    });
     expect("error" in explanation).toBe(false);
     if ("error" in explanation) {
       return;
@@ -495,6 +540,7 @@ describe("canonical session decision receipt pipeline", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workoutId: "workout-1",
+          expectedRevision: 1,
           selectionMode: "INTENT",
           sessionIntent: "BODY_PART",
           selectionMetadata: state.persistedSelectionMetadata,

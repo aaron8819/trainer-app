@@ -29,7 +29,7 @@ import {
 } from "@/lib/api/pre-session-readiness-gym-card";
 import type { PreSessionReadinessContract } from "@/lib/api/pre-session-readiness-contract";
 import {
-  loadLatestHomePreSessionReadinessContractCandidate,
+  loadCurrentHomePreSessionReadinessContractCandidate,
   resolveHomePreSessionReadinessContract,
 } from "./home-pre-session-readiness";
 
@@ -56,6 +56,7 @@ export type HomeContinuitySummary = {
 export type HomeCloseoutSummary = {
   title: string;
   workoutId: string | null;
+  workoutRevision?: number | null;
   status: string;
   statusLabel: string;
   detail: string;
@@ -141,7 +142,7 @@ async function loadHomePreSessionReadinessCard(input: {
           contract: input.readinessInput.preSessionReadinessContract,
           source: "typed_read_model" as const,
         }
-      : await loadLatestHomePreSessionReadinessContractCandidate(input.userId);
+      : await loadCurrentHomePreSessionReadinessContractCandidate(input.userId);
   const contract = resolveHomePreSessionReadinessContract({
     userId: input.userId,
     candidate,
@@ -410,6 +411,7 @@ function buildHomeCloseoutSummary(
     return {
       title,
       workoutId: null,
+      workoutRevision: null,
       status: "available",
       statusLabel: "Available",
       detail: closeout.isPriorWeek
@@ -432,6 +434,7 @@ function buildHomeCloseoutSummary(
     return {
       title,
       workoutId: closeout.workoutId,
+      workoutRevision: closeout.workoutRevision,
       status: closeout.status,
       statusLabel,
       detail:
@@ -450,6 +453,7 @@ function buildHomeCloseoutSummary(
     return {
       title,
       workoutId: closeout.workoutId,
+      workoutRevision: closeout.workoutRevision,
       status: closeout.status,
       statusLabel,
       detail:
@@ -467,6 +471,7 @@ function buildHomeCloseoutSummary(
   return {
     title,
     workoutId: closeout.workoutId,
+    workoutRevision: closeout.workoutRevision,
     status: closeout.status,
     statusLabel,
     detail:

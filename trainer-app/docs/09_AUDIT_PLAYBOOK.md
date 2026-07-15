@@ -1108,6 +1108,8 @@ One-command pre-session readiness without artifact writes:
 npm run audit:workout -- --env-file .env.local --mode pre-session-readiness --owner <owner-email> --mesocycle-id <active-mesocycle-id> --no-artifact --operator-debug
 ```
 
+Read `preSessionReadiness.snapshotDiagnostics` before trusting persisted readiness evidence. The current exact identity must match the active snapshot, both identity and payload hashes must validate, duplicate active identity/target and same-identity/different-payload flags must be false, and legacy/unknown rows must remain labeled as such. Superseded rows are history only; the audit does not repair or activate them.
+
 Current-week dose guidance without artifact writes:
 
 ```powershell

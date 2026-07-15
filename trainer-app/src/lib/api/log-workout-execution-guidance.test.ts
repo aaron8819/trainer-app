@@ -8,20 +8,20 @@ import {
 import type { PreSessionReadinessGymCardDto } from "./pre-session-readiness-gym-card";
 
 const mocks = vi.hoisted(() => {
-  const loadLatestHomePreSessionReadinessContractCandidate = vi.fn();
+  const loadCurrentHomePreSessionReadinessContractCandidate = vi.fn();
   const resolveHomePreSessionReadinessContract = vi.fn();
   const buildPreSessionReadinessGymCardDto = vi.fn();
 
   return {
-    loadLatestHomePreSessionReadinessContractCandidate,
+    loadCurrentHomePreSessionReadinessContractCandidate,
     resolveHomePreSessionReadinessContract,
     buildPreSessionReadinessGymCardDto,
   };
 });
 
 vi.mock("./home-pre-session-readiness", () => ({
-  loadLatestHomePreSessionReadinessContractCandidate: (...args: unknown[]) =>
-    mocks.loadLatestHomePreSessionReadinessContractCandidate(...args),
+  loadCurrentHomePreSessionReadinessContractCandidate: (...args: unknown[]) =>
+    mocks.loadCurrentHomePreSessionReadinessContractCandidate(...args),
   resolveHomePreSessionReadinessContract: (...args: unknown[]) =>
     mocks.resolveHomePreSessionReadinessContract(...args),
 }));
@@ -249,7 +249,7 @@ describe("log workout execution guidance", () => {
         existingWorkoutId: "workout-1",
       },
     };
-    mocks.loadLatestHomePreSessionReadinessContractCandidate.mockResolvedValue(candidate);
+    mocks.loadCurrentHomePreSessionReadinessContractCandidate.mockResolvedValue(candidate);
     mocks.resolveHomePreSessionReadinessContract.mockReturnValue(contract);
     mocks.buildPreSessionReadinessGymCardDto.mockReturnValue(makeCard());
 

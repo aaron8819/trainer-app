@@ -4,8 +4,8 @@ import type {
   Prisma,
   WorkoutSelectionMode,
   WorkoutSessionIntent,
-  WorkoutStatus,
 } from "@prisma/client";
+import { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import type { CycleContextSnapshot } from "@/lib/evidence/types";
@@ -28,6 +28,7 @@ import { getCurrentMesoWeek } from "./mesocycle-lifecycle-math";
 import { getWeeklyVolumeTarget } from "./mesocycle-lifecycle-math";
 import { transitionMesocycleStateInTransaction } from "./mesocycle-lifecycle-state";
 import { loadMesocycleWeekMuscleVolume } from "./weekly-volume";
+import { executeWorkoutMutationInTransaction } from "./workout-mutation";
 
 type Tx = Prisma.TransactionClient;
 
@@ -887,56 +888,68 @@ export async function dismissCloseoutSession(
   input: {
     userId: string;
     workoutId: string;
+    expectedRevision: number;
   }
 ): Promise<DismissedCloseoutWorkout> {
-  const workout = await tx.workout.findFirst({
-    where: {
-      id: input.workoutId,
+  const mutation = await executeWorkoutMutationInTransaction(
+    tx,
+    {
+      workoutId: input.workoutId,
       userId: input.userId,
+      expectedRevision: input.expectedRevision,
+      editableStatuses: [WorkoutStatus.PLANNED],
     },
-    select: {
-      id: true,
-      status: true,
-      selectionMetadata: true,
-      revision: true,
-    },
-  });
+    async (tx): Promise<DismissedCloseoutWorkout> => {
+      const workout = await tx.workout.findFirst({
+        where: {
+          id: input.workoutId,
+          userId: input.userId,
+        },
+        select: {
+          id: true,
+          status: true,
+          selectionMetadata: true,
+          revision: true,
+        },
+      });
 
-  if (!workout) {
-    throw new Error("CLOSEOUT_WORKOUT_NOT_FOUND");
-  }
-  if (!isCloseoutSession(workout.selectionMetadata)) {
-    throw new Error("CLOSEOUT_DISMISSAL_NOT_CLOSEOUT");
-  }
-  if (isDismissedCloseoutSession(workout.selectionMetadata)) {
-    return {
-      ...workout,
-      outcome: "already_dismissed",
-    };
-  }
-  if (workout.status !== "PLANNED") {
-    throw new Error("CLOSEOUT_DISMISSAL_REQUIRES_PLANNED");
-  }
+      if (!workout) {
+        throw new Error("CLOSEOUT_WORKOUT_NOT_FOUND");
+      }
+      if (!isCloseoutSession(workout.selectionMetadata)) {
+        throw new Error("CLOSEOUT_DISMISSAL_NOT_CLOSEOUT");
+      }
+      if (isDismissedCloseoutSession(workout.selectionMetadata)) {
+        return {
+          ...workout,
+          outcome: "already_dismissed",
+        };
+      }
+      if (workout.status !== "PLANNED") {
+        throw new Error("CLOSEOUT_DISMISSAL_REQUIRES_PLANNED");
+      }
 
-  const selectionMetadata = attachCloseoutDismissalMetadata(workout.selectionMetadata);
-  const updated = await tx.workout.update({
-    where: { id: workout.id },
-    data: {
-      selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
-      revision: { increment: 1 },
-    },
-    select: {
-      id: true,
-      status: true,
-      selectionMetadata: true,
-      revision: true,
-    },
-  });
+      const selectionMetadata = attachCloseoutDismissalMetadata(workout.selectionMetadata);
+      const updated = await tx.workout.update({
+        where: { id: workout.id },
+        data: {
+          selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
+        },
+        select: {
+          id: true,
+          status: true,
+          selectionMetadata: true,
+          revision: true,
+        },
+      });
 
-  return {
-    ...updated,
-    outcome: "dismissed",
-  };
+      return {
+        ...updated,
+        outcome: "dismissed" as const,
+      };
+    },
+  );
+  return { ...mutation.result, revision: mutation.revision };
 }
 
 async function resolveWeekCloseIfPending(

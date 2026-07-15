@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/lib/db/prisma", () => ({
   prisma: {
     workout: {
-      findUnique: (...args: unknown[]) => mocks.workoutFindUnique(...args),
+      findFirst: (...args: unknown[]) => mocks.workoutFindUnique(...args),
       findMany: (...args: unknown[]) => mocks.workoutFindMany(...args),
     },
     readinessSignal: {
@@ -140,13 +140,24 @@ vi.mock("./workout-context", () => ({
   ]),
 }));
 
-import { generateWorkoutExplanation } from "./explainability";
+import { generateWorkoutExplanation as generateOwnerWorkoutExplanation } from "./explainability";
+
+function generateWorkoutExplanation(workoutId: string) {
+  return generateOwnerWorkoutExplanation({ workoutId, ownerId: "u1" });
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeSet(setIndex: number, logs: { wasSkipped: boolean }[] = []) {
+function makeSet(
+  setIndex: number,
+  logs: Array<{
+    wasSkipped: boolean;
+    actualReps?: number;
+    actualRpe?: number;
+  }> = []
+) {
   return {
     setIndex,
     targetReps: 8,
@@ -255,6 +266,32 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
         return Promise.resolve([]);
       }
     );
+  });
+
+  it("does not produce explanation data for a foreign-owned or nonexistent workout", async () => {
+    mocks.workoutFindUnique.mockImplementation(
+      async (args: { where?: { id?: string; userId?: string } }) =>
+        args.where?.id === "w1" && args.where.userId === "u1" ? BASE_WORKOUT : null
+    );
+
+    const foreignResult = await generateOwnerWorkoutExplanation({
+      workoutId: "w1",
+      ownerId: "u2",
+    });
+
+    expect(foreignResult).toEqual({ error: "Workout not found" });
+    expect(mocks.workoutFindUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "w1", userId: "u2" } })
+    );
+    expect(mocks.exerciseFindMany).not.toHaveBeenCalled();
+
+    const missingResult = await generateOwnerWorkoutExplanation({
+      workoutId: "missing-workout",
+      ownerId: "u1",
+    });
+
+    expect(missingResult).toEqual(foreignResult);
+    expect(mocks.exerciseFindMany).not.toHaveBeenCalled();
   });
 
   it("returns correct projectedTotal when prior sessions exist in the same meso week", async () => {
@@ -392,7 +429,7 @@ describe("generateWorkoutExplanation – volumeCompliance", () => {
         {
           ...makeChestExercise(2),
           sets: [
-            makeSet(1, [{ wasSkipped: false }]),
+            makeSet(1, [{ wasSkipped: false, actualReps: 8, actualRpe: 8 }]),
             makeSet(2, [{ wasSkipped: true }]),
           ],
         },

@@ -4,9 +4,14 @@ import {
   isRuntimeExerciseRemoveError,
   removeRuntimeAddedWorkoutExercise,
 } from "@/lib/api/runtime-exercise-remove-service";
+import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+const removeExerciseSchema = z.object({
+  expectedRevision: z.number().int().min(1),
+});
 
 function toErrorResponse(error: unknown) {
   if (isRuntimeExerciseRemoveError(error)) {
@@ -17,7 +22,7 @@ function toErrorResponse(error: unknown) {
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string; exerciseId: string }> }
 ) {
   const resolvedParams = await params;
@@ -28,6 +33,12 @@ export async function DELETE(
     );
   }
 
+  const body = await request.json().catch(() => ({}));
+  const parsed = removeExerciseSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
   const owner = await resolveOwner();
 
   try {
@@ -35,6 +46,7 @@ export async function DELETE(
       workoutId: resolvedParams.id,
       workoutExerciseId: resolvedParams.exerciseId,
       userId: owner.id,
+      expectedRevision: parsed.data.expectedRevision,
     });
 
     return NextResponse.json({ ok: true, ...result });

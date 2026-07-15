@@ -214,6 +214,8 @@ npm run audit:workout -- --mode progression-anchor --user-id <user-id> --exercis
 
 Use this section as a quick validation smoke-check only. Full artifact interpretation order belongs in `docs/09_AUDIT_PLAYBOOK.md`.
 
+- In `pre-session-readiness` mode, inspect `preSessionReadiness.snapshotDiagnostics` for the current exact identity/target hashes, authoritative snapshot ID, identity/payload hash validity, lifecycle state, target workout or future-slot revision evidence, readiness/projection fingerprints, superseded IDs, duplicate active identity/target, same-identity payload conflicts, active/current-evidence mismatch, and legacy-unknown count. This diagnostic is read-only and never activates, repairs, or invalidates a snapshot.
+
 - `historicalWeek.sessions[*].sessionSnapshot`
 - `historicalWeek.sessions[*].progressionEvidence`
 - `historicalWeek.sessions[*].weekClose`

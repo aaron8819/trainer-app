@@ -1,60 +1,58 @@
-import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  buildPreSessionReadinessGymCardDto,
-} from "./pre-session-readiness-gym-card";
-import type {
-  PreSessionReadinessContract,
-} from "./pre-session-readiness-contract";
+import type { PreSessionReadinessContract } from "./pre-session-readiness-contract";
+import { hashPreSessionReadinessValue } from "./pre-session-readiness-identity";
 
 const mocks = vi.hoisted(() => {
+  const transaction = vi.fn();
   const snapshotCreate = vi.fn();
   const snapshotFindFirst = vi.fn();
+  const snapshotFindMany = vi.fn();
   const snapshotUpdateMany = vi.fn();
   const mesocycleFindFirst = vi.fn();
   const workoutFindFirst = vi.fn();
+  const workoutFindMany = vi.fn();
+  const readinessFindFirst = vi.fn();
   const loadNextWorkoutContext = vi.fn();
-
+  const prisma = {
+    $transaction: transaction,
+    preSessionReadinessSnapshot: {
+      create: snapshotCreate,
+      findFirst: snapshotFindFirst,
+      findMany: snapshotFindMany,
+      updateMany: snapshotUpdateMany,
+    },
+    mesocycle: { findFirst: mesocycleFindFirst },
+    workout: { findFirst: workoutFindFirst, findMany: workoutFindMany },
+    readinessSignal: { findFirst: readinessFindFirst },
+  };
   return {
+    transaction,
     snapshotCreate,
     snapshotFindFirst,
+    snapshotFindMany,
     snapshotUpdateMany,
     mesocycleFindFirst,
     workoutFindFirst,
+    workoutFindMany,
+    readinessFindFirst,
     loadNextWorkoutContext,
-    prisma: {
-      preSessionReadinessSnapshot: {
-        create: snapshotCreate,
-        findFirst: snapshotFindFirst,
-        updateMany: snapshotUpdateMany,
-      },
-      mesocycle: {
-        findFirst: mesocycleFindFirst,
-      },
-      workout: {
-        findFirst: workoutFindFirst,
-      },
-    },
+    prisma,
   };
 });
 
-vi.mock("@/lib/db/prisma", () => ({
-  prisma: mocks.prisma,
-}));
-
+vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
 vi.mock("./next-session", () => ({
   loadNextWorkoutContext: (...args: unknown[]) =>
     mocks.loadNextWorkoutContext(...args),
 }));
 
 import {
-  invalidatePreSessionReadinessSnapshotsForIdentity,
-  loadLatestPreSessionReadinessSnapshotCandidate,
-  savePreSessionReadinessSnapshot,
+  activatePreSessionReadinessSnapshot,
+  loadCurrentPreSessionReadinessSnapshot,
+  loadCurrentPreSessionReadinessSnapshotIdentity,
+  loadPreSessionReadinessSnapshotAuditDiagnostics,
+  PreSessionReadinessSnapshotConflictError,
 } from "./pre-session-readiness-snapshot";
-import {
-  loadLatestHomePreSessionReadinessContractCandidate,
-} from "./home-pre-session-readiness";
 
 function makeContract(
   overrides: Partial<PreSessionReadinessContract> = {}
@@ -70,7 +68,9 @@ function makeContract(
         provenance: "app_read_model",
       },
       readOnly: true,
+      auditOnly: false,
       affectsScoringOrGeneration: false,
+      consumedByProduction: false,
     },
     nextSessionIdentity: {
       userId: "user-1",
@@ -133,10 +133,7 @@ function makeContract(
       fatigueCautions: [],
       safeOptionalAddOns: [],
       suppressAvoid: [],
-      addOnState: {
-        status: "none",
-        reason: "No add-ons.",
-      },
+      addOnState: { status: "none", reason: "No add-ons." },
     },
     calibrationWatches: {
       prescriptionConfidence: [],
@@ -164,35 +161,69 @@ function makeContract(
       notes: ["read-only snapshot"],
     },
   };
+  return { ...contract, ...overrides };
+}
 
+function makeMesocycle(overrides: Record<string, unknown> = {}) {
+  const seedPayload = { version: 1, slots: [] };
   return {
-    ...contract,
+    id: "meso-1",
+    state: "ACTIVE_ACCUMULATION",
+    completedSessions: 4,
+    accumulationSessionsCompleted: 4,
+    deloadSessionsCompleted: 0,
+    sessionsPerWeek: 3,
+    slotPlanSeedJson: seedPayload,
+    slotSequenceJson: { version: 1, slots: ["lower_a"] },
+    currentSeedRevisionId: "seed-rev-2",
+    currentSeedRevision: {
+      id: "seed-rev-2",
+      revision: 2,
+      seedPayload,
+      payloadHash: hashPreSessionReadinessValue(seedPayload),
+      provenanceStatus: "exact",
+    },
+    weekCloses: [],
     ...overrides,
   };
 }
 
-function makeSnapshot(overrides: Record<string, unknown> = {}) {
-  const contract =
-    (overrides.contractJson as PreSessionReadinessContract | undefined) ??
-    makeContract();
-
+function makeExactSnapshot(
+  identity: NonNullable<
+    Awaited<ReturnType<typeof loadCurrentPreSessionReadinessSnapshotIdentity>>
+  >,
+  contract = makeContract(),
+  overrides: Record<string, unknown> = {}
+) {
   return {
     id: "snapshot-1",
-    userId: "user-1",
-    activeMesocycleId: "meso-1",
-    mesocycleState: "ACTIVE_ACCUMULATION",
-    weekInMeso: 2,
-    sessionInWeek: 2,
-    slotId: "lower_a",
-    slotIntent: "lower",
-    plannedWorkoutId: null,
-    plannedWorkoutRevision: null,
+    userId: identity.userId,
+    activeMesocycleId: identity.activeMesocycleId,
+    mesocycleState: identity.mesocycleState,
+    weekInMeso: identity.weekInMeso,
+    sessionInWeek: identity.sessionInWeek,
+    slotId: identity.slotId,
+    slotIntent: identity.slotIntent,
+    plannedWorkoutId: identity.plannedWorkoutId,
+    plannedWorkoutRevision: identity.plannedWorkoutRevision,
     contractVersion: 1,
     contractJson: contract,
-    sourceStateHash: null,
-    slotPlanSeedHash: null,
-    slotSequenceHash: null,
-    createdAt: new Date("2026-06-02T12:00:00.000Z"),
+    identityStatus: "EXACT",
+    identityContractVersion: 1,
+    identityJson: identity.identity,
+    identityHash: identity.identityHash,
+    targetHash: identity.targetHash,
+    payloadHash: hashPreSessionReadinessValue(contract),
+    readinessEvidenceFingerprint: identity.readinessEvidenceFingerprint,
+    projectionFingerprint: identity.projectionFingerprint,
+    seedRevisionId: identity.seedRevisionId,
+    seedRevisionNumber: identity.seedRevisionNumber,
+    seedPayloadHash: identity.seedPayloadHash,
+    prescriptionFingerprint: identity.prescriptionFingerprint,
+    sourceStateHash: identity.identityHash,
+    slotPlanSeedHash: identity.slotPlanSeedHash,
+    slotSequenceHash: identity.slotSequenceHash,
+    createdAt: new Date("2026-07-14T12:00:00.000Z"),
     expiresAt: null,
     invalidatedAt: null,
     invalidatedReason: null,
@@ -200,333 +231,288 @@ function makeSnapshot(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeSaveInput(contract = makeContract()) {
-  return {
-    userId: "user-1",
-    activeMesocycleId: "meso-1",
-    mesocycleState: "ACTIVE_ACCUMULATION" as const,
-    weekInMeso: 2,
-    sessionInWeek: 2,
-    slotId: "lower_a",
-    slotIntent: "lower",
-    plannedWorkoutId: null,
-    plannedWorkoutRevision: null,
-    contractVersion: 1,
-    contract,
-  };
-}
-
-describe("pre-session readiness snapshots", () => {
+describe("pre-session readiness snapshot persistence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.mesocycleFindFirst.mockResolvedValue({
-      id: "meso-1",
-      state: "ACTIVE_ACCUMULATION",
-      slotPlanSeedJson: { source: "seed", slots: [] },
-      slotSequenceJson: { source: "sequence", slots: [] },
-    });
-    mocks.workoutFindFirst.mockResolvedValue(null);
     mocks.loadNextWorkoutContext.mockResolvedValue({
       intent: "lower",
       slotId: "lower_a",
-      slotSequenceIndex: 1,
-      slotSequenceLength: 4,
-      slotSource: "mesocycle_slot_sequence",
       existingWorkoutId: null,
-      isExisting: false,
       source: "rotation",
       weekInMeso: 2,
       sessionInWeek: 2,
-      derivationTrace: [],
-      selectedIncompleteStatus: null,
-      selectedIncompleteReadiness: null,
     });
+    mocks.mesocycleFindFirst.mockResolvedValue(makeMesocycle());
+    mocks.workoutFindFirst.mockResolvedValue(null);
+    mocks.workoutFindMany.mockResolvedValue([]);
+    mocks.readinessFindFirst.mockResolvedValue(null);
+    mocks.snapshotFindFirst.mockResolvedValue(null);
+    mocks.snapshotFindMany.mockResolvedValue([]);
+    mocks.snapshotUpdateMany.mockResolvedValue({ count: 1 });
     mocks.snapshotCreate.mockImplementation(async ({ data }) => ({
       id: "snapshot-created",
-      createdAt: new Date("2026-06-02T12:00:00.000Z"),
+      createdAt: new Date("2026-07-14T12:00:00.000Z"),
       invalidatedAt: null,
       invalidatedReason: null,
       ...data,
     }));
-    mocks.snapshotFindFirst.mockResolvedValue(null);
-    mocks.snapshotUpdateMany.mockResolvedValue({ count: 1 });
-  });
-
-  it("saves and loads a valid snapshot", async () => {
-    const saved = await savePreSessionReadinessSnapshot(makeSaveInput());
-    mocks.snapshotFindFirst.mockResolvedValue(saved);
-
-    const loaded = await loadLatestPreSessionReadinessSnapshotCandidate("user-1");
-
-    expect(saved.contractJson).toMatchObject({ contractVersion: 1 });
-    expect(saved.sourceStateHash).toEqual(expect.any(String));
-    expect(loaded).toEqual(saved);
-    expect(mocks.snapshotCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          activeMesocycleId: "meso-1",
-          contractVersion: 1,
-          slotId: "lower_a",
-        }),
-      })
+    mocks.transaction.mockImplementation(async (callback) =>
+      callback(mocks.prisma)
     );
   });
 
-  it("Home candidate loader returns a contract for a valid snapshot", async () => {
-    mocks.snapshotFindFirst.mockResolvedValue(makeSnapshot());
-
-    const candidate =
-      await loadLatestHomePreSessionReadinessContractCandidate("user-1");
-
-    expect(candidate).toMatchObject({
-      source: "persisted_snapshot",
-      contract: {
-        contractVersion: 1,
-        nextSessionIdentity: {
-          activeMesocycleId: "meso-1",
-          nextSlotId: "lower_a",
+  it("derives a versioned future-slot identity from exact seed and persisted evidence", async () => {
+    const identity = await loadCurrentPreSessionReadinessSnapshotIdentity("user-1");
+    expect(identity).toMatchObject({
+      identity: {
+        identityContractVersion: 1,
+        target: {
+          kind: "future_slot",
+          seedRevision: {
+            status: "exact_revision",
+            revisionId: "seed-rev-2",
+            revision: 2,
+          },
         },
       },
+      identityHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      projectionFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
   });
 
-  it("returns null for no snapshot", async () => {
-    await expect(
-      loadLatestHomePreSessionReadinessContractCandidate("user-1")
-    ).resolves.toBeNull();
-  });
-
-  it("returns null for the wrong user", async () => {
-    mocks.snapshotFindFirst.mockResolvedValue(
-      makeSnapshot({
-        userId: "other-user",
-        contractJson: makeContract({
-          nextSessionIdentity: {
-            ...makeContract().nextSessionIdentity,
-            userId: "other-user",
-          },
-        }),
-      })
-    );
-
-    await expect(
-      loadLatestHomePreSessionReadinessContractCandidate("user-1")
-    ).resolves.toBeNull();
-  });
-
-  it("returns null for the wrong active mesocycle", async () => {
-    mocks.snapshotFindFirst.mockResolvedValue(
-      makeSnapshot({
-        activeMesocycleId: "meso-2",
-        contractJson: makeContract({
-          nextSessionIdentity: {
-            ...makeContract().nextSessionIdentity,
-            activeMesocycleId: "meso-2",
-          },
-        }),
-      })
-    );
-
-    await expect(
-      loadLatestHomePreSessionReadinessContractCandidate("user-1")
-    ).resolves.toBeNull();
-  });
-
-  it("returns null for the wrong week or session", async () => {
-    mocks.snapshotFindFirst.mockResolvedValue(
-      makeSnapshot({
-        weekInMeso: 3,
-        contractJson: makeContract({
-          nextSessionIdentity: {
-            ...makeContract().nextSessionIdentity,
-            currentWeek: 3,
-          },
-        }),
-      })
-    );
-
-    await expect(
-      loadLatestHomePreSessionReadinessContractCandidate("user-1")
-    ).resolves.toBeNull();
-  });
-
-  it("returns null for the wrong slot", async () => {
-    mocks.snapshotFindFirst.mockResolvedValue(
-      makeSnapshot({
-        slotId: "upper_b",
-        contractJson: makeContract({
-          nextSessionIdentity: {
-            ...makeContract().nextSessionIdentity,
-            nextSlotId: "upper_b",
-          },
-        }),
-      })
-    );
-
-    await expect(
-      loadLatestHomePreSessionReadinessContractCandidate("user-1")
-    ).resolves.toBeNull();
-  });
-
-  it("returns null for an expired snapshot", async () => {
-    mocks.snapshotFindFirst.mockResolvedValue(
-      makeSnapshot({ expiresAt: new Date("2026-06-02T11:59:00.000Z") })
-    );
-
-    await expect(
-      loadLatestHomePreSessionReadinessContractCandidate("user-1")
-    ).resolves.toBeNull();
-  });
-
-  it("returns null for an invalidated snapshot", async () => {
-    mocks.snapshotFindFirst.mockResolvedValue(
-      makeSnapshot({
-        invalidatedAt: new Date("2026-06-02T11:00:00.000Z"),
-        invalidatedReason: "source_changed",
-      })
-    );
-
-    await expect(
-      loadLatestHomePreSessionReadinessContractCandidate("user-1")
-    ).resolves.toBeNull();
-  });
-
-  it("returns null for an invalid contract shape", async () => {
-    mocks.snapshotFindFirst.mockResolvedValue(
-      makeSnapshot({ contractJson: { contractVersion: 1 } })
-    );
-
-    await expect(
-      loadLatestHomePreSessionReadinessContractCandidate("user-1")
-    ).resolves.toBeNull();
-  });
-
-  it("returns null for a planned workout mismatch", async () => {
+  it("uses workout revision and prescription fingerprint for a materialized target", async () => {
     mocks.loadNextWorkoutContext.mockResolvedValue({
       intent: "lower",
       slotId: "lower_a",
-      existingWorkoutId: "planned-1",
-      isExisting: true,
+      existingWorkoutId: "workout-1",
       source: "existing_incomplete",
       weekInMeso: 2,
       sessionInWeek: 2,
-      derivationTrace: [],
-      selectedIncompleteStatus: "planned",
     });
     mocks.workoutFindFirst.mockResolvedValue({
-      id: "planned-1",
+      id: "workout-1",
       revision: 7,
+      status: "PLANNED",
+      sessionIntent: "LOWER",
+      selectionMode: "AUTO",
+      selectionMetadata: {},
+      exercises: [],
     });
-    mocks.snapshotFindFirst.mockResolvedValue(
-      makeSnapshot({
-        plannedWorkoutId: "planned-1",
-        plannedWorkoutRevision: 6,
-        contractJson: makeContract({
-          nextSessionIdentity: {
-            ...makeContract().nextSessionIdentity,
-            existingWorkoutId: "planned-1",
-          },
-        }),
-      })
-    );
-
-    await expect(
-      loadLatestHomePreSessionReadinessContractCandidate("user-1")
-    ).resolves.toBeNull();
-  });
-
-  it("loads a blocked contract when identity and freshness are valid", async () => {
-    const blocked = makeContract({
-      startability: {
-        status: "blocked",
-        safeToTrain: false,
-        normalStartCoachingAllowed: false,
-        action: "resolve_blocker_first",
-        reasons: ["Resolve closeout first."],
-        blockerSummary: "Closeout pending.",
-      },
-      projectedWeekStatus: {
-        ...makeContract().projectedWeekStatus,
-        status: "blocked",
-      },
-      sessionLocalCoaching: {
-        ...makeContract().sessionLocalCoaching,
-        addOnState: {
-          status: "blocked",
-          reason: "Blocked until closeout is resolved.",
-        },
-      },
-    });
-    mocks.snapshotFindFirst.mockResolvedValue(makeSnapshot({ contractJson: blocked }));
-
-    const candidate =
-      await loadLatestHomePreSessionReadinessContractCandidate("user-1");
-
-    expect(candidate?.contract).toMatchObject({
-      startability: {
-        status: "blocked",
-        safeToTrain: false,
-      },
+    const identity = await loadCurrentPreSessionReadinessSnapshotIdentity("user-1");
+    expect(identity?.identity.target).toMatchObject({
+      kind: "materialized_workout",
+      workoutId: "workout-1",
+      workoutRevision: 7,
+      prescriptionFingerprint: expect.any(String),
     });
   });
 
-  it("Home DTO still maps through the app-safe gym-card adapter", async () => {
-    mocks.snapshotFindFirst.mockResolvedValue(makeSnapshot());
-
-    const candidate =
-      await loadLatestHomePreSessionReadinessContractCandidate("user-1");
-    const dto = candidate
-      ? buildPreSessionReadinessGymCardDto(
-          candidate.contract as PreSessionReadinessContract
-        )
-      : null;
-
-    expect(dto).toMatchObject({
-      source: {
-        kind: "typed_pre_session_readiness_contract",
-        ownerSeam: "api/pre-session-readiness-contract",
-        producerMode: "persisted_snapshot",
-      },
-      action: "start",
+  it("atomically supersedes the active logical target and inserts the replacement", async () => {
+    const identity = (await loadCurrentPreSessionReadinessSnapshotIdentity("user-1"))!;
+    const result = await activatePreSessionReadinessSnapshot({
+      preparedIdentity: identity,
+      contract: makeContract(),
     });
-  });
-
-  it("does not introduce CLI or audit artifact dependencies", () => {
-    const source = readFileSync(
-      "src/lib/api/pre-session-readiness-snapshot.ts",
-      "utf8"
-    );
-
-    expect(source).not.toContain("workout-audit-cli");
-    expect(source).not.toContain("buildPreSessionReadinessSummary");
-    expect(source).not.toContain("runWorkoutAuditGeneration");
-    expect(source).not.toContain("buildWorkoutAuditContext");
-    expect(source).not.toContain("artifacts/audits");
-  });
-
-  it("invalidates snapshots for a matching identity", async () => {
-    await expect(
-      invalidatePreSessionReadinessSnapshotsForIdentity({
-        userId: "user-1",
-        activeMesocycleId: "meso-1",
-        weekInMeso: 2,
-        sessionInWeek: 2,
-        slotId: "lower_a",
-        slotIntent: "lower",
-        invalidatedReason: "source_changed",
-      })
-    ).resolves.toEqual({ count: 1 });
-
+    expect(result).toMatchObject({ outcome: "created", invalidatedSnapshotCount: 1 });
+    expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: "ReadCommitted",
+    });
     expect(mocks.snapshotUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
-          invalidatedAt: null,
-          slotIntent: "lower",
-        }),
+        where: expect.objectContaining({ targetHash: identity.targetHash }),
+      })
+    );
+    expect(mocks.snapshotCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
         data: expect.objectContaining({
-          invalidatedReason: "source_changed",
+          identityStatus: "EXACT",
+          identityHash: identity.identityHash,
+          payloadHash: hashPreSessionReadinessValue(makeContract()),
         }),
       })
     );
+  });
+
+  it("reuses an equivalent active exact snapshot without changing timestamps", async () => {
+    const identity = (await loadCurrentPreSessionReadinessSnapshotIdentity("user-1"))!;
+    const existing = makeExactSnapshot(identity);
+    mocks.snapshotFindFirst.mockResolvedValue(existing);
+    const result = await activatePreSessionReadinessSnapshot({
+      preparedIdentity: identity,
+      contract: makeContract(),
+    });
+    expect(result).toMatchObject({ outcome: "reused", snapshot: existing });
+    expect(mocks.snapshotUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.snapshotCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects the same identity with a different payload and leaves the active row authoritative", async () => {
+    const identity = (await loadCurrentPreSessionReadinessSnapshotIdentity("user-1"))!;
+    mocks.snapshotFindFirst.mockResolvedValue(
+      makeExactSnapshot(identity, makeContract({
+        projectedWeekStatus: {
+          ...makeContract().projectedWeekStatus,
+          projectionNotes: ["different"],
+        },
+      }))
+    );
+    await expect(
+      activatePreSessionReadinessSnapshot({
+        preparedIdentity: identity,
+        contract: makeContract(),
+      })
+    ).rejects.toMatchObject({ code: "PAYLOAD_INTEGRITY_CONFLICT" });
+    expect(mocks.snapshotUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.snapshotCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale readiness signal before lifecycle mutation", async () => {
+    const identity = (await loadCurrentPreSessionReadinessSnapshotIdentity("user-1"))!;
+    mocks.readinessFindFirst.mockResolvedValue({
+      id: "signal-new",
+      userId: "user-1",
+      timestamp: new Date(),
+      subjectiveReadiness: 5,
+    });
+    await expect(
+      activatePreSessionReadinessSnapshot({
+        preparedIdentity: identity,
+        contract: makeContract(),
+      })
+    ).rejects.toBeInstanceOf(PreSessionReadinessSnapshotConflictError);
+    expect(mocks.snapshotUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.snapshotCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects a seed revision change before activation", async () => {
+    const identity = (await loadCurrentPreSessionReadinessSnapshotIdentity("user-1"))!;
+    const changedSeed = { version: 1, slots: [{ slotId: "lower_a" }] };
+    mocks.mesocycleFindFirst.mockResolvedValue(
+      makeMesocycle({
+        slotPlanSeedJson: changedSeed,
+        currentSeedRevisionId: "seed-rev-3",
+        currentSeedRevision: {
+          id: "seed-rev-3",
+          revision: 3,
+          seedPayload: changedSeed,
+          payloadHash: hashPreSessionReadinessValue(changedSeed),
+          provenanceStatus: "exact",
+        },
+      })
+    );
+    await expect(
+      activatePreSessionReadinessSnapshot({ preparedIdentity: identity, contract: makeContract() })
+    ).rejects.toMatchObject({ code: "STALE_PREPARATION" });
+    expect(mocks.snapshotUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects a changed persisted projection before activation", async () => {
+    const identity = (await loadCurrentPreSessionReadinessSnapshotIdentity("user-1"))!;
+    mocks.workoutFindMany.mockResolvedValue([
+      {
+        id: "partial-1",
+        revision: 2,
+        status: "IN_PROGRESS",
+        scheduledDate: new Date(),
+        completedAt: null,
+        mesocycleWeekSnapshot: 2,
+        mesoSessionSnapshot: 2,
+        advancesSplit: true,
+        sessionIntent: "LOWER",
+        selectionMode: "AUTO",
+        selectionMetadata: {},
+        seedRevisionId: "seed-rev-2",
+        seedRevisionNumber: 2,
+        seedPayloadHash: "seed-hash",
+        exercises: [],
+      },
+    ]);
+    await expect(
+      activatePreSessionReadinessSnapshot({ preparedIdentity: identity, contract: makeContract() })
+    ).rejects.toMatchObject({ code: "STALE_PREPARATION" });
+    expect(mocks.snapshotUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects a materialized workout revision change before activation", async () => {
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      intent: "lower",
+      slotId: "lower_a",
+      existingWorkoutId: "workout-1",
+      source: "existing_incomplete",
+      weekInMeso: 2,
+      sessionInWeek: 2,
+    });
+    const workout = {
+      id: "workout-1",
+      revision: 7,
+      status: "PLANNED",
+      sessionIntent: "LOWER",
+      selectionMode: "AUTO",
+      selectionMetadata: {},
+      exercises: [],
+    };
+    mocks.workoutFindFirst.mockResolvedValue(workout);
+    const identity = (await loadCurrentPreSessionReadinessSnapshotIdentity("user-1"))!;
+    mocks.workoutFindFirst.mockResolvedValue({ ...workout, revision: 8 });
+    const contract = makeContract({
+      nextSessionIdentity: {
+        ...makeContract().nextSessionIdentity,
+        existingWorkoutId: "workout-1",
+      },
+    });
+    await expect(
+      activatePreSessionReadinessSnapshot({ preparedIdentity: identity, contract })
+    ).rejects.toMatchObject({ code: "STALE_PREPARATION" });
+    expect(mocks.snapshotUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("loads only the active exact current identity and verifies payload integrity", async () => {
+    const identity = (await loadCurrentPreSessionReadinessSnapshotIdentity("user-1"))!;
+    mocks.snapshotFindFirst.mockResolvedValue(makeExactSnapshot(identity));
+    await expect(loadCurrentPreSessionReadinessSnapshot("user-1")).resolves.toMatchObject({
+      status: "available",
+      snapshot: { id: "snapshot-1" },
+    });
+    expect(mocks.snapshotFindFirst).toHaveBeenLastCalledWith({
+      where: {
+        userId: "user-1",
+        identityStatus: "EXACT",
+        identityHash: identity.identityHash,
+        invalidatedAt: null,
+      },
+    });
+  });
+
+  it("fails explicitly for corrupt persisted payloads", async () => {
+    const identity = (await loadCurrentPreSessionReadinessSnapshotIdentity("user-1"))!;
+    mocks.snapshotFindFirst.mockResolvedValue(
+      makeExactSnapshot(identity, makeContract(), { payloadHash: "corrupt" })
+    );
+    await expect(loadCurrentPreSessionReadinessSnapshot("user-1")).resolves.toEqual({
+      status: "integrity_error",
+      reason: "payload_hash_mismatch",
+      snapshotId: "snapshot-1",
+    });
+  });
+
+  it("reports legacy and supersession diagnostics without mutation", async () => {
+    const identity = (await loadCurrentPreSessionReadinessSnapshotIdentity("user-1"))!;
+    mocks.snapshotFindMany.mockResolvedValue([
+      makeExactSnapshot(identity),
+      makeExactSnapshot(identity, makeContract(), {
+        id: "snapshot-old",
+        invalidatedAt: new Date(),
+        invalidatedReason: "superseded_by_atomic_prepare",
+      }),
+      { ...makeExactSnapshot(identity), id: "legacy", identityStatus: "LEGACY_UNKNOWN", identityJson: null, identityHash: null },
+    ]);
+    const diagnostics = await loadPreSessionReadinessSnapshotAuditDiagnostics("user-1");
+    expect(diagnostics).toMatchObject({
+      currentSnapshotId: "snapshot-1",
+      activeSnapshotMatchesCurrentEvidence: true,
+      legacyUnknownCount: 1,
+      supersededSnapshotIds: ["snapshot-old"],
+    });
+    expect(mocks.snapshotUpdateMany).not.toHaveBeenCalled();
   });
 });

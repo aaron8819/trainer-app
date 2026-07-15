@@ -96,7 +96,7 @@ export async function POST(request: Request) {
 
   try {
     await prisma.$transaction(async (tx) => {
-      const existingWorkout = await tx.workout.findUnique({
+      const loadedWorkout = await tx.workout.findUnique({
         where: { id: workoutId },
         select: {
           id: true,
@@ -118,6 +118,10 @@ export async function POST(request: Request) {
           seedPayloadHash: true,
         },
       });
+      if (loadedWorkout && loadedWorkout.userId !== user.id) {
+        throw new Error("WORKOUT_NOT_FOUND");
+      }
+      const existingWorkout = loadedWorkout;
 
       if (!parsed.data.scheduledDate && existingWorkout?.scheduledDate) {
         scheduledDate = existingWorkout.scheduledDate;
@@ -125,7 +129,6 @@ export async function POST(request: Request) {
 
       assertExistingWorkoutSaveAllowed({
         existingWorkout,
-        userId: user.id,
         hasExerciseRewrite,
         expectedRevision: parsed.data.expectedRevision,
       });
@@ -375,25 +378,17 @@ export async function POST(request: Request) {
         ...workoutUpdateData,
         ...(seedProvenance ?? {}),
       };
-      if (existingWorkout && hasExerciseRewrite) {
-        Object.assign(workoutUpdateData, { revision: { increment: 1 } });
-      }
-      if (existingWorkout && shouldFinalizePostSessionReview) {
-        Object.assign(workoutUpdateData, { revision: { increment: 1 } });
-      }
-
       const { workout, wonLifecycleTransition } = await persistWorkoutRow(tx, {
         workoutId,
         existingWorkout,
+        userId: user.id,
+        expectedRevision: parsed.data.expectedRevision,
         shouldAdvanceLifecycleTransition,
         resolvedMesocycleId,
         workoutUpdateData,
         workoutCreateData,
       });
-      persistedRevision =
-        existingWorkout && shouldFinalizePostSessionReview
-          ? existingWorkout.revision + 1
-          : workout.revision;
+      persistedRevision = workout.revision;
 
       if (isOptionalGapFill && linkedWeekCloseId) {
         const linkResult = await linkOptionalWorkoutToWeekClose(tx, {
@@ -472,11 +467,17 @@ export async function POST(request: Request) {
       }
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "WORKOUT_FORBIDDEN") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
     if (error instanceof Error && error.message === "WORKOUT_NOT_FOUND") {
       return NextResponse.json({ error: "Workout not found" }, { status: 404 });
+    }
+    if (
+      error instanceof Error &&
+      error.message === "EXPECTED_REVISION_REQUIRED"
+    ) {
+      return NextResponse.json(
+        { error: "expectedRevision is required for existing workouts." },
+        { status: 400 },
+      );
     }
     if (
       error instanceof Error &&

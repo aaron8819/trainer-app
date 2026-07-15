@@ -23,6 +23,8 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   workoutId: string;
+  expectedRevision: number;
+  onRevision: (revision: number) => void;
   exercise: Pick<LogExerciseInput, "workoutExerciseId" | "name"> | null;
   onSwap: (exercise: LogExerciseInput) => void;
 };
@@ -36,6 +38,8 @@ export function RuntimeExerciseSwapSheet({
   isOpen,
   onClose,
   workoutId,
+  expectedRevision,
+  onRevision,
   exercise,
   onSwap,
 }: Props) {
@@ -328,6 +332,7 @@ export function RuntimeExerciseSwapSheet({
         body: JSON.stringify({
           workoutExerciseId: exercise.workoutExerciseId,
           replacementExerciseId,
+          expectedRevision,
           ...(trimmedSearchQuery.length >= 2
             ? { searchQuery: trimmedSearchQuery }
             : {}),
@@ -338,6 +343,9 @@ export function RuntimeExerciseSwapSheet({
         throw new Error(body.error ?? "Failed to swap exercise.");
       }
       if (body.exercise) {
+        if (typeof body.revision === "number") {
+          onRevision(body.revision);
+        }
         onSwap(body.exercise as LogExerciseInput);
         onClose();
       }

@@ -15,6 +15,7 @@ export type CloseoutCardModel = {
   actionMethod?: "link" | "post";
   dismissActionHref: string | null;
   dismissActionLabel: string | null;
+  workoutRevision?: number | null;
 };
 
 type Props = {
@@ -40,7 +41,7 @@ export function CloseoutCard({
   }
 
   const handleDismiss = async () => {
-    if (!closeout.dismissActionHref) {
+    if (!closeout.dismissActionHref || closeout.workoutRevision == null) {
       return;
     }
 
@@ -49,6 +50,8 @@ export function CloseoutCard({
 
     const response = await fetch(closeout.dismissActionHref, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expectedRevision: closeout.workoutRevision }),
     });
 
     if (!response.ok) {

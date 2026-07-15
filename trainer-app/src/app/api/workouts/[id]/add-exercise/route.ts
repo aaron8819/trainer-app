@@ -17,6 +17,10 @@ import {
   buildExerciseStimulusSnapshot,
   toExerciseStimulusAccountingEvidence,
 } from "@/lib/stimulus-accounting/snapshot";
+import {
+  executeWorkoutMutation,
+  isWorkoutMutationError,
+} from "@/lib/api/workout-mutation";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,6 +28,7 @@ export const runtime = "nodejs";
 const addExerciseSchema = z.object({
   exerciseId: z.string().min(1),
   allowDuplicate: z.boolean().optional(),
+  expectedRevision: z.number().int().min(1),
 });
 
 const RUNTIME_EDIT_BLOCKED_PREFIX = "WORKOUT_RUNTIME_EDIT_BLOCKED:";
@@ -288,7 +293,11 @@ export async function POST(
   const primaryGoal = (goals?.primaryGoal?.toLowerCase() as PrimaryGoal) ?? "hypertrophy";
 
   const createExerciseAtNextIndex = async () =>
-    prisma.$transaction(async (tx) => {
+    executeWorkoutMutation({
+      workoutId,
+      userId: owner.id,
+      expectedRevision: parsed.data.expectedRevision,
+    }, async (tx) => {
       const latestWorkout = await tx.workout.findUnique({
         where: { id: workoutId },
         select: {
@@ -461,7 +470,6 @@ export async function POST(
       await tx.workout.update({
         where: { id: workoutId },
         data: {
-          revision: { increment: 1 },
           selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
         },
       });
@@ -469,10 +477,10 @@ export async function POST(
       return createdExercise;
     });
 
-  let workoutExercise: Awaited<ReturnType<typeof createExerciseAtNextIndex>> | null = null;
-  for (let attempt = 0; attempt < 2 && !workoutExercise; attempt += 1) {
+  let workoutMutation: Awaited<ReturnType<typeof createExerciseAtNextIndex>> | null = null;
+  for (let attempt = 0; attempt < 2 && !workoutMutation; attempt += 1) {
     try {
-      workoutExercise = await createExerciseAtNextIndex();
+      workoutMutation = await createExerciseAtNextIndex();
     } catch (error) {
       if (
         attempt === 0 &&
@@ -488,6 +496,9 @@ export async function POST(
       }
       if (error instanceof Error && error.message === "WORKOUT_NOT_FOUND") {
         return NextResponse.json({ error: "Workout not found" }, { status: 404 });
+      }
+      if (isWorkoutMutationError(error)) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
       }
       if (error instanceof Error && error.message === "GAP_FILL_BONUS_EXERCISE_BLOCKED") {
         return NextResponse.json(
@@ -509,9 +520,10 @@ export async function POST(
       throw error;
     }
   }
-  if (!workoutExercise) {
+  if (!workoutMutation) {
     throw new Error("Workout exercise was not created.");
   }
+  const workoutExercise = workoutMutation.result;
 
   // Return in LogExerciseInput format
   const muscleTagGroups = buildExerciseMuscleDisplayGroups(exercise);
@@ -548,5 +560,5 @@ export async function POST(
     })),
   };
 
-  return NextResponse.json({ exercise: logExercise });
+  return NextResponse.json({ exercise: logExercise, revision: workoutMutation.revision });
 }

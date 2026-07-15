@@ -32,7 +32,7 @@ describe("POST /api/pre-session-readiness/prepare", () => {
       status: "prepared",
       snapshot: { id: "snapshot-1" },
       invalidatedSnapshotCount: 1,
-      replacementPolicy: "replace_matching_identity",
+      replacementPolicy: "atomic_replace",
       contract: { contractVersion: 1 },
       gymCard: { action: "start" },
     });
@@ -52,7 +52,7 @@ describe("POST /api/pre-session-readiness/prepare", () => {
       status: "prepared",
       snapshotId: "snapshot-1",
       invalidatedSnapshotCount: 1,
-      replacementPolicy: "replace_matching_identity",
+      replacementPolicy: "atomic_replace",
       preSessionReadinessContract: { contractVersion: 1 },
       preSessionReadinessCard: { action: "start" },
     });

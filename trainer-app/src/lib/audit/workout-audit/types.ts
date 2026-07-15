@@ -70,6 +70,7 @@ import type {
 } from "./constants";
 import type { AcceptedMesocycleSeedProvenanceConsistency } from "@/lib/api/accepted-mesocycle-seed-provenance";
 import type { PreSessionReadinessContract } from "@/lib/api/pre-session-readiness-contract";
+import type { PreSessionReadinessSnapshotAuditDiagnostics } from "@/lib/api/pre-session-readiness-snapshot";
 export type {
   PreSessionReadinessCoachingRecommendation,
   PreSessionReadinessConsistencyCheck,
@@ -728,6 +729,7 @@ export type PreSessionReadinessAuditPayload = {
     mesocycleIdMatchesRequest?: boolean;
   };
   contract?: PreSessionReadinessContract;
+  snapshotDiagnostics?: PreSessionReadinessSnapshotAuditDiagnostics;
 };
 
 export type CurrentWeekAuditEvaluation = {

@@ -9,6 +9,19 @@ import { resolveDefaultRestSecondsForExecutionSet } from "@/lib/logging/rest-tim
 import { quantizeLoad } from "@/lib/units/load-quantization";
 import { getSetValidity } from "@/lib/logging/setValidity";
 import { getClosedMesocycleWorkoutFenceReason } from "@/lib/workout-workflow";
+import {
+  executeWorkoutMutation,
+  isWorkoutMutationError,
+} from "@/lib/api/workout-mutation";
+
+class SetLogMutationError extends Error {
+  constructor(
+    message: string,
+    readonly status: 400 | 404 | 409,
+  ) {
+    super(message);
+  }
+}
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -22,7 +35,41 @@ export async function POST(request: Request) {
   }
 
   const owner = await resolveOwner();
-  const outcome = await prisma.$transaction(async (tx) => {
+  const mutationTarget = parsed.data.workoutSetId
+    ? await prisma.workoutSet.findFirst({
+        where: {
+          id: parsed.data.workoutSetId,
+          workoutExercise: { workout: { userId: owner.id } },
+        },
+        select: { workoutExercise: { select: { workoutId: true } } },
+      })
+    : await prisma.workoutExercise.findFirst({
+        where: {
+          id: parsed.data.workoutExerciseId,
+          workout: { userId: owner.id },
+        },
+        select: { workoutId: true },
+      });
+  const workoutId = parsed.data.workoutSetId
+    ? mutationTarget && "workoutExercise" in mutationTarget
+      ? mutationTarget.workoutExercise.workoutId
+      : null
+    : mutationTarget && "workoutId" in mutationTarget
+      ? mutationTarget.workoutId
+      : null;
+  if (!workoutId) {
+    const error = parsed.data.workoutSetId
+      ? "Workout set not found"
+      : "Workout exercise not found";
+    return NextResponse.json({ error }, { status: 404 });
+  }
+
+  try {
+    const mutation = await executeWorkoutMutation({
+      workoutId,
+      userId: owner.id,
+      expectedRevision: parsed.data.expectedRevision,
+    }, async (tx) => {
     if (!parsed.data.workoutSetId && parsed.data.setIntent === "WARMUP") {
       const workoutExercise = await tx.workoutExercise.findFirst({
         where: {
@@ -67,7 +114,7 @@ export async function POST(request: Request) {
       });
 
       if (!workoutExercise) {
-        return { error: "Workout exercise not found" as const, status: 404 as const };
+        throw new SetLogMutationError("Workout exercise not found", 404);
       }
 
       const blockedReason = getClosedMesocycleWorkoutFenceReason({
@@ -76,15 +123,15 @@ export async function POST(request: Request) {
         mesocycleIsActive: workoutExercise.workout.mesocycle?.isActive ?? null,
       });
       if (blockedReason) {
-        return { error: blockedReason, status: 409 as const };
+        throw new SetLogMutationError(blockedReason, 409);
       }
 
       const baseSet = workoutExercise.sets[0];
       if (!baseSet) {
-        return {
-          error: "Cannot log a warmup for an exercise with no prescribed set.",
-          status: 409 as const,
-        };
+        throw new SetLogMutationError(
+          "Cannot log a warmup for an exercise with no prescribed set.",
+          409,
+        );
       }
 
       const wasSkipped = parsed.data.wasSkipped ?? false;
@@ -98,9 +145,7 @@ export async function POST(request: Request) {
         wasSkipped,
       });
       if (!validity.valid) {
-        return {
-          error: validity.reason ?? "Invalid set log",
-        };
+        throw new SetLogMutationError(validity.reason ?? "Invalid set log", 400);
       }
 
       const nextSet = await tx.workoutSet.create({
@@ -190,7 +235,6 @@ export async function POST(request: Request) {
           ...(workoutExercise.workout.status === WorkoutStatus.PLANNED
             ? { status: WorkoutStatus.IN_PROGRESS }
             : {}),
-          revision: { increment: 1 },
           selectionMetadata: selectionMetadata as Prisma.InputJsonValue,
         },
       });
@@ -248,7 +292,7 @@ export async function POST(request: Request) {
     });
 
     if (!setRecord) {
-      return { error: "Workout set not found" as const };
+      throw new SetLogMutationError("Workout set not found", 404);
     }
     const blockedReason = getClosedMesocycleWorkoutFenceReason({
       mesocycleId: setRecord.workoutExercise.workout.mesocycleId,
@@ -256,7 +300,7 @@ export async function POST(request: Request) {
       mesocycleIsActive: setRecord.workoutExercise.workout.mesocycle?.isActive ?? null,
     });
     if (blockedReason) {
-      return { error: blockedReason, status: 409 as const };
+      throw new SetLogMutationError(blockedReason, 409);
     }
     const wasSkipped = parsed.data.wasSkipped ?? false;
     const setIntent = parsed.data.setIntent ?? "WORK";
@@ -270,9 +314,7 @@ export async function POST(request: Request) {
       wasSkipped,
     });
     if (!validity.valid) {
-      return {
-        error: validity.reason ?? "Invalid set log",
-      };
+      throw new SetLogMutationError(validity.reason ?? "Invalid set log", 400);
     }
 
     const previousLog = await tx.setLog.findUnique({
@@ -324,17 +366,8 @@ export async function POST(request: Request) {
       wasCreated: previousLog === null,
       workoutStatusUpdated,
     };
-  });
-
-  if ("error" in outcome) {
-    const status =
-      "status" in outcome
-        ? outcome.status
-        : outcome.error === "Workout set not found"
-          ? 404
-          : 400;
-    return NextResponse.json({ error: outcome.error }, { status });
-  }
+    });
+    const outcome = mutation.result;
 
   return NextResponse.json({
     status: "logged",
@@ -342,12 +375,20 @@ export async function POST(request: Request) {
     wasCreated: outcome.wasCreated,
     previousLog: outcome.previousLog,
     workoutStatusUpdated: outcome.workoutStatusUpdated,
+    revision: mutation.revision,
     ...("set" in outcome ? { set: outcome.set } : {}),
   });
+  } catch (error) {
+    if (isWorkoutMutationError(error) || error instanceof SetLogMutationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
+  }
 }
 
 const deleteSetLogSchema = z.object({
   workoutSetId: z.string(),
+  expectedRevision: z.number().int().min(1),
 });
 
 export async function DELETE(request: Request) {
@@ -361,7 +402,23 @@ export async function DELETE(request: Request) {
   }
 
   const owner = await resolveOwner();
-  const deleted = await prisma.$transaction(async (tx) => {
+  const mutationTarget = await prisma.workoutSet.findFirst({
+    where: {
+      id: parsed.data.workoutSetId,
+      workoutExercise: { workout: { userId: owner.id } },
+    },
+    select: { workoutExercise: { select: { workoutId: true } } },
+  });
+  if (!mutationTarget) {
+    return NextResponse.json({ error: "Workout set not found" }, { status: 404 });
+  }
+
+  try {
+  const mutation = await executeWorkoutMutation({
+    workoutId: mutationTarget.workoutExercise.workoutId,
+    userId: owner.id,
+    expectedRevision: parsed.data.expectedRevision,
+  }, async (tx) => {
     const setRecord = await tx.workoutSet.findFirst({
       where: {
         id: parsed.data.workoutSetId,
@@ -388,7 +445,7 @@ export async function DELETE(request: Request) {
     });
 
     if (!setRecord) {
-      return { error: "Workout set not found" as const };
+      throw new SetLogMutationError("Workout set not found", 404);
     }
     const blockedReason = getClosedMesocycleWorkoutFenceReason({
       mesocycleId: setRecord.workoutExercise.workout.mesocycleId,
@@ -396,7 +453,7 @@ export async function DELETE(request: Request) {
       mesocycleIsActive: setRecord.workoutExercise.workout.mesocycle?.isActive ?? null,
     });
     if (blockedReason) {
-      return { error: blockedReason, status: 409 as const };
+      throw new SetLogMutationError(blockedReason, 409);
     }
 
     await tx.setLog.deleteMany({
@@ -406,10 +463,11 @@ export async function DELETE(request: Request) {
     return { ok: true as const };
   });
 
-  if ("error" in deleted) {
-    const status = "status" in deleted ? deleted.status : 404;
-    return NextResponse.json({ error: deleted.error }, { status });
+  return NextResponse.json({ status: "deleted", revision: mutation.revision });
+  } catch (error) {
+    if (isWorkoutMutationError(error) || error instanceof SetLogMutationError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    throw error;
   }
-
-  return NextResponse.json({ status: "deleted" });
 }

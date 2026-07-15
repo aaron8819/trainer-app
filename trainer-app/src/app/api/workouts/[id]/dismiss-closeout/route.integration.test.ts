@@ -50,6 +50,8 @@ describe("POST /api/workouts/[id]/dismiss-closeout", () => {
     const response = await POST(
       new Request("http://localhost/api/workouts/workout-closeout-1/dismiss-closeout", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-closeout-1" }) }
     );
@@ -65,6 +67,7 @@ describe("POST /api/workouts/[id]/dismiss-closeout", () => {
     expect(mocks.dismissCloseoutSession).toHaveBeenCalledWith(mocks.tx, {
       userId: "user-1",
       workoutId: "workout-closeout-1",
+      expectedRevision: 1,
     });
   });
 
@@ -76,6 +79,8 @@ describe("POST /api/workouts/[id]/dismiss-closeout", () => {
     const response = await POST(
       new Request("http://localhost/api/workouts/workout-closeout-1/dismiss-closeout", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expectedRevision: 1 }),
       }),
       { params: Promise.resolve({ id: "workout-closeout-1" }) }
     );

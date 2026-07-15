@@ -30,11 +30,8 @@ export function assertMesocycleAllowsWorkoutSave(
 
 export function assertExistingWorkoutSaveAllowed(input: {
   existingWorkout: {
-    userId: string;
     status: string;
-    revision: number;
   } | null;
-  userId: string;
   hasExerciseRewrite: boolean;
   expectedRevision?: number | null;
 }): void {
@@ -42,17 +39,11 @@ export function assertExistingWorkoutSaveAllowed(input: {
   if (!existingWorkout) {
     return;
   }
-  if (existingWorkout.userId !== input.userId) {
-    throw new Error("WORKOUT_FORBIDDEN");
-  }
   if (input.hasExerciseRewrite && existingWorkout.status !== "PLANNED") {
     throw new Error("WORKOUT_IMMUTABLE");
   }
-  if (
-    input.expectedRevision != null &&
-    input.expectedRevision !== existingWorkout.revision
-  ) {
-    throw new Error("REVISION_CONFLICT");
+  if (input.expectedRevision == null) {
+    throw new Error("EXPECTED_REVISION_REQUIRED");
   }
 }
 

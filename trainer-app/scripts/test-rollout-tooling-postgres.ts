@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -76,6 +76,46 @@ function applyMigrations(names: string[]): void {
   }
 }
 
+function migrationChecksum(name: string): string {
+  const bytes = readFileSync(join(process.cwd(), "prisma", "migrations", name, "migration.sql"));
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function createMigrationLedger(): void {
+  psql(`
+    CREATE TABLE public._prisma_migrations (
+      id VARCHAR(36) PRIMARY KEY,
+      checksum VARCHAR(64) NOT NULL,
+      finished_at TIMESTAMPTZ,
+      migration_name VARCHAR(255) NOT NULL,
+      logs TEXT,
+      rolled_back_at TIMESTAMPTZ,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      applied_steps_count INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+}
+
+function recordMigration(name: string, index: number): void {
+  psql(`
+    INSERT INTO public._prisma_migrations (
+      id, checksum, finished_at, migration_name, logs, rolled_back_at, applied_steps_count
+    ) VALUES (
+      'migration-${String(index).padStart(2, "0")}',
+      '${migrationChecksum(name)}',
+      CURRENT_TIMESTAMP,
+      '${name}',
+      NULL,
+      NULL,
+      1
+    );
+  `);
+}
+
+function recordMigrations(names: string[], offset = 0): void {
+  names.forEach((name, index) => recordMigration(name, offset + index));
+}
+
 function parseLastJson(stdout: string): Record<string, unknown> {
   for (let index = stdout.lastIndexOf("{"); index >= 0; index = stdout.lastIndexOf("{", index - 1)) {
     try {
@@ -96,6 +136,61 @@ function cli(script: string, args: string[]): Record<string, unknown> {
     throw new Error("Configured parent DATABASE_URL leaked into disposable rollout tooling");
   }
   return parseLastJson(result.stdout);
+}
+
+function cliWithExpectedStatus(script: string, args: string[], expectedStatus: number): Record<string, unknown> {
+  const result = run(
+    process.execPath,
+    [join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), script, "--env-file", envFile, "--confirm-disposable", ...args],
+    { quiet: true },
+  );
+  if (result.status !== expectedStatus) {
+    throw new Error(`Unexpected ${script} status=${result.status}; expected=${expectedStatus}\n${result.stdout}\n${result.stderr}`);
+  }
+  if (`${result.stdout}\n${result.stderr}`.includes("trainer-rollout")) {
+    throw new Error("Disposable connection credential or container identifier leaked into migration output");
+  }
+  return parseLastJson(result.stdout);
+}
+
+function databaseStateFingerprint(): string {
+  return psql(`
+    SELECT md5(string_agg(value, E'\\n' ORDER BY value))
+    FROM (
+      SELECT 'table:' || c.relname AS value
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+      UNION ALL
+      SELECT 'column:' || c.relname || ':' || a.attname || ':' ||
+        format_type(a.atttypid, a.atttypmod) || ':' || a.attnotnull::text || ':' ||
+        coalesce(pg_get_expr(d.adbin, d.adrelid), '')
+      FROM pg_attribute a
+      JOIN pg_class c ON c.oid = a.attrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+      WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped
+      UNION ALL
+      SELECT 'index:' || pg_get_indexdef(i.indexrelid)
+      FROM pg_index i JOIN pg_class c ON c.oid = i.indrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+      UNION ALL
+      SELECT 'constraint:' || con.conname || ':' || pg_get_constraintdef(con.oid, true)
+      FROM pg_constraint con JOIN pg_class c ON c.oid = con.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public'
+      UNION ALL
+      SELECT 'trigger:' || t.tgname || ':' || pg_get_triggerdef(t.oid, true)
+      FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND NOT t.tgisinternal
+      UNION ALL
+      SELECT 'function:' || p.proname || ':' || pg_get_functiondef(p.oid)
+      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.prokind = 'f'
+      UNION ALL
+      SELECT 'ledger:' || id || ':' || checksum || ':' || coalesce(finished_at::text, '') || ':' ||
+        migration_name || ':' || coalesce(logs, '') || ':' || coalesce(rolled_back_at::text, '') || ':' || applied_steps_count::text
+      FROM public._prisma_migrations
+    ) facts;
+  `, true);
 }
 
 function cliMustFail(script: string, args: string[], expected: RegExp): void {
@@ -204,12 +299,66 @@ try {
   const migrations = migrationDirectories();
   if (migrations.length !== 15) throw new Error(`Expected 15 migrations, found ${migrations.length}`);
   applyMigrations(migrations.slice(0, preMigrationCount));
+  createMigrationLedger();
+  recordMigrations(migrations.slice(0, preMigrationCount));
   insertHistoricalFixture();
 
   const directCheck = cli("scripts/check-direct-db.ts", []);
   if (directCheck.classification !== "successful_direct_connection") {
     throw new Error("Direct endpoint diagnostic did not classify the disposable connection successfully");
   }
+
+  const beforeStateA = databaseStateFingerprint();
+  const migrationStateA = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 0);
+  const afterStateA = databaseStateFingerprint();
+  if (beforeStateA !== afterStateA) throw new Error("State A migration integrity inspection changed disposable database state");
+  if (
+    numberField(objectField(migrationStateA, "chain"), "applied") !== 10 ||
+    numberField(objectField(migrationStateA, "chain"), "pending") !== 5 ||
+    migrationStateA.migrationAuthorizationReady !== true
+  ) {
+    throw new Error(`State A did not authorize the clean pre-migration state: ${JSON.stringify(migrationStateA)}`);
+  }
+
+  psql(`ALTER TABLE "WorkoutExercise" ADD COLUMN "stimulusAccountingSnapshot" JSONB;`);
+  const migrationStateB = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  if (migrationStateB.migrationAuthorizationReady !== false) {
+    throw new Error("State B partial object did not block migration authorization");
+  }
+  const stateBPartial = objectField(migrationStateB, "partialObjects").unexpectedPresent;
+  if (!Array.isArray(stateBPartial) || stateBPartial.length === 0) {
+    throw new Error("State B partial object was not reported");
+  }
+  psql(`ALTER TABLE "WorkoutExercise" DROP COLUMN "stimulusAccountingSnapshot";`);
+
+  const firstApplied = migrations[0];
+  psql(`UPDATE public._prisma_migrations SET checksum = '${"0".repeat(64)}' WHERE migration_name = '${firstApplied}';`);
+  const migrationStateC = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  if (migrationStateC.migrationAuthorizationReady !== false) {
+    throw new Error("State C checksum mismatch did not block migration authorization");
+  }
+  psql(`UPDATE public._prisma_migrations SET checksum = '${migrationChecksum(firstApplied)}' WHERE migration_name = '${firstApplied}';`);
+
+  const firstPending = migrations[preMigrationCount];
+  psql(`
+    INSERT INTO public._prisma_migrations (
+      id, checksum, finished_at, migration_name, logs, rolled_back_at, applied_steps_count
+    ) VALUES (
+      'failed-ledger-row', '${migrationChecksum(firstPending)}', NULL,
+      '${firstPending}', 'fixture failure', NULL, 0
+    );
+  `);
+  const migrationStateD = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  if (migrationStateD.migrationAuthorizationReady !== false) {
+    throw new Error("State D failed ledger row did not block migration authorization");
+  }
+  psql(`UPDATE public._prisma_migrations SET logs = NULL, rolled_back_at = CURRENT_TIMESTAMP WHERE id = 'failed-ledger-row';`);
+  const rolledBackStateD = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  const rolledBackRows = objectField(rolledBackStateD, "ledger").rolledBack;
+  if (!Array.isArray(rolledBackRows) || rolledBackRows.length !== 1) {
+    throw new Error("State D rolled-back ledger row was not reported");
+  }
+  psql(`DELETE FROM public._prisma_migrations WHERE id = 'failed-ledger-row';`);
 
   const preSeed = cli("scripts/backfill-immutable-seed-revisions.ts", []);
   const preSeedSummary = objectField(preSeed, "summary");
@@ -228,6 +377,20 @@ try {
   cliMustFail("scripts/backfill-post-session-reviews.ts", [], /PostSessionReviewSnapshot|does not exist/i);
 
   applyMigrations(migrations.slice(preMigrationCount));
+  recordMigrations(migrations.slice(preMigrationCount), preMigrationCount);
+
+  const beforeStateE = databaseStateFingerprint();
+  const migrationStateE = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 0);
+  const afterStateE = databaseStateFingerprint();
+  if (beforeStateE !== afterStateE) throw new Error("State E migration integrity inspection changed disposable database state");
+  if (
+    numberField(objectField(migrationStateE, "chain"), "applied") !== 15 ||
+    numberField(objectField(migrationStateE, "chain"), "pending") !== 0 ||
+    objectField(migrationStateE, "chain").gateAApplicable !== false ||
+    migrationStateE.migrationAuthorizationReady !== false
+  ) {
+    throw new Error(`State E did not report a clean fully migrated non-Gate-A state: ${JSON.stringify(migrationStateE)}`);
+  }
 
   const fullSeedA = cli("scripts/backfill-immutable-seed-revisions.ts", []);
   const fullSeedB = cli("scripts/backfill-immutable-seed-revisions.ts", []);
@@ -288,6 +451,14 @@ try {
     writes: 0,
     directEndpointDiagnostic: "successful_direct_connection",
     configuredEnvironmentLeak: false,
+    migrationIntegrity: {
+      stateA: "authorization_ready",
+      stateB: "partial_object_blocked",
+      stateC: "checksum_mismatch_blocked",
+      stateD: "failed_and_rolled_back_ledger_blocked",
+      stateE: "fully_migrated_gate_a_not_applicable",
+      readOnlyFingerprintsStable: true,
+    },
   }, null, 2));
 } finally {
   rmSync(envFile, { force: true });

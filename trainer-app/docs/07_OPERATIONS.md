@@ -36,7 +36,7 @@ Migration authorization is blocked until every external prerequisite below is su
 - Every production-rollout command listed in this section, plus the shared workout/readiness audit and repair commands routed through `audit-cli-support.ts`, requires `--env-file <path>`. These operational helpers do not fall back to `.env`, `.env.local`, or `.env.production`.
 - Those files may point to different databases. Treat the file path as part of the reviewed command, and use the same absolute path throughout one rollout.
 - The named file must define `DATABASE_URL`; direct-endpoint checks and migration status also require `DIRECT_URL`.
-- Reports show only the resolved environment-file path and `local`, `disposable`, or `remote` target class. They never print connection strings or credentials.
+- Reports show only sanitized target classification and fingerprint fields. They never print environment-file contents, connection strings, credentials, passwords, or project references.
 - Dry-run is the default. A remote backfill write requires both `--write` and `--confirm-remote-write`; each write gate requires separate approval.
 - `prisma.config.ts` does not load dotenv implicitly. Direct Prisma CLI commands must use an explicitly pinned environment as shown below.
 
@@ -74,7 +74,28 @@ Invalid or conflicting accepted seeds block the entire exact seed-promotion writ
 
 `npm run ops:check-direct-db -- --env-file $rolloutEnv` resolves DNS, opens a short TCP connection, and performs the PostgreSQL/TLS/authentication handshake without running SQL. It reports a redacted host fingerprint and distinguishes DNS, timeout, network rejection, TLS, authentication, database rejection, and success. Pooler connectivity is not sufficient evidence for Prisma migration deployment, and the transaction pooler must not replace `DIRECT_URL`.
 
-After the direct check succeeds, `npm run ops:migration-status -- --env-file $rolloutEnv` performs read-only inspection of `_prisma_migrations` through `DIRECT_URL`. It reports checked-in, applied, pending, and failed migration names and always reports `migrationAuthorized=false`.
+After the direct check succeeds, `npm run ops:migration-status -- --env-file $rolloutEnv` performs the complete read-only Gate A migration-integrity verification through `DIRECT_URL`. Counts alone are insufficient. The command:
+
+- hashes the exact checked-in `migration.sql` bytes with SHA-256 and compares every successfully applied migration with `_prisma_migrations.checksum`;
+- rejects failed, rolled-back, unfinished, duplicate, unknown, missing-checksum, and out-of-prefix ledger states;
+- requires the checked-in chain to contain exactly 15 migrations with the first 10 applied and these final five pending in order: immutable seed revisions, workout-exercise stimulus accounting, ExerciseExposure retirement, post-session review snapshots, and atomic readiness snapshots;
+- verifies material definitions owned by the applied architecture migrations, including relevant column types/nullability/defaults, enum order, indexes, constraints, foreign keys, and safe migration prerequisites;
+- verifies every table, column, index, constraint, foreign key, trigger, and function introduced by a pending architecture migration is absent. The ExerciseExposure retirement migration is comments-only and deliberately retains the legacy table;
+- runs catalog and ledger queries inside a repeatable-read, read-only transaction, rejects mutation-capable statements in its query adapter, and reports `writes: 0`;
+- emits `migrationAuthorizationReady: true` only when the direct target is remote (or an explicitly confirmed disposable test target), checksums and ledger are clean, exactly the expected five migrations are pending, applied definitions are compatible, pending objects are absent, every catalog category was verified, and no writes occurred.
+
+Any partial pending-migration object or incompatible same-named definition blocks Gate A. The expected production pre-Gate-A result is 10 applied, 5 pending, 10 matching checksums, zero ledger issues, zero partial/incompatible/unverifiable objects, `writes: 0`, and `migrationAuthorizationReady: true`. Do not run the seed, stimulus-accounting, or post-session-review inventories until this full integrity command passes.
+
+The command never deploys migrations, creates temporary objects, modifies the Prisma ledger, executes DDL, repairs schema state, or authorizes deployment by itself. A fully migrated 15-applied/0-pending target is reported as clean with `gateAApplicable: false` and `migrationAuthorizationReady: false` because nothing remains for Gate A to authorize.
+
+Focused and disposable verification commands:
+
+```powershell
+npm run test:migration-integrity
+npm run test:db:rollout-tooling
+```
+
+The PostgreSQL 16 rollout test covers: clean 10/5 authorization, a manually introduced pending column, a post-application checksum mismatch, failed and rolled-back ledger rows, and the fully migrated 15/0 state. It compares schema/ledger fingerprints before and after clean inspections and does not load a configured rollout environment.
 
 The exact repository-owned deploy command, once migration authorization is granted, is:
 

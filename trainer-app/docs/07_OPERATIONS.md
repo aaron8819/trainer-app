@@ -27,6 +27,94 @@ Sources of truth:
 - `trainer-app/prisma/seed.ts`
 - `trainer-app/package.json`
 
+## Production architecture rollout authorization
+
+Migration authorization is blocked until every external prerequisite below is supplied and reviewed. Repository tooling may inventory and diagnose the target, but it does not authorize migration deployment, application deployment, traffic changes, or backfill writes.
+
+### Explicit environment ownership
+
+- Every production-rollout command listed in this section, plus the shared workout/readiness audit and repair commands routed through `audit-cli-support.ts`, requires `--env-file <path>`. These operational helpers do not fall back to `.env`, `.env.local`, or `.env.production`.
+- Those files may point to different databases. Treat the file path as part of the reviewed command, and use the same absolute path throughout one rollout.
+- The named file must define `DATABASE_URL`; direct-endpoint checks and migration status also require `DIRECT_URL`.
+- Reports show only the resolved environment-file path and `local`, `disposable`, or `remote` target class. They never print connection strings or credentials.
+- Dry-run is the default. A remote backfill write requires both `--write` and `--confirm-remote-write`; each write gate requires separate approval.
+- `prisma.config.ts` does not load dotenv implicitly. Direct Prisma CLI commands must use an explicitly pinned environment as shown below.
+
+Use one operator-selected path for the examples:
+
+```powershell
+$rolloutEnv = 'C:\absolute\path\to\operator-reviewed-rollout.env'
+npm run ops:check-direct-db -- --env-file $rolloutEnv
+npm run ops:migration-status -- --env-file $rolloutEnv
+npm run ops:preflight-seed-revisions -- --env-file $rolloutEnv
+npm run ops:preflight-stimulus-accounting -- --env-file $rolloutEnv
+npm run ops:preflight-post-session-reviews -- --env-file $rolloutEnv
+npm run audit:workout -- --env-file $rolloutEnv --mode pre-session-readiness --owner <owner-email> --no-artifact --operator-debug
+```
+
+`ops:preflight-stimulus-accounting` and `ops:preflight-post-session-reviews` are projected pre-migration inventories. They do not query the missing snapshot column/table. After migration, use the normal dry runs to validate persisted schema state and reconcile counts:
+
+```powershell
+npm run ops:backfill-seed-revisions -- --env-file $rolloutEnv
+npm run ops:backfill-stimulus-accounting -- --env-file $rolloutEnv --batch-size 100
+npm run ops:backfill-post-session-reviews -- --env-file $rolloutEnv --batch-size 100
+```
+
+Only after a separate, explicit write approval:
+
+```powershell
+npm run ops:backfill-seed-revisions -- --env-file $rolloutEnv --write --confirm-remote-write
+npm run ops:backfill-stimulus-accounting -- --env-file $rolloutEnv --batch-size 100 --write --confirm-remote-write
+npm run ops:backfill-post-session-reviews -- --env-file $rolloutEnv --batch-size 100 --write --confirm-remote-write
+```
+
+Invalid or conflicting accepted seeds block the entire exact seed-promotion write. An inactive completed invalid seed may remain honestly `legacy_unknown` when exact intent cannot be proven; do not rewrite it merely to clear the backfill count.
+
+### Direct migration endpoint
+
+`npm run ops:check-direct-db -- --env-file $rolloutEnv` resolves DNS, opens a short TCP connection, and performs the PostgreSQL/TLS/authentication handshake without running SQL. It reports a redacted host fingerprint and distinguishes DNS, timeout, network rejection, TLS, authentication, database rejection, and success. Pooler connectivity is not sufficient evidence for Prisma migration deployment, and the transaction pooler must not replace `DIRECT_URL`.
+
+After the direct check succeeds, `npm run ops:migration-status -- --env-file $rolloutEnv` performs read-only inspection of `_prisma_migrations` through `DIRECT_URL`. It reports checked-in, applied, pending, and failed migration names and always reports `migrationAuthorized=false`.
+
+The exact repository-owned deploy command, once migration authorization is granted, is:
+
+```powershell
+node --env-file=$rolloutEnv .\node_modules\prisma\build\index.js migrate deploy
+```
+
+Do not run it during preflight. A backup being available, a reachable direct endpoint, a clean migration status, an approved write pause, and an approved deployment plan are all required first.
+
+### Operator-owned prerequisites
+
+Record these values in the rollout approval before migration deployment:
+
+- Supabase backup/PITR status: `<operator-provided evidence required>`
+- Latest recovery point: `<operator-provided timestamp required>`
+- Restore procedure: `<operator-provided procedure required>`
+- Restore test or confidence level: `<operator-provided evidence required>`
+- Recovery time objective: `<operator-provided RTO required>`
+- Exact Vercel deployment command or workflow: `<operator-provided command/workflow required>`
+- Exact write-pause mechanism: `<operator-provided mechanism required>`
+- Deployed-commit verification: `<operator-provided command/check required>`
+- Exact write-resume mechanism: `<operator-provided mechanism required>`
+
+Do not infer or invent these commands. Migration authorization remains blocked while any placeholder is unresolved.
+
+### Current configured-target findings
+
+The last explicitly environment-pinned, read-only preflight established these rollout facts:
+
+- The configured direct Supabase endpoint fails DNS resolution. Do not substitute the transaction pooler for Prisma migration deployment.
+- One completed inactive mesocycle has a fully legacy-format accepted seed with 17 missing `setCount` entries. It remains `legacy_unknown`; the available evidence does not justify an exact repair or normalization default.
+- The stimulus-accounting pre-migration inventory projects 548 `legacy_derived` snapshots.
+- The post-session-review pre-migration inventory projects 64 producible `legacy_derived` reviews across 119 completed workouts.
+
+These findings are diagnostic evidence only. Migration deployment, backfill writes, application deployment, and rollout authorization remain blocked pending the operator-owned prerequisites above.
+
+### Disposable rollout-tooling gate
+
+`npm run test:db:rollout-tooling` uses PostgreSQL 16, applies the first 10 migrations, validates all three pre-migration inventories, applies all 15 migrations, reconciles projected and normal dry-run candidate counts, checks direct connectivity, and asserts zero snapshot or exact-seed writes. It creates its own explicit environment file and never reads a configured environment file.
+
 ## Pre-session readiness snapshot rollout
 
 1. Back up the target database and run `npm run test:db:readiness-snapshots` locally; this disposable command must pass before deployment.
@@ -39,11 +127,12 @@ Rollback before new exact rows are written may restore the pre-migration backup.
 
 ## Immutable seed revision rollout
 
-1. Back up the target database and stop seeded workout generation for the rollout window.
-2. Run `npx prisma migrate deploy`. Migration `20260713180000_add_immutable_mesocycle_seed_revisions` additively creates deterministic `legacy_unknown` revision-1 baselines for existing seeded mesocycles, selects them as current, and leaves historical workouts unassigned because exact prior provenance cannot be proven.
-3. Run `npm run ops:backfill-seed-revisions` and review the dry-run candidates and hashes.
-4. Run `npm run ops:backfill-seed-revisions -- --write` to append an exact normalized N+1 for each legacy current revision. Do not resume seeded generation until every active seeded mesocycle has exact current provenance.
-5. Run focused verification plus `npm run verify:contracts` and `npm run verify`.
+1. Satisfy every production architecture rollout prerequisite above, back up the target database, and use the operator-approved write pause.
+2. Run `npm run ops:preflight-seed-revisions -- --env-file $rolloutEnv` before migration. Review every `normalizable`, `legacy_baseline_only`, `already_exact`, `invalid_seed`, `conflict`, and `missing_seed` row.
+3. After separate migration authorization, use the environment-pinned Prisma deploy command above. Migration `20260713180000_add_immutable_mesocycle_seed_revisions` additively creates deterministic `legacy_unknown` revision-1 baselines for existing seeded mesocycles, selects them as current, and leaves historical workouts unassigned because exact prior provenance cannot be proven.
+4. Run `npm run ops:backfill-seed-revisions -- --env-file $rolloutEnv` and review the post-migration dry-run candidates and hashes.
+5. Only after separate backfill-write authorization, run the guarded remote write command shown above. Do not resume seeded generation until every active seeded mesocycle has exact current provenance.
+6. Run focused verification plus `npm run verify:contracts` and `npm run verify`.
 
 Rollback before application traffic may restore the pre-migration backup. After exact revisions or workouts reference the new model, roll forward; do not drop revision/workout provenance columns or rewrite accepted history. The configured application database must not be used for disposable migration/concurrency testing.
 
@@ -185,12 +274,12 @@ const prisma = new PrismaClient({ adapter });
 
 Standard run command:
 ```powershell
-$env:NODE_TLS_REJECT_UNAUTHORIZED='0'; node -r dotenv/config .\node_modules\tsx\dist\cli.mjs prisma/your-script.ts
+npm run <operational-command> -- --env-file C:\absolute\path\to\reviewed.env
 ```
 
 Command notes:
 - `NODE_TLS_REJECT_UNAUTHORIZED=0`: local Postgres uses a self-signed cert; this suppresses the SSL warning. Not needed in production.
-- `-r dotenv/config`: loads `.env.local` then `.env` so `DATABASE_URL` is available without manual export.
+- Operational commands must delegate to `src/lib/operations/rollout-environment.ts` before importing modules that instantiate Prisma. Do not use `dotenv/config` or add a default environment file.
 
 User resolution in scripts:
 ```ts
@@ -208,9 +297,9 @@ Never use bare `findFirst()` for user resolution:
 1. Back up the database and pause workout-completion writes.
 2. Apply the additive `PostSessionReviewSnapshot` migration.
 3. Deploy compatibility readers and exact completion writers together; resume completion only after exact snapshot creation is active.
-4. Run `npm run ops:backfill-post-session-reviews -- --batch-size 100` for a dry-run report. Resume with `--after-id <id>` when needed.
-5. Review invalid/unproducible rows and hash distribution. Only with explicit database-write authorization, rerun with `--write`.
-6. Rerun the same command to confirm idempotence, then run `npm run audit:post-session-reviews` for the read-only integrity report. Add `--include-current-reinterpretation` only for an explicit diagnostic comparison.
+4. Before migration, run `npm run ops:preflight-post-session-reviews -- --env-file $rolloutEnv`. After migration, run `npm run ops:backfill-post-session-reviews -- --env-file $rolloutEnv --batch-size 100` for a dry-run report. Resume with `--after-id <id>` when needed.
+5. Review invalid/unproducible rows and hash distribution. Only with explicit database-write authorization, rerun with both `--write` and `--confirm-remote-write`.
+6. Rerun the same command to confirm idempotence, then run `npm run audit:post-session-reviews -- --env-file $rolloutEnv` for the read-only integrity report. Add `--include-current-reinterpretation` only for an explicit diagnostic comparison.
 
 Backfilled rows are permanently `legacy_derived`; they do not represent what an older app version displayed. Ordinary GET/page reads never persist snapshots. Do not require historical backfill completion before new exact completion writes are enabled.
 
@@ -218,8 +307,8 @@ Backfilled rows are permanently `legacy_derived`; they do not represent what an 
 
 1. Apply `20260714120000_add_workout_exercise_stimulus_snapshot` through the normal reviewed migration process.
 2. Deploy application writers/readers. Null legacy rows remain readable as labeled `legacy_derived` or `legacy_unknown` during rollout.
-3. Run the default dry-run report: `npm run ops:backfill-stimulus-accounting -- --batch-size 100`. Review counts, unknown/invalid IDs, hash distribution, and the last scanned ID.
+3. Before migration, run `npm run ops:preflight-stimulus-accounting -- --env-file $rolloutEnv`. After migration, run `npm run ops:backfill-stimulus-accounting -- --env-file $rolloutEnv --batch-size 100`. Review counts, unknown/invalid IDs, hash distribution, and the last scanned ID.
 4. Resume a bounded dry run with `--after-id <id>` and optionally `--limit <n>`.
-5. Only after explicit database-write approval, use `--write`. Updates are idempotent and conditional on the snapshot still being null; reruns report existing exact/derived rows without rewriting them.
+5. Only after explicit database-write approval, use both `--write` and `--confirm-remote-write`. Updates are idempotent and conditional on the snapshot still being null; reruns report existing exact/derived rows without rewriting them.
 
 The schema has no immutable exercise rename or active/inactive history, so the report labels those historical capabilities unsupported instead of claiming exact reconstruction. Backfilled rows are `legacy_derived`, never `exact`.

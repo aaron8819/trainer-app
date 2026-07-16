@@ -1,8 +1,10 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { Prisma } from "@prisma/client";
-import { prisma } from "../src/lib/db/prisma";
-import { loadExerciseRotationContext } from "../src/lib/api/exercise-rotation-history";
+import { Prisma, type PrismaClient } from "@prisma/client";
+import {
+  runWithRolloutEnvironment,
+  sanitizedRolloutEnvironment,
+} from "@/lib/operations/rollout-environment";
 
 type LegacyExposureRow = {
   userId: string;
@@ -50,7 +52,10 @@ function readOwnershipSignals() {
   };
 }
 
-async function loadLegacyRows(userId?: string): Promise<LegacyExposureRow[] | null> {
+async function loadLegacyRows(
+  prisma: PrismaClient,
+  userId?: string,
+): Promise<LegacyExposureRow[] | null> {
   try {
     return await prisma.$queryRaw<LegacyExposureRow[]>(Prisma.sql`
       SELECT
@@ -79,9 +84,13 @@ async function loadLegacyRows(userId?: string): Promise<LegacyExposureRow[] | nu
 }
 
 async function main() {
+  const [{ prisma }, { loadExerciseRotationContext }] = await Promise.all([
+    import("@/lib/db/prisma"),
+    import("@/lib/api/exercise-rotation-history"),
+  ]);
   const userId = parseUserId(process.argv.slice(2));
   const [legacyRows, catalog] = await Promise.all([
-    loadLegacyRows(userId),
+    loadLegacyRows(prisma, userId),
     prisma.exercise.findMany({ select: { id: true, name: true } }),
   ]);
   const ownership = readOwnershipSignals();
@@ -179,11 +188,27 @@ async function main() {
   );
 }
 
-main()
-  .catch((error) => {
-    console.error("Exercise exposure retirement audit failed:", error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
+runWithRolloutEnvironment(
+  { argv: process.argv.slice(2), allowWrite: false },
+  async (environment) => {
+    console.log(JSON.stringify({ environment: sanitizedRolloutEnvironment(environment) }));
+    try {
+      await main();
+    } finally {
+      const { prisma } = await import("@/lib/db/prisma");
+      await prisma.$disconnect();
+    }
+  },
+).catch(async (error) => {
+  console.error(
+    "Exercise exposure retirement audit failed:",
+    error instanceof Error ? error.message : String(error),
+  );
+  try {
+    const { prisma } = await import("@/lib/db/prisma");
     await prisma.$disconnect();
-  });
+  } catch {
+    // Environment validation may fail before Prisma is importable.
+  }
+  process.exitCode = 1;
+});

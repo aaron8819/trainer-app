@@ -12,8 +12,9 @@ import type { SplitSanityAuditRequest } from "@/lib/audit/workout-audit/bundle";
 import type { SessionIntent } from "@/lib/engine/session-types";
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-  const env = loadAuditEnv(typeof args["env-file"] === "string" ? args["env-file"] : undefined);
+  const argv = process.argv.slice(2);
+  const args = parseArgs(argv);
+  const env = loadAuditEnv(argv);
 
   const [{ resolveWorkoutAuditIdentity }, { prisma }, { writeSplitSanityAuditArtifacts }] =
     await Promise.all([

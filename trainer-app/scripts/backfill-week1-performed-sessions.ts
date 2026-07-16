@@ -15,8 +15,9 @@ function artifactTimestamp(): string {
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
-  const env = loadAuditEnv(stringArg(args["env-file"]));
+  const argv = process.argv.slice(2);
+  const args = parseArgs(argv);
+  const env = loadAuditEnv(argv, { allowWrite: true });
   const write = boolArg(args.write);
   const explicitDryRun = boolArg(args["dry-run"]);
 

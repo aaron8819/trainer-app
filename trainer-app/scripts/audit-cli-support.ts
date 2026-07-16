@@ -1,6 +1,5 @@
 import { resolve } from "node:path";
-import { existsSync } from "node:fs";
-import dotenv from "dotenv";
+import { loadRolloutEnvironment } from "@/lib/operations/rollout-environment";
 
 export type AuditCliArgs = Record<string, string | boolean>;
 
@@ -72,27 +71,22 @@ export function parseArgs(argv: string[]): AuditCliArgs {
   return output;
 }
 
-function resolveDefaultEnvFile(): string | null {
-  const candidates = [".env.local", ".env"].map((entry) => resolve(process.cwd(), entry));
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
-}
-
-export function loadAuditEnv(envFileArg: string | undefined): {
+export function loadAuditEnv(
+  argv: string[],
+  options: { allowWrite?: boolean } = {},
+): {
   envLoaded: boolean;
   envFilePath: string | null;
+  targetClass: "local" | "disposable" | "remote";
 } {
-  const envFilePath = envFileArg ? resolve(process.cwd(), envFileArg) : resolveDefaultEnvFile();
-  if (!envFilePath) {
-    return {
-      envLoaded: Boolean(process.env.DATABASE_URL),
-      envFilePath: null,
-    };
-  }
-
-  const result = dotenv.config({ path: envFilePath, override: false });
+  const environment = loadRolloutEnvironment({
+    argv,
+    allowWrite: options.allowWrite ?? false,
+  });
   return {
-    envLoaded: !result.error,
-    envFilePath,
+    envLoaded: true,
+    envFilePath: resolve(environment.envFile),
+    targetClass: environment.targetClass,
   };
 }
 

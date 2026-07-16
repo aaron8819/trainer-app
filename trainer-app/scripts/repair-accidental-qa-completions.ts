@@ -136,10 +136,6 @@ function boolArg(value: string | boolean | undefined): boolean {
   return value === true || value === "true" || value === "1";
 }
 
-function stringArg(value: string | boolean | undefined): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
-}
-
 function sorted(values: readonly string[]): string[] {
   return [...values].sort((left, right) => left.localeCompare(right));
 }
@@ -888,14 +884,15 @@ async function executeRepair(input: {
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const args = parseArgs(argv);
   const execute = boolArg(args.execute);
   const dryRun = boolArg(args["dry-run"]);
   if (execute && dryRun) {
     throw new Error("--execute and --dry-run are mutually exclusive.");
   }
 
-  const env = loadAuditEnv(stringArg(args["env-file"]));
+  const env = loadAuditEnv(argv, { allowWrite: true });
   const modules = await loadModules();
 
   try {

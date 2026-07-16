@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { deleteWorkoutSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { reconcileMesocycleLifecycle } from "@/lib/api/mesocycle-lifecycle-reconciliation";
@@ -13,6 +14,9 @@ class DeleteWorkoutError extends Error {
 }
 
 export async function POST(request: Request) {
+  const paused = productionWritePauseResponse("workout_structural_edit", "/api/workouts/delete");
+  if (paused) return paused;
+
   const body = await request.json().catch(() => ({}));
   const parsed = deleteWorkoutSchema.safeParse(body);
 

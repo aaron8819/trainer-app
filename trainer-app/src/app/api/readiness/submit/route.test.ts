@@ -1,4 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const originalWritePause = process.env.TRAINER_WRITE_PAUSE;
+
+afterEach(() => {
+  if (originalWritePause === undefined) delete process.env.TRAINER_WRITE_PAUSE;
+  else process.env.TRAINER_WRITE_PAUSE = originalWritePause;
+});
 
 const mocks = vi.hoisted(() => {
   const resolveOwner = vi.fn();
@@ -40,6 +47,7 @@ import { POST } from "./route";
 describe("POST /api/readiness/submit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.TRAINER_WRITE_PAUSE;
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
     mocks.computePerformanceSignals.mockResolvedValue({
       rpeDeviation: 0.25,
@@ -57,6 +65,20 @@ describe("POST /api/readiness/submit", () => {
       },
     });
     mocks.readinessSignalCreate.mockResolvedValue({});
+  });
+
+  it("returns 503 before owner resolution or readiness evidence writes when paused", async () => {
+    process.env.TRAINER_WRITE_PAUSE = "enabled";
+    const response = await POST(
+      new Request("http://localhost/api/readiness/submit", { method: "POST" }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    await expect(response.json()).resolves.toMatchObject({ code: "PRODUCTION_WRITE_PAUSED" });
+    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.computePerformanceSignals).not.toHaveBeenCalled();
+    expect(mocks.readinessSignalCreate).not.toHaveBeenCalled();
   });
 
   it("persists canonical ReadinessSignal data from subjective readiness input", async () => {

@@ -73,14 +73,16 @@ export function parseArgs(argv: string[]): AuditCliArgs {
 
 export function loadAuditEnv(
   argv: string[],
-  options: { allowWrite?: boolean } = {},
+  options: { allowWrite?: boolean; writeRequested?: boolean } = {},
 ): {
   envLoaded: boolean;
   envFilePath: string | null;
   targetClass: "local" | "disposable" | "remote";
 } {
+  const rolloutArgv =
+    options.writeRequested && !argv.includes("--write") ? [...argv, "--write"] : argv;
   const environment = loadRolloutEnvironment({
-    argv,
+    argv: rolloutArgv,
     allowWrite: options.allowWrite ?? false,
   });
   return {

@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { prisma } from "../src/lib/db/prisma";
+import { assertOperationalProductionWriteAllowed } from "@/lib/operations/rollout-environment";
 
 const WORKOUT_ID = "cf1f4b62-308e-4ce6-a0f6-1ba71200871d";
 const REPAIR_NOTE =
@@ -197,6 +198,10 @@ async function loadWorkoutSnapshot(prismaClient: WorkoutReader): Promise<RepairS
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  assertOperationalProductionWriteAllowed({
+    argv: process.argv.slice(2),
+    writeRequested: options.apply,
+  });
 
   try {
     const snapshot = await loadWorkoutSnapshot(prisma);

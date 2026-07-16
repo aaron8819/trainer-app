@@ -2,7 +2,14 @@
  * Protects: Save API is action-based (save_plan / mark_completed / mark_partial / mark_skipped), with backward inference that cannot bypass gating.
  * Why it matters: Save behavior is the highest-risk workflow boundary and must remain deterministic under mixed legacy/new payloads.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const originalWritePause = process.env.TRAINER_WRITE_PAUSE;
+
+afterEach(() => {
+  if (originalWritePause === undefined) delete process.env.TRAINER_WRITE_PAUSE;
+  else process.env.TRAINER_WRITE_PAUSE = originalWritePause;
+});
 
 const mocks = vi.hoisted(() => {
   const workoutFindUnique = vi.fn();
@@ -20,6 +27,7 @@ const mocks = vi.hoisted(() => {
   const resolveWeekCloseOnOptionalGapFillCompletion = vi.fn();
   const dismissPendingWeekClose = vi.fn();
   const createPostSessionReviewSnapshotInTransaction = vi.fn();
+  const resolveOwner = vi.fn(async () => ({ id: "user-1" }));
 
   const tx = {
     workout: {
@@ -82,6 +90,7 @@ const mocks = vi.hoisted(() => {
     resolveWeekCloseOnOptionalGapFillCompletion,
     dismissPendingWeekClose,
     createPostSessionReviewSnapshotInTransaction,
+    resolveOwner,
   };
 });
 
@@ -90,7 +99,7 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: vi.fn(async () => ({ id: "user-1" })),
+  resolveOwner: () => mocks.resolveOwner(),
 }));
 
 vi.mock("@/lib/api/post-session-review-snapshot", () => ({
@@ -119,6 +128,28 @@ vi.mock("@/lib/api/mesocycle-week-close", async (importOriginal) => {
 });
 
 import { POST as saveWorkoutPost } from "./route";
+
+describe("production write pause", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.TRAINER_WRITE_PAUSE;
+  });
+
+  it("returns 503 before owner resolution, revision CAS, transaction, or receipt snapshot writes", async () => {
+    process.env.TRAINER_WRITE_PAUSE = "enabled";
+    const response = await saveWorkoutPost(
+      new Request("http://localhost/api/workouts/save", { method: "POST" }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    await expect(response.json()).resolves.toMatchObject({ code: "PRODUCTION_WRITE_PAUSED" });
+    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+    expect(mocks.workoutUpdateMany).not.toHaveBeenCalled();
+    expect(mocks.createPostSessionReviewSnapshotInTransaction).not.toHaveBeenCalled();
+  });
+});
 
 async function POST(request: Request) {
   const body = (await request.clone().json()) as Record<string, unknown>;

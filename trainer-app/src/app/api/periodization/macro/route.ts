@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { prisma } from "@/lib/db/prisma";
 import { generateMacroSchema } from "@/lib/validation";
 import { generateMacroCycle } from "@/lib/engine";
@@ -9,6 +10,9 @@ import { resolveOwner } from "@/lib/api/workout-context";
  * Generate a new macro cycle for the authenticated user.
  */
 export async function POST(request: NextRequest) {
+  const paused = productionWritePauseResponse("mesocycle_acceptance", "/api/periodization/macro");
+  if (paused) return paused;
+
   const user = await resolveOwner();
 
   if (!user) {

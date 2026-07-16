@@ -1,4 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const originalWritePause = process.env.TRAINER_WRITE_PAUSE;
+
+afterEach(() => {
+  if (originalWritePause === undefined) delete process.env.TRAINER_WRITE_PAUSE;
+  else process.env.TRAINER_WRITE_PAUSE = originalWritePause;
+});
 
 const mocks = vi.hoisted(() => {
   const workoutFindFirst = vi.fn();
@@ -13,6 +20,7 @@ const mocks = vi.hoisted(() => {
   const txWorkoutExerciseFindFirst = vi.fn();
   const txWorkoutExerciseCreate = vi.fn();
   const txWorkoutExerciseFindMany = vi.fn();
+  const resolveOwner = vi.fn(async () => ({ id: "user-1" }));
 
   const tx = {
     workout: {
@@ -61,6 +69,7 @@ const mocks = vi.hoisted(() => {
     txWorkoutExerciseFindFirst,
     txWorkoutExerciseCreate,
     txWorkoutExerciseFindMany,
+    resolveOwner,
   };
 });
 
@@ -69,10 +78,32 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: vi.fn(async () => ({ id: "user-1" })),
+  resolveOwner: () => mocks.resolveOwner(),
 }));
 
 import { POST } from "./route";
+
+describe("production write pause", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.TRAINER_WRITE_PAUSE;
+  });
+
+  it("returns 503 before owner resolution, Prisma reads, or structural transaction", async () => {
+    process.env.TRAINER_WRITE_PAUSE = "enabled";
+    const response = await POST(
+      new Request("http://localhost/api/workouts/workout-1/add-exercise", { method: "POST" }),
+      { params: Promise.resolve({ id: "workout-1" }) },
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    await expect(response.json()).resolves.toMatchObject({ code: "PRODUCTION_WRITE_PAUSED" });
+    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.workoutFindFirst).not.toHaveBeenCalled();
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
 
 const canonicalReceipt = {
   version: 1 as const,

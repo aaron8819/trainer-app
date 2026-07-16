@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import dotenv from "dotenv";
+import { assertProductionWriteAllowed } from "./production-write-gate";
 
 export type RolloutTargetClass = "local" | "disposable" | "remote";
 
@@ -100,6 +101,9 @@ export function loadRolloutEnvironment(
   if (writeEnabled && targetClass === "remote" && !remoteWriteConfirmed) {
     throw new Error("Remote --write requires --confirm-remote-write before any database connection.");
   }
+  if (writeEnabled && targetClass === "remote") {
+    assertProductionWriteAllowed("operational_backfill", parsed);
+  }
 
   return { envFile, targetClass, writeEnabled, remoteWriteConfirmed };
 }
@@ -113,6 +117,29 @@ export function sanitizedRolloutEnvironment(
     mode: environment.writeEnabled ? "write" : "dry_run",
     remoteWriteConfirmed: environment.remoteWriteConfirmed,
   };
+}
+
+export function assertOperationalProductionWriteAllowed(options: {
+  argv: string[];
+  writeRequested: boolean;
+  operation?: "operational_backfill";
+  environment?: Record<string, string | undefined>;
+}): void {
+  if (!options.writeRequested) return;
+
+  const environment = options.environment ?? process.env;
+  const connectionString = environment.DATABASE_URL;
+  if (!connectionString) throw new Error("Missing DATABASE_URL");
+
+  const targetClass = classifyRolloutTarget(
+    connectionString,
+    options.argv.includes("--confirm-disposable"),
+  );
+  if (targetClass !== "remote") return;
+  if (!options.argv.includes("--confirm-remote-write")) {
+    throw new Error("Remote write requires --confirm-remote-write before any database connection.");
+  }
+  assertProductionWriteAllowed(options.operation ?? "operational_backfill", environment);
 }
 
 export async function runWithRolloutEnvironment<T>(

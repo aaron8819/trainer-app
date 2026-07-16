@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { prisma } from "@/lib/db/prisma";
 import { profileSetupSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
@@ -6,6 +7,9 @@ import { loadWeeklyProgramInputs } from "@/lib/api/weekly-program";
 import { analyzeWeeklyProgram } from "@/lib/engine/weekly-program-analysis";
 
 export async function POST(request: Request) {
+  const paused = productionWritePauseResponse("application_configuration", "/api/profile/setup");
+  if (paused) return paused;
+
   const body = await request.json().catch(() => ({}));
   const parsed = profileSetupSchema.safeParse(body);
 

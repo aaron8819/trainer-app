@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { generateFromTemplateSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { generateDeloadSessionFromTemplate, generateSessionFromTemplate } from "@/lib/api/template-session";
@@ -17,6 +18,12 @@ import {
 import { attachSessionSlotMetadata, buildCanonicalSelectionMetadata } from "@/lib/ui/selection-metadata";
 
 export async function POST(request: Request) {
+  const paused = productionWritePauseResponse(
+    "workout_materialization",
+    "/api/workouts/generate-from-template",
+  );
+  if (paused) return paused;
+
   const body = await request.json().catch(() => ({}));
   const parsed = generateFromTemplateSchema.safeParse(body);
 

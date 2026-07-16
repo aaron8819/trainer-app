@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { prisma } from "@/lib/db/prisma";
 import { addExerciseToTemplateSchema } from "@/lib/validation";
 import { loadTemplateDetail } from "@/lib/api/templates";
@@ -8,6 +9,12 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const paused = productionWritePauseResponse(
+    "application_configuration",
+    "/api/templates/[id]/exercises",
+  );
+  if (paused) return paused;
+
   const { id: templateId } = await params;
   const owner = await resolveOwner();
   const body = await request.json().catch(() => ({}));

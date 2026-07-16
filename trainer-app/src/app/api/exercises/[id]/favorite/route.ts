@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { toggleFavoriteSchema } from "@/lib/validation";
@@ -12,6 +13,12 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const paused = productionWritePauseResponse(
+    "application_configuration",
+    "/api/exercises/[id]/favorite",
+  );
+  if (paused) return paused;
+
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
   const parsed = toggleFavoriteSchema.safeParse(body);

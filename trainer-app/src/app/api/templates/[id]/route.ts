@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import {
   loadTemplateDetail,
   updateTemplate,
@@ -26,6 +27,9 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const paused = productionWritePauseResponse("application_configuration", "/api/templates/[id]");
+  if (paused) return paused;
+
   const { id } = await params;
   const owner = await resolveOwner();
   const body = await request.json().catch(() => ({}));
@@ -47,6 +51,9 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const paused = productionWritePauseResponse("application_configuration", "/api/templates/[id]");
+  if (paused) return paused;
+
   const { id } = await params;
   const owner = await resolveOwner();
 

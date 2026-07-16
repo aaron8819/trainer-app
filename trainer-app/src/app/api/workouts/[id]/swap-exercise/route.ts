@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { z } from "zod";
 import { resolveOwner } from "@/lib/api/workout-context";
 import {
@@ -84,6 +85,12 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const paused = productionWritePauseResponse(
+    "workout_structural_edit",
+    "/api/workouts/[id]/swap-exercise",
+  );
+  if (paused) return paused;
+
   const resolvedParams = await params;
   if (!resolvedParams?.id) {
     return NextResponse.json({ error: "Missing workout id" }, { status: 400 });

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { setLogSchema } from "@/lib/validation";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
@@ -24,6 +25,9 @@ class SetLogMutationError extends Error {
 }
 
 export async function POST(request: Request) {
+  const paused = productionWritePauseResponse("set_logging", "/api/logs/set");
+  if (paused) return paused;
+
   const body = await request.json().catch(() => ({}));
   const parsed = setLogSchema.safeParse(body);
 
@@ -392,6 +396,9 @@ const deleteSetLogSchema = z.object({
 });
 
 export async function DELETE(request: Request) {
+  const paused = productionWritePauseResponse("set_logging", "/api/logs/set");
+  if (paused) return paused;
+
   const body = await request.json().catch(() => ({}));
   const parsed = deleteSetLogSchema.safeParse(body);
   if (!parsed.success) {

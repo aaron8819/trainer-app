@@ -22,6 +22,7 @@ import {
   attachSupplementalSessionMetadata,
   buildCanonicalSelectionMetadata,
 } from "@/lib/ui/selection-metadata";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 
 type PlannedExercise = GenerateFromIntentResponse["workout"]["mainLifts"][number];
 type PlannedSet = PlannedExercise["sets"][number];
@@ -78,6 +79,12 @@ function applyGapFillCaps(input: {
 }
 
 export async function POST(request: Request) {
+  const paused = productionWritePauseResponse(
+    "workout_materialization",
+    "/api/workouts/generate-from-intent",
+  );
+  if (paused) return paused;
+
   const body = await request.json().catch(() => ({}));
   const parsed = generateFromIntentSchema.safeParse(body);
 

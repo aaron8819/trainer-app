@@ -2,7 +2,14 @@
  * Protects: Schema invariants: Workout.revision (if implemented), WorkoutExercise orderIndex uniqueness, SetLog upsert idempotency.
  * Why it matters: Logging the same set repeatedly must update one canonical row rather than creating duplicates.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const originalWritePause = process.env.TRAINER_WRITE_PAUSE;
+
+afterEach(() => {
+  if (originalWritePause === undefined) delete process.env.TRAINER_WRITE_PAUSE;
+  else process.env.TRAINER_WRITE_PAUSE = originalWritePause;
+});
 
 const mocks = vi.hoisted(() => {
   const workoutSetFindFirst = vi.fn();
@@ -15,6 +22,7 @@ const mocks = vi.hoisted(() => {
   const workoutUpdate = vi.fn();
   const workoutUpdateMany = vi.fn();
   const workoutFindFirst = vi.fn();
+  const resolveOwner = vi.fn(async () => ({ id: "user-1" }));
 
   const tx = {
     workoutSet: { findFirst: workoutSetFindFirst, create: workoutSetCreate },
@@ -53,12 +61,13 @@ const mocks = vi.hoisted(() => {
     workoutUpdate,
     workoutUpdateMany,
     workoutFindFirst,
+    resolveOwner,
   };
 });
 
 vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/api/workout-context", () => ({
-  resolveOwner: vi.fn(async () => ({ id: "user-1" })),
+  resolveOwner: () => mocks.resolveOwner(),
 }));
 
 import { POST } from "./route";
@@ -66,6 +75,7 @@ import { POST } from "./route";
 describe("POST /api/logs/set", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.TRAINER_WRITE_PAUSE;
     mocks.workoutUpdateMany.mockResolvedValue({ count: 1 });
     mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-1",
@@ -84,6 +94,21 @@ describe("POST /api/logs/set", () => {
     mocks.setLogUpsert.mockResolvedValue({ id: "log-1" });
     mocks.setLogCreate.mockResolvedValue({ id: "warmup-log-1" });
     mocks.workoutUpdate.mockResolvedValue({ id: "workout-1", status: "IN_PROGRESS" });
+  });
+
+  it("returns 503 before owner resolution, target lookup, revision CAS, or set-log writes", async () => {
+    process.env.TRAINER_WRITE_PAUSE = "enabled";
+    const response = await POST(
+      new Request("http://localhost/api/logs/set", { method: "POST" }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    await expect(response.json()).resolves.toMatchObject({ code: "PRODUCTION_WRITE_PAUSED" });
+    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.workoutSetFindFirst).not.toHaveBeenCalled();
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+    expect(mocks.setLogUpsert).not.toHaveBeenCalled();
   });
 
   it("uses setLog.upsert keyed by workoutSetId for idempotent writes", async () => {

@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const mocks = vi.hoisted(() => ({
   resolveOwner: vi.fn(),
@@ -10,12 +13,14 @@ vi.mock("@/lib/api/workout-context", () => ({
 
 import {
   buildResolvedAuditIdentityRequest,
+  loadAuditEnv,
   runAuditPreflight,
 } from "../../../../scripts/audit-cli-support";
 
 describe("audit-cli-support", () => {
   const originalDatabaseUrl = process.env.DATABASE_URL;
   const originalOwnerEmail = process.env.OWNER_EMAIL;
+  const tempRoots: string[] = [];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -24,6 +29,9 @@ describe("audit-cli-support", () => {
   });
 
   afterEach(() => {
+    for (const root of tempRoots.splice(0)) {
+      rmSync(root, { recursive: true, force: true });
+    }
     if (originalDatabaseUrl === undefined) {
       delete process.env.DATABASE_URL;
     } else {
@@ -35,6 +43,24 @@ describe("audit-cli-support", () => {
     } else {
       process.env.OWNER_EMAIL = originalOwnerEmail;
     }
+  });
+
+  it("requires an explicitly supplied environment file", () => {
+    expect(() => loadAuditEnv([])).toThrow("Missing required --env-file");
+  });
+
+  it("loads only the explicitly supplied audit environment", () => {
+    const root = join(tmpdir(), `trainer-audit-env-${crypto.randomUUID()}`);
+    mkdirSync(root, { recursive: true });
+    tempRoots.push(root);
+    const envFile = join(root, "audit.env");
+    writeFileSync(envFile, "DATABASE_URL=postgresql://trainer:secret@127.0.0.1:5432/trainer\n");
+
+    expect(loadAuditEnv(["--env-file", envFile])).toMatchObject({
+      envLoaded: true,
+      envFilePath: envFile,
+      targetClass: "local",
+    });
   });
 
   it("uses explicit owner flag without changing precedence", async () => {

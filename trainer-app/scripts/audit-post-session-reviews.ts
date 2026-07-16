@@ -1,20 +1,32 @@
-import { prisma } from "@/lib/db/prisma";
-import { auditPostSessionReviewSnapshots } from "@/lib/api/post-session-review-audit";
+import {
+  runWithRolloutEnvironment,
+  sanitizedRolloutEnvironment,
+} from "@/lib/operations/rollout-environment";
 
-const ownerIndex = process.argv.indexOf("--user-id");
-const userId = ownerIndex >= 0 ? process.argv[ownerIndex + 1] : undefined;
-const includeCurrentReinterpretation = process.argv.includes(
-  "--include-current-reinterpretation"
-);
-
-auditPostSessionReviewSnapshots({ userId, includeCurrentReinterpretation })
-  .then((report) => {
-    console.log(JSON.stringify(report, null, 2));
-  })
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
+async function main(): Promise<void> {
+  const argv = process.argv.slice(2);
+  await runWithRolloutEnvironment({ argv, allowWrite: false }, async (environment) => {
+    console.log(JSON.stringify({ environment: sanitizedRolloutEnvironment(environment) }));
+    const [{ prisma }, { auditPostSessionReviewSnapshots }] = await Promise.all([
+      import("@/lib/db/prisma"),
+      import("@/lib/api/post-session-review-audit"),
+    ]);
+    const ownerIndex = argv.indexOf("--user-id");
+    const userId = ownerIndex >= 0 ? argv[ownerIndex + 1] : undefined;
+    const includeCurrentReinterpretation = argv.includes("--include-current-reinterpretation");
+    try {
+      const report = await auditPostSessionReviewSnapshots({
+        userId,
+        includeCurrentReinterpretation,
+      });
+      console.log(JSON.stringify(report, null, 2));
+    } finally {
+      await prisma.$disconnect();
+    }
   });
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});

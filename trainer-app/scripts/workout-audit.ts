@@ -5639,7 +5639,7 @@ export async function main(input?: {
     ) {
       throw new Error("--write is only supported by explicit recovery modes");
     }
-    env = loadAuditEnv(typeof args["env-file"] === "string" ? args["env-file"] : undefined);
+    env = loadAuditEnv(argv, { allowWrite: true });
     normalizedIntent = normalizeAuditIntentArg(
       typeof args.intent === "string" ? args.intent : undefined
     );

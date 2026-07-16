@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { z } from "zod";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { loadProgramDashboardData, applyCycleAnchor } from "@/lib/api/program";
@@ -31,6 +32,9 @@ const cycleAnchorSchema = z.object({
 });
 
 export async function PATCH(request: NextRequest) {
+  const paused = productionWritePauseResponse("mesocycle_lifecycle", "/api/program");
+  if (paused) return paused;
+
   const user = await resolveOwner();
   const pendingHandoff = await loadPendingMesocycleHandoff(user.id);
   if (pendingHandoff) {

@@ -8,8 +8,12 @@ import { computeFatigueScore } from "@/lib/engine";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import type { ReadinessSignal } from "@/lib/engine/readiness/types";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 
 export async function POST(request: Request) {
+  const paused = productionWritePauseResponse("readiness_submission", "/api/readiness/submit");
+  if (paused) return paused;
+
   const body = await request.json().catch(() => ({}));
   const parsed = readinessSignalSchema.safeParse(body);
 

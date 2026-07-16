@@ -1,4 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const originalWritePause = process.env.TRAINER_WRITE_PAUSE;
+
+afterEach(() => {
+  if (originalWritePause === undefined) delete process.env.TRAINER_WRITE_PAUSE;
+  else process.env.TRAINER_WRITE_PAUSE = originalWritePause;
+});
 
 const mocks = vi.hoisted(() => {
   const resolveOwner = vi.fn();
@@ -51,6 +58,7 @@ import { POST } from "./route";
 describe("POST /api/workouts/generate-from-template", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.TRAINER_WRITE_PAUSE;
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
     mocks.loadActiveMesocycle.mockResolvedValue(null);
     mocks.loadPendingMesocycleHandoff.mockResolvedValue(null);
@@ -77,6 +85,23 @@ describe("POST /api/workouts/generate-from-template", () => {
       rationale: null,
       wasAutoregulated: false,
     }));
+  });
+
+  it("returns 503 before owner resolution or workout materialization when writes are paused", async () => {
+    process.env.TRAINER_WRITE_PAUSE = "enabled";
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateId: "template-1" }),
+      }),
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    await expect(response.json()).resolves.toMatchObject({ code: "PRODUCTION_WRITE_PAUSED" });
+    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.generateSessionFromTemplate).not.toHaveBeenCalled();
   });
 
   it("rejects generation while mesocycle handoff is pending", async () => {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { Prisma } from "@prisma/client";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { reconcileRuntimeEditSelectionMetadata } from "@/lib/api/runtime-edit-reconciliation";
@@ -49,6 +50,12 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string; exerciseId: string }> }
 ) {
+  const paused = productionWritePauseResponse(
+    "workout_structural_edit",
+    "/api/workouts/[id]/exercises/[exerciseId]/add-set",
+  );
+  if (paused) return paused;
+
   const resolvedParams = await params;
   if (!resolvedParams?.id || !resolvedParams?.exerciseId) {
     return NextResponse.json(

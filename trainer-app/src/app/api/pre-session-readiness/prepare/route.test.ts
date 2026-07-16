@@ -1,4 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const originalWritePause = process.env.TRAINER_WRITE_PAUSE;
+
+afterEach(() => {
+  if (originalWritePause === undefined) delete process.env.TRAINER_WRITE_PAUSE;
+  else process.env.TRAINER_WRITE_PAUSE = originalWritePause;
+});
 
 const mocks = vi.hoisted(() => {
   const resolveOwner = vi.fn();
@@ -24,6 +31,7 @@ import { POST } from "./route";
 describe("POST /api/pre-session-readiness/prepare", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.TRAINER_WRITE_PAUSE;
     mocks.resolveOwner.mockResolvedValue({
       id: "user-1",
       email: "owner@local",
@@ -36,6 +44,17 @@ describe("POST /api/pre-session-readiness/prepare", () => {
       contract: { contractVersion: 1 },
       gymCard: { action: "start" },
     });
+  });
+
+  it("returns 503 before owner resolution or readiness snapshot changes when writes are paused", async () => {
+    process.env.TRAINER_WRITE_PAUSE = "enabled";
+    const response = await POST();
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    await expect(response.json()).resolves.toMatchObject({ code: "PRODUCTION_WRITE_PAUSED" });
+    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.preparePreSessionReadinessSnapshot).not.toHaveBeenCalled();
   });
 
   it("delegates to the app-owned producer and returns the saved contract/card", async () => {

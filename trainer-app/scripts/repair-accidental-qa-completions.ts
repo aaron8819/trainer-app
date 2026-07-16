@@ -892,7 +892,7 @@ async function main(): Promise<void> {
     throw new Error("--execute and --dry-run are mutually exclusive.");
   }
 
-  const env = loadAuditEnv(argv, { allowWrite: true });
+  const env = loadAuditEnv(argv, { allowWrite: true, writeRequested: execute });
   const modules = await loadModules();
 
   try {

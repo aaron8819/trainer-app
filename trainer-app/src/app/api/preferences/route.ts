@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { prisma } from "@/lib/db/prisma";
 import { preferencesSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
 
 export async function POST(request: Request) {
+  const paused = productionWritePauseResponse("application_configuration", "/api/preferences");
+  if (paused) return paused;
+
   const body = await request.json().catch(() => ({}));
   const parsed = preferencesSchema.safeParse(body);
 

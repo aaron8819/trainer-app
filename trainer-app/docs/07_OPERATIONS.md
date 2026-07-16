@@ -312,3 +312,104 @@ Backfilled rows are permanently `legacy_derived`; they do not represent what an 
 5. Only after explicit database-write approval, use both `--write` and `--confirm-remote-write`. Updates are idempotent and conditional on the snapshot still being null; reruns report existing exact/derived rows without rewriting them.
 
 The schema has no immutable exercise rename or active/inactive history, so the report labels those historical capabilities unsupported instead of claiming exact reconstruction. Backfilled rows are `legacy_derived`, never `exact`.
+# Production write pause for database rollout
+
+This control is a short full-write pause, not a full read outage. Users may view existing pages,
+history, reviews, explanations, and weekly-volume data, but must not begin or continue workouts
+during the pause. Mutation attempts receive `503 Service Unavailable` and should be retried after
+maintenance. Duration remains operator-estimated until direct-endpoint, migration, deployment,
+backup, and smoke-test evidence is complete.
+
+## Contract
+
+- Server-only variable: `TRAINER_WRITE_PAUSE` (never prefix it with `NEXT_PUBLIC_`).
+- Exact paused value: `enabled`.
+- Missing, empty, `disabled`, `false`, `1`, and every other value mean writes are enabled.
+- The app gate applies to all classified HTTP mutations.
+- Rollout tooling applies the pause to remote writes only. Local/disposable writes and remote dry
+  runs remain available.
+- The gate is process environment state. It is not stored in the database and does not connect to
+  the database to determine status.
+
+Verify a named environment file without making a database connection:
+
+```powershell
+npm run ops:write-status -- --env-file .env.production
+```
+
+Expected output is exactly one of:
+
+```text
+Trainer production write status: PAUSED
+Trainer production write status: ENABLED
+```
+
+The command exits zero for either status and never prints environment values or secrets.
+
+## Activation procedure
+
+1. Set `TRAINER_WRITE_PAUSE=enabled` in the Vercel Production environment variables.
+2. Redeploy the currently verified production commit so the environment change reaches a new
+   deployment. Changing a Vercel environment variable does not alter an already-running
+   deployment.
+3. Verify the deployed commit SHA is still the expected release commit.
+4. Export/download the production variables into the operator-controlled `.env.production`
+   file through the established secure process; do not commit or edit that file in the repo.
+5. Run `npm run ops:write-status -- --env-file .env.production` and require `PAUSED`.
+6. Execute representative safe mutation smoke requests for mesocycle acceptance, workout save,
+   set logging, and readiness preparation. Require status 503, `Retry-After: 60`, and code
+   `PRODUCTION_WRITE_PAUSED`.
+7. Compare the pre-smoke and post-smoke row/revision counts. Require no changes.
+8. Confirm home, workout history, completed review, workout explanation, weekly volume, health,
+   migration-status diagnostics, and read-only audit/inventory commands still load.
+
+Do not begin migrations unless all eight steps pass.
+
+## Migration-window behavior
+
+- Keep users out of active workout execution for the entire write-pause window.
+- Read-only audit modes, migration status, direct endpoint diagnostics, exposure-retirement
+  audit, backfill inventory/dry-run modes, and health checks remain available.
+- Remote rollout commands using `--write` and `--confirm-remote-write` fail with
+  `PRODUCTION_WRITE_PAUSED` before their callback imports Prisma or creates a pool.
+- Mutating workout-audit recovery/reseed modes use the same target classification and require
+  `--confirm-remote-write` for remote targets.
+- Repository repair/sync tools with explicit `--write`, `--apply`, or `--execute` modes use the
+  same remote-target confirmation and pause gate; their dry-run modes remain available.
+- Never use a local/disposable target classification to bypass the pause against a remote
+  database.
+
+## Resume procedure
+
+Do not resume until all migrations are applied, the new application deployment is verified,
+required active seed provenance is valid, and post-deployment smoke tests pass.
+
+1. Remove `TRAINER_WRITE_PAUSE` or set it to a value other than exact `enabled` in Vercel
+   Production.
+2. Redeploy the verified production commit.
+3. Verify the deployed commit SHA.
+4. Refresh the operator-controlled environment file, then run
+   `npm run ops:write-status -- --env-file .env.production`; require `ENABLED`.
+5. Execute one controlled mutation smoke test.
+6. Verify its single expected database effect and revision change.
+7. Confirm no maintenance 503 responses remain.
+
+## Failure and rollback behavior
+
+If migration fails while paused:
+
+- keep writes paused;
+- do not automatically redeploy old code;
+- inspect the Prisma migration ledger and partial schema state;
+- follow the reviewed roll-forward or backup-restore plan;
+- leave read-only access available only if it is verified safe.
+
+If deployment fails after successful migration:
+
+- keep writes paused;
+- roll back the application only if the prior app is proven schema-compatible;
+- otherwise fix forward with the merged application;
+- do not resume because the homepage alone loads.
+
+The write pause does not authorize migrations, deployment, database repair, backfills, seed
+changes, or environment mutation. Those remain separate operator decisions.

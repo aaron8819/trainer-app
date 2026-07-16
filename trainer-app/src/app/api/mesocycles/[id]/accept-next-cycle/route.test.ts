@@ -1,4 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const originalWritePause = process.env.TRAINER_WRITE_PAUSE;
+
+afterEach(() => {
+  if (originalWritePause === undefined) delete process.env.TRAINER_WRITE_PAUSE;
+  else process.env.TRAINER_WRITE_PAUSE = originalWritePause;
+});
 
 const mocks = vi.hoisted(() => {
   const resolveOwner = vi.fn();
@@ -34,7 +41,23 @@ import { POST } from "./route";
 describe("POST /api/mesocycles/[id]/accept-next-cycle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.TRAINER_WRITE_PAUSE;
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
+  });
+
+  it("returns 503 before owner resolution or mesocycle acceptance when writes are paused", async () => {
+    process.env.TRAINER_WRITE_PAUSE = "enabled";
+    const response = await POST(
+      new Request("http://localhost/api/mesocycles/meso-1/accept-next-cycle", { method: "POST" }),
+      { params: Promise.resolve({ id: "meso-1" }) },
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    await expect(response.json()).resolves.toMatchObject({ code: "PRODUCTION_WRITE_PAUSED" });
+    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+    expect(mocks.mesocycleFindFirst).not.toHaveBeenCalled();
+    expect(mocks.acceptMesocycleHandoff).not.toHaveBeenCalled();
   });
 
   it("accepts a pending handoff and returns the created successor", async () => {

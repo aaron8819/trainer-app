@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { resolveOwner } from "@/lib/api/workout-context";
 import {
   FinishDeloadEarlyBlockedWorkoutError,
@@ -9,6 +10,12 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
+  const paused = productionWritePauseResponse(
+    "mesocycle_lifecycle",
+    "/api/mesocycles/[id]/finish-deload",
+  );
+  if (paused) return paused;
+
   const body = await request.json().catch(() => undefined);
   if (body !== undefined && (typeof body !== "object" || Array.isArray(body))) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });

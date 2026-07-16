@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { prisma } from "@/lib/db/prisma";
 import { saveWorkoutSchema } from "@/lib/validation";
 import { resolveOwner } from "@/lib/api/workout-context";
@@ -61,6 +62,9 @@ import type { SaveWorkoutResponse } from "@/lib/api/workout-save-contract";
 import { createPostSessionReviewSnapshotInTransaction } from "@/lib/api/post-session-review-snapshot";
 
 export async function POST(request: Request) {
+  const paused = productionWritePauseResponse("workout_save", "/api/workouts/save");
+  if (paused) return paused;
+
   const body = await request.json().catch(() => ({}));
   const parsed = saveWorkoutSchema.safeParse(body);
 

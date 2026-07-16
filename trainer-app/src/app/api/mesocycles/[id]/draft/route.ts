@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { nextCycleSeedDraftUpdateSchema } from "@/lib/validation";
@@ -8,6 +9,9 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
+  const paused = productionWritePauseResponse("mesocycle_reseed", "/api/mesocycles/[id]/draft");
+  if (paused) return paused;
+
   const owner = await resolveOwner();
   if (!owner) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });

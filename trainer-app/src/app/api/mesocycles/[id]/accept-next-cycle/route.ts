@@ -2,11 +2,18 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { acceptMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 
 export async function POST(
   _request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
+  const paused = productionWritePauseResponse(
+    "mesocycle_acceptance",
+    "/api/mesocycles/[id]/accept-next-cycle",
+  );
+  if (paused) return paused;
+
   const owner = await resolveOwner();
   if (!owner) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });

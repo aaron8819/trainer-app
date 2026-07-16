@@ -20,12 +20,14 @@ import {
 describe("audit-cli-support", () => {
   const originalDatabaseUrl = process.env.DATABASE_URL;
   const originalOwnerEmail = process.env.OWNER_EMAIL;
+  const originalWritePause = process.env.TRAINER_WRITE_PAUSE;
   const tempRoots: string[] = [];
 
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.DATABASE_URL = "postgres://example.test:5432/trainer";
     delete process.env.OWNER_EMAIL;
+    delete process.env.TRAINER_WRITE_PAUSE;
   });
 
   afterEach(() => {
@@ -42,6 +44,12 @@ describe("audit-cli-support", () => {
       delete process.env.OWNER_EMAIL;
     } else {
       process.env.OWNER_EMAIL = originalOwnerEmail;
+    }
+
+    if (originalWritePause === undefined) {
+      delete process.env.TRAINER_WRITE_PAUSE;
+    } else {
+      process.env.TRAINER_WRITE_PAUSE = originalWritePause;
     }
   });
 
@@ -60,6 +68,39 @@ describe("audit-cli-support", () => {
       envLoaded: true,
       envFilePath: envFile,
       targetClass: "local",
+    });
+  });
+
+  it("blocks a confirmed remote audit mutation before database imports when paused", () => {
+    const root = join(tmpdir(), `trainer-audit-paused-${crypto.randomUUID()}`);
+    mkdirSync(root, { recursive: true });
+    tempRoots.push(root);
+    const envFile = join(root, "audit.env");
+    writeFileSync(
+      envFile,
+      "DATABASE_URL=postgresql://trainer:secret@db.example.test:5432/trainer\nTRAINER_WRITE_PAUSE=enabled\n",
+    );
+
+    expect(() =>
+      loadAuditEnv(["--env-file", envFile, "--confirm-remote-write"], {
+        allowWrite: true,
+        writeRequested: true,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "PRODUCTION_WRITE_PAUSED" }));
+  });
+
+  it("allows a paused remote audit dry run", () => {
+    const root = join(tmpdir(), `trainer-audit-dry-${crypto.randomUUID()}`);
+    mkdirSync(root, { recursive: true });
+    tempRoots.push(root);
+    const envFile = join(root, "audit.env");
+    writeFileSync(
+      envFile,
+      "DATABASE_URL=postgresql://trainer:secret@db.example.test:5432/trainer\nTRAINER_WRITE_PAUSE=enabled\n",
+    );
+
+    expect(loadAuditEnv(["--env-file", envFile], { allowWrite: true })).toMatchObject({
+      targetClass: "remote",
     });
   });
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { loadTemplates, createTemplate } from "@/lib/api/templates";
 import { createTemplateSchema } from "@/lib/validation";
@@ -14,6 +15,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const paused = productionWritePauseResponse("application_configuration", "/api/templates");
+  if (paused) return paused;
+
   const body = await request.json().catch(() => ({}));
   const parsed = createTemplateSchema.safeParse(body);
 

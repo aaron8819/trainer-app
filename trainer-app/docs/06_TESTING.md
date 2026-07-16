@@ -174,3 +174,30 @@ Disposable PostgreSQL verification must cover migration apply, unique one-to-one
 - Run `src/lib/api/persisted-incomplete-workout-projection.test.ts` for exact performed/remaining partitioning, optional-session behavior, runtime add/swap/remove attribution, corrupt/duplicate evidence fail-closed behavior, deterministic ordering, and Prisma relation query shape.
 - Run projected-week and closure tests together to verify explicit completed/incomplete/future categories, immutable current-session evidence, transition-race identity exclusion, the `0.5` meaningful-later threshold, and unreliable-evidence suppression.
 - Validate the additive migration and both dry-run/write backfill modes only against disposable Postgres before rollout; do not execute migrations or `--write` against the configured shared database without explicit approval.
+# Production write-pause verification
+
+Run the static ownership guard after adding or changing an API mutation method or rollout write
+script:
+
+```powershell
+npm run verify:production-write-gate
+```
+
+The guard inventories every exported `POST`, `PUT`, `PATCH`, and `DELETE` handler, requires a
+central gate for classified mutations, keeps the two read-only POST previews explicit, rejects
+direct production environment checks outside the owner module, and verifies rollout write
+scripts use target-aware tooling. It is included in `npm run verify`.
+
+Focused behavior coverage lives in:
+
+- `src/lib/operations/production-write-gate.test.ts`
+- `src/lib/operations/production-write-gate-http.test.ts`
+- `src/lib/operations/production-write-status-command.test.ts`
+- `src/lib/operations/rollout-environment.test.ts`
+- representative mesocycle acceptance, workout materialization/save/structural edit, set logging,
+  readiness preparation, and readiness submission route tests
+
+Paused route tests must assert the stable 503 contract and zero calls to owner resolution,
+Prisma, workout revision CAS/transactions, and the relevant receipt/readiness/snapshot producer.
+Existing route success tests prove the missing/disabled pause preserves response and revision
+behavior.

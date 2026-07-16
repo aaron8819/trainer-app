@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 
 import { dismissCloseoutSession } from "@/lib/api/mesocycle-week-close";
 import { resolveOwner } from "@/lib/api/workout-context";
@@ -39,6 +40,12 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const paused = productionWritePauseResponse(
+    "workout_structural_edit",
+    "/api/workouts/[id]/dismiss-closeout",
+  );
+  if (paused) return paused;
+
   const user = await resolveOwner();
   if (!user) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });

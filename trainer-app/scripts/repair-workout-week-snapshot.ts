@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { assertOperationalProductionWriteAllowed } from "@/lib/operations/rollout-environment";
 import {
   inferWorkoutCanonicalWeek,
   type CandidateWorkoutRow,
@@ -36,6 +37,10 @@ function parseArgs(argv: string[]): {
 
 async function main() {
   const { apply, userId, limit } = parseArgs(process.argv.slice(2));
+  assertOperationalProductionWriteAllowed({
+    argv: process.argv.slice(2),
+    writeRequested: apply,
+  });
   const where: Prisma.WorkoutWhereInput = {
     mesocycleId: { not: null },
     status: { in: ["COMPLETED", "PARTIAL"] },

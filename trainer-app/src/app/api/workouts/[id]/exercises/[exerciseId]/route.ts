@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
 import { resolveOwner } from "@/lib/api/workout-context";
 import {
   isRuntimeExerciseRemoveError,
@@ -25,6 +26,12 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string; exerciseId: string }> }
 ) {
+  const paused = productionWritePauseResponse(
+    "workout_structural_edit",
+    "/api/workouts/[id]/exercises/[exerciseId]",
+  );
+  if (paused) return paused;
+
   const resolvedParams = await params;
   if (!resolvedParams?.id || !resolvedParams?.exerciseId) {
     return NextResponse.json(

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  assertOperationalProductionWriteAllowed,
   loadRolloutEnvironment,
   runWithRolloutEnvironment,
   sanitizedRolloutEnvironment,
@@ -110,6 +111,84 @@ describe("rollout environment ownership", () => {
     expect(operation).toHaveBeenCalledOnce();
   });
 
+  it("blocks an acknowledged remote write before invoking the operation when paused", async () => {
+    const { cwd, path } = fixture(
+      "paused-remote",
+      [
+        "DATABASE_URL=postgresql://trainer:secret@db.example.test:5432/trainer",
+        "TRAINER_WRITE_PAUSE=enabled",
+        "",
+      ].join("\n"),
+    );
+    const operation = vi.fn(async () => "unreachable");
+
+    await expect(
+      runWithRolloutEnvironment(
+        {
+          argv: ["--env-file", path, "--write", "--confirm-remote-write"],
+          allowWrite: true,
+          cwd,
+          environment: {},
+        },
+        operation,
+      ),
+    ).rejects.toMatchObject({
+      code: "PRODUCTION_WRITE_PAUSED",
+      operation: "operational_backfill",
+    });
+    expect(operation).not.toHaveBeenCalled();
+  });
+
+  it("treats a missing pause value in the explicit remote file as enabled", async () => {
+    const { cwd, path } = fixture(
+      "remote-missing-pause",
+      "DATABASE_URL=postgresql://trainer:secret@db.example.test:5432/trainer\n",
+    );
+    const operation = vi.fn(async () => "reached");
+
+    await expect(
+      runWithRolloutEnvironment(
+        {
+          argv: ["--env-file", path, "--write", "--confirm-remote-write"],
+          allowWrite: true,
+          cwd,
+          environment: { TRAINER_WRITE_PAUSE: "enabled" },
+        },
+        operation,
+      ),
+    ).resolves.toBe("reached");
+    expect(operation).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { name: "remote dry run", url: "postgresql://trainer:secret@db.example.test/trainer", argv: [] },
+    { name: "local write", url: "postgresql://trainer:secret@127.0.0.1/trainer", argv: ["--write"] },
+    {
+      name: "disposable write",
+      url: "postgresql://trainer:secret@127.0.0.1/trainer",
+      argv: ["--write", "--confirm-disposable"],
+    },
+  ])("allows a paused $name target", async ({ url, argv }) => {
+    const { cwd, path } = fixture(
+      "paused-allowed",
+      `DATABASE_URL=${url}\nTRAINER_WRITE_PAUSE=enabled\n`,
+    );
+    const operation = vi.fn(async () => "reached");
+
+    await expect(
+      runWithRolloutEnvironment(
+        {
+          argv: ["--env-file", path, ...argv],
+          allowWrite: true,
+          cwd,
+          environment: {},
+        },
+        operation,
+      ),
+    ).resolves.toBe("reached");
+    expect(operation).toHaveBeenCalledOnce();
+  });
+
   it("never includes credentials or connection strings in sanitized output", () => {
     const { cwd, path } = fixture(
       "sanitized",
@@ -125,6 +204,36 @@ describe("rollout environment ownership", () => {
     expect(output).not.toContain("super-secret");
     expect(output).not.toContain("postgresql://");
     expect(output).not.toContain("db.example.test");
+  });
+
+  it("applies the pause to legacy explicit remote write modes without connecting", () => {
+    expect(() =>
+      assertOperationalProductionWriteAllowed({
+        argv: ["--apply", "--confirm-remote-write"],
+        writeRequested: true,
+        environment: {
+          DATABASE_URL: "postgresql://trainer:secret@db.example.test/trainer",
+          TRAINER_WRITE_PAUSE: "enabled",
+        },
+      }),
+    ).toThrowError(expect.objectContaining({ code: "PRODUCTION_WRITE_PAUSED" }));
+  });
+
+  it("leaves legacy dry runs and local/disposable writes available while paused", () => {
+    const remote = {
+      DATABASE_URL: "postgresql://trainer:secret@db.example.test/trainer",
+      TRAINER_WRITE_PAUSE: "enabled",
+    };
+    const local = {
+      DATABASE_URL: "postgresql://trainer:secret@127.0.0.1/trainer",
+      TRAINER_WRITE_PAUSE: "enabled",
+    };
+    expect(() =>
+      assertOperationalProductionWriteAllowed({ argv: [], writeRequested: false, environment: remote }),
+    ).not.toThrow();
+    expect(() =>
+      assertOperationalProductionWriteAllowed({ argv: ["--apply"], writeRequested: true, environment: local }),
+    ).not.toThrow();
   });
 
   it("loads the environment before invoking the database importer", async () => {

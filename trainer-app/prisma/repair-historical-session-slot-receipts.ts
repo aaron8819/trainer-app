@@ -12,6 +12,7 @@ import {
   inferHistoricalSessionSlotRepair,
   type HistoricalSessionSlotRepairResult,
 } from "@/lib/api/historical-session-slot-repair";
+import { assertOperationalProductionWriteAllowed } from "@/lib/operations/rollout-environment";
 
 type ParsedArgs = {
   apply: boolean;
@@ -131,6 +132,10 @@ function buildReportRow(
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  assertOperationalProductionWriteAllowed({
+    argv: process.argv.slice(2),
+    writeRequested: args.apply,
+  });
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const adapter = new PrismaPg(pool);
   const prisma = new PrismaClient({ adapter });

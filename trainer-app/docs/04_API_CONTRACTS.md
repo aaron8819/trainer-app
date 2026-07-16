@@ -338,3 +338,38 @@ Successful first transition to `COMPLETED` also creates the immutable exact post
 - The save route never trusts client-supplied accounting evidence. Exercise rewrites replace it from server-resolved snapshots; non-rewrite saves preserve only already-persisted evidence.
 - Runtime add/swap evidence is appended to `runtimeEditReconciliation` and includes the exact snapshot hash/provenance written in the same transaction.
 - The receipt and runtime-edit ledger are evidence manifests; `WorkoutExercise.stimulusAccountingSnapshot` remains the canonical accounting payload.
+# Production write-pause contract
+
+All classified mutation handlers call the server-owned production write gate before owner
+resolution or database access. The server-only environment variable is
+`TRAINER_WRITE_PAUSE`; only the exact value `enabled` pauses writes. Missing, empty, or any
+other value leaves existing behavior unchanged.
+
+While paused, classified mutation handlers return:
+
+```http
+HTTP/1.1 503 Service Unavailable
+Retry-After: 60
+Content-Type: application/json
+```
+
+```json
+{
+  "error": "Trainer writes are temporarily paused for maintenance.",
+  "code": "PRODUCTION_WRITE_PAUSED"
+}
+```
+
+The response never includes the environment value, database or migration status, internal
+operation name, request body, user data, workout identifier, or stack trace. GET endpoints and
+the read-only POST previews at `/api/mesocycles/[id]/setup-preview` and
+`/api/workouts/[id]/add-exercise-preview` remain available.
+
+Canonical ownership:
+
+- exact-value parsing, operation taxonomy, and typed error:
+  `src/lib/operations/production-write-gate.ts`
+- HTTP mapping and safe blocked-write event:
+  `src/lib/operations/production-write-gate-http.ts`
+- route and operational ownership inventory:
+  `scripts/check-production-write-gate.ts`

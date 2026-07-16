@@ -11,6 +11,7 @@ import {
 } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { assertOperationalProductionWriteAllowed } from "@/lib/operations/rollout-environment";
 import { exerciseAliases, type ExerciseAliasSeed } from "../prisma/exercise-aliases";
 import exercisesJson from "../prisma/exercises_comprehensive.json";
 
@@ -609,6 +610,10 @@ export async function runExerciseLibrarySync(options: { apply: boolean }) {
 
 async function main() {
   const apply = process.argv.includes("--apply");
+  assertOperationalProductionWriteAllowed({
+    argv: process.argv.slice(2),
+    writeRequested: apply,
+  });
   await runExerciseLibrarySync({ apply });
 }
 

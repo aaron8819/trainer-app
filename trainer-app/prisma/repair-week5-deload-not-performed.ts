@@ -13,6 +13,7 @@ import {
   buildSavedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
+import { assertOperationalProductionWriteAllowed } from "@/lib/operations/rollout-environment";
 
 const OWNER_EMAIL = "aaron8819@gmail.com";
 const TARGET_MESOCYCLE_ID = "12079700-5333-4ffc-9cbd-bb303588f288";
@@ -343,6 +344,10 @@ async function loadTargetWorkouts(
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  assertOperationalProductionWriteAllowed({
+    argv: process.argv.slice(2),
+    writeRequested: args.apply,
+  });
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const adapter = new PrismaPg(pool);
   const prisma = new PrismaClient({ adapter });

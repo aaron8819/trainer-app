@@ -49,7 +49,7 @@ npm run ops:migration-status -- --env-file $rolloutEnv
 npm run ops:preflight-seed-revisions -- --env-file $rolloutEnv
 npm run ops:preflight-stimulus-accounting -- --env-file $rolloutEnv
 npm run ops:preflight-post-session-reviews -- --env-file $rolloutEnv
-npm run audit:workout -- --env-file $rolloutEnv --mode pre-session-readiness --owner <owner-email> --no-artifact --operator-debug
+npm run ops:audit-readiness-integrity -- --env-file $rolloutEnv
 ```
 
 `ops:preflight-stimulus-accounting` and `ops:preflight-post-session-reviews` are projected pre-migration inventories. They do not query the missing snapshot column/table. After migration, use the normal dry runs to validate persisted schema state and reconcile counts:
@@ -96,18 +96,43 @@ Baseline uniqueness has two separate results. Semantic equivalence requires the 
 
 `ExerciseAlias_alias_key` and `WorkoutTemplateExercise_templateId_orderIndex_key` are the two reviewed baseline representation differences. The baseline SQL creates standalone unique indexes; production may store identically named unique constraints backed by identically named unique indexes. Native PostgreSQL constraint-to-index linkage proves the same enforcement, and none of the five pending migrations depends on those objects being standalone indexes. Therefore each is reported as semantic-equivalent, catalog-representation-different, and a non-blocking diagnostic warning. This narrow policy does not make other constraint/index differences harmless, and no production schema or ledger repair is required for these two objects or for the two valid resolved rows.
 
-Any partial pending-migration object or migration-blocking schema difference blocks Gate A. The expected production-equivalent pre-Gate-A result is 15 checked in, 10 clean successful applied, 5 exact pending, 10 matching checksums, zero incomplete rows, zero order violations, zero blocking semantic differences, two representation warnings, `writes: 0`, and `migrationAuthorizationReady: true`. Do not run the seed, stimulus-accounting, or post-session-review inventories until this full integrity command passes.
+Any partial pending-migration object or migration-blocking schema difference blocks Gate A. The expected production-equivalent pre-Gate-A result is 15 checked in, 10 clean successful applied, 5 exact pending, 10 matching checksums, zero incomplete rows, zero order violations, zero blocking semantic differences, two representation warnings, `writes: 0`, and `migrationAuthorizationReady: true`. Do not run the seed, stimulus-accounting, or post-session-review inventories until both this migration-integrity command and the readiness-integrity command below pass.
 
 The command never deploys migrations, creates temporary objects, modifies the Prisma ledger, executes DDL, repairs schema state, or authorizes deployment by itself. A fully migrated 15-applied/0-pending target is reported as clean with `gateAApplicable: false` and `migrationAuthorizationReady: false` because nothing remains for Gate A to authorize.
+
+### Gate A readiness integrity
+
+`npm run ops:audit-readiness-integrity -- --env-file $rolloutEnv` is the canonical Gate A readiness-data check. It uses `DIRECT_URL`, requires the same explicit environment ownership as migration integrity, and supports both the first-10-migration schema and the fully migrated 15-migration schema. It does not import Prisma, call `loadNextWorkoutContext()`, generate a workout, reconstruct the next session, activate readiness, invalidate rows, repair data, or assign new identity evidence.
+
+The command detects its mode from PostgreSQL catalog objects and verifies that result against the Prisma ledger and checked-in migration checksums:
+
+- `pre_architecture_migration` requires exactly the first 10 migrations applied, the legacy readiness lifecycle columns present, and the seed-revision table, current-seed pointer, atomic-readiness identity columns, and both exact partial unique indexes absent. It queries only legacy columns. Every row is classified as `legacy_valid`, `legacy_duplicate`, `legacy_stale`, `legacy_invalid`, or `legacy_unknown`.
+- `fully_migrated` requires all 15 migrations applied and the complete seed-revision/readiness identity catalog, including both valid, ready, live partial unique indexes. It verifies canonical identity and target hashes, payload hashes, identity/contract versions, contract-to-row agreement, lifecycle consistency, duplicate active identities and logical targets under canonical recomputation, stale workout and seed revisions, readiness/projection/prescription fingerprint agreement, supersession integrity, and honest retained legacy rows.
+- `partial_or_incompatible` covers every intermediate, incomplete, index-missing, or ledger/catalog-disagreeing state and fails closed without issuing a schema-specific readiness-row query.
+
+Pre-migration rows do not contain enough persisted evidence to prove exact post-migration identity. The report therefore labels exact checks `not_applicable_pre_migration`, leaves their finding arrays empty only under that explicit label, and never fabricates identity hashes, target hashes, projection fingerprints, or seed-revision references. The migration-safety section follows the checked-in atomic-readiness SQL: existing rows receive `identityStatus=LEGACY_UNKNOWN`, while the two new unique indexes include only active `EXACT` rows. It separately reports reconstructable active legacy-target duplicates and ambiguous targets; those integrity conflicts block readiness authorization even though the raw index DDL excludes legacy rows.
+
+All catalog, ledger, and stage-appropriate data reads execute inside one `REPEATABLE READ READ ONLY` transaction. The adapter rejects mutation-capable SQL, rereads and hashes normalized catalog/ledger/data evidence inside the transaction, reports the pre/post fingerprints and `transactionReadOnly`, redacts credentials and connection details, and always reports `writes: 0`. Read-only use remains allowed while `TRAINER_WRITE_PAUSE=enabled`.
+
+Gate A inventory may proceed only when the migration report has `migrationAuthorizationReady=true` and this report has `readinessIntegrityReady=true`. A partial schema, corrupt exact evidence, stale references, duplicate reconstructable active legacy targets, invalid legacy contracts, or unclassifiable legacy targets blocks readiness authorization. The command performs no repair.
+
+The existing workout audit mode remains available for its normal post-migration coaching and current-session diagnostic purpose:
+
+```powershell
+npm run audit:workout -- --env-file $rolloutEnv --mode pre-session-readiness --owner <owner-email> --no-artifact --operator-debug
+```
+
+That mode loads canonical next-session/runtime context and is not a Gate A readiness-integrity check. Do not use it against a pre-migration database or substitute it for `ops:audit-readiness-integrity`.
 
 Focused and disposable verification commands:
 
 ```powershell
 npm run test:migration-integrity
+npm run test:readiness-integrity
 npm run test:db:rollout-tooling
 ```
 
-The PostgreSQL 16 rollout test uses the installed Prisma CLI to create zero-step resolved baseline and set-intent rows, requires repeat resolution to return `P3008` without changing schema or ledger fingerprints, and proves the production-like 10/5 state authorizes with two representation warnings. It also exercises standalone indexes, constraint-backed indexes, missing uniqueness, wrong column order, a non-unique index, a changed partial predicate, partial pending objects, checksum mismatch, failed/incomplete/rolled-back ledger rows, and the fully migrated 15/0 state. It does not load a configured rollout environment.
+The PostgreSQL 16 rollout test uses the installed Prisma CLI to create zero-step resolved baseline and set-intent rows, requires repeat resolution to return `P3008` without changing schema or ledger fingerprints, and proves the production-like 10/5 state authorizes with two representation warnings. It also exercises standalone indexes, constraint-backed indexes, missing uniqueness, wrong column order, a non-unique index, a changed partial predicate, partial pending objects, checksum mismatch, failed/incomplete/rolled-back ledger rows, and the fully migrated 15/0 state. Its readiness states cover a clean first-10 schema, a duplicate legacy conflict, a partial readiness column, a clean all-15 schema, corrupt and canonically duplicate exact rows, and a production-like 10-row/8-active legacy fixture. It does not load a configured rollout environment.
 
 The exact repository-owned deploy command, once migration authorization is granted, is:
 

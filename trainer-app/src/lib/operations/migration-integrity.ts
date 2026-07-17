@@ -47,6 +47,12 @@ export type IndexFact = {
   unique: boolean;
   columns: string[];
   predicate: string | null;
+  nullsNotDistinct?: boolean;
+  valid?: boolean;
+  ready?: boolean;
+  live?: boolean;
+  constraintName?: string | null;
+  constraintType?: string | null;
 };
 export type ConstraintFact = { table: string; name: string; type: string; definition: string };
 export type TriggerFact = { table: string; name: string; definition: string };
@@ -63,6 +69,44 @@ export type CatalogSnapshot = {
 };
 
 export type CheckedInMigration = { name: string; checksum: string; sqlPath: string };
+
+export type UniquenessRepresentation =
+  | "standalone_unique_index"
+  | "standalone_non_unique_index"
+  | "unique_constraint_backed_index"
+  | "missing"
+  | "incompatible_constraint_backed_index";
+
+export type BaselineUniquenessExpectation = {
+  table: string;
+  name: string;
+  columns: string[];
+  predicate: string | null;
+  nullsNotDistinct: boolean;
+  expectedRepresentation: "standalone_unique_index";
+  pendingMigrationDependsOnRepresentation: boolean;
+};
+
+export const BASELINE_UNIQUENESS_EXPECTATIONS: readonly BaselineUniquenessExpectation[] = [
+  {
+    table: "ExerciseAlias",
+    name: "ExerciseAlias_alias_key",
+    columns: ["alias"],
+    predicate: null,
+    nullsNotDistinct: false,
+    expectedRepresentation: "standalone_unique_index",
+    pendingMigrationDependsOnRepresentation: false,
+  },
+  {
+    table: "WorkoutTemplateExercise",
+    name: "WorkoutTemplateExercise_templateId_orderIndex_key",
+    columns: ["templateId", "orderIndex"],
+    predicate: null,
+    nullsNotDistinct: false,
+    expectedRepresentation: "standalone_unique_index",
+    pendingMigrationDependsOnRepresentation: false,
+  },
+] as const;
 
 type ObjectKind = "table" | "column" | "index" | "constraint" | "trigger" | "function";
 type ObjectExpectation = {
@@ -375,6 +419,107 @@ function definitionIssue(snapshot: CatalogSnapshot, expected: DefinitionExpectat
     : `constraint:${expected.table}.${expected.name}:incompatible`;
 }
 
+type LedgerRowState = "successful" | "failed" | "rolled_back" | "incomplete";
+
+function classifyLedgerRow(row: LedgerRow): LedgerRowState {
+  const requiredFieldsPresent = Boolean(row.id.trim() && row.migrationName.trim() && row.checksum?.trim());
+  const stepCountValid = Number.isInteger(row.appliedStepsCount) && row.appliedStepsCount >= 0;
+  if (!requiredFieldsPresent || !stepCountValid) return "incomplete";
+  if (row.finishedAt && row.rolledBackAt) return "incomplete";
+  if (row.rolledBackAt) return row.finishedAt ? "incomplete" : "rolled_back";
+  if (row.logs?.trim()) return "failed";
+  if (row.finishedAt) return "successful";
+  return "incomplete";
+}
+
+function uniquenessRepresentation(index: IndexFact | undefined): UniquenessRepresentation {
+  if (!index) return "missing";
+  if (!index.unique && !index.constraintName) return "standalone_non_unique_index";
+  if (!index.constraintName) return "standalone_unique_index";
+  return index.constraintType === "u"
+    ? "unique_constraint_backed_index"
+    : "incompatible_constraint_backed_index";
+}
+
+function assessBaselineUniqueness(snapshot: CatalogSnapshot, expected: BaselineUniquenessExpectation) {
+  const actual = snapshot.indexes.find((index) => index.table === expected.table && index.name === expected.name);
+  const sameNamedConstraint = snapshot.constraints.find((constraint) => constraint.table === expected.table && constraint.name === expected.name);
+  const actualRepresentation = uniquenessRepresentation(actual);
+  const semanticDifferences: string[] = [];
+  if (!actual) {
+    semanticDifferences.push("missing uniqueness object");
+  } else {
+    if (!actual.unique) semanticDifferences.push("object is not unique");
+    if (actual.valid === false || actual.ready === false || actual.live === false) {
+      semanticDifferences.push("unique enforcement is not valid, ready, and live");
+    }
+    if (
+      JSON.stringify(actual.columns.map((part) => normalizeIndexPart(part))) !==
+      JSON.stringify(expected.columns.map((part) => normalizeIndexPart(part)))
+    ) {
+      semanticDifferences.push("ordered columns differ");
+    }
+    if (normalizeIndexPart(actual.predicate) !== normalizeIndexPart(expected.predicate)) {
+      semanticDifferences.push("predicate differs");
+    }
+    if ((actual.nullsNotDistinct ?? false) !== expected.nullsNotDistinct) {
+      semanticDifferences.push("null semantics differ");
+    }
+    if (actualRepresentation === "incompatible_constraint_backed_index") {
+      semanticDifferences.push("same-name object has an incompatible constraint linkage");
+    }
+    if (actualRepresentation === "standalone_unique_index" && sameNamedConstraint) {
+      semanticDifferences.push("same-name constraint conflicts with the standalone index representation");
+    }
+  }
+
+  const semanticEquivalent = semanticDifferences.length === 0;
+  const catalogRepresentationEquivalent = semanticEquivalent && actualRepresentation === expected.expectedRepresentation;
+  const nonBlockingRepresentationDifference =
+    semanticEquivalent &&
+    actualRepresentation === "unique_constraint_backed_index" &&
+    !expected.pendingMigrationDependsOnRepresentation;
+  const migrationBlocking = !semanticEquivalent || (!catalogRepresentationEquivalent && !nonBlockingRepresentationDifference);
+  const diagnosticWarning = semanticEquivalent && !catalogRepresentationEquivalent && !migrationBlocking;
+  const whyItDoesNotBlock = diagnosticWarning
+    ? "The named unique constraint is backed by the same valid unique index, with identical ordered columns, predicate, null semantics, and enforcement; no pending migration depends on the object kind."
+    : null;
+
+  return {
+    objectName: expected.name,
+    table: expected.table,
+    expectedRepresentation: expected.expectedRepresentation,
+    actualRepresentation,
+    semanticEquivalent,
+    catalogRepresentationEquivalent,
+    migrationBlocking,
+    diagnosticWarning,
+    semanticDifferences,
+    whyItDoesNotBlock,
+    pendingMigrationDependsOnDistinction: expected.pendingMigrationDependsOnRepresentation,
+  };
+}
+
+function migrationSchemaEffectsVerified(input: {
+  migrationName: string;
+  catalog: CatalogSnapshot;
+  definitionIssues: string[];
+  uniquenessAssessments: ReturnType<typeof assessBaselineUniqueness>[];
+  allAppliedSchemaVerified: boolean;
+}): boolean {
+  if (input.migrationName === EXPECTED_MIGRATION_CHAIN[0]) {
+    return (
+      input.catalog.tables.includes("ExerciseAlias") &&
+      input.catalog.tables.includes("WorkoutTemplateExercise") &&
+      input.uniquenessAssessments.every((assessment) => assessment.semanticEquivalent)
+    );
+  }
+  if (input.migrationName === EXPECTED_MIGRATION_CHAIN[9]) {
+    return !input.definitionIssues.some((issue) => issue.startsWith("enum:SetIntent:") || issue.startsWith("column:SetLog.setIntent:"));
+  }
+  return input.allAppliedSchemaVerified;
+}
+
 export function buildMigrationIntegrityReport(input: {
   target: { classification: "local" | "disposable" | "remote"; fingerprint: string };
   checkedIn: CheckedInMigration[];
@@ -387,26 +532,59 @@ export function buildMigrationIntegrityReport(input: {
   const rowsByName = new Map<string, LedgerRow[]>();
   for (const row of input.ledgerRows) rowsByName.set(row.migrationName, [...(rowsByName.get(row.migrationName) ?? []), row]);
 
-  const rolledBack = input.ledgerRows.filter((row) => row.rolledBackAt).map((row) => row.migrationName).sort();
-  const failed = input.ledgerRows.filter((row) => !row.finishedAt && !row.rolledBackAt && Boolean(row.logs?.trim())).map((row) => row.migrationName).sort();
-  const incomplete = input.ledgerRows.filter((row) => !row.rolledBackAt && (!row.finishedAt || row.appliedStepsCount < 1) && !failed.includes(row.migrationName)).map((row) => row.migrationName).sort();
-  const duplicates = [...rowsByName.entries()].filter(([, rows]) => rows.length > 1).map(([name]) => name).sort();
+  const successfulRows: LedgerRow[] = [];
+  const failed: string[] = [];
+  const rolledBack: string[] = [];
+  const rolledBackHistory: string[] = [];
+  const incomplete: string[] = [];
+  const duplicates: string[] = [];
+  for (const [migrationName, rows] of rowsByName) {
+    const rowsByState = new Map<LedgerRowState, LedgerRow[]>([
+      ["successful", []],
+      ["failed", []],
+      ["rolled_back", []],
+      ["incomplete", []],
+    ]);
+    for (const row of rows) rowsByState.get(classifyLedgerRow(row))!.push(row);
+    const cleanSuccessful = rowsByState.get("successful")!;
+    const failedRows = rowsByState.get("failed")!;
+    const rolledBackRows = rowsByState.get("rolled_back")!;
+    const incompleteRows = rowsByState.get("incomplete")!;
+    const cleanReplacement = cleanSuccessful.length === 1 && failedRows.length === 0 && incompleteRows.length === 0;
+
+    if (cleanReplacement) {
+      successfulRows.push(cleanSuccessful[0]);
+      if (rolledBackRows.length > 0) rolledBackHistory.push(migrationName);
+      continue;
+    }
+    if (rows.length > 1) duplicates.push(migrationName);
+    if (failedRows.length > 0) failed.push(migrationName);
+    if (incompleteRows.length > 0 || cleanSuccessful.length > 0) incomplete.push(migrationName);
+    if (cleanSuccessful.length === 0 && failedRows.length === 0 && incompleteRows.length === 0 && rolledBackRows.length > 0) {
+      rolledBack.push(migrationName);
+    }
+  }
+
+  failed.sort();
+  rolledBack.sort();
+  rolledBackHistory.sort();
+  incomplete.sort();
+  duplicates.sort();
   const unknown = [...rowsByName.keys()].filter((name) => !checkedInByName.has(name)).sort();
-  const successfulRows = input.ledgerRows.filter((row) => row.finishedAt && !row.rolledBackAt && !row.logs?.trim() && row.appliedStepsCount > 0);
   const appliedNames = new Set(successfulRows.map((row) => row.migrationName));
   const pendingNames = checkedInNames.filter((name) => !appliedNames.has(name));
   const orderViolations = checkedInNames.filter((name, index) => appliedNames.has(name) && checkedInNames.slice(0, index).some((predecessor) => !appliedNames.has(predecessor)));
 
   const mismatched: string[] = [];
   const missingCheckedIn: string[] = [];
-  const missingLedgerChecksum: string[] = [];
+  const missingLedgerChecksum = input.ledgerRows
+    .filter((row) => row.finishedAt && !row.rolledBackAt && !row.logs?.trim() && !row.checksum?.trim())
+    .map((row) => row.migrationName);
   let matched = 0;
   for (const row of successfulRows) {
     const migration = checkedInByName.get(row.migrationName);
     if (!migration) {
       missingCheckedIn.push(row.migrationName);
-    } else if (!row.checksum) {
-      missingLedgerChecksum.push(row.migrationName);
     } else if (row.checksum !== migration.checksum) {
       mismatched.push(row.migrationName);
     } else {
@@ -438,13 +616,90 @@ export function buildMigrationIntegrityReport(input: {
   const definitionIssues = APPLIED_SCHEMA_EXPECTATIONS.map((expected) => definitionIssue(input.catalog, expected)).filter((issue): issue is string => Boolean(issue));
   incompatible.push(...definitionIssues.filter((issue) => issue.includes(":incompatible")));
   const missingDefinitions = definitionIssues.filter((issue) => issue.endsWith(":missing"));
+  const uniquenessAssessments = BASELINE_UNIQUENESS_EXPECTATIONS.map((expected) => assessBaselineUniqueness(input.catalog, expected));
+  const uniquenessBlockingDifferences = uniquenessAssessments
+    .filter((assessment) => assessment.migrationBlocking)
+    .map((assessment) => ({
+      objectName: assessment.objectName,
+      table: assessment.table,
+      semanticEquivalent: assessment.semanticEquivalent,
+      catalogRepresentationEquivalent: assessment.catalogRepresentationEquivalent,
+      expectedRepresentation: assessment.expectedRepresentation,
+      actualRepresentation: assessment.actualRepresentation,
+      reasons: assessment.semanticDifferences,
+      pendingMigrationDependsOnDistinction: assessment.pendingMigrationDependsOnDistinction,
+    }));
+  const representationWarnings = uniquenessAssessments
+    .filter((assessment) => assessment.diagnosticWarning)
+    .map((assessment) => ({
+      objectName: assessment.objectName,
+      table: assessment.table,
+      expectedRepresentation: assessment.expectedRepresentation,
+      actualRepresentation: assessment.actualRepresentation,
+      semanticEquivalent: assessment.semanticEquivalent,
+      whyItDoesNotBlock: assessment.whyItDoesNotBlock,
+      pendingMigrationDependsOnDistinction: assessment.pendingMigrationDependsOnDistinction,
+    }));
+  const semanticBlockingDifferences = [
+    ...incompatible.map((difference) => ({ category: "incompatible_definition" as const, difference })),
+    ...missingDefinitions.map((difference) => ({ category: "missing_definition" as const, difference })),
+    ...uniquenessBlockingDifferences.map((difference) => ({ category: "baseline_uniqueness" as const, ...difference })),
+  ];
+
+  const appliedSchemaVerified = definitionIssues.length === 0 && uniquenessBlockingDifferences.length === 0;
+  const executed: string[] = [];
+  const resolvedApplied: string[] = [];
+  const unknownSuccessful: string[] = [];
+  for (const row of successfulRows) {
+    if (row.appliedStepsCount > 0) {
+      executed.push(row.migrationName);
+      continue;
+    }
+    const checkedInMigration = checkedInByName.get(row.migrationName);
+    if (
+      row.appliedStepsCount === 0 &&
+      checkedInMigration?.checksum === row.checksum &&
+      migrationSchemaEffectsVerified({
+        migrationName: row.migrationName,
+        catalog: input.catalog,
+        definitionIssues,
+        uniquenessAssessments,
+        allAppliedSchemaVerified: appliedSchemaVerified,
+      })
+    ) {
+      resolvedApplied.push(row.migrationName);
+    } else {
+      unknownSuccessful.push(row.migrationName);
+    }
+  }
+  executed.sort();
+  resolvedApplied.sort();
+  unknownSuccessful.sort();
+  const successfulDetails = successfulRows
+    .map((row) => ({
+      migrationName: row.migrationName,
+      appliedMode: executed.includes(row.migrationName)
+        ? "executed" as const
+        : resolvedApplied.includes(row.migrationName)
+          ? "resolved_applied" as const
+          : "unknown_successful" as const,
+      appliedStepsCount: row.appliedStepsCount,
+    }))
+    .sort((left, right) => left.migrationName.localeCompare(right.migrationName));
+
   const unableToVerify = [...(input.catalog.unableToVerify ?? [])].sort();
+  const blockingDifferences = [
+    ...semanticBlockingDifferences,
+    ...unexpectedPresent.map((difference) => ({ category: "pending_object_fully_present" as const, difference })),
+    ...partiallyPresent.map((difference) => ({ category: "pending_object_partially_present" as const, difference })),
+    ...unableToVerify.map((difference) => ({ category: "unable_to_verify" as const, difference })),
+  ];
   const writes = input.writes ?? 0;
   const exactChain = JSON.stringify(checkedInNames) === JSON.stringify(EXPECTED_MIGRATION_CHAIN);
   const exactPending = JSON.stringify(pendingNames) === JSON.stringify(EXPECTED_GATE_A_PENDING);
   const ledgerClean = failed.length + rolledBack.length + incomplete.length + duplicates.length + unknown.length + orderViolations.length === 0;
   const checksumsClean = mismatched.length + missingCheckedIn.length + missingLedgerChecksum.length === 0 && matched === 10;
-  const schemaClean = unexpectedPresent.length + partiallyPresent.length + incompatible.length + missingDefinitions.length + unableToVerify.length === 0;
+  const schemaClean = blockingDifferences.length === 0;
   const gateAApplicable = pendingNames.length > 0;
   const migrationAuthorizationReady =
     input.target.classification !== "local" && exactChain && exactPending && ledgerClean && checksumsClean && schemaClean && writes === 0;
@@ -461,9 +716,29 @@ export function buildMigrationIntegrityReport(input: {
       gateAApplicable,
     },
     checksums: { matched, mismatched: mismatched.sort(), missingCheckedIn: missingCheckedIn.sort(), missingLedgerChecksum: missingLedgerChecksum.sort() },
-    ledger: { failed, rolledBack, incomplete, duplicates, unknown, orderViolations },
+    ledger: {
+      successful: [...appliedNames].sort(),
+      successfulDetails,
+      executed,
+      resolvedApplied,
+      unknownSuccessful,
+      failed,
+      rolledBack,
+      rolledBackHistory,
+      incomplete,
+      duplicates,
+      unknown,
+      orderViolations,
+    },
     partialObjects: { unexpectedPresent, partiallyPresent, incompatible, unableToVerify, commentsOnly },
     definitions: { checked: APPLIED_SCHEMA_EXPECTATIONS.length, missing: missingDefinitions, incompatible },
+    schemaIntegrity: {
+      semanticDriftBlocking: semanticBlockingDifferences.length,
+      representationWarningCount: representationWarnings.length,
+      blockingDifferences,
+      representationWarnings,
+      uniquenessAssessments,
+    },
     writes,
     migrationAuthorizationReady,
   };

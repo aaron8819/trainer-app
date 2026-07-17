@@ -44,8 +44,12 @@ async function main(): Promise<void> {
           ...inspection,
         });
         console.log(
-          `Migration integrity: ${report.chain.applied} applied, ${report.chain.pending} pending, ` +
-          `${report.checksums.matched} checksums matched, authorization-ready=${report.migrationAuthorizationReady}.`,
+          `Migration integrity: checkedIn=${report.chain.checkedIn}, applied=${report.chain.applied}, ` +
+          `pending=${report.chain.pending}, incomplete=${report.ledger.incomplete.length}, ` +
+          `orderViolations=${report.ledger.orderViolations.length}, checksumsMatched=${report.checksums.matched}, ` +
+          `semanticDriftBlocking=${report.schemaIntegrity.semanticDriftBlocking}, ` +
+          `representationWarnings=${report.schemaIntegrity.representationWarningCount}, ` +
+          `migrationAuthorizationReady=${report.migrationAuthorizationReady}.`,
         );
         console.log(JSON.stringify(report, null, 2));
         if (!report.migrationAuthorizationReady && report.chain.gateAApplicable) process.exitCode = 1;

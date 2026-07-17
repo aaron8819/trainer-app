@@ -25,6 +25,8 @@ describe("migration integrity PostgreSQL adapter", () => {
     expect(result.writes).toBe(0);
     expect(statements[0]).toMatch(/BEGIN.*READ ONLY/i);
     expect(statements.at(-1)).toBe("COMMIT");
+    expect(statements.join("\n")).toMatch(/indnullsnotdistinct/);
+    expect(statements.join("\n")).toMatch(/con\.conindid = i\.indexrelid/);
     for (const statement of statements) expect(() => assertReadOnlyStatement(statement)).not.toThrow();
   });
 });

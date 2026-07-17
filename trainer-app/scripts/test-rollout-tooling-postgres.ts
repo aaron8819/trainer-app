@@ -10,7 +10,11 @@ const preMigrationCount = 10;
 
 type CommandResult = { status: number; stdout: string; stderr: string };
 
-function run(executable: string, args: string[], options: { input?: string; quiet?: boolean } = {}): CommandResult {
+function run(
+  executable: string,
+  args: string[],
+  options: { input?: string; quiet?: boolean; env?: Record<string, string> } = {},
+): CommandResult {
   const result = spawnSync(executable, args, {
     cwd: process.cwd(),
     env: {
@@ -19,6 +23,7 @@ function run(executable: string, args: string[], options: { input?: string; quie
       TEMP: process.env.TEMP,
       TMP: process.env.TMP,
       NODE_ENV: "test",
+      ...options.env,
     },
     encoding: "utf8",
     input: options.input,
@@ -81,21 +86,6 @@ function migrationChecksum(name: string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-function createMigrationLedger(): void {
-  psql(`
-    CREATE TABLE public._prisma_migrations (
-      id VARCHAR(36) PRIMARY KEY,
-      checksum VARCHAR(64) NOT NULL,
-      finished_at TIMESTAMPTZ,
-      migration_name VARCHAR(255) NOT NULL,
-      logs TEXT,
-      rolled_back_at TIMESTAMPTZ,
-      started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      applied_steps_count INTEGER NOT NULL DEFAULT 0
-    );
-  `);
-}
-
 function recordMigration(name: string, index: number): void {
   psql(`
     INSERT INTO public._prisma_migrations (
@@ -114,6 +104,43 @@ function recordMigration(name: string, index: number): void {
 
 function recordMigrations(names: string[], offset = 0): void {
   names.forEach((name, index) => recordMigration(name, offset + index));
+}
+
+function prismaResolve(name: string, disposableUrl: string): CommandResult {
+  return run(
+    process.execPath,
+    [join(process.cwd(), "node_modules", "prisma", "build", "index.js"), "migrate", "resolve", "--applied", name],
+    {
+      quiet: true,
+      env: { DATABASE_URL: disposableUrl, DIRECT_URL: disposableUrl },
+    },
+  );
+}
+
+function requireResolvedLedgerShape(name: string): void {
+  const shape = psql(`
+    SELECT
+      (finished_at IS NOT NULL)::text,
+      (coalesce(logs, '') = '')::text,
+      (rolled_back_at IS NULL)::text,
+      applied_steps_count::text,
+      count(*) OVER ()::text
+    FROM public._prisma_migrations
+    WHERE migration_name = '${name}';
+  `, true);
+  if (shape !== "true|true|true|0|1") {
+    throw new Error(`Prisma resolve produced an unexpected ledger shape for ${name}: ${shape}`);
+  }
+}
+
+function convertBaselineUniqueIndexesToConstraints(): void {
+  psql(`
+    ALTER TABLE "ExerciseAlias"
+      ADD CONSTRAINT "ExerciseAlias_alias_key" UNIQUE USING INDEX "ExerciseAlias_alias_key";
+    ALTER TABLE "WorkoutTemplateExercise"
+      ADD CONSTRAINT "WorkoutTemplateExercise_templateId_orderIndex_key"
+      UNIQUE USING INDEX "WorkoutTemplateExercise_templateId_orderIndex_key";
+  `);
 }
 
 function parseLastJson(stdout: string): Record<string, unknown> {
@@ -218,6 +245,38 @@ function objectField(value: Record<string, unknown>, name: string): Record<strin
   return field as Record<string, unknown>;
 }
 
+function arrayField(value: Record<string, unknown>, name: string): unknown[] {
+  const field = value[name];
+  if (!Array.isArray(field)) throw new Error(`Expected array ${name}`);
+  return field;
+}
+
+function objectArrayItem(value: Record<string, unknown>, name: string, objectName: string): Record<string, unknown> {
+  const item = arrayField(value, name).find((candidate) => (
+    Boolean(candidate) && typeof candidate === "object" && !Array.isArray(candidate) &&
+    (candidate as Record<string, unknown>).objectName === objectName
+  ));
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    throw new Error(`Expected ${objectName} in ${name}`);
+  }
+  return item as Record<string, unknown>;
+}
+
+function requireUniquenessAssessment(
+  report: Record<string, unknown>,
+  objectName: string,
+  expected: { semantic: boolean; representation: boolean; blocks: boolean },
+): void {
+  const assessment = objectArrayItem(objectField(report, "schemaIntegrity"), "uniquenessAssessments", objectName);
+  if (
+    assessment.semanticEquivalent !== expected.semantic ||
+    assessment.catalogRepresentationEquivalent !== expected.representation ||
+    assessment.migrationBlocking !== expected.blocks
+  ) {
+    throw new Error(`Unexpected uniqueness assessment for ${objectName}: ${JSON.stringify(assessment)}`);
+  }
+}
+
 function insertHistoricalFixture(): void {
   psql(`
     INSERT INTO "User" ("id", "email") VALUES ('rollout-user', 'rollout-fixture@test.invalid');
@@ -298,9 +357,48 @@ try {
 
   const migrations = migrationDirectories();
   if (migrations.length !== 15) throw new Error(`Expected 15 migrations, found ${migrations.length}`);
-  applyMigrations(migrations.slice(0, preMigrationCount));
-  createMigrationLedger();
-  recordMigrations(migrations.slice(0, preMigrationCount));
+  const baselineMigration = migrations[0];
+  const setIntentMigration = migrations[9];
+
+  applyMigrations([baselineMigration]);
+  convertBaselineUniqueIndexesToConstraints();
+  requireSuccess(prismaResolve(baselineMigration, disposableUrl), "Prisma baseline resolve --applied");
+  requireResolvedLedgerShape(baselineMigration);
+
+  const baselineState = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  if (
+    numberField(objectField(baselineState, "chain"), "applied") !== 1 ||
+    !arrayField(objectField(baselineState, "ledger"), "resolvedApplied").includes(baselineMigration)
+  ) {
+    throw new Error(`Resolved baseline was not classified as applied: ${JSON.stringify(baselineState)}`);
+  }
+
+  const beforeRepeatedBaselineResolve = databaseStateFingerprint();
+  const repeatedBaselineResolve = prismaResolve(baselineMigration, disposableUrl);
+  const afterRepeatedBaselineResolve = databaseStateFingerprint();
+  if (repeatedBaselineResolve.status === 0 || !/P3008/.test(`${repeatedBaselineResolve.stdout}\n${repeatedBaselineResolve.stderr}`)) {
+    throw new Error(`Repeated baseline resolution did not return P3008: ${repeatedBaselineResolve.stdout}\n${repeatedBaselineResolve.stderr}`);
+  }
+  if (beforeRepeatedBaselineResolve !== afterRepeatedBaselineResolve) {
+    throw new Error("Repeated baseline resolution changed schema or ledger state");
+  }
+
+  applyMigrations(migrations.slice(1, 9));
+  recordMigrations(migrations.slice(1, 9), 1);
+  applyMigrations([setIntentMigration]);
+  requireSuccess(prismaResolve(setIntentMigration, disposableUrl), "Prisma set-intent resolve --applied");
+  requireResolvedLedgerShape(setIntentMigration);
+
+  const beforeRepeatedSetIntentResolve = databaseStateFingerprint();
+  const repeatedSetIntentResolve = prismaResolve(setIntentMigration, disposableUrl);
+  const afterRepeatedSetIntentResolve = databaseStateFingerprint();
+  if (repeatedSetIntentResolve.status === 0 || !/P3008/.test(`${repeatedSetIntentResolve.stdout}\n${repeatedSetIntentResolve.stderr}`)) {
+    throw new Error(`Repeated set-intent resolution did not return P3008: ${repeatedSetIntentResolve.stdout}\n${repeatedSetIntentResolve.stderr}`);
+  }
+  if (beforeRepeatedSetIntentResolve !== afterRepeatedSetIntentResolve) {
+    throw new Error("Repeated set-intent resolution changed schema or ledger state");
+  }
+
   insertHistoricalFixture();
 
   const directCheck = cli("scripts/check-direct-db.ts", []);
@@ -312,13 +410,105 @@ try {
   const migrationStateA = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 0);
   const afterStateA = databaseStateFingerprint();
   if (beforeStateA !== afterStateA) throw new Error("State A migration integrity inspection changed disposable database state");
+  const stateALedger = objectField(migrationStateA, "ledger");
+  const stateASchema = objectField(migrationStateA, "schemaIntegrity");
   if (
     numberField(objectField(migrationStateA, "chain"), "applied") !== 10 ||
     numberField(objectField(migrationStateA, "chain"), "pending") !== 5 ||
+    numberField(objectField(migrationStateA, "checksums"), "matched") !== 10 ||
+    arrayField(stateALedger, "incomplete").length !== 0 ||
+    arrayField(stateALedger, "orderViolations").length !== 0 ||
+    !arrayField(stateALedger, "resolvedApplied").includes(baselineMigration) ||
+    !arrayField(stateALedger, "resolvedApplied").includes(setIntentMigration) ||
+    numberField(stateASchema, "semanticDriftBlocking") !== 0 ||
+    numberField(stateASchema, "representationWarningCount") !== 2 ||
     migrationStateA.migrationAuthorizationReady !== true
   ) {
     throw new Error(`State A did not authorize the clean pre-migration state: ${JSON.stringify(migrationStateA)}`);
   }
+
+  requireUniquenessAssessment(migrationStateA, "ExerciseAlias_alias_key", {
+    semantic: true,
+    representation: false,
+    blocks: false,
+  });
+  requireUniquenessAssessment(migrationStateA, "WorkoutTemplateExercise_templateId_orderIndex_key", {
+    semantic: true,
+    representation: false,
+    blocks: false,
+  });
+
+  psql(`
+    ALTER TABLE "ExerciseAlias" DROP CONSTRAINT "ExerciseAlias_alias_key";
+    ALTER TABLE "WorkoutTemplateExercise"
+      DROP CONSTRAINT "WorkoutTemplateExercise_templateId_orderIndex_key";
+    CREATE UNIQUE INDEX "ExerciseAlias_alias_key" ON "ExerciseAlias"("alias");
+    CREATE UNIQUE INDEX "WorkoutTemplateExercise_templateId_orderIndex_key"
+      ON "WorkoutTemplateExercise"("templateId", "orderIndex");
+  `);
+  const standaloneRepresentation = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 0);
+  requireUniquenessAssessment(standaloneRepresentation, "ExerciseAlias_alias_key", {
+    semantic: true,
+    representation: true,
+    blocks: false,
+  });
+
+  psql(`DROP INDEX "ExerciseAlias_alias_key";`);
+  const missingUniqueness = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  requireUniquenessAssessment(missingUniqueness, "ExerciseAlias_alias_key", {
+    semantic: false,
+    representation: false,
+    blocks: true,
+  });
+  psql(`CREATE UNIQUE INDEX "ExerciseAlias_alias_key" ON "ExerciseAlias"("alias");`);
+
+  psql(`
+    DROP INDEX "WorkoutTemplateExercise_templateId_orderIndex_key";
+    CREATE UNIQUE INDEX "WorkoutTemplateExercise_templateId_orderIndex_key"
+      ON "WorkoutTemplateExercise"("orderIndex", "templateId");
+  `);
+  const wrongColumnOrder = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  requireUniquenessAssessment(wrongColumnOrder, "WorkoutTemplateExercise_templateId_orderIndex_key", {
+    semantic: false,
+    representation: false,
+    blocks: true,
+  });
+  psql(`
+    DROP INDEX "WorkoutTemplateExercise_templateId_orderIndex_key";
+    CREATE UNIQUE INDEX "WorkoutTemplateExercise_templateId_orderIndex_key"
+      ON "WorkoutTemplateExercise"("templateId", "orderIndex");
+  `);
+
+  psql(`
+    DROP INDEX "ExerciseAlias_alias_key";
+    CREATE INDEX "ExerciseAlias_alias_key" ON "ExerciseAlias"("alias");
+  `);
+  const nonUniqueIndex = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  requireUniquenessAssessment(nonUniqueIndex, "ExerciseAlias_alias_key", {
+    semantic: false,
+    representation: false,
+    blocks: true,
+  });
+  psql(`
+    DROP INDEX "ExerciseAlias_alias_key";
+    CREATE UNIQUE INDEX "ExerciseAlias_alias_key" ON "ExerciseAlias"("alias");
+  `);
+
+  psql(`
+    DROP INDEX "ExerciseAlias_alias_key";
+    CREATE UNIQUE INDEX "ExerciseAlias_alias_key" ON "ExerciseAlias"("alias") WHERE "alias" IS NOT NULL;
+  `);
+  const differentPredicate = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  requireUniquenessAssessment(differentPredicate, "ExerciseAlias_alias_key", {
+    semantic: false,
+    representation: false,
+    blocks: true,
+  });
+  psql(`
+    DROP INDEX "ExerciseAlias_alias_key";
+    CREATE UNIQUE INDEX "ExerciseAlias_alias_key" ON "ExerciseAlias"("alias");
+  `);
+  convertBaselineUniqueIndexesToConstraints();
 
   psql(`ALTER TABLE "WorkoutExercise" ADD COLUMN "stimulusAccountingSnapshot" JSONB;`);
   const migrationStateB = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
@@ -359,6 +549,23 @@ try {
     throw new Error("State D rolled-back ledger row was not reported");
   }
   psql(`DELETE FROM public._prisma_migrations WHERE id = 'failed-ledger-row';`);
+
+  psql(`
+    INSERT INTO public._prisma_migrations (
+      id, checksum, finished_at, migration_name, logs, rolled_back_at, applied_steps_count
+    ) VALUES (
+      'unfinished-ledger-row', '${migrationChecksum(firstPending)}', NULL,
+      '${firstPending}', NULL, NULL, 0
+    );
+  `);
+  const unfinishedState = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
+  if (
+    !arrayField(objectField(unfinishedState, "ledger"), "incomplete").includes(firstPending) ||
+    unfinishedState.migrationAuthorizationReady !== false
+  ) {
+    throw new Error("A truly unfinished ledger row was not blocked as incomplete");
+  }
+  psql(`DELETE FROM public._prisma_migrations WHERE id = 'unfinished-ledger-row';`);
 
   const preSeed = cli("scripts/backfill-immutable-seed-revisions.ts", []);
   const preSeedSummary = objectField(preSeed, "summary");
@@ -452,11 +659,15 @@ try {
     directEndpointDiagnostic: "successful_direct_connection",
     configuredEnvironmentLeak: false,
     migrationIntegrity: {
-      stateA: "authorization_ready",
+      resolvedBaseline: "prisma_cli_zero_step_applied",
+      resolvedSetIntent: "prisma_cli_zero_step_applied",
+      repeatedResolve: "P3008_state_unchanged",
+      stateA: "production_like_10_applied_5_pending_authorization_ready_with_2_representation_warnings",
       stateB: "partial_object_blocked",
       stateC: "checksum_mismatch_blocked",
-      stateD: "failed_and_rolled_back_ledger_blocked",
+      stateD: "failed_rolled_back_and_unfinished_ledger_blocked",
       stateE: "fully_migrated_gate_a_not_applicable",
+      baselineUniquenessVariants: "standalone_constraint_missing_wrong_order_non_unique_partial_predicate",
       readOnlyFingerprintsStable: true,
     },
   }, null, 2));

@@ -3,6 +3,13 @@ import { readFileSync, readdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import {
+  hashPreSessionReadinessIdentity,
+  hashPreSessionReadinessTarget,
+  hashPreSessionReadinessValue,
+  type PreSessionReadinessIdentity,
+} from "@/lib/api/pre-session-readiness-identity";
+import type { PreSessionReadinessContract } from "@/lib/api/pre-session-readiness-contract";
 
 const containerName = `trainer-rollout-${process.pid}-${randomUUID().slice(0, 8)}`;
 const envFile = join(tmpdir(), `${containerName}.env`);
@@ -335,6 +342,191 @@ function insertHistoricalFixture(): void {
   `);
 }
 
+function readinessContract(input: {
+  slotId: string;
+  sessionInWeek: number;
+  existingWorkoutId?: string | null;
+}): PreSessionReadinessContract {
+  return {
+    contractVersion: 1,
+    scope: {
+      mode: "pre-session-readiness",
+      ownerSeam: "api/pre-session-readiness-contract",
+      source: {
+        producerMode: "persisted_snapshot",
+        producer: "pre_session_readiness_snapshot",
+        provenance: "app_read_model",
+      },
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+    },
+    nextSessionIdentity: {
+      userId: "rollout-user",
+      activeMesocycleId: "rollout-valid-meso",
+      activeState: "ACTIVE_ACCUMULATION",
+      currentWeek: 1,
+      currentSession: input.sessionInWeek,
+      nextSlotId: input.slotId,
+      nextIntent: "upper",
+      existingWorkoutId: input.existingWorkoutId ?? null,
+      incompleteWorkoutStatus: null,
+      incompleteWorkoutReadiness: "none",
+      existingWorkoutAction: "none",
+      generationPath: "standard_generation",
+      generator: "generateSessionFromIntent",
+    },
+    startability: {
+      status: "startable",
+      safeToTrain: true,
+      normalStartCoachingAllowed: true,
+      action: "run_seed_as_prescribed",
+      reasons: [],
+      blockerSummary: "none",
+    },
+    seedRuntimeProof: {
+      status: "valid",
+      compositionSource: "persisted_slot_plan_seed",
+      receiptMesocycleId: "rollout-valid-meso",
+      seedSource: "handoff_slot_plan_projection",
+      seedExecutableShape: "set_aware",
+      seedOrderSetCountsRespected: true,
+      readOnlyEvidenceOnly: true,
+      seedRuntimeChanged: false,
+      proofLines: [],
+    },
+    projectedWeekStatus: {
+      status: "no_further_action",
+      currentWeek: 1,
+      phase: "accumulation",
+      belowMev: [],
+      overMav: [],
+      fatigueRisks: [],
+      projectionNotes: [],
+      doseGuidanceRows: [],
+    },
+    doseClosure: {
+      heading: "Dose Closure Guidance",
+      priority: [],
+      optional: [],
+      monitor: [],
+      suppress: [],
+      guardrails: [],
+      recommendations: [],
+    },
+    sessionLocalCoaching: {
+      defaultInstruction: "Run seed as prescribed.",
+      floorBufferOpportunities: [],
+      prescriptionConfidenceWatches: [],
+      fatigueCautions: [],
+      safeOptionalAddOns: [],
+      suppressAvoid: [],
+      addOnState: { status: "none", reason: "No optional add-ons." },
+    },
+    calibrationWatches: { prescriptionConfidence: [], recoveryCaveats: [], fatigue: [] },
+    consistencyChecks: [],
+    boundaries: {
+      readOnly: true,
+      affectsScoringOrGeneration: false,
+      wouldWriteTransaction: false,
+      dbMutation: false,
+      workoutLogSessionCreated: false,
+      seedRuntimeChanged: false,
+      plannerMaterializerChanged: false,
+      notes: [],
+    },
+  };
+}
+
+function sqlJson(value: unknown): string {
+  return JSON.stringify(value).replaceAll("'", "''");
+}
+
+function insertLegacyReadiness(input: {
+  id: string;
+  slotId: string;
+  sessionInWeek: number;
+  active: boolean;
+  plannedWorkout?: boolean;
+}): void {
+  const workoutId = input.plannedWorkout ? "rollout-workout" : null;
+  const contract = readinessContract({
+    slotId: input.slotId,
+    sessionInWeek: input.sessionInWeek,
+    existingWorkoutId: workoutId,
+  });
+  psql(`
+    INSERT INTO "PreSessionReadinessSnapshot" (
+      "id", "userId", "activeMesocycleId", "mesocycleState", "weekInMeso",
+      "sessionInWeek", "slotId", "slotIntent", "plannedWorkoutId",
+      "plannedWorkoutRevision", "contractVersion", "contractJson", "sourceStateHash",
+      "slotPlanSeedHash", "slotSequenceHash", "invalidatedAt", "invalidatedReason"
+    ) VALUES (
+      '${input.id}', 'rollout-user', 'rollout-valid-meso', 'ACTIVE_ACCUMULATION', 1,
+      ${input.sessionInWeek}, '${input.slotId}', 'upper',
+      ${workoutId ? `'${workoutId}'` : "NULL"}, ${workoutId ? "1" : "NULL"},
+      1, '${sqlJson(contract)}'::jsonb, 'legacy-source-${input.id}',
+      'legacy-seed', 'legacy-sequence',
+      ${input.active ? "NULL" : "CURRENT_TIMESTAMP"},
+      ${input.active ? "NULL" : "'fixture_invalidated'"}
+    );
+  `);
+}
+
+function insertExactReadiness(input: {
+  id: string;
+  slotId: string;
+  persistedIdentityHash?: string;
+  persistedTargetHash?: string;
+  persistedPayloadHash?: string;
+}): void {
+  const contract = readinessContract({ slotId: input.slotId, sessionInWeek: 1 });
+  const identity: PreSessionReadinessIdentity = {
+    identityContractVersion: 1,
+    ownerId: "rollout-user",
+    activeMesocycleId: "rollout-valid-meso",
+    mesocycleState: "ACTIVE_ACCUMULATION",
+    weekInMeso: 1,
+    sessionInWeek: 1,
+    target: {
+      kind: "future_slot",
+      mesocycleId: "rollout-valid-meso",
+      weekInMeso: 1,
+      sessionInWeek: 1,
+      slotId: input.slotId,
+      slotIntent: "upper",
+      seedRevision: {
+        status: "exact_revision",
+        revisionId: "rollout-exact-seed",
+        revision: 2,
+        payloadHash: "rollout-seed-hash",
+      },
+      slotSequenceHash: "rollout-sequence-hash",
+    },
+    readinessEvidenceFingerprint: "rollout-readiness-hash",
+    projectionFingerprint: "rollout-projection-hash",
+  };
+  const identityHash = input.persistedIdentityHash ?? hashPreSessionReadinessIdentity(identity);
+  const targetHash = input.persistedTargetHash ?? hashPreSessionReadinessTarget(identity);
+  const payloadHash = input.persistedPayloadHash ?? hashPreSessionReadinessValue(contract);
+  psql(`
+    INSERT INTO "PreSessionReadinessSnapshot" (
+      "id", "userId", "activeMesocycleId", "mesocycleState", "weekInMeso",
+      "sessionInWeek", "slotId", "slotIntent", "contractVersion", "contractJson",
+      "identityStatus", "identityContractVersion", "identityJson", "identityHash",
+      "targetHash", "payloadHash", "readinessEvidenceFingerprint", "projectionFingerprint",
+      "seedRevisionId", "seedRevisionNumber", "seedPayloadHash", "sourceStateHash",
+      "slotPlanSeedHash", "slotSequenceHash"
+    ) VALUES (
+      '${input.id}', 'rollout-user', 'rollout-valid-meso', 'ACTIVE_ACCUMULATION', 1,
+      1, '${input.slotId}', 'upper', 1, '${sqlJson(contract)}'::jsonb,
+      'EXACT', 1, '${sqlJson(identity)}'::jsonb, '${identityHash}',
+      '${targetHash}', '${payloadHash}', 'rollout-readiness-hash', 'rollout-projection-hash',
+      'rollout-exact-seed', 2, 'rollout-seed-hash', '${identityHash}',
+      'rollout-seed-hash', 'rollout-sequence-hash'
+    );
+  `);
+}
+
 if (!process.argv.includes("--confirm-disposable")) {
   throw new Error("ROLLOUT_TOOLING_DB_TEST_REQUIRES_CONFIRM_DISPOSABLE");
 }
@@ -400,6 +592,80 @@ try {
   }
 
   insertHistoricalFixture();
+
+  insertLegacyReadiness({
+    id: "readiness-state-a-workout",
+    slotId: "state_a_workout",
+    sessionInWeek: 1,
+    active: true,
+    plannedWorkout: true,
+  });
+  insertLegacyReadiness({
+    id: "readiness-state-a-future",
+    slotId: "state_a_future",
+    sessionInWeek: 2,
+    active: false,
+  });
+  const readinessStateA = cliWithExpectedStatus("scripts/audit-readiness-integrity.ts", [], 0);
+  if (
+    readinessStateA.schemaStage !== "pre_architecture_migration" ||
+    numberField(objectField(readinessStateA, "snapshots"), "total") !== 2 ||
+    numberField(objectField(readinessStateA, "snapshots"), "active") !== 1 ||
+    numberField(objectField(readinessStateA, "legacy"), "valid") !== 2 ||
+    readinessStateA.readinessIntegrityReady !== true ||
+    readinessStateA.writes !== 0
+  ) {
+    throw new Error(`Readiness State A failed: ${JSON.stringify(readinessStateA)}`);
+  }
+  psql(`DELETE FROM "PreSessionReadinessSnapshot";`);
+
+  for (let index = 0; index < 10; index += 1) {
+    insertLegacyReadiness({
+      id: `readiness-production-like-${index}`,
+      slotId: `production_like_slot_${index}`,
+      sessionInWeek: index + 1,
+      active: index < 8,
+    });
+  }
+  const readinessStateF = cliWithExpectedStatus("scripts/audit-readiness-integrity.ts", [], 0);
+  if (
+    readinessStateF.schemaStage !== "pre_architecture_migration" ||
+    numberField(objectField(readinessStateF, "snapshots"), "total") !== 10 ||
+    numberField(objectField(readinessStateF, "snapshots"), "active") !== 8 ||
+    numberField(objectField(readinessStateF, "legacy"), "valid") !== 10 ||
+    readinessStateF.readinessIntegrityReady !== true ||
+    objectField(readinessStateF, "migrationSafety").readinessMigrationSafe !== true
+  ) {
+    throw new Error(`Readiness State F failed: ${JSON.stringify(readinessStateF)}`);
+  }
+
+  insertLegacyReadiness({
+    id: "readiness-state-b-duplicate",
+    slotId: "production_like_slot_0",
+    sessionInWeek: 1,
+    active: true,
+  });
+  const readinessStateB = cliWithExpectedStatus("scripts/audit-readiness-integrity.ts", [], 1);
+  if (
+    readinessStateB.readinessIntegrityReady !== false ||
+    objectField(readinessStateB, "migrationSafety").readinessMigrationSafe !== false ||
+    arrayField(objectField(readinessStateB, "migrationSafety"), "definiteUniqueConflicts").length !== 1 ||
+    readinessStateB.writes !== 0
+  ) {
+    throw new Error(`Readiness State B failed: ${JSON.stringify(readinessStateB)}`);
+  }
+  psql(`DELETE FROM "PreSessionReadinessSnapshot" WHERE id = 'readiness-state-b-duplicate';`);
+
+  psql(`ALTER TABLE "PreSessionReadinessSnapshot" ADD COLUMN "identityStatus" TEXT;`);
+  const readinessStateC = cliWithExpectedStatus("scripts/audit-readiness-integrity.ts", [], 1);
+  if (
+    readinessStateC.schemaStage !== "partial_or_incompatible" ||
+    readinessStateC.readinessIntegrityReady !== false ||
+    readinessStateC.writes !== 0
+  ) {
+    throw new Error(`Readiness State C failed: ${JSON.stringify(readinessStateC)}`);
+  }
+  psql(`ALTER TABLE "PreSessionReadinessSnapshot" DROP COLUMN "identityStatus";`);
 
   const directCheck = cli("scripts/check-direct-db.ts", []);
   if (directCheck.classification !== "successful_direct_connection") {
@@ -638,6 +904,65 @@ try {
     throw new Error(`Disposable dry-run unexpectedly mutated persisted state: ${persisted}`);
   }
 
+  const readinessStateD = cliWithExpectedStatus("scripts/audit-readiness-integrity.ts", [], 0);
+  if (
+    readinessStateD.schemaStage !== "fully_migrated" ||
+    objectField(readinessStateD, "exact").applicability !== "verified_fully_migrated" ||
+    numberField(objectField(readinessStateD, "exact"), "legacyRows") !== 10 ||
+    readinessStateD.readinessIntegrityReady !== true ||
+    readinessStateD.writes !== 0
+  ) {
+    throw new Error(`Readiness State D failed: ${JSON.stringify(readinessStateD)}`);
+  }
+
+  psql(`
+    INSERT INTO "MesocycleSeedRevision" (
+      "id", "mesocycleId", "revision", "seedPayload", "payloadHash", "hashAlgorithm",
+      "provenanceStatus", "creationReason", "actorSource"
+    ) VALUES (
+      'rollout-exact-seed', 'rollout-valid-meso', 2,
+      '{"version":1,"slots":[]}'::jsonb, 'rollout-seed-hash', 'sha256',
+      'exact', 'readiness_integrity_fixture', 'disposable_harness'
+    );
+    UPDATE "Mesocycle"
+    SET "currentSeedRevisionId" = 'rollout-exact-seed'
+    WHERE id = 'rollout-valid-meso';
+  `);
+  insertExactReadiness({ id: "readiness-clean-exact", slotId: "clean_exact_slot" });
+  const readinessCleanExact = cliWithExpectedStatus("scripts/audit-readiness-integrity.ts", [], 0);
+  if (
+    numberField(objectField(readinessCleanExact, "exact"), "exactRows") !== 1 ||
+    readinessCleanExact.readinessIntegrityReady !== true
+  ) {
+    throw new Error(`Readiness clean exact fixture failed: ${JSON.stringify(readinessCleanExact)}`);
+  }
+
+  insertExactReadiness({
+    id: "readiness-corrupt-exact-a",
+    slotId: "corrupt_exact_slot",
+    persistedIdentityHash: "corrupt-identity-a",
+    persistedTargetHash: "corrupt-target-a",
+    persistedPayloadHash: "corrupt-payload-a",
+  });
+  insertExactReadiness({
+    id: "readiness-corrupt-exact-b",
+    slotId: "corrupt_exact_slot",
+    persistedIdentityHash: "corrupt-identity-b",
+    persistedTargetHash: "corrupt-target-b",
+  });
+  const readinessStateE = cliWithExpectedStatus("scripts/audit-readiness-integrity.ts", [], 1);
+  if (
+    readinessStateE.schemaStage !== "fully_migrated" ||
+    readinessStateE.readinessIntegrityReady !== false ||
+    arrayField(objectField(readinessStateE, "exact"), "identityHashFailures").length !== 2 ||
+    arrayField(objectField(readinessStateE, "exact"), "payloadHashFailures").length !== 1 ||
+    arrayField(objectField(readinessStateE, "exact"), "duplicateActiveIdentity").length !== 1 ||
+    arrayField(objectField(readinessStateE, "exact"), "duplicateActiveTarget").length !== 1 ||
+    readinessStateE.writes !== 0
+  ) {
+    throw new Error(`Readiness State E failed: ${JSON.stringify(readinessStateE)}`);
+  }
+
   console.log(JSON.stringify({
     result: "passed",
     postgres: 16,
@@ -669,6 +994,17 @@ try {
       stateE: "fully_migrated_gate_a_not_applicable",
       baselineUniquenessVariants: "standalone_constraint_missing_wrong_order_non_unique_partial_predicate",
       readOnlyFingerprintsStable: true,
+    },
+    readinessIntegrity: {
+      stateA: "pre_migration_representative_clean",
+      stateB: "pre_migration_duplicate_blocked_without_repair",
+      stateC: "partial_schema_blocked",
+      stateD: "fully_migrated_clean_legacy_inventory",
+      stateE: "fully_migrated_corrupt_and_computed_duplicates_blocked",
+      stateF: "production_like_10_total_8_active_clean",
+      preMigrationQueryAvoidedFutureColumns: true,
+      readOnlyFingerprintsStable: true,
+      writes: 0,
     },
   }, null, 2));
 } finally {

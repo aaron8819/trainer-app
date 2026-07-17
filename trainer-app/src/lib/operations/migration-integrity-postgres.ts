@@ -116,10 +116,22 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
       is_unique: boolean;
       columns: string[];
       predicate: string | null;
+      nulls_not_distinct: boolean;
+      is_valid: boolean;
+      is_ready: boolean;
+      is_live: boolean;
+      constraint_name: string | null;
+      constraint_type: string | null;
     }>("indexes", `
       SELECT tab.relname AS table_name,
         idx.relname AS index_name,
         i.indisunique AS is_unique,
+        i.indnullsnotdistinct AS nulls_not_distinct,
+        i.indisvalid AS is_valid,
+        i.indisready AS is_ready,
+        i.indislive AS is_live,
+        con.conname AS constraint_name,
+        con.contype::text AS constraint_type,
         ARRAY(
           SELECT pg_catalog.pg_get_indexdef(i.indexrelid, position, true)
             || CASE WHEN (i.indoption[position - 1] & 1) = 1 THEN ' DESC' ELSE '' END
@@ -136,6 +148,8 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
       JOIN pg_catalog.pg_class idx ON idx.oid = i.indexrelid
       JOIN pg_catalog.pg_class tab ON tab.oid = i.indrelid
       JOIN pg_catalog.pg_namespace n ON n.oid = tab.relnamespace
+      LEFT JOIN pg_catalog.pg_constraint con
+        ON con.conindid = i.indexrelid AND con.conrelid = i.indrelid
       WHERE n.nspname = 'public'
       ORDER BY tab.relname, idx.relname
     `);
@@ -196,7 +210,19 @@ export async function inspectMigrationDatabase(client: ReadOnlyClient): Promise<
         tables: tableRows.map((row) => row.name),
         columns: columnRows.map((row): ColumnFact => ({ table: row.table_name, name: row.column_name, type: row.data_type, nullable: row.nullable, default: row.default_value })),
         enums: [...enumValues.entries()].map(([name, values]) => ({ name, values })),
-        indexes: indexRows.map((row): IndexFact => ({ table: row.table_name, name: row.index_name, unique: row.is_unique, columns: row.columns, predicate: row.predicate })),
+        indexes: indexRows.map((row): IndexFact => ({
+          table: row.table_name,
+          name: row.index_name,
+          unique: row.is_unique,
+          columns: row.columns,
+          predicate: row.predicate,
+          nullsNotDistinct: row.nulls_not_distinct,
+          valid: row.is_valid,
+          ready: row.is_ready,
+          live: row.is_live,
+          constraintName: row.constraint_name,
+          constraintType: row.constraint_type,
+        })),
         constraints: constraintRows.map((row): ConstraintFact => ({ table: row.table_name, name: row.constraint_name, type: row.constraint_type, definition: row.definition })),
         triggers: triggerRows.map((row): TriggerFact => ({ table: row.table_name, name: row.trigger_name, definition: row.definition })),
         functions: functionRows.map((row): FunctionFact => ({ name: row.function_name, definition: row.definition })),

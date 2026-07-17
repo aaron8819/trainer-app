@@ -84,7 +84,19 @@ After the direct check succeeds, `npm run ops:migration-status -- --env-file $ro
 - runs catalog and ledger queries inside a repeatable-read, read-only transaction, rejects mutation-capable statements in its query adapter, and reports `writes: 0`;
 - emits `migrationAuthorizationReady: true` only when the direct target is remote (or an explicitly confirmed disposable test target), checksums and ledger are clean, exactly the expected five migrations are pending, applied definitions are compatible, pending objects are absent, every catalog category was verified, and no writes occurred.
 
-Any partial pending-migration object or incompatible same-named definition blocks Gate A. The expected production pre-Gate-A result is 10 applied, 5 pending, 10 matching checksums, zero ledger issues, zero partial/incompatible/unverifiable objects, `writes: 0`, and `migrationAuthorizationReady: true`. Do not run the seed, stimulus-accounting, or post-session-review inventories until this full integrity command passes.
+Ledger classification follows Prisma row state, not step count:
+
+- A row is successfully applied when `finished_at` is populated, `rolled_back_at` is null, the checksum and required identity fields are present, the step count is a non-negative integer, and `logs` contains no failure evidence. `applied_steps_count = 0` is valid for a row created by Prisma's supported `migrate resolve --applied`; it is not independently incomplete.
+- Applied mode is operator context only: positive-step rows are `executed`; zero-step rows with a matching checksum and verified schema effects are `resolved_applied`; another internally valid success is `unknown_successful`. Every clean successful mode counts as applied before prefix/order calculation.
+- A missing `finished_at`, missing required field, negative/non-integer step count, or contradictory finished-and-rolled-back state is incomplete. Non-empty Prisma failure logs classify an unrolled row as failed.
+- A rolled-back row without a clean replacement remains rolled back and blocks. One clean successful replacement may coexist with rolled-back history. Multiple successful rows, or a successful row mixed with unresolved failed/incomplete rows, are ambiguous duplicates and block.
+- Repeating `prisma migrate resolve --applied <migration>` for an already successful row is not a repair; Prisma returns `P3008`. Do not repeat it and do not edit `_prisma_migrations`.
+
+Baseline uniqueness has two separate results. Semantic equivalence requires the same table, unique enforcement, ordered columns, predicate, PostgreSQL null semantics, and a valid/ready enforcing index. Catalog representation equivalence additionally requires the same object kind and constraint/index ownership linkage. Missing uniqueness, a non-unique replacement, changed column order or predicate, incompatible null semantics, invalid enforcement, a conflicting same-name object, unverifiable enforcement, or a representation required by a pending migration blocks Gate A.
+
+`ExerciseAlias_alias_key` and `WorkoutTemplateExercise_templateId_orderIndex_key` are the two reviewed baseline representation differences. The baseline SQL creates standalone unique indexes; production may store identically named unique constraints backed by identically named unique indexes. Native PostgreSQL constraint-to-index linkage proves the same enforcement, and none of the five pending migrations depends on those objects being standalone indexes. Therefore each is reported as semantic-equivalent, catalog-representation-different, and a non-blocking diagnostic warning. This narrow policy does not make other constraint/index differences harmless, and no production schema or ledger repair is required for these two objects or for the two valid resolved rows.
+
+Any partial pending-migration object or migration-blocking schema difference blocks Gate A. The expected production-equivalent pre-Gate-A result is 15 checked in, 10 clean successful applied, 5 exact pending, 10 matching checksums, zero incomplete rows, zero order violations, zero blocking semantic differences, two representation warnings, `writes: 0`, and `migrationAuthorizationReady: true`. Do not run the seed, stimulus-accounting, or post-session-review inventories until this full integrity command passes.
 
 The command never deploys migrations, creates temporary objects, modifies the Prisma ledger, executes DDL, repairs schema state, or authorizes deployment by itself. A fully migrated 15-applied/0-pending target is reported as clean with `gateAApplicable: false` and `migrationAuthorizationReady: false` because nothing remains for Gate A to authorize.
 
@@ -95,7 +107,7 @@ npm run test:migration-integrity
 npm run test:db:rollout-tooling
 ```
 
-The PostgreSQL 16 rollout test covers: clean 10/5 authorization, a manually introduced pending column, a post-application checksum mismatch, failed and rolled-back ledger rows, and the fully migrated 15/0 state. It compares schema/ledger fingerprints before and after clean inspections and does not load a configured rollout environment.
+The PostgreSQL 16 rollout test uses the installed Prisma CLI to create zero-step resolved baseline and set-intent rows, requires repeat resolution to return `P3008` without changing schema or ledger fingerprints, and proves the production-like 10/5 state authorizes with two representation warnings. It also exercises standalone indexes, constraint-backed indexes, missing uniqueness, wrong column order, a non-unique index, a changed partial predicate, partial pending objects, checksum mismatch, failed/incomplete/rolled-back ledger rows, and the fully migrated 15/0 state. It does not load a configured rollout environment.
 
 The exact repository-owned deploy command, once migration authorization is granted, is:
 

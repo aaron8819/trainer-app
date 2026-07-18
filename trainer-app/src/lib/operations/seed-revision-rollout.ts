@@ -8,6 +8,7 @@ export type SeedInventoryClassification =
   | "normalizable"
   | "already_exact"
   | "legacy_baseline_only"
+  | "legacy_exception"
   | "invalid_seed"
   | "conflict"
   | "missing_seed";
@@ -50,6 +51,7 @@ export type SeedInventory = {
     normalizable: number;
     alreadyExact: number;
     legacyBaselineOnly: number;
+    legacyExceptions: number;
     invalid: number;
     conflicts: number;
     missingSeed: number;
@@ -70,6 +72,33 @@ function invalidLocations(seedPayload: unknown): SeedInventoryRow["invalidLocati
     slot.exercises
       .filter((exercise) => !exercise.hasExplicitSetCount)
       .map((exercise) => ({ slotId: slot.slotId, exerciseId: exercise.exerciseId })),
+  );
+}
+
+const IDENTITY_ONLY_LEGACY_EXCEPTION_ID =
+  "12079700-5333-4ffc-9cbd-bb303588f288";
+
+function isIdentityOnlyLegacyException(
+  source: SeedInventorySourceRow,
+  validationFailure: string,
+): boolean {
+  if (
+    source.mesocycleId !== IDENTITY_ONLY_LEGACY_EXCEPTION_ID ||
+    source.isActive ||
+    source.state !== "COMPLETED" ||
+    !validationFailure.startsWith("ACCEPTED_SEED_SET_COUNT_MISSING:")
+  ) {
+    return false;
+  }
+
+  const parsed = parseSlotPlanSeedJson(source.seedPayload);
+  return Boolean(
+    parsed?.slots.length &&
+      parsed.slots.every(
+        (slot) =>
+          slot.exercises.length > 0 &&
+          slot.exercises.every((exercise) => !exercise.hasExplicitSetCount),
+      ),
   );
 }
 
@@ -111,9 +140,10 @@ export function classifySeedInventoryRow(
     normalized = normalizeAcceptedSeedPayload(source.seedPayload);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const legacyException = isIdentityOnlyLegacyException(source, message);
     return {
       ...base,
-      classification: "invalid_seed",
+      classification: legacyException ? "legacy_exception" : "invalid_seed",
       hash: null,
       validationFailure: message,
       invalidLocation: invalidLocation(message),
@@ -181,6 +211,7 @@ export function buildSeedInventory(
       normalizable,
       alreadyExact: count("already_exact"),
       legacyBaselineOnly: count("legacy_baseline_only"),
+      legacyExceptions: count("legacy_exception"),
       invalid: count("invalid_seed"),
       conflicts: count("conflict"),
       missingSeed: count("missing_seed"),

@@ -302,7 +302,17 @@ function insertHistoricalFixture(): void {
         '{"version":1,"slots":[{"slotId":"upper_a","exercises":[{"exerciseId":"rollout-exercise","role":"CORE_COMPOUND","setCount":3}]}]}'::jsonb
       ),
       (
-        'rollout-invalid-meso', 'rollout-macro', 2, 4, 4, 'Fixture invalid',
+        'rollout-valid-meso-2', 'rollout-macro', 2, 4, 4, 'Fixture valid 2',
+        'MODERATE', 'HYPERTROPHY', 'COMPLETED', false, '2026-02-01',
+        '{"version":1,"slots":[{"slotId":"upper_b","exercises":[{"exerciseId":"rollout-exercise","role":"ACCESSORY","setCount":4}]}]}'::jsonb
+      ),
+      (
+        'rollout-valid-meso-3', 'rollout-macro', 3, 8, 4, 'Fixture valid 3',
+        'MODERATE', 'HYPERTROPHY', 'COMPLETED', false, '2026-03-01',
+        '{"version":1,"slots":[{"slotId":"lower_a","exercises":[{"exerciseId":"rollout-exercise","role":"CORE_COMPOUND","setCount":5}]}]}'::jsonb
+      ),
+      (
+        '12079700-5333-4ffc-9cbd-bb303588f288', 'rollout-macro', 4, 12, 4, 'Fixture legacy exception',
         'MODERATE', 'HYPERTROPHY', 'COMPLETED', false, '2026-02-01',
         '{"version":1,"slots":[{"slotId":"upper_a","exercises":[{"exerciseId":"rollout-exercise","role":"CORE_COMPOUND"}]}]}'::jsonb
       );
@@ -592,6 +602,32 @@ try {
   }
 
   insertHistoricalFixture();
+  const legacyExceptionSeedBefore = psql(`
+    SELECT "slotPlanSeedJson"::text
+    FROM "Mesocycle"
+    WHERE "id" = '12079700-5333-4ffc-9cbd-bb303588f288';
+  `, true);
+  const workoutEvidenceBefore = psql(`
+    SELECT jsonb_build_object(
+      'workouts', (SELECT jsonb_agg(jsonb_build_object(
+        'id', "id", 'status', "status", 'completedAt', "completedAt", 'revision', "revision",
+        'mesocycleId', "mesocycleId", 'week', "mesocycleWeekSnapshot", 'session', "mesoSessionSnapshot"
+      ) ORDER BY "id") FROM "Workout"),
+      'exercises', (SELECT jsonb_agg(jsonb_build_object(
+        'id', "id", 'workoutId', "workoutId", 'exerciseId', "exerciseId",
+        'orderIndex', "orderIndex", 'section', "section", 'isMainLift', "isMainLift"
+      ) ORDER BY "id") FROM "WorkoutExercise"),
+      'sets', (SELECT jsonb_agg(jsonb_build_object(
+        'id', "id", 'workoutExerciseId', "workoutExerciseId", 'setIndex', "setIndex",
+        'targetReps', "targetReps", 'targetRpe', "targetRpe", 'targetLoad', "targetLoad"
+      ) ORDER BY "id") FROM "WorkoutSet"),
+      'logs', (SELECT jsonb_agg(jsonb_build_object(
+        'id', "id", 'workoutSetId', "workoutSetId", 'setIntent', "setIntent",
+        'actualReps', "actualReps", 'actualRpe', "actualRpe", 'actualLoad', "actualLoad",
+        'completedAt', "completedAt", 'wasSkipped', "wasSkipped"
+      ) ORDER BY "id") FROM "SetLog")
+    )::text;
+  `, true);
 
   insertLegacyReadiness({
     id: "readiness-state-a-workout",
@@ -835,8 +871,12 @@ try {
 
   const preSeed = cli("scripts/backfill-immutable-seed-revisions.ts", []);
   const preSeedSummary = objectField(preSeed, "summary");
-  if (numberField(preSeedSummary, "legacyBaselineOnly") !== 1 || numberField(preSeedSummary, "invalid") !== 1) {
-    throw new Error("Pre-migration seed inventory did not report valid and invalid rows independently");
+  if (
+    numberField(preSeedSummary, "legacyBaselineOnly") !== 3 ||
+    numberField(preSeedSummary, "legacyExceptions") !== 1 ||
+    numberField(preSeedSummary, "invalid") !== 0
+  ) {
+    throw new Error("Pre-migration seed inventory did not report three valid rows and one explicit exception");
   }
   const preStimulus = cli("scripts/backfill-workout-exercise-stimulus-accounting.ts", ["--inventory-only"]);
   const preReview = cli("scripts/backfill-post-session-reviews.ts", ["--inventory-only"]);
@@ -851,6 +891,58 @@ try {
 
   applyMigrations(migrations.slice(preMigrationCount));
   recordMigrations(migrations.slice(preMigrationCount), preMigrationCount);
+
+  const migratedSeedState = psql(`
+    SELECT concat_ws('|',
+      (SELECT COUNT(*) FROM "MesocycleSeedRevision"),
+      (SELECT COUNT(*) FROM "Mesocycle" WHERE "currentSeedRevisionId" IS NOT NULL),
+      (SELECT COUNT(*) FROM "MesocycleSeedRevision"
+        WHERE "revision" <> 1
+           OR "id" <> 'legacy-baseline:' || "mesocycleId"
+           OR "payloadHash" IS NOT NULL
+           OR "hashAlgorithm" IS NOT NULL),
+      (SELECT COUNT(*) FROM "MesocycleSeedRevision"
+        WHERE "mesocycleId" = '12079700-5333-4ffc-9cbd-bb303588f288'),
+      (SELECT COUNT(*) FROM "Mesocycle"
+        WHERE "id" = '12079700-5333-4ffc-9cbd-bb303588f288'
+          AND "currentSeedRevisionId" IS NULL)
+    );
+  `, true);
+  if (migratedSeedState !== "3|3|0|0|1") {
+    throw new Error(`Unexpected Migration 011 seed state: ${migratedSeedState}`);
+  }
+  const legacyExceptionSeedAfter = psql(`
+    SELECT "slotPlanSeedJson"::text
+    FROM "Mesocycle"
+    WHERE "id" = '12079700-5333-4ffc-9cbd-bb303588f288';
+  `, true);
+  if (legacyExceptionSeedAfter !== legacyExceptionSeedBefore) {
+    throw new Error("Migration 011 changed the explicit legacy exception seed JSON");
+  }
+  const workoutEvidenceAfter = psql(`
+    SELECT jsonb_build_object(
+      'workouts', (SELECT jsonb_agg(jsonb_build_object(
+        'id', "id", 'status', "status", 'completedAt', "completedAt", 'revision', "revision",
+        'mesocycleId', "mesocycleId", 'week', "mesocycleWeekSnapshot", 'session', "mesoSessionSnapshot"
+      ) ORDER BY "id") FROM "Workout"),
+      'exercises', (SELECT jsonb_agg(jsonb_build_object(
+        'id', "id", 'workoutId', "workoutId", 'exerciseId', "exerciseId",
+        'orderIndex', "orderIndex", 'section', "section", 'isMainLift', "isMainLift"
+      ) ORDER BY "id") FROM "WorkoutExercise"),
+      'sets', (SELECT jsonb_agg(jsonb_build_object(
+        'id', "id", 'workoutExerciseId', "workoutExerciseId", 'setIndex', "setIndex",
+        'targetReps', "targetReps", 'targetRpe', "targetRpe", 'targetLoad', "targetLoad"
+      ) ORDER BY "id") FROM "WorkoutSet"),
+      'logs', (SELECT jsonb_agg(jsonb_build_object(
+        'id', "id", 'workoutSetId', "workoutSetId", 'setIntent', "setIntent",
+        'actualReps', "actualReps", 'actualRpe', "actualRpe", 'actualLoad', "actualLoad",
+        'completedAt', "completedAt", 'wasSkipped', "wasSkipped"
+      ) ORDER BY "id") FROM "SetLog")
+    )::text;
+  `, true);
+  if (workoutEvidenceAfter !== workoutEvidenceBefore) {
+    throw new Error("Migrations 011-015 changed existing workout, exercise, set, or log evidence");
+  }
 
   const beforeStateE = databaseStateFingerprint();
   const migrationStateE = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 0);
@@ -871,8 +963,14 @@ try {
     throw new Error("Seed invalid-row inventory is not deterministic");
   }
   const fullSeedSummary = objectField(fullSeedA, "summary");
-  if (numberField(fullSeedSummary, "normalizable") !== 1 || numberField(fullSeedSummary, "invalid") !== 1) {
-    throw new Error("Fully migrated seed inventory did not preserve valid/invalid classification");
+  if (
+    numberField(fullSeedSummary, "normalizable") !== 3 ||
+    numberField(fullSeedSummary, "legacyExceptions") !== 1 ||
+    numberField(fullSeedSummary, "invalid") !== 0 ||
+    numberField(fullSeedSummary, "expectedInserts") !== 3 ||
+    numberField(fullSeedSummary, "expectedPointerUpdates") !== 3
+  ) {
+    throw new Error("Fully migrated seed inventory did not preserve three candidates and one explicit exception");
   }
 
   const fullStimulusInventory = cli("scripts/backfill-workout-exercise-stimulus-accounting.ts", ["--inventory-only"]);
@@ -900,7 +998,7 @@ try {
       (SELECT COUNT(*) FROM "MesocycleSeedRevision" WHERE "provenanceStatus" = 'exact'),
       (SELECT COUNT(*) FROM "MesocycleSeedRevision");
   `, true);
-  if (persisted !== "0|0|0|2") {
+  if (persisted !== "0|0|0|3") {
     throw new Error(`Disposable dry-run unexpectedly mutated persisted state: ${persisted}`);
   }
 
@@ -968,15 +1066,17 @@ try {
     postgres: 16,
     preMigration: {
       migrations: preMigrationCount,
-      seedLegacyBaselineOnly: 1,
-      seedInvalid: 1,
+      seedLegacyBaselineOnly: 3,
+      seedLegacyExceptions: 1,
+      seedInvalid: 0,
       stimulusProjectedWrites: numberField(preStimulus, "expectedWriteCountAfterMigration"),
       reviewProjectedWrites: numberField(preReview, "expectedLegacyDerived"),
     },
     fullyMigrated: {
       migrations: migrations.length,
-      seedNormalizable: 1,
-      seedInvalid: 1,
+      seedNormalizable: 3,
+      seedLegacyExceptions: 1,
+      seedInvalid: 0,
       stimulusDryRunCandidates: numberField(fullStimulusDryRun, "eligibleNullRows"),
       reviewDryRunCandidates: numberField(fullReviewDryRun, "legacyDerivedCandidate"),
     },

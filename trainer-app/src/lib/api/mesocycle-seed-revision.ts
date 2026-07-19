@@ -4,6 +4,48 @@ import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
 
 export const SEED_PAYLOAD_HASH_ALGORITHM = "sha256" as const;
 
+function assertJsonNumber(value: number): void {
+  if (!Number.isFinite(value)) {
+    throw new Error("CANONICAL_JSON_NON_FINITE_NUMBER");
+  }
+}
+
+export function canonicalizeJson(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") {
+    assertJsonNumber(value);
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => canonicalizeJson(entry)).join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new Error("CANONICAL_JSON_NON_PLAIN_OBJECT");
+    }
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => {
+        if (record[key] === undefined) {
+          throw new Error("CANONICAL_JSON_UNDEFINED_VALUE");
+        }
+        return `${JSON.stringify(key)}:${canonicalizeJson(record[key])}`;
+      })
+      .join(",")}}`;
+  }
+  throw new Error("CANONICAL_JSON_UNSUPPORTED_VALUE");
+}
+
+export function fingerprintCanonicalJson(value: unknown): string {
+  return createHash(SEED_PAYLOAD_HASH_ALGORITHM)
+    .update(canonicalizeJson(value), "utf8")
+    .digest("hex");
+}
+
 export type ExactSeedRevisionProvenance = {
   revisionId: string;
   revision: number;
@@ -228,11 +270,19 @@ export async function promoteLegacySeedRevisionToExactInTransaction(
   input: {
     mesocycleId: string;
     actorSource: string;
+    expectedLegacyRevisionFingerprint?: string;
   },
 ): Promise<{ revision: SeedRevisionRecord; created: boolean }> {
   const current = await loadCurrentRevision(tx, input.mesocycleId);
   if (!current) {
     throw new Error("ACCEPTED_SEED_CURRENT_REVISION_MISSING");
+  }
+  if (
+    input.expectedLegacyRevisionFingerprint &&
+    fingerprintCanonicalJson(current.seedPayload) !==
+      input.expectedLegacyRevisionFingerprint
+  ) {
+    throw new Error("LEGACY_REVISION_CHANGED_IN_TRANSACTION");
   }
   if (exactSeedRevisionProvenance(current)) {
     return { revision: current, created: false };

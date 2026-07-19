@@ -197,5 +197,260 @@
       "writesLocalArtifacts": true,
       "explicitAuthorizationRequired": true
     }
-  }
+  },
+  "doctor": {
+    "tools": [
+      { "id": "git", "name": "Git", "commandNames": ["git"], "requiredFor": ["application-implementation", "database-implementation", "migration-work", "deployment-work"], "missingHint": "Install Git through the operator-approved workstation process.", "presenceOnly": false },
+      { "id": "node", "name": "Node.js", "commandNames": ["node"], "requiredFor": ["application-implementation", "database-implementation", "migration-work", "deployment-work"], "missingHint": "Install the repository-supported Node.js runtime through the operator-approved process.", "presenceOnly": false },
+      { "id": "npm", "name": "npm", "commandNames": ["npm.cmd", "npm"], "requiredFor": ["application-implementation", "database-implementation", "migration-work", "deployment-work"], "missingHint": "Use the npm bundled with the repository-supported Node.js runtime.", "presenceOnly": false },
+      { "id": "npx", "name": "npx", "commandNames": ["npx.cmd", "npx"], "requiredFor": [], "missingHint": "Use only an existing local binary; do not allow npx to download packages.", "presenceOnly": false },
+      { "id": "docker", "name": "Docker CLI", "commandNames": ["docker.exe", "docker"], "requiredFor": ["database-implementation", "migration-work"], "missingHint": "Install or start Docker through the operator-approved workstation process.", "presenceOnly": false },
+      { "id": "psql", "name": "PostgreSQL psql", "commandNames": ["psql.exe", "psql"], "requiredFor": ["database-implementation", "migration-work"], "missingHint": "Install a compatible PostgreSQL client through the operator-approved process.", "presenceOnly": false },
+      { "id": "pg-dump", "name": "PostgreSQL pg_dump", "commandNames": ["pg_dump.exe", "pg_dump"], "requiredFor": ["migration-work"], "missingHint": "Install a compatible PostgreSQL client through the operator-approved process.", "presenceOnly": false },
+      { "id": "pg-restore", "name": "PostgreSQL pg_restore", "commandNames": ["pg_restore.exe", "pg_restore"], "requiredFor": ["migration-work"], "missingHint": "Install a compatible PostgreSQL client through the operator-approved process.", "presenceOnly": false },
+      { "id": "vercel", "name": "Vercel CLI", "commandNames": ["vercel.cmd", "vercel"], "requiredFor": ["deployment-work"], "missingHint": "Install or expose the approved Vercel CLI only when deployment work is authorized.", "presenceOnly": true },
+      { "id": "gh", "name": "GitHub CLI", "commandNames": ["gh.exe", "gh"], "requiredFor": ["deployment-work"], "missingHint": "Install or expose GitHub CLI through the operator-approved process when needed.", "presenceOnly": true }
+    ]
+  },
+  "commandProfiles": {
+    "read-only": {
+      "defaultSideEffectClass": "read-only",
+      "accessesNetwork": false,
+      "accessesDatabase": false,
+      "writesLocalArtifacts": false,
+      "writesTrackedFiles": false,
+      "mayMutateProduction": false,
+      "authorizationRequirement": "none"
+    },
+    "local-artifact-write": {
+      "defaultSideEffectClass": "local-artifact-write",
+      "accessesNetwork": false,
+      "accessesDatabase": false,
+      "writesLocalArtifacts": true,
+      "writesTrackedFiles": false,
+      "mayMutateProduction": false,
+      "authorizationRequirement": "none"
+    },
+    "local-tracked-file-write": {
+      "defaultSideEffectClass": "local-artifact-write",
+      "accessesNetwork": false,
+      "accessesDatabase": false,
+      "writesLocalArtifacts": true,
+      "writesTrackedFiles": true,
+      "mayMutateProduction": false,
+      "authorizationRequirement": "Explicit authorization to update tracked repository artifacts."
+    },
+    "network-local-artifact-write": {
+      "defaultSideEffectClass": "local-artifact-write",
+      "accessesNetwork": true,
+      "accessesDatabase": false,
+      "writesLocalArtifacts": true,
+      "writesTrackedFiles": false,
+      "mayMutateProduction": false,
+      "authorizationRequirement": "Confirm the intended local service or network target."
+    },
+    "network-read-only": {
+      "defaultSideEffectClass": "read-only",
+      "accessesNetwork": true,
+      "accessesDatabase": false,
+      "writesLocalArtifacts": false,
+      "writesTrackedFiles": false,
+      "mayMutateProduction": false,
+      "authorizationRequirement": "Confirm the intended network target."
+    },
+    "database-read": {
+      "defaultSideEffectClass": "read-only",
+      "accessesNetwork": true,
+      "accessesDatabase": true,
+      "writesLocalArtifacts": false,
+      "writesTrackedFiles": false,
+      "mayMutateProduction": false,
+      "authorizationRequirement": "Explicit authorization for the named database target and read scope."
+    },
+    "database-read-artifact": {
+      "defaultSideEffectClass": "local-artifact-write",
+      "accessesNetwork": true,
+      "accessesDatabase": true,
+      "writesLocalArtifacts": true,
+      "writesTrackedFiles": false,
+      "mayMutateProduction": false,
+      "authorizationRequirement": "Explicit authorization for the named database target and read scope."
+    },
+    "disposable-database-write": {
+      "defaultSideEffectClass": "disposable-database-write",
+      "accessesNetwork": true,
+      "accessesDatabase": true,
+      "writesLocalArtifacts": true,
+      "writesTrackedFiles": false,
+      "mayMutateProduction": false,
+      "authorizationRequirement": "Explicit confirmation that the target is disposable."
+    },
+    "production-write": {
+      "defaultSideEffectClass": "production-write",
+      "accessesNetwork": true,
+      "accessesDatabase": true,
+      "writesLocalArtifacts": false,
+      "writesTrackedFiles": false,
+      "mayMutateProduction": true,
+      "authorizationRequirement": "Explicit authorization for the exact database target and mutation."
+    },
+    "deploy": {
+      "defaultSideEffectClass": "deploy",
+      "accessesNetwork": true,
+      "accessesDatabase": false,
+      "writesLocalArtifacts": true,
+      "writesTrackedFiles": false,
+      "mayMutateProduction": true,
+      "authorizationRequirement": "Explicit deployment authorization and verified target identity."
+    },
+    "destructive": {
+      "defaultSideEffectClass": "destructive",
+      "accessesNetwork": true,
+      "accessesDatabase": true,
+      "writesLocalArtifacts": false,
+      "writesTrackedFiles": false,
+      "mayMutateProduction": true,
+      "authorizationRequirement": "Explicit authorization for the exact destructive target and mutation."
+    }
+  },
+  "registryCoverage": {
+    "packageManifest": "trainer-app/package.json",
+    "ignoredPackageScripts": [],
+    "entrypointDirectories": [
+      {
+        "path": "scripts/codex",
+        "extensions": [".ps1"],
+        "recursive": false,
+        "ignored": []
+      },
+      {
+        "path": "trainer-app/scripts",
+        "extensions": [".ts", ".mjs", ".ps1"],
+        "recursive": false,
+        "ignored": [
+          "trainer-app/scripts/audit-cli-support.ts",
+          "trainer-app/scripts/workout-week-snapshot-repair-lib.ts"
+        ]
+      },
+      {
+        "path": "trainer-app/prisma",
+        "extensions": [".ts"],
+        "recursive": false,
+        "ignored": [
+          "trainer-app/prisma/exercise-aliases.ts",
+          "trainer-app/prisma/muscle-seed-data.ts"
+        ]
+      }
+    ],
+    "knownMutationFlags": [
+      "--write",
+      "--apply",
+      "--execute",
+      "--repair",
+      "--apply-bounded-reseed",
+      "--accept-slot-plan-upgrade",
+      "--update"
+    ]
+  },
+  "commandRegistry": [
+    { "id": "codex-task-inspector", "command": "pwsh -NoProfile -File scripts/codex/Start-TrainerTask.ps1", "sourceLocation": "scripts/codex/Start-TrainerTask.ps1", "entrypoint": "scripts/codex/Start-TrainerTask.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Inspect-only Phase 1 task manifest; does not create branches or worktrees." },
+    { "id": "codex-doctor", "command": "pwsh -NoProfile -File scripts/codex/Invoke-TrainerDoctor.ps1", "sourceLocation": "scripts/codex/Invoke-TrainerDoctor.ps1", "entrypoint": "scripts/codex/Invoke-TrainerDoctor.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Local-only by default; explicit scopes remain non-mutating in Phase 2." },
+    { "id": "codex-registry-validator", "command": "pwsh -NoProfile -File scripts/codex/Test-TrainerCommandRegistry.ps1", "sourceLocation": "scripts/codex/Test-TrainerCommandRegistry.ps1", "entrypoint": "scripts/codex/Test-TrainerCommandRegistry.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Static offline policy coverage validation." },
+    { "id": "codex-tooling-tests", "command": "pwsh -NoProfile -File scripts/codex/tests/Run-Tests.ps1", "sourceLocation": "scripts/codex/tests/Run-Tests.ps1", "entrypoint": "scripts/codex/tests/Run-Tests.ps1", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Creates and removes guarded disposable local fixtures." },
+    { "id": "git-diff-check", "command": "git diff --check", "sourceLocation": "scripts/codex/trainer-policy.v1.json", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Reads the current Git diff only." },
+    { "id": "audit-future-week", "command": "npm run audit:workout -- --env-file .env.local --mode future-week --owner owner@local", "sourceLocation": "trainer-app/scripts/workout-audit.ts", "entrypoint": "trainer-app/scripts/workout-audit.ts", "profile": "database-read-artifact", "flagEscalations": [{ "flag": "--write", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact target and supported recovery mode." }, { "flag": "--apply-bounded-reseed", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit bounded-reseed authorization for the exact mesocycle and target." }, { "flag": "--accept-slot-plan-upgrade", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit slot-plan upgrade acceptance for the exact mesocycle and target." }], "notes": "The audit name is not a safety guarantee; supported recovery and reseed flags write." },
+
+    { "id": "npm-predev", "packageScript": "predev", "command": "prisma generate", "sourceLocation": "trainer-app/package.json#scripts.predev", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Generates local Prisma client artifacts." },
+    { "id": "npm-dev", "packageScript": "dev", "command": "next dev", "sourceLocation": "trainer-app/package.json#scripts.dev", "entrypoint": null, "profile": "network-local-artifact-write", "flagEscalations": [], "notes": "Starts a local development server and writes build/cache artifacts." },
+    { "id": "npm-build", "packageScript": "build", "command": "next build", "sourceLocation": "trainer-app/package.json#scripts.build", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Writes the local Next.js build output." },
+    { "id": "npm-start", "packageScript": "start", "command": "next start", "sourceLocation": "trainer-app/package.json#scripts.start", "entrypoint": null, "profile": "network-read-only", "flagEscalations": [], "notes": "Starts a local server from existing build output." },
+    { "id": "npm-lint", "packageScript": "lint", "command": "eslint . --cache --cache-location .eslintcache", "sourceLocation": "trainer-app/package.json#scripts.lint", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Writes the local ESLint cache." },
+    { "id": "npm-test", "packageScript": "test", "command": "vitest run", "sourceLocation": "trainer-app/package.json#scripts.test", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Focused local test runner without update flags." },
+    { "id": "npm-test-ui-audit", "packageScript": "test:ui-audit", "command": "playwright test", "sourceLocation": "trainer-app/package.json#scripts.test:ui-audit", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "May write Playwright reports, screenshots, traces, and videos." },
+    { "id": "npm-test-ui-audit-update", "packageScript": "test:ui-audit:update", "command": "playwright test --update-snapshots", "sourceLocation": "trainer-app/package.json#scripts.test:ui-audit:update", "entrypoint": null, "profile": "local-tracked-file-write", "flagEscalations": [{ "flag": "--update-snapshots", "sideEffectClass": "local-artifact-write", "authorizationRequirement": "Explicit authorization to update tracked UI snapshots." }], "notes": "Naming trap: this test command updates tracked snapshots." },
+    { "id": "test-audit-matrix", "packageScript": "test:audit:matrix", "command": "vitest run src/lib/audit/workout-audit/future-week-explicit-intent-matrix.test.ts src/lib/audit/workout-audit/future-week-derived-intent-matrix.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:audit:matrix", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Deterministic local audit matrix tests." },
+    { "id": "npm-audit-exercise-exposure-retirement", "packageScript": "audit:exercise-exposure-retirement", "command": "tsx scripts/audit-exercise-exposure-retirement.ts", "sourceLocation": "trainer-app/package.json#scripts.audit:exercise-exposure-retirement", "entrypoint": "trainer-app/scripts/audit-exercise-exposure-retirement.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only database audit; audit naming does not remove target-authorization requirements." },
+    { "id": "npm-test-db-workout-mutations", "packageScript": "test:db:workout-mutations", "command": "tsx scripts/test-workout-mutations-postgres.ts --confirm-disposable", "sourceLocation": "trainer-app/package.json#scripts.test:db:workout-mutations", "entrypoint": "trainer-app/scripts/test-workout-mutations-postgres.ts", "profile": "disposable-database-write", "flagEscalations": [], "notes": "Creates and mutates an explicitly disposable PostgreSQL test target." },
+    { "id": "npm-test-db-historical-snapshots", "packageScript": "test:db:historical-snapshots", "command": "npm run test:db:workout-mutations", "sourceLocation": "trainer-app/package.json#scripts.test:db:historical-snapshots", "entrypoint": null, "profile": "disposable-database-write", "flagEscalations": [], "notes": "Alias of the disposable workout-mutation database suite." },
+    { "id": "npm-test-db-rollout-tooling", "packageScript": "test:db:rollout-tooling", "command": "tsx scripts/test-rollout-tooling-postgres.ts --confirm-disposable", "sourceLocation": "trainer-app/package.json#scripts.test:db:rollout-tooling", "entrypoint": "trainer-app/scripts/test-rollout-tooling-postgres.ts", "profile": "disposable-database-write", "flagEscalations": [], "notes": "Creates, migrates, verifies, and removes a disposable PostgreSQL target." },
+    { "id": "npm-test-readiness-integrity", "packageScript": "test:readiness-integrity", "command": "vitest run src/lib/operations/readiness-integrity.test.ts src/lib/operations/readiness-integrity-postgres.test.ts src/lib/operations/readiness-integrity-cli.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:readiness-integrity", "entrypoint": null, "profile": "disposable-database-write", "flagEscalations": [], "notes": "Includes PostgreSQL-backed tests that write only to an explicit disposable target." },
+    { "id": "test-migration-integrity", "packageScript": "test:migration-integrity", "command": "vitest run src/lib/operations/migration-integrity.test.ts src/lib/operations/migration-integrity-postgres.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:migration-integrity", "entrypoint": null, "profile": "disposable-database-write", "flagEscalations": [], "notes": "Includes migration-integrity tests against disposable database fixtures." },
+    { "id": "npm-test-watch", "packageScript": "test:watch", "command": "vitest --watch", "sourceLocation": "trainer-app/package.json#scripts.test:watch", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Long-running local watch process." },
+    { "id": "npm-test-slow", "packageScript": "test:slow", "command": "vitest run --passWithNoTests \"src/**/*.slow.test.ts\"", "sourceLocation": "trainer-app/package.json#scripts.test:slow", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Local slow-test selection." },
+    { "id": "test-fast", "packageScript": "test:fast", "command": "vitest run src/lib/engine/selection-v2/ src/lib/engine/explainability/ src/lib/api/template-session.test.ts", "sourceLocation": "trainer-app/package.json#scripts.test:fast", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Local focused test selection." },
+    { "id": "prisma-generate", "packageScript": "prisma:generate", "command": "prisma generate", "sourceLocation": "trainer-app/package.json#scripts.prisma:generate", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Writes generated Prisma client artifacts only." },
+    { "id": "npm-prisma-studio", "packageScript": "prisma:studio", "command": "prisma studio", "sourceLocation": "trainer-app/package.json#scripts.prisma:studio", "entrypoint": null, "profile": "production-write", "flagEscalations": [], "notes": "Naming trap: Prisma Studio is an interactive database editor and may mutate the configured target." },
+    { "id": "npm-db-seed", "packageScript": "db:seed", "command": "tsx prisma/seed.ts", "sourceLocation": "trainer-app/package.json#scripts.db:seed", "entrypoint": "trainer-app/prisma/seed.ts", "profile": "production-write", "flagEscalations": [], "notes": "Seeds the configured database and is never an inspect-only command." },
+    { "id": "npm-postinstall", "packageScript": "postinstall", "command": "prisma generate", "sourceLocation": "trainer-app/package.json#scripts.postinstall", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Lifecycle hook that writes generated Prisma artifacts; package installation is outside Phase 2." },
+    { "id": "npm-verify-exercise-library", "packageScript": "verify:exercise-library", "command": "tsx scripts/verify-exercise-library.ts", "sourceLocation": "trainer-app/package.json#scripts.verify:exercise-library", "entrypoint": "trainer-app/scripts/verify-exercise-library.ts", "profile": "database-read", "flagEscalations": [], "notes": "Naming trap: verification reads the configured database." },
+    { "id": "npm-audit-workout", "packageScript": "audit:workout", "command": "tsx scripts/workout-audit.ts", "sourceLocation": "trainer-app/package.json#scripts.audit:workout", "entrypoint": "trainer-app/scripts/workout-audit.ts", "profile": "database-read-artifact", "flagEscalations": [{ "flag": "--write", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact target and supported recovery mode." }, { "flag": "--apply-bounded-reseed", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit bounded-reseed authorization for the exact mesocycle and target." }, { "flag": "--accept-slot-plan-upgrade", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit slot-plan upgrade acceptance for the exact mesocycle and target." }], "notes": "Major naming trap: most modes audit, but explicit recovery/reseed modes mutate." },
+    { "id": "npm-ops-refresh-next-seed-draft", "packageScript": "ops:refresh-next-seed-draft", "command": "tsx scripts/ops-refresh-next-seed-draft.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:refresh-next-seed-draft", "entrypoint": "trainer-app/scripts/ops-refresh-next-seed-draft.ts", "profile": "production-write", "flagEscalations": [], "notes": "Major naming trap: refresh calls a mutating application route, then runs read-only audits." },
+    { "id": "npm-ops-backfill-seed-revisions", "packageScript": "ops:backfill-seed-revisions", "command": "tsx scripts/backfill-immutable-seed-revisions.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:backfill-seed-revisions", "entrypoint": "trainer-app/scripts/backfill-immutable-seed-revisions.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--write", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact rollout target plus required remote-write confirmation." }], "notes": "Dry-run inventory by default; --write promotes seed revisions." },
+    { "id": "npm-ops-backfill-stimulus-accounting", "packageScript": "ops:backfill-stimulus-accounting", "command": "tsx scripts/backfill-workout-exercise-stimulus-accounting.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:backfill-stimulus-accounting", "entrypoint": "trainer-app/scripts/backfill-workout-exercise-stimulus-accounting.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--write", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact rollout target plus required remote-write confirmation." }], "notes": "Dry-run inventory by default; --write backfills persisted snapshots." },
+    { "id": "npm-ops-backfill-post-session-reviews", "packageScript": "ops:backfill-post-session-reviews", "command": "tsx scripts/backfill-post-session-reviews.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:backfill-post-session-reviews", "entrypoint": "trainer-app/scripts/backfill-post-session-reviews.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--write", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact rollout target plus required remote-write confirmation." }], "notes": "Dry-run inventory by default; --write creates immutable review snapshots." },
+    { "id": "npm-ops-preflight-seed-revisions", "packageScript": "ops:preflight-seed-revisions", "command": "tsx scripts/backfill-immutable-seed-revisions.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:preflight-seed-revisions", "entrypoint": "trainer-app/scripts/backfill-immutable-seed-revisions.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--write", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact rollout target plus required remote-write confirmation." }], "notes": "Naming trap: preflight is read-only only while mutation flags are absent." },
+    { "id": "npm-ops-preflight-stimulus-accounting", "packageScript": "ops:preflight-stimulus-accounting", "command": "tsx scripts/backfill-workout-exercise-stimulus-accounting.ts --inventory-only", "sourceLocation": "trainer-app/package.json#scripts.ops:preflight-stimulus-accounting", "entrypoint": "trainer-app/scripts/backfill-workout-exercise-stimulus-accounting.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--write", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact rollout target plus required remote-write confirmation." }], "notes": "Inventory-only package wrapper; underlying entrypoint has a guarded write mode." },
+    { "id": "npm-ops-preflight-post-session-reviews", "packageScript": "ops:preflight-post-session-reviews", "command": "tsx scripts/backfill-post-session-reviews.ts --inventory-only", "sourceLocation": "trainer-app/package.json#scripts.ops:preflight-post-session-reviews", "entrypoint": "trainer-app/scripts/backfill-post-session-reviews.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--write", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact rollout target plus required remote-write confirmation." }], "notes": "Inventory-only package wrapper; underlying entrypoint has a guarded write mode." },
+    { "id": "npm-ops-check-direct-db", "packageScript": "ops:check-direct-db", "command": "tsx scripts/check-direct-db.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:check-direct-db", "entrypoint": "trainer-app/scripts/check-direct-db.ts", "profile": "database-read", "flagEscalations": [], "notes": "Naming trap: preflight performs DNS/TCP/TLS/authentication against the explicit database endpoint but runs no SQL." },
+    { "id": "npm-ops-migration-status", "packageScript": "ops:migration-status", "command": "tsx scripts/check-migration-status.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:migration-status", "entrypoint": "trainer-app/scripts/check-migration-status.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only migration ledger and catalog verification; it does not deploy." },
+    { "id": "npm-ops-audit-readiness-integrity", "packageScript": "ops:audit-readiness-integrity", "command": "tsx scripts/audit-readiness-integrity.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:audit-readiness-integrity", "entrypoint": "trainer-app/scripts/audit-readiness-integrity.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only database integrity audit with explicit target ownership." },
+    { "id": "npm-ops-write-status", "packageScript": "ops:write-status", "command": "tsx scripts/production-write-status.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:write-status", "entrypoint": "trainer-app/scripts/production-write-status.ts", "profile": "read-only", "flagEscalations": [], "notes": "Reads a named local environment file and reports only enabled/paused status; no database access." },
+    { "id": "npm-ops-investigate-invalid-seed", "packageScript": "ops:investigate-invalid-seed", "command": "tsx scripts/investigate-invalid-seed.ts", "sourceLocation": "trainer-app/package.json#scripts.ops:investigate-invalid-seed", "entrypoint": "trainer-app/scripts/investigate-invalid-seed.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only invalid-seed investigation against an explicitly named target." },
+    { "id": "npm-audit-post-session-reviews", "packageScript": "audit:post-session-reviews", "command": "tsx scripts/audit-post-session-reviews.ts", "sourceLocation": "trainer-app/package.json#scripts.audit:post-session-reviews", "entrypoint": "trainer-app/scripts/audit-post-session-reviews.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only snapshot integrity audit." },
+    { "id": "npm-test-seed-revision-concurrency", "packageScript": "test:seed-revision-concurrency", "command": "tsx scripts/verify-seed-revision-concurrency.ts", "sourceLocation": "trainer-app/package.json#scripts.test:seed-revision-concurrency", "entrypoint": "trainer-app/scripts/verify-seed-revision-concurrency.ts", "profile": "disposable-database-write", "flagEscalations": [], "notes": "Requires an explicitly confirmed disposable target." },
+    { "id": "npm-test-db-readiness-snapshots", "packageScript": "test:db:readiness-snapshots", "command": "tsx scripts/test-readiness-snapshot-postgres.ts --confirm-disposable", "sourceLocation": "trainer-app/package.json#scripts.test:db:readiness-snapshots", "entrypoint": "trainer-app/scripts/test-readiness-snapshot-postgres.ts", "profile": "disposable-database-write", "flagEscalations": [], "notes": "Creates and mutates disposable PostgreSQL readiness fixtures." },
+    { "id": "npm-audit-mesocycle-explain-compare", "packageScript": "audit:mesocycle-explain:compare", "command": "tsx scripts/audit-mesocycle-explain-compare.ts", "sourceLocation": "trainer-app/package.json#scripts.audit:mesocycle-explain:compare", "entrypoint": "trainer-app/scripts/audit-mesocycle-explain-compare.ts", "profile": "read-only", "flagEscalations": [], "notes": "Compares local audit artifacts and emits stdout/JSON only." },
+    { "id": "npm-audit-week", "packageScript": "audit:week", "command": "tsx scripts/workout-audit.ts --mode projected-week-volume", "sourceLocation": "trainer-app/package.json#scripts.audit:week", "entrypoint": "trainer-app/scripts/workout-audit.ts", "profile": "database-read-artifact", "flagEscalations": [{ "flag": "--write", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact target and supported recovery mode." }, { "flag": "--apply-bounded-reseed", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit bounded-reseed authorization for the exact mesocycle and target." }, { "flag": "--accept-slot-plan-upgrade", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit slot-plan upgrade acceptance for the exact mesocycle and target." }], "notes": "Weekly audit writes a local artifact and reads the configured database." },
+    { "id": "npm-audit-week-debug", "packageScript": "audit:week:debug", "command": "tsx scripts/workout-audit.ts --mode projected-week-volume --operator-debug", "sourceLocation": "trainer-app/package.json#scripts.audit:week:debug", "entrypoint": "trainer-app/scripts/workout-audit.ts", "profile": "database-read-artifact", "flagEscalations": [{ "flag": "--write", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact target and supported recovery mode." }, { "flag": "--apply-bounded-reseed", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit bounded-reseed authorization for the exact mesocycle and target." }, { "flag": "--accept-slot-plan-upgrade", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit slot-plan upgrade acceptance for the exact mesocycle and target." }], "notes": "Debug readout remains database-read plus local artifact output." },
+    { "id": "npm-audit-week-retro", "packageScript": "audit:week:retro", "command": "tsx scripts/workout-audit.ts --mode weekly-retro", "sourceLocation": "trainer-app/package.json#scripts.audit:week:retro", "entrypoint": "trainer-app/scripts/workout-audit.ts", "profile": "database-read-artifact", "flagEscalations": [{ "flag": "--write", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact target and supported recovery mode." }, { "flag": "--apply-bounded-reseed", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit bounded-reseed authorization for the exact mesocycle and target." }, { "flag": "--accept-slot-plan-upgrade", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit slot-plan upgrade acceptance for the exact mesocycle and target." }], "notes": "Weekly retrospective audit reads DB state and writes a local artifact." },
+    { "id": "npm-audit-split-sanity", "packageScript": "audit:split-sanity", "command": "tsx scripts/audit-split-sanity.ts", "sourceLocation": "trainer-app/package.json#scripts.audit:split-sanity", "entrypoint": "trainer-app/scripts/audit-split-sanity.ts", "profile": "database-read-artifact", "flagEscalations": [], "notes": "Reads a named database target and writes audit artifacts." },
+    { "id": "npm-audit-week-close-handoff", "packageScript": "audit:week-close-handoff", "command": "tsx scripts/audit-week-close-handoff.ts", "sourceLocation": "trainer-app/package.json#scripts.audit:week-close-handoff", "entrypoint": "trainer-app/scripts/audit-week-close-handoff.ts", "profile": "database-read-artifact", "flagEscalations": [], "notes": "Read-only handoff audit that writes a local artifact." },
+    { "id": "npm-repair-week-close-handoff", "packageScript": "repair:week-close-handoff", "command": "tsx scripts/repair-week-close-handoff.ts", "sourceLocation": "trainer-app/package.json#scripts.repair:week-close-handoff", "entrypoint": "trainer-app/scripts/repair-week-close-handoff.ts", "profile": "database-read-artifact", "flagEscalations": [{ "flag": "--apply", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact owner/week and database target." }], "notes": "Dry-run by default; --apply mutates week-close ownership." },
+    { "id": "npm-repair-historical-session-slot-receipts", "packageScript": "repair:historical-session-slot-receipts", "command": "tsx prisma/repair-historical-session-slot-receipts.ts", "sourceLocation": "trainer-app/package.json#scripts.repair:historical-session-slot-receipts", "entrypoint": "trainer-app/prisma/repair-historical-session-slot-receipts.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--apply", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact workout rows and database target." }], "notes": "Dry-run by default; --apply writes canonical receipt slots." },
+    { "id": "npm-audit-sequencing", "packageScript": "audit:sequencing", "command": "tsx scripts/audit-sequencing.ts", "sourceLocation": "trainer-app/package.json#scripts.audit:sequencing", "entrypoint": "trainer-app/scripts/audit-sequencing.ts", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Pure/local sequencing audit that writes an artifact." },
+    { "id": "npm-audit-accounting", "packageScript": "audit:accounting", "command": "tsx scripts/audit-accounting-semantics.ts", "sourceLocation": "trainer-app/package.json#scripts.audit:accounting", "entrypoint": "trainer-app/scripts/audit-accounting-semantics.ts", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Pure/local accounting audit that writes an artifact." },
+    { "id": "npm-audit-exercise-classification", "packageScript": "audit:exercise-classification", "command": "tsx scripts/audit-exercise-classification.ts", "sourceLocation": "trainer-app/package.json#scripts.audit:exercise-classification", "entrypoint": "trainer-app/scripts/audit-exercise-classification.ts", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Reads repository exercise data and writes local classification reports." },
+    { "id": "npm-backfill-week1-performed", "packageScript": "backfill:week1-performed", "command": "tsx scripts/backfill-week1-performed-sessions.ts", "sourceLocation": "trainer-app/package.json#scripts.backfill:week1-performed", "entrypoint": "trainer-app/scripts/backfill-week1-performed-sessions.ts", "profile": "database-read-artifact", "flagEscalations": [{ "flag": "--write", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact transition-week rows and database target." }], "notes": "Dry-run always writes a local artifact; --write mutates performed-session rows." },
+    { "id": "npm-report-workout-week-snapshot-repair", "packageScript": "report:workout-week-snapshot-repair", "command": "tsx scripts/report-workout-week-snapshot-repair.ts", "sourceLocation": "trainer-app/package.json#scripts.report:workout-week-snapshot-repair", "entrypoint": "trainer-app/scripts/report-workout-week-snapshot-repair.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only database repair report." },
+    { "id": "npm-repair-workout-week-snapshot", "packageScript": "repair:workout-week-snapshot", "command": "tsx scripts/repair-workout-week-snapshot.ts", "sourceLocation": "trainer-app/package.json#scripts.repair:workout-week-snapshot", "entrypoint": "trainer-app/scripts/repair-workout-week-snapshot.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--apply", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact high-confidence rows and database target." }], "notes": "Dry-run by default; --apply updates selected workout snapshots." },
+    { "id": "npm-report-stimulus-coverage", "packageScript": "report:stimulus-coverage", "command": "tsx scripts/report-stimulus-profile-coverage.ts", "sourceLocation": "trainer-app/package.json#scripts.report:stimulus-coverage", "entrypoint": "trainer-app/scripts/report-stimulus-profile-coverage.ts", "profile": "database-read", "flagEscalations": [], "notes": "Reads configured database exercise metadata and reports coverage." },
+    { "id": "npm-report-weekly-volume-targets", "packageScript": "report:weekly-volume-targets", "command": "tsx scripts/report-weekly-volume-targets.ts", "sourceLocation": "trainer-app/package.json#scripts.report:weekly-volume-targets", "entrypoint": "trainer-app/scripts/report-weekly-volume-targets.ts", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Pure/local report that writes under artifacts/audits." },
+    { "id": "verify-contracts", "packageScript": "verify:contracts", "command": "tsx scripts/check-doc-runtime-contracts.ts", "sourceLocation": "trainer-app/package.json#scripts.verify:contracts", "entrypoint": "trainer-app/scripts/check-doc-runtime-contracts.ts", "profile": "read-only", "flagEscalations": [], "notes": "Static contract consistency validation." },
+    { "id": "npm-verify-workout-mutations", "packageScript": "verify:workout-mutations", "command": "tsx scripts/check-workout-mutation-ownership.ts", "sourceLocation": "trainer-app/package.json#scripts.verify:workout-mutations", "entrypoint": "trainer-app/scripts/check-workout-mutation-ownership.ts", "profile": "read-only", "flagEscalations": [], "notes": "Static route ownership validation." },
+    { "id": "npm-verify-production-write-gate", "packageScript": "verify:production-write-gate", "command": "tsx scripts/check-production-write-gate.ts", "sourceLocation": "trainer-app/package.json#scripts.verify:production-write-gate", "entrypoint": "trainer-app/scripts/check-production-write-gate.ts", "profile": "read-only", "flagEscalations": [], "notes": "Static production-write gate validation." },
+    { "id": "npm-verify-fast", "packageScript": "verify:fast", "command": "npm run lint && npx tsc --noEmit && npm run test:fast && npm run verify:contracts", "sourceLocation": "trainer-app/package.json#scripts.verify:fast", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Writes ESLint cache. Local policy requires proving npx resolves the installed TypeScript binary before execution; no download is allowed." },
+    { "id": "verify", "packageScript": "verify", "command": "npm run verify:fast && npm run verify:workout-mutations && npm run verify:production-write-gate", "sourceLocation": "trainer-app/package.json#scripts.verify", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Runs local verification and writes ESLint cache through verify:fast." },
+    { "id": "npm-sync-exercise-library", "packageScript": "sync:exercise-library", "command": "tsx scripts/sync-exercise-library.ts", "sourceLocation": "trainer-app/package.json#scripts.sync:exercise-library", "entrypoint": "trainer-app/scripts/sync-exercise-library.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--apply", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for catalog-only writes to the exact database target." }], "notes": "Dry-run by default; --apply synchronizes catalog rows." },
+    { "id": "npm-sync-exercise-library-apply", "packageScript": "sync:exercise-library:apply", "command": "tsx scripts/sync-exercise-library.ts --apply", "sourceLocation": "trainer-app/package.json#scripts.sync:exercise-library:apply", "entrypoint": "trainer-app/scripts/sync-exercise-library.ts", "profile": "production-write", "flagEscalations": [{ "flag": "--apply", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for catalog-only writes to the exact database target." }], "notes": "Package wrapper is mutating by default because it includes --apply." },
+    { "id": "npm-repair-exercise-library", "packageScript": "repair:exercise-library", "command": "tsx scripts/repair-exercise-library.ts", "sourceLocation": "trainer-app/package.json#scripts.repair:exercise-library", "entrypoint": "trainer-app/scripts/repair-exercise-library.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--apply", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for catalog-only writes to the exact database target." }], "notes": "Dry-run repair delegates to sync planning; --apply writes catalog rows." },
+    { "id": "npm-repair-exercise-library-apply", "packageScript": "repair:exercise-library:apply", "command": "tsx scripts/repair-exercise-library.ts --apply", "sourceLocation": "trainer-app/package.json#scripts.repair:exercise-library:apply", "entrypoint": "trainer-app/scripts/repair-exercise-library.ts", "profile": "production-write", "flagEscalations": [{ "flag": "--apply", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for catalog-only writes to the exact database target." }], "notes": "Package wrapper is mutating by default because it includes --apply." },
+    { "id": "npm-storybook", "packageScript": "storybook", "command": "storybook dev -p 6006", "sourceLocation": "trainer-app/package.json#scripts.storybook", "entrypoint": null, "profile": "network-local-artifact-write", "flagEscalations": [], "notes": "Starts a local Storybook server and writes cache artifacts." },
+    { "id": "npm-build-storybook", "packageScript": "build-storybook", "command": "storybook build", "sourceLocation": "trainer-app/package.json#scripts.build-storybook", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Writes static Storybook build artifacts." },
+
+    { "id": "standalone-backfill-macro-cycles", "command": "tsx trainer-app/scripts/backfill-macro-cycles.ts", "sourceLocation": "trainer-app/scripts/backfill-macro-cycles.ts", "entrypoint": "trainer-app/scripts/backfill-macro-cycles.ts", "profile": "production-write", "flagEscalations": [], "notes": "Directly creates macro-cycle records; no dry-run gate." },
+    { "id": "standalone-capture-mobile-qa-screenshots", "command": "node trainer-app/scripts/capture-mobile-qa-screenshots.mjs", "sourceLocation": "trainer-app/scripts/capture-mobile-qa-screenshots.mjs", "entrypoint": "trainer-app/scripts/capture-mobile-qa-screenshots.mjs", "profile": "network-local-artifact-write", "flagEscalations": [], "notes": "Contacts the selected app origin and writes screenshot artifacts." },
+    { "id": "standalone-inspect-audit-schema", "command": "tsx trainer-app/scripts/inspect-audit-schema.ts", "sourceLocation": "trainer-app/scripts/inspect-audit-schema.ts", "entrypoint": "trainer-app/scripts/inspect-audit-schema.ts", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Inspects local audit artifacts and writes a schema report." },
+    { "id": "standalone-promote-active-mesocycle-exact-provenance", "command": "tsx trainer-app/scripts/promote-active-mesocycle-exact-provenance.ts --mode <preflight|promote|verify>", "sourceLocation": "trainer-app/scripts/promote-active-mesocycle-exact-provenance.ts", "entrypoint": "trainer-app/scripts/promote-active-mesocycle-exact-provenance.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--mode promote", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit one-shot authorization for the exact active mesocycle and database target." }], "notes": "Naming trap: preflight/verify read, while --mode promote writes exact provenance and a verification workout." },
+    { "id": "standalone-repair-accidental-qa-completions", "command": "tsx trainer-app/scripts/repair-accidental-qa-completions.ts --dry-run", "sourceLocation": "trainer-app/scripts/repair-accidental-qa-completions.ts", "entrypoint": "trainer-app/scripts/repair-accidental-qa-completions.ts", "profile": "database-read-artifact", "flagEscalations": [{ "flag": "--execute", "sideEffectClass": "destructive", "authorizationRequirement": "Explicit destructive authorization for the exact QA rows and target." }], "notes": "Dry-run writes evidence; --execute deletes workout-related rows and rewinds lifecycle state." },
+    { "id": "standalone-repair-workout-cf1f4b62", "command": "tsx trainer-app/scripts/repair-workout-cf1f4b62.ts", "sourceLocation": "trainer-app/scripts/repair-workout-cf1f4b62.ts", "entrypoint": "trainer-app/scripts/repair-workout-cf1f4b62.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--apply", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact workout and database target." }], "notes": "One-off dry-run by default; --apply updates logs and creates a workout-exercise row." },
+    { "id": "standalone-report-route-js-bundle", "command": "node trainer-app/scripts/report-route-js-bundle.mjs", "sourceLocation": "trainer-app/scripts/report-route-js-bundle.mjs", "entrypoint": "trainer-app/scripts/report-route-js-bundle.mjs", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Reads local build output and writes/reports bundle analysis." },
+    { "id": "standalone-run-mobile-qa-capture", "command": "pwsh -NoProfile -File trainer-app/scripts/run-mobile-qa-capture.ps1", "sourceLocation": "trainer-app/scripts/run-mobile-qa-capture.ps1", "entrypoint": "trainer-app/scripts/run-mobile-qa-capture.ps1", "profile": "network-local-artifact-write", "flagEscalations": [], "notes": "Runs local mobile QA capture against a selected app origin." },
+
+    { "id": "prisma-audit-mesocycle", "command": "tsx trainer-app/prisma/audit-mesocycle.ts", "sourceLocation": "trainer-app/prisma/audit-mesocycle.ts", "entrypoint": "trainer-app/prisma/audit-mesocycle.ts", "profile": "database-read-artifact", "flagEscalations": [], "notes": "Reads mesocycle state and writes a file unless --no-file is supplied." },
+    { "id": "prisma-backfill-week2-pull", "command": "tsx trainer-app/prisma/backfill-week2-pull.ts", "sourceLocation": "trainer-app/prisma/backfill-week2-pull.ts", "entrypoint": "trainer-app/prisma/backfill-week2-pull.ts", "profile": "production-write", "flagEscalations": [], "notes": "Direct manual backfill with no dry-run gate." },
+    { "id": "prisma-bootstrap-mesocycle", "command": "tsx trainer-app/prisma/bootstrap-mesocycle.ts", "sourceLocation": "trainer-app/prisma/bootstrap-mesocycle.ts", "entrypoint": "trainer-app/prisma/bootstrap-mesocycle.ts", "profile": "production-write", "flagEscalations": [], "notes": "Creates/updates configured mesocycle data." },
+    { "id": "prisma-check-exercise-muscles", "command": "tsx trainer-app/prisma/check-exercise-muscles.ts", "sourceLocation": "trainer-app/prisma/check-exercise-muscles.ts", "entrypoint": "trainer-app/prisma/check-exercise-muscles.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only exercise-muscle inspection." },
+    { "id": "prisma-check-users", "command": "tsx trainer-app/prisma/check-users.ts", "sourceLocation": "trainer-app/prisma/check-users.ts", "entrypoint": "trainer-app/prisma/check-users.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only user inventory; output must be treated as sensitive operator data." },
+    { "id": "prisma-cleanup-seed-user", "command": "tsx trainer-app/prisma/cleanup-seed-user.ts", "sourceLocation": "trainer-app/prisma/cleanup-seed-user.ts", "entrypoint": "trainer-app/prisma/cleanup-seed-user.ts", "profile": "destructive", "flagEscalations": [], "notes": "Deletes seed-user data and is destructive by default." },
+    { "id": "prisma-fetch-latest-pull", "command": "tsx trainer-app/prisma/fetch-latest-pull.ts", "sourceLocation": "trainer-app/prisma/fetch-latest-pull.ts", "entrypoint": "trainer-app/prisma/fetch-latest-pull.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only workout lookup." },
+    { "id": "prisma-fetch-workout-detail", "command": "tsx trainer-app/prisma/fetch-workout-detail.ts", "sourceLocation": "trainer-app/prisma/fetch-workout-detail.ts", "entrypoint": "trainer-app/prisma/fetch-workout-detail.ts", "profile": "database-read", "flagEscalations": [], "notes": "Read-only workout detail lookup." },
+    { "id": "prisma-fix-workout-388f", "command": "tsx trainer-app/prisma/fix-workout-388f.ts", "sourceLocation": "trainer-app/prisma/fix-workout-388f.ts", "entrypoint": "trainer-app/prisma/fix-workout-388f.ts", "profile": "production-write", "flagEscalations": [], "notes": "One-off data repair that writes by default." },
+    { "id": "prisma-relink-week2-pull-deadlift", "command": "tsx trainer-app/prisma/relink-week2-pull-deadlift.ts", "sourceLocation": "trainer-app/prisma/relink-week2-pull-deadlift.ts", "entrypoint": "trainer-app/prisma/relink-week2-pull-deadlift.ts", "profile": "production-write", "flagEscalations": [], "notes": "One-off data relink that writes by default." },
+    { "id": "prisma-repair-mesocycle-rir-bands", "command": "tsx trainer-app/prisma/repair-mesocycle-rir-bands.ts", "sourceLocation": "trainer-app/prisma/repair-mesocycle-rir-bands.ts", "entrypoint": "trainer-app/prisma/repair-mesocycle-rir-bands.ts", "profile": "production-write", "flagEscalations": [], "notes": "Repairs persisted RIR-band JSON by default." },
+    { "id": "prisma-repair-week5-deload-not-performed", "command": "tsx trainer-app/prisma/repair-week5-deload-not-performed.ts", "sourceLocation": "trainer-app/prisma/repair-week5-deload-not-performed.ts", "entrypoint": "trainer-app/prisma/repair-week5-deload-not-performed.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--apply", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact mesocycle and database target." }], "notes": "Dry-run by default; --apply repairs the deload state." },
+    { "id": "prisma-reset-backfill-mesocycle-lifecycle", "command": "tsx trainer-app/prisma/reset-backfill-mesocycle-lifecycle.ts", "sourceLocation": "trainer-app/prisma/reset-backfill-mesocycle-lifecycle.ts", "entrypoint": "trainer-app/prisma/reset-backfill-mesocycle-lifecycle.ts", "profile": "destructive", "flagEscalations": [], "notes": "Resets and rebuilds lifecycle state by default." },
+    { "id": "prisma-update-pull-exercise-roles", "command": "tsx trainer-app/prisma/update-pull-exercise-roles.ts", "sourceLocation": "trainer-app/prisma/update-pull-exercise-roles.ts", "entrypoint": "trainer-app/prisma/update-pull-exercise-roles.ts", "profile": "production-write", "flagEscalations": [], "notes": "Updates persisted pull exercise roles by default." },
+    { "id": "prisma-update-push-exercise-roles", "command": "tsx trainer-app/prisma/update-push-exercise-roles.ts", "sourceLocation": "trainer-app/prisma/update-push-exercise-roles.ts", "entrypoint": "trainer-app/prisma/update-push-exercise-roles.ts", "profile": "production-write", "flagEscalations": [], "notes": "Updates persisted push exercise roles by default." },
+    { "id": "prisma-verify-mesocycle-config", "command": "tsx trainer-app/prisma/verify-mesocycle-config.ts", "sourceLocation": "trainer-app/prisma/verify-mesocycle-config.ts", "entrypoint": "trainer-app/prisma/verify-mesocycle-config.ts", "profile": "database-read", "flagEscalations": [], "notes": "Naming trap: verification reads the configured database." }
+  ]
 }

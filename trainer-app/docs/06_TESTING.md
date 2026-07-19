@@ -246,6 +246,57 @@ Run the focused temporary-fixture tests with:
 pwsh -NoProfile -File .\scripts\codex\tests\Run-Tests.ps1
 ```
 
-Phase 1 does not include a doctor wrapper, broad command registry, diff-aware executor,
-evidence bundle, guarded worktree creation, release-stage manifest, authentication checks,
-service connectivity checks, or cleanup.
+## Local environment doctor
+
+`scripts/codex/Invoke-TrainerDoctor.ps1` reports whether the local checkout has the repository,
+runtime, tool, dependency, Prisma, migration, and environment-file capabilities needed for
+Trainer work. Its default scope is local and inspect-only:
+
+```powershell
+.\scripts\codex\Invoke-TrainerDoctor.ps1
+.\scripts\codex\Invoke-TrainerDoctor.ps1 -Json
+```
+
+JSON uses the stable `trainer-doctor-report` version 1 structure. Capability statuses are
+`available`, `missing`, `warning`, `not-checked`, or `invalid`. Missing optional tools produce
+warnings, not a global failure. Environment files are listed by filename only; values, URLs,
+tokens, and credentials are never printed.
+
+`-Database`, `-GitHub`, `-Deployment`, and `-All` explicitly select additional reporting
+scopes. Phase 2 still reports those scopes as `not-checked`: database selection inventories
+local prerequisites without connecting, while GitHub and deployment selection inventory CLI
+presence without authentication, project lookup, or remote access. Returning `not-checked`
+is preferred whenever an inspect-only guarantee cannot be proven.
+
+Doctor exit codes are `0` when inspection completes without blockers, `1` when required local
+project or policy prerequisites block the requested work, `2` for an invalid scope/invocation,
+and `3` for policy-loading or unexpected failures. Warnings do not change exit code `0`.
+
+The doctor reports capabilities and risks. It does not install, authenticate, repair, connect,
+migrate, deploy, or execute recommended commands.
+
+## Command side-effect registry
+
+`scripts/codex/trainer-policy.v1.json` contains the authoritative Phase 2 command registry.
+Each entry identifies its package script or operational entrypoint, resolved side-effect
+profile, network/database/local/tracked-file behavior, production-mutation potential,
+authorization requirement, mutation-flag escalations, and naming caveats. Commands named
+`audit`, `verify`, `preflight`, `refresh`, or `repair` must be judged by this metadata and their
+implementation, not by their names.
+
+Run deterministic offline registry coverage validation with:
+
+```powershell
+.\scripts\codex\Test-TrainerCommandRegistry.ps1
+.\scripts\codex\Test-TrainerCommandRegistry.ps1 -Json
+```
+
+The validator requires every `trainer-app/package.json` script and designated operational
+entrypoint to be registered or explicitly ignored, verifies referenced files, rejects duplicate
+IDs and invalid side-effect classes, and checks known mutation flags for escalation metadata.
+The ignore list is limited to documented internal helpers and data modules; the full registry is
+not duplicated in this document.
+
+Phase 2 does not include a diff-aware selector/executor, task evidence bundle, guarded worktree
+creation, release-stage manifest, service connectivity checks, authentication checks, automatic
+remediation, or cleanup.

@@ -1,0 +1,201 @@
+{
+  "schema": "trainer-policy",
+  "version": 1,
+  "repository": {
+    "name": "Trainer",
+    "canonicalWorktreeRoot": "C:\\Users\\aabloch\\claude\\vibe-coding\\.worktrees\\trainer",
+    "branchPrefix": "codex/"
+  },
+  "classifications": {
+    "audit": {
+      "allowedPathRoots": [],
+      "forbiddenPathRoots": ["**"],
+      "databasePolicy": {
+        "access": "read-only-with-explicit-task-scope",
+        "writesAllowed": false
+      },
+      "productionWritesMayEverBeAllowed": false,
+      "implementationChecks": ["git-diff-check"],
+      "releaseChecks": [],
+      "warnings": ["Inspection does not authorize database access; a separate task must explicitly scope any read-only query."],
+      "authorizationRequirements": []
+    },
+    "application-write": {
+      "allowedPathRoots": ["trainer-app/src/app", "trainer-app/src/components", "trainer-app/src/lib/ui", "trainer-app/docs"],
+      "forbiddenPathRoots": ["trainer-app/prisma", "scripts/database", ".env*"],
+      "databasePolicy": {
+        "access": "none",
+        "writesAllowed": false
+      },
+      "productionWritesMayEverBeAllowed": false,
+      "implementationChecks": ["test-fast", "git-diff-check"],
+      "releaseChecks": ["verify"],
+      "warnings": [],
+      "authorizationRequirements": ["Use an isolated canonical worktree for implementation."]
+    },
+    "shared-seam-write": {
+      "allowedPathRoots": ["trainer-app/src", "trainer-app/docs", "scripts", ".codex/skills"],
+      "forbiddenPathRoots": ["trainer-app/prisma/migrations", ".env*"],
+      "databasePolicy": {
+        "access": "none",
+        "writesAllowed": false
+      },
+      "productionWritesMayEverBeAllowed": false,
+      "implementationChecks": ["test-fast", "git-diff-check"],
+      "releaseChecks": ["verify"],
+      "warnings": ["Confirm the canonical owner seam and review all affected consumers before implementation."],
+      "authorizationRequirements": ["Use an isolated canonical worktree and serialize overlapping shared-seam changes."]
+    },
+    "db-migration": {
+      "allowedPathRoots": ["trainer-app/prisma", "trainer-app/src/lib/operations", "trainer-app/scripts", "trainer-app/docs/03_DATA_SCHEMA.md", "trainer-app/docs/07_OPERATIONS.md"],
+      "forbiddenPathRoots": [".env*", "production configuration"],
+      "databasePolicy": {
+        "access": "explicit-authorization-required",
+        "writesAllowed": false
+      },
+      "productionWritesMayEverBeAllowed": true,
+      "implementationChecks": ["prisma-generate", "verify-contracts", "git-diff-check"],
+      "releaseChecks": ["test-migration-integrity"],
+      "warnings": ["This inspection does not authorize migration execution, direct SQL, repair, backfill, or any database write."],
+      "authorizationRequirements": ["Obtain separate authorization for each database target and mutation step."]
+    },
+    "release-incident": {
+      "allowedPathRoots": ["scripts", "trainer-app/scripts", "trainer-app/src/lib/operations", "trainer-app/docs/07_OPERATIONS.md"],
+      "forbiddenPathRoots": [".env*", "unrelated application behavior"],
+      "databasePolicy": {
+        "access": "explicit-authorization-required",
+        "writesAllowed": false
+      },
+      "productionWritesMayEverBeAllowed": true,
+      "implementationChecks": ["verify", "git-diff-check"],
+      "releaseChecks": ["test-migration-integrity"],
+      "warnings": ["Production access, release actions, and incident mutations require separate explicit authorization."],
+      "authorizationRequirements": ["Verify target identity and obtain step-specific release authorization before any external action."]
+    }
+  },
+  "verification": {
+    "pathRules": [
+      {
+        "name": "codex-tooling",
+        "patterns": ["scripts/codex/**"],
+        "implementation": ["codex-tooling-tests", "git-diff-check"],
+        "release": []
+      },
+      {
+        "name": "runtime-contracts",
+        "patterns": ["trainer-app/src/lib/validation.ts", "trainer-app/docs/contracts/**"],
+        "implementation": ["verify-contracts"],
+        "release": []
+      },
+      {
+        "name": "prisma-persistence",
+        "patterns": ["trainer-app/prisma/**"],
+        "implementation": ["prisma-generate", "verify-contracts"],
+        "release": ["test-migration-integrity"]
+      },
+      {
+        "name": "route-boundary",
+        "patterns": ["trainer-app/src/app/api/**"],
+        "implementation": ["test-fast"],
+        "release": ["verify"]
+      },
+      {
+        "name": "shared-domain-seams",
+        "patterns": ["trainer-app/src/lib/api/**", "trainer-app/src/lib/engine/**", "trainer-app/src/lib/session-semantics/**", "trainer-app/src/lib/progression/**"],
+        "implementation": ["test-fast"],
+        "release": ["verify"]
+      },
+      {
+        "name": "audit-seam",
+        "patterns": ["trainer-app/src/lib/audit/**", "trainer-app/scripts/workout-audit.ts"],
+        "implementation": ["test-audit-matrix"],
+        "release": ["audit-future-week"]
+      },
+      {
+        "name": "workflow-instructions",
+        "patterns": [".codex/**", ".Codex/**", "AGENTS.md", "CLAUDE.md", "trainer-app/docs/**"],
+        "implementation": ["git-diff-check"],
+        "release": []
+      }
+    ],
+    "fallback": {
+      "implementation": ["verify"],
+      "release": [],
+      "warning": "No verification rule matched one or more changed paths; the conservative full verification fallback was proposed."
+    }
+  },
+  "commands": {
+    "codex-tooling-tests": {
+      "command": "pwsh -NoProfile -File scripts/codex/tests/Run-Tests.ps1",
+      "defaultSideEffectClass": "temporary-local-test-fixtures",
+      "accessesNetwork": false,
+      "accessesDatabase": false,
+      "writesLocalArtifacts": true,
+      "explicitAuthorizationRequired": false
+    },
+    "git-diff-check": {
+      "command": "git diff --check",
+      "defaultSideEffectClass": "read-only",
+      "accessesNetwork": false,
+      "accessesDatabase": false,
+      "writesLocalArtifacts": false,
+      "explicitAuthorizationRequired": false
+    },
+    "test-fast": {
+      "command": "npm run test:fast",
+      "defaultSideEffectClass": "local-test",
+      "accessesNetwork": false,
+      "accessesDatabase": false,
+      "writesLocalArtifacts": false,
+      "explicitAuthorizationRequired": false
+    },
+    "verify-contracts": {
+      "command": "npm run verify:contracts",
+      "defaultSideEffectClass": "local-verification",
+      "accessesNetwork": false,
+      "accessesDatabase": false,
+      "writesLocalArtifacts": false,
+      "explicitAuthorizationRequired": false
+    },
+    "verify": {
+      "command": "npm run verify",
+      "defaultSideEffectClass": "local-verification",
+      "accessesNetwork": false,
+      "accessesDatabase": false,
+      "writesLocalArtifacts": true,
+      "explicitAuthorizationRequired": false
+    },
+    "prisma-generate": {
+      "command": "npm run prisma:generate",
+      "defaultSideEffectClass": "local-code-generation",
+      "accessesNetwork": false,
+      "accessesDatabase": false,
+      "writesLocalArtifacts": true,
+      "explicitAuthorizationRequired": false
+    },
+    "test-migration-integrity": {
+      "command": "npm run test:migration-integrity",
+      "defaultSideEffectClass": "database-test",
+      "accessesNetwork": false,
+      "accessesDatabase": true,
+      "writesLocalArtifacts": true,
+      "explicitAuthorizationRequired": true
+    },
+    "test-audit-matrix": {
+      "command": "npm run test:audit:matrix",
+      "defaultSideEffectClass": "local-test",
+      "accessesNetwork": false,
+      "accessesDatabase": false,
+      "writesLocalArtifacts": false,
+      "explicitAuthorizationRequired": false
+    },
+    "audit-future-week": {
+      "command": "npm run audit:workout -- --env-file .env.local --mode future-week --owner owner@local",
+      "defaultSideEffectClass": "database-read",
+      "accessesNetwork": true,
+      "accessesDatabase": true,
+      "writesLocalArtifacts": true,
+      "explicitAuthorizationRequired": true
+    }
+  }
+}

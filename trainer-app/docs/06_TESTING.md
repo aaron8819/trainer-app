@@ -201,3 +201,51 @@ Paused route tests must assert the stable 503 contract and zero calls to owner r
 Prisma, workout revision CAS/transactions, and the relevant receipt/readiness/snapshot producer.
 Existing route success tests prove the missing/disabled pause preserves response and revision
 behavior.
+
+## Inspecting a proposed Codex task
+
+`scripts/codex/Start-TrainerTask.ps1` inspects a proposed task against the versioned
+`scripts/codex/trainer-policy.v1.json` policy. It reports repository and worktree state, path
+and database policy, conflicts, and proposed verification. Phase 1 is strictly inspect-only: it
+does not create worktrees or branches, install packages, execute proposed checks, access a
+database, or contact release services.
+
+Human-readable inspection:
+
+```powershell
+.\scripts\codex\Start-TrainerTask.ps1 `
+  -Name freeze-effective-set-accounting `
+  -Classification shared-seam-write `
+  -BaseBranch master
+```
+
+JSON inspection:
+
+```powershell
+.\scripts\codex\Start-TrainerTask.ps1 `
+  -Name freeze-effective-set-accounting `
+  -Classification shared-seam-write `
+  -BaseBranch master `
+  -ChangedPath trainer-app/src/lib/engine/example.ts `
+  -Json
+```
+
+JSON uses the stable `trainer-task-manifest` version 1 structure. Repeatable `-ChangedPath`
+values add matching path-based checks in policy order; commands are deterministically
+deduplicated. Supported classifications are `audit`, `application-write`, `shared-seam-write`,
+`db-migration`, and `release-incident`.
+
+Exit codes are `0` for a successful inspection without blockers, `1` for a valid inspection
+with blockers or conflicts, `2` for an invalid invocation or requested policy value, and `3`
+for a policy-loading or unexpected execution failure. Warnings do not change a successful exit
+code. Proposed verification is planning output only and is never executed by this script.
+
+Run the focused temporary-fixture tests with:
+
+```powershell
+pwsh -NoProfile -File .\scripts\codex\tests\Run-Tests.ps1
+```
+
+Phase 1 does not include a doctor wrapper, broad command registry, diff-aware executor,
+evidence bundle, guarded worktree creation, release-stage manifest, authentication checks,
+service connectivity checks, or cleanup.

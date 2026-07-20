@@ -297,6 +297,80 @@ IDs and invalid side-effect classes, and checks known mutation flags for escalat
 The ignore list is limited to documented internal helpers and data modules; the full registry is
 not duplicated in this document.
 
-Phase 2 does not include a diff-aware selector/executor, task evidence bundle, guarded worktree
-creation, release-stage manifest, service connectivity checks, authentication checks, automatic
-remediation, or cleanup.
+## Diff-aware verification planning and execution
+
+`scripts/codex/Invoke-TrainerVerification.ps1` reads the same versioned policy, task-manifest
+contract, command registry, and local capability discovery used by Phases 1 and 2. It combines
+committed, staged, unstaged, and untracked Git paths with any explicit or manifest paths,
+normalizes separators, matches every applicable path rule, retains every selection reason,
+deduplicates commands in policy order, and keeps implementation checks separate from release
+checks.
+
+Planning is the default. Verification commands run only with explicit `-Run` authorization,
+and only registry-approved local implementation checks are eligible.
+
+Plan the current branch/worktree delta from a Git base:
+
+```powershell
+.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef origin/master
+.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef origin/master -Json
+```
+
+Plan paths without requiring them to exist, or combine them deterministically with a Git base:
+
+```powershell
+.\scripts\codex\Invoke-TrainerVerification.ps1 `
+  -ChangedPath trainer-app/src/lib/example.ts `
+  -ChangedPath trainer-app/prisma/schema.prisma
+
+.\scripts\codex\Invoke-TrainerVerification.ps1 `
+  -BaseRef origin/master `
+  -ChangedPath trainer-app/src/lib/example.ts
+```
+
+Consume an unchanged `trainer-task-manifest` version 1 contract:
+
+```powershell
+.\scripts\codex\Invoke-TrainerVerification.ps1 `
+  -ManifestPath C:\path\to\trainer-task-manifest.json
+```
+
+The manifest classification, allowed/forbidden path policy, changed paths, and proposed checks
+are applied alongside current policy rules. An unsupported schema/version or unknown
+classification is invalid rather than silently upgraded.
+
+Execute eligible local implementation checks only after reviewing the complete plan:
+
+```powershell
+.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef origin/master -Run
+.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef origin/master -Run -ContinueOnFailure
+```
+
+Execution is sequential and stops on the first failed required check by default. Results retain
+the child exit code, duration, stdout, and stderr. `-ContinueOnFailure` runs remaining eligible
+checks but does not turn a failed result into success. In `-Json -Run` mode the pre-execution
+plan is printed to stderr and the completed `trainer-verification-plan` version 1 report is
+printed to stdout.
+
+Policy and registry metadata decide execution eligibility. Phase 3 refuses release-only,
+production-write, deploy, destructive, database, network, separately authorized,
+mutation-escalated, install/download, and unresolved-side-effect commands. Unsafe or unsupported
+commands remain visible in the plan with skip reasons and are never attempted. Current full
+`verify` and Prisma generation selections are plan-only; focused commands explicitly approved by
+policy may run when their local prerequisites are available.
+
+Prerequisites are reported per selected command: PowerShell, Git-owned comparison state,
+Node/npm, the existing dependency installation, Prisma, Docker, clean-worktree, database, and
+network requirements. `-Run` reuses the doctor report for capability discovery. Missing
+prerequisites block only affected eligible execution; planning remains available and never
+installs, links, repairs, authenticates, connects, or remediates.
+
+Exit codes are `0` for a valid plan or successful authorized execution, `1` for a valid plan
+with blockers or any failed executed check, `2` for an invalid invocation, manifest, base, or
+option combination, and `3` for policy-loading or unexpected failures. `-ContinueOnFailure`
+without `-Run` exits `2`.
+
+Phase 3 does not create an evidence bundle, create or clean a worktree, execute a release stage,
+connect to services, authenticate, install packages, remediate prerequisites, or clean artifacts
+created by an approved local check. Those boundaries are intentional and are not hidden behind
+command names.

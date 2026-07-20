@@ -24,49 +24,6 @@ $ExitUnexpected = 3
 
 Import-Module (Join-Path $PSScriptRoot 'Trainer.Tooling.psm1') -Force
 
-function Test-PolicyPattern {
-    param(
-        [Parameter(Mandatory = $true)][string]$Path,
-        [Parameter(Mandatory = $true)][string]$Pattern
-    )
-
-    $normalizedPath = $Path.Replace('\', '/')
-    $normalizedPattern = $Pattern.Replace('\', '/')
-    $wildcard = [System.Management.Automation.WildcardPattern]::new(
-        $normalizedPattern,
-        [System.Management.Automation.WildcardOptions]::IgnoreCase
-    )
-    $wildcard.IsMatch($normalizedPath)
-}
-
-function Resolve-Commands {
-    param(
-        [Parameter(Mandatory = $true)][object]$Policy,
-        [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Ids
-    )
-
-    $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    $result = [System.Collections.Generic.List[object]]::new()
-    foreach ($id in $Ids) {
-        if (-not $seen.Add($id)) { continue }
-        $property = $Policy.commands.PSObject.Properties[$id]
-        if ($null -eq $property) {
-            throw "Policy references unknown command id '$id'."
-        }
-        $metadata = $property.Value
-        $result.Add([pscustomobject][ordered]@{
-            id = $id
-            command = $metadata.command
-            defaultSideEffectClass = $metadata.defaultSideEffectClass
-            accessesNetwork = [bool]$metadata.accessesNetwork
-            accessesDatabase = [bool]$metadata.accessesDatabase
-            writesLocalArtifacts = [bool]$metadata.writesLocalArtifacts
-            explicitAuthorizationRequired = [bool]$metadata.explicitAuthorizationRequired
-        })
-    }
-    $result.ToArray()
-}
-
 function Write-HumanManifest {
     param([Parameter(Mandatory = $true)][object]$Manifest)
 
@@ -216,7 +173,7 @@ try {
         foreach ($rule in @($policy.verification.pathRules)) {
             $ruleMatches = $false
             foreach ($pattern in @($rule.patterns)) {
-                if (Test-PolicyPattern -Path $changed -Pattern $pattern) {
+                if (Test-TrainerPolicyPattern -Path $changed -Pattern $pattern) {
                     $ruleMatches = $true
                     break
                 }
@@ -235,8 +192,8 @@ try {
         $warnings.Add([string]$policy.verification.fallback.warning)
     }
 
-    $implementationChecks = @(Resolve-Commands -Policy $policy -Ids $implementationIds.ToArray())
-    $releaseChecks = @(Resolve-Commands -Policy $policy -Ids $releaseIds.ToArray())
+    $implementationChecks = @(Resolve-TrainerVerificationCommands -Policy $policy -Ids $implementationIds.ToArray())
+    $releaseChecks = @(Resolve-TrainerVerificationCommands -Policy $policy -Ids $releaseIds.ToArray())
     $currentBranchProbe = Invoke-GitRead -WorkingDirectory $currentCheckoutPath -Arguments @('branch', '--show-current')
     $currentHeadProbe = Invoke-GitRead -WorkingDirectory $currentCheckoutPath -Arguments @('rev-parse', 'HEAD')
     $primaryDirtyPaths = if ($null -eq $primaryWorktree) { @() } else { @($primaryWorktree.dirtyPaths) }

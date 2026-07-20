@@ -29,6 +29,29 @@ function Get-NormalizedPath {
     )
 }
 
+function ConvertTo-TrainerRepositoryPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $normalized = $Path.Trim().Replace('\', '/')
+    while ($normalized.StartsWith('./', [System.StringComparison]::Ordinal)) {
+        $normalized = $normalized.Substring(2)
+    }
+    $normalized.TrimStart('/')
+}
+
+function Test-TrainerPolicyPattern {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Pattern
+    )
+
+    $wildcard = [System.Management.Automation.WildcardPattern]::new(
+        (ConvertTo-TrainerRepositoryPath -Path $Pattern),
+        [System.Management.Automation.WildcardOptions]::IgnoreCase
+    )
+    $wildcard.IsMatch((ConvertTo-TrainerRepositoryPath -Path $Path))
+}
+
 function Get-DirtyPaths {
     param([Parameter(Mandatory = $true)][string]$WorktreePath)
 
@@ -148,6 +171,56 @@ function Read-TrainerPolicy {
     $policy
 }
 
+function Resolve-TrainerVerificationCommands {
+    param(
+        [Parameter(Mandatory = $true)][object]$Policy,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Ids
+    )
+
+    $seen = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase
+    )
+    $result = [System.Collections.Generic.List[object]]::new()
+    foreach ($id in $Ids) {
+        if (-not $seen.Add($id)) { continue }
+        $property = $Policy.commands.PSObject.Properties[$id]
+        if ($null -eq $property) {
+            throw "Policy references unknown command id '$id'."
+        }
+        $metadata = $property.Value
+        $result.Add([pscustomobject][ordered]@{
+            id = $id
+            command = $metadata.command
+            defaultSideEffectClass = $metadata.defaultSideEffectClass
+            accessesNetwork = [bool]$metadata.accessesNetwork
+            accessesDatabase = [bool]$metadata.accessesDatabase
+            writesLocalArtifacts = [bool]$metadata.writesLocalArtifacts
+            explicitAuthorizationRequired = [bool]$metadata.explicitAuthorizationRequired
+        })
+    }
+    $result.ToArray()
+}
+
+function Get-TrainerCommandRegistration {
+    param(
+        [Parameter(Mandatory = $true)][object]$Policy,
+        [Parameter(Mandatory = $true)][string]$Id
+    )
+
+    $matches = @($Policy.commandRegistry | Where-Object { $_.id -ceq $Id })
+    if ($matches.Count -ne 1) {
+        throw "Verification command '$Id' must map to exactly one command registry entry."
+    }
+    $profileProperty = $Policy.commandProfiles.PSObject.Properties[$matches[0].profile]
+    if ($null -eq $profileProperty) {
+        throw "Command '$Id' references unknown profile '$($matches[0].profile)'."
+    }
+    [pscustomobject][ordered]@{
+        entry = $matches[0]
+        profile = $profileProperty.Value
+    }
+}
+
 function Get-DependencyInfo {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -239,9 +312,13 @@ function Get-ExecutableCapability {
 Export-ModuleMember -Function @(
     'Invoke-GitRead',
     'Get-NormalizedPath',
+    'ConvertTo-TrainerRepositoryPath',
+    'Test-TrainerPolicyPattern',
     'Get-DirtyPaths',
     'Read-Worktrees',
     'Read-TrainerPolicy',
+    'Resolve-TrainerVerificationCommands',
+    'Get-TrainerCommandRegistration',
     'Get-DependencyInfo',
     'Get-ExecutableCapability'
 )

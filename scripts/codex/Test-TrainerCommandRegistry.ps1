@@ -142,6 +142,82 @@ try {
         if ([string]::IsNullOrWhiteSpace([string]$verificationCommand.Value.defaultSideEffectClass)) {
             $errors.Add("Phase 1 verification command '$($verificationCommand.Name)' is missing its backward-compatible side-effect class.")
         }
+
+        $requiredVerificationProperties = @(
+            'verificationTier',
+            'executableInImplementationMode',
+            'requiresCleanWorktree',
+            'requiresDependencies',
+            'requiresDocker',
+            'requiresDatabase',
+            'requiresNetwork',
+            'requiresPrisma',
+            'requiresNode',
+            'requiresNpm',
+            'requiresPowerShell',
+            'invocation'
+        )
+        foreach ($propertyName in $requiredVerificationProperties) {
+            if ($verificationCommand.Value.PSObject.Properties.Name -notcontains $propertyName) {
+                $errors.Add("Verification command '$($verificationCommand.Name)' is missing required Phase 3 property '$propertyName'.")
+            }
+        }
+        if ($verificationCommand.Value.verificationTier -notin @('implementation', 'release', 'both')) {
+            $errors.Add("Verification command '$($verificationCommand.Name)' has invalid verification tier '$($verificationCommand.Value.verificationTier)'.")
+        }
+        if ($verificationCommand.Value.invocation.PSObject.Properties.Name -notcontains 'workingDirectory' -or
+            $verificationCommand.Value.invocation.workingDirectory -notin @('repository', 'trainer-app')) {
+            $errors.Add("Verification command '$($verificationCommand.Name)' has an invalid invocation working directory.")
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$verificationCommand.Value.invocation.executable)) {
+            $errors.Add("Verification command '$($verificationCommand.Name)' has no invocation executable.")
+        }
+        if ($verificationCommand.Value.invocation.PSObject.Properties.Name -notcontains 'arguments') {
+            $errors.Add("Verification command '$($verificationCommand.Name)' has no invocation argument array.")
+        }
+        if ([bool]$verificationCommand.Value.executableInImplementationMode -and
+            ([bool]$verificationCommand.Value.requiresDatabase -or [bool]$verificationCommand.Value.requiresNetwork)) {
+            $errors.Add("Verification command '$($verificationCommand.Name)' cannot be implementation-executable while requiring database or network access.")
+        }
+        if ([bool]$verificationCommand.Value.executableInImplementationMode -and
+            $profile.defaultSideEffectClass -in @('production-write', 'deploy', 'destructive')) {
+            $errors.Add("Verification command '$($verificationCommand.Name)' cannot execute with forbidden side-effect class '$($profile.defaultSideEffectClass)'.")
+        }
+        if ([bool]$verificationCommand.Value.executableInImplementationMode -and
+            $verificationCommand.Value.verificationTier -eq 'release') {
+            $errors.Add("Verification command '$($verificationCommand.Name)' cannot be implementation-executable in the release verification tier.")
+        }
+        if ([bool]$verificationCommand.Value.executableInImplementationMode -and
+            ([bool]$verificationCommand.Value.explicitAuthorizationRequired -or
+                $profile.authorizationRequirement -ne 'none')) {
+            $errors.Add("Verification command '$($verificationCommand.Name)' cannot be implementation-executable while requiring separate authorization.")
+        }
+        if ([bool]$verificationCommand.Value.executableInImplementationMode -and
+            @($registryMatch[0].flagEscalations).Count -gt 0) {
+            $errors.Add("Verification command '$($verificationCommand.Name)' cannot be implementation-executable while its registry entry has mutation escalations.")
+        }
+        if ([bool]$verificationCommand.Value.executableInImplementationMode -and
+            (([bool]$profile.accessesDatabase -and (-not [bool]$verificationCommand.Value.requiresDatabase)) -or
+                ([bool]$profile.accessesNetwork -and (-not [bool]$verificationCommand.Value.requiresNetwork)))) {
+            $errors.Add("Verification command '$($verificationCommand.Name)' cannot hide registry-declared database or network prerequisites.")
+        }
+        if ([bool]$verificationCommand.Value.executableInImplementationMode -and
+            [string]$verificationCommand.Value.command -match '(?i)(^|\s)(npm\s+(install|ci)|npx\s)') {
+            $errors.Add("Verification command '$($verificationCommand.Name)' cannot use a package installation or download mechanism.")
+        }
+    }
+
+    $verificationOrder = @($policy.verification.commandOrder)
+    $verificationIds = @($policy.commands.PSObject.Properties.Name)
+    foreach ($id in $verificationIds) {
+        if (@($verificationOrder | Where-Object { $_ -ceq $id }).Count -ne 1) {
+            $errors.Add("Verification command '$id' must appear exactly once in verification.commandOrder.")
+        }
+    }
+    foreach ($id in $verificationOrder) {
+        if ($id -notin $verificationIds) {
+            $errors.Add("verification.commandOrder references unknown command '$id'.")
+        }
     }
 
     $packagePath = Join-Path $repositoryRoot $policy.registryCoverage.packageManifest

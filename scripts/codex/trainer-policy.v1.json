@@ -74,6 +74,7 @@
     }
   },
   "verification": {
+    "commandOrder": ["codex-tooling-tests", "git-diff-check", "test-fast", "verify-contracts", "test-audit-matrix", "verify", "prisma-generate", "test-migration-integrity", "audit-future-week"],
     "pathRules": [
       {
         "name": "codex-tooling",
@@ -131,7 +132,19 @@
       "accessesNetwork": false,
       "accessesDatabase": false,
       "writesLocalArtifacts": true,
-      "explicitAuthorizationRequired": false
+      "explicitAuthorizationRequired": false,
+      "verificationTier": "implementation",
+      "executableInImplementationMode": true,
+      "requiresCleanWorktree": false,
+      "requiresDependencies": false,
+      "requiresDocker": false,
+      "requiresDatabase": false,
+      "requiresNetwork": false,
+      "requiresPrisma": false,
+      "requiresNode": false,
+      "requiresNpm": false,
+      "requiresPowerShell": true,
+      "invocation": { "workingDirectory": "repository", "executable": "pwsh", "arguments": ["-NoProfile", "-File", "scripts/codex/tests/Run-Tests.ps1"] }
     },
     "git-diff-check": {
       "command": "git diff --check",
@@ -139,7 +152,19 @@
       "accessesNetwork": false,
       "accessesDatabase": false,
       "writesLocalArtifacts": false,
-      "explicitAuthorizationRequired": false
+      "explicitAuthorizationRequired": false,
+      "verificationTier": "implementation",
+      "executableInImplementationMode": true,
+      "requiresCleanWorktree": false,
+      "requiresDependencies": false,
+      "requiresDocker": false,
+      "requiresDatabase": false,
+      "requiresNetwork": false,
+      "requiresPrisma": false,
+      "requiresNode": false,
+      "requiresNpm": false,
+      "requiresPowerShell": false,
+      "invocation": { "workingDirectory": "repository", "executable": "git", "arguments": ["diff", "--check"] }
     },
     "test-fast": {
       "command": "npm run test:fast",
@@ -147,7 +172,19 @@
       "accessesNetwork": false,
       "accessesDatabase": false,
       "writesLocalArtifacts": false,
-      "explicitAuthorizationRequired": false
+      "explicitAuthorizationRequired": false,
+      "verificationTier": "implementation",
+      "executableInImplementationMode": true,
+      "requiresCleanWorktree": false,
+      "requiresDependencies": true,
+      "requiresDocker": false,
+      "requiresDatabase": false,
+      "requiresNetwork": false,
+      "requiresPrisma": false,
+      "requiresNode": true,
+      "requiresNpm": true,
+      "requiresPowerShell": false,
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "test:fast"] }
     },
     "verify-contracts": {
       "command": "npm run verify:contracts",
@@ -155,7 +192,19 @@
       "accessesNetwork": false,
       "accessesDatabase": false,
       "writesLocalArtifacts": false,
-      "explicitAuthorizationRequired": false
+      "explicitAuthorizationRequired": false,
+      "verificationTier": "implementation",
+      "executableInImplementationMode": true,
+      "requiresCleanWorktree": false,
+      "requiresDependencies": true,
+      "requiresDocker": false,
+      "requiresDatabase": false,
+      "requiresNetwork": false,
+      "requiresPrisma": false,
+      "requiresNode": true,
+      "requiresNpm": true,
+      "requiresPowerShell": false,
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "verify:contracts"] }
     },
     "verify": {
       "command": "npm run verify",
@@ -163,7 +212,19 @@
       "accessesNetwork": false,
       "accessesDatabase": false,
       "writesLocalArtifacts": true,
-      "explicitAuthorizationRequired": false
+      "explicitAuthorizationRequired": false,
+      "verificationTier": "both",
+      "executableInImplementationMode": false,
+      "requiresCleanWorktree": false,
+      "requiresDependencies": true,
+      "requiresDocker": false,
+      "requiresDatabase": false,
+      "requiresNetwork": false,
+      "requiresPrisma": false,
+      "requiresNode": true,
+      "requiresNpm": true,
+      "requiresPowerShell": false,
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "verify"] }
     },
     "prisma-generate": {
       "command": "npm run prisma:generate",
@@ -171,7 +232,19 @@
       "accessesNetwork": false,
       "accessesDatabase": false,
       "writesLocalArtifacts": true,
-      "explicitAuthorizationRequired": false
+      "explicitAuthorizationRequired": false,
+      "verificationTier": "implementation",
+      "executableInImplementationMode": false,
+      "requiresCleanWorktree": false,
+      "requiresDependencies": true,
+      "requiresDocker": false,
+      "requiresDatabase": false,
+      "requiresNetwork": false,
+      "requiresPrisma": true,
+      "requiresNode": true,
+      "requiresNpm": true,
+      "requiresPowerShell": false,
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "prisma:generate"] }
     },
     "test-migration-integrity": {
       "command": "npm run test:migration-integrity",
@@ -179,7 +252,19 @@
       "accessesNetwork": false,
       "accessesDatabase": true,
       "writesLocalArtifacts": true,
-      "explicitAuthorizationRequired": true
+      "explicitAuthorizationRequired": true,
+      "verificationTier": "release",
+      "executableInImplementationMode": false,
+      "requiresCleanWorktree": false,
+      "requiresDependencies": true,
+      "requiresDocker": true,
+      "requiresDatabase": true,
+      "requiresNetwork": false,
+      "requiresPrisma": true,
+      "requiresNode": true,
+      "requiresNpm": true,
+      "requiresPowerShell": false,
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "test:migration-integrity"] }
     },
     "test-audit-matrix": {
       "command": "npm run test:audit:matrix",
@@ -187,7 +272,19 @@
       "accessesNetwork": false,
       "accessesDatabase": false,
       "writesLocalArtifacts": false,
-      "explicitAuthorizationRequired": false
+      "explicitAuthorizationRequired": false,
+      "verificationTier": "implementation",
+      "executableInImplementationMode": true,
+      "requiresCleanWorktree": false,
+      "requiresDependencies": true,
+      "requiresDocker": false,
+      "requiresDatabase": false,
+      "requiresNetwork": false,
+      "requiresPrisma": false,
+      "requiresNode": true,
+      "requiresNpm": true,
+      "requiresPowerShell": false,
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "test:audit:matrix"] }
     },
     "audit-future-week": {
       "command": "npm run audit:workout -- --env-file .env.local --mode future-week --owner owner@local",
@@ -195,7 +292,19 @@
       "accessesNetwork": true,
       "accessesDatabase": true,
       "writesLocalArtifacts": true,
-      "explicitAuthorizationRequired": true
+      "explicitAuthorizationRequired": true,
+      "verificationTier": "release",
+      "executableInImplementationMode": false,
+      "requiresCleanWorktree": false,
+      "requiresDependencies": true,
+      "requiresDocker": false,
+      "requiresDatabase": true,
+      "requiresNetwork": true,
+      "requiresPrisma": true,
+      "requiresNode": true,
+      "requiresNpm": true,
+      "requiresPowerShell": false,
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "audit:workout", "--", "--env-file", ".env.local", "--mode", "future-week", "--owner", "owner@local"] }
     }
   },
   "doctor": {
@@ -356,6 +465,7 @@
     { "id": "codex-task-inspector", "command": "pwsh -NoProfile -File scripts/codex/Start-TrainerTask.ps1", "sourceLocation": "scripts/codex/Start-TrainerTask.ps1", "entrypoint": "scripts/codex/Start-TrainerTask.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Inspect-only Phase 1 task manifest; does not create branches or worktrees." },
     { "id": "codex-doctor", "command": "pwsh -NoProfile -File scripts/codex/Invoke-TrainerDoctor.ps1", "sourceLocation": "scripts/codex/Invoke-TrainerDoctor.ps1", "entrypoint": "scripts/codex/Invoke-TrainerDoctor.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Local-only by default; explicit scopes remain non-mutating in Phase 2." },
     { "id": "codex-registry-validator", "command": "pwsh -NoProfile -File scripts/codex/Test-TrainerCommandRegistry.ps1", "sourceLocation": "scripts/codex/Test-TrainerCommandRegistry.ps1", "entrypoint": "scripts/codex/Test-TrainerCommandRegistry.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Static offline policy coverage validation." },
+    { "id": "codex-verification", "command": "pwsh -NoProfile -File scripts/codex/Invoke-TrainerVerification.ps1", "sourceLocation": "scripts/codex/Invoke-TrainerVerification.ps1", "entrypoint": "scripts/codex/Invoke-TrainerVerification.ps1", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Inspect-only by default; -Run is fail-closed to registry-approved local implementation checks." },
     { "id": "codex-tooling-tests", "command": "pwsh -NoProfile -File scripts/codex/tests/Run-Tests.ps1", "sourceLocation": "scripts/codex/tests/Run-Tests.ps1", "entrypoint": "scripts/codex/tests/Run-Tests.ps1", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Creates and removes guarded disposable local fixtures." },
     { "id": "git-diff-check", "command": "git diff --check", "sourceLocation": "scripts/codex/trainer-policy.v1.json", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Reads the current Git diff only." },
     { "id": "audit-future-week", "command": "npm run audit:workout -- --env-file .env.local --mode future-week --owner owner@local", "sourceLocation": "trainer-app/scripts/workout-audit.ts", "entrypoint": "trainer-app/scripts/workout-audit.ts", "profile": "database-read-artifact", "flagEscalations": [{ "flag": "--write", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for the exact target and supported recovery mode." }, { "flag": "--apply-bounded-reseed", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit bounded-reseed authorization for the exact mesocycle and target." }, { "flag": "--accept-slot-plan-upgrade", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit slot-plan upgrade acceptance for the exact mesocycle and target." }], "notes": "The audit name is not a safety guarantee; supported recovery and reseed flags write." },

@@ -11,6 +11,7 @@ $sourceScript = Join-Path $sourceRoot 'Start-TrainerTask.ps1'
 $sourceModule = Join-Path $sourceRoot 'Trainer.Tooling.psm1'
 $sourceDoctor = Join-Path $sourceRoot 'Invoke-TrainerDoctor.ps1'
 $sourceRegistryValidator = Join-Path $sourceRoot 'Test-TrainerCommandRegistry.ps1'
+$sourceVerification = Join-Path $sourceRoot 'Invoke-TrainerVerification.ps1'
 $sourcePolicy = Join-Path $sourceRoot 'trainer-policy.v1.json'
 
 function Invoke-GitFixture {
@@ -35,6 +36,7 @@ function New-TestRepository {
     Copy-Item -LiteralPath $sourceModule -Destination (Join-Path $repository 'scripts\codex\Trainer.Tooling.psm1')
     Copy-Item -LiteralPath $sourceDoctor -Destination (Join-Path $repository 'scripts\codex\Invoke-TrainerDoctor.ps1')
     Copy-Item -LiteralPath $sourceRegistryValidator -Destination (Join-Path $repository 'scripts\codex\Test-TrainerCommandRegistry.ps1')
+    Copy-Item -LiteralPath $sourceVerification -Destination (Join-Path $repository 'scripts\codex\Invoke-TrainerVerification.ps1')
     Copy-Item -LiteralPath $sourcePolicy -Destination (Join-Path $repository 'scripts\codex\trainer-policy.v1.json')
     $fixturePolicyPath = Join-Path $repository 'scripts\codex\trainer-policy.v1.json'
     $fixturePolicy = Get-Content -Raw -LiteralPath $fixturePolicyPath | ConvertFrom-Json
@@ -65,6 +67,7 @@ function New-TestRepository {
         Repository = $repository
         Script = Join-Path $repository 'scripts\codex\Start-TrainerTask.ps1'
         Doctor = Join-Path $repository 'scripts\codex\Invoke-TrainerDoctor.ps1'
+        Verification = Join-Path $repository 'scripts\codex\Invoke-TrainerVerification.ps1'
         Module = Join-Path $repository 'scripts\codex\Trainer.Tooling.psm1'
         Policy = $fixturePolicyPath
     }
@@ -145,6 +148,83 @@ function Invoke-Doctor {
         Text = $output -join "`n"
         Lines = $output
     }
+}
+
+function Invoke-Verification {
+    param(
+        [Parameter(Mandatory = $true)][object]$Fixture,
+        [string]$BaseRef,
+        [string[]]$ChangedPath = @(),
+        [string]$ManifestPath,
+        [switch]$Json,
+        [switch]$Run,
+        [switch]$ContinueOnFailure,
+        [string[]]$ExtraArguments = @()
+    )
+
+    $arguments = [System.Collections.Generic.List[string]]::new()
+    $arguments.Add('-NoProfile')
+    $arguments.Add('-File')
+    $arguments.Add($Fixture.Verification)
+    if ($PSBoundParameters.ContainsKey('BaseRef')) { $arguments.Add('-BaseRef'); $arguments.Add($BaseRef) }
+    foreach ($path in $ChangedPath) { $arguments.Add('-ChangedPath'); $arguments.Add($path) }
+    if ($PSBoundParameters.ContainsKey('ManifestPath')) { $arguments.Add('-ManifestPath'); $arguments.Add($ManifestPath) }
+    if ($Json) { $arguments.Add('-Json') }
+    if ($Run) { $arguments.Add('-Run') }
+    if ($ContinueOnFailure) { $arguments.Add('-ContinueOnFailure') }
+    foreach ($argument in $ExtraArguments) { $arguments.Add($argument) }
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = (Get-Command pwsh -CommandType Application).Source
+    $startInfo.WorkingDirectory = $Fixture.Repository
+    $startInfo.UseShellExecute = $false
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($argument in $arguments) { $startInfo.ArgumentList.Add($argument) }
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    $process.Start() | Out-Null
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+
+    [pscustomobject]@{
+        ExitCode = $process.ExitCode
+        Text = $stdoutTask.GetAwaiter().GetResult().TrimEnd("`r", "`n")
+        ErrorText = $stderrTask.GetAwaiter().GetResult().TrimEnd("`r", "`n")
+    }
+}
+
+function Set-FixtureVerificationCommand {
+    param(
+        [Parameter(Mandatory = $true)][object]$Fixture,
+        [Parameter(Mandatory = $true)][string]$Id,
+        [Parameter(Mandatory = $true)][string]$Executable,
+        [string[]]$Arguments = @(),
+        [string]$Profile = 'read-only',
+        [bool]$ExecutableInImplementationMode = $true,
+        [hashtable]$Requirements = @{},
+        [object[]]$FlagEscalations = @()
+    )
+
+    $policy = Get-Content -Raw -LiteralPath $Fixture.Policy | ConvertFrom-Json -Depth 100
+    $command = $policy.commands.PSObject.Properties[$Id].Value
+    $command.command = "$Executable $($Arguments -join ' ')".Trim()
+    $command.executableInImplementationMode = $ExecutableInImplementationMode
+    $command.invocation.executable = $Executable
+    $command.invocation.arguments = @($Arguments)
+    $command.invocation.workingDirectory = 'repository'
+    foreach ($property in @('requiresCleanWorktree', 'requiresDependencies', 'requiresDocker', 'requiresDatabase', 'requiresNetwork', 'requiresPrisma', 'requiresNode', 'requiresNpm', 'requiresPowerShell')) {
+        $command.$property = if ($Requirements.ContainsKey($property)) { [bool]$Requirements[$property] } else { $false }
+    }
+    $entry = @($policy.commandRegistry | Where-Object { $_.id -eq $Id }) | Select-Object -First 1
+    $entry.command = $command.command
+    $entry.profile = $Profile
+    $entry.flagEscalations = @($FlagEscalations)
+    $policy.verification.pathRules = @(
+        [pscustomobject][ordered]@{ name = 'fixture-execution'; patterns = @('execute/**'); implementation = @($Id); release = @() }
+    )
+    $policy | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $Fixture.Policy -Encoding utf8NoBOM
 }
 
 function Invoke-RegistryValidator {
@@ -562,6 +642,321 @@ Invoke-Test 'doctor does not mutate repository state' {
         Assert-Equal $afterRefs $beforeRefs 'Doctor changed refs.'
         Assert-Equal $afterWorktrees $beforeWorktrees 'Doctor changed registered worktrees.'
         Assert-Equal $afterConfig $beforeConfig 'Doctor changed local Git config.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'verification human plan output' {
+    $fixture = New-TestRepository
+    try {
+        $result = Invoke-Verification -Fixture $fixture -ChangedPath @('scripts/codex/example.ps1')
+        Assert-Equal $result.ExitCode 0 "Human verification plan failed. $($result.ErrorText)"
+        Assert-True ($result.Text.Contains('Trainer verification plan')) 'Verification human heading missing.'
+        Assert-True ($result.Text.Contains('Planning only. No verification command was executed.')) 'Planning-only guarantee missing.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'verification JSON contract and explicit paths' {
+    $fixture = New-TestRepository
+    try {
+        $result = Invoke-Verification -Fixture $fixture -Json -ChangedPath @(
+            'trainer-app/src/lib/validation.ts',
+            'trainer-app/prisma/schema.prisma'
+        )
+        $plan = $result.Text | ConvertFrom-Json
+        Assert-Equal $result.ExitCode 0 'Explicit-path verification plan failed.'
+        Assert-Equal $plan.schema 'trainer-verification-plan' 'Verification schema mismatch.'
+        Assert-Equal $plan.version 1 'Verification version mismatch.'
+        Assert-True $plan.inspectionOnly 'Planning JSON must be inspection-only.'
+        Assert-True (-not $plan.runRequested) 'Planning JSON runRequested must be false.'
+        Assert-Equal @($plan.changedPaths).Count 2 'Repeatable changed paths were not retained.'
+        Assert-True ($plan.implementation.id -contains 'verify-contracts') 'Contract check missing.'
+        Assert-True ($plan.implementation.id -contains 'prisma-generate') 'Prisma check missing.'
+        Assert-True ($plan.release.id -contains 'test-migration-integrity') 'Release migration check missing.'
+        foreach ($property in @('matchedRules', 'implementation', 'release', 'skipped', 'warnings', 'blockers')) {
+            Assert-True ($null -ne $plan.$property) "Stable plan array '$property' missing."
+        }
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'multiple rules preserve reasons order and deterministic deduplication' {
+    $fixture = New-TestRepository
+    try {
+        $result = Invoke-Verification -Fixture $fixture -Json -ChangedPath @(
+            'trainer-app/docs/contracts/example.json',
+            'trainer-app/src/lib/validation.ts'
+        )
+        $plan = $result.Text | ConvertFrom-Json
+        $ids = @($plan.implementation.id)
+        Assert-Equal $ids.Count (@($ids | Select-Object -Unique).Count) 'Verification commands were not deduplicated.'
+        Assert-Equal $ids[0] 'git-diff-check' 'Policy command order was not preserved.'
+        Assert-Equal $ids[1] 'verify-contracts' 'Policy command order was not preserved.'
+        $contract = @($plan.implementation | Where-Object { $_.id -eq 'verify-contracts' })[0]
+        Assert-Equal @($contract.reasons).Count 2 'All path selection reasons were not retained.'
+        $docRules = @($plan.matchedRules | Where-Object { $_.path -eq 'trainer-app/docs/contracts/example.json' })
+        Assert-Equal $docRules.Count 2 'All applicable path rules were not matched.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'Git diff includes tracked and untracked path provenance' {
+    $fixture = New-TestRepository
+    try {
+        Set-Content -LiteralPath (Join-Path $fixture.Repository 'trainer-app\tracked change.txt') -Value 'tracked' -Encoding utf8NoBOM
+        Invoke-GitFixture -Repository $fixture.Repository -Arguments @('add', 'trainer-app/tracked change.txt') | Out-Null
+        Invoke-GitFixture -Repository $fixture.Repository -Arguments @('commit', '-m', 'tracked fixture') | Out-Null
+        Set-Content -LiteralPath (Join-Path $fixture.Repository 'trainer-app\tracked change.txt') -Value 'unstaged' -Encoding utf8NoBOM
+        Set-Content -LiteralPath (Join-Path $fixture.Repository 'trainer-app\staged file.txt') -Value 'staged' -Encoding utf8NoBOM
+        Invoke-GitFixture -Repository $fixture.Repository -Arguments @('add', 'trainer-app/staged file.txt') | Out-Null
+        Set-Content -LiteralPath (Join-Path $fixture.Repository 'trainer-app\untracked file.txt') -Value 'untracked' -Encoding utf8NoBOM
+        $result = Invoke-Verification -Fixture $fixture -BaseRef 'master~1' -Json
+        $plan = $result.Text | ConvertFrom-Json
+        $tracked = @($plan.changedPaths | Where-Object { $_.path -eq 'trainer-app/tracked change.txt' })[0]
+        $staged = @($plan.changedPaths | Where-Object { $_.path -eq 'trainer-app/staged file.txt' })[0]
+        $untracked = @($plan.changedPaths | Where-Object { $_.path -eq 'trainer-app/untracked file.txt' })[0]
+        Assert-True ($tracked.sources -contains 'git-committed') 'Committed path provenance missing.'
+        Assert-True ($tracked.sources -contains 'git-unstaged') 'Unstaged path provenance missing.'
+        Assert-True ($staged.sources -contains 'git-staged') 'Staged path provenance missing.'
+        Assert-True ($untracked.sources -contains 'git-untracked') 'Untracked path provenance missing.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'unmatched path uses conservative fallback' {
+    $fixture = New-TestRepository
+    try {
+        $result = Invoke-Verification -Fixture $fixture -ChangedPath @('unknown/location.txt') -Json
+        $plan = $result.Text | ConvertFrom-Json
+        Assert-True ($plan.implementation.id -contains 'verify') 'Conservative fallback check missing.'
+        Assert-True (@($plan.warnings).Count -gt 0) 'Fallback warning missing.'
+        Assert-Equal @($plan.implementation[0].reasons).Count 1 'Fallback reason missing.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'valid Phase 1 manifest is consumed without contract drift' {
+    $fixture = New-TestRepository
+    try {
+        $manifestResult = Invoke-Inspector -Fixture $fixture -Json -ChangedPath @('scripts/codex/example.ps1')
+        $manifestPath = Join-Path $fixture.Sandbox 'task manifest.json'
+        Set-Content -LiteralPath $manifestPath -Value $manifestResult.Text -Encoding utf8NoBOM
+        $result = Invoke-Verification -Fixture $fixture -ManifestPath $manifestPath -Json
+        $plan = $result.Text | ConvertFrom-Json
+        Assert-Equal $result.ExitCode 0 "Valid manifest plan failed. $($result.ErrorText)"
+        Assert-True $plan.comparison.manifestCombined 'Manifest source was not recorded.'
+        Assert-True (@($plan.implementation.reasons | Where-Object { $_.type -eq 'task-classification' }).Count -gt 0) 'Task classification was not applied.'
+        Assert-True (@($plan.implementation.reasons | Where-Object { $_.type -eq 'manifest-proposed-check' }).Count -gt 0) 'Manifest proposed checks were not retained.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'invalid manifest schema and invalid base exit 2' {
+    $fixture = New-TestRepository
+    try {
+        $manifestPath = Join-Path $fixture.Sandbox 'invalid.json'
+        Set-Content -LiteralPath $manifestPath -Value '{"schema":"wrong","version":2}' -Encoding utf8NoBOM
+        $manifestResult = Invoke-Verification -Fixture $fixture -ManifestPath $manifestPath -Json
+        Assert-Equal $manifestResult.ExitCode 2 'Invalid manifest must exit 2.'
+        $baseResult = Invoke-Verification -Fixture $fixture -BaseRef 'missing-ref' -Json
+        Assert-Equal $baseResult.ExitCode 2 'Invalid base ref must exit 2.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'empty Git diff returns a valid empty plan' {
+    $fixture = New-TestRepository
+    try {
+        $result = Invoke-Verification -Fixture $fixture -BaseRef 'master' -Json
+        $plan = $result.Text | ConvertFrom-Json
+        Assert-Equal $result.ExitCode 0 'Empty diff plan failed.'
+        Assert-Equal @($plan.changedPaths).Count 0 'Empty diff should contain no changed paths.'
+        Assert-Equal @($plan.implementation).Count 0 'Empty diff should select no implementation checks.'
+        Assert-Equal @($plan.release).Count 0 'Empty diff should select no release checks.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'spaces and Windows separators are normalized' {
+    $fixture = New-TestRepository
+    try {
+        $result = Invoke-Verification -Fixture $fixture -ChangedPath @(
+            'trainer-app\src\lib\validation.ts',
+            'folder with spaces\file name.txt'
+        ) -Json
+        $plan = $result.Text | ConvertFrom-Json
+        Assert-True ($plan.changedPaths.path -contains 'trainer-app/src/lib/validation.ts') 'Windows separators were not normalized.'
+        Assert-True ($plan.changedPaths.path -contains 'folder with spaces/file name.txt') 'Spaced path was not preserved.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'verification missing policy exits 3 and invalid option combination exits 2' {
+    $fixture = New-TestRepository
+    try {
+        $invalid = Invoke-Verification -Fixture $fixture -ChangedPath @('example.txt') -ContinueOnFailure -Json
+        Assert-Equal $invalid.ExitCode 2 '-ContinueOnFailure without -Run must exit 2.'
+        Remove-Item -LiteralPath $fixture.Policy -Force
+        $missing = Invoke-Verification -Fixture $fixture -ChangedPath @('example.txt') -Json
+        Assert-Equal $missing.ExitCode 3 'Missing verification policy must exit 3.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'planning mode executes nothing and does not mutate repository' {
+    $fixture = New-TestRepository
+    try {
+        $sentinel = Join-Path $fixture.Sandbox 'planning-executed.txt'
+        $tool = Join-Path $fixture.Sandbox 'planning-tool.cmd'
+        Set-Content -LiteralPath $tool -Value ('@echo executed>"{0}"' -f $sentinel) -Encoding ascii
+        Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable $tool
+        $beforeStatus = (Invoke-GitFixture -Repository $fixture.Repository -Arguments @('status', '--porcelain=v1', '--untracked-files=all')) -join "`n"
+        $beforeRefs = (Invoke-GitFixture -Repository $fixture.Repository -Arguments @('show-ref')) -join "`n"
+        $result = Invoke-Verification -Fixture $fixture -ChangedPath @('execute/example.txt') -Json
+        $afterStatus = (Invoke-GitFixture -Repository $fixture.Repository -Arguments @('status', '--porcelain=v1', '--untracked-files=all')) -join "`n"
+        $afterRefs = (Invoke-GitFixture -Repository $fixture.Repository -Arguments @('show-ref')) -join "`n"
+        Assert-Equal $result.ExitCode 0 'Planning mode failed unexpectedly.'
+        Assert-True (-not (Test-Path -LiteralPath $sentinel)) 'Planning mode executed a command.'
+        Assert-Equal $afterStatus $beforeStatus 'Planning mode changed repository status.'
+        Assert-Equal $afterRefs $beforeRefs 'Planning mode changed refs.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'Run executes only an approved local implementation command' {
+    $fixture = New-TestRepository
+    try {
+        $sentinel = Join-Path $fixture.Sandbox 'approved-executed.txt'
+        $tool = Join-Path $fixture.Sandbox 'approved-tool.cmd'
+        Set-Content -LiteralPath $tool -Value ('@echo approved>"{0}"' -f $sentinel) -Encoding ascii
+        Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable $tool
+        $result = Invoke-Verification -Fixture $fixture -ChangedPath @('execute/example.txt') -Run -Json
+        $plan = $result.Text | ConvertFrom-Json
+        Assert-Equal $result.ExitCode 0 "Approved execution failed. stdout=$($result.Text) stderr=$($result.ErrorText)"
+        Assert-True (Test-Path -LiteralPath $sentinel) 'Approved command did not execute.'
+        Assert-Equal $plan.execution.results[0].status 'passed' 'Approved command result missing.'
+        Assert-Equal $plan.execution.results[0].exitCode 0 'Approved command exit code mismatch.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'unsafe production-write and mutation-escalated commands are skipped' {
+    $fixture = New-TestRepository
+    try {
+        $sentinel = Join-Path $fixture.Sandbox 'unsafe-executed.txt'
+        $tool = Join-Path $fixture.Sandbox 'unsafe-tool.cmd'
+        Set-Content -LiteralPath $tool -Value ('@echo unsafe>"{0}"' -f $sentinel) -Encoding ascii
+        Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable $tool -Profile 'production-write'
+        $production = Invoke-Verification -Fixture $fixture -ChangedPath @('execute/example.txt') -Run -Json
+        $productionPlan = $production.Text | ConvertFrom-Json
+        Assert-True (-not (Test-Path -LiteralPath $sentinel)) 'Production-write command executed.'
+        Assert-True ($productionPlan.skipped[0].reason -match 'production-write') 'Production-write skip reason missing.'
+
+        Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable $tool -FlagEscalations @(
+            [pscustomobject]@{ flag = 'fixture-mutation'; sideEffectClass = 'production-write'; authorizationRequirement = 'fixture' }
+        )
+        $mutation = Invoke-Verification -Fixture $fixture -ChangedPath @('execute/example.txt') -Run -Json
+        $mutationPlan = $mutation.Text | ConvertFrom-Json
+        Assert-True (-not (Test-Path -LiteralPath $sentinel)) 'Mutation-escalated command executed.'
+        Assert-True ($mutationPlan.skipped[0].reason -match 'mutation-escalation') 'Mutation-escalation skip reason missing.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'release command is always skipped' {
+    $fixture = New-TestRepository
+    try {
+        $sentinel = Join-Path $fixture.Sandbox 'release-executed.txt'
+        $tool = Join-Path $fixture.Sandbox 'release-tool.cmd'
+        Set-Content -LiteralPath $tool -Value ('@echo release>"{0}"' -f $sentinel) -Encoding ascii
+        Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable $tool
+        $policy = Get-Content -Raw -LiteralPath $fixture.Policy | ConvertFrom-Json -Depth 100
+        $policy.verification.pathRules[0].implementation = @()
+        $policy.verification.pathRules[0].release = @('git-diff-check')
+        $policy | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $fixture.Policy -Encoding utf8NoBOM
+        $result = Invoke-Verification -Fixture $fixture -ChangedPath @('execute/example.txt') -Run -Json
+        $plan = $result.Text | ConvertFrom-Json
+        Assert-Equal $result.ExitCode 0 'A skipped release command should not fail execution.'
+        Assert-True (-not (Test-Path -LiteralPath $sentinel)) 'Release command executed.'
+        Assert-True ($plan.skipped[0].reason -match 'Release-only') 'Release skip reason missing.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'release-tier command miswired as implementation is skipped' {
+    $fixture = New-TestRepository
+    try {
+        $sentinel = Join-Path $fixture.Sandbox 'release-tier-executed.txt'
+        $tool = Join-Path $fixture.Sandbox 'release-tier-tool.cmd'
+        Set-Content -LiteralPath $tool -Value ('@echo release-tier>"{0}"' -f $sentinel) -Encoding ascii
+        Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable $tool
+        $policy = Get-Content -Raw -LiteralPath $fixture.Policy | ConvertFrom-Json -Depth 100
+        $policy.commands.'git-diff-check'.verificationTier = 'release'
+        $policy | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $fixture.Policy -Encoding utf8NoBOM
+
+        $result = Invoke-Verification -Fixture $fixture -ChangedPath @('execute/example.txt') -Run -Json
+        $plan = $result.Text | ConvertFrom-Json
+        Assert-Equal $result.ExitCode 0 'A release-tier implementation selection should be safely skipped.'
+        Assert-True (-not (Test-Path -LiteralPath $sentinel)) 'Release-tier command executed from implementation selection.'
+        Assert-True ($plan.skipped[0].reason -match 'release verification tier') 'Release-tier skip reason missing.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'missing prerequisite blocks execution but not planning' {
+    $fixture = New-TestRepository
+    try {
+        $sentinel = Join-Path $fixture.Sandbox 'prerequisite-executed.txt'
+        $tool = Join-Path $fixture.Sandbox 'prerequisite-tool.cmd'
+        Set-Content -LiteralPath $tool -Value ('@echo executed>"{0}"' -f $sentinel) -Encoding ascii
+        Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable $tool -Requirements @{ requiresNode = $true }
+        $planning = Invoke-Verification -Fixture $fixture -ChangedPath @('execute/example.txt') -Json
+        Assert-Equal $planning.ExitCode 0 'Missing prerequisites must not block planning.'
+        $execution = Invoke-Verification -Fixture $fixture -ChangedPath @('execute/example.txt') -Run -Json
+        $plan = $execution.Text | ConvertFrom-Json
+        Assert-Equal $execution.ExitCode 1 'Missing prerequisite must block execution.'
+        Assert-True (-not (Test-Path -LiteralPath $sentinel)) 'Prerequisite-blocked command executed.'
+        Assert-True (@($plan.blockers | Where-Object { $_ -match 'Node.js' }).Count -gt 0) 'Prerequisite blocker missing.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'child exit propagates and execution stops on first failure' {
+    $fixture = New-TestRepository
+    try {
+        $secondSentinel = Join-Path $fixture.Sandbox 'second-executed.txt'
+        $firstTool = Join-Path $fixture.Sandbox 'first-fail.cmd'
+        $secondTool = Join-Path $fixture.Sandbox 'second-pass.cmd'
+        Set-Content -LiteralPath $firstTool -Value '@echo first failed&@exit /b 7' -Encoding ascii
+        Set-Content -LiteralPath $secondTool -Value ('@echo second>"{0}"' -f $secondSentinel) -Encoding ascii
+        Set-FixtureVerificationCommand -Fixture $fixture -Id 'git-diff-check' -Executable $firstTool
+        $policy = Get-Content -Raw -LiteralPath $fixture.Policy | ConvertFrom-Json -Depth 100
+        $second = $policy.commands.'test-fast'
+        $second.executableInImplementationMode = $true
+        $second.invocation.executable = $secondTool
+        $second.invocation.arguments = @()
+        $second.invocation.workingDirectory = 'repository'
+        foreach ($property in @('requiresCleanWorktree', 'requiresDependencies', 'requiresDocker', 'requiresDatabase', 'requiresNetwork', 'requiresPrisma', 'requiresNode', 'requiresNpm', 'requiresPowerShell')) { $second.$property = $false }
+        $entry = @($policy.commandRegistry | Where-Object { $_.id -eq 'test-fast' })[0]
+        $entry.command = [string]$secondTool
+        $entry.profile = 'read-only'
+        $entry.flagEscalations = @()
+        $policy.verification.pathRules[0].implementation = @('git-diff-check', 'test-fast')
+        $policy | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $fixture.Policy -Encoding utf8NoBOM
+
+        $result = Invoke-Verification -Fixture $fixture -ChangedPath @('execute/example.txt') -Run -Json
+        $plan = $result.Text | ConvertFrom-Json
+        Assert-Equal $result.ExitCode 1 "Failed child must fail guarded execution. stdout=$($result.Text) stderr=$($result.ErrorText)"
+        Assert-Equal $plan.execution.results[0].exitCode 7 'Exact child exit code was not recorded.'
+        Assert-Equal $plan.execution.results[1].status 'not-run-after-failure' 'Second command was not stopped.'
+        Assert-True (-not (Test-Path -LiteralPath $secondSentinel)) 'Second command executed after failure.'
+
+        $continued = Invoke-Verification -Fixture $fixture -ChangedPath @('execute/example.txt') -Run -ContinueOnFailure -Json
+        $continuedPlan = $continued.Text | ConvertFrom-Json
+        Assert-Equal $continued.ExitCode 1 'Continue-on-failure must retain failed exit status.'
+        Assert-Equal $continuedPlan.execution.results[1].status 'passed' 'Continue-on-failure did not run the second command.'
+        Assert-True (Test-Path -LiteralPath $secondSentinel) 'Continue-on-failure second command did not execute.'
     }
     finally { Remove-TestRepository -Fixture $fixture }
 }

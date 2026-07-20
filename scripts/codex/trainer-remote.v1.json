@@ -1,0 +1,32 @@
+{
+  "schema": "trainer-remote-identity",
+  "version": 1,
+  "environment": {
+    "id": "production",
+    "label": "Trainer Production"
+  },
+  "github": {
+    "owner": "aaron8819",
+    "repository": "trainer-app",
+    "defaultBranch": "master",
+    "changePolicy": null
+  },
+  "vercel": {
+    "teamId": null,
+    "teamSlug": null,
+    "projectId": null,
+    "projectName": null,
+    "productionAlias": null
+  },
+  "supabase": {
+    "projectRef": null,
+    "expectedDatabaseName": "postgres",
+    "allowedConnectionClasses": [
+      "direct",
+      "session-pooler"
+    ],
+    "forbiddenConnectionClasses": [
+      "transaction-pooler"
+    ]
+  }
+}

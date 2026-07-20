@@ -171,6 +171,48 @@ function Read-TrainerPolicy {
     $policy
 }
 
+function Read-TrainerJsonFile {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Required JSON file is missing: $Path"
+    }
+
+    try {
+        Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json -Depth 100
+    }
+    catch {
+        throw "Invalid JSON file '$Path': $($_.Exception.Message)"
+    }
+}
+
+function Resolve-TrainerRepositoryRoot {
+    param([Parameter(Mandatory = $true)][string]$StartPath)
+
+    $probe = Invoke-GitRead -WorkingDirectory $StartPath -Arguments @(
+        'rev-parse', '--show-toplevel'
+    )
+    if (@($probe.Output).Count -ne 1) {
+        throw "Unable to resolve the Trainer repository root from '$StartPath'."
+    }
+    Get-NormalizedPath -Path $probe.Output[0]
+}
+
+function Get-TrainerErrorMessage {
+    param([Parameter(Mandatory = $true)]$ErrorRecord)
+
+    $message = if ($ErrorRecord -is [System.Management.Automation.ErrorRecord]) {
+        $ErrorRecord.Exception.Message
+    }
+    elseif ($ErrorRecord -is [System.Exception]) {
+        $ErrorRecord.Message
+    }
+    else {
+        [string]$ErrorRecord
+    }
+    $message.Trim()
+}
+
 function Resolve-TrainerVerificationCommands {
     param(
         [Parameter(Mandatory = $true)][object]$Policy,
@@ -317,6 +359,9 @@ Export-ModuleMember -Function @(
     'Get-DirtyPaths',
     'Read-Worktrees',
     'Read-TrainerPolicy',
+    'Read-TrainerJsonFile',
+    'Resolve-TrainerRepositoryRoot',
+    'Get-TrainerErrorMessage',
     'Resolve-TrainerVerificationCommands',
     'Get-TrainerCommandRegistration',
     'Get-DependencyInfo',

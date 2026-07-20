@@ -10,6 +10,8 @@ $sourceRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $sourceScript = Join-Path $sourceRoot 'Start-TrainerTask.ps1'
 $sourceModule = Join-Path $sourceRoot 'Trainer.Tooling.psm1'
 $sourceDoctor = Join-Path $sourceRoot 'Invoke-TrainerDoctor.ps1'
+$sourceRemoteStatus = Join-Path $sourceRoot 'Invoke-TrainerRemoteStatus.ps1'
+$sourceRemoteIdentity = Join-Path $sourceRoot 'trainer-remote.v1.json'
 $sourceRegistryValidator = Join-Path $sourceRoot 'Test-TrainerCommandRegistry.ps1'
 $sourceVerification = Join-Path $sourceRoot 'Invoke-TrainerVerification.ps1'
 $sourcePolicy = Join-Path $sourceRoot 'trainer-policy.v1.json'
@@ -28,13 +30,17 @@ function Invoke-GitFixture {
 }
 
 function New-TestRepository {
+    param([switch]$PathWithSpaces)
+
     $sandbox = Join-Path ([System.IO.Path]::GetTempPath()) ("trainer-task-tests-" + [guid]::NewGuid().ToString('N'))
-    $repository = Join-Path $sandbox 'repo'
+    $repository = Join-Path $sandbox $(if ($PathWithSpaces) { 'repo with spaces' } else { 'repo' })
     New-Item -ItemType Directory -Path (Join-Path $repository 'scripts\codex') -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $repository 'trainer-app') -Force | Out-Null
     Copy-Item -LiteralPath $sourceScript -Destination (Join-Path $repository 'scripts\codex\Start-TrainerTask.ps1')
     Copy-Item -LiteralPath $sourceModule -Destination (Join-Path $repository 'scripts\codex\Trainer.Tooling.psm1')
     Copy-Item -LiteralPath $sourceDoctor -Destination (Join-Path $repository 'scripts\codex\Invoke-TrainerDoctor.ps1')
+    Copy-Item -LiteralPath $sourceRemoteStatus -Destination (Join-Path $repository 'scripts\codex\Invoke-TrainerRemoteStatus.ps1')
+    Copy-Item -LiteralPath $sourceRemoteIdentity -Destination (Join-Path $repository 'scripts\codex\trainer-remote.v1.json')
     Copy-Item -LiteralPath $sourceRegistryValidator -Destination (Join-Path $repository 'scripts\codex\Test-TrainerCommandRegistry.ps1')
     Copy-Item -LiteralPath $sourceVerification -Destination (Join-Path $repository 'scripts\codex\Invoke-TrainerVerification.ps1')
     Copy-Item -LiteralPath $sourcePolicy -Destination (Join-Path $repository 'scripts\codex\trainer-policy.v1.json')
@@ -67,10 +73,28 @@ function New-TestRepository {
         Repository = $repository
         Script = Join-Path $repository 'scripts\codex\Start-TrainerTask.ps1'
         Doctor = Join-Path $repository 'scripts\codex\Invoke-TrainerDoctor.ps1'
+        RemoteStatus = Join-Path $repository 'scripts\codex\Invoke-TrainerRemoteStatus.ps1'
+        RemoteIdentity = Join-Path $repository 'scripts\codex\trainer-remote.v1.json'
         Verification = Join-Path $repository 'scripts\codex\Invoke-TrainerVerification.ps1'
         Module = Join-Path $repository 'scripts\codex\Trainer.Tooling.psm1'
         Policy = $fixturePolicyPath
     }
+}
+
+function New-RemoteTestRepository {
+    param([switch]$PathWithSpaces)
+
+    $fixture = New-TestRepository -PathWithSpaces:$PathWithSpaces
+    Invoke-GitFixture -Repository $fixture.Repository -Arguments @(
+        'remote', 'add', 'origin', 'https://github.com/aaron8819/trainer-app.git'
+    ) | Out-Null
+    Invoke-GitFixture -Repository $fixture.Repository -Arguments @(
+        'update-ref', 'refs/remotes/origin/master', 'HEAD'
+    ) | Out-Null
+    Invoke-GitFixture -Repository $fixture.Repository -Arguments @(
+        'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/master'
+    ) | Out-Null
+    $fixture
 }
 
 function Remove-TestRepository {
@@ -148,6 +172,43 @@ function Invoke-Doctor {
         Text = $output -join "`n"
         Lines = $output
     }
+}
+
+function Invoke-RemoteStatus {
+    param(
+        [Parameter(Mandatory = $true)][object]$Fixture,
+        [switch]$Json,
+        [string]$PathPrefix
+    )
+
+    $arguments = @('-NoProfile', '-File', $Fixture.RemoteStatus)
+    if ($Json) { $arguments += '-Json' }
+    $previousPath = $env:PATH
+    try {
+        if ($PathPrefix) {
+            $env:PATH = $PathPrefix + [System.IO.Path]::PathSeparator + $env:PATH
+        }
+        $output = @(& pwsh @arguments 2>&1)
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $env:PATH = $previousPath
+    }
+    [pscustomobject]@{
+        ExitCode = $exitCode
+        Text = $output -join "`n"
+        Lines = $output
+    }
+}
+
+function Write-FixtureRemoteIdentity {
+    param(
+        [Parameter(Mandatory = $true)][object]$Fixture,
+        [Parameter(Mandatory = $true)][object]$Identity
+    )
+
+    $Identity | ConvertTo-Json -Depth 20 |
+        Set-Content -LiteralPath $Fixture.RemoteIdentity -Encoding utf8NoBOM
 }
 
 function Invoke-Verification {
@@ -1051,6 +1112,332 @@ Invoke-Test 'Trainer skills route through Phase 1-3 without duplicating policy' 
     }
 }
 
+Invoke-Test 'remote identity JSON parses and default offline status matches HTTPS origin' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $identity = Get-Content -Raw -LiteralPath $fixture.RemoteIdentity | ConvertFrom-Json -Depth 100
+        Assert-Equal $identity.schema 'trainer-remote-identity' 'Identity schema mismatch.'
+        Assert-Equal $identity.version 1 'Identity version mismatch.'
+        $result = Invoke-RemoteStatus -Fixture $fixture -Json
+        $report = $result.Text | ConvertFrom-Json -Depth 100
+        Assert-Equal $result.ExitCode 0 'Default remote status should succeed.'
+        Assert-Equal $report.schema 'trainer-remote-status' 'Remote status schema mismatch.'
+        Assert-True $report.inspectionOnly 'Remote status must be inspection-only.'
+        Assert-True $report.success 'Default offline fixture should succeed.'
+        Assert-Equal $report.providers.github.status 'match' 'HTTPS GitHub origin should match.'
+        Assert-Equal $report.identity.foundationStatus 'partially configured' 'Incomplete provider identity classification changed.'
+        Assert-Equal $report.identity.configuration.github 'configured' 'Configured GitHub identity status changed.'
+        Assert-True $report.identity.productionDefinition.intendedEnvironment 'Intended production environment should be defined.'
+        Assert-True (-not $report.identity.productionDefinition.intendedVercelProject) 'Unknown Vercel project was treated as defined.'
+        Assert-True (-not $report.identity.productionDefinition.intendedSupabaseProject) 'Unknown Supabase project was treated as defined.'
+        Assert-Equal @($report.blockers).Count 0 'Default blockers must remain an empty array.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'remote status human output is explicit and offline only' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $result = Invoke-RemoteStatus -Fixture $fixture
+        Assert-Equal $result.ExitCode 0 'Human remote status should succeed.'
+        Assert-True ($result.Text.Contains('Trainer offline remote status')) 'Human heading missing.'
+        Assert-True ($result.Text.Contains('GitHub local comparison: match')) 'Human Git comparison missing.'
+        Assert-True ($result.Text.Contains('does not authenticate, contact providers, inspect deployments, connect to databases, or prove production state')) 'Offline-only disclaimer missing.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'remote JSON retains no-access and no-live-state claims' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $report = (Invoke-RemoteStatus -Fixture $fixture -Json).Text | ConvertFrom-Json -Depth 100
+        Assert-True (-not $report.networkAccessed) 'Remote status claimed network access.'
+        Assert-True (-not $report.databaseAccessed) 'Remote status claimed database access.'
+        Assert-Equal $report.providers.github.liveState 'not-checked' 'GitHub live state claim changed.'
+        Assert-Equal $report.providers.deployment.liveState 'not-checked' 'Deployment live state claim changed.'
+        Assert-Equal $report.providers.database.liveState 'not-checked' 'Database live state claim changed.'
+        Assert-True (-not $report.traceability.endToEndProductionVerified) 'Offline traceability claimed production verification.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'GitHub SSH remote matches without network access' {
+    $fixture = New-RemoteTestRepository
+    try {
+        Invoke-GitFixture -Repository $fixture.Repository -Arguments @(
+            'remote', 'set-url', 'origin', 'git@github.com:aaron8819/trainer-app.git'
+        ) | Out-Null
+        $report = (Invoke-RemoteStatus -Fixture $fixture -Json).Text | ConvertFrom-Json -Depth 100
+        Assert-Equal $report.providers.github.status 'match' 'SSH GitHub origin should match.'
+        Assert-Equal $report.localEvidence.git.observed.transport 'ssh-scp' 'SSH transport classification mismatch.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'GitHub owner mismatch is a blocker' {
+    $fixture = New-RemoteTestRepository
+    try {
+        Invoke-GitFixture -Repository $fixture.Repository -Arguments @(
+            'remote', 'set-url', 'origin', 'https://github.com/not-aaron/trainer-app.git'
+        ) | Out-Null
+        $result = Invoke-RemoteStatus -Fixture $fixture -Json
+        $report = $result.Text | ConvertFrom-Json -Depth 100
+        Assert-Equal $result.ExitCode 1 'Owner mismatch must exit 1.'
+        Assert-Equal $report.providers.github.ownerComparison 'mismatch' 'Owner mismatch classification missing.'
+        Assert-True (@($report.blockers).Count -gt 0) 'Owner mismatch blocker missing.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'GitHub repository mismatch is a blocker' {
+    $fixture = New-RemoteTestRepository
+    try {
+        Invoke-GitFixture -Repository $fixture.Repository -Arguments @(
+            'remote', 'set-url', 'origin', 'https://github.com/aaron8819/not-trainer.git'
+        ) | Out-Null
+        $result = Invoke-RemoteStatus -Fixture $fixture -Json
+        $report = $result.Text | ConvertFrom-Json -Depth 100
+        Assert-Equal $result.ExitCode 1 'Repository mismatch must exit 1.'
+        Assert-Equal $report.providers.github.repositoryComparison 'mismatch' 'Repository mismatch classification missing.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'cached default branch mismatch is a blocker' {
+    $fixture = New-RemoteTestRepository
+    try {
+        Invoke-GitFixture -Repository $fixture.Repository -Arguments @(
+            'update-ref', 'refs/remotes/origin/develop', 'HEAD'
+        ) | Out-Null
+        Invoke-GitFixture -Repository $fixture.Repository -Arguments @(
+            'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/develop'
+        ) | Out-Null
+        $result = Invoke-RemoteStatus -Fixture $fixture -Json
+        $report = $result.Text | ConvertFrom-Json -Depth 100
+        Assert-Equal $result.ExitCode 1 'Default-branch mismatch must exit 1.'
+        Assert-Equal $report.providers.github.defaultBranchComparison 'mismatch' 'Branch mismatch classification missing.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'missing origin is reported without guessing' {
+    $fixture = New-TestRepository
+    try {
+        $result = Invoke-RemoteStatus -Fixture $fixture -Json
+        $report = $result.Text | ConvertFrom-Json -Depth 100
+        Assert-Equal $result.ExitCode 1 'Missing expected origin must exit 1.'
+        Assert-Equal $report.providers.github.status 'missing' 'Missing origin classification mismatch.'
+        Assert-True (-not $report.localEvidence.git.originPresent) 'Missing origin was reported present.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'unknown GitHub identity is not treated as match' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $identity = Get-Content -Raw -LiteralPath $fixture.RemoteIdentity | ConvertFrom-Json -Depth 100
+        $identity.github.owner = $null
+        $identity.github.repository = $null
+        $identity.github.defaultBranch = $null
+        Write-FixtureRemoteIdentity -Fixture $fixture -Identity $identity
+        $result = Invoke-RemoteStatus -Fixture $fixture -Json
+        $report = $result.Text | ConvertFrom-Json -Depth 100
+        Assert-Equal $result.ExitCode 0 'Intentionally unknown GitHub identity should warn, not fail.'
+        Assert-Equal $report.providers.github.status 'unknown' 'Unknown GitHub identity was not preserved.'
+        Assert-True (@($report.warnings | Where-Object { $_ -match 'GitHub expected identity' }).Count -eq 1) 'Unknown GitHub warning missing.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'unknown Vercel and Supabase identities remain explicit gaps' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $report = (Invoke-RemoteStatus -Fixture $fixture -Json).Text | ConvertFrom-Json -Depth 100
+        Assert-Equal $report.providers.deployment.expectedIdentityStatus 'unknown' 'Unknown Vercel status changed.'
+        Assert-Equal $report.providers.database.expectedIdentityStatus 'unknown' 'Unknown Supabase status changed.'
+        Assert-True ($report.identity.requiredOperatorValues -contains 'vercel.teamId') 'Vercel team ID gap missing.'
+        Assert-True ($report.identity.requiredOperatorValues -contains 'supabase.projectRef') 'Supabase project ref gap missing.'
+        Assert-Equal $report.identity.foundationStatus 'partially configured' 'Incomplete contract status mismatch.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'unsafe secret-like identity value is rejected' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $identity = Get-Content -Raw -LiteralPath $fixture.RemoteIdentity | ConvertFrom-Json -Depth 100
+        $identity.vercel.teamId = 'https://example.invalid/?token=do-not-report'
+        Write-FixtureRemoteIdentity -Fixture $fixture -Identity $identity
+        $result = Invoke-RemoteStatus -Fixture $fixture -Json
+        $report = $result.Text | ConvertFrom-Json -Depth 100
+        Assert-Equal $result.ExitCode 1 'Unsafe identity value must exit 1.'
+        Assert-True (@($report.blockers | Where-Object { $_ -match 'Unsafe' }).Count -gt 0) 'Unsafe identity blocker missing.'
+        Assert-True (-not $result.Text.Contains('do-not-report')) 'Unsafe identity value leaked into output.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'credential-bearing Git remote is blocked and redacted' {
+    $fixture = New-RemoteTestRepository
+    try {
+        Invoke-GitFixture -Repository $fixture.Repository -Arguments @(
+            'remote', 'set-url', 'origin', 'https://remote-secret@github.com/aaron8819/trainer-app.git'
+        ) | Out-Null
+        $result = Invoke-RemoteStatus -Fixture $fixture -Json
+        $report = $result.Text | ConvertFrom-Json -Depth 100
+        Assert-Equal $result.ExitCode 1 'Credential-bearing origin must exit 1.'
+        Assert-True $report.localEvidence.git.originCredentialBearing 'Credential-bearing classification missing.'
+        Assert-True (-not $result.Text.Contains('remote-secret')) 'Credential-bearing remote leaked into output.'
+        Assert-True (-not $report.localEvidence.git.rawRemoteReported) 'Raw remote reporting must stay false.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'missing identity file exits 3' {
+    $fixture = New-RemoteTestRepository
+    try {
+        Remove-Item -LiteralPath $fixture.RemoteIdentity -Force
+        $result = Invoke-RemoteStatus -Fixture $fixture -Json
+        $report = $result.Text | ConvertFrom-Json -Depth 100
+        Assert-Equal $result.ExitCode 3 'Missing identity must exit 3.'
+        Assert-Equal $report.schema 'trainer-remote-status-error' 'Missing identity error schema mismatch.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'invalid identity schema and version exit 3' {
+    foreach ($mutation in @('schema', 'version')) {
+        $fixture = New-RemoteTestRepository
+        try {
+            $identity = Get-Content -Raw -LiteralPath $fixture.RemoteIdentity | ConvertFrom-Json -Depth 100
+            if ($mutation -eq 'schema') { $identity.schema = 'wrong-schema' } else { $identity.version = 99 }
+            Write-FixtureRemoteIdentity -Fixture $fixture -Identity $identity
+            $result = Invoke-RemoteStatus -Fixture $fixture -Json
+            Assert-Equal $result.ExitCode 3 "Invalid $mutation must exit 3."
+            Assert-Equal (($result.Text | ConvertFrom-Json).schema) 'trainer-remote-status-error' "Invalid $mutation error schema mismatch."
+        }
+        finally { Remove-TestRepository -Fixture $fixture }
+    }
+}
+
+Invoke-Test 'empty connection-class arrays serialize as arrays' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $identity = Get-Content -Raw -LiteralPath $fixture.RemoteIdentity | ConvertFrom-Json -Depth 100
+        $identity.supabase.allowedConnectionClasses = @()
+        $identity.supabase.forbiddenConnectionClasses = @()
+        Write-FixtureRemoteIdentity -Fixture $fixture -Identity $identity
+        $report = (Invoke-RemoteStatus -Fixture $fixture -Json).Text | ConvertFrom-Json -Depth 100
+        Assert-Equal @($report.identity.expected.supabase.allowedConnectionClasses).Count 0 'Allowed empty array changed shape.'
+        Assert-Equal @($report.identity.expected.supabase.forbiddenConnectionClasses).Count 0 'Forbidden empty array changed shape.'
+        Assert-Equal @($report.blockers).Count 0 'Empty arrays created a blocker.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'contradictory connection classes are blocked' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $identity = Get-Content -Raw -LiteralPath $fixture.RemoteIdentity | ConvertFrom-Json -Depth 100
+        $identity.supabase.forbiddenConnectionClasses = @('direct')
+        Write-FixtureRemoteIdentity -Fixture $fixture -Identity $identity
+        $result = Invoke-RemoteStatus -Fixture $fixture -Json
+        Assert-Equal $result.ExitCode 1 'Contradictory classes must exit 1.'
+        Assert-True (@(($result.Text | ConvertFrom-Json).blockers | Where-Object { $_ -match 'both allowed and forbidden' }).Count -eq 1) 'Connection contradiction blocker missing.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'remote status supports repository paths containing spaces' {
+    $fixture = New-RemoteTestRepository -PathWithSpaces
+    try {
+        $result = Invoke-RemoteStatus -Fixture $fixture -Json
+        Assert-Equal $result.ExitCode 0 'Spaced repository path failed.'
+        Assert-Equal (($result.Text | ConvertFrom-Json).providers.github.status) 'match' 'Spaced-path Git comparison mismatch.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'ignored Vercel linkage presence is reported without reading values' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $linkDirectory = Join-Path $fixture.Repository 'trainer-app\.vercel'
+        New-Item -ItemType Directory -Path $linkDirectory -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $linkDirectory 'project.json') -Value '{"secret":"ignored-link-secret"}' -Encoding utf8NoBOM
+        $result = Invoke-RemoteStatus -Fixture $fixture -Json
+        $report = $result.Text | ConvertFrom-Json -Depth 100
+        Assert-True $report.localEvidence.vercel.localProjectLinkFilenamePresent 'Ignored linkage filename presence missing.'
+        Assert-True (-not $report.localEvidence.vercel.localProjectLinkValuesInspected) 'Ignored linkage values were claimed as inspected.'
+        Assert-True (-not $result.Text.Contains('ignored-link-secret')) 'Ignored linkage value leaked into output.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'remote status never invokes provider HTTP or database tools' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $bin = Join-Path $fixture.Sandbox 'guarded tools'
+        New-Item -ItemType Directory -Path $bin -Force | Out-Null
+        $sentinel = Join-Path $fixture.Sandbox 'forbidden-tool-called.txt'
+        foreach ($name in @('gh.cmd', 'vercel.cmd', 'supabase.cmd', 'psql.cmd', 'curl.cmd')) {
+            Set-Content -LiteralPath (Join-Path $bin $name) -Value ('@echo called>>"{0}"' -f $sentinel) -Encoding ascii
+        }
+        $result = Invoke-RemoteStatus -Fixture $fixture -Json -PathPrefix $bin
+        Assert-Equal $result.ExitCode 0 'Guarded offline status failed.'
+        Assert-True (-not (Test-Path -LiteralPath $sentinel)) 'Remote status invoked a forbidden provider, HTTP, or database tool.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'remote status source does not read environment values or invoke network APIs' {
+    $source = Get-Content -Raw -LiteralPath $sourceRemoteStatus
+    Assert-True (-not [regex]::IsMatch($source, '(?i)\$env:|GetEnvironmentVariable|Get-ChildItem\s+Env:')) 'Remote status reads environment values.'
+    Assert-True (-not [regex]::IsMatch($source, '(?i)Invoke-WebRequest|Invoke-RestMethod|HttpClient|WebClient')) 'Remote status contains an HTTP API invocation.'
+    Assert-True (-not [regex]::IsMatch($source, '(?im)^\s*(?:&\s*)?(?:gh|vercel|supabase|psql|curl)(?:\.exe|\.cmd)?(?:[ \t]+(?![ \t]*=)|$)')) 'Remote status contains a provider, HTTP, or database executable invocation.'
+}
+
+Invoke-Test 'unsupported authenticated scopes exit 2' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $output = @(& pwsh -NoProfile -File $fixture.RemoteStatus -GitHub -Json 2>&1)
+        Assert-Equal $LASTEXITCODE 2 'Unsupported GitHub scope must exit 2.'
+        $report = ($output -join "`n") | ConvertFrom-Json
+        Assert-Equal $report.schema 'trainer-remote-status-error' 'Unsupported-scope error schema mismatch.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'offline remote status does not mutate repository state' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $beforeStatus = @(& git -C $fixture.Repository status --porcelain=v1 --untracked-files=all) -join "`n"
+        $beforeRefs = @(& git -C $fixture.Repository show-ref) -join "`n"
+        $beforeConfig = @(& git -C $fixture.Repository config --local --list) -join "`n"
+        $result = Invoke-RemoteStatus -Fixture $fixture -Json
+        $afterStatus = @(& git -C $fixture.Repository status --porcelain=v1 --untracked-files=all) -join "`n"
+        $afterRefs = @(& git -C $fixture.Repository show-ref) -join "`n"
+        $afterConfig = @(& git -C $fixture.Repository config --local --list) -join "`n"
+        Assert-Equal $result.ExitCode 0 'Mutation-safety remote status failed.'
+        Assert-Equal $afterStatus $beforeStatus 'Remote status changed working-tree state.'
+        Assert-Equal $afterRefs $beforeRefs 'Remote status changed refs.'
+        Assert-Equal $afterConfig $beforeConfig 'Remote status changed local Git config.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'remote command registry metadata is read-only and offline' {
+    $policy = Get-Content -Raw -LiteralPath $sourcePolicy | ConvertFrom-Json -Depth 100
+    $entry = @($policy.commandRegistry | Where-Object { $_.id -eq 'codex-remote-status' })
+    Assert-Equal $entry.Count 1 'Remote status registry entry missing.'
+    Assert-Equal $entry[0].profile 'read-only' 'Remote status profile mismatch.'
+    $profile = $policy.commandProfiles.($entry[0].profile)
+    Assert-True (-not $profile.accessesNetwork) 'Remote status metadata allows network access.'
+    Assert-True (-not $profile.accessesDatabase) 'Remote status metadata allows database access.'
+    Assert-True (-not $profile.writesLocalArtifacts) 'Remote status metadata allows local writes.'
+    Assert-True (-not $profile.writesTrackedFiles) 'Remote status metadata allows tracked writes.'
+    Assert-Equal $profile.authorizationRequirement 'none' 'Remote status should not require authorization.'
+}
+
 Invoke-Test 'registry parses and covers committed command surfaces' {
     $result = Invoke-RegistryValidator
     $report = $result.Text | ConvertFrom-Json
@@ -1060,6 +1447,8 @@ Invoke-Test 'registry parses and covers committed command surfaces' {
     Assert-Equal @($report.errors).Count 0 'Registry validator reported errors.'
     Assert-True ($report.commandsRegistered -ge $report.packageScripts) 'Registry command count is unexpectedly small.'
     Assert-Equal @($report.ignoredEntrypoints).Count 4 'Documented internal-entrypoint ignore count mismatch.'
+    Assert-True $report.remoteIdentityContractValid 'Registry did not validate the remote identity contract.'
+    Assert-True $report.remoteStatusRegistered 'Registry did not validate the remote status command.'
 }
 
 Write-Output "Tests run: $script:TestsRun"

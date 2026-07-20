@@ -120,6 +120,43 @@ try {
             $errors.Add("Profile '$($profileProperty.Name)' has invalid side-effect class '$($profileProperty.Value.defaultSideEffectClass)'.")
         }
     }
+
+    $remoteIdentityContractValid = $false
+    $remoteIdentityPath = Join-Path $PSScriptRoot 'trainer-remote.v1.json'
+    if (-not (Test-Path -LiteralPath $remoteIdentityPath -PathType Leaf)) {
+        $errors.Add('Remote identity contract is missing: scripts/codex/trainer-remote.v1.json')
+    }
+    else {
+        try {
+            $remoteIdentity = Read-TrainerJsonFile -Path $remoteIdentityPath
+            if (($remoteIdentity.schema -cne 'trainer-remote-identity') -or ($remoteIdentity.version -ne 1)) {
+                $errors.Add('Remote identity contract has an unsupported schema or version.')
+            }
+            else {
+                $remoteIdentityContractValid = $true
+            }
+        }
+        catch {
+            $errors.Add("Remote identity contract is invalid: $($_.Exception.Message)")
+        }
+    }
+
+    $remoteStatusEntries = @($entries | Where-Object { $_.id -ceq 'codex-remote-status' })
+    if ($remoteStatusEntries.Count -ne 1) {
+        $errors.Add("Remote status command must map to exactly one 'codex-remote-status' registry entry.")
+    }
+    else {
+        $remoteStatusProfile = Resolve-RegistryProfile -Policy $policy -Entry $remoteStatusEntries[0]
+        if ($remoteStatusEntries[0].profile -cne 'read-only' -or
+            $null -eq $remoteStatusProfile -or
+            $remoteStatusProfile.accessesNetwork -or
+            $remoteStatusProfile.accessesDatabase -or
+            $remoteStatusProfile.writesLocalArtifacts -or
+            $remoteStatusProfile.writesTrackedFiles -or
+            $remoteStatusProfile.authorizationRequirement -cne 'none') {
+            $errors.Add('Remote status command metadata must remain read-only, offline, non-writing, and authorization-free.')
+        }
+    }
     foreach ($verificationCommand in $policy.commands.PSObject.Properties) {
         $registryMatch = @($entries | Where-Object { $_.id -ceq $verificationCommand.Name })
         if ($registryMatch.Count -ne 1) {
@@ -339,6 +376,8 @@ try {
         packageScriptsRegistered = $registeredPackageEntries.Count
         ignoredPackageScripts = @($ignoredPackageScripts)
         ignoredEntrypoints = @($ignoredEntrypoints | Sort-Object)
+        remoteIdentityContractValid = $remoteIdentityContractValid
+        remoteStatusRegistered = $remoteStatusEntries.Count -eq 1
         errors = $errors.ToArray()
         warnings = $warnings.ToArray()
         success = $errors.Count -eq 0

@@ -297,6 +297,47 @@ IDs and invalid side-effect classes, and checks known mutation flags for escalat
 The ignore list is limited to documented internal helpers and data modules; the full registry is
 not duplicated in this document.
 
+## Offline remote identity status
+
+`scripts/codex/trainer-remote.v1.json` is the versioned, non-secret expected-identity contract
+for Trainer's production integrations. It may contain provider owner/project identifiers,
+display names, production aliases, project references, environment labels, default branches,
+and connection-class names. Unknown values stay explicitly `null` until an operator verifies
+them.
+
+Never place tokens, passwords, API keys, database URLs, connection strings, environment-variable
+values, credential-bearing Git remotes, or other secrets in this file. Immutable provider IDs
+are preferred over display names. Expected identity in this committed contract is distinct from
+observed local linkage and from live provider state.
+
+Run the Phase 1 offline inspection in human or JSON mode:
+
+```powershell
+.\scripts\codex\Invoke-TrainerRemoteStatus.ps1
+.\scripts\codex\Invoke-TrainerRemoteStatus.ps1 -Json
+```
+
+The stable JSON output uses `trainer-remote-status` version 1. It reports contract completeness,
+sanitized local Git comparison, committed/local Vercel linkage-file presence, committed Supabase
+configuration presence, Prisma migration count, exact operator identity gaps, and an explicitly
+offline traceability chain. Ignored `.vercel/project.json` values are not read. Raw Git remotes,
+credential-bearing URLs, environment values, and secret-like contract values are never emitted.
+
+GitHub HTTPS and SSH remotes are normalized before comparing owner/repository. A configured
+GitHub owner, repository, or cached default-branch mismatch is a blocker and is never downgraded
+to a warning. Unknown Vercel or Supabase identity remains unknown rather than being treated as a
+match. Reserved `-GitHub`, `-Deployment`, `-Database`, and `-All` scopes exit `2` as not
+implemented in Phase 1.
+
+Exit codes are `0` when offline inspection completes without blockers, `1` for a valid report
+with blockers or identity mismatch, `2` for an invalid or unsupported scope, and `3` for
+identity/policy loading or unexpected failure. Registry validation requires both the identity
+contract and the read-only/offline command registration.
+
+Offline remote status validates expected identity and local linkage only. It does not
+authenticate, contact providers, inspect deployments, connect to databases, or prove production
+state.
+
 ## Diff-aware verification planning and execution
 
 `scripts/codex/Invoke-TrainerVerification.ps1` reads the same versioned policy, task-manifest

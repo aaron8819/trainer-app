@@ -4,7 +4,8 @@ param(
     [switch]$GitHub,
     [switch]$Deployment,
     [switch]$Database,
-    [switch]$All
+    [switch]$All,
+    [string]$Branch
 )
 
 Set-StrictMode -Version Latest
@@ -16,6 +17,7 @@ $ExitInvalid = 2
 $ExitUnexpected = 3
 
 Import-Module (Join-Path $PSScriptRoot 'Trainer.Tooling.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Trainer.GitHubStatus.psm1') -Force
 
 function Test-ConfiguredValue {
     param([AllowNull()]$Value)
@@ -234,12 +236,33 @@ function Get-ComparisonStatus {
 function Write-HumanStatus {
     param([Parameter(Mandatory = $true)][object]$Report)
 
-    Write-Output 'Trainer offline remote status'
+    $githubProviderBlocked = $Report.providers.github.liveState -eq 'blocked'
+    Write-Output $(if ($Report.networkAccessed) {
+            'Trainer authenticated GitHub remote status'
+        }
+        elseif ($githubProviderBlocked) {
+            'Trainer GitHub remote status (blocked before provider access)'
+        }
+        else {
+            'Trainer offline remote status'
+        })
     Write-Output "Success: $($Report.success)"
     Write-Output "Identity foundation: $($Report.identity.foundationStatus)"
     Write-Output "Environment: $($Report.identity.expected.environment.id) / $($Report.identity.expected.environment.label)"
     Write-Output "GitHub expected: $($Report.identity.expected.github.owner)/$($Report.identity.expected.github.repository) default=$($Report.identity.expected.github.defaultBranch)"
     Write-Output "GitHub local comparison: $($Report.providers.github.status)"
+    if ($Report.providers.github.liveState -eq 'checked') {
+        $github = $Report.providers.github.live
+        Write-Output "GitHub authentication: $($github.authentication.status) account=$($github.authentication.account)"
+        Write-Output "GitHub identity match: $($github.identity.match) observed=$($github.identity.observed.owner)/$($github.identity.observed.repository) default=$($github.identity.observed.defaultBranch)"
+        Write-Output "GitHub repository ID: $($github.repository.id)"
+        Write-Output "GitHub default branch: $($github.branch.defaultBranch.name) sha=$($github.branch.defaultBranch.sha)"
+        Write-Output "GitHub requested branch: $($github.branch.requested) remote=$($github.branch.remote.exists) sha=$($github.branch.remote.sha)"
+        Write-Output "GitHub pull request: $($github.pullRequest.status) number=$($github.pullRequest.number) review=$($github.pullRequest.reviewDecision) unresolvedThreads=$($github.pullRequest.unresolvedThreads)"
+        Write-Output "GitHub checks: $($github.checks.statusRollup) requiredResolution=$($github.checks.requiredChecksResolution)"
+        Write-Output "GitHub protection: $($github.protection.status)"
+        Write-Output "GitHub deployments: $($github.deployments.status) count=$($github.deployments.count) (not Vercel production proof)"
+    }
     Write-Output "Vercel expected identity: $($Report.providers.deployment.expectedIdentityStatus)"
     Write-Output "Supabase expected identity: $($Report.providers.database.expectedIdentityStatus)"
     Write-Output "Prisma migrations: $($Report.localEvidence.supabase.prismaMigrationCount)"
@@ -257,14 +280,25 @@ function Write-HumanStatus {
     if (@($Report.blockers).Count -eq 0) { Write-Output '  - none' }
     foreach ($blocker in @($Report.blockers)) { Write-Output "  - $blocker" }
     Write-Output ''
-    Write-Output 'Offline remote status validates expected identity and local linkage only. It does not authenticate, contact providers, inspect deployments, connect to databases, or prove production state.'
+    if ($Report.networkAccessed) {
+        Write-Output 'The GitHub scope performs authenticated read-only status collection after expected repository identity validation. It does not log in, push, create or modify pull requests, rerun checks, trigger workflows, alter settings, or deploy.'
+    }
+    elseif ($githubProviderBlocked) {
+        Write-Output 'The GitHub scope was blocked before provider access because the committed expected identity is not fully usable. No GitHub tool discovery, authentication, or network request was attempted.'
+    }
+    else {
+        Write-Output 'Offline remote status validates expected identity and local linkage only. It does not authenticate, contact providers, inspect deployments, connect to databases, or prove production state.'
+    }
 }
 
 try {
-    if ($GitHub -or $Deployment -or $Database -or $All) {
+    if ($Deployment -or $Database -or $All) {
         throw [System.ArgumentException]::new(
-            'Authenticated provider scopes are not implemented in remote-integration Phase 1.'
+            'Vercel, Supabase, and combined authenticated provider scopes are not implemented.'
         )
+    }
+    if ((-not $GitHub) -and (-not [string]::IsNullOrWhiteSpace($Branch))) {
+        throw [System.ArgumentException]::new('-Branch requires the explicit -GitHub scope.')
     }
     $repositoryRoot = Resolve-TrainerRepositoryRoot -StartPath $PSScriptRoot
     $identityPath = Join-Path $PSScriptRoot 'trainer-remote.v1.json'
@@ -273,7 +307,8 @@ try {
 
     $warnings = [System.Collections.Generic.List[string]]::new()
     $blockers = [System.Collections.Generic.List[string]]::new()
-    foreach ($finding in @(Get-UnsafeContractFindings -Identity $identity)) {
+    $unsafeIdentityFindings = @(Get-UnsafeContractFindings -Identity $identity)
+    foreach ($finding in $unsafeIdentityFindings) {
         $blockers.Add($finding)
     }
 
@@ -289,10 +324,26 @@ try {
         $blockers.Add('Supabase connection classes cannot be both allowed and forbidden.')
     }
 
-    $githubFields = @($identity.github.owner, $identity.github.repository, $identity.github.defaultBranch)
+    $githubFieldDefinitions = @(
+        [pscustomobject]@{ name = 'owner'; value = $identity.github.owner },
+        [pscustomobject]@{ name = 'repository'; value = $identity.github.repository },
+        [pscustomobject]@{ name = 'defaultBranch'; value = $identity.github.defaultBranch }
+    )
+    $githubFields = @($githubFieldDefinitions | ForEach-Object { $_.value })
     $configuredGitHubFields = @($githubFields | Where-Object { Test-ConfiguredValue -Value $_ }).Count
     if ($configuredGitHubFields -gt 0 -and $configuredGitHubFields -lt $githubFields.Count) {
         $blockers.Add('GitHub expected identity is internally incomplete.')
+    }
+    $githubExpectedIdentityBlockers = [System.Collections.Generic.List[string]]::new()
+    foreach ($field in $githubFieldDefinitions) {
+        if (-not (Test-ConfiguredValue -Value $field.value)) {
+            $githubExpectedIdentityBlockers.Add("GitHub expected identity field 'github.$($field.name)' is not configured.")
+        }
+    }
+    foreach ($finding in $unsafeIdentityFindings) {
+        if ([string]$finding -match "'identity\.github\.") {
+            $githubExpectedIdentityBlockers.Add([string]$finding)
+        }
     }
 
     $vercelFields = [ordered]@{
@@ -519,6 +570,7 @@ try {
                 repositoryComparison = $repositoryStatus
                 defaultBranchComparison = $branchStatus
                 liveState = 'not-checked'
+                live = $null
                 source = 'expected: committed identity; observed: cached local Git configuration'
             }
             deployment = [pscustomobject][ordered]@{
@@ -555,6 +607,43 @@ try {
         warnings = [object[]]$warnings.ToArray()
         blockers = [object[]]$blockers.ToArray()
         success = $blockers.Count -eq 0
+    }
+
+    if ($GitHub -and $githubExpectedIdentityBlockers.Count -gt 0) {
+        foreach ($blocker in $githubExpectedIdentityBlockers) {
+            if ($blocker -notin $blockers) { $blockers.Add($blocker) }
+        }
+        $report.providers.github.liveState = 'blocked'
+        $report.traceability.chain[2].status = 'blocked'
+        $report.blockers = [object[]]$blockers.ToArray()
+        $report.success = $false
+    }
+    elseif ($GitHub) {
+        $branchName = if (-not [string]::IsNullOrWhiteSpace($Branch)) {
+            $Branch.Trim()
+        }
+        else {
+            $branchProbe = Invoke-GitRead -WorkingDirectory $repositoryRoot -Arguments @('branch', '--show-current') -AllowFailure
+            if ($branchProbe.ExitCode -ne 0 -or @($branchProbe.Output).Count -ne 1 -or [string]::IsNullOrWhiteSpace([string]$branchProbe.Output[0])) {
+                throw [System.ArgumentException]::new('A branch could not be resolved from the current checkout; provide -Branch explicitly.')
+            }
+            [string]$branchProbe.Output[0]
+        }
+        $branchFormat = Invoke-GitRead -WorkingDirectory $repositoryRoot -Arguments @('check-ref-format', '--branch', $branchName) -AllowFailure
+        if ($branchFormat.ExitCode -ne 0) {
+            throw [System.ArgumentException]::new("Invalid Git branch name '$branchName'.")
+        }
+        $headProbe = Invoke-GitRead -WorkingDirectory $repositoryRoot -Arguments @('rev-parse', 'HEAD')
+        $githubLive = Invoke-TrainerGitHubStatus -Expected $identity.github -LocalHead ([string]$headProbe.Output[0]) -BranchName $branchName
+        $report.networkAccessed = $true
+        $report.providers.github.liveState = 'checked'
+        $report.providers.github.live = $githubLive
+        $report.traceability.chain[2].status = if ($githubLive.blockers.Count -eq 0) { 'checked' } else { 'blocked' }
+        foreach ($warning in @($githubLive.warnings)) { $warnings.Add([string]$warning) }
+        foreach ($blocker in @($githubLive.blockers)) { $blockers.Add([string]$blocker) }
+        $report.warnings = [object[]]$warnings.ToArray()
+        $report.blockers = [object[]]$blockers.ToArray()
+        $report.success = $blockers.Count -eq 0
     }
 
     if ($Json) {

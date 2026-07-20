@@ -422,6 +422,30 @@
       "authorizationRequirement": "Explicit authorization for the exact destructive target and mutation."
     }
   },
+  "githubReadOnly": {
+    "authorizationFlag": "-GitHub",
+    "networkAccess": true,
+    "databaseAccess": false,
+    "localArtifactWrites": false,
+    "trackedFileWrites": false,
+    "authorizationRequired": "explicit-scope",
+    "commands": [
+      { "id": "auth-status", "shape": ["gh", "auth", "status", "--hostname", "github.com", "--active"], "operation": "authentication-read" },
+      { "id": "authenticated-user", "shape": ["gh", "api", "--method", "GET", "/user"], "operation": "rest-get" },
+      { "id": "repository", "shape": ["gh", "api", "--method", "GET", "/repos/{owner}/{repository}"], "operation": "rest-get" },
+      { "id": "branch", "shape": ["gh", "api", "--method", "GET", "/repos/{owner}/{repository}/branches/{branch}"], "operation": "rest-get" },
+      { "id": "compare", "shape": ["gh", "api", "--method", "GET", "/repos/{owner}/{repository}/compare/{base}...{head}"], "operation": "rest-get" },
+      { "id": "pull-requests", "shape": ["gh", "api", "--method", "GET", "/repos/{owner}/{repository}/pulls?state=all&head={head}&per_page=100&page={page}"], "operation": "rest-get" },
+      { "id": "workflows", "shape": ["gh", "api", "--method", "GET", "/repos/{owner}/{repository}/actions/workflows?per_page=100&page={page}"], "operation": "rest-get" },
+      { "id": "commit-statuses", "shape": ["gh", "api", "--method", "GET", "/repos/{owner}/{repository}/commits/{sha}/statuses?per_page=100&page={page}"], "operation": "rest-get" },
+      { "id": "check-runs", "shape": ["gh", "api", "--method", "GET", "/repos/{owner}/{repository}/commits/{sha}/check-runs?per_page=100&page={page}"], "operation": "rest-get" },
+      { "id": "branch-protection", "shape": ["gh", "api", "--method", "GET", "/repos/{owner}/{repository}/branches/{branch}/protection"], "operation": "rest-get" },
+      { "id": "rulesets", "shape": ["gh", "api", "--method", "GET", "/repos/{owner}/{repository}/rulesets?includes_parents=true&targets=branch&per_page=100&page={page}"], "operation": "rest-get" },
+      { "id": "deployments", "shape": ["gh", "api", "--method", "GET", "/repos/{owner}/{repository}/deployments?sha={sha}&per_page=100&page={page}"], "operation": "rest-get" },
+      { "id": "deployment-statuses", "shape": ["gh", "api", "--method", "GET", "/repos/{owner}/{repository}/deployments/{id}/statuses?per_page=100&page={page}"], "operation": "rest-get" },
+      { "id": "pull-request-review-status", "shape": ["gh", "api", "graphql", "query TrainerPullRequestReviewStatus"], "operation": "graphql-query" }
+    ]
+  },
   "registryCoverage": {
     "packageManifest": "trainer-app/package.json",
     "ignoredPackageScripts": [],
@@ -464,7 +488,7 @@
   "commandRegistry": [
     { "id": "codex-task-inspector", "command": "pwsh -NoProfile -File scripts/codex/Start-TrainerTask.ps1", "sourceLocation": "scripts/codex/Start-TrainerTask.ps1", "entrypoint": "scripts/codex/Start-TrainerTask.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Inspect-only Phase 1 task manifest; does not create branches or worktrees." },
     { "id": "codex-doctor", "command": "pwsh -NoProfile -File scripts/codex/Invoke-TrainerDoctor.ps1", "sourceLocation": "scripts/codex/Invoke-TrainerDoctor.ps1", "entrypoint": "scripts/codex/Invoke-TrainerDoctor.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Local-only by default; explicit scopes remain non-mutating in Phase 2." },
-    { "id": "codex-remote-status", "command": "pwsh -NoProfile -File scripts/codex/Invoke-TrainerRemoteStatus.ps1", "sourceLocation": "scripts/codex/Invoke-TrainerRemoteStatus.ps1", "entrypoint": "scripts/codex/Invoke-TrainerRemoteStatus.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Offline expected-identity and local-linkage inspection only; never contacts providers or databases." },
+    { "id": "codex-remote-status", "command": "pwsh -NoProfile -File scripts/codex/Invoke-TrainerRemoteStatus.ps1", "sourceLocation": "scripts/codex/Invoke-TrainerRemoteStatus.ps1", "entrypoint": "scripts/codex/Invoke-TrainerRemoteStatus.ps1", "profile": "read-only", "flagEscalations": [{ "flag": "-GitHub", "profile": "network-read-only", "sideEffectClass": "read-only", "authorizationRequirement": "Explicit -GitHub scope for authenticated reads of the committed expected repository only." }], "notes": "Offline by default. -GitHub performs authenticated, identity-gated, read-only GitHub status collection; it never logs in or invokes GitHub writes." },
     { "id": "codex-registry-validator", "command": "pwsh -NoProfile -File scripts/codex/Test-TrainerCommandRegistry.ps1", "sourceLocation": "scripts/codex/Test-TrainerCommandRegistry.ps1", "entrypoint": "scripts/codex/Test-TrainerCommandRegistry.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Static offline policy coverage validation." },
     { "id": "codex-verification", "command": "pwsh -NoProfile -File scripts/codex/Invoke-TrainerVerification.ps1", "sourceLocation": "scripts/codex/Invoke-TrainerVerification.ps1", "entrypoint": "scripts/codex/Invoke-TrainerVerification.ps1", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Inspect-only by default; -Run is fail-closed to registry-approved local implementation checks." },
     { "id": "codex-tooling-tests", "command": "pwsh -NoProfile -File scripts/codex/tests/Run-Tests.ps1", "sourceLocation": "scripts/codex/tests/Run-Tests.ps1", "entrypoint": "scripts/codex/tests/Run-Tests.ps1", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Creates and removes guarded disposable local fixtures." },

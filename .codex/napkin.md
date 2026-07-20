@@ -1,11 +1,16 @@
 # Napkin
 
+## Remote Provider Tooling
+
+- When a task protects the dirty primary checkout, write only in the authorized worktree; never transiently edit the primary checkout.
+- Fake in-process executables should return and set a controlled exit code instead of calling `exit`, which can terminate the parent process.
+- Use typed generic lists or explicit null filtering so empty JSON arrays and counts remain stable.
+- Register each concrete remote-provider command shape; reject generic write-capable API forms and GraphQL mutations.
+- Prove pre-provider identity gates with an invocation sentinel and exact zero-call assertion; treat a compare `404` for an unpushed commit as not remotely addressable, not identity or ancestry failure.
+
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
-| 2026-07-20 | self | The first 66-test remote-status harness detected unsafe contract content but still echoed it in the expected-identity payload; a guarded `.cmd` fixture repeated backslash quote escaping; and a static scan matched provider names in prose. | Redact unsafe values before any report construction, build batch lines with single-quoted format strings, and scan only executable command shapes plus concrete HTTP API symbols. |
-| 2026-07-20 | self | Ran the expanded disposable-repository PowerShell harness with a 120-second limit even though the napkin already says full tooling suites need more than two minutes; the host killed it before buffered results flushed. | Give the full Codex tooling harness at least five minutes after adding fixture-heavy cases; reserve short timeouts for parser or single-command smokes. |
-| 2026-07-20 | self | The first remote-status smoke showed that a custom empty-array wrapper serialized blockers as `[null]`, and a pipeline-based Boolean count classified one configured provider as zero. | Build JSON arrays from typed generic-list `.ToArray()` values (or explicit typed arrays) and count configured providers with explicit integer increments; smoke-test zero-, one-, and many-item JSON arrays before relying on the contract. |
 | 2026-07-20 | self | Read the repo napkin before the unconditional napkin `SKILL.md`, then included absent optional roots in one `rg --files` inventory even though both mistakes were already documented. | Make the literal first tool action the napkin skill read, then the repo napkin; inventory optional roots only after explicit `Test-Path` checks and search each existing root independently. |
 | 2026-07-19 | self | A final static scan counted the harness's negative `npx` assertion as an invocation and generic `rg --files` examples as duplicated path-to-test tables. | Scope behavior scans to skill prose and match executable command shapes; inspect reported lines before treating a negative-scan failure as a product defect. |
 | 2026-07-19 | tooling | Running `Start-TrainerTask.ps1` after an explicitly requested worktree was created reports the current task's path and branch as blockers because Phase 1 inspects proposed resources. | Run task inspection before manual worktree creation when the task sequence permits; when the user explicitly requires creation first, rely on the proved pre-creation checks and treat the later duplicate-resource result as a sequencing limitation, not an overlapping-worktree finding. |

@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([string]$Filter)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -11,6 +11,7 @@ $sourceScript = Join-Path $sourceRoot 'Start-TrainerTask.ps1'
 $sourceModule = Join-Path $sourceRoot 'Trainer.Tooling.psm1'
 $sourceDoctor = Join-Path $sourceRoot 'Invoke-TrainerDoctor.ps1'
 $sourceRemoteStatus = Join-Path $sourceRoot 'Invoke-TrainerRemoteStatus.ps1'
+$sourceGitHubModule = Join-Path $sourceRoot 'Trainer.GitHubStatus.psm1'
 $sourceRemoteIdentity = Join-Path $sourceRoot 'trainer-remote.v1.json'
 $sourceRegistryValidator = Join-Path $sourceRoot 'Test-TrainerCommandRegistry.ps1'
 $sourceVerification = Join-Path $sourceRoot 'Invoke-TrainerVerification.ps1'
@@ -40,6 +41,7 @@ function New-TestRepository {
     Copy-Item -LiteralPath $sourceModule -Destination (Join-Path $repository 'scripts\codex\Trainer.Tooling.psm1')
     Copy-Item -LiteralPath $sourceDoctor -Destination (Join-Path $repository 'scripts\codex\Invoke-TrainerDoctor.ps1')
     Copy-Item -LiteralPath $sourceRemoteStatus -Destination (Join-Path $repository 'scripts\codex\Invoke-TrainerRemoteStatus.ps1')
+    Copy-Item -LiteralPath $sourceGitHubModule -Destination (Join-Path $repository 'scripts\codex\Trainer.GitHubStatus.psm1')
     Copy-Item -LiteralPath $sourceRemoteIdentity -Destination (Join-Path $repository 'scripts\codex\trainer-remote.v1.json')
     Copy-Item -LiteralPath $sourceRegistryValidator -Destination (Join-Path $repository 'scripts\codex\Test-TrainerCommandRegistry.ps1')
     Copy-Item -LiteralPath $sourceVerification -Destination (Join-Path $repository 'scripts\codex\Invoke-TrainerVerification.ps1')
@@ -178,15 +180,20 @@ function Invoke-RemoteStatus {
     param(
         [Parameter(Mandatory = $true)][object]$Fixture,
         [switch]$Json,
-        [string]$PathPrefix
+        [switch]$GitHub,
+        [string]$Branch,
+        [string]$PathPrefix,
+        [switch]$ReplacePath
     )
 
     $arguments = @('-NoProfile', '-File', $Fixture.RemoteStatus)
     if ($Json) { $arguments += '-Json' }
+    if ($GitHub) { $arguments += '-GitHub' }
+    if ($PSBoundParameters.ContainsKey('Branch')) { $arguments += @('-Branch', $Branch) }
     $previousPath = $env:PATH
     try {
         if ($PathPrefix) {
-            $env:PATH = $PathPrefix + [System.IO.Path]::PathSeparator + $env:PATH
+            $env:PATH = if ($ReplacePath) { $PathPrefix } else { $PathPrefix + [System.IO.Path]::PathSeparator + $env:PATH }
         }
         $output = @(& pwsh @arguments 2>&1)
         $exitCode = $LASTEXITCODE
@@ -199,6 +206,127 @@ function Invoke-RemoteStatus {
         Text = $output -join "`n"
         Lines = $output
     }
+}
+
+function New-FakeGitHubCli {
+    param(
+        [Parameter(Mandatory = $true)][object]$Fixture,
+        [Parameter(Mandatory = $true)][object]$Scenario
+    )
+
+    $directory = Join-Path $Fixture.Sandbox 'fake-gh'
+    New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    $scenarioPath = Join-Path $directory 'scenario.json'
+    $logPath = Join-Path $directory 'calls.jsonl'
+    $Scenario | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $scenarioPath -Encoding utf8NoBOM
+    $scriptPath = Join-Path $directory 'gh.ps1'
+    @'
+$ErrorActionPreference = 'Continue'
+$scenario = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'scenario.json') | ConvertFrom-Json -Depth 100
+@($args) | ConvertTo-Json -Compress | Add-Content -LiteralPath (Join-Path $PSScriptRoot 'calls.jsonl') -Encoding utf8NoBOM
+function Invoke-FakeGitHub {
+    if ($args.Count -ge 2 -and $args[0] -eq 'auth' -and $args[1] -eq 'status') {
+        if ([int]$scenario.authExit -ne 0) { Write-Error 'not authenticated'; $script:FakeExitCode = [int]$scenario.authExit; return }
+        Write-Output 'authenticated'
+        $script:FakeExitCode = 0
+        return
+    }
+    if ($args.Count -ge 2 -and $args[0] -eq 'api' -and $args[1] -eq 'graphql') {
+        $cursor = 'first'
+        foreach ($argument in $args) { if ($argument -like 'cursor=*') { $cursor = $argument.Substring(7) } }
+        $key = "graphql:$cursor"
+    }
+    elseif ($args.Count -ge 4 -and $args[0] -eq 'api' -and $args[1] -eq '--method' -and $args[2] -eq 'GET') {
+        $key = [string]$args[3]
+    }
+    else {
+        Write-Error 'HTTP 405'
+        $script:FakeExitCode = 9
+        return
+    }
+    $property = $scenario.responses.PSObject.Properties[$key]
+    if ($null -eq $property) { Write-Error 'HTTP 500 unmapped fixture call'; $script:FakeExitCode = 8; return }
+    $response = $property.Value
+    if ([int]$response.exitCode -ne 0) {
+        Write-Error "HTTP $($response.httpStatus)"
+        $script:FakeExitCode = [int]$response.exitCode
+        return
+    }
+    $response.body | ConvertTo-Json -Depth 100 -Compress
+    $script:FakeExitCode = 0
+}
+$script:FakeExitCode = 0
+Invoke-FakeGitHub @args
+$global:LASTEXITCODE = $script:FakeExitCode
+'@ | Set-Content -LiteralPath $scriptPath -Encoding utf8NoBOM
+    [pscustomobject]@{ Directory = $directory; LogPath = $logPath; ScenarioPath = $scenarioPath }
+}
+
+function Add-FakeGitHubResponse {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Responses,
+        [Parameter(Mandatory = $true)][string]$Key,
+        [AllowNull()]$Body,
+        [int]$ExitCode = 0,
+        [int]$HttpStatus = 200
+    )
+    $Responses[$Key] = [pscustomobject][ordered]@{ exitCode = $ExitCode; httpStatus = $HttpStatus; body = $Body }
+}
+
+function New-GitHubSuccessScenario {
+    param(
+        [Parameter(Mandatory = $true)][object]$Fixture,
+        [string]$Account = 'aaron8819',
+        [string]$ObservedOwner = 'aaron8819',
+        [string]$ObservedRepository = 'trainer-app',
+        [string]$DefaultBranch = 'master',
+        [string]$TaskBranch = 'codex/remote-github-status',
+        [bool]$TaskBranchExists = $false,
+        [object[]]$PullRequests = @(),
+        [object[]]$Workflows = @(),
+        [object[]]$Statuses = @(),
+        [object[]]$CheckRuns = @(),
+        [object[]]$Deployments = @(),
+        [AllowNull()]$Protection = $null,
+        [object[]]$Rulesets = @()
+    )
+
+    $localHead = [string](Invoke-GitFixture -Repository $Fixture.Repository -Arguments @('rev-parse', 'HEAD'))
+    $defaultSha = '1111111111111111111111111111111111111111'
+    $taskSha = '2222222222222222222222222222222222222222'
+    $responses = @{}
+    Add-FakeGitHubResponse -Responses $responses -Key '/user' -Body ([pscustomobject]@{ login = $Account })
+    Add-FakeGitHubResponse -Responses $responses -Key '/repos/aaron8819/trainer-app' -Body ([pscustomobject]@{
+        id = 12345; node_id = 'R_fixture'; name = $ObservedRepository; full_name = "$ObservedOwner/$ObservedRepository"
+        owner = [pscustomobject]@{ login = $ObservedOwner }; visibility = 'private'; private = $true; default_branch = $DefaultBranch
+    })
+    Add-FakeGitHubResponse -Responses $responses -Key '/repos/aaron8819/trainer-app/branches/master' -Body ([pscustomobject]@{ commit = [pscustomobject]@{ sha = $defaultSha } })
+    Add-FakeGitHubResponse -Responses $responses -Key "/repos/aaron8819/trainer-app/compare/$localHead...$defaultSha" -Body ([pscustomobject]@{ status = 'ahead'; ahead_by = 1; behind_by = 0 })
+    $branchKey = '/repos/aaron8819/trainer-app/branches/' + [uri]::EscapeDataString($TaskBranch)
+    if ($TaskBranchExists) {
+        Add-FakeGitHubResponse -Responses $responses -Key $branchKey -Body ([pscustomobject]@{ commit = [pscustomobject]@{ sha = $taskSha } })
+        Add-FakeGitHubResponse -Responses $responses -Key "/repos/aaron8819/trainer-app/compare/$defaultSha...$taskSha" -Body ([pscustomobject]@{ status = 'ahead'; ahead_by = 2; behind_by = 0 })
+    }
+    else {
+        Add-FakeGitHubResponse -Responses $responses -Key $branchKey -Body $null -ExitCode 1 -HttpStatus 404
+    }
+    $head = [uri]::EscapeDataString("aaron8819:$TaskBranch")
+    Add-FakeGitHubResponse -Responses $responses -Key "/repos/aaron8819/trainer-app/pulls?state=all&head=$head&per_page=100&page=1" -Body @($PullRequests)
+    Add-FakeGitHubResponse -Responses $responses -Key '/repos/aaron8819/trainer-app/actions/workflows?per_page=100&page=1' -Body ([pscustomobject]@{ workflows = @($Workflows) })
+    Add-FakeGitHubResponse -Responses $responses -Key "/repos/aaron8819/trainer-app/commits/$defaultSha/statuses?per_page=100&page=1" -Body @($Statuses)
+    Add-FakeGitHubResponse -Responses $responses -Key "/repos/aaron8819/trainer-app/commits/$defaultSha/check-runs?per_page=100&page=1" -Body ([pscustomobject]@{ total_count = $CheckRuns.Count; check_runs = @($CheckRuns) })
+    if ($null -eq $Protection) {
+        Add-FakeGitHubResponse -Responses $responses -Key '/repos/aaron8819/trainer-app/branches/master/protection' -Body $null -ExitCode 1 -HttpStatus 404
+    }
+    else {
+        Add-FakeGitHubResponse -Responses $responses -Key '/repos/aaron8819/trainer-app/branches/master/protection' -Body $Protection
+    }
+    Add-FakeGitHubResponse -Responses $responses -Key '/repos/aaron8819/trainer-app/rulesets?includes_parents=true&targets=branch&per_page=100&page=1' -Body @($Rulesets)
+    Add-FakeGitHubResponse -Responses $responses -Key "/repos/aaron8819/trainer-app/deployments?sha=$defaultSha&per_page=100&page=1" -Body @($Deployments)
+    foreach ($deployment in @($Deployments)) {
+        Add-FakeGitHubResponse -Responses $responses -Key "/repos/aaron8819/trainer-app/deployments/$($deployment.id)/statuses?per_page=100&page=1" -Body @([pscustomobject]@{ state = 'success' })
+    }
+    [pscustomobject][ordered]@{ authExit = 0; responses = $responses; localHead = $localHead; defaultSha = $defaultSha; taskSha = $taskSha }
 }
 
 function Write-FixtureRemoteIdentity {
@@ -311,6 +439,7 @@ function Assert-Equal {
 function Invoke-Test {
     param([Parameter(Mandatory = $true)][string]$Name, [Parameter(Mandatory = $true)][scriptblock]$Body)
 
+    if (-not [string]::IsNullOrWhiteSpace($Filter) -and $Name -notlike $Filter) { return }
     $script:TestsRun++
     try {
         & $Body
@@ -1391,18 +1520,404 @@ Invoke-Test 'remote status never invokes provider HTTP or database tools' {
 
 Invoke-Test 'remote status source does not read environment values or invoke network APIs' {
     $source = Get-Content -Raw -LiteralPath $sourceRemoteStatus
+    $githubSource = Get-Content -Raw -LiteralPath $sourceGitHubModule
     Assert-True (-not [regex]::IsMatch($source, '(?i)\$env:|GetEnvironmentVariable|Get-ChildItem\s+Env:')) 'Remote status reads environment values.'
+    Assert-True (-not [regex]::IsMatch($githubSource, '(?i)\$env:|GetEnvironmentVariable|Get-ChildItem\s+Env:')) 'GitHub provider reads environment values.'
     Assert-True (-not [regex]::IsMatch($source, '(?i)Invoke-WebRequest|Invoke-RestMethod|HttpClient|WebClient')) 'Remote status contains an HTTP API invocation.'
+    Assert-True (-not [regex]::IsMatch($githubSource, '(?i)Invoke-WebRequest|Invoke-RestMethod|HttpClient|WebClient')) 'GitHub provider bypasses the registered gh boundary.'
     Assert-True (-not [regex]::IsMatch($source, '(?im)^\s*(?:&\s*)?(?:gh|vercel|supabase|psql|curl)(?:\.exe|\.cmd)?(?:[ \t]+(?![ \t]*=)|$)')) 'Remote status contains a provider, HTTP, or database executable invocation.'
+    Assert-True (-not [regex]::IsMatch($source + $githubSource, "(?i)'(?:fetch|pull|push|merge|checkout|switch)'")) 'Remote status contains a forbidden Git mutation argument.'
 }
 
-Invoke-Test 'unsupported authenticated scopes exit 2' {
+Invoke-Test 'incomplete or unsafe GitHub expected identity blocks before provider access' {
+    foreach ($case in @(
+            [pscustomobject]@{ field = 'owner'; value = $null; label = 'missing owner'; blocker = 'github.owner' },
+            [pscustomobject]@{ field = 'repository'; value = $null; label = 'missing repository'; blocker = 'github.repository' },
+            [pscustomobject]@{ field = 'defaultBranch'; value = $null; label = 'missing default branch'; blocker = 'github.defaultBranch' },
+            [pscustomobject]@{ field = 'owner'; value = 'https://example.invalid/?token=do-not-report'; label = 'unsafe owner'; blocker = 'Unsafe' }
+        )) {
+        $fixture = New-RemoteTestRepository
+        try {
+            $identity = Get-Content -Raw -LiteralPath $fixture.RemoteIdentity | ConvertFrom-Json -Depth 100
+            $identity.github.PSObject.Properties[$case.field].Value = $case.value
+            Write-FixtureRemoteIdentity -Fixture $fixture -Identity $identity
+            $fake = New-FakeGitHubCli -Fixture $fixture -Scenario ([pscustomobject]@{ authExit = 0; responses = @{} })
+
+            $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -PathPrefix $fake.Directory
+            $report = $result.Text | ConvertFrom-Json -Depth 100
+            Assert-Equal $result.ExitCode 1 "$($case.label) must return a valid blocked report."
+            Assert-Equal $report.schema 'trainer-remote-status' "$($case.label) report schema mismatch."
+            Assert-Equal $report.version 1 "$($case.label) report version mismatch."
+            Assert-True $report.inspectionOnly "$($case.label) report must remain inspection-only."
+            Assert-True (-not $report.networkAccessed) "$($case.label) must stop before network access."
+            Assert-True (-not $report.databaseAccessed) "$($case.label) must remain database-free."
+            Assert-Equal $report.providers.github.liveState 'blocked' "$($case.label) provider state mismatch."
+            Assert-Equal $report.providers.github.live $null "$($case.label) must not report authentication or repository state."
+            Assert-True (@($report.blockers | Where-Object { $_ -match [regex]::Escape($case.blocker) }).Count -eq 1) "$($case.label) blocker missing."
+            Assert-True (-not $result.Text.Contains('do-not-report')) "$($case.label) leaked an unsafe identity value."
+
+            if ($case.field -eq 'owner') {
+                $human = Invoke-RemoteStatus -Fixture $fixture -GitHub -PathPrefix $fake.Directory
+                Assert-Equal $human.ExitCode 1 'Incomplete GitHub identity human report must exit 1.'
+                Assert-True $human.Text.Contains('Trainer GitHub remote status (blocked before provider access)') 'Pre-provider human heading missing.'
+                Assert-True $human.Text.Contains('No GitHub tool discovery, authentication, or network request was attempted.') 'Pre-provider human guarantee missing.'
+            }
+
+            $callCount = if (Test-Path -LiteralPath $fake.LogPath) { @(Get-Content -LiteralPath $fake.LogPath).Count } else { 0 }
+            Assert-Equal $callCount 0 "$($case.label) invoked fake gh."
+        }
+        finally { Remove-TestRepository -Fixture $fixture }
+    }
+}
+
+Invoke-Test 'GitHub scope requires an available gh executable' {
     $fixture = New-RemoteTestRepository
     try {
-        $output = @(& pwsh -NoProfile -File $fixture.RemoteStatus -GitHub -Json 2>&1)
-        Assert-Equal $LASTEXITCODE 2 'Unsupported GitHub scope must exit 2.'
-        $report = ($output -join "`n") | ConvertFrom-Json
-        Assert-Equal $report.schema 'trainer-remote-status-error' 'Unsupported-scope error schema mismatch.'
+        $pathParts = @(
+            Split-Path -Parent (Get-Command pwsh -CommandType Application).Source
+            Split-Path -Parent (Get-Command git -CommandType Application).Source
+            "$env:SystemRoot\System32"
+        ) | Select-Object -Unique
+        $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch 'codex/remote-github-status' -PathPrefix ($pathParts -join [System.IO.Path]::PathSeparator) -ReplacePath
+        $report = $result.Text | ConvertFrom-Json
+        Assert-Equal $result.ExitCode 1 'Missing gh must return a valid blocked report.'
+        Assert-Equal $report.providers.github.live.authentication.status 'tool-missing' 'Missing gh category mismatch.'
+        Assert-True $report.networkAccessed 'Explicit GitHub scope must report networkAccessed even when capability is blocked.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'GitHub authentication failure is blocked without remediation' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $fake = New-FakeGitHubCli -Fixture $fixture -Scenario ([pscustomobject]@{ authExit = 1; responses = @{} })
+        $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch 'codex/remote-github-status' -PathPrefix $fake.Directory
+        $report = $result.Text | ConvertFrom-Json
+        Assert-Equal $result.ExitCode 1 "Unauthenticated GitHub status must be blocked. Output: $($result.Text)"
+        Assert-Equal $report.providers.github.live.authentication.status 'not-authenticated' 'Authentication category mismatch.'
+        Assert-Equal @($report.providers.github.live.evidence).Count 1 'Authentication failure must stop before repository reads.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'GitHub identity match returns live repository branch checks and deployment absence' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $scenario = New-GitHubSuccessScenario -Fixture $fixture
+        $fake = New-FakeGitHubCli -Fixture $fixture -Scenario $scenario
+        $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch 'codex/remote-github-status' -PathPrefix $fake.Directory
+        $report = $result.Text | ConvertFrom-Json
+        $callLog = if (Test-Path -LiteralPath $fake.LogPath) { Get-Content -Raw -LiteralPath $fake.LogPath } else { 'no calls' }
+        Assert-Equal $result.ExitCode 0 "Valid GitHub read should succeed. Output: $($result.Text) Calls: $callLog"
+        $github = $report.providers.github.live
+        Assert-Equal $github.authentication.status 'authenticated' 'Authenticated category mismatch.'
+        Assert-True $github.identity.match 'Expected and observed identity should match.'
+        Assert-Equal $github.repository.id 12345 'Immutable repository ID missing.'
+        Assert-Equal $github.branch.defaultBranch.sha $scenario.defaultSha 'Default-branch SHA mismatch.'
+        Assert-True $github.branch.local.containedInDefaultBranch 'Local containment should be true.'
+        Assert-Equal $github.branch.remote.exists $false 'Absent task branch mismatch.'
+        Assert-Equal $github.pullRequest.status 'absent' 'Absent PR mismatch.'
+        Assert-Equal $github.checks.statusRollup 'no-checks-configured' 'No-workflow check status mismatch.'
+        Assert-Equal $github.deployments.recordsPresent $false 'Deployment absence mismatch.'
+        Assert-True (-not $github.deployments.provesActiveVercelProduction) 'GitHub deployments must not imply Vercel production.'
+        Assert-True $report.inspectionOnly 'GitHub report must remain inspection-only.'
+        Assert-True $report.networkAccessed 'GitHub report must record network access.'
+        Assert-True (-not $report.databaseAccessed) 'GitHub report must remain database-free.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'unpushed local commit containment 404 is non-blocking and explicit' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $scenario = New-GitHubSuccessScenario -Fixture $fixture
+        Add-FakeGitHubResponse -Responses $scenario.responses -Key "/repos/aaron8819/trainer-app/compare/$($scenario.localHead)...$($scenario.defaultSha)" -Body $null -ExitCode 1 -HttpStatus 404
+        $fake = New-FakeGitHubCli -Fixture $fixture -Scenario $scenario
+        $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch 'codex/remote-github-status' -PathPrefix $fake.Directory
+        $report = $result.Text | ConvertFrom-Json -Depth 100
+        $github = $report.providers.github.live
+
+        Assert-Equal $result.ExitCode 0 "Unpushed containment 404 must remain a valid successful status read. Output: $($result.Text)"
+        Assert-True $github.identity.match 'Containment 404 must not change repository identity matching.'
+        Assert-Equal $github.branch.local.containmentStatus 'not-remotely-addressable' 'Containment 404 classification mismatch.'
+        Assert-Equal $github.branch.local.containedInDefaultBranch $null 'Containment must remain unknown for an unpushed commit.'
+        Assert-True (@($github.warnings | Where-Object { $_ -match 'unpushed candidate' }).Count -eq 1) 'Unpushed-candidate warning missing.'
+        Assert-Equal @($github.blockers | Where-Object { $_ -match 'Containment' }).Count 0 'Containment 404 was incorrectly treated as a blocker.'
+        Assert-Equal @($github.evidence | Where-Object { $_.operation -eq 'Actions workflows page 1' }).Count 1 'Broader collection did not continue after containment 404.'
+        Assert-Equal @($github.evidence | Where-Object { $_.operation -eq 'GitHub deployments page 1' }).Count 1 'Deployment evidence was not collected after containment 404.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'wrong authenticated GitHub account fails before repository lookup' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $scenario = New-GitHubSuccessScenario -Fixture $fixture -Account 'someone-else'
+        $fake = New-FakeGitHubCli -Fixture $fixture -Scenario $scenario
+        $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch 'codex/remote-github-status' -PathPrefix $fake.Directory
+        $report = $result.Text | ConvertFrom-Json
+        Assert-Equal $result.ExitCode 1 'Wrong account must be blocked.'
+        Assert-Equal $report.providers.github.live.authentication.status 'wrong-account' 'Wrong-account category mismatch.'
+        Assert-Equal @($report.providers.github.live.evidence).Count 2 'Wrong account must stop before repository identity lookup.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'observed GitHub owner repository and default branch mismatches fail closed' {
+    foreach ($case in @(
+            [pscustomobject]@{ owner = 'other-owner'; repository = 'trainer-app'; branch = 'master'; label = 'owner' },
+            [pscustomobject]@{ owner = 'aaron8819'; repository = 'other-repo'; branch = 'master'; label = 'repository' },
+            [pscustomobject]@{ owner = 'aaron8819'; repository = 'trainer-app'; branch = 'main'; label = 'default branch' }
+        )) {
+        $fixture = New-RemoteTestRepository
+        try {
+            $scenario = New-GitHubSuccessScenario -Fixture $fixture -ObservedOwner $case.owner -ObservedRepository $case.repository -DefaultBranch $case.branch
+            $fake = New-FakeGitHubCli -Fixture $fixture -Scenario $scenario
+            $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch 'codex/remote-github-status' -PathPrefix $fake.Directory
+            $report = $result.Text | ConvertFrom-Json
+            Assert-Equal $result.ExitCode 1 "$($case.label) mismatch must be blocked."
+            Assert-True (-not $report.providers.github.live.identity.match) "$($case.label) mismatch must not be reported as a match."
+            Assert-Equal @($report.providers.github.live.evidence).Count 3 "$($case.label) mismatch must stop after repository identity."
+        }
+        finally { Remove-TestRepository -Fixture $fixture }
+    }
+}
+
+Invoke-Test 'inaccessible expected repository is an insufficient-access blocker' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $scenario = New-GitHubSuccessScenario -Fixture $fixture
+        Add-FakeGitHubResponse -Responses $scenario.responses -Key '/repos/aaron8819/trainer-app' -Body $null -ExitCode 1 -HttpStatus 404
+        $fake = New-FakeGitHubCli -Fixture $fixture -Scenario $scenario
+        $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch 'codex/remote-github-status' -PathPrefix $fake.Directory
+        $report = $result.Text | ConvertFrom-Json
+        Assert-Equal $result.ExitCode 1 'Inaccessible repository must be blocked.'
+        Assert-Equal $report.providers.github.live.authentication.status 'insufficient-access' 'Repository access category mismatch.'
+        Assert-Equal @($report.providers.github.live.evidence).Count 3 'Inaccessible repository must stop at identity lookup.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'remote task branch presence and divergence are reported' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $scenario = New-GitHubSuccessScenario -Fixture $fixture -TaskBranchExists $true
+        $fake = New-FakeGitHubCli -Fixture $fixture -Scenario $scenario
+        $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch 'codex/remote-github-status' -PathPrefix $fake.Directory
+        $github = ($result.Text | ConvertFrom-Json).providers.github.live
+        Assert-Equal $result.ExitCode 0 'Remote branch fixture should succeed.'
+        Assert-True $github.branch.remote.exists 'Remote branch should be present.'
+        Assert-Equal $github.branch.remote.sha $scenario.taskSha 'Remote branch SHA mismatch.'
+        Assert-Equal $github.branch.remote.comparisonToDefault 'ahead' 'Remote branch comparison mismatch.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'pull request draft mergeability review decision and unresolved threads are reported' {
+    foreach ($case in @(
+            [pscustomobject]@{ draft = $true; mergeable = 'UNKNOWN'; mergeState = 'UNKNOWN'; review = $null; unresolved = 0; label = 'draft' },
+            [pscustomobject]@{ draft = $false; mergeable = 'MERGEABLE'; mergeState = 'CLEAN'; review = 'APPROVED'; unresolved = 1; label = 'mergeable' },
+            [pscustomobject]@{ draft = $false; mergeable = 'CONFLICTING'; mergeState = 'DIRTY'; review = 'CHANGES_REQUESTED'; unresolved = 2; label = 'conflicting' }
+        )) {
+        $fixture = New-RemoteTestRepository
+        try {
+            $branch = 'codex/remote-github-status'
+            $pull = [pscustomobject]@{
+                number = 17; state = 'open'; draft = $case.draft; html_url = 'https://github.com/aaron8819/trainer-app/pull/17'
+                base = [pscustomobject]@{ ref = 'master' }
+                head = [pscustomobject]@{ ref = $branch; sha = '2222222222222222222222222222222222222222'; repo = [pscustomobject]@{ full_name = 'aaron8819/trainer-app' } }
+            }
+            $scenario = New-GitHubSuccessScenario -Fixture $fixture -TaskBranchExists $true -PullRequests @($pull)
+            $threads = @()
+            for ($index = 0; $index -lt $case.unresolved; $index++) { $threads += [pscustomobject]@{ isResolved = $false } }
+            Add-FakeGitHubResponse -Responses $scenario.responses -Key 'graphql:first' -Body ([pscustomobject]@{
+                data = [pscustomobject]@{ repository = [pscustomobject]@{ pullRequest = [pscustomobject]@{
+                    isDraft = $case.draft; mergeable = $case.mergeable; mergeStateStatus = $case.mergeState; reviewDecision = $case.review
+                    reviewThreads = [pscustomobject]@{ nodes = $threads; pageInfo = [pscustomobject]@{ hasNextPage = $false; endCursor = $null } }
+                } } }
+            })
+            $fake = New-FakeGitHubCli -Fixture $fixture -Scenario $scenario
+            $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch $branch -PathPrefix $fake.Directory
+            $callLog = if (Test-Path -LiteralPath $fake.LogPath) { Get-Content -Raw -LiteralPath $fake.LogPath } else { 'no calls' }
+            Assert-Equal $result.ExitCode 0 "$($case.label) PR fixture should succeed. Output: $($result.Text) Calls: $callLog"
+            $github = ($result.Text | ConvertFrom-Json).providers.github.live
+            Assert-Equal $github.pullRequest.number 17 "$($case.label) PR number mismatch."
+            Assert-Equal $github.pullRequest.draft $case.draft "$($case.label) draft state mismatch."
+            Assert-Equal $github.pullRequest.mergeability $case.mergeable.ToLowerInvariant() "$($case.label) mergeability mismatch."
+            Assert-Equal $github.pullRequest.unresolvedThreads $case.unresolved "$($case.label) unresolved-thread count mismatch."
+            Assert-True $github.pullRequest.reviewThreadsComplete "$($case.label) thread read should be complete."
+        }
+        finally { Remove-TestRepository -Fixture $fixture }
+    }
+}
+
+Invoke-Test 'review-thread GraphQL pagination and partial errors are explicit' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $branch = 'codex/remote-github-status'
+        $pull = [pscustomobject]@{
+            number = 21; state = 'open'; draft = $false; html_url = 'https://github.com/aaron8819/trainer-app/pull/21'
+            base = [pscustomobject]@{ ref = 'master' }
+            head = [pscustomobject]@{ ref = $branch; sha = '2'; repo = [pscustomobject]@{ full_name = 'aaron8819/trainer-app' } }
+        }
+        $scenario = New-GitHubSuccessScenario -Fixture $fixture -PullRequests @($pull)
+        Add-FakeGitHubResponse -Responses $scenario.responses -Key 'graphql:first' -Body ([pscustomobject]@{
+            data = [pscustomobject]@{ repository = [pscustomobject]@{ pullRequest = [pscustomobject]@{
+                isDraft = $false; mergeable = 'UNKNOWN'; mergeStateStatus = 'UNKNOWN'; reviewDecision = $null
+                reviewThreads = [pscustomobject]@{ nodes = @([pscustomobject]@{ isResolved = $false }); pageInfo = [pscustomobject]@{ hasNextPage = $true; endCursor = 'page2' } }
+            } } }
+        })
+        Add-FakeGitHubResponse -Responses $scenario.responses -Key 'graphql:page2' -Body ([pscustomobject]@{
+            data = [pscustomobject]@{ repository = [pscustomobject]@{ pullRequest = [pscustomobject]@{
+                isDraft = $false; mergeable = 'UNKNOWN'; mergeStateStatus = 'UNKNOWN'; reviewDecision = $null
+                reviewThreads = [pscustomobject]@{ nodes = @([pscustomobject]@{ isResolved = $true }); pageInfo = [pscustomobject]@{ hasNextPage = $false; endCursor = $null } }
+            } } }
+            errors = @([pscustomobject]@{ type = 'FORBIDDEN'; message = 'redacted fixture error' })
+        })
+        $fake = New-FakeGitHubCli -Fixture $fixture -Scenario $scenario
+        $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch $branch -PathPrefix $fake.Directory
+        $callLog = if (Test-Path -LiteralPath $fake.LogPath) { Get-Content -Raw -LiteralPath $fake.LogPath } else { 'no calls' }
+        Assert-Equal $result.ExitCode 0 "Partial review-thread data should be a valid report with a warning. Output: $($result.Text) Calls: $callLog"
+        $github = ($result.Text | ConvertFrom-Json).providers.github.live
+        Assert-Equal $github.pullRequest.unresolvedThreads 1 'Paginated unresolved-thread count mismatch.'
+        Assert-True (-not $github.pullRequest.reviewThreadsComplete) 'GraphQL errors must mark thread data partial.'
+        Assert-True (@($github.warnings | Where-Object { $_ -match 'partial' }).Count -gt 0) 'GraphQL partial-data warning missing.'
+        Assert-Equal @($github.evidence | Where-Object { $_.operation -eq 'pull request review threads' }).Count 2 'GraphQL pagination call count mismatch.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'checks distinguish not-run pending failed passed and required configuration' {
+    foreach ($case in @(
+            [pscustomobject]@{ label = 'not-run'; workflows = @([pscustomobject]@{ name = 'CI' }); runs = @(); statuses = @(); expected = 'checks-not-run'; exit = 0 },
+            [pscustomobject]@{ label = 'pending'; workflows = @([pscustomobject]@{ name = 'CI' }); runs = @([pscustomobject]@{ name = 'build'; status = 'in_progress'; conclusion = $null }); statuses = @(); expected = 'pending'; exit = 0 },
+            [pscustomobject]@{ label = 'failed'; workflows = @([pscustomobject]@{ name = 'CI' }); runs = @([pscustomobject]@{ name = 'build'; status = 'completed'; conclusion = 'failure' }); statuses = @(); expected = 'failed'; exit = 1 },
+            [pscustomobject]@{ label = 'categories'; workflows = @([pscustomobject]@{ name = 'CI' }); runs = @([pscustomobject]@{ name = 'build'; status = 'completed'; conclusion = 'cancelled' }, [pscustomobject]@{ name = 'skipped'; status = 'completed'; conclusion = 'skipped' }, [pscustomobject]@{ name = 'neutral'; status = 'completed'; conclusion = 'neutral' }); statuses = @(); expected = 'failed'; exit = 1 },
+            [pscustomobject]@{ label = 'passed'; workflows = @([pscustomobject]@{ name = 'CI' }); runs = @([pscustomobject]@{ name = 'build'; status = 'completed'; conclusion = 'success' }); statuses = @([pscustomobject]@{ context = 'legacy'; state = 'success' }); expected = 'passed'; exit = 0 }
+        )) {
+        $fixture = New-RemoteTestRepository
+        try {
+            $protection = [pscustomobject]@{
+                required_status_checks = [pscustomobject]@{ contexts = @('build') }
+                required_pull_request_reviews = [pscustomobject]@{ required_approving_review_count = 2 }
+            }
+            $scenario = New-GitHubSuccessScenario -Fixture $fixture -Workflows $case.workflows -CheckRuns $case.runs -Statuses $case.statuses -Protection $protection
+            $fake = New-FakeGitHubCli -Fixture $fixture -Scenario $scenario
+            $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch 'codex/remote-github-status' -PathPrefix $fake.Directory
+            $github = ($result.Text | ConvertFrom-Json).providers.github.live
+            Assert-Equal $result.ExitCode $case.exit "$($case.label) check exit mismatch."
+            Assert-Equal $github.checks.statusRollup $case.expected "$($case.label) rollup mismatch."
+            Assert-Equal $github.checks.requiredChecksResolution 'available' "$($case.label) required-check resolution mismatch."
+            Assert-Equal $github.protection.requiredApprovals 2 "$($case.label) required approvals mismatch."
+            if ($case.label -eq 'passed') { Assert-True $github.checks.allRequiredChecksPassed 'Passed required check must be reported true.' }
+            if ($case.label -eq 'failed') { Assert-Equal @($github.checks.failingRequiredChecks).Count 1 'Failing required check missing.' }
+            if ($case.label -eq 'categories') {
+                Assert-Equal $github.checks.checkRuns.cancelled 1 'Cancelled check count mismatch.'
+                Assert-Equal $github.checks.checkRuns.skipped 1 'Skipped check count mismatch.'
+                Assert-Equal $github.checks.checkRuns.neutral 1 'Neutral check count mismatch.'
+            }
+        }
+        finally { Remove-TestRepository -Fixture $fixture }
+    }
+}
+
+Invoke-Test 'required checks remain unresolved when rulesets may add requirements' {
+    foreach ($case in @(
+            [pscustomobject]@{ label = 'ruleset-present'; rulesetResponse = @([pscustomobject]@{ name = 'default-branch-policy' }); exitCode = 0; httpStatus = 200 },
+            [pscustomobject]@{ label = 'ruleset-permission-gap'; rulesetResponse = $null; exitCode = 1; httpStatus = 403 }
+        )) {
+        $fixture = New-RemoteTestRepository
+        try {
+            $protection = [pscustomobject]@{
+                required_status_checks = [pscustomobject]@{ contexts = @('build') }
+            }
+            $scenario = New-GitHubSuccessScenario -Fixture $fixture -Protection $protection -CheckRuns @(
+                [pscustomobject]@{ name = 'build'; status = 'completed'; conclusion = 'success' }
+            )
+            Add-FakeGitHubResponse -Responses $scenario.responses -Key '/repos/aaron8819/trainer-app/rulesets?includes_parents=true&targets=branch&per_page=100&page=1' -Body $case.rulesetResponse -ExitCode $case.exitCode -HttpStatus $case.httpStatus
+            $fake = New-FakeGitHubCli -Fixture $fixture -Scenario $scenario
+            $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch 'codex/remote-github-status' -PathPrefix $fake.Directory
+            $github = ($result.Text | ConvertFrom-Json).providers.github.live
+            Assert-Equal $result.ExitCode 0 "$($case.label) should remain a valid partial report."
+            Assert-Equal $github.checks.requiredChecksResolution 'unavailable' "$($case.label) required-check resolution mismatch."
+            Assert-Equal $github.checks.allRequiredChecksPassed $null "$($case.label) must not claim required-check success."
+        }
+        finally { Remove-TestRepository -Fixture $fixture }
+    }
+}
+
+Invoke-Test 'workflow pagination protection permission gap and deployment records are explicit' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $deployment = [pscustomobject]@{ id = 88; environment = 'Preview'; sha = '1111111111111111111111111111111111111111' }
+        $scenario = New-GitHubSuccessScenario -Fixture $fixture -Deployments @($deployment)
+        $firstPage = @(1..100 | ForEach-Object { [pscustomobject]@{ name = "workflow-$_" } })
+        Add-FakeGitHubResponse -Responses $scenario.responses -Key '/repos/aaron8819/trainer-app/actions/workflows?per_page=100&page=1' -Body ([pscustomobject]@{ workflows = $firstPage })
+        Add-FakeGitHubResponse -Responses $scenario.responses -Key '/repos/aaron8819/trainer-app/actions/workflows?per_page=100&page=2' -Body ([pscustomobject]@{ workflows = @([pscustomobject]@{ name = 'workflow-101' }) })
+        $fake = New-FakeGitHubCli -Fixture $fixture -Scenario $scenario
+        $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch 'codex/remote-github-status' -PathPrefix $fake.Directory
+        $github = ($result.Text | ConvertFrom-Json).providers.github.live
+        Assert-Equal $result.ExitCode 0 'Pagination/deployment fixture should succeed.'
+        Assert-Equal $github.checks.workflows.count 101 'Workflow pagination count mismatch.'
+        Assert-Equal $github.protection.classicBranchProtection 'unavailable' 'Protection permission gap mismatch.'
+        Assert-Equal $github.checks.requiredChecksResolution 'unavailable' 'Unavailable required-check configuration mismatch.'
+        Assert-Equal $github.checks.allRequiredChecksPassed $null 'Required-check pass claim must remain null when unavailable.'
+        Assert-True $github.deployments.recordsPresent 'GitHub deployment record should be present.'
+        Assert-Equal $github.deployments.records[0].latestStatus 'success' 'Deployment latest status mismatch.'
+        Assert-True (-not $github.deployments.provesActiveVercelProduction) 'Deployment record must not imply active Vercel state.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'GitHub rate limits and required check API failures produce valid blocked reports' {
+    foreach ($target in @('repository', 'checks')) {
+        $fixture = New-RemoteTestRepository
+        try {
+            $scenario = New-GitHubSuccessScenario -Fixture $fixture
+            if ($target -eq 'repository') {
+                Add-FakeGitHubResponse -Responses $scenario.responses -Key '/repos/aaron8819/trainer-app' -Body $null -ExitCode 1 -HttpStatus 429
+            }
+            else {
+                Add-FakeGitHubResponse -Responses $scenario.responses -Key "/repos/aaron8819/trainer-app/commits/$($scenario.defaultSha)/check-runs?per_page=100&page=1" -Body $null -ExitCode 1 -HttpStatus 500
+            }
+            $fake = New-FakeGitHubCli -Fixture $fixture -Scenario $scenario
+            $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Json -Branch 'codex/remote-github-status' -PathPrefix $fake.Directory
+            $report = $result.Text | ConvertFrom-Json
+            Assert-Equal $result.ExitCode 1 "$target API failure must return a valid blocked report."
+            Assert-True (@($report.blockers).Count -gt 0) "$target API failure blocker missing."
+        }
+        finally { Remove-TestRepository -Fixture $fixture }
+    }
+}
+
+Invoke-Test 'GitHub human output is sanitized and fake command audit is read-only' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $scenario = New-GitHubSuccessScenario -Fixture $fixture
+        $fake = New-FakeGitHubCli -Fixture $fixture -Scenario $scenario
+        $before = @(& git -C $fixture.Repository status --porcelain=v1 --untracked-files=all) -join "`n"
+        $result = Invoke-RemoteStatus -Fixture $fixture -GitHub -Branch 'codex/remote-github-status' -PathPrefix $fake.Directory
+        $after = @(& git -C $fixture.Repository status --porcelain=v1 --untracked-files=all) -join "`n"
+        Assert-Equal $result.ExitCode 0 'Human GitHub report should succeed.'
+        Assert-True $result.Text.Contains('Trainer authenticated GitHub remote status') 'Human GitHub heading missing.'
+        Assert-True $result.Text.Contains('not Vercel production proof') 'Vercel distinction missing from human output.'
+        Assert-Equal $after $before 'Authenticated read changed fixture repository state.'
+        $calls = Get-Content -Raw -LiteralPath $fake.LogPath
+        Assert-True (-not [regex]::IsMatch($calls, '(?i)\b(push|pull|fetch|merge|mutation|POST|PUT|PATCH|DELETE|rerun|dispatch|secret|variable)\b')) 'Fake gh audit observed a mutation-capable token.'
+        Assert-True (-not [regex]::IsMatch($result.Text, '(?i)(bearer|authorization:|token=|password=)')) 'Human output exposed a credential-like value.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'unsupported later provider scopes and branch without GitHub exit 2' {
+    $fixture = New-RemoteTestRepository
+    try {
+        foreach ($arguments in @(@('-Deployment'), @('-Database'), @('-All'), @('-Branch', 'master'), @('-GitHub', '-Branch', 'bad..branch'))) {
+            $output = @(& pwsh -NoProfile -File $fixture.RemoteStatus @arguments -Json 2>&1)
+            Assert-Equal $LASTEXITCODE 2 'Unsupported or incompatible scope must exit 2.'
+            $report = ($output -join "`n") | ConvertFrom-Json
+            Assert-Equal $report.schema 'trainer-remote-status-error' 'Unsupported-scope error schema mismatch.'
+        }
     }
     finally { Remove-TestRepository -Fixture $fixture }
 }
@@ -1425,7 +1940,7 @@ Invoke-Test 'offline remote status does not mutate repository state' {
     finally { Remove-TestRepository -Fixture $fixture }
 }
 
-Invoke-Test 'remote command registry metadata is read-only and offline' {
+Invoke-Test 'remote command registry metadata preserves offline default and explicit GitHub network read escalation' {
     $policy = Get-Content -Raw -LiteralPath $sourcePolicy | ConvertFrom-Json -Depth 100
     $entry = @($policy.commandRegistry | Where-Object { $_.id -eq 'codex-remote-status' })
     Assert-Equal $entry.Count 1 'Remote status registry entry missing.'
@@ -1436,6 +1951,11 @@ Invoke-Test 'remote command registry metadata is read-only and offline' {
     Assert-True (-not $profile.writesLocalArtifacts) 'Remote status metadata allows local writes.'
     Assert-True (-not $profile.writesTrackedFiles) 'Remote status metadata allows tracked writes.'
     Assert-Equal $profile.authorizationRequirement 'none' 'Remote status should not require authorization.'
+    $githubEscalation = @($entry[0].flagEscalations | Where-Object { $_.flag -eq '-GitHub' })
+    Assert-Equal $githubEscalation.Count 1 'Explicit GitHub escalation missing.'
+    Assert-Equal $githubEscalation[0].profile 'network-read-only' 'GitHub escalation profile mismatch.'
+    Assert-True $policy.githubReadOnly.networkAccess 'GitHub provider network access must be declared.'
+    Assert-True (-not $policy.githubReadOnly.databaseAccess) 'GitHub provider must not declare database access.'
 }
 
 Invoke-Test 'registry parses and covers committed command surfaces' {

@@ -1,5 +1,9 @@
 # 07 Operations
 
+## Codex remote identity and GitHub status
+
+Use the repository-level [`scripts/codex/README.md`](../../scripts/codex/README.md) for the offline remote-identity contract and the explicit authenticated `-GitHub` read-only status scope. The GitHub scope is identity-gated and non-writing; GitHub deployment records do not establish the active Vercel production deployment.
+
 ## Disposable workout-mutation database tests
 
 `npm run test:db:workout-mutations` starts an isolated PostgreSQL 16 container, applies checked-in migrations, synchronizes that fresh database to the current Prisma schema, regenerates the matching client, runs CAS/race/rollback tests, and always removes the container. It sets its own `DATABASE_URL`/`TEST_DATABASE_URL` and does not read `.env.local` or mutate a configured database.

@@ -147,6 +147,7 @@ try {
     }
     else {
         $remoteStatusProfile = Resolve-RegistryProfile -Policy $policy -Entry $remoteStatusEntries[0]
+        $githubEscalations = @($remoteStatusEntries[0].flagEscalations | Where-Object { $_.flag -ceq '-GitHub' })
         if ($remoteStatusEntries[0].profile -cne 'read-only' -or
             $null -eq $remoteStatusProfile -or
             $remoteStatusProfile.accessesNetwork -or
@@ -154,7 +155,88 @@ try {
             $remoteStatusProfile.writesLocalArtifacts -or
             $remoteStatusProfile.writesTrackedFiles -or
             $remoteStatusProfile.authorizationRequirement -cne 'none') {
-            $errors.Add('Remote status command metadata must remain read-only, offline, non-writing, and authorization-free.')
+            $errors.Add('Remote status default metadata must remain read-only, offline, non-writing, and authorization-free.')
+        }
+        if ($githubEscalations.Count -ne 1 -or
+            $githubEscalations[0].profile -cne 'network-read-only' -or
+            $githubEscalations[0].sideEffectClass -cne 'read-only' -or
+            [string]::IsNullOrWhiteSpace([string]$githubEscalations[0].authorizationRequirement)) {
+            $errors.Add('Remote status must register exactly one explicit -GitHub network-read-only escalation.')
+        }
+    }
+
+    $githubPolicy = $policy.githubReadOnly
+    if ($null -eq $githubPolicy -or
+        $githubPolicy.authorizationFlag -cne '-GitHub' -or
+        -not [bool]$githubPolicy.networkAccess -or
+        [bool]$githubPolicy.databaseAccess -or
+        [bool]$githubPolicy.localArtifactWrites -or
+        [bool]$githubPolicy.trackedFileWrites -or
+        $githubPolicy.authorizationRequired -cne 'explicit-scope') {
+        $errors.Add('GitHub provider policy must be explicit-scope, network-read-only, database-free, and non-writing.')
+    }
+    else {
+        $githubCommands = @($githubPolicy.commands)
+        $githubCommandIds = @($githubCommands | ForEach-Object { [string]$_.id })
+        $requiredGitHubCommandIds = @(
+            'auth-status',
+            'authenticated-user',
+            'repository',
+            'branch',
+            'compare',
+            'pull-requests',
+            'workflows',
+            'commit-statuses',
+            'check-runs',
+            'branch-protection',
+            'rulesets',
+            'deployments',
+            'deployment-statuses',
+            'pull-request-review-status'
+        )
+        foreach ($id in $requiredGitHubCommandIds) {
+            if (@($githubCommandIds | Where-Object { $_ -ceq $id }).Count -ne 1) {
+                $errors.Add("Required GitHub read command shape is missing or duplicated: $id")
+            }
+        }
+        foreach ($id in @($githubCommandIds | Where-Object { $_ -notin $requiredGitHubCommandIds })) {
+            $errors.Add("Unreviewed GitHub command shape is registered: $id")
+        }
+        foreach ($duplicate in @($githubCommandIds | Group-Object | Where-Object { $_.Count -gt 1 })) {
+            $errors.Add("Duplicate GitHub read command id: $($duplicate.Name)")
+        }
+        foreach ($command in $githubCommands) {
+            $shape = @($command.shape | ForEach-Object { [string]$_ })
+            $shapeText = $shape -join ' '
+            if ($shape.Count -lt 2 -or $shape[0] -cne 'gh') {
+                $errors.Add("GitHub command '$($command.id)' must use the gh executable.")
+            }
+            if ($shapeText -match '(?i)(\bmutation\b|\bPOST\b|\bPUT\b|\bPATCH\b|\bDELETE\b|\bpr\s+(create|edit|close|reopen|merge|comment|review)\b|\brun\s+(rerun|cancel)\b|\bworkflow\s+(run|enable|disable)\b|\bsecret\s+set\b|\bvariable\s+set\b)') {
+                $errors.Add("GitHub command '$($command.id)' contains a mutation-capable shape.")
+            }
+            if ($command.operation -ceq 'rest-get' -and
+                ($shapeText -notmatch '(?i)\bapi\s+--method\s+GET\b' -or $shapeText -match '(?i)\s-X\s')) {
+                $errors.Add("GitHub REST command '$($command.id)' must declare an explicit GET method.")
+            }
+            if ($command.operation -ceq 'graphql-query' -and $shapeText -notmatch '(?i)\bquery\b') {
+                $errors.Add("GitHub GraphQL command '$($command.id)' must declare a query operation.")
+            }
+            if ($command.operation -notin @('authentication-read', 'rest-get', 'graphql-query')) {
+                $errors.Add("GitHub command '$($command.id)' has unsupported operation '$($command.operation)'.")
+            }
+        }
+    }
+
+    $githubProviderPath = Join-Path $PSScriptRoot 'Trainer.GitHubStatus.psm1'
+    if (-not (Test-Path -LiteralPath $githubProviderPath -PathType Leaf)) {
+        $errors.Add('GitHub provider module is missing: scripts/codex/Trainer.GitHubStatus.psm1')
+    }
+    else {
+        $githubProviderSource = Get-Content -Raw -LiteralPath $githubProviderPath
+        if ($githubProviderSource -match '(?im)^\s*mutation\s+[A-Za-z_]' -or
+            $githubProviderSource -match "(?i)@\('(?:pr|run|workflow|secret|variable|environment|repo)',\s*'(?:create|edit|close|reopen|merge|comment|review|rerun|cancel|run|enable|disable|set|delete)'" -or
+            $githubProviderSource -match "(?i)'--method',\s*'(?:POST|PUT|PATCH|DELETE)'") {
+            $errors.Add('GitHub provider source contains a forbidden mutation operation.')
         }
     }
     foreach ($verificationCommand in $policy.commands.PSObject.Properties) {

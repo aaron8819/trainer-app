@@ -13,6 +13,14 @@ Route audit questions to the correct harness mode before proposing fixes. Preser
 2. Read `trainer-app/docs/09_AUDIT_PLAYBOOK.md` for mode semantics and artifact fields.
 3. Read `trainer-app/docs/07_OPERATIONS.md` only when runtime targeting or owner resolution matters.
 
+## Repository orchestration
+
+Begin read-only audit work with `.\scripts\codex\Start-TrainerTask.ps1 -Name <task-name> -Classification audit -BaseBranch <authorized-base>`. Use `shared-seam-write` instead when the authorized task changes audit tooling or reporting. Stop on blockers, separate warnings, and respect the reported paths and database policy; audit classification does not authorize database access by itself.
+
+Before executing an audit command that depends on local tools or dependencies, run the default local-only `.\scripts\codex\Invoke-TrainerDoctor.ps1`. Optional-tool gaps warn; required-prerequisite gaps block the affected command. The doctor does not install, authenticate, repair, connect, migrate, or deploy. Database or remote audit targeting requires an explicit need and the authorization required by repository policy.
+
+After audit-tooling changes, generate and review `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>`. Route interpretation to `test-impact-triage`; use `-Run` only for registry-approved local implementation checks and report release-only or authorization-gated checks separately.
+
 ## Hard rules
 
 - Do not use `future-week` to answer full-week coverage questions.
@@ -68,7 +76,7 @@ Interpretation frame:
 
 For `mesocycle-explain`, read the compact CLI summary first when present:
 
-- Run `npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com --operator-debug`.
+- Run the registered `mesocycle-explain` audit command for the explicitly authorized runtime target.
 - Read `Planning Reality Summary` before opening the full JSON.
 - Then inspect `mesocycleExplain.preview.projectionDiagnostics.planningReality.summary.planningShape`, `materialRepairCount`, `majorRepairCount`, `warnings`, `repairMateriality`, `repairMaterialityAfterShadowAllocation`, `exerciseConcentration`, and `slotDemandAllocation`.
 
@@ -148,22 +156,9 @@ For mechanical refactors of audit/diagnostic code, especially `planningReality`,
 - Compare important diagnostic summaries when present: `exerciseClassAlignment`, `exerciseClassUnresolvedCauses`, `duplicateContinuityJustification`, and `preselectionDistributionPolicyByWeek`.
 - Compare artifact and section byte sizes: full artifact bytes, `planningReality` bytes, and any touched section bytes.
 - Confirm CLI/operator summary text is semantically unchanged.
-- Run focused tests, typecheck, audit matrix, live `mesocycle-explain`, and `npm run verify` when the refactor is broad enough.
+- Use the repository verification plan for local checks, then run the matching live `mesocycle-explain` audit only when its runtime and database access are explicitly in scope.
 
 Do not accept a read-only diagnostic refactor based only on TypeScript/tests if serialized diagnostic equality was not checked. Tests may pass while artifact shape or meaning drifts.
-
-Recommended verification snippet:
-
-```powershell
-npm run test -- src/lib/api/mesocycle-handoff-slot-plan-projection.test.ts
-npm run test -- src/lib/audit/workout-audit/workout-audit-cli.test.ts
-npm run test -- src/lib/audit/workout-audit/mesocycle-explain.test.ts
-npm run test -- src/lib/audit/workout-audit/artifact-serialization.test.ts
-npx tsc --noEmit
-npm run test:audit:matrix
-npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com --operator-debug
-npm run verify
-```
 
 ## Required output
 

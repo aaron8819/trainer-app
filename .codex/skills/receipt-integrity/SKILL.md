@@ -94,8 +94,9 @@ Keep it concrete. Name real files and seams.
 
 - Run focused tests for the changed seam.
 - Run related route, explainability, audit, and UI read-side tests when receipt-backed behavior crosses boundaries.
-- Run `npm run verify:contracts` from `trainer-app/` when receipt shape, validation, or runtime contract values change.
-- Run `npm run verify` from `trainer-app/` when shared receipt consumers or shared seams change.
+- Before receipt-backed implementation, run `.\scripts\codex\Start-TrainerTask.ps1` from the repository root with the appropriate policy classification and authorized base. Stop on blockers; Phase 1 is inspect-only and classification grants no database, production, or release authorization.
+- Before executable checks, run the default local-only `.\scripts\codex\Invoke-TrainerDoctor.ps1`. Optional-tool gaps warn and required-prerequisite gaps block affected execution; it does not install, authenticate, repair, connect, migrate, or deploy, and remote scopes require explicit need and authorization.
+- Generate `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` and route the plan to `test-impact-triage`. The policy owns path-to-check selection; use `-Run` only for eligible local implementation checks and report release-only or authorization-gated checks separately.
 - Use canonical audit tooling, not ad hoc inspection, when receipt-backed generation, explainability, or audit reconciliation behavior is affected.
 
 Prefer checking these high-risk consumers when relevant:

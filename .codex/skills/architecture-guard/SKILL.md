@@ -18,6 +18,7 @@ For prompt-generation, skill maintenance, or workflow-doc-only edits that do not
 - identify whether any Trainer app runtime seam is affected
 - state that no production behavior/contract path changes
 - validate with diff/format checks rather than app test suites unless the edit claims behavior changed
+- use the repository verification planner for the actual diff instead of hard-coding path-to-test rules
 
 ---
 
@@ -30,6 +31,8 @@ Do not write or modify app code until a complete architecture audit is produced.
 ## Pre-edit architecture audit (required)
 
 Before editing, you MUST:
+
+0. Run `.\scripts\codex\Start-TrainerTask.ps1` from the repository root with the appropriate `application-write` or `shared-seam-write` policy classification and authorized base. Stop on blockers; Phase 1 is inspect-only and classification does not authorize writes outside the user-approved task.
 
 1. Read `trainer-app/docs/00_START_HERE.md`
 2. Read the relevant canonical docs for the seam
@@ -101,11 +104,10 @@ If no seam exists:
 
 ## Post-edit verification
 
-- run focused tests
-- run boundary tests if cross-layer
-- run `npm run verify:contracts` if contracts changed
-- run `npm run verify` for shared seams
-- use audit tooling for generation/lifecycle
+- Run `.\scripts\codex\Invoke-TrainerDoctor.ps1` before checks that depend on tools or dependencies; do not let it install, repair, authenticate, connect, migrate, or deploy.
+- Generate `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` from the repository root and review why each implementation and release check was selected.
+- Route the plan to `test-impact-triage`. Use `-Run` only for registry-approved local implementation checks; report release-only and authorization-gated checks as skipped.
+- Use `workout-generation-audit` when generation or lifecycle output needs domain validation beyond the repository verification plan.
 
 ---
 

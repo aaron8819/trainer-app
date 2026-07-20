@@ -270,57 +270,13 @@ Rules:
 - Use compact summaries and top-N examples by default.
 - Track artifact sizes in live audit output when audit serialization changes.
 
-## Step 10: Verification Matrix
+## Step 10: Repository Verification Workflow
 
-For pure V2 / strategy work:
+Before implementation, run `.\scripts\codex\Start-TrainerTask.ps1` from the repository root with `shared-seam-write`, or `db-migration` when persistence or migrations are actually in scope, using the authorized base. Stop on blockers and respect reported paths and database policy; Phase 1 is inspect-only and classification grants no database or production authorization.
 
-```bash
-npm run test -- src/lib/engine/planning/v2/mesocycle-strategy.test.ts src/lib/engine/planning/v2/mesocycle-demand.test.ts src/lib/engine/planning/v2/architecture-boundary.test.ts
-```
+Run the default local-only `.\scripts\codex\Invoke-TrainerDoctor.ps1` before checks that depend on tools or dependencies. It does not install, authenticate, repair, connect, migrate, or deploy; remote and database scopes require explicit need and authorization.
 
-For strategy input adapter work:
-
-```bash
-npm run test -- src/lib/api/v2-mesocycle-strategy-input-adapter.test.ts
-```
-
-For audit artifact/readout work:
-
-```bash
-npm run test -- src/lib/audit/workout-audit/artifact-serialization.test.ts src/lib/audit/workout-audit/serializer.test.ts src/lib/audit/workout-audit/workout-audit-cli.test.ts src/lib/audit/workout-audit/mesocycle-explain-compare.test.ts
-```
-
-For V2 plan-quality benchmark work:
-
-```bash
-npm run test -- src/lib/audit/workout-audit/v2-plan-quality-benchmark.test.ts src/lib/engine/planning/v2/architecture-boundary.test.ts
-```
-
-For seed/runtime work:
-
-```bash
-npm run test -- src/lib/api/slot-plan-seed-parser.test.ts src/lib/api/template-session/slot-plan-seed.test.ts src/lib/api/template-session/deload-session.test.ts src/lib/api/template-session.test.ts src/lib/api/mesocycle-slot-runtime.test.ts
-```
-
-For handoff acceptance work:
-
-```bash
-npm run test -- src/lib/api/mesocycle-handoff.test.ts src/lib/api/mesocycle-handoff-v2-materialized-seed.test.ts
-```
-
-Always run when code changes:
-
-```bash
-npx tsc --noEmit
-npm run verify:contracts
-npm run verify
-```
-
-When audit/debug output changes, run:
-
-```bash
-npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com --operator-debug --planner-only-no-repair --compare-repaired --v2-debug-artifact
-```
+After changes, generate `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` and route the plan through `test-impact-triage`. Review selected implementation and release checks before using `-Run`, execute only registry-approved local implementation checks, and report release-only or authorization-gated checks separately. Route generation-facing validation to `workout-generation-audit` and audit/debug artifact validation to `audit-workflow`; neither route inherits database or production authorization from this skill.
 
 Record:
 

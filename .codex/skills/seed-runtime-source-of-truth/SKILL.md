@@ -201,51 +201,13 @@ Migration risk:
 
 If executable seed shape changes, require explicit justification and contract verification.
 
-## Required Tests By Task Type
+## Repository verification workflow
 
-For seed parser/serializer changes, run:
+Before implementation, run `.\scripts\codex\Start-TrainerTask.ps1` from the repository root with `shared-seam-write`, or `db-migration` if persistence or migration files are in scope, using the authorized base. Stop on blockers and respect its database and path policies; Phase 1 is inspect-only and neither classification authorizes a database connection, migration, or write.
 
-```bash
-npm run test -- src/lib/api/slot-plan-seed-parser.test.ts src/lib/api/template-session/slot-plan-seed.test.ts src/lib/api/slot-plan-seed.contract.test.ts
-```
+Run the default local-only `.\scripts\codex\Invoke-TrainerDoctor.ps1` before checks that depend on local tools or dependencies. Optional-tool gaps warn and required-prerequisite gaps block affected execution. It does not install, authenticate, repair, connect, migrate, or deploy; do not enable remote/database scopes without explicit need and authorization.
 
-For runtime replay changes, run:
-
-```bash
-npm run test -- src/lib/api/mesocycle-slot-runtime.test.ts src/lib/api/template-session.test.ts src/lib/api/template-session/slot-plan-seed.test.ts
-```
-
-For deload replay changes, run:
-
-```bash
-npm run test -- src/lib/api/template-session/deload-session.test.ts src/lib/api/template-session/slot-plan-seed.test.ts
-```
-
-For handoff / accepted seed changes, run:
-
-```bash
-npm run test -- src/lib/api/mesocycle-handoff.test.ts src/lib/api/mesocycle-handoff-v2-materialized-seed.test.ts src/lib/api/slot-plan-seed.contract.test.ts
-```
-
-For receipt/provenance changes, run:
-
-```bash
-npm run test -- src/lib/evidence/session-decision-receipt.test.ts src/lib/api/template-session.test.ts
-```
-
-Always run when code changes:
-
-```bash
-npx tsc --noEmit
-npm run verify:contracts
-npm run verify
-```
-
-If audit output changes, also run:
-
-```bash
-npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com --operator-debug --planner-only-no-repair --compare-repaired --v2-debug-artifact
-```
+After changes, generate `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` and route the plan to `test-impact-triage`. Review the selected seed/runtime, contract, and release checks before execution. Use `-Run` only for registry-approved local implementation checks and report skipped release or authorization-gated checks. When generated output or audit artifacts change, also route to `workout-generation-audit` or `audit-workflow` for the matching authorized domain audit.
 
 ## Required Assertions
 

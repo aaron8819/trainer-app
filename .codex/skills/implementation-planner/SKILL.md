@@ -24,6 +24,23 @@ Use this skill after ownership is known and before non-trivial edits begin.
 - `workout-generation-audit` validates generation-facing output
 - `implementation-planner` defines the smallest correct change set and the order to execute it
 
+## Repository orchestration preflight
+
+Before implementation, run the repository task inspector from the repository root with the appropriate policy classification and authorized base:
+
+```powershell
+.\scripts\codex\Start-TrainerTask.ps1 `
+  -Name <task-name> `
+  -Classification <classification> `
+  -BaseBranch <authorized-base>
+```
+
+Use `application-write` for bounded app/UI changes, `shared-seam-write` for shared code or skill changes, and `db-migration` for database or migration work. Stop on blockers, report warnings separately, and respect the tool-reported path and database policies. Classification never grants mutation, database, production, or release authorization. Phase 1 inspects only; create or select the authorized worktree separately.
+
+Before planning executable checks that require local tools or dependencies, run `.\scripts\codex\Invoke-TrainerDoctor.ps1`. Treat optional-tool gaps as warnings and required-prerequisite gaps as blockers for affected checks. Do not remediate automatically: the doctor does not install, authenticate, repair, connect, migrate, or deploy, and remote scopes require explicit need and authorization.
+
+Include a post-change handoff to `test-impact-triage` in every implementation plan. It must generate and review `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` before any `-Run`; the policy and registry, not skill prose, own executable eligibility and path-to-check selection.
+
 ---
 
 ## Inputs to read first
@@ -86,6 +103,7 @@ Return a structured plan with these fields:
 - **Verification commands**
 - **Risks**
 - **Out of scope / do not touch**
+- **Tooling blockers, warnings, and authorization gates**
 
 Keep each field concrete. Use real file paths and seams when known.
 

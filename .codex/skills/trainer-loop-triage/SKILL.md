@@ -35,6 +35,45 @@ Use this skill above those skills: decide which loop is safe, then invoke the ow
    - `.codex/napkin.md` or `.Codex/napkin.md` for user preferences, patterns that work, and recent mistakes.
    - Nearby docs only when a candidate touches an app seam.
 
+## Repository tooling
+
+For implementation, audit, migration, release, or incident work, begin at the repository root with the inspect-only task classifier when the task name and authorized base are known:
+
+```powershell
+.\scripts\codex\Start-TrainerTask.ps1 `
+  -Name <task-name> `
+  -Classification <classification> `
+  -BaseBranch <authorized-base>
+```
+
+Choose the policy classification by workflow: `audit` for read-only work, `application-write` for bounded app/UI work, `shared-seam-write` for shared code or skill workflows, `db-migration` for database or migration work, and `release-incident` only for explicitly requested release or incident assessment. The versioned policy owns path rules, database policy, prerequisites, and verification selection; do not reproduce those tables in a goal prompt.
+
+- Stop on blockers. Report warnings separately and explain whether they affect the chosen loop.
+- Respect allowed and forbidden paths and the reported database policy.
+- Classification does not grant database, production, release, or destructive authorization.
+- Phase 1 is inspect-only. It must not be described as creating a branch or worktree.
+
+Before executing local checks that depend on tools or dependencies, run `.\scripts\codex\Invoke-TrainerDoctor.ps1`. Missing optional tools are warnings; missing required prerequisites block only affected execution. The doctor does not install, authenticate, repair, connect, migrate, or deploy. Keep its default scopes local unless an explicit, authorized need justifies a remote scope, and do not request credentials or environment values that the doctor can inspect safely.
+
+After implementation, or when reviewing an existing diff, route to `test-impact-triage` to generate and review:
+
+```powershell
+.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>
+```
+
+Planning is the default. Use `-Run` only for registry-approved local implementation checks after reviewing the plan. Keep unsafe, release-only, and authorization-gated commands visible but skipped and report them separately.
+
+## Workflow routing
+
+- Route unclear application ownership to `seam-locator`, then non-trivial edits to `implementation-planner` and `architecture-guard`.
+- Route generated or projected training output to `workout-generation-audit`; route audit-mode and artifact interpretation to `audit-workflow`.
+- Route receipt-backed work to `receipt-integrity`, and accepted seed/runtime work to `seed-runtime-source-of-truth` plus `v2-planner-migration-guard` when V2 is involved.
+- Route database or migration work through the `db-migration` inspection policy, then to `implementation-planner`; stop before connectivity, migrations, direct SQL, backups, or writes without the exact required authorization.
+- Route release or incident assessment through `release-incident` inspection only when explicitly needed. Phase 1–3 do not orchestrate a release or incident response.
+- Route completed substantial work to `session-retrospective` only when its trigger gate is met.
+
+Deployment status, GitHub control-plane state, Vercel deployment identity, Supabase project identity, migration ledger, backups, write pause, rollback, deployment, and write resumption remain outside Phase 1–3 local tooling unless separately verified and authorized.
+
 ## Candidate Discovery
 
 Use the smallest useful inspection set. Typical read-only probes:

@@ -961,6 +961,96 @@ Invoke-Test 'child exit propagates and execution stops on first failure' {
     finally { Remove-TestRepository -Fixture $fixture }
 }
 
+Invoke-Test 'Trainer skills route through Phase 1-3 without duplicating policy' {
+    $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $sourceRoot '..\..'))
+    $skillsRoot = Join-Path $repositoryRoot '.codex\skills'
+    $policy = Get-Content -Raw -LiteralPath $sourcePolicy | ConvertFrom-Json
+    $skillFiles = @(Get-ChildItem -LiteralPath $skillsRoot -Recurse -Filter 'SKILL.md' -File)
+    $skillTextByName = @{}
+    foreach ($skillFile in $skillFiles) {
+        $skillTextByName[$skillFile.Directory.Name] = Get-Content -Raw -LiteralPath $skillFile.FullName
+    }
+    $allSkillText = ($skillTextByName.Values -join "`n")
+
+    foreach ($commandName in @(
+            'Start-TrainerTask.ps1',
+            'Invoke-TrainerDoctor.ps1',
+            'Invoke-TrainerVerification.ps1'
+        )) {
+        Assert-True (Test-Path -LiteralPath (Join-Path $sourceRoot $commandName) -PathType Leaf) "Referenced Trainer command does not exist: $commandName"
+    }
+
+    $orchestrationReferencesBySkill = @{
+        'trainer-loop-triage'         = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
+        'implementation-planner'      = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
+        'architecture-guard'          = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
+        'test-impact-triage'          = @('Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
+        'audit-workflow'              = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
+        'workout-generation-audit'    = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
+        'receipt-integrity'           = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
+        'seed-runtime-source-of-truth' = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
+        'v2-planner-migration-guard'  = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
+    }
+    foreach ($skillName in $orchestrationReferencesBySkill.Keys) {
+        foreach ($commandName in $orchestrationReferencesBySkill[$skillName]) {
+            Assert-True ($skillTextByName[$skillName].Contains(".\scripts\codex\$commandName")) "$skillName does not reference the canonical command path: $commandName"
+        }
+    }
+
+    $commandReferences = [regex]::Matches(
+        $allSkillText,
+        '(?i)\.\\scripts\\codex\\(?<name>[A-Za-z0-9.-]+\.ps1)'
+    )
+    foreach ($reference in $commandReferences) {
+        $commandName = $reference.Groups['name'].Value
+        Assert-True (Test-Path -LiteralPath (Join-Path $sourceRoot $commandName) -PathType Leaf) "Skill references a missing command: $commandName"
+    }
+
+    $triageText = $skillTextByName['trainer-loop-triage']
+    foreach ($classification in @('audit', 'application-write', 'shared-seam-write', 'db-migration', 'release-incident')) {
+        Assert-True ($null -ne $policy.classifications.PSObject.Properties[$classification]) "Policy classification is missing: $classification"
+        Assert-True ($triageText.Contains("``$classification``")) "Trainer triage does not reference policy classification: $classification"
+    }
+
+    foreach ($staleName in @('Invoke-TrainerTask.ps1', 'Test-TrainerDoctor.ps1', 'Plan-TrainerVerification.ps1')) {
+        Assert-True (-not $allSkillText.Contains($staleName)) "Skill contains stale Trainer command name: $staleName"
+    }
+
+    foreach ($requiredPhrase in @(
+            'does not install',
+            'Planning is the default',
+            'Use `-Run` only',
+            'Phase 1–3 do not orchestrate a release or incident response'
+        )) {
+        Assert-True ($allSkillText.Contains($requiredPhrase)) "Skill integration safety language is missing: $requiredPhrase"
+    }
+
+    foreach ($forbiddenPolicyCopy in @(
+            'allowedPathRoots',
+            'forbiddenPathRoots',
+            'commandRegistry',
+            'flagEscalations',
+            'executableInImplementationMode'
+        )) {
+        Assert-True (-not $allSkillText.Contains($forbiddenPolicyCopy)) "Skills duplicate policy structure: $forbiddenPolicyCopy"
+    }
+
+    Assert-True (-not [regex]::IsMatch($allSkillText, '(?im)^\s*npx\s+')) 'Skills contain a stale npx execution assumption.'
+    Assert-True (-not [regex]::IsMatch($allSkillText, '(?i)doctor.{0,40}\b(installs|repairs|authenticates|connects|migrates|deploys)\b')) 'A skill claims the doctor mutates or remediates the environment.'
+    Assert-True (-not [regex]::IsMatch($allSkillText, '(?i)verification.{0,80}(runs|executes)\s+by\s+default')) 'A skill claims verification executes by default.'
+    Assert-True (-not [regex]::IsMatch($allSkillText, '(?i)Phase\s+1.?3\s+(authorizes|performs|orchestrates)\b')) 'A skill claims Phase 1-3 authorizes or performs release/production work.'
+    Assert-True (-not [regex]::IsMatch($allSkillText, '(?i)(task inspector|verification planner)\s+(authorizes|deploys|migrates|writes)\b')) 'A skill claims local tooling authorizes or performs a protected action.'
+
+    $routeReferences = [regex]::Matches(
+        $allSkillText,
+        '(?im)\broute[^\r\n`]*\bto\s+`(?<name>[a-z][a-z0-9-]+)`'
+    )
+    foreach ($reference in $routeReferences) {
+        $skillName = $reference.Groups['name'].Value
+        Assert-True ($skillTextByName.ContainsKey($skillName)) "Skill routing references a missing skill: $skillName"
+    }
+}
+
 Invoke-Test 'registry parses and covers committed command surfaces' {
     $result = Invoke-RegistryValidator
     $report = $result.Text | ConvertFrom-Json

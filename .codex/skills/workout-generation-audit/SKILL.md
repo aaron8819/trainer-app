@@ -13,18 +13,20 @@ Do not mark the task complete, and do not claim generation behavior is correct, 
 
 ## Pre-audit workflow
 
-1. Read `trainer-app/docs/00_START_HERE.md`.
-2. Read `trainer-app/docs/02_DOMAIN_ENGINE.md`.
-3. Read `trainer-app/docs/06_TESTING.md`.
-4. Read `trainer-app/docs/09_AUDIT_PLAYBOOK.md`.
-5. Read `trainer-app/docs/08_AUDIT_CLI_DB_VALIDATION.md` when you need direct CLI validation details.
-6. Read the owning seam before editing:
+1. Run `.\scripts\codex\Start-TrainerTask.ps1` from the repository root with `shared-seam-write` for an authorized generation change or `audit` for read-only QA, using the authorized base. Stop on blockers and respect the reported path and database policies; Phase 1 is inspect-only and classification grants no database or production authorization.
+2. Read `trainer-app/docs/00_START_HERE.md`.
+3. Read `trainer-app/docs/02_DOMAIN_ENGINE.md`.
+4. Read `trainer-app/docs/06_TESTING.md`.
+5. Read `trainer-app/docs/09_AUDIT_PLAYBOOK.md`.
+6. Read `trainer-app/docs/08_AUDIT_CLI_DB_VALIDATION.md` when you need direct CLI validation details.
+7. Read the owning seam before editing:
    - orchestration and session assembly: `trainer-app/src/lib/api/template-session.ts` and `trainer-app/src/lib/api/template-session/*`
    - progression and load decisions: `trainer-app/src/lib/engine/progression.ts`, `trainer-app/src/lib/engine/apply-loads.ts`, `trainer-app/src/lib/progression/canonical-progression-input.ts`
    - deload and lifecycle coupling: `trainer-app/src/lib/api/template-session/deload-session.ts`, `trainer-app/src/lib/api/mesocycle-lifecycle*`
    - slot-plan and slot-runtime composition: `trainer-app/src/lib/api/mesocycle-slot-runtime.ts`, `trainer-app/src/lib/api/template-session/slot-plan-seed.ts`, `trainer-app/src/lib/api/mesocycle-handoff-slot-plan-projection.ts`
    - audit harness: `trainer-app/src/lib/audit/workout-audit/*`, especially `context-builder.ts`, `generation-runner.ts`, `serializer.ts`, `types.ts`, and `bundle.ts`
-7. Read the nearby tests before changing behavior.
+8. Read the nearby tests before changing behavior.
+9. Run the default local-only `.\scripts\codex\Invoke-TrainerDoctor.ps1` before checks that depend on local tools or dependencies. Optional-tool gaps warn and required-prerequisite gaps block affected execution. The doctor does not install, authenticate, repair, connect, migrate, or deploy; do not enable remote/database scopes without explicit need and authorization.
 
 ## Non-negotiable rules
 
@@ -37,17 +39,17 @@ Do not mark the task complete, and do not claim generation behavior is correct, 
 
 ## Required verification flow
 
-1. Run the smallest focused test files for the changed seam.
-2. Run related contract or integration tests when the change crosses route, receipt, or lifecycle boundaries.
-3. Run the canonical audit mode that matches the behavior you changed:
+1. Generate and review `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` and route the plan through `test-impact-triage`.
+2. Use `-Run` only for registry-approved local implementation checks whose prerequisites are present. Keep release-only and authorization-gated checks visible but skipped.
+3. Run the canonical audit mode that matches the behavior you changed when its runtime/database scope is explicitly authorized:
    - next generated session or explicit intent path: `npm run audit:workout -- --env-file .env.local --mode future-week --owner owner@local`
    - explicit intent preview: add `--intent <intent>`
    - deload behavior or deload reroute: `npm run audit:workout -- --env-file .env.local --mode deload --owner owner@local --intent <intent>`
-   - next-mesocycle projection, slot allocation, or repair diagnostics: `npm run audit:workout -- --env-file .env.local --mode mesocycle-explain --owner aaron8819@gmail.com --operator-debug`
+   - next-mesocycle projection, slot allocation, or repair diagnostics: use the registered `mesocycle-explain` command with `--operator-debug` and the authorized owner target
    - suspicious next-load decision: `npm run audit:workout -- --env-file .env.local --mode progression-anchor --owner owner@local --exercise-id <exercise-id> --workout-id <workout-id>`
    - week-close or optional-gap-fill ownership: `npm run audit:week-close-handoff -- --env-file .env.local --owner owner@local --target-week <n>`
    - cross-intent generation stability or planner diagnostics gating: `npm run test:audit:matrix`
-4. Run `npm run verify` from `trainer-app/` when shared generation, progression, lifecycle, validation, or audit seams changed.
+4. Treat any selected but unexecuted release check as remaining release work, not as a passed gate.
 
 ## What to inspect
 

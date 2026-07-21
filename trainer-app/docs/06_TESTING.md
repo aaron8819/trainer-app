@@ -325,9 +325,18 @@ credential-bearing URLs, environment values, and secret-like contract values are
 
 GitHub HTTPS and SSH remotes are normalized before comparing owner/repository. A configured
 GitHub owner, repository, or cached default-branch mismatch is a blocker and is never downgraded
-to a warning. Unknown Vercel or Supabase identity remains unknown rather than being treated as a
-match. Reserved `-GitHub`, `-Deployment`, `-Database`, and `-All` scopes exit `2` as not
-implemented in Phase 1.
+to a warning. Unknown Supabase identity remains unknown rather than being treated as a match.
+The explicit `-GitHub` and `-Deployment` scopes run deterministic fake-provider coverage for
+pre-provider zero-call gates, authentication/access failures, exact identity mismatches, paginated
+GET-only reads, stable human/JSON output, and repository-state immutability. `-Database` and `-All`
+remain unsupported and exit `2`.
+
+Vercel fixtures inject a registered HTTP dispatcher directly into the private provider. They never
+contact Vercel and never require a Vercel CLI. Coverage validates the eight official REST endpoint
+shapes, HTTPS/host/GET/query restrictions, redirect refusal, finite-timeout handling, process-only
+`VERCEL_TOKEN` gating, token redaction, alias-to-deployment production truth, and conservative
+rollback-candidate reporting. The public command's missing-token fixture requires zero HTTP calls
+and null live evidence.
 
 Exit codes are `0` when offline inspection completes without blockers, `1` for a valid report
 with blockers or identity mismatch, `2` for an invalid or unsupported scope, and `3` for

@@ -12,6 +12,7 @@ $sourceModule = Join-Path $sourceRoot 'Trainer.Tooling.psm1'
 $sourceDoctor = Join-Path $sourceRoot 'Invoke-TrainerDoctor.ps1'
 $sourceRemoteStatus = Join-Path $sourceRoot 'Invoke-TrainerRemoteStatus.ps1'
 $sourceGitHubModule = Join-Path $sourceRoot 'Trainer.GitHubStatus.psm1'
+$sourceVercelModule = Join-Path $sourceRoot 'Trainer.VercelStatus.psm1'
 $sourceRemoteIdentity = Join-Path $sourceRoot 'trainer-remote.v1.json'
 $sourceRegistryValidator = Join-Path $sourceRoot 'Test-TrainerCommandRegistry.ps1'
 $sourceVerification = Join-Path $sourceRoot 'Invoke-TrainerVerification.ps1'
@@ -42,6 +43,7 @@ function New-TestRepository {
     Copy-Item -LiteralPath $sourceDoctor -Destination (Join-Path $repository 'scripts\codex\Invoke-TrainerDoctor.ps1')
     Copy-Item -LiteralPath $sourceRemoteStatus -Destination (Join-Path $repository 'scripts\codex\Invoke-TrainerRemoteStatus.ps1')
     Copy-Item -LiteralPath $sourceGitHubModule -Destination (Join-Path $repository 'scripts\codex\Trainer.GitHubStatus.psm1')
+    Copy-Item -LiteralPath $sourceVercelModule -Destination (Join-Path $repository 'scripts\codex\Trainer.VercelStatus.psm1')
     Copy-Item -LiteralPath $sourceRemoteIdentity -Destination (Join-Path $repository 'scripts\codex\trainer-remote.v1.json')
     Copy-Item -LiteralPath $sourceRegistryValidator -Destination (Join-Path $repository 'scripts\codex\Test-TrainerCommandRegistry.ps1')
     Copy-Item -LiteralPath $sourceVerification -Destination (Join-Path $repository 'scripts\codex\Invoke-TrainerVerification.ps1')
@@ -181,17 +183,22 @@ function Invoke-RemoteStatus {
         [Parameter(Mandatory = $true)][object]$Fixture,
         [switch]$Json,
         [switch]$GitHub,
+        [switch]$Deployment,
         [string]$Branch,
         [string]$PathPrefix,
-        [switch]$ReplacePath
+        [switch]$ReplacePath,
+        [switch]$ClearVercelToken
     )
 
     $arguments = @('-NoProfile', '-File', $Fixture.RemoteStatus)
     if ($Json) { $arguments += '-Json' }
     if ($GitHub) { $arguments += '-GitHub' }
+    if ($Deployment) { $arguments += '-Deployment' }
     if ($PSBoundParameters.ContainsKey('Branch')) { $arguments += @('-Branch', $Branch) }
     $previousPath = $env:PATH
+    $previousVercelToken = [Environment]::GetEnvironmentVariable('VERCEL_TOKEN', [EnvironmentVariableTarget]::Process)
     try {
+        if ($ClearVercelToken) { [Environment]::SetEnvironmentVariable('VERCEL_TOKEN', $null, [EnvironmentVariableTarget]::Process) }
         if ($PathPrefix) {
             $env:PATH = if ($ReplacePath) { $PathPrefix } else { $PathPrefix + [System.IO.Path]::PathSeparator + $env:PATH }
         }
@@ -200,6 +207,7 @@ function Invoke-RemoteStatus {
     }
     finally {
         $env:PATH = $previousPath
+        [Environment]::SetEnvironmentVariable('VERCEL_TOKEN', $previousVercelToken, [EnvironmentVariableTarget]::Process)
     }
     [pscustomobject]@{
         ExitCode = $exitCode
@@ -260,6 +268,133 @@ Invoke-FakeGitHub @args
 $global:LASTEXITCODE = $script:FakeExitCode
 '@ | Set-Content -LiteralPath $scriptPath -Encoding utf8NoBOM
     [pscustomobject]@{ Directory = $directory; LogPath = $logPath; ScenarioPath = $scenarioPath }
+}
+
+function Add-FakeVercelResponse {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Responses,
+        [Parameter(Mandatory = $true)][string]$Key,
+        [AllowNull()]$Body,
+        [int]$HttpStatus = 200,
+        [string]$ContentType = 'application/json',
+        [AllowNull()][string]$JsonText,
+        [string]$RedirectLocation,
+        [switch]$TimedOut,
+        [switch]$TransportError
+    )
+    $Responses[$Key] = [pscustomobject][ordered]@{
+        statusCode = $HttpStatus
+        contentType = $ContentType
+        data = $Body
+        jsonText = $JsonText
+        redirectLocation = $RedirectLocation
+        timedOut = [bool]$TimedOut
+        transportError = [bool]$TransportError
+    }
+}
+
+function Invoke-VercelProviderFixture {
+    param(
+        [Parameter(Mandatory = $true)][object]$Scenario,
+        [AllowNull()][string]$Token = 'fixture-token-that-must-never-appear',
+        [AllowNull()]$Expected,
+        [AllowNull()]$GitHubLive,
+        [AllowNull()][string]$LocalHead = '1111111111111111111111111111111111111111',
+        [AllowNull()][string]$CachedDefaultSha = '1111111111111111111111111111111111111111'
+    )
+    $policy = Get-Content -Raw -LiteralPath $sourcePolicy | ConvertFrom-Json -Depth 100
+    $identity = Get-Content -Raw -LiteralPath $sourceRemoteIdentity | ConvertFrom-Json -Depth 100
+    if ($null -eq $Expected) { $Expected = $identity.vercel }
+    $calls = [System.Collections.Generic.List[object]]::new()
+    $responses = $Scenario.responses
+    $expectedToken = $Token
+    $requestInvoker = {
+        param($Request, $Headers)
+        if ($Headers.Authorization -cne "Bearer $expectedToken" -or $Headers.Accept -cne 'application/json') {
+            throw 'Fake HTTP transport received invalid internal headers.'
+        }
+        $key = $Request.uri.PathAndQuery
+        $calls.Add([pscustomobject][ordered]@{ endpointId = $Request.endpointId; method = $Request.method; pathAndQuery = $key })
+        $response = $responses[$key]
+        if ($null -eq $response) {
+            return [pscustomobject]@{ statusCode = 500; contentType = 'application/json'; data = $null; timedOut = $false; transportError = $false }
+        }
+        $response
+    }.GetNewClosure()
+    $priorToken = [Environment]::GetEnvironmentVariable('VERCEL_TOKEN', [EnvironmentVariableTarget]::Process)
+    try {
+        [Environment]::SetEnvironmentVariable('VERCEL_TOKEN', $Token, [EnvironmentVariableTarget]::Process)
+        Import-Module $sourceVercelModule -Force
+        $result = Invoke-TrainerVercelStatus `
+            -Expected $Expected `
+            -LocalLinkage ([pscustomobject]@{ committedVercelJsonPresent = $false; committedProjectLinkPresent = $false; localProjectLinkFilenamePresent = $false }) `
+            -EndpointRegistry @($policy.vercelReadOnly.endpointRegistry) `
+            -LocalHead $LocalHead `
+            -CachedDefaultSha $CachedDefaultSha `
+            -GitHubLive $GitHubLive `
+            -RequestInvoker $requestInvoker
+        [pscustomobject][ordered]@{ Result = $result; Calls = [object[]]$calls.ToArray() }
+    }
+    finally {
+        [Environment]::SetEnvironmentVariable('VERCEL_TOKEN', $priorToken, [EnvironmentVariableTarget]::Process)
+    }
+}
+
+function New-VercelSuccessScenario {
+    param(
+        [string]$Account = 'aaron8819',
+        [string]$TeamId = 'team_YPrwp64VBrZbh9mEcwGQV8D4',
+        [string]$TeamSlug = 'aaron8819s-projects',
+        [string]$ProjectId = 'prj_XtOD3yvnH76X62LEDKi2qKV7XFaj',
+        [string]$ProjectName = 'trainer-app',
+        [string]$Alias = 'trainer-app-indol.vercel.app',
+        [string]$ActiveState = 'READY',
+        [string]$ActiveSha = '1111111111111111111111111111111111111111',
+        [switch]$NoPrevious
+    )
+
+    $activeId = 'dpl_activefixture'
+    $previousId = 'dpl_previousfixture'
+    $responses = @{}
+    Add-FakeVercelResponse -Responses $responses -Key '/v2/user' -Body ([pscustomobject]@{ user = [pscustomobject]@{ username = $Account } })
+    Add-FakeVercelResponse -Responses $responses -Key '/v2/teams?limit=100' -Body ([pscustomobject]@{
+        teams = @([pscustomobject]@{ id = $TeamId; slug = $TeamSlug; name = 'Trainer Team' })
+        pagination = [pscustomobject]@{ next = $null }
+    })
+    Add-FakeVercelResponse -Responses $responses -Key "/v2/teams/$TeamId" -Body ([pscustomobject]@{ id = $TeamId; slug = $TeamSlug; name = 'Trainer Team' })
+    Add-FakeVercelResponse -Responses $responses -Key "/v9/projects/$ProjectId`?teamId=team_YPrwp64VBrZbh9mEcwGQV8D4" -Body ([pscustomobject]@{
+        id = $ProjectId; name = $ProjectName; accountId = $TeamId
+        link = [pscustomobject]@{ type = 'github'; repo = 'trainer-app' }
+        targets = [pscustomobject]@{ production = [pscustomobject]@{ id = $activeId } }
+    })
+    Add-FakeVercelResponse -Responses $responses -Key "/v9/projects/$ProjectId/domains?limit=100&teamId=team_YPrwp64VBrZbh9mEcwGQV8D4" -Body ([pscustomobject]@{
+        domains = @([pscustomobject]@{ name = $Alias; projectId = $ProjectId; verified = $true })
+        pagination = [pscustomobject]@{ next = $null }
+    })
+    $active = [pscustomobject]@{
+        id = $activeId; uid = $activeId; projectId = $ProjectId; name = $ProjectName; target = 'production'
+        url = 'trainer-app-active-fixture.vercel.app'; readyState = $ActiveState
+        createdAt = 1760000000000; ready = 1760000060000
+        meta = [pscustomobject]@{ githubCommitSha = $ActiveSha; githubCommitRef = 'master'; githubRepo = 'trainer-app' }
+        gitSource = [pscustomobject]@{ type = 'github'; sha = $ActiveSha }
+        creator = [pscustomobject]@{ username = $Account }
+    }
+    Add-FakeVercelResponse -Responses $responses -Key "/v4/aliases/$Alias`?projectId=$ProjectId&teamId=team_YPrwp64VBrZbh9mEcwGQV8D4" -Body ([pscustomobject]@{
+        alias = $Alias; projectId = $ProjectId; deploymentId = $activeId; deployment = [pscustomobject]@{ id = $activeId; url = $active.url }
+    })
+    Add-FakeVercelResponse -Responses $responses -Key "/v13/deployments/$activeId`?teamId=team_YPrwp64VBrZbh9mEcwGQV8D4" -Body $active
+    $deploymentRows = @($active)
+    if (-not $NoPrevious) {
+        $deploymentRows += [pscustomobject]@{
+            uid = $previousId; id = $previousId; state = 'READY'; target = 'production'; created = 1750000000000; ready = 1750000060000
+            alias = @(); meta = [pscustomobject]@{ githubCommitSha = '2222222222222222222222222222222222222222'; githubCommitRef = 'master'; githubRepo = 'trainer-app' }
+            gitSource = [pscustomobject]@{ type = 'github' }
+        }
+    }
+    Add-FakeVercelResponse -Responses $responses -Key "/v7/deployments?projectId=$ProjectId&target=production&limit=100&teamId=team_YPrwp64VBrZbh9mEcwGQV8D4" -Body ([pscustomobject]@{
+        deployments = $deploymentRows; pagination = [pscustomobject]@{ next = $null }
+    })
+    [pscustomobject][ordered]@{ responses = $responses; activeId = $activeId; previousId = $previousId; activeSha = $ActiveSha }
 }
 
 function Add-FakeGitHubResponse {
@@ -1257,7 +1392,7 @@ Invoke-Test 'remote identity JSON parses and default offline status matches HTTP
         Assert-Equal $report.identity.foundationStatus 'partially configured' 'Incomplete provider identity classification changed.'
         Assert-Equal $report.identity.configuration.github 'configured' 'Configured GitHub identity status changed.'
         Assert-True $report.identity.productionDefinition.intendedEnvironment 'Intended production environment should be defined.'
-        Assert-True (-not $report.identity.productionDefinition.intendedVercelProject) 'Unknown Vercel project was treated as defined.'
+        Assert-True $report.identity.productionDefinition.intendedVercelProject 'Configured Vercel project was not treated as defined.'
         Assert-True (-not $report.identity.productionDefinition.intendedSupabaseProject) 'Unknown Supabase project was treated as defined.'
         Assert-Equal @($report.blockers).Count 0 'Default blockers must remain an empty array.'
     }
@@ -1381,6 +1516,9 @@ Invoke-Test 'unknown GitHub identity is not treated as match' {
 Invoke-Test 'unknown Vercel and Supabase identities remain explicit gaps' {
     $fixture = New-RemoteTestRepository
     try {
+        $identity = Get-Content -Raw -LiteralPath $fixture.RemoteIdentity | ConvertFrom-Json -Depth 100
+        foreach ($name in @('teamId', 'teamSlug', 'projectId', 'projectName', 'productionAlias')) { $identity.vercel.$name = $null }
+        Write-FixtureRemoteIdentity -Fixture $fixture -Identity $identity
         $report = (Invoke-RemoteStatus -Fixture $fixture -Json).Text | ConvertFrom-Json -Depth 100
         Assert-Equal $report.providers.deployment.expectedIdentityStatus 'unknown' 'Unknown Vercel status changed.'
         Assert-Equal $report.providers.database.expectedIdentityStatus 'unknown' 'Unknown Supabase status changed.'
@@ -1909,10 +2047,346 @@ Invoke-Test 'GitHub human output is sanitized and fake command audit is read-onl
     finally { Remove-TestRepository -Fixture $fixture }
 }
 
+Invoke-Test 'Vercel expected identity blockers stop before token or HTTP access' {
+    $cases = @('teamId', 'teamSlug', 'projectId', 'projectName', 'productionAlias', 'unsafe')
+    foreach ($case in $cases) {
+        $fixture = New-RemoteTestRepository
+        try {
+            $identity = Get-Content -Raw -LiteralPath $fixture.RemoteIdentity | ConvertFrom-Json -Depth 100
+            if ($case -eq 'unsafe') { $identity.vercel.productionAlias = 'https://token@example.invalid/?secret=value' }
+            else { $identity.vercel.$case = $null }
+            Write-FixtureRemoteIdentity -Fixture $fixture -Identity $identity
+            $sentinel = Join-Path $fixture.Sandbox 'provider-invoked.txt'
+            @'
+function Invoke-TrainerVercelStatus {
+    Set-Content -LiteralPath (Join-Path $PSScriptRoot 'provider-invoked.txt') -Value invoked
+    throw 'provider must not be invoked'
+}
+Export-ModuleMember -Function Invoke-TrainerVercelStatus
+'@ | Set-Content -LiteralPath (Join-Path $fixture.Repository 'scripts\codex\Trainer.VercelStatus.psm1') -Encoding utf8NoBOM
+            $result = Invoke-RemoteStatus -Fixture $fixture -Deployment -Json -ClearVercelToken
+            $report = $result.Text | ConvertFrom-Json -Depth 100
+            Assert-Equal $result.ExitCode 1 "$case identity blocker must exit 1."
+            Assert-True (-not $report.networkAccessed) "$case identity blocker claimed network access."
+            Assert-True (-not $report.databaseAccessed) "$case identity blocker claimed database access."
+            Assert-Equal $report.providers.deployment.live $null "$case identity blocker exposed live evidence."
+            Assert-True (-not (Test-Path -LiteralPath $sentinel)) "$case identity blocker invoked the provider."
+            Assert-True (-not $result.Text.Contains('token@example.invalid')) "$case unsafe identity leaked."
+        }
+        finally { Remove-TestRepository -Fixture $fixture }
+    }
+}
+
+Invoke-Test 'missing VERCEL_TOKEN returns a valid zero-request blocked report' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $result = Invoke-RemoteStatus -Fixture $fixture -Deployment -Json -ClearVercelToken
+        $report = $result.Text | ConvertFrom-Json -Depth 100
+        Assert-Equal $result.ExitCode 1 'Missing token must exit 1.'
+        Assert-True $report.inspectionOnly 'Missing token report must remain inspection-only.'
+        Assert-True (-not $report.networkAccessed) 'Missing token must make zero HTTP requests.'
+        Assert-True (-not $report.databaseAccessed) 'Missing token must remain database-free.'
+        Assert-Equal $report.providers.deployment.authentication.status 'missing-token' 'Missing-token category mismatch.'
+        Assert-Equal $report.providers.deployment.live $null 'Missing token must leave live evidence null.'
+        Assert-True $report.providers.deployment.authentication.prerequisite.Contains('Read-Host -MaskInput') 'Manual token prerequisite missing.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'Vercel REST success proves exact identity alias deployment and rollback candidate' {
+    $scenario = New-VercelSuccessScenario
+    $fixtureResult = Invoke-VercelProviderFixture -Scenario $scenario
+    $live = $fixtureResult.Result
+    Assert-True $live.networkAccessed 'Successful provider did not record network access.'
+    Assert-Equal $live.authentication.status 'authenticated' 'Authenticated user success mismatch.'
+    Assert-Equal $live.authentication.transport 'official-vercel-rest-api' 'REST transport label mismatch.'
+    Assert-True $live.identity.match 'Exact Vercel identity did not match.'
+    Assert-Equal $live.identity.observed.teamId 'team_YPrwp64VBrZbh9mEcwGQV8D4' 'Team identity mismatch.'
+    Assert-Equal $live.identity.observed.projectId 'prj_XtOD3yvnH76X62LEDKi2qKV7XFaj' 'Project identity mismatch.'
+    Assert-True $live.productionAlias.pointsToActiveDeployment 'Alias did not establish active production truth.'
+    Assert-Equal $live.activeDeployment.id $scenario.activeId 'Active deployment ID mismatch.'
+    Assert-Equal $live.activeDeployment.target 'production' 'Active deployment target mismatch.'
+    Assert-Equal $live.activeDeployment.gitCommitSha $scenario.activeSha 'Deployment SHA mismatch.'
+    Assert-Equal $live.previousHealthyDeployment.status 'present' 'Rollback candidate missing.'
+    Assert-True (-not $live.previousHealthyDeployment.safeToRollback) 'Rollback candidate was called safe.'
+    Assert-Equal $live.previousHealthyDeployment.schemaCompatibility 'unknown' 'Schema compatibility was overclaimed.'
+    Assert-True (@($live.evidence).Count -eq @($fixtureResult.Calls).Count) 'Evidence and HTTP call counts differ.'
+    Assert-True (@($live.evidence | Where-Object { $_.method -cne 'GET' }).Count -eq 0) 'A non-GET evidence row was emitted.'
+}
+
+Invoke-Test 'VERCEL_TOKEN never appears in provider result or sanitized failures' {
+    $token = 'fixture-super-secret-token-value'
+    $success = Invoke-VercelProviderFixture -Scenario (New-VercelSuccessScenario) -Token $token
+    $successText = $success.Result | ConvertTo-Json -Depth 100
+    Assert-True (-not $successText.Contains($token)) 'Token appeared in successful provider output.'
+    $scenario = New-VercelSuccessScenario
+    Add-FakeVercelResponse -Responses $scenario.responses -Key '/v2/user' -Body $null -HttpStatus 401
+    $failure = Invoke-VercelProviderFixture -Scenario $scenario -Token $token
+    $failureText = $failure.Result | ConvertTo-Json -Depth 100
+    Assert-True (-not $failureText.Contains($token)) 'Token appeared in authentication failure output.'
+    Assert-True (-not [regex]::IsMatch($failureText, '(?i)authorization|bearer')) 'Raw authorization material appeared in output.'
+}
+
+Invoke-Test 'Vercel authentication HTTP categories fail closed' {
+    foreach ($case in @(
+        [pscustomobject]@{ status = 401; expected = 'not-authenticated' },
+        [pscustomobject]@{ status = 403; expected = 'insufficient-access' }
+    )) {
+        $scenario = New-VercelSuccessScenario
+        Add-FakeVercelResponse -Responses $scenario.responses -Key '/v2/user' -Body $null -HttpStatus $case.status
+        $fixtureResult = Invoke-VercelProviderFixture -Scenario $scenario
+        Assert-Equal $fixtureResult.Result.authentication.status $case.expected "HTTP $($case.status) authentication category mismatch."
+        Assert-True @($fixtureResult.Result.blockers).Count -gt 0 "HTTP $($case.status) blocker missing."
+        Assert-Equal @($fixtureResult.Calls).Count 1 "HTTP $($case.status) continued collection."
+    }
+}
+
+Invoke-Test 'Vercel team identity and pagination are exact and fail closed' {
+    foreach ($case in @(
+        [pscustomobject]@{ label = 'absent'; teamId = 'team_other'; teamSlug = 'other-team'; expectedBlocker = 'not available' },
+        [pscustomobject]@{ label = 'id mismatch'; teamId = 'team_other'; teamSlug = 'aaron8819s-projects'; expectedBlocker = 'team ID differs' }
+    )) {
+        $scenario = New-VercelSuccessScenario -TeamId $case.teamId -TeamSlug $case.teamSlug
+        $fixtureResult = Invoke-VercelProviderFixture -Scenario $scenario
+        Assert-Equal $fixtureResult.Result.authentication.status 'wrong-team' "$($case.label) team category mismatch."
+        Assert-True (($fixtureResult.Result.blockers -join ' ').Contains($case.expectedBlocker)) "$($case.label) team blocker mismatch."
+        Assert-True (@($fixtureResult.Calls | Where-Object endpointId -eq 'project').Count -eq 0) "$($case.label) continued to project lookup."
+    }
+
+    $scenario = New-VercelSuccessScenario
+    $scenario.responses['/v2/teams?limit=100'].data.teams = @([pscustomobject]@{ id = 'team_other'; slug = 'other-team' })
+    $scenario.responses['/v2/teams?limit=100'].data.pagination.next = 123
+    Add-FakeVercelResponse -Responses $scenario.responses -Key '/v2/teams?limit=100&until=123' -Body ([pscustomobject]@{
+        teams = @([pscustomobject]@{ id = 'team_YPrwp64VBrZbh9mEcwGQV8D4'; slug = 'aaron8819s-projects' })
+        pagination = [pscustomobject]@{ next = $null }
+    })
+    $fixtureResult = Invoke-VercelProviderFixture -Scenario $scenario
+    Assert-True $fixtureResult.Result.identity.match 'Paginated team lookup failed.'
+    Assert-True (@($fixtureResult.Calls | Where-Object { $_.pathAndQuery -eq '/v2/teams?limit=100&until=123' }).Count -eq 1) 'Team pagination request missing.'
+}
+
+Invoke-Test 'Vercel team slug mismatch stops before project lookup' {
+    $scenario = New-VercelSuccessScenario
+    $scenario.responses['/v2/teams/team_YPrwp64VBrZbh9mEcwGQV8D4'].data.slug = 'other-team'
+    $fixtureResult = Invoke-VercelProviderFixture -Scenario $scenario
+    Assert-Equal $fixtureResult.Result.authentication.status 'wrong-team' 'Team slug mismatch category mismatch.'
+    Assert-True (($fixtureResult.Result.blockers -join ' ').Contains('team slug differs')) 'Team slug blocker missing.'
+    Assert-True (@($fixtureResult.Calls | Where-Object endpointId -eq 'project').Count -eq 0) 'Team slug mismatch continued to project lookup.'
+}
+
+Invoke-Test 'Vercel project identity and access failures stop before alias lookup' {
+    foreach ($case in @('id', 'name', 'owner', 'inaccessible')) {
+        $scenario = New-VercelSuccessScenario
+        $projectKey = '/v9/projects/prj_XtOD3yvnH76X62LEDKi2qKV7XFaj?teamId=team_YPrwp64VBrZbh9mEcwGQV8D4'
+        if ($case -eq 'id') { $scenario.responses[$projectKey].data.id = 'prj_other' }
+        if ($case -eq 'name') { $scenario.responses[$projectKey].data.name = 'other-project' }
+        if ($case -eq 'owner') { $scenario.responses[$projectKey].data.accountId = 'team_other' }
+        if ($case -eq 'inaccessible') { Add-FakeVercelResponse -Responses $scenario.responses -Key $projectKey -Body $null -HttpStatus 404 }
+        $fixtureResult = Invoke-VercelProviderFixture -Scenario $scenario
+        Assert-True @($fixtureResult.Result.blockers).Count -gt 0 "$case project blocker missing."
+        Assert-True (@($fixtureResult.Calls | Where-Object endpointId -eq 'alias').Count -eq 0) "$case project failure continued to alias lookup."
+    }
+}
+
+Invoke-Test 'Vercel project-domain evidence handles empty arrays but blocks unavailable evidence' {
+    $key = '/v9/projects/prj_XtOD3yvnH76X62LEDKi2qKV7XFaj/domains?limit=100&teamId=team_YPrwp64VBrZbh9mEcwGQV8D4'
+    $scenario = New-VercelSuccessScenario
+    $scenario.responses[$key].data.domains = @()
+    $fixtureResult = Invoke-VercelProviderFixture -Scenario $scenario
+    Assert-True $fixtureResult.Result.identity.match 'Empty project-domain list should not override exact alias evidence.'
+    Assert-True (-not $fixtureResult.Result.project.productionAliasListedAsProjectDomain) 'Empty project-domain list serialized incorrectly.'
+
+    $scenario = New-VercelSuccessScenario
+    Add-FakeVercelResponse -Responses $scenario.responses -Key $key -Body $null -HttpStatus 403
+    $fixtureResult = Invoke-VercelProviderFixture -Scenario $scenario
+    Assert-True (($fixtureResult.Result.blockers -join ' ').Contains('project-domain evidence')) 'Unavailable domain evidence did not block.'
+    Assert-True (@($fixtureResult.Calls | Where-Object endpointId -eq 'alias').Count -eq 0) 'Domain evidence failure continued to alias lookup.'
+}
+
+Invoke-Test 'Vercel alias assignment mismatches fail closed before deployment details' {
+    $aliasKey = '/v4/aliases/trainer-app-indol.vercel.app?projectId=prj_XtOD3yvnH76X62LEDKi2qKV7XFaj&teamId=team_YPrwp64VBrZbh9mEcwGQV8D4'
+    foreach ($case in @('absent', 'wrong-alias', 'other-project', 'ambiguous')) {
+        $scenario = New-VercelSuccessScenario
+        if ($case -eq 'absent') { Add-FakeVercelResponse -Responses $scenario.responses -Key $aliasKey -Body $null -HttpStatus 404 }
+        if ($case -eq 'wrong-alias') { $scenario.responses[$aliasKey].data.alias = 'other.vercel.app' }
+        if ($case -eq 'other-project') { $scenario.responses[$aliasKey].data.projectId = 'prj_other' }
+        if ($case -eq 'ambiguous') { $scenario.responses[$aliasKey].data.deployment.id = 'dpl_conflict' }
+        $fixtureResult = Invoke-VercelProviderFixture -Scenario $scenario
+        Assert-True @($fixtureResult.Result.blockers).Count -gt 0 "$case alias blocker missing."
+        Assert-True (@($fixtureResult.Calls | Where-Object endpointId -eq 'deployment').Count -eq 0) "$case alias failure continued to deployment details."
+    }
+}
+
+Invoke-Test 'Vercel active deployment states and target enforcement are explicit' {
+    foreach ($state in @('READY', 'BUILDING', 'ERROR')) {
+        $fixtureResult = Invoke-VercelProviderFixture -Scenario (New-VercelSuccessScenario -ActiveState $state)
+        Assert-Equal $fixtureResult.Result.activeDeployment.state $state.ToLowerInvariant() "$state active deployment state mismatch."
+        Assert-True $fixtureResult.Result.identity.match "$state active deployment should be a valid completed read."
+    }
+    $scenario = New-VercelSuccessScenario
+    $key = '/v13/deployments/dpl_activefixture?teamId=team_YPrwp64VBrZbh9mEcwGQV8D4'
+    $scenario.responses[$key].data.target = 'preview'
+    $fixtureResult = Invoke-VercelProviderFixture -Scenario $scenario
+    Assert-True (($fixtureResult.Result.blockers -join ' ').Contains('does not target production')) 'Preview target did not block.'
+    Assert-True (-not $fixtureResult.Result.productionAlias.pointsToActiveDeployment) 'Preview deployment was called active production.'
+}
+
+Invoke-Test 'Vercel deployment SHA traceability is identical different or unavailable without fetching Git' {
+    $sha = '1111111111111111111111111111111111111111'
+    $identical = Invoke-VercelProviderFixture -Scenario (New-VercelSuccessScenario -ActiveSha $sha) -LocalHead $sha -CachedDefaultSha $sha
+    Assert-Equal $identical.Result.commitTraceability.localHead.status 'identical' 'Local identical SHA mismatch.'
+    Assert-Equal $identical.Result.commitTraceability.cachedOriginDefault.status 'identical' 'Cached identical SHA mismatch.'
+    $different = Invoke-VercelProviderFixture -Scenario (New-VercelSuccessScenario -ActiveSha $sha) -LocalHead '2222222222222222222222222222222222222222'
+    Assert-Equal $different.Result.commitTraceability.localHead.status 'different' 'Different SHA mismatch.'
+    $unavailable = Invoke-VercelProviderFixture -Scenario (New-VercelSuccessScenario -ActiveSha '') -LocalHead $sha
+    Assert-Equal $unavailable.Result.commitTraceability.localHead.status 'unavailable' 'Unavailable SHA mismatch.'
+}
+
+Invoke-Test 'combined GitHub and Deployment traceability reuses live GitHub evidence' {
+    $sha = '1111111111111111111111111111111111111111'
+    $github = [pscustomobject]@{
+        branch = [pscustomobject]@{ defaultBranch = [pscustomobject]@{ sha = $sha } }
+        checks = [pscustomobject]@{ pending = @('Vercel') }
+    }
+    $ready = Invoke-VercelProviderFixture -Scenario (New-VercelSuccessScenario -ActiveState READY -ActiveSha $sha) -GitHubLive $github
+    Assert-Equal $ready.Result.commitTraceability.githubDefault.status 'identical' 'Live GitHub identical SHA mismatch.'
+    Assert-Equal $ready.Result.commitTraceability.pendingGitHubVercelContext.correspondence 'stale-for-active-production' 'Pending ready context interpretation mismatch.'
+    $building = Invoke-VercelProviderFixture -Scenario (New-VercelSuccessScenario -ActiveState BUILDING -ActiveSha $sha) -GitHubLive $github
+    Assert-Equal $building.Result.commitTraceability.pendingGitHubVercelContext.correspondence 'active-production-building' 'Pending building context interpretation mismatch.'
+    $other = Invoke-VercelProviderFixture -Scenario (New-VercelSuccessScenario -ActiveSha '2222222222222222222222222222222222222222') -GitHubLive $github
+    Assert-Equal $other.Result.commitTraceability.pendingGitHubVercelContext.correspondence 'different-commit-or-preview' 'Different commit context interpretation mismatch.'
+}
+
+Invoke-Test 'Vercel rollback candidate absence presence and pagination remain conservative' {
+    $absent = Invoke-VercelProviderFixture -Scenario (New-VercelSuccessScenario -NoPrevious)
+    Assert-Equal $absent.Result.previousHealthyDeployment.status 'absent' 'Absent rollback candidate mismatch.'
+    Assert-True (-not $absent.Result.previousHealthyDeployment.safeToRollback) 'Absent candidate was called safe.'
+
+    $scenario = New-VercelSuccessScenario -NoPrevious
+    $listKey = '/v7/deployments?projectId=prj_XtOD3yvnH76X62LEDKi2qKV7XFaj&target=production&limit=100&teamId=team_YPrwp64VBrZbh9mEcwGQV8D4'
+    $scenario.responses[$listKey].data.pagination.next = 456
+    Add-FakeVercelResponse -Responses $scenario.responses -Key '/v7/deployments?projectId=prj_XtOD3yvnH76X62LEDKi2qKV7XFaj&target=production&limit=100&until=456&teamId=team_YPrwp64VBrZbh9mEcwGQV8D4' -Body ([pscustomobject]@{
+        deployments = @([pscustomobject]@{ uid = 'dpl_previouspage'; state = 'READY'; target = 'production'; created = 1750000000000; ready = 1750000060000; meta = [pscustomobject]@{ githubCommitSha = '2222222222222222222222222222222222222222' } })
+        pagination = [pscustomobject]@{ next = $null }
+    })
+    $paged = Invoke-VercelProviderFixture -Scenario $scenario
+    Assert-Equal $paged.Result.previousHealthyDeployment.id 'dpl_previouspage' 'Paginated rollback candidate missing.'
+    Assert-True (-not $paged.Result.previousHealthyDeployment.safeToRollback) 'Paginated rollback candidate was called safe.'
+}
+
+Invoke-Test 'Vercel HTTP parsing timeout and redirect failures are sanitized execution failures' {
+    foreach ($case in @('429', '500', 'timeout', 'redirect', 'non-json', 'invalid-json')) {
+        $scenario = New-VercelSuccessScenario
+        if ($case -eq '429') { Add-FakeVercelResponse -Responses $scenario.responses -Key '/v2/user' -Body $null -HttpStatus 429 }
+        if ($case -eq '500') { Add-FakeVercelResponse -Responses $scenario.responses -Key '/v2/user' -Body $null -HttpStatus 500 }
+        if ($case -eq 'timeout') { Add-FakeVercelResponse -Responses $scenario.responses -Key '/v2/user' -Body $null -HttpStatus 0 -TimedOut -TransportError }
+        if ($case -eq 'redirect') { Add-FakeVercelResponse -Responses $scenario.responses -Key '/v2/user' -Body $null -HttpStatus 302 -RedirectLocation 'https://evil.example.invalid/steal' }
+        if ($case -eq 'non-json') { Add-FakeVercelResponse -Responses $scenario.responses -Key '/v2/user' -Body $null -HttpStatus 200 -ContentType 'text/plain' -JsonText 'not-json' }
+        if ($case -eq 'invalid-json') { Add-FakeVercelResponse -Responses $scenario.responses -Key '/v2/user' -Body $null -HttpStatus 200 -JsonText '{invalid' }
+        $threw = $false
+        try { [void](Invoke-VercelProviderFixture -Scenario $scenario) } catch {
+            $threw = $true
+            Assert-True (-not $_.Exception.Message.Contains('fixture-token')) "$case failure leaked token material."
+            Assert-True (-not $_.Exception.Message.Contains('evil.example.invalid')) "$case failure exposed redirect URL."
+        }
+        Assert-True $threw "$case provider failure did not throw."
+    }
+}
+
+Invoke-Test 'Vercel endpoint registry rejects arbitrary IDs methods hosts schemes and query keys' {
+    $policy = Get-Content -Raw -LiteralPath $sourcePolicy | ConvertFrom-Json -Depth 100
+    Import-Module $sourceVercelModule -Force
+    $module = Get-Module Trainer.VercelStatus
+    $registry = @($policy.vercelReadOnly.endpointRegistry)
+    foreach ($case in @('unregistered', 'query', 'method', 'host', 'scheme')) {
+        $threw = $false
+        try {
+            if ($case -eq 'unregistered') {
+                & $module { param($r) New-TrainerVercelRequest -EndpointRegistry $r -EndpointId 'not-registered' } $registry
+            }
+            elseif ($case -eq 'query') {
+                & $module { param($r) New-TrainerVercelRequest -EndpointRegistry $r -EndpointId 'authenticated-user' -QueryParameters @{ token = 'forbidden' } } $registry
+            }
+            elseif ($case -eq 'method') {
+                $copy = $registry | ConvertTo-Json -Depth 20 | ConvertFrom-Json -Depth 20
+                (@($copy | Where-Object id -eq 'authenticated-user'))[0].method = 'POST'
+                & $module { param($r) New-TrainerVercelRequest -EndpointRegistry $r -EndpointId 'authenticated-user' } @($copy)
+            }
+            elseif ($case -eq 'host') {
+                $copy = $registry | ConvertTo-Json -Depth 20 | ConvertFrom-Json -Depth 20
+                (@($copy | Where-Object id -eq 'authenticated-user'))[0].host = 'evil.example.invalid'
+                & $module { param($r) New-TrainerVercelRequest -EndpointRegistry $r -EndpointId 'authenticated-user' } @($copy)
+            }
+            else {
+                & $module {
+                    param($r)
+                    $priorOrigin = $script:VercelApiOrigin
+                    try {
+                        $script:VercelApiOrigin = 'http://api.vercel.com'
+                        New-TrainerVercelRequest -EndpointRegistry $r -EndpointId 'authenticated-user'
+                    }
+                    finally { $script:VercelApiOrigin = $priorOrigin }
+                } $registry
+            }
+        }
+        catch { $threw = $true }
+        Assert-True $threw "$case endpoint policy case did not reject."
+    }
+}
+
+Invoke-Test 'Vercel hostile provider metadata URLs and control characters are sanitized' {
+    $scenario = New-VercelSuccessScenario
+    $key = '/v13/deployments/dpl_activefixture?teamId=team_YPrwp64VBrZbh9mEcwGQV8D4'
+    $scenario.responses[$key].data.url = 'https://credential@example.invalid/path?token=do-not-report'
+    $scenario.responses[$key].data.creator.username = 'unsafe' + [char]10 + 'control'
+    $scenario.responses[$key].data.meta.githubCommitRef = 'https://example.invalid/?token=do-not-report'
+    $scenario.responses[$key].data.meta.githubRepo = 'secret=do-not-report'
+    $fixtureResult = Invoke-VercelProviderFixture -Scenario $scenario
+    $text = $fixtureResult.Result | ConvertTo-Json -Depth 100
+    Assert-Equal $fixtureResult.Result.activeDeployment.hostname $null 'Credential-bearing deployment URL was reported.'
+    Assert-Equal $fixtureResult.Result.activeDeployment.creator '[unsafe-redacted]' 'Control-character creator was not redacted.'
+    Assert-Equal $fixtureResult.Result.activeDeployment.gitBranch '[unsafe-redacted]' 'Unsafe Git branch was not redacted.'
+    Assert-Equal $fixtureResult.Result.activeDeployment.gitRepository '[unsafe-redacted]' 'Unsafe Git repository was not redacted.'
+    Assert-True (-not $text.Contains('do-not-report')) 'Hostile provider value leaked.'
+}
+
+Invoke-Test 'Vercel human and JSON missing-token reports are stable and repository-safe' {
+    $fixture = New-RemoteTestRepository
+    try {
+        $beforeStatus = @(& git -C $fixture.Repository status --porcelain=v1 --untracked-files=all) -join [Environment]::NewLine
+        $beforeRefs = @(& git -C $fixture.Repository show-ref) -join [Environment]::NewLine
+        $beforeConfig = @(& git -C $fixture.Repository config --local --list) -join [Environment]::NewLine
+        $json = Invoke-RemoteStatus -Fixture $fixture -Deployment -Json -ClearVercelToken
+        $human = Invoke-RemoteStatus -Fixture $fixture -Deployment -ClearVercelToken
+        Assert-Equal $json.ExitCode 1 'Missing-token JSON exit mismatch.'
+        Assert-Equal $human.ExitCode 1 'Missing-token human exit mismatch.'
+        Assert-True $human.Text.Contains('Trainer Vercel deployment status') 'Vercel human heading missing.'
+        Assert-True $human.Text.Contains('Read-Host -MaskInput') 'Human token prerequisite missing.'
+        Assert-True (-not [regex]::IsMatch($json.Text + $human.Text, '(?i)authorization:|bearer\s|token=')) 'Credential-like material appeared in output.'
+        Assert-Equal (@(& git -C $fixture.Repository status --porcelain=v1 --untracked-files=all) -join [Environment]::NewLine) $beforeStatus 'Vercel read changed repository status.'
+        Assert-Equal (@(& git -C $fixture.Repository show-ref) -join [Environment]::NewLine) $beforeRefs 'Vercel read changed refs.'
+        Assert-Equal (@(& git -C $fixture.Repository config --local --list) -join [Environment]::NewLine) $beforeConfig 'Vercel read changed Git config.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'Vercel production source uses only built-in GET-only REST and process VERCEL_TOKEN' {
+    $source = Get-Content -Raw -LiteralPath $sourceVercelModule
+    Assert-True $source.Contains('Invoke-WebRequest') 'Built-in PowerShell HTTP transport missing.'
+    Assert-True $source.Contains('https://api.vercel.com') 'Official Vercel API origin missing.'
+    Assert-True (-not [regex]::IsMatch($source, '(?i)\bvercel(?:\.exe|\.cmd)?\b\s+(?:api|deploy|login|link)')) 'Production provider retains a Vercel CLI dependency.'
+    Assert-True (-not [regex]::IsMatch($source, '(?i)\b(?:curl|wget|Start-Process|Invoke-Expression)\b')) 'Production provider contains a forbidden transport.'
+    Assert-True (-not [regex]::IsMatch($source, '(?i)-Method\s+(?:Post|Put|Patch|Delete)\b')) 'Production provider contains a mutation HTTP method.'
+    $environmentReads = @([regex]::Matches($source, "GetEnvironmentVariable\('([^']+)'") | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+    Assert-Equal $environmentReads.Count 1 'Provider reads unrelated environment variables.'
+    Assert-Equal $environmentReads[0] 'VERCEL_TOKEN' 'Provider environment read is not VERCEL_TOKEN.'
+    Assert-True (-not [regex]::IsMatch($source, '(?i)(?:Write-(?:Output|Host|Verbose|Debug)|Console\]::Write).*Authorization')) 'Provider can print raw authorization headers.'
+}
+
 Invoke-Test 'unsupported later provider scopes and branch without GitHub exit 2' {
     $fixture = New-RemoteTestRepository
     try {
-        foreach ($arguments in @(@('-Deployment'), @('-Database'), @('-All'), @('-Branch', 'master'), @('-GitHub', '-Branch', 'bad..branch'))) {
+        foreach ($arguments in @(@('-Database'), @('-All'), @('-Branch', 'master'), @('-GitHub', '-Branch', 'bad..branch'))) {
             $output = @(& pwsh -NoProfile -File $fixture.RemoteStatus @arguments -Json 2>&1)
             Assert-Equal $LASTEXITCODE 2 'Unsupported or incompatible scope must exit 2.'
             $report = ($output -join "`n") | ConvertFrom-Json
@@ -1940,7 +2414,7 @@ Invoke-Test 'offline remote status does not mutate repository state' {
     finally { Remove-TestRepository -Fixture $fixture }
 }
 
-Invoke-Test 'remote command registry metadata preserves offline default and explicit GitHub network read escalation' {
+Invoke-Test 'remote command registry metadata preserves offline default and explicit provider read escalations' {
     $policy = Get-Content -Raw -LiteralPath $sourcePolicy | ConvertFrom-Json -Depth 100
     $entry = @($policy.commandRegistry | Where-Object { $_.id -eq 'codex-remote-status' })
     Assert-Equal $entry.Count 1 'Remote status registry entry missing.'
@@ -1956,6 +2430,14 @@ Invoke-Test 'remote command registry metadata preserves offline default and expl
     Assert-Equal $githubEscalation[0].profile 'network-read-only' 'GitHub escalation profile mismatch.'
     Assert-True $policy.githubReadOnly.networkAccess 'GitHub provider network access must be declared.'
     Assert-True (-not $policy.githubReadOnly.databaseAccess) 'GitHub provider must not declare database access.'
+    $deploymentEscalation = @($entry[0].flagEscalations | Where-Object { $_.flag -eq '-Deployment' })
+    Assert-Equal $deploymentEscalation.Count 1 'Explicit Deployment escalation missing.'
+    Assert-Equal $deploymentEscalation[0].profile 'network-read-only' 'Deployment escalation profile mismatch.'
+    Assert-True $policy.vercelReadOnly.networkAccess 'Vercel provider network access must be declared.'
+    Assert-True (-not $policy.vercelReadOnly.databaseAccess) 'Vercel provider must not declare database access.'
+    Assert-True (-not $policy.vercelReadOnly.localArtifactWrites) 'Vercel provider must not declare local artifact writes.'
+    Assert-True (-not $policy.vercelReadOnly.trackedFileWrites) 'Vercel provider must not declare tracked writes.'
+    Assert-Equal $policy.vercelReadOnly.authorizationRequired 'explicit-scope' 'Vercel provider authorization metadata mismatch.'
 }
 
 Invoke-Test 'registry parses and covers committed command surfaces' {

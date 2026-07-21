@@ -134,6 +134,14 @@ try {
             }
             else {
                 $remoteIdentityContractValid = $true
+                if ([string]$remoteIdentity.vercel.teamId -cnotmatch '^team_[A-Za-z0-9]+$' -or
+                    [string]$remoteIdentity.vercel.teamSlug -cnotmatch '^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$' -or
+                    [string]$remoteIdentity.vercel.projectId -cnotmatch '^prj_[A-Za-z0-9]+$' -or
+                    [string]$remoteIdentity.vercel.projectName -cnotmatch '^[a-z0-9](?:[a-z0-9._-]{0,98}[a-z0-9])?$' -or
+                    [string]$remoteIdentity.vercel.productionAlias -cnotmatch '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$') {
+                    $remoteIdentityContractValid = $false
+                    $errors.Add('Remote identity contract contains an invalid or incomplete expected Vercel identity.')
+                }
             }
         }
         catch {
@@ -148,6 +156,7 @@ try {
     else {
         $remoteStatusProfile = Resolve-RegistryProfile -Policy $policy -Entry $remoteStatusEntries[0]
         $githubEscalations = @($remoteStatusEntries[0].flagEscalations | Where-Object { $_.flag -ceq '-GitHub' })
+        $vercelEscalations = @($remoteStatusEntries[0].flagEscalations | Where-Object { $_.flag -ceq '-Deployment' })
         if ($remoteStatusEntries[0].profile -cne 'read-only' -or
             $null -eq $remoteStatusProfile -or
             $remoteStatusProfile.accessesNetwork -or
@@ -162,6 +171,12 @@ try {
             $githubEscalations[0].sideEffectClass -cne 'read-only' -or
             [string]::IsNullOrWhiteSpace([string]$githubEscalations[0].authorizationRequirement)) {
             $errors.Add('Remote status must register exactly one explicit -GitHub network-read-only escalation.')
+        }
+        if ($vercelEscalations.Count -ne 1 -or
+            $vercelEscalations[0].profile -cne 'network-read-only' -or
+            $vercelEscalations[0].sideEffectClass -cne 'read-only' -or
+            [string]::IsNullOrWhiteSpace([string]$vercelEscalations[0].authorizationRequirement)) {
+            $errors.Add('Remote status must register exactly one explicit -Deployment network-read-only escalation.')
         }
     }
 
@@ -224,6 +239,71 @@ try {
             if ($command.operation -notin @('authentication-read', 'rest-get', 'graphql-query')) {
                 $errors.Add("GitHub command '$($command.id)' has unsupported operation '$($command.operation)'.")
             }
+        }
+    }
+
+    $vercelPolicy = $policy.vercelReadOnly
+    if ($null -eq $vercelPolicy -or
+        $vercelPolicy.authorizationFlag -cne '-Deployment' -or
+        -not [bool]$vercelPolicy.networkAccess -or
+        [bool]$vercelPolicy.databaseAccess -or
+        [bool]$vercelPolicy.localArtifactWrites -or
+        [bool]$vercelPolicy.trackedFileWrites -or
+        $vercelPolicy.authorizationRequired -cne 'explicit-scope') {
+        $errors.Add('Vercel provider policy must be explicit-scope, network-read-only, database-free, and non-writing.')
+    }
+    else {
+        if ($vercelPolicy.apiOrigin -cne 'https://api.vercel.com' -or $vercelPolicy.authenticationEnvironmentVariable -cne 'VERCEL_TOKEN') {
+            $errors.Add('Vercel REST origin or authentication-variable policy is invalid.')
+        }
+        $vercelEndpoints = @($vercelPolicy.endpointRegistry)
+        $expectedVercelPaths = [ordered]@{
+            'authenticated-user' = '/v2/user'
+            teams = '/v2/teams'
+            team = '/v2/teams/{teamId}'
+            project = '/v9/projects/{projectId}'
+            'project-domains' = '/v9/projects/{projectId}/domains'
+            alias = '/v4/aliases/{productionAlias}'
+            deployment = '/v13/deployments/{deploymentId}'
+            'production-deployments' = '/v7/deployments'
+        }
+        foreach ($entry in $expectedVercelPaths.GetEnumerator()) {
+            $matches = @($vercelEndpoints | Where-Object { [string]$_.id -ceq [string]$entry.Key })
+            if ($matches.Count -ne 1 -or [string]$matches[0].pathTemplate -cne [string]$entry.Value) {
+                $errors.Add("Required Vercel endpoint is missing, duplicated, or changed: $($entry.Key)")
+            }
+        }
+        foreach ($endpoint in $vercelEndpoints) {
+            if ([string]$endpoint.id -notin @($expectedVercelPaths.Keys)) { $errors.Add("Unreviewed Vercel endpoint is registered: $($endpoint.id)") }
+            if ([string]$endpoint.method -cne 'GET' -or [string]$endpoint.host -cne 'api.vercel.com') {
+                $errors.Add("Vercel endpoint '$($endpoint.id)' must be GET-only on api.vercel.com.")
+            }
+            if ([string]$endpoint.pathTemplate -notmatch '^/v[0-9]+/[A-Za-z0-9{}._/-]+$' -or [string]$endpoint.pathTemplate -match '(?:\.\.|\\|\?|#|@)') {
+                $errors.Add("Vercel endpoint '$($endpoint.id)' has an unsafe path template.")
+            }
+            if ([string]$endpoint.expectedResponseType -cne 'json-object' -or [string]$endpoint.pagination -notin @('none', 'until')) {
+                $errors.Add("Vercel endpoint '$($endpoint.id)' has an unsupported response or pagination contract.")
+            }
+            $queryKeys = @($endpoint.allowedQueryKeys | ForEach-Object { [string]$_ })
+            if (@($queryKeys | Group-Object | Where-Object Count -gt 1).Count -gt 0 -or
+                @($queryKeys | Where-Object { $_ -notmatch '^[A-Za-z][A-Za-z0-9]*$' }).Count -gt 0) {
+                $errors.Add("Vercel endpoint '$($endpoint.id)' has invalid allowed query keys.")
+            }
+        }
+    }
+
+    $vercelProviderPath = Join-Path $PSScriptRoot 'Trainer.VercelStatus.psm1'
+    if (-not (Test-Path -LiteralPath $vercelProviderPath -PathType Leaf)) {
+        $errors.Add('Vercel provider module is missing: scripts/codex/Trainer.VercelStatus.psm1')
+    }
+    else {
+        $vercelProviderSource = Get-Content -Raw -LiteralPath $vercelProviderPath
+        if ($vercelProviderSource -match '(?i)\b(?:curl|wget|Start-Process|Invoke-Expression)\b' -or
+            $vercelProviderSource -match '(?i)-Method\s+(?:Post|Put|Patch|Delete)\b' -or
+            $vercelProviderSource -match '(?i)\bvercel(?:\.exe|\.cmd)?\b\s+(?:api|deploy|login|link)' -or
+            $vercelProviderSource -notmatch '(?i)Invoke-WebRequest' -or
+            $vercelProviderSource -match '(?i)(?:Write-(?:Output|Host|Verbose|Debug)|Console\]::Write).*Authorization') {
+            $errors.Add('Vercel provider source violates the built-in GET-only REST transport policy.')
         }
     }
 

@@ -72,7 +72,7 @@ Planning is the default. Use `-Run` only for registry-approved local implementat
 - Route release or incident assessment through `release-incident` inspection only when explicitly needed. Phase 1–3 do not orchestrate a release or incident response.
 - Route completed substantial work to `session-retrospective` only when its trigger gate is met.
 
-Deployment status, GitHub control-plane state, Vercel deployment identity, Supabase project identity, migration ledger, backups, write pause, rollback, deployment, and write resumption remain outside Phase 1–3 local tooling unless separately verified and authorized.
+Deployment status and provider control-plane state remain outside automatic Phase 1–3 local tooling. Invoke the explicit read-only `Invoke-TrainerRemoteStatus.ps1 -Deployment` scope only when live Vercel truth is needed and separately authorized; stop on identity mismatch, keep GitHub deployment records distinct from active Vercel production, and never treat a rollback candidate as authorization or proof of rollback safety. Supabase identity, migration ledger, backups, write pause, rollback, deployment, and write resumption remain separately verified and authorized.
 
 ## Candidate Discovery
 

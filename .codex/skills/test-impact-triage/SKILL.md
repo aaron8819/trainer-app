@@ -50,13 +50,13 @@ Use `-Run` only when all of the following are true:
 - required local prerequisites are present
 - the command does not require separate database, network, production, release, or destructive authorization
 
-Do not use `-Run` merely because the plan exists. Do not make GitHub, Vercel, or database scopes automatic.
+Do not use `-Run` merely because the plan exists. Do not make GitHub, Vercel, or database scopes automatic. Invoke `Invoke-TrainerRemoteStatus.ps1 -Deployment` only when live Vercel state is needed and explicitly authorized; stop on expected/observed identity mismatch.
 
 ## Domain and release follow-up
 
 The planner selects registered checks; it does not replace domain judgment. Route audit-mode selection to `audit-workflow`, generation-facing QA to `workout-generation-audit`, receipt checks to `receipt-integrity`, and seed/runtime checks to `seed-runtime-source-of-truth`.
 
-For database or migration diffs, report the task's database policy and relevant local checks, but keep connectivity, migration execution, backups, production reads, and all writes separately authorized. For release or incident work, report release checks without implying Phase 1–3 can verify deployment status, GitHub state, Vercel or Supabase identity, the migration ledger, backups, write pause, rollback, deployment, or write resumption.
+For database or migration diffs, report the task's database policy and relevant local checks, but keep connectivity, migration execution, backups, production reads, and all writes separately authorized. For release or incident work, the explicit `-Deployment` scope may establish read-only active Vercel deployment truth after exact identity validation; GitHub deployment records remain distinct, and a reported rollback candidate is not an authorized or proven-safe rollback. Do not imply that local Phase 1–3 checks or Vercel status can verify Supabase identity, the migration ledger, backups, write pause, rollback safety, deployment authorization, or write resumption.
 
 ## Required output
 

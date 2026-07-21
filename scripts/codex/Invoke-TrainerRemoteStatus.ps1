@@ -18,6 +18,7 @@ $ExitUnexpected = 3
 
 Import-Module (Join-Path $PSScriptRoot 'Trainer.Tooling.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Trainer.GitHubStatus.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Trainer.VercelStatus.psm1') -Force
 
 function Test-ConfiguredValue {
     param([AllowNull()]$Value)
@@ -118,6 +119,32 @@ function Get-SafeIdentityValue {
         return '[unsafe-redacted]'
     }
     $Value
+}
+
+function Get-VercelExpectedIdentityBlockers {
+    param([Parameter(Mandatory = $true)][object]$Vercel)
+
+    $blockers = [System.Collections.Generic.List[string]]::new()
+    $definitions = @(
+        [pscustomobject]@{ name = 'teamId'; value = $Vercel.teamId; pattern = '^team_[A-Za-z0-9]+$'; description = 'a team_ identifier' },
+        [pscustomobject]@{ name = 'teamSlug'; value = $Vercel.teamSlug; pattern = '^[a-z0-9](?:[a-z0-9-]{0,98}[a-z0-9])?$'; description = 'a safe team slug' },
+        [pscustomobject]@{ name = 'projectId'; value = $Vercel.projectId; pattern = '^prj_[A-Za-z0-9]+$'; description = 'a prj_ identifier' },
+        [pscustomobject]@{ name = 'projectName'; value = $Vercel.projectName; pattern = '^[a-z0-9](?:[a-z0-9._-]{0,98}[a-z0-9])?$'; description = 'a safe project name' },
+        [pscustomobject]@{ name = 'productionAlias'; value = $Vercel.productionAlias; pattern = '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$'; description = 'a hostname only' }
+    )
+    foreach ($definition in $definitions) {
+        $text = if ($null -eq $definition.value) { $null } else { ([string]$definition.value).Trim() }
+        if ([string]::IsNullOrWhiteSpace($text) -or $text -ieq 'unconfigured' -or $text -match '(?i)^(?:unknown|redacted|\[.*\]|<.*>)$') {
+            $blockers.Add("Vercel expected identity field 'vercel.$($definition.name)' is not configured.")
+        }
+        elseif ($text -cnotmatch $definition.pattern) {
+            $blockers.Add("Vercel expected identity field 'vercel.$($definition.name)' must be $($definition.description).")
+        }
+    }
+    if ($null -ne $Vercel.productionAlias -and [string]$Vercel.productionAlias -match '(?i)(?:://|/|\?|#|@|:|\\)') {
+        $blockers.Add("Vercel expected identity field 'vercel.productionAlias' must not contain a protocol, path, query, fragment, credentials, or port.")
+    }
+    $blockers.ToArray()
 }
 
 function ConvertFrom-GitHubRemote {
@@ -237,7 +264,14 @@ function Write-HumanStatus {
     param([Parameter(Mandatory = $true)][object]$Report)
 
     $githubProviderBlocked = $Report.providers.github.liveState -eq 'blocked'
-    Write-Output $(if ($Report.networkAccessed) {
+    $deploymentProviderBlocked = $Report.providers.deployment.liveState -eq 'blocked'
+    Write-Output $(if ($Report.providers.deployment.liveState -eq 'checked') {
+            'Trainer authenticated Vercel deployment status'
+        }
+        elseif ($deploymentProviderBlocked) {
+            'Trainer Vercel deployment status (blocked before provider access)'
+        }
+        elseif ($Report.networkAccessed) {
             'Trainer authenticated GitHub remote status'
         }
         elseif ($githubProviderBlocked) {
@@ -264,6 +298,21 @@ function Write-HumanStatus {
         Write-Output "GitHub deployments: $($github.deployments.status) count=$($github.deployments.count) (not Vercel production proof)"
     }
     Write-Output "Vercel expected identity: $($Report.providers.deployment.expectedIdentityStatus)"
+    if ($Report.providers.deployment.liveState -eq 'checked' -and $null -ne $Report.providers.deployment.live) {
+        $deployment = $Report.providers.deployment.live
+        Write-Output "Vercel authentication: $($deployment.authentication.status) account=$($deployment.authentication.account) team=$($deployment.authentication.teamId)/$($deployment.authentication.teamSlug)"
+        Write-Output "Vercel identity match: $($deployment.identity.match) project=$($deployment.project.id)/$($deployment.project.name)"
+        Write-Output "Vercel production alias: $($deployment.productionAlias.hostname) active=$($deployment.productionAlias.pointsToActiveDeployment) deployment=$($deployment.productionAlias.deploymentId)"
+        Write-Output "Vercel active deployment: state=$($deployment.activeDeployment.state) target=$($deployment.activeDeployment.target) sha=$($deployment.activeDeployment.gitCommitSha)"
+        Write-Output "Vercel rollback candidate: $($deployment.previousHealthyDeployment.status) id=$($deployment.previousHealthyDeployment.id) schemaCompatibility=$($deployment.previousHealthyDeployment.schemaCompatibility)"
+    }
+    elseif ($Report.providers.deployment.liveState -in @('checked', 'blocked') -and
+        $Report.providers.deployment.authentication.status -ne 'not-checked') {
+        Write-Output "Vercel authentication: $($Report.providers.deployment.authentication.status)"
+        if (-not [string]::IsNullOrWhiteSpace([string]$Report.providers.deployment.authentication.prerequisite)) {
+            Write-Output "Vercel prerequisite: $($Report.providers.deployment.authentication.prerequisite)"
+        }
+    }
     Write-Output "Supabase expected identity: $($Report.providers.database.expectedIdentityStatus)"
     Write-Output "Prisma migrations: $($Report.localEvidence.supabase.prismaMigrationCount)"
     Write-Output 'Traceability:'
@@ -280,7 +329,16 @@ function Write-HumanStatus {
     if (@($Report.blockers).Count -eq 0) { Write-Output '  - none' }
     foreach ($blocker in @($Report.blockers)) { Write-Output "  - $blocker" }
     Write-Output ''
-    if ($Report.networkAccessed) {
+    if ($Report.providers.deployment.liveState -eq 'checked') {
+        Write-Output 'The Deployment scope performs authenticated Vercel REST API read-only status collection after exact team, project, and production-alias identity validation. It does not log in, link projects, deploy, promote, rollback, change aliases or domains, read unrelated environment values, or modify Vercel configuration.'
+    }
+    elseif ($Report.providers.deployment.authentication.status -eq 'missing-token') {
+        Write-Output 'The Deployment scope stopped before HTTP access because process-scoped VERCEL_TOKEN is absent. The script did not prompt, install tooling, read another environment variable, or make a network request.'
+    }
+    elseif ($deploymentProviderBlocked) {
+        Write-Output 'The Deployment scope was blocked before provider access because the committed expected Vercel identity is not fully usable. No Vercel tool discovery, authentication, or network request was attempted.'
+    }
+    elseif ($Report.networkAccessed) {
         Write-Output 'The GitHub scope performs authenticated read-only status collection after expected repository identity validation. It does not log in, push, create or modify pull requests, rerun checks, trigger workflows, alter settings, or deploy.'
     }
     elseif ($githubProviderBlocked) {
@@ -292,15 +350,17 @@ function Write-HumanStatus {
 }
 
 try {
-    if ($Deployment -or $Database -or $All) {
+    if ($Database -or $All) {
         throw [System.ArgumentException]::new(
-            'Vercel, Supabase, and combined authenticated provider scopes are not implemented.'
+            'Supabase and combined all-provider authenticated scopes are not implemented.'
         )
     }
     if ((-not $GitHub) -and (-not [string]::IsNullOrWhiteSpace($Branch))) {
         throw [System.ArgumentException]::new('-Branch requires the explicit -GitHub scope.')
     }
     $repositoryRoot = Resolve-TrainerRepositoryRoot -StartPath $PSScriptRoot
+    $policyPath = Join-Path $PSScriptRoot 'trainer-policy.v1.json'
+    $policy = Read-TrainerPolicy -Path $policyPath
     $identityPath = Join-Path $PSScriptRoot 'trainer-remote.v1.json'
     $identity = Read-TrainerJsonFile -Path $identityPath
     Assert-RemoteIdentityStructure -Identity $identity
@@ -353,6 +413,15 @@ try {
         projectName = $identity.vercel.projectName
         productionAlias = $identity.vercel.productionAlias
     }
+    $vercelExpectedIdentityBlockers = [System.Collections.Generic.List[string]]::new()
+    foreach ($blocker in @(Get-VercelExpectedIdentityBlockers -Vercel $identity.vercel)) {
+        $vercelExpectedIdentityBlockers.Add([string]$blocker)
+    }
+    foreach ($finding in $unsafeIdentityFindings) {
+        if ([string]$finding -match "'identity\.vercel\.") {
+            $vercelExpectedIdentityBlockers.Add([string]$finding)
+        }
+    }
     $requiredOperatorValues = [System.Collections.Generic.List[string]]::new()
     foreach ($property in $vercelFields.GetEnumerator()) {
         if (-not (Test-ConfiguredValue -Value $property.Value)) {
@@ -391,6 +460,14 @@ try {
     else {
         $null
     }
+    $cachedDefaultShaProbe = if ($null -ne $cachedDefaultBranch) {
+        Invoke-GitRead -WorkingDirectory $repositoryRoot -Arguments @('rev-parse', "refs/remotes/origin/$cachedDefaultBranch") -AllowFailure
+    }
+    else { $null }
+    $cachedDefaultSha = if ($null -ne $cachedDefaultShaProbe -and $cachedDefaultShaProbe.ExitCode -eq 0 -and @($cachedDefaultShaProbe.Output).Count -eq 1) {
+        [string]$cachedDefaultShaProbe.Output[0]
+    }
+    else { $null }
 
     $ownerStatus = Get-ComparisonStatus -Expected $identity.github.owner -Observed $observedRemote.owner -ObservedMissing:($observedRemote.status -eq 'missing')
     $repositoryStatus = Get-ComparisonStatus -Expected $identity.github.repository -Observed $observedRemote.repository -ObservedMissing:($observedRemote.status -eq 'missing')
@@ -576,7 +653,9 @@ try {
             deployment = [pscustomobject][ordered]@{
                 status = 'not-checked'
                 expectedIdentityStatus = $vercelStatus
+                authentication = [pscustomobject][ordered]@{ status = 'not-checked'; prerequisite = $null }
                 liveState = 'not-checked'
+                live = $null
                 mismatchClaimed = $false
                 source = 'committed identity and filename presence only'
             }
@@ -598,7 +677,7 @@ try {
             )
             identityGates = [object[]]@(
                 [pscustomobject][ordered]@{ scope = 'github-read'; stopOnMismatch = $true; required = @('github.owner', 'github.repository', 'github.defaultBranch') },
-                [pscustomobject][ordered]@{ scope = 'deployment-read'; stopOnMismatch = $true; required = @('vercel.teamId', 'vercel.projectId', 'vercel.productionAlias') },
+                [pscustomobject][ordered]@{ scope = 'deployment-read'; stopOnMismatch = $true; required = @('vercel.teamId', 'vercel.teamSlug', 'vercel.projectId', 'vercel.projectName', 'vercel.productionAlias') },
                 [pscustomobject][ordered]@{ scope = 'database-read'; stopOnMismatch = $true; required = @('supabase.projectRef', 'supabase.connectionClass') },
                 [pscustomobject][ordered]@{ scope = 'cross-system-traceability'; stopOnMismatch = $true; required = @('github', 'vercel', 'supabase') }
             )
@@ -641,6 +720,37 @@ try {
         $report.traceability.chain[2].status = if ($githubLive.blockers.Count -eq 0) { 'checked' } else { 'blocked' }
         foreach ($warning in @($githubLive.warnings)) { $warnings.Add([string]$warning) }
         foreach ($blocker in @($githubLive.blockers)) { $blockers.Add([string]$blocker) }
+        $report.warnings = [object[]]$warnings.ToArray()
+        $report.blockers = [object[]]$blockers.ToArray()
+        $report.success = $blockers.Count -eq 0
+    }
+
+    if ($Deployment -and $vercelExpectedIdentityBlockers.Count -gt 0) {
+        foreach ($blocker in $vercelExpectedIdentityBlockers) {
+            if ($blocker -notin $blockers) { $blockers.Add($blocker) }
+        }
+        $report.providers.deployment.status = 'blocked'
+        $report.providers.deployment.liveState = 'blocked'
+        $report.providers.deployment.live = $null
+        $report.traceability.chain[3].status = 'blocked'
+        $report.blockers = [object[]]$blockers.ToArray()
+        $report.success = $false
+    }
+    elseif ($Deployment) {
+        $headProbe = Invoke-GitRead -WorkingDirectory $repositoryRoot -Arguments @('rev-parse', 'HEAD')
+        $githubForTraceability = if ($report.providers.github.liveState -eq 'checked') { $report.providers.github.live } else { $null }
+        $vercelLive = Invoke-TrainerVercelStatus -Expected $identity.vercel -LocalLinkage $report.localEvidence.vercel -EndpointRegistry @($policy.vercelReadOnly.endpointRegistry) -LocalHead ([string]$headProbe.Output[0]) -CachedDefaultSha $cachedDefaultSha -GitHubLive $githubForTraceability
+        $report.networkAccessed = [bool]$report.networkAccessed -or [bool]$vercelLive.networkAccessed
+        $report.providers.deployment.status = if ($vercelLive.blockers.Count -eq 0) { 'checked' } else { 'blocked' }
+        $report.providers.deployment.liveState = if ($vercelLive.authentication.status -eq 'missing-token') { 'blocked' } else { 'checked' }
+        $report.providers.deployment.authentication = [pscustomobject][ordered]@{ status = $vercelLive.authentication.status; prerequisite = $vercelLive.authentication.prerequisite }
+        $report.providers.deployment.live = if ($vercelLive.authentication.status -eq 'missing-token') { $null } else { $vercelLive }
+        $observedIdentityCount = @($vercelLive.identity.observed.PSObject.Properties | Where-Object { $null -ne $_.Value }).Count
+        $report.providers.deployment.mismatchClaimed = $observedIdentityCount -gt 0 -and -not [bool]$vercelLive.identity.match
+        $report.providers.deployment.source = 'official Vercel REST API over built-in PowerShell HTTPS'
+        $report.traceability.chain[3].status = if ($vercelLive.blockers.Count -eq 0) { 'checked' } else { 'blocked' }
+        foreach ($warning in @($vercelLive.warnings)) { $warnings.Add([string]$warning) }
+        foreach ($blocker in @($vercelLive.blockers)) { $blockers.Add([string]$blocker) }
         $report.warnings = [object[]]$warnings.ToArray()
         $report.blockers = [object[]]$blockers.ToArray()
         $report.success = $blockers.Count -eq 0

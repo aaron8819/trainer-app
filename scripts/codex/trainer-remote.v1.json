@@ -12,11 +12,11 @@
     "changePolicy": null
   },
   "vercel": {
-    "teamId": null,
-    "teamSlug": null,
-    "projectId": null,
-    "projectName": null,
-    "productionAlias": null
+    "teamId": "team_YPrwp64VBrZbh9mEcwGQV8D4",
+    "teamSlug": "aaron8819s-projects",
+    "projectId": "prj_XtOD3yvnH76X62LEDKi2qKV7XFaj",
+    "projectName": "trainer-app",
+    "productionAlias": "trainer-app-indol.vercel.app"
   },
   "supabase": {
     "projectRef": null,

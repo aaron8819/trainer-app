@@ -446,6 +446,26 @@
       { "id": "pull-request-review-status", "shape": ["gh", "api", "graphql", "query TrainerPullRequestReviewStatus"], "operation": "graphql-query" }
     ]
   },
+  "vercelReadOnly": {
+    "authorizationFlag": "-Deployment",
+    "networkAccess": true,
+    "databaseAccess": false,
+    "localArtifactWrites": false,
+    "trackedFileWrites": false,
+    "authorizationRequired": "explicit-scope",
+    "apiOrigin": "https://api.vercel.com",
+    "authenticationEnvironmentVariable": "VERCEL_TOKEN",
+    "endpointRegistry": [
+      { "id": "authenticated-user", "method": "GET", "host": "api.vercel.com", "pathTemplate": "/v2/user", "allowedQueryKeys": [], "scope": "user", "expectedResponseType": "json-object", "pagination": "none", "teamIdRequired": false, "projectIdRequired": false },
+      { "id": "teams", "method": "GET", "host": "api.vercel.com", "pathTemplate": "/v2/teams", "allowedQueryKeys": ["limit", "until"], "scope": "user", "expectedResponseType": "json-object", "pagination": "until", "teamIdRequired": false, "projectIdRequired": false },
+      { "id": "team", "method": "GET", "host": "api.vercel.com", "pathTemplate": "/v2/teams/{teamId}", "allowedQueryKeys": [], "scope": "team", "expectedResponseType": "json-object", "pagination": "none", "teamIdRequired": true, "projectIdRequired": false },
+      { "id": "project", "method": "GET", "host": "api.vercel.com", "pathTemplate": "/v9/projects/{projectId}", "allowedQueryKeys": ["teamId"], "scope": "project", "expectedResponseType": "json-object", "pagination": "none", "teamIdRequired": true, "projectIdRequired": true },
+      { "id": "project-domains", "method": "GET", "host": "api.vercel.com", "pathTemplate": "/v9/projects/{projectId}/domains", "allowedQueryKeys": ["limit", "until", "teamId"], "scope": "project", "expectedResponseType": "json-object", "pagination": "until", "teamIdRequired": true, "projectIdRequired": true },
+      { "id": "alias", "method": "GET", "host": "api.vercel.com", "pathTemplate": "/v4/aliases/{productionAlias}", "allowedQueryKeys": ["projectId", "teamId"], "scope": "deployment", "expectedResponseType": "json-object", "pagination": "none", "teamIdRequired": true, "projectIdRequired": true },
+      { "id": "deployment", "method": "GET", "host": "api.vercel.com", "pathTemplate": "/v13/deployments/{deploymentId}", "allowedQueryKeys": ["teamId"], "scope": "deployment", "expectedResponseType": "json-object", "pagination": "none", "teamIdRequired": true, "projectIdRequired": false },
+      { "id": "production-deployments", "method": "GET", "host": "api.vercel.com", "pathTemplate": "/v7/deployments", "allowedQueryKeys": ["projectId", "target", "limit", "until", "teamId"], "scope": "deployment", "expectedResponseType": "json-object", "pagination": "until", "teamIdRequired": true, "projectIdRequired": true }
+    ]
+  },
   "registryCoverage": {
     "packageManifest": "trainer-app/package.json",
     "ignoredPackageScripts": [],
@@ -488,7 +508,7 @@
   "commandRegistry": [
     { "id": "codex-task-inspector", "command": "pwsh -NoProfile -File scripts/codex/Start-TrainerTask.ps1", "sourceLocation": "scripts/codex/Start-TrainerTask.ps1", "entrypoint": "scripts/codex/Start-TrainerTask.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Inspect-only Phase 1 task manifest; does not create branches or worktrees." },
     { "id": "codex-doctor", "command": "pwsh -NoProfile -File scripts/codex/Invoke-TrainerDoctor.ps1", "sourceLocation": "scripts/codex/Invoke-TrainerDoctor.ps1", "entrypoint": "scripts/codex/Invoke-TrainerDoctor.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Local-only by default; explicit scopes remain non-mutating in Phase 2." },
-    { "id": "codex-remote-status", "command": "pwsh -NoProfile -File scripts/codex/Invoke-TrainerRemoteStatus.ps1", "sourceLocation": "scripts/codex/Invoke-TrainerRemoteStatus.ps1", "entrypoint": "scripts/codex/Invoke-TrainerRemoteStatus.ps1", "profile": "read-only", "flagEscalations": [{ "flag": "-GitHub", "profile": "network-read-only", "sideEffectClass": "read-only", "authorizationRequirement": "Explicit -GitHub scope for authenticated reads of the committed expected repository only." }], "notes": "Offline by default. -GitHub performs authenticated, identity-gated, read-only GitHub status collection; it never logs in or invokes GitHub writes." },
+    { "id": "codex-remote-status", "command": "pwsh -NoProfile -File scripts/codex/Invoke-TrainerRemoteStatus.ps1", "sourceLocation": "scripts/codex/Invoke-TrainerRemoteStatus.ps1", "entrypoint": "scripts/codex/Invoke-TrainerRemoteStatus.ps1", "profile": "read-only", "flagEscalations": [{ "flag": "-GitHub", "profile": "network-read-only", "sideEffectClass": "read-only", "authorizationRequirement": "Explicit -GitHub scope for authenticated reads of the committed expected repository only." }, { "flag": "-Deployment", "profile": "network-read-only", "sideEffectClass": "read-only", "authorizationRequirement": "Explicit -Deployment scope for authenticated reads of the committed expected Vercel team, project, alias, and deployments only." }], "notes": "Offline by default. -GitHub and -Deployment are separately explicit, identity-gated, authenticated read-only scopes; neither logs in, switches scope, changes provider configuration, or invokes provider writes." },
     { "id": "codex-registry-validator", "command": "pwsh -NoProfile -File scripts/codex/Test-TrainerCommandRegistry.ps1", "sourceLocation": "scripts/codex/Test-TrainerCommandRegistry.ps1", "entrypoint": "scripts/codex/Test-TrainerCommandRegistry.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Static offline policy coverage validation." },
     { "id": "codex-verification", "command": "pwsh -NoProfile -File scripts/codex/Invoke-TrainerVerification.ps1", "sourceLocation": "scripts/codex/Invoke-TrainerVerification.ps1", "entrypoint": "scripts/codex/Invoke-TrainerVerification.ps1", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Inspect-only by default; -Run is fail-closed to registry-approved local implementation checks." },
     { "id": "codex-tooling-tests", "command": "pwsh -NoProfile -File scripts/codex/tests/Run-Tests.ps1", "sourceLocation": "scripts/codex/tests/Run-Tests.ps1", "entrypoint": "scripts/codex/tests/Run-Tests.ps1", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Creates and removes guarded disposable local fixtures." },

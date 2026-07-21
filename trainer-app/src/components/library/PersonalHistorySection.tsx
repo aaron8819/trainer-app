@@ -1,100 +1,236 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type {
+  ExerciseExposure,
+  ExerciseHistoryRepresentativeSet,
+  ExerciseHistoryResult,
+} from "@/lib/api/exercise-history";
 
-type ExerciseSession = {
-  date: string;
-  sets: { setIndex: number; reps: number; load: number | null; rpe: number | null }[];
-};
+function formatDate(value: string): string {
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
-type PersonalBests = {
-  maxLoad: number | null;
-  maxReps: number | null;
-  maxVolume: number | null;
-};
+function formatNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
 
-type HistoryData = {
-  sessions: ExerciseSession[];
-  personalBests: PersonalBests;
-  trend: string;
-};
+function formatLoad(
+  load: number | null,
+  loadConvention: ExerciseHistoryResult["comparison"]["loadConvention"]
+): string | null {
+  if (load == null) {
+    return null;
+  }
+  return `${formatNumber(load)} lb${loadConvention === "per_dumbbell" ? " each" : ""}`;
+}
 
-const TREND_SUMMARIES: Record<string, { value: string; color: string }> = {
-  improving: { value: "Trending above earlier recent logs", color: "text-emerald-600" },
-  stable: { value: "Close to earlier recent logs", color: "text-slate-600" },
-  declining: { value: "Trending below earlier recent logs", color: "text-amber-600" },
-  insufficient_data: { value: "Limited recent log history", color: "text-slate-500" },
-};
+function formatSet(
+  set: Pick<ExerciseHistoryRepresentativeSet, "load" | "reps" | "rpe">,
+  loadConvention: ExerciseHistoryResult["comparison"]["loadConvention"]
+): string {
+  const load = formatLoad(set.load, loadConvention);
+  return [load ? `${load} × ${set.reps}` : `${set.reps} reps`, set.rpe != null ? `RPE ${set.rpe}` : null]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function exposureNote(exposure: ExerciseExposure): string | null {
+  const notes = [
+    exposure.workoutStatus === "PARTIAL" ? "Workout finished partial" : null,
+    exposure.skippedSetCount > 0
+      ? `${exposure.skippedSetCount} skipped ${exposure.skippedSetCount === 1 ? "set" : "sets"}`
+      : null,
+    exposure.unloggedSetCount > 0
+      ? `${exposure.unloggedSetCount} unlogged ${exposure.unloggedSetCount === 1 ? "set" : "sets"}`
+      : null,
+    exposure.hasSessionLocalChanges ? "Included session-local changes" : null,
+  ].filter((note): note is string => Boolean(note));
+  return notes.length > 0 ? notes.join(" · ") : null;
+}
 
 export function PersonalHistorySection({ exerciseId }: { exerciseId: string }) {
-  const [data, setData] = useState<HistoryData | null>(null);
+  const [data, setData] = useState<ExerciseHistoryResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [prevExerciseId, setPrevExerciseId] = useState(exerciseId);
+  const [error, setError] = useState<string | null>(null);
+  const [previousExerciseId, setPreviousExerciseId] = useState(exerciseId);
 
-  if (exerciseId !== prevExerciseId) {
-    setPrevExerciseId(exerciseId);
-    setLoading(true);
+  if (exerciseId !== previousExerciseId) {
+    setPreviousExerciseId(exerciseId);
     setData(null);
+    setError(null);
+    setLoading(true);
   }
 
   useEffect(() => {
+    let cancelled = false;
+
     fetch(`/api/exercises/${exerciseId}/history?limit=3`)
-      .then((r) => r.json())
-      .then((d) => setData(d))
-      .finally(() => setLoading(false));
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("History request failed");
+        }
+        return response.json() as Promise<ExerciseHistoryResult>;
+      })
+      .then((result) => {
+        if (!cancelled) {
+          setData(result);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError("Exercise history could not be loaded. Your workout is still safe to continue.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [exerciseId]);
 
   if (loading) {
-    return <p className="animate-pulse text-xs text-slate-500">Loading history...</p>;
+    return (
+      <div className="space-y-3 animate-pulse" aria-label="Loading exercise history">
+        <div className="h-4 w-2/3 rounded bg-slate-200" />
+        <div className="h-24 rounded-xl bg-slate-100" />
+        <div className="h-20 rounded-xl bg-slate-100" />
+      </div>
+    );
   }
 
-  if (!data || data.sessions.length === 0) {
-    return <p className="text-xs text-slate-500">No workout history yet.</p>;
+  if (error) {
+    return <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">{error}</p>;
   }
 
-  const trend = TREND_SUMMARIES[data.trend] ?? TREND_SUMMARIES.insufficient_data;
-
-  return (
-    <div className="space-y-3">
-      <div className="space-y-1.5">
-        <div className="flex items-center gap-3">
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
-              Recent logged trend
-            </p>
-            <p className={`text-xs font-semibold ${trend.color}`}>{trend.value}</p>
-          </div>
-          <div className="flex gap-2 text-[10px] text-slate-500">
-            {data.personalBests.maxLoad !== null && (
-              <span>Recent logged best load: {data.personalBests.maxLoad}lb</span>
-            )}
-            {data.personalBests.maxReps !== null && (
-              <span>Recent logged best reps: {data.personalBests.maxReps}</span>
-            )}
-          </div>
-        </div>
-        <p className="text-[10px] text-slate-500">
-          Descriptive history only. Use the workout review for next-session progression guidance.
+  if (!data?.lastExposure) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-slate-800">No qualifying history yet.</p>
+        <p className="text-xs leading-5 text-slate-500">
+          Completed work sets from this exact exercise will appear here. Warmups, skipped sets,
+          deloads, and untouched prescriptions do not count.
         </p>
       </div>
+    );
+  }
 
-      {data.sessions.map((session, si) => (
-        <div key={si} className="rounded-lg border border-slate-100 p-2.5">
-          <p className="mb-1.5 text-[10px] font-medium text-slate-500">
-            {new Date(session.date).toLocaleDateString()}
+  const { lastExposure, records, comparison } = data;
+  const trend = data.recentExposures.map((exposure) =>
+    formatSet(exposure.representativeSet, comparison.loadConvention)
+  );
+  const lastExposureNote = exposureNote(lastExposure);
+
+  return (
+    <div className="space-y-5">
+      <div className="space-y-1">
+        {data.exercise.equipment.length > 0 ? (
+          <p className="text-xs font-medium text-slate-700">
+            Equipment: {data.exercise.equipment.join(", ")}
           </p>
-          <div className="space-y-0.5">
-            {session.sets.map((set) => (
-              <div key={set.setIndex} className="flex gap-3 text-xs text-slate-600">
-                <span className="w-8 text-slate-500">Set {set.setIndex + 1}</span>
-                <span>{set.reps} reps</span>
-                {set.load !== null && <span>{set.load}lb</span>}
-                {set.rpe !== null && <span className="text-slate-500">@{set.rpe}</span>}
-              </div>
-            ))}
-          </div>
+        ) : null}
+        <p className="text-xs leading-5 text-slate-500">{comparison.note}</p>
+      </div>
+
+      <section aria-labelledby="exercise-history-last-exposure" className="space-y-2">
+        <div>
+          <p
+            id="exercise-history-last-exposure"
+            className="text-xs font-semibold uppercase tracking-wide text-slate-500"
+          >
+            Last exposure
+          </p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">
+            {formatDate(lastExposure.date)} · {lastExposure.completedSetCount} completed {lastExposure.completedSetCount === 1 ? "set" : "sets"}
+          </p>
         </div>
-      ))}
+        <div className="space-y-1 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          {lastExposure.sets.map((set) => (
+            <div key={`${set.setIndex}:${set.completedAt}`} className="flex items-baseline justify-between gap-3 text-sm">
+              <span className="text-slate-500">
+                Set {set.setIndex}{set.isRuntimeAdded ? " · Extra" : ""}
+              </span>
+              <span className="text-right font-medium text-slate-800">
+                {formatSet(set, comparison.loadConvention)}
+              </span>
+            </div>
+          ))}
+        </div>
+        {lastExposureNote ? (
+          <p className="text-xs leading-5 text-amber-700">{lastExposureNote}</p>
+        ) : null}
+      </section>
+
+      <section aria-labelledby="exercise-history-records" className="space-y-2">
+        <p
+          id="exercise-history-records"
+          className="text-xs font-semibold uppercase tracking-wide text-slate-500"
+        >
+          Personal records
+        </p>
+        {records.bestEstimatedStrength || records.heaviestCompletedLoad || records.highestSessionVolume ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {records.bestEstimatedStrength ? (
+              <div className="rounded-xl border border-slate-200 p-3">
+                <p className="text-xs text-slate-500">Best estimated strength</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {formatSet(records.bestEstimatedStrength, comparison.loadConvention)}
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  Estimated 1RM {formatNumber(records.bestEstimatedStrength.estimatedOneRepMax)} lb · {formatDate(records.bestEstimatedStrength.date)}
+                </p>
+              </div>
+            ) : null}
+            {records.heaviestCompletedLoad ? (
+              <div className="rounded-xl border border-slate-200 p-3">
+                <p className="text-xs text-slate-500">Heaviest completed load</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {formatSet(records.heaviestCompletedLoad, comparison.loadConvention)}
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  {formatDate(records.heaviestCompletedLoad.date)}
+                </p>
+              </div>
+            ) : null}
+            {records.highestSessionVolume ? (
+              <div className="rounded-xl border border-slate-200 p-3 sm:col-span-2">
+                <p className="text-xs text-slate-500">Highest completed session volume</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">
+                  {formatNumber(records.highestSessionVolume.volume)} lb-reps
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  {records.highestSessionVolume.completedSetCount} completed sets · {formatDate(records.highestSessionVolume.date)}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+            Load-based records are unavailable for this exercise’s current load convention.
+          </p>
+        )}
+      </section>
+
+      <section aria-labelledby="exercise-history-trend" className="space-y-2">
+        <p
+          id="exercise-history-trend"
+          className="text-xs font-semibold uppercase tracking-wide text-slate-500"
+        >
+          Recent representative sets
+        </p>
+        <p className="text-sm font-medium leading-6 text-slate-800">{trend.join(" → ")}</p>
+        <p className="text-xs leading-5 text-slate-500">
+          Each exposure uses its best estimated-strength set (1–15 reps), then heaviest load or most reps when needed. This is logged context, not a progression decision.
+        </p>
+      </section>
     </div>
   );
 }

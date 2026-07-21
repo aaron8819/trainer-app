@@ -3,32 +3,79 @@ import { WorkoutStatus } from "@prisma/client";
 import { PERFORMED_WORKOUT_STATUSES } from "@/lib/workout-status";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
+import {
+  readRuntimeAddedExerciseIds,
+  readRuntimeAddedSetIds,
+} from "@/lib/ui/selection-metadata";
 
-export type ExerciseSession = {
+const ESTIMATED_STRENGTH_MAX_REPS = 15;
+
+export type ExerciseHistorySet = {
+  setIndex: number;
+  reps: number;
+  load: number | null;
+  rpe: number | null;
+  completedAt: string;
+  isRuntimeAdded: boolean;
+};
+
+export type ExerciseHistoryRepresentativeSet = ExerciseHistorySet & {
+  basis: "best_estimated_strength" | "heaviest_completed_load" | "most_reps";
+};
+
+export type ExerciseExposure = {
+  workoutId: string;
   date: string;
-  sets: { setIndex: number; reps: number; load: number | null; rpe: number | null }[];
+  workoutStatus: "COMPLETED" | "PARTIAL";
+  sets: ExerciseHistorySet[];
+  completedSetCount: number;
+  skippedSetCount: number;
+  unloggedSetCount: number;
+  hasSessionLocalChanges: boolean;
+  representativeSet: ExerciseHistoryRepresentativeSet;
 };
 
-export type PersonalBests = {
-  maxLoad: number | null;
-  maxReps: number | null;
-  maxVolume: number | null;
+export type ExerciseSetRecord = {
+  date: string;
+  load: number;
+  reps: number;
+  rpe: number | null;
 };
 
-export type ExerciseTrend = "improving" | "stable" | "declining" | "insufficient_data";
+export type EstimatedStrengthRecord = ExerciseSetRecord & {
+  estimatedOneRepMax: number;
+};
+
+export type SessionVolumeRecord = {
+  date: string;
+  volume: number;
+  completedSetCount: number;
+};
 
 export type ExerciseHistoryResult = {
-  sessions: ExerciseSession[];
-  personalBests: PersonalBests;
-  trend: ExerciseTrend;
+  exercise: {
+    id: string;
+    name: string | null;
+    equipment: string[];
+  };
+  comparison: {
+    scope: "exact_exercise";
+    loadConvention: "per_dumbbell" | "recorded_external_load" | "not_comparable";
+    note: string;
+  };
+  lastExposure: ExerciseExposure | null;
+  recentExposures: ExerciseExposure[];
+  records: {
+    bestEstimatedStrength: EstimatedStrengthRecord | null;
+    heaviestCompletedLoad: ExerciseSetRecord | null;
+    highestSessionVolume: SessionVolumeRecord | null;
+  };
 };
 
-export async function loadExerciseHistory(
-  exerciseId: string,
-  userId: string,
-  limit: number = 3
-): Promise<ExerciseHistoryResult> {
-  const workoutExercises = await prisma.workoutExercise.findMany({
+type HistoryRow = Awaited<ReturnType<typeof loadHistoryRows>>[number];
+
+async function loadHistoryRows(exerciseId: string, userId: string) {
+  return prisma.workoutExercise.findMany({
     where: {
       exerciseId,
       workout: {
@@ -37,11 +84,18 @@ export async function loadExerciseHistory(
       },
     },
     orderBy: { workout: { scheduledDate: "desc" } },
-    take: Math.max(limit * 4, limit + 6),
     include: {
+      exercise: {
+        include: {
+          exerciseEquipment: { include: { equipment: true } },
+        },
+      },
       workout: {
         select: {
+          id: true,
           scheduledDate: true,
+          completedAt: true,
+          status: true,
           selectionMetadata: true,
           selectionMode: true,
           sessionIntent: true,
@@ -55,84 +109,208 @@ export async function loadExerciseHistory(
       },
     },
   });
-
-  const sessions: ExerciseSession[] = workoutExercises
-    .filter((we) =>
-      deriveSessionSemantics({
-        advancesSplit: we.workout.advancesSplit,
-        selectionMetadata: we.workout.selectionMetadata,
-        selectionMode: we.workout.selectionMode,
-        sessionIntent: we.workout.sessionIntent,
-        mesocyclePhase: we.workout.mesocyclePhaseSnapshot,
-      }).countsTowardPerformanceHistory
-    )
-    .map((we) => ({
-      date: we.workout.scheduledDate.toISOString(),
-      sets: we.sets.flatMap((set) => {
-        const log = set.logs[0];
-        if (!log || !classifySetLog(log).isWorkEvidence) {
-          return [];
-        }
-        return {
-          setIndex: set.setIndex,
-          reps: log.actualReps ?? 0,
-          load: log.actualLoad ?? null,
-          rpe: log.actualRpe ?? null,
-        };
-      }),
-    }))
-    .slice(0, limit);
-
-  // This surface is descriptive history only. Canonical next-session
-  // progression still comes from the progression engine and receipts.
-  const personalBests = computePersonalBests(sessions);
-  const trend = computeTrend(sessions);
-
-  return { sessions, personalBests, trend };
 }
 
-export function computePersonalBests(sessions: ExerciseSession[]): PersonalBests {
-  let maxLoad: number | null = null;
-  let maxReps: number | null = null;
-  let maxVolume: number | null = null;
+function estimateOneRepMax(load: number, reps: number): number {
+  return load * (1 + reps / 30);
+}
 
-  for (const session of sessions) {
-    for (const set of session.sets) {
-      if (set.load !== null && (maxLoad === null || set.load > maxLoad)) {
-        maxLoad = set.load;
-      }
-      if (maxReps === null || set.reps > maxReps) {
-        maxReps = set.reps;
-      }
-      const volume = set.reps * (set.load ?? 0);
-      if (volume > 0 && (maxVolume === null || volume > maxVolume)) {
-        maxVolume = volume;
-      }
-    }
+function compareEstimatedStrength(a: ExerciseHistorySet, b: ExerciseHistorySet): number {
+  const aEstimate = estimateOneRepMax(a.load ?? 0, a.reps);
+  const bEstimate = estimateOneRepMax(b.load ?? 0, b.reps);
+  return bEstimate - aEstimate || (b.load ?? 0) - (a.load ?? 0) || b.reps - a.reps;
+}
+
+function selectRepresentativeSet(
+  sets: ExerciseHistorySet[]
+): ExerciseHistoryRepresentativeSet {
+  const estimatedStrengthSets = sets
+    .filter(
+      (set) =>
+        set.load != null &&
+        set.load > 0 &&
+        set.reps > 0 &&
+        set.reps <= ESTIMATED_STRENGTH_MAX_REPS
+    )
+    .sort(compareEstimatedStrength);
+  if (estimatedStrengthSets[0]) {
+    return { ...estimatedStrengthSets[0], basis: "best_estimated_strength" };
   }
 
-  return { maxLoad, maxReps, maxVolume };
+  const loadedSets = sets
+    .filter((set) => set.load != null && set.load > 0)
+    .sort((a, b) => (b.load ?? 0) - (a.load ?? 0) || b.reps - a.reps);
+  if (loadedSets[0]) {
+    return { ...loadedSets[0], basis: "heaviest_completed_load" };
+  }
+
+  const mostReps = [...sets].sort((a, b) => b.reps - a.reps)[0];
+  return { ...mostReps, basis: "most_reps" };
 }
 
-export function computeTrend(sessions: ExerciseSession[]): ExerciseTrend {
-  if (sessions.length < 2) return "insufficient_data";
-
-  // Compare average estimated 1RM across sessions (most recent vs oldest)
-  const sessionE1rms = sessions.map((s) => {
-    const e1rms = s.sets
-      .filter((set) => set.load !== null && set.load > 0)
-      .map((set) => (set.load ?? 0) * (1 + set.reps / 30));
-    return e1rms.length > 0 ? Math.max(...e1rms) : 0;
+function toExposure(row: HistoryRow): ExerciseExposure | null {
+  const semantics = deriveSessionSemantics({
+    advancesSplit: row.workout.advancesSplit,
+    selectionMetadata: row.workout.selectionMetadata,
+    selectionMode: row.workout.selectionMode,
+    sessionIntent: row.workout.sessionIntent,
+    mesocyclePhase: row.workout.mesocyclePhaseSnapshot,
   });
+  if (!semantics.countsTowardPerformanceHistory) {
+    return null;
+  }
 
-  const recent = sessionE1rms[0];
-  const oldest = sessionE1rms[sessionE1rms.length - 1];
+  const runtimeAddedSetIds = readRuntimeAddedSetIds(row.workout.selectionMetadata);
+  const runtimeAddedExerciseIds = readRuntimeAddedExerciseIds(row.workout.selectionMetadata);
+  const sets: ExerciseHistorySet[] = [];
+  let skippedSetCount = 0;
+  let unloggedSetCount = 0;
 
-  if (recent === 0 || oldest === 0) return "insufficient_data";
+  for (const set of row.sets) {
+    const log = set.logs[0];
+    const classification = classifySetLog(log);
+    if (classification.isSkipped) {
+      skippedSetCount += 1;
+    } else if (!classification.isResolved) {
+      unloggedSetCount += 1;
+    }
+    if (!log || !classification.isWorkEvidence) {
+      continue;
+    }
+    sets.push({
+      setIndex: set.setIndex,
+      reps: log.actualReps ?? 0,
+      load: log.actualLoad ?? null,
+      rpe: log.actualRpe ?? null,
+      completedAt: log.completedAt.toISOString(),
+      isRuntimeAdded: runtimeAddedSetIds.has(set.id),
+    });
+  }
 
-  const change = (recent - oldest) / oldest;
-  if (change > 0.03) return "improving";
-  if (change < -0.03) return "declining";
-  return "stable";
+  if (sets.length === 0) {
+    return null;
+  }
+
+  return {
+    workoutId: row.workout.id,
+    date: (row.workout.completedAt ?? row.workout.scheduledDate).toISOString(),
+    workoutStatus: row.workout.status as "COMPLETED" | "PARTIAL",
+    sets,
+    completedSetCount: sets.length,
+    skippedSetCount,
+    unloggedSetCount,
+    hasSessionLocalChanges:
+      runtimeAddedExerciseIds.has(row.id) || sets.some((set) => set.isRuntimeAdded),
+    representativeSet: selectRepresentativeSet(sets),
+  };
 }
 
+function buildRecords(
+  exposures: ExerciseExposure[],
+  loadComparable: boolean
+): ExerciseHistoryResult["records"] {
+  if (!loadComparable) {
+    return {
+      bestEstimatedStrength: null,
+      heaviestCompletedLoad: null,
+      highestSessionVolume: null,
+    };
+  }
+
+  const loadedSets = exposures.flatMap((exposure) =>
+    exposure.sets
+      .filter((set) => set.load != null && set.load > 0 && set.reps > 0)
+      .map((set) => ({ exposure, set, load: set.load as number }))
+  );
+  const estimatedStrengthSets = loadedSets
+    .filter(({ set }) => set.reps <= ESTIMATED_STRENGTH_MAX_REPS)
+    .sort((a, b) => compareEstimatedStrength(a.set, b.set));
+  const bestEstimated = estimatedStrengthSets[0];
+  const heaviest = [...loadedSets].sort(
+    (a, b) => b.load - a.load || b.set.reps - a.set.reps
+  )[0];
+  const sessionVolumes = exposures
+    .map((exposure) => ({
+      exposure,
+      volume: exposure.sets.reduce(
+        (sum, set) => sum + (set.load != null ? set.load * set.reps : 0),
+        0
+      ),
+    }))
+    .filter((row) => row.volume > 0)
+    .sort((a, b) => b.volume - a.volume);
+  const highestVolume = sessionVolumes[0];
+
+  return {
+    bestEstimatedStrength: bestEstimated
+      ? {
+          date: bestEstimated.exposure.date,
+          load: bestEstimated.load,
+          reps: bestEstimated.set.reps,
+          rpe: bestEstimated.set.rpe,
+          estimatedOneRepMax: Math.round(
+            estimateOneRepMax(bestEstimated.load, bestEstimated.set.reps) * 10
+          ) / 10,
+        }
+      : null,
+    heaviestCompletedLoad: heaviest
+      ? {
+          date: heaviest.exposure.date,
+          load: heaviest.load,
+          reps: heaviest.set.reps,
+          rpe: heaviest.set.rpe,
+        }
+      : null,
+    highestSessionVolume: highestVolume
+      ? {
+          date: highestVolume.exposure.date,
+          volume: Math.round(highestVolume.volume * 10) / 10,
+          completedSetCount: highestVolume.exposure.completedSetCount,
+        }
+      : null,
+  };
+}
+
+export async function loadExerciseHistory(
+  exerciseId: string,
+  userId: string,
+  limit: number = 3
+): Promise<ExerciseHistoryResult> {
+  const rows = await loadHistoryRows(exerciseId, userId);
+  const exposures = rows
+    .map(toExposure)
+    .filter((row): row is ExerciseExposure => row !== null)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const exercise = rows[0]?.exercise;
+  const equipment = (exercise?.exerciseEquipment ?? []).map((item) =>
+    item.equipment.type.toLowerCase()
+  );
+  const isDumbbell = equipment.includes("dumbbell");
+  const hasBodyweight = equipment.includes("bodyweight");
+  const loadConvention = hasBodyweight
+    ? "not_comparable"
+    : isDumbbell
+      ? "per_dumbbell"
+      : "recorded_external_load";
+
+  return {
+    exercise: {
+      id: exerciseId,
+      name: exercise?.name ?? null,
+      equipment,
+    },
+    comparison: {
+      scope: "exact_exercise",
+      loadConvention,
+      note: hasBodyweight
+        ? "Load-based records are hidden because bodyweight and assistance are not comparable in the current data model."
+        : isDumbbell
+          ? "Compared only with this exact exercise; dumbbell loads are recorded per dumbbell."
+          : "Compared only with this exact exercise. Different physical machines are comparable only when they use separate exercise entries.",
+    },
+    lastExposure: exposures[0] ?? null,
+    recentExposures: exposures.slice(0, limit),
+    records: buildRecords(exposures, !hasBodyweight),
+  };
+}

@@ -46,6 +46,7 @@ Sources of truth:
 - Templates: `src/app/api/templates/**`
 - Exercises and preferences: `src/app/api/exercises/**`, `src/app/api/preferences/route.ts`
   - `GET /api/exercises/search?q=<query>&limit=<n>` is the bounded typed-search route for discovery surfaces such as Add Exercise. Ranking is server-owned in `src/lib/api/exercise-library.ts` and may combine name, alias, muscle, muscle-group, and equipment signals; it is intentionally separate from full-library hydration reads.
+  - `GET /api/exercises/[id]/history?limit=<n>` returns exact-exercise performed history owned by `loadExerciseHistory()`. The DTO separates the last exposure, up to 20 recent representative exposures, and lifetime records computed across all eligible exact-ID history. Only performed work-set logs from performance-history-eligible `COMPLETED`/`PARTIAL` workouts qualify; warmups, skipped/unlogged sets, scheduled deloads, prescriptions, aliases, and related exercises do not. Dumbbell loads use the stored per-dumbbell convention. Load records are suppressed for bodyweight/assisted identities because the current schema cannot compare bodyweight and assistance reliably. Machine comparability extends only as far as catalog `Exercise.id`; physical machine/stack identity is not persisted.
 - Analytics: `src/app/api/analytics/**`
 - Profile/readiness support: `src/app/api/profile/setup/route.ts`, `src/app/api/readiness/submit/route.ts`
 

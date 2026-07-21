@@ -14,7 +14,6 @@ import type {
   LogExerciseInput,
   LogWorkoutCapabilities,
   LogSetInput,
-  RpeAdherenceSummary,
   SectionedExercises,
 } from "@/components/log-workout/types";
 import { ActiveSetPanel } from "@/components/log-workout/ActiveSetPanel";
@@ -230,8 +229,6 @@ export default function LogWorkoutClient({
   },
   initialRestTimer,
   onQueueExerciseRowRender,
-  sessionIdentityLabel,
-  sessionTechnicalLabel,
 }: {
   workoutId: string;
   initialRevision?: number;
@@ -409,25 +406,6 @@ export default function LogWorkoutClient({
         }))
     );
   }, [data, satisfiedSetIds]);
-
-  const rpeAdherence = useMemo<RpeAdherenceSummary | null>(() => {
-    const setsWithBothRpe = flatSets.filter(
-      (item) =>
-        loggedSetIds.has(item.set.setId) &&
-        !isWarmupSet(item.set) &&
-        !(item.set.wasSkipped ?? false) &&
-        item.set.actualRpe != null &&
-        item.set.targetRpe != null
-    );
-    if (setsWithBothRpe.length === 0) {
-      return null;
-    }
-
-    const adherent = setsWithBothRpe.filter(
-      (item) => Math.abs((item.set.actualRpe ?? 0) - (item.set.targetRpe ?? 0)) <= 1.0
-    ).length;
-    return { adherent, total: setsWithBothRpe.length };
-  }, [flatSets, loggedSetIds]);
 
   const updateSetFields = useCallback(
     (setId: string, updater: (set: LogSetInput) => LogSetInput) => {
@@ -1243,9 +1221,6 @@ export default function LogWorkoutClient({
         <CompletedWorkoutReview
           workoutId={workoutId}
           performanceSummary={performanceSummary}
-          rpeAdherence={rpeAdherence}
-          sessionIdentityLabel={sessionIdentityLabel}
-          sessionTechnicalLabel={sessionTechnicalLabel}
         />
       ) : null}
 

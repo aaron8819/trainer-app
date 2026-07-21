@@ -137,7 +137,7 @@ describe("loadCompletedWorkoutReviewReadModel", () => {
     );
     expect(model.postSessionReview).toMatchObject({
       status: "reviewed",
-      headline: "Post-session review ready",
+      headline: "Good session",
       completion: {
         plannedSetCount: 3,
         completedSetCount: 3,

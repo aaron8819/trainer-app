@@ -136,12 +136,14 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
     expect(screen.queryByText(/Slot ID/)).not.toBeInTheDocument();
   });
 
-  it("renders the post-workout insights hierarchy for performed workouts", async () => {
+  it("renders the snapshot-backed review as the sole performed-workout summary", async () => {
     mocks.loadCompletedWorkoutReviewReadModel.mockResolvedValue({
       postSessionReview: {
         status: "reviewed",
-        headline: "Post-session review ready",
-        summaryBullets: ["Completed planned work", "No seed or plan changes made"],
+        headline: "Good session",
+        summaryBullets: [
+          "You completed the planned work with no skipped or unlogged sets.",
+        ],
         completion: null,
         exerciseChanges: [],
         loadCalibration: [],
@@ -274,18 +276,15 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
 
     render(ui);
 
-    expect(screen.getByText("Session outcome")).toBeInTheDocument();
-    expect(
-      screen.getByText("Key lifts point to a hold next time while reps keep building.")
-    ).toBeInTheDocument();
-    expect(screen.getByText("Key lift takeaways")).toBeInTheDocument();
-    expect(screen.getByText("Today's target context")).toBeInTheDocument();
-    expect(screen.getByText(/Next exposure: hold load\./)).toBeInTheDocument();
-    expect(screen.getAllByText("Program impact")).toHaveLength(1);
+    expect(screen.queryByText("Session outcome")).not.toBeInTheDocument();
+    expect(screen.queryByText("Key lift takeaways")).not.toBeInTheDocument();
+    expect(screen.queryByText("Program impact")).not.toBeInTheDocument();
     expect(screen.getByText(/Actual: 8 reps \| 40 lbs \| RPE 8 OK/)).toHaveClass("text-emerald-700");
-    expect(screen.getByText("Post-session review ready")).toBeInTheDocument();
-    expect(screen.getByText("Completed planned work")).toBeInTheDocument();
-    expect(screen.getAllByText(/No seed or plan changes made/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Good session")).toBeInTheDocument();
+    expect(
+      screen.getByText("You completed the planned work with no skipped or unlogged sets.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Detailed exercise and set log").closest("details")).not.toHaveAttribute("open");
     expect(mocks.loadCompletedWorkoutReviewReadModel).toHaveBeenCalledWith(
       "user-1",
       "workout-1"
@@ -467,7 +466,7 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
     expect(screen.getByText("Added exercise")).toBeInTheDocument();
   });
 
-  it("surfaces same-exercise planned/add duplicate logging on workout detail review", async () => {
+  it("does not recompute duplicate-log conclusions outside the saved review", async () => {
     mocks.workoutFindFirst.mockResolvedValue({
       id: "workout-1",
       userId: "user-1",
@@ -570,8 +569,8 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
     render(ui);
 
     expect(
-      screen.getByText(/Cable Rear Delt Fly was planned but skipped, while the same exercise was logged as an added exercise/)
-    ).toBeInTheDocument();
+      screen.queryByText(/looks like duplicate logging rather than a missed dose/i)
+    ).not.toBeInTheDocument();
   });
 
   it("labels swapped exercises explicitly on workout detail surfaces", async () => {
@@ -657,6 +656,8 @@ describe("WorkoutDetailPage", { timeout: 15000 }, () => {
 
     expect(source).toContain("@/lib/api/completed-workout-review");
     expect(source).toContain("@/components/post-workout/PostSessionReviewCard");
+    expect(source).not.toContain("PostWorkoutInsights");
+    expect(source).not.toContain("buildWorkoutExecutionSummary");
     expect(source).not.toContain("@/lib/audit/workout-audit");
     expect(source).not.toContain("workout-audit-cli");
     expect(source).not.toContain("scripts/workout-audit");

@@ -3,23 +3,16 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { PostSessionReviewCard } from "@/components/post-workout/PostSessionReviewCard";
-import { PostWorkoutInsights } from "@/components/post-workout/PostWorkoutInsights";
 import { classifySetLog } from "@/lib/session-semantics/set-classification";
 import { isDumbbellEquipment, toDisplayLoad } from "@/lib/ui/load-display";
 import { formatRepPrescriptionInline } from "@/lib/ui/rep-target-display";
 import { evaluateTargetReps } from "@/lib/session-semantics/target-evaluation";
-import { hydrateWorkoutExplanation, type WorkoutExplanationResponse } from "@/lib/ui/workout-explanation-response";
-import { buildWorkoutExecutionSummary } from "@/lib/ui/workout-execution-summary";
-import type { WorkoutExplanation } from "@/lib/engine/explainability";
 import type { PostSessionReviewDisplayDto } from "@/lib/api/post-session-review-display";
 import {
   RUNTIME_ADDED_EXERCISE_BADGE_LABEL,
   SWAPPED_EXERCISE_BADGE_LABEL,
 } from "@/lib/ui/selection-metadata";
-import type {
-  CompletedWorkoutExerciseSummary,
-  RpeAdherenceSummary,
-} from "@/components/log-workout/types";
+import type { CompletedWorkoutExerciseSummary } from "@/components/log-workout/types";
 
 function formatRepTarget(
   targetReps: number,
@@ -31,62 +24,16 @@ function formatRepTarget(
 
 type CompletedWorkoutReviewProps = {
   workoutId: string;
-  rpeAdherence: RpeAdherenceSummary | null;
   performanceSummary: CompletedWorkoutExerciseSummary[];
-  sessionIdentityLabel?: string | null;
-  sessionTechnicalLabel?: string | null;
 };
 
 export function CompletedWorkoutReview({
   workoutId,
-  rpeAdherence,
   performanceSummary,
-  sessionIdentityLabel,
 }: CompletedWorkoutReviewProps) {
-  const [explanation, setExplanation] = useState<WorkoutExplanation | null>(null);
   const [postSessionReview, setPostSessionReview] =
     useState<PostSessionReviewDisplayDto | null>(null);
-  const [isLoadingExplanation, setIsLoadingExplanation] = useState(true);
   const [isLoadingPostSessionReview, setIsLoadingPostSessionReview] = useState(true);
-  const executionSummary = buildWorkoutExecutionSummary(
-    performanceSummary.map((exercise) => ({
-      exerciseId: exercise.sourceExerciseId,
-      name: exercise.name,
-      isRuntimeAdded: exercise.isRuntimeAdded,
-      sets: exercise.sets,
-    }))
-  );
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function fetchExplanation() {
-      try {
-        const response = await fetch(`/api/workouts/${workoutId}/explanation`);
-        if (!response.ok) {
-          throw new Error("Failed to load post-workout explanation");
-        }
-        const data: WorkoutExplanationResponse = await response.json();
-        if (mounted) {
-          setExplanation(hydrateWorkoutExplanation(data));
-        }
-      } catch {
-        if (mounted) {
-          setExplanation(null);
-        }
-      } finally {
-        if (mounted) {
-          setIsLoadingExplanation(false);
-        }
-      }
-    }
-
-    void fetchExplanation();
-
-    return () => {
-      mounted = false;
-    };
-  }, [workoutId]);
 
   useEffect(() => {
     let mounted = true;
@@ -126,64 +73,6 @@ export function CompletedWorkoutReview({
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:p-5">
-        <p className="font-semibold text-emerald-900">Session complete!</p>
-        <p className="mt-1 text-sm text-emerald-800">
-          Your sets are saved. Here&apos;s the short read on what today means.
-        </p>
-        {sessionIdentityLabel ? (
-          <p className="mt-2 text-sm text-emerald-800">
-            {sessionIdentityLabel}
-          </p>
-        ) : null}
-        <div className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div>
-            <p className="text-xs text-emerald-700">Planned sets</p>
-            <p className="text-2xl font-bold text-emerald-900">{executionSummary.plannedSetCount}</p>
-            <p className="text-xs text-emerald-600">Non-extra written work</p>
-          </div>
-          <div>
-            <p className="text-xs text-emerald-700">Completed sets</p>
-            <p className="text-2xl font-bold text-emerald-900">{executionSummary.completedSetCount}</p>
-            <p className="text-xs text-emerald-600">Actually performed</p>
-          </div>
-          <div>
-            <p className="text-xs text-emerald-700">Skipped sets</p>
-            <p className="text-2xl font-bold text-emerald-900">{executionSummary.uncoveredSkippedSetCount}</p>
-            <p className="text-xs text-emerald-600">
-              {executionSummary.duplicateCoveredSkippedSetCount > 0
-                ? `${executionSummary.duplicateCoveredSkippedSetCount} reconciled as duplicate logging`
-                : "Planned but not performed"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-emerald-700">Extra sets</p>
-            <p className="text-2xl font-bold text-emerald-900">{executionSummary.extraSetCount}</p>
-            <p className="text-xs text-emerald-600">Completed outside plan</p>
-          </div>
-        </div>
-        {rpeAdherence ? (
-          <div className="mt-4">
-            <p className="text-xs text-emerald-700">RPE adherence</p>
-            <p className="text-2xl font-bold text-emerald-900">
-              {Math.round((rpeAdherence.adherent / rpeAdherence.total) * 100)}%
-            </p>
-            <p className="text-xs text-emerald-600">
-              {rpeAdherence.adherent}/{rpeAdherence.total} on target
-            </p>
-          </div>
-        ) : null}
-        {executionSummary.duplicateAddedExercises.length > 0 ? (
-          <div className="mt-4 rounded-xl border border-amber-200 bg-white/70 p-3 text-sm text-amber-900">
-            {executionSummary.duplicateAddedExercises.map((duplicate) => (
-              <p key={duplicate.exerciseId ?? duplicate.exerciseName}>
-                {duplicate.exerciseName} was planned but skipped while the same exercise was logged as an added exercise. This looks like duplicate logging rather than a missed dose.
-              </p>
-            ))}
-          </div>
-        ) : null}
-      </section>
-
       {isLoadingPostSessionReview ? (
         <section
           aria-label="Post-session review loading"
@@ -201,33 +90,19 @@ export function CompletedWorkoutReview({
         </section>
       ) : postSessionReview ? (
         <PostSessionReviewCard review={postSessionReview} />
-      ) : null}
-
-      {isLoadingExplanation ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-          <p className="text-sm text-slate-600">Building your post-workout summary...</p>
+      ) : (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          The saved review could not be loaded. Open the full review and audit before acting on this session.
         </section>
-      ) : explanation ? (
-        <PostWorkoutInsights
-          explanation={explanation}
-          exercises={performanceSummary.map((exercise) => ({
-            exerciseId: exercise.exerciseId,
-            exerciseName: exercise.name,
-            isMainLift: exercise.isMainLift,
-            isRuntimeAdded: exercise.isRuntimeAdded,
-          }))}
-        />
-      ) : null}
+      )}
 
       {performanceSummary.length > 0 ? (
-        <section className="space-y-3">
-          <div>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Detailed set log</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Raw set-by-set results, kept separate from the progression takeaways above.
-            </p>
-          </div>
-          {performanceSummary.map((exercise) => {
+        <details className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+            Detailed set log
+          </summary>
+          <div className="mt-4 space-y-3">
+            {performanceSummary.map((exercise) => {
             const isDumbbell = isDumbbellEquipment(exercise.equipment);
             return (
               <div
@@ -323,8 +198,9 @@ export function CompletedWorkoutReview({
                 </div>
               </div>
             );
-          })}
-        </section>
+            })}
+          </div>
+        </details>
       ) : null}
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">

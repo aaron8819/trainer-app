@@ -208,6 +208,7 @@ function makeExercises(): LogExerciseInput[] {
   return [
     {
       workoutExerciseId: "ex-1",
+      exerciseId: "exercise-1",
       name: "Dumbbell Bench Press",
       equipment: ["dumbbell"],
       isMainLift: true,
@@ -460,6 +461,65 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(loadInput.value).toBe("50");
     expect(rpeInput.value).toBe("8");
     expect(repsInput.className).toContain("text-slate-400");
+  });
+
+  it("opens trusted exact-exercise history from the active workout card", async () => {
+    mockedFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        exercise: {
+          id: "exercise-1",
+          name: "Dumbbell Bench Press",
+          equipment: ["dumbbell"],
+        },
+        comparison: {
+          scope: "exact_exercise",
+          loadConvention: "per_dumbbell",
+          note: "Compared only with this exact exercise; dumbbell loads are recorded per dumbbell.",
+        },
+        lastExposure: {
+          workoutId: "prior-workout",
+          date: "2026-03-08T00:00:00.000Z",
+          workoutStatus: "COMPLETED",
+          sets: [
+            {
+              setIndex: 1,
+              reps: 10,
+              load: 45,
+              rpe: 8,
+              completedAt: "2026-03-08T00:00:00.000Z",
+              isRuntimeAdded: false,
+            },
+          ],
+          completedSetCount: 1,
+          skippedSetCount: 0,
+          unloggedSetCount: 0,
+          hasSessionLocalChanges: false,
+          representativeSet: { reps: 10, load: 45, rpe: 8 },
+        },
+        recentExposures: [
+          { representativeSet: { reps: 10, load: 45, rpe: 8 } },
+        ],
+        records: {
+          bestEstimatedStrength: null,
+          heaviestCompletedLoad: null,
+          highestSessionVolume: null,
+        },
+      }),
+    });
+    const user = userEvent.setup();
+    renderClient();
+
+    await user.click(screen.getByRole("button", { name: "History" }));
+
+    expect(
+      screen.getByRole("heading", { name: "Dumbbell Bench Press history" })
+    ).toBeInTheDocument();
+    expect(await screen.findByText("Last exposure")).toBeInTheDocument();
+    expect(mockedFetch).toHaveBeenCalledWith(
+      "/api/exercises/exercise-1/history?limit=3"
+    );
+    expect(screen.getByLabelText("Reps")).toBeInTheDocument();
   });
 
   it("prefills second set from previous logged actuals", async () => {

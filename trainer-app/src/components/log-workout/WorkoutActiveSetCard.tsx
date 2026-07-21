@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { PersonalHistorySection } from "@/components/library/PersonalHistorySection";
+import { SlideUpSheet } from "@/components/ui/SlideUpSheet";
 import { toDisplayLoad } from "@/lib/ui/load-display";
 import { formatRepPrescriptionInline } from "@/lib/ui/rep-target-display";
 import { getSetValidity } from "@/lib/logging/setValidity";
@@ -135,6 +137,7 @@ export function WorkoutActiveSetCard({
   } = formActions;
   // Auto-dismiss "Draft restored" after 3 s; also hide on any field interaction
   const [dismissedDraftRestoredSetId, setDismissedDraftRestoredSetId] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const draftRestoredTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showDraftRestored = restoredSetIds.has(setId) && dismissedDraftRestoredSetId !== setId;
 
@@ -217,7 +220,18 @@ export function WorkoutActiveSetCard({
         />
       </div>
       <div className="mt-3">
-        <h2 className="text-base font-semibold leading-snug">{activeSet.exercise.name}</h2>
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-base font-semibold leading-snug">{activeSet.exercise.name}</h2>
+          {activeSet.exercise.exerciseId ? (
+            <button
+              className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-full border border-slate-200 px-3 text-xs font-semibold text-slate-700"
+              onClick={() => setHistoryOpen(true)}
+              type="button"
+            >
+              History
+            </button>
+          ) : null}
+        </div>
         {isWarmup ? (
           <div className="mt-1 inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
             Warmup/ramp before Set 1
@@ -519,6 +533,15 @@ export function WorkoutActiveSetCard({
         >
           {status}
         </p>
+      ) : null}
+      {activeSet.exercise.exerciseId ? (
+        <SlideUpSheet
+          isOpen={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          title={`${activeSet.exercise.name} history`}
+        >
+          <PersonalHistorySection exerciseId={activeSet.exercise.exerciseId} />
+        </SlideUpSheet>
       ) : null}
     </section>
   );

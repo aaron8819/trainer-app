@@ -1144,12 +1144,12 @@ describeDatabase("runtime workout mutation CAS (PostgreSQL)", () => {
     });
     const stableHistory = await loadExerciseHistory(exerciseAId, ownerId, 3);
     const variantHistory = await loadExerciseHistory(exerciseVariantId, ownerId, 3);
-    expect(stableHistory.sessions).toHaveLength(1);
-    expect(stableHistory.sessions[0].sets).toEqual([
+    expect(stableHistory.recentExposures).toHaveLength(1);
+    expect(stableHistory.recentExposures[0].sets).toEqual([
       expect.objectContaining({ reps: 10, load: 100, rpe: 8 }),
     ]);
-    expect(variantHistory.sessions).toHaveLength(1);
-    expect(variantHistory.sessions[0].sets).toEqual([
+    expect(variantHistory.recentExposures).toHaveLength(1);
+    expect(variantHistory.recentExposures[0].sets).toEqual([
       expect.objectContaining({ reps: 10, load: 50, rpe: 8 }),
     ]);
     const legacyAfter = await pool.query(

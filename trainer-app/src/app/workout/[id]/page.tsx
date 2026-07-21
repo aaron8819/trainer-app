@@ -3,7 +3,6 @@ import { loadCompletedWorkoutReviewReadModel } from "@/lib/api/completed-workout
 import { generateWorkoutExplanation } from "@/lib/api/explainability";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { PostSessionReviewCard } from "@/components/post-workout/PostSessionReviewCard";
-import { PostWorkoutInsights } from "@/components/post-workout/PostWorkoutInsights";
 import { SessionContextCard } from "@/components/explainability";
 import { prisma } from "@/lib/db/prisma";
 import { parseExplainabilitySelectionMetadata } from "@/lib/ui/explainability";
@@ -28,7 +27,6 @@ import {
 } from "@/lib/ui/session-identity";
 import { evaluateTargetReps } from "@/lib/session-semantics/target-evaluation";
 import { buildSessionSummaryModel } from "@/lib/ui/session-summary";
-import { buildWorkoutExecutionSummary } from "@/lib/ui/workout-execution-summary";
 import { getWorkoutDetailTitle, getWorkoutWorkflowState } from "@/lib/workout-workflow";
 import { getCanonicalDeloadProgressionTriggerText } from "@/lib/deload/semantics";
 
@@ -210,19 +208,6 @@ export default async function WorkoutDetailPage({
       { label: "Accessories", items: accessory },
     ];
   })();
-  const executionSummary = buildWorkoutExecutionSummary(
-    workout.exercises.map((exercise) => ({
-      exerciseId: exercise.exerciseId,
-      name: exercise.exercise.name,
-      isRuntimeAdded: runtimeAddedExerciseIds.has(exercise.id),
-      sets: exercise.sets.map((set) => ({
-        isRuntimeAdded: runtimeAddedSetIds.has(set.id),
-        wasLogged: Boolean(set.logs[0]),
-        wasSkipped: set.logs[0]?.wasSkipped ?? false,
-      })),
-    }))
-  );
-
   return (
     <main className="min-h-screen bg-white text-slate-900">
       <div className="page-shell max-w-4xl">
@@ -245,17 +230,7 @@ export default async function WorkoutDetailPage({
         </div>
 
         <section className="mt-6 space-y-6 sm:mt-8 sm:space-y-8">
-          {hasPerformedStatus && explanation ? (
-            <PostWorkoutInsights
-              explanation={explanation}
-              exercises={workout.exercises.map((exercise) => ({
-                exerciseId: exercise.exerciseId,
-                exerciseName: exercise.exercise.name,
-                isMainLift: exercise.isMainLift || exercise.section === "MAIN",
-                isRuntimeAdded: runtimeAddedExerciseIds.has(exercise.id),
-              }))}
-            />
-          ) : summary ? (
+          {!hasPerformedStatus && summary ? (
             <SessionContextCard summary={summary} startLoggingHref={startLoggingHref} />
           ) : null}
 
@@ -269,19 +244,21 @@ export default async function WorkoutDetailPage({
             <PostSessionReviewCard review={postSessionReview} />
           ) : null}
 
-          {hasPerformedStatus && executionSummary.duplicateAddedExercises.length > 0 ? (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              {executionSummary.duplicateAddedExercises.map((duplicate) => (
-                <p key={duplicate.exerciseId ?? duplicate.exerciseName}>
-                  {duplicate.exerciseName} was planned but skipped, while the same exercise was logged as an added exercise. This looks like duplicate logging rather than a missed dose.
-                </p>
-              ))}
-            </div>
-          ) : null}
-
-          {sectionedExercises
-            .filter((section) => section.items.length > 0)
-            .map((section) => (
+          <details
+            open={!hasPerformedStatus}
+            className={hasPerformedStatus ? "rounded-2xl border border-slate-200 bg-white p-4 sm:p-5" : ""}
+          >
+            <summary
+              className={hasPerformedStatus
+                ? "cursor-pointer text-sm font-semibold text-slate-700"
+                : "hidden"}
+            >
+              Detailed exercise and set log
+            </summary>
+            <div className={hasPerformedStatus ? "mt-4 space-y-6" : "space-y-6"}>
+              {sectionedExercises
+                .filter((section) => section.items.length > 0)
+                .map((section) => (
               <div key={section.label} className="space-y-3 sm:space-y-4">
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{section.label}</h2>
                 {section.items.map((exercise) => {
@@ -447,7 +424,9 @@ export default async function WorkoutDetailPage({
                   );
                 })}
               </div>
-            ))}
+                ))}
+            </div>
+          </details>
         </section>
       </div>
     </main>

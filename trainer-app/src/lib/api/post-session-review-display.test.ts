@@ -100,10 +100,9 @@ describe("post-session review display adapter", () => {
 
     expect(display).toMatchObject({
       status: "reviewed",
-      headline: "Post-session review ready",
+      headline: "Good session",
       summaryBullets: [
-        "Completed planned work",
-        "No seed or plan changes made",
+        "You completed the planned work with no skipped or unlogged sets.",
       ],
       completion: {
         plannedSetCount: 3,
@@ -159,7 +158,11 @@ describe("post-session review display adapter", () => {
       ],
     });
 
-    expect(display.summaryBullets).toContain("2 planned sets skipped");
+    expect(display.summaryBullets).toEqual([
+      "0 performed sets recorded; 2 planned sets skipped.",
+    ]);
+    expect(display.headline).toBe("Mixed session");
+    expect(display.warnings).toContain("Lat Pulldown was skipped.");
     expect(display.exerciseChanges).toEqual([
       {
         kind: "skipped",
@@ -191,7 +194,9 @@ describe("post-session review display adapter", () => {
       ],
     });
 
-    expect(display.summaryBullets).toContain("2 session-local extra sets added");
+    expect(display.summaryBullets).toEqual([
+      "You completed the planned work and added 2 extra sets.",
+    ]);
     expect(display.exerciseChanges).toEqual([
       {
         kind: "runtime_added",
@@ -212,6 +217,7 @@ describe("post-session review display adapter", () => {
         }),
       ])
     );
+    expect(display.warnings).toContain("Cable Curls was added for this session.");
   });
 
   it("maps runtime-added exercises without logs as needing actuals", () => {
@@ -294,6 +300,9 @@ describe("post-session review display adapter", () => {
         detail: "Use this as review context only; no automatic exercise change.",
         evidenceOnly: true,
       })
+    );
+    expect(display.warnings).toContain(
+      "Machine Row replaced Barbell Row for this session."
     );
   });
 
@@ -564,8 +573,9 @@ describe("post-session review display adapter", () => {
     expect(display.nextExposureNotes).toEqual([
       {
         exerciseName: "Bench Press",
-        recommendation: "Next exposure: raise starting point modestly.",
-        basis: "Based on logged reps, effort, and anchor load 105.",
+        recommendation:
+          "Increase from today's performed anchor while recalibrating the written target.",
+        basis: "Based on the saved reps, effort, and comparable-session evidence.",
         evidenceOnly: true,
         mutation: false,
       },
@@ -596,8 +606,8 @@ describe("post-session review display adapter", () => {
     expect(display.weeklyImpact).toEqual([
       {
         muscle: "Chest",
-        headline: "Chest ended approaching weekly target",
-        detail: "9 effective sets projected vs 10 target.",
+        headline: "Chest is approaching weekly target",
+        detail: "9 effective sets this week against a target of 10.",
       },
     ]);
     expect(display.learningSignals).toEqual(

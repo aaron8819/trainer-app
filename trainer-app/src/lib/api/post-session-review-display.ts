@@ -8,6 +8,7 @@ import type {
   PostSessionReviewPrescriptionCalibrationRow,
   PostSessionReviewWeeklyImpactRow,
 } from "./post-session-review-contract";
+import { getCanonicalNextExposureCopy } from "@/lib/ui/next-exposure-copy";
 
 export type PostSessionReviewDisplayStatus = "reviewed" | "blocked" | "not_ready";
 
@@ -214,31 +215,36 @@ function buildCompletion(
 
 function buildSummaryBullets(contract: PostSessionReviewContract): string[] {
   const summary = contract.executionSummary;
-  const bullets: string[] = [];
-
   if (
     summary.plannedSetCount > 0 &&
     summary.completedSetCount >= summary.plannedSetCount &&
     summary.skippedSetCount === 0 &&
     summary.missingLogSetCount === 0
   ) {
-    bullets.push("Completed planned work");
-  } else {
-    bullets.push(`${plural(summary.completedSetCount, "performed set")} logged`);
+    return [
+      summary.extraSetCount > 0
+        ? `You completed the planned work and added ${plural(summary.extraSetCount, "extra set")}.`
+        : "You completed the planned work with no skipped or unlogged sets.",
+    ];
   }
 
-  if (summary.skippedSetCount > 0) {
-    bullets.push(`${plural(summary.skippedSetCount, "planned set")} skipped`);
-  }
-  if (summary.extraSetCount > 0) {
-    bullets.push(`${plural(summary.extraSetCount, "session-local extra set")} added`);
-  }
-  if (summary.missingLogSetCount > 0) {
-    bullets.push(`${plural(summary.missingLogSetCount, "planned set")} still unlogged`);
-  }
+  const exceptions = [
+    summary.skippedSetCount > 0
+      ? `${plural(summary.skippedSetCount, "planned set")} skipped`
+      : null,
+    summary.missingLogSetCount > 0
+      ? `${plural(summary.missingLogSetCount, "planned set")} unlogged`
+      : null,
+    summary.extraSetCount > 0
+      ? `${plural(summary.extraSetCount, "extra set")} added`
+      : null,
+  ].filter((part): part is string => part !== null);
 
-  bullets.push("No seed or plan changes made");
-  return bullets;
+  return [
+    `${plural(summary.completedSetCount, "performed set")} recorded${
+      exceptions.length > 0 ? `; ${exceptions.join(", ")}` : ""
+    }.`,
+  ];
 }
 
 function replacementHeadline(row: PostSessionReviewExerciseReconciliationRow): string {
@@ -490,34 +496,13 @@ function mapPerformedRealityTrends(
   }));
 }
 
-function nextExposureRecommendation(row: PostSessionReviewNextExposureRow): string {
-  switch (row.action) {
-    case "increase":
-    case "recalibrated_increase":
-      return "Next exposure: raise starting point modestly.";
-    case "hold":
-    case "hold_at_recalibrated_anchor":
-      return "Next exposure: hold the starting point.";
-    case "decrease":
-    case "recalibrate":
-    case "target_too_high":
-      return "Next exposure: review the starting point before increasing.";
-    case "insufficient_evidence":
-    case "caution_review_manually":
-      return "Next exposure: review manually with more logged evidence.";
-  }
-}
-
 function mapNextExposure(
   rows: PostSessionReviewNextExposureRow[]
 ): PostSessionReviewDisplayNextExposureNote[] {
   return rows.map((row) => ({
     exerciseName: row.exerciseName ?? row.exerciseId,
-    recommendation: nextExposureRecommendation(row),
-    basis:
-      row.anchorLoad == null
-        ? "Based on logged reps, effort, and available exposure evidence."
-        : `Based on logged reps, effort, and anchor load ${formatLoad(row.anchorLoad)}.`,
+    recommendation: getCanonicalNextExposureCopy(row.action).nextTimeImperative,
+    basis: "Based on the saved reps, effort, and comparable-session evidence.",
     evidenceOnly: true,
     mutation: false,
   }));
@@ -547,8 +532,8 @@ function mapWeeklyImpact(
 ): PostSessionReviewDisplayWeeklyImpact[] {
   return (rows ?? []).map((row) => ({
     muscle: row.muscle,
-    headline: `${row.muscle} ended ${weeklyStatusLabel(row)}`,
-    detail: `${row.projectedEffectiveVolume} effective sets projected vs ${row.weeklyTarget} target.`,
+    headline: `${row.muscle} is ${weeklyStatusLabel(row)}`,
+    detail: `${row.projectedEffectiveVolume} effective sets this week against a target of ${row.weeklyTarget}.`,
   }));
 }
 
@@ -621,7 +606,63 @@ function mapWarnings(contract: PostSessionReviewContract): string[] {
   const warnings = contract.consistencyChecks
     .filter((check) => check.status !== "pass")
     .map((check) => consistencyWarning(check.message));
+
+  for (const row of contract.exerciseReconciliation.rows) {
+    if (row.replacement) {
+      warnings.push(
+        row.replacement.fromExerciseName
+          ? `${row.exerciseName} replaced ${row.replacement.fromExerciseName} for this session.`
+          : `${row.exerciseName} was recorded as a session replacement.`
+      );
+    } else if (row.runtimeAdded) {
+      warnings.push(`${row.exerciseName} was added for this session.`);
+    } else if (row.status === "skipped") {
+      warnings.push(`${row.exerciseName} was skipped.`);
+    } else if (row.status === "partial") {
+      warnings.push(`${row.exerciseName} was only partially completed.`);
+    } else if (row.status === "unlogged") {
+      warnings.push(`${row.exerciseName} still has unlogged planned work.`);
+    } else if (row.addedSetCount > 0) {
+      warnings.push(`${row.exerciseName} included ${plural(row.addedSetCount, "extra set")}.`);
+    }
+  }
+
+  for (const row of contract.prescriptionCalibration.rows) {
+    if (row.classification === "target_too_high") {
+      warnings.push(`${row.exerciseName} may have been prescribed too heavy.`);
+    } else if (row.classification === "target_too_low") {
+      warnings.push(`${row.exerciseName} may have been prescribed too light.`);
+    } else if (row.classification === "skipped_or_low_coverage") {
+      warnings.push(`${row.exerciseName} has too little performed work for a confident read.`);
+    }
+  }
+
+  for (const trend of contract.performedReality.trendGroups) {
+    const exerciseLabel = trendExerciseLabel(trend);
+    if (trend.kind === "repeated_underperformance") {
+      warnings.push(`${exerciseLabel} has repeatedly come in under plan.`);
+    } else if (trend.kind === "repeated_overperformance") {
+      warnings.push(`${exerciseLabel} has repeatedly exceeded plan.`);
+    } else if (trend.kind === "missing_actuals_pattern") {
+      warnings.push(`${exerciseLabel} has a repeated missing-actuals pattern.`);
+    }
+  }
+
   return Array.from(new Set(warnings));
+}
+
+function hasMixedOutcome(contract: PostSessionReviewContract): boolean {
+  const summary = contract.executionSummary;
+  return (
+    contract.workoutIdentity.status === "PARTIAL" ||
+    summary.skippedSetCount > 0 ||
+    summary.missingLogSetCount > 0 ||
+    contract.exerciseReconciliation.rows.some((row) =>
+      ["skipped", "partial", "unlogged"].includes(row.status)
+    ) ||
+    contract.performedReality.rows.some((row) => row.label !== "performed_as_planned") ||
+    contract.consistencyChecks.some((check) => check.status !== "pass")
+  );
 }
 
 function hasFailingConsistencyCheck(contract: PostSessionReviewContract): boolean {
@@ -639,7 +680,9 @@ export function adaptPostSessionReviewContractToDisplay(
     status,
     headline:
       status === "reviewed"
-        ? "Post-session review ready"
+        ? hasMixedOutcome(contract)
+          ? "Mixed session"
+          : "Good session"
         : "Post-session review needs source review",
     summaryBullets: buildSummaryBullets(contract),
     completion: buildCompletion(contract),

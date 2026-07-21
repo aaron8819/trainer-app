@@ -146,11 +146,6 @@ export type CompletedWorkoutExerciseSummary = {
   sets: CompletedWorkoutSetSummary[];
 };
 
-export type RpeAdherenceSummary = {
-  adherent: number;
-  total: number;
-};
-
 export type CompletionAction = "mark_completed" | "mark_partial" | "mark_skipped";
 
 export type PrefilledFieldState = {

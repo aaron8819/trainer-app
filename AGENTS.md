@@ -68,6 +68,7 @@ Prefer fixing the rightful owner seam over downstream patches. If the owner seam
 - Write tasks that touch shared seams must use isolated worktrees unless explicitly approved.
 - Shared seam writes must be serialized unless explicitly approved.
 - Do not continue if the worktree is dirty from another task. If dirty state overlaps the task, stop and ask before editing.
+- Immediately after creating an implementation worktree, compare its lockfile hash with the intended dependency installation and inspect the `node_modules` junction or symlink target. Resolve incompatibility before editing source code.
 
 ## DB Safety
 - Default DB policy is read-only inspection only.

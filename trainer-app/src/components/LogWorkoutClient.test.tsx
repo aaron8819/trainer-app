@@ -57,76 +57,38 @@ function makeSaveWorkoutResponse(
   };
 }
 
-function makeExplanationResponse() {
+function makePostSessionReviewResponse() {
   return {
-    confidence: { level: "high", summary: "ok", missingSignals: [] },
-    sessionContext: {
-      blockPhase: {
-        blockType: "accumulation",
-        weekInBlock: 4,
-        totalWeeksInBlock: 4,
-        primaryGoal: "build",
-      },
-      volumeStatus: { muscleStatuses: {}, overallSummary: "ok" },
-      readinessStatus: {
-        overall: "moderate",
-        signalAge: 0,
-        availability: "recent",
-        label: "Recent readiness",
-        perMuscleFatigue: {},
-        sorenessSuppressedMuscles: [],
-        adaptations: [],
-      },
-      progressionContext: {
-        weekInMesocycle: 4,
-        volumeProgression: "building",
-        intensityProgression: "ramping",
-        nextMilestone: "deload next",
-      },
-      cycleSource: "computed",
-      narrative: "narrative",
-    },
-    coachMessages: [],
-    exerciseRationales: {},
-    prescriptionRationales: {},
-    progressionReceipts: {
-      "ex-1": {
-        lastPerformed: {
-          reps: 10,
-          load: 45,
-          rpe: 8,
-          performedAt: "2026-02-18T00:00:00.000Z",
+    postSessionReview: {
+      status: "reviewed",
+      headline: "Good session",
+      summaryBullets: [
+        "You completed the planned work with no skipped or unlogged sets.",
+      ],
+      completion: null,
+      exerciseChanges: [],
+      performedReality: [],
+      performedRealityTrends: [],
+      loadCalibration: [],
+      nextExposureNotes: [
+        {
+          exerciseName: "Dumbbell Bench Press",
+          recommendation: "Keep the same load and build reps within the target range.",
+          basis: "Based on the saved reps, effort, and comparable-session evidence.",
+          evidenceOnly: true,
+          mutation: false,
         },
-        todayPrescription: { reps: 10, load: 50, rpe: 8 },
-        delta: { load: 5, loadPercent: 11.1, reps: 0, rpe: 0 },
-        trigger: "double_progression",
-        decisionLog: [],
+      ],
+      weeklyImpact: [],
+      learningSignals: [],
+      warnings: [],
+      source: {
+        ownerSeam: "api/post-session-review-display",
+        readOnly: true,
+        evidenceOnly: true,
+        noMutationNote: "No seed or plan changes made",
       },
     },
-    nextExposureDecisions: {
-      "ex-1": {
-        action: "hold",
-        summary: "Next exposure: hold load.",
-        reason: "Median reps stayed at 10 in the 8-10 band, so keep building reps before adding load.",
-        anchorLoad: 50,
-        repRange: { min: 8, max: 10 },
-        modalRpe: 8,
-        medianReps: 10,
-      },
-    },
-    filteredExercises: [],
-    volumeCompliance: [
-      {
-        muscle: "Chest",
-        performedEffectiveVolumeBeforeSession: 6,
-        plannedEffectiveVolumeThisSession: 4,
-        projectedEffectiveVolume: 10,
-        weeklyTarget: 10,
-        mev: 8,
-        mav: 16,
-        status: "ON_TARGET",
-      },
-    ],
   };
 }
 
@@ -429,7 +391,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     mockedLoadWeeklyVolumeCheckRequest.mockResolvedValue(makeWeeklyVolumeCheckResponse());
     mockedFetch.mockResolvedValue({
       ok: true,
-      json: async () => makeExplanationResponse(),
+      json: async () => makePostSessionReviewResponse(),
     });
     vi.stubGlobal("fetch", mockedFetch);
     window.localStorage.clear();
@@ -1430,7 +1392,7 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     expect(mockedSaveWorkoutRequest).not.toHaveBeenCalled();
   });
 
-  it("renders the post-workout insights and completion actions after finishing the workout", async () => {
+  it("renders the canonical completed review and completion actions after finishing the workout", async () => {
     const user = userEvent.setup();
     mockedSaveWorkoutRequest.mockResolvedValueOnce(
       makeSaveWorkoutResponse("COMPLETED", {
@@ -1459,14 +1421,18 @@ describe("LogWorkoutClient UX behavior", { timeout: 15000 }, () => {
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Session complete!")).toBeInTheDocument();
-      expect(screen.getByText("Session outcome")).toBeInTheDocument();
+      expect(screen.getByText("Good session")).toBeInTheDocument();
       expect(
-        screen.getByText("Key lifts point to a hold next time while reps keep building.")
+        screen.getByText(
+          "You completed the planned work with no skipped or unlogged sets."
+        )
       ).toBeInTheDocument();
-      expect(screen.getByText("Key lift takeaways")).toBeInTheDocument();
-      expect(screen.getByText(/Next exposure: hold load\./)).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Detailed set log" })).toBeInTheDocument();
+      expect(
+        screen.getByText("Keep the same load and build reps within the target range.")
+      ).toBeInTheDocument();
+      expect(screen.getByText("Detailed set log")).toBeInTheDocument();
+      expect(screen.queryByText("Session outcome")).not.toBeInTheDocument();
+      expect(screen.queryByText("Key lift takeaways")).not.toBeInTheDocument();
       expect(screen.queryByText("Strength updates")).not.toBeInTheDocument();
       expect(
         screen.getByText(
@@ -3504,7 +3470,9 @@ describe("4i - Exercise queue expansion stays user-controlled", () => {
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Session complete|Workout marked as completed/)).toBeInTheDocument();
+      expect(mockedSaveWorkoutRequest).toHaveBeenCalledWith(
+        expect.objectContaining({ workoutId: "workout-1", action: "mark_completed" })
+      );
     });
 
     expect(screen.queryByTestId("collapsed-summary-warmup")).not.toBeInTheDocument();
@@ -3959,7 +3927,6 @@ describe("I-2/I-4/I-5/E-4/E-5/E-6/L-4/S-5 — Remaining low-priority fixes", () 
       expect(mockedSaveWorkoutRequest).toHaveBeenCalledWith(
         expect.objectContaining({ workoutId: "workout-1", action: "mark_completed" })
       );
-      expect(screen.getByText("Session complete!")).toBeInTheDocument();
       expect(screen.queryByTestId("rest-timer-hud")).not.toBeInTheDocument();
     });
   });

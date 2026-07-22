@@ -1,7 +1,62 @@
 import { describe, expect, it } from "vitest";
 import { computeDoubleProgressionDecision, PROGRESSION_CONFIG, shouldDeload } from "./progression";
+import { LOAD_PRESCRIPTION_SCENARIOS } from "./load-prescription-scenarios.fixture";
 
 describe("progression correctness", () => {
+  it.each(
+    LOAD_PRESCRIPTION_SCENARIOS.filter((scenario) =>
+      ["A", "B", "C", "D", "E", "F", "G", "I", "J", "M", "O"].includes(scenario.id)
+    )
+  )("scenario $id: $description", (scenario) => {
+    const actualRpe = scenario.prior.actualRpe;
+    const performedReps = scenario.prior.performedReps ?? scenario.prior.prescribedReps;
+    const hasCompleteEvidence = actualRpe != null;
+    const repeatedSuccess =
+      (scenario.history?.filter((exposure) => exposure.successful).length ?? 0) >= 2;
+    const prescriptionContext = actualRpe != null
+      ? {
+          priorPerformedReps: performedReps,
+          priorActualRpe: actualRpe,
+          priorTargetReps: scenario.prior.prescribedReps,
+          priorTargetRpe: scenario.prior.prescribedRpe,
+          clearEasy:
+            performedReps >= scenario.prior.prescribedReps &&
+            actualRpe <= scenario.prior.prescribedRpe - 1,
+          clearHard:
+            performedReps < (scenario.prior.prescribedRepMin ?? scenario.prior.prescribedReps) ||
+            actualRpe >= scenario.prior.prescribedRpe + 1,
+          repeatedSuccess: repeatedSuccess || false,
+        }
+      : undefined;
+    const decision = computeDoubleProgressionDecision(
+      [1, 2, 3].map((setIndex) => ({
+        setIndex,
+        reps: performedReps,
+        ...(actualRpe == null ? {} : { rpe: actualRpe }),
+        load: scenario.prior.performedLoad,
+        targetLoad: scenario.prior.prescribedLoad,
+        targetReps: scenario.prior.prescribedReps,
+        targetRepMin: scenario.prior.prescribedRepMin,
+        targetRpe: scenario.prior.prescribedRpe,
+      })),
+      [scenario.prior.prescribedRepMin ?? scenario.prior.prescribedReps, scenario.prior.prescribedReps],
+      "barbell",
+      {
+        currentTarget: {
+          reps: scenario.current.prescribedReps,
+          rpe: scenario.current.prescribedRpe,
+        },
+        loadIncrement: scenario.increment,
+        ...(prescriptionContext ? { prescriptionContext } : {}),
+        ...(!hasCompleteEvidence ? { prescriptionEvidenceIncomplete: true } : {}),
+      }
+    );
+
+    expect(decision?.nextLoad).toBe(scenario.expected.targetLoad);
+    expect(Math.abs((decision?.nextLoad ?? 0) - scenario.prior.performedLoad)).toBeLessThanOrEqual(
+      scenario.increment
+    );
+  });
   it("never increments load from a 0-load bodyweight baseline (Dips and Pull-Ups)", () => {
     const bodyweightCases = [
       { name: "Dips", repRange: [6, 12] as [number, number] },
@@ -140,7 +195,7 @@ describe("progression correctness", () => {
     expect(decision?.decisionLog.join(" | ")).toContain("performed load beat prescription");
   });
 
-  it("uses the bounded catch-up lane when exact same-exercise overshoot is broad and clearly under-translated", () => {
+  it("caps broad same-exercise catch-up evidence at one valid increment", () => {
     const decision = computeDoubleProgressionDecision(
       [
         { reps: 8, rpe: 7.5, load: 155, targetLoad: 145 },
@@ -154,9 +209,9 @@ describe("progression correctness", () => {
     );
 
     expect(decision?.path).toBe("path_5_overshoot");
-    expect(decision?.nextLoad).toBe(165);
+    expect(decision?.nextLoad).toBe(160);
     expect(decision?.decisionLog.join(" | ")).toContain("Catch-up lane fired");
-    expect(decision?.trace.outcome.reasonCodes).toContain("same_exercise_catch_up_progression");
+    expect(decision?.trace.outcome.reasonCodes).toContain("same_exercise_catch_up_evidence_bounded");
   });
 
   it("keeps Tier 1 overshoot behavior unchanged when promotion policy stays at full confidence", () => {

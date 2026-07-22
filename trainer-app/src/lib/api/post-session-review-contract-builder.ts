@@ -209,7 +209,7 @@ function classifyCalibration(input: {
   const repsBelowTarget =
     typeof input.medianReps === "number" &&
     typeof input.lowerRepTarget === "number" &&
-    input.medianReps < input.lowerRepTarget - 1;
+    input.medianReps < input.lowerRepTarget;
   const repsAboveTarget =
     typeof input.medianReps === "number" &&
     typeof input.upperRepTarget === "number" &&
@@ -217,11 +217,11 @@ function classifyCalibration(input: {
   const effortAboveTarget =
     typeof input.medianActualRpe === "number" &&
     typeof input.targetRpe === "number" &&
-    input.medianActualRpe > input.targetRpe + 1;
+    input.medianActualRpe >= input.targetRpe + 1;
   const effortBelowTarget =
     typeof input.medianActualRpe === "number" &&
     typeof input.targetRpe === "number" &&
-    input.medianActualRpe < input.targetRpe - 1;
+    input.medianActualRpe <= input.targetRpe - 1;
 
   if (
     typeof input.targetLoad !== "number" ||
@@ -238,29 +238,23 @@ function classifyCalibration(input: {
     };
   }
 
-  if (input.nextExposureDecision?.action === "target_too_high") {
-    return {
-      classification: "target_too_high",
-      reasonCodes: ["next_exposure_target_too_high"],
-      notes: [
-        `next_exposure_action:${input.nextExposureDecision.action}`,
-        `load_delta_pct:${input.loadDeltaPct}`,
-        ...(typeof input.nextExposureDecision.anchorLoad === "number"
-          ? [`next_exposure_anchor_load:${input.nextExposureDecision.anchorLoad}`]
-          : []),
-      ],
-    };
-  }
+  const performedAtOrBelowTarget = input.medianPerformedLoad <= input.targetLoad;
+  const performedAtOrAboveTarget = input.medianPerformedLoad >= input.targetLoad;
+  const loadWasAutoregulated = Math.abs(input.medianPerformedLoad - input.targetLoad) > 0.01;
+  const repsAchieved = !repsBelowTarget && typeof input.medianReps === "number";
+  const effortKnown =
+    typeof input.medianActualRpe === "number" && typeof input.targetRpe === "number";
 
-  if (input.loadDeltaPct <= -15 || repsBelowTarget || effortAboveTarget) {
+  if (performedAtOrBelowTarget && (repsBelowTarget || effortAboveTarget)) {
     return {
       classification: "target_too_high",
       reasonCodes: [
-        ...(input.loadDeltaPct <= -15
-          ? ["performed_load_materially_below_target"]
-          : []),
+        ...(input.loadDeltaPct < 0 ? ["performed_load_below_target"] : []),
         ...(repsBelowTarget ? ["median_reps_below_target"] : []),
         ...(effortAboveTarget ? ["median_rpe_above_target"] : []),
+        ...(input.nextExposureDecision?.action === "target_too_high"
+          ? ["next_exposure_target_too_high"]
+          : []),
       ],
       notes: [
         `load_delta_pct:${input.loadDeltaPct}`,
@@ -271,13 +265,11 @@ function classifyCalibration(input: {
     };
   }
 
-  if ((input.loadDeltaPct >= 15 || (repsAboveTarget && effortBelowTarget)) && !repsBelowTarget) {
+  if (performedAtOrAboveTarget && repsAchieved && effortBelowTarget) {
     return {
       classification: "target_too_low",
       reasonCodes: [
-        ...(input.loadDeltaPct >= 15
-          ? ["performed_load_materially_above_target"]
-          : []),
+        ...(input.loadDeltaPct > 0 ? ["performed_load_above_target"] : []),
         ...(repsAboveTarget ? ["median_reps_above_target"] : []),
         ...(effortBelowTarget ? ["median_rpe_below_target"] : []),
       ],
@@ -286,6 +278,22 @@ function classifyCalibration(input: {
         ...(typeof input.medianActualRpe === "number"
           ? [`median_rpe:${input.medianActualRpe}`]
           : []),
+      ],
+    };
+  }
+
+  if (loadWasAutoregulated && repsAchieved && effortKnown && !effortAboveTarget) {
+    return {
+      classification: "successful_autoregulation",
+      reasonCodes: [
+        "performed_load_adjusted",
+        "prescribed_reps_achieved",
+        "actual_rpe_at_or_below_target",
+      ],
+      notes: [
+        `load_delta_pct:${input.loadDeltaPct}`,
+        `median_rpe:${input.medianActualRpe}`,
+        "isolated_load_deviation_is_not_a_prescription_error",
       ],
     };
   }
@@ -300,6 +308,17 @@ function classifyCalibration(input: {
         ...(typeof input.nextExposureDecision.anchorLoad === "number"
           ? [`next_exposure_anchor_load:${input.nextExposureDecision.anchorLoad}`]
           : []),
+      ],
+    };
+  }
+
+  if (loadWasAutoregulated) {
+    return {
+      classification: "recalibrated_hold",
+      reasonCodes: ["isolated_directional_mismatch_watch_item"],
+      notes: [
+        `load_delta_pct:${input.loadDeltaPct}`,
+        "single_exposure_not_systematic",
       ],
     };
   }
@@ -374,6 +393,8 @@ function resolvePerformedRealityCoherence(input: {
       return "load_too_heavy";
     case "target_too_low":
       return "load_too_light";
+    case "successful_autoregulation":
+      return "coherent";
     case "insufficient_evidence":
       return "insufficient_evidence";
     case "skipped_or_low_coverage":
@@ -1057,6 +1078,7 @@ function buildRecentExposureSummaryRows(input: {
 type RecentPerformedRealityRow = PostSessionReviewPerformedRealityRow & {
   workoutId: string;
   performedAt: string;
+  calibrationClassification: PostSessionReviewCalibrationClassification;
 };
 
 function buildRecentPerformedRealityRows(
@@ -1074,6 +1096,7 @@ function buildRecentPerformedRealityRows(
       ...row,
       workoutId: exposures[index]?.workoutId ?? row.workoutExerciseId,
       performedAt: exposures[index]?.performedAt ?? "",
+      calibrationClassification: calibrationRows[index]?.classification ?? "insufficient_evidence",
     })
   );
 }
@@ -1081,19 +1104,21 @@ function buildRecentPerformedRealityRows(
 function trendKindForLabels(input: {
   currentLabel: PostSessionReviewPerformedRealityRow["label"];
   recentLabels: PostSessionReviewPerformedRealityRow["label"][];
+  currentClassification: PostSessionReviewCalibrationClassification;
+  recentClassifications: PostSessionReviewCalibrationClassification[];
 }): PostSessionReviewPerformedRealityTrendGroup["kind"] | null {
   const recentCount = (label: PostSessionReviewPerformedRealityRow["label"]) =>
     input.recentLabels.filter((value) => value === label).length;
 
   if (
-    input.currentLabel === "under_performed" &&
-    recentCount("under_performed") > 0
+    input.currentClassification === "target_too_high" &&
+    input.recentClassifications.includes("target_too_high")
   ) {
     return "repeated_underperformance";
   }
   if (
-    input.currentLabel === "over_performed" &&
-    recentCount("over_performed") > 0
+    input.currentClassification === "target_too_low" &&
+    input.recentClassifications.includes("target_too_low")
   ) {
     return "repeated_overperformance";
   }
@@ -1130,6 +1155,7 @@ function trendRelevantLabel(
 
 function buildPerformedRealityTrendGroups(input: {
   currentRows: PostSessionReviewPerformedRealityRow[];
+  currentCalibrationRows: PostSessionReviewPrescriptionCalibrationRow[];
   recentExposures: PostSessionReviewRecentExerciseExposureEvidence[] | undefined;
 }): PostSessionReviewPerformedRealityTrendGroup[] {
   const recentRows = buildRecentPerformedRealityRows(input.recentExposures);
@@ -1146,19 +1172,31 @@ function buildPerformedRealityTrendGroups(input: {
     const matchingRecentRows = recentRows
       .filter((row) => row.exerciseId === currentRow.exerciseId)
       .sort((left, right) => right.performedAt.localeCompare(left.performedAt))
-      .slice(0, RECENT_EXPOSURE_LOOKBACK_WORKOUT_LIMIT);
+      .slice(0, 2);
     const recentLabels = matchingRecentRows.map((row) => row.label);
+    const currentClassification =
+      input.currentCalibrationRows[sourceOrder]?.classification ?? "insufficient_evidence";
     const kind = trendKindForLabels({
       currentLabel: currentRow.label,
       recentLabels,
+      currentClassification,
+      recentClassifications: matchingRecentRows.map(
+        (row) => row.calibrationClassification
+      ),
     });
     if (!kind) {
       return;
     }
 
-    const relevantRecentRows = matchingRecentRows.filter(
-      (row) => row.label === trendRelevantLabel(kind)
-    );
+    const relevantRecentRows = matchingRecentRows.filter((row) => {
+      if (kind === "repeated_underperformance") {
+        return row.calibrationClassification === "target_too_high";
+      }
+      if (kind === "repeated_overperformance") {
+        return row.calibrationClassification === "target_too_low";
+      }
+      return row.label === trendRelevantLabel(kind);
+    });
     const existing = groups.get(kind);
     const currentEvidence = {
       workoutExerciseId: currentRow.workoutExerciseId,
@@ -1235,6 +1273,7 @@ export function buildPostSessionReviewContract(
   });
   const performedRealityTrendGroups = buildPerformedRealityTrendGroups({
     currentRows: performedRealityRows,
+    currentCalibrationRows: calibrationRows,
     recentExposures: input.recentExerciseExposures,
   });
   const boundaries = {

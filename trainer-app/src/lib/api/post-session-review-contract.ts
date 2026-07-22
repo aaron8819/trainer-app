@@ -104,6 +104,7 @@ export type PostSessionReviewCalibrationClassification =
   | "clean"
   | "target_too_high"
   | "target_too_low"
+  | "successful_autoregulation"
   | "recalibrated_hold"
   | "insufficient_evidence"
   | "skipped_or_low_coverage"

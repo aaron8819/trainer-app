@@ -137,6 +137,13 @@ export function resolveProgressionEquipment(
   return "other";
 }
 
+export function resolveValidLoadIncrement(exercise: LoadCalibrationExercise): number {
+  const equipment = resolveLoadEquipment(exercise);
+  if (equipment === "barbell") return 5;
+  if (equipment === "dumbbell") return 2.5;
+  return 2.5;
+}
+
 function resolveReliabilityTier(
   equipment: LoadCalibrationEquipment,
   isCompound: boolean

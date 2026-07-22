@@ -3,6 +3,7 @@ import type { TrainingAge, WorkoutHistoryEntry } from "./types";
 import { roundLoad } from "./utils";
 import { isPerformedHistoryEntry } from "./history";
 import type { ProgressionDecisionTrace } from "@/lib/evidence/session-audit-types";
+import { quantizeLoad } from "@/lib/units/load-quantization";
 
 export type ProgressionSet = {
   setIndex?: number;
@@ -14,6 +15,7 @@ export type ProgressionSet = {
   targetRepRange?: { min: number; max: number };
   targetRepMin?: number;
   targetRepMax?: number;
+  targetRpe?: number;
 };
 type HistorySet = WorkoutHistoryEntry["exercises"][number]["sets"][number];
 export type ProgressionEquipment = "barbell" | "dumbbell" | "cable" | "other";
@@ -51,6 +53,17 @@ export type DoubleProgressionDecisionOptions = {
     reps?: number;
     rpe?: number;
   };
+  loadIncrement?: number;
+  prescriptionContext?: {
+    priorPerformedReps: number;
+    priorActualRpe: number;
+    priorTargetReps: number;
+    priorTargetRpe: number;
+    clearEasy: boolean;
+    clearHard: boolean;
+    repeatedSuccess: boolean;
+  };
+  prescriptionEvidenceIncomplete?: boolean;
 };
 
 export const PROGRESSION_CONFIG = {
@@ -246,7 +259,7 @@ export function computeDoubleProgressionDecision(
   const modalRpe = getModalRpe(effectiveSets);
   const medianReps = median(effectiveSets.map((set) => set.reps));
   const topOfRange = repRange[1];
-  const increment = resolveIncrementByEquipment(equipment);
+  const increment = resolveValidIncrement(options?.loadIncrement, equipment);
   const decisionLog: string[] = [];
   const sampleConfidenceScale = resolveSampleSizeConfidenceScale(options?.priorSessionCount);
   const historyConfidenceScale = clampConfidenceScale(options?.historyConfidenceScale);
@@ -365,16 +378,95 @@ export function computeDoubleProgressionDecision(
     };
   }
 
+  if (options?.prescriptionEvidenceIncomplete) {
+    const nextLoad = quantizeRelativeToAnchor(anchorLoad, anchorLoad, increment);
+    decisionLog.push(
+      "Prescription context was present but reps/RPE evidence was incomplete. Hold the representative anchor conservatively."
+    );
+    return {
+      nextLoad,
+      anchorLoad,
+      path: "fallback_hold",
+      decisionLog,
+      trace: buildProgressionDecisionTrace({
+        anchorLoad,
+        nextLoad,
+        path: "fallback_hold",
+        decisionLog,
+        anchorSource,
+        signalSetCount: signalSets.length,
+        effectiveSetCount: effectiveSets.length,
+        trimmedSetCount: signalSets.length - effectiveSets.length,
+        hasHighVariance,
+        minLoad,
+        maxLoad,
+        medianLoad,
+        priorSessionCount: options?.priorSessionCount ?? 0,
+        sampleConfidenceScale,
+        historyConfidenceScale,
+        progressionConfidenceScale,
+        confidenceReasons: options?.confidenceReasons ?? [],
+        repRange,
+        equipment,
+        medianReps,
+        modalRpe: modalRpe ?? null,
+        reasonCodes: ["prescription_evidence_incomplete", "conservative_anchor_hold"],
+      }),
+    };
+  }
+
+  const prescriptionContextDecision = resolvePrescriptionContextDecision({
+    anchorLoad,
+    increment,
+    currentTarget: options?.currentTarget,
+    prescriptionContext: options?.prescriptionContext,
+  });
+  if (prescriptionContextDecision) {
+    const { nextLoad, reasonCodes } = prescriptionContextDecision;
+    const path: ProgressionDecisionPath = prescriptionContextDecision.path;
+    decisionLog.push(prescriptionContextDecision.message);
+    return {
+      nextLoad,
+      anchorLoad,
+      path,
+      decisionLog,
+      trace: buildProgressionDecisionTrace({
+        anchorLoad,
+        nextLoad,
+        path,
+        decisionLog,
+        anchorSource,
+        signalSetCount: signalSets.length,
+        effectiveSetCount: effectiveSets.length,
+        trimmedSetCount: signalSets.length - effectiveSets.length,
+        hasHighVariance,
+        minLoad,
+        maxLoad,
+        medianLoad,
+        priorSessionCount: options?.priorSessionCount ?? 0,
+        sampleConfidenceScale,
+        historyConfidenceScale,
+        progressionConfidenceScale,
+        confidenceReasons: options?.confidenceReasons ?? [],
+        repRange,
+        equipment,
+        medianReps,
+        modalRpe: modalRpe ?? null,
+        reasonCodes,
+      }),
+    };
+  }
+
   if (modalRpe != null && modalRpe >= 9) {
     decisionLog.push("Path 1 fired: prior modal RPE >= 9. Hold load.");
     return {
-      nextLoad: roundLoad(anchorLoad),
+      nextLoad: anchorLoad,
       anchorLoad,
       path: "path_1",
       decisionLog,
       trace: buildProgressionDecisionTrace({
         anchorLoad,
-        nextLoad: roundLoad(anchorLoad),
+        nextLoad: anchorLoad,
         path: "path_1",
         decisionLog,
         anchorSource,
@@ -401,7 +493,11 @@ export function computeDoubleProgressionDecision(
 
   if (medianReps >= topOfRange) {
     if (modalRpe != null && modalRpe <= 7) {
-      const nextLoad = roundLoad(anchorLoad + increment * progressionConfidenceScale);
+      const nextLoad = quantizeRelativeToAnchor(
+        anchorLoad + increment * progressionConfidenceScale,
+        anchorLoad,
+        increment
+      );
       decisionLog.push(
         `Path 2 fired: modal RPE <= 7 and median reps reached top of range. Increment +${(increment * progressionConfidenceScale).toFixed(1)}.`
       );
@@ -437,7 +533,11 @@ export function computeDoubleProgressionDecision(
       };
     }
     if (modalRpe == null || (modalRpe > 7 && modalRpe <= 8)) {
-      const nextLoad = roundLoad(anchorLoad + increment * progressionConfidenceScale);
+      const nextLoad = quantizeRelativeToAnchor(
+        anchorLoad + increment * progressionConfidenceScale,
+        anchorLoad,
+        increment
+      );
       decisionLog.push(
         `Path 3 fired: modal RPE in 7-8 range and median reps reached top of range. Increment +${(increment * progressionConfidenceScale).toFixed(1)}.`
       );
@@ -503,7 +603,7 @@ export function computeDoubleProgressionDecision(
       currentTarget: options?.currentTarget,
     });
     if (targetEffortMismatch) {
-      const nextLoad = roundLoad(anchorLoad);
+      const nextLoad = anchorLoad;
       decisionLog.push(targetEffortMismatch.message);
       return {
         nextLoad,
@@ -550,9 +650,11 @@ export function computeDoubleProgressionDecision(
         })
       : null;
     const scaledIncrement = increment * progressionConfidenceScale;
-    const nextLoad = catchUpEvaluation
-      ? roundLoad(anchorLoad + scaledIncrement + increment)
-      : roundLoad(anchorLoad + scaledIncrement);
+    const nextLoad = quantizeRelativeToAnchor(
+      anchorLoad + scaledIncrement,
+      anchorLoad,
+      increment
+    );
     decisionLog.push(
       overshootEvaluation.tier === "controlled_hard"
         ? `Path 5 fired: performed load beat prescription on ${overshootEvidenceDetail.qualifyingSetCount}/${overshootEvidenceDetail.targetBearingSetCount} signal sets by at least ${increment} lbs, and the broader coverage justified progression even at RPE ${modalRpe ?? "n/a"}. Increment +${(nextLoad - anchorLoad).toFixed(1)}.`
@@ -564,7 +666,9 @@ export function computeDoubleProgressionDecision(
       );
     }
     if (catchUpEvaluation) {
-      decisionLog.push(catchUpEvaluation.message);
+      decisionLog.push(
+        `${catchUpEvaluation.message} The generated target remained capped at one valid increment.`
+      );
     }
     return {
       nextLoad,
@@ -598,7 +702,7 @@ export function computeDoubleProgressionDecision(
           overshootEvaluation.tier === "controlled_hard"
             ? "controlled_hard_overshoot_progression"
             : "manageable_effort_progression",
-          ...(catchUpEvaluation ? ["same_exercise_catch_up_progression"] : []),
+          ...(catchUpEvaluation ? ["same_exercise_catch_up_evidence_bounded"] : []),
         ],
       }),
     };
@@ -610,13 +714,13 @@ export function computeDoubleProgressionDecision(
       decisionLog.push(overshootEvaluation.message);
     }
     return {
-      nextLoad: roundLoad(anchorLoad),
+      nextLoad: anchorLoad,
       anchorLoad,
       path: "path_4",
       decisionLog,
       trace: buildProgressionDecisionTrace({
         anchorLoad,
-        nextLoad: roundLoad(anchorLoad),
+        nextLoad: anchorLoad,
         path: "path_4",
         decisionLog,
         anchorSource,
@@ -650,13 +754,13 @@ export function computeDoubleProgressionDecision(
     decisionLog.push(overshootEvaluation.message);
   }
   return {
-    nextLoad: roundLoad(anchorLoad),
+    nextLoad: anchorLoad,
     anchorLoad,
     path: "fallback_hold",
     decisionLog,
     trace: buildProgressionDecisionTrace({
       anchorLoad,
-      nextLoad: roundLoad(anchorLoad),
+      nextLoad: anchorLoad,
       path: "fallback_hold",
       decisionLog,
       anchorSource,
@@ -918,6 +1022,110 @@ function resolveIncrementByEquipment(equipment: ProgressionEquipment): number {
   if (equipment === "dumbbell") return 2.5;
   if (equipment === "cable") return 2.5;
   return 2.5;
+}
+
+function resolveValidIncrement(
+  suppliedIncrement: number | undefined,
+  equipment: ProgressionEquipment
+): number {
+  return Number.isFinite(suppliedIncrement) && (suppliedIncrement ?? 0) > 0
+    ? (suppliedIncrement as number)
+    : resolveIncrementByEquipment(equipment);
+}
+
+export function translateLoadToTargetContext(input: {
+  priorLoad: number;
+  priorReps: number;
+  priorRpe?: number;
+  targetReps: number;
+  targetRpe: number;
+}): number {
+  const estimatedOneRepMax = input.priorLoad * (1 + input.priorReps / 30);
+  const repTranslatedLoad = estimatedOneRepMax / (1 + input.targetReps / 30);
+  if (!Number.isFinite(input.priorRpe) || !Number.isFinite(input.targetRpe)) {
+    return repTranslatedLoad;
+  }
+  const effortScale = clampNumber(
+    1 + (input.targetRpe - (input.priorRpe as number)) * 0.04,
+    0.75,
+    1.25
+  );
+  return repTranslatedLoad * effortScale;
+}
+
+function resolvePrescriptionContextDecision(input: {
+  anchorLoad: number;
+  increment: number;
+  currentTarget?: DoubleProgressionDecisionOptions["currentTarget"];
+  prescriptionContext?: DoubleProgressionDecisionOptions["prescriptionContext"];
+}): {
+  nextLoad: number;
+  path: ProgressionDecisionPath;
+  reasonCodes: string[];
+  message: string;
+} | null {
+  const context = input.prescriptionContext;
+  const targetReps = input.currentTarget?.reps;
+  const targetRpe = input.currentTarget?.rpe;
+  if (
+    !context ||
+    !Number.isFinite(targetReps) ||
+    !Number.isFinite(targetRpe) ||
+    input.anchorLoad <= 0
+  ) {
+    return null;
+  }
+
+  const translatedLoad = translateLoadToTargetContext({
+    priorLoad: input.anchorLoad,
+    priorReps: context.priorPerformedReps,
+    priorRpe: context.priorActualRpe,
+    targetReps: targetReps as number,
+    targetRpe: targetRpe as number,
+  });
+  const lowerBound = input.anchorLoad - input.increment;
+  const upperBound = input.anchorLoad + input.increment;
+  const candidate = context.clearHard
+    ? Math.min(translatedLoad, lowerBound)
+    : context.clearEasy || context.repeatedSuccess
+      ? Math.max(translatedLoad, upperBound)
+      : translatedLoad;
+  const nextLoad = clampNumber(
+    quantizeRelativeToAnchor(candidate, input.anchorLoad, input.increment),
+    lowerBound,
+    upperBound
+  );
+  const direction = nextLoad > input.anchorLoad ? "increase" : nextLoad < input.anchorLoad ? "decrease" : "hold";
+  const actionText = direction === "increase" ? "increased" : direction === "decrease" ? "decreased" : "held";
+  const reasonCodes = [
+    "exact_exercise_prescription_context",
+    "bounded_single_increment",
+    context.clearHard
+      ? "prior_prescription_clear_hard"
+      : context.clearEasy
+        ? "prior_prescription_clear_easy"
+        : context.repeatedSuccess
+          ? "repeated_prescription_success"
+          : "target_context_translation",
+  ];
+  return {
+    nextLoad,
+    path: context.clearHard ? "path_1" : direction === "increase" ? "path_2" : "fallback_hold",
+    reasonCodes,
+    message:
+      `Prescription context: prior ${formatNumber(context.priorPerformedReps)} reps @ RPE ${formatNumber(context.priorActualRpe)} ` +
+      `against ${formatNumber(context.priorTargetReps)} reps @ RPE ${formatNumber(context.priorTargetRpe)}; ` +
+      `today ${formatNumber(targetReps as number)} reps @ RPE ${formatNumber(targetRpe as number)}. ` +
+      `Translated ${formatNumber(input.anchorLoad)} to ${formatNumber(translatedLoad)}, then ${actionText} at the bounded ${formatNumber(input.increment)} lb increment to ${formatNumber(nextLoad)}.`
+  };
+}
+
+function quantizeRelativeToAnchor(value: number, anchor: number, increment: number): number {
+  return anchor + quantizeLoad(value - anchor, increment);
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function resolvePrescribedLoadOvershoot(input: {

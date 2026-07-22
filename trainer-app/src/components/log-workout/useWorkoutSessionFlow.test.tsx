@@ -422,7 +422,9 @@ describe("useWorkoutSessionFlow", () => {
       expect(screen.getByTestId("undo-set-id")).toHaveTextContent("set-1");
       expect(screen.getByTestId("status")).toHaveTextContent("Set logged. Rest timer started.");
       expect(screen.getByTestId("timer-end")).toHaveTextContent("95000");
-      expect(screen.getByTestId("autoreg-hint")).toHaveTextContent("Set felt easier than target");
+      expect(screen.getByTestId("autoreg-hint")).toHaveTextContent(
+        "Set clearly beat the target. Consider 52.5 lbs"
+      );
     });
 
     expect(callbacks.clearDraftSpy).toHaveBeenCalledWith("set-1");

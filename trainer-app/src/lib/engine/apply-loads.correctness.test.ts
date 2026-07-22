@@ -2498,4 +2498,64 @@ describe("applyLoads correctness", () => {
     expect(zeroBasedTop).toBeGreaterThan(200);
     expect(zeroBasedTop).toBe(oneBasedTop);
   });
+
+  it.each([
+    { name: "on target", priorReps: 10, priorRpe: 8, currentReps: 10, currentRpe: 8, expected: 100 },
+    { name: "clearly easy", priorReps: 10, priorRpe: 6, currentReps: 10, currentRpe: 8, expected: 105 },
+    { name: "clearly hard", priorReps: 10, priorRpe: 9, currentReps: 10, currentRpe: 8, expected: 95 },
+    { name: "lower reps and higher target RPE", priorReps: 12, priorRpe: 8, currentReps: 8, currentRpe: 9, expected: 105 },
+  ])("applies bounded exact-history prescription context when prior exposure was $name", (testCase) => {
+    const workout: WorkoutPlan = {
+      id: `context-${testCase.name}`,
+      scheduledDate: "2026-07-22T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "we-context",
+          exercise: bench,
+          orderIndex: 0,
+          isMainLift: true,
+          sets: [{ setIndex: 1, targetReps: testCase.currentReps, targetRpe: testCase.currentRpe }],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 30,
+    };
+    const sets = [1, 2, 3].map((setIndex) => ({
+      exerciseId: "bench",
+      setIndex,
+      reps: testCase.priorReps,
+      rpe: testCase.priorRpe,
+      load: 100,
+      targetLoad: 100,
+      targetReps: testCase.priorReps,
+      targetRepMin: testCase.priorReps,
+      targetRepMax: testCase.priorReps,
+      targetRpe: 8,
+    }));
+
+    const result = applyLoadsWithAudit(workout, {
+      history: [
+        {
+          date: "2026-07-20T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          progressionEligible: true,
+          performanceEligible: true,
+          exercises: [{ exerciseId: "bench", sets }],
+        },
+      ],
+      baselines: [],
+      exerciseById: { bench },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "push",
+    });
+
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(testCase.expected);
+    expect(result.audit.progressionTraces.bench?.outcome.reasonCodes).toContain(
+      "exact_exercise_prescription_context"
+    );
+  });
 });

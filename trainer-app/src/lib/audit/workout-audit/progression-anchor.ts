@@ -5,6 +5,7 @@ import {
   resolveCalibrationConfidenceScale,
   resolveLoadCalibrationPolicy,
   resolveProgressionEquipment,
+  resolveValidLoadIncrement,
 } from "@/lib/engine/load-calibration";
 import { buildCanonicalProgressionEvaluationInput } from "@/lib/progression/canonical-progression-input";
 import { derivePerformedExerciseSemantics } from "@/lib/session-semantics/performed-exercise-semantics";
@@ -31,6 +32,10 @@ function buildHistorySession(entry: {
   sets: Array<{
     setIndex: number;
     targetLoad: number | null;
+    targetReps: number | null;
+    targetRepMin: number | null;
+    targetRepMax: number | null;
+    targetRpe: number | null;
     logs: Array<{
       actualLoad: number | null;
       actualReps: number | null;
@@ -48,6 +53,10 @@ function buildHistorySession(entry: {
     sets: entry.sets.map((set) => ({
       setIndex: set.setIndex,
       targetLoad: set.targetLoad,
+      targetReps: set.targetReps,
+      targetRepMin: set.targetRepMin,
+      targetRepMax: set.targetRepMax,
+      targetRpe: set.targetRpe,
       actualLoad: set.logs[0]?.actualLoad ?? null,
       actualReps: set.logs[0]?.actualReps ?? null,
       actualRpe: set.logs[0]?.actualRpe ?? null,
@@ -133,6 +142,10 @@ export async function buildProgressionAnchorAuditPayload(input: {
     sets: current.sets.map((set) => ({
       setIndex: set.setIndex,
       targetLoad: set.targetLoad,
+      targetReps: set.targetReps,
+      targetRepMin: set.targetRepMin,
+      targetRepMax: set.targetRepMax,
+      targetRpe: set.targetRpe,
       actualLoad: set.logs[0]?.actualLoad ?? null,
       actualReps: set.logs[0]?.actualReps ?? null,
       actualRpe: set.logs[0]?.actualRpe ?? null,
@@ -177,10 +190,15 @@ export async function buildProgressionAnchorAuditPayload(input: {
     lastSets: performedSemantics.signalSets,
     repRange: effectiveRepRange,
     equipment: resolveProgressionEquipment(calibrationExercise),
+    currentTarget: {
+      reps: firstTarget?.targetReps ?? firstTarget?.targetRepMax ?? undefined,
+      rpe: firstTarget?.targetRpe ?? undefined,
+    },
     workingSetLoad: performedSemantics.workingSetLoad ?? undefined,
-    historySessions: priorEligibleRows.map(buildHistorySession),
+    historySessions: [buildHistorySession(current), ...priorEligibleRows.map(buildHistorySession)],
     calibrationConfidenceScale,
     calibrationConfidenceReason: calibrationPolicy.confidenceReason,
+    loadIncrement: resolveValidLoadIncrement(calibrationExercise),
   });
   const decision = computeDoubleProgressionDecision(
     progressionInput.lastSets,

@@ -358,7 +358,7 @@ describe("post-session review contract", () => {
     });
   });
 
-  it("classifies target-too-high, target-too-low, and insufficient calibration evidence", () => {
+  it("uses outcome evidence instead of load deviation alone for calibration", () => {
     const contract = buildPostSessionReviewContract(
       buildInput({
         exercises: [
@@ -433,17 +433,17 @@ describe("post-session review contract", () => {
         ])
       )
     ).toEqual({
-      "too-high": "target_too_high",
+      "too-high": "successful_autoregulation",
       "effort-high": "target_too_high",
       "too-low": "target_too_low",
       insufficient: "insufficient_evidence",
     });
     expect(contract.prescriptionCalibration.summary).toMatchObject({
-      targetTooHighCount: 2,
+      targetTooHighCount: 1,
       targetTooLowCount: 1,
       insufficientEvidenceCount: 1,
-      coherentCount: 0,
-      loadTooHeavyCount: 2,
+      coherentCount: 1,
+      loadTooHeavyCount: 1,
       loadTooLightCount: 1,
       mixedSignalCount: 0,
       lowCoverageCount: 0,
@@ -455,7 +455,7 @@ describe("post-session review contract", () => {
           kind: "calibration_signal",
           severity: "watch",
           summary:
-            "Prescription calibration evidence: 2 looked too heavy, 1 looked too light, 1 incomplete.",
+            "Prescription calibration evidence: 1 coherent, 1 looked too heavy, 1 looked too light, 1 incomplete.",
         }),
       ])
     );
@@ -487,7 +487,7 @@ describe("post-session review contract", () => {
         contract.performedReality.rows.map((row) => [row.exerciseId, row.label])
       )
     ).toEqual({
-      "too-high": "under_performed",
+      "too-high": "performed_as_planned",
       "effort-high": "under_performed",
       "too-low": "over_performed",
       insufficient: "missing_actuals",
@@ -504,7 +504,7 @@ describe("post-session review contract", () => {
       });
   });
 
-  it("aligns clean-looking calibration rows with next-exposure target-too-high evidence", () => {
+  it("does not let next-exposure copy override successful autoregulation evidence", () => {
     const contract = buildPostSessionReviewContract(
       buildInput({
         exercises: [
@@ -554,23 +554,27 @@ describe("post-session review contract", () => {
 
     expect(contract.prescriptionCalibration.rows[0]).toMatchObject({
       exerciseId: "leg-extension",
-      classification: "target_too_high",
-      reasonCodes: ["next_exposure_target_too_high"],
+      classification: "successful_autoregulation",
+      reasonCodes: [
+        "performed_load_adjusted",
+        "prescribed_reps_achieved",
+        "actual_rpe_at_or_below_target",
+      ],
       loadDeltaPct: -10.7,
-      performedRealityCoherence: "load_too_heavy",
+      performedRealityCoherence: "coherent",
       affectsPrescriptionPolicy: false,
     });
     expect(contract.performedReality.rows[0]).toMatchObject({
       exerciseId: "leg-extension",
-      label: "under_performed",
+      label: "performed_as_planned",
       evidenceOnly: true,
       affectsProgressionPolicy: false,
       affectsPrescriptionPolicy: false,
     });
     expect(contract.prescriptionCalibration.summary).toMatchObject({
-      targetTooHighCount: 1,
-      loadTooHeavyCount: 1,
-      coherentCount: 0,
+      targetTooHighCount: 0,
+      loadTooHeavyCount: 0,
+      coherentCount: 1,
     });
   });
 
@@ -650,7 +654,7 @@ describe("post-session review contract", () => {
     });
   });
 
-  it("aligns clean-looking calibration rows with next-exposure recalibrated holds", () => {
+  it("classifies a clean upward load adjustment as successful autoregulation", () => {
     const contract = buildPostSessionReviewContract(
       buildInput({
         exercises: [
@@ -696,16 +700,21 @@ describe("post-session review contract", () => {
 
     expect(contract.prescriptionCalibration.rows[0]).toMatchObject({
       exerciseId: "cable-crossover",
-      classification: "recalibrated_hold",
-      reasonCodes: ["next_exposure_recalibrated_hold"],
+      classification: "successful_autoregulation",
+      reasonCodes: [
+        "performed_load_adjusted",
+        "prescribed_reps_achieved",
+        "actual_rpe_at_or_below_target",
+      ],
       loadDeltaPct: 10,
-      performedRealityCoherence: "mixed_signal",
+      performedRealityCoherence: "coherent",
       affectsPrescriptionPolicy: false,
     });
     expect(contract.prescriptionCalibration.summary).toMatchObject({
       targetTooHighCount: 0,
       targetTooLowCount: 0,
-      mixedSignalCount: 1,
+      mixedSignalCount: 0,
+      coherentCount: 1,
     });
   });
 

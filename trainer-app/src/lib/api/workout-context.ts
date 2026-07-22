@@ -624,6 +624,7 @@ function mapWorkoutExerciseHistory(
           targetReps: set.targetReps ?? undefined,
           targetRepMin: set.targetRepMin ?? undefined,
           targetRepMax: set.targetRepMax ?? undefined,
+          targetRpe: set.targetRpe ?? undefined,
         },
       ];
     }),

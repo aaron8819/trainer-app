@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCanonicalProgressionEvaluationInput } from "./canonical-progression-input";
+import type { ProgressionSet } from "../engine/progression";
 
 describe("buildCanonicalProgressionEvaluationInput", () => {
   it("defaults to single-session full confidence when no history sessions are provided", () => {
@@ -181,7 +182,74 @@ describe("buildCanonicalProgressionEvaluationInput", () => {
     });
     expect(input.context.intentDeviationTargetLoadCeiling).toBe(145);
   });
+
+  it.each([
+    { actualRpe: 6, expected: { clearEasy: true, clearHard: false } },
+    { actualRpe: 9, expected: { clearEasy: false, clearHard: true } },
+    { actualRpe: 8, expected: { clearEasy: false, clearHard: false } },
+  ])("interprets the latest exposure against its own prescription at RPE $actualRpe", ({ actualRpe, expected }) => {
+    const sets = prescriptionSets({ actualRpe });
+    const input = buildCanonicalProgressionEvaluationInput({
+      lastSets: sets,
+      repRange: [8, 10],
+      equipment: "barbell",
+      currentTarget: { reps: 10, rpe: 8 },
+      historySessions: [historySession(sets)],
+      loadIncrement: 5,
+    });
+
+    expect(input.context.loadIncrement).toBe(5);
+    expect(input.context.prescriptionContext).toMatchObject(expected);
+    expect(input.context.prescriptionContext).toMatchObject({
+      priorPerformedReps: 10,
+      priorActualRpe: actualRpe,
+      priorTargetReps: 10,
+      priorTargetRpe: 8,
+    });
+  });
+
+  it("requires two successful exposures among the latest three comparable sessions", () => {
+    const input = buildCanonicalProgressionEvaluationInput({
+      lastSets: prescriptionSets({ actualRpe: 8 }),
+      repRange: [8, 10],
+      equipment: "barbell",
+      historySessions: [
+        historySession(prescriptionSets({ actualRpe: 8 })),
+        historySession(prescriptionSets({ actualRpe: 9.5, actualReps: 9 })),
+        historySession(prescriptionSets({ actualRpe: 8 })),
+      ],
+    });
+
+    expect(input.context.prescriptionContext?.repeatedSuccess).toBe(true);
+  });
+
+  it("marks prescribed history with missing actual RPE as incomplete instead of inferring success", () => {
+    const sets = prescriptionSets({ actualRpe: undefined });
+    const input = buildCanonicalProgressionEvaluationInput({
+      lastSets: sets,
+      repRange: [8, 10],
+      equipment: "barbell",
+      historySessions: [historySession(sets)],
+    });
+
+    expect(input.context.prescriptionContext).toBeUndefined();
+    expect(input.context.prescriptionEvidenceIncomplete).toBe(true);
+  });
 });
+
+function prescriptionSets(input: { actualRpe?: number; actualReps?: number }) {
+  return [1, 2, 3].map((setIndex) => ({
+    setIndex,
+    reps: input.actualReps ?? 10,
+    ...(input.actualRpe == null ? {} : { rpe: input.actualRpe }),
+    load: 100,
+    targetLoad: 100,
+    targetReps: 10,
+    targetRepMin: 8,
+    targetRepMax: 10,
+    targetRpe: 8,
+  }));
+}
 
 function deviatingSets(load: number) {
   return [
@@ -249,7 +317,7 @@ function nonDeviatingSets() {
   ];
 }
 
-function historySession(sets: ReturnType<typeof deviatingSets>) {
+function historySession(sets: ProgressionSet[]) {
   return {
     confidence: 1,
     selectionMode: "INTENT" as const,

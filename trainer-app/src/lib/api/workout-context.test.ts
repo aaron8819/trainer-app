@@ -266,6 +266,7 @@ describe("mapHistory", () => {
       reps: 8,
       load: 185,
       targetLoad: 185,
+      targetRpe: 8,
     });
     expect(history[0].mesocycleSnapshot).toEqual({
       mesocycleId: undefined,
@@ -773,6 +774,7 @@ describe("mapHistory", () => {
             targetReps: 12,
             targetRepMin: 10,
             targetRepMax: 15,
+            targetRpe: 6.5,
           },
         ],
       },

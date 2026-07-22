@@ -29,6 +29,7 @@ import type {
 } from "@/components/log-workout/types";
 import { getSetValidity } from "@/lib/logging/setValidity";
 import { getLoadRecommendation } from "@/lib/progression/load-coaching";
+import { resolveValidLoadIncrement } from "@/lib/engine/load-calibration";
 
 export type WorkoutSessionActions = {
   logSet: (setId: string, overrides?: Partial<LogSetInput>) => Promise<boolean>;
@@ -299,6 +300,7 @@ export function useWorkoutSessionFlow({
             targetLoad: nextExerciseSet.set.targetLoad,
             repRange,
             targetRir: 10 - nextExerciseSet.set.targetRpe,
+            loadIncrement: resolveValidLoadIncrement(nextExerciseSet.exercise),
           });
           if (recommendation) {
             setAutoregHint({

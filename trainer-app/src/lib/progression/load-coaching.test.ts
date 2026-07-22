@@ -14,7 +14,8 @@ describe("load coaching", () => {
 
     expect(recommendation).toEqual({
       action: "hold",
-      message: "Hold load and target cleaner reps before increasing.",
+      suggestedLoad: 105,
+      message: "Hold at 105 lbs and target cleaner reps before increasing.",
     });
   });
 
@@ -30,6 +31,7 @@ describe("load coaching", () => {
 
     expect(recommendation).toEqual({
       action: "hold",
+      suggestedLoad: 115,
       message:
         "You're above the prescribed load. Keep it if technique stays stable; formal progression is evaluated across the full session.",
     });
@@ -47,6 +49,7 @@ describe("load coaching", () => {
 
     expect(recommendation).toEqual({
       action: "hold",
+      suggestedLoad: 115,
       message: "You're above the prescribed load, but effort is climbing. Keep it only if technique stays stable.",
     });
   });
@@ -63,7 +66,8 @@ describe("load coaching", () => {
 
     expect(recommendation).toEqual({
       action: "decrease",
-      message: "Heavier load overshot the target. Drop back toward the prescribed load.",
+      suggestedLoad: 112.5,
+      message: "The set overshot the target. Consider 112.5 lbs for the next set (-2.5).",
     });
   });
 
@@ -79,7 +83,8 @@ describe("load coaching", () => {
 
     expect(recommendation).toEqual({
       action: "decrease",
-      message: "Heavier load overshot the target. Drop back toward the prescribed load.",
+      suggestedLoad: 112.5,
+      message: "The set overshot the target. Consider 112.5 lbs for the next set (-2.5).",
     });
   });
 
@@ -95,7 +100,8 @@ describe("load coaching", () => {
 
     expect(recommendation).toEqual({
       action: "increase",
-      message: "Set felt easier than target. Consider +2.5 lbs for next set.",
+      suggestedLoad: 102.5,
+      message: "Set clearly beat the target. Consider 102.5 lbs for the next set (+2.5).",
     });
   });
 
@@ -111,7 +117,39 @@ describe("load coaching", () => {
 
     expect(recommendation).toEqual({
       action: "decrease",
-      message: "Set was harder than target. Consider -2.5 lbs or -1 rep.",
+      suggestedLoad: 102.5,
+      message: "Set was harder than target. Consider 102.5 lbs for the next set (-2.5).",
     });
+  });
+
+  it.each([
+    { action: "increase" as const, reps: 12, rir: 3, expected: 105 },
+    { action: "decrease" as const, reps: 7, rir: 0, expected: 95 },
+  ])("uses exactly one supplied valid increment for $action coaching", ({ action, reps, rir, expected }) => {
+    const recommendation = getLoadRecommendation({
+      reps,
+      rir,
+      actualLoad: 100,
+      targetLoad: 100,
+      repRange: { min: 8, max: 10 },
+      targetRir: 2,
+      loadIncrement: 5,
+    });
+
+    expect(recommendation).toMatchObject({ action, suggestedLoad: expected });
+  });
+
+  it("supports a supplied 10 lb increment without producing an intermediate load", () => {
+    expect(
+      getLoadRecommendation({
+        reps: 12,
+        rir: 3,
+        actualLoad: 100,
+        targetLoad: 100,
+        repRange: { min: 8, max: 10 },
+        targetRir: 2,
+        loadIncrement: 10,
+      })
+    ).toMatchObject({ action: "increase", suggestedLoad: 110 });
   });
 });

@@ -70,6 +70,33 @@ Prefer fixing the rightful owner seam over downstream patches. If the owner seam
 - Do not continue if the worktree is dirty from another task. If dirty state overlaps the task, stop and ask before editing.
 - Immediately after creating an implementation worktree, compare its lockfile hash with the intended dependency installation and inspect the `node_modules` junction or symlink target. Resolve incompatibility before editing source code.
 
+## Worktree Cleanup Contract
+- Treat worktree cleanup as a destructive operation. Before cleanup, confirm the exact task path and branch, ownership by the completed task, a clean `git status --short`, preservation of any needed untracked files, and authorization to delete the branch. Confirm the target is neither the primary checkout nor another task's worktree. Stop if ownership, status, merge state, or deletion authority is ambiguous.
+- Inspect `node_modules` and other reparse points before removal. Record junction and symlink targets, and never recursively delete through or modify a junction or symlink target.
+- Use Git's scoped worktree-removal flow first. Prune stale registrations only when appropriate, delete the local branch only when safe, and delete the remote branch only when repository policy permits. Never run broad cleanup against the `.worktrees` parent directory.
+- Cleanup is complete only when all four independently verified conditions are true:
+
+```text
+pathExists=false
+worktreeListed=false
+localBranchExists=false
+remoteBranchExists=false
+```
+
+- Verify the exact path and branch with scoped checks such as:
+
+```powershell
+Test-Path -LiteralPath $worktreePath
+git worktree list --porcelain
+git show-ref --verify --quiet "refs/heads/$branchName"
+git ls-remote --exit-code --heads origin $branchName
+```
+
+- Interpret exit codes explicitly: `git show-ref --verify --quiet` exit `1` proves the local ref is absent; `git ls-remote --exit-code --heads` exit `2` proves no matching remote ref was found. Any other nonzero result is an error, not absence proof. Match the porcelain worktree inventory against the exact normalized path rather than relying on missing display output.
+- If Git no longer lists the worktree but the filesystem path remains, inspect only that exact residual path for ignored build output such as `.next`, read-only files, junctions, symlinks, dependency directories, open handles, or active processes. Confirm every residual belongs only to the removed task and that no entry resolves into the primary checkout or another worktree.
+- Remove only the exact residual artifact or exact former worktree path. When necessary, clear read-only attributes only within that verified residual path before deletion. Do not follow or delete junction/symlink targets, modify the primary dependency installation, use a broad recursive force-delete, or report success while the path exists.
+- After residual cleanup, rerun all four checks. The final report must state the exact removed path, worktree registration status, filesystem path status, local and remote branch status, residual ignored/read-only artifacts found and exact cleanup performed, confirmation that link targets were not modified, and confirmation that the primary checkout and unrelated worktrees were untouched.
+
 ## DB Safety
 - Default DB policy is read-only inspection only.
 - Hard stop and ask before Prisma migrations, direct SQL, seed scripts, repair/backfill scripts, commands with `--write`, `--apply`, `--accept-*`, destructive flags, or any command that may mutate local, staging, or production DB state.

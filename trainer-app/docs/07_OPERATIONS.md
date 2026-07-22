@@ -4,6 +4,24 @@
 
 Use the repository-level [`scripts/codex/README.md`](../../scripts/codex/README.md) for the offline remote-identity contract and the explicit authenticated `-GitHub` and `-Deployment` read-only status scopes. The Vercel scope validates the committed team, project, and production alias before reading process-scoped `VERCEL_TOKEN`, then uses built-in PowerShell with the official GET-only Vercel REST endpoint allowlist; it requires no Vercel CLI or project link. It reports the active alias deployment and Git SHA, and treats any previous successful production deployment only as a rollback candidate with unknown schema compatibility. GitHub deployment records do not establish active Vercel production truth, a Vercel rollback is distinct from a Git revert, and neither status scope authorizes remediation or writes.
 
+## Public production version verification
+
+`GET /api/version` returns exactly `{ "commitSha": "<full-git-sha>" }`. The primary source is Vercel's `VERCEL_GIT_COMMIT_SHA` system variable, which Vercel documents as available at build and runtime when system environment variables are exposed. `TRAINER_BUILD_GIT_SHA` is the explicit repository build fallback for non-Vercel production builds. Local development/test returns `{ "commitSha": "unknown" }`; a production build with neither valid SHA fails closed instead of claiming an identity. See [Vercel system environment variables](https://vercel.com/docs/environment-variables/system-environment-variables).
+
+After the intended `master` commit is integrated and deployed, run the read-only production check with that exact full SHA:
+
+```powershell
+$expectedIntegratedSha = git rev-parse origin/master
+npm run verify:production-version -- --base-url https://trainer-app-indol.vercel.app --expected-sha $expectedIntegratedSha
+```
+
+The command performs two independent GET requests and fails on either problem:
+
+- commit identity: `/api/version` must return HTTP 200 and the exact expected `commitSha` contract
+- alias availability: the public production origin must separately return HTTP 200
+
+This is public endpoint evidence. It does not authenticate to Vercel, prove provider-side alias-to-deployment assignment, deploy code, read secrets, connect to the database, or authorize remediation.
+
 ## Disposable workout-mutation database tests
 
 `npm run test:db:workout-mutations` starts an isolated PostgreSQL 16 container, applies checked-in migrations, synchronizes that fresh database to the current Prisma schema, regenerates the matching client, runs CAS/race/rollback tests, and always removes the container. It sets its own `DATABASE_URL`/`TEST_DATABASE_URL` and does not read `.env.local` or mutate a configured database.

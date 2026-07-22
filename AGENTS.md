@@ -68,12 +68,16 @@ Prefer fixing the rightful owner seam over downstream patches. If the owner seam
 - Write tasks that touch shared seams must use isolated worktrees unless explicitly approved.
 - Shared seam writes must be serialized unless explicitly approved.
 - Do not continue if the worktree is dirty from another task. If dirty state overlaps the task, stop and ask before editing.
-- Immediately after creating an implementation worktree, compare its lockfile hash with the intended dependency installation and inspect the `node_modules` junction or symlink target. Resolve incompatibility before editing source code.
+- Immediately after creating an implementation worktree, compare its lockfile hash with the intended dependency installation and inspect the `node_modules` junction or symlink target. Resolve dependency compatibility before editing source code whenever possible.
+- When reusing dependencies by copying an exact-lock installation, confirm the source and destination `package-lock.json` hashes match, copy into a worktree-local ordinary directory, and do not mutate the source installation or change the destination lockfile to fit the copied dependencies.
+- Validate the copied destination with `npm ls --all`. Source validation, file counts, and a successful copy operation do not prove that the destination installation is complete or usable.
+- After copying or relocating dependencies, run `npm run prisma:generate` from the destination worktree's `trainer-app/` directory before TypeScript, lint, tests, or full verification. Prisma generation is local code generation and must not use or require production credentials or a database connection; a copied generated client can be stale even when lockfiles match. If a later local command only requires a syntactically valid database URL at import time, use a safe non-routable command-scoped placeholder without connecting.
 
 ## Worktree Cleanup Contract
 - Treat worktree cleanup as a destructive operation. Before cleanup, confirm the exact task path and branch, ownership by the completed task, a clean `git status --short`, preservation of any needed untracked files, and authorization to delete the branch. Confirm the target is neither the primary checkout nor another task's worktree. Stop if ownership, status, merge state, or deletion authority is ambiguous.
 - Inspect `node_modules` and other reparse points before removal. Record junction and symlink targets, and never recursively delete through or modify a junction or symlink target.
 - Use Git's scoped worktree-removal flow first. Prune stale registrations only when appropriate, delete the local branch only when safe, and delete the remote branch only when repository policy permits. Never run broad cleanup against the `.worktrees` parent directory.
+- A squash merge changes commit identity, so do not require the original feature commit to be an ancestor of the target branch. Before deleting a squash-merged branch, verify that the PR is merged, the merged PR metadata identifies the exact expected feature head, the integrated target has an equivalent tree for the intended feature scope, the reviewed PR file scope matches that feature scope, and no unintegrated feature diff remains. Use evidence appropriate to the merge, such as exact GitHub head metadata, a path-scoped `git diff --quiet <feature-head> <integrated-target> -- <intended-paths>`, a full tree-hash comparison when whole-tree equality is expected, or base-to-head/range-diff inspection.
 - Cleanup is complete only when all four independently verified conditions are true:
 
 ```text
@@ -89,10 +93,11 @@ remoteBranchExists=false
 Test-Path -LiteralPath $worktreePath
 git worktree list --porcelain
 git show-ref --verify --quiet "refs/heads/$branchName"
-git ls-remote --exit-code --heads origin $branchName
+$remoteRef = "refs/heads/$branchName"
+git ls-remote --heads origin $remoteRef
 ```
 
-- Interpret exit codes explicitly: `git show-ref --verify --quiet` exit `1` proves the local ref is absent; `git ls-remote --exit-code --heads` exit `2` proves no matching remote ref was found. Any other nonzero result is an error, not absence proof. Match the porcelain worktree inventory against the exact normalized path rather than relying on missing display output.
+- Interpret exit codes explicitly: `git show-ref --verify --quiet` exit `1` proves the local ref is absent. For the exact remote-ref query, exit `0` with an exact `refs/heads/<branch>` match proves the branch exists, while exit `0` with no output proves it is absent. Any nonzero remote-query result is ambiguous, not absence proof; fall back to a successful `git ls-remote --heads origin` enumeration and compare complete ref names for exact equality. Never use substring matching for remote refs or report `remoteBranchExists=false` until a successful query proves absence. Match the porcelain worktree inventory against the exact normalized path rather than relying on missing display output.
 - If Git no longer lists the worktree but the filesystem path remains, inspect only that exact residual path for ignored build output such as `.next`, read-only files, junctions, symlinks, dependency directories, open handles, or active processes. Confirm every residual belongs only to the removed task and that no entry resolves into the primary checkout or another worktree.
 - Remove only the exact residual artifact or exact former worktree path. When necessary, clear read-only attributes only within that verified residual path before deletion. Do not follow or delete junction/symlink targets, modify the primary dependency installation, use a broad recursive force-delete, or report success while the path exists.
 - After residual cleanup, rerun all four checks. The final report must state the exact removed path, worktree registration status, filesystem path status, local and remote branch status, residual ignored/read-only artifacts found and exact cleanup performed, confirmation that link targets were not modified, and confirmation that the primary checkout and unrelated worktrees were untouched.

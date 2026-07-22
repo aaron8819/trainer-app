@@ -74,7 +74,7 @@
     }
   },
   "verification": {
-    "commandOrder": ["codex-tooling-tests", "git-diff-check", "test-fast", "verify-contracts", "verify-completed-review", "test-audit-matrix", "verify", "prisma-generate", "test-migration-integrity", "audit-future-week"],
+    "commandOrder": ["codex-tooling-tests", "git-diff-check", "test-fast", "verify-contracts", "verify-completed-review", "verify-version", "test-audit-matrix", "verify", "prisma-generate", "test-migration-integrity", "audit-future-week"],
     "pathRules": [
       {
         "name": "codex-tooling",
@@ -110,6 +110,19 @@
           "trainer-app/src/app/workout/*/page.test.tsx"
         ],
         "implementation": ["verify-completed-review"],
+        "release": ["verify"]
+      },
+      {
+        "name": "deployment-version",
+        "patterns": [
+          "trainer-app/src/lib/operations/deployment-version.ts",
+          "trainer-app/src/lib/operations/deployment-version.test.ts",
+          "trainer-app/src/lib/operations/production-version-verification.ts",
+          "trainer-app/src/lib/operations/production-version-verification.test.ts",
+          "trainer-app/src/app/api/version/**",
+          "trainer-app/scripts/verify-production-version.ts"
+        ],
+        "implementation": ["verify-version"],
         "release": ["verify"]
       },
       {
@@ -243,6 +256,26 @@
       "requiresNpm": true,
       "requiresPowerShell": false,
       "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "verify:completed-review"] }
+    },
+    "verify-version": {
+      "command": "npm run verify:version",
+      "defaultSideEffectClass": "local-test",
+      "accessesNetwork": false,
+      "accessesDatabase": false,
+      "writesLocalArtifacts": false,
+      "explicitAuthorizationRequired": false,
+      "verificationTier": "implementation",
+      "executableInImplementationMode": true,
+      "requiresCleanWorktree": false,
+      "requiresDependencies": true,
+      "requiresDocker": false,
+      "requiresDatabase": false,
+      "requiresNetwork": false,
+      "requiresPrisma": false,
+      "requiresNode": true,
+      "requiresNpm": true,
+      "requiresPowerShell": false,
+      "invocation": { "workingDirectory": "trainer-app", "executable": "npm.cmd", "arguments": ["run", "verify:version"] }
     },
     "verify": {
       "command": "npm run verify",
@@ -610,10 +643,12 @@
     { "id": "npm-report-weekly-volume-targets", "packageScript": "report:weekly-volume-targets", "command": "tsx scripts/report-weekly-volume-targets.ts", "sourceLocation": "trainer-app/package.json#scripts.report:weekly-volume-targets", "entrypoint": "trainer-app/scripts/report-weekly-volume-targets.ts", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Pure/local report that writes under artifacts/audits." },
     { "id": "verify-contracts", "packageScript": "verify:contracts", "command": "tsx scripts/check-doc-runtime-contracts.ts", "sourceLocation": "trainer-app/package.json#scripts.verify:contracts", "entrypoint": "trainer-app/scripts/check-doc-runtime-contracts.ts", "profile": "read-only", "flagEscalations": [], "notes": "Static contract consistency validation." },
     { "id": "verify-completed-review", "packageScript": "verify:completed-review", "command": "vitest run src/lib/api/post-session-review-display.test.ts src/lib/api/completed-workout-review.test.ts src/app/api/workouts/[id]/post-session-review/route.test.ts src/components/post-workout/PostSessionReviewCard.test.tsx src/components/log-workout/CompletedWorkoutReview.test.tsx src/app/workout/[id]/page.test.tsx", "sourceLocation": "trainer-app/package.json#scripts.verify:completed-review", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Runs the canonical DTO, immediate completion, shared card, and reopened workout review matrix together." },
+    { "id": "verify-version", "packageScript": "verify:version", "command": "vitest run src/lib/operations/deployment-version.test.ts src/app/api/version/route.test.ts src/lib/operations/production-version-verification.test.ts", "sourceLocation": "trainer-app/package.json#scripts.verify:version", "entrypoint": null, "profile": "read-only", "flagEscalations": [], "notes": "Runs local deployment-version, public route, and mocked-network production verifier tests." },
+    { "id": "npm-verify-production-version", "packageScript": "verify:production-version", "command": "tsx scripts/verify-production-version.ts", "sourceLocation": "trainer-app/package.json#scripts.verify:production-version", "entrypoint": "trainer-app/scripts/verify-production-version.ts", "profile": "network-read-only", "flagEscalations": [], "notes": "Performs explicit GET-only commit identity and production-alias availability checks against an operator-supplied HTTPS origin." },
     { "id": "npm-verify-workout-mutations", "packageScript": "verify:workout-mutations", "command": "tsx scripts/check-workout-mutation-ownership.ts", "sourceLocation": "trainer-app/package.json#scripts.verify:workout-mutations", "entrypoint": "trainer-app/scripts/check-workout-mutation-ownership.ts", "profile": "read-only", "flagEscalations": [], "notes": "Static route ownership validation." },
     { "id": "npm-verify-production-write-gate", "packageScript": "verify:production-write-gate", "command": "tsx scripts/check-production-write-gate.ts", "sourceLocation": "trainer-app/package.json#scripts.verify:production-write-gate", "entrypoint": "trainer-app/scripts/check-production-write-gate.ts", "profile": "read-only", "flagEscalations": [], "notes": "Static production-write gate validation." },
     { "id": "npm-verify-fast", "packageScript": "verify:fast", "command": "npm run lint && npx tsc --noEmit && npm run test:fast && npm run verify:contracts", "sourceLocation": "trainer-app/package.json#scripts.verify:fast", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Writes ESLint cache. Local policy requires proving npx resolves the installed TypeScript binary before execution; no download is allowed." },
-    { "id": "verify", "packageScript": "verify", "command": "npm run verify:fast && npm run verify:completed-review && npm run verify:workout-mutations && npm run verify:production-write-gate", "sourceLocation": "trainer-app/package.json#scripts.verify", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Runs local verification and writes ESLint cache through verify:fast." },
+    { "id": "verify", "packageScript": "verify", "command": "npm run verify:fast && npm run verify:completed-review && npm run verify:version && npm run verify:workout-mutations && npm run verify:production-write-gate", "sourceLocation": "trainer-app/package.json#scripts.verify", "entrypoint": null, "profile": "local-artifact-write", "flagEscalations": [], "notes": "Runs local verification and writes ESLint cache through verify:fast." },
     { "id": "npm-sync-exercise-library", "packageScript": "sync:exercise-library", "command": "tsx scripts/sync-exercise-library.ts", "sourceLocation": "trainer-app/package.json#scripts.sync:exercise-library", "entrypoint": "trainer-app/scripts/sync-exercise-library.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--apply", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for catalog-only writes to the exact database target." }], "notes": "Dry-run by default; --apply synchronizes catalog rows." },
     { "id": "npm-sync-exercise-library-apply", "packageScript": "sync:exercise-library:apply", "command": "tsx scripts/sync-exercise-library.ts --apply", "sourceLocation": "trainer-app/package.json#scripts.sync:exercise-library:apply", "entrypoint": "trainer-app/scripts/sync-exercise-library.ts", "profile": "production-write", "flagEscalations": [{ "flag": "--apply", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for catalog-only writes to the exact database target." }], "notes": "Package wrapper is mutating by default because it includes --apply." },
     { "id": "npm-repair-exercise-library", "packageScript": "repair:exercise-library", "command": "tsx scripts/repair-exercise-library.ts", "sourceLocation": "trainer-app/package.json#scripts.repair:exercise-library", "entrypoint": "trainer-app/scripts/repair-exercise-library.ts", "profile": "database-read", "flagEscalations": [{ "flag": "--apply", "sideEffectClass": "production-write", "authorizationRequirement": "Explicit authorization for catalog-only writes to the exact database target." }], "notes": "Dry-run repair delegates to sync planning; --apply writes catalog rows." },

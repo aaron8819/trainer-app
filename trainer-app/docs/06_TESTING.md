@@ -38,8 +38,10 @@ Sources of truth:
 - `npm run test -- src/lib/audit/workout-audit/bundle.test.ts`: focused split-sanity audit summary/verdict coverage
 - `npm run test -- src/lib/audit/workout-audit/scenario-audits.test.ts`: focused sequencing/accounting audit coverage
 - `npm run test -- src/lib/audit/workout-audit/week-close-handoff.test.ts`: focused week-close handoff and historical mixed-contract detector coverage
-- `npm run verify`: lint + type-check (`tsc --noEmit`) + `test:fast` + contract verification
+- `npm run verify`: lint + type-check (`tsc --noEmit`) + `test:fast` + contract verification + completed-review matrix + version endpoint/verification tests + static mutation/write-gate checks
 - `npm run verify:completed-review`: canonical DTO/loader + immediate API/component + shared card + reopened workout-page matrix; this is included in `npm run verify`
+- `npm run verify:version`: deployment-version resolver + `/api/version` route + mocked-network production-verifier tests; this is included in `npm run verify`
+- `npm run verify:production-version -- --base-url <https-origin> --expected-sha <full-git-sha>`: explicit read-only live production evidence; never included in local `npm run verify`
 - `npm run verify:contracts`: docs/runtime enum drift check
 - Owner-scoped audit commands accept `--env-file .env.local --owner owner@local` so local audit scripts can load the intended runtime environment explicitly
 

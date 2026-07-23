@@ -77,6 +77,7 @@ import {
 } from "./program";
 import { getRirTarget } from "./mesocycle-lifecycle-math";
 import { resolvePhaseBlockProfile } from "./generation-phase-block-context";
+import { buildExerciseStimulusSnapshot } from "@/lib/stimulus-accounting/snapshot";
 
 type BaseMesoRecord = {
   id: string;
@@ -134,6 +135,45 @@ const BASE_MESO: BaseMesoRecord = {
   blocks: [],
   macroCycle: { startDate: new Date("2026-01-01T00:00:00.000Z") },
 };
+
+function withStimulusSnapshot<
+  T extends {
+    exercise: {
+      id?: string;
+      name?: string;
+      aliases?: Array<{ alias: string }>;
+      exerciseMuscles: Array<{ role: string; muscle: { name: string } }>;
+    };
+  },
+>(workoutExercise: T): T & { stimulusAccountingSnapshot: unknown } {
+  const primaryMuscles = workoutExercise.exercise.exerciseMuscles
+    .filter((mapping) => mapping.role === "PRIMARY")
+    .map((mapping) => mapping.muscle.name);
+  const secondaryMuscles = workoutExercise.exercise.exerciseMuscles
+    .filter((mapping) => mapping.role === "SECONDARY")
+    .map((mapping) => mapping.muscle.name);
+  const fallbackName = primaryMuscles[0] ?? "Unknown Exercise";
+
+  return {
+    ...workoutExercise,
+    stimulusAccountingSnapshot: buildExerciseStimulusSnapshot(
+      {
+        id:
+          workoutExercise.exercise.id ??
+          workoutExercise.exercise.name ??
+          "unknown-exercise",
+        name:
+          workoutExercise.exercise.name ??
+          workoutExercise.exercise.id ??
+          fallbackName,
+        aliases: (workoutExercise.exercise.aliases ?? []).map((alias) => alias.alias),
+        primaryMuscles,
+        secondaryMuscles,
+      },
+      "exact"
+    ),
+  };
+}
 
 describe("applyCycleAnchor", () => {
   beforeEach(() => {
@@ -322,15 +362,15 @@ describe("loadProgramDashboardData", () => {
         {
           id: "w-gap-fill",
           exercises: [
-            {
+            withStimulusSnapshot({
               exercise: {
                 exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Chest" } }],
               },
               sets: [
-                { logs: [{ wasSkipped: false }] },
-                { logs: [{ wasSkipped: false }] },
+                { logs: [{ wasSkipped: false, actualReps: 10 }] },
+                { logs: [{ wasSkipped: false, actualReps: 10 }] },
               ],
-            },
+            }),
           ],
         },
       ]);
@@ -384,7 +424,7 @@ describe("loadProgramDashboardData", () => {
         {
           id: "w1",
           exercises: [
-            {
+            withStimulusSnapshot({
               exercise: {
                 id: "ex-bench",
                 name: "Bench Press",
@@ -396,10 +436,10 @@ describe("loadProgramDashboardData", () => {
                 ],
               },
               sets: [
-                { logs: [{ wasSkipped: false }] },
-                { logs: [{ wasSkipped: false }] },
+                { logs: [{ wasSkipped: false, actualReps: 10 }] },
+                { logs: [{ wasSkipped: false, actualReps: 10 }] },
               ],
-            },
+            }),
           ],
         },
       ]);
@@ -423,7 +463,7 @@ describe("loadProgramDashboardData", () => {
         {
           id: "w1",
           exercises: [
-            {
+            withStimulusSnapshot({
               exercise: {
                 id: "plank",
                 name: "Custom Core Move",
@@ -433,9 +473,11 @@ describe("loadProgramDashboardData", () => {
                   { role: "SECONDARY", muscle: { name: "Lower Back" } },
                 ],
               },
-              sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
-            },
-            {
+              sets: Array.from({ length: 2 }, () => ({
+                logs: [{ wasSkipped: false, actualReps: 10 }],
+              })),
+            }),
+            withStimulusSnapshot({
               exercise: {
                 id: "adductor-machine",
                 name: "Custom Adductor Move",
@@ -445,8 +487,8 @@ describe("loadProgramDashboardData", () => {
                   { role: "SECONDARY", muscle: { name: "Forearms" } },
                 ],
               },
-              sets: [{ logs: [{ wasSkipped: false }] }],
-            },
+              sets: [{ logs: [{ wasSkipped: false, actualReps: 10 }] }],
+            }),
           ],
         },
       ]);
@@ -509,7 +551,7 @@ describe("loadProgramDashboardData", () => {
         {
           id: "w1",
           exercises: [
-            {
+            withStimulusSnapshot({
               exercise: {
                 id: "row",
                 name: "Barbell Row",
@@ -520,9 +562,11 @@ describe("loadProgramDashboardData", () => {
                   { role: "SECONDARY", muscle: { name: "Biceps" } },
                 ],
               },
-              sets: Array.from({ length: 3 }, () => ({ logs: [{ wasSkipped: false }] })),
-            },
-            {
+              sets: Array.from({ length: 3 }, () => ({
+                logs: [{ wasSkipped: false, actualReps: 10 }],
+              })),
+            }),
+            withStimulusSnapshot({
               exercise: {
                 id: "pullup",
                 name: "Pull-Up",
@@ -532,17 +576,21 @@ describe("loadProgramDashboardData", () => {
                   { role: "SECONDARY", muscle: { name: "Biceps" } },
                 ],
               },
-              sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
-            },
-            {
+              sets: Array.from({ length: 2 }, () => ({
+                logs: [{ wasSkipped: false, actualReps: 10 }],
+              })),
+            }),
+            withStimulusSnapshot({
               exercise: {
                 id: "curl",
                 name: "EZ-Bar Curl",
                 aliases: [],
                 exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Biceps" } }],
               },
-              sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
-            },
+              sets: Array.from({ length: 2 }, () => ({
+                logs: [{ wasSkipped: false, actualReps: 10 }],
+              })),
+            }),
           ],
         },
       ]);
@@ -587,12 +635,12 @@ describe("loadProgramDashboardData", () => {
         {
           id: "w1",
           exercises: [
-            {
+            withStimulusSnapshot({
               exercise: {
                 exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Front Delts" } }],
               },
-              sets: [{ logs: [{ wasSkipped: false }] }],
-            },
+              sets: [{ logs: [{ wasSkipped: false, actualReps: 10 }] }],
+            }),
           ],
         },
       ]);
@@ -613,17 +661,17 @@ describe("loadProgramDashboardData", () => {
         {
           id: "w1",
           exercises: [
-            {
+            withStimulusSnapshot({
               exercise: {
                 exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Biceps" } }],
               },
               sets: [
-                { logs: [{ wasSkipped: false }] },
-                { logs: [{ wasSkipped: false }] },
-                { logs: [{ wasSkipped: false }] },
-                { logs: [{ wasSkipped: false }] },
+                { logs: [{ wasSkipped: false, actualReps: 10 }] },
+                { logs: [{ wasSkipped: false, actualReps: 10 }] },
+                { logs: [{ wasSkipped: false, actualReps: 10 }] },
+                { logs: [{ wasSkipped: false, actualReps: 10 }] },
               ],
-            },
+            }),
           ],
         },
       ]);
@@ -634,6 +682,10 @@ describe("loadProgramDashboardData", () => {
 
       expect(chestIndex).toBeGreaterThanOrEqual(0);
       expect(bicepsIndex).toBeGreaterThanOrEqual(0);
+      expect(result.volumeThisWeek[bicepsIndex]).toMatchObject({
+        directSets: 4,
+        effectiveSets: 4,
+      });
       expect(chestIndex).toBeLessThan(bicepsIndex);
     });
 
@@ -749,7 +801,7 @@ describe("loadProgramDashboardData", () => {
         {
           id: "current-week",
           exercises: [
-            {
+            withStimulusSnapshot({
               exercise: {
                 id: "ex-bench",
                 name: "Bench Press",
@@ -760,8 +812,10 @@ describe("loadProgramDashboardData", () => {
                   { role: "SECONDARY", muscle: { name: "Triceps" } },
                 ],
               },
-              sets: Array.from({ length: 40 }, () => ({ logs: [{ wasSkipped: false }] })),
-            },
+              sets: Array.from({ length: 40 }, () => ({
+                logs: [{ wasSkipped: false, actualReps: 10 }],
+              })),
+            }),
           ],
         },
       ]);

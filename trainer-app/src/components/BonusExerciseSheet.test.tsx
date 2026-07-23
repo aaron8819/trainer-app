@@ -198,12 +198,15 @@ describe("BonusExerciseSheet", () => {
       )
     ).toBe(true);
 
-    const searchPreviewCall = fetchMock.mock.calls.find(
-      ([requestUrl, requestInit]) =>
-        String(requestUrl) === "/api/workouts/workout-1/add-exercise-preview" &&
-        String(requestInit?.body).includes("\"row\"")
-    );
-    expect(searchPreviewCall).toBeTruthy();
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.find(
+          ([requestUrl, requestInit]) =>
+            String(requestUrl) === "/api/workouts/workout-1/add-exercise-preview" &&
+            String(requestInit?.body).includes("\"row\"")
+        )
+      ).toBeTruthy();
+    });
 
     fireEvent.click(screen.getAllByRole("button", { name: "Add" })[0]);
 

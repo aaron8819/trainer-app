@@ -10,6 +10,7 @@ import {
   type PreSessionReadinessIdentity,
 } from "@/lib/api/pre-session-readiness-identity";
 import type { PreSessionReadinessContract } from "@/lib/api/pre-session-readiness-contract";
+import { parseExactDisposableConfirmationArgs } from "@/lib/operations/test-environment-preflight";
 
 const containerName = `trainer-rollout-${process.pid}-${randomUUID().slice(0, 8)}`;
 const envFile = join(tmpdir(), `${containerName}.env`);
@@ -537,8 +538,13 @@ function insertExactReadiness(input: {
   `);
 }
 
-if (!process.argv.includes("--confirm-disposable")) {
-  throw new Error("ROLLOUT_TOOLING_DB_TEST_REQUIRES_CONFIRM_DISPOSABLE");
+const invocation = parseExactDisposableConfirmationArgs(
+  process.argv.slice(2),
+  "npm run test:db:rollout-tooling -- --confirm-disposable",
+);
+if (!invocation.valid) {
+  console.error(invocation.message);
+  process.exit(2);
 }
 
 try {

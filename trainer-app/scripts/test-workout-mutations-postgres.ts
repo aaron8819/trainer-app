@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
+import {
+  parseExactDisposableConfirmationArgs,
+  sanitizeDatabaseTargetEnvironment,
+  validateDisposableDatabaseTargets,
+} from "../src/lib/operations/test-environment-preflight";
 
 const containerName = `trainer-workout-occ-${process.pid}-${randomUUID().slice(0, 8)}`;
 
@@ -46,8 +51,10 @@ function waitForPostgres(): void {
   throw new Error("DISPOSABLE_POSTGRES_DID_NOT_BECOME_READY");
 }
 
-if (!process.argv.includes("--confirm-disposable")) {
-  throw new Error("WORKOUT_MUTATION_DB_TEST_REQUIRES_CONFIRM_DISPOSABLE");
+const invocation = parseExactDisposableConfirmationArgs(process.argv.slice(2));
+if (!invocation.valid) {
+  console.error(invocation.message);
+  process.exit(2);
 }
 
 try {
@@ -65,7 +72,20 @@ try {
     .at(-1);
   if (!port) throw new Error("DISPOSABLE_POSTGRES_PORT_NOT_FOUND");
   const databaseUrl = `postgresql://trainer:trainer-workout-occ@127.0.0.1:${port}/trainer`;
-  const env = { ...process.env, DATABASE_URL: databaseUrl, TEST_DATABASE_URL: databaseUrl };
+  const env = {
+    ...sanitizeDatabaseTargetEnvironment(process.env),
+    DATABASE_URL: databaseUrl,
+    TEST_DATABASE_URL: databaseUrl,
+    DIRECT_URL: databaseUrl,
+    TRAINER_DISPOSABLE_DB_CONFIRMED: "1",
+  };
+  const targetValidation = validateDisposableDatabaseTargets({
+    environment: env,
+    confirmed: true,
+  });
+  if (!targetValidation.valid) {
+    throw new Error(`DISPOSABLE_DATABASE_TARGET_INVALID:${targetValidation.reasons.join("|")}`);
+  }
   run(process.execPath, [join(process.cwd(), "node_modules/prisma/build/index.js"), "migrate", "deploy"], env);
   run(process.execPath, [
     join(process.cwd(), "node_modules/prisma/build/index.js"),

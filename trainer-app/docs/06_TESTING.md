@@ -1,7 +1,7 @@
 # 06 Testing
 
 Owner: Aaron
-Last reviewed: 2026-04-12
+Last reviewed: 2026-07-23
 Purpose: Canonical testing reference for Vitest-based coverage of engine, API helpers, and UI components, plus the Playwright UI audit harness.
 
 This doc covers:
@@ -22,11 +22,42 @@ Sources of truth:
 - `trainer-app/scripts/check-doc-runtime-contracts.ts`
 
 ## Commands
-- `npm test`: full Vitest run
+- `npm run test:preflight`: sanitized, dependency-free launcher plus typed capability report.
+  It performs no database connection or Docker daemon probe. It reports the dependency
+  arrangement, resolved-install validation, generated Prisma Client compatibility, every
+  registered DB-target variable, Docker CLI presence through `docker --version`, and
+  runnable/blocked/separate groups. It never prints environment values, URLs, credentials, query
+  parameters, database names, or hostnames.
+- `npm run test:verify-gate`: the selective repository verification matrix currently implemented
+  by `npm run verify`. It strips every recognized DB-target variable and prevents Vitest from
+  loading `.env.local`/`.env`. It is a useful local gate, but it is not a comprehensive inventory
+  of all credential-free Vitest files.
+- `npm test`: raw `vitest run` inventory and focused-test entrypoint. It intentionally preserves
+  ordinary Vitest environment behavior, including `.env.local`/`.env` loading, so it may expose
+  environment-coupled collection failures. It is diagnostic, not the authoritative
+  credential-free gate. Direct collection of mutation-capable DB test files suppresses dotenv
+  loading and runs the disposable-target guard before importing Prisma, `pg`, database helpers, or
+  mutation implementations. With no target the workout-mutation suite fails with the deliberate
+  infrastructure classification while the persistence-only suite safely skips; unsafe or
+  unconfirmed targets fail before database-dependent imports.
+- `npm run test:inventory:credential-free`: raw Vitest inventory with `DATABASE_URL`,
+  `TEST_DATABASE_URL`, `DIRECT_URL`, `SHADOW_DATABASE_URL`, and `SHADOW_URL` removed from the
+  child environment case-insensitively, mutation-confirmation state removed, and dotenv loading
+  disabled. DB-import-coupled files may fail collection and mutation suites skip because no target
+  is available; those outcomes are inventory evidence, not a comprehensive passing gate.
 - `npm run test:seed-revision-concurrency -- --confirm-disposable`: against a local disposable PostgreSQL database, verifies one-winner concurrent correction, generation/correction revision preservation, and full rollback after a failed correction. The command refuses non-local or unconfirmed targets.
-- `npm run test:db:workout-mutations`: creates disposable PostgreSQL 16 from the checked-in migration chain, then verifies main-save CAS, runtime mutation races, exact stimulus snapshot persistence, and immutable review-snapshot storage without `db push` or `.env.local`.
-- `npm run test:db:historical-snapshots`: explicit schema-dependent historical-evidence alias for the same consolidated disposable harness.
-- `npm run test:db:readiness-snapshots`: starts an isolated Docker PostgreSQL 16 container, applies all checked-in migrations without reading `.env.local`, verifies legacy-unknown migration behavior, partial unique enforcement, identical concurrent activation, conflicting payload rejection, forced replacement rollback, stale-evidence rejection, and owner isolation, then removes the container.
+- `npm run test:db:workout-mutations -- --confirm-disposable`: explicitly mutating integration
+  coverage. Its effective argument list must be exactly `["--confirm-disposable"]`; unknown,
+  duplicate, misspelled, positional, conflicting, and embedded variants exit `2` before Docker or
+  database work. The valid command creates its own disposable PostgreSQL 16 target,
+  strips inherited DB-target variables before supplying the generated target, validates the
+  canonical target inventory, applies the checked-in migration chain, and verifies main-save CAS,
+  runtime mutation races, exact stimulus snapshot persistence, and immutable review-snapshot
+  storage without `db push` or `.env.local`.
+- `npm run test:db:historical-snapshots -- --confirm-disposable`: explicit schema-dependent
+  historical-evidence alias for the same consolidated disposable harness.
+- `npm run test:db:readiness-snapshots -- --confirm-disposable`: starts an isolated Docker PostgreSQL 16 container, applies all checked-in migrations without reading `.env.local`, verifies legacy-unknown migration behavior, partial unique enforcement, identical concurrent activation, conflicting payload rejection, forced replacement rollback, stale-evidence rejection, and owner isolation, then removes the container. Package scripts never supply disposable confirmation: the operator must type it for every mutating invocation, and aliases or wrappers must not embed it. Strict argument and inherited-target validation complete before `pg` or any other database-dependent module loads and before Docker work begins.
+- `npm run test:db:rollout-tooling -- --confirm-disposable`: runs rollout-tooling integration coverage against a harness-created disposable PostgreSQL target. Its effective argument list must be exactly `["--confirm-disposable"]`; additional, duplicate, positional, misspelled, embedded, or malformed arguments are rejected before Docker or database-dependent loading.
 - Immutable seed changes require focused revision/receipt/save/runtime/audit tests, `npm run verify:contracts`, `npm run verify`, and a real `prisma migrate deploy` on disposable PostgreSQL.
 - `npm run lint`: ESLint with cache at `.eslintcache`; generated/local-only outputs such as `artifacts/`, `.tmp/`, `.vercel/`, `output/`, `playwright-report/`, and `test-results/` are ignored by ESLint
 - `npm run test:ui-audit`: Playwright core-route UI audit plus lightweight fixture-backed interaction checks against mobile and desktop projects
@@ -44,6 +75,56 @@ Sources of truth:
 - `npm run verify:production-version -- --base-url <https-origin> --expected-sha <full-git-sha>`: explicit read-only live production evidence; never included in local `npm run verify`
 - `npm run verify:contracts`: docs/runtime enum drift check
 - Owner-scoped audit commands accept `--env-file .env.local --owner owner@local` so local audit scripts can load the intended runtime environment explicitly
+
+## Test-environment safety contract
+
+- Canonical DB-target inventory: `DATABASE_URL`, `TEST_DATABASE_URL`, `DIRECT_URL`,
+  `SHADOW_DATABASE_URL`, and `SHADOW_URL`. A repository guard scans test workflow sources for
+  database-like target variable names and fails when a reference is not registered.
+- Only structurally valid `postgres:` and `postgresql:` URLs are classified. A hostname and
+  database path are required. Malformed encoding, invalid ports, unsupported protocols, private
+  IPs, remote DNS, Supabase/pooler hosts, `host.docker.internal`, and names merely containing
+  `local` are rejected for disposable mutation coverage. Query parameters use an explicit
+  non-routing allowlist; routing or identity overrides such as `host`, `hostaddr`, `port`,
+  `database`, `dbname`, `service`, `servicefile`, and `sslhost`, duplicate keys, unknown keys,
+  encoded key variants, and ambiguous multiple-`@` authorities are rejected.
+- Loopback (`localhost`, `127.0.0.1`, or `[::1]`) is not proof that a database is disposable.
+  Local tunnels, SSH forwards, proxies, and port forwards can terminate at a remote database.
+  Mutation coverage additionally requires matching `DATABASE_URL` and `TEST_DATABASE_URL` plus
+  exact `--confirm-disposable` operator attestation. Use that attestation only for a database the
+  operator has independently established is disposable. Preflight validates without connecting.
+- Every mutation command uses exact argument matching or an explicitly approved guard-first
+  route. Additional or malformed confirmation arguments are rejected before Docker or
+  database-dependent loading.
+- Credential-free subprocesses enumerate actual environment keys and remove every casing variant
+  and duplicate of the canonical DB-target names. They also remove
+  `TRAINER_DISPOSABLE_DB_CONFIRMED`; inherited authorization can never make credential-free
+  collection mutation-capable. Unrelated variables are preserved.
+- The dependency-free `.mjs` launcher exits `0` when requested checks pass, `1` for an
+  environment/installation blocker, and `2` for an invalid invocation or malformed user
+  configuration. Unknown flags are invalid. Repository/package metadata, lockfile, typed helper,
+  dependency state, and the `tsx` launcher are checked before spawn; spawn errors, loader failure,
+  signal termination, and null status produce stable sanitized diagnostics rather than raw loader
+  stacks.
+- Dependency arrangements are reported as standalone, Windows junction, Linux symlink, missing,
+  or unresolved. A link is allowed only when it resolves to `node_modules` under a registered Git
+  worktree and that worktree has the exact current lockfile hash; policy-external, stale,
+  lock-incompatible, chained-outside-policy, and unresolved links are blocked. Installation
+  validation runs from the resolved exact-lock project root, so npm traversal of the link itself
+  is not treated as incompatibility proof. No machine-local path is committed.
+- Prisma readiness is reported distinctly as dependencies missing, Prisma packages missing,
+  generated client missing, generated client partial/corrupt, generated client stale, or
+  compatible. “Compatible” means required package metadata, forwarders, declarations,
+  runtime/query-compiler artifacts, and the complete minimum generated client are present; the
+  checked-in/generated schemas match after formatting/comment normalization; and a non-connecting
+  import exposes `PrismaClient` plus every expected model in Prisma DMMF metadata. Installed
+  package versions or forwarder files alone are insufficient. Informational preflight never runs
+  `prisma generate`.
+- Docker capability means CLI presence only (`docker --version`). Daemon readiness belongs to an
+  explicit disposable harness and is never probed by preflight.
+- Reports distinguish runnable/passed work from blocked infrastructure and explicitly separate
+  suites. A skipped DB test in credential-free inventory is not reported as passed DB coverage;
+  commands not invoked must be reported as not run.
 
 ## Scope
 - Engine tests: `src/lib/engine/**/*.test.ts`
@@ -160,6 +241,8 @@ Disposable PostgreSQL verification must cover migration apply, unique one-to-one
 - Environment: `jsdom`
 - Reporter: `dot`
 - Setup: `vitest.setup.ts`
+- `npm run test:inventory:credential-free` intentionally prevents database execution. Disposable
+  DB and Playwright coverage remain explicit separate commands and must be reported separately.
 - Playwright config: `playwright.config.ts`; by default it starts a managed local Next dev server on port `3100` with `UI_AUDIT_FIXTURE_MODE=1`, uses the isolated `.next-ui-audit/managed` output directory, and runs the core-route audit at mobile (`390x844`) and desktop (`1366x768`) viewport sizes.
 - The UI audit fixture harness is development-only. Fixture mode requires `UI_AUDIT_FIXTURE_MODE=1`, is disabled when `NODE_ENV=production`, and selects a named scenario through the `x-ui-audit-fixture` request header.
 - Current UI audit fixture scenarios:

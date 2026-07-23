@@ -1,3 +1,11 @@
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  realpathSync,
+} from "node:fs";
+import { join } from "node:path";
+
 export const DATABASE_TARGET_ENV_VARS = [
   "DATABASE_URL",
   "TEST_DATABASE_URL",
@@ -27,7 +35,8 @@ export type DependencyArrangement =
 export type PrismaReadiness =
   | "dependencies-missing"
   | "packages-missing"
-  | "client-not-generated"
+  | "generated-client-missing"
+  | "generated-client-partial-or-corrupt"
   | "generated-client-stale"
   | "compatible";
 
@@ -77,6 +86,20 @@ export type TestEnvironmentPreflightReport = {
 };
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+const SAFE_MUTATION_TARGET_QUERY_PARAMETERS = new Set([
+  "application_name",
+  "connect_timeout",
+  "connection_limit",
+  "pool_timeout",
+  "schema",
+  "socket_timeout",
+  "sslmode",
+]);
+const SANITIZED_ENVIRONMENT_NAMES = new Set(
+  [...DATABASE_TARGET_ENV_VARS, DISPOSABLE_DATABASE_CONFIRMATION_ENV].map((name) =>
+    name.toUpperCase()
+  )
+);
 const DATABASE_TARGET_REFERENCE =
   /\b(?:[A-Z][A-Z0-9_]*(?:DATABASE|POSTGRESQL|POSTGRES|DB)[A-Z0-9_]*_URL|DIRECT_URL|SHADOW_URL)\b/g;
 
@@ -84,9 +107,42 @@ function hasMalformedPercentEncoding(value: string): boolean {
   return /%(?![0-9a-fA-F]{2})/.test(value);
 }
 
+function hasAmbiguousAuthority(databaseUrl: string): boolean {
+  const schemeEnd = databaseUrl.indexOf("://");
+  if (schemeEnd < 0) return false;
+  const authorityEndCandidates = [
+    databaseUrl.indexOf("/", schemeEnd + 3),
+    databaseUrl.indexOf("?", schemeEnd + 3),
+    databaseUrl.indexOf("#", schemeEnd + 3),
+  ].filter((index) => index >= 0);
+  const authorityEnd =
+    authorityEndCandidates.length > 0
+      ? Math.min(...authorityEndCandidates)
+      : databaseUrl.length;
+  const authority = databaseUrl.slice(schemeEnd + 3, authorityEnd);
+  return (authority.match(/@/g) ?? []).length > 1;
+}
+
+function hasUnsafeMutationTargetQuery(parsed: URL): boolean {
+  const seen = new Set<string>();
+  for (const rawKey of parsed.searchParams.keys()) {
+    const key = rawKey.toLowerCase();
+    if (!SAFE_MUTATION_TARGET_QUERY_PARAMETERS.has(key) || seen.has(key)) {
+      return true;
+    }
+    seen.add(key);
+  }
+  return false;
+}
+
 export function classifyDatabaseTarget(databaseUrl?: string): DatabaseTargetStatus {
   if (!databaseUrl?.trim()) return "missing";
-  if (hasMalformedPercentEncoding(databaseUrl)) return "invalid";
+  if (
+    hasMalformedPercentEncoding(databaseUrl) ||
+    hasAmbiguousAuthority(databaseUrl)
+  ) {
+    return "invalid";
+  }
 
   try {
     const parsed = new URL(databaseUrl);
@@ -97,6 +153,7 @@ export function classifyDatabaseTarget(databaseUrl?: string): DatabaseTargetStat
     decodeURIComponent(parsed.username);
     decodeURIComponent(parsed.password);
     decodeURIComponent(parsed.pathname);
+    if (hasUnsafeMutationTargetQuery(parsed)) return "invalid";
 
     return LOOPBACK_HOSTS.has(parsed.hostname.toLowerCase())
       ? "local-loopback"
@@ -117,12 +174,28 @@ export function classifyDatabaseTargets(
   ) as Record<DatabaseTargetVariable, DatabaseTargetStatus>;
 }
 
-export function sanitizeDatabaseTargetEnvironment(
-  environment: NodeJS.ProcessEnv
-): NodeJS.ProcessEnv {
-  const sanitized = { ...environment };
-  for (const name of DATABASE_TARGET_ENV_VARS) delete sanitized[name];
+export function sanitizeDatabaseTargetEnvironment<
+  T extends Record<string, string | undefined>,
+>(environment: T): T {
+  const sanitized = { ...environment } as T;
+  for (const name of Object.keys(sanitized)) {
+    if (SANITIZED_ENVIRONMENT_NAMES.has(name.toUpperCase())) {
+      delete sanitized[name];
+    }
+  }
   return sanitized;
+}
+
+export function parseExactDisposableConfirmationArgs(
+  args: readonly string[]
+): { valid: true } | { valid: false; message: string } {
+  return args.length === 1 && args[0] === "--confirm-disposable"
+    ? { valid: true }
+    : {
+        valid: false,
+        message:
+          "Invalid invocation. Expected exactly one argument: --confirm-disposable.",
+      };
 }
 
 function normalizedDatabaseIdentity(value: string): string | null {
@@ -234,6 +307,112 @@ export function isDependencyLinkAllowed(input: {
   );
 }
 
+function dependencyPathIdentity(
+  filePath: string,
+  platform: NodeJS.Platform
+): string {
+  const normalized = join(filePath);
+  return platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+export function inspectDependencyFilesystem(input: {
+  currentProjectRoot: string;
+  registeredWorktreeRoots: readonly string[];
+  platform: NodeJS.Platform;
+  validateInstallation: (resolvedProjectRoot: string) => boolean;
+}): {
+  installation: CapabilityStatus;
+  arrangement: DependencyArrangement;
+  linkAllowed: boolean;
+  dependencyRoot: string;
+  dependencyProjectRoot: string;
+} {
+  const nodeModulesPath = join(input.currentProjectRoot, "node_modules");
+  if (!existsSync(nodeModulesPath)) {
+    return {
+      installation: "missing",
+      arrangement: "missing",
+      linkAllowed: false,
+      dependencyRoot: nodeModulesPath,
+      dependencyProjectRoot: input.currentProjectRoot,
+    };
+  }
+
+  try {
+    const resolved = realpathSync.native(nodeModulesPath);
+    const isLink =
+      lstatSync(nodeModulesPath).isSymbolicLink() ||
+      dependencyPathIdentity(resolved, input.platform) !==
+        dependencyPathIdentity(nodeModulesPath, input.platform);
+    const arrangement = classifyDependencyArrangement({
+      exists: true,
+      resolved: true,
+      isLink,
+      platform: input.platform,
+    });
+    if (arrangement === "standalone") {
+      return {
+        installation: input.validateInstallation(input.currentProjectRoot)
+          ? "available"
+          : "invalid",
+        arrangement,
+        linkAllowed: true,
+        dependencyRoot: resolved,
+        dependencyProjectRoot: input.currentProjectRoot,
+      };
+    }
+
+    const dependencyProjectRoot = join(resolved, "..");
+    const registeredTargets = new Set<string>();
+    for (const worktreeRoot of input.registeredWorktreeRoots) {
+      const candidate = join(worktreeRoot, "trainer-app", "node_modules");
+      try {
+        const candidateResolved = realpathSync.native(candidate);
+        if (
+          dependencyPathIdentity(candidateResolved, input.platform) ===
+          dependencyPathIdentity(candidate, input.platform)
+        ) {
+          registeredTargets.add(
+            dependencyPathIdentity(candidateResolved, input.platform)
+          );
+        }
+      } catch {
+        // Missing, unresolved, or chained registered targets are not trusted.
+      }
+    }
+    const currentLock = readOptionalFile(
+      join(input.currentProjectRoot, "package-lock.json")
+    );
+    const targetLock = readOptionalFile(
+      join(dependencyProjectRoot, "package-lock.json")
+    );
+    const linkAllowed = isDependencyLinkAllowed({
+      resolvedTarget: dependencyPathIdentity(resolved, input.platform),
+      registeredTargets,
+      currentLockHash: currentLock ?? null,
+      targetLockHash: targetLock ?? null,
+    });
+    return {
+      installation:
+        linkAllowed && input.validateInstallation(dependencyProjectRoot)
+          ? "available"
+          : "invalid",
+      arrangement,
+      linkAllowed,
+      dependencyRoot: resolved,
+      dependencyProjectRoot,
+    };
+  } catch {
+    return {
+      installation: "invalid",
+      arrangement: "unresolved",
+      linkAllowed: false,
+      dependencyRoot: nodeModulesPath,
+      dependencyProjectRoot: input.currentProjectRoot,
+    };
+  }
+}
+
 export function normalizePrismaSchema(source: string): string {
   let normalized = "";
   let inString = false;
@@ -275,7 +454,14 @@ export function classifyPrismaReadiness(input: {
   dependenciesAvailable: boolean;
   prismaPackageAvailable: boolean;
   prismaClientPackageAvailable: boolean;
-  generatedClientAvailable: boolean;
+  prismaPackageMetadataValid: boolean;
+  prismaClientPackageMetadataValid: boolean;
+  generatedClientDirectoryAvailable: boolean;
+  generatedPackageMetadataValid: boolean;
+  requiredGeneratedArtifactsAvailable: boolean;
+  clientForwardersAvailable: boolean;
+  importProbeSucceeded: boolean;
+  expectedModelMetadataAvailable: boolean;
   checkedInSchema?: string;
   generatedSchema?: string;
 }): PrismaReadiness {
@@ -284,10 +470,21 @@ export function classifyPrismaReadiness(input: {
     return "packages-missing";
   }
   if (
-    !input.generatedClientAvailable ||
+    !input.generatedClientDirectoryAvailable ||
     input.generatedSchema === undefined
   ) {
-    return "client-not-generated";
+    return "generated-client-missing";
+  }
+  if (
+    !input.generatedPackageMetadataValid ||
+    !input.prismaPackageMetadataValid ||
+    !input.prismaClientPackageMetadataValid ||
+    !input.requiredGeneratedArtifactsAvailable ||
+    !input.clientForwardersAvailable ||
+    !input.importProbeSucceeded ||
+    !input.expectedModelMetadataAvailable
+  ) {
+    return "generated-client-partial-or-corrupt";
   }
   if (
     input.checkedInSchema === undefined ||
@@ -297,6 +494,108 @@ export function classifyPrismaReadiness(input: {
     return "generated-client-stale";
   }
   return "compatible";
+}
+
+const REQUIRED_GENERATED_CLIENT_ARTIFACTS = [
+  "default.js",
+  "default.d.ts",
+  "index.js",
+  "index.d.ts",
+  "package.json",
+  "query_compiler_fast_bg.js",
+  "query_compiler_fast_bg.wasm",
+  "query_compiler_fast_bg.wasm-base64.js",
+  "schema.prisma",
+] as const;
+const REQUIRED_PRISMA_CLIENT_FORWARDERS = [
+  ["@prisma", "client", "default.js"],
+  ["@prisma", "client", "default.d.ts"],
+  ["@prisma", "client", "runtime", "client.js"],
+  ["@prisma", "client", "runtime", "client.mjs"],
+  ["@prisma", "client", "runtime", "client.d.ts"],
+] as const;
+
+function readOptionalFile(filePath: string): string | undefined {
+  try {
+    return readFileSync(filePath, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+function generatedPackageMetadataIsValid(filePath: string): boolean {
+  const source = readOptionalFile(filePath);
+  if (!source) return false;
+  try {
+    const metadata = JSON.parse(source) as { main?: unknown; types?: unknown };
+    return metadata.main === "index.js" && metadata.types === "index.d.ts";
+  } catch {
+    return false;
+  }
+}
+
+function packageMetadataIsValid(filePath: string, expectedName: string): boolean {
+  const source = readOptionalFile(filePath);
+  if (!source) return false;
+  try {
+    const metadata = JSON.parse(source) as {
+      name?: unknown;
+      version?: unknown;
+    };
+    return (
+      metadata.name === expectedName &&
+      typeof metadata.version === "string" &&
+      metadata.version.length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function inspectPrismaClientFilesystem(input: {
+  checkedInSchemaPath: string;
+  dependencyRoot: string;
+  dependenciesAvailable: boolean;
+  importProbeSucceeded: boolean;
+  expectedModelMetadataAvailable: boolean;
+}): PrismaReadiness {
+  const generatedClientPath = join(input.dependencyRoot, ".prisma", "client");
+  const checkedInSchema = readOptionalFile(input.checkedInSchemaPath);
+  const generatedSchema = readOptionalFile(
+    join(generatedClientPath, "schema.prisma")
+  );
+  return classifyPrismaReadiness({
+    dependenciesAvailable: input.dependenciesAvailable,
+    prismaPackageAvailable: existsSync(
+      join(input.dependencyRoot, "prisma", "package.json")
+    ),
+    prismaClientPackageAvailable: existsSync(
+      join(input.dependencyRoot, "@prisma", "client", "package.json")
+    ),
+    prismaPackageMetadataValid: packageMetadataIsValid(
+      join(input.dependencyRoot, "prisma", "package.json"),
+      "prisma"
+    ),
+    prismaClientPackageMetadataValid: packageMetadataIsValid(
+      join(input.dependencyRoot, "@prisma", "client", "package.json"),
+      "@prisma/client"
+    ),
+    generatedClientDirectoryAvailable: existsSync(generatedClientPath),
+    generatedPackageMetadataValid: generatedPackageMetadataIsValid(
+      join(generatedClientPath, "package.json")
+    ),
+    requiredGeneratedArtifactsAvailable:
+      REQUIRED_GENERATED_CLIENT_ARTIFACTS.every((relativePath) =>
+        existsSync(join(generatedClientPath, relativePath))
+      ),
+    clientForwardersAvailable: REQUIRED_PRISMA_CLIENT_FORWARDERS.every(
+      (relativePath) => existsSync(join(input.dependencyRoot, ...relativePath))
+    ),
+    importProbeSucceeded: input.importProbeSucceeded,
+    expectedModelMetadataAvailable: input.expectedModelMetadataAvailable,
+    checkedInSchema,
+    generatedSchema,
+  });
 }
 
 export function buildTestEnvironmentPreflight(

@@ -24,9 +24,10 @@ Sources of truth:
 ## Commands
 - `npm run test:preflight`: sanitized, dependency-free launcher plus typed capability report.
   It performs no database connection or Docker daemon probe. It reports the dependency
-  arrangement, generated Prisma Client compatibility, every registered DB-target variable,
-  Docker CLI presence through `docker --version`, and runnable/blocked/separate groups. It never
-  prints environment values, URLs, credentials, query parameters, database names, or hostnames.
+  arrangement, resolved-install validation, generated Prisma Client compatibility, every
+  registered DB-target variable, Docker CLI presence through `docker --version`, and
+  runnable/blocked/separate groups. It never prints environment values, URLs, credentials, query
+  parameters, database names, or hostnames.
 - `npm run test:verify-gate`: the selective repository verification matrix currently implemented
   by `npm run verify`. It strips every recognized DB-target variable and prevents Vitest from
   loading `.env.local`/`.env`. It is a useful local gate, but it is not a comprehensive inventory
@@ -34,17 +35,21 @@ Sources of truth:
 - `npm test`: raw `vitest run` inventory and focused-test entrypoint. It intentionally preserves
   ordinary Vitest environment behavior, including `.env.local`/`.env` loading, so it may expose
   environment-coupled collection failures. It is diagnostic, not the authoritative
-  credential-free gate. Mutation-capable DB test files fail collection before connecting unless
-  the complete target inventory is valid and `TRAINER_DISPOSABLE_DB_CONFIRMED=1` was set by the
-  confirmed disposable harness.
+  credential-free gate. Direct collection of mutation-capable DB test files suppresses dotenv
+  loading and runs the disposable-target guard before importing Prisma, `pg`, database helpers, or
+  mutation implementations. With no target the workout-mutation suite fails with the deliberate
+  infrastructure classification while the persistence-only suite safely skips; unsafe or
+  unconfirmed targets fail before database-dependent imports.
 - `npm run test:inventory:credential-free`: raw Vitest inventory with `DATABASE_URL`,
   `TEST_DATABASE_URL`, `DIRECT_URL`, `SHADOW_DATABASE_URL`, and `SHADOW_URL` removed from the
-  child environment and dotenv loading disabled. DB-import-coupled files may fail collection and
-  mutation suites skip because no target is available; those outcomes are inventory evidence,
-  not a comprehensive passing gate.
+  child environment case-insensitively, mutation-confirmation state removed, and dotenv loading
+  disabled. DB-import-coupled files may fail collection and mutation suites skip because no target
+  is available; those outcomes are inventory evidence, not a comprehensive passing gate.
 - `npm run test:seed-revision-concurrency -- --confirm-disposable`: against a local disposable PostgreSQL database, verifies one-winner concurrent correction, generation/correction revision preservation, and full rollback after a failed correction. The command refuses non-local or unconfirmed targets.
 - `npm run test:db:workout-mutations -- --confirm-disposable`: explicitly mutating integration
-  coverage. It requires the affirmative flag, creates its own disposable PostgreSQL 16 target,
+  coverage. Its effective argument list must be exactly `["--confirm-disposable"]`; unknown,
+  duplicate, misspelled, positional, conflicting, and embedded variants exit `2` before Docker or
+  database work. The valid command creates its own disposable PostgreSQL 16 target,
   strips inherited DB-target variables before supplying the generated target, validates the
   canonical target inventory, applies the checked-in migration chain, and verifies main-save CAS,
   runtime mutation races, exact stimulus snapshot persistence, and immutable review-snapshot
@@ -78,22 +83,39 @@ Sources of truth:
 - Only structurally valid `postgres:` and `postgresql:` URLs are classified. A hostname and
   database path are required. Malformed encoding, invalid ports, unsupported protocols, private
   IPs, remote DNS, Supabase/pooler hosts, `host.docker.internal`, and names merely containing
-  `local` are rejected for disposable mutation coverage.
-- Loopback (`localhost`, `127.0.0.1`, or `[::1]`) establishes location only. Mutation coverage
-  additionally requires `--confirm-disposable`, matching `DATABASE_URL` and `TEST_DATABASE_URL`,
-  and a harness-created disposable target. Preflight never connects.
+  `local` are rejected for disposable mutation coverage. Query parameters use an explicit
+  non-routing allowlist; routing or identity overrides such as `host`, `hostaddr`, `port`,
+  `database`, `dbname`, `service`, `servicefile`, and `sslhost`, duplicate keys, unknown keys,
+  encoded key variants, and ambiguous multiple-`@` authorities are rejected.
+- Loopback (`localhost`, `127.0.0.1`, or `[::1]`) is not proof that a database is disposable.
+  Local tunnels, SSH forwards, proxies, and port forwards can terminate at a remote database.
+  Mutation coverage additionally requires matching `DATABASE_URL` and `TEST_DATABASE_URL` plus
+  exact `--confirm-disposable` operator attestation. Use that attestation only for a database the
+  operator has independently established is disposable. Preflight validates without connecting.
+- Credential-free subprocesses enumerate actual environment keys and remove every casing variant
+  and duplicate of the canonical DB-target names. They also remove
+  `TRAINER_DISPOSABLE_DB_CONFIRMED`; inherited authorization can never make credential-free
+  collection mutation-capable. Unrelated variables are preserved.
 - The dependency-free `.mjs` launcher exits `0` when requested checks pass, `1` for an
-  environment/infrastructure blocker, and `2` for an invalid invocation or malformed option set.
-  Unknown flags are invalid.
+  environment/installation blocker, and `2` for an invalid invocation or malformed user
+  configuration. Unknown flags are invalid. Repository/package metadata, lockfile, typed helper,
+  dependency state, and the `tsx` launcher are checked before spawn; spawn errors, loader failure,
+  signal termination, and null status produce stable sanitized diagnostics rather than raw loader
+  stacks.
 - Dependency arrangements are reported as standalone, Windows junction, Linux symlink, missing,
   or unresolved. A link is allowed only when it resolves to `node_modules` under a registered Git
   worktree and that worktree has the exact current lockfile hash; policy-external, stale,
-  lock-incompatible, and unresolved links are blocked. No machine-local path is committed.
-- Prisma readiness is reported as dependencies missing, Prisma packages missing, client not
-  generated, generated client stale, or compatible. Compatibility requires generated client
-  artifacts and a formatting/comment-insensitive match between the checked-in and generated
-  Prisma schema; installed package versions alone are insufficient. Informational preflight
-  never runs `prisma generate`.
+  lock-incompatible, chained-outside-policy, and unresolved links are blocked. Installation
+  validation runs from the resolved exact-lock project root, so npm traversal of the link itself
+  is not treated as incompatibility proof. No machine-local path is committed.
+- Prisma readiness is reported distinctly as dependencies missing, Prisma packages missing,
+  generated client missing, generated client partial/corrupt, generated client stale, or
+  compatible. “Compatible” means required package metadata, forwarders, declarations,
+  runtime/query-compiler artifacts, and the complete minimum generated client are present; the
+  checked-in/generated schemas match after formatting/comment normalization; and a non-connecting
+  import exposes `PrismaClient` plus every expected model in Prisma DMMF metadata. Installed
+  package versions or forwarder files alone are insufficient. Informational preflight never runs
+  `prisma generate`.
 - Docker capability means CLI presence only (`docker --version`). Daemon readiness belongs to an
   explicit disposable harness and is never probed by preflight.
 - Reports distinguish runnable/passed work from blocked infrastructure and explicitly separate

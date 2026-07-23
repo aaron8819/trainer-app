@@ -6,6 +6,7 @@ import type { Prisma } from "@prisma/client";
 import { Pool } from "pg";
 import {
   DATABASE_TARGET_ENV_VARS,
+  parseExactDisposableConfirmationArgs,
   sanitizeDatabaseTargetEnvironment,
   validateDisposableDatabaseTargets,
 } from "../src/lib/operations/test-environment-preflight";
@@ -258,10 +259,12 @@ function makeContract(input: { userId: string; mesocycleId: string }) {
 }
 
 async function main(): Promise<void> {
-  assert(
-    process.argv.includes("--confirm-disposable"),
-    "READINESS_DB_TEST_REQUIRES_CONFIRM_DISPOSABLE"
-  );
+  const invocation = parseExactDisposableConfirmationArgs(process.argv.slice(2));
+  if (!invocation.valid) {
+    console.error(invocation.message);
+    process.exitCode = 2;
+    return;
+  }
   docker([
     "run",
     "--rm",

@@ -1,22 +1,14 @@
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  lstatSync,
-  readFileSync,
-  realpathSync,
-} from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   buildTestEnvironmentPreflight,
-  classifyDependencyArrangement,
-  classifyPrismaReadiness,
   DATABASE_TARGET_ENV_VARS,
-  isDependencyLinkAllowed,
+  inspectDependencyFilesystem,
+  inspectPrismaClientFilesystem,
   sanitizeDatabaseTargetEnvironment,
   type CapabilityStatus,
   type DatabaseTargetEnvironment,
-  type DependencyArrangement,
 } from "../src/lib/operations/test-environment-preflight";
 
 function capability(available: boolean): CapabilityStatus {
@@ -31,70 +23,38 @@ function readOptional(filePath: string): string | undefined {
   }
 }
 
-function hashFile(filePath: string): string | null {
-  const source = readOptional(filePath);
-  return source === undefined
-    ? null
-    : createHash("sha256").update(source).digest("hex");
-}
-
-function registeredDependencyTargets(projectRoot: string): Set<string> {
+function registeredWorktreeRoots(projectRoot: string): string[] {
   const result = spawnSync("git", ["worktree", "list", "--porcelain"], {
     cwd: projectRoot,
     encoding: "utf8",
     windowsHide: true,
   });
-  if (result.status !== 0) return new Set();
-  return new Set(
-    result.stdout
-      .split(/\r?\n/)
-      .filter((line) => line.startsWith("worktree "))
-      .map((line) => line.slice("worktree ".length))
-      .map((worktree) => path.normalize(path.join(worktree, "trainer-app", "node_modules")))
+  if (result.status !== 0) return [];
+  return result.stdout
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("worktree "))
+    .map((line) => path.normalize(line.slice("worktree ".length)));
+}
+
+function resolveNpmCli(): string | undefined {
+  const candidates = [
+    process.env.npm_execpath,
+    path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js"),
+  ];
+  return candidates.find((candidate): candidate is string =>
+    Boolean(candidate && existsSync(candidate))
   );
 }
 
-function inspectDependencies(projectRoot: string): {
-  installation: CapabilityStatus;
-  arrangement: DependencyArrangement;
-  linkAllowed: boolean;
-} {
-  const nodeModulesPath = path.join(projectRoot, "node_modules");
-  if (!existsSync(nodeModulesPath)) {
-    return { installation: "missing", arrangement: "missing", linkAllowed: false };
-  }
-
-  try {
-    const resolved = path.normalize(realpathSync.native(nodeModulesPath));
-    const isLink =
-      lstatSync(nodeModulesPath).isSymbolicLink() ||
-      resolved !== path.normalize(nodeModulesPath);
-    const arrangement = classifyDependencyArrangement({
-      exists: true,
-      resolved: true,
-      isLink,
-      platform: process.platform,
-    });
-    if (arrangement === "standalone") {
-      return { installation: "available", arrangement: "standalone", linkAllowed: true };
-    }
-
-    const currentLockHash = hashFile(path.join(projectRoot, "package-lock.json"));
-    const targetLockHash = hashFile(path.join(path.dirname(resolved), "package-lock.json"));
-    const allowedTargets = registeredDependencyTargets(projectRoot);
-    return {
-      installation: "available",
-      arrangement,
-      linkAllowed: isDependencyLinkAllowed({
-        resolvedTarget: resolved,
-        registeredTargets: allowedTargets,
-        currentLockHash,
-        targetLockHash,
-      }),
-    };
-  } catch {
-    return { installation: "invalid", arrangement: "unresolved", linkAllowed: false };
-  }
+function validateDependencyInstallation(projectRoot: string): boolean {
+  const npmCli = resolveNpmCli();
+  if (!npmCli) return false;
+  const result = spawnSync(process.execPath, [npmCli, "ls", "--all", "--json"], {
+    cwd: projectRoot,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  return result.status === 0;
 }
 
 function databaseTargets(): DatabaseTargetEnvironment {
@@ -115,24 +75,69 @@ function runCredentialFree(command: string, args: string[]): number {
   return result.status ?? 1;
 }
 
+function expectedPrismaModels(schema: string | undefined): string[] {
+  return schema
+    ? [
+        ...schema.matchAll(
+          /\bmodel\s+([A-Za-z][A-Za-z0-9_]*)\s*\{([\s\S]*?)^\}/gm
+        ),
+      ]
+        .filter((match) => !match[2].includes("@@ignore"))
+        .map((match) => match[1])
+    : [];
+}
+
+function probeGeneratedPrismaClient(
+  clientForwarder: string,
+  expectedModels: readonly string[]
+): { importSucceeded: boolean; expectedModelsAvailable: boolean } {
+  const probe = [
+    "const client=require(process.argv[1]);",
+    "const expected=JSON.parse(process.argv[2]);",
+    "const models=client.Prisma?.dmmf?.datamodel?.models?.map((model)=>model.name);",
+    "if(typeof client.PrismaClient!==\"function\"||!Array.isArray(models))process.exit(1);",
+    "if(!expected.every((name)=>models.includes(name)))process.exit(2);",
+  ].join("");
+  const env = sanitizeDatabaseTargetEnvironment(process.env);
+  env.TRAINER_CREDENTIAL_FREE_TEST = "1";
+  const result = spawnSync(
+    process.execPath,
+    ["-e", probe, clientForwarder, JSON.stringify(expectedModels)],
+    {
+      cwd: process.cwd(),
+      env,
+      encoding: "utf8",
+      windowsHide: true,
+    }
+  );
+  return {
+    importSucceeded: result.status === 0 || result.status === 2,
+    expectedModelsAvailable: result.status === 0,
+  };
+}
+
 const projectRoot = process.cwd();
-const dependency = inspectDependencies(projectRoot);
-const nodeModulesPath = path.join(projectRoot, "node_modules");
+const dependency = inspectDependencyFilesystem({
+  currentProjectRoot: projectRoot,
+  registeredWorktreeRoots: registeredWorktreeRoots(projectRoot),
+  platform: process.platform,
+  validateInstallation: validateDependencyInstallation,
+});
+const nodeModulesPath = dependency.dependencyRoot;
 const checkedInSchema = readOptional(path.join(projectRoot, "prisma", "schema.prisma"));
-const generatedSchema = readOptional(
-  path.join(nodeModulesPath, ".prisma", "client", "schema.prisma")
-);
-const prismaReadiness = classifyPrismaReadiness({
+const probe =
+  existsSync(path.join(nodeModulesPath, "@prisma", "client", "default.js"))
+    ? probeGeneratedPrismaClient(
+        path.join(nodeModulesPath, "@prisma", "client", "default.js"),
+        expectedPrismaModels(checkedInSchema)
+      )
+    : { importSucceeded: false, expectedModelsAvailable: false };
+const prismaReadiness = inspectPrismaClientFilesystem({
+  checkedInSchemaPath: path.join(projectRoot, "prisma", "schema.prisma"),
+  dependencyRoot: nodeModulesPath,
   dependenciesAvailable: dependency.installation === "available",
-  prismaPackageAvailable: existsSync(path.join(nodeModulesPath, "prisma", "package.json")),
-  prismaClientPackageAvailable: existsSync(
-    path.join(nodeModulesPath, "@prisma", "client", "package.json")
-  ),
-  generatedClientAvailable:
-    existsSync(path.join(nodeModulesPath, ".prisma", "client", "default.js")) &&
-    existsSync(path.join(nodeModulesPath, ".prisma", "client", "default.d.ts")),
-  checkedInSchema,
-  generatedSchema,
+  importProbeSucceeded: probe.importSucceeded,
+  expectedModelMetadataAvailable: probe.expectedModelsAvailable,
 });
 const dockerProbe = spawnSync("docker", ["--version"], {
   encoding: "utf8",

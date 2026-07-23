@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import {
+  parseExactDisposableConfirmationArgs,
   sanitizeDatabaseTargetEnvironment,
   validateDisposableDatabaseTargets,
 } from "../src/lib/operations/test-environment-preflight";
@@ -50,8 +51,10 @@ function waitForPostgres(): void {
   throw new Error("DISPOSABLE_POSTGRES_DID_NOT_BECOME_READY");
 }
 
-if (!process.argv.includes("--confirm-disposable")) {
-  throw new Error("WORKOUT_MUTATION_DB_TEST_REQUIRES_CONFIRM_DISPOSABLE");
+const invocation = parseExactDisposableConfirmationArgs(process.argv.slice(2));
+if (!invocation.valid) {
+  console.error(invocation.message);
+  process.exit(2);
 }
 
 try {

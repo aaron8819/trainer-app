@@ -6,6 +6,7 @@ export type LoadRecommendationInput = {
   repRange: { min: number; max: number };
   targetRir: number;
   loadIncrement?: number;
+  loadDirection?: "standard" | "assistance" | "unknown";
 };
 
 export type LoadRecommendation =
@@ -18,12 +19,13 @@ const LOAD_EPSILON = 1e-6;
 export function getLoadRecommendation(input: LoadRecommendationInput): LoadRecommendation | null {
   const { reps, rir, actualLoad, targetLoad, repRange, targetRir } = input;
   const currentLoad = resolveCurrentLoad(actualLoad, targetLoad);
-  if (reps == null || rir == null || currentLoad == null) {
+  if (reps == null || rir == null || currentLoad == null || input.loadDirection === "unknown") {
     return null;
   }
   const increment = resolveIncrement(input.loadIncrement);
 
   const isAbovePrescribedLoad =
+    input.loadDirection !== "assistance" &&
     actualLoad != null &&
     targetLoad != null &&
     Number.isFinite(actualLoad) &&
@@ -31,16 +33,16 @@ export function getLoadRecommendation(input: LoadRecommendationInput): LoadRecom
     actualLoad > targetLoad + LOAD_EPSILON;
 
   if (reps >= repRange.max && rir >= targetRir + 1) {
-    const suggestedLoad = currentLoad + increment;
+    const suggestedLoad = adjustLoad(currentLoad, increment, "increase", input.loadDirection);
     return {
       action: "increase",
       suggestedLoad,
-      message: `Set clearly beat the target. Consider ${formatLoad(suggestedLoad)} lbs for the next set (+${formatLoad(increment)}).`,
+      message: buildDirectionalMessage("increase", suggestedLoad, increment, input.loadDirection),
     };
   }
 
   if (reps < repRange.min || rir <= targetRir - 1) {
-    const suggestedLoad = Math.max(0, currentLoad - increment);
+    const suggestedLoad = adjustLoad(currentLoad, increment, "decrease", input.loadDirection);
     if (isAbovePrescribedLoad) {
       return {
         action: "decrease",
@@ -51,7 +53,7 @@ export function getLoadRecommendation(input: LoadRecommendationInput): LoadRecom
     return {
       action: "decrease",
       suggestedLoad,
-      message: `Set was harder than target. Consider ${formatLoad(suggestedLoad)} lbs for the next set (-${formatLoad(increment)}).`,
+      message: buildDirectionalMessage("decrease", suggestedLoad, increment, input.loadDirection),
     };
   }
 
@@ -76,6 +78,33 @@ export function getLoadRecommendation(input: LoadRecommendationInput): LoadRecom
     suggestedLoad: currentLoad,
     message: `Hold at ${formatLoad(currentLoad)} lbs and target cleaner reps before increasing.`,
   };
+}
+
+function adjustLoad(
+  currentLoad: number,
+  increment: number,
+  difficultyDirection: "increase" | "decrease",
+  loadDirection: LoadRecommendationInput["loadDirection"]
+): number {
+  const numericDirection = loadDirection === "assistance" ? -1 : 1;
+  const difficultySign = difficultyDirection === "increase" ? 1 : -1;
+  return Math.max(0, currentLoad + increment * numericDirection * difficultySign);
+}
+
+function buildDirectionalMessage(
+  direction: "increase" | "decrease",
+  suggestedLoad: number,
+  increment: number,
+  loadDirection: LoadRecommendationInput["loadDirection"]
+): string {
+  if (loadDirection === "assistance") {
+    return direction === "increase"
+      ? `Set clearly beat the target. Consider ${formatLoad(suggestedLoad)} lbs of assistance for the next set (-${formatLoad(increment)} assistance).`
+      : `Set was harder than target. Consider ${formatLoad(suggestedLoad)} lbs of assistance for the next set (+${formatLoad(increment)} assistance).`;
+  }
+  return direction === "increase"
+    ? `Set clearly beat the target. Consider ${formatLoad(suggestedLoad)} lbs for the next set (+${formatLoad(increment)}).`
+    : `Set was harder than target. Consider ${formatLoad(suggestedLoad)} lbs for the next set (-${formatLoad(increment)}).`;
 }
 
 function resolveCurrentLoad(actualLoad?: number | null, targetLoad?: number | null): number | null {

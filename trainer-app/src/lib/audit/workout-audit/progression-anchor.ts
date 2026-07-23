@@ -28,7 +28,7 @@ function buildConfidenceNotes(selectionMode?: string | null): string[] {
 
 function buildHistorySession(entry: {
   exercise: { isMainLiftEligible?: boolean | null };
-  workout: { selectionMode: string | null };
+  workout: { id: string; scheduledDate: Date; selectionMode: string | null };
   sets: Array<{
     setIndex: number;
     targetLoad: number | null;
@@ -65,10 +65,15 @@ function buildHistorySession(entry: {
     })),
   });
   return {
+    exposureId: entry.workout.id,
+    date: entry.workout.scheduledDate.toISOString(),
+    source: "exact_exercise_history" as const,
     selectionMode: selectionMode as "INTENT" | "MANUAL" | undefined,
     confidence,
     confidenceNotes: buildConfidenceNotes(selectionMode),
     sets: performedSemantics?.signalSets,
+    representativeLoad: performedSemantics?.workingSetLoad ?? undefined,
+    plannedWorkingSetCount: entry.sets.length,
   };
 }
 

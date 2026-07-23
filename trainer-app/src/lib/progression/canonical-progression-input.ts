@@ -1,4 +1,5 @@
 import type {
+  BoundProgressionExposure,
   DoubleProgressionDecisionOptions,
   ProgressionEquipment,
   ProgressionSet,
@@ -6,9 +7,16 @@ import type {
 import type { WorkoutHistoryEntry } from "../engine/types";
 
 export type CanonicalProgressionHistorySession = {
+  exposureId?: string;
+  date?: string;
+  source?: BoundProgressionExposure["source"];
   confidence: number;
   selectionMode?: WorkoutHistoryEntry["selectionMode"];
   confidenceNotes: string[];
+  progressionEligible?: boolean;
+  comparable?: boolean;
+  plannedWorkingSetCount?: number;
+  representativeLoad?: number;
   sets?: ProgressionSet[];
 };
 
@@ -39,8 +47,7 @@ export type CanonicalProgressionEvaluationInput = {
     intentDeviationTargetLoadCeiling?: number;
     currentTarget?: DoubleProgressionDecisionOptions["currentTarget"];
     loadIncrement?: number;
-    prescriptionContext?: DoubleProgressionDecisionOptions["prescriptionContext"];
-    prescriptionEvidenceIncomplete?: boolean;
+    selectedExposure?: BoundProgressionExposure;
   };
 };
 
@@ -56,9 +63,10 @@ export function buildCanonicalProgressionEvaluationInput(input: {
   loadIncrement?: number;
 }): CanonicalProgressionEvaluationInput {
   const historySessions = input.historySessions ?? [];
-  const prescriptionContext = resolvePrescriptionContext(historySessions);
-  const prescriptionEvidenceIncomplete =
-    prescriptionContext == null && hasIncompletePrescriptionEvidence(historySessions[0]?.sets ?? []);
+  const progressionExposures = historySessions.map((session, index) =>
+    toBoundProgressionExposure(session, index, input.workingSetLoad)
+  );
+  const selectedExposure = progressionExposures[0];
   const intentDeviation = resolveIntentDeviationSignal({
     sessions: historySessions,
     repRange: input.repRange,
@@ -93,8 +101,7 @@ export function buildCanonicalProgressionEvaluationInput(input: {
       intentDeviation: intentDeviation.signal,
       ...(input.currentTarget ? { currentTarget: input.currentTarget } : {}),
       ...(input.loadIncrement != null ? { loadIncrement: input.loadIncrement } : {}),
-      ...(prescriptionContext ? { prescriptionContext } : {}),
-      ...(prescriptionEvidenceIncomplete ? { prescriptionEvidenceIncomplete: true } : {}),
+      ...(progressionExposures.length > 0 ? { progressionExposures } : {}),
       ...(intentDeviation.targetLoadCeiling != null
         ? { intentDeviationTargetLoadCeiling: intentDeviation.targetLoadCeiling }
         : {}),
@@ -107,8 +114,7 @@ export function buildCanonicalProgressionEvaluationInput(input: {
       intentDeviation: intentDeviation.signal,
       ...(input.currentTarget ? { currentTarget: input.currentTarget } : {}),
       ...(input.loadIncrement != null ? { loadIncrement: input.loadIncrement } : {}),
-      ...(prescriptionContext ? { prescriptionContext } : {}),
-      ...(prescriptionEvidenceIncomplete ? { prescriptionEvidenceIncomplete: true } : {}),
+      ...(selectedExposure ? { selectedExposure } : {}),
       ...(intentDeviation.targetLoadCeiling != null
         ? { intentDeviationTargetLoadCeiling: intentDeviation.targetLoadCeiling }
         : {}),
@@ -116,84 +122,30 @@ export function buildCanonicalProgressionEvaluationInput(input: {
   };
 }
 
-function hasIncompletePrescriptionEvidence(sets: ProgressionSet[]): boolean {
-  return sets.some(
-    (set) =>
-      Number.isFinite(set.targetRpe) &&
-      Number.isFinite(resolveSetTargetReps(set)) &&
-      (!Number.isFinite(set.rpe) || !Number.isFinite(set.reps) || set.reps <= 0)
-  );
-}
-
-function resolvePrescriptionContext(
-  sessions: CanonicalProgressionHistorySession[]
-): DoubleProgressionDecisionOptions["prescriptionContext"] | undefined {
-  const comparable = sessions
-    .map((session) => evaluatePrescriptionExposure(session.sets ?? []))
-    .filter((exposure): exposure is NonNullable<typeof exposure> => exposure != null)
-    .slice(0, 3);
-  const latest = comparable[0];
-  if (!latest) {
-    return undefined;
-  }
+function toBoundProgressionExposure(
+  session: CanonicalProgressionHistorySession,
+  index: number,
+  selectedWorkingSetLoad?: number
+): BoundProgressionExposure {
   return {
-    priorPerformedReps: latest.performedReps,
-    priorActualRpe: latest.actualRpe,
-    priorTargetReps: latest.targetReps,
-    priorTargetRpe: latest.targetRpe,
-    clearEasy: latest.clearEasy,
-    clearHard: latest.clearHard,
-    repeatedSuccess: comparable.filter((exposure) => exposure.successful).length >= 2,
+    exposureId: session.exposureId ?? `history:${session.date ?? index}`,
+    ...(session.date ? { date: session.date } : {}),
+    source: session.source ?? "exact_exercise_history",
+    confidence: session.confidence,
+    confidenceNotes: [...session.confidenceNotes],
+    ...(session.selectionMode ? { selectionMode: session.selectionMode } : {}),
+    progressionEligible: session.progressionEligible !== false,
+    comparable: session.comparable !== false,
+    ...(session.plannedWorkingSetCount != null
+      ? { plannedWorkingSetCount: session.plannedWorkingSetCount }
+      : {}),
+    ...(Number.isFinite(session.representativeLoad)
+      ? { representativeLoad: session.representativeLoad }
+      : index === 0 && Number.isFinite(selectedWorkingSetLoad)
+        ? { representativeLoad: selectedWorkingSetLoad }
+        : {}),
+    sets: [...(session.sets ?? [])],
   };
-}
-
-function evaluatePrescriptionExposure(sets: ProgressionSet[]): {
-  performedReps: number;
-  actualRpe: number;
-  targetReps: number;
-  targetRpe: number;
-  clearEasy: boolean;
-  clearHard: boolean;
-  successful: boolean;
-} | null {
-  const comparableSets = sets.filter(
-    (set) =>
-      Number.isFinite(set.reps) &&
-      set.reps > 0 &&
-      Number.isFinite(set.rpe) &&
-      Number.isFinite(set.targetRpe) &&
-      Number.isFinite(resolveSetTargetReps(set))
-  );
-  if (comparableSets.length === 0) {
-    return null;
-  }
-  const performedReps = median(comparableSets.map((set) => set.reps));
-  const actualRpe = median(comparableSets.map((set) => set.rpe as number));
-  const targetReps = median(comparableSets.map((set) => resolveSetTargetReps(set) as number));
-  const targetRepMin = median(comparableSets.map((set) => resolveSetRepFloor(set, targetReps)));
-  const targetRpe = median(comparableSets.map((set) => set.targetRpe as number));
-  return {
-    performedReps,
-    actualRpe,
-    targetReps,
-    targetRpe,
-    clearEasy: performedReps >= targetReps && actualRpe <= targetRpe - 1,
-    clearHard: performedReps < targetRepMin || actualRpe >= targetRpe + 1,
-    successful: performedReps >= targetReps && actualRpe <= targetRpe,
-  };
-}
-
-function resolveSetTargetReps(set: ProgressionSet): number | undefined {
-  if (Number.isFinite(set.targetReps) && (set.targetReps ?? 0) > 0) {
-    return set.targetReps;
-  }
-  if (set.targetRepRange && Number.isFinite(set.targetRepRange.max)) {
-    return set.targetRepRange.max;
-  }
-  if (Number.isFinite(set.targetRepMax) && (set.targetRepMax ?? 0) > 0) {
-    return set.targetRepMax;
-  }
-  return undefined;
 }
 
 function resolveIntentDeviationSignal(input: {
@@ -353,13 +305,6 @@ function median(values: number[]): number {
 function resolveProgressionHistoryConfidenceScale(
   sessions: CanonicalProgressionHistorySession[]
 ): number {
-  if (sessions.length <= 1) {
-    return 1;
-  }
-  const hasIntentHistory = sessions.some((session) => session.selectionMode === "INTENT");
-  if (!hasIntentHistory && sessions.every((session) => session.selectionMode === "MANUAL")) {
-    return 1;
-  }
   const total = sessions.reduce(
     (sum, session) => sum + Math.min(1, Math.max(0, session.confidence)),
     0

@@ -2,6 +2,24 @@ import { describe, expect, it } from "vitest";
 import { computeDoubleProgressionDecision, PROGRESSION_CONFIG, shouldDeload } from "./progression";
 import { LOAD_PRESCRIPTION_SCENARIOS } from "./load-prescription-scenarios.fixture";
 
+function boundExposure(
+  exposureId: string,
+  sets: Parameters<typeof computeDoubleProgressionDecision>[0],
+  representativeLoad: number
+) {
+  return {
+    exposureId,
+    source: "exact_exercise_history" as const,
+    confidence: 1,
+    confidenceNotes: [],
+    progressionEligible: true,
+    comparable: true,
+    representativeLoad,
+    plannedWorkingSetCount: sets.length,
+    sets,
+  };
+}
+
 describe("progression correctness", () => {
   it.each(
     LOAD_PRESCRIPTION_SCENARIOS.filter((scenario) =>
@@ -10,35 +28,27 @@ describe("progression correctness", () => {
   )("scenario $id: $description", (scenario) => {
     const actualRpe = scenario.prior.actualRpe;
     const performedReps = scenario.prior.performedReps ?? scenario.prior.prescribedReps;
-    const hasCompleteEvidence = actualRpe != null;
-    const repeatedSuccess =
-      (scenario.history?.filter((exposure) => exposure.successful).length ?? 0) >= 2;
-    const prescriptionContext = actualRpe != null
-      ? {
-          priorPerformedReps: performedReps,
-          priorActualRpe: actualRpe,
-          priorTargetReps: scenario.prior.prescribedReps,
-          priorTargetRpe: scenario.prior.prescribedRpe,
-          clearEasy:
-            performedReps >= scenario.prior.prescribedReps &&
-            actualRpe <= scenario.prior.prescribedRpe - 1,
-          clearHard:
-            performedReps < (scenario.prior.prescribedRepMin ?? scenario.prior.prescribedReps) ||
-            actualRpe >= scenario.prior.prescribedRpe + 1,
-          repeatedSuccess: repeatedSuccess || false,
-        }
-      : undefined;
+    const sets = [1, 2, 3].map((setIndex) => ({
+      setIndex,
+      reps: performedReps,
+      ...(actualRpe == null ? {} : { rpe: actualRpe }),
+      load: scenario.prior.performedLoad,
+      targetLoad: scenario.prior.prescribedLoad,
+      targetReps: scenario.prior.prescribedReps,
+      targetRepMin: scenario.prior.prescribedRepMin,
+      targetRpe: scenario.prior.prescribedRpe,
+    }));
+    const progressionExposures = [
+      boundExposure("latest", sets, scenario.prior.performedLoad),
+      ...(scenario.id === "O"
+        ? [
+            boundExposure("middle", sets.map((set) => ({ ...set, reps: 8, rpe: 9.5 })), 100),
+            boundExposure("older", sets, scenario.prior.performedLoad),
+          ]
+        : []),
+    ];
     const decision = computeDoubleProgressionDecision(
-      [1, 2, 3].map((setIndex) => ({
-        setIndex,
-        reps: performedReps,
-        ...(actualRpe == null ? {} : { rpe: actualRpe }),
-        load: scenario.prior.performedLoad,
-        targetLoad: scenario.prior.prescribedLoad,
-        targetReps: scenario.prior.prescribedReps,
-        targetRepMin: scenario.prior.prescribedRepMin,
-        targetRpe: scenario.prior.prescribedRpe,
-      })),
+      sets,
       [scenario.prior.prescribedRepMin ?? scenario.prior.prescribedReps, scenario.prior.prescribedReps],
       "barbell",
       {
@@ -47,8 +57,9 @@ describe("progression correctness", () => {
           rpe: scenario.current.prescribedRpe,
         },
         loadIncrement: scenario.increment,
-        ...(prescriptionContext ? { prescriptionContext } : {}),
-        ...(!hasCompleteEvidence ? { prescriptionEvidenceIncomplete: true } : {}),
+        workingSetLoad: scenario.prior.performedLoad,
+        progressionExposures,
+        priorSessionCount: progressionExposures.length,
       }
     );
 

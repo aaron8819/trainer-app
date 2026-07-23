@@ -63,9 +63,11 @@ export function isPerformedHistoryEntry(entry: WorkoutHistoryEntry): boolean {
 export function sortHistoryByDateDesc(
   history: WorkoutHistoryEntry[]
 ): WorkoutHistoryEntry[] {
-  return [...history].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+  return [...history].sort((a, b) => {
+    const dateOrder = new Date(b.date).getTime() - new Date(a.date).getTime();
+    if (dateOrder !== 0) return dateOrder;
+    return (b.workoutId ?? "").localeCompare(a.workoutId ?? "");
+  });
 }
 
 export function filterCompletedHistory(

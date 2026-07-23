@@ -777,8 +777,8 @@ describe("generateWorkoutExplanation progression receipt", () => {
 
     expect(priorContext?.trigger).toBe("double_progression");
     expect(nextExposure).toMatchObject({
-      action: "hold",
-      summary: "Next exposure: hold load.",
+      action: "decrease",
+      summary: "Next exposure: reduce load.",
       anchorLoad: 40,
       medianReps: 8,
       modalRpe: 8,
@@ -1215,7 +1215,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
     if ("error" in result) return;
 
     const decision = result.nextExposureDecisions.get("ex1");
-    expect(decision?.decisionLog?.join(" | ")).toContain("Path 2 fired");
+    expect(decision?.decisionLog?.join(" | ")).toContain("Bound exposure w1");
     expect(decision?.action).toBe("target_too_high");
     expect(decision?.summary).toBe("Next exposure: target likely too high.");
     expect(decision?.reason).toContain("written target 135 lbs");
@@ -1284,8 +1284,8 @@ describe("generateWorkoutExplanation progression receipt", () => {
     if ("error" in result) return;
 
     expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
-      action: "insufficient_evidence",
-      summary: "Next exposure: not enough clean evidence.",
+      action: "hold",
+      summary: "Next exposure: hold load.",
     });
   });
 
@@ -1352,8 +1352,8 @@ describe("generateWorkoutExplanation progression receipt", () => {
     if ("error" in result) return;
 
     expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
-      action: "caution_review_manually",
-      summary: "Next exposure: review manually.",
+      action: "hold",
+      summary: "Next exposure: hold load.",
     });
   });
 
@@ -1461,16 +1461,19 @@ describe("generateWorkoutExplanation progression receipt", () => {
 
     const decision = result.nextExposureDecisions.get("ex1");
     expect(decision).toMatchObject({
-      action: "caution_review_manually",
-      summary: "Next exposure: review manually.",
+      action: "hold",
+      summary: "Next exposure: hold load.",
       medianReps: 12,
     });
-    expect(decision?.decisionLog?.join(" | ")).toContain("performed sets=2/3");
-    expect(decision?.decisionLog?.join(" | ")).toContain("signal sets=2/3");
-    expect(decision?.decisionLog?.join(" | ")).not.toContain("signal sets=3/4");
+    expect(decision?.decisionLog?.join(" | ")).toContain(
+      "Complete target-bearing coverage 2/3"
+    );
+    expect(decision?.decisionLog?.join(" | ")).not.toContain(
+      "Complete target-bearing coverage 3/3"
+    );
   });
 
-  it("downgrades transition-backfilled sessions to manual review instead of a plain increase", async () => {
+  it("holds transition-backfilled sessions instead of emitting a plain increase", async () => {
     mocks.workoutFindUnique.mockResolvedValueOnce({
       id: "w1",
       userId: "u1",
@@ -1549,8 +1552,8 @@ describe("generateWorkoutExplanation progression receipt", () => {
     if ("error" in result) return;
 
     expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
-      action: "caution_review_manually",
-      summary: "Next exposure: review manually.",
+      action: "hold",
+      summary: "Next exposure: hold load.",
     });
   });
 
@@ -1655,7 +1658,7 @@ describe("generateWorkoutExplanation progression receipt", () => {
     expect(decision?.reason).toContain("target as too low");
     expect(decision?.reason).not.toMatch(/missed/i);
     expect(result.nextExposureDecisions.get("ex1")?.decisionLog?.join(" | ")).toContain(
-      "Path 5 fired"
+      "Bound exposure w1"
     );
     expect(decision?.decisionLog?.join(" | ")).toContain("target_too_low");
   });
@@ -2186,12 +2189,12 @@ describe("generateWorkoutExplanation progression receipt", () => {
       summary: "Next exposure: increase load.",
       anchorLoad: 145,
     });
-    expect(decision?.reason).toContain("beat the written load");
-    expect(decision?.decisionLog?.join(" | ")).toContain("Path 5 fired");
+    expect(decision?.reason).toContain("Median reps reached the upper end");
+    expect(decision?.decisionLog?.join(" | ")).toContain("Bound exposure w1");
     expect(decision?.decisionLog?.join(" | ")).not.toContain("target_too_low");
   });
 
-  it("surfaces the bounded catch-up lane when same-exercise overshoot shows clear under-translation", async () => {
+  it("bounds a former catch-up case to one same-exercise increment", async () => {
     mocks.workoutFindUnique.mockResolvedValueOnce({
       id: "w1",
       userId: "u1",
@@ -2299,11 +2302,11 @@ describe("generateWorkoutExplanation progression receipt", () => {
       anchorLoad: 155,
     });
     expect(result.nextExposureDecisions.get("ex1")?.decisionLog?.join(" | ")).toContain(
-      "Catch-up lane fired"
+      "Bound exposure w1"
     );
   });
 
-  it("explains why 8.5-RPE overshoot still holds when set coverage is not strong enough", async () => {
+  it("reduces after a consistently below-target, elevated-effort exposure", async () => {
     mocks.workoutFindUnique.mockResolvedValueOnce({
       id: "w1",
       userId: "u1",
@@ -2417,15 +2420,12 @@ describe("generateWorkoutExplanation progression receipt", () => {
     if ("error" in result) return;
 
     expect(result.nextExposureDecisions.get("ex1")).toMatchObject({
-      action: "hold",
+      action: "decrease",
       anchorLoad: 145,
       modalRpe: 8.5,
     });
-    expect(result.nextExposureDecisions.get("ex1")?.reason).toContain(
-      "3/5 target-bearing sets beat prescription, but weighted confidence only counted as 2.70 toward the 4 required"
-    );
     expect(result.nextExposureDecisions.get("ex1")?.decisionLog?.join(" | ")).toContain(
-      "Overshoot gate:"
+      "Bound exposure w1"
     );
   });
 

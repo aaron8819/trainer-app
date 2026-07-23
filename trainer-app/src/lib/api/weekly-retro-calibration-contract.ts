@@ -246,9 +246,9 @@ function buildSummary(input: {
   const stableCount = rowsForLabel(input.rows, "performed_as_planned").length;
   const missingCount = rowsForLabel(input.rows, "missing_actuals").length;
   const countCopy = [
-    underCount > 0 ? `${underCount} under plan` : null,
-    overCount > 0 ? `${overCount} over plan` : null,
-    stableCount > 0 ? `${stableCount} as planned` : null,
+    underCount > 0 ? `${underCount} likely over-prescribed` : null,
+    overCount > 0 ? `${overCount} likely under-prescribed` : null,
+    stableCount > 0 ? `${stableCount} successful as prescribed` : null,
     missingCount > 0 ? `${missingCount} need actuals` : null,
   ].filter((part): part is string => part !== null);
 
@@ -264,23 +264,23 @@ function buildSummary(input: {
     case "repeated_under_plan":
       return {
         kind: input.kind,
-        headline: "Repeated under-plan execution",
-        detail: `${plural(underCount, "row")} came in under the written plan. Review evidence only; no automatic plan change.`,
+        headline: "Repeated likely over-prescription",
+        detail: `${plural(underCount, "row")} repeatedly finished below the written prescription. This is review evidence, not an automatic plan change.`,
         bullets: countCopy,
         displaySafe: true,
       };
     case "repeated_over_plan":
       return {
         kind: input.kind,
-        headline: "Repeated over-plan execution",
-        detail: `${plural(overCount, "row")} exceeded the written plan. Review evidence only; no automatic plan change.`,
+        headline: "Repeated likely under-prescription",
+        detail: `${plural(overCount, "row")} repeatedly finished above the written prescription. Successful autoregulation remains distinct from an automatic plan change.`,
         bullets: countCopy,
         displaySafe: true,
       };
     case "stable_as_planned":
       return {
         kind: input.kind,
-        headline: "Execution stable as planned",
+        headline: "Repeated successful execution",
         detail: `${plural(stableCount, "row")} matched the written plan across this review window.`,
         bullets: ["No seed or plan changes made", ...countCopy],
         displaySafe: true,
@@ -296,7 +296,7 @@ function buildSummary(input: {
     case "mixed":
       return {
         kind: input.kind,
-        headline: "Mixed weekly execution signals",
+        headline: "Unresolved execution variability",
         detail: `${plural(input.rows.length, "performed-reality row")} produced mixed calibration evidence. Review evidence only; no automatic plan change.`,
         bullets: countCopy.length > 0 ? countCopy : ["No dominant weekly pattern"],
         displaySafe: true,

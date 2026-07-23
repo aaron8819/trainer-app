@@ -33,6 +33,19 @@ export type ProgressionDecision = {
   decisionLog: string[];
   trace: ProgressionDecisionTrace;
 };
+export type BoundProgressionExposure = {
+  exposureId: string;
+  date?: string;
+  source: "exact_exercise_history" | "runtime_added_same_exercise";
+  confidence: number;
+  confidenceNotes: string[];
+  selectionMode?: WorkoutHistoryEntry["selectionMode"];
+  progressionEligible: boolean;
+  comparable: boolean;
+  plannedWorkingSetCount?: number;
+  representativeLoad?: number;
+  sets: ProgressionSet[];
+};
 export type DoubleProgressionDecisionOptions = {
   priorSessionCount?: number;
   historyConfidenceScale?: number;
@@ -54,16 +67,7 @@ export type DoubleProgressionDecisionOptions = {
     rpe?: number;
   };
   loadIncrement?: number;
-  prescriptionContext?: {
-    priorPerformedReps: number;
-    priorActualRpe: number;
-    priorTargetReps: number;
-    priorTargetRpe: number;
-    clearEasy: boolean;
-    clearHard: boolean;
-    repeatedSuccess: boolean;
-  };
-  prescriptionEvidenceIncomplete?: boolean;
+  progressionExposures?: BoundProgressionExposure[];
 };
 
 export const PROGRESSION_CONFIG = {
@@ -378,53 +382,17 @@ export function computeDoubleProgressionDecision(
     };
   }
 
-  if (options?.prescriptionEvidenceIncomplete) {
-    const nextLoad = quantizeRelativeToAnchor(anchorLoad, anchorLoad, increment);
-    decisionLog.push(
-      "Prescription context was present but reps/RPE evidence was incomplete. Hold the representative anchor conservatively."
-    );
-    return {
-      nextLoad,
-      anchorLoad,
-      path: "fallback_hold",
-      decisionLog,
-      trace: buildProgressionDecisionTrace({
-        anchorLoad,
-        nextLoad,
-        path: "fallback_hold",
-        decisionLog,
-        anchorSource,
-        signalSetCount: signalSets.length,
-        effectiveSetCount: effectiveSets.length,
-        trimmedSetCount: signalSets.length - effectiveSets.length,
-        hasHighVariance,
-        minLoad,
-        maxLoad,
-        medianLoad,
-        priorSessionCount: options?.priorSessionCount ?? 0,
-        sampleConfidenceScale,
-        historyConfidenceScale,
-        progressionConfidenceScale,
-        confidenceReasons: options?.confidenceReasons ?? [],
-        repRange,
-        equipment,
-        medianReps,
-        modalRpe: modalRpe ?? null,
-        reasonCodes: ["prescription_evidence_incomplete", "conservative_anchor_hold"],
-      }),
-    };
-  }
-
-  const prescriptionContextDecision = resolvePrescriptionContextDecision({
+  const boundExposureDecision = resolveBoundExposureDecision({
     anchorLoad,
     increment,
     currentTarget: options?.currentTarget,
-    prescriptionContext: options?.prescriptionContext,
+    exposures: options?.progressionExposures,
+    progressionConfidenceScale,
   });
-  if (prescriptionContextDecision) {
-    const { nextLoad, reasonCodes } = prescriptionContextDecision;
-    const path: ProgressionDecisionPath = prescriptionContextDecision.path;
-    decisionLog.push(prescriptionContextDecision.message);
+  if (boundExposureDecision) {
+    const { nextLoad, reasonCodes, evidence } = boundExposureDecision;
+    const path: ProgressionDecisionPath = boundExposureDecision.path;
+    decisionLog.push(boundExposureDecision.message);
     return {
       nextLoad,
       anchorLoad,
@@ -453,6 +421,9 @@ export function computeDoubleProgressionDecision(
         medianReps,
         modalRpe: modalRpe ?? null,
         reasonCodes,
+        increment,
+        currentTarget: options?.currentTarget,
+        exposureEvidence: evidence,
       }),
     };
   }
@@ -862,6 +833,9 @@ function buildProgressionDecisionTrace(input: {
   medianReps: number;
   modalRpe: number | null;
   reasonCodes: string[];
+  increment?: number;
+  currentTarget?: DoubleProgressionDecisionOptions["currentTarget"];
+  exposureEvidence?: BoundExposureTraceEvidence;
 }): ProgressionDecisionTrace {
   return {
     version: 1,
@@ -895,7 +869,15 @@ function buildProgressionDecisionTrace(input: {
       modalRpe: input.modalRpe,
       nextLoad: input.nextLoad,
       loadDelta: Number((input.nextLoad - input.anchorLoad).toFixed(2)),
+      ...(input.increment != null ? { increment: input.increment } : {}),
+      ...(input.currentTarget
+        ? {
+            currentTargetReps: input.currentTarget.reps ?? null,
+            currentTargetRpe: input.currentTarget.rpe ?? null,
+          }
+        : {}),
     },
+    ...(input.exposureEvidence ? { exposure: input.exposureEvidence } : {}),
     outcome: {
       path: input.path,
       action:
@@ -1053,71 +1035,263 @@ export function translateLoadToTargetContext(input: {
   return repTranslatedLoad * effortScale;
 }
 
-function resolvePrescriptionContextDecision(input: {
+type BoundExposureTraceEvidence = {
+  selectedExposureId: string;
+  selectedExposureDate?: string;
+  contextBound: true;
+  source: BoundProgressionExposure["source"];
+  confidence: number;
+  progressionEligible: boolean;
+  comparable: boolean;
+  representativeLoad: number;
+  performedReps: number | null;
+  actualRpe: number | null;
+  priorPrescribedLoad: number | null;
+  priorPrescribedReps: number | null;
+  priorPrescribedRpe: number | null;
+  completedSetCount: number;
+  plannedWorkingSetCount: number;
+  adequateCoverage: boolean;
+};
+
+type BoundExposureEvaluation = {
+  exposure: BoundProgressionExposure;
+  evidence: BoundExposureTraceEvidence;
+  representativeSet?: ProgressionSet;
+  clearEasy: boolean;
+  clearHard: boolean;
+  successful: boolean;
+  incomplete: boolean;
+};
+
+function resolveBoundExposureDecision(input: {
   anchorLoad: number;
   increment: number;
   currentTarget?: DoubleProgressionDecisionOptions["currentTarget"];
-  prescriptionContext?: DoubleProgressionDecisionOptions["prescriptionContext"];
+  exposures?: BoundProgressionExposure[];
+  progressionConfidenceScale: number;
 }): {
   nextLoad: number;
   path: ProgressionDecisionPath;
   reasonCodes: string[];
   message: string;
+  evidence: BoundExposureTraceEvidence;
 } | null {
-  const context = input.prescriptionContext;
+  const selected = input.exposures?.[0];
+  if (!selected) return null;
+  const evaluation = evaluateBoundProgressionExposure(selected, input.anchorLoad);
   const targetReps = input.currentTarget?.reps;
   const targetRpe = input.currentTarget?.rpe;
   if (
-    !context ||
     !Number.isFinite(targetReps) ||
     !Number.isFinite(targetRpe) ||
     input.anchorLoad <= 0
   ) {
-    return null;
+    return boundExposureHold(
+      input,
+      evaluation.evidence,
+      "current_target_incomplete",
+      "Current target reps/RPE were incomplete, so the selected exposure was held."
+    );
   }
+
+  const representativeSet = evaluation.representativeSet;
+  if (
+    evaluation.incomplete ||
+    !representativeSet ||
+    !Number.isFinite(representativeSet.targetRpe)
+  ) {
+    return boundExposureHold(
+      input,
+      evaluation.evidence,
+      "prescription_evidence_incomplete",
+      "The selected exposure lacked adequate paired reps/RPE/target evidence, so its load was held without borrowing older context."
+    );
+  }
+
+  const priorTargetReps = resolveProgressionSetTargetReps(representativeSet);
+  if (!Number.isFinite(priorTargetReps) || !Number.isFinite(representativeSet.rpe)) {
+    return boundExposureHold(
+      input,
+      evaluation.evidence,
+      "prescription_evidence_incomplete",
+      "The selected exposure lacked a prior target, so its load was held without borrowing older context."
+    );
+  }
+
+  const contextMatchesAnchor =
+    Number.isFinite(selected.representativeLoad) &&
+    Math.abs((selected.representativeLoad as number) - input.anchorLoad) <= 1e-6;
+  if (!contextMatchesAnchor) {
+    return boundExposureHold(
+      input,
+      evaluation.evidence,
+      "anchor_context_identity_mismatch",
+      "The selected load anchor did not match its exposure context, so progression held conservatively."
+    );
+  }
+
+  const comparableEvaluations = (input.exposures ?? [])
+    .slice(0, 3)
+    .map((exposure) => evaluateBoundProgressionExposure(exposure, exposure.representativeLoad))
+    .filter((item) => item.exposure.comparable && !item.incomplete);
+  const repeatedSuccess = comparableEvaluations.filter((item) => item.successful).length >= 2;
+  const confidenceSufficient = input.progressionConfidenceScale >= 0.75;
 
   const translatedLoad = translateLoadToTargetContext({
     priorLoad: input.anchorLoad,
-    priorReps: context.priorPerformedReps,
-    priorRpe: context.priorActualRpe,
+    priorReps: representativeSet.reps,
+    priorRpe: representativeSet.rpe,
     targetReps: targetReps as number,
     targetRpe: targetRpe as number,
   });
   const lowerBound = input.anchorLoad - input.increment;
   const upperBound = input.anchorLoad + input.increment;
-  const candidate = context.clearHard
+  const candidate = !confidenceSufficient
+    ? input.anchorLoad
+    : evaluation.clearHard
     ? Math.min(translatedLoad, lowerBound)
-    : context.clearEasy || context.repeatedSuccess
+    : evaluation.clearEasy || repeatedSuccess
       ? Math.max(translatedLoad, upperBound)
       : translatedLoad;
+  const boundedCandidate = clampNumber(candidate, lowerBound, upperBound);
   const nextLoad = clampNumber(
-    quantizeRelativeToAnchor(candidate, input.anchorLoad, input.increment),
+    quantizeRelativeToAnchor(boundedCandidate, input.anchorLoad, input.increment),
     lowerBound,
     upperBound
   );
   const direction = nextLoad > input.anchorLoad ? "increase" : nextLoad < input.anchorLoad ? "decrease" : "hold";
   const actionText = direction === "increase" ? "increased" : direction === "decrease" ? "decreased" : "held";
   const reasonCodes = [
-    "exact_exercise_prescription_context",
+    "exact_exercise_bound_exposure",
     "bounded_single_increment",
-    context.clearHard
+    ...(!confidenceSufficient ? ["confidence_gated_hold"] : []),
+    evaluation.clearHard
       ? "prior_prescription_clear_hard"
-      : context.clearEasy
+      : evaluation.clearEasy
         ? "prior_prescription_clear_easy"
-        : context.repeatedSuccess
+        : repeatedSuccess
           ? "repeated_prescription_success"
           : "target_context_translation",
   ];
   return {
     nextLoad,
-    path: context.clearHard ? "path_1" : direction === "increase" ? "path_2" : "fallback_hold",
+    path: evaluation.clearHard ? "path_1" : direction === "increase" ? "path_2" : "fallback_hold",
     reasonCodes,
+    evidence: evaluation.evidence,
     message:
-      `Prescription context: prior ${formatNumber(context.priorPerformedReps)} reps @ RPE ${formatNumber(context.priorActualRpe)} ` +
-      `against ${formatNumber(context.priorTargetReps)} reps @ RPE ${formatNumber(context.priorTargetRpe)}; ` +
+      `Bound exposure ${selected.exposureId}: prior ${formatNumber(representativeSet.reps)} reps @ RPE ${formatNumber(representativeSet.rpe as number)} ` +
+      `against ${formatNumber(priorTargetReps as number)} reps @ RPE ${formatNumber(representativeSet.targetRpe as number)}; ` +
       `today ${formatNumber(targetReps as number)} reps @ RPE ${formatNumber(targetRpe as number)}. ` +
+      `Complete target-bearing coverage ${evaluation.evidence.completedSetCount}/${evaluation.evidence.plannedWorkingSetCount}. ` +
       `Translated ${formatNumber(input.anchorLoad)} to ${formatNumber(translatedLoad)}, then ${actionText} at the bounded ${formatNumber(input.increment)} lb increment to ${formatNumber(nextLoad)}.`
   };
+}
+
+function boundExposureHold(
+  input: { anchorLoad: number; increment: number },
+  evidence: BoundExposureTraceEvidence,
+  reason: string,
+  message: string
+) {
+  return {
+    nextLoad: quantizeRelativeToAnchor(input.anchorLoad, input.anchorLoad, input.increment),
+    path: "fallback_hold" as const,
+    reasonCodes: ["exact_exercise_bound_exposure", reason, "conservative_anchor_hold"],
+    message,
+    evidence,
+  };
+}
+
+function evaluateBoundProgressionExposure(
+  exposure: BoundProgressionExposure,
+  fallbackLoad?: number
+): BoundExposureEvaluation {
+  const plannedWorkingSetCount = Math.max(
+    exposure.plannedWorkingSetCount ?? exposure.sets.length,
+    exposure.sets.length
+  );
+  const completeSets = exposure.sets.filter(
+    (set) =>
+      Number.isFinite(set.load) &&
+      Number.isFinite(set.reps) &&
+      set.reps > 0 &&
+      Number.isFinite(set.rpe) &&
+      Number.isFinite(resolveProgressionSetTargetReps(set)) &&
+      Number.isFinite(set.targetRpe)
+  );
+  const minimumCoverage = plannedWorkingSetCount <= 1 ? 1 : 2;
+  const adequateCoverage =
+    exposure.progressionEligible &&
+    exposure.comparable &&
+    completeSets.length >= minimumCoverage &&
+    completeSets.length / Math.max(plannedWorkingSetCount, 1) >= 2 / 3;
+  const representativeLoad = exposure.representativeLoad ?? fallbackLoad ?? 0;
+  const representativeSet = [...completeSets]
+    .sort((left, right) => {
+      const leftDistance = Math.abs((left.load ?? representativeLoad) - representativeLoad);
+      const rightDistance = Math.abs((right.load ?? representativeLoad) - representativeLoad);
+      if (leftDistance !== rightDistance) return leftDistance - rightDistance;
+      return (left.setIndex ?? 0) - (right.setIndex ?? 0);
+    })[0];
+  const requiredConsensus = Math.ceil(completeSets.length * 2 / 3);
+  const easyCount = completeSets.filter((set) =>
+    set.reps >= (resolveProgressionSetTargetReps(set) as number) &&
+    (set.rpe as number) <= (set.targetRpe as number) - 1
+  ).length;
+  const hardCount = completeSets.filter((set) =>
+    set.reps < resolveProgressionSetRepFloor(set, resolveProgressionSetTargetReps(set) as number) ||
+    (set.rpe as number) >= (set.targetRpe as number) + 1
+  ).length;
+  const successCount = completeSets.filter((set) =>
+    set.reps >= (resolveProgressionSetTargetReps(set) as number) &&
+    (set.rpe as number) <= (set.targetRpe as number)
+  ).length;
+  return {
+    exposure,
+    representativeSet,
+    clearEasy: adequateCoverage && easyCount === completeSets.length,
+    clearHard: adequateCoverage && hardCount >= requiredConsensus,
+    successful: adequateCoverage && successCount >= requiredConsensus,
+    incomplete: !adequateCoverage || representativeSet == null,
+    evidence: {
+      selectedExposureId: exposure.exposureId,
+      ...(exposure.date ? { selectedExposureDate: exposure.date } : {}),
+      contextBound: true,
+      source: exposure.source,
+      confidence: exposure.confidence,
+      progressionEligible: exposure.progressionEligible,
+      comparable: exposure.comparable,
+      representativeLoad,
+      performedReps: representativeSet?.reps ?? null,
+      actualRpe: representativeSet?.rpe ?? null,
+      priorPrescribedLoad: representativeSet?.targetLoad ?? null,
+      priorPrescribedReps: representativeSet
+        ? resolveProgressionSetTargetReps(representativeSet) ?? null
+        : null,
+      priorPrescribedRpe: representativeSet?.targetRpe ?? null,
+      completedSetCount: completeSets.length,
+      plannedWorkingSetCount,
+      adequateCoverage,
+    },
+  };
+}
+
+function resolveProgressionSetTargetReps(set: ProgressionSet): number | undefined {
+  if (Number.isFinite(set.targetReps) && (set.targetReps ?? 0) > 0) return set.targetReps;
+  if (Number.isFinite(set.targetRepMax) && (set.targetRepMax ?? 0) > 0) return set.targetRepMax;
+  if (set.targetRepRange && Number.isFinite(set.targetRepRange.max)) return set.targetRepRange.max;
+  return undefined;
+}
+
+function resolveProgressionSetRepFloor(set: ProgressionSet, fallback: number): number {
+  if (Number.isFinite(set.targetRepMin) && (set.targetRepMin ?? 0) > 0) {
+    return set.targetRepMin as number;
+  }
+  if (set.targetRepRange && Number.isFinite(set.targetRepRange.min)) {
+    return set.targetRepRange.min;
+  }
+  return fallback;
 }
 
 function quantizeRelativeToAnchor(value: number, anchor: number, increment: number): number {

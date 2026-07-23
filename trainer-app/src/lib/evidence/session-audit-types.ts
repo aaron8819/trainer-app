@@ -108,6 +108,27 @@ export type ProgressionDecisionTrace = {
     modalRpe: number | null;
     nextLoad: number;
     loadDelta: number;
+    increment?: number;
+    currentTargetReps?: number | null;
+    currentTargetRpe?: number | null;
+  };
+  exposure?: {
+    selectedExposureId: string;
+    selectedExposureDate?: string;
+    contextBound: true;
+    source: "exact_exercise_history" | "runtime_added_same_exercise";
+    confidence: number;
+    progressionEligible: boolean;
+    comparable: boolean;
+    representativeLoad: number;
+    performedReps: number | null;
+    actualRpe: number | null;
+    priorPrescribedLoad: number | null;
+    priorPrescribedReps: number | null;
+    priorPrescribedRpe: number | null;
+    completedSetCount: number;
+    plannedWorkingSetCount: number;
+    adequateCoverage: boolean;
   };
   outcome: {
     path:

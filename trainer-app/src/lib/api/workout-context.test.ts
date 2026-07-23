@@ -763,6 +763,7 @@ describe("mapHistory", () => {
       {
         exerciseId: "pec-deck",
         source: "runtime_added_same_exercise",
+        plannedWorkingSetCount: 1,
         sets: [
           {
             exerciseId: "pec-deck",

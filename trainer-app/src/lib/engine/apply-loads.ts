@@ -77,6 +77,7 @@ export type ApplyLoadsOptions = {
   accumulationSessionsCompleted?: number;
   isFirstSessionInMesocycle?: boolean;
   selectedAnchorEvidence?: Record<string, SelectedAnchorLoadEvidence>;
+  loadIncrementByExerciseId?: Record<string, number>;
 };
 
 export type ApplyLoadsResolvedLoadSource =
@@ -255,7 +256,8 @@ export function applyLoadsWithAudit(
         options.weekInBlock,
         preferredContext,
         options.sessionIntent,
-        useNewMesocycleBaselineSource
+        useNewMesocycleBaselineSource,
+        options.loadIncrementByExerciseId?.[exercise.id]
       );
     if (resolvedLoad.progressionTrace) {
       progressionTraces[exercise.id] = resolvedLoad.progressionTrace;
@@ -427,7 +429,11 @@ function buildRuntimeAddedCalibrationHistoryIndex(
         index.set(exercise.exerciseId, []);
       }
       index.get(exercise.exerciseId)?.push({
+        exposureId: entry.workoutId ?? `history:${entry.date}`,
+        date: entry.date,
+        source: "runtime_added_same_exercise",
         sets: exercise.sets,
+        plannedWorkingSetCount: exercise.plannedWorkingSetCount,
         confidence: Math.min(entryConfidence, 0.65),
         selectionMode: entry.selectionMode,
         sessionIntent: entry.sessionIntent,
@@ -470,7 +476,11 @@ function buildSessionHistoryIndex(
         index.set(exercise.exerciseId, []);
       }
       index.get(exercise.exerciseId)?.push({
+        exposureId: entry.workoutId ?? `history:${entry.date}`,
+        date: entry.date,
+        source: "exact_exercise_history",
         sets: exercise.sets,
+        plannedWorkingSetCount: exercise.plannedWorkingSetCount,
         confidence: entryConfidence,
         selectionMode: entry.selectionMode,
         sessionIntent: entry.sessionIntent,
@@ -707,49 +717,41 @@ function resolveLoadForExercise(
   weekInBlock: number | undefined,
   preferredContext: string,
   sessionIntent: SplitDay | undefined,
-  useNewMesocycleBaselineSource: boolean
+  useNewMesocycleBaselineSource: boolean,
+  suppliedLoadIncrement?: number
 ): {
   load?: number;
   progressionTrace?: ProgressionDecisionTrace;
   source: "history" | "baseline" | "estimate" | typeof RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE;
 } {
-  const latestSetsRaw = historySessions?.[0]?.sets;
+  const selectedExposure = historySessions?.[0];
+  const latestSetsRaw = selectedExposure?.sets;
   const useModalAnchoring = shouldUseModalAnchoring(exercise);
-  const latestSets =
-    latestSetsRaw && useModalAnchoring ? normalizeSessionLoadsToModal(latestSetsRaw) : latestSetsRaw;
-  const weightedHistoryModalLoad = historySessions
-    ? resolveWeightedModalLoadAcrossHistory(historySessions)
-    : undefined;
+  const latestSets = latestSetsRaw;
   if (latestSets && latestSets.length > 0) {
-    const latestSetsForDecision =
-      useModalAnchoring &&
-      weightedHistoryModalLoad !== undefined &&
-      (historySessions?.length ?? 0) > 1
-        ? latestSets.map((set) =>
-            Number.isFinite(set.load) && (set.load ?? 0) >= 0
-              ? { ...set, load: weightedHistoryModalLoad }
-              : set
-          )
-        : latestSets;
+    const latestSetsForDecision = latestSets;
     const equipment = resolveProgressionEquipment(exercise);
-    const loadIncrement = resolveValidLoadIncrement(exercise);
+    const loadIncrement = resolveValidLoadIncrement(exercise, suppliedLoadIncrement);
     const calibrationPolicy = resolveLoadCalibrationPolicy(exercise);
     const priorSessionCount = Math.max(historySessions?.length ?? 0, 1);
     const calibrationConfidenceScale = resolveCalibrationConfidenceScale(
       calibrationPolicy,
       priorSessionCount
     );
-    const workingSetLoad = !useModalAnchoring
-      ? resolveWorkingSetLoad({
+    const workingSetLoad = useModalAnchoring
+      ? getModalSessionLoad(latestSets)
+      : resolveWorkingSetLoad({
           isMainLiftEligible: exercise.isMainLiftEligible,
-          sets: latestSets.map((set) => ({
-            setIndex: set.setIndex,
+          sets: latestSets.map((set, index) => ({
+            setIndex: set.setIndex ?? index + 1,
             load: set.load,
             targetLoad: set.targetLoad,
             rpe: set.rpe,
           })),
-        }) ?? undefined
-      : undefined;
+        }) ?? undefined;
+    if (selectedExposure && workingSetLoad != null) {
+      selectedExposure.representativeLoad = workingSetLoad;
+    }
     const progressionInput = buildCanonicalProgressionEvaluationInput({
       lastSets: latestSetsForDecision,
       repRange,
@@ -776,16 +778,14 @@ function resolveLoadForExercise(
         },
       }
     );
-    const anchorLoad = useModalAnchoring
-      ? (decision?.anchorLoad ?? weightedHistoryModalLoad ?? getModalSessionLoad(latestSets))
-      : workingSetLoad;
+    const anchorLoad = decision?.anchorLoad ?? workingSetLoad;
     const modalRpe = getModalSessionRpe(latestSetsForDecision);
     const exactHistoryContextCalibration = resolveExactHistoryTargetContextCalibration({
       enabled:
         useNewMesocycleBaselineSource &&
         !periodization?.isDeload &&
         sessionIntent != null &&
-        progressionInput.context.prescriptionContext == null,
+        progressionInput.context.selectedExposure == null,
       decisionTrace: decision?.trace,
       anchorLoad,
       targetReps,
@@ -802,7 +802,7 @@ function resolveLoadForExercise(
       anchorLoad !== undefined &&
       modalRpe !== undefined &&
       modalRpe >= 9 &&
-      progressionInput.context.prescriptionContext == null
+      progressionInput.context.selectedExposure == null
     ) {
       return { load: anchorLoad, progressionTrace: decision?.trace, source: "history" };
     }

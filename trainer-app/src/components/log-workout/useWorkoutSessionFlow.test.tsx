@@ -432,6 +432,33 @@ describe("useWorkoutSessionFlow", () => {
     expect(callbacks.setFieldPrefilledSpy).toHaveBeenCalledTimes(3);
   });
 
+  it("V evaluates completed actuals against the completed set when the next targets differ", async () => {
+    const callbacks = createCallbacks();
+    const exercises = makeExercises();
+    exercises.main[0].sets[0] = {
+      ...exercises.main[0].sets[0],
+      targetReps: 10,
+      targetRpe: 8,
+      targetLoad: 50,
+    };
+    exercises.main[0].sets[1] = {
+      ...exercises.main[0].sets[1],
+      targetReps: 15,
+      targetRpe: 6,
+      targetLoad: 70,
+    };
+
+    render(<WorkoutSessionFlowHarness callbacks={callbacks} exercises={exercises} />);
+    fireEvent.click(screen.getByRole("button", { name: "log-first" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("autoreg-hint")).toHaveTextContent(
+        "Set clearly beat the target. Consider 52.5 lbs"
+      );
+      expect(screen.getByTestId("autoreg-hint")).not.toHaveTextContent("47.5 lbs");
+    });
+  });
+
   it("passes warmup/ramp set intent through log requests", async () => {
     const callbacks = createCallbacks();
     const exercises = makeExercises();

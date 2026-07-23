@@ -304,20 +304,33 @@ describe("golden-path completed workout increase regression", () => {
 
     expect(liveTopSetCue).toEqual({
       action: "increase",
-      message: "Set felt easier than target. Consider +2.5 lbs for next set.",
+      suggestedLoad: 157.5,
+      message: "Set clearly beat the target. Consider 157.5 lbs for the next set (+2.5).",
     });
     expect(liveNextSetCue).toEqual({
       action: "increase",
-      message: "Set felt easier than target. Consider +2.5 lbs for next set.",
+      suggestedLoad: 157.5,
+      message: "Set clearly beat the target. Consider 157.5 lbs for the next set (+2.5).",
     });
 
     const canonicalInput = buildCanonicalProgressionEvaluationInput({
       lastSets: performedSemantics?.signalSets ?? [],
       repRange: [8, 10],
       equipment: "barbell",
+      currentTarget: { reps: 8, rpe: 8 },
       workingSetLoad: performedSemantics?.workingSetLoad ?? undefined,
       historySessions: [
         {
+          exposureId: "w-week4-pull-increase",
+          plannedWorkingSetCount: 3,
+          representativeLoad: performedSemantics?.workingSetLoad ?? undefined,
+          sets: (performedSemantics?.signalSets ?? []).map((set) => ({
+            ...set,
+            targetReps: 8,
+            targetRepMin: 8,
+            targetRepMax: 10,
+            targetRpe: 8,
+          })),
           selectionMode: "INTENT",
           confidence: 1,
           confidenceNotes: ["Previous INTENT history kept full progression confidence."],

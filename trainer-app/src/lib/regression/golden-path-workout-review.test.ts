@@ -310,11 +310,13 @@ describe("golden-path completed workout regression", () => {
 
     expect(liveTopSetCue).toEqual({
       action: "hold",
+      suggestedLoad: 160,
       message:
         "You're above the prescribed load. Keep it if technique stays stable; formal progression is evaluated across the full session.",
     });
     expect(liveNextSetCue).toEqual({
       action: "hold",
+      suggestedLoad: 160,
       message:
         "You're above the prescribed load. Keep it if technique stays stable; formal progression is evaluated across the full session.",
     });
@@ -323,9 +325,20 @@ describe("golden-path completed workout regression", () => {
       lastSets: performedSemantics?.signalSets ?? [],
       repRange: [8, 10],
       equipment: "barbell",
+      currentTarget: { reps: 8, rpe: 8 },
       workingSetLoad: performedSemantics?.workingSetLoad ?? undefined,
       historySessions: [
         {
+          exposureId: "w-week4-pull",
+          plannedWorkingSetCount: 3,
+          representativeLoad: performedSemantics?.workingSetLoad ?? undefined,
+          sets: (performedSemantics?.signalSets ?? []).map((set) => ({
+            ...set,
+            targetReps: 8,
+            targetRepMin: 8,
+            targetRepMax: 10,
+            targetRpe: 8,
+          })),
           selectionMode: "INTENT",
           confidence: 1,
           confidenceNotes: ["Previous INTENT history kept full progression confidence."],
@@ -357,7 +370,7 @@ describe("golden-path completed workout regression", () => {
     expect(canonicalDecision).toMatchObject({
       anchorLoad: 160,
       nextLoad: 165,
-      path: "path_5_overshoot",
+      path: "path_2",
     });
     expect(canonicalAction).toBe("increase");
 
@@ -377,7 +390,8 @@ describe("golden-path completed workout regression", () => {
     expect(nextExposureDecision).toMatchObject({
       action: canonicalAction,
       summary: "Next exposure: increase load.",
-      reason: "You beat the written load at manageable effort, so 160 lbs should not stay capped next time.",
+      reason:
+        "Median reps reached the upper end of the 8–10 range at manageable effort (modal RPE 8) on 160 lbs.",
       anchorLoad: canonicalDecision.anchorLoad,
       repRange: { min: 8, max: 10 },
       medianReps: performedSemantics.medianReps,
@@ -428,7 +442,7 @@ describe("golden-path completed workout regression", () => {
       performed: "Today's performed signal centered on 160 lbs at median 8 reps at modal RPE 8.",
       todayContext: "Today's written target moved from 150 lbs to 155 lbs (+3.3%).",
       nextTime:
-        "Next exposure: increase load. You beat the written load at manageable effort, so 160 lbs should not stay capped next time.",
+        "Next exposure: increase load. Median reps reached the upper end of the 8–10 range at manageable effort (modal RPE 8) on 160 lbs.",
     });
 
     expect(workoutReviewModel.headline).toBe(completionReviewModel.headline);

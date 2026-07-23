@@ -183,32 +183,32 @@ describe("buildCanonicalProgressionEvaluationInput", () => {
     expect(input.context.intentDeviationTargetLoadCeiling).toBe(145);
   });
 
-  it.each([
-    { actualRpe: 6, expected: { clearEasy: true, clearHard: false } },
-    { actualRpe: 9, expected: { clearEasy: false, clearHard: true } },
-    { actualRpe: 8, expected: { clearEasy: false, clearHard: false } },
-  ])("interprets the latest exposure against its own prescription at RPE $actualRpe", ({ actualRpe, expected }) => {
+  it.each([6, 8, 9])("passes raw bound evidence without interpreting RPE $actualRpe", (actualRpe) => {
     const sets = prescriptionSets({ actualRpe });
     const input = buildCanonicalProgressionEvaluationInput({
       lastSets: sets,
       repRange: [8, 10],
       equipment: "barbell",
       currentTarget: { reps: 10, rpe: 8 },
-      historySessions: [historySession(sets)],
+      historySessions: [{ ...historySession(sets), exposureId: "workout-1", date: "2026-07-20" }],
+      workingSetLoad: 100,
       loadIncrement: 5,
     });
 
     expect(input.context.loadIncrement).toBe(5);
-    expect(input.context.prescriptionContext).toMatchObject(expected);
-    expect(input.context.prescriptionContext).toMatchObject({
-      priorPerformedReps: 10,
-      priorActualRpe: actualRpe,
-      priorTargetReps: 10,
-      priorTargetRpe: 8,
+    expect(input.context.selectedExposure).toMatchObject({
+      exposureId: "workout-1",
+      representativeLoad: 100,
+      sets,
     });
+    expect(input.decisionOptions.progressionExposures?.[0]).toEqual(
+      input.context.selectedExposure
+    );
+    expect(input.context.selectedExposure).not.toHaveProperty("clearEasy");
+    expect(input.context.selectedExposure).not.toHaveProperty("clearHard");
   });
 
-  it("requires two successful exposures among the latest three comparable sessions", () => {
+  it("preserves recurrence exposure order without authoring repeated-success outcomes", () => {
     const input = buildCanonicalProgressionEvaluationInput({
       lastSets: prescriptionSets({ actualRpe: 8 }),
       repRange: [8, 10],
@@ -220,10 +220,15 @@ describe("buildCanonicalProgressionEvaluationInput", () => {
       ],
     });
 
-    expect(input.context.prescriptionContext?.repeatedSuccess).toBe(true);
+    expect(input.decisionOptions.progressionExposures?.map((item) => item.sets[0]?.rpe)).toEqual([
+      8,
+      9.5,
+      8,
+    ]);
+    expect(input.decisionOptions.progressionExposures?.[0]).not.toHaveProperty("repeatedSuccess");
   });
 
-  it("marks prescribed history with missing actual RPE as incomplete instead of inferring success", () => {
+  it("preserves missing actual RPE as raw evidence for the decision owner", () => {
     const sets = prescriptionSets({ actualRpe: undefined });
     const input = buildCanonicalProgressionEvaluationInput({
       lastSets: sets,
@@ -232,8 +237,8 @@ describe("buildCanonicalProgressionEvaluationInput", () => {
       historySessions: [historySession(sets)],
     });
 
-    expect(input.context.prescriptionContext).toBeUndefined();
-    expect(input.context.prescriptionEvidenceIncomplete).toBe(true);
+    expect(input.context.selectedExposure?.sets[0]?.rpe).toBeUndefined();
+    expect(input.context.selectedExposure).not.toHaveProperty("prescriptionEvidenceIncomplete");
   });
 });
 

@@ -29,7 +29,10 @@ import type {
 } from "@/components/log-workout/types";
 import { getSetValidity } from "@/lib/logging/setValidity";
 import { getLoadRecommendation } from "@/lib/progression/load-coaching";
-import { resolveValidLoadIncrement } from "@/lib/engine/load-calibration";
+import {
+  resolveExternalLoadDirection,
+  resolveValidLoadIncrement,
+} from "@/lib/engine/load-calibration";
 
 export type WorkoutSessionActions = {
   logSet: (setId: string, overrides?: Partial<LogSetInput>) => Promise<boolean>;
@@ -288,19 +291,23 @@ export function useWorkoutSessionFlow({
             !nextLogged.has(item.set.setId) &&
             item.set.targetRpe != null
         );
-        if (nextExerciseSet && normalizedSet.actualRpe != null && nextExerciseSet.set.targetRpe != null) {
-          const repRange = nextExerciseSet.set.targetRepRange ?? {
-            min: nextExerciseSet.set.targetReps,
-            max: nextExerciseSet.set.targetReps,
+        if (nextExerciseSet && normalizedSet.actualRpe != null && targetSet.set.targetRpe != null) {
+          const repRange = targetSet.set.targetRepRange ?? {
+            min: targetSet.set.targetReps,
+            max: targetSet.set.targetReps,
           };
           const recommendation = getLoadRecommendation({
             reps: normalizedSet.actualReps,
             rir: 10 - normalizedSet.actualRpe,
             actualLoad: normalizedSet.actualLoad,
-            targetLoad: nextExerciseSet.set.targetLoad,
+            targetLoad: targetSet.set.targetLoad,
             repRange,
-            targetRir: 10 - nextExerciseSet.set.targetRpe,
-            loadIncrement: resolveValidLoadIncrement(nextExerciseSet.exercise),
+            targetRir: 10 - targetSet.set.targetRpe,
+            loadIncrement: resolveValidLoadIncrement(
+              targetSet.exercise,
+              targetSet.exercise.loadIncrement
+            ),
+            loadDirection: resolveExternalLoadDirection(targetSet.exercise),
           });
           if (recommendation) {
             setAutoregHint({

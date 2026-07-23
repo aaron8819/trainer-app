@@ -17,6 +17,8 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 import { buildProgressionAnchorAuditPayload } from "./progression-anchor";
+import { applyLoadsWithAudit } from "@/lib/engine/apply-loads";
+import type { Exercise, WorkoutPlan } from "@/lib/engine/types";
 
 describe("buildProgressionAnchorAuditPayload", () => {
   beforeEach(() => {
@@ -330,5 +332,71 @@ describe("buildProgressionAnchorAuditPayload", () => {
       medianReps: 12,
       modalRpe: 8.5,
     });
+  });
+
+  it("Z matches runtime exposure identity, context, increment, path, and final load", async () => {
+    const performedSets = [1, 2, 3].map((setIndex) => ({
+      exerciseId: "bench",
+      setIndex,
+      reps: 10,
+      rpe: 6,
+      load: 100,
+      targetLoad: 100,
+      targetReps: 10,
+      targetRepMin: 8,
+      targetRepMax: 10,
+      targetRpe: 8,
+    }));
+    const exercise: Exercise = {
+      id: "bench", name: "Bench Press", movementPatterns: ["horizontal_push"],
+      splitTags: ["push"], jointStress: "medium", isMainLiftEligible: true,
+      isCompound: true, equipment: ["barbell"],
+    };
+    const workout: WorkoutPlan = {
+      id: "next", scheduledDate: "2026-07-21", warmup: [], accessories: [], estimatedMinutes: 30,
+      mainLifts: [{ id: "we-next", exercise, orderIndex: 0, isMainLift: true, sets: [
+        { setIndex: 1, targetReps: 10, targetRpe: 8 },
+        { setIndex: 2, targetReps: 10, targetRpe: 8 },
+        { setIndex: 3, targetReps: 10, targetRpe: 8 },
+      ] }],
+    };
+    const runtime = applyLoadsWithAudit(workout, {
+      history: [{
+        workoutId: "workout-parity", date: "2026-07-20T00:00:00.000Z", completed: true,
+        status: "COMPLETED", progressionEligible: true, performanceEligible: true,
+        selectionMode: "INTENT", sessionIntent: "push",
+        exercises: [{ exerciseId: "bench", plannedWorkingSetCount: 3, sets: performedSets }],
+      }],
+      baselines: [], exerciseById: { bench: exercise }, primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" }, sessionIntent: "push",
+    });
+
+    mocks.workoutExerciseFindMany.mockResolvedValue([{ exerciseId: "bench", exercise: {
+      name: "Bench Press", isMainLiftEligible: true, isCompound: true,
+      exerciseEquipment: [{ equipment: { type: "barbell" } }],
+    }, workout: {
+      id: "workout-parity", scheduledDate: new Date("2026-07-20T00:00:00.000Z"), revision: 1,
+      status: "COMPLETED", advancesSplit: true, selectionMode: "INTENT", sessionIntent: "PUSH",
+      selectionMetadata: {}, mesocycleId: "meso-1", mesocycleWeekSnapshot: 2,
+      mesoSessionSnapshot: 1, mesocyclePhaseSnapshot: "ACCUMULATION",
+    }, sets: performedSets.map((set) => ({
+      setIndex: set.setIndex, targetLoad: set.targetLoad, targetReps: set.targetReps,
+      targetRepMin: set.targetRepMin, targetRepMax: set.targetRepMax, targetRpe: set.targetRpe,
+      logs: [{ actualLoad: set.load, actualReps: set.reps, actualRpe: set.rpe, setIntent: "WORK", wasSkipped: false }],
+    })) }]);
+
+    const audit = await buildProgressionAnchorAuditPayload({
+      userId: "user-1", workoutId: "workout-parity", exerciseId: "bench",
+    });
+    const runtimeTrace = runtime.audit.progressionTraces.bench;
+    expect(audit.trace.exposure).toEqual(runtimeTrace.exposure);
+    expect(audit.trace.metrics).toEqual(runtimeTrace.metrics);
+    expect(audit.trace.outcome).toEqual(runtimeTrace.outcome);
+    expect(runtime.workout.mainLifts[0].sets[0].targetLoad).toBe(audit.trace.metrics.nextLoad);
+    expect(audit.trace.exposure).toMatchObject({
+      selectedExposureId: "workout-parity", contextBound: true, representativeLoad: 100,
+      performedReps: 10, actualRpe: 6, priorPrescribedReps: 10, priorPrescribedRpe: 8,
+    });
+    expect(audit.trace.metrics).toMatchObject({ increment: 5, currentTargetReps: 10, currentTargetRpe: 8, nextLoad: 105 });
   });
 });

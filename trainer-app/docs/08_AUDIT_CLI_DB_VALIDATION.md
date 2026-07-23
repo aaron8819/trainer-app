@@ -210,6 +210,10 @@ Progression / anchor trace:
 npm run audit:workout -- --mode progression-anchor --user-id <user-id> --exercise-id <exercise-id> --workout-id <workout-id>
 ```
 
+The required workout ID is the target prescription context. For a future workout, the
+audit binds the latest eligible performed exposure separately and evaluates it against
+that future workout's persisted target reps, rep range, and RPE.
+
 ## What To Inspect
 
 Use this section as a quick validation smoke-check only. Full artifact interpretation order belongs in `docs/09_AUDIT_PLAYBOOK.md`.

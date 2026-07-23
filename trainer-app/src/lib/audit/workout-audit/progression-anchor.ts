@@ -17,13 +17,10 @@ import type { ProgressionAnchorAuditPayload } from "./types";
 import { PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION } from "./constants";
 
 function buildConfidenceNotes(selectionMode?: string | null): string[] {
-  if (selectionMode === "INTENT") {
-    return ["INTENT history kept full canonical progression confidence."];
-  }
   if (selectionMode === "MANUAL") {
     return ["MANUAL session discounted for progression confidence."];
   }
-  return selectionMode ? [`${selectionMode} history discounted for progression confidence.`] : [];
+  return [];
 }
 
 function buildHistorySession(entry: {
@@ -80,19 +77,67 @@ function buildHistorySession(entry: {
 export async function buildProgressionAnchorAuditPayload(input: {
   userId: string;
   exerciseId: string;
-  workoutId?: string;
+  workoutId: string;
 }): Promise<ProgressionAnchorAuditPayload> {
+  const target = await prisma.workoutExercise.findFirst({
+    where: {
+      exerciseId: input.exerciseId,
+      workout: {
+        id: input.workoutId,
+        userId: input.userId,
+      },
+    },
+    include: {
+      exercise: {
+        include: {
+          exerciseEquipment: {
+            include: {
+              equipment: true,
+            },
+          },
+        },
+      },
+      workout: {
+        select: {
+          id: true,
+          scheduledDate: true,
+          revision: true,
+          status: true,
+          advancesSplit: true,
+          selectionMode: true,
+          sessionIntent: true,
+          selectionMetadata: true,
+          mesocycleId: true,
+          mesocycleWeekSnapshot: true,
+          mesoSessionSnapshot: true,
+          mesocyclePhaseSnapshot: true,
+        },
+      },
+      sets: {
+        orderBy: { setIndex: "asc" },
+        include: {
+          logs: { orderBy: { completedAt: "desc" }, take: 1 },
+        },
+      },
+    },
+  });
+  if (!target) {
+    throw new Error(
+      `No target workout prescription found for workoutId=${input.workoutId} exerciseId=${input.exerciseId}`
+    );
+  }
+
   const rows = await prisma.workoutExercise.findMany({
     where: {
       exerciseId: input.exerciseId,
       workout: {
         userId: input.userId,
         status: { in: [...PERFORMED_WORKOUT_STATUSES] as never },
-        ...(input.workoutId ? { id: input.workoutId } : {}),
+        scheduledDate: { lte: target.workout.scheduledDate },
       },
     },
     orderBy: [{ workout: { scheduledDate: "desc" } }, { workoutId: "desc" }],
-    take: input.workoutId ? 1 : 8,
+    take: 8,
     include: {
       exercise: {
         include: {
@@ -136,10 +181,12 @@ export async function buildProgressionAnchorAuditPayload(input: {
     })
   );
 
-  const current =
-    (input.workoutId ? rows[0] : eligibleRows[0]) ?? rows[0];
+  const targetExposure = rows.find((entry) => entry.workout.id === target.workout.id);
+  const current = targetExposure ?? eligibleRows[0] ?? rows[0];
   if (!current) {
-    throw new Error(`No performed workout found for exerciseId=${input.exerciseId}`);
+    throw new Error(
+      `No performed progression exposure found before workoutId=${input.workoutId} exerciseId=${input.exerciseId}`
+    );
   }
 
   const performedSemantics = derivePerformedExerciseSemantics({
@@ -162,7 +209,7 @@ export async function buildProgressionAnchorAuditPayload(input: {
     throw new Error(`No progression signal sets found for exerciseId=${input.exerciseId}`);
   }
 
-  const firstTarget = current.sets.find(
+  const firstTarget = target.sets.find(
     (set) => set.targetReps != null || (set.targetRepMin != null && set.targetRepMax != null)
   );
   const repRange = resolveTargetRepRange({
@@ -223,28 +270,28 @@ export async function buildProgressionAnchorAuditPayload(input: {
 
   const { sessionSnapshot, snapshotSource } =
     resolvePersistedOrReconstructedSessionAuditSnapshot({
-      selectionMetadata: current.workout.selectionMetadata,
-      workoutId: current.workout.id,
-      revision: current.workout.revision ?? undefined,
-      status: current.workout.status,
-      advancesSplit: current.workout.advancesSplit,
-      selectionMode: current.workout.selectionMode,
-      sessionIntent: current.workout.sessionIntent,
-      mesocycleId: current.workout.mesocycleId,
-      mesocycleWeekSnapshot: current.workout.mesocycleWeekSnapshot,
-      mesoSessionSnapshot: current.workout.mesoSessionSnapshot,
-      mesocyclePhaseSnapshot: current.workout.mesocyclePhaseSnapshot,
+      selectionMetadata: target.workout.selectionMetadata,
+      workoutId: target.workout.id,
+      revision: target.workout.revision ?? undefined,
+      status: target.workout.status,
+      advancesSplit: target.workout.advancesSplit,
+      selectionMode: target.workout.selectionMode,
+      sessionIntent: target.workout.sessionIntent,
+      mesocycleId: target.workout.mesocycleId,
+      mesocycleWeekSnapshot: target.workout.mesocycleWeekSnapshot,
+      mesoSessionSnapshot: target.workout.mesoSessionSnapshot,
+      mesocyclePhaseSnapshot: target.workout.mesocyclePhaseSnapshot,
     });
   const canonicalSemantics = resolveAuditCanonicalSemantics(sessionSnapshot);
 
   return {
     version: PROGRESSION_ANCHOR_AUDIT_PAYLOAD_VERSION,
-    workoutId: current.workout.id,
-    exerciseId: current.exerciseId,
-    exerciseName: current.exercise.name,
-    scheduledDate: current.workout.scheduledDate.toISOString(),
-    selectionMode: current.workout.selectionMode ?? undefined,
-    sessionIntent: current.workout.sessionIntent ?? undefined,
+    workoutId: target.workout.id,
+    exerciseId: target.exerciseId,
+    exerciseName: target.exercise.name,
+    scheduledDate: target.workout.scheduledDate.toISOString(),
+    selectionMode: target.workout.selectionMode ?? undefined,
+    sessionIntent: target.workout.sessionIntent ?? undefined,
     sessionSnapshotSource: snapshotSource,
     sessionSnapshot,
     canonicalSemantics,

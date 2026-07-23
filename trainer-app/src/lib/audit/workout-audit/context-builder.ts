@@ -331,6 +331,11 @@ export async function buildWorkoutAuditContext(
     if (!request.exerciseId) {
       throw new Error("progression-anchor mode requires --exercise-id");
     }
+    if (!request.workoutId) {
+      throw new Error(
+        "progression-anchor mode requires --workout-id so current target context comes from the audited workout"
+      );
+    }
     return {
       mode,
       requestedMode: request.mode,

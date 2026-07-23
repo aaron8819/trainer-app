@@ -243,7 +243,7 @@ describe("loadMesocycleReview", () => {
     });
     expect(result?.derived.weeklyRetroCalibration).toMatchObject({
       status: "info",
-      headline: "Execution stable as planned",
+      headline: "Repeated successful execution",
       rowCount: 2,
       patternCount: 1,
       source: {
@@ -382,11 +382,11 @@ describe("loadMesocycleReview", () => {
     );
 
     expect(result?.derived.weeklyRetroCalibration).toMatchObject({
-      headline: "Mixed weekly execution signals",
+      headline: "Repeated successful execution",
       rowCount: 2,
     });
     expect(result?.derived.weeklyRetroCalibration?.detail).toContain(
-      "2 performed-reality rows"
+      "2 rows matched the written plan"
     );
   });
 

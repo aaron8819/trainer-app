@@ -186,7 +186,7 @@ export type WorkoutAuditContext = {
     successorMesocycleId?: string;
   };
   progressionAnchor?: {
-    workoutId?: string;
+    workoutId: string;
     exerciseId: string;
   };
   mesocycleExplain?: {

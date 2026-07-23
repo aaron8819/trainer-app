@@ -22,21 +22,35 @@ Sources of truth:
 - `trainer-app/scripts/check-doc-runtime-contracts.ts`
 
 ## Commands
-- `npm run test:preflight`: sanitized, connection-free capability report. It checks the
-  dependency arrangement, Prisma version alignment, local/remote classification of
-  `DATABASE_URL`, Docker availability, and which test groups are runnable, blocked, or
-  intentionally separate. It never prints environment values or connects to a database.
-- `npm run test:pure`: authoritative credential-free local verification (`npm run verify`).
-  This is the ordinary local gate and does not claim disposable PostgreSQL or Playwright
-  coverage.
-- `npm test`: raw full Vitest inventory. This remains available for focused file arguments and
-  baseline diagnosis, but without `DATABASE_URL` some DB-importing files fail during collection.
-- `npm run test:full`: preflight-gated full Vitest inventory. It refuses missing, invalid, or
-  remote `DATABASE_URL` values and runs only with an explicit loopback database target. Use a
-  disposable local target; passing preflight proves target class, not schema readiness.
+- `npm run test:preflight`: sanitized, dependency-free launcher plus typed capability report.
+  It performs no database connection or Docker daemon probe. It reports the dependency
+  arrangement, generated Prisma Client compatibility, every registered DB-target variable,
+  Docker CLI presence through `docker --version`, and runnable/blocked/separate groups. It never
+  prints environment values, URLs, credentials, query parameters, database names, or hostnames.
+- `npm run test:verify-gate`: the selective repository verification matrix currently implemented
+  by `npm run verify`. It strips every recognized DB-target variable and prevents Vitest from
+  loading `.env.local`/`.env`. It is a useful local gate, but it is not a comprehensive inventory
+  of all credential-free Vitest files.
+- `npm test`: raw `vitest run` inventory and focused-test entrypoint. It intentionally preserves
+  ordinary Vitest environment behavior, including `.env.local`/`.env` loading, so it may expose
+  environment-coupled collection failures. It is diagnostic, not the authoritative
+  credential-free gate. Mutation-capable DB test files fail collection before connecting unless
+  the complete target inventory is valid and `TRAINER_DISPOSABLE_DB_CONFIRMED=1` was set by the
+  confirmed disposable harness.
+- `npm run test:inventory:credential-free`: raw Vitest inventory with `DATABASE_URL`,
+  `TEST_DATABASE_URL`, `DIRECT_URL`, `SHADOW_DATABASE_URL`, and `SHADOW_URL` removed from the
+  child environment and dotenv loading disabled. DB-import-coupled files may fail collection and
+  mutation suites skip because no target is available; those outcomes are inventory evidence,
+  not a comprehensive passing gate.
 - `npm run test:seed-revision-concurrency -- --confirm-disposable`: against a local disposable PostgreSQL database, verifies one-winner concurrent correction, generation/correction revision preservation, and full rollback after a failed correction. The command refuses non-local or unconfirmed targets.
-- `npm run test:db:workout-mutations`: creates disposable PostgreSQL 16 from the checked-in migration chain, then verifies main-save CAS, runtime mutation races, exact stimulus snapshot persistence, and immutable review-snapshot storage without `db push` or `.env.local`.
-- `npm run test:db:historical-snapshots`: explicit schema-dependent historical-evidence alias for the same consolidated disposable harness.
+- `npm run test:db:workout-mutations -- --confirm-disposable`: explicitly mutating integration
+  coverage. It requires the affirmative flag, creates its own disposable PostgreSQL 16 target,
+  strips inherited DB-target variables before supplying the generated target, validates the
+  canonical target inventory, applies the checked-in migration chain, and verifies main-save CAS,
+  runtime mutation races, exact stimulus snapshot persistence, and immutable review-snapshot
+  storage without `db push` or `.env.local`.
+- `npm run test:db:historical-snapshots -- --confirm-disposable`: explicit schema-dependent
+  historical-evidence alias for the same consolidated disposable harness.
 - `npm run test:db:readiness-snapshots`: starts an isolated Docker PostgreSQL 16 container, applies all checked-in migrations without reading `.env.local`, verifies legacy-unknown migration behavior, partial unique enforcement, identical concurrent activation, conflicting payload rejection, forced replacement rollback, stale-evidence rejection, and owner isolation, then removes the container.
 - Immutable seed changes require focused revision/receipt/save/runtime/audit tests, `npm run verify:contracts`, `npm run verify`, and a real `prisma migrate deploy` on disposable PostgreSQL.
 - `npm run lint`: ESLint with cache at `.eslintcache`; generated/local-only outputs such as `artifacts/`, `.tmp/`, `.vercel/`, `output/`, `playwright-report/`, and `test-results/` are ignored by ESLint
@@ -55,6 +69,36 @@ Sources of truth:
 - `npm run verify:production-version -- --base-url <https-origin> --expected-sha <full-git-sha>`: explicit read-only live production evidence; never included in local `npm run verify`
 - `npm run verify:contracts`: docs/runtime enum drift check
 - Owner-scoped audit commands accept `--env-file .env.local --owner owner@local` so local audit scripts can load the intended runtime environment explicitly
+
+## Test-environment safety contract
+
+- Canonical DB-target inventory: `DATABASE_URL`, `TEST_DATABASE_URL`, `DIRECT_URL`,
+  `SHADOW_DATABASE_URL`, and `SHADOW_URL`. A repository guard scans test workflow sources for
+  database-like target variable names and fails when a reference is not registered.
+- Only structurally valid `postgres:` and `postgresql:` URLs are classified. A hostname and
+  database path are required. Malformed encoding, invalid ports, unsupported protocols, private
+  IPs, remote DNS, Supabase/pooler hosts, `host.docker.internal`, and names merely containing
+  `local` are rejected for disposable mutation coverage.
+- Loopback (`localhost`, `127.0.0.1`, or `[::1]`) establishes location only. Mutation coverage
+  additionally requires `--confirm-disposable`, matching `DATABASE_URL` and `TEST_DATABASE_URL`,
+  and a harness-created disposable target. Preflight never connects.
+- The dependency-free `.mjs` launcher exits `0` when requested checks pass, `1` for an
+  environment/infrastructure blocker, and `2` for an invalid invocation or malformed option set.
+  Unknown flags are invalid.
+- Dependency arrangements are reported as standalone, Windows junction, Linux symlink, missing,
+  or unresolved. A link is allowed only when it resolves to `node_modules` under a registered Git
+  worktree and that worktree has the exact current lockfile hash; policy-external, stale,
+  lock-incompatible, and unresolved links are blocked. No machine-local path is committed.
+- Prisma readiness is reported as dependencies missing, Prisma packages missing, client not
+  generated, generated client stale, or compatible. Compatibility requires generated client
+  artifacts and a formatting/comment-insensitive match between the checked-in and generated
+  Prisma schema; installed package versions alone are insufficient. Informational preflight
+  never runs `prisma generate`.
+- Docker capability means CLI presence only (`docker --version`). Daemon readiness belongs to an
+  explicit disposable harness and is never probed by preflight.
+- Reports distinguish runnable/passed work from blocked infrastructure and explicitly separate
+  suites. A skipped DB test in credential-free inventory is not reported as passed DB coverage;
+  commands not invoked must be reported as not run.
 
 ## Scope
 - Engine tests: `src/lib/engine/**/*.test.ts`
@@ -171,9 +215,8 @@ Disposable PostgreSQL verification must cover migration apply, unique one-to-one
 - Environment: `jsdom`
 - Reporter: `dot`
 - Setup: `vitest.setup.ts`
-- `npm run test:full` does not silently skip infrastructure coverage. Missing local database
-  infrastructure blocks before Vitest collection, while disposable DB and Playwright suites
-  remain explicit separate commands.
+- `npm run test:inventory:credential-free` intentionally prevents database execution. Disposable
+  DB and Playwright coverage remain explicit separate commands and must be reported separately.
 - Playwright config: `playwright.config.ts`; by default it starts a managed local Next dev server on port `3100` with `UI_AUDIT_FIXTURE_MODE=1`, uses the isolated `.next-ui-audit/managed` output directory, and runs the core-route audit at mobile (`390x844`) and desktop (`1366x768`) viewport sizes.
 - The UI audit fixture harness is development-only. Fixture mode requires `UI_AUDIT_FIXTURE_MODE=1`, is disabled when `NODE_ENV=production`, and selects a named scenario through the `x-ui-audit-fixture` request header.
 - Current UI audit fixture scenarios:

@@ -4,6 +4,11 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import type { Prisma } from "@prisma/client";
 import { Pool } from "pg";
+import {
+  DATABASE_TARGET_ENV_VARS,
+  sanitizeDatabaseTargetEnvironment,
+  validateDisposableDatabaseTargets,
+} from "../src/lib/operations/test-environment-preflight";
 
 const TARGET_MIGRATION =
   "20260714210000_make_pre_session_readiness_snapshots_atomic";
@@ -284,14 +289,23 @@ async function main(): Promise<void> {
   runSql(postgresDatabase, `CREATE DATABASE trainer_shadow;`);
   const shadowDatabaseUrl = `postgresql://${postgresUser}:${postgresPassword}@127.0.0.1:${port}/trainer_shadow`;
   const env: NodeJS.ProcessEnv = {
-    ...process.env,
+    ...sanitizeDatabaseTargetEnvironment(process.env),
     DATABASE_URL: databaseUrl,
+    TEST_DATABASE_URL: databaseUrl,
     DIRECT_URL: databaseUrl,
     SHADOW_DATABASE_URL: shadowDatabaseUrl,
+    TRAINER_DISPOSABLE_DB_CONFIRMED: "1",
     NODE_ENV: "test" as const,
   };
+  const targetValidation = validateDisposableDatabaseTargets({
+    environment: env,
+    confirmed: true,
+  });
+  assert(targetValidation.valid, "READINESS_DB_TEST_TARGET_INVALID");
+  for (const name of DATABASE_TARGET_ENV_VARS) delete process.env[name];
   Object.assign(process.env, {
     DATABASE_URL: databaseUrl,
+    TEST_DATABASE_URL: databaseUrl,
     DIRECT_URL: databaseUrl,
     SHADOW_DATABASE_URL: shadowDatabaseUrl,
     NODE_ENV: "test",

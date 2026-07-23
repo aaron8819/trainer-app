@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
 import {
+  DATABASE_TARGET_ENV_VARS,
+  validateDisposableDatabaseTargets,
+  type DatabaseTargetEnvironment,
+} from "@/lib/operations/test-environment-preflight";
+import {
   createCorrectiveSeedRevisionInTransaction,
   createInitialAcceptedSeedRevisionInTransaction,
   exactSeedRevisionProvenance,
@@ -22,10 +27,17 @@ function seed(setCount: number) {
 }
 
 async function main() {
-  const databaseUrl = process.env.DATABASE_URL ?? "";
+  const environment = Object.fromEntries(
+    DATABASE_TARGET_ENV_VARS.map((name) => [name, process.env[name]])
+  ) as DatabaseTargetEnvironment;
+  const targetValidation = validateDisposableDatabaseTargets({
+    environment,
+    confirmed: process.argv.includes("--confirm-disposable"),
+    requiredTargets: ["DATABASE_URL"],
+    matchingTargetPairs: [],
+  });
   assert(
-    process.argv.includes("--confirm-disposable") &&
-      /(?:localhost|127\.0\.0\.1)/.test(databaseUrl),
+    targetValidation.valid,
     "SEED_REVISION_CONCURRENCY_REQUIRES_CONFIRMED_LOCAL_DISPOSABLE_DB",
   );
 

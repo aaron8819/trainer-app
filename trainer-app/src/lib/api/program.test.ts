@@ -666,10 +666,10 @@ describe("loadProgramDashboardData", () => {
                 exerciseMuscles: [{ role: "PRIMARY", muscle: { name: "Biceps" } }],
               },
               sets: [
-                { logs: [{ wasSkipped: false }] },
-                { logs: [{ wasSkipped: false }] },
-                { logs: [{ wasSkipped: false }] },
-                { logs: [{ wasSkipped: false }] },
+                { logs: [{ wasSkipped: false, actualReps: 10 }] },
+                { logs: [{ wasSkipped: false, actualReps: 10 }] },
+                { logs: [{ wasSkipped: false, actualReps: 10 }] },
+                { logs: [{ wasSkipped: false, actualReps: 10 }] },
               ],
             }),
           ],
@@ -682,6 +682,10 @@ describe("loadProgramDashboardData", () => {
 
       expect(chestIndex).toBeGreaterThanOrEqual(0);
       expect(bicepsIndex).toBeGreaterThanOrEqual(0);
+      expect(result.volumeThisWeek[bicepsIndex]).toMatchObject({
+        directSets: 4,
+        effectiveSets: 4,
+      });
       expect(chestIndex).toBeLessThan(bicepsIndex);
     });
 

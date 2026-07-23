@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient, type Prisma } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { resolveDisposableDatabaseTestTarget } from "@/lib/operations/test-environment-preflight";
 import {
   buildSessionDecisionReceipt,
   readSessionDecisionReceipt,
@@ -39,7 +40,7 @@ import { loadExerciseHistory } from "./exercise-history";
 import { generateWorkoutExplanation } from "./explainability";
 import { loadNextWorkoutContext } from "./next-session";
 
-const databaseUrl = process.env.TEST_DATABASE_URL;
+const databaseUrl = resolveDisposableDatabaseTestTarget(process.env);
 const describeDatabase = databaseUrl ? describe : describe.skip;
 
 describeDatabase("runtime workout mutation CAS (PostgreSQL)", () => {

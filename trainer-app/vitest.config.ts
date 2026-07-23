@@ -3,9 +3,11 @@ import react from "@vitejs/plugin-react";
 import path from "node:path";
 import dotenv from "dotenv";
 
-// Load environment variables from .env.local then .env
-dotenv.config({ path: ".env.local" });
-dotenv.config();
+// Credential-free inventory/gate commands explicitly suppress environment-file loading.
+if (process.env.TRAINER_CREDENTIAL_FREE_TEST !== "1") {
+  dotenv.config({ path: ".env.local" });
+  dotenv.config();
+}
 
 export default defineConfig({
   plugins: [react()],

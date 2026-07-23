@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -705,6 +706,70 @@ describe("dependency-free launcher", () => {
 describe("credential-free and mutation subprocess boundaries", () => {
   const vitestCli = resolve("node_modules/vitest/vitest.mjs");
   const tsxCli = resolve("node_modules/tsx/dist/cli.mjs");
+  const npmCli = process.env.npm_execpath;
+
+  function runReadinessPackageCommand(
+    args: string[],
+    additions: Record<string, string | undefined> = {}
+  ) {
+    if (!npmCli) throw new Error("NPM_EXECUTABLE_PATH_UNAVAILABLE");
+    const fixture = mkdtempSync(join(tmpdir(), "trainer-readiness-guard-"));
+    temporaryDirectories.push(fixture);
+    const pgMarker = join(fixture, "pg-loaded");
+    const dockerMarker = join(fixture, "docker-called");
+    const hook = join(fixture, "guard-hook.cjs");
+    writeFileSync(
+      hook,
+      [
+        'const { writeFileSync } = require("node:fs");',
+        'const Module = require("node:module");',
+        'const childProcess = require("node:child_process");',
+        "const originalLoad = Module._load;",
+        "Module._load = function(request, parent, isMain) {",
+        '  if (request === "pg") {',
+        '    writeFileSync(process.env.READINESS_PG_LOAD_MARKER, "loaded");',
+        '    throw new Error("PG_IMPORT_BLOCKED_BY_TEST");',
+        "  }",
+        "  return originalLoad.call(this, request, parent, isMain);",
+        "};",
+        "const originalSpawnSync = childProcess.spawnSync;",
+        "childProcess.spawnSync = function(executable, childArgs, options) {",
+        '  if (String(executable).toLowerCase() === "docker" || String(executable).toLowerCase().endsWith("docker.exe")) {',
+        '    writeFileSync(process.env.READINESS_DOCKER_CALL_MARKER, "called");',
+        '    throw new Error("DOCKER_CALL_BLOCKED_BY_TEST");',
+        "  }",
+        "  return originalSpawnSync.call(this, executable, childArgs, options);",
+        "};",
+      ].join("\n")
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        npmCli,
+        "run",
+        "test:db:readiness-snapshots",
+        ...(args.length > 0 ? ["--", ...args] : []),
+      ],
+      {
+        cwd: process.cwd(),
+        env: {
+          ...sanitizeDatabaseTargetEnvironment(process.env),
+          ...additions,
+          NODE_OPTIONS: `--require=${hook.replaceAll("\\", "/")}`,
+          READINESS_PG_LOAD_MARKER: pgMarker,
+          READINESS_DOCKER_CALL_MARKER: dockerMarker,
+        },
+        encoding: "utf8",
+        timeout: 30_000,
+      }
+    );
+    return {
+      result,
+      output: `${result.stdout}\n${result.stderr}`,
+      pgLoaded: existsSync(pgMarker),
+      dockerCalled: existsSync(dockerMarker),
+    };
+  }
 
   function runVitestCollection(
     testFile: string,
@@ -850,6 +915,9 @@ describe("credential-free and mutation subprocess boundaries", () => {
       ["--confirm-disposable", "--confirm-disposable"],
       ["--confirm_disposable"],
       ["positional"],
+      ["--extra", "--confirm-disposable"],
+      ["--confirm-disposable=1"],
+      ["prefix--confirm-disposable"],
     ]) {
       const result = spawnSync(process.execPath, [tsxCli, script, ...args], {
         cwd: process.cwd(),
@@ -865,6 +933,59 @@ describe("credential-free and mutation subprocess boundaries", () => {
         "Expected exactly one argument"
       );
     }
+  }, 30_000);
+
+  it("rejects the readiness package command without confirmation before pg or Docker", () => {
+    const result = runReadinessPackageCommand([]);
+
+    expect(result.result.status, result.output).toBe(2);
+    expect(result.output).toContain(
+      "npm run test:db:readiness-snapshots -- --confirm-disposable"
+    );
+    expect(result.pgLoaded).toBe(false);
+    expect(result.dockerCalled).toBe(false);
+  }, 30_000);
+
+  it("loads pg only after valid readiness confirmation and before Docker", () => {
+    const result = runReadinessPackageCommand(["--confirm-disposable"]);
+
+    expect(result.result.status, result.output).toBe(1);
+    expect(result.output).toContain("READINESS_SNAPSHOT_POSTGRES_FAILED");
+    expect(result.pgLoaded).toBe(true);
+    expect(result.dockerCalled).toBe(false);
+  }, 30_000);
+
+  it.each([
+    ["duplicate confirmation", ["--confirm-disposable", "--confirm-disposable"]],
+    ["extra flag", ["--confirm-disposable", "--extra"]],
+    ["reordered extra flag", ["--extra", "--confirm-disposable"]],
+    ["positional argument", ["positional"]],
+    ["misspelling", ["--confirm_disposable"]],
+    ["embedded substring", ["prefix--confirm-disposable"]],
+    ["malformed value", ["--confirm-disposable=1"]],
+  ])("rejects readiness package %s before pg or Docker", (_label, args) => {
+    const result = runReadinessPackageCommand(args);
+
+    expect(result.result.status, result.output).toBe(2);
+    expect(result.output).toContain("Expected exactly one argument");
+    expect(result.pgLoaded).toBe(false);
+    expect(result.dockerCalled).toBe(false);
+  }, 30_000);
+
+  it("rejects an unsafe inherited readiness target before pg or Docker", () => {
+    const result = runReadinessPackageCommand(
+      ["--confirm-disposable"],
+      {
+        DATABASE_URL:
+          "postgresql://trainer:secret@remote.example.test/trainer",
+      }
+    );
+
+    expect(result.result.status, result.output).toBe(1);
+    expect(result.output).toContain("READINESS_DB_TEST_TARGET_INVALID");
+    expect(result.output).not.toContain("secret");
+    expect(result.pgLoaded).toBe(false);
+    expect(result.dockerCalled).toBe(false);
   }, 30_000);
 });
 
@@ -951,6 +1072,55 @@ describe("buildTestEnvironmentPreflight", () => {
 });
 
 describe("command coverage honesty", () => {
+  it("keeps operator confirmation out of package and registry command strings", () => {
+    const packageJson = JSON.parse(readFileSync(resolve("package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    const policy = JSON.parse(
+      readFileSync(
+        resolve("..", "scripts", "codex", "trainer-policy.v1.json"),
+        "utf8"
+      )
+    ) as {
+      commandRegistry: Array<{
+        packageScript?: string;
+        command: string;
+        profile: string;
+      }>;
+    };
+    const registryByPackageScript = new Map(
+      policy.commandRegistry
+        .filter((entry) => entry.packageScript)
+        .map((entry) => [entry.packageScript!, entry])
+    );
+    const mutatingProfiles = new Set([
+      "disposable-database-write",
+      "production-write",
+    ]);
+
+    for (const [name, command] of Object.entries(packageJson.scripts)) {
+      expect(command, `package script ${name} must not self-confirm`).not.toContain(
+        "--confirm-disposable"
+      );
+      for (const match of command.matchAll(/\bnpm run ([\w:-]+)/g)) {
+        const child = registryByPackageScript.get(match[1]);
+        const parent = registryByPackageScript.get(name);
+        if (child && mutatingProfiles.has(child.profile)) {
+          expect(
+            mutatingProfiles.has(parent?.profile ?? ""),
+            `${name} must not disguise mutating child ${match[1]}`
+          ).toBe(true);
+        }
+      }
+    }
+    for (const entry of policy.commandRegistry) {
+      expect(
+        entry.command,
+        `registry command ${entry.packageScript ?? entry.command} must not self-confirm`
+      ).not.toContain("--confirm-disposable");
+    }
+  });
+
   it("keeps package scripts and canonical docs aligned without comprehensive claims", () => {
     const packageJson = JSON.parse(readFileSync(resolve("package.json"), "utf8")) as {
       scripts: Record<string, string>;

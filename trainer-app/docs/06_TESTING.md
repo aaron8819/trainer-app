@@ -1,7 +1,7 @@
 # 06 Testing
 
 Owner: Aaron
-Last reviewed: 2026-04-12
+Last reviewed: 2026-07-23
 Purpose: Canonical testing reference for Vitest-based coverage of engine, API helpers, and UI components, plus the Playwright UI audit harness.
 
 This doc covers:
@@ -22,7 +22,18 @@ Sources of truth:
 - `trainer-app/scripts/check-doc-runtime-contracts.ts`
 
 ## Commands
-- `npm test`: full Vitest run
+- `npm run test:preflight`: sanitized, connection-free capability report. It checks the
+  dependency arrangement, Prisma version alignment, local/remote classification of
+  `DATABASE_URL`, Docker availability, and which test groups are runnable, blocked, or
+  intentionally separate. It never prints environment values or connects to a database.
+- `npm run test:pure`: authoritative credential-free local verification (`npm run verify`).
+  This is the ordinary local gate and does not claim disposable PostgreSQL or Playwright
+  coverage.
+- `npm test`: raw full Vitest inventory. This remains available for focused file arguments and
+  baseline diagnosis, but without `DATABASE_URL` some DB-importing files fail during collection.
+- `npm run test:full`: preflight-gated full Vitest inventory. It refuses missing, invalid, or
+  remote `DATABASE_URL` values and runs only with an explicit loopback database target. Use a
+  disposable local target; passing preflight proves target class, not schema readiness.
 - `npm run test:seed-revision-concurrency -- --confirm-disposable`: against a local disposable PostgreSQL database, verifies one-winner concurrent correction, generation/correction revision preservation, and full rollback after a failed correction. The command refuses non-local or unconfirmed targets.
 - `npm run test:db:workout-mutations`: creates disposable PostgreSQL 16 from the checked-in migration chain, then verifies main-save CAS, runtime mutation races, exact stimulus snapshot persistence, and immutable review-snapshot storage without `db push` or `.env.local`.
 - `npm run test:db:historical-snapshots`: explicit schema-dependent historical-evidence alias for the same consolidated disposable harness.
@@ -160,6 +171,9 @@ Disposable PostgreSQL verification must cover migration apply, unique one-to-one
 - Environment: `jsdom`
 - Reporter: `dot`
 - Setup: `vitest.setup.ts`
+- `npm run test:full` does not silently skip infrastructure coverage. Missing local database
+  infrastructure blocks before Vitest collection, while disposable DB and Playwright suites
+  remain explicit separate commands.
 - Playwright config: `playwright.config.ts`; by default it starts a managed local Next dev server on port `3100` with `UI_AUDIT_FIXTURE_MODE=1`, uses the isolated `.next-ui-audit/managed` output directory, and runs the core-route audit at mobile (`390x844`) and desktop (`1366x768`) viewport sizes.
 - The UI audit fixture harness is development-only. Fixture mode requires `UI_AUDIT_FIXTURE_MODE=1`, is disabled when `NODE_ENV=production`, and selects a named scenario through the `x-ui-audit-fixture` request header.
 - Current UI audit fixture scenarios:

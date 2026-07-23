@@ -41,6 +41,7 @@ export type LogExerciseInput = {
   exerciseId?: string;
   name: string;
   equipment?: string[];
+  loadIncrement?: number;
   movementPatterns?: string[];
   muscleTags?: string[];
   muscleTagGroups?: LogExerciseMuscleTagGroups;

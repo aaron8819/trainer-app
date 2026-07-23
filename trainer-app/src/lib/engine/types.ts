@@ -155,6 +155,8 @@ export type Exercise = {
   repRangeMin?: number;
   repRangeMax?: number;
   equipment: EquipmentType[];
+  /** Optional verified runtime increment supplied by the caller. */
+  loadIncrement?: number;
   primaryMuscles?: string[];
   secondaryMuscles?: string[];
   stimulusProfile?: StimulusProfile;
@@ -207,9 +209,11 @@ export type SetLog = {
   targetReps?: number;
   targetRepMin?: number;
   targetRepMax?: number;
+  targetRpe?: number;
 };
 
 export type WorkoutHistoryEntry = {
+  workoutId?: string;
   date: string;
   completed: boolean;
   status?: "PLANNED" | "IN_PROGRESS" | "PARTIAL" | "COMPLETED" | "SKIPPED";
@@ -226,6 +230,7 @@ export type WorkoutHistoryEntry = {
   mesocycleSnapshot?: WorkoutMesocycleSnapshot;
   exercises: {
     exerciseId: string;
+    plannedWorkingSetCount?: number;
     primaryMuscles?: string[];
     secondaryMuscles?: string[];
     stimulusAccountingSnapshot?: ExerciseStimulusSnapshot;
@@ -234,6 +239,7 @@ export type WorkoutHistoryEntry = {
   calibrationExercises?: {
     exerciseId: string;
     source: "runtime_added_same_exercise";
+    plannedWorkingSetCount?: number;
     sets: SetLog[];
   }[];
   readinessScore?: 1 | 2 | 3 | 4 | 5;

@@ -135,7 +135,7 @@ describe("weekly retro calibration contract", () => {
 
     expect(contract.summary).toMatchObject({
       kind: "repeated_under_plan",
-      headline: "Repeated under-plan execution",
+      headline: "Repeated likely over-prescription",
       displaySafe: true,
     });
     expect(contract.patterns).toEqual([
@@ -210,7 +210,7 @@ describe("weekly retro calibration contract", () => {
 
     expect(contract.summary).toMatchObject({
       kind: "stable_as_planned",
-      headline: "Execution stable as planned",
+      headline: "Repeated successful execution",
     });
     expect(contract.patterns).toEqual([
       expect.objectContaining({
@@ -278,7 +278,7 @@ describe("weekly retro calibration contract", () => {
 
     expect(contract.summary).toMatchObject({
       kind: "mixed",
-      headline: "Mixed weekly execution signals",
+      headline: "Unresolved execution variability",
       displaySafe: true,
     });
     expect(contract.summary.detail).toContain("Review evidence only");

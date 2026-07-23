@@ -30,9 +30,13 @@ export type CalibrationEstimateSource =
   | "history";
 
 type LoadCalibrationExercise = {
+  name?: string | null;
   equipment?: readonly string[] | null;
   isCompound?: boolean | null;
+  loadIncrement?: number | null;
 };
+
+export type ExternalLoadDirection = "standard" | "assistance" | "unknown";
 
 const CALIBRATION_BY_TIER: Record<
   LoadReliabilityTier,
@@ -135,6 +139,33 @@ export function resolveProgressionEquipment(
     return equipment;
   }
   return "other";
+}
+
+export function resolveValidLoadIncrement(
+  exercise: LoadCalibrationExercise,
+  suppliedIncrement?: number | null
+): number {
+  const verifiedIncrement = suppliedIncrement ?? exercise.loadIncrement;
+  if (Number.isFinite(verifiedIncrement) && (verifiedIncrement ?? 0) > 0) {
+    return verifiedIncrement as number;
+  }
+  const equipment = resolveLoadEquipment(exercise);
+  if (equipment === "barbell") return 5;
+  if (equipment === "dumbbell") return 2.5;
+  return 2.5;
+}
+
+/**
+ * Direction is explicit for ordinary external load and recognizable assisted
+ * counterbalance movements. Ambiguous assistance is intentionally not coached.
+ */
+export function resolveExternalLoadDirection(
+  exercise: LoadCalibrationExercise
+): ExternalLoadDirection {
+  const name = exercise.name?.trim().toLowerCase() ?? "";
+  if (/\bassisted\b|counterbalance|counterweight/.test(name)) return "assistance";
+  if (/\bassistance\b/.test(name)) return "unknown";
+  return "standard";
 }
 
 function resolveReliabilityTier(

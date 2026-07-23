@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCanonicalProgressionEvaluationInput } from "./canonical-progression-input";
+import type { ProgressionSet } from "../engine/progression";
 
 describe("buildCanonicalProgressionEvaluationInput", () => {
   it("defaults to single-session full confidence when no history sessions are provided", () => {
@@ -181,7 +182,79 @@ describe("buildCanonicalProgressionEvaluationInput", () => {
     });
     expect(input.context.intentDeviationTargetLoadCeiling).toBe(145);
   });
+
+  it.each([6, 8, 9])("passes raw bound evidence without interpreting RPE $actualRpe", (actualRpe) => {
+    const sets = prescriptionSets({ actualRpe });
+    const input = buildCanonicalProgressionEvaluationInput({
+      lastSets: sets,
+      repRange: [8, 10],
+      equipment: "barbell",
+      currentTarget: { reps: 10, rpe: 8 },
+      historySessions: [{ ...historySession(sets), exposureId: "workout-1", date: "2026-07-20" }],
+      workingSetLoad: 100,
+      loadIncrement: 5,
+    });
+
+    expect(input.context.loadIncrement).toBe(5);
+    expect(input.context.selectedExposure).toMatchObject({
+      exposureId: "workout-1",
+      representativeLoad: 100,
+      sets,
+    });
+    expect(input.decisionOptions.progressionExposures?.[0]).toEqual(
+      input.context.selectedExposure
+    );
+    expect(input.context.selectedExposure).not.toHaveProperty("clearEasy");
+    expect(input.context.selectedExposure).not.toHaveProperty("clearHard");
+  });
+
+  it("preserves recurrence exposure order without authoring repeated-success outcomes", () => {
+    const input = buildCanonicalProgressionEvaluationInput({
+      lastSets: prescriptionSets({ actualRpe: 8 }),
+      repRange: [8, 10],
+      equipment: "barbell",
+      historySessions: [
+        historySession(prescriptionSets({ actualRpe: 8 })),
+        historySession(prescriptionSets({ actualRpe: 9.5, actualReps: 9 })),
+        historySession(prescriptionSets({ actualRpe: 8 })),
+      ],
+    });
+
+    expect(input.decisionOptions.progressionExposures?.map((item) => item.sets[0]?.rpe)).toEqual([
+      8,
+      9.5,
+      8,
+    ]);
+    expect(input.decisionOptions.progressionExposures?.[0]).not.toHaveProperty("repeatedSuccess");
+  });
+
+  it("preserves missing actual RPE as raw evidence for the decision owner", () => {
+    const sets = prescriptionSets({ actualRpe: undefined });
+    const input = buildCanonicalProgressionEvaluationInput({
+      lastSets: sets,
+      repRange: [8, 10],
+      equipment: "barbell",
+      historySessions: [historySession(sets)],
+    });
+
+    expect(input.context.selectedExposure?.sets[0]?.rpe).toBeUndefined();
+    expect(input.context.selectedExposure).not.toHaveProperty("prescriptionEvidenceIncomplete");
+  });
 });
+
+function prescriptionSets(input: { actualRpe?: number; actualReps?: number }) {
+  return [1, 2, 3].map((setIndex) => ({
+    setIndex,
+    reps: input.actualReps ?? 10,
+    ...(input.actualRpe == null ? {} : { rpe: input.actualRpe }),
+    load: 100,
+    targetLoad: 100,
+    targetReps: 10,
+    targetRepMin: 8,
+    targetRepMax: 10,
+    targetRpe: 8,
+  }));
+}
 
 function deviatingSets(load: number) {
   return [
@@ -249,7 +322,7 @@ function nonDeviatingSets() {
   ];
 }
 
-function historySession(sets: ReturnType<typeof deviatingSets>) {
+function historySession(sets: ProgressionSet[]) {
   return {
     confidence: 1,
     selectionMode: "INTENT" as const,

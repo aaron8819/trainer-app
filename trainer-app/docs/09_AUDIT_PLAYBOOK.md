@@ -1002,12 +1002,18 @@ Command pattern:
 npm run audit:workout -- --env-file .env.local --mode progression-anchor --user-id <user-id> --exercise-id <exercise-id> --workout-id <workout-id>
 ```
 
+`--workout-id` is required and identifies the workout whose prescription supplies the
+current target reps, rep range, and RPE. The bound performed exposure remains separate
+history evidence; the audit never substitutes that exposure's prior prescription for
+the target workout's current context.
+
 Inspect first:
 - `progressionAnchor.trace.outcome`
 - `progressionAnchor.trace.metrics`
 - `progressionAnchor.trace.anchor`
 - `progressionAnchor.trace.confidence`
 - `progressionAnchor.trace.decisionLog`
+- `progressionAnchor.trace.exposure` for the bound prior exposure and its prescription
 - `progressionAnchor.sessionSnapshotSource`
 - `progressionAnchor.sessionSnapshot`
 

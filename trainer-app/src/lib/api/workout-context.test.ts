@@ -266,6 +266,7 @@ describe("mapHistory", () => {
       reps: 8,
       load: 185,
       targetLoad: 185,
+      targetRpe: 8,
     });
     expect(history[0].mesocycleSnapshot).toEqual({
       mesocycleId: undefined,
@@ -762,6 +763,7 @@ describe("mapHistory", () => {
       {
         exerciseId: "pec-deck",
         source: "runtime_added_same_exercise",
+        plannedWorkingSetCount: 1,
         sets: [
           {
             exerciseId: "pec-deck",
@@ -773,6 +775,7 @@ describe("mapHistory", () => {
             targetReps: 12,
             targetRepMin: 10,
             targetRepMax: 15,
+            targetRpe: 6.5,
           },
         ],
       },

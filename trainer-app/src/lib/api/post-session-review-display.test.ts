@@ -382,6 +382,29 @@ describe("post-session review display adapter", () => {
     );
   });
 
+  it("renders a clean load adjustment as successful autoregulation", () => {
+    const display = buildDisplay({
+      exercises: [
+        exercise({
+          exerciseId: "autoregulated",
+          exerciseName: "Cable Crossover",
+          sets: [
+            performedSet("set-1", { targetLoad: 20, actualLoad: 17.5, actualReps: 10, targetRpe: 7.5, actualRpe: 7.5 }),
+            performedSet("set-2", { targetLoad: 20, actualLoad: 17.5, actualReps: 10, targetRpe: 7.5, actualRpe: 7.5 }),
+          ],
+        }),
+      ],
+    });
+
+    expect(display.loadCalibration).toEqual([
+      expect.objectContaining({
+        status: "info",
+        headline: "Cable Crossover was autoregulated successfully",
+        nextExposureNote: "Treat this as useful session evidence, not a failed prescription.",
+      }),
+    ]);
+  });
+
   it("maps performed-reality labels to display-safe review rows", () => {
     const display = buildDisplay({
       exercises: [
@@ -507,10 +530,10 @@ describe("post-session review display adapter", () => {
     expect(display.performedRealityTrends).toEqual([
       {
         status: "watch",
-        label: "Repeated under plan",
-        headline: "Hard Press has repeated under-plan evidence",
+        label: "Systematic heavy-target signal",
+        headline: "Hard Press has repeated evidence that the target may be too heavy",
         detail:
-          "1 recent row in the last 3 eligible exposure(s) also came in under plan. Review evidence only; no automatic plan change.",
+          "1 recent row in the last 3 eligible exposure(s) showed the same supported mismatch. Review evidence only; no automatic plan change.",
         evidenceOnly: true,
       },
       {

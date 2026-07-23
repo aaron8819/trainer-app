@@ -241,7 +241,7 @@ export async function runWorkoutAuditGeneration(
       generatedAt: new Date().toISOString(),
       progressionAnchor: await buildProgressionAnchorAuditPayload({
         userId: context.userId,
-        workoutId: context.progressionAnchor?.workoutId,
+        workoutId: context.progressionAnchor!.workoutId,
         exerciseId: context.progressionAnchor!.exerciseId,
       }),
     };

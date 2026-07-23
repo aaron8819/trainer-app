@@ -243,7 +243,7 @@ export function WorkoutActiveSetCard({
           {activeSet.set.isRuntimeAdded ? " · Extra set" : ""}
         </p>
         <p className="mt-0.5 text-xs font-medium text-slate-600">
-          {formatTargetReps(activeSet.set, activeSet.exercise.isMainLift)}
+          Starting target: {formatTargetReps(activeSet.set, activeSet.exercise.isMainLift)}
           {activeSet.set.targetLoad != null
             ? ` · ${
                 isDumbbell

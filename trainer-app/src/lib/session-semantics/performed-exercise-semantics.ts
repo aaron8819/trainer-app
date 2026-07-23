@@ -12,6 +12,10 @@ export type PerformedExerciseSetInput = {
   setIndex: number;
   setIntent?: "WORK" | "WARMUP" | null;
   targetLoad?: number | null;
+  targetReps?: number | null;
+  targetRepMin?: number | null;
+  targetRepMax?: number | null;
+  targetRpe?: number | null;
   actualLoad?: number | null;
   actualReps?: number | null;
   actualRpe?: number | null;
@@ -53,6 +57,10 @@ export function derivePerformedExerciseSemantics(input: {
       load: set.actualLoad as number,
       rpe: set.actualRpe ?? undefined,
       targetLoad: set.targetLoad ?? undefined,
+      targetReps: set.targetReps ?? undefined,
+      targetRepMin: set.targetRepMin ?? undefined,
+      targetRepMax: set.targetRepMax ?? undefined,
+      targetRpe: set.targetRpe ?? undefined,
     }));
 
   if (signalSets.length === 0) {

@@ -1,4 +1,5 @@
 import type {
+  BoundProgressionExposure,
   DoubleProgressionDecisionOptions,
   ProgressionEquipment,
   ProgressionSet,
@@ -6,9 +7,16 @@ import type {
 import type { WorkoutHistoryEntry } from "../engine/types";
 
 export type CanonicalProgressionHistorySession = {
+  exposureId?: string;
+  date?: string;
+  source?: BoundProgressionExposure["source"];
   confidence: number;
   selectionMode?: WorkoutHistoryEntry["selectionMode"];
   confidenceNotes: string[];
+  progressionEligible?: boolean;
+  comparable?: boolean;
+  plannedWorkingSetCount?: number;
+  representativeLoad?: number;
   sets?: ProgressionSet[];
 };
 
@@ -38,6 +46,8 @@ export type CanonicalProgressionEvaluationInput = {
     intentDeviation: IntentDeviationSignal;
     intentDeviationTargetLoadCeiling?: number;
     currentTarget?: DoubleProgressionDecisionOptions["currentTarget"];
+    loadIncrement?: number;
+    selectedExposure?: BoundProgressionExposure;
   };
 };
 
@@ -50,8 +60,13 @@ export function buildCanonicalProgressionEvaluationInput(input: {
   historySessions?: CanonicalProgressionHistorySession[];
   calibrationConfidenceScale?: number;
   calibrationConfidenceReason?: string;
+  loadIncrement?: number;
 }): CanonicalProgressionEvaluationInput {
   const historySessions = input.historySessions ?? [];
+  const progressionExposures = historySessions.map((session, index) =>
+    toBoundProgressionExposure(session, index, input.workingSetLoad)
+  );
+  const selectedExposure = progressionExposures[0];
   const intentDeviation = resolveIntentDeviationSignal({
     sessions: historySessions,
     repRange: input.repRange,
@@ -85,6 +100,8 @@ export function buildCanonicalProgressionEvaluationInput(input: {
       confidenceReasons,
       intentDeviation: intentDeviation.signal,
       ...(input.currentTarget ? { currentTarget: input.currentTarget } : {}),
+      ...(input.loadIncrement != null ? { loadIncrement: input.loadIncrement } : {}),
+      ...(progressionExposures.length > 0 ? { progressionExposures } : {}),
       ...(intentDeviation.targetLoadCeiling != null
         ? { intentDeviationTargetLoadCeiling: intentDeviation.targetLoadCeiling }
         : {}),
@@ -96,10 +113,38 @@ export function buildCanonicalProgressionEvaluationInput(input: {
       confidenceReasons,
       intentDeviation: intentDeviation.signal,
       ...(input.currentTarget ? { currentTarget: input.currentTarget } : {}),
+      ...(input.loadIncrement != null ? { loadIncrement: input.loadIncrement } : {}),
+      ...(selectedExposure ? { selectedExposure } : {}),
       ...(intentDeviation.targetLoadCeiling != null
         ? { intentDeviationTargetLoadCeiling: intentDeviation.targetLoadCeiling }
         : {}),
     },
+  };
+}
+
+function toBoundProgressionExposure(
+  session: CanonicalProgressionHistorySession,
+  index: number,
+  selectedWorkingSetLoad?: number
+): BoundProgressionExposure {
+  return {
+    exposureId: session.exposureId ?? `history:${session.date ?? index}`,
+    ...(session.date ? { date: session.date } : {}),
+    source: session.source ?? "exact_exercise_history",
+    confidence: session.confidence,
+    confidenceNotes: [...session.confidenceNotes],
+    ...(session.selectionMode ? { selectionMode: session.selectionMode } : {}),
+    progressionEligible: session.progressionEligible !== false,
+    comparable: session.comparable !== false,
+    ...(session.plannedWorkingSetCount != null
+      ? { plannedWorkingSetCount: session.plannedWorkingSetCount }
+      : {}),
+    ...(Number.isFinite(session.representativeLoad)
+      ? { representativeLoad: session.representativeLoad }
+      : index === 0 && Number.isFinite(selectedWorkingSetLoad)
+        ? { representativeLoad: selectedWorkingSetLoad }
+        : {}),
+    sets: [...(session.sets ?? [])],
   };
 }
 
@@ -260,13 +305,6 @@ function median(values: number[]): number {
 function resolveProgressionHistoryConfidenceScale(
   sessions: CanonicalProgressionHistorySession[]
 ): number {
-  if (sessions.length <= 1) {
-    return 1;
-  }
-  const hasIntentHistory = sessions.some((session) => session.selectionMode === "INTENT");
-  if (!hasIntentHistory && sessions.every((session) => session.selectionMode === "MANUAL")) {
-    return 1;
-  }
   const total = sessions.reduce(
     (sum, session) => sum + Math.min(1, Math.max(0, session.confidence)),
     0

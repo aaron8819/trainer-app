@@ -468,6 +468,7 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
     // Keep deload sessions in performed history for compliance/volume context
     // while marking them out of progression and performance reads.
     return {
+      workoutId: workout.id,
       date: workout.scheduledDate.toISOString(),
       completed: workout.status === WorkoutStatus.COMPLETED,
       status: workout.status,
@@ -506,6 +507,7 @@ export function mapHistory(workouts: WorkoutWithRelations[]): WorkoutHistoryEntr
         .map((exercise) => ({
           exerciseId: exercise.exerciseId,
           source: "runtime_added_same_exercise" as const,
+          plannedWorkingSetCount: exercise.plannedWorkingSetCount,
           sets: exercise.sets,
         })),
     };
@@ -600,6 +602,7 @@ function mapWorkoutExerciseHistory(
   });
   return {
     exerciseId: exercise.exerciseId,
+    plannedWorkingSetCount: exercise.sets.length,
     primaryMuscles: accounting.snapshot
       ? getRelationshipMusclesFromSnapshot(accounting.snapshot, "primary")
       : [],
@@ -624,6 +627,7 @@ function mapWorkoutExerciseHistory(
           targetReps: set.targetReps ?? undefined,
           targetRepMin: set.targetRepMin ?? undefined,
           targetRepMax: set.targetRepMax ?? undefined,
+          targetRpe: set.targetRpe ?? undefined,
         },
       ];
     }),

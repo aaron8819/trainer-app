@@ -2,6 +2,7 @@ import {
   computeDoubleProgressionDecision,
   computeNextLoad,
   PROGRESSION_CONFIG,
+  translateLoadToTargetContext,
 } from "./progression";
 import {
   filterPerformanceHistory,
@@ -50,6 +51,7 @@ import {
   resolveLoadCalibrationPolicy,
   resolveLoadEquipment,
   resolveProgressionEquipment,
+  resolveValidLoadIncrement,
   type CalibrationEstimateSource,
   type LoadCalibrationEquipment,
 } from "./load-calibration";
@@ -75,6 +77,7 @@ export type ApplyLoadsOptions = {
   accumulationSessionsCompleted?: number;
   isFirstSessionInMesocycle?: boolean;
   selectedAnchorEvidence?: Record<string, SelectedAnchorLoadEvidence>;
+  loadIncrementByExerciseId?: Record<string, number>;
 };
 
 export type ApplyLoadsResolvedLoadSource =
@@ -127,7 +130,6 @@ const BASELINE_SCALE_VOLUME_TO_STRENGTH = 1.12;
 const EFFECTIVE_RPE_MIN = 6;
 const CROSS_INTENT_MAIN_LIFT_MIGRATION_DISCOUNT = 0.9;
 const CROSS_INTENT_MAIN_LIFT_ESTIMATE_CAP_MULTIPLIER = 1.25;
-const CROSS_INTENT_RPE_LOAD_ADJUSTMENT_PER_POINT = 0.04;
 const CALIBRATED_HINGE_NAME_TOKENS = ["stiff", "sldl", "romanian", "rdl"];
 export const EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE =
   "exact_history_translated_from_high_effort_lower_rep_anchor";
@@ -254,7 +256,8 @@ export function applyLoadsWithAudit(
         options.weekInBlock,
         preferredContext,
         options.sessionIntent,
-        useNewMesocycleBaselineSource
+        useNewMesocycleBaselineSource,
+        options.loadIncrementByExerciseId?.[exercise.id]
       );
     if (resolvedLoad.progressionTrace) {
       progressionTraces[exercise.id] = resolvedLoad.progressionTrace;
@@ -426,7 +429,11 @@ function buildRuntimeAddedCalibrationHistoryIndex(
         index.set(exercise.exerciseId, []);
       }
       index.get(exercise.exerciseId)?.push({
+        exposureId: entry.workoutId ?? `history:${entry.date}`,
+        date: entry.date,
+        source: "runtime_added_same_exercise",
         sets: exercise.sets,
+        plannedWorkingSetCount: exercise.plannedWorkingSetCount,
         confidence: Math.min(entryConfidence, 0.65),
         selectionMode: entry.selectionMode,
         sessionIntent: entry.sessionIntent,
@@ -469,7 +476,11 @@ function buildSessionHistoryIndex(
         index.set(exercise.exerciseId, []);
       }
       index.get(exercise.exerciseId)?.push({
+        exposureId: entry.workoutId ?? `history:${entry.date}`,
+        date: entry.date,
+        source: "exact_exercise_history",
         sets: exercise.sets,
+        plannedWorkingSetCount: exercise.plannedWorkingSetCount,
         confidence: entryConfidence,
         selectionMode: entry.selectionMode,
         sessionIntent: entry.sessionIntent,
@@ -544,6 +555,7 @@ type WorkoutSetHistory = {
   targetReps?: number;
   targetRepMin?: number;
   targetRepMax?: number;
+  targetRpe?: number;
 }[];
 type WorkoutSessionHistory = CanonicalProgressionHistorySession & {
   sets: WorkoutSetHistory;
@@ -705,48 +717,41 @@ function resolveLoadForExercise(
   weekInBlock: number | undefined,
   preferredContext: string,
   sessionIntent: SplitDay | undefined,
-  useNewMesocycleBaselineSource: boolean
+  useNewMesocycleBaselineSource: boolean,
+  suppliedLoadIncrement?: number
 ): {
   load?: number;
   progressionTrace?: ProgressionDecisionTrace;
   source: "history" | "baseline" | "estimate" | typeof RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE;
 } {
-  const latestSetsRaw = historySessions?.[0]?.sets;
+  const selectedExposure = historySessions?.[0];
+  const latestSetsRaw = selectedExposure?.sets;
   const useModalAnchoring = shouldUseModalAnchoring(exercise);
-  const latestSets =
-    latestSetsRaw && useModalAnchoring ? normalizeSessionLoadsToModal(latestSetsRaw) : latestSetsRaw;
-  const weightedHistoryModalLoad = historySessions
-    ? resolveWeightedModalLoadAcrossHistory(historySessions)
-    : undefined;
+  const latestSets = latestSetsRaw;
   if (latestSets && latestSets.length > 0) {
-    const latestSetsForDecision =
-      useModalAnchoring &&
-      weightedHistoryModalLoad !== undefined &&
-      (historySessions?.length ?? 0) > 1
-        ? latestSets.map((set) =>
-            Number.isFinite(set.load) && (set.load ?? 0) >= 0
-              ? { ...set, load: weightedHistoryModalLoad }
-              : set
-          )
-        : latestSets;
+    const latestSetsForDecision = latestSets;
     const equipment = resolveProgressionEquipment(exercise);
+    const loadIncrement = resolveValidLoadIncrement(exercise, suppliedLoadIncrement);
     const calibrationPolicy = resolveLoadCalibrationPolicy(exercise);
     const priorSessionCount = Math.max(historySessions?.length ?? 0, 1);
     const calibrationConfidenceScale = resolveCalibrationConfidenceScale(
       calibrationPolicy,
       priorSessionCount
     );
-    const workingSetLoad = !useModalAnchoring
-      ? resolveWorkingSetLoad({
+    const workingSetLoad = useModalAnchoring
+      ? getModalSessionLoad(latestSets)
+      : resolveWorkingSetLoad({
           isMainLiftEligible: exercise.isMainLiftEligible,
-          sets: latestSets.map((set) => ({
-            setIndex: set.setIndex,
+          sets: latestSets.map((set, index) => ({
+            setIndex: set.setIndex ?? index + 1,
             load: set.load,
             targetLoad: set.targetLoad,
             rpe: set.rpe,
           })),
-        }) ?? undefined
-      : undefined;
+        }) ?? undefined;
+    if (selectedExposure && workingSetLoad != null) {
+      selectedExposure.representativeLoad = workingSetLoad;
+    }
     const progressionInput = buildCanonicalProgressionEvaluationInput({
       lastSets: latestSetsForDecision,
       repRange,
@@ -759,6 +764,7 @@ function resolveLoadForExercise(
       workingSetLoad,
       calibrationConfidenceScale,
       calibrationConfidenceReason: calibrationPolicy.confidenceReason,
+      loadIncrement,
     });
     const decision = computeDoubleProgressionDecision(
       progressionInput.lastSets,
@@ -772,15 +778,14 @@ function resolveLoadForExercise(
         },
       }
     );
-    const anchorLoad = useModalAnchoring
-      ? (decision?.anchorLoad ?? weightedHistoryModalLoad ?? getModalSessionLoad(latestSets))
-      : workingSetLoad;
+    const anchorLoad = decision?.anchorLoad ?? workingSetLoad;
     const modalRpe = getModalSessionRpe(latestSetsForDecision);
     const exactHistoryContextCalibration = resolveExactHistoryTargetContextCalibration({
       enabled:
         useNewMesocycleBaselineSource &&
         !periodization?.isDeload &&
-        sessionIntent != null,
+        sessionIntent != null &&
+        progressionInput.context.selectedExposure == null,
       decisionTrace: decision?.trace,
       anchorLoad,
       targetReps,
@@ -793,7 +798,12 @@ function resolveLoadForExercise(
         source: "history",
       };
     }
-    if (anchorLoad !== undefined && modalRpe !== undefined && modalRpe >= 9) {
+    if (
+      anchorLoad !== undefined &&
+      modalRpe !== undefined &&
+      modalRpe >= 9 &&
+      progressionInput.context.selectedExposure == null
+    ) {
       return { load: anchorLoad, progressionTrace: decision?.trace, source: "history" };
     }
     if (decision) {
@@ -1102,29 +1112,6 @@ function resolveCrossIntentFallbackPolicy(exercise: Exercise): CrossIntentFallba
     migrationDiscount: CROSS_INTENT_MAIN_LIFT_MIGRATION_DISCOUNT,
     estimateCapMultiplier: CROSS_INTENT_MAIN_LIFT_ESTIMATE_CAP_MULTIPLIER,
   };
-}
-
-function translateLoadToTargetContext(input: {
-  priorLoad: number;
-  priorReps: number;
-  priorRpe?: number;
-  targetReps: number;
-  targetRpe: number;
-}): number {
-  const estimatedOneRepMax = input.priorLoad * (1 + input.priorReps / 30);
-  const repTranslatedLoad = estimatedOneRepMax / (1 + input.targetReps / 30);
-
-  if (!Number.isFinite(input.priorRpe) || !Number.isFinite(input.targetRpe)) {
-    return repTranslatedLoad;
-  }
-
-  const rpeDelta = input.targetRpe - (input.priorRpe as number);
-  const effortScale = clamp(
-    1 + rpeDelta * CROSS_INTENT_RPE_LOAD_ADJUSTMENT_PER_POINT,
-    0.75,
-    1.25
-  );
-  return repTranslatedLoad * effortScale;
 }
 
 function resolveExactHistoryTargetContextCalibration(input: {

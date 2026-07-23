@@ -61,8 +61,8 @@ export type PostSessionReviewDisplayPerformedReality = {
 export type PostSessionReviewDisplayPerformedRealityTrend = {
   status: "info" | "watch";
   label:
-    | "Repeated under plan"
-    | "Repeated over plan"
+    | "Systematic heavy-target signal"
+    | "Systematic light-target signal"
     | "Stable as planned"
     | "Missing actuals pattern";
   headline: string;
@@ -350,6 +350,13 @@ function calibrationCopy(
         detail: performedRealityDetail(row),
         nextExposureNote: "Next exposure: raise starting point modestly.",
       };
+    case "successful_autoregulation":
+      return {
+        status: "info",
+        headline: `${row.exerciseName} was autoregulated successfully`,
+        detail: `${performedRealityDetail(row)} The adjusted load still achieved the intended reps and effort.`,
+        nextExposureNote: "Treat this as useful session evidence, not a failed prescription.",
+      };
     case "recalibrated_hold":
       return {
         status: "info",
@@ -459,16 +466,16 @@ function trendCopy(group: PostSessionReviewPerformedRealityTrendGroup): Pick<
     case "repeated_underperformance":
       return {
         status: "watch",
-        label: "Repeated under plan",
-        headline: `${exerciseLabel} has repeated under-plan evidence`,
-        detail: `${exposureCopy} also came in under plan. Review evidence only; no automatic plan change.`,
+        label: "Systematic heavy-target signal",
+        headline: `${exerciseLabel} has repeated evidence that the target may be too heavy`,
+        detail: `${exposureCopy} showed the same supported mismatch. Review evidence only; no automatic plan change.`,
       };
     case "repeated_overperformance":
       return {
         status: "watch",
-        label: "Repeated over plan",
-        headline: `${exerciseLabel} has repeated over-plan evidence`,
-        detail: `${exposureCopy} also exceeded plan. Review evidence only; no automatic plan change.`,
+        label: "Systematic light-target signal",
+        headline: `${exerciseLabel} has repeated evidence that the target may be too light`,
+        detail: `${exposureCopy} showed the same supported mismatch. Review evidence only; no automatic plan change.`,
       };
     case "stable_as_planned":
       return {

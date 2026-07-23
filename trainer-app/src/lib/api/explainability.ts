@@ -321,6 +321,10 @@ export async function generateWorkoutExplanation(
       sets: workoutExercise.sets.map((set) => ({
         setIndex: set.setIndex,
         targetLoad: set.targetLoad,
+        targetReps: set.targetReps,
+        targetRepMin: set.targetRepMin,
+        targetRepMax: set.targetRepMax,
+        targetRpe: set.targetRpe,
         actualLoad: set.logs[0]?.actualLoad ?? null,
         actualReps: set.logs[0]?.actualReps ?? null,
         actualRpe: set.logs[0]?.actualRpe ?? null,
@@ -356,11 +360,18 @@ export async function generateWorkoutExplanation(
         selectionMode: workout.selectionMode ?? undefined,
         performedLogs: workoutExercise.sets.map((set) => ({
           setIndex: set.setIndex,
+          targetLoad: set.targetLoad,
+          targetReps: set.targetReps,
+          targetRepMin: set.targetRepMin,
+          targetRepMax: set.targetRepMax,
+          targetRpe: set.targetRpe,
           log: set.logs[0]
             ? {
                 setIntent: set.logs[0].setIntent,
                 actualRpe: set.logs[0].actualRpe,
                 actualLoad: set.logs[0].actualLoad,
+                actualReps: set.logs[0].actualReps,
+                wasSkipped: set.logs[0].wasSkipped,
               }
             : undefined,
         })),
@@ -989,12 +1000,32 @@ async function loadLatestPerformedSetSummary(
     }
   }
 
-  const performedLogs = previous.sets.map((set) => ({ setIndex: set.setIndex, log: set.logs[0] }));
+  const performedLogs = previous.sets.map((set) => ({
+    setIndex: set.setIndex,
+    targetLoad: set.targetLoad,
+    targetReps: set.targetReps,
+    targetRepMin: set.targetRepMin,
+    targetRepMax: set.targetRepMax,
+    targetRpe: set.targetRpe,
+    log: set.logs[0]
+      ? {
+          setIntent: set.logs[0].setIntent,
+          actualRpe: set.logs[0].actualRpe,
+          actualLoad: set.logs[0].actualLoad,
+          actualReps: set.logs[0].actualReps,
+          wasSkipped: set.logs[0].wasSkipped,
+        }
+      : undefined,
+  }));
   const performedSemantics = derivePerformedExerciseSemantics({
     isMainLiftEligible,
     sets: previous.sets.map((set) => ({
       setIndex: set.setIndex,
       targetLoad: set.targetLoad,
+      targetReps: set.targetReps,
+      targetRepMin: set.targetRepMin,
+      targetRepMax: set.targetRepMax,
+      targetRpe: set.targetRpe,
       actualLoad: set.logs[0]?.actualLoad ?? null,
       actualReps: set.logs[0]?.actualReps ?? null,
       actualRpe: set.logs[0]?.actualRpe ?? null,
@@ -1014,6 +1045,7 @@ async function loadLatestPerformedSetSummary(
     {
       userId,
       workoutId,
+      exposureId: previous.workoutId,
       selectionMode: previous.workout.selectionMode ?? undefined,
       scheduledDate: performedDate ?? undefined,
       exerciseId,
@@ -1043,16 +1075,25 @@ async function loadLatestPerformedSetSummary(
 type ExplainabilityConfidenceInput = {
   userId: string;
   workoutId: string;
+  exposureId?: string;
   exerciseId: string;
   selectionMode?: WorkoutSelectionMode;
   scheduledDate?: Date;
+  plannedSets?: NextExposurePlannedSetInput[];
   performedLogs: Array<{
     setIndex: number;
+    targetLoad?: number | null;
+    targetReps?: number | null;
+    targetRepMin?: number | null;
+    targetRepMax?: number | null;
+    targetRpe?: number | null;
     log?:
       | {
           setIntent?: "WORK" | "WARMUP" | null;
           actualRpe: number | null;
           actualLoad: number | null;
+          actualReps?: number | null;
+          wasSkipped?: boolean;
         }
       | undefined;
   }>;
@@ -1868,13 +1909,68 @@ async function buildExplainabilityCanonicalProgressionInput(
   isCompound: boolean | undefined,
   input: ExplainabilityConfidenceInput
 ) {
+  const historySessions = await loadExplainabilityProgressionSessions(input);
+  const plannedSetIndexes = input.plannedSets
+    ? new Set(input.plannedSets.map((set) => set.setIndex))
+    : null;
+  const boundSignalSets = plannedSetIndexes
+    ? input.performedLogs
+        .filter(
+          (set) =>
+            plannedSetIndexes.has(set.setIndex) &&
+            set.log?.setIntent !== "WARMUP" &&
+            set.log?.wasSkipped !== true &&
+            Number.isFinite(set.log?.actualReps) &&
+            (set.log?.actualReps ?? 0) > 0 &&
+            Number.isFinite(set.log?.actualLoad) &&
+            (set.log?.actualLoad ?? -1) >= 0
+        )
+        .map((set) => ({
+          setIndex: set.setIndex,
+          reps: set.log?.actualReps as number,
+          load: set.log?.actualLoad as number,
+          rpe: set.log?.actualRpe ?? undefined,
+          targetLoad: set.targetLoad ?? undefined,
+          targetReps: set.targetReps ?? undefined,
+          targetRepMin: set.targetRepMin ?? undefined,
+          targetRepMax: set.targetRepMax ?? undefined,
+          targetRpe: set.targetRpe ?? undefined,
+        }))
+    : performedSemantics.signalSets;
+  const selectedTargetSet = performedSemantics.signalSets.find(
+    (set) =>
+      (Number.isFinite(set.targetReps) || Number.isFinite(set.targetRepMax)) &&
+      Number.isFinite(set.targetRpe)
+  );
+  historySessions[0] = {
+    ...historySessions[0],
+    exposureId: input.exposureId ?? input.workoutId,
+    ...(input.scheduledDate ? { date: input.scheduledDate.toISOString() } : {}),
+    source: "exact_exercise_history",
+    plannedWorkingSetCount:
+      input.plannedSets
+        ? input.plannedSets.filter((set) => set.setIntent !== "WARMUP").length
+        : input.performedLogs.filter((set) => set.log?.setIntent !== "WARMUP").length,
+    ...(Number.isFinite(performedSemantics.workingSetLoad)
+      ? { representativeLoad: performedSemantics.workingSetLoad as number }
+      : {}),
+    sets: boundSignalSets,
+  };
   return {
     ...buildCanonicalProgressionEvaluationInput({
       lastSets: performedSemantics.signalSets,
       repRange,
       equipment: resolveProgressionEquipment(equipment),
+      ...(selectedTargetSet
+        ? {
+            currentTarget: {
+              reps: selectedTargetSet.targetReps ?? selectedTargetSet.targetRepMax,
+              rpe: selectedTargetSet.targetRpe,
+            },
+          }
+        : {}),
       workingSetLoad: performedSemantics.workingSetLoad ?? undefined,
-      historySessions: await loadExplainabilityProgressionSessions(input),
+      historySessions,
     }),
     promotionPolicy: buildExplainabilityPromotionPolicy({
       equipment,
@@ -1923,17 +2019,25 @@ async function loadExplainabilityProgressionSessions(
       await resolveExplainabilityProgressionSession({
         userId: input.userId,
         workoutId: input.workoutId,
+        exposureId: previous.workoutId,
         exerciseId: input.exerciseId,
         selectionMode: previous.workout.selectionMode ?? undefined,
         scheduledDate: previous.workout.scheduledDate,
         client: input.client,
         performedLogs: previous.sets.map((set) => ({
           setIndex: set.setIndex,
+          targetLoad: set.targetLoad,
+          targetReps: set.targetReps,
+          targetRepMin: set.targetRepMin,
+          targetRepMax: set.targetRepMax,
+          targetRpe: set.targetRpe,
           log: set.logs[0]
             ? {
                 setIntent: set.logs[0].setIntent,
                 actualRpe: set.logs[0].actualRpe,
                 actualLoad: set.logs[0].actualLoad,
+                actualReps: set.logs[0].actualReps,
+                wasSkipped: set.logs[0].wasSkipped,
               }
             : undefined,
         })),
@@ -1953,9 +2057,39 @@ async function resolveExplainabilityProgressionSession(
     resolveExplainabilityConfidenceNotes(input),
   ]);
   return {
+    exposureId: input.exposureId ?? input.workoutId,
+    ...(input.scheduledDate ? { date: input.scheduledDate.toISOString() } : {}),
+    source: "exact_exercise_history",
     selectionMode: input.selectionMode,
     confidence,
     confidenceNotes,
+    plannedWorkingSetCount: input.performedLogs.filter(
+      (set) => set.log?.setIntent !== "WARMUP"
+    ).length,
+    ...(resolvePerformedModalLoad(input.performedLogs) != null
+      ? { representativeLoad: resolvePerformedModalLoad(input.performedLogs) as number }
+      : {}),
+    sets: input.performedLogs
+      .filter(
+        (set) =>
+          set.log?.setIntent !== "WARMUP" &&
+          set.log?.wasSkipped !== true &&
+          Number.isFinite(set.log?.actualReps) &&
+          (set.log?.actualReps ?? 0) > 0 &&
+          Number.isFinite(set.log?.actualLoad) &&
+          (set.log?.actualLoad ?? -1) >= 0
+      )
+      .map((set) => ({
+        setIndex: set.setIndex,
+        reps: set.log?.actualReps as number,
+        load: set.log?.actualLoad as number,
+        rpe: set.log?.actualRpe ?? undefined,
+        targetLoad: set.targetLoad ?? undefined,
+        targetReps: set.targetReps ?? undefined,
+        targetRepMin: set.targetRepMin ?? undefined,
+        targetRepMax: set.targetRepMax ?? undefined,
+        targetRpe: set.targetRpe ?? undefined,
+      })),
   };
 }
 

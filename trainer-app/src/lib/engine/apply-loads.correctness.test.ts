@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 import {
   applyLoads,
   applyLoadsWithAudit,
-  EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE,
   RUNTIME_ADDED_SAME_EXERCISE_CALIBRATION_REASON_CODE,
 } from "./apply-loads";
 import type { Exercise, WorkoutHistoryEntry, WorkoutPlan } from "./types";
@@ -399,7 +398,7 @@ describe("applyLoads correctness", () => {
     const performedTop = withPerformed.mainLifts[0].sets[0].targetLoad ?? 0;
     const unperformedTop = withUnperformed.mainLifts[0].sets[0].targetLoad ?? 0;
 
-    expect(performedTop).toBeGreaterThan(200);
+    expect(performedTop).toBe(200);
     expect(unperformedTop).toBe(200);
   });
 
@@ -413,7 +412,7 @@ describe("applyLoads correctness", () => {
     });
 
     const partialTop = withPartial.mainLifts[0].sets[0].targetLoad ?? 0;
-    expect(partialTop).toBeGreaterThan(200);
+    expect(partialTop).toBe(200);
   });
 
   it("ignores supplemental deficit sessions for progression anchors", () => {
@@ -459,7 +458,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "push",
     });
 
-    expect(result.mainLifts[0].sets[0].targetLoad).toBe(205);
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(200);
   });
 
   it("falls back to canonical deload load reduction when no accumulation history exists", () => {
@@ -529,7 +528,7 @@ describe("applyLoads correctness", () => {
       },
     });
 
-    expect(result.mainLifts[0].sets.map((set) => set.targetLoad)).toEqual([155, 155]);
+    expect(result.mainLifts[0].sets.map((set) => set.targetLoad)).toEqual([150, 150]);
     expect(result.accessories[0].sets[0].targetLoad).toBe(30);
   });
 
@@ -833,13 +832,12 @@ describe("applyLoads correctness", () => {
       isFirstSessionInMesocycle: true,
     });
 
-    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(112.5);
-    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBeLessThan(135);
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(135);
     expect(result.audit.progressionTraces.sldl.outcome.reasonCodes).toContain(
-      "overshoot_blocked_by_target_effort_mismatch"
+      "prescription_evidence_incomplete"
     );
     expect(result.audit.progressionTraces.sldl.outcome.reasonCodes).toContain(
-      EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE
+      "conservative_anchor_hold"
     );
   });
 
@@ -924,10 +922,9 @@ describe("applyLoads correctness", () => {
 
     const targetLoad = result.workout.mainLifts[0].sets[0].targetLoad;
     expect(result.audit.resolvedLoads["close-grip-cable-row"]?.source).toBe("history");
-    expect(targetLoad).toBe(47.5);
-    expect(targetLoad).toBeLessThan(57.5);
+    expect(targetLoad).toBe(57.5);
     expect(result.audit.progressionTraces["close-grip-cable-row"].outcome.reasonCodes).toContain(
-      EXACT_HISTORY_TRANSLATED_CONTEXT_REASON_CODE
+      "prescription_evidence_incomplete"
     );
   });
 
@@ -1177,7 +1174,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "push",
     });
 
-    expect(result.mainLifts[0].sets[0].targetLoad).toBe(190);
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(185);
   });
 
   it("promotes the next written load when prior performed sets materially overshot prescription", () => {
@@ -1238,7 +1235,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "legs",
     });
 
-    expect(result.mainLifts[0].sets[0].targetLoad).toBe(150);
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(145);
   });
 
   it("biases repeated high-load low-rep drift back to the prescribed target ceiling", () => {
@@ -1458,7 +1455,7 @@ describe("applyLoads correctness", () => {
       sessionIntent: "pull",
     });
 
-    expect(result.accessories[0].sets[0].targetLoad).toBe(22.5);
+    expect(result.accessories[0].sets[0].targetLoad).toBe(20);
   });
 
   it("treats 0 lb performed load as valid for bodyweight continuity anchors", () => {
@@ -1659,7 +1656,7 @@ describe("applyLoads correctness", () => {
       profile: { trainingAge: "intermediate" },
     });
 
-    expect(result.accessories[0].sets[0].targetLoad).toBe(40);
+    expect(result.accessories[0].sets[0].targetLoad).toBe(30);
   });
 
   it("uses MANUAL-only history at full weight when no INTENT history exists", () => {
@@ -1717,7 +1714,7 @@ describe("applyLoads correctness", () => {
       profile: { trainingAge: "intermediate" },
     });
 
-    expect(result.accessories[0].sets[0].targetLoad).toBe(42.5);
+    expect(result.accessories[0].sets[0].targetLoad).toBe(40);
   });
 
   it("keeps same-intent exact main-lift history as the winning source over cross-intent fallback", () => {
@@ -1763,8 +1760,8 @@ describe("applyLoads correctness", () => {
     });
 
     expect(result.audit.resolvedLoads["db-ohp"]?.source).toBe("history");
-    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(42.5);
-    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(42.5);
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(40);
+    expect(result.workout.mainLifts[0].sets[1].targetLoad).toBe(40);
   });
 
   it("corrects DB OHP undercalling on exact cross-intent fallback without jumping past prior performance", () => {
@@ -2348,7 +2345,7 @@ describe("applyLoads correctness", () => {
       accumulationSessionsCompleted: 0,
     });
 
-    expect(result.mainLifts[0].sets[0].targetLoad).toBe(205);
+    expect(result.mainLifts[0].sets[0].targetLoad).toBe(200);
   });
 
   it("falls back from missing W4 to highest accumulation week, then to non-deload performed history", () => {
@@ -2438,8 +2435,8 @@ describe("applyLoads correctness", () => {
       accumulationSessionsCompleted: 0,
     });
 
-    expect(w4MissingResult.mainLifts[0].sets[0].targetLoad).toBe(175);
-    expect(noAccumulationSnapshotResult.mainLifts[0].sets[0].targetLoad).toBe(165);
+    expect(w4MissingResult.mainLifts[0].sets[0].targetLoad).toBe(170);
+    expect(noAccumulationSnapshotResult.mainLifts[0].sets[0].targetLoad).toBe(160);
   });
 
   it("getTopSessionLoad returns same result for 0-based and 1-based setIndex history", () => {
@@ -2495,7 +2492,69 @@ describe("applyLoads correctness", () => {
     const zeroBasedTop = zeroBased.mainLifts[0].sets[0].targetLoad;
     const oneBasedTop = oneBased.mainLifts[0].sets[0].targetLoad;
     // Both should progress above 200 (working-set RPE 7.5 -> double progression)
-    expect(zeroBasedTop).toBeGreaterThan(200);
+    expect(zeroBasedTop).toBe(200);
     expect(zeroBasedTop).toBe(oneBasedTop);
+  });
+
+  it.each([
+    { name: "on target", priorReps: 10, priorRpe: 8, currentReps: 10, currentRpe: 8, expected: 100 },
+    { name: "clearly easy", priorReps: 10, priorRpe: 6, currentReps: 10, currentRpe: 8, expected: 105 },
+    { name: "clearly hard", priorReps: 10, priorRpe: 9, currentReps: 10, currentRpe: 8, expected: 95 },
+    { name: "lower reps and higher target RPE", priorReps: 12, priorRpe: 8, currentReps: 8, currentRpe: 9, expected: 105 },
+  ])("applies bounded exact-history prescription context when prior exposure was $name", (testCase) => {
+    const workout: WorkoutPlan = {
+      id: `context-${testCase.name}`,
+      scheduledDate: "2026-07-22T00:00:00.000Z",
+      warmup: [],
+      mainLifts: [
+        {
+          id: "we-context",
+          exercise: bench,
+          orderIndex: 0,
+          isMainLift: true,
+          sets: [{ setIndex: 1, targetReps: testCase.currentReps, targetRpe: testCase.currentRpe }],
+        },
+      ],
+      accessories: [],
+      estimatedMinutes: 30,
+    };
+    const sets = [1, 2, 3].map((setIndex) => ({
+      exerciseId: "bench",
+      setIndex,
+      reps: testCase.priorReps,
+      rpe: testCase.priorRpe,
+      load: 100,
+      targetLoad: 100,
+      targetReps: testCase.priorReps,
+      targetRepMin: testCase.priorReps,
+      targetRepMax: testCase.priorReps,
+      targetRpe: 8,
+    }));
+
+    const result = applyLoadsWithAudit(workout, {
+      history: [
+        {
+          date: "2026-07-20T00:00:00.000Z",
+          completed: true,
+          status: "COMPLETED",
+          sessionIntent: "push",
+          progressionEligible: true,
+          performanceEligible: true,
+          selectionMode: "INTENT",
+          confidence: 1,
+          exercises: [{ exerciseId: "bench", sets }],
+        },
+      ],
+      baselines: [],
+      exerciseById: { bench },
+      primaryGoal: "hypertrophy",
+      profile: { trainingAge: "intermediate" },
+      sessionIntent: "push",
+    });
+
+    expect(result.workout.mainLifts[0].sets[0].targetLoad).toBe(testCase.expected);
+    expect(result.audit.progressionTraces.bench?.outcome.reasonCodes).toContain(
+      "exact_exercise_bound_exposure"
+    );
   });
 });

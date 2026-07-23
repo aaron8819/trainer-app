@@ -1,7 +1,73 @@
 import { describe, expect, it } from "vitest";
 import { computeDoubleProgressionDecision, PROGRESSION_CONFIG, shouldDeload } from "./progression";
+import { LOAD_PRESCRIPTION_SCENARIOS } from "./load-prescription-scenarios.fixture";
+
+function boundExposure(
+  exposureId: string,
+  sets: Parameters<typeof computeDoubleProgressionDecision>[0],
+  representativeLoad: number
+) {
+  return {
+    exposureId,
+    source: "exact_exercise_history" as const,
+    confidence: 1,
+    confidenceNotes: [],
+    progressionEligible: true,
+    comparable: true,
+    representativeLoad,
+    plannedWorkingSetCount: sets.length,
+    sets,
+  };
+}
 
 describe("progression correctness", () => {
+  it.each(
+    LOAD_PRESCRIPTION_SCENARIOS.filter((scenario) =>
+      ["A", "B", "C", "D", "E", "F", "G", "I", "J", "M", "O"].includes(scenario.id)
+    )
+  )("scenario $id: $description", (scenario) => {
+    const actualRpe = scenario.prior.actualRpe;
+    const performedReps = scenario.prior.performedReps ?? scenario.prior.prescribedReps;
+    const sets = [1, 2, 3].map((setIndex) => ({
+      setIndex,
+      reps: performedReps,
+      ...(actualRpe == null ? {} : { rpe: actualRpe }),
+      load: scenario.prior.performedLoad,
+      targetLoad: scenario.prior.prescribedLoad,
+      targetReps: scenario.prior.prescribedReps,
+      targetRepMin: scenario.prior.prescribedRepMin,
+      targetRpe: scenario.prior.prescribedRpe,
+    }));
+    const progressionExposures = [
+      boundExposure("latest", sets, scenario.prior.performedLoad),
+      ...(scenario.id === "O"
+        ? [
+            boundExposure("middle", sets.map((set) => ({ ...set, reps: 8, rpe: 9.5 })), 100),
+            boundExposure("older", sets, scenario.prior.performedLoad),
+          ]
+        : []),
+    ];
+    const decision = computeDoubleProgressionDecision(
+      sets,
+      [scenario.prior.prescribedRepMin ?? scenario.prior.prescribedReps, scenario.prior.prescribedReps],
+      "barbell",
+      {
+        currentTarget: {
+          reps: scenario.current.prescribedReps,
+          rpe: scenario.current.prescribedRpe,
+        },
+        loadIncrement: scenario.increment,
+        workingSetLoad: scenario.prior.performedLoad,
+        progressionExposures,
+        priorSessionCount: progressionExposures.length,
+      }
+    );
+
+    expect(decision?.nextLoad).toBe(scenario.expected.targetLoad);
+    expect(Math.abs((decision?.nextLoad ?? 0) - scenario.prior.performedLoad)).toBeLessThanOrEqual(
+      scenario.increment
+    );
+  });
   it("never increments load from a 0-load bodyweight baseline (Dips and Pull-Ups)", () => {
     const bodyweightCases = [
       { name: "Dips", repRange: [6, 12] as [number, number] },
@@ -140,7 +206,7 @@ describe("progression correctness", () => {
     expect(decision?.decisionLog.join(" | ")).toContain("performed load beat prescription");
   });
 
-  it("uses the bounded catch-up lane when exact same-exercise overshoot is broad and clearly under-translated", () => {
+  it("caps broad same-exercise catch-up evidence at one valid increment", () => {
     const decision = computeDoubleProgressionDecision(
       [
         { reps: 8, rpe: 7.5, load: 155, targetLoad: 145 },
@@ -154,9 +220,9 @@ describe("progression correctness", () => {
     );
 
     expect(decision?.path).toBe("path_5_overshoot");
-    expect(decision?.nextLoad).toBe(165);
+    expect(decision?.nextLoad).toBe(160);
     expect(decision?.decisionLog.join(" | ")).toContain("Catch-up lane fired");
-    expect(decision?.trace.outcome.reasonCodes).toContain("same_exercise_catch_up_progression");
+    expect(decision?.trace.outcome.reasonCodes).toContain("same_exercise_catch_up_evidence_bounded");
   });
 
   it("keeps Tier 1 overshoot behavior unchanged when promotion policy stays at full confidence", () => {

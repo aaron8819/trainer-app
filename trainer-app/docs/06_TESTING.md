@@ -57,6 +57,7 @@ Sources of truth:
 - `npm run test:db:historical-snapshots -- --confirm-disposable`: explicit schema-dependent
   historical-evidence alias for the same consolidated disposable harness.
 - `npm run test:db:readiness-snapshots -- --confirm-disposable`: starts an isolated Docker PostgreSQL 16 container, applies all checked-in migrations without reading `.env.local`, verifies legacy-unknown migration behavior, partial unique enforcement, identical concurrent activation, conflicting payload rejection, forced replacement rollback, stale-evidence rejection, and owner isolation, then removes the container. Package scripts never supply disposable confirmation: the operator must type it for every mutating invocation, and aliases or wrappers must not embed it. Strict argument and inherited-target validation complete before `pg` or any other database-dependent module loads and before Docker work begins.
+- `npm run test:db:rollout-tooling -- --confirm-disposable`: runs rollout-tooling integration coverage against a harness-created disposable PostgreSQL target. Its effective argument list must be exactly `["--confirm-disposable"]`; additional, duplicate, positional, misspelled, embedded, or malformed arguments are rejected before Docker or database-dependent loading.
 - Immutable seed changes require focused revision/receipt/save/runtime/audit tests, `npm run verify:contracts`, `npm run verify`, and a real `prisma migrate deploy` on disposable PostgreSQL.
 - `npm run lint`: ESLint with cache at `.eslintcache`; generated/local-only outputs such as `artifacts/`, `.tmp/`, `.vercel/`, `output/`, `playwright-report/`, and `test-results/` are ignored by ESLint
 - `npm run test:ui-audit`: Playwright core-route UI audit plus lightweight fixture-backed interaction checks against mobile and desktop projects
@@ -92,6 +93,9 @@ Sources of truth:
   Mutation coverage additionally requires matching `DATABASE_URL` and `TEST_DATABASE_URL` plus
   exact `--confirm-disposable` operator attestation. Use that attestation only for a database the
   operator has independently established is disposable. Preflight validates without connecting.
+- Every mutation command uses exact argument matching or an explicitly approved guard-first
+  route. Additional or malformed confirmation arguments are rejected before Docker or
+  database-dependent loading.
 - Credential-free subprocesses enumerate actual environment keys and remove every casing variant
   and duplicate of the canonical DB-target names. They also remove
   `TRAINER_DISPOSABLE_DB_CONFIRMED`; inherited authorization can never make credential-free

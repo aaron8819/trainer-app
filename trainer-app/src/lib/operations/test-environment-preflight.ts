@@ -187,14 +187,19 @@ export function sanitizeDatabaseTargetEnvironment<
 }
 
 export function parseExactDisposableConfirmationArgs(
-  args: readonly string[]
+  args: readonly string[],
+  requiredInvocation?: string
 ): { valid: true } | { valid: false; message: string } {
   return args.length === 1 && args[0] === "--confirm-disposable"
     ? { valid: true }
     : {
         valid: false,
-        message:
+        message: [
           "Invalid invocation. Expected exactly one argument: --confirm-disposable.",
+          requiredInvocation ? `Run: ${requiredInvocation}` : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
       };
 }
 

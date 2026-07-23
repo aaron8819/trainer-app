@@ -253,6 +253,16 @@ describe("database target policy", () => {
     expect(parseExactDisposableConfirmationArgs(["--confirm-disposable"])).toEqual({
       valid: true,
     });
+    expect(
+      parseExactDisposableConfirmationArgs(
+        [],
+        "npm run test:db:rollout-tooling -- --confirm-disposable"
+      )
+    ).toEqual({
+      valid: false,
+      message:
+        "Invalid invocation. Expected exactly one argument: --confirm-disposable. Run: npm run test:db:rollout-tooling -- --confirm-disposable",
+    });
     for (const args of [
       [],
       ["--confirm-disposable", "--extra"],
@@ -708,12 +718,13 @@ describe("credential-free and mutation subprocess boundaries", () => {
   const tsxCli = resolve("node_modules/tsx/dist/cli.mjs");
   const npmCli = process.env.npm_execpath;
 
-  function runReadinessPackageCommand(
+  function runMutationPackageCommand(
+    packageScript: string,
     args: string[],
     additions: Record<string, string | undefined> = {}
   ) {
     if (!npmCli) throw new Error("NPM_EXECUTABLE_PATH_UNAVAILABLE");
-    const fixture = mkdtempSync(join(tmpdir(), "trainer-readiness-guard-"));
+    const fixture = mkdtempSync(join(tmpdir(), "trainer-mutation-guard-"));
     temporaryDirectories.push(fixture);
     const pgMarker = join(fixture, "pg-loaded");
     const dockerMarker = join(fixture, "docker-called");
@@ -727,7 +738,7 @@ describe("credential-free and mutation subprocess boundaries", () => {
         "const originalLoad = Module._load;",
         "Module._load = function(request, parent, isMain) {",
         '  if (request === "pg") {',
-        '    writeFileSync(process.env.READINESS_PG_LOAD_MARKER, "loaded");',
+        '    writeFileSync(process.env.MUTATION_PG_LOAD_MARKER, "loaded");',
         '    throw new Error("PG_IMPORT_BLOCKED_BY_TEST");',
         "  }",
         "  return originalLoad.call(this, request, parent, isMain);",
@@ -735,7 +746,7 @@ describe("credential-free and mutation subprocess boundaries", () => {
         "const originalSpawnSync = childProcess.spawnSync;",
         "childProcess.spawnSync = function(executable, childArgs, options) {",
         '  if (String(executable).toLowerCase() === "docker" || String(executable).toLowerCase().endsWith("docker.exe")) {',
-        '    writeFileSync(process.env.READINESS_DOCKER_CALL_MARKER, "called");',
+        '    writeFileSync(process.env.MUTATION_DOCKER_CALL_MARKER, "called");',
         '    throw new Error("DOCKER_CALL_BLOCKED_BY_TEST");',
         "  }",
         "  return originalSpawnSync.call(this, executable, childArgs, options);",
@@ -747,7 +758,7 @@ describe("credential-free and mutation subprocess boundaries", () => {
       [
         npmCli,
         "run",
-        "test:db:readiness-snapshots",
+        packageScript,
         ...(args.length > 0 ? ["--", ...args] : []),
       ],
       {
@@ -756,8 +767,8 @@ describe("credential-free and mutation subprocess boundaries", () => {
           ...sanitizeDatabaseTargetEnvironment(process.env),
           ...additions,
           NODE_OPTIONS: `--require=${hook.replaceAll("\\", "/")}`,
-          READINESS_PG_LOAD_MARKER: pgMarker,
-          READINESS_DOCKER_CALL_MARKER: dockerMarker,
+          MUTATION_PG_LOAD_MARKER: pgMarker,
+          MUTATION_DOCKER_CALL_MARKER: dockerMarker,
         },
         encoding: "utf8",
         timeout: 30_000,
@@ -769,6 +780,17 @@ describe("credential-free and mutation subprocess boundaries", () => {
       pgLoaded: existsSync(pgMarker),
       dockerCalled: existsSync(dockerMarker),
     };
+  }
+
+  function runReadinessPackageCommand(
+    args: string[],
+    additions: Record<string, string | undefined> = {}
+  ) {
+    return runMutationPackageCommand(
+      "test:db:readiness-snapshots",
+      args,
+      additions
+    );
   }
 
   function runVitestCollection(
@@ -972,6 +994,40 @@ describe("credential-free and mutation subprocess boundaries", () => {
     expect(result.dockerCalled).toBe(false);
   }, 30_000);
 
+  it("reaches Docker only after exact rollout confirmation", () => {
+    const result = runMutationPackageCommand(
+      "test:db:rollout-tooling",
+      ["--confirm-disposable"]
+    );
+
+    expect(result.result.status, result.output).toBe(1);
+    expect(result.pgLoaded).toBe(false);
+    expect(result.dockerCalled).toBe(true);
+  }, 30_000);
+
+  it.each([
+    ["no confirmation", []],
+    ["duplicate confirmation", ["--confirm-disposable", "--confirm-disposable"]],
+    ["extra flag", ["--confirm-disposable", "--extra"]],
+    ["flag before confirmation", ["--extra", "--confirm-disposable"]],
+    ["positional argument", ["positional"]],
+    ["misspelling", ["--confirm_disposable"]],
+    ["embedded substring", ["prefix--confirm-disposable"]],
+    ["malformed argument", ["--confirm-disposable=1"]],
+  ])("rejects rollout package %s before pg or Docker", (_label, args) => {
+    const result = runMutationPackageCommand(
+      "test:db:rollout-tooling",
+      args
+    );
+
+    expect(result.result.status, result.output).toBe(2);
+    expect(result.output).toContain(
+      "npm run test:db:rollout-tooling -- --confirm-disposable"
+    );
+    expect(result.pgLoaded).toBe(false);
+    expect(result.dockerCalled).toBe(false);
+  }, 30_000);
+
   it("rejects an unsafe inherited readiness target before pg or Docker", () => {
     const result = runReadinessPackageCommand(
       ["--confirm-disposable"],
@@ -1085,6 +1141,7 @@ describe("command coverage honesty", () => {
       commandRegistry: Array<{
         packageScript?: string;
         command: string;
+        entrypoint?: string | null;
         profile: string;
       }>;
     };
@@ -1118,6 +1175,59 @@ describe("command coverage honesty", () => {
         entry.command,
         `registry command ${entry.packageScript ?? entry.command} must not self-confirm`
       ).not.toContain("--confirm-disposable");
+    }
+
+    const exactConfirmationEntrypoints = new Set([
+      "trainer-app/scripts/test-workout-mutations-postgres.ts",
+      "trainer-app/scripts/test-rollout-tooling-postgres.ts",
+      "trainer-app/scripts/test-readiness-snapshot-postgres.ts",
+      "trainer-app/scripts/verify-seed-revision-concurrency.ts",
+    ]);
+    const approvedGuardFirstPackageScripts = new Set([
+      "test",
+      "test:readiness-integrity",
+      "test:migration-integrity",
+      "test:watch",
+    ]);
+    const approvedAliases = new Map([
+      ["test:db:historical-snapshots", "npm run test:db:workout-mutations"],
+    ]);
+    const disposableEntries = policy.commandRegistry.filter(
+      (entry) => entry.profile === "disposable-database-write"
+    );
+
+    for (const entry of disposableEntries) {
+      const packageScript = entry.packageScript ?? "";
+      if (entry.entrypoint && exactConfirmationEntrypoints.has(entry.entrypoint)) {
+        const source = readFileSync(
+          resolve(entry.entrypoint.replace(/^trainer-app\//, "")),
+          "utf8"
+        );
+        expect(
+          source,
+          `${packageScript} must use the canonical exact-confirmation parser`
+        ).toMatch(
+          /parseExactDisposableConfirmationArgs\s*\(\s*process\.argv\.slice\(2\)/
+        );
+        expect(
+          source,
+          `${packageScript} must not use a permissive confirmation check`
+        ).not.toMatch(
+          /(?:includes|indexOf|find|some)\s*\(\s*["'`]--confirm-disposable/
+        );
+        continue;
+      }
+
+      const approvedAlias = approvedAliases.get(packageScript);
+      if (approvedAlias) {
+        expect(packageJson.scripts[packageScript]).toBe(approvedAlias);
+        continue;
+      }
+
+      expect(
+        approvedGuardFirstPackageScripts.has(packageScript),
+        `${packageScript || entry.command} must use an approved mutation guard route`
+      ).toBe(true);
     }
   });
 

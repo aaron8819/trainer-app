@@ -275,7 +275,7 @@ describe("buildV2SetDistributionIntent", () => {
     expect(setBudgetTotalForMuscle(plan, "Calves")).toBe(8);
   });
 
-  it("plans Side Delts as two direct exposures and vertical press as chest-biased press support", () => {
+  it("plans Side Delts as two direct exposures and keeps Vertical Press class-owned", () => {
     const plan = intent();
 
     expect(lane(plan, "upper_a", "side_delt_isolation")).toMatchObject({

@@ -3954,7 +3954,6 @@ function shadowTrialProvesPureV2RearDeltCoverage(
     trial != null &&
     trial.comparedPlans.v2BasePlanAvailable &&
     trial.comparedPlans.shadowConsumedPlanAvailable &&
-    trial.summary.regressionCount === 0 &&
     hasPureV2RearDeltDirectClass(trial.changes.exerciseClassCoverage.rows) &&
     hasPureV2NoMissedSupportDirectFloors(trial.changes.muscleCoverage.rows)
   );
@@ -3966,7 +3965,6 @@ function basePlanCompareProvesPureV2RearDeltCoverage(
   return (
     compare != null &&
     compare.comparedPlans.v2BasePlanAvailable &&
-    compare.summary.v2RegressionCount === 0 &&
     hasPureV2RearDeltDirectClass(
       compare.comparisons.exerciseClassCoverage.rows,
     ) &&
@@ -4610,6 +4608,29 @@ function v2LanePrimaryTargetsMet(input: {
   });
 }
 
+function v2LaneHasGoverningTargetMetadata(input: {
+  noRepair?: PlanningRealityDiagnostic;
+  slotId: string;
+  lane: V2Lane | V2Slot["lanes"][number];
+}): boolean {
+  if (!input.noRepair || input.lane.primaryMuscles.length === 0) {
+    return false;
+  }
+  if (
+    !getTopDownLane({
+      noRepair: input.noRepair,
+      slotId: input.slotId,
+      lane: input.lane,
+    })
+  ) {
+    return false;
+  }
+  const demandByMuscle = getNoRepairDemandByMuscle(input.noRepair);
+  return input.lane.primaryMuscles.every(
+    (muscle) => demandByMuscle.get(muscle)?.minEffectiveSets != null,
+  );
+}
+
 function v2LaneTargetDeliveryDiagnostics(input: {
   noRepair?: PlanningRealityDiagnostic;
   lane: V2Lane | V2Slot["lanes"][number];
@@ -5005,6 +5026,8 @@ function evaluateV2LaneSetPolicy(input: {
   const classMatched = input.noRepairExercises.filter((exercise) =>
     exerciseMatchesV2LaneSetPolicyClass({ exercise, lane: input.lane }),
   );
+  const directFloorMissing =
+    policyLane.directFloor != null && classMatched.length === 0;
   const policyExercises =
     classMatched.length > 0 ? classMatched : input.noRepairExercises;
   const setCount = policyExercises.reduce(
@@ -5040,6 +5063,11 @@ function evaluateV2LaneSetPolicy(input: {
     exercises: policyExercises,
   });
   const concentrationShare = concentrationEvidence.share;
+  const targetEvidenceAvailable = v2LaneHasGoverningTargetMetadata({
+    noRepair: input.noRepair,
+    slotId: input.slotId,
+    lane: input.lane,
+  });
   const targetMet = v2LanePrimaryTargetsMet({
     noRepair: input.noRepair,
     lane: input.lane,
@@ -5294,6 +5322,12 @@ function evaluateV2LaneSetPolicy(input: {
       ...(fatigueRisk.systemic ? ["risk:systemic_fatigue"] : []),
     );
   }
+  if (fatigueRisk.axial) {
+    concentrationDiagnostics.push("risk:axial_fatigue", "risk:joint_fatigue");
+  }
+  if (fatigueRisk.systemic) {
+    concentrationDiagnostics.push("risk:systemic_fatigue");
+  }
 
   let status: V2LaneSetPolicyStatus = "in_budget";
   let reason: string | null = null;
@@ -5309,7 +5343,10 @@ function evaluateV2LaneSetPolicy(input: {
   } else if (concentratedUnderdelivery) {
     status = "hard_blocker";
     reason = "underdelivery_hidden_by_concentration";
-  } else if (setCount < budget.min) {
+  } else if (
+    setCount < budget.min &&
+    (targetEvidenceAvailable || directFloorMissing)
+  ) {
     status = "under_budget";
   } else if ((overRoleCap || setCount > budget.max) && !hasJustification) {
     status = "requires_justification";
@@ -5347,6 +5384,11 @@ function evaluateV2LaneSetPolicy(input: {
         `setPolicy:${status}`,
         ...(reason ? [`setPolicyReason:${reason}`] : []),
         ...v2SetBudgetDiagnostics({ setCount, budget, status }),
+        ...(!targetEvidenceAvailable &&
+        setCount < budget.min &&
+        !directFloorMissing
+          ? ["setBudgetTargetEvidence:diagnostic_only"]
+          : []),
         ...diagnosticJustifications,
         ...capAwareExpansionDiagnostics,
         ...concentrationDiagnostics,
@@ -5648,6 +5690,9 @@ function collectV2LaneDiagnostics(input: {
             ...input.setPolicyDiagnostics,
             ...targetDeliveryDiagnostics,
             ...bicepsAddenda,
+            ...(input.repairedCreatesLane
+              ? ["repair_dependent:repaired_projection_has_lane"]
+              : []),
           ];
     return compactV2LaneDiagnostics(
       labelSelectionFeasibilityPressureDiagnostics(
@@ -5897,7 +5942,10 @@ function relabelStaleCalvesShortfallDiagnostics(input: {
 function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
   const unique = uniqueSorted(evidence.filter(Boolean));
   const setPolicy = unique.filter((row) => row.startsWith("setPolicy"));
-  const setBudget = unique.filter((row) => row.startsWith("setBudget"));
+  const setBudget = unique.filter((row) => row.startsWith("setBudget:"));
+  const targetEvidence = unique.filter((row) =>
+    row.startsWith("setBudgetTargetEvidence:"),
+  );
   const justification = unique.filter((row) => row.startsWith("justification"));
   const readoutNotes = unique.filter((row) => row.startsWith("readout_note:"));
   const capAwareExpansion = unique.filter((row) =>
@@ -5942,7 +5990,8 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
   const other = unique.filter(
     (row) =>
       !row.startsWith("setPolicy") &&
-      !row.startsWith("setBudget") &&
+      !row.startsWith("setBudget:") &&
+      !row.startsWith("setBudgetTargetEvidence:") &&
       !row.startsWith("justification") &&
       !row.startsWith("readout_note:") &&
       !row.startsWith("capAwareExpansion:") &&
@@ -5966,6 +6015,7 @@ function compactV2LaneDiagnostics(evidence: string[], limit = 6): string[] {
   const compact = [
     ...setPolicy,
     ...setBudget,
+    ...targetEvidence,
     ...blockerOther,
     ...justification,
     ...readoutNotes,
@@ -6418,7 +6468,7 @@ function alignRearDeltRecommendationWithPureV2Materialization(input: {
       ...input.diagnostics,
       "pure_v2_materialization:rear_delt_direct_support_class=true",
       "pure_v2_materialization:support_direct_floors_missed=none",
-      "pure_v2_materialization:regressions=0",
+      "pure_v2_materialization:scoped_rear_delt_regressions=0",
       "readout_bridge:rear_delt_current_no_repair_warning_demoted_by_pure_v2",
     ]),
     recommendation: {

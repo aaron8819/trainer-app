@@ -185,7 +185,7 @@ describe("buildV2MesocycleDemand", () => {
     }
   });
 
-  it("gives Side Delts and Calves intentional direct support floors", () => {
+  it("keeps weekly support demand distinct from direct floors and collateral", () => {
     expect(demandFor("Side Delts")).toMatchObject({
       role: "support",
       targetStatus: "soft",
@@ -212,6 +212,16 @@ describe("buildV2MesocycleDemand", () => {
         collateralCreditLimit: 0,
         collateralCanSatisfyFloor: false,
         requiredClassIntents: ["calf_isolation"],
+      },
+    });
+    expect(demandFor("Triceps")).toMatchObject({
+      baselineSetRange: { min: 6, preferred: 6, max: 10 },
+      directness: {
+        directSetFloor: 4,
+        preferredDirectSets: 4,
+        collateralCreditLimit: 2,
+        collateralCanSatisfyFloor: false,
+        requiredClassIntents: ["triceps_isolation", "pressdown"],
       },
     });
   });

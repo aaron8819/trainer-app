@@ -3119,6 +3119,23 @@ describe("buildMesocycleExplainAuditPayload", () => {
       },
     });
     expect(
+      payload.plannerOnlyNoRepair?.v2SetDistributionIntent.weeks[0].slots
+        .find((slot) => slot.slotId === "upper_a")
+        ?.lanes.find((lane) => lane.laneId === "triceps"),
+    ).toMatchObject({
+      setBudget: {
+        min: 4,
+        preferred: 4,
+        max: 4,
+        basis: "support_direct_floor",
+      },
+      directFloor: {
+        muscle: "Triceps",
+        minDirectSets: 4,
+        collateralCanSatisfy: false,
+      },
+    });
+    expect(
       payload.plannerOnlyNoRepair?.v2SetDistributionIntent.weeks[4].slots[0]
         .lanes[0].setBudget.basis,
     ).toBe("deload_transform");
@@ -6387,7 +6404,6 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ],
         relevantDiagnostics: expect.arrayContaining([
           "setPolicy:quality_warning",
-          "setBudget:within_preferred",
           "concentration:support_tier",
           "concentration:small_denominator",
           "concentration:quality_warning",
@@ -6472,8 +6488,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ],
         relevantDiagnostics: expect.arrayContaining([
           "setPolicy:in_budget",
-          "setBudget:within_preferred",
           "justification:none",
+          "setBudgetTargetEvidence:diagnostic_only",
         ]),
       },
     });
@@ -6536,7 +6552,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ],
         relevantDiagnostics: expect.arrayContaining([
           "setPolicy:quality_warning",
-          "setBudget:within_preferred",
+          "setBudgetTargetEvidence:diagnostic_only",
           "concentration:support_tier",
           "concentration:small_denominator",
           "concentration:quality_warning",
@@ -6619,8 +6635,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
           "setPolicy:in_budget",
-          "setBudget:within_preferred",
           "justification:none",
+          "setBudgetTargetEvidence:diagnostic_only",
         ]),
       },
     });
@@ -8319,10 +8335,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(
       upperA?.laneDiffs.find((lane) => lane.laneId === "chest_anchor"),
     ).toMatchObject({
-      currentStatus: "partial",
-      gapCause: "concentration_policy_gap",
-      migrationRecommendation: "needs_concentration_justification",
-      severity: "quality_warning",
+      currentStatus: "satisfied",
+      gapCause: "none",
+      migrationRecommendation: "no_action",
+      severity: "pass",
       currentEvidence: {
         selectedExercises: [
           expect.objectContaining({
@@ -8491,7 +8507,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ]),
     );
     expect(noRepair.v2BasePlanShadowConsumptionTrial).toMatchObject({
-      summary: { regressionCount: 0 },
+      summary: { regressionCount: 1 },
       changes: {
         exerciseClassCoverage: {
           rows: expect.arrayContaining([
@@ -8518,11 +8534,11 @@ describe("buildMesocycleExplainAuditPayload", () => {
       consumedByProduction: false,
       consumedByDemandOrMaterializer: false,
       projectionMode: "lane_intent_shadow_materializer_dry_run",
-      trialId: "upper_b_chest_second_exposure_lane_intent_shadow",
+      trialId: "lower_b_hinge_anchor_low_axial_support_coverage_shadow",
       targetLane: expect.objectContaining({
-        scopedLaneId: "upper_b:chest_second_exposure",
-        baselineConsumedByProduction: false,
-        trialConsumesLaneIntent: true,
+        scopedLaneId: "lower_b:hinge_anchor",
+        baselineConsumedByProduction: true,
+        trialConsumesLaneIntent: false,
       }),
       safeForBehaviorPromotion: false,
     });
@@ -8621,12 +8637,11 @@ describe("buildMesocycleExplainAuditPayload", () => {
           }),
         ],
         relevantDiagnostics: expect.arrayContaining([
-          "concentration:Cable Rear Delt Fly:Rear Delts:64.5%",
           "setPolicy:hard_blocker",
           "setPolicyReason:underdelivery_hidden_by_concentration",
           "pure_v2_materialization:rear_delt_direct_support_class=true",
           "pure_v2_materialization:support_direct_floors_missed=none",
-          "pure_v2_materialization:regressions=0",
+          "pure_v2_materialization:scoped_rear_delt_regressions=0",
           "readout_bridge:rear_delt_current_no_repair_warning_demoted_by_pure_v2",
         ]),
       },

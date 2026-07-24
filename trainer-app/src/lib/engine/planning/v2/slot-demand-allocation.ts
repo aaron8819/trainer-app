@@ -224,6 +224,7 @@ type V2StaticSlotExposureOwnership = {
   role: V2PlannerDemandRole;
   classIntent: string;
   ownershipKind: V2AllocatedMuscle["ownershipKind"];
+  ownsClassObligation?: false;
 };
 
 export const V2_BOUNDED_CALVES_SLOT_DEMAND_REDISTRIBUTION = {
@@ -379,6 +380,7 @@ const V2_STATIC_SLOT_EXPOSURE_OWNERSHIP: V2StaticSlotExposureOwnership[] = [
     role: "support",
     classIntent: "chest_biased_press_support",
     ownershipKind: "support_exposure",
+    ownsClassObligation: false,
   },
   {
     slotId: "upper_b",
@@ -685,6 +687,7 @@ function buildAllocatedMuscle(input: {
     targetSetRange: input.range ?? zeroRange(),
     demandShare: input.spec.demandShare,
     classIntent: input.spec.classIntent,
+    ownsClassObligation: input.spec.ownsClassObligation !== false,
     ownershipKind: input.spec.ownershipKind,
     allocationBasis: allocationBasis({
       phase: input.phase,

@@ -3233,6 +3233,25 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(materialize(input)).toEqual(materialize(input));
   });
 
+  it("produces exactly equal output for equivalent inventory ordering", () => {
+    const selectionPlan = plan([
+      lane({
+        laneId: "biceps",
+        role: "accessory",
+        primaryMuscles: ["Biceps"],
+        acceptableExerciseClasses: ["biceps_isolation"],
+      }),
+    ]);
+
+    expect(materialize({ plan: selectionPlan, inventory: fixtureInventory }))
+      .toEqual(
+        materialize({
+          plan: selectionPlan,
+          inventory: [...fixtureInventory].reverse(),
+        }),
+      );
+  });
+
   it("prefers a user-favorite flat barbell bench for a chest anchor when lane safety allows", () => {
     const result = materialize({
       plan: plan([
@@ -3603,7 +3622,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
       });
     expect(exerciseForLane(result, "upper_b", "vertical_press"))
       .toMatchObject({
-        exerciseId: "incline-machine-press",
+        exerciseId: "machine-shoulder-press",
         setCount: 3,
       });
     expect(

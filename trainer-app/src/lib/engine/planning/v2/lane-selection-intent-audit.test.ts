@@ -63,7 +63,6 @@ describe("buildV2LaneSelectionIntentAudit", () => {
     const audit = buildAudit();
 
     for (const [slotId, laneId] of [
-      ["upper_b", "vertical_press"],
       ["upper_b", "vertical_pull_anchor"],
       ["lower_a", "hamstring_curl"],
       ["lower_a", "quad_isolation"],
@@ -78,7 +77,6 @@ describe("buildV2LaneSelectionIntentAudit", () => {
     ] as const) {
       const lane = auditLane(audit, slotId, laneId);
       const stageCConsumed =
-        (slotId === "upper_b" && laneId === "vertical_press") ||
         (slotId === "upper_b" && laneId === "vertical_pull_anchor") ||
         (slotId === "lower_a" && laneId === "hamstring_curl") ||
         (slotId === "lower_a" && laneId === "quad_isolation") ||
@@ -99,6 +97,14 @@ describe("buildV2LaneSelectionIntentAudit", () => {
       expect(lane.consumedByMaterializer).toBe(stageCConsumed);
       expect(lane.materializerInferenceRequired).toBe(!stageCConsumed);
     }
+    const verticalPress = auditLane(audit, "upper_b", "vertical_press");
+    expect(verticalPress.proposedLaneSelectionIntent).toBeUndefined();
+    expect(verticalPress.availableIntent).toMatchObject({
+      classRequirementsPreferences: {
+        acceptableExerciseClasses: ["vertical_press"],
+        preferredExerciseClasses: ["vertical_press"],
+      },
+    });
   });
 
   it("reports v0 risk fields and missing required fields when intent is absent", () => {
@@ -267,22 +273,18 @@ describe("buildV2LaneSelectionIntentAudit", () => {
     expectMissing(secondExposure, "pressVsFlyPriority", "quality");
   });
 
-  it("captures chest, hamstring, and calf v0 requirements from the high-priority specs", () => {
+  it("keeps vertical press outside chest-support intent while capturing hamstring and calf v0 requirements", () => {
     const audit = buildAudit();
     const chestSupport = auditLane(audit, "upper_b", "vertical_press");
     const hamstringCurl = auditLane(audit, "lower_a", "hamstring_curl");
     const calves = auditLane(audit, "lower_a", "calves");
 
-    expect(chestSupport.proposedLaneSelectionIntent).toMatchObject({
-      laneJob: "support_coverage",
-      requiredMovementPattern: "chest_press",
-      allowedExerciseClasses: ["chest_press", "chest_biased_press_support"],
-      minimumTargetStimulus: {
-        muscle: "Chest",
-        minimumPerSetStimulus: 0.75,
+    expect(chestSupport.proposedLaneSelectionIntent).toBeUndefined();
+    expect(chestSupport.availableIntent).toMatchObject({
+      classRequirementsPreferences: {
+        acceptableExerciseClasses: ["vertical_press"],
+        preferredExerciseClasses: ["vertical_press"],
       },
-      consumedByMaterializer: true,
-      duplicatePolicy: "prefer_variation_if_clean",
     });
     expect(hamstringCurl.proposedLaneSelectionIntent).toMatchObject({
       requiredMovementPattern: "knee_flexion",
@@ -368,12 +370,12 @@ describe("buildV2LaneSelectionIntentBenchmark", () => {
       consumedByDemandOrMaterializer: false,
       status: "pass",
       summary: {
-        laneJobCount: 7,
-        passCount: 7,
+        laneJobCount: 6,
+        passCount: 6,
         warningCount: 0,
         failCount: 0,
         missingEvidenceCount: 0,
-        materializerConsumedCount: 7,
+        materializerConsumedCount: 6,
         diagnosticOnlyCount: 0,
       },
     });
@@ -395,15 +397,6 @@ describe("buildV2LaneSelectionIntentBenchmark", () => {
           evidence: expect.arrayContaining([
             "movement=knee_flexion",
             "classes=hamstring_curl",
-          ]),
-        }),
-        expect.objectContaining({
-          laneJob: "chest_biased_press_support",
-          status: "pass",
-          materializerConsumed: true,
-          evidence: expect.arrayContaining([
-            "movement=chest_press",
-            "classes=chest_press,chest_biased_press_support",
           ]),
         }),
         expect.objectContaining({
@@ -474,14 +467,14 @@ describe("buildV2CandidateQualityLabFixtures", () => {
       readOnly: true,
       affectsScoringOrGeneration: false,
       consumedByDemandOrMaterializer: false,
-      scenarioCount: 7,
+      scenarioCount: 6,
       summary: {
-        passCount: 7,
+        passCount: 6,
         warnCount: 0,
         failCount: 0,
         watchCount: 0,
         goldenStableCount: 1,
-        nonConsumingScenarioCount: 7,
+        nonConsumingScenarioCount: 6,
         materializerDeltaScenarioCount: 4,
         materializerDeltaMeasuredCount: 4,
       },
@@ -647,11 +640,6 @@ describe("buildV2CandidateQualityLabFixtures", () => {
             }),
           }),
         }),
-        expect.objectContaining({
-          scenarioId: "chest_biased_press_support",
-          laneJob: "chest_biased_press_support",
-          actualOutcome: "pass",
-        }),
       ]),
     );
   });
@@ -671,7 +659,7 @@ describe("buildV2CandidateQualityLabFixtures", () => {
     );
 
     expect(lab.summary).toMatchObject({
-      passCount: 6,
+      passCount: 5,
       failCount: 1,
       warnCount: 0,
       watchCount: 0,
@@ -700,11 +688,11 @@ describe("buildV2CandidateQualityLabFixtures", () => {
 
     expect(lab.summary).toMatchObject({
       passCount: 0,
-      warnCount: 7,
+      warnCount: 6,
       failCount: 0,
       watchCount: 0,
       goldenStableCount: 0,
-      nonConsumingScenarioCount: 7,
+      nonConsumingScenarioCount: 6,
       materializerDeltaScenarioCount: 4,
       materializerDeltaMeasuredCount: 4,
     });

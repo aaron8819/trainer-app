@@ -1718,6 +1718,10 @@ export type V2PlannerSetRange = {
   max: number;
 };
 
+export type V2WeeklyDemandRange = V2PlannerSetRange;
+export type V2FractionalDemandAttributionRange = V2PlannerSetRange;
+export type V2AuthoredSetBudgetRange = V2PlannerSetRange;
+
 export type V2PlannerDirectnessPolicy = {
   directSetFloor: number;
   preferredDirectSets: number;
@@ -1753,7 +1757,7 @@ export type V2MesocycleDemand = {
       mav: number;
       mrv: number;
     } | null;
-    baselineSetRange: V2PlannerSetRange;
+    baselineSetRange: V2WeeklyDemandRange;
     exposureCount: number;
     directness: V2PlannerDirectnessPolicy;
     cautions: string[];
@@ -1788,7 +1792,7 @@ export type V2WeeklyDemandCurve = {
       targetTier: MuscleTargetTier | null;
       role: V2PlannerDemandRole;
       targetStatus: V2PlannerTargetStatus;
-      targetSetRange: V2PlannerSetRange;
+      targetSetRange: V2WeeklyDemandRange;
       exposureCount: number;
       source: string[];
       limitations: string[];
@@ -1824,14 +1828,15 @@ export type V2SlotDemandAllocationByWeek = {
         role: V2PlannerLaneRole;
         primaryMuscles: string[];
         preferredExerciseClasses: string[];
-        setBudget: V2PlannerSetRange;
+        setBudget: V2AuthoredSetBudgetRange;
         allocatedMuscles: Array<{
           muscle: string;
           role: V2PlannerDemandRole;
           targetStatus: V2PlannerTargetStatus;
-          targetSetRange: V2PlannerSetRange;
+          targetSetRange: V2FractionalDemandAttributionRange;
           demandShare: number;
           classIntent: string;
+          ownsClassObligation: boolean;
           ownershipKind:
             | "primary_exposure"
             | "support_exposure"
@@ -1881,17 +1886,18 @@ export type V2ExerciseClassDistributionBySlot = {
         classIntents: string[];
         requiredExerciseClasses: string[];
         preferredExerciseClasses: string[];
-        setBudget: V2PlannerSetRange;
-        allocatedTargetSetRange: V2PlannerSetRange;
+        setBudget: V2AuthoredSetBudgetRange;
+        allocatedTargetSetRange: V2FractionalDemandAttributionRange;
         ownershipRows: Array<{
           owningSlotId: V2PlannerSlotId;
           laneId: string;
           muscle: string;
           role: V2PlannerDemandRole;
           targetStatus: V2PlannerTargetStatus;
-          targetSetRange: V2PlannerSetRange;
+          targetSetRange: V2FractionalDemandAttributionRange;
           demandShare: number;
           classIntent: string;
+          ownsClassObligation: boolean;
           ownershipKind:
             | "primary_exposure"
             | "support_exposure"
@@ -1948,7 +1954,7 @@ export type V2SelectionCapacityPlan = {
         primaryMuscles: string[];
         preferredExerciseClasses: string[];
         targetWeeklySetRange: V2PlannerSetRange;
-        setBudget: V2PlannerSetRange;
+        setBudget: V2AuthoredSetBudgetRange;
         perExerciseCap: {
           maxSetsWithoutJustification: number;
           maxDirectExercises: number;
@@ -2010,7 +2016,7 @@ export type V2ExerciseSelectionPlan = {
         ownershipKinds: V2ExerciseClassDistributionBySlot["weeks"][number]["slots"][number]["classLanes"][number]["ownershipRows"][number]["ownershipKind"][];
         acceptableExerciseClasses: string[];
         preferredExerciseClasses: string[];
-        setBudget: V2PlannerSetRange;
+        setBudget: V2AuthoredSetBudgetRange;
         setBudgetBasis: V2SetDistributionIntent["weeks"][number]["slots"][number]["lanes"][number]["setBudget"]["basis"];
         directFloor?: {
           muscle: string;

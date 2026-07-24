@@ -256,24 +256,6 @@ const HIGH_RISK_LAB_SCENARIOS: CandidateQualityScenarioFixture[] = [
     expectedNextSafeAction: "no_action",
     noImpactArchitectureReview: true,
   },
-  {
-    scenarioId: "chest_biased_press_support",
-    laneJob: "chest_biased_press_support",
-    label: "Chest-biased press support",
-    scenarioRole: "diagnostic_fixture",
-    expectedOutcome: "pass",
-    ownerSeam: OWNER_SEAMS.laneIntentToMaterializer,
-    evidenceSource: "v2_lane_selection_intent_benchmark",
-    equipmentConstraints: [
-      "stable chest press, machine press, cable press, or chest-biased support press path exists",
-    ],
-    inventoryConstraints: [
-      "exclude shoulder-biased pressing when the lane needs chest support",
-    ],
-    gapKindsUnderTest: ["lane_contract_gap", "materializer_ranking_gap"],
-    expectedNextSafeAction: "no_action",
-    noImpactArchitectureReview: false,
-  },
 ];
 
 type MaterializerDeltaFixtureDefinition = {

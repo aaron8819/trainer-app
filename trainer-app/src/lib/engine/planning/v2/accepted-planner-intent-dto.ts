@@ -1,5 +1,6 @@
 import { buildV2PlannerMesocyclePolicy } from "./mesocycle-policy";
 import type {
+  V2AuthoredSetBudgetRange,
   V2PlannerDemandRole,
   V2PlannerLaneRole,
   V2PlannerMesocyclePolicy,
@@ -7,6 +8,7 @@ import type {
   V2PlannerSetRange,
   V2PlannerSlotId,
   V2PlannerSplit,
+  V2WeeklyDemandRange,
 } from "./types";
 
 type MuscleTargetTier =
@@ -56,7 +58,7 @@ export type V2AcceptedPlannerIntentDto = {
     muscle: string;
     targetTier: MuscleTargetTier;
     role: V2PlannerDemandRole;
-    setRange: V2PlannerSetRange;
+    setRange: V2WeeklyDemandRange;
     exposureCount: number;
   }>;
   weekPolicies: Array<{
@@ -78,7 +80,7 @@ export type V2AcceptedPlannerIntentDto = {
         primaryMuscles: string[];
         acceptableExerciseClasses: string[];
         preferredExerciseClasses: string[];
-        setBudget: V2PlannerSetRange & {
+        setBudget: V2AuthoredSetBudgetRange & {
           basis: SetBudgetBasis | "capacity_policy";
         };
         supportDirectFloor?: {

@@ -140,6 +140,7 @@ function classLaneKindForRows(
 
 function isRequiredOwnershipRow(row: V2AllocatedMuscle): boolean {
   return (
+    row.ownsClassObligation &&
     row.demandShare > 0 &&
     row.targetSetRange.max > 0 &&
     row.ownershipKind !== "managed_collateral" &&
@@ -238,6 +239,7 @@ function buildOwnershipRows(input: {
     targetSetRange: { ...row.targetSetRange },
     demandShare: row.demandShare,
     classIntent: row.classIntent,
+    ownsClassObligation: row.ownsClassObligation,
     ownershipKind: row.ownershipKind,
     allocationBasis: row.allocationBasis,
     classLaneKind: classLaneKindForOwnershipKind(row.ownershipKind),

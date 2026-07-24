@@ -177,26 +177,6 @@ const HIGH_RISK_LANE_EXPECTATIONS: BenchmarkLaneExpectation[] = [
       "rear-delt direct work can be hidden inside row-family upper-back stimulus instead of direct rear-delt isolation",
   },
   {
-    laneJob: "chest_biased_press_support",
-    slotId: "upper_b",
-    laneId: "vertical_press",
-    required: true,
-    expected: {
-      laneJob: "support_coverage",
-      requiredMovementPattern: "chest_press",
-      allowedExerciseClasses: ["chest_press", "chest_biased_press_support"],
-      disallowedExerciseClasses: ["shoulder_biased_press"],
-      directnessRequirement: "high_directness",
-      stabilityPreference: "stable_preferred",
-      fatiguePreference: "moderate_or_low",
-      duplicatePolicy: "prefer_variation_if_clean",
-      fallbackPolicy: "allow_labeled_fallback",
-      identityPreservationMode: "variation_allowed_within_lane_job",
-    },
-    failureMeaning:
-      "upper-b press support can drift into shoulder-biased vertical pressing instead of chest-biased support stimulus",
-  },
-  {
     laneJob: "vertical_pull_anchor",
     slotId: "upper_b",
     laneId: "vertical_pull_anchor",

@@ -171,9 +171,7 @@ describe("buildV2SetDistributionIntent", () => {
     expect(sumPreferred(lanesForMuscle(plan, "Hamstrings"))).toBeLessThan(
       rawLaneSummedPreferred("Hamstrings"),
     );
-    expect(sumPreferred(lanesForMuscle(plan, "Chest"))).toBe(
-      VOLUME_LANDMARKS.Chest.mev,
-    );
+    expect(sumPreferred(lanesForMuscle(plan, "Chest"))).toBe(7);
     expect(sumPreferred(lanesForMuscle(plan, "Chest"))).toBeLessThanOrEqual(
       rawLaneSummedPreferred("Chest"),
     );
@@ -201,20 +199,11 @@ describe("buildV2SetDistributionIntent", () => {
     });
     expect(upperBPressSupport).toMatchObject({
       classLaneKind: "support_class_lane",
-      primaryMuscles: ["Chest", "Front Delts"],
-      preferredExerciseClasses: [
-        "distinct_chest_press_or_fly",
-        "machine_press",
-        "cable_press",
-        "vertical_press",
-      ],
+      primaryMuscles: ["Front Delts"],
+      preferredExerciseClasses: ["vertical_press"],
       setBudget: { min: 2, preferred: 3, max: 3 },
     });
-    expect(sumPreferred([upperAChest, upperBChest, upperBPressSupport]))
-      .toBeGreaterThanOrEqual(VOLUME_LANDMARKS.Chest.mev);
-    expect(sumPreferred([upperAChest, upperBChest, upperBPressSupport])).toBeLessThanOrEqual(
-      VOLUME_LANDMARKS.Chest.mav,
-    );
+    expect(sumPreferred([upperAChest, upperBChest])).toBe(7);
   });
 
   it("uses role-sensitive preferred budgets instead of making every lane 4 sets", () => {
@@ -264,8 +253,9 @@ describe("buildV2SetDistributionIntent", () => {
     expect(sumPreferred(hamstrings)).toBeLessThan(rawLaneSummedPreferred("Hamstrings"));
   });
 
-  it("plans calves as direct lower-slot set budgets", () => {
-    const plan = intent();
+  it("keeps Calves weekly demand distinct from executable lower-slot budgets", () => {
+    const policy = buildPolicy();
+    const plan = policy.v2SetDistributionIntent;
 
     expect(lane(plan, "lower_a", "calves")).toMatchObject({
       classLaneKind: "support_class_lane",
@@ -277,9 +267,12 @@ describe("buildV2SetDistributionIntent", () => {
       primaryMuscles: ["Calves"],
       setBudget: { min: 3, preferred: 5, max: 5 },
     });
-    expect(setBudgetTotalForMuscle(plan, "Calves")).toBeGreaterThanOrEqual(
-      VOLUME_LANDMARKS.Calves.mev,
-    );
+    expect(demandRange(policy, "Calves")).toEqual({
+      min: 6,
+      preferred: 8,
+      max: 10,
+    });
+    expect(setBudgetTotalForMuscle(plan, "Calves")).toBe(8);
   });
 
   it("plans Side Delts as two direct exposures and vertical press as chest-biased press support", () => {
@@ -307,16 +300,14 @@ describe("buildV2SetDistributionIntent", () => {
     });
     expect(lane(plan, "upper_b", "vertical_press")).toMatchObject({
       classLaneKind: "support_class_lane",
-      primaryMuscles: ["Chest", "Front Delts"],
+      primaryMuscles: ["Front Delts"],
       managedCollateralMuscles: [],
-      preferredExerciseClasses: [
-        "distinct_chest_press_or_fly",
-        "machine_press",
-        "cable_press",
-        "vertical_press",
-      ],
+      preferredExerciseClasses: ["vertical_press"],
       setBudget: { min: 2, preferred: 3, max: 3 },
     });
+    expect(
+      lane(plan, "upper_b", "vertical_press").ownershipKinds,
+    ).toContain("support_exposure");
   });
 
   it("plans rear delts, biceps, and triceps direct/support budgets", () => {

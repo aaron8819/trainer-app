@@ -74,8 +74,14 @@
     }
   },
   "verification": {
-    "commandOrder": ["codex-tooling-tests", "git-diff-check", "test-fast", "verify-contracts", "verify-completed-review", "verify-version", "test-audit-matrix", "verify", "prisma-generate", "test-migration-integrity", "audit-future-week"],
+    "commandOrder": ["database-backup-tests", "codex-tooling-tests", "git-diff-check", "test-fast", "verify-contracts", "verify-completed-review", "verify-version", "test-audit-matrix", "verify", "prisma-generate", "test-migration-integrity", "audit-future-week"],
     "pathRules": [
+      {
+        "name": "database-backup-tooling",
+        "patterns": ["scripts/database/**"],
+        "implementation": ["database-backup-tests", "git-diff-check"],
+        "release": []
+      },
       {
         "name": "codex-tooling",
         "patterns": ["scripts/codex/**"],
@@ -157,6 +163,26 @@
     }
   },
   "commands": {
+    "database-backup-tests": {
+      "command": "pwsh -NoProfile -File scripts/database/tests/Run-Tests.ps1",
+      "defaultSideEffectClass": "temporary-local-test-fixtures",
+      "accessesNetwork": false,
+      "accessesDatabase": false,
+      "writesLocalArtifacts": true,
+      "explicitAuthorizationRequired": false,
+      "verificationTier": "implementation",
+      "executableInImplementationMode": true,
+      "requiresCleanWorktree": false,
+      "requiresDependencies": false,
+      "requiresDocker": false,
+      "requiresDatabase": false,
+      "requiresNetwork": false,
+      "requiresPrisma": false,
+      "requiresNode": false,
+      "requiresNpm": false,
+      "requiresPowerShell": true,
+      "invocation": { "workingDirectory": "repository", "executable": "pwsh", "arguments": ["-NoProfile", "-File", "scripts/database/tests/Run-Tests.ps1"] }
+    },
     "codex-tooling-tests": {
       "command": "pwsh -NoProfile -File scripts/codex/tests/Run-Tests.ps1",
       "defaultSideEffectClass": "temporary-local-test-fixtures",
@@ -548,6 +574,12 @@
         "ignored": []
       },
       {
+        "path": "scripts/database",
+        "extensions": [".ps1"],
+        "recursive": true,
+        "ignored": []
+      },
+      {
         "path": "trainer-app/scripts",
         "extensions": [".ts", ".mjs", ".ps1"],
         "recursive": false,
@@ -580,6 +612,9 @@
     ]
   },
   "commandRegistry": [
+    { "id": "database-backup-create", "command": "pwsh -NoProfile -File scripts/database/Backup-TrainerProduction.ps1", "sourceLocation": "scripts/database/Backup-TrainerProduction.ps1", "entrypoint": "scripts/database/Backup-TrainerProduction.ps1", "profile": "database-read-artifact", "flagEscalations": [], "notes": "Explicitly confirmed production logical backup of the public schema to an external artifact; reads the named database and never authorizes migration." },
+    { "id": "database-backup-inspect", "command": "pwsh -NoProfile -File scripts/database/Inspect-TrainerBackup.ps1", "sourceLocation": "scripts/database/Inspect-TrainerBackup.ps1", "entrypoint": "scripts/database/Inspect-TrainerBackup.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Offline local artifact inspection with a fresh local pg_restore --list invocation; no network or database access." },
+    { "id": "database-backup-tests", "command": "pwsh -NoProfile -File scripts/database/tests/Run-Tests.ps1", "sourceLocation": "scripts/database/tests/Run-Tests.ps1", "entrypoint": "scripts/database/tests/Run-Tests.ps1", "profile": "local-artifact-write", "flagEscalations": [], "notes": "Offline fake-tool harness that writes only temporary local fixtures and never invokes real PostgreSQL tools." },
     { "id": "codex-task-inspector", "command": "pwsh -NoProfile -File scripts/codex/Start-TrainerTask.ps1", "sourceLocation": "scripts/codex/Start-TrainerTask.ps1", "entrypoint": "scripts/codex/Start-TrainerTask.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Inspect-only Phase 1 task manifest; does not create branches or worktrees." },
     { "id": "codex-doctor", "command": "pwsh -NoProfile -File scripts/codex/Invoke-TrainerDoctor.ps1", "sourceLocation": "scripts/codex/Invoke-TrainerDoctor.ps1", "entrypoint": "scripts/codex/Invoke-TrainerDoctor.ps1", "profile": "read-only", "flagEscalations": [], "notes": "Local-only by default; explicit scopes remain non-mutating in Phase 2." },
     { "id": "codex-remote-status", "command": "pwsh -NoProfile -File scripts/codex/Invoke-TrainerRemoteStatus.ps1", "sourceLocation": "scripts/codex/Invoke-TrainerRemoteStatus.ps1", "entrypoint": "scripts/codex/Invoke-TrainerRemoteStatus.ps1", "profile": "read-only", "flagEscalations": [{ "flag": "-GitHub", "profile": "network-read-only", "sideEffectClass": "read-only", "authorizationRequirement": "Explicit -GitHub scope for authenticated reads of the committed expected repository only." }, { "flag": "-Deployment", "profile": "network-read-only", "sideEffectClass": "read-only", "authorizationRequirement": "Explicit -Deployment scope for authenticated reads of the committed expected Vercel team, project, alias, and deployments only." }], "notes": "Offline by default. -GitHub and -Deployment are separately explicit, identity-gated, authenticated read-only scopes; neither logs in, switches scope, changes provider configuration, or invokes provider writes." },

@@ -92,6 +92,115 @@ npm run ops:backfill-post-session-reviews -- --env-file $rolloutEnv --batch-size
 
 Invalid or conflicting accepted seeds block the entire exact seed-promotion write. An inactive completed invalid seed may remain honestly `legacy_unknown` when exact intent cannot be proven; do not rewrite it merely to clear the backfill count.
 
+### Production logical backup evidence
+
+The supported Trainer backup operator platform is Windows PowerShell. The repository provides two separate commands:
+
+- `scripts/database/Backup-TrainerProduction.ps1` creates one external PostgreSQL custom archive of the Trainer-owned `public` schema.
+- `scripts/database/Inspect-TrainerBackup.ps1` performs an offline checksum, manifest, freshness, and fresh `pg_restore --list` inspection.
+
+Neither command authorizes a migration, restore, deployment, write resumption, or any other production mutation. The artifact is evidence for a separately paused and human-authorized migration process.
+
+The dump contains schema definitions, table data, `_prisma_migrations`, and other restoreable objects within `public`. Structural checks require the `public` schema, `_prisma_migrations`, and the stable application-owned `User`, `Workout`, and `Mesocycle` tables. Those tables cover identity, performed training history, and program lifecycle without depending on a short-lived feature table. Supabase-managed schemas such as `auth`, `storage`, and platform-internal schemas are excluded. Supabase Storage objects are not included.
+
+#### Target and secret contract
+
+Prefer the Supabase direct endpoint `db.<project-reference>.supabase.co:5432`. A Supabase session pooler on port `5432` is permitted only with `-AllowSessionPooler`; transaction-pooler port `6543` and unsupported host shapes are rejected. The URL must identify the expected project, database `postgres`, and `sslmode=require`, `verify-ca`, or `verify-full`.
+
+The preferred secret input is one deliberately selected, Git-ignored environment file containing exactly the connection variable needed by this workflow:
+
+```dotenv
+TRAINER_PRODUCTION_DATABASE_URL=postgresql://...
+```
+
+The script does not search for environment files. A repository-local selected file must pass `git check-ignore`; an operator-controlled file outside the repository is also supported. `-UseProcessEnvironment` may be used only when the operator deliberately preloaded `TRAINER_PRODUCTION_DATABASE_URL` into the current process. Passwords and complete URLs are never accepted as ordinary command-line values and are not written to the manifest or console.
+
+Create and inspect one external backup:
+
+```powershell
+$backupEnv = 'C:\secure\trainer-production-backup.env'
+$backupRoot = 'D:\TrainerBackups'
+$projectReference = '<expected-20-character-project-reference>'
+$postgresBin = 'C:\Program Files\PostgreSQL\16\bin'
+
+pwsh -NoProfile -File scripts/database/Backup-TrainerProduction.ps1 `
+  -EnvironmentFilePath $backupEnv `
+  -ExpectedProjectReference $projectReference `
+  -DestinationRoot $backupRoot `
+  -PostgreSQLBinDirectory $postgresBin
+```
+
+The creator prints a sanitized target summary and then requires the operator to type the exact project-specific confirmation. Do not pipe, embed, or automatically supply that confirmation. Use `-AllowSessionPooler` only after independently selecting a compatible session-pooler endpoint. `-GitShaOverride` is only for the exceptional case where repository identity cannot be resolved normally.
+
+The final directory contains only:
+
+- `database.dump`
+- `manifest.json`
+
+Creation happens under a unique same-volume `<name>.partial` directory. The final directory becomes visible only after `pg_dump`, nonempty-file validation, `pg_restore --list`, required-object checks, SHA-256, and manifest creation succeed. Failure removes the partial directory when safe; if cleanup cannot complete, it retains a clearly failed artifact with no successful manifest.
+
+The manifest records only sanitized host, port, database, connection mode, TLS mode, expected project reference, dump scope, start and successful completion timestamps, Git SHA, `pg_dump`/`pg_restore` versions, archive size, SHA-256, required-object results, and explicit evidence levels. It states `restoreStatus: not_tested` and `applicationQueryStatus: not_tested`; there is no editable restore-verification flag.
+
+Inspect the exact final directory immediately before the paused migration step:
+
+```powershell
+$backupDirectory = 'D:\TrainerBackups\trainer-production-<timestamp>-<id>'
+pwsh -NoProfile -File scripts/database/Inspect-TrainerBackup.ps1 `
+  -BackupDirectory $backupDirectory `
+  -ExpectedProjectReference $projectReference `
+  -MaximumAgeMinutes 60 `
+  -PostgreSQLBinDirectory $postgresBin
+```
+
+Freshness defaults to 60 minutes and is calculated from successful completion, not start time. Override `-MaximumAgeMinutes` only as an explicit operator decision. A passing inspection proves that the local archive is nonempty, its checksum matches, `pg_restore --list` succeeds now, and expected objects are listed. It does not prove a restore, restored-data queries, or application recovery.
+
+Retain the latest three successful backups outside the repository. Retention is manual; these scripts never delete backups. A logical dump is not point-in-time recovery. Provider-hosted backups may be lost with project deletion, so independently retained off-site artifacts remain valuable.
+
+#### Disposable restore for elevated confidence
+
+A disposable restore is optional for ordinary additive migrations. It is strongly recommended before destructive, irreversible, difficult-to-roll-forward, or broad data-transforming migrations. Never restore into production for verification.
+
+1. Provision an isolated disposable PostgreSQL target and independently prove its identity is non-production.
+2. Verify the target database is empty and has no application traffic.
+3. Load its credentials through the approved secure process into `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, and an appropriate `PGSSLMODE`; do not put the password in the command.
+4. Restore with ownership and privilege suppression at restore time:
+
+```powershell
+pg_restore --exit-on-error --no-owner --no-privileges --dbname postgres $backupArchive
+```
+
+5. Query migration history and at least one stable Trainer table:
+
+```powershell
+psql --no-password --dbname postgres --command 'select migration_name, finished_at from public._prisma_migrations order by started_at;'
+psql --no-password --dbname postgres --command 'select count(*) from public."Workout";'
+```
+
+6. When appropriate, run a small application-level smoke against only the disposable target.
+7. Record the target identity, commands, results, and cleanup. This elevated evidence is required by this workflow only for destructive/high-risk migrations.
+
+This PR does not automate or execute a restore.
+
+#### Canonical paused migration workflow
+
+For a production migration:
+
+1. Confirm the production Supabase project independently.
+2. Select the direct endpoint, or explicitly approve the compatible session pooler for backup creation only.
+3. Confirm database `postgres` and required TLS.
+4. Pause writes using the separately approved mechanism.
+5. Create one external `public`-schema backup.
+6. Inspect its checksum, fresh archive listing, required objects, and selected freshness.
+7. For destructive/high-risk changes, perform the disposable restore and query smoke above.
+8. Run the existing direct-connectivity and migration-integrity gates.
+9. Review the rollback or roll-forward plan.
+10. Stop for explicit migration authorization.
+11. Run the existing environment-pinned Prisma migration command separately.
+12. Run post-migration verification before resuming writes.
+13. Retain the latest three successful external backups.
+
+No backup or inspection result grants migration authorization. Database backups do not contain Supabase Storage objects.
+
 ### Direct migration endpoint
 
 `npm run ops:check-direct-db -- --env-file $rolloutEnv` resolves DNS, opens a short TCP connection, and performs the PostgreSQL/TLS/authentication handshake without running SQL. It reports a redacted host fingerprint and distinguishes DNS, timeout, network rejection, TLS, authentication, database rejection, and success. Pooler connectivity is not sufficient evidence for Prisma migration deployment, and the transaction pooler must not replace `DIRECT_URL`.

@@ -14,6 +14,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
+| 2026-07-24 | self | Used PowerShell's automatic `$Matches` variable for a documentation-search result, producing misleading table output instead of the `rg` rows. | Use task-specific variable names such as `$npxTscRows`; do not reuse PowerShell automatic variables in verification harnesses. |
 | 2026-07-24 | baseline | The command-registry validator covered all current entrypoints, but its aggregate suite still expected the older ignored-entrypoint count. | Update the aggregate registry fixture in the same change that expands the documented ignore inventory; compare base and branch before classifying the mismatch. |
 | 2026-07-24 | self | Passed an unquoted `stash@{0}` ref through PowerShell, which parsed `@{}` instead of forwarding the Git revision. | Single-quote stash revision arguments in PowerShell, for example `'stash@{0}'`. |
 | 2026-07-24 | self | Passed Windows wildcard path arguments such as `src/lib/engine/planning/v2/*.test.ts` and `*acceptance*` to `rg`, repeating a documented inventory error. | Search real directories and constrain filenames with `-g '*.test.ts'` or other glob filters; never put wildcards in Windows path arguments. |

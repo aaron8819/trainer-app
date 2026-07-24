@@ -166,14 +166,14 @@ describe("buildV2AcceptedPlannerIntentDto", () => {
       acceptableExerciseClasses: ["triceps_isolation", "pressdown"],
       preferredExerciseClasses: ["triceps_isolation", "pressdown"],
       setBudget: {
-        min: 3,
-        preferred: 3,
-        max: 3,
+        min: 4,
+        preferred: 4,
+        max: 4,
         basis: "support_direct_floor",
       },
       supportDirectFloor: {
         muscle: "Triceps",
-        minDirectSets: 3,
+        minDirectSets: 4,
         requiredExerciseClasses: ["triceps_isolation", "pressdown"],
         collateralCanSatisfy: false,
       },

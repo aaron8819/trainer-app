@@ -181,19 +181,14 @@ describe("buildV2ExerciseSelectionPlan", () => {
     });
   });
 
-  it("turns vertical press into required chest-biased press support while keeping hinge collateral managed", () => {
+  it("keeps vertical press class-owned by Front Delts while preserving hinge collateral management", () => {
     expect(lane(2, "upper_b", "vertical_press")).toMatchObject({
       requirement: "required",
       classLaneKind: "support_class_lane",
-      primaryMuscles: ["Chest", "Front Delts"],
+      primaryMuscles: ["Front Delts"],
       managedCollateralMuscles: [],
       ownershipKinds: ["support_exposure"],
-      acceptableExerciseClasses: [
-        "distinct_chest_press_or_fly",
-        "machine_press",
-        "cable_press",
-        "vertical_press",
-      ],
+      acceptableExerciseClasses: ["vertical_press"],
       setBudget: { min: 2, preferred: 3, max: 3 },
       setBudgetBasis: "class_ownership_allocation",
     });
@@ -283,23 +278,8 @@ describe("buildV2ExerciseSelectionPlan", () => {
   });
 
   it("attaches planner-owned laneSelectionIntent v0 to high-risk lanes without seed identities", () => {
-    expect(lane(2, "upper_b", "vertical_press")).toMatchObject({
-      laneSelectionIntent: {
-        version: 0,
-        contract: "laneSelectionIntent",
-        source: "v2_planner_policy",
-        consumedByMaterializer: true,
-        laneJob: "support_coverage",
-        requiredMovementPattern: "chest_press",
-        allowedExerciseClasses: ["chest_press", "chest_biased_press_support"],
-        disallowedExerciseClasses: ["shoulder_biased_press"],
-        directnessRequirement: "high_directness",
-        minimumTargetStimulus: {
-          muscle: "Chest",
-          minimumPerSetStimulus: 0.75,
-        },
-      },
-    });
+    expect(lane(2, "upper_b", "vertical_press").laneSelectionIntent)
+      .toBeUndefined();
     expect(lane(2, "lower_a", "hamstring_curl")).toMatchObject({
       laneSelectionIntent: {
         laneJob: "direct_floor",
@@ -400,7 +380,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
         consumedByMaterializer: true,
       },
     });
-    expect(JSON.stringify(lane(2, "upper_b", "vertical_press").laneSelectionIntent)).not.toMatch(
+    expect(JSON.stringify(lane(2, "lower_a", "hamstring_curl").laneSelectionIntent)).not.toMatch(
       /exerciseId|exerciseName|slotPlanSeedJson|runtimeReplay/,
     );
   });

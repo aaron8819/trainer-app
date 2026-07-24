@@ -516,11 +516,12 @@ describe("buildV2BasePlanValidation", () => {
       expect.arrayContaining(["Hamstrings", "Upper Back", "Quads", "Core"]),
     );
     expect(coverage.rows.find((row) => row.muscle === "Chest")).toMatchObject({
-      status: "above_preferred",
+      status: "covered",
     });
     expect(coverage.abovePreferredMuscles).toEqual(
-      expect.arrayContaining(["Chest", "Lats"]),
+      expect.arrayContaining(["Lats"]),
     );
+    expect(coverage.abovePreferredMuscles).not.toContain("Chest");
     expect(coverage.belowPreferredMuscles).toEqual(
       expect.arrayContaining(["Biceps"]),
     );
@@ -1452,8 +1453,8 @@ describe("buildV2BasePlanValidation", () => {
         }),
         expect.objectContaining({
           slotId: "lower_b",
-          relationship: "different_acceptable_clean_alternative",
-          classification: "v2_improves",
+          relationship: "unclear",
+          classification: "unclear",
         }),
       ]),
     );

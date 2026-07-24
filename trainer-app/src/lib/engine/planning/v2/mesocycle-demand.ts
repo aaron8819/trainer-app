@@ -7,7 +7,7 @@ import type {
   V2PlannerDemandTargetMode,
   V2PlannerDemandRole,
   V2PlannerDirectnessPolicy,
-  V2PlannerSetRange,
+  V2WeeklyDemandRange,
   V2PlannerTargetStatus,
   V2TargetSkeleton,
 } from "./types";
@@ -29,7 +29,7 @@ type V2BalancedBlockMusclePolicy = {
   role: V2PlannerDemandRole;
   targetStatus: V2PlannerTargetStatus;
   targetMode: V2PlannerDemandTargetMode;
-  baselineSetRange: V2PlannerSetRange;
+  baselineSetRange: V2WeeklyDemandRange;
   exposureCount: number;
   directness: V2PlannerDirectnessPolicy;
   cautions: string[];
@@ -181,8 +181,8 @@ const V2_BALANCED_BLOCK_DEMAND_POLICY: V2BalancedBlockMusclePolicy[] = [
     baselineSetRange: { min: 6, preferred: 6, max: 10 },
     exposureCount: 1,
     directness: {
-      directSetFloor: 2,
-      preferredDirectSets: 3,
+      directSetFloor: 4,
+      preferredDirectSets: 4,
       collateralCreditLimit: 2,
       collateralCanSatisfyFloor: false,
       requiredClassIntents: ["triceps_isolation", "pressdown"],

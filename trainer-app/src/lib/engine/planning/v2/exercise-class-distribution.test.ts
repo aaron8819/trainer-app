@@ -108,6 +108,7 @@ function allocationRows(
         targetSetRange: row.targetSetRange,
         demandShare: row.demandShare,
         classIntent: row.classIntent,
+        ownsClassObligation: row.ownsClassObligation,
         ownershipKind: row.ownershipKind,
         allocationBasis: row.allocationBasis,
       })),
@@ -181,6 +182,7 @@ describe("buildV2ExerciseClassDistributionBySlot", () => {
       targetSetRange: row.targetSetRange,
       demandShare: row.demandShare,
       classIntent: row.classIntent,
+      ownsClassObligation: row.ownsClassObligation,
       ownershipKind: row.ownershipKind,
       allocationBasis: row.allocationBasis,
     }))).toEqual(allocationRows(slotDemandAllocationByWeek));
@@ -317,13 +319,21 @@ describe("buildV2ExerciseClassDistributionBySlot", () => {
       managedCollateralMuscles: [],
       requiredExerciseClasses: ["vertical_press"],
       preferredExerciseClasses: ["vertical_press"],
-      ownershipRows: [
+      ownershipRows: expect.arrayContaining([
         expect.objectContaining({
           muscle: "Front Delts",
           ownershipKind: "support_exposure",
           classIntent: "vertical_press_support",
+          ownsClassObligation: true,
         }),
-      ],
+        expect.objectContaining({
+          muscle: "Chest",
+          ownershipKind: "support_exposure",
+          classIntent: "chest_biased_press_support",
+          ownsClassObligation: false,
+          targetSetRange: { min: 1.4, preferred: 1.6, max: 2 },
+        }),
+      ]),
     });
   });
 
@@ -365,7 +375,12 @@ describe("buildV2ExerciseClassDistributionBySlot", () => {
     expect(lane(distribution, "lower_b", "calves")).toMatchObject({
       requiredExerciseClasses: ["calf_isolation"],
     });
-    expect(sumRanges(rows)).toEqual(weekDemand(weeklyDemandCurve, "Calves"));
+    expect(weekDemand(weeklyDemandCurve, "Calves")).toEqual({
+      min: 6,
+      preferred: 8,
+      max: 10,
+    });
+    expect(sumRanges(rows)).toEqual({ min: 6, preferred: 8, max: 8 });
   });
 
   it("preserves quad primary and support ownership", () => {

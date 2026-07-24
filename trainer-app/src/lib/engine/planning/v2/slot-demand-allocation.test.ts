@@ -371,8 +371,8 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
       lower_b: 5.9,
     });
     expect(groupPreferredBySlotForWeek(allocation, "Side Delts", 2)).toEqual({
-      upper_a: 2,
-      upper_b: 4,
+      upper_a: 2.7,
+      upper_b: 5.3,
     });
     expect(
       positiveRowsForMuscle(allocation, "Calves", 2).map(
@@ -411,6 +411,10 @@ describe("buildV2SlotDemandAllocationByWeek", () => {
     expect(sumRanges(rows)).toEqual(
       weekDemand(weeklyDemandCurve, 2, "Side Delts"),
     );
+    expect(groupPreferredBySlotForWeek(allocation, "Side Delts", 2)).toEqual({
+      upper_a: 2.7,
+      upper_b: 5.3,
+    });
   });
 
   it("assigns Rear Delts direct/support ownership to Upper A", () => {

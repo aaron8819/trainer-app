@@ -641,6 +641,9 @@ describe("dependency-free launcher", () => {
 
     expect(result.status).toBe(1);
     expect(result.stdout).toContain('"code": "dependencies-missing"');
+    expect(result.stdout).toContain(
+      "Run npm ci deliberately from trainer-app before verification"
+    );
   });
 
   it("returns invalid-invocation exit 2 for unknown or conflicting flags", () => {

@@ -3,6 +3,9 @@
 ## Remote Provider Tooling
 
 - When a task protects the dirty primary checkout, write only in the authorized worktree; never transiently edit the primary checkout.
+- Verify transferred untracked files by matching the capture tree's blob IDs to `git hash-object` for each explicit destination; tracked-file diff semantics do not prove an untracked transfer.
+- Before linking or copying dependencies, prove the source and destination lockfiles match and validate the destination installation independently.
+- Keep repository-policy drafts and operational or production-tooling drafts in separate worktrees so their scopes cannot be committed together accidentally.
 - Fake in-process executables should return and set a controlled exit code instead of calling `exit`, which can terminate the parent process.
 - Use typed generic lists or explicit null filtering so empty JSON arrays and counts remain stable.
 - Register each concrete remote-provider command shape; reject generic write-capable API forms and GraphQL mutations.
@@ -11,6 +14,8 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
+| 2026-07-24 | baseline | The command-registry validator covered all current entrypoints, but its aggregate suite still expected the older ignored-entrypoint count. | Update the aggregate registry fixture in the same change that expands the documented ignore inventory; compare base and branch before classifying the mismatch. |
+| 2026-07-24 | self | Passed an unquoted `stash@{0}` ref through PowerShell, which parsed `@{}` instead of forwarding the Git revision. | Single-quote stash revision arguments in PowerShell, for example `'stash@{0}'`. |
 | 2026-07-24 | self | Passed Windows wildcard path arguments such as `src/lib/engine/planning/v2/*.test.ts` and `*acceptance*` to `rg`, repeating a documented inventory error. | Search real directories and constrain filenames with `-g '*.test.ts'` or other glob filters; never put wildcards in Windows path arguments. |
 | 2026-07-24 | self | Announced work and read the repo napkin plus attachment before loading the unconditional napkin `SKILL.md`, repeating the documented startup-order failure. | Make the literal first tool action only the napkin `SKILL.md`, the second only the repo napkin, and inspect task materials only afterward. |
 | 2026-07-24 | self | Guessed that the V2 base-plan comparison file lived under the `v2/` directory, causing another avoidable missing-path search error. | Resolve filenames with `rg --files trainer-app/src | rg "<stem>"` before targeting a file whose exact location has not already been verified. |

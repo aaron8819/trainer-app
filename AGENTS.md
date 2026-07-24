@@ -64,6 +64,8 @@ Prefer fixing the rightful owner seam over downstream patches. If the owner seam
 - Escalate to the stricter mode if a task crosses categories.
 
 ## Parallel Worktree Rules
+- Create Trainer task worktrees under `C:\Users\aabloch\claude\vibe-coding\.worktrees\trainer\<short-task-name>` on branches named `codex/<short-task-name>`.
+- Before creating one, inspect `git worktree list --porcelain` and confirm the exact path and branch are unused. Keep task writes inside the authorized worktree and do not modify another worktree.
 - Read-only audits may run in parallel.
 - Write tasks that touch shared seams must use isolated worktrees unless explicitly approved.
 - Shared seam writes must be serialized unless explicitly approved.
@@ -72,6 +74,12 @@ Prefer fixing the rightful owner seam over downstream patches. If the owner seam
 - When reusing dependencies by copying an exact-lock installation, confirm the source and destination `package-lock.json` hashes match, copy into a worktree-local ordinary directory, and do not mutate the source installation or change the destination lockfile to fit the copied dependencies.
 - Validate the copied destination with `npm ls --all`. Source validation, file counts, and a successful copy operation do not prove that the destination installation is complete or usable.
 - After copying or relocating dependencies, run `npm run prisma:generate` from the destination worktree's `trainer-app/` directory before TypeScript, lint, tests, or full verification. Prisma generation is local code generation and must not use or require production credentials or a database connection; a copied generated client can be stale even when lockfiles match. If a later local command only requires a syntactically valid database URL at import time, use a safe non-routable command-scoped placeholder without connecting.
+
+## Local NPM Tooling
+- Run Trainer npm commands from `trainer-app/`. Package scripts resolve executables from that worktree's `node_modules/.bin`.
+- Routine verification must not use `npx` or another network-capable fallback. Use the repository package script or project-local executable.
+- If local dependencies are missing, fail clearly and direct the operator to install the exact lockfile deliberately with `npm ci`. Do not fall back to global tools, another worktree, or a bundled runtime without first proving compatibility.
+- If a required skill or local tool is unavailable, report the blocked check instead of inventing a substitute or broadening the task.
 
 ## Worktree Cleanup Contract
 - Treat worktree cleanup as a destructive operation. Before cleanup, confirm the exact task path and branch, ownership by the completed task, a clean `git status --short`, preservation of any needed untracked files, and authorization to delete the branch. Confirm the target is neither the primary checkout nor another task's worktree. Stop if ownership, status, merge state, or deletion authority is ambiguous.

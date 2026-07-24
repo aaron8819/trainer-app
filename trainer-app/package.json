@@ -67,7 +67,7 @@
         "verify:production-version": "tsx scripts/verify-production-version.ts",
         "verify:workout-mutations": "tsx scripts/check-workout-mutation-ownership.ts",
         "verify:production-write-gate": "tsx scripts/check-production-write-gate.ts",
-        "verify:fast": "npm run lint && npx tsc --noEmit && npm run test:fast && npm run verify:contracts",
+        "verify:fast": "npm run test:preflight && npm run lint && tsc --noEmit && npm run test:fast && npm run verify:contracts",
         "verify": "npm run verify:fast && npm run verify:completed-review && npm run verify:version && npm run verify:workout-mutations && npm run verify:production-write-gate",
         "sync:exercise-library": "tsx scripts/sync-exercise-library.ts",
         "sync:exercise-library:apply": "tsx scripts/sync-exercise-library.ts --apply",

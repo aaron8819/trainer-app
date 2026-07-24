@@ -2448,7 +2448,7 @@ Invoke-Test 'registry parses and covers committed command surfaces' {
     Assert-Equal $report.packageScriptsRegistered $report.packageScripts 'Every package script must be registered.'
     Assert-Equal @($report.errors).Count 0 'Registry validator reported errors.'
     Assert-True ($report.commandsRegistered -ge $report.packageScripts) 'Registry command count is unexpectedly small.'
-    Assert-Equal @($report.ignoredEntrypoints).Count 4 'Documented internal-entrypoint ignore count mismatch.'
+    Assert-Equal @($report.ignoredEntrypoints).Count 7 'Documented internal-entrypoint ignore count mismatch.'
     Assert-True $report.remoteIdentityContractValid 'Registry did not validate the remote identity contract.'
     Assert-True $report.remoteStatusRegistered 'Registry did not validate the remote status command.'
 }

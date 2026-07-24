@@ -224,17 +224,19 @@ Rollback before application traffic may restore the pre-migration backup. After 
 - Optional strict stimulus coverage gate: `STRICT_STIMULUS_PROFILE_COVERAGE` (fails generation-context loading when planner-eligible exercises are missing explicit stimulus profile coverage)
 
 ## Local setup
-1. `npm install`
+1. From `trainer-app/`, run `npm ci` to install the exact lockfile deliberately.
 2. `npm run prisma:generate`
-3. Apply migrations (`npx prisma migrate deploy` or local dev flow)
+3. Apply migrations only through the separately authorized local development or deployment workflow.
 4. Optional seed: `npm run db:seed`
 5. Start app: `npm run dev`
 
 Migration hygiene:
-- After pulling any branch with new files under `prisma/migrations/`, run `npx prisma migrate deploy` before relying on the app runtime.
+- After pulling any branch with new files under `prisma/migrations/`, apply them through the separately authorized migration workflow before relying on the app runtime.
 - If the Prisma schema/client include a model but the database is missing its table, runtime reads will fail with `PrismaClientKnownRequestError` reporting that the table does not exist.
 
 ## Verification and maintenance
+- `npm run verify:fast`: first checks that the worktree has a valid local dependency installation, then runs lint, the local TypeScript compiler, focused tests, and contract checks. npm package scripts resolve binaries from local `node_modules/.bin`.
+- Routine verification must not use `npx`: it can download a missing package. Missing dependencies fail nonzero with instructions to run `npm ci` deliberately instead of using a network-capable fallback.
 - `npm run verify`: lint + type-check (`tsc --noEmit`) + `test:fast` + contracts
 - `npm run verify:exercise-library`: validates exercise library integrity
 - `npm run report:stimulus-coverage`: reports planner-eligible exercise stimulus-profile coverage and remaining centralized fallback usage

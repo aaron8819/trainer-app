@@ -78,7 +78,7 @@ if (!existsSync(nodeModulesPath)) {
   reportFailure(
     EXIT.blocked,
     "dependencies-missing",
-    "Install or link an approved exact-lock dependency installation before running typed checks."
+    "Local dependencies are missing. Run npm ci deliberately from trainer-app before verification; no package download fallback was attempted."
   );
 }
 if (!existsSync(tsxLauncher)) {

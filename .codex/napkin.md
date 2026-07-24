@@ -14,6 +14,8 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
+| 2026-07-24 | self | Fake Windows `.cmd` PostgreSQL tools received `--format=custom` as separate `--format` and `custom` arguments under PowerShell's legacy batch invocation behavior. | Use PostgreSQL's equivalent separate-token form (`--format custom`, `--schema public`) when exact Windows fake-tool argument contracts must match production commands. |
+| 2026-07-24 | self | Let a one-item PowerShell project-reference pipeline collapse to a scalar string, so `$references[0]` compared one character and rejected valid Supabase identities. | Wrap pipeline results in `@(...)` whenever count and indexed access are part of a fail-closed identity contract. |
 | 2026-07-24 | self | Used PowerShell's automatic `$Matches` variable for a documentation-search result, producing misleading table output instead of the `rg` rows. | Use task-specific variable names such as `$npxTscRows`; do not reuse PowerShell automatic variables in verification harnesses. |
 | 2026-07-24 | baseline | The command-registry validator covered all current entrypoints, but its aggregate suite still expected the older ignored-entrypoint count. | Update the aggregate registry fixture in the same change that expands the documented ignore inventory; compare base and branch before classifying the mismatch. |
 | 2026-07-24 | self | Passed an unquoted `stash@{0}` ref through PowerShell, which parsed `@{}` instead of forwarding the Git revision. | Single-quote stash revision arguments in PowerShell, for example `'stash@{0}'`. |

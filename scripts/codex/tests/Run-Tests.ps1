@@ -633,6 +633,7 @@ Invoke-Test 'JSON task-manifest.v1 contract' {
 Invoke-Test 'Phase 1 side-effect labels remain backward compatible' {
     $policy = Get-Content -Raw -LiteralPath $sourcePolicy | ConvertFrom-Json
     $expected = [ordered]@{
+        'database-backup-tests' = 'temporary-local-test-fixtures'
         'codex-tooling-tests' = 'temporary-local-test-fixtures'
         'git-diff-check' = 'read-only'
         'test-fast' = 'local-test'
@@ -646,6 +647,34 @@ Invoke-Test 'Phase 1 side-effect labels remain backward compatible' {
 
     foreach ($entry in $expected.GetEnumerator()) {
         Assert-Equal $policy.commands.($entry.Key).defaultSideEffectClass $entry.Value "Phase 1 side-effect class changed for '$($entry.Key)'."
+    }
+}
+
+Invoke-Test 'database backup command registry contract is exact' {
+    $policy = Get-Content -Raw -LiteralPath $sourcePolicy | ConvertFrom-Json
+    $expected = [ordered]@{
+        'database-backup-create' = [pscustomobject]@{
+            command = 'pwsh -NoProfile -File scripts/database/Backup-TrainerProduction.ps1'
+            entrypoint = 'scripts/database/Backup-TrainerProduction.ps1'
+            profile = 'database-read-artifact'
+        }
+        'database-backup-inspect' = [pscustomobject]@{
+            command = 'pwsh -NoProfile -File scripts/database/Inspect-TrainerBackup.ps1'
+            entrypoint = 'scripts/database/Inspect-TrainerBackup.ps1'
+            profile = 'read-only'
+        }
+        'database-backup-tests' = [pscustomobject]@{
+            command = 'pwsh -NoProfile -File scripts/database/tests/Run-Tests.ps1'
+            entrypoint = 'scripts/database/tests/Run-Tests.ps1'
+            profile = 'local-artifact-write'
+        }
+    }
+    foreach ($expectedEntry in $expected.GetEnumerator()) {
+        $matches = @($policy.commandRegistry | Where-Object { $_.id -ceq $expectedEntry.Key })
+        Assert-Equal $matches.Count 1 "Registry entry count mismatch for '$($expectedEntry.Key)'."
+        Assert-Equal $matches[0].command $expectedEntry.Value.command "Registry command mismatch for '$($expectedEntry.Key)'."
+        Assert-Equal $matches[0].entrypoint $expectedEntry.Value.entrypoint "Registry entrypoint mismatch for '$($expectedEntry.Key)'."
+        Assert-Equal $matches[0].profile $expectedEntry.Value.profile "Registry profile mismatch for '$($expectedEntry.Key)'."
     }
 }
 
@@ -738,6 +767,24 @@ Invoke-Test 'path verification selection and deduplication' {
         Assert-True ($ids -contains 'verify-contracts') 'Contract verification was not selected.'
         Assert-True ($ids -contains 'test-fast') 'Shared seam verification was not selected.'
         Assert-Equal $ids.Count (@($ids | Select-Object -Unique).Count) 'Implementation commands were not deduplicated.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'database backup paths select the focused harness in Phase 1' {
+    $fixture = New-TestRepository
+    try {
+        foreach ($path in @(
+                'scripts/database/Backup-TrainerProduction.ps1',
+                'scripts/database/Inspect-TrainerBackup.ps1',
+                'scripts/database/tests/Run-Tests.ps1'
+            )) {
+            $result = Invoke-Inspector -Fixture $fixture -Json -ChangedPath @($path)
+            $manifest = $result.Text | ConvertFrom-Json
+            Assert-Equal $result.ExitCode 0 "Phase 1 database path planning failed for $path."
+            Assert-True ($manifest.verification.implementation.id -contains 'database-backup-tests') "Focused backup harness missing for $path."
+            Assert-True (-not ($manifest.verification.release.id -contains 'database-backup-tests')) "Backup harness leaked into release checks for $path."
+        }
     }
     finally { Remove-TestRepository -Fixture $fixture }
 }
@@ -1002,6 +1049,43 @@ Invoke-Test 'verification JSON contract and explicit paths' {
         foreach ($property in @('matchedRules', 'implementation', 'release', 'skipped', 'warnings', 'blockers')) {
             Assert-True ($null -ne $plan.$property) "Stable plan array '$property' missing."
         }
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'database backup paths use focused verification without full app fallback' {
+    $fixture = New-TestRepository
+    try {
+        foreach ($path in @(
+                'scripts/database/Backup-TrainerProduction.ps1',
+                'scripts/database/Inspect-TrainerBackup.ps1',
+                'scripts/database/tests/Run-Tests.ps1'
+            )) {
+            $result = Invoke-Verification -Fixture $fixture -Json -ChangedPath @($path)
+            $plan = $result.Text | ConvertFrom-Json
+            $ids = @($plan.implementation.id)
+            Assert-Equal $result.ExitCode 0 "Database verification planning failed for $path."
+            Assert-True ($ids -contains 'database-backup-tests') "Focused backup harness missing for $path."
+            Assert-True ($ids -contains 'git-diff-check') "Diff check missing for $path."
+            Assert-True (-not ($ids -contains 'verify')) "Full app verification fallback selected for $path."
+            Assert-True (-not ($ids -contains 'test-fast')) "Unrelated app tests selected for $path."
+            Assert-Equal @($plan.release).Count 0 "Release checks were selected for $path."
+        }
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
+Invoke-Test 'operations documentation remains docs-only verification' {
+    $fixture = New-TestRepository
+    try {
+        $result = Invoke-Verification -Fixture $fixture -Json -ChangedPath @('trainer-app/docs/07_OPERATIONS.md')
+        $plan = $result.Text | ConvertFrom-Json
+        $ids = @($plan.implementation.id)
+        Assert-Equal $result.ExitCode 0 'Operations documentation verification planning failed.'
+        Assert-True ($ids -contains 'git-diff-check') 'Docs diff check missing.'
+        Assert-True (-not ($ids -contains 'database-backup-tests')) 'Database harness selected for docs-only change.'
+        Assert-True (-not ($ids -contains 'verify')) 'Full app verification selected for docs-only change.'
+        Assert-Equal @($plan.release).Count 0 'Release checks selected for docs-only change.'
     }
     finally { Remove-TestRepository -Fixture $fixture }
 }

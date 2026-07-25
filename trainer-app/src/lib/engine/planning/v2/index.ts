@@ -3,6 +3,16 @@ export {
   V2_DIRECT_VOLUME_CAPACITY_PROFILES,
   V2_DIRECT_VOLUME_CAPACITY_YIELD_ORDER,
 } from "./direct-volume-policy";
+export {
+  buildV2CapacitySelectionExplanation,
+  isSupportedV2CapacityTopology,
+  mapV2CapacityChoiceToProfile,
+  recommendV2CapacityChoice,
+  V2_CAPACITY_DURATION_DISCLAIMER,
+  V2_CAPACITY_PRODUCT_CHOICES,
+  V2_CAPACITY_PRODUCT_OPTIONS,
+  V2_CAPACITY_TIME_PRIORITIES,
+} from "./capacity-selection";
 export { buildV2AcceptedPlannerIntentDto } from "./accepted-planner-intent-dto";
 export { buildV2BasePlanCompare } from "./materialization/base-plan-compare";
 export { buildV2BasePlanShadowConsumptionTrial } from "./materialization/base-plan-compare";
@@ -63,6 +73,14 @@ export type {
   V2DirectVolumeCapacityProfile,
   V2DirectVolumeCapacityProfileId,
 } from "./direct-volume-policy";
+export type {
+  V2CapacityProductChoice,
+  V2CapacityRecommendation,
+  V2CapacityRecoveryTolerance,
+  V2CapacitySelectionExplanation,
+  V2CapacityTimePriority,
+  V2CapacityTrainingAge,
+} from "./capacity-selection";
 export type { V2StrategyToDemandProjectionInput } from "./strategy-to-demand-projection";
 export type {
   ExerciseClassDistributionBySlot,

@@ -32,6 +32,20 @@ vi.mock("@/lib/api/mesocycle-handoff", () => ({
 
 import { POST } from "./route";
 
+function buildRefreshRequest(body: unknown = {
+  productChoice: "balanced",
+  fourDayUpperLowerConfirmed: true,
+}) {
+  return new Request(
+    "http://localhost/api/mesocycles/meso-1/refresh-next-seed-draft",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
 describe("POST /api/mesocycles/[id]/refresh-next-seed-draft", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -67,10 +81,7 @@ describe("POST /api/mesocycles/[id]/refresh-next-seed-draft", () => {
 
   it("refreshes an awaiting-handoff draft through the guarded API seam", async () => {
     const response = await POST(
-      new Request(
-        "http://localhost/api/mesocycles/meso-1/refresh-next-seed-draft",
-        { method: "POST" },
-      ),
+      buildRefreshRequest(),
       { params: Promise.resolve({ id: "meso-1" }) },
     );
 
@@ -91,6 +102,8 @@ describe("POST /api/mesocycles/[id]/refresh-next-seed-draft", () => {
     expect(mocks.refreshMesocycleHandoffNextSeedDraftFromV2).toHaveBeenCalledWith({
       userId: "user-1",
       mesocycleId: "meso-1",
+      productChoice: "balanced",
+      fourDayUpperLowerConfirmed: true,
     });
   });
 
@@ -98,10 +111,7 @@ describe("POST /api/mesocycles/[id]/refresh-next-seed-draft", () => {
     mocks.resolveOwner.mockResolvedValue(null);
 
     const response = await POST(
-      new Request(
-        "http://localhost/api/mesocycles/meso-1/refresh-next-seed-draft",
-        { method: "POST" },
-      ),
+      buildRefreshRequest(),
       { params: Promise.resolve({ id: "meso-1" }) },
     );
 
@@ -116,10 +126,7 @@ describe("POST /api/mesocycles/[id]/refresh-next-seed-draft", () => {
     mocks.mesocycleFindFirst.mockResolvedValue(null);
 
     const response = await POST(
-      new Request(
-        "http://localhost/api/mesocycles/meso-1/refresh-next-seed-draft",
-        { method: "POST" },
-      ),
+      buildRefreshRequest(),
       { params: Promise.resolve({ id: "meso-1" }) },
     );
 
@@ -137,10 +144,7 @@ describe("POST /api/mesocycles/[id]/refresh-next-seed-draft", () => {
     });
 
     const response = await POST(
-      new Request(
-        "http://localhost/api/mesocycles/meso-1/refresh-next-seed-draft",
-        { method: "POST" },
-      ),
+      buildRefreshRequest(),
       { params: Promise.resolve({ id: "meso-1" }) },
     );
 
@@ -159,10 +163,7 @@ describe("POST /api/mesocycles/[id]/refresh-next-seed-draft", () => {
     );
 
     const response = await POST(
-      new Request(
-        "http://localhost/api/mesocycles/meso-1/refresh-next-seed-draft",
-        { method: "POST" },
-      ),
+      buildRefreshRequest(),
       { params: Promise.resolve({ id: "meso-1" }) },
     );
 
@@ -179,10 +180,7 @@ describe("POST /api/mesocycles/[id]/refresh-next-seed-draft", () => {
     );
 
     const response = await POST(
-      new Request(
-        "http://localhost/api/mesocycles/meso-1/refresh-next-seed-draft",
-        { method: "POST" },
-      ),
+      buildRefreshRequest(),
       { params: Promise.resolve({ id: "meso-1" }) },
     );
 
@@ -190,5 +188,25 @@ describe("POST /api/mesocycles/[id]/refresh-next-seed-draft", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: "Mesocycle handoff draft is not refreshable.",
     });
+  });
+
+  it("rejects missing confirmation and internal profile ids", async () => {
+    const missingConfirmation = await POST(
+      buildRefreshRequest({ productChoice: "balanced" }),
+      { params: Promise.resolve({ id: "meso-1" }) },
+    );
+    expect(missingConfirmation.status).toBe(400);
+
+    const internalId = await POST(
+      buildRefreshRequest({
+        productChoice: "moderate",
+        fourDayUpperLowerConfirmed: true,
+      }),
+      { params: Promise.resolve({ id: "meso-1" }) },
+    );
+    expect(internalId.status).toBe(400);
+    expect(
+      mocks.refreshMesocycleHandoffNextSeedDraftFromV2,
+    ).not.toHaveBeenCalled();
   });
 });

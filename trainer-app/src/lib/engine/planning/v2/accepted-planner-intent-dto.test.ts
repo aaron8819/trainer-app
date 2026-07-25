@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildV2AcceptedPlannerIntentDto,
+  buildV2CapacitySelectionExplanation,
   buildV2PlannerMesocyclePolicy,
 } from "./index";
 
@@ -69,6 +70,32 @@ describe("buildV2AcceptedPlannerIntentDto", () => {
       "peak_overreach_lite",
       "deload",
     ]);
+  });
+
+  it("optionally records the runtime-inert product selection explanation", () => {
+    const capacitySelection = buildV2CapacitySelectionExplanation({
+      productChoice: "efficient",
+      recommendation: {
+        choice: "balanced",
+        reason: "Balanced was recommended from the available inputs.",
+      },
+    });
+    const dto = buildV2AcceptedPlannerIntentDto(
+      buildV2PlannerMesocyclePolicy({
+        directVolumeCapacityProfile: "minimal",
+      }),
+      capacitySelection,
+    );
+
+    expect(dto.capacitySelection).toEqual(capacitySelection);
+    expect(dto.capacitySelection).toMatchObject({
+      productChoice: "efficient",
+      internalProfileId: "minimal",
+      recommendationAccepted: false,
+    });
+    expect(buildV2AcceptedPlannerIntentDto()).not.toHaveProperty(
+      "capacitySelection",
+    );
   });
 
   it("contains no selected identities, exercise ids, or exercise names", () => {

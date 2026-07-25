@@ -4,11 +4,17 @@ import { prisma } from "@/lib/db/prisma";
 import { nextCycleSeedDraftUpdateSchema } from "@/lib/validation";
 import {
   buildV2AcceptedPlannerIntentDto,
+  buildV2CapacitySelectionExplanation,
   buildV2MaterializationDryRunReport,
   buildV2MaterializationPreparationEvidence,
   buildV2MaterializationPromotionReadiness,
   buildV2PlannerMesocyclePolicy,
   DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
+  isSupportedV2CapacityTopology,
+  mapV2CapacityChoiceToProfile,
+  recommendV2CapacityChoice,
+  type V2CapacityProductChoice,
+  type V2CapacitySelectionExplanation,
   type V2BasePlanValidation,
 } from "@/lib/engine/planning/v2";
 import {
@@ -312,6 +318,17 @@ const acceptedSeedDraftJsonSchema = z.object({
     serializer: z.literal("buildMesocycleSlotPlanSeed"),
     runtimeReplayUnchanged: z.literal(true),
   }),
+  capacitySelection: z
+    .object({
+      productChoice: z.enum(["efficient", "balanced", "full"]),
+      internalProfileId: z.enum(["minimal", "moderate", "preferred"]),
+      recommendationReason: z.string().min(1),
+      recommendationAccepted: z.boolean(),
+      representativeProfileSummary: z.string().min(1),
+      durationDisclaimer: z.string().min(1),
+    })
+    .strict()
+    .optional(),
 });
 
 const nextCycleSeedDraftJsonSchema = nextCycleSeedDraftUpdateSchema.extend({
@@ -539,8 +556,7 @@ export function sanitizeNextCycleSeedDraft(input: {
     );
   }
   const acceptedSeedDraft = acceptedSeedDraftFromRawDraft(input.draft);
-
-  return {
+  const sanitized: NextCycleSeedDraft = {
     ...input.fallbackDraft,
     sourceMesocycleId: input.sourceMesocycleId,
     updatedAt: new Date().toISOString(),
@@ -552,8 +568,18 @@ export function sanitizeNextCycleSeedDraft(input: {
       slots: canonicalSlots,
     },
     carryForwardSelections: canonicalSelections,
+    ...(requested.capacitySelection
+      ? { capacitySelection: requested.capacitySelection }
+      : {}),
     ...(acceptedSeedDraft ? { acceptedSeedDraft } : {}),
   };
+  if (!requested.capacitySelection) {
+    delete sanitized.capacitySelection;
+  }
+  if (!acceptedSeedDraft) {
+    delete sanitized.acceptedSeedDraft;
+  }
+  return sanitized;
 }
 
 function normalizeStartingPoint(
@@ -981,8 +1007,51 @@ function slotSeedAlignsWithSequence(input: {
 function refreshedV2SeedFromDraft(input: {
   draft: NextCycleSeedDraft;
   slotSequence: ReturnType<typeof projectSuccessorMesocycle>["mesocycle"]["slotSequence"];
+  expectedProductChoice?: V2CapacityProductChoice;
 }): MesocycleSlotPlanSeed | null {
   const seed = input.draft.acceptedSeedDraft?.slotPlanSeedJson;
+  const capacitySelection = input.draft.capacitySelection;
+  if (capacitySelection) {
+    if (
+      !capacitySelection.fourDayUpperLowerConfirmed ||
+      !isSupportedV2CapacityTopology({
+        splitType: input.draft.structure.splitType,
+        sessionsPerWeek: input.draft.structure.sessionsPerWeek,
+        daysPerWeek: input.draft.structure.daysPerWeek,
+        slots: input.draft.structure.slots,
+      })
+    ) {
+      throw new Error("MESOCYCLE_HANDOFF_V2_CAPACITY_TOPOLOGY_UNSUPPORTED");
+    }
+    if (
+      input.expectedProductChoice &&
+      input.expectedProductChoice !== capacitySelection.productChoice
+    ) {
+      throw new Error("MESOCYCLE_HANDOFF_V2_CAPACITY_SELECTION_MISMATCH");
+    }
+    const acceptedCapacity = input.draft.acceptedSeedDraft?.capacitySelection;
+    const expectedProfile = mapV2CapacityChoiceToProfile(
+      capacitySelection.productChoice,
+    );
+    if (
+      !seed ||
+      !acceptedCapacity ||
+      acceptedCapacity.productChoice !== capacitySelection.productChoice ||
+      acceptedCapacity.internalProfileId !== expectedProfile
+    ) {
+      throw new Error("MESOCYCLE_HANDOFF_V2_CAPACITY_REFRESH_REQUIRED");
+    }
+    if (
+      seed.acceptedPlannerIntent?.capacitySelection?.productChoice !==
+        capacitySelection.productChoice ||
+      seed.acceptedPlannerIntent?.capacitySelection?.internalProfileId !==
+        expectedProfile
+    ) {
+      throw new Error("MESOCYCLE_HANDOFF_V2_CAPACITY_SELECTION_MISMATCH");
+    }
+  } else if (input.expectedProductChoice) {
+    throw new Error("MESOCYCLE_HANDOFF_V2_CAPACITY_SELECTION_MISMATCH");
+  }
   if (!seed || seed.source !== "v2_materialized_seed") {
     return null;
   }
@@ -1006,6 +1075,7 @@ async function buildLiveV2MaterializedDraftSeed(input: {
   reader: V2DraftRefreshReader;
   userId: string;
   slotSequence: ReturnType<typeof projectSuccessorMesocycle>["mesocycle"]["slotSequence"];
+  capacitySelection: V2CapacitySelectionExplanation;
   dependencies?: V2DraftRefreshDependencies;
 }): Promise<{
   seed: MesocycleSlotPlanSeed;
@@ -1025,7 +1095,9 @@ async function buildLiveV2MaterializedDraftSeed(input: {
     }),
     input.reader.userPreference.findUnique({ where: { userId: input.userId } }),
   ]);
-  const plannerPolicy = buildV2PlannerMesocyclePolicy();
+  const plannerPolicy = buildV2PlannerMesocyclePolicy({
+    directVolumeCapacityProfile: input.capacitySelection.internalProfileId,
+  });
   const taxonomy = DEFAULT_V2_EXERCISE_CLASS_TAXONOMY;
   const inventory = normalizeLiveInventoryForV2Materialization(exercises);
   const constraints = {
@@ -1078,7 +1150,10 @@ async function buildLiveV2MaterializedDraftSeed(input: {
     constraints: preparationEvidence.constraints,
     requiredLaneCoverageBySlot: dryRunReport.requiredLaneCoverageBySlot,
     productionWriteGates: HANDOFF_V2_MATERIALIZED_SEED_PRODUCTION_WRITE_GATES,
-    acceptedPlannerIntent: buildV2AcceptedPlannerIntentDto(plannerPolicy),
+    acceptedPlannerIntent: buildV2AcceptedPlannerIntentDto(
+      plannerPolicy,
+      input.capacitySelection,
+    ),
     dependencies: {
       buildDryRunReport: () => dryRunReport,
       buildPromotionReadiness: () => promotionReadiness,
@@ -1461,6 +1536,7 @@ function buildAcceptanceDraftFingerprint(draft: NextCycleSeedDraft): string {
   return JSON.stringify({
     sourceMesocycleId: draft.sourceMesocycleId,
     structure: draft.structure,
+    capacitySelection: draft.capacitySelection ?? null,
     acceptedSeedDraft: draft.acceptedSeedDraft
       ? {
           source: draft.acceptedSeedDraft.source,
@@ -1480,6 +1556,7 @@ function buildRefreshableDraftFingerprint(draft: NextCycleSeedDraft): string {
   return JSON.stringify({
     sourceMesocycleId: draft.sourceMesocycleId,
     structure: draft.structure,
+    capacitySelection: draft.capacitySelection ?? null,
     startingPoint: draft.startingPoint,
     carryForwardSelections: draft.carryForwardSelections.map((selection) => ({
       exerciseId: selection.exerciseId,
@@ -1549,6 +1626,20 @@ function assertExistingSuccessorMatchesV2AcceptedSeedDraft(input: {
   }
 }
 
+function assertRequestedCapacityChoiceMatchesDraft(input: {
+  nextSeedDraftJson: unknown;
+  capacityChoice?: V2CapacityProductChoice;
+}): void {
+  const draft = readNextCycleSeedDraftForAccept(input.nextSeedDraftJson);
+  const storedChoice = draft?.capacitySelection?.productChoice;
+  if (
+    (storedChoice && input.capacityChoice !== storedChoice) ||
+    (!storedChoice && input.capacityChoice)
+  ) {
+    throw new Error("MESOCYCLE_HANDOFF_V2_CAPACITY_SELECTION_MISMATCH");
+  }
+}
+
 async function repairAcceptedSuccessorSeedInTransaction(
   tx: Tx,
   prepared: HandoffAcceptancePreparation
@@ -1614,6 +1705,7 @@ export async function prepareMesocycleHandoffAcceptance(input: {
   mesocycleId: string;
   reader?: PendingHandoffArtifactReader & HandoffSourceMesocycleReader;
   allowCompletedSource?: boolean;
+  capacityChoice?: V2CapacityProductChoice;
   v2MaterializedSeedWrite?: Omit<
     BuildV2MaterializedSeedForAcceptanceInput,
     "slotSequence"
@@ -1672,9 +1764,15 @@ export async function prepareMesocycleHandoffAcceptance(input: {
     source: projectionSource,
     design,
   });
+  if (draft.capacitySelection && !input.capacityChoice) {
+    throw new Error("MESOCYCLE_HANDOFF_V2_CAPACITY_SELECTION_MISMATCH");
+  }
   const refreshedDraftSeed = refreshedV2SeedFromDraft({
     draft,
     slotSequence: projection.mesocycle.slotSequence,
+    ...(input.capacityChoice
+      ? { expectedProductChoice: input.capacityChoice }
+      : {}),
   });
   const seedPreparation = refreshedDraftSeed
     ? {
@@ -1920,6 +2018,7 @@ export async function acceptPreparedMesocycleHandoffInTransaction(
 export async function acceptMesocycleHandoff(input: {
   userId: string;
   mesocycleId: string;
+  capacityChoice?: V2CapacityProductChoice;
 }): Promise<Mesocycle> {
   const source = await prisma.mesocycle.findFirst({
     where: {
@@ -1931,12 +2030,25 @@ export async function acceptMesocycleHandoff(input: {
       state: true,
       macroCycleId: true,
       mesoNumber: true,
+      nextSeedDraftJson: true,
     },
   });
 
   if (!source) {
     throw new Error("MESOCYCLE_HANDOFF_NOT_FOUND");
   }
+  if (
+    source.state !== "COMPLETED" &&
+    source.state !== "AWAITING_HANDOFF"
+  ) {
+    throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
+  }
+  assertRequestedCapacityChoiceMatchesDraft({
+    nextSeedDraftJson: source.nextSeedDraftJson,
+    ...(input.capacityChoice
+      ? { capacityChoice: input.capacityChoice }
+      : {}),
+  });
 
   if (source.state === "COMPLETED") {
     const successor = await prisma.mesocycle.findFirst({
@@ -1960,10 +2072,6 @@ export async function acceptMesocycleHandoff(input: {
     return prisma.$transaction((tx) => repairAcceptedSuccessorSeedInTransaction(tx, prepared));
   }
 
-  if (source.state !== "AWAITING_HANDOFF") {
-    throw new Error("MESOCYCLE_HANDOFF_NOT_PENDING");
-  }
-
   const prepared = await prepareMesocycleHandoffAcceptance(input);
   return prisma.$transaction((tx) => acceptPreparedMesocycleHandoffInTransaction(tx, prepared));
 }
@@ -1971,6 +2079,8 @@ export async function acceptMesocycleHandoff(input: {
 export async function refreshMesocycleHandoffNextSeedDraftFromV2(input: {
   userId: string;
   mesocycleId: string;
+  productChoice: V2CapacityProductChoice;
+  fourDayUpperLowerConfirmed: true;
   reader?: V2DraftRefreshReader;
   dependencies?: V2DraftRefreshDependencies;
 }): Promise<MesocycleHandoffNextSeedDraftRefreshResult> {
@@ -2013,6 +2123,34 @@ export async function refreshMesocycleHandoffNextSeedDraftFromV2(input: {
     sourceMesocycleId: source.id,
     fallbackDraft: summary.recommendedNextSeed,
   });
+  if (
+    !draft.capacitySelection ||
+    draft.capacitySelection.productChoice !== input.productChoice ||
+    !draft.capacitySelection.fourDayUpperLowerConfirmed ||
+    input.fourDayUpperLowerConfirmed !== true
+  ) {
+    throw new Error("MESOCYCLE_HANDOFF_V2_CAPACITY_SELECTION_MISMATCH");
+  }
+  const supportedTopology = isSupportedV2CapacityTopology({
+    splitType: draft.structure.splitType,
+    sessionsPerWeek: draft.structure.sessionsPerWeek,
+    daysPerWeek: draft.structure.daysPerWeek,
+    slots: draft.structure.slots,
+  });
+  if (!supportedTopology) {
+    throw new Error("MESOCYCLE_HANDOFF_V2_CAPACITY_TOPOLOGY_UNSUPPORTED");
+  }
+  const recommendation = recommendV2CapacityChoice({
+    supportedFourDayUpperLower: supportedTopology,
+    timePriority: draft.capacitySelection.timePriority,
+  });
+  if (!recommendation) {
+    throw new Error("MESOCYCLE_HANDOFF_V2_CAPACITY_TOPOLOGY_UNSUPPORTED");
+  }
+  const capacitySelection = buildV2CapacitySelectionExplanation({
+    productChoice: input.productChoice,
+    recommendation,
+  });
   const draftFingerprint = buildRefreshableDraftFingerprint(draft);
   const design = applyDraftOverridesToDesign({
     design: summary.recommendedDesign,
@@ -2026,6 +2164,7 @@ export async function refreshMesocycleHandoffNextSeedDraftFromV2(input: {
     reader,
     userId: input.userId,
     slotSequence: projection.mesocycle.slotSequence,
+    capacitySelection,
     dependencies: input.dependencies,
   });
   const refreshedAt = now().toISOString();
@@ -2045,6 +2184,7 @@ export async function refreshMesocycleHandoffNextSeedDraftFromV2(input: {
         serializer: "buildMesocycleSlotPlanSeed",
         runtimeReplayUnchanged: true,
       },
+      capacitySelection,
     },
   };
 
@@ -2143,6 +2283,24 @@ export async function updateMesocycleHandoffDraftInTransaction(
         throw new Error("MESOCYCLE_HANDOFF_SUMMARY_MISSING");
       })(),
   });
+  const currentDraft = readNextCycleSeedDraft(
+    refreshedPendingRow.nextSeedDraftJson,
+  );
+  if (currentDraft) {
+    const currentSanitized = sanitizeNextCycleSeedDraft({
+      draft: currentDraft,
+      sourceMesocycleId: refreshedPendingRow.id,
+      fallbackDraft: summary.recommendedNextSeed!,
+    });
+    if (
+      currentSanitized.acceptedSeedDraft &&
+      buildRefreshableDraftFingerprint(currentSanitized) ===
+        buildRefreshableDraftFingerprint(sanitizedDraft)
+    ) {
+      sanitizedDraft.acceptedSeedDraft =
+        currentSanitized.acceptedSeedDraft;
+    }
+  }
 
   const updated = await tx.mesocycle.update({
     where: { id: refreshedPendingRow.id },

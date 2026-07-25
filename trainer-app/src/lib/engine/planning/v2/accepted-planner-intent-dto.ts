@@ -1,4 +1,5 @@
 import { buildV2PlannerMesocyclePolicy } from "./mesocycle-policy";
+import type { V2CapacitySelectionExplanation } from "./capacity-selection";
 import type {
   V2AuthoredSetBudgetRange,
   V2PlannerDemandRole,
@@ -41,6 +42,7 @@ type OptionalActivationPolicy =
 export type V2AcceptedPlannerIntentDto = {
   version: 1;
   source: "v2_planner_policy";
+  capacitySelection?: V2CapacitySelectionExplanation;
   targetSkeletonId: "upper_lower_4x_v2";
   split: V2PlannerSplit;
   weekCount: number;
@@ -202,6 +204,7 @@ function buildTargetLaneIndex(
 
 export function buildV2AcceptedPlannerIntentDto(
   policy: V2PlannerMesocyclePolicy = buildV2PlannerMesocyclePolicy(),
+  capacitySelection?: V2CapacitySelectionExplanation,
 ): V2AcceptedPlannerIntentDto {
   const setLaneIndex = buildSetDistributionLaneIndex(policy);
   const capacityLaneIndex = buildCapacityLaneIndex(policy);
@@ -211,6 +214,7 @@ export function buildV2AcceptedPlannerIntentDto(
   return {
     version: 1,
     source: "v2_planner_policy",
+    ...(capacitySelection ? { capacitySelection } : {}),
     targetSkeletonId: "upper_lower_4x_v2",
     split: policy.targetSkeleton.split,
     weekCount: policy.targetSkeleton.weeks,

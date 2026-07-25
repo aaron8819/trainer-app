@@ -62,8 +62,6 @@ Repair is a safety net, not a plan author.
 - Planner metadata, diagnostics, accepted intent, provenance, audit sidecars, and readouts are explanatory evidence unless a reviewed production seam explicitly promotes them.
 - Runtime edits are session-local deviations unless an authorized canonical acceptance or reseed path promotes them.
 
-Use the relevant repository-local guard skill for changes that affect receipts, immutable seed revisions, seed/runtime replay, workout generation, V2 planning, or other shared semantics.
-
 ## Tooling and verification
 
 - Search before editing. Use `rg` for symbols and `rg --files` for file discovery; inspect the current surface, owning implementation, nearby tests, and callsites before changing behavior.

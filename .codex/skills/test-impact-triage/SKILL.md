@@ -1,74 +1,57 @@
 ---
 name: test-impact-triage
-description: Select and interpret the minimum sufficient Trainer verification plan for a proposed or completed diff. Use after the owning seam is known to review repository-selected checks, decide whether local implementation checks may run, and report release-only or authorization-gated follow-up without duplicating policy rules.
+description: Review the repository-selected verification plan for a known Trainer change surface. Use after the owning seam and diff are known to judge whether selected local checks are sufficient, identify prerequisite or authorization gates, interpret failures, and state residual risk. Do not use to discover architecture or invent path-to-check policy.
 ---
 
 # Test Impact Triage
 
-Use the repository verification planner as the deterministic source of check selection. This skill supplies judgment: confirm the owning seam, review why checks were selected, decide whether eligible local checks should run, and state what the plan does not prove.
+Use deterministic repository policy for check selection and human judgment for sufficiency and interpretation.
 
-## Use this skill
+## Generate and inspect
 
-Use it after implementation or while reviewing an existing diff. If ownership is unclear, route to `seam-locator`; if edits still need planning, route to `implementation-planner`; if generated or projected training output is affected, pair it with `workout-generation-audit`.
-
-Do not copy path-to-test mappings, prerequisite definitions, side-effect tables, mutation flags, or executable eligibility into this skill. `scripts/codex/trainer-policy.v1.json` and the command registry own those facts.
-
-## Generate the plan
-
-From the repository root, run:
+Run:
 
 ```powershell
 .\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>
 ```
 
-Use explicit changed paths or a valid Phase 1 JSON manifest only when the workflow genuinely needs a machine-readable handoff. Planning is the default and must execute nothing.
+Confirm:
 
-Review the plan before execution:
+- the base is the authorized comparison point
+- changed-path provenance represents the actual diff
+- the owning seam matches the selected implementation and release checks
+- warnings and blockers are classified correctly
+- domain-specific validation is present when the change claims domain output
 
-- confirm the base is the authorized comparison point
-- confirm changed-path provenance matches the intended diff
-- explain why each implementation and release check was selected
-- distinguish warnings from blockers
-- treat a missing prerequisite as a blocker for the affected check
-- leave unsafe, release-only, and authorization-gated commands visible but skipped
-- never override policy or registry eligibility through prose
+Do not restate path mappings, prerequisites, side-effect classifications, release rules, or execution eligibility. `scripts/codex/trainer-policy.v1.json` and the command registry own them.
 
-## Environment readiness
+## Decide what may run
 
-Before using `-Run`, invoke:
+Before eligible local execution, use `.\scripts\codex\Invoke-TrainerDoctor.ps1`.
 
-```powershell
-.\scripts\codex\Invoke-TrainerDoctor.ps1
-```
+Planning is the default. Use `-Run` only when the plan marks a local implementation check executable, its prerequisites are present, and the requested workflow authorizes it. Leave release-only and separately authorized checks visible but unexecuted.
 
-The default local-only doctor is the norm. Missing optional tools are warnings. Missing required prerequisites block affected execution. The doctor does not install, authenticate, repair, connect, migrate, deploy, or request environment values; remote scopes require an explicit need and authorization.
+Route the audit question and output-level mode decision to `audit-workflow`. Use `receipt-integrity` or `seed-runtime-source-of-truth` when those specialized contracts are affected.
 
-Use `-Run` only when all of the following are true:
+## Interpret results
 
-- the user-authorized workflow allows local implementation checks
-- the plan marks the command executable in implementation mode
-- required local prerequisites are present
-- the command does not require separate database, network, production, release, or destructive authorization
-
-Do not use `-Run` merely because the plan exists. Do not make GitHub, Vercel, or database scopes automatic. Invoke `Invoke-TrainerRemoteStatus.ps1 -Deployment` only when live Vercel state is needed and explicitly authorized; stop on expected/observed identity mismatch.
-
-## Domain and release follow-up
-
-The planner selects registered checks; it does not replace domain judgment. Route audit-mode selection to `audit-workflow`, generation-facing QA to `workout-generation-audit`, receipt checks to `receipt-integrity`, and seed/runtime checks to `seed-runtime-source-of-truth`.
-
-For database or migration diffs, report the task's database policy and relevant local checks, but keep connectivity, migration execution, backups, production reads, and all writes separately authorized. For release or incident work, the explicit `-Deployment` scope may establish read-only active Vercel deployment truth after exact identity validation; GitHub deployment records remain distinct, and a reported rollback candidate is not an authorized or proven-safe rollback. Do not imply that local Phase 1–3 checks or Vercel status can verify Supabase identity, the migration ledger, backups, write pause, rollback safety, deployment authorization, or write resumption.
+- Compare a failure with the authorized base by test identity and environment before calling it a regression.
+- A passed local plan proves only the seams exercised by its checks.
+- A selected but unavailable check is an unresolved gate, not a pass.
+- A release check remains release work until it runs in the correct authorized context.
+- An audit or database-dependent check remains separately authorized even when selected.
 
 ## Required output
 
-Return:
+Report:
 
-1. **Change classification and owning seam**
-2. **Authorized base and changed-path provenance**
-3. **Selected implementation checks and reasons**
-4. **Selected release checks and reasons**
-5. **Doctor warnings and prerequisite blockers**
-6. **Checks executed, skipped, or still operator-authorized**
-7. **Whether contract, broad verification, or domain audit coverage is selected**
-8. **Residual risk / what the plan does not prove**
+1. change classification and owning seam
+2. authorized base and changed-path provenance
+3. selected implementation checks and reasons
+4. selected release or separately authorized checks and reasons
+5. doctor warnings or prerequisite blockers
+6. executed, skipped, and unresolved checks
+7. result interpretation, including base comparison when needed
+8. residual risk and what the plan does not prove
 
-For every executed command, include its exit code, result, and side-effect classification. Say `none` explicitly when a category is empty.
+For each executed command, include exit code and result using the side-effect classification supplied by repository tooling.

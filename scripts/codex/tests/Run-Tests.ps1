@@ -1370,40 +1370,75 @@ Invoke-Test 'child exit propagates and execution stops on first failure' {
     finally { Remove-TestRepository -Fixture $fixture }
 }
 
-Invoke-Test 'Trainer skills route through Phase 1-3 without duplicating policy' {
+Invoke-Test 'Trainer skill inventory, routing, and doctrine contracts stay consolidated' {
     $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $sourceRoot '..\..'))
     $skillsRoot = Join-Path $repositoryRoot '.codex\skills'
-    $policy = Get-Content -Raw -LiteralPath $sourcePolicy | ConvertFrom-Json
-    $skillFiles = @(Get-ChildItem -LiteralPath $skillsRoot -Recurse -Filter 'SKILL.md' -File)
+    $expectedSkillNames = @(
+        'architecture-guard',
+        'audit-workflow',
+        'receipt-integrity',
+        'seed-runtime-source-of-truth',
+        'test-impact-triage',
+        'trainer-loop-triage',
+        'v2-planner-migration-guard'
+    )
+    $retiredSkillNames = @(
+        'implementation-planner',
+        'seam-locator',
+        'session-retrospective',
+        'workout-generation-audit'
+    )
+    $skillFiles = @(
+        Get-ChildItem -LiteralPath $skillsRoot -Directory |
+            ForEach-Object {
+                $skillFile = Join-Path $_.FullName 'SKILL.md'
+                if (Test-Path -LiteralPath $skillFile -PathType Leaf) {
+                    Get-Item -LiteralPath $skillFile
+                }
+            }
+    )
+    $actualSkillNames = @($skillFiles | ForEach-Object { $_.Directory.Name } | Sort-Object)
+    Assert-Equal ($actualSkillNames -join ',') (($expectedSkillNames | Sort-Object) -join ',') 'Trainer skill inventory changed without updating the explicit reviewed contract.'
+
     $skillTextByName = @{}
     foreach ($skillFile in $skillFiles) {
-        $skillTextByName[$skillFile.Directory.Name] = Get-Content -Raw -LiteralPath $skillFile.FullName
+        $skillName = $skillFile.Directory.Name
+        $skillText = Get-Content -Raw -LiteralPath $skillFile.FullName
+        $frontmatterMatch = [regex]::Match(
+            $skillText,
+            '\A---\r?\n(?<frontmatter>.*?)\r?\n---\r?\n',
+            [System.Text.RegularExpressions.RegexOptions]::Singleline
+        )
+        Assert-True $frontmatterMatch.Success "$skillName frontmatter does not parse."
+        $frontmatter = $frontmatterMatch.Groups['frontmatter'].Value
+        $frontmatterKeys = @(
+            [regex]::Matches($frontmatter, '(?m)^(?<key>[A-Za-z0-9_-]+):') |
+                ForEach-Object { $_.Groups['key'].Value }
+        )
+        Assert-Equal (($frontmatterKeys | Sort-Object) -join ',') 'description,name' "$skillName frontmatter must contain only name and description."
+        $nameMatch = [regex]::Match($frontmatter, '(?m)^name:\s*(?<value>[^\r\n]+)\r?$')
+        $descriptionMatch = [regex]::Match($frontmatter, '(?m)^description:\s*(?<value>[^\r\n]+)\r?$')
+        Assert-True $nameMatch.Success "$skillName frontmatter name is missing."
+        Assert-True $descriptionMatch.Success "$skillName frontmatter description is missing."
+        Assert-Equal $nameMatch.Groups['value'].Value.Trim() $skillName "$skillName frontmatter name does not match its directory."
+        Assert-True (-not [regex]::IsMatch($descriptionMatch.Groups['value'].Value, '(?i)\buse for (any task|all)\b')) "$skillName trigger description is overly broad."
+
+        $skillTextByName[$skillName] = $skillText
     }
     $allSkillText = ($skillTextByName.Values -join "`n")
 
-    foreach ($commandName in @(
-            'Start-TrainerTask.ps1',
-            'Invoke-TrainerDoctor.ps1',
-            'Invoke-TrainerVerification.ps1'
-        )) {
-        Assert-True (Test-Path -LiteralPath (Join-Path $sourceRoot $commandName) -PathType Leaf) "Referenced Trainer command does not exist: $commandName"
+    foreach ($retiredSkillName in $retiredSkillNames) {
+        Assert-True (-not $skillTextByName.ContainsKey($retiredSkillName)) "Retired Trainer skill still exists: $retiredSkillName"
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $skillsRoot $retiredSkillName))) "Retired Trainer skill directory still exists: $retiredSkillName"
     }
 
-    $orchestrationReferencesBySkill = @{
-        'trainer-loop-triage'         = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
-        'implementation-planner'      = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
-        'architecture-guard'          = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
-        'test-impact-triage'          = @('Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
-        'audit-workflow'              = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
-        'workout-generation-audit'    = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
-        'receipt-integrity'           = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
-        'seed-runtime-source-of-truth' = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
-        'v2-planner-migration-guard'  = @('Start-TrainerTask.ps1', 'Invoke-TrainerDoctor.ps1', 'Invoke-TrainerVerification.ps1')
-    }
-    foreach ($skillName in $orchestrationReferencesBySkill.Keys) {
-        foreach ($commandName in $orchestrationReferencesBySkill[$skillName]) {
-            Assert-True ($skillTextByName[$skillName].Contains(".\scripts\codex\$commandName")) "$skillName does not reference the canonical command path: $commandName"
-        }
+    $canonicalCommandNames = @(
+        'Start-TrainerTask.ps1',
+        'Invoke-TrainerDoctor.ps1',
+        'Invoke-TrainerVerification.ps1'
+    )
+    foreach ($commandName in $canonicalCommandNames) {
+        Assert-True (Test-Path -LiteralPath (Join-Path $sourceRoot $commandName) -PathType Leaf) "Referenced Trainer command does not exist: $commandName"
     }
 
     $commandReferences = [regex]::Matches(
@@ -1412,26 +1447,11 @@ Invoke-Test 'Trainer skills route through Phase 1-3 without duplicating policy' 
     )
     foreach ($reference in $commandReferences) {
         $commandName = $reference.Groups['name'].Value
-        Assert-True (Test-Path -LiteralPath (Join-Path $sourceRoot $commandName) -PathType Leaf) "Skill references a missing command: $commandName"
-    }
-
-    $triageText = $skillTextByName['trainer-loop-triage']
-    foreach ($classification in @('audit', 'application-write', 'shared-seam-write', 'db-migration', 'release-incident')) {
-        Assert-True ($null -ne $policy.classifications.PSObject.Properties[$classification]) "Policy classification is missing: $classification"
-        Assert-True ($triageText.Contains("``$classification``")) "Trainer triage does not reference policy classification: $classification"
+        Assert-True ($canonicalCommandNames -contains $commandName) "Skill references a non-canonical Trainer orchestration command: $commandName"
     }
 
     foreach ($staleName in @('Invoke-TrainerTask.ps1', 'Test-TrainerDoctor.ps1', 'Plan-TrainerVerification.ps1')) {
         Assert-True (-not $allSkillText.Contains($staleName)) "Skill contains stale Trainer command name: $staleName"
-    }
-
-    foreach ($requiredPhrase in @(
-            'does not install',
-            'Planning is the default',
-            'Use `-Run` only',
-            'Phase 1–3 do not orchestrate a release or incident response'
-        )) {
-        Assert-True ($allSkillText.Contains($requiredPhrase)) "Skill integration safety language is missing: $requiredPhrase"
     }
 
     foreach ($forbiddenPolicyCopy in @(
@@ -1439,25 +1459,75 @@ Invoke-Test 'Trainer skills route through Phase 1-3 without duplicating policy' 
             'forbiddenPathRoots',
             'commandRegistry',
             'flagEscalations',
-            'executableInImplementationMode'
+            'executableInImplementationMode',
+            'requiresDatabase',
+            'requiresNetwork',
+            'productionWritesMayEverBeAllowed'
         )) {
         Assert-True (-not $allSkillText.Contains($forbiddenPolicyCopy)) "Skills duplicate policy structure: $forbiddenPolicyCopy"
     }
 
+    Assert-True (-not [regex]::IsMatch($allSkillText, '(?im)^\s*npm\s+run\b')) 'Skills duplicate time-sensitive command recipes.'
     Assert-True (-not [regex]::IsMatch($allSkillText, '(?im)^\s*npx\s+')) 'Skills contain a stale npx execution assumption.'
-    Assert-True (-not [regex]::IsMatch($allSkillText, '(?i)doctor.{0,40}\b(installs|repairs|authenticates|connects|migrates|deploys)\b')) 'A skill claims the doctor mutates or remediates the environment.'
     Assert-True (-not [regex]::IsMatch($allSkillText, '(?i)verification.{0,80}(runs|executes)\s+by\s+default')) 'A skill claims verification executes by default.'
-    Assert-True (-not [regex]::IsMatch($allSkillText, '(?i)Phase\s+1.?3\s+(authorizes|performs|orchestrates)\b')) 'A skill claims Phase 1-3 authorizes or performs release/production work.'
     Assert-True (-not [regex]::IsMatch($allSkillText, '(?i)(task inspector|verification planner)\s+(authorizes|deploys|migrates|writes)\b')) 'A skill claims local tooling authorizes or performs a protected action.'
 
+    $trackedInstructionPaths = @(
+        & git -C $repositoryRoot ls-files -- '*.md' '*.yaml' '*.yml' |
+            Where-Object { Test-Path -LiteralPath (Join-Path $repositoryRoot $_) -PathType Leaf }
+    )
+    Assert-Equal $LASTEXITCODE 0 'Could not enumerate tracked active instructions and metadata.'
+    $trackedInstructionTextByPath = @{}
+    foreach ($relativePath in $trackedInstructionPaths) {
+        $trackedInstructionTextByPath[$relativePath] = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot $relativePath)
+    }
+    $trackedInstructionText = ($trackedInstructionTextByPath.Values -join "`n")
+    foreach ($retiredSkillName in $retiredSkillNames) {
+        Assert-True (-not $trackedInstructionText.Contains($retiredSkillName)) "Tracked active instructions or metadata reference retired skill: $retiredSkillName"
+    }
+
+    $routingPaths = @(
+        $trackedInstructionPaths |
+            Where-Object { $_ -eq 'CLAUDE.md' -or $_ -like '.codex/skills/*' }
+    )
+    $routingText = ($routingPaths | ForEach-Object { $trackedInstructionTextByPath[$_] }) -join "`n"
     $routeReferences = [regex]::Matches(
-        $allSkillText,
+        $routingText,
         '(?im)\broute[^\r\n`]*\bto\s+`(?<name>[a-z][a-z0-9-]+)`'
     )
     foreach ($reference in $routeReferences) {
         $skillName = $reference.Groups['name'].Value
         Assert-True ($skillTextByName.ContainsKey($skillName)) "Skill routing references a missing skill: $skillName"
     }
+
+    $seedAuthorityPaths = @(
+        '.codex\skills\seed-runtime-source-of-truth\SKILL.md',
+        'CLAUDE.md',
+        'trainer-app\docs\01_ARCHITECTURE.md',
+        'trainer-app\docs\03_DATA_SCHEMA.md',
+        'trainer-app\docs\04_API_CONTRACTS.md'
+    )
+    $seedAuthorityText = [System.Collections.Generic.List[string]]::new()
+    foreach ($relativePath in $seedAuthorityPaths) {
+        $text = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot $relativePath)
+        $seedAuthorityText.Add($text)
+        Assert-True ([regex]::IsMatch($text, '(?is)currentSeedRevision[^\r\n]{0,100}seedPayload')) "$relativePath does not identify currentSeedRevision.seedPayload authority."
+        Assert-True ([regex]::IsMatch($text, '(?is)slotPlanSeedJson[^\r\n]{0,220}(compatibility|historical)|(compatibility|historical)[^\r\n]{0,220}slotPlanSeedJson')) "$relativePath does not classify slotPlanSeedJson as compatibility or historical state."
+    }
+    $combinedSeedAuthorityText = $seedAuthorityText -join "`n"
+    foreach ($staleSeedClaim in @(
+            'owned by `Mesocycle.slotPlanSeedJson`',
+            'becomes the canonical seeded runtime composition source',
+            'slotPlanSeedJson` plus slot-aware runtime sequencing',
+            '`acceptedPlannerIntent` is immutable executable revision truth',
+            '`acceptedPlannerIntent` is executable revision truth'
+        )) {
+        Assert-True (-not $combinedSeedAuthorityText.Contains($staleSeedClaim)) "Stale seed-authority claim remains: $staleSeedClaim"
+    }
+
+    $auditText = $skillTextByName['audit-workflow']
+    Assert-True ($auditText.Contains('Never infer database, production, artifact-write, or destructive authorization')) 'Audit router does not preserve explicit authorization boundaries.'
+    Assert-True ($auditText.Contains('report the missing audit as an unresolved validation gate')) 'Audit router does not preserve the unresolved output-validation gate.'
 }
 
 Invoke-Test 'remote identity JSON parses and default offline status matches HTTPS origin' {

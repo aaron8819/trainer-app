@@ -1,313 +1,86 @@
 ---
 name: v2-planner-migration-guard
-description: Guard Trainer V2 hypertrophy planner migration work from architectural seam drift. Use for any task touching or near src/lib/engine/planning/v2, V2 plan-quality benchmark gates, V2 strategy, demand, weekly curve, slot allocation, materialization dry-run, strategy evidence, recommendations, promotion readiness, projection diffs, planning-reality diagnostics, audit artifact serialization, V2 debug shards, handoff acceptance, accepted seed creation, slotPlanSeedJson, acceptedPlannerIntent, runtime seed replay, repair promotion/deprecation/materiality, no-repair versus repaired projection comparisons, or mesocycle-explain audit output.
+description: Guard Trainer V2 planner changes at the pure planner, materialization, acceptance, and evidence-promotion boundaries. Use for changes under `trainer-app/src/lib/engine/planning/v2`, V2 materialization or acceptance adapters, or proposals to promote V2 candidate or diagnostic evidence into accepted behavior. Do not trigger for generic seed, receipt, runtime, repair, audit serialization, or benchmark interpretation work.
 ---
 
-# V2 Planner Migration Guard Skill
+# V2 Planner Migration Guard
 
-Protect the Trainer app V2 hypertrophy planner migration. Classify the layer first, then apply the matching guardrails before editing code.
+Keep V2 as a plan author, not a runtime executor.
 
-## When To Use
+## Classify the boundary
 
-Use this skill for any task touching or near:
+State which boundary owns the proposed change:
 
-- `src/lib/engine/planning/v2/*`
-- V2 strategy / demand / weekly curve / slot allocation
-- V2 materialization dry-run
-- V2 strategy evidence / recommendations / promotion readiness / projection diffs
-- V2 plan-quality benchmark gates and source attribution
-- planning-reality diagnostics
-- audit artifact serialization / V2 debug shards
-- handoff acceptance / accepted seed creation
-- `slotPlanSeedJson`
-- `acceptedPlannerIntent`
-- runtime seed replay
-- repair promotion / repair materiality
-- repair deprecation or cleanup
-- no-repair / repaired projection comparisons
-- mesocycle-explain audit output
+1. pure V2 planner policy
+2. materialization of planner output
+3. acceptance of a materialized candidate
+4. controlled promotion of candidate or diagnostic evidence
+5. non-consumption guard at runtime
 
-## Step 1: Classify The Task Layer
+Name forbidden layers, behavior impact, accepted-seed impact, and unresolved evidence before editing. If the owner is ambiguous or the request crosses boundaries without an explicit contract, use `architecture-guard` and stop before writing.
 
-Before editing code, classify the task as one or more of:
+## Pure planner boundary
 
-```txt
-1. Pure planner policy
-2. Strategy evidence / recommendation diagnostic
-3. Materialization dry-run
-4. Promotion readiness / projection diff
-5. Audit serialization / artifact shard
-6. Accepted seed contract
-7. Runtime replay
-8. Repair safety net
-9. UI / read model
-10. Tooling / verification / docs
-```
+Pure V2 may own strategy, demand, weekly curves, slot allocation, class/set intent, support and capacity policy, selection plans, pure validation, and dry-run inputs.
 
-State this before edits:
+Pure V2 must not import or depend on:
 
-```txt
-Owner layer:
-Forbidden layers:
-Behavior change: yes/no
-Seed/runtime/receipt change: yes/no
-Repaired projection used as: evidence/target
-Artifact output changed: yes/no
-```
+- Prisma, routes, or DB state
+- runtime replay or save/log flows
+- receipts or UI
+- audit serializers or artifact shapes
+- repair output as target policy
 
-If multiple layers apply, use the most restrictive guardrails.
+Normalize DB or performed evidence outside the pure planner and pass a bounded DTO inward.
 
-## Pause And Ask / Re-scope
+## Materialization boundary
 
-Pause before editing if:
+Materialization may translate a pure candidate and normalized inventory into a parser-compatible seed-shaped preview and report omissions or blockers. It must not persist, call runtime replay, or become policy by interpreting audit diagnostics.
 
-- the prompt asks to "promote" a diagnostic but does not name the behavior owner
-- the task could affect seed/runtime semantics
-- the task uses repaired projection as the expected output
-- the task asks for production V2 writes without explicit gates
-- the task would add detailed arrays to the main artifact
-- the task crosses pure V2 and API/audit/runtime seams
+Keep candidate validation distinct from acceptance. A materialized preview is not accepted truth.
 
-## Step 2: Global Invariants
+## Acceptance boundary
 
-- V2 should replace the plan author, not the plan executor.
-- Runtime replay should remain boring.
-- Diagnostics explain; they do not govern.
-- Repair is evidence and safety net, not target policy.
-- Performed reality is evidence; old repair-shaped prescribed plans are not north-star policy.
-- Pure V2 stays pure.
-- Accepted seed stores executable truth.
-- Runtime edits are session-local unless explicitly reseeded.
+Before V2 output can affect accepted behavior, require:
 
-## Step 3: Pure V2 Boundary
-
-Pure V2 modules may contain:
-
-- strategy types
-- demand
-- weekly curve
-- slot allocation
-- class distribution
-- set intent
-- support policy
-- capacity plan
-- selection plan
-- materialization dry-run
-- pure diagnostics
-
-Pure V2 modules must not import:
-
-- Prisma / DB
-- API routes
-- audit serializers
-- planningReality
-- repair/projection production paths
-- runtime replay
-- receipts
-- UI
-- save/log flows
-
-If a task needs DB/read-model evidence, collect it in an API/read-model adapter and pass a normalized DTO into pure V2.
-
-## Step 4: Diagnostic / Readout-Only Guardrails
-
-For diagnostic/readout-only tasks, require:
-
-- No generation behavior change.
-- No selection behavior change.
-- No repair behavior change.
-- No seed serialization change.
-- No runtime replay change.
-- No receipts change.
-- No DB mutation.
-- No UI change unless explicitly requested.
-
-Also require:
-
-```txt
-readOnly: true
-affectsScoringOrGeneration: false
-consumedByDemandOrMaterializer: false, when applicable
-```
-
-For audits, prove or state:
-
-- selected identities unchanged unless explicitly intended
-- slot plans unchanged unless explicitly intended
-- raw repair evidence unchanged unless explicitly intended
-- unflagged/default output unchanged unless explicitly intended
-
-## Step 4b: V2 Plan-Quality Benchmark Guardrails
-
-For V2 plan-quality benchmark work, separate evidence sources before changing behavior:
-
-- Pure V2 base-plan / compare evidence = candidate-quality truth for V2-authored plan shape.
-- V2 shadow/projection evidence = high-fidelity preview or stress evidence.
-- Planner-only no-repair evidence = handoff/projection risk, not automatic pure V2 failure.
-- Repaired projection = safety-net evidence only, never target policy.
-- Acceptance/no-repair readouts = trainability watch items unless explicitly promoted through the acceptance gate.
-
-Rules:
-
-- A benchmark gate must name status, owner seam, evidence source, and smallest safe next move.
-- Use failing benchmark gates as the default work queue before repair-row probes.
-- Do not claim V2 failed from no-repair evidence when pure V2 candidate evidence passes.
-- Do not claim repair is obsolete from `no candidate impact` alone; require source-attributed benchmark coverage and non-regression proof.
-- Repair deprecation must be a cleanup change with explicit safety evidence, not a side effect of planner policy work.
-
-## Step 5: Seed / Runtime Source Of Truth
-
-Executable seed truth:
-
-```txt
-slotPlanSeedJson.slots[].exercises[{ exerciseId, role, setCount }]
-```
-
-Everything else is explanatory unless explicitly promoted through a guarded contract:
-
-- `acceptedPlannerIntent`
-- provenance
-- strategy recommendations
-- promotion readiness
-- materializer `laneIds`
-- blockers
-- omissions
-- debug evidence
-- audit diagnostics
-
-Runtime should consume only executable seed truth.
-
-Explicitly forbidden:
-
-- runtime interpreting strategy diagnostics
-- runtime interpreting materializer `laneIds`
-- runtime using `acceptedPlannerIntent` as executable policy
-- handcrafted `slotPlanSeedJson` bypassing `buildMesocycleSlotPlanSeed()`
-
-## Step 6: Materialization Dry-Run Guardrails
-
-Materializer may:
-
-- consume pure `ExerciseSelectionPlan`
-- consume normalized inventory
-- emit seed-shaped preview
-- report blockers/omissions
-- prove seed-shape compatibility
-
-Materializer must not:
-
-- write `slotPlanSeedJson`
-- call runtime replay
-- import API/DB/repair/planningReality/audit serializers
-- become production selector by default
-- treat optional omissions as required blockers unless required lane coverage or seed-shape compatibility is affected
-
-## Step 7: Promotion / Behavior Guardrails
-
-Before any strategy hypothesis, recommendation, promotion readiness, or projection diff can affect behavior, require:
-
-- clear planner owner
-- bounded behavior scope
-- sufficient evidence quality
-- known risks
-- non-regression gates
-- audit comparison path
+- a named planner owner and bounded behavior scope
+- valid materialization and parser compatibility
+- explicit acceptance gates and failure behavior
+- non-regression evidence
 - rollback criteria
+- persistence through the canonical acceptance seam
 
-Use this rule:
+Accepted executable authority then belongs to the immutable seed revision boundary protected by `seed-runtime-source-of-truth`; V2 diagnostics do not accompany it as executable fields.
 
-```txt
-recommendation = evidence-backed hypothesis
-not production planner instruction
-```
+A compiled `sessionCapacityReductionManifest` may remain inside compatibility/explanatory accepted planner intent for an explicit session-local transform. It is not an executable revision row, does not alter normal replay, and must not mutate future generation or seed carry-forward.
 
-No hypothesis may affect behavior directly from evidence.
+## Evidence promotion
 
-For projection gates:
+Treat recommendations, benchmark gates, projection diffs, planning-reality diagnostics, and repaired projections as evidence.
 
-```txt
-A gate passes only from measured projected deltas.
-Unknown remains unknown.
-Do not infer pass from absence of evidence.
-```
+- Unknown remains unknown.
+- A repaired projection is a safety-net comparison, never target policy.
+- Do not promote a diagnostic directly into selection, materialization, acceptance, or runtime.
+- Promote one bounded owner-specific behavior only after measured candidate deltas and non-regression evidence support it.
+- Keep readout-only work read-only.
 
-## Step 8: Hypertrophy Evidence Alignment
+## Runtime non-consumption
 
-Any planning policy change must label its rationale as one or more:
+Runtime must not interpret V2 strategy, lane IDs, blockers, omissions, recommendation status, benchmark results, repair evidence, debug fields, or a capacity-reduction manifest as normal executable seed composition. Any runtime dependency on V2-only diagnostics is a boundary violation.
 
-```txt
-hypertrophy_training_principle
-user_performed_evidence
-north_star_target_spec
-app_architecture_invariant
-diagnostic_readout
-legacy_repair_evidence_only
-```
+## Required change record
 
-Hard rule:
+Report:
 
-```txt
-Never create policy solely because repaired projection did it.
-```
+- owning boundary and forbidden layers
+- smallest coherent files and explicit no-touch surface
+- behavior/materialization/acceptance impact
+- evidence used and evidence still missing
+- runtime non-consumption proof
+- deterministic verification and any authorization-gated output audit
 
-## Step 9: Audit Artifact / Shard Discipline
+Use `test-impact-triage` to review selected checks. Use `audit-workflow` only when an authorized matching output-level audit is necessary; the skill does not authorize that audit.
 
-Current artifact architecture:
+## Exit criteria
 
-```txt
-main artifact = compact operator summary
-v2 index = manifest
-v2 shards = detailed diagnostics by domain
-```
-
-Rules:
-
-- Do not add large arrays to the main artifact.
-- Put strategy evidence in `v2-strategy`.
-- Put promotion gates/diffs in `v2-promotion-diffs`.
-- Put repair rows in `v2-repair-evidence`.
-- Put materialization detail in `v2-materialization`.
-- Use compact summaries and top-N examples by default.
-- Track artifact sizes in live audit output when audit serialization changes.
-
-## Step 10: Repository Verification Workflow
-
-Before implementation, run `.\scripts\codex\Start-TrainerTask.ps1` from the repository root with `shared-seam-write`, or `db-migration` when persistence or migrations are actually in scope, using the authorized base. Stop on blockers and respect reported paths and database policy; Phase 1 is inspect-only and classification grants no database or production authorization.
-
-Run the default local-only `.\scripts\codex\Invoke-TrainerDoctor.ps1` before checks that depend on tools or dependencies. It does not install, authenticate, repair, connect, migrate, or deploy; remote and database scopes require explicit need and authorization.
-
-After changes, generate `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` and route the plan through `test-impact-triage`. Review selected implementation and release checks before using `-Run`, execute only registry-approved local implementation checks, and report release-only or authorization-gated checks separately. Route generation-facing validation to `workout-generation-audit` and audit/debug artifact validation to `audit-workflow`; neither route inherits database or production authorization from this skill.
-
-Record:
-
-```txt
-main artifact size
-v2 index size
-relevant shard sizes
-planningShape
-materialRepairCount
-majorRepairCount
-suspicious repair count
-```
-
-For skill/workflow-doc-only edits with no app behavior or contract claims, app verification is not required; run `git diff --check` on touched files and inspect the instruction diff for contradictions. If canonical behavior docs or contracts changed, triage that underlying seam normally.
-
-## Step 11: Required Output Format For Codex Using This Skill
-
-Return:
-
-```md
-# Layer Classification
-
-# Guardrails Applied
-
-# Files Changed
-
-# Behavior / Runtime / Seed Impact
-
-# Artifact Impact
-
-# Verification Results
-
-# Remaining Risks / Next Safe Slice
-```
+Conclude only when planner ownership is explicit, diagnostics remain non-executable, materialization and acceptance are not conflated, runtime remains V2-unaware, and residual promotion risk is named.

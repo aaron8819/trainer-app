@@ -1,123 +1,67 @@
 ---
 name: architecture-guard
-description: Enforce Trainer app canonical ownership and prevent architectural drift. Use for non-trivial app behavior or architecture changes involving trainer-app/src, trainer-app/prisma, or canonical behavior docs. For prompt-writing, skill edits, and docs-only workflow changes, use a lightweight ownership/verification note unless app behavior or contracts change.
+description: Protect Trainer canonical ownership during non-trivial changes that cross app layers, shared seams, persistence, or behavior contracts. Use when ownership is unclear, multiple consumers or seams may change, or a proposed implementation could duplicate domain meaning or create a competing source of truth. Do not auto-trigger for isolated prompt, skill, or workflow-doc maintenance that makes no app behavior or contract claim.
 ---
 
 # Architecture Guard
 
-Protect canonical seams. Do not allow drift.
+Find the rightful owner, define the smallest coherent change, and prevent drift.
 
----
+## Establish ownership
 
-## Scope Note
+Before implementation:
 
-For app behavior/code changes, run the full guard below before editing.
+1. Read `trainer-app/docs/00_START_HERE.md` and the canonical doc for the affected behavior.
+2. Read the request surface, candidate owner, nearby tests, and all relevant callsites.
+3. Name one canonical owner. If evidence supports two candidates, state the unresolved evidence and stop before writing.
+4. Trace supporting seams and downstream consumers far enough to identify contract, persistence, read-side, and audit consequences.
 
-For prompt-generation, skill maintenance, or workflow-doc-only edits that do not change app behavior, contracts, seed/runtime truth, or DB shape, do a lightweight check instead:
+Use repository search to follow symbols and state. Do not assume a route, page, or nearest file owns the behavior.
 
-- identify whether any Trainer app runtime seam is affected
-- state that no production behavior/contract path changes
-- validate with diff/format checks rather than app test suites unless the edit claims behavior changed
-- use the repository verification planner for the actual diff instead of hard-coding path-to-test rules
+## Produce the change map
 
----
+State:
 
-## HARD RULE
+- canonical owner and why it owns the behavior
+- supporting seams and consumers
+- smallest coherent change surface
+- explicit no-touch boundaries
+- required edits in execution order
+- architecture-specific risks
+- unresolved evidence or authorization gates
+- verification handoff
 
-Do not write or modify app code until a complete architecture audit is produced.
+Keep the map proportional to the task. Do not reproduce general worktree policy, command recipes, or deterministic path-to-check mappings.
 
----
+## Plan the implementation
 
-## Pre-edit architecture audit (required)
+Order changes so the owner and contract exist before consumers depend on them:
 
-Before editing, you MUST:
+1. canonical types or persistence contract, when needed
+2. owning domain or orchestration seam
+3. adapters, routes, and consumers
+4. focused tests
+5. canonical documentation after behavior is established
 
-0. Run `.\scripts\codex\Start-TrainerTask.ps1` from the repository root with the appropriate `application-write` or `shared-seam-write` policy classification and authorized base. Stop on blockers; Phase 1 is inspect-only and classification does not authorize writes outside the user-approved task.
+Use a different order only when the named owner requires it. Separate required work from optional cleanup and exclude speculative refactors.
 
-1. Read `trainer-app/docs/00_START_HERE.md`
-2. Read the relevant canonical docs for the seam
-3. Read the current surface file
-4. Read the owning implementation under `trainer-app/src/lib/*`
-5. Read nearby tests
-6. Search all callsites
+## Guardrails
 
-Commands:
-- `rg "<feature|symbol|state>" trainer-app/src trainer-app/docs`
-- `rg --files trainer-app/src | rg "<feature>"`
-- `rg --files trainer-app/src -g "*.test.ts" -g "*.test.tsx" | rg "<feature>"`
+- Extend an existing owner instead of patching incidental consumers.
+- Keep routes and pages thin.
+- Keep DB-backed orchestration in `trainer-app/src/lib/api`.
+- Keep pure policy in `trainer-app/src/lib/engine`.
+- Keep shared session meaning in `trainer-app/src/lib/session-semantics`.
+- Keep presentation semantics in shared read-model/UI seams.
+- Do not add mirrors, convenience flags, or local recomputation for canonical meaning.
+- Do not cross persistence, receipt, accepted-seed, runtime, or audit boundaries without reviewing the specialized retained guard for that boundary.
 
----
+## Repository workflow
 
-## REQUIRED OUTPUT (before edits)
+For an authorized write, use `.\scripts\codex\Start-TrainerTask.ps1` with the task's real classification and base before editing. Treat its output as inspection and policy evidence, not additional authority.
 
-You MUST output this audit:
+After the diff exists, generate `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` and route the plan to `test-impact-triage`. Use the repository command registry and policy as the deterministic source of checks.
 
-- **Owning seam**
-- **Relevant files**
-- **What changes**
-- **What must NOT change**
-- **Duplication risks**
-- **Verification plan**
+## Exit criteria
 
-Keep it concise and concrete.
-
----
-
-## Canonical ownership rules
-
-- `src/app` → surface only
-- `src/app/api` → request parsing + orchestration entry
-- `src/lib/api` → DB-backed orchestration + read models
-- `src/lib/engine` → pure logic
-- `src/lib/session-semantics` → session meaning
-- `src/lib/ui` → shared display semantics
-
-Never violate this layering without explicit justification.
-
----
-
-## Drift guards (failure modes to prevent)
-
-Do NOT:
-
-- patch behavior in UI when a shared seam exists
-- duplicate logic across routes, UI, and lib layers
-- introduce a second source of truth
-- add new enums/flags when a canonical contract exists
-- fork logic instead of extending the owner
-- skip callsite search before editing
-
----
-
-## Change execution
-
-- Extend the canonical owner
-- Update consumers to read from it
-- Do not split logic across layers unless already defined
-
-If no seam exists:
-- identify nearest owner
-- justify why it’s insufficient
-- introduce the smallest valid seam
-
----
-
-## Post-edit verification
-
-- Run `.\scripts\codex\Invoke-TrainerDoctor.ps1` before checks that depend on tools or dependencies; do not let it install, repair, authenticate, connect, migrate, or deploy.
-- Generate `.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>` from the repository root and review why each implementation and release check was selected.
-- Route the plan to `test-impact-triage`. Use `-Run` only for registry-approved local implementation checks; report release-only and authorization-gated checks as skipped.
-- Use `workout-generation-audit` when generation or lifecycle output needs domain validation beyond the repository verification plan.
-
----
-
-## Done criteria
-
-Change is NOT done unless:
-
-- correct canonical seam owns behavior
-- all callsites reviewed
-- no duplication introduced
-- tests updated or validated
-- verification commands run
-- docs updated if contracts changed
+Conclude only when the canonical owner is explicit, all affected consumers were reviewed, no competing truth was introduced, no-touch boundaries held, and selected verification is accounted for.

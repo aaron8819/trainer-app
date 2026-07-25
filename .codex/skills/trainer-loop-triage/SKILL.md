@@ -1,209 +1,67 @@
 ---
 name: trainer-loop-triage
-description: Classify Trainer repo work into safe autonomous loops and draft bounded goal prompts. Use when the user asks what Codex should do next, wants autonomous workflow planning, daily or recurring repo triage, loop design, safe next-task selection, or a bounded `/goal` prompt for this Trainer repo.
+description: Select one bounded next Trainer work item, design a recurring or autonomous loop, or draft a focused `/goal` prompt. Use only when the user asks what Codex should do next, requests safe loop design or recurring triage, or wants a bounded Trainer goal prompt.
 ---
 
 # Trainer Loop Triage
 
-Select the safest next autonomous loop for the Trainer repo. This skill is a control-plane workflow: inspect, classify, draft a bounded goal prompt, and stop at the right gate. It does not replace implementation or domain skills.
+Act as a control plane. Inspect, choose one bounded loop, define its gates, and stop unless implementation was explicitly requested.
 
-## Hard Boundary
+## Inspect
 
-Default to read-only. Do not edit files, mutate the database, create branches, push, open/close GitHub items, run repair/backfill scripts, or start implementation unless the user explicitly asks for that action.
+Use the smallest read-only evidence set needed to understand:
 
-This skill never overrides:
+- repository and branch state
+- current candidate work
+- known ownership or missing ownership evidence
+- overlap with active changes
+- available deterministic verification
 
-- `seam-locator`
-- `architecture-guard`
-- `implementation-planner`
-- `test-impact-triage`
-- `workout-generation-audit`
-- `audit-workflow`
-- `receipt-integrity`
-- `seed-runtime-source-of-truth`
-- `v2-planner-migration-guard`
+Use repository policy and task inspection for classification rather than copying its rules into the prompt.
 
-Use this skill above those skills: decide which loop is safe, then invoke the owning skill when implementation or validation begins.
+## Classify candidates
 
-## Preflight
+Place each candidate in one category:
 
-1. State the operating classification: `read-only audit`, `small write`, `shared seam write`, `DB/migration`, or `destructive cleanup`.
-2. Read `AGENTS.md` when the current context does not already contain the active repo instructions.
-3. Run `git status --short --branch`.
-4. If the worktree is dirty from overlapping work, stop and ask before proposing writes.
-5. Read only relevant durable memory:
-   - `.codex/napkin.md` or `.Codex/napkin.md` for user preferences, patterns that work, and recent mistakes.
-   - Nearby docs only when a candidate touches an app seam.
+- read-only evidence
+- bounded authorized write
+- human decision required
+- do not touch
 
-## Repository tooling
+Reject a candidate when ownership is unresolved, the proposed scope overlaps unowned changes, required validation is unavailable, or completing it would require authority not present in the request.
 
-For implementation, audit, migration, release, or incident work, begin at the repository root with the inspect-only task classifier when the task name and authorized base are known:
+## Choose one next action
 
-```powershell
-.\scripts\codex\Start-TrainerTask.ps1 `
-  -Name <task-name> `
-  -Classification <classification> `
-  -BaseBranch <authorized-base>
-```
+Prefer the smallest action that materially reduces uncertainty or completes a bounded outcome. Recommend one best loop, not a backlog.
 
-Choose the policy classification by workflow: `audit` for read-only work, `application-write` for bounded app/UI work, `shared-seam-write` for shared code or skill workflows, `db-migration` for database or migration work, and `release-incident` only for explicitly requested release or incident assessment. The versioned policy owns path rules, database policy, prerequisites, and verification selection; do not reproduce those tables in a goal prompt.
+When implementation was not requested, produce a `/goal` prompt instead of starting the work.
 
-- Stop on blockers. Report warnings separately and explain whether they affect the chosen loop.
-- Respect allowed and forbidden paths and the reported database policy.
-- Classification does not grant database, production, release, or destructive authorization.
-- Phase 1 is inspect-only. It must not be described as creating a branch or worktree.
+## Design the loop
 
-Before executing local checks that depend on tools or dependencies, run `.\scripts\codex\Invoke-TrainerDoctor.ps1`. Missing optional tools are warnings; missing required prerequisites block only affected execution. The doctor does not install, authenticate, repair, connect, migrate, or deploy. Keep its default scopes local unless an explicit, authorized need justifies a remote scope, and do not request credentials or environment values that the doctor can inspect safely.
+The loop or prompt must name:
 
-After implementation, or when reviewing an existing diff, route to `test-impact-triage` to generate and review:
+- mission and current evidence
+- authorized base and operating classification
+- canonical owner, or the discovery required to identify it
+- allowed and forbidden scope
+- relevant retained skills
+- ordered work
+- deterministic verification handoff
+- explicit stop conditions
+- final report
 
-```powershell
-.\scripts\codex\Invoke-TrainerVerification.ps1 -BaseRef <authorized-base>
-```
+Do not reproduce skill routing tables, worktree rules, database policy tables, testing mappings, release rules, or retrospective requirements. Refer to the repository-owned policy, command registry, and applicable retained skill instead.
 
-Planning is the default. Use `-Run` only for registry-approved local implementation checks after reviewing the plan. Keep unsafe, release-only, and authorization-gated commands visible but skipped and report them separately.
+## Required output
 
-## Workflow routing
+Return:
 
-- Route unclear application ownership to `seam-locator`, then non-trivial edits to `implementation-planner` and `architecture-guard`.
-- Route generated or projected training output to `workout-generation-audit`; route audit-mode and artifact interpretation to `audit-workflow`.
-- Route receipt-backed work to `receipt-integrity`, and accepted seed/runtime work to `seed-runtime-source-of-truth` plus `v2-planner-migration-guard` when V2 is involved.
-- Route database or migration work through the `db-migration` inspection policy, then to `implementation-planner`; stop before connectivity, migrations, direct SQL, backups, or writes without the exact required authorization.
-- Route release or incident assessment through `release-incident` inspection only when explicitly needed. Phase 1–3 do not orchestrate a release or incident response.
-- Route completed substantial work to `session-retrospective` only when its trigger gate is met.
+- loop classification
+- repository evidence
+- best next action and why
+- owner and bounded scope
+- verification and stop conditions
+- one focused `/goal` prompt, or `none`
+- residual risk
 
-Deployment status and provider control-plane state remain outside automatic Phase 1–3 local tooling. Invoke the explicit read-only `Invoke-TrainerRemoteStatus.ps1 -Deployment` scope only when live Vercel truth is needed and separately authorized; stop on identity mismatch, keep GitHub deployment records distinct from active Vercel production, and never treat a rollback candidate as authorization or proof of rollback safety. Supabase identity, migration ledger, backups, write pause, rollback, deployment, and write resumption remain separately verified and authorized.
-
-## Candidate Discovery
-
-Use the smallest useful inspection set. Typical read-only probes:
-
-```powershell
-git status --short --branch
-git diff --stat
-rg -n "TODO|FIXME|next safe|follow-up|blocked|candidate" trainer-app/docs .codex .Codex
-rg --files trainer-app/src -g "*.test.ts" -g "*.test.tsx"
-```
-
-If GitHub triage is requested and `gh` is available, inspect current-repo issues and PRs only. Do not broaden to other repos unless the user explicitly asks.
-
-## Classification Ladder
-
-Classify every candidate into exactly one bucket.
-
-### Read-Only Candidate
-
-Safe to run as an autonomous loop without code edits:
-
-- repo status summaries
-- issue/PR triage
-- audit artifact interpretation
-- verification-stack recommendation
-- docs or skill contradiction scans
-- drafting a bounded `/goal` prompt
-
-### Bounded Write Candidate
-
-Potentially safe only after explicit user authorization:
-
-- workflow or skill instruction edits
-- narrow docs updates with no behavior claims
-- focused readout wording changes
-- test fixture reconciliation after proving behavior did not change
-- small UI/read-model changes with a clear owner seam and nearby tests
-
-Require an isolated worktree if the write touches shared seams or could overlap active work.
-
-### Human-Gated Candidate
-
-Requires owner approval before implementation:
-
-- generation behavior
-- lifecycle transitions
-- receipts or receipt-derived meaning
-- seed/runtime replay or accepted seed shape
-- V2 production policy or materialized seed promotion
-- acceptance gate behavior
-- validation-backed contracts
-- Prisma schema, migrations, repair scripts, or DB writes
-- broad refactors across `src/lib/api`, `src/lib/engine`, or audit seams
-
-### Do-Not-Touch Candidate
-
-Stop instead of drafting an execution loop when:
-
-- owner/source of truth is unclear
-- worktree dirtiness overlaps the candidate
-- DB mutation is possible but not explicitly requested
-- runtime would consume planner metadata
-- seed shape would change without explicit approval
-- destructive cleanup is proposed
-- verification cannot prove the intended behavior
-
-## Choose One Next Action
-
-Recommend one best next loop, not a backlog dump. Prefer:
-
-1. read-only evidence loop
-2. bounded write loop with explicit stop conditions
-3. human decision brief
-4. no action when risk is not justified
-
-When a candidate is implementation-worthy, produce a bounded `/goal` prompt instead of starting the work unless the user explicitly asked to implement.
-
-## Bounded Goal Prompt Requirements
-
-Keep the prompt under 4k characters. Include:
-
-- mission
-- current context
-- operating classification
-- owner seam if known
-- required skills
-- allowed write paths
-- forbidden paths
-- DB policy
-- process steps
-- verification commands
-- stop conditions
-- final report format
-
-The prompt must tell the worker to stop before DB mutation, destructive cleanup, seed shape changes, runtime planner-metadata consumption, production V2 write behavior, unclear ownership, or overlapping dirty files.
-
-## Required Output
-
-Return this structure:
-
-````markdown
-**Loop Classification**
-- Mode:
-- Repo state:
-- DB policy:
-
-**Candidate Triage**
-- Read-only:
-- Bounded write:
-- Human-gated:
-- Do not touch:
-
-**Best Next Action**
-- Recommendation:
-- Why this is highest value:
-- Required skills:
-- Allowed paths:
-- Forbidden paths:
-- Verification:
-
-**Suggested /goal Prompt**
-```text
-<bounded prompt, or "none">
-```
-
-**Stop Conditions**
-- ...
-
-**Residual Risk**
-- ...
-````
-
-Keep the answer concise and decision-oriented. If no safe autonomous work exists, say that directly and name the exact blocker.
+Keep the goal prompt concise enough to remain a usable execution contract.

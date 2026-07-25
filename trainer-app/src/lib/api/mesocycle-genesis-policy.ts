@@ -521,6 +521,12 @@ export function buildRecommendedDraftFromDesign(input: {
       })),
     },
     startingPoint: input.design.startingPoint,
+    capacitySelection: {
+      version: 1,
+      productChoice: "balanced",
+      timePriority: "flexible_45_60",
+      fourDayUpperLowerConfirmed: false,
+    },
     carryForwardSelections: input.carryForwardCandidateEvidence.map((candidate) => {
       const decision = decisionByExercise.get(
         `${candidate.exerciseId}:${candidate.priorIntent}:${candidate.role}`

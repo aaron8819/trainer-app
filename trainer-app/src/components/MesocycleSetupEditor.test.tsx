@@ -264,7 +264,7 @@ describe("MesocycleSetupEditor", () => {
     ).toBeInTheDocument();
   });
 
-  it("re-enables save and accept after the conflicting keep action is resolved", async () => {
+  it("re-enables save but still requires a supported refreshed V2 candidate", async () => {
     const user = userEvent.setup();
 
     render(
@@ -285,7 +285,7 @@ describe("MesocycleSetupEditor", () => {
       screen.queryByText("Carry-forward conflicts need to be resolved before save or accept.")
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save draft" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Accept and create next cycle" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Accept and create next cycle" })).toBeDisabled();
     expect(
       screen.queryByText("Resolve 1 carry-forward conflict to save or accept.")
     ).not.toBeInTheDocument();
@@ -312,7 +312,98 @@ describe("MesocycleSetupEditor", () => {
       screen.queryByText("Carry-forward conflicts need to be resolved before save or accept.")
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save draft" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Accept and create next cycle" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Accept and create next cycle" })).toBeDisabled();
+  });
+
+  it("renders the three product choices with Balanced recommended and no internal ids", async () => {
+    const user = userEvent.setup();
+
+    const { container } = render(
+      <MesocycleSetupEditor
+        mesocycleId="meso-1"
+        recommendation={buildRecommendation()}
+        frozenRecommendationDraft={buildDraft()}
+        initialDraft={buildDraft()}
+        initialPreview={buildPreview()}
+        preAcceptance={buildPreAcceptance()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /Efficient/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Balanced/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /Full/i })).toBeInTheDocument();
+    expect(screen.getByText("Recommended")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Recommended because you did not set a strict 45-minute limit or request the full high-volume plan.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/I confirm this next mesocycle is four-day Upper \/ Lower/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/not an exact guarantee/i)).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/minimal|moderate|preferred/);
+
+    await user.click(screen.getByRole("button", { name: /Full/i }));
+    expect(screen.getByRole("button", { name: /Full/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /Balanced/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("requires four-day confirmation before sending the selected choice to refresh", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith("/draft")) {
+        return { ok: true, json: async () => ({}) };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(
+      <MesocycleSetupEditor
+        mesocycleId="meso-1"
+        recommendation={buildRecommendation()}
+        frozenRecommendationDraft={buildDraft()}
+        initialDraft={buildDraft()}
+        initialPreview={buildPreview()}
+        preAcceptance={buildPreAcceptance()}
+      />,
+    );
+
+    const refreshButton = screen.getByRole("button", {
+      name: "Refresh V2 candidate",
+    });
+    expect(refreshButton).toBeDisabled();
+
+    await user.click(
+      screen.getByRole("checkbox", {
+        name: /I confirm this next mesocycle is four-day Upper \/ Lower/i,
+      }),
+    );
+    expect(refreshButton).toBeEnabled();
+    await user.click(refreshButton);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/mesocycles/meso-1/refresh-next-seed-draft",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            productChoice: "balanced",
+            fourDayUpperLowerConfirmed: true,
+          }),
+        }),
+      );
+    });
   });
 
   it("renders and refreshes the server-owned successor preview as a read-only section", async () => {

@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  V2_CAPACITY_PRODUCT_CHOICES,
+  V2_CAPACITY_TIME_PRIORITIES,
+} from "@/lib/engine/planning/v2/capacity-selection";
 
 export const WORKOUT_STATUS_VALUES = ["PLANNED", "IN_PROGRESS", "PARTIAL", "COMPLETED", "SKIPPED"] as const;
 export const WORKOUT_SAVE_ACTION_VALUES = [
@@ -383,6 +387,15 @@ export const nextCycleCarryForwardSelectionSchema = z.object({
   action: z.enum(["keep", "rotate", "drop"]),
 });
 
+export const nextCycleCapacitySelectionSchema = z
+  .object({
+    version: z.literal(1),
+    productChoice: z.enum(V2_CAPACITY_PRODUCT_CHOICES),
+    timePriority: z.enum(V2_CAPACITY_TIME_PRIORITIES),
+    fourDayUpperLowerConfirmed: z.boolean(),
+  })
+  .strict();
+
 export const nextCycleSeedDraftUpdateSchema = z.object({
   sourceMesocycleId: z.string(),
   structure: z.object({
@@ -393,4 +406,18 @@ export const nextCycleSeedDraftUpdateSchema = z.object({
     slots: z.array(nextCycleSeedSlotSchema).min(1).max(7),
   }),
   carryForwardSelections: z.array(nextCycleCarryForwardSelectionSchema),
+  capacitySelection: nextCycleCapacitySelectionSchema.optional(),
 });
+
+export const refreshNextCycleSeedDraftSchema = z
+  .object({
+    productChoice: z.enum(V2_CAPACITY_PRODUCT_CHOICES),
+    fourDayUpperLowerConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const acceptNextCycleSchema = z
+  .object({
+    productChoice: z.enum(V2_CAPACITY_PRODUCT_CHOICES).optional(),
+  })
+  .strict();

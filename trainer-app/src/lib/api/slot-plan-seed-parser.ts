@@ -1,4 +1,5 @@
 import type { V2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
+import { mapV2CapacityChoiceToProfile } from "@/lib/engine/planning/v2/capacity-selection";
 
 export type SlotPlanSeedRole = "CORE_COMPOUND" | "ACCESSORY";
 
@@ -528,6 +529,38 @@ export function sanitizeAcceptedPlannerIntent(
   const deloadMin = finiteNumber(targetVolumeReductionPercent?.min);
   const deloadMax = finiteNumber(targetVolumeReductionPercent?.max);
   const targetRir = requiredString(deload?.targetRir);
+  const rawCapacitySelection = isRecord(record.capacitySelection)
+    ? record.capacitySelection
+    : null;
+  const productChoice = requiredString(rawCapacitySelection?.productChoice);
+  const internalProfileId = requiredString(
+    rawCapacitySelection?.internalProfileId,
+  );
+  const recommendationReason = requiredString(
+    rawCapacitySelection?.recommendationReason,
+  );
+  const representativeProfileSummary = requiredString(
+    rawCapacitySelection?.representativeProfileSummary,
+  );
+  const durationDisclaimer = requiredString(
+    rawCapacitySelection?.durationDisclaimer,
+  );
+  const hasCapacitySelection = record.capacitySelection !== undefined;
+  const validCapacitySelection =
+    (productChoice === "efficient" ||
+      productChoice === "balanced" ||
+      productChoice === "full") &&
+    (internalProfileId === "minimal" ||
+      internalProfileId === "moderate" ||
+      internalProfileId === "preferred") &&
+    Boolean(recommendationReason) &&
+    typeof rawCapacitySelection?.recommendationAccepted === "boolean" &&
+    Boolean(representativeProfileSummary) &&
+    Boolean(durationDisclaimer) &&
+    internalProfileId ===
+      mapV2CapacityChoiceToProfile(
+        productChoice as "efficient" | "balanced" | "full",
+      );
 
   if (
     !split ||
@@ -545,7 +578,8 @@ export function sanitizeAcceptedPlannerIntent(
     deloadMax == null ||
     !targetRir ||
     typeof deload?.removeRedundantAccessories !== "boolean" ||
-    deload?.introduceNewMovements !== false
+    deload?.introduceNewMovements !== false ||
+    (hasCapacitySelection && !validCapacitySelection)
   ) {
     return undefined;
   }
@@ -553,6 +587,19 @@ export function sanitizeAcceptedPlannerIntent(
   return {
     version: 1,
     source: "v2_planner_policy",
+    ...(validCapacitySelection
+      ? {
+          capacitySelection: {
+            productChoice,
+            internalProfileId,
+            recommendationReason: recommendationReason!,
+            recommendationAccepted:
+              rawCapacitySelection!.recommendationAccepted as boolean,
+            representativeProfileSummary: representativeProfileSummary!,
+            durationDisclaimer: durationDisclaimer!,
+          },
+        }
+      : {}),
     targetSkeletonId: "upper_lower_4x_v2",
     split: split as AcceptedPlannerIntent["split"],
     weekCount,

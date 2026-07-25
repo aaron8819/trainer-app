@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildV2AcceptedPlannerIntentDto,
+  buildV2CapacitySelectionExplanation,
   buildV2PlannerMesocyclePolicy,
   DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
   type V2MaterializationPreparationEvidence,
@@ -287,6 +289,20 @@ function buildRecommendedDraft(): NextCycleSeedDraft {
         action: "rotate" as const,
       },
     ],
+  };
+}
+
+function buildCapacityDraft(
+  productChoice: "efficient" | "balanced" | "full" = "balanced",
+): NextCycleSeedDraft {
+  return {
+    ...buildRecommendedDraft(),
+    capacitySelection: {
+      version: 1,
+      productChoice,
+      timePriority: "flexible_45_60",
+      fourDayUpperLowerConfirmed: true,
+    },
   };
 }
 
@@ -881,11 +897,13 @@ function makeRefreshDependencies(input: { blocked?: boolean } = {}) {
     slotPlans: makeV2ComparisonSlotPlans(),
     inventory: makeComparisonInventory(),
   });
-  const plannerPolicy = buildV2PlannerMesocyclePolicy();
   return {
-    buildPreparationEvidence: vi.fn(() => ({
-      plannerPolicy,
-      exerciseSelectionPlan: plannerPolicy.exerciseSelectionPlan,
+    buildPreparationEvidence: vi.fn(
+      (args: {
+        plannerPolicy: ReturnType<typeof buildV2PlannerMesocyclePolicy>;
+      }) => ({
+      plannerPolicy: args.plannerPolicy,
+      exerciseSelectionPlan: args.plannerPolicy.exerciseSelectionPlan,
       taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
       inventory: makeComparisonInventory(),
       constraints: {
@@ -923,7 +941,8 @@ function makeRefreshDependencies(input: { blocked?: boolean } = {}) {
         },
       },
       liveNormalizedInventoryAvailable: true,
-    }) as unknown as V2MaterializationPreparationEvidence),
+      }) as unknown as V2MaterializationPreparationEvidence,
+    ),
     buildDryRunReport: v2Probe.dependencies.buildDryRunReport,
     buildPromotionReadiness: v2Probe.dependencies.buildPromotionReadiness,
     buildSlotPlanSeed: v2Probe.dependencies.buildSlotPlanSeed,
@@ -938,7 +957,7 @@ function makeRefreshReader(input: {
   currentDraft?: unknown;
   successorExists?: boolean;
 } = {}) {
-  const draft = input.draft ?? buildRecommendedDraft();
+  const draft = input.draft ?? buildCapacityDraft();
   const currentDraft = input.currentDraft ?? draft;
   const source = {
     id: "meso-1",
@@ -964,7 +983,7 @@ function makeRefreshReader(input: {
     mesoNumber: 1,
     focus: "Upper Hypertrophy",
     closedAt: new Date("2026-04-01T00:00:00.000Z"),
-    handoffSummaryJson: buildHandoffSummaryJson(buildRecommendedDraft()),
+    handoffSummaryJson: buildHandoffSummaryJson(buildCapacityDraft()),
     nextSeedDraftJson: draft,
   };
   const currentPending = {
@@ -1027,8 +1046,16 @@ function buildStoredV2Draft(
   const slotSequence = buildMesocycleSlotSequence(
     buildRecommendedDraft().structure.slots,
   );
+  const capacitySelection = buildV2CapacitySelectionExplanation({
+    productChoice: "balanced",
+    recommendation: {
+      choice: "balanced",
+      reason:
+        "Recommended because you did not set a strict 45-minute limit or request the full high-volume plan.",
+    },
+  });
   return {
-    ...buildRecommendedDraft(),
+    ...buildCapacityDraft(),
     updatedAt: "2026-05-29T12:00:00.000Z",
     acceptedSeedDraft: {
       version: 1,
@@ -1038,6 +1065,12 @@ function buildStoredV2Draft(
         slotSequence,
         slotPlans,
         source: "v2_materialized_seed",
+        acceptedPlannerIntent: buildV2AcceptedPlannerIntentDto(
+          buildV2PlannerMesocyclePolicy({
+            directVolumeCapacityProfile: "moderate",
+          }),
+          capacitySelection,
+        ),
       }),
       provenance: {
         basePlanValidationStatus: "pass_with_warnings",
@@ -1047,6 +1080,7 @@ function buildStoredV2Draft(
         serializer: "buildMesocycleSlotPlanSeed",
         runtimeReplayUnchanged: true,
       },
+      capacitySelection,
     },
   };
 }
@@ -1147,11 +1181,101 @@ describe("sanitizeNextCycleSeedDraft", () => {
 });
 
 describe("refreshMesocycleHandoffNextSeedDraftFromV2", () => {
+  it.each([
+    ["efficient", "minimal"],
+    ["balanced", "moderate"],
+    ["full", "preferred"],
+  ] as const)(
+    "maps %s to the %s production V2 policy and accepted explanation",
+    async (productChoice, internalProfileId) => {
+      const { reader, update } = makeRefreshReader({
+        draft: buildCapacityDraft(productChoice),
+      });
+      const dependencies = makeRefreshDependencies();
+
+      await refreshMesocycleHandoffNextSeedDraftFromV2({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        productChoice,
+        fourDayUpperLowerConfirmed: true,
+        reader: reader as never,
+        dependencies,
+      });
+
+      const preparationInput =
+        dependencies.buildPreparationEvidence.mock.calls[0]?.[0];
+      expect(preparationInput?.plannerPolicy.selectionCapacityPlan).toEqual(
+        buildV2PlannerMesocyclePolicy({
+          directVolumeCapacityProfile: internalProfileId,
+        }).selectionCapacityPlan,
+      );
+      const writtenDraft = update.mock.calls[0]?.[0]?.data
+        .nextSeedDraftJson as NextCycleSeedDraft;
+      expect(writtenDraft.acceptedSeedDraft?.capacitySelection).toMatchObject({
+        productChoice,
+        internalProfileId,
+      });
+      expect(
+        writtenDraft.acceptedSeedDraft?.slotPlanSeedJson.acceptedPlannerIntent
+          ?.capacitySelection,
+      ).toMatchObject({
+        productChoice,
+        internalProfileId,
+      });
+    },
+  );
+
+  it("rejects a stale request when the saved choice changed before refresh", async () => {
+    const { reader, update } = makeRefreshReader({
+      draft: buildCapacityDraft("efficient"),
+    });
+
+    await expect(
+      refreshMesocycleHandoffNextSeedDraftFromV2({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        productChoice: "balanced",
+        fourDayUpperLowerConfirmed: true,
+        reader: reader as never,
+        dependencies: makeRefreshDependencies(),
+      }),
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_V2_CAPACITY_SELECTION_MISMATCH");
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("rejects three-day topology without changing training days or materializing", async () => {
+    const threeDay = buildCapacityDraft("efficient");
+    threeDay.structure = {
+      ...threeDay.structure,
+      sessionsPerWeek: 3,
+      daysPerWeek: 3,
+      slots: threeDay.structure.slots.slice(0, 3),
+    };
+    const { reader, update } = makeRefreshReader({ draft: threeDay });
+    const dependencies = makeRefreshDependencies();
+
+    await expect(
+      refreshMesocycleHandoffNextSeedDraftFromV2({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        productChoice: "efficient",
+        fourDayUpperLowerConfirmed: true,
+        reader: reader as never,
+        dependencies,
+      }),
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_V2_CAPACITY_TOPOLOGY_UNSUPPORTED");
+    expect(dependencies.buildPreparationEvidence).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+    expect(threeDay.structure.daysPerWeek).toBe(3);
+  });
+
   it("refreshes an AWAITING_HANDOFF draft with a production-eligible V2 materialized seed", async () => {
     const { reader, update, create } = makeRefreshReader();
     const result = await refreshMesocycleHandoffNextSeedDraftFromV2({
       userId: "user-1",
       mesocycleId: "meso-1",
+      productChoice: "balanced",
+      fourDayUpperLowerConfirmed: true,
       reader: reader as never,
       dependencies: makeRefreshDependencies(),
     });
@@ -1205,6 +1329,8 @@ describe("refreshMesocycleHandoffNextSeedDraftFromV2", () => {
     const result = await refreshMesocycleHandoffNextSeedDraftFromV2({
       userId: "user-1",
       mesocycleId: "meso-1",
+      productChoice: "balanced",
+      fourDayUpperLowerConfirmed: true,
       reader: reader as never,
       dependencies: makeRefreshDependencies(),
     });
@@ -1237,6 +1363,8 @@ describe("refreshMesocycleHandoffNextSeedDraftFromV2", () => {
       refreshMesocycleHandoffNextSeedDraftFromV2({
         userId: "user-1",
         mesocycleId: "meso-1",
+        productChoice: "balanced",
+        fourDayUpperLowerConfirmed: true,
         reader: reader as never,
         dependencies: makeRefreshDependencies(),
       }),
@@ -1270,6 +1398,8 @@ describe("refreshMesocycleHandoffNextSeedDraftFromV2", () => {
       refreshMesocycleHandoffNextSeedDraftFromV2({
         userId: "user-1",
         mesocycleId: "meso-1",
+        productChoice: "balanced",
+        fourDayUpperLowerConfirmed: true,
         reader: reader as never,
         dependencies: makeRefreshDependencies(),
       }),
@@ -1284,6 +1414,8 @@ describe("refreshMesocycleHandoffNextSeedDraftFromV2", () => {
       refreshMesocycleHandoffNextSeedDraftFromV2({
         userId: "user-1",
         mesocycleId: "meso-1",
+        productChoice: "balanced",
+        fourDayUpperLowerConfirmed: true,
         reader: reader as never,
         dependencies: makeRefreshDependencies(),
       }),
@@ -1299,6 +1431,8 @@ describe("refreshMesocycleHandoffNextSeedDraftFromV2", () => {
       refreshMesocycleHandoffNextSeedDraftFromV2({
         userId: "user-1",
         mesocycleId: "meso-1",
+        productChoice: "balanced",
+        fourDayUpperLowerConfirmed: true,
         reader: reader as never,
         dependencies: makeRefreshDependencies({ blocked: true }),
       }),
@@ -1334,6 +1468,8 @@ describe("refreshMesocycleHandoffNextSeedDraftFromV2", () => {
       refreshMesocycleHandoffNextSeedDraftFromV2({
         userId: "user-1",
         mesocycleId: "meso-1",
+        productChoice: "balanced",
+        fourDayUpperLowerConfirmed: true,
         reader: reader as never,
         dependencies: makeRefreshDependencies(),
       }),
@@ -1348,6 +1484,8 @@ describe("refreshMesocycleHandoffNextSeedDraftFromV2", () => {
       refreshMesocycleHandoffNextSeedDraftFromV2({
         userId: "user-1",
         mesocycleId: "meso-1",
+        productChoice: "balanced",
+        fourDayUpperLowerConfirmed: true,
         reader: reader as never,
         dependencies: makeRefreshDependencies(),
       }),
@@ -1907,6 +2045,60 @@ describe("handoff draft persistence", () => {
       updatedAt: "2026-04-02T00:00:00.000Z",
     });
     expect(update).toHaveBeenCalledOnce();
+  });
+
+  it("preserves a matching refreshed candidate and invalidates it when capacity changes", async () => {
+    const stored = buildStoredV2Draft();
+    const buildTx = () => {
+      const pending = {
+        id: "meso-1",
+        state: "AWAITING_HANDOFF",
+        mesoNumber: 1,
+        focus: "Upper Hypertrophy",
+        closedAt: new Date("2026-04-01T00:00:00.000Z"),
+        handoffSummaryJson: buildHandoffSummaryJson(buildCapacityDraft()),
+        nextSeedDraftJson: stored,
+      };
+      const update = vi.fn(async (args) => ({
+        ...pending,
+        nextSeedDraftJson: args.data.nextSeedDraftJson,
+      }));
+      return {
+        update,
+        tx: {
+          mesocycle: {
+            findUnique: vi.fn().mockResolvedValue(pending),
+            update,
+          },
+        },
+      };
+    };
+    const matchingRequest = { ...stored };
+    delete matchingRequest.acceptedSeedDraft;
+    const matching = buildTx();
+    await updateMesocycleHandoffDraftInTransaction(matching.tx as never, {
+      mesocycleId: "meso-1",
+      draft: matchingRequest,
+    });
+    expect(
+      matching.update.mock.calls[0]?.[0]?.data.nextSeedDraftJson
+        .acceptedSeedDraft,
+    ).toEqual(stored.acceptedSeedDraft);
+
+    const changed = buildTx();
+    await updateMesocycleHandoffDraftInTransaction(changed.tx as never, {
+      mesocycleId: "meso-1",
+      draft: {
+        ...matchingRequest,
+        capacitySelection: {
+          ...matchingRequest.capacitySelection!,
+          productChoice: "efficient",
+        },
+      },
+    });
+    expect(
+      changed.update.mock.calls[0]?.[0]?.data.nextSeedDraftJson,
+    ).not.toHaveProperty("acceptedSeedDraft");
   });
 
   it("accepts the edited draft, persists slot metadata, and only carries kept exercises forward", async () => {
@@ -2837,6 +3029,7 @@ describe("handoff draft persistence", () => {
     const prepared = await prepareMesocycleHandoffAcceptance({
       userId: "user-1",
       mesocycleId: "meso-1",
+      capacityChoice: "balanced",
       reader: tx as never,
     });
 
@@ -2848,6 +3041,40 @@ describe("handoff draft persistence", () => {
     expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
     expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
     expect(tx.mesocycle.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a mismatched capacity choice and never invokes legacy projection", async () => {
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+    const tx = makeAcceptanceTx({ draft: buildStoredV2Draft() });
+
+    await expect(
+      prepareMesocycleHandoffAcceptance({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        capacityChoice: "efficient",
+        reader: tx as never,
+      }),
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_V2_CAPACITY_SELECTION_MISMATCH");
+    expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("requires refresh for a confirmed capacity flow and never falls back to legacy projection", async () => {
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+    const tx = makeAcceptanceTx({ draft: buildCapacityDraft("efficient") });
+
+    await expect(
+      prepareMesocycleHandoffAcceptance({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        capacityChoice: "efficient",
+        reader: tx as never,
+      }),
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_V2_CAPACITY_REFRESH_REQUIRED");
+    expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
   });
 
   it("uses stored V2 acceptedSeedDraft when the frozen recommendedNextSeed is still legacy", async () => {
@@ -2934,6 +3161,7 @@ describe("handoff draft persistence", () => {
     const prepared = await prepareMesocycleHandoffAcceptance({
       userId: "user-1",
       mesocycleId: "meso-1",
+      capacityChoice: "balanced",
       reader: tx as never,
     });
 

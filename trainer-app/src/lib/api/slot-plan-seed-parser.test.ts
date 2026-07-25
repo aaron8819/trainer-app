@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildV2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
+import {
+  buildV2AcceptedPlannerIntentDto,
+  buildV2PlannerMesocyclePolicy,
+} from "@/lib/engine/planning/v2";
 import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
 
 describe("parseSlotPlanSeedJson", () => {
@@ -92,6 +95,53 @@ describe("parseSlotPlanSeedJson", () => {
         ],
       })?.acceptedPlannerIntent
     ).toEqual(acceptedPlannerIntent);
+  });
+
+  it("round-trips capacity explanation without changing executable rows", () => {
+    const acceptedPlannerIntent = buildV2AcceptedPlannerIntentDto(
+      buildV2PlannerMesocyclePolicy({
+        directVolumeCapacityProfile: "moderate",
+      }),
+      {
+        productChoice: "balanced",
+        internalProfileId: "moderate",
+        recommendationReason: "Balanced is the default recommendation.",
+        recommendationAccepted: true,
+        representativeProfileSummary:
+          "Representative Week 2 workload: about 59 direct sets across 19 exercises.",
+        durationDisclaimer:
+          "Session duration is a planning priority, not an exact guarantee.",
+      },
+    );
+    const parsed = parseSlotPlanSeedJson({
+      version: 1,
+      source: "v2_materialized_seed",
+      acceptedPlannerIntent,
+      slots: [
+        {
+          slotId: "upper_a",
+          exercises: [
+            {
+              exerciseId: "bench",
+              role: "CORE_COMPOUND",
+              setCount: 4,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(parsed?.acceptedPlannerIntent?.capacitySelection).toEqual(
+      acceptedPlannerIntent.capacitySelection,
+    );
+    expect(parsed?.slots[0]?.exercises[0]).toMatchObject({
+      exerciseId: "bench",
+      role: "CORE_COMPOUND",
+      setCount: 4,
+    });
+    expect(parsed?.slots[0]?.exercises[0]).not.toHaveProperty(
+      "capacitySelection",
+    );
   });
 
   it("keeps legacy accepted planner metadata readable without inventing direct-volume fields", () => {

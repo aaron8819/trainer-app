@@ -3,9 +3,10 @@ import { resolveOwner } from "@/lib/api/workout-context";
 import { refreshMesocycleHandoffNextSeedDraftFromV2 } from "@/lib/api/mesocycle-handoff";
 import { prisma } from "@/lib/db/prisma";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
+import { refreshNextCycleSeedDraftSchema } from "@/lib/validation";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   const paused = productionWritePauseResponse(
@@ -40,11 +41,21 @@ export async function POST(
       { status: 409 },
     );
   }
+  const body = await request.json().catch(() => null);
+  const parsed = refreshNextCycleSeedDraftSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Confirmed capacity choice and four-day Upper / Lower confirmation are required." },
+      { status: 400 },
+    );
+  }
 
   try {
     const result = await refreshMesocycleHandoffNextSeedDraftFromV2({
       userId: owner.id,
       mesocycleId: id,
+      productChoice: parsed.data.productChoice,
+      fourDayUpperLowerConfirmed: parsed.data.fourDayUpperLowerConfirmed,
     });
 
     return NextResponse.json({
@@ -86,6 +97,21 @@ export async function POST(
         {
           error: "V2 materialized seed is not eligible for draft refresh.",
           reason: error.message.split(":").slice(1).join(":") || error.message,
+        },
+        { status: 409 },
+      );
+    }
+    if (
+      error instanceof Error &&
+      (error.message === "MESOCYCLE_HANDOFF_V2_CAPACITY_SELECTION_MISMATCH" ||
+        error.message === "MESOCYCLE_HANDOFF_V2_CAPACITY_TOPOLOGY_UNSUPPORTED")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            error.message === "MESOCYCLE_HANDOFF_V2_CAPACITY_TOPOLOGY_UNSUPPORTED"
+              ? "V2 capacity selection requires a confirmed four-day Upper / Lower setup."
+              : "The confirmed capacity choice does not match the saved setup draft.",
         },
         { status: 409 },
       );

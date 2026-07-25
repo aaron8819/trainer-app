@@ -93,6 +93,41 @@ describe("POST /api/mesocycles/[id]/accept-next-cycle", () => {
     });
   });
 
+  it("passes a public capacity choice through and rejects internal profile ids", async () => {
+    mocks.mesocycleFindFirst.mockResolvedValue({ id: "meso-1" });
+    mocks.acceptMesocycleHandoff.mockResolvedValue({
+      id: "meso-2",
+      state: "ACTIVE_ACCUMULATION",
+      mesoNumber: 2,
+    });
+    const accepted = await POST(
+      new Request("http://localhost/api/mesocycles/meso-1/accept-next-cycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productChoice: "efficient" }),
+      }),
+      { params: Promise.resolve({ id: "meso-1" }) },
+    );
+    expect(accepted.status).toBe(200);
+    expect(mocks.acceptMesocycleHandoff).toHaveBeenCalledWith({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      capacityChoice: "efficient",
+    });
+
+    mocks.acceptMesocycleHandoff.mockClear();
+    const rejected = await POST(
+      new Request("http://localhost/api/mesocycles/meso-1/accept-next-cycle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productChoice: "minimal" }),
+      }),
+      { params: Promise.resolve({ id: "meso-1" }) },
+    );
+    expect(rejected.status).toBe(400);
+    expect(mocks.acceptMesocycleHandoff).not.toHaveBeenCalled();
+  });
+
   it("rejects when handoff is not pending", async () => {
     mocks.mesocycleFindFirst.mockResolvedValue({ id: "meso-1" });
     mocks.acceptMesocycleHandoff.mockRejectedValue(new Error("MESOCYCLE_HANDOFF_NOT_PENDING"));

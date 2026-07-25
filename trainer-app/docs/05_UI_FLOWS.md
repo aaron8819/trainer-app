@@ -135,6 +135,9 @@ Route-purpose shorthand:
   - the frozen recommendation remains visible as the canonical handoff design basis
   - the editable draft is mutable and saved back to `nextSeedDraftJson`
   - the setup editor exposes ordered-flexible slot editing, split/session-count changes, and carry-forward action changes
+  - the setup editor shows Efficient, Balanced, and Full capacity choices, marks Balanced as the no-preference recommendation, explains the recommendation, permits an explicit override, and keeps internal planner profile ids out of UI copy
+  - the user must explicitly confirm four-day Upper/Lower before V2 refresh; changing split/session topology clears that confirmation, and the UI states that Efficient changes workload capacity rather than converting the mesocycle to three days
+  - session-time copy is a priority estimate rather than a duration promise; refresh is required after choice/topology changes, and acceptance stays disabled until the persisted candidate matches the selected product choice
   - invalid `keep` carry-forwards are previewed inline when split/session edits remove their original session intent
   - next-cycle preview is server-owned: the page loads initial preview data from `loadMesocycleSetupFromPrisma()` and client-side draft edits refresh preview through `POST /api/mesocycles/[id]/setup-preview` without persisting the draft first
   - expanded preview slot plans are real projected successor session plans from the canonical handoff slot-plan projection seam, built from the same stored design basis used by accept rather than UI-local carry-forward composition
@@ -143,8 +146,8 @@ Route-purpose shorthand:
   - immediately before the acceptance controls, the setup editor renders the persisted candidate's canonical four-state read-only result (`not_runnable`, `rejected`, `accepted_with_watch_items`, or `accepted`) plus each finding's severity, owner seam, smallest safe fix, and Week 1 requirement; this presentation delegates to the acceptance gate and does not score, repair, refresh, accept, or mutate the draft
 - Acceptance flow semantics:
   - save draft first if needed
-  - optionally call the explicit guarded `POST /api/mesocycles/[id]/refresh-next-seed-draft` action to rebuild the persisted draft candidate from a production-eligible V2 materialized seed; this does not accept the next cycle
-  - call `POST /api/mesocycles/[id]/accept-next-cycle`
+  - for Stage 1 capacity-aware drafts, call the explicit guarded `POST /api/mesocycles/[id]/refresh-next-seed-draft` action with the confirmed public choice to rebuild the persisted draft candidate from the corresponding production-eligible V2 policy; this does not accept the next cycle
+  - call `POST /api/mesocycles/[id]/accept-next-cycle` with that same public choice; stale or absent capacity candidates fail closed
   - on success, return to `/program` with the new active mesocycle created
 - Historical closeout remains reviewable after acceptance. Once the source mesocycle is `COMPLETED`, review stays available but setup editing is no longer surfaced.
 

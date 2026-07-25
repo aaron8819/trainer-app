@@ -14,6 +14,12 @@ import type { FrozenRecommendationPresentation } from "@/lib/api/mesocycle-hando
 import type { MesocycleSetupPreview } from "@/lib/api/mesocycle-setup";
 import type { MesocyclePreAcceptancePresentation } from "@/lib/api/mesocycle-pre-acceptance-presentation";
 import { formatSessionIdentityLabel } from "@/lib/ui/session-identity";
+import {
+  isSupportedV2CapacityTopology,
+  recommendV2CapacityChoice,
+  V2_CAPACITY_DURATION_DISCLAIMER,
+  V2_CAPACITY_PRODUCT_OPTIONS,
+} from "@/lib/engine/planning/v2/capacity-selection";
 
 type MesocycleSetupEditorProps = {
   mesocycleId: string;
@@ -79,7 +85,32 @@ function buildComparableDraftSnapshot(draft: NextCycleSeedDraft): string {
   return JSON.stringify({
     structure: draft.structure,
     carryForwardSelections: draft.carryForwardSelections,
+    capacitySelection: draft.capacitySelection ?? null,
   });
+}
+
+function withDefaultCapacitySelection(
+  draft: NextCycleSeedDraft,
+): NextCycleSeedDraft {
+  return draft.capacitySelection
+    ? draft
+    : {
+        ...draft,
+        capacitySelection: {
+          version: 1,
+          productChoice: "balanced",
+          timePriority: "flexible_45_60",
+          fourDayUpperLowerConfirmed: false,
+        },
+      };
+}
+
+function withoutAcceptedSeedDraft(
+  draft: NextCycleSeedDraft,
+): NextCycleSeedDraft {
+  const current = { ...draft };
+  delete current.acceptedSeedDraft;
+  return current;
 }
 
 function buildDraftDrift(input: {
@@ -170,7 +201,7 @@ function nextDraftForSessions(
   const nextIntents = Array.from({ length: nextCount }, (_, index) => currentIntents[index] ?? defaults[index]!.intent);
 
   return {
-    ...currentDraft,
+    ...withoutAcceptedSeedDraft(currentDraft),
     structure: {
       ...currentDraft.structure,
       sessionsPerWeek: nextCount,
@@ -181,6 +212,12 @@ function nextDraftForSessions(
         intents: nextIntents,
       }),
     },
+    capacitySelection: currentDraft.capacitySelection
+      ? {
+          ...currentDraft.capacitySelection,
+          fourDayUpperLowerConfirmed: false,
+        }
+      : undefined,
   };
 }
 
@@ -202,7 +239,7 @@ function nextDraftForSplit(
   );
 
   return {
-    ...currentDraft,
+    ...withoutAcceptedSeedDraft(currentDraft),
     structure: {
       ...currentDraft.structure,
       splitType,
@@ -212,6 +249,12 @@ function nextDraftForSplit(
         intents: nextIntents,
       }),
     },
+    capacitySelection: currentDraft.capacitySelection
+      ? {
+          ...currentDraft.capacitySelection,
+          fourDayUpperLowerConfirmed: false,
+        }
+      : undefined,
   };
 }
 
@@ -224,8 +267,12 @@ export function MesocycleSetupEditor({
   preAcceptance,
 }: MesocycleSetupEditorProps) {
   const router = useRouter();
-  const [draft, setDraft] = useState(initialDraft);
-  const [lastSavedDraft, setLastSavedDraft] = useState(initialDraft);
+  const normalizedInitialDraft = useMemo(
+    () => withDefaultCapacitySelection(initialDraft),
+    [initialDraft],
+  );
+  const [draft, setDraft] = useState(normalizedInitialDraft);
+  const [lastSavedDraft, setLastSavedDraft] = useState(normalizedInitialDraft);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -234,6 +281,7 @@ export function MesocycleSetupEditor({
   const [preview, setPreview] = useState(initialPreview);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [refreshingCandidate, setRefreshingCandidate] = useState(false);
 
   const drift = useMemo(
     () => buildDraftDrift({ recommendedDraft: frozenRecommendationDraft, currentDraft: draft }),
@@ -260,7 +308,23 @@ export function MesocycleSetupEditor({
   const hasCarryForwardConflicts = carryForwardConflicts.length > 0;
   const isDirty = buildComparableDraftSnapshot(draft) !== buildComparableDraftSnapshot(lastSavedDraft);
   const allowedIntents = getAllowedIntentsForSplit(draft.structure.splitType);
-  const initialDraftSnapshot = buildComparableDraftSnapshot(initialDraft);
+  const initialDraftSnapshot = buildComparableDraftSnapshot(normalizedInitialDraft);
+  const supportedCapacityTopology = isSupportedV2CapacityTopology({
+    splitType: draft.structure.splitType,
+    sessionsPerWeek: draft.structure.sessionsPerWeek,
+    daysPerWeek: draft.structure.daysPerWeek,
+    slots: draft.structure.slots,
+  });
+  const capacityRecommendation = recommendV2CapacityChoice({
+    supportedFourDayUpperLower: supportedCapacityTopology,
+    timePriority: draft.capacitySelection?.timePriority,
+  });
+  const selectedCapacityChoice =
+    draft.capacitySelection?.productChoice ?? "balanced";
+  const candidateMatchesCapacity =
+    draft.acceptedSeedDraft?.source === "v2_materialized_seed" &&
+    draft.acceptedSeedDraft.capacitySelection?.productChoice ===
+      selectedCapacityChoice;
 
   useEffect(() => {
     const draftSnapshot = buildComparableDraftSnapshot(draft);
@@ -329,7 +393,10 @@ export function MesocycleSetupEditor({
   ) => {
     setStatus(null);
     setError(null);
-    setDraft(recipe);
+    setDraft((current) => {
+      const next = typeof recipe === "function" ? recipe(current) : recipe;
+      return withoutAcceptedSeedDraft(next);
+    });
   };
 
   const fixAllCarryForwardConflicts = () => {
@@ -370,6 +437,7 @@ export function MesocycleSetupEditor({
           sourceMesocycleId: draft.sourceMesocycleId,
           structure: draft.structure,
           carryForwardSelections: draft.carryForwardSelections,
+          capacitySelection: draft.capacitySelection,
         }),
       });
 
@@ -395,10 +463,72 @@ export function MesocycleSetupEditor({
     }
   };
 
+  const refreshCapacityCandidate = async () => {
+    if (
+      !supportedCapacityTopology ||
+      !draft.capacitySelection?.fourDayUpperLowerConfirmed
+    ) {
+      setStatus(null);
+      setError(
+        "Confirm the four-day Upper / Lower setup before refreshing the V2 candidate.",
+      );
+      return;
+    }
+    setRefreshingCandidate(true);
+    setStatus(null);
+    setError(null);
+    try {
+      if (isDirty) {
+        const saved = await saveDraft();
+        if (!saved) return;
+      }
+      const response = await fetch(
+        `/api/mesocycles/${mesocycleId}/refresh-next-seed-draft`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            productChoice: selectedCapacityChoice,
+            fourDayUpperLowerConfirmed: true,
+          }),
+        },
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(body.error ?? "Failed to refresh the V2 candidate.");
+        return;
+      }
+      const refreshedDraft = body.handoff?.draft as
+        | NextCycleSeedDraft
+        | undefined;
+      if (refreshedDraft) {
+        setDraft(refreshedDraft);
+        setLastSavedDraft(refreshedDraft);
+      }
+      setStatus("V2 candidate refreshed for the confirmed capacity choice.");
+      router.refresh();
+    } catch {
+      setError("Failed to refresh the V2 candidate.");
+    } finally {
+      setRefreshingCandidate(false);
+    }
+  };
+
   const acceptDraft = async () => {
     if (hasCarryForwardConflicts) {
       setStatus(null);
       setError("Resolve carry-forward conflicts before accepting the next cycle.");
+      return;
+    }
+    if (
+      !draft.capacitySelection?.fourDayUpperLowerConfirmed ||
+      !supportedCapacityTopology ||
+      !candidateMatchesCapacity
+    ) {
+      setStatus(null);
+      setError(
+        "Confirm the supported topology and refresh a matching V2 candidate before accepting.",
+      );
       return;
     }
     setAccepting(true);
@@ -414,6 +544,8 @@ export function MesocycleSetupEditor({
 
       const response = await fetch(`/api/mesocycles/${mesocycleId}/accept-next-cycle`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productChoice: selectedCapacityChoice }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
@@ -534,6 +666,131 @@ export function MesocycleSetupEditor({
 
       <section className="rounded-2xl border border-slate-200 p-6">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Session capacity
+        </p>
+        <div className="mt-2 max-w-3xl">
+          <h2 className="text-xl font-semibold">Choose the next-cycle workload</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            {capacityRecommendation
+              ? capacityRecommendation.reason
+              : "Capacity selection cannot convert this plan into three days or another split. Choose four-day Upper / Lower to generate a V2 candidate."}
+          </p>
+        </div>
+        <div className="mt-5 grid gap-3 lg:grid-cols-3">
+          {V2_CAPACITY_PRODUCT_OPTIONS.map((option) => {
+            const selected = selectedCapacityChoice === option.id;
+            const recommended = capacityRecommendation?.choice === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                aria-pressed={selected}
+                className={`rounded-2xl border p-5 text-left ${
+                  selected
+                    ? "border-slate-900 bg-slate-50"
+                    : "border-slate-200 bg-white"
+                }`}
+                onClick={() =>
+                  updateDraft((current) => ({
+                    ...current,
+                    capacitySelection: {
+                      version: 1,
+                      productChoice: option.id,
+                      timePriority:
+                        current.capacitySelection?.timePriority ??
+                        "flexible_45_60",
+                      fourDayUpperLowerConfirmed:
+                        current.capacitySelection
+                          ?.fourDayUpperLowerConfirmed ?? false,
+                    },
+                  }))
+                }
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-semibold text-slate-900">
+                    {option.label}
+                  </span>
+                  {recommended ? (
+                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                      Recommended
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-3 text-sm font-medium text-slate-700">
+                  {option.sessionPriority}
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  {option.volumeSummary}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {option.protectionSummary}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <label className="flex items-start gap-3 text-sm text-amber-950">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4"
+              checked={
+                draft.capacitySelection?.fourDayUpperLowerConfirmed ?? false
+              }
+              disabled={!supportedCapacityTopology}
+              onChange={(event) =>
+                updateDraft((current) => ({
+                  ...current,
+                  capacitySelection: {
+                    version: 1,
+                    productChoice:
+                      current.capacitySelection?.productChoice ?? "balanced",
+                    timePriority:
+                      current.capacitySelection?.timePriority ??
+                      "flexible_45_60",
+                    fourDayUpperLowerConfirmed: event.target.checked,
+                  },
+                }))
+              }
+            />
+            <span>
+              I confirm this next mesocycle is four-day Upper / Lower. Efficient,
+              Balanced, and Full change workload capacity; none converts the plan
+              to three training days.
+            </span>
+          </label>
+          <p className="mt-3 text-xs text-amber-800">
+            {V2_CAPACITY_DURATION_DISCLAIMER}
+          </p>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className="h-11 rounded-full border border-slate-900 px-5 text-sm font-semibold text-slate-900 disabled:opacity-50"
+            onClick={() => void refreshCapacityCandidate()}
+            disabled={
+              saving ||
+              accepting ||
+              refreshingCandidate ||
+              hasCarryForwardConflicts ||
+              !supportedCapacityTopology ||
+              !draft.capacitySelection?.fourDayUpperLowerConfirmed
+            }
+          >
+            {refreshingCandidate
+              ? "Refreshing..."
+              : "Refresh V2 candidate"}
+          </button>
+          <span className="text-sm text-slate-600">
+            {candidateMatchesCapacity
+              ? `Candidate ready for ${V2_CAPACITY_PRODUCT_OPTIONS.find((option) => option.id === selectedCapacityChoice)?.label}.`
+              : "Refresh is required for the selected capacity before acceptance."}
+          </span>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 p-6">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Training structure
         </p>
         <h2 className="mt-2 text-xl font-semibold">Editable slot order</h2>
@@ -567,6 +824,12 @@ export function MesocycleSetupEditor({
                           intents: nextIntents,
                         }),
                       },
+                      capacitySelection: current.capacitySelection
+                        ? {
+                            ...current.capacitySelection,
+                            fourDayUpperLowerConfirmed: false,
+                          }
+                        : undefined,
                     };
                   })
                 }
@@ -852,7 +1115,12 @@ export function MesocycleSetupEditor({
             type="button"
             className="h-11 rounded-full border border-slate-300 px-6 text-sm font-semibold text-slate-900 disabled:opacity-60"
             onClick={() => void saveDraft()}
-            disabled={saving || accepting || hasCarryForwardConflicts}
+            disabled={
+              saving ||
+              accepting ||
+              refreshingCandidate ||
+              hasCarryForwardConflicts
+            }
           >
             {saving ? "Saving..." : "Save draft"}
           </button>
@@ -860,7 +1128,15 @@ export function MesocycleSetupEditor({
             type="button"
             className="h-11 rounded-full bg-slate-900 px-6 text-sm font-semibold text-white disabled:opacity-60"
             onClick={() => void acceptDraft()}
-            disabled={saving || accepting || hasCarryForwardConflicts}
+            disabled={
+              saving ||
+              accepting ||
+              refreshingCandidate ||
+              hasCarryForwardConflicts ||
+              !supportedCapacityTopology ||
+              !draft.capacitySelection?.fourDayUpperLowerConfirmed ||
+              !candidateMatchesCapacity
+            }
           >
             {accepting ? "Starting..." : "Accept and create next cycle"}
           </button>

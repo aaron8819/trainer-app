@@ -3,9 +3,10 @@ import { prisma } from "@/lib/db/prisma";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { acceptMesocycleHandoff } from "@/lib/api/mesocycle-handoff";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
+import { acceptNextCycleSchema } from "@/lib/validation";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   const paused = productionWritePauseResponse(
@@ -33,11 +34,19 @@ export async function POST(
   if (!mesocycle) {
     return NextResponse.json({ error: "Mesocycle not found" }, { status: 404 });
   }
+  const body = await request.json().catch(() => ({}));
+  const parsed = acceptNextCycleSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid capacity choice." }, { status: 400 });
+  }
 
   try {
     const nextMesocycle = await acceptMesocycleHandoff({
       userId: owner.id,
       mesocycleId: id,
+      ...(parsed.data.productChoice
+        ? { capacityChoice: parsed.data.productChoice }
+        : {}),
     });
 
     return NextResponse.json({
@@ -79,6 +88,22 @@ export async function POST(
       return NextResponse.json(
         { error: "Mesocycle handoff accepted seed draft is invalid." },
         { status: 409 }
+      );
+    }
+    if (
+      error instanceof Error &&
+      (error.message === "MESOCYCLE_HANDOFF_V2_CAPACITY_SELECTION_MISMATCH" ||
+        error.message === "MESOCYCLE_HANDOFF_V2_CAPACITY_REFRESH_REQUIRED" ||
+        error.message === "MESOCYCLE_HANDOFF_V2_CAPACITY_TOPOLOGY_UNSUPPORTED")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            error.message === "MESOCYCLE_HANDOFF_V2_CAPACITY_REFRESH_REQUIRED"
+              ? "Refresh the V2 candidate for the confirmed capacity choice before accepting."
+              : "The accepted V2 candidate does not match the confirmed capacity setup.",
+        },
+        { status: 409 },
       );
     }
     if (

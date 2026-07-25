@@ -627,7 +627,9 @@ async function buildV2ReplacementSeedPreparation(input: {
     }),
     input.tx.userPreference.findUnique({ where: { userId: input.userId } }),
   ]);
-  const plannerPolicy = buildV2PlannerMesocyclePolicy();
+  const plannerPolicy = buildV2PlannerMesocyclePolicy({
+    directVolumeCapacityProfile: "preferred",
+  });
   const taxonomy = DEFAULT_V2_EXERCISE_CLASS_TAXONOMY;
   const inventory = normalizeLiveInventoryForV2Materialization(exercises);
   const constraints = {

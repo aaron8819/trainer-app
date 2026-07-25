@@ -9,6 +9,11 @@ import type {
 } from "@prisma/client";
 import type { MesocycleSlotAuthoredSemantics } from "./mesocycle-slot-contract";
 import type { MesocycleSlotPlanSeed } from "./mesocycle-handoff-slot-plan-projection.seed-serialization";
+import type {
+  V2CapacityProductChoice,
+  V2CapacitySelectionExplanation,
+  V2CapacityTimePriority,
+} from "@/lib/engine/planning/v2/capacity-selection";
 
 export type NextCycleSlotId = string;
 
@@ -194,6 +199,12 @@ export type NextCycleSeedDraft = {
   };
   startingPoint: NextMesocycleStartingPoint;
   carryForwardSelections: NextCycleCarryForwardSelection[];
+  capacitySelection?: {
+    version: 1;
+    productChoice: V2CapacityProductChoice;
+    timePriority: V2CapacityTimePriority;
+    fourDayUpperLowerConfirmed: boolean;
+  };
   acceptedSeedDraft?: {
     version: 1;
     source: "v2_materialized_seed";
@@ -207,6 +218,7 @@ export type NextCycleSeedDraft = {
       serializer: "buildMesocycleSlotPlanSeed";
       runtimeReplayUnchanged: true;
     };
+    capacitySelection?: V2CapacitySelectionExplanation;
   };
 };
 

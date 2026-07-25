@@ -1,4 +1,8 @@
 export { buildV2DeloadTransformPolicy } from "./deload-transform";
+export {
+  V2_DIRECT_VOLUME_CAPACITY_PROFILES,
+  V2_DIRECT_VOLUME_CAPACITY_YIELD_ORDER,
+} from "./direct-volume-policy";
 export { buildV2AcceptedPlannerIntentDto } from "./accepted-planner-intent-dto";
 export { buildV2BasePlanCompare } from "./materialization/base-plan-compare";
 export { buildV2BasePlanShadowConsumptionTrial } from "./materialization/base-plan-compare";
@@ -55,6 +59,10 @@ export type {
   V2StrategyHypothesisPreShadowCandidateFilterInput,
 } from "./mesocycle-strategy";
 export type { V2PlannerMesocyclePolicyInput } from "./mesocycle-policy";
+export type {
+  V2DirectVolumeCapacityProfile,
+  V2DirectVolumeCapacityProfileId,
+} from "./direct-volume-policy";
 export type { V2StrategyToDemandProjectionInput } from "./strategy-to-demand-projection";
 export type {
   ExerciseClassDistributionBySlot,

@@ -76,7 +76,14 @@ export type V2BasePlanValidation = {
         range: V2PlannerSetRange;
         directSetFloor: number;
         preferredDirectSets: number;
+        minimumDirectExposures: number;
+        preferredDirectExposures: number;
+        directExposureCount: number;
+        directClassSets: number;
+        authoredLaneSets: number;
+        /** @deprecated Use directClassSets. */
         directSets: number;
+        /** @deprecated Use authoredLaneSets. */
         materializedLaneSets: number;
         status:
           | "covered"
@@ -108,12 +115,15 @@ export type V2BasePlanValidation = {
       rowAndVerticalPullBalance: boolean;
       verticalPressOrHighInclineShoulderPress: boolean;
       sideDeltDirectLateralRaiseClass: boolean;
+      sideDeltDirectIsolationClass: boolean;
       sideDeltDirectExposureCount: number;
       sideDeltSecondDirectExposure: boolean;
       rearDeltDirectSupportClass: boolean;
       hamstringsHingeAndCurl: boolean;
       hamstringsDirectSets: number;
+      hamstringsDirectClassSets: number;
       hamstringsDirectSetFloor: number;
+      hamstringsDirectClassSetFloor: number;
       hamstringsDirectSetFloorMet: boolean;
       quadsSquatPressAndSupport: boolean;
       lowerBLoadableQuadSupport: boolean;
@@ -233,8 +243,6 @@ const GUARDRAILS: V2BasePlanValidation["guardrails"] = {
   consumedByDemandOrMaterializer: false,
 };
 
-const BASE_DIRECT_HAMSTRING_SET_FLOOR = 8;
-
 export function buildV2BasePlanValidation(
   input: V2BasePlanValidationInput,
 ): V2BasePlanValidation {
@@ -252,6 +260,7 @@ export function buildV2BasePlanValidation(
     taxonomy: input.taxonomy,
   });
   const directSetsByMuscle = sumDirectSetsByMuscle(evidence);
+  const directExposuresByMuscle = sumDirectExposuresByMuscle(evidence);
   const laneSetsByMuscle = sumLaneSetsByMuscle(evidence);
   const directFloorResult = evaluateDirectFloors({
     lanes: Array.from(laneIndex.values()),
@@ -261,6 +270,7 @@ export function buildV2BasePlanValidation(
   const muscleCoverage = buildMuscleCoverage({
     demand: input.plannerPolicy.mesocycleDemand,
     directSetsByMuscle,
+    directExposuresByMuscle,
     laneSetsByMuscle,
     directFloorResult,
     evidence,
@@ -273,6 +283,7 @@ export function buildV2BasePlanValidation(
   const classCoverage = buildExerciseClassCoverage({
     laneIndex,
     evidence,
+    demand: input.plannerPolicy.mesocycleDemand,
   });
   const setCountQuality = buildSetCountQuality({
     evidence,
@@ -308,6 +319,7 @@ export function buildV2BasePlanValidation(
     classCoverage,
     setCountQuality,
     anchorLaneQuality,
+    muscleCoverage,
   });
   const warnings = buildWarnings({
     muscleCoverage,
@@ -484,6 +496,25 @@ function sumDirectSetsByMuscle(
   return totals;
 }
 
+function sumDirectExposuresByMuscle(
+  evidence: ReadonlyArray<MaterializedLaneEvidence>,
+): Map<string, number> {
+  const exposures = new Map<string, Set<string>>();
+  for (const row of evidence) {
+    for (const muscle of row.match?.directMuscles ?? []) {
+      const muscleExposures = exposures.get(muscle) ?? new Set<string>();
+      muscleExposures.add(`${row.slotId}:${row.laneId}`);
+      exposures.set(muscle, muscleExposures);
+    }
+  }
+  return new Map(
+    Array.from(exposures.entries()).map(([muscle, rows]) => [
+      muscle,
+      rows.size,
+    ]),
+  );
+}
+
 function sumLaneSetsByMuscle(
   evidence: ReadonlyArray<MaterializedLaneEvidence>,
 ): Map<string, number> {
@@ -553,6 +584,7 @@ function evaluateDirectFloors(input: {
 function buildMuscleCoverage(input: {
   demand: V2MesocycleDemand;
   directSetsByMuscle: ReadonlyMap<string, number>;
+  directExposuresByMuscle: ReadonlyMap<string, number>;
   laneSetsByMuscle: ReadonlyMap<string, number>;
   directFloorResult: { met: string[]; missed: string[] };
   evidence: ReadonlyArray<MaterializedLaneEvidence>;
@@ -560,11 +592,14 @@ function buildMuscleCoverage(input: {
   const managedWarnings = buildManagedCollateralWarnings(input.evidence);
   const rows = input.demand.muscles.map((muscleDemand) => {
     const directSets = input.directSetsByMuscle.get(muscleDemand.muscle) ?? 0;
+    const directExposureCount =
+      input.directExposuresByMuscle.get(muscleDemand.muscle) ?? 0;
     const materializedLaneSets =
       input.laneSetsByMuscle.get(muscleDemand.muscle) ?? 0;
     const status = muscleCoverageStatus({
       demand: muscleDemand,
       directSets,
+      directExposureCount,
       materializedLaneSets,
     });
     return {
@@ -574,6 +609,13 @@ function buildMuscleCoverage(input: {
       range: { ...muscleDemand.baselineSetRange },
       directSetFloor: muscleDemand.directness.directSetFloor,
       preferredDirectSets: muscleDemand.directness.preferredDirectSets,
+      minimumDirectExposures:
+        muscleDemand.directness.minimumDirectExposures,
+      preferredDirectExposures:
+        muscleDemand.directness.preferredDirectExposures,
+      directExposureCount,
+      directClassSets: directSets,
+      authoredLaneSets: materializedLaneSets,
       directSets,
       materializedLaneSets,
       status,
@@ -608,13 +650,16 @@ function buildMuscleCoverage(input: {
 function muscleCoverageStatus(input: {
   demand: V2MesocycleDemand["muscles"][number];
   directSets: number;
+  directExposureCount: number;
   materializedLaneSets: number;
 }): V2BasePlanValidation["checks"]["muscleCoverage"]["rows"][number]["status"] {
   if (input.demand.targetMode === "managed_collateral") {
     return "managed_collateral";
   }
   if (
-    input.directSets < input.demand.directness.directSetFloor ||
+    input.directSets < input.demand.directness.capacityFloorDirectSets ||
+    input.directExposureCount <
+      input.demand.directness.minimumDirectExposures ||
     input.materializedLaneSets < input.demand.baselineSetRange.min
   ) {
     return "below_floor";
@@ -785,7 +830,11 @@ function hasChestBiasedPressSupport(input: {
 function buildExerciseClassCoverage(input: {
   laneIndex: ReadonlyMap<string, PlanLane>;
   evidence: ReadonlyArray<MaterializedLaneEvidence>;
+  demand: V2MesocycleDemand;
 }): V2BasePlanValidation["checks"]["exerciseClassCoverage"] {
+  const hamstringDemand = input.demand.muscles.find(
+    (row) => row.muscle === "Hamstrings",
+  );
   const sideDeltDirectExposureCount = new Set(
     input.evidence.flatMap((row) =>
       row.match?.classId === "lateral_raise" &&
@@ -868,12 +917,18 @@ function buildExerciseClassCoverage(input: {
         slotId: "upper_b",
         laneId: "vertical_press",
       }),
-    sideDeltDirectLateralRaiseClass: hasLane({
-      evidence: input.evidence,
-      slotId: "upper_b",
-      laneId: "side_delt_isolation",
-      classId: "lateral_raise",
-    }),
+    sideDeltDirectLateralRaiseClass: input.evidence.some(
+      (row) =>
+        row.laneId === "side_delt_isolation" &&
+        row.match?.classId === "lateral_raise" &&
+        row.match.directMuscles.includes("Side Delts"),
+    ),
+    sideDeltDirectIsolationClass: input.evidence.some(
+      (row) =>
+        row.laneId === "side_delt_isolation" &&
+        row.match?.classId === "lateral_raise" &&
+        row.match.directMuscles.includes("Side Delts"),
+    ),
     sideDeltDirectExposureCount,
     sideDeltSecondDirectExposure: sideDeltDirectExposureCount >= 2,
     rearDeltDirectSupportClass: hasLane({
@@ -889,22 +944,20 @@ function buildExerciseClassCoverage(input: {
         laneId: "hinge_anchor",
         classIds: ["hinge_compound", "low_axial_hip_extension_anchor"],
       }) &&
-      hasLane({
-        evidence: input.evidence,
-        slotId: "lower_a",
-        laneId: "hamstring_curl",
-        classId: "knee_flexion_curl",
-      }) &&
-      hasLane({
-        evidence: input.evidence,
-        slotId: "lower_b",
-        laneId: "knee_flexion_curl",
-        classId: "knee_flexion_curl",
-      }),
+      input.evidence.some(
+        (row) =>
+          row.match?.classId === "knee_flexion_curl" &&
+          row.match.directMuscles.includes("Hamstrings"),
+      ),
     hamstringsDirectSets,
-    hamstringsDirectSetFloor: BASE_DIRECT_HAMSTRING_SET_FLOOR,
+    hamstringsDirectClassSets: hamstringsDirectSets,
+    hamstringsDirectSetFloor:
+      hamstringDemand?.directness.capacityFloorDirectSets ?? 0,
+    hamstringsDirectClassSetFloor:
+      hamstringDemand?.directness.capacityFloorDirectSets ?? 0,
     hamstringsDirectSetFloorMet:
-      hamstringsDirectSets >= BASE_DIRECT_HAMSTRING_SET_FLOOR,
+      hamstringsDirectSets >=
+      (hamstringDemand?.directness.capacityFloorDirectSets ?? 0),
     quadsSquatPressAndSupport:
       hasLane({
         evidence: input.evidence,
@@ -938,12 +991,11 @@ function buildExerciseClassCoverage(input: {
         laneId: "calves",
         classId: "calf_isolation",
       }),
-    optionalLanesOmittedUnlessActivated: input.evidence.every((row) =>
-      row.planLane
-        ? (row.planLane.requirement === "required" &&
-            row.planLane.classLaneKind !== "optional_recoverable_lane") ||
-          isActivatedOptionalLane(row.planLane)
-        : true,
+    optionalLanesOmittedUnlessActivated: input.evidence.every(
+      (row) =>
+        !row.planLane ||
+        row.planLane.classLaneKind !== "optional_recoverable_lane" ||
+        isActivatedOptionalLane(row.planLane),
     ),
     managedCollateralLanesNotMaterializedAsDirectDemand: input.evidence.every(
       (row) => row.planLane?.classLaneKind !== "managed_collateral_marker",
@@ -998,6 +1050,11 @@ function buildSetCountQuality(input: {
   const fourSetLaneCount = input.evidence.filter(
     (row) => row.exercise.setCount === 4,
   ).length;
+  const underAuthoredLaneCount = input.evidence.filter(
+    (row) =>
+      row.planLane &&
+      row.exercise.setCount < row.planLane.setBudget.preferred,
+  ).length;
 
   return {
     exercisesAtFiveOrMore,
@@ -1006,7 +1063,9 @@ function buildSetCountQuality(input: {
     anchorLaneOutOfCap,
     fourSetLaneCount,
     flatAllocationWarning:
-      fourSetLaneCount >= 6 && input.belowPreferredMuscles.length >= 3,
+      fourSetLaneCount >= 6 &&
+      input.belowPreferredMuscles.length >= 3 &&
+      underAuthoredLaneCount > 0,
   };
 }
 
@@ -1351,6 +1410,7 @@ function buildBlockers(input: {
   classCoverage: V2BasePlanValidation["checks"]["exerciseClassCoverage"];
   setCountQuality: V2BasePlanValidation["checks"]["setCountQuality"];
   anchorLaneQuality: V2BasePlanValidation["checks"]["anchorLaneQuality"];
+  muscleCoverage: V2BasePlanValidation["checks"]["muscleCoverage"];
 }): V2BasePlanValidationIssue[] {
   const materializerBlockers =
     input.materializedPlan?.blockers.map((blocker) => ({
@@ -1368,6 +1428,18 @@ function buildBlockers(input: {
       category: "muscle_coverage",
       reason: `direct_floor_missed:${miss}`,
     })),
+    ...input.muscleCoverage.belowFloorMuscles.map((muscle) => ({
+      category: "muscle_coverage",
+      reason: `weekly_direct_or_exposure_floor_missed:${muscle}`,
+    })),
+    ...(input.classCoverage.hamstringsHingeAndCurl
+      ? []
+      : [
+          {
+            category: "exercise_class_coverage",
+            reason: "hamstrings_required_hinge_and_curl_roles_missing",
+          },
+        ]),
     ...input.slotShape.overloadedSlots.map((slotId) => ({
       category: "slot_shape",
       reason: "slot_overloaded",
@@ -1438,14 +1510,6 @@ function buildWarnings(input: {
               "base_pattern_missing_vertical_press_or_high_incline_press",
             slotId: "upper_b",
             laneId: "vertical_press",
-          },
-        ]),
-    ...(input.classCoverage.sideDeltSecondDirectExposure
-      ? []
-      : [
-          {
-            category: "exercise_class_coverage",
-            reason: `side_delt_direct_exposure_count_below_base_floor:${input.classCoverage.sideDeltDirectExposureCount}/2`,
           },
         ]),
     ...(input.classCoverage.hamstringsDirectSetFloorMet

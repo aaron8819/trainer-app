@@ -44,7 +44,7 @@ describe("buildV2SupportLanePolicy", () => {
       },
       summary: {
         policyCount: 5,
-        requiredDirectFloorCount: 5,
+        requiredDirectFloorCount: 3,
         optionalConditionalLaneCount: 1,
       },
     });
@@ -71,11 +71,11 @@ describe("buildV2SupportLanePolicy", () => {
       owningSlotId: "upper_a",
       owningLaneId: "triceps",
       directFloor: {
-        minDirectSets: 4,
+        minDirectSets: 2,
         requiredExerciseClasses: ["triceps_isolation", "pressdown"],
         collateralCanSatisfyDirectFloor: false,
       },
-      preferredDirectSets: { min: 4, preferred: 4, max: 4 },
+      preferredDirectSets: { min: 2, preferred: 4, max: 4 },
       collateralMaySupplement: true,
       collateralCanSatisfyDirectFloor: false,
     });
@@ -103,11 +103,11 @@ describe("buildV2SupportLanePolicy", () => {
       owningSlotId: "upper_b",
       owningLaneId: "side_delt_isolation",
       directFloor: {
-        minDirectSets: 4,
+        minDirectSets: 0,
         requiredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
         collateralCanSatisfyDirectFloor: false,
       },
-      preferredDirectSets: { min: 3, preferred: 4, max: 4 },
+      preferredDirectSets: { min: 0, preferred: 4, max: 4 },
       collateralCanSatisfyDirectFloor: false,
     });
     expect(upperA.expansionPolicy.firstChoice).toContain(
@@ -129,11 +129,11 @@ describe("buildV2SupportLanePolicy", () => {
       owningSlotId: "upper_a",
       owningLaneId: "rear_delt",
       directFloor: {
-        minDirectSets: 4,
+        minDirectSets: 2,
         requiredExerciseClasses: ["rear_delt_isolation"],
         collateralCanSatisfyDirectFloor: false,
       },
-      preferredDirectSets: { min: 4, preferred: 4, max: 4 },
+      preferredDirectSets: { min: 2, preferred: 4, max: 4 },
       collateralCanSatisfyDirectFloor: false,
     });
     expect(rearDelts.expansionPolicy.firstChoice).toBe(
@@ -147,7 +147,7 @@ describe("buildV2SupportLanePolicy", () => {
     );
   });
 
-  it("keeps the Biceps direct curl floor Upper B only", () => {
+  it("keeps the Biceps direct curl lane preferred but optional in Upper B", () => {
     const biceps = policyByMuscle("Biceps");
 
     expect(biceps).toMatchObject({
@@ -156,11 +156,11 @@ describe("buildV2SupportLanePolicy", () => {
       directFloor: {
         slotId: "upper_b",
         laneId: "biceps",
-        minDirectSets: 2,
+        minDirectSets: 0,
         requiredExerciseClasses: ["biceps_isolation"],
         collateralCanSatisfyDirectFloor: false,
       },
-      preferredDirectSets: { min: 2, preferred: 3, max: 3 },
+      preferredDirectSets: { min: 0, preferred: 2, max: 2 },
       collateralCanSatisfyDirectFloor: false,
     });
     expect(biceps.expansionPolicy.provisionalOrDiagnosticOnly).toContain(
@@ -197,7 +197,7 @@ describe("buildV2SupportLanePolicy", () => {
       evaluateV2SupportLaneOptionalActivation({
         policy: triceps,
         candidateSlotId: "upper_b",
-        directSetsInOwningSlot: 2,
+        directSetsInOwningSlot: 1,
         reasonableCollateralEffectiveSets: 0,
         recoverable: true,
       }).reason,

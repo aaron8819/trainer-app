@@ -219,7 +219,7 @@ describe("buildV2SetDistributionIntent", () => {
     });
     expect(lane(plan, "upper_b", "vertical_pull_anchor")).toMatchObject({
       role: "anchor",
-      setBudget: { min: 3, preferred: 3, max: 4 },
+      setBudget: { min: 3, preferred: 4, max: 4 },
     });
     expect(lane(plan, "upper_b", "row_support")).toMatchObject({
       role: "support",
@@ -233,13 +233,15 @@ describe("buildV2SetDistributionIntent", () => {
       week(plan).slots
         .flatMap((slotRow) => slotRow.lanes)
         .filter((laneRow) => laneRow.setBudget.preferred === 4),
-    ).toHaveLength(6);
+    ).toHaveLength(7);
   });
 
   it("keeps Hamstrings hinge and curl split within balanced demand", () => {
     const policy = buildPolicy();
     const plan = policy.v2SetDistributionIntent;
-    const hamstrings = lanesForMuscle(plan, "Hamstrings");
+    const hamstrings = lanesForMuscle(plan, "Hamstrings").filter(
+      (row) => row.setBudget.preferred > 0,
+    );
 
     expect(hamstrings.map((row) => `${row.laneId}:${row.setBudget.preferred}`))
       .toEqual([
@@ -293,10 +295,10 @@ describe("buildV2SetDistributionIntent", () => {
       primaryMuscles: ["Side Delts"],
       directFloor: {
         muscle: "Side Delts",
-        minDirectSets: 4,
+        minDirectSets: 0,
         collateralCanSatisfy: false,
       },
-      setBudget: { min: 4, preferred: 4, max: 4, basis: "support_direct_floor" },
+      setBudget: { min: 0, preferred: 4, max: 4, basis: "support_direct_floor" },
     });
     expect(lane(plan, "upper_b", "vertical_press")).toMatchObject({
       classLaneKind: "support_class_lane",
@@ -314,16 +316,16 @@ describe("buildV2SetDistributionIntent", () => {
     const plan = intent();
 
     expect(lane(plan, "upper_a", "rear_delt")).toMatchObject({
-      directFloor: { muscle: "Rear Delts", minDirectSets: 4 },
-      setBudget: { min: 4, preferred: 4, max: 4, basis: "support_direct_floor" },
+      directFloor: { muscle: "Rear Delts", minDirectSets: 2 },
+      setBudget: { min: 2, preferred: 4, max: 4, basis: "support_direct_floor" },
     });
     expect(lane(plan, "upper_a", "triceps")).toMatchObject({
-      directFloor: { muscle: "Triceps", minDirectSets: 4 },
-      setBudget: { min: 4, preferred: 4, max: 4, basis: "support_direct_floor" },
+      directFloor: { muscle: "Triceps", minDirectSets: 2 },
+      setBudget: { min: 2, preferred: 4, max: 4, basis: "support_direct_floor" },
     });
     expect(lane(plan, "upper_b", "biceps")).toMatchObject({
-      directFloor: { muscle: "Biceps", minDirectSets: 2 },
-      setBudget: { min: 2, preferred: 3, max: 3, basis: "support_direct_floor" },
+      directFloor: { muscle: "Biceps", minDirectSets: 0 },
+      setBudget: { min: 0, preferred: 2, max: 2, basis: "support_direct_floor" },
     });
   });
 
@@ -356,7 +358,7 @@ describe("buildV2SetDistributionIntent", () => {
       setBudget: { min: 3, preferred: 4, max: 4 },
     });
     expect(lane(plan, "upper_b", "vertical_pull_anchor")).toMatchObject({
-      setBudget: { min: 3, preferred: 3, max: 4 },
+      setBudget: { min: 3, preferred: 4, max: 4 },
     });
   });
 
@@ -367,7 +369,7 @@ describe("buildV2SetDistributionIntent", () => {
       classLaneKind: "optional_recoverable_lane",
       optionalMuscles: ["Triceps"],
       setBudget: {
-        min: 2,
+        min: 0,
         preferred: 2,
         max: 2,
         basis: "optional_activation_required",

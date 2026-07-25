@@ -927,6 +927,8 @@ export type V2StrategyToDemandProjection = {
       targetStatus?: V2PlannerTargetStatus;
       targetTier?: MuscleTargetTier | null;
       baselineSetRange?: V2PlannerSetRange;
+      capacityFloorDirectSets?: number;
+      /** @deprecated Use capacityFloorDirectSets. */
       directSetFloor?: number;
     };
     currentProjection: {
@@ -1723,11 +1725,28 @@ export type V2FractionalDemandAttributionRange = V2PlannerSetRange;
 export type V2AuthoredSetBudgetRange = V2PlannerSetRange;
 
 export type V2PlannerDirectnessPolicy = {
+  /** Capacity floor for executable direct work. Collateral never satisfies it. */
+  capacityFloorDirectSets: number;
+  /** Backward-compatible name for the same canonical capacity floor. */
   directSetFloor: number;
   preferredDirectSets: number;
+  minimumDirectExposures: number;
+  preferredDirectExposures: number;
   collateralCreditLimit: number;
   collateralCanSatisfyFloor: boolean;
   requiredClassIntents: string[];
+  requiredRoleIntents: string[];
+  collateralRule: "supplemental_only" | "not_applicable";
+  capacityYieldOrder:
+    | "identity_preferences"
+    | "optional_triceps_top_up"
+    | "biceps"
+    | "rear_delt_surplus"
+    | "calf_surplus"
+    | "side_delt_surplus"
+    | "triceps_surplus"
+    | "hamstring_surplus"
+    | "protected";
 };
 
 export type V2MesocycleDemand = {

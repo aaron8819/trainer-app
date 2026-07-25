@@ -1,7 +1,11 @@
 import type { MuscleTargetTier } from "@/lib/engine/volume-landmarks";
 import { getMuscleTargetSemantics } from "@/lib/engine/volume-landmarks";
-import { V2_POLICY_GUARDRAILS } from "./mesocycle-demand";
+import {
+  V2_POLICY_GUARDRAILS,
+  buildV2MesocycleDemand,
+} from "./mesocycle-demand";
 import type {
+  V2MesocycleDemand,
   V2PlannerSetRange,
   V2PlannerSlotId,
   V2TargetSkeleton,
@@ -118,8 +122,6 @@ type SupportLanePolicySpec = {
   muscle: V2SupportLanePolicyRow["muscle"];
   owningSlotId: V2PlannerSlotId;
   owningLaneId: string;
-  directFloorMin: number;
-  preferredDirectSets: V2PlannerSetRange;
   collateralCreditLimit: V2SupportLanePolicyRow["collateralCreditLimit"];
   optionalActivationRule: V2SupportLaneOptionalActivationRule;
   expansionPolicy: V2SupportLaneExpansionPolicy;
@@ -138,8 +140,6 @@ const SUPPORT_LANE_SPECS: SupportLanePolicySpec[] = [
     muscle: "Triceps",
     owningSlotId: "upper_a",
     owningLaneId: "triceps",
-    directFloorMin: 4,
-    preferredDirectSets: { min: 4, preferred: 4, max: 4 },
     collateralCreditLimit: {
       maxWeeklyEffectiveSetsCreditable: 2,
       collateralSources: ["horizontal_press", "vertical_press"],
@@ -168,8 +168,6 @@ const SUPPORT_LANE_SPECS: SupportLanePolicySpec[] = [
     muscle: "Side Delts",
     owningSlotId: "upper_a",
     owningLaneId: "side_delt_isolation",
-    directFloorMin: 4,
-    preferredDirectSets: { min: 4, preferred: 4, max: 4 },
     collateralCreditLimit: {
       maxWeeklyEffectiveSetsCreditable: 1,
       collateralSources: ["ohp", "vertical_press"],
@@ -190,8 +188,6 @@ const SUPPORT_LANE_SPECS: SupportLanePolicySpec[] = [
     muscle: "Side Delts",
     owningSlotId: "upper_b",
     owningLaneId: "side_delt_isolation",
-    directFloorMin: 4,
-    preferredDirectSets: { min: 3, preferred: 4, max: 4 },
     collateralCreditLimit: {
       maxWeeklyEffectiveSetsCreditable: 1,
       collateralSources: ["ohp", "vertical_press"],
@@ -212,8 +208,6 @@ const SUPPORT_LANE_SPECS: SupportLanePolicySpec[] = [
     muscle: "Rear Delts",
     owningSlotId: "upper_a",
     owningLaneId: "rear_delt",
-    directFloorMin: 4,
-    preferredDirectSets: { min: 4, preferred: 4, max: 4 },
     collateralCreditLimit: {
       maxWeeklyEffectiveSetsCreditable: 1,
       collateralSources: ["row", "horizontal_pull", "vertical_pull"],
@@ -237,8 +231,6 @@ const SUPPORT_LANE_SPECS: SupportLanePolicySpec[] = [
     muscle: "Biceps",
     owningSlotId: "upper_b",
     owningLaneId: "biceps",
-    directFloorMin: 2,
-    preferredDirectSets: { min: 2, preferred: 3, max: 3 },
     collateralCreditLimit: {
       maxWeeklyEffectiveSetsCreditable: 2,
       collateralSources: ["vertical_pull", "horizontal_pull"],
@@ -306,6 +298,7 @@ export function resolveV2TierAwareConcentrationPolicy(input: {
 
 function buildSupportLane(input: {
   targetSkeleton: V2TargetSkeleton;
+  mesocycleDemand: V2MesocycleDemand;
   spec: SupportLanePolicySpec;
 }): V2SupportLanePolicyRow {
   const lane = findLane({
@@ -314,6 +307,28 @@ function buildSupportLane(input: {
     laneId: input.spec.owningLaneId,
   });
   const targetTier = getMuscleTargetSemantics(input.spec.muscle).targetTier;
+  const demand = input.mesocycleDemand.muscles.find(
+    (row) => row.muscle === input.spec.muscle,
+  );
+  if (!demand) {
+    throw new Error(`Missing V2 mesocycle demand for ${input.spec.muscle}`);
+  }
+  const isPreferredSecondSideDeltExposure =
+    input.spec.muscle === "Side Delts" && input.spec.owningSlotId === "upper_b";
+  const laneFloor = isPreferredSecondSideDeltExposure
+    ? 0
+    : demand.directness.capacityFloorDirectSets;
+  const lanePreferred =
+    input.spec.muscle === "Side Delts"
+      ? demand.directness.preferredDirectSets / 2
+      : demand.directness.preferredDirectSets;
+  const optionalActivationRule =
+    input.spec.optionalActivationRule.type === "conditional_under_support_floor"
+      ? {
+          ...input.spec.optionalActivationRule,
+          weeklySupportFloor: demand.baselineSetRange.preferred,
+        }
+      : input.spec.optionalActivationRule;
 
   return {
     muscle: input.spec.muscle,
@@ -323,18 +338,22 @@ function buildSupportLane(input: {
     directFloor: {
       slotId: input.spec.owningSlotId,
       laneId: input.spec.owningLaneId,
-      minDirectSets: input.spec.directFloorMin,
+      minDirectSets: laneFloor,
       requiredExerciseClasses: [...(lane?.preferredExerciseClasses ?? [])],
       collateralCanSatisfyDirectFloor: false,
     },
-    preferredDirectSets: { ...input.spec.preferredDirectSets },
+    preferredDirectSets: {
+      min: laneFloor,
+      preferred: lanePreferred,
+      max: lanePreferred,
+    },
     collateralCreditLimit: {
       ...input.spec.collateralCreditLimit,
       collateralSources: [...input.spec.collateralCreditLimit.collateralSources],
     },
     collateralMaySupplement: true,
     collateralCanSatisfyDirectFloor: false,
-    optionalActivationRule: input.spec.optionalActivationRule,
+    optionalActivationRule,
     expansionPolicy: {
       firstChoice: input.spec.expansionPolicy.firstChoice,
       supplementalOnly: [...input.spec.expansionPolicy.supplementalOnly],
@@ -352,6 +371,7 @@ function buildSupportLane(input: {
       "v2_target_skeleton",
       "volume_landmarks_and_target_tiers",
       "support_lane_policy_v2_target_spec",
+      "mesocycle_demand_direct_volume_policy",
       "ignores_no_repair_repaired_seed_runtime_output",
     ],
     limitations: uniqueSorted([
@@ -370,9 +390,17 @@ function uniqueSorted(values: string[]): string[] {
 
 export function buildV2SupportLanePolicy(input: {
   targetSkeleton: V2TargetSkeleton;
+  mesocycleDemand?: V2MesocycleDemand;
 }): V2SupportLanePolicy {
+  const mesocycleDemand =
+    input.mesocycleDemand ??
+    buildV2MesocycleDemand({ targetSkeleton: input.targetSkeleton });
   const supportLanes = SUPPORT_LANE_SPECS.map((spec) =>
-    buildSupportLane({ targetSkeleton: input.targetSkeleton, spec }),
+    buildSupportLane({
+      targetSkeleton: input.targetSkeleton,
+      mesocycleDemand,
+      spec,
+    }),
   );
 
   return {

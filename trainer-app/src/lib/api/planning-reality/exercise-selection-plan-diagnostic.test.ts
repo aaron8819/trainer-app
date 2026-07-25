@@ -1091,26 +1091,26 @@ describe("buildV2SelectionCapacityPlanDiagnostic", () => {
       cleanAlternativeCount: null,
     });
     expect(capacityLane(diagnostic, 1, "upper_b", "vertical_pull_anchor")).toMatchObject({
-      classification: "target_met_no_action",
+      classification: "capacity_pressure",
       inspectionCategory: "must_preserve",
       weeklyTargetStatus: "within",
-      slotHeadroom: 1,
+      slotHeadroom: 0,
     });
     expect(
       diagnostic.weeks
         .find((row) => row.week === 1)
         ?.slots.find((slot) => slot.slotId === "upper_b"),
     ).toMatchObject({
-      maxExerciseCount: 7,
+      maxExerciseCount: 6,
     });
-    expect(diagnostic.summary.capacityPressureCount).toBe(4);
+    expect(diagnostic.summary.capacityPressureCount).toBe(5);
     expect(diagnostic.summary.laneInspectionCategoryCounts).toMatchObject({
-      floor_critical: 12,
+      floor_critical: 8,
       must_preserve: expect.any(Number),
       optional_stretch: 12,
       productive_support: expect.any(Number),
     });
-    expect(diagnostic.warnings).not.toContain(
+    expect(diagnostic.warnings).toContain(
       "week_1:upper_b:vertical_pull_anchor:capacity_pressure",
     );
   });
@@ -1136,7 +1136,7 @@ describe("buildV2SelectionCapacityPlanDiagnostic", () => {
         targetSlotExerciseCount: 6,
         targetSlotMaxExerciseCount: 6,
         targetSlotSetCount: 20,
-        targetSlotMaxSets: 17.5,
+        targetSlotMaxSets: 21,
         targetSlotFloorCriticalLaneCount: expect.any(Number),
         targetSlotCapacityPressureLaneCount: expect.any(Number),
       }),
@@ -1213,18 +1213,14 @@ describe("buildV2SelectionCapacityPlanDiagnostic", () => {
     ).toMatchObject({
       hard_floors: "unknown",
       over_mav: "pass",
-      session_size: "fail",
+      session_size: "pass",
       five_set_stacking: "pass",
       lane_survival: "pass",
       duplicates: "pass",
       materializer_validity: "unknown",
       acceptance_result: "unknown",
     });
-    expect(projection.candidateImpact.regressions).toEqual(
-      expect.arrayContaining([
-        "week_1:upper_a:over_set_limit:sets_20_max_17.5",
-      ]),
-    );
+    expect(projection.candidateImpact.regressions).toEqual([]);
   });
 
   it("does not classify satisfied Week 1 calf lanes as blockers", () => {
@@ -1249,14 +1245,14 @@ describe("buildV2SelectionCapacityPlanDiagnostic", () => {
       classification: "target_met_no_action",
       selectedExercise: "Standing Calf Raise",
       selectedSets: 4,
-      perExerciseCap: 4,
+      perExerciseCap: 5,
       weeklyTargetStatus: "within",
     });
     expect(capacityLane(diagnostic, 4, "lower_b", "calves")).toMatchObject({
       classification: "target_met_no_action",
       selectedExercise: "Seated Calf Raise",
       selectedSets: 4,
-      perExerciseCap: 4,
+      perExerciseCap: 5,
       weeklyTargetStatus: "within",
     });
     expect(diagnostic.summary.capAwareExpansionNeededCount).toBe(0);
@@ -1547,7 +1543,7 @@ describe("buildV2SupportLaneProjectionDiagnostic boundary rows", () => {
 
     expect(supportBoundaryRow(diagnostic)).toMatchObject({
       supportPolicyAuthored: false,
-      setDistributionBudgeted: true,
+      setDistributionBudgeted: false,
       exerciseSelectionPreserved: false,
       status: "policy_miss",
       likelyOwnerSeam: "support_lane_policy",
@@ -1563,11 +1559,11 @@ describe("buildV2SupportLaneProjectionDiagnostic boundary rows", () => {
 
     expect(supportBoundaryRow(diagnostic)).toMatchObject({
       supportPolicyAuthored: true,
-      setDistributionBudgeted: true,
+      setDistributionBudgeted: false,
       exerciseSelectionPreserved: false,
       weeklyTargetStatus: "below",
-      likelyOwnerSeam: "materializer_exercise_selection_capacity",
-      status: "authored_support_lane_dropped",
+      likelyOwnerSeam: "set_distribution_intent",
+      status: "set_budget_missing",
       severity: "high_risk",
       mustFixBeforeWeek1: true,
     });
@@ -1586,10 +1582,10 @@ describe("buildV2SupportLaneProjectionDiagnostic boundary rows", () => {
 
     expect(supportBoundaryRow(diagnostic)).toMatchObject({
       supportPolicyAuthored: true,
-      setDistributionBudgeted: true,
+      setDistributionBudgeted: false,
       exerciseSelectionPreserved: true,
-      status: "support_lane_preserved",
-      severity: "pass",
+      status: "set_budget_missing",
+      severity: "warning",
       mustFixBeforeWeek1: false,
     });
     expect(diagnostic.summary.selectionPreservedCount).toBeGreaterThanOrEqual(1);

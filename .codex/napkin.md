@@ -14,6 +14,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|-----------------|--------------------|
+| 2026-07-24 | self | Repeated the documented stdin `tsx` named-export trap while probing the V2 preferred baseline, so the read-only harness failed before materialization. | For every stdin `tsx` local-module import, use a namespace import and normalize `const mod = raw.default ?? raw` before accessing exports. |
 | 2026-07-24 | self | Fake Windows `.cmd` PostgreSQL tools received `--format=custom` as separate `--format` and `custom` arguments under PowerShell's legacy batch invocation behavior. | Use PostgreSQL's equivalent separate-token form (`--format custom`, `--schema public`) when exact Windows fake-tool argument contracts must match production commands. |
 | 2026-07-24 | self | Let a one-item PowerShell project-reference pipeline collapse to a scalar string, so `$references[0]` compared one character and rejected valid Supabase identities. | Wrap pipeline results in `@(...)` whenever count and indexed access are part of a fail-closed identity contract. |
 | 2026-07-24 | self | Used PowerShell's automatic `$Matches` variable for a documentation-search result, producing misleading table output instead of the `rg` rows. | Use task-specific variable names such as `$npxTscRows`; do not reuse PowerShell automatic variables in verification harnesses. |
@@ -503,3 +504,4 @@
 - 2026-07-19: Mandatory PowerShell collection parameters reject valid empty arrays unless marked `[AllowEmptyCollection()]`. Cover empty diffs, zero prerequisites, zero reasons, and zero child arguments as first-class tooling cases.
 - 2026-07-19: Guarded-execution tests should replace registry invocations with inert fake executables and sentinel files, proving allow/deny behavior and exit propagation without touching packages, databases, networks, or production commands.
 - 2026-07-24: After adding `ownsClassObligation` to the V2 ownership contract, I updated the allocation-side test helper but missed the distribution-side projection in the same equality assertion. When extending a compared readout, update both projections together and run the whole seam directory, not only the newly targeted assertions.
+- 2026-07-24: I attempted `npm run typecheck` without checking `package.json`; this repo has no such script. Use the project-local `node_modules/.bin/tsc --noEmit` for an early compile or the repository-owned `npm run verify:fast` gate.

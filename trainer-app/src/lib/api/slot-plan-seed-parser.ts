@@ -283,6 +283,15 @@ function sanitizeAcceptedLane(value: unknown): AcceptedLanePolicy | null {
   const optionalActivationPolicy = sanitizeOptionalActivationPolicy(
     record?.optionalActivationPolicy
   );
+  const optionalTopUpStatusRecord = isRecord(record?.optionalTopUpStatus)
+    ? record.optionalTopUpStatus
+    : null;
+  const optionalTopUpStatus = optionalTopUpStatusRecord
+    ? {
+        status: requiredString(optionalTopUpStatusRecord.status),
+        reason: requiredString(optionalTopUpStatusRecord.reason),
+      }
+    : undefined;
   const continuityPolicy = sanitizeContinuityPolicy(record?.continuityPolicy);
 
   if (
@@ -301,6 +310,8 @@ function sanitizeAcceptedLane(value: unknown): AcceptedLanePolicy | null {
     !duplicatePolicy ||
     !cleanAlternativePolicy ||
     !optionalActivationPolicy ||
+    (optionalTopUpStatusRecord &&
+      (!optionalTopUpStatus?.status || !optionalTopUpStatus.reason)) ||
     !continuityPolicy
   ) {
     return null;
@@ -322,6 +333,17 @@ function sanitizeAcceptedLane(value: unknown): AcceptedLanePolicy | null {
     duplicatePolicy,
     cleanAlternativePolicy,
     optionalActivationPolicy,
+    ...(optionalTopUpStatus?.status && optionalTopUpStatus.reason
+      ? {
+          optionalTopUpStatus: {
+            status:
+              optionalTopUpStatus.status as NonNullable<
+                AcceptedLanePolicy["optionalTopUpStatus"]
+              >["status"],
+            reason: optionalTopUpStatus.reason,
+          },
+        }
+      : {}),
     continuityPolicy,
   };
 }
@@ -442,7 +464,39 @@ export function sanitizeAcceptedPlannerIntent(
         const role = requiredString(row?.role);
         const setRange = sanitizeSetRange(row?.setRange);
         const exposureCount = nonNegativeInteger(row?.exposureCount);
-        return muscle && targetTier && role && setRange && exposureCount != null
+        const preferredDirectSets = nonNegativeInteger(row?.preferredDirectSets);
+        const capacityFloorDirectSets = nonNegativeInteger(
+          row?.capacityFloorDirectSets,
+        );
+        const minimumDirectExposures = nonNegativeInteger(
+          row?.minimumDirectExposures,
+        );
+        const preferredDirectExposures = nonNegativeInteger(
+          row?.preferredDirectExposures,
+        );
+        const requiredRoleIntents = stringArray(row?.requiredRoleIntents);
+        const collateralRule = requiredString(row?.collateralRule);
+        const hasDirectVolumePolicy =
+          row?.preferredDirectSets !== undefined ||
+          row?.capacityFloorDirectSets !== undefined ||
+          row?.minimumDirectExposures !== undefined ||
+          row?.preferredDirectExposures !== undefined ||
+          row?.requiredRoleIntents !== undefined ||
+          row?.collateralRule !== undefined;
+        const validDirectVolumePolicy =
+          preferredDirectSets != null &&
+          capacityFloorDirectSets != null &&
+          minimumDirectExposures != null &&
+          preferredDirectExposures != null &&
+          requiredRoleIntents != null &&
+          (collateralRule === "supplemental_only" ||
+            collateralRule === "not_applicable");
+        return muscle &&
+          targetTier &&
+          role &&
+          setRange &&
+          exposureCount != null &&
+          (!hasDirectVolumePolicy || validDirectVolumePolicy)
           ? {
               muscle,
               targetTier:
@@ -450,6 +504,16 @@ export function sanitizeAcceptedPlannerIntent(
               role: role as AcceptedPlannerIntent["muscleTargets"][number]["role"],
               setRange,
               exposureCount,
+              ...(validDirectVolumePolicy
+                ? {
+                    preferredDirectSets,
+                    capacityFloorDirectSets,
+                    minimumDirectExposures,
+                    preferredDirectExposures,
+                    requiredRoleIntents,
+                    collateralRule,
+                  }
+                : {}),
             }
           : null;
       })

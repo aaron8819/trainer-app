@@ -948,7 +948,7 @@ function buildExerciseClassCoverageCompare(input: {
     },
     {
       item: "side_delt_direct_class",
-      v2Base: classCoverage?.sideDeltDirectLateralRaiseClass === true,
+      v2Base: classCoverage?.sideDeltDirectIsolationClass === true,
       detect: (plan) => hasClassOrMuscle(plan, "lateral_raise", "Side Delts"),
     },
     {

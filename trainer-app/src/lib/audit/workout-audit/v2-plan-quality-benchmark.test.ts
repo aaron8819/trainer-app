@@ -1279,13 +1279,13 @@ describe("V2 plan quality benchmark", () => {
       affectsScoringOrGeneration: false,
       consumedByDemandOrMaterializer: false,
       summary: {
-        fixtureCount: 7,
-        passCount: 7,
+        fixtureCount: 6,
+        passCount: 6,
         warnCount: 0,
         failCount: 0,
         watchCount: 0,
         lowAxialGoldenCount: 1,
-        nonConsumingFixtureCount: 7,
+        nonConsumingFixtureCount: 6,
         materializerDeltaScenarioCount: 4,
         materializerDeltaMeasuredCount: 4,
         nextSafeAction: "no_action",
@@ -1299,7 +1299,7 @@ describe("V2 plan quality benchmark", () => {
         noRepairBehaviorChange: true,
       },
     });
-    expect(result.candidateQualityLab?.scenarioDetailTop).toHaveLength(7);
+    expect(result.candidateQualityLab?.scenarioDetailTop).toHaveLength(6);
     expect(result.candidateQualityLab?.scenarioDetailTop).toContainEqual(
       expect.objectContaining({
         scenarioId: "low_axial_hip_extension_golden",
@@ -1380,12 +1380,12 @@ describe("V2 plan quality benchmark", () => {
           ownerSeam: "V2LaneSelectionIntentAudit",
           evidenceSource: "pure_v2_lane_selection_intent_audit",
           evidence: expect.arrayContaining([
-            "laneJobs=7",
-            "pass=7",
+            "laneJobs=6",
+            "pass=6",
             "warning=0",
             "fail=0",
             "missing=0",
-            "materializerConsumed=7",
+            "materializerConsumed=6",
             "diagnosticOnly=0",
             "low_axial_hip_extension:pass:lower_b:hinge_anchor:consumed=true",
             "lane_intent_benchmark_is_read_only",

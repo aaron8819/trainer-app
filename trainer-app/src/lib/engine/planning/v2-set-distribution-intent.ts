@@ -1,4 +1,8 @@
-import type { V2SupportLanePolicy } from "./v2/support-lane-policy";
+import {
+  evaluateV2SupportLaneOptionalActivation,
+  type V2SupportLanePolicy,
+} from "./v2/support-lane-policy";
+import { V2_DIRECT_VOLUME_CAPACITY_YIELD_ORDER } from "./v2/direct-volume-policy";
 import type {
   V2ExerciseClassDistributionBySlot,
   V2PlannerSetRange,
@@ -96,7 +100,25 @@ export type V2SetDistributionIntent = {
           requiresSlotExerciseHeadroom: true;
           requiresCleanAlternative: true;
           requiresRecoverability: true;
+          status?: "active" | "inactive";
+          reason?:
+            | "direct_floor_not_attempted"
+            | "not_recoverable"
+            | "still_under_support_floor_after_direct_floor_and_collateral"
+            | "support_floor_already_covered"
+            | "capacity_unavailable";
         };
+
+        capacityYieldOrder?:
+          | "identity_preferences"
+          | "optional_triceps_top_up"
+          | "biceps"
+          | "rear_delt_surplus"
+          | "calf_surplus"
+          | "side_delt_surplus"
+          | "triceps_surplus"
+          | "hamstring_surplus"
+          | "protected";
 
         capPolicy: {
           maxSetsPerExerciseWithoutJustification: number;
@@ -140,6 +162,17 @@ export type V2SetDistributionIntentInput = {
       rirTarget: string;
     }>;
   };
+  sessionCapacity?: {
+    maxSessionSetsBySlot?: Partial<
+      Record<V2SetDistributionIntentSlotId, number>
+    >;
+  };
+  supportActivationContext?: {
+    triceps?: {
+      reasonableCollateralEffectiveSets: number;
+      recoverable: boolean;
+    };
+  };
 };
 
 type ClassSlot =
@@ -149,8 +182,6 @@ type OwnershipRow = ClassLane["ownershipRows"][number];
 type IntentLane =
   V2SetDistributionIntent["weeks"][number]["slots"][number]["lanes"][number];
 type SupportLane = V2SupportLanePolicy["supportLanes"][number];
-type OptionalActivationRule =
-  V2SupportLanePolicy["supportLanes"][number]["optionalActivationRule"];
 
 const ZERO_SET_RANGE: V2PlannerSetRange = { min: 0, preferred: 0, max: 0 };
 
@@ -349,6 +380,18 @@ function minimumFloor(input: {
       input.directSupportPolicy.directFloor.minDirectSets,
     );
   }
+  if (
+    input.lane.requiredExerciseClasses.length === 0 &&
+    input.lane.ownershipRows.every((row) => !row.ownsClassObligation)
+  ) {
+    return 0;
+  }
+  if (
+    hasClassIntent(input.lane, "knee_flexion_curl_support") &&
+    input.lane.ownershipRows.some((row) => row.muscle === "Hamstrings")
+  ) {
+    return Math.min(input.preferred, 3);
+  }
   if (isCalfDirectLane(input.lane)) {
     return Math.min(input.preferred, 3);
   }
@@ -380,6 +423,9 @@ function roleSensitiveBasePreferred(input: {
   if (hasClassIntent(input.lane, "vertical_press_support")) {
     return 2;
   }
+  if (hasClassIntent(input.lane, "vertical_pull_anchor")) {
+    return 4;
+  }
   if (hasClassIntent(input.lane, "distinct_second_chest_press_or_fly")) {
     return 3;
   }
@@ -403,6 +449,7 @@ function buildSetBudget(input: {
   lane: ClassLane;
   directSupportPolicy: SupportLane | undefined;
   optionalActivationPolicy: SupportLane | undefined;
+  optionalActivationActive: boolean;
   phase: V2SetDistributionIntentPhase;
 }): IntentLane["setBudget"] {
   if (isSlotWeekAllocationPolicyTrialLane(input.lane)) {
@@ -434,7 +481,8 @@ function buildSetBudget(input: {
     if (
       input.phase !== "deload" &&
       activationPolicy &&
-      rule?.type === "conditional_under_support_floor"
+      rule?.type === "conditional_under_support_floor" &&
+      input.optionalActivationActive
     ) {
       const preferred = Math.min(
         2,
@@ -444,7 +492,7 @@ function buildSetBudget(input: {
         ),
       );
       return {
-        min: preferred,
+        min: 0,
         preferred,
         max: preferred,
         basis: "optional_activation_required",
@@ -513,18 +561,62 @@ function directFloorForLane(
 }
 
 function optionalActivationForLane(
-  rule: OptionalActivationRule | undefined,
+  policy: SupportLane | undefined,
+  context: V2SetDistributionIntentInput["supportActivationContext"],
 ): IntentLane["optionalActivation"] | undefined {
+  const rule = policy?.optionalActivationRule;
   if (!rule || rule.type !== "conditional_under_support_floor") {
     return undefined;
   }
+  const evaluation = evaluateV2SupportLaneOptionalActivation({
+    policy,
+    candidateSlotId: rule.slotId,
+    directSetsInOwningSlot: policy.preferredDirectSets.preferred,
+    reasonableCollateralEffectiveSets:
+      context?.triceps?.reasonableCollateralEffectiveSets ?? 0,
+    recoverable: context?.triceps?.recoverable ?? true,
+  });
   return {
     type: "activate_only_if_weekly_target_below_range",
     weeklyFloorSets: rule.weeklySupportFloor,
     requiresSlotExerciseHeadroom: true,
     requiresCleanAlternative: true,
     requiresRecoverability: true,
+    status: evaluation.active ? "active" : "inactive",
+    reason: evaluation.reason as NonNullable<
+      IntentLane["optionalActivation"]
+    >["reason"],
   };
+}
+
+function capacityYieldOrderForLane(lane: ClassLane): IntentLane["capacityYieldOrder"] {
+  const muscles = [
+    ...lane.primaryMuscles,
+    ...lane.supportMuscles,
+    ...lane.optionalMuscles,
+  ];
+  if (lane.laneId === "optional_triceps_if_under_target") {
+    return "optional_triceps_top_up";
+  }
+  if (muscles.includes("Biceps")) {
+    return "biceps";
+  }
+  if (muscles.includes("Rear Delts")) {
+    return "rear_delt_surplus";
+  }
+  if (muscles.includes("Calves")) {
+    return "calf_surplus";
+  }
+  if (muscles.includes("Side Delts")) {
+    return "side_delt_surplus";
+  }
+  if (muscles.includes("Triceps")) {
+    return "triceps_surplus";
+  }
+  if (muscles.includes("Hamstrings")) {
+    return "hamstring_surplus";
+  }
+  return "protected";
 }
 
 function capPolicyForLane(
@@ -590,9 +682,11 @@ function buildLane(input: {
   directSupportPolicy: SupportLane | undefined;
   optionalActivationPolicy: SupportLane | undefined;
   phase: V2SetDistributionIntentPhase;
+  supportActivationContext: V2SetDistributionIntentInput["supportActivationContext"];
 }): IntentLane {
   const optionalActivation = optionalActivationForLane(
-    input.optionalActivationPolicy?.optionalActivationRule,
+    input.optionalActivationPolicy,
+    input.supportActivationContext,
   );
   return {
     laneId: input.lane.laneId,
@@ -601,6 +695,7 @@ function buildLane(input: {
     primaryMuscles: uniqueSorted([
       ...input.lane.primaryMuscles,
       ...input.lane.supportMuscles,
+      ...input.lane.optionalMuscles,
     ]),
     supportMuscles: [...input.lane.supportMuscles],
     optionalMuscles: [...input.lane.optionalMuscles],
@@ -616,12 +711,14 @@ function buildLane(input: {
       lane: input.lane,
       directSupportPolicy: input.directSupportPolicy,
       optionalActivationPolicy: input.optionalActivationPolicy,
+      optionalActivationActive: optionalActivation?.status === "active",
       phase: input.phase,
     }),
     ...(input.phase !== "deload" && input.directSupportPolicy
       ? { directFloor: directFloorForLane(input.directSupportPolicy) }
       : {}),
     ...(optionalActivation ? { optionalActivation } : {}),
+    capacityYieldOrder: capacityYieldOrderForLane(input.lane),
     capPolicy: capPolicyForLane(input.lane),
     concentrationPolicy: concentrationPolicyForLane(input.lane),
     evidenceBasis: evidenceBasis({
@@ -633,19 +730,12 @@ function buildLane(input: {
 }
 
 function laneReductionPriority(lane: IntentLane): number {
-  if (lane.role === "optional" || lane.classLaneKind === "optional_recoverable_lane") {
-    return 0;
+  if (!lane.capacityYieldOrder || lane.capacityYieldOrder === "protected") {
+    return Number.MAX_SAFE_INTEGER;
   }
-  if (lane.classLaneKind === "managed_collateral_marker") {
-    return 1;
-  }
-  if (lane.role === "accessory") {
-    return 2;
-  }
-  if (lane.role === "support") {
-    return 3;
-  }
-  return 4;
+  return V2_DIRECT_VOLUME_CAPACITY_YIELD_ORDER.indexOf(
+    lane.capacityYieldOrder,
+  );
 }
 
 function trimLanePreferredToCapacity(
@@ -661,6 +751,9 @@ function trimLanePreferredToCapacity(
   const next = lanes.map((lane) => ({
     ...lane,
     setBudget: { ...lane.setBudget },
+    ...(lane.optionalActivation
+      ? { optionalActivation: { ...lane.optionalActivation } }
+      : {}),
   }));
 
   while (excess > 0) {
@@ -680,6 +773,13 @@ function trimLanePreferredToCapacity(
       candidate.setBudget.preferred,
       candidate.setBudget.max - 1,
     );
+    if (
+      candidate.setBudget.preferred === 0 &&
+      candidate.optionalActivation?.status === "active"
+    ) {
+      candidate.optionalActivation.status = "inactive";
+      candidate.optionalActivation.reason = "capacity_unavailable";
+    }
     excess -= 1;
   }
 
@@ -740,11 +840,17 @@ export function buildV2SetDistributionIntent(
             laneKey(slot.slotId, lane.laneId),
           ),
           phase,
+          supportActivationContext: input.supportActivationContext,
         }),
       );
       const lanes = trimLanePreferredToCapacity(
         rawLanes,
-        allocationSlot?.targetSessionSets.max ?? sumBudget(rawLanes, "preferred"),
+        Math.min(
+          allocationSlot?.targetSessionSets.max ??
+            sumBudget(rawLanes, "preferred"),
+          input.sessionCapacity?.maxSessionSetsBySlot?.[slot.slotId] ??
+            Number.MAX_SAFE_INTEGER,
+        ),
       );
 
       return {

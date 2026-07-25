@@ -444,8 +444,8 @@ describe("V2 live-context materializer projections", () => {
         week: 1,
         slotId: "upper_b",
         laneId: "side_delt_isolation",
-        baselineSetBudget: { min: 4, preferred: 4, max: 4 },
-        trialSetBudget: { min: 4, preferred: 4, max: 4 },
+        baselineSetBudget: { min: 0, preferred: 4, max: 4 },
+        trialSetBudget: { min: 0, preferred: 4, max: 4 },
         baselineSetBudgetBasis: "support_direct_floor",
         trialSetBudgetBasis: "support_direct_floor",
         baselineMaterializedSets: 4,
@@ -750,10 +750,10 @@ describe("V2 live-context materializer projections", () => {
         summary: {
           rowCount: 3,
           blockedRowCount: 3,
-          measuredDonorCapacityPassCount: 0,
-          measuredDonorCapacityFailCount: 3,
+          measuredDonorCapacityPassCount: 2,
+          measuredDonorCapacityFailCount: 1,
           measuredDonorCapacityUnderAbsorptionCount: 0,
-          measuredDonorCapacityOverAbsorptionCount: 3,
+          measuredDonorCapacityOverAbsorptionCount: 1,
           behaviorReadiness: "blocked_by_evidence",
           nextSafeSlice: "inspect_materializer_regressions",
         },
@@ -783,18 +783,20 @@ describe("V2 live-context materializer projections", () => {
           row.alternateDonorCandidates.length === 1 &&
           row.alternateDonorCandidates[0]?.scopedLaneId ===
             "lower_a:quad_isolation" &&
-          row.alternateDonorCandidates[0]?.status === "blocked" &&
-          row.materializerDelta.regressions.includes(
-            "trial_seed_shape_incompatible",
-          ) &&
-          row.regressionCauses.includes("lane_identity"),
+          row.alternateDonorCandidates[0]?.status === "blocked",
       ),
     ).toBe(true);
     expect(
+      result.donorOffsetRedistributionProjection.rows.filter(
+        (row) =>
+          row.materializerDelta.regressions.includes(
+            "trial_seed_shape_incompatible",
+          ) && row.regressionCauses.includes("lane_identity"),
+      ),
+    ).toHaveLength(0);
+    expect(
       result.donorOffsetRedistributionProjection.summary.regressionCauseCounts,
-    ).toMatchObject({
-      lane_identity: 3,
-    });
+    ).not.toHaveProperty("lane_identity");
     expect(
       result.crossWeekReadiness.rows.every(
         (row) => row.evidenceSource === "pure_v2_materializer_projection",

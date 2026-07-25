@@ -125,16 +125,16 @@ describe("buildV2ExerciseSelectionPlan", () => {
     });
   });
 
-  it("represents optional and conditional optional lanes without evaluating them", () => {
+  it("represents capacity-yielded and conditional optional lanes", () => {
     expect(slot(1, "upper_b")).toMatchObject({
-      maxExerciseCount: 7,
+      maxExerciseCount: 6,
     });
     expect(lane(1, "upper_b", "optional_triceps_if_under_target")).toMatchObject({
       requirement: "conditional_optional",
       role: "optional",
       classLaneKind: "optional_recoverable_lane",
       optionalMuscles: ["Triceps"],
-      setBudget: { min: 2, preferred: 2, max: 2 },
+      setBudget: { min: 0, preferred: 0, max: 0 },
       setBudgetBasis: "optional_activation_required",
       optionalActivation: {
         type: "activate_only_if_weekly_target_below_range",
@@ -166,7 +166,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
     expect(lane(1, "upper_a", "triceps")).toMatchObject({
       directFloor: {
         muscle: "Triceps",
-        minDirectSets: 4,
+        minDirectSets: 2,
         collateralCanSatisfy: false,
         requiredExerciseClasses: ["triceps_isolation", "pressdown"],
       },
@@ -174,7 +174,7 @@ describe("buildV2ExerciseSelectionPlan", () => {
     expect(lane(1, "upper_b", "side_delt_isolation")).toMatchObject({
       directFloor: {
         muscle: "Side Delts",
-        minDirectSets: 4,
+        minDirectSets: 0,
         collateralCanSatisfy: false,
         requiredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
       },
@@ -203,21 +203,21 @@ describe("buildV2ExerciseSelectionPlan", () => {
 
   it("uses SetDistributionIntent budgets instead of skeleton lane defaults", () => {
     expect(lane(2, "lower_a", "hamstring_curl")).toMatchObject({
-      setBudget: { min: 2, preferred: 2, max: 2 },
+      setBudget: { min: 0, preferred: 2, max: 2 },
       setBudgetBasis: "class_ownership_allocation",
     });
     expect(lane(2, "lower_a", "secondary_hinge")).toMatchObject({
       requirement: "optional",
       role: "optional",
       classLaneKind: "optional_recoverable_lane",
-      primaryMuscles: [],
+      primaryMuscles: ["Hamstrings"],
       optionalMuscles: ["Hamstrings"],
       managedCollateralMuscles: ["Glutes", "Lower Back"],
       setBudget: { min: 0, preferred: 0, max: 0 },
       setBudgetBasis: "optional_activation_required",
     });
     expect(lane(2, "lower_b", "knee_flexion_curl")).toMatchObject({
-      setBudget: { min: 2, preferred: 3, max: 3 },
+      setBudget: { min: 3, preferred: 3, max: 3 },
       acceptableExerciseClasses: ["hamstring_curl"],
     });
   });

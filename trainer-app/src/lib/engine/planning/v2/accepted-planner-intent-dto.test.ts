@@ -166,14 +166,14 @@ describe("buildV2AcceptedPlannerIntentDto", () => {
       acceptableExerciseClasses: ["triceps_isolation", "pressdown"],
       preferredExerciseClasses: ["triceps_isolation", "pressdown"],
       setBudget: {
-        min: 4,
+        min: 2,
         preferred: 4,
         max: 4,
         basis: "support_direct_floor",
       },
       supportDirectFloor: {
         muscle: "Triceps",
-        minDirectSets: 4,
+        minDirectSets: 2,
         requiredExerciseClasses: ["triceps_isolation", "pressdown"],
         collateralCanSatisfy: false,
       },
@@ -222,6 +222,22 @@ describe("buildV2AcceptedPlannerIntentDto", () => {
       setRange: { min: 7, preferred: 8, max: 10 },
       exposureCount: 2,
     });
+    expect(
+      ["Hamstrings", "Side Delts", "Rear Delts", "Triceps", "Biceps", "Calves"]
+        .map((muscle) => dto.muscleTargets.find((row) => row.muscle === muscle))
+        .map((row) => ({
+          preferred: row?.preferredDirectSets,
+          floor: row?.capacityFloorDirectSets,
+          minimumExposures: row?.minimumDirectExposures,
+        })),
+    ).toEqual([
+      { preferred: 8, floor: 6, minimumExposures: 2 },
+      { preferred: 8, floor: 4, minimumExposures: 1 },
+      { preferred: 4, floor: 2, minimumExposures: 1 },
+      { preferred: 4, floor: 2, minimumExposures: 1 },
+      { preferred: 2, floor: 0, minimumExposures: 0 },
+      { preferred: 8, floor: 6, minimumExposures: 2 },
+    ]);
     expect(dto.weekPolicies[3]).toMatchObject({
       week: 4,
       phase: "peak_overreach_lite",

@@ -1,4 +1,8 @@
 import { buildV2DeloadTransformPolicy } from "./deload-transform";
+import {
+  V2_DIRECT_VOLUME_CAPACITY_PROFILES,
+  type V2DirectVolumeCapacityProfileId,
+} from "./direct-volume-policy";
 import { buildV2ExerciseClassDistributionBySlot } from "./exercise-class-distribution";
 import { buildV2ExerciseSelectionPlan } from "./exercise-selection-plan";
 import { buildV2MesocycleDemand } from "./mesocycle-demand";
@@ -22,6 +26,13 @@ export type V2PlannerMesocyclePolicyInput = {
   mesocycleStrategyInput?: V2MesocycleStrategyInput;
   strategyShadowProjection?: V2StrategyHypothesisShadowProjectionEvidence;
   preShadowCandidateFilter?: V2StrategyHypothesisPreShadowCandidateFilter;
+  directVolumeCapacityProfile?: V2DirectVolumeCapacityProfileId;
+  supportActivationContext?: {
+    triceps?: {
+      reasonableCollateralEffectiveSets: number;
+      recoverable: boolean;
+    };
+  };
 };
 
 export function buildV2PlannerMesocyclePolicy(
@@ -36,6 +47,10 @@ export function buildV2PlannerMesocyclePolicy(
   const weeklyProgressionModel = buildV2WeeklyProgressionModel();
   const deloadTransform = buildV2DeloadTransformPolicy();
   const mesocycleDemand = buildV2MesocycleDemand({ targetSkeleton });
+  const directVolumeCapacityProfile =
+    V2_DIRECT_VOLUME_CAPACITY_PROFILES[
+      input.directVolumeCapacityProfile ?? "preferred"
+    ];
   const weeklyDemandCurve = buildV2WeeklyDemandCurve({
     mesocycleDemand,
     weeklyProgressionModel,
@@ -47,12 +62,20 @@ export function buildV2PlannerMesocyclePolicy(
   const exerciseClassDistributionBySlot = buildV2ExerciseClassDistributionBySlot({
     slotDemandAllocationByWeek,
   });
-  const v2SupportLanePolicy = buildV2SupportLanePolicy({ targetSkeleton });
+  const v2SupportLanePolicy = buildV2SupportLanePolicy({
+    targetSkeleton,
+    mesocycleDemand,
+  });
   const v2SetDistributionIntent = buildV2SetDistributionIntent({
     slotDemandAllocationByWeek,
     exerciseClassDistributionBySlot,
     v2SupportLanePolicy,
     weeklyProgressionModel,
+    sessionCapacity: {
+      maxSessionSetsBySlot:
+        directVolumeCapacityProfile.maxSessionSetsBySlot,
+    },
+    supportActivationContext: input.supportActivationContext,
   });
   const strategyToDemandProjection = buildV2StrategyToDemandProjection({
     strategyToDemandDiff: mesocycleStrategyDiagnostic.strategyToDemandDiff,
@@ -71,6 +94,14 @@ export function buildV2PlannerMesocyclePolicy(
     exerciseClassDistributionBySlot,
     v2SetDistributionIntent,
     v2SupportLanePolicy,
+    ...(directVolumeCapacityProfile.id === "preferred"
+      ? {}
+      : {
+          sessionCapacity: {
+            maxExerciseCountBySlot:
+              directVolumeCapacityProfile.maxExerciseCountBySlot,
+          },
+        }),
   });
   const exerciseSelectionPlan = buildV2ExerciseSelectionPlan({
     exerciseClassDistributionBySlot,

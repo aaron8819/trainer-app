@@ -3124,14 +3124,14 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ?.lanes.find((lane) => lane.laneId === "triceps"),
     ).toMatchObject({
       setBudget: {
-        min: 4,
+        min: 2,
         preferred: 4,
         max: 4,
         basis: "support_direct_floor",
       },
       directFloor: {
         muscle: "Triceps",
-        minDirectSets: 4,
+        minDirectSets: 2,
         collateralCanSatisfy: false,
       },
     });
@@ -5444,8 +5444,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
 
     expect(lane).toMatchObject({
       currentStatus: "partial",
-      gapCause: "concentration_policy_gap",
-      migrationRecommendation: "needs_concentration_justification",
+      gapCause: "set_distribution_gap",
+      migrationRecommendation: "needs_set_distribution_policy",
       severity: "quality_warning",
       currentEvidence: {
         selectedExercises: [
@@ -5456,12 +5456,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
           }),
         ],
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:allowed_expansion",
-          "setBudget:above_preferred",
-          "setBudget:allowed_expansion",
-          "justification:low_systemic_fatigue",
-          "justification:phase_expansion",
-          "concentration:Cable Fly:Chest:50%",
+          "setPolicy:in_budget",
+          "setBudget:within_preferred",
+          "justification:none",
+          "target_delivery:below_preferred",
         ]),
       },
     });
@@ -5597,18 +5595,17 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ?.laneDiffs.find((row) => row.laneId === "chest_second_exposure");
 
     expect(lane).toMatchObject({
-      currentStatus: "partial",
-      gapCause: "concentration_policy_gap",
-      migrationRecommendation: "needs_concentration_justification",
-      severity: "quality_warning",
+      currentStatus: "satisfied",
+      gapCause: "none",
+      migrationRecommendation: "no_action",
+      severity: "pass",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:allowed_expansion",
-          "setBudget:above_preferred",
-          "setBudget:allowed_expansion",
-          "justification:low_systemic_fatigue",
-          "justification:phase_expansion",
-          "Cable Fly:Chest:single_exercise_share_100%",
+          "setPolicy:in_budget",
+          "setBudget:within_preferred",
+          "justification:class_distinct",
+          "justification:second_chest_exposure",
+          "readout_note:clean_chest_second_exposure",
         ]),
       },
     });
@@ -5725,12 +5722,10 @@ describe("buildMesocycleExplainAuditPayload", () => {
       severity: "quality_warning",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:allowed_expansion",
-          "setBudget:above_preferred",
-          "setBudget:allowed_expansion",
-          "justification:low_systemic_fatigue",
-          "justification:phase_expansion",
-          "Cable Fly:Chest:single_exercise_share_100%",
+          "setPolicy:in_budget",
+          "setBudget:within_preferred",
+          "readout_note:clean_chest_second_exposure",
+          "target_delivery:below_preferred",
         ]),
       },
     });
@@ -6488,8 +6483,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ],
         relevantDiagnostics: expect.arrayContaining([
           "setPolicy:in_budget",
+          "setBudget:within_preferred",
           "justification:none",
-          "setBudgetTargetEvidence:diagnostic_only",
         ]),
       },
     });
@@ -6552,7 +6547,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
         ],
         relevantDiagnostics: expect.arrayContaining([
           "setPolicy:quality_warning",
-          "setBudgetTargetEvidence:diagnostic_only",
+          "setBudget:within_preferred",
           "concentration:support_tier",
           "concentration:small_denominator",
           "concentration:quality_warning",
@@ -6635,8 +6630,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
           "setPolicy:in_budget",
+          "setBudget:within_preferred",
           "justification:none",
-          "setBudgetTargetEvidence:diagnostic_only",
         ]),
       },
     });
@@ -7103,15 +7098,15 @@ describe("buildMesocycleExplainAuditPayload", () => {
     });
 
     expect(noRepair.lowAxialHipExtensionLimitation).toMatchObject({
-      status: "acceptable_with_limitations",
+      status: "not_acceptable",
       limitationText: expect.stringContaining(
         "not equivalent to hinge_compound",
       ),
       acceptanceCriteria: {
         lowerBKneeFlexionCurlDirectFloor: {
-          status: "met",
+          status: "below",
           directSets: 2,
-          floor: 2,
+          floor: 3,
         },
         weeklyHamstringsTarget: {
           status: "met",
@@ -7212,7 +7207,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
         lowerBKneeFlexionCurlDirectFloor: {
           status: "below",
           directSets: 0,
-          floor: 2,
+          floor: 3,
         },
         weeklyHamstringsTarget: {
           status: "below",
@@ -7319,13 +7314,14 @@ describe("buildMesocycleExplainAuditPayload", () => {
 
     expect(lane).toMatchObject({
       currentStatus: "missing",
-      gapCause: "set_distribution_gap",
-      migrationRecommendation: "needs_set_distribution_policy",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
       severity: "quality_warning",
       currentEvidence: {
         selectedExercises: [],
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:under_budget",
+          "setPolicy:in_budget",
+          "setBudget:within_preferred",
           "exposure:missing_direct_curl",
           "concentration:pulling_collateral",
         ]),
@@ -7782,8 +7778,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
 
     expect(sideDelt).toMatchObject({
       currentStatus: "partial",
-      gapCause: "set_distribution_gap",
-      migrationRecommendation: "needs_set_distribution_policy",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
       severity: "quality_warning",
     });
     expect(triceps).toMatchObject({
@@ -7961,12 +7957,13 @@ describe("buildMesocycleExplainAuditPayload", () => {
 
     expect(lane).toMatchObject({
       currentStatus: "partial",
-      gapCause: "set_distribution_gap",
-      migrationRecommendation: "needs_set_distribution_policy",
+      gapCause: "concentration_policy_gap",
+      migrationRecommendation: "needs_concentration_justification",
       severity: "quality_warning",
       currentEvidence: {
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:under_budget",
+          "setPolicy:quality_warning",
+          "setBudget:within_preferred",
           "concentration:dirty_collateral",
           "concentration:support_tier",
         ]),
@@ -8507,7 +8504,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ]),
     );
     expect(noRepair.v2BasePlanShadowConsumptionTrial).toMatchObject({
-      summary: { regressionCount: 1 },
+      summary: { regressionCount: 0 },
       changes: {
         exerciseClassCoverage: {
           rows: expect.arrayContaining([
@@ -8625,7 +8622,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
       ]),
     );
     expect(rearDeltLane).toMatchObject({
-      currentStatus: "blocked",
+      currentStatus: "partial",
       gapCause: "concentration_policy_gap",
       migrationRecommendation: "keep_diagnostic_only",
       severity: "quality_warning",
@@ -8637,8 +8634,8 @@ describe("buildMesocycleExplainAuditPayload", () => {
           }),
         ],
         relevantDiagnostics: expect.arrayContaining([
-          "setPolicy:hard_blocker",
-          "setPolicyReason:underdelivery_hidden_by_concentration",
+          "setPolicy:quality_warning",
+          "setBudget:within_preferred",
           "pure_v2_materialization:rear_delt_direct_support_class=true",
           "pure_v2_materialization:support_direct_floors_missed=none",
           "pure_v2_materialization:scoped_rear_delt_regressions=0",
@@ -8973,28 +8970,28 @@ describe("buildMesocycleExplainAuditPayload", () => {
       safeForBehaviorPromotion: false,
       summary: {
         supportMusclesEvaluated: 5,
-        directFloorsMet: 0,
-        directFloorsBelow: 5,
-        optionalActivations: 0,
+        directFloorsMet: 3,
+        directFloorsBelow: 2,
+        optionalActivations: 1,
         authoredDroppedCount: expect.any(Number),
         unrecoverableExpansions: expect.any(Number),
       },
     });
     expect(tricepsOptionalBoundary).toMatchObject({
       supportPolicyAuthored: true,
-      setDistributionBudgeted: true,
+      setDistributionBudgeted: false,
       exerciseSelectionPreserved: false,
-      likelyOwnerSeam: "materializer_exercise_selection_capacity",
-      status: "authored_support_lane_dropped",
+      likelyOwnerSeam: "set_distribution_intent",
+      status: "set_budget_missing",
     });
     expect(byMuscle.get("Triceps")).toMatchObject({
       currentDirectSets: 2,
       collateralCreditUsed: 1,
-      directFloorStatus: "below",
-      optionalActivationStatus: "not_triggered",
+      directFloorStatus: "met",
+      optionalActivationStatus: "triggered_diagnostic_only",
       rationale: expect.arrayContaining([
         "collateral_credit_applies_to_weekly_total_only",
-        "optional_activation:direct_floor_not_attempted",
+        "optional_activation:still_under_support_floor_after_direct_floor_and_collateral",
       ]),
       limitations: expect.arrayContaining([
         "optional_activation_does_not_create_hard_floor",
@@ -9003,7 +9000,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(byMuscle.get("Side Delts")).toMatchObject({
       currentDirectSets: 0,
       collateralCreditUsed: 1,
-      directFloorStatus: "below",
+      directFloorStatus: "met",
       expansionStatus: "recommended_diagnostic_only",
       rationale: expect.arrayContaining([
         "second_exposure_remains_provisional_diagnostic_only",
@@ -9024,7 +9021,7 @@ describe("buildMesocycleExplainAuditPayload", () => {
     expect(byMuscle.get("Biceps")).toMatchObject({
       currentDirectSets: 0,
       collateralCreditUsed: 2,
-      directFloorStatus: "below",
+      directFloorStatus: "met",
       expansionStatus: "recommended_diagnostic_only",
     });
   });

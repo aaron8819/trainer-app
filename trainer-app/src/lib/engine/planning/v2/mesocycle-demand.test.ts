@@ -95,7 +95,10 @@ describe("buildV2MesocycleDemand", () => {
       role: "support",
       targetStatus: "soft",
       directness: expect.objectContaining({
-        directSetFloor: 8,
+        capacityFloorDirectSets: 4,
+        directSetFloor: 4,
+        minimumDirectExposures: 1,
+        preferredDirectExposures: 2,
         collateralCanSatisfyFloor: false,
       }),
     });
@@ -151,7 +154,7 @@ describe("buildV2MesocycleDemand", () => {
     });
     expect(hamstrings).toMatchObject({
       baselineSetRange: { min: 6, preferred: 8, max: 9 },
-      exposureCount: 3,
+      exposureCount: 2,
       directness: expect.objectContaining({
         requiredClassIntents: ["hinge_compound", "knee_flexion_curl"],
       }),
@@ -189,13 +192,19 @@ describe("buildV2MesocycleDemand", () => {
     expect(demandFor("Side Delts")).toMatchObject({
       role: "support",
       targetStatus: "soft",
-      baselineSetRange: { min: 8, preferred: 8, max: 12 },
+      baselineSetRange: { min: 4, preferred: 8, max: 12 },
       directness: {
-        directSetFloor: 8,
+        capacityFloorDirectSets: 4,
+        directSetFloor: 4,
         preferredDirectSets: 8,
+        minimumDirectExposures: 1,
+        preferredDirectExposures: 2,
         collateralCreditLimit: 2,
         collateralCanSatisfyFloor: false,
         requiredClassIntents: ["lateral_raise", "low_collateral_side_delt"],
+        requiredRoleIntents: ["direct_isolation"],
+        collateralRule: "supplemental_only",
+        capacityYieldOrder: "side_delt_surplus",
       },
       cautions: expect.arrayContaining([
         "vertical_press_collateral_does_not_satisfy_direct_floor",
@@ -207,21 +216,33 @@ describe("buildV2MesocycleDemand", () => {
       baselineSetRange: { min: 6, preferred: 8, max: 10 },
       exposureCount: 2,
       directness: {
+        capacityFloorDirectSets: 6,
         directSetFloor: 6,
         preferredDirectSets: 8,
+        minimumDirectExposures: 2,
+        preferredDirectExposures: 2,
         collateralCreditLimit: 0,
         collateralCanSatisfyFloor: false,
         requiredClassIntents: ["calf_isolation"],
+        requiredRoleIntents: ["direct_isolation"],
+        collateralRule: "not_applicable",
+        capacityYieldOrder: "calf_surplus",
       },
     });
     expect(demandFor("Triceps")).toMatchObject({
-      baselineSetRange: { min: 6, preferred: 6, max: 10 },
+      baselineSetRange: { min: 2, preferred: 6, max: 10 },
       directness: {
-        directSetFloor: 4,
+        capacityFloorDirectSets: 2,
+        directSetFloor: 2,
         preferredDirectSets: 4,
+        minimumDirectExposures: 1,
+        preferredDirectExposures: 1,
         collateralCreditLimit: 2,
         collateralCanSatisfyFloor: false,
         requiredClassIntents: ["triceps_isolation", "pressdown"],
+        requiredRoleIntents: ["direct_isolation"],
+        collateralRule: "supplemental_only",
+        capacityYieldOrder: "triceps_surplus",
       },
     });
   });

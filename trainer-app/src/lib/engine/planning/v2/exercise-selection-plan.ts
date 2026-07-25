@@ -135,6 +135,8 @@ function cloneOptionalActivation(
     requiresSlotExerciseHeadroom: activation.requiresSlotExerciseHeadroom,
     requiresCleanAlternative: activation.requiresCleanAlternative,
     requiresRecoverability: activation.requiresRecoverability,
+    ...(activation.status ? { status: activation.status } : {}),
+    ...(activation.reason ? { reason: activation.reason } : {}),
   };
 }
 
@@ -148,6 +150,9 @@ function requirementForLane(input: {
     input.lane.classLaneKind === "managed_collateral_marker" ||
     input.lane.setBudget.preferred <= 0
   ) {
+    return "optional";
+  }
+  if (input.lane.setBudget.min === 0 && !input.lane.optionalActivation) {
     return "optional";
   }
   if (input.lane.role === "optional") {

@@ -170,7 +170,7 @@ describe("buildV2SelectionCapacityPlan", () => {
       },
     });
     expect(lane(2, "upper_a", "rear_delt")).toMatchObject({
-      setBudget: { min: 4, preferred: 4, max: 4 },
+      setBudget: { min: 2, preferred: 4, max: 4 },
       perExerciseCap: {
         maxSetsWithoutJustification: 4,
         maxDirectExercises: 1,
@@ -224,8 +224,8 @@ describe("buildV2SelectionCapacityPlan", () => {
     });
     expect(lane(2, "upper_b", "vertical_pull_anchor")).toMatchObject({
       laneHeadroomPolicy: {
-        preferredRequiresHeadroom: false,
-        cleanAlternativeRequiredForExpansion: false,
+        preferredRequiresHeadroom: true,
+        cleanAlternativeRequiredForExpansion: true,
         capAwareExpansion: "not_needed",
       },
     });

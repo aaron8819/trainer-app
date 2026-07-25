@@ -276,7 +276,14 @@ function buildClassLane(input: {
     ),
     optionalMuscles: uniqueSorted(
       rows
-        .filter((row) => row.ownershipKind === "optional_if_needed")
+        .filter(
+          (row) =>
+            row.ownershipKind === "optional_if_needed" ||
+            (!isRequiredOwnershipRow(row) &&
+              row.ownershipKind !== "managed_collateral" &&
+              (row.targetStatus === "soft" ||
+                row.classIntent === "knee_flexion_curl")),
+        )
         .map((row) => row.muscle),
     ),
     managedCollateralMuscles: uniqueSorted(

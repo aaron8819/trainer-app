@@ -35,6 +35,15 @@ type V2BalancedBlockMusclePolicy = {
   cautions: string[];
 };
 
+function directness(
+  input: Omit<V2PlannerDirectnessPolicy, "directSetFloor">,
+): V2PlannerDirectnessPolicy {
+  return {
+    ...input,
+    directSetFloor: input.capacityFloorDirectSets,
+  };
+}
+
 const V2_BALANCED_BLOCK_DEMAND_POLICY: V2BalancedBlockMusclePolicy[] = [
   {
     muscle: "Chest",
@@ -43,16 +52,21 @@ const V2_BALANCED_BLOCK_DEMAND_POLICY: V2BalancedBlockMusclePolicy[] = [
     targetMode: "default",
     baselineSetRange: { min: 7, preferred: 8, max: 10 },
     exposureCount: 2,
-    directness: {
-      directSetFloor: 6,
+    directness: directness({
+      capacityFloorDirectSets: 6,
       preferredDirectSets: 7,
+      minimumDirectExposures: 2,
+      preferredDirectExposures: 2,
       collateralCreditLimit: 1,
       collateralCanSatisfyFloor: false,
       requiredClassIntents: [
         "horizontal_press_or_slight_incline",
         "distinct_second_chest_press_or_fly",
       ],
-    },
+      requiredRoleIntents: [],
+      collateralRule: "supplemental_only",
+      capacityYieldOrder: "protected",
+    }),
     cautions: ["avoid_duplicate_chest_press_class_by_default"],
   },
   {
@@ -62,13 +76,18 @@ const V2_BALANCED_BLOCK_DEMAND_POLICY: V2BalancedBlockMusclePolicy[] = [
     targetMode: "default",
     baselineSetRange: { min: 7, preferred: 9, max: 12 },
     exposureCount: 2,
-    directness: {
-      directSetFloor: 6,
+    directness: directness({
+      capacityFloorDirectSets: 6,
       preferredDirectSets: 8,
+      minimumDirectExposures: 2,
+      preferredDirectExposures: 2,
       collateralCreditLimit: 2,
       collateralCanSatisfyFloor: false,
       requiredClassIntents: ["vertical_pull", "row_support"],
-    },
+      requiredRoleIntents: [],
+      collateralRule: "supplemental_only",
+      capacityYieldOrder: "protected",
+    }),
     cautions: ["balance_vertical_pull_and_row_work"],
   },
   {
@@ -78,13 +97,18 @@ const V2_BALANCED_BLOCK_DEMAND_POLICY: V2BalancedBlockMusclePolicy[] = [
     targetMode: "default",
     baselineSetRange: { min: 5, preferred: 7, max: 10 },
     exposureCount: 2,
-    directness: {
-      directSetFloor: 4,
+    directness: directness({
+      capacityFloorDirectSets: 4,
       preferredDirectSets: 6,
+      minimumDirectExposures: 2,
+      preferredDirectExposures: 2,
       collateralCreditLimit: 2,
       collateralCanSatisfyFloor: false,
       requiredClassIntents: ["row_anchor", "horizontal_pull_support"],
-    },
+      requiredRoleIntents: [],
+      collateralRule: "supplemental_only",
+      capacityYieldOrder: "protected",
+    }),
     cautions: ["avoid_turning_back_balance_into_extra_pull_volume"],
   },
   {
@@ -94,16 +118,21 @@ const V2_BALANCED_BLOCK_DEMAND_POLICY: V2BalancedBlockMusclePolicy[] = [
     targetMode: "default",
     baselineSetRange: { min: 7, preferred: 9, max: 12 },
     exposureCount: 2,
-    directness: {
-      directSetFloor: 6,
+    directness: directness({
+      capacityFloorDirectSets: 6,
       preferredDirectSets: 8,
+      minimumDirectExposures: 2,
+      preferredDirectExposures: 2,
       collateralCreditLimit: 1,
       collateralCanSatisfyFloor: false,
       requiredClassIntents: [
         "squat_or_leg_press_anchor",
         "quad_isolation_or_support",
       ],
-    },
+      requiredRoleIntents: [],
+      collateralRule: "supplemental_only",
+      capacityYieldOrder: "protected",
+    }),
     cautions: ["lower_b_quad_support_must_not_become_second_squat_day"],
   },
   {
@@ -112,14 +141,19 @@ const V2_BALANCED_BLOCK_DEMAND_POLICY: V2BalancedBlockMusclePolicy[] = [
     targetStatus: "hard",
     targetMode: "default",
     baselineSetRange: { min: 6, preferred: 8, max: 9 },
-    exposureCount: 3,
-    directness: {
-      directSetFloor: 8,
+    exposureCount: 2,
+    directness: directness({
+      capacityFloorDirectSets: 6,
       preferredDirectSets: 8,
+      minimumDirectExposures: 2,
+      preferredDirectExposures: 2,
       collateralCreditLimit: 2,
       collateralCanSatisfyFloor: false,
       requiredClassIntents: ["hinge_compound", "knee_flexion_curl"],
-    },
+      requiredRoleIntents: ["hinge", "knee_flexion_curl"],
+      collateralRule: "supplemental_only",
+      capacityYieldOrder: "hamstring_surplus",
+    }),
     cautions: [
       "hinge_and_curl_lanes_do_not_sum_into_separate_full_targets",
       "limit_lower_back_collateral_from_hinge_work",
@@ -130,15 +164,20 @@ const V2_BALANCED_BLOCK_DEMAND_POLICY: V2BalancedBlockMusclePolicy[] = [
     role: "support",
     targetStatus: "soft",
     targetMode: "default",
-    baselineSetRange: { min: 8, preferred: 8, max: 12 },
+    baselineSetRange: { min: 4, preferred: 8, max: 12 },
     exposureCount: 2,
-    directness: {
-      directSetFloor: 8,
+    directness: directness({
+      capacityFloorDirectSets: 4,
       preferredDirectSets: 8,
+      minimumDirectExposures: 1,
+      preferredDirectExposures: 2,
       collateralCreditLimit: 2,
       collateralCanSatisfyFloor: false,
       requiredClassIntents: ["lateral_raise", "low_collateral_side_delt"],
-    },
+      requiredRoleIntents: ["direct_isolation"],
+      collateralRule: "supplemental_only",
+      capacityYieldOrder: "side_delt_surplus",
+    }),
     cautions: ["vertical_press_collateral_does_not_satisfy_direct_floor"],
   },
   {
@@ -146,15 +185,20 @@ const V2_BALANCED_BLOCK_DEMAND_POLICY: V2BalancedBlockMusclePolicy[] = [
     role: "support",
     targetStatus: "soft",
     targetMode: "default",
-    baselineSetRange: { min: 4, preferred: 4, max: 8 },
+    baselineSetRange: { min: 2, preferred: 4, max: 8 },
     exposureCount: 1,
-    directness: {
-      directSetFloor: 4,
+    directness: directness({
+      capacityFloorDirectSets: 2,
       preferredDirectSets: 4,
+      minimumDirectExposures: 1,
+      preferredDirectExposures: 1,
       collateralCreditLimit: 2,
       collateralCanSatisfyFloor: false,
       requiredClassIntents: ["rear_delt_isolation"],
-    },
+      requiredRoleIntents: ["direct_isolation"],
+      collateralRule: "supplemental_only",
+      capacityYieldOrder: "rear_delt_surplus",
+    }),
     cautions: ["upper_back_collateral_does_not_replace_rear_delt_direct_work"],
   },
   {
@@ -162,31 +206,43 @@ const V2_BALANCED_BLOCK_DEMAND_POLICY: V2BalancedBlockMusclePolicy[] = [
     role: "support",
     targetStatus: "soft",
     targetMode: "default",
-    baselineSetRange: { min: 3, preferred: 4, max: 6 },
+    baselineSetRange: { min: 0, preferred: 2, max: 6 },
     exposureCount: 1,
-    directness: {
-      directSetFloor: 2,
-      preferredDirectSets: 3,
+    directness: directness({
+      capacityFloorDirectSets: 0,
+      preferredDirectSets: 2,
+      minimumDirectExposures: 0,
+      preferredDirectExposures: 1,
       collateralCreditLimit: 2,
       collateralCanSatisfyFloor: false,
-      requiredClassIntents: ["biceps_isolation"],
-    },
-    cautions: ["pulling_collateral_does_not_replace_direct_arm_floor"],
+      requiredClassIntents: [],
+      requiredRoleIntents: [],
+      collateralRule: "supplemental_only",
+      capacityYieldOrder: "biceps",
+    }),
+    cautions: [
+      "direct_curl_is_preferred_but_pulling_may_close_practical_demand_under_constraint",
+    ],
   },
   {
     muscle: "Triceps",
     role: "support",
     targetStatus: "soft",
     targetMode: "default",
-    baselineSetRange: { min: 6, preferred: 6, max: 10 },
+    baselineSetRange: { min: 2, preferred: 6, max: 10 },
     exposureCount: 1,
-    directness: {
-      directSetFloor: 4,
+    directness: directness({
+      capacityFloorDirectSets: 2,
       preferredDirectSets: 4,
+      minimumDirectExposures: 1,
+      preferredDirectExposures: 1,
       collateralCreditLimit: 2,
       collateralCanSatisfyFloor: false,
       requiredClassIntents: ["triceps_isolation", "pressdown"],
-    },
+      requiredRoleIntents: ["direct_isolation"],
+      collateralRule: "supplemental_only",
+      capacityYieldOrder: "triceps_surplus",
+    }),
     cautions: ["optional_second_triceps_lane_activates_only_if_under_floor"],
   },
   {
@@ -196,13 +252,18 @@ const V2_BALANCED_BLOCK_DEMAND_POLICY: V2BalancedBlockMusclePolicy[] = [
     targetMode: "default",
     baselineSetRange: { min: 6, preferred: 8, max: 10 },
     exposureCount: 2,
-    directness: {
-      directSetFloor: 6,
+    directness: directness({
+      capacityFloorDirectSets: 6,
       preferredDirectSets: 8,
+      minimumDirectExposures: 2,
+      preferredDirectExposures: 2,
       collateralCreditLimit: 0,
       collateralCanSatisfyFloor: false,
       requiredClassIntents: ["calf_isolation"],
-    },
+      requiredRoleIntents: ["direct_isolation"],
+      collateralRule: "not_applicable",
+      capacityYieldOrder: "calf_surplus",
+    }),
     cautions: ["avoid_same_session_calf_duplicate_without_specialization"],
   },
   {
@@ -212,13 +273,18 @@ const V2_BALANCED_BLOCK_DEMAND_POLICY: V2BalancedBlockMusclePolicy[] = [
     targetMode: "managed_collateral",
     baselineSetRange: { min: 0, preferred: 2, max: 4 },
     exposureCount: 0,
-    directness: {
-      directSetFloor: 0,
+    directness: directness({
+      capacityFloorDirectSets: 0,
       preferredDirectSets: 0,
+      minimumDirectExposures: 0,
+      preferredDirectExposures: 0,
       collateralCreditLimit: 4,
       collateralCanSatisfyFloor: true,
       requiredClassIntents: [],
-    },
+      requiredRoleIntents: [],
+      collateralRule: "supplemental_only",
+      capacityYieldOrder: "protected",
+    }),
     cautions: ["manage_hip_extension_collateral_without_target_runaway"],
   },
   {
@@ -228,13 +294,18 @@ const V2_BALANCED_BLOCK_DEMAND_POLICY: V2BalancedBlockMusclePolicy[] = [
     targetMode: "managed_collateral",
     baselineSetRange: { min: 0, preferred: 1, max: 3 },
     exposureCount: 0,
-    directness: {
-      directSetFloor: 0,
+    directness: directness({
+      capacityFloorDirectSets: 0,
       preferredDirectSets: 0,
+      minimumDirectExposures: 0,
+      preferredDirectExposures: 0,
       collateralCreditLimit: 3,
       collateralCanSatisfyFloor: true,
       requiredClassIntents: [],
-    },
+      requiredRoleIntents: [],
+      collateralRule: "supplemental_only",
+      capacityYieldOrder: "protected",
+    }),
     cautions: ["manage_pressing_collateral_without_primary_target_status"],
   },
   {
@@ -244,13 +315,18 @@ const V2_BALANCED_BLOCK_DEMAND_POLICY: V2BalancedBlockMusclePolicy[] = [
     targetMode: "managed_collateral",
     baselineSetRange: { min: 0, preferred: 0, max: 2 },
     exposureCount: 0,
-    directness: {
-      directSetFloor: 0,
+    directness: directness({
+      capacityFloorDirectSets: 0,
       preferredDirectSets: 0,
+      minimumDirectExposures: 0,
+      preferredDirectExposures: 0,
       collateralCreditLimit: 2,
       collateralCanSatisfyFloor: true,
       requiredClassIntents: [],
-    },
+      requiredRoleIntents: [],
+      collateralRule: "supplemental_only",
+      capacityYieldOrder: "protected",
+    }),
     cautions: ["cap_axial_fatigue_from_hinge_and_squat_patterns"],
   },
   {
@@ -260,13 +336,18 @@ const V2_BALANCED_BLOCK_DEMAND_POLICY: V2BalancedBlockMusclePolicy[] = [
     targetMode: "maintenance",
     baselineSetRange: { min: 0, preferred: 0, max: 2 },
     exposureCount: 0,
-    directness: {
-      directSetFloor: 0,
+    directness: directness({
+      capacityFloorDirectSets: 0,
       preferredDirectSets: 0,
+      minimumDirectExposures: 0,
+      preferredDirectExposures: 0,
       collateralCreditLimit: 2,
       collateralCanSatisfyFloor: true,
       requiredClassIntents: [],
-    },
+      requiredRoleIntents: [],
+      collateralRule: "supplemental_only",
+      capacityYieldOrder: "protected",
+    }),
     cautions: ["optional_core_work_is_not_base_hypertrophy_demand"],
   },
 ];

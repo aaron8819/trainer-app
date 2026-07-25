@@ -60,6 +60,12 @@ export type V2AcceptedPlannerIntentDto = {
     role: V2PlannerDemandRole;
     setRange: V2WeeklyDemandRange;
     exposureCount: number;
+    preferredDirectSets?: number;
+    capacityFloorDirectSets?: number;
+    minimumDirectExposures?: number;
+    preferredDirectExposures?: number;
+    requiredRoleIntents?: string[];
+    collateralRule?: "supplemental_only" | "not_applicable";
   }>;
   weekPolicies: Array<{
     week: number;
@@ -99,6 +105,10 @@ export type V2AcceptedPlannerIntentDto = {
         duplicatePolicy: DuplicatePolicy;
         cleanAlternativePolicy: CleanAlternativePolicy;
         optionalActivationPolicy: OptionalActivationPolicy;
+        optionalTopUpStatus?: {
+          status: "active" | "inactive";
+          reason: string;
+        };
         continuityPolicy: ContinuityPolicy;
       }>;
     }>;
@@ -220,6 +230,15 @@ export function buildV2AcceptedPlannerIntentDto(
       role: muscle.role,
       setRange: setRange(muscle.baselineSetRange),
       exposureCount: muscle.exposureCount,
+      preferredDirectSets: muscle.directness.preferredDirectSets,
+      capacityFloorDirectSets:
+        muscle.directness.capacityFloorDirectSets,
+      minimumDirectExposures:
+        muscle.directness.minimumDirectExposures,
+      preferredDirectExposures:
+        muscle.directness.preferredDirectExposures,
+      requiredRoleIntents: [...muscle.directness.requiredRoleIntents],
+      collateralRule: muscle.directness.collateralRule,
     })),
     weekPolicies: policy.exerciseSelectionPlan.weeks.map((week) => {
       const setIntentWeek = policy.v2SetDistributionIntent.weeks.find(
@@ -305,6 +324,15 @@ export function buildV2AcceptedPlannerIntentDto(
               optionalActivationPolicy: capacityLane
                 ? { ...capacityLane.optionalActivation }
                 : { type: "not_applicable" as const },
+              ...(setLane?.optionalActivation?.status &&
+              setLane.optionalActivation.reason
+                ? {
+                    optionalTopUpStatus: {
+                      status: setLane.optionalActivation.status,
+                      reason: setLane.optionalActivation.reason,
+                    },
+                  }
+                : {}),
               continuityPolicy: { ...lane.continuityPolicy },
             };
           }),

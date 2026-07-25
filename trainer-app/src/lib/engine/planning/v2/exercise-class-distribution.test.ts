@@ -298,10 +298,12 @@ describe("buildV2ExerciseClassDistributionBySlot", () => {
     });
     expect(sideDeltLane).toMatchObject({
       classLaneKind: "support_class_lane",
-      primaryMuscles: ["Side Delts"],
-      supportMuscles: ["Side Delts"],
+      primaryMuscles: [],
+      supportMuscles: [],
+      optionalMuscles: ["Side Delts"],
       classIntents: ["lateral_raise_low_collateral_side_delt"],
-      requiredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
+      requiredExerciseClasses: [],
+      preferredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
       ownershipRows: [
         expect.objectContaining({
           muscle: "Side Delts",

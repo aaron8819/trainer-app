@@ -3578,7 +3578,14 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(result.dryRunOnly).toBe(true);
     expect(result.status).toBe("materialized");
     expect(result.blockers).toEqual([]);
-    expect(materializedLaneIds).toEqual(requiredLaneIds.sort());
+    expect(materializedLaneIds).toEqual(
+      [
+        ...requiredLaneIds,
+        "lower_a:hamstring_curl",
+        "upper_b:biceps",
+        "upper_b:side_delt_isolation",
+      ].sort(),
+    );
     expect(result.omissions).toEqual(
       expect.arrayContaining([
         {
@@ -3604,7 +3611,7 @@ describe("buildV2ExerciseMaterializationPlan", () => {
     expect(exerciseForLane(result, "upper_b", "vertical_pull_anchor"))
       .toMatchObject({
         exerciseId: "assisted-pull-up",
-        setCount: 3,
+        setCount: 4,
       });
     expect(exerciseForLane(result, "upper_b", "row_support")).toMatchObject({
       exerciseId: "cable-row",

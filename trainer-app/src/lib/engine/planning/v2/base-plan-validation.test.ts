@@ -210,12 +210,14 @@ const representativeV2Inventory: V2MaterializationExercise[] = [
   }),
 ];
 
-function buildFixture(): {
+function buildFixture(
+  input: Parameters<typeof buildV2PlannerMesocyclePolicy>[0] = {},
+): {
   policy: V2PlannerMesocyclePolicy;
   materializedPlan: V2ExerciseMaterializationPlan;
   validation: V2BasePlanValidation;
 } {
-  const policy = buildV2PlannerMesocyclePolicy();
+  const policy = buildV2PlannerMesocyclePolicy(input);
   const materializedPlan = buildV2ExerciseMaterializationPlan({
     exerciseSelectionPlan: policy.exerciseSelectionPlan,
     inventory: representativeV2Inventory,
@@ -506,6 +508,103 @@ describe("buildV2BasePlanValidation", () => {
     expect(warningReasons(validation)).toEqual([]);
   });
 
+  it("materializes preferred, moderate, and minimal direct-volume capacity fixtures", () => {
+    const expected = {
+      preferred: {
+        sets: 67,
+        exercises: 21,
+        slotSets: [21, 11, 21, 14],
+        direct: [8, 8, 4, 4, 2, 8],
+        topUp: 2,
+      },
+      moderate: {
+        sets: 59,
+        exercises: 19,
+        slotSets: [19, 11, 17, 12],
+        direct: [8, 8, 2, 4, 0, 6],
+        topUp: 0,
+      },
+      minimal: {
+        sets: 50,
+        exercises: 17,
+        slotSets: [17, 9, 13, 11],
+        direct: [6, 4, 2, 2, 0, 6],
+        topUp: 0,
+      },
+    } as const;
+
+    for (const profile of ["preferred", "moderate", "minimal"] as const) {
+      const { materializedPlan, validation } = buildFixture({
+        directVolumeCapacityProfile: profile,
+      });
+      const laneSets = (laneIds: string[]) =>
+        materializedPlan.slots
+          .flatMap((slot) => slot.exercises)
+          .filter((row) => row.laneIds.some((laneId) => laneIds.includes(laneId)))
+          .reduce((sum, row) => sum + row.setCount, 0);
+      const direct = [
+        laneSets(["hamstring_curl", "hinge_anchor", "knee_flexion_curl"]),
+        laneSets(["side_delt_isolation"]),
+        laneSets(["rear_delt"]),
+        laneSets(["triceps"]),
+        laneSets(["biceps"]),
+        laneSets(["calves"]),
+      ];
+
+      expect(materializedPlan.status).toBe("materialized");
+      expect(validation.warnings, profile).toEqual([]);
+      expect(validation.status).toBe("pass");
+      expect(validation.blockers).toEqual([]);
+      expect(validation.summary).toMatchObject({
+        totalSets: expected[profile].sets,
+        exerciseCount: expected[profile].exercises,
+      });
+      expect(
+        materializedPlan.slots.map((slot) =>
+          slot.exercises.reduce((sum, row) => sum + row.setCount, 0),
+        ),
+      ).toEqual(expected[profile].slotSets);
+      expect(direct).toEqual(expected[profile].direct);
+      expect(laneSets(["optional_triceps_if_under_target"])).toBe(
+        expected[profile].topUp,
+      );
+    }
+  });
+
+  it("omits the optional Triceps top-up when bounded pressing collateral covers the weekly target", () => {
+    const { materializedPlan, policy } = buildFixture({
+      supportActivationContext: {
+        triceps: {
+          reasonableCollateralEffectiveSets: 2,
+          recoverable: true,
+        },
+      },
+    });
+    const topUpLane = policy.v2SetDistributionIntent.weeks
+      .find((week) => week.week === 2)
+      ?.slots.find((slot) => slot.slotId === "upper_b")
+      ?.lanes.find(
+        (lane) => lane.laneId === "optional_triceps_if_under_target",
+      );
+
+    expect(topUpLane?.optionalActivation).toMatchObject({
+      status: "inactive",
+      reason: "support_floor_already_covered",
+    });
+    expect(topUpLane?.setBudget).toMatchObject({
+      min: 0,
+      preferred: 0,
+      max: 0,
+    });
+    expect(
+      materializedPlan.slots
+        .flatMap((slot) => slot.exercises)
+        .some((row) =>
+          row.laneIds.includes("optional_triceps_if_under_target"),
+        ),
+    ).toBe(false);
+  });
+
   it("checks muscle coverage against balanced demand and direct floors", () => {
     const { validation } = buildFixture();
     const coverage = validation.checks.muscleCoverage;
@@ -522,9 +621,7 @@ describe("buildV2BasePlanValidation", () => {
       expect.arrayContaining(["Lats"]),
     );
     expect(coverage.abovePreferredMuscles).not.toContain("Chest");
-    expect(coverage.belowPreferredMuscles).toEqual(
-      expect.arrayContaining(["Biceps"]),
-    );
+    expect(coverage.belowPreferredMuscles).not.toContain("Biceps");
     expect(coverage.belowPreferredMuscles).not.toContain("Calves");
     expect(coverage.directSupportFloors.missed).toEqual([]);
     expect(coverage.directSupportFloors.met).toEqual(
@@ -736,7 +833,7 @@ describe("buildV2BasePlanValidation", () => {
     );
   });
 
-  it("diagnoses missing second direct side-delt exposure", () => {
+  it("reports missing preferred second direct side-delt exposure without warning", () => {
     const { materializedPlan, policy } = buildFixture();
     const oneExposurePlan = removeLaneExercise({
       plan: materializedPlan,
@@ -754,7 +851,7 @@ describe("buildV2BasePlanValidation", () => {
       .toBe(1);
     expect(validation.checks.exerciseClassCoverage.sideDeltSecondDirectExposure)
       .toBe(false);
-    expect(warningReasons(validation)).toContain(
+    expect(warningReasons(validation)).not.toContain(
       "side_delt_direct_exposure_count_below_base_floor:1/2",
     );
     expect(blockerReasons(validation)).toContain(
@@ -789,13 +886,13 @@ describe("buildV2BasePlanValidation", () => {
     expect(validation.checks.exerciseClassCoverage.hamstringsDirectSets).toBe(8);
   });
 
-  it("warns when direct hamstring volume falls below the base floor", () => {
+  it("blocks when direct hamstring volume falls below the capacity floor", () => {
     const { materializedPlan, policy } = buildFixture();
     const underbuiltHamstrings = setLaneSetCount({
       plan: materializedPlan,
       slotId: "lower_b",
       laneId: "knee_flexion_curl",
-      setCount: 2,
+      setCount: 0,
     });
     const validation = buildV2BasePlanValidation({
       plannerPolicy: policy,
@@ -804,11 +901,15 @@ describe("buildV2BasePlanValidation", () => {
       taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
     });
 
-    expect(validation.checks.exerciseClassCoverage.hamstringsDirectSets).toBe(7);
+    expect(validation.checks.exerciseClassCoverage.hamstringsDirectSets).toBe(5);
     expect(validation.checks.exerciseClassCoverage.hamstringsDirectSetFloorMet)
       .toBe(false);
     expect(warningReasons(validation)).toContain(
-      "hamstrings_direct_sets_below_base_floor:7/8",
+      "hamstrings_direct_sets_below_base_floor:5/6",
+    );
+    expect(validation.status).toBe("fail");
+    expect(blockerReasons(validation)).toContain(
+      "weekly_direct_or_exposure_floor_missed:Hamstrings",
     );
   });
 
@@ -944,7 +1045,7 @@ describe("buildV2BasePlanValidation", () => {
       validation.checks.exerciseClassCoverage
         .managedCollateralLanesNotMaterializedAsDirectDemand,
     ).toBe(true);
-    expect(validation.checks.slotShape.optionalLaneMaterializedCount).toBe(1);
+    expect(validation.checks.slotShape.optionalLaneMaterializedCount).toBe(4);
     expect(validation.checks.slotShape.managedCollateralLaneMaterializedCount)
       .toBe(0);
   });
@@ -961,7 +1062,7 @@ describe("buildV2BasePlanValidation", () => {
   it("does not report flat allocation when authored support floors are satisfied", () => {
     const { validation, materializedPlan, policy } = buildFixture();
 
-    expect(validation.checks.setCountQuality.fourSetLaneCount).toBe(6);
+    expect(validation.checks.setCountQuality.fourSetLaneCount).toBe(7);
     expect(validation.checks.setCountQuality.flatAllocationWarning).toBe(false);
     expect(warningReasons(validation)).not.toContain(
       "flat_allocation_pattern:many_lanes_at_four_sets_while_support_muscles_remain_below_preferred",

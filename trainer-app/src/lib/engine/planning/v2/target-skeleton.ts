@@ -97,11 +97,11 @@ export const V2_TARGET_SLOT_SKELETON: V2PlannerSlotDefinition[] = [
       {
         laneId: "hamstring_curl",
         targetLaneId: "knee_flexion_curl",
-        required: true,
+        required: false,
         role: "support",
         primaryMuscles: ["Hamstrings"],
         preferredExerciseClasses: ["knee_flexion_curl"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
+        targetSets: { min: 0, preferred: 3, max: 3 },
       },
       {
         laneId: "secondary_hinge",
@@ -165,19 +165,19 @@ export const V2_TARGET_SLOT_SKELETON: V2PlannerSlotDefinition[] = [
       },
       {
         laneId: "side_delt_isolation",
-        required: true,
+        required: false,
         role: "accessory",
         primaryMuscles: ["Side Delts"],
         preferredExerciseClasses: ["lateral_raise", "low_collateral_side_delt"],
-        targetSets: { min: 3, preferred: 4, max: 4 },
+        targetSets: { min: 0, preferred: 4, max: 4 },
       },
       {
         laneId: "biceps",
-        required: true,
+        required: false,
         role: "accessory",
         primaryMuscles: ["Biceps"],
         preferredExerciseClasses: ["biceps_isolation"],
-        targetSets: { min: 2, preferred: 3, max: 3 },
+        targetSets: { min: 0, preferred: 2, max: 3 },
       },
       {
         laneId: "optional_triceps_if_under_target",

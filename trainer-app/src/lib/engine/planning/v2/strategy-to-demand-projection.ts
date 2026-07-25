@@ -140,6 +140,8 @@ function buildProjectionRow(input: {
             targetStatus: input.demand.targetStatus,
             targetTier: input.demand.targetTier,
             baselineSetRange: { ...input.demand.baselineSetRange },
+            capacityFloorDirectSets:
+              input.demand.directness.capacityFloorDirectSets,
             directSetFloor: input.demand.directness.directSetFloor,
           }
         : {}),

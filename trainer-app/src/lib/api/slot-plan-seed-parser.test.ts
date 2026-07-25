@@ -94,6 +94,43 @@ describe("parseSlotPlanSeedJson", () => {
     ).toEqual(acceptedPlannerIntent);
   });
 
+  it("keeps legacy accepted planner metadata readable without inventing direct-volume fields", () => {
+    const current = buildV2AcceptedPlannerIntentDto();
+    const legacy = {
+      ...current,
+      muscleTargets: current.muscleTargets.map((row) => {
+        const target = { ...row };
+        delete target.preferredDirectSets;
+        delete target.capacityFloorDirectSets;
+        delete target.minimumDirectExposures;
+        delete target.preferredDirectExposures;
+        delete target.requiredRoleIntents;
+        delete target.collateralRule;
+        return target;
+      }),
+      weekPolicies: current.weekPolicies.map((week) => ({
+        ...week,
+        slots: week.slots.map((slot) => ({
+          ...slot,
+          lanes: slot.lanes.map((row) => {
+            const lane = { ...row };
+            delete lane.optionalTopUpStatus;
+            return lane;
+          }),
+        })),
+      })),
+    };
+
+    expect(
+      parseSlotPlanSeedJson({
+        version: 1,
+        source: "handoff_slot_plan_projection",
+        acceptedPlannerIntent: legacy,
+        slots: [],
+      })?.acceptedPlannerIntent,
+    ).toEqual(legacy);
+  });
+
   it("parses V2 source labels while keeping planner metadata outside executable rows", () => {
     const acceptedPlannerIntent = buildV2AcceptedPlannerIntentDto();
     const parsed = parseSlotPlanSeedJson({

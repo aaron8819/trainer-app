@@ -335,6 +335,7 @@ const V2_STATIC_SLOT_EXPOSURE_OWNERSHIP: V2StaticSlotExposureOwnership[] = [
     role: "support",
     classIntent: "knee_flexion_curl",
     ownershipKind: "support_exposure",
+    ownsClassObligation: false,
   },
   {
     slotId: "lower_a",
@@ -435,6 +436,7 @@ const V2_STATIC_SLOT_EXPOSURE_OWNERSHIP: V2StaticSlotExposureOwnership[] = [
     role: "support",
     classIntent: "lateral_raise_low_collateral_side_delt",
     ownershipKind: "direct_support",
+    ownsClassObligation: false,
   },
   {
     slotId: "upper_b",
@@ -444,6 +446,7 @@ const V2_STATIC_SLOT_EXPOSURE_OWNERSHIP: V2StaticSlotExposureOwnership[] = [
     role: "support",
     classIntent: "biceps_isolation",
     ownershipKind: "direct_support",
+    ownsClassObligation: false,
   },
   {
     slotId: "upper_b",

@@ -54,6 +54,9 @@ import {
   type ProjectedSuccessorSlotPlan,
 } from "./mesocycle-handoff-slot-plan-projection.seed-serialization";
 import { buildMesocycleSlotSequence } from "./mesocycle-slot-contract";
+import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
+import { resolveRequiredSeededSlotPlan } from "./template-session/slot-plan-seed";
+import type { MappedGenerationContext } from "./template-session/types";
 
 async function prepareThenAcceptMesocycleHandoff(tx: unknown, mesocycleId = "meso-1") {
   const prepared = await prepareMesocycleHandoffAcceptance({
@@ -891,11 +894,15 @@ function makeV2AcceptedSeedPreparationProbeInput(
   };
 }
 
-function makeRefreshDependencies(input: { blocked?: boolean } = {}) {
+function makeRefreshDependencies(input: {
+  blocked?: boolean;
+  inventory?: V2MaterializationExercise[];
+} = {}) {
+  const inventory = input.inventory ?? makeComparisonInventory();
   const v2Probe = makeV2AcceptedSeedPreparationProbeInput({
     blocked: input.blocked,
     slotPlans: makeV2ComparisonSlotPlans(),
-    inventory: makeComparisonInventory(),
+    inventory,
   });
   return {
     buildPreparationEvidence: vi.fn(
@@ -905,7 +912,7 @@ function makeRefreshDependencies(input: { blocked?: boolean } = {}) {
       plannerPolicy: args.plannerPolicy,
       exerciseSelectionPlan: args.plannerPolicy.exerciseSelectionPlan,
       taxonomy: DEFAULT_V2_EXERCISE_CLASS_TAXONOMY,
-      inventory: makeComparisonInventory(),
+      inventory,
       constraints: {
         avoidExerciseIds: [],
         favoriteExerciseIds: [],
@@ -1491,6 +1498,389 @@ describe("refreshMesocycleHandoffNextSeedDraftFromV2", () => {
       }),
     ).rejects.toThrow("MESOCYCLE_HANDOFF_NOT_FOUND");
     expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe("Stage 1 V2 capacity lifecycle contract", () => {
+  it("links setup, refresh, stale invalidation, acceptance, and runtime-inert metadata without credentials", async () => {
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+
+    const saveDraft = async (
+      currentDraft: NextCycleSeedDraft,
+      requestedDraft: NextCycleSeedDraft,
+    ) => {
+      const pending = {
+        id: "meso-1",
+        state: "AWAITING_HANDOFF",
+        mesoNumber: 1,
+        focus: "Upper Hypertrophy",
+        closedAt: new Date("2026-04-01T00:00:00.000Z"),
+        handoffSummaryJson: buildHandoffSummaryJson(buildRecommendedDraft()),
+        nextSeedDraftJson: currentDraft,
+      };
+      const update = vi.fn(async (args) => ({
+        ...pending,
+        nextSeedDraftJson: args.data.nextSeedDraftJson,
+      }));
+      const saved = await updateMesocycleHandoffDraftInTransaction(
+        {
+          mesocycle: {
+            findUnique: vi.fn().mockResolvedValue(pending),
+            update,
+          },
+        } as never,
+        {
+          mesocycleId: "meso-1",
+          draft: requestedDraft,
+        },
+      );
+      if (!saved.draft) {
+        throw new Error("Fixture draft persistence returned no draft.");
+      }
+      return saved.draft;
+    };
+
+    const runRefresh = async (
+      draft: NextCycleSeedDraft,
+      productChoice: "efficient" | "balanced",
+      inventory: V2MaterializationExercise[],
+    ) => {
+      const { reader, update, create } = makeRefreshReader({ draft });
+      const dependencies = makeRefreshDependencies({ inventory });
+      const result = await refreshMesocycleHandoffNextSeedDraftFromV2({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        productChoice,
+        fourDayUpperLowerConfirmed: true,
+        reader: reader as never,
+        dependencies,
+      });
+      const writtenDraft = update.mock.calls[0]?.[0]?.data
+        .nextSeedDraftJson as NextCycleSeedDraft;
+      expect(result.seedDraft).toMatchObject({
+        source: "v2_materialized_seed",
+        parserCompatible: true,
+        minimalExecutableRowsOnly: true,
+      });
+      expect(create).not.toHaveBeenCalled();
+      return { dependencies, result, writtenDraft };
+    };
+
+    const balancedSetup = await saveDraft(
+      buildRecommendedDraft(),
+      buildCapacityDraft("balanced"),
+    );
+    expect(balancedSetup.capacitySelection).toEqual({
+      version: 1,
+      productChoice: "balanced",
+      timePriority: "flexible_45_60",
+      fourDayUpperLowerConfirmed: true,
+    });
+    expect(JSON.stringify(balancedSetup.capacitySelection)).not.toMatch(
+      /minimal|moderate|preferred/,
+    );
+
+    const unsupportedThreeDay = {
+      ...balancedSetup,
+      structure: {
+        ...balancedSetup.structure,
+        sessionsPerWeek: 3,
+        daysPerWeek: 3,
+        slots: balancedSetup.structure.slots.slice(0, 3),
+      },
+      capacitySelection: {
+        ...balancedSetup.capacitySelection!,
+        productChoice: "efficient" as const,
+      },
+    };
+    const unsupportedRefresh = makeRefreshReader({
+      draft: unsupportedThreeDay,
+    });
+    const unsupportedDependencies = makeRefreshDependencies();
+    await expect(
+      refreshMesocycleHandoffNextSeedDraftFromV2({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        productChoice: "efficient",
+        fourDayUpperLowerConfirmed: true,
+        reader: unsupportedRefresh.reader as never,
+        dependencies: unsupportedDependencies,
+      }),
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_V2_CAPACITY_TOPOLOGY_UNSUPPORTED");
+    expect(unsupportedDependencies.buildPreparationEvidence).not.toHaveBeenCalled();
+    expect(unsupportedRefresh.update).not.toHaveBeenCalled();
+    expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
+
+    const inventory = makeComparisonInventory();
+    const balancedRefresh = await runRefresh(
+      balancedSetup,
+      "balanced",
+      inventory,
+    );
+    const balancedSeed =
+      balancedRefresh.writtenDraft.acceptedSeedDraft?.slotPlanSeedJson;
+    expect(balancedSeed).toBeDefined();
+    if (!balancedSeed) {
+      throw new Error("Balanced fixture did not produce a candidate seed.");
+    }
+    expect(
+      balancedRefresh.dependencies.buildPreparationEvidence.mock.calls[0]?.[0]
+        ?.plannerPolicy.selectionCapacityPlan,
+    ).toEqual(
+      buildV2PlannerMesocyclePolicy({
+        directVolumeCapacityProfile: "moderate",
+      }).selectionCapacityPlan,
+    );
+    expect(
+      balancedRefresh.writtenDraft.acceptedSeedDraft?.capacitySelection,
+    ).toMatchObject({
+      productChoice: "balanced",
+      internalProfileId: "moderate",
+      recommendationAccepted: true,
+      representativeProfileSummary: expect.stringContaining("about 59 direct sets"),
+    });
+    expect(balancedSeed.acceptedPlannerIntent?.capacitySelection).toEqual(
+      balancedRefresh.writtenDraft.acceptedSeedDraft?.capacitySelection,
+    );
+    for (const exercise of balancedSeed.slots.flatMap(
+      (slot) => slot.exercises,
+    )) {
+      expect(Object.keys(exercise).sort()).toEqual([
+        "exerciseId",
+        "role",
+        "setCount",
+      ]);
+    }
+    expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
+
+    const repeatedBalancedRefresh = await runRefresh(
+      balancedSetup,
+      "balanced",
+      [...inventory].reverse(),
+    );
+    expect(
+      repeatedBalancedRefresh.writtenDraft.acceptedSeedDraft?.slotPlanSeedJson,
+    ).toEqual(balancedSeed);
+    const balancedCandidateFingerprint = JSON.stringify(balancedSeed);
+
+    const efficientRequest = {
+      ...balancedRefresh.writtenDraft,
+      capacitySelection: {
+        ...balancedRefresh.writtenDraft.capacitySelection!,
+        productChoice: "efficient" as const,
+      },
+    };
+    delete efficientRequest.acceptedSeedDraft;
+    const efficientSetup = await saveDraft(
+      balancedRefresh.writtenDraft,
+      efficientRequest,
+    );
+    expect(efficientSetup.acceptedSeedDraft).toBeUndefined();
+    expect(efficientSetup.capacitySelection?.productChoice).toBe("efficient");
+
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+    const staleBalancedCandidate = {
+      ...efficientSetup,
+      acceptedSeedDraft: balancedRefresh.writtenDraft.acceptedSeedDraft,
+    };
+    const staleAcceptance = makeAcceptanceTx({
+      draft: staleBalancedCandidate,
+    });
+    await expect(
+      prepareMesocycleHandoffAcceptance({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        capacityChoice: "efficient",
+        reader: staleAcceptance as never,
+      }),
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_V2_CAPACITY_REFRESH_REQUIRED");
+    expect(staleAcceptance.mesocycle.create).not.toHaveBeenCalled();
+
+    const unrefreshedAcceptance = makeAcceptanceTx({
+      draft: efficientSetup,
+    });
+    await expect(
+      prepareMesocycleHandoffAcceptance({
+        userId: "user-1",
+        mesocycleId: "meso-1",
+        capacityChoice: "efficient",
+        reader: unrefreshedAcceptance as never,
+      }),
+    ).rejects.toThrow("MESOCYCLE_HANDOFF_V2_CAPACITY_REFRESH_REQUIRED");
+    expect(unrefreshedAcceptance.mesocycle.create).not.toHaveBeenCalled();
+    expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
+
+    const efficientRefresh = await runRefresh(
+      efficientSetup,
+      "efficient",
+      inventory,
+    );
+    const efficientSeed =
+      efficientRefresh.writtenDraft.acceptedSeedDraft?.slotPlanSeedJson;
+    expect(efficientSeed).toBeDefined();
+    if (!efficientSeed) {
+      throw new Error("Efficient fixture did not produce a candidate seed.");
+    }
+    expect(
+      efficientRefresh.dependencies.buildPreparationEvidence.mock.calls[0]?.[0]
+        ?.plannerPolicy.selectionCapacityPlan,
+    ).toEqual(
+      buildV2PlannerMesocyclePolicy({
+        directVolumeCapacityProfile: "minimal",
+      }).selectionCapacityPlan,
+    );
+    expect(
+      efficientRefresh.writtenDraft.acceptedSeedDraft?.capacitySelection,
+    ).toMatchObject({
+      productChoice: "efficient",
+      internalProfileId: "minimal",
+      recommendationAccepted: false,
+      representativeProfileSummary: expect.stringContaining("about 50 direct sets"),
+    });
+    expect(efficientSeed.acceptedPlannerIntent?.capacitySelection).toEqual(
+      efficientRefresh.writtenDraft.acceptedSeedDraft?.capacitySelection,
+    );
+    const efficientCandidateFingerprint = JSON.stringify(efficientSeed);
+    expect(efficientCandidateFingerprint).not.toBe(
+      balancedCandidateFingerprint,
+    );
+    expect(efficientSeed.acceptedPlannerIntent).not.toEqual(
+      balancedSeed.acceptedPlannerIntent,
+    );
+    expect(efficientSeed.slots).toEqual(balancedSeed.slots);
+
+    const repeatedEfficientRefresh = await runRefresh(
+      efficientSetup,
+      "efficient",
+      [...inventory].reverse(),
+    );
+    expect(
+      repeatedEfficientRefresh.writtenDraft.acceptedSeedDraft?.slotPlanSeedJson,
+    ).toEqual(efficientSeed);
+
+    mocks.loadPreloadedGenerationSnapshot.mockClear();
+    mocks.projectSuccessorSlotPlansFromSnapshot.mockClear();
+    const acceptanceTx = makeAcceptanceTx({
+      draft: efficientRefresh.writtenDraft,
+    });
+    const prepared = await prepareMesocycleHandoffAcceptance({
+      userId: "user-1",
+      mesocycleId: "meso-1",
+      capacityChoice: "efficient",
+      reader: acceptanceTx as never,
+    });
+    expect(prepared.slotPlanSeed).toEqual(efficientSeed);
+    expect(prepared.slotPlanSeed).not.toEqual(balancedSeed);
+    expect(prepared.seedPersistenceProvenance).toMatchObject({
+      source: "v2_materialized_seed",
+      dbWriteOccurred: false,
+    });
+    expect(mocks.loadPreloadedGenerationSnapshot).not.toHaveBeenCalled();
+    expect(mocks.projectSuccessorSlotPlansFromSnapshot).not.toHaveBeenCalled();
+
+    const accepted =
+      await acceptPreparedMesocycleHandoffWithProvenanceInTransaction(
+        acceptanceTx as never,
+        prepared,
+      );
+    expect(accepted.seedPersistenceProvenance).toMatchObject({
+      source: "v2_materialized_seed",
+      dbWriteOccurred: true,
+      persistedMesocycleId: "meso-2",
+    });
+    expect(
+      acceptanceTx.mesocycle.create.mock.calls[0]?.[0]?.data.slotPlanSeedJson,
+    ).toEqual(efficientSeed);
+
+    const makeRuntimeContext = (
+      seed: typeof efficientSeed,
+    ): MappedGenerationContext =>
+      ({
+        activeMesocycle: {
+          slotPlanSeedJson: seed,
+          slotSequenceJson: prepared.projection.mesocycle.slotSequence,
+        },
+        mappedConstraints: {
+          weeklySchedule: prepared.projection.mesocycle.weeklySchedule,
+        },
+        exerciseLibrary: inventory.map((exercise) => ({
+          id: exercise.exerciseId,
+          name: exercise.name,
+          primaryMuscles: exercise.primaryMuscles,
+          secondaryMuscles: exercise.secondaryMuscles,
+        })),
+        history: [],
+      }) as unknown as MappedGenerationContext;
+    const replayRows = (seed: typeof efficientSeed) =>
+      seed.slots.map((slot) => {
+        const slotIntent =
+          prepared.projection.mesocycle.slotSequence.slots.find(
+            (entry) => entry.slotId === slot.slotId,
+          )?.intent;
+        const resolved = resolveRequiredSeededSlotPlan({
+          mapped: makeRuntimeContext(seed),
+          sessionIntent: slotIntent?.toLowerCase() as never,
+          slotId: slot.slotId,
+        });
+        expect(resolved).toBeTruthy();
+        expect(resolved).not.toHaveProperty("error");
+        if (!resolved || "error" in resolved) {
+          throw new Error(`Runtime could not replay ${slot.slotId}.`);
+        }
+        return resolved.exercises.map(({ exerciseId, role, setCount }) => ({
+          exerciseId,
+          role,
+          setCount,
+        }));
+      });
+    const canonicalReplay = replayRows(efficientSeed);
+    expect(canonicalReplay).toEqual(
+      efficientSeed.slots.map((slot) => slot.exercises),
+    );
+
+    const changedMetadataSeed = {
+      ...efficientSeed,
+      acceptedPlannerIntent: {
+        ...efficientSeed.acceptedPlannerIntent!,
+        capacitySelection: {
+          ...efficientSeed.acceptedPlannerIntent!.capacitySelection!,
+          productChoice: "full" as const,
+          internalProfileId: "preferred" as const,
+          recommendationAccepted: false,
+          recommendationReason: "Changed explanatory metadata.",
+          representativeProfileSummary: "Changed explanatory workload metadata.",
+        },
+      },
+    };
+    expect(parseSlotPlanSeedJson(changedMetadataSeed)).not.toBeNull();
+    expect(replayRows(changedMetadataSeed)).toEqual(canonicalReplay);
+
+    const legacyAcceptedPlannerIntent = {
+      ...efficientSeed.acceptedPlannerIntent!,
+    };
+    Reflect.deleteProperty(
+      legacyAcceptedPlannerIntent,
+      "capacitySelection",
+    );
+    const legacyMetadataSeed = {
+      ...efficientSeed,
+      acceptedPlannerIntent: legacyAcceptedPlannerIntent,
+    };
+    expect(
+      parseSlotPlanSeedJson(legacyMetadataSeed)?.acceptedPlannerIntent,
+    ).toEqual(legacyAcceptedPlannerIntent);
+    expect(replayRows(legacyMetadataSeed)).toEqual(canonicalReplay);
+
+    const noMetadataSeed = {
+      ...efficientSeed,
+      acceptedPlannerIntent: undefined,
+    };
+    expect(replayRows(noMetadataSeed)).toEqual(canonicalReplay);
   });
 });
 

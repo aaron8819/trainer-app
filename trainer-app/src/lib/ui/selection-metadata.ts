@@ -13,6 +13,10 @@ import type { SessionAuditSnapshot } from "@/lib/evidence/session-audit-types";
 import type { SessionAuditMutationSummary } from "@/lib/evidence/session-audit-types";
 import type { SessionDecisionReceipt, SessionSlotSnapshot } from "@/lib/evidence/types";
 import type { ExerciseStimulusAccountingEvidence } from "@/lib/stimulus-accounting/snapshot";
+import type {
+  SessionCapacityOmissionClass,
+  SessionCapacityProtectedClaim,
+} from "@/lib/engine/planning/v2";
 
 export type SaveableSelectionMetadata = {
   rationale?: Record<string, unknown>;
@@ -80,7 +84,8 @@ export type RuntimeEditOperationSource =
   | "api_workouts_add_set"
   | "api_workouts_remove_exercise"
   | "api_workouts_swap_exercise"
-  | "api_workouts_save";
+  | "api_workouts_save"
+  | "api_workouts_generate_from_intent";
 
 export type RuntimeEditOperationScope = "current_workout_only";
 
@@ -162,12 +167,42 @@ export type RuntimeEditRewriteStructureOperation = {
   };
 };
 
+export type RuntimeEditReduceSessionCapacityOperation = {
+  kind: "reduce_session_capacity";
+  source: "api_workouts_generate_from_intent";
+  appliedAt: string;
+  scope: "current_workout_only";
+  facts: {
+    workoutId: string;
+    mode: "short_today";
+    reason: "user_selected_temporary_capacity";
+    transformVersion: "short_today_v1";
+    seedRevisionId: string;
+    seedRevisionNumber: number;
+    seedPayloadHash: string;
+    executableRowsHash: string;
+    plannedStructureFingerprint: string;
+    offeredStructureFingerprint: string;
+    omitted: Array<{
+      exerciseId: string;
+      exerciseName: string;
+      plannedSetCount: number;
+      retainedSetCount: number;
+      omittedSetIndexes: number[];
+      omissionClass: Exclude<SessionCapacityOmissionClass, "none">;
+      yieldOrder: number;
+    }>;
+    retainedProtectionClaims: SessionCapacityProtectedClaim[];
+  };
+};
+
 export type RuntimeEditOperation =
   | RuntimeEditAddExerciseOperation
   | RuntimeEditAddSetOperation
   | RuntimeEditRemoveExerciseOperation
   | RuntimeEditReplaceExerciseOperation
-  | RuntimeEditRewriteStructureOperation;
+  | RuntimeEditRewriteStructureOperation
+  | RuntimeEditReduceSessionCapacityOperation;
 
 export type RuntimeEditReconciliation = {
   version: 1;
@@ -557,6 +592,109 @@ function parseRuntimeEditOperation(value: unknown): RuntimeEditOperation | undef
         setCount: facts.setCount,
         ...(fromStimulusAccounting ? { fromStimulusAccounting } : {}),
         ...(toStimulusAccounting ? { toStimulusAccounting } : {}),
+      },
+    };
+  }
+
+  if (
+    record.kind === "reduce_session_capacity" &&
+    record.source === "api_workouts_generate_from_intent"
+  ) {
+    const omitted = Array.isArray(facts.omitted)
+      ? facts.omitted.map((value) => {
+          const omission = toObject(value);
+          const omittedSetIndexes = Array.isArray(omission?.omittedSetIndexes)
+            ? omission.omittedSetIndexes.filter(
+                (entry): entry is number =>
+                  typeof entry === "number" && Number.isInteger(entry),
+              )
+            : null;
+          return omission &&
+            typeof omission.exerciseId === "string" &&
+            typeof omission.exerciseName === "string" &&
+            typeof omission.plannedSetCount === "number" &&
+            Number.isInteger(omission.plannedSetCount) &&
+            typeof omission.retainedSetCount === "number" &&
+            Number.isInteger(omission.retainedSetCount) &&
+            omittedSetIndexes &&
+            (omission.omissionClass === "optional_top_up" ||
+              omission.omissionClass === "preferred_surplus") &&
+            typeof omission.yieldOrder === "number" &&
+            Number.isInteger(omission.yieldOrder)
+            ? {
+                exerciseId: omission.exerciseId,
+                exerciseName: omission.exerciseName,
+                plannedSetCount: omission.plannedSetCount,
+                retainedSetCount: omission.retainedSetCount,
+                omittedSetIndexes,
+                omissionClass: omission.omissionClass,
+                yieldOrder: omission.yieldOrder,
+              }
+            : null;
+        })
+      : null;
+    const retainedProtectionClaims = Array.isArray(
+      facts.retainedProtectionClaims,
+    )
+      ? facts.retainedProtectionClaims.map((value) => {
+          const claim = toObject(value);
+          return claim &&
+            (claim.kind === "primary_anchor" ||
+              claim.kind === "required_role" ||
+              claim.kind === "direct_floor" ||
+              claim.kind === "direct_exposure" ||
+              claim.kind === "hamstring_hinge" ||
+              claim.kind === "hamstring_knee_flexion" ||
+              claim.kind === "calf_exposure" ||
+              claim.kind === "minimum_session") &&
+            typeof claim.minimumRetainedSetCount === "number" &&
+            Number.isInteger(claim.minimumRetainedSetCount)
+            ? {
+                kind: claim.kind,
+                minimumRetainedSetCount: claim.minimumRetainedSetCount,
+              }
+            : null;
+        })
+      : null;
+    if (
+      facts.mode !== "short_today" ||
+      facts.reason !== "user_selected_temporary_capacity" ||
+      facts.transformVersion !== "short_today_v1" ||
+      typeof facts.workoutId !== "string" ||
+      typeof facts.seedRevisionId !== "string" ||
+      typeof facts.seedRevisionNumber !== "number" ||
+      !Number.isInteger(facts.seedRevisionNumber) ||
+      typeof facts.seedPayloadHash !== "string" ||
+      typeof facts.executableRowsHash !== "string" ||
+      typeof facts.plannedStructureFingerprint !== "string" ||
+      typeof facts.offeredStructureFingerprint !== "string" ||
+      !omitted ||
+      omitted.length === 0 ||
+      omitted.some((entry) => entry == null) ||
+      !retainedProtectionClaims ||
+      retainedProtectionClaims.some((entry) => entry == null)
+    ) {
+      return undefined;
+    }
+    return {
+      kind: "reduce_session_capacity",
+      source: "api_workouts_generate_from_intent",
+      appliedAt: record.appliedAt,
+      scope: "current_workout_only",
+      facts: {
+        workoutId: facts.workoutId,
+        mode: "short_today",
+        reason: "user_selected_temporary_capacity",
+        transformVersion: "short_today_v1",
+        seedRevisionId: facts.seedRevisionId,
+        seedRevisionNumber: facts.seedRevisionNumber,
+        seedPayloadHash: facts.seedPayloadHash,
+        executableRowsHash: facts.executableRowsHash,
+        plannedStructureFingerprint: facts.plannedStructureFingerprint,
+        offeredStructureFingerprint: facts.offeredStructureFingerprint,
+        omitted: omitted as RuntimeEditReduceSessionCapacityOperation["facts"]["omitted"],
+        retainedProtectionClaims:
+          retainedProtectionClaims as SessionCapacityProtectedClaim[],
       },
     };
   }

@@ -12,6 +12,7 @@ import {
   type WorkoutStructureState,
 } from "@/lib/ui/selection-metadata";
 import type { ExerciseStimulusAccountingEvidence } from "@/lib/stimulus-accounting/snapshot";
+import type { SessionCapacityReductionEvidence } from "./template-session/session-capacity-reduction";
 
 const CONSERVATIVE_RUNTIME_EDIT_DIRECTIVES: RuntimeEditDirectiveState = {
   continuityAlias: "none",
@@ -113,6 +114,7 @@ function buildRuntimeEditOperation(input: {
   mutation: RuntimeEditMutation;
   workoutStructureState: WorkoutStructureState;
   appliedAt: string;
+  existing?: RuntimeEditReconciliation;
 }): RuntimeEditOperation | undefined {
   if (input.mutation.kind === "add_exercise") {
     return {
@@ -188,6 +190,32 @@ function buildRuntimeEditOperation(input: {
     return undefined;
   }
 
+  const capacityOperation = input.existing?.ops.find(
+    (operation) => operation.kind === "reduce_session_capacity",
+  );
+  if (capacityOperation) {
+    const expectedRemoved = capacityOperation.facts.omitted
+      .filter((row) => row.retainedSetCount === 0)
+      .map((row) => row.exerciseId)
+      .sort();
+    const expectedReduced = capacityOperation.facts.omitted
+      .filter((row) => row.retainedSetCount > 0)
+      .map((row) => row.exerciseId)
+      .sort();
+    const reconciliation = input.workoutStructureState.reconciliation;
+    const fullyExplained =
+      reconciliation.addedExerciseIds.length === 0 &&
+      reconciliation.exercisesWithPrescriptionChanges.length === 0 &&
+      JSON.stringify([...reconciliation.removedExerciseIds].sort()) ===
+        JSON.stringify(expectedRemoved) &&
+      JSON.stringify(
+        [...reconciliation.exercisesWithSetCountChanges].sort(),
+      ) === JSON.stringify(expectedReduced);
+    if (fullyExplained) {
+      return undefined;
+    }
+  }
+
   return {
     kind: "rewrite_structure",
     source: "api_workouts_save",
@@ -220,6 +248,7 @@ export function reconcileRuntimeEditSelectionMetadata(
     mutation: input.mutation,
     workoutStructureState,
     appliedAt: reconciledAt,
+    existing: readRuntimeEditReconciliation(input.selectionMetadata),
   });
   const runtimeEditReconciliation = appendRuntimeEditOperation({
     existing: readRuntimeEditReconciliation(input.selectionMetadata),
@@ -244,4 +273,46 @@ export function reconcileRuntimeEditSelectionMetadata(
     runtimeEditReconciliation,
     appendedOpKind: nextOp?.kind,
   };
+}
+
+export function attachSessionCapacityReductionReconciliation(input: {
+  selectionMetadata: unknown;
+  evidence: SessionCapacityReductionEvidence;
+  appliedAt?: string | Date;
+}): SaveableSelectionMetadata {
+  const appliedAt = normalizeReconciledAt(input.appliedAt);
+  const existing = readRuntimeEditReconciliation(input.selectionMetadata);
+  const existingCapacityOperations =
+    existing?.ops.filter(
+      (operation) => operation.kind === "reduce_session_capacity",
+    ) ?? [];
+  const matching = existingCapacityOperations.find(
+    (operation) =>
+      operation.facts.offeredStructureFingerprint ===
+        input.evidence.offeredStructureFingerprint &&
+      operation.facts.plannedStructureFingerprint ===
+        input.evidence.plannedStructureFingerprint &&
+      operation.facts.seedRevisionId === input.evidence.seedRevisionId,
+  );
+  if (matching) {
+    return input.selectionMetadata as SaveableSelectionMetadata;
+  }
+  if (existingCapacityOperations.length > 0) {
+    throw new Error("SESSION_CAPACITY_REDUCTION_CONFLICT");
+  }
+  const operation: RuntimeEditOperation = {
+    kind: "reduce_session_capacity",
+    source: "api_workouts_generate_from_intent",
+    appliedAt,
+    scope: "current_workout_only",
+    facts: {
+      ...input.evidence,
+    },
+  };
+  return attachRuntimeEditReconciliation(input.selectionMetadata, {
+    version: 1,
+    lastReconciledAt: appliedAt,
+    ops: [...(existing?.ops ?? []), operation],
+    directives: existing?.directives ?? CONSERVATIVE_RUNTIME_EDIT_DIRECTIVES,
+  });
 }

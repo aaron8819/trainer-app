@@ -449,6 +449,9 @@ function buildContractInput(
     workout.selectionMetadata
   );
   const slot = readSessionSlotSnapshot(workout.selectionMetadata);
+  const capacityReduction = runtimeEditReconciliation?.ops.find(
+    (operation) => operation.kind === "reduce_session_capacity",
+  );
 
   return {
     workoutIdentity: {
@@ -476,6 +479,21 @@ function buildContractInput(
     },
     sessionSemantics: buildSessionSemanticsEvidence(workout),
     exercises: buildExerciseEvidence(workout),
+    ...(capacityReduction
+      ? {
+          capacityReduction: {
+            source: "runtime_edit_reconciliation" as const,
+            omitted: capacityReduction.facts.omitted.map((row) => ({
+              exerciseId: row.exerciseId,
+              exerciseName: row.exerciseName,
+              plannedSetCount: row.plannedSetCount,
+              retainedSetCount: row.retainedSetCount,
+              omittedSetCount:
+                row.plannedSetCount - row.retainedSetCount,
+            })),
+          },
+        }
+      : {}),
     recentExerciseExposures,
     ...explainabilityEvidence,
     boundaryNotes: [

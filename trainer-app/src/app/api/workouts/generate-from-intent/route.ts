@@ -23,6 +23,10 @@ import {
   buildCanonicalSelectionMetadata,
 } from "@/lib/ui/selection-metadata";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
+import { applySessionCapacityReduction } from "@/lib/api/template-session/session-capacity-reduction";
+import { parseSlotPlanSeedJson } from "@/lib/api/slot-plan-seed-parser";
+import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
+import { attachSessionCapacityReductionReconciliation } from "@/lib/api/runtime-edit-reconciliation";
 
 type PlannedExercise = GenerateFromIntentResponse["workout"]["mainLifts"][number];
 type PlannedSet = PlannedExercise["sets"][number];
@@ -272,13 +276,66 @@ export async function POST(request: Request) {
     progressionTraces: result.audit?.progressionTraces,
     deloadTrace: result.audit?.deloadTrace,
   });
-  const responseSelectionMetadata = attachSessionAuditSnapshotToSelectionMetadata(
+  const fullPlanSelectionMetadata = attachSessionAuditSnapshotToSelectionMetadata(
     finalSelectionMetadata,
     sessionAuditSnapshot
   );
+  const receipt = readSessionDecisionReceipt(fullPlanSelectionMetadata);
+  const parsedSeed = activeMesocycle
+    ? parseSlotPlanSeedJson(activeMesocycle.slotPlanSeedJson)
+    : null;
+  const executableSeedSlots =
+    parsedSeed &&
+    parsedSeed.slots.every((slot) =>
+      slot.exercises.every((exercise) => exercise.setCount != null),
+    )
+      ? parsedSeed.slots.map((slot) => ({
+          slotId: slot.slotId,
+          exercises: slot.exercises.map((exercise) => ({
+            exerciseId: exercise.exerciseId,
+            role: exercise.role,
+            setCount: exercise.setCount!,
+          })),
+        }))
+      : null;
+  const requestedSessionCapacity =
+    parsed.data.sessionCapacity ?? "as_planned";
+  const sessionCapacityResult = applySessionCapacityReduction({
+    plannedWorkout: cappedWorkout,
+    acceptedReductionManifest:
+      activeMesocycle?.sessionCapacityReductionManifest,
+    mode: requestedSessionCapacity,
+    week: receipt?.cycleContext.weekInMeso ?? 0,
+    slotId: receipt?.sessionSlot?.slotId ?? advancingSlot?.slotId,
+    isAccumulationPrimary:
+      activeMesocycle?.state === "ACTIVE_ACCUMULATION" &&
+      !shouldApplyOptionalGapFill &&
+      !shouldApplySupplementalDeficitSession &&
+      receipt?.sessionProvenance?.compositionSource ===
+        "persisted_slot_plan_seed",
+    isWorkoutUncreated:
+      nextWorkoutContext.isExisting !== true &&
+      nextWorkoutContext.selectedIncompleteStatus == null,
+    hasPainOrEquipmentConflict: result.substitutions.length > 0,
+    seedRevision: activeMesocycle?.currentSeedRevision
+      ? {
+          id: activeMesocycle.currentSeedRevision.id,
+          revision: activeMesocycle.currentSeedRevision.revision,
+          payloadHash: activeMesocycle.currentSeedRevision.payloadHash,
+        }
+      : null,
+    executableSeedSlots,
+  });
+  const responseSelectionMetadata =
+    sessionCapacityResult.status === "applied"
+      ? attachSessionCapacityReductionReconciliation({
+          selectionMetadata: fullPlanSelectionMetadata,
+          evidence: sessionCapacityResult.evidence,
+        })
+      : fullPlanSelectionMetadata;
 
   const response: GenerateFromIntentResponse = {
-    workout: cappedWorkout,
+    workout: sessionCapacityResult.workout,
     sraWarnings: result.sraWarnings,
     substitutions: result.substitutions,
     volumePlanByMuscle: result.volumePlanByMuscle,
@@ -288,6 +345,16 @@ export async function POST(request: Request) {
     selectionSummary,
     selectionMetadata: responseSelectionMetadata,
     filteredExercises: result.filteredExercises,
+    sessionCapacity: {
+      requestedMode: requestedSessionCapacity,
+      status: sessionCapacityResult.status,
+      ...(sessionCapacityResult.status === "unavailable"
+        ? { unavailableReason: sessionCapacityResult.reason }
+        : {}),
+      ...(sessionCapacityResult.status === "applied"
+        ? { preview: sessionCapacityResult.preview }
+        : {}),
+    },
   };
 
   return NextResponse.json(response);

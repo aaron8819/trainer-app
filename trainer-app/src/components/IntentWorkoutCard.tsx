@@ -42,7 +42,7 @@ type WorkoutPlan = {
 
 type GeneratedMetadata = Pick<
   GenerateFromIntentResponse,
-  "selectionMode" | "sessionIntent" | "selectionMetadata" | "filteredExercises" | "selectionSummary"
+  "selectionMode" | "sessionIntent" | "selectionMetadata" | "filteredExercises" | "selectionSummary" | "sessionCapacity"
 >;
 
 const INTENT_OPTIONS: { value: SessionIntent; label: string }[] = [
@@ -110,6 +110,10 @@ function buildSaveWorkoutPayload(input: {
 }): SaveWorkoutRequestPayload {
   return {
     workoutId: input.workout.id,
+    sessionCapacity:
+      input.metadata.sessionCapacity.status === "applied"
+        ? "short_today"
+        : "as_planned",
     scheduledDate: input.workout.scheduledDate,
     estimatedMinutes: input.workout.estimatedMinutes,
     selectionMode: input.metadata.selectionMode,
@@ -153,6 +157,9 @@ export function IntentWorkoutCard({
 
   const [workout, setWorkout] = useState<WorkoutPlan | null>(null);
   const [generatedMetadata, setGeneratedMetadata] = useState<GeneratedMetadata | null>(null);
+  const [sessionCapacity, setSessionCapacity] = useState<
+    "as_planned" | "short_today"
+  >("as_planned");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -173,6 +180,7 @@ export function IntentWorkoutCard({
   const generateWorkout = async (input: {
     requestedIntent: SessionIntent;
     requestedSlotId?: string | null;
+    requestedSessionCapacity?: "as_planned" | "short_today";
   }): Promise<{
     workout: WorkoutPlan;
     metadata: GeneratedMetadata;
@@ -192,6 +200,8 @@ export function IntentWorkoutCard({
             ? input.requestedSlotId
             : undefined,
         targetMuscles: input.requestedIntent === "body_part" ? targetMuscles : undefined,
+        sessionCapacity:
+          input.requestedSessionCapacity ?? sessionCapacity,
       }),
     });
 
@@ -209,6 +219,11 @@ export function IntentWorkoutCard({
       selectionMetadata: body.selectionMetadata,
       filteredExercises: body.filteredExercises ?? [],
       selectionSummary: body.selectionSummary,
+      sessionCapacity:
+        body.sessionCapacity ?? {
+          requestedMode: "as_planned",
+          status: "as_planned",
+        },
     };
     setWorkout(body.workout);
     setGeneratedMetadata(metadata);
@@ -220,6 +235,7 @@ export function IntentWorkoutCard({
     await generateWorkout({
       requestedIntent: intent,
       requestedSlotId: initialSlotId,
+      requestedSessionCapacity: sessionCapacity,
     });
   };
 
@@ -243,6 +259,7 @@ export function IntentWorkoutCard({
     const generated = await generateWorkout({
       requestedIntent: initialIntent,
       requestedSlotId: initialSlotId,
+      requestedSessionCapacity: sessionCapacity,
     });
 
     if (!generated) {
@@ -312,6 +329,31 @@ export function IntentWorkoutCard({
   const readinessPreview = generatedMetadata?.selectionMetadata?.sessionDecisionReceipt?.readiness;
   const showReadinessPreview =
     Boolean(readinessPreview?.rationale) || readinessPreview?.signalAgeHours != null;
+  const capacityResult = generatedMetadata?.sessionCapacity;
+  const capacityUnavailableCopy =
+    capacityResult?.unavailableReason === "already_streamlined"
+      ? "This workout is already streamlined."
+      : capacityResult?.unavailableReason === "older_plan"
+        ? "Short today is unavailable for this older plan."
+        : capacityResult?.unavailableReason === "must_select_before_start"
+          ? "Short today must be selected before starting."
+          : capacityResult?.unavailableReason ===
+              "pain_or_equipment_conflict"
+            ? "Resolve the painful or unavailable movement first."
+            : "Short today is unavailable for this workout. Your full plan is unchanged.";
+
+  const handleSessionCapacityChange = async (
+    mode: "as_planned" | "short_today",
+  ) => {
+    setSessionCapacity(mode);
+    if (workout || mode === "short_today") {
+      await generateWorkout({
+        requestedIntent: intent,
+        requestedSlotId: initialSlotId,
+        requestedSessionCapacity: mode,
+      });
+    }
+  };
 
   return (
     <div className="w-full min-w-0 rounded-2xl border border-slate-200 p-5 shadow-sm sm:p-6">
@@ -327,6 +369,36 @@ export function IntentWorkoutCard({
           </p>
         </div>
       ) : null}
+
+      <fieldset className="mt-4 rounded-xl border border-slate-200 p-4">
+        <legend className="px-1 text-sm font-semibold text-slate-900">
+          Session capacity
+        </legend>
+        <div className="mt-1 grid gap-2 sm:grid-cols-2">
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+            <input
+              type="radio"
+              name="session-capacity"
+              value="as_planned"
+              checked={sessionCapacity === "as_planned"}
+              onChange={() => void handleSessionCapacityChange("as_planned")}
+              disabled={loading || saving || starting || Boolean(savedId)}
+            />
+            As planned
+          </label>
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+            <input
+              type="radio"
+              name="session-capacity"
+              value="short_today"
+              checked={sessionCapacity === "short_today"}
+              onChange={() => void handleSessionCapacityChange("short_today")}
+              disabled={loading || saving || starting || Boolean(savedId)}
+            />
+            Short today
+          </label>
+        </div>
+      </fieldset>
 
       {showCustomize ? (
         <div className="mt-4 grid gap-3">
@@ -407,6 +479,35 @@ export function IntentWorkoutCard({
             </p>
           ) : null}
         </div>
+      ) : null}
+
+      {sessionCapacity === "short_today" &&
+      capacityResult?.status === "applied" &&
+      capacityResult.preview ? (
+        <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-slate-700">
+          <p className="font-semibold text-slate-900">Short-today preview</p>
+          <p className="mt-1">
+            {capacityResult.preview.removedSetCount} set(s) removed
+            {capacityResult.preview.removedExercises.length > 0
+              ? `, including ${capacityResult.preview.removedExercises
+                  .map((exercise) => exercise.exerciseName)
+                  .join(", ")}`
+              : ""}
+            .
+          </p>
+          <p className="mt-1">
+            {capacityResult.preview.retainedProtectionSummary}
+          </p>
+          <p className="mt-1">
+            Estimated time: {capacityResult.preview.estimatedMinutes} minutes.
+          </p>
+          <p className="mt-1">{capacityResult.preview.redistributionNotice}</p>
+        </div>
+      ) : null}
+
+      {sessionCapacity === "short_today" &&
+      capacityResult?.status === "unavailable" ? (
+        <p className="mt-3 text-sm text-slate-600">{capacityUnavailableCopy}</p>
       ) : null}
 
       {generatedMetadata?.selectionSummary ? (

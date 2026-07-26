@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db/prisma";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { getAccumulationWeeks } from "./mesocycle-lifecycle-math";
 import { enterMesocycleHandoffInTransaction } from "./mesocycle-handoff";
+import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
+import type { SessionCapacityReductionManifest } from "@/lib/engine/planning/v2";
 
 type MesoWithLifecycle = Pick<
   Mesocycle,
@@ -43,6 +45,7 @@ export type ActiveMesocycleWithBlocks = Prisma.MesocycleGetPayload<{
     sourceRevisionId: string | null;
     activatedAt: Date;
   }>;
+  sessionCapacityReductionManifest?: SessionCapacityReductionManifest;
 };
 
 function getAccumulationSessionThreshold(mesocycle: Pick<MesoWithLifecycle, "durationWeeks" | "sessionsPerWeek">): number {
@@ -476,8 +479,14 @@ export async function loadActiveMesocycle(userId: string): Promise<ActiveMesocyc
   if (!mesocycle) {
     return null;
   }
+  const sessionCapacityReductionManifest =
+    parseSlotPlanSeedJson(mesocycle.slotPlanSeedJson)?.acceptedPlannerIntent
+      ?.sessionCapacityReductionManifest;
   return {
     ...mesocycle,
+    ...(sessionCapacityReductionManifest
+      ? { sessionCapacityReductionManifest }
+      : {}),
     slotPlanSeedJson:
       mesocycle.currentSeedRevision?.seedPayload ?? mesocycle.slotPlanSeedJson,
   };

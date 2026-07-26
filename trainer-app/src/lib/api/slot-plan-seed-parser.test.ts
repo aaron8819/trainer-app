@@ -7,6 +7,39 @@ import {
 import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
 
 describe("parseSlotPlanSeedJson", () => {
+  const reductionManifest = {
+    version: 1 as const,
+    transformVersion: "short_today_v1" as const,
+    seedRevisionNumber: 1 as const,
+    executableRowsHash: "a".repeat(64),
+    variants: [
+      {
+        week: 1,
+        phase: "entry_calibration" as const,
+        slotId: "upper_a",
+        rows: ["bench", "row", "side"].map((exerciseId) => ({
+          exerciseId,
+          plannedSetCount: 3,
+          shortSetCount: 3,
+          omissionClass: "none" as const,
+          yieldOrder: null,
+          protectedClaims: [
+            {
+              kind: "minimum_session" as const,
+              minimumRetainedSetCount: 1,
+            },
+          ],
+        })),
+        sessionProtectionProof: {
+          anchorsRetained: true as const,
+          requiredRolesRetained: true as const,
+          directFloorsRetained: true as const,
+          exposureRowsRetained: true as const,
+          minimumSessionValidityRetained: true as const,
+        },
+      },
+    ],
+  };
   it("parses and normalizes the canonical slot-plan seed shape", () => {
     expect(
       parseSlotPlanSeedJson({
@@ -49,6 +82,47 @@ describe("parseSlotPlanSeedJson", () => {
         },
       ],
     });
+  });
+
+  it("round-trips a valid reduction manifest while legacy intent remains valid", () => {
+    const acceptedPlannerIntent = buildV2AcceptedPlannerIntentDto();
+    const parsed = parseSlotPlanSeedJson({
+      version: 1,
+      slots: [],
+      acceptedPlannerIntent: {
+        ...acceptedPlannerIntent,
+        sessionCapacityReductionManifest: reductionManifest,
+      },
+    });
+    expect(
+      parsed?.acceptedPlannerIntent?.sessionCapacityReductionManifest,
+    ).toEqual(reductionManifest);
+    expect(
+      parseSlotPlanSeedJson({
+        version: 1,
+        slots: [],
+        acceptedPlannerIntent,
+      })?.acceptedPlannerIntent,
+    ).toEqual(acceptedPlannerIntent);
+  });
+
+  it("drops malformed reduction evidence without breaking As-planned parsing", () => {
+    const acceptedPlannerIntent = buildV2AcceptedPlannerIntentDto();
+    const parsed = parseSlotPlanSeedJson({
+      version: 1,
+      slots: [],
+      acceptedPlannerIntent: {
+        ...acceptedPlannerIntent,
+        sessionCapacityReductionManifest: {
+          ...reductionManifest,
+          executableRowsHash: "altered",
+        },
+      },
+    });
+    expect(parsed?.acceptedPlannerIntent).toEqual(acceptedPlannerIntent);
+    expect(
+      parsed?.acceptedPlannerIntent?.sessionCapacityReductionManifest,
+    ).toBeUndefined();
   });
 
   it("keeps source and setCount optional so callers own legacy fallback behavior", () => {

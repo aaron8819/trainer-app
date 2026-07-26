@@ -231,3 +231,9 @@ SetLog / logged performance
 - Historical volume, analytics, SRA, explainability, and audit consumers multiply that frozen vector by sets accepted by the canonical performed-set classifier. They must not re-resolve current exercise policy.
 - Save, runtime add, and unlogged runtime swap are the only application write seams. Snapshot persistence and the workout mutation share one transaction.
 - Planner/materializer diagnostics, accepted intent, and seed/runtime replay do not consume this snapshot. It is performed-history accounting truth only.
+
+## Short-today capacity reduction
+
+`Short today` is an explicit pre-creation composition transform, not a planner, repair, readiness, or runtime-edit policy. V2 acceptance compiles one concrete reduction manifest from the accepted materialized rows. Normal replay still consumes only immutable seed `exerciseId`, `role`, and `setCount`.
+
+The canonical order is immutable seed replay, prescriptions, readiness intensity adjustment, full generated audit snapshot and original receipt capture, then the optional reduction. The explicit path validates only the narrow manifest against the active revision, week, slot, phase, and executable-row hash. The persisted reduced structure is offered truth; the full generated snapshot remains planned truth; set logs remain performed truth. Reconciliation records the authorized reduction with future generation and seed carry-forward set to `ignore`.

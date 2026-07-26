@@ -85,14 +85,20 @@ function getOpExerciseId(operation: RuntimeEditOperation): string | undefined {
   if (operation.kind === "replace_exercise") {
     return operation.facts.toExerciseId;
   }
-  if (operation.kind === "rewrite_structure") {
+  if (
+    operation.kind === "rewrite_structure" ||
+    operation.kind === "reduce_session_capacity"
+  ) {
     return undefined;
   }
   return operation.facts.exerciseId;
 }
 
 function getOpWorkoutExerciseId(operation: RuntimeEditOperation): string | undefined {
-  if (operation.kind === "rewrite_structure") {
+  if (
+    operation.kind === "rewrite_structure" ||
+    operation.kind === "reduce_session_capacity"
+  ) {
     return undefined;
   }
   return operation.facts.workoutExerciseId;
@@ -148,6 +154,12 @@ function getSetDelta(operation: RuntimeEditOperation): number {
   }
   if (operation.kind === "remove_exercise") {
     return -operation.facts.setCount;
+  }
+  if (operation.kind === "reduce_session_capacity") {
+    return -operation.facts.omitted.reduce(
+      (sum, row) => sum + row.plannedSetCount - row.retainedSetCount,
+      0,
+    );
   }
   return 0;
 }
@@ -518,6 +530,24 @@ function interpretPersistedOperation(input: {
       muscles,
       timing: "unknown",
       evidence: ["runtime removal has no explicit pain/fatigue or substitution intent"],
+    };
+  }
+
+  if (operation.kind === "reduce_session_capacity") {
+    return {
+      opKind: operation.kind,
+      intent: "user_preference",
+      confidence: "high",
+      source: "persisted_op",
+      setDelta,
+      muscles: [],
+      timing: "unknown",
+      evidence: [
+        "reason:user_selected_temporary_capacity",
+        "scope:current_workout_only",
+        "future_session_generation:ignore",
+        "future_seed_carry_forward:ignore",
+      ],
     };
   }
 

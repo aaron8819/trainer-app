@@ -11,6 +11,7 @@ import type {
   V2PlannerSplit,
   V2WeeklyDemandRange,
 } from "./types";
+import type { SessionCapacityReductionManifest } from "./session-capacity-reduction-manifest";
 
 type MuscleTargetTier =
   V2PlannerMesocyclePolicy["mesocycleDemand"]["muscles"][number]["targetTier"];
@@ -43,6 +44,7 @@ export type V2AcceptedPlannerIntentDto = {
   version: 1;
   source: "v2_planner_policy";
   capacitySelection?: V2CapacitySelectionExplanation;
+  sessionCapacityReductionManifest?: SessionCapacityReductionManifest;
   targetSkeletonId: "upper_lower_4x_v2";
   split: V2PlannerSplit;
   weekCount: number;

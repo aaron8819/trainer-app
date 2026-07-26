@@ -1,5 +1,6 @@
 import type { V2AcceptedPlannerIntentDto } from "@/lib/engine/planning/v2";
 import { mapV2CapacityChoiceToProfile } from "@/lib/engine/planning/v2/capacity-selection";
+import { sanitizeSessionCapacityReductionManifest } from "@/lib/engine/planning/v2/session-capacity-reduction-manifest";
 
 export type SlotPlanSeedRole = "CORE_COMPOUND" | "ACCESSORY";
 
@@ -561,6 +562,10 @@ export function sanitizeAcceptedPlannerIntent(
       mapV2CapacityChoiceToProfile(
         productChoice as "efficient" | "balanced" | "full",
       );
+  const sessionCapacityReductionManifest =
+    sanitizeSessionCapacityReductionManifest(
+      record.sessionCapacityReductionManifest,
+    );
 
   if (
     !split ||
@@ -599,6 +604,9 @@ export function sanitizeAcceptedPlannerIntent(
             durationDisclaimer: durationDisclaimer!,
           },
         }
+      : {}),
+    ...(sessionCapacityReductionManifest
+      ? { sessionCapacityReductionManifest }
       : {}),
     targetSkeletonId: "upper_lower_4x_v2",
     split: split as AcceptedPlannerIntent["split"],

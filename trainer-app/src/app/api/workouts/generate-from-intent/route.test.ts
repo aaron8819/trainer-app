@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 
 const mocks = vi.hoisted(() => {
   const resolveOwner = vi.fn();
@@ -88,6 +89,45 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       rationale: null,
       wasAutoregulated: false,
     }));
+  });
+
+  it.each([
+    { intent: "upper", sessionCapacity: "custom" },
+    {
+      intent: "upper",
+      sessionCapacity: "short_today",
+      omittedExerciseIds: ["client-chosen"],
+    },
+  ])("rejects non-canonical capacity input %#", async (body) => {
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(mocks.resolveOwner).not.toHaveBeenCalled();
+  });
+
+  it("captures readiness-adjusted full truth before applying Short today", () => {
+    const source = readFileSync(
+      "src/app/api/workouts/generate-from-intent/route.ts",
+      "utf8",
+    );
+    const readinessIndex = source.indexOf("applyAutoregulation(");
+    const auditSnapshotIndex = source.indexOf(
+      "buildGeneratedSessionAuditSnapshot({",
+    );
+    const receiptIndex = source.indexOf(
+      "readSessionDecisionReceipt(fullPlanSelectionMetadata)",
+    );
+    const reductionIndex = source.indexOf("applySessionCapacityReduction({");
+
+    expect(readinessIndex).toBeGreaterThan(-1);
+    expect(auditSnapshotIndex).toBeGreaterThan(readinessIndex);
+    expect(receiptIndex).toBeGreaterThan(auditSnapshotIndex);
+    expect(reductionIndex).toBeGreaterThan(receiptIndex);
   });
 
   it("rejects generation while mesocycle handoff is pending", async () => {

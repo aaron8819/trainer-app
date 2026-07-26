@@ -339,4 +339,118 @@ describe("reconcileRuntimeEditSelectionMetadata", () => {
     expect(result.runtimeEditReconciliation).toBeUndefined();
     expect(result.nextSelectionMetadata.runtimeEditReconciliation).toBeUndefined();
   });
+
+  it("suppresses only the initial rewrite fully explained by Short today", () => {
+    const shortMetadata = {
+      ...generatedSelectionMetadata,
+      sessionAuditSnapshot: {
+        ...generatedSelectionMetadata.sessionAuditSnapshot,
+        generated: {
+          ...generatedSelectionMetadata.sessionAuditSnapshot.generated,
+          exerciseCount: 2,
+          hardSetCount: 6,
+          exercises: [
+            ...generatedSelectionMetadata.sessionAuditSnapshot.generated.exercises,
+            {
+              exerciseId: "optional",
+              exerciseName: "Optional Top-up",
+              orderIndex: 1,
+              section: "accessory",
+              isMainLift: false,
+              prescribedSetCount: 3,
+              prescribedSets: [
+                { setIndex: 1, targetReps: 12 },
+                { setIndex: 2, targetReps: 12 },
+                { setIndex: 3, targetReps: 12 },
+              ],
+            },
+          ],
+        },
+      },
+      runtimeEditReconciliation: {
+        version: 1,
+        lastReconciledAt: "2026-03-23T09:00:00.000Z",
+        directives: {
+          continuityAlias: "none",
+          progressionAlias: "none",
+          futureSessionGeneration: "ignore",
+          futureSeedCarryForward: "ignore",
+        },
+        ops: [
+          {
+            kind: "reduce_session_capacity",
+            source: "api_workouts_generate_from_intent",
+            appliedAt: "2026-03-23T09:00:00.000Z",
+            scope: "current_workout_only",
+            facts: {
+              workoutId: "workout-1",
+              mode: "short_today",
+              reason: "user_selected_temporary_capacity",
+              transformVersion: "short_today_v1",
+              seedRevisionId: "revision-1",
+              seedRevisionNumber: 1,
+              seedPayloadHash: "a".repeat(64),
+              executableRowsHash: "b".repeat(64),
+              plannedStructureFingerprint: "c".repeat(64),
+              offeredStructureFingerprint: "d".repeat(64),
+              omitted: [
+                {
+                  exerciseId: "optional",
+                  exerciseName: "Optional Top-up",
+                  plannedSetCount: 3,
+                  retainedSetCount: 0,
+                  omittedSetIndexes: [1, 2, 3],
+                  omissionClass: "optional_top_up",
+                  yieldOrder: 1,
+                },
+              ],
+              retainedProtectionClaims: [],
+            },
+          },
+        ],
+      },
+    };
+    const initial = reconcileRuntimeEditSelectionMetadata({
+      selectionMetadata: shortMetadata,
+      selectionMode: "INTENT",
+      sessionIntent: "push",
+      reconciledAt: "2026-03-23T10:00:00.000Z",
+      persistedExercises: [
+        {
+          exerciseId: "bench",
+          orderIndex: 0,
+          section: "MAIN",
+          sets: [
+            { setIndex: 1, targetReps: 8, targetRpe: 8 },
+            { setIndex: 2, targetReps: 8, targetRpe: 8 },
+            { setIndex: 3, targetReps: 8, targetRpe: 8 },
+          ],
+        },
+      ],
+      mutation: { kind: "rewrite_structure" },
+    });
+    expect(initial.appendedOpKind).toBeUndefined();
+    expect(initial.runtimeEditReconciliation?.ops).toHaveLength(1);
+
+    const laterEdit = reconcileRuntimeEditSelectionMetadata({
+      selectionMetadata: initial.nextSelectionMetadata,
+      selectionMode: "INTENT",
+      sessionIntent: "push",
+      reconciledAt: "2026-03-23T11:00:00.000Z",
+      persistedExercises: [
+        {
+          exerciseId: "bench",
+          orderIndex: 0,
+          section: "MAIN",
+          sets: [{ setIndex: 1, targetReps: 8, targetRpe: 8 }],
+        },
+      ],
+      mutation: { kind: "rewrite_structure" },
+    });
+    expect(laterEdit.appendedOpKind).toBe("rewrite_structure");
+    expect(laterEdit.runtimeEditReconciliation?.ops.map((op) => op.kind)).toEqual([
+      "reduce_session_capacity",
+      "rewrite_structure",
+    ]);
+  });
 });

@@ -266,7 +266,8 @@ export type PostSessionReviewLearningSignal = {
     | "next_exposure_signal"
     | "calibration_signal"
     | "weekly_volume_signal"
-    | "session_semantics_signal";
+    | "session_semantics_signal"
+    | "capacity_reduction_signal";
   severity: "info" | "watch";
   summary: string;
   evidence: string[];
@@ -300,6 +301,21 @@ export type PostSessionReviewContract = {
   executionSummary: PostSessionReviewExecutionSummary;
   exerciseReconciliation: {
     rows: PostSessionReviewExerciseReconciliationRow[];
+  };
+  capacityReduction?: {
+    source: "selectionMetadata.runtimeEditReconciliation";
+    reason: "user_selected_temporary_capacity";
+    omittedExerciseCount: number;
+    omittedSetCount: number;
+    rows: Array<{
+      exerciseId: string;
+      exerciseName: string;
+      plannedSetCount: number;
+      retainedSetCount: number;
+      omittedSetCount: number;
+    }>;
+    distinctFromSkippedSets: true;
+    evidenceOnly: true;
   };
   performedReality: {
     source: "set_log_vs_workout_set_targets";

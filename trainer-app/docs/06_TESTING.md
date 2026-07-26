@@ -511,3 +511,7 @@ Phase 3 does not create an evidence bundle, create or clean a worktree, execute 
 connect to services, authenticate, install packages, remediate prerequisites, or clean artifacts
 created by an approved local check. Those boundaries are intentional and are not hidden behind
 command names.
+
+## Short-today verification
+
+Focused coverage must exercise manifest authoring for preferred/moderate/minimal capacity, parser compatibility, concrete row hashing, protected roles/exposures, deterministic transformation, readiness-before-reduction ordering, route request strictness, save recomputation/OCC/idempotency, reconciliation suppression, reduced incomplete projection, post-session omission interpretation, closure non-redistribution, UI preview/cancel/lock copy, and source-boundary scans. Normal seed replay tests must continue to prove accepted explanatory metadata is runtime-inert.

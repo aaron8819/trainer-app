@@ -188,6 +188,7 @@ describe("IntentWorkoutCard", () => {
     expect(generateBody).toEqual({
       intent: "upper",
       slotId: "upper_a",
+      sessionCapacity: "as_planned",
     });
 
     const saveBody = JSON.parse(fetchMock.mock.calls[1][1].body);
@@ -289,6 +290,81 @@ describe("IntentWorkoutCard", () => {
     expect(screen.getByText("Bench Press")).toBeInTheDocument();
     expect(mocks.push).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the server-authored Short-today preview and can cancel it before creation", async () => {
+    const user = userEvent.setup();
+    const shortResponse = {
+      ...makeGeneratedWorkout(),
+      sessionCapacity: {
+        requestedMode: "short_today",
+        status: "applied",
+        preview: {
+          removedExercises: [
+            { exerciseId: "row", exerciseName: "Cable Row" },
+          ],
+          removedSetCount: 3,
+          retainedProtectionSummary:
+            "Primary anchors and protected exposures are retained.",
+          estimatedMinutes: 32,
+          redistributionNotice:
+            "Nothing removed today will automatically move to another workout.",
+        },
+      },
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(shortResponse))
+      .mockResolvedValueOnce(jsonResponse(makeGeneratedWorkout()));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderCard();
+
+    await user.click(screen.getByLabelText("Short today"));
+    expect(await screen.findByText("Short-today preview")).toBeInTheDocument();
+    expect(screen.getByText(/3 set\(s\) removed, including Cable Row/)).toBeInTheDocument();
+    expect(screen.getByText(/Estimated time: 32 minutes/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Nothing removed today will automatically move to another workout.",
+      ),
+    ).toBeInTheDocument();
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+      sessionCapacity: "short_today",
+    });
+
+    await user.click(screen.getByLabelText("As planned"));
+    await waitFor(() => {
+      expect(screen.queryByText("Short-today preview")).not.toBeInTheDocument();
+    });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      sessionCapacity: "as_planned",
+    });
+  });
+
+  it("shows fail-closed copy without exposing manifest or hash internals", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce(
+        jsonResponse({
+          ...makeGeneratedWorkout(),
+          sessionCapacity: {
+            requestedMode: "short_today",
+            status: "unavailable",
+            unavailableReason: "older_plan",
+          },
+        }),
+      ),
+    );
+
+    renderCard();
+    await user.click(screen.getByLabelText("Short today"));
+
+    expect(
+      await screen.findByText("Short today is unavailable for this older plan."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/manifest|hash/i)).not.toBeInTheDocument();
   });
 
   it("round-trips supplemental deficit metadata unchanged through the preview save path", async () => {

@@ -1154,6 +1154,41 @@ describe("post-session review contract", () => {
     expect(isPostSessionReviewContract(invalid)).toBe(false);
   });
 
+  it("reports deliberate Short-today omissions separately from skipped sets", () => {
+    const contract = buildPostSessionReviewContract(
+      buildInput({
+        capacityReduction: {
+          source: "runtime_edit_reconciliation",
+          omitted: [
+            {
+              exerciseId: "optional",
+              exerciseName: "Optional Top-up",
+              plannedSetCount: 3,
+              retainedSetCount: 0,
+              omittedSetCount: 3,
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(contract.executionSummary.skippedSetCount).toBe(0);
+    expect(contract.capacityReduction).toMatchObject({
+      omittedExerciseCount: 1,
+      omittedSetCount: 3,
+      distinctFromSkippedSets: true,
+      evidenceOnly: true,
+    });
+    expect(contract.learningSignals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "capacity_reduction_signal",
+          severity: "info",
+        }),
+      ]),
+    );
+  });
+
   it("rejects missing identity or source truth", () => {
     const contract = buildPostSessionReviewContract(buildInput());
 

@@ -353,6 +353,7 @@ describe("pull-request CI contract", () => {
     expect(workflow).toContain("name: credential-free-inventory");
     expect(workflow).toContain("fetch-depth: 0");
     expect(workflow).toContain("node-version: 22");
+    expect(workflow).toContain("TZ: America/Chicago");
     expect(workflow).toContain("run: npm ci");
     expect(workflow).toContain(
       "run: npm run test:inventory:credential-free -- --base-ref origin/master"

@@ -89,8 +89,9 @@ Sources of truth:
 
 Every pull request targeting `master` runs the `credential-free-inventory` GitHub Actions check
 from `.github/workflows/credential-free-inventory.yml`. The workflow checks out full Git history,
-uses Node.js 22, installs the exact lockfile with `npm ci`, and delegates all classification and
-execution behavior to:
+uses Node.js 22, fixes `TZ` to `America/Chicago` for the repository's local-week test semantics,
+installs the exact lockfile with `npm ci`, and delegates all classification and execution behavior
+to:
 
 ```text
 npm run test:inventory:credential-free -- --base-ref origin/master

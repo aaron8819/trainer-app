@@ -120,6 +120,15 @@ export async function POST(request: Request) {
     );
   }
   const nextWorkoutContext = await loadNextWorkoutContext(user.id);
+  if (
+    nextWorkoutContext.activeMesocycleId !== undefined &&
+    nextWorkoutContext.activeMesocycleId !== activeMesocycle.id
+  ) {
+    return NextResponse.json(
+      { error: "Active plan selection changed concurrently. Retry generation." },
+      { status: 409 }
+    );
+  }
   const shouldApplyOptionalGapFill =
     parsed.data.optionalGapFill === true && parsed.data.intent === "body_part";
   const shouldApplySupplementalDeficitSession =
@@ -287,6 +296,15 @@ export async function POST(request: Request) {
     sessionAuditSnapshot
   );
   const receipt = readSessionDecisionReceipt(fullPlanSelectionMetadata);
+  if (
+    receipt?.sessionProvenance?.mesocycleId &&
+    receipt.sessionProvenance.mesocycleId !== activeMesocycle.id
+  ) {
+    return NextResponse.json(
+      { error: "Active plan selection changed concurrently. Retry generation." },
+      { status: 409 }
+    );
+  }
   const parsedSeed = activeMesocycle
     ? parseSlotPlanSeedJson(activeMesocycle.slotPlanSeedJson)
     : null;

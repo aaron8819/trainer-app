@@ -1682,6 +1682,40 @@ describe("POST /api/workouts/save", () => {
     expect(mocks.transitionMesocycleStateInTransaction).not.toHaveBeenCalled();
   });
 
+  it("rejects a generated plan after the selected mesocycle changes", async () => {
+    const selectionMetadata = buildCanonicalSelectionMetadata();
+    Object.assign(selectionMetadata.sessionDecisionReceipt, {
+      sessionProvenance: {
+        mesocycleId: "meso-stale",
+        compositionSource: "runtime_selection",
+      },
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          selectionMetadata,
+          exercises: [
+            {
+              section: "MAIN",
+              exerciseId: "bench",
+              sets: [{ setIndex: 1, targetReps: 8 }],
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Active plan selection changed concurrently. Retry the save.",
+    });
+    expect(mocks.workoutUpsert).not.toHaveBeenCalled();
+  });
+
   it("mark_completed resolves to PARTIAL when unresolved sets remain", async () => {
     mocks.workoutFindUnique
       .mockResolvedValueOnce({

@@ -352,6 +352,12 @@ export async function POST(request: Request) {
           shouldResolve: shouldResolveMesocycleForSaveFence,
           shouldRequireForPerformedTransition: shouldTransitionPerformed,
         });
+      if (
+        receipt.sessionProvenance?.mesocycleId &&
+        receipt.sessionProvenance.mesocycleId !== resolvedMesocycleId
+      ) {
+        throw new Error("ACTIVE_PLAN_SELECTION_CONFLICT");
+      }
 
       const shouldSetMesoSnapshot =
         (shouldTransitionPerformed || shouldSetPlannedMesoSnapshot) &&

@@ -3,7 +3,10 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 import { closePrismaResourcesForAuditCli } from "@/lib/db/prisma";
-import { selectActivePlan } from "./active-plan-context";
+import {
+  selectActivePlan,
+  selectSoleCreatedPlanInTransaction,
+} from "./active-plan-context";
 
 export function registerActivePlanContextDatabaseTests(
   databaseUrl: string
@@ -84,6 +87,49 @@ export function registerActivePlanContextDatabaseTests(
           where: { macroCycleId: plan.id, isActive: true },
         })
       ).resolves.toBe(1);
+    });
+
+    it("auto-selects only a provably sole first plan", async () => {
+      const soleOwner = await db.user.create({
+        data: { email: `sole-${crypto.randomUUID()}@test.local` },
+      });
+      const solePlan = await createPlan(soleOwner.id, "sole");
+      const selected = await db.$transaction((tx) =>
+        selectSoleCreatedPlanInTransaction(tx, {
+          userId: soleOwner.id,
+          targetMacroCycleId: solePlan.id,
+          targetMesocycleId: solePlan.mesocycles[0].id,
+        })
+      );
+      expect(selected?.activeMacroCycleId).toBe(solePlan.id);
+
+      const ambiguousOwner = await db.user.create({
+        data: { email: `ambiguous-${crypto.randomUUID()}@test.local` },
+      });
+      const [, secondPlan] = await Promise.all([
+        createPlan(ambiguousOwner.id, "ambiguous-a"),
+        createPlan(ambiguousOwner.id, "ambiguous-b"),
+      ]);
+      const skipped = await db.$transaction((tx) =>
+        selectSoleCreatedPlanInTransaction(tx, {
+          userId: ambiguousOwner.id,
+          targetMacroCycleId: secondPlan.id,
+          targetMesocycleId: secondPlan.mesocycles[0].id,
+        })
+      );
+      const unchangedOwner = await db.user.findUniqueOrThrow({
+        where: { id: ambiguousOwner.id },
+      });
+      expect(skipped).toBeNull();
+      expect(unchangedOwner.activeMacroCycleId).toBeNull();
+      await expect(
+        db.mesocycle.count({
+          where: {
+            macroCycle: { userId: ambiguousOwner.id },
+            isActive: true,
+          },
+        })
+      ).resolves.toBe(0);
     });
 
     it("atomically replaces the selected plan without mutating prior plan history", async () => {

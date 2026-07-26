@@ -6,6 +6,7 @@ vi.mock("@/lib/db/prisma", () => ({ prisma: {} }));
 import {
   claimSelectedPlanForTransitionInTransaction,
   resolveActivePlanContextInTransaction,
+  selectSoleCreatedPlanInTransaction,
   selectActivePlanInTransaction,
 } from "./active-plan-context";
 
@@ -212,6 +213,71 @@ describe("active plan context", () => {
 });
 
 describe("active plan selection transition", () => {
+  it("does not auto-select a newly created plan when another owned plan already exists", async () => {
+    const macroCycleFindUnique = vi.fn();
+    const mesocycleFindUnique = vi.fn();
+    const userUpdateMany = vi.fn();
+    const tx = {
+      user: {
+        findUnique: vi.fn(async () => ({ activeMacroCycleId: null })),
+        updateMany: userUpdateMany,
+      },
+      macroCycle: {
+        count: vi.fn(async () => 2),
+        findUnique: macroCycleFindUnique,
+      },
+      mesocycle: {
+        findUnique: mesocycleFindUnique,
+        updateMany: vi.fn(),
+      },
+    } as unknown as Prisma.TransactionClient;
+
+    await expect(
+      selectSoleCreatedPlanInTransaction(tx, {
+        userId: "user-1",
+        targetMacroCycleId: "plan-b",
+        targetMesocycleId: "meso-b",
+      })
+    ).resolves.toBeNull();
+    expect(macroCycleFindUnique).not.toHaveBeenCalled();
+    expect(mesocycleFindUnique).not.toHaveBeenCalled();
+    expect(userUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it("delegates sole first-plan auto-selection to the canonical transaction owner", async () => {
+    const tx = {
+      user: {
+        findUnique: vi.fn(async () => ({ activeMacroCycleId: null })),
+        updateMany: vi.fn(async () => ({ count: 1 })),
+      },
+      macroCycle: {
+        count: vi.fn(async () => 1),
+        findUnique: vi.fn(async () => ({ id: "plan-a", userId: "user-1" })),
+      },
+      mesocycle: {
+        findUnique: vi.fn(async () => ({
+          id: "meso-a",
+          macroCycleId: "plan-a",
+          state: "ACTIVE_ACCUMULATION",
+          isActive: false,
+        })),
+        updateMany: vi.fn(async () => ({ count: 1 })),
+      },
+    } as unknown as Prisma.TransactionClient;
+
+    await expect(
+      selectSoleCreatedPlanInTransaction(tx, {
+        userId: "user-1",
+        targetMacroCycleId: "plan-a",
+        targetMesocycleId: "meso-a",
+      })
+    ).resolves.toMatchObject({
+      activeMacroCycleId: "plan-a",
+      activeMesocycleId: "meso-a",
+      replayed: false,
+    });
+  });
+
   it("rejects a lifecycle mutation for an unselected plan", async () => {
     const tx = {
       user: {

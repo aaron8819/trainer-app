@@ -67,6 +67,7 @@ describe("POST /api/workouts/generate-from-template", () => {
     });
     mocks.loadPendingMesocycleHandoff.mockResolvedValue(null);
     mocks.loadNextWorkoutContext.mockResolvedValue({
+      activeMesocycleId: "meso-1",
       intent: "push",
       slotId: "push_a",
       slotSequenceIndex: 0,
@@ -151,6 +152,27 @@ describe("POST /api/workouts/generate-from-template", () => {
       error: "Selected plan with an active mesocycle is required.",
     });
     expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
+    expect(mocks.generateSessionFromTemplate).not.toHaveBeenCalled();
+  });
+
+  it("rejects generation when selected-plan reads disagree", async () => {
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      activeMesocycleId: "meso-2",
+      source: "rotation",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateId: "template-1" }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Active plan selection changed concurrently. Retry generation.",
+    });
     expect(mocks.generateSessionFromTemplate).not.toHaveBeenCalled();
   });
 

@@ -5,6 +5,7 @@ import { generateMacroSchema } from "@/lib/validation";
 import { generateMacroCycle } from "@/lib/engine";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { Prisma } from "@prisma/client";
+import { selectSoleCreatedPlanInTransaction } from "@/lib/api/active-plan-context";
 
 /**
  * POST /api/periodization/macro
@@ -91,16 +92,6 @@ export async function POST(request: NextRequest) {
   }>;
   try {
     created = await prisma.$transaction(async (tx) => {
-    const currentOwner = await tx.user.findUnique({
-      where: { id: user.id },
-      select: { activeMacroCycleId: true },
-    });
-    if (!currentOwner) {
-      throw new Error("ACTIVE_PLAN_OWNER_NOT_FOUND");
-    }
-    const shouldSelect =
-      currentOwner.activeMacroCycleId === null && macro.mesocycles.length > 0;
-
     const createdMacroCycle = await tx.macroCycle.create({
       data: {
         id: macro.id,
@@ -120,7 +111,7 @@ export async function POST(request: NextRequest) {
                 | "ATHLETICISM"
                 | "GENERAL_HEALTH"),
         mesocycles: {
-          create: macro.mesocycles.map((meso, index) => ({
+          create: macro.mesocycles.map((meso) => ({
             id: meso.id,
             mesoNumber: meso.mesoNumber,
             startWeek: meso.startWeek,
@@ -128,7 +119,7 @@ export async function POST(request: NextRequest) {
             focus: meso.focus,
             volumeTarget: meso.volumeTarget.toUpperCase() as "LOW" | "MODERATE" | "HIGH" | "PEAK",
             intensityBias: meso.intensityBias.toUpperCase() as "STRENGTH" | "HYPERTROPHY" | "ENDURANCE",
-            isActive: shouldSelect && index === 0,
+            isActive: false,
             blocks: {
               create: meso.blocks.map((block) => ({
                 id: block.id,
@@ -158,17 +149,24 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (shouldSelect) {
-      const selected = await tx.user.updateMany({
-        where: { id: user.id, activeMacroCycleId: null },
-        data: { activeMacroCycleId: createdMacroCycle.id },
+    if (createdMacroCycle.mesocycles[0]) {
+      await selectSoleCreatedPlanInTransaction(tx, {
+        userId: user.id,
+        targetMacroCycleId: createdMacroCycle.id,
+        targetMesocycleId: createdMacroCycle.mesocycles[0].id,
       });
-      if (selected.count !== 1) {
-        throw new Error("ACTIVE_PLAN_SELECTION_CONFLICT");
-      }
     }
 
-    return createdMacroCycle;
+    return tx.macroCycle.findUniqueOrThrow({
+      where: { id: createdMacroCycle.id },
+      include: {
+        mesocycles: {
+          include: {
+            blocks: true,
+          },
+        },
+      },
+    });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     const isSelectionConflict =

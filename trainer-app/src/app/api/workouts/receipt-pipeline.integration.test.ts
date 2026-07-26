@@ -10,6 +10,8 @@ const state = vi.hoisted(() => ({
 const mocks = vi.hoisted(() => {
   const resolveOwner = vi.fn();
   const loadActiveMesocycle = vi.fn();
+  const loadNextWorkoutContext = vi.fn();
+  const loadRequestedAdvancingSlotSnapshot = vi.fn();
   const generateSessionFromIntent = vi.fn();
   const generateDeloadSessionFromIntent = vi.fn();
   const applyAutoregulation = vi.fn();
@@ -107,6 +109,8 @@ const mocks = vi.hoisted(() => {
   return {
     resolveOwner,
     loadActiveMesocycle,
+    loadNextWorkoutContext,
+    loadRequestedAdvancingSlotSnapshot,
     generateSessionFromIntent,
     generateDeloadSessionFromIntent,
     applyAutoregulation,
@@ -171,6 +175,13 @@ vi.mock("@/lib/api/mesocycle-lifecycle", async (importOriginal) => {
     getCurrentMesoWeek: (...args: unknown[]) => mocks.getCurrentMesoWeek(...args),
   };
 });
+
+vi.mock("@/lib/api/next-session", () => ({
+  loadNextWorkoutContext: (...args: unknown[]) =>
+    mocks.loadNextWorkoutContext(...args),
+  loadRequestedAdvancingSlotSnapshot: (...args: unknown[]) =>
+    mocks.loadRequestedAdvancingSlotSnapshot(...args),
+}));
 
 vi.mock("@/lib/api/mesocycle-lifecycle-state", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/mesocycle-lifecycle-state")>();
@@ -286,6 +297,24 @@ describe("canonical session decision receipt pipeline", () => {
       state: "ACTIVE_ACCUMULATION",
       durationWeeks: 5,
     });
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      activeMesocycleId: "meso-1",
+      intent: "push",
+      slotId: "push_a",
+      slotSequenceIndex: 0,
+      slotSequenceLength: 3,
+      slotSource: "mesocycle_slot_sequence",
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "rotation",
+      weekInMeso: 2,
+      sessionInWeek: 1,
+      derivationTrace: [],
+      selectedIncompleteStatus: null,
+      selectedIncompleteReadiness: null,
+      lifecycleBlocker: null,
+    });
+    mocks.loadRequestedAdvancingSlotSnapshot.mockResolvedValue(undefined);
     mocks.generateDeloadSessionFromIntent.mockResolvedValue({ error: "unexpected" });
     mocks.generateSessionFromIntent.mockResolvedValue({
       workout: {

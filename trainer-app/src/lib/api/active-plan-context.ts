@@ -322,6 +322,36 @@ export type SelectActivePlanResult = {
   replayed: boolean;
 };
 
+export async function selectSoleCreatedPlanInTransaction(
+  tx: Prisma.TransactionClient,
+  input: {
+    userId: string;
+    targetMacroCycleId: string;
+    targetMesocycleId: string;
+  }
+): Promise<SelectActivePlanResult | null> {
+  const [owner, ownedPlanCount] = await Promise.all([
+    tx.user.findUnique({
+      where: { id: input.userId },
+      select: { activeMacroCycleId: true },
+    }),
+    tx.macroCycle.count({
+      where: { userId: input.userId },
+    }),
+  ]);
+  if (!owner) {
+    throw new Error("ACTIVE_PLAN_OWNER_NOT_FOUND");
+  }
+  if (owner.activeMacroCycleId !== null || ownedPlanCount !== 1) {
+    return null;
+  }
+
+  return selectActivePlanInTransaction(tx, {
+    ...input,
+    expectedActiveMacroCycleId: null,
+  });
+}
+
 export async function claimSelectedPlanForTransitionInTransaction(
   tx: Prisma.TransactionClient,
   input: { userId: string; macroCycleId: string }

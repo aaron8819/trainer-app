@@ -206,6 +206,7 @@ function runCredentialFreeInventory(input: {
   projectRoot: string;
   vitestCli: string;
 }): number {
+  const ciMaxWorkers = process.env.CI === "true" ? ["--maxWorkers", "2"] : [];
   const manifestPath = path.join(
     input.projectRoot,
     "scripts",
@@ -258,6 +259,9 @@ function runCredentialFreeInventory(input: {
     `- import-only placeholder files selected: ${selection.importOnlyPlaceholder.length}`
   );
   console.log(`- DB-required files excluded: ${selection.databaseRequired.length}`);
+  console.log(
+    `- Vitest worker limit: ${ciMaxWorkers.length > 0 ? "2 (CI)" : "runner default"}`
+  );
   console.log("DB-required suites excluded:");
   for (const entry of selection.databaseRequired) {
     const command = policy.commandRegistry.find(
@@ -279,7 +283,10 @@ function runCredentialFreeInventory(input: {
 
   const credentialFreeResult = runVitestPhase({
     vitestCli: input.vitestCli,
-    args: excludedPaths.flatMap((testFile) => ["--exclude", testFile]),
+    args: [
+      ...excludedPaths.flatMap((testFile) => ["--exclude", testFile]),
+      ...ciMaxWorkers,
+    ],
     environment: credentialFreeEnvironment(),
   });
 
@@ -313,7 +320,10 @@ function runCredentialFreeInventory(input: {
           }
         : runVitestPhase({
             vitestCli: input.vitestCli,
-            args: selection.importOnlyPlaceholder.map((entry) => entry.path),
+            args: [
+              ...selection.importOnlyPlaceholder.map((entry) => entry.path),
+              ...ciMaxWorkers,
+            ],
             environment: placeholderEnvironment,
           });
     if (existsSync(attemptMarker)) {

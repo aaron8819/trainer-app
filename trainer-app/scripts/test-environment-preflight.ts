@@ -1,7 +1,9 @@
 import { spawnSync } from "node:child_process";
 import {
+  closeSync,
   existsSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -13,6 +15,7 @@ import {
   buildTestEnvironmentPreflight,
   compareTestSuiteEnvironmentManifests,
   DATABASE_TARGET_ENV_VARS,
+  IMPORT_ONLY_PLACEHOLDER_URL,
   inspectDependencyFilesystem,
   inspectPrismaClientFilesystem,
   parseVitestSummary,
@@ -124,7 +127,9 @@ function baseRefFromArgs(): string | undefined {
 function readBaseManifest(
   projectRoot: string,
   baseRef: string
-): TestSuiteEnvironmentManifest | undefined {
+):
+  | { manifest: TestSuiteEnvironmentManifest; error?: never }
+  | { manifest?: never; error: string } {
   const result = spawnSync(
     "git",
     ["show", `${baseRef}:trainer-app/scripts/test-suite-environments.json`],
@@ -134,11 +139,27 @@ function readBaseManifest(
       windowsHide: true,
     }
   );
-  if (result.status !== 0) return undefined;
+  if (result.status !== 0) {
+    return {
+      error: `The requested base ref ${baseRef} does not contain the test-suite environment manifest.`,
+    };
+  }
   try {
-    return JSON.parse(result.stdout) as TestSuiteEnvironmentManifest;
+    const manifest = JSON.parse(result.stdout) as Partial<TestSuiteEnvironmentManifest>;
+    if (
+      manifest.schema !== "trainer-test-suite-environments" ||
+      manifest.version !== 1 ||
+      !Array.isArray(manifest.suites)
+    ) {
+      return {
+        error: `The test-suite environment manifest at ${baseRef} is malformed or unsupported.`,
+      };
+    }
+    return { manifest: manifest as TestSuiteEnvironmentManifest };
   } catch {
-    return undefined;
+    return {
+      error: `The test-suite environment manifest at ${baseRef} is malformed or unsupported.`,
+    };
   }
 }
 
@@ -149,27 +170,68 @@ function runVitestPhase(input: {
 }): {
   status: number;
   summary: VitestSummaryCounts | null;
+  termination: string | null;
 } {
-  const result = spawnSync(process.execPath, [input.vitestCli, "run", ...input.args], {
-    cwd: process.cwd(),
-    env: input.environment,
-    encoding: "utf8",
-    windowsHide: true,
-    maxBuffer: 10 * 1024 * 1024,
-  });
-  if (result.stdout) process.stdout.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
+  const outputDirectory = mkdtempSync(path.join(tmpdir(), "trainer-vitest-output-"));
+  const stdoutPath = path.join(outputDirectory, "stdout.log");
+  const stderrPath = path.join(outputDirectory, "stderr.log");
+  const stdoutFd = openSync(stdoutPath, "w");
+  const stderrFd = openSync(stderrPath, "w");
+  const result = (() => {
+    try {
+      return spawnSync(process.execPath, [input.vitestCli, "run", ...input.args], {
+        cwd: process.cwd(),
+        env: input.environment,
+        windowsHide: true,
+        stdio: ["ignore", stdoutFd, stderrFd],
+      });
+    } finally {
+      closeSync(stdoutFd);
+      closeSync(stderrFd);
+    }
+  })();
+  const { stdout, stderr } = (() => {
+    try {
+      return {
+        stdout: readFileSync(stdoutPath, "utf8"),
+        stderr: readFileSync(stderrPath, "utf8"),
+      };
+    } finally {
+      rmSync(outputDirectory, { recursive: true, force: true });
+    }
+  })();
+  const termination = result.error
+    ? `${result.error.name}: ${result.error.message}`
+    : result.signal
+      ? `signal ${result.signal}`
+      : null;
+  if (process.env.CI !== "true") {
+    process.stdout.write(stdout);
+    process.stderr.write(stderr);
+  } else if (result.status !== 0 || termination) {
+    const failureTailLimit = 256 * 1024;
+    console.error("Vitest failure output (bounded tail):");
+    process.stderr.write(`${stdout}\n${stderr}`.slice(-failureTailLimit));
+  }
+  if (termination) {
+    console.error(`Vitest process terminated abnormally: ${termination}`);
+  }
   const status = result.status ?? 1;
   return {
     status,
-    summary: parseVitestSummary(`${result.stdout ?? ""}\n${result.stderr ?? ""}`),
+    summary: parseVitestSummary(stdout),
+    termination,
   };
 }
 
 function printPhaseSummary(
   label: string,
   selectedFiles: number,
-  result: { status: number; summary: VitestSummaryCounts | null }
+  result: {
+    status: number;
+    summary: VitestSummaryCounts | null;
+    termination: string | null;
+  }
 ): void {
   const summary = result.summary;
   console.log(`${label}:`);
@@ -181,12 +243,17 @@ function printPhaseSummary(
   console.log(`- tests passed: ${summary?.tests.passed ?? 0}`);
   console.log(`- tests skipped: ${summary?.tests.skipped ?? 0}`);
   console.log(`- tests failed: ${summary?.tests.failed ?? (result.status === 0 ? 0 : 1)}`);
+  console.log(`- abnormal process termination: ${result.termination ?? "none"}`);
 }
 
 function runCredentialFreeInventory(input: {
   projectRoot: string;
   vitestCli: string;
 }): number {
+  const ciVitestArgs =
+    process.env.CI === "true"
+      ? ["--maxWorkers", "1", "--reporter", "json"]
+      : [];
   const manifestPath = path.join(
     input.projectRoot,
     "scripts",
@@ -214,6 +281,17 @@ function runCredentialFreeInventory(input: {
     }
     return 1;
   }
+  const baseRef = baseRefFromArgs();
+  let baseManifest: TestSuiteEnvironmentManifest | undefined;
+  if (baseRef) {
+    const baseResult = readBaseManifest(input.projectRoot, baseRef);
+    if (baseResult.error) {
+      console.error("Unexpected branch/base comparison failure:");
+      console.error(`- ${baseResult.error}`);
+      return 1;
+    }
+    baseManifest = baseResult.manifest;
+  }
 
   const selection = selectTestSuitesByEnvironment({
     manifest,
@@ -228,22 +306,34 @@ function runCredentialFreeInventory(input: {
     `- import-only placeholder files selected: ${selection.importOnlyPlaceholder.length}`
   );
   console.log(`- DB-required files excluded: ${selection.databaseRequired.length}`);
+  console.log(
+    `- Vitest worker limit: ${ciVitestArgs.length > 0 ? "1 (CI)" : "runner default"}`
+  );
   console.log("DB-required suites excluded:");
   for (const entry of selection.databaseRequired) {
+    const command = policy.commandRegistry.find(
+      (candidate) => candidate.id === entry.commandId
+    );
     console.log(
-      `- ${entry.path} | owner=${entry.owner} | command=npm run ${entry.packageScript} -- --confirm-disposable | reason=${entry.reason}`
+      `- ${entry.path} | owner=${entry.owner} | environment-profile=${command?.profile ?? "missing"} | command-id=${entry.commandId ?? "missing"} | command=npm run ${entry.packageScript} -- --confirm-disposable | reason=${entry.reason}`
     );
   }
+  console.log(
+    "Disposable DB suites are intentionally excluded and must be run through their separately authorized command."
+  );
   console.log("Import-only placeholder suites:");
   for (const entry of selection.importOnlyPlaceholder) {
     console.log(
-      `- ${entry.path} | owner=${entry.owner} | placeholder=reserved TEST-NET URL | connection-guard=required | reason=${entry.reason}`
+      `- ${entry.path} | owner=${entry.owner} | placeholder=${IMPORT_ONLY_PLACEHOLDER_URL} | connection-guard=required | reason=${entry.reason}`
     );
   }
 
   const credentialFreeResult = runVitestPhase({
     vitestCli: input.vitestCli,
-    args: excludedPaths.flatMap((testFile) => ["--exclude", testFile]),
+    args: [
+      ...excludedPaths.flatMap((testFile) => ["--exclude", testFile]),
+      ...ciVitestArgs,
+    ],
     environment: credentialFreeEnvironment(),
   });
 
@@ -263,7 +353,9 @@ function runCredentialFreeInventory(input: {
   let importOnlyResult: {
     status: number;
     summary: VitestSummaryCounts | null;
+    termination: string | null;
   };
+  let placeholderConnectionAttempted = false;
   try {
     importOnlyResult =
       selection.importOnlyPlaceholder.length === 0
@@ -273,13 +365,18 @@ function runCredentialFreeInventory(input: {
               files: { total: 0, passed: 0, failed: 0, skipped: 0 },
               tests: { total: 0, passed: 0, failed: 0, skipped: 0 },
             },
+            termination: null,
           }
         : runVitestPhase({
             vitestCli: input.vitestCli,
-            args: selection.importOnlyPlaceholder.map((entry) => entry.path),
+            args: [
+              ...selection.importOnlyPlaceholder.map((entry) => entry.path),
+              ...ciVitestArgs,
+            ],
             environment: placeholderEnvironment,
           });
     if (existsSync(attemptMarker)) {
+      placeholderConnectionAttempted = true;
       console.error(
         "Unexpected import-only placeholder connection attempt was blocked."
       );
@@ -303,21 +400,34 @@ function runCredentialFreeInventory(input: {
   console.log(
     `DB-required suites excluded: ${selection.databaseRequired.length} (not run; DB coverage is separate)`
   );
-  const unexpectedFailure =
-    credentialFreeResult.status !== 0 ||
-    importOnlyResult.status !== 0 ||
-    !credentialFreeResult.summary ||
-    !importOnlyResult.summary;
+  console.log("Import-only placeholder safeguards:");
+  console.log(`- exact guarded TEST-NET URL: ${IMPORT_ONLY_PLACEHOLDER_URL}`);
   console.log(
-    `Unexpected collection or test failures: ${unexpectedFailure ? "present" : "none"}`
+    `- socket connection attempt: ${placeholderConnectionAttempted ? "detected and failed" : "none observed"}`
   );
+  const credentialFreeFailure = credentialFreeResult.status !== 0;
+  const importOnlyFailure = importOnlyResult.status !== 0;
+  const malformedResult =
+    !credentialFreeResult.summary || !importOnlyResult.summary;
+  console.log("Unexpected failure status:");
+  console.log(
+    `- credential-free collection, setup, import, or test failure: ${credentialFreeFailure ? "present" : "none"}`
+  );
+  console.log(
+    `- import-only collection, setup, import, or test failure: ${importOnlyFailure ? "present" : "none"}`
+  );
+  console.log(
+    `- malformed or incomplete Vitest result: ${malformedResult ? "present" : "none"}`
+  );
+  console.log("- manifest or classification failure: none");
+  console.log(`- branch/base comparison failure: ${baseRef ? "none" : "not requested"}`);
+  const unexpectedFailure =
+    credentialFreeFailure || importOnlyFailure || malformedResult;
 
-  const baseRef = baseRefFromArgs();
   if (baseRef) {
-    const baseManifest = readBaseManifest(input.projectRoot, baseRef);
     const delta = compareTestSuiteEnvironmentManifests(baseManifest, manifest);
     console.log(`Branch/base classification delta (${baseRef}):`);
-    console.log(`- base manifest: ${baseManifest ? "available" : "not available"}`);
+    console.log("- base manifest: available and valid");
     console.log(`- added: ${delta.added.length}`);
     console.log(`- removed: ${delta.removed.length}`);
     console.log(`- changed: ${delta.changed.length}`);

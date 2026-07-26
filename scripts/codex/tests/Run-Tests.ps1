@@ -771,6 +771,27 @@ Invoke-Test 'path verification selection and deduplication' {
     finally { Remove-TestRepository -Fixture $fixture }
 }
 
+Invoke-Test 'pull-request workflow selects credential-free CI verification' {
+    $fixture = New-TestRepository
+    try {
+        $result = Invoke-Inspector -Fixture $fixture -Json -ChangedPath @('.github/workflows/credential-free-inventory.yml')
+        $manifest = $result.Text | ConvertFrom-Json
+        $implementationIds = @($manifest.verification.implementation.id)
+        $releaseIds = @($manifest.verification.release.id)
+        foreach ($id in @(
+                'npm-test-environment-classification',
+                'codex-registry-validator',
+                'npm-test-inventory-credential-free',
+                'git-diff-check'
+            )) {
+            Assert-True ($implementationIds -contains $id) "Credential-free CI workflow did not select $id."
+        }
+        Assert-True ($releaseIds -contains 'verify') 'Credential-free CI workflow did not preserve full release verification.'
+        Assert-True ($manifest.pathPolicy.allowedPathRoots -contains '.github/workflows') 'Shared tooling path policy does not allow the workflow owner.'
+    }
+    finally { Remove-TestRepository -Fixture $fixture }
+}
+
 Invoke-Test 'database backup paths select the focused harness in Phase 1' {
     $fixture = New-TestRepository
     try {

@@ -213,18 +213,20 @@ describe("test-suite environment manifest", () => {
     const before = manifest([databaseRequired("src/old.db.test.ts")]);
     const after = manifest([
       databaseRequired("src/new.db.test.ts"),
-      {
-        ...databaseRequired("src/old.db.test.ts"),
-        packageScript: "test:db:other",
-      },
+      importOnly("src/changed.test.ts"),
     ]);
+    before.suites.push(databaseRequired("src/removed.db.test.ts"));
+    before.suites.push(databaseRequired("src/changed.test.ts"));
     const delta = compareTestSuiteEnvironmentManifests(before, after);
     expect(delta.added.map((entry) => entry.path)).toEqual([
       "src/new.db.test.ts",
     ]);
-    expect(delta.removed).toEqual([]);
-    expect(delta.changed.map((entry) => entry.after.path)).toEqual([
+    expect(delta.removed.map((entry) => entry.path)).toEqual([
       "src/old.db.test.ts",
+      "src/removed.db.test.ts",
+    ]);
+    expect(delta.changed.map((entry) => entry.after.path)).toEqual([
+      "src/changed.test.ts",
     ]);
   });
 });
@@ -327,5 +329,69 @@ describe("credential-free and placeholder failure boundaries", () => {
       files: { total: 37, passed: 34, failed: 2, skipped: 1 },
       tests: { total: 108, passed: 101, failed: 4, skipped: 3 },
     });
+  });
+
+  it("parses deterministic Vitest JSON reporter counts", () => {
+    const output = JSON.stringify({
+      numTotalTests: 4,
+      numPassedTests: 2,
+      numFailedTests: 1,
+      numPendingTests: 1,
+      numTodoTests: 0,
+      testResults: [
+        { status: "passed" },
+        { status: "failed" },
+        { status: "pending" },
+      ],
+    });
+    expect(parseVitestSummary(output)).toEqual({
+      files: { total: 3, passed: 1, failed: 1, skipped: 1 },
+      tests: { total: 4, passed: 2, failed: 1, skipped: 1 },
+    });
+  });
+
+  it("rejects incomplete or malformed Vitest results", () => {
+    expect(parseVitestSummary("Test Files  1 passed (1)")).toBeNull();
+    expect(
+      parseVitestSummary(
+        ["Test Files  passed", "Tests  1 passed (1)"].join("\n")
+      )
+    ).toBeNull();
+  });
+});
+
+describe("pull-request CI contract", () => {
+  it("delegates every environment class to the canonical inventory command", () => {
+    const workflow = readFileSync(
+      resolve("..", ".github/workflows/credential-free-inventory.yml"),
+      "utf8"
+    );
+
+    expect(workflow).toContain("pull_request:");
+    expect(workflow).toContain("- master");
+    expect(workflow).toContain("name: credential-free-inventory");
+    expect(workflow).toContain("fetch-depth: 0");
+    expect(workflow).toContain("node-version: 22");
+    expect(workflow).toContain("CI: true");
+    expect(workflow).toContain("TZ: America/Chicago");
+    expect(workflow).toContain("uses: actions/checkout@v7");
+    expect(workflow).toContain("uses: actions/setup-node@v7");
+    expect(workflow).toContain("run: npm ci");
+    expect(workflow).toContain(
+      "run: npm run test:inventory:credential-free -- --base-ref origin/master"
+    );
+    expect(workflow).not.toMatch(/\bDATABASE_URL\b|\bTEST_DATABASE_URL\b/);
+    expect(workflow).not.toContain("test:db:");
+    expect(workflow).not.toContain("continue-on-error");
+    expect(workflow).not.toMatch(/\bvitest\b/);
+
+    const runner = readFileSync(
+      resolve("scripts/test-environment-preflight.ts"),
+      "utf8"
+    );
+    expect(runner).toContain('["--maxWorkers", "1", "--reporter", "json"]');
+    expect(runner).toContain('stdio: ["ignore", stdoutFd, stderrFd]');
+    expect(runner).toContain("Vitest failure output (bounded tail):");
+    expect(runner).toContain("abnormal process termination");
   });
 });

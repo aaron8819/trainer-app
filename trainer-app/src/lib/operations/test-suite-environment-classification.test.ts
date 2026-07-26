@@ -371,6 +371,8 @@ describe("pull-request CI contract", () => {
       "utf8"
     );
     expect(runner).toContain('["--maxWorkers", "1"]');
+    expect(runner).toContain('stdio: ["ignore", outputFd, outputFd]');
+    expect(runner).toContain("Vitest failure output (bounded tail):");
     expect(runner).toContain("abnormal process termination");
   });
 });

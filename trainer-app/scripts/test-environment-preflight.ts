@@ -1,7 +1,9 @@
 import { spawnSync } from "node:child_process";
 import {
+  closeSync,
   existsSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -170,27 +172,47 @@ function runVitestPhase(input: {
   summary: VitestSummaryCounts | null;
   termination: string | null;
 } {
-  const result = spawnSync(process.execPath, [input.vitestCli, "run", ...input.args], {
-    cwd: process.cwd(),
-    env: input.environment,
-    encoding: "utf8",
-    windowsHide: true,
-    maxBuffer: 10 * 1024 * 1024,
-  });
-  if (result.stdout) process.stdout.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
+  const outputDirectory = mkdtempSync(path.join(tmpdir(), "trainer-vitest-output-"));
+  const outputPath = path.join(outputDirectory, "vitest.log");
+  const outputFd = openSync(outputPath, "w");
+  const result = (() => {
+    try {
+      return spawnSync(process.execPath, [input.vitestCli, "run", ...input.args], {
+        cwd: process.cwd(),
+        env: input.environment,
+        windowsHide: true,
+        stdio: ["ignore", outputFd, outputFd],
+      });
+    } finally {
+      closeSync(outputFd);
+    }
+  })();
+  const output = (() => {
+    try {
+      return readFileSync(outputPath, "utf8");
+    } finally {
+      rmSync(outputDirectory, { recursive: true, force: true });
+    }
+  })();
   const termination = result.error
     ? `${result.error.name}: ${result.error.message}`
     : result.signal
       ? `signal ${result.signal}`
       : null;
+  if (process.env.CI !== "true") {
+    process.stdout.write(output);
+  } else if (result.status !== 0 || termination) {
+    const failureTailLimit = 256 * 1024;
+    console.error("Vitest failure output (bounded tail):");
+    process.stderr.write(output.slice(-failureTailLimit));
+  }
   if (termination) {
     console.error(`Vitest process terminated abnormally: ${termination}`);
   }
   const status = result.status ?? 1;
   return {
     status,
-    summary: parseVitestSummary(`${result.stdout ?? ""}\n${result.stderr ?? ""}`),
+    summary: parseVitestSummary(output),
     termination,
   };
 }

@@ -365,5 +365,12 @@ describe("pull-request CI contract", () => {
     expect(workflow).not.toContain("test:db:");
     expect(workflow).not.toContain("continue-on-error");
     expect(workflow).not.toMatch(/\bvitest\b/);
+
+    const runner = readFileSync(
+      resolve("scripts/test-environment-preflight.ts"),
+      "utf8"
+    );
+    expect(runner).toContain('["--maxWorkers", "1"]');
+    expect(runner).toContain("abnormal process termination");
   });
 });

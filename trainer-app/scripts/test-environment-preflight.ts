@@ -168,6 +168,7 @@ function runVitestPhase(input: {
 }): {
   status: number;
   summary: VitestSummaryCounts | null;
+  termination: string | null;
 } {
   const result = spawnSync(process.execPath, [input.vitestCli, "run", ...input.args], {
     cwd: process.cwd(),
@@ -178,17 +179,30 @@ function runVitestPhase(input: {
   });
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
+  const termination = result.error
+    ? `${result.error.name}: ${result.error.message}`
+    : result.signal
+      ? `signal ${result.signal}`
+      : null;
+  if (termination) {
+    console.error(`Vitest process terminated abnormally: ${termination}`);
+  }
   const status = result.status ?? 1;
   return {
     status,
     summary: parseVitestSummary(`${result.stdout ?? ""}\n${result.stderr ?? ""}`),
+    termination,
   };
 }
 
 function printPhaseSummary(
   label: string,
   selectedFiles: number,
-  result: { status: number; summary: VitestSummaryCounts | null }
+  result: {
+    status: number;
+    summary: VitestSummaryCounts | null;
+    termination: string | null;
+  }
 ): void {
   const summary = result.summary;
   console.log(`${label}:`);
@@ -200,13 +214,14 @@ function printPhaseSummary(
   console.log(`- tests passed: ${summary?.tests.passed ?? 0}`);
   console.log(`- tests skipped: ${summary?.tests.skipped ?? 0}`);
   console.log(`- tests failed: ${summary?.tests.failed ?? (result.status === 0 ? 0 : 1)}`);
+  console.log(`- abnormal process termination: ${result.termination ?? "none"}`);
 }
 
 function runCredentialFreeInventory(input: {
   projectRoot: string;
   vitestCli: string;
 }): number {
-  const ciMaxWorkers = process.env.CI === "true" ? ["--maxWorkers", "2"] : [];
+  const ciMaxWorkers = process.env.CI === "true" ? ["--maxWorkers", "1"] : [];
   const manifestPath = path.join(
     input.projectRoot,
     "scripts",
@@ -260,7 +275,7 @@ function runCredentialFreeInventory(input: {
   );
   console.log(`- DB-required files excluded: ${selection.databaseRequired.length}`);
   console.log(
-    `- Vitest worker limit: ${ciMaxWorkers.length > 0 ? "2 (CI)" : "runner default"}`
+    `- Vitest worker limit: ${ciMaxWorkers.length > 0 ? "1 (CI)" : "runner default"}`
   );
   console.log("DB-required suites excluded:");
   for (const entry of selection.databaseRequired) {
@@ -306,6 +321,7 @@ function runCredentialFreeInventory(input: {
   let importOnlyResult: {
     status: number;
     summary: VitestSummaryCounts | null;
+    termination: string | null;
   };
   let placeholderConnectionAttempted = false;
   try {
@@ -317,6 +333,7 @@ function runCredentialFreeInventory(input: {
               files: { total: 0, passed: 0, failed: 0, skipped: 0 },
               tests: { total: 0, passed: 0, failed: 0, skipped: 0 },
             },
+            termination: null,
           }
         : runVitestPhase({
             vitestCli: input.vitestCli,

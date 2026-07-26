@@ -173,23 +173,29 @@ function runVitestPhase(input: {
   termination: string | null;
 } {
   const outputDirectory = mkdtempSync(path.join(tmpdir(), "trainer-vitest-output-"));
-  const outputPath = path.join(outputDirectory, "vitest.log");
-  const outputFd = openSync(outputPath, "w");
+  const stdoutPath = path.join(outputDirectory, "stdout.log");
+  const stderrPath = path.join(outputDirectory, "stderr.log");
+  const stdoutFd = openSync(stdoutPath, "w");
+  const stderrFd = openSync(stderrPath, "w");
   const result = (() => {
     try {
       return spawnSync(process.execPath, [input.vitestCli, "run", ...input.args], {
         cwd: process.cwd(),
         env: input.environment,
         windowsHide: true,
-        stdio: ["ignore", outputFd, outputFd],
+        stdio: ["ignore", stdoutFd, stderrFd],
       });
     } finally {
-      closeSync(outputFd);
+      closeSync(stdoutFd);
+      closeSync(stderrFd);
     }
   })();
-  const output = (() => {
+  const { stdout, stderr } = (() => {
     try {
-      return readFileSync(outputPath, "utf8");
+      return {
+        stdout: readFileSync(stdoutPath, "utf8"),
+        stderr: readFileSync(stderrPath, "utf8"),
+      };
     } finally {
       rmSync(outputDirectory, { recursive: true, force: true });
     }
@@ -200,11 +206,12 @@ function runVitestPhase(input: {
       ? `signal ${result.signal}`
       : null;
   if (process.env.CI !== "true") {
-    process.stdout.write(output);
+    process.stdout.write(stdout);
+    process.stderr.write(stderr);
   } else if (result.status !== 0 || termination) {
     const failureTailLimit = 256 * 1024;
     console.error("Vitest failure output (bounded tail):");
-    process.stderr.write(output.slice(-failureTailLimit));
+    process.stderr.write(`${stdout}\n${stderr}`.slice(-failureTailLimit));
   }
   if (termination) {
     console.error(`Vitest process terminated abnormally: ${termination}`);
@@ -212,7 +219,7 @@ function runVitestPhase(input: {
   const status = result.status ?? 1;
   return {
     status,
-    summary: parseVitestSummary(output),
+    summary: parseVitestSummary(stdout),
     termination,
   };
 }
@@ -243,7 +250,10 @@ function runCredentialFreeInventory(input: {
   projectRoot: string;
   vitestCli: string;
 }): number {
-  const ciMaxWorkers = process.env.CI === "true" ? ["--maxWorkers", "1"] : [];
+  const ciVitestArgs =
+    process.env.CI === "true"
+      ? ["--maxWorkers", "1", "--reporter", "json"]
+      : [];
   const manifestPath = path.join(
     input.projectRoot,
     "scripts",
@@ -297,7 +307,7 @@ function runCredentialFreeInventory(input: {
   );
   console.log(`- DB-required files excluded: ${selection.databaseRequired.length}`);
   console.log(
-    `- Vitest worker limit: ${ciMaxWorkers.length > 0 ? "1 (CI)" : "runner default"}`
+    `- Vitest worker limit: ${ciVitestArgs.length > 0 ? "1 (CI)" : "runner default"}`
   );
   console.log("DB-required suites excluded:");
   for (const entry of selection.databaseRequired) {
@@ -322,7 +332,7 @@ function runCredentialFreeInventory(input: {
     vitestCli: input.vitestCli,
     args: [
       ...excludedPaths.flatMap((testFile) => ["--exclude", testFile]),
-      ...ciMaxWorkers,
+      ...ciVitestArgs,
     ],
     environment: credentialFreeEnvironment(),
   });
@@ -361,7 +371,7 @@ function runCredentialFreeInventory(input: {
             vitestCli: input.vitestCli,
             args: [
               ...selection.importOnlyPlaceholder.map((entry) => entry.path),
-              ...ciMaxWorkers,
+              ...ciVitestArgs,
             ],
             environment: placeholderEnvironment,
           });

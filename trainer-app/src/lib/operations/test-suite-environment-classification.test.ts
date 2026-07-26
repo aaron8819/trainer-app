@@ -331,6 +331,25 @@ describe("credential-free and placeholder failure boundaries", () => {
     });
   });
 
+  it("parses deterministic Vitest JSON reporter counts", () => {
+    const output = JSON.stringify({
+      numTotalTests: 4,
+      numPassedTests: 2,
+      numFailedTests: 1,
+      numPendingTests: 1,
+      numTodoTests: 0,
+      testResults: [
+        { status: "passed" },
+        { status: "failed" },
+        { status: "pending" },
+      ],
+    });
+    expect(parseVitestSummary(output)).toEqual({
+      files: { total: 3, passed: 1, failed: 1, skipped: 1 },
+      tests: { total: 4, passed: 2, failed: 1, skipped: 1 },
+    });
+  });
+
   it("rejects incomplete or malformed Vitest results", () => {
     expect(parseVitestSummary("Test Files  1 passed (1)")).toBeNull();
     expect(
@@ -370,8 +389,8 @@ describe("pull-request CI contract", () => {
       resolve("scripts/test-environment-preflight.ts"),
       "utf8"
     );
-    expect(runner).toContain('["--maxWorkers", "1"]');
-    expect(runner).toContain('stdio: ["ignore", outputFd, outputFd]');
+    expect(runner).toContain('["--maxWorkers", "1", "--reporter", "json"]');
+    expect(runner).toContain('stdio: ["ignore", stdoutFd, stderrFd]');
     expect(runner).toContain("Vitest failure output (bounded tail):");
     expect(runner).toContain("abnormal process termination");
   });

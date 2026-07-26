@@ -93,8 +93,8 @@ uses Node.js 22, fixes `TZ` to `America/Chicago` for the repository's local-week
 installs the exact lockfile with `npm ci`, and delegates all classification and execution behavior
 to the canonical command. The runner caps each Vitest phase at one worker when `CI=true` so the
 full jsdom/happy-dom inventory stays within hosted-runner memory. CI spools raw Vitest output to
-an ephemeral local file, emits structured summaries on success or a bounded output tail on failure,
-and removes the spool after each phase:
+ephemeral local files, uses Vitest's JSON reporter for deterministic counts, emits structured
+summaries on success or a bounded output tail on failure, and removes the spools after each phase:
 
 ```text
 npm run test:inventory:credential-free -- --base-ref origin/master

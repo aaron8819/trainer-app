@@ -467,6 +467,50 @@ function parseSummaryLine(line: string): {
 }
 
 export function parseVitestSummary(output: string): VitestSummaryCounts | null {
+  try {
+    const json = JSON.parse(output) as {
+      numTotalTests?: unknown;
+      numPassedTests?: unknown;
+      numFailedTests?: unknown;
+      numPendingTests?: unknown;
+      numTodoTests?: unknown;
+      testResults?: Array<{ status?: unknown }>;
+    };
+    const testCounts = [
+      json.numTotalTests,
+      json.numPassedTests,
+      json.numFailedTests,
+      json.numPendingTests,
+      json.numTodoTests,
+    ];
+    if (
+      !Array.isArray(json.testResults) ||
+      !testCounts.every(
+        (count) => Number.isInteger(count) && Number(count) >= 0
+      )
+    ) {
+      return null;
+    }
+    const files = { total: json.testResults.length, passed: 0, failed: 0, skipped: 0 };
+    for (const result of json.testResults) {
+      if (result.status === "passed") files.passed += 1;
+      else if (result.status === "failed") files.failed += 1;
+      else if (result.status === "pending") files.skipped += 1;
+      else return null;
+    }
+    const tests = {
+      total: Number(json.numTotalTests),
+      passed: Number(json.numPassedTests),
+      failed: Number(json.numFailedTests),
+      skipped: Number(json.numPendingTests) + Number(json.numTodoTests),
+    };
+    if (tests.passed + tests.failed + tests.skipped !== tests.total) {
+      return null;
+    }
+    return { files, tests };
+  } catch {
+    // Human-readable Vitest output is parsed below for local runs.
+  }
   const lines = output.split(/\r?\n/);
   const fileLine = [...lines].reverse().find((line) => /\bTest Files\b/.test(line));
   const testLine = [...lines].reverse().find((line) => /^\s*Tests\s+/.test(line));

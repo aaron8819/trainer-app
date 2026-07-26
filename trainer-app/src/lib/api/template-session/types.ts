@@ -161,6 +161,25 @@ export type GenerateFromIntentResponse = SharedGeneratedWorkoutResponse & {
   selectionMetadata: WorkoutGenerationSelectionMetadata;
   selectionSummary: WorkoutGenerationSelectionSummary;
   filteredExercises?: FilteredExerciseSummary[];
+  sessionCapacity: {
+    requestedMode: "as_planned" | "short_today";
+    status: "as_planned" | "applied" | "unavailable";
+    unavailableReason?:
+      | "already_streamlined"
+      | "older_plan"
+      | "unsupported_session"
+      | "stale_manifest"
+      | "pain_or_equipment_conflict"
+      | "integrity_failure"
+      | "must_select_before_start";
+    preview?: {
+      removedExercises: Array<{ exerciseId: string; exerciseName: string }>;
+      removedSetCount: number;
+      retainedProtectionSummary: string;
+      estimatedMinutes: number;
+      redistributionNotice: string;
+    };
+  };
 };
 
 export type GenerateFromTemplateResponse = SharedGeneratedWorkoutResponse & {

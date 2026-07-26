@@ -27,6 +27,7 @@ export type SaveWorkoutExerciseInput = {
 
 export type SaveWorkoutRequestPayload = {
   workoutId: string;
+  sessionCapacity?: "as_planned" | "short_today";
   action?: WorkoutSaveAction;
   expectedRevision?: number;
   templateId?: string;

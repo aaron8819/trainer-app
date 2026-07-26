@@ -204,6 +204,65 @@ describe("projectPersistedIncompleteWorkout", () => {
     });
   });
 
+  it("projects only the persisted reduced structure and never recreates Short-today omissions", () => {
+    const result = project(
+      makeWorkout({
+        selectionMetadata: {
+          sessionDecisionReceipt: makeReceipt({ slotId: "upper_a" }),
+          runtimeEditReconciliation: {
+            version: 1,
+            lastReconciledAt: "2026-07-14T09:00:00.000Z",
+            directives: {
+              continuityAlias: "none",
+              progressionAlias: "none",
+              futureSessionGeneration: "ignore",
+              futureSeedCarryForward: "ignore",
+            },
+            ops: [
+              {
+                kind: "reduce_session_capacity",
+                source: "api_workouts_generate_from_intent",
+                appliedAt: "2026-07-14T09:00:00.000Z",
+                scope: "current_workout_only",
+                facts: {
+                  workoutId: "workout-1",
+                  mode: "short_today",
+                  reason: "user_selected_temporary_capacity",
+                  transformVersion: "short_today_v1",
+                  seedRevisionId: "revision-1",
+                  seedRevisionNumber: 1,
+                  seedPayloadHash: "a".repeat(64),
+                  executableRowsHash: "b".repeat(64),
+                  plannedStructureFingerprint: "c".repeat(64),
+                  offeredStructureFingerprint: "d".repeat(64),
+                  omitted: [
+                    {
+                      exerciseId: "optional-top-up",
+                      exerciseName: "Optional Top-up",
+                      plannedSetCount: 3,
+                      retainedSetCount: 0,
+                      omittedSetIndexes: [1, 2, 3],
+                      omissionClass: "optional_top_up",
+                      yieldOrder: 1,
+                    },
+                  ],
+                  retainedProtectionClaims: [],
+                },
+              },
+            ],
+          },
+        },
+        exercises: [makeExercise({ sets: [makeSet("set-1"), makeSet("set-2")] })],
+      }),
+    );
+
+    expect(result.status).toBe("reliable");
+    expect(result.remaining.qualifyingSets).toBe(2);
+    expect(result.exercises.map((row) => row.exerciseId)).toEqual(["cable-fly"]);
+    expect(result.evidence.runtimeEditAttribution).toBe("exact");
+    expect(result.evidence.reasons).toEqual([]);
+  });
+
   it("keeps warmup and partially entered non-qualifying logs as remaining work", () => {
     const result = project(
       makeWorkout({

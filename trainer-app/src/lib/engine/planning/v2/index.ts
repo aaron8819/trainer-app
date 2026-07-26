@@ -14,6 +14,12 @@ export {
   V2_CAPACITY_TIME_PRIORITIES,
 } from "./capacity-selection";
 export { buildV2AcceptedPlannerIntentDto } from "./accepted-planner-intent-dto";
+export {
+  buildSessionCapacityReductionManifest,
+  fingerprintSessionCapacityExecutableRows,
+  sanitizeSessionCapacityReductionManifest,
+  SESSION_CAPACITY_REDUCTION_TRANSFORM_VERSION,
+} from "./session-capacity-reduction-manifest";
 export { buildV2BasePlanCompare } from "./materialization/base-plan-compare";
 export { buildV2BasePlanShadowConsumptionTrial } from "./materialization/base-plan-compare";
 export { buildV2BasePlanValidation } from "./materialization/base-plan-validation";
@@ -63,6 +69,13 @@ export {
 export type {
   V2AcceptedPlannerIntentDto,
 } from "./accepted-planner-intent-dto";
+export type {
+  SessionCapacityOmissionClass,
+  SessionCapacityProtectedClaim,
+  SessionCapacityReductionManifest,
+  SessionCapacityReductionManifestRow,
+  SessionCapacityReductionVariant,
+} from "./session-capacity-reduction-manifest";
 export type {
   V2DonorSurplusEvidenceInput,
   V2MesocycleStrategyDiagnosticInput,

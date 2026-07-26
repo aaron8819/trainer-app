@@ -473,3 +473,11 @@ SetLog / logged performance
 - For an incomplete materialized workout, the same frozen vector is applied separately to qualifying performed logs and to unperformed prescribed work sets. Warmup-only or partial logs do not qualify as performed; skipped sets contribute to neither category. Non-advancing optional sessions contribute performed reality only and do not project untouched remaining work.
 - Set qualification remains owned by `classifySetLog()`; the snapshot freezes contribution policy, not performed-set evidence.
 - Legacy rows with no snapshot may be derived from the current catalog and are explicitly labeled `legacy_derived`. Missing/unresolvable legacy rows are `legacy_unknown`. A present but invalid snapshot is never silently replaced with current policy.
+
+## Session-capacity reduction semantics
+
+- One mode is supported: `short_today`, reason `user_selected_temporary_capacity`, transform `short_today_v1`.
+- Acceptance stores the final row counts. Runtime performs no search, ranking, redistribution, or broad accepted-policy reconstruction.
+- Yield order is acceptance-owned: optional Triceps top-up, Biceps preference, Rear Delt surplus, Calf surplus, Side Delt surplus, Triceps surplus, then Hamstring surplus while preserving hinge and knee-flexion roles.
+- Anchors, required roles, direct floors, protected direct exposures, and a minimum three-exercise session remain protected. A result is meaningful only when it removes a complete exercise or at least three sets.
+- Missing, malformed, stale, legacy, corrected-revision, deload, optional-session, pain/equipment-conflict, or already-created inputs fail closed to the full plan.

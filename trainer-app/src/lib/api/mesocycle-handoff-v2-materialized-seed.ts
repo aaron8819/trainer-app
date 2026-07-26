@@ -16,6 +16,7 @@ import {
   type V2MaterializationPromotionReadiness,
   type V2MaterializationRequiredLaneCoverage,
   type V2PlannerMesocyclePolicy,
+  buildSessionCapacityReductionManifest,
 } from "@/lib/engine/planning/v2";
 import {
   buildMesocycleSlotPlanSeed,
@@ -433,14 +434,38 @@ export function buildV2MaterializedSeedForAcceptance(
     return projectedSlotPlans.blocked;
   }
 
+  const sessionCapacityReductionManifest =
+    input.acceptedPlannerIntent && input.materializedPlan
+      ? buildSessionCapacityReductionManifest({
+          executableSlots: projectedSlotPlans.slotPlans.map((slot) => ({
+            slotId: slot.slotId,
+            exercises: slot.exercises.map((exercise) => ({
+              exerciseId: exercise.exerciseId,
+              role: exercise.role,
+              setCount: exercise.setCount,
+            })),
+          })),
+          materializedPlan: input.materializedPlan,
+          acceptedIntent: input.acceptedPlannerIntent,
+        })
+      : undefined;
+  const acceptedPlannerIntent = input.acceptedPlannerIntent
+    ? {
+        ...input.acceptedPlannerIntent,
+        ...(sessionCapacityReductionManifest
+          ? { sessionCapacityReductionManifest }
+          : {}),
+      }
+    : undefined;
+
   return {
     status: "ready",
     slotPlanSeedJson: buildSlotPlanSeed({
       slotSequence: input.slotSequence,
       slotPlans: projectedSlotPlans.slotPlans,
       source: "v2_materialized_seed",
-      ...(input.acceptedPlannerIntent
-        ? { acceptedPlannerIntent: input.acceptedPlannerIntent }
+      ...(acceptedPlannerIntent
+        ? { acceptedPlannerIntent }
         : {}),
     }),
     provenance: buildAcceptanceProvenance({

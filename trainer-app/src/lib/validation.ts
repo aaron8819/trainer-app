@@ -75,12 +75,14 @@ export const generateFromIntentSchema = z
     maxGeneratedExercises: z.number().int().min(1).max(20).optional(),
     optionalGapFill: z.boolean().optional(),
     supplementalDeficitSession: z.boolean().optional(),
+    sessionCapacity: z.enum(["as_planned", "short_today"]).optional(),
     pinnedExerciseIds: z.array(z.string()).optional(),
     roleListIncomplete: z.preprocess(
       (value) => (value === true ? true : undefined),
       z.literal(true).optional()
     ),
   })
+  .strict()
   .superRefine((value, ctx) => {
     if (
       value.intent === "body_part" &&
@@ -128,6 +130,7 @@ export const generateFromIntentSchema = z
 
 const saveWorkoutPayloadSchema = z.object({
     workoutId: z.string(),
+    sessionCapacity: z.enum(["as_planned", "short_today"]).optional(),
     action: z.enum(WORKOUT_SAVE_ACTION_VALUES).optional(),
     expectedRevision: z.number().int().min(1).optional(),
     templateId: z.string().optional(),
@@ -148,7 +151,7 @@ const saveWorkoutPayloadSchema = z.object({
           exerciseName: z.string(),
           reason: z.string(),
           userFriendlyMessage: z.string(),
-        })
+        }).strict()
       )
       .optional(),
     exercises: z
@@ -173,13 +176,13 @@ const saveWorkoutPayloadSchema = z.object({
                 targetRpe: z.number().optional(),
                 targetLoad: z.number().optional(),
                 restSeconds: z.number().optional(),
-              })
+              }).strict()
             )
             .min(1),
-        })
+        }).strict()
       )
       .optional(),
-  });
+  }).strict();
 
 export const saveWorkoutSchema = saveWorkoutPayloadSchema;
 

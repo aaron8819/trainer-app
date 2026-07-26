@@ -240,3 +240,9 @@ Route-purpose shorthand:
 - Shared surface-purpose metadata lives in `src/lib/ui/app-surface-map.ts`, and `SurfaceGuideCard` uses it to show adjacent surfaces without duplicating route-purpose copy in multiple page-local implementations (`src/components/SurfaceGuideCard.tsx`).
 - Settings links from Training Preferences to `/library`, and the Analytics Templates tab links to `/templates`, so the routes removed from mobile bottom navigation remain reachable through contextual surfaces.
 - Home keeps the operational actions for “what should I do now?”, while `/program`, `/history`, and `/analytics` each include a short cross-linking guide to reinforce “where should I go next?” without duplicating the home dashboard’s operational role.
+
+## Pre-session capacity choice
+
+The home intent card shows `As planned` and `Short today` before workout creation. Selecting Short requests a fresh server-authored preview with exact removed exercises/set count, retained-protection copy, an estimated duration, and the statement that omitted work will not automatically move. Switching back regenerates the transient full preview. The decision locks when the workout row is created.
+
+Readiness and capacity appear in separate cards. Older/unsupported plans, already streamlined sessions, pain/equipment conflicts, and post-start attempts use specific fail-closed copy without exposing manifest, revision, or hash internals.

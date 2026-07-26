@@ -584,6 +584,12 @@ function learningSignalCopy(signal: PostSessionReviewLearningSignal): {
         label: "Session meaning",
         summary: "Session classification is available as review context.",
       };
+    case "capacity_reduction_signal":
+      return {
+        label: "Short today",
+        summary:
+          "Deliberate pre-session omissions are separate from skipped work.",
+      };
   }
 }
 

@@ -106,5 +106,15 @@ export type PostSessionReviewContractBuildInput = {
   recentExerciseExposures?: PostSessionReviewRecentExerciseExposureEvidence[];
   nextExposureDecisions?: PostSessionReviewNextExposureEvidence[];
   weeklyImpact?: PostSessionReviewWeeklyImpactEvidence;
+  capacityReduction?: {
+    source: "runtime_edit_reconciliation";
+    omitted: Array<{
+      exerciseId: string;
+      exerciseName: string;
+      plannedSetCount: number;
+      retainedSetCount: number;
+      omittedSetCount: number;
+    }>;
+  };
   boundaryNotes?: string[];
 };

@@ -60,6 +60,11 @@ import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
 import type { SaveWorkoutResponse } from "@/lib/api/workout-save-contract";
 import { createPostSessionReviewSnapshotInTransaction } from "@/lib/api/post-session-review-snapshot";
+import {
+  fingerprintShortTodaySaveExercises,
+  validateAndCanonicalizeShortTodaySave,
+} from "@/lib/api/save-workout/session-capacity";
+import { readRuntimeEditReconciliation } from "@/lib/ui/selection-metadata";
 
 export async function POST(request: Request) {
   const paused = productionWritePauseResponse("workout_save", "/api/workouts/save");
@@ -126,6 +131,40 @@ export async function POST(request: Request) {
         throw new Error("WORKOUT_NOT_FOUND");
       }
       const existingWorkout = loadedWorkout;
+      const incomingCapacityOperation = readRuntimeEditReconciliation(
+        incomingSelectionMetadata,
+      )?.ops.find((operation) => operation.kind === "reduce_session_capacity");
+      const existingCapacityOperation = readRuntimeEditReconciliation(
+        existingWorkout?.selectionMetadata,
+      )?.ops.find((operation) => operation.kind === "reduce_session_capacity");
+      if (
+        parsed.data.sessionCapacity !== "short_today" &&
+        incomingCapacityOperation
+      ) {
+        throw new Error("SESSION_CAPACITY_REDUCTION_INVALID");
+      }
+      if (existingWorkout && parsed.data.sessionCapacity === "short_today") {
+        const isExactRetry =
+          existingWorkout.status === WorkoutStatus.PLANNED &&
+          existingCapacityOperation &&
+          incomingCapacityOperation &&
+          existingCapacityOperation.facts.workoutId === workoutId &&
+          incomingCapacityOperation.facts.workoutId === workoutId &&
+          fingerprintShortTodaySaveExercises(parsed.data.exercises) ===
+            existingCapacityOperation.facts.offeredStructureFingerprint &&
+          existingCapacityOperation.facts.plannedStructureFingerprint ===
+            incomingCapacityOperation.facts.plannedStructureFingerprint &&
+          existingCapacityOperation.facts.offeredStructureFingerprint ===
+            incomingCapacityOperation.facts.offeredStructureFingerprint &&
+          existingCapacityOperation.facts.seedRevisionId ===
+            incomingCapacityOperation.facts.seedRevisionId;
+        if (isExactRetry) {
+          persistedRevision = existingWorkout.revision;
+          finalStatus = existingWorkout.status as PersistedStatus;
+          return;
+        }
+        throw new Error("SESSION_CAPACITY_REDUCTION_LOCKED");
+      }
 
       if (!parsed.data.scheduledDate && existingWorkout?.scheduledDate) {
         scheduledDate = existingWorkout.scheduledDate;
@@ -165,6 +204,36 @@ export async function POST(request: Request) {
         selectionMetadata: effectiveSelectionMetadata,
         cycleContext: receipt.cycleContext,
       });
+      if (parsed.data.sessionCapacity === "short_today") {
+        if (existingWorkout || action !== "save_plan") {
+          throw new Error("SESSION_CAPACITY_REDUCTION_LOCKED");
+        }
+        const activeCapacityMesocycle = await tx.mesocycle.findFirst({
+          where: {
+            isActive: true,
+            macroCycle: { userId: user.id },
+          },
+          select: {
+            id: true,
+            state: true,
+            slotPlanSeedJson: true,
+            currentSeedRevision: {
+              select: {
+                id: true,
+                revision: true,
+                seedPayload: true,
+                payloadHash: true,
+              },
+            },
+          },
+        });
+        selectionMetadata = validateAndCanonicalizeShortTodaySave({
+          workoutId,
+          selectionMetadata,
+          exercises: parsed.data.exercises,
+          activeMesocycle: activeCapacityMesocycle,
+        });
+      }
       if (!hasExerciseRewrite) {
         selectionMetadata = preservePersistedStimulusAccounting({
           selectionMetadata,
@@ -208,7 +277,10 @@ export async function POST(request: Request) {
             parsed.data.exercises!,
           )
         : undefined;
-      if (preparedExercises) {
+      if (
+        preparedExercises &&
+        parsed.data.sessionCapacity !== "short_today"
+      ) {
         selectionMetadata = attachStimulusAccountingToSelectionMetadata({
           selectionMetadata,
           stimulusAccounting:
@@ -473,6 +545,23 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof Error && error.message === "WORKOUT_NOT_FOUND") {
       return NextResponse.json({ error: "Workout not found" }, { status: 404 });
+    }
+    if (
+      error instanceof Error &&
+      (error.message === "SESSION_CAPACITY_REDUCTION_INVALID" ||
+        error.message.startsWith("SESSION_CAPACITY_REDUCTION_UNAVAILABLE") ||
+        error.message === "SESSION_CAPACITY_REDUCTION_LOCKED" ||
+        error.message === "SESSION_CAPACITY_REDUCTION_CONFLICT")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            error.message === "SESSION_CAPACITY_REDUCTION_LOCKED"
+              ? "Short today must be selected before starting."
+              : "Short today is unavailable for this workout. Your full plan is unchanged.",
+        },
+        { status: 409 },
+      );
     }
     if (
       error instanceof Error &&

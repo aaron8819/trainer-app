@@ -617,6 +617,35 @@ describe("buildWeeklyMuscleClosureDecisions", () => {
     );
   });
 
+  it("does not recreate Short-today preferred surplus once the protected floor is covered", () => {
+    const [decision] = decisions({
+      rows: [
+        muscleRow("Side Delts", {
+          completedEffectiveSets: 6,
+          projectedNextSessionEffectiveSets: 0,
+          projectedRemainingWeekEffectiveSets: 0,
+          projectedFullWeekEffectiveSets: 6,
+          mev: 6,
+          weeklyTarget: 10,
+        }),
+      ],
+      sessions: [
+        session({
+          slotId: "final-upper",
+          isNext: true,
+          muscle: "Side Delts",
+          contribution: 0,
+        }),
+      ],
+    });
+
+    expect(decision).toMatchObject({
+      muscle: "Side Delts",
+      status: "not_needed",
+    });
+    expect(decision).not.toHaveProperty("recommendation");
+  });
+
   it("is deterministic and never emits a recommendation that violates its own decision", () => {
     const input = {
       rows: ELIGIBLE_TARGETS.map(([muscle]) => muscleRow(muscle)),

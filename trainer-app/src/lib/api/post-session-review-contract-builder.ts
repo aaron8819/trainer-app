@@ -774,6 +774,20 @@ function buildLearningSignals(input: {
         .map((row) => `${row.exerciseName}:${row.skippedSetCount}`),
     });
   }
+  if (input.contractInput.capacityReduction) {
+    const omittedSetCount = input.contractInput.capacityReduction.omitted.reduce(
+      (sum, row) => sum + row.omittedSetCount,
+      0,
+    );
+    signals.push({
+      kind: "capacity_reduction_signal",
+      severity: "info",
+      summary: `${omittedSetCount} set(s) were deliberately omitted before this workout was created.`,
+      evidence: input.contractInput.capacityReduction.omitted.map(
+        (row) => `${row.exerciseName}:${row.omittedSetCount}`,
+      ),
+    });
+  }
 
   const runtimeRows = input.rows.filter(
     (row) => row.runtimeAdded || row.replacement != null || row.addedSetCount > 0
@@ -1340,6 +1354,25 @@ export function buildPostSessionReviewContract(
     exerciseReconciliation: {
       rows: exerciseRows,
     },
+    ...(input.capacityReduction
+      ? {
+          capacityReduction: {
+            source:
+              "selectionMetadata.runtimeEditReconciliation" as const,
+            reason: "user_selected_temporary_capacity" as const,
+            omittedExerciseCount: input.capacityReduction.omitted.filter(
+              (row) => row.retainedSetCount === 0,
+            ).length,
+            omittedSetCount: input.capacityReduction.omitted.reduce(
+              (sum, row) => sum + row.omittedSetCount,
+              0,
+            ),
+            rows: input.capacityReduction.omitted.map((row) => ({ ...row })),
+            distinctFromSkippedSets: true as const,
+            evidenceOnly: true as const,
+          },
+        }
+      : {}),
     performedReality: {
       source: "set_log_vs_workout_set_targets" as const,
       rows: performedRealityRows,

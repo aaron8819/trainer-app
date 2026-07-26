@@ -157,3 +157,9 @@ The evidence fingerprint covers workout identity/status/revision, persisted sess
 - New application-created rows must persist an `exact` snapshot. Legacy backfill writes only null rows and never changes set logs, workout totals, stimulus fractions, landmarks, or accepted seed shape.
 - Persisted incomplete-workout projection accepts only a present, valid snapshot whose `sourceExerciseId` matches the current persisted `WorkoutExercise.exerciseId`, with supported runtime add/swap/remove attribution verified from the persisted edit ledger. It never derives a missing or invalid vector from the current exercise catalog.
 - The projection loader reads incomplete workouts before completed weekly volume and excludes those workout ids from the subsequent performed query. This is query-level read isolation rather than a database transaction snapshot: it prevents double counting if a workout transitions to `PARTIAL` between reads, while log writes after the incomplete query are intentionally reflected only on the next report load.
+
+## Short-today JSON evidence
+
+No schema or enum is added. A versioned `sessionCapacityReductionManifest` may appear only inside compatibility `slotPlanSeedJson.acceptedPlannerIntent`; immutable revision `seedPayload` and executable row fields remain unchanged. The manifest binds revision 1, transform version, week/phase/slot, executable-row hash, exact planned/short counts, omission class/order, and protection proof.
+
+Created workouts persist only retained rows. The pre-reduction plan remains in `selectionMetadata.sessionAuditSnapshot.generated`; the original receipt remains unchanged; `selectionMetadata.runtimeEditReconciliation.reduce_session_capacity` stores exact deliberate omissions and conservative `ignore` directives. Omitted rows are absent from incomplete-work projection and are not represented as skipped logs.

@@ -1335,3 +1335,7 @@ Boundary rules:
 - Escalate `invalidSnapshotCount` as corruption, `missingExactSnapshotCount` as a modern write-contract failure, and `evidenceMismatchCount` as receipt/runtime-edit evidence drift.
 - `legacyUnknownCount` means the historical contribution cannot be reconstructed safely. Do not silently substitute current policy for a present-but-invalid snapshot.
 - This readout is audit-only: it must not mutate rows, author plans, repair sessions, change acceptance, or feed runtime replay.
+
+## Short-today audit interpretation
+
+`runtimeEditReconciliation.reduce_session_capacity` is exact evidence of a pre-creation offered-structure reduction. Treat its negative set delta as `user_preference`, distinct from skipped sets, pain/fatigue inference, repair, or underperformance. Its directives explicitly prevent future-generation and seed carry-forward effects. Audit must not reconstruct the acceptance yield policy, restore preferred surplus, reinterpret omissions as unresolved work, or use the operation to mutate weekly closure.

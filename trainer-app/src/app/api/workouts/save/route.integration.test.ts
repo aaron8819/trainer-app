@@ -128,6 +128,7 @@ vi.mock("@/lib/api/mesocycle-week-close", async (importOriginal) => {
 });
 
 import { POST as saveWorkoutPost } from "./route";
+import { fingerprintShortTodaySaveExercises } from "@/lib/api/save-workout/session-capacity";
 
 describe("production write pause", () => {
   beforeEach(() => {
@@ -517,6 +518,113 @@ describe("POST /api/workouts/save", () => {
     });
     mocks.tx.mesocycleWeekClose.findFirst.mockResolvedValue(null);
     mocks.tx.mesocycleWeekClose.findUnique.mockResolvedValue(null);
+  });
+
+  it("accepts an exact Short-today creation retry and conflicts on a changed retry", async () => {
+    const exercises = [
+      {
+        section: "MAIN" as const,
+        exerciseId: "bench",
+        sets: [{ setIndex: 1, targetReps: 8 }],
+      },
+    ];
+    const offeredStructureFingerprint =
+      fingerprintShortTodaySaveExercises(exercises)!;
+    const capacityOperation = {
+      kind: "reduce_session_capacity",
+      source: "api_workouts_generate_from_intent",
+      appliedAt: "2026-07-25T12:00:00.000Z",
+      scope: "current_workout_only",
+      facts: {
+        workoutId: "workout-1",
+        mode: "short_today",
+        reason: "user_selected_temporary_capacity",
+        transformVersion: "short_today_v1",
+        seedRevisionId: "revision-1",
+        seedRevisionNumber: 1,
+        seedPayloadHash: "a".repeat(64),
+        executableRowsHash: "b".repeat(64),
+        plannedStructureFingerprint: "c".repeat(64),
+        offeredStructureFingerprint,
+        omitted: [
+          {
+            exerciseId: "optional",
+            exerciseName: "Optional Top-up",
+            plannedSetCount: 3,
+            retainedSetCount: 0,
+            omittedSetIndexes: [0, 1, 2],
+            omissionClass: "optional_top_up",
+            yieldOrder: 1,
+          },
+        ],
+        retainedProtectionClaims: [],
+      },
+    } as const;
+    const selectionMetadata = {
+      runtimeEditReconciliation: {
+        version: 1,
+        lastReconciledAt: "2026-07-25T12:00:00.000Z",
+        directives: {
+          continuityAlias: "none",
+          progressionAlias: "none",
+          futureSessionGeneration: "ignore",
+          futureSeedCarryForward: "ignore",
+        },
+        ops: [capacityOperation],
+      },
+    };
+    mocks.workoutFindUnique.mockResolvedValue({
+      id: "workout-1",
+      userId: "user-1",
+      status: "PLANNED",
+      revision: 1,
+      selectionMetadata,
+    });
+
+    const exactResponse = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          sessionCapacity: "short_today",
+          selectionMetadata,
+          exercises,
+        }),
+      }),
+    );
+    expect(exactResponse.status).toBe(200);
+    await expect(exactResponse.json()).resolves.toMatchObject({
+      workoutId: "workout-1",
+      revision: 1,
+      workoutStatus: "PLANNED",
+    });
+    expect(mocks.workoutUpdateMany).not.toHaveBeenCalled();
+
+    const changedResponse = await POST(
+      new Request("http://localhost/api/workouts/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutId: "workout-1",
+          sessionCapacity: "short_today",
+          selectionMetadata,
+          exercises: [
+            {
+              ...exercises[0],
+              sets: [
+                ...exercises[0].sets,
+                { setIndex: 2, targetReps: 8 },
+              ],
+            },
+          ],
+        }),
+      }),
+    );
+    expect(changedResponse.status).toBe(409);
+    await expect(changedResponse.json()).resolves.toMatchObject({
+      error: "Short today must be selected before starting.",
+    });
   });
 
   it.each(["COMPLETED", "PARTIAL", "SKIPPED"] as const)(

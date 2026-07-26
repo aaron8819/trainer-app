@@ -382,3 +382,11 @@ Canonical ownership:
   `src/lib/operations/production-write-gate-http.ts`
 - route and operational ownership inventory:
   `scripts/check-production-write-gate.ts`
+
+## Short-today request and save contract
+
+- `POST /api/workouts/generate-from-intent` accepts only `sessionCapacity: "as_planned" | "short_today"`. The strict request rejects client omission IDs, set indexes, priorities, classes, or claims.
+- Generation returns `sessionCapacity.status` plus a server preview or fail-closed reason. The full snapshot and original receipt are captured before any reduction.
+- `POST /api/workouts/save` accepts the same mode only as creation intent. For `short_today`, it reloads current owner/mesocycle/revision evidence, recomputes the exact variant from the full snapshot, validates receipt provenance and both fingerprints, and replaces client-carried reduction evidence with a canonical operation.
+- An exact duplicate creation fingerprint is idempotent. Changed or post-creation Short requests return `409`. Later ordinary runtime edits use existing contracts.
+- Unsupported requests leave the full plan unchanged. No route mutates seeds, future sessions, weekly allocation, planner policy, repair, or readiness activation.

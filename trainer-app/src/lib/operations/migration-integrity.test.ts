@@ -3,14 +3,23 @@ import {
   APPLIED_SCHEMA_EXPECTATIONS,
   BASELINE_UNIQUENESS_EXPECTATIONS,
   buildMigrationIntegrityReport,
+  canonicalizeMigrationSql,
   checksumMigrationSql,
   EXPECTED_GATE_A_PENDING,
   EXPECTED_MIGRATION_CHAIN,
+  MIGRATION_AUTHORIZATION_POLICY,
   PENDING_ARCHITECTURE_MANIFEST,
+  rawMigrationSqlChecksum,
   type CatalogSnapshot,
   type CheckedInMigration,
   type LedgerRow,
+  type MigrationAuthorizationEvidence,
 } from "./migration-integrity";
+
+const REPOSITORY_HEAD = "b".repeat(40);
+const EVALUATED_AT = "2026-07-26T18:00:00.000Z";
+const VERIFIED_AT = "2026-07-26T17:50:00.000Z";
+const TARGET_FINGERPRINT = "5952f3ffb454";
 
 function checkedIn(): CheckedInMigration[] {
   return EXPECTED_MIGRATION_CHAIN.map((name) => ({
@@ -32,11 +41,64 @@ function successfulRow(migration: CheckedInMigration, index: number): LedgerRow 
   };
 }
 
-function appliedPrefix(count = 10): LedgerRow[] {
+function appliedPrefix(count = EXPECTED_MIGRATION_CHAIN.length - 1): LedgerRow[] {
   return checkedIn().slice(0, count).map(successfulRow);
 }
 
-function cleanCatalog(): CatalogSnapshot {
+function addCompatibleManifestObject(
+  catalog: CatalogSnapshot,
+  migrationIndex: number,
+  objectIndex: number,
+): void {
+  const object = PENDING_ARCHITECTURE_MANIFEST[migrationIndex].objects[objectIndex];
+  if (!object) return;
+  if (object.kind === "table") catalog.tables.push(object.name);
+  if (object.kind === "column") {
+    catalog.columns.push({
+      table: object.table!,
+      name: object.name,
+      ...object.column!,
+    });
+  }
+  if (object.kind === "index") {
+    catalog.indexes.push({
+      table: object.table!,
+      name: object.name,
+      ...object.index!,
+      valid: true,
+      ready: true,
+      live: true,
+    });
+  }
+  if (object.kind === "constraint") {
+    catalog.constraints.push({
+      table: object.table!,
+      name: object.name,
+      type: object.constraint?.type ?? "f",
+      definition:
+        object.constraint?.definition ??
+        object.definitionIncludes?.join(" ") ??
+        "",
+    });
+  }
+  if (object.kind === "trigger") {
+    catalog.triggers.push({
+      table: object.table!,
+      name: object.name,
+      definition: object.definitionIncludes?.join(" ") ?? "",
+    });
+  }
+  if (object.kind === "function") {
+    catalog.functions.push({
+      name: object.name,
+      definition: object.definitionIncludes?.join(" ") ?? "",
+    });
+  }
+}
+
+function cleanCatalog(
+  appliedCount = EXPECTED_MIGRATION_CHAIN.length - 1,
+): CatalogSnapshot {
   const catalog: CatalogSnapshot = {
     tables: [], columns: [], enums: [], indexes: [], constraints: [], triggers: [], functions: [],
   };
@@ -62,16 +124,74 @@ function cleanCatalog(): CatalogSnapshot {
       constraintType: null,
     });
   }
+  for (
+    let migrationIndex = 0;
+    migrationIndex < PENDING_ARCHITECTURE_MANIFEST.length;
+    migrationIndex += 1
+  ) {
+    const migration = PENDING_ARCHITECTURE_MANIFEST[migrationIndex];
+    const chainIndex = EXPECTED_MIGRATION_CHAIN.indexOf(
+      migration.migration as (typeof EXPECTED_MIGRATION_CHAIN)[number],
+    );
+    if (chainIndex >= appliedCount) continue;
+    for (
+      let objectIndex = 0;
+      objectIndex < migration.objects.length;
+      objectIndex += 1
+    ) {
+      addCompatibleManifestObject(catalog, migrationIndex, objectIndex);
+    }
+  }
   return catalog;
+}
+
+function fullEvidence(
+  overrides: Partial<MigrationAuthorizationEvidence> = {},
+): MigrationAuthorizationEvidence {
+  return {
+    repositoryHead: REPOSITORY_HEAD,
+    productionDeploymentCommit:
+      MIGRATION_AUTHORIZATION_POLICY.compatibleProductionDeploymentCommits[0],
+    dataPreflight: {
+      valid: true,
+      verifiedAt: VERIFIED_AT,
+      targetFingerprint: TARGET_FINGERPRINT,
+    },
+    disposablePostgres: {
+      valid: true,
+      verifiedAt: VERIFIED_AT,
+      repositoryHead: REPOSITORY_HEAD,
+    },
+    recoveryPoint: {
+      verified: true,
+      providerProjectIdentity: "supabase:trainer-production",
+      databaseIdentity: "postgres:primary",
+      recoveryTimestamp: VERIFIED_AT,
+      retentionConfirmed: true,
+      recoverabilityConfirmed: true,
+      freshForExecution: true,
+      operatorVerifiedAt: VERIFIED_AT,
+    },
+    writeBoundary: {
+      ready: true,
+      mechanism: "production-write-gate",
+      verifiedAt: VERIFIED_AT,
+    },
+    applicationCompatibilityState: "compatible_with_write_boundary",
+    deploymentVerifiedAt: VERIFIED_AT,
+    evaluatedAt: EVALUATED_AT,
+    ...overrides,
+  };
 }
 
 function report(overrides: Partial<Parameters<typeof buildMigrationIntegrityReport>[0]> = {}) {
   return buildMigrationIntegrityReport({
-    target: { classification: "remote", fingerprint: "5952f3ffb454" },
+    target: { classification: "remote", fingerprint: TARGET_FINGERPRINT },
     checkedIn: checkedIn(),
     ledgerRows: appliedPrefix(),
     catalog: cleanCatalog(),
     writes: 0,
+    authorizationEvidence: fullEvidence(),
     ...overrides,
   });
 }
@@ -94,16 +214,18 @@ function pendingObjectIndex(migrationIndex: number, kind: string): number {
 }
 
 describe("migration integrity", () => {
-  it("accepts the exact clean applied-prefix/pending-suffix Gate A state", () => {
+  it("accepts 15 applied and the exact expected pending migration", () => {
     const result = report();
     expect(result.chain).toMatchObject({
       checkedIn: EXPECTED_MIGRATION_CHAIN.length,
-      applied: 10,
+      applied: 15,
       pending: EXPECTED_GATE_A_PENDING.length,
       pendingNames: EXPECTED_GATE_A_PENDING,
     });
-    expect(result.checksums).toMatchObject({ matched: 10, mismatched: [] });
+    expect(result.checksums).toMatchObject({ matched: 15, mismatched: [] });
+    expect(result.technicalMigrationReady).toBe(true);
     expect(result.migrationAuthorizationReady).toBe(true);
+    expect(result.executionAuthorized).toBe(false);
   });
 
   it("treats clean zero-step baseline and hotfix resolutions as applied without breaking the prefix", () => {
@@ -113,11 +235,11 @@ describe("migration integrity", () => {
     const result = report({ ledgerRows: rows });
 
     expect(result.chain).toMatchObject({
-      applied: 10,
+      applied: 15,
       pending: EXPECTED_GATE_A_PENDING.length,
       pendingNames: EXPECTED_GATE_A_PENDING,
     });
-    expect(result.ledger.successful).toHaveLength(10);
+    expect(result.ledger.successful).toHaveLength(15);
     expect(result.ledger.resolvedApplied).toEqual([
       EXPECTED_MIGRATION_CHAIN[0],
       EXPECTED_MIGRATION_CHAIN[9],
@@ -131,9 +253,42 @@ describe("migration integrity", () => {
     expect(result.migrationAuthorizationReady).toBe(true);
   });
 
-  it("hashes exact migration bytes with SHA-256", () => {
-    expect(checksumMigrationSql(Buffer.from("SELECT 1;\n"))).not.toBe(checksumMigrationSql(Buffer.from("SELECT 1;\r\n")));
+  it("canonicalizes CRLF and standalone CR without changing other bytes", () => {
+    expect(checksumMigrationSql(Buffer.from("SELECT 1;\n"))).toBe(
+      checksumMigrationSql(Buffer.from("SELECT 1;\r\n")),
+    );
+    expect(checksumMigrationSql(Buffer.from("SELECT 1;\n"))).toBe(
+      checksumMigrationSql(Buffer.from("SELECT 1;\r")),
+    );
+    expect(canonicalizeMigrationSql(Buffer.from([0x41, 0x0d, 0x42]))).toEqual(
+      Buffer.from([0x41, 0x0a, 0x42]),
+    );
     expect(checksumMigrationSql(Buffer.from("SELECT 1;\n"))).toHaveLength(64);
+  });
+
+  it("still rejects genuine SQL content drift", () => {
+    expect(checksumMigrationSql(Buffer.from("SELECT 1;\n"))).not.toBe(
+      checksumMigrationSql(Buffer.from("SELECT 2;\r\n")),
+    );
+  });
+
+  it("accepts a canonical ledger checksum for a CRLF working-tree file", () => {
+    const migrations = checkedIn();
+    const lf = Buffer.from("SELECT 1;\n");
+    const crlf = Buffer.from("SELECT 1;\r\n");
+    migrations[0] = {
+      ...migrations[0],
+      checksum: checksumMigrationSql(crlf),
+      rawChecksum: rawMigrationSqlChecksum(crlf),
+    };
+    const rows = migrations.slice(0, -1).map(successfulRow);
+    const result = report({ checkedIn: migrations, ledgerRows: rows });
+    expect(result.checksums.mismatched).toEqual([]);
+    expect(result.checksums.normalizedRepositoryFiles).toEqual([
+      migrations[0].name,
+    ]);
+    expect(result.migrationChecksumsValid).toBe(true);
+    expect(migrations[0].checksum).toBe(checksumMigrationSql(lf));
   });
 
   it("blocks a checksum mismatch and a missing ledger checksum", () => {
@@ -217,7 +372,7 @@ describe("migration integrity", () => {
     rows[4] = { ...rows[4], appliedStepsCount: 0 };
     const result = report({ ledgerRows: rows });
     expect(result.ledger.orderViolations).toEqual([]);
-    expect(result.chain.applied).toBe(10);
+    expect(result.chain.applied).toBe(15);
   });
 
   it("blocks an unknown ledger migration", () => {
@@ -228,27 +383,17 @@ describe("migration integrity", () => {
     expect(result.migrationAuthorizationReady).toBe(false);
   });
 
-  it("passes when every pending architecture object is absent and documents the comments-only retirement", () => {
+  it("passes when every target-migration object is absent", () => {
     const result = report();
     expect(result.partialObjects.partiallyPresent).toEqual([]);
     expect(result.partialObjects.unexpectedPresent).toEqual([]);
-    expect(result.partialObjects.commentsOnly).toEqual([
-      "20260714120000_retire_exercise_exposure_projection:retains:ExerciseExposure",
-    ]);
+    expect(result.partialObjects.commentsOnly).toEqual([]);
   });
 
   it.each([
-    [0, pendingObjectIndex(0, "table"), "future table"],
-    [0, pendingObjectIndex(0, "column"), "future column"],
-    [0, pendingObjectIndex(0, "index"), "future index"],
-    [0, pendingObjectIndex(0, "constraint"), "future constraint"],
-    [0, pendingObjectIndex(0, "function"), "future function"],
-    [0, pendingObjectIndex(0, "trigger"), "future trigger"],
-    [1, 0, "stimulus column"],
-    [3, 0, "post-session table"],
-    [4, pendingObjectIndex(4, "column"), "readiness column"],
-    [4, pendingObjectIndex(4, "constraint"), "readiness constraint"],
-    [4, pendingObjectIndex(4, "index"), "readiness partial index"],
+    [5, pendingObjectIndex(5, "column"), "target column"],
+    [5, pendingObjectIndex(5, "index"), "target index"],
+    [5, pendingObjectIndex(5, "constraint"), "target constraint"],
   ])("blocks one unexpectedly present %s/%s %s", (migrationIndex, objectIndex) => {
     const catalog = cleanCatalog();
     addPendingObject(catalog, migrationIndex, objectIndex);
@@ -259,6 +404,110 @@ describe("migration integrity", () => {
       ...result.partialObjects.incompatible,
     ]).not.toEqual([]);
     expect(result.migrationAuthorizationReady).toBe(false);
+  });
+
+  it("blocks a missing object from an already-applied architecture migration", () => {
+    const catalog = cleanCatalog();
+    catalog.columns = catalog.columns.filter(
+      (column) =>
+        !(
+          column.table === "WorkoutExercise" &&
+          column.name === "stimulusAccountingSnapshot"
+        ),
+    );
+    const result = report({ catalog });
+    expect(result.schemaPreflightValid).toBe(false);
+    expect(result.definitions.appliedManifestMissing).toEqual([
+      expect.stringContaining("stimulusAccountingSnapshot"),
+    ]);
+  });
+
+  it("derives readiness from an explicit pending sequence instead of a fixed count", () => {
+    const expectedPendingMigrations = EXPECTED_MIGRATION_CHAIN.slice(-2);
+    const result = report({
+      ledgerRows: appliedPrefix(EXPECTED_MIGRATION_CHAIN.length - 2),
+      catalog: cleanCatalog(EXPECTED_MIGRATION_CHAIN.length - 2),
+      authorizationEvidence: fullEvidence({
+        expectedPendingMigrations: [...expectedPendingMigrations],
+      }),
+    });
+    expect(result.pendingMigrations).toEqual(expectedPendingMigrations);
+    expect(result.technicalMigrationReady).toBe(true);
+  });
+
+  it("rejects an unexpected second pending migration", () => {
+    const result = report({
+      ledgerRows: appliedPrefix(EXPECTED_MIGRATION_CHAIN.length - 2),
+      catalog: cleanCatalog(EXPECTED_MIGRATION_CHAIN.length - 2),
+    });
+    expect(result.pendingMigrations).toHaveLength(2);
+    expect(result.unexpectedMigrations).toEqual([
+      EXPECTED_MIGRATION_CHAIN.at(-2),
+    ]);
+    expect(result.technicalMigrationReady).toBe(false);
+  });
+
+  it("requires clean data preflight but does not treat it as authorization", () => {
+    const withoutData = report({
+      authorizationEvidence: fullEvidence({ dataPreflight: undefined }),
+    });
+    expect(withoutData.technicalMigrationReady).toBe(false);
+
+    const technicalOnly = report({
+      authorizationEvidence: fullEvidence({
+        recoveryPoint: undefined,
+        writeBoundary: undefined,
+      }),
+    });
+    expect(technicalOnly.dataPreflightValid).toBe(true);
+    expect(technicalOnly.technicalMigrationReady).toBe(true);
+    expect(technicalOnly.migrationAuthorizationReady).toBe(false);
+  });
+
+  it("requires recovery-point evidence for authorization readiness", () => {
+    const result = report({
+      authorizationEvidence: fullEvidence({ recoveryPoint: undefined }),
+    });
+    expect(result.technicalMigrationReady).toBe(true);
+    expect(result.recoveryPointVerified).toBe(false);
+    expect(result.migrationAuthorizationReady).toBe(false);
+  });
+
+  it("requires the write boundary for authorization readiness", () => {
+    const result = report({
+      authorizationEvidence: fullEvidence({ writeBoundary: undefined }),
+    });
+    expect(result.technicalMigrationReady).toBe(true);
+    expect(result.writeBoundaryReady).toBe(false);
+    expect(result.migrationAuthorizationReady).toBe(false);
+  });
+
+  it("models the captured production shape without granting execution", () => {
+    const result = report({
+      authorizationEvidence: fullEvidence({
+        recoveryPoint: undefined,
+        writeBoundary: undefined,
+      }),
+    });
+    expect(result).toMatchObject({
+      appliedMigrations: expect.arrayContaining([
+        EXPECTED_MIGRATION_CHAIN[0],
+        EXPECTED_MIGRATION_CHAIN[14],
+      ]),
+      pendingMigrations: [MIGRATION_AUTHORIZATION_POLICY.targetMigration],
+      schemaPreflightValid: true,
+      dataPreflightValid: true,
+      technicalMigrationReady: true,
+      migrationAuthorizationReady: false,
+      executionAuthorized: false,
+    });
+  });
+
+  it("can become authorization-ready with complete evidence but never execution-authorized in preparation mode", () => {
+    const result = report();
+    expect(result.technicalMigrationReady).toBe(true);
+    expect(result.migrationAuthorizationReady).toBe(true);
+    expect(result.executionAuthorized).toBe(false);
   });
 
   it("blocks an incompatible applied definition and an unverifiable catalog category", () => {
@@ -317,12 +566,7 @@ describe("migration integrity", () => {
   });
 
   it("reports a fully migrated state as clean but not Gate A applicable", () => {
-    const catalog = cleanCatalog();
-    for (let migrationIndex = 0; migrationIndex < PENDING_ARCHITECTURE_MANIFEST.length; migrationIndex += 1) {
-      for (let objectIndex = 0; objectIndex < PENDING_ARCHITECTURE_MANIFEST[migrationIndex].objects.length; objectIndex += 1) {
-        addPendingObject(catalog, migrationIndex, objectIndex);
-      }
-    }
+    const catalog = cleanCatalog(EXPECTED_MIGRATION_CHAIN.length);
     const result = report({
       ledgerRows: appliedPrefix(EXPECTED_MIGRATION_CHAIN.length),
       catalog,

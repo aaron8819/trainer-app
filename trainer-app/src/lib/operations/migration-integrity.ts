@@ -21,7 +21,63 @@ export const EXPECTED_MIGRATION_CHAIN = [
   "20260726120000_add_active_macrocycle_foundation",
 ] as const;
 
-export const EXPECTED_GATE_A_PENDING = EXPECTED_MIGRATION_CHAIN.slice(10);
+export const MIGRATION_AUTHORIZATION_POLICY = {
+  targetMigration: "20260726120000_add_active_macrocycle_foundation",
+  expectedPendingMigrations: [
+    "20260726120000_add_active_macrocycle_foundation",
+  ],
+  requiredApplicationCommit: "aafb19bd1334e9edd51d202f9a185a2fe21bf311",
+  compatibleProductionDeploymentCommits: [
+    "06c74a80c842924c9e79d93f0849ed385212bea5",
+  ],
+  operationalEvidenceMaxAgeMinutes: 30,
+} as const;
+
+export const EXPECTED_GATE_A_PENDING =
+  MIGRATION_AUTHORIZATION_POLICY.expectedPendingMigrations;
+
+export type ApplicationCompatibilityState =
+  | "compatible_with_write_boundary"
+  | "incompatible"
+  | "unverified";
+
+export type VerificationEvidence = {
+  valid: boolean;
+  verifiedAt: string;
+  repositoryHead?: string;
+  targetFingerprint?: string;
+};
+
+export type RecoveryPointEvidence = {
+  verified: boolean;
+  providerProjectIdentity: string;
+  databaseIdentity: string;
+  recoveryTimestamp: string;
+  retentionConfirmed: boolean;
+  recoverabilityConfirmed: boolean;
+  freshForExecution: boolean;
+  operatorVerifiedAt: string;
+};
+
+export type WriteBoundaryEvidence = {
+  ready: boolean;
+  mechanism: "production-write-gate";
+  verifiedAt: string;
+};
+
+export type MigrationAuthorizationEvidence = {
+  repositoryHead: string;
+  productionDeploymentCommit: string;
+  requiredApplicationCommit?: string;
+  expectedPendingMigrations?: string[];
+  dataPreflight?: VerificationEvidence;
+  disposablePostgres?: VerificationEvidence;
+  recoveryPoint?: RecoveryPointEvidence;
+  writeBoundary?: WriteBoundaryEvidence;
+  applicationCompatibilityState?: ApplicationCompatibilityState;
+  deploymentVerifiedAt?: string;
+  evaluatedAt?: string;
+};
 
 export type LedgerRow = {
   id: string;
@@ -69,7 +125,12 @@ export type CatalogSnapshot = {
   unableToVerify?: string[];
 };
 
-export type CheckedInMigration = { name: string; checksum: string; sqlPath: string };
+export type CheckedInMigration = {
+  name: string;
+  checksum: string;
+  rawChecksum?: string;
+  sqlPath: string;
+};
 
 export type UniquenessRepresentation =
   | "standalone_unique_index"
@@ -189,7 +250,7 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
       { kind: "constraint", table: "PostSessionReviewSnapshot", name: "PostSessionReviewSnapshot_provenance_check", definitionIncludes: ["provenance", "legacy_derived", "legacy_unknown"] },
       { kind: "index", table: "PostSessionReviewSnapshot", name: "PostSessionReviewSnapshot_workoutId_key", index: { unique: true, columns: ["workoutId"], predicate: null } },
       { kind: "index", table: "PostSessionReviewSnapshot", name: "PostSessionReviewSnapshot_provenance_finalizedAt_idx", index: { unique: false, columns: ["provenance", "finalizedAt"], predicate: null } },
-      { kind: "index", table: "PostSessionReviewSnapshot", name: "PostSessionReviewSnapshot_contractVersion_computationPolicyVersion_idx", index: { unique: false, columns: ["contractVersion", "computationPolicyVersion"], predicate: null } },
+      { kind: "index", table: "PostSessionReviewSnapshot", name: "PostSessionReviewSnapshot_contractVersion_computationPolicyVers", index: { unique: false, columns: ["contractVersion", "computationPolicyVersion"], predicate: null } },
       { kind: "constraint", table: "PostSessionReviewSnapshot", name: "PostSessionReviewSnapshot_workoutId_fkey", constraint: { type: "f", definition: "FOREIGN KEY (\"workoutId\") REFERENCES \"Workout\"(id) ON UPDATE CASCADE ON DELETE RESTRICT" } },
       { kind: "function", name: "prevent_post_session_review_snapshot_mutation", definitionIncludes: ["PostSessionReviewSnapshot rows are immutable"] },
       { kind: "trigger", table: "PostSessionReviewSnapshot", name: "PostSessionReviewSnapshot_immutable_mutation", definitionIncludes: ["BEFORE DELETE OR UPDATE", "prevent_post_session_review_snapshot_mutation"] },
@@ -376,8 +437,26 @@ export const APPLIED_SCHEMA_EXPECTATIONS: readonly DefinitionExpectation[] = [
   ].map(([name, columns]) => ({ kind: "index" as const, table: "PreSessionReadinessSnapshot", name: name as string, unique: false, columns: columns as string[], predicate: null })),
 ];
 
-export function checksumMigrationSql(bytes: Uint8Array): string {
+export function canonicalizeMigrationSql(bytes: Uint8Array): Buffer {
+  const canonical: number[] = [];
+  for (let index = 0; index < bytes.length; index += 1) {
+    const byte = bytes[index];
+    if (byte === 0x0d) {
+      if (bytes[index + 1] === 0x0a) index += 1;
+      canonical.push(0x0a);
+    } else {
+      canonical.push(byte);
+    }
+  }
+  return Buffer.from(canonical);
+}
+
+export function rawMigrationSqlChecksum(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+export function checksumMigrationSql(bytes: Uint8Array): string {
+  return rawMigrationSqlChecksum(canonicalizeMigrationSql(bytes));
 }
 
 export function loadCheckedInMigrations(root = join(process.cwd(), "prisma", "migrations")): CheckedInMigration[] {
@@ -385,7 +464,13 @@ export function loadCheckedInMigrations(root = join(process.cwd(), "prisma", "mi
     .filter((entry) => entry.isDirectory())
     .map((entry) => {
       const sqlPath = join(root, entry.name, "migration.sql");
-      return { name: entry.name, checksum: checksumMigrationSql(readFileSync(sqlPath)), sqlPath };
+      const bytes = readFileSync(sqlPath);
+      return {
+        name: entry.name,
+        checksum: checksumMigrationSql(bytes),
+        rawChecksum: rawMigrationSqlChecksum(bytes),
+        sqlPath,
+      };
     })
     .sort((left, right) => left.name.localeCompare(right.name));
 }
@@ -394,11 +479,31 @@ function normalize(value: string | null): string | null {
   return value?.replace(/\s+/g, " ").trim() ?? null;
 }
 
+function stripRedundantOuterParentheses(value: string): string {
+  let result = value;
+  while (result.startsWith("(") && result.endsWith(")")) {
+    let depth = 0;
+    let enclosesWholeExpression = true;
+    for (let index = 0; index < result.length; index += 1) {
+      if (result[index] === "(") depth += 1;
+      if (result[index] === ")") depth -= 1;
+      if (depth === 0 && index < result.length - 1) {
+        enclosesWholeExpression = false;
+        break;
+      }
+    }
+    if (!enclosesWholeExpression || depth !== 0) break;
+    result = result.slice(1, -1).trim();
+  }
+  return result;
+}
+
 function normalizeIndexPart(value: string | null): string | null {
-  return normalize(value)
+  const normalized = normalize(value)
     ?.replace(/"([^"]+)"/g, "$1")
     .replace(/ DESC NULLS FIRST$/i, " DESC")
     .replace(/ ASC NULLS LAST$/i, " ASC") ?? null;
+  return normalized ? stripRedundantOuterParentheses(normalized) : null;
 }
 
 function objectKey(object: ObjectExpectation): string {
@@ -573,12 +678,56 @@ function migrationSchemaEffectsVerified(input: {
   return input.allAppliedSchemaVerified;
 }
 
+function isFullCommitSha(value: string): boolean {
+  return /^[0-9a-f]{40}$/i.test(value);
+}
+
+function isFreshEvidenceTimestamp(
+  value: string | undefined,
+  evaluatedAt: string,
+): boolean {
+  if (!value) return false;
+  const observed = Date.parse(value);
+  const evaluated = Date.parse(evaluatedAt);
+  if (!Number.isFinite(observed) || !Number.isFinite(evaluated)) return false;
+  const ageMs = evaluated - observed;
+  return (
+    ageMs >= 0 &&
+    ageMs <=
+      MIGRATION_AUTHORIZATION_POLICY.operationalEvidenceMaxAgeMinutes *
+        60 *
+        1_000
+  );
+}
+
+function expectedPendingSequenceValid(
+  checkedInNames: string[],
+  expectedPendingMigrations: string[],
+): boolean {
+  if (expectedPendingMigrations.length === 0) return false;
+  if (new Set(expectedPendingMigrations).size !== expectedPendingMigrations.length) {
+    return false;
+  }
+  const targetIndex = checkedInNames.indexOf(
+    MIGRATION_AUTHORIZATION_POLICY.targetMigration,
+  );
+  const firstExpectedIndex = checkedInNames.indexOf(expectedPendingMigrations[0]);
+  if (targetIndex < 0 || firstExpectedIndex < 0) return false;
+  return (
+    expectedPendingMigrations.at(-1) ===
+      MIGRATION_AUTHORIZATION_POLICY.targetMigration &&
+    JSON.stringify(expectedPendingMigrations) ===
+      JSON.stringify(checkedInNames.slice(firstExpectedIndex, targetIndex + 1))
+  );
+}
+
 export function buildMigrationIntegrityReport(input: {
   target: { classification: "local" | "disposable" | "remote"; fingerprint: string };
   checkedIn: CheckedInMigration[];
   ledgerRows: LedgerRow[];
   catalog: CatalogSnapshot;
   writes?: number;
+  authorizationEvidence?: MigrationAuthorizationEvidence;
 }) {
   const checkedInNames = input.checkedIn.map((migration) => migration.name);
   const checkedInByName = new Map(input.checkedIn.map((migration) => [migration.name, migration]));
@@ -629,6 +778,13 @@ export function buildMigrationIntegrityReport(input: {
   const orderViolations = checkedInNames.filter((name, index) => appliedNames.has(name) && checkedInNames.slice(0, index).some((predecessor) => !appliedNames.has(predecessor)));
 
   const mismatched: string[] = [];
+  const mismatchContext: Array<{
+    migrationName: string;
+    ledgerChecksum: string | null;
+    canonicalRepositoryChecksum: string;
+    rawRepositoryChecksum: string;
+    rawRepositoryChecksumMatchesLedger: boolean;
+  }> = [];
   const missingCheckedIn: string[] = [];
   const missingLedgerChecksum = input.ledgerRows
     .filter((row) => row.finishedAt && !row.rolledBackAt && !row.logs?.trim() && !row.checksum?.trim())
@@ -640,6 +796,14 @@ export function buildMigrationIntegrityReport(input: {
       missingCheckedIn.push(row.migrationName);
     } else if (row.checksum !== migration.checksum) {
       mismatched.push(row.migrationName);
+      mismatchContext.push({
+        migrationName: row.migrationName,
+        ledgerChecksum: row.checksum,
+        canonicalRepositoryChecksum: migration.checksum,
+        rawRepositoryChecksum: migration.rawChecksum ?? migration.checksum,
+        rawRepositoryChecksumMatchesLedger:
+          row.checksum === (migration.rawChecksum ?? migration.checksum),
+      });
     } else {
       matched += 1;
     }
@@ -648,9 +812,25 @@ export function buildMigrationIntegrityReport(input: {
   const unexpectedPresent: string[] = [];
   const partiallyPresent: string[] = [];
   const incompatible: string[] = [];
+  const appliedManifestMissing: string[] = [];
+  const appliedManifestIncompatible: string[] = [];
   const commentsOnly: string[] = [];
   for (const migration of PENDING_ARCHITECTURE_MANIFEST) {
-    if (appliedNames.has(migration.migration)) continue;
+    if (appliedNames.has(migration.migration)) {
+      if (migration.effect === "comments_only") continue;
+      for (const object of migration.objects) {
+        if (!objectExists(input.catalog, object)) {
+          appliedManifestMissing.push(
+            `${migration.migration}:${objectKey(object)}:missing`,
+          );
+        } else if (!pendingObjectCompatible(input.catalog, object)) {
+          appliedManifestIncompatible.push(
+            `${migration.migration}:${objectKey(object)}:incompatible`,
+          );
+        }
+      }
+      continue;
+    }
     if (migration.effect === "comments_only") {
       commentsOnly.push(`${migration.migration}:retains:${migration.retainedObjects?.join(",") ?? "none"}`);
       continue;
@@ -696,10 +876,22 @@ export function buildMigrationIntegrityReport(input: {
   const semanticBlockingDifferences = [
     ...incompatible.map((difference) => ({ category: "incompatible_definition" as const, difference })),
     ...missingDefinitions.map((difference) => ({ category: "missing_definition" as const, difference })),
+    ...appliedManifestMissing.map((difference) => ({
+      category: "applied_migration_object_missing" as const,
+      difference,
+    })),
+    ...appliedManifestIncompatible.map((difference) => ({
+      category: "applied_migration_object_incompatible" as const,
+      difference,
+    })),
     ...uniquenessBlockingDifferences.map((difference) => ({ category: "baseline_uniqueness" as const, ...difference })),
   ];
 
-  const appliedSchemaVerified = definitionIssues.length === 0 && uniquenessBlockingDifferences.length === 0;
+  const appliedSchemaVerified =
+    definitionIssues.length === 0 &&
+    uniquenessBlockingDifferences.length === 0 &&
+    appliedManifestMissing.length === 0 &&
+    appliedManifestIncompatible.length === 0;
   const executed: string[] = [];
   const resolvedApplied: string[] = [];
   const unknownSuccessful: string[] = [];
@@ -749,15 +941,178 @@ export function buildMigrationIntegrityReport(input: {
   ];
   const writes = input.writes ?? 0;
   const exactChain = JSON.stringify(checkedInNames) === JSON.stringify(EXPECTED_MIGRATION_CHAIN);
-  const exactPending = JSON.stringify(pendingNames) === JSON.stringify(EXPECTED_GATE_A_PENDING);
+  const evidence = input.authorizationEvidence;
+  const evaluatedAt = evidence?.evaluatedAt ?? new Date().toISOString();
+  const expectedPendingMigrations = evidence?.expectedPendingMigrations
+    ? [...evidence.expectedPendingMigrations]
+    : [...MIGRATION_AUTHORIZATION_POLICY.expectedPendingMigrations];
+  const pendingSequenceConfigured = expectedPendingSequenceValid(
+    checkedInNames,
+    expectedPendingMigrations,
+  );
+  const exactPending =
+    pendingSequenceConfigured &&
+    JSON.stringify(pendingNames) === JSON.stringify(expectedPendingMigrations);
   const ledgerClean = failed.length + rolledBack.length + incomplete.length + duplicates.length + unknown.length + orderViolations.length === 0;
-  const checksumsClean = mismatched.length + missingCheckedIn.length + missingLedgerChecksum.length === 0 && matched === 10;
+  const checksumsClean =
+    mismatched.length +
+      missingCheckedIn.length +
+      missingLedgerChecksum.length ===
+      0 && matched === successfulRows.length;
   const schemaClean = blockingDifferences.length === 0;
   const gateAApplicable = pendingNames.length > 0;
+  const repositoryHead = evidence?.repositoryHead ?? "";
+  const productionDeploymentCommit =
+    evidence?.productionDeploymentCommit ?? "";
+  const requiredApplicationCommit =
+    evidence?.requiredApplicationCommit ??
+    MIGRATION_AUTHORIZATION_POLICY.requiredApplicationCommit;
+  const repositoryHeadIdentified = isFullCommitSha(repositoryHead);
+  const requiredApplicationCommitIdentified = isFullCommitSha(
+    requiredApplicationCommit,
+  );
+  const migrationTargetIdentified =
+    exactChain &&
+    pendingSequenceConfigured &&
+    checkedInNames.includes(MIGRATION_AUTHORIZATION_POLICY.targetMigration);
+  const dataPreflightValid = Boolean(
+    evidence?.dataPreflight?.valid &&
+      evidence.dataPreflight.targetFingerprint === input.target.fingerprint &&
+      isFreshEvidenceTimestamp(
+        evidence.dataPreflight.verifiedAt,
+        evaluatedAt,
+      ),
+  );
+  const disposablePostgresVerified = Boolean(
+    evidence?.disposablePostgres?.valid &&
+      evidence.disposablePostgres.repositoryHead === repositoryHead,
+  );
+  const recovery = evidence?.recoveryPoint;
+  const recoveryPointVerified = Boolean(
+    recovery?.verified &&
+      recovery.providerProjectIdentity.trim() &&
+      recovery.databaseIdentity.trim() &&
+      Date.parse(recovery.recoveryTimestamp) <= Date.parse(evaluatedAt) &&
+      recovery.retentionConfirmed &&
+      recovery.recoverabilityConfirmed &&
+      recovery.freshForExecution &&
+      isFreshEvidenceTimestamp(recovery.operatorVerifiedAt, evaluatedAt),
+  );
+  const writeBoundaryReady = Boolean(
+    evidence?.writeBoundary?.ready &&
+      evidence.writeBoundary.mechanism === "production-write-gate" &&
+      isFreshEvidenceTimestamp(
+        evidence.writeBoundary.verifiedAt,
+        evaluatedAt,
+      ),
+  );
+  const applicationCompatibilityState =
+    evidence?.applicationCompatibilityState ?? "unverified";
+  const compatibleProductionDeployment =
+    isFullCommitSha(productionDeploymentCommit) &&
+    MIGRATION_AUTHORIZATION_POLICY.compatibleProductionDeploymentCommits.includes(
+      productionDeploymentCommit as
+        (typeof MIGRATION_AUTHORIZATION_POLICY.compatibleProductionDeploymentCommits)[number],
+    );
+  const productionDeploymentVerified =
+    compatibleProductionDeployment &&
+    isFreshEvidenceTimestamp(evidence?.deploymentVerifiedAt, evaluatedAt);
+  const migrationOrderValid =
+    orderViolations.length === 0 && pendingSequenceConfigured;
+  const migrationChecksumsValid = checksumsClean;
+  const schemaPreflightValid = schemaClean;
+  const technicalMigrationReady =
+    input.target.classification !== "local" &&
+    gateAApplicable &&
+    exactChain &&
+    exactPending &&
+    ledgerClean &&
+    migrationOrderValid &&
+    migrationChecksumsValid &&
+    schemaPreflightValid &&
+    dataPreflightValid &&
+    disposablePostgresVerified &&
+    writes === 0;
   const migrationAuthorizationReady =
-    input.target.classification !== "local" && exactChain && exactPending && ledgerClean && checksumsClean && schemaClean && writes === 0;
+    technicalMigrationReady &&
+    repositoryHeadIdentified &&
+    requiredApplicationCommitIdentified &&
+    migrationTargetIdentified &&
+    recoveryPointVerified &&
+    writeBoundaryReady &&
+    productionDeploymentVerified &&
+    applicationCompatibilityState === "compatible_with_write_boundary";
+  const executionAuthorized = false;
+  const unexpectedMigrations = Array.from(
+    new Set([
+      ...unknown,
+      ...pendingNames.filter(
+        (migration) => !expectedPendingMigrations.includes(migration),
+      ),
+    ]),
+  ).sort();
+  const blockingReasons: string[] = [];
+  if (input.target.classification === "local") blockingReasons.push("remote_or_disposable_target_required");
+  if (!gateAApplicable) blockingReasons.push("no_pending_migration");
+  if (!exactChain) blockingReasons.push("repository_migration_chain_mismatch");
+  if (!migrationTargetIdentified) blockingReasons.push("migration_target_not_identified");
+  if (!exactPending) blockingReasons.push("pending_migration_sequence_mismatch");
+  if (!ledgerClean) blockingReasons.push("migration_ledger_not_clean");
+  if (!migrationOrderValid) blockingReasons.push("migration_order_invalid");
+  if (!migrationChecksumsValid) blockingReasons.push("migration_checksum_drift");
+  if (!schemaPreflightValid) blockingReasons.push("schema_preflight_invalid");
+  if (!dataPreflightValid) blockingReasons.push("data_preflight_invalid_or_stale");
+  if (!disposablePostgresVerified) blockingReasons.push("disposable_postgres_verification_missing");
+  if (writes !== 0) blockingReasons.push("inspection_writes_detected");
+  if (!repositoryHeadIdentified) blockingReasons.push("repository_head_not_identified");
+  if (!requiredApplicationCommitIdentified) blockingReasons.push("required_application_commit_not_identified");
+  if (!compatibleProductionDeployment) blockingReasons.push("production_deployment_commit_incompatible");
+  if (!productionDeploymentVerified) blockingReasons.push("production_deployment_evidence_invalid_or_stale");
+  if (!recoveryPointVerified) blockingReasons.push("recovery_point_unverified_or_stale");
+  if (!writeBoundaryReady) blockingReasons.push("write_boundary_not_ready_or_stale");
+  if (applicationCompatibilityState !== "compatible_with_write_boundary") {
+    blockingReasons.push("application_compatibility_unverified");
+  }
+  const normalizedRepositoryFiles = input.checkedIn
+    .filter(
+      (migration) =>
+        migration.rawChecksum != null &&
+        migration.rawChecksum !== migration.checksum,
+    )
+    .map((migration) => migration.name);
+  const warnings = [
+    ...representationWarnings.map(
+      (warning) =>
+        `catalog_representation_diff:${warning.table}.${warning.objectName}`,
+    ),
+    ...rolledBackHistory.map(
+      (migration) => `rolled_back_history_replaced:${migration}`,
+    ),
+    ...normalizedRepositoryFiles.map(
+      (migration) => `line_endings_normalized:${migration}`,
+    ),
+  ].sort();
 
   return {
+    repositoryHead,
+    productionDeploymentCommit,
+    requiredApplicationCommit,
+    appliedMigrations: checkedInNames.filter((name) => appliedNames.has(name)),
+    pendingMigrations: pendingNames,
+    unexpectedMigrations,
+    failedMigrations: failed,
+    migrationOrderValid,
+    migrationChecksumsValid,
+    schemaPreflightValid,
+    dataPreflightValid,
+    recoveryPointVerified,
+    writeBoundaryReady,
+    applicationCompatibilityState,
+    technicalMigrationReady,
+    migrationAuthorizationReady,
+    executionAuthorized,
+    blockingReasons,
+    warnings,
     target: input.target,
     chain: {
       checkedIn: checkedInNames.length,
@@ -766,9 +1121,20 @@ export function buildMigrationIntegrityReport(input: {
       pendingNames,
       exactExpectedChain: exactChain,
       exactExpectedPending: exactPending,
+      expectedPendingMigrations,
+      targetMigration: MIGRATION_AUTHORIZATION_POLICY.targetMigration,
       gateAApplicable,
     },
-    checksums: { matched, mismatched: mismatched.sort(), missingCheckedIn: missingCheckedIn.sort(), missingLedgerChecksum: missingLedgerChecksum.sort() },
+    checksums: {
+      matched,
+      mismatched: mismatched.sort(),
+      mismatchContext: mismatchContext.sort((left, right) =>
+        left.migrationName.localeCompare(right.migrationName),
+      ),
+      missingCheckedIn: missingCheckedIn.sort(),
+      missingLedgerChecksum: missingLedgerChecksum.sort(),
+      normalizedRepositoryFiles,
+    },
     ledger: {
       successful: [...appliedNames].sort(),
       successfulDetails,
@@ -784,7 +1150,13 @@ export function buildMigrationIntegrityReport(input: {
       orderViolations,
     },
     partialObjects: { unexpectedPresent, partiallyPresent, incompatible, unableToVerify, commentsOnly },
-    definitions: { checked: APPLIED_SCHEMA_EXPECTATIONS.length, missing: missingDefinitions, incompatible },
+    definitions: {
+      checked: APPLIED_SCHEMA_EXPECTATIONS.length,
+      missing: missingDefinitions,
+      incompatible,
+      appliedManifestMissing,
+      appliedManifestIncompatible,
+    },
     schemaIntegrity: {
       semanticDriftBlocking: semanticBlockingDifferences.length,
       representationWarningCount: representationWarnings.length,
@@ -793,6 +1165,13 @@ export function buildMigrationIntegrityReport(input: {
       uniquenessAssessments,
     },
     writes,
-    migrationAuthorizationReady,
+    evidence: {
+      evaluatedAt,
+      disposablePostgresVerified,
+      productionDeploymentVerified,
+      migrationTargetIdentified,
+      repositoryHeadIdentified,
+      requiredApplicationCommitIdentified,
+    },
   };
 }

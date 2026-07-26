@@ -10,11 +10,17 @@ import {
   type PreSessionReadinessIdentity,
 } from "@/lib/api/pre-session-readiness-identity";
 import type { PreSessionReadinessContract } from "@/lib/api/pre-session-readiness-contract";
+import { checksumMigrationSql } from "@/lib/operations/migration-integrity";
 import { parseExactDisposableConfirmationArgs } from "@/lib/operations/test-environment-preflight";
 
 const containerName = `trainer-rollout-${process.pid}-${randomUUID().slice(0, 8)}`;
 const envFile = join(tmpdir(), `${containerName}.env`);
+const authorizationEvidenceFile = join(
+  tmpdir(),
+  `${containerName}-authorization-evidence.json`,
+);
 const preMigrationCount = 10;
+const currentProductionAppliedCount = 15;
 
 type CommandResult = { status: number; stdout: string; stderr: string };
 
@@ -91,7 +97,7 @@ function applyMigrations(names: string[]): void {
 
 function migrationChecksum(name: string): string {
   const bytes = readFileSync(join(process.cwd(), "prisma", "migrations", name, "migration.sql"));
-  return createHash("sha256").update(bytes).digest("hex");
+  return checksumMigrationSql(bytes);
 }
 
 function recordMigration(name: string, index: number): void {
@@ -141,6 +147,14 @@ function requireResolvedLedgerShape(name: string): void {
   }
 }
 
+function canonicalizeResolvedLedgerChecksum(name: string): void {
+  psql(`
+    UPDATE public._prisma_migrations
+    SET checksum = '${migrationChecksum(name)}'
+    WHERE migration_name = '${name}';
+  `);
+}
+
 function convertBaselineUniqueIndexesToConstraints(): void {
   psql(`
     ALTER TABLE "ExerciseAlias"
@@ -163,8 +177,12 @@ function parseLastJson(stdout: string): Record<string, unknown> {
 }
 
 function cli(script: string, args: string[]): Record<string, unknown> {
+  const evidenceArgs =
+    script === "scripts/check-migration-status.ts"
+      ? ["--evidence-file", authorizationEvidenceFile]
+      : [];
   const result = requireSuccess(
-    run(process.execPath, [join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), script, "--env-file", envFile, "--confirm-disposable", ...args], { quiet: true }),
+    run(process.execPath, [join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), script, "--env-file", envFile, "--confirm-disposable", ...evidenceArgs, ...args], { quiet: true }),
     `${script} ${args.join(" ")}`,
   );
   if (result.stdout.includes("configured-remote.invalid")) {
@@ -174,9 +192,13 @@ function cli(script: string, args: string[]): Record<string, unknown> {
 }
 
 function cliWithExpectedStatus(script: string, args: string[], expectedStatus: number): Record<string, unknown> {
+  const evidenceArgs =
+    script === "scripts/check-migration-status.ts"
+      ? ["--evidence-file", authorizationEvidenceFile]
+      : [];
   const result = run(
     process.execPath,
-    [join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), script, "--env-file", envFile, "--confirm-disposable", ...args],
+    [join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"), script, "--env-file", envFile, "--confirm-disposable", ...evidenceArgs, ...args],
     { quiet: true },
   );
   if (result.status !== expectedStatus) {
@@ -562,9 +584,53 @@ try {
   if (!port) throw new Error("DISPOSABLE_ROLLOUT_POSTGRES_PORT_NOT_FOUND");
   const disposableUrl = `postgresql://trainer:trainer-rollout@127.0.0.1:${port}/trainer`;
   writeFileSync(envFile, `DATABASE_URL=${disposableUrl}\nDIRECT_URL=${disposableUrl}\n`);
+  const repositoryHead = requireSuccess(
+    run("git", ["rev-parse", "HEAD"], { quiet: true }),
+    "git rev-parse HEAD",
+  ).stdout.trim();
+  const evidenceTimestamp = new Date().toISOString();
+  writeFileSync(
+    authorizationEvidenceFile,
+    JSON.stringify({
+      repositoryHead,
+      productionDeploymentCommit:
+        "06c74a80c842924c9e79d93f0849ed385212bea5",
+      dataPreflight: {
+        valid: true,
+        verifiedAt: evidenceTimestamp,
+        targetFingerprint: createHash("sha256")
+          .update("127.0.0.1")
+          .digest("hex")
+          .slice(0, 12),
+      },
+      disposablePostgres: {
+        valid: true,
+        verifiedAt: evidenceTimestamp,
+        repositoryHead,
+      },
+      recoveryPoint: {
+        verified: true,
+        providerProjectIdentity: "disposable-postgres",
+        databaseIdentity: "trainer",
+        recoveryTimestamp: evidenceTimestamp,
+        retentionConfirmed: true,
+        recoverabilityConfirmed: true,
+        freshForExecution: true,
+        operatorVerifiedAt: evidenceTimestamp,
+      },
+      writeBoundary: {
+        ready: true,
+        mechanism: "production-write-gate",
+        verifiedAt: evidenceTimestamp,
+      },
+      applicationCompatibilityState: "compatible_with_write_boundary",
+      deploymentVerifiedAt: evidenceTimestamp,
+      evaluatedAt: evidenceTimestamp,
+    }),
+  );
 
   const migrations = migrationDirectories();
-  if (migrations.length !== 15) throw new Error(`Expected 15 migrations, found ${migrations.length}`);
+  if (migrations.length !== 16) throw new Error(`Expected 16 migrations, found ${migrations.length}`);
   const baselineMigration = migrations[0];
   const setIntentMigration = migrations[9];
 
@@ -572,6 +638,7 @@ try {
   convertBaselineUniqueIndexesToConstraints();
   requireSuccess(prismaResolve(baselineMigration, disposableUrl), "Prisma baseline resolve --applied");
   requireResolvedLedgerShape(baselineMigration);
+  canonicalizeResolvedLedgerChecksum(baselineMigration);
 
   const baselineState = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
   if (
@@ -596,6 +663,7 @@ try {
   applyMigrations([setIntentMigration]);
   requireSuccess(prismaResolve(setIntentMigration, disposableUrl), "Prisma set-intent resolve --applied");
   requireResolvedLedgerShape(setIntentMigration);
+  canonicalizeResolvedLedgerChecksum(setIntentMigration);
 
   const beforeRepeatedSetIntentResolve = databaseStateFingerprint();
   const repeatedSetIntentResolve = prismaResolve(setIntentMigration, disposableUrl);
@@ -715,14 +783,14 @@ try {
   }
 
   const beforeStateA = databaseStateFingerprint();
-  const migrationStateA = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 0);
+  const migrationStateA = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
   const afterStateA = databaseStateFingerprint();
   if (beforeStateA !== afterStateA) throw new Error("State A migration integrity inspection changed disposable database state");
   const stateALedger = objectField(migrationStateA, "ledger");
   const stateASchema = objectField(migrationStateA, "schemaIntegrity");
   if (
     numberField(objectField(migrationStateA, "chain"), "applied") !== 10 ||
-    numberField(objectField(migrationStateA, "chain"), "pending") !== 5 ||
+    numberField(objectField(migrationStateA, "chain"), "pending") !== 6 ||
     numberField(objectField(migrationStateA, "checksums"), "matched") !== 10 ||
     arrayField(stateALedger, "incomplete").length !== 0 ||
     arrayField(stateALedger, "orderViolations").length !== 0 ||
@@ -730,9 +798,9 @@ try {
     !arrayField(stateALedger, "resolvedApplied").includes(setIntentMigration) ||
     numberField(stateASchema, "semanticDriftBlocking") !== 0 ||
     numberField(stateASchema, "representationWarningCount") !== 2 ||
-    migrationStateA.migrationAuthorizationReady !== true
+    migrationStateA.migrationAuthorizationReady !== false
   ) {
-    throw new Error(`State A did not authorize the clean pre-migration state: ${JSON.stringify(migrationStateA)}`);
+    throw new Error(`State A did not reject the stale rollout shape: ${JSON.stringify(migrationStateA)}`);
   }
 
   requireUniquenessAssessment(migrationStateA, "ExerciseAlias_alias_key", {
@@ -754,7 +822,7 @@ try {
     CREATE UNIQUE INDEX "WorkoutTemplateExercise_templateId_orderIndex_key"
       ON "WorkoutTemplateExercise"("templateId", "orderIndex");
   `);
-  const standaloneRepresentation = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 0);
+  const standaloneRepresentation = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
   requireUniquenessAssessment(standaloneRepresentation, "ExerciseAlias_alias_key", {
     semantic: true,
     representation: true,
@@ -895,8 +963,13 @@ try {
   cliMustFail("scripts/backfill-workout-exercise-stimulus-accounting.ts", [], /stimulusAccountingSnapshot|column .* does not exist/i);
   cliMustFail("scripts/backfill-post-session-reviews.ts", [], /PostSessionReviewSnapshot|does not exist/i);
 
-  applyMigrations(migrations.slice(preMigrationCount));
-  recordMigrations(migrations.slice(preMigrationCount), preMigrationCount);
+  applyMigrations(
+    migrations.slice(preMigrationCount, currentProductionAppliedCount),
+  );
+  recordMigrations(
+    migrations.slice(preMigrationCount, currentProductionAppliedCount),
+    preMigrationCount,
+  );
 
   const migratedSeedState = psql(`
     SELECT concat_ws('|',
@@ -950,12 +1023,36 @@ try {
     throw new Error("Migrations 011-015 changed existing workout, exercise, set, or log evidence");
   }
 
+  const currentProductionState = cliWithExpectedStatus(
+    "scripts/check-migration-status.ts",
+    [],
+    0,
+  );
+  if (
+    numberField(objectField(currentProductionState, "chain"), "applied") !==
+      currentProductionAppliedCount ||
+    numberField(objectField(currentProductionState, "chain"), "pending") !== 1 ||
+    currentProductionState.technicalMigrationReady !== true ||
+    currentProductionState.migrationAuthorizationReady !== true ||
+    currentProductionState.executionAuthorized !== false
+  ) {
+    throw new Error(
+      `Current production-shape simulation failed: ${JSON.stringify(currentProductionState)}`,
+    );
+  }
+
+  applyMigrations(migrations.slice(currentProductionAppliedCount));
+  recordMigrations(
+    migrations.slice(currentProductionAppliedCount),
+    currentProductionAppliedCount,
+  );
+
   const beforeStateE = databaseStateFingerprint();
   const migrationStateE = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 0);
   const afterStateE = databaseStateFingerprint();
   if (beforeStateE !== afterStateE) throw new Error("State E migration integrity inspection changed disposable database state");
   if (
-    numberField(objectField(migrationStateE, "chain"), "applied") !== 15 ||
+    numberField(objectField(migrationStateE, "chain"), "applied") !== 16 ||
     numberField(objectField(migrationStateE, "chain"), "pending") !== 0 ||
     objectField(migrationStateE, "chain").gateAApplicable !== false ||
     migrationStateE.migrationAuthorizationReady !== false
@@ -1093,10 +1190,11 @@ try {
       resolvedBaseline: "prisma_cli_zero_step_applied",
       resolvedSetIntent: "prisma_cli_zero_step_applied",
       repeatedResolve: "P3008_state_unchanged",
-      stateA: "production_like_10_applied_5_pending_authorization_ready_with_2_representation_warnings",
+      stateA: "legacy_10_applied_6_pending_rejected",
       stateB: "partial_object_blocked",
       stateC: "checksum_mismatch_blocked",
       stateD: "failed_rolled_back_and_unfinished_ledger_blocked",
+      currentProductionState: "15_applied_1_pending_authorization_ready_execution_not_authorized",
       stateE: "fully_migrated_gate_a_not_applicable",
       baselineUniquenessVariants: "standalone_constraint_missing_wrong_order_non_unique_partial_predicate",
       readOnlyFingerprintsStable: true,
@@ -1115,5 +1213,6 @@ try {
   }, null, 2));
 } finally {
   rmSync(envFile, { force: true });
+  rmSync(authorizationEvidenceFile, { force: true });
   spawnSync("docker", ["rm", "-f", containerName], { stdio: "ignore" });
 }

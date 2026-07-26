@@ -1,8 +1,12 @@
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { Client } from "pg";
 import {
   buildMigrationIntegrityReport,
   loadCheckedInMigrations,
+  type MigrationAuthorizationEvidence,
 } from "@/lib/operations/migration-integrity";
 import { inspectMigrationDatabase } from "@/lib/operations/migration-integrity-postgres";
 import {
@@ -13,6 +17,31 @@ import {
 function fingerprint(connectionString: string): string {
   const hostname = new URL(connectionString).hostname.toLowerCase();
   return createHash("sha256").update(hostname).digest("hex").slice(0, 12);
+}
+
+function loadAuthorizationEvidence(
+  argv: string[],
+): MigrationAuthorizationEvidence {
+  const evidenceFlagIndex = argv.indexOf("--evidence-file");
+  const evidencePath =
+    evidenceFlagIndex >= 0 ? argv[evidenceFlagIndex + 1] : undefined;
+  const supplied = evidencePath
+    ? (JSON.parse(
+        readFileSync(resolve(evidencePath), "utf8"),
+      ) as Partial<MigrationAuthorizationEvidence>)
+    : {};
+  if (supplied == null || typeof supplied !== "object" || Array.isArray(supplied)) {
+    throw new Error("Migration authorization evidence must be a JSON object.");
+  }
+  const repositoryHead = execFileSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim();
+  return {
+    productionDeploymentCommit: "",
+    ...supplied,
+    repositoryHead,
+    evaluatedAt: new Date().toISOString(),
+  };
 }
 
 async function main(): Promise<void> {
@@ -38,9 +67,11 @@ async function main(): Promise<void> {
       try {
         await client.connect();
         const inspection = await inspectMigrationDatabase(client);
+        const authorizationEvidence = loadAuthorizationEvidence(argv);
         const report = buildMigrationIntegrityReport({
           target: { classification: directTargetClass, fingerprint: fingerprint(directUrl) },
           checkedIn: loadCheckedInMigrations(),
+          authorizationEvidence,
           ...inspection,
         });
         console.log(
@@ -49,7 +80,9 @@ async function main(): Promise<void> {
           `orderViolations=${report.ledger.orderViolations.length}, checksumsMatched=${report.checksums.matched}, ` +
           `semanticDriftBlocking=${report.schemaIntegrity.semanticDriftBlocking}, ` +
           `representationWarnings=${report.schemaIntegrity.representationWarningCount}, ` +
-          `migrationAuthorizationReady=${report.migrationAuthorizationReady}.`,
+          `technicalMigrationReady=${report.technicalMigrationReady}, ` +
+          `migrationAuthorizationReady=${report.migrationAuthorizationReady}, ` +
+          `executionAuthorized=${report.executionAuthorized}.`,
         );
         console.log(JSON.stringify(report, null, 2));
         if (!report.migrationAuthorizationReady && report.chain.gateAApplicable) process.exitCode = 1;
@@ -66,6 +99,7 @@ main().catch((error) => {
     message.startsWith("The explicitly named environment file") ||
     message.startsWith("DATABASE_URL and DIRECT_URL") ||
     message.startsWith("Gate A migration integrity") ||
+    message.startsWith("Migration authorization evidence") ||
     message.startsWith("Missing required --env-file")
       ? message
       : "Migration integrity inspection failed. Run ops:check-direct-db for the sanitized connection classification.";

@@ -1,11 +1,15 @@
+import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
-import { prisma } from "@/lib/db/prisma";
 import {
   buildMultiPlanIntegrityReport,
   loadMultiPlanIntegrityRows,
   type MultiPlanIntegrityRows,
 } from "@/lib/operations/multi-plan-integrity";
+import {
+  classifyRolloutTarget,
+  runWithRolloutEnvironment,
+} from "@/lib/operations/rollout-environment";
 
 async function collectJsonFiles(root: string): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
@@ -64,25 +68,75 @@ async function inspectHistoricalArtifacts(
 }
 
 async function main(): Promise<void> {
-  const artifactFlagIndex = process.argv.indexOf("--artifact-dir");
-  const artifactDirectory =
-    artifactFlagIndex >= 0 && process.argv[artifactFlagIndex + 1]
-      ? path.resolve(process.argv[artifactFlagIndex + 1])
-      : null;
-  const historicalArtifacts = await inspectHistoricalArtifacts(
-    artifactDirectory
+  const argv = process.argv.slice(2);
+  await runWithRolloutEnvironment(
+    {
+      argv,
+      allowWrite: false,
+      requiredVariables: ["DATABASE_URL", "DIRECT_URL"],
+    },
+    async (environment) => {
+      const directUrl = process.env.DIRECT_URL;
+      if (!directUrl) {
+        throw new Error(
+          "The explicitly named environment file must define DIRECT_URL.",
+        );
+      }
+      const targetClass = classifyRolloutTarget(
+        directUrl,
+        argv.includes("--confirm-disposable"),
+      );
+      if (targetClass !== environment.targetClass) {
+        throw new Error(
+          "DATABASE_URL and DIRECT_URL resolve to different sanitized target classes.",
+        );
+      }
+      if (targetClass === "local") {
+        throw new Error(
+          "Multi-plan integrity requires a remote target; disposable targets require --confirm-disposable.",
+        );
+      }
+      process.env.DATABASE_URL = directUrl;
+      const { prisma } = await import("@/lib/db/prisma");
+      try {
+        const artifactFlagIndex = argv.indexOf("--artifact-dir");
+        const artifactDirectory =
+          artifactFlagIndex >= 0 && argv[artifactFlagIndex + 1]
+            ? path.resolve(argv[artifactFlagIndex + 1])
+            : null;
+        const historicalArtifacts = await inspectHistoricalArtifacts(
+          artifactDirectory,
+        );
+        const rows = await loadMultiPlanIntegrityRows(
+          prisma,
+          historicalArtifacts,
+        );
+        const report = buildMultiPlanIntegrityReport(rows);
+        const fingerprint = createHash("sha256")
+          .update(new URL(directUrl).hostname.toLowerCase())
+          .digest("hex")
+          .slice(0, 12);
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              target: { classification: targetClass, fingerprint },
+              verifiedAt: new Date().toISOString(),
+              ...report,
+            },
+            null,
+            2,
+          )}\n`,
+        );
+        process.exitCode = report.safeToMigrate ? 0 : 1;
+      } finally {
+        await prisma.$disconnect();
+      }
+    },
   );
-  const rows = await loadMultiPlanIntegrityRows(prisma, historicalArtifacts);
-  const report = buildMultiPlanIntegrityReport(rows);
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-  process.exitCode = report.safeToMigrate ? 0 : 1;
 }
 
 main()
   .catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 2;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
   });

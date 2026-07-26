@@ -34,7 +34,7 @@
       "authorizationRequirements": ["Use an isolated canonical worktree for implementation."]
     },
     "shared-seam-write": {
-      "allowedPathRoots": ["trainer-app/src", "trainer-app/docs", "scripts", ".codex/skills"],
+      "allowedPathRoots": ["trainer-app/src", "trainer-app/docs", "scripts", ".codex/skills", ".github/workflows"],
       "forbiddenPathRoots": ["trainer-app/prisma/migrations", ".env*"],
       "databasePolicy": {
         "access": "none",
@@ -134,6 +134,7 @@
       {
         "name": "test-environment-classification",
         "patterns": [
+          ".github/workflows/**",
           "trainer-app/scripts/test-environment-preflight.mjs",
           "trainer-app/scripts/test-environment-preflight.ts",
           "trainer-app/scripts/test-suite-environments.json",

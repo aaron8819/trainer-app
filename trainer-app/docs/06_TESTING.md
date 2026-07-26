@@ -1,7 +1,7 @@
 # 06 Testing
 
 Owner: Aaron
-Last reviewed: 2026-07-23
+Last reviewed: 2026-07-26
 Purpose: Canonical testing reference for Vitest-based coverage of engine, API helpers, and UI components, plus the Playwright UI audit harness.
 
 This doc covers:
@@ -16,6 +16,7 @@ Invariants:
 
 Sources of truth:
 - `trainer-app/package.json`
+- `.github/workflows/credential-free-inventory.yml`
 - `trainer-app/vitest.config.ts`
 - `trainer-app/src/**/*.test.ts`
 - `trainer-app/src/**/*.test.tsx`
@@ -83,6 +84,46 @@ Sources of truth:
 - `npm run verify:production-version -- --base-url <https-origin> --expected-sha <full-git-sha>`: explicit read-only live production evidence; never included in local `npm run verify`
 - `npm run verify:contracts`: docs/runtime enum drift check
 - Owner-scoped audit commands accept `--env-file .env.local --owner owner@local` so local audit scripts can load the intended runtime environment explicitly
+
+## Pull-request credential-free gate
+
+Every pull request targeting `master` runs the `credential-free-inventory` GitHub Actions check
+from `.github/workflows/credential-free-inventory.yml`. The workflow checks out full Git history,
+uses Node.js 22, installs the exact lockfile with `npm ci`, and delegates all classification and
+execution behavior to:
+
+```text
+npm run test:inventory:credential-free -- --base-ref origin/master
+```
+
+The gate proves that every unclassified suite runs credential-free, every registered import-only
+suite runs with the exact guarded TEST-NET placeholder and no socket attempt, every registered
+DB-required suite is excluded before Vitest collection, the manifest is valid, and unexpected
+collection, setup, import, test, subprocess, or result-parsing failures remain fatal. It prints the
+selected and passed file/test counts, skipped counts, both DB exclusions and their authorized
+command, placeholder safeguards, and the manifest delta against `origin/master`.
+
+The gate does not run or claim disposable PostgreSQL coverage. These suites remain separately
+authorized:
+
+- `src/lib/api/workout-mutation.db.test.ts`
+- `src/lib/api/save-workout/persistence.db.test.ts`
+
+Run them only with `npm run test:db:workout-mutations -- --confirm-disposable` against the
+harness-created disposable target. Pull-request CI has no database secrets, does not invoke that
+command, and does not represent the exclusion as a successful DB test.
+
+Manifest changes are reviewed as contract changes. The CI command validates current entries first,
+then reports additions, removals, and changes relative to `origin/master`; an unavailable or
+malformed base manifest fails closed. Reproduce a different comparison locally by replacing
+`origin/master` with another existing Git ref. Classification errors identify the invalid path or
+command; Vitest output identifies collection, setup, import, and test failures; the final summary
+separately identifies nonzero phases and malformed results.
+
+The workflow creates and runs the stable `credential-free-inventory` check. Repository code cannot
+make a GitHub check merge-required. As of 2026-07-26, `master` has no classic branch protection or
+branch ruleset, so the check is running but awaits a separate GitHub settings change before merge
+enforcement can be claimed.
 
 ## Test-environment safety contract
 

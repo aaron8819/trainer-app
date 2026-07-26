@@ -228,21 +228,23 @@ enum MesocycleExerciseRoleType {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  createdAt DateTime @default(now())
+  id                 String      @id @default(uuid())
+  email              String      @unique
+  activeMacroCycleId String?     @unique
+  activeMacroCycle   MacroCycle? @relation("ActiveMacroCycle", fields: [activeMacroCycleId], references: [id], onDelete: Restrict)
+  createdAt          DateTime    @default(now())
 
-  profile           Profile?
-  constraints       Constraints?
-  goals             Goals?
-  injuries          Injury[]
-  workouts          Workout[]
-  sessionCheckIns   SessionCheckIn[]
-  preferences       UserPreference?
-  templates         WorkoutTemplate[]
-  macroCycles       MacroCycle[]
-  readinessSignals  ReadinessSignal[]
-  integrations      UserIntegration[]
+  profile                      Profile?
+  constraints                  Constraints?
+  goals                        Goals?
+  injuries                     Injury[]
+  workouts                     Workout[]
+  sessionCheckIns              SessionCheckIn[]
+  preferences                  UserPreference?
+  templates                    WorkoutTemplate[]
+  macroCycles                  MacroCycle[]                  @relation("OwnedMacroCycles")
+  readinessSignals             ReadinessSignal[]
+  integrations                 UserIntegration[]
   preSessionReadinessSnapshots PreSessionReadinessSnapshot[]
 }
 
@@ -422,7 +424,7 @@ model Workout {
 
   // Mesocycle lifecycle context (nullable for backward compat)
   mesocycleId            String?
-  mesocycle              Mesocycle?      @relation(fields: [mesocycleId], references: [id], onDelete: SetNull)
+  mesocycle              Mesocycle?             @relation(fields: [mesocycleId], references: [id], onDelete: SetNull)
   seedRevisionId         String?
   seedRevision           MesocycleSeedRevision? @relation("WorkoutSeedRevision", fields: [seedRevisionId], references: [id], onDelete: Restrict)
   seedRevisionNumber     Int?
@@ -430,17 +432,17 @@ model Workout {
   mesocyclePhaseSnapshot MesocyclePhase?
   mesocycleWeekSnapshot  Int?
   mesoSessionSnapshot    Int?
-  optionalWeekClose      MesocycleWeekClose? @relation("WeekCloseOptionalWorkout")
+  optionalWeekClose      MesocycleWeekClose?    @relation("WeekCloseOptionalWorkout")
 
   // Autoregulation tracking (Phase 3)
   wasAutoregulated  Boolean @default(false)
   autoregulationLog Json? // { modifications: [...], fatigueScore: 0.45, rationale: "..." }
 
-  exercises         WorkoutExercise[]
-  sessionCheckIns   SessionCheckIn[]
-  filteredExercises FilteredExercise[]
+  exercises                    WorkoutExercise[]
+  sessionCheckIns              SessionCheckIn[]
+  filteredExercises            FilteredExercise[]
   preSessionReadinessSnapshots PreSessionReadinessSnapshot[]
-  postSessionReviewSnapshot PostSessionReviewSnapshot?
+  postSessionReviewSnapshot    PostSessionReviewSnapshot?
 
   @@index([userId, scheduledDate])
   @@index([trainingBlockId])
@@ -618,9 +620,10 @@ model WorkoutTemplateExercise {
 }
 
 model MacroCycle {
-  id     String @id @default(uuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String @id @default(uuid())
+  userId        String
+  user          User   @relation("OwnedMacroCycles", fields: [userId], references: [id], onDelete: Cascade)
+  activeForUser User?  @relation("ActiveMacroCycle")
 
   startDate     DateTime
   endDate       DateTime
@@ -651,29 +654,29 @@ model Mesocycle {
   intensityBias IntensityBias
 
   // Legacy counter retained temporarily for backwards compatibility.
-  completedSessions             Int            @default(0)
-  accumulationSessionsCompleted Int            @default(0)
-  deloadSessionsCompleted       Int            @default(0)
-  sessionsPerWeek               Int            @default(3)
-  splitType                     SplitType      @default(PPL)
-  daysPerWeek                   Int            @default(3)
-  state                         MesocycleState @default(ACTIVE_ACCUMULATION)
+  completedSessions             Int                    @default(0)
+  accumulationSessionsCompleted Int                    @default(0)
+  deloadSessionsCompleted       Int                    @default(0)
+  sessionsPerWeek               Int                    @default(3)
+  splitType                     SplitType              @default(PPL)
+  daysPerWeek                   Int                    @default(3)
+  state                         MesocycleState         @default(ACTIVE_ACCUMULATION)
   volumeRampConfig              Json?
   rirBandConfig                 Json?
-  isActive                      Boolean        @default(false) // true for the current meso
+  isActive                      Boolean                @default(false) // true for the current meso
   closedAt                      DateTime?
   handoffSummaryJson            Json?
   nextSeedDraftJson             Json?
   slotSequenceJson              Json?
   slotPlanSeedJson              Json?
-  currentSeedRevisionId         String?                  @unique
-  currentSeedRevision           MesocycleSeedRevision?   @relation("CurrentSeedRevision", fields: [currentSeedRevisionId], references: [id], onDelete: Restrict)
+  currentSeedRevisionId         String?                @unique
+  currentSeedRevision           MesocycleSeedRevision? @relation("CurrentSeedRevision", fields: [currentSeedRevisionId], references: [id], onDelete: Restrict)
 
-  blocks        TrainingBlock[]
-  workouts      Workout[]
-  seedRevisions MesocycleSeedRevision[] @relation("MesocycleSeedRevisions")
-  exerciseRoles MesocycleExerciseRole[]
-  weekCloses    MesocycleWeekClose[]
+  blocks                       TrainingBlock[]
+  workouts                     Workout[]
+  seedRevisions                MesocycleSeedRevision[]       @relation("MesocycleSeedRevisions")
+  exerciseRoles                MesocycleExerciseRole[]
+  weekCloses                   MesocycleWeekClose[]
   preSessionReadinessSnapshots PreSessionReadinessSnapshot[]
 
   @@unique([macroCycleId, mesoNumber])
@@ -684,23 +687,23 @@ model Mesocycle {
 }
 
 model MesocycleSeedRevision {
-  id                 String   @id @default(uuid())
-  mesocycleId        String
-  mesocycle          Mesocycle @relation("MesocycleSeedRevisions", fields: [mesocycleId], references: [id], onDelete: Restrict)
-  revision           Int
-  seedPayload        Json
-  payloadHash        String?
-  hashAlgorithm      String?
-  provenanceStatus   String
-  creationReason     String
-  actorSource        String?
-  sourceRevisionId   String?
-  sourceRevision     MesocycleSeedRevision? @relation("SeedRevisionDerivation", fields: [sourceRevisionId], references: [id], onDelete: Restrict)
-  derivedRevisions   MesocycleSeedRevision[] @relation("SeedRevisionDerivation")
-  activatedAt        DateTime @default(now())
-  createdAt          DateTime @default(now())
-  currentForMesocycle Mesocycle? @relation("CurrentSeedRevision")
-  workouts           Workout[] @relation("WorkoutSeedRevision")
+  id                  String                  @id @default(uuid())
+  mesocycleId         String
+  mesocycle           Mesocycle               @relation("MesocycleSeedRevisions", fields: [mesocycleId], references: [id], onDelete: Restrict)
+  revision            Int
+  seedPayload         Json
+  payloadHash         String?
+  hashAlgorithm       String?
+  provenanceStatus    String
+  creationReason      String
+  actorSource         String?
+  sourceRevisionId    String?
+  sourceRevision      MesocycleSeedRevision?  @relation("SeedRevisionDerivation", fields: [sourceRevisionId], references: [id], onDelete: Restrict)
+  derivedRevisions    MesocycleSeedRevision[] @relation("SeedRevisionDerivation")
+  activatedAt         DateTime                @default(now())
+  createdAt           DateTime                @default(now())
+  currentForMesocycle Mesocycle?              @relation("CurrentSeedRevision")
+  workouts            Workout[]               @relation("WorkoutSeedRevision")
 
   @@unique([mesocycleId, revision])
   @@unique([mesocycleId, payloadHash])
@@ -729,40 +732,40 @@ model MesocycleWeekClose {
 }
 
 model PreSessionReadinessSnapshot {
-  id                     String         @id @default(uuid())
-  userId                 String
-  user                   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  activeMesocycleId      String
-  activeMesocycle        Mesocycle      @relation(fields: [activeMesocycleId], references: [id], onDelete: Cascade)
-  mesocycleState         MesocycleState
-  weekInMeso             Int
-  sessionInWeek          Int
-  slotId                 String
-  slotIntent             String
-  plannedWorkoutId       String?
-  plannedWorkout         Workout?       @relation(fields: [plannedWorkoutId], references: [id], onDelete: SetNull)
-  plannedWorkoutRevision Int?
-  contractVersion        Int
-  contractJson           Json
-  identityStatus         String         @default("LEGACY_UNKNOWN")
-  identityContractVersion Int?
-  identityJson           Json?
-  identityHash           String?
-  targetHash             String?
-  payloadHash            String?
+  id                           String         @id @default(uuid())
+  userId                       String
+  user                         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeMesocycleId            String
+  activeMesocycle              Mesocycle      @relation(fields: [activeMesocycleId], references: [id], onDelete: Cascade)
+  mesocycleState               MesocycleState
+  weekInMeso                   Int
+  sessionInWeek                Int
+  slotId                       String
+  slotIntent                   String
+  plannedWorkoutId             String?
+  plannedWorkout               Workout?       @relation(fields: [plannedWorkoutId], references: [id], onDelete: SetNull)
+  plannedWorkoutRevision       Int?
+  contractVersion              Int
+  contractJson                 Json
+  identityStatus               String         @default("LEGACY_UNKNOWN")
+  identityContractVersion      Int?
+  identityJson                 Json?
+  identityHash                 String?
+  targetHash                   String?
+  payloadHash                  String?
   readinessEvidenceFingerprint String?
-  projectionFingerprint  String?
-  seedRevisionId         String?
-  seedRevisionNumber     Int?
-  seedPayloadHash        String?
-  prescriptionFingerprint String?
-  sourceStateHash        String?
-  slotPlanSeedHash       String?
-  slotSequenceHash       String?
-  createdAt              DateTime       @default(now())
-  expiresAt              DateTime?
-  invalidatedAt          DateTime?
-  invalidatedReason      String?
+  projectionFingerprint        String?
+  seedRevisionId               String?
+  seedRevisionNumber           Int?
+  seedPayloadHash              String?
+  prescriptionFingerprint      String?
+  sourceStateHash              String?
+  slotPlanSeedHash             String?
+  slotSequenceHash             String?
+  createdAt                    DateTime       @default(now())
+  expiresAt                    DateTime?
+  invalidatedAt                DateTime?
+  invalidatedReason            String?
 
   @@index([userId, createdAt(sort: Desc)], map: "psrs_user_created_idx")
   @@index([userId, activeMesocycleId, weekInMeso, sessionInWeek, slotId, contractVersion], map: "psrs_identity_lookup_idx")

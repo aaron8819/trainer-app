@@ -34,6 +34,7 @@ import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 import { parseSlotPlanSeedJson, type SlotPlanSeedRole } from "./slot-plan-seed-parser";
 import { getUiAuditFixtureForServer } from "@/lib/ui-audit-fixtures/server";
 import type { CanonicalUiState } from "@/lib/ui-state-contract";
+import { loadActiveMesocycle } from "./mesocycle-lifecycle-state";
 import {
   formatWeeklyMuscleStatusLabel,
   getWeeklyMuscleDisplayGroup,
@@ -1377,24 +1378,7 @@ export async function loadProgramPageData(userId: string): Promise<ProgramPageDa
 
   const [dashboard, activeMesocycle, nextWorkoutContext] = await Promise.all([
     loadProgramDashboardData(userId),
-    prisma.mesocycle.findFirst({
-      where: { macroCycle: { userId }, isActive: true },
-      select: {
-        id: true,
-        startWeek: true,
-        durationWeeks: true,
-        accumulationSessionsCompleted: true,
-        deloadSessionsCompleted: true,
-        sessionsPerWeek: true,
-        state: true,
-        slotSequenceJson: true,
-        slotPlanSeedJson: true,
-        currentSeedRevision: { select: { seedPayload: true } },
-        macroCycle: {
-          select: { startDate: true },
-        },
-      },
-    }),
+    loadActiveMesocycle(userId),
     loadNextWorkoutContext(userId),
   ]);
   if (activeMesocycle?.currentSeedRevision?.seedPayload) {

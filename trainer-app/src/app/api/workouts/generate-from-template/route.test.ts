@@ -60,7 +60,11 @@ describe("POST /api/workouts/generate-from-template", () => {
     vi.clearAllMocks();
     delete process.env.TRAINER_WRITE_PAUSE;
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
-    mocks.loadActiveMesocycle.mockResolvedValue(null);
+    mocks.loadActiveMesocycle.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+    });
     mocks.loadPendingMesocycleHandoff.mockResolvedValue(null);
     mocks.loadNextWorkoutContext.mockResolvedValue({
       intent: "push",
@@ -128,6 +132,25 @@ describe("POST /api/workouts/generate-from-template", () => {
       handoff: expect.objectContaining({ mesocycleId: "meso-1" }),
     });
     expect(mocks.loadActiveMesocycle).not.toHaveBeenCalled();
+    expect(mocks.generateSessionFromTemplate).not.toHaveBeenCalled();
+  });
+
+  it("rejects generation when the selected plan is not ready", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templateId: "template-1" }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Selected plan with an active mesocycle is required.",
+    });
+    expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
     expect(mocks.generateSessionFromTemplate).not.toHaveBeenCalled();
   });
 

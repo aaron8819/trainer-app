@@ -230,16 +230,19 @@ async function loadBoundaryEvidenceRows(
   reader: SnapshotReader,
   input: {
     userId: string;
-    activeMesocycleId?: string;
+    activeMesocycleId: string;
     weekInMeso: number;
     plannedWorkoutId: string | null;
   }
 ) {
   const mesocycle = await reader.mesocycle.findFirst({
     where: {
-      ...(input.activeMesocycleId ? { id: input.activeMesocycleId } : {}),
+      id: input.activeMesocycleId,
       isActive: true,
-      macroCycle: { userId: input.userId },
+      macroCycle: {
+        userId: input.userId,
+        activeForUser: { id: input.userId },
+      },
     },
     select: {
       id: true,
@@ -312,7 +315,7 @@ async function loadBoundaryEvidence(
   reader: SnapshotReader,
   input: {
     userId: string;
-    activeMesocycleId?: string;
+    activeMesocycleId: string;
     weekInMeso: number;
     plannedWorkoutId: string | null;
     now?: Date;
@@ -439,6 +442,7 @@ export async function loadCurrentPreSessionReadinessSnapshotIdentity(
   if (
     nextWorkoutContext.weekInMeso == null ||
     nextWorkoutContext.sessionInWeek == null ||
+    !nextWorkoutContext.activeMesocycleId ||
     !nextWorkoutContext.slotId ||
     !nextWorkoutContext.intent
   ) {
@@ -447,6 +451,7 @@ export async function loadCurrentPreSessionReadinessSnapshotIdentity(
 
   const boundary = await loadBoundaryEvidence(prisma, {
     userId,
+    activeMesocycleId: nextWorkoutContext.activeMesocycleId,
     weekInMeso: nextWorkoutContext.weekInMeso,
     plannedWorkoutId: nextWorkoutContext.existingWorkoutId ?? null,
     now: options.now,

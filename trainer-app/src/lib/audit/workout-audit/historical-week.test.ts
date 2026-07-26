@@ -226,6 +226,15 @@ describe("buildHistoricalWeekAuditPayload", () => {
       mesocycleId: "meso-1",
     });
 
+    expect(mocks.workoutFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId: "user-1",
+          mesocycleWeekSnapshot: 4,
+          mesocycleId: "meso-1",
+        },
+      })
+    );
     expect(payload.summary.sessionCount).toBe(1);
     expect(payload.summary.progressionExcludedCount).toBe(1);
     expect(payload.summary.weekCloseRelevantCount).toBe(1);

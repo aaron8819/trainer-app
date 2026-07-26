@@ -48,6 +48,12 @@ export async function POST(request: Request) {
   }
 
   const activeMesocycle = await loadActiveMesocycle(user.id);
+  if (!activeMesocycle) {
+    return NextResponse.json(
+      { error: "Selected plan with an active mesocycle is required." },
+      { status: 409 }
+    );
+  }
   const nextWorkoutContext = await loadNextWorkoutContext(user.id);
   if (nextWorkoutContext.source === "final_week_close_pending") {
     return NextResponse.json(

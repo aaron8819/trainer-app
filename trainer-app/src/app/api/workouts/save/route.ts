@@ -60,6 +60,7 @@ import { isCloseoutSession } from "@/lib/session-semantics/closeout-classifier";
 import { isStrictSupplementalDeficitSession } from "@/lib/session-semantics/supplemental-classifier";
 import type { SaveWorkoutResponse } from "@/lib/api/workout-save-contract";
 import { createPostSessionReviewSnapshotInTransaction } from "@/lib/api/post-session-review-snapshot";
+import { resolveActivePlanContextInTransaction } from "@/lib/api/mesocycle-lifecycle-state";
 import {
   fingerprintShortTodaySaveExercises,
   validateAndCanonicalizeShortTodaySave,
@@ -208,25 +209,14 @@ export async function POST(request: Request) {
         if (existingWorkout || action !== "save_plan") {
           throw new Error("SESSION_CAPACITY_REDUCTION_LOCKED");
         }
-        const activeCapacityMesocycle = await tx.mesocycle.findFirst({
-          where: {
-            isActive: true,
-            macroCycle: { userId: user.id },
-          },
-          select: {
-            id: true,
-            state: true,
-            slotPlanSeedJson: true,
-            currentSeedRevision: {
-              select: {
-                id: true,
-                revision: true,
-                seedPayload: true,
-                payloadHash: true,
-              },
-            },
-          },
-        });
+        const activePlanContext = await resolveActivePlanContextInTransaction(
+          tx,
+          user.id
+        );
+        const activeCapacityMesocycle =
+          activePlanContext.status === "READY"
+            ? activePlanContext.activeMesocycle
+            : null;
         selectionMetadata = validateAndCanonicalizeShortTodaySave({
           workoutId,
           selectionMetadata,
@@ -665,10 +655,16 @@ export async function POST(request: Request) {
     }
     if (
       error instanceof Error &&
-      error.message === "ACTIVE_MESOCYCLE_NOT_FOUND"
+      (error.message === "ACTIVE_MESOCYCLE_NOT_FOUND" ||
+        error.message === "ACTIVE_PLAN_SELECTION_CONFLICT")
     ) {
       return NextResponse.json(
-        { error: "No active mesocycle found for performed workout save." },
+        {
+          error:
+            error.message === "ACTIVE_PLAN_SELECTION_CONFLICT"
+              ? "Active plan selection changed concurrently. Retry the save."
+              : "No active mesocycle found for performed workout save.",
+        },
         { status: 409 },
       );
     }

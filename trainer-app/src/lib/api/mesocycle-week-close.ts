@@ -7,6 +7,7 @@ import type {
 } from "@prisma/client";
 import { WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { claimSelectedPlanForTransitionInTransaction } from "./active-plan-context";
 import { buildSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import type { CycleContextSnapshot } from "@/lib/evidence/types";
 import {
@@ -768,6 +769,7 @@ export async function createCloseoutSessionForWeek(
       mesocycle: {
         select: {
           id: true,
+          macroCycleId: true,
           isActive: true,
           state: true,
           durationWeeks: true,
@@ -790,6 +792,10 @@ export async function createCloseoutSessionForWeek(
   if (!weekClose) {
     throw new Error("WEEK_CLOSE_NOT_FOUND");
   }
+  await claimSelectedPlanForTransitionInTransaction(tx, {
+    userId: input.userId,
+    macroCycleId: weekClose.mesocycle.macroCycleId,
+  });
   if (weekClose.status !== "PENDING_OPTIONAL_GAP_FILL") {
     throw new Error("WEEK_CLOSE_NOT_PENDING");
   }

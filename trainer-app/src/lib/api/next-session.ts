@@ -6,7 +6,7 @@ import {
   deriveCurrentMesocycleSession,
   getAccumulationWeeks,
 } from "./mesocycle-lifecycle-math";
-import { loadPendingMesocycleHandoff } from "./mesocycle-handoff";
+import { resolveActivePlanContext } from "./active-plan-context";
 import {
   buildRemainingRuntimeSlotsFromPerformed,
   deriveNextRuntimeSlotSession,
@@ -48,7 +48,8 @@ export type NextWorkoutSource =
   | "existing_incomplete"
   | "rotation"
   | "handoff_pending"
-  | "final_week_close_pending";
+  | "final_week_close_pending"
+  | "active_plan_unavailable";
 
 export type IncompleteWorkoutReadinessClassification =
   | "matching_next_planned_workout"
@@ -63,6 +64,7 @@ export type IncompleteWorkoutReadiness = {
 };
 
 export type NextWorkoutContext = {
+  activeMesocycleId?: string | null;
   intent: string | null;
   slotId: string | null;
   slotSequenceIndex: number | null;
@@ -377,6 +379,7 @@ function readSeedSlotExercisePlan(input: {
     }
 
     return {
+      activeMesocycleId: null,
       exerciseId: exercise.exerciseId,
       setCount: exercise.setCount,
     };
@@ -791,9 +794,10 @@ export function resolveNextWorkoutContext(input: {
 export async function loadNextWorkoutContext(
   userId: string
 ): Promise<NextWorkoutContext> {
-  const pendingHandoff = await loadPendingMesocycleHandoff(userId);
-  if (pendingHandoff) {
+  const activePlanContext = await resolveActivePlanContext(userId);
+  if (activePlanContext.status === "HANDOFF_PENDING") {
     return {
+      activeMesocycleId: null,
       intent: null,
       slotId: null,
       slotSequenceIndex: null,
@@ -804,33 +808,37 @@ export async function loadNextWorkoutContext(
       source: "handoff_pending",
       weekInMeso: null,
       sessionInWeek: null,
-      derivationTrace: [`pending_handoff mesocycle=${pendingHandoff.mesocycleId}`],
+      derivationTrace: [`pending_handoff mesocycle=${activePlanContext.handoff.id}`],
+      selectedIncompleteStatus: null,
+      selectedIncompleteReadiness: null,
+      lifecycleBlocker: null,
+    };
+  }
+  if (activePlanContext.status !== "READY") {
+    return {
+      activeMesocycleId: null,
+      intent: null,
+      slotId: null,
+      slotSequenceIndex: null,
+      slotSequenceLength: null,
+      slotSource: null,
+      existingWorkoutId: null,
+      isExisting: false,
+      source: "active_plan_unavailable",
+      weekInMeso: null,
+      sessionInWeek: null,
+      derivationTrace: [`active_plan_context status=${activePlanContext.status}`],
       selectedIncompleteStatus: null,
       selectedIncompleteReadiness: null,
       lifecycleBlocker: null,
     };
   }
 
-  const [mesocycle, constraints] = await Promise.all([
-    prisma.mesocycle.findFirst({
-      where: { macroCycle: { userId }, isActive: true },
-      select: {
-        id: true,
-        durationWeeks: true,
-        accumulationSessionsCompleted: true,
-        deloadSessionsCompleted: true,
-        sessionsPerWeek: true,
-        state: true,
-        slotSequenceJson: true,
-        slotPlanSeedJson: true,
-        currentSeedRevision: { select: { seedPayload: true } },
-      },
-    }),
-    prisma.constraints.findUnique({
-      where: { userId },
-      select: { weeklySchedule: true },
-    }),
-  ]);
+  const mesocycle = activePlanContext.activeMesocycle;
+  const constraints = await prisma.constraints.findUnique({
+    where: { userId },
+    select: { weeklySchedule: true },
+  });
   if (mesocycle?.currentSeedRevision?.seedPayload) {
     mesocycle.slotPlanSeedJson = mesocycle.currentSeedRevision.seedPayload;
   }
@@ -842,7 +850,10 @@ export async function loadNextWorkoutContext(
         where: {
           userId,
           status: { in: INCOMPLETE_STATUSES },
-          OR: [{ mesocycleId: null }, { mesocycle: { isActive: true } }],
+          OR: [
+            { mesocycleId: null },
+            ...(mesocycle ? [{ mesocycleId: mesocycle.id }] : []),
+          ],
         },
         orderBy: { scheduledDate: "asc" },
         take: 20,
@@ -926,7 +937,7 @@ export async function loadNextWorkoutContext(
     weeklySchedule,
   });
 
-  return resolveNextWorkoutContext({
+  const resolved = resolveNextWorkoutContext({
     mesocycle,
     weeklySchedule,
     incompleteWorkouts: rawIncomplete.map((workout) => {
@@ -967,6 +978,10 @@ export async function loadNextWorkoutContext(
       .filter((intent): intent is string => Boolean(intent)),
     pendingWeekClose,
   });
+  return {
+    ...resolved,
+    activeMesocycleId: mesocycle?.id ?? null,
+  };
 }
 
 export async function loadRequestedAdvancingSlotSnapshot(input: {
@@ -977,26 +992,15 @@ export async function loadRequestedAdvancingSlotSnapshot(input: {
 }): Promise<SessionSlotSnapshot | undefined> {
   const nextWorkoutContext =
     input.nextWorkoutContext ?? (await loadNextWorkoutContext(input.userId));
-  const [mesocycle, constraints] = await Promise.all([
-    prisma.mesocycle.findFirst({
-      where: { macroCycle: { userId: input.userId }, isActive: true },
-      select: {
-        id: true,
-        durationWeeks: true,
-        accumulationSessionsCompleted: true,
-        deloadSessionsCompleted: true,
-        sessionsPerWeek: true,
-        state: true,
-        slotSequenceJson: true,
-        slotPlanSeedJson: true,
-        currentSeedRevision: { select: { seedPayload: true } },
-      },
-    }),
-    prisma.constraints.findUnique({
-      where: { userId: input.userId },
-      select: { weeklySchedule: true },
-    }),
-  ]);
+  const activePlanContext = await resolveActivePlanContext(input.userId);
+  if (activePlanContext.status !== "READY") {
+    return undefined;
+  }
+  const mesocycle = activePlanContext.activeMesocycle;
+  const constraints = await prisma.constraints.findUnique({
+    where: { userId: input.userId },
+    select: { weeklySchedule: true },
+  });
   if (mesocycle?.currentSeedRevision?.seedPayload) {
     mesocycle.slotPlanSeedJson = mesocycle.currentSeedRevision.seedPayload;
   }

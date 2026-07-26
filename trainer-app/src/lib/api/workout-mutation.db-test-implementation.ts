@@ -589,6 +589,10 @@ describe("runtime workout mutation CAS (PostgreSQL)", () => {
         },
       },
     });
+    await db.user.update({
+      where: { id: ownerId },
+      data: { activeMacroCycleId: macro.id },
+    });
     const seedRevision = await db.mesocycleSeedRevision.create({
       data: {
         mesocycleId: mesocycle.id,

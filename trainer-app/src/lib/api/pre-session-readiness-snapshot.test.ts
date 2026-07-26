@@ -235,6 +235,7 @@ describe("pre-session readiness snapshot persistence", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.loadNextWorkoutContext.mockResolvedValue({
+      activeMesocycleId: "meso-1",
       intent: "lower",
       slotId: "lower_a",
       existingWorkoutId: null,
@@ -282,6 +283,7 @@ describe("pre-session readiness snapshot persistence", () => {
 
   it("uses workout revision and prescription fingerprint for a materialized target", async () => {
     mocks.loadNextWorkoutContext.mockResolvedValue({
+      activeMesocycleId: "meso-1",
       intent: "lower",
       slotId: "lower_a",
       existingWorkoutId: "workout-1",
@@ -435,6 +437,7 @@ describe("pre-session readiness snapshot persistence", () => {
 
   it("rejects a materialized workout revision change before activation", async () => {
     mocks.loadNextWorkoutContext.mockResolvedValue({
+      activeMesocycleId: "meso-1",
       intent: "lower",
       slotId: "lower_a",
       existingWorkoutId: "workout-1",

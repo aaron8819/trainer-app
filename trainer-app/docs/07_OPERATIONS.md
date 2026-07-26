@@ -445,6 +445,16 @@ order by "mesocycleId", "sessionIntent", role, "addedInWeek", "exerciseId";
 ```
 
 ## Standalone Prisma scripts
+Before deploying `20260726120000_add_active_macrocycle_foundation`, run the read-only integrity inventory against the explicitly authorized target:
+
+```powershell
+npm run ops:preflight-multi-plan
+```
+
+Optionally add `-- --artifact-dir <audit-artifact-directory>` to inspect historical-week artifacts. The command emits counts and identifiers, returns non-zero for blocking corruption, and treats zero legacy active-plan candidates as valid absence. It performs no repair or migration. More than one legacy active mesocycle for an owner is blocking; the migration never chooses by time, order, or date overlap.
+
+The migration is explicitly wrapped in `BEGIN`/`COMMIT`, so ambiguity detection, pointer backfill, foreign-key creation, and active-state constraints apply atomically on PostgreSQL. A blocking ambiguity or later DDL failure leaves the pre-migration schema intact.
+
 Use this pattern for one-off scripts in `prisma/` (backfills, diagnostics, cleanup).
 
 Why adapter pattern is required:

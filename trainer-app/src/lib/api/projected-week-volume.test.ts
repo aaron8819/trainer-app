@@ -76,6 +76,11 @@ vi.mock("./mesocycle-lifecycle", () => ({
     mocks.getWeeklyVolumeTarget(...args),
 }));
 
+vi.mock("./mesocycle-lifecycle-state", () => ({
+  loadActiveMesocycle: (...args: unknown[]) =>
+    mocks.mesocycleFindFirst(...args),
+}));
+
 vi.mock("./mesocycle-slot-runtime", () => ({
   deriveNextRuntimeSlotSession: (...args: unknown[]) =>
     mocks.deriveNextRuntimeSlotSession(...args),

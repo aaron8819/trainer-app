@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => {
   const workoutExerciseCreate = vi.fn();
   const exerciseFindUnique = vi.fn();
   const transitionMesocycleStateInTransaction = vi.fn();
+  const claimSelectedPlanForTransitionInTransaction = vi.fn();
   const autoDismissPendingWeekCloseOnForwardProgress = vi.fn();
   const evaluateWeekCloseAtBoundary = vi.fn();
   const linkOptionalWorkoutToWeekClose = vi.fn();
@@ -84,6 +85,7 @@ const mocks = vi.hoisted(() => {
     workoutExerciseCreate,
     exerciseFindUnique,
     transitionMesocycleStateInTransaction,
+    claimSelectedPlanForTransitionInTransaction,
     autoDismissPendingWeekCloseOnForwardProgress,
     evaluateWeekCloseAtBoundary,
     linkOptionalWorkoutToWeekClose,
@@ -111,6 +113,34 @@ vi.mock("@/lib/api/mesocycle-lifecycle-state", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/mesocycle-lifecycle-state")>();
   return {
     ...actual,
+    resolveActivePlanContextInTransaction: vi.fn(
+      async (client: typeof mocks.tx) => {
+        const activeMesocycle = await client.mesocycle.findFirst();
+        return activeMesocycle
+          ? {
+              status: "READY",
+              owner: {
+                id: "user-1",
+                email: "owner@test.local",
+                activeMacroCycleId: "macro-1",
+              },
+              activeMacroCycle: { id: "macro-1", userId: "user-1" },
+              activeMesocycle,
+            }
+          : {
+              status: "NO_SELECTED_PLAN",
+              owner: {
+                id: "user-1",
+                email: "owner@test.local",
+                activeMacroCycleId: null,
+              },
+              activeMacroCycle: null,
+              activeMesocycle: null,
+            };
+      }
+    ),
+    claimSelectedPlanForTransitionInTransaction:
+      mocks.claimSelectedPlanForTransitionInTransaction,
     transitionMesocycleStateInTransaction: mocks.transitionMesocycleStateInTransaction,
   };
 });
@@ -853,6 +883,7 @@ describe("POST /api/workouts/save", () => {
       });
     mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
       id: "meso-1",
+      macroCycleId: "macro-1",
       state: "ACTIVE_ACCUMULATION",
       durationWeeks: 5,
       accumulationSessionsCompleted: 3,
@@ -923,6 +954,7 @@ describe("POST /api/workouts/save", () => {
       });
     mocks.tx.mesocycle.findUnique.mockResolvedValueOnce({
       id: "meso-1",
+      macroCycleId: "macro-1",
       state: "ACTIVE_ACCUMULATION",
       durationWeeks: 5,
       accumulationSessionsCompleted: 3,
@@ -939,6 +971,12 @@ describe("POST /api/workouts/save", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(
+      mocks.claimSelectedPlanForTransitionInTransaction
+    ).toHaveBeenCalledWith(mocks.tx, {
+      userId: "user-1",
+      macroCycleId: "macro-1",
+    });
     expect(mocks.transitionMesocycleStateInTransaction).toHaveBeenCalledWith(mocks.tx, "meso-1");
 
     const updateMany = mocks.workoutUpdateMany.mock.calls[0][0];
@@ -967,6 +1005,7 @@ describe("POST /api/workouts/save", () => {
       });
     mocks.tx.mesocycle.findFirst.mockResolvedValueOnce({
       id: "meso-active",
+      macroCycleId: "macro-1",
       state: "ACTIVE_ACCUMULATION",
       durationWeeks: 5,
       accumulationSessionsCompleted: 4,

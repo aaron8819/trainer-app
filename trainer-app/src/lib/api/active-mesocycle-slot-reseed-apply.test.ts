@@ -82,6 +82,13 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/lib/db/prisma", () => ({
   prisma: mocks.prisma,
 }));
+vi.mock("./active-plan-context", () => ({
+  resolveActivePlanContextInTransaction: vi.fn(async () => ({
+    status: "READY",
+    activeMacroCycle: { id: "macro-1" },
+    activeMesocycle: { id: "meso-1" },
+  })),
+}));
 
 import {
   acceptActiveMesocycleSlotPlanSeedUpgrade,

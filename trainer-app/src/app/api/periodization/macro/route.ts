@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { generateMacroSchema } from "@/lib/validation";
 import { generateMacroCycle } from "@/lib/engine";
 import { resolveOwner } from "@/lib/api/workout-context";
+import { Prisma } from "@prisma/client";
 
 /**
  * POST /api/periodization/macro
@@ -85,61 +86,103 @@ export async function POST(request: NextRequest) {
   });
 
   // Create macro cycle in database with nested structures
-  const created = await prisma.macroCycle.create({
-    data: {
-      id: macro.id,
-      userId: macro.userId,
-      startDate: macro.startDate,
-      endDate: macro.endDate,
-      durationWeeks: macro.durationWeeks,
-      trainingAge: effectiveTrainingAge.toUpperCase() as "BEGINNER" | "INTERMEDIATE" | "ADVANCED",
-      primaryGoal:
-        macro.primaryGoal === "general_fitness"
-          ? "GENERAL_HEALTH"
-          : (macro.primaryGoal.toUpperCase() as
-              | "HYPERTROPHY"
-              | "STRENGTH"
-              | "STRENGTH_HYPERTROPHY"
-              | "FAT_LOSS"
-              | "ATHLETICISM"
-              | "GENERAL_HEALTH"),
-      mesocycles: {
-        create: macro.mesocycles.map((meso) => ({
-          id: meso.id,
-          mesoNumber: meso.mesoNumber,
-          startWeek: meso.startWeek,
-          durationWeeks: meso.durationWeeks,
-          focus: meso.focus,
-          volumeTarget: meso.volumeTarget.toUpperCase() as "LOW" | "MODERATE" | "HIGH" | "PEAK",
-          intensityBias: meso.intensityBias.toUpperCase() as "STRENGTH" | "HYPERTROPHY" | "ENDURANCE",
-          blocks: {
-            create: meso.blocks.map((block) => ({
-              id: block.id,
-              blockNumber: block.blockNumber,
-              blockType: block.blockType.toUpperCase() as "ACCUMULATION" | "INTENSIFICATION" | "REALIZATION" | "DELOAD",
-              startWeek: block.startWeek,
-              durationWeeks: block.durationWeeks,
-              volumeTarget: block.volumeTarget.toUpperCase() as "LOW" | "MODERATE" | "HIGH" | "PEAK",
-              intensityBias: block.intensityBias.toUpperCase() as "STRENGTH" | "HYPERTROPHY" | "ENDURANCE",
-              adaptationType: block.adaptationType.toUpperCase() as
-                | "NEURAL_ADAPTATION"
-                | "MYOFIBRILLAR_HYPERTROPHY"
-                | "SARCOPLASMIC_HYPERTROPHY"
-                | "WORK_CAPACITY"
-                | "RECOVERY",
-            })),
-          },
-        })),
-      },
-    },
-    include: {
-      mesocycles: {
-        include: {
-          blocks: true,
+  let created: Prisma.MacroCycleGetPayload<{
+    include: { mesocycles: { include: { blocks: true } } };
+  }>;
+  try {
+    created = await prisma.$transaction(async (tx) => {
+    const currentOwner = await tx.user.findUnique({
+      where: { id: user.id },
+      select: { activeMacroCycleId: true },
+    });
+    if (!currentOwner) {
+      throw new Error("ACTIVE_PLAN_OWNER_NOT_FOUND");
+    }
+    const shouldSelect =
+      currentOwner.activeMacroCycleId === null && macro.mesocycles.length > 0;
+
+    const createdMacroCycle = await tx.macroCycle.create({
+      data: {
+        id: macro.id,
+        userId: macro.userId,
+        startDate: macro.startDate,
+        endDate: macro.endDate,
+        durationWeeks: macro.durationWeeks,
+        trainingAge: effectiveTrainingAge.toUpperCase() as "BEGINNER" | "INTERMEDIATE" | "ADVANCED",
+        primaryGoal:
+          macro.primaryGoal === "general_fitness"
+            ? "GENERAL_HEALTH"
+            : (macro.primaryGoal.toUpperCase() as
+                | "HYPERTROPHY"
+                | "STRENGTH"
+                | "STRENGTH_HYPERTROPHY"
+                | "FAT_LOSS"
+                | "ATHLETICISM"
+                | "GENERAL_HEALTH"),
+        mesocycles: {
+          create: macro.mesocycles.map((meso, index) => ({
+            id: meso.id,
+            mesoNumber: meso.mesoNumber,
+            startWeek: meso.startWeek,
+            durationWeeks: meso.durationWeeks,
+            focus: meso.focus,
+            volumeTarget: meso.volumeTarget.toUpperCase() as "LOW" | "MODERATE" | "HIGH" | "PEAK",
+            intensityBias: meso.intensityBias.toUpperCase() as "STRENGTH" | "HYPERTROPHY" | "ENDURANCE",
+            isActive: shouldSelect && index === 0,
+            blocks: {
+              create: meso.blocks.map((block) => ({
+                id: block.id,
+                blockNumber: block.blockNumber,
+                blockType: block.blockType.toUpperCase() as "ACCUMULATION" | "INTENSIFICATION" | "REALIZATION" | "DELOAD",
+                startWeek: block.startWeek,
+                durationWeeks: block.durationWeeks,
+                volumeTarget: block.volumeTarget.toUpperCase() as "LOW" | "MODERATE" | "HIGH" | "PEAK",
+                intensityBias: block.intensityBias.toUpperCase() as "STRENGTH" | "HYPERTROPHY" | "ENDURANCE",
+                adaptationType: block.adaptationType.toUpperCase() as
+                  | "NEURAL_ADAPTATION"
+                  | "MYOFIBRILLAR_HYPERTROPHY"
+                  | "SARCOPLASMIC_HYPERTROPHY"
+                  | "WORK_CAPACITY"
+                  | "RECOVERY",
+              })),
+            },
+          })),
         },
       },
-    },
-  });
+      include: {
+        mesocycles: {
+          include: {
+            blocks: true,
+          },
+        },
+      },
+    });
+
+    if (shouldSelect) {
+      const selected = await tx.user.updateMany({
+        where: { id: user.id, activeMacroCycleId: null },
+        data: { activeMacroCycleId: createdMacroCycle.id },
+      });
+      if (selected.count !== 1) {
+        throw new Error("ACTIVE_PLAN_SELECTION_CONFLICT");
+      }
+    }
+
+    return createdMacroCycle;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  } catch (error) {
+    const isSelectionConflict =
+      (error instanceof Error && error.message === "ACTIVE_PLAN_SELECTION_CONFLICT") ||
+      (error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === "P2002" || error.code === "P2034"));
+    if (isSelectionConflict) {
+      return NextResponse.json(
+        { error: "Active plan selection changed concurrently. Retry the request." },
+        { status: 409 }
+      );
+    }
+    throw error;
+  }
 
   return NextResponse.json({ macro: created }, { status: 201 });
 }

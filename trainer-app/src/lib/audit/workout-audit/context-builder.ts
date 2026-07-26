@@ -62,6 +62,9 @@ export async function buildWorkoutAuditContext(
     if (!Number.isFinite(request.week)) {
       throw new Error("historical-week mode requires --week");
     }
+    if (!request.mesocycleId) {
+      throw new Error("historical-week mode requires --mesocycle-id");
+    }
     return {
       mode,
       requestedMode: request.mode,
@@ -363,6 +366,11 @@ export async function buildWorkoutAuditContext(
         nextSession,
       };
     }
+    if (nextSession?.source === "active_plan_unavailable") {
+      throw new Error(
+        "deload mode requires a selected plan with an active mesocycle"
+      );
+    }
     const intent = (request.intent ?? nextSession?.intent) as SessionIntent | undefined;
     if (!intent) {
       throw new Error("deload mode requires --intent or a derivable next-session intent");
@@ -395,6 +403,11 @@ export async function buildWorkoutAuditContext(
       plannerDiagnosticsMode,
       nextSession,
     };
+  }
+  if (nextSession?.source === "active_plan_unavailable") {
+    throw new Error(
+      `${mode} mode requires a selected plan with an active mesocycle`
+    );
   }
 
   if (request.intent) {

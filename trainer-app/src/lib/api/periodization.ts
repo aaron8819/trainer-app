@@ -3,10 +3,11 @@ import { deriveBlockContext } from "@/lib/engine";
 import type { BlockContext } from "@/lib/engine";
 import { mapMacroCycle } from "./periodization-mappers";
 import type { Prisma } from "@prisma/client";
+import { resolveActivePlanContextInTransaction } from "./active-plan-context";
 
 type PeriodizationReader = Pick<
   Prisma.TransactionClient,
-  "macroCycle" | "constraints"
+  "user" | "macroCycle" | "mesocycle" | "constraints"
 >;
 
 export type WeekInBlockHistoryEntry = {
@@ -53,71 +54,80 @@ export type BlockContextResult = {
 /**
  * Load the current block context for a user.
  *
- * Prefers session-count-based week derivation (ADR-080) when an active mesocycle
- * with canonical lifecycle counters is available. Falls back to date arithmetic when no
- * active meso is found (e.g., legacy users without structured cycles).
+ * Uses an explicitly identified historical mesocycle when provided. Otherwise it
+ * resolves the selected plan and fails closed unless that plan is ready.
  *
  * Returns both the BlockContext (for beam-search scoring) and weekInMeso (the
  * canonical 1-indexed week used for volume targets and periodization modifiers).
  *
  * @param userId - User ID to load context for
- * @param date - Reference date for fallback date-arithmetic path (defaults to now)
+ * @param date - Retained for API compatibility with existing explanation callers
+ * @param mesocycleId - Exact historical mesocycle identity, when available
  */
 export async function loadCurrentBlockContext(
   userId: string,
   date: Date = new Date(),
-  client: PeriodizationReader = prisma
+  client: PeriodizationReader = prisma,
+  mesocycleId?: string | null
 ): Promise<BlockContextResult> {
-  // Find macro cycle containing this date
-  const macro = await client.macroCycle.findFirst({
-    where: {
-      userId,
-      startDate: { lte: date },
-      endDate: { gte: date },
-    },
-    include: {
-      mesocycles: {
-        include: { blocks: true },
-      },
-    },
-  });
-
-  if (!macro) {
+  void date;
+  const explicitMesocycle = mesocycleId
+    ? await client.mesocycle.findFirst({
+        where: {
+          id: mesocycleId,
+          macroCycle: { userId },
+        },
+        include: {
+          blocks: true,
+          macroCycle: true,
+        },
+      })
+    : null;
+  if (mesocycleId && !explicitMesocycle) {
     return { blockContext: null, weekInMeso: 1 };
   }
 
-  const engineMacro = mapMacroCycle(macro);
-
-  // ADR-080: use session count as primary week source when active meso is present
-  const activeMeso = macro.mesocycles.find((m) => m.isActive);
-  if (activeMeso) {
-    const constraints = await client.constraints.findUnique({
-      where: { userId },
-      select: { daysPerWeek: true },
-    });
-    const daysPerWeek = constraints?.daysPerWeek ?? 3;
-
-    const mesoStart = new Date(macro.startDate);
-    mesoStart.setDate(mesoStart.getDate() + activeMeso.startWeek * 7);
-
-    const weekInMeso = computeCurrentMesoWeek(
-      {
-        accumulationSessionsCompleted: activeMeso.accumulationSessionsCompleted,
-        durationWeeks: activeMeso.durationWeeks,
-        startDate: mesoStart,
-      },
-      daysPerWeek
-    );
-
-    // Synthesize an effective date mid-way through the target week to pass into deriveBlockContext
-    const effectiveDate = new Date(mesoStart);
-    effectiveDate.setDate(effectiveDate.getDate() + (weekInMeso - 1) * 7 + 3);
-
-    return { blockContext: deriveBlockContext(engineMacro, effectiveDate), weekInMeso };
+  const activePlanContext = mesocycleId
+    ? null
+    : await resolveActivePlanContextInTransaction(client, userId);
+  if (!explicitMesocycle && activePlanContext?.status !== "READY") {
+    return { blockContext: null, weekInMeso: 1 };
   }
 
-  // Fallback: date arithmetic only (no active meso — derive week from blockContext)
-  const blockContext = deriveBlockContext(engineMacro, date);
-  const weekInMeso = blockContext?.weekInMeso ?? 1;
-  return { blockContext, weekInMeso };
+  const activeMeso =
+    explicitMesocycle ??
+    (activePlanContext?.status === "READY"
+      ? activePlanContext.activeMesocycle
+      : null);
+  if (!activeMeso) {
+    return { blockContext: null, weekInMeso: 1 };
+  }
+
+  const macro = {
+    ...activeMeso.macroCycle,
+    mesocycles: [activeMeso],
+  };
+  const engineMacro = mapMacroCycle(macro);
+  const constraints = await client.constraints.findUnique({
+    where: { userId },
+    select: { daysPerWeek: true },
+  });
+  const daysPerWeek = constraints?.daysPerWeek ?? 3;
+
+  const mesoStart = new Date(macro.startDate);
+  mesoStart.setDate(mesoStart.getDate() + activeMeso.startWeek * 7);
+
+  const weekInMeso = computeCurrentMesoWeek(
+    {
+      accumulationSessionsCompleted: activeMeso.accumulationSessionsCompleted,
+      durationWeeks: activeMeso.durationWeeks,
+      startDate: mesoStart,
+    },
+    daysPerWeek
+  );
+
+  const effectiveDate = new Date(mesoStart);
+  effectiveDate.setDate(effectiveDate.getDate() + (weekInMeso - 1) * 7 + 3);
+
+  return { blockContext: deriveBlockContext(engineMacro, effectiveDate), weekInMeso };
 }

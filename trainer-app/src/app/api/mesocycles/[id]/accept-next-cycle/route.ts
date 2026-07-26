@@ -68,6 +68,15 @@ export async function POST(
         { status: 409 }
       );
     }
+    if (
+      error instanceof Error &&
+      error.message === "ACTIVE_PLAN_SELECTION_CONFLICT"
+    ) {
+      return NextResponse.json(
+        { error: "Active plan selection changed concurrently. Retry acceptance." },
+        { status: 409 }
+      );
+    }
     if (error instanceof Error && error.message === "MESOCYCLE_HANDOFF_DRAFT_MISSING") {
       return NextResponse.json(
         { error: "Mesocycle handoff draft is missing." },

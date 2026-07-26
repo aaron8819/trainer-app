@@ -1,14 +1,16 @@
-import type { Mesocycle as PrismaMesocycle } from "@prisma/client";
-
-import { prisma } from "@/lib/db/prisma";
 import type { CycleContextSnapshot } from "@/lib/evidence/types";
 import type { BlockContext, MacroCycle } from "@/lib/engine/periodization/types";
 
 import { getCurrentMesoWeek, type PhaseBlockProfileContext } from "./mesocycle-lifecycle-math";
 import { mapMacroCycle } from "./periodization-mappers";
+import {
+  loadActiveMesocycle,
+  type ActiveMesocycleWithBlocks,
+  type ResolvedActiveMesocycleWithBlocks,
+} from "./mesocycle-lifecycle-state";
 
 type ActiveMesocycleLifecycle = Pick<
-  PrismaMesocycle,
+  ResolvedActiveMesocycleWithBlocks,
   | "id"
   | "state"
   | "durationWeeks"
@@ -235,32 +237,31 @@ export function resolveGenerationPhaseBlockContext(input: {
 export async function loadGenerationPhaseBlockContext(
   userId: string,
   options?: {
-    activeMesocycle?: ActiveMesocycleLifecycle | null;
+    activeMesocycle?: ActiveMesocycleWithBlocks | null;
     weekInMeso?: number;
     forceAccumulation?: boolean;
   }
 ): Promise<GenerationPhaseBlockContext> {
-  const macro = await prisma.macroCycle.findFirst({
-    where: {
-      userId,
-      mesocycles: {
-        some: {
-          isActive: true,
-        },
-      },
-    },
-    orderBy: [{ startDate: "desc" }],
-    include: {
-      mesocycles: {
-        where: { isActive: true },
-        include: { blocks: true },
-      },
-    },
-  });
+  const selectedMesocycle =
+    options?.activeMesocycle !== undefined
+      ? options.activeMesocycle
+      : await loadActiveMesocycle(userId);
+  const resolvedMesocycle =
+    selectedMesocycle?.macroCycle &&
+    "id" in selectedMesocycle.macroCycle &&
+    "endDate" in selectedMesocycle.macroCycle
+      ? (selectedMesocycle as ResolvedActiveMesocycleWithBlocks)
+      : null;
+  const macro = resolvedMesocycle
+    ? mapMacroCycle({
+        ...resolvedMesocycle.macroCycle,
+        mesocycles: [resolvedMesocycle],
+      })
+    : null;
 
   return resolveGenerationPhaseBlockContext({
-    macroCycle: macro ? mapMacroCycle(macro) : null,
-    activeMesocycle: options?.activeMesocycle ?? macro?.mesocycles[0] ?? null,
+    macroCycle: macro,
+    activeMesocycle: selectedMesocycle,
     weekInMeso: options?.weekInMeso,
     forceAccumulation: options?.forceAccumulation,
   });

@@ -32,6 +32,7 @@ import {
   deriveNextRuntimeSlotSession,
 } from "./mesocycle-slot-runtime";
 import { deriveCurrentMesocycleSession, getWeeklyVolumeTarget } from "./mesocycle-lifecycle";
+import { loadActiveMesocycle } from "./mesocycle-lifecycle-state";
 import { loadNextWorkoutContext } from "./next-session";
 import {
   loadPersistedIncompleteWorkoutProjections,
@@ -586,23 +587,7 @@ function buildFullWeekRows(input: {
 async function loadActiveMesocycleForProjection(
   userId: string
 ): Promise<NonNullable<ActiveMesocycleForProjection>> {
-  const activeMesocycle = await prisma.mesocycle.findFirst({
-    where: {
-      isActive: true,
-      macroCycle: { userId },
-    },
-    orderBy: [{ mesoNumber: "desc" }],
-    include: {
-      blocks: {
-        orderBy: { blockNumber: "asc" },
-      },
-      macroCycle: {
-        select: {
-          startDate: true,
-        },
-      },
-    },
-  });
+  const activeMesocycle = await loadActiveMesocycle(userId);
 
   if (!activeMesocycle) {
     throw new Error("No active mesocycle found for projected-week-volume audit.");

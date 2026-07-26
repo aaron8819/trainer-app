@@ -29,6 +29,11 @@ vi.mock("./mesocycle-handoff-slot-plan-projection", async (importOriginal) => {
   };
 });
 
+vi.mock("./active-plan-context", () => ({
+  claimSelectedPlanForTransitionInTransaction: vi.fn(async () => undefined),
+  resolveActivePlanContext: vi.fn(),
+}));
+
 import {
   acceptPreparedMesocycleHandoffInTransaction,
   acceptPreparedMesocycleHandoffWithProvenanceInTransaction,

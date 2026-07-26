@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
-import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
+import { resolveActivePlanContext } from "@/lib/api/active-plan-context";
 import {
   loadHandoffSourceMesocycle,
   readMesocycleHandoffSummary,
@@ -9226,26 +9226,16 @@ async function loadExplainMesocycle(input: {
 }
 
 async function resolveSourceMesocycleId(userId: string): Promise<string> {
-  const activeMesocycle = await loadActiveMesocycle(userId);
-  if (activeMesocycle) {
-    return activeMesocycle.id;
+  const context = await resolveActivePlanContext(userId);
+  if (context.status === "READY") {
+    return context.activeMesocycle.id;
   }
-
-  const latestMesocycle = await prisma.mesocycle.findFirst({
-    where: {
-      macroCycle: { userId },
-    },
-    orderBy: [{ mesoNumber: "desc" }],
-    select: {
-      id: true,
-    },
-  });
-
-  if (!latestMesocycle) {
-    throw new Error("No mesocycle found for mesocycle-explain.");
+  if (context.status === "HANDOFF_PENDING") {
+    return context.handoff.id;
   }
-
-  return latestMesocycle.id;
+  throw new Error(
+    `No selected mesocycle available for mesocycle-explain status=${context.status}.`,
+  );
 }
 
 async function loadPreviewArtifacts(input: {

@@ -147,7 +147,7 @@ export type WorkoutAuditContext = {
   nextSession?: NextWorkoutContext;
   historicalWeek?: {
     week: number;
-    mesocycleId?: string;
+    mesocycleId: string;
   };
   weeklyRetro?: {
     week: number;

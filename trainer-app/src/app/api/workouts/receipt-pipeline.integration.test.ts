@@ -33,8 +33,12 @@ const mocks = vi.hoisted(() => {
   const txExerciseFindUnique = vi.fn();
   const getCurrentMesoWeek = vi.fn();
   const transitionMesocycleStateInTransaction = vi.fn();
+  const userFindUnique = vi.fn();
 
   const tx = {
+    user: {
+      findUnique: userFindUnique,
+    },
     workout: {
       findUnique: txWorkoutFindUnique,
       findFirst: txWorkoutFindFirst,
@@ -126,6 +130,7 @@ const mocks = vi.hoisted(() => {
     txExerciseFindUnique,
     getCurrentMesoWeek,
     transitionMesocycleStateInTransaction,
+    userFindUnique,
     tx,
     prisma,
   };
@@ -271,7 +276,16 @@ describe("canonical session decision receipt pipeline", () => {
     });
 
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
-    mocks.loadActiveMesocycle.mockResolvedValue(null);
+    mocks.userFindUnique.mockResolvedValue({
+      id: "user-1",
+      email: "user@example.com",
+      activeMacroCycleId: null,
+    });
+    mocks.loadActiveMesocycle.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+    });
     mocks.generateDeloadSessionFromIntent.mockResolvedValue({ error: "unexpected" });
     mocks.generateSessionFromIntent.mockResolvedValue({
       workout: {

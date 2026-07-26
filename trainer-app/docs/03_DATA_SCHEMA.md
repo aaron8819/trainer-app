@@ -23,6 +23,7 @@ Sources of truth:
 - `trainer-app/src/app/api/logs/set/route.ts`
 
 ## Core runtime models
+- Plan identity: `MacroCycle` is the user-owned plan boundary; nullable `User.activeMacroCycleId` is the selected-plan source of truth.
 - User context: `User`, `Profile`, `Goals`, `Constraints`, `Injury`, `UserPreference`
 - Workout execution: `Workout`, `WorkoutExercise`, `WorkoutSet`, `SetLog`, `FilteredExercise`
 - Catalog/template: `Exercise`, `Muscle`, `Equipment`, `WorkoutTemplate`, `WorkoutTemplateExercise`
@@ -58,6 +59,9 @@ Canonical machine-readable values in `docs/contracts/runtime-contracts.json` cur
 - `src/lib/api/pre-session-readiness-producer.ts` completes and validates the contract before mutation. `src/lib/api/pre-session-readiness-snapshot.ts` revalidates mutable evidence and performs supersession plus insertion in one `ReadCommitted` transaction; the decisive statement observes evidence committed before that revalidation completes, while partial unique indexes select the concurrent active-row winner. Equivalent identity/payload retries reuse the existing row; same-identity/different-payload preparation fails as an integrity conflict; failed replacement rolls back the prior invalidation. Consumers derive current identity and query the active exact hash rather than ordering by `createdAt`.
 
 ## Mesocycle lifecycle fields
+- `User.activeMacroCycleId`: nullable selected-plan pointer. `null` is a valid no-plan state. Its foreign key requires an existing macrocycle and restricts deletion while selected; the atomic selection service verifies `MacroCycle.userId`, and the canonical resolver fails closed if the pointer and owner disagree.
+- `Mesocycle.isActive`: current-mesocycle identity only within its macrocycle. Partial unique index `Mesocycle_one_active_per_macrocycle` permits at most one active row per plan.
+- `Mesocycle_active_state_check`: rejects `isActive=true` for `COMPLETED` and `AWAITING_HANDOFF`.
 - `Mesocycle.state` (`MesocycleState`)
 - `Mesocycle.accumulationSessionsCompleted`
 - `Mesocycle.deloadSessionsCompleted`

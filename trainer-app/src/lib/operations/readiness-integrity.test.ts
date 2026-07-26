@@ -18,6 +18,8 @@ import {
   type ReadinessDatabaseRow,
 } from "./readiness-integrity";
 
+const FULL_MIGRATION_COUNT = EXPECTED_MIGRATION_CHAIN.length;
+
 function checkedIn(): CheckedInMigration[] {
   return EXPECTED_MIGRATION_CHAIN.map((name, index) => ({
     name,
@@ -214,7 +216,7 @@ function report(options: {
 }) {
   return buildReadinessIntegrityReport({
     catalog: options.catalogOverride ?? catalog(options.stage),
-    ledgerRows: options.ledgerOverride ?? ledger(options.stage === "pre" ? 10 : 15),
+    ledgerRows: options.ledgerOverride ?? ledger(options.stage === "pre" ? 10 : FULL_MIGRATION_COUNT),
     checkedIn: checkedIn(),
     rows: options.rows ?? [],
     fingerprintBefore: "same",
@@ -224,12 +226,16 @@ function report(options: {
 }
 
 describe("readiness integrity schema-stage detection", () => {
-  it("accepts clean first-10 and all-15 schemas", () => {
+  it("accepts clean pre-architecture and fully migrated schemas", () => {
     expect(
       classifyReadinessSchemaStage({ catalog: catalog("pre"), ledgerRows: ledger(10), checkedIn: checkedIn() }).stage,
     ).toBe("pre_architecture_migration");
     expect(
-      classifyReadinessSchemaStage({ catalog: catalog("full"), ledgerRows: ledger(15), checkedIn: checkedIn() }).stage,
+      classifyReadinessSchemaStage({
+        catalog: catalog("full"),
+        ledgerRows: ledger(FULL_MIGRATION_COUNT),
+        checkedIn: checkedIn(),
+      }).stage,
     ).toBe("fully_migrated");
   });
 
@@ -251,11 +257,13 @@ describe("readiness integrity schema-stage detection", () => {
   it("blocks ledger and catalog disagreement", () => {
     const result = classifyReadinessSchemaStage({
       catalog: catalog("pre"),
-      ledgerRows: ledger(15),
+      ledgerRows: ledger(FULL_MIGRATION_COUNT),
       checkedIn: checkedIn(),
     });
     expect(result.stage).toBe("partial_or_incompatible");
-    expect(result.ledger.blockers).toContain("catalog_ledger_disagreement:catalog_expected_10:ledger_15");
+    expect(result.ledger.blockers).toContain(
+      `catalog_ledger_disagreement:catalog_expected_10:ledger_${FULL_MIGRATION_COUNT}`,
+    );
   });
 
   it("blocks a same-name partial index with the wrong ordered key columns", () => {
@@ -263,7 +271,7 @@ describe("readiness integrity schema-stage detection", () => {
     wrongIndex.indexes[0].columns = ["identityHash", "userId"];
     const result = classifyReadinessSchemaStage({
       catalog: wrongIndex,
-      ledgerRows: ledger(15),
+      ledgerRows: ledger(FULL_MIGRATION_COUNT),
       checkedIn: checkedIn(),
     });
     expect(result.stage).toBe("partial_or_incompatible");

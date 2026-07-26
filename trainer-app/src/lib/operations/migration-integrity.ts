@@ -18,6 +18,7 @@ export const EXPECTED_MIGRATION_CHAIN = [
   "20260714120000_retire_exercise_exposure_projection",
   "20260714180000_add_post_session_review_snapshots",
   "20260714210000_make_pre_session_readiness_snapshots_atomic",
+  "20260726120000_add_active_macrocycle_foundation",
 ] as const;
 
 export const EXPECTED_GATE_A_PENDING = EXPECTED_MIGRATION_CHAIN.slice(10);
@@ -213,6 +214,58 @@ export const PENDING_ARCHITECTURE_MANIFEST: readonly PendingMigrationExpectation
       { kind: "index", table: "PreSessionReadinessSnapshot", name: "psrs_target_history_idx", index: { unique: false, columns: ["userId", "targetHash", "createdAt DESC"], predicate: null } },
       { kind: "index", table: "PreSessionReadinessSnapshot", name: "psrs_one_active_exact_identity_uidx", index: { unique: true, columns: ["userId", "identityHash"], predicate: "(\"invalidatedAt\" IS NULL) AND (\"identityStatus\" = 'EXACT'::text)" } },
       { kind: "index", table: "PreSessionReadinessSnapshot", name: "psrs_one_active_target_uidx", index: { unique: true, columns: ["userId", "targetHash"], predicate: "(\"invalidatedAt\" IS NULL) AND (\"identityStatus\" = 'EXACT'::text)" } },
+    ],
+  },
+  {
+    migration: "20260726120000_add_active_macrocycle_foundation",
+    effect: "objects",
+    objects: [
+      {
+        kind: "column",
+        table: "User",
+        name: "activeMacroCycleId",
+        column: { type: "text", nullable: true, default: null },
+      },
+      {
+        kind: "index",
+        table: "User",
+        name: "User_activeMacroCycleId_key",
+        index: {
+          unique: true,
+          columns: ["activeMacroCycleId"],
+          predicate: null,
+        },
+      },
+      {
+        kind: "index",
+        table: "Mesocycle",
+        name: "Mesocycle_one_active_per_macrocycle",
+        index: {
+          unique: true,
+          columns: ["macroCycleId"],
+          predicate: "(\"isActive\" = true)",
+        },
+      },
+      {
+        kind: "constraint",
+        table: "User",
+        name: "User_activeMacroCycleId_fkey",
+        definitionIncludes: [
+          "activeMacroCycleId",
+          "MacroCycle",
+          "ON DELETE RESTRICT",
+        ],
+      },
+      {
+        kind: "constraint",
+        table: "Mesocycle",
+        name: "Mesocycle_active_state_check",
+        definitionIncludes: [
+          "isActive",
+          "COMPLETED",
+          "AWAITING_HANDOFF",
+        ],
+      },
     ],
   },
 ] as const;

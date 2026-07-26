@@ -113,6 +113,12 @@ export async function POST(request: Request) {
   }
 
   const activeMesocycle = await loadActiveMesocycle(user.id);
+  if (!activeMesocycle) {
+    return NextResponse.json(
+      { error: "Selected plan with an active mesocycle is required." },
+      { status: 409 }
+    );
+  }
   const nextWorkoutContext = await loadNextWorkoutContext(user.id);
   const shouldApplyOptionalGapFill =
     parsed.data.optionalGapFill === true && parsed.data.intent === "body_part";

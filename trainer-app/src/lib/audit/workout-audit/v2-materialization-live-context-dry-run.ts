@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
 import type { WorkoutSessionIntent } from "@prisma/client";
 import {
   buildV2ExerciseMaterializationPlan,
@@ -3002,19 +3003,7 @@ export async function runV2LiveContextMaterializationDryRunHarness(input: {
   }
 
   const [mesocycle, exercises, preferences] = await Promise.all([
-    prisma.mesocycle.findFirst({
-      where: {
-        isActive: true,
-        macroCycle: { userId: user.id },
-      },
-      orderBy: [{ mesoNumber: "desc" }],
-      select: {
-        id: true,
-        state: true,
-        splitType: true,
-        slotSequenceJson: true,
-      },
-    }),
+    loadActiveMesocycle(user.id),
     prisma.exercise.findMany({
       orderBy: { name: "asc" },
       include: {
@@ -3072,20 +3061,42 @@ export async function runV2MaterializedSeedAcceptanceProbe(input: {
     });
   }
 
+  const selectedMesocycle =
+    !input.mesocycleId && reader === prisma
+      ? await loadActiveMesocycle(user.id)
+      : null;
+  const mesocyclePromise = selectedMesocycle
+    ? Promise.resolve(selectedMesocycle)
+    : input.mesocycleId
+      ? reader.mesocycle.findFirst({
+          where: {
+            id: input.mesocycleId,
+            macroCycle: { userId: user.id },
+          },
+          select: {
+            id: true,
+            state: true,
+            splitType: true,
+            slotSequenceJson: true,
+          },
+        })
+      : reader === prisma
+        ? Promise.resolve(null)
+        : reader.mesocycle.findFirst({
+            where: {
+              isActive: true,
+              macroCycle: { userId: user.id },
+            },
+            orderBy: [{ mesoNumber: "desc" }],
+            select: {
+              id: true,
+              state: true,
+              splitType: true,
+              slotSequenceJson: true,
+            },
+          });
   const [mesocycle, exercises, preferences] = await Promise.all([
-    reader.mesocycle.findFirst({
-      where: {
-        ...(input.mesocycleId ? { id: input.mesocycleId } : { isActive: true }),
-        macroCycle: { userId: user.id },
-      },
-      orderBy: input.mesocycleId ? undefined : [{ mesoNumber: "desc" }],
-      select: {
-        id: true,
-        state: true,
-        splitType: true,
-        slotSequenceJson: true,
-      },
-    }),
+    mesocyclePromise,
     reader.exercise.findMany({
       orderBy: { name: "asc" },
       include: {

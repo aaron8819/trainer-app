@@ -108,13 +108,13 @@ function resolveHistoricalWeekClose(input: {
 export async function buildHistoricalWeekAuditPayload(input: {
   userId: string;
   week: number;
-  mesocycleId?: string;
+  mesocycleId: string;
 }): Promise<HistoricalWeekAuditPayload> {
   const workouts = await prisma.workout.findMany({
     where: {
       userId: input.userId,
       mesocycleWeekSnapshot: input.week,
-      ...(input.mesocycleId ? { mesocycleId: input.mesocycleId } : {}),
+      mesocycleId: input.mesocycleId,
     },
     orderBy: [{ scheduledDate: "asc" }, { id: "asc" }],
     select: {

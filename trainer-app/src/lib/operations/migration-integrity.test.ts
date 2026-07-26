@@ -94,9 +94,14 @@ function pendingObjectIndex(migrationIndex: number, kind: string): number {
 }
 
 describe("migration integrity", () => {
-  it("accepts the exact clean 10-applied/5-pending Gate A state", () => {
+  it("accepts the exact clean applied-prefix/pending-suffix Gate A state", () => {
     const result = report();
-    expect(result.chain).toMatchObject({ checkedIn: 15, applied: 10, pending: 5, pendingNames: EXPECTED_GATE_A_PENDING });
+    expect(result.chain).toMatchObject({
+      checkedIn: EXPECTED_MIGRATION_CHAIN.length,
+      applied: 10,
+      pending: EXPECTED_GATE_A_PENDING.length,
+      pendingNames: EXPECTED_GATE_A_PENDING,
+    });
     expect(result.checksums).toMatchObject({ matched: 10, mismatched: [] });
     expect(result.migrationAuthorizationReady).toBe(true);
   });
@@ -107,7 +112,11 @@ describe("migration integrity", () => {
     rows[9] = { ...rows[9], appliedStepsCount: 0 };
     const result = report({ ledgerRows: rows });
 
-    expect(result.chain).toMatchObject({ applied: 10, pending: 5, pendingNames: EXPECTED_GATE_A_PENDING });
+    expect(result.chain).toMatchObject({
+      applied: 10,
+      pending: EXPECTED_GATE_A_PENDING.length,
+      pendingNames: EXPECTED_GATE_A_PENDING,
+    });
     expect(result.ledger.successful).toHaveLength(10);
     expect(result.ledger.resolvedApplied).toEqual([
       EXPECTED_MIGRATION_CHAIN[0],
@@ -314,8 +323,15 @@ describe("migration integrity", () => {
         addPendingObject(catalog, migrationIndex, objectIndex);
       }
     }
-    const result = report({ ledgerRows: appliedPrefix(15), catalog });
-    expect(result.chain).toMatchObject({ applied: 15, pending: 0, gateAApplicable: false });
+    const result = report({
+      ledgerRows: appliedPrefix(EXPECTED_MIGRATION_CHAIN.length),
+      catalog,
+    });
+    expect(result.chain).toMatchObject({
+      applied: EXPECTED_MIGRATION_CHAIN.length,
+      pending: 0,
+      gateAApplicable: false,
+    });
     expect(result.partialObjects.partiallyPresent).toEqual([]);
     expect(result.partialObjects.unexpectedPresent).toEqual([]);
     expect(result.migrationAuthorizationReady).toBe(false);

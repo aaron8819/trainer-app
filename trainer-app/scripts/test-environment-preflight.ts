@@ -1,15 +1,32 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  buildImportOnlyPlaceholderEnvironment,
   buildTestEnvironmentPreflight,
+  compareTestSuiteEnvironmentManifests,
   DATABASE_TARGET_ENV_VARS,
   inspectDependencyFilesystem,
   inspectPrismaClientFilesystem,
+  parseVitestSummary,
   sanitizeDatabaseTargetEnvironment,
+  selectTestSuitesByEnvironment,
+  validateImportOnlyPlaceholderEnvironment,
+  validateTestSuiteEnvironmentManifest,
   type CapabilityStatus,
   type DatabaseTargetEnvironment,
+  type TestCommandRegistryEntry,
+  type TestSuiteEnvironmentManifest,
+  type VitestSummaryCounts,
 } from "../src/lib/operations/test-environment-preflight";
+import { IMPORT_ONLY_CONNECTION_ATTEMPT_MARKER_ENV } from "../src/lib/operations/import-only-placeholder-guard";
 
 function capability(available: boolean): CapabilityStatus {
   return available ? "available" : "missing";
@@ -63,9 +80,8 @@ function databaseTargets(): DatabaseTargetEnvironment {
   ) as DatabaseTargetEnvironment;
 }
 
-function runCredentialFree(command: string, args: string[]): number {
-  const env = sanitizeDatabaseTargetEnvironment(process.env);
-  env.TRAINER_CREDENTIAL_FREE_TEST = "1";
+function runSanitized(command: string, args: string[]): number {
+  const env = credentialFreeEnvironment();
   const result = spawnSync(command, args, {
     cwd: process.cwd(),
     env,
@@ -73,6 +89,254 @@ function runCredentialFree(command: string, args: string[]): number {
     windowsHide: true,
   });
   return result.status ?? 1;
+}
+
+function credentialFreeEnvironment(): NodeJS.ProcessEnv {
+  const env = sanitizeDatabaseTargetEnvironment(process.env);
+  env.TRAINER_CREDENTIAL_FREE_TEST = "1";
+  return env;
+}
+
+function discoverVitestFiles(root: string): string[] {
+  const files: string[] = [];
+  function visit(directory: string): void {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const absolutePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(absolutePath);
+      else if (/\.test\.tsx?$/.test(entry.name)) {
+        files.push(path.relative(root, absolutePath).replaceAll("\\", "/"));
+      }
+    }
+  }
+  visit(path.join(root, "src"));
+  return files.sort();
+}
+
+function readJson<T>(filePath: string): T {
+  return JSON.parse(readFileSync(filePath, "utf8")) as T;
+}
+
+function baseRefFromArgs(): string | undefined {
+  const index = process.argv.indexOf("--base-ref");
+  return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+function readBaseManifest(
+  projectRoot: string,
+  baseRef: string
+): TestSuiteEnvironmentManifest | undefined {
+  const result = spawnSync(
+    "git",
+    ["show", `${baseRef}:trainer-app/scripts/test-suite-environments.json`],
+    {
+      cwd: projectRoot,
+      encoding: "utf8",
+      windowsHide: true,
+    }
+  );
+  if (result.status !== 0) return undefined;
+  try {
+    return JSON.parse(result.stdout) as TestSuiteEnvironmentManifest;
+  } catch {
+    return undefined;
+  }
+}
+
+function runVitestPhase(input: {
+  vitestCli: string;
+  args: string[];
+  environment: NodeJS.ProcessEnv;
+}): {
+  status: number;
+  summary: VitestSummaryCounts | null;
+} {
+  const result = spawnSync(process.execPath, [input.vitestCli, "run", ...input.args], {
+    cwd: process.cwd(),
+    env: input.environment,
+    encoding: "utf8",
+    windowsHide: true,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  const status = result.status ?? 1;
+  return {
+    status,
+    summary: parseVitestSummary(`${result.stdout ?? ""}\n${result.stderr ?? ""}`),
+  };
+}
+
+function printPhaseSummary(
+  label: string,
+  selectedFiles: number,
+  result: { status: number; summary: VitestSummaryCounts | null }
+): void {
+  const summary = result.summary;
+  console.log(`${label}:`);
+  console.log(`- files selected: ${selectedFiles}`);
+  console.log(`- files passed: ${summary?.files.passed ?? 0}`);
+  console.log(`- files skipped: ${summary?.files.skipped ?? 0}`);
+  console.log(`- files failed: ${summary?.files.failed ?? (result.status === 0 ? 0 : 1)}`);
+  console.log(`- tests collected: ${summary?.tests.total ?? 0}`);
+  console.log(`- tests passed: ${summary?.tests.passed ?? 0}`);
+  console.log(`- tests skipped: ${summary?.tests.skipped ?? 0}`);
+  console.log(`- tests failed: ${summary?.tests.failed ?? (result.status === 0 ? 0 : 1)}`);
+}
+
+function runCredentialFreeInventory(input: {
+  projectRoot: string;
+  vitestCli: string;
+}): number {
+  const manifestPath = path.join(
+    input.projectRoot,
+    "scripts",
+    "test-suite-environments.json"
+  );
+  const policyPath = path.join(
+    input.projectRoot,
+    "..",
+    "scripts",
+    "codex",
+    "trainer-policy.v1.json"
+  );
+  const manifest = readJson<TestSuiteEnvironmentManifest>(manifestPath);
+  const policy = readJson<{ commandRegistry: TestCommandRegistryEntry[] }>(policyPath);
+  const discoveredTestFiles = discoverVitestFiles(input.projectRoot);
+  const validationErrors = validateTestSuiteEnvironmentManifest({
+    manifest,
+    discoveredTestFiles,
+    commandRegistry: policy.commandRegistry,
+  });
+  if (validationErrors.length > 0) {
+    console.error("Unexpected suite environment classification failures:");
+    for (const error of validationErrors) {
+      console.error(`- ${error.code}: ${error.message}`);
+    }
+    return 1;
+  }
+
+  const selection = selectTestSuitesByEnvironment({
+    manifest,
+    discoveredTestFiles,
+  });
+  const excludedPaths = manifest.suites.map((entry) => entry.path);
+
+  console.log("Credential-free inventory classification");
+  console.log(`- total test files discovered: ${discoveredTestFiles.length}`);
+  console.log(`- credential-free files selected: ${selection.credentialFree.length}`);
+  console.log(
+    `- import-only placeholder files selected: ${selection.importOnlyPlaceholder.length}`
+  );
+  console.log(`- DB-required files excluded: ${selection.databaseRequired.length}`);
+  console.log("DB-required suites excluded:");
+  for (const entry of selection.databaseRequired) {
+    console.log(
+      `- ${entry.path} | owner=${entry.owner} | command=npm run ${entry.packageScript} -- --confirm-disposable | reason=${entry.reason}`
+    );
+  }
+  console.log("Import-only placeholder suites:");
+  for (const entry of selection.importOnlyPlaceholder) {
+    console.log(
+      `- ${entry.path} | owner=${entry.owner} | placeholder=reserved TEST-NET URL | connection-guard=required | reason=${entry.reason}`
+    );
+  }
+
+  const credentialFreeResult = runVitestPhase({
+    vitestCli: input.vitestCli,
+    args: excludedPaths.flatMap((testFile) => ["--exclude", testFile]),
+    environment: credentialFreeEnvironment(),
+  });
+
+  const placeholderEnvironment = buildImportOnlyPlaceholderEnvironment(process.env);
+  const placeholderErrors =
+    validateImportOnlyPlaceholderEnvironment(placeholderEnvironment);
+  if (placeholderErrors.length > 0) {
+    console.error("Import-only placeholder environment validation failed.");
+    for (const error of placeholderErrors) console.error(`- ${error}`);
+    return 1;
+  }
+  const markerDirectory = mkdtempSync(
+    path.join(tmpdir(), "trainer-import-only-connection-")
+  );
+  const attemptMarker = path.join(markerDirectory, "attempted");
+  placeholderEnvironment[IMPORT_ONLY_CONNECTION_ATTEMPT_MARKER_ENV] = attemptMarker;
+  let importOnlyResult: {
+    status: number;
+    summary: VitestSummaryCounts | null;
+  };
+  try {
+    importOnlyResult =
+      selection.importOnlyPlaceholder.length === 0
+        ? {
+            status: 0,
+            summary: {
+              files: { total: 0, passed: 0, failed: 0, skipped: 0 },
+              tests: { total: 0, passed: 0, failed: 0, skipped: 0 },
+            },
+          }
+        : runVitestPhase({
+            vitestCli: input.vitestCli,
+            args: selection.importOnlyPlaceholder.map((entry) => entry.path),
+            environment: placeholderEnvironment,
+          });
+    if (existsSync(attemptMarker)) {
+      console.error(
+        "Unexpected import-only placeholder connection attempt was blocked."
+      );
+      importOnlyResult.status = 1;
+    }
+  } finally {
+    rmSync(markerDirectory, { recursive: true, force: true });
+  }
+
+  console.log("Credential-free inventory summary");
+  printPhaseSummary(
+    "Credential-free suites",
+    selection.credentialFree.length,
+    credentialFreeResult
+  );
+  printPhaseSummary(
+    "Import-only placeholder suites",
+    selection.importOnlyPlaceholder.length,
+    importOnlyResult
+  );
+  console.log(
+    `DB-required suites excluded: ${selection.databaseRequired.length} (not run; DB coverage is separate)`
+  );
+  const unexpectedFailure =
+    credentialFreeResult.status !== 0 ||
+    importOnlyResult.status !== 0 ||
+    !credentialFreeResult.summary ||
+    !importOnlyResult.summary;
+  console.log(
+    `Unexpected collection or test failures: ${unexpectedFailure ? "present" : "none"}`
+  );
+
+  const baseRef = baseRefFromArgs();
+  if (baseRef) {
+    const baseManifest = readBaseManifest(input.projectRoot, baseRef);
+    const delta = compareTestSuiteEnvironmentManifests(baseManifest, manifest);
+    console.log(`Branch/base classification delta (${baseRef}):`);
+    console.log(`- base manifest: ${baseManifest ? "available" : "not available"}`);
+    console.log(`- added: ${delta.added.length}`);
+    console.log(`- removed: ${delta.removed.length}`);
+    console.log(`- changed: ${delta.changed.length}`);
+    for (const entry of delta.added) {
+      console.log(`  + ${entry.path} (${entry.environment})`);
+    }
+    for (const entry of delta.removed) {
+      console.log(`  - ${entry.path} (${entry.environment})`);
+    }
+    for (const entry of delta.changed) {
+      console.log(
+        `  ~ ${entry.after.path} (${entry.before.environment} -> ${entry.after.environment})`
+      );
+    }
+  } else {
+    console.log("Branch/base classification delta: not requested (use --base-ref <git-ref>)");
+  }
+
+  return unexpectedFailure ? 1 : 0;
 }
 
 function expectedPrismaModels(schema: string | undefined): string[] {
@@ -179,16 +443,16 @@ if (process.argv.includes("--json")) {
 if (!report.success) {
   process.exitCode = 1;
 } else if (process.argv.includes("--run-credential-free-inventory")) {
-  process.exitCode = runCredentialFree(process.execPath, [
-    path.join(nodeModulesPath, "vitest", "vitest.mjs"),
-    "run",
-  ]);
+  process.exitCode = runCredentialFreeInventory({
+    projectRoot,
+    vitestCli: path.join(nodeModulesPath, "vitest", "vitest.mjs"),
+  });
 } else if (process.argv.includes("--run-verify-gate")) {
   const npmCli = process.env.npm_execpath;
   if (!npmCli || !existsSync(npmCli)) {
     console.error("blocker: npm CLI path is unavailable.");
     process.exitCode = 1;
   } else {
-    process.exitCode = runCredentialFree(process.execPath, [npmCli, "run", "verify"]);
+    process.exitCode = runSanitized(process.execPath, [npmCli, "run", "verify"]);
   }
 }

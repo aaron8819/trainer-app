@@ -1245,6 +1245,8 @@ describe("command coverage honesty", () => {
       "test:verify-gate": "node scripts/test-environment-preflight.mjs --run-verify-gate",
       "test:inventory:credential-free":
         "node scripts/test-environment-preflight.mjs --run-credential-free-inventory",
+      "test:environment-classification":
+        "vitest run src/lib/operations/test-environment-preflight.test.ts src/lib/operations/test-suite-environment-classification.test.ts src/lib/operations/import-only-placeholder-guard.test.ts",
     });
     expect(packageJson.scripts).not.toHaveProperty("test:pure");
     expect(packageJson.scripts).not.toHaveProperty("test:full");
@@ -1252,10 +1254,12 @@ describe("command coverage honesty", () => {
       "test:preflight",
       "test:verify-gate",
       "test:inventory:credential-free",
+      "test:environment-classification",
     ]) {
       expect(docs).toContain(`npm run ${command}`);
     }
     expect(docs).not.toContain("authoritative credential-free verification");
-    expect(docs).toContain("not a comprehensive inventory");
+    expect(docs).toContain("DB-required suites excluded");
+    expect(docs).toContain("import-only placeholder");
   });
 });

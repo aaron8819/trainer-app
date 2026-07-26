@@ -4,6 +4,20 @@ import {
   loadWeeklyMuscleOutcome,
 } from "./muscle-outcome-review";
 
+function performedSets(count: number) {
+  return Array.from({ length: count }, () => ({
+    logs: [
+      {
+        wasSkipped: false,
+        actualReps: 10,
+        actualRpe: 8,
+        actualLoad: 100,
+        setIntent: "WORK",
+      },
+    ],
+  }));
+}
+
 describe("classifyMuscleOutcome", () => {
   it("applies conservative threshold boundaries", () => {
     expect(classifyMuscleOutcome(20, 18)).toMatchObject({
@@ -108,7 +122,7 @@ describe("loadWeeklyMuscleOutcome", () => {
                 { role: "SECONDARY", muscle: { name: "Biceps" } },
               ],
             },
-            sets: Array.from({ length: 3 }, () => ({ logs: [{ wasSkipped: false }] })),
+            sets: performedSets(3),
           },
           {
             exercise: {
@@ -121,7 +135,7 @@ describe("loadWeeklyMuscleOutcome", () => {
                 { role: "SECONDARY", muscle: { name: "Upper Back" } },
               ],
             },
-            sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+            sets: performedSets(2),
           },
           {
             exercise: {
@@ -133,7 +147,7 @@ describe("loadWeeklyMuscleOutcome", () => {
                 { role: "SECONDARY", muscle: { name: "Forearms" } },
               ],
             },
-            sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+            sets: performedSets(2),
           },
         ],
       },
@@ -246,7 +260,7 @@ describe("loadWeeklyMuscleOutcome", () => {
                 { role: "SECONDARY", muscle: { name: "Lower Back" } },
               ],
             },
-            sets: Array.from({ length: 2 }, () => ({ logs: [{ wasSkipped: false }] })),
+            sets: performedSets(2),
           },
         ],
       },

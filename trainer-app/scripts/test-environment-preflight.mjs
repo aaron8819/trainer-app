@@ -7,23 +7,39 @@ const EXIT = Object.freeze({
   blocked: 1,
   invalidInvocation: 2,
 });
-const allowedFlags = new Set([
+const allowedBooleanFlags = new Set([
   "--debug",
   "--json",
   "--run-credential-free-inventory",
   "--run-verify-gate",
 ]);
 const args = process.argv.slice(2);
-const unknownFlags = args.filter((argument) => !allowedFlags.has(argument));
+const unknownFlags = [];
+let baseRef;
+for (let index = 0; index < args.length; index += 1) {
+  const argument = args[index];
+  if (allowedBooleanFlags.has(argument)) continue;
+  if (argument === "--base-ref") {
+    const value = args[index + 1];
+    if (!value || value.startsWith("--")) unknownFlags.push(argument);
+    else {
+      baseRef = value;
+      index += 1;
+    }
+    continue;
+  }
+  unknownFlags.push(argument);
+}
 const runFlags = args.filter((argument) => argument.startsWith("--run-"));
 
 if (
   unknownFlags.length > 0 ||
   runFlags.length > 1 ||
+  (baseRef && !args.includes("--run-credential-free-inventory")) ||
   (args.includes("--json") && runFlags.length > 0) ||
   (args.includes("--debug") && args.includes("--json"))
 ) {
-  console.error("Invalid invocation. Supported flags: --debug, --json, --run-credential-free-inventory, --run-verify-gate.");
+  console.error("Invalid invocation. Supported flags: --debug, --json, --run-credential-free-inventory [--base-ref <git-ref>], --run-verify-gate.");
   process.exit(EXIT.invalidInvocation);
 }
 

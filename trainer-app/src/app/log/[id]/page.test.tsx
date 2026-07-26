@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/link", () => ({
@@ -60,6 +60,7 @@ vi.mock("@/components/LogWorkoutClient", () => ({
 
 describe("LogWorkoutPage", () => {
   beforeEach(() => {
+    document.body.replaceChildren();
     vi.clearAllMocks();
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
     mocks.preSessionReadinessSnapshotFindFirst.mockResolvedValue(null);
@@ -89,12 +90,12 @@ describe("LogWorkoutPage", () => {
     const { default: LogWorkoutPage } = await import("./page");
     const ui = await LogWorkoutPage({ params: Promise.resolve({ id: "workout-1" }) });
 
-    render(ui);
+    const view = render(ui);
 
-    expect(screen.getByText("Session review only")).toBeInTheDocument();
-    expect(screen.getByText("This session is completed and is now read-only.")).toBeInTheDocument();
-    expect(screen.queryByText("LogWorkoutClient mounted")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View workout" })).toHaveAttribute(
+    expect(view.getByText("Session review only")).toBeInTheDocument();
+    expect(view.getByText("This session is completed and is now read-only.")).toBeInTheDocument();
+    expect(view.queryByText("LogWorkoutClient mounted")).not.toBeInTheDocument();
+    expect(view.getByRole("link", { name: "View workout" })).toHaveAttribute(
       "href",
       "/workout/workout-1"
     );
@@ -115,11 +116,11 @@ describe("LogWorkoutPage", () => {
     const { default: LogWorkoutPage } = await import("./page");
     const ui = await LogWorkoutPage({ params: Promise.resolve({ id: "workout-1" }) });
 
-    render(ui);
+    const view = render(ui);
 
-    expect(screen.getByText("Session review only")).toBeInTheDocument();
-    expect(screen.getByText("This session was skipped and is now read-only.")).toBeInTheDocument();
-    expect(screen.queryByText("LogWorkoutClient mounted")).not.toBeInTheDocument();
+    expect(view.getByText("Session review only")).toBeInTheDocument();
+    expect(view.getByText("This session was skipped and is now read-only.")).toBeInTheDocument();
+    expect(view.queryByText("LogWorkoutClient mounted")).not.toBeInTheDocument();
   });
 
   it("mounts the log editor for active resumable workouts", async () => {
@@ -141,9 +142,9 @@ describe("LogWorkoutPage", () => {
     const { default: LogWorkoutPage } = await import("./page");
     const ui = await LogWorkoutPage({ params: Promise.resolve({ id: "workout-1" }) });
 
-    render(ui);
+    const view = render(ui);
 
-    expect(screen.getByText("LogWorkoutClient mounted")).toBeInTheDocument();
+    expect(view.getByText("LogWorkoutClient mounted")).toBeInTheDocument();
   });
 
   it("shows blocker navigation for closed-mesocycle workouts", async () => {
@@ -161,15 +162,15 @@ describe("LogWorkoutPage", () => {
     const { default: LogWorkoutPage } = await import("./page");
     const ui = await LogWorkoutPage({ params: Promise.resolve({ id: "workout-1" }) });
 
-    render(ui);
+    const view = render(ui);
 
-    expect(screen.getByText("Workout unavailable")).toBeInTheDocument();
-    expect(screen.getByText(/handoff pending/)).toBeInTheDocument();
-    expect(screen.queryByText("LogWorkoutClient mounted")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View workout" })).toHaveAttribute(
+    expect(view.getByText("Workout unavailable")).toBeInTheDocument();
+    expect(view.getByText(/handoff pending/)).toBeInTheDocument();
+    expect(view.queryByText("LogWorkoutClient mounted")).not.toBeInTheDocument();
+    expect(view.getByRole("link", { name: "View workout" })).toHaveAttribute(
       "href",
       "/workout/workout-1"
     );
-    expect(screen.getByRole("link", { name: "Back to dashboard" })).toHaveAttribute("href", "/");
+    expect(view.getByRole("link", { name: "Back to dashboard" })).toHaveAttribute("href", "/");
   });
 });

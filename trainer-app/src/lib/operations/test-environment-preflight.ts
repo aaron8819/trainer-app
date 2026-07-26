@@ -15,10 +15,79 @@ export const DATABASE_TARGET_ENV_VARS = [
 ] as const;
 export const DISPOSABLE_DATABASE_CONFIRMATION_ENV =
   "TRAINER_DISPOSABLE_DB_CONFIRMED" as const;
+export const IMPORT_ONLY_PLACEHOLDER_ENV =
+  "TRAINER_IMPORT_ONLY_PLACEHOLDER_TEST" as const;
+export const IMPORT_ONLY_PLACEHOLDER_URL =
+  "postgresql://trainer_placeholder:placeholder@192.0.2.1:5432/trainer_placeholder" as const;
 
 export type DatabaseTargetVariable = (typeof DATABASE_TARGET_ENV_VARS)[number];
 export type DatabaseTargetEnvironment = Record<string, string | undefined> &
   Partial<Record<DatabaseTargetVariable, string | undefined>>;
+export type TestSuiteEnvironmentClass =
+  | "db-required"
+  | "import-only-placeholder";
+export type TestSuiteEnvironmentEntry = {
+  path: string;
+  environment: TestSuiteEnvironmentClass;
+  owner: string;
+  reason: string;
+  commandId?: string;
+  packageScript?: string;
+};
+export type TestSuiteEnvironmentManifest = {
+  schema: "trainer-test-suite-environments";
+  version: 1;
+  suites: TestSuiteEnvironmentEntry[];
+};
+export type TestCommandRegistryEntry = {
+  id: string;
+  packageScript?: string;
+  profile: string;
+};
+export type TestSuiteEnvironmentValidationError = {
+  code:
+    | "manifest-schema-invalid"
+    | "manifest-version-invalid"
+    | "registry-path-invalid"
+    | "registry-path-not-test"
+    | "registry-path-missing"
+    | "registry-conflict"
+    | "registry-environment-invalid"
+    | "db-required-name-invalid"
+    | "db-required-command-missing"
+    | "db-required-command-unauthorized"
+    | "import-only-command-invalid"
+    | "unregistered-db-required-suite";
+  path?: string;
+  message: string;
+};
+export type TestSuiteEnvironmentSelection = {
+  credentialFree: string[];
+  importOnlyPlaceholder: TestSuiteEnvironmentEntry[];
+  databaseRequired: TestSuiteEnvironmentEntry[];
+};
+export type VitestSummaryCounts = {
+  files: {
+    total: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+  };
+  tests: {
+    total: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+  };
+};
+export type TestSuiteEnvironmentDelta = {
+  added: TestSuiteEnvironmentEntry[];
+  removed: TestSuiteEnvironmentEntry[];
+  changed: Array<{
+    before: TestSuiteEnvironmentEntry;
+    after: TestSuiteEnvironmentEntry;
+  }>;
+};
 export type CapabilityStatus = "available" | "missing" | "invalid";
 export type TestGroupStatus = "runnable" | "blocked" | "separate";
 export type DatabaseTargetStatus =
@@ -96,9 +165,11 @@ const SAFE_MUTATION_TARGET_QUERY_PARAMETERS = new Set([
   "sslmode",
 ]);
 const SANITIZED_ENVIRONMENT_NAMES = new Set(
-  [...DATABASE_TARGET_ENV_VARS, DISPOSABLE_DATABASE_CONFIRMATION_ENV].map((name) =>
-    name.toUpperCase()
-  )
+  [
+    ...DATABASE_TARGET_ENV_VARS,
+    DISPOSABLE_DATABASE_CONFIRMATION_ENV,
+    IMPORT_ONLY_PLACEHOLDER_ENV,
+  ].map((name) => name.toUpperCase())
 );
 const DATABASE_TARGET_REFERENCE =
   /\b(?:[A-Z][A-Z0-9_]*(?:DATABASE|POSTGRESQL|POSTGRES|DB)[A-Z0-9_]*_URL|DIRECT_URL|SHADOW_URL)\b/g;
@@ -184,6 +255,259 @@ export function sanitizeDatabaseTargetEnvironment<
     }
   }
   return sanitized;
+}
+
+function normalizedTestPath(testPath: string): string {
+  return testPath.replaceAll("\\", "/");
+}
+
+function isTestFilePath(testPath: string): boolean {
+  return /^src\/.+\.test\.tsx?$/.test(testPath);
+}
+
+function isDatabaseTestFilePath(testPath: string): boolean {
+  return /\.db\.test\.tsx?$/.test(testPath);
+}
+
+export function validateTestSuiteEnvironmentManifest(input: {
+  manifest: TestSuiteEnvironmentManifest;
+  discoveredTestFiles: readonly string[];
+  commandRegistry: readonly TestCommandRegistryEntry[];
+}): TestSuiteEnvironmentValidationError[] {
+  const errors: TestSuiteEnvironmentValidationError[] = [];
+  if (input.manifest.schema !== "trainer-test-suite-environments") {
+    errors.push({
+      code: "manifest-schema-invalid",
+      message: "The test-suite environment manifest schema is invalid.",
+    });
+  }
+  if (input.manifest.version !== 1) {
+    errors.push({
+      code: "manifest-version-invalid",
+      message: "The test-suite environment manifest version is unsupported.",
+    });
+  }
+
+  const discovered = new Set(input.discoveredTestFiles.map(normalizedTestPath));
+  const commands = new Map(input.commandRegistry.map((entry) => [entry.id, entry]));
+  const entriesByPath = new Map<string, TestSuiteEnvironmentEntry>();
+
+  for (const entry of input.manifest.suites) {
+    const normalizedPath = normalizedTestPath(entry.path);
+    if (normalizedPath !== entry.path || normalizedPath.includes("..")) {
+      errors.push({
+        code: "registry-path-invalid",
+        path: entry.path,
+        message: `${entry.path} must be a normalized repository-relative path.`,
+      });
+    }
+    if (!isTestFilePath(normalizedPath)) {
+      errors.push({
+        code: "registry-path-not-test",
+        path: entry.path,
+        message: `${entry.path} is not a Trainer Vitest file path.`,
+      });
+    } else if (!discovered.has(normalizedPath)) {
+      errors.push({
+        code: "registry-path-missing",
+        path: entry.path,
+        message: `${entry.path} is registered but does not exist.`,
+      });
+    }
+
+    if (entriesByPath.has(normalizedPath)) {
+      errors.push({
+        code: "registry-conflict",
+        path: entry.path,
+        message: `${entry.path} is registered more than once.`,
+      });
+    } else {
+      entriesByPath.set(normalizedPath, entry);
+    }
+
+    if (
+      entry.environment !== "db-required" &&
+      entry.environment !== "import-only-placeholder"
+    ) {
+      errors.push({
+        code: "registry-environment-invalid",
+        path: entry.path,
+        message: `${entry.path} has an unsupported environment class.`,
+      });
+      continue;
+    }
+
+    if (entry.environment === "db-required") {
+      if (!isDatabaseTestFilePath(normalizedPath)) {
+        errors.push({
+          code: "db-required-name-invalid",
+          path: entry.path,
+          message: `${entry.path} must use the .db.test.ts(x) convention.`,
+        });
+      }
+      const command = entry.commandId ? commands.get(entry.commandId) : undefined;
+      if (!entry.commandId || !entry.packageScript || !command) {
+        errors.push({
+          code: "db-required-command-missing",
+          path: entry.path,
+          message: `${entry.path} has no registered DB-backed execution command.`,
+        });
+      } else if (
+        command.packageScript !== entry.packageScript ||
+        command.profile !== "disposable-database-write"
+      ) {
+        errors.push({
+          code: "db-required-command-unauthorized",
+          path: entry.path,
+          message: `${entry.path} points to a command without the required disposable-database-write profile.`,
+        });
+      }
+    } else if (entry.commandId || entry.packageScript) {
+      errors.push({
+        code: "import-only-command-invalid",
+        path: entry.path,
+        message: `${entry.path} is import-only and must not claim DB-backed execution.`,
+      });
+    }
+  }
+
+  for (const testFile of discovered) {
+    if (
+      isDatabaseTestFilePath(testFile) &&
+      entriesByPath.get(testFile)?.environment !== "db-required"
+    ) {
+      errors.push({
+        code: "unregistered-db-required-suite",
+        path: testFile,
+        message: `${testFile} uses the DB-required naming convention but is not registered as DB-required.`,
+      });
+    }
+  }
+
+  return errors;
+}
+
+export function selectTestSuitesByEnvironment(input: {
+  manifest: TestSuiteEnvironmentManifest;
+  discoveredTestFiles: readonly string[];
+}): TestSuiteEnvironmentSelection {
+  const classifiedPaths = new Set(
+    input.manifest.suites.map((entry) => normalizedTestPath(entry.path))
+  );
+  return {
+    credentialFree: input.discoveredTestFiles
+      .map(normalizedTestPath)
+      .filter((testFile) => !classifiedPaths.has(testFile))
+      .sort(),
+    importOnlyPlaceholder: input.manifest.suites
+      .filter((entry) => entry.environment === "import-only-placeholder")
+      .sort((left, right) => left.path.localeCompare(right.path)),
+    databaseRequired: input.manifest.suites
+      .filter((entry) => entry.environment === "db-required")
+      .sort((left, right) => left.path.localeCompare(right.path)),
+  };
+}
+
+export function buildImportOnlyPlaceholderEnvironment<
+  T extends Record<string, string | undefined>,
+>(
+  environment: T
+): T &
+  Record<typeof IMPORT_ONLY_PLACEHOLDER_ENV, "1"> & {
+    DATABASE_URL: typeof IMPORT_ONLY_PLACEHOLDER_URL;
+    TRAINER_CREDENTIAL_FREE_TEST: "1";
+  } {
+  const sanitized = sanitizeDatabaseTargetEnvironment(environment);
+  return {
+    ...sanitized,
+    DATABASE_URL: IMPORT_ONLY_PLACEHOLDER_URL,
+    TRAINER_CREDENTIAL_FREE_TEST: "1",
+    [IMPORT_ONLY_PLACEHOLDER_ENV]: "1",
+  } as T &
+    Record<typeof IMPORT_ONLY_PLACEHOLDER_ENV, "1"> & {
+      DATABASE_URL: typeof IMPORT_ONLY_PLACEHOLDER_URL;
+      TRAINER_CREDENTIAL_FREE_TEST: "1";
+    };
+}
+
+export function validateImportOnlyPlaceholderEnvironment(
+  environment: Record<string, string | undefined>
+): string[] {
+  const errors: string[] = [];
+  if (environment.DATABASE_URL !== IMPORT_ONLY_PLACEHOLDER_URL) {
+    errors.push("Import-only placeholder mode requires the exact reserved TEST-NET database URL.");
+  }
+  for (const name of DATABASE_TARGET_ENV_VARS) {
+    if (name !== "DATABASE_URL" && environment[name]?.trim()) {
+      errors.push(`${name} must remain unset in import-only placeholder mode.`);
+    }
+  }
+  if (environment[IMPORT_ONLY_PLACEHOLDER_ENV] !== "1") {
+    errors.push(`${IMPORT_ONLY_PLACEHOLDER_ENV} must be enabled.`);
+  }
+  if (environment.TRAINER_CREDENTIAL_FREE_TEST !== "1") {
+    errors.push("TRAINER_CREDENTIAL_FREE_TEST must remain enabled.");
+  }
+  return errors;
+}
+
+function parseSummaryLine(line: string): {
+  total: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+} | null {
+  const totalMatch = line.match(/\((\d+)\)\s*$/);
+  if (!totalMatch) return null;
+  const counts = { total: Number(totalMatch[1]), passed: 0, failed: 0, skipped: 0 };
+  for (const match of line.matchAll(/(\d+)\s+(passed|failed|skipped)/g)) {
+    counts[match[2] as "passed" | "failed" | "skipped"] = Number(match[1]);
+  }
+  return counts;
+}
+
+export function parseVitestSummary(output: string): VitestSummaryCounts | null {
+  const lines = output.split(/\r?\n/);
+  const fileLine = [...lines].reverse().find((line) => /\bTest Files\b/.test(line));
+  const testLine = [...lines].reverse().find((line) => /^\s*Tests\s+/.test(line));
+  if (!fileLine || !testLine) return null;
+  const files = parseSummaryLine(fileLine);
+  const tests = parseSummaryLine(testLine);
+  return files && tests ? { files, tests } : null;
+}
+
+function comparableEnvironmentEntry(entry: TestSuiteEnvironmentEntry): string {
+  return JSON.stringify({
+    environment: entry.environment,
+    owner: entry.owner,
+    reason: entry.reason,
+    commandId: entry.commandId ?? null,
+    packageScript: entry.packageScript ?? null,
+  });
+}
+
+export function compareTestSuiteEnvironmentManifests(
+  base: TestSuiteEnvironmentManifest | undefined,
+  current: TestSuiteEnvironmentManifest
+): TestSuiteEnvironmentDelta {
+  const baseEntries = new Map((base?.suites ?? []).map((entry) => [entry.path, entry]));
+  const currentEntries = new Map(current.suites.map((entry) => [entry.path, entry]));
+  const added = current.suites.filter((entry) => !baseEntries.has(entry.path));
+  const removed = (base?.suites ?? []).filter((entry) => !currentEntries.has(entry.path));
+  const changed: TestSuiteEnvironmentDelta["changed"] = [];
+  for (const [testPath, after] of currentEntries) {
+    const before = baseEntries.get(testPath);
+    if (before && comparableEnvironmentEntry(before) !== comparableEnvironmentEntry(after)) {
+      changed.push({ before, after });
+    }
+  }
+  return {
+    added: added.sort((left, right) => left.path.localeCompare(right.path)),
+    removed: removed.sort((left, right) => left.path.localeCompare(right.path)),
+    changed: changed.sort((left, right) =>
+      left.after.path.localeCompare(right.after.path)
+    ),
+  };
 }
 
 export function parseExactDisposableConfirmationArgs(

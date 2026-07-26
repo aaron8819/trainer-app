@@ -33,7 +33,12 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    setupFiles: ["./vitest.setup.ts"],
+    setupFiles: [
+      "./vitest.setup.ts",
+      ...(process.env.TRAINER_IMPORT_ONLY_PLACEHOLDER_TEST === "1"
+        ? ["./vitest.import-only-placeholder.setup.ts"]
+        : []),
+    ],
     reporters: ["dot"],
   },
 });

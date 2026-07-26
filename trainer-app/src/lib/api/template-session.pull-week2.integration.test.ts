@@ -22,6 +22,13 @@ const loadMappedGenerationContextMock = vi.fn<
 vi.mock("./template-session/context-loader", () => ({
   loadMappedGenerationContext: (...args: [string]) => loadMappedGenerationContextMock(...args),
 }));
+vi.mock("./workout-context", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./workout-context")>();
+  return {
+    ...actual,
+    loadPrescriptionAnchorHistoryForExercises: vi.fn().mockResolvedValue([]),
+  };
+});
 
 import { generateSessionFromIntent } from "./template-session";
 

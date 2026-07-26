@@ -124,6 +124,10 @@ SetLog / logged performance
 - Remaining-week planning (`src/lib/api/template-session/remaining-week-planner.ts`), selection targeting (`src/lib/api/template-session/selection-adapter.ts`), and intent filtering (`src/lib/api/template-session/intent-filters.ts`) all consume the same opportunity layer.
 
 ## Lifecycle ownership and data entities
+- `MacroCycle` is the plan boundary. `User.activeMacroCycleId` is the only selected-plan pointer; date overlap, creation order, and `Mesocycle.isActive` do not select a plan.
+- `resolveActivePlanContext()` in `src/lib/api/active-plan-context.ts`, exported through the lifecycle facade, is the authoritative owner-scoped read. It returns explicit no-plan, missing-active-mesocycle, handoff, completed-plan, corrupt-state, or ready results. Execution consumers fail closed unless the result is `READY`.
+- `selectActivePlan()` owns compare-and-swap plan selection and target-mesocycle activation in one transaction. Competing stale transitions return `ACTIVE_PLAN_SELECTION_CONFLICT`.
+- A selected plan has exactly one active mesocycle for execution. The database permits at most one active mesocycle per macrocycle and rejects active `COMPLETED` or `AWAITING_HANDOFF` rows. An unselected plan is never an implicit fallback.
 - Lifecycle state transitions (`ACTIVE_ACCUMULATION` -> `ACTIVE_DELOAD` -> `AWAITING_HANDOFF` -> `COMPLETED`) are executed through `transitionMesocycleState()` via `src/lib/api/mesocycle-lifecycle.ts` (state module: `src/lib/api/mesocycle-lifecycle-state.ts`), invoked from `src/app/api/workouts/save/route.ts` after first transition into a performed status.
 - Deload completion no longer auto-creates the successor mesocycle. The lifecycle transition only closes the source mesocycle into `AWAITING_HANDOFF` and freezes handoff artifacts through `enterMesocycleHandoffInTransaction()` in `src/lib/api/mesocycle-handoff.ts`.
 - Handoff ownership is intentionally split:
@@ -133,6 +137,7 @@ SetLog / logged performance
   - editable setup read model: `src/lib/api/mesocycle-setup.ts`
   - canonical successor slot-plan projection from the stored handoff draft: `src/lib/api/mesocycle-handoff-slot-plan-projection.ts`
 - Successor creation is an explicit acceptance action only. `acceptMesocycleHandoff()` prepares deterministic projection and slot-plan seed data before entering Prisma's interactive transaction; the transaction then revalidates the pending handoff, creates or reuses the next active mesocycle, persists its slot sequence with authored slot semantics, carries forward allowed roles, updates `Constraints`, and marks the source mesocycle `COMPLETED`.
+- Handoff discovery and acceptance are scoped to the selected macrocycle. `AWAITING_HANDOFF` history in an unselected plan cannot block Home, next-session resolution, or generation.
 - `slotSequenceJson` on the accepted successor mesocycle is the canonical runtime slot authority. It now stores both slot placement and the authored slot-semantics contract used by downstream slot-policy resolution. `Constraints.weeklySchedule` remains the compatibility/fallback schedule for legacy mesocycles that do not yet have a persisted slot sequence.
 - Slot-aware runtime sequencing now resolves the next advancing session through `slotId + intent`, not raw intent alone. Canonical ownership is split between the persisted slot contract in `src/lib/api/mesocycle-slot-contract.ts`, runtime sequencing in `src/lib/api/mesocycle-slot-runtime.ts`, and authored-semantics resolution in `src/lib/planning/session-slot-profile.ts`.
 - Closed-mesocycle write/resume fencing is enforced at the workflow/write boundary, not in UI-local heuristics:

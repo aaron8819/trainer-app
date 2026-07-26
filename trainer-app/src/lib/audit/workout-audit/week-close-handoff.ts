@@ -7,6 +7,7 @@ import {
   type WeekCloseDeficitSnapshot,
 } from "@/lib/api/mesocycle-week-close";
 import { loadHomeProgramSupport } from "@/lib/api/program";
+import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
 import { generateSessionFromIntent } from "@/lib/api/template-session";
 import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import { isStrictOptionalGapFillSession } from "@/lib/gap-fill/classifier";
@@ -555,34 +556,7 @@ export function buildWeekCloseHandoffConclusions(input: {
 }
 
 async function resolveActiveMesocycle(userId: string) {
-  return prisma.mesocycle.findFirst({
-    where: {
-      isActive: true,
-      macroCycle: { userId },
-    },
-    orderBy: [{ mesoNumber: "desc" }],
-    select: {
-      id: true,
-      sessionsPerWeek: true,
-      durationWeeks: true,
-      startWeek: true,
-      blocks: {
-        orderBy: { blockNumber: "asc" },
-        select: {
-          blockType: true,
-          startWeek: true,
-          durationWeeks: true,
-          volumeTarget: true,
-          intensityBias: true,
-        },
-      },
-      macroCycle: {
-        select: {
-          startDate: true,
-        },
-      },
-    },
-  });
+  return loadActiveMesocycle(userId);
 }
 
 async function resolveTargetWeek(input: {

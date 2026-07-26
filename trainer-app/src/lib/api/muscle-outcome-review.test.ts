@@ -155,10 +155,10 @@ describe("loadWeeklyMuscleOutcome", () => {
 
     const result = await loadWeeklyMuscleOutcome(
       {
-        mesocycle: { findFirst: mesocycleFindFirst },
         workout: { findMany: workoutFindMany },
       } as never,
-      "user-1"
+      "user-1",
+      await mesocycleFindFirst()
     );
 
     expect(result).not.toBeNull();
@@ -225,10 +225,10 @@ describe("loadWeeklyMuscleOutcome", () => {
 
     const result = await loadWeeklyMuscleOutcome(
       {
-        mesocycle: { findFirst: mesocycleFindFirst },
         workout: { findMany: workoutFindMany },
       } as never,
-      "user-1"
+      "user-1",
+      await mesocycleFindFirst()
     );
 
     expect(result?.week).toBe(5);
@@ -268,10 +268,10 @@ describe("loadWeeklyMuscleOutcome", () => {
 
     const result = await loadWeeklyMuscleOutcome(
       {
-        mesocycle: { findFirst: mesocycleFindFirst },
         workout: { findMany: workoutFindMany },
       } as never,
-      "user-1"
+      "user-1",
+      await mesocycleFindFirst()
     );
 
     expect(result?.rows.map((row) => row.muscle)).toContain("Core");

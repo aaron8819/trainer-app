@@ -49,6 +49,9 @@ vi.mock("./mesocycle-lifecycle-state", async (importOriginal) => {
       mocks.transitionMesocycleStateInTransaction(...args),
   };
 });
+vi.mock("./active-plan-context", () => ({
+  claimSelectedPlanForTransitionInTransaction: vi.fn(async () => undefined),
+}));
 
 import {
   autoDismissPendingWeekCloseOnForwardProgress,

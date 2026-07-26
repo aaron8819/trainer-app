@@ -105,17 +105,19 @@ describe("test-suite environment manifest", () => {
       manifest: currentManifest,
       discoveredTestFiles,
     });
-    expect(discoveredTestFiles).toHaveLength(298);
-    expect(selection.credentialFree).toHaveLength(262);
+    expect(discoveredTestFiles).toHaveLength(303);
+    expect(selection.credentialFree).toHaveLength(266);
     expect(selection.importOnlyPlaceholder).toHaveLength(34);
-    expect(selection.databaseRequired).toHaveLength(2);
-    expect(
-      selection.databaseRequired.every(
-        (entry) =>
-          entry.commandId === authorizedCommand.id &&
-          entry.packageScript === authorizedCommand.packageScript
-      )
-    ).toBe(true);
+    expect(selection.databaseRequired).toHaveLength(3);
+    for (const entry of selection.databaseRequired) {
+      expect(policy.commandRegistry).toContainEqual(
+        expect.objectContaining({
+          id: entry.commandId,
+          packageScript: entry.packageScript,
+          profile: "disposable-database-write",
+        })
+      );
+    }
   });
 
   it("keeps an unregistered import failure in credential-free selection", () => {

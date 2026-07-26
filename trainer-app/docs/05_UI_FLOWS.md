@@ -46,6 +46,9 @@ Route-purpose shorthand:
 - `/analytics` = longer-term trend review
 
 ## Core user flows
+- Home, Program, readiness, and workout generation resolve execution context from `User.activeMacroCycleId` through the canonical active-plan resolver. A pending handoff in an unselected macrocycle is not shown as a blocker.
+- Phase 1 adds no plan-switching UI. The internal atomic selection service is an architectural boundary for later UI work.
+
 1. Onboarding/profile setup
 - UI: `/onboarding`
 - API: `POST /api/profile/setup`

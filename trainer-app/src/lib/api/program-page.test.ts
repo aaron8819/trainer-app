@@ -32,6 +32,11 @@ vi.mock("@/lib/db/prisma", () => ({
   prisma: mocks.prisma,
 }));
 
+vi.mock("./mesocycle-lifecycle-state", () => ({
+  loadActiveMesocycle: (...args: unknown[]) =>
+    mocks.mesocycleFindFirst(...args),
+}));
+
 vi.mock("./program", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./program")>();
   return {

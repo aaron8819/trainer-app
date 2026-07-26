@@ -8,6 +8,7 @@ import { WORKOUT_SELECTION_MODE_VALUES } from "@/lib/validation";
 import { WorkoutStatus } from "@prisma/client";
 import { buildAnalyticsSummary } from "@/lib/api/analytics-summary";
 import { getUiAuditFixtureFromHeaders } from "@/lib/ui-audit-fixtures/server";
+import { loadActiveMesocycle } from "@/lib/api/mesocycle-lifecycle";
 const TRACKED_SELECTION_MODES = WORKOUT_SELECTION_MODE_VALUES;
 
 export async function GET(request: Request) {
@@ -54,10 +55,7 @@ export async function GET(request: Request) {
       : {};
 
   const [activeMesocycle, constraints, workouts, setLogs] = await Promise.all([
-    prisma.mesocycle.findFirst({
-      where: { macroCycle: { userId: owner.id }, isActive: true },
-      select: { sessionsPerWeek: true },
-    }),
+    loadActiveMesocycle(owner.id),
     prisma.constraints.findUnique({
       where: { userId: owner.id },
       select: { daysPerWeek: true },

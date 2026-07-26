@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
 import { evaluateAcceptedMesocycleSeedProvenance } from "@/lib/api/accepted-mesocycle-seed-provenance";
-import { deriveCurrentMesocycleSession } from "@/lib/api/mesocycle-lifecycle";
+import {
+  deriveCurrentMesocycleSession,
+  loadActiveMesocycle,
+} from "@/lib/api/mesocycle-lifecycle";
 import { buildProgramCurrentWeekPlan } from "@/lib/api/program-page";
 import { loadProjectedWeekVolumeReport } from "@/lib/api/projected-week-volume";
 import { readRuntimeSlotSequence } from "@/lib/api/mesocycle-slot-runtime";
@@ -1010,10 +1013,7 @@ export async function buildNextMesocyclePostAcceptVerificationAuditPayload(input
       })
     : null;
   const [activeMesocycle, constraints, nextSession] = await Promise.all([
-    prisma.mesocycle.findFirst({
-      where: { macroCycle: { userId: input.userId }, isActive: true },
-      select: { id: true },
-    }),
+    loadActiveMesocycle(input.userId),
     prisma.constraints.findUnique({
       where: { userId: input.userId },
       select: { weeklySchedule: true },

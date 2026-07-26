@@ -1603,7 +1603,7 @@ export function buildWorkoutAuditHelpText(): string {
     "  --user-id <id>                     Resolve the audit owner by user id.",
     "  --intent <intent>                  Session intent for generated-session modes.",
     "  --week <number>                    Target week for historical or retrospective audits.",
-    "  --mesocycle-id <id>                Target mesocycle id when the selected mode requires one.",
+    "  --mesocycle-id <id>                Required target for historical-week, weekly-retro, and other mesocycle-scoped modes.",
     "  --no-artifact, --stdout-only       Run the audit without writing local artifact files.",
     "  --operator-debug, --debug          Print extra operator diagnostics.",
     "",

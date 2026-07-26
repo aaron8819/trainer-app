@@ -145,6 +145,25 @@ describe("POST /api/mesocycles/[id]/accept-next-cycle", () => {
     });
   });
 
+  it("returns a deterministic conflict when plan selection changes during acceptance", async () => {
+    mocks.mesocycleFindFirst.mockResolvedValue({ id: "meso-1" });
+    mocks.acceptMesocycleHandoff.mockRejectedValue(
+      new Error("ACTIVE_PLAN_SELECTION_CONFLICT")
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/mesocycles/meso-1/accept-next-cycle", {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: "meso-1" }) }
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Active plan selection changed concurrently. Retry acceptance.",
+    });
+  });
+
   it("allows the handoff owner to recover an inactive pending source by retrying accept", async () => {
     mocks.mesocycleFindFirst.mockResolvedValue({
       id: "meso-1",

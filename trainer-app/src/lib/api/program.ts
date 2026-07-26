@@ -6,7 +6,14 @@
 import { WorkoutSessionIntent, WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getDefaultSraHours } from "@/lib/engine/muscle-policy";
-import { finishMesocycleEarly } from "@/lib/api/mesocycle-lifecycle";
+import {
+  finishMesocycleEarly,
+  loadActiveMesocycle,
+} from "@/lib/api/mesocycle-lifecycle";
+import {
+  claimSelectedPlanForTransitionInTransaction,
+  resolveActivePlanContextInTransaction,
+} from "./active-plan-context";
 import {
   getExposedVolumeLandmarkEntries,
   getMuscleTargetSemantics,
@@ -447,21 +454,7 @@ function getDescriptiveCoachingCueForBlockType(
 }
 
 export async function loadActiveBlockPhase(userId: string): Promise<ActiveBlockPhase | null> {
-  const meso = await prisma.mesocycle.findFirst({
-    where: { macroCycle: { userId }, isActive: true },
-    select: {
-      durationWeeks: true,
-      accumulationSessionsCompleted: true,
-      sessionsPerWeek: true,
-      state: true,
-      startWeek: true,
-      blocks: {
-        orderBy: { blockNumber: "asc" },
-        select: { blockType: true, startWeek: true, durationWeeks: true },
-      },
-      macroCycle: { select: { startDate: true } },
-    },
-  });
+  const meso = await loadActiveMesocycle(userId);
 
   if (!meso) {
     return null;
@@ -915,25 +908,7 @@ async function loadHomeWeekProgress(input: {
 export async function loadHomeProgramSupport(userId: string): Promise<HomeProgramSupportData> {
   const [nextWorkoutContext, activeMesocycle, constraints] = await Promise.all([
     loadNextWorkoutContext(userId),
-    prisma.mesocycle.findFirst({
-      where: { macroCycle: { userId }, isActive: true },
-      select: {
-        id: true,
-        startWeek: true,
-        durationWeeks: true,
-        sessionsPerWeek: true,
-        accumulationSessionsCompleted: true,
-        deloadSessionsCompleted: true,
-        volumeTarget: true,
-        state: true,
-        slotSequenceJson: true,
-        macroCycle: {
-          select: {
-            startDate: true,
-          },
-        },
-      },
-    }),
+    loadActiveMesocycle(userId),
     prisma.constraints.findUnique({
       where: { userId },
       select: { weeklySchedule: true },
@@ -962,7 +937,11 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
   if (!nextSession.isExisting && nextSession.intent) {
     const intentEnum = nextSession.intent.toUpperCase() as WorkoutSessionIntent;
     const latestForIntent = await prisma.workout.findFirst({
-      where: { userId, sessionIntent: intentEnum },
+      where: {
+        userId,
+        mesocycleId: activeMesocycle?.id,
+        sessionIntent: intentEnum,
+      },
       orderBy: { scheduledDate: "desc" },
       select: { status: true },
     });
@@ -1326,32 +1305,7 @@ export async function loadProgramDashboardData(
   userId: string,
   viewWeek?: number
 ): Promise<ProgramDashboardData> {
-  const mesoRecord = await prisma.mesocycle.findFirst({
-    where: { macroCycle: { userId }, isActive: true },
-    select: {
-      id: true,
-      mesoNumber: true,
-      focus: true,
-      durationWeeks: true,
-      accumulationSessionsCompleted: true,
-      deloadSessionsCompleted: true,
-      sessionsPerWeek: true,
-      volumeTarget: true,
-      startWeek: true,
-      state: true,
-      blocks: {
-        orderBy: { blockNumber: "asc" },
-        select: {
-          blockType: true,
-          startWeek: true,
-          durationWeeks: true,
-          volumeTarget: true,
-          intensityBias: true,
-        },
-      },
-      macroCycle: { select: { startDate: true } },
-    },
-  });
+  const mesoRecord = await loadActiveMesocycle(userId);
 
   let currentWeek = 1;
   if (mesoRecord) {
@@ -1486,54 +1440,61 @@ export async function loadProgramDashboardData(
 export type CycleAnchorAction = "deload" | "extend_phase" | "reset" | "end_early";
 
 export async function applyCycleAnchor(userId: string, action: CycleAnchorAction): Promise<void> {
-  const meso = await prisma.mesocycle.findFirst({
-    where: { macroCycle: { userId }, isActive: true },
-    select: { id: true, accumulationSessionsCompleted: true, durationWeeks: true },
-  });
-
-  if (!meso) {
-    throw new Error("No active mesocycle found");
+  if (action === "end_early") {
+    const meso = await loadActiveMesocycle(userId);
+    if (!meso) {
+      throw new Error("No active mesocycle found");
+    }
+    await finishMesocycleEarly({ userId, mesocycleId: meso.id });
+    return;
   }
 
-  const constraints = await prisma.constraints.findUnique({
-    where: { userId },
-    select: { daysPerWeek: true },
-  });
-  const daysPerWeek = Math.max(1, constraints?.daysPerWeek ?? 3);
+  await prisma.$transaction(async (tx) => {
+    const context = await resolveActivePlanContextInTransaction(tx, userId);
+    if (context.status !== "READY") {
+      throw new Error(`ACTIVE_PLAN_CONTEXT_${context.status}`);
+    }
+    await claimSelectedPlanForTransitionInTransaction(tx, {
+      userId,
+      macroCycleId: context.activeMacroCycle.id,
+    });
 
-  switch (action) {
-    case "deload": {
+    const meso = context.activeMesocycle;
+    const constraints = await tx.constraints.findUnique({
+      where: { userId },
+      select: { daysPerWeek: true },
+    });
+    const daysPerWeek = Math.max(1, constraints?.daysPerWeek ?? 3);
+
+    if (action === "deload") {
       const deloadThreshold = (meso.durationWeeks - 1) * daysPerWeek;
       const nextAccumulationSessionsCompleted = Math.max(
         meso.accumulationSessionsCompleted,
         deloadThreshold
       );
-      await prisma.mesocycle.update({
+      await tx.mesocycle.update({
         where: { id: meso.id },
         data: {
           completedSessions: nextAccumulationSessionsCompleted,
           accumulationSessionsCompleted: nextAccumulationSessionsCompleted,
         },
       });
-      break;
+      return;
     }
-    case "extend_phase": {
-      await prisma.mesocycle.update({
+    if (action === "extend_phase") {
+      await tx.mesocycle.update({
         where: { id: meso.id },
         data: { durationWeeks: meso.durationWeeks + 1 },
       });
-      break;
+      return;
     }
-    case "reset": {
-      await prisma.mesocycle.update({
-        where: { id: meso.id },
-        data: { completedSessions: 0, accumulationSessionsCompleted: 0, deloadSessionsCompleted: 0 },
-      });
-      break;
-    }
-    case "end_early": {
-      await finishMesocycleEarly({ userId, mesocycleId: meso.id });
-      break;
-    }
-  }
+    await tx.mesocycle.update({
+      where: { id: meso.id },
+      data: {
+        completedSessions: 0,
+        accumulationSessionsCompleted: 0,
+        deloadSessionsCompleted: 0,
+      },
+    });
+  });
 }

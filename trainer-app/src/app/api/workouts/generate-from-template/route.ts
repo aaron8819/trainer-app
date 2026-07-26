@@ -15,6 +15,7 @@ import {
   attachSessionAuditSnapshotToSelectionMetadata,
   buildGeneratedSessionAuditSnapshot,
 } from "@/lib/evidence/session-audit-snapshot";
+import { readSessionDecisionReceipt } from "@/lib/evidence/session-decision-receipt";
 import { attachSessionSlotMetadata, buildCanonicalSelectionMetadata } from "@/lib/ui/selection-metadata";
 
 export async function POST(request: Request) {
@@ -48,7 +49,22 @@ export async function POST(request: Request) {
   }
 
   const activeMesocycle = await loadActiveMesocycle(user.id);
+  if (!activeMesocycle) {
+    return NextResponse.json(
+      { error: "Selected plan with an active mesocycle is required." },
+      { status: 409 }
+    );
+  }
   const nextWorkoutContext = await loadNextWorkoutContext(user.id);
+  if (
+    nextWorkoutContext.activeMesocycleId !== undefined &&
+    nextWorkoutContext.activeMesocycleId !== activeMesocycle.id
+  ) {
+    return NextResponse.json(
+      { error: "Active plan selection changed concurrently. Retry generation." },
+      { status: 409 }
+    );
+  }
   if (nextWorkoutContext.source === "final_week_close_pending") {
     return NextResponse.json(
       {
@@ -92,6 +108,16 @@ export async function POST(request: Request) {
         }
       : undefined
   );
+  const receipt = readSessionDecisionReceipt(selectionMetadata);
+  if (
+    receipt?.sessionProvenance?.mesocycleId &&
+    receipt.sessionProvenance.mesocycleId !== activeMesocycle.id
+  ) {
+    return NextResponse.json(
+      { error: "Active plan selection changed concurrently. Retry generation." },
+      { status: 409 }
+    );
+  }
   const sessionAuditSnapshot = buildGeneratedSessionAuditSnapshot({
     workout: autoregulated.adjusted,
     selectionMode: result.selectionMode,

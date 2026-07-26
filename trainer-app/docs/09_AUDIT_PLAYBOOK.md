@@ -87,6 +87,12 @@ This playbook does not try to answer:
 
 ### `historical-week`
 
+Required targeting:
+- `--week <number>`
+- `--mesocycle-id <id>`
+
+Historical-week never infers a mesocycle from active state or combines mesocycles. Its workout query is owner- and mesocycle-scoped. Existing artifacts remain readable, but legacy artifacts without one mesocycle target must not be presented as one canonical week.
+
 When to use it:
 - completed week review
 - week-close / gap-fill review

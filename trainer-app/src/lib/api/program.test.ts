@@ -52,6 +52,32 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
+vi.mock("./active-plan-context", () => ({
+  resolveActivePlanContext: async () => {
+    const activeMesocycle = await mocks.mesocycleFindFirst();
+    return activeMesocycle
+      ? {
+          status: "READY",
+          owner: {
+            id: "user-1",
+            email: "owner@test.local",
+            activeMacroCycleId: "macro-1",
+          },
+          activeMacroCycle: { id: "macro-1", userId: "user-1" },
+          activeMesocycle,
+        }
+      : {
+          status: "NO_SELECTED_PLAN",
+          owner: {
+            id: "user-1",
+            email: "owner@test.local",
+            activeMacroCycleId: null,
+          },
+          activeMacroCycle: null,
+          activeMesocycle: null,
+        };
+  },
+}));
 vi.mock("./mesocycle-lifecycle-math", async (importOriginal) => {
   const original = await importOriginal<typeof import("./mesocycle-lifecycle-math")>();
   return { ...original, getCurrentMesoWeek: mocks.getCurrentMesoWeekFn };
@@ -67,6 +93,19 @@ vi.mock("./readiness", () => ({
 }));
 vi.mock("@/lib/api/mesocycle-lifecycle", () => ({
   finishMesocycleEarly: (...args: unknown[]) => mocks.finishMesocycleEarly(...args),
+  loadActiveMesocycle: (...args: unknown[]) =>
+    mocks.mesocycleFindFirst(...args),
+}));
+vi.mock("./mesocycle-lifecycle-state", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./mesocycle-lifecycle-state")>();
+  return {
+    ...original,
+    loadActiveMesocycle: (...args: unknown[]) =>
+      mocks.mesocycleFindFirst(...args),
+  };
+});
+vi.mock("./mesocycle-handoff", () => ({
+  loadPendingMesocycleHandoff: vi.fn(async () => null),
 }));
 
 import {
@@ -972,7 +1011,7 @@ describe("loadHomeProgramSupport", () => {
     expect(mocks.workoutFindMany.mock.calls[0]?.[0]?.where).toMatchObject({
       userId: "user-1",
       status: { in: ["IN_PROGRESS", "PARTIAL", "PLANNED"] },
-      OR: [{ mesocycleId: null }, { mesocycle: { isActive: true } }],
+      OR: [{ mesocycleId: null }, { mesocycleId: "meso-1" }],
     });
   });
 

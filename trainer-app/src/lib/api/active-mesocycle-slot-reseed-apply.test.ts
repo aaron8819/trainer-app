@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => {
   }));
   const txExerciseFindMany = vi.fn();
   const txWorkoutUpdate = vi.fn();
+  const claimSelectedPlanForTransitionInTransaction = vi.fn();
   const transaction = vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
     callback({
       mesocycle: {
@@ -49,6 +50,7 @@ const mocks = vi.hoisted(() => {
     txSeedRevisionCreate,
     txExerciseFindMany,
     txWorkoutUpdate,
+    claimSelectedPlanForTransitionInTransaction,
     transaction,
     prisma: {
       $transaction: transaction,
@@ -81,6 +83,15 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/lib/db/prisma", () => ({
   prisma: mocks.prisma,
+}));
+vi.mock("./active-plan-context", () => ({
+  claimSelectedPlanForTransitionInTransaction:
+    mocks.claimSelectedPlanForTransitionInTransaction,
+  resolveActivePlanContextInTransaction: vi.fn(async () => ({
+    status: "READY",
+    activeMacroCycle: { id: "macro-1" },
+    activeMesocycle: { id: "meso-1" },
+  })),
 }));
 
 import {
@@ -164,6 +175,12 @@ describe("applyActiveMesocycleBoundedUpperSlotReseed", () => {
       applied: true,
     });
     expect(mocks.txSeedRevisionCreate).toHaveBeenCalledOnce();
+    expect(
+      mocks.claimSelectedPlanForTransitionInTransaction
+    ).toHaveBeenCalledWith(expect.anything(), {
+      userId: "user-1",
+      macroCycleId: "macro-1",
+    });
     expect(mocks.txMesocycleUpdateMany).toHaveBeenCalledWith({
       where: { id: "meso-1", currentSeedRevisionId: "rev-1" },
       data: { currentSeedRevisionId: "rev-2" },
@@ -348,6 +365,12 @@ describe("applyActiveMesocycleBoundedUpperSlotReseed", () => {
       applied: true,
     });
     expect(mocks.txSeedRevisionCreate).toHaveBeenCalledOnce();
+    expect(
+      mocks.claimSelectedPlanForTransitionInTransaction
+    ).toHaveBeenCalledWith(expect.anything(), {
+      userId: "user-1",
+      macroCycleId: "macro-1",
+    });
   });
 
   it("rejects candidates that change slot identity or sequence", async () => {

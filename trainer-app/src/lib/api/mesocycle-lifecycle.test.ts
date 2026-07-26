@@ -70,6 +70,13 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/lib/db/prisma", () => ({
   prisma: mocks.prisma,
 }));
+vi.mock("./active-plan-context", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./active-plan-context")>();
+  return {
+    ...original,
+    claimSelectedPlanForTransitionInTransaction: vi.fn(async () => undefined),
+  };
+});
 
 import {
   deriveCurrentMesocycleSession,

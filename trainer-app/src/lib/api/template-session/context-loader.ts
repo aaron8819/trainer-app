@@ -10,6 +10,7 @@ import {
   getRirTarget,
   getWeeklyVolumeTarget,
   loadActiveMesocycle,
+  type ActiveMesocycleWithBlocks,
 } from "@/lib/api/mesocycle-lifecycle";
 import { VOLUME_LANDMARKS } from "@/lib/engine/volume-landmarks";
 import { validateStimulusProfileCoverage } from "@/lib/engine/stimulus";
@@ -67,7 +68,7 @@ function normalizeLifecycleMuscleKey(muscle: string): string {
 function buildSorenessSuppressedTargets(input: {
   lifecycleVolumeTargets: Record<string, number>;
   mappedCheckIn: MappedGenerationContext["mappedCheckIn"];
-  activeMesocycle: Awaited<ReturnType<typeof loadActiveMesocycle>>;
+  activeMesocycle: ActiveMesocycleWithBlocks | null;
   lifecycleWeek: number;
   blockContext: GenerationPhaseBlockContext["blockContext"];
 }): { targets: Record<string, number>; suppressedMuscles: string[] } {
@@ -137,7 +138,7 @@ export type PreloadedGenerationSnapshot = {
     preferences: Awaited<ReturnType<typeof loadWorkoutContext>>["preferences"];
     checkIns: CheckInRow[];
   };
-  activeMesocycle: Awaited<ReturnType<typeof loadActiveMesocycle>>;
+  activeMesocycle: ActiveMesocycleWithBlocks | null;
   rotationContext: RotationContext;
   mesocycleRoleRows: Array<{
     exerciseId: string;
@@ -175,7 +176,7 @@ async function loadMesocycleRoleRows(
 export async function loadPreloadedGenerationSnapshot(
   userId: string,
   options?: {
-    activeMesocycle?: Awaited<ReturnType<typeof loadActiveMesocycle>>;
+    activeMesocycle?: ActiveMesocycleWithBlocks | null;
     anchorWeek?: number;
     weekCloseContext?: { targetWeek: number };
     forceAccumulation?: boolean;
@@ -347,7 +348,7 @@ export function buildMappedGenerationContextFromSnapshot(
 }
 
 function resolveLifecycleWeek(
-  activeMesocycle: Awaited<ReturnType<typeof loadActiveMesocycle>>,
+  activeMesocycle: ActiveMesocycleWithBlocks | null,
   options?: {
     anchorWeek?: number;
     weekCloseContext?: { targetWeek: number };

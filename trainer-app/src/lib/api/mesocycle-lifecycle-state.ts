@@ -1,10 +1,35 @@
-import { WorkoutStatus, type Mesocycle, Prisma } from "@prisma/client";
+import {
+  WorkoutStatus,
+  type MacroCycle,
+  type Mesocycle,
+  Prisma,
+} from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { deriveSessionSemantics } from "@/lib/session-semantics/derive-session-semantics";
 import { getAccumulationWeeks } from "./mesocycle-lifecycle-math";
 import { enterMesocycleHandoffInTransaction } from "./mesocycle-handoff";
 import { parseSlotPlanSeedJson } from "./slot-plan-seed-parser";
 import type { SessionCapacityReductionManifest } from "@/lib/engine/planning/v2";
+import {
+  claimSelectedPlanForTransitionInTransaction,
+  resolveActivePlanContext,
+  type ResolvedActiveMesocycle,
+} from "./active-plan-context";
+
+export {
+  ActivePlanContextError,
+  ActivePlanSelectionConflictError,
+  claimSelectedPlanForTransitionInTransaction,
+  requireActivePlanExecutionContext,
+  resolveActivePlanContext,
+  resolveActivePlanContextInTransaction,
+  resolveConfiguredActivePlanContext,
+  selectActivePlan,
+  selectActivePlanInTransaction,
+  type ActivePlanContextResult,
+  type SelectActivePlanInput,
+  type SelectActivePlanResult,
+} from "./active-plan-context";
 
 type MesoWithLifecycle = Pick<
   Mesocycle,
@@ -27,6 +52,7 @@ type MesoWithLifecycle = Pick<
 export type ActiveMesocycleWithBlocks = Prisma.MesocycleGetPayload<{
   include: { blocks: true };
 }> & {
+  macroCycle?: Partial<Pick<MacroCycle, "startDate" | "userId">>;
   currentSeedRevision?: {
     id: string;
     revision: number;
@@ -45,6 +71,10 @@ export type ActiveMesocycleWithBlocks = Prisma.MesocycleGetPayload<{
     sourceRevisionId: string | null;
     activatedAt: Date;
   }>;
+  sessionCapacityReductionManifest?: SessionCapacityReductionManifest;
+};
+
+export type ResolvedActiveMesocycleWithBlocks = ResolvedActiveMesocycle & {
   sessionCapacityReductionManifest?: SessionCapacityReductionManifest;
 };
 
@@ -190,6 +220,7 @@ export async function finishMesocycleEarlyInTransaction(
     },
     select: {
       id: true,
+      macroCycleId: true,
       state: true,
       isActive: true,
       handoffSummaryJson: true,
@@ -201,6 +232,10 @@ export async function finishMesocycleEarlyInTransaction(
   if (!mesocycle) {
     throw new Error("MESOCYCLE_FINISH_EARLY_NOT_FOUND");
   }
+  await claimSelectedPlanForTransitionInTransaction(tx, {
+    userId: input.userId,
+    macroCycleId: mesocycle.macroCycleId,
+  });
   if (mesocycle.state !== "ACTIVE_ACCUMULATION" || !mesocycle.isActive) {
     throw new Error("MESOCYCLE_FINISH_EARLY_INVALID_STATE");
   }
@@ -342,6 +377,7 @@ export async function finishDeloadEarlyInTransaction(
     },
     select: {
       id: true,
+      macroCycleId: true,
       state: true,
       isActive: true,
       handoffSummaryJson: true,
@@ -353,6 +389,10 @@ export async function finishDeloadEarlyInTransaction(
   if (!mesocycle) {
     throw new Error("MESOCYCLE_FINISH_DELOAD_NOT_FOUND");
   }
+  await claimSelectedPlanForTransitionInTransaction(tx, {
+    userId: input.userId,
+    macroCycleId: mesocycle.macroCycleId,
+  });
   if (mesocycle.state !== "ACTIVE_DELOAD") {
     throw new Error("MESOCYCLE_FINISH_DELOAD_INVALID_STATE");
   }
@@ -440,45 +480,21 @@ export async function finishDeloadEarly(input: {
   return prisma.$transaction((tx) => finishDeloadEarlyInTransaction(tx, input));
 }
 
-export async function loadActiveMesocycle(userId: string): Promise<ActiveMesocycleWithBlocks | null> {
-  const mesocycle = await prisma.mesocycle.findFirst({
-    where: {
-      isActive: true,
-      macroCycle: { userId },
-    },
-    orderBy: [{ mesoNumber: "desc" }],
-    include: {
-      currentSeedRevision: {
-        select: {
-          id: true,
-          revision: true,
-          seedPayload: true,
-          payloadHash: true,
-          hashAlgorithm: true,
-          provenanceStatus: true,
-        },
-      },
-      seedRevisions: {
-        orderBy: { revision: "asc" },
-        select: {
-          id: true,
-          revision: true,
-          payloadHash: true,
-          provenanceStatus: true,
-          creationReason: true,
-          actorSource: true,
-          sourceRevisionId: true,
-          activatedAt: true,
-        },
-      },
-      blocks: {
-        orderBy: { blockNumber: "asc" },
-      },
-    },
-  });
-  if (!mesocycle) {
+export async function loadActiveMesocycle(
+  userId: string
+): Promise<ResolvedActiveMesocycleWithBlocks | null> {
+  const context = await resolveActivePlanContext(userId);
+  if (
+    context.status === "NO_SELECTED_PLAN" ||
+    context.status === "HANDOFF_PENDING" ||
+    context.status === "COMPLETED"
+  ) {
     return null;
   }
+  if (context.status !== "READY") {
+    throw new Error(`ACTIVE_PLAN_CONTEXT_${context.status}`);
+  }
+  const mesocycle = context.activeMesocycle;
   const sessionCapacityReductionManifest =
     parseSlotPlanSeedJson(mesocycle.slotPlanSeedJson)?.acceptedPlannerIntent
       ?.sessionCapacityReductionManifest;

@@ -1,6 +1,10 @@
 import type { Prisma } from "@prisma/client";
 import { deriveCurrentMesocycleSession } from "@/lib/api/mesocycle-lifecycle-math";
-import { transitionMesocycleStateInTransaction } from "@/lib/api/mesocycle-lifecycle-state";
+import {
+  claimSelectedPlanForTransitionInTransaction,
+  resolveActivePlanContextInTransaction,
+  transitionMesocycleStateInTransaction,
+} from "@/lib/api/mesocycle-lifecycle-state";
 import {
   autoDismissPendingWeekCloseOnForwardProgress,
   evaluateWeekCloseAtBoundary,
@@ -21,6 +25,10 @@ export type SaveRouteMesocycle = {
   macroCycle?: {
     startDate: Date;
   } | null;
+};
+
+type SelectedSaveRouteMesocycle = SaveRouteMesocycle & {
+  macroCycleId: string;
 };
 
 export type SaveRouteMesoSnapshot = {
@@ -144,6 +152,7 @@ export function resolveGapFillSnapshot(input: {
 
 const mesocycleSelect = {
   id: true,
+  macroCycleId: true,
   state: true,
   durationWeeks: true,
   accumulationSessionsCompleted: true,
@@ -167,10 +176,10 @@ export async function resolveMesocycleForWorkoutSave(
   },
 ): Promise<{
   resolvedMesocycleId: string | null;
-  resolvedMesocycle: SaveRouteMesocycle | null;
+  resolvedMesocycle: SelectedSaveRouteMesocycle | null;
 }> {
   let resolvedMesocycleId = input.existingMesocycleId ?? null;
-  let resolvedMesocycle: SaveRouteMesocycle | null = null;
+  let resolvedMesocycle: SelectedSaveRouteMesocycle | null = null;
 
   if (!input.shouldResolve) {
     return { resolvedMesocycleId, resolvedMesocycle };
@@ -182,18 +191,27 @@ export async function resolveMesocycleForWorkoutSave(
       select: mesocycleSelect,
     });
   } else {
-    resolvedMesocycle = await tx.mesocycle.findFirst({
-      where: {
-        isActive: true,
-        macroCycle: { userId: input.userId },
-      },
-      select: mesocycleSelect,
-    });
+    const context = await resolveActivePlanContextInTransaction(
+      tx,
+      input.userId
+    );
+    if (context.status === "CORRUPT_STATE") {
+      throw new Error(`ACTIVE_PLAN_CONTEXT_CORRUPT_STATE:${context.reason}`);
+    }
+    resolvedMesocycle =
+      context.status === "READY" ? context.activeMesocycle : null;
     resolvedMesocycleId = resolvedMesocycle?.id ?? null;
   }
 
   if (resolvedMesocycle) {
     assertMesocycleAllowsWorkoutSave(resolvedMesocycle.state);
+  }
+
+  if (input.shouldRequireForPerformedTransition && resolvedMesocycle) {
+    await claimSelectedPlanForTransitionInTransaction(tx, {
+      userId: input.userId,
+      macroCycleId: resolvedMesocycle.macroCycleId,
+    });
   }
 
   if (

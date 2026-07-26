@@ -114,6 +114,16 @@ vi.mock("@/lib/api/mesocycle-lifecycle", async (importOriginal) => {
     getWeeklyVolumeTarget: (...args: unknown[]) => getWeeklyVolumeTargetMock(...args),
   };
 });
+vi.mock("@/lib/api/mesocycle-lifecycle-state", async (importOriginal) => {
+  const original = await importOriginal<
+    typeof import("@/lib/api/mesocycle-lifecycle-state")
+  >();
+  return {
+    ...original,
+    loadActiveMesocycle: (...args: unknown[]) =>
+      loadActiveMesocycleMock(...args),
+  };
+});
 
 const MATRIX_INTENTS: SessionIntent[] = ["push", "pull", "legs", "upper", "lower", "full_body"];
 

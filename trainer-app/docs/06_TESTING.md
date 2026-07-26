@@ -23,6 +23,7 @@ Sources of truth:
 - `trainer-app/scripts/check-doc-runtime-contracts.ts`
 
 ## Commands
+- `npm run test:db:multi-plan -- --confirm-disposable`: provisions an isolated PostgreSQL container, deploys checked-in migrations, and verifies the active-mesocycle partial unique index plus concurrent selected-plan compare-and-swap behavior. It is database-mutating and must only run with the exact disposable-target confirmation.
 - `npm run test:preflight`: sanitized, dependency-free launcher plus typed capability report.
   It performs no database connection or Docker daemon probe. It reports the dependency
   arrangement, resolved-install validation, generated Prisma Client compatibility, every

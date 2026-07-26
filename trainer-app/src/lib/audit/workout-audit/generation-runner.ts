@@ -230,7 +230,7 @@ export async function runWorkoutAuditGeneration(
       historicalWeek: await buildHistoricalWeekAuditPayload({
         userId: context.userId,
         week: context.historicalWeek!.week,
-        mesocycleId: context.historicalWeek?.mesocycleId,
+        mesocycleId: context.historicalWeek!.mesocycleId,
       }),
     };
   }

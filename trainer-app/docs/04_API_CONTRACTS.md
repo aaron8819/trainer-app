@@ -120,6 +120,7 @@ Sources of truth:
 - Mutation reconciliation is part of the persisted workout contract, not a read-side convenience. Structural mutation writers persist `selectionMetadata.workoutStructureState`, and the canonical write-side seam in `src/lib/api/runtime-edit-reconciliation.ts` may also append `selectionMetadata.runtimeEditReconciliation` edit facts for supported runtime mutations.
 
 ## Mesocycle handoff route contract
+- Handoff routes remain explicit-mesocycle operations, but acceptance is valid only when the source belongs to `User.activeMacroCycleId`. Pending handoff discovery for Home, next-session, and generation is restricted to the selected macrocycle; an unselected plan's pending handoff is historical state, not a runtime blocker.
 - `POST /api/mesocycles/[id]/finish-deload` (`src/app/api/mesocycles/[id]/finish-deload/route.ts`)
   - state gate: target mesocycle must exist for the owner and be in `ACTIVE_DELOAD`
   - success: `{ ok: true, action: "finish_deload_early", mesocycle, skippedWorkoutIds, skippedWorkoutCount, handoffSummaryCreated, nextSeedDraftCreated }`

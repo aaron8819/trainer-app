@@ -64,7 +64,13 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     vi.clearAllMocks();
     mocks.resolveOwner.mockResolvedValue({ id: "user-1" });
     mocks.loadPendingMesocycleHandoff.mockResolvedValue(null);
+    mocks.loadActiveMesocycle.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+    });
     mocks.loadNextWorkoutContext.mockResolvedValue({
+      activeMesocycleId: "meso-1",
       intent: "push",
       slotId: "push_a",
       slotSequenceIndex: 0,
@@ -154,6 +160,46 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       handoff: expect.objectContaining({ mesocycleId: "meso-1" }),
     });
     expect(mocks.loadActiveMesocycle).not.toHaveBeenCalled();
+    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
+  });
+
+  it("rejects generation when the selected plan is not ready", async () => {
+    mocks.loadActiveMesocycle.mockResolvedValue(null);
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intent: "pull" }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Selected plan with an active mesocycle is required.",
+    });
+    expect(mocks.loadNextWorkoutContext).not.toHaveBeenCalled();
+    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
+  });
+
+  it("rejects generation when selected-plan reads disagree", async () => {
+    mocks.loadNextWorkoutContext.mockResolvedValue({
+      activeMesocycleId: "meso-2",
+      source: "rotation",
+    });
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intent: "pull" }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Active plan selection changed concurrently. Retry generation.",
+    });
     expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
   });
 
@@ -251,7 +297,11 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
   });
 
   it("persists the in-order advancing seeded session slot in receipt metadata", async () => {
-    mocks.loadActiveMesocycle.mockResolvedValue(null);
+    mocks.loadActiveMesocycle.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+    });
     mocks.loadRequestedAdvancingSlotSnapshot.mockResolvedValue({
       slotId: "push_a",
       intent: "push",
@@ -522,7 +572,11 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
   });
 
   it("rejects supplemental deficit generation for non-body_part intents", async () => {
-    mocks.loadActiveMesocycle.mockResolvedValue(null);
+    mocks.loadActiveMesocycle.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+    });
 
     const response = await POST(
       new Request("http://localhost/api/workouts/generate-from-intent", {
@@ -543,7 +597,11 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
   });
 
   it("returns supplemental deficit metadata already stamped by the backend", async () => {
-    mocks.loadActiveMesocycle.mockResolvedValue(null);
+    mocks.loadActiveMesocycle.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+    });
     mocks.generateSessionFromIntent.mockResolvedValue({
       workout: {
         id: "w-supp-1",
@@ -986,7 +1044,11 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
   });
 
   it("keeps lifecycle-derived receipt week when optionalGapFill is false", async () => {
-    mocks.loadActiveMesocycle.mockResolvedValue(null);
+    mocks.loadActiveMesocycle.mockResolvedValue({
+      id: "meso-1",
+      state: "ACTIVE_ACCUMULATION",
+      durationWeeks: 5,
+    });
     mocks.generateSessionFromIntent.mockResolvedValue({
       workout: {
         id: "w-pull",

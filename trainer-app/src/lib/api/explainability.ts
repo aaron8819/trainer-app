@@ -97,6 +97,7 @@ export type ExplainabilityReader = Pick<
   | "macroCycle"
   | "constraints"
   | "mesocycle"
+  | "user"
 >;
 
 function roundToTenth(value: number): number {
@@ -173,7 +174,8 @@ export async function generateWorkoutExplanation(
   const { blockContext, weekInMeso } = await loadCurrentBlockContext(
     workout.userId,
     workout.scheduledDate,
-    client
+    client,
+    workout.mesocycleId
   );
   const volumeByMuscle = await loadVolumeByMuscle(
     workout.userId,

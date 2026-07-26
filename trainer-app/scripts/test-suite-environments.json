@@ -21,6 +21,14 @@
       "reason": "The lifecycle contract is pure, but save-workout lifecycle imports mesocycle-lifecycle-state and the Prisma composition root."
     },
     {
+      "path": "src/lib/api/active-plan-context.db.test.ts",
+      "environment": "db-required",
+      "owner": "multi-plan-foundation",
+      "reason": "Real PostgreSQL partial-unique and concurrent plan-selection coverage requires the explicitly confirmed disposable harness.",
+      "commandId": "npm-test-db-multi-plan",
+      "packageScript": "test:db:multi-plan"
+    },
+    {
       "path": "src/lib/api/analytics.test.ts",
       "environment": "import-only-placeholder",
       "owner": "test-environment-preflight",

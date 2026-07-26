@@ -11,6 +11,10 @@ import {
   mapSeedRevisionWriteError,
   normalizeAcceptedSeedPayload,
 } from "./mesocycle-seed-revision";
+import {
+  claimSelectedPlanForTransitionInTransaction,
+  resolveActivePlanContextInTransaction,
+} from "./active-plan-context";
 
 const TARGET_SLOT_IDS = ["upper_a", "upper_b"] as const;
 const SAFE_FULL_UPGRADE_VERDICT = "safe_to_accept_upgrade";
@@ -230,6 +234,20 @@ export async function applyActiveMesocycleBoundedUpperSlotReseed(
   }
 
   return prisma.$transaction(async (tx) => {
+    const planContext = await resolveActivePlanContextInTransaction(
+      tx,
+      input.userId
+    );
+    if (
+      planContext.status !== "READY" ||
+      planContext.activeMesocycle.id !== input.activeMesocycleId
+    ) {
+      throw new Error("ACTIVE_MESOCYCLE_RESEED_SELECTED_PLAN_CONFLICT");
+    }
+    await claimSelectedPlanForTransitionInTransaction(tx, {
+      userId: input.userId,
+      macroCycleId: planContext.activeMacroCycle.id,
+    });
     const activeMesocycle = await tx.mesocycle.findFirst({
       where: {
         id: input.activeMesocycleId,
@@ -347,6 +365,20 @@ export async function acceptActiveMesocycleSlotPlanSeedUpgrade(
   }
 
   return prisma.$transaction(async (tx) => {
+    const planContext = await resolveActivePlanContextInTransaction(
+      tx,
+      input.userId
+    );
+    if (
+      planContext.status !== "READY" ||
+      planContext.activeMesocycle.id !== input.activeMesocycleId
+    ) {
+      throw new Error("ACTIVE_MESOCYCLE_RESEED_SELECTED_PLAN_CONFLICT");
+    }
+    await claimSelectedPlanForTransitionInTransaction(tx, {
+      userId: input.userId,
+      macroCycleId: planContext.activeMacroCycle.id,
+    });
     const activeMesocycle = await tx.mesocycle.findFirst({
       where: {
         id: input.activeMesocycleId,

@@ -8,6 +8,7 @@ import {
   type VolumeTargetKind,
 } from "@/lib/engine/volume-landmarks";
 import { getCurrentMesoWeek, getWeeklyVolumeTarget } from "./mesocycle-lifecycle-math";
+import { loadActiveMesocycle } from "./mesocycle-lifecycle-state";
 import {
   loadMesocycleWeekMuscleVolume,
   type WeeklyMuscleExerciseContribution,
@@ -15,8 +16,8 @@ import {
 } from "./weekly-volume";
 
 type MuscleOutcomeReviewReader =
-  | Pick<Prisma.TransactionClient, "mesocycle" | "workout">
-  | Pick<typeof prisma, "mesocycle" | "workout">;
+  | Pick<Prisma.TransactionClient, "workout">
+  | Pick<typeof prisma, "workout">;
 
 export type MuscleOutcomeStatus =
   | "on_target"
@@ -251,39 +252,10 @@ function sortOutcomeRows(rows: WeeklyMuscleOutcomeRow[]): WeeklyMuscleOutcomeRow
 
 export async function loadWeeklyMuscleOutcome(
   client: MuscleOutcomeReviewReader,
-  userId: string
+  userId: string,
+  selectedMesocycle: ActiveMesocycleRecord
 ): Promise<WeeklyMuscleOutcomeReview | null> {
-  const activeMesocycle = await client.mesocycle.findFirst({
-    where: { macroCycle: { userId }, isActive: true },
-    select: {
-      id: true,
-      durationWeeks: true,
-      startWeek: true,
-      state: true,
-      accumulationSessionsCompleted: true,
-      deloadSessionsCompleted: true,
-      sessionsPerWeek: true,
-      blocks: {
-        orderBy: { blockNumber: "asc" },
-        select: {
-          blockType: true,
-          startWeek: true,
-          durationWeeks: true,
-          volumeTarget: true,
-          intensityBias: true,
-        },
-      },
-      macroCycle: {
-        select: {
-          startDate: true,
-        },
-      },
-    },
-  });
-
-  if (!activeMesocycle) {
-    return null;
-  }
+  const activeMesocycle = selectedMesocycle;
 
   const currentWeek = getCurrentMesoWeek(activeMesocycle as ActiveMesocycleRecord);
   const mesoStart = new Date(activeMesocycle.macroCycle.startDate);
@@ -318,5 +290,9 @@ export async function loadWeeklyMuscleOutcome(
 export async function loadWeeklyMuscleOutcomeFromPrisma(
   userId: string
 ): Promise<WeeklyMuscleOutcomeReview | null> {
-  return loadWeeklyMuscleOutcome(prisma, userId);
+  const selectedMesocycle = await loadActiveMesocycle(userId);
+  if (!selectedMesocycle) {
+    return null;
+  }
+  return loadWeeklyMuscleOutcome(prisma, userId, selectedMesocycle);
 }

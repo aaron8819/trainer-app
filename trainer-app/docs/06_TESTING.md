@@ -40,11 +40,19 @@ Sources of truth:
   mutation implementations. With no target the workout-mutation suite fails with the deliberate
   infrastructure classification while the persistence-only suite safely skips; unsafe or
   unconfirmed targets fail before database-dependent imports.
-- `npm run test:inventory:credential-free`: raw Vitest inventory with `DATABASE_URL`,
-  `TEST_DATABASE_URL`, `DIRECT_URL`, `SHADOW_DATABASE_URL`, and `SHADOW_URL` removed from the
-  child environment case-insensitively, mutation-confirmation state removed, and dotenv loading
-  disabled. DB-import-coupled files may fail collection and mutation suites skip because no target
-  is available; those outcomes are inventory evidence, not a comprehensive passing gate.
+- `npm run test:inventory:credential-free`: classified full Vitest inventory with `DATABASE_URL`,
+  `TEST_DATABASE_URL`, `DIRECT_URL`, `SHADOW_DATABASE_URL`, and `SHADOW_URL` removed from child
+  environments case-insensitively, mutation confirmation removed, and dotenv loading disabled.
+  Credential-free files must collect, import, and execute with no DB target. Registered
+  import-only placeholder files run in a separate phase with the exact reserved TEST-NET URL and
+  a socket connection guard. Registered DB-required suites are excluded before Vitest collection,
+  listed with their owner, reason, and separate authorized command, and are never reported as
+  credential-free coverage. Any unregistered import or collection failure remains fatal.
+- `npm run test:inventory:credential-free -- --base-ref <git-ref>`: runs the same inventory and
+  reports added, removed, and changed environment classifications relative to the named base.
+  Equal branch/base failures are not accepted; only explicit classifications can compare cleanly.
+- `npm run test:environment-classification`: focused manifest, sanitizer, placeholder-guard,
+  subprocess-boundary, summary-count, and branch/base-delta coverage.
 - `npm run test:seed-revision-concurrency -- --confirm-disposable`: against a local disposable PostgreSQL database, verifies one-winner concurrent correction, generation/correction revision preservation, and full rollback after a failed correction. The command refuses non-local or unconfirmed targets.
 - `npm run test:db:workout-mutations -- --confirm-disposable`: explicitly mutating integration
   coverage. Its effective argument list must be exactly `["--confirm-disposable"]`; unknown,
@@ -77,6 +85,30 @@ Sources of truth:
 - Owner-scoped audit commands accept `--env-file .env.local --owner owner@local` so local audit scripts can load the intended runtime environment explicitly
 
 ## Test-environment safety contract
+
+- Test-suite environment ownership is declared once in
+  `scripts/test-suite-environments.json`. Files not listed there are credential-free by default.
+  A credential-free suite must collect, import, and execute with every registered DB target
+  absent; importing the real DB composition root is therefore a hard failure.
+- A `.db.test.ts(x)` file is DB-required and must have one manifest entry naming an existing
+  `disposable-database-write` command from the command registry. Missing files, duplicate or
+  conflicting classes, non-test paths, unregistered `.db` suites, missing commands, and
+  unauthorized command profiles fail before Vitest starts. DB-required suites excluded from the
+  inventory remain reachable through the command printed from the registry; the credential-free
+  summary never claims that coverage ran.
+- Import-only placeholder is a narrow exception for a suite whose assertions are credential-free
+  but whose current composition-root import needs a syntactically valid URL. It must be registered
+  individually with a reason. The runner supplies only the exact reserved TEST-NET placeholder,
+  keeps all other DB targets and disposable confirmation absent, and loads
+  `vitest.import-only-placeholder.setup.ts`. That setup rejects any other URL and replaces socket
+  connection startup with a fatal `IMPORT_ONLY_PLACEHOLDER_CONNECTION_ATTEMPT`. It also records
+  the attempt in a temporary marker checked and removed by the parent runner, so even code that
+  catches the thrown error cannot make the phase pass.
+- Exclusions are path-based and occur before Vitest collection. The harness never filters by
+  `DATABASE_URL` error text, so unrelated import, setup, collection, and test failures remain
+  unexpected and fatal. To classify a new suite, first decide whether it is truly DB-required or
+  only import-coupled, add one manifest entry when required, confirm its separate command profile,
+  then run `npm run test:environment-classification` and the full credential-free inventory.
 
 - Canonical DB-target inventory: `DATABASE_URL`, `TEST_DATABASE_URL`, `DIRECT_URL`,
   `SHADOW_DATABASE_URL`, and `SHADOW_URL`. A repository guard scans test workflow sources for

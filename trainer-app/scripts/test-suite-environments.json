@@ -1,0 +1,226 @@
+{
+  "schema": "trainer-test-suite-environments",
+  "version": 1,
+  "suites": [
+    {
+      "path": "src/app/api/mesocycles/[id]/finish-deload/route.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The route test mocks lifecycle behavior, but its partial mock imports mesocycle-lifecycle-state and the Prisma composition root."
+    },
+    {
+      "path": "src/app/api/workouts/[id]/exercises/[exerciseId]/route.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The route test mocks the removal service, but its imported error type shares a module with workout-mutation and the Prisma composition root."
+    },
+    {
+      "path": "src/app/api/workouts/save/lifecycle-contract.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The lifecycle contract is pure, but save-workout lifecycle imports mesocycle-lifecycle-state and the Prisma composition root."
+    },
+    {
+      "path": "src/lib/api/analytics.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The tested weekly-volume builder is pure, but analytics.ts also owns DB-backed reads and imports the Prisma composition root."
+    },
+    {
+      "path": "src/lib/api/generation-phase-block-context.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The tested context resolver is pure, but its module also owns DB-backed phase loading and imports the Prisma composition root."
+    },
+    {
+      "path": "src/lib/api/mesocycle-handoff-slot-plan-projection.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The projection test mocks template-session behavior, but the partial mock imports templates.ts and the Prisma composition root."
+    },
+    {
+      "path": "src/lib/api/mesocycle-handoff-v2-materialized-seed.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The seed acceptance probes are deterministic, but the live-context dry-run module imports the Prisma composition root."
+    },
+    {
+      "path": "src/lib/api/mesocycle-handoff.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The handoff tests use injected transactions and mocks, but mesocycle-handoff.ts imports the Prisma composition root."
+    },
+    {
+      "path": "src/lib/api/mesocycle-review.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The review loader uses mocked read dependencies, but mesocycle-review.ts imports the Prisma composition root."
+    },
+    {
+      "path": "src/lib/api/mesocycle-setup.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The setup preview uses hoisted mocks, but mesocycle-setup.ts imports the Prisma composition root."
+    },
+    {
+      "path": "src/lib/api/mesocycle-week-close.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The week-close tests use mocked transaction seams, but mesocycle-week-close.ts imports the Prisma composition root."
+    },
+    {
+      "path": "src/lib/api/muscle-outcome-review.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The outcome classification tests are deterministic, but muscle-outcome-review.ts also owns DB reads and imports Prisma."
+    },
+    {
+      "path": "src/lib/api/next-session.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The next-session resolver is tested with fixtures, but next-session.ts imports the Prisma composition root."
+    },
+    {
+      "path": "src/lib/api/planning-reality/exercise-selection-plan-diagnostic.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The planning diagnostic is pure, but a lifecycle import reaches mesocycle-lifecycle-state and the Prisma composition root."
+    },
+    {
+      "path": "src/lib/api/planning-reality/repair-materiality.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The repair materiality warnings are pure, but a lifecycle import reaches mesocycle-lifecycle-state and Prisma."
+    },
+    {
+      "path": "src/lib/api/pre-session-readiness-evidence-builder.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The evidence builder is fixture-driven, but current-week-audit imports the DB-backed readiness evidence owner."
+    },
+    {
+      "path": "src/lib/api/save-workout/persistence.db.test.ts",
+      "environment": "db-required",
+      "owner": "workout-mutations",
+      "reason": "Real PostgreSQL compare-and-swap persistence coverage requires the explicitly confirmed disposable harness.",
+      "commandId": "npm-test-db-workout-mutations",
+      "packageScript": "test:db:workout-mutations"
+    },
+    {
+      "path": "src/lib/api/slot-plan-seed.contract.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The seed contract uses fixtures, but program-page imports DB-backed API composition and the Prisma root."
+    },
+    {
+      "path": "src/lib/api/template-session.pull-week2.integration.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The integration test injects a generation snapshot, but template-session.ts imports templates.ts and the Prisma root."
+    },
+    {
+      "path": "src/lib/api/template-session.push-week3.regression.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The regression test injects a generation snapshot, but template-session.ts imports templates.ts and the Prisma root."
+    },
+    {
+      "path": "src/lib/api/template-session/slot-plan-seed.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The seeded-slot resolver is pure, but its projection helper imports template-session and the Prisma composition root."
+    },
+    {
+      "path": "src/lib/api/v2-mesocycle-strategy-input-adapter.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The adapter uses fixture read models, but its mesocycle-review dependency imports the Prisma composition root."
+    },
+    {
+      "path": "src/lib/api/workout-context.manual-confidence.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The history mapper is pure, but workout-context.ts also owns DB reads and imports the Prisma composition root."
+    },
+    {
+      "path": "src/lib/api/workout-mutation.db.test.ts",
+      "environment": "db-required",
+      "owner": "workout-mutations",
+      "reason": "Real PostgreSQL concurrency coverage requires the explicitly confirmed disposable harness.",
+      "commandId": "npm-test-db-workout-mutations",
+      "packageScript": "test:db:workout-mutations"
+    },
+    {
+      "path": "src/lib/api/workout-mutation.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The transaction helper is tested with an injected client, but workout-mutation.ts imports the Prisma composition root."
+    },
+    {
+      "path": "src/lib/audit/workout-audit/current-week-audit.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The current-week evaluator is fixture-driven, but its module imports the DB-backed readiness evidence owner."
+    },
+    {
+      "path": "src/lib/audit/workout-audit/generation-runner.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The generation runner dependencies are mocked, but historical-week.ts imports the Prisma composition root."
+    },
+    {
+      "path": "src/lib/audit/workout-audit/mesocycle-explain-v2-repair-scoreboard.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The scoreboard is pure, but its live-context dry-run dependency imports the Prisma composition root."
+    },
+    {
+      "path": "src/lib/audit/workout-audit/next-mesocycle-acceptance-gate.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The acceptance gate is fixture-driven, but its module imports the Prisma composition root for live evidence."
+    },
+    {
+      "path": "src/lib/audit/workout-audit/next-mesocycle-handoff-dry-run.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The dry-run payload is fixture-driven, but its module imports the Prisma composition root for live evidence."
+    },
+    {
+      "path": "src/lib/audit/workout-audit/next-mesocycle-post-accept-verification.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The post-accept verifier is fixture-driven, but its module imports the Prisma composition root for live evidence."
+    },
+    {
+      "path": "src/lib/audit/workout-audit/v2-accepted-seed-prepare-compare.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The compare payload is fixture-driven, but its imported preparation owner reaches the Prisma composition root."
+    },
+    {
+      "path": "src/lib/audit/workout-audit/v2-materialization-live-context-dry-run.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The tested projection builders are pure, but the live-context module imports the Prisma composition root."
+    },
+    {
+      "path": "src/lib/audit/workout-audit/week-close-handoff.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The handoff conclusions are fixture-driven, but week-close-handoff.ts imports the Prisma composition root for live reads."
+    },
+    {
+      "path": "src/lib/engine/periodization/block-prescription-intent.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The prescription intent is pure, but a lifecycle import reaches mesocycle-lifecycle-state and the Prisma root."
+    },
+    {
+      "path": "src/lib/engine/planning/v2/materialization/materializer.test.ts",
+      "environment": "import-only-placeholder",
+      "owner": "test-environment-preflight",
+      "reason": "The V2 materializer tests are deterministic, but the dry-run report imports live-context code and the Prisma root."
+    }
+  ]
+}

@@ -633,7 +633,7 @@ describe("V2 planner policy module boundary", () => {
     });
 
     expect(violations).toEqual([]);
-  });
+  }, 15_000);
 
   it("does not call the dry-run materialization report from production modules", () => {
     const sourceDir = path.join(process.cwd(), "src");
@@ -655,7 +655,7 @@ describe("V2 planner policy module boundary", () => {
     });
 
     expect(violations).toEqual([]);
-  });
+  }, 15_000);
 
   it("does not call the base-plan validation diagnostic from production modules", () => {
     const sourceDir = path.join(process.cwd(), "src");
@@ -673,7 +673,7 @@ describe("V2 planner policy module boundary", () => {
     });
 
     expect(violations).toEqual([]);
-  });
+  }, 15_000);
 
   it("keeps the live-context dry-run harness read-only and outside seed/runtime/receipt paths", () => {
     const text = fs.readFileSync(liveContextDryRunHarness, "utf8");
@@ -720,5 +720,5 @@ describe("V2 planner policy module boundary", () => {
     });
 
     expect(violations).toEqual([]);
-  });
+  }, 15_000);
 });

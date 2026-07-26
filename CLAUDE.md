@@ -23,12 +23,14 @@
 - `rg --files trainer-app/src | rg "<feature>"`
 - `rg --files trainer-app/src -g "*.test.ts" -g "*.test.tsx" | rg "<feature>"`
 
-## Skills (mandatory usage)
-- Use `seam-locator` before any change where ownership is not obvious
-- Use `architecture-guard` before and during all non-trivial code edits
-- Use `workout-generation-audit` for any non-trivial change that can affect generated or projected training output.
-- Use `implementation-planner` before any non-trivial change that requires more than one edit step or touches multiple files, seams, tests, routes, docs, or verification commands.
-- Use `receipt-integrity` for any change that touches `selectionMetadata.sessionDecisionReceipt`, receipt-backed meaning, or consumers that depend on persisted session-decision context.
+## Skills
+- Use `architecture-guard` when ownership is unclear or a non-trivial change crosses canonical seams or consumers.
+- Use `receipt-integrity` only when receipt creation, persistence, reconciliation, meaning, or receipt-derived consumers can change.
+- Use `seed-runtime-source-of-truth` for accepted seed revision, correction, replay, provenance, or session-local deviation boundaries.
+- Use `v2-planner-migration-guard` for pure V2 planning, materialization/acceptance boundaries, or controlled promotion of V2 evidence.
+- Use `test-impact-triage` to review the deterministic verification plan after the owning seam and diff are known.
+- Use `audit-workflow` to choose authorized audit modes, interpret artifacts, and validate generation-facing output.
+- Use `trainer-loop-triage` only when asked to select or design bounded next-work loops or `/goal` prompts.
 
 ## Canonical Boundaries
 - Resolve runtime identity via `resolveOwner()` in `trainer-app/src/lib/api/workout-context.ts`. Do not add alternate user-resolution paths in app routes.
@@ -36,7 +38,7 @@
 - `selectionMetadata.sessionDecisionReceipt` is the canonical stored session-decision/evidence payload. Do not introduce parallel top-level mirrors for session context.
 - `deriveSessionSemantics()` is the owner for session-level meaning such as advancing vs non-advancing, progression-history eligibility, and slot consumption.
 - `loadNextWorkoutContext()` is the canonical next-session derivation seam.
-- For accepted mesocycles with supported intents, runtime exercise composition is owned by `Mesocycle.slotPlanSeedJson` plus canonical slot-runtime resolution. Do not reintroduce `MesocycleExerciseRole`, raw intent composition, or UI-local heuristics as a second seeded runtime source of truth.
+- When an immutable revision exists, runtime exercise composition is owned by `Mesocycle.currentSeedRevision.seedPayload` plus canonical slot-runtime resolution. `Mesocycle.slotPlanSeedJson` is compatibility or historical state in that case; legacy/no-revision fallback must not become competing runtime truth.
 - Mesocycle lifecycle transitions belong in `mesocycle-lifecycle*` and `mesocycle-handoff*`, not in page/UI heuristics.
 - Closed-mesocycle save/log/resume fences belong at route/workflow contracts, not client-only checks.
 - Validation-backed enum/runtime contract values are centralized in `trainer-app/docs/contracts/runtime-contracts.json` and `trainer-app/src/lib/validation.ts`.

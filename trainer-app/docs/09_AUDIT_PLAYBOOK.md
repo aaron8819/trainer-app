@@ -74,6 +74,15 @@ This playbook does not try to answer:
 - hidden generation-time truth for legacy workouts that never persisted generated snapshots
 - architectural semantics beyond what the artifact surfaces; use the owning docs and code for that
 
+### Authorization and output-level validation
+
+- Select the audit question, mode, and exact runtime target before execution.
+- Classify local-only versus database/remote access and stdout-only versus artifact-writing behavior using repository policy and the registered command contract.
+- Never infer database, production, artifact-write, or destructive authorization from an audit mode, skill trigger, or command name.
+- Run the matching output-level audit only when it is authorized and available.
+- If a generation-facing change selects an audit that cannot run, report it as an unresolved validation gate. Do not substitute code inspection, UI output, or a different audit mode and do not claim the generated/projected output passed.
+- Treat disagreement between focused deterministic tests and the correctly targeted canonical artifact as a failed validation gate until resolved.
+
 ## 2. Audit Types
 
 ### `historical-week`

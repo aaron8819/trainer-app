@@ -3,13 +3,12 @@ import {
   APPLIED_SCHEMA_EXPECTATIONS,
   BASELINE_UNIQUENESS_EXPECTATIONS,
   buildMigrationIntegrityReport,
-  canonicalizeMigrationSql,
   checksumMigrationSql,
   EXPECTED_GATE_A_PENDING,
   EXPECTED_MIGRATION_CHAIN,
   MIGRATION_AUTHORIZATION_POLICY,
   PENDING_ARCHITECTURE_MANIFEST,
-  rawMigrationSqlChecksum,
+  prismaCompatibleMigrationSqlChecksums,
   type CatalogSnapshot,
   type CheckedInMigration,
   type LedgerRow,
@@ -253,42 +252,79 @@ describe("migration integrity", () => {
     expect(result.migrationAuthorizationReady).toBe(true);
   });
 
-  it("canonicalizes CRLF and standalone CR without changing other bytes", () => {
-    expect(checksumMigrationSql(Buffer.from("SELECT 1;\n"))).toBe(
+  it("hashes the exact migration bytes written to the Prisma ledger", () => {
+    expect(checksumMigrationSql(Buffer.from("SELECT 1;\n"))).not.toBe(
       checksumMigrationSql(Buffer.from("SELECT 1;\r\n")),
-    );
-    expect(checksumMigrationSql(Buffer.from("SELECT 1;\n"))).toBe(
-      checksumMigrationSql(Buffer.from("SELECT 1;\r")),
-    );
-    expect(canonicalizeMigrationSql(Buffer.from([0x41, 0x0d, 0x42]))).toEqual(
-      Buffer.from([0x41, 0x0a, 0x42]),
     );
     expect(checksumMigrationSql(Buffer.from("SELECT 1;\n"))).toHaveLength(64);
   });
 
-  it("still rejects genuine SQL content drift", () => {
-    expect(checksumMigrationSql(Buffer.from("SELECT 1;\n"))).not.toBe(
+  it("matches Prisma's exact, LF, and CRLF checksum variants", () => {
+    const lf = Buffer.from("SELECT 1;\n");
+    const crlf = Buffer.from("SELECT 1;\r\n");
+    expect(prismaCompatibleMigrationSqlChecksums(lf)).toEqual(
+      expect.arrayContaining([
+        checksumMigrationSql(lf),
+        checksumMigrationSql(crlf),
+      ]),
+    );
+    expect(prismaCompatibleMigrationSqlChecksums(crlf)).toEqual(
+      expect.arrayContaining([
+        checksumMigrationSql(crlf),
+        checksumMigrationSql(lf),
+      ]),
+    );
+  });
+
+  it("does not normalize standalone carriage returns or genuine SQL drift", () => {
+    const checksums = prismaCompatibleMigrationSqlChecksums(
+      Buffer.from("SELECT 1;\r"),
+    );
+    expect(checksums).not.toContain(
+      checksumMigrationSql(Buffer.from("SELECT 1;\n")),
+    );
+    expect(checksums).not.toContain(
       checksumMigrationSql(Buffer.from("SELECT 2;\r\n")),
     );
   });
 
-  it("accepts a canonical ledger checksum for a CRLF working-tree file", () => {
+  it("accepts a raw CRLF ledger checksum for a CRLF working-tree file", () => {
     const migrations = checkedIn();
     const lf = Buffer.from("SELECT 1;\n");
     const crlf = Buffer.from("SELECT 1;\r\n");
     migrations[0] = {
       ...migrations[0],
       checksum: checksumMigrationSql(crlf),
-      rawChecksum: rawMigrationSqlChecksum(crlf),
+      compatibleChecksums: prismaCompatibleMigrationSqlChecksums(crlf),
     };
     const rows = migrations.slice(0, -1).map(successfulRow);
     const result = report({ checkedIn: migrations, ledgerRows: rows });
     expect(result.checksums.mismatched).toEqual([]);
-    expect(result.checksums.normalizedRepositoryFiles).toEqual([
+    expect(result.checksums.lineEndingCompatibilityUsed).toEqual([]);
+    expect(result.migrationChecksumsValid).toBe(true);
+    expect(migrations[0].checksum).toBe(checksumMigrationSql(crlf));
+    expect(migrations[0].compatibleChecksums).toContain(
+      checksumMigrationSql(lf),
+    );
+  });
+
+  it("accepts an LF ledger checksum for a CRLF working-tree file", () => {
+    const migrations = checkedIn();
+    const lf = Buffer.from("SELECT 1;\n");
+    const crlf = Buffer.from("SELECT 1;\r\n");
+    migrations[0] = {
+      ...migrations[0],
+      checksum: checksumMigrationSql(crlf),
+      compatibleChecksums: prismaCompatibleMigrationSqlChecksums(crlf),
+    };
+    const rows = migrations.slice(0, -1).map(successfulRow);
+    rows[0] = { ...rows[0], checksum: checksumMigrationSql(lf) };
+    const result = report({ checkedIn: migrations, ledgerRows: rows });
+    expect(result.checksums.mismatched).toEqual([]);
+    expect(result.checksums.lineEndingCompatibilityUsed).toEqual([
       migrations[0].name,
     ]);
     expect(result.migrationChecksumsValid).toBe(true);
-    expect(migrations[0].checksum).toBe(checksumMigrationSql(lf));
   });
 
   it("blocks a checksum mismatch and a missing ledger checksum", () => {

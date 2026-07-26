@@ -147,14 +147,6 @@ function requireResolvedLedgerShape(name: string): void {
   }
 }
 
-function canonicalizeResolvedLedgerChecksum(name: string): void {
-  psql(`
-    UPDATE public._prisma_migrations
-    SET checksum = '${migrationChecksum(name)}'
-    WHERE migration_name = '${name}';
-  `);
-}
-
 function convertBaselineUniqueIndexesToConstraints(): void {
   psql(`
     ALTER TABLE "ExerciseAlias"
@@ -638,7 +630,6 @@ try {
   convertBaselineUniqueIndexesToConstraints();
   requireSuccess(prismaResolve(baselineMigration, disposableUrl), "Prisma baseline resolve --applied");
   requireResolvedLedgerShape(baselineMigration);
-  canonicalizeResolvedLedgerChecksum(baselineMigration);
 
   const baselineState = cliWithExpectedStatus("scripts/check-migration-status.ts", [], 1);
   if (
@@ -663,7 +654,6 @@ try {
   applyMigrations([setIntentMigration]);
   requireSuccess(prismaResolve(setIntentMigration, disposableUrl), "Prisma set-intent resolve --applied");
   requireResolvedLedgerShape(setIntentMigration);
-  canonicalizeResolvedLedgerChecksum(setIntentMigration);
 
   const beforeRepeatedSetIntentResolve = databaseStateFingerprint();
   const repeatedSetIntentResolve = prismaResolve(setIntentMigration, disposableUrl);

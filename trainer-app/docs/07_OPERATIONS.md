@@ -208,14 +208,14 @@ No backup or inspection result grants migration authorization. Database backups 
 
 After the direct check succeeds, `npm run ops:migration-status -- --env-file $rolloutEnv --evidence-file <reviewed-json>` performs the complete read-only Gate A migration-integrity verification through `DIRECT_URL`. Counts alone are insufficient. `src/lib/operations/migration-integrity.ts` owns the rollout policy and result model. The command:
 
-- canonicalizes migration SQL line endings (`CRLF` and standalone `CR` become `LF`, with every other byte preserved), hashes that representation with SHA-256, and compares every successfully applied migration with `_prisma_migrations.checksum`;
+- hashes the exact checked-out migration SQL bytes with SHA-256, matching how Prisma creates `_prisma_migrations.checksum`, and validates historical rows with Prisma's exact compatibility set: the script as read, `CRLF` converted to `LF`, and `LF` converted to `CRLF`;
 - rejects failed, unresolved rolled-back, unfinished, duplicate, unknown, missing-checksum, skipped, and out-of-prefix ledger states;
 - compares the actual pending suffix with the exact named sequence in repository policy or the reviewed evidence input; it never authorizes from a fixed pending count;
 - verifies material definitions owned by every applied migration and requires every object owned by each pending migration to be absent;
 - runs catalog and ledger queries inside a repeatable-read, read-only transaction, rejects mutation-capable statements in its query adapter, and reports `writes: 0`;
 - reports `technicalMigrationReady`, `migrationAuthorizationReady`, and `executionAuthorized` separately.
 
-`technicalMigrationReady` means the repository chain, exact pending sequence, ledger, canonical checksums, applied and pending schema state, migration-specific data preflight, and commit-bound disposable PostgreSQL verification are all valid. `migrationAuthorizationReady` additionally requires fresh recovery-point, production-deployment, application-compatibility, and `TRAINER_WRITE_PAUSE` evidence plus exact migration and application commits. `executionAuthorized` is always `false` in this preparation command. A clean data preflight never grants operational or execution authorization.
+`technicalMigrationReady` means the repository chain, exact pending sequence, ledger, Prisma-compatible checksums, applied and pending schema state, migration-specific data preflight, and commit-bound disposable PostgreSQL verification are all valid. `migrationAuthorizationReady` additionally requires fresh recovery-point, production-deployment, application-compatibility, and `TRAINER_WRITE_PAUSE` evidence plus exact migration and application commits. `executionAuthorized` is always `false` in this preparation command. A clean data preflight never grants operational or execution authorization.
 
 Ledger classification follows Prisma row state, not step count:
 

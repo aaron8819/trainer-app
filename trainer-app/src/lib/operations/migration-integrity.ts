@@ -128,7 +128,7 @@ export type CatalogSnapshot = {
 export type CheckedInMigration = {
   name: string;
   checksum: string;
-  rawChecksum?: string;
+  compatibleChecksums?: string[];
   sqlPath: string;
 };
 
@@ -437,26 +437,25 @@ export const APPLIED_SCHEMA_EXPECTATIONS: readonly DefinitionExpectation[] = [
   ].map(([name, columns]) => ({ kind: "index" as const, table: "PreSessionReadinessSnapshot", name: name as string, unique: false, columns: columns as string[], predicate: null })),
 ];
 
-export function canonicalizeMigrationSql(bytes: Uint8Array): Buffer {
-  const canonical: number[] = [];
-  for (let index = 0; index < bytes.length; index += 1) {
-    const byte = bytes[index];
-    if (byte === 0x0d) {
-      if (bytes[index + 1] === 0x0a) index += 1;
-      canonical.push(0x0a);
-    } else {
-      canonical.push(byte);
-    }
-  }
-  return Buffer.from(canonical);
-}
-
-export function rawMigrationSqlChecksum(bytes: Uint8Array): string {
+export function checksumMigrationSql(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-export function checksumMigrationSql(bytes: Uint8Array): string {
-  return rawMigrationSqlChecksum(canonicalizeMigrationSql(bytes));
+export function prismaCompatibleMigrationSqlChecksums(
+  bytes: Uint8Array,
+): string[] {
+  const script = Buffer.from(bytes).toString("utf8");
+  return Array.from(
+    new Set(
+      [
+        script,
+        script.replaceAll("\r\n", "\n"),
+        script.replaceAll("\n", "\r\n"),
+      ].map((candidate) =>
+        checksumMigrationSql(Buffer.from(candidate, "utf8")),
+      ),
+    ),
+  );
 }
 
 export function loadCheckedInMigrations(root = join(process.cwd(), "prisma", "migrations")): CheckedInMigration[] {
@@ -465,10 +464,11 @@ export function loadCheckedInMigrations(root = join(process.cwd(), "prisma", "mi
     .map((entry) => {
       const sqlPath = join(root, entry.name, "migration.sql");
       const bytes = readFileSync(sqlPath);
+      const compatibleChecksums = prismaCompatibleMigrationSqlChecksums(bytes);
       return {
         name: entry.name,
-        checksum: checksumMigrationSql(bytes),
-        rawChecksum: rawMigrationSqlChecksum(bytes),
+        checksum: compatibleChecksums[0],
+        compatibleChecksums,
         sqlPath,
       };
     })
@@ -781,9 +781,8 @@ export function buildMigrationIntegrityReport(input: {
   const mismatchContext: Array<{
     migrationName: string;
     ledgerChecksum: string | null;
-    canonicalRepositoryChecksum: string;
-    rawRepositoryChecksum: string;
-    rawRepositoryChecksumMatchesLedger: boolean;
+    repositoryChecksum: string;
+    compatibleRepositoryChecksums: string[];
   }> = [];
   const missingCheckedIn: string[] = [];
   const missingLedgerChecksum = input.ledgerRows
@@ -794,15 +793,18 @@ export function buildMigrationIntegrityReport(input: {
     const migration = checkedInByName.get(row.migrationName);
     if (!migration) {
       missingCheckedIn.push(row.migrationName);
-    } else if (row.checksum !== migration.checksum) {
+    } else if (
+      !(
+        migration.compatibleChecksums ?? [migration.checksum]
+      ).includes(row.checksum ?? "")
+    ) {
       mismatched.push(row.migrationName);
       mismatchContext.push({
         migrationName: row.migrationName,
         ledgerChecksum: row.checksum,
-        canonicalRepositoryChecksum: migration.checksum,
-        rawRepositoryChecksum: migration.rawChecksum ?? migration.checksum,
-        rawRepositoryChecksumMatchesLedger:
-          row.checksum === (migration.rawChecksum ?? migration.checksum),
+        repositoryChecksum: migration.checksum,
+        compatibleRepositoryChecksums:
+          migration.compatibleChecksums ?? [migration.checksum],
       });
     } else {
       matched += 1;
@@ -1073,13 +1075,19 @@ export function buildMigrationIntegrityReport(input: {
   if (applicationCompatibilityState !== "compatible_with_write_boundary") {
     blockingReasons.push("application_compatibility_unverified");
   }
-  const normalizedRepositoryFiles = input.checkedIn
-    .filter(
-      (migration) =>
-        migration.rawChecksum != null &&
-        migration.rawChecksum !== migration.checksum,
-    )
-    .map((migration) => migration.name);
+  const lineEndingCompatibilityUsed = successfulRows
+    .filter((row) => {
+      const migration = checkedInByName.get(row.migrationName);
+      return (
+        migration != null &&
+        row.checksum !== migration.checksum &&
+        (migration.compatibleChecksums ?? [migration.checksum]).includes(
+          row.checksum ?? "",
+        )
+      );
+    })
+    .map((row) => row.migrationName)
+    .sort();
   const warnings = [
     ...representationWarnings.map(
       (warning) =>
@@ -1088,8 +1096,8 @@ export function buildMigrationIntegrityReport(input: {
     ...rolledBackHistory.map(
       (migration) => `rolled_back_history_replaced:${migration}`,
     ),
-    ...normalizedRepositoryFiles.map(
-      (migration) => `line_endings_normalized:${migration}`,
+    ...lineEndingCompatibilityUsed.map(
+      (migration) => `line_ending_compatible_checksum:${migration}`,
     ),
   ].sort();
 
@@ -1133,7 +1141,7 @@ export function buildMigrationIntegrityReport(input: {
       ),
       missingCheckedIn: missingCheckedIn.sort(),
       missingLedgerChecksum: missingLedgerChecksum.sort(),
-      normalizedRepositoryFiles,
+      lineEndingCompatibilityUsed,
     },
     ledger: {
       successful: [...appliedNames].sort(),

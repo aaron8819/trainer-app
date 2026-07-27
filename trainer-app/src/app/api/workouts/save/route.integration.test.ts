@@ -3243,7 +3243,25 @@ describe("POST /api/workouts/save", () => {
     expect(mocks.createPostSessionReviewSnapshotInTransaction).not.toHaveBeenCalled();
   });
 
-  it("keeps lifecycle counters idempotent across repeated identical mark_completed saves", async () => {
+  it("completes an off-order planned slot once and keeps repeated completion idempotent", async () => {
+    const alternativeSelectionMetadata = buildCanonicalSelectionMetadata();
+    const alternativeReceipt = alternativeSelectionMetadata.sessionDecisionReceipt as
+      typeof alternativeSelectionMetadata.sessionDecisionReceipt & {
+        sessionSlot: {
+          slotId: string;
+          intent: string;
+          sequenceIndex: number;
+          sequenceLength: number;
+          source: string;
+        };
+      };
+    alternativeReceipt.sessionSlot = {
+      slotId: "lower_a",
+      intent: "lower",
+      sequenceIndex: 1,
+      sequenceLength: 4,
+      source: "mesocycle_slot_sequence",
+    };
     mocks.workoutFindUnique
       .mockResolvedValueOnce({
         id: "workout-1",
@@ -3251,7 +3269,7 @@ describe("POST /api/workouts/save", () => {
         status: "PLANNED",
         revision: 1,
         mesocycleId: "meso-1",
-        selectionMetadata: buildCanonicalSelectionMetadata(),
+        selectionMetadata: alternativeSelectionMetadata,
       })
       .mockResolvedValueOnce({
         exercises: [
@@ -3266,7 +3284,7 @@ describe("POST /api/workouts/save", () => {
         status: "COMPLETED",
         revision: 2,
         mesocycleId: "meso-1",
-        selectionMetadata: buildCanonicalSelectionMetadata(),
+        selectionMetadata: alternativeSelectionMetadata,
       })
       .mockResolvedValueOnce({
         exercises: [
@@ -3303,6 +3321,26 @@ describe("POST /api/workouts/save", () => {
     expect(secondResponse.status).toBe(200);
     expect(mocks.createPostSessionReviewSnapshotInTransaction).toHaveBeenCalledTimes(1);
     expect(mocks.tx.mesocycle.update).toHaveBeenCalledTimes(1);
+    expect(mocks.tx.mesocycle.update).toHaveBeenCalledWith({
+      where: { id: "meso-1" },
+      data: {
+        completedSessions: { increment: 1 },
+        accumulationSessionsCompleted: { increment: 1 },
+      },
+    });
+    const persistedMetadata = mocks.workoutUpdateMany.mock.calls[0][0].data
+      .selectionMetadata as typeof alternativeSelectionMetadata;
+    const persistedReceipt = persistedMetadata.sessionDecisionReceipt as Record<
+      string,
+      unknown
+    >;
+    expect(persistedReceipt.sessionSlot).toEqual({
+      slotId: "lower_a",
+      intent: "lower",
+      sequenceIndex: 1,
+      sequenceLength: 4,
+      source: "mesocycle_slot_sequence",
+    });
     expect(mocks.transitionMesocycleStateInTransaction).toHaveBeenCalledTimes(1);
     expect(mocks.transitionMesocycleStateInTransaction).toHaveBeenCalledWith(mocks.tx, "meso-1");
   });

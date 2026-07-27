@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { GenerateFromIntentResponse } from "@/lib/api/template-session/types";
 import type { SaveWorkoutRequestPayload } from "@/components/log-workout/api";
 import type { HomeDecisionSummary } from "@/lib/api/home-page";
+import type { HomeEligibleSession } from "@/lib/api/program";
 import {
   listWorkoutPlanExercisesInOrder,
   type OrderedWorkoutExerciseSection,
@@ -137,6 +138,7 @@ function buildSaveWorkoutPayload(input: {
 type IntentWorkoutCardProps = {
   initialIntent?: SessionIntent;
   initialSlotId?: string | null;
+  eligibleAlternativeSessions?: HomeEligibleSession[];
   primaryAction: { label: string; state: "planned"; mode: "generate" };
   nextSessionLabel: HomeDecisionSummary["nextSessionLabel"];
   nextSessionDescription: HomeDecisionSummary["nextSessionDescription"];
@@ -145,12 +147,18 @@ type IntentWorkoutCardProps = {
 export function IntentWorkoutCard({
   initialIntent = "push",
   initialSlotId = null,
+  eligibleAlternativeSessions = [],
   primaryAction,
   nextSessionLabel,
   nextSessionDescription,
 }: IntentWorkoutCardProps) {
   const router = useRouter();
   const [intent, setIntent] = useState<SessionIntent>(initialIntent);
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(initialSlotId);
+  const [selectedSessionLabel, setSelectedSessionLabel] = useState<string | null>(
+    nextSessionLabel
+  );
+  const [showSessionChoices, setShowSessionChoices] = useState(false);
   const [targetMusclesInput, setTargetMusclesInput] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showCustomize, setShowCustomize] = useState(initialIntent === "body_part");
@@ -166,11 +174,6 @@ export function IntentWorkoutCard({
   const [error, setError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
   const startInFlightRef = useRef(false);
-
-  useEffect(() => {
-    setIntent(initialIntent);
-    setShowCustomize(initialIntent === "body_part");
-  }, [initialIntent]);
 
   const allExercises = useMemo(
     () => (workout ? listWorkoutPlanExercisesInOrder(workout) : []),
@@ -195,10 +198,7 @@ export function IntentWorkoutCard({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         intent: input.requestedIntent,
-        slotId:
-          input.requestedIntent === initialIntent
-            ? input.requestedSlotId
-            : undefined,
+        slotId: input.requestedSlotId ?? undefined,
         targetMuscles: input.requestedIntent === "body_part" ? targetMuscles : undefined,
         sessionCapacity:
           input.requestedSessionCapacity ?? sessionCapacity,
@@ -234,7 +234,7 @@ export function IntentWorkoutCard({
   const handleGenerate = async () => {
     await generateWorkout({
       requestedIntent: intent,
-      requestedSlotId: initialSlotId,
+      requestedSlotId: selectedSlotId,
       requestedSessionCapacity: sessionCapacity,
     });
   };
@@ -257,8 +257,8 @@ export function IntentWorkoutCard({
     setSavedId(null);
 
     const generated = await generateWorkout({
-      requestedIntent: initialIntent,
-      requestedSlotId: initialSlotId,
+      requestedIntent: intent,
+      requestedSlotId: selectedSlotId,
       requestedSessionCapacity: sessionCapacity,
     });
 
@@ -272,7 +272,7 @@ export function IntentWorkoutCard({
     const payload = buildSaveWorkoutPayload({
       workout: generated.workout,
       metadata: generated.metadata,
-      fallbackIntent: initialIntent,
+      fallbackIntent: intent,
     });
 
     const response = await fetch("/api/workouts/save", {
@@ -349,10 +349,25 @@ export function IntentWorkoutCard({
     if (workout || mode === "short_today") {
       await generateWorkout({
         requestedIntent: intent,
-        requestedSlotId: initialSlotId,
+        requestedSlotId: selectedSlotId,
         requestedSessionCapacity: mode,
       });
     }
+  };
+
+  const selectPlannedSession = (session: {
+    intent: SessionIntent;
+    slotId: string | null;
+    label: string | null;
+  }) => {
+    setIntent(session.intent);
+    setSelectedSlotId(session.slotId);
+    setSelectedSessionLabel(session.label);
+    setWorkout(null);
+    setGeneratedMetadata(null);
+    setSavedId(null);
+    setError(null);
+    setShowCustomize(false);
   };
 
   return (
@@ -367,6 +382,75 @@ export function IntentWorkoutCard({
             Recommended next session:{" "}
             <span className="font-semibold text-slate-900">{nextSessionLabel}</span>
           </p>
+        </div>
+      ) : null}
+      {eligibleAlternativeSessions.length > 0 ? (
+        <div className="mt-3">
+          <button
+            type="button"
+            className="inline-flex min-h-11 items-center text-sm font-semibold text-slate-700 underline decoration-slate-300 underline-offset-4"
+            aria-expanded={showSessionChoices}
+            onClick={() => setShowSessionChoices((current) => !current)}
+            disabled={loading || saving || starting}
+          >
+            Choose a different session
+          </button>
+          {showSessionChoices ? (
+            <fieldset className="mt-2 rounded-xl border border-slate-200 p-3">
+              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Eligible sessions
+              </legend>
+              <div className="grid gap-2">
+                <label className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                  <span className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="planned-session"
+                      checked={selectedSlotId === initialSlotId}
+                      onChange={() =>
+                        selectPlannedSession({
+                          intent: initialIntent,
+                          slotId: initialSlotId,
+                          label: nextSessionLabel,
+                        })
+                      }
+                    />
+                    <span>{nextSessionLabel}</span>
+                  </span>
+                  <span className="text-xs font-semibold text-emerald-700">Recommended</span>
+                </label>
+                {eligibleAlternativeSessions.map((session) => (
+                  <label
+                    key={session.slotId}
+                    className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  >
+                    <input
+                      type="radio"
+                      name="planned-session"
+                      checked={selectedSlotId === session.slotId}
+                      onChange={() =>
+                        selectPlannedSession({
+                          intent: session.intent,
+                          slotId: session.slotId,
+                          label: session.label,
+                        })
+                      }
+                    />
+                    <span>{session.label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                Your program order stays the same. Only today&apos;s planned session changes.
+              </p>
+            </fieldset>
+          ) : null}
+          {selectedSlotId !== initialSlotId && selectedSessionLabel ? (
+            <p className="mt-2 text-sm text-slate-700">
+              Selected for today:{" "}
+              <span className="font-semibold text-slate-900">{selectedSessionLabel}</span>
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -407,7 +491,11 @@ export function IntentWorkoutCard({
             <select
               className="min-h-11 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
               value={intent}
-              onChange={(event) => setIntent(event.target.value as SessionIntent)}
+              onChange={(event) => {
+                setIntent(event.target.value as SessionIntent);
+                setSelectedSlotId(null);
+                setSelectedSessionLabel(null);
+              }}
             >
               {INTENT_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>

@@ -297,6 +297,7 @@ const activeHomeProgram = {
       },
     ],
   },
+  eligibleAlternativeSessions: [],
   completedAdvancingSessionsThisWeek: 1,
   totalAdvancingSessionsThisWeek: 4,
   lastSessionSkipped: false,

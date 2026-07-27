@@ -20,7 +20,7 @@ const authorizationEvidenceFile = join(
   `${containerName}-authorization-evidence.json`,
 );
 const preMigrationCount = 10;
-const currentProductionAppliedCount = 15;
+const currentProductionAppliedCount = 16;
 
 type CommandResult = { status: number; stdout: string; stderr: string };
 
@@ -586,7 +586,8 @@ try {
     JSON.stringify({
       repositoryHead,
       productionDeploymentCommit:
-        "06c74a80c842924c9e79d93f0849ed385212bea5",
+        "d7b899584995b1289c73019265464ee749a993c2",
+      requiredApplicationCommit: repositoryHead,
       dataPreflight: {
         valid: true,
         verifiedAt: evidenceTimestamp,
@@ -622,7 +623,7 @@ try {
   );
 
   const migrations = migrationDirectories();
-  if (migrations.length !== 16) throw new Error(`Expected 16 migrations, found ${migrations.length}`);
+  if (migrations.length !== 17) throw new Error(`Expected 17 migrations, found ${migrations.length}`);
   const baselineMigration = migrations[0];
   const setIntentMigration = migrations[9];
 
@@ -780,7 +781,7 @@ try {
   const stateASchema = objectField(migrationStateA, "schemaIntegrity");
   if (
     numberField(objectField(migrationStateA, "chain"), "applied") !== 10 ||
-    numberField(objectField(migrationStateA, "chain"), "pending") !== 6 ||
+    numberField(objectField(migrationStateA, "chain"), "pending") !== 7 ||
     numberField(objectField(migrationStateA, "checksums"), "matched") !== 10 ||
     arrayField(stateALedger, "incomplete").length !== 0 ||
     arrayField(stateALedger, "orderViolations").length !== 0 ||
@@ -1010,7 +1011,7 @@ try {
     )::text;
   `, true);
   if (workoutEvidenceAfter !== workoutEvidenceBefore) {
-    throw new Error("Migrations 011-015 changed existing workout, exercise, set, or log evidence");
+    throw new Error("Migrations 011-016 changed existing workout, exercise, set, or log evidence");
   }
 
   const currentProductionState = cliWithExpectedStatus(
@@ -1042,7 +1043,7 @@ try {
   const afterStateE = databaseStateFingerprint();
   if (beforeStateE !== afterStateE) throw new Error("State E migration integrity inspection changed disposable database state");
   if (
-    numberField(objectField(migrationStateE, "chain"), "applied") !== 16 ||
+    numberField(objectField(migrationStateE, "chain"), "applied") !== 17 ||
     numberField(objectField(migrationStateE, "chain"), "pending") !== 0 ||
     objectField(migrationStateE, "chain").gateAApplicable !== false ||
     migrationStateE.migrationAuthorizationReady !== false
@@ -1180,11 +1181,11 @@ try {
       resolvedBaseline: "prisma_cli_zero_step_applied",
       resolvedSetIntent: "prisma_cli_zero_step_applied",
       repeatedResolve: "P3008_state_unchanged",
-      stateA: "legacy_10_applied_6_pending_rejected",
+      stateA: "legacy_10_applied_7_pending_rejected",
       stateB: "partial_object_blocked",
       stateC: "checksum_mismatch_blocked",
       stateD: "failed_rolled_back_and_unfinished_ledger_blocked",
-      currentProductionState: "15_applied_1_pending_authorization_ready_execution_not_authorized",
+      currentProductionState: "16_applied_1_pending_authorization_ready_execution_not_authorized",
       stateE: "fully_migrated_gate_a_not_applicable",
       baselineUniquenessVariants: "standalone_constraint_missing_wrong_order_non_unique_partial_predicate",
       readOnlyFingerprintsStable: true,

@@ -353,6 +353,23 @@ try {
     throw new Error("MULTI_PLAN_AMBIGUITY_DID_NOT_ROLL_BACK");
   }
 
+  psql(
+    successDatabase,
+    `
+      UPDATE "MacroCycle"
+      SET "createdAt" = '2026-01-01T00:00:00.000Z'
+      WHERE "id" = 'macro-one';
+
+      INSERT INTO "MacroCycle" (
+        "id", "userId", "startDate", "endDate", "durationWeeks",
+        "trainingAge", "primaryGoal", "createdAt", "updatedAt"
+      ) VALUES (
+        'macro-two', 'owner-one', '2027-01-01', '2027-12-31', 52,
+        'INTERMEDIATE', 'HYPERTROPHY', '2026-01-01T00:00:00.000Z',
+        CURRENT_TIMESTAMP
+      );
+    `,
+  );
   applyMigrations(successDatabase, [planManagementMigration]);
   const planManagementShape = psql(
     successDatabase,
@@ -360,6 +377,9 @@ try {
       SELECT concat_ws('|',
         (SELECT count(*) FROM "MacroCycle" WHERE "name" IS NULL),
         (SELECT count(*) FROM "MacroCycle" WHERE "name" = ''),
+        (SELECT count(*) FROM "MacroCycle" WHERE char_length("name") > 60),
+        (SELECT string_agg(concat("id", ':', "name"), ',' ORDER BY "id")
+          FROM "MacroCycle" WHERE "userId" = 'owner-one'),
         (SELECT count(*) FROM pg_indexes
           WHERE schemaname = 'public'
             AND indexname = 'MacroCycle_userId_archivedAt_updatedAt_idx'),
@@ -369,7 +389,10 @@ try {
     `,
     { tuplesOnly: true },
   ).trim();
-  if (planManagementShape !== "0|0|1|1") {
+  if (
+    planManagementShape !==
+    "0|0|0|macro-one:Hypertrophy Plan 1,macro-two:Hypertrophy Plan 2|1|1"
+  ) {
     throw new Error(
       `PLAN_MANAGEMENT_MIGRATION_SHAPE_INVALID:${planManagementShape}`,
     );

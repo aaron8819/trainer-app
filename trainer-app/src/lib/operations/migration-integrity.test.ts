@@ -153,6 +153,7 @@ function fullEvidence(
     repositoryHead: REPOSITORY_HEAD,
     productionDeploymentCommit:
       MIGRATION_AUTHORIZATION_POLICY.compatibleProductionDeploymentCommits[0],
+    requiredApplicationCommit: REPOSITORY_HEAD,
     dataPreflight: {
       valid: true,
       verifiedAt: VERIFIED_AT,
@@ -580,6 +581,20 @@ describe("migration integrity", () => {
     expect(result.technicalMigrationReady).toBe(true);
     expect(result.migrationAuthorizationReady).toBe(true);
     expect(result.executionAuthorized).toBe(false);
+  });
+
+  it("requires the operator to identify the exact post-migration application commit", () => {
+    const result = report({
+      authorizationEvidence: fullEvidence({
+        requiredApplicationCommit: undefined,
+      }),
+    });
+    expect(result.technicalMigrationReady).toBe(true);
+    expect(result.evidence.requiredApplicationCommitIdentified).toBe(false);
+    expect(result.blockingReasons).toContain(
+      "required_application_commit_not_identified",
+    );
+    expect(result.migrationAuthorizationReady).toBe(false);
   });
 
   it("blocks an incompatible applied definition and an unverifiable catalog category", () => {

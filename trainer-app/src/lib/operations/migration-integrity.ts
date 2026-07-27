@@ -27,9 +27,9 @@ export const MIGRATION_AUTHORIZATION_POLICY = {
   expectedPendingMigrations: [
     "20260727010000_add_plan_management_fields",
   ],
-  requiredApplicationCommit: "aafb19bd1334e9edd51d202f9a185a2fe21bf311",
+  requiredApplicationCommit: "",
   compatibleProductionDeploymentCommits: [
-    "06c74a80c842924c9e79d93f0849ed385212bea5",
+    "d7b899584995b1289c73019265464ee749a993c2",
   ],
   operationalEvidenceMaxAgeMinutes: 30,
 } as const;

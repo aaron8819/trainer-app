@@ -590,9 +590,31 @@ export function resolveRequestedAdvancingSlotSnapshot(input: {
   weeklySchedule: string[];
   performedAdvancingSlotsThisWeek?: AdvancingPerformedSlot[];
 }): SessionSlotSnapshot | undefined {
+  const eligibleSlots = listEligibleAdvancingSlotSnapshots(input);
   const requestedIntent = input.requestedIntent.trim().toLowerCase();
   if (!requestedIntent) {
     return undefined;
+  }
+
+  const explicitSlotId = input.explicitSlotId?.trim();
+
+  if (explicitSlotId) {
+    return eligibleSlots.find(
+      (slot) => slot.slotId === explicitSlotId && slot.intent === requestedIntent
+    );
+  }
+
+  return eligibleSlots.find((slot) => slot.intent === requestedIntent);
+}
+
+export function listEligibleAdvancingSlotSnapshots(input: {
+  nextWorkoutSource: NextWorkoutSource;
+  slotSequenceJson?: unknown;
+  weeklySchedule: string[];
+  performedAdvancingSlotsThisWeek?: AdvancingPerformedSlot[];
+}): SessionSlotSnapshot[] {
+  if (input.nextWorkoutSource !== "rotation") {
+    return [];
   }
 
   const slotSequence = readRuntimeSlotSequence({
@@ -600,43 +622,21 @@ export function resolveRequestedAdvancingSlotSnapshot(input: {
     weeklySchedule: input.weeklySchedule,
   });
   const sequenceLength = slotSequence.slots.length > 0 ? slotSequence.slots.length : undefined;
-  const explicitSlotId = input.explicitSlotId?.trim();
-
-  if (explicitSlotId) {
-    const explicitMatch = slotSequence.slots.find(
-      (slot) => slot.slotId === explicitSlotId && slot.intent === requestedIntent
-    );
-    return explicitMatch
-      ? toSessionSlotSnapshot({
-          slotId: explicitMatch.slotId,
-          intent: explicitMatch.intent,
-          sequenceIndex: explicitMatch.sequenceIndex,
-          sequenceLength,
-          source: slotSequence.source,
-        })
-      : undefined;
-  }
-
-  if (input.nextWorkoutSource !== "rotation") {
-    return undefined;
-  }
-
   const remainingSlots = buildRemainingRuntimeSlotsFromPerformed({
     slotSequenceJson: input.slotSequenceJson,
     weeklySchedule: input.weeklySchedule,
     performedAdvancingSlotsThisWeek: input.performedAdvancingSlotsThisWeek,
   });
-  const matchedSlot = remainingSlots.find((slot) => slot.intent === requestedIntent);
 
-  return matchedSlot
-    ? toSessionSlotSnapshot({
-        slotId: matchedSlot.slotId,
-        intent: matchedSlot.intent,
-        sequenceIndex: matchedSlot.sequenceIndex,
-        sequenceLength,
-        source: slotSequence.source,
-      })
-    : undefined;
+  return remainingSlots.map((slot) =>
+    toSessionSlotSnapshot({
+      slotId: slot.slotId,
+      intent: slot.intent,
+      sequenceIndex: slot.sequenceIndex,
+      sequenceLength,
+      source: slotSequence.source,
+    })
+  );
 }
 
 export function resolveNextWorkoutContext(input: {

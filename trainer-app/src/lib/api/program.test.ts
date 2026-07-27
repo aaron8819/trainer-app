@@ -1136,6 +1136,7 @@ describe("loadHomeProgramSupport", () => {
     };
     setupDashboardMocks(
       {
+        accumulationSessionsCompleted: 1,
         sessionsPerWeek: 4,
         slotSequenceJson,
       },
@@ -1185,6 +1186,20 @@ describe("loadHomeProgramSupport", () => {
       "next",
       "upcoming",
       "upcoming",
+    ]);
+    expect(result.eligibleAlternativeSessions).toEqual([
+      {
+        slotId: "upper_b",
+        intent: "upper",
+        label: "Upper 2",
+        sequenceIndex: 2,
+      },
+      {
+        slotId: "lower_b",
+        intent: "lower",
+        label: "Lower 2",
+        sequenceIndex: 3,
+      },
     ]);
   });
 
@@ -1269,6 +1284,7 @@ describe("loadHomeProgramSupport", () => {
       href: "/log/w-lower-a",
       workoutId: "w-lower-a",
     });
+    expect(result.eligibleAlternativeSessions).toEqual([]);
   });
 
   it("detects when the most recent workout for the rotation intent was skipped", async () => {

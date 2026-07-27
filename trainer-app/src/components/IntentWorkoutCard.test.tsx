@@ -137,6 +137,14 @@ function renderCard() {
     <IntentWorkoutCard
       initialIntent="upper"
       initialSlotId="upper_a"
+      eligibleAlternativeSessions={[
+        {
+          slotId: "lower_a",
+          intent: "lower",
+          label: "Lower 1",
+          sequenceIndex: 1,
+        },
+      ]}
       primaryAction={{ label: "Start workout", state: "planned", mode: "generate" }}
       nextSessionLabel="Upper 1"
       nextSessionDescription="First upper session this week"
@@ -226,6 +234,42 @@ describe("IntentWorkoutCard", () => {
           exerciseId: "row",
         },
       ],
+    });
+  });
+
+  it("chooses and starts an eligible alternative by exact planned slot", async () => {
+    const user = userEvent.setup();
+    const alternativeWorkout = makeGeneratedWorkout();
+    alternativeWorkout.sessionIntent = "lower";
+    alternativeWorkout.selectionMetadata.sessionDecisionReceipt.sessionSlot = {
+      slotId: "lower_a",
+      intent: "lower",
+      sequenceIndex: 1,
+      sequenceLength: 4,
+      source: "mesocycle_slot_sequence",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(alternativeWorkout))
+      .mockResolvedValueOnce(jsonResponse({ workoutId: "generated-lower-1" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderCard();
+
+    await user.click(screen.getByRole("button", { name: "Choose a different session" }));
+    expect(screen.getByText("Recommended")).toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "Lower 1" }));
+    expect(screen.getByText("Selected for today:")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Start workout" }));
+
+    await waitFor(() => {
+      expect(mocks.push).toHaveBeenCalledWith("/log/generated-lower-1");
+    });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      intent: "lower",
+      slotId: "lower_a",
+      sessionCapacity: "as_planned",
     });
   });
 

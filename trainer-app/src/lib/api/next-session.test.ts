@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  listEligibleAdvancingSlotSnapshots,
   resolveMaterializedSessionIdentity,
   resolveNextWorkoutContext,
   resolveRequestedAdvancingSlotSnapshot,
@@ -1036,6 +1037,78 @@ describe("resolveNextWorkoutContext", () => {
     });
   });
 
+  it("discovers only unresolved planned slots in canonical order", () => {
+    const slots = listEligibleAdvancingSlotSnapshots({
+      nextWorkoutSource: "rotation",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+          { slotId: "upper_b", intent: "UPPER" },
+          { slotId: "lower_b", intent: "LOWER" },
+        ],
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      performedAdvancingSlotsThisWeek: [
+        { slotId: "lower_a", intent: "lower" },
+      ],
+    });
+
+    expect(slots.map((slot) => slot.slotId)).toEqual([
+      "upper_a",
+      "upper_b",
+      "lower_b",
+    ]);
+  });
+
+  it("does not expose or resolve alternatives while another workout is incomplete", () => {
+    const input = {
+      nextWorkoutSource: "existing_incomplete" as const,
+      requestedIntent: "lower",
+      explicitSlotId: "lower_a",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+        ],
+      },
+      weeklySchedule: ["UPPER", "LOWER"],
+      performedAdvancingSlotsThisWeek: [],
+    };
+
+    expect(listEligibleAdvancingSlotSnapshots(input)).toEqual([]);
+    expect(resolveRequestedAdvancingSlotSnapshot(input)).toBeUndefined();
+  });
+
+  it("rejects an explicit slot that was already completed", () => {
+    const slot = resolveRequestedAdvancingSlotSnapshot({
+      nextWorkoutSource: "rotation",
+      requestedIntent: "lower",
+      explicitSlotId: "lower_a",
+      slotSequenceJson: {
+        version: 1,
+        source: "handoff_draft",
+        sequenceMode: "ordered_flexible",
+        slots: [
+          { slotId: "upper_a", intent: "UPPER" },
+          { slotId: "lower_a", intent: "LOWER" },
+        ],
+      },
+      weeklySchedule: ["UPPER", "LOWER"],
+      performedAdvancingSlotsThisWeek: [
+        { slotId: "lower_a", intent: "lower" },
+      ],
+    });
+
+    expect(slot).toBeUndefined();
+  });
+
   it("lets downstream sequencing treat a persisted off-order slot as consumed", () => {
     const context = resolveNextWorkoutContext({
       mesocycle: {
@@ -1063,5 +1136,49 @@ describe("resolveNextWorkoutContext", () => {
     expect(context.intent).toBe("upper");
     expect(context.slotId).toBe("upper_a");
     expect(context.slotSequenceIndex).toBe(0);
+  });
+
+  it("keeps the original schedule and recommends the earliest open slot after an alternative completes", () => {
+    const slotSequenceJson = {
+      version: 1,
+      source: "handoff_draft",
+      sequenceMode: "ordered_flexible",
+      slots: [
+        { slotId: "upper_a", intent: "UPPER" },
+        { slotId: "lower_a", intent: "LOWER" },
+        { slotId: "upper_b", intent: "UPPER" },
+        { slotId: "lower_b", intent: "LOWER" },
+      ],
+    };
+    const originalOrder = slotSequenceJson.slots.map((slot) => slot.slotId);
+
+    const selected = resolveRequestedAdvancingSlotSnapshot({
+      nextWorkoutSource: "rotation",
+      requestedIntent: "lower",
+      explicitSlotId: "lower_a",
+      slotSequenceJson,
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      performedAdvancingSlotsThisWeek: [],
+    });
+    const afterCompletion = resolveNextWorkoutContext({
+      mesocycle: {
+        ...baseMeso,
+        sessionsPerWeek: 4,
+        accumulationSessionsCompleted: 1,
+        slotSequenceJson,
+      },
+      weeklySchedule: ["UPPER", "LOWER", "UPPER", "LOWER"],
+      incompleteWorkouts: [],
+      performedAdvancingIntentsThisWeek: ["lower"],
+      performedAdvancingSlotIdsThisWeek: ["lower_a"],
+    });
+
+    expect(selected?.slotId).toBe("lower_a");
+    expect(slotSequenceJson.slots.map((slot) => slot.slotId)).toEqual(originalOrder);
+    expect(afterCompletion).toMatchObject({
+      intent: "upper",
+      slotId: "upper_a",
+      slotSequenceIndex: 0,
+    });
   });
 });

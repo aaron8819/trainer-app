@@ -208,6 +208,15 @@ export async function POST(request: Request) {
           explicitSlotId: parsed.data.slotId,
           nextWorkoutContext,
         });
+  if (parsed.data.slotId && !advancingSlot) {
+    return NextResponse.json(
+      {
+        error:
+          "Selected session is no longer eligible. Refresh Home and choose an available session.",
+      },
+      { status: 409 }
+    );
+  }
 
   const generationInput = shouldApplyOptionalGapFill && canonicalGapFill
     ? {

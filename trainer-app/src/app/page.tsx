@@ -268,6 +268,7 @@ export default async function Home() {
               <DashboardGenerateSection
                 initialIntent={primaryActionIntent ?? undefined}
                 initialSlotId={primaryAction.initialSlotId}
+                eligibleAlternativeSessions={homeProgram.eligibleAlternativeSessions}
                 primaryAction={{
                   label: primaryAction.label,
                   state: primaryAction.state,

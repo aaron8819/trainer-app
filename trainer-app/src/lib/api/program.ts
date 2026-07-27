@@ -29,7 +29,12 @@ import {
   getRirTarget,
   getWeeklyVolumeTarget,
 } from "./mesocycle-lifecycle-math";
-import { buildAdvancingPerformedSlots, loadNextWorkoutContext } from "./next-session";
+import {
+  buildAdvancingPerformedSlots,
+  listEligibleAdvancingSlotSnapshots,
+  loadNextWorkoutContext,
+  type NextWorkoutSource,
+} from "./next-session";
 import {
   findRelevantWeekCloseForUser,
   type WeekCloseDeficitState,
@@ -176,6 +181,13 @@ export type HomeActiveWeekPlan = {
   sessions: HomeActiveWeekSessionRow[];
 };
 
+export type HomeEligibleSession = {
+  slotId: string;
+  intent: Lowercase<WorkoutSessionIntent>;
+  label: string;
+  sequenceIndex: number;
+};
+
 export type ProgramDashboardData = {
   activeMeso: ProgramMesoSummary | null;
   currentWeek: number;
@@ -190,6 +202,7 @@ export type ProgramDashboardData = {
 
 export type HomeProgramSupportData = {
   nextSession: NextSessionData;
+  eligibleAlternativeSessions: HomeEligibleSession[];
   activeWeek: number | null;
   activeWeekPlan: HomeActiveWeekPlan | null;
   completedAdvancingSessionsThisWeek: number;
@@ -835,15 +848,18 @@ async function loadHomeWeekProgress(input: {
   activeWeek: number | null;
   weeklySchedule: string[];
   nextSession: NextSessionData;
+  nextWorkoutSource: NextWorkoutSource;
   latestIncomplete: { id: string; status: string } | null;
 }): Promise<{
   activeWeekPlan: HomeActiveWeekPlan | null;
+  eligibleAlternativeSessions: HomeEligibleSession[];
   completedAdvancingSessionsThisWeek: number;
   totalAdvancingSessionsThisWeek: number;
 }> {
   if (!input.activeMesocycle || input.activeWeek == null) {
     return {
       activeWeekPlan: null,
+      eligibleAlternativeSessions: [],
       completedAdvancingSessionsThisWeek: 0,
       totalAdvancingSessionsThisWeek: 0,
     };
@@ -892,9 +908,27 @@ async function loadHomeWeekProgress(input: {
     nextSession: input.nextSession,
     latestIncomplete: input.latestIncomplete,
   });
+  const performedAdvancingSlotsThisWeek = buildAdvancingPerformedSlots(performedWorkouts);
+  const eligibleAlternativeSessions = listEligibleAdvancingSlotSnapshots({
+    nextWorkoutSource: input.nextWorkoutSource,
+    slotSequenceJson: input.activeMesocycle.slotSequenceJson,
+    weeklySchedule: input.weeklySchedule,
+    performedAdvancingSlotsThisWeek,
+  })
+    .filter((slot) => slot.slotId !== input.nextSession.slotId)
+    .map((slot) => ({
+      slotId: slot.slotId,
+      intent: slot.intent as HomeEligibleSession["intent"],
+      label: formatSessionIdentityLabel({
+        intent: slot.intent,
+        slotId: slot.slotId,
+      }),
+      sequenceIndex: slot.sequenceIndex,
+    }));
 
   return {
     activeWeekPlan,
+    eligibleAlternativeSessions,
     completedAdvancingSessionsThisWeek: countAdvancingSessions(performedWorkouts),
     totalAdvancingSessionsThisWeek: Math.max(
       1,
@@ -1118,6 +1152,7 @@ export async function loadHomeProgramSupport(userId: string): Promise<HomeProgra
       intent.toLowerCase()
     ),
     nextSession,
+    nextWorkoutSource: nextWorkoutContext.source,
     latestIncomplete,
   });
 

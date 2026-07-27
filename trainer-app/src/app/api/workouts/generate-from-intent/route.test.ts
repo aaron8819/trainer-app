@@ -534,7 +534,7 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       new Request("http://localhost/api/workouts/generate-from-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intent: "lower" }),
+        body: JSON.stringify({ intent: "lower", slotId: "lower_a" }),
       })
     );
     const body = await response.json();
@@ -543,7 +543,7 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
     expect(mocks.loadRequestedAdvancingSlotSnapshot).toHaveBeenCalledWith({
       userId: "user-1",
       requestedIntent: "lower",
-      explicitSlotId: undefined,
+      explicitSlotId: "lower_a",
       nextWorkoutContext: expect.objectContaining({
         source: "rotation",
         intent: "upper",
@@ -569,6 +569,26 @@ describe("POST /api/workouts/generate-from-intent deload gate", () => {
       sequenceLength: 4,
       source: "mesocycle_slot_sequence",
     });
+  });
+
+  it("fails closed when an explicit planned slot is completed, invalid, or otherwise ineligible", async () => {
+    mocks.loadRequestedAdvancingSlotSnapshot.mockResolvedValue(undefined);
+
+    const response = await POST(
+      new Request("http://localhost/api/workouts/generate-from-intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intent: "lower", slotId: "lower_a" }),
+      })
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "Selected session is no longer eligible. Refresh Home and choose an available session.",
+    });
+    expect(mocks.generateSessionFromIntent).not.toHaveBeenCalled();
+    expect(mocks.generateDeloadSessionFromIntent).not.toHaveBeenCalled();
   });
 
   it("rejects supplemental deficit generation for non-body_part intents", async () => {

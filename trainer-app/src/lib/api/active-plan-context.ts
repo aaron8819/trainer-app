@@ -329,6 +329,20 @@ export class ActivePlanTargetNotReadyError extends Error {
   }
 }
 
+export class ActivePlanTargetArchivedError extends Error {
+  constructor() {
+    super("ACTIVE_PLAN_TARGET_ARCHIVED");
+    this.name = "ActivePlanTargetArchivedError";
+  }
+}
+
+export class ActivePlanTargetNotFoundError extends Error {
+  constructor() {
+    super("ACTIVE_PLAN_TARGET_NOT_FOUND");
+    this.name = "ActivePlanTargetNotFoundError";
+  }
+}
+
 export class ActiveWorkoutInProgressError extends Error {
   constructor(readonly workoutId: string) {
     super("ACTIVE_WORKOUT_IN_PROGRESS");
@@ -436,10 +450,12 @@ export async function selectActivePlanInTransaction(
   if (
     !targetMacroCycle ||
     targetMacroCycle.userId !== input.userId ||
-    targetMacroCycle.archivedAt ||
     targetMacroCycle.primaryGoal !== "HYPERTROPHY"
   ) {
-    throw new Error("ACTIVE_PLAN_TARGET_NOT_FOUND");
+    throw new ActivePlanTargetNotFoundError();
+  }
+  if (targetMacroCycle.archivedAt) {
+    throw new ActivePlanTargetArchivedError();
   }
 
   const targetMesocycles = await tx.mesocycle.findMany({

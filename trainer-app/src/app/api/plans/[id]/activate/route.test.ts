@@ -4,7 +4,7 @@ const originalWritePause = process.env.TRAINER_WRITE_PAUSE;
 
 const mocks = vi.hoisted(() => ({
   resolveOwner: vi.fn(),
-  loadPlanManagementData: vi.fn(),
+  loadPlanActivationTarget: vi.fn(),
   selectActivePlan: vi.fn(),
 }));
 
@@ -13,8 +13,8 @@ vi.mock("@/lib/api/workout-context", () => ({
 }));
 vi.mock("@/lib/api/plan-management", () => ({
   PlanManagementError: class PlanManagementError extends Error {},
-  loadPlanManagementData: (...args: unknown[]) =>
-    mocks.loadPlanManagementData(...args),
+  loadPlanActivationTarget: (...args: unknown[]) =>
+    mocks.loadPlanActivationTarget(...args),
 }));
 vi.mock("@/lib/api/active-plan-context", () => {
   class ActivePlanSelectionConflictError extends Error {
@@ -27,6 +27,16 @@ vi.mock("@/lib/api/active-plan-context", () => {
       super("ACTIVE_PLAN_TARGET_NOT_READY");
     }
   }
+  class ActivePlanTargetArchivedError extends Error {
+    constructor() {
+      super("ACTIVE_PLAN_TARGET_ARCHIVED");
+    }
+  }
+  class ActivePlanTargetNotFoundError extends Error {
+    constructor() {
+      super("ACTIVE_PLAN_TARGET_NOT_FOUND");
+    }
+  }
   class ActiveWorkoutInProgressError extends Error {
     constructor(readonly workoutId: string) {
       super("ACTIVE_WORKOUT_IN_PROGRESS");
@@ -34,6 +44,8 @@ vi.mock("@/lib/api/active-plan-context", () => {
   }
   return {
     ActivePlanSelectionConflictError,
+    ActivePlanTargetArchivedError,
+    ActivePlanTargetNotFoundError,
     ActivePlanTargetNotReadyError,
     ActiveWorkoutInProgressError,
     selectActivePlan: (...args: unknown[]) => mocks.selectActivePlan(...args),
@@ -76,20 +88,11 @@ describe("POST /api/plans/[id]/activate", () => {
 
     expect(response.status).toBe(503);
     expect(mocks.resolveOwner).not.toHaveBeenCalled();
-    expect(mocks.loadPlanManagementData).not.toHaveBeenCalled();
+    expect(mocks.loadPlanActivationTarget).not.toHaveBeenCalled();
   });
 
   it("rejects activation of a plan that is not READY", async () => {
-    mocks.loadPlanManagementData.mockResolvedValue({
-      activeMacroCycleId: "plan-a",
-      plans: [
-        {
-          id: "plan-b",
-          status: "PREPARING",
-          activeMesocycleId: null,
-        },
-      ],
-    });
+    mocks.loadPlanActivationTarget.mockResolvedValue({ status: "NOT_READY" });
 
     const response = await POST(
       request({ expectedActiveMacroCycleId: "00000000-0000-4000-8000-000000000001" }),
@@ -103,16 +106,40 @@ describe("POST /api/plans/[id]/activate", () => {
     expect(mocks.selectActivePlan).not.toHaveBeenCalled();
   });
 
+  it("returns a structured conflict for an owned archived target", async () => {
+    mocks.loadPlanActivationTarget.mockResolvedValue({ status: "ARCHIVED" });
+
+    const response = await POST(
+      request({ expectedActiveMacroCycleId: null }),
+      { params: Promise.resolve({ id: "plan-b" }) },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "ACTIVE_PLAN_TARGET_ARCHIVED",
+    });
+    expect(mocks.selectActivePlan).not.toHaveBeenCalled();
+  });
+
+  it("keeps foreign and missing target identities indistinguishable", async () => {
+    mocks.loadPlanActivationTarget.mockResolvedValue({ status: "NOT_FOUND" });
+
+    const response = await POST(
+      request({ expectedActiveMacroCycleId: null }),
+      { params: Promise.resolve({ id: "foreign-plan" }) },
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "PLAN_NOT_FOUND",
+    });
+    expect(mocks.selectActivePlan).not.toHaveBeenCalled();
+  });
+
   it("returns a structured conflict when a workout is in progress", async () => {
-    mocks.loadPlanManagementData.mockResolvedValue({
-      activeMacroCycleId: "00000000-0000-4000-8000-000000000001",
-      plans: [
-        {
-          id: "plan-b",
-          status: "READY",
-          activeMesocycleId: "meso-b",
-        },
-      ],
+    mocks.loadPlanActivationTarget.mockResolvedValue({
+      status: "READY",
+      activeMesocycleId: "meso-b",
     });
     mocks.selectActivePlan.mockRejectedValue(
       new ActiveWorkoutInProgressError("workout-1"),

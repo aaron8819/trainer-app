@@ -304,6 +304,41 @@ export async function loadPlanReview(
   };
 }
 
+export async function loadPlanActivationTarget(
+  userId: string,
+  planId: string,
+): Promise<
+  | { status: "NOT_FOUND" | "ARCHIVED" | "NOT_READY" }
+  | { status: "READY"; activeMesocycleId: string }
+> {
+  const plan = await prisma.macroCycle.findFirst({
+    where: {
+      id: planId,
+      userId,
+      primaryGoal: "HYPERTROPHY",
+    },
+    select: {
+      archivedAt: true,
+      mesocycles: {
+        orderBy: [{ mesoNumber: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          mesoNumber: true,
+          state: true,
+          isActive: true,
+        },
+      },
+    },
+  });
+  if (!plan) return { status: "NOT_FOUND" };
+  if (plan.archivedAt) return { status: "ARCHIVED" };
+
+  const lifecycle = derivePlanLifecycle(plan.mesocycles);
+  return lifecycle.status === "READY" && lifecycle.activeMesocycleId
+    ? { status: "READY", activeMesocycleId: lifecycle.activeMesocycleId }
+    : { status: "NOT_READY" };
+}
+
 function enumValue<T extends string>(value: string): T {
   return value.toUpperCase() as T;
 }

@@ -24,7 +24,7 @@ Sources of truth:
 
 ## Commands
 - `npm run test:db:multi-plan -- --confirm-disposable`: provisions an isolated PostgreSQL 16 container; applies the full prior migration chain; verifies the active-plan foundation plus plan-management metadata migration, ambiguity rollback, deterministic name backfill, target schema objects, and the old-app handoff ordering risk; then runs partial-unique, READY-only selection, in-progress-workout blocking, finalization-without-selection, optimistic rename/archive, history preservation, and concurrent compare-and-swap coverage. It is database-mutating and must only run with the exact disposable-target confirmation.
-- Focused credential-free plan-management coverage: `npm run test -- src/lib/api/plan-management.test.ts src/lib/validation.plan-management.test.ts src/lib/api/active-plan-context.test.ts src/app/api/plans/[id]/activate/route.test.ts src/components/plans/PlanManagementClient.test.tsx src/components/navigation/AppNavigation.test.tsx`.
+- Focused credential-free plan-management coverage: `npm run test -- src/lib/api/plan-management.test.ts src/lib/validation.plan-management.test.ts src/lib/api/active-plan-context.test.ts src/app/api/plans/[id]/activate/route.test.ts src/components/plans/PlanManagementClient.test.tsx src/components/navigation/AppNavigation.test.tsx src/lib/api/workout-mutation.test.ts src/lib/workout-workflow.test.ts src/lib/ui/workout-list-items.test.ts`.
 - `npm run test:preflight`: sanitized, dependency-free launcher plus typed capability report.
   It performs no database connection or Docker daemon probe. It reports the dependency
   arrangement, resolved-install validation, generated Prisma Client compatibility, every

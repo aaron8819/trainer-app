@@ -9,6 +9,7 @@ import type {
 const mocks = vi.hoisted(() => {
   const workoutFindFirst = vi.fn();
   const workoutFindMany = vi.fn();
+  const userFindUnique = vi.fn();
   const loadPendingMesocycleHandoff = vi.fn();
   const loadProgramDashboardData = vi.fn();
   const loadHomeProgramSupport = vi.fn();
@@ -17,11 +18,15 @@ const mocks = vi.hoisted(() => {
   return {
     workoutFindFirst,
     workoutFindMany,
+    userFindUnique,
     loadPendingMesocycleHandoff,
     loadProgramDashboardData,
     loadHomeProgramSupport,
     loadCurrentHomePreSessionReadinessContractCandidate,
     prisma: {
+      user: {
+        findUnique: userFindUnique,
+      },
       workout: {
         findFirst: workoutFindFirst,
         findMany: workoutFindMany,
@@ -116,6 +121,7 @@ function makeWorkoutRow(overrides: Record<string, unknown> = {}) {
       },
     },
     mesocycle: {
+      macroCycleId: "macro-1",
       sessionsPerWeek: 4,
       state: "ACTIVE_ACCUMULATION",
       isActive: true,
@@ -279,6 +285,9 @@ describe("loadHomePageData", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
+    mocks.userFindUnique.mockResolvedValue({
+      activeMacroCycleId: "macro-1",
+    });
     mocks.loadPendingMesocycleHandoff.mockResolvedValue(null);
     mocks.loadCurrentHomePreSessionReadinessContractCandidate.mockResolvedValue(null);
     mocks.workoutFindFirst.mockResolvedValue(makeWorkoutRow());

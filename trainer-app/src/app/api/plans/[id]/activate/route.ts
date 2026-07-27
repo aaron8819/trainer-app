@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import {
+  ActivePlanTargetArchivedError,
   ActivePlanTargetNotReadyError,
   selectActivePlan,
 } from "@/lib/api/active-plan-context";
-import { loadPlanManagementData } from "@/lib/api/plan-management";
+import { loadPlanActivationTarget } from "@/lib/api/plan-management";
 import { planManagementErrorResponse } from "@/lib/api/plan-management-http";
 import { resolveOwner } from "@/lib/api/workout-context";
 import { productionWritePauseResponse } from "@/lib/operations/production-write-gate-http";
@@ -33,20 +34,22 @@ export async function POST(
 
   const [{ id }, owner] = await Promise.all([context.params, resolveOwner()]);
   try {
-    const data = await loadPlanManagementData(owner.id);
-    const target = data.plans.find((plan) => plan.id === id);
-    if (!target) {
+    const target = await loadPlanActivationTarget(owner.id, id);
+    if (target.status === "NOT_FOUND") {
       return NextResponse.json(
         { error: "Plan not found.", code: "PLAN_NOT_FOUND" },
         { status: 404 },
       );
     }
-    if (target.status !== "READY" || !target.activeMesocycleId) {
+    if (target.status === "ARCHIVED") {
+      throw new ActivePlanTargetArchivedError();
+    }
+    if (target.status !== "READY") {
       throw new ActivePlanTargetNotReadyError();
     }
     const selection = await selectActivePlan({
       userId: owner.id,
-      targetMacroCycleId: target.id,
+      targetMacroCycleId: id,
       targetMesocycleId: target.activeMesocycleId,
       expectedActiveMacroCycleId: parsed.data.expectedActiveMacroCycleId,
     });

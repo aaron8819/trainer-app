@@ -580,7 +580,11 @@ export async function loadHomePageData(
     readinessInput,
   });
 
-  const [pendingHandoff, latestCompletedRow, recentActivityRows] = await Promise.all([
+  const [owner, pendingHandoff, latestCompletedRow, recentActivityRows] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { activeMacroCycleId: true },
+    }),
     loadPendingMesocycleHandoff(userId),
     prisma.workout.findFirst({
       where: { userId, status: "COMPLETED" },
@@ -596,10 +600,16 @@ export async function loadHomePageData(
   ]);
 
   const lastCompleted = latestCompletedRow
-    ? buildWorkoutListSurfaceSummary(latestCompletedRow)
+    ? buildWorkoutListSurfaceSummary(latestCompletedRow, {
+        activeMacroCycleId: owner?.activeMacroCycleId ?? null,
+      })
     : null;
   const recentActivity = recentActivityRows
-    .map(buildWorkoutListSurfaceSummary)
+    .map((workout) =>
+      buildWorkoutListSurfaceSummary(workout, {
+        activeMacroCycleId: owner?.activeMacroCycleId ?? null,
+      }),
+    )
     .filter((workout) => !workout.isCloseoutDismissed)
     .slice(0, 3);
 

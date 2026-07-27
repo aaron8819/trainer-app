@@ -1,5 +1,9 @@
 import { Prisma, WorkoutStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import {
+  ActivePlanSelectionConflictError,
+  claimSelectedPlanForTransitionInTransaction,
+} from "./active-plan-context";
 
 export const RUNTIME_EDITABLE_WORKOUT_STATUSES = [
   WorkoutStatus.PLANNED,
@@ -109,6 +113,35 @@ export async function executeWorkoutMutationInTransaction<T>(
       "Workout not found",
       404,
     );
+  }
+
+  if (claimedWorkout.mesocycleId) {
+    const mesocycle = await tx.mesocycle.findUnique({
+      where: { id: claimedWorkout.mesocycleId },
+      select: { macroCycleId: true },
+    });
+    if (!mesocycle) {
+      throw new WorkoutMutationError(
+        "WORKOUT_NOT_EDITABLE",
+        "Workout plan context is unavailable.",
+        409,
+      );
+    }
+    try {
+      await claimSelectedPlanForTransitionInTransaction(tx, {
+        userId: input.userId,
+        macroCycleId: mesocycle.macroCycleId,
+      });
+    } catch (error) {
+      if (error instanceof ActivePlanSelectionConflictError) {
+        throw new WorkoutMutationError(
+          "WORKOUT_NOT_EDITABLE",
+          "This workout belongs to an inactive training plan and cannot be modified.",
+          409,
+        );
+      }
+      throw error;
+    }
   }
 
   const result = await mutate(tx, claimedWorkout);

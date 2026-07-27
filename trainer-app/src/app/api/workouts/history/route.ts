@@ -86,7 +86,11 @@ export async function GET(request: Request) {
   const hasMore = workouts.length > take;
   const page = hasMore ? workouts.slice(0, take) : workouts;
 
-  const items = page.map(buildWorkoutListSurfaceSummary);
+  const items = page.map((workout) =>
+    buildWorkoutListSurfaceSummary(workout, {
+      activeMacroCycleId: owner.activeMacroCycleId,
+    }),
+  );
 
   const nextCursor = hasMore ? page[page.length - 1].scheduledDate.toISOString() : null;
 

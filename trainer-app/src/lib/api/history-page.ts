@@ -21,7 +21,11 @@ export async function loadHistoryPageData(userId: string): Promise<HistoryPageDa
     return fixture.history;
   }
 
-  const [workoutsRaw, totalCount, mesocyclesRaw] = await Promise.all([
+  const [owner, workoutsRaw, totalCount, mesocyclesRaw] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { activeMacroCycleId: true },
+    }),
     prisma.workout.findMany({
       where: { userId },
       orderBy: { scheduledDate: "desc" },
@@ -31,7 +35,7 @@ export async function loadHistoryPageData(userId: string): Promise<HistoryPageDa
     prisma.workout.count({ where: { userId } }),
     prisma.mesocycle.findMany({
       where: { macroCycle: { userId } },
-      include: { macroCycle: { select: { startDate: true } } },
+      include: { macroCycle: { select: { name: true, startDate: true } } },
       orderBy: [{ isActive: "desc" }, { macroCycle: { startDate: "desc" } }],
     }),
   ]);
@@ -39,15 +43,22 @@ export async function loadHistoryPageData(userId: string): Promise<HistoryPageDa
   const hasMore = workoutsRaw.length > TAKE;
   const page = hasMore ? workoutsRaw.slice(0, TAKE) : workoutsRaw;
 
-  const initialWorkouts = page.map(buildWorkoutListSurfaceSummary);
+  const initialWorkouts = page.map((workout) =>
+    buildWorkoutListSurfaceSummary(workout, {
+      activeMacroCycleId: owner?.activeMacroCycleId ?? null,
+    }),
+  );
 
   const mesocycles = mesocyclesRaw.map((meso) => {
     const macroStart = meso.macroCycle.startDate.getTime();
     const startDate = new Date(macroStart + meso.startWeek * 7 * 24 * 60 * 60 * 1000);
     return {
       id: meso.id,
+      planName: meso.macroCycle.name,
       startDate: startDate.toISOString(),
-      isActive: meso.isActive,
+      isActive:
+        meso.isActive &&
+        meso.macroCycleId === (owner?.activeMacroCycleId ?? null),
       mesoNumber: meso.mesoNumber,
     };
   });

@@ -21,6 +21,7 @@ export type HistoryWorkoutItem = WorkoutListSurfaceSummary;
 
 export type MesocycleOption = {
   id: string;
+  planName: string;
   startDate: string;
   isActive: boolean;
   mesoNumber: number;
@@ -228,7 +229,8 @@ export default function HistoryClient({
               <option value="">All mesocycles</option>
               {mesocycles.map((meso) => (
                 <option key={meso.id} value={meso.id}>
-                  {meso.isActive ? "Active - " : ""}Meso {meso.mesoNumber} -{" "}
+                  {meso.isActive ? "Active - " : ""}
+                  {meso.planName} · Meso {meso.mesoNumber} -{" "}
                   {new Date(meso.startDate).toLocaleDateString()}
                 </option>
               ))}

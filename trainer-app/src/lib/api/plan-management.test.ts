@@ -44,6 +44,7 @@ import {
   archivePlan,
   createHypertrophyPlan,
   derivePlanLifecycle,
+  loadPlanActivationTarget,
   loadPlanManagementData,
   loadPlanReview,
   renamePlan,
@@ -230,6 +231,32 @@ describe("plan management persistence policy", () => {
           id: "foreign-plan",
           userId: "user-1",
           archivedAt: null,
+          primaryGoal: "HYPERTROPHY",
+        },
+      }),
+    );
+  });
+
+  it("distinguishes an owned archived activation target without exposing foreign plans", async () => {
+    mocks.macroCycleFindFirst
+      .mockResolvedValueOnce({
+        archivedAt: new Date("2026-07-27T03:00:00.000Z"),
+        mesocycles: [],
+      })
+      .mockResolvedValueOnce(null);
+
+    await expect(
+      loadPlanActivationTarget("user-1", "archived-plan"),
+    ).resolves.toEqual({ status: "ARCHIVED" });
+    await expect(
+      loadPlanActivationTarget("user-1", "foreign-plan"),
+    ).resolves.toEqual({ status: "NOT_FOUND" });
+    expect(mocks.macroCycleFindFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          id: "archived-plan",
+          userId: "user-1",
           primaryGoal: "HYPERTROPHY",
         },
       }),

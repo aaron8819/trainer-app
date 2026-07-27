@@ -12,7 +12,7 @@ import {
 } from "./workout-list-items";
 
 describe("buildWorkoutListSurfaceSummary", () => {
-  it("derives session snapshot and logged-set counts from the shared row shape", () => {
+  it("derives session data and clears resumability for a switched-away plan", () => {
     const summary = buildWorkoutListSurfaceSummary({
       id: "workout-1",
       revision: 1,
@@ -58,7 +58,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           exceptions: [],
         },
       },
-      mesocycle: { sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
+      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
       _count: { exercises: 2 },
       exercises: [
         {
@@ -76,7 +76,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           ],
         },
       ],
-    });
+    }, { activeMacroCycleId: "plan-b" });
 
     expect(summary).toEqual({
       id: "workout-1",
@@ -91,7 +91,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
       sessionTechnicalLabel: null,
       mesocycleId: "meso-1",
       mesocycleState: "ACTIVE_ACCUMULATION",
-      mesocycleIsActive: true,
+      mesocycleIsActive: false,
       sessionSnapshot: {
         week: 3,
         session: 2,
@@ -155,7 +155,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           exceptions: [{ code: "optional_gap_fill", message: "Marked as optional gap-fill session." }],
         },
       },
-      mesocycle: { sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
+      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
       _count: { exercises: 1 },
       exercises: [{ sets: [] }],
     });
@@ -233,7 +233,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           ],
         },
       },
-      mesocycle: { sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
+      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
       _count: { exercises: 1 },
       exercises: [{ sets: [] }],
     });
@@ -299,7 +299,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           ],
         },
       },
-      mesocycle: { sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
+      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
       _count: { exercises: 1 },
       exercises: [{ sets: [] }],
     });
@@ -365,7 +365,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           exceptions: [],
         },
       },
-      mesocycle: { sessionsPerWeek: 4, state: "ACTIVE_ACCUMULATION", isActive: true },
+      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 4, state: "ACTIVE_ACCUMULATION", isActive: true },
       _count: { exercises: 1 },
       exercises: [{ sets: [] }],
     });
@@ -428,7 +428,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           ],
         },
       },
-      mesocycle: { sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
+      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, state: "ACTIVE_ACCUMULATION", isActive: true },
       _count: { exercises: 1 },
       exercises: [{ sets: [] }],
     });
@@ -486,7 +486,7 @@ describe("buildWorkoutListSurfaceSummary", () => {
           exceptions: [],
         },
       },
-      mesocycle: { sessionsPerWeek: 3, state: "ACTIVE_DELOAD", isActive: true },
+      mesocycle: { macroCycleId: "plan-a", sessionsPerWeek: 3, state: "ACTIVE_DELOAD", isActive: true },
       _count: { exercises: 1 },
       exercises: [{ sets: [] }],
     });

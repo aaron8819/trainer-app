@@ -1034,12 +1034,14 @@ const activeFixture: UiAuditFixture = {
     mesocycles: [
       {
         id: ACTIVE_MESO_ID,
+        planName: "Current Hypertrophy",
         startDate: "2026-03-16T00:00:00.000Z",
         isActive: true,
         mesoNumber: 4,
       },
       {
         id: "ui-audit-meso-prior",
+        planName: "Winter Hypertrophy",
         startDate: "2026-01-26T00:00:00.000Z",
         isActive: false,
         mesoNumber: 3,

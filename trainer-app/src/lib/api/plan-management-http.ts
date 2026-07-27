@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import {
   ActivePlanSelectionConflictError,
+  ActivePlanTargetArchivedError,
+  ActivePlanTargetNotFoundError,
   ActivePlanTargetNotReadyError,
   ActiveWorkoutInProgressError,
 } from "./active-plan-context";
@@ -26,6 +28,24 @@ export function planManagementErrorResponse(
         code: "ACTIVE_PLAN_TARGET_NOT_READY",
       },
       { status: 409 },
+    );
+  }
+  if (error instanceof ActivePlanTargetArchivedError) {
+    return NextResponse.json(
+      {
+        error: "Archived plans cannot be activated.",
+        code: "ACTIVE_PLAN_TARGET_ARCHIVED",
+      },
+      { status: 409 },
+    );
+  }
+  if (error instanceof ActivePlanTargetNotFoundError) {
+    return NextResponse.json(
+      {
+        error: "Plan not found.",
+        code: "PLAN_NOT_FOUND",
+      },
+      { status: 404 },
     );
   }
   if (error instanceof ActiveWorkoutInProgressError) {

@@ -100,6 +100,7 @@ export default async function WorkoutDetailPage({
     include: {
       mesocycle: {
         select: {
+          macroCycleId: true,
           state: true,
           isActive: true,
         },
@@ -166,6 +167,8 @@ export default async function WorkoutDetailPage({
     mesocycleId: workout.mesocycleId,
     mesocycleState: workout.mesocycle?.state ?? null,
     mesocycleIsActive: workout.mesocycle?.isActive ?? null,
+    mesocycleBelongsToSelectedPlan:
+      workout.mesocycle?.macroCycleId === owner.activeMacroCycleId,
   });
   const startLoggingHref = workflow.isResumable ? `/log/${workout.id}` : null;
   const hasHighSeverityInjury = injuries.some((injury) => injury.severity >= 3);
